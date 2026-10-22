@@ -100,6 +100,12 @@ export function AssetTable({ rows, values, href }: { rows: AssetRowView[]; value
                 <span className="block text-xs text-muted">
                   <span className="font-mono">{a.code}</span> · {ASSET_GROUP_LABELS[a.group]} · {ASSET_TYPE_LABELS[a.type] ?? a.type}
                 </span>
+                {/* step 4 (22 October 2026: accessories): the main asset it goes out with */}
+                {a.parent && (
+                  <span className="block text-xs text-muted">
+                    Attached to <span className="font-mono">{a.parent.code}</span> {a.parent.name}
+                  </span>
+                )}
                 {a.group === 'consumable' && (
                   <span className="mt-0.5 block text-xs tabular-nums">
                     {quantityText(a.quantity, a.unit)}

@@ -471,6 +471,18 @@ export * from './product-images.js';
 // printed on the form, the kit quick-add, what each person holds, an asset's repairs and its lost and found
 export * from './custody.js';
 
+// Assets, step 4: accessories (owner, 22 October 2026: "we might need to add accessories under assets, like laptop
+// charger under the charger, DJI ronin accessories"; "Both kinds"): a checklist on an asset ticked at handover and return,
+// and assets attached to a main one that go out with it; then the kits' items and status, stock moves, the maintenance
+// log by hand and disposal (spec §6.9)
+export * from './asset-accessories.js';
+export * from './asset-upkeep.js';
+
+// Assets, step 5 (owner, 22 October 2026: "Assets step 5 (stock counts, label sheets, the Assets dashboard, exports) …
+// work on this"): counts by group, room or kit (found, missing, out; a lost one found is available again; Mark lost
+// apart), the A4 label sheets of 3 × 8, the dashboard's figures and chips, and the Excel exports
+export * from './asset-counts.js';
+
 // the contract status the Employees list shows in place of the employee code (owner, 21 October 2026: "instead of the
 // Emp code, add contract status"; "State + end date"): signed and when it ends, the probation, a draft, the notice of an
 // approved ending, ended, none, the agreements of trainees and interns, freelance; an end within 30 days in amber

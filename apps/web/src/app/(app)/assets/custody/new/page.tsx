@@ -21,7 +21,7 @@ async function NewHandover({ searchParams }: { searchParams: PageProps<'/assets/
   const loaded = await loadHandoverChoices();
   if (loaded.kind !== 'ok') return <Empty>{assetsNotLoaded(loaded, 'handover form')}</Empty>;
   const start = handoverStart(params);
-  return <HandoverForm choices={loaded.value} startEmployeeId={start.employeeId} startAssetCode={start.assetCode} today={todayInCairo()} surface="site" cancelHref={CUSTODY_PATHS.list} />;
+  return <HandoverForm choices={loaded.value} startEmployeeId={start.employeeId} startAssetCode={start.assetCode} startKitId={start.kitId} today={todayInCairo()} surface="site" cancelHref={CUSTODY_PATHS.list} />;
 }
 
 export default function NewHandoverPage({ searchParams }: PageProps<'/assets/custody/new'>) {

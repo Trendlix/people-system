@@ -7,7 +7,8 @@ import { ASSET_PATHS, CUSTODY_PATHS } from '@/lib/asset-paths';
 import { formatDateTime, titleCase } from '@/lib/format';
 import { BackLink } from '../../../organization/ui';
 import { todayInCairo } from '../../../employees/ui';
-import { deductionHref, deductionText, itemsText, returnTone, valueText, whoText } from '../../custody';
+import { deductionText, itemsText, returnTone, valueText, whoText } from '../../custody';
+import { incidentDeductionHref, missingAccessoriesText } from '../../upkeep';
 import { loadHoldings } from '../../custody-data';
 import { CustodyTable, HeldTable } from '../../custody-ui';
 import { assetsCaller, assetsNotLoaded } from '../../data';
@@ -16,7 +17,8 @@ import { Empty, Loading, NoAccess } from '../../ui';
 // A person's holdings (Assets step 3; the spec's Employee holdings: "Current holdings, damaged/missing history, custody
 // history, actions: hand over, print custody statement"): what they hold now (since when, until when, overdue), the
 // items that came back damaged or missing (they stay on the person's record, spec §6.4; for HR, "Create a deduction":
-// owner, 21 October 2026, "Record it; HR decides a deduction"), and every custody record of theirs. The values only when
+// owner, 21 October 2026, "Record it; HR decides a deduction"), and every custody record of theirs. Step 4 (22 October
+// 2026: accessories): an item back without some of its accessories is listed too, with what didn't come back. The values only when
 // the API sent them (the CEO, Finance and a Super Admin). A C-level person's only for those who see them (404 else).
 
 export const metadata: Metadata = { title: 'Holdings · People System' };
@@ -94,6 +96,7 @@ async function Person({ params }: { params: PageProps<'/assets/holders/[employee
                     {i.receivedBy ? ` by ${whoText(i.receivedBy)}` : ''}
                     {'valueAtOut' in i ? ` · value when handed over ${valueText(i.valueAtOut)}` : ''}
                   </p>
+                  {missingAccessoriesText(i.missingAccessories) && <p className="text-sm text-warn">{missingAccessoriesText(i.missingAccessories)}</p>}
                   {i.notes && <p className="text-sm">{i.notes}</p>}
                   {i.deductions && i.deductions.length > 0 && (
                     <ul className="text-xs text-muted">
@@ -103,14 +106,17 @@ async function Person({ params }: { params: PageProps<'/assets/holders/[employee
                     </ul>
                   )}
                 </div>
-                {h.can.deduction && (
-                  <Link
-                    href={deductionHref({ employeeId: h.employee.id, itemId: i.itemId, condition: i.condition, assetCode: i.asset.code, custodyCode: i.custodyCode }, today)}
-                    className="btn btn-secondary"
-                  >
-                    Create a deduction
-                  </Link>
-                )}
+                {h.can.deduction && (() => {
+                  const href = incidentDeductionHref(
+                    { employeeId: h.employee.id, itemId: i.itemId, condition: i.condition, missing: i.missingAccessories, assetCode: i.asset.code, custodyCode: i.custodyCode },
+                    today,
+                  );
+                  return href ? (
+                    <Link href={href} className="btn btn-secondary">
+                      Create a deduction
+                    </Link>
+                  ) : null;
+                })()}
               </li>
             ))}
           </ul>

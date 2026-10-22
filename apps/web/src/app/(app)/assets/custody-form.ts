@@ -18,6 +18,15 @@ import {
 } from '@trendlix/shared';
 import { formatDate, formatDateTime } from '../../../lib/format';
 
+/**
+ * An item's accessories as printed (step 4, owner, 22 October 2026: accessories): its checklist that went out ("Charger, 2
+ * × Battery"), then anything written by hand on the handover; a dash when none.
+ */
+const accessoriesPrinted = (i: { accessoriesOut?: { name: string; quantity: number; serial: string | null }[]; accessories: string | null }): string => {
+  const list = (i.accessoriesOut ?? []).map((a) => `${a.quantity > 1 ? `${a.quantity} × ` : ''}${a.name}${a.serial ? ` (${a.serial})` : ''}`).join(', ');
+  return [list, i.accessories].filter(Boolean).join('; ') || '—';
+};
+
 const escape = (text: string | null | undefined) => (text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
 
 /** The company as the form names it: its name and its logo's address on this site (null: none uploaded). */
@@ -86,7 +95,7 @@ export function custodyFormMarkup(r: CustodyRecordView, brand: FormBrand): strin
     .map(
       (i, n) =>
         `<tr><td>${n + 1}</td><td class="mono">${escape(i.asset.code)}</td><td>${escape(i.asset.name)}${i.asset.brand || i.asset.model ? `<br><span class="note">${escape([i.asset.brand, i.asset.model].filter(Boolean).join(' '))}</span>` : ''}</td>` +
-        `<td class="mono">${escape(i.asset.serial ?? '—')}</td><td>${escape(i.conditionOut ? ASSET_CONDITION_LABELS[i.conditionOut] : '—')}</td><td>${escape(i.accessories ?? '—')}</td></tr>`,
+        `<td class="mono">${escape(i.asset.serial ?? '—')}</td><td>${escape(i.conditionOut ? ASSET_CONDITION_LABELS[i.conditionOut] : '—')}</td><td>${escape(accessoriesPrinted(i))}</td></tr>`,
     )
     .join('');
   const items = `<table><thead><tr><th>#</th><th>Code</th><th>Asset</th><th>Serial</th><th>Condition</th><th>Accessories</th></tr></thead><tbody>${rows}</tbody></table>`;
@@ -95,7 +104,12 @@ export function custodyFormMarkup(r: CustodyRecordView, brand: FormBrand): strin
   const returns = r.returns
     .map((ret) => {
       const lines = ret.items
-        .map((i) => `<tr><td class="mono">${escape(i.code)}</td><td>${escape(i.name)}</td><td>${escape(RETURN_CONDITION_LABELS[i.condition])}</td><td>${escape(i.notes ?? '—')}</td></tr>`)
+        .map((i) => {
+          // step 4: the accessories that didn't come back with it
+          const notBack = i.missingAccessories?.length ? `Not back: ${i.missingAccessories.map((a) => `${a.quantity > 1 ? `${a.quantity} × ` : ''}${a.name}`).join(', ')}` : null;
+          const notes = [notBack, i.notes].filter(Boolean).join('. ') || '—';
+          return `<tr><td class="mono">${escape(i.code)}</td><td>${escape(i.name)}</td><td>${escape(RETURN_CONDITION_LABELS[i.condition])}</td><td>${escape(notes)}</td></tr>`;
+        })
         .join('');
       const by = ret.receivedBy ? (ret.receivedBy.name ?? ret.receivedBy.email) : null;
       return (
@@ -121,7 +135,9 @@ export function custodyStatementMarkup(h: HoldingsView, brand: FormBrand, today:
   const rows = h.current
     .map(
       (c, n) =>
-        `<tr><td>${n + 1}</td><td class="mono">${escape(c.asset.code)}</td><td>${escape(c.asset.name)}</td><td class="mono">${escape(c.asset.serial ?? '—')}</td>` +
+        `<tr><td>${n + 1}</td><td class="mono">${escape(c.asset.code)}</td><td>${escape(c.asset.name)}${
+          accessoriesPrinted(c) !== '—' ? `<br><span class="note">With: ${escape(accessoriesPrinted(c))}</span>` : ''
+        }</td><td class="mono">${escape(c.asset.serial ?? '—')}</td>` +
         `<td class="mono">${escape(c.custody.code)}</td><td>${escape(formatDate(c.since))}</td>` +
         `<td>${escape(c.custody.kind === 'shoot' && c.custody.dueDate ? `${formatDate(c.custody.dueDate)}${c.overdue ? ' (overdue)' : ''}` : 'Long term')}</td></tr>`,
     )

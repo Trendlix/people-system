@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  ACCESSORY_LIMITS,
   ASSET_CLASS_LABELS,
   ASSET_CLASSES,
   ASSET_CONDITION_LABELS,
@@ -32,6 +33,7 @@ import { APP_ASSET_PATHS, ASSET_PATHS } from '@/lib/asset-paths';
 import { saveAsset } from './actions';
 import { PhotoPicker, sendPhotos, type ChosenPhoto } from './asset-photos';
 import { readAssetForm, readValuesForm, usefulLifeHint } from './assets';
+import { accessoryField, ACCESSORY_ROWS_MAX, readAccessoriesForm, readParentCode } from './upkeep';
 
 // The Add asset and Edit asset form (owner, 21 October 2026: "i want to add this module with a special permission to the
 // system"; the brief: "a form whose fields follow the group"): what it is (the group first, then the type, the usual
@@ -94,6 +96,8 @@ export function AssetForm({
   photosHad = 0,
   ai,
   draftId = null,
+  accessories = [],
+  parentCode = null,
   surface,
   cancelHref,
 }: {
@@ -113,6 +117,9 @@ export function AssetForm({
   ai: boolean;
   /** Add only: the draft from Claude it is filled in from; saving confirms it (step 2). */
   draftId?: string | null;
+  /** Add only (step 4, owner, 22 October 2026: accessories, "Both kinds"): its checklist and its main asset's code, as they start (a draft's). */
+  accessories?: { name: string; quantity: number; serial: string | null; notes: string | null }[];
+  parentCode?: string | null;
   surface: Surface;
   cancelHref: string;
 }) {
@@ -125,6 +132,7 @@ export function AssetForm({
   const [shrinking, setShrinking] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
   const [saving, start] = useTransition();
+  const [accessoryRows, setAccessoryRows] = useState(Math.min(ACCESSORY_ROWS_MAX, Math.max(1, accessories.length + 1)));
   const fields = assetFieldsOf(group);
   const rule = ASSET_GROUP_RULES[group];
   const sameGroup = group === startGroup;
@@ -143,6 +151,13 @@ export function AssetForm({
     const fd = new FormData(e.currentTarget);
     // the shared checks first, as the API will make them
     const problems = [...readAssetForm(fd, today, mode === 'edit' ? from : null).problems, ...(values ? readValuesForm(fd).problems : [])];
+    // step 4: the checklist and the main asset's code, on Add (not for a consumable)
+    if (mode === 'add' && group !== 'consumable') {
+      problems.push(...readAccessoriesForm(fd, accessoryRows, group).problems);
+      const typed = String(fd.get('parentCode') ?? '').trim();
+      const parent = typed ? readParentCode(typed) : null;
+      if (parent?.problem) problems.push(parent.problem);
+    }
     if (problems.length) {
       setErrors(problems);
       return;
@@ -367,6 +382,53 @@ export function AssetForm({
           <Field id={fid('priceNote')} label="How the market value was reached" hint="One or two sentences, e.g. three listings for the same model in good condition." wide opt>
             <textarea id={fid('priceNote')} name="priceNote" rows={2} maxLength={ASSET_TEXT_LIMITS.priceNote} defaultValue={values.priceNote} aria-describedby={`${fid('priceNote')}-hint`} className="input" />
           </Field>
+        </Section>
+      )}
+
+      {mode === 'add' && group !== 'consumable' && (
+        <Section title="Accessories">
+          <input type="hidden" name="rows" value={accessoryRows} />
+          <Field id={fid('parentCode')} label="Accessory of" hint="When it is itself an accessory with its own code, e.g. a Ronin battery: the main asset’s code. It then goes out with it." opt>
+            <input id={fid('parentCode')} name="parentCode" maxLength={40} defaultValue={parentCode ?? ''} placeholder="E.g. PK-GMB-0001" aria-describedby={`${fid('parentCode')}-hint`} className="input font-mono uppercase" />
+          </Field>
+          <div className="space-y-2 sm:col-span-2">
+            <p className="label">What comes with it</p>
+            <ol className="space-y-2">
+              {Array.from({ length: accessoryRows }, (_, i) => {
+                const saved = accessories[i];
+                return (
+                  <li key={i} className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_5rem_9rem]">
+                    <label className="sr-only" htmlFor={fid(accessoryField(i, 'name'))}>
+                      Accessory {i + 1}
+                    </label>
+                    <input id={fid(accessoryField(i, 'name'))} name={accessoryField(i, 'name')} maxLength={ACCESSORY_LIMITS.name} defaultValue={saved?.name ?? ''} placeholder="E.g. Charger" className="input" />
+                    <label className="sr-only" htmlFor={fid(accessoryField(i, 'quantity'))}>
+                      How many of accessory {i + 1}
+                    </label>
+                    <input
+                      id={fid(accessoryField(i, 'quantity'))}
+                      name={accessoryField(i, 'quantity')}
+                      inputMode="numeric"
+                      autoComplete="off"
+                      defaultValue={saved ? String(saved.quantity) : '1'}
+                      className="input tabular-nums"
+                    />
+                    <label className="sr-only" htmlFor={fid(accessoryField(i, 'serial'))}>
+                      Serial of accessory {i + 1}
+                    </label>
+                    <input id={fid(accessoryField(i, 'serial'))} name={accessoryField(i, 'serial')} maxLength={ACCESSORY_LIMITS.serial} defaultValue={saved?.serial ?? ''} placeholder="Serial (optional)" className="input font-mono" />
+                    <input type="hidden" name={accessoryField(i, 'notes')} value={saved?.notes ?? ''} />
+                  </li>
+                );
+              })}
+            </ol>
+            <p className="hint">A charger, cables, a case: each goes out with it on a handover and is ticked when it comes back. Leave a line empty to skip it.</p>
+            {accessoryRows < ACCESSORY_ROWS_MAX && (
+              <button type="button" onClick={() => setAccessoryRows((n) => Math.min(ACCESSORY_ROWS_MAX, n + 1))} className="btn btn-secondary">
+                Add a line
+              </button>
+            )}
+          </div>
         </Section>
       )}
 

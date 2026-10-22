@@ -1,5 +1,13 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import {
+  accessoriesBackProblems,
+  accessoriesGoingOut,
+  accessoriesOutOf,
+  accessoriesText,
+  accessoryText,
+  attachedSkipReason,
+  missingAccessories,
+  type AccessoryOut,
   assetActionsOf,
   assetsAccessAtLeast,
   CUSTODY_CODE_PREFIX,
@@ -94,6 +102,14 @@ const OPEN: CustodyStatus[] = ['open', 'partial'];
 
 /** An employment not ended by today: the person is a current employee. */
 const currentEmployment = (today: string): Prisma.EmploymentWhereInput => ({ OR: [{ endDate: null }, { endDate: { gte: toDateOnly(today) } }] });
+
+/**
+ * An item that stays on the person's record (spec §6.4): returned damaged or missing, or (step 4, owner, 22 October
+ * 2026: accessories) back without some of its accessories.
+ */
+function isIncident(i: { returnCondition: string | null; accessoriesMissing: Prisma.JsonValue | null }): boolean {
+  return i.returnCondition === 'damaged' || i.returnCondition === 'missing' || (i.returnCondition !== null && accessoriesOutOf(i.accessoriesMissing).length > 0);
+}
 
 /** The records of the people the caller may see. */
 const visibleRecords = (hidden: readonly string[]): Prisma.CustodyRecordWhereInput => (hidden.length ? { employeeId: { notIn: [...hidden] } } : {});
@@ -197,7 +213,7 @@ export class CustodyService {
         receive: register && r.status !== 'closed',
         attach: register,
         // HR decides a deduction (owner, 21 October 2026: "Record it; HR decides a deduction"), never made by itself
-        deduction: createsCustodyDeduction(caller.user) && r.items.some((i) => i.returnCondition === 'damaged' || i.returnCondition === 'missing'),
+        deduction: createsCustodyDeduction(caller.user) && r.items.some((i) => isIncident(i)),
       },
     };
     if (caller.values) view.valueAtOut = sumOf(r.items.map((i) => money(i.valueAtOut)));
@@ -224,7 +240,20 @@ export class CustodyService {
       }),
       this.prisma.asset.findMany({
         where: { status: 'available', group: { not: 'consumable' } },
-        select: { id: true, code: true, name: true, group: true, type: true, serial: true, condition: true, kit: { select: { id: true, code: true } } },
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          group: true,
+          type: true,
+          serial: true,
+          condition: true,
+          kit: { select: { id: true, code: true } },
+          // step 4 (owner, 22 October 2026: accessories, "Both kinds"): its checklist, the assets attached to it, its main one
+          accessories: { select: { id: true, name: true, quantity: true, serial: true, notes: true }, orderBy: { position: 'asc' } },
+          attached: { where: { status: { not: 'disposed' } }, select: { id: true, code: true, name: true, status: true, holderId: true, holder: { select: { fullNameEn: true } }, custody: { select: { code: true } } }, orderBy: { code: 'asc' } },
+          parent: { select: { code: true, name: true } },
+        },
         orderBy: { code: 'asc' },
         take: 5000,
       }),
@@ -237,7 +266,19 @@ export class CustodyService {
         const d = p.employments[0]?.department ?? null;
         return { id: p.id, employeeCode: p.employeeCode, fullNameEn: p.fullNameEn, department: d ? (d.parent ? `${d.parent.nameEn} › ${d.nameEn}` : d.nameEn) : null };
       }),
-      assets: assets.map((a) => ({ ...a, group: a.group as HandoverChoices['assets'][number]['group'], type: a.type as HandoverChoices['assets'][number]['type'], condition: a.condition as AssetCondition | null })),
+      assets: assets.map((a) => ({
+        ...a,
+        group: a.group as HandoverChoices['assets'][number]['group'],
+        type: a.type as HandoverChoices['assets'][number]['type'],
+        condition: a.condition as AssetCondition | null,
+        attached: a.attached.map((c) => ({
+          id: c.id,
+          code: c.code,
+          name: c.name,
+          status: c.status as AssetStatus,
+          why: attachedSkipReason({ status: c.status, holder: c.holder?.fullNameEn ?? null, custodyCode: c.holderId && hidden.has(c.holderId) ? null : (c.custody?.code ?? null) }),
+        })),
+      })),
       kits: kits.map((k) => ({
         id: k.id,
         code: k.code,
@@ -300,14 +341,31 @@ export class CustodyService {
     const hidden = new Set(await this.confidential.hiddenFrom(caller.user));
     const kitIds = [...new Set(dto.kitIds ?? [])];
     let skipped: KitSkip[] = [];
-    const chosen = new Map<string, { conditionOut: AssetCondition | null; accessories: string | null }>();
-    for (const i of dto.items ?? []) if (!chosen.has(i.assetId)) chosen.set(i.assetId, { conditionOut: i.conditionOut ?? null, accessories: i.accessories ?? null });
+    const chosen = new Map<string, { conditionOut: AssetCondition | null; accessories: string | null; accessoryIds?: string[] }>();
+    for (const i of dto.items ?? []) {
+      if (!chosen.has(i.assetId)) chosen.set(i.assetId, { conditionOut: i.conditionOut ?? null, accessories: i.accessories ?? null, accessoryIds: i.accessoryIds });
+    }
     if (kitIds.length) {
       const kits = await this.kitsFor(hidden, kitIds);
       if (kits.length !== kitIds.length) throw new BadRequestException(['Choose the kits from the list.']);
       const quick = kitQuickAdd(kits.flatMap((k) => k.items));
       skipped = quick.skipped;
       for (const id of quick.add) if (!chosen.has(id)) chosen.set(id, { conditionOut: null, accessories: null });
+    }
+    // step 4 (owner, 22 October 2026: accessories, "Both kinds"): the assets attached to those chosen go with them, the
+    // available ones; the others skipped, said why, as a kit's are
+    if (chosen.size) {
+      const attached = await this.prisma.asset.findMany({
+        where: { parentAssetId: { in: [...chosen.keys()] }, status: { not: 'disposed' } },
+        select: { id: true, code: true, name: true, status: true, holderId: true, holder: { select: { fullNameEn: true } }, custody: { select: { code: true } } },
+        orderBy: { code: 'asc' },
+      });
+      for (const c of attached) {
+        if (chosen.has(c.id)) continue;
+        const why = attachedSkipReason({ status: c.status, holder: c.holder?.fullNameEn ?? null, custodyCode: c.holderId && hidden.has(c.holderId) ? null : (c.custody?.code ?? null) });
+        if (why) skipped.push({ code: c.code, name: c.name, why });
+        else chosen.set(c.id, { conditionOut: null, accessories: null });
+      }
     }
 
     const input = { employeeId: dto.employeeId, kind: dto.kind, dueDate: dto.dueDate ?? null, purpose: dto.purpose ?? null, handedOverBy, notes: dto.notes ?? null, items: [...chosen.keys()] };
@@ -324,7 +382,20 @@ export class CustodyService {
     const created = await this.prisma.$transaction(async (tx) => {
       // the assets' rows held until this commits: a second handover of one of them waits, then finds it in custody
       await tx.$queryRaw`SELECT id FROM assets WHERE id IN (${Prisma.join(ids.map((id) => Prisma.sql`${id}::uuid`))}) ORDER BY id FOR UPDATE`;
-      const assets = await tx.asset.findMany({ where: { id: { in: ids } }, select: { id: true, code: true, name: true, status: true, group: true, condition: true, marketValue: true }, orderBy: { code: 'asc' } });
+      const assets = await tx.asset.findMany({
+        where: { id: { in: ids } },
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          status: true,
+          group: true,
+          condition: true,
+          marketValue: true,
+          accessories: { select: { id: true, name: true, quantity: true, serial: true, notes: true }, orderBy: { position: 'asc' } },
+        },
+        orderBy: { code: 'asc' },
+      });
       const refused = assets.map((a) => handOverProblem(a)).filter((p): p is string => !!p);
       if (assets.length !== ids.length) refused.unshift('Some of the assets chosen aren’t in the register. Reload the page and choose again.');
       if (refused.length) throw new BadRequestException(refused);
@@ -347,13 +418,18 @@ export class CustodyService {
         select: { id: true, code: true },
       });
       await tx.custodyItem.createMany({
-        data: assets.map((a) => ({
-          custodyId: record.id,
-          assetId: a.id,
-          valueAtOut: a.marketValue,
-          conditionOut: chosen.get(a.id)?.conditionOut ?? a.condition,
-          accessories: chosen.get(a.id)?.accessories ?? null,
-        })),
+        data: assets.map((a) => {
+          // the checklist's lines going with it, as a snapshot (all of them unless the form left some behind)
+          const out = accessoriesGoingOut(a.accessories, chosen.get(a.id)?.accessoryIds);
+          return {
+            custodyId: record.id,
+            assetId: a.id,
+            valueAtOut: a.marketValue,
+            conditionOut: chosen.get(a.id)?.conditionOut ?? a.condition,
+            accessories: chosen.get(a.id)?.accessories ?? null,
+            accessoriesOut: out.length ? (out as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
+          };
+        }),
       });
       const moved = await tx.asset.updateMany({ where: { id: { in: ids }, status: 'available' }, data: { status: 'custody', holderId: employee.id, custodyId: record.id } });
       if (moved.count !== ids.length) throw new ConflictException('Some of the assets were handed over meanwhile. Reload the page and choose again.');
@@ -375,6 +451,12 @@ export class CustodyService {
         handedOverBy,
         items: assets.map((a) => a.code),
         ...(skipped.length && { skipped: skipped.map((s) => s.code) }),
+        ...(assets.some((a) => a.accessories.length) && {
+          accessories: assets
+            .map((a) => ({ code: a.code, out: accessoriesText(accessoriesGoingOut(a.accessories, chosen.get(a.id)?.accessoryIds)) }))
+            .filter((x) => x.out)
+            .map((x) => `${x.code}: ${x.out}`),
+        }),
         // the values when they went out: only as the fact that they were kept (as the asset values are)
         ...(assets.some((a) => a.marketValue !== null) && { valueAtOut: 'set' }),
       },
@@ -409,16 +491,40 @@ export class CustodyService {
 
     const back = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM custody_records WHERE id = ${record.id}::uuid FOR UPDATE`;
-      const items = await tx.custodyItem.findMany({ where: { custodyId: record.id }, select: { id: true, assetId: true, returnedAt: true, asset: { select: { code: true } } } });
+      const items = await tx.custodyItem.findMany({
+        where: { custodyId: record.id },
+        select: { id: true, assetId: true, returnedAt: true, accessoriesOut: true, asset: { select: { code: true } } },
+      });
       const byId = new Map(items.map((i) => [i.id, i]));
       if ([...lines.keys()].some((id) => !byId.has(id))) throw new BadRequestException(['Choose items of this custody record.']);
       const already = [...lines.keys()].map((id) => byId.get(id)!).filter((i) => i.returnedAt);
       if (already.length) throw new ConflictException(`${already.map((i) => i.asset.code).join(', ')} ${already.length === 1 ? 'is' : 'are'} back already.`);
-      const out: { assetId: string; code: string; condition: ReturnCondition; status: AssetStatus }[] = [];
+      // step 4: each accessory that went out with an item, ticked again (how many came back); an item missing has all of
+      // its accessories missing with it
+      const accessoryProblems: string[] = [];
+      for (const l of lines.values()) {
+        const went = accessoriesOutOf(byId.get(l.itemId)!.accessoriesOut);
+        if (l.accessoriesBack !== undefined && l.condition !== 'missing') {
+          accessoryProblems.push(...accessoriesBackProblems(went, l.accessoriesBack).map((p) => `${byId.get(l.itemId)!.asset.code}: ${p}`));
+        }
+      }
+      if (accessoryProblems.length) throw new BadRequestException(accessoryProblems);
+      const out: { assetId: string; code: string; condition: ReturnCondition; status: AssetStatus; missing: AccessoryOut[] }[] = [];
       for (const l of lines.values()) {
         const i = byId.get(l.itemId)!;
         const status = STATUS_ON_RETURN[l.condition];
-        await tx.custodyItem.update({ where: { id: i.id }, data: { returnedAt: now, returnCondition: l.condition, receivedById: caller.user.id, returnNotes: l.notes ?? null } });
+        const went = accessoriesOutOf(i.accessoriesOut);
+        const missing = went.length ? missingAccessories(went, l.accessoriesBack ?? null, l.condition === 'missing') : [];
+        await tx.custodyItem.update({
+          where: { id: i.id },
+          data: {
+            returnedAt: now,
+            returnCondition: l.condition,
+            receivedById: caller.user.id,
+            returnNotes: l.notes ?? null,
+            accessoriesMissing: went.length ? (missing as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
+          },
+        });
         const moved = await tx.asset.updateMany({ where: { id: i.assetId, custodyId: record.id }, data: { status, holderId: null, custodyId: null } });
         if (!moved.count) throw new ConflictException(`${i.asset.code} isn’t held on ${record.code} any more. Reload the page.`);
         if (l.condition === 'damaged') {
@@ -434,7 +540,7 @@ export class CustodyService {
             },
           });
         }
-        out.push({ assetId: i.assetId, code: i.asset.code, condition: l.condition, status });
+        out.push({ assetId: i.assetId, code: i.asset.code, condition: l.condition, status, missing });
       }
       const status = custodyStatusOf(items.map((i) => ({ returned: !!i.returnedAt || lines.has(i.id) })));
       await tx.custodyRecord.update({ where: { id: record.id }, data: { status, closedAt: status === 'closed' ? now : null } });
@@ -449,7 +555,7 @@ export class CustodyService {
       diff: {
         code: record.code,
         employeeCode: record.employee.employeeCode,
-        items: back.out.map((o) => ({ code: o.code, condition: o.condition })),
+        items: back.out.map((o) => ({ code: o.code, condition: o.condition, ...(o.missing.length && { missingAccessories: o.missing.map(accessoryText).join(', ') }) })),
         ...(back.status !== record.status && { status: { from: record.status, to: back.status } }),
       },
     });
@@ -459,7 +565,13 @@ export class CustodyService {
         action: 'receive_back',
         entityType: ASSET_ENTITY,
         entityId: o.assetId,
-        diff: { code: o.code, custody: record.code, condition: o.condition, status: { from: 'custody', to: o.status } },
+        diff: {
+          code: o.code,
+          custody: record.code,
+          condition: o.condition,
+          status: { from: 'custody', to: o.status },
+          ...(o.missing.length && { missingAccessories: o.missing.map(accessoryText).join(', ') }),
+        },
       });
     }
     await this.notices.returned(record.id, back.out.length);
@@ -488,7 +600,10 @@ export class CustodyService {
           text ? { OR: [{ employments: { some: currentEmployment(today) } }, { custodyRecords: { some: {} } }] } : {},
         ],
       },
-      select: { ...PERSON, custodyRecords: { select: { kind: true, status: true, dueDate: true, items: { select: { returnedAt: true, returnCondition: true, valueAtOut: true } } } } },
+      select: {
+        ...PERSON,
+        custodyRecords: { select: { kind: true, status: true, dueDate: true, items: { select: { returnedAt: true, returnCondition: true, valueAtOut: true, accessoriesMissing: true } } } },
+      },
       orderBy: { fullNameEn: 'asc' },
       take: text ? 50 : 200,
     });
@@ -498,7 +613,7 @@ export class CustodyService {
         employee: { id: p.id, employeeCode: p.employeeCode, fullNameEn: p.fullNameEn },
         holding: open.length,
         overdue: open.filter(({ r }) => isOverdue({ kind: r.kind, status: r.status, dueDate: r.dueDate ? fromDateOnly(r.dueDate) : null }, today)).length,
-        damagedOrMissing: p.custodyRecords.flatMap((r) => r.items).filter((i) => i.returnCondition === 'damaged' || i.returnCondition === 'missing').length,
+        damagedOrMissing: p.custodyRecords.flatMap((r) => r.items).filter((i) => isIncident(i)).length,
       };
       if (caller.values) card.value = sumOf(open.map(({ i }) => money(i.valueAtOut)));
       return card;
@@ -512,11 +627,14 @@ export class CustodyService {
     if (!person || (await this.confidential.isHidden(caller.user, employeeId))) throw new NotFoundException(EMPLOYEE_NOT_FOUND);
     const [held, incidents, records] = await Promise.all([
       this.prisma.custodyItem.findMany({ where: { returnedAt: null, custody: { employeeId } }, select: HELD, orderBy: [{ custody: { outAt: 'desc' } }, { asset: { code: 'asc' } }] }),
-      this.prisma.custodyItem.findMany({
-        where: { returnCondition: { in: ['damaged', 'missing'] }, custody: { employeeId } },
-        select: { ...ITEM, custody: { select: { code: true } } },
-        orderBy: { returnedAt: 'desc' },
-      }),
+      // damaged or missing, or (step 4) back without some of its accessories
+      this.prisma.custodyItem
+        .findMany({
+          where: { custody: { employeeId }, OR: [{ returnCondition: { in: ['damaged', 'missing'] } }, { returnedAt: { not: null }, accessoriesMissing: { not: Prisma.DbNull } }] },
+          select: { ...ITEM, custody: { select: { code: true } } },
+          orderBy: { returnedAt: 'desc' },
+        })
+        .then((rows) => rows.filter(isIncident)),
       this.prisma.custodyRecord.findMany({ where: { employeeId }, select: RECORD_ROW, orderBy: [{ outAt: 'desc' }, { code: 'desc' }] }),
     ]);
     const names = await userNames(this.prisma, incidents.map((i) => i.receivedBy));
@@ -525,11 +643,13 @@ export class CustodyService {
       current: held.map((h) => heldView(h, caller.values, today)),
       incidents: incidents.map((i) => {
         const item = itemView(i, caller, names);
+        const missing = accessoriesOutOf(i.accessoriesMissing);
         return {
           itemId: i.id,
           asset: item.asset,
           custodyCode: i.custody.code,
-          condition: i.returnCondition as 'damaged' | 'missing',
+          condition: i.returnCondition as ReturnCondition,
+          ...(missing.length > 0 && { missingAccessories: missing }),
           returnedAt: i.returnedAt!.toISOString(),
           notes: i.returnNotes,
           receivedBy: item.receivedBy,
@@ -590,6 +710,8 @@ export class CustodyService {
           returnedAt: true,
           returnCondition: true,
           returnNotes: true,
+          accessoriesOut: true,
+          accessoriesMissing: true,
           receivedBy: USER,
           custody: { select: { code: true, kind: true, outAt: true, dueDate: true, employeeId: true, employee: { select: PERSON } } },
         },
@@ -602,7 +724,12 @@ export class CustodyService {
       }),
     ]);
     const shown = items.filter((i) => !hidden.has(i.custody.employeeId));
-    const names = await userNames(this.prisma, [...shown.map((i) => i.receivedBy), ...maintenance.map((m) => m.createdBy)]);
+    // step 4: a consumable's stock moves, newest first
+    const moves =
+      asset.group === 'consumable'
+        ? await this.prisma.assetStockMove.findMany({ where: { assetId: asset.id }, select: { id: true, delta: true, quantityAfter: true, note: true, at: true, by: USER }, orderBy: { at: 'desc' }, take: 100 })
+        : [];
+    const names = await userNames(this.prisma, [...shown.map((i) => i.receivedBy), ...maintenance.map((m) => m.createdBy), ...moves.map((m) => m.by)]);
     const register = assetsAccessAtLeast(caller.access, 'custodian');
     const can = assetActionsOf(asset);
     return {
@@ -618,6 +745,8 @@ export class CustodyService {
         returnCondition: (i.returnCondition as ReturnCondition | null) ?? null,
         receivedBy: userRef(names, i.receivedBy),
         returnNotes: i.returnNotes,
+        accessoriesOut: accessoriesOutOf(i.accessoriesOut),
+        accessoriesMissing: i.accessoriesMissing === null ? null : accessoriesOutOf(i.accessoriesMissing),
         ...(caller.values && { valueAtOut: money(i.valueAtOut) }),
       })),
       hiddenRecords: items.length - shown.length,
@@ -637,6 +766,14 @@ export class CustodyService {
         };
       }),
       can: Object.fromEntries(Object.entries(can).map(([k, v]) => [k, register && v])) as AssetHistoryView['can'],
+      stockMoves: moves.map((m) => ({
+        id: m.id,
+        delta: m.delta.toNumber(),
+        quantityAfter: m.quantityAfter.toNumber(),
+        note: m.note,
+        by: userRef(names, m.by),
+        at: m.at.toISOString(),
+      })),
     };
   }
 }

@@ -30,9 +30,12 @@ export async function handOverAssets(body: Record<string, unknown>): Promise<{ c
   }
 }
 
-/** Items received back (`itemIds`: those still out, each with its condition and notes on the form). */
-export async function receiveBack(code: string, itemIds: string[], _prev: FormState, fd: FormData): Promise<FormState> {
-  const { lines, problems } = readReturnForm(fd, itemIds);
+/**
+ * Items received back (`items`: those still out, each with its condition and notes on the form, and since step 4 the
+ * accessories that went out with it, ticked again).
+ */
+export async function receiveBack(code: string, items: (string | { id: string; accessoriesOut?: { quantity: number }[] })[], _prev: FormState, fd: FormData): Promise<FormState> {
+  const { lines, problems } = readReturnForm(fd, items);
   const values = Object.fromEntries([...fd.entries()].filter(([, v]) => typeof v === 'string').map(([k, v]) => [k, String(v)]));
   if (problems.length) return { errors: problems, values };
   try {

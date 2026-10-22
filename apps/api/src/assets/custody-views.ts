@@ -1,4 +1,5 @@
 import {
+  accessoriesOutOf,
   daysOverdue,
   isOverdue,
   seesCustodyDeductions,
@@ -75,6 +76,8 @@ export const ITEM = {
   valueAtOut: true,
   conditionOut: true,
   accessories: true,
+  accessoriesOut: true,
+  accessoriesMissing: true,
   returnedAt: true,
   returnCondition: true,
   returnNotes: true,
@@ -166,13 +169,18 @@ export function itemView(i: ItemRow, caller: Pick<AssetsCaller, 'values' | 'user
     asset: assetRef(i.asset),
     conditionOut: (i.conditionOut as AssetCondition | null) ?? null,
     accessories: i.accessories,
+    // step 4 (owner, 22 October 2026: accessories): what went out with it, and once back what didn't come back
+    accessoriesOut: accessoriesOutOf(i.accessoriesOut),
+    accessoriesMissing: i.accessoriesMissing === null ? null : accessoriesOutOf(i.accessoriesMissing),
     returnedAt: i.returnedAt?.toISOString() ?? null,
     returnCondition: (i.returnCondition as ReturnCondition | null) ?? null,
     receivedBy: userRef(names, i.receivedBy),
     returnNotes: i.returnNotes,
   };
   if (caller.values) view.valueAtOut = money(i.valueAtOut);
-  if (seesCustodyDeductions(caller.user) && (i.returnCondition === 'damaged' || i.returnCondition === 'missing')) view.deductions = deductionRefs(i.deductions);
+  // damaged or missing, or (step 4) back without some of its accessories: what HR may turn into a deduction
+  const incident = i.returnCondition === 'damaged' || i.returnCondition === 'missing' || (i.returnCondition !== null && accessoriesOutOf(i.accessoriesMissing).length > 0);
+  if (seesCustodyDeductions(caller.user) && incident) view.deductions = deductionRefs(i.deductions);
   return view;
 }
 
@@ -182,7 +190,15 @@ export function returnsOf(items: readonly ItemRow[], names: ReadonlyMap<string, 
   for (const i of [...items].filter((x) => x.returnedAt).sort((a, b) => a.returnedAt!.getTime() - b.returnedAt!.getTime() || a.asset.code.localeCompare(b.asset.code))) {
     const key = `${i.returnedAt!.toISOString()}|${i.receivedBy?.id ?? ''}`;
     const group = groups.get(key) ?? { at: i.returnedAt!.toISOString(), receivedBy: userRef(names, i.receivedBy), items: [] };
-    group.items.push({ itemId: i.id, code: i.asset.code, name: i.asset.name, condition: i.returnCondition as ReturnCondition, notes: i.returnNotes });
+    const missing = accessoriesOutOf(i.accessoriesMissing);
+    group.items.push({
+      itemId: i.id,
+      code: i.asset.code,
+      name: i.asset.name,
+      condition: i.returnCondition as ReturnCondition,
+      notes: i.returnNotes,
+      ...(missing.length > 0 && { missingAccessories: missing }),
+    });
     groups.set(key, group);
   }
   return [...groups.values()];
@@ -218,6 +234,7 @@ export const HELD = {
   valueAtOut: true,
   conditionOut: true,
   accessories: true,
+  accessoriesOut: true,
   asset: { select: ASSET_REF },
   custody: { select: { code: true, kind: true, status: true, dueDate: true, outAt: true } },
 } as const satisfies Prisma.CustodyItemSelect;
@@ -234,6 +251,7 @@ export function heldView(h: HeldRow, values: boolean, today: string): HeldItemVi
     ...lateness(h.custody, today),
     conditionOut: (h.conditionOut as AssetCondition | null) ?? null,
     accessories: h.accessories,
+    accessoriesOut: accessoriesOutOf(h.accessoriesOut),
   };
   if (values) view.valueAtOut = money(h.valueAtOut);
   return view;

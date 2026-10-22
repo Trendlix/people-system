@@ -1,6 +1,7 @@
 import { Transform, Type } from 'class-transformer';
-import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import {
+  ACCESSORY_LIMITS,
   ASSET_CLASSES,
   ASSET_CONDITIONS,
   ASSET_GROUPS,
@@ -19,6 +20,7 @@ import {
 } from '@trendlix/shared';
 import { IsDateOnly } from '../common/date-only.js';
 import { Trim, TrimOrNull } from '../common/transforms.js';
+import { AccessoryDto } from './asset-upkeep.dto.js';
 
 // What the Assets pages send (owner, 21 October 2026; packages/shared assets.ts). Each field checked here on its own,
 // in words; the rules between fields (what a group has, the status rules, the market value's range) are the shared
@@ -120,6 +122,21 @@ abstract class AssetFieldsDto {
   /** The values, from the CEO, Finance or a Super Admin only (403 from anyone else). */
   @IsOptional() @ValidateNested() @Type(() => AssetValuesDto)
   values?: AssetValuesDto;
+
+  /**
+   * Step 4 (owner, 22 October 2026: accessories, "Both kinds"): its accessories' checklist, on Add and on a draft from
+   * Claude (an asset's own changes on its page: PUT /assets/:code/accessories).
+   */
+  @IsOptional()
+  @IsArray({ message: 'Send the accessories as a list.' })
+  @ArrayMaxSize(ACCESSORY_LIMITS.perAsset, { message: `Keep the accessories to ${ACCESSORY_LIMITS.perAsset} lines or fewer.` })
+  @ValidateNested({ each: true })
+  @Type(() => AccessoryDto)
+  accessories?: AccessoryDto[];
+
+  /** Step 4: the main asset's code it is an accessory of, on Add and on a draft (null: none; an asset's own: PATCH …/parent). */
+  @IsOptional() @TrimOrNull() @IsString({ message: 'Enter the main asset’s code, e.g. PK-GMB-0001.' }) @keep(40, 'code')
+  parentCode?: string | null;
 }
 
 /** A new asset: its name, group and type at least; its class and useful life default to its group's. */

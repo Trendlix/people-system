@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import { ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 import {
+  ACCESSORY_LIMITS,
   ASSET_CONDITIONS,
   ASSET_MONEY_MAX,
   CUSTODY_FILTERS,
@@ -34,6 +35,16 @@ export class HandoverItemDto {
 
   @IsOptional() @TrimOrNull() @IsString() @keep(CUSTODY_TEXT_LIMITS.accessories, 'accessories')
   accessories?: string | null;
+
+  /**
+   * Step 4 (owner, 22 October 2026: accessories): the ids of its checklist's lines going with it, the others staying
+   * behind; left out, all of them.
+   */
+  @IsOptional()
+  @IsArray({ message: 'Choose the accessories going with it.' })
+  @ArrayMaxSize(ACCESSORY_LIMITS.perAsset)
+  @IsUUID('all', { each: true, message: 'Choose the accessories from the list.' })
+  accessoryIds?: string[];
 }
 
 /** A handover: the employee, a shoot (with its return date) or a long-term assignment, the assets and the kits. */
@@ -83,6 +94,17 @@ export class ReturnLineDto {
 
   @IsOptional() @TrimOrNull() @IsString() @keep(CUSTODY_TEXT_LIMITS.returnNotes, 'notes')
   notes?: string | null;
+
+  /**
+   * Step 4: for each accessory that went out with it (in order), how many came back; left out, all of them (or none,
+   * when the item itself is missing).
+   */
+  @IsOptional()
+  @IsArray({ message: 'Say how many of each accessory came back.' })
+  @ArrayMaxSize(ACCESSORY_LIMITS.perAsset)
+  @IsInt({ each: true, message: 'Say how many of each accessory came back, as a whole number.' })
+  @Min(0, { each: true, message: 'Say how many of each accessory came back, 0 or more.' })
+  accessoriesBack?: number[];
 }
 
 export class ReturnDto {
@@ -135,6 +157,10 @@ export class RepairDto {
 
   @IsOptional() @TrimOrNull() @IsString() @keep(MAINTENANCE_TEXT_LIMITS.notes, 'notes')
   notes?: string | null;
+
+  /** Back from repair (step 4): the condition it comes back in; left out, as it was. */
+  @IsOptional() @IsIn(ASSET_CONDITIONS, { message: 'Choose the condition it comes back in.' })
+  condition?: AssetCondition | null;
 
   /** The repair's cost in EGP: from the CEO, Finance or a Super Admin only (403 from anyone else). */
   @IsOptional()

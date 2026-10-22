@@ -38,6 +38,15 @@ async function List({ searchParams }: { searchParams: PageProps<'/app/assets'>['
           Search
         </button>
       </form>
+      {/* step 5 (22 October 2026): a label scanned to open its asset; the counts */}
+      <div className="grid grid-cols-2 gap-2">
+        <Link href={APP_ASSET_PATHS.scan} className="btn btn-secondary min-h-12">
+          Scan a label
+        </Link>
+        <Link href={APP_ASSET_PATHS.counts} className="btn btn-secondary min-h-12">
+          Counts
+        </Link>
+      </div>
       {can.register && (
         <div className="grid grid-cols-2 gap-2">
           <Link href={APP_ASSET_PATHS.new} className="btn btn-primary min-h-12">

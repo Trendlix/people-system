@@ -13,9 +13,12 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   // an asset drafted by Claude through the connector (step 2, 21 October 2026: "the connection method"), confirmed into
   // an asset or discarded by a person
   asset_draft: 'Asset draft',
+  // Assets step 5 (22 October 2026): a count of a group, room or kit, and an Assets export downloaded
+  asset_count: 'Asset count',
   asset_kit: 'Production kit',
   asset_photo: 'Asset photo',
   asset_room: 'Asset room',
+  asset_report: 'Assets export',
   asset_settings: 'Asset settings',
   attendance_correction: 'Attendance correction',
   attendance_day: 'Attendance day',
@@ -109,6 +112,8 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   connector_allow: 'Allowed the Claude connector',
   connector_connect: 'Connected Claude',
   connector_refused: 'Claude connection ended for safety',
+  // an asset count saved (Assets step 5, 22 October 2026)
+  count: 'Counted',
   correct: 'Corrected',
   create: 'Created',
   decline: 'Declined',
@@ -121,11 +126,24 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   remove_product_image: 'Removed a product image',
   // custody (Assets step 3, 21 October 2026): a custody record's signed copy attached; assets handed over and received
   // back (on the record and on each asset); an asset sent to repair and back, marked lost and found
+  // an Assets export downloaded (Assets step 5, 22 October 2026)
+  asset_file: 'Downloaded an assets export',
   attach_signed: 'Attached the signed copy',
   back_from_repair: 'Back from repair',
   hand_over: 'Handed over',
   mark_found: 'Marked found',
   mark_lost: 'Marked lost',
+  // Assets step 4 (22 October 2026: accessories, "Both kinds"; kits, stock, repairs, disposal): an asset's accessories'
+  // checklist changed, attached to a main asset or detached, a consumable used or restocked, a maintenance entry by hand,
+  // disposed of; assets put in a kit or taken out
+  accessories: 'Changed the accessories',
+  attach: 'Attached',
+  detach: 'Detached',
+  use: 'Used from stock',
+  restock: 'Restocked',
+  maintenance: 'Added a maintenance entry',
+  dispose: 'Disposed of',
+  items: 'Changed the kit’s assets',
   receive_back: 'Received back',
   send_to_repair: 'Sent to repair',
   // fingerprint sign-in in the app (owner, 20 October 2026: "Sign-in: Face ID / fingerprint after the first password

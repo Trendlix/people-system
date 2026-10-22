@@ -13,6 +13,8 @@ export function claudeRegisterPrompt(): string {
     'Register a new asset in Trendlix People with the Trendlix People connector.',
     "I'm attaching photos of it, and of its label or nameplate if it has one.",
     'Read the photos and fill in what you can: the name, group, type, brand, model, the serial exactly as printed (leave it empty if it is not readable), the condition and notes.',
+    // step 4 (owner, 22 October 2026: accessories, "Both kinds")
+    'List the accessories that come with it (a charger, cables, a case); if it is itself an accessory of another asset, say which one by its code.',
     "Ask me which room it is in if I haven't said, then create the draft and give me the draft's link.",
   ].join(' ');
 }

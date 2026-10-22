@@ -42,6 +42,8 @@ export class AssetRepairsService {
     const repair = dto as RepairDto;
     if (repair.cost !== undefined && repair.cost !== null && !caller.values) throw new ForbiddenException(ASSETS_REFUSALS.values);
     if (!EVENT[action] && (repair.cost != null || repair.vendor != null || repair.on != null)) throw new BadRequestException(['Only a repair has a date, a vendor and a cost.']);
+    // step 4: back from repair in the condition chosen (owner's brief: "available or, as chosen, another condition")
+    if (repair.condition != null && action !== 'back_from_repair') throw new BadRequestException(['Only Back from repair sets the condition it comes back in.']);
     const today = todayInCairo();
     if (repair.on && repair.on > today) throw new BadRequestException(['The date can’t be in the future.']);
     const kept = await this.prisma.asset.findUnique({ where: { code: normalAssetCode(code) }, select: { id: true } });
@@ -49,10 +51,10 @@ export class AssetRepairsService {
 
     const done = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM assets WHERE id = ${kept.id}::uuid FOR UPDATE`;
-      const a = await tx.asset.findUniqueOrThrow({ where: { id: kept.id }, select: { id: true, code: true, status: true, group: true } });
+      const a = await tx.asset.findUniqueOrThrow({ where: { id: kept.id }, select: { id: true, code: true, status: true, group: true, condition: true } });
       const problem = assetActionProblem(action, a);
       if (problem) throw new ConflictException(problem);
-      await tx.asset.update({ where: { id: a.id }, data: { status: NEXT[action] } });
+      await tx.asset.update({ where: { id: a.id }, data: { status: NEXT[action], ...(repair.condition != null && { condition: repair.condition }) } });
       const event = EVENT[action];
       if (event) {
         await tx.assetMaintenance.create({
@@ -73,6 +75,7 @@ export class AssetRepairsService {
         ...(repair.on && { on: repair.on }),
         ...(repair.vendor && { vendor: repair.vendor }),
         ...(repair.cost != null && { cost: 'set' }),
+        ...(repair.condition != null && repair.condition !== done.condition && { condition: { from: done.condition, to: repair.condition } }),
         ...(dto.notes && { notes: dto.notes }),
       },
     });

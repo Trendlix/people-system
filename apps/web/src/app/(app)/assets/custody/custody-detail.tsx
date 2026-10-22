@@ -3,7 +3,8 @@ import Link from 'next/link';
 import { APP_ASSET_PATHS, ASSET_PATHS, CUSTODY_PATHS } from '@/lib/asset-paths';
 import { formatDateTime } from '@/lib/format';
 import { receiveBack } from '../custody-actions';
-import { deductionHref, deductionText, returnLabel, returnText, returnTone, sizeText, valueText, whoText } from '../custody';
+import { deductionText, returnLabel, returnText, returnTone, sizeText, valueText, whoText } from '../custody';
+import { checklistText, incidentDeductionHref, missingAccessoriesText } from '../upkeep';
 import { CustodyStatusBadge, DueText, NotSignedBadge } from '../custody-ui';
 import { DetailRow } from '../ui';
 import { ReceiveForm } from './receive-form';
@@ -15,7 +16,8 @@ import { SignedCopyAttach } from './signed-copy';
 // and for a custodian or a manager Attach and Receive back. The value of each item when it went out only when the API
 // sent it (the CEO, Finance and a Super Admin). A damaged or missing item stays on the person's record; for HR, "Create a
 // deduction" opens Additions / Deductions with it filled in, never made by itself (owner, 21 October 2026: "Record it;
-// HR decides a deduction"), and the deductions made from it are listed for HR, Finance and the CEO.
+// HR decides a deduction"), and the deductions made from it are listed for HR, Finance and the CEO. Step 4 (22 October
+// 2026: accessories): each item's checklist that went out with it, those that didn't come back, a deduction for them too.
 
 function Card({ title, children, action }: { title: string; children: React.ReactNode; action?: React.ReactNode }) {
   return (
@@ -47,7 +49,13 @@ export function skippedOf(raw: string | string[] | undefined): string[] {
 }
 
 function ItemReturn({ item, record, today }: { item: CustodyItemView; record: CustodyRecordView; today: string }) {
-  const bad = item.returnCondition === 'damaged' || item.returnCondition === 'missing';
+  // damaged or missing, or (step 4) back without some of its accessories: on the person's record, a deduction for HR
+  const deductionLink = incidentDeductionHref(
+    { employeeId: record.employee.id, itemId: item.id, condition: item.returnCondition, missing: item.accessoriesMissing, assetCode: item.asset.code, custodyCode: record.code },
+    today,
+  );
+  const bad = deductionLink !== null;
+  const notBack = item.returnedAt ? missingAccessoriesText(item.accessoriesMissing) : null;
   return (
     <div className="space-y-1">
       <span className={`badge ${returnTone(item.returnCondition)}`}>{returnLabel(item.returnCondition)}</span>
@@ -57,6 +65,7 @@ function ItemReturn({ item, record, today }: { item: CustodyItemView; record: Cu
           {item.receivedBy ? `, received by ${whoText(item.receivedBy)}` : ''}
         </p>
       )}
+      {notBack && <p className="text-xs text-warn">{notBack}</p>}
       {item.returnNotes && <p className="text-xs">{item.returnNotes}</p>}
       {bad && item.deductions && item.deductions.length > 0 && (
         <ul className="text-xs text-muted">
@@ -65,11 +74,8 @@ function ItemReturn({ item, record, today }: { item: CustodyItemView; record: Cu
           ))}
         </ul>
       )}
-      {bad && record.can.deduction && (
-        <Link
-          href={deductionHref({ employeeId: record.employee.id, itemId: item.id, condition: item.returnCondition as 'damaged' | 'missing', assetCode: item.asset.code, custodyCode: record.code }, today)}
-          className="inline-flex min-h-9 items-center text-xs font-semibold"
-        >
+      {deductionLink && record.can.deduction && (
+        <Link href={deductionLink} className="inline-flex min-h-9 items-center text-xs font-semibold">
           Create a deduction
         </Link>
       )}
@@ -158,7 +164,16 @@ export function CustodyDetail({ record: r, surface, today, done }: { record: Cus
                     </span>
                   </td>
                   <td className="whitespace-nowrap">{i.conditionOut ? ASSET_CONDITION_LABELS[i.conditionOut] : <span className="text-muted">—</span>}</td>
-                  <td className="min-w-32">{i.accessories ?? <span className="text-muted">—</span>}</td>
+                  <td className="min-w-32">
+                    {checklistText(i.accessoriesOut) || i.accessories ? (
+                      <>
+                        {checklistText(i.accessoriesOut)}
+                        {checklistText(i.accessoriesOut) && i.accessories ? <span className="block text-xs text-muted">{i.accessories}</span> : i.accessories}
+                      </>
+                    ) : (
+                      <span className="text-muted">—</span>
+                    )}
+                  </td>
                   {values && <td className="text-right whitespace-nowrap tabular-nums">{valueText(i.valueAtOut)}</td>}
                   <td className="min-w-48">
                     <ItemReturn item={i} record={r} today={today} />
@@ -196,7 +211,7 @@ export function CustodyDetail({ record: r, surface, today, done }: { record: Cus
 
       {r.can.receive && out.length > 0 && (
         <Card title="Receive Back">
-          <ReceiveForm action={receiveBack.bind(null, r.code, out.map((i) => i.id))} items={out} />
+          <ReceiveForm action={receiveBack.bind(null, r.code, out.map((i) => ({ id: i.id, accessoriesOut: (i.accessoriesOut ?? []).map((a) => ({ quantity: a.quantity })) })))} items={out} />
         </Card>
       )}
 

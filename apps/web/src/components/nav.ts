@@ -83,7 +83,11 @@ export const KPIS_NAV: NavItem = {
  * connection method"): Drafts From Claude for a custodian or a manager (who confirm them), Connect Claude for anyone
  * with access (the connector reads at their level). Step 3 (custody, 21 October 2026): Custody, the custody records,
  * and Holdings, what each person holds, after All Assets, for anyone with access (a custodian or a manager hands over and
- * receives back from them).
+ * receives back from them). Step 4 (22 October 2026: "kits / stock / repairs / disposal"): Stock, the consumables with
+ * Use and Restock, after Kits, for anyone with access (a custodian or a manager moves the stock).
+ * Step 5 (22 October 2026): the Dashboard after All Assets (the heading still opens the register), for anyone with
+ * access; Counts after Stock, for anyone with access (a custodian or a manager counts); Label Sheets for a custodian or a
+ * manager.
  */
 export const ASSETS_NAV: NavItem = {
   href: ASSET_PATHS.list,
@@ -91,12 +95,20 @@ export const ASSETS_NAV: NavItem = {
   section: ASSET_PATHS.list,
   items: [
     { href: ASSET_PATHS.list, label: 'All Assets', section: ASSET_PATHS.list, audience: 'assets' },
+    // step 5 (22 October 2026: "the Assets dashboard"): the figures, the chips that need attention and the exports
+    { href: ASSET_PATHS.dashboard, label: 'Dashboard', section: ASSET_PATHS.dashboard, audience: 'assets' },
     { href: CUSTODY_PATHS.list, label: 'Custody', section: CUSTODY_PATHS.list, audience: 'assets' },
     { href: CUSTODY_PATHS.holders, label: 'Holdings', section: CUSTODY_PATHS.holders, audience: 'assets' },
     { href: ASSET_PATHS.new, label: 'Add Asset', section: ASSET_PATHS.new, audience: 'assets-register' },
     { href: ASSET_PATHS.drafts, label: 'Drafts From Claude', section: ASSET_PATHS.drafts, audience: 'assets-register' },
     { href: ASSET_PATHS.needsValues, label: 'Needs Values', section: ASSET_PATHS.needsValues, audience: 'asset-values' },
     { href: ASSET_PATHS.kits, label: 'Kits', section: ASSET_PATHS.kits, audience: 'assets' },
+    // step 4 (22 October 2026): the consumables' stock, Use and Restock
+    { href: ASSET_PATHS.stock, label: 'Stock', section: ASSET_PATHS.stock, audience: 'assets' },
+    // step 5 (22 October 2026: "stock counts, label sheets"): the counts for anyone with access (a custodian or a manager
+    // counts), the label sheets for a custodian or a manager
+    { href: ASSET_PATHS.counts, label: 'Counts', section: ASSET_PATHS.counts, audience: 'assets' },
+    { href: ASSET_PATHS.labels, label: 'Label Sheets', section: ASSET_PATHS.labels, audience: 'assets-register' },
     { href: ASSET_PATHS.rooms, label: 'Rooms', section: ASSET_PATHS.rooms, audience: 'assets-manager' },
     { href: ASSET_PATHS.settings, label: 'Settings', section: ASSET_PATHS.settings, audience: 'assets-settings' },
     { href: ASSET_PATHS.connectClaude, label: 'Connect Claude', section: ASSET_PATHS.connectClaude, audience: 'assets' },

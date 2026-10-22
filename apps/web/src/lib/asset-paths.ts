@@ -94,6 +94,76 @@ export const ASSET_API = {
   },
 } as const;
 
+/**
+ * Assets step 4's endpoints (the owner's build order, 21 October 2026: "kits / stock / repairs / disposal"; owner, 22
+ * October 2026: accessories, "Both kinds"; packages/shared asset-accessories.ts and asset-upkeep.ts): a custodian or a
+ * manager keeps the accessories, attaches, moves stock, adds to the maintenance log and fills the kits; an Assets
+ * manager disposes; the CEO, Finance or a Super Admin set the amount a disposal received.
+ */
+export const ASSET_STEP4_API = {
+  /** PUT { items: [{ name, quantity, serial, notes }] } → AssetView. */
+  accessories: (code: string) => `/assets/${at(code)}/accessories`,
+  /** PATCH { parentCode } (null detaches) → AssetView. */
+  parent: (code: string) => `/assets/${at(code)}/parent`,
+  /** POST { kind: 'use' | 'restock', amount, note } → AssetView. */
+  stock: (code: string) => `/assets/${at(code)}/stock`,
+  /** POST { kind, on, vendor, cost, notes } → AssetView. */
+  maintenance: (code: string) => `/assets/${at(code)}/maintenance`,
+  /** POST { method, on, amount, approvedBy, notes } → { asset, result } (an Assets manager). */
+  dispose: (code: string) => `/assets/${at(code)}/dispose`,
+  /** PATCH { amount } → AssetView (the CEO, Finance, a Super Admin). */
+  disposal: (code: string) => `/assets/${at(code)}/disposal`,
+  /** PATCH { add, addCodes, remove } → AssetKitView. */
+  kitItems: (id: string) => `/assets/kits/${encodeURIComponent(id)}/items`,
+} as const;
+
+/** What a count is of: a group, a room or a kit (Assets step 5). */
+export interface CountScopeQuery {
+  kind: string;
+  group?: string | null;
+  roomId?: string | null;
+  kitId?: string | null;
+}
+
+const scopeQueryOf = (s: CountScopeQuery) => q({ kind: s.kind, group: s.kind === 'group' ? s.group : null, roomId: s.kind === 'room' ? s.roomId : null, kitId: s.kind === 'kit' ? s.kitId : null });
+
+/** What the label sheets choose from (Assets step 5): not labelled yet, a group, a room, a kit, a search. */
+export interface LabelQuery {
+  unlabelled?: boolean;
+  group?: string | null;
+  roomId?: string | null;
+  kitId?: string | null;
+  q?: string | null;
+}
+
+const labelQueryOf = (l: LabelQuery) => q({ unlabelled: l.unlabelled ? '1' : null, group: l.group, roomId: l.roomId, kitId: l.kitId, q: l.q?.trim() || null });
+
+/**
+ * Assets step 5's endpoints (owner, 22 October 2026: "Assets step 5 (stock counts, label sheets, the Assets dashboard,
+ * exports) … work on this"; packages/shared asset-counts.ts has every answer's shape): a viewer and up reads, a
+ * custodian or a manager counts, marks lost and marks labels printed.
+ */
+export const ASSET_STEP5_API = {
+  /** GET AssetCountsView (?page=); POST AssetCountInput → AssetCountView (custodian or manager). */
+  counts: (page?: number | null) => `/assets/counts${q({ page: page && page > 1 ? page : null })}`,
+  count: '/assets/counts',
+  /** GET AssetCountSheetView: what a count of the scope expects. */
+  sheet: (scope: CountScopeQuery) => `/assets/counts/sheet${scopeQueryOf(scope)}`,
+  /** GET AssetCountView. */
+  countOne: (id: string) => `/assets/counts/${encodeURIComponent(id)}`,
+  /** POST { notes } → AssetCountView: a missing asset of the count marked lost. */
+  markLost: (id: string, code: string) => `/assets/counts/${encodeURIComponent(id)}/lines/${at(code)}/lost`,
+  /** GET AssetDashboardView. */
+  dashboard: '/assets/dashboard',
+  /** GET an Excel workbook: register, custody, stock, maintenance, counts. */
+  exportFile: (kind: string) => `/assets/exports/${encodeURIComponent(kind)}`,
+  /** GET AssetLabelChoice[]: by what was chosen, or exactly `codes`. */
+  labels: (query: LabelQuery) => `/assets/labels${labelQueryOf(query)}`,
+  labelsFor: (codes: readonly string[]) => `/assets/labels${q({ codes: codes.join(',') })}`,
+  /** POST { codes } → { labelled, at }. */
+  labelled: '/assets/labels/labelled',
+} as const;
+
 /** What the Custody list is asked for (step 3): its filter, the search, the page. */
 export interface CustodyQuery {
   filter?: string | null;
@@ -148,9 +218,9 @@ export const CUSTODY_PATHS = {
   /** The Custody list: Active, Overdue, Not signed, Closed, All. */
   list: '/assets/custody',
   listWith: (query: CustodyQuery) => `/assets/custody${custodyQueryOf(query)}`,
-  /** New handover; ?employee= and ?asset= choose them to start with. */
+  /** New handover; ?employee=, ?asset= and (step 4) ?kit= choose them to start with. */
   new: '/assets/custody/new',
-  newWith: (start: { employee?: string | null; asset?: string | null }) => `/assets/custody/new${q({ employee: start.employee, asset: start.asset })}`,
+  newWith: (start: { employee?: string | null; asset?: string | null; kit?: string | null }) => `/assets/custody/new${q({ employee: start.employee, asset: start.asset, kit: start.kit })}`,
   /** A custody record's page, its form to print, and a signed copy (served by the website with the caller's session). */
   record: (code: string) => `/assets/custody/${at(code)}`,
   form: (code: string) => `/assets/custody/${at(code)}/form`,
@@ -187,6 +257,8 @@ export const ASSET_PATHS = {
   kits: '/assets/kits',
   rooms: '/assets/rooms',
   settings: '/assets/settings',
+  /** Step 4: the consumables with their stock, Use and Restock. */
+  stock: '/assets/stock',
   /** Drafts from Claude: the open drafts, each reviewed and confirmed on the Add form (assetDraftPath). */
   drafts: '/assets/drafts',
   /** Connect Claude: the connector's address and the steps in Claude. */
@@ -196,6 +268,17 @@ export const ASSET_PATHS = {
   edit: (code: string) => `/assets/${at(code)}/edit`,
   values: (code: string) => `/assets/${at(code)}/values`,
   label: (code: string) => `/assets/${at(code)}/label`,
+  // Assets step 5 (22 October 2026): the dashboard, the counts, the label sheets and the exports
+  dashboard: '/assets/dashboard',
+  counts: '/assets/counts',
+  countsPage: (page: number) => `/assets/counts${q({ page: page > 1 ? page : null })}`,
+  countNew: (scope: CountScopeQuery) => `/assets/counts/new${scopeQueryOf(scope)}`,
+  count: (id: string) => `/assets/counts/${encodeURIComponent(id)}`,
+  labels: '/assets/labels',
+  labelsWith: (query: LabelQuery) => `/assets/labels${labelQueryOf(query)}`,
+  labelsPrint: (codes: readonly string[], start = 1) => `/assets/labels/print${q({ codes: codes.join(','), start: start > 1 ? start : null })}`,
+  /** An export, served by the website with the caller's session. */
+  exportFile: (kind: string) => `/assets/exports/${encodeURIComponent(kind)}`,
 } as const;
 
 /** The phone pages' Assets pages (/app, the employee app). */
@@ -204,6 +287,11 @@ export const APP_ASSET_PATHS = {
   listWith: (query: Pick<AssetQuery, 'q' | 'page'>) => `/app/assets${queryOf(query)}`,
   new: '/app/assets/new',
   asset: (code: string) => `/app/assets/${at(code)}`,
+  // Assets step 5 (22 October 2026): counting with the phone's camera, and a label scanned to open its asset
+  counts: '/app/assets/counts',
+  countNew: (scope: CountScopeQuery) => `/app/assets/counts/new${scopeQueryOf(scope)}`,
+  count: (id: string) => `/app/assets/counts/${encodeURIComponent(id)}`,
+  scan: '/app/assets/scan',
 } as const;
 
 /** A photo of an asset, served by the website with the caller's session (app/asset-photo). */

@@ -567,12 +567,16 @@ describe('Assets (owner, 21 October 2026: "i want to add this module with a spec
     expect(ASSETS_NAV.roles).toBeUndefined();
     expect(ASSETS_NAV.items?.map((i) => [i.label, i.href])).toEqual([
       ['All Assets', '/assets'],
+      ['Dashboard', '/assets/dashboard'],
       ['Custody', '/assets/custody'],
       ['Holdings', '/assets/holders'],
       ['Add Asset', '/assets/new'],
       ['Drafts From Claude', '/assets/drafts'],
       ['Needs Values', '/assets/needs-values'],
       ['Kits', '/assets/kits'],
+      ['Stock', '/assets/stock'],
+      ['Counts', '/assets/counts'],
+      ['Label Sheets', '/assets/labels'],
       ['Rooms', '/assets/rooms'],
       ['Settings', '/assets/settings'],
       ['Connect Claude', '/assets/connect-claude'],
@@ -590,32 +594,77 @@ describe('Assets (owner, 21 October 2026: "i want to add this module with a spec
   });
 
   it('shows each page for its level: a viewer reads, a custodian adds, a manager has the rooms and settings', () => {
-    expect(pages({ roles: ['employee'], employeeId: ME, assets: at('viewer') })).toEqual(['All Assets', 'Custody', 'Holdings', 'Kits', 'Connect Claude']);
-    expect(pages({ roles: ['employee'], employeeId: ME, assets: at('custodian') })).toEqual(['All Assets', 'Custody', 'Holdings', 'Add Asset', 'Drafts From Claude', 'Kits', 'Connect Claude']);
-    expect(pages({ roles: ['hr'], employeeId: ME, assets: at('manager') })).toEqual(['All Assets', 'Custody', 'Holdings', 'Add Asset', 'Drafts From Claude', 'Kits', 'Rooms', 'Settings', 'Connect Claude']);
+    expect(pages({ roles: ['employee'], employeeId: ME, assets: at('viewer') })).toEqual(['All Assets', 'Dashboard', 'Custody', 'Holdings', 'Kits', 'Stock', 'Counts', 'Connect Claude']);
+    expect(pages({ roles: ['employee'], employeeId: ME, assets: at('custodian') })).toEqual([
+      'All Assets',
+      'Dashboard',
+      'Custody',
+      'Holdings',
+      'Add Asset',
+      'Drafts From Claude',
+      'Kits',
+      'Stock',
+      'Counts',
+      'Label Sheets',
+      'Connect Claude',
+    ]);
+    expect(pages({ roles: ['hr'], employeeId: ME, assets: at('manager') })).toEqual([
+      'All Assets',
+      'Dashboard',
+      'Custody',
+      'Holdings',
+      'Add Asset',
+      'Drafts From Claude',
+      'Kits',
+      'Stock',
+      'Counts',
+      'Label Sheets',
+      'Rooms',
+      'Settings',
+      'Connect Claude',
+    ]);
   });
 
   it('shows Needs Values and Settings to those who see the values ("CEO and Finance"), whatever their level', () => {
-    expect(pages({ roles: ['finance'], employeeId: ME, assets: at('viewer', true) })).toEqual(['All Assets', 'Custody', 'Holdings', 'Needs Values', 'Kits', 'Settings', 'Connect Claude']);
+    expect(pages({ roles: ['finance'], employeeId: ME, assets: at('viewer', true) })).toEqual([
+      'All Assets',
+      'Dashboard',
+      'Custody',
+      'Holdings',
+      'Needs Values',
+      'Kits',
+      'Stock',
+      'Counts',
+      'Settings',
+      'Connect Claude',
+    ]);
     expect(pages({ roles: ['ceo'], employeeId: ME, assets: at('custodian', true) })).toEqual([
       'All Assets',
+      'Dashboard',
       'Custody',
       'Holdings',
       'Add Asset',
       'Drafts From Claude',
       'Needs Values',
       'Kits',
+      'Stock',
+      'Counts',
+      'Label Sheets',
       'Settings',
       'Connect Claude',
     ]);
     expect(pages({ roles: ['super_admin'], employeeId: ME, assets: at('manager', true) })).toEqual([
       'All Assets',
+      'Dashboard',
       'Custody',
       'Holdings',
       'Add Asset',
       'Drafts From Claude',
       'Needs Values',
       'Kits',
+      'Stock',
+      'Counts',
+      'Label Sheets',
       'Rooms',
       'Settings',
       'Connect Claude',
@@ -641,6 +690,11 @@ describe('Assets (owner, 21 October 2026: "i want to add this module with a spec
     expect(activeSubItem(ASSETS_NAV, '/assets/custody/CUS-0042/form')?.label).toBe('Custody');
     expect(activeSubItem(ASSETS_NAV, '/assets/custody/new')?.label).toBe('Custody');
     expect(activeSubItem(ASSETS_NAV, '/assets/holders/3f1c2a9e-5b7d-4e1f-9a2b-6c8d0e4f1a2b')?.label).toBe('Holdings');
+    // step 5 (22 October 2026): the dashboard, a count and a new one under Counts, the sheets to print under Label Sheets
+    expect(activeSubItem(ASSETS_NAV, '/assets/dashboard')?.label).toBe('Dashboard');
+    expect(activeSubItem(ASSETS_NAV, '/assets/counts/new')?.label).toBe('Counts');
+    expect(activeSubItem(ASSETS_NAV, '/assets/counts/3f1c2a9e-5b7d-4e1f-9a2b-6c8d0e4f1a2b')?.label).toBe('Counts');
+    expect(activeSubItem(ASSETS_NAV, '/assets/labels/print')?.label).toBe('Label Sheets');
     expect(isActive(ASSETS_NAV, '/asset-photo/PK-CAM-0001/x')).toBe(false);
   });
 });

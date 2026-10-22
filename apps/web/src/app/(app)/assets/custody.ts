@@ -196,11 +196,12 @@ export const valueText = (amount: number | null | undefined): string => (amount 
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** ?employee= (a person's holdings) and ?asset= (an asset's page) as the handover form starts with them. */
-export function handoverStart(params: Params): { employeeId: string | null; assetCode: string | null } {
+/** ?employee= (a person's holdings), ?asset= (an asset's page) and (step 4) ?kit= (a kit's card) as the handover form starts with them. */
+export function handoverStart(params: Params): { employeeId: string | null; assetCode: string | null; kitId: string | null } {
   const employee = first(params.employee).trim();
   const asset = normalAssetCode(first(params.asset));
-  return { employeeId: UUID.test(employee) ? employee : null, assetCode: isAssetCode(asset) ? asset : null };
+  const kit = first(params.kit).trim();
+  return { employeeId: UUID.test(employee) ? employee : null, assetCode: isAssetCode(asset) ? asset : null, kitId: UUID.test(kit) ? kit : null };
 }
 
 /** The handover form as typed: the dates as DD/MM/YYYY, each asset with its condition and accessories. */
@@ -212,7 +213,8 @@ export interface HandoverDraft {
   purpose: string;
   handedOverBy: string;
   notes: string;
-  items: { assetId: string; conditionOut: string; accessories: string }[];
+  /** Step 4: `accessoryIds`, the checklist's lines ticked to go (left out when it has none). */
+  items: { assetId: string; conditionOut: string; accessories: string; accessoryIds?: string[] }[];
 }
 
 /**
@@ -236,6 +238,7 @@ export function handoverBody(d: HandoverDraft, today: string): { body: Record<st
     assetId: i.assetId,
     conditionOut: isAssetCondition(i.conditionOut) ? i.conditionOut : null,
     accessories: i.accessories.trim() || null,
+    ...(i.accessoryIds && { accessoryIds: i.accessoryIds }),
   }));
   if (kind) {
     for (const p of handoverProblems({ employeeId: d.employeeId, kind, dueDate, purpose, handedOverBy, notes, items }, today)) {
@@ -276,6 +279,20 @@ export function kitAddText(kit: Pick<HandoverKitChoice, 'code' | 'name'>, added:
 /** An asset as the picker names it: "PK-CAM-0003 · Sony FX3 camera body · S/N 1234". */
 export const assetOptionText = (a: Pick<HandoverAssetChoice, 'code' | 'name' | 'serial'>): string => [a.code, a.name, a.serial ? `S/N ${a.serial}` : null].filter(Boolean).join(' · ');
 
+/**
+ * What goes with an asset on a handover (step 4, owner, 22 October 2026: accessories, "Both kinds"): its attached assets
+ * that are available ("Goes with it: PK-ACC-0001 Ronin plate"), and those skipped with why.
+ */
+export function attachedText(a: Pick<HandoverAssetChoice, 'attached'>): { going: string | null; skipped: string | null } {
+  const list = a.attached ?? [];
+  const going = list.filter((x) => !x.why);
+  const skipped = list.filter((x) => x.why);
+  return {
+    going: going.length ? `Goes with it: ${going.map((x) => `${x.code} ${x.name}`).join(', ')}` : null,
+    skipped: skipped.length ? `Stays behind: ${skipped.map((x) => `${x.code} (${x.why})`).join(', ')}` : null,
+  };
+}
+
 /** What a skipped kit asset says: "PK-LEN-0002 Lens: Under repair". */
 export const skipText = (s: KitSkip): string => `${s.code} ${s.name}: ${s.why}`;
 
@@ -285,15 +302,54 @@ export const skipText = (s: KitSkip): string => `${s.code} ${s.name}: ${s.why}`;
 export const conditionField = (itemId: string) => `condition-${itemId}`;
 export const returnNotesField = (itemId: string) => `notes-${itemId}`;
 
-/** The receive-back form read: each item chosen with how it came back and its notes; those left as still out aren't sent. */
-export function readReturnForm(fd: Pick<FormData, 'get'>, itemIds: readonly string[]): { lines: { itemId: string; condition: ReturnCondition; notes: string | null }[]; problems: string[] } {
-  const lines: { itemId: string; condition: ReturnCondition; notes: string | null }[] = [];
+/** The field of how many of an item's accessory `i` came back (step 4, owner, 22 October 2026: accessories). */
+export const accessoryBackField = (itemId: string, i: number) => `accback-${itemId}-${i}`;
+
+/**
+ * How many of each accessory that went out with an item came back, as the form has them: a line of one is a tick box
+ * (ticked: back), a line of more a number (empty: all of them; not a number: -1, which the API refuses in words). Null
+ * when none went out.
+ */
+export function readAccessoriesBack(fd: Pick<FormData, 'get'>, itemId: string, out: readonly { quantity: number }[]): number[] | null {
+  if (!out.length) return null;
+  return out.map((a, i) => {
+    const raw = String(fd.get(accessoryBackField(itemId, i)) ?? '').trim();
+    if (a.quantity === 1) return raw === '1' || raw === 'on' ? 1 : 0;
+    if (raw === '') return a.quantity;
+    const n = numberFrom(raw);
+    return n === null || Number.isNaN(n) || !Number.isInteger(n) ? -1 : n;
+  });
+}
+
+/** A line received back, as POST …/return takes it. */
+export interface ReturnLine {
+  itemId: string;
+  condition: ReturnCondition;
+  notes: string | null;
+  /** Step 4: how many of each accessory that went out came back (left out when none went, or the item is missing). */
+  accessoriesBack?: number[];
+}
+
+/**
+ * The receive-back form read: each item chosen with how it came back, its notes and (step 4) its accessories back; those
+ * left as still out aren't sent. `items`: the items still out, by id, or with the accessories that went out with them.
+ */
+export function readReturnForm(
+  fd: Pick<FormData, 'get'>,
+  items: readonly (string | { id: string; accessoriesOut?: readonly { quantity: number }[] })[],
+): { lines: ReturnLine[]; problems: string[] } {
+  const lines: ReturnLine[] = [];
   const problems: string[] = [];
-  for (const id of itemIds) {
+  for (const item of items) {
+    const id = typeof item === 'string' ? item : item.id;
+    const out = typeof item === 'string' ? [] : (item.accessoriesOut ?? []);
     const condition = String(fd.get(conditionField(id)) ?? '');
     const notes = String(fd.get(returnNotesField(id)) ?? '').trim();
     if (notes.length > CUSTODY_TEXT_LIMITS.returnNotes) problems.push(`Keep each item's notes to ${CUSTODY_TEXT_LIMITS.returnNotes} characters or fewer.`);
-    if (isReturnCondition(condition)) lines.push({ itemId: id, condition, notes: notes || null });
+    if (isReturnCondition(condition)) {
+      const back = condition === 'missing' ? null : readAccessoriesBack(fd, id, out);
+      lines.push({ itemId: id, condition, notes: notes || null, ...(back && { accessoriesBack: back }) });
+    }
   }
   if (!lines.length) problems.unshift('Choose how each item came back: good, damaged or missing.');
   return { lines, problems: [...new Set(problems)] };

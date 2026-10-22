@@ -8,6 +8,7 @@
 
 import type { AssetGroup, AssetHolderRef, AssetInput, AssetKitRef, AssetRoomRef, AssetStatus, AssetType, AssetUserRef, AssetValuesInput } from './assets.js';
 import { ASSET_GROUP_RULES } from './assets.js';
+import type { AccessoryInput } from './asset-accessories.js';
 import type { ProductImageSource, ProductImageType } from './product-images.js';
 
 // ---------- drafts ----------
@@ -50,6 +51,12 @@ export interface AssetDraftView {
   discardedBy: AssetUserRef | null;
   /** The maker's product images Claude added (at most 3), in order; they become the asset's photos when it is confirmed. */
   productImages: AssetDraftImageView[];
+  /**
+   * Step 4 (owner, 22 October 2026: accessories, "Both kinds"): the accessories' checklist Claude listed, and the main
+   * asset it is an accessory of (by code; `attachTo` null when none or not found), applied when it is confirmed.
+   */
+  accessories?: AccessoryInput[];
+  attachTo?: { code: string; name: string | null } | null;
 }
 
 /**

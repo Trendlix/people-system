@@ -7,6 +7,8 @@
 // and the API's answers. Step 1 of 5: the register (owner's build order: foundation + assets, Claude, custody, kits /
 // stock / repairs / disposal, counts / labels / dashboard / phone / exports).
 
+import type { AccessoryView, AssetParentRef, AttachedAssetView } from './asset-accessories.js';
+import type { AssetDisposalView, AssetKitItemView, KitStatus } from './asset-upkeep.js';
 import type { ProductImageSource } from './product-images.js';
 
 // ---------- who may do what ----------
@@ -647,6 +649,8 @@ export interface AssetRowView {
   /** The first photo; null: none. */
   photo: AssetPhotoRef | null;
   values?: { purchasePrice: number | null; marketValue: number | null; bookValue: number | null; expensed: boolean };
+  /** The main asset it is attached to (step 4, asset-accessories.ts); null: none. Left out by an API from before. */
+  parent?: AssetParentRef | null;
 }
 
 /** GET /assets: a page of the register, with how many match, and counts for the filter chips (the search alone). */
@@ -679,7 +683,24 @@ export interface AssetView extends Omit<AssetRowView, 'values'> {
   updatedAt: string;
   values?: AssetValuesView;
   /** What the caller may do on it now. */
-  can: { edit: boolean; photos: boolean; values: boolean; delete: boolean };
+  can: {
+    edit: boolean;
+    photos: boolean;
+    values: boolean;
+    delete: boolean;
+    /** Step 4 (asset-upkeep.ts, asset-accessories.ts): its checklist and attached assets, a consumable's Use and Restock, a maintenance entry by hand (a custodian or a manager); disposal (a manager). */
+    accessories?: boolean;
+    attach?: boolean;
+    stock?: boolean;
+    maintenance?: boolean;
+    dispose?: boolean;
+  };
+  /** Step 4: its accessories' checklist, in order. */
+  accessories?: AccessoryView[];
+  /** Step 4: the assets attached to it. */
+  attached?: AttachedAssetView[];
+  /** Step 4: how it was disposed of, once it is. */
+  disposal?: AssetDisposalView | null;
 }
 
 /** A room as GET /assets/rooms lists it. */
@@ -700,6 +721,9 @@ export interface AssetKitView {
   notes: string | null;
   /** Assets in it now (disposed ones aside). */
   assets: number;
+  /** Step 4 (asset-upkeep.ts): its assets, by code, and how it stands. Left out by an API from before. */
+  items?: AssetKitItemView[];
+  status?: KitStatus;
 }
 
 /** GET /assets/settings. */

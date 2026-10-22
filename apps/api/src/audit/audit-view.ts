@@ -429,6 +429,11 @@ function targetOf(row: Pick<AuditRow, 'entityType' | 'entityId' | 'diff'>, refs:
       return { href: '/assets/kits', label: 'Open kits', roles: ASSETS };
     case 'asset_settings':
       return { href: '/assets/settings', label: 'Open asset settings', roles: ASSETS };
+    // Assets step 5 (22 October 2026): a count's page; an export, the dashboard it is downloaded from
+    case 'asset_count':
+      return id ? { href: `/assets/counts/${id}`, label: 'Open count', roles: ASSETS } : { href: '/assets/counts', label: 'Open counts', roles: ASSETS };
+    case 'asset_report':
+      return { href: '/assets/dashboard', label: 'Open the Assets dashboard', roles: ASSETS };
     // custody (Assets step 3, 21 October 2026): the record's page by its code
     case 'custody_record':
       return record?.reference ? { href: `/assets/custody/${encodeURIComponent(record.reference)}`, label: 'Open custody record', roles: ASSETS } : null;

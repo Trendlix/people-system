@@ -15,6 +15,8 @@ import {
   type AssetType,
   type AssetUserRef,
 } from './assets.js';
+import type { AccessoryOut, AccessoryView } from './asset-accessories.js';
+import type { StockMoveView } from './asset-upkeep.js';
 
 // ---------- kinds, statuses, conditions ----------
 
@@ -224,7 +226,13 @@ export interface HandoverInput {
   /** Who handed it over, as written on the form: the signed-in person unless changed. */
   handedOverBy: string;
   notes: string | null;
-  items: { assetId: string; conditionOut: AssetCondition | null; accessories: string | null }[];
+  items: {
+    assetId: string;
+    conditionOut: AssetCondition | null;
+    accessories: string | null;
+    /** Step 4 (asset-accessories.ts): the ids of its checklist's lines going with it; left out, all of them. */
+    accessoryIds?: string[];
+  }[];
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -320,11 +328,21 @@ export function custodyDeductionReason(condition: 'damaged' | 'missing', assetCo
 /** The deduction type a damaged or missing item becomes (payroll-adjustments.ts: "Damage or loss"). */
 export const CUSTODY_DEDUCTION_TYPE = 'damage_loss';
 
-/** Why a deduction can't be linked to a custody item, or null when it can. */
-export function custodyDeductionProblem(d: { kind: string; type: string }, item: { returnCondition: string | null; employeeId: string } | null, employeeId: string): string | null {
+/**
+ * Why a deduction can't be linked to a custody item, or null when it can: an item returned damaged or missing, or (step
+ * 4, owner, 22 October 2026: accessories) one that came back without some of its accessories (`missingAccessories`: how
+ * many lines are missing).
+ */
+export function custodyDeductionProblem(
+  d: { kind: string; type: string },
+  item: { returnCondition: string | null; employeeId: string; missingAccessories?: number } | null,
+  employeeId: string,
+): string | null {
   if (d.kind !== 'deduction' || d.type !== CUSTODY_DEDUCTION_TYPE) return 'Only a Damage or loss deduction is linked to a custody item.';
   if (!item || item.employeeId !== employeeId) return 'Choose a damaged or missing item of this employee’s custody.';
-  if (item.returnCondition !== 'damaged' && item.returnCondition !== 'missing') return 'Only an item returned damaged or missing becomes a deduction.';
+  if (item.returnCondition !== 'damaged' && item.returnCondition !== 'missing' && !(item.missingAccessories && item.missingAccessories > 0)) {
+    return 'Only an item returned damaged or missing, or without some of its accessories, becomes a deduction.';
+  }
   return null;
 }
 
@@ -440,6 +458,10 @@ export interface CustodyItemView {
   asset: CustodyAssetRef;
   conditionOut: AssetCondition | null;
   accessories: string | null;
+  /** Step 4: its checklist's lines that went out with it (a snapshot). */
+  accessoriesOut?: AccessoryOut[];
+  /** Step 4: once back, the accessories that didn't come back (empty: all did); null while it is out. */
+  accessoriesMissing?: AccessoryOut[] | null;
   valueAtOut?: number | null;
   /** ISO moment it came back; null: still out. */
   returnedAt: string | null;
@@ -453,7 +475,7 @@ export interface CustodyItemView {
 export interface CustodyReturnView {
   at: string;
   receivedBy: AssetUserRef | null;
-  items: { itemId: string; code: string; name: string; condition: ReturnCondition; notes: string | null }[];
+  items: { itemId: string; code: string; name: string; condition: ReturnCondition; notes: string | null; missingAccessories?: AccessoryOut[] }[];
 }
 
 /** A custody record as GET /assets/custody/:code answers it. */
@@ -524,6 +546,12 @@ export interface HandoverAssetChoice {
   serial: string | null;
   condition: AssetCondition | null;
   kit: { id: string; code: string } | null;
+  /** Step 4: its accessories' checklist, all ticked to go unless one stays behind. */
+  accessories?: AccessoryView[];
+  /** Step 4: the assets attached to it, which go with it when available (`why` null), else skipped and said why. */
+  attached?: { id: string; code: string; name: string; status: AssetStatus; why: string | null }[];
+  /** Step 4: it is attached to another asset (it can still go alone). */
+  parent?: { code: string; name: string } | null;
 }
 
 /** A kit for the quick-add: its assets, each with why it would be skipped (null: it goes). */
@@ -563,15 +591,22 @@ export interface HeldItemView {
   daysOverdue: number;
   conditionOut: AssetCondition | null;
   accessories: string | null;
+  /** Step 4: its checklist's lines that went out with it. */
+  accessoriesOut?: AccessoryOut[];
   valueAtOut?: number | null;
 }
 
-/** An item returned damaged or missing: it stays on the person's record (spec §6.4). */
+/**
+ * An item returned damaged or missing, or (step 4) without some of its accessories (`condition` good then): it stays on
+ * the person's record (spec §6.4).
+ */
 export interface CustodyIncidentView {
   itemId: string;
   asset: CustodyAssetRef;
   custodyCode: string;
-  condition: 'damaged' | 'missing';
+  condition: ReturnCondition;
+  /** Step 4: the accessories that didn't come back with it. */
+  missingAccessories?: AccessoryOut[];
   returnedAt: string;
   notes: string | null;
   receivedBy: AssetUserRef | null;
@@ -619,6 +654,9 @@ export interface AssetCustodyEntry {
   returnCondition: ReturnCondition | null;
   receivedBy: AssetUserRef | null;
   returnNotes: string | null;
+  /** Step 4: the accessories that went with it, and those that didn't come back. */
+  accessoriesOut?: AccessoryOut[];
+  accessoriesMissing?: AccessoryOut[] | null;
   valueAtOut?: number | null;
 }
 
@@ -644,4 +682,6 @@ export interface AssetHistoryView {
   hiddenRecords: number;
   maintenance: MaintenanceEntryView[];
   can: Record<AssetAction, boolean>;
+  /** Step 4: a consumable's stock moves, newest first (the latest 100). */
+  stockMoves?: StockMoveView[];
 }

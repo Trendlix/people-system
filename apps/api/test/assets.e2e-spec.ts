@@ -173,8 +173,19 @@ describe('Assets (e2e)', () => {
     await api().patch('/api/assets/settings').set('Cookie', sessions.viewer).send({ capitalizationThreshold: 1 }).expect(403);
 
     const detail = (await get('custodian', 'PK-CAM-0001').expect(200)).body as AssetView;
-    expect(detail.can).toEqual({ edit: true, photos: true, values: false, delete: false });
-    expect((await get('viewer', 'PK-CAM-0001').expect(200)).body.can).toEqual({ edit: false, photos: false, values: false, delete: false });
+    // step 4 (22 October 2026): the accessories, attaching and the maintenance log a custodian's; Use and Restock a consumable's only; disposal a manager's
+    expect(detail.can).toEqual({ edit: true, photos: true, values: false, delete: false, accessories: true, attach: true, stock: false, maintenance: true, dispose: false });
+    expect((await get('viewer', 'PK-CAM-0001').expect(200)).body.can).toEqual({
+      edit: false,
+      photos: false,
+      values: false,
+      delete: false,
+      accessories: false,
+      attach: false,
+      stock: false,
+      maintenance: false,
+      dispose: false,
+    });
   });
 
   it('a manager keeps the rooms (names once whatever their case, archived ones not offered) and the settings', async () => {

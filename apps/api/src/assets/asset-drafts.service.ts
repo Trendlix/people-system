@@ -1,5 +1,10 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import {
+  accessoriesProblems,
+  accessoriesText,
+  normalAssetCode,
+  tidyAccessories,
+  type AccessoryInput,
   ASSET_GROUPS,
   ASSET_VALUE_FIELDS,
   ASSETS_REFUSALS,
@@ -22,7 +27,7 @@ import { AssetDraftImagesService, DRAFT_IMAGES, draftImageView, type MovedImage 
 import { PHOTO_ENTITY } from './asset-photos.service.js';
 import type { AssetsCaller } from './assets-access.js';
 import type { CreateAssetDto, UpdateAssetDto } from './assets.dto.js';
-import { AssetsService, editedAssetInput, maskedValues, mergeValues, newAssetInput, NO_VALUES, sentForAnotherGroup } from './assets.service.js';
+import { AssetsService, editedAssetInput, maskedValues, mergeValues, newAssetInput, newAttachProblem, NO_VALUES, sentForAnotherGroup } from './assets.service.js';
 
 // The drafts from Claude (step 2; owner, 21 October 2026: "i might link a claude account for the assets section only to
 // fetch data and help in the data entry"; the spec: "nothing is saved until a person presses Save"; packages/shared
@@ -89,6 +94,19 @@ export function draftFields(json: unknown): AssetInput {
   };
 }
 
+/**
+ * A draft's accessories and the main asset it is an accessory of, as kept beside its fields (step 4; owner, 22 October
+ * 2026: accessories, "Both kinds"); applied when it is confirmed, from the Add form filled in with them.
+ */
+export function draftExtras(json: unknown): { accessories: AccessoryInput[]; parentCode: string | null } {
+  const f = (json && typeof json === 'object' ? json : {}) as Record<string, unknown>;
+  return { accessories: tidyAccessories(f.accessories), parentCode: typeof f.parentCode === 'string' && f.parentCode ? f.parentCode : null };
+}
+
+/** The fields kept for a draft: its Add form's fields, its accessories and its main asset's code. */
+const keptFields = (input: AssetInput, extras: { accessories: AccessoryInput[]; parentCode: string | null }) =>
+  ({ ...input, accessories: extras.accessories, parentCode: extras.parentCode }) as unknown as Prisma.InputJsonValue;
+
 /** A draft's values as kept, or null when none were drafted. */
 export function draftValues(json: unknown): AssetValuesInput | null {
   if (!json || typeof json !== 'object') return null;
@@ -135,15 +153,27 @@ export class AssetDraftsService {
     if (dto.values && !caller.values) throw new ForbiddenException(ASSETS_REFUSALS.values);
     const input = newAssetInput(dto);
     const values = mergeValues(NO_VALUES, dto.values);
-    const problems = [...sentForAnotherGroup(dto, dto.group), ...assetProblems(input, todayInCairo()), ...assetValuesProblems(values)];
+    const extras = { accessories: tidyAccessories(dto.accessories ?? []), parentCode: dto.parentCode ? normalAssetCode(dto.parentCode) : null };
+    const problems = [
+      ...sentForAnotherGroup(dto, dto.group),
+      ...assetProblems(input, todayInCairo()),
+      ...assetValuesProblems(values),
+      ...(await this.extrasProblems(extras, input.group)),
+    ];
     if (problems.length) throw new BadRequestException(problems);
     await this.assets.checkPlaces(input, null);
     const kept = draftValues(values);
     const row = await this.prisma.assetDraft.create({
-      data: { fields: input as unknown as Prisma.InputJsonValue, values: kept ? (kept as unknown as Prisma.InputJsonValue) : Prisma.DbNull, createdById: caller.user.id },
+      data: { fields: keptFields(input, extras), values: kept ? (kept as unknown as Prisma.InputJsonValue) : Prisma.DbNull, createdById: caller.user.id },
       select: { id: true },
     });
-    await this.audit.record({ userId: caller.user.id, action: 'create', entityType: DRAFT_ENTITY, entityId: row.id, diff: maskedValues(given({ ...input, ...values }), 'set') });
+    await this.audit.record({
+      userId: caller.user.id,
+      action: 'create',
+      entityType: DRAFT_ENTITY,
+      entityId: row.id,
+      diff: maskedValues(given({ ...input, ...values, accessories: extras.accessories.length ? accessoriesText(extras.accessories) : null, attachedTo: extras.parentCode }), 'set'),
+    });
     return this.get(row.id, caller);
   }
 
@@ -156,16 +186,30 @@ export class AssetDraftsService {
     const after = editedAssetInput(before, dto);
     const beforeValues = draftValues(draft.values) ?? NO_VALUES;
     const values = mergeValues(beforeValues, dto.values);
-    const problems = [...sentForAnotherGroup(dto, after.group), ...assetProblems(after, todayInCairo()), ...(dto.values ? assetValuesProblems(values) : [])];
+    const beforeExtras = draftExtras(draft.fields);
+    const extras = {
+      accessories: dto.accessories === undefined ? beforeExtras.accessories : tidyAccessories(dto.accessories),
+      parentCode: dto.parentCode === undefined ? beforeExtras.parentCode : dto.parentCode ? normalAssetCode(dto.parentCode) : null,
+    };
+    const extrasChanged = dto.accessories !== undefined || dto.parentCode !== undefined;
+    const problems = [
+      ...sentForAnotherGroup(dto, after.group),
+      ...assetProblems(after, todayInCairo()),
+      ...(dto.values ? assetValuesProblems(values) : []),
+      ...(extrasChanged || after.group !== before.group ? await this.extrasProblems(extras, after.group) : []),
+    ];
     if (problems.length) throw new BadRequestException(problems);
     await this.assets.checkPlaces(after, before);
-    const fieldDiff = changes({ ...before }, { ...after });
+    const fieldDiff = changes(
+      { ...before, accessories: accessoriesText(beforeExtras.accessories) || null, attachedTo: beforeExtras.parentCode },
+      { ...after, accessories: accessoriesText(extras.accessories) || null, attachedTo: extras.parentCode },
+    );
     const valueDiff = changes({ ...beforeValues }, { ...values });
     if (Object.keys(fieldDiff).length || Object.keys(valueDiff).length) {
       const kept = draftValues(values);
       const { count } = await this.prisma.assetDraft.updateMany({
         where: { id, status: 'open' },
-        data: { fields: after as unknown as Prisma.InputJsonValue, values: kept ? (kept as unknown as Prisma.InputJsonValue) : Prisma.DbNull },
+        data: { fields: keptFields(after, extras), values: kept ? (kept as unknown as Prisma.InputJsonValue) : Prisma.DbNull },
       });
       if (!count) throw new ConflictException(alreadyDone((await this.prisma.assetDraft.findUnique({ where: { id }, select: { status: true } }))?.status ?? 'discarded'));
       await this.audit.record({ userId: caller.user.id, action: 'update', entityType: DRAFT_ENTITY, entityId: id, diff: maskedValues({ ...fieldDiff, ...valueDiff }, 'changed') });
@@ -242,6 +286,16 @@ export class AssetDraftsService {
     return this.get(id, caller);
   }
 
+  /** What is wrong with a draft's accessories and main asset (step 4), in words; none: they can be kept. */
+  private async extrasProblems(extras: { accessories: AccessoryInput[]; parentCode: string | null }, group: AssetInput['group']): Promise<string[]> {
+    const problems = accessoriesProblems(extras.accessories, group);
+    if (extras.parentCode) {
+      const { problem } = await newAttachProblem(this.prisma, extras.parentCode, group);
+      if (problem) problems.push(problem);
+    }
+    return problems;
+  }
+
   /** A draft still waiting, or 404 / 409 saying what became of it. */
   private async open(id: string) {
     const draft = await this.prisma.assetDraft.findUnique({ where: { id }, select: { status: true, fields: true, values: true } });
@@ -253,6 +307,10 @@ export class AssetDraftsService {
   /** Drafts as answered: the room and kit by name, who did what by name, the values only to those who see them. */
   private async views(rows: Row[], caller: AssetsCaller): Promise<AssetDraftView[]> {
     const fields = rows.map((r) => draftFields(r.fields));
+    const extras = rows.map((r) => draftExtras(r.fields));
+    const parentCodes = [...new Set(extras.map((e) => e.parentCode).filter((v): v is string => !!v))];
+    const parents = parentCodes.length ? await this.prisma.asset.findMany({ where: { code: { in: parentCodes } }, select: { code: true, name: true } }) : [];
+    const parentOf = new Map(parents.map((p) => [p.code, p.name]));
     const roomIds = [...new Set(fields.map((f) => f.roomId).filter((v): v is string => !!v))];
     const kitIds = [...new Set(fields.map((f) => f.kitId).filter((v): v is string => !!v))];
     const [rooms, kits, names] = await Promise.all([
@@ -283,6 +341,8 @@ export class AssetDraftsService {
         discardedAt: r.discardedAt?.toISOString() ?? null,
         discardedBy: person(r.discardedBy),
         productImages: r.images.map((i) => draftImageView(i, person)),
+        accessories: extras[i].accessories,
+        attachTo: extras[i].parentCode ? { code: extras[i].parentCode!, name: parentOf.get(extras[i].parentCode!) ?? null } : null,
       };
       if (caller.values) view.values = values ?? NO_VALUES;
       return view;

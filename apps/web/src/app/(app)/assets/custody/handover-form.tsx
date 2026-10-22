@@ -20,7 +20,7 @@ import { FormErrors, useFieldIds } from '@/components/form';
 import { Select } from '@/components/select';
 import { APP_CUSTODY_PATHS, CUSTODY_PATHS } from '@/lib/asset-paths';
 import { handOverAssets } from '../custody-actions';
-import { assetOptionText, handoverBody, kitAdd, kitAddText, skipText } from '../custody';
+import { assetOptionText, attachedText, handoverBody, kitAdd, kitAddText, skipText } from '../custody';
 
 // New handover (Assets step 3; the spec's New handover: "Type (shoot / long-term), employee, return date (shoot only),
 // purpose, kit quick-add, asset picker (available only), handed over by, notes"): a custodian or a manager chooses a
@@ -30,7 +30,9 @@ import { assetOptionText, handoverBody, kitAdd, kitAddText, skipText } from '../
 // goes out in and its accessories; "Add a kit" adds a kit's available assets and lists the others with why (§6.3). The
 // shared checks run before it is sent; the API checks everything again, gives the record its code (CUS-0042) and the
 // terms in force. Once saved, the record's page opens (the phone pages' on the phone pages): its form is printed, signed
-// on paper and attached there.
+// on paper and attached there. Step 4 (owner, 22 October 2026: accessories, "Both kinds"): each asset's checklist, all
+// ticked to go (untick what stays behind), the assets attached to it that go with it (and those that stay, with why),
+// and ?kit= from a kit's card, added to start with.
 
 const optional = <span className="font-normal text-muted">(optional)</span>;
 
@@ -38,6 +40,7 @@ export function HandoverForm({
   choices,
   startEmployeeId,
   startAssetCode,
+  startKitId = null,
   today,
   surface,
   cancelHref,
@@ -45,6 +48,8 @@ export function HandoverForm({
   choices: HandoverChoices;
   startEmployeeId: string | null;
   startAssetCode: string | null;
+  /** Step 4: a kit's card's "Hand over this kit". */
+  startKitId?: string | null;
   /** YYYY-MM-DD in Cairo. */
   today: string;
   surface: 'site' | 'app';
@@ -53,10 +58,14 @@ export function HandoverForm({
   const router = useRouter();
   const fid = useFieldIds();
   const startAsset = startAssetCode ? (choices.assets.find((a) => a.code === startAssetCode) ?? null) : null;
+  const startKit = startKitId ? (choices.kits.find((k) => k.id === startKitId) ?? null) : null;
+  const startKitAdd = startKit ? kitAdd(startKit, new Set(startAsset ? [startAsset.id] : []), choices.assets) : null;
   const [kind, setKind] = useState<CustodyKind>(startAsset?.group === 'it' ? 'assignment' : 'shoot');
-  const [items, setItems] = useState<HandoverAssetChoice[]>(startAsset ? [startAsset] : []);
+  const [items, setItems] = useState<HandoverAssetChoice[]>([...(startAsset ? [startAsset] : []), ...(startKitAdd?.added ?? [])]);
   const [kitId, setKitId] = useState('');
-  const [kitNote, setKitNote] = useState<{ text: string; skipped: KitSkip[] } | null>(null);
+  const [kitNote, setKitNote] = useState<{ text: string; skipped: KitSkip[] } | null>(
+    startKit && startKitAdd ? { text: kitAddText(startKit, startKitAdd.added.length, startKitAdd.skipped.length), skipped: startKitAdd.skipped } : null,
+  );
   const [errors, setErrors] = useState<string[]>([]);
   const [saving, start] = useTransition();
   const chosen = new Set(items.map((i) => i.id));
@@ -90,7 +99,13 @@ export function HandoverForm({
         purpose: text('purpose'),
         handedOverBy: text('handedOverBy'),
         notes: text('notes'),
-        items: items.map((i) => ({ assetId: i.id, conditionOut: text(`condition-${i.id}`), accessories: text(`accessories-${i.id}`) })),
+        items: items.map((i) => ({
+          assetId: i.id,
+          conditionOut: text(`condition-${i.id}`),
+          accessories: text(`accessories-${i.id}`),
+          // step 4: the checklist's lines ticked to go
+          ...(i.accessories?.length && { accessoryIds: fd.getAll(`accgo-${i.id}`).map(String) }),
+        })),
       },
       today,
     );
@@ -267,7 +282,10 @@ export function HandoverForm({
                     <span className="font-mono">{a.code}</span>
                     {a.serial ? ` · S/N ${a.serial}` : ''}
                     {a.kit ? ` · ${a.kit.code}` : ''}
+                    {a.parent ? ` · attached to ${a.parent.code}` : ''}
                   </p>
+                  {attachedText(a).going && <p className="text-xs text-ok">{attachedText(a).going}</p>}
+                  {attachedText(a).skipped && <p className="text-xs text-warn">{attachedText(a).skipped}</p>}
                 </div>
                 <div>
                   <label htmlFor={fid(`condition-${a.id}`)} className="label">
@@ -284,13 +302,28 @@ export function HandoverForm({
                 </div>
                 <div>
                   <label htmlFor={fid(`accessories-${a.id}`)} className="label">
-                    Accessories {optional}
+                    {a.accessories?.length ? 'Other accessories' : 'Accessories'} {optional}
                   </label>
                   <input id={fid(`accessories-${a.id}`)} name={`accessories-${a.id}`} maxLength={CUSTODY_TEXT_LIMITS.accessories} placeholder="E.g. 2 batteries, charger" className="input" />
                 </div>
                 <button type="button" onClick={() => setItems((list) => list.filter((x) => x.id !== a.id))} className="btn btn-secondary">
                   Remove<span className="sr-only"> {a.code}</span>
                 </button>
+                {a.accessories && a.accessories.length > 0 && (
+                  <fieldset className="sm:col-span-4">
+                    <legend className="label">Its accessories going with it</legend>
+                    <div className="flex flex-wrap gap-2 text-sm">
+                      {a.accessories.map((x) => (
+                        <label key={x.id} className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line px-3">
+                          <input type="checkbox" name={`accgo-${a.id}`} value={x.id} defaultChecked />
+                          {x.quantity > 1 ? `${x.quantity} × ` : ''}
+                          {x.name}
+                          {x.serial && <span className="font-mono text-xs text-muted">{x.serial}</span>}
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                )}
               </li>
             ))}
           </ul>

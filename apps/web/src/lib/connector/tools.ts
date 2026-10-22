@@ -1,4 +1,5 @@
 import {
+  ACCESSORY_LIMITS,
   ASSET_CLASS_LABELS,
   ASSET_CLASSES,
   ASSET_CONDITION_LABELS,
@@ -192,6 +193,8 @@ export function draftFor(d: AssetDraftView, ctx: ToolContext) {
     ...(d.values && { values: d.values }),
     values_drafted: d.valuesSet,
     product_images: (d.productImages ?? []).map(productImageFor),
+    accessories: (d.accessories ?? []).map((a) => ({ name: a.name, quantity: a.quantity, ...(a.serial && { serial: a.serial }) })),
+    attach_to: d.attachTo ? `${d.attachTo.code}${d.attachTo.name ? ` ${d.attachTo.name}` : ''}` : null,
     drafted: { at: d.createdAt, by: d.createdBy?.name ?? d.createdBy?.email ?? null },
     updated_at: d.updatedAt,
     ...(d.asset && { asset: { code: d.asset.code, link: assetLink(ctx, d.asset.code) } }),
@@ -269,6 +272,15 @@ const money = z.number().min(0).max(ASSET_MONEY_MAX);
 const amount = z.number().min(0).max(ASSET_QUANTITY_MAX);
 const placeName = z.string().trim().min(1).max(120);
 
+/** A line of an asset's accessories' checklist, as Claude sends it. */
+const ACCESSORY = z
+  .object({
+    name: z.string().trim().min(1).max(ACCESSORY_LIMITS.name).describe('E.g. "Charger", "USB-C cable".'),
+    quantity: z.number().int().min(1).max(ACCESSORY_LIMITS.quantityMax).optional().describe('How many; 1 unless said.'),
+    serial: z.string().trim().min(1).max(ACCESSORY_LIMITS.serial).optional().describe('Exactly as printed, when it has one.'),
+  })
+  .strict();
+
 /** The draft's fields; `edit`: each may also be null, to clear it. */
 function draftShape(edit: boolean) {
   const opt = <T extends z.ZodType>(schema: T) => (edit ? schema.nullable().optional() : schema.optional());
@@ -300,7 +312,18 @@ function draftShape(edit: boolean) {
     purchase_date: opt(day).describe('YYYY-MM-DD, not after today.'),
     useful_life_years: opt(z.number().int().min(1).max(ASSET_USEFUL_LIFE_MAX)).describe('Whole years; left out, the group’s own.'),
     warranty_end: opt(day).describe('YYYY-MM-DD.'),
-    notes: opt(text(ASSET_TEXT_LIMITS.notes)).describe('Visible specs, colour, accessories, defects.'),
+    notes: opt(text(ASSET_TEXT_LIMITS.notes)).describe('Visible specs, colour, defects.'),
+    // step 4 (owner, 22 October 2026: accessories, "Both kinds")
+    accessories: (edit
+      ? z.array(ACCESSORY).max(ACCESSORY_LIMITS.perAsset).nullable().optional()
+      : z.array(ACCESSORY).max(ACCESSORY_LIMITS.perAsset).optional()
+    ).describe(
+      'The small things that come with it, listed on its checklist: a charger, cables, a case, a strap (name, how many, the serial when it has one). They go out with it on a handover and are ticked when it comes back. Not for consumables.' +
+        (edit ? ' Sent, it replaces the whole list; [] or null clears it.' : ''),
+    ),
+    attach_to: opt(z.string().trim().min(1).max(40)).describe(
+      'When it is itself an accessory with its own code and label (a Ronin battery, a camera’s monitor): the main asset’s code, e.g. PK-GMB-0001 (search_assets). It then goes out with the main asset. One level only.',
+    ),
     values: values.optional().describe(
       'The money, only for the CEO, Finance and a Super Admin (EGP). Anyone else: leave it out, or the draft is refused.',
     ),
@@ -341,6 +364,12 @@ export function draftBody(args: Record<string, unknown>, places: { roomId?: stri
   for (const [from, to] of Object.entries(FIELD_KEYS)) if (args[from] !== undefined) body[to] = args[from];
   if (places.roomId !== undefined) body.roomId = places.roomId;
   if (places.kitId !== undefined) body.kitId = places.kitId;
+  // step 4: the checklist (null clears it) and the main asset it is an accessory of (null: none)
+  if (args.accessories !== undefined) {
+    const list = (args.accessories as { name: string; quantity?: number; serial?: string }[] | null) ?? [];
+    body.accessories = list.map((a) => ({ name: a.name, quantity: a.quantity ?? 1, serial: a.serial ?? null }));
+  }
+  if (args.attach_to !== undefined) body.parentCode = args.attach_to;
   const values = args.values as Record<string, unknown> | undefined;
   if (values) {
     const v: Record<string, unknown> = {};
@@ -611,7 +640,7 @@ export const ASSET_TOOLS: ConnectorTool[] = [
     name: 'create_asset_draft',
     title: 'Draft an asset',
     description:
-      'Draft a new asset for a person to review (Assets custodians and managers only). It is NOT added to the register: nothing is saved as an asset until a person confirms the draft in Trendlix People, when its code is given. The fields are the Add asset form’s: name, group and type at least (see asset_catalog); a consumable has a quantity, unit and reorder level, and no serial, condition or useful life; only a production kit asset goes in a kit. Values (money) only for the CEO, Finance and a Super Admin. ' +
+      'Draft a new asset for a person to review (Assets custodians and managers only). It is NOT added to the register: nothing is saved as an asset until a person confirms the draft in Trendlix People, when its code is given. The fields are the Add asset form’s: name, group and type at least (see asset_catalog); a consumable has a quantity, unit and reorder level, and no serial, condition or useful life; only a production kit asset goes in a kit. List what comes with it in accessories (a charger, cables, a case); when the asset is itself an accessory with its own label (a battery, a monitor), give the main asset’s code in attach_to. Values (money) only for the CEO, Finance and a Super Admin. ' +
       PHOTOS_NOTE +
       ' Always give the person the draft’s link from the answer.',
     shape: draftShape(false),
@@ -707,7 +736,7 @@ export const ASSET_TOOLS: ConnectorTool[] = [
 export const SERVER_INSTRUCTIONS = [
   'Trendlix People’s Assets section: the studio’s asset register (cameras, lenses, lights, IT, furniture, consumables), read with the signed-in person’s own Assets access.',
   'Read with search_assets, get_asset, who_holds, overdue_returns, stock_levels, counts_due, list_rooms, list_kits and asset_catalog.',
-  'To help with data entry, an Assets custodian or manager can draft assets (create_asset_draft, update_asset_draft): call asset_catalog first to fill the group, type and fields correctly. A draft is not an asset: a person confirms it in Trendlix People, where its code is given and its photos are added. Always share the draft’s link.',
+  'To help with data entry, an Assets custodian or manager can draft assets (create_asset_draft, update_asset_draft): call asset_catalog first to fill the group, type and fields correctly. List the small things that come with an asset in its accessories (a charger, cables, a case); an accessory with its own label (a battery, a monitor) is an asset of its own, attached to the main one with attach_to. A draft is not an asset: a person confirms it in Trendlix People, where its code is given and its photos are added. Always share the draft’s link.',
   'You can add the maker’s product image to a draft (add_product_image, up to 3): find the official image with your web search and give the direct link to the image file and the page it is on; Trendlix People fetches it. It shows the model, not the item itself, so the person still adds a real photo.',
   'Money (purchase cost, market value, book value) is only for the CEO, Finance and a Super Admin: never ask anyone else for it.',
   'Nothing else is possible through this connector: no deleting, disposal, custody handover or return, counts, settings, or anything outside Assets.',

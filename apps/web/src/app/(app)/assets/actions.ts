@@ -16,6 +16,7 @@ import type { FormState } from '@/lib/types';
 import { todayInCairo } from '../employees/ui';
 import { ASSET_FORM_FIELDS, assetBody, readAssetForm, readValuesForm, typedValues, VALUE_FORM_FIELDS, numberFrom } from './assets';
 import { assetsCaller } from './data';
+import { ACCESSORY_ROWS_MAX, readAccessoriesForm, readParentCode } from './upkeep';
 
 /** A save of the Add or Edit form: its refusal, or the asset's code once saved (the form then sends its photos). */
 export type AssetSaveState = FormState & { code?: string };
@@ -41,6 +42,17 @@ export async function saveAsset(code: string | null, from: AssetStatus | null, f
   const problems = [...form.problems, ...(values?.problems ?? [])];
   if (problems.length) return { errors: problems, values: typed };
   const body = assetBody(form, code ? 'edit' : 'add', values?.values ?? null);
+  // step 4 (owner, 22 October 2026: accessories, "Both kinds"): on Add, its checklist and the main asset it is an accessory of
+  if (!code && form.asset.group !== 'consumable') {
+    const rows = Math.min(ACCESSORY_ROWS_MAX + 1, Math.max(0, Math.floor(Number(fd.get('rows')) || 0)));
+    const accessories = readAccessoriesForm(fd, rows, form.asset.group);
+    const typed = String(fd.get('parentCode') ?? '').trim();
+    const parent = typed ? readParentCode(typed) : null;
+    const more = [...accessories.problems, ...(parent?.problem ? [parent.problem] : [])];
+    if (more.length) return { errors: more, values: typed ? { ...typedValues(fd, fields), parentCode: typed } : typedValues(fd, fields) };
+    if (accessories.items.length) body.accessories = accessories.items;
+    if (parent?.code) body.parentCode = parent.code;
+  }
   try {
     const saved = code
       ? await apiSend<AssetView>('PATCH', ASSET_API.asset(code), body)

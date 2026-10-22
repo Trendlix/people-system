@@ -31,6 +31,7 @@ import { AssetPhotosService } from './asset-photos.service.js';
 import { AssetReportsService } from './asset-reports.service.js';
 import { AssetRoomsService } from './asset-rooms.service.js';
 import { AssetSettingsService } from './asset-settings.service.js';
+import { KitItemsDto } from './asset-upkeep.dto.js';
 import { AssetSettingsAccess, AssetsLevel, AssetValues, CurrentAssetsCaller, type AssetsCaller } from './assets-access.js';
 import {
   AssetHoldersQueryDto,
@@ -127,6 +128,13 @@ export class AssetKitsController {
   @Patch(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateKitDto, @CurrentAssetsCaller() caller: AssetsCaller) {
     return this.kits.update(id, dto, caller.user.id);
+  }
+
+  /** Step 4: assets put in the kit and taken out of it: { add?: ids, addCodes?: codes, remove?: ids }. */
+  @AssetsLevel('custodian')
+  @Patch(':id/items')
+  setItems(@Param('id', ParseUUIDPipe) id: string, @Body() dto: KitItemsDto, @CurrentAssetsCaller() caller: AssetsCaller) {
+    return this.kits.setItems(id, dto, caller.user.id);
   }
 }
 

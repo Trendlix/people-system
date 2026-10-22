@@ -1,5 +1,11 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import {
+  accessoriesProblems,
+  accessoriesText,
+  attachProblem,
+  STOCK_EDIT_NOTE,
+  tidyAccessories,
+  type AccessoryInput,
   ASSET_GROUP_RULES,
   ASSET_GROUPS,
   ASSET_MARKET_FIELDS,
@@ -53,6 +59,8 @@ type Row = Prisma.AssetGetPayload<{ select: typeof FULL }>;
 const FULL = {
   id: true,
   code: true,
+  parentAssetId: true,
+  _count: { select: { accessories: true, attached: true } },
   name: true,
   group: true,
   type: true,
@@ -238,6 +246,25 @@ export function editedAssetInput(before: AssetInput, dto: UpdateAssetDto): Asset
   return fitToGroup(merged);
 }
 
+/** The main asset an asset is attached to, by its code as typed (step 4), with what the attach rules read; 404-free: null. */
+export async function mainAssetByCode(db: PrismaService | Prisma.TransactionClient, code: string) {
+  const normal = normalAssetCode(code);
+  if (!isAssetCode(normal)) return null;
+  const row = await db.asset.findUnique({ where: { code: normal }, select: { id: true, code: true, name: true, group: true, status: true, parentAssetId: true, _count: { select: { attached: true } } } });
+  return row && { id: row.id, code: row.code, name: row.name, group: row.group, status: row.status, parentId: row.parentAssetId, attached: row._count.attached };
+}
+
+/** Why a new asset (or a draft) can't be attached to the main asset coded `parentCode`, or null when it can; the main asset found. */
+export async function newAttachProblem(db: PrismaService | Prisma.TransactionClient, parentCode: string, group: AssetGroup) {
+  const main = await mainAssetByCode(db, parentCode);
+  if (!main) return { problem: `No asset has the code ${normalAssetCode(parentCode)}: check the main asset’s code.`, main: null };
+  return { problem: attachProblem({ id: '', code: 'This asset', group, status: 'available', parentId: null, attached: 0 }, main), main };
+}
+
+/** The accessories' lines as kept, in order. */
+export const accessoryRows = (assetId: string, list: readonly AccessoryInput[]) =>
+  list.map((a, position) => ({ assetId, position, name: a.name, quantity: a.quantity, serial: a.serial, notes: a.notes }));
+
 /**
  * What else registering an asset does (step 2: confirming a draft from Claude): `values`, the draft's values, kept when
  * the person confirming can't see them (they were drafted by someone who can); `within`, run in the transaction that
@@ -299,8 +326,8 @@ export class AssetsService {
     if (!isAssetCode(normal)) throw new NotFoundException(ASSET_NOT_FOUND);
     const [row, ctx] = await Promise.all([this.prisma.asset.findUnique({ where: { code: normal }, select: ASSET_DETAIL }), this.context()]);
     if (!row) throw new NotFoundException(ASSET_NOT_FOUND);
-    const names = await userNames(this.prisma, [row.createdBy]);
-    return detailView(row, caller, ctx, row.createdBy ? (names.get(row.createdBy.id)?.name ?? null) : null);
+    const names = await userNames(this.prisma, [row.createdBy, row.disposedBy]);
+    return detailView(row, caller, ctx, names);
   }
 
   /** The asset's id by its code, or 404. */
@@ -321,11 +348,16 @@ export class AssetsService {
     const input = newAssetInput(dto);
     const status: AssetStatus = dto.status ?? 'available';
     const values = options.values ?? mergeValues(NO_VALUES, dto.values);
+    // step 4 (owner, 22 October 2026: accessories, "Both kinds"): its checklist and the main asset it is attached to
+    const accessories = tidyAccessories(dto.accessories ?? []);
+    const attach = dto.parentCode ? await newAttachProblem(this.prisma, dto.parentCode, input.group) : null;
     const problems = [
       ...sentForAnotherGroup(dto, dto.group),
       ...assetProblems(input, todayInCairo()),
       ...[assetStatusProblem(null, status, input.group)].filter((p): p is string => !!p),
       ...assetValuesProblems(values),
+      ...accessoriesProblems(accessories, input.group),
+      ...(attach?.problem ? [attach.problem] : []),
     ];
     if (problems.length) throw new BadRequestException(problems);
     await this.checkPlaces(input, null);
@@ -334,15 +366,39 @@ export class AssetsService {
     const created = await this.prisma.$transaction(async (tx) => {
       const prefix = assetCodePrefix(input.group, input.type);
       const code = assetCode(prefix, await nextCodeNumber(tx, prefix));
+      if (attach?.main) {
+        // the main asset held, and checked again: not disposed or attached to another meanwhile
+        await tx.$queryRaw`SELECT id FROM assets WHERE id = ${attach.main.id}::uuid FOR UPDATE`;
+        const main = await mainAssetByCode(tx, attach.main.code);
+        const again = main && attachProblem({ id: '', code: 'This asset', group: input.group, status, parentId: null, attached: 0 }, main);
+        if (!main || again) throw new ConflictException(again ?? 'The main asset changed meanwhile. Reload the page.');
+      }
       const row = await tx.asset.create({
-        data: { code, ...fieldData(input), status, ...valueData(values), priceUpdatedAt: marketSet ? new Date() : null, createdById: caller.user.id },
+        data: {
+          code,
+          ...fieldData(input),
+          status,
+          ...valueData(values),
+          priceUpdatedAt: marketSet ? new Date() : null,
+          createdById: caller.user.id,
+          parentAssetId: attach?.main?.id ?? null,
+        },
         select: { id: true, code: true },
       });
+      if (accessories.length) await tx.assetAccessory.createMany({ data: accessoryRows(row.id, accessories) });
       if (options.within) await options.within(tx, row);
       return row;
     });
 
-    const given = Object.fromEntries(Object.entries({ ...input, status, ...values }).filter(([, v]) => v !== null));
+    const given = Object.fromEntries(
+      Object.entries({
+        ...input,
+        status,
+        ...values,
+        accessories: accessories.length ? accessoriesText(accessories) : null,
+        attachedTo: attach?.main?.code ?? null,
+      }).filter(([, v]) => v !== null),
+    );
     await this.audit.record({
       userId: caller.user.id,
       action: 'create',
@@ -361,6 +417,9 @@ export class AssetsService {
    */
   async update(code: string, dto: UpdateAssetDto, caller: AssetsCaller): Promise<AssetView> {
     if (dto.values && !caller.values) throw new ForbiddenException(ASSETS_REFUSALS.values);
+    if (dto.accessories !== undefined || dto.parentCode !== undefined) {
+      throw new BadRequestException(['Change its accessories and what it is attached to on the asset’s page.']);
+    }
     const row = await this.full(code);
     const before = fieldsOf(row);
     const after = editedAssetInput(before, dto);
@@ -384,6 +443,11 @@ export class AssetsService {
       ...(statusProblem ? [statusProblem] : []),
       ...(dto.values ? assetValuesProblems(values) : []),
     ];
+    // step 4: a consumable has no accessories and nothing attached; a disposed asset is in no kit
+    if (group === 'consumable' && before.group !== 'consumable' && (row._count.accessories || row._count.attached || row.parentAssetId)) {
+      problems.push('It has accessories or attached assets, or is attached to another: remove them on its page before it becomes a consumable.');
+    }
+    if (beforeStatus === 'disposed' && after.kitId) problems.push('A disposed asset is in no kit.');
     if (problems.length) throw new BadRequestException(problems);
     await this.checkPlaces(after, before);
 
@@ -391,9 +455,16 @@ export class AssetsService {
     const valueDiff = changes({ ...beforeValues }, { ...values });
     if (!Object.keys(fieldDiff).length && !Object.keys(valueDiff).length) return this.get(row.code, caller);
     const marketChanged = ASSET_MARKET_FIELDS.some((k) => k in valueDiff);
-    await this.prisma.asset.update({
-      where: { id: row.id },
-      data: { ...fieldData(after), status, ...valueData(values), ...(marketChanged && { priceUpdatedAt: new Date() }) },
+    // a consumable's quantity changed on the Edit form: kept as a stock move too (step 4), so its history adds up
+    const delta = before.group === 'consumable' && group === 'consumable' && after.quantity !== null && before.quantity !== null ? Math.round((after.quantity - before.quantity) * 100) / 100 : 0;
+    await this.prisma.$transaction(async (tx) => {
+      await tx.asset.update({
+        where: { id: row.id },
+        data: { ...fieldData(after), status, ...valueData(values), ...(marketChanged && { priceUpdatedAt: new Date() }) },
+      });
+      if (delta !== 0) {
+        await tx.assetStockMove.create({ data: { assetId: row.id, delta, quantityAfter: after.quantity!, note: STOCK_EDIT_NOTE, byId: caller.user.id } });
+      }
     });
     await this.audit.record({ userId: caller.user.id, action: 'update', entityType: ASSET_ENTITY, entityId: row.id, diff: maskedValues({ code: row.code, ...fieldDiff, ...valueDiff }, 'changed') });
     return this.get(row.code, caller);

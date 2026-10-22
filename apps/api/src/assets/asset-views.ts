@@ -1,4 +1,5 @@
 import {
+  assetsAccessAtLeast,
   bookValue,
   needsReorder,
   productImageHost,
@@ -10,6 +11,7 @@ import {
   type AssetStatus,
   type AssetType,
   type AssetView,
+  type DisposalMethod,
 } from '@trendlix/shared';
 import { isSuperAdmin } from '../auth/roles.js';
 import { fromDateOnly } from '../common/date-only.js';
@@ -62,6 +64,8 @@ export const ASSET_ROW = {
   kit: { select: { id: true, code: true, name: true } },
   holder: { select: { id: true, employeeCode: true, fullNameEn: true } },
   photos: { select: PHOTO_REF, orderBy: [{ position: 'asc' }, { uploadedAt: 'asc' }], take: 1 },
+  // step 4 (owner, 22 October 2026: accessories, "Both kinds"): the main asset it is attached to
+  parent: { select: { id: true, code: true, name: true } },
 } as const satisfies Prisma.AssetSelect;
 
 /** What an asset's page reads: every field but the photos' files. */
@@ -81,6 +85,16 @@ export const ASSET_DETAIL = {
   createdBy: { select: { id: true, email: true } },
   photos: { select: PHOTO_REF, orderBy: [{ position: 'asc' }, { uploadedAt: 'asc' }] },
   _count: { select: { custodyItems: true } },
+  // step 4: its checklist, the assets attached to it (disposed ones are detached), and its disposal
+  accessories: { select: { id: true, name: true, quantity: true, serial: true, notes: true }, orderBy: { position: 'asc' } },
+  attached: { select: { id: true, code: true, name: true, status: true, holder: { select: { fullNameEn: true } } }, orderBy: { code: 'asc' } },
+  disposalMethod: true,
+  disposedOn: true,
+  disposalAmount: true,
+  disposalBookValue: true,
+  disposalApprovedBy: true,
+  disposalNotes: true,
+  disposedBy: { select: { id: true, email: true } },
 } as const satisfies Prisma.AssetSelect;
 
 export type AssetRow = Prisma.AssetGetPayload<{ select: typeof ASSET_ROW }>;
@@ -117,6 +131,7 @@ function common(r: AssetRow) {
     quantity: quantity(r.quantity),
     unit: r.unit,
     reorder: needsReorder({ group: r.group, quantity: quantity(r.quantity), reorderLevel: quantity(r.reorderLevel) }),
+    parent: r.parent,
   };
 }
 
@@ -130,10 +145,16 @@ export function rowView(r: AssetRow, caller: Pick<AssetsCaller, 'values'>, ctx: 
   return view;
 }
 
-/** An asset's page; `values` only for those who see them. `createdBy`: the user who registered it, by name. */
-export function detailView(r: AssetDetail, caller: AssetsCaller, ctx: ValueContext, createdByName: string | null): AssetView {
+/**
+ * An asset's page; `values` only for those who see them. `names`: the users it names (who registered it, who disposed of
+ * it), by name.
+ */
+export function detailView(r: AssetDetail, caller: AssetsCaller, ctx: ValueContext, names: ReadonlyMap<string, { name: string | null }>): AssetView {
   const everInCustody = r._count.custodyItems > 0;
-  const register = caller.access === 'custodian' || caller.access === 'manager';
+  const register = assetsAccessAtLeast(caller.access, 'custodian');
+  const disposed = r.status === 'disposed';
+  const consumable = r.group === 'consumable';
+  const createdByName = r.createdBy ? (names.get(r.createdBy.id)?.name ?? null) : null;
   const view: AssetView = {
     ...common(r),
     photo: r.photos[0] ? photoRef(r.photos[0]) : null,
@@ -155,7 +176,27 @@ export function detailView(r: AssetDetail, caller: AssetsCaller, ctx: ValueConte
       values: caller.values,
       // only a Super Admin deletes (the system's rule), and only an asset never in custody: else it is disposed of
       delete: isSuperAdmin(caller.user) && !everInCustody,
+      // step 4: the checklist and attaching (not on a consumable or a disposed asset), Use and Restock (a consumable), a
+      // maintenance entry by hand (not a consumable), a custodian's or a manager's; disposal, a manager's
+      accessories: register && !consumable && !disposed,
+      attach: register && !consumable && !disposed,
+      stock: register && consumable,
+      maintenance: register && !consumable,
+      dispose: caller.access === 'manager' && !consumable && !disposed && r.status !== 'custody',
     },
+    accessories: r.accessories,
+    attached: r.attached.map((a) => ({ id: a.id, code: a.code, name: a.name, status: a.status as AssetStatus, holder: a.holder?.fullNameEn ?? null })),
+    disposal:
+      disposed && r.disposalMethod && r.disposedOn
+        ? {
+            method: r.disposalMethod as DisposalMethod,
+            on: fromDateOnly(r.disposedOn),
+            approvedBy: r.disposalApprovedBy,
+            notes: r.disposalNotes,
+            by: r.disposedBy ? { email: r.disposedBy.email, name: names.get(r.disposedBy.id)?.name ?? null } : null,
+            ...(caller.values && { amount: money(r.disposalAmount), bookValue: money(r.disposalBookValue) }),
+          }
+        : null,
   };
   if (caller.values) {
     view.values = {

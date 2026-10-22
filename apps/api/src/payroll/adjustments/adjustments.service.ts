@@ -6,6 +6,7 @@ import {
   adjustmentTaxed,
   damageLimitWarning,
   adjustmentTypeLabel,
+  accessoriesOutOf,
   custodyDeductionProblem,
   ENTERED_TYPES,
   isAdjustmentType,
@@ -424,9 +425,11 @@ export class AdjustmentsService {
     if (!dto.custodyItemId) return null;
     const item = await this.prisma.custodyItem.findUnique({
       where: { id: dto.custodyItemId },
-      select: { id: true, returnCondition: true, custody: { select: { code: true, employeeId: true } }, asset: { select: { code: true } } },
+      select: { id: true, returnCondition: true, accessoriesMissing: true, custody: { select: { code: true, employeeId: true } }, asset: { select: { code: true } } },
     });
-    const problem = custodyDeductionProblem(dto, item && { returnCondition: item.returnCondition, employeeId: item.custody.employeeId }, employeeId);
+    // an item back without some of its accessories may become a deduction too (Assets step 4, owner, 22 October 2026)
+    const missingAccessories = item && item.returnCondition !== null ? accessoriesOutOf(item.accessoriesMissing).length : 0;
+    const problem = custodyDeductionProblem(dto, item && { returnCondition: item.returnCondition, employeeId: item.custody.employeeId, missingAccessories }, employeeId);
     if (problem) throw new BadRequestException(problem);
     return { id: item!.id, recordCode: item!.custody.code, assetCode: item!.asset.code };
   }

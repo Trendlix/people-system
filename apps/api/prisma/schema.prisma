@@ -2756,13 +2756,39 @@ model Asset {
   stockMoves         AssetStockMove[]
   countLines         AssetCountLine[]
   drafts             AssetDraft[] // the draft it was confirmed from (step 2, the Claude connector)
+  // step 4, accessories (owner, 22 October 2026: "Both kinds"): its checklist, and the main asset it is attached to
+  // (one level only: the API checks it) with the assets attached to it
+  accessories        AssetAccessory[]
+  parentAssetId      String?            @map("parent_asset_id") @db.Uuid
+  parent             Asset?             @relation("AssetAttached", fields: [parentAssetId], references: [id], onDelete: SetNull)
+  attached           Asset[]            @relation("AssetAttached")
 
   @@index([group, status])
   @@index([status])
   @@index([roomId])
   @@index([kitId])
   @@index([holderId])
+  @@index([parentAssetId])
   @@map("assets")
+}
+
+// An asset's accessories' checklist (step 4; owner, 22 October 2026: "like laptop charger under the charger, DJI ronin
+// accessories"; "Both kinds"): the small things that come with it, in order, each with how many and, when it has one, a
+// serial; at most 30 an asset. A custody item keeps those that went out with it (accessories_out). Deleted with it.
+model AssetAccessory {
+  id        String   @id @default(uuid()) @db.Uuid
+  assetId   String   @map("asset_id") @db.Uuid
+  asset     Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  position  Int
+  name      String
+  quantity  Int      @default(1)
+  serial    String?
+  notes     String?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@unique([assetId, position])
+  @@map("asset_accessories")
 }
 
 // An asset's photo, up to 6 an asset, kept in the database as the employee file's papers are (the daily backup has it),
@@ -2839,6 +2865,10 @@ model CustodyItem {
   valueAtOut      Decimal?           @map("value_at_out") @db.Decimal(14, 2)
   conditionOut    String?            @map("condition_out")
   accessories     String?
+  // step 4 (owner, 22 October 2026: accessories): the checklist's lines that went out with it ([{ name, quantity,
+  // serial }], a snapshot) and, once back, those that didn't come back (empty: all did)
+  accessoriesOut     Json?               @map("accessories_out")
+  accessoriesMissing Json?               @map("accessories_missing")
   returnedAt      DateTime?          @map("returned_at") @db.Timestamptz
   returnCondition String?            @map("return_condition") // good, damaged, missing
   receivedById    String?            @map("received_by") @db.Uuid

@@ -494,7 +494,7 @@ describe('Custody (e2e)', () => {
 
     const body = { employeeId: people.mona, month: NEXT_MONTH, kind: 'deduction', type: 'damage_loss', amount: 500, reason: `Damage: ${codes.camA} on ${first.code}`, custodyItemId: damaged.id };
     await post('custodian', '/payroll/adjustments', body).expect(403);
-    expect((await post('hr', '/payroll/adjustments', { ...body, custodyItemId: good.id }).expect(400)).body.message).toBe('Only an item returned damaged or missing becomes a deduction.');
+    expect((await post('hr', '/payroll/adjustments', { ...body, custodyItemId: good.id }).expect(400)).body.message).toBe('Only an item returned damaged or missing, or without some of its accessories, becomes a deduction.');
     expect((await post('hr', '/payroll/adjustments', { ...body, type: 'penalty' }).expect(400)).body.message).toBe('Only a Damage or loss deduction is linked to a custody item.');
     expect((await post('hr', '/payroll/adjustments', { ...body, employeeId: people.kareem }).expect(400)).body.message).toBe('Choose a damaged or missing item of this employee’s custody.');
     const made = (await post('hr', '/payroll/adjustments', body).expect(201)).body as { id: string; custody: unknown; status: string };

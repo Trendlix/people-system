@@ -84,6 +84,8 @@ async function NewAsset({ searchParams }: { searchParams: PageProps<'/assets/new
           photosHad={draft.productImages?.length ?? 0}
           ai={access.ai}
           draftId={draft.id}
+          accessories={draft.accessories ?? []}
+          parentCode={draft.attachTo?.code ?? null}
           surface="site"
           cancelHref={ASSET_PATHS.drafts}
         />

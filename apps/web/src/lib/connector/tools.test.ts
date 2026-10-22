@@ -446,6 +446,18 @@ describe('rooms and kits by what Claude says', () => {
     });
     expect(draftBody({}, {})).toEqual({});
   });
+
+  // owner, 22 October 2026: accessories, "Both kinds"
+  it('sends the accessories’ checklist and the main asset’s code; null clears them', () => {
+    expect(draftBody({ accessories: [{ name: 'Charger' }, { name: 'Battery', quantity: 2, serial: 'B-1' }], attach_to: 'PK-GMB-0001' }, {})).toEqual({
+      accessories: [
+        { name: 'Charger', quantity: 1, serial: null },
+        { name: 'Battery', quantity: 2, serial: 'B-1' },
+      ],
+      parentCode: 'PK-GMB-0001',
+    });
+    expect(draftBody({ accessories: null, attach_to: null }, {})).toEqual({ accessories: [], parentCode: null });
+  });
 });
 
 // ---------- add_product_image (owner, 21 October 2026: "let the mcp connector fetch the product photo and add it") ----------

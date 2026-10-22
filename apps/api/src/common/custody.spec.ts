@@ -146,7 +146,12 @@ describe('custody (shared)', () => {
     expect(custodyDeductionProblem({ kind: 'deduction', type: 'damage_loss' }, item, 'e1')).toBeNull();
     expect(custodyDeductionProblem({ kind: 'deduction', type: 'penalty' }, item, 'e1')).toBe('Only a Damage or loss deduction is linked to a custody item.');
     expect(custodyDeductionProblem({ kind: 'deduction', type: 'damage_loss' }, item, 'e2')).toBe('Choose a damaged or missing item of this employee’s custody.');
-    expect(custodyDeductionProblem({ kind: 'deduction', type: 'damage_loss' }, { ...item, returnCondition: 'good' }, 'e1')).toBe('Only an item returned damaged or missing becomes a deduction.');
+    expect(custodyDeductionProblem({ kind: 'deduction', type: 'damage_loss' }, { ...item, returnCondition: 'good' }, 'e1')).toBe(
+      'Only an item returned damaged or missing, or without some of its accessories, becomes a deduction.',
+    );
+    // step 4 (owner, 22 October 2026: accessories): back good but without some of its accessories
+    expect(custodyDeductionProblem({ kind: 'deduction', type: 'damage_loss' }, { ...item, returnCondition: 'good', missingAccessories: 1 }, 'e1')).toBeNull();
+    expect(custodyDeductionProblem({ kind: 'deduction', type: 'damage_loss' }, { ...item, returnCondition: 'good', missingAccessories: 0 }, 'e1')).not.toBeNull();
     expect(custodyDeductionProblem({ kind: 'deduction', type: 'damage_loss' }, null, 'e1')).toBe('Choose a damaged or missing item of this employee’s custody.');
   });
 });
