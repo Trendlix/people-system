@@ -125,6 +125,12 @@ model User {
   assetDraftsConfirmed  AssetDraft[]               @relation("AssetDraftConfirmation") // the asset drafts this user confirmed into assets
   assetDraftsDiscarded  AssetDraft[]               @relation("AssetDraftDiscard") // the asset drafts this user discarded
   assetDraftImagesAdded AssetDraftImage[]          @relation("AssetDraftImageAdd") // the product images Claude added to drafts in this user's name
+  clearanceDefaultsSet  ClearanceDefault[]         @relation("ClearanceDefaultChange") // the default clearance items this user changed last (22 October 2026)
+  offboardingOpened     OffboardingCase[]          @relation("OffboardingOpening") // the offboarding cases this user opened
+  offboardingCompleted  OffboardingCase[]          @relation("OffboardingCompletion") // the offboarding cases this user completed
+  offboardingRehireSet  OffboardingCase[]          @relation("OffboardingRehire") // the rehire decisions this user made
+  offboardingItemsDone  OffboardingItem[]          @relation("OffboardingItemDone") // the clearance items this user cleared
+  exitInterviewsMade    ExitInterview[]            @relation("ExitInterviewRecording") // the exit interviews this user sent or recorded
 
   @@map("users")
 }
@@ -666,6 +672,9 @@ model Employment {
   endDate          DateTime?              @map("end_date") @db.Date // empty while current
   endReason        String?                @map("end_reason") // packages/shared END_REASONS: resigned, terminated, contract_ended …
   endNote          String?                @map("end_note")
+  // when the system closed the leaver's sign-in for this ending (offboarding, 22 October 2026: their account disabled
+  // once the last working day has passed, unless they work here again), so it's done once: an Admin may turn it back on
+  signInClosedAt         DateTime?              @map("sign_in_closed_at") @db.Timestamptz
   createdAt        DateTime               @default(now()) @map("created_at") @db.Timestamptz
   updatedAt        DateTime               @updatedAt @map("updated_at") @db.Timestamptz
   contracts        Contract[]
@@ -682,6 +691,7 @@ model Employment {
   leaveBalances    LeaveBalanceYear[] // each year's annual leave under it
   leaveAdjustments LeaveAdjustment[]
   kpiScorecards    KpiScorecard[] // the KPI scorecards opened under it (21 October 2026)
+  offboarding            OffboardingCase? // its offboarding case, once it is ending (22 October 2026)
 
   @@index([employeeId])
   @@index([departmentId])
@@ -1000,6 +1010,7 @@ model EmploymentEnding {
   createdAt       DateTime            @default(now()) @map("created_at") @db.Timestamptz
   updatedAt       DateTime            @updatedAt @map("updated_at") @db.Timestamptz
   documents       GeneratedDocument[] // the resignation request, the clearance and Form 6 generated for it
+  offboarding     OffboardingCase[] // the offboarding case it opened (22 October 2026)
 
   @@index([employmentId])
   @@index([status])
@@ -3036,4 +3047,111 @@ model AssetDraftImage {
 
   @@index([draftId, position])
   @@map("asset_draft_images")
+}
+
+// ---------- offboarding ----------
+// Owner, 21 October 2026, with the Employees list: "when an employee resigns or contract ends with no renewal, where will
+// the data be stored? will it be another tab?"; 22 October 2026, the full module: "Former Employees tab, clearance
+// checklist (assets returned, laptop, access), exit interview, rehire eligibility, turnover numbers". The rules:
+// packages/shared offboarding.ts; the module: apps/api/src/offboarding.
+
+// The default clearance checklist, HR's to change (Clearance Checklist): copied into each case when it opens, so a change
+// never alters an open case. An item taken off is kept, switched off (active false), as records are never deleted here.
+model ClearanceDefault {
+  id          String   @id @default(uuid()) @db.Uuid
+  position    Int
+  label       String
+  owner       String // CLEARANCE_OWNERS: hr, manager, admin, finance, assets
+  active      Boolean  @default(true)
+  updatedById String?  @map("updated_by") @db.Uuid
+  updatedBy   User?    @relation("ClearanceDefaultChange", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@index([active, position])
+  @@map("clearance_defaults")
+}
+
+// An employment's offboarding case, one at most: opened when the CEO approves its ending, when it is ended by hand, or by
+// HR; cancelled when its ending is withdrawn (opened again by the next one approved). Open (in clearance) until HR
+// completes it, every item cleared, or a Super Admin completes it anyway with a reason. Its rehire eligibility, and when
+// HR was told every item is cleared (once).
+model OffboardingCase {
+  id              String            @id @default(uuid()) @db.Uuid
+  employmentId    String            @unique @map("employment_id") @db.Uuid
+  employment      Employment        @relation(fields: [employmentId], references: [id], onDelete: Cascade)
+  endingId        String?           @map("ending_id") @db.Uuid // the ending that opened it, if one did
+  ending          EmploymentEnding? @relation(fields: [endingId], references: [id], onDelete: SetNull)
+  status          String            @default("open") // OFFBOARDING_STATUSES: open, completed, cancelled
+  openedById      String?           @map("opened_by") @db.Uuid // none: opened by the system
+  openedBy        User?             @relation("OffboardingOpening", fields: [openedById], references: [id], onDelete: SetNull)
+  openedAt        DateTime          @default(now()) @map("opened_at") @db.Timestamptz
+  completedById   String?           @map("completed_by") @db.Uuid
+  completedBy     User?             @relation("OffboardingCompletion", fields: [completedById], references: [id], onDelete: SetNull)
+  completedAt     DateTime?         @map("completed_at") @db.Timestamptz
+  overrideReason  String?           @map("override_reason") // a Super Admin completed it with items pending: why
+  cancelledAt     DateTime?         @map("cancelled_at") @db.Timestamptz
+  clearedNoticeAt DateTime?         @map("cleared_notice_at") @db.Timestamptz // HR told every item is cleared
+  rehire          String? // REHIRE_ELIGIBILITIES: eligible, conditional, not_eligible
+  rehireReason    String?           @map("rehire_reason")
+  rehireSetById   String?           @map("rehire_set_by") @db.Uuid
+  rehireSetBy     User?             @relation("OffboardingRehire", fields: [rehireSetById], references: [id], onDelete: SetNull)
+  rehireSetAt     DateTime?         @map("rehire_set_at") @db.Timestamptz
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime          @updatedAt @map("updated_at") @db.Timestamptz
+  items           OffboardingItem[]
+  interview       ExitInterview?
+
+  @@index([status])
+  @@index([endingId])
+  @@map("offboarding_cases")
+}
+
+// A clearance item of a case, in order: one cleared by its owner (manual), or one the system ticks (assets: nothing left
+// in custody; final_settlement: settled in payroll's Unsettled), whose state is read live while the case is open and kept
+// when it is completed.
+model OffboardingItem {
+  id        String          @id @default(uuid()) @db.Uuid
+  caseId    String          @map("case_id") @db.Uuid
+  case      OffboardingCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  position  Int
+  kind      String          @default("manual") // CLEARANCE_KINDS: manual, assets, final_settlement
+  label     String
+  owner     String // CLEARANCE_OWNERS
+  status    String          @default("pending") // CLEARANCE_ITEM_STATUSES: pending, done, not_applicable
+  doneById  String?         @map("done_by") @db.Uuid
+  doneBy    User?           @relation("OffboardingItemDone", fields: [doneById], references: [id], onDelete: SetNull)
+  doneAt    DateTime?       @map("done_at") @db.Timestamptz
+  note      String?
+  createdAt DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@unique([caseId, position])
+  @@map("offboarding_items")
+}
+
+// A case's exit interview, once sent (by the employee, or recorded by HR) or declined: the reason for leaving, the five
+// ratings (1 to 5), whether they'd recommend working here, comments. Seen by HR, the CEO and a Super Admin (a C-level
+// person's by the CEO and a Super Admin only), never the manager.
+model ExitInterview {
+  id            String          @id @default(uuid()) @db.Uuid
+  caseId        String          @unique @map("case_id") @db.Uuid
+  case          OffboardingCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  status        String // submitted, declined
+  filledBy      String          @map("filled_by") // EXIT_FILLED_BY: employee, hr
+  reason        String? // EXIT_REASONS
+  ratingRole    Int?            @map("rating_role")
+  ratingManager Int?            @map("rating_manager")
+  ratingPay     Int?            @map("rating_pay")
+  ratingGrowth  Int?            @map("rating_growth")
+  ratingCulture Int?            @map("rating_culture")
+  recommend     String? // EXIT_RECOMMENDS
+  comments      String?
+  declinedNote  String?         @map("declined_note")
+  recordedById  String?         @map("recorded_by") @db.Uuid
+  recordedBy    User?           @relation("ExitInterviewRecording", fields: [recordedById], references: [id], onDelete: SetNull)
+  recordedAt    DateTime        @default(now()) @map("recorded_at") @db.Timestamptz
+  updatedAt     DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("exit_interviews")
 }

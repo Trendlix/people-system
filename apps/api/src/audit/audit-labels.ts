@@ -63,6 +63,11 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   leave_type: 'Leave type',
   leave_year_closing: 'Leave year closing',
   ocr_correction: 'Card reading fix',
+  // offboarding (owner, 22 October 2026: the full module): a leaver's case (clearance, exit interview, rehire
+  // eligibility), the default clearance checklist, and the turnover's Excel
+  clearance_checklist: 'Clearance checklist',
+  offboarding_case: 'Offboarding case',
+  turnover_report: 'Turnover report',
   office_networks: 'Office networks',
   paperwork: 'Employee document',
   payroll_adjustment: 'Addition or deduction',
@@ -233,6 +238,16 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   view_restricted: 'Viewed restricted data',
   waive_attendance: 'Waived the attendance cut',
   withdraw: 'Withdrew',
+  // offboarding (22 October 2026): a case opened (or opened again after a withdrawn ending), a clearance item cleared or
+  // put back, one added, rehire eligibility set, the exit interview sent or recorded, or declined; the turnover's Excel
+  add_item: 'Added a clearance item',
+  clear_item: 'Changed a clearance item',
+  decline_interview: 'Declined the exit interview',
+  exit_interview: 'Sent the exit interview',
+  open_case: 'Opened the offboarding case',
+  rehire: 'Set the rehire eligibility',
+  reopen_case: 'Opened the offboarding case again',
+  turnover_file: 'Downloaded the turnover',
 };
 
 /** "waive_attendance" → "Waive attendance": a key with no words of its own. */
@@ -304,6 +319,18 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   dueDate: 'Return date',
   handedOverBy: 'Handed over by',
   valueAtOut: 'Value when handed over',
+  // Assets step 4 (22 October 2026)
+  attachedTo: 'Attached to',
+  missingAccessories: 'Accessories missing',
+  disposalApprovedBy: 'Approved by',
+  leftKit: 'Left the kit',
+  detachedFrom: 'Detached from',
+  // offboarding (22 October 2026)
+  endingId: 'Ending',
+  overrideReason: 'Completed anyway because',
+  rehire: 'Rehire eligibility',
+  exitInterview: 'Exit interview',
+  filledBy: 'Filled in by',
 };
 
 /**

@@ -9,6 +9,7 @@ import type { Employment, Prisma } from '../generated/prisma/client.js';
 import { clearLeads, defaultManagerId } from '../organisation/departments/leads.js';
 import { gradeRange, inGradeRange } from '../organisation/grades/grade-range.js';
 import { RecurringDeductionsService } from '../payroll/adjustments/recurring.service.js';
+import { OffboardingService } from '../offboarding/offboarding.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ConfidentialService } from './confidential.service.js';
 import type { CreateEmploymentDto, EndEmploymentDto, UpdateEmploymentDto } from './employment.dto.js';
@@ -50,6 +51,7 @@ export class EmploymentsService {
     private readonly employees: EmployeesService,
     private readonly recurring: RecurringDeductionsService,
     private readonly confidential: ConfidentialService,
+    private readonly offboarding: OffboardingService,
   ) {}
 
   /**
@@ -139,6 +141,9 @@ export class EmploymentsService {
    */
   async end(employeeId: string, employmentId: string, dto: EndEmploymentDto, user: SessionUser) {
     await this.close(employeeId, employmentId, dto, user);
+    // its offboarding case opens (owner, 22 October 2026: the full module), and the leaver's sign-in is disabled once
+    // the last working day has passed
+    await this.offboarding.afterEnded(employmentId, user);
     return this.employees.get(employeeId, user);
   }
 

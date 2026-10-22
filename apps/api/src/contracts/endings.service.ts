@@ -6,6 +6,7 @@ import { addDays, fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../c
 import { EmploymentsService } from '../employees/employments.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
+import { OffboardingService } from '../offboarding/offboarding.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { CreateEndingDto, EndingNoteDto, RejectEndingDto } from './contracts.dto.js';
 import { EndingRulesService } from './ending-rules.service.js';
@@ -42,6 +43,7 @@ export class EndingsService {
     private readonly employments: EmploymentsService,
     private readonly rules: EndingRulesService,
     private readonly confidential: ConfidentialService,
+    private readonly offboarding: OffboardingService,
   ) {}
 
   /** Records an ending of a current employment, approved by HR (the creator), for the CEO to decide. */
@@ -209,6 +211,8 @@ export class EndingsService {
     });
     await this.record(user, before, 'approve', 'approved', { ceoNote: dto.note ?? null });
     await this.recordEmploymentStatus(user, before, 'notice_period');
+    // the notice period starts: its offboarding case opens (owner, 22 October 2026: the full module)
+    await this.offboarding.openForEnding(id, before.employmentId, user);
     return endingView(row, seesSalary(user));
   }
 
@@ -247,6 +251,8 @@ export class EndingsService {
     });
     await this.record(user, before, 'withdraw', 'withdrawn', { note: dto.note ?? null });
     if (restored) await this.recordEmploymentStatus(user, before, restored);
+    // its offboarding case, if one opened, is cancelled
+    await this.offboarding.cancelForEnding(id, before.employmentId, user);
     return endingView(row, seesSalary(user));
   }
 
@@ -267,6 +273,8 @@ export class EndingsService {
       return tx.employmentEnding.update({ where: { id }, data: { status: 'completed', completedAt: new Date() }, include: ROW });
     });
     await this.record(user, before, 'complete', 'completed', { endDate: lastWorkingDay, endReason });
+    // its offboarding case (opened at the approval, or now) and the leaver's sign-in once the last working day has passed
+    await this.offboarding.afterEnded(before.employmentId, user);
     return endingView(row, seesSalary(user));
   }
 

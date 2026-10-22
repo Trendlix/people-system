@@ -9,6 +9,7 @@ import { EditHeading, Empty, Loading, profileHref, RequireHr, todayInCairo } fro
 import { loadAllowanceTypes, loadContractSettings } from '../../contracts/data';
 import { firstContractDefaults, noProbationAgain } from '../../contracts/first-contract';
 import { EmploymentForm, HireForm } from '../employment-form';
+import { RehireWarning } from '../../../../offboarding/rehire-warning';
 
 // Hiring someone whose profile exists: their first employment, or a new one after the last ended (a rehire). One
 // employment is current at a time, and a new one starts after the last one ended. Hiring is one form (owner's decision,
@@ -40,6 +41,12 @@ async function AddEmployment({ params }: { params: Promise<{ id: string }> }) {
         ) : (
           pickers && (
             <div className="max-w-3xl space-y-4">
+              {/* their rehire eligibility from their offboarding (22 October 2026): a warning, never a block */}
+              {lastEnded?.endDate && (
+                <Suspense fallback={null}>
+                  <RehireWarning employeeId={employee.id} />
+                </Suspense>
+              )}
               {lastEnded?.endDate && (
                 <p className="text-sm text-muted">
                   Rehiring: the last employment ended on {formatDate(lastEnded.endDate)}

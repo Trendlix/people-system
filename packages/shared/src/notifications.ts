@@ -49,6 +49,11 @@ export const NOTIFICATION_KINDS = [
   'custody_return',
   'custody_overdue',
   'custody_unsigned',
+  // offboarding (owner, 22 October 2026: the full module; offboarding.ts): the clearance items waiting for someone when a
+  // case opens, HR told when every item is cleared, and the leaver asked for their exit interview
+  'offboarding_items',
+  'offboarding_cleared',
+  'exit_interview',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
@@ -99,6 +104,9 @@ export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
   custody_return: 'Custody',
   custody_overdue: 'Custody',
   custody_unsigned: 'Custody',
+  offboarding_items: 'Offboarding',
+  offboarding_cleared: 'Offboarding',
+  exit_interview: 'Exit interview',
 };
 
 // ---------- the reminders and the person's switches ----------

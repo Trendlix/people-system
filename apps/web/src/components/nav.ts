@@ -147,6 +147,11 @@ export const NAV: NavItem[] = [
       { href: '/offers', label: 'Offers', section: '/offers', roles: ['hr', 'ceo'] },
       // what each profile still lacks
       { href: '/employees/missing', label: 'Missing Details', section: '/employees/missing', roles: ['hr', 'ceo'] },
+      // offboarding (owner, 22 October 2026: the full module; "where will the data be stored? will it be another tab?"):
+      // the cases, for those who handle them and those who clear items on most (an Admin, a Super Admin, Finance); a
+      // direct manager opens theirs from its notification. Former Employees, for those who handle cases
+      { href: '/offboarding', label: 'Offboarding', section: '/offboarding', roles: ['hr', 'ceo', 'super_admin', 'admin', 'finance'] },
+      { href: '/employees/former', label: 'Former Employees', section: '/employees/former', roles: ['hr', 'ceo', 'super_admin'] },
     ],
   },
   // the month's pay: HR prepares a run, the CEO approves it, HR marks it paid (owner's decisions, 16 October 2026); a

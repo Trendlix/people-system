@@ -28,6 +28,8 @@ import { CorrectionsTable } from '../attendance/corrections/ui';
 import { loadMyHomes } from '../home-locations/data';
 import { approvedHomeOf, asksHome, homeProgressText, MY_HOME_ID, NEW_HOME_PATH } from '../home-locations/home-locations';
 import { HomeMap, MyHomesTable } from '../home-locations/ui';
+import { loadMyExitInterview } from '../offboarding/data';
+import { MY_EXIT_INTERVIEW_PATH } from '../offboarding/offboarding';
 import { loadMyWfh, loadWfhAllowance } from '../attendance/wfh/data';
 import { NEW_WFH_PATH, wfhAllowanceLine } from '../attendance/wfh/wfh';
 import { WfhTable } from '../attendance/wfh/ui';
@@ -507,11 +509,40 @@ async function HomeLocation() {
   );
 }
 
+/**
+ * The exit interview (owner, 22 October 2026: offboarding, the full module), while the person's offboarding case is open
+ * and it isn't done: a card above everything else, opening its form. Nothing otherwise.
+ */
+async function ExitInterview() {
+  const loaded = await loadMyExitInterview();
+  if (loaded.kind !== 'ok' || !loaded.value.interview || loaded.value.interview.status !== 'pending') return null;
+  const i = loaded.value.interview;
+  return (
+    <section aria-labelledby="exit-interview" className="card mt-6 flex flex-wrap items-center justify-between gap-3 border-accent/40 p-5">
+      <div>
+        <h2 id="exit-interview" className="text-lg font-semibold">
+          Exit Interview
+        </h2>
+        <p className="mt-1 text-sm text-muted">
+          A few questions about your time here{i.lastWorkingDay ? `, before your last working day, ${formatDate(i.lastWorkingDay)}` : ''}. Your manager never sees
+          your answers.
+        </p>
+      </div>
+      <Link href={MY_EXIT_INTERVIEW_PATH} className="btn btn-primary no-underline">
+        Fill it in
+      </Link>
+    </section>
+  );
+}
+
 export default function MyRequestsPage({ searchParams }: PageProps<'/my-requests'>) {
   return (
     <div className="max-w-4xl">
       <h1 className="text-2xl font-semibold">My Requests</h1>
       <p className="mt-1 text-muted">What you have asked for, newest first, with each decision as it is made.</p>
+      <Suspense fallback={null}>
+        <ExitInterview />
+      </Suspense>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>
           <Requests searchParams={searchParams} />

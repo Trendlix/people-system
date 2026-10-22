@@ -487,3 +487,9 @@ export * from './asset-counts.js';
 // Emp code, add contract status"; "State + end date"): signed and when it ends, the probation, a draft, the notice of an
 // approved ending, ended, none, the agreements of trainees and interns, freelance; an end within 30 days in amber
 export * from './contract-status.js';
+
+// offboarding (owner, 21 October 2026: "when an employee resigns or contract ends with no renewal, where will the data be
+// stored? will it be another tab?"; 22 October 2026, the full module): a case per ending employment, its clearance
+// checklist (HR's defaults, Assets returned and Final settlement paid ticked by the system), the exit interview, rehire
+// eligibility, the turnover's figures and the API's answers
+export * from './offboarding.js';

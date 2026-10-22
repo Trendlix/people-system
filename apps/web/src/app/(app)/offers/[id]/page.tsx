@@ -22,6 +22,7 @@ import { canBeSent, documentLabels, documentState, draftTemplateVersion, missing
 import { OfferStatusBadge } from '../ui';
 import { ExtendOffer, RecordAnswer, SendOffer, WithdrawOffer } from './offer-actions';
 import { ASK_SUPER_ADMIN, seesTemplates } from '../../templates/wording';
+import { RehireWarning } from '../../offboarding/rehire-warning';
 
 // One job offer: what it says, where it stands (a timeline from drafted to the profile made), what filling in its
 // template lacks, and what HR can do next: preview, download or print the PDF, edit, send it by email or copy the link,
@@ -338,6 +339,13 @@ async function Offer({ params, searchParams }: { params: Promise<{ id: string }>
           {formatDate(o.joinDate)}
         </p>
       </div>
+
+      {/* someone who worked here before, with their rehire eligibility (offboarding, 22 October 2026): a warning, never a block */}
+      {!o.hiredAt && (
+        <Suspense fallback={null}>
+          <RehireWarning employeeId={o.employeeId} email={o.email} />
+        </Suspense>
+      )}
 
       <MissingValues offer={o} status={status} templates={seesTemplates(user)} />
 

@@ -362,11 +362,13 @@ describe('the sidebar of HR, Finance, the CEO and Admins', () => {
     const pages = (...roles: Role[]) => peopleFor(...roles)?.items?.map((i) => i.label) ?? null;
 
     it('has each page for the roles that open it, and links to Employees', () => {
-      expect(pages('hr')).toEqual(['Employees', 'Contracts', 'Offers', 'Missing Details']);
-      expect(pages('ceo')).toEqual(['Employees', 'Contracts', 'Offers', 'Missing Details']);
-      expect(pages('finance')).toEqual(['Employees', 'Contracts']);
-      expect(pages('admin')).toEqual(['Employees']);
-      expect(pages('super_admin')).toEqual(['Employees']);
+      // Offboarding and Former Employees (owner, 22 October 2026: the full module): the cases for those who handle them
+      // and those who clear items on most of them; Former Employees for those who handle them
+      expect(pages('hr')).toEqual(['Employees', 'Contracts', 'Offers', 'Missing Details', 'Offboarding', 'Former Employees']);
+      expect(pages('ceo')).toEqual(['Employees', 'Contracts', 'Offers', 'Missing Details', 'Offboarding', 'Former Employees']);
+      expect(pages('finance')).toEqual(['Employees', 'Contracts', 'Offboarding']);
+      expect(pages('admin')).toEqual(['Employees', 'Offboarding']);
+      expect(pages('super_admin')).toEqual(['Employees', 'Offboarding', 'Former Employees']);
       expect(peopleFor('hr')?.href).toBe('/employees');
     });
 
@@ -375,6 +377,9 @@ describe('the sidebar of HR, Finance, the CEO and Admins', () => {
       expect(activeSubItem(people, '/employees')?.label).toBe('Employees');
       expect(activeSubItem(people, '/employees/0b8f0c1e-2d3a-4b5c-8d9e-0f1a2b3c4d5e')?.label).toBe('Employees');
       expect(activeSubItem(people, '/employees/missing')?.label).toBe('Missing Details');
+      expect(activeSubItem(people, '/employees/former')?.label).toBe('Former Employees');
+      expect(activeSubItem(people, '/offboarding/0b8f0c1e-2d3a-4b5c-8d9e-0f1a2b3c4d5e')?.label).toBe('Offboarding');
+      expect(activeSubItem(people, '/offboarding/turnover')?.label).toBe('Offboarding');
       expect(activeSubItem(people, '/contracts/calculator')?.label).toBe('Contracts');
       expect(activeSubItem(people, '/offers/new')?.label).toBe('Offers');
       // not in the menu (owner, 18 October 2026): under Employees, where they are opened from
