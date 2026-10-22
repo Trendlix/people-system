@@ -110,7 +110,8 @@ describe('Fingerprint sign-in (e2e)', () => {
     const ip = newIp();
 
     const res = await fingerprint(credential, ip).expect(200);
-    expect(res.body).toEqual({ id: userId, email, roles: ['hr'] });
+    // `employeeId`: their own profile, by their account's link (22 October 2026): none here
+    expect(res.body).toEqual({ id: userId, email, roles: ['hr'], employeeId: null });
     const fresh = cookieOf(res);
     expect(claimsOf(fresh)).toMatchObject({ sub: userId, sid: expect.any(String) });
     expect(sidOf(fresh)).not.toBe(sidOf(phone));

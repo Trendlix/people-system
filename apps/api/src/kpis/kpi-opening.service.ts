@@ -78,17 +78,18 @@ export class KpiOpeningService {
 
     const [confidential, ceoEmails, reads] = await Promise.all([
       this.confidential.ids(tx),
-      tx.user.findMany({ where: { isActive: true, roles: { some: { role: { key: 'ceo' } } } }, select: { email: true } }),
+      tx.user.findMany({ where: { isActive: true, roles: { some: { role: { key: 'ceo' } } } }, select: { employeeId: true } }),
       this.attendance.readMonth(month, people.map((e) => e.employeeId), tx),
     ]);
-    const ceos = new Set(ceoEmails.map((u) => u.email.toLowerCase()));
+    // the CEO's own profile by their account's link (users.employee_id, 22 October 2026: never by email)
+    const ceos = new Set(ceoEmails.flatMap((u) => (u.employeeId ? [u.employeeId] : [])));
 
     const opened: OpenedScorecard[] = [];
     for (const e of people) {
       const template = inForce.get(e.jobTitleId!)!;
       const isConfidential = confidential.has(e.employeeId);
       const approver = isConfidential ? null : await approverFor(tx, { employeeId: e.employeeId, managerId: e.managerId, departmentId: e.departmentId });
-      const scorer = kpiScorerOf({ confidential: isConfidential, isCeo: !!e.employee.workEmail && ceos.has(e.employee.workEmail.toLowerCase()), approverId: approver?.employeeId ?? null });
+      const scorer = kpiScorerOf({ confidential: isConfidential, isCeo: ceos.has(e.employeeId), approverId: approver?.employeeId ?? null });
       const made = await tx.kpiScorecard.create({
         data: {
           employeeId: e.employeeId,

@@ -66,7 +66,8 @@ function service(rows: PayrollLawYear[] = BUILT_IN_LAW_RATES.map((r) => rowOf(r)
         db.rows = db.rows.filter((r) => r.year !== where.year);
       },
     },
-    employee: { findMany: async () => [{ workEmail: 'super@example.com', fullNameEn: 'Salma Super' }] },
+    // who changed them, by the profile their account is linked to (22 October 2026)
+    user: { findMany: async () => [{ email: 'super@example.com', employee: { fullNameEn: 'Salma Super' } }] },
   };
   const auditService = { record: async (entry: AuditEntry) => void audit.push(entry) };
   return { lawRates: new LawRatesService(prisma as unknown as PrismaService, auditService as unknown as AuditService), db, audit };

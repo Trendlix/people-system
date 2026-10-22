@@ -18,6 +18,9 @@ export const PROFILE_TABS = [
   { key: 'insurance', label: 'Social Insurance' },
   { key: 'documents', label: 'Documents' },
   { key: 'custody', label: 'Custody' },
+  // their sign-in (owner, 22 October 2026: "any active employee with active contract should have access", managed "On
+  // the employee profile"): HR's, an Admin's and a Super Admin's (a C-level person's the CEO's), and the person's own
+  { key: 'access', label: 'Access' },
 ] as const;
 
 export type ProfileTabKey = (typeof PROFILE_TABS)[number]['key'];

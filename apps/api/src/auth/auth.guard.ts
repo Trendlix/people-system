@@ -129,7 +129,7 @@ export class AuthGuard implements CanActivate {
 
     const viewOnly = req.user.viewAs && !req.user.viewAs.act;
     if (viewOnly && changesData(req.method) && !this.reflector.getAllAndOverride<boolean>(VIEW_AS_CONTROL, targets)) {
-      throw new ForbiddenException(viewOnlyMessage(await this.nameOf(req.user.email)));
+      throw new ForbiddenException(viewOnlyMessage(await this.nameOf(req.user)));
     }
     return true;
   }
@@ -163,10 +163,10 @@ export class AuthGuard implements CanActivate {
     return true;
   }
 
-  /** The user's name from their employee profile (the one with their work email), else their email. */
-  private async nameOf(email: string): Promise<string> {
-    const own = await this.prisma.employee.findUnique({ where: { workEmail: email.toLowerCase() }, select: { fullNameEn: true } });
-    return own?.fullNameEn ?? email;
+  /** The user's name from their employee profile (the account's link, 22 October 2026), else their email. */
+  private async nameOf(user: SessionUser): Promise<string> {
+    const own = user.employeeId ? await this.prisma.employee.findUnique({ where: { id: user.employeeId }, select: { fullNameEn: true } }) : null;
+    return own?.fullNameEn ?? user.email;
   }
 }
 

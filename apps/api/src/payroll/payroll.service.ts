@@ -732,7 +732,8 @@ export class PayrollService {
   private async view(run: RunRow, user: SessionUser): Promise<PayrollRunView> {
     const [banks, approver, notOnRun, settings, confidential] = await Promise.all([
       isApproved(run.status) ? new Map<string, BankDetails>() : this.banks(run.lines.map((l) => l.employeeId)),
-      run.approvedBy ? this.prisma.employee.findUnique({ where: { workEmail: run.approvedBy.email.toLowerCase() }, select: { fullNameEn: true } }) : null,
+      // the CEO by the profile their account is linked to (22 October 2026: never by email)
+      run.approvedBy ? this.prisma.employee.findFirst({ where: { account: { is: { email: run.approvedBy.email } } }, select: { fullNameEn: true } }) : null,
       // the month's pending additions and deductions no line takes (owner, 17 October 2026)
       this.prisma.payrollAdjustment.groupBy({
         by: ['employeeId'],

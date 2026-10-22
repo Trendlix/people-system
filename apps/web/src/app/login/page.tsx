@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { Suspense } from 'react';
 import { Brand, BrandFallback, brandMetadata } from '@/components/brand';
 import { FingerprintSignIn } from './fingerprint-sign-in';
@@ -31,6 +32,10 @@ export default function LoginPage({ searchParams }: PageProps<'/login'>) {
             <FingerprintSignIn />
             <LoginForm />
           </Suspense>
+          {/* a reset link by email (owner, 22 October 2026: "Set-password link") */}
+          <p className="mt-4 text-center text-sm">
+            <Link href="/forgot-password">Forgot password?</Link>
+          </p>
         </div>
       </div>
     </main>

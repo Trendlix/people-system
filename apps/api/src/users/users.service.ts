@@ -17,6 +17,7 @@ const USER = {
   assetsAccess: true,
   createdAt: true,
   roles: { select: { role: { select: { key: true } } } },
+  employee: { select: { id: true, employeeCode: true, fullNameEn: true } },
 } as const satisfies Prisma.UserSelect;
 
 type UserRow = Prisma.UserGetPayload<{ select: typeof USER }>;
@@ -34,7 +35,7 @@ export interface UserView {
   createdAt: Date;
   /** The latest successful sign-in (with the password or the fingerprint), from the audit log. */
   lastSignInAt: Date | null;
-  /** The employee whose work email is this user's email. There is no other link between the two. */
+  /** The employee this account is linked to (users.employee_id, 22 October 2026); null for an account that isn't one's. */
   employee: { id: string; employeeCode: string; fullNameEn: string } | null;
 }
 
@@ -70,8 +71,12 @@ export class UsersService {
     private readonly audit: AuditService,
   ) {}
 
-  async list(): Promise<UserView[]> {
-    return this.views(await this.prisma.user.findMany({ select: USER, orderBy: { email: 'asc' } }));
+  /**
+   * Every account (the View-as list), or (`only: 'other'`) only those not linked to an employee: the Users page's, the
+   * employees' accounts being on their profiles' Access tab (owner, 22 October 2026: "On the employee profile").
+   */
+  async list(only?: 'other'): Promise<UserView[]> {
+    return this.views(await this.prisma.user.findMany({ where: only === 'other' ? { employeeId: null } : {}, select: USER, orderBy: { email: 'asc' } }));
   }
 
   async get(id: string): Promise<UserView> {
@@ -189,23 +194,16 @@ export class UsersService {
     return rows;
   }
 
-  /** Adds each user's last sign-in and linked employee, with one query for each. */
+  /** Adds each user's last sign-in, with one query; the linked employee comes with the user (users.employee_id). */
   private async views(users: UserRow[]): Promise<UserView[]> {
     if (!users.length) return [];
-    const [signIns, employees] = await Promise.all([
-      this.prisma.auditLog.groupBy({
-        by: ['entityId'],
-        // with the password, or with the fingerprint in the app (20 October 2026)
-        where: { action: { in: ['login', 'device_login'] }, entityType: ENTITY, entityId: { in: users.map((u) => u.id) } },
-        _max: { at: true },
-      }),
-      this.prisma.employee.findMany({
-        where: { workEmail: { in: users.map((u) => u.email) } },
-        select: { id: true, employeeCode: true, fullNameEn: true, workEmail: true },
-      }),
-    ]);
+    const signIns = await this.prisma.auditLog.groupBy({
+      by: ['entityId'],
+      // with the password, or with the fingerprint in the app (20 October 2026)
+      where: { action: { in: ['login', 'device_login'] }, entityType: ENTITY, entityId: { in: users.map((u) => u.id) } },
+      _max: { at: true },
+    });
     const lastSignIn = new Map(signIns.map((s) => [s.entityId, s._max.at]));
-    const employeeByEmail = new Map(employees.map(({ workEmail, ...e }) => [workEmail, e]));
     return users.map((u) => {
       const roles = inOrder(u.roles.map((r) => r.role.key));
       const assetsAccess: AssetsAccess = isAssetsAccess(u.assetsAccess) ? u.assetsAccess : 'none';
@@ -218,7 +216,7 @@ export class UsersService {
         assetsAccessInEffect: assetsAccessOf({ roles, assetsAccess }),
         createdAt: u.createdAt,
         lastSignInAt: lastSignIn.get(u.id) ?? null,
-        employee: employeeByEmail.get(u.email) ?? null,
+        employee: u.employee ?? null,
       };
     });
   }

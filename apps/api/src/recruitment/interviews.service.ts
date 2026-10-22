@@ -31,6 +31,7 @@ import type { Prisma } from '../generated/prisma/client.js';
 import { MailService } from '../mail/mail.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { accountOfEmployee } from '../users/employee-accounts.js';
 import { vacancyWhere } from './recruitment-access.js';
 import { hiringManagerApplications, recruitmentCaller, visibleApplications, type RecruitmentCaller } from './recruitment-scope.js';
 import { APPLICATION_ENTITY } from './recruitment-views.js';
@@ -438,7 +439,7 @@ export class InterviewsService {
       // claimed first, so two rounds never tell twice
       const { count } = await this.prisma.interviewInterviewer.updateMany({ where: { interviewId: r.interviewId, employeeId: r.employeeId, remindedAt: null }, data: { remindedAt: now } });
       if (!count) continue;
-      const user = await this.userOf(r.employee.workEmail);
+      const user = await this.userOf(r.employeeId);
       if (!user) continue;
       await this.notifications.notify([user], {
         kind: 'interview_feedback',
@@ -453,10 +454,10 @@ export class InterviewsService {
 
   // ---------- telling ----------
 
-  private async userOf(email: string | null | undefined): Promise<string | null> {
-    if (!email) return null;
-    const u = await this.prisma.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' }, isActive: true }, select: { id: true } });
-    return u?.id ?? null;
+  /** An employee's active account (users.employee_id, 22 October 2026: never by email); null without one. */
+  private async userOf(employeeId: string | null | undefined): Promise<string | null> {
+    const u = await accountOfEmployee(this.prisma, employeeId);
+    return u?.isActive ? u.id : null;
   }
 
   /**
@@ -528,7 +529,7 @@ export class InterviewsService {
     const link = `/recruitment/applicants/${r.application.id}`;
     const notifyEmployees = async (ids: readonly string[], title: string, body: string, m: 'REQUEST' | 'CANCEL') => {
       const employees = ids.length ? await this.prisma.employee.findMany({ where: { id: { in: [...ids] } }, select: { id: true, fullNameEn: true, workEmail: true } }) : [];
-      const users = (await Promise.all(employees.map((e) => this.userOf(e.workEmail)))).filter((u): u is string => !!u);
+      const users = (await Promise.all(employees.map((e) => this.userOf(e.id)))).filter((u): u is string => !!u);
       await this.notifications.notify(users, { kind: 'interview_scheduled', title, body, link });
       if (!this.mail.configured) return;
       for (const e of employees) {

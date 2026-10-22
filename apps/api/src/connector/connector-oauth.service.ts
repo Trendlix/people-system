@@ -376,7 +376,7 @@ export class ConnectorOAuthService {
     if (session.kind !== 'connector') throw new ForbiddenException('Only the Claude connector asks this.');
     const [row, own, caller] = await Promise.all([
       this.prisma.session.findUniqueOrThrow({ where: { id: session.id }, select: { scope: true, resource: true, client: { select: { name: true } } } }),
-      this.prisma.employee.findUnique({ where: { workEmail: user.email.toLowerCase() }, select: { fullNameEn: true } }),
+      (user.employeeId ? this.prisma.employee.findUnique({ where: { id: user.employeeId }, select: { fullNameEn: true } }) : null),
       assetsCallerOf(this.prisma, user),
     ]);
     if (caller.access === 'none') throw new ForbiddenException(ASSETS_REFUSALS.none);

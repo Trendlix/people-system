@@ -5,6 +5,7 @@ import { assertDeletes, isSuperAdmin } from '../../auth/roles.js';
 import type { SessionUser } from '../../auth/session-user.js';
 import type { PayrollLawYear, Prisma } from '../../generated/prisma/client.js';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { namesByAccountEmail } from '../../users/employee-accounts.js';
 import { ratesSent, type PutLawRatesDto } from './law-rates.dto.js';
 
 const ENTITY = 'payroll_law_rates';
@@ -86,9 +87,8 @@ export class LawRatesService {
   /** Every year's rates with who changed them last, oldest first. */
   async list(): Promise<LawRatesView[]> {
     const rows = await this.prisma.payrollLawYear.findMany({ orderBy: { year: 'asc' }, include: { updatedBy: { select: { id: true, email: true } } } });
-    const emails = [...new Set(rows.flatMap((r) => (r.updatedBy ? [r.updatedBy.email.toLowerCase()] : [])))];
-    const people = emails.length ? await this.prisma.employee.findMany({ where: { workEmail: { in: emails } }, select: { workEmail: true, fullNameEn: true } }) : [];
-    const names = new Map(people.map((p) => [p.workEmail?.toLowerCase(), p.fullNameEn]));
+    // named by the profile each account is linked to (22 October 2026: never by email)
+    const names = await namesByAccountEmail(this.prisma, rows.flatMap((r) => (r.updatedBy ? [r.updatedBy.email] : [])));
     return rows.map((r) => ({
       ...lawRatesOf(r),
       // always there for the page: null when not set (owner, 18 October 2026)

@@ -224,7 +224,7 @@ export class CustodyService {
 
   /** Who "Handed over by" starts with: the caller's own name (their employee profile's), else their email; and their profile. */
   private async handedOverByOf(user: SessionUser): Promise<{ name: string; employeeId: string | null }> {
-    const me = await this.prisma.employee.findUnique({ where: { workEmail: user.email.toLowerCase() }, select: { id: true, fullNameEn: true } });
+    const me = await (user.employeeId ? this.prisma.employee.findUnique({ where: { id: user.employeeId }, select: { id: true, fullNameEn: true } }) : null);
     return me ? { name: me.fullNameEn, employeeId: me.id } : { name: user.email, employeeId: null };
   }
 

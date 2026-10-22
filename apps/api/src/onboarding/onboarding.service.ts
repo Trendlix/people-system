@@ -26,6 +26,7 @@ import { holdsOwner, managesOffboarding, marksItem, offboardingCaller, type Offb
 import type { AddItemDto, ChecklistDto, MarkItemDto } from '../offboarding/offboarding.dto.js';
 import { placeName, userNames } from '../payroll/adjustments/people.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { accountOfEmployee } from '../users/employee-accounts.js';
 
 // Onboarding (owner, 22 October 2026, the ATS's Phase 2; the original plan's spec §12: "onboarding checklist (incl. ID &
 // documents, JD sign-off, KPI template assignment)"; packages/shared onboarding.ts), offboarding's mirror:
@@ -184,9 +185,9 @@ export class OnboardingService {
           );
         }
         if (count('manager') && row.employment.managerId) {
-          const manager = await this.prisma.employee.findUnique({ where: { id: row.employment.managerId }, select: { workEmail: true } });
-          const u = manager?.workEmail ? await this.prisma.user.findFirst({ where: { email: { equals: manager.workEmail, mode: 'insensitive' }, isActive: true }, select: { id: true } }) : null;
-          if (u) add([u.id], count('manager'));
+          // the manager's account by its link (users.employee_id, 22 October 2026: never by email)
+          const u = await accountOfEmployee(this.prisma, row.employment.managerId);
+          if (u?.isActive) add([u.id], count('manager'));
         }
       }
       const name = row.employment.employee.fullNameEn;

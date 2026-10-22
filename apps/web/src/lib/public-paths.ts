@@ -4,6 +4,10 @@
 // browser tab icon there too (owner's request, 15 October 2026).
 const PUBLIC_PATHS = new Set([
   '/login',
+  // set-password links and Forgot password (owner, 22 October 2026: "Set-password link"): opened without a session, the
+  // link's token (after its #) the proof
+  '/set-password',
+  '/forgot-password',
   '/company-logo',
   '/company-thumbnail',
   // the careers page's list of open jobs (recruitment, 22 October 2026)

@@ -35,6 +35,7 @@ import { PrismaModule } from './prisma/prisma.module.js';
 import { ReimbursementsModule } from './reimbursements/reimbursements.module.js';
 import { TemplatesModule } from './templates/templates.module.js';
 import { UsersModule } from './users/users.module.js';
+import { EmployeeAccessModule } from './employee-access/employee-access.module.js';
 import { WfhModule } from './wfh/wfh.module.js';
 
 @Module({
@@ -78,6 +79,8 @@ import { WfhModule } from './wfh/wfh.module.js';
     // the Claude connector's sign-in (owner, 21 October 2026: "the connection method"), Assets' step 2
     ConnectorModule,
     UsersModule,
+    // every active employee gets access (22 October 2026): accounts, set-password links, the sweep
+    EmployeeAccessModule,
     AuditLogModule,
   ],
   controllers: [HealthController, VersionController],

@@ -128,7 +128,8 @@ export class RemindersService implements OnModuleDestroy {
     const none: CheckInReminderView = { due: false, shiftStart: null, checkInPath: REQUEST_LINKS.myAttendance };
     if (user.viewAs) return none;
     const days = reminderDays(now);
-    const person = (await this.people(this.prisma, days, { email: user.email })).find((p) => p.userId === user.id);
+    if (!user.employeeId) return none;
+    const person = (await this.people(this.prisma, days, { employeeId: user.employeeId })).find((p) => p.userId === user.id);
     if (!person) return none;
     const due = checkInReminderNow(person, await this.facts(this.prisma, [person], days), now);
     return due ? { ...none, due: true, shiftStart: due.shiftStart } : none;
@@ -157,11 +158,11 @@ export class RemindersService implements OnModuleDestroy {
   }
 
   /**
-   * Those who may be reminded on the days looked at: an employee with a work email that an active user signs in with,
-   * and an employment under a shift covering one of the days, with their switches (none kept: both on). Only under
-   * `shiftIds` when given (a round), or only the one with `email` (the popup's question).
+   * Those who may be reminded on the days looked at: an employee whose account (users.employee_id, 22 October 2026) is
+   * active, and an employment under a shift covering one of the days, with their switches (none kept: both on). Only
+   * under `shiftIds` when given (a round), or only `employeeId` (the popup's question).
    */
-  private async people(db: Db, days: readonly string[], only: { shiftIds?: string[]; email?: string } = {}): Promise<ReminderPerson[]> {
+  private async people(db: Db, days: readonly string[], only: { shiftIds?: string[]; employeeId?: string } = {}): Promise<ReminderPerson[]> {
     const [first, last] = [days[0], days[days.length - 1]];
     const covering = {
       joinDate: { lte: toDateOnly(last) },
@@ -169,10 +170,10 @@ export class RemindersService implements OnModuleDestroy {
       shiftId: only.shiftIds ? { in: only.shiftIds } : { not: null },
     } satisfies Prisma.EmploymentWhereInput;
     const employees = await db.employee.findMany({
-      where: { workEmail: only.email !== undefined ? only.email.toLowerCase() : { not: null }, employments: { some: covering } },
+      where: { ...(only.employeeId !== undefined && { id: only.employeeId }), account: { is: { isActive: true } }, employments: { some: covering } },
       select: {
         id: true,
-        workEmail: true,
+        account: { select: { id: true, notificationSettings: { select: { checkInReminder: true, checkOutReminder: true } } } },
         employments: {
           where: covering,
           orderBy: { joinDate: 'desc' },
@@ -186,14 +187,9 @@ export class RemindersService implements OnModuleDestroy {
       },
     });
     if (!employees.length) return [];
-    const users = await db.user.findMany({
-      where: { isActive: true, email: { in: employees.map((e) => e.workEmail!.toLowerCase()) } },
-      select: { id: true, email: true, notificationSettings: { select: { checkInReminder: true, checkOutReminder: true } } },
-    });
-    const byEmail = new Map(users.map((u) => [u.email.toLowerCase(), u]));
     const out: ReminderPerson[] = [];
     for (const e of employees) {
-      const user = byEmail.get(e.workEmail!.toLowerCase());
+      const user = e.account;
       if (!user) continue;
       out.push({
         userId: user.id,

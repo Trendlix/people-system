@@ -3,6 +3,7 @@ import { AppModule } from './app.module.js';
 import { configureApp } from './app.setup.js';
 import { CustodySchedulerService } from './assets/custody-scheduler.service.js';
 import { KpiSchedulerService } from './kpis/kpi-scheduler.service.js';
+import { EmployeeAccessSchedulerService } from './employee-access/employee-access-scheduler.service.js';
 import { OffboardingSchedulerService } from './offboarding/offboarding-scheduler.service.js';
 import { CvReadingsService } from './recruitment/cv-readings.service.js';
 import { RecruitmentSchedulerService } from './recruitment/recruitment-scheduler.service.js';
@@ -24,10 +25,12 @@ async function bootstrap() {
   // offboarding's round (22 October 2026): leavers' sign-in disabled once their last working day has passed, and HR told
   // of the cases whose every item is cleared; the tests' apps don't start it either
   app.get(OffboardingSchedulerService).start();
-  // the CVs read in the background, the ones already here first (22 October 2026: "make the OCR egine reads the CV and analyse it")
-  app.get(CvReadingsService).start();
+  // the accounts of active employees with active contracts (22 October 2026), made every few minutes; nothing is sent
+  app.get(EmployeeAccessSchedulerService).start();
   // recruitment's round (22 October 2026, Phase 2): each interviewer reminded of a scorecard not given the day after the
   // interview; the tests' apps don't start it either
   app.get(RecruitmentSchedulerService).start();
+  // the CVs read in the background, the ones already here first (22 October 2026: "make the OCR egine reads the CV and analyse it")
+  app.get(CvReadingsService).start();
 }
 await bootstrap();

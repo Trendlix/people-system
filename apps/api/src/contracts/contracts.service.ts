@@ -33,6 +33,7 @@ import type { SessionUser } from '../auth/session-user.js';
 import { addDays, addMonths, fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../common/date-only.js';
 import { seesSalary } from '../employees/access.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
+import { EmployeeAccessService } from '../employee-access/employee-access.service.js';
 import { EmployeesService } from '../employees/employees.service.js';
 import { Prisma, type EmployeeStatus } from '../generated/prisma/client.js';
 import { LawRatesService } from '../payroll/law-rates/law-rates.service.js';
@@ -320,6 +321,7 @@ export class ContractsService {
     private readonly allowances: AllowancesService,
     private readonly lawRates: LawRatesService,
     private readonly confidential: ConfidentialService,
+    private readonly access: EmployeeAccessService,
   ) {}
 
   /** An employment's contract versions, newest first. */
@@ -734,6 +736,9 @@ export class ContractsService {
     if (before.raiseRequest) {
       await this.audit.record({ userId: user.id, action: 'done', entityType: 'raise_request', entityId: before.raiseRequest.id, diff: { contract: before.number, status: { from: before.raiseRequest.status, to: 'done' } } });
     }
+    // a signed contract in force gives access (owner, 22 October 2026: "any active employee with active contract should
+    // have access"): their account made now, nothing sent
+    await this.access.afterChange(employment.employeeId);
     return contractView(row, await this.context(user, employment));
   }
 

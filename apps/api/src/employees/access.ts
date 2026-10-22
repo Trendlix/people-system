@@ -3,7 +3,7 @@ import { actsAs, isSuperAdmin } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 
 // Who sees which employees and which restricted fields (spec §1). Managers and employees are matched to their own
-// employee record by work email: a sign-in account whose email is an employee's work email is that employee.
+// employee record by their account's link (users.employee_id, 22 October 2026), never by email.
 
 // a Super Admin counts as an Admin here, as everywhere (see auth/roles.ts)
 const has = (user: SessionUser, roles: Role[]) => actsAs(user.roles, roles);
@@ -45,6 +45,8 @@ export const seesEndings = (user: SessionUser) => has(user, ['hr', 'admin', 'ceo
 /** An employee's change requests: HR, Admin and the CEO, besides the employee themself (owner's decision, 15 October 2026). */
 export const seesChangeRequests = (user: SessionUser) => has(user, ['hr', 'admin', 'ceo']);
 
-/** The employee themself: a sign-in account whose email is the profile's work email. */
-export const isSelf = (user: SessionUser, employee: { workEmail: string | null }) =>
-  !!employee.workEmail && employee.workEmail === user.email.toLowerCase();
+/**
+ * The employee themself: the profile their account is linked to (users.employee_id; owner, 22 October 2026: "any active
+ * employee with active contract should have access"), never matched by email any more.
+ */
+export const isSelf = (user: SessionUser, employee: { id: string }) => !!user.employeeId && user.employeeId === employee.id;

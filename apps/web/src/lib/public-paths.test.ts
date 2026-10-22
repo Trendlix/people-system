@@ -10,6 +10,12 @@ describe('pages open without signing in', () => {
     expect(isPublicPath('/employees')).toBe(false);
   });
 
+  it('include the set-password page and Forgot password (22 October 2026), but nothing under them', () => {
+    expect(isPublicPath('/set-password')).toBe(true);
+    expect(isPublicPath('/forgot-password')).toBe(true);
+    expect(isPublicPath('/set-password/other')).toBe(false);
+  });
+
   it("include a candidate's job offer and its document, but not HR's offers", () => {
     expect(isPublicPath('/offer/Xy3_k-9aBcDeFgHiJkLmNoPq')).toBe(true);
     expect(isPublicPath('/offer/Xy3_k-9aBcDeFgHiJkLmNoPq/document')).toBe(true);

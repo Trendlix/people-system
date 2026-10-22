@@ -1,24 +1,21 @@
 import { toDateOnly } from '../../common/date-only.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 import type { PrismaService } from '../../prisma/prisma.service.js';
+import { namesByAccountEmail } from '../../users/employee-accounts.js';
 import { firstDay, lastDay } from '../months.js';
 
 // Who did what, and who can be paid what in a month, for Additions / Deductions and Unsettled (owner, 17 October 2026).
 
-/** A user as these pages name them: by the employee whose work email they sign in with, else by the email. */
+/** A user as these pages name them: by the employee their account is linked to (22 October 2026), else by the email. */
 export interface UserRef {
   id: string;
   name: string;
 }
 
-/** The names of the users given, by id: the employee's English name for a sign-in that is their work email. */
+/** The names of the users given, by id: the English name of the employee their account is linked to, else the email. */
 export async function userNames(prisma: PrismaService, users: readonly ({ id: string; email: string } | null)[]): Promise<Map<string, UserRef>> {
   const known = users.filter((u): u is { id: string; email: string } => !!u);
-  const emails = [...new Set(known.map((u) => u.email.toLowerCase()))];
-  const people = emails.length
-    ? await prisma.employee.findMany({ where: { workEmail: { in: emails } }, select: { workEmail: true, fullNameEn: true } })
-    : [];
-  const byEmail = new Map(people.map((p) => [p.workEmail!.toLowerCase(), p.fullNameEn]));
+  const byEmail = await namesByAccountEmail(prisma, known.map((u) => u.email));
   return new Map(known.map((u) => [u.id, { id: u.id, name: byEmail.get(u.email.toLowerCase()) ?? u.email }]));
 }
 

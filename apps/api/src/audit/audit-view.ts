@@ -24,7 +24,7 @@ export interface AuditRow {
   at: Date;
 }
 
-/** A sign-in account: its email, and the name of the employee whose work email it is, if any. */
+/** A sign-in account: its email, and the name of the employee it is linked to, if any. */
 export interface AuditPerson {
   id: string;
   email: string;

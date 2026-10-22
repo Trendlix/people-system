@@ -10,6 +10,7 @@ import { cLevelTitle } from '@/lib/confidential';
 import { withTeams } from '@/lib/departments';
 import { formatDate } from '@/lib/format';
 import { placeOrder, showsDepartment } from '@/lib/place-groups';
+import { ACCESS_FILTERS, accessBadgeClass, accessLabel, invitableIds, matchesAccess, readAccessFilter, WITHOUT_CONTRACT_LABEL, type AccessFilter } from '@/lib/access';
 import { getCurrentUser } from '@/lib/session';
 import type { Department, EmployeeSummary, Grade } from '@/lib/types';
 import { StaffOnly } from '../staff-only';
@@ -17,6 +18,7 @@ import { directorySections } from './directory-groups';
 import { CARD_FIXES_PATH } from './paperwork';
 import { canSeeSalaryRaises, RAISES_PATH } from '../payroll/reports/salary-raises/salary-raises';
 import { CONTRACT_TONE_STYLE, directoryContractStatus } from './contract-status';
+import { INVITE_FORM_ID, InviteBar } from './invite-bar';
 import { Avatar, canAddEmployees, canSeeCardFixes, canSeeEmployeeFiles, Empty, gradeLabel, Loading, seesEveryone, StandingBadge, todayInCairo } from './ui';
 
 // Not an employee's: someone who is only an employee and/or a direct manager is sent to their dashboard, which links
@@ -29,12 +31,14 @@ import { Avatar, canAddEmployees, canSeeCardFixes, canSeeEmployeeFiles, Empty, g
 // 19 October 2026: "make C level Employees details not visible to HR") is marked so; for those who see only their card
 // (`restricted`), the row has its name, photo, work email, job title, department or team and standing, the contract, the
 // grade and the manager a dash, and the name opens the card. The Contract column is where the employee code was (owner,
-// 21 October 2026: "instead of the Emp code, add contract status"); the search still finds a code.
+// 21 October 2026: "instead of the Emp code, add contract status"); the search still finds a code. The Access column
+// (owner, 22 October 2026: "any active employee with active contract should have access"), for HR, an Admin and a Super
+// Admin: where each one's sign-in stands, with a filter, and Send invitations to those ticked or to everyone not invited.
 
 const UUID = /^[0-9a-f-]{36}$/i;
 
 type Query = Record<string, string | string[] | undefined>;
-type Filters = { q: string; departmentId: string; gradeId: string; standing: Standing | '' };
+type Filters = { q: string; departmentId: string; gradeId: string; standing: Standing | ''; access: AccessFilter };
 
 const one = (v: string | string[] | undefined) => (typeof v === 'string' ? v : '');
 
@@ -48,6 +52,7 @@ function readFilters(query: Query): Filters {
     departmentId: UUID.test(departmentId) ? departmentId : '',
     gradeId: UUID.test(gradeId) ? gradeId : '',
     standing: (STANDINGS as readonly string[]).includes(standing) ? (standing as Standing) : '',
+    access: readAccessFilter(one(query.access)),
   };
 }
 
@@ -58,6 +63,7 @@ function directoryHref(f: Filters): string {
   if (f.departmentId) params.set('departmentId', f.departmentId);
   if (f.gradeId) params.set('gradeId', f.gradeId);
   if (f.standing) params.set('standing', f.standing);
+  if (f.access) params.set('access', f.access);
   const qs = params.toString();
   return qs ? `/employees?${qs}` : '/employees';
 }
@@ -120,8 +126,25 @@ function ContractCell({ employee, today }: { employee: EmployeeSummary; today: s
   return <td className={`tabular-nums ${CONTRACT_TONE_STYLE[status.tone]}`}>{status.text}</td>;
 }
 
-/** Employee, Contract, Job Title, Grade, Manager and Standing: what a group's heading spans. */
+/** Employee, Contract, Job Title, Grade, Manager and Standing: what a group's heading spans (Access adds one). */
 const COLUMN_COUNT = 6;
+
+/** Where their sign-in stands, and a box to tick them for Send invitations when they have an account and no invitation. */
+function AccessCell({ employee: e }: { employee: EmployeeSummary }) {
+  const a = e.restricted ? null : e.access;
+  if (!a) return <td>{dash}</td>;
+  return (
+    <td className="whitespace-nowrap">
+      <span className="inline-flex items-center gap-2">
+        {a.state === 'not_invited' && (
+          <input type="checkbox" name="employeeIds" value={e.id} form={INVITE_FORM_ID} aria-label={`Invite ${e.fullNameEn}`} className="size-4 accent-accent" />
+        )}
+        <span className={accessBadgeClass(a.state)}>{accessLabel(a.state)}</span>
+      </span>
+      {a.withoutContract && <div className="mt-1 text-xs text-warn">{WITHOUT_CONTRACT_LABEL}</div>}
+    </td>
+  );
+}
 
 async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
   const [user, departments, grades, everyone, query] = await Promise.all([
@@ -140,7 +163,7 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
     return seesEveryone(user) || canAdd ? (
       <Empty>No employees yet. {canAdd && <Link href="/employees/new">Add the first employee.</Link>}</Empty>
     ) : (
-      <Empty>No employee record uses your sign-in email ({user.email}) as its work email yet. Ask HR to add it to your profile.</Empty>
+      <Empty>Your account ({user.email}) isn’t linked to an employee profile yet. Ask HR.</Empty>
     );
   }
 
@@ -152,7 +175,8 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
     (e) =>
       matches(e, f.q) &&
       (!inDepartment || (e.employment?.department != null && inDepartment.has(e.employment.department.id))) &&
-      (!f.gradeId || e.employment?.grade?.id === f.gradeId),
+      (!f.gradeId || e.employment?.grade?.id === f.gradeId) &&
+      matchesAccess(e.restricted ? null : e.access, f.access),
   );
   const rows = f.standing ? base.filter((e) => e.standing === f.standing) : base;
   // departments and teams in the order set on Organization (owner, 19 October 2026)
@@ -160,7 +184,10 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
   const counts = new Map<Standing, number>();
   for (const e of base) counts.set(e.standing, (counts.get(e.standing) ?? 0) + 1);
   const standings = STANDINGS.filter((s) => counts.has(s) || s === f.standing);
-  const filtered = Boolean(f.q || f.departmentId || f.gradeId || f.standing);
+  const filtered = Boolean(f.q || f.departmentId || f.gradeId || f.standing || f.access);
+  // the Access column: the API sends it to HR, an Admin and a Super Admin only
+  const showAccess = everyone.some((e) => !e.restricted && e.access !== undefined);
+  const columns = COLUMN_COUNT + (showAccess ? 1 : 0);
 
   return (
     <section className="card">
@@ -201,6 +228,21 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
             ))}
           </Select>
         </div>
+        {showAccess && (
+          <div>
+            <label htmlFor="employee-access" className="label">
+              Access
+            </label>
+            <Select id="employee-access" name="access" defaultValue={f.access} className="input min-w-44">
+              <option value="">Any access</option>
+              {ACCESS_FILTERS.map((a) => (
+                <option key={a.value} value={a.value}>
+                  {a.label}
+                </option>
+              ))}
+            </Select>
+          </div>
+        )}
         {f.standing && <input type="hidden" name="standing" value={f.standing} />}
         <button type="submit" className="btn btn-secondary">
           Search
@@ -240,18 +282,19 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
                 <th>Grade</th>
                 <th>Manager</th>
                 <th>Standing</th>
+                {showAccess && <th>Access</th>}
               </tr>
             </thead>
             {/* Active, then Inactive, each by department, then team (owner's request, 16 October 2026) */}
             {sections.map((section) => (
               <tbody key={section.key}>
-                <GroupHeading level="section" name={section.label} count={section.count} span={COLUMN_COUNT} note={section.note} />
+                <GroupHeading level="section" name={section.label} count={section.count} span={columns} note={section.note} />
                 {section.groups.map((g) => (
                   <Fragment key={g.department ?? ''}>
-                    {showsDepartment(section.groups, g) && <GroupHeading level="department" name={g.department} count={g.count} span={COLUMN_COUNT} />}
+                    {showsDepartment(section.groups, g) && <GroupHeading level="department" name={g.department} count={g.count} span={columns} />}
                     {g.teams.map((t) => (
                       <Fragment key={t.team ?? ''}>
-                        {t.team !== null && <GroupHeading level="team" name={t.team} count={t.rows.length} span={COLUMN_COUNT} />}
+                        {t.team !== null && <GroupHeading level="team" name={t.team} count={t.rows.length} span={columns} />}
                         {t.rows.map((e) => (
                           <tr key={e.id}>
                             <td>
@@ -271,6 +314,7 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
                             <td>
                               <StandingBadge standing={e.standing} />
                             </td>
+                            {showAccess && <AccessCell employee={e} />}
                           </tr>
                         ))}
                       </Fragment>
@@ -282,6 +326,8 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
           </table>
         </div>
       )}
+
+      {showAccess && <InviteBar notInvited={invitableIds(everyone.map((e) => ({ id: e.id, access: e.restricted ? null : e.access }))).length} />}
 
       <p className="border-t border-line px-4 py-3 text-sm text-muted">
         Showing {rows.length} of {everyone.length} {everyone.length === 1 ? 'employee' : 'employees'}

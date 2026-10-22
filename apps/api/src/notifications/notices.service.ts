@@ -4,6 +4,7 @@ import { actsAs } from '../auth/roles.js';
 import { fromDateOnly } from '../common/date-only.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { activeAccountsOf } from '../users/employee-accounts.js';
 import { NotificationsService, type NotificationInput } from './notifications.service.js';
 import {
   cancelledByHrText,
@@ -294,21 +295,9 @@ export class NoticesService {
     return users.filter((u) => test(u.roles.map((r) => r.role.key as Role))).map((u) => u.id);
   }
 
-  /** The active user signing in as each employee (the one with their work email), by employee id. */
+  /** The active account of each employee (users.employee_id, 22 October 2026: never by email), by employee id. */
   async usersOf(employeeIds: readonly string[]): Promise<Map<string, string>> {
-    const out = new Map<string, string>();
-    const ids = [...new Set(employeeIds)];
-    if (!ids.length) return out;
-    const employees = await this.prisma.employee.findMany({ where: { id: { in: ids }, workEmail: { not: null } }, select: { id: true, workEmail: true } });
-    const emails = employees.map((e) => e.workEmail!.toLowerCase());
-    if (!emails.length) return out;
-    const users = await this.prisma.user.findMany({ where: { email: { in: emails }, isActive: true }, select: { id: true, email: true } });
-    const byEmail = new Map(users.map((u) => [u.email.toLowerCase(), u.id]));
-    for (const e of employees) {
-      const userId = byEmail.get(e.workEmail!.toLowerCase());
-      if (userId) out.set(e.id, userId);
-    }
-    return out;
+    return activeAccountsOf(this.prisma, employeeIds);
   }
 
   private async toEmployee(employeeId: string, n: NotificationInput): Promise<void> {

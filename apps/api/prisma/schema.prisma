@@ -29,6 +29,11 @@ model User {
   passwordHash       String?                    @map("password_hash")
   mfaEnabled         Boolean                    @default(false) @map("mfa_enabled")
   isActive           Boolean                    @default(true) @map("is_active")
+  // the employee whose account this is (owner, 22 October 2026: "any active employee with active contract should have
+  // access"): the link, never the email (the migration filled it for the accounts whose email was an employee's work
+  // email); none for an account that isn't an employee's (the Users page's)
+  employeeId         String?                    @unique @map("employee_id") @db.Uuid
+  employee           Employee?                  @relation("UserEmployee", fields: [employeeId], references: [id], onDelete: SetNull)
   // the Assets access (owner, 21 October 2026: "3 levels per user"): none, viewer, custodian, manager (ASSETS_ACCESS_LEVELS),
   // set on the Users page by an Admin or a Super Admin; a Super Admin is always a manager, the CEO and Finance always
   // at least viewers (assetsAccessOf, packages/shared assets.ts)
@@ -117,6 +122,8 @@ model User {
   correctionsMade    AttendanceCorrection[]     @relation("AttendanceCorrectionCreation") // attendance corrections this user asked for, or made directly as HR
   correctionSteps    AttendanceCorrectionStep[] @relation("AttendanceCorrectionStepActor") // steps of attendance corrections this user took
   sessions           Session[] // this user's sign-ins, active and ended
+  accessLinks        AccessLink[]               @relation("AccessLinkUser") // their set-password links (22 October 2026)
+  accessLinksMade    AccessLink[]               @relation("AccessLinkCreatedBy") // the set-password links this user made for others
   deviceCredentials  DeviceCredential[] // the phones this user signs in on with a fingerprint, active and revoked
   homeLocationsMade  HomeLocationRequest[]      @relation("HomeLocationCreation") // home location requests this user sent (their own)
   homeLocationSteps  HomeLocationStep[]         @relation("HomeLocationStepActor") // steps of home location requests this user took
@@ -562,6 +569,10 @@ enum WorkArrangement {
 model Employee {
   id                         String                 @id @default(uuid()) @db.Uuid
   employeeCode               String                 @unique @map("employee_code") // EMP-0142: shown everywhere, different from the national ID
+  // the email they sign in with, as HR chose it (owner, 22 October 2026: "let the HR Choose which mail to use"): work or
+  // personal; none: the work email, else the personal one (packages/shared signInEmailOf)
+  signInEmail                String?                @map("sign_in_email")
+  account                    User?                  @relation("UserEmployee") // their sign-in account (users.employee_id)
   // their Employee Id in Zoho People (owner, 19 October 2026: attendance imported from Zoho, people matched by name and
   // the links HR confirms remembered), e.g. "103" or "10001 - HYB": the next import matches them by it
   zohoPeopleId               String?                @unique @map("zoho_people_id")
@@ -3632,4 +3643,38 @@ model ExitInterview {
   updatedAt     DateTime        @updatedAt @map("updated_at") @db.Timestamptz
 
   @@map("exit_interviews")
+}
+
+// A set-password link (owner, 22 October 2026: "Set-password link"): the first password (invite) or a new one (reset),
+// for one account, valid 7 days, used once. Only the token's SHA-256 is kept; a new link cancels the older ones waiting.
+model AccessLink {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  user        User      @relation("AccessLinkUser", fields: [userId], references: [id], onDelete: Cascade)
+  purpose     String // invite, reset
+  tokenHash   String    @unique @map("token_hash")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz
+  usedAt      DateTime? @map("used_at") @db.Timestamptz
+  cancelledAt DateTime? @map("cancelled_at") @db.Timestamptz
+  createdById String?   @map("created_by") @db.Uuid
+  createdBy   User?     @relation("AccessLinkCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  emailed     Boolean   @default(false)
+
+  @@index([userId, createdAt])
+  @@map("access_links")
+}
+
+// Forgot password's and the set-password page's requests, counted for their limits (22 October 2026): by email, by
+// address. Kept a day.
+model AccessLinkRequest {
+  id    String   @id @default(uuid()) @db.Uuid
+  kind  String // forgot, set_failed
+  email String?
+  ip    String?
+  at    DateTime @default(now()) @db.Timestamptz
+
+  @@index([kind, email, at])
+  @@index([kind, ip, at])
+  @@map("access_link_requests")
 }

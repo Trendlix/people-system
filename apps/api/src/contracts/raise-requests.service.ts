@@ -461,7 +461,7 @@ export class RaiseRequestsService {
     });
     if (!employee) throw new NotFoundException('Employee not found.');
     const employment = employee.employments[0] ?? null;
-    const me = await this.prisma.employee.findUnique({ where: { workEmail: user.email.toLowerCase() }, select: { id: true } });
+    const me = await (user.employeeId ? this.prisma.employee.findUnique({ where: { id: user.employeeId }, select: { id: true } }) : null);
     const self = isSelf(user, employee);
     const manager = !!me && !!employment && employment.managerId === me.id;
     const { requester, viewer } = raiseRequestAccess({ roles: user.roles, self, manager });

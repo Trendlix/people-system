@@ -12,6 +12,7 @@ import { RecurringDeductionsService } from '../payroll/adjustments/recurring.ser
 import { OffboardingService } from '../offboarding/offboarding.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ConfidentialService } from './confidential.service.js';
+import { EmployeeAccessService } from '../employee-access/employee-access.service.js';
 import type { CreateEmploymentDto, EndEmploymentDto, UpdateEmploymentDto } from './employment.dto.js';
 import { EmployeesService } from './employees.service.js';
 
@@ -52,6 +53,7 @@ export class EmploymentsService {
     private readonly recurring: RecurringDeductionsService,
     private readonly confidential: ConfidentialService,
     private readonly offboarding: OffboardingService,
+    private readonly access: EmployeeAccessService,
   ) {}
 
   /**
@@ -131,6 +133,8 @@ export class EmploymentsService {
     const diff = changes(fields(before), values);
     if (Object.keys(diff).length) {
       await this.audit.record({ userId: user.id, action: 'update', entityType: ENTITY, entityId: employmentId, diff: { employeeId, ...diff } });
+      // their access follows (22 October 2026): an account made if they should have one now
+      await this.access.afterChange(employeeId);
     }
     return this.employees.get(employeeId, user);
   }

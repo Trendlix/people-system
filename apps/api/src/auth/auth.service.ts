@@ -113,7 +113,8 @@ export class AuthService {
     // their Assets access in effect and whether they see the values (owner, 21 October 2026: "3 levels per user";
     // "CEO and Finance"), for the sidebar and the pages; the API checks each request itself
     const [own, assets] = await Promise.all([
-      this.prisma.employee.findUnique({ where: { workEmail: user.email.toLowerCase() }, select: { id: true, fullNameEn: true } }),
+      // their own profile by the account's link (22 October 2026: never by the email)
+      user.employeeId ? this.prisma.employee.findUnique({ where: { id: user.employeeId }, select: { id: true, fullNameEn: true } }) : null,
       assetsCallerOf(this.prisma, user),
     ]);
     // in charge of a department or team, while a current employee (owner, 19 October 2026: the person in charge)

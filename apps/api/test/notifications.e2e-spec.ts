@@ -552,7 +552,8 @@ describe('Notifications (e2e)', () => {
     });
 
     it('by the same rule as the push, with a fake clock: within the 2 hours, not checked in, whatever was sent or switched', async () => {
-      const mona = await prisma.user.findUniqueOrThrow({ where: { id: users.mona }, select: { id: true, email: true } });
+      // with her account's link to her profile, as a session has it (22 October 2026)
+      const mona = await prisma.user.findUniqueOrThrow({ where: { id: users.mona }, select: { id: true, email: true, employeeId: true } });
       const asMona = { ...mona, roles: ['employee' as const] };
       // twelve sent to Mona by now, her switch "off": still due until 11:00
       expect(await reminders.checkInReminderFor(asMona, at('08:59'))).toEqual(none);

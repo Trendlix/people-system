@@ -27,14 +27,23 @@ export interface SessionUser {
    * IDs masked (auth.guard.ts, developer.interceptor.ts; packages/shared developer.ts). Left out for anyone else.
    */
   developer?: boolean;
+  /**
+   * Their own employee profile (owner, 22 October 2026: "any active employee with active contract should have access"):
+   * the account's link (users.employee_id), never its email; null for an account that isn't an employee's. Left out by a
+   * session made before it was read (treated as none).
+   */
+  employeeId?: string | null;
 }
 
 /** A user as the database has them (with their roles), for a session. */
 export const WITH_ROLES = { roles: { include: { role: true } } } as const;
 
-export function sessionUserOf(user: { id: string; email: string; roles: { role: { key: string } }[] }): SessionUser {
-  return { id: user.id, email: user.email, roles: user.roles.map((r) => r.role.key as Role) };
+export function sessionUserOf(user: { id: string; email: string; roles: { role: { key: string } }[]; employeeId?: string | null }): SessionUser {
+  return { id: user.id, email: user.email, roles: user.roles.map((r) => r.role.key as Role), employeeId: user.employeeId ?? null };
 }
+
+/** The employee profile a request is answered for (its link): null for an account that isn't an employee's. */
+export const ownEmployeeId = (user: Pick<SessionUser, 'employeeId'>): string | null => user.employeeId ?? null;
 
 /**
  * The user a request is answered as: a developer (the Developer role in the database) with a Super Admin's sight
@@ -46,8 +55,8 @@ export function answeredAs(user: SessionUser): SessionUser {
 }
 
 /**
- * GET /auth/me: the signed-in user, with their own employee profile's id: the profile whose work email is their email,
- * the same match as everywhere else (see employees/access.ts), or null. The web finds "my profile" with it. `name`: that
+ * GET /auth/me: the signed-in user, with their own employee profile's id: the profile their account is linked to
+ * (users.employee_id, 22 October 2026), or null. The web finds "my profile" with it. `name`: that
  * profile's name in English, or null; while switched, the banner says whom the Super Admin is viewing as with it.
  * `leads`: whether that profile is in charge of a department or team (owner, 19 October 2026: "i want to add department
  * lead person, the person in charge"), its head or its lead: the web shows them My Team without the manager role, for

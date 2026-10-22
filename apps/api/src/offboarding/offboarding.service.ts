@@ -40,6 +40,7 @@ import type { Prisma } from '../generated/prisma/client.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { placeName, userNames } from '../payroll/adjustments/people.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { accountOfEmployee } from '../users/employee-accounts.js';
 import { holdsOwner, managesOffboarding, marksItem, offboardingCaller, type OffboardingCaller } from './offboarding-access.js';
 import type { AddItemDto, ChecklistDto, CompleteCaseDto, DeclineInterviewDto, ExitInterviewDto, MarkItemDto, RehireDto } from './offboarding.dto.js';
 
@@ -283,7 +284,7 @@ export class OffboardingService {
     }
     // the leaver, while they can still sign in: not once their last working day has passed (their sign-in ends then)
     const gone = !!row.employment.endDate && fromDateOnly(row.employment.endDate) < todayInCairo();
-    const leaver = gone ? null : await this.userOf(row.employment.employee.workEmail);
+    const leaver = gone ? null : await this.userOf(row.employment.employee.id);
     if (leaver?.isActive && !row.interview) {
       await this.notifications.notify([leaver.id], {
         kind: 'exit_interview',
@@ -326,8 +327,7 @@ export class OffboardingService {
       );
     }
     if (count('manager') && row.employment.managerId) {
-      const manager = await this.prisma.employee.findUnique({ where: { id: row.employment.managerId }, select: { workEmail: true } });
-      const u = await this.userOf(manager?.workEmail ?? null);
+      const u = await this.userOf(row.employment.managerId);
       if (u?.isActive) add([u.id], count('manager'));
     }
     return out;
@@ -338,9 +338,9 @@ export class OffboardingService {
     return rows.map((r) => r.id);
   }
 
-  private async userOf(email: string | null | undefined) {
-    if (!email) return null;
-    return this.prisma.user.findFirst({ where: { email: { equals: email, mode: 'insensitive' } }, select: { id: true, email: true, isActive: true, roles: { select: { role: { select: { key: true } } } } } });
+  /** The account linked to an employee (users.employee_id, 22 October 2026: never by email); null without one. */
+  private async userOf(employeeId: string | null | undefined) {
+    return accountOfEmployee(this.prisma, employeeId);
   }
 
   // ---------- the sign-in ----------
@@ -360,7 +360,7 @@ export class OffboardingService {
     });
     if (!e || e.signInClosedAt || !e.endDate || fromDateOnly(e.endDate) >= today) return false;
     const still = await this.prisma.employment.count({ where: { employeeId: e.employeeId, id: { not: e.id }, OR: [{ endDate: null }, { endDate: { gte: toDateOnly(today) } }] } });
-    const user = still ? null : await this.userOf(e.employee.workEmail);
+    const user = still ? null : await this.userOf(e.employeeId);
     const roles = user?.roles.map((r) => r.role.key) ?? [];
     const disable = !!user && user.isActive && !roles.includes('admin') && !roles.includes('super_admin');
     const marked = await this.prisma.$transaction(async (tx) => {
@@ -520,8 +520,8 @@ export class OffboardingService {
   }
 
   private async signInOf(row: CaseRow): Promise<OffboardingCaseView['signIn']> {
-    const user = await this.userOf(row.employment.employee.workEmail);
-    if (!user) return { state: 'none', email: null, note: 'No sign-in account uses their work email.' };
+    const user = await this.userOf(row.employment.employee.id);
+    if (!user) return { state: 'none', email: null, note: 'They have no sign-in account.' };
     if (!user.isActive) return { state: 'disabled', email: user.email, note: 'Their sign-in is disabled: their sessions ended and their phones were signed out.' };
     const roles = user.roles.map((r) => r.role.key);
     if (row.employment.signInClosedAt) {

@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query } from '@nestjs/common';
 import { CurrentUser, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { CreateUserDto, SetPasswordDto, UpdateUserDto } from './user.dto.js';
@@ -11,9 +11,10 @@ import { UsersService } from './users.service.js';
 export class UsersController {
   constructor(private readonly users: UsersService) {}
 
+  /** ?only=other: the accounts not linked to an employee (the Users page); else every account (the View-as list). */
   @Get()
-  list() {
-    return this.users.list();
+  list(@Query('only') only?: string) {
+    return this.users.list(only === 'other' ? 'other' : undefined);
   }
 
   @Get(':id')

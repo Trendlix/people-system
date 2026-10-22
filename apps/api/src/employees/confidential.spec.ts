@@ -10,7 +10,8 @@ import { ConfidentialService } from './confidential.service.js';
 // C-level (their current employment's grade, else their latest's), whom that hides from the caller, and the guard of
 // the routes about one person's record (404, as for a record that isn't there).
 
-const user = (roles: Role[], email = 'someone@trendlix.com'): SessionUser => ({ id: 'u', email, roles });
+// a session carries its account's link to the profile (22 October 2026): the person whose work email it is, here
+const user = (roles: Role[], email = 'someone@trendlix.com'): SessionUser => ({ id: 'u', email, roles, employeeId: PEOPLE.find((p) => p.email === email)?.id ?? null });
 
 /** Employees with their employments newest first, as the service reads them; `email`: their work email. */
 const PEOPLE = [
@@ -26,8 +27,9 @@ function prismaStub() {
   return {
     employee: {
       findMany: async () => PEOPLE.map((p) => ({ id: p.id, employments: p.employments.slice(0, 1) })),
-      findUnique: async ({ where }: { where: { workEmail: string } }) => {
-        const p = PEOPLE.find((x) => x.email === where.workEmail);
+      // their own profile is found by their account's link (22 October 2026)
+      findUnique: async ({ where }: { where: { id: string } }) => {
+        const p = PEOPLE.find((x) => x.id === where.id);
         return p ? { id: p.id } : null;
       },
     },

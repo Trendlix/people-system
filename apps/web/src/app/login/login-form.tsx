@@ -15,7 +15,7 @@ export function LoginForm() {
       <input type="hidden" name="next" value={next} />
       <div>
         <label htmlFor={fid('email')} className="mb-1 block text-sm font-medium">
-          Work email
+          Email
         </label>
         <input
           id={fid('email')}

@@ -522,3 +522,8 @@ export * from './onboarding.js';
 // the Developer role (owner, 22 October 2026: "i want to create a role for develoeprs, not showing the real numbers"):
 // read only, money and personal IDs masked by the API
 export * from './developer.js';
+
+// every active employee gets access (owner, 22 October 2026: "any active employee with active contract should have
+// access"): the account linked to the employee, made automatically, its first password by a set-password link, managed
+// on the profile's Access tab
+export * from './employee-access.js';

@@ -14,7 +14,7 @@ import {
   type Standing,
 } from '@trendlix/shared';
 import { AuditService, changes } from '../audit/audit.service.js';
-import { assertDeletes } from '../auth/roles.js';
+import { actsAs, assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { fromDateOnly, toDateOnly, todayInCairo } from '../common/date-only.js';
 import { fromTimeOfDay } from '../common/time-of-day.js';
@@ -36,6 +36,7 @@ import { leadsOf, NO_LEADS } from '../organisation/departments/leads.js';
 import { storedCrop } from '../paperwork/photo-crop.js';
 import { LawRatesService } from '../payroll/law-rates/law-rates.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { accessStates } from '../employee-access/access-state.js';
 import {
   deletesEmployees,
   editsEmployees,
@@ -302,6 +303,9 @@ export class EmployeesService {
         fullNameEn: true,
         fullNameAr: true,
         workEmail: true,
+        // their access (22 October 2026): read for the Access column, never sent on
+        personalEmail: true,
+        signInEmail: true,
         employments: {
           orderBy: NEWEST_FIRST,
           take: 1,
@@ -327,7 +331,15 @@ export class EmployeesService {
       orderBy: { employeeCode: 'asc' },
     });
     const photos = seesEmployeeFile(user) ? await this.photos(rows.map((e) => e.id)) : null;
-    return rows.map(({ employments: [latest], ...e }) => {
+    // the Access column (owner, 22 October 2026: "any active employee with active contract should have access"): for HR,
+    // an Admin and a Super Admin, of the people whose details they see
+    const access = actsAs(user.roles, ['hr', 'admin'])
+      ? await accessStates(
+          this.prisma,
+          rows.filter((r) => !confidential.hidden.has(r.id)),
+        )
+      : null;
+    return rows.map(({ employments: [latest], personalEmail: _personal, signInEmail: _choice, ...e }) => {
       const current = latest && !latest.endDate ? latest : null;
       const ended = latest?.endDate ? latest : null;
       const card = {
@@ -351,6 +363,7 @@ export class EmployeesService {
       return {
         ...card,
         restricted: false as const,
+        ...(access && { access: access.get(e.id) ?? null }),
         employment: current && {
           id: current.id,
           status: current.status,
@@ -714,7 +727,7 @@ export class EmployeesService {
   /** Which employees this user may see (spec §1: row-level access). Also used for their contracts. */
   async visibleTo(user: SessionUser): Promise<Prisma.EmployeeWhereInput> {
     if (seesEveryone(user)) return {};
-    const me = await this.prisma.employee.findUnique({ where: { workEmail: user.email.toLowerCase() }, select: { id: true } });
+    const me = await (user.employeeId ? this.prisma.employee.findUnique({ where: { id: user.employeeId }, select: { id: true } }) : null);
     if (!me) return { id: { in: [] } };
     if (!user.roles.includes('manager')) return { id: me.id };
     // a manager sees themself and the people whose current employment reports to them

@@ -41,9 +41,9 @@ export class ConfidentialService {
     return (await this.ids()).has(employeeId);
   }
 
-  /** The caller's own employee profile: the one whose work email they sign in with, if any. */
+  /** The caller's own employee profile: the one their account is linked to (users.employee_id), if any. */
   async selfId(user: SessionUser): Promise<string | null> {
-    const me = await this.prisma.employee.findUnique({ where: { workEmail: user.email.toLowerCase() }, select: { id: true } });
+    const me = await (user.employeeId ? this.prisma.employee.findUnique({ where: { id: user.employeeId }, select: { id: true } }) : null);
     return me?.id ?? null;
   }
 

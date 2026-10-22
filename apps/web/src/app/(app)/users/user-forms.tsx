@@ -146,7 +146,7 @@ export function NewUserForm({ action, choices }: { action: Action; choices: read
           className="input"
         />
         <p id={fid('email-hint')} className="hint">
-          They sign in with this email. Use their work email, so the account is linked to their employee record.
+          They sign in with this email. For someone who isn’t an employee: employees get their account by themselves, on their profile’s Access tab.
         </p>
       </div>
       <TemporaryPassword id={fid('password')} label="Temporary password" />

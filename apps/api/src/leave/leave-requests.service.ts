@@ -379,10 +379,10 @@ export class LeaveRequestsService {
 
   // ---------- helpers ----------
 
-  /** The caller, with their own employee profile: the one whose work email they sign in with. */
+  /** The caller, with their own employee profile: the one their account is linked to. */
   async caller(user: SessionUser): Promise<Caller> {
     const [me, confidential] = await Promise.all([
-      this.prisma.employee.findUnique({ where: { workEmail: user.email.toLowerCase() }, select: { id: true } }),
+      (user.employeeId ? this.prisma.employee.findUnique({ where: { id: user.employeeId }, select: { id: true } }) : null),
       // the C-level people, and those hidden from the caller (owner, 19 October 2026)
       this.confidential.view(user),
     ]);

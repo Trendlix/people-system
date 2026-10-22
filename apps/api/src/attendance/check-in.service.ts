@@ -285,7 +285,7 @@ export class CheckInService {
 
   /** The caller's profile and current employment, and why they can't check in (null: they can). */
   private async who(user: SessionUser): Promise<{ employeeId: string | null; employment: CheckInEmploymentRow | null; refusal: string | null }> {
-    const me = await this.prisma.employee.findUnique({ where: { workEmail: user.email.toLowerCase() }, select: { id: true } });
+    const me = await (user.employeeId ? this.prisma.employee.findUnique({ where: { id: user.employeeId }, select: { id: true } }) : null);
     const employment = me ? await this.prisma.employment.findFirst({ where: { employeeId: me.id, endDate: null }, orderBy: { joinDate: 'desc' }, select: EMPLOYMENT }) : null;
     return { employeeId: me?.id ?? null, employment, refusal: checkInRefusal(!!me, employment) };
   }

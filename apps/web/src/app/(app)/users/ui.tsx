@@ -34,5 +34,17 @@ export function RoleBadges({ roles }: { roles: Role[] }) {
 /** What an Admin sees on a Super Admin's account, in place of the forms that change it (the API refuses them with 403). */
 export const ONLY_SUPER_ADMIN_CHANGES = 'Only a Super Admin can change this account.';
 
-export const LINKED_BY_WORK_EMAIL =
-  'Linked by work email: a user is linked to the employee whose work email is the same as their sign-in email.';
+/**
+ * The Users page keeps the accounts that aren't an employee's (owner, 22 October 2026: "i dont thint that the users and
+ * employees needs to be divided, any active employee with active contract should have access"; asked where: "On the
+ * employee profile"): every employee with a signed contract in force gets an account by themself, managed on their
+ * profile's Access tab.
+ */
+export const USERS_PAGE_NOTE =
+  'For someone who isn’t an employee: a developer, an outside accountant. Employees get their account by themselves once their contract is signed, on their profile’s Access tab.';
+
+/**
+ * Who opens an employee's account on their profile rather than here: HR, who open every profile (an Admin without HR
+ * doesn't, and keeps the account's page here).
+ */
+export const managesAccessOnProfile = (user: { roles: readonly Role[] }) => user.roles.includes('hr');

@@ -173,6 +173,8 @@ describe('Employees (e2e)', () => {
         // C-level or not, and whether only the directory card is sent (owner, 19 October 2026)
         confidential: false,
         restricted: false,
+        // their access, for HR (22 October 2026): no employment, so no active contract
+        access: { state: 'not_eligible', withoutContract: false },
         employment: null,
         lastEnded: null,
       });
@@ -314,6 +316,8 @@ describe('Employees (e2e)', () => {
         standing: 'active',
         confidential: false,
         restricted: false,
+        // their access, for HR (22 October 2026): no email to sign in with
+        access: { state: 'no_email', withoutContract: false },
         employment: {
           id: hired.employment.id,
           status: 'active',

@@ -212,7 +212,12 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   paid: 'Marked paid',
   paid_out: 'Paid out held pay',
   password_change: 'Changed the password',
+  // set-password links (22 October 2026): an invitation to the first password, one made for a reset, and a password
+  // set with a link
+  invite: 'Invited to sign in',
+  password_link: 'Made a set-password link',
   password_reset: 'Reset the password',
+  password_set: 'Set the password with a link',
   payroll_bank_file: 'Downloaded a bank file',
   payroll_statistics_file: 'Downloaded the payroll statistics',
   payslip_file: 'Downloaded payslips',
@@ -374,6 +379,8 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   rehire: 'Rehire eligibility',
   exitInterview: 'Exit interview',
   filledBy: 'Filled in by',
+  // the email an employee signs in with, as HR chose it (22 October 2026)
+  signInEmail: 'Sign-in email',
 };
 
 /**

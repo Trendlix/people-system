@@ -1,4 +1,5 @@
 import type {
+  AccessState,
   ApproverRole,
   AssetsAccess,
   AssetsAccessView,
@@ -67,8 +68,8 @@ export interface SessionUser {
   email: string;
   roles: Role[];
   /**
-   * The signed-in user's own employee profile (the one whose work email is their sign-in email), or null when they have
-   * none. Left out by an API from before 15 October 2026, hence optional: the layout then finds the profile itself.
+   * The signed-in user's own employee profile (the one their account is linked to, 22 October 2026), or null when they
+   * have none. Left out by an API from before 15 October 2026, hence optional: the layout then finds the profile itself.
    */
   employeeId?: string | null;
   /**
@@ -471,6 +472,11 @@ export interface FullEmployeeSummary extends EmployeeSummaryBase {
   employment: EmployeeSummaryEmployment | null;
   /** How the last employment ended, when there is no current one. */
   lastEnded: { endDate: string; endReason: EndReason } | null;
+  /**
+   * Where their access stands (owner, 22 October 2026: "any active employee with active contract should have access"),
+   * and whether they have it without an active contract: for HR, an Admin and a Super Admin; left out for anyone else.
+   */
+  access?: { state: AccessState; withoutContract: boolean } | null;
 }
 
 /**
@@ -788,7 +794,7 @@ export interface UserAccount {
   createdAt: string;
   /** The latest successful sign-in; null = never signed in. */
   lastSignInAt: string | null;
-  /** The employee whose work email is this user's email (linked by work email, nothing else). */
+  /** The employee this account is linked to (users.employee_id, 22 October 2026); null: not an employee's account. */
   employee: { id: string; employeeCode: string; fullNameEn: string } | null;
   /**
    * The Assets access set on the Users page (owner, 21 October 2026: "3 levels per user"), and the one in effect: a

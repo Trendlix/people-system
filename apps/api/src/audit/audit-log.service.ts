@@ -242,15 +242,12 @@ export class AuditLogService {
     return { users: people, employees, employeesByCode: new Map([...employees.values()].map((e) => [e.employeeCode, e])), records, names };
   }
 
-  /** Accounts by id, each with the name of the employee whose work email it is. Ids that aren't accounts are skipped. */
+  /** Accounts by id, each with the name of the employee it is linked to (22 October 2026). Ids that aren't accounts are skipped. */
   private async people(ids: Iterable<string>): Promise<Map<string, AuditPerson>> {
-    const users = await chunked(ids, (part) => this.prisma.user.findMany({ where: { id: { in: part } }, select: { id: true, email: true } }));
-    const owners = await chunked(
-      users.map((u) => u.email.toLowerCase()),
-      (part) => this.prisma.employee.findMany({ where: { workEmail: { in: part } }, select: { workEmail: true, fullNameEn: true } }),
+    const users = await chunked(ids, (part) =>
+      this.prisma.user.findMany({ where: { id: { in: part } }, select: { id: true, email: true, employee: { select: { fullNameEn: true } } } }),
     );
-    const nameOf = new Map(owners.map((o) => [o.workEmail!, o.fullNameEn]));
-    return new Map(users.map((u) => [u.id, { id: u.id, email: u.email, name: nameOf.get(u.email.toLowerCase()) ?? null }]));
+    return new Map(users.map((u) => [u.id, { id: u.id, email: u.email, name: u.employee?.fullNameEn ?? null }]));
   }
 
   /** The names of the organisation's records an entry's diff names by id: a department, a job title, a grade … */

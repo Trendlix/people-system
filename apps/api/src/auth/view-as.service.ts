@@ -40,7 +40,7 @@ export class ViewAsService {
 
   /** POST /auth/view-as: only a Super Admin in their own session; never nested, never to themself or a deactivated user. */
   async start(user: SessionUser, session: SessionClaims, userId: string): Promise<NewSession> {
-    if (user.viewAs) throw new ConflictException(alreadyViewing(await this.nameOf(user.email)));
+    if (user.viewAs) throw new ConflictException(alreadyViewing(await this.nameOf(user)));
     if (!isSuperAdmin(user)) throw new ForbiddenException(ONLY_SUPER_ADMIN_VIEWS_AS);
     if (userId === user.id) throw new BadRequestException(NOT_YOURSELF);
     const target = await this.prisma.user.findUnique({ where: { id: userId }, include: WITH_ROLES });
@@ -87,9 +87,9 @@ export class ViewAsService {
     return { token: await this.jwt.signAsync(tokenPayload(claims)), maxAgeMs: msLeft(claims), user };
   }
 
-  /** The user's name from their employee profile, else their email. */
-  private async nameOf(email: string): Promise<string> {
-    const own = await this.prisma.employee.findUnique({ where: { workEmail: email.toLowerCase() }, select: { fullNameEn: true } });
-    return own?.fullNameEn ?? email;
+  /** The user's name from their employee profile (the account's link, 22 October 2026), else their email. */
+  private async nameOf(user: SessionUser): Promise<string> {
+    const own = user.employeeId ? await this.prisma.employee.findUnique({ where: { id: user.employeeId }, select: { fullNameEn: true } }) : null;
+    return own?.fullNameEn ?? user.email;
   }
 }

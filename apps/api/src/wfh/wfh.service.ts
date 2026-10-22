@@ -692,7 +692,7 @@ export class WfhService {
   /** The caller, with their own employee profile and the C-level people. */
   async caller(user: SessionUser): Promise<Caller> {
     const [me, confidential] = await Promise.all([
-      this.prisma.employee.findUnique({ where: { workEmail: user.email.toLowerCase() }, select: { id: true } }),
+      (user.employeeId ? this.prisma.employee.findUnique({ where: { id: user.employeeId }, select: { id: true } }) : null),
       this.confidential.view(user),
     ]);
     return { user, employeeId: me?.id ?? null, confidential };

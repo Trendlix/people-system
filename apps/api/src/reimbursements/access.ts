@@ -12,7 +12,7 @@ import type { Prisma } from '../generated/prisma/client.js';
 // Finance don't see it; the manager it was sent to still decides the manager stage, as the request is theirs to decide.
 
 /**
- * The caller, their own employee profile (the one whose work email they sign in with), if any, and the C-level people,
+ * The caller, their own employee profile (the one their account is linked to), if any, and the C-level people,
  * those hidden from the caller among them (none left out: nobody is C-level).
  */
 export interface Caller {

@@ -8,6 +8,7 @@ import type { Prisma } from '../generated/prisma/client.js';
 import { monthOf } from '../payroll/views.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { namesByAccountEmail } from '../users/employee-accounts.js';
 
 /** Newest first, the current employment (no end date) before all ended ones. */
 const NEWEST_FIRST = [{ endDate: { sort: 'desc', nulls: 'first' } }, { joinDate: 'desc' }] satisfies Prisma.EmploymentOrderByWithRelationInput[];
@@ -53,10 +54,8 @@ const SLOT_NAMES = new Map(TEMPLATE_SLOTS.map((s) => [s.key, s.name]));
  * the email lower-cased.
  */
 export async function approverNames(prisma: PrismaService, versions: readonly Pick<PayVersionRow, 'approvedBy'>[]): Promise<Map<string, string>> {
-  const emails = [...new Set(versions.map((c) => c.approvedBy?.email.toLowerCase()).filter((x): x is string => !!x))];
-  if (!emails.length) return new Map();
-  const people = await prisma.employee.findMany({ where: { workEmail: { in: emails } }, select: { workEmail: true, fullNameEn: true } });
-  return new Map(people.map((p) => [p.workEmail!.toLowerCase(), p.fullNameEn]));
+  // by the profile each account is linked to (22 October 2026: never by email)
+  return namesByAccountEmail(prisma, versions.map((c) => c.approvedBy?.email).filter((x): x is string => !!x));
 }
 
 /** A version as the shared history reads it; the approver by name where their sign-in is an employee's work email. */
