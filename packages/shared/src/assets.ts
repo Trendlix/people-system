@@ -414,6 +414,23 @@ export function fitToGroup<T extends AssetInput>(asset: T): T {
 }
 
 /** The longest each text may be. */
+/**
+ * A serial number as serials are compared (owner, 22 October 2026: "same serial number shouldn't be added twice"): its
+ * Unicode compatibility form, Arabic-Indic digits as 0-9, upper case, Latin letters and digits only, so "abc-123",
+ * "ABC 123" and "ABC123" are one serial; null when it has none. The migration 20261022170000_asset_serial_keys gave the
+ * serials kept before theirs the same way (normalize NFKC, translate, upper, regexp_replace).
+ */
+export function assetSerialKey(serial: string | null | undefined): string | null {
+  if (typeof serial !== 'string') return null;
+  const key = serial
+    .normalize('NFKC')
+    .replace(/[\u0660-\u0669]/g, (d) => String(d.charCodeAt(0) - 0x0660))
+    .replace(/[\u06f0-\u06f9]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '');
+  return key || null;
+}
+
 export const ASSET_TEXT_LIMITS = {
   name: 120,
   brand: 80,

@@ -354,8 +354,8 @@ describe('Notifications (e2e)', () => {
       const rejected = await claim('noah', 'rejected', { rejectedStage: 'hr', rejectReason: 'Invented reason' });
       await notices.reimbursement(rejected.id, 'decided');
       expect((await inbox('noah')).at(-1)).toEqual({ kind: 'reimbursement_decided', title: 'Reimbursement claim rejected', body: `Your claim of ${shownDate(TODAY)}`, link: `/reimbursements/${rejected.id}` });
-      // never the amount nor the reason
-      expect(JSON.stringify(await inbox('noah'))).not.toMatch(/250|Invented/);
+      // never the amount nor the reason: in what is shown (the links hold random ids, which may have "250" in them)
+      expect(JSON.stringify((await inbox('noah')).map((n) => [n.title, n.body]))).not.toMatch(/250|Invented/);
     });
 
     it('a raise request: HR (the CEO for a C-level person), never the one who asked, never the employee or the manager', async () => {

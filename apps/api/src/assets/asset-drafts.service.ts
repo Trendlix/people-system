@@ -9,6 +9,7 @@ import {
   ASSET_VALUE_FIELDS,
   ASSETS_REFUSALS,
   assetProblems,
+  assetSerialKey,
   assetValuesProblems,
   isAssetGroup,
   type AssetDraftSource,
@@ -25,6 +26,7 @@ import { userNames } from '../payroll/adjustments/people.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AssetDraftImagesService, DRAFT_IMAGES, draftImageView, type MovedImage } from './asset-draft-images.service.js';
 import { PHOTO_ENTITY } from './asset-photos.service.js';
+import { serialProblems } from './asset-serials.js';
 import type { AssetsCaller } from './assets-access.js';
 import type { CreateAssetDto, UpdateAssetDto } from './assets.dto.js';
 import { AssetsService, editedAssetInput, maskedValues, mergeValues, newAssetInput, newAttachProblem, NO_VALUES, sentForAnotherGroup } from './assets.service.js';
@@ -159,6 +161,7 @@ export class AssetDraftsService {
       ...assetProblems(input, todayInCairo()),
       ...assetValuesProblems(values),
       ...(await this.extrasProblems(extras, input.group)),
+      ...(await this.draftSerialProblems(input.serial, extras.accessories)),
     ];
     if (problems.length) throw new BadRequestException(problems);
     await this.assets.checkPlaces(input, null);
@@ -197,6 +200,7 @@ export class AssetDraftsService {
       ...assetProblems(after, todayInCairo()),
       ...(dto.values ? assetValuesProblems(values) : []),
       ...(extrasChanged || after.group !== before.group ? await this.extrasProblems(extras, after.group) : []),
+      ...(extrasChanged || assetSerialKey(after.serial) !== assetSerialKey(before.serial) ? await this.draftSerialProblems(after.serial, extras.accessories, id) : []),
     ];
     if (problems.length) throw new BadRequestException(problems);
     await this.assets.checkPlaces(after, before);
@@ -292,6 +296,22 @@ export class AssetDraftsService {
     if (extras.parentCode) {
       const { problem } = await newAttachProblem(this.prisma, extras.parentCode, group);
       if (problem) problems.push(problem);
+    }
+    return problems;
+  }
+
+  /**
+   * A draft's serials (owner, 22 October 2026: "same serial number shouldn't be added twice"): no other asset's or
+   * accessory's (asset-serials.ts), nor on another of Claude's open drafts (`except`: this one), so Claude hears it at
+   * once rather than when the draft is confirmed (where the asset's own check runs again).
+   */
+  private async draftSerialProblems(serial: string | null, accessories: AccessoryInput[], except?: string): Promise<string[]> {
+    const problems = await serialProblems(this.prisma, serial, accessories);
+    const key = assetSerialKey(serial);
+    if (key) {
+      const open = await this.prisma.assetDraft.findMany({ where: { status: 'open', ...(except && { id: { not: except } }) }, select: { fields: true } });
+      const other = open.map((d) => draftFields(d.fields)).find((f) => assetSerialKey(f.serial) === key);
+      if (other) problems.push(`Serial number ${serial!.trim()} is already on another draft from Claude: ${other.name}.`);
     }
     return problems;
   }

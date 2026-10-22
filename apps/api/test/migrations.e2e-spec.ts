@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { ENDING_RULE_DEFAULTS, ENDING_RULES, KPI_PILLARS } from '@trendlix/shared';
+import { assetSerialKey, ENDING_RULE_DEFAULTS, ENDING_RULES, KPI_PILLARS } from '@trendlix/shared';
 import pg from 'pg';
 import { dutiesFromHtml, dutyRow, htmlFromLines } from '../src/organisation/job-titles/jd-html.js';
 import { assertTestDatabase } from './test-env.js';
@@ -736,5 +736,20 @@ describe('Migrations (e2e)', () => {
     await db.query(`DELETE FROM kpi_templates; DELETE FROM job_titles; DELETE FROM departments`);
     const { rows: left } = await db.query(`SELECT department_id AS "departmentId" FROM kpi_frameworks`);
     expect(left).toEqual([{ departmentId: null }]);
+  });
+  it('serial keys: the serials kept before get theirs as the API compares them (owner, 22 October 2026: "same serial number shouldn’t be added twice")', async () => {
+    const migration = readdirSync(MIGRATIONS).find((m) => m.endsWith('_asset_serial_keys'))!;
+    await migratedUpTo(migration);
+    const serials = ['abc-123', ' ABC 123 ', '٤٥٦-xy', 'ＡＢＣ１２３', ' - ', null];
+    for (const [i, serial] of serials.entries()) {
+      await db.query(
+        `INSERT INTO assets (id, code, name, asset_group, asset_type, asset_class, serial, updated_at) VALUES (gen_random_uuid(), $1, $2, 'kit', 'AUD', 'fixed', $3, now())`,
+        [`PK-AUD-${String(i + 1).padStart(4, '0')}`, `Mic ${i}`, serial],
+      );
+    }
+    await db.query(sql(migration));
+    const { rows } = await db.query(`SELECT serial, serial_key AS "serialKey" FROM assets ORDER BY code`);
+    expect(rows.map((r: { serialKey: string | null }) => r.serialKey)).toEqual(serials.map((s) => assetSerialKey(s)));
+    expect(rows.map((r: { serialKey: string | null }) => r.serialKey)).toEqual(['ABC123', 'ABC123', '456XY', 'ABC123', null, null]);
   });
 });

@@ -16,6 +16,7 @@ import {
   assetCode,
   assetCodePrefix,
   assetProblems,
+  assetSerialKey,
   assetStatusProblem,
   assetValuesProblems,
   fitToGroup,
@@ -36,6 +37,7 @@ import { Prisma } from '../generated/prisma/client.js';
 import { userNames } from '../payroll/adjustments/people.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { nextCodeNumber } from './asset-codes.js';
+import { lockSerials, serialProblems } from './asset-serials.js';
 import { AssetSettingsService } from './asset-settings.service.js';
 import { ASSET_DETAIL, ASSET_ROW, detailView, rowView, type ValueContext } from './asset-views.js';
 import type { AssetsCaller } from './assets-access.js';
@@ -137,6 +139,7 @@ function fieldData(a: AssetInput) {
     brand: a.brand,
     model: a.model,
     serial: a.serial,
+    serialKey: assetSerialKey(a.serial),
     condition: a.condition,
     roomId: a.roomId,
     kitId: a.kitId,
@@ -263,7 +266,7 @@ export async function newAttachProblem(db: PrismaService | Prisma.TransactionCli
 
 /** The accessories' lines as kept, in order. */
 export const accessoryRows = (assetId: string, list: readonly AccessoryInput[]) =>
-  list.map((a, position) => ({ assetId, position, name: a.name, quantity: a.quantity, serial: a.serial, notes: a.notes }));
+  list.map((a, position) => ({ assetId, position, name: a.name, quantity: a.quantity, serial: a.serial, serialKey: assetSerialKey(a.serial), notes: a.notes }));
 
 /**
  * What else registering an asset does (step 2: confirming a draft from Claude): `values`, the draft's values, kept when
@@ -364,6 +367,10 @@ export class AssetsService {
 
     const marketSet = ASSET_MARKET_FIELDS.some((k) => values[k] !== null);
     const created = await this.prisma.$transaction(async (tx) => {
+      // one serial number, one item (owner, 22 October 2026: "same serial number shouldn't be added twice")
+      await lockSerials(tx);
+      const serials = await serialProblems(tx, input.serial, accessories);
+      if (serials.length) throw new BadRequestException(serials);
       const prefix = assetCodePrefix(input.group, input.type);
       const code = assetCode(prefix, await nextCodeNumber(tx, prefix));
       if (attach?.main) {
@@ -457,7 +464,14 @@ export class AssetsService {
     const marketChanged = ASSET_MARKET_FIELDS.some((k) => k in valueDiff);
     // a consumable's quantity changed on the Edit form: kept as a stock move too (step 4), so its history adds up
     const delta = before.group === 'consumable' && group === 'consumable' && after.quantity !== null && before.quantity !== null ? Math.round((after.quantity - before.quantity) * 100) / 100 : 0;
+    const serialChanged = assetSerialKey(after.serial) !== assetSerialKey(before.serial) && assetSerialKey(after.serial) !== null;
     await this.prisma.$transaction(async (tx) => {
+      // a serial set or changed: no other asset's or accessory's (22 October 2026); one kept twice before stays as it is
+      if (serialChanged) {
+        await lockSerials(tx);
+        const serials = await serialProblems(tx, after.serial, [], { asset: row.id });
+        if (serials.length) throw new BadRequestException(serials);
+      }
       await tx.asset.update({
         where: { id: row.id },
         data: { ...fieldData(after), status, ...valueData(values), ...(marketChanged && { priceUpdatedAt: new Date() }) },

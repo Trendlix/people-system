@@ -1,4 +1,5 @@
 import {
+  assetSerialKey,
   ASSET_CODE_PATTERN,
   ASSET_GROUP_RULES,
   ASSET_GROUPS,
@@ -264,5 +265,23 @@ describe('the form’s checks', () => {
     expect(needsReorder({ group: 'consumable', quantity: 3, reorderLevel: 2 })).toBe(false);
     expect(needsReorder({ group: 'consumable', quantity: 0, reorderLevel: null })).toBe(false);
     expect(needsReorder({ group: 'kit', quantity: 0, reorderLevel: 1 })).toBe(false);
+  });
+});
+
+// One serial number, one item (owner, 22 October 2026: "same serial number shouldn't be added twice").
+describe('a serial number as serials are compared', () => {
+  it('upper case, Latin letters and digits only, Arabic-Indic digits as 0-9', () => {
+    expect(assetSerialKey('abc-123')).toBe('ABC123');
+    expect(assetSerialKey(' ABC 123 ')).toBe('ABC123');
+    expect(assetSerialKey('S/N: ab.12_3')).toBe('SNAB123');
+    expect(assetSerialKey('٤٥٦-xy')).toBe('456XY');
+    expect(assetSerialKey('ＡＢＣ１２３')).toBe('ABC123'); // full-width, as some labels print
+  });
+
+  it('none without letters or digits', () => {
+    expect(assetSerialKey(null)).toBeNull();
+    expect(assetSerialKey(undefined)).toBeNull();
+    expect(assetSerialKey('')).toBeNull();
+    expect(assetSerialKey(' - ')).toBeNull();
   });
 });

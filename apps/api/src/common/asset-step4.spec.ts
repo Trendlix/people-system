@@ -49,6 +49,16 @@ describe('the accessories’ checklist', () => {
         'kit',
       ),
     ).toEqual(['Accessory 2 (cable): accessory 1 is the same. Count them in one line.']);
+    // one serial number, one item (22 October 2026): two lines with the same serial, however it is typed
+    expect(
+      accessoriesProblems(
+        [
+          { name: 'Battery', quantity: 1, serial: 'BT-01', notes: null },
+          { name: 'Spare battery', quantity: 1, serial: 'bt 01', notes: null },
+        ],
+        'kit',
+      ),
+    ).toEqual(['Accessory 2 (Spare battery): accessory 1 has the same serial number. A serial number is one item’s.']);
     const many = Array.from({ length: 31 }, (_, i) => ({ name: `Part ${i}`, quantity: 1, serial: null, notes: null }));
     expect(accessoriesProblems(many, 'kit')).toEqual(['Keep the accessories to 30 lines or fewer.']);
   });

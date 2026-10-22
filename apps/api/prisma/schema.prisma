@@ -3052,6 +3052,7 @@ model Asset {
   brand              String?
   model              String?
   serial             String?
+  serialKey          String?            @map("serial_key") // the serial as serials are compared (packages/shared assetSerialKey): one asset's only (22 October 2026)
   condition          String? // ASSET_CONDITIONS: new, excellent, good, used, needs_repair; none for a consumable
   status             String             @default("available") // ASSET_STATUSES: available, custody, repair, lost, disposed
   roomId             String?            @map("room_id") @db.Uuid
@@ -3109,6 +3110,7 @@ model Asset {
   @@index([kitId])
   @@index([holderId])
   @@index([parentAssetId])
+  @@index([serialKey])
   @@map("assets")
 }
 
@@ -3123,11 +3125,13 @@ model AssetAccessory {
   name      String
   quantity  Int      @default(1)
   serial    String?
+  serialKey String?  @map("serial_key") // as serials are compared: no other asset's, nor another's accessory's (22 October 2026)
   notes     String?
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   @@unique([assetId, position])
+  @@index([serialKey])
   @@map("asset_accessories")
 }
 

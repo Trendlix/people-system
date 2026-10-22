@@ -9,7 +9,7 @@
 //   why, as a kit's are) and come back item by item; each can still be handed over alone. One level only.
 // Pure code: the API decides with these, the web shows them.
 
-import { ASSET_STATUS_LABELS, type AssetGroup, type AssetStatus } from './assets.js';
+import { ASSET_STATUS_LABELS, assetSerialKey, type AssetGroup, type AssetStatus } from './assets.js';
 
 // ---------- the checklist ----------
 
@@ -68,6 +68,7 @@ export function accessoriesProblems(list: readonly AccessoryInput[], group: Asse
   if (group === 'consumable' && list.length) return ['A consumable has no accessories: it is kept by quantity.'];
   if (list.length > L.perAsset) out.push(`Keep the accessories to ${L.perAsset} lines or fewer.`);
   const seen = new Map<string, number>();
+  const serials = new Map<string, number>(); // a serial number once only (22 October 2026)
   list.forEach((a, i) => {
     const which = a.name ? `Accessory ${i + 1} (${a.name})` : `Accessory ${i + 1}`;
     if (!a.name) out.push(`${which}: give it a name, e.g. Charger.`);
@@ -81,6 +82,9 @@ export function accessoriesProblems(list: readonly AccessoryInput[], group: Asse
       out.push(`${which}: give how many as a whole number from 1 to ${L.quantityMax}.`);
     }
     if (a.serial && a.serial.length > L.serial) out.push(`${which}: keep its serial number to ${L.serial} characters or fewer.`);
+    const serial = assetSerialKey(a.serial);
+    if (serial && serials.has(serial)) out.push(`${which}: accessory ${serials.get(serial)! + 1} has the same serial number. A serial number is one item’s.`);
+    else if (serial) serials.set(serial, i);
     if (a.notes && a.notes.length > L.notes) out.push(`${which}: keep its notes to ${L.notes} characters or fewer.`);
   });
   return out;

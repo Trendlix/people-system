@@ -4,6 +4,7 @@ import { AuditService } from '../audit/audit.service.js';
 import { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { AssetsCaller } from './assets-access.js';
+import { lockSerials, serialProblems } from './asset-serials.js';
 import { accessoryRows, ASSET_ENTITY, AssetsService, mainAssetByCode } from './assets.service.js';
 import type { AccessoriesDto } from './asset-upkeep.dto.js';
 
@@ -32,11 +33,15 @@ export class AssetAccessoriesService {
       await tx.$queryRaw`SELECT id FROM assets WHERE id = ${id}::uuid FOR UPDATE`;
       const a = await tx.asset.findUniqueOrThrow({
         where: { id },
-        select: { code: true, group: true, status: true, accessories: { select: { name: true, quantity: true, serial: true }, orderBy: { position: 'asc' } } },
+        select: { code: true, group: true, status: true, serial: true, accessories: { select: { name: true, quantity: true, serial: true }, orderBy: { position: 'asc' } } },
       });
       if (a.status === 'disposed') throw new ConflictException(`${a.code} is disposed: its accessories can’t change.`);
       const problems = accessoriesProblems(list, a.group);
       if (problems.length) throw new BadRequestException(problems);
+      // a line's serial no other asset's or accessory's, nor its own asset's (22 October 2026)
+      await lockSerials(tx);
+      const serials = await serialProblems(tx, null, list, { asset: id, ownSerial: a.serial });
+      if (serials.length) throw new BadRequestException(serials);
       await tx.assetAccessory.deleteMany({ where: { assetId: id } });
       if (list.length) await tx.assetAccessory.createMany({ data: accessoryRows(id, list) });
       return { code: a.code, before: accessoriesText(a.accessories), after: accessoriesText(list) };
