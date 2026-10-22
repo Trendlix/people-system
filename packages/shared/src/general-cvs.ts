@@ -355,10 +355,49 @@ export interface GeneralCvView extends GeneralCvListItem {
   can: GeneralCvCan;
 }
 
-/** The areas the careers page's general form offers: the departments (not teams), in their order. */
+/** The areas the careers page's general form offers (generalAreas), in the organisation's order. */
 export interface PublicGeneralForm {
   company: { nameEn: string; nameAr: string | null };
-  areas: { id: string; name: string }[];
+  areas: GeneralArea[];
+}
+
+/** An area a general CV may be for: a team (or a department without teams), its id the one a CV is saved with. */
+export interface GeneralArea {
+  id: string;
+  /** As the careers page's list shows it: "Video"; "Content (Marketing)" when another team is called Content too. */
+  name: string;
+  /** As HR's lists show it: "Video · Production". */
+  hrName: string;
+}
+
+/** A department as the areas are made from it: whether it is C-level (all its job titles, its teams' too, confidential), and its teams. */
+export interface AreaDepartment {
+  id: string;
+  name: string;
+  cLevel: boolean;
+  teams: readonly { id: string; name: string; cLevel: boolean }[];
+}
+
+/**
+ * The areas a CV may be for, from the departments in the organisation's order (owner, 22 October 2026: "from my POV, it
+ * should be related to teams not departments"; "C Level isn't an option for any user or even HR, how will someone apply
+ * for a c-level"; then "remove the department from the dropdown menu, area you would like to work in"): each team, named
+ * by itself ("Video"); a department only when it has no teams (else nobody could choose it), by its own name. Two
+ * options with the same name are told apart by the team's department in brackets ("Content (Marketing)"). Never a
+ * C-level one: such a department is left out with its teams, and so is such a team. HR's lists name a team with its
+ * department (hrName: "Video · Production").
+ */
+export function generalAreas(departments: readonly AreaDepartment[]): GeneralArea[] {
+  const made = departments.flatMap((d) => {
+    const department = d.name.trim();
+    if (d.cLevel) return [];
+    if (!d.teams.length) return [{ id: d.id, name: department, hrName: department, department: null as string | null }];
+    return d.teams.filter((t) => !t.cLevel).map((t) => ({ id: t.id, name: t.name.trim(), hrName: `${t.name.trim()} · ${department}`, department: department as string | null }));
+  });
+  const key = (name: string) => name.toLowerCase();
+  const count = new Map<string, number>();
+  for (const a of made) count.set(key(a.name), (count.get(key(a.name)) ?? 0) + 1);
+  return made.map(({ department, ...a }) => (department !== null && (count.get(key(a.name)) ?? 0) > 1 ? { ...a, name: `${a.name} (${department})` } : a));
 }
 
 /** GET /recruitment/applicants/summary: the two tabs' counts, and each vacancy's applicants by stage and by source. */

@@ -5,6 +5,7 @@ import {
   daysSince,
   feedbackSeen,
   HIRING_SUGGESTION_LABELS,
+  mobileSearchForms,
   offerable,
   rejectionMail,
   restorable,
@@ -130,8 +131,20 @@ export class ApplicationsService {
           query.source ? { source: query.source } : {},
           filtered === 'hide' ? { filteredOut: false } : filtered === 'only' ? { filteredOut: true } : {},
           query.minCvMatch !== undefined ? { cvMatchPercent: { gte: query.minCvMatch } } : {},
-          // the search also looks in the CVs' text (22 October 2026: "search by CV content")
-          text ? { OR: [{ fullName: text }, { email: text }, { number: text }, { mobile: text }, { cvReading: { is: { text } } }] } : {},
+          // the search also looks in the CVs' text (22 October 2026: "search by CV content"), and a mobile as typed in
+          // any form (kept as +201012345678 since the careers form's mobile field, 22 October 2026)
+          text
+            ? {
+                OR: [
+                  { fullName: text },
+                  { email: text },
+                  { number: text },
+                  { mobile: text },
+                  ...mobileSearchForms(query.q!).map((f) => ({ mobile: { contains: f } })),
+                  { cvReading: { is: { text } } },
+                ],
+              }
+            : {},
         ],
       },
       select: APPLICATION_LIST_SELECT,

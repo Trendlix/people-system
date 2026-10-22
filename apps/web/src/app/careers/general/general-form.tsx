@@ -3,15 +3,19 @@
 import { startTransition, useActionState, useState } from 'react';
 import { GENERAL_CV_CONSENT_TEXT, GENERAL_CV_LIMITS, RECRUITMENT_LIMITS, type PublicGeneralForm } from '@trendlix/shared';
 import { FormErrors, useFieldIds } from '@/components/form';
+import { NoticeInput } from '@/components/notice-input';
+import { PhoneInput } from '@/components/phone-input';
 import { Select } from '@/components/select';
 import { HONEYPOT, OTHER_AREA } from '../careers';
+import { Checked, EmailInput, useFieldChecks, YearsInput } from '../fields';
 import type { GeneralState } from './actions';
 
 // "Send us your CV" on the careers page (owner, 22 October 2026: "what came out of the posted jobs and what cam on
 // randomly", "Both"): the person's details, the area they would like to work in (a department, or Other in words), the
 // CV (a PDF or a Word file, at most 5 MB) and the consent; once sent, the reference to keep. A field hidden from people
 // catches robots. Made for a phone first; in trendlix.com's contact form's look (careers.css, 22 October 2026: "i need it
-// to match the UI"), its fields and rules unchanged.
+// to match the UI"). The email, mobile, years and notice period as the owner asked on 22 October 2026 (fields.tsx), as
+// on a job's form; the years optional here.
 
 type Action = (prev: GeneralState, fd: FormData) => Promise<GeneralState>;
 
@@ -22,6 +26,7 @@ export function GeneralForm({ action, areas }: { action: Action; areas: PublicGe
   const fid = useFieldIds();
   const v = (name: string) => state.values?.[name] ?? '';
   const [area, setArea] = useState(v('area'));
+  const checks = useFieldChecks(fid, { yearsRequired: false });
 
   if (state.reference !== undefined) {
     return (
@@ -64,13 +69,15 @@ export function GeneralForm({ action, areas }: { action: Action; areas: PublicGe
           <label htmlFor={fid('email')} className="label">
             Email
           </label>
-          <input id={fid('email')} name="email" type="email" required maxLength={L.email} autoComplete="email" defaultValue={v('email')} className="input" />
+          <EmailInput id={fid('email')} checks={checks} defaultValue={v('email')} />
         </div>
         <div>
           <label htmlFor={fid('mobile')} className="label">
             Mobile
           </label>
-          <input id={fid('mobile')} name="mobile" type="tel" required maxLength={L.mobile} autoComplete="tel" placeholder="+20 100 123 4567" defaultValue={v('mobile')} className="input" />
+          <Checked checks={checks} field="mobile" id={fid('mobile')}>
+            <PhoneInput id={fid('mobile')} name="mobile" label="Mobile" required autoComplete="tel" variant="careers" defaultValue={v('mobile')} {...checks.ids('mobile')} />
+          </Checked>
         </div>
         <div className={area === OTHER_AREA ? '' : 'sm:col-span-2'}>
           <label htmlFor={fid('area')} className="label">
@@ -110,13 +117,15 @@ export function GeneralForm({ action, areas }: { action: Action; areas: PublicGe
           <label htmlFor={fid('yearsExperience')} className="label">
             Years of experience <span className="font-normal text-muted">(optional)</span>
           </label>
-          <input id={fid('yearsExperience')} name="yearsExperience" inputMode="decimal" maxLength={4} defaultValue={v('yearsExperience')} className="input" />
+          <YearsInput id={fid('yearsExperience')} checks={checks} required={false} defaultValue={v('yearsExperience')} />
         </div>
         <div>
           <label htmlFor={fid('noticePeriod')} className="label">
             Notice period <span className="font-normal text-muted">(optional)</span>
           </label>
-          <input id={fid('noticePeriod')} name="noticePeriod" maxLength={L.notice} placeholder="e.g. 1 month" defaultValue={v('noticePeriod')} className="input" />
+          <Checked checks={checks} field="noticePeriod" id={fid('noticePeriod')}>
+            <NoticeInput id={fid('noticePeriod')} variant="careers" defaultNumber={v('noticeNumber')} defaultUnit={v('noticeUnit')} {...checks.ids('noticePeriod')} />
+          </Checked>
         </div>
         <div>
           <label htmlFor={fid('expectedSalary')} className="label">
@@ -155,7 +164,15 @@ export function GeneralForm({ action, areas }: { action: Action; areas: PublicGe
         <span>{GENERAL_CV_CONSENT_TEXT}</span>
       </label>
 
-      <button type="submit" disabled={pending} className="btn btn-primary w-full sm:w-auto">
+      <button
+        type="submit"
+        disabled={pending}
+        onClick={(e) => {
+          // the email, mobile, years and notice period checked first, each said under its field (22 October 2026)
+          if (!checks.passes(e.currentTarget.form)) e.preventDefault();
+        }}
+        className="btn btn-primary w-full sm:w-auto"
+      >
         {pending ? 'Sending…' : 'Send my CV'}
       </button>
     </form>

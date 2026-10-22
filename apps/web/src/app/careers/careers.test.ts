@@ -1,6 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import type { PublicQuestion } from '@trendlix/shared';
-import { answerField, apiForm, applyFormProblems, factsLine, generalApiForm, generalFormProblems, generalTypedValues, jobHref, OTHER_AREA, typedValues } from './careers';
+import {
+  answerField,
+  apiForm,
+  applyFormProblems,
+  factsLine,
+  fieldProblems,
+  generalApiForm,
+  generalFormProblems,
+  generalTypedValues,
+  jobHref,
+  noticeFrom,
+  OTHER_AREA,
+  typedValues,
+  YEARS_REQUIRED,
+} from './careers';
 import { CONTACT, CONTACT_HREF, departmentsOf, FOOTER_LINKS, HERO, jobsIn, MAIN_SITE, MENU_LINKS, ROLES_ID, SOCIAL_LINKS } from './site';
 
 // The careers page's application form (owner, 22 October 2026: "where will we include the ATS?").
@@ -18,7 +32,7 @@ function form(fields: Record<string, string>, cv: Blob | null = new Blob(['%PDF-
   return fd;
 }
 
-const good = { fullName: 'Mona Adel', email: 'mona@mail.test', mobile: '+20 100 123 4567', [answerField('q1')]: 'yes', [answerField('q2')]: 'Other', consent: 'on' };
+const good = { fullName: 'Mona Adel', email: 'mona@mail.test', mobile: '+201001234567', yearsExperience: '3', [answerField('q1')]: 'yes', [answerField('q2')]: 'Other', consent: 'on' };
 
 describe('the application form', () => {
   it('passes a good one and names what is wrong with another', () => {
@@ -92,6 +106,57 @@ describe('the general CV form', () => {
     const typed = generalTypedValues(form({ ...person, area: OTHER_AREA, areaOther: 'Photography' }));
     expect(typed).toMatchObject({ fullName: 'Mona Adel', area: OTHER_AREA, areaOther: 'Photography', consent: 'on' });
     expect(typed).not.toHaveProperty('cv');
+  });
+});
+
+// The email, mobile, years and notice period (owner, 22 October 2026, trying the form on an iPhone: "make the years of
+// experience field only numbers, and you add years."; "Motice period Field in Days" … "and a selectoor to make it
+// months"; "the mobile number format to be like the one applied in the system, country code and no extra zero";
+// "validate email field").
+describe('the email, mobile, years and notice period', () => {
+  it('sends the notice period as one, "30 days" or "1 month", and the mobile as kept', () => {
+    const out = apiForm(form({ ...good, noticeNumber: '30', noticeUnit: 'days' }), QUESTIONS, { source: null });
+    expect(out.get('noticePeriod')).toBe('30 days');
+    expect(out.get('noticeNumber')).toBeNull();
+    expect(out.get('noticeUnit')).toBeNull();
+    expect(out.get('mobile')).toBe('+201001234567');
+    expect(out.get('yearsExperience')).toBe('3');
+    expect(apiForm(form({ ...good, noticeNumber: '1', noticeUnit: 'months' }), QUESTIONS, { source: null }).get('noticePeriod')).toBe('1 month');
+    expect(apiForm(form({ ...good, noticeNumber: '', noticeUnit: 'months' }), QUESTIONS, { source: null }).get('noticePeriod')).toBeNull();
+    const general = generalApiForm(form({ ...good, area: OTHER_AREA, areaOther: 'Sound', noticeNumber: '2', noticeUnit: 'months' }), {});
+    expect(general.get('noticePeriod')).toBe('2 months');
+    expect(noticeFrom(form({ noticeNumber: '0' }))).toBe('0 days');
+    expect(noticeFrom(form({ noticeNumber: '1', noticeUnit: 'days' }))).toBe('1 day');
+    expect(noticeFrom(form({}))).toBeNull();
+  });
+
+  it('keeps the notice period’s number and unit to show again', () => {
+    expect(typedValues(form({ ...good, noticeNumber: '2', noticeUnit: 'months' }), QUESTIONS)).toMatchObject({ noticeNumber: '2', noticeUnit: 'months', mobile: '+201001234567' });
+    expect(generalTypedValues(form({ ...good, noticeNumber: '45', noticeUnit: 'days' }))).toMatchObject({ noticeNumber: '45', noticeUnit: 'days' });
+  });
+
+  it('says what is wrong under each field, in the form’s order', () => {
+    expect(fieldProblems(form(good), { yearsRequired: true })).toEqual([]);
+    expect(fieldProblems(form({ ...good, email: ' Mona@Mail.test ', noticeNumber: '12', noticeUnit: 'months' }), { yearsRequired: true })).toEqual([]);
+    expect(
+      fieldProblems(form({ ...good, email: 'mona@mail', mobile: '+2010012', yearsExperience: '3.3', noticeNumber: '13', noticeUnit: 'months' }), { yearsRequired: true }),
+    ).toEqual([
+      { field: 'email', message: 'Write a full email address, e.g. name@example.com.' },
+      { field: 'mobile', message: 'Write the mobile number without the 0 in front, after choosing the country code.' },
+      { field: 'yearsExperience', message: 'Write your years of experience as a number from 0 to 60, e.g. 3 or 2.5.' },
+      { field: 'noticePeriod', message: 'Keep the notice period to 365 days or 12 months at most.' },
+    ]);
+    // the years are asked on a job's form, not on the general one
+    const noYears = form({ ...good, yearsExperience: '' });
+    expect(fieldProblems(noYears, { yearsRequired: true })).toEqual([{ field: 'yearsExperience', message: YEARS_REQUIRED }]);
+    expect(fieldProblems(noYears, { yearsRequired: false })).toEqual([]);
+    expect(fieldProblems(form({ ...good, mobile: '' }), { yearsRequired: false }).map((p) => p.field)).toEqual(['mobile']);
+    expect(fieldProblems(form({ ...good, noticeNumber: '400' }), { yearsRequired: false })).toEqual([{ field: 'noticePeriod', message: 'Keep the notice period to 365 days or 12 months at most.' }]);
+  });
+
+  it('wants the years on a job’s form before sending, not on the general one', () => {
+    expect(applyFormProblems(form({ ...good, yearsExperience: '' }), QUESTIONS)).toEqual([YEARS_REQUIRED]);
+    expect(generalFormProblems(form({ fullName: 'Mona Adel', email: 'mona@mail.test', mobile: '01001234567', area: OTHER_AREA, areaOther: 'Sound', consent: 'on' }))).toEqual([]);
   });
 });
 

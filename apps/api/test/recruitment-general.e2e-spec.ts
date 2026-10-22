@@ -42,6 +42,11 @@ describe('General CVs and the bulk upload (e2e)', () => {
   let boardId: string;
   let boardTitleId: string;
   let teamId: string;
+  /** Two teams called the same in two departments, and a department without teams (22 October 2026). */
+  let soundStudioId: string;
+  let otherDepartmentId: string;
+  let soundOtherId: string;
+  let loneId: string;
   let jobTitleId: string;
   let vacancy: VacancyView;
   let cv: Buffer;
@@ -71,7 +76,7 @@ describe('General CVs and the bulk upload (e2e)', () => {
     fullName: `${who} Person ${RUN}`,
     email: email(who),
     mobile: '+20 100 123 4567',
-    departmentId,
+    departmentId: teamId,
     consent: 'true',
     ip,
     ...extra,
@@ -101,6 +106,10 @@ describe('General CVs and the bulk upload (e2e)', () => {
     await account('outsider', ['employee']);
     departmentId = (await prisma.department.create({ data: { nameEn: `Studio ${RUN}` }, select: { id: true } })).id;
     teamId = (await prisma.department.create({ data: { nameEn: `Video ${RUN}`, parentId: departmentId }, select: { id: true } })).id;
+    soundStudioId = (await prisma.department.create({ data: { nameEn: `Sound ${RUN}`, parentId: departmentId }, select: { id: true } })).id;
+    otherDepartmentId = (await prisma.department.create({ data: { nameEn: `Radio ${RUN}` }, select: { id: true } })).id;
+    soundOtherId = (await prisma.department.create({ data: { nameEn: `Sound ${RUN}`, parentId: otherDepartmentId }, select: { id: true } })).id;
+    loneId = (await prisma.department.create({ data: { nameEn: `Finance ${RUN}` }, select: { id: true } })).id;
     // a C-level department: its only job title for G9 · Executive, a confidential grade (22 October 2026)
     const g9 = (await prisma.grade.findFirstOrThrow({ where: { code: 'G9' }, select: { id: true } })).id;
     boardId = (await prisma.department.create({ data: { nameEn: `Board ${RUN}` }, select: { id: true } })).id;
@@ -119,32 +128,45 @@ describe('General CVs and the bulk upload (e2e)', () => {
     await prisma.vacancy.deleteMany({ where: { jobTitleId } });
     await prisma.jobTitle.deleteMany({ where: { id: jobTitleId } });
     await prisma.jobTitle.deleteMany({ where: { id: boardTitleId } });
-    await prisma.department.deleteMany({ where: { id: { in: [teamId, boardId] } } });
-    await prisma.department.deleteMany({ where: { id: departmentId } });
+    await prisma.department.deleteMany({ where: { id: { in: [teamId, boardId, soundStudioId, soundOtherId, loneId] } } });
+    await prisma.department.deleteMany({ where: { id: { in: [departmentId, otherDepartmentId] } } });
     await prisma.notification.deleteMany({ where: { userId: { in: Object.values(users) } } });
     await app.close();
   });
 
   describe('“Send us your CV” on the careers page', () => {
     // owner, 22 October 2026: "from my POV, it should be related to teams not departments"; "C Level isn't an option for
-    // any user or even HR, how will someone apply for a c-level"
-    it('offers each team with its department, a department with job titles of its own, and never a C-level one', async () => {
+    // any user or even HR, how will someone apply for a c-level"; then "remove the department from the dropdown menu,
+    // area you would like to work in"
+    it('offers each team by its own name, a department only without teams, and never a C-level one', async () => {
       const form = (await api().get('/api/public/general-cvs/form').expect(200)).body as PublicGeneralForm;
-      expect(form.areas).toContainEqual({ id: departmentId, name: `Studio ${RUN}` });
-      expect(form.areas).toContainEqual({ id: teamId, name: `Video ${RUN} · Studio ${RUN}` });
+      expect(form.areas).toContainEqual({ id: teamId, name: `Video ${RUN}`, hrName: `Video ${RUN} · Studio ${RUN}` });
+      expect(form.areas).toContainEqual({ id: loneId, name: `Finance ${RUN}`, hrName: `Finance ${RUN}` });
+      // Studio has job titles of its own, but it has teams: never an option
+      expect(form.areas.map((a) => a.id)).not.toContain(departmentId);
+      expect(form.areas.map((a) => a.id)).not.toContain(otherDepartmentId);
       expect(form.areas.map((a) => a.id)).not.toContain(boardId);
+    });
+
+    it('tells apart two teams with the same name by their departments, in the organisation’s order', async () => {
+      const form = (await api().get('/api/public/general-cvs/form').expect(200)).body as PublicGeneralForm;
+      const sounds = form.areas.filter((a) => a.id === soundStudioId || a.id === soundOtherId);
+      expect(sounds.map((a) => a.name).sort()).toEqual([`Sound ${RUN} (Radio ${RUN})`, `Sound ${RUN} (Studio ${RUN})`]);
+      expect(form.areas.find((a) => a.id === teamId)?.name).toBe(`Video ${RUN}`);
     });
 
     it('names every problem, wants a CV, and refuses a robot', async () => {
       expect(said(await send({ fullName: 'M', email: 'x', mobile: '1', ip: '10.6.0.1' }).expect(400))).toEqual([
         'Write your full name.',
-        'Write your email address, e.g. name@example.com.',
-        'Write your mobile number, e.g. +20 100 123 4567.',
+        'Write a full email address, e.g. name@example.com.',
+        'Write the mobile number without the 0 in front, after choosing the country code.',
         'Choose the area you would like to work in, or Other and write it.',
         'Tick that we may keep your details and CV to consider you for jobs.',
       ]);
       expect(said(await send(person('Nocv', '10.6.0.1'), null).expect(400))).toEqual(['Attach your CV, as a PDF or a Word file.']);
       expect(said(await send({ ...person('Board', '10.6.0.1'), departmentId: boardId }).expect(400))).toEqual(['Choose one of the areas, or Other and write it.']);
+      // a department with teams is no longer an area (22 October 2026: "remove the department from the dropdown menu")
+      expect(said(await send({ ...person('Dept', '10.6.0.1'), departmentId }).expect(400))).toEqual(['Choose one of the areas, or Other and write it.']);
       expect(said(await send({ ...person('Robot', '10.6.0.1'), website: 'spam' }).expect(400))).toEqual(["Your CV couldn't be sent. Please try again."]);
     });
 
@@ -152,7 +174,7 @@ describe('General CVs and the bulk upload (e2e)', () => {
       const first = (await send({ ...person('Sara', '10.6.0.2'), linkedin: 'linkedin.com/in/sara' }).expect(201)).body as { reference: string };
       expect(first.reference).toMatch(new RegExp(`^APP-${YEAR}-\\d{4}$`));
       const row = await prisma.generalCv.findFirstOrThrow({ where: { email: email('sara') }, include: { events: true } });
-      expect(row).toMatchObject({ number: first.reference, status: 'new', source: 'careers', departmentId, consentById: null, createdById: null, linkedin: 'https://linkedin.com/in/sara' });
+      expect(row).toMatchObject({ number: first.reference, status: 'new', source: 'careers', departmentId: teamId, consentById: null, createdById: null, linkedin: 'https://linkedin.com/in/sara' });
       expect(row.events.map((e) => e.event)).toEqual(['received']);
       // the series goes on whichever list it is on
       const second = (await send({ ...person('Area', '10.6.0.3'), departmentId: '', areaOther: 'Photography' }).expect(201)).body as { reference: string };
@@ -163,6 +185,24 @@ describe('General CVs and the bulk upload (e2e)', () => {
       // one CV an email every 30 days
       expect(said(await send(person('Sara', '10.6.0.4')).expect(409))[0]).toMatch(/^You sent us your CV on \d{2}\/\d{2}\/\d{4} already\. HR will be in touch\.$/);
       expect((await prisma.auditLog.findFirstOrThrow({ where: { entityType: 'general_cv', entityId: row.id } })).action).toBe('apply');
+    });
+
+    // 22 October 2026, the owner trying the form on an iPhone: the mobile "like the one applied in the system, country
+    // code and no extra zero"; the notice period "in Days" … "and a selectoor to make it months"; "validate email field"
+    it('keeps the mobile as the system keeps phones and the notice period as days or months; refuses a wrong email, mobile or notice period', async () => {
+      await send(person('Local', '10.6.1.1', { mobile: '01001234567', noticePeriod: '45 days', yearsExperience: '1.5', departmentId: loneId })).expect(201);
+      const kept = await prisma.generalCv.findFirstOrThrow({ where: { email: email('local') }, select: { mobile: true, noticePeriod: true, yearsExperience: true, departmentId: true } });
+      expect(kept).toMatchObject({ mobile: '+201001234567', noticePeriod: '45 days', departmentId: loneId });
+      expect(Number(kept.yearsExperience)).toBe(1.5);
+      expect(said(await send(person('Wrong', '10.6.1.2', { email: 'wrong@mail', mobile: '+20 100', noticePeriod: '400 days' })).expect(400))).toEqual([
+        'Write a full email address, e.g. name@example.com.',
+        'Write the mobile number without the 0 in front, after choosing the country code.',
+        'Keep the notice period to 365 days or 12 months at most.',
+      ]);
+      expect(said(await send(person('Words', '10.6.1.2', { noticePeriod: 'a month' })).expect(400))).toEqual(['Write the notice period as a number of days or months.']);
+      // HR finds it however the mobile is typed
+      const list = (q: string) => get('hr', `/recruitment/general-cvs?q=${encodeURIComponent(q)}`).expect(200).then((r) => (r.body as GeneralCvListItem[]).map((c) => c.fullName));
+      expect(await list('0100 123 4567')).toContain(`Local Person ${RUN}`);
     });
 
     it('takes 5 an hour from an address it signed; one only named counts against the connection', async () => {
@@ -177,13 +217,15 @@ describe('General CVs and the bulk upload (e2e)', () => {
     let added: GeneralCvView;
 
     it('HR (and a Super Admin) add one that came by email, the person’s agreement ticked; the CEO reads; nobody else', async () => {
-      const fields = { fullName: `Omar Added ${RUN}`, email: email('omar'), mobile: '01001234567', departmentId, source: 'email', consent: 'true', notes: 'Sent to hr@' };
+      const fields = { fullName: `Omar Added ${RUN}`, email: email('omar'), mobile: '01001234567', departmentId: teamId, source: 'email', consent: 'true', notes: 'Sent to hr@', noticePeriod: '1 month' };
       expect(said(await add('hr', { ...fields, consent: '' }).expect(400))).toEqual(['Tick that the person agreed to be considered.']);
       expect(said(await add('hr', { ...fields, source: 'referral' }).expect(400))).toEqual(['Write who referred them.']);
       await add('ceo', fields).expect(403);
       await add('outsider', fields).expect(403);
       added = (await add('hr', fields).expect(201)).body as GeneralCvView;
-      expect(added).toMatchObject({ status: 'new', source: 'email', area: `Studio ${RUN}`, notes: 'Sent to hr@', consentNote: 'Agreed to be considered (recorded by HR)', can: { review: true, archive: true, move: true } });
+      expect(added).toMatchObject({ status: 'new', source: 'email', area: `Video ${RUN} · Studio ${RUN}`, mobile: '+201001234567', noticePeriod: '1 month', notes: 'Sent to hr@', consentNote: 'Agreed to be considered (recorded by HR)', can: { review: true, archive: true, move: true } });
+      // HR's too: a department with teams is no longer an area
+      expect(said(await add('hr', { ...fields, departmentId }).expect(400))).toEqual(['Choose one of the areas, or Other and write it.']);
       expect(added.consentBy?.email).toBeTruthy();
       expect(added.addedBy?.email).toBe(added.consentBy?.email);
       expect(added.history.map((h) => [h.event, h.note])).toEqual([['received', 'Added by HR (Email)']]);
@@ -240,9 +282,9 @@ describe('General CVs and the bulk upload (e2e)', () => {
     });
 
     it('can’t move one whose email applied for the vacancy already', async () => {
-      const again = (await add('hr', { fullName: `Omar Again ${RUN}`, email: email('sara'), mobile: '01001234567', departmentId, source: 'whatsapp', consent: 'true' }).expect(409)).body;
+      const again = (await add('hr', { fullName: `Omar Again ${RUN}`, email: email('sara'), mobile: '01001234567', departmentId: teamId, source: 'whatsapp', consent: 'true' }).expect(409)).body;
       expect(said({ body: again } as request.Response)[0]).toMatch(/sent a CV on/);
-      const other = (await add('hr', { fullName: `Lina Twice ${RUN}`, email: email('lina'), mobile: '01001234567', departmentId, source: 'whatsapp', consent: 'true' }).expect(201)).body as GeneralCvView;
+      const other = (await add('hr', { fullName: `Lina Twice ${RUN}`, email: email('lina'), mobile: '01001234567', departmentId: teamId, source: 'whatsapp', consent: 'true' }).expect(201)).body as GeneralCvView;
       await post('hr', `/recruitment/general-cvs/${other.id}/move`, { vacancyId: vacancy.id }).expect(200);
       const third = await prisma.generalCv.create({
         data: { number: `APP-${YEAR}-9${String(Date.now()).slice(-4)}`, fullName: 'Lina Again', email: email('lina'), mobile: '01001234567', areaOther: 'Other', source: 'email', consentAt: new Date(), createdAt: new Date(Date.now() - 40 * 24 * 3600 * 1000) },
@@ -314,14 +356,16 @@ describe('General CVs and the bulk upload (e2e)', () => {
       expect(recent.duplicate).toMatchObject({ inBatch: false, reference: expect.stringMatching(/^APP-/) });
       const fresh = (await upload('hr', await pdfOf(['Nour Fresh Person', email('nour'), '01001234567']), 'nour.pdf').expect(201)).body as CvUploadView;
       const row = (r: CvUploadView, extra: object = {}) => ({ id: r.id, fullName: r.guess.fullName ?? '', email: r.guess.email ?? '', mobile: r.guess.mobile ?? '', source: 'linkedin', ...extra });
-      const first = (await post('hr', '/recruitment/cv-uploads/save', { rows: [row(recent, { departmentId }), row(fresh)] }).expect(200)).body as CvSaveResult;
+      const first = (await post('hr', '/recruitment/cv-uploads/save', { rows: [row(recent, { departmentId: teamId }), row(fresh)] }).expect(200)).body as CvSaveResult;
       expect(first.saved).toEqual([]);
       expect(first.skipped.map((s) => s.reason)).toEqual([
         expect.stringMatching(/sent a CV on .* \(APP-.*\): tick Keep to save it anyway\.$/),
         'Choose the area they would like to work in, or Other and write it.',
       ]);
-      const second = (await post('hr', '/recruitment/cv-uploads/save', { rows: [row(recent, { departmentId, keep: true }), row(fresh, { areaOther: 'Sound' })] }).expect(200)).body as CvSaveResult;
+      // a team is an area here too (the bulk upload took only departments before, 22 October 2026)
+      const second = (await post('hr', '/recruitment/cv-uploads/save', { rows: [row(recent, { departmentId: teamId, keep: true }), row(fresh, { areaOther: 'Sound' })] }).expect(200)).body as CvSaveResult;
       expect(second.saved.map((s) => s.fullName)).toEqual(['Sara Repeat Person', 'Nour Fresh Person']);
+      expect(await prisma.generalCv.findFirstOrThrow({ where: { email: email('sara'), source: 'linkedin' }, select: { departmentId: true, mobile: true } })).toEqual({ departmentId: teamId, mobile: '+201001234567' });
       const nour = await prisma.generalCv.findFirstOrThrow({ where: { email: email('nour') }, include: { events: true } });
       expect(nour).toMatchObject({ source: 'linkedin', areaOther: 'Sound', consentById: users.hr, consentNote: 'By HR (LinkedIn Easy Apply)', createdById: users.hr, status: 'new' });
       expect(nour.events.map((e) => e.note)).toEqual(['Added by HR (LinkedIn), in a bulk upload']);

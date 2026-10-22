@@ -4,16 +4,21 @@ import {
   GENERAL_CV_IP_TOKEN,
   GENERAL_CV_LIMITS,
   GENERAL_CV_SOURCE_LABELS,
+  generalAreas,
   generalCvProblems,
   isGeneralCvSource,
   isGeneralCvStatus,
+  keptMobile,
+  mobileSearchForms,
   moveProblem,
   normalEmail,
   RECRUITMENT_LIMITS,
+  tidyNotice,
   webLinkOf,
   withinDays,
   type ApplicantsSummary,
   type ApplicationStage,
+  type GeneralArea,
   type GeneralCvInput,
   type GeneralCvListItem,
   type GeneralCvSource,
@@ -115,6 +120,36 @@ const areaOf = (r: { department: { nameEn: string; parent?: { nameEn: string } |
 /** C-level (owner, 22 October 2026: "C Level isn't an option for any user or even HR"): every job title for a confidential grade, as G9 Executive. */
 const cLevel = (titles: readonly { minGrade: { confidential: boolean } | null }[]) => titles.length > 0 && titles.every((t) => t.minGrade?.confidential === true);
 
+/**
+ * The areas a CV may be for, in the organisation's order (generalAreas in packages/shared general-cvs.ts; owner, 22
+ * October 2026: "remove the department from the dropdown menu, area you would like to work in"): each team by its own
+ * name, a department only when it has no teams, never a C-level one (cLevel: a department whose job titles, its teams'
+ * too, are all for a confidential grade is left out with its teams, and so is such a team). The careers page's list,
+ * and the only ones taken from it, from HR's Add a CV and from the bulk upload.
+ */
+export async function areasOf(prisma: PrismaService): Promise<GeneralArea[]> {
+  const titles = { select: { minGrade: { select: { confidential: true } } } } as const;
+  const order = [{ sortOrder: 'asc' as const }, { nameEn: 'asc' as const }];
+  const rows = await prisma.department.findMany({
+    where: { parentId: null },
+    orderBy: order,
+    select: { id: true, nameEn: true, jobTitles: titles, children: { orderBy: order, select: { id: true, nameEn: true, jobTitles: titles } } },
+  });
+  return generalAreas(
+    rows.map((d) => ({
+      id: d.id,
+      name: d.nameEn,
+      cLevel: cLevel([...d.jobTitles, ...d.children.flatMap((t) => t.jobTitles)]),
+      teams: d.children.map((t) => ({ id: t.id, name: t.nameEn, cLevel: cLevel(t.jobTitles) })),
+    })),
+  );
+}
+
+/** Whether an id is one of the areas a CV may be for (areasOf). */
+export async function isArea(prisma: PrismaService, departmentId: string): Promise<boolean> {
+  return /^[0-9a-f-]{36}$/i.test(departmentId) && (await areasOf(prisma)).some((a) => a.id === departmentId);
+}
+
 @Injectable()
 export class GeneralCvsService {
   private readonly logger = new Logger('GeneralCvs');
@@ -129,33 +164,10 @@ export class GeneralCvsService {
 
   // ---------- the careers page ----------
 
-  /** The general form: the company, and the areas to choose from (areas()). */
+  /** The general form: the company, and the areas to choose from (areasOf). */
   async publicForm(): Promise<PublicGeneralForm> {
-    const [company, areas] = await Promise.all([this.prisma.company.findUnique({ where: { id: 1 }, select: { nameEn: true, nameAr: true } }), this.areas()]);
+    const [company, areas] = await Promise.all([this.prisma.company.findUnique({ where: { id: 1 }, select: { nameEn: true, nameAr: true } }), areasOf(this.prisma)]);
     return { company: { nameEn: company?.nameEn ?? '', nameAr: company?.nameAr ?? null }, areas };
-  }
-
-  /**
-   * The areas a CV may be for (owner, 22 October 2026: "from my POV, it should be related to teams not departments"; "C
-   * Level isn't an option for any user or even HR, how will someone apply for a c-level"), in the organisation's order:
-   * each team, named with its department ("Video · Production"); a department as itself when it has no teams, or job
-   * titles of its own besides its teams'. Never a C-level one (cLevel): a department whose job titles, its teams' too,
-   * are all for a confidential grade is left out with its teams, and so is such a team.
-   */
-  private async areas(): Promise<{ id: string; name: string }[]> {
-    const titles = { select: { minGrade: { select: { confidential: true } } } } as const;
-    const order = [{ sortOrder: 'asc' as const }, { nameEn: 'asc' as const }];
-    const rows = await this.prisma.department.findMany({
-      where: { parentId: null },
-      orderBy: order,
-      select: { id: true, nameEn: true, jobTitles: titles, children: { orderBy: order, select: { id: true, nameEn: true, jobTitles: titles } } },
-    });
-    return rows.flatMap((d) => {
-      if (cLevel([...d.jobTitles, ...d.children.flatMap((t) => t.jobTitles)])) return [];
-      const own = !d.children.length || (d.jobTitles.length > 0 && !cLevel(d.jobTitles)) ? [{ id: d.id, name: d.nameEn }] : [];
-      const teams = d.children.filter((t) => !cLevel(t.jobTitles)).map((t) => ({ id: t.id, name: areaName({ nameEn: t.nameEn, parent: { nameEn: d.nameEn } }) }));
-      return [...own, ...teams];
-    });
   }
 
   /**
@@ -228,8 +240,10 @@ export class GeneralCvsService {
           query.status === 'all' ? {} : query.status ? { status: query.status } : { status: { not: 'archived' } },
           query.source ? { source: query.source } : {},
           query.departmentId ? { departmentId: query.departmentId } : {},
-          // the search also looks in the CVs' text (22 October 2026)
-          q ? { OR: [{ fullName: q }, { email: q }, { mobile: q }, { number: q }, { cvReading: { is: { text: q } } }] } : {},
+          // the search also looks in the CVs' text (22 October 2026), and a mobile as typed in any form (+20…, 010…)
+          q
+            ? { OR: [{ fullName: q }, { email: q }, { mobile: q }, ...mobileSearchForms(query.q!).map((f) => ({ mobile: { contains: f } })), { number: q }, { cvReading: { is: { text: q } } }] }
+            : {},
         ],
       },
       select: LIST_SELECT,
@@ -423,11 +437,13 @@ export class GeneralCvsService {
     return {
       fullName: text(dto.fullName) ?? '',
       email: dto.email ?? '',
-      mobile: text(dto.mobile) ?? '',
+      // kept as the system keeps phones, +201012345678 (22 October 2026); the rule refuses one that isn't a number
+      mobile: keptMobile(dto.mobile),
       linkedin: webLinkOf(dto.linkedin) || null,
       portfolio: webLinkOf(dto.portfolio) || null,
       yearsExperience: numberOf(dto.yearsExperience),
-      noticePeriod: text(dto.noticePeriod),
+      // "30 days", "2 months" (22 October 2026)
+      noticePeriod: tidyNotice(dto.noticePeriod),
       expectedSalary: numberOf(dto.expectedSalary),
       departmentId: text(dto.departmentId),
       areaOther: text(dto.departmentId) ? null : text(dto.areaOther),
@@ -438,11 +454,10 @@ export class GeneralCvsService {
     };
   }
 
-  /** The area chosen, when one is: one of areas() (a team, or a department without teams; never a C-level one). */
+  /** The area chosen, when one is: one of areasOf (a team, or a department without teams; never a C-level one). */
   private async areaProblems(departmentId: string | null | undefined): Promise<string[]> {
     if (!departmentId) return [];
-    const ok = /^[0-9a-f-]{36}$/i.test(departmentId) && (await this.areas()).some((a) => a.id === departmentId);
-    return ok ? [] : ['Choose one of the areas, or Other and write it.'];
+    return (await isArea(this.prisma, departmentId)) ? [] : ['Choose one of the areas, or Other and write it.'];
   }
 
   /** A general CV from the email in the last 30 days. */

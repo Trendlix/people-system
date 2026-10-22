@@ -60,10 +60,14 @@ export const loadGeneralCv = (id: string): Promise<Loaded<GeneralCvView>> => loa
 
 export const loadCvUploads = (target: CvBatchTarget): Promise<Loaded<CvUploadView[]>> => loadJson(uploadsApiPath(target));
 
-/** The areas a general CV can name: the departments (not teams), as the careers page's form lists them; none when unavailable. */
-export async function loadGeneralAreas(): Promise<PublicGeneralForm['areas']> {
+/**
+ * The areas a general CV can name, the careers page's form's (teams, and departments without teams), each named as HR's
+ * lists name it, "Video · Production" (the careers page shows "Video" alone: owner, 22 October 2026, "remove the
+ * department from the dropdown menu"); none when unavailable.
+ */
+export async function loadGeneralAreas(): Promise<{ id: string; name: string }[]> {
   const form = await publicGet<PublicGeneralForm>('/general-cvs/form');
-  return form.ok ? form.data.areas : [];
+  return form.ok ? form.data.areas.map((a) => ({ id: a.id, name: a.hrName ?? a.name })) : [];
 }
 
 // A CV's text and the contacts found in it (22 October 2026: "make the OCR egine reads the CV and analyse it"): refused to

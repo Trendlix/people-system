@@ -18,6 +18,8 @@ import {
   type GeneralCvSource,
 } from '@trendlix/shared';
 import { FormErrors, useFieldIds, useKeptForm } from '@/components/form';
+import { NoticeInput } from '@/components/notice-input';
+import { PhoneInput } from '@/components/phone-input';
 import { Select } from '@/components/select';
 import type { FormState } from '@/lib/types';
 import { OTHER_AREA } from '../../careers/careers';
@@ -27,7 +29,9 @@ import { batchSources, duplicateText, inBatchRepeats, mergeReadings, rowOf, save
 // General CVs' forms (owner, 22 October 2026: "i want a proper viweing, what came out of the posted jobs and what cam on
 // randomly", "Both"; "is there a way to easy apply from linkedin?" … "why not"): HR's Add a CV, adding one to a vacancy,
 // and the bulk upload: many CVs dropped at once, each read for the person's name, email and mobile, checked by HR row by
-// row, then saved. The API checks each again.
+// row, then saved. The API checks each again. Add a CV takes the mobile and the notice period as the careers page's forms
+// do (22 October 2026: the mobile "like the one applied in the system, country code and no extra zero"; the notice period
+// "in Days" … "and a selectoor to make it months").
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 type Area = { id: string; name: string };
@@ -96,7 +100,7 @@ export function AddCvForm({ action, areas }: { action: Action; areas: Area[] }) 
           <label htmlFor={fid('mobile')} className="label">
             Mobile
           </label>
-          <input id={fid('mobile')} name="mobile" type="tel" required maxLength={L.mobile} placeholder="+20 100 123 4567" defaultValue={v('mobile')} className="input" />
+          <PhoneInput id={fid('mobile')} name="mobile" label="Mobile" required defaultValue={v('mobile')} />
         </div>
         <div>
           <label htmlFor={fid('area')} className="label">
@@ -144,7 +148,7 @@ export function AddCvForm({ action, areas }: { action: Action; areas: Area[] }) 
           <label htmlFor={fid('noticePeriod')} className="label">
             Notice period <span className="font-normal text-muted">(optional)</span>
           </label>
-          <input id={fid('noticePeriod')} name="noticePeriod" maxLength={L.notice} defaultValue={v('noticePeriod')} className="input" />
+          <NoticeInput id={fid('noticePeriod')} defaultNumber={v('noticeNumber')} defaultUnit={v('noticeUnit')} />
         </div>
         <div>
           <label htmlFor={fid('expectedSalary')} className="label">

@@ -310,6 +310,40 @@ describe('Recruitment (e2e)', () => {
       ]);
     });
 
+    // 22 October 2026, the owner trying the form on an iPhone: the mobile "like the one applied in the system, country code
+    // and no extra zero"; the notice period "in Days" … "and a selectoor to make it months"; "validate email field"
+    it('keeps the mobile as the system keeps phones and the notice period as days or months; refuses a wrong email, mobile or notice period', async () => {
+      await apply(v.slug, applicant('Local Mobile', '10.7.1.1', undefined, { mobile: '01012345678', noticePeriod: '2 months', yearsExperience: '2.5' })).expect(201);
+      await apply(v.slug, applicant('Spaced Mobile', '10.7.1.2', undefined, { mobile: '+20 101 234 5679', noticePeriod: '1 days' })).expect(201);
+      const kept = await prisma.jobApplication.findMany({
+        where: { email: { in: [`local.mobile.${RUN}@mail.test`, `spaced.mobile.${RUN}@mail.test`] } },
+        orderBy: { createdAt: 'asc' },
+        select: { mobile: true, noticePeriod: true, yearsExperience: true },
+      });
+      expect(kept.map((k) => [k.mobile, k.noticePeriod, Number(k.yearsExperience)])).toEqual([
+        ['+201012345678', '2 months', 2.5],
+        ['+201012345679', '1 day', 4],
+      ]);
+      // HR finds them however the mobile is typed
+      const found = (q: string) => get('hr', `/recruitment/applications?vacancyId=${v.id}&q=${encodeURIComponent(q)}`).expect(200).then((r) => (r.body as ApplicationListItem[]).map((a) => a.fullName));
+      expect(await found('0101 234 5678')).toEqual([`Local Mobile ${RUN}`]);
+      expect(await found('234 5679')).toEqual([`Spaced Mobile ${RUN}`]);
+      expect(
+        said(await apply(v.slug, applicant('Wrong Fields', '10.7.1.3', undefined, { email: 'wrong.fields@mail', mobile: '0101234', yearsExperience: '3.3', noticePeriod: 'one month' })).expect(400)),
+      ).toEqual([
+        'Write a full email address, e.g. name@example.com.',
+        'Write the mobile number without the 0 in front, after choosing the country code.',
+        'Write your years of experience as a number from 0 to 60, e.g. 3 or 2.5.',
+        'Write the notice period as a number of days or months.',
+      ]);
+      expect(said(await apply(v.slug, applicant('Long Notice', '10.7.1.4', undefined, { noticePeriod: '13 months' })).expect(400))).toEqual([
+        'Keep the notice period to 365 days or 12 months at most.',
+      ]);
+      expect(said(await apply(v.slug, applicant('Odd Mail', '10.7.1.5', undefined, { email: 'odd mail@mail.test' })).expect(400))).toEqual([
+        'Write a full email address, e.g. name@example.com.',
+      ]);
+    });
+
     it('refuses more than 5 an hour from one address', async () => {
       for (let i = 1; i <= 5; i++) await apply(v.slug, applicant(`Busy Person${i}`, '10.9.9.9')).expect(201);
       expect(said(await apply(v.slug, applicant('Busy Person6', '10.9.9.9')).expect(429))).toEqual(['You have sent several applications in the last hour. Please try again later.']);

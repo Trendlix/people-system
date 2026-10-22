@@ -24,6 +24,7 @@ import type { EmploymentType, WorkArrangement } from './index.js';
 import type { CvReadingView } from './cv-analysis.js';
 import type { GeneralCvSource } from './general-cvs.js';
 import type { FeedbackView, InterviewView, RecruitmentViewer, SuggestionView } from './recruitment-hiring.js';
+import { phoneOk, phoneTidy } from './phone.js';
 
 // ---------- the limits ----------
 
@@ -469,8 +470,147 @@ export interface ApplyInput {
   consent: boolean;
 }
 
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const MOBILE = /^\+?[0-9 ()-]{7,30}$/;
+// ---------- the form's email, mobile, years and notice period ----------
+// The owner, 22 October 2026, trying the careers form on an iPhone: "make the years of experience field only numbers,
+// and you add years."; "Motice period Field in Days" … "and a selectoor to make it months, and the field accept only
+// numbers"; "and the mobile number format to be like the one applied in the system, country code and no extra zero";
+// "validate email field". The careers page's two forms and HR's Add a CV follow these; the API checks them again.
+
+/** An email address: one @, no spaces, and a domain with a dot and an ending of 2 letters or more (name@example.com). */
+const EMAIL = /^[^\s@]+@(?:[^\s@.]+\.)+\p{L}{2,}$/u;
+
+export const EMAIL_PROBLEM = 'Write a full email address, e.g. name@example.com.';
+
+/** Whether a text (as kept: normalEmail) is a full email address. */
+export const isEmail = (value: string): boolean => value.length <= RECRUITMENT_LIMITS.email && EMAIL.test(value);
+
+/** What is wrong with an email, in words; null when it is a full address. */
+export const emailProblem = (value: unknown): string | null => (isEmail(typeof value === 'string' ? normalEmail(value) : '') ? null : EMAIL_PROBLEM);
+
+/** The mail services whose names are often misspelled, as an address's domain starts. */
+const MAIL_SERVICES = ['gmail', 'hotmail', 'yahoo', 'outlook', 'icloud'] as const;
+/** Real services a misspelling would look like (mail.com, ymail.com …): never hinted. */
+const REAL_NAMES = new Set(['mail', 'email', 'ymail', 'cloud', 'gmx', 'live', 'msn', 'aol']);
+
+/** The edits from one word to another (a letter added, dropped, changed, or two side by side swapped). */
+function editsBetween(a: string, b: string): number {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)));
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+    }
+  }
+  return d[a.length][b.length];
+}
+
+/**
+ * The address meant, for a common misspelling of Gmail, Hotmail, Yahoo, Outlook or iCloud ("mona@gmial.com",
+ * "mona@gmail.con", "mona@hotmail"): "mona@gmail.com", for the form's "Did you mean …?" (a hint, never a refusal). Null
+ * otherwise, and for a service's own regional address (yahoo.fr, hotmail.co.uk, outlook.sa).
+ */
+export function emailHint(value: unknown): string | null {
+  const t = typeof value === 'string' ? normalEmail(value) : '';
+  const at = t.lastIndexOf('@');
+  if (at < 1 || t.indexOf('@') !== at) return null;
+  const local = t.slice(0, at);
+  const domain = t.slice(at + 1);
+  const dot = domain.indexOf('.');
+  const name = dot < 0 ? domain : domain.slice(0, dot);
+  const rest = dot < 0 ? '' : domain.slice(dot + 1);
+  if (!name || REAL_NAMES.has(name)) return null;
+  // "com" misspelled (con, cmo, co, comm) or left out
+  const comLike = rest === '' || editsBetween(rest, 'com') <= 1;
+  let best: { service: string; edits: number } | null = null;
+  for (const service of MAIL_SERVICES) {
+    const edits = editsBetween(name, service);
+    if (edits <= (service.length >= 6 ? 2 : 1) && (!best || edits < best.edits)) best = { service, edits };
+  }
+  if (!best) return null;
+  const meant = `${best.service}.${comLike ? 'com' : rest}`;
+  return meant === domain ? null : `${local}@${meant}`;
+}
+
+export const MOBILE_PROBLEM = 'Write the mobile number without the 0 in front, after choosing the country code.';
+
+/**
+ * A mobile number as the system keeps phones (phone.ts): the country code and the number in one run, no 0 after the
+ * code: "01012345678", "+20 101 234 5678" and "0020 101 234 5678" are all "+201012345678". Empty when it has no digits.
+ */
+export const keptMobile = (value: unknown): string => phoneTidy(value);
+
+/** What is wrong with a mobile number, in words (the system's phone rule, phoneOk, on the number as kept); null when fine. */
+export const mobileProblem = (value: unknown): string | null => (phoneOk(keptMobile(value)) ? null : MOBILE_PROBLEM);
+
+/**
+ * What a search for a mobile number looks for besides the words typed, the mobiles being kept as +201012345678: its
+ * digits alone ("123 4567" finds …1234567) and the number as kept ("0100 123" finds +20100123…). None for a search that
+ * isn't a number of 4 digits or more.
+ */
+export function mobileSearchForms(q: string): string[] {
+  const t = q.trim();
+  const digits = t.replace(/\D/g, '');
+  if (!/^[+\d\s().-]+$/.test(t) || digits.length < 4) return [];
+  return [...new Set([digits, keptMobile(t)])].filter((f) => f && f !== t);
+}
+
+export const YEARS_PROBLEM = `Write your years of experience as a number from 0 to ${RECRUITMENT_LIMITS.yearsExperience}, e.g. 3 or 2.5.`;
+
+/** What is wrong with the years of experience, in words; null when fine or not given: 0 to 60, halves allowed. */
+export function yearsProblem(years: number | null | undefined): string | null {
+  if (years === undefined || years === null) return null;
+  return Number.isFinite(years) && years >= 0 && years <= RECRUITMENT_LIMITS.yearsExperience && Math.round(years * 2) === years * 2 ? null : YEARS_PROBLEM;
+}
+
+/** A notice period's units, days first (the form's own). */
+export const NOTICE_PERIOD_UNITS = ['days', 'months'] as const;
+export type NoticePeriodUnit = (typeof NOTICE_PERIOD_UNITS)[number];
+
+export const NOTICE_PERIOD_UNIT_LABELS: Record<NoticePeriodUnit, string> = { days: 'Days', months: 'Months' };
+
+/** The longest notice period in each unit: a year. */
+export const NOTICE_PERIOD_MAX: Record<NoticePeriodUnit, number> = { days: 365, months: 12 };
+
+export const NOTICE_PROBLEM = 'Write the notice period as a number of days or months.';
+export const NOTICE_LIMIT_PROBLEM = `Keep the notice period to ${NOTICE_PERIOD_MAX.days} days or ${NOTICE_PERIOD_MAX.months} months at most.`;
+
+/**
+ * A notice period as kept, from the form's number and unit (days unless months): "30 days", "1 day", "2 months",
+ * "1 month", "0 days"; null without a number. A number that isn't a whole one is passed on as typed, for the rule to
+ * refuse.
+ */
+export function noticeOf(number: unknown, unit: unknown): string | null {
+  const t = typeof number === 'string' ? number.trim() : '';
+  if (!t) return null;
+  const u: NoticePeriodUnit = unit === 'months' ? 'months' : 'days';
+  if (!/^\d+$/.test(t)) return `${t} ${u}`;
+  const n = Number(t);
+  return `${n} ${n === 1 ? u.slice(0, -1) : u}`;
+}
+
+/** A notice period as kept, read back: its number and unit; null for an older one typed in words ("1 month notice"). */
+export function noticeParts(value: unknown): { number: number; unit: NoticePeriodUnit } | null {
+  const m = typeof value === 'string' ? /^(\d{1,3}) (day|days|month|months)$/.exec(value.trim()) : null;
+  return m ? { number: Number(m[1]), unit: m[2].startsWith('day') ? 'days' : 'months' } : null;
+}
+
+/** A notice period sent, tidied: "030 Days" and "1 days" as "30 days" and "1 day"; one that isn't such kept as sent (trimmed), for the rule. */
+export function tidyNotice(value: unknown): string | null {
+  const t = typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : '';
+  const parts = noticeParts(t.toLowerCase());
+  return parts ? noticeOf(String(parts.number), parts.unit) : t || null;
+}
+
+/** What is wrong with a notice period, in words; null when fine or not given: "30 days" or "2 months", at most a year. */
+export function noticeProblem(value: unknown): string | null {
+  const t = typeof value === 'string' ? value.trim() : '';
+  if (!t) return null;
+  const m = /^(\d+) (day|days|month|months)$/.exec(t);
+  if (!m) return NOTICE_PROBLEM;
+  const max = NOTICE_PERIOD_MAX[m[2].startsWith('day') ? 'days' : 'months'];
+  return m[1].length > 3 || Number(m[1]) > max ? NOTICE_LIMIT_PROBLEM : null;
+}
 
 /** Whether a text is a web link: http(s), a host with a dot, no spaces. */
 export const isWebLink = (value: string): boolean => value.length <= RECRUITMENT_LIMITS.link && /^https?:\/\/[^\s/]+\.[^\s]+$/i.test(value);
@@ -495,10 +635,11 @@ export function applyProblems(input: Partial<ApplyInput>, questions: readonly Va
   const name = textOf(input.fullName);
   if (name.length < 2) problems.push('Write your full name.');
   else if (name.length > L.name) problems.push(`Keep your name to ${L.name} characters or fewer.`);
-  const email = typeof input.email === 'string' ? normalEmail(input.email) : '';
-  if (!EMAIL.test(email) || email.length > L.email) problems.push('Write your email address, e.g. name@example.com.');
-  const mobile = textOf(input.mobile);
-  if (!MOBILE.test(mobile) || mobile.replace(/\D/g, '').length < 7) problems.push('Write your mobile number, e.g. +20 100 123 4567.');
+  // the system's rules (22 October 2026: "validate email field"; the mobile "like the one applied in the system")
+  const emailSaid = emailProblem(input.email);
+  if (emailSaid) problems.push(emailSaid);
+  const mobileSaid = mobileProblem(input.mobile);
+  if (mobileSaid) problems.push(mobileSaid);
   for (const [field, label] of [
     ['linkedin', 'LinkedIn'],
     ['portfolio', 'portfolio'],
@@ -506,11 +647,10 @@ export function applyProblems(input: Partial<ApplyInput>, questions: readonly Va
     const link = webLinkOf(input[field]);
     if (link && !isWebLink(link)) problems.push(`Write your ${label} link, e.g. linkedin.com/in/your-name, or leave it empty.`);
   }
-  const years = input.yearsExperience;
-  if (years !== undefined && years !== null && !(Number.isFinite(years) && years >= 0 && years <= L.yearsExperience && Math.round(years * 2) === years * 2)) {
-    problems.push(`Give your years of experience as a number from 0 to ${L.yearsExperience} (halves allowed).`);
-  }
-  if (textOf(input.noticePeriod).length > L.notice) problems.push(`Keep the notice period to ${L.notice} characters or fewer.`);
+  const yearsSaid = yearsProblem(input.yearsExperience);
+  if (yearsSaid) problems.push(yearsSaid);
+  const noticeSaid = noticeProblem(input.noticePeriod);
+  if (noticeSaid) problems.push(noticeSaid);
   const salary = input.expectedSalary;
   if (salary !== undefined && salary !== null && !(Number.isFinite(salary) && salary >= 0 && salary <= L.salary)) problems.push('Give your expected salary in EGP a month, or leave it empty.');
   problems.push(...answerProblems(questions, tidyAnswers(questions, input.answers ?? {})));

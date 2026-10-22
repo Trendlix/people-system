@@ -6,9 +6,9 @@ import { sendGeneralCv } from './actions';
 import { GeneralForm } from './general-form';
 
 // "Send us your CV" on the careers page (owner, 22 October 2026: "what came out of the posted jobs and what cam on
-// randomly", "Both"): for someone who doesn't see their role among the open jobs, with the areas (the company's
-// departments) to choose from. Public, like the open jobs; dressed as trendlix.com ("i need it to match the UI"): its
-// page hero, then the form.
+// randomly", "Both"): for someone who doesn't see their role among the open jobs, with the areas (the company's teams,
+// by their own names: "remove the department from the dropdown menu", 22 October 2026) to choose from. Public, like the
+// open jobs; dressed as trendlix.com ("i need it to match the UI"): its page hero, then the form.
 
 async function General() {
   const form = await publicGet<PublicGeneralForm>('/general-cvs/form');

@@ -7,6 +7,8 @@ import {
   GENERAL_CV_LIMITS,
   GENERAL_CV_SOURCE_LABELS,
   generalCvProblems,
+  keptMobile,
+  MOBILE_PROBLEM,
   normalEmail,
   type ApplicationChannel,
   type CvGuess,
@@ -24,7 +26,7 @@ import { nextApplicationNumber } from './application-numbers.js';
 import { cvFileName, cvProblem, cvTypeOf, type CvType } from './cv-file.js';
 import { CvReadingsService } from './cv-readings.service.js';
 import { cvText } from './cv-text.js';
-import { GENERAL_CV_ENTITY } from './general-cvs.service.js';
+import { GENERAL_CV_ENTITY, isArea } from './general-cvs.service.js';
 import { createHrApplication } from './hr-applications.js';
 import { managesRecruitment, vacancyWhere } from './recruitment-access.js';
 import { APPLICATION_ENTITY } from './recruitment-views.js';
@@ -63,8 +65,11 @@ function guessOf(value: Prisma.JsonValue): CvGuess {
   return { fullName: s(o.fullName), email: s(o.email), mobile: s(o.mobile) };
 }
 
-/** The rules' words to an applicant ("Write your email address") said of the person on HR's row ("their"). */
-const theirs = (problem: string) => problem.replace(/\byour\b/g, 'their');
+/**
+ * The rules' words to an applicant ("Write your years of experience") said of the person on HR's row ("their"); the
+ * mobile's as the row takes it, the whole number in one box (the form's has the country code apart).
+ */
+const theirs = (problem: string) => (problem === MOBILE_PROBLEM ? 'Write their mobile number with its country code, e.g. +201012345678.' : problem.replace(/\byour\b/g, 'their'));
 
 /** "By HR (LinkedIn Easy Apply)": the consent an uploaded CV's row is saved with. */
 export const batchConsentNote = (sourceLabel: string, linkedIn: boolean): string => `By HR (${linkedIn ? 'LinkedIn Easy Apply' : sourceLabel})`;
@@ -177,7 +182,8 @@ export class CvUploadsService {
               stage: 'applied',
               fullName: r.fullName,
               email,
-              mobile: r.mobile,
+              // kept as the system keeps phones, +201012345678 (22 October 2026)
+              mobile: keptMobile(r.mobile),
               source,
               consentAt: new Date(),
               consentById: user.id,
@@ -214,7 +220,7 @@ export class CvUploadsService {
                 number,
                 fullName: r.fullName.trim().replace(/\s+/g, ' '),
                 email,
-                mobile: r.mobile.trim(),
+                mobile: keptMobile(r.mobile),
                 departmentId: r.departmentId || null,
                 areaOther: r.departmentId ? null : r.areaOther?.trim() || null,
                 source,
@@ -275,10 +281,10 @@ export class CvUploadsService {
     ).map(theirs);
   }
 
+  /** A general CV's row: the area chosen, one of the list's (areasOf: a team, or a department without teams), as on Add a CV. */
   private async departmentProblem(r: CvSaveRow): Promise<string> {
     if (!r.departmentId) return '';
-    const ok = /^[0-9a-f-]{36}$/i.test(r.departmentId) && (await this.prisma.department.count({ where: { id: r.departmentId, parentId: null } })) > 0;
-    return ok ? '' : 'Choose one of the areas, or Other and write it.';
+    return (await isArea(this.prisma, r.departmentId)) ? '' : 'Choose one of the areas, or Other and write it.';
   }
 
   /** The rows as the page shows them: what each guessed, and what may make it a duplicate (there already, or earlier in the batch). */

@@ -3,14 +3,20 @@
 import { startTransition, useActionState } from 'react';
 import { APPLY_CONSENT_TEXT, RECRUITMENT_LIMITS, type PublicQuestion } from '@trendlix/shared';
 import { FormErrors, useFieldIds } from '@/components/form';
+import { NoticeInput } from '@/components/notice-input';
+import { PhoneInput } from '@/components/phone-input';
 import { Select } from '@/components/select';
 import { answerField, HONEYPOT } from '../careers';
+import { Checked, EmailInput, useFieldChecks, YearsInput } from '../fields';
 import type { ApplyState } from './actions';
 
 // The application form of a job on the careers page (owner, 22 October 2026: "where will we include the ATS?"): the
 // applicant's details, the job's screening questions, the CV (a PDF or a Word file, at most 5 MB) and the consent;
 // once sent, the reference to keep. A field hidden from people catches robots. Made for a phone first; in trendlix.com's
-// contact form's look (careers.css, 22 October 2026: "i need it to match the UI"), its fields and rules unchanged.
+// contact form's look (careers.css, 22 October 2026: "i need it to match the UI"). The email, mobile, years and notice
+// period as the owner asked on 22 October 2026 (fields.tsx): the email checked as it is left, the mobile as the system
+// takes one (the country code and the number without its 0), the years in numbers with "years" after them, the notice
+// period a number of days or months; each said under its field before sending.
 
 type Action = (prev: ApplyState, fd: FormData) => Promise<ApplyState>;
 
@@ -24,6 +30,7 @@ export function ApplyForm({ action, questions, title }: { action: Action; questi
   const [state, formAction, pending] = useActionState(action, {});
   const fid = useFieldIds();
   const v = (name: string) => state.values?.[name] ?? '';
+  const checks = useFieldChecks(fid, { yearsRequired: true });
 
   if (state.reference !== undefined) {
     return (
@@ -65,13 +72,15 @@ export function ApplyForm({ action, questions, title }: { action: Action; questi
           <label htmlFor={fid('email')} className="label">
             Email
           </label>
-          <input id={fid('email')} name="email" type="email" required maxLength={L.email} autoComplete="email" defaultValue={v('email')} className="input" />
+          <EmailInput id={fid('email')} checks={checks} defaultValue={v('email')} />
         </div>
         <div>
           <label htmlFor={fid('mobile')} className="label">
             Mobile
           </label>
-          <input id={fid('mobile')} name="mobile" type="tel" required maxLength={L.mobile} autoComplete="tel" placeholder="+20 100 123 4567" defaultValue={v('mobile')} className="input" />
+          <Checked checks={checks} field="mobile" id={fid('mobile')}>
+            <PhoneInput id={fid('mobile')} name="mobile" label="Mobile" required autoComplete="tel" variant="careers" defaultValue={v('mobile')} {...checks.ids('mobile')} />
+          </Checked>
         </div>
         <div>
           <label htmlFor={fid('linkedin')} className="label">
@@ -89,13 +98,15 @@ export function ApplyForm({ action, questions, title }: { action: Action; questi
           <label htmlFor={fid('yearsExperience')} className="label">
             Years of experience
           </label>
-          <input id={fid('yearsExperience')} name="yearsExperience" inputMode="decimal" maxLength={4} defaultValue={v('yearsExperience')} className="input" />
+          <YearsInput id={fid('yearsExperience')} checks={checks} required defaultValue={v('yearsExperience')} />
         </div>
         <div>
           <label htmlFor={fid('noticePeriod')} className="label">
             Notice period <span className="font-normal text-muted">(optional)</span>
           </label>
-          <input id={fid('noticePeriod')} name="noticePeriod" maxLength={L.notice} placeholder="e.g. 1 month" defaultValue={v('noticePeriod')} className="input" />
+          <Checked checks={checks} field="noticePeriod" id={fid('noticePeriod')}>
+            <NoticeInput id={fid('noticePeriod')} variant="careers" defaultNumber={v('noticeNumber')} defaultUnit={v('noticeUnit')} {...checks.ids('noticePeriod')} />
+          </Checked>
         </div>
         <div>
           <label htmlFor={fid('expectedSalary')} className="label">
@@ -180,7 +191,15 @@ export function ApplyForm({ action, questions, title }: { action: Action; questi
         <span>{APPLY_CONSENT_TEXT}</span>
       </label>
 
-      <button type="submit" disabled={pending} className="btn btn-primary w-full sm:w-auto">
+      <button
+        type="submit"
+        disabled={pending}
+        onClick={(e) => {
+          // the email, mobile, years and notice period checked first, each said under its field (22 October 2026)
+          if (!checks.passes(e.currentTarget.form)) e.preventDefault();
+        }}
+        className="btn btn-primary w-full sm:w-auto"
+      >
         {pending ? 'Sending…' : 'Send my application'}
       </button>
     </form>

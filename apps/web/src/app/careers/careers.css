@@ -594,6 +594,70 @@ html:has(.careers-site) {
     color: var(--tl-white64);
   }
 
+  /*
+   * The checked fields (owner, 22 October 2026: "validate email field", the years "only numbers, and you add years"):
+   * a problem under its field in the danger colour, the field's line in it too until it is in use again; the years with
+   * "years" after them inside the same line; "Did you mean …?" under the email, its address a link-like button.
+   */
+  .careers-site .careers-problem {
+    margin-top: 0.5rem;
+    font-size: 13px;
+    line-height: 1.25rem;
+    color: var(--color-danger);
+  }
+
+  .careers-site .input[aria-invalid="true"]:not(:focus),
+  .careers-site .careers-suffixed[data-invalid="true"]:not(:focus-within) {
+    border-bottom-color: var(--color-danger);
+  }
+
+  .careers-site .careers-suffixed {
+    display: flex;
+    align-items: baseline;
+    gap: 0.5rem;
+    border-bottom: 1px solid var(--tl-field-line);
+  }
+
+  .careers-site .careers-suffixed:focus-within {
+    border-bottom-color: var(--tl-star);
+    box-shadow: 0 1px 0 0 var(--tl-star);
+  }
+
+  .careers-site .careers-suffixed > .input,
+  .careers-site .careers-suffixed > .input:focus {
+    flex: 1 1 auto;
+    min-width: 0;
+    border-bottom: 0;
+    box-shadow: none;
+  }
+
+  .careers-site .careers-suffix {
+    flex: none;
+    padding-bottom: 0.75rem;
+    font-family: var(--careers-field-font);
+    font-size: 1rem;
+    line-height: 1.5rem;
+    color: var(--tl-white64);
+  }
+
+  .careers-site .careers-hint {
+    margin-top: 0.5rem;
+    font-size: 13px;
+    line-height: 1.25rem;
+    color: var(--tl-white64);
+  }
+
+  .careers-site .careers-hint-use {
+    color: var(--tl-offWhite);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+
+  .careers-site .careers-hint-use:hover {
+    color: var(--tl-star);
+  }
+
   /* the send button (the contact form's): Bebas, full round, light */
   .careers-site .btn-primary {
     min-height: 0;

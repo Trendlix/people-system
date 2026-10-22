@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, HttpException, HttpStatus, Inje
 import {
   applyProblems,
   isVacancySlug,
+  keptMobile,
   normalEmail,
   publicQuestionOf,
   RECRUITMENT_LIMITS,
@@ -11,6 +12,7 @@ import {
   sourceOf,
   takesApplications,
   tidyAnswers,
+  tidyNotice,
   type ApplyInput,
   type ApplyResult,
   type PublicCareers,
@@ -159,12 +161,15 @@ export class PublicCareersService {
     const input: ApplyInput = {
       fullName: text(dto.fullName) ?? '',
       email: dto.email ?? '',
-      mobile: text(dto.mobile) ?? '',
+      // kept as the system keeps phones (22 October 2026: "country code and no extra zero"): 01012345678 and
+      // +20 101 234 5678 are +201012345678; the rule refuses one that isn't a number
+      mobile: keptMobile(dto.mobile),
       // https:// put in front when it was typed without (22 October 2026)
       linkedin: webLinkOf(dto.linkedin) || null,
       portfolio: webLinkOf(dto.portfolio) || null,
       yearsExperience: numberOf(dto.yearsExperience),
-      noticePeriod: text(dto.noticePeriod),
+      // "30 days", "2 months" (22 October 2026: "in Days" … "and a selectoor to make it months")
+      noticePeriod: tidyNotice(dto.noticePeriod),
       expectedSalary: numberOf(dto.expectedSalary),
       answers: answersSent,
       consent: dto.consent === 'true' || dto.consent === 'on',

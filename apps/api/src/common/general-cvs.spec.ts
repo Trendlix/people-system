@@ -6,6 +6,7 @@ import {
   cvGuesses,
   emailIn,
   GENERAL_CV_IP_TOKEN,
+  generalAreas,
   generalCvProblems,
   looksLikeName,
   mobileIn,
@@ -33,8 +34,8 @@ describe('a general CV’s rules', () => {
   it('names every problem: the details, the area, the consent', () => {
     expect(generalCvProblems({ fullName: 'M', email: 'x', mobile: '1', consent: false }, { byHr: false })).toEqual([
       'Write your full name.',
-      'Write your email address, e.g. name@example.com.',
-      'Write your mobile number, e.g. +20 100 123 4567.',
+      'Write a full email address, e.g. name@example.com.',
+      'Write the mobile number without the 0 in front, after choosing the country code.',
       'Choose the area you would like to work in, or Other and write it.',
       'Tick that we may keep your details and CV to consider you for jobs.',
     ]);
@@ -67,6 +68,42 @@ describe('a general CV’s rules', () => {
 
   it('signs the general form’s address for itself, as a job’s for its own', () => {
     expect(GENERAL_CV_IP_TOKEN).toBe(careersIpToken('general'));
+  });
+});
+
+// owner, 22 October 2026: "from my POV, it should be related to teams not departments"; "C Level isn't an option for any
+// user or even HR"; then "remove the department from the dropdown menu, area you would like to work in"
+describe('the areas a CV may be for', () => {
+  const team = (id: string, name: string, cLevel = false) => ({ id, name, cLevel });
+
+  it('offers the teams by their own names, a department only without teams, never a C-level one, in the given order', () => {
+    const areas = generalAreas([
+      { id: 'prod', name: 'Production', cLevel: false, teams: [team('video', 'Video'), team('photo', 'Photography')] },
+      { id: 'finance', name: 'Finance', cLevel: false, teams: [] },
+      { id: 'board', name: 'Board', cLevel: true, teams: [] },
+      { id: 'mgmt', name: 'Management', cLevel: false, teams: [team('exec', 'Executive', true), team('ops', 'Operations')] },
+    ]);
+    expect(areas).toEqual([
+      { id: 'video', name: 'Video', hrName: 'Video · Production' },
+      { id: 'photo', name: 'Photography', hrName: 'Photography · Production' },
+      { id: 'finance', name: 'Finance', hrName: 'Finance' },
+      { id: 'ops', name: 'Operations', hrName: 'Operations · Management' },
+    ]);
+    expect(areas.map((a) => a.id)).not.toContain('prod');
+  });
+
+  it('tells apart only the teams that share a name, by their department in brackets', () => {
+    const areas = generalAreas([
+      { id: 'mkt', name: 'Marketing', cLevel: false, teams: [team('mkt-content', 'Content'), team('social', 'Social media')] },
+      { id: 'prod', name: 'Production', cLevel: false, teams: [team('prod-content', ' content '), team('video', 'Video')] },
+      { id: 'video-dept', name: 'Sales', cLevel: false, teams: [] },
+    ]);
+    expect(areas.map((a) => a.name)).toEqual(['Content (Marketing)', 'Social media', 'content (Production)', 'Video', 'Sales']);
+    // a department without teams keeps its own name even when a team is called the same
+    expect(generalAreas([{ id: 'v', name: 'Video', cLevel: false, teams: [] }, { id: 'p', name: 'Production', cLevel: false, teams: [team('pv', 'Video')] }]).map((a) => a.name)).toEqual([
+      'Video',
+      'Video (Production)',
+    ]);
   });
 });
 

@@ -3,7 +3,15 @@ import {
   applyProblems,
   canMoveVacancy,
   careersPath,
+  emailHint,
+  emailProblem,
   isVacancySlug,
+  keptMobile,
+  mobileProblem,
+  mobileSearchForms,
+  noticeOf,
+  noticeParts,
+  noticeProblem,
   offerable,
   publicQuestionOf,
   questionMaxPoints,
@@ -13,6 +21,7 @@ import {
   stageMoveProblem,
   takesApplications,
   tidyAnswers,
+  tidyNotice,
   tidyQuestions,
   vacancyEditable,
   vacancyNumber,
@@ -20,6 +29,7 @@ import {
   vacancyQuestionsProblems,
   vacancySlug,
   applicationNumber,
+  yearsProblem,
   type VacancyQuestion,
 } from '@trendlix/shared';
 import { CLIENT_IP_AT_HEADER, CLIENT_IP_HEADER, CLIENT_IP_SIGNATURE_HEADER, careersIpToken, webLinkOf } from '@trendlix/shared';
@@ -192,15 +202,95 @@ describe('applying', () => {
   });
 
   it('names every problem', () => {
-    expect(applyProblems({ fullName: 'M', email: 'mona', mobile: '12', linkedin: 'linkedin', yearsExperience: 3.3, expectedSalary: -1, answers: {}, consent: false }, [])).toEqual([
+    expect(
+      applyProblems({ fullName: 'M', email: 'mona', mobile: '12', linkedin: 'linkedin', yearsExperience: 3.3, noticePeriod: 'one month', expectedSalary: -1, answers: {}, consent: false }, []),
+    ).toEqual([
       'Write your full name.',
-      'Write your email address, e.g. name@example.com.',
-      'Write your mobile number, e.g. +20 100 123 4567.',
+      'Write a full email address, e.g. name@example.com.',
+      'Write the mobile number without the 0 in front, after choosing the country code.',
       'Write your LinkedIn link, e.g. linkedin.com/in/your-name, or leave it empty.',
-      'Give your years of experience as a number from 0 to 60 (halves allowed).',
+      'Write your years of experience as a number from 0 to 60, e.g. 3 or 2.5.',
+      'Write the notice period as a number of days or months.',
       'Give your expected salary in EGP a month, or leave it empty.',
       'Tick that we may keep your application and CV to consider you for this job.',
     ]);
+  });
+});
+
+// The careers form's fields (owner, 22 October 2026, trying it on an iPhone: "make the years of experience field only
+// numbers, and you add years."; "Motice period Field in Days" … "and a selectoor to make it months"; "the mobile number
+// format to be like the one applied in the system, country code and no extra zero"; "validate email field").
+describe('the careers form’s email, mobile, years and notice period', () => {
+  it('takes a full email address: one @, no spaces, a domain with a dot and a 2-letter ending', () => {
+    for (const ok of ['mona@example.com', ' Mona.Adel@Mail.Example.EG ', 'mona+cv@gmail.com', 'm@x.io']) expect(emailProblem(ok)).toBeNull();
+    for (const bad of ['', 'mona', 'mona@', '@example.com', 'mona@example', 'mona@example.c', 'mona@@example.com', 'mo na@example.com', 'mona@exa mple.com', 'mona@.com', 'mona@example..com', 'mona@example.com.', 'mona@example.c0m']) {
+      expect(emailProblem(bad)).toBe('Write a full email address, e.g. name@example.com.');
+    }
+    expect(emailProblem(`${'m'.repeat(250)}@x.com`)).not.toBeNull();
+  });
+
+  it('hints the address meant for a common misspelling of Gmail, Hotmail, Yahoo, Outlook or iCloud, never another', () => {
+    expect(emailHint('mona@gmial.com')).toBe('mona@gmail.com');
+    expect(emailHint('Mona@Gmail.con')).toBe('mona@gmail.com');
+    expect(emailHint('mona@gmail')).toBe('mona@gmail.com');
+    expect(emailHint('mona@gamil.co')).toBe('mona@gmail.com');
+    expect(emailHint('mona@hotmial.com')).toBe('mona@hotmail.com');
+    expect(emailHint('mona@hotmal.co.uk')).toBe('mona@hotmail.co.uk');
+    expect(emailHint('mona@yaho.com')).toBe('mona@yahoo.com');
+    expect(emailHint('mona@outlok.com')).toBe('mona@outlook.com');
+    expect(emailHint('mona@iclod.com')).toBe('mona@icloud.com');
+    for (const fine of ['mona@gmail.com', 'mona@yahoo.fr', 'mona@hotmail.co.uk', 'mona@outlook.sa', 'mona@mail.com', 'mona@ymail.com', 'mona@email.com', 'mona@trendlix.com', 'mona', 'mona@a@gmail.com', '']) {
+      expect(emailHint(fine)).toBeNull();
+    }
+  });
+
+  it('keeps a mobile as the system keeps phones, the country code and no 0 after it, and refuses one that isn’t a number', () => {
+    for (const typed of ['01012345678', '1012345678', '+20 101 234 5678', '0020 101 234 5678', '+20 0101 234 5678', '+201012345678']) {
+      expect(keptMobile(typed)).toBe('+201012345678');
+      expect(mobileProblem(typed)).toBeNull();
+    }
+    expect(keptMobile('+44 7700 900123')).toBe('+447700900123');
+    expect(mobileProblem('+44 7700 900123')).toBeNull();
+    const said = 'Write the mobile number without the 0 in front, after choosing the country code.';
+    for (const bad of ['', 'call me', '12', '+20 1012', '+20 101 234 5678 90', '+999 1234 5678']) expect(mobileProblem(bad)).toBe(said);
+  });
+
+  it('finds a mobile by any of its forms, the words typed aside', () => {
+    expect(mobileSearchForms('0100 123')).toEqual(['0100123', '+20100123']);
+    expect(mobileSearchForms('123 4567')).toEqual(['1234567', '+201234567']);
+    expect(mobileSearchForms('+201001234567')).toEqual(['201001234567']);
+    expect(mobileSearchForms('Mona')).toEqual([]);
+    expect(mobileSearchForms('12')).toEqual([]);
+  });
+
+  it('takes the years of experience from 0 to 60, halves allowed', () => {
+    for (const ok of [null, undefined, 0, 3, 2.5, 60]) expect(yearsProblem(ok)).toBeNull();
+    for (const bad of [-1, 3.3, 60.5, 61, Number.NaN]) expect(yearsProblem(bad)).toBe('Write your years of experience as a number from 0 to 60, e.g. 3 or 2.5.');
+  });
+
+  it('makes a notice period of a number and days or months, and reads it back', () => {
+    expect(noticeOf('30', 'days')).toBe('30 days');
+    expect(noticeOf('1', 'days')).toBe('1 day');
+    expect(noticeOf('2', 'months')).toBe('2 months');
+    expect(noticeOf('1', 'months')).toBe('1 month');
+    expect(noticeOf('0', 'days')).toBe('0 days');
+    expect(noticeOf('030', '')).toBe('30 days');
+    expect(noticeOf('', 'months')).toBeNull();
+    expect(noticeOf('  ', 'days')).toBeNull();
+    expect(noticeOf('2.5', 'months')).toBe('2.5 months');
+    expect(noticeParts('30 days')).toEqual({ number: 30, unit: 'days' });
+    expect(noticeParts('1 month')).toEqual({ number: 1, unit: 'months' });
+    expect(noticeParts('1 month notice')).toBeNull();
+    expect(tidyNotice(' 030  Days ')).toBe('30 days');
+    expect(tidyNotice('1 days')).toBe('1 day');
+    expect(tidyNotice('one month')).toBe('one month');
+    expect(tidyNotice('')).toBeNull();
+  });
+
+  it('takes up to 365 days or 12 months, 0 too, and nothing else', () => {
+    for (const ok of [null, '', '0 days', '1 day', '365 days', '12 months', '1 month', '3 months']) expect(noticeProblem(ok)).toBeNull();
+    for (const bad of ['one month', '30', 'days', '2.5 months', '30 weeks', '-1 days', '30 Days']) expect(noticeProblem(bad)).toBe('Write the notice period as a number of days or months.');
+    for (const big of ['366 days', '13 months', '1000 days']) expect(noticeProblem(big)).toBe('Keep the notice period to 365 days or 12 months at most.');
   });
 });
 
