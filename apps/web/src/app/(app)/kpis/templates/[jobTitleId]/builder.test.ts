@@ -4,22 +4,32 @@ import {
   aboveTarget,
   addCriterion,
   addMetric,
+  baseWeightLabel,
   canMove,
   chooseDuty,
   contentFromJson,
   contentOf,
   DUTY_TYPED,
+  draftWeightTotal,
   dutyChoice,
   formGroups,
   formOf,
   moveMetric,
   onlyForPublishing,
+  ownWeightsOf,
   pillarGroups,
   pillarsFromJson,
+  pillarsFromText,
   removeCriterion,
   removeMetric,
+  resetWeights,
+  setPillarWeight,
   updateCriterion,
   updateMetric,
+  weightedPillars,
+  weightsAreBase,
+  weightsProblems,
+  weightsResetNote,
 } from './builder';
 
 // owner, 21 October 2026: "Full framework per role", "Templates: HR"; the HR Specialist sample of the framework
@@ -253,7 +263,7 @@ describe('the JD duty ("so HR can link duties")', () => {
 
 describe('the problems', () => {
   it('for publishing, leave out those said for saving', () => {
-    const blank = contentOf({ attendancePoints: '20', metrics: [], pillars: FOUR });
+    const blank = contentOf({ attendancePoints: '20', metrics: [], pillars: FOUR, weights: {}, baseWeights: null });
     const saving = kpiTemplateProblems(blank);
     expect(saving).toEqual([]);
     expect(onlyForPublishing(kpiTemplateProblems(blank, { publishing: true }), saving)).toEqual([
@@ -261,5 +271,77 @@ describe('the problems', () => {
       'Add a metric to Quality of Work: every pillar is scored.',
       'Add a metric to Clients & Teamwork: every pillar is scored.',
     ]);
+  });
+});
+
+// A job title's own weights (owner, 22 October 2026: "wights can be changed for each department and Job title").
+describe('a job title’s own weights', () => {
+  const BASE = { delivery: 30, quality: 25, clients: 25, discipline: 20 };
+
+  it('starts from the draft’s weights, sending none of its own while they are the department’s', () => {
+    const form = formOf(content, DUTIES, FOUR, BASE);
+    expect(form.weights).toEqual({ delivery: '30', quality: '25', clients: '25', discipline: '20' });
+    expect(weightsAreBase(form)).toBe(true);
+    expect(contentOf(form).weights).toBeNull();
+    expect(draftWeightTotal(form)).toBe(100);
+    expect(weightsProblems(form)).toEqual([]);
+  });
+
+  it('sends its own once they differ, checked as the API checks them', () => {
+    let form = setPillarWeight(formOf(content, DUTIES, FOUR, BASE), 'delivery', '40');
+    expect(draftWeightTotal(form)).toBe(110);
+    expect(weightsProblems(form)).toEqual(['The pillars’ weights add up to 110%: make them add up to 100%.']);
+    form = setPillarWeight(form, 'quality', '15');
+    expect(weightsProblems(form)).toEqual([]);
+    expect(contentOf(form).weights).toEqual({ delivery: 40, quality: 15, clients: 25, discipline: 20 });
+    expect(ownWeightsOf(form)).toEqual({ delivery: 40, quality: 15, clients: 25, discipline: 20 });
+    // the pillar choice shows them
+    expect(weightedPillars(form).pillars.map((p) => p.weight)).toEqual([40, 15, 25, 20]);
+    // back to the department's
+    const reset = resetWeights(form);
+    expect(weightsAreBase(reset)).toBe(true);
+    expect(contentOf(reset).weights).toBeNull();
+  });
+
+  it('says what is wrong with a weight that isn’t whole, and keeps the one it had in the pillar choice', () => {
+    const form = setPillarWeight(formOf(content, DUTIES, FOUR, BASE), 'clients', 'x');
+    expect(weightsProblems(form)).toEqual(['Clients & Teamwork: give its weight as a whole percent from 1 to 100.']);
+    expect(draftWeightTotal(form)).toBe(75);
+    expect(weightedPillars(form).pillars.find((p) => p.key === 'clients')!.weight).toBe(25);
+  });
+
+  it('starts from its own weights when the draft has them', () => {
+    const weighted = { ...FOUR, pillars: FOUR.pillars.map((p) => ({ ...p, weight: p.key === 'delivery' ? 40 : p.key === 'quality' ? 15 : p.weight })) };
+    const form = formOf(content, DUTIES, weighted, BASE);
+    expect(weightsAreBase(form)).toBe(false);
+    expect(contentOf(form).weights).toEqual({ delivery: 40, quality: 15, clients: 25, discipline: 20 });
+    expect(resetWeights(form).weights).toEqual({ delivery: '30', quality: '25', clients: '25', discipline: '20' });
+  });
+
+  it('sends no weights at all to an API that doesn’t take them', () => {
+    const form = setPillarWeight(formOf(content, DUTIES, FOUR), 'delivery', '40');
+    expect(form.baseWeights).toBeNull();
+    expect('weights' in contentOf(form)).toBe(false);
+    expect(weightsProblems(form)).toEqual([]);
+    expect(weightsAreBase(form)).toBe(true);
+    expect(resetWeights(form)).toBe(form);
+  });
+
+  it('reads the weights back from what the form sent, only when it sent them', () => {
+    const sent = JSON.stringify({ ...content, weights: { delivery: 40, quality: 15, clients: 25, discipline: 20 } });
+    expect(contentFromJson(sent)?.weights).toEqual({ delivery: 40, quality: 15, clients: 25, discipline: 20 });
+    expect(contentFromJson(JSON.stringify({ ...content, weights: null }))?.weights).toBeNull();
+    expect(contentFromJson(JSON.stringify(content))).not.toHaveProperty('weights');
+    expect(contentFromJson(JSON.stringify({ ...content, weights: [1, 2] }))).not.toHaveProperty('weights');
+  });
+
+  it('says whose pillars they are, and whose weights the department’s are', () => {
+    expect(pillarsFromText({ nameEn: 'Production' })).toBe('Production’s pillars');
+    expect(pillarsFromText(null)).toBe('The company’s pillars');
+    expect(pillarsFromText(undefined)).toBeNull();
+    expect(pillarsFromText({ nameEn: 'video production' }, (t) => t.toUpperCase())).toBe('VIDEO PRODUCTION’s pillars');
+    expect([baseWeightLabel({ nameEn: 'Production' }), baseWeightLabel(null), baseWeightLabel(undefined)]).toEqual(['Production', 'Company', 'Company']);
+    expect(weightsResetNote({ nameEn: 'Production' })).toMatch(/^The department’s pillars changed .* reset to the department’s\. /);
+    expect(weightsResetNote(null)).toMatch(/^The company’s pillars changed .* reset to the company’s\. /);
   });
 });

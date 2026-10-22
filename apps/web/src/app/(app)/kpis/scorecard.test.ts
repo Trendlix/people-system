@@ -22,6 +22,7 @@ import {
   ownWaiting,
   payrollText,
   percentText,
+  PILLARS_CHANGED_THIS_MONTH,
   PICK_FIELD,
   pickText,
   picksBody,
@@ -420,5 +421,14 @@ describe('All KPIs', () => {
     expect(allKpisHref({ month: '2026-10', status: 'hr', department: ID })).toBe(`/kpis/all?month=2026-10&status=hr&department=${ID}`);
     expect(kpiExcelHref('2026-10')).toBe('/kpis/all/excel?month=2026-10');
     expect(kpiExcelName('2026-10')).toBe('KPIs October 2026.xlsx');
+  });
+});
+
+// owner, 22 October 2026: "but i need pillars to each department / wights can be changed for each department and Job title"
+describe('the month’s pillars when they differ', () => {
+  it('says they differ by department, job title or a change, the averages being by name', () => {
+    expect(PILLARS_CHANGED_THIS_MONTH).toBe(
+      'Pillars differ between this month’s scorecards (by department, job title or a change): averages by name. A pillar’s weight shows when every scorecard with it has the same.',
+    );
   });
 });

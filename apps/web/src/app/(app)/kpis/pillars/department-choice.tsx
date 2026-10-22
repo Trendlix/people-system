@@ -1,0 +1,64 @@
+'use client';
+
+import type { KpiFrameworkView } from '@trendlix/shared';
+import { useId, useState } from 'react';
+import type { FormState } from '@/lib/types';
+import { canFollowCompany, hasOwnPillars } from '../templates/framework';
+import { FollowCompanyForm, KpiFrameworkForm, type PillarsDepartment } from '../templates/framework-form';
+
+// A department's pillars as HR (or the Super Admin) changes them (owner, 22 October 2026: "but i need pillars to each
+// department"): its own pillars, or the company's. Its own: the pillar form, starting from its own (or a copy of the
+// company's); the company's: going back to them from a month, when it has its own now or a change coming (otherwise
+// there is nothing to change).
+
+export function DepartmentPillarsChoice({
+  view,
+  department,
+  action,
+  today,
+}: {
+  view: KpiFrameworkView;
+  department: PillarsDepartment;
+  action: (prev: FormState, fd: FormData) => Promise<FormState>;
+  today: string;
+}) {
+  const id = useId();
+  const [choice, setChoice] = useState<'own' | 'company'>(() => (hasOwnPillars(department.row) ? 'own' : 'company'));
+  return (
+    <div className="space-y-5">
+      <fieldset>
+        <legend className="label">{department.name} takes</legend>
+        <div className="mt-1 flex flex-wrap gap-x-6 gap-y-2">
+          {(
+            [
+              ['own', 'Its own pillars'],
+              ['company', 'The company’s pillars'],
+            ] as const
+          ).map(([value, label]) => (
+            <label key={value} htmlFor={`${id}-${value}`} className="flex min-h-9 cursor-pointer items-center gap-2 text-sm">
+              <input
+                id={`${id}-${value}`}
+                type="radio"
+                name={`${id}-choice`}
+                value={value}
+                checked={choice === value}
+                onChange={() => setChoice(value)}
+                className="size-4 accent-accent"
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      {choice === 'own' ? (
+        <KpiFrameworkForm view={view} action={action} today={today} department={department} />
+      ) : canFollowCompany(department.row) ? (
+        <FollowCompanyForm view={view} department={department} action={action} today={today} />
+      ) : (
+        <p className="text-sm text-muted">
+          {department.name} takes the company’s pillars, with nothing coming: there is nothing to change. Choose “Its own pillars” to set pillars for it alone.
+        </p>
+      )}
+    </div>
+  );
+}

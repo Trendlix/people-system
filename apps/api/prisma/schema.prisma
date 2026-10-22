@@ -386,6 +386,7 @@ model Department {
   employments Employment[]
   offers      JobOffer[]
   kpiScorecards KpiScorecard[] // the KPI scorecards of people who worked here when they opened (21 October 2026)
+  kpiFrameworks KpiFramework[] // its own KPI pillars' versions (22 October 2026)
 
   @@unique([parentId, nameEn])
   @@index([headId])
@@ -2441,12 +2442,20 @@ model KpiSettings {
 // newest whose month's scorecards have opened; the next (one at most, from this month on) is changed until then. The
 // migration made version 1, the plan's four pillars, in force. Template versions keep the pillars they were published
 // with, so a framework never changes a scorecard.
+// By department (owner, 22 October 2026: "but i need pillars to each department"): a version is the company's (no
+// department) or a department's own (not a team's: a team's job titles take their department's), numbered and dated
+// within its department as the company's are (the unique indexes are NULLS NOT DISTINCT in the SQL: the company's count
+// as one); a department's version may take it back to the company's pillars from its month (follows_company: no
+// pillars, no Attendance pillar). Gone with its department.
 model KpiFramework {
   id               String        @id @default(uuid()) @db.Uuid
-  version          Int           @unique // 1, 2 …
-  appliesFrom      DateTime      @unique @map("applies_from") @db.Date // the 1st of its first scorecard month
-  pillars          Json // [{ key, name, short, weight }], in order
-  attendancePillar String        @map("attendance_pillar") // the key of the Attendance metric's pillar
+  departmentId     String?       @map("department_id") @db.Uuid // a department's own; none: the company's
+  department       Department?   @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  followsCompany   Boolean       @default(false) @map("follows_company") // a department's: the company's pillars again from its month
+  version          Int // 1, 2 … the company's, or each department's own
+  appliesFrom      DateTime      @map("applies_from") @db.Date // the 1st of its first scorecard month
+  pillars          Json // [{ key, name, short, weight }], in order; [] when it follows the company's
+  attendancePillar String        @map("attendance_pillar") // the key of the Attendance metric's pillar; '' when it follows the company's
   createdById      String?       @map("created_by") @db.Uuid
   createdBy        User?         @relation("KpiFrameworkCreation", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz
@@ -2455,6 +2464,8 @@ model KpiFramework {
   updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz
   templates        KpiTemplate[] // the template versions published with its pillars
 
+  @@unique([departmentId, version])
+  @@unique([departmentId, appliesFrom])
   @@map("kpi_frameworks")
 }
 
@@ -2486,6 +2497,7 @@ model KpiTemplate {
   framework        KpiFramework?  @relation(fields: [frameworkId], references: [id], onDelete: Restrict)
   pillars          Json // its pillars, [{ key, name, short, weight }], in order
   attendancePillar String         @map("attendance_pillar") // the key of the Attendance metric's pillar
+  ownWeights       Json?          @map("own_weights") // its job title's own weights for its pillars, { key: weight } (22 October 2026); none: its department's
   metrics          KpiMetric[]
   scorecards       KpiScorecard[]
 

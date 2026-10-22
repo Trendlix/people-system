@@ -83,8 +83,16 @@ export interface KpiPillarInput {
   weight: number;
 }
 
-/** POST /kpis/framework: the next framework's pillars, the Attendance metric's pillar and the month they apply from. */
+/**
+ * PUT /kpis/framework: the next pillars of the company, or of a department (`departmentId`), the Attendance metric's
+ * pillar and the month they apply from; or, for a department, going back to the company's pillars from that month
+ * (`followsCompany`: the pillars are left out).
+ */
 export interface KpiFrameworkInput {
+  /** The department whose pillars these are; null or left out: the company's. */
+  departmentId?: string | null;
+  /** A department only: it takes the company's pillars again from `appliesFrom`. */
+  followsCompany?: boolean;
   /** YYYY-MM: the first month whose scorecards are scored with them. */
   appliesFrom: string;
   /** The key of the pillar the Attendance metric counts in. */
@@ -269,12 +277,86 @@ export function kpiPercentsByName(set: Pick<KpiPillarSet, 'pillars'>, percents: 
   return out;
 }
 
+// ---------- by department, and a job title's own weights ----------
+// (owner, 22 October 2026: "but i need pillars to each department / wights can be changed for each department and Job
+// title"):
+// - The company's pillars are the default. A department may have its own pillars instead (names, weights, the Attendance
+//   metric's pillar), versioned as the company's are: from a month, one next change at a time, changed until it applies,
+//   past scorecards unchanged; or go back to the company's from a month (a version that `followsCompany`). A team's job
+//   titles take their department's pillars; a job title takes its department's newest own pillars, else the company's.
+// - A job title's template may give those pillars its own weights (KpiWeights, by pillar key: whole percents from 1 to
+//   100 adding up to 100), kept on the template and published with it, so they apply from next month like any change of
+//   it. They count while its pillars have the same keys; once its department's pillars gain or lose one, they are
+//   dropped and the template takes the department's weights again (weightsReset), to set again if wanted.
+
+/** A job title's own weights for its pillars: by pillar key, whole percents adding up to 100. */
+export type KpiWeights = Record<string, number>;
+
+/** The weights a set of pillars has, by key. */
+export const kpiWeightsOf = (set: Pick<KpiPillarSet, 'pillars'>): KpiWeights => Object.fromEntries(set.pillars.map((p) => [p.key, p.weight]));
+
+const isWeights = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
+
+/** Whether weights are for exactly the set's pillars: the same keys, none more, none fewer. */
+export function kpiWeightsFit(set: Pick<KpiPillarSet, 'pillars'>, weights: unknown): boolean {
+  if (!isWeights(weights)) return false;
+  const keys = Object.keys(weights);
+  return keys.length === set.pillars.length && set.pillars.every((p) => Object.prototype.hasOwnProperty.call(weights, p.key));
+}
+
+/**
+ * What is wrong with a job title's own weights for a set's pillars, each in words (none: they can be saved): one for
+ * each pillar, whole percents from 1 to 100, adding up to 100.
+ */
+export function kpiWeightsProblems(set: Pick<KpiPillarSet, 'pillars'>, weights: unknown): string[] {
+  if (!kpiWeightsFit(set, weights)) return ['The pillars have changed since the page was opened. Reload the page and set the weights again.'];
+  const problems: string[] = [];
+  let total = 0;
+  let whole = true;
+  for (const p of set.pillars) {
+    const w = (weights as Record<string, unknown>)[p.key];
+    if (!(typeof w === 'number' && Number.isInteger(w) && w >= 1 && w <= 100)) {
+      problems.push(`${p.name}: give its weight as a whole percent from 1 to 100.`);
+      whole = false;
+    } else total += w;
+  }
+  if (whole && total !== 100) problems.push(`The pillars’ weights add up to ${total}%: make them add up to 100%.`);
+  return problems;
+}
+
+/** The set with a job title's own weights in place of its own, when they fit (kpiWeightsFit); else the set as it is. */
+export function kpiWithWeights<S extends Pick<KpiPillarSet, 'pillars' | 'attendancePillar'>>(set: S, weights: unknown): KpiPillarSet & { pillars: KpiPillar[] } {
+  const fits = kpiWeightsFit(set, weights);
+  return {
+    attendancePillar: set.attendancePillar,
+    pillars: set.pillars.map((p) => ({ ...p, weight: fits ? ((weights as KpiWeights)[p.key] ?? p.weight) : p.weight })),
+  };
+}
+
+/**
+ * A job title's own weights as kept: null when there are none, when they don't fit the set's pillars (dropped: the
+ * department's apply), or when they are the set's own (nothing to keep).
+ */
+export function kpiOwnWeights(set: Pick<KpiPillarSet, 'pillars'>, weights: unknown): KpiWeights | null {
+  if (!kpiWeightsFit(set, weights)) return null;
+  const own = Object.fromEntries(set.pillars.map((p) => [p.key, (weights as KpiWeights)[p.key]!]));
+  return set.pillars.every((p) => own[p.key] === p.weight) ? null : own;
+}
+
 // ---------- the API's answers ----------
 
-/** A version of the KPI framework. */
+/** A version of the KPI framework: the company's, or a department's own. */
 export interface KpiFrameworkVersionView extends KpiPillarSet {
   id: string;
+  /** The company's versions are numbered 1, 2 …; each department's own from 1 too. */
   version: number;
+  /** The department whose pillars these are; null: the company's. */
+  departmentId: string | null;
+  /**
+   * A department's version that takes it back to the company's pillars from its month: it has no pillars of its own
+   * (`pillars` empty, `attendancePillar` empty).
+   */
+  followsCompany: boolean;
   pillars: KpiPillar[];
   /** YYYY-MM: the first month whose scorecards it scores. */
   appliesFrom: string;
@@ -286,19 +368,37 @@ export interface KpiFrameworkVersionView extends KpiPillarSet {
   updatedBy: KpiUserRef | null;
 }
 
-/** GET and PUT /kpis/framework: the framework in force, the next one (changed until it applies), and what may be chosen. */
-export interface KpiFrameworkView {
-  /** The one the scorecards opened now are scored with, when their template versions have its pillars. */
-  inForce: KpiFrameworkVersionView;
-  /** The next one, from a later month; null: none. The newest: template drafts are placed in it and published with it. */
+/** A department's pillars on KPI Pillars: its own, in force and next, or the company's. */
+export interface KpiDepartmentPillarsView {
+  department: { id: string; nameEn: string };
+  /** Its own pillars in force now; null: it takes the company's (it never had its own, or it went back to them). */
+  inForce: KpiFrameworkVersionView | null;
+  /** Its next change, from a later month: its own pillars, or back to the company's (`followsCompany`); null: none. */
   next: KpiFrameworkVersionView | null;
+  /** The job titles that take its pillars: its own and its teams'. */
+  jobTitles: number;
+  /** Of them, those whose newest published template uses other pillars than they take now: "Uses the old pillars". */
+  oldTemplates: number;
+}
+
+/**
+ * GET and PUT /kpis/framework: the company's pillars in force, the next ones (changed until they apply), every
+ * department's (owner, 22 October 2026: "i need pillars to each department"), and what may be chosen.
+ */
+export interface KpiFrameworkView {
+  /** The company's pillars in force: those of every department without its own. */
+  inForce: KpiFrameworkVersionView;
+  /** The company's next ones, from a later month; null: none. Drafts of job titles that take the company's pillars are placed in the newest. */
+  next: KpiFrameworkVersionView | null;
+  /** The departments (not teams: a team's job titles take their department's), in their order. */
+  departments: KpiDepartmentPillarsView[];
   /** YYYY-MM: next month, the month a change applies from unless chosen. */
   defaultMonth: string;
   /** YYYY-MM: the earliest it may apply from (this month: last month's scorecards are open). */
   earliestMonth: string;
   /** YYYY-MM: the latest it may apply from. */
   latestMonth: string;
-  /** Job titles whose newest published template version uses other pillars than the newest framework's. */
+  /** Job titles taking the company's pillars whose newest published template version uses other pillars than the newest ones. */
   oldTemplates: number;
   /** HR and a Super Admin change it. */
   canEdit: boolean;

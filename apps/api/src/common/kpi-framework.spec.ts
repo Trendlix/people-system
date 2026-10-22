@@ -20,6 +20,11 @@ import {
   kpiTemplateOpensFrom,
   kpiTemplateProblems,
   kpiUnplacedCount,
+  kpiOwnWeights,
+  kpiWeightsFit,
+  kpiWeightsOf,
+  kpiWeightsProblems,
+  kpiWithWeights,
   type KpiMetric,
   type KpiPillarSet,
   type KpiScoredMetric,
@@ -310,5 +315,56 @@ describe('a month’s pillars, by name', () => {
 
   it('counts a change of the Attendance pillar alone as pillars changed', () => {
     expect(kpiPillarColumns([KPI_DEFAULT_PILLAR_SET, { ...KPI_DEFAULT_PILLAR_SET, attendancePillar: 'delivery' }]).changed).toBe(true);
+  });
+});
+
+// A job title's own weights (owner, 22 October 2026: "wights can be changed for each department and Job title").
+describe('a job title\'s own weights', () => {
+  const own = { delivery: 40, quality: 20, clients: 20, discipline: 20 };
+
+  it('reads a set\'s weights by key', () => {
+    expect(kpiWeightsOf(KPI_DEFAULT_PILLAR_SET)).toEqual({ delivery: 30, quality: 25, clients: 25, discipline: 20 });
+  });
+
+  it('fits only weights for exactly the set\'s pillars', () => {
+    expect(kpiWeightsFit(KPI_DEFAULT_PILLAR_SET, own)).toBe(true);
+    expect(kpiWeightsFit(KPI_DEFAULT_PILLAR_SET, { delivery: 50, quality: 50 })).toBe(false);
+    expect(kpiWeightsFit(KPI_DEFAULT_PILLAR_SET, { ...own, growth: 0 })).toBe(false);
+    expect(kpiWeightsFit(KPI_DEFAULT_PILLAR_SET, null)).toBe(false);
+    expect(kpiWeightsFit(KPI_DEFAULT_PILLAR_SET, [40, 20, 20, 20])).toBe(false);
+  });
+
+  it('wants whole percents from 1 to 100 adding up to 100, each pillar named', () => {
+    expect(kpiWeightsProblems(KPI_DEFAULT_PILLAR_SET, own)).toEqual([]);
+    expect(kpiWeightsProblems(KPI_DEFAULT_PILLAR_SET, { ...own, delivery: 50 })).toEqual(['The pillars’ weights add up to 110%: make them add up to 100%.']);
+    expect(kpiWeightsProblems(KPI_DEFAULT_PILLAR_SET, { ...own, quality: 0, delivery: 60 })).toEqual(['Quality of Work: give its weight as a whole percent from 1 to 100.']);
+    expect(kpiWeightsProblems(KPI_DEFAULT_PILLAR_SET, { ...own, quality: 20.5 })).toEqual(['Quality of Work: give its weight as a whole percent from 1 to 100.']);
+    expect(kpiWeightsProblems(KPI_DEFAULT_PILLAR_SET, { delivery: 100 })).toEqual(['The pillars have changed since the page was opened. Reload the page and set the weights again.']);
+  });
+
+  it('puts own weights in place when they fit, and leaves the set as it is when they don\'t', () => {
+    const weighted = kpiWithWeights(KPI_DEFAULT_PILLAR_SET, own);
+    expect(weighted.pillars.map((p) => [p.key, p.name, p.weight])).toEqual([
+      ['delivery', 'Delivery & Timeliness', 40],
+      ['quality', 'Quality of Work', 20],
+      ['clients', 'Clients & Teamwork', 20],
+      ['discipline', 'Discipline & Growth', 20],
+    ]);
+    expect(weighted.attendancePillar).toBe('discipline');
+    expect(kpiWithWeights(KPI_DEFAULT_PILLAR_SET, { delivery: 100 }).pillars).toEqual(KPI_PILLARS);
+    expect(kpiWithWeights(KPI_DEFAULT_PILLAR_SET, null).pillars).toEqual(KPI_PILLARS);
+  });
+
+  it('keeps own weights only when they fit and differ from the set\'s', () => {
+    expect(kpiOwnWeights(KPI_DEFAULT_PILLAR_SET, own)).toEqual(own);
+    expect(kpiOwnWeights(KPI_DEFAULT_PILLAR_SET, kpiWeightsOf(KPI_DEFAULT_PILLAR_SET))).toBeNull();
+    expect(kpiOwnWeights(KPI_DEFAULT_PILLAR_SET, { delivery: 100 })).toBeNull();
+    expect(kpiOwnWeights(KPI_DEFAULT_PILLAR_SET, undefined)).toBeNull();
+  });
+
+  it('scores with the own weights once in place', () => {
+    const a = kpiSamePillars(kpiWithWeights(KPI_DEFAULT_PILLAR_SET, own), KPI_DEFAULT_PILLAR_SET);
+    expect(a).toBe(false);
+    expect(kpiSamePillars(kpiWithWeights(KPI_DEFAULT_PILLAR_SET, own), kpiWithWeights(KPI_DEFAULT_PILLAR_SET, own))).toBe(true);
   });
 });

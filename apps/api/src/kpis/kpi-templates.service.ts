@@ -10,12 +10,18 @@ import {
   kpiLibraryTitleOf,
   kpiMonthAdd,
   kpiMonthName,
+  kpiOwnWeights,
+  kpiPillarsText,
   kpiPlaceMetrics,
   kpiSample,
   kpiSamePillars,
   kpiTemplateOpensFrom,
   kpiTemplateProblems,
   kpiUnplacedCount,
+  kpiWeightsFit,
+  kpiWeightsOf,
+  kpiWeightsProblems,
+  kpiWithWeights,
   type KpiDraftAllResult,
   type KpiJobTitleTemplates,
   type KpiLibraryRole,
@@ -26,6 +32,7 @@ import {
   type KpiTemplateContent,
   type KpiTemplateRow,
   type KpiTemplateView,
+  type KpiWeights,
 } from '@trendlix/shared';
 import { AuditService, changes } from '../audit/audit.service.js';
 import { actsAs, assertDeletes } from '../auth/roles.js';
@@ -36,7 +43,7 @@ import { Prisma } from '../generated/prisma/client.js';
 import { userNames } from '../payroll/adjustments/people.js';
 import { firstDay } from '../payroll/months.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { FRAMEWORK_LOCK, KpiFrameworkService, type FrameworkVersion } from './kpi-framework.service.js';
+import { FRAMEWORK_LOCK, KpiFrameworkService, type PillarsBase } from './kpi-framework.service.js';
 import { metricView, pillarSetOf, pillarsJsonOf } from './kpi-views.js';
 import type { KpiDraftDto, KpiPublishDraftsDto, KpiTemplateContentDto } from './kpis.dto.js';
 
@@ -62,6 +69,12 @@ import type { KpiDraftDto, KpiPublishDraftsDto, KpiTemplateContentDto } from './
 // framework's pillars, and applies from the later of next month and that framework's first month's opening (holding the
 // framework's lock shared, so the pillars can't change under it). A job title whose newest published version has other
 // pillars is marked "Uses the old pillars"; its scorecards keep opening on that version until a newer one applies.
+// By department, and the job title's own weights (owner, 22 October 2026: "but i need pillars to each department /
+// wights can be changed for each department and Job title"): "the newest framework" above is the pillars the job title
+// takes now (its department's own, else the company's: KpiFrameworkService.resolver). A draft may keep the job title's
+// own weights for them (own_weights, by pillar key; packages/shared kpiWeightsProblems), dropped once they no longer fit
+// (the department's pillars gained or lost one); publishing gives the version's pillars those weights. A version
+// copied from another keeps its own weights when they fit.
 
 export const TEMPLATE_ENTITY = 'kpi_template';
 
@@ -69,6 +82,8 @@ const TEMPLATE_INCLUDE = {
   metrics: { orderBy: { position: 'asc' } },
   publishedBy: { select: { id: true, email: true } },
   _count: { select: { scorecards: true } },
+  jobTitle: { select: { departmentId: true } },
+  framework: { select: { pillars: true, attendancePillar: true, followsCompany: true, department: { select: { id: true, nameEn: true } } } },
 } as const satisfies Prisma.KpiTemplateInclude;
 
 type TemplateRow = Prisma.KpiTemplateGetPayload<{ include: typeof TEMPLATE_INCLUDE }>;
@@ -138,6 +153,15 @@ const metricRows = (metrics: readonly KpiMetric[]) =>
     criteria: m.criteria.map((c) => ({ label: c.label, points: c.points })) as Prisma.InputJsonValue,
   }));
 
+/** Own weights to save: none as the database's NULL. */
+const weightsData = (weights: KpiWeights | null) => weights ?? Prisma.DbNull;
+
+/** Own weights in words for the audit log ("Delivery & Timeliness 40% · …"); null: the department's. */
+const weightsWords = (base: PillarsBase, weights: unknown): string | null => {
+  const own = kpiOwnWeights(base.framework.set, weights);
+  return own ? kpiPillarsText(kpiWithWeights(base.framework.set, own)) : null;
+};
+
 /** The messages of a refusal (400) as a list. */
 const messagesOf = (err: BadRequestException): string[] => ([] as string[]).concat((err.getResponse() as { message?: string | string[] }).message ?? err.message);
 
@@ -160,7 +184,7 @@ export class KpiTemplatesService {
         select: { id: true, jobTitleId: true, version: true, status: true, opensFrom: true, updatedAt: true, _count: { select: { metrics: true } } },
       }),
       this.prisma.employment.findMany({ where: { endDate: null, jobTitleId: { not: null } }, select: { jobTitleId: true, employmentType: true } }),
-      this.framework.newest().then((newest) => this.framework.outdated(newest)),
+      this.framework.outdated(),
     ]);
     const count = new Map<string, number>();
     for (const p of people) if (kpiEligibleType(p.employmentType)) count.set(p.jobTitleId!, (count.get(p.jobTitleId!) ?? 0) + 1);
@@ -236,21 +260,24 @@ export class KpiTemplatesService {
   async createDraft(jobTitleId: string, dto: KpiDraftDto, user: SessionUser): Promise<KpiTemplateView> {
     const job = await this.prisma.jobTitle.findUnique({
       where: { id: jobTitleId },
-      select: { id: true, titleEn: true, titleAr: true, duties: { orderBy: { position: 'asc' }, select: { duty: true } } },
+      select: { id: true, titleEn: true, titleAr: true, departmentId: true, duties: { orderBy: { position: 'asc' }, select: { duty: true } } },
     });
     if (!job) throw new NotFoundException('Job title not found.');
     if (await this.prisma.kpiTemplate.count({ where: { jobTitleId, status: 'draft' } })) {
       throw new ConflictException(`${job.titleEn} has a draft already: change it, or publish it first.`);
     }
-    const newest = await this.framework.newest();
+    const base = await this.framework.pillarsFor(job.departmentId);
     let content: KpiTemplateContent = { attendancePoints: KPI_ATTENDANCE_POINTS_DEFAULT, metrics: [] };
-    let pillars: KpiPillarSet = newest.set;
+    let pillars: KpiPillarSet = base.framework.set;
+    // a copied version's own weights, when they fit the pillars the job title takes
+    let weights: KpiWeights | null = null;
     let source: Record<string, unknown> = { from: dto.from };
     if (dto.from === 'published') {
       const latest = await this.prisma.kpiTemplate.findFirst({ where: { jobTitleId, status: 'published' }, orderBy: { version: 'desc' }, include: { metrics: { orderBy: { position: 'asc' } } } });
       if (!latest) throw new BadRequestException([`${job.titleEn} has no published version to copy yet. Start blank or from a sample.`]);
       content = { attendancePoints: latest.attendancePoints, metrics: latest.metrics.map(metricView).map(withoutId) };
       pillars = pillarSetOf(latest);
+      weights = kpiOwnWeights(base.framework.set, latest.ownWeights);
       source = { ...source, version: latest.version };
     } else if (dto.from === 'sample') {
       const sample = kpiSample(dto.sampleCode ?? '');
@@ -263,6 +290,7 @@ export class KpiTemplatesService {
       if (!other) throw new BadRequestException(['Choose a job title’s template to copy.']);
       content = { attendancePoints: other.attendancePoints, metrics: other.metrics.map(metricView).map(withoutId) };
       pillars = pillarSetOf(other);
+      weights = kpiOwnWeights(base.framework.set, other.ownWeights);
       source = { ...source, templateId: other.id, jobTitle: other.jobTitle.titleEn, version: other.version };
     } else if (dto.from === 'library') {
       const drafted = kpiLibraryDraft(dto.libraryKey ?? '', { title: kpiLibraryTitleOf(job), duties: job.duties.map((d) => d.duty) });
@@ -273,7 +301,7 @@ export class KpiTemplatesService {
     }
     let made: { id: string };
     try {
-      made = await this.makeDraft(job, content, pillars, newest, source, user);
+      made = await this.makeDraft(job, content, pillars, base, source, user, weights);
     } catch (err) {
       if (versionTaken(err)) throw new ConflictException(`${job.titleEn} has a draft already: change it, or publish it first.`);
       throw err;
@@ -289,13 +317,13 @@ export class KpiTemplatesService {
    * its metrics the newest framework's pillars leave in Unplaced.
    */
   async draftAll(user: SessionUser): Promise<KpiDraftAllResult> {
-    const [titles, templates, newest] = await Promise.all([
+    const [titles, templates, pillarsOf] = await Promise.all([
       this.prisma.jobTitle.findMany({
         orderBy: [{ department: { nameEn: 'asc' } }, { titleEn: 'asc' }],
-        select: { id: true, titleEn: true, titleAr: true, department: DEPARTMENT, duties: { orderBy: { position: 'asc' }, select: { duty: true } } },
+        select: { id: true, titleEn: true, titleAr: true, departmentId: true, department: DEPARTMENT, duties: { orderBy: { position: 'asc' }, select: { duty: true } } },
       }),
       this.prisma.kpiTemplate.findMany({ select: { jobTitleId: true, status: true } }),
-      this.framework.newest(),
+      this.framework.resolver(),
     ]);
     const result: KpiDraftAllResult = { made: [], skipped: [] };
     for (const t of titles) {
@@ -315,7 +343,7 @@ export class KpiTemplatesService {
       const source = { from: 'library', libraryKey: match.key, library: match.name, reason: match.reason, leadership: drafted.leadership !== null, draftAll: true };
       let made: { id: string; unplaced: number };
       try {
-        made = await this.makeDraft(t, drafted.content, KPI_DEFAULT_PILLAR_SET, newest, source, user);
+        made = await this.makeDraft(t, drafted.content, KPI_DEFAULT_PILLAR_SET, pillarsOf(t.departmentId), source, user);
       } catch (err) {
         if (!versionTaken(err)) throw err;
         skip('A draft was started for it meanwhile.');
@@ -347,19 +375,23 @@ export class KpiTemplatesService {
   }
 
   /**
-   * A draft's content replaced (its metrics in the order sent, placed in the newest framework's pillars or in
-   * Unplaced); 400 with every problem; 409 for a published version.
+   * A draft's content replaced (its metrics in the order sent, placed in the pillars its job title takes or in
+   * Unplaced), and its job title's own weights for them (sent: null for the department's, else checked; left out: those
+   * it has, unless they no longer fit); 400 with every problem; 409 for a published version.
    */
   async update(id: string, dto: KpiTemplateContentDto, user: SessionUser): Promise<KpiTemplateView> {
     const before = await this.draft(id, 'changed');
-    const newest = await this.framework.newest();
+    const base = await this.framework.pillarsFor(before.jobTitle.departmentId);
+    const set = base.framework.set;
     const content = contentOf(dto);
-    const problems = kpiTemplateProblems(content, { pillars: newest.set });
+    const problems = kpiTemplateProblems(content, { pillars: set });
+    if (dto.weights !== undefined && dto.weights !== null) problems.push(...kpiWeightsProblems(set, dto.weights));
     if (problems.length) throw new BadRequestException(problems);
+    const weights = kpiOwnWeights(set, dto.weights === undefined ? before.ownWeights : dto.weights);
     await this.prisma.$transaction(async (tx) => {
       const { count } = await tx.kpiTemplate.updateMany({
         where: { id, status: 'draft' },
-        data: { attendancePoints: content.attendancePoints, pillars: pillarsJsonOf(newest.set), attendancePillar: newest.set.attendancePillar, updatedAt: new Date() },
+        data: { attendancePoints: content.attendancePoints, pillars: pillarsJsonOf(set), attendancePillar: set.attendancePillar, ownWeights: weightsData(weights), updatedAt: new Date() },
       });
       if (!count) throw new ConflictException('This draft was published or discarded meanwhile. Reload the page.');
       await tx.kpiMetric.deleteMany({ where: { templateId: id } });
@@ -375,7 +407,10 @@ export class KpiTemplatesService {
       diff: {
         jobTitleId: before.jobTitleId,
         version: before.version,
-        ...changes({ attendancePoints: before.attendancePoints, metrics: names(before.metrics) }, { attendancePoints: content.attendancePoints, metrics: names(content.metrics) }),
+        ...changes(
+          { attendancePoints: before.attendancePoints, metrics: names(before.metrics), ownWeights: weightsWords(base, before.ownWeights) },
+          { attendancePoints: content.attendancePoints, metrics: names(content.metrics), ownWeights: weightsWords(base, weights) },
+        ),
         ...(unplaced && { unplaced }),
       },
     });
@@ -447,9 +482,10 @@ export class KpiTemplatesService {
     job: { id: string; titleEn: string },
     content: KpiTemplateContent,
     pillars: KpiPillarSet,
-    newest: FrameworkVersion,
+    base: PillarsBase,
     source: Record<string, unknown>,
     user: SessionUser,
+    weights: KpiWeights | null = null,
   ): Promise<{ id: string; version: number; unplaced: number }> {
     const top = await this.prisma.kpiTemplate.aggregate({ where: { jobTitleId: job.id }, _max: { version: true } });
     const version = (top._max.version ?? 0) + 1;
@@ -461,18 +497,29 @@ export class KpiTemplatesService {
         attendancePoints: content.attendancePoints,
         pillars: pillarsJsonOf(pillars),
         attendancePillar: pillars.attendancePillar,
+        ownWeights: weightsData(weights),
         createdById: user.id,
         metrics: { create: metricRows(content.metrics) },
       },
       select: { id: true },
     });
-    const unplaced = kpiUnplacedCount(content.metrics, pillars, newest.set);
+    const unplaced = kpiUnplacedCount(content.metrics, pillars, base.framework.set);
     await this.audit.record({
       userId: user.id,
       action: 'create',
       entityType: TEMPLATE_ENTITY,
       entityId: made.id,
-      diff: { jobTitleId: job.id, jobTitle: job.titleEn, version, status: 'draft', ...source, attendancePoints: content.attendancePoints, metrics: content.metrics.length, ...(unplaced && { unplaced }) },
+      diff: {
+        jobTitleId: job.id,
+        jobTitle: job.titleEn,
+        version,
+        status: 'draft',
+        ...source,
+        attendancePoints: content.attendancePoints,
+        metrics: content.metrics.length,
+        ...(unplaced && { unplaced }),
+        ...(weights && { ownWeights: weightsWords(base, weights) }),
+      },
     });
     return { id: made.id, version, unplaced };
   }
@@ -488,13 +535,17 @@ export class KpiTemplatesService {
     const today = todayInCairo();
     const done = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock_shared(hashtext(${FRAMEWORK_LOCK}))`;
-      const row = await tx.kpiTemplate.findUnique({ where: { id }, include: { metrics: { orderBy: { position: 'asc' } } } });
+      const row = await tx.kpiTemplate.findUnique({ where: { id }, include: { metrics: { orderBy: { position: 'asc' } }, jobTitle: { select: { departmentId: true } } } });
       if (!row || row.status !== 'draft') throw new ConflictException('This draft was published or discarded meanwhile. Reload the page.');
-      const newest = await this.framework.newest(tx);
-      const placed = kpiPlaceMetrics(row.metrics.map(metricView), pillarSetOf(row), newest.set);
-      const problems = kpiTemplateProblems({ attendancePoints: row.attendancePoints, metrics: placed }, { publishing: true, pillars: newest.set });
+      const base = await this.framework.pillarsFor(row.jobTitle.departmentId, tx);
+      const set = base.framework.set;
+      const placed = kpiPlaceMetrics(row.metrics.map(metricView), pillarSetOf(row), set);
+      const problems = kpiTemplateProblems({ attendancePoints: row.attendancePoints, metrics: placed }, { publishing: true, pillars: set });
       if (problems.length) throw new BadRequestException(problems);
-      const opensFrom = kpiTemplateOpensFrom(today, newest.appliesFrom);
+      // the job title's own weights, when they fit the pillars
+      const weights = kpiOwnWeights(set, row.ownWeights);
+      const pillars = kpiWithWeights(set, weights);
+      const opensFrom = kpiTemplateOpensFrom(today, base.appliesFrom);
       const { count } = await tx.kpiTemplate.updateMany({
         where: { id, status: 'draft' },
         data: {
@@ -502,9 +553,10 @@ export class KpiTemplatesService {
           opensFrom: toDateOnly(opensFrom),
           publishedAt: new Date(),
           publishedById: user.id,
-          frameworkId: newest.id,
-          pillars: pillarsJsonOf(newest.set),
-          attendancePillar: newest.set.attendancePillar,
+          frameworkId: base.framework.id,
+          pillars: pillarsJsonOf(pillars),
+          attendancePillar: pillars.attendancePillar,
+          ownWeights: weightsData(weights),
         },
       });
       if (!count) throw new ConflictException('This draft was published or discarded meanwhile. Reload the page.');
@@ -514,7 +566,7 @@ export class KpiTemplatesService {
         await tx.kpiMetric.update({ where: { id: m.id }, data: { pillar: placed[i].pillar, wasIn: null } });
         replaced++;
       }
-      return { row, opensFrom, newest, replaced };
+      return { row, opensFrom, base, weights, replaced };
     });
     await this.audit.record({
       userId: user.id,
@@ -528,7 +580,9 @@ export class KpiTemplatesService {
         opensFrom: done.opensFrom,
         firstMonth: kpiMonthName(kpiMonthAdd(done.opensFrom, -1)),
         metrics: done.row.metrics.length,
-        framework: done.newest.version,
+        framework: done.base.framework.version,
+        ...(done.base.department && { pillarsOf: done.base.department.nameEn }),
+        ...(done.weights && { ownWeights: weightsWords(done.base, done.weights) }),
         ...(done.replaced && { placedByName: done.replaced }),
       },
     });
@@ -537,7 +591,7 @@ export class KpiTemplatesService {
 
   /** A draft, or 409 for a published version (never changed), 404 for none. */
   private async draft(id: string, doing: string) {
-    const row = await this.prisma.kpiTemplate.findUnique({ where: { id }, include: { metrics: { orderBy: { position: 'asc' } } } });
+    const row = await this.prisma.kpiTemplate.findUnique({ where: { id }, include: { metrics: { orderBy: { position: 'asc' } }, jobTitle: { select: { departmentId: true } } } });
     if (!row) throw new NotFoundException('KPI template not found.');
     if (row.status !== 'draft') throw new ConflictException(`Version ${row.version} is published, so it can't be ${doing}: start a draft from it instead.`);
     return row;
@@ -566,28 +620,33 @@ export class KpiTemplatesService {
 
   /**
    * The versions as their page shows them, the one in force now marked: a published one with its own pillars (marked
-   * when they aren't the newest framework's), a draft placed in the newest framework's (by name; those whose pillar is
-   * gone in Unplaced) with what stops it being published there.
+   * when they aren't those its job title takes now, with its own weights), a draft placed in the pillars its job title
+   * takes now (by name; those whose pillar is gone in Unplaced), with its own weights when they fit, and what stops it
+   * being published there. Each says whose pillars they are and their weights there.
    */
   private async views(rows: readonly TemplateRow[]): Promise<KpiTemplateView[]> {
     if (!rows.length) return [];
     const opening = toDateOnly(firstDay(openingNow()));
     const inForce = new Map<string, string>();
-    const [forced, newest] = await Promise.all([
+    const [forced, pillarsOf] = await Promise.all([
       this.prisma.kpiTemplate.findMany({
         where: { jobTitleId: { in: [...new Set(rows.map((r) => r.jobTitleId))] }, status: 'published', opensFrom: { lte: opening } },
         orderBy: { version: 'desc' },
         select: { id: true, jobTitleId: true },
       }),
-      this.framework.newest(),
+      this.framework.resolver(),
     ]);
     for (const f of forced) if (!inForce.has(f.jobTitleId)) inForce.set(f.jobTitleId, f.id);
     const names = await userNames(this.prisma, rows.map((r) => r.publishedBy));
     return rows.map((r) => {
       const own = pillarSetOf(r);
       const draft = r.status === 'draft';
-      const metrics = draft ? kpiPlaceMetrics(r.metrics.map(metricView), own, newest.set) : r.metrics.map(metricView);
-      const pillars = draft ? newest.set : own;
+      const base = pillarsOf(r.jobTitle.departmentId);
+      const set = base.framework.set;
+      // what it is scored with: the pillars its job title takes, with its own weights when they fit
+      const expected = kpiWithWeights(set, kpiOwnWeights(set, r.ownWeights));
+      const metrics = draft ? kpiPlaceMetrics(r.metrics.map(metricView), own, set) : r.metrics.map(metricView);
+      const pillars = draft ? expected : own;
       const opensFrom = r.opensFrom ? fromDateOnly(r.opensFrom) : null;
       return {
         id: r.id,
@@ -604,11 +663,22 @@ export class KpiTemplatesService {
         createdAt: r.createdAt.toISOString(),
         updatedAt: r.updatedAt.toISOString(),
         scorecards: r._count.scorecards,
-        problems: draft ? kpiTemplateProblems({ attendancePoints: r.attendancePoints, metrics }, { publishing: true, pillars: newest.set }) : [],
+        problems: draft ? kpiTemplateProblems({ attendancePoints: r.attendancePoints, metrics }, { publishing: true, pillars: set }) : [],
         pillars: [...pillars.pillars],
         attendancePillar: pillars.attendancePillar,
-        pillarsChanged: draft && !kpiSamePillars(own, newest.set),
-        oldPillars: !draft && !kpiSamePillars(own, newest.set),
+        // a draft saved on these pillars (with or without its own weights) hasn't changed
+        pillarsChanged: draft && !kpiSamePillars(own, set) && !kpiSamePillars(own, expected),
+        oldPillars: !draft && !kpiSamePillars(own, kpiWithWeights(set, r.ownWeights)),
+        pillarsFrom: draft
+          ? base.department && { departmentId: base.department.id, nameEn: base.department.nameEn }
+          : r.framework?.department
+            ? { departmentId: r.framework.department.id, nameEn: r.framework.department.nameEn }
+            : null,
+        // a published version's: those of the pillars it was published with (its own when that version has since become
+        // a department's going back to the company's)
+        baseWeights: draft ? kpiWeightsOf(set) : kpiWeightsOf(r.framework && !r.framework.followsCompany ? pillarSetOf(r.framework) : own),
+        ownWeights: draft ? kpiOwnWeights(set, r.ownWeights) !== null : r.ownWeights !== null,
+        weightsReset: draft && r.ownWeights !== null && !kpiWeightsFit(set, r.ownWeights),
       };
     });
   }

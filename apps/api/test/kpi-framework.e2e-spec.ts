@@ -128,7 +128,7 @@ describe('KPI framework (e2e)', () => {
     await prisma.kpiScorecard.deleteMany({ where: { employeeId: { in: people } } });
     await prisma.kpiTemplate.deleteMany({ where: { jobTitleId: { in: [analystId, designerId].filter(Boolean) } } });
     // back to the first framework, as the other tests expect
-    await prisma.kpiFramework.deleteMany({ where: { version: { gt: 1 } } });
+    await prisma.kpiFramework.deleteMany({ where: { departmentId: null, version: { gt: 1 } } });
     await prisma.employment.deleteMany({ where: { employeeId: { in: people } } });
     await prisma.employee.deleteMany({ where: { id: { in: people } } });
     await prisma.jobTitle.deleteMany({ where: { id: { in: [analystId, designerId].filter(Boolean) } } });
@@ -183,7 +183,7 @@ describe('KPI framework (e2e)', () => {
       expect(said(await put('/kpis/framework', sessions.hr, { appliesFrom: NEXT, attendancePillar: inForce.attendancePillar, pillars: inForce.pillars }).expect(400))).toEqual([
         'These are the pillars in force: change a pillar, a weight or the Attendance metric’s pillar first.',
       ]);
-      expect(await prisma.kpiFramework.count()).toBe(1);
+      expect(await prisma.kpiFramework.count({ where: { departmentId: null } })).toBe(1);
     });
 
     it('HR saves new pillars: they apply from next month, audited; the scorecard open already keeps its own', async () => {

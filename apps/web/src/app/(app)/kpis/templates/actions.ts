@@ -9,7 +9,17 @@
 // one of its roles, "Draft templates for every job title" and "Publish selected drafts", each saying what it did.
 // The KPI pillars (owner, 21 October 2026: "Fully flexible"): HR and the Super Admin save the next ones; a draft is
 // checked first in the pillars it is placed in (the framework's newest, as the page had them).
-import { kpiSettingsProblems, kpiTemplateProblems, type KpiDraftAllResult, type KpiFrameworkInput, type KpiPublishDraftsResult } from '@trendlix/shared';
+// By department (owner, 22 October 2026: "but i need pillars to each department / wights can be changed for each
+// department and Job title"): a department's own pillars saved the same way, or its going back to the company's from a
+// month; a draft's own weights for its pillars checked first, then sent with it.
+import {
+  kpiSettingsProblems,
+  kpiTemplateProblems,
+  kpiWeightsProblems,
+  type KpiDraftAllResult,
+  type KpiFrameworkInput,
+  type KpiPublishDraftsResult,
+} from '@trendlix/shared';
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { ApiError, apiSend } from '@/lib/api';
@@ -18,7 +28,7 @@ import { deleteRefusal } from '@/lib/session';
 import type { FormState } from '@/lib/types';
 import { shown } from '../../organization/payroll/replies';
 import { contentFromJson, pillarsFromJson } from './[jobTitleId]/builder';
-import { frameworkSavedText } from './framework';
+import { followCompanySavedText, frameworkSavedText } from './framework';
 import { draftSourceOf, SETTING_KEYS, settingsOf, settingsSummary, templateIdsOf, type DraftAllState, type PublishDraftsState } from './templates';
 
 const UUID = /^[0-9a-f-]{36}$/i;
@@ -50,10 +60,12 @@ export async function updateKpiSettings(_prev: FormState, fd: FormData): Promise
 
 /**
  * The next KPI pillars (PUT /kpis/framework), as the form sent them (JSON: KpiFrameworkInput, with the next framework it
- * changed, none: null). The page checked them as typed; the API checks them again.
+ * changed, none: null): the company's, or a department's (`departmentId`, with its name for what the page says), or a
+ * department going back to the company's (`followsCompany`, no pillars). The page checked them as typed; the API checks
+ * them again.
  */
 export async function saveKpiFramework(_prev: FormState, fd: FormData): Promise<FormState> {
-  let input: (KpiFrameworkInput & { nextId: string | null }) | null = null;
+  let input: (KpiFrameworkInput & { nextId: string | null; departmentName?: unknown }) | null = null;
   try {
     const value: unknown = JSON.parse(String(fd.get('framework') ?? ''));
     if (value && typeof value === 'object' && !Array.isArray(value)) input = value as KpiFrameworkInput & { nextId: string | null };
@@ -62,13 +74,28 @@ export async function saveKpiFramework(_prev: FormState, fd: FormData): Promise<
   }
   if (!input || !Array.isArray(input.pillars) || typeof input.appliesFrom !== 'string') return { errors: ['The pillars could not be read. Please try again.'] };
   const nextId = typeof input.nextId === 'string' && UUID.test(input.nextId) ? input.nextId : null;
+  if (input.departmentId !== undefined && input.departmentId !== null && !(typeof input.departmentId === 'string' && UUID.test(input.departmentId))) {
+    return { errors: ['This department could not be found. Please reload the page.'] };
+  }
+  const departmentId = typeof input.departmentId === 'string' ? input.departmentId : null;
+  const follows = departmentId !== null && input.followsCompany === true;
+  const department = typeof input.departmentName === 'string' && input.departmentName.trim() ? input.departmentName.trim() : 'The department';
   try {
-    await apiSend('PUT', KPI_API.framework, { appliesFrom: input.appliesFrom, attendancePillar: String(input.attendancePillar ?? ''), pillars: input.pillars, nextId });
+    // a department's fields only when it is one, so the company's pillars are sent as they always were
+    await apiSend('PUT', KPI_API.framework, {
+      appliesFrom: input.appliesFrom,
+      attendancePillar: follows ? '' : String(input.attendancePillar ?? ''),
+      pillars: follows ? [] : input.pillars,
+      nextId,
+      ...(departmentId && { departmentId }),
+      ...(follows && { followsCompany: true }),
+    });
   } catch (err) {
     return refused(err);
   }
   refresh();
-  return { message: frameworkSavedText(input.appliesFrom) };
+  if (follows) return { message: followCompanySavedText(department, input.appliesFrom) };
+  return { message: frameworkSavedText(input.appliesFrom, departmentId ? department : null) };
 }
 
 /** A new draft for the job title, from what the form chose (POST /kpis/templates/job-titles/:id/draft). */
@@ -95,7 +122,9 @@ export async function sendKpiDraft(jobTitleId: string, templateId: string, _prev
   const publish = fd.get('intent') === 'publish';
   // checked first in the pillars the page placed it in, when it sent them; the API checks it in the framework's newest
   const pillars = pillarsFromJson(fd.get('pillars'));
-  const problems = pillars ? kpiTemplateProblems(content, { publishing: publish, pillars }) : [];
+  const problems = pillars
+    ? [...kpiTemplateProblems(content, { publishing: publish, pillars }), ...(content.weights ? kpiWeightsProblems(pillars, content.weights) : [])]
+    : [];
   if (problems.length) return { errors: problems };
   try {
     await apiSend('PUT', KPI_API.template(templateId), content);

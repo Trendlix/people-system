@@ -1,4 +1,4 @@
-import { KPI_TEMPLATE_LIMITS, type KpiCriterion, type KpiMetric, type KpiPillar, type KpiPillarSet, type KpiTemplateContent } from '@trendlix/shared';
+import { KPI_TEMPLATE_LIMITS, kpiWeightsProblems, type KpiCriterion, type KpiMetric, type KpiPillar, type KpiPillarSet, type KpiTemplateContent } from '@trendlix/shared';
 import { wholeOf } from '../templates';
 
 // A job title's KPI template builder (owner, 21 October 2026: "Full framework per role"; "Templates: HR"): the draft as
@@ -12,6 +12,10 @@ import { wholeOf } from '../templates';
 // metrics in by name, with the Attendance metric in the pillar it chose; a metric whose pillar is gone is in Unplaced
 // (no pillar, with the one it was in), shown last, to be moved into a pillar or removed before publishing. A published
 // version is shown in its own pillars.
+// A job title's own weights (owner, 22 October 2026: "wights can be changed for each department and Job title"): each
+// pillar's weight is typed on its header, the total shown, "Use the department's weights" puts the department's (or
+// the company's) back. Saved with the draft (`weights`: null when they are the department's), published with it, so
+// they apply from next month like any change; the pillars themselves are the department's (KPI Pillars).
 
 /** A criterion as typed: its label and points. `key`: the form's own, to keep each row's fields apart. */
 export interface CriterionForm {
@@ -43,6 +47,13 @@ export interface DraftForm {
   attendancePoints: string;
   metrics: MetricForm[];
   pillars: KpiPillarSet;
+  /** Each pillar's weight as typed, by its key: the job title's own when they differ from `baseWeights`. */
+  weights: Record<string, string>;
+  /**
+   * The department's (or the company's) weights for these pillars, by key: own weights equal to them are none. null:
+   * the API doesn't take a job title's own weights (one from before them), so none are typed or sent.
+   */
+  baseWeights: Record<string, number> | null;
 }
 
 /** A pillar's place in the set's order; Unplaced (or a pillar not in the set) after them all. */
@@ -76,20 +87,35 @@ function metricFormOf(m: KpiMetric, key: string, duties: readonly string[]): Met
   };
 }
 
-/** A draft's content as the form starts with it, in `pillars` (the draft's: the KPI framework's newest). */
-export function formOf(content: Pick<KpiTemplateContent, 'attendancePoints' | 'metrics'>, duties: readonly string[], pillars: KpiPillarSet): DraftForm {
+/**
+ * A draft's content as the form starts with it, in `pillars` (the draft's: the KPI framework's newest, with the job
+ * title's own weights when it has them), and the department's weights for them (`baseWeights`; none: the API doesn't
+ * take own weights).
+ */
+export function formOf(
+  content: Pick<KpiTemplateContent, 'attendancePoints' | 'metrics'>,
+  duties: readonly string[],
+  pillars: KpiPillarSet,
+  baseWeights: Record<string, number> | null = null,
+): DraftForm {
   return {
     attendancePoints: String(content.attendancePoints),
     metrics: inPillarOrder(content.metrics, pillars).map((m, i) => metricFormOf(m, `m${i}`, duties)),
     pillars,
+    weights: Object.fromEntries(pillars.pillars.map((p) => [p.key, String(p.weight)])),
+    baseWeights: baseWeights ? Object.fromEntries(pillars.pillars.map((p) => [p.key, baseWeights[p.key] ?? p.weight])) : null,
   };
 }
 
 const textOrNull = (text: string): string | null => (text.trim() ? text.trim() : null);
 
-/** What the form says, as the draft's content to check and save: in pillar order, numbers not whole as NaN. */
+/**
+ * What the form says, as the draft's content to check and save: in pillar order, numbers not whole as NaN; the job
+ * title's own weights (null: the department's), when the API takes them.
+ */
 export function contentOf(form: DraftForm): KpiTemplateContent {
   return {
+    ...(form.baseWeights && { weights: ownWeightsOf(form) }),
     attendancePoints: wholeOf(form.attendancePoints),
     metrics: inPillarOrder(form.metrics, form.pillars).map(
       (m): KpiMetric => ({
@@ -107,13 +133,14 @@ export function contentOf(form: DraftForm): KpiTemplateContent {
   };
 }
 
-/** A draft's content as the form sent it (JSON), or null when it isn't one. */
+/** A draft's content as the form sent it (JSON), or null when it isn't one; its weights only when it sent them. */
 export function contentFromJson(text: unknown): KpiTemplateContent | null {
   const value = parsed(text);
   if (!value) return null;
   const v = value as Partial<KpiTemplateContent>;
   if (!Array.isArray(v.metrics) || !v.metrics.every((m) => m && typeof m === 'object' && Array.isArray(m.criteria))) return null;
-  return { attendancePoints: v.attendancePoints as number, metrics: v.metrics };
+  const weights = v.weights === null ? null : v.weights && typeof v.weights === 'object' && !Array.isArray(v.weights) ? v.weights : undefined;
+  return { ...(weights !== undefined && { weights }), attendancePoints: v.attendancePoints as number, metrics: v.metrics };
 }
 
 /** The pillars a draft is placed in, as the form sent them (JSON), or null when they aren't. */
@@ -132,6 +159,64 @@ function parsed(text: unknown): Record<string, unknown> | null {
   } catch {
     return null;
   }
+}
+
+// ---------- the pillars' weights ----------
+
+/** The weights typed, by key, as numbers (not whole: NaN). */
+export const typedWeights = (form: Pick<DraftForm, 'pillars' | 'weights'>): Record<string, number> =>
+  Object.fromEntries(form.pillars.pillars.map((p) => [p.key, wholeOf(form.weights[p.key] ?? String(p.weight))]));
+
+/** Whether the weights typed are the department's (or the company's); always so when the API doesn't take own ones. */
+export function weightsAreBase(form: Pick<DraftForm, 'pillars' | 'weights' | 'baseWeights'>): boolean {
+  const base = form.baseWeights;
+  if (!base) return true;
+  const typed = typedWeights(form);
+  return form.pillars.pillars.every((p) => typed[p.key] === base[p.key]);
+}
+
+/** The job title's own weights to send: null when they are the department's. */
+export const ownWeightsOf = (form: Pick<DraftForm, 'pillars' | 'weights' | 'baseWeights'>): Record<string, number> | null =>
+  weightsAreBase(form) ? null : typedWeights(form);
+
+/** What is wrong with the weights typed (kpiWeightsProblems); none when the API doesn't take own ones. */
+export const weightsProblems = (form: Pick<DraftForm, 'pillars' | 'weights' | 'baseWeights'>): string[] =>
+  form.baseWeights ? kpiWeightsProblems(form.pillars, typedWeights(form)) : [];
+
+/** The weights typed, added up (those not whole left out). */
+export const draftWeightTotal = (form: Pick<DraftForm, 'pillars' | 'weights'>): number =>
+  Object.values(typedWeights(form)).reduce((sum, w) => sum + (Number.isFinite(w) ? w : 0), 0);
+
+/** The pillars with the weights typed (one not whole keeps the one it had), as the metric's pillar choice shows them. */
+export const weightedPillars = (form: Pick<DraftForm, 'pillars' | 'weights'>): KpiPillarSet => {
+  const typed = typedWeights(form);
+  return { ...form.pillars, pillars: form.pillars.pillars.map((p) => ({ ...p, weight: Number.isFinite(typed[p.key]) ? typed[p.key] : p.weight })) };
+};
+
+/** A pillar's weight typed. */
+export const setPillarWeight = (form: DraftForm, key: string, weight: string): DraftForm => ({ ...form, weights: { ...form.weights, [key]: weight } });
+
+/** The department's (or the company's) weights back. */
+export const resetWeights = (form: DraftForm): DraftForm =>
+  form.baseWeights ? { ...form, weights: Object.fromEntries(form.pillars.pillars.map((p) => [p.key, String(form.baseWeights![p.key] ?? p.weight)])) } : form;
+
+/**
+ * Whose pillars a template has, in words: "Production’s pillars" (a department's own, its name as headings show it) or
+ * "The company’s pillars"; null when the API doesn't say (one from before department pillars).
+ */
+export function pillarsFromText(pillarsFrom: { nameEn: string } | null | undefined, name: (text: string) => string = (t) => t): string | null {
+  if (pillarsFrom === undefined) return null;
+  return pillarsFrom ? `${name(pillarsFrom.nameEn)}’s pillars` : 'The company’s pillars';
+}
+
+/** Who the base weights are: "Production" or "Company", before a weight ("Production: 30%"). */
+export const baseWeightLabel = (pillarsFrom: { nameEn: string } | null | undefined, name: (text: string) => string = (t) => t): string =>
+  pillarsFrom ? name(pillarsFrom.nameEn) : 'Company';
+
+/** Over a draft whose own weights were dropped, its pillars having gained or lost one: the department's, or the company's. */
+export function weightsResetNote(pillarsFrom: { nameEn: string } | null | undefined): string {
+  const whose = pillarsFrom ? 'department’s' : 'company’s';
+  return `The ${whose} pillars changed (a pillar was added or removed), so this job title’s own weights were reset to the ${whose}. Set them again if needed, then save.`;
 }
 
 // ---------- the pillars ----------

@@ -34,14 +34,26 @@ export class KpiSettingsDto {
  * overwritten; left out, the next one is changed, or made.
  */
 export class KpiFrameworkDto {
+  /** A department's own pillars (owner, 22 October 2026: "i need pillars to each department"); null or left out: the company's. */
+  @IsOptional() @IsUUID('all', { message: 'Choose a department.' })
+  departmentId?: string | null;
+
+  /** A department only: the company's pillars again from `appliesFrom` (no pillars sent). */
+  @IsOptional() @IsBoolean({ message: 'Say whether the department takes the company’s pillars.' })
+  followsCompany?: boolean;
+
   @Matches(MONTH, { message: 'Choose the month the pillars apply from, e.g. 2026-11.' })
   appliesFrom!: string;
 
-  @IsString({ message: 'Choose the pillar the Attendance metric counts in.' }) @MaxLength(40, { message: 'Choose the pillar the Attendance metric counts in.' })
-  attendancePillar!: string;
+  @ValidateIf((o: KpiFrameworkDto) => o.followsCompany !== true)
+  @IsString({ message: 'Choose the pillar the Attendance metric counts in.' })
+  @MaxLength(40, { message: 'Choose the pillar the Attendance metric counts in.' })
+  attendancePillar?: string;
 
-  @IsArray({ message: 'Send the pillars as a list.' }) @ArrayMaxSize(20, { message: 'A framework takes at most 8 pillars.' })
-  pillars!: unknown[];
+  @ValidateIf((o: KpiFrameworkDto) => o.followsCompany !== true)
+  @IsArray({ message: 'Send the pillars as a list.' })
+  @ArrayMaxSize(20, { message: 'A framework takes at most 8 pillars.' })
+  pillars?: unknown[];
 
   @IsOptional() @IsUUID('all', { message: 'Reload the page and try again.' })
   nextId?: string | null;
@@ -81,6 +93,14 @@ export class KpiTemplateContentDto {
 
   @IsArray({ message: 'Send the metrics as a list.' }) @ArrayMaxSize(KPI_TEMPLATE_LIMITS.metrics, { message: `A template takes at most ${KPI_TEMPLATE_LIMITS.metrics} metrics.` })
   metrics!: unknown[];
+
+  /**
+   * The job title's own weights for its pillars, by key (owner, 22 October 2026: "wights can be changed for each
+   * department and Job title"); null: its department's; left out: those it has kept. Checked by the service
+   * (packages/shared kpiWeightsProblems).
+   */
+  @Allow()
+  weights?: unknown;
 }
 
 /** A step's picks (the self-rating, the scoring): a criterion a metric, each with a comment; its overall comment; sent or saved. */

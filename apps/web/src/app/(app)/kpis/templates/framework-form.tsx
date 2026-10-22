@@ -1,6 +1,6 @@
 'use client';
 
-import { KPI_FRAMEWORK_LIMITS, type KpiFrameworkView } from '@trendlix/shared';
+import { KPI_FRAMEWORK_LIMITS, kpiFrameworkMonthProblems, type KpiDepartmentPillarsView, type KpiFrameworkView } from '@trendlix/shared';
 import { startTransition, useActionState, useRef, useState } from 'react';
 import { FormErrors, useFieldIds } from '@/components/form';
 import { Select } from '@/components/select';
@@ -8,6 +8,7 @@ import type { FormState } from '@/lib/types';
 import {
   addPillar,
   appliesFromHint,
+  followCompanyConfirmText,
   frameworkConfirmText,
   frameworkFormOf,
   frameworkInputOf,
@@ -28,37 +29,75 @@ import {
 // stops them being saved shows as it is typed, as the API checks it (packages/shared kpi-framework.ts); Save asks first,
 // saying when they apply and that every template must then place its metrics in them. The next pillars, once saved, are
 // changed the same way until they apply.
+// A department's own pillars (owner, 22 October 2026: "but i need pillars to each department"): the same form on the
+// department's page, starting from its own pillars, or from the company's newest when it takes those; and going back
+// to the company's pillars from a month (FollowCompanyForm).
 
 const small =
   'inline-flex min-h-9 items-center rounded-md px-2.5 text-sm font-semibold text-accent hover:bg-accent-soft disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent';
 const smallDanger =
   'inline-flex min-h-9 items-center rounded-md px-2.5 text-sm font-semibold text-danger hover:bg-danger-soft disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent';
 
-export function KpiFrameworkForm({ view, action, today }: { view: KpiFrameworkView; action: (prev: FormState, fd: FormData) => Promise<FormState>; today: string }) {
+/** A department whose own pillars the form changes: its id, its name as headings show it, and its row of the view. */
+export interface PillarsDepartment {
+  id: string;
+  name: string;
+  row: KpiDepartmentPillarsView;
+}
+
+export function KpiFrameworkForm({
+  view,
+  action,
+  today,
+  department = null,
+}: {
+  view: KpiFrameworkView;
+  action: (prev: FormState, fd: FormData) => Promise<FormState>;
+  today: string;
+  /** A department's own pillars; none: the company's. */
+  department?: PillarsDepartment | null;
+}) {
   const fid = useFieldIds();
-  const [form, setForm] = useState<FrameworkForm>(() => frameworkFormOf(view));
+  const [form, setForm] = useState<FrameworkForm>(() => frameworkFormOf(view, department?.row ?? null));
   const [state, dispatch, pending] = useActionState(action, {});
   const counter = useRef(0);
   const problems = frameworkProblems(form, view.usedKeys, today);
   const total = weightTotal(form);
-  const changingNext = view.next !== null;
+  // the next change of the scope, which a save changes (or replaces: a department going back to the company's)
+  const next = department ? department.row.next : view.next;
+  const changingNext = next !== null && !next.followsCompany;
   const L = KPI_FRAMEWORK_LIMITS;
 
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (pending || problems.length) return;
-    if (!window.confirm(frameworkConfirmText(form.appliesFrom, changingNext))) return;
+    if (!window.confirm(frameworkConfirmText(form.appliesFrom, changingNext, department?.name ?? null))) return;
     const fd = new FormData();
     // the next pillars as the page has them now (none: null), so a change made meanwhile isn't overwritten
-    fd.set('framework', JSON.stringify({ ...frameworkInputOf(form, view.usedKeys), nextId: view.next?.id ?? null }));
+    fd.set(
+      'framework',
+      JSON.stringify({
+        ...frameworkInputOf(form, view.usedKeys),
+        nextId: next?.id ?? null,
+        ...(department && { departmentId: department.id, departmentName: department.name }),
+      }),
+    );
     startTransition(() => dispatch(fd));
   }
+
+  const heading = department
+    ? changingNext
+      ? `Change ${department.name}’s Next Pillars`
+      : `Set ${department.name}’s Own Pillars`
+    : changingNext
+      ? 'Change the Next Pillars'
+      : 'Change the Pillars';
 
   return (
     <form noValidate onSubmit={submit} aria-labelledby={fid('heading')} className="space-y-5">
       <div>
         <h3 id={fid('heading')} className="font-semibold">
-          {changingNext ? 'Change the Next Pillars' : 'Change the Pillars'}
+          {heading}
         </h3>
         <p className="mt-1 max-w-3xl text-sm text-muted">
           From {L.pillarsMin} to {L.pillarsMax} pillars, each with a different name; their weights are whole percents adding up to 100%. Renaming a pillar keeps
@@ -190,7 +229,7 @@ export function KpiFrameworkForm({ view, action, today }: { view: KpiFrameworkVi
             ))}
           </Select>
           <p id={fid('attendance-hint')} className="hint">
-            The pillar of the automatic Attendance metric, on every template.
+            {department ? 'The pillar of the automatic Attendance metric, on every template of its job titles.' : 'The pillar of the automatic Attendance metric, on every template.'}
           </p>
         </div>
         <div>
@@ -228,7 +267,96 @@ export function KpiFrameworkForm({ view, action, today }: { view: KpiFrameworkVi
       )}
       <div className="flex flex-wrap items-center gap-3 border-t border-line-soft pt-5">
         <button type="submit" disabled={pending || problems.length > 0} className="btn btn-primary">
-          {pending ? 'Saving…' : changingNext ? 'Save the next pillars' : 'Save the new pillars'}
+          {pending ? 'Saving…' : changingNext ? 'Save the next pillars' : department ? 'Save its own pillars' : 'Save the new pillars'}
+        </button>
+        {state.message && !pending && (
+          <p role="status" className="text-sm text-ok">
+            {state.message}
+          </p>
+        )}
+      </div>
+    </form>
+  );
+}
+
+/**
+ * A department back to the company's pillars from a month (owner, 22 October 2026: "i need pillars to each
+ * department"): its own stop applying then, its job titles taking the company's; a change coming is replaced. Asks
+ * first.
+ */
+export function FollowCompanyForm({
+  view,
+  department,
+  action,
+  today,
+}: {
+  view: Pick<KpiFrameworkView, 'defaultMonth' | 'earliestMonth' | 'latestMonth'>;
+  department: PillarsDepartment;
+  action: (prev: FormState, fd: FormData) => Promise<FormState>;
+  today: string;
+}) {
+  const fid = useFieldIds();
+  const next = department.row.next;
+  const [appliesFrom, setAppliesFrom] = useState(() => (next?.followsCompany ? next.appliesFrom : view.defaultMonth));
+  const [state, dispatch, pending] = useActionState(action, {});
+  const problems = kpiFrameworkMonthProblems(appliesFrom, today);
+
+  function submit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (pending || problems.length) return;
+    if (!window.confirm(followCompanyConfirmText(department.name, appliesFrom))) return;
+    const fd = new FormData();
+    fd.set(
+      'framework',
+      JSON.stringify({ departmentId: department.id, departmentName: department.name, followsCompany: true, appliesFrom, attendancePillar: '', pillars: [], nextId: next?.id ?? null }),
+    );
+    startTransition(() => dispatch(fd));
+  }
+
+  return (
+    <form noValidate onSubmit={submit} aria-labelledby={fid('heading')} className="space-y-4">
+      <div>
+        <h3 id={fid('heading')} className="font-semibold">
+          {next?.followsCompany ? 'Change When It Goes Back to the Company’s Pillars' : 'Go Back to the Company’s Pillars'}
+        </h3>
+        <p className="mt-1 max-w-3xl text-sm text-muted">
+          From the month chosen, {department.name}’s job titles take the company’s pillars again, and its own stop applying.
+          {next && !next.followsCompany ? ' The change coming is replaced.' : ''}
+        </p>
+      </div>
+      <FormErrors errors={state.errors} />
+      <div className="max-w-sm">
+        <label htmlFor={fid('appliesFrom')} className="label">
+          From
+        </label>
+        <Select
+          id={fid('appliesFrom')}
+          value={appliesFrom}
+          onChange={(e) => setAppliesFrom(e.target.value)}
+          aria-describedby={fid('appliesFrom-hint')}
+          className="input"
+        >
+          {monthChoices(view.earliestMonth, view.latestMonth).map((m) => (
+            <option key={m.value} value={m.value}>
+              {m.label}
+              {m.value === view.defaultMonth ? ' (next month)' : ''}
+            </option>
+          ))}
+        </Select>
+        <p id={fid('appliesFrom-hint')} className="hint">
+          {appliesFromHint(appliesFrom)} The scorecards open already keep their pillars.
+        </p>
+      </div>
+      {problems.length > 0 && (
+        <ul className="list-disc space-y-1 rounded-lg bg-warn-soft py-3 pr-4 pl-8 text-sm text-warn">
+          {problems.map((p) => (
+            <li key={p}>{p}</li>
+          ))}
+        </ul>
+      )}
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="submit" disabled={pending || problems.length > 0} className="btn btn-secondary">
+          {pending ? 'Saving…' : next?.followsCompany ? 'Save the month' : 'Use the company’s pillars'}
         </button>
         {state.message && !pending && (
           <p role="status" className="text-sm text-ok">

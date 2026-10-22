@@ -6,7 +6,7 @@ import { Fragment, useActionState, useState } from 'react';
 import { FormErrors } from '@/components/form';
 import { titleCase } from '@/lib/format';
 import { KPI_PATHS } from '@/lib/kpi-paths';
-import { OLD_PILLARS_BADGE } from './framework';
+import { latestMonth, OLD_PILLARS_BADGE } from './framework';
 import {
   draftIdsOf,
   jobTitlesLabel,
@@ -26,7 +26,9 @@ import {
 // and job roles"): a box on each draft, one to choose them all, a confirm, then what was published and what stopped the
 // others (each stays a draft). Publishing now applies from next month's scorecards, those for this month, or, while new
 // KPI pillars are coming (owner, 21 October 2026: "Fully flexible"), from their first month's. A job title whose
-// newest version uses the old pillars is marked.
+// newest version uses the old pillars is marked. By department (owner, 22 October 2026: "but i need pillars to each
+// department"): each draft's own pillars' first month, its department's or the company's; the confirm says the latest
+// of those chosen.
 
 const none = <span className="text-muted">—</span>;
 
@@ -97,14 +99,17 @@ export function TemplatesTable({
   publish,
   today,
   pillarsFrom,
+  draftPillarsFrom = {},
 }: {
   groups: TemplateGroup[];
   /** "Publish selected drafts" (HR, the Super Admin); null: the list only. */
   publish: ((prev: PublishDraftsState, fd: FormData) => Promise<PublishDraftsState>) | null;
   /** Today in Cairo, YYYY-MM-DD: when what is published now applies. */
   today: string;
-  /** The month the next KPI pillars apply from (YYYY-MM); null: none coming. */
+  /** The month the company's next KPI pillars apply from (YYYY-MM); null: none coming. */
   pillarsFrom: string | null;
+  /** By draft id: the month its pillars (its department's, or the company's) apply from while still to come; null: in force. */
+  draftPillarsFrom?: Readonly<Record<string, string | null>>;
 }) {
   const [chosen, setChosen] = useState<ReadonlySet<string>>(new Set());
   const [state, formAction, pending] = useActionState(publish ?? (async (prev: PublishDraftsState) => prev), {});
@@ -129,7 +134,9 @@ export function TemplatesTable({
           <form
             action={formAction}
             onSubmit={(e) => {
-              if (!selected.length || !window.confirm(publishDraftsConfirmText(selected.length, today, pillarsFrom))) e.preventDefault();
+              // the latest pillars' month of the drafts chosen; a draft not known, the company's
+              const month = latestMonth(selected.map((id) => (id in draftPillarsFrom ? draftPillarsFrom[id] : pillarsFrom)));
+              if (!selected.length || !window.confirm(publishDraftsConfirmText(selected.length, today, month))) e.preventDefault();
             }}
             className="flex flex-wrap items-center gap-x-4 gap-y-2"
           >

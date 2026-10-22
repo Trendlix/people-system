@@ -25,7 +25,7 @@ import { getOrNull } from '../../../approvals/data';
 import { todayInCairo } from '../../../employees/ui';
 import { BackLink, Empty, Loading, UUID } from '../../../organization/ui';
 import { discardKpiDraft, sendKpiDraft, startKpiDraft } from '../actions';
-import { OLD_PILLARS_BADGE } from '../framework';
+import { departmentRowOf, OLD_PILLARS_BADGE, pillarsMonthOf } from '../framework';
 import { TemplateView } from '../template-view';
 import { copyChoices, libraryChoices, librarySuggestion, metricsLabel, publishConfirmText, readsKpiTemplates, sampleLabel, userName } from '../templates';
 import { DraftEditor } from './draft-editor';
@@ -43,6 +43,9 @@ import { StartDraft } from './start-draft';
 // suggested as "Draft templates for every job title" would pick it.
 // The pillars (owner, 21 October 2026: "Fully flexible"): each version shown in its own; the newest marked when it uses
 // the old ones, with how to update it; the draft in the KPI framework's newest, published from their first month.
+// By department (owner, 22 October 2026: "but i need pillars to each department / wights can be changed for each
+// department and Job title"): the draft's pillars are its department's (or the company's), their first month its
+// department's when coming; its weights may be the job title's own (the draft editor).
 
 export const metadata: Metadata = { title: 'KPI Template · People System' };
 
@@ -216,7 +219,7 @@ async function Builder({ params, searchParams }: { params: PageProps<'/kpis/temp
               action={sendKpiDraft.bind(null, jobTitleId, draft.id)}
               // only a Super Admin deletes (owner's decision, 15 October 2026)
               discard={canDelete(user) ? discardKpiDraft.bind(null, jobTitleId, draft.id) : null}
-              confirmPublish={publishConfirmText(draft.version, today, framework?.next?.appliesFrom ?? null)}
+              confirmPublish={publishConfirmText(draft.version, today, framework ? pillarsMonthOf(framework, departmentRowOf(framework, jobTitle.department)) : null)}
             />
           )}
           {draft && !canEdit && <DraftReadOnly draft={draft} />}

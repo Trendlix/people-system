@@ -229,9 +229,12 @@ export function sheetMode(can: Pick<KpiScorecardView['can'], 'selfRate' | 'score
 
 /**
  * Over the department averages when the month's scorecards don't all have the same pillars (owner's brief, 21 October
- * 2026: "say 'Pillars changed this month: averages by name'").
+ * 2026: "say 'Pillars changed this month: averages by name'"); since the pillars can differ by department and job
+ * title (owner, 22 October 2026: "but i need pillars to each department / wights can be changed for each department and
+ * Job title"), said as differing.
  */
-export const PILLARS_CHANGED_THIS_MONTH = 'Pillars changed this month: averages by name. A pillar’s weight shows when every scorecard with it has the same.';
+export const PILLARS_CHANGED_THIS_MONTH =
+  'Pillars differ between this month’s scorecards (by department, job title or a change): averages by name. A pillar’s weight shows when every scorecard with it has the same.';
 
 /** Every metric the caller may pick, in the order of the pillars (never the Attendance metric: the system's). */
 export const allMetrics = (view: Pick<KpiScorecardView, 'pillars'>): KpiScorecardMetric[] => view.pillars.flatMap((p) => p.metrics);

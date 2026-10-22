@@ -692,4 +692,49 @@ describe('Migrations (e2e)', () => {
       db.query(`INSERT INTO kpi_frameworks (id, version, applies_from, pillars, attendance_pillar, updated_at) VALUES (gen_random_uuid(), 2, '2026-11-15', '[{"key": "all"}]', 'all', now())`),
     ).rejects.toThrow(/kpi_frameworks_applies_from_check/);
   });
+
+  it('KPI pillars by department: the company’s versions stay, each department numbers and dates its own, one may follow the company’s; own weights an object (owner, 22 October 2026)', async () => {
+    const migration = readdirSync(MIGRATIONS).find((m) => m.endsWith('_kpi_department_pillars'))!;
+    await migratedUpTo(migration);
+    await db.query(`
+      INSERT INTO departments (id, name_en, updated_at) VALUES ('00000000-0000-4000-8000-0000000000d1', 'Sales', now());
+      INSERT INTO job_titles (id, department_id, title_en, updated_at) VALUES ('00000000-0000-4000-8000-0000000000a1', '00000000-0000-4000-8000-0000000000d1', 'Sales Rep', now());
+      INSERT INTO kpi_templates (id, job_title_id, version, status, opens_from, published_at, framework_id, pillars, attendance_pillar, updated_at)
+        SELECT '00000000-0000-4000-8000-0000000000b1', '00000000-0000-4000-8000-0000000000a1', 1, 'published', '2026-10-01', now(), id, pillars, attendance_pillar, now() FROM kpi_frameworks;
+    `);
+
+    await db.query(sql(migration));
+
+    const { rows: frameworks } = await db.query(`SELECT version, department_id AS "departmentId", follows_company AS "followsCompany" FROM kpi_frameworks`);
+    expect(frameworks).toEqual([{ version: 1, departmentId: null, followsCompany: false }]);
+    const { rows: templates } = await db.query(`SELECT own_weights AS "ownWeights" FROM kpi_templates`);
+    expect(templates).toEqual([{ ownWeights: null }]);
+
+    const pillars = `'[{"key": "revenue", "name": "Revenue", "short": "Revenue", "weight": 100}]'`;
+    const insert = (department: string | null, version: number, month: string, follows = false, list = pillars, attendance = `'revenue'`) =>
+      db.query(`INSERT INTO kpi_frameworks (id, department_id, follows_company, version, applies_from, pillars, attendance_pillar, updated_at)
+        VALUES (gen_random_uuid(), ${department ? `'${department}'` : 'NULL'}, ${follows}, ${version}, '${month}', ${list}, ${attendance}, now())`);
+    const SALES = '00000000-0000-4000-8000-0000000000d1';
+    // a department's own version 1, from the same month as the company's: its own numbering and dates
+    await insert(SALES, 1, '2000-01-01');
+    // the company's count as one: a second version 1, or a second version from the same month, is refused
+    await expect(insert(null, 1, '2026-11-01')).rejects.toThrow(/kpi_frameworks_department_id_version_key/);
+    await expect(insert(null, 2, '2000-01-01')).rejects.toThrow(/kpi_frameworks_department_id_applies_from_key/);
+    await expect(insert(SALES, 1, '2026-12-01')).rejects.toThrow(/kpi_frameworks_department_id_version_key/);
+    await expect(insert(SALES, 2, '2000-01-01')).rejects.toThrow(/kpi_frameworks_department_id_applies_from_key/);
+    // following the company's: a department's only, without pillars of its own
+    await insert(SALES, 2, '2026-11-01', true, `'[]'`, `''`);
+    await expect(insert(SALES, 3, '2026-12-01', true, pillars, `''`)).rejects.toThrow(/kpi_frameworks_pillars_check/);
+    await expect(insert(SALES, 3, '2026-12-01', true, `'[]'`, `'revenue'`)).rejects.toThrow(/kpi_frameworks_attendance_pillar_check/);
+    await expect(insert(null, 2, '2026-12-01', true, `'[]'`, `''`)).rejects.toThrow(/kpi_frameworks_follows_company_check/);
+    // its own pillars: at least one (both checks refuse none)
+    await expect(insert(SALES, 3, '2026-12-01', false, `'[]'`, `''`)).rejects.toThrow(/kpi_frameworks_(pillars|attendance_pillar)_check/);
+    // own weights by pillar key
+    await expect(db.query(`UPDATE kpi_templates SET own_weights = '[70, 30]'`)).rejects.toThrow(/kpi_templates_own_weights_check/);
+    await db.query(`UPDATE kpi_templates SET own_weights = '{"delivery": 40, "quality": 20, "clients": 20, "discipline": 20}'`);
+    // gone with its department
+    await db.query(`DELETE FROM kpi_templates; DELETE FROM job_titles; DELETE FROM departments`);
+    const { rows: left } = await db.query(`SELECT department_id AS "departmentId" FROM kpi_frameworks`);
+    expect(left).toEqual([{ departmentId: null }]);
+  });
 });

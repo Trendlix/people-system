@@ -1,12 +1,13 @@
 import { KPI_ATTENDANCE_METRIC, type KpiTemplateView } from '@trendlix/shared';
-import { aboveTarget, pillarGroups, UNPLACED_TITLE } from './[jobTitleId]/builder';
+import { aboveTarget, pillarGroups, pillarsFromText, UNPLACED_TITLE } from './[jobTitleId]/builder';
 
 // A version of a job title's KPI template as everyone reads it (owner, 21 October 2026: "Managers can view their team's
 // templates"): its pillars with their weights and max points, each metric with the JD duty it is linked to, its
 // definition and how it's measured, its criteria scale and its target, and the automatic Attendance metric in its
 // pillar. As the prototype's templates by role: JD duty → KPI metric → criteria → max. The pillars are the version's own
 // (owner, 21 October 2026: "Fully flexible"): those it was published with; a draft's, the KPI framework's newest, those
-// whose pillar is gone under Unplaced.
+// whose pillar is gone under Unplaced. Whose pillars they are (owner, 22 October 2026: "but i need pillars to each
+// department"): its department's own, or the company's, and whether the job title weights them its own way.
 
 const none = <span className="text-muted">—</span>;
 
@@ -14,12 +15,21 @@ export function TemplateView({
   template,
   headingLevel = 'h4',
 }: {
-  template: Pick<KpiTemplateView, 'metrics' | 'attendancePoints' | 'pillars' | 'attendancePillar'>;
+  template: Pick<KpiTemplateView, 'metrics' | 'attendancePoints' | 'pillars' | 'attendancePillar'> &
+    // an API from before department pillars sends neither
+    Partial<Pick<KpiTemplateView, 'pillarsFrom' | 'ownWeights'>>;
   headingLevel?: 'h3' | 'h4';
 }) {
   const Heading = headingLevel;
+  const whose = pillarsFromText(template.pillarsFrom);
   return (
     <div className="space-y-6">
+      {(whose || template.ownWeights) && (
+        <p className="flex flex-wrap items-center gap-2 text-sm text-muted">
+          {whose && <span>{whose}</span>}
+          {template.ownWeights && <span className="badge bg-accent-soft text-accent">Own weights for this job title</span>}
+        </p>
+      )}
       {pillarGroups(template.metrics, template.attendancePoints, { pillars: template.pillars, attendancePillar: template.attendancePillar }).map((g) => (
         <section key={g.pillar?.key ?? 'unplaced'} className="space-y-2">
           <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">

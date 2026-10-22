@@ -374,8 +374,13 @@ function recordLookups(p: PrismaService): Readonly<Record<string, Lookup>> {
         r.id,
         { parentId: r.jobTitleId, reference: `${r.jobTitle.titleEn} v${r.version}` },
       ]),
-    // the KPI pillars (owner, 21 October 2026: "Fully flexible"): the framework's version
-    kpi_framework: async (ids) => (await p.kpiFramework.findMany({ ...by(ids), select: { id: true, version: true } })).map((r) => [r.id, { reference: `Version ${r.version}` }]),
+    // the KPI pillars (owner, 21 October 2026: "Fully flexible"): the framework's version, and a department's own
+    // (22 October 2026: "i need pillars to each department") with its department
+    kpi_framework: async (ids) =>
+      (await p.kpiFramework.findMany({ ...by(ids), select: { id: true, version: true, departmentId: true, department: { select: { nameEn: true } } } })).map((r) => [
+        r.id,
+        { parentId: r.departmentId, reference: r.department ? `${r.department.nameEn} · Version ${r.version}` : `Version ${r.version}` },
+      ]),
     // Assets (21 October 2026): an asset's code; a photo's asset (its code); a room's name; a kit's code and name
     asset: async (ids) => (await p.asset.findMany({ ...by(ids), select: { id: true, code: true } })).map((r) => [r.id, { reference: r.code }]),
     asset_photo: async (ids) =>

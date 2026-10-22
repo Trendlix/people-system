@@ -57,7 +57,8 @@ export type NavAudience = 'profile' | 'team' | 'assets' | 'assets-register' | 'a
  * the scorecards they score, for a direct manager, a department's head or a team's lead (the person in charge scores:
  * "The manager is the approver in charge") and the CEO, who scores the C-level people ("For C-level people the CEO
  * scores"); All KPIs, every scorecard by month, for HR, the CEO and the Super Admin; KPI Templates for HR and the Super
- * Admin ("Templates: HR"). In both sidebars, each with the pages its user sees.
+ * Admin ("Templates: HR"); KPI Pillars, the company's and each department's (owner, 22 October 2026: "but i need
+ * pillars to each department"), for them too. In both sidebars, each with the pages its user sees.
  */
 export const KPIS_NAV: NavItem = {
   href: KPI_PATHS.mine,
@@ -68,6 +69,7 @@ export const KPIS_NAV: NavItem = {
     { href: KPI_PATHS.team, label: 'Team KPIs', section: KPI_PATHS.team, roles: ['ceo'], audience: 'team' },
     { href: KPI_PATHS.all, label: 'All KPIs', section: KPI_PATHS.all, roles: ['hr', 'ceo', 'super_admin'] },
     { href: KPI_PATHS.templates, label: 'KPI Templates', section: KPI_PATHS.templates, roles: ['hr', 'super_admin'] },
+    { href: KPI_PATHS.pillars, label: 'KPI Pillars', section: KPI_PATHS.pillars, roles: ['hr', 'super_admin'] },
   ],
 };
 

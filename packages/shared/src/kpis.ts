@@ -172,6 +172,12 @@ export interface KpiMetric {
 export interface KpiTemplateContent {
   attendancePoints: number;
   metrics: KpiMetric[];
+  /**
+   * The job title's own weights for its pillars, by key (owner, 22 October 2026: "wights can be changed for each
+   * department and Job title"; kpi-framework.ts KpiWeights); null: its department's (or the company's). Left out, those
+   * it has are kept.
+   */
+  weights?: Record<string, number> | null;
 }
 
 /** The automatic metric's name, on every template in the pillar the framework chose (Discipline & Growth by default). */
@@ -668,6 +674,18 @@ export interface KpiTemplateView {
   pillarsChanged: boolean;
   /** A published version whose pillars aren't the KPI framework's newest: "Uses the old pillars". */
   oldPillars: boolean;
+  /**
+   * Whose pillars they are (owner, 22 October 2026: "i need pillars to each department"): a department's own (a
+   * published version: the framework it was published with; a draft: its job title's department's newest), or the
+   * company's (null).
+   */
+  pillarsFrom: { departmentId: string; nameEn: string } | null;
+  /** Its pillars' weights as the department (or the company) has them, by key: what its own weights differ from. */
+  baseWeights: Record<string, number>;
+  /** Its pillars' weights are the job title's own, not the department's (or the company's). */
+  ownWeights: boolean;
+  /** A draft whose own weights were dropped, its pillars having gained or lost one: it takes the department's again. */
+  weightsReset: boolean;
 }
 
 /** A job title on the KPI Templates list. */

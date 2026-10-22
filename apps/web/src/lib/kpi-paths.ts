@@ -15,7 +15,10 @@ export const KPI_API = {
   counts: '/kpis/counts',
   /** GET (everyone) and PATCH (HR, Super Admin): KpiSettingsView. */
   settings: '/kpis/settings',
-  /** GET (everyone): KpiFrameworkView, the pillars in force and the next ones; PUT KpiFrameworkInput (HR, Super Admin). */
+  /**
+   * GET (everyone): KpiFrameworkView, the company's pillars in force and the next ones, and each department's; PUT
+   * KpiFrameworkInput, the company's or a department's (HR, Super Admin).
+   */
   framework: '/kpis/framework',
   /** GET: KpiTemplateRow[] (HR, the CEO, Admin, Super Admin). */
   templates: '/kpis/templates',
@@ -73,6 +76,13 @@ export const KPI_PATHS = {
   templates: '/kpis/templates',
   /** A job title's template builder. */
   template: (jobTitleId: string) => `/kpis/templates/${encodeURIComponent(jobTitleId)}`,
+  /**
+   * KPI Pillars (owner, 22 October 2026: "but i need pillars to each department"): the company's pillars and each
+   * department's.
+   */
+  pillars: '/kpis/pillars',
+  /** A department's own pillars, or its going back to the company's. */
+  departmentPillars: (departmentId: string) => `/kpis/pillars/${encodeURIComponent(departmentId)}`,
   /** A scorecard. */
   scorecard: (id: string) => `/kpis/scorecards/${encodeURIComponent(id)}`,
 } as const;
