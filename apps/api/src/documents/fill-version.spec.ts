@@ -77,10 +77,10 @@ describe('fillVersion', () => {
 // The owner, 22 October 2026: "in contracts, i need the dates and numbers in arabic ٠-٩", then "make sure this in any
 // arabic document".
 describe('an Arabic document’s numbers in ٠-٩', () => {
-  it('turns digits, thousands separators, decimal points and percent signs; keeps an email or a web address', () => {
+  it('turns digits and percent signs, keeps the comma and the point; keeps an email or a web address', () => {
     expect(arabicNumberText('15/07/2025')).toBe('١٥/٠٧/٢٠٢٥');
-    expect(arabicNumberText('10,500')).toBe('١٠٬٥٠٠');
-    expect(arabicNumberText('1,250,000.75')).toBe('١٬٢٥٠٬٠٠٠٫٧٥');
+    expect(arabicNumberText('10,500')).toBe('١٠,٥٠٠');
+    expect(arabicNumberText('1,250,000.75')).toBe('١,٢٥٠,٠٠٠.٧٥');
     expect(arabicNumberText('20%')).toBe('٢٠٪');
     expect(arabicNumberText('02/2025')).toBe('٠٢/٢٠٢٥');
     expect(arabicNumberText('عشرة آلاف وخمسمائة جنيه')).toBe('عشرة آلاف وخمسمائة جنيه');
@@ -88,7 +88,7 @@ describe('an Arabic document’s numbers in ٠-٩', () => {
     expect(arabicNumberText('https://trendlix.com/2025')).toBe('https://trendlix.com/2025');
     // word by word: a code with Latin letters keeps its digits, the rest of the text doesn't
     expect(arabicNumberText('KX1234567')).toBe('KX1234567');
-    expect(arabicNumberText('CON-2026-0044 / CON-2026-0044-A1: 10,500')).toBe('CON-2026-0044 / CON-2026-0044-A1: ١٠٬٥٠٠');
+    expect(arabicNumberText('CON-2026-0044 / CON-2026-0044-A1: 10,500')).toBe('CON-2026-0044 / CON-2026-0044-A1: ١٠,٥٠٠');
     expect(arabicNumberText('15 شارع عباس العقاد')).toBe('١٥ شارع عباس العقاد');
     expect(arabicNumberText('للتواصل omar2@mail.test أو 01012345678')).toBe('للتواصل omar2@mail.test أو ٠١٠١٢٣٤٥٦٧٨');
   });
@@ -119,17 +119,20 @@ describe('an Arabic document’s numbers in ٠-٩', () => {
       }),
     ).toEqual({
       start_date: '١٥/٠٧/٢٠٢٥',
-      gross_salary: '١٠٬٥٠٠',
+      gross_salary: '١٠,٥٠٠',
       personal_email: 'omar2@mail.test',
       gross_salary_en: '10,500',
       jd_duties: { html: '<p data-indent="2">Edit ٣ videos &amp; ٢ reels&#8203;</p>' },
     });
+    // a phone number kept left to right, its + in front
+    expect(arabicDigitValues({ phone: '+201091861314' })).toEqual({ phone: '\u202A+٢٠١٠٩١٨٦١٣١٤\u202C' });
+    expect(arabicDigitValues({ phone: '' })).toEqual({ phone: '' });
   });
 
   it('fills an Arabic contract and an Arabic letter with ٠-٩, and an English letter with 0-9', async () => {
     const body = p(r('اعتبارا من {{start_date}} براتب {{gross_salary}}'));
     const ar = await fillVersion({ slotKey: 'contract_full_time', format: 'docx', data: docx({ body }), language: 'ar' }, { start_date: '15/07/2025', gross_salary: '10,500' });
-    expect(readZip(ar).read('word/document.xml')!.toString('utf8')).toContain('اعتبارا من ١٥/٠٧/٢٠٢٥ براتب ١٠٬٥٠٠');
+    expect(readZip(ar).read('word/document.xml')!.toString('utf8')).toContain('اعتبارا من ١٥/٠٧/٢٠٢٥ براتب ١٠,٥٠٠');
     const letter = await fillVersion({ slotKey: 'hr_letter_ar', format: 'docx', data: docx({ body: p(r('تحريرا في {{date}}')) }), language: 'ar' }, { date: '22/10/2026' });
     expect(readZip(letter).read('word/document.xml')!.toString('utf8')).toContain('تحريرا في ٢٢/١٠/٢٠٢٦');
     const en = await fillVersion({ slotKey: 'hr_letter_en', format: 'docx', data: docx({ body: p(r('From {{start_date}}')) }), language: 'en' }, { start_date: '15/07/2025' });

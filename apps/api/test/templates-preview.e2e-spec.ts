@@ -324,7 +324,7 @@ describe('Template preview with data (e2e)', () => {
     const contractText = await previewText(contractV.id, { employeeId: aaron.id });
     // an Arabic contract prints its numbers in ٠-٩ (owner, 22 October 2026)
     expect(contractText).toContain(toArabicDigits(NATIONAL_ID));
-    expect(contractText).toContain('٢٠٬٠٠٠');
+    expect(contractText).toContain('٢٠,٠٠٠');
 
     const resigned = await previewText(resignation.id, { employeeId: adam.id });
     expect(resigned).toContain('عمر خالد محمود');

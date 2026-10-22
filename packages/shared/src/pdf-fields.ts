@@ -142,21 +142,13 @@ export const toArabicDigits = (text: string): string => text.replace(/[0-9]/g, (
 
 /**
  * A text's numbers in Arabic digits, as an Arabic document prints them (owner, 22 October 2026: "in contracts, i need
- * the dates and numbers in arabic ٠-٩"): ٠-٩, a thousands separator between digits as ٬ (10,500 → ١٠٬٥٠٠), a decimal
- * point between digits as ٫ and a percent sign after a digit as ٪. Word by word: a word with a Latin letter (a code such
- * as CON-2026-0044 or an ID card's KX1234567), an email or a web address keeps its own digits.
+ * the dates and numbers in arabic ٠-٩"): ٠-٩, and a percent sign after a digit as ٪. The thousands comma and the
+ * decimal point stay as they are (10,500.50 → ١٠,٥٠٠.٥٠): the Arabic separators ٬ and ٫ looked like commas in the
+ * documents' fonts, and the converter spread a justified line apart at ٬. Word by word: a word with a Latin letter (a
+ * code such as CON-2026-0044 or an ID card's KX1234567), an email or a web address keeps its own digits.
  */
 export function arabicNumberText(text: string): string {
-  return text.replace(/\S+/g, (word) =>
-    /[A-Za-z@]|:\/\//.test(word)
-      ? word
-      : toArabicDigits(
-          word
-            .replace(/(\d),(?=\d{3}(?!\d))/g, '$1٬')
-            .replace(/(\d)\.(?=\d)/g, '$1٫')
-            .replace(/(\d)%/g, '$1٪'),
-        ),
-  );
+  return text.replace(/\S+/g, (word) => (/[A-Za-z@]|:\/\//.test(word) ? word : toArabicDigits(word.replace(/(\d)%/g, '$1٪'))));
 }
 
 /** ٠-٩ (and Persian ۰-۹) as 0-9. */

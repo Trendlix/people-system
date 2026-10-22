@@ -227,7 +227,7 @@ export const TEMPLATE_TAGS: readonly TemplateTag[] = [
   { tag: 'city', group: 'employee', labelEn: 'City or district (Arabic)', labelAr: 'قسم / مركز', source: 'Profile' },
   { tag: 'governorate', group: 'employee', labelEn: 'Governorate (Arabic)', labelAr: 'محافظة', source: 'Profile' },
   { tag: 'building_no', group: 'employee', labelEn: 'Building number', labelAr: 'عقار رقم', source: 'Profile: address' },
-  { tag: 'phone', group: 'employee', labelEn: 'Mobile', labelAr: 'تليفون', source: 'Profile', note: 'As dialled in Egypt (010…) for an Egyptian number' },
+  { tag: 'phone', group: 'employee', labelEn: 'Mobile', labelAr: 'تليفون', source: 'Profile', note: 'With its country code, e.g. +201012345678' },
   { tag: 'work_email', group: 'employee', labelEn: 'Work email', labelAr: 'البريد الإلكتروني للعمل', source: 'Profile' },
   // the owner's request of 15 October 2026, "add the missing fields": this one and, further down, the direct manager,
   // the grade's level, the work arrangement, the working hours, the probation period, the basic salary's share and the

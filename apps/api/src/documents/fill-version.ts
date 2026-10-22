@@ -3,6 +3,7 @@ import type { Prisma } from '../generated/prisma/client.js';
 import { pdfOptionalTags } from '../templates/pdf-fields.js';
 import { formatOf, templateFileName } from '../templates/template-file.js';
 import { fillTemplate, type TagValue } from './engine/index.js';
+import { bakeImageOpacity } from './engine/opacity.js';
 import { fillPdfTemplate } from './pdf-engine/index.js';
 
 // Every document filled in from a template goes through here (generated documents, job offers, previews): a Word
@@ -49,7 +50,8 @@ export async function fillVersion(version: FillableVersion, values: Readonly<Rec
     const fields = withSlotDigits(version.slotKey, pdfFieldsOf(version.pdfFields), version.language).map((f) => (left(f) ? { ...f, tag: null } : f));
     return fillPdfTemplate(version.data, fields, values, version.language);
   }
-  return fillTemplate(Buffer.from(version.data), arabicDocument(version.language) ? arabicDigitValues(values) : values);
+  // a picture's transparency set in Word (the watermark's 15%) baked into it, so the PDF converter keeps it (22 October 2026)
+  return bakeImageOpacity(fillTemplate(Buffer.from(version.data), arabicDocument(version.language) ? arabicDigitValues(values) : values));
 }
 
 /**
@@ -60,6 +62,9 @@ export function arabicDigitValues(values: Readonly<Record<string, TagValue>>): R
   const out: Record<string, TagValue> = {};
   for (const [tag, value] of Object.entries(values)) {
     if (keepsLatinDigits(tag)) out[tag] = value;
+    // a phone number left to right inside the Arabic text, so its + stays in front (+٢٠١٠…, never ٢٠١٠…+): within the
+    // marks LRE … PDF (owner, 22 October 2026: "the phone number format is not correct")
+    else if (tag === 'phone' && typeof value === 'string' && value) out[tag] = `\u202A${arabicNumberText(value)}\u202C`;
     else if (typeof value === 'string') out[tag] = arabicNumberText(value);
     else out[tag] = { ...value, html: value.html.split(/(<[^>]*>)/).map((part) => (part.startsWith('<') ? part : part.replace(/&#?\w+;|[^&]+/g, (t) => (t.startsWith('&') ? t : arabicNumberText(t))))).join('') };
   }
