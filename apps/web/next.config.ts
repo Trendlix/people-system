@@ -1,5 +1,8 @@
 import type { NextConfig } from "next";
 
+/** The sites that may show the careers pages in a frame: the company's own website. */
+const CAREERS_FRAMED_BY = ['https://www.trendlix.com', 'https://trendlix.com'];
+
 const nextConfig: NextConfig = {
   /* config options here */
   cacheComponents: true,
@@ -14,8 +17,27 @@ const nextConfig: NextConfig = {
   partialPrefetching: true,
   // The Claude connector's sign-in and consent page (owner, 21 October 2026: "the connection method") is never shown in
   // another site's frame (no clickjacking of Allow), and its address (the OAuth request) is never sent on as a referrer.
+  // The careers pages may be shown in a frame on trendlix.com, and only there (owner, 22 October 2026: "i will put it in
+  // the main website"): at /careers, and on the careers address once it has one (careers.trendlix.com, whose every page
+  // is a careers page: lib/public-paths.ts careersRewrite). The headers are matched before that rewrite, hence the host
+  // rule.
   async headers() {
+    const careersFrame = [{ key: 'Content-Security-Policy', value: `frame-ancestors 'self' ${CAREERS_FRAMED_BY.join(' ')}` }];
     return [
+      // every other page (the staff site, the phone pages, the public offer page) only in its own frames (the labels and
+      // forms printed from a frame), never on another site: no clickjacking (22 October 2026). Not on the careers pages,
+      // nor the careers address, nor /oauth, which set their own below.
+      {
+        source: '/:path((?!careers(?:/|$)|oauth(?:/|$)).*)',
+        missing: [{ type: 'host', value: 'careers\\..+' }],
+        headers: [
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          { key: 'Content-Security-Policy', value: "frame-ancestors 'self'" },
+        ],
+      },
+      { source: '/careers', headers: careersFrame },
+      { source: '/careers/:path*', headers: careersFrame },
+      { source: '/:path*', has: [{ type: 'host', value: 'careers\\..+' }], headers: careersFrame },
       {
         source: '/oauth/:path*',
         headers: [
