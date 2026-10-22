@@ -5,6 +5,7 @@ import { CurrentActiveSession, CurrentSession, CurrentUser, ViewAsControl } from
 import { setSessionCookie } from './session-cookie.js';
 import type { Me, SessionUser } from './session-user.js';
 import type { ActiveSession } from './sessions.service.js';
+import { SessionModeDto } from './session-mode.dto.js';
 import { ViewAsActDto, ViewAsDto } from './view-as.dto.js';
 import type { SessionClaims } from './view-as.js';
 import { ViewAsService, type NewSession } from './view-as.service.js';
@@ -42,6 +43,20 @@ export class ViewAsController {
     @Res({ passthrough: true }) res: Response,
   ): Promise<Me> {
     return this.answer(res, await this.viewAs.act(user, session, dto.act), active);
+  }
+
+  /** See a developer who holds another role as a developer or as themselves (22 October 2026). */
+  @ViewAsControl()
+  @Post('mode')
+  @HttpCode(200)
+  async mode(
+    @Body() dto: SessionModeDto,
+    @CurrentUser() user: SessionUser,
+    @CurrentSession() session: SessionClaims,
+    @CurrentActiveSession() active: ActiveSession,
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<Me> {
+    return this.answer(res, await this.viewAs.mode(user, session, dto.mode), active);
   }
 
   @ViewAsControl()

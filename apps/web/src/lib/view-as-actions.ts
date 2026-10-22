@@ -52,6 +52,17 @@ export async function setActing(act: boolean): Promise<ViewAsResult> {
   return result;
 }
 
+/**
+ * While viewing as a developer who is also an employee (owner, 22 October 2026: "give hin a switched to use the account as
+ * the main role assigned to him or as a developer"): see them as a developer or as themselves, on the home page, as that
+ * mode shows it.
+ */
+export async function setViewMode(mode: 'self' | 'developer'): Promise<ViewAsResult> {
+  const result = await send('/auth/view-as/mode', { mode });
+  if (result.error) return result;
+  redirect('/');
+}
+
 /** Back to the Super Admin's own account at once, on the home page. */
 export async function backToMyAccount(): Promise<ViewAsResult> {
   const result = await send('/auth/view-as/stop');

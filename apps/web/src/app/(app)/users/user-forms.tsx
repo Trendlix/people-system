@@ -1,6 +1,6 @@
 'use client';
 
-import { ASSETS_ACCESS_HINTS, ASSETS_ACCESS_LABELS, ASSETS_ACCESS_LEVELS, type AssetsAccess, type Role } from '@trendlix/shared';
+import { ASSETS_ACCESS_HINTS, ASSETS_ACCESS_LABELS, ASSETS_ACCESS_LEVELS, DEVELOPER_CHOOSES_NOTE, type AssetsAccess, type Role } from '@trendlix/shared';
 import Link from 'next/link';
 import { useActionState, useState } from 'react';
 import { FormErrors, SubmitButton, useFieldIds, valueOf } from '@/components/form';
@@ -40,6 +40,9 @@ function RoleFields({ choices, checked, hint }: { choices: readonly Role[]; chec
       {choices.includes('super_admin') && (
         <p className="hint">Super Admin: everything an Admin can do, and the only role that can delete records.</p>
       )}
+      {/* a developer who is also an employee (owner, 22 October 2026: "give hin a switched to use the account as the main
+          role assigned to him or as a developer") */}
+      {choices.includes('developer') && <p className="hint">Developer + Employee: {DEVELOPER_CHOOSES_NOTE}</p>}
     </fieldset>
   );
 }

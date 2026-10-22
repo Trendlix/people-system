@@ -47,10 +47,13 @@ export const viewOnlyMessage = (who: string) => `Viewing as ${who}: view only. S
 /** Roles as the banner and the list name them: "HR, Direct manager". */
 export const rolesText = (roles: readonly Role[]) => roles.map((r) => ROLE_LABELS[r] ?? r).join(', ');
 
-/** The banner's line: "Viewing as Nour Adel (nour@trendlix.com) · Employee", or the email alone without a profile. */
-export function viewingAsText(user: Pick<Session, 'name' | 'email' | 'roles'>): string {
+/**
+ * The banner's line: "Viewing as Nour Adel (nour@trendlix.com) · Employee", or the email alone without a profile; a
+ * developer seen in the developer view (22 October 2026) "· Developer view", as they see it.
+ */
+export function viewingAsText(user: Pick<Session, 'name' | 'email' | 'roles' | 'developer'>): string {
   const who = user.name ? `${user.name} (${user.email})` : user.email;
-  return `Viewing as ${who} · ${rolesText(user.roles)}`;
+  return `Viewing as ${who} · ${user.developer ? 'Developer view' : rolesText(user.roles)}`;
 }
 
 /** Someone the Super Admin can switch to, as the View As list shows them. */

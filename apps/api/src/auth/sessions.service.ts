@@ -1,5 +1,5 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { IDLE_TIMEOUT_MS, type SessionEndReason, type SessionKind } from '@trendlix/shared';
+import { IDLE_TIMEOUT_MS, isSessionMode, type SessionEndReason, type SessionKind, type SessionMode } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { isSuperAdmin } from './roles.js';
@@ -66,9 +66,10 @@ export class SessionsService {
   /**
    * Signing in: the user's open session of the same kind ends ('replaced': the new one wins; 'expired' if its 8 hours were
    * already over), and the new one starts. One sign-in of a user at a time (their row locked), so two at the same moment
-   * can't both stay open. Answers the new session's id.
+   * can't both stay open. Answers the new session's id. `mode`: how a developer who holds another role uses it from the
+   * start ('self' in the app: packages/shared startingMode); null for everyone else, and on the website until they choose.
    */
-  async start(userId: string, kind: SessionKind, origin: { userAgent?: string | null; ip?: string | null }, expiresAt: Date): Promise<string> {
+  async start(userId: string, kind: SessionKind, origin: { userAgent?: string | null; ip?: string | null }, expiresAt: Date, mode: SessionMode | null = null): Promise<string> {
     const now = new Date();
     const { id, replaced } = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT 1 FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
@@ -79,7 +80,7 @@ export class SessionsService {
         if (ids.length) await tx.session.updateMany({ where: { id: { in: ids }, endedAt: null }, data: { endedAt: now, endReason: reason } });
       }
       const created = await tx.session.create({
-        data: { userId, kind, createdAt: now, lastActiveAt: now, expiresAt, userAgent: keptUserAgent(origin.userAgent), ip: keptIp(origin.ip) },
+        data: { userId, kind, createdAt: now, lastActiveAt: now, expiresAt, userAgent: keptUserAgent(origin.userAgent), ip: keptIp(origin.ip), mode },
         select: { id: true },
       });
       return { id: created.id, replaced: ending.filter((e) => e.reason === 'replaced').map((e) => e.session.id) };
@@ -90,12 +91,43 @@ export class SessionsService {
     return id;
   }
 
-  /** The session a token names, for the guard. */
-  find(id: string): Promise<(SessionState & { id: string; createdAt: Date }) | null> {
+  /** The session a token names, for the guard: with how a developer who holds another role uses it (`mode`). */
+  find(id: string): Promise<(SessionState & { id: string; createdAt: Date; mode: string | null }) | null> {
     return this.prisma.session.findUnique({
       where: { id },
-      select: { id: true, userId: true, kind: true, createdAt: true, lastActiveAt: true, expiresAt: true, endedAt: true, endReason: true },
+      select: { id: true, userId: true, kind: true, createdAt: true, lastActiveAt: true, expiresAt: true, endedAt: true, endReason: true, mode: true },
     });
+  }
+
+  /**
+   * How a developer who holds another role uses their session from now (owner, 22 October 2026: "give hin a switched to
+   * use the account as the main role assigned to him or as a developer, to not confuse him"): kept on it, and written to
+   * the audit log with the mode, 'mode_chosen' for the choice at sign-in, 'mode_switched' for a switch later (nothing
+   * when it is already so). The same session: no new sign-in, no new token, its 8 hours and last activity as they were.
+   * Answers the mode it was used in before (null: not chosen yet).
+   */
+  async setMode(userId: string, sessionId: string, mode: SessionMode): Promise<SessionMode | null> {
+    const session = await this.prisma.session.findUnique({ where: { id: sessionId }, select: { userId: true, kind: true, mode: true, endedAt: true } });
+    if (!session || session.userId !== userId || session.endedAt) throw new NotFoundException('Session not found.');
+    const before = isSessionMode(session.mode) ? session.mode : null;
+    if (before === mode) return before;
+    const { count } = await this.prisma.session.updateMany({ where: { id: sessionId, endedAt: null }, data: { mode } });
+    if (count) {
+      await this.audit.record({
+        userId,
+        action: before ? 'mode_switched' : 'mode_chosen',
+        entityType: ENTITY,
+        entityId: userId,
+        diff: { mode, from: before, kind: session.kind, sessionId },
+      });
+    }
+    return before;
+  }
+
+  /** The mode the user chose last on the website (their newest website session that keeps one), for the choice page. */
+  async lastMode(userId: string): Promise<SessionMode | null> {
+    const last = await this.prisma.session.findFirst({ where: { userId, kind: 'web', mode: { not: null } }, orderBy: { createdAt: 'desc' }, select: { mode: true } });
+    return isSessionMode(last?.mode) ? last.mode : null;
   }
 
   /** A request that counts as activity: kept as the session's last (unless it has ended meanwhile). */

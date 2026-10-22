@@ -1,4 +1,14 @@
-import { DEVELOPER_ACTS_AS, isDeveloperRole, type AssetsAccessView, type Role, type SessionKind } from '@trendlix/shared';
+import {
+  choosesMode,
+  DEVELOPER_ACTS_AS,
+  isDeveloperRole,
+  modeOfSession,
+  ownRoles,
+  type AssetsAccessView,
+  type Role,
+  type SessionKind,
+  type SessionMode,
+} from '@trendlix/shared';
 
 export const SESSION_COOKIE = 'ps_session';
 export const SESSION_HOURS = 8;
@@ -28,6 +38,14 @@ export interface SessionUser {
    */
   developer?: boolean;
   /**
+   * How a developer who holds another role uses this session (owner, 22 October 2026: "give hin a switched to use the
+   * account as the main role assigned to him or as a developer, to not confuse him"; packages/shared session-modes.ts):
+   * 'self', answered with their own roles and nothing of the developer view; 'developer', the developer view; null until
+   * they choose on the website (the developer view meanwhile, and the web shows only the choice page). Left out for
+   * anyone else (someone with the Developer role alone too: always a developer).
+   */
+  mode?: SessionMode | null;
+  /**
    * Their own employee profile (owner, 22 October 2026: "any active employee with active contract should have access"):
    * the account's link (users.employee_id), never its email; null for an account that isn't an employee's. Left out by a
    * session made before it was read (treated as none).
@@ -53,6 +71,29 @@ export const ownEmployeeId = (user: Pick<SessionUser, 'employeeId'>): string | n
 export function answeredAs(user: SessionUser): SessionUser {
   return isDeveloperRole(user.roles) ? { ...user, roles: [...DEVELOPER_ACTS_AS], developer: true } : user;
 }
+
+/**
+ * The user a request is answered as, in `mode` (owner, 22 October 2026: "when a developer signin, give hin a switched to
+ * use the account as the main role assigned to him or as a developer, to not confuse him"). `user`: as the database has
+ * them (sessionUserOf). Someone who chooses (the Developer role and another): in 'self', their own roles without the
+ * Developer role and no `developer` (so every check, the guard's read-only rule, the masking and the 15 minutes treat
+ * them as the employee they are); in 'developer', or before they choose (null), the developer view (answeredAs); `mode`
+ * says which. Anyone else as answeredAs answers them, without `mode`.
+ */
+export function inMode(user: SessionUser, mode: SessionMode | null): SessionUser {
+  if (!choosesMode(user.roles)) return answeredAs(user);
+  if (mode === 'self') return { ...user, roles: ownRoles(user.roles), mode };
+  return { ...answeredAs(user), mode };
+}
+
+/** The user a request with their own session is answered as: in the mode the session is used in (modeOfSession). */
+export const sessionUserIn = (user: SessionUser, session: { kind: string; mode: string | null }): SessionUser => inMode(user, modeOfSession(session.kind, session.mode));
+
+/**
+ * The user a Super Admin views as: a developer who holds another role as themselves unless the Super Admin switched the
+ * banner to see them as a developer (`viewMode`); anyone else as their own session would answer them.
+ */
+export const viewedAs = (user: SessionUser, viewMode?: SessionMode): SessionUser => inMode(user, viewMode ?? 'self');
 
 /**
  * GET /auth/me: the signed-in user, with their own employee profile's id: the profile their account is linked to

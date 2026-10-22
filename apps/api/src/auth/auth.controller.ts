@@ -1,12 +1,14 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Req, Res } from '@nestjs/common';
+import type { ModeChoice } from '@trendlix/shared';
 import type { Request, Response } from 'express';
 import { readToken } from './auth.guard.js';
 import { AuthService } from './auth.service.js';
-import { CurrentActiveSession, CurrentUser, DeveloperMayCall, Public } from './decorators.js';
+import { CurrentActiveSession, CurrentUser, DeveloperMayCall, DeveloperMaySee, Public } from './decorators.js';
 import { DeviceCredentialsService, type DeviceView, type NewDevice } from './device-credentials.service.js';
 import { CreateDeviceDto, DeviceSignInDto } from './device.dto.js';
 import { LoginDto } from './login.dto.js';
 import { ChangePasswordDto } from './password.dto.js';
+import { SessionModeDto } from './session-mode.dto.js';
 import { setSessionCookie } from './session-cookie.js';
 import { idleMsLeft } from './session-rules.js';
 import { SESSION_COOKIE, SESSION_HOURS, type Me, type SessionUser } from './session-user.js';
@@ -45,6 +47,28 @@ export class AuthController {
   @Get('me')
   me(@CurrentUser() user: SessionUser, @CurrentActiveSession() session: ActiveSession): Promise<Me> {
     return this.auth.me(user, session);
+  }
+
+  // A developer who holds another role chooses how to use the system, at sign-in and with the top bar's switch (owner, 22
+  // October 2026: "when a developer signin, give hin a switched to use the account as the main role assigned to him or
+  // as a developer, to not confuse him"). Their own name and roles, as they are (DeveloperMaySee: not masked, in either
+  // mode: it is about themselves); choosing is the one change a developer's view makes (DeveloperMayCall). Neither ends
+  // the session nor counts as a new sign-in.
+
+  /** Whether they choose, the mode in use, the last one chosen, and their name and own roles for the choice page. */
+  @DeveloperMaySee()
+  @Get('mode')
+  mode(@CurrentUser() user: SessionUser, @CurrentActiveSession() session: ActiveSession): Promise<ModeChoice> {
+    return this.auth.modeChoice(user, session);
+  }
+
+  /** Choosing at sign-in, or switching: their session is used as themselves or as a developer from the next request. */
+  @DeveloperMayCall()
+  @DeveloperMaySee()
+  @Post('mode')
+  @HttpCode(200)
+  chooseMode(@Body() dto: SessionModeDto, @CurrentUser() user: SessionUser, @CurrentActiveSession() session: ActiveSession): Promise<ModeChoice> {
+    return this.auth.chooseMode(user, session, dto.mode);
   }
 
   /**

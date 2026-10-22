@@ -36,7 +36,8 @@ export async function ViewAsBanner() {
               : 'View only: you see what they see; changes are refused.'}
           </p>
         </div>
-        <ViewAsControls acting={acting} />
+        {/* a developer who is also an employee: as themselves first, as a developer with its switch (22 October 2026) */}
+        <ViewAsControls acting={acting} developerView={user.mode === undefined || user.mode === null ? null : user.mode === 'developer'} />
       </div>
     </section>
   );

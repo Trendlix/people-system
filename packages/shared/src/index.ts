@@ -533,3 +533,8 @@ export * from './developer.js';
 // access"): the account linked to the employee, made automatically, its first password by a set-password link, managed
 // on the profile's Access tab
 export * from './employee-access.js';
+
+// a developer who is also an employee chooses at sign-in, and switches later, between using the system as themselves and
+// as a developer (owner, 22 October 2026: "when a developer signin, give hin a switched to use the account as the main
+// role assigned to him or as a developer, to not confuse him"): kept on the session
+export * from './session-modes.js';

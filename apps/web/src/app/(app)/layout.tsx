@@ -10,6 +10,7 @@ import { CheckInReminder } from '@/components/check-in-reminder';
 import { SessionWatch } from '@/components/session-watch';
 import { UserMenu } from '@/components/user-menu';
 import { DeveloperBanner } from '@/components/developer-banner';
+import { ModeGate } from '@/components/mode-gate';
 import { ViewAsBanner } from '@/components/view-as-banner';
 import { ApiError } from '@/lib/api';
 import { KPI_API, KPI_PATHS } from '@/lib/kpi-paths';
@@ -147,7 +148,9 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
   // 2026: signed out after 15 minutes without activity), a minute before.
   return (
     <div className="flex min-h-screen flex-col">
+      {/* a developer who is also an employee and hasn't chosen how to use the system: the choice page (22 October 2026) */}
       <Suspense fallback={null}>
+        <ModeGate />
         <ViewAsBanner />
         <DeveloperBanner />
       </Suspense>

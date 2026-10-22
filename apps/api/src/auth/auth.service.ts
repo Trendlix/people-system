@@ -1,6 +1,18 @@
-import { BadRequestException, HttpException, HttpStatus, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, HttpException, HttpStatus, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import { sessionKindOf, type SessionKind } from '@trendlix/shared';
+import {
+  choosesMode,
+  MODE_IN_APP,
+  MODE_NOT_YOURS,
+  MODE_WHILE_VIEWING,
+  ownRoles,
+  sessionKindOf,
+  startingMode,
+  type ModeChoice,
+  type Role,
+  type SessionKind,
+  type SessionMode,
+} from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
 import { assetsCallerOf, assetsMe } from '../assets/assets-access.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -56,9 +68,13 @@ export class AuthService {
     }
 
     const kind = sessionKindOf(origin.userAgent);
-    const { sid, token } = await this.openSession(user.id, kind, origin);
+    const own = sessionUserOf(user);
+    const mode = startingMode(own.roles, kind);
+    const { sid, token } = await this.openSession(user.id, kind, origin, mode);
     await this.audit.record({ userId: user.id, action: 'login', entityType: 'user', entityId: user.id, diff: { kind, sessionId: sid } });
-    return { token, user: sessionUserOf(user) };
+    // a developer who holds another role: the mode they start in (null on the website: the web asks them first, 22
+    // October 2026)
+    return { token, user: choosesMode(own.roles) ? { ...own, mode } : own };
   }
 
   /**
@@ -77,15 +93,26 @@ export class AuthService {
     const ip = keptIp(limitIp);
     await this.devices.ensureNotLimited(isCredentialId(id) ? id : null, ip);
     const { credentialId, user } = await this.devices.verify(id, secret, ip);
-    const { sid, token } = await this.openSession(user.id, 'app', origin);
+    const own = sessionUserOf(user);
+    // in the app, a developer who holds another role is always themselves (22 October 2026)
+    const mode = startingMode(own.roles, 'app');
+    const { sid, token } = await this.openSession(user.id, 'app', origin, mode);
     await this.audit.record({ userId: user.id, action: 'device_login', entityType: 'user', entityId: user.id, diff: { kind: 'app', sessionId: sid, credentialId } });
-    return { token, user: sessionUserOf(user) };
+    return { token, user: choosesMode(own.roles) ? { ...own, mode } : own };
   }
 
-  /** A new session of `kind` for the user (ending their open one of the same kind), and its token, for 8 hours. */
-  private async openSession(userId: string, kind: SessionKind, origin: { userAgent?: string | null; ip?: string | null }): Promise<{ sid: string; token: string }> {
+  /**
+   * A new session of `kind` for the user (ending their open one of the same kind), and its token, for 8 hours; `mode`:
+   * how a developer who holds another role uses it from the start (startingMode).
+   */
+  private async openSession(
+    userId: string,
+    kind: SessionKind,
+    origin: { userAgent?: string | null; ip?: string | null },
+    mode: SessionMode | null = null,
+  ): Promise<{ sid: string; token: string }> {
     const exp = Math.floor(Date.now() / 1000) + SESSION_HOURS * 60 * 60;
-    const sid = await this.sessions.start(userId, kind, origin, new Date(exp * 1000));
+    const sid = await this.sessions.start(userId, kind, origin, new Date(exp * 1000), mode);
     const token = await this.jwt.signAsync(tokenPayload({ sub: userId, sid, viewAs: null, act: false, exp }));
     return { sid, token };
   }
@@ -135,6 +162,43 @@ export class AuthService {
       hiring,
       session: { id: session.id, kind: session.kind, idleTimeoutMs: session.idleTimeoutMs },
     };
+  }
+
+  /**
+   * GET /auth/mode (owner, 22 October 2026: "when a developer signin, give hin a switched to use the account as the main
+   * role assigned to him or as a developer, to not confuse him"): whether the user chooses how to use the system (the
+   * Developer role and another), the mode in use (null until chosen), the one they chose last on the website (the choice
+   * page pre-selects it), their own profile's name and their own roles ("As yourself: Hana Adel · Employee"), and whether
+   * they switch here (a website session of their own). While a Super Admin views as them, theirs, not switchable.
+   */
+  async modeChoice(user: SessionUser, session: Pick<ActiveSession, 'kind'>): Promise<ModeChoice> {
+    if (user.mode === undefined) return { chooses: false, mode: null, last: null, name: null, roles: [], switchable: false };
+    const [account, own, last] = await Promise.all([
+      this.prisma.user.findUniqueOrThrow({ where: { id: user.id }, include: WITH_ROLES }),
+      user.employeeId ? this.prisma.employee.findUnique({ where: { id: user.employeeId }, select: { fullNameEn: true } }) : null,
+      this.sessions.lastMode(user.id),
+    ]);
+    return {
+      chooses: true,
+      mode: user.mode,
+      last,
+      name: own?.fullNameEn ?? null,
+      roles: ownRoles(account.roles.map((r) => r.role.key as Role)),
+      switchable: session.kind === 'web' && !user.viewAs,
+    };
+  }
+
+  /**
+   * POST /auth/mode: a developer who holds another role chooses, at sign-in, or switches, from the top bar, how they use
+   * this website session: kept on it and written to the audit log (sessions.setMode). Not in the app (always as
+   * themselves), nor while a Super Admin views as them (the banner's switch is theirs), nor for anyone who doesn't choose.
+   */
+  async chooseMode(user: SessionUser, session: Pick<ActiveSession, 'id' | 'kind'>, mode: SessionMode): Promise<ModeChoice> {
+    if (user.viewAs) throw new ConflictException(MODE_WHILE_VIEWING);
+    if (user.mode === undefined) throw new ForbiddenException(MODE_NOT_YOURS);
+    if (session.kind !== 'web') throw new BadRequestException(MODE_IN_APP);
+    await this.sessions.setMode(user.id, session.id, mode);
+    return this.modeChoice({ ...user, mode }, session);
   }
 
   /**

@@ -9,6 +9,7 @@ import { SESSION_COOKIE } from '@/lib/constants';
 import { pushTokenOf } from '@/lib/notifications';
 import { safeNext } from '@/lib/safe-next';
 import { keepSession } from '@/lib/session-cookie';
+import { CHOOSE_MODE_PATH } from '@/lib/session-mode';
 import { signInPath } from '@/lib/signed-out';
 
 export interface LoginState {
@@ -40,6 +41,11 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
   if (!res.ok) return { error: (await messagesOf(res)).join(' '), email };
 
   if (!(await keepSession(res))) return { error: 'Sign-in failed. Please try again.', email };
+  // a developer who is also an employee chooses how to use the system first (owner, 22 October 2026: "when a developer
+  // signin, give hin a switched to use the account as the main role assigned to him or as a developer"): the API says
+  // so with `mode: null` (in the app it is always 'self': no choice there)
+  const signedIn = (await res.json().catch(() => null)) as { mode?: string | null } | null;
+  if (signedIn?.mode === null) redirect(CHOOSE_MODE_PATH);
   // with nowhere to go back to (signed out, or after the 15 minutes), the app opens at its own Home, not the site's
   redirect(safeNext(formData.get('next'), sessionKindOf(userAgent) === 'app' ? '/app' : '/'));
 }

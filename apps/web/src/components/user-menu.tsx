@@ -3,7 +3,9 @@ import { logout } from '@/app/login/actions';
 import { ApiError } from '@/lib/api';
 import { ROLE_LABELS } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
+import { modeSwitch } from '@/lib/session-mode';
 import { canViewAs, type Session } from '@/lib/view-as';
+import { ModeSwitch } from './mode-switch';
 import { MY_ATTENDANCE, myAttendanceInMenu } from './nav';
 import { PushTokenField } from './push-token-field';
 import { ViewAsButton } from './view-as';
@@ -22,13 +24,17 @@ export async function UserMenu() {
   // without Change password: theirs is not the Super Admin's to change. View as… is for a Super Admin in their own
   // session only (owner's decision, 17 October 2026). My attendance for HR, Finance, the CEO and Admins with an employee
   // profile, who check in on the system too (owner, 19 October 2026: "Check-in through the system … to replace Zoho") and
-  // whose sidebar doesn't list it.
+  // whose sidebar doesn't list it. A developer who is also an employee has the switch between using the system as
+  // themselves and as a developer (owner, 22 October 2026: "give hin a switched to use the account as the main role
+  // assigned to him or as a developer, to not confuse him"); in the developer view their roles read "Developer".
+  const mode = user && modeSwitch(user);
   return (
     <div className="flex min-w-0 items-center gap-3">
+      {mode && <ModeSwitch text={mode.text} to={mode.to} hint={mode.hint} />}
       {user ? (
         <div className="min-w-0 text-right">
           <p className="truncate text-sm font-medium">{user.email}</p>
-          <p className="truncate text-xs text-muted">{user.roles.map((r) => ROLE_LABELS[r] ?? r).join(' · ')}</p>
+          <p className="truncate text-xs text-muted">{user.developer ? ROLE_LABELS.developer : user.roles.map((r) => ROLE_LABELS[r] ?? r).join(' · ')}</p>
         </div>
       ) : (
         <p role="status" className="text-sm text-danger">

@@ -207,6 +207,12 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   make_first: 'Made it the main photo',
   make_main: 'Made it the main office',
   move: 'Moved to another month',
+  // a developer who holds another role chooses, at sign-in, or switches how they use the system (22 October 2026: "give
+  // hin a switched to use the account as the main role assigned to him or as a developer"); a Super Admin viewing as one
+  // sees them as a developer or as themselves
+  mode_chosen: 'Chose how to use the system',
+  mode_switched: 'Switched how they use the system',
+  view_as_mode: 'Switched seeing them as a developer or as themselves',
   // last month's KPI scorecards opened at once by HR (21 October 2026)
   open: 'Opened the scorecards',
   paid: 'Marked paid',

@@ -48,6 +48,7 @@ import type {
   Role,
   SavedPayrollInputs,
   SessionKind,
+  SessionMode,
   Standing,
   TemplateFolder,
   TemplateLanguage,
@@ -96,6 +97,12 @@ export interface SessionUser {
    * comes masked; the banner says so. Left out for anyone else.
    */
   developer?: boolean;
+  /**
+   * How a developer who holds another role uses this session (owner, 22 October 2026: "give hin a switched to use the
+   * account as the main role assigned to him or as a developer, to not confuse him"): 'self' (their own roles, nothing of
+   * the developer view), 'developer', or null until they choose (only the choice page opens). Left out for anyone else.
+   */
+  mode?: SessionMode | null;
 }
 
 /**

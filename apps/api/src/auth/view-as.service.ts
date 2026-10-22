@@ -1,9 +1,10 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { choosesMode, VIEW_MODE_NOT_THEIRS, type SessionMode } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { isSuperAdmin } from './roles.js';
-import { sessionUserOf, WITH_ROLES, type SessionUser } from './session-user.js';
+import { sessionUserOf, viewedAs, WITH_ROLES, type SessionUser } from './session-user.js';
 import {
   alreadyViewing,
   deactivatedAccount,
@@ -57,8 +58,31 @@ export class ViewAsService {
     // view only to start with, every time
     return this.issue(
       { sub: user.id, sid: session.sid, viewAs: target.id, act: false, exp: session.exp },
-      { ...sessionUserOf(target), viewAs: { by: { id: user.id, email: user.email }, act: false } },
+      // a developer who holds another role: as themselves to start with (22 October 2026)
+      { ...viewedAs(sessionUserOf(target)), viewAs: { by: { id: user.id, email: user.email }, act: false } },
     );
+  }
+
+  /**
+   * POST /auth/view-as/mode: while viewing as a developer who holds another role (owner, 22 October 2026: "give hin a
+   * switched to use the account as the main role assigned to him or as a developer"), see them as a developer (read only,
+   * pseudonyms, as they do in that mode) or as themselves, the default. Kept in the session's token, as Act as them is;
+   * written to the audit log when it changes. Refused for anyone else viewed: they have no such choice.
+   */
+  async mode(user: SessionUser, session: SessionClaims, mode: SessionMode): Promise<NewSession> {
+    const viewAs = user.viewAs;
+    if (!viewAs) throw new ConflictException(NOT_VIEWING);
+    const target = await this.prisma.user.findUnique({ where: { id: user.id }, include: WITH_ROLES });
+    if (!target) throw new NotFoundException('User not found.');
+    const own = sessionUserOf(target);
+    if (!choosesMode(own.roles)) throw new BadRequestException(VIEW_MODE_NOT_THEIRS);
+    const before: SessionMode = session.viewMode ?? 'self';
+    if (mode !== before) {
+      await this.audit.record({ userId: viewAs.by.id, action: 'view_as_mode', entityType: ENTITY, entityId: user.id, diff: { from: viewAs.by.email, to: user.email, mode, before } });
+    }
+    const { viewMode: _was, ...rest } = session;
+    const claims: SessionClaims = mode === 'developer' ? { ...rest, viewMode: 'developer' } : rest;
+    return this.issue(claims, { ...viewedAs(own, mode), viewAs });
   }
 
   /** POST /auth/view-as/act: Act as them on or off, while viewing as someone. Written to the audit log when it changes. */

@@ -8,7 +8,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { CONNECTOR_NOT_OPEN, CONNECTOR_SCOPE_KEY, DEVELOPER_MAY_CALL, FORBIDDEN_MESSAGE, IS_PUBLIC, REQUIRED_ROLES, VIEW_AS_CONTROL } from './decorators.js';
 import { actsAs, isSuperAdmin } from './roles.js';
 import { ACTIVITY_THROTTLE_MS, idleTimeoutFor, sessionVerdict, signedOutBody } from './session-rules.js';
-import { answeredAs, SESSION_COOKIE, sessionUserOf, WITH_ROLES, type SessionUser } from './session-user.js';
+import { answeredAs, SESSION_COOKIE, sessionUserIn, sessionUserOf, viewedAs, WITH_ROLES, type SessionUser } from './session-user.js';
 import { SessionsService, type ActiveSession } from './sessions.service.js';
 import { changesData, sessionClaims, viewOnlyMessage, type SessionClaims } from './view-as.js';
 
@@ -43,6 +43,13 @@ export type SessionRequest = Request & { user?: SessionUser; sessionClaims?: Ses
 // out, ending one's own session, changing one's own password), through the connector too. Never viewed as by anyone's
 // switch nor viewing as anyone (the switcher is a change, and their database roles hold no Super Admin). The money and
 // personal IDs are masked in every answer (developer.interceptor.ts). Their 15 minutes are those of HR and Super Admin.
+//
+// A developer who holds another role (owner, 22 October 2026: "when a developer signin, give hin a switched to use the
+// account as the main role assigned to him or as a developer, to not confuse him") is answered in the mode their session
+// is used in (sessions.mode; sessionUserIn): as themselves, their own roles without the Developer role, so none of the
+// above applies to them (their own data, their changes, no masking, no 15 minutes unless their own roles have them); as
+// a developer, or until they choose on the website, as a developer. In the app always as themselves. A Super Admin
+// viewing as them sees them as themselves, or as a developer once the banner's switch says so (viewedAs).
 @Injectable()
 export class AuthGuard implements CanActivate {
   constructor(
@@ -86,8 +93,8 @@ export class AuthGuard implements CanActivate {
     const signedIn = users.find((u) => u.id === claims.sub);
 
     // the session first: ended, past its 8 hours, or 15 minutes without activity for HR, Admin and Super Admin (a
-    // developer counts as one: answeredAs)
-    const roles = signedIn ? answeredAs(sessionUserOf(signedIn)).roles : [];
+    // developer counts as one: answeredAs; a developer using the system as themselves has their own roles' rule)
+    const roles = signedIn && session ? sessionUserIn(sessionUserOf(signedIn), session).roles : [];
     const now = new Date();
     const verdict = sessionVerdict(session, claims.sub, roles, now, req.headers[BACKGROUND_HEADER] === '1');
     if (!verdict.ok) {
@@ -110,9 +117,9 @@ export class AuthGuard implements CanActivate {
       // role since, or is viewing as a user deactivated since, is signed out, as a deactivated user is.
       const viewed = users.find((u) => u.id === claims.viewAs);
       if (!isSuperAdmin(sessionUserOf(signedIn)) || !viewed?.isActive) throw new UnauthorizedException('Please sign in.');
-      req.user = { ...answeredAs(sessionUserOf(viewed)), viewAs: { by: { id: signedIn.id, email: signedIn.email }, act: claims.act } };
+      req.user = { ...viewedAs(sessionUserOf(viewed), claims.viewMode), viewAs: { by: { id: signedIn.id, email: signedIn.email }, act: claims.act } };
     } else {
-      req.user = { ...answeredAs(sessionUserOf(signedIn)), viewAs: null };
+      req.user = { ...sessionUserIn(sessionUserOf(signedIn), session), viewAs: null };
     }
     req.sessionClaims = claims;
 
@@ -122,8 +129,10 @@ export class AuthGuard implements CanActivate {
       throw new ForbiddenException(message ?? 'You do not have permission to do this.');
     }
 
-    // a developer looks and changes nothing (22 October 2026)
-    if (req.user.developer && changesData(req.method) && !this.reflector.getAllAndOverride<boolean>(DEVELOPER_MAY_CALL, targets)) {
+    // a developer looks and changes nothing (22 October 2026); a Super Admin viewing as one still has the switcher's own
+    // endpoints (Act as them, see them as themselves, back to their account): the session is the Super Admin's
+    const switcher = !!req.user.viewAs && this.reflector.getAllAndOverride<boolean>(VIEW_AS_CONTROL, targets) === true;
+    if (req.user.developer && changesData(req.method) && !switcher && !this.reflector.getAllAndOverride<boolean>(DEVELOPER_MAY_CALL, targets)) {
       throw new ForbiddenException(DEVELOPER_READ_ONLY);
     }
 

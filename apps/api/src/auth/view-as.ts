@@ -9,6 +9,8 @@
 // session-rules.ts), so the switched session is the Super Admin's own: it ends with it (signing out, a newer sign-in,
 // 15 minutes without activity, or 8 hours after signing in), and going back needs no new sign-in.
 
+import type { SessionMode } from '@trendlix/shared';
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** What the session cookie's signed token says. */
@@ -21,6 +23,12 @@ export interface SessionClaims {
   viewAs: string | null;
   /** Whether the Super Admin acts in that user's name; always false in one's own session. */
   act: boolean;
+  /**
+   * While viewing as a developer who holds another role (owner, 22 October 2026: "give hin a switched to use the account
+   * as the main role assigned to him or as a developer"): 'developer' once the Super Admin switches the banner to see them
+   * as a developer; left out to see them as themselves, the default. Never in one's own session.
+   */
+  viewMode?: SessionMode;
   /** When the session ends, in seconds since 1970, as in every signed token. */
   exp: number;
 }
@@ -34,17 +42,20 @@ export function sessionClaims(payload: unknown): SessionClaims {
   if (typeof p.exp !== 'number' || !Number.isFinite(p.exp)) throw new Error('No expiry');
   if (p.viewAs === undefined || p.viewAs === null) {
     if (p.act !== undefined && p.act !== false) throw new Error('Acting without viewing as anyone');
+    if (p.viewMode !== undefined) throw new Error('A mode without viewing as anyone');
     return { sub: p.sub, sid: p.sid, viewAs: null, act: false, exp: p.exp };
   }
   if (typeof p.viewAs !== 'string' || !UUID.test(p.viewAs) || p.viewAs === p.sub) throw new Error('Not a user to view as');
   if (typeof p.act !== 'boolean') throw new Error('No act flag');
-  return { sub: p.sub, sid: p.sid, viewAs: p.viewAs, act: p.act, exp: p.exp };
+  if (p.viewMode !== undefined && p.viewMode !== 'developer') throw new Error('Not a mode to view in');
+  return { sub: p.sub, sid: p.sid, viewAs: p.viewAs, act: p.act, ...(p.viewMode === 'developer' && { viewMode: 'developer' as const }), exp: p.exp };
 }
 
 /** What a new session's token carries: only what is needed, and the session and expiry of the one it replaces. */
 export function tokenPayload(claims: SessionClaims): Record<string, unknown> {
   const own = { sub: claims.sub, sid: claims.sid };
-  return claims.viewAs ? { ...own, viewAs: claims.viewAs, act: claims.act, exp: claims.exp } : { ...own, exp: claims.exp };
+  if (!claims.viewAs) return { ...own, exp: claims.exp };
+  return { ...own, viewAs: claims.viewAs, act: claims.act, ...(claims.viewMode === 'developer' && { viewMode: 'developer' }), exp: claims.exp };
 }
 
 /** The milliseconds left before a session ends, for the cookie's lifetime: never below zero. */

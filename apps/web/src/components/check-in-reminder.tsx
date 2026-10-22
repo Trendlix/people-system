@@ -17,6 +17,7 @@ export async function CheckInReminder({ surface }: { surface: ReminderSurface })
   } catch (err) {
     if (!(err instanceof ApiError)) throw err;
   }
-  if (!user || user.viewAs || !user.employeeId) return null;
+  // not in the developer view either: it changes nothing, checking in included (as themselves they check in; 22 October 2026)
+  if (!user || user.viewAs || user.developer || !user.employeeId) return null;
   return <CheckInReminderPopup surface={surface} />;
 }

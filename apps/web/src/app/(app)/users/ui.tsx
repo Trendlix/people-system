@@ -1,6 +1,7 @@
 import type { Role } from '@trendlix/shared';
-import { isAdmin, ROLE_LABELS } from '@/lib/roles';
+import { isAdmin } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
+import { roleBadgeLabels } from '@/lib/session-mode';
 import { BackLink, Empty, Loading } from '../organization/ui';
 
 // Small building blocks shared by the Users pages (the generic ones come from the Organization pages).
@@ -18,13 +19,17 @@ export function StatusBadge({ active }: { active: boolean }) {
   return active ? <span className="badge bg-ok-soft text-ok">Active</span> : <span className="badge bg-line-soft text-muted">Inactive</span>;
 }
 
-/** Each role as a badge; Super Admin, the role above Admin and the only one that deletes, stands out in solid colour. */
+/**
+ * Each role as a badge; Super Admin, the role above Admin and the only one that deletes, stands out in solid colour. A
+ * developer who is also an employee as one, "Developer + Employee" (owner, 22 October 2026: they choose at sign-in how
+ * to use the system).
+ */
 export function RoleBadges({ roles }: { roles: Role[] }) {
   return (
     <span className="flex flex-wrap gap-1">
-      {roles.map((r) => (
-        <span key={r} className={r === 'super_admin' ? 'badge bg-accent text-white' : 'badge'}>
-          {ROLE_LABELS[r] ?? r}
+      {roleBadgeLabels(roles).map((r) => (
+        <span key={r.key} className={r.key === 'super_admin' ? 'badge bg-accent text-white' : 'badge'}>
+          {r.label}
         </span>
       ))}
     </span>

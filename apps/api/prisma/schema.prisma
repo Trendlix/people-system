@@ -276,6 +276,10 @@ model Session {
   endReason    String?   @map("end_reason") // SESSION_END_REASONS: signed_out, replaced, idle, expired, revoked
   userAgent    String?   @map("user_agent") // the browser's or the app's, up to 300 characters
   ip           String?
+  // how a developer who holds another role uses it (owner, 22 October 2026: "give hin a switched to use the account as
+  // the main role assigned to him or as a developer"; packages/shared session-modes.ts): SESSION_MODES 'self' or
+  // 'developer'; null until they choose on the website, and for everyone else
+  mode         String?
   // a Claude connector's (kind 'connector', owner, 21 October 2026: "the connection method"): the client it was allowed
   // for, its scope (assets), the MCP address its tokens are for (RFC 8707), and its tokens; null on the other kinds
   clientId     String?          @map("client_id")

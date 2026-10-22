@@ -4,6 +4,7 @@ import { brandMetadata } from '@/components/brand';
 import { CheckInReminder } from '@/components/check-in-reminder';
 import { SessionWatch } from '@/components/session-watch';
 import { DeveloperBanner } from '@/components/developer-banner';
+import { ModeGate } from '@/components/mode-gate';
 import { ViewAsBanner } from '@/components/view-as-banner';
 import { ApiError } from '@/lib/api';
 import { getCurrentUser } from '@/lib/session';
@@ -55,7 +56,10 @@ export default function PhoneLayout({ children }: LayoutProps<'/app'>) {
       {/* the view-as banner and the top bar stay at the top together as the page scrolls (pull to refresh comes from
           under them) */}
       <div className="sticky top-0 z-30" data-phone-header="">
+        {/* the phone pages opened on the website by a developer who hasn't chosen yet: the choice page (in the app they
+            are always themselves; 22 October 2026) */}
         <Suspense fallback={null}>
+          <ModeGate />
           <ViewAsBanner />
           <DeveloperBanner />
         </Suspense>

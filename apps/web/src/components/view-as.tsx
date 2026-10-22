@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useId, useOptimistic, useRef, useState, useTransition } from 'react';
 import { createPortal } from 'react-dom';
 import { rolesText, filterChoices, type ViewAsChoice } from '@/lib/view-as';
-import { backToMyAccount, loadViewAsChoices, setActing, viewAs } from '@/lib/view-as-actions';
+import { backToMyAccount, loadViewAsChoices, setActing, setViewMode, viewAs } from '@/lib/view-as-actions';
 
 // The view-as switcher on screen (owner's decisions, 17 October 2026: "a super admin can view any other user profile
 // from a switcher, only the super admin"; "view only with a button to act but by default not checked"). View as… in
@@ -161,10 +161,16 @@ function ViewAsWindow({ onClosed }: { onClosed: () => void }) {
   );
 }
 
-/** The banner's controls: Act as them (off until switched on) and Back to my account. */
-export function ViewAsControls({ acting: saved }: { acting: boolean }) {
+/**
+ * The banner's controls: Act as them (off until switched on) and Back to my account; for a developer who is also an
+ * employee (`developerView` not null; owner, 22 October 2026: "give hin a switched to use the account as the main role
+ * assigned to him or as a developer"), See as a developer too (off: as themselves, the default).
+ */
+export function ViewAsControls({ acting: saved, developerView = null }: { acting: boolean; developerView?: boolean | null }) {
   const switchId = useId();
   const hintId = useId();
+  const devSwitchId = useId();
+  const devHintId = useId();
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   // shown turned at once; back as it was if the API refuses
@@ -176,6 +182,15 @@ export function ViewAsControls({ acting: saved }: { acting: boolean }) {
     startTransition(async () => {
       setShown(act);
       const r = await setActing(act);
+      if (r?.error) setError(r.error);
+    });
+  }
+
+  function seeAsDeveloper(on: boolean) {
+    setError(null);
+    startTransition(async () => {
+      // on success the home page opens, as that mode shows it
+      const r = await setViewMode(on ? 'developer' : 'self');
       if (r?.error) setError(r.error);
     });
   }
@@ -210,6 +225,26 @@ export function ViewAsControls({ acting: saved }: { acting: boolean }) {
       <span id={hintId} className="sr-only">
         {acting ? 'On: changes are made in their name and recorded as done by you.' : 'Off: view only, every change is refused.'}
       </span>
+      {developerView !== null && (
+        <>
+          <label htmlFor={devSwitchId} className="flex min-h-11 cursor-pointer items-center gap-2 text-sm font-semibold">
+            <input
+              id={devSwitchId}
+              type="checkbox"
+              role="switch"
+              checked={developerView}
+              disabled={pending}
+              onChange={(e) => seeAsDeveloper(e.currentTarget.checked)}
+              aria-describedby={devHintId}
+              className="size-5 accent-accent"
+            />
+            See as a developer
+          </label>
+          <span id={devHintId} className="sr-only">
+            {developerView ? 'On: you see what they see as a developer: read only, names are pseudonyms.' : 'Off: you see them as themselves.'}
+          </span>
+        </>
+      )}
       <button type="button" onClick={back} disabled={pending} className="btn btn-secondary">
         {going ? 'Going back…' : 'Back to my account'}
       </button>
