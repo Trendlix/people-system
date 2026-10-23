@@ -50,8 +50,9 @@ services:
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-}
       OCR_URL: http://ocr:8000   # not in depends_on: the API starts and works without it; only reading documents needs it
       PDF_URL: http://pdf:3000   # the same: without it, offers are sent as Word files
-      # email through the company's provider (job offers); without SMTP_HOST and MAIL_FROM nothing is emailed and
-      # HR sends the offer's link by hand. See .env.example.
+      # email through the company's provider: set up in the system (Organization → Email Settings, a Super Admin's);
+      # these are only the fallback when that page is off or empty. With neither, nothing is emailed and HR sends
+      # links by hand. See .env.example and DEPLOY.md.
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:-}
