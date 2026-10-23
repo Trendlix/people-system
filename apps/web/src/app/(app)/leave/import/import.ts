@@ -3,6 +3,7 @@ import { LEAVE_PATH } from '../../../../components/nav';
 import { formatDate, formatDateTime } from '../../../../lib/format';
 import type { LeaveImportHistoryRow, LeaveImportKept, LeaveImportPerson, LeaveImportRow, LeaveImportType, LeaveImportView } from '../../../../lib/leave-import-types';
 import { hasRole } from '../../../../lib/roles';
+import { shownCode } from '../../../../lib/hidden';
 
 // Importing leave in bulk, on Leave Requests (owner, 21 October 2026: "how to import bulk leaves?"; he chose "Both", the
 // leave taken and the balances, and "Our Excel template"; Zoho People's leave export too, its Working from home rows as
@@ -91,8 +92,9 @@ export const adjustmentText = (r: Pick<LeaveImportRow, 'adjustment'>) => (r.adju
 
 /** Who a row is, as the file names them and as matched. */
 export function rowPersonText(r: Pick<LeaveImportRow, 'employee' | 'nameInFile' | 'code'>): { name: string; detail: string | null } {
-  if (r.employee) return { name: r.employee.fullNameEn, detail: r.nameInFile && r.nameInFile !== r.employee.fullNameEn ? `In the file: ${r.nameInFile}` : r.employee.employeeCode };
-  return { name: r.nameInFile || r.code || 'No name', detail: r.code && r.nameInFile ? r.code : null };
+  // a code hidden from a developer (23 October 2026) is left out
+  if (r.employee) return { name: r.employee.fullNameEn, detail: r.nameInFile && r.nameInFile !== r.employee.fullNameEn ? `In the file: ${r.nameInFile}` : shownCode(r.employee.employeeCode) };
+  return { name: r.nameInFile || r.code || 'No name', detail: r.code && r.nameInFile ? shownCode(r.code) : null };
 }
 
 /** How a person of the file was matched, in words. */

@@ -16,6 +16,7 @@ import type { OfferDefaults } from './form-body';
 import { OfferPositionFields } from './offer-position';
 import { OfferTerms } from './offer-terms';
 import { salaryStartFrom, switchRate, switchStart, type TermsTyped } from './terms';
+import { withCode } from '@/lib/hidden';
 
 // The form of the New offer and Edit draft pages, in four parts: the candidate (a candidate is not an employee: their
 // names, personal email and mobile, and a former employee's profile when one is offered again), the position, the terms
@@ -223,7 +224,7 @@ export function OfferForm({
                   .sort((a, b) => a.fullNameEn.localeCompare(b.fullNameEn))
                   .map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.fullNameEn} · {p.employeeCode}
+                      {withCode(p.fullNameEn, p.employeeCode)}
                       {p.standing === 'former' ? ' (former employee)' : ''}
                     </option>
                   ))}

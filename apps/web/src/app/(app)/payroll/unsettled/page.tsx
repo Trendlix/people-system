@@ -40,6 +40,7 @@ import {
   SettleAdvanceForm,
   SettleFinalForm,
 } from './unsettled-forms';
+import { shownCode } from '@/lib/hidden';
 
 // Unsettled (owner, 17 October 2026: "make the Payroll in the side tab a main title below it - Unsettled - Additions /
 // Deductions"; asked, the owner chose what it lists): the runs not yet paid (a draft, with the CEO, approved but not
@@ -86,7 +87,7 @@ function Person({ person, href }: { person: { id: string; employeeCode: string; 
       <Link href={href ?? `/employees/${person.id}`} className="font-semibold">
         {person.name}
       </Link>
-      <div className="text-xs text-muted">{person.employeeCode}</div>
+      {shownCode(person.employeeCode) && <div className="text-xs text-muted">{person.employeeCode}</div>}
     </>
   );
 }

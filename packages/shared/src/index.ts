@@ -544,3 +544,17 @@ export * from './session-modes.js';
 // from suggested match"): one profile per person, CAN-0001, joined by the same email or mobile, the other signs only
 // suggested to HR, a former employee linked with their rehire eligibility
 export * from './candidates.js';
+
+// the company's email (SMTP) set up in the system (owner, 23 October 2026: "why dont we add SMTP setup in the
+// organization setup"): Organization → Email Settings, a Super Admin's only; the server's deploy/.env the fallback
+export * from './mail-settings.js';
+
+// official duty, OD (owner, 23 October 2026: "Official duty (OD) requests. The plan has OD as a third attendance mode
+// beside Office and WFH, needing an approved request"; asked, "Manager, then HR", "Ahead or up to 3 days after", "Check in
+// from anywhere"): the request's checks, its days and hours, and how an approved one counts in the attendance
+export * from './official-duty.js';
+
+// a person's attendance history on their profile (owner, 23 October 2026: "Attendance history on the profile. Since
+// joining: on-time %, average check-in time, late days by weekday and trends; an Excel export"; "HR, CEO and Finance
+// only"): the periods, each day of the log, the figures, the on-time trend, the check-in times and late days by weekday
+export * from './attendance-history.js';

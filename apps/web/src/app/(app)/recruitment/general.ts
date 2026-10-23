@@ -17,6 +17,7 @@ import {
 } from '@trendlix/shared';
 import { generalApiForm, generalInputOf, generalTypedValues, OTHER_AREA } from '../../careers/careers';
 import { APPLICANTS_PATH, applicantsHref, vacancyHref, type ApplicantsQuery } from './recruitment';
+import { shownCode } from '../../../lib/hidden';
 
 // General CVs and the applicants by posted job on the site (owner, 22 October 2026: "i want a proper viweing, what came
 // out of the posted jobs and what cam on randomly", "Both"; "is there a way to easy apply from linkedin?" … "why not";
@@ -211,7 +212,7 @@ export function inBatchRepeats(rows: readonly BatchRow[]): Set<string> {
 export function duplicateText(d: CvUploadView['duplicate'], target: CvBatchTarget): string | null {
   if (!d) return null;
   if (d.inBatch) return 'The same email is earlier in this batch.';
-  const ref = d.reference ? ` (${d.reference})` : '';
+  const ref = shownCode(d.reference) ? ` (${d.reference})` : '';
   return target.kind === 'vacancy' ? `Applied for this job already${ref}: it will be skipped.` : `Sent a CV in the last 30 days${ref}: tick Keep to save it anyway.`;
 }
 

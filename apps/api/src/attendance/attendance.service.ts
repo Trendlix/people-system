@@ -12,6 +12,7 @@ import {
   matchesAttendanceFilter,
   monthRange,
   NO_ATTENDANCE_FIGURES,
+  odCoversMoment,
   PERMISSION_RULE_DEFAULTS,
   periodMonthCount,
   seesPunchPoints,
@@ -23,6 +24,7 @@ import {
   type AttendanceSummaryRow,
   type PayrollStatus,
   type PersonMonthFigures,
+  type ShiftWindowTimes,
 } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
@@ -32,8 +34,9 @@ import { employedIn, placeName, userNames } from '../payroll/adjustments/people.
 import { firstDay, lastDay } from '../payroll/months.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { actsAs } from '../auth/roles.js';
+import { approvedOds, dutyDaysOf } from '../official-duty/od-days.js';
 import { approvedWfhDays } from '../wfh/wfh-days.js';
-import { AttendanceDaysService, DAY_SELECT, type DayRow } from './attendance-days.service.js';
+import { AttendanceDaysService, DAY_SELECT, shiftTimesOf, type DayRow } from './attendance-days.service.js';
 import { CheckInSetupService } from './check-in-setup.service.js';
 import { AttendanceCorrectionsService, type MonthCorrectable, type MonthCorrection } from './corrections.service.js';
 import { seesEveryonesAttendance, teamOf } from './attendance-scope.js';
@@ -93,10 +96,25 @@ export interface AttendancePersonMonth {
    */
   wfhDays: string[];
   /**
+   * The month's official duty days approved for them (owner, 23 October 2026: "Official duty (OD) requests"; packages/shared
+   * official-duty.ts), in date order, each with its request (a link to it), a full day or its times: shown "Official
+   * duty" on those days, attended for its hours, expected anywhere within it (their office day's flags left out).
+   */
+  odDays: OdDayView[];
+  /**
    * Daily Attendance and the team view (owner, 20 October 2026: "location link"): every press of the month on the
    * system, in order, the spot only for those who see it (punch-views.ts). Left out elsewhere (the Summary).
    */
   punches?: PunchView[];
+}
+
+/** A day of approved official duty, as a person's month lists it. */
+export interface OdDayView {
+  date: string;
+  requestId: string;
+  fullDay: boolean;
+  fromTime: string | null;
+  toTime: string | null;
 }
 
 /** An import the days shown came from. */
@@ -258,7 +276,9 @@ export class AttendanceService {
     const locations = pressed.length ? await this.setup.officeLocations() : [];
     for (const p of people) {
       const sees = seesPunchPoints(user, { self: p.employee.id === me, confidential: confidential.all.has(p.employee.id) });
-      p.punches = pressed.filter((x) => x.employeeId === p.employee.id).map((x) => onWfhDay(punchView(x, sees, locations), p.wfhDays));
+      p.punches = pressed
+        .filter((x) => x.employeeId === p.employee.id)
+        .map((x) => onOdDay(onWfhDay(punchView(x, sees, locations), p.wfhDays), p.odDays, months.shifts.get(p.employee.id) ?? null));
     }
     return {
       month,
@@ -398,6 +418,7 @@ export class AttendanceService {
         checksIn: false,
         days: [],
         wfhDays: [],
+        odDays: [],
       };
     }
     const payroll = seesEveryonesAttendance(user);
@@ -422,7 +443,7 @@ export class AttendanceService {
       corrections,
       correctable,
       canCorrect,
-      punches: punches.map((p) => onWfhDay(punchView(p, sees, locations), person.wfhDays)),
+      punches: punches.map((p) => onOdDay(onWfhDay(punchView(p, sees, locations), person.wfhDays), person.odDays, months.shifts.get(employeeId) ?? null)),
     };
   }
 
@@ -435,8 +456,10 @@ export class AttendanceService {
   private async personMonths(month: string, ids: readonly string[], days: readonly DayRow[], confidential: ConfidentialView) {
     const people = new Map<string, AttendancePersonMonth>();
     const places = new Map<string, AttendancePlace | null>();
-    if (!ids.length) return { people, places };
-    const [employees, months, permissions, setup, wfh] = await Promise.all([
+    // each person's shift that month, for their official duties' hours (23 October 2026)
+    const shifts = new Map<string, ShiftWindowTimes | null>();
+    if (!ids.length) return { people, places, shifts };
+    const [employees, months, permissions, setup, wfh, ods, holidays] = await Promise.all([
       this.prisma.employee.findMany({ where: { id: { in: [...ids] } }, select: { id: true, employeeCode: true, fullNameEn: true } }),
       this.attendanceDays.monthOf(month, ids, days),
       this.prisma.permissionRequest.findMany({
@@ -445,7 +468,10 @@ export class AttendanceService {
       }),
       this.prisma.leaveSettings.findUnique({ where: { id: 1 }, select: { permissionHoursPerMonth: true } }),
       approvedWfhDays(this.prisma, ids, firstDay(month), lastDay(month)),
+      approvedOds(this.prisma, ids, firstDay(month), lastDay(month)),
+      this.prisma.holiday.findMany({ where: { date: monthDays(month) }, select: { date: true } }),
     ]);
+    const holidaySet = new Set(holidays.map((h) => fromDateOnly(h.date)));
     const allowance = setup?.permissionHoursPerMonth.toNumber() ?? PERMISSION_RULE_DEFAULTS.hoursPerMonth;
 
     for (const e of employees) {
@@ -460,13 +486,24 @@ export class AttendanceService {
       const fromSystem = requests.length > 0;
       // their work from home days (21 October 2026): expected anywhere, so without the office day's flags
       const wfhDays = wfh.get(e.id) ?? [];
+      // their official duty days (23 October 2026): expected anywhere within it, so without the office day's flags
+      const shift = job?.shift ? shiftTimesOf(job.shift) : null;
+      shifts.set(e.id, shift);
+      const odDays: OdDayView[] = [...dutyDaysOf(ods, e.id, shift, holidaySet, firstDay(month), lastDay(month)).entries()].map(([date, od]) => ({
+        date,
+        requestId: od.requestId,
+        fullDay: od.fullDay,
+        fromTime: od.fromTime,
+        toTime: od.toTime,
+      }));
+      const onDuty = (date: string, at: string | null) => odDays.some((o) => o.date === date && (o.fullDay || (!!at && odCoversMoment(date, o, Date.parse(at), shift))));
       const dayViews = m.days.map((d) => ({
         // Zoho's column on its days (and on a day corrected over one of them, which carries it)
         ...attendanceDayView(
           {
             ...d,
             permissionHours: fromSystem ? (system.get(d.date) ?? 0) : d.source === 'zoho' || d.source === 'correction' ? d.permissionHours : 0,
-            ...(wfhDays.includes(d.date) && { flags: flagsOnWfhDay(d.flags) }),
+            ...((wfhDays.includes(d.date) || onDuty(d.date, d.checkIn)) && { flags: flagsOnWfhDay(d.flags) }),
           },
           hoursADay,
         ),
@@ -492,9 +529,10 @@ export class AttendanceService {
         checksIn: m.sources.some((x) => x === 'system' || x === 'device'),
         days: dayViews,
         wfhDays,
+        odDays,
       });
     }
-    return { people, places };
+    return { people, places, shifts };
   }
 
   /** Whether someone works in a team of the department chosen (a department's filter takes its teams). */
@@ -541,6 +579,15 @@ export class AttendanceService {
     const run = await this.prisma.payrollRun.findUnique({ where: { month: toDateOnly(firstDay(month)) }, select: { id: true, status: true } });
     return run ? { id: run.id, status: run.status as PayrollStatus } : null;
   }
+}
+
+/**
+ * A press within an official duty approved for them (23 October 2026: "Check in from anywhere"): a full day, or within a
+ * part day's hours; expected anywhere, without the office day's flags (one approved after the press too).
+ */
+function onOdDay(p: PunchView, odDays: readonly OdDayView[], shift: ShiftWindowTimes | null): PunchView {
+  const on = odDays.some((o) => o.date === p.date && (o.fullDay || odCoversMoment(p.date, o, Date.parse(p.at), shift)));
+  return on ? { ...p, flags: flagsOnWfhDay(p.flags) } : p;
 }
 
 /** A press on a work from home day approved for them (21 October 2026): expected anywhere, without the office day's flags. */

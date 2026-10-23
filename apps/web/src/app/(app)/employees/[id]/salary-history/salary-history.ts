@@ -9,7 +9,7 @@ import {
   type SalarySummary,
 } from '@trendlix/shared';
 import { formatDate, formatDateTime } from '../../../../../lib/format';
-import { HIDDEN_LABEL } from '../../../../../lib/hidden';
+import { HIDDEN_LABEL, shownCode } from '../../../../../lib/hidden';
 import type { ContractRaise } from '../../../../../lib/raise-types';
 import { decisionText, insuredFromText } from '../contracts/raise';
 import { formatEgp } from '../contracts/salary';
@@ -170,7 +170,8 @@ export function eventView(e: PayEvent, raise: VersionRaise | null = null): Event
   return {
     key: e.contractId,
     title: eventTitle(e),
-    reference: `${e.number} · version ${e.version}`,
+    // its number hidden from a developer (23 October 2026): the version alone
+    reference: shownCode(e.number) ? `${e.number} · version ${e.version}` : `Version ${e.version}`,
     stage: e.stage,
     stageLabel: PAY_STAGE_LABELS[e.stage] ?? e.stage,
     signed: isSignedStage(e.stage),

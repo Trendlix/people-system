@@ -12,6 +12,7 @@ import { loadAllowanceTypes, loadContractSettings } from '../data';
 import { newOfferDefaults } from '../form-body';
 import { managesOffers, WHO_CHANGES } from '../list';
 import { OfferForm } from '../offer-form';
+import { shownCode } from '@/lib/hidden';
 
 // Drafting a job offer for a candidate (owner's request, 15 October 2026). It is saved as a draft: HR checks its PDF on
 // the offer's page, then sends it by email or copies the link. From an applicant (recruitment, 22 October 2026: Make
@@ -37,7 +38,15 @@ async function NewOffer({ searchParams }: { searchParams: PageProps<'/offers/new
     <div className="space-y-4">
       {from && (
         <p className="max-w-3xl rounded-lg bg-accent-soft px-4 py-3 text-sm text-accent">
-          From applicant <Link href={applicantHref(from.id)}>{from.number}</Link>, {from.fullName}: filled in from them and the vacancy. Type their name in the other
+          From applicant{' '}
+          {shownCode(from.number) ? (
+            <>
+              <Link href={applicantHref(from.id)}>{from.number}</Link>, {from.fullName}
+            </>
+          ) : (
+            <Link href={applicantHref(from.id)}>{from.fullName}</Link>
+          )}
+          : filled in from them and the vacancy. Type their name in the other
           language, and the terms.
         </p>
       )}

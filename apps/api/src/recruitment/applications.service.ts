@@ -208,7 +208,7 @@ export class ApplicationsService {
       editNotes: manages,
       scheduleInterview: manages && !a.filteredOut && !settled,
       suggest: viewer === 'hiring_manager' && !settled,
-      emailOnReject: manages && this.mail.configured,
+      emailOnReject: manages && (await this.mail.ready()),
     };
     const [interviews, allFeedback] = await Promise.all([this.interviews.ofApplication(a.id, c), this.interviews.feedbackOf(a.id, c.selfId)]);
     const gaveOwn = allFeedback.some((f) => f.mine);
@@ -302,7 +302,7 @@ export class ApplicationsService {
    * text that an HR-editable Recruitment Settings section can change"), English then Arabic. Never fails the rejection.
    */
   private async emailRejection(a: DetailRow, user: SessionUser): Promise<RejectionEmail> {
-    if (!this.mail.configured) return 'not_set_up';
+    if (!(await this.mail.ready())) return 'not_set_up';
     const [settings, company] = await Promise.all([
       this.prisma.recruitmentSettings.findUnique({ where: { id: 1 } }),
       this.prisma.company.findUnique({ where: { id: 1 }, select: { nameEn: true } }),

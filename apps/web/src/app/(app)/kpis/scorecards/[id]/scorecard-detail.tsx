@@ -41,6 +41,7 @@ import {
 } from '../../scorecard';
 import { PracticeBadge, StatusBadge } from '../../ui';
 import { ScorecardForm, ScorecardView, SignForm } from './scorecard-forms';
+import { shownCode } from '@/lib/hidden';
 
 // A KPI scorecard (owner, 21 October 2026: "Full framework per role"; "Self, manager, HR, sign-off"; "Last month's KPI,
 // this pay"), for its employee, its scorer, HR (never a C-level person's), the CEO and a Super Admin (anyone else gets
@@ -245,7 +246,7 @@ export async function ScorecardDetail({
       <Section title="About This Scorecard">
         <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">
           <Fact label="Employee">
-            {v.employee.fullNameEn} <span className="text-muted">· {v.employee.employeeCode}</span>
+            {v.employee.fullNameEn} {shownCode(v.employee.employeeCode) && <span className="text-muted">· {v.employee.employeeCode}</span>}
           </Fact>
           <Fact label="Month">{kpiMonthName(v.month)}</Fact>
           <Fact label="Template">

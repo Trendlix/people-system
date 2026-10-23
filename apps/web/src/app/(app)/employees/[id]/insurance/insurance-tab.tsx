@@ -15,7 +15,7 @@ import { loadDocuments } from '../documents/data';
 import { checkDocument } from '../documents/document-actions';
 import { MissingList } from '../documents/document-forms';
 import { DocumentItems, type DocumentAccess } from '../documents/document-rows';
-import { ASK_SUPER_ADMIN, seesTemplates } from '../../../templates/wording';
+import { ASK_SUPER_ADMIN, seesTemplates } from '../../../organization/templates/wording';
 import { itemTemplateHref, NOT_AVAILABLE, type CheckResult } from '../documents/wording';
 import {
   basicPrinted,

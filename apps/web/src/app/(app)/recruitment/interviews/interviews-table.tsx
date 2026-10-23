@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { INTERVIEW_KIND_LABELS, INTERVIEW_STATUS_LABELS, type InterviewView } from '@trendlix/shared';
 import { formatDateTime } from '@/lib/format';
 import { applicantHref } from '../recruitment';
+import { joinShown } from '@/lib/hidden';
 
 // Interviews in a table (Phase 2, 22 October 2026): when, the applicant and their vacancy, how, the interviewers (and
 // whether each gave their scorecard), where it stands. On Interviews and My Hiring.
@@ -33,7 +34,7 @@ export function InterviewsTable({ rows, showFeedbackFor }: { rows: InterviewView
                     {i.application.fullName}
                   </Link>
                   <span className="block text-xs text-muted">
-                    {i.application.vacancy.title} · {i.application.number}
+                    {joinShown([i.application.vacancy.title, i.application.number])}
                   </span>
                 </td>
                 <td className="text-sm">{INTERVIEW_KIND_LABELS[i.kind]}</td>

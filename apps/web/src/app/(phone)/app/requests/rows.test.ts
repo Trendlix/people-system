@@ -4,6 +4,7 @@ import type { AttendanceCorrectionView } from '../../../../lib/correction-types'
 import type { HomeLocationView } from '../../../../lib/home-location-types';
 import type { RaiseRequest } from '../../../../lib/raise-types';
 import type { LeaveRequestView, PermissionRequestView, ReimbursementClaimView } from '../../../../lib/types';
+import type { OdRequestView } from '../../../../lib/od-types';
 import {
   appRequestCounts,
   appRequestHref,
@@ -121,8 +122,8 @@ describe('the filters', () => {
   });
 
   it('counts each chip within the status chosen', () => {
-    expect(appRequestCounts(all, { status: '' })).toEqual({ '': 5, leave: 1, permission: 1, reimbursement: 1, correction: 1, raise: 1, home: 0, wfh: 0 });
-    expect(appRequestCounts(all, { status: 'open' })).toEqual({ '': 3, leave: 1, permission: 0, reimbursement: 1, correction: 0, raise: 1, home: 0, wfh: 0 });
+    expect(appRequestCounts(all, { status: '' })).toEqual({ '': 5, leave: 1, permission: 1, reimbursement: 1, correction: 1, raise: 1, home: 0, wfh: 0, od: 0 });
+    expect(appRequestCounts(all, { status: 'open' })).toEqual({ '': 3, leave: 1, permission: 0, reimbursement: 1, correction: 0, raise: 1, home: 0, wfh: 0, od: 0 });
   });
 });
 
@@ -158,8 +159,8 @@ describe('a row', () => {
 describe('raise requests kept from the employee level (owner, 20 October 2026: "raises not to be visible to employee level for now", then "Hide from managers too")', () => {
   it('offers the Raises chip only to someone who sees raise requests, by the shared helper', () => {
     // working from home among them (21 October 2026)
-    expect(appRequestKindsFor(true)).toEqual(['leave', 'permission', 'reimbursement', 'correction', 'raise', 'home', 'wfh']);
-    expect(appRequestKindsFor(false)).toEqual(['leave', 'permission', 'reimbursement', 'correction', 'home', 'wfh']);
+    expect(appRequestKindsFor(true)).toEqual(['leave', 'permission', 'reimbursement', 'correction', 'raise', 'home', 'wfh', 'od']);
+    expect(appRequestKindsFor(false)).toEqual(['leave', 'permission', 'reimbursement', 'correction', 'home', 'wfh', 'od']);
     expect(appRequestKindsFor(seesRaiseRequests({ roles: ['employee'] }))).not.toContain('raise');
     expect(appRequestKindsFor(seesRaiseRequests({ roles: ['manager'] }))).not.toContain('raise');
     expect(appRequestKindsFor(seesRaiseRequests({ roles: ['ceo'] }))).toContain('raise');
@@ -214,5 +215,40 @@ describe('home location requests', () => {
     expect(appRequestWhen(gone)).toBe('Point deleted');
     expect(appRequestProgress(gone)).toBe('Removed: its point is deleted');
     expect(appRequestHref(open)).toBe(`/app/requests/home/${ID(6)}`);
+  });
+});
+
+describe('official duty on the phone pages’ My Requests (owner, 23 October 2026: "Official duty (OD) requests")', () => {
+  const od = {
+    id: ID(9),
+    kind: 'od',
+    employee: { id: 'e', employeeCode: 'EMP-0001', fullNameEn: 'Nour Adel', fullNameAr: null, department: null, team: null },
+    startDate: '2026-11-02',
+    endDate: '2026-11-02',
+    fullDay: false,
+    fromTime: '10:00',
+    toTime: '14:00',
+    dutyPlace: 'The client’s office',
+    reason: 'A site visit',
+    late: false,
+    status: 'with_manager',
+    manager: { id: 'm', fullNameEn: 'Sara Ali', role: 'direct_manager' },
+    rejectedStage: null,
+    rejectReason: null,
+    confidential: false,
+    createdAt: '2026-10-23T09:00:00.000Z',
+    steps: [],
+  } as unknown as OdRequestView;
+
+  it('lists one with its day and hours, open while being decided, under its own chip, opening its phone page', () => {
+    const rows = appRequestRows({ od: [od] });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ kind: 'od', open: true });
+    expect(appRequestTitle(rows[0])).toBe('Official duty');
+    expect(appRequestWhen(rows[0])).toBe('Monday 02/11/2026, 10:00 AM–2:00 PM');
+    expect(appRequestProgress(rows[0])).toContain('Sara Ali');
+    expect(appRequestHref(rows[0])).toBe(`/app/requests/od/${ID(9)}`);
+    expect(filterAppRequests(rows, readAppRequestFilters({ kind: 'od' }))).toHaveLength(1);
+    expect(appRequestCounts(rows, { status: '' })).toMatchObject({ '': 1, od: 1 });
   });
 });

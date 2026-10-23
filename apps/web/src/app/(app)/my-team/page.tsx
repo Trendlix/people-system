@@ -29,8 +29,12 @@ import { CorrectionsTable } from '../attendance/corrections/ui';
 import { loadWaitingWfh, loadWfhCalendar, loadWfhOnDay } from '../attendance/wfh/data';
 import { WfhTable } from '../attendance/wfh/ui';
 import { homeOn } from '../attendance/wfh/wfh';
+import { loadOdCalendar, loadOdOnDay, loadWaitingOd } from '../attendance/official-duty/data';
+import { awayOn } from '../attendance/official-duty/od';
+import { OdTable } from '../attendance/official-duty/ui';
 import { loadTeam } from './data';
 import { askedByText, latestRaise, myTeamIntro, probationOf } from './team';
+import { shownCode } from '@/lib/hidden';
 
 // My Team (owner's decisions, 17 October 2026): a direct manager's direct reports, in their sidebar, so they reach
 // their profiles (the Employees list isn't theirs any more). Each one with their job title and status, the probation
@@ -95,7 +99,7 @@ async function Team() {
                     {r.fullNameEn}
                   </Link>
                   {restricted && <CLevelBadge title={cLevelTitle(true)} className="ml-2" />}
-                  <div className="text-xs text-muted tabular-nums">{r.employeeCode}</div>
+                  {shownCode(r.employeeCode) && <div className="text-xs text-muted tabular-nums">{r.employeeCode}</div>}
                 </td>
                 <td>{r.jobTitle?.titleEn ?? dash}</td>
                 <td>
@@ -279,6 +283,66 @@ async function WfhToApprove() {
   );
 }
 
+/**
+ * The official duty requests waiting for the manager (owner, 23 October 2026: "Manager, then HR"; GET
+ * /official-duty?status=waiting): who, the days and where, each with Decide. Nothing from an API from before them.
+ */
+async function OdToApprove() {
+  const waiting = await loadWaitingOd();
+  if (waiting.kind === 'unavailable' || waiting.kind === 'forbidden') return null;
+  return (
+    <section aria-labelledby="od-to-approve" className="space-y-3">
+      <div>
+        <h2 id="od-to-approve" className="text-lg font-semibold">
+          Official Duty to Approve
+        </h2>
+        <p className="text-sm text-muted">
+          Official duties your direct reports asked for, and those of people without a direct manager in a team you lead or a department you head.
+          Approve one, or reject it with a comment; HR decides it after you.
+        </p>
+      </div>
+      {waiting.kind === 'failed' ? (
+        <div className="card px-6 py-6 text-sm text-muted">The official duty requests waiting for you couldn&apos;t be loaded. Please try again in a moment.</div>
+      ) : waiting.value.length === 0 ? (
+        <div className="card px-6 py-6 text-sm text-muted">No official duty requests are waiting for you.</div>
+      ) : (
+        <OdTable requests={waiting.value} who where note="waiting for you" />
+      )}
+    </section>
+  );
+}
+
+/** Who of the team is on an approved official duty today (owner, 23 October 2026: "Official duty (OD) requests"). */
+async function OnDutyToday() {
+  // the signed-in user first (the request's own data), then the clock: Next reads the clock only after it
+  await getCurrentUser();
+  const today = todayInCairo();
+  const loaded = await loadOdOnDay(today);
+  if (loaded.kind !== 'ok') return null;
+  const people = awayOn(loaded.value, today);
+  if (!people.length) return null;
+  return (
+    <section aria-labelledby="od-today" className="space-y-3">
+      <div>
+        <h2 id="od-today" className="text-lg font-semibold">
+          On Official Duty Today
+        </h2>
+        <p className="text-sm text-muted">Who in your team works away from the office today, on an approved official duty: they check in from where they are.</p>
+      </div>
+      <ul className="card divide-y divide-line-soft">
+        {people.map((e) => (
+          <li key={e.id} className="flex flex-wrap items-baseline justify-between gap-x-3 px-4 py-3 text-sm">
+            <Link href={`/employees/${e.id}`} className="font-semibold">
+              {e.fullNameEn}
+            </Link>
+            <span className="text-xs text-muted">{[e.department, e.team].filter(Boolean).join(' › ') || 'On official duty'}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 /** Who of the team works from home today (owner's brief, 21 October 2026: "My Team shows who's home today"). */
 async function HomeToday() {
   // the signed-in user first (the request's own data), then the clock: Next reads the clock only after it
@@ -319,8 +383,9 @@ async function TeamCalendar({ searchParams }: { searchParams: PageProps<'/my-tea
   const today = todayInCairo();
   const month = readMonth(query, today);
   const { from, to } = monthRange(month);
-  // the team's work from home days too, a distinct style from leave (owner, 21 October 2026)
-  const [entries, holidays, wfh] = await Promise.all([loadLeaveCalendar(month), loadHolidaysOf(Number(month.slice(0, 4))), loadWfhCalendar(from, to)]);
+  // the team's work from home days too, a distinct style from leave (owner, 21 October 2026), and their official duties
+  // in their own colour (owner, 23 October 2026; the spec: "Team calendar shows leave and OD")
+  const [entries, holidays, wfh, od] = await Promise.all([loadLeaveCalendar(month), loadHolidaysOf(Number(month.slice(0, 4))), loadWfhCalendar(from, to), loadOdCalendar(from, to)]);
   if (entries.kind === 'unavailable' || entries.kind === 'forbidden') return null;
   const days = calendarDays(month, holidays.kind === 'ok' ? holidays.value : [], today);
   return (
@@ -330,8 +395,8 @@ async function TeamCalendar({ searchParams }: { searchParams: PageProps<'/my-tea
           Team Calendar
         </h2>
         <p className="text-sm text-muted">
-          Who in your team is off each day of the month: approved leave, the hours of approved permission and the days working from home, with
-          the official holidays.
+          Who in your team is off each day of the month: approved leave, the hours of approved permission, the days working from home and on
+          official duty, with the official holidays.
         </p>
       </div>
       {entries.kind === 'failed' ? (
@@ -340,7 +405,7 @@ async function TeamCalendar({ searchParams }: { searchParams: PageProps<'/my-tea
         <LeaveCalendar
           month={month}
           days={days}
-          people={calendarPeople([...entries.value, ...(wfh.kind === 'ok' ? wfh.value : [])], days)}
+          people={calendarPeople([...entries.value, ...(wfh.kind === 'ok' ? wfh.value : []), ...(od.kind === 'ok' ? od.value : [])], days)}
           hrefFor={(m) => `${leaveCalendarHref(m, null, MY_TEAM)}#team-calendar`}
           departments={null}
           departmentId={null}
@@ -398,6 +463,9 @@ export default function MyTeamPage({ searchParams }: PageProps<'/my-team'>) {
           <WfhToApprove />
         </Suspense>
         <Suspense fallback={null}>
+          <OdToApprove />
+        </Suspense>
+        <Suspense fallback={null}>
           <ToApprove />
         </Suspense>
         <Suspense fallback={<Loading />}>
@@ -405,6 +473,9 @@ export default function MyTeamPage({ searchParams }: PageProps<'/my-team'>) {
         </Suspense>
         <Suspense fallback={null}>
           <HomeToday />
+        </Suspense>
+        <Suspense fallback={null}>
+          <OnDutyToday />
         </Suspense>
         <TeamAttendance />
         <Suspense fallback={<Loading />}>

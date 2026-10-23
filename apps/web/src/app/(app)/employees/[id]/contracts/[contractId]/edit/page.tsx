@@ -11,6 +11,7 @@ import { ContractForm } from '../../contract-form';
 import { loadAllowanceTypes, loadContractSettings, loadContracts } from '../../data';
 import { changeOf, editHref, stageOf, versionBefore, versionPay } from '../../raise';
 import { CONVERSION_PROBATION_HINT, CONVERSION_START_HINT } from '../../training';
+import { withCodeInBrackets } from '@/lib/hidden';
 
 // Changing a draft of the current employment's contract, before it is signed. A signed version changes only in its
 // filing dates and note, with the contract on the Employment tab. A renewal asks whether its pay changes (owner's
@@ -41,14 +42,14 @@ async function EditContract({ params }: { params: Promise<{ id: string; contract
   } else if (contract.status !== 'draft') {
     body = (
       <Empty>
-        Version {contract.version} ({contract.number}) was signed{contract.signedOn && ` on ${formatDate(contract.signedOn)}`}: only its filing dates and note
+        {withCodeInBrackets(`Version ${contract.version}`, contract.number)} was signed{contract.signedOn && ` on ${formatDate(contract.signedOn)}`}: only its filing dates and note
         can change, with the contract on the Employment tab. A change of terms is a new version.
       </Empty>
     );
   } else if (stageOf(contract) === 'pending_ceo') {
     body = (
       <Empty>
-        Version {contract.version} ({contract.number}) changes the pay and is with the CEO: it can&apos;t be changed unless the CEO returns it. See it with
+        {withCodeInBrackets(`Version ${contract.version}`, contract.number)} changes the pay and is with the CEO: it can&apos;t be changed unless the CEO returns it. See it with
         the contract on the <Link href={back}>Employment tab</Link>.
       </Empty>
     );
@@ -60,7 +61,7 @@ async function EditContract({ params }: { params: Promise<{ id: string; contract
     body = (
       <div className="max-w-3xl space-y-4">
         <p className="text-sm text-muted">
-          Draft of version {contract.version} ({contract.number})
+          Draft of {withCodeInBrackets(`version ${contract.version}`, contract.number)}
           {conversion
             ? `, the full-time contract the ${agreementName(e.employmentType)} (version ${contract.version - 1}) converts to; signing it makes the employment full-time`
             : renewal

@@ -642,7 +642,7 @@ describe('Job offers (e2e)', () => {
 
     it("by email when email isn't set up: refused, and the offer stays as it was", async () => {
       const o = await draft('Nadia Nomail');
-      const configured = vi.spyOn(mail, 'configured', 'get').mockReturnValue(false);
+      const configured = vi.spyOn(mail, 'ready').mockResolvedValue(false);
       try {
         const res = await send(o.id, { via: 'email', origin: ORIGIN }).expect(503);
         expect(res.body.message).toBe("Email isn't set up on the server yet. Send the offer's link yourself instead.");

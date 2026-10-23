@@ -35,6 +35,7 @@ import {
   summaryTiles,
   type SalaryRaisesView,
 } from './salary-raises';
+import { shownCode } from '@/lib/hidden';
 
 // The Salary Raises report (owner's decision, 16 October 2026: the salary raises tracked on each profile's Salary
 // History and in a company-wide report), under Payroll → Reports since 17 October 2026 (owner: "Reports (Statistics)"
@@ -201,7 +202,7 @@ function RaiseRow({ row }: { row: SalaryRaiseRow }) {
           {row.employee.fullNameEn}
           <span className="sr-only"> (salary history)</span>
         </Link>
-        <div className="text-xs text-muted tabular-nums">{row.employee.employeeCode}</div>
+        {shownCode(row.employee.employeeCode) && <div className="text-xs text-muted tabular-nums">{row.employee.employeeCode}</div>}
         {v.place && <div className="text-xs text-muted">{v.place}</div>}
       </td>
       <td className="min-w-44 align-top">
@@ -275,7 +276,7 @@ function ReviewRow({ row, user }: { row: DueForReviewRow; user: SessionUser }) {
           {row.employee.fullNameEn}
           <span className="sr-only"> (salary history)</span>
         </Link>
-        <div className="text-xs text-muted tabular-nums">{row.employee.employeeCode}</div>
+        {shownCode(row.employee.employeeCode) && <div className="text-xs text-muted tabular-nums">{row.employee.employeeCode}</div>}
         {row.department && <div className="text-xs text-muted">{departmentName(row.department)}</div>}
       </td>
       <td className="min-w-40 align-top">{row.jobTitle ?? dash}</td>

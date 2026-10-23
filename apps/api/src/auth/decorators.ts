@@ -72,3 +72,14 @@ export const DeveloperMaySee = () => SetMetadata(DEVELOPER_MAY_SEE, true);
  * bank files, exports, generated documents, scans).
  */
 export const NotForDevelopers = () => SetMetadata(NOT_FOR_DEVELOPERS, true);
+
+// Access follows the contract (owner, 23 October 2026: on Hold "Check-in/out only"; packages/shared employee-access.ts):
+// an account on Hold reaches only the routes marked open (see auth.guard.ts); every other answers 403 with
+// ACCESS_HOLD_MESSAGE.
+export const OPEN_ON_HOLD = 'openOnHold';
+
+/**
+ * A route an account on Hold still reaches: their own session's basics (who am I, their sessions, change password, the
+ * app's fingerprint sign-in and push), and checking in and out with today's attendance (and the check-in reminder).
+ */
+export const OpenOnHold = () => SetMetadata(OPEN_ON_HOLD, true);

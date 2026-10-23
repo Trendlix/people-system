@@ -40,6 +40,8 @@ export const APP_PATHS = {
   newHome: '/app/requests/new/home',
   // working from home (owner, 21 October 2026: "think about how should we handle the working from home in out erp")
   newWfh: '/app/requests/new/wfh',
+  // official duty (owner, 23 October 2026: "Official duty (OD) requests")
+  newOd: '/app/requests/new/od',
   attendance: '/app/attendance',
   payslips: '/app/payslips',
   approve: '/app/approve',
@@ -50,14 +52,14 @@ export const APP_PATHS = {
  * A KPI scorecard (owner, 21 October 2026: "Self, manager, HR, sign-off"): the employee's to rate and sign under My
  * Requests, the manager's and HR's steps under To Approve.
  */
-export const APP_ITEM_KINDS = ['leave', 'permission', 'reimbursement', 'correction', 'raise', 'pay-raise', 'home', 'kpi', 'wfh'] as const;
+export const APP_ITEM_KINDS = ['leave', 'permission', 'reimbursement', 'correction', 'raise', 'pay-raise', 'home', 'kpi', 'wfh', 'od'] as const;
 export type AppItemKind = (typeof APP_ITEM_KINDS)[number];
 
 /** An item's page in a section: "/app/requests/leave/<id>", "/app/approve/reimbursement/<id>". */
 export const appItemHref = (section: AppSection, kind: AppItemKind, id: string) => `/app/${section}/${kind}/${encodeURIComponent(id)}`;
 
 /** The kinds of request the phone pages' My Requests lists, each a filter of it. */
-export const APP_REQUEST_KINDS = ['leave', 'permission', 'reimbursement', 'correction', 'raise', 'home', 'wfh'] as const;
+export const APP_REQUEST_KINDS = ['leave', 'permission', 'reimbursement', 'correction', 'raise', 'home', 'wfh', 'od'] as const;
 export type AppRequestKind = (typeof APP_REQUEST_KINDS)[number];
 
 /** My Requests on the phone pages, of one kind and/or open ones only: "/app/requests?kind=leave&status=open". */
@@ -110,6 +112,8 @@ const ITEM_PAGES: readonly [RegExp, AppItemKind][] = [
   [new RegExp(`^/kpis/scorecards/${ID}$`), 'kpi'],
   // a work from home request (21 October 2026), also as its notifications link it
   [new RegExp(`^/attendance/wfh/${ID}$`), 'wfh'],
+  // an official duty request (23 October 2026), also as its notifications link it
+  [new RegExp(`^/attendance/official-duty/${ID}$`), 'od'],
 ];
 
 /** What an address says of what was just done, kept on the way: ?done= (decided, cancelled, moved on) and ?sent=. */

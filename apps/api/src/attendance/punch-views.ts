@@ -24,6 +24,7 @@ export const PUNCH_SELECT = {
   officeNetwork: true,
   latitude: true,
   longitude: true,
+  odRequestId: true,
 } satisfies Prisma.AttendancePunchSelect;
 
 export type PunchRow = Prisma.AttendancePunchGetPayload<{ select: typeof PUNCH_SELECT }>;
@@ -39,6 +40,11 @@ export interface PunchPlaceView {
   /** The check-in location it was within, by its name then; the office network it came from, by its name. */
   locationName: string | null;
   officeNetwork: string | null;
+  /**
+   * Pressed within an approved official duty (owner, 23 October 2026: "Check in from anywhere"): its request, marked OD;
+   * left out of a press without one.
+   */
+  odRequestId?: string;
 }
 
 /** The spot, for those who see it: none (null) when the press has no point and none can stand in for it. */
@@ -64,6 +70,7 @@ export function punchView(p: PunchRow, seesSpot: boolean, locations: FallbackLoc
     flags: p.flags as CheckInFlag[],
     locationName: p.locationName,
     officeNetwork: p.officeNetwork,
+    ...(p.odRequestId && { odRequestId: p.odRequestId }),
   };
   if (!seesSpot) return view;
   const point = punchPoint(

@@ -15,6 +15,8 @@ import { effectiveFromText, reasonText } from '../../../(app)/raise-requests/lis
 import { currentAmount } from '../../../(app)/reimbursements/list';
 import { wfhDayText } from '../../../(app)/attendance/wfh/wfh';
 import type { WfhRequestView } from '../../../../lib/wfh-types';
+import { odWhenWords } from '../../../(app)/attendance/official-duty/od';
+import type { OdRequestView } from '../../../../lib/od-types';
 
 // The phone pages' To Approve (owner, 20 October 2026: the employee app, "managers and team leads approve from the
 // phone"): what waits for the caller, in sections as My Team and Approvals have them: leave and permission, the claims,
@@ -24,7 +26,8 @@ import type { WfhRequestView } from '../../../../lib/wfh-types';
 // locations at HR's step or the CEO's (owner, 20 October 2026: "then approved by the HR and CEO"), for those who decide
 // them. KPI scorecards (owner, 21 October 2026: "Self, manager, HR, sign-off") waiting for the caller's step on someone
 // else's: the manager's scoring and sign-off, HR's calibration. Work from home requests (owner, 21 October 2026:
-// "Manager, then HR") at the approver's step or HR's (a C-level person's HR step the CEO's).
+// "Manager, then HR") at the approver's step or HR's (a C-level person's HR step the CEO's). Official duty requests
+// (owner, 23 October 2026: "Manager, then HR") the same way.
 
 export interface WaitingRow {
   key: string;
@@ -38,7 +41,7 @@ export interface WaitingRow {
 }
 
 export interface WaitingSection {
-  key: 'leave' | 'wfh' | 'reimbursement' | 'correction' | 'raise' | 'pay-raise' | 'home' | 'kpi';
+  key: 'leave' | 'wfh' | 'od' | 'reimbursement' | 'correction' | 'raise' | 'pay-raise' | 'home' | 'kpi';
   /** Title Case. */
   title: string;
   rows: WaitingRow[];
@@ -57,6 +60,8 @@ export function waitingSections(from: {
   permissions?: List<PermissionRequestView>;
   /** Work from home requests waiting for the caller (21 October 2026). */
   wfh?: List<WfhRequestView>;
+  /** Official duty requests waiting for the caller (23 October 2026). */
+  od?: List<OdRequestView>;
   claims?: List<ReimbursementClaimView>;
   corrections?: List<AttendanceCorrectionView>;
   raiseRequests?: List<RaiseRequest>;
@@ -92,6 +97,19 @@ export function waitingSections(from: {
         href: appItemHref('approve', 'wfh', r.id),
         name: r.employee.fullNameEn,
         line: `Work from home · ${wfhDayText(r)}`,
+      })),
+    );
+  }
+  if (from.od !== undefined) {
+    add(
+      'od',
+      'Official Duty',
+      from.od === null,
+      (from.od ?? []).map((r) => ({
+        key: `od:${r.id}`,
+        href: appItemHref('approve', 'od', r.id),
+        name: r.employee.fullNameEn,
+        line: `Official duty · ${odWhenWords(r)}`,
       })),
     );
   }

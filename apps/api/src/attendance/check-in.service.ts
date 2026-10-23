@@ -12,6 +12,8 @@ import {
   needsLocation,
   nextPunch,
   NO_LOCATION_MESSAGE,
+  OD_CHECK_IN_TEXT,
+  odWhenText,
   OFF_NETWORK_MESSAGE,
   punchFlags,
   punchMessages,
@@ -35,6 +37,7 @@ import { toDateOnly, weekday } from '../common/date-only.js';
 import { fromTimeOfDay } from '../common/time-of-day.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { approvedOdAt, approvedOdOn } from '../official-duty/od-days.js';
 import { approvedWfhOn } from '../wfh/wfh-days.js';
 import { AttendanceFillService } from './attendance-fill.service.js';
 import { CheckInSetupService } from './check-in-setup.service.js';
@@ -76,6 +79,12 @@ export interface CheckInTodayView {
    * the working from home in out erp"; packages/shared wfh.ts): expected anywhere, the office network's lock waived.
    */
   workingFromHome: boolean;
+  /**
+   * An official duty approved for them today (owner, 23 October 2026: "Check in from anywhere"; packages/shared
+   * official-duty.ts): its request, a full day or its times, and whether it is on now (a full day, or within a part
+   * day's hours): then the office's location rule and the network's lock don't apply. Null: none today.
+   */
+  officialDuty: { requestId: string; fullDay: boolean; fromTime: string | null; toTime: string | null; now: boolean } | null;
   /**
    * The sub-locations they are linked to, by name (owner, 20 October 2026: "own sublocation shows the sub location
    * name"): their own check-in places, where they aren't flagged and, when locked, may check in off the office network.
@@ -197,12 +206,15 @@ export class CheckInService {
     const mock = dto.mock === true;
     // a work from home day approved for them (owner, 21 October 2026): expected anywhere, the network's lock waived
     const workingFromHome = await approvedWfhOn(this.prisma, employeeId, date);
+    // within an official duty approved for them (owner, 23 October 2026: "Check in from anywhere"): expected anywhere, the
+    // network's lock waived, the spot kept as any press's, the press marked with it
+    const od = await approvedOdAt(this.prisma, employeeId, date, now, shift);
     // the place read from the point: the main office (Office), their own sub-location, any sub-location (remote, its
     // name kept), their home, remote, or unknown (20 October 2026)
     const read = checkInPlaceAt(reading, places, home);
     // the office network (20 October 2026): refused off it when locked, unless within their own sub-location on a
     // location that isn't a mock one, or on a work from home day approved for them (21 October 2026); on it, at the office
-    const network = punchNetwork(lock, employment, context.signedIp.ip ?? null, waivesNetworkLock(read, mock) || workingFromHome);
+    const network = punchNetwork(lock, employment, context.signedIp.ip ?? null, waivesNetworkLock(read, mock) || workingFromHome || od !== null);
     // without a location: in the app always refused, read at the press and never tracked (owner, 20 October 2026: "App
     // only"); on the website when the company refuses it for them, unless from an office network ("Allow as Office")
     const withoutLocation = locationRefusal({ session: context.session, reading: reading !== null, rule, person: employment, officeNetwork: network.network !== null });
@@ -232,7 +244,7 @@ export class CheckInService {
     const locationName = (officeNetwork ? (read.place === 'office' ? read.location : null) : read.location) ?? null;
     const subLocation = officeNetwork ? null : (read.subLocation ?? null);
     const point = reading ? { latitude: coordinate(reading.latitude), longitude: coordinate(reading.longitude) } : { latitude: null, longitude: null };
-    const expected = expectedPlace(employment.workArrangement, employment.officeDays, weekday(date), workingFromHome);
+    const expected = expectedPlace(employment.workArrangement, employment.officeDays, weekday(date), workingFromHome || od !== null);
     // a check-in breaking the arrangement's rule (not at their own sub-location), and any press on a location the phone
     // said is a mock one (fake GPS); a remote check-in by someone with an approved home, away from it, the office and
     // the sub-locations (not at home or the office); one within a sub-location they aren't linked to (not their location)
@@ -245,7 +257,7 @@ export class CheckInService {
       // the same press twice (a double tap): kept once
       if (last && last.kind === dto.kind && now.getTime() - last.at.getTime() < SAME_PRESS_MS) return { kept: false, earlier: before };
       await tx.attendancePunch.create({
-        data: { employeeId, date: toDateOnly(date), kind: dto.kind, at: now, place, accuracyMetres, ...point, expected, flags, locationName, officeNetwork, source: 'system', userId: user.id },
+        data: { employeeId, date: toDateOnly(date), kind: dto.kind, at: now, place, accuracyMetres, ...point, expected, flags, locationName, officeNetwork, source: 'system', userId: user.id, odRequestId: od?.id ?? null },
       });
       const punches = [...before, { kind: dto.kind, at: now, place, flags }];
       const day = dayFromPunches(date, punches.map(asPunch), shift);
@@ -304,7 +316,11 @@ export class CheckInService {
     const [punches, workingFromHome]: [PunchRow[], boolean] = employeeId
       ? await Promise.all([db.attendancePunch.findMany({ where: { employeeId, date: toDateOnly(date) }, orderBy: { at: 'asc' }, select: PUNCH_SELECT }), approvedWfhOn(db, employeeId, date)])
       : [[], false];
-    const expected = employment ? expectedPlace(employment.workArrangement, employment.officeDays, weekday(date), workingFromHome) : null;
+    // an official duty approved for them today, and whether it is on now (23 October 2026)
+    const [odToday, odNow] = employeeId ? await Promise.all([approvedOdOn(db, employeeId, date), approvedOdAt(db, employeeId, date, now, shift)]) : [null, null];
+    const duty = odNow ?? odToday;
+    const anywhere = workingFromHome || odNow !== null;
+    const expected = employment ? expectedPlace(employment.workArrangement, employment.officeDays, weekday(date), anywhere) : null;
     return {
       refusal,
       date,
@@ -314,10 +330,18 @@ export class CheckInService {
       punches: punches.map((p) => punchView(p, true, locations)),
       day: punches.length ? dayFromPunches(date, punches.map(asPunch), shift) : null,
       expected,
-      expectedText: employment && expected ? expectedPlaceText(employment.workArrangement, expected, workingFromHome) : null,
+      expectedText:
+        employment && expected
+          ? odNow
+            ? OD_CHECK_IN_TEXT
+            : odToday
+              ? `Official duty today, ${odWhenText(odToday).split(', ')[1] ?? 'part of the day'}: check in from where you are then. ${expectedPlaceText(employment.workArrangement, expected, workingFromHome)}`
+              : expectedPlaceText(employment.workArrangement, expected, workingFromHome)
+          : null,
       officeLocationSet: checkInLocationsSet(locations),
-      network: { locked: !!employment && lockedToOfficeNetwork(lock, employment) && !workingFromHome },
+      network: { locked: !!employment && lockedToOfficeNetwork(lock, employment) && !anywhere },
       workingFromHome,
+      officialDuty: duty && { requestId: duty.id, fullDay: duty.fullDay, fromTime: duty.fromTime, toTime: duty.toTime, now: odNow !== null },
       ownPlaces: places.subLocations.filter((l) => l.linked).map((l) => l.name),
       location: { required: !!employment && needsLocation(rule, employment) },
       shift: shift && { startTime: shift.startTime, endTime: shift.endTime, hoursPerDay: shift.hoursPerDay ?? null, graceMinutes: shift.graceMinutes ?? 0, countUntil: shift.countUntil },

@@ -297,7 +297,7 @@ export class OffersService {
     if (pastLastDay(o)) {
       throw new ConflictException(`The offer's last day, ${shownDate(fromDateOnly(o.expiresOn))}, has passed. Set a later last day, then send it again.`);
     }
-    if (dto.via === 'email' && !this.mail.configured) throw new ServiceUnavailableException(EMAIL_NOT_SET_UP);
+    if (dto.via === 'email' && !(await this.mail.ready())) throw new ServiceUnavailableException(EMAIL_NOT_SET_UP);
     if (!this.documents.pdfAvailable) throw new ConflictException(NOT_SENT_WITHOUT_PDF);
 
     const documentDate = todayInCairo();
@@ -468,7 +468,7 @@ export class OffersService {
       previewVersion: draft?.version ?? null,
       missing,
       hasPdf,
-      emailConfigured: this.mail.configured,
+      emailConfigured: await this.mail.ready(),
       pdfAvailable: this.documents.pdfAvailable,
     });
   }

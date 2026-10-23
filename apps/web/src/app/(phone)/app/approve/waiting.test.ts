@@ -5,6 +5,7 @@ import type { HomeLocationView } from '../../../../lib/home-location-types';
 import type { PendingRaise, RaiseRequest } from '../../../../lib/raise-types';
 import type { LeaveRequestView, PermissionRequestView, ReimbursementClaimView } from '../../../../lib/types';
 import type { WfhRequestView } from '../../../../lib/wfh-types';
+import type { OdRequestView } from '../../../../lib/od-types';
 import { waitingSections, waitingTotal } from './waiting';
 
 // The phone pages' To Approve (owner, 20 October 2026: the employee app, "managers and team leads approve from the
@@ -124,6 +125,18 @@ describe('what waits for the caller', () => {
     expect(waitingTotal(sections)).toBe(3);
     expect(waitingSections({ wfh: null })).toMatchObject([{ key: 'wfh', failed: true }]);
     expect(waitingSections({ wfh: [] })).toEqual([]);
+  });
+
+  // owner, 23 October 2026: "Official duty (OD) requests", "Manager, then HR"
+  it('lists the official duty requests waiting for the caller after working from home, opening each under To Approve', () => {
+    const od = { id: ID(12), kind: 'od', employee: nour, startDate: '2026-11-02', endDate: '2026-11-04', fullDay: true, fromTime: null, toTime: null, status: 'with_hr' } as unknown as OdRequestView;
+    const wfh = { id: ID(11), kind: 'wfh', employee: nour, date: '2026-11-02', status: 'with_manager' } as unknown as WfhRequestView;
+    const sections = waitingSections({ leave: [leave], permissions: [], wfh: [wfh], od: [od], claims: [claim] });
+    expect(sections.map((s) => s.key)).toEqual(['leave', 'wfh', 'od', 'reimbursement']);
+    expect(sections[2]).toMatchObject({ title: 'Official Duty', failed: false });
+    expect(sections[2].rows.map((r) => [r.href, r.name, r.line])).toEqual([[`/app/approve/od/${ID(12)}`, 'Nour Adel', 'Official duty · Monday 02/11/2026 – Wednesday 04/11/2026']]);
+    expect(waitingSections({ od: null })).toMatchObject([{ key: 'od', failed: true }]);
+    expect(waitingSections({ od: [] })).toEqual([]);
   });
 
   it('leaves out what is empty or not the caller’s, and says what couldn’t be read', () => {

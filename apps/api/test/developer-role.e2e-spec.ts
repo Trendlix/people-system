@@ -55,7 +55,13 @@ const OFFER_EMAIL = `offer.${RUN}@mail.test`;
 const CANDIDATE_NAME = `Cand Person ${RUN}`;
 const CANDIDATE_EMAIL = `cand.${RUN}@mail.test`;
 const CANDIDATE_MOBILE = `+2011${String(Date.now() % 100_000_000).padStart(8, '0')}`;
-const PERSONAL = [FULL_EN, FULL_AR, DISPLAY, WORK_EMAIL, PERSONAL_EMAIL, ADDRESS, CITY, BIRTH, EMERGENCY, UNIVERSITY, LOAN_REASON, CLAIM_TEXT, OFFER_NAME, OFFER_EMAIL];
+// a second person, whose fixed term ended three months ago while the work goes on (owner, 23 October 2026, as a
+// developer, on the home page: "Employee EMP-0023 · EMP-0023", "Ends 11/03/2024", "Passed", "Became open-ended — Art.
+// 88"): on Contracts Ending Soon and the law's warnings
+const ENDED_EN = `Ended Person ${RUN}`;
+const ENDED_EMAIL = `ended.${RUN}@trendlix.com`;
+const JOINED_BEFORE = `${monthsLater(CURRENT, -15)}-13`;
+const PERSONAL = [FULL_EN, FULL_AR, DISPLAY, WORK_EMAIL, PERSONAL_EMAIL, ADDRESS, CITY, BIRTH, EMERGENCY, UNIVERSITY, LOAN_REASON, CLAIM_TEXT, OFFER_NAME, OFFER_EMAIL, ENDED_EN, ENDED_EMAIL];
 // the person's job and social insurance (owner, 22 October 2026: "why is the employment data can be viewed by developer
 // access"; "Hide per-person details", "and the social insurance"): invented and distinctive, so every answer about people
 // can be searched for them. The company's own insurance office is set in the database, so no audit entry of the company
@@ -89,8 +95,21 @@ function personalLeaks(body: unknown, emails: readonly string[] = []): string[] 
 /** The person's job, employment dates and social insurance found in an answer (`dates`: the contract's, once made). */
 function jobLeaks(body: unknown, dates: readonly string[]): string[] {
   const text = JSON.stringify(body);
-  const values = [DEPARTMENT, JOB_TITLE, GRADE_CODE, GRADE_LEVEL, OFFICE, INSURANCE_NO, ...[JOINED, INSURANCE_START, FILED_ON, ...dates].flatMap(written)];
+  const values = [DEPARTMENT, JOB_TITLE, GRADE_CODE, GRADE_LEVEL, OFFICE, INSURANCE_NO, ...[JOINED, JOINED_BEFORE, INSURANCE_START, FILED_ON, ...dates].flatMap(written)];
   return values.filter((v) => text.includes(JSON.stringify(v).slice(1, -1)));
+}
+
+/** A person's code of any kind, anyone's (owner, 23 October 2026: "in developer view use **** instead of IDs"). */
+const PERSON_CODE = /(?<![A-Za-z0-9])(?:EMP-\d{3,}|APP-\d{4}-\d+|CAN-\d{3,}|OFF-\d{4}-\d+|CON-\d{4}-\d+)/gi;
+/** A pseudonym: a word and a tag, 4 to 6 capitals and digits without look-alikes (never the code). */
+const TAGGED = /^(Employee|Applicant|Candidate|User) [2-9A-HJ-NP-Z]{4,6}$/;
+/** A pseudonym's tag ("Employee 7K3Q" → "7K3Q"). */
+const tagIn = (pseudonym: string) => pseudonym.split(' ').at(-1)!;
+
+/** The seeded people's codes (`codes`), and anyone's code, found in an answer: none may reach a developer. */
+function codeLeaks(body: unknown, codes: readonly string[]): string[] {
+  const text = JSON.stringify(body);
+  return [...codes.filter((c) => c && text.toLowerCase().includes(c.toLowerCase())), ...(text.match(PERSON_CODE) ?? [])];
 }
 
 describe('The Developer role (e2e)', () => {
@@ -139,6 +158,21 @@ describe('The Developer role (e2e)', () => {
   /** The contract's start, end and probation's end, as the API sends them. */
   let contractDates: string[] = [];
   let officeBefore: string | null = null;
+  // the people's codes (23 October 2026): the contract's number, the candidate's code, the general CV's number
+  let contractNumber: string;
+  let candidateCode: string;
+  let generalCvNumber: string;
+  // the second person, their fixed term ended (23 October 2026: the home page's Contracts Ending Soon)
+  let endedId: string;
+  let endedEmploymentId: string;
+  let endedCode: string;
+  let endedNumber: string;
+  /** Their contract's start, end and probation's end, as the API sends them. */
+  let endedDates: string[] = [];
+  /** Every seeded person's code. */
+  const codes = () => [employeeCode, endedCode, offerNumber, candidateCode, generalCvNumber, contractNumber, endedNumber];
+  /** Every seeded contract's dates. */
+  const allDates = () => [...contractDates, ...endedDates];
 
   beforeAll(async () => {
     ({ app, prisma } = await createApp());
@@ -194,11 +228,13 @@ describe('The Developer role (e2e)', () => {
     await as('hr').patch(`/employees/${employeeId}`, { insuranceNo: INSURANCE_NO, insuranceStartDate: INSURANCE_START, socialInsured: true, occupationCode: '194200' }).expect(200);
     const draft = (await as('hr').post(`/employees/${employeeId}/employments/${employmentId}/contracts`, { grossSalary: GROSS }).expect(201)).body as {
       id: string;
+      number: string;
       startDate: string;
       endDate: string;
       probationEnd: string;
     };
     contractId = draft.id;
+    contractNumber = draft.number;
     contractDates = [draft.startDate, draft.endDate, draft.probationEnd].filter(Boolean);
     await as('hr').post(`/contracts/${draft.id}/sign`, { signedOn: draft.startDate }).expect(200);
     // filed with social insurance (its registration date)
@@ -242,8 +278,31 @@ describe('The Developer role (e2e)', () => {
         .attach('cv', Buffer.from(`%PDF-1.4\n% ${RUN}\n%%EOF\n`), 'cv.pdf')
         .expect(201)
     ).body.id;
-    candidateId = (await prisma.generalCv.findUniqueOrThrow({ where: { id: generalCvId }, select: { candidateId: true } })).candidateId!;
+    const cv = await prisma.generalCv.findUniqueOrThrow({ where: { id: generalCvId }, select: { candidateId: true, number: true } });
+    candidateId = cv.candidateId!;
+    generalCvNumber = cv.number;
+    candidateCode = (await prisma.candidate.findUniqueOrThrow({ where: { id: candidateId }, select: { code: true } })).code;
     assetCode = (await as('superAdmin').post('/assets', { name: `Camera ${RUN}`, group: 'kit', type: 'CAM', condition: 'good', values: { purchasePrice: PURCHASE } }).expect(201)).body.code;
+
+    // the second person (after the payroll run, so it isn't theirs): hired 15 months ago on a 1-year fixed term, signed,
+    // ended three months ago while the work goes on, so open-ended by the law (Art. 88(3))
+    const ended = (await as('hr').post('/employees', { fullNameEn: ENDED_EN, fullNameAr: `منتهي ${AR_TAG}`, workEmail: ENDED_EMAIL }).expect(201)).body;
+    endedId = ended.id;
+    endedCode = ended.employeeCode;
+    endedEmploymentId = (
+      await as('hr').post(`/employees/${endedId}/employments`, { employmentType: 'full_time', joinDate: JOINED_BEFORE, departmentId, shiftId, jobTitleId, gradeId: ownGradeId }).expect(201)
+    ).body.employment.id;
+    const endedDraft = (await as('hr').post(`/employees/${endedId}/employments/${endedEmploymentId}/contracts`, { grossSalary: GROSS }).expect(201)).body as {
+      id: string;
+      number: string;
+      startDate: string;
+      endDate: string;
+      probationEnd: string | null;
+    };
+    endedNumber = endedDraft.number;
+    endedDates = [endedDraft.startDate, endedDraft.endDate, endedDraft.probationEnd].filter((d): d is string => !!d);
+    await as('hr').post(`/contracts/${endedDraft.id}/sign`, { signedOn: endedDraft.startDate }).expect(200);
+    if (!(endedDraft.endDate < todayInCairo())) throw new Error(`The second person's contract hasn't ended: ${endedDraft.endDate}`);
 
     // the role, given by the Super Admin; a new sign-in after it
     await as('superAdmin').patch(`/users/${users.developer}`, { roles: ['employee', 'developer'] }).expect(200);
@@ -261,7 +320,9 @@ describe('The Developer role (e2e)', () => {
     await prisma.candidate.deleteMany({ where: { id: candidateId } });
     await prisma.asset.deleteMany({ where: { code: assetCode } });
     if (!(await prisma.asset.count({ where: { code: { startsWith: 'PK-CAM-' } } }))) await prisma.assetCodeCounter.deleteMany({ where: { prefix: 'PK-CAM-' } });
-    await prisma.contract.deleteMany({ where: { employmentId } });
+    await prisma.contract.deleteMany({ where: { employmentId: { in: [employmentId, endedEmploymentId].filter(Boolean) } } });
+    // the second person first: the first, their department's head, is their manager
+    if (endedId) await prisma.employee.deleteMany({ where: { id: endedId } });
     await prisma.employee.deleteMany({ where: { id: employeeId } });
     await prisma.jobTitle.deleteMany({ where: { id: { in: [jobTitleId, vacancyTitleId] } } });
     await prisma.department.deleteMany({ where: { id: { in: [departmentId, otherDepartmentId] } } });
@@ -288,9 +349,11 @@ describe('The Developer role (e2e)', () => {
 
   it('an employee’s profile, national ID and bank: a pseudonym for the name, the numbers and personal data hidden', async () => {
     const profile = (await as('developer').get(`/employees/${employeeId}`).expect(200)).body;
-    expect(profile.fullNameEn).toBe(`Employee ${employeeCode}`);
-    expect(profile.fullNameAr).toBe(`موظف ${employeeCode}`);
-    expect(profile.employeeCode).toBe(employeeCode);
+    // a tag, never the code (23 October 2026: "in developer view use **** instead of IDs")
+    expect(profile.fullNameEn).toMatch(TAGGED);
+    expect(profile.fullNameAr).toBe(`موظف ${tagIn(profile.fullNameEn)}`);
+    expect(profile.employeeCode).toBe(HIDDEN);
+    expect(codeLeaks(profile, codes())).toEqual([]);
     expect(leaks(profile)).toEqual([]);
     expect(personalLeaks(profile, Object.values(emails))).toEqual([]);
     const identity = (await as('developer').get(`/employees/${employeeId}/identity`).expect(200)).body;
@@ -379,6 +442,19 @@ describe('The Developer role (e2e)', () => {
       `/onboarding/employees/${employeeId}`,
       `/audit?entityType=employment&entityId=${employmentId}`,
       `/audit?entityType=contract&entityId=${contractId}`,
+      // the home page's cards and Approvals (owner, 23 October 2026: "in developer view use **** instead of IDs", seen
+      // on Contracts Ending Soon): the contracts ending, the probations ending, the endings and raises waiting for the
+      // CEO, the raise requests and the details changes waiting, the second person's profile and contracts
+      '/contracts/expiring?within=90',
+      '/employments/probation-ending?within=30',
+      '/endings?status=pending_ceo',
+      '/raises/pending',
+      '/raise-requests?status=with_hr',
+      '/home-locations?status=waiting',
+      '/kpis/scorecards/waiting',
+      `/employees/${endedId}`,
+      `/employees/${endedId}/employments/${endedEmploymentId}/contracts`,
+      `/audit?entityType=employee&entityId=${endedId}`,
     ];
     // the company's setup pages: their departments and job titles are the company's (checked by the test below)
     const company = new Set(['/org-chart', '/departments', '/recruitment/vacancies', `/recruitment/vacancies/${vacancyId}`]);
@@ -389,14 +465,82 @@ describe('The Developer role (e2e)', () => {
       if (res.status === 200) answered.push(path);
       expect(personalLeaks(res.body, Object.values(emails)), path).toEqual([]);
       expect(leaks(res.body), path).toEqual([]);
+      // no person's code, the seeded people's or anyone's (23 October 2026)
+      expect(codeLeaks(res.body, codes()), path).toEqual([]);
       // the person's job title, department, grade, hire and contract dates, insurance office, registration and number
-      if (!company.has(path)) expect(jobLeaks(res.body, contractDates), path).toEqual([]);
+      if (!company.has(path)) expect(jobLeaks(res.body, allDates()), path).toEqual([]);
     }
     expect(answered.length, answered.join(' ')).toBeGreaterThan(paths.length * 0.6);
     // the person shows by their pseudonym in the list, the same as on their page
-    expect(JSON.stringify((await as('developer').get('/employees').expect(200)).body)).toContain(`Employee ${employeeCode}`);
+    const tagged = (await as('developer').get(`/employees/${employeeId}`).expect(200)).body.fullNameEn as string;
+    expect(JSON.stringify((await as('developer').get('/employees').expect(200)).body)).toContain(`"${tagged}"`);
     // and HR's list has them by name
     expect(JSON.stringify((await as('hr').get('/employees').expect(200)).body)).toContain(FULL_EN);
+  });
+
+  // The owner, 23 October 2026, as a developer, on the home page: "Employee EMP-0023 · EMP-0023", "Ends 11/03/2024",
+  // "Passed", "Became open-ended — Art. 88"; "in developer view use **** instead of IDs"
+  it('the home page’s cards: the contracts ending, the law’s warnings and the probations ending without a date or a code; HR’s with them', async () => {
+    const dev = {
+      expiring: (await as('developer').get('/contracts/expiring?within=90').expect(200)).body as Record<string, unknown>[],
+      warnings: (await as('developer').get('/contracts/law-warnings').expect(200)).body as Record<string, unknown>[],
+      probations: (await as('developer').get('/employments/probation-ending?within=30').expect(200)).body as Record<string, unknown>[],
+    };
+    const ending = dev.expiring.find((c) => c.employmentId === endedEmploymentId) as { number: string; endDate: unknown; nonRenewalNoticeBy: unknown; becameOpenEnded: boolean; employee: { id: string; employeeCode: string; fullNameEn: string } };
+    expect(ending).toMatchObject({ number: HIDDEN, endDate: null, nonRenewalNoticeBy: null, employee: { id: endedId, employeeCode: HIDDEN } });
+    expect(ending.employee.fullNameEn).toMatch(TAGGED);
+    // its status stays: open-ended by the law
+    expect(ending.becameOpenEnded).toBe(true);
+    const warning = dev.warnings.find((w) => w.employmentId === endedEmploymentId) as { kind: string; since: unknown; contractNumber: string; message: string; employee: { fullNameEn: string } };
+    expect(warning).toMatchObject({ kind: 'became_open_ended', since: null, contractNumber: HIDDEN });
+    expect(warning.message).toContain('Art. 88');
+    // the same person, the same tag, from card to card and on their profile
+    expect(warning.employee.fullNameEn).toBe(ending.employee.fullNameEn);
+    expect((await as('developer').get(`/employees/${endedId}`).expect(200)).body.fullNameEn).toBe(ending.employee.fullNameEn);
+    for (const rows of Object.values(dev)) {
+      expect(codeLeaks(rows, codes())).toEqual([]);
+      expect(jobLeaks(rows, allDates())).toEqual([]);
+    }
+    // a probation ending's date (the second person's, past and not confirmed): hidden
+    for (const p of dev.probations) expect(p.probationEnd).toBeNull();
+
+    // HR: the dates and the codes
+    const hrExpiring = (await as('hr').get('/contracts/expiring?within=90').expect(200)).body as { employmentId: string; number: string; endDate: string; employee: { employeeCode: string; fullNameEn: string } }[];
+    expect(hrExpiring.find((c) => c.employmentId === endedEmploymentId)).toMatchObject({ number: endedNumber, endDate: endedDates[1], employee: { employeeCode: endedCode, fullNameEn: ENDED_EN } });
+    const hrWarning = ((await as('hr').get('/contracts/law-warnings').expect(200)).body as { employmentId: string; since: string; message: string }[]).find((w) => w.employmentId === endedEmploymentId);
+    expect(hrWarning?.since).toBe(endedDates[1]);
+    expect(hrWarning?.message).toContain(endedNumber);
+  });
+
+  it('tags: the same on every page, never the code; HR sees the codes', async () => {
+    const profile = (await as('developer').get(`/employees/${employeeId}`).expect(200)).body;
+    const name = profile.fullNameEn as string;
+    expect(name).toMatch(TAGGED);
+    // never the code's own number
+    expect(tagIn(name)).not.toBe(employeeCode.replace(/\D/g, ''));
+    const list = (await as('developer').get('/employees').expect(200)).body as { id: string; fullNameEn: string; employeeCode: string }[];
+    expect(list.find((e) => e.id === employeeId)).toMatchObject({ fullNameEn: name, employeeCode: HIDDEN });
+    const run = (await as('developer').get(`/payroll/runs/${runId}`).expect(200)).body as { lines: { employeeId: string; name: string; employeeCode: string }[] };
+    expect(run.lines.find((l) => l.employeeId === employeeId)).toMatchObject({ name, employeeCode: HIDDEN });
+    // two people, two tags
+    expect((await as('developer').get(`/employees/${endedId}`).expect(200)).body.fullNameEn).not.toBe(name);
+    // the offer: "Candidate" and a tag, on its page and in the list
+    const offer = (await as('developer').get(`/offers/${offerId}`).expect(200)).body;
+    expect(offer.fullNameEn).toMatch(/^Candidate [2-9A-HJ-NP-Z]{4,6}$/);
+    expect(offer.number).toBe(HIDDEN);
+    expect(JSON.stringify((await as('developer').get('/offers').expect(200)).body)).toContain(`"${offer.fullNameEn}"`);
+    // the candidate and their general CV: one person, one tag
+    const candidate = (await as('developer').get(`/recruitment/candidates/${candidateId}`).expect(200)).body;
+    const generalCv = (await as('developer').get(`/recruitment/general-cvs/${generalCvId}`).expect(200)).body;
+    expect(candidate.fullName).toMatch(/^Candidate [2-9A-HJ-NP-Z]{4,6}$/);
+    expect(generalCv.fullName).toBe(`Applicant ${tagIn(candidate.fullName)}`);
+    expect(generalCv.number).toBe(HIDDEN);
+    expect(codeLeaks([profile, list, run, offer, candidate, generalCv], codes())).toEqual([]);
+    // HR: the real codes
+    expect((await as('hr').get(`/employees/${employeeId}`).expect(200)).body.employeeCode).toBe(employeeCode);
+    expect((await as('hr').get(`/offers/${offerId}`).expect(200)).body.number).toBe(offerNumber);
+    expect((await as('hr').get(`/recruitment/candidates/${candidateId}`).expect(200)).body.code).toBe(candidateCode);
+    expect((await as('hr').get(`/recruitment/general-cvs/${generalCvId}`).expect(200)).body.number).toBe(generalCvNumber);
   });
 
   // 22 October 2026: "why is the employment data can be viewed by developer access" → "Hide per-person details", "and the
@@ -464,7 +608,8 @@ describe('The Developer role (e2e)', () => {
   });
 
   it('a filter by department doesn’t narrow a developer’s list of people; HR’s it does', async () => {
-    const lists = (body: unknown) => JSON.stringify(body).includes(employeeCode);
+    // by the person's id: a developer's lists carry no code (23 October 2026)
+    const lists = (body: unknown) => JSON.stringify(body).includes(employeeId);
     expect(lists((await as('hr').get('/attendance').expect(200)).body)).toBe(true);
     expect(lists((await as('hr').get(`/attendance?departmentId=${otherDepartmentId}`).expect(200)).body)).toBe(false);
     const dev = (await as('developer').get(`/attendance?departmentId=${otherDepartmentId}`).expect(200)).body;
@@ -490,19 +635,21 @@ describe('The Developer role (e2e)', () => {
   });
 
   // candidate profiles (22 October 2026: "how to make like a profile for each candidate …")
-  it('a candidate: "Candidate CAN-…", no name, email or mobile; found by the code only; nothing merged', async () => {
+  it('a candidate: "Candidate" and a tag, no name, code, email or mobile; found by no search; nothing merged', async () => {
     const profile = (await as('developer').get(`/recruitment/candidates/${candidateId}`).expect(200)).body;
-    expect(profile.code).toMatch(/^CAN-\d+$/);
-    expect(profile.fullName).toBe(`Candidate ${profile.code}`);
+    expect(profile.code).toBe(HIDDEN);
+    expect(profile.fullName).toMatch(/^Candidate [2-9A-HJ-NP-Z]{4,6}$/);
     const answers = JSON.stringify([
       profile,
       (await as('developer').get('/recruitment/candidates').expect(200)).body,
       (await as('developer').get('/recruitment/candidates/matches').expect(200)).body,
       (await as('developer').get(`/recruitment/general-cvs/${generalCvId}`).expect(200)).body,
     ]);
-    for (const v of [CANDIDATE_NAME, CANDIDATE_EMAIL, CANDIDATE_MOBILE, CANDIDATE_MOBILE.slice(3)]) expect(answers).not.toContain(v);
+    for (const v of [CANDIDATE_NAME, CANDIDATE_EMAIL, CANDIDATE_MOBILE, CANDIDATE_MOBILE.slice(3), candidateCode, generalCvNumber]) expect(answers).not.toContain(v);
     expect((await as('developer').get(`/recruitment/candidates?q=${encodeURIComponent(CANDIDATE_NAME)}`).expect(200)).body).toEqual([]);
-    expect(((await as('developer').get(`/recruitment/candidates?q=${profile.code}`).expect(200)).body as { id: string }[]).map((c) => c.id)).toEqual([candidateId]);
+    // nor by the code (23 October 2026: a code search would link a real code to its tag)
+    expect((await as('developer').get(`/recruitment/candidates?q=${candidateCode}`).expect(200)).body).toEqual([]);
+    expect(((await as('hr').get(`/recruitment/candidates?q=${candidateCode}`).expect(200)).body as { id: string }[]).map((c) => c.id)).toEqual([candidateId]);
     const merge = await as('developer').post(`/recruitment/candidates/${candidateId}/merge`, { otherId: candidateId });
     expect(merge.status).toBe(403);
     expect(merge.body.message).toBe(DEVELOPER_READ_ONLY);
@@ -510,14 +657,31 @@ describe('The Developer role (e2e)', () => {
     expect((await as('hr').get(`/recruitment/candidates/${candidateId}`).expect(200)).body.fullName).toBe(CANDIDATE_NAME);
   });
 
-  it('a search by name finds nothing for a developer; by a code it does; HR finds by name', async () => {
-    const byName = (await as('developer').get(`/offers?q=${encodeURIComponent(OFFER_NAME)}`).expect(200)).body;
-    expect(JSON.stringify(byName)).not.toContain(offerNumber);
-    const byCode = (await as('developer').get(`/offers?q=${encodeURIComponent(offerNumber)}`).expect(200)).body;
-    expect(JSON.stringify(byCode)).toContain(offerNumber);
-    expect(JSON.stringify(byCode)).toContain(`Candidate ${offerNumber}`);
-    expect(personalLeaks(byCode)).toEqual([]);
+  // 23 October 2026: "people search is off for developers"; assets are still found by their codes
+  it('a search for people finds nothing for a developer, by a name or a code; an asset’s code finds; HR finds by both', async () => {
+    const searches: [string, string][] = [
+      ['/offers', OFFER_NAME],
+      ['/offers', offerNumber],
+      ['/contracts', FULL_EN],
+      ['/contracts', employeeCode],
+      ['/contracts', contractNumber],
+      ['/recruitment/general-cvs', generalCvNumber],
+      ['/recruitment/general-cvs', CANDIDATE_NAME],
+      ['/assets', employeeCode],
+      ['/assets/custody/people', employeeCode],
+    ];
+    for (const [path, q] of searches) {
+      const res = await as('developer').get(`${path}?q=${encodeURIComponent(q)}`);
+      expect([200, 403], `${path}?q=${q}: ${res.status}`).toContain(res.status);
+      const text = JSON.stringify(res.body);
+      for (const id of [offerId, contractId, generalCvId, employeeId, assetCode]) expect(text, `${path}?q=${q}`).not.toContain(id);
+    }
+    // an asset by its code, as before
+    expect(JSON.stringify((await as('developer').get(`/assets?q=${encodeURIComponent(assetCode)}`).expect(200)).body)).toContain(assetCode);
+    // HR: by a name and by a code
     expect(JSON.stringify((await as('hr').get(`/offers?q=${encodeURIComponent(OFFER_NAME)}`).expect(200)).body)).toContain(offerNumber);
+    expect(JSON.stringify((await as('hr').get(`/offers?q=${encodeURIComponent(offerNumber)}`).expect(200)).body)).toContain(offerNumber);
+    expect(JSON.stringify((await as('hr').get(`/contracts?q=${encodeURIComponent(employeeCode)}`).expect(200)).body)).toContain(contractNumber);
   });
 
   it('an employee’s photo: refused to a developer', async () => {

@@ -3,6 +3,8 @@ import { CurrentUser, NotForDevelopers, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { XLSX_TYPE } from '../payroll/bank-files.js';
 import { attachment } from '../templates/template-file.js';
+import { AttendanceHistoryQueryDto } from './attendance-history.dto.js';
+import { AttendanceHistoryService } from './attendance-history.service.js';
 import { AttendanceImportsService } from './attendance-imports.service.js';
 import { AttendanceImportsQueryDto, AttendanceListQueryDto, AttendanceMonthQueryDto, AttendanceSummaryQueryDto } from './attendance.dto.js';
 import { AttendanceService } from './attendance.service.js';
@@ -18,6 +20,7 @@ export class AttendanceController {
   constructor(
     private readonly attendance: AttendanceService,
     private readonly imports: AttendanceImportsService,
+    private readonly historyOf: AttendanceHistoryService,
   ) {}
 
   /** ?month=YYYY-MM&departmentId=&employeeId=&only=absences|short_hours|missing_check_outs|remote|zoho_leave: everyone's, or the caller's team. */
@@ -58,6 +61,26 @@ export class AttendanceController {
   @Header('Cache-Control', 'private, no-store')
   history(@Query() query: AttendanceImportsQueryDto) {
     return this.imports.history(query.month);
+  }
+
+  /**
+   * One person's attendance history (owner, 23 October 2026: "Attendance history on the profile"; "HR, CEO and Finance
+   * only", the Super Admin too; a C-level person's the CEO's and the Super Admin's): ?period=&from=&to=&only=&page=. The
+   * service answers anyone else 404.
+   */
+  @Get('employees/:employeeId/history')
+  @Header('Cache-Control', 'private, no-store')
+  personHistory(@Param('employeeId', ParseUUIDPipe) employeeId: string, @Query() query: AttendanceHistoryQueryDto, @CurrentUser() user: SessionUser) {
+    return this.historyOf.history(employeeId, query, user);
+  }
+
+  /** The history as an Excel workbook: "Attendance history EMP-0182 2026-01-01 to 2026-10-23.xlsx"; audited. */
+  @NotForDevelopers()
+  @Get('employees/:employeeId/history.xlsx')
+  @Header('Cache-Control', 'private, no-store')
+  async personHistoryWorkbook(@Param('employeeId', ParseUUIDPipe) employeeId: string, @Query() query: AttendanceHistoryQueryDto, @CurrentUser() user: SessionUser): Promise<StreamableFile> {
+    const file = await this.historyOf.workbook(employeeId, query, user);
+    return new StreamableFile(file.data, { type: XLSX_TYPE, length: file.data.length, disposition: attachment(file.fileName) });
   }
 
   /** One person's month (?month=). */

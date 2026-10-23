@@ -18,6 +18,8 @@ import { RaiseCard } from './raise-card';
 import { allowancesLabel, daysLabel, formatEgp, hourlyNetTerms, hourlyTerms, payLabel } from './salary';
 import { stageLabel, trainingSummary } from './trainee-stages';
 import { CONVERSION_SIGN_HINT, contractActions, convertHref, draftKind, trainingReminder } from './training';
+import { shownCode, withCodeInBrackets } from '@/lib/hidden';
+import { Hidden } from '@/components/hidden';
 
 // The Contract section of the Employment tab's Details, right below the current employment (the Contracts tab was
 // merged into Employment, owner's request, 16 October 2026): the signed contract (its number, term, probation, signing
@@ -99,7 +101,8 @@ function contractFields(c: Contract, unpaid: boolean): GridField[] {
   // social insurance"): a signed contract always has a start, so none says it was hidden; each shows Hidden
   const hidden = !c.startDate;
   const fields: GridField[] = [
-    { key: 'contract-number', label: 'Contract number', value: c.number, note: `Version ${c.version}` },
+    // its number hidden from a developer (owner, 23 October 2026: "in developer view use **** instead of IDs")
+    { key: 'contract-number', label: 'Contract number', value: shownCode(c.number) ?? <Hidden />, note: `Version ${c.version}` },
     stages
       ? { key: 'contract-form', label: 'Contract length', value: 'Training agreement', note: [trainingSummary(stages), agreementNote(c)].filter(Boolean).join('. ') }
       : unpaid
@@ -292,7 +295,7 @@ function DraftCard({
   today: string;
   unpaid: boolean;
 }) {
-  const name = `version ${d.version} (${d.number})`;
+  const name = withCodeInBrackets(`version ${d.version}`, d.number);
   const allowances = d.allowances ?? [];
   const what = [
     d.traineeStages?.length ? `Training agreement, ${trainingSummary(d.traineeStages)}` : contractLengthText(d),
@@ -314,7 +317,7 @@ function DraftCard({
           {draftKind(d)}
         </h3>
         <ContractStatusBadge status="draft" />
-        <span className="text-xs text-muted">{d.number}</span>
+        {shownCode(d.number) && <span className="text-xs text-muted">{d.number}</span>}
       </div>
       <p className="text-sm">{what}</p>
       {d.note && <p className="text-sm text-muted">{d.note}</p>}
@@ -356,7 +359,7 @@ function DraftCard({
  * copy of its documents is uploaded.
  */
 function UndoSigning({ contract: c, draft, endingInProgress }: { contract: Contract; draft: Contract | undefined; endingInProgress: boolean }) {
-  const name = `version ${c.version} (${c.number})`;
+  const name = withCodeInBrackets(`version ${c.version}`, c.number);
   const blocked = draft
     ? `Version ${draft.version} is drafted after it: delete that draft first.`
     : endingInProgress
@@ -512,7 +515,7 @@ export async function ContractSection({
         </div>
       ) : previous ? (
         <p className="rounded-lg border border-dashed border-line px-4 py-4 text-sm text-muted">
-          No contract in force: version {previous.version} ({previous.number}) is {CONTRACT_STATUS_LABELS[previous.status].toLowerCase()}
+          No contract in force: {withCodeInBrackets(`version ${previous.version}`, previous.number)} is {CONTRACT_STATUS_LABELS[previous.status].toLowerCase()}
           {previous.endDate && `, with its end on ${formatDate(previous.endDate)}`}.
         </p>
       ) : (

@@ -13,6 +13,7 @@ import { loadHoldings } from '../../custody-data';
 import { CustodyTable, HeldTable } from '../../custody-ui';
 import { assetsCaller, assetsNotLoaded } from '../../data';
 import { Empty, Loading, NoAccess } from '../../ui';
+import { joinShown } from '@/lib/hidden';
 
 // A person's holdings (Assets step 3; the spec's Employee holdings: "Current holdings, damaged/missing history, custody
 // history, actions: hand over, print custody statement"): what they hold now (since when, until when, overdue), the
@@ -52,7 +53,7 @@ async function Person({ params }: { params: PageProps<'/assets/holders/[employee
     <>
       <div className="space-y-1">
         <h1 className="text-2xl font-semibold">{titleCase(h.employee.fullNameEn)}</h1>
-        <p className="text-sm text-muted">{[h.employee.employeeCode, h.employee.jobTitle, h.employee.department].filter(Boolean).join(' · ')}</p>
+        <p className="text-sm text-muted">{joinShown([h.employee.employeeCode, h.employee.jobTitle, h.employee.department])}</p>
       </div>
       <div className="flex flex-wrap gap-2">
         {h.can.handOver && (

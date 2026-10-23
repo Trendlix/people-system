@@ -7,8 +7,9 @@ import type {
   GeneratedDocumentStatus,
   MissingDocumentDetail,
 } from '../../../../../lib/types';
-import { SIGNER_LABELS, templateHref } from '../../../templates/wording';
+import { SIGNER_LABELS, templateHref } from '../../../organization/templates/wording';
 import { askedTab, contractHref, profileHref } from '../../tab-list';
+import { shownCode } from '../../../../../lib/hidden';
 
 // How the profile's Employment tab words the documents generated from templates (its sections, a document's progress,
 // where a template stands) and where each missing detail is filled in; the Social Insurance tab words its forms the
@@ -108,10 +109,11 @@ export function nextSteps(status: GeneratedDocumentStatus): { print: boolean; up
 
 // ---------- an item: what it is, where its template stands ----------
 
-/** "Contract CON-2026-0001, v2", for a contract's documents; null for the others. */
+/** "Contract CON-2026-0001, v2", for a contract's documents ("Contract, v2" when its number is hidden); null for the others. */
 export function itemContext(item: Pick<DocumentItem, 'contractNumber' | 'contractVersion'>): string | null {
   if (!item.contractNumber) return null;
-  return `Contract ${item.contractNumber}${item.contractVersion ? `, v${item.contractVersion}` : ''}`;
+  const number = shownCode(item.contractNumber);
+  return `Contract${number ? ` ${number}` : ''}${item.contractVersion ? `, v${item.contractVersion}` : ''}`;
 }
 
 /** Where the item's template stands, in words: none, only a draft, or the version in use. */
@@ -155,7 +157,8 @@ export function contractGroups(items: readonly DocumentItem[]): ContractGroup[] 
 
 /** "Contract CON-2026-0001 · Version 2", a group's heading. */
 export function contractGroupTitle(group: Pick<ContractGroup, 'contractNumber' | 'contractVersion'>): string {
-  const number = group.contractNumber ? `Contract ${group.contractNumber}` : 'Contract';
+  // a developer's hidden number (23 October 2026): "Contract · Version 2"
+  const number = shownCode(group.contractNumber) ? `Contract ${group.contractNumber}` : 'Contract';
   return group.contractVersion ? `${number} · Version ${group.contractVersion}` : number;
 }
 

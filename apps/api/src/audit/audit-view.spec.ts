@@ -199,7 +199,7 @@ describe('where the record is', () => {
     expect(linkOf(user, withUser, null, ceo)).toBeNull();
     const template = row({ entityType: 'template_version', entityId: GONE });
     const withTemplate = refs({ records: new Map([[recordKey('template_version', GONE), { slot: 'contract_full_time' }]]) });
-    expect(linkOf(template, withTemplate, null, superAdmin)?.href).toBe('/templates/contract_full_time');
+    expect(linkOf(template, withTemplate, null, superAdmin)?.href).toBe('/organization/templates/contract_full_time');
     expect(linkOf(template, withTemplate, null, ceo)).toBeNull();
     // the organisation's pages, for both
     expect(linkOf(row({ entityType: 'department', entityId: DEPT }), refs(), null, superAdmin)?.href).toBe(`/organization/departments/${DEPT}`);

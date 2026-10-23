@@ -1,0 +1,309 @@
+'use client';
+
+import Link from 'next/link';
+import { startTransition, useActionState, useState } from 'react';
+import { LEAVE_DECISION_LABELS, LEAVE_DECISIONS, leaveDecisionNeedsComment, type LeaveDecision, type LeaveStage } from '@trendlix/shared';
+import { DateInput, TimeInput } from '@/components/date-time-inputs';
+import { FormErrors, useFieldIds, valueOf } from '@/components/form';
+import { SurfaceField } from '@/components/surface';
+import { formatTime } from '@/lib/format';
+import type { OdForm } from '@/lib/od-types';
+import type { FormState } from '@/lib/types';
+import { choice } from '../../employees/[id]/contracts/pay-fields';
+import { leaveCommentReaders } from '../../leave/list';
+import { OD_PLACE_MAX, OD_REASON_MAX, odAfterNote, odDecisionButton, odFormProblems, odReadyText, type TypedOd } from './od';
+
+// The forms of official duty (owner, 23 October 2026: "Official duty (OD) requests"; asked, "Manager, then HR", "Ahead
+// or up to 3 days after", "Check in from anywhere"): the employee's request (the first day and, for several days in a
+// row, the last; a full day or part of one with its times, one day only; where and why), with the timing and the hours
+// against their shift checked live and Send staying off while any is left; what only the API knows (a holiday, a rest
+// day, leave, a work from home day or another official duty on the same days) it refuses when sent, shown here with
+// what was typed; a first day gone by is marked "requested after". An approver's decision (Approve, or Reject with a
+// comment); the employee's Cancel while it is being decided; HR's Cancel of an approved one, with a comment.
+
+type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
+
+const optional = <span className="font-normal text-muted">(optional)</span>;
+
+function Problems({ problems, verb, ready }: { problems: readonly string[]; verb: string; ready: string }) {
+  return (
+    <div role="status" aria-live="polite">
+      {problems.length ? (
+        <div className="rounded-lg border border-line bg-canvas px-4 py-3 text-sm">
+          <p className="font-medium">Before you can {verb} it:</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted">
+            {problems.map((p) => (
+              <li key={p}>{p}</li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <p className="rounded-lg bg-ok-soft px-4 py-3 text-sm text-ok">{ready}</p>
+      )}
+    </div>
+  );
+}
+
+/** The employee's request: the days, full or part of a day, where and why, with the checks live. */
+export function NewOdForm({ action, form, cancelHref }: { action: Action; form: OdForm; cancelHref: string }) {
+  const [state, formAction, sending] = useActionState(action, {});
+  const fid = useFieldIds();
+  const [typed, setTyped] = useState<TypedOd>(() => ({
+    startDate: valueOf(state, 'startDate'),
+    endDate: valueOf(state, 'endDate'),
+    span: valueOf(state, 'span') || 'full',
+    fromTime: valueOf(state, 'fromTime'),
+    toTime: valueOf(state, 'toTime'),
+    place: valueOf(state, 'place'),
+    reason: valueOf(state, 'reason'),
+  }));
+  const part = typed.span === 'part';
+  const problems = odFormProblems(typed, form);
+  const after = odAfterNote(typed, form);
+  const blocked = problems.length > 0 || sending;
+
+  function send(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (blocked) return;
+    const fd = new FormData(e.currentTarget);
+    startTransition(() => formAction(fd));
+  }
+
+  return (
+    <form
+      onSubmit={send}
+      onChange={(e) => {
+        // the days and times typed, for the checks (those fields stay uncontrolled)
+        const t = e.target;
+        if (t instanceof HTMLInputElement && ['startDate', 'endDate', 'fromTime', 'toTime'].includes(t.name)) setTyped((x) => ({ ...x, [t.name]: t.value }));
+      }}
+      aria-label="New official duty request"
+      className="card space-y-5 p-5"
+    >
+      <FormErrors errors={state.errors} />
+      <SurfaceField />
+      {form.shift && (
+        <p className="rounded-lg bg-canvas px-4 py-3 text-sm">
+          Your shift is {formatTime(form.shift.startTime)} to {formatTime(form.shift.endTime)}: part of a day is within it. Asked ahead, today or up to 3 days after.
+        </p>
+      )}
+      <fieldset>
+        <legend className="label">How long</legend>
+        <div className="flex flex-wrap gap-2">
+          {[
+            { value: 'full', label: 'Full days' },
+            { value: 'part', label: 'Part of a day' },
+          ].map((o) => (
+            <label key={o.value} className={choice}>
+              <input type="radio" name="span" value={o.value} checked={typed.span === o.value} onChange={() => setTyped((x) => ({ ...x, span: o.value }))} className="size-4 accent-accent" />
+              {o.label}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <div className="grid gap-5 sm:grid-cols-2">
+        <div>
+          <label htmlFor={fid('startDate')} className="label">
+            {part ? 'Day' : 'First day'}
+          </label>
+          <DateInput id={fid('startDate')} name="startDate" required defaultValue={typed.startDate} aria-describedby={fid('startDate-hint')} />
+          <p id={fid('startDate-hint')} className="hint">
+            A working day of your shift: ahead, today, or up to 3 days gone by.
+          </p>
+        </div>
+        {part ? (
+          <>
+            <div>
+              <label htmlFor={fid('fromTime')} className="label">
+                From
+              </label>
+              <TimeInput id={fid('fromTime')} name="fromTime" required defaultValue={typed.fromTime} aria-describedby={fid('times-hint')} />
+            </div>
+            <div>
+              <label htmlFor={fid('toTime')} className="label">
+                To
+              </label>
+              <TimeInput id={fid('toTime')} name="toTime" required defaultValue={typed.toTime} aria-describedby={fid('times-hint')} />
+            </div>
+            <p id={fid('times-hint')} className="hint -mt-3 sm:col-span-2">
+              Within your shift. Within these hours you check in from where you are; outside them, as on any day.
+            </p>
+          </>
+        ) : (
+          <div>
+            <label htmlFor={fid('endDate')} className="label">
+              Last day {optional}
+            </label>
+            <DateInput id={fid('endDate')} name="endDate" defaultValue={typed.endDate} aria-describedby={fid('endDate-hint')} />
+            <p id={fid('endDate-hint')} className="hint">
+              For several days in a row, up to 31. Its official holidays and rest days aren&apos;t duty days.
+            </p>
+          </div>
+        )}
+        <div className="sm:col-span-2">
+          <label htmlFor={fid('place')} className="label">
+            Where
+          </label>
+          <input
+            id={fid('place')}
+            name="place"
+            required
+            maxLength={OD_PLACE_MAX}
+            value={typed.place}
+            onChange={(e) => setTyped((x) => ({ ...x, place: e.target.value }))}
+            aria-describedby={fid('place-hint')}
+            className="input"
+          />
+          <p id={fid('place-hint')} className="hint">E.g. the client’s office in New Cairo, or the shoot’s location. Up to {OD_PLACE_MAX} characters.</p>
+        </div>
+        <div className="sm:col-span-2">
+          <label htmlFor={fid('reason')} className="label">
+            Reason
+          </label>
+          <textarea
+            id={fid('reason')}
+            name="reason"
+            rows={3}
+            required
+            maxLength={OD_REASON_MAX}
+            value={typed.reason}
+            onChange={(e) => setTyped((x) => ({ ...x, reason: e.target.value }))}
+            aria-describedby={fid('reason-hint')}
+            className="input"
+          />
+          <p id={fid('reason-hint')} className="hint">What the duty is for. Your direct manager and HR read it. Up to {OD_REASON_MAX} characters.</p>
+        </div>
+      </div>
+      {after && <p className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">{after}</p>}
+      <Problems problems={problems} verb="send" ready={odReadyText(typed, form.toCeo)} />
+      <div className="flex flex-wrap gap-3">
+        <button type="submit" disabled={blocked} className="btn btn-primary disabled:cursor-not-allowed disabled:opacity-60">
+          {sending ? 'Sending…' : 'Send request'}
+        </button>
+        <Link href={cancelHref} className={`btn btn-secondary ${sending ? 'pointer-events-none opacity-60' : ''}`} aria-disabled={sending || undefined}>
+          Cancel
+        </Link>
+      </div>
+    </form>
+  );
+}
+
+/** An approver's decision: Approve (a comment optional), or Reject with a comment; rejecting asks first. */
+export function OdDecisionForm({ action, stage, name, confidential = false }: { action: Action; stage: LeaveStage; name: string; confidential?: boolean }) {
+  const [state, formAction, pending] = useActionState(action, {});
+  const fid = useFieldIds();
+  const [decision, setDecision] = useState<LeaveDecision | ''>(() => {
+    const kept = valueOf(state, 'decision');
+    return (LEAVE_DECISIONS as readonly string[]).includes(kept) ? (kept as LeaveDecision) : '';
+  });
+  const [comment, setComment] = useState(() => valueOf(state, 'comment'));
+  const needsComment = decision !== '' && leaveDecisionNeedsComment(decision);
+  const ready = decision !== '' && (!needsComment || comment.trim() !== '');
+  const button = odDecisionButton(decision, stage, confidential);
+  return (
+    <form
+      action={formAction}
+      onSubmit={(e) => {
+        if (decision === 'reject' && !window.confirm(`Reject the official duty request by ${name}? Your comment shows on it.`)) e.preventDefault();
+      }}
+      aria-label={`Decide on the official duty request by ${name}`}
+      className="space-y-4"
+    >
+      <FormErrors errors={state.errors} />
+      <SurfaceField />
+      <fieldset>
+        <legend className="label">Decision</legend>
+        <div className="flex flex-wrap gap-2">
+          {LEAVE_DECISIONS.map((d) => (
+            <label key={d} className={choice}>
+              <input type="radio" name="decision" value={d} checked={decision === d} onChange={() => setDecision(d)} className="size-4 accent-accent" />
+              {LEAVE_DECISION_LABELS[d]}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <div>
+        <label htmlFor={fid('comment')} className="label">
+          Comment {decision !== 'reject' && optional}
+        </label>
+        <textarea
+          id={fid('comment')}
+          name="comment"
+          rows={3}
+          maxLength={1000}
+          required={needsComment}
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          aria-describedby={fid('comment-hint')}
+          className="input"
+        />
+        <p id={fid('comment-hint')} className="hint">
+          {decision === 'reject' ? 'Why it is rejected. ' : ''}
+          {leaveCommentReaders(confidential)}
+        </p>
+      </div>
+      <button type="submit" disabled={pending || !ready} className={`btn ${decision === 'reject' ? 'btn-danger' : 'btn-primary'} disabled:cursor-not-allowed disabled:opacity-60`}>
+        {pending ? button.busy : button.label}
+      </button>
+    </form>
+  );
+}
+
+/** The employee's Cancel while it is being decided: asks first; it stays on their list, cancelled. */
+export function CancelOdForm({ action, what }: { action: () => Promise<FormState>; what: string }) {
+  const [state, formAction, pending] = useActionState(action, {});
+  return (
+    <form
+      action={formAction}
+      onSubmit={(e) => {
+        if (!window.confirm(`Cancel your ${what}? It stays on your list, cancelled; ask again with a new request.`)) e.preventDefault();
+      }}
+      className="space-y-3"
+    >
+      <FormErrors errors={state.errors} />
+      <SurfaceField />
+      <button type="submit" disabled={pending} className="btn btn-secondary">
+        {pending ? 'Cancelling…' : 'Cancel this request'}
+      </button>
+    </form>
+  );
+}
+
+/** HR's Cancel of an approved official duty, with the comment the employee reads. */
+export function HrCancelOdForm({ action, what }: { action: Action; what: string }) {
+  const [state, formAction, pending] = useActionState(action, {});
+  const fid = useFieldIds();
+  const [comment, setComment] = useState(() => valueOf(state, 'comment'));
+  return (
+    <form
+      action={formAction}
+      onSubmit={(e) => {
+        if (!window.confirm(`Cancel the approved ${what}? Its days are expected as usual again; your comment shows on it.`)) e.preventDefault();
+      }}
+      className="space-y-3"
+    >
+      <FormErrors errors={state.errors} />
+      <SurfaceField />
+      <div>
+        <label htmlFor={fid('comment')} className="label">
+          Why it is cancelled
+        </label>
+        <textarea
+          id={fid('comment')}
+          name="comment"
+          rows={2}
+          maxLength={1000}
+          required
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
+          aria-describedby={fid('comment-hint')}
+          className="input"
+        />
+        <p id={fid('comment-hint')} className="hint">E.g. the client visit was called off. The employee sees it.</p>
+      </div>
+      <button type="submit" disabled={pending || comment.trim() === ''} className="btn btn-danger">
+        {pending ? 'Cancelling…' : 'Cancel the official duty'}
+      </button>
+    </form>
+  );
+}

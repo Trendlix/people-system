@@ -18,6 +18,7 @@ const row = (more: Partial<PunchRow> = {}): PunchRow => ({
   officeNetwork: null,
   latitude: decimal(30.0601),
   longitude: decimal(31.3465),
+  odRequestId: null,
   ...more,
 });
 

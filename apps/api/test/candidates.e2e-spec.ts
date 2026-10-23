@@ -9,6 +9,7 @@ import {
   careersIpToken,
   DEVELOPER_READ_ONLY,
   GENERAL_CV_IP_TOKEN,
+  HIDDEN,
   type ApplicationListItem,
   type ApplicationView,
   type CandidateListItem,
@@ -581,22 +582,33 @@ describe('Candidate profiles (e2e)', () => {
       await get('hr', '/recruitment/candidates/00000000-0000-4000-8000-000000000000').expect(404);
     });
 
-    it('the developer sees "Candidate CAN-…" only: no name, email or mobile; a search by name finds nothing, by the code it does', async () => {
+    // since 23 October 2026 ("in developer view use **** instead of IDs"): a tag, the code "••••", no search finds them
+    it('the developer sees "Candidate" and a tag only: no name, code, email or mobile; no search finds them, by a name or the code', async () => {
       const id = await candidateOf(A, 'mona');
+      const code = ((await get('hr', `/recruitment/candidates/${id}`).expect(200)).body as CandidateView).code;
       const list = (await get('developer', '/recruitment/candidates').expect(200)).body as CandidateListItem[];
       expect(list.length).toBeGreaterThan(0);
-      for (const c of list) expect(c.fullName).toMatch(/^Candidate CAN-\d+$/);
+      for (const c of list) {
+        expect(c.fullName).toMatch(/^Candidate [2-9A-HJ-NP-Z]{4,6}$/);
+        expect(c.code).toBe(HIDDEN);
+      }
       const c = (await get('developer', `/recruitment/candidates/${id}`).expect(200)).body as CandidateView;
-      expect(c.fullName).toBe(`Candidate ${c.code}`);
+      expect(c.code).toBe(HIDDEN);
+      expect(c.fullName).toBe(list.find((x) => x.id === id)!.fullName);
+      expect(JSON.stringify([list, c])).not.toContain(code);
       const text = JSON.stringify([list, c, (await get('developer', '/recruitment/candidates/matches').expect(200)).body]);
       expect(text).not.toContain(`Cand ${RUN}`);
       expect(text).not.toContain(email('mona'));
       expect(text).not.toContain(mobile('mona').slice(3));
       const app1 = (await get('developer', `/recruitment/applications/${(await appOf(A, 'mona')).id}`).expect(200)).body as ApplicationView;
-      expect(app1.candidateProfile?.fullName).toBe(`Candidate ${c.code}`);
+      expect(app1.candidateProfile?.fullName).toBe(c.fullName);
+      // the application is the candidate's: the same tag
+      expect(app1.fullName).toBe(`Applicant ${c.fullName.split(' ')[1]}`);
       expect(JSON.stringify(app1)).not.toContain(`Cand ${RUN}`);
+      expect(JSON.stringify(app1)).not.toContain(code);
       expect((await get('developer', `/recruitment/candidates?q=${encodeURIComponent(nameOf('mona'))}`).expect(200)).body).toEqual([]);
-      expect(((await get('developer', `/recruitment/candidates?q=${encodeURIComponent(c.code)}`).expect(200)).body as CandidateListItem[]).map((x) => x.id)).toEqual([id]);
+      expect((await get('developer', `/recruitment/candidates?q=${encodeURIComponent(code)}`).expect(200)).body).toEqual([]);
+      expect(((await get('hr', `/recruitment/candidates?q=${encodeURIComponent(code)}`).expect(200)).body as CandidateListItem[]).map((x) => x.id)).toEqual([id]);
       const refused = await post('developer', `/recruitment/candidates/${id}/merge`, { otherId: await candidateOf(A, 'karim') });
       expect(refused.status).toBe(403);
       expect(refused.body.message).toBe(DEVELOPER_READ_ONLY);

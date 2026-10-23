@@ -1,5 +1,5 @@
 import { APPROVER_ROLE_LABELS, approverInCharge, isApproverRole, leadTitle, placeLeads, suggestedManager, type ApproverRole } from '@trendlix/shared';
-import { HIDDEN_LABEL, isHidden, personCutOff } from './hidden';
+import { HIDDEN_LABEL, isHidden, personCutOff, withCode } from './hidden';
 import type { Department, EmployeeSummary, Employment, LeadPerson, RequestApprover } from './types';
 
 // Department heads and team leads (owner, 19 October 2026: "i want to add department lead person, the person in
@@ -55,7 +55,7 @@ export interface LeadChoice {
 }
 
 /** A choice as the picker lists it: "Sara Ali · EMP-0012". */
-export const leadChoiceLabel = (c: LeadChoice) => (c.employeeCode ? `${c.fullNameEn} · ${c.employeeCode}` : c.fullNameEn);
+export const leadChoiceLabel = (c: LeadChoice) => withCode(c.fullNameEn, c.employeeCode);
 
 // ---------- where someone works ----------
 

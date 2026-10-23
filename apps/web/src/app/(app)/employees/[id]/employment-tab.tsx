@@ -6,7 +6,7 @@ import { Shown } from '@/components/hidden';
 import { DECIDES_NOTE, leadRows } from '@/lib/department-leads';
 import { departmentName } from '@/lib/departments';
 import { formatDate } from '@/lib/format';
-import { employmentHidden, isHidden, labelOf } from '@/lib/hidden';
+import { employmentHidden, isHidden, joinShown, labelOf } from '@/lib/hidden';
 import { canDelete } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import type { Contract, EmployeeProfile, Employment, Grade, SessionUser } from '@/lib/types';
@@ -49,7 +49,7 @@ import { RaiseRequestsSection } from './raise-requests/raise-requests-section';
 import { hasPlans } from './advances/advances';
 import { AdvancesLoading, AdvancesSection, loadDeductionPlans } from './advances/advances-section';
 import { SalaryHistoryLoading, SalaryHistorySection } from './salary-history/salary-history-section';
-import { seesTemplates } from '../../templates/wording';
+import { seesTemplates } from '../../organization/templates/wording';
 
 // The Employment tab: everything about the job, in one place (owner, 16 October 2026: "there is no point of adding
 // employment then adding contract and no active employment without a contract, its like a loop for me"; the Contracts
@@ -216,7 +216,8 @@ function described(e: Employment): string {
 function ContractLine({ contract: c, status = true }: { contract: Contract; status?: boolean }) {
   return (
     <>
-      {c.number}
+      {/* its number, hidden from a developer (23 October 2026): Hidden */}
+      <Shown text={c.number} />
       <span className="block text-xs text-muted tabular-nums">
         Version {c.version} · {termLabel(c)}
         {status && ` · ${CONTRACT_STATUS_LABELS[c.status]}`}
@@ -350,10 +351,7 @@ function DirectReports({ profile: p }: { profile: EmployeeProfile }) {
               <Link href={`/employees/${r.id}`} className="text-sm font-semibold">
                 {r.fullNameEn}
               </Link>
-              <p className="text-xs text-muted">
-                {r.employeeCode}
-                {r.jobTitle && !isHidden(r.jobTitle.titleEn) && ` · ${r.jobTitle.titleEn}`}
-              </p>
+              <p className="text-xs text-muted">{joinShown([r.employeeCode, r.jobTitle?.titleEn])}</p>
             </div>
             <StandingBadge standing={reportStanding(r)} />
           </li>

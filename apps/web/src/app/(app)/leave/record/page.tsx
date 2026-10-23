@@ -16,6 +16,7 @@ import { NewLeaveForm } from '../leave-forms';
 import { recordsLeave } from '../list';
 import { offeredTypes, personFacts } from '../request';
 import { LeaveEmployeePicker } from './employee-picker';
+import { withCode } from '@/lib/hidden';
 
 // Record leave, under Requests → Leave Requests (owner, 18 October 2026: HR records leave on an employee's behalf, e.g.
 // sick leave reported afterwards): HR only. First who it is for, among everyone employed now (?employee=<id>, also from
@@ -47,7 +48,7 @@ async function Record({ searchParams }: { searchParams: PageProps<'/leave/record
   const employed = actionablePeople(people)
     .filter((p) => p.employment)
     .sort((a, b) => a.fullNameEn.localeCompare(b.fullNameEn, 'en'))
-    .map((p) => ({ id: p.id, label: `${p.fullNameEn} · ${p.employeeCode}` }));
+    .map((p) => ({ id: p.id, label: withCode(p.fullNameEn, p.employeeCode) }));
   const asked = readEmployee(query);
   const chosen = asked && employed.some((p) => p.id === asked) ? asked : null;
   if (!chosen) return <LeaveEmployeePicker options={employed} chosen={null} />;

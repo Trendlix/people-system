@@ -1,6 +1,6 @@
-import { OrgTabs } from '../tabs';
+import { SetupFrame } from '../setup-menu';
 
-// The org chart is drawn from Departments & Job Titles, so that tab stays selected.
+// The org chart is drawn from Departments & Job Titles, so that page stays marked in the setup menu.
 export default function Layout({ children }: { children: React.ReactNode }) {
-  return <OrgTabs active="departments">{children}</OrgTabs>;
+  return <SetupFrame active="departments">{children}</SetupFrame>;
 }

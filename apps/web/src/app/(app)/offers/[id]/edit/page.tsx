@@ -9,6 +9,7 @@ import { loadAllowanceTypes, loadOffer } from '../../data';
 import { offerDefaults } from '../../form-body';
 import { canSeeOffers, managesOffers, offerHref, shownStatus, statusLabel, WHO_CHANGES, WHO_SEES } from '../../list';
 import { OfferForm, SentOfferForm } from '../../offer-form';
+import { joinShown, shownCode } from '@/lib/hidden';
 
 // Changing an offer: a draft, any of it; a sent (or expired) one, only its last day to accept and its note, since the
 // candidate has read its terms. Answered and withdrawn offers stay as they are.
@@ -21,10 +22,10 @@ async function EditOffer({ params }: { params: Promise<{ id: string }> }) {
   const back = offerHref(offer.id);
   const heading = (
     <div className="space-y-2">
-      <BackLink href={back}>Offer {offer.number}</BackLink>
+      <BackLink href={back}>{shownCode(offer.number) ? `Offer ${offer.number}` : 'The offer'}</BackLink>
       <h1 className="text-2xl font-semibold">{offer.status === 'draft' ? 'Edit the Draft' : 'Edit the Offer'}</h1>
       <p className="text-sm text-muted">
-        {offer.number} · {offer.fullNameEn}
+        {joinShown([offer.number, offer.fullNameEn])}
       </p>
     </div>
   );

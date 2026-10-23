@@ -4,7 +4,7 @@ import { ApiError, apiFetch } from '@/lib/api';
 import { ASSET_STEP5_API } from '@/lib/asset-paths';
 import { todayInCairo } from '../../../employees/ui';
 import { passSheetOn } from '../../../payroll/files';
-import { textResponse as text } from '../../../templates/file-response';
+import { textResponse as text } from '../../../organization/templates/file-response';
 
 // Serves an Assets export (Assets step 5; owner, 22 October 2026: "exports"): the asset register, custody records,
 // stock moves, maintenance log or counts as an Excel workbook, from the API under the web domain with the caller's

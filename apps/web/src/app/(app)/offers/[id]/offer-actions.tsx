@@ -3,6 +3,7 @@
 import { useActionState, useState } from 'react';
 import { DateInput } from '@/components/date-time-inputs';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
+import { SetUpEmailLink } from '@/components/set-up-email-link';
 import { formatDate } from '@/lib/format';
 import type { FormState } from '@/lib/types';
 import { focusFirstField, useClosesOnSave } from '../../employees/[id]/contracts/contract-buttons';
@@ -83,6 +84,7 @@ export function SendOffer({
   mail,
   emailConfigured,
   sentCount,
+  setUpEmail = false,
 }: {
   emailAction: SendAction;
   linkAction: (prev: OfferSendState) => Promise<OfferSendState>;
@@ -90,6 +92,8 @@ export function SendOffer({
   mail: Omit<OfferMailParts, 'link'>;
   emailConfigured: boolean;
   sentCount: number;
+  /** A Super Admin: "Set up email" after the not-set-up line (23 October 2026: email set up on Organization → Email Settings). */
+  setUpEmail?: boolean;
 }) {
   const fid = useFieldIds();
   const { state, pending: emailing, form } = useKeptForm(emailAction);
@@ -126,7 +130,17 @@ export function SendOffer({
           </button>
         </form>
       </div>
-      {!emailConfigured && <p className="text-sm text-muted">{EMAIL_NOT_SET_UP}</p>}
+      {!emailConfigured && (
+        <p className="text-sm text-muted">
+          {EMAIL_NOT_SET_UP}
+          {setUpEmail && (
+            <>
+              {' '}
+              <SetUpEmailLink />
+            </>
+          )}
+        </p>
+      )}
       {linked.errors && (
         <p role="alert" className="text-sm text-danger">
           {linked.errors.join(' ')}

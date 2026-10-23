@@ -9,6 +9,7 @@ import { ActionButton, SignContract } from './contract-buttons';
 import { termLabel } from './dates';
 import { changeOf, decisionText, editHref, fromToText, insuredWageText, pendingKindLabel, promotionText, stageOf, stageTone, versionBefore } from './raise';
 import { hourlyNetTerms, payLabel } from './salary';
+import { shownCode, withCodeInBrackets } from '@/lib/hidden';
 
 // A change of pay waiting to be signed, in the Contract section (owner's decisions, 16 October 2026: "HR, then the
 // CEO"): a raise (a salary amendment, or a new contract within the term) or a renewal with new pay. It says what it is,
@@ -58,7 +59,7 @@ export function RaiseCard({
   const before = versionBefore(d, contracts);
   const stage = stageOf(d);
   const kind = pendingKindLabel(change);
-  const name = `the ${kind.toLowerCase()} of version ${d.version} (${d.number})`;
+  const name = `the ${kind.toLowerCase()} of ${withCodeInBrackets(`version ${d.version}`, d.number)}`;
   const term =
     change === 'amendment'
       ? `From ${formatDate(d.startDate)}, on the contract${d.endDate ? ` to ${formatDate(d.endDate)}` : ''}`
@@ -81,7 +82,7 @@ export function RaiseCard({
           {titleCase(kind)}: Version {d.version}
         </h3>
         <StageBadge stage={stage} />
-        <span className="text-xs text-muted">{d.number}</span>
+        {shownCode(d.number) && <span className="text-xs text-muted">{d.number}</span>}
       </div>
       <p className="text-sm">{what}</p>
       <dl className="grid gap-x-4 gap-y-1 text-sm sm:grid-cols-[auto_1fr]">

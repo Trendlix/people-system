@@ -51,3 +51,33 @@ export const personCutOff = (p: { id?: string | null } | null | undefined): bool
 
 /** Whether a developer's filter by department, team or grade applies: never, as those details are hidden. */
 export const filtersByJob = (user: { developer?: boolean }): boolean => user.developer !== true;
+
+// ---------- a person's code (owner, 23 October 2026: "in developer view use **** instead of IDs") ----------
+// A developer gets every person code as "••••" (an employee's EMP-, an applicant's or general CV's APP-, a candidate's
+// CAN-, an offer's OFF-, a contract's CON-) and each name as a tag that isn't the code ("Employee 7K3Q"). Beside a name
+// the code part is left out, rather than a dangling "Employee 7K3Q · ••••"; links go by id, so they still work.
+
+/** A person's code as shown: null when the API hid it ("••••") or there is none. */
+export function shownCode(code: string | null | undefined): string | null {
+  return code && !isHidden(code) ? code : null;
+}
+
+/** A name with its code after it ("Omar Khaled · EMP-0182"); the name alone when the code is hidden or missing. */
+export function withCode(name: string, code: string | null | undefined, sep = ' · '): string {
+  const shown = shownCode(code);
+  return shown ? `${name}${sep}${shown}` : name;
+}
+
+/** A name with its code in brackets ("Omar Khaled (EMP-0182)"); the name alone when the code is hidden or missing. */
+export function withCodeInBrackets(name: string, code: string | null | undefined): string {
+  const shown = shownCode(code);
+  return shown ? `${name} (${shown})` : name;
+}
+
+/**
+ * Parts of a line joined (" · "), leaving out the empty and the hidden ones: "EMP-0182 · Editor", or "" when none shows
+ * (a developer's line of code, job title and department, all hidden).
+ */
+export function joinShown(parts: readonly (string | null | undefined | false)[], sep = ' · '): string {
+  return parts.filter((p): p is string => typeof p === 'string' && p !== '' && !isHidden(p)).join(sep);
+}

@@ -1,5 +1,6 @@
 import { isOpenLeave, permissionClock, permissionHoursText } from '@trendlix/shared';
-import { formatDate } from '../../../lib/format';
+import { formatDate, formatTime } from '../../../lib/format';
+import type { OdCalendarItem } from '../../../lib/od-types';
 import type { Holiday, LeaveCalendarEntry } from '../../../lib/types';
 import type { WfhCalendarItem } from '../../../lib/wfh-types';
 import { addMonths, monthName } from '../payroll/list';
@@ -16,7 +17,9 @@ import { permissionTimesText } from './permissions';
 // of leave, and isn't a day off: someone with only permission in the month still has a row, its hours beside the days.
 // A work from home day (owner, 21 October 2026: "think about how should we handle the working from home in out erp"; the
 // brief: on the leave calendar and the team's "as a distinct style from leave") marks its day apart too, and isn't a day
-// off either: a working day elsewhere. Pure code, tested; relative imports, as vitest doesn't know the @/ paths. Dates
+// off either: a working day elsewhere. An official duty (owner, 23 October 2026: "Official duty (OD) requests"; the
+// spec: "Team calendar shows leave and OD") marks each of its days apart in its own colour, a working day away from the
+// office, not a day off; part of a day with its times. Pure code, tested; relative imports, as vitest doesn't know the @/ paths. Dates
 // are YYYY-MM-DD.
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -121,6 +124,11 @@ export interface CalendarCell {
   permission: CalendarPermission | null;
   /** A work from home day (21 October 2026): a working day elsewhere, not a day off. */
   wfh?: boolean;
+  /**
+   * A day of official duty (23 October 2026): a working day away from the office, not a day off; part of a day's times
+   * in words ("10:00 AM–2:00 PM"), null for a full day.
+   */
+  od?: { times: string | null };
 }
 
 /**
@@ -139,6 +147,8 @@ export interface CalendarPerson {
   permissionHours: number;
   /** Their work from home days in the month (approved and waiting together; 21 October 2026). */
   wfhDays: number;
+  /** Their days of official duty in the month (approved and waiting together; 23 October 2026). */
+  odDays: number;
 }
 
 /** Only the leave the calendar shows: approved, and still being decided; rejected and cancelled ones are left out. */
@@ -148,10 +158,10 @@ const shown = (e: Pick<LeaveCalendarEntry, 'status'>) => e.status === 'approved'
  * A cell's share of a day off: a day, half a day, or none for a permission (19 October 2026: it isn't a day off) and a
  * work from home day (21 October 2026: a working day elsewhere).
  */
-const offOf = (c: CalendarCell | null | undefined) => (!c || c.permission || c.wfh ? 0 : c.halfDay ? 0.5 : 1);
+const offOf = (c: CalendarCell | null | undefined) => (!c || c.permission || c.wfh || c.od ? 0 : c.halfDay ? 0.5 : 1);
 
-/** Whether a cell is a working day's mark rather than leave: a permission or a work from home day. */
-const working = (c: Pick<CalendarCell, 'permission' | 'wfh'>) => c.permission !== null || c.wfh === true;
+/** Whether a cell is a working day's mark rather than leave: a permission, a work from home day or official duty. */
+const working = (c: Pick<CalendarCell, 'permission' | 'wfh' | 'od'>) => c.permission !== null || c.wfh === true || !!c.od;
 
 /**
  * Whether what is already on a person's day stays when another of their requests falls on it: the approved over one
@@ -170,16 +180,18 @@ function keeps(had: CalendarCell, waiting: boolean, permission: boolean): boolea
  * approved one is shown (an approved one replaces one being decided), leave over a permission; two permissions of a
  * day, both approved or both being decided, show their hours together.
  */
-export function calendarPeople(entries: readonly (LeaveCalendarEntry | WfhCalendarItem)[], days: readonly Pick<CalendarDay, 'date'>[]): CalendarPerson[] {
+export function calendarPeople(entries: readonly (LeaveCalendarEntry | WfhCalendarItem | OdCalendarItem)[], days: readonly Pick<CalendarDay, 'date'>[]): CalendarPerson[] {
   const people = new Map<string, CalendarPerson>();
   for (const e of entries.filter(shown)) {
     let person = people.get(e.employee.id);
     if (!person) {
-      person = { id: e.employee.id, name: e.employee.fullNameEn, place: placeOfEmployee(e.employee), cells: days.map(() => null), daysOff: 0, permissionHours: 0, wfhDays: 0 };
+      person = { id: e.employee.id, name: e.employee.fullNameEn, place: placeOfEmployee(e.employee), cells: days.map(() => null), daysOff: 0, permissionHours: 0, wfhDays: 0, odDays: 0 };
       people.set(e.employee.id, person);
     }
     const waiting = isOpenLeave(e.status);
     const wfh = e.kind === 'wfh';
+    // official duty (23 October 2026): each day its own mark, part of a day with its times
+    const od = e.kind === 'od' ? { times: !e.fullDay && e.fromTime && e.toTime ? `${formatTime(e.fromTime)}–${formatTime(e.toTime)}` : null } : null;
     const permission: CalendarPermission | null =
       e.kind === 'permission' ? { hours: typeof e.hours === 'number' && e.hours > 0 ? e.hours : 0, fromTime: e.fromTime ?? null, toTime: e.toTime ?? null } : null;
     days.forEach((d, i) => {
@@ -190,16 +202,17 @@ export function calendarPeople(entries: readonly (LeaveCalendarEntry | WfhCalend
         person!.cells[i] = { ...had, permission: { hours: had.permission.hours + permission.hours, fromTime: null, toTime: null } };
         return;
       }
-      if (had && keeps(had, waiting, permission !== null || wfh)) return;
+      if (had && keeps(had, waiting, permission !== null || wfh || od !== null)) return;
       person!.cells[i] = {
         typeName: e.type.nameEn,
-        halfDay: permission || wfh ? false : e.halfDay,
+        halfDay: permission || wfh || od ? false : e.halfDay,
         waiting,
-        first: permission !== null || wfh || d.date === e.startDate || i === 0,
-        last: permission !== null || wfh || d.date === e.endDate || i === days.length - 1,
+        first: permission !== null || wfh || od !== null || d.date === e.startDate || i === 0,
+        last: permission !== null || wfh || od !== null || d.date === e.endDate || i === days.length - 1,
         requestId: e.id ?? null,
         permission,
         ...(wfh && { wfh: true }),
+        ...(od && { od }),
       };
     });
   }
@@ -208,8 +221,9 @@ export function calendarPeople(entries: readonly (LeaveCalendarEntry | WfhCalend
     p.daysOff = p.cells.reduce((n, c) => n + offOf(c), 0);
     p.permissionHours = p.cells.reduce((n, c) => n + (c?.permission?.hours ?? 0), 0);
     p.wfhDays = p.cells.reduce((n, c) => n + (c?.wfh ? 1 : 0), 0);
+    p.odDays = p.cells.reduce((n, c) => n + (c?.od ? 1 : 0), 0);
   }
-  return list.filter((p) => p.daysOff > 0 || p.permissionHours > 0 || p.wfhDays > 0).sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }));
+  return list.filter((p) => p.daysOff > 0 || p.permissionHours > 0 || p.wfhDays > 0 || p.odDays > 0).sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }));
 }
 
 /** How many are off on each day of the month (half days as halves; permission isn't a day off), for the calendar's last row. */
@@ -234,6 +248,7 @@ export function permissionCellWords(typeName: string, p: CalendarPermission): st
 export function cellLabel(cell: CalendarCell, name: string, day: Pick<CalendarDay, 'date' | 'weekdayName'>): string {
   const when = `${day.weekdayName} ${formatDate(day.date)}`;
   if (cell.wfh) return `${name}: ${WFH_CELL_WORDS}, ${cell.waiting ? 'being decided' : 'approved'}, ${when}`;
+  if (cell.od) return `${name}: ${odCellWords(cell.od)}, ${cell.waiting ? 'being decided' : 'approved'}, ${when}`;
   if (cell.permission) return `${name}: ${permissionCellWords(cell.typeName, cell.permission)}, ${cell.waiting ? 'being decided' : 'approved'}, ${when}`;
   return `${name}: ${cell.typeName}${cell.halfDay ? ', half a day' : ''}${cell.waiting ? ', being decided' : ''}, ${when}`;
 }
@@ -241,6 +256,11 @@ export function cellLabel(cell: CalendarCell, name: string, day: Pick<CalendarDa
 /** A work from home day's mark in the grid, and its words (21 October 2026). */
 export const WFH_CELL_TEXT = 'WFH';
 export const WFH_CELL_WORDS = 'Working from home';
+
+/** A day of official duty's mark in the grid, and its words (23 October 2026), part of a day's times with them. */
+export const OD_CELL_TEXT = 'OD';
+export const OD_CELL_WORDS = 'Official duty';
+export const odCellWords = (od: { times: string | null }) => (od.times ? `${OD_CELL_WORDS}, ${od.times}` : OD_CELL_WORDS);
 
 /** One person off on a day, or with permission that day, as the phone's list of days says it. */
 export interface AgendaPerson {
@@ -253,6 +273,7 @@ export interface AgendaPerson {
   requestId: string | null;
   permission: CalendarPermission | null;
   wfh?: boolean;
+  od?: { times: string | null };
 }
 
 /** A day of the phone's list: the day, its holidays, and who is off on it. */
@@ -269,7 +290,7 @@ export function calendarAgenda(people: readonly CalendarPerson[], days: readonly
       off: people.flatMap((p) => {
         const c = p.cells[i];
         return c
-          ? [{ id: p.id, name: p.name, place: p.place, typeName: c.typeName, halfDay: c.halfDay, waiting: c.waiting, requestId: c.requestId, permission: c.permission, ...(c.wfh && { wfh: true }) }]
+          ? [{ id: p.id, name: p.name, place: p.place, typeName: c.typeName, halfDay: c.halfDay, waiting: c.waiting, requestId: c.requestId, permission: c.permission, ...(c.wfh && { wfh: true }), ...(c.od && { od: c.od }) }]
           : [];
       }),
     }))
@@ -303,10 +324,12 @@ export function offThisMonthText(n: number): string {
  * What the calendar says of its month: how many are off, and how many have permission (19 October 2026), "2 people off
  * this month, 1 with permission"; the permission said only when someone has it.
  */
-export function monthSummaryText(people: readonly (Pick<CalendarPerson, 'daysOff' | 'permissionHours'> & { wfhDays?: number })[]): string {
+export function monthSummaryText(people: readonly (Pick<CalendarPerson, 'daysOff' | 'permissionHours'> & { wfhDays?: number; odDays?: number })[]): string {
   const off = offThisMonthText(people.filter((p) => p.daysOff > 0).length);
   const withPermission = people.filter((p) => p.permissionHours > 0).length;
   // and how many work from home some day of it (21 October 2026)
   const fromHome = people.filter((p) => (p.wfhDays ?? 0) > 0).length;
-  return `${off}${withPermission ? `, ${withPermission} with permission` : ''}${fromHome ? `, ${fromHome} working from home` : ''}`;
+  // and how many are on official duty some day of it (23 October 2026)
+  const onDuty = people.filter((p) => (p.odDays ?? 0) > 0).length;
+  return `${off}${withPermission ? `, ${withPermission} with permission` : ''}${fromHome ? `, ${fromHome} working from home` : ''}${onDuty ? `, ${onDuty} on official duty` : ''}`;
 }

@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { formatDate } from '@/lib/format';
 import { candidateBadges } from './candidates';
 import { applicantHref, matchText, STAGE_STYLE, VACANCY_STATUS_STYLE } from './recruitment';
+import { joinShown } from '@/lib/hidden';
 
 // Recruitment's pieces (owner, 22 October 2026: "where will we include the ATS?"): the badges of a vacancy's status and an
 // applicant's stage, and the applicants' table.
@@ -63,7 +64,7 @@ export function ApplicantsTable({ rows, withVacancy, bare = false }: { rows: App
                   {a.fullName}
                 </Link>
                 <span className="block text-xs text-muted">
-                  {a.number} · {a.email}
+                  {joinShown([a.number, a.email])}
                 </span>
                 <CandidateBadges candidate={a.candidate} />
               </td>

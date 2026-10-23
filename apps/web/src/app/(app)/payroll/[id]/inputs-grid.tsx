@@ -6,7 +6,7 @@ import { formatHours, type PayBasis, type PayrollLeaveDays } from '@trendlix/sha
 import { CLevelBadge } from '@/components/c-level-badge';
 import { GroupHeading } from '@/components/group-heading';
 import { titleCase } from '@/lib/format';
-import { isHidden } from '@/lib/hidden';
+import { joinShown } from '@/lib/hidden';
 import { groupByPlace, placeOrder, showsDepartment, type PlaceRef } from '@/lib/place-groups';
 import type { FormState } from '@/lib/types';
 import { formatEgp } from '../../employees/[id]/contracts/salary';
@@ -283,11 +283,8 @@ const Row = memo(function Row({
           {row.name}
         </Link>
         {row.confidential && <CLevelBadge title={CONFIDENTIAL_LINE_TITLE} className="ml-2 align-middle" />}
-        <div className="text-xs text-muted">
-          <span className="tabular-nums">{row.employeeCode}</span>
-          {/* hidden from a developer (22 October 2026: "Hide per-person details") */}
-          {row.jobTitle && !isHidden(row.jobTitle) && ` · ${row.jobTitle}`}
-        </div>
+        {/* the code and job title, hidden from a developer (22 and 23 October 2026), left out */}
+        <div className="text-xs text-muted tabular-nums">{joinShown([row.employeeCode, row.jobTitle])}</div>
         {/* a month under two contracts (owner, 17 October 2026) */}
         {row.contractsNote && <p className="mt-0.5 max-w-52 text-xs text-muted">{row.contractsNote}</p>}
         {rowError && (

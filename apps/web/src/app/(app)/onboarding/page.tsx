@@ -8,6 +8,7 @@ import { Empty, Loading } from '../organization/ui';
 import { progressText } from '../offboarding/offboarding';
 import { loadOnboardingList, onboardingNotLoaded } from './data';
 import { managesOnboarding, ONBOARDING_CHECKLIST_PATH, ONBOARDING_FILTERS, onboardingHref, onboardingListHref, readOnboardingFilter, STATUS_STYLE } from './onboarding';
+import { joinShown } from '@/lib/hidden';
 
 // Onboarding (owner, 22 October 2026, the ATS's Phase 2): the checklists in progress (or completed, or all), newest
 // first, each with how far it is. One opens when an applicant is hired through an accepted job offer, or from a new
@@ -60,7 +61,7 @@ async function List({ searchParams }: { searchParams: PageProps<'/onboarding'>['
                     <Link href={onboardingHref(c.id)} className="font-semibold">
                       {c.employee.fullNameEn}
                     </Link>
-                    <span className="block text-xs text-muted">{[c.employee.employeeCode, c.jobTitle, c.department].filter(Boolean).join(' · ')}</span>
+                    <span className="block text-xs text-muted">{joinShown([c.employee.employeeCode, c.jobTitle, c.department])}</span>
                   </td>
                   <td className="text-sm whitespace-nowrap">{formatDate(c.joinDate)}</td>
                   <td className="text-sm">{progressText(c.progress)}</td>

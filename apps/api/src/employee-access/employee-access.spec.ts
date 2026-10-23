@@ -14,7 +14,7 @@ import {
   type AccessStateInput,
 } from '@trendlix/shared';
 import { randomBytes } from 'node:crypto';
-import { inForceEmployment } from './access-state.js';
+import { accountableEmployment, inForceEmployment } from './access-state.js';
 import { tokenHashOf, webOriginOf } from './employee-access.service.js';
 
 // The rules of every employee's access (owner, 22 October 2026: "any active employee with active contract should have
@@ -111,12 +111,20 @@ describe('set-password links', () => {
 });
 
 describe('an active employee with an active contract', () => {
-  it('is a current employment with a signed contract in force today', () => {
+  it('is a current employment with a signed contract in force today (a version replaced ahead of its start still counts)', () => {
     const where = inForceEmployment('2026-10-22');
     const day = new Date('2026-10-22T00:00:00.000Z');
     expect(where).toEqual({
       OR: [{ endDate: null }, { endDate: { gte: day } }],
-      contracts: { some: { status: 'active', startDate: { lte: day }, OR: [{ endDate: null }, { endDate: { gte: day } }] } },
+      contracts: { some: { status: { in: ['active', 'superseded', 'ended'] }, startDate: { lte: day }, OR: [{ endDate: null }, { endDate: { gte: day } }] } },
+    });
+  });
+
+  it('gets an account once a signed contract has started, in force or on Hold or Grace since (23 October 2026)', () => {
+    const day = new Date('2026-10-22T00:00:00.000Z');
+    expect(accountableEmployment('2026-10-22')).toEqual({
+      OR: [{ endDate: null }, { endDate: { gte: day } }],
+      contracts: { some: { status: { in: ['active', 'superseded', 'ended'] }, startDate: { lte: day } } },
     });
   });
 });

@@ -3,7 +3,7 @@ import { canEditOrganisation } from '@/lib/session';
 import type { SessionUser } from '@/lib/types';
 import { formatEgp } from '../../employees/[id]/contracts/salary';
 import { monthsLabel } from '../../employees/[id]/salary-history/salary-history';
-import { CHECK_IN_SETUP_PATH } from '../../attendance/sections';
+import { SETUP_PATHS } from '../setup-pages';
 import { RAISES_PATH } from '../../payroll/reports/salary-raises/salary-raises';
 import { rulesSummary } from '../../payroll/list';
 import { updateYourRules } from './actions';
@@ -65,7 +65,7 @@ export async function YourRulesSection({ user }: { user: SessionUser }) {
             </dl>
           )}
           <p className="mt-4 text-sm">
-            Check-in locations and Zoho&apos;s addresses are on <Link href={CHECK_IN_SETUP_PATH}>Attendance → Check-in Setup</Link>.
+            Check-in locations and Zoho&apos;s addresses are on <Link href={SETUP_PATHS.checkInSetup}>Check-in Setup</Link>, under Time &amp; Leave.
           </p>
           {d && (d.basicPercentDefault !== undefined || d.insuranceBasicDefault !== undefined) && (
             <dl className="mt-4">

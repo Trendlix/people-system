@@ -1,6 +1,6 @@
 import { seesRaiseRequests } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
-import { askOptions, offersRaise, offersWfh } from './options';
+import { askOptions, offersOd, offersRaise, offersWfh } from './options';
 
 const keys = (p: Parameters<typeof askOptions>[0]) => askOptions(p).map((o) => o.key);
 const hours = { hoursPerMonth: 4 };
@@ -85,5 +85,30 @@ describe('a raise on New Request (owner, 20 October 2026: "raises not to be visi
     expect(offersRaise({ seesRaises: true, canRequest: false, manager: true })).toBe(true);
     expect(offersRaise({ seesRaises: true, canRequest: false, manager: false })).toBe(false);
     expect(offersRaise({ seesRaises: seesRaiseRequests({ roles: ['hr'] }), canRequest: true, manager: false })).toBe(true);
+  });
+});
+
+describe('official duty on New Request (owner, 23 October 2026: "Official duty (OD) requests")', () => {
+  it('is offered after working from home when its form says nothing refuses them', () => {
+    expect(offersOd({ refusal: null })).toBe(true);
+    expect(keys({ employment: { employmentType: 'full_time' }, permissionMonth: hours, asksRaise: false, asksWfh: true, asksOd: offersOd({ refusal: null }) })).toEqual([
+      'leave',
+      'permission',
+      'wfh',
+      'od',
+      'reimbursement',
+      'correction',
+      'home',
+    ]);
+    expect(askOptions({ employment: { employmentType: 'full_time' }, permissionMonth: hours, asksRaise: false, asksOd: true }).find((o) => o.key === 'od')).toMatchObject({
+      label: 'Official duty',
+      href: '/app/requests/new/od',
+    });
+  });
+
+  it('is hidden when refused (a freelancer), unread, or without an employment', () => {
+    expect(offersOd({ refusal: 'You work freelance, outside the labour law and its working hours: no official duty is needed.' })).toBe(false);
+    expect(offersOd(null)).toBe(false);
+    expect(keys({ employment: null, permissionMonth: null, asksRaise: false, asksOd: true })).toEqual(['reimbursement', 'home']);
   });
 });

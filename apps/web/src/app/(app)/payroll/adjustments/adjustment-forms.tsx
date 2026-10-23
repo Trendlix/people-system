@@ -19,6 +19,7 @@ import {
   type AdjustmentRow,
   type AdvanceRow,
 } from './adjustments';
+import { joinShown } from '@/lib/hidden';
 
 // Additions / Deductions' forms (owner, 17 October 2026): HR adds an addition or a deduction for someone employed in the
 // month, and changes or cancels a pending one while the month's run is still a draft. The form asks only what the type
@@ -227,8 +228,7 @@ export function AddAdjustmentForm({
             <option value="">Choose…</option>
             {choices.people.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.name} · {p.employeeCode}
-                {p.department ? ` · ${p.department}` : ''}
+                {joinShown([p.name, p.employeeCode, p.department])}
               </option>
             ))}
           </Select>

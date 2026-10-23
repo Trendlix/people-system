@@ -28,6 +28,7 @@ import { defaultEffectiveDate } from '../employees/[id]/contracts/raise';
 import { changeText } from '../employees/[id]/salary-history/salary-history';
 import { formatEgp } from '../employees/[id]/contracts/salary';
 import { myRequestsHref } from '../my-requests/requests';
+import { joinShown, shownCode, withCode } from '../../../lib/hidden';
 
 // Raise requests (owner's decisions, 16 October 2026: "a place to request raise by employee, or his manager or the HR,
 // with a reason and to be going through an approval cycle"; reworked 17 October 2026: "requesting a raise should have a
@@ -239,7 +240,7 @@ export const isRequestForSelf = (user: Asker, p: Pick<Candidate, 'id' | 'workEma
 export function pickerOptions(user: Asker, people: readonly (Candidate & Pick<EmployeeSummary, 'fullNameEn' | 'employeeCode'>)[]): { id: string; label: string }[] {
   return [...people]
     .sort((a, b) => a.fullNameEn.localeCompare(b.fullNameEn, 'en') || a.employeeCode.localeCompare(b.employeeCode))
-    .map((p) => ({ id: p.id, label: `${p.fullNameEn} · ${p.employeeCode}${isMe(user, p) ? ' (you)' : ''}` }));
+    .map((p) => ({ id: p.id, label: `${withCode(p.fullNameEn, p.employeeCode)}${isMe(user, p) ? ' (you)' : ''}` }));
 }
 
 /**
@@ -372,7 +373,8 @@ export function preparedRaiseText(raise: RaiseRequest['raise']): { title: string
   }
   // a renewal with new pay says so (19 October 2026); an API from before sends the way only
   const kind = raise.change ? PAY_CHANGE_LABELS[raise.change] : RAISE_WAY_LABELS[raise.way];
-  return { title: `${raise.number} · ${kind ?? raise.way}`, detail: parts.length ? parts.join(' · ') : null };
+  // a contract's number, hidden from a developer (23 October 2026), is left out
+  return { title: joinShown([raise.number, kind ?? raise.way]), detail: parts.length ? parts.join(' · ') : null };
 }
 
 /**
@@ -504,7 +506,8 @@ export function stepText(s: RaiseRequestStep, requester: RaiseRequester, request
   const figures = figureText(s);
   // the month asked from (submitted) or HR chose (HR's approval), 17 October 2026
   const effective = s.effectiveDate ? `Effective from ${monthText(s.effectiveDate)}` : null;
-  const join = (...parts: (string | null)[]) => parts.filter(Boolean).join(' · ') || null;
+  // a contract's number hidden from a developer (23 October 2026) is left out
+  const join = (...parts: (string | null)[]) => joinShown(parts) || null;
   const direct = !!request && isDirect(request);
   switch (s.kind) {
     case 'submitted':
@@ -542,9 +545,9 @@ export function stepText(s: RaiseRequestStep, requester: RaiseRequester, request
     case 'signed':
       return { title: 'Signed: the request is done', detail: join(s.effectiveDate && `In force from ${formatDate(s.effectiveDate)}`, s.gross !== null ? `New gross ${formatEgp(s.gross)}` : null) };
     case 'unsigned':
-      return { title: 'Signing undone: the raise is to be signed again', detail: s.contractNumber };
+      return { title: 'Signing undone: the raise is to be signed again', detail: shownCode(s.contractNumber) };
     case 'raise_deleted':
-      return { title: 'The raise was deleted: the request is with HR again', detail: s.contractNumber };
+      return { title: 'The raise was deleted: the request is with HR again', detail: shownCode(s.contractNumber) };
     default:
       return { title: RAISE_REQUEST_STEP_LABELS[s.kind] ?? s.kind, detail: figures };
   }

@@ -737,8 +737,8 @@ export class ContractsService {
       await this.audit.record({ userId: user.id, action: 'done', entityType: 'raise_request', entityId: before.raiseRequest.id, diff: { contract: before.number, status: { from: before.raiseRequest.status, to: 'done' } } });
     }
     // a signed contract in force gives access (owner, 22 October 2026: "any active employee with active contract should
-    // have access"): their account made now, nothing sent
-    await this.access.afterChange(employment.employeeId);
+    // have access"): their account made now, nothing sent; Hold or Grace → Active recorded (23 October 2026)
+    await this.access.afterChange(employment.employeeId, user.id);
     return contractView(row, await this.context(user, employment));
   }
 

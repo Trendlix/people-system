@@ -5,6 +5,7 @@ import { DateInput } from '@/components/date-time-inputs';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import { formatDate } from '@/lib/format';
 import type { Contract, FormState } from '@/lib/types';
+import { shownCode } from '@/lib/hidden';
 
 // Small actions on the profile's Employment tab: a button that runs one action (after a confirmation, if
 // it needs one), signing a draft contract, and a signed contract's dates and note. The endings' own are in
@@ -131,7 +132,7 @@ export function SignedContractDetails({ action, contract }: { action: Action; co
   const { state, pending, form } = useKeptForm(action);
   const [open, setOpen] = useClosesOnSave(state);
   const fid = useFieldIds();
-  const name = `contract ${contract.number}`;
+  const name = shownCode(contract.number) ? `contract ${contract.number}` : `contract version ${contract.version}`;
 
   if (!open) {
     return (

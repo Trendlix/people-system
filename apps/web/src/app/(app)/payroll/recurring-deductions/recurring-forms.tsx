@@ -9,6 +9,7 @@ import type { PersonRef } from '../adjustments/adjustments';
 import { limitHref } from '../unsettled/installments';
 import { InlineForm, Note } from '../unsettled/unsettled-forms';
 import { BEFORE_TAX_HINT, BEFORE_TAX_TICK, CONSENT_FILE_MAX_MB, lastMonth, NAME_MAX, raisesAmount, recurringPreview, type RecurringPreview } from './recurring';
+import { joinShown } from '@/lib/hidden';
 
 // Recurring Deductions' forms (owner, 18 October 2026: a medical subscription is an ongoing monthly share), for HR: a
 // new one for an employee (what for, the amount a month, the first month and, if it has one, the last); on each one
@@ -306,8 +307,7 @@ export function AddRecurringForm({
             <option value="">Choose…</option>
             {people.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.name} · {p.employeeCode}
-                {p.department ? ` · ${p.department}` : ''}
+                {joinShown([p.name, p.employeeCode, p.department])}
               </option>
             ))}
           </Select>

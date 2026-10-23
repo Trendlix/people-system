@@ -16,6 +16,7 @@ import { CommissionField, type EmploymentPickers } from '../employees/employment
 import { employmentTypeHint, WORK_NATURE_HINTS, workPatternNote } from '../employees/employment-law';
 import { CONFIDENTIAL_GRADES_LEFT_OUT, gradeLabel, gradeRangeSentence, inGradeRange } from '../organization/grades/label';
 import type { OfferDefaults } from './form-body';
+import { withCode } from '@/lib/hidden';
 
 // The Position part of the offer form: the employment the candidate is offered, as the employment form picks it
 // (employees/employment-fields.tsx): the department or team, then its job titles, then a grade within the title's range;
@@ -258,7 +259,7 @@ export function OfferPositionFields({
             <option value="">No direct manager</option>
             {managers.map((m) => (
               <option key={m.id} value={m.id}>
-                {m.fullNameEn} · {m.employeeCode}
+                {withCode(m.fullNameEn, m.employeeCode)}
               </option>
             ))}
           </Select>

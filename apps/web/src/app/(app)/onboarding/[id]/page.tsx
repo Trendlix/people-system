@@ -11,6 +11,7 @@ import { applicantHref } from '../../recruitment/recruitment';
 import { addOnboardingItem, completeOnboarding, markOnboardingItem } from '../actions';
 import { loadOnboarding, onboardingNotLoaded } from '../data';
 import { ONBOARDING_PATH, STATUS_STYLE } from '../onboarding';
+import { joinShown, shownCode } from '@/lib/hidden';
 
 // An onboarding checklist (owner, 22 October 2026, the ATS's Phase 2; the brief: "ID & documents, JD sign-off, KPI
 // template assignment"): who joins and when, the application they were hired from, and the items: three ticked by the
@@ -67,14 +68,14 @@ async function Onboarding({ params }: { params: PageProps<'/onboarding/[id]'>['p
           <span className={`badge ${STATUS_STYLE[c.status]}`}>{ONBOARDING_STATUS_LABELS[c.status]}</span>
         </div>
         <p className="text-sm text-muted">
-          {[c.employee.employeeCode, c.jobTitle, c.department].filter(Boolean).join(' · ')} · joins {formatDate(c.joinDate)}
+          {joinShown([c.employee.employeeCode, c.jobTitle, c.department, c.joinDate && `joins ${formatDate(c.joinDate)}`])}
         </p>
         <p className="text-sm">
           <Link href={`/employees/${c.employee.id}`}>Open their profile</Link>
           {c.application && c.can.manage && (
             <>
               {' · '}
-              <Link href={applicantHref(c.application.id)}>Hired from {c.application.number}</Link>
+              <Link href={applicantHref(c.application.id)}>{shownCode(c.application.number) ? `Hired from ${c.application.number}` : 'Their application'}</Link>
             </>
           )}
         </p>

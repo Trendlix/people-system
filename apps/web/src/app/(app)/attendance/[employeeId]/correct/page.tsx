@@ -13,6 +13,7 @@ import { notLoaded } from '../../not-loaded';
 import { todayInCairo } from '../../../employees/ui';
 import { BackLink, Empty, Loading, UUID } from '../../../organization/ui';
 import { StaffOnly } from '../../../staff-only';
+import { joinShown } from '@/lib/hidden';
 
 // HR corrects a day directly (owner's brief, 19 October 2026: "HR may also correct a day directly (with a reason,
 // audited)"), from the person's month → the day: what is on record, what was wrong, the right times and why; approved at
@@ -39,8 +40,7 @@ async function Correct({ params, searchParams }: { params: PageProps<'/attendanc
   return (
     <div className="space-y-4">
       <p className="text-muted">
-        {name} · {view.person.employee.employeeCode}
-        {view.person.employee.department && ` · ${view.person.employee.department}`}
+        {joinShown([name, view.person.employee.employeeCode, view.person.employee.department])}
       </p>
       <CorrectionForm action={recordCorrection} person={{ employeeId, name }} month={data} date={date} today={today} cancelHref={`/attendance/${employeeId}?month=${month}`} />
     </div>

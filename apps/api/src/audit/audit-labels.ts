@@ -69,6 +69,8 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   leave_settings: 'Leave setup',
   leave_type: 'Leave type',
   leave_year_closing: 'Leave year closing',
+  // Organization → Email Settings (owner, 23 October 2026: "why dont we add SMTP setup in the organization setup")
+  mail_settings: 'Email settings',
   ocr_correction: 'Card reading fix',
   // offboarding (owner, 22 October 2026: the full module): a leaver's case (clearance, exit interview, rehire
   // eligibility), the default clearance checklist, and the turnover's Excel
@@ -106,6 +108,8 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   onboarding_defaults: 'Onboarding checklist defaults',
   // working from home (owner, 21 October 2026: "think about how should we handle the working from home in out erp")
   wfh_request: 'Work from home request',
+  // official duty (owner, 23 October 2026: "Official duty (OD) requests")
+  od_request: 'Official duty request',
 };
 
 /** Each action, in the past tense and sentence case ("Updated", "Sent for approval"). */
@@ -114,6 +118,8 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   apply: 'Applied',
   approve: 'Approved',
   attendance_summary_file: 'Downloaded the attendance summary',
+  // a person's attendance history as Excel (owner, 23 October 2026: "Attendance history on the profile … an Excel export")
+  attendance_history_file: 'Downloaded the attendance history',
   audit_log_file: 'Downloaded the audit log',
   // HR's calibration of a KPI scorecard (owner, 21 October 2026: "Self, manager, HR, sign-off"), each pick changed with its reason
   calibrate: 'Calibrated',
@@ -227,6 +233,12 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   password_link: 'Made a set-password link',
   password_reset: 'Reset the password',
   password_set: 'Set the password with a link',
+  // access follows the contract (owner, 23 October 2026: "Active - Grace - Hold - No Access"): HR's 7 days' grace, and each
+  // change of where someone's access stands (Active, Grace, Hold, No access), recorded once
+  give_grace: 'Gave 7 days’ grace',
+  access_standing: 'Access standing changed',
+  // no contract entered (23 October 2026: "Hold them after 7 days"): first seen, the day their access holds from set
+  access_no_contract: 'Recorded no contract entered',
   payroll_bank_file: 'Downloaded a bank file',
   payroll_statistics_file: 'Downloaded the payroll statistics',
   payslip_file: 'Downloaded payslips',
@@ -245,6 +257,9 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   refresh: 'Refreshed',
   refresh_attendance: 'Refreshed from attendance',
   reject: 'Rejected',
+  // the email settings' saved password removed, and a test email sent (23 October 2026); never the password
+  remove_password: 'Removed the saved password',
+  send_test: 'Sent a test email',
   // an approved home location removed (its point deleted), and one replaced by a newer approved one (20 October 2026)
   remove: 'Removed',
   reopen: 'Reopened',
@@ -404,6 +419,12 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   signInEmail: 'Sign-in email',
   // a practice KPI scorecard's step taken standing in (22 October 2026)
   stoodInFor: 'Stood in for',
+  // the email settings (23 October 2026): the sending server, the sender, and where a test email went
+  host: 'Server',
+  fromName: 'Sender’s name',
+  fromAddress: 'Sender’s address',
+  replyTo: 'Reply-to address',
+  sentTo: 'Sent to',
 };
 
 /**

@@ -9,7 +9,7 @@ import {
   FORGOT_PASSWORD_ANSWER,
   type AccessLinkCheck,
   type AccessLinkResult,
-  type AccessState,
+  type RowAccessView,
   type BulkInviteResult,
   type EmployeeAccessView,
   type Role,
@@ -111,7 +111,7 @@ describe('Employee access (e2e)', () => {
 
   const accountOf = (key: string) => prisma.user.findUnique({ where: { employeeId: people[key].id }, include: { roles: { include: { role: true } } } });
   const accessOf = async (as: string, key: string) => (await get(as, `/employees/${people[key].id}/access`).expect(200)).body as EmployeeAccessView;
-  const listed = async (as: string) => (await get(as, '/employees').expect(200)).body as { id: string; access?: { state: AccessState; withoutContract: boolean } | null }[];
+  const listed = async (as: string) => (await get(as, '/employees').expect(200)).body as { id: string; access?: RowAccessView | null }[];
   const stateInList = async (key: string) => (await listed('hr')).find((r) => r.id === people[key].id)?.access;
 
   /** A link to copy, its token kept to check the audit never holds one. */
@@ -203,15 +203,15 @@ describe('Employee access (e2e)', () => {
   // ---------- the accounts ----------
 
   it('shows HR who is waiting for an account, and nobody else sees the Access column', async () => {
-    expect(await stateInList('mona')).toEqual({ state: 'pending', withoutContract: false });
-    expect(await stateInList('nocon')).toEqual({ state: 'not_eligible', withoutContract: false });
-    expect(await stateInList('noemail')).toEqual({ state: 'no_email', withoutContract: false });
+    expect(await stateInList('mona')).toEqual({ state: 'pending', standing: 'active', graceUntil: null, noContract: null });
+    expect(await stateInList('nocon')).toEqual({ state: 'not_eligible', standing: 'no_access', graceUntil: null, noContract: null });
+    expect(await stateInList('noemail')).toEqual({ state: 'no_email', standing: 'active', graceUntil: null, noContract: null });
     // C-level people are only directory cards for HR: no access shown
     expect((await listed('hr')).find((r) => r.id === people.chief.id)).not.toHaveProperty('access');
     expect((await listed('ceo')).find((r) => r.id === people.mona.id)).not.toHaveProperty('access');
     // a Super Admin with HR's sight sees it too; an Admin alone doesn't see the Employees list's people
     await account('superHr', ['super_admin', 'hr']);
-    expect((await listed('superHr')).find((r) => r.id === people.mona.id)?.access).toEqual({ state: 'pending', withoutContract: false });
+    expect((await listed('superHr')).find((r) => r.id === people.mona.id)?.access).toEqual({ state: 'pending', standing: 'active', graceUntil: null, noContract: null });
   });
 
   it('makes an account for every active employee with an active contract, sending nothing', async () => {
@@ -235,8 +235,8 @@ describe('Employee access (e2e)', () => {
     expect(await prisma.user.count({ where: { email: `paula.${RUN}@work.test` } })).toBe(0);
     expect((await prisma.employee.findUniqueOrThrow({ where: { id: people.paula.id } })).signInEmail).toBe('personal');
 
-    expect(await stateInList('mona')).toEqual({ state: 'not_invited', withoutContract: false });
-    expect(await stateInList('clash')).toEqual({ state: 'clash', withoutContract: false });
+    expect(await stateInList('mona')).toEqual({ state: 'not_invited', standing: 'active', graceUntil: null, noContract: null });
+    expect(await stateInList('clash')).toEqual({ state: 'clash', standing: 'active', graceUntil: null, noContract: null });
     // the audit says the system made it
     const made = await prisma.auditLog.findFirstOrThrow({ where: { entityType: 'user', entityId: mona!.id, action: 'create' } });
     expect(made.userId).toBeNull();
@@ -257,7 +257,7 @@ describe('Employee access (e2e)', () => {
       closedReason: null,
       link: null,
       clash: null,
-      withoutContract: false,
+      standing: { standing: 'active', exempt: null, gap: null, grace: null, canGiveGrace: false },
       emailReady: true,
       can: { invite: true, manageAccount: false },
     });
@@ -309,7 +309,7 @@ describe('Employee access (e2e)', () => {
     // used once
     expect((await checkLink(token).expect(200)).body).toEqual({ state: 'used' });
     expect((await setPassword(token, 'another-password-2').expect(400)).body.message).toEqual([ACCESS_LINK_STATE_TEXT.used]);
-    expect(await stateInList('mona')).toEqual({ state: 'active', withoutContract: false });
+    expect(await stateInList('mona')).toEqual({ state: 'active', standing: 'active', graceUntil: null, noContract: null });
     // no invitation once their password is set: a reset instead
     expect((await post('hr', `/employees/${people.mona.id}/access/invite`, { mode: 'copy' }).expect(409)).body.message).toContain('send a password reset instead');
   });
@@ -368,7 +368,7 @@ describe('Employee access (e2e)', () => {
     await prisma.accessLink.update({ where: { tokenHash: sha256(token) }, data: { createdAt: new Date(now - 9 * 86_400_000), expiresAt: new Date(now - 2 * 86_400_000) } });
     expect((await checkLink(token).expect(200)).body).toEqual({ state: 'expired' });
     expect((await setPassword(token).expect(400)).body.message).toEqual([ACCESS_LINK_STATE_TEXT.expired]);
-    expect(await stateInList('pia')).toEqual({ state: 'not_invited', withoutContract: false });
+    expect(await stateInList('pia')).toEqual({ state: 'not_invited', standing: 'active', graceUntil: null, noContract: null });
 
     const unknown = 'A'.repeat(43);
     expect((await checkLink(unknown).expect(200)).body).toEqual({ state: 'unknown' });
@@ -445,8 +445,8 @@ describe('Employee access (e2e)', () => {
     const all = (await post('hr', '/employees/access/invitations', { allNotInvited: true }).expect(200)).body as BulkInviteResult;
     expect(all.sent).toBeGreaterThanOrEqual(2);
     for (const m of mail.outbox.slice(outbox)) tokenIn(m.text);
-    expect(await stateInList('rita')).toEqual({ state: 'invited', withoutContract: false });
-    expect(await stateInList('leo')).toEqual({ state: 'invited', withoutContract: false });
+    expect(await stateInList('rita')).toEqual({ state: 'invited', standing: 'active', graceUntil: null, noContract: null });
+    expect(await stateInList('leo')).toEqual({ state: 'invited', standing: 'active', graceUntil: null, noContract: null });
     expect((await accessOf('ceo', 'chief')).state).toBe('not_invited');
 
     await post('outsider', '/employees/access/invitations', { allNotInvited: true }).expect(403);
@@ -463,7 +463,8 @@ describe('Employee access (e2e)', () => {
 
     await patch('admin', `/users/${monaId}`, { isActive: false }).expect(200);
     await api().get('/api/auth/me').set('Cookie', sessions.mona).expect(401);
-    expect(await stateInList('mona')).toEqual({ state: 'closed', withoutContract: false });
+    // the account turned off: No Access, whatever the contract (23 October 2026)
+    expect(await stateInList('mona')).toEqual({ state: 'closed', standing: 'no_access', graceUntil: null, noContract: null });
     expect((await accessOf('hr', 'mona')).closedReason).toBe('Turned off by an Admin.');
     await access.sweep();
     expect((await accountOf('mona'))!.isActive).toBe(false);
@@ -476,13 +477,13 @@ describe('Employee access (e2e)', () => {
     await patch('admin', `/users/${monaId}`, { isActive: true }).expect(200);
   });
 
-  it('lists an active account without a contract in force, never closing it; their employment’s end closes it', async () => {
-    // Rita's contract ended yesterday, a renewal on its way
+  it('puts an active account without a contract in force on Hold (23 October 2026), never closing it; their employment’s end closes it', async () => {
+    // Rita's contract ended yesterday, a renewal on its way: "Has access without an active contract" is now Hold
     await prisma.contract.updateMany({ where: { employmentId: people.rita.employmentId }, data: { endDate: toDateOnly(YESTERDAY), startDate: toDateOnly(addMonths(TODAY, -12)) } });
     const rita = await accountOf('rita');
     await prisma.user.update({ where: { id: rita!.id }, data: { passwordHash: 'x' } });
-    expect(await stateInList('rita')).toEqual({ state: 'active', withoutContract: true });
-    expect((await accessOf('hr', 'rita')).withoutContract).toBe(true);
+    expect(await stateInList('rita')).toEqual({ state: 'active', standing: 'hold', graceUntil: null, noContract: null });
+    expect((await accessOf('hr', 'rita')).standing).toMatchObject({ standing: 'hold', gap: { number: expect.stringMatching(new RegExp(`^EA-${RUN}-`)), endDate: YESTERDAY }, grace: null, canGiveGrace: true });
     await access.sweep();
     expect((await accountOf('rita'))!.isActive).toBe(true);
 

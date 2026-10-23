@@ -19,6 +19,7 @@ import {
   onlyRenewalNote,
   renewalRefusal,
 } from '../training';
+import { shownCode, withCodeInBrackets } from '@/lib/hidden';
 
 // Drafting the current employment's contract: its first one, or the renewal of the signed one (a fixed-term or
 // specific-job contract is renewed in writing; an open-ended one, since 18 October 2026, never is). It is saved as a
@@ -68,7 +69,8 @@ async function NewContract({ params, searchParams }: { params: Promise<{ id: str
     body = (
       <div className="max-w-3xl space-y-4">
         <p className="text-sm text-muted">
-          Version {previous.version + 1}: the full-time contract the {agreementName(e.employmentType)} (version {previous.version}, {previous.number}) converts
+          Version {previous.version + 1}: the full-time contract the {agreementName(e.employmentType)} (version {previous.version}
+          {shownCode(previous.number) && `, ${previous.number}`}) converts
           to{previous.endDate ? `, after it ends on ${formatDate(previous.endDate)}` : ''}. Signing it makes the employment full-time, on probation while its
           probation runs. It is saved as a draft: sign it on the Employment tab once the employee and the company have signed it.
         </p>
@@ -92,7 +94,7 @@ async function NewContract({ params, searchParams }: { params: Promise<{ id: str
     // an open-ended contract runs on, with no renewal: it ends by notice (Labour Law Art. 156)
     body = (
       <Empty>
-        Version {previous.version} ({previous.number}) is open-ended: it has no end date and is never renewed. A change of pay is a raise, on the{' '}
+        {withCodeInBrackets(`Version ${previous.version}`, previous.number)} is open-ended: it has no end date and is never renewed. A change of pay is a raise, on the{' '}
         <Link href={back}>Employment tab</Link>.
       </Empty>
     );
@@ -142,7 +144,7 @@ async function NewContract({ params, searchParams }: { params: Promise<{ id: str
       <div className="max-w-3xl space-y-4">
         <p className="text-sm text-muted">
           {previous
-            ? `Version ${previous.version + 1}, renewing version ${previous.version} (${previous.number})${previous.endDate ? `, which ends on ${formatDate(previous.endDate)}` : ''}.`
+            ? `Version ${previous.version + 1}, renewing ${withCodeInBrackets(`version ${previous.version}`, previous.number)}${previous.endDate ? `, which ends on ${formatDate(previous.endDate)}` : ''}.`
             : `The first contract of the employment since ${formatDate(e.joinDate)}.`}{' '}
           {previous?.training && `${onlyRenewalNote(e.employmentType)} `}
           It is saved as a draft: sign it on the Employment tab once the employee and the company have signed it.

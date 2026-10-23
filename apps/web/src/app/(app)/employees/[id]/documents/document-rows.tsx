@@ -4,7 +4,7 @@ import { PrintPdf } from '@/components/print-pdf';
 import { formatDate, formatDateTime, titleCase } from '@/lib/format';
 import { pdfFileName, PROTECTED_PDF_HINT } from '@/lib/protected-pdf';
 import type { DocumentItem, EmployeeProfile, GeneratedDocument, GeneratedDocumentStatus } from '@/lib/types';
-import { ASK_SUPER_ADMIN } from '../../../templates/wording';
+import { ASK_SUPER_ADMIN } from '../../../organization/templates/wording';
 import { contractHref, Loading, ProfileSection, todayInCairo } from '../../ui';
 import { ActionButton } from '../contracts/contract-buttons';
 import { loadDocuments } from './data';

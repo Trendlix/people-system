@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { INSTALLMENT_LIMIT_MIN, LAW_INSTALLMENT_PERCENT } from '@trendlix/shared';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import type { ContractSettings, FormState, PayrollSettingsView } from '@/lib/types';
-import { CHECK_IN_SETUP_PATH } from '../../attendance/sections';
+import { SETUP_PATHS } from '../setup-pages';
 import { plainAmount } from '../../employees/[id]/contracts/salary';
 
 // Payroll Setup → Your Rules (HR and Admin; owner's request, 16 October 2026): the rules runs are worked out with,
@@ -23,7 +23,7 @@ import { plainAmount } from '../../employees/[id]/contracts/salary';
 // lower if the company sets it so; a plan or an installment past it is refused, and the run's line warns past it.
 // Shown only when the API has it. Office Location (owner, 19 October 2026: "Check-in through the system (phone or web
 // with the office location check, or a device) to replace Zoho") and Zoho People's check-in addresses were here until
-// 20 October 2026 (owner: "Own page, several locations"): a line points to Attendance → Check-in Setup in their place.
+// 20 October 2026 (owner: "Own page, several locations"): a line points to Check-in Setup in their place.
 
 type RuleKey = 'dayDivisor' | 'attendanceGracePercent' | 'kpiGracePercent' | 'overtimeAbovePercent' | 'overtimeRate' | 'noShowDayMultiplier';
 
@@ -192,7 +192,7 @@ export function YourRulesForm({
       {/* the check-in places moved to their own page (owner, 20 October 2026: "Own page, several locations") */}
       <div className="border-t border-line-soft pt-5">
         <p className="text-sm">
-          Check-in locations and Zoho&apos;s addresses are on <Link href={CHECK_IN_SETUP_PATH}>Attendance → Check-in Setup</Link>.
+          Check-in locations and Zoho&apos;s addresses are on <Link href={SETUP_PATHS.checkInSetup}>Check-in Setup</Link>, under Time &amp; Leave.
         </p>
       </div>
 

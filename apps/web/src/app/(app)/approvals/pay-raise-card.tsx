@@ -8,6 +8,8 @@ import { FoldedRequestLog, RequestReason, Suggestion } from '../raise-requests/u
 import { decideRaise } from './actions';
 import { CeoRaiseDecision } from './ceo-raise-decision';
 import { pendingRaiseView } from './raises';
+import { shownCode } from '@/lib/hidden';
+import { Hidden } from '@/components/hidden';
 
 // A pay raise waiting for the CEO (owner's decisions, 16 October 2026: "HR, then the CEO"), on Approvals and, since 20
 // October 2026, on the phone pages' To Approve (the employee app): what changes, why, the raise request it came from,
@@ -76,7 +78,7 @@ export function PayRaiseCard({
         <div className="min-w-0">
           <h3 className="font-semibold">
             {onSite ? <Link href={contractHref(r.employee.id)}>{r.employee.fullNameEn}</Link> : r.employee.fullNameEn}
-            <span className="font-normal text-muted"> · {r.employee.employeeCode}</span>
+            {shownCode(r.employee.employeeCode) && <span className="font-normal text-muted"> · {r.employee.employeeCode}</span>}
           </h3>
           <p className="mt-0.5 text-sm">
             {v.kind}
@@ -88,7 +90,7 @@ export function PayRaiseCard({
       </div>
       <dl className="mt-4 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
         <Item label="Effective">
-          <span className="font-medium tabular-nums">{v.effective}</span>
+          {v.effective ? <span className="font-medium tabular-nums">{v.effective}</span> : <Hidden />}
         </Item>
         <Item label="Gross a month">
           <span className="tabular-nums">{v.gross}</span>

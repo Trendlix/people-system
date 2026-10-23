@@ -5,7 +5,7 @@ import { Shown } from '@/components/hidden';
 import { decidesForTeam, MY_REQUESTS, MY_TEAM } from '@/components/nav';
 import { departmentName } from '@/lib/departments';
 import { formatDate, formatDateTime } from '@/lib/format';
-import { employmentHidden, labelOf } from '@/lib/hidden';
+import { employmentHidden, labelOf, shownCode } from '@/lib/hidden';
 import { hasRole } from '@/lib/roles';
 import { shiftTimesText } from '@/lib/shifts';
 import type { EmployeeProfile, Holiday } from '@/lib/types';
@@ -123,7 +123,7 @@ function YourJob({ profile: p, user, today }: { profile: EmployeeProfile; user: 
       }
     >
       <dl className="divide-y divide-line-soft">
-        <Fact label="Name" note={<span className="tabular-nums">{p.employeeCode}</span>}>
+        <Fact label="Name" note={shownCode(p.employeeCode) && <span className="tabular-nums">{p.employeeCode}</span>}>
           <span className="font-medium">{p.fullNameEn}</span>{' '}
           <span lang="ar" dir="rtl" className="inline-block text-muted">
             {p.fullNameAr}

@@ -66,6 +66,20 @@ export const NOTIFICATION_KINDS = [
   'interview_feedback',
   'hiring_suggestion',
   'onboarding_items',
+  // access follows the contract (owner, 23 October 2026: "Active - Grace - Hold - No Access"; employee-access.ts): the
+  // employee told their access is on hold (check-in and check-out only), that HR gave them 7 days' grace, and the day
+  // before it ends; HR (the CEO for a C-level person) told once someone goes on hold
+  'access_hold',
+  'access_grace',
+  'access_grace_ending',
+  'access_held',
+  // official duty (owner, 23 October 2026: "Manager, then HR"; official-duty.ts): a request waiting for its approver's
+  // step, and the employee's own decided (or cancelled by HR)
+  'od_waiting',
+  'od_decided',
+  // no contract entered (owner, 23 October 2026: "Hold them after 7 days"; employee-access.ts): the employee told once
+  // that their access is on hold from a date unless their contract is entered
+  'access_no_contract',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
@@ -83,6 +97,7 @@ export const WAITING_KINDS = [
   'home_location_waiting',
   'kpi_waiting',
   'wfh_waiting',
+  'od_waiting',
 ] as const satisfies readonly NotificationKind[];
 
 /** Where the phone pages open a notification's request: To approve for what the person decides, else their own requests. */
@@ -126,6 +141,13 @@ export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
   interview_feedback: 'Interview',
   hiring_suggestion: 'Applicants',
   onboarding_items: 'Onboarding',
+  access_hold: 'Access',
+  access_grace: 'Access',
+  access_grace_ending: 'Access',
+  access_held: 'Access',
+  od_waiting: 'Official duty',
+  od_decided: 'Official duty',
+  access_no_contract: 'Access',
 };
 
 // ---------- the reminders and the person's switches ----------

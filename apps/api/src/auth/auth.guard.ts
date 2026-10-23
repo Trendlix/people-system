@@ -1,11 +1,21 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
-import { BACKGROUND_HEADER, DEVELOPER_READ_ONLY, isConnectorAccessToken, type Role, type SessionKind } from '@trendlix/shared';
+import {
+  ACCESS_HOLD_MESSAGE,
+  ACCESS_HOLD_REASON,
+  BACKGROUND_HEADER,
+  DEVELOPER_READ_ONLY,
+  isConnectorAccessToken,
+  neverHeldRole,
+  type Role,
+  type SessionKind,
+} from '@trendlix/shared';
 import type { Request } from 'express';
 import { ConnectorTokensService } from '../connector/connector-tokens.service.js';
+import { standingOf } from '../employee-access/access-state.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { CONNECTOR_NOT_OPEN, CONNECTOR_SCOPE_KEY, DEVELOPER_MAY_CALL, FORBIDDEN_MESSAGE, IS_PUBLIC, REQUIRED_ROLES, VIEW_AS_CONTROL } from './decorators.js';
+import { CONNECTOR_NOT_OPEN, CONNECTOR_SCOPE_KEY, DEVELOPER_MAY_CALL, FORBIDDEN_MESSAGE, IS_PUBLIC, OPEN_ON_HOLD, REQUIRED_ROLES, VIEW_AS_CONTROL } from './decorators.js';
 import { actsAs, isSuperAdmin } from './roles.js';
 import { ACTIVITY_THROTTLE_MS, idleTimeoutFor, sessionVerdict, signedOutBody } from './session-rules.js';
 import { answeredAs, SESSION_COOKIE, sessionUserIn, sessionUserOf, viewedAs, WITH_ROLES, type SessionUser } from './session-user.js';
@@ -50,6 +60,15 @@ export type SessionRequest = Request & { user?: SessionUser; sessionClaims?: Ses
 // above applies to them (their own data, their changes, no masking, no 15 minutes unless their own roles have them); as
 // a developer, or until they choose on the website, as a developer. In the app always as themselves. A Super Admin
 // viewing as them sees them as themselves, or as a developer once the banner's switch says so (viewedAs).
+//
+// Access follows the contract (owner, 23 October 2026: "Access should be on hold with a 7 days grace period one time
+// granted by the hr"; asked, on Hold "Check-in/out only"): an employee's account whose contract isn't in force and who
+// has no grace running is on Hold, read from the contract on each request (so a contract signed or a grace given opens
+// everything at once, and an expired grace holds the next request without signing out). `hold` is set on the user, and
+// only the routes marked @OpenOnHold answer (their own session's basics, checking in and out, the app's equivalents),
+// with the view-as switcher's own; every other answers 403 with ACCESS_HOLD_MESSAGE, before any other check. A Super
+// Admin, the CEO (their own roles) and an account that isn't an employee's are never held. While a Super Admin views as
+// someone on Hold, the request is theirs: held too. A Claude connector's token of an account on Hold reaches nothing.
 @Injectable()
 export class AuthGuard implements CanActivate {
   constructor(
@@ -123,6 +142,15 @@ export class AuthGuard implements CanActivate {
     }
     req.sessionClaims = claims;
 
+    // on Hold (23 October 2026): the account the request is for (the one viewed as, while a Super Admin views as someone)
+    const subject = claims.viewAs ? users.find((u) => u.id === claims.viewAs)! : signedIn;
+    if (await this.onHold(subject)) {
+      req.user = { ...req.user, hold: true };
+      const open = this.reflector.getAllAndOverride<boolean>(OPEN_ON_HOLD, targets) === true;
+      const switching = !!req.user.viewAs && this.reflector.getAllAndOverride<boolean>(VIEW_AS_CONTROL, targets) === true;
+      if (!open && !switching) throw holdRefusal();
+    }
+
     const required = this.reflector.getAllAndOverride<Role[] | undefined>(REQUIRED_ROLES, targets);
     if (required?.length && !actsAs(req.user.roles, required)) {
       const message = this.reflector.getAllAndOverride<string | undefined>(FORBIDDEN_MESSAGE, targets);
@@ -162,6 +190,8 @@ export class AuthGuard implements CanActivate {
       idleTimeoutMs: null,
     };
     req.user = { ...answeredAs(sessionUserOf(session.user)), viewAs: null };
+    // an account on Hold (23 October 2026): no route of the connector's is open to it
+    if (await this.onHold(session.user)) throw holdRefusal();
     // a developer's Claude reads and drafts nothing (22 October 2026)
     if (req.user.developer && changesData(req.method)) throw new ForbiddenException(DEVELOPER_READ_ONLY);
     const required = this.reflector.getAllAndOverride<Role[] | undefined>(REQUIRED_ROLES, targets);
@@ -172,12 +202,24 @@ export class AuthGuard implements CanActivate {
     return true;
   }
 
+  /**
+   * Whether an account is on Hold now (23 October 2026): an employee's, on, held by none of NEVER_HELD_ROLES (its own
+   * roles, never a developer's sight), whose standing is Hold (packages/shared accessStandingOf).
+   */
+  private async onHold(account: { employeeId: string | null; isActive: boolean; roles: { role: { key: string } }[] }): Promise<boolean> {
+    if (!account.employeeId || !account.isActive || neverHeldRole(account.roles.map((r) => r.role.key))) return false;
+    return (await standingOf(this.prisma, account.employeeId))?.result.standing === 'hold';
+  }
+
   /** The user's name from their employee profile (the account's link, 22 October 2026), else their email. */
   private async nameOf(user: SessionUser): Promise<string> {
     const own = user.employeeId ? await this.prisma.employee.findUnique({ where: { id: user.employeeId }, select: { fullNameEn: true } }) : null;
     return own?.fullNameEn ?? user.email;
   }
 }
+
+/** The refusal of anything but checking in and out to an account on Hold, with a reason the website knows it by. */
+export const holdRefusal = () => new ForbiddenException({ statusCode: 403, error: 'Forbidden', message: ACCESS_HOLD_MESSAGE, reason: ACCESS_HOLD_REASON });
 
 /** The session token a request carries: the cookie (the API's own, as the tests send it), else the bearer the web sends. */
 export function readToken(req: Request): string | undefined {

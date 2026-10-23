@@ -27,6 +27,7 @@ import { CheckInAnywhereField, CheckInWithoutLocationField } from './check-in-an
 import { COMMISSION_HINT, employmentTypeHint, WORK_NATURE_HINTS, workPatternNote } from './employment-law';
 import { statusField } from './employment-status';
 import { HazardousWorkField } from './leave-fields';
+import { withCode } from '@/lib/hidden';
 
 // The fields of an employment, used by the Add employment page (above the first contract's terms: hiring in one form,
 // owner's decision, 16 October 2026) and the Edit employment page. The employment types are the labour law's (owner, 18
@@ -358,7 +359,7 @@ export function EmploymentFields({
             <option value="">No direct manager</option>
             {managers.map((m) => (
               <option key={m.id} value={m.id}>
-                {m.fullNameEn} · {m.employeeCode}
+                {withCode(m.fullNameEn, m.employeeCode)}
               </option>
             ))}
           </Select>

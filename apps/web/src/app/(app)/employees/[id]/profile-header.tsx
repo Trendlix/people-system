@@ -6,7 +6,7 @@ import { DocumentViewer } from '@/components/document-viewer';
 import { cLevelTitle } from '@/lib/confidential';
 import { departmentName } from '@/lib/departments';
 import { formatDate } from '@/lib/format';
-import { employmentHidden } from '@/lib/hidden';
+import { employmentHidden, shownCode } from '@/lib/hidden';
 import type { EmployeeProfile, ProfileGap } from '@/lib/types';
 import { confirmationStatus, pendingRequest } from '../confirmation';
 import { Avatar, gradeLabel, photoHref, PROFILE_TABS, profileHref, standingOf, StandingBadge, tabShowing, type ProfileTabKey } from '../ui';
@@ -206,7 +206,8 @@ export function ProfileHeader({
                   : 'Not employed yet'}
           </p>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted">
-            <span className="rounded-md bg-ink px-2.5 py-1 font-semibold text-white tabular-nums">{p.employeeCode}</span>
+            {/* hidden from a developer (23 October 2026): left out, the name is their tag */}
+            {shownCode(p.employeeCode) && <span className="rounded-md bg-ink px-2.5 py-1 font-semibold text-white tabular-nums">{p.employeeCode}</span>}
             {e?.manager && (
               <span>
                 Reports to {linkPeople ? <Link href={`/employees/${e.manager.id}`}>{e.manager.fullNameEn}</Link> : e.manager.fullNameEn}

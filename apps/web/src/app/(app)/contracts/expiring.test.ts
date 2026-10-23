@@ -23,6 +23,18 @@ describe('the line under a contract ending soon', () => {
     expect(expiringLine(renewed, '2027-04-01')).toEqual({ kind: 'training', text: 'Training ended on 31/03/2027: convert to full-time, or end the training.' });
   });
 
+  it('a developer’s, without its end date (23 October 2026): no notice date, an agreement’s way forward without the date', () => {
+    expect(expiringLine({ endDate: null, nonRenewalNoticeBy: null }, '2026-10-19')).toEqual({ kind: 'none' });
+    expect(expiringLine({ endDate: null, nonRenewalNoticeBy: null, training: { agreement: 1, next: 'renew_or_convert' } }, '2026-10-19')).toEqual({
+      kind: 'training',
+      text: 'Renew it once, or convert to full-time.',
+    });
+    expect(expiringLine({ endDate: null, nonRenewalNoticeBy: null, training: { agreement: 2, next: 'convert_or_end' } }, '2026-10-19')).toEqual({
+      kind: 'training',
+      text: 'Convert to full-time, or end the training.',
+    });
+  });
+
   it('says nothing without a notice date or an agreement', () => {
     expect(expiringLine({ endDate: '2026-12-31', nonRenewalNoticeBy: null }, '2026-10-19')).toEqual({ kind: 'none' });
   });

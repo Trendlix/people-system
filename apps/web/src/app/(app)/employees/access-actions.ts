@@ -6,6 +6,7 @@
 import type { AccessLinkResult, BulkInviteResult, EmployeeAccessView } from '@trendlix/shared';
 import { refresh } from 'next/cache';
 import { ApiError, apiSend } from '@/lib/api';
+import { formatDate } from '@/lib/format';
 import type { FormState } from '@/lib/types';
 
 /** A form's answer, with the link to copy when one was asked for (shown once, never kept). */
@@ -42,6 +43,19 @@ export async function giveAccessNow(employeeId: string): Promise<FormState> {
   if (!r.ok) return r.state;
   refresh();
   return { message: 'Their account is made. Send them an invitation when you’re ready.' };
+}
+
+/**
+ * Give 7 days' grace (owner, 23 October 2026: "Access should be on hold with a 7 days grace period one time granted by
+ * the hr"): full access to the end of the 7th day, once in this contract gap, never extended. The API refuses it (with
+ * why) when they aren't on Hold, a grace of this gap was used, or it is for oneself.
+ */
+export async function giveGrace(employeeId: string): Promise<FormState> {
+  const r = await send(() => apiSend<EmployeeAccessView>('POST', `/employees/${employeeId}/access/grace`));
+  if (!r.ok) return r.state;
+  refresh();
+  const until = r.value?.standing.grace?.until;
+  return { message: until ? `Grace given: full access until the end of ${formatDate(until)}.` : 'Grace given.' };
 }
 
 /** An invitation or a password reset: emailed, or a link to copy and send by hand (WhatsApp). */

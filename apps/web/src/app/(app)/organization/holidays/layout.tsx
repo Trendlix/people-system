@@ -1,5 +1,5 @@
-import { OrgTabs } from '../tabs';
+import { SetupFrame } from '../setup-menu';
 
 export default function Layout({ children }: LayoutProps<'/organization/holidays'>) {
-  return <OrgTabs active="holidays">{children}</OrgTabs>;
+  return <SetupFrame active="holidays">{children}</SetupFrame>;
 }

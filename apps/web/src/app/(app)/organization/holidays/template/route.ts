@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { ApiError, apiFetch } from '@/lib/api';
 import { todayInCairo } from '../../../employees/ui';
 import { passSheetOn } from '../../../payroll/files';
-import { textResponse as text } from '../../../templates/file-response';
+import { textResponse as text } from '../../templates/file-response';
 import { holidaysYear } from '../holidays';
 
 // Serves the template for importing a year's holidays (owner's request, 16 October 2026: "allow me to import yearly

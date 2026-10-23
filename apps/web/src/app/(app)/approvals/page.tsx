@@ -42,6 +42,11 @@ import { decidesRaises, followsRaises, PENDING_RAISES, raisesLabel } from './rai
 import { loadWaitingWfh } from '../attendance/wfh/data';
 import { WfhTable } from '../attendance/wfh/ui';
 import { seesAllWfh, WFH_PATH } from '../attendance/wfh/wfh';
+import { loadWaitingOd } from '../attendance/official-duty/data';
+import { OdTable } from '../attendance/official-duty/ui';
+import { OD_PATH, seesAllOd } from '../attendance/official-duty/od';
+import { shownCode } from '@/lib/hidden';
+import { Hidden } from '@/components/hidden';
 
 // What waits for a decision, in three sections:
 // - Endings HR has recorded and approved, waiting for the CEO (owner's decision of 15 October 2026: HR approves, then
@@ -102,7 +107,7 @@ function EndingCard({ ending: e, decides }: { ending: EndingSummary; decides: bo
         <div className="min-w-0">
           <h3 className="font-semibold">
             <Link href={profileHref(e.employee.id, 'employment')}>{e.employee.fullNameEn}</Link>
-            <span className="font-normal text-muted"> · {e.employee.employeeCode}</span>
+            {shownCode(e.employee.employeeCode) && <span className="font-normal text-muted"> · {e.employee.employeeCode}</span>}
           </h3>
           <p className="mt-0.5 text-sm">{e.ruleLabel}</p>
         </div>
@@ -113,7 +118,7 @@ function EndingCard({ ending: e, decides }: { ending: EndingSummary; decides: bo
         <Item label="Started by">{e.initiator ? (INITIATOR_LABELS[e.initiator] ?? e.initiator) : none}</Item>
         <Item label="Notice given on">{e.noticeGivenOn ? formatDate(e.noticeGivenOn) : <span className="text-muted">No notice</span>}</Item>
         <Item label="Last working day">
-          <span className="font-medium">{formatDate(e.lastWorkingDay)}</span>
+          {e.lastWorkingDay ? <span className="font-medium">{formatDate(e.lastWorkingDay)}</span> : <Hidden />}
         </Item>
         <Item label="Pay in lieu">{e.payInLieu ? 'Yes: the notice is paid, not worked' : 'No'}</Item>
         {e.reason && (
@@ -148,7 +153,7 @@ function EndingCard({ ending: e, decides }: { ending: EndingSummary; decides: bo
       {decides && (
         <DecisionForm
           action={decideEnding.bind(null, e.id)}
-          confirmApprove={`Approve the end of ${e.employee.fullNameEn}'s employment? The last working day is ${formatDate(e.lastWorkingDay)}.`}
+          confirmApprove={`Approve the end of ${e.employee.fullNameEn}'s employment?${e.lastWorkingDay ? ` The last working day is ${formatDate(e.lastWorkingDay)}.` : ''}`}
         />
       )}
     </li>
@@ -270,7 +275,7 @@ function PendingHomeCard({ request: r }: { request: HomeLocationView }) {
         <div className="min-w-0">
           <h3 className="font-semibold">
             <Link href={profileHref(r.employee.id, 'employment')}>{r.employee.fullNameEn}</Link>
-            <span className="font-normal text-muted"> · {r.employee.employeeCode}</span>
+            {shownCode(r.employee.employeeCode) && <span className="font-normal text-muted"> · {r.employee.employeeCode}</span>}
           </h3>
           <p className="mt-0.5 text-sm">{r.label ?? 'No label: the point on the map'}</p>
           <p className="text-xs text-muted">
@@ -349,7 +354,7 @@ async function PendingKpis({ user }: { user: SessionUser }) {
               <tr key={r.id}>
                 <td className="min-w-48">
                   <span className="font-semibold">{r.person}</span>
-                  <span className="text-muted"> · {r.employeeCode}</span>
+                  {shownCode(r.employeeCode) && <span className="text-muted"> · {r.employeeCode}</span>}
                   {r.confidential && <CLevelBadge className="ml-2" />}
                   {r.practice && <PracticeBadge className="ml-2" />}
                   {r.jobTitle && <span className="block text-xs text-muted">{r.jobTitle}</span>}
@@ -391,6 +396,24 @@ async function PendingWfh({ all }: { all: boolean }) {
   );
 }
 
+// ---------- official duty ----------
+
+/** The official duty requests waiting for the caller (owner, 23 October 2026: "Manager, then HR"): HR's stage, a C-level person's for the CEO. */
+async function PendingOd({ all }: { all: boolean }) {
+  // read quietly, like working from home: an API from before official duty must not take the endings down with it
+  const waiting = await loadWaitingOd();
+  if (waiting.kind === 'unavailable') return <Empty>Official duty requests aren&apos;t available yet.</Empty>;
+  if (waiting.kind !== 'ok') return <Empty>Official duty requests couldn&apos;t load.</Empty>;
+  const every = all && <Link href={OD_PATH}>See every request</Link>;
+  if (waiting.value.length === 0) return <Empty>No official duty requests are waiting for you. {every}</Empty>;
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted">Waiting for your decision: approve each, or reject it with a comment the employee sees. {every}</p>
+      <OdTable requests={waiting.value} who where note="waiting for you, the latest first day first." />
+    </div>
+  );
+}
+
 // ---------- the page ----------
 
 function Section({ title, id, children }: { title: string; id?: string; children: React.ReactNode }) {
@@ -415,7 +438,9 @@ async function Approvals({ searchParams }: { searchParams: PageProps<'/approvals
   const kpis = seesKpiApprovals(user);
   // HR and the CEO (21 October 2026), and an Admin for those they decide as someone's manager; a manager's are on My Team
   const wfh = seesAllWfh(user) || hasRole(user, 'admin');
-  if (!endings && !raises && !changes && !homes && !kpis && !wfh) return <Empty>Only HR, the CEO and Admin can see approvals.</Empty>;
+  // official duty the same way (23 October 2026: "Manager, then HR")
+  const od = seesAllOd(user) || hasRole(user, 'admin');
+  if (!endings && !raises && !changes && !homes && !kpis && !wfh && !od) return <Empty>Only HR, the CEO and Admin can see approvals.</Empty>;
   const done = typeof query.done === 'string' ? DONE[query.done] : undefined;
 
   return (
@@ -454,6 +479,11 @@ async function Approvals({ searchParams }: { searchParams: PageProps<'/approvals
       {wfh && (
         <Section title="Work From Home" id="work-from-home">
           <PendingWfh all={seesAllWfh(user)} />
+        </Section>
+      )}
+      {od && (
+        <Section title="Official Duty" id="official-duty">
+          <PendingOd all={seesAllOd(user)} />
         </Section>
       )}
     </div>

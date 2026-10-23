@@ -33,7 +33,7 @@ describe('the headings that open and close', () => {
       // owner, 21 October 2026: the KPIs, then Assets (for those with Assets access)
       ['KPIs', 'kpis'],
       ['Assets', 'assets'],
-      ['Templates', 'templates'],
+      // Templates was one until it moved to Organization's setup menu (23 October 2026)
     ]);
     expect(NAV.filter((item) => !isGroup(item)).map((item) => item.label)).toEqual(['Home', 'Organization', 'Approvals', 'Users', 'Audit Log']);
     expect(groupListId('requests')).toBe('nav-group-requests');
@@ -66,8 +66,8 @@ describe('the headings that open and close', () => {
     expect(groupHolding(items, '/attendance/summary')).toBe('attendance');
     expect(groupHolding(items, CORRECTIONS_PATH)).toBe('attendance');
     for (const page of ['/', '/organization/company', '/approvals', '/leaves', '/raise-requestsx', '/my-requests']) expect(groupHolding(items, page)).toBeNull();
-    expect(groupHolding(sidebar('super_admin'), '/templates/tags')).toBe('templates');
-    // the KPI templates are the KPIs', not the document templates'
+    // the document templates are a page of Organization, a link (23 October 2026); the KPI templates are the KPIs'
+    expect(groupHolding(sidebar('super_admin'), '/organization/templates/tags')).toBeNull();
     expect(groupHolding(sidebar('super_admin'), '/kpis/templates')).toBe('kpis');
     expect(groupHolding(items, '/kpis/scorecards/0b8f2c1e-1111-4222-8333-444455556666')).toBe('kpis');
     expect(groupHolding(sidebar('employee'), '/kpis')).toBe('kpis');

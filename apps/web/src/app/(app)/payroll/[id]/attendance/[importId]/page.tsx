@@ -40,6 +40,7 @@ import {
 } from '../attendance';
 import { loadImport } from '../data';
 import { ApplyButton, ChoiceButton, PickPerson, UndoButton } from './person-forms';
+import { shownCode, withCode } from '@/lib/hidden';
 
 // An attendance import's review (owner, 19 October 2026: attendance runs in Zoho People today, "Import Zoho now, replace
 // it later"; on a draft run, upload → review → Apply): the files read (their months: another month's days left out, the
@@ -154,7 +155,7 @@ async function Review({ params }: { params: PageProps<'/payroll/[id]/attendance/
   const s = reviewSections(view.people);
   const choose = choosePerson.bind(null, id, importId);
   // the payroll's people, for choosing who someone of the files is: Apply fills lines on this payroll only
-  const options = run.lines.map((l) => ({ id: l.employeeId, label: `${l.name} · ${l.employeeCode}` })).sort((a, b) => a.label.localeCompare(b.label));
+  const options = run.lines.map((l) => ({ id: l.employeeId, label: withCode(l.name, l.employeeCode) })).sort((a, b) => a.label.localeCompare(b.label));
   const title = runTitle(run.month);
   const deletes = canDelete(user);
   const undoesFirst = undoesBeforeDelete(view);
@@ -225,7 +226,8 @@ async function Review({ params }: { params: PageProps<'/payroll/[id]/attendance/
               {p.candidates.map((c) => (
                 <div key={c.id} className="flex flex-wrap items-center gap-3">
                   <span className="text-sm">
-                    Did you mean <Link href={profileHref(c.id)}>{c.fullNameEn}</Link> <span className="text-muted">({c.employeeCode})</span>?
+                    Did you mean <Link href={profileHref(c.id)}>{c.fullNameEn}</Link>
+                    {shownCode(c.employeeCode) && <span className="text-muted"> ({c.employeeCode})</span>}?
                   </span>
                   {draft && <ChoiceButton action={choose} personKey={p.key} employeeId={c.id} label="Confirm" srLabel={`${c.fullNameEn} for ${p.zohoName}`} variant="primary" />}
                 </div>
@@ -277,7 +279,8 @@ async function Review({ params }: { params: PageProps<'/payroll/[id]/attendance/
                     )}
                     {p.confidential && <CLevelBadge className="ml-2" title="C-level: the CEO fills their line." />}
                     <span className="block text-xs text-muted">
-                      {p.employee?.employeeCode} · Zoho: {p.zohoName}
+                      {shownCode(p.employee?.employeeCode) && `${p.employee?.employeeCode} · `}
+                      Zoho: {p.zohoName}
                       {p.zohoId && ` (${p.zohoId})`}
                     </span>
                     <span className="block text-xs text-muted">{MATCH_TEXT[p.match]}</span>

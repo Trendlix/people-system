@@ -21,6 +21,7 @@ import { Select } from '@/components/select';
 import { APP_CUSTODY_PATHS, CUSTODY_PATHS } from '@/lib/asset-paths';
 import { handOverAssets } from '../custody-actions';
 import { assetOptionText, attachedText, handoverBody, kitAdd, kitAddText, skipText } from '../custody';
+import { joinShown } from '@/lib/hidden';
 
 // New handover (Assets step 3; the spec's New handover: "Type (shoot / long-term), employee, return date (shoot only),
 // purpose, kit quick-add, asset picker (available only), handed over by, notes"): a custodian or a manager chooses a
@@ -147,8 +148,7 @@ export function HandoverForm({
               <option value="">Choose the employee</option>
               {choices.people.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.fullNameEn} · {p.employeeCode}
-                  {p.department ? ` · ${p.department}` : ''}
+                  {joinShown([p.fullNameEn, p.employeeCode, p.department])}
                 </option>
               ))}
             </Select>

@@ -14,7 +14,10 @@ import {
   type ApplicationView,
   type InterviewView,
 } from '@trendlix/shared';
+import { SetUpEmailLink } from '@/components/set-up-email-link';
+import { isEmailNotSetUp, setsUpEmail } from '@/lib/email-setup';
 import { formatDate, formatDateTime } from '@/lib/format';
+import { getCurrentUser } from '@/lib/session';
 import { BackLink, Empty, Loading } from '../../../organization/ui';
 import { RehireWarning } from '../../../offboarding/rehire-warning';
 import { splitApplication } from '../../candidate-actions';
@@ -29,6 +32,7 @@ import { FeedbackForm, MoveInterview, ScheduleInterview, SuggestForm, type Perso
 import { vacancyOptions } from '../../pickers';
 import { applicantCvHref, makeOfferHref, matchText, vacancyHref } from '../../recruitment';
 import { StageBadge } from '../../ui';
+import { shownCode } from '@/lib/hidden';
 
 // An applicant (owner, 22 October 2026: "where will we include the ATS?"): who they are, their match and how each answer
 // did (a must-have failed filters them out: kept, restorable), their CV, HR's notes, what can be done now (shortlist,
@@ -101,7 +105,7 @@ function OtherApplications({ a }: { a: ApplicationView }) {
                 action={splitApplication.bind(null, a.id)}
                 label="Move to a new candidate"
                 pendingLabel="Moving…"
-                confirm={`Move ${a.number} to a new candidate? It leaves ${c.code}, with the email and mobile used only on it; the two won’t be suggested as one person.`}
+                confirm={`Move ${shownCode(a.number) ?? 'this application'} to a new candidate? It leaves ${shownCode(c.code) ?? 'its candidate'}, with the email and mobile used only on it; the two won’t be suggested as one person.`}
               />
             )}
           </div>
@@ -121,7 +125,11 @@ function OtherApplications({ a }: { a: ApplicationView }) {
   );
 }
 
-function InterviewItem({ i, people, feedbackOf }: { i: InterviewView; people: PersonOption[]; feedbackOf: ApplicationView['feedback'] }) {
+/**
+ * `setUpEmail`: a Super Admin, offered "Set up email" after the candidate's email problem when email isn't set up (owner,
+ * 23 October 2026: "why dont we add SMTP setup in the organization setup").
+ */
+function InterviewItem({ i, people, feedbackOf, setUpEmail }: { i: InterviewView; people: PersonOption[]; feedbackOf: ApplicationView['feedback']; setUpEmail: boolean }) {
   const mine = feedbackOf.find((f) => f.interviewId === i.id && f.mine) ?? null;
   return (
     <li className="space-y-3 border-b border-line-soft py-4 last:border-b-0">
@@ -154,7 +162,19 @@ function InterviewItem({ i, people, feedbackOf }: { i: InterviewView; people: Pe
       </p>
       {i.note && <p className="text-sm whitespace-pre-line">Note to the candidate: {i.note}</p>}
       {i.status === 'cancelled' && i.cancelReason && <p className="text-sm text-muted">Cancelled: {i.cancelReason}</p>}
-      {i.emailProblem ? <p className="text-sm text-warn">{i.emailProblem}</p> : i.emailedAt ? <p className="text-xs text-muted">The candidate was emailed {formatDateTime(i.emailedAt)}.</p> : null}
+      {i.emailProblem ? (
+        <p className="text-sm text-warn">
+          {i.emailProblem}
+          {setUpEmail && isEmailNotSetUp(i.emailProblem) && (
+            <>
+              {' '}
+              <SetUpEmailLink />
+            </>
+          )}
+        </p>
+      ) : i.emailedAt ? (
+        <p className="text-xs text-muted">The candidate was emailed {formatDateTime(i.emailedAt)}.</p>
+      ) : null}
       <div className="flex flex-wrap items-start gap-2">
         {i.can.reschedule && <MoveInterview action={rescheduleInterview.bind(null, i.id)} people={people} interview={i} />}
         {i.can.mark && <ActionButton action={markInterview.bind(null, i.id, 'done')} label="Mark done" pendingLabel="Saving…" kind="primary" />}
@@ -204,6 +224,8 @@ async function Interviews({ a }: { a: ApplicationView }) {
   const manages = a.viewer === 'manages';
   const people: PersonOption[] = manages && (a.can.scheduleInterview || a.interviews.some((i) => i.can.reschedule)) ? (await vacancyOptions()).managers : [];
   if (!a.interviews.length && !a.can.scheduleInterview) return null;
+  // "Set up email" for a Super Admin, once an interview's candidate wasn't emailed for the lack of it
+  const setUpEmail = a.interviews.some((i) => isEmailNotSetUp(i.emailProblem)) && setsUpEmail(await getCurrentUser());
   return (
     <section aria-labelledby="applicant-interviews" className="card space-y-3 p-6">
       <h2 id="applicant-interviews" className="text-lg font-semibold">
@@ -212,7 +234,7 @@ async function Interviews({ a }: { a: ApplicationView }) {
       {a.interviews.length > 0 && (
         <ul>
           {a.interviews.map((i) => (
-            <InterviewItem key={i.id} i={i} people={people} feedbackOf={a.feedback} />
+            <InterviewItem key={i.id} i={i} people={people} feedbackOf={a.feedback} setUpEmail={setUpEmail} />
           ))}
         </ul>
       )}
@@ -236,12 +258,13 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
           <StageBadge stage={a.stage} filteredOut={a.filteredOut} />
         </div>
         <p className="text-sm text-muted">
-          {a.number} · applied {formatDateTime(a.appliedAt)} · {applicationSourceText(a)}
+          {shownCode(a.number) && `${a.number} · `}
+          applied {formatDateTime(a.appliedAt)} · {applicationSourceText(a)}
           {/* their candidate profile (22 October 2026: "how to make like a profile for each candidate …"); HR, the CEO and a Super Admin only */}
           {a.candidateProfile && (
             <>
               {' · '}
-              <Link href={candidateHref(a.candidateProfile.id)}>Candidate {a.candidateProfile.code}</Link>
+              <Link href={candidateHref(a.candidateProfile.id)}>{shownCode(a.candidateProfile.code) ? `Candidate ${a.candidateProfile.code}` : 'Candidate profile'}</Link>
             </>
           )}
         </p>
@@ -415,7 +438,7 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
           <ul className="space-y-1 text-sm">
             {a.offers.map((o) => (
               <li key={o.id}>
-                <Link href={`/offers/${o.id}`}>{o.number}</Link> <span className="text-muted">· {o.status}</span>
+                <Link href={`/offers/${o.id}`}>{shownCode(o.number) ?? 'Job offer'}</Link> <span className="text-muted">· {o.status}</span>
               </li>
             ))}
           </ul>

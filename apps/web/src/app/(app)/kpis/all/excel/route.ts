@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { ApiError, apiFetch } from '@/lib/api';
 import { KPI_API } from '@/lib/kpi-paths';
 import { passSheetOn } from '../../../payroll/files';
-import { apiReason, textResponse as text } from '../../../templates/file-response';
+import { apiReason, textResponse as text } from '../../../organization/templates/file-response';
 import { kpiExcelName, readMonth } from '../../scorecard';
 
 // Serves a month's KPI scorecards as an Excel workbook (owner's brief, 21 October 2026: "All KPIs … every scorecard by

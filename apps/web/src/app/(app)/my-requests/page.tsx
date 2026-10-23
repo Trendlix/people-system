@@ -33,6 +33,9 @@ import { MY_EXIT_INTERVIEW_PATH } from '../offboarding/offboarding';
 import { loadMyWfh, loadWfhAllowance } from '../attendance/wfh/data';
 import { NEW_WFH_PATH, wfhAllowanceLine } from '../attendance/wfh/wfh';
 import { WfhTable } from '../attendance/wfh/ui';
+import { loadMyOd, loadOdForm } from '../attendance/official-duty/data';
+import { NEW_OD_PATH } from '../attendance/official-duty/od';
+import { OdTable } from '../attendance/official-duty/ui';
 import {
   askedByManager,
   filterRequests,
@@ -459,6 +462,51 @@ async function WorkFromHome() {
 }
 
 /**
+ * Their official duties (owner, 23 October 2026: "Official duty (OD) requests"; GET /me/official-duty): the days and
+ * hours, where, and where each stands, the latest first day first, each opening its page (every step, Cancel while it
+ * is being decided); Request official duty to ask for one, while its form says nothing refuses them (an employment, not
+ * a freelancer: GET /me/official-duty/form). Nothing from an API from before it, nor without a profile of their own; a
+ * section with no requests and nothing to ask for is left out.
+ */
+async function OfficialDuty() {
+  const user = await getCurrentUser();
+  const profile = await loadOwnProfile(user);
+  if (!profile) return null;
+  const [requests, form] = await Promise.all([loadMyOd(), loadOdForm()]);
+  if (requests.kind === 'unavailable') return null;
+  const asks = form.kind === 'ok' && !form.value.refusal;
+  const list = requests.kind === 'ok' ? requests.value : [];
+  if (!asks && requests.kind === 'ok' && list.length === 0) return null;
+  return (
+    <section id="my-od" aria-labelledby="my-od-heading" className="mt-10 scroll-mt-6 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 id="my-od-heading" className="text-lg font-semibold">
+            Official Duty
+          </h2>
+          <p className="text-sm text-muted">
+            Work for the company away from the office, e.g. at a client&apos;s site, asked ahead or up to 3 days after. Your direct manager decides it
+            first, then HR; on an approved day you check in from where you are, and the day counts as attended.
+          </p>
+        </div>
+        {asks && (
+          <Link href={NEW_OD_PATH} className="btn btn-secondary">
+            Request official duty
+          </Link>
+        )}
+      </div>
+      {requests.kind !== 'ok' ? (
+        <div className="card px-6 py-6 text-sm text-muted">Your official duty requests couldn&apos;t be loaded. Please try again in a moment.</div>
+      ) : list.length === 0 ? (
+        <div className="card px-6 py-10 text-center text-sm text-muted">You haven&apos;t asked for an official duty. Ask with Request official duty.</div>
+      ) : (
+        <OdTable requests={list} where note="the latest first day first." />
+      )}
+    </section>
+  );
+}
+
+/**
  * Their home location (owner, 20 October 2026: "allow other users to request to add their home locations when working
  * from home"; GET /me/home-locations): the home in force, on a small map, and their requests, newest first, each opening
  * its page; Home location to ask for one while none is being decided. Nothing from an API from before them, nor without
@@ -556,6 +604,9 @@ export default function MyRequestsPage({ searchParams }: PageProps<'/my-requests
       </Suspense>
       <Suspense fallback={null}>
         <WorkFromHome />
+      </Suspense>
+      <Suspense fallback={null}>
+        <OfficialDuty />
       </Suspense>
       <Suspense fallback={null}>
         <HomeLocation />

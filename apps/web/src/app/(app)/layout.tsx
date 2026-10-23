@@ -11,6 +11,7 @@ import { SessionWatch } from '@/components/session-watch';
 import { UserMenu } from '@/components/user-menu';
 import { DeveloperBanner } from '@/components/developer-banner';
 import { ModeGate } from '@/components/mode-gate';
+import { HoldGate } from '@/components/hold-gate';
 import { ViewAsBanner } from '@/components/view-as-banner';
 import { ApiError } from '@/lib/api';
 import { KPI_API, KPI_PATHS } from '@/lib/kpi-paths';
@@ -33,6 +34,9 @@ import { HOME_COUNTS, seesHomes } from './home-locations/home-locations';
 import { readsChangeRequests, waitingForYou } from './requests/details-changes/list';
 import { WFH_COUNTS } from './attendance/wfh/wfh';
 import type { WfhCounts } from '@/lib/wfh-types';
+import { OD_COUNTS } from './attendance/official-duty/od';
+import type { OdCounts } from '@/lib/od-types';
+import type { AccessCounts } from '@trendlix/shared';
 
 /**
  * The sidebar links for the signed-in user: an employee's or a manager's own (Dashboard, My Profile, My Requests, and
@@ -77,7 +81,12 @@ async function MainNav() {
   // The work from home requests waiting for the user (owner, 21 October 2026: "Manager, then HR"): beside Approvals for
   // those who see it (HR, the CEO, Admin), which lists them, and in My Team's for a manager or a lead.
   const wfhCounted = hasRole({ roles }, 'hr', 'ceo', 'admin') || manager;
-  const [endings, pendingChanges, raises, requests, claims, leave, corrections, homes, kpis, wfh] = await Promise.all([
+  // the official duty requests waiting for the user the same way (owner, 23 October 2026: "Manager, then HR")
+  const odCounted = wfhCounted;
+  // beside Employees, for HR and Admin (a Super Admin too), the people whose access is on hold (owner, 23 October 2026:
+  // "Access should be on hold with a 7 days grace period one time granted by the hr"): HR gives grace or renews them
+  const accessCounted = hasRole({ roles }, 'hr', 'admin');
+  const [endings, pendingChanges, raises, requests, claims, leave, corrections, homes, kpis, wfh, access, od] = await Promise.all([
     followsEndings({ roles }) ? getOrNull<EndingSummary[]>(PENDING_ENDINGS, bg) : null,
     readsChangeRequests({ roles }) ? getOrNull<ChangeRequest[]>(PENDING_CHANGE_REQUESTS, bg) : null,
     followsRaises({ roles }) ? getOrNull<PendingRaise[]>(PENDING_RAISES, bg) : null,
@@ -88,21 +97,25 @@ async function MainNav() {
     seesHomes({ roles }) ? getOrNull<HomeLocationCounts>(HOME_COUNTS, bg) : null,
     user ? getOrNull<KpiCounts>(KPI_API.counts, bg) : null,
     user && wfhCounted ? getOrNull<WfhCounts>(WFH_COUNTS, bg) : null,
+    user && accessCounted ? getOrNull<AccessCounts>('/employees/access/counts', bg) : null,
+    user && odCounted ? getOrNull<OdCounts>(OD_COUNTS, bg) : null,
   ]);
   const changes = pendingChanges && waitingForYou({ roles }, pendingChanges);
   const raiseRequests = requests ? waitingForYouCount({ roles }, requests) : 0;
   const kpiApprovals = hasRole({ roles }, 'hr', 'ceo', 'admin') ? (kpis?.team ?? 0) + (kpis?.hr ?? 0) : 0;
   const wfhApprovals = hasRole({ roles }, 'hr', 'ceo', 'admin') ? (wfh?.waiting ?? 0) : 0;
-  const waiting = (endings?.length ?? 0) + (changes?.length ?? 0) + (raises?.length ?? 0) + (homes?.waiting ?? 0) + kpiApprovals + wfhApprovals;
+  const odApprovals = hasRole({ roles }, 'hr', 'ceo', 'admin') ? (od?.waiting ?? 0) : 0;
+  const waiting = (endings?.length ?? 0) + (changes?.length ?? 0) + (raises?.length ?? 0) + (homes?.waiting ?? 0) + kpiApprovals + wfhApprovals + odApprovals;
   const counts: Record<string, number> = {};
   if (waiting) counts['/approvals'] = waiting;
   if (kpis?.self) counts[KPI_PATHS.mine] = kpis.self;
   if (kpis?.team) counts[KPI_PATHS.team] = kpis.team;
   if (kpis?.hr) counts[KPI_PATHS.all] = kpis.hr;
   if (raiseRequests) counts[RAISE_REQUESTS_PATH] = raiseRequests;
+  if (access?.hold) counts['/employees'] = access.hold;
   if (changes?.length) counts[DETAILS_CHANGES_PATH] = changes.length;
   if (self) {
-    const team = (claims?.waiting ?? 0) + (leave?.waiting ?? 0) + (corrections?.waiting ?? 0) + (manager ? (wfh?.waiting ?? 0) : 0);
+    const team = (claims?.waiting ?? 0) + (leave?.waiting ?? 0) + (corrections?.waiting ?? 0) + (manager ? (wfh?.waiting ?? 0) + (od?.waiting ?? 0) : 0);
     if (team) counts[MY_TEAM] = team;
   } else {
     if (claims?.waiting) counts[REIMBURSEMENTS_PATH] = claims.waiting;
@@ -151,6 +164,8 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
       {/* a developer who is also an employee and hasn't chosen how to use the system: the choice page (22 October 2026) */}
       <Suspense fallback={null}>
         <ModeGate />
+        {/* someone whose access is on hold: the Hold page, check-in and check-out only (owner, 23 October 2026) */}
+        <HoldGate />
         <ViewAsBanner />
         <DeveloperBanner />
       </Suspense>

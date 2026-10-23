@@ -6,6 +6,7 @@ import { appCorrectionHref, appItemHref } from '@/lib/surface';
 import { correctedNote, dayRow, daySourceText, extraHoursText, hoursText, type PunchRow } from '../../../(app)/attendance/attendance';
 import { dayCorrection } from '../../../(app)/attendance/corrections/corrections';
 import { isWfhDay, WFH_DAY_BADGE } from '../../../(app)/attendance/wfh/wfh';
+import { OD_DAY_BADGE } from '../../../(app)/attendance/official-duty/od';
 import { leaveStatusLabel } from '../../../(app)/leave/list';
 import { AllPresses, DayEndView } from '../../../(app)/attendance/punch-ui';
 import { weekdayOf } from '../../../(app)/organization/holidays/holidays';
@@ -83,6 +84,12 @@ export function DayList({
               </h3>
               <span className="flex flex-wrap items-baseline justify-end gap-2">
                 {isWfhDay({ wfhDays }, d.date) && <span className="badge bg-accent-soft text-accent">{WFH_DAY_BADGE}</span>}
+                {/* a day of official duty (23 October 2026), opening its request */}
+                {d.od && (
+                  <Link href={appItemHref('requests', 'od', d.od.requestId)} className="badge bg-ok-soft text-ok no-underline">
+                    {OD_DAY_BADGE}
+                  </Link>
+                )}
                 <span className={`text-sm font-medium ${tone ? TONE[tone] : 'text-muted'}`}>{dayStatusText(d.status)}</span>
               </span>
             </div>

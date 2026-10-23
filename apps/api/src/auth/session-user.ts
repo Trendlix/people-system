@@ -51,6 +51,14 @@ export interface SessionUser {
    * session made before it was read (treated as none).
    */
   employeeId?: string | null;
+  /**
+   * The account is on Hold (owner, 23 October 2026: "Access should be on hold with a 7 days grace period one time granted
+   * by the hr"; asked, "Check-in/out only"): an employee's account (never a Super Admin's, the CEO's, or one that isn't
+   * an employee's) with no contract in force and no grace running. Read from the contract on each request (auth.guard.ts),
+   * so a contract signed or a grace given takes effect at once and an expired grace holds the next request. Only the
+   * routes marked @OpenOnHold answer. Left out (never false) for anyone else.
+   */
+  hold?: boolean;
 }
 
 /** A user as the database has them (with their roles), for a session. */

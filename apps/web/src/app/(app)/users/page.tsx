@@ -8,6 +8,7 @@ import type { UserAccount } from '@/lib/types';
 import { accessShort } from '../assets/assets';
 import { profileHref } from '../employees/tab-list';
 import { Loading, managesAccessOnProfile, RequireAdmin, RoleBadges, StatusBadge, USERS_PAGE_NOTE } from './ui';
+import { shownCode } from '@/lib/hidden';
 
 // The accounts that aren't an employee's (owner, 22 October 2026: "any active employee with active contract should have
 // access", managed "On the employee profile"): a developer, an outside accountant. ?show=all lists the employees'
@@ -73,7 +74,7 @@ async function UsersList({ searchParams }: { searchParams: Promise<Record<string
                     <td>
                       {u.employee ? (
                         <span>
-                          {u.employee.fullNameEn} <span className="whitespace-nowrap text-muted">· {u.employee.employeeCode}</span>
+                          {u.employee.fullNameEn} {shownCode(u.employee.employeeCode) && <span className="whitespace-nowrap text-muted">· {u.employee.employeeCode}</span>}
                         </span>
                       ) : (
                         <span className="text-muted">—</span>

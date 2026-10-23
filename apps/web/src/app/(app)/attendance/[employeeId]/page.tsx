@@ -16,6 +16,8 @@ import { DayCorrectionCell } from '../corrections/day-cell';
 import { loadPerson } from '../data';
 import { notLoaded } from '../not-loaded';
 import { DaysTable, FigureTiles, MonthNav, SourcesNote } from '../ui';
+import { joinShown } from '@/lib/hidden';
+import { historyHref } from '../../employees/[id]/attendance/history';
 
 // A person's month (owner's brief, 19 October 2026: Daily Attendance, "A person's month also as a page"): their figures
 // and every day kept, from their check-ins on the system (owner, 19 October 2026: "Check-in through the system (phone or
@@ -42,6 +44,8 @@ async function PersonMonth({ params, searchParams }: { params: PageProps<'/atten
   // attendance corrections (19 October 2026): HR corrects a day directly; anyone here sees a correction being decided
   const corrections = view.corrections;
   const way = importWay(user, month, run);
+  // a developer's code, job title and department are hidden: left out (23 October 2026)
+  const about = joinShown([p.employee.employeeCode, p.employee.jobTitle, p.employee.department]);
   return (
     <div className="space-y-6">
       <div className="space-y-2">
@@ -51,11 +55,14 @@ async function PersonMonth({ params, searchParams }: { params: PageProps<'/atten
           {p.employee.confidential && <CLevelBadge title={cLevelTitle(false)} className="ml-2 align-middle" />}
         </h1>
         <p className="text-muted">
-          {p.employee.employeeCode}
-          {p.employee.jobTitle && ` · ${p.employee.jobTitle}`}
-          {p.employee.department && ` · ${p.employee.department}`} ·{' '}
+          {about && `${about} · `}
           <Link href={`/employees/${p.employee.id}`} className="font-semibold">
             Profile
+          </Link>
+          {/* their attendance since joining, on the profile (owner, 23 October 2026: "Attendance history on the profile") */}
+          {' · '}
+          <Link href={historyHref(p.employee.id)} className="font-semibold">
+            Attendance history
           </Link>
         </p>
       </div>

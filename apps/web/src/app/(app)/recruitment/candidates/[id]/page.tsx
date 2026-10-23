@@ -15,6 +15,7 @@ import { ActionButton } from '../../forms';
 import { generalCvFileHref } from '../../general';
 import { interviewWhen } from '../../hiring';
 import { applicantCvHref, applicantHref, readsRecruitment, WHO_SEES } from '../../recruitment';
+import { joinShown, shownCode } from '@/lib/hidden';
 
 // A candidate's profile (owner, 22 October 2026: "how to make like a profile for each candidate to store history and
 // prevent duplication? even if the same candidate applied for 2 jobs"; "Email or mobile"; "Link and show rehire"; "HR
@@ -100,7 +101,7 @@ function Cvs({ c }: { c: CandidateView }) {
               <span className="min-w-0">
                 <span className="font-semibold break-words">{cv.cvFileName}</span>
                 <span className="block text-xs text-muted">
-                  {cv.title} · {cv.reference} · sent {formatDate(cv.sentAt)} · {kb(cv.sizeBytes)}
+                  {joinShown([cv.title, cv.reference, `sent ${formatDate(cv.sentAt)}`, kb(cv.sizeBytes)])}
                 </span>
               </span>
               <span className="flex gap-3">
@@ -162,7 +163,7 @@ function Offers({ c }: { c: CandidateView }) {
       <ul className="space-y-1 text-sm">
         {c.offers.map((o) => (
           <li key={o.id}>
-            <Link href={`/offers/${o.id}`}>{o.number}</Link>
+            <Link href={`/offers/${o.id}`}>{shownCode(o.number) ?? 'Job offer'}</Link>
             <span className="text-muted">
               {' '}
               · {OFFER_STATUS_LABELS[o.status as keyof typeof OFFER_STATUS_LABELS] ?? o.status}
@@ -186,7 +187,7 @@ function Merges({ c }: { c: CandidateView }) {
         {c.merges.map((m) => (
           <li key={m.id} className="flex flex-wrap items-start justify-between gap-2">
             <span>
-              <Link href={candidateHref(m.merged.id)}>{m.merged.code}</Link> · {formatDateTime(m.at)}
+              <Link href={candidateHref(m.merged.id)}>{shownCode(m.merged.code) ?? 'A candidate'}</Link> · {formatDateTime(m.at)}
               {m.by ? ` · by ${m.by}` : ''}
               <span className="block text-xs text-muted">
                 {m.moved.applications} {m.moved.applications === 1 ? 'application' : 'applications'}, {m.moved.generalCvs} general {m.moved.generalCvs === 1 ? 'CV' : 'CVs'}, {m.moved.contacts}{' '}
@@ -194,7 +195,7 @@ function Merges({ c }: { c: CandidateView }) {
                 {m.undoneAt ? ` · undone ${formatDateTime(m.undoneAt)}` : ''}
               </span>
             </span>
-            {m.canUndo && <ActionButton action={undoMerge.bind(null, m.id)} label="Undo merge" pendingLabel="Undoing…" confirm={`Undo the merge of ${m.merged.code}? What moved goes back to it.`} />}
+            {m.canUndo && <ActionButton action={undoMerge.bind(null, m.id)} label="Undo merge" pendingLabel="Undoing…" confirm={`Undo the merge of ${shownCode(m.merged.code) ?? 'this candidate'}? What moved goes back to it.`} />}
           </li>
         ))}
       </ul>
@@ -243,7 +244,7 @@ async function Candidate({ params }: { params: PageProps<'/recruitment/candidate
         <BackLink href={CANDIDATES_PATH}>Candidates</BackLink>
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold">{c.fullName}</h1>
-          <span className="badge bg-canvas text-ink">{c.code}</span>
+          {shownCode(c.code) && <span className="badge bg-canvas text-ink">{c.code}</span>}
           {c.employee && <span className="badge bg-warn-soft text-warn">{c.employee.restricted ? 'Employee record' : c.employee.state === 'former' ? 'Former employee' : 'Employee'}</span>}
         </div>
         <p className="text-sm text-muted">
@@ -253,7 +254,7 @@ async function Candidate({ params }: { params: PageProps<'/recruitment/candidate
         </p>
       </div>
 
-      {c.can.merge && <MergeWithForm action={mergeWithCode.bind(null, c.id)} code={c.code} />}
+      {c.can.merge && <MergeWithForm action={mergeWithCode.bind(null, c.id)} code={shownCode(c.code) ?? 'this candidate'} />}
 
       {c.employee && <EmployeeCard link={c.employee} />}
 

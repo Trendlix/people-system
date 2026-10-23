@@ -96,6 +96,273 @@ export function accessStateOf(input: AccessStateInput, now: string = new Date().
   return input.clash ? 'clash' : 'pending';
 }
 
+// ---------- access follows the contract: Active, Grace, Hold, No Access ----------
+
+// The owner, 23 October 2026, on the Access tab showing "Active · Has access without an active contract": "No Access
+// without active contract, Access should be on hold with a 7 days grace period one time granted by the hr", then
+// "Active - Grace - Hold - No Access". Asked, they chose: on Hold "Check-in/out only" (web and app: everything else is
+// closed, so attendance and pay stay right); Grace "Once per contract gap" (7 days each time a contract runs out without
+// a new one, never extended; a later gap allows another); at go-live "Hold them immediately" (everyone without a contract
+// in force on Hold at once, HR granting grace one by one). Never held: a Super Admin, the CEO, and an account that isn't
+// an employee's (the Users page's). The API reads each request's standing from the contract (so a signed contract or a
+// grace takes effect at once, and an expired grace drops to Hold on the next request); the rules here are pure.
+
+/**
+ * An employee's access standing, from their contract:
+ * - active: a current employment with a signed contract in force today (or never held: a Super Admin, the CEO);
+ * - grace: no contract in force, but HR gave 7 days in this gap: full access to the end of the 7th day (Cairo time);
+ * - hold: no contract in force and no grace running, their employment current and a signed contract of it in force
+ *   before (a renewal due, a fixed term run past its end: "open-ended" by Art. 88): only check-in and check-out work;
+ * - no_access: everything else: no current employment (they left), no signed contract in force yet in this employment
+ *   (a new hire's draft, a contract starting later), or the account turned off.
+ * An account switched on whose person never had a signed contract in force ("No contract entered": a draft only, no
+ * contract, or never employed) works for 7 days from when the system first records it (No access, with the day it holds
+ * from), then is on Hold as the others are (owner, 23 October 2026: "Hold them after 7 days").
+ */
+export const ACCESS_STANDINGS = ['active', 'grace', 'hold', 'no_access'] as const;
+export type AccessStanding = (typeof ACCESS_STANDINGS)[number];
+
+export const isAccessStanding = (v: unknown): v is AccessStanding => ACCESS_STANDINGS.includes(v as AccessStanding);
+
+/** The standings as the screens name them (the owner's "Active - Grace - Hold - No Access", labels in sentence case). */
+export const ACCESS_STANDING_LABELS: Record<AccessStanding, string> = {
+  active: 'Active',
+  grace: 'Grace',
+  hold: 'Hold',
+  no_access: 'No access',
+};
+
+/** How long a grace runs (owner: "a 7 days grace period"): the day HR gives it, then to the end of the 7th day after. */
+export const GRACE_DAYS = 7;
+
+/**
+ * How long an account switched on with no contract entered keeps working (owner, 23 October 2026: "Hold them after 7
+ * days"): the day the system first records it, then to the end of the 7th day after, as a grace runs; on Hold from the
+ * day after.
+ */
+export const NO_CONTRACT_DAYS = 7;
+
+/** The roles never held (owner, 23 October 2026: a Super Admin and the CEO), as the account itself holds them. */
+export const NEVER_HELD_ROLES = ['super_admin', 'ceo'] as const satisfies readonly Role[];
+export type NeverHeldRole = (typeof NEVER_HELD_ROLES)[number];
+
+/** What an account on Hold is told: on the Hold page, and in every refusal (403) of anything but checking in and out. */
+export const ACCESS_HOLD_MESSAGE = 'Your access is on hold until your contract is renewed. You can still check in and out.';
+
+/** The `reason` of the API's 403 to an account on Hold, so the website knows it from any other refusal. */
+export const ACCESS_HOLD_REASON = 'access_hold';
+
+/** The page an account on Hold sees, on the website and in the app (every other page sends them there). */
+export const HOLD_PATH = '/hold';
+
+/** The contract versions that were signed: draft is the only one that never was (superseded and ended were in force). */
+export const SIGNED_CONTRACT_STATUSES = ['active', 'superseded', 'ended'] as const;
+
+/** A version of the current employment's contract, as the standing reads it (dates YYYY-MM-DD). */
+export interface StandingContract {
+  id: string;
+  /** CONTRACT_STATUSES: draft, active, superseded, ended. */
+  status: string;
+  startDate: string;
+  /** None: open-ended, or a specific job without an end. */
+  endDate: string | null;
+  version: number;
+}
+
+/**
+ * A grace given (access_graces), tied to its gap: the contract version whose end opened it; or, with no contract entered
+ * (23 October 2026: "Hold them after 7 days"), no contract and the employment it is about (none: never employed).
+ */
+export interface StandingGrace {
+  contractId: string | null;
+  employmentId?: string | null;
+  /** Its last day (YYYY-MM-DD): full access to its end, Cairo time. */
+  until: string;
+  /** When HR gave it (ISO). */
+  grantedAt: string;
+}
+
+/** What the standing is read from. */
+export interface AccessStandingInput {
+  /** The account: on or off, and its own roles (as the database holds them, never a developer's sight); null without one. */
+  account: { isActive: boolean; roles: readonly string[] } | null;
+  /** The current employment (not ended, or ending today or later) and its contract versions; null when there is none. */
+  employment: { id?: string; contracts: readonly StandingContract[] } | null;
+  /** The graces given in it. */
+  graces: readonly StandingGrace[];
+  /** Whether they were ever employed (an employment, current or ended): with none current, they left. */
+  everEmployed?: boolean;
+  /** The day "No contract entered" was first recorded for them (YYYY-MM-DD, Cairo); null when not recorded (yet). */
+  noContractSince?: string | null;
+}
+
+/** An employee's standing, with why and the gap they are in. */
+export interface AccessStandingResult {
+  standing: AccessStanding;
+  /** Never held: their role; null for anyone else. */
+  exempt: NeverHeldRole | null;
+  /** The signed version whose end opened the gap they are in (Grace and Hold); null otherwise. */
+  gap: StandingContract | null;
+  /** The grace of this gap: running (Grace) or used and over (Hold); null without one. */
+  grace: StandingGrace | null;
+  /**
+   * No contract entered (23 October 2026: "Hold them after 7 days"): an account switched on whose person never had a
+   * signed contract in force. The employment it is about (null: never employed), the day first recorded (null: not yet),
+   * the last day of full access and the day it holds from (null until recorded); null for anyone else.
+   */
+  noContract: { employmentId: string | null; since: string | null; until: string | null; holdFrom: string | null } | null;
+}
+
+const isSigned = (c: StandingContract) => (SIGNED_CONTRACT_STATUSES as readonly string[]).includes(c.status);
+
+/** The role an account is never held for (Super Admin first), or null. */
+export function neverHeldRole(roles: readonly string[]): NeverHeldRole | null {
+  return NEVER_HELD_ROLES.find((r) => roles.includes(r)) ?? null;
+}
+
+/**
+ * An employee's access standing on `today` (YYYY-MM-DD, Cairo):
+ * - an account turned off: No Access;
+ * - a Super Admin or the CEO (the account's own roles): Active, whatever the contract;
+ * - no current employment: No Access when they left; never employed, as with no contract entered (below);
+ * - a signed version in force today (signed, started, not past its end): Active;
+ * - no signed version started yet in this employment (a draft, a contract starting later): No Access; with an account
+ *   switched on, "No contract entered": No Access for 7 days from the day first recorded (to the end of its 7th day),
+ *   then Hold, or Grace while the one grace of it runs (its gap: this employment, none when never employed);
+ * - else they are in a gap, opened by the end of the signed version that ended last (the latest end; a later version
+ *   when two end the same day): Grace while this gap's grace runs (to the end of its last day), else Hold. A renewal
+ *   signed to start later leaves them on Hold until it starts.
+ */
+export function accessStandingOf(input: AccessStandingInput, today: string): AccessStandingResult {
+  const a = input.account;
+  const none = (standing: AccessStanding, exempt: NeverHeldRole | null = null): AccessStandingResult => ({ standing, exempt, gap: null, grace: null, noContract: null });
+  if (a && !a.isActive) return none('no_access');
+  const exempt = a ? neverHeldRole(a.roles) : null;
+  if (exempt) return none('active', exempt);
+  // no contract entered (owner, 23 October 2026: "Hold them after 7 days"): only an account switched on is concerned
+  const noContract = (employmentId: string | null): AccessStandingResult => {
+    if (!a) return none('no_access');
+    const since = input.noContractSince ?? null;
+    const until = since ? addDaysTo(since, NO_CONTRACT_DAYS) : null;
+    const info = { employmentId, since, until, holdFrom: until ? addDaysTo(until, 1) : null };
+    if (!until || today <= until) return { ...none('no_access'), noContract: info };
+    const grace = input.graces.find((g) => g.contractId === null && (g.employmentId ?? null) === employmentId) ?? null;
+    return { standing: grace && grace.until >= today ? 'grace' : 'hold', exempt: null, gap: null, grace, noContract: info };
+  };
+  const e = input.employment;
+  if (!e) return input.everEmployed ? none('no_access') : noContract(null);
+  const started = e.contracts.filter((c) => isSigned(c) && c.startDate <= today);
+  if (started.some((c) => c.endDate === null || c.endDate >= today)) return none('active');
+  if (!started.length) return noContract(e.id ?? null);
+  // every one started has ended (an end of null is in force): the one that ended last opened the gap
+  const gap = [...started].sort((x, y) => (y.endDate! < x.endDate! ? -1 : y.endDate! > x.endDate! ? 1 : y.version - x.version))[0];
+  const grace = input.graces.find((g) => g.contractId === gap.id) ?? null;
+  return { standing: grace && grace.until >= today ? 'grace' : 'hold', exempt: null, gap, grace, noContract: null };
+}
+
+/**
+ * Whether HR may give 7 days' grace now: on Hold, in a gap (a contract's end, or no contract entered), and none given in
+ * this gap yet ("Once per contract gap").
+ */
+export function graceAllowed(s: Pick<AccessStandingResult, 'standing' | 'gap' | 'grace'> & { noContract?: AccessStandingResult['noContract'] }): boolean {
+  return s.standing === 'hold' && (s.gap !== null || !!s.noContract) && s.grace === null;
+}
+
+/**
+ * Why grace can't be given now, in words; null when it can. `self`: the one giving it is the person themself (never for
+ * oneself). `date`: how a day is shown (DD/MM/YYYY on the website).
+ */
+export function graceRefusal(
+  s: Pick<AccessStandingResult, 'standing' | 'gap' | 'grace' | 'exempt'> & { noContract?: AccessStandingResult['noContract'] },
+  opts: { self: boolean; date?: (ymd: string) => string },
+): string | null {
+  const date = opts.date ?? shownDay;
+  if (opts.self) return 'You can’t give yourself grace: another HR person, an Admin or a Super Admin can.';
+  if (s.standing === 'active') return s.exempt ? 'They are never on hold, so they need no grace.' : 'Their contract is in force: they have full access.';
+  if (s.standing === 'grace') return `They are on grace already, until ${date(s.grace!.until)}. It can’t be extended.`;
+  if (s.standing === 'no_access' && s.noContract) {
+    return s.noContract.holdFrom
+      ? `They aren’t on hold yet: no contract entered, their access is on hold from ${date(s.noContract.holdFrom)} unless a signed contract is entered.`
+      : 'They aren’t on hold yet: no contract entered.';
+  }
+  if (s.standing === 'no_access') return 'Grace is for someone on hold, while their contract is renewed. They have no signed contract in force to renew, or no current employment.';
+  if (s.grace) return `Grace was used already in this gap (${date(graceFromOf(s.grace))} to ${date(s.grace.until)}). It’s given once a gap and can’t be extended.`;
+  return null;
+}
+
+/** The last day of a grace given on `today` (YYYY-MM-DD): the end of the 7th day after (given on 23 October: 30 October). */
+export const graceUntilOf = (today: string): string => addDaysTo(today, GRACE_DAYS);
+
+/** The day a grace was given, in Cairo (YYYY-MM-DD). */
+export const graceFromOf = (g: Pick<StandingGrace, 'grantedAt'>): string => CAIRO_DAY_OF.format(new Date(g.grantedAt));
+
+/** "30 Oct" (and the year when it isn't this one's): a grace's last day as a badge says it, "Grace until 30 Oct". */
+export function shortDay(ymd: string, today: string): string {
+  if (!YMD.test(ymd)) return ymd;
+  const month = SHORT_MONTHS[Number(ymd.slice(5, 7)) - 1] ?? ymd.slice(5, 7);
+  const day = String(Number(ymd.slice(8, 10)));
+  return ymd.slice(0, 4) === today.slice(0, 4) ? `${day} ${month}` : `${day} ${month} ${ymd.slice(0, 4)}`;
+}
+
+/** The badge of a standing: "Active", "Grace until 30 Oct", "Hold", "No access". */
+export function standingBadgeText(standing: AccessStanding, graceUntil: string | null | undefined, today: string): string {
+  return standing === 'grace' && graceUntil ? `Grace until ${shortDay(graceUntil, today)}` : ACCESS_STANDING_LABELS[standing];
+}
+
+const YMD = /^\d{4}-\d{2}-\d{2}$/;
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const CAIRO_DAY_OF = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo' });
+const shownDay = (ymd: string) => (YMD.test(ymd) ? `${ymd.slice(8, 10)}/${ymd.slice(5, 7)}/${ymd.slice(0, 4)}` : ymd);
+
+function addDaysTo(ymd: string, days: number): string {
+  const d = new Date(`${ymd}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** An employee's standing as the API answers it: on the Access tab, and the Users page's account of an employee. */
+export interface AccessStandingView {
+  standing: AccessStanding;
+  /** Never held: their role (Super Admin, CEO); null for anyone else. */
+  exempt: NeverHeldRole | null;
+  /** The gap they are in (Grace, Hold): the contract whose end opened it, its number and last day; null when in none. */
+  gap: { contractId: string; number: string; endDate: string } | null;
+  /**
+   * This gap's grace: from the day given to its last day, when and by whom it was given, and whether it still runs; null
+   * without one. Once over (Hold), the Access tab says "Grace already used in this gap (… to …)".
+   */
+  grace: { from: string; until: string; grantedAt: string; grantedBy: { id: string; name: string } | null; running: boolean } | null;
+  /** Whether the one asking may give 7 days' grace now (graceAllowed, never to oneself); false for anyone else. */
+  canGiveGrace: boolean;
+  /**
+   * No contract entered (23 October 2026: "Hold them after 7 days"): the day first recorded and the day their access is
+   * on hold from (both null until the sweep records it, within minutes); null for anyone else. The Access tab warns "No
+   * contract entered: on hold from … unless HR enters a signed contract".
+   */
+  noContract: { since: string | null; holdFrom: string | null } | null;
+}
+
+/** An Employees list row's access (HR, an Admin, a Super Admin): the account's state, the standing, a grace's last day. */
+export interface RowAccessView {
+  state: AccessState;
+  standing: AccessStanding;
+  /** While on Grace: its last day (YYYY-MM-DD); null otherwise. */
+  graceUntil: string | null;
+  /** No contract entered: the day first recorded and the day on hold from (null until recorded); null for anyone else. */
+  noContract: { since: string | null; holdFrom: string | null } | null;
+}
+
+/**
+ * GET /employees/access/counts: how many people are on Hold and on Grace now, and how many have an account switched on
+ * with no contract entered (whether still working, on Hold or on Grace), of those the caller sees (HR's sidebar and the
+ * Employees list's "No contract entered").
+ */
+export interface AccessCounts {
+  hold: number;
+  grace: number;
+  noContract: number;
+}
+
 // ---------- set-password links ----------
 
 /** A set-password link's purpose: the first password (an invitation), or a new one (a reset). */
@@ -182,8 +449,11 @@ export interface EmployeeAccessView {
   link: { purpose: AccessLinkPurpose; createdAt: string; expiresAt: string; emailed: boolean } | null;
   /** Another account has the sign-in email: its email and whether it is another employee's. */
   clash: { email: string; otherEmployee: { id: string; fullNameEn: string } | null } | null;
-  /** An active account without a signed contract in force (a renewal on its way, or a contract to sign). */
-  withoutContract: boolean;
+  /**
+   * Their access standing (owner, 23 October 2026: "Active - Grace - Hold - No Access"), which replaced "Has access
+   * without an active contract": the badge, with the account's state (`state`) as the line under it.
+   */
+  standing: AccessStandingView;
   /** Whether email can be sent (SMTP set up): without it, links are copied and sent by hand. */
   emailReady: boolean;
   can: {

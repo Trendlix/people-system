@@ -3,7 +3,7 @@ import { readPeriod } from '../salary-raises/salary-raises';
 import { todayInCairo } from '../../../employees/ui';
 import { ApiError, apiFetch } from '@/lib/api';
 import { passSheetOn } from '../../files';
-import { apiReason, textResponse as text } from '../../../templates/file-response';
+import { apiReason, textResponse as text } from '../../../organization/templates/file-response';
 import { apiWorkbookPath } from '../reports';
 
 // Serves the payroll statistics as an Excel workbook (owner, 17 October 2026: "Reports (Statistics)" under Payroll) from

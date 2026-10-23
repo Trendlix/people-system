@@ -9,10 +9,24 @@ import { Select } from '@/components/select';
 import { apiGet } from '@/lib/api';
 import { cLevelTitle } from '@/lib/confidential';
 import { withTeams } from '@/lib/departments';
+import { setsUpEmail } from '@/lib/email-setup';
 import { formatDate } from '@/lib/format';
 import { employmentHidden, filtersByJob } from '@/lib/hidden';
 import { placeOrder, showsDepartment } from '@/lib/place-groups';
-import { ACCESS_FILTERS, accessBadgeClass, accessLabel, invitableIds, matchesAccess, readAccessFilter, WITHOUT_CONTRACT_LABEL, type AccessFilter } from '@/lib/access';
+import {
+  ACCESS_FILTER_GROUPS,
+  accessBadgeClass,
+  accessLabel,
+  invitableIds,
+  matchesAccess,
+  noContractCount,
+  readAccessFilter,
+  rowNoContractLine,
+  setupLabel,
+  standingBadge,
+  standingBadgeClass,
+  type AccessFilter,
+} from '@/lib/access';
 import { getCurrentUser } from '@/lib/session';
 import type { Department, EmployeeSummary, Grade } from '@/lib/types';
 import { StaffOnly } from '../staff-only';
@@ -36,6 +50,8 @@ import { Avatar, canAddEmployees, canSeeCardFixes, canSeeEmployeeFiles, Empty, g
 // 21 October 2026: "instead of the Emp code, add contract status"); the search still finds a code. The Access column
 // (owner, 22 October 2026: "any active employee with active contract should have access"), for HR, an Admin and a Super
 // Admin: where each one's sign-in stands, with a filter, and Send invitations to those ticked or to everyone not invited.
+// Since 23 October 2026 ("Active - Grace - Hold - No Access") it shows the access standing, filtered by it, which
+// replaced "Has access without an active contract".
 
 const UUID = /^[0-9a-f-]{36}$/i;
 
@@ -142,9 +158,14 @@ function ContractCell({ employee, today }: { employee: EmployeeSummary; today: s
 /** Employee, Contract, Job Title, Grade, Manager and Standing: what a group's heading spans (Access adds one). */
 const COLUMN_COUNT = 6;
 
-/** Where their sign-in stands, and a box to tick them for Send invitations when they have an account and no invitation. */
-function AccessCell({ employee: e }: { employee: EmployeeSummary }) {
+/**
+ * Where their access stands (owner, 23 October 2026: "Active - Grace - Hold - No Access"), the account's setting up under
+ * it where it matters, and a box to tick them for Send invitations when they have an account and no invitation. An API
+ * from before the standings sends the account's state alone.
+ */
+function AccessCell({ employee: e, today }: { employee: EmployeeSummary; today: string }) {
   const a = e.restricted ? null : e.access;
+  const setup = a?.standing ? setupLabel(a.state) : null;
   if (!a) return <td>{dash}</td>;
   return (
     <td className="whitespace-nowrap">
@@ -152,9 +173,15 @@ function AccessCell({ employee: e }: { employee: EmployeeSummary }) {
         {a.state === 'not_invited' && (
           <input type="checkbox" name="employeeIds" value={e.id} form={INVITE_FORM_ID} aria-label={`Invite ${e.fullNameEn}`} className="size-4 accent-accent" />
         )}
-        <span className={accessBadgeClass(a.state)}>{accessLabel(a.state)}</span>
+        {a.standing ? (
+          <span className={standingBadgeClass(a.standing)}>{standingBadge(a.standing, a.graceUntil, today)}</span>
+        ) : (
+          <span className={accessBadgeClass(a.state)}>{accessLabel(a.state)}</span>
+        )}
       </span>
-      {a.withoutContract && <div className="mt-1 text-xs text-warn">{WITHOUT_CONTRACT_LABEL}</div>}
+      {setup && <div className="mt-1 text-xs text-muted">{setup}</div>}
+      {/* no contract entered (owner, 23 October 2026: "Hold them after 7 days"): when it holds */}
+      {rowNoContractLine(a, formatDate) && <div className="mt-1 text-xs text-warn">{rowNoContractLine(a, formatDate)}</div>}
     </td>
   );
 }
@@ -202,6 +229,8 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
   const filtered = Boolean(f.q || f.departmentId || f.gradeId || f.standing || f.access);
   // the Access column: the API sends it to HR, an Admin and a Super Admin only
   const showAccess = everyone.some((e) => !e.restricted && e.access !== undefined);
+  // no contract entered (owner, 23 October 2026: "Hold them after 7 days"): how many, for the filter and the note
+  const noContracts = noContractCount(everyone.map((e) => ({ access: e.restricted ? null : e.access })));
   const columns = COLUMN_COUNT + (showAccess ? 1 : 0);
 
   return (
@@ -254,10 +283,14 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
             </label>
             <Select id="employee-access" name="access" defaultValue={f.access} className="input min-w-44">
               <option value="">Any access</option>
-              {ACCESS_FILTERS.map((a) => (
-                <option key={a.value} value={a.value}>
-                  {a.label}
-                </option>
+              {ACCESS_FILTER_GROUPS.map((g) => (
+                <optgroup key={g.label} label={g.label}>
+                  {g.options.map((a) => (
+                    <option key={a.value} value={a.value}>
+                      {a.value === 'no_contract' ? `${a.label} (${noContracts})` : a.label}
+                    </option>
+                  ))}
+                </optgroup>
               ))}
             </Select>
           </div>
@@ -285,6 +318,14 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
           />
         ))}
       </nav>
+
+      {showAccess && noContracts > 0 && f.access !== 'no_contract' && (
+        // HR's list of those with an account and no contract entered (23 October 2026: "Hold them after 7 days")
+        <p className="mx-4 mb-4 rounded-lg bg-warn-soft px-3 py-2 text-sm text-warn">
+          {noContracts === 1 ? '1 person has' : `${noContracts} people have`} an account but no contract entered: on hold 7 days after it was first seen unless a signed
+          contract is entered. <Link href={directoryHref({ ...f, access: 'no_contract' })}>Show {noContracts === 1 ? 'them' : 'them all'}</Link>
+        </p>
+      )}
 
       {rows.length === 0 ? (
         <p className="border-t border-line px-4 py-10 text-center text-sm text-muted">
@@ -333,7 +374,7 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
                             <td>
                               <StandingBadge standing={e.standing} />
                             </td>
-                            {showAccess && <AccessCell employee={e} />}
+                            {showAccess && <AccessCell employee={e} today={today} />}
                           </tr>
                         ))}
                       </Fragment>
@@ -346,7 +387,7 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
         </div>
       )}
 
-      {showAccess && <InviteBar notInvited={invitableIds(everyone.map((e) => ({ id: e.id, access: e.restricted ? null : e.access }))).length} />}
+      {showAccess && <InviteBar notInvited={invitableIds(everyone.map((e) => ({ id: e.id, access: e.restricted ? null : e.access }))).length} setUpEmail={setsUpEmail(user)} />}
 
       <p className="border-t border-line px-4 py-3 text-sm text-muted">
         Showing {rows.length} of {everyone.length} {everyone.length === 1 ? 'employee' : 'employees'}

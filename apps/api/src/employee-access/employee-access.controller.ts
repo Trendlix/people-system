@@ -4,6 +4,7 @@ import { CurrentUser, Public } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { AccessLinksService } from './access-links.service.js';
 import { AccessLinkDto, CheckPasswordLinkDto, ForgotPasswordDto, InvitationsDto, SetPasswordWithLinkDto, SignInEmailDto } from './employee-access.dto.js';
+import { AccessStandingService } from './access-standing.service.js';
 import { EmployeeAccessService } from './employee-access.service.js';
 
 // An employee's access, on their profile's Access tab (owner, 22 October 2026: "On the employee profile"): who may is
@@ -11,7 +12,16 @@ import { EmployeeAccessService } from './employee-access.service.js';
 // own). A developer is refused every change by the guard, as everywhere.
 @Controller('employees')
 export class EmployeeAccessController {
-  constructor(private readonly access: EmployeeAccessService) {}
+  constructor(
+    private readonly access: EmployeeAccessService,
+    private readonly standings: AccessStandingService,
+  ) {}
+
+  /** How many people are on Hold and on Grace now (23 October 2026), for HR's sidebar: HR, an Admin, a Super Admin. */
+  @Get('access/counts')
+  counts(@CurrentUser() user: SessionUser) {
+    return this.standings.counts(user);
+  }
 
   /** Everyone not invited yet, or those chosen, invited by email at once (the Employees list's Send invitations). */
   @Post('access/invitations')
@@ -30,6 +40,16 @@ export class EmployeeAccessController {
   @HttpCode(200)
   giveNow(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {
     return this.access.giveNow(id, user);
+  }
+
+  /**
+   * Give 7 days' grace to someone on Hold (owner, 23 October 2026: "a 7 days grace period one time granted by the hr";
+   * "Once per contract gap"): refused with the reason when not on Hold or used in this gap, and for oneself.
+   */
+  @Post(':id/access/grace')
+  @HttpCode(200)
+  grace(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {
+    return this.access.giveGrace(id, user);
   }
 
   @Put(':id/access/sign-in-email')

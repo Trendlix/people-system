@@ -276,7 +276,7 @@ export class OfferHiringService {
    * logged). Not when they recorded the answer themselves.
    */
   async notify(o: AnsweredOffer, answer: 'accepted' | 'declined', by: { userId: string | null }, hired: HireResult | null): Promise<void> {
-    if (!this.mail.configured || !o.sentById || o.sentById === by.userId) return;
+    if (!(await this.mail.ready()) || !o.sentById || o.sentById === by.userId) return;
     try {
       const sender = await this.prisma.user.findUnique({ where: { id: o.sentById }, select: { email: true, isActive: true } });
       if (!sender?.isActive) return;

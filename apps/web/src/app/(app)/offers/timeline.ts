@@ -1,7 +1,7 @@
 import { LABELS, type OfferShownStatus } from '@trendlix/shared';
 import { formatDate } from '../../../lib/format';
 import type { OfferView } from '../../../lib/types';
-import { templateHref } from '../templates/wording';
+import { templateHref, TEMPLATES_PATH } from '../organization/templates/wording';
 
 // What an offer's page says about its progress and what it lacks (pure code, tested; relative imports for the tests):
 // the timeline (drafted, sent, opened by the candidate, answered, withdrawn, profile made), what it waits for, what
@@ -116,7 +116,7 @@ export function missingHelp(o: Pick<OfferView, 'id' | 'status' | 'missing' | 'te
         tag: m.tag,
         label,
         what: `An offer never has this: it belongs on an employee's documents. Remove {{${m.tag}}} from the job offer template, then publish it again.`,
-        href: o.template?.slotKey ? templateHref(o.template.slotKey) : '/templates',
+        href: o.template?.slotKey ? templateHref(o.template.slotKey) : TEMPLATES_PATH,
         linkText: 'Open the template',
       };
     }

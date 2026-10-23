@@ -14,6 +14,7 @@ import type {
   PunchPointFrom,
   SignedIpProblem,
 } from '@trendlix/shared';
+import type { OdDayView } from './od-types';
 
 // Attendance imported from Zoho People on a draft payroll run (owner, 19 October 2026: attendance runs in Zoho People
 // today, "Import Zoho now, replace it later"), as the API sends it (apps/api/src/attendance/attendance-imports.service.ts).
@@ -165,6 +166,11 @@ export interface AttendancePersonMonth {
    * working from home in out erp"), in date order: those days show "Working from home". Left out by an API from before it.
    */
   wfhDays?: string[];
+  /**
+   * The month's official duty days approved for them (owner, 23 October 2026: "Official duty (OD) requests"), in date
+   * order, each with its request: those days show "On official duty" with a link to it. Left out by an API from before it.
+   */
+  odDays?: OdDayView[];
 }
 
 /**
@@ -186,6 +192,8 @@ export interface AttendancePunchRow {
   longitude?: number | null;
   accuracyMetres?: number | null;
   pointFrom?: PunchPointFrom | null;
+  /** Pressed within an approved official duty (23 October 2026: "Check in from anywhere"): its request; none otherwise. */
+  odRequestId?: string;
 }
 
 /** An import the days shown came from (the run's status for those who see payroll only). */
@@ -281,6 +289,8 @@ export interface PunchView {
   latitude?: number | null;
   longitude?: number | null;
   pointFrom?: PunchPointFrom | null;
+  /** Pressed within an approved official duty (23 October 2026: "Check in from anywhere"): its request; none otherwise. */
+  odRequestId?: string;
 }
 
 /** The day as today's punches make it: the first check-in, the last check-out after it, the place, flags and hours. */
@@ -329,6 +339,12 @@ export interface CheckInTodayView {
    * network's lock waived. Left out by an API from before it.
    */
   workingFromHome?: boolean;
+  /**
+   * An official duty approved for them today (owner, 23 October 2026: "Check in from anywhere"): its request, a full day
+   * or its times, and whether it is on now (then the office's location rule and the network's lock don't apply; the
+   * expected text says so). Null: none today; left out by an API from before it.
+   */
+  officialDuty?: { requestId: string; fullDay: boolean; fromTime: string | null; toTime: string | null; now: boolean } | null;
   /**
    * Their shift: its window (HH:MM), hours a day, grace minutes and the time it counts hours until (HH:MM; owner, 20
    * October 2026: make-up hours; null, or left out by an API from before it: none).

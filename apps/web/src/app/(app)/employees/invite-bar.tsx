@@ -2,7 +2,9 @@
 
 import { useActionState } from 'react';
 import { FormErrors } from '@/components/form';
+import { SetUpEmailLink } from '@/components/set-up-email-link';
 import { inviteQuestion } from '@/lib/access';
+import { isEmailNotSetUp } from '@/lib/email-setup';
 import { sendInvitations, type InviteState } from './access-actions';
 
 // Send invitations on the Employees list (owner, 22 October 2026: "Create now, HR sends when ready"): to the people
@@ -11,7 +13,11 @@ import { sendInvitations, type InviteState } from './access-actions';
 
 export const INVITE_FORM_ID = 'send-invitations';
 
-export function InviteBar({ notInvited }: { notInvited: number }) {
+/**
+ * `setUpEmail`: a Super Admin, offered "Set up email" when the API says email isn't set up (owner, 23 October 2026: "why
+ * dont we add SMTP setup in the organization setup").
+ */
+export function InviteBar({ notInvited, setUpEmail = false }: { notInvited: number; setUpEmail?: boolean }) {
   const [state, formAction, pending] = useActionState<InviteState, FormData>(sendInvitations, {});
   return (
     <form
@@ -31,6 +37,11 @@ export function InviteBar({ notInvited }: { notInvited: number }) {
       className="space-y-3 border-t border-line px-4 py-3"
     >
       <FormErrors errors={state.errors} />
+      {setUpEmail && isEmailNotSetUp(state.errors) && (
+        <p className="text-sm">
+          <SetUpEmailLink />
+        </p>
+      )}
       <div className="flex flex-wrap items-center gap-3">
         <span className="text-sm text-muted">
           {notInvited === 1 ? '1 person has an account and no invitation yet.' : `${notInvited} people have an account and no invitation yet.`}

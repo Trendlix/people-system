@@ -13,6 +13,7 @@ import { deleteAllPractice, deletePractice, startPractice } from '../../practice
 import { AllKpisTabs, PracticeBadge, StatusBadge } from '../../ui';
 import { DeleteAllPracticeForm } from './delete-all-form';
 import { StartPracticeForm } from './start-form';
+import { joinShown, shownCode } from '@/lib/hidden';
 
 // Practice scorecards (owner, 22 October 2026: "i want to test the KPI's .. and it is locked to dates, HR and Admin..
 // how?", choosing "Practice scorecards"): All KPIs' Practice tab, for HR and the Super Admin. "Start a practice
@@ -49,7 +50,7 @@ function PracticeList({ rows, deletes }: { rows: KpiPracticeRow[]; deletes: bool
                   {r.employee.fullNameEn}
                 </Link>
                 <PracticeBadge className="ml-1.5" />
-                <span className="block text-xs text-muted">{[r.jobTitle, r.department].filter(Boolean).join(' · ') || r.employee.employeeCode}</span>
+                <span className="block text-xs text-muted">{joinShown([r.jobTitle, r.department]) || shownCode(r.employee.employeeCode)}</span>
               </td>
               <td className="whitespace-nowrap">{kpiMonthName(r.month)}</td>
               <td className="whitespace-nowrap">

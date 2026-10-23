@@ -8,10 +8,14 @@
 // - never receives money or personal IDs: the API masks them in every answer (maskForDeveloper, by the explicit lists
 //   below), and refuses the files that carry them (payslips, bank files, exports, generated documents, scans).
 // - and, since the owner's "make all real employees data encrypted for developer role" (22 October 2026), never
-//   receives real personal data either: every person is a pseudonym ("Employee EMP-0182", "Applicant APP-2026-0001",
-//   "User 3f9a2c"), consistent across every page; emails pseudonymous; addresses, birth dates, education, emergency
-//   contacts, photos and any free text about a person hidden; real names and emails scrubbed from every text; a search
-//   by name finds nothing (only codes).
+//   receives real personal data either: every person is a pseudonym, consistent across every page; emails pseudonymous;
+//   addresses, birth dates, education, emergency contacts, photos and any free text about a person hidden; real names
+//   and emails scrubbed from every text.
+// - and, since the owner's "in developer view use **** instead of IDs" (23 October 2026), never a person's code: an
+//   employee's, an application's or a general CV's, a candidate's, an offer's and a contract's codes are "••••" wherever
+//   they are, texts included (PERSON_CODE_IN_TEXT); a pseudonym is a tag read with the server's key from the record's id
+//   ("Employee 7K3Q", "Applicant 9TX2", "Candidate M4P8", "User 4HJK"), never the code; a search for people finds
+//   nothing, only assets, kits, custody and vacancies by their codes (developerQuery).
 // Pure code: the API applies it, the web shows the banner. Tested in apps/api/src/common/developer.spec.ts.
 
 import type { Role } from './index.js';
@@ -322,63 +326,163 @@ export interface DeveloperPeopleRows {
     workEmail: string | null;
     personalEmail: string | null;
     emergencyName: string | null;
+    createdAt?: Date | string | null;
   }[];
-  /** Sign-in accounts: an employee's when its email is theirs, else a "User" of its own. */
-  users: readonly { id: string; email: string }[];
-  /** Job applications and general CVs (APP-…). */
-  applicants: readonly { id: string; number: string; fullName: string; email: string }[];
-  /** Job offers (OFF-…). */
-  offers: readonly { id: string; number: string; fullNameEn: string; fullNameAr: string | null; email: string }[];
-  /** Candidate profiles (CAN-…; 22 October 2026: one profile per candidate): "Candidate CAN-0001". */
-  candidates?: readonly { id: string; code: string; fullName: string }[];
+  /** Sign-in accounts: an employee's when linked to one (users.employee_id, else its email is theirs), else a "User" of its own. */
+  users: readonly { id: string; email: string; employeeId?: string | null; createdAt?: Date | string | null }[];
+  /** Job applications and general CVs (APP-…): their candidate's tag when they have one. */
+  applicants: readonly { id: string; number: string; fullName: string; email: string; candidateId?: string | null; createdAt?: Date | string | null }[];
+  /** Job offers (OFF-…): the employee's tag when made for one, else their application's. */
+  offers: readonly {
+    id: string;
+    number: string;
+    fullNameEn: string;
+    fullNameAr: string | null;
+    email: string;
+    employeeId?: string | null;
+    applicationId?: string | null;
+    createdAt?: Date | string | null;
+  }[];
+  /** Candidate profiles (CAN-…; 22 October 2026: one profile per candidate): their employee's tag when linked to one. */
+  candidates?: readonly { id: string; code: string; fullName: string; employeeId?: string | null; createdAt?: Date | string | null }[];
 }
 
-/** The people, ready for masking: by id, email and real name, with the scrub of every real name in a text. */
+/** The people, ready for masking: by id, email, code and real name, with the scrub of every real name in a text. */
 export interface DeveloperPeople {
   byId: ReadonlyMap<string, PersonLabel>;
   byEmail: ReadonlyMap<string, PersonLabel>;
+  /** By a person's code in capitals (EMP-0182, APP-2026-0001, OFF-2026-0003, CAN-0001): their pseudonym. */
+  byCode: ReadonlyMap<string, PersonLabel>;
   /** By a real name in lower case: the pseudonym it becomes (Arabic names the Arabic one); "••••" for names never shown. */
   byName: ReadonlyMap<string, string>;
   /** Every real name, as whole words, longest first; null with none. */
   names: RegExp | null;
+  /** A keyed tag (6 letters) of what the people don't have: an id the API names nobody by, an email nobody's. "••••" without a key. */
+  tagOf: (text: string) => string;
 }
 
-/** A short, stable tag of a text (FNV-1a, 6 hex): the same id always the same tag. Not a secret, only a handle. */
-export function personTag(text: string): string {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < text.length; i++) {
-    h ^= text.charCodeAt(i);
-    h = Math.imul(h, 0x01000193) >>> 0;
+// ---------- tags (owner, 23 October 2026: "in developer view use **** instead of IDs") ----------
+// A pseudonym was the person's code ("Employee EMP-0182"), so the code was the link between the pseudonym and the real
+// person. It is now a tag: 4 letters from a keyed hash (HMAC-SHA256, the server's key: apps/api developer-tags.ts) of the
+// record's id, so a developer who sees ids in answers and links can't work a tag out from one. Uppercase letters and
+// digits without the look-alikes (0, O, 1, I). Never the code's own digits. Two people never share one: a tag already
+// taken lengthens to 5, then 6 letters (the first one to have it keeps it, by when they were added). The same person has
+// the same tag as an employee, a sign-in account, a candidate, an applicant and an offer, where the records link them.
+
+/** A tag's letters: capitals and digits without the look-alikes 0, O, 1 and I (32 of them, 5 bits each). */
+export const TAG_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+
+/** A keyed digest of a text (HMAC-SHA256 under the server's key; the API's developer-tags.ts): what a tag is read from. */
+export type DeveloperDigest = (text: string) => Uint8Array;
+
+/** The tag of `length` letters a digest gives, from its `window`-th run of bits (5 bits a letter; 0: the first). */
+export function tagFromDigest(digest: Uint8Array, length = 4, window = 0): string {
+  if (!digest.length) return HIDDEN;
+  const bits = digest.length * 8;
+  let out = '';
+  for (let i = 0; i < length; i++) {
+    let v = 0;
+    for (let b = 0; b < 5; b++) {
+      const at = (window * length * 5 + i * 5 + b) % bits;
+      v = (v << 1) | ((digest[at >> 3] >> (7 - (at & 7))) & 1);
+    }
+    out += TAG_ALPHABET[v];
   }
-  return h.toString(16).padStart(8, '0').slice(0, 6);
+  return out;
 }
 
-/** An employee's pseudonym, by their code. */
-export const employeeLabel = (code: string): PersonLabel => ({ en: `Employee ${code}`, ar: `موظف ${code}`, email: `${code.toLowerCase()}@hidden.invalid` });
-/** An applicant's or a general CV's pseudonym, by its APP- number. */
-export const applicantLabel = (number: string): PersonLabel => ({ en: `Applicant ${number}`, ar: `متقدم ${number}`, email: `${number.toLowerCase()}@hidden.invalid` });
-/** A job offer's candidate, by its OFF- number. */
-export const candidateLabel = (number: string): PersonLabel => ({ en: `Candidate ${number}`, ar: `مرشح ${number}`, email: `${number.toLowerCase()}@hidden.invalid` });
-/** Anyone else (a sign-in account without an employee, a person the API names by id only), by a tag of their id. */
-export const otherLabel = (id: string, kind = 'User'): PersonLabel => {
-  const tag = personTag(id);
-  return { en: `${kind} ${tag}`, ar: `${kind === 'User' ? 'مستخدم' : 'شخص'} ${tag}`, email: `${kind.toLowerCase()}-${tag}@hidden.invalid` };
-};
-/** An email the API doesn't know as anyone's: a pseudonym of its own, the same each time. */
-export const unknownEmail = (email: string): string => `hidden-${personTag(email.trim().toLowerCase())}@hidden.invalid`;
+/** Whether a tag shows a code's own number: all digits, and among the code's digits (EMP-2345 is never "2345"). */
+const showsCode = (tag: string, codes: readonly string[]): boolean => /^\d+$/.test(tag) && codes.some((c) => c.replace(/\D/g, '').includes(tag));
+
+/** The first tag of a digest not taken and not showing its codes: 4 letters, else 5, else 6, else 6 from further on. */
+export function freeTag(digest: Uint8Array, codes: readonly string[], taken: ReadonlySet<string>): string {
+  const fits = (tag: string) => !taken.has(tag) && !showsCode(tag, codes);
+  for (const length of [4, 5, 6]) {
+    const tag = tagFromDigest(digest, length);
+    if (fits(tag)) return tag;
+  }
+  for (let window = 1; window < 64; window++) {
+    const tag = tagFromDigest(digest, 6, window);
+    if (fits(tag)) return tag;
+  }
+  // never in practice (2^30 tags of 6 letters): one more letter until it is free
+  const base = tagFromDigest(digest, 6);
+  for (let n = 0; ; n++) {
+    const tag = `${base}${TAG_ALPHABET[n % 32]}${n >= 32 ? n : ''}`;
+    if (fits(tag)) return tag;
+  }
+}
+
+const emailTag = (tag: string, kind: string) => `${tag === HIDDEN ? kind : `${kind}-${tag.toLowerCase()}`}@hidden.invalid`;
+
+/** An employee's pseudonym, by their tag: "Employee 7K3Q", "موظف 7K3Q", employee-7k3q@hidden.invalid. */
+export const employeeLabel = (tag: string): PersonLabel => ({ en: `Employee ${tag}`, ar: `موظف ${tag}`, email: emailTag(tag, 'employee') });
+/** An applicant's or a general CV's pseudonym, by their tag. */
+export const applicantLabel = (tag: string): PersonLabel => ({ en: `Applicant ${tag}`, ar: `متقدم ${tag}`, email: emailTag(tag, 'applicant') });
+/** A candidate's (their profile's, their job offer's) pseudonym, by their tag. */
+export const candidateLabel = (tag: string): PersonLabel => ({ en: `Candidate ${tag}`, ar: `مرشح ${tag}`, email: emailTag(tag, 'candidate') });
+/** Anyone else (a sign-in account without an employee, a person the API names by id only), by their tag. */
+export const otherLabel = (tag: string, kind = 'User'): PersonLabel => ({ en: `${kind} ${tag}`, ar: `${kind === 'User' ? 'مستخدم' : 'شخص'} ${tag}`, email: emailTag(tag, kind.toLowerCase()) });
+/** An email the API doesn't know as anyone's: a pseudonym of its own, the same each time (a keyed tag of it). */
+export const unknownEmail = (email: string, people: DeveloperPeople = NO_PEOPLE): string => emailTag(people.tagOf(email.trim().toLowerCase()), 'hidden');
 
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const LETTERS = /[\p{L}]/u;
 /** A real name worth scrubbing: three letters at least (a shorter one would hit parts of other words). */
 const scrubbable = (name: string | null | undefined): name is string => typeof name === 'string' && name.trim().length >= 3 && LETTERS.test(name);
 
+/** When a record was added, for who keeps a tag two people's digests share: the first added; none, as the rows come. */
+const addedAt = (at: Date | string | null | undefined): number => {
+  const t = at instanceof Date ? at.getTime() : typeof at === 'string' ? Date.parse(at) : NaN;
+  return Number.isFinite(t) ? t : Number.POSITIVE_INFINITY;
+};
+
 /**
- * The people, ready for masking. When a name or an email is two people's, the first wins: employees, then offers, then
- * applicants, then accounts. Emergency contacts' names are scrubbed to "••••".
+ * The people, ready for masking, their tags read with `digest` (the server's key). The same person is one tag: a sign-in
+ * account its employee's (users.employee_id, else the employee's email), a candidate their employee's, an application or
+ * a general CV its candidate's, an offer its employee's or its application's; anyone else a tag of their own record's id.
+ * When a name or an email is two people's, the first wins: employees, then offers, then applicants, then accounts.
+ * Emergency contacts' names are scrubbed to "••••".
  */
-export function developerPeople(rows: DeveloperPeopleRows): DeveloperPeople {
+export function developerPeople(rows: DeveloperPeopleRows, digest: DeveloperDigest): DeveloperPeople {
+  const employeeIds = new Set(rows.employees.map((e) => e.id));
+  // whose tag each record has: the id of the person's first record (its root)
+  const rootOf = new Map<string, string>();
+  const roots = new Map<string, { at: number; codes: string[] }>();
+  const add = (id: string, root: string, code: string | null, at: Date | string | null | undefined) => {
+    rootOf.set(id, root);
+    const r = roots.get(root) ?? { at: Number.POSITIVE_INFINITY, codes: [] };
+    if (root === id) r.at = addedAt(at);
+    if (code) r.codes.push(code);
+    roots.set(root, r);
+  };
+  const employeeByEmail = new Map<string, string>();
+  for (const e of rows.employees) {
+    add(e.id, e.id, e.employeeCode, e.createdAt);
+    for (const m of [e.workEmail, e.personalEmail]) if (m && !employeeByEmail.has(m.trim().toLowerCase())) employeeByEmail.set(m.trim().toLowerCase(), e.id);
+  }
+  const linked = (id: string | null | undefined) => (id && rootOf.has(id) ? rootOf.get(id)! : null);
+  for (const c of rows.candidates ?? []) add(c.id, (c.employeeId && employeeIds.has(c.employeeId) ? c.employeeId : null) ?? c.id, c.code, c.createdAt);
+  for (const a of rows.applicants) add(a.id, linked(a.candidateId) ?? a.id, a.number, a.createdAt);
+  for (const o of rows.offers) add(o.id, (o.employeeId && employeeIds.has(o.employeeId) ? o.employeeId : null) ?? linked(o.applicationId) ?? o.id, o.number, o.createdAt);
+  for (const u of rows.users) {
+    const employee = (u.employeeId && employeeIds.has(u.employeeId) ? u.employeeId : null) ?? employeeByEmail.get(u.email.trim().toLowerCase()) ?? null;
+    add(u.id, employee ?? u.id, null, u.createdAt);
+  }
+  // the tags: the first added keeps the shortest free one (a later one's lengthens, so nobody's changes when someone joins)
+  const tags = new Map<string, string>();
+  const taken = new Set<string>();
+  const order = [...roots.entries()].map(([id, r], i) => ({ id, ...r, i })).sort((a, b) => a.at - b.at || a.i - b.i);
+  for (const r of order) {
+    const tag = freeTag(digest(r.id), r.codes, taken);
+    taken.add(tag);
+    tags.set(r.id, tag);
+  }
+  const tagOfRecord = (id: string) => tags.get(rootOf.get(id) ?? id) ?? HIDDEN;
+
   const byId = new Map<string, PersonLabel>();
   const byEmail = new Map<string, PersonLabel>();
+  const byCode = new Map<string, PersonLabel>();
   const byName = new Map<string, string>();
   const email = (e: string | null | undefined, label: PersonLabel) => {
     if (e && !byEmail.has(e.trim().toLowerCase())) byEmail.set(e.trim().toLowerCase(), label);
@@ -386,9 +490,13 @@ export function developerPeople(rows: DeveloperPeopleRows): DeveloperPeople {
   const name = (n: string | null | undefined, as: string) => {
     if (scrubbable(n) && !byName.has(n.trim().toLowerCase())) byName.set(n.trim().toLowerCase(), as);
   };
+  const code = (c: string, label: PersonLabel) => {
+    if (!byCode.has(c.toUpperCase())) byCode.set(c.toUpperCase(), label);
+  };
   for (const e of rows.employees) {
-    const label = employeeLabel(e.employeeCode);
+    const label = employeeLabel(tagOfRecord(e.id));
     byId.set(e.id, label);
+    code(e.employeeCode, label);
     email(e.workEmail, label);
     email(e.personalEmail, label);
     name(e.fullNameEn, label.en);
@@ -396,26 +504,30 @@ export function developerPeople(rows: DeveloperPeopleRows): DeveloperPeople {
     name(e.displayName, label.en);
   }
   for (const o of rows.offers) {
-    const label = candidateLabel(o.number);
+    const label = candidateLabel(tagOfRecord(o.id));
     byId.set(o.id, label);
+    code(o.number, label);
     email(o.email, label);
     name(o.fullNameEn, label.en);
     name(o.fullNameAr, label.ar);
   }
   for (const a of rows.applicants) {
-    const label = applicantLabel(a.number);
+    const label = applicantLabel(tagOfRecord(a.id));
     byId.set(a.id, label);
+    code(a.number, label);
     email(a.email, label);
     name(a.fullName, label.en);
   }
-  // a candidate's profile, by its CAN- code (its name is its applications' already, so theirs is scrubbed first)
+  // a candidate's profile (its name is its applications' already, so theirs is scrubbed first)
   for (const c of rows.candidates ?? []) {
-    const label = candidateLabel(c.code);
+    const label = candidateLabel(tagOfRecord(c.id));
     byId.set(c.id, label);
+    code(c.code, label);
     name(c.fullName, label.en);
   }
   for (const u of rows.users) {
-    const label = byEmail.get(u.email.trim().toLowerCase()) ?? otherLabel(u.id);
+    const root = rootOf.get(u.id);
+    const label = root && root !== u.id ? byId.get(root)! : otherLabel(tagOfRecord(u.id));
     byId.set(u.id, label);
     email(u.email, label);
   }
@@ -424,10 +536,10 @@ export function developerPeople(rows: DeveloperPeopleRows): DeveloperPeople {
   // written, is hidden ("••••")
   const all = [...byName.keys()].sort((a, b) => b.length - a.length).map((n) => escapeRe(n).replace(/\s+/g, '[\\s_.\\-]+'));
   const names = all.length ? new RegExp(`(?<![\\p{L}\\p{N}])(?:${all.join('|')})(?![\\p{L}\\p{N}])`, 'giu') : null;
-  return { byId, byEmail, byName, names };
+  return { byId, byEmail, byCode, byName, names, tagOf: (text) => tagFromDigest(digest(text), 6) };
 }
 
-const NO_PEOPLE: DeveloperPeople = { byId: new Map(), byEmail: new Map(), byName: new Map(), names: null };
+const NO_PEOPLE: DeveloperPeople = { byId: new Map(), byEmail: new Map(), byCode: new Map(), byName: new Map(), names: null, tagOf: () => HIDDEN };
 
 const EMAIL_IN_TEXT = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 /** A phone number in a text: +… or 0… with 10 digits at least (dates and codes never start so). */
@@ -435,15 +547,23 @@ const PHONE_IN_TEXT = /(?<![\w+])(?:\+\d[\d \-]{8,17}\d|0\d[\d \-]{8,15}\d)(?![\
 /** A national ID in a text: 14 digits starting 2 or 3. */
 const NATIONAL_ID_IN_TEXT = /(?<!\d)[23]\d{13}(?!\d)/g;
 const PSEUDONYM_EMAIL = /@hidden\.invalid$/i;
+/**
+ * A person's code, alone or in a text (owner, 23 October 2026: "in developer view use **** instead of IDs"), each one
+ * person's: an employee's EMP-0182, an application's or a general CV's APP-2026-0001 (one series: a general CV's
+ * reference is its number), a candidate's CAN-0001, an offer's OFF-2026-0003, and a contract's CON-2026-0007 (with an
+ * amendment's -A1), as a printed contract carries it. In any case ("emp-0182.pdf"). Not a person's, and kept: assets'
+ * and kits' codes (PK-CAM-0003, PK-KIT-A), custody records' (CUS-0042), vacancies' (VAC-2026-0001).
+ */
+export const PERSON_CODE_IN_TEXT = /(?<![\p{L}\p{N}])(?:EMP-\d{3,}|APP-\d{4}-\d+|CAN-\d{3,}|OFF-\d{4}-\d+|CON-\d{4}-\d+(?:-A\d+)?)(?![\p{L}\p{N}])/giu;
 
-/** A text with every real name the API knows, every email, phone number and national ID in it replaced. */
+/** A text with every real name the API knows, every email, phone number, national ID and person's code in it replaced. */
 export function scrubText(text: string, people: DeveloperPeople = NO_PEOPLE): string {
   if (!text || UUID.test(text) || DATE_LIKE.test(text)) return text;
   let out = text;
   if (people.names) out = out.replace(people.names, (m) => people.byName.get(m.toLowerCase()) ?? HIDDEN);
-  out = out.replace(EMAIL_IN_TEXT, (m) => (PSEUDONYM_EMAIL.test(m) ? m : (people.byEmail.get(m.toLowerCase())?.email ?? unknownEmail(m))));
+  out = out.replace(EMAIL_IN_TEXT, (m) => (PSEUDONYM_EMAIL.test(m) ? m : (people.byEmail.get(m.toLowerCase())?.email ?? unknownEmail(m, people))));
   out = out.replace(PHONE_IN_TEXT, (m) => (m.replace(/\D/g, '').length >= 10 ? HIDDEN : m));
-  return out.replace(NATIONAL_ID_IN_TEXT, HIDDEN);
+  return out.replace(NATIONAL_ID_IN_TEXT, HIDDEN).replace(PERSON_CODE_IN_TEXT, HIDDEN);
 }
 
 /**
@@ -487,6 +607,12 @@ export const DEVELOPER_HIDDEN_TEXT_FIELDS: ReadonlySet<string> = new Set([
   'acceptedName',
   'disposalApprovedBy',
   'handedOverByName',
+  // the company's sending server (Email Settings, owner, 23 October 2026: "why dont we add SMTP setup in the
+  // organization setup"): the settings themselves are never a developer's (@NotForDevelopers); their audit entries are
+  'host',
+  // where an official duty is (owner, 23 October 2026: "Official duty (OD) requests"): a client's site, an address, free
+  // text about the person's day (its reason is a free text field already)
+  'dutyPlace',
 ]);
 
 /**
@@ -514,7 +640,18 @@ export const DEVELOPER_HIDDEN_NULL_FIELDS: ReadonlySet<string> = new Set([
   'degree',
   'photoId',
   'photoCrop',
+  // their national ID card's issue and expiry dates (found 23 October 2026, with the contracts' dates): the card's own
+  'issueDate',
+  'expiryDate',
 ]);
+
+/**
+ * Names that are a person's data only on some pages: a paper of the employee file's expiry (a passport's, an ID card's),
+ * where a job offer's expiry stays. Null when the API's path matches.
+ */
+export const DEVELOPER_HIDDEN_NULL_FIELDS_ON: Readonly<Record<string, RegExp>> = {
+  expiresOn: /^\/api\/(employees\/[^/]+\/paperwork|paperwork)(\/|$)/,
+};
 
 /** Fields that hold a person's name, wherever they are: their pseudonym. */
 export const DEVELOPER_PERSON_NAME_FIELDS: ReadonlySet<string> = new Set([
@@ -541,10 +678,27 @@ export const DEVELOPER_PERSON_NAME_FIELDS: ReadonlySet<string> = new Set([
   'repName',
   'repNameEn',
   'companyRepName',
+  // the sender's name the company's emails carry (Email Settings, 23 October 2026), often a person's
+  'fromName',
 ]);
 
 /** Emails, wherever they are: the person's pseudonymous email. */
-export const DEVELOPER_EMAIL_FIELDS: ReadonlySet<string> = new Set(['email', 'workEmail', 'personalEmail', 'signInEmail', 'emails', 'cvEmails', 'userEmail', 'byEmail']);
+export const DEVELOPER_EMAIL_FIELDS: ReadonlySet<string> = new Set([
+  'email',
+  'workEmail',
+  'personalEmail',
+  'signInEmail',
+  'emails',
+  'cvEmails',
+  'userEmail',
+  'byEmail',
+  // the company's mailbox in the email settings' audit entries (23 October 2026): its sign-in, its sender and reply-to
+  // addresses, and where a test email went; a job offer's sentTo is its candidate's email
+  'username',
+  'fromAddress',
+  'replyTo',
+  'sentTo',
+]);
 
 /**
  * Keys whose value is a person (an object with their name, or their name as text): the employee, their manager, the
@@ -593,7 +747,7 @@ const BY_KEY = /[a-z]By$/;
 const NOT_PERSON_KEYS = new Set(['orderBy', 'sortBy', 'groupBy', 'filterBy', 'splitBy']);
 const APP_NUMBER = /^APP-\d{4}-\d+$/;
 const OFF_NUMBER = /^OFF-\d{4}-\d+$/;
-/** A candidate profile's code (22 October 2026): CAN-0001. A developer's code search finds by it (DEVELOPER_CODE_SEARCH). */
+/** A candidate profile's code (22 October 2026): CAN-0001. */
 const CAN_CODE = /^CAN-\d{4,}$/;
 
 /** Whether an object is a person: it has an employee code, a full name, a work or personal email, or an email and a name. */
@@ -602,16 +756,21 @@ function personLike(obj: Record<string, unknown>): boolean {
   return str('employeeCode') || str('fullNameEn') || str('fullNameAr') || str('fullName') || str('workEmail') || str('personalEmail') || (str('email') && str('name'));
 }
 
-/** The pseudonym of a person object: by its code or number, else its ids or email in the people, else a tag of its id. */
+/**
+ * The pseudonym of a person object: by its code or number in the people, else its ids or email in the people, else a
+ * keyed tag of its id (someone added since the people were read: an employee by their code's kind, anyone else a
+ * "Person"). Never by the code itself (23 October 2026: "in developer view use **** instead of IDs").
+ */
 function labelOf(obj: Record<string, unknown>, people: DeveloperPeople): PersonLabel | null {
   const str = (k: string) => (typeof obj[k] === 'string' ? (obj[k] as string) : null);
   const code = str('employeeCode');
-  if (code) return employeeLabel(code);
   const number = str('number');
-  if (number && APP_NUMBER.test(number)) return applicantLabel(number);
-  if (number && OFF_NUMBER.test(number)) return candidateLabel(number);
+  const applicant = !!number && APP_NUMBER.test(number);
+  const offer = !!number && OFF_NUMBER.test(number);
   const candidate = str('code');
-  if (candidate && CAN_CODE.test(candidate)) return candidateLabel(candidate);
+  const profile = !!candidate && CAN_CODE.test(candidate);
+  const coded = code ?? (applicant || offer ? number : null) ?? (profile ? candidate : null);
+  if (coded && people.byCode.has(coded.toUpperCase())) return people.byCode.get(coded.toUpperCase())!;
   for (const k of ['employeeId', 'userId', 'id']) {
     const id = str(k);
     if (id && people.byId.has(id)) return people.byId.get(id)!;
@@ -620,8 +779,10 @@ function labelOf(obj: Record<string, unknown>, people: DeveloperPeople): PersonL
     const e = str(k);
     if (e && people.byEmail.has(e.toLowerCase())) return people.byEmail.get(e.toLowerCase())!;
   }
-  const id = str('id') ?? str('employeeId') ?? str('userId');
-  return id ? otherLabel(id, 'Person') : null;
+  const id = (code ? str('employeeId') : null) ?? str('id') ?? str('employeeId') ?? str('userId');
+  if (!id) return null;
+  const tag = people.tagOf(id);
+  return code ? employeeLabel(tag) : applicant ? applicantLabel(tag) : offer || profile ? candidateLabel(tag) : otherLabel(tag, 'Person');
 }
 
 /** A name as text, its pseudonym: the people's by name, else the person object's, else "••••". */
@@ -699,7 +860,7 @@ export function maskForDeveloper(body: unknown, apiPath: string, people: Develop
         out[k] = kind === 'text' ? walk(masked(v, kind), false) : masked(v, kind);
         continue;
       }
-      if (DEVELOPER_HIDDEN_NULL_FIELDS.has(k)) {
+      if (DEVELOPER_HIDDEN_NULL_FIELDS.has(k) || (Object.hasOwn(DEVELOPER_HIDDEN_NULL_FIELDS_ON, k) && DEVELOPER_HIDDEN_NULL_FIELDS_ON[k].test(apiPath))) {
         out[k] = v === undefined ? v : null;
         continue;
       }
@@ -717,7 +878,7 @@ export function maskForDeveloper(body: unknown, apiPath: string, people: Develop
       }
       if (DEVELOPER_EMAIL_FIELDS.has(k) && (typeof v === 'string' || Array.isArray(v))) {
         const one = (e: unknown) =>
-          typeof e === 'string' && e ? (isPerson && label && k !== 'emails' && k !== 'cvEmails' ? label.email : (people.byEmail.get(e.trim().toLowerCase())?.email ?? unknownEmail(e))) : e;
+          typeof e === 'string' && e ? (isPerson && label && k !== 'emails' && k !== 'cvEmails' ? label.email : (people.byEmail.get(e.trim().toLowerCase())?.email ?? unknownEmail(e, people))) : e;
         // a list of objects ([{ email, … }]) is walked, so each email in it is hidden too
         out[k] = Array.isArray(v) ? v.map((e) => (e && typeof e === 'object' ? walk(e, false) : one(e))) : one(v);
         continue;
@@ -734,40 +895,53 @@ export function maskForDeveloper(body: unknown, apiPath: string, people: Develop
   return hideJobForDeveloper(walk(body, false), apiPath);
 }
 
-// ---------- searches (22 October 2026) ----------
-
-/** A search by a code (EMP-0182, APP-2026-0001, PK-CAM-0003, CUS-0042, a part of one): a developer's only search. */
-export const DEVELOPER_CODE_SEARCH = /^\s*[A-Za-z]{2,4}(-[A-Za-z0-9]{1,8}){1,3}-?\s*$/;
-/** What a developer's name search becomes: matches nothing. */
-export const DEVELOPER_NO_MATCH = 'developer-search-hidden';
-const SEARCH_PARAMS = new Set(['q', 'search']);
-const PERSON_PARAMS = new Set(['name', 'fullName', 'email', 'nationalId', 'mobile', 'phone']);
+// ---------- searches (22 October 2026; people's off since 23 October 2026) ----------
 
 /**
- * A developer's query, made safe (null: as it is): a search finds by a code only, never by a name, so a real name can't be
- * confirmed by searching for it; a person's name, email, national ID or phone as a filter finds nothing. With the API's
- * path (22 October 2026: "Hide per-person details"), a filter by department, team, job title, grade or employment type
- * is dropped from a list of people, so it lists everyone rather than say who is where (DEVELOPER_JOB_PARAMS); a company
- * page keeps them (its job titles by department).
+ * A developer's only search (owner, 23 October 2026: "in developer view use **** instead of IDs"): by the code of an asset
+ * (ST-, PK-, IT-, OF-, CS-…), a kit (PK-KIT-…), a custody record (CUS-…) or a vacancy (VAC-…), or its start. None is a
+ * person's code or a part of one (EMP-, APP-, CAN-, OFF-, CON-), so a search that also matches a holder's code finds no
+ * person by it.
+ */
+export const DEVELOPER_CODE_SEARCH = /^\s*(?:ST|PK|IT|OF|CS|CUS|VAC)-(?:[A-Za-z0-9]{1,8}(?:-[A-Za-z0-9]{1,8}){0,2}-?)?\s*$/i;
+/** What a developer's search for people becomes: matches nothing. */
+export const DEVELOPER_NO_MATCH = 'developer-search-hidden';
+const SEARCH_PARAMS = new Set(['q', 'search']);
+/** Filters by a person's name, email, national ID, phone or code; `holder`: the assets list's, by its holder's name or code. */
+const PERSON_PARAMS = new Set(['name', 'fullName', 'email', 'nationalId', 'mobile', 'phone', 'employeeCode', 'holder']);
+
+/**
+ * Where a developer's search by a code is kept (DEVELOPER_CODE_SEARCH): assets, kits, custody records and vacancies. Not
+ * their lists of people (who holds what): those, and every other search, are a search for people.
+ */
+export const DEVELOPER_CODE_SEARCH_PATHS: readonly RegExp[] = [/^\/api\/assets(?!\/custody\/people|\/reports\/holders)(\/|$)/, /^\/api\/recruitment\/vacancies$/];
+
+/**
+ * A developer's query, made safe (null: as it is). A search for people (employees, the directory, applicants, candidates,
+ * general CVs, offers, contracts, users, the audit log, pickers) finds nothing, whatever it is (23 October 2026): by a
+ * name it would confirm a real name, by a code it would link a real code to its tag. Only an asset's, a kit's, a custody
+ * record's or a vacancy's code finds, on their pages (DEVELOPER_CODE_SEARCH_PATHS). A person's name, email, national ID,
+ * phone or code as a filter finds nothing. With the API's path (22 October 2026: "Hide per-person details"), a filter by
+ * department, team, job title, grade or employment type is dropped from a list of people, so it lists everyone rather
+ * than say who is where (DEVELOPER_JOB_PARAMS); a company page keeps them (its job titles by department).
  */
 export function developerQuery(query: Readonly<Record<string, unknown>>, apiPath?: string): Record<string, unknown> | null {
   let changed = false;
   const out: Record<string, unknown> = { ...query };
   const people = apiPath !== undefined && !isDeveloperCompanyPath(apiPath);
+  const byCode = apiPath !== undefined && DEVELOPER_CODE_SEARCH_PATHS.some((re) => re.test(apiPath));
   for (const [k, v] of Object.entries(query)) {
     if (people && (DEVELOPER_JOB_PARAMS.has(k) || (k === 'type' && EMPLOYMENT_TYPE_PARAM_PATH.test(apiPath)))) {
       delete out[k];
       changed = true;
       continue;
     }
-    if (typeof v !== 'string' || !v.trim()) continue;
-    if (SEARCH_PARAMS.has(k) && !DEVELOPER_CODE_SEARCH.test(v)) {
-      out[k] = DEVELOPER_NO_MATCH;
-      changed = true;
-    } else if (PERSON_PARAMS.has(k)) {
-      out[k] = DEVELOPER_NO_MATCH;
-      changed = true;
-    }
+    if (!SEARCH_PARAMS.has(k) && !PERSON_PARAMS.has(k)) continue;
+    if (v === undefined || v === null || (typeof v === 'string' && !v.trim())) continue;
+    // a list or an object (?q=a&q=b, ?q[x]=…) is no code
+    if (SEARCH_PARAMS.has(k) && byCode && typeof v === 'string' && DEVELOPER_CODE_SEARCH.test(v)) continue;
+    out[k] = DEVELOPER_NO_MATCH;
+    changed = true;
   }
   return changed ? out : null;
 }
@@ -892,6 +1066,17 @@ export const DEVELOPER_JOB_DATE_FIELDS: ReadonlySet<string> = new Set([
   'insuredWageAsBefore',
   // when a trainee's or an intern's last agreement ended, and a new one may start
   'nextTraining',
+  // an ending's (23 October 2026, found missed when the home page showed a contract's end): the notice given, its
+  // certified letter, the CEO's decision due, and the deadlines counted from the last day; the days a person was employed
+  // from and to (a month's attendance) and when they acknowledged their job description (on joining)
+  'noticeGivenOn',
+  'certifiedOn',
+  'decisionDueOn',
+  'finalDuesBy',
+  'labourOfficeFilingBy',
+  'employedFrom',
+  'employedTo',
+  'jdAcknowledgedAt',
 ]);
 
 /** The ids pointing at a department, team, job title or grade: null (a list of them empty) on a page about people. */
@@ -940,8 +1125,30 @@ const EMPLOYMENT_MARKS = [
   'leaverKind',
   'tenureMonths',
   'contractNumber',
+  // a contract ending soon (GET /contracts/expiring, 23 October 2026): its row carries its end beside the person
+  'nonRenewalNoticeBy',
+  'becameOpenEnded',
 ] as const;
 const EMPLOYMENT_KEYS = new Set(['employment', 'employments', 'contract', 'contracts', 'lastEnded', 'ending', 'endings', 'pay', 'versions']);
+
+/**
+ * The API's paths whose answers are contracts, employments, their endings and raises, all of them about one person each
+ * (owner, 23 October 2026, as a developer, on the home page's Contracts Ending Soon: "Ends 11/03/2024"; its row has the
+ * contract's end beside the person, with none of an employment's marks): every start, end, signing and effective date in
+ * them null (DEVELOPER_EMPLOYMENT_DATE_FIELDS), and the dates written in their texts hidden, wherever they are in the
+ * answer. The contracts list, the contracts ending, the law's warnings, the probations ending, the endings (the CEO's
+ * Approvals among them), the raises waiting and the raise requests, a person's employments, contracts, pay history and
+ * hiring, the raises report and a final settlement.
+ */
+export const DEVELOPER_EMPLOYMENT_PATHS: readonly RegExp[] = [
+  /^\/api\/(contracts|employments|endings|raises|raise-requests)(\/|$)/,
+  /^\/api\/employees\/[^/]+\/(employments|salary-history|raise-requests|hire)(\/|$)/,
+  /^\/api\/reports\/salary-raises(\/|$)/,
+  /^\/api\/payroll\/final-settlements(\/|$)/,
+];
+
+/** Whether the API's path answers with contracts, employments, their endings or raises (DEVELOPER_EMPLOYMENT_PATHS). */
+export const isDeveloperEmploymentPath = (apiPath: string): boolean => DEVELOPER_EMPLOYMENT_PATHS.some((re) => re.test(apiPath));
 
 /**
  * Aggregates (headcount by department, turnover or raises by department, the department rows of a dashboard): a row that
@@ -951,7 +1158,8 @@ export const DEVELOPER_AGGREGATE_KEYS: ReadonlySet<string> = new Set(['byDepartm
 
 /**
  * The template tags whose values are a person's job, terms or social insurance (a document's check or preview answering
- * by tag): "••••" on a page about people. Their manager (a pseudonym), shift and contract number stay.
+ * by tag): "••••" on a page about people. Their manager (a pseudonym) and shift stay; the contract number is a person's
+ * code, "••••" as every one is (PERSON_CODE_IN_TEXT).
  */
 export const DEVELOPER_JOB_TAG_FIELDS: ReadonlySet<string> = new Set([
   ...TEMPLATE_TAGS.filter((t) => t.group === 'job_contract' && !/^(manager_name|shift|contract_number|duration$)/.test(t.tag)).map((t) => t.tag),
@@ -1058,12 +1266,14 @@ function containsPerson(value: unknown): boolean {
 }
 
 /** A page about people: every person's employment and social insurance details hidden, aggregates as they are. */
-function hiddenJobs(value: unknown, employment: boolean, entity: string | null): unknown {
+function hiddenJobs(value: unknown, employment: boolean, entity: string | null, whole = false): unknown {
+  // a text in a list, on a page of contracts and employments (`whole`: DEVELOPER_EMPLOYMENT_PATHS): its dates hidden
+  if (whole && typeof value === 'string') return DATE_LIKE.test(value) || UUID.test(value) ? value : value.replace(DATE_IN_TEXT, HIDDEN);
   if (value === null || typeof value !== 'object' || value instanceof Date) return value;
-  if (Array.isArray(value)) return value.map((v) => hiddenJobs(v, employment, entity));
+  if (Array.isArray(value)) return value.map((v) => hiddenJobs(v, employment, entity, whole));
   if (isDecimalLike(value)) return value;
   const obj = value as Record<string, unknown>;
-  const inEmployment = employment || EMPLOYMENT_MARKS.some((m) => m in obj);
+  const inEmployment = whole || employment || EMPLOYMENT_MARKS.some((m) => m in obj);
   const at = typeof obj.entityType === 'string' ? obj.entityType : entity;
   // an audit change: { field, from, to }
   const change = typeof obj.field === 'string' && ('from' in obj || 'to' in obj) && jobChange(obj.field, at);
@@ -1071,7 +1281,7 @@ function hiddenJobs(value: unknown, employment: boolean, entity: string | null):
   for (const [k, v] of Object.entries(obj)) {
     if (v === undefined) out[k] = v;
     else if (change && (k === 'from' || k === 'to')) out[k] = hiddenPersonal(v);
-    else if (DEVELOPER_AGGREGATE_KEYS.has(k) && Array.isArray(v)) out[k] = v.map((row) => (containsPerson(row) ? hiddenJobs(row, false, at) : row));
+    else if (DEVELOPER_AGGREGATE_KEYS.has(k) && Array.isArray(v)) out[k] = v.map((row) => (containsPerson(row) ? hiddenJobs(row, false, at, whole) : row));
     else if (DEVELOPER_JOB_TEXT_FIELDS.has(k) || DEVELOPER_JOB_TAG_FIELDS.has(k)) out[k] = typeof v === 'number' || typeof v === 'boolean' ? v : hiddenJob(v);
     else if (DEVELOPER_JOB_DATE_FIELDS.has(k)) out[k] = null;
     else if (DEVELOPER_JOB_ID_FIELDS.has(k)) out[k] = Array.isArray(v) ? [] : null;
@@ -1083,13 +1293,13 @@ function hiddenJobs(value: unknown, employment: boolean, entity: string | null):
     else if (inEmployment && DEVELOPER_EMPLOYMENT_DATE_FIELDS.has(k)) out[k] = null;
     // a text of an employment's (a law warning's message): the dates written in it
     else if (inEmployment && typeof v === 'string') out[k] = DATE_LIKE.test(v) || UUID.test(v) ? v : v.replace(DATE_IN_TEXT, HIDDEN);
-    else out[k] = hiddenJobs(v, EMPLOYMENT_KEYS.has(k), at);
+    else out[k] = hiddenJobs(v, EMPLOYMENT_KEYS.has(k), at, whole);
   }
   return out;
 }
 
-/** A pseudonym ("Employee EMP-0182", "User 3f9a2c") or a pseudonymous email in a text. */
-const PSEUDONYM_IN_TEXT = /(?:Employee|موظف|Applicant|متقدم|Candidate|مرشح|User|مستخدم|Person|شخص) (?:[A-Z]{2,4}-[A-Za-z0-9-]*[A-Za-z0-9]|[0-9a-f]{6})/g;
+/** A pseudonym in a text ("Employee 7K3Q", "User 4HJK9X"; 23 October 2026: a tag, never the code), and a pseudonymous email. */
+const PSEUDONYM_IN_TEXT = /(?:Employee|موظف|Applicant|متقدم|Candidate|مرشح|User|مستخدم|Person|شخص) (?:[2-9A-HJ-NP-Z]{4,7}|••••)(?![\p{L}\p{N}])/gu;
 const PSEUDONYM_EMAIL_IN_TEXT = /[A-Za-z0-9._%+-]+@hidden\.invalid/gi;
 /** Keys holding the id of a person, besides `id` within one: the employee's, the head's, who did something. */
 const PERSON_ID_KEY = /^(employee|user|manager|head|lead|teamLead|departmentHead|hiringManager|holder|custodian|approver|requester|owner|interviewer|scorer|member|person|signer|author|recipient)Ids?$|[a-z]By(User)?Ids?$/;
@@ -1121,5 +1331,5 @@ function cutOff(value: unknown, person: boolean): unknown {
  * social insurance hidden, aggregates kept. maskForDeveloper ends with it. A new value: the answer is never changed.
  */
 export function hideJobForDeveloper(body: unknown, apiPath: string): unknown {
-  return isDeveloperCompanyPath(apiPath) ? cutOff(body, false) : hiddenJobs(body, false, null);
+  return isDeveloperCompanyPath(apiPath) ? cutOff(body, false) : hiddenJobs(body, false, null, isDeveloperEmploymentPath(apiPath));
 }

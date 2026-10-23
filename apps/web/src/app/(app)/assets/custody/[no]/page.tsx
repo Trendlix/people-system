@@ -12,6 +12,7 @@ import { CustodyStatusBadge } from '../../custody-ui';
 import { assetsCaller, assetsNotLoaded } from '../../data';
 import { Empty, Loading, NoAccess } from '../../ui';
 import { custodyDoneText, CustodyDetail, skippedOf } from '../custody-detail';
+import { joinShown } from '@/lib/hidden';
 
 // A custody record's page on the site (Assets step 3), at /assets/custody/[no]: the address its notifications open. A
 // code in lower case is sent to the code as kept. Inside the Trendlix People app (its web view says so in its user
@@ -40,7 +41,7 @@ async function Record({ params, searchParams }: { params: PageProps<'/assets/cus
           <CustodyStatusBadge status={r.status} />
         </div>
         <p className="text-sm text-muted">
-          {kindText(r.kind)} · {r.employee.fullNameEn} · {r.employee.employeeCode}
+          {joinShown([kindText(r.kind), r.employee.fullNameEn, r.employee.employeeCode])}
         </p>
       </div>
       <CustodyDetail record={r} surface="site" today={todayInCairo()} done={done} />

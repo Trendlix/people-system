@@ -44,6 +44,13 @@ const ICONS: Record<AppTabKey, React.ReactNode> = {
       <path d="m8.5 12.3 2.4 2.4 4.8-5" />
     </svg>
   ),
+  // the one tab while their access is on hold (owner, 23 October 2026: "Check-in/out only"): a clock with a tick
+  check_in: (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className={ICON} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 12.5a8 8 0 1 1-8-8" />
+      <path d="M12 8v4.5l2.5 1.5M15.5 5.5l1.8 1.8 3.2-3.3" />
+    </svg>
+  ),
 };
 
 /** The tabs, the one of the page (`active`) highlighted; no hooks, so it can stand in while the user is read. */

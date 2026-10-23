@@ -6,7 +6,7 @@ import { Select } from '@/components/select';
 import { ApiError, apiGet } from '@/lib/api';
 import { departmentName, withTeams } from '@/lib/departments';
 import { formatDateTime } from '@/lib/format';
-import { filtersByJob } from '@/lib/hidden';
+import { filtersByJob, shownCode } from '@/lib/hidden';
 import { getCurrentUser } from '@/lib/session';
 import type { Department, ProfileGap } from '@/lib/types';
 import { StaffOnly } from '../../staff-only';
@@ -134,7 +134,7 @@ function PersonRow({ row: r }: { row: MissingDetailsRow }) {
         <Link href={profileHref(r.id)} className="font-semibold">
           {r.fullNameEn}
         </Link>
-        <div className="text-xs text-muted tabular-nums">{r.employeeCode}</div>
+        {shownCode(r.employeeCode) && <div className="text-xs text-muted tabular-nums">{r.employeeCode}</div>}
         {r.standing === 'not_employed' && (
           <div className="mt-1">
             <StandingBadge standing={r.standing} />

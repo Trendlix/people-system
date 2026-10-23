@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Header, HttpCode, Post, Req } from '@nestjs/common';
 import type { Request } from 'express';
-import { CurrentActiveSession, CurrentUser } from '../auth/decorators.js';
+import { CurrentActiveSession, CurrentUser, OpenOnHold } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import type { ActiveSession } from '../auth/sessions.service.js';
 import { CheckInSetupService } from './check-in-setup.service.js';
@@ -12,7 +12,9 @@ import { CheckInService } from './check-in.service.js';
 // with an employee profile and a current employment under a shift, not a freelancer (the service says why not to the
 // others). A press carries the session's kind (inside the app a location is needed: owner, 20 October 2026, "App only")
 // and the visitor's address as the website signed it (check-ins locked to the office network, the same day), which is
-// read for the decision and never kept.
+// read for the decision and never kept. Open to an account on Hold (owner, 23 October 2026: "Check-in/out only"), so its
+// attendance and pay stay right: today's state and the presses, on the website and in the app.
+@OpenOnHold()
 @Controller('me/attendance')
 export class CheckInController {
   constructor(

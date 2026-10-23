@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { LABELS, STANDING_LABELS, type EmployeeStatus, type EmploymentType, type ShiftTimes, type Standing } from '@trendlix/shared';
 import { Hidden } from '@/components/hidden';
 import { formatDate } from '@/lib/format';
-import { HIDDEN_LABEL, isHidden, labelOf, readsHidden } from '@/lib/hidden';
+import { HIDDEN_LABEL, isHidden, labelOf, readsHidden, withCode } from '@/lib/hidden';
 import { shiftTimesText } from '@/lib/shifts';
 import { hasRole } from '@/lib/roles';
 import type { EmployeeProfile, SessionUser } from '@/lib/types';
@@ -243,7 +243,7 @@ export function EditHeading({
       <BackLink href={backHref ?? `/employees/${profile.id}`}>{profile.fullNameEn}</BackLink>
       <h1 className="text-2xl font-semibold">{title}</h1>
       <p className="text-sm text-muted">
-        {profile.fullNameEn} · {profile.employeeCode}
+        {withCode(profile.fullNameEn, profile.employeeCode)}
       </p>
     </div>
   );

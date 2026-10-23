@@ -1,4 +1,4 @@
-import { isNotificationKind, NOTIFICATION_KIND_LABELS, notificationSection, PUSH_TOKEN_MAX, REMINDER_KINDS, safeNotificationLink } from '@trendlix/shared';
+import { HOLD_PATH, isNotificationKind, NOTIFICATION_KIND_LABELS, notificationSection, PUSH_TOKEN_MAX, REMINDER_KINDS, safeNotificationLink } from '@trendlix/shared';
 import { formatDateTime } from './format';
 import type { PushRegistration } from './native';
 import { APP_PATHS, appAttendanceHref, toAppHref } from './surface';
@@ -40,6 +40,8 @@ export function notificationHref(link: string | null | undefined, kind: string, 
   const safe = safeNotificationLink(link);
   if (!safe) return null;
   if (surface === 'site' || isUnder(safe, APP_PATHS.home)) return safe;
+  // the Hold page (owner, 23 October 2026: on Hold "Check-in/out only"): the same page in the app
+  if (isUnder(safe, HOLD_PATH)) return HOLD_PATH;
   if (isUnder(safe, '/my-custody')) return '/app/custody';
   const custody = /^\/assets\/custody\/(CUS-\d{4,})(?:[?#]|$)/i.exec(safe);
   if (custody) return `/app/assets/custody/${custody[1].toUpperCase()}`;

@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { ApiError, apiFetch } from '@/lib/api';
 import { passPdfOn, wantsDownload } from '@/lib/protected-pdf';
-import { apiReason, textResponse as text } from '../../../../../(app)/templates/file-response';
+import { apiReason, textResponse as text } from '../../../../../(app)/organization/templates/file-response';
 import { isPayslipLanguage, PAYSLIP_PDF_NAME } from '../../../../../(app)/payroll/payslips';
 import { apiMyPayslipPath } from '../../data';
 

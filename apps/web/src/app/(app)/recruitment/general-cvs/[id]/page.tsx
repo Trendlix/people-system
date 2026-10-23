@@ -12,6 +12,7 @@ import { moveGeneralCv, saveGeneralCvNotes, setGeneralCvStatus } from '../../gen
 import { generalCvFileHref, GENERAL_STATUS_STYLE, movableVacancies, tabHref } from '../../general';
 import { MoveForm } from '../../general-forms';
 import { applicantHref } from '../../recruitment';
+import { shownCode } from '@/lib/hidden';
 
 // A general CV (owner, 22 October 2026: "i want a proper viweing, what came out of the posted jobs and what cam on
 // randomly", "Both"): who sent it, the area they would like to work in, how it came (the careers page, or HR from email,
@@ -55,7 +56,8 @@ async function GeneralCv({ params }: { params: PageProps<'/recruitment/general-c
           <span className={`badge ${GENERAL_STATUS_STYLE[c.status]}`}>{GENERAL_CV_STATUS_LABELS[c.status]}</span>
         </div>
         <p className="text-sm text-muted">
-          {c.number} · received {formatDateTime(c.receivedAt)} · {GENERAL_CV_SOURCE_LABELS[c.source]}
+          {shownCode(c.number) && `${c.number} · `}
+          received {formatDateTime(c.receivedAt)} · {GENERAL_CV_SOURCE_LABELS[c.source]}
           {c.referrer ? `, referred by ${c.referrer}` : ''}
           {c.addedBy ? ` · added by ${c.addedBy.name ?? c.addedBy.email}` : ''}
         </p>
@@ -67,7 +69,7 @@ async function GeneralCv({ params }: { params: PageProps<'/recruitment/general-c
         <div role="note" className="rounded-lg bg-ok-soft px-4 py-3 text-sm text-ok">
           Added to <span className="font-semibold">{c.movedTo.vacancyTitle}</span>:{' '}
           <Link href={applicantHref(c.movedTo.applicationId)} className="font-semibold">
-            open the application ({c.movedTo.reference})
+            open the application{shownCode(c.movedTo.reference) && ` (${c.movedTo.reference})`}
           </Link>
         </div>
       )}
@@ -76,7 +78,7 @@ async function GeneralCv({ params }: { params: PageProps<'/recruitment/general-c
         <div className="flex flex-wrap items-start gap-2">
           {c.can.review && <ActionButton action={setGeneralCvStatus.bind(null, c.id, 'review')} label="Mark as reviewed" pendingLabel="Saving…" kind="primary" />}
           {c.can.restore && <ActionButton action={setGeneralCvStatus.bind(null, c.id, 'restore')} label="Restore" pendingLabel="Restoring…" kind="primary" />}
-          {c.can.archive && <ActionButton action={setGeneralCvStatus.bind(null, c.id, 'archive')} label="Archive" pendingLabel="Archiving…" confirm={`Archive ${c.number}? It can be restored.`} />}
+          {c.can.archive && <ActionButton action={setGeneralCvStatus.bind(null, c.id, 'archive')} label="Archive" pendingLabel="Archiving…" confirm={`Archive ${shownCode(c.number) ?? 'this CV'}? It can be restored.`} />}
         </div>
       )}
 

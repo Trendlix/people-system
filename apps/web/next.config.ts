@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { movedPagesRedirects } from "./src/lib/moved-pages";
 
 /** The sites that may show the careers pages in a frame: the company's own website. */
 const CAREERS_FRAMED_BY = ['https://www.trendlix.com', 'https://trendlix.com'];
@@ -65,6 +66,10 @@ const nextConfig: NextConfig = {
       // Payroll); its workbook with it. The period asked for (?from=&to=) is passed through.
       { source: '/employees/raises', destination: '/payroll/reports/salary-raises', permanent: true },
       { source: '/employees/raises/excel', destination: '/payroll/reports/salary-raises/excel', permanent: true },
+      // The pages brought into Organization's setup menu (owner, 23 October 2026: "Check-in Setup, KPI Pillars and
+      // deadlines, Recruitment and checklists, Templates", their old links redirecting): each old page and every page
+      // under it, e.g. /templates/<slot> and /kpis/pillars/<department> (src/lib/moved-pages.ts).
+      ...movedPagesRedirects(),
     ];
   },
   turbopack: {

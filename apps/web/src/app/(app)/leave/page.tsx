@@ -14,6 +14,7 @@ import { todayInCairo } from '../employees/ui';
 import { Empty, Loading } from '../organization/ui';
 import { notLoadedText } from '../payroll/load';
 import { loadWfhCalendar } from '../attendance/wfh/data';
+import { loadOdCalendar } from '../attendance/official-duty/data';
 import { calendarDays, calendarPeople, monthRange, readDepartment, readMonth } from './calendar';
 import { importsLeave, LEAVE_IMPORT_PATH } from './import/import';
 import { LeaveCalendar } from './calendar-view';
@@ -245,24 +246,26 @@ async function RequestsList({ query, user }: { query: Query; user: Awaited<Retur
 
 /**
  * The month's calendar of who is off, for a department or everyone, with the holidays; and the work from home days, a
- * distinct style from leave (owner, 21 October 2026), none from an API from before them.
+ * distinct style from leave (owner, 21 October 2026), none from an API from before them; and the official duties in
+ * their own colour (owner, 23 October 2026; the spec: "Team calendar shows leave and OD").
  */
 async function Calendar({ query, hr }: { query: Query; hr: boolean }) {
   const today = todayInCairo();
   const month = readMonth(query, today);
   const departmentId = readDepartment(query);
   const { from, to } = monthRange(month);
-  const [entries, holidays, departments, wfh] = await Promise.all([
+  const [entries, holidays, departments, wfh, od] = await Promise.all([
     loadLeaveCalendar(month, departmentId),
     loadHolidaysOf(Number(month.slice(0, 4))),
     getOrNull<Department[]>('/departments'),
     loadWfhCalendar(from, to, departmentId),
+    loadOdCalendar(from, to, departmentId),
   ]);
   if (entries.kind !== 'ok') {
     return <Empty>{entries.kind === 'unavailable' ? 'Not available yet: the server does not have the leave calendar yet.' : notLoadedText(entries, 'calendar')}</Empty>;
   }
   const days = calendarDays(month, holidays.kind === 'ok' ? holidays.value : [], today);
-  const people = calendarPeople([...entries.value, ...(wfh.kind === 'ok' ? wfh.value : [])], days);
+  const people = calendarPeople([...entries.value, ...(wfh.kind === 'ok' ? wfh.value : []), ...(od.kind === 'ok' ? od.value : [])], days);
   return (
     <LeaveCalendar
       month={month}

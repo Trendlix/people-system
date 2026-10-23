@@ -1,4 +1,5 @@
 import type {
+  AccessStanding,
   AccessState,
   ApproverRole,
   AssetsAccess,
@@ -103,6 +104,13 @@ export interface SessionUser {
    * the developer view), 'developer', or null until they choose (only the choice page opens). Left out for anyone else.
    */
   mode?: SessionMode | null;
+  /**
+   * Their access is on hold (owner, 23 October 2026: "Access should be on hold with a 7 days grace period one time
+   * granted by the hr"; on Hold "Check-in/out only"): no contract in force and no grace running. Every page sends them to
+   * the Hold page, with check-in and check-out only; the API refuses anything else. Left out otherwise (a Super Admin, the
+   * CEO and an account that isn't an employee's are never held).
+   */
+  hold?: boolean;
 }
 
 /**
@@ -480,10 +488,11 @@ export interface FullEmployeeSummary extends EmployeeSummaryBase {
   /** How the last employment ended, when there is no current one. */
   lastEnded: { endDate: string; endReason: EndReason } | null;
   /**
-   * Where their access stands (owner, 22 October 2026: "any active employee with active contract should have access"),
-   * and whether they have it without an active contract: for HR, an Admin and a Super Admin; left out for anyone else.
+   * Where their access stands (owner, 22 October 2026: "any active employee with active contract should have access"):
+   * the account's state and, since 23 October 2026 ("Active - Grace - Hold - No Access"), the standing and a grace's
+   * last day (left out by an API from before): for HR, an Admin and a Super Admin; left out for anyone else.
    */
-  access?: { state: AccessState; withoutContract: boolean } | null;
+  access?: { state: AccessState; standing?: AccessStanding; graceUntil?: string | null } | null;
 }
 
 /**
@@ -810,6 +819,11 @@ export interface UserAccount {
    */
   assetsAccess?: AssetsAccess;
   assetsAccessInEffect?: AssetsAccess;
+  /**
+   * An employee's account: their access standing (owner, 23 October 2026: "Active - Grace - Hold - No Access") and a
+   * grace's last day; null for an account that isn't an employee's. Left out by an API from before.
+   */
+  standing?: { standing: AccessStanding; graceUntil: string | null } | null;
 }
 
 // ---------- employee file: scanned paperwork ----------
@@ -1001,7 +1015,8 @@ export interface ExpiringContract {
   number: string;
   employee: ContractEmployeeRef;
   employmentId: string;
-  endDate: string;
+  /** Its last day; null for a developer (owner, 23 October 2026: a person's contract dates are hidden from them). */
+  endDate: string | null;
   /**
    * The last day to tell the employee it won't be renewed: 45 working days before the end; null for a trainee's or an
    * intern's agreement, which is renewed once, converted to full-time or ended, with no non-renewal notice.
@@ -1041,7 +1056,8 @@ export interface LawWarningItem {
 export interface ProbationEnding {
   employee: ContractEmployeeRef;
   employmentId: string;
-  probationEnd: string;
+  /** Null for a developer (22 October 2026: "Hide per-person details"). */
+  probationEnd: string | null;
 }
 
 /** GET /endings?status=pending_ceo (HR and CEO): an ending HR recorded and approved, waiting for the CEO. */
@@ -1055,7 +1071,8 @@ export interface EndingSummary {
   noticeGivenOn: string | null;
   /** The notice is paid instead of worked. */
   payInLieu: boolean;
-  lastWorkingDay: string;
+  /** Null for a developer (23 October 2026: a person's employment dates are hidden from them). */
+  lastWorkingDay: string | null;
   reason: string | null;
   note: string | null;
   status: EndingStatus;
@@ -1083,7 +1100,8 @@ export interface ContractListItem extends ContractPay, Omit<ContractLaw, 'traine
   /** Fixed-term (the default), open-ended or for a specific job (contractLengthText in employment-law.ts). */
   form: ContractForm;
   status: ContractStatus;
-  startDate: string;
+  /** Null for a developer (22 and 23 October 2026: a person's contract dates are hidden from them). */
+  startDate: string | null;
   /** Null for an open-ended contract, a specific-job one without an expected end, and one from before every contract was fixed-term. */
   endDate: string | null;
   probationMonths: number;

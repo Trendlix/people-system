@@ -15,6 +15,10 @@
 export const PROFILE_TABS = [
   { key: 'basic', label: 'Basic Data' },
   { key: 'employment', label: 'Employment' },
+  // their attendance since joining (owner, 23 October 2026: "Attendance history on the profile. Since joining: on-time %,
+  // average check-in time, late days by weekday and trends; an Excel export"): "HR, CEO and Finance only", the Super
+  // Admin too; a C-level person's the CEO's and the Super Admin's (the API decides)
+  { key: 'attendance', label: 'Attendance' },
   { key: 'insurance', label: 'Social Insurance' },
   { key: 'documents', label: 'Documents' },
   { key: 'custody', label: 'Custody' },

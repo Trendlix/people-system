@@ -18,6 +18,7 @@ import {
 import { formatDateTime } from '../../../lib/format';
 import { KPI_PATHS } from '../../../lib/kpi-paths';
 import type { SheetMode } from './scorecard';
+import { joinShown } from '../../../lib/hidden';
 
 // Practice KPI scorecards as the pages word and read them (owner, 22 October 2026: "i want to test the KPI's .. and it
 // is locked to dates, HR and Admin.. how?", choosing "Practice scorecards": "I or HR start a practice scorecard for any
@@ -158,8 +159,8 @@ export function templateChoiceLabel(t: Pick<KpiPracticeTemplateChoice, 'version'
 /** A month as the start form offers it: "October 2026 (this month: attendance so far)". */
 export const monthChoiceLabel = (month: string, current: string) => (month === current ? `${kpiMonthName(month)} (this month: attendance so far)` : kpiMonthName(month));
 
-/** Someone as the start form offers them: "Omar Ali · TLX-0007 · Data Analyst". */
-export const personChoiceLabel = (c: Pick<KpiPracticeChoice, 'employee' | 'jobTitle'>) => `${c.employee.fullNameEn} · ${c.employee.employeeCode} · ${c.jobTitle.titleEn}`;
+/** Someone as the start form offers them: "Omar Ali · TLX-0007 · Data Analyst"; without what is hidden from a developer. */
+export const personChoiceLabel = (c: Pick<KpiPracticeChoice, 'employee' | 'jobTitle'>) => joinShown([c.employee.fullNameEn, c.employee.employeeCode, c.jobTitle.titleEn]);
 
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 const UUID = /^[0-9a-f-]{36}$/i;

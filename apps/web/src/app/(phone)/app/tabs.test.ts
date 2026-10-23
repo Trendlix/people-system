@@ -23,6 +23,12 @@ describe('the phone pages’ tabs', () => {
     expect(decidesSomething({ roles: ['employee'], leads: false })).toBe(false);
   });
 
+  it('collapses to Check-in alone while their access is on hold (23 October 2026: "Check-in/out only")', () => {
+    expect(tabsFor({ roles: ['employee', 'manager'], hold: true })).toEqual([{ key: 'check_in', href: '/hold', label: 'Check-in' }]);
+    expect(keys({ roles: ['employee'], hold: false })).toEqual(['home', 'requests', 'attendance', 'payslips']);
+    expect(activeTab('/hold')).toBe('check_in');
+  });
+
   it('highlights the tab a page is under', () => {
     expect(activeTab('/app')).toBe('home');
     expect(activeTab('/app/requests')).toBe('requests');

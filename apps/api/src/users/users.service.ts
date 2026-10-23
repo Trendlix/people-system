@@ -1,10 +1,11 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
-import { assetsAccessOf, developerRolesProblem, isAssetsAccess, ROLES, type AssetsAccess, type Role } from '@trendlix/shared';
+import { assetsAccessOf, developerRolesProblem, isAssetsAccess, ROLES, type AccessStanding, type AssetsAccess, type Role } from '@trendlix/shared';
 import { AuditService, changes } from '../audit/audit.service.js';
 import { hashPassword } from '../auth/password.js';
 import { actsAs, isSuperAdmin } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { Prisma } from '../generated/prisma/client.js';
+import { standingOf } from '../employee-access/access-state.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { CreateUserDto, SetPasswordDto, UpdateUserDto } from './user.dto.js';
 
@@ -37,6 +38,11 @@ export interface UserView {
   lastSignInAt: Date | null;
   /** The employee this account is linked to (users.employee_id, 22 October 2026); null for an account that isn't one's. */
   employee: { id: string; employeeCode: string; fullNameEn: string } | null;
+  /**
+   * The access standing of an employee's account (owner, 23 October 2026: "Active - Grace - Hold - No Access"), with a
+   * grace's last day; null for an account that isn't an employee's (never held). Only on one account's answer.
+   */
+  standing?: { standing: AccessStanding; graceUntil: string | null } | null;
 }
 
 /** Roles in the usual order (employee … super admin), so lists and audit entries compare the same way every time. */
@@ -82,7 +88,10 @@ export class UsersService {
   async get(id: string): Promise<UserView> {
     const user = await this.prisma.user.findUnique({ where: { id }, select: USER });
     if (!user) throw new NotFoundException('User not found.');
-    return (await this.views([user]))[0];
+    const [view, standing] = await Promise.all([this.views([user]).then((v) => v[0]), user.employee ? standingOf(this.prisma, user.employee.id) : null]);
+    // an employee's account shows where its access stands (23 October 2026)
+    const s = standing?.result;
+    return { ...view, standing: s ? { standing: s.standing, graceUntil: s.standing === 'grace' ? s.grace!.until : null } : null };
   }
 
   async create(dto: CreateUserDto, actor: SessionUser): Promise<UserView> {

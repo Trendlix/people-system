@@ -15,6 +15,7 @@
 import type { AttendanceDayStatus } from './attendance-import.js';
 import type { CorrectedFrom } from './attendance-corrections.js';
 import { CHECK_IN_SOURCES, countsAsRemote, daysByPrecedence, isCheckInFlag, type AttendanceSource, type CheckInFlag, type DayPlace } from './check-in.js';
+import type { DayOfficialDuty } from './official-duty.js';
 
 /** To the minute, as the import counts hours. */
 const toMinute = (hours: number) => Math.round(hours * 60) / 60 + 0;
@@ -49,6 +50,11 @@ export interface KeptDay {
    */
   correctedFrom?: CorrectedFrom | null;
   correctionId?: string | null;
+  /**
+   * An official duty approved on the day (owner, 23 October 2026: "OD counted as attended"; official-duty.ts
+   * withOfficialDuty): its request, a full day or its times, and the hours it counts by itself. None: no duty that day.
+   */
+  od?: DayOfficialDuty | null;
 }
 
 /** A kept day as the Attendance pages show it. */
@@ -79,13 +85,26 @@ export interface AttendanceDayView extends KeptDay {
  */
 export function attendanceDayView(day: KeptDay, hoursADay: number | null): AttendanceDayView {
   const worked = day.status === 'worked';
-  const missingCheckOut = worked && !!day.checkIn && !day.checkOut;
-  const missingCheckIn = worked && !day.checkIn && !!day.checkOut;
-  const counted = worked && !!day.checkIn && !!day.checkOut;
+  // a full day of official duty (23 October 2026) needs no press at all: no check-in nor check-out is missing
+  const fullDuty = !!day.od?.fullDay;
+  const missingCheckOut = worked && !!day.checkIn && !day.checkOut && !fullDuty;
+  const missingCheckIn = worked && !day.checkIn && !!day.checkOut && !fullDuty;
+  const counted = countsDayHours(day);
   const expectedHours = worked && typeof hoursADay === 'number' && hoursADay > 0 ? hoursADay : null;
   const shortHours = counted && expectedHours !== null ? Math.max(0, toMinute(expectedHours - day.hoursCounted - Math.max(0, day.permissionHours))) : 0;
   const extraHours = counted && expectedHours !== null ? Math.max(0, toMinute(day.hoursCounted - expectedHours)) : 0;
   return { ...day, expectedHours, shortHours, extraHours, missingCheckOut, missingCheckIn, flags: (day.flags ?? []).filter(isCheckInFlag) };
+}
+
+/**
+ * Whether a day's hours are counted (its short hours and extra time worked out, the average a day over it): a day worked
+ * from check-in to check-out; and a day of official duty (owner, 23 October 2026: "If they forget, the approved hours
+ * still count as attended") but for part of a day with one press of two missing, said apart as a missing press.
+ */
+export function countsDayHours(day: Pick<KeptDay, 'status' | 'checkIn' | 'checkOut' | 'od'>): boolean {
+  if (day.status !== 'worked') return false;
+  if (day.checkIn && day.checkOut) return true;
+  return !!day.od && (day.od.fullDay || (!day.checkIn && !day.checkOut));
 }
 
 // ---------- a month's figures ----------
@@ -168,7 +187,8 @@ export function attendanceFigures(days: readonly AttendanceDayView[], options: {
     f.daysRecorded++;
     if (d.status === 'worked') {
       f.daysWorked++;
-      if (d.checkIn && d.checkOut) f.daysCounted++;
+      // a day of official duty counts as one counted too (23 October 2026)
+      if (countsDayHours(d)) f.daysCounted++;
       if (d.place === 'office') f.officeDays++;
       // a day at home counts as remote (owner, 20 October 2026: "Label Home, flag elsewhere")
       if (countsAsRemote(d.place)) f.remoteDays++;

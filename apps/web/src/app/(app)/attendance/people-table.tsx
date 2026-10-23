@@ -9,6 +9,7 @@ import { cLevelTitle } from '@/lib/confidential';
 import type { DepartmentGroup } from '@/lib/place-groups';
 import { filledText, hoursText, personHref } from './attendance';
 import { DaysTable } from './ui';
+import { joinShown } from '@/lib/hidden';
 
 // A month's people, one row each with the month's figures, grouped by department, then team, in Organization's order
 // (owner's brief, 19 October 2026: Daily Attendance), each opening to their days in place (Days); for a manager their
@@ -100,10 +101,7 @@ export function PeopleTable({ groups, month, link, hidden }: { groups: Departmen
                               <span className="font-semibold">{name}</span>
                             )}
                             {p.employee.confidential && <CLevelBadge title={cLevelTitle(false)} className="ml-2" />}
-                            <div className="text-xs text-muted">
-                              {p.employee.employeeCode}
-                              {p.employee.jobTitle && ` · ${p.employee.jobTitle}`}
-                            </div>
+                            <div className="text-xs text-muted">{joinShown([p.employee.employeeCode, p.employee.jobTitle])}</div>
                           </td>
                           <td className="text-right tabular-nums">
                             {f.daysWorked}
@@ -123,6 +121,8 @@ export function PeopleTable({ groups, month, link, hidden }: { groups: Departmen
                           <td className="text-right tabular-nums">
                             {f.remoteDays}
                             {(p.wfhDays?.length ?? 0) > 0 && <div className="text-xs whitespace-nowrap text-muted">{p.wfhDays!.length} working from home</div>}
+                            {/* the month's official duty days (23 October 2026) */}
+                            {(p.odDays?.length ?? 0) > 0 && <div className="text-xs whitespace-nowrap text-ok">{p.odDays!.length} on official duty</div>}
                           </td>
                           <td className="text-right tabular-nums">
                             {f.leaveDays}

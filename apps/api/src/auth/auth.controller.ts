@@ -3,7 +3,7 @@ import type { ModeChoice } from '@trendlix/shared';
 import type { Request, Response } from 'express';
 import { readToken } from './auth.guard.js';
 import { AuthService } from './auth.service.js';
-import { CurrentActiveSession, CurrentUser, DeveloperMayCall, DeveloperMaySee, Public } from './decorators.js';
+import { CurrentActiveSession, CurrentUser, DeveloperMayCall, DeveloperMaySee, OpenOnHold, Public } from './decorators.js';
 import { DeviceCredentialsService, type DeviceView, type NewDevice } from './device-credentials.service.js';
 import { CreateDeviceDto, DeviceSignInDto } from './device.dto.js';
 import { LoginDto } from './login.dto.js';
@@ -44,6 +44,9 @@ export class AuthController {
     res.clearCookie(SESSION_COOKIE, { path: '/' });
   }
 
+  // an account on Hold still reaches its own session's basics and the app's fingerprint sign-in (owner, 23 October 2026:
+  // "Check-in/out only"): who am I, the mode, the session and the sessions, the password, the phones
+  @OpenOnHold()
   @Get('me')
   me(@CurrentUser() user: SessionUser, @CurrentActiveSession() session: ActiveSession): Promise<Me> {
     return this.auth.me(user, session);
@@ -56,6 +59,7 @@ export class AuthController {
   // the session nor counts as a new sign-in.
 
   /** Whether they choose, the mode in use, the last one chosen, and their name and own roles for the choice page. */
+  @OpenOnHold()
   @DeveloperMaySee()
   @Get('mode')
   mode(@CurrentUser() user: SessionUser, @CurrentActiveSession() session: ActiveSession): Promise<ModeChoice> {
@@ -63,6 +67,7 @@ export class AuthController {
   }
 
   /** Choosing at sign-in, or switching: their session is used as themselves or as a developer from the next request. */
+  @OpenOnHold()
   @DeveloperMayCall()
   @DeveloperMaySee()
   @Post('mode')
@@ -76,6 +81,7 @@ export class AuthController {
    * Asked with the x-background header (the web's idle warning, checking), it doesn't count as activity; asked without
    * (Stay signed in), it does.
    */
+  @OpenOnHold()
   @Get('session')
   status(@CurrentActiveSession() session: ActiveSession): SessionStatus {
     const { id, kind, createdAt, lastActiveAt, expiresAt, idleTimeoutMs } = session;
@@ -83,12 +89,14 @@ export class AuthController {
   }
 
   /** Your Sessions: the signed-in user's sessions still open (the one viewed as, while a Super Admin views as someone). */
+  @OpenOnHold()
   @Get('sessions')
   list(@CurrentUser() user: SessionUser, @CurrentActiveSession() session: ActiveSession): Promise<SessionView[]> {
     return this.sessions.list(user.id, session.id);
   }
 
   /** Sign out beside one of one's own sessions: it ends ('signed_out'), on whichever device it is. */
+  @OpenOnHold()
   @DeveloperMayCall()
   @Post('sessions/:id/end')
   @HttpCode(204)
@@ -97,6 +105,7 @@ export class AuthController {
   }
 
   /** Changing one's password also ends one's other sessions and stops fingerprint sign-in on one's phones. */
+  @OpenOnHold()
   @DeveloperMayCall()
   @Post('change-password')
   @HttpCode(204)
@@ -107,6 +116,7 @@ export class AuthController {
   // Fingerprint sign-in in the app (owner, 20 October 2026: "Sign-in: Face ID / fingerprint after the first password
   // sign-in"; apps/mobile/README.md, Phase 3). Turned on from an app session (never while viewing as someone): the
   // answer carries the secret this once, for the phone to keep behind the fingerprint.
+  @OpenOnHold()
   @Post('devices')
   @HttpCode(201)
   createDevice(@Body() dto: CreateDeviceDto, @CurrentUser() user: SessionUser, @CurrentActiveSession() session: ActiveSession): Promise<NewDevice> {
@@ -128,12 +138,14 @@ export class AuthController {
   }
 
   /** Your Sessions: the phones that sign in as the user with a fingerprint (the one viewed as, while viewing as someone). */
+  @OpenOnHold()
   @Get('devices')
   listDevices(@CurrentUser() user: SessionUser): Promise<DeviceView[]> {
     return this.devices.list(user.id);
   }
 
   /** Sign out beside one of one's phones: its fingerprint sign-in stops ('signed_out'). */
+  @OpenOnHold()
   @Post('devices/:id/revoke')
   @HttpCode(204)
   revokeDevice(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser): Promise<void> {

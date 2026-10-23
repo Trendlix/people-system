@@ -1,5 +1,5 @@
-import { OrgTabs } from '../tabs';
+import { SetupFrame } from '../setup-menu';
 
 export default function Layout({ children }: LayoutProps<'/organization/departments'>) {
-  return <OrgTabs active="departments">{children}</OrgTabs>;
+  return <SetupFrame active="departments">{children}</SetupFrame>;
 }

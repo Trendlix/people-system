@@ -1,14 +1,16 @@
 import { Global, Module } from '@nestjs/common';
 import { AccessLinksService } from './access-links.service.js';
+import { AccessStandingService } from './access-standing.service.js';
 import { EmployeeAccessSchedulerService } from './employee-access-scheduler.service.js';
 import { AccessLinksController, EmployeeAccessController } from './employee-access.controller.js';
 import { EmployeeAccessService } from './employee-access.service.js';
 
-// Every active employee gets access (owner, 22 October 2026): the accounts, their set-password links and the sweep.
+// Every active employee gets access (owner, 22 October 2026): the accounts, their set-password links and the sweep; and
+// access follows the contract (23 October 2026: Active, Grace, Hold, No Access), the standings recorded and told.
 @Global()
 @Module({
   controllers: [EmployeeAccessController, AccessLinksController],
-  providers: [EmployeeAccessService, AccessLinksService, EmployeeAccessSchedulerService],
-  exports: [EmployeeAccessService, EmployeeAccessSchedulerService],
+  providers: [EmployeeAccessService, AccessLinksService, EmployeeAccessSchedulerService, AccessStandingService],
+  exports: [EmployeeAccessService, EmployeeAccessSchedulerService, AccessStandingService],
 })
 export class EmployeeAccessModule {}

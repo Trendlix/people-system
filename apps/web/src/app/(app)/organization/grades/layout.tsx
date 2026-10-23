@@ -1,5 +1,5 @@
-import { OrgTabs } from '../tabs';
+import { SetupFrame } from '../setup-menu';
 
 export default function Layout({ children }: LayoutProps<'/organization/grades'>) {
-  return <OrgTabs active="grades">{children}</OrgTabs>;
+  return <SetupFrame active="grades">{children}</SetupFrame>;
 }

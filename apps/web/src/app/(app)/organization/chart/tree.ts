@@ -1,6 +1,7 @@
 import type { OrgChart, OrgChartDepartment, OrgChartJobTitle, OrgChartTeam } from '@/lib/types';
 import { leadHidden, leadLine } from '../../../../lib/department-leads';
 import { FIT, FONTS, truncate, wrapText, type FontName, type Measure } from './text';
+import { shownCode } from '../../../../lib/hidden';
 
 // Where everything on the org chart goes (owner's request, 15 October 2026: the company's org chart from the Departments
 // & Job Titles page, to export). The company at the top; under it the departments side by side, in the order an Admin
@@ -213,7 +214,7 @@ function titleBox(c: Ctx, t: OrgChartJobTitle, x: number, y: number, w: number):
     at += 10;
     const full = w - 2 * PAD_X;
     for (const p of people) {
-      const code = options.codes ? p.employeeCode : '';
+      const code = options.codes ? (shownCode(p.employeeCode) ?? '') : '';
       const codeW = code ? measure(code, 'code') + 6 : 0;
       const line = baseline(at, 'person');
       lines.push({ text: truncate(p.fullNameEn, (full - codeW) * FIT, 'person', measure), x: x + PAD_X, y: line, font: 'person', align: 'start', tone: 'ink' });

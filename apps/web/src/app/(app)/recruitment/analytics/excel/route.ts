@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { ApiError, apiFetch } from '@/lib/api';
 import { todayInCairo } from '../../../employees/ui';
 import { passSheetOn } from '../../../payroll/files';
-import { apiReason, textResponse as text } from '../../../templates/file-response';
+import { apiReason, textResponse as text } from '../../../organization/templates/file-response';
 import { analyticsSearch, readAnalyticsQuery } from '../../hiring';
 
 // Serves the recruitment analytics as an Excel workbook (Phase 2, owner, 22 October 2026) from the API under the web

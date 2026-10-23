@@ -9,6 +9,7 @@ import { CustodyStatusBadge, DueText, NotSignedBadge } from '../custody-ui';
 import { DetailRow } from '../ui';
 import { ReceiveForm } from './receive-form';
 import { SignedCopyAttach } from './signed-copy';
+import { joinShown, shownCode } from '@/lib/hidden';
 
 // A custody record's page (Assets step 3; the spec's custody record: "Items, return status, print form, attach signed
 // copy (camera or PDF), receive back"), on the site and in the phone layout (`surface`): who has it and for what, its
@@ -115,8 +116,8 @@ export function CustodyDetail({ record: r, surface, today, done }: { record: Cus
       <Card title="Details">
         <dl>
           <DetailRow label="Employee">
-            {r.employee.fullNameEn} <span className="text-muted">· {r.employee.employeeCode}</span>
-            {(r.employee.jobTitle || r.employee.department) && <span className="block text-xs text-muted">{[r.employee.jobTitle, r.employee.department].filter(Boolean).join(' · ')}</span>}
+            {r.employee.fullNameEn} {shownCode(r.employee.employeeCode) && <span className="text-muted">· {r.employee.employeeCode}</span>}
+            {joinShown([r.employee.jobTitle, r.employee.department]) && <span className="block text-xs text-muted">{joinShown([r.employee.jobTitle, r.employee.department])}</span>}
           </DetailRow>
           <DetailRow label="Kind">{CUSTODY_KIND_LABELS[r.kind]}</DetailRow>
           <DetailRow label="Status">

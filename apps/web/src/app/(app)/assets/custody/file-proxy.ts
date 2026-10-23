@@ -1,4 +1,4 @@
-import { textResponse as text } from '../../templates/file-response';
+import { textResponse as text } from '../../organization/templates/file-response';
 
 // Passing a custody record's signed copy from the API on to the browser (Assets step 3), for the routes that serve it
 // under the web domain with the caller's session (the record's page, My custody): a photo or a PDF only, shown in the

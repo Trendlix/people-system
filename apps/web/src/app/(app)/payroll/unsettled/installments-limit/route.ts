@@ -1,5 +1,5 @@
 import { ApiError, apiFetch } from '@/lib/api';
-import { apiReason } from '../../../templates/file-response';
+import { apiReason } from '../../../organization/templates/file-response';
 import { UUID } from '../../actions-common';
 
 // The figures the Labour Law's limits are checked with for one employee (owner, 18 October 2026, after reading the law:

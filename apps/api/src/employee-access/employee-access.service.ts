@@ -3,6 +3,8 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { ConfigService } from '@nestjs/config';
 import {
   ACCESS_LINK_DAYS,
+  graceRefusal,
+  graceUntilOf,
   isSignInEmailChoice,
   ROLES,
   setPasswordPath,
@@ -23,7 +25,8 @@ import { ConfidentialService } from '../employees/confidential.service.js';
 import { Prisma } from '../generated/prisma/client.js';
 import { MailService } from '../mail/mail.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { accessStates, eligibleIds, inForceEmployment, notEligibleReason } from './access-state.js';
+import { accessStates, accountableEmployment, accountableIds, eligibleIds, notEligibleReason, standingOf } from './access-state.js';
+import { AccessStandingService } from './access-standing.service.js';
 
 // Every active employee gets access (owner, 22 October 2026: "i dont thint that the users and employees needs to be
 // divided, any active employee with active contract should have access. how can we make it?"; packages/shared
@@ -33,8 +36,14 @@ import { accessStates, eligibleIds, inForceEmployment, notEligibleReason } from 
 //   Direct manager when someone reports to them then. Made by a sweep every few minutes (and at once from the profile),
 //   never sending anything ("Create now, HR sends when ready"). An account another person's email holds is never made
 //   (the profile shows the clash); one of the Users page's with that email, not linked to anyone, is taken over. An
-//   account kept while its contract isn't in force (a renewal on its way) is listed, never closed: their employment's
-//   end closes it (offboarding).
+//   account kept while its contract isn't in force (a renewal on its way) is never closed: their employment's end
+//   closes it (offboarding).
+// - Access follows the contract (owner, 23 October 2026: "No Access without active contract, Access should be on hold
+//   with a 7 days grace period one time granted by the hr", then "Active - Grace - Hold - No Access"; asked: "Check-in/out
+//   only", "Once per contract gap", "Hold them immediately"): with no contract in force their session is on Hold (the
+//   guard: check-in and check-out only) unless HR gave 7 days' grace in this gap (POST …/access/grace); the account is
+//   kept, and made for someone on Hold who has none, so they can check in and out. The sweep records each standing's
+//   change (access-standing.service.ts).
 // - The first password by a set-password link ("Set-password link"): emailed, or copied by HR, valid 7 days, used once,
 //   only its SHA-256 kept, a new one cancelling the older ones; a reset the same way.
 // - Access is managed on the profile ("On the employee profile"): HR, an Admin and a Super Admin see it; the C-level
@@ -84,6 +93,7 @@ export class EmployeeAccessService {
     private readonly mail: MailService,
     private readonly confidential: ConfidentialService,
     private readonly config: ConfigService,
+    private readonly standings: AccessStandingService,
   ) {}
 
   // ---------- reading ----------
@@ -110,6 +120,8 @@ export class EmployeeAccessService {
     ]);
     const self = user.employeeId === employeeId && !managesAccess(user);
     const state = states.get(employeeId)!;
+    // the standing (23 October 2026): grace given by those who manage this person's access, never to themself
+    const standing = await this.standings.viewOf(employeeId, user, !self && this.mayManage(user));
     return {
       employeeId,
       state: state.state,
@@ -134,8 +146,8 @@ export class EmployeeAccessService {
       closedReason: !a || a.isActive ? null : closedBy?.endDate ? `Their employment ended on ${fromDateOnly(closedBy.endDate)}.` : 'Turned off by an Admin.',
       link: self ? null : link && { purpose: link.purpose as AccessLinkPurpose, createdAt: link.createdAt.toISOString(), expiresAt: link.expiresAt.toISOString(), emailed: link.emailed },
       clash: clash && clash.employee?.id !== employeeId && (clash.employee || state.state === 'clash') ? { email: clash.email, otherEmployee: clash.employee } : null,
-      withoutContract: state.withoutContract,
-      emailReady: this.mail.configured,
+      standing,
+      emailReady: await this.mail.ready(),
       can: { invite: !self && this.mayManage(user), manageAccount: !self && managesAccounts(user) },
     };
   }
@@ -144,8 +156,9 @@ export class EmployeeAccessService {
 
   /**
    * Makes (or keeps in step) the account of an employee who should have one: their current employment has a signed
-   * contract in force, and they have an email. Answers what it came to; never sends anything. `actor`: who asked (the
-   * profile's Give access now), else the system (the sweep).
+   * contract that has started (in force, or on Hold or Grace since: 23 October 2026, they check in and out with it), and
+   * they have an email. Answers what it came to; never sends anything. `actor`: who asked (the profile's Give access
+   * now), else the system (the sweep).
    */
   async ensureFor(employeeId: string, actor: SessionUser | null = null, today = todayInCairo()): Promise<EnsureResult> {
     const result = await this.prisma.$transaction(async (tx) => {
@@ -155,7 +168,7 @@ export class EmployeeAccessService {
       if (!person) return { result: 'not_eligible' as const };
       const wanted = signInEmailOf(person);
       const a = person.account;
-      if (!(await eligibleIds(tx, [employeeId], today)).has(employeeId)) return { result: 'not_eligible' as const };
+      if (!(await accountableIds(tx, [employeeId], today)).has(employeeId)) return { result: 'not_eligible' as const };
       if (!wanted) return { result: 'no_email' as const };
       const holder = await tx.user.findUnique({ where: { email: wanted.email }, select: { id: true, employeeId: true } });
       if (a) {
@@ -199,7 +212,7 @@ export class EmployeeAccessService {
         entityId: result.userId,
         diff:
           result.result === 'created'
-            ? { email: result.to, roles: result.roles, employeeId, reason: 'An active employee with an active contract' }
+            ? { email: result.to, roles: result.roles, employeeId, reason: 'An employee with a signed contract' }
             : result.result === 'linked'
               ? { employeeId, reason: 'Their sign-in email: linked to their profile' }
               : { email: { from: result.from, to: result.to }, reason: 'Their sign-in email changed' },
@@ -209,14 +222,16 @@ export class EmployeeAccessService {
   }
 
   /**
-   * The sweep (every few minutes, and in the tests by hand): every eligible employee's account made or kept in step.
-   * Answers how many it made, linked and changed. One sweep at a time across the API's instances.
+   * The sweep (every few minutes, and in the tests by hand): every eligible employee's account made or kept in step;
+   * then each standing's change recorded, audited and told once (Active, Grace, Hold, No Access: 23 October 2026), and
+   * a grace ending tomorrow told. Answers how many accounts it made, linked and changed, and how many standings changed.
+   * One sweep at a time across the API's instances.
    */
-  async sweep(today = todayInCairo()): Promise<{ created: number; linked: number; synced: number } | null> {
+  async sweep(today = todayInCairo()): Promise<{ created: number; linked: number; synced: number; standings: number } | null> {
     const started = await this.prisma.$transaction(async (tx) => {
       const [lock] = await tx.$queryRaw<{ locked: boolean }[]>`SELECT pg_try_advisory_xact_lock(hashtext(${`${LOCK_NAME} sweep`})) AS locked`;
       if (!lock?.locked) return null;
-      return tx.employee.findMany({ where: { employments: { some: inForceEmployment(today) } }, select: { id: true } });
+      return tx.employee.findMany({ where: { employments: { some: accountableEmployment(today) } }, select: { id: true } });
     });
     if (!started) return null;
     const counts = { created: 0, linked: 0, synced: 0 };
@@ -229,19 +244,69 @@ export class EmployeeAccessService {
       }
     }
     if (counts.created || counts.linked || counts.synced) this.logger.log(`Access: ${counts.created} made, ${counts.linked} linked, ${counts.synced} changed.`);
-    return counts;
+    let standings = 0;
+    try {
+      standings = (await this.standings.sync(undefined, { today })).changed;
+      await this.standings.remindGraceEnding(today);
+    } catch (err) {
+      this.logger.warn(`The access standings could not be recorded (the next sweep tries again): ${(err as Error).message}`);
+    }
+    return { ...counts, standings };
   }
 
   /**
    * After a contract is signed (the first, a renewal) or an employment changes: their account made or kept in step at
    * once, the sweep catching anything missed. Never fails the change that called it.
    */
-  async afterChange(employeeId: string): Promise<void> {
+  async afterChange(employeeId: string, actorId: string | null = null): Promise<void> {
     try {
       await this.ensureFor(employeeId);
+      // a contract signed: Hold or Grace → Active recorded at once (the session follows it already)
+      await this.standings.sync([employeeId], { actorId });
     } catch (err) {
       this.logger.warn(`The account of ${employeeId} could not be made now (the sweep tries again): ${(err as Error).message}`);
     }
+  }
+
+  /**
+   * POST /employees/:id/access/grace: 7 days' grace for someone on Hold (owner, 23 October 2026: "a 7 days grace period
+   * one time granted by the hr"; asked, "Once per contract gap"): full access to the end of the 7th day after today
+   * (Cairo), once in this gap, never extended. HR, an Admin or a Super Admin (the CEO for a C-level person), as the Access
+   * tab's other actions; never for oneself. Refused (409) with the reason when they aren't on Hold or the gap's grace is
+   * used. Audited, and the change of standing recorded and told (Hold → Grace).
+   */
+  async giveGrace(employeeId: string, user: SessionUser, today = todayInCairo()): Promise<EmployeeAccessView> {
+    await this.allowed(employeeId, user);
+    if (!this.mayManage(user)) throw new NotFoundException('Employee not found.');
+    const s = await standingOf(this.prisma, employeeId, today);
+    if (!s) throw new NotFoundException('Employee not found.');
+    const self = user.employeeId === employeeId;
+    const refusal = graceRefusal(s.result, { self });
+    if (refusal) {
+      if (self) throw new ForbiddenException(refusal);
+      throw new ConflictException(refusal);
+    }
+    // the gap: the contract whose end opened it; with no contract entered (23 October 2026: "Hold them after 7 days"),
+    // the employment without one (none when never employed)
+    const gap = s.result.gap ? s.row.employments[0]!.contracts.find((c) => c.id === s.result.gap!.id)! : null;
+    const employmentId = gap ? null : (s.result.noContract?.employmentId ?? null);
+    const until = graceUntilOf(today);
+    try {
+      await this.prisma.accessGrace.create({ data: { employeeId, contractId: gap?.id ?? null, employmentId, until: toDateOnly(until), grantedById: user.id } });
+    } catch (err) {
+      // given at the same moment by someone else: once a gap
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') throw new ConflictException('Grace was just given in this gap. It’s given once a gap and can’t be extended.');
+      throw err;
+    }
+    await this.audit.record({
+      userId: user.id,
+      action: 'give_grace',
+      entityType: EMPLOYEE_ENTITY,
+      entityId: employeeId,
+      diff: gap ? { contract: gap.number, graceUntil: until } : { noContract: true, graceUntil: until },
+    });
+    await this.standings.sync([employeeId], { actorId: user.id, today });
+    return this.view(employeeId, user);
   }
 
   /** POST /employees/:id/access/account: Give access now (HR, Admin, Super Admin). 409 with why it can't be made. */
@@ -290,18 +355,19 @@ export class EmployeeAccessService {
     if (!account) throw new ConflictException('They have no account yet: they need a signed contract in force and an email.');
     if (!account.isActive) throw new ConflictException('Their access is turned off: turn it on first.');
     if (purpose === 'invite' && account.passwordHash) throw new ConflictException('They have set their password already: send a password reset instead.');
-    if (mode === 'email' && !this.mail.configured) throw new ConflictException("Email isn't set up on the server yet: copy the link and send it yourself.");
+    if (mode === 'email' && !(await this.mail.ready())) throw new ConflictException("Email isn't set up on the server yet: copy the link and send it yourself.");
     return this.issue(account, person.fullNameEn, purpose, mode, user);
   }
 
   /** POST /employees/access/invitations: invitations emailed to those chosen (or every one not invited), as one press. */
   async inviteMany(input: { employeeIds?: unknown; allNotInvited?: unknown }, user: SessionUser): Promise<BulkInviteResult> {
     if (!this.mayManage(user)) throw new ForbiddenException('Only HR, an Admin or a Super Admin send invitations.');
-    if (!this.mail.configured) throw new ConflictException("Email isn't set up on the server yet: copy each person's link from their profile instead.");
+    if (!(await this.mail.ready())) throw new ConflictException("Email isn't set up on the server yet: copy each person's link from their profile instead.");
     const hidden = await this.confidential.view(user);
     let ids: string[];
     if (input.allNotInvited === true) {
-      ids = (await this.prisma.employee.findMany({ where: { employments: { some: inForceEmployment() } }, select: { id: true } })).map((e) => e.id);
+      // everyone with an account to have: in force, or on Hold or Grace (they check in and out with it: 23 October 2026)
+      ids = (await this.prisma.employee.findMany({ where: { employments: { some: accountableEmployment() } }, select: { id: true } })).map((e) => e.id);
     } else if (Array.isArray(input.employeeIds) && input.employeeIds.every((x) => typeof x === 'string') && input.employeeIds.length <= 500) {
       ids = [...new Set(input.employeeIds as string[])];
     } else {

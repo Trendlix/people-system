@@ -18,6 +18,8 @@ import { ActionButton } from './forms';
 import { generalCvHref } from './general';
 import { applicantHref, matchText, vacancyHref } from './recruitment';
 import { StageBadge } from './ui';
+import { shownCode, withCodeInBrackets } from '@/lib/hidden';
+import { Shown } from '@/components/hidden';
 
 // Candidate profiles' pieces (owner, 22 October 2026: "how to make like a profile for each candidate to store history and
 // prevent duplication?"; "Link and show rehire"; "HR decides from suggested match"): the Candidates tabs, the linked
@@ -37,7 +39,7 @@ export function EmployeeCard({ link }: { link: CandidateEmployeeLink }) {
       {!link.restricted && link.employee && (
         <p className="text-sm">
           <Link href={`/employees/${link.employee.id}`}>
-            {link.employee.fullNameEn} ({link.employee.employeeCode})
+            {withCodeInBrackets(link.employee.fullNameEn, link.employee.employeeCode)}
           </Link>
           {link.rehire && <span className="text-muted"> · {REHIRE_LABELS[link.rehire]}</span>}
         </p>
@@ -70,6 +72,8 @@ export function MatchesCard({ matches, selfId, manages, heading = 'Possible Matc
 export function MatchItem({ m, selfId, manages }: { m: PossibleMatchView; selfId: string | null; manages: boolean }) {
   const { kept, merged } = mergeOrder(m.candidates[0], m.candidates[1]);
   const shown = selfId ? [otherOf(m, selfId)] : m.candidates;
+  // a candidate by their code, or by their name when the code is hidden (a developer's: 23 October 2026)
+  const named = (c: { code: string; fullName: string }) => shownCode(c.code) ?? c.fullName;
   return (
     <li className="flex flex-wrap items-start justify-between gap-3 border-b border-line-soft pb-3 last:border-b-0 last:pb-0">
       <div className="min-w-0 space-y-1">
@@ -80,7 +84,7 @@ export function MatchItem({ m, selfId, manages }: { m: PossibleMatchView; selfId
               <Link href={candidateHref(c.id)} className="font-semibold">
                 {c.fullName}
               </Link>{' '}
-              <span className="text-sm text-muted">{c.code}</span>
+              {shownCode(c.code) && <span className="text-sm text-muted">{c.code}</span>}
             </span>
           ))}
           <span className={`badge ${m.kind === 'duplicate' ? 'bg-danger-soft text-danger' : m.weak ? 'bg-canvas text-muted' : 'bg-accent-soft text-accent'}`}>
@@ -94,7 +98,7 @@ export function MatchItem({ m, selfId, manages }: { m: PossibleMatchView; selfId
         </p>
         <p className="text-xs text-muted">
           {shown
-            .map((c) => `${c.code}: ${c.applications} ${c.applications === 1 ? 'application' : 'applications'}${c.generalCvs ? `, ${c.generalCvs} general CV${c.generalCvs === 1 ? '' : 's'}` : ''}${c.lastAppliedAt ? `, last ${formatDate(c.lastAppliedAt)}` : ''}`)
+            .map((c) => `${named(c)}: ${c.applications} ${c.applications === 1 ? 'application' : 'applications'}${c.generalCvs ? `, ${c.generalCvs} general CV${c.generalCvs === 1 ? '' : 's'}` : ''}${c.lastAppliedAt ? `, last ${formatDate(c.lastAppliedAt)}` : ''}`)
             .join(' · ')}
         </p>
       </div>
@@ -105,9 +109,9 @@ export function MatchItem({ m, selfId, manages }: { m: PossibleMatchView; selfId
             label="Merge"
             pendingLabel="Merging…"
             kind="primary"
-            confirm={`Merge ${merged.code} into ${kept.code}? Its applications, general CVs, emails, mobiles and employee link move to ${kept.code}. A Super Admin can undo it.`}
+            confirm={`Merge ${named(merged)} into ${named(kept)}? Its applications, general CVs, emails, mobiles and employee link move to ${named(kept)}. A Super Admin can undo it.`}
           />
-          <ActionButton action={dismissMatch.bind(null, m.id)} label="Not the same person" pendingLabel="Saving…" confirm={`${kept.code} and ${merged.code} are not the same person? They won’t be suggested again.`} />
+          <ActionButton action={dismissMatch.bind(null, m.id)} label="Not the same person" pendingLabel="Saving…" confirm={`${named(kept)} and ${named(merged)} are not the same person? They won’t be suggested again.`} />
         </div>
       )}
     </li>
@@ -137,7 +141,7 @@ export function CandidateApplicationsTable({ rows }: { rows: CandidateApplicatio
                   {a.vacancy.title}
                 </Link>
                 <span className="block text-xs text-muted">
-                  {a.number} ·{' '}
+                  {shownCode(a.number) && `${a.number} · `}
                   <Link href={vacancyHref(a.vacancy.id)} className="text-muted">
                     {a.vacancy.number}
                   </Link>
@@ -178,7 +182,7 @@ export function CandidateGeneralCvsTable({ rows }: { rows: CandidateGeneralCv[] 
             <tr key={g.id}>
               <td>
                 <Link href={generalCvHref(g.id)} className="font-semibold">
-                  {g.number}
+                  <Shown text={g.number} />
                 </Link>
               </td>
               <td className="text-sm">{g.area}</td>
@@ -187,7 +191,7 @@ export function CandidateGeneralCvsTable({ rows }: { rows: CandidateGeneralCv[] 
                 {GENERAL_CV_STATUS_LABELS[g.status]}
                 {g.movedTo && (
                   <Link href={applicantHref(g.movedTo.applicationId)} className="block text-xs">
-                    {g.movedTo.reference}
+                    {shownCode(g.movedTo.reference) ?? 'Its application'}
                   </Link>
                 )}
               </td>

@@ -30,6 +30,8 @@ import { PeopleTable } from './people-table';
 import { ATTENDANCE_PATH } from './sections';
 import { FigureTiles, MonthNav, SourcesNote } from './ui';
 import { seesAllWfh, WFH_PATH } from './wfh/wfh';
+import { OD_PATH, seesAllOd } from './official-duty/od';
+import { shownCode, withCode } from '@/lib/hidden';
 
 // Daily Attendance (owner, 19 October 2026: "is the attendance module active?", then "the attendance is not active in the
 // side menu"): a month (this month unless the address asks for another, a click to the month before or after) of
@@ -82,7 +84,7 @@ function Filters({ month, places, people, chosen }: { month: string; places: rea
           <option value="">Everyone</option>
           {choices.map((p) => (
             <option key={p.employee.id} value={p.employee.id}>
-              {p.employee.fullNameEn} · {p.employee.employeeCode}
+              {withCode(p.employee.fullNameEn, p.employee.employeeCode)}
             </option>
           ))}
         </Select>
@@ -138,6 +140,12 @@ async function Daily({ searchParams }: { searchParams: PageProps<'/attendance'>[
               Work from home
             </Link>
           )}
+          {/* the official duties beside it (owner, 23 October 2026: "Official duty (OD) requests") */}
+          {seesAllOd(user) && (
+            <Link href={OD_PATH} className="btn btn-secondary no-underline">
+              Official duty
+            </Link>
+          )}
           {importsAttendance(user) && !none && (
             <Link href={way.href} className="btn btn-secondary no-underline">
               Import attendance
@@ -188,7 +196,7 @@ async function Daily({ searchParams }: { searchParams: PageProps<'/attendance'>[
           <ul className="mt-2 columns-1 gap-6 sm:columns-2">
             {missing.map((e) => (
               <li key={e.id}>
-                {e.fullNameEn} <span className="text-muted">· {e.employeeCode}</span>
+                {e.fullNameEn} {shownCode(e.employeeCode) && <span className="text-muted">· {e.employeeCode}</span>}
               </li>
             ))}
           </ul>

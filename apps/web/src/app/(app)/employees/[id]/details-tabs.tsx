@@ -9,6 +9,8 @@ import { deleteEmployee } from '../actions';
 import { ExpiryChip, FieldGrid, ProfileSection, todayInCairo } from '../ui';
 import { priorServiceText } from '../leave-facts';
 import { bankShown } from './edit/bank/bank-rules';
+import { shownCode, withCodeInBrackets } from '@/lib/hidden';
+import { Hidden } from '@/components/hidden';
 
 // The Basic Data and Education tabs: the profile's fields in a grid, label above value. Fields counted in the profile's
 // completeness are tagged Required and shown as not captured while empty (the same list as the API's completeness);
@@ -58,7 +60,8 @@ export async function BasicTab({ profile: p, show, today, education }: { profile
             { key: 'fullNameEn', label: 'Full name (English)', value: p.fullNameEn, required: true },
             { key: 'fullNameAr', label: 'Full name (Arabic)', value: p.fullNameAr, required: true, ar: true },
             { key: 'displayName', label: 'Display name', value: p.displayName, required: true },
-            { key: 'employeeCode', label: 'Employee code', value: number(p.employeeCode) },
+            // hidden from a developer (owner, 23 October 2026: "in developer view use **** instead of IDs")
+            { key: 'employeeCode', label: 'Employee code', value: shownCode(p.employeeCode) ? number(p.employeeCode) : <Hidden /> },
             {
               key: 'insuranceNo',
               label: 'Social insurance number',
@@ -225,7 +228,7 @@ export async function BasicTab({ profile: p, show, today, education }: { profile
           </p>
           <DeleteForm
             action={deleteEmployee.bind(null, p.id)}
-            confirmText={`Delete ${p.fullNameEn} (${p.employeeCode}) with their national ID, bank details, employment history and employee file? This cannot be undone.`}
+            confirmText={`Delete ${withCodeInBrackets(p.fullNameEn, p.employeeCode)} with their national ID, bank details, employment history and employee file? This cannot be undone.`}
             label="Delete profile"
           />
         </section>

@@ -39,6 +39,7 @@ import {
   whenText,
   wfhDaysListText,
 } from '../import';
+import { shownCode, withCode } from '@/lib/hidden';
 
 // A leave import's review (owner, 21 October 2026: "how to import bulk leaves?"; "Both" and "Our Excel template"; Zoho
 // People's leave export too): the file, where it comes from, and the counts; what to check first (the same file imported
@@ -222,7 +223,7 @@ async function Review({ params }: { params: PageProps<'/leave/import/[id]'>['par
   if (loaded.kind !== 'ok') return <Empty>{loaded.kind === 'forbidden' ? 'Only HR imports leave (and the CEO, for C-level people).' : notLoadedText(loaded, 'leave import')}</Empty>;
   const view = loaded.value;
   const choose = chooseImportPerson.bind(null, id);
-  const options = view.options.map((o) => ({ id: o.id, label: `${o.fullNameEn} · ${o.employeeCode}` }));
+  const options = view.options.map((o) => ({ id: o.id, label: withCode(o.fullNameEn, o.employeeCode) }));
   const toConfirm = peopleToConfirm(view);
   const chosen = peopleChosen(view);
   const deletes = canDelete(user);
@@ -300,7 +301,8 @@ async function Review({ params }: { params: PageProps<'/leave/import/[id]'>['par
                 {p.candidates.map((c) => (
                   <div key={c.id} className="flex flex-wrap items-center gap-3">
                     <span className="text-sm">
-                      Did you mean <Link href={profileHref(c.id)}>{c.fullNameEn}</Link> <span className="text-muted">({c.employeeCode})</span>?
+                      Did you mean <Link href={profileHref(c.id)}>{c.fullNameEn}</Link>
+                      {shownCode(c.employeeCode) && <span className="text-muted"> ({c.employeeCode})</span>}?
                     </span>
                     <ChoiceButton action={choose} personKey={p.key} employeeId={c.id} label="Confirm" srLabel={`${c.fullNameEn} for ${p.name}`} variant="primary" />
                   </div>

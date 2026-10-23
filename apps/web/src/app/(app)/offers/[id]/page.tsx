@@ -7,6 +7,7 @@ import { getBrand } from '@/lib/api';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { pdfFileName, PROTECTED_PDF_HINT } from '@/lib/protected-pdf';
 import { canDelete } from '@/lib/roles';
+import { setsUpEmail } from '@/lib/email-setup';
 import { getCurrentUser } from '@/lib/session';
 import type { OfferView } from '@/lib/types';
 import { ActionButton } from '../../employees/[id]/contracts/contract-buttons';
@@ -21,8 +22,10 @@ import { canSeeOffers, managesOffers, offerDocumentHref, placeName, shownStatus,
 import { canBeSent, documentLabels, documentState, draftTemplateVersion, missingHelp, offerTimeline, templateProblem, waitingText, type TimelineEvent } from '../timeline';
 import { OfferStatusBadge } from '../ui';
 import { ExtendOffer, RecordAnswer, SendOffer, WithdrawOffer } from './offer-actions';
-import { ASK_SUPER_ADMIN, seesTemplates } from '../../templates/wording';
+import { ASK_SUPER_ADMIN, seesTemplates, TEMPLATES_PATH } from '../../organization/templates/wording';
 import { RehireWarning } from '../../offboarding/rehire-warning';
+import { shownCode } from '@/lib/hidden';
+import { Shown } from '@/components/hidden';
 
 // One job offer: what it says, where it stands (a timeline from drafted to the profile made), what filling in its
 // template lacks, and what HR can do next: preview, download or print the PDF, edit, send it by email or copy the link,
@@ -60,7 +63,7 @@ function MissingValues({ offer: o, status, templates }: { offer: OfferView; stat
           {help.map((m) => (
             <li key={m.tag}>
               <span className="font-semibold">{m.label}</span>: {m.what}{' '}
-              {m.href && m.linkText && (templates || !m.href.startsWith('/templates')) && (
+              {m.href && m.linkText && (templates || !m.href.startsWith(TEMPLATES_PATH)) && (
                 <Link href={m.href}>
                   {m.linkText}
                   <span className="sr-only">: {m.label}</span>
@@ -87,7 +90,7 @@ function candidateFields(o: OfferView): GridField[] {
             key: 'offer-profile',
             label: 'Profile',
             value: <Link href={`/employees/${o.employee.id}`}>{o.employee.fullNameEn}</Link>,
-            note: o.hiredAt ? 'Made from this offer' : `${o.employee.employeeCode}: already has a profile`,
+            note: o.hiredAt ? 'Made from this offer' : shownCode(o.employee.employeeCode) ? `${o.employee.employeeCode}: already has a profile` : 'Already has a profile',
           },
         ]
       : []),
@@ -216,7 +219,15 @@ function termsFields(o: OfferView): GridField[] {
 
 function offerFields(o: OfferView, open: boolean): GridField[] {
   return [
-    { key: 'offer-number', label: 'Offer number', value: <span className="tabular-nums">{o.number}</span> },
+    {
+      key: 'offer-number',
+      label: 'Offer number',
+      value: (
+        <span className="tabular-nums">
+          <Shown text={o.number} />
+        </span>
+      ),
+    },
     {
       key: 'offer-expires',
       label: 'Open until',
@@ -314,7 +325,10 @@ async function Offer({ params, searchParams }: { params: Promise<{ id: string }>
   const doc = documentState(o, status);
   const labels = documentLabels(doc.draftTemplate);
   const open = status === 'draft' || status === 'sent';
-  const name = `offer ${o.number}`;
+  // its number, hidden from a developer (23 October 2026): the offer by its candidate's name instead
+  const number = shownCode(o.number);
+  const name = number ? `offer ${number}` : `offer to ${o.fullNameEn}`;
+  const offerName = number ? `Job offer ${number}` : 'Job offer';
   // the actions card only when it has something in it (e.g. not for the CEO on a withdrawn offer without a document)
   const hasActions = doc.pdf || Boolean(doc.why) || Boolean(o.hiredAt) || canDelete(user) || (manages && status !== 'withdrawn' && status !== 'declined');
   const mail = {
@@ -335,13 +349,14 @@ async function Offer({ params, searchParams }: { params: Promise<{ id: string }>
           <OfferStatusBadge status={status} />
         </div>
         <p className="text-sm text-muted">
-          <span className="tabular-nums">{o.number}</span> · {o.jobTitle?.titleEn ?? LABELS.employmentType[o.employmentType]} · joining{' '}
+          {number && <span className="tabular-nums">{number} · </span>}
+          {o.jobTitle?.titleEn ?? LABELS.employmentType[o.employmentType]} · joining{' '}
           {formatDate(o.joinDate)}
           {/* made from an applicant (recruitment, 22 October 2026: Make offer) */}
           {o.application && (
             <>
               {' '}
-              · from applicant <Link href={`/recruitment/applicants/${o.application.id}`}>{o.application.number}</Link>
+              · from applicant <Link href={`/recruitment/applicants/${o.application.id}`}>{shownCode(o.application.number) ?? o.fullNameEn}</Link>
             </>
           )}
         </p>
@@ -370,8 +385,8 @@ async function Offer({ params, searchParams }: { params: Promise<{ id: string }>
             {doc.pdf && (
               <>
                 <DocumentViewer
-                  title={`Job offer ${o.number}: ${o.fullNameEn}${doc.draftTemplate !== null ? ` (draft template v${doc.draftTemplate})` : ''}`}
-                  files={[{ alt: `Job offer ${o.number}`, src: offerDocumentHref(o.id), mimeType: 'application/pdf' }]}
+                  title={`${offerName}: ${o.fullNameEn}${doc.draftTemplate !== null ? ` (draft template v${doc.draftTemplate})` : ''}`}
+                  files={[{ alt: offerName, src: offerDocumentHref(o.id), mimeType: 'application/pdf' }]}
                   className={`${small} btn-secondary`}
                 >
                   {labels.preview}
@@ -382,7 +397,7 @@ async function Offer({ params, searchParams }: { params: Promise<{ id: string }>
                   <span className="sr-only"> ({name})</span>
                 </a>
                 {/* owner's request, 20 October 2026: "add Print Button"; the protected PDF allows printing */}
-                <PrintPdf src={offerDocumentHref(o.id)} title={`Job offer ${o.number}, for printing`} className={`${small} btn-secondary`}>
+                <PrintPdf src={offerDocumentHref(o.id)} title={`${offerName}, for printing`} className={`${small} btn-secondary`}>
                   {labels.print}
                   <span className="sr-only"> ({name})</span>
                 </PrintPdf>
@@ -398,7 +413,7 @@ async function Offer({ params, searchParams }: { params: Promise<{ id: string }>
               <ExtendOffer action={extendOffer.bind(null, o.id)} expiresOn={o.expiresOn} suggested={addDays(o.expiresOn < today ? today : o.expiresOn, OFFER_VALID_DAYS)} />
             )}
             {manages && answerable && <RecordAnswer action={answerOffer.bind(null, o.id)} />}
-            {manages && (status === 'draft' || status === 'sent' || status === 'expired') && <WithdrawOffer action={withdrawOffer.bind(null, o.id)} number={o.number} />}
+            {manages && (status === 'draft' || status === 'sent' || status === 'expired') && <WithdrawOffer action={withdrawOffer.bind(null, o.id)} number={number ?? `to ${o.fullNameEn}`} />}
             {manages && status === 'accepted' && !o.hiredAt && (
               <ActionButton action={hireFromOffer.bind(null, o.id)} pendingText="Making the profile…" variant="primary">
                 Make the profile
@@ -430,6 +445,7 @@ async function Offer({ params, searchParams }: { params: Promise<{ id: string }>
                 mail={mail}
                 emailConfigured={o.emailConfigured}
                 sentCount={o.sentCount}
+                setUpEmail={setsUpEmail(user)}
               />
             </div>
           )}

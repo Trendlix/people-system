@@ -2,7 +2,6 @@ import Link from 'next/link';
 import { connection } from 'next/server';
 import { Suspense } from 'react';
 import { API_URL, ApiError } from '@/lib/api';
-import { formatDate } from '@/lib/format';
 import { isSelfService } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import type { PendingRaise } from '@/lib/raise-types';
@@ -10,12 +9,11 @@ import type { EndingSummary, ExpiringContract, LawWarningItem, ProbationEnding, 
 import type { Session } from '@/lib/view-as';
 import { decidesEndings, followsEndings, getOrNull, PENDING_ENDINGS } from './approvals/data';
 import { PENDING_RAISES } from './approvals/raises';
-import { draftedBadges, expiringLine } from './contracts/expiring';
+import { ContractPerson as Person, Due, ExpiringRow } from './contracts/ending-soon';
+import { byDate } from './contracts/list';
 import { Dashboard } from './dashboard/cards';
 import { BECAME_OPEN_ENDED, CASUAL_TOO_LONG, TRAINING_ENDED } from './employees/employment-law';
-import { LawWarningBadges } from './employees/law-badges';
-import { Loading, profileHref, todayInCairo } from './employees/ui';
-import { dueNote } from './organization/contracts/labels';
+import { Loading, todayInCairo } from './employees/ui';
 import { TodayCheckIn } from './my-attendance/check-in-card';
 
 // The home page. Someone who is only an employee and/or a direct manager gets their dashboard (owner, 17 October
@@ -52,28 +50,9 @@ async function SystemStatus() {
 const CONTRACTS_WITHIN = 90;
 const PROBATION_WITHIN = 30;
 
-const TONE = { passed: 'text-danger', soon: 'text-warn' } as const;
-const NOTE_BADGE = { passed: 'bg-danger-soft text-danger', soon: 'bg-warn-soft text-warn' } as const;
-
-/** A date, highlighted with a word ("Passed", "In 3 days") when it has passed or is within a week. */
-function Due({ date, today }: { date: string; today: string }) {
-  const note = dueNote(date, today);
-  return (
-    <>
-      <span className={`tabular-nums ${note ? `font-semibold ${TONE[note.tone]}` : ''}`}>{formatDate(date)}</span>
-      {note && <span className={`badge ml-1.5 ${NOTE_BADGE[note.tone]}`}>{note.text}</span>}
-    </>
-  );
-}
-
-function Person({ employee }: { employee: { id: string; employeeCode: string; fullNameEn: string } }) {
-  return (
-    <Link href={profileHref(employee.id, 'employment')} className="font-medium">
-      {employee.fullNameEn}
-      <span className="font-normal text-muted"> · {employee.employeeCode}</span>
-    </Link>
-  );
-}
+// A developer gets the people's codes as "••••" and their contract and probation dates as null (owner, 23 October 2026:
+// "in developer view use **** instead of IDs"): each row then reads "Employee 7K3Q" and "Ends Hidden"
+// (contracts/ending-soon.tsx), sorted after the dated ones.
 
 /**
  * A compact card: its title, a note beside it (how far ahead it looks), and its rows, or a quiet line when there are
@@ -183,7 +162,6 @@ async function ContractAlerts() {
     getOrNull<LawWarningItem[]>(LAW_WARNINGS),
   ]);
   const today = todayInCairo();
-  const byDate = <T,>(rows: T[] | null, date: (row: T) => string) => rows && [...rows].sort((a, b) => date(a).localeCompare(date(b)));
 
   return (
     <div className="mt-6 space-y-3">
@@ -197,41 +175,7 @@ async function ContractAlerts() {
           rows={byDate(contracts, (c) => c.endDate)}
           empty={`No contracts end in the next ${CONTRACTS_WITHIN} days.`}
         >
-          {(rows) =>
-            rows.map((c) => {
-              // a trainee's or an intern's agreement has no non-renewal notice: what follows it instead (19 October 2026)
-              const below = expiringLine(c, today);
-              return (
-                <li key={c.id} className="space-y-1 py-2.5 text-sm">
-                  <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-                    <Person employee={c.employee} />
-                    <span>
-                      Ends <Due date={c.endDate} today={today} />
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-muted">
-                    <span>
-                      {below.kind === 'notice' ? (
-                        <>
-                          Non-renewal notice by <Due date={below.by} today={today} />
-                        </>
-                      ) : below.kind === 'training' ? (
-                        below.text
-                      ) : null}
-                    </span>
-                    <span className="flex flex-wrap gap-1.5">
-                      {draftedBadges(c).map((b) => (
-                        <span key={b} className="badge">
-                          {b}
-                        </span>
-                      ))}
-                      <LawWarningBadges of={c} />
-                    </span>
-                  </div>
-                </li>
-              );
-            })
-          }
+          {(rows) => rows.map((c) => <ExpiringRow key={c.id} contract={c} today={today} />)}
         </AlertCard>
         <AlertCard
           title="Probation Ending Soon"

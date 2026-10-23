@@ -9,6 +9,7 @@ import type { PaperworkSearchHit } from '@/lib/types';
 import { StaffOnly } from '../../staff-only';
 import { paperworkHref } from '../paperwork';
 import { BackLink, canSeeEmployeeFiles, Empty, Loading } from '../ui';
+import { shownCode } from '@/lib/hidden';
 
 // Search the text the OCR service read from scanned paperwork (HR and CEO). The API makes Arabic spelling variants
 // and digit forms match, and records every national ID scan a search shows.
@@ -100,7 +101,7 @@ async function Search({ searchParams }: { searchParams: Promise<Query> }) {
                         <Link href={`/employees/${employee.id}`} className="font-semibold">
                           {employee.fullNameEn}
                         </Link>
-                        <div className="text-xs text-muted tabular-nums">{employee.employeeCode}</div>
+                        {shownCode(employee.employeeCode) && <div className="text-xs text-muted tabular-nums">{employee.employeeCode}</div>}
                       </td>
                       <td>
                         <div className="whitespace-nowrap">{kind}</div>

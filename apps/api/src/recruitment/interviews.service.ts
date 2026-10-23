@@ -508,7 +508,7 @@ export class InterviewsService {
 
     // the candidate
     let email: InterviewSaved['email'];
-    if (!this.mail.configured) {
+    if (!(await this.mail.ready())) {
       email = 'not_set_up';
       await this.prisma.interview.update({ where: { id: r.id }, data: { emailProblem: 'Email isn’t set up on the server: tell the candidate yourself.' } });
     } else {
@@ -531,7 +531,7 @@ export class InterviewsService {
       const employees = ids.length ? await this.prisma.employee.findMany({ where: { id: { in: [...ids] } }, select: { id: true, fullNameEn: true, workEmail: true } }) : [];
       const users = (await Promise.all(employees.map((e) => this.userOf(e.id)))).filter((u): u is string => !!u);
       await this.notifications.notify(users, { kind: 'interview_scheduled', title, body, link });
-      if (!this.mail.configured) return;
+      if (!(await this.mail.ready())) return;
       for (const e of employees) {
         if (!e.workEmail) continue;
         try {

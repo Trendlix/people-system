@@ -31,6 +31,7 @@ import {
   type AuditPage,
 } from './audit';
 import { loadAuditOptions, loadAuditPage } from './data';
+import { shownCode } from '@/lib/hidden';
 
 // The Audit Log (owner, 19 October 2026: "an Audit Log page showing who changed what and when"), in the sidebar for the
 // Super Admin and the CEO: every change in the system, every sign-in and every view of restricted data, newest first, 50
@@ -231,8 +232,8 @@ function EntryItem({ entry }: { entry: AuditEntry }) {
               <span className="text-muted"> · </span>
               <Link href={historyHref(e.id)} title={`Everything about ${e.fullNameEn}`}>
                 {e.fullNameEn}
-              </Link>{' '}
-              <span className="text-muted">{e.employeeCode}</span>
+              </Link>
+              {shownCode(e.employeeCode) && <span className="text-muted"> {e.employeeCode}</span>}
             </>
           )}
           {entry.link && (
@@ -281,7 +282,7 @@ function PersonHeading({ filters, options, profileLink }: { filters: AuditFilter
   return (
     <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
       <h2 className="text-lg font-semibold">{titleCase(person ? `History of ${person.fullNameEn}` : 'History of One Employee')}</h2>
-      {person && <span className="text-sm text-muted">{person.employeeCode}</span>}
+      {person && shownCode(person.employeeCode) && <span className="text-sm text-muted">{person.employeeCode}</span>}
       {profileLink && (
         <Link href={`/employees/${filters.employee}`} className="text-sm">
           Open profile

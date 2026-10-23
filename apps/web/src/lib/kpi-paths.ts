@@ -90,17 +90,20 @@ export const KPI_PATHS = {
   team: '/kpis/team',
   /** All KPIs: HR's, the CEO's and the Super Admin's month. */
   all: '/kpis/all',
-  /** KPI Templates: the job titles and their templates, and the KPI settings. */
+  /** KPI Templates: the job titles and their templates. */
   templates: '/kpis/templates',
   /** A job title's template builder. */
   template: (jobTitleId: string) => `/kpis/templates/${encodeURIComponent(jobTitleId)}`,
   /**
    * KPI Pillars (owner, 22 October 2026: "but i need pillars to each department"): the company's pillars and each
-   * department's.
+   * department's. Under Organization, in the setup menu's Performance, since 23 October 2026 (owner: "Check-in Setup, KPI
+   * Pillars and deadlines, Recruitment and checklists, Templates"); /kpis/pillars redirects there (lib/moved-pages.ts).
    */
-  pillars: '/kpis/pillars',
+  pillars: '/organization/kpi-pillars',
   /** A department's own pillars, or its going back to the company's. */
-  departmentPillars: (departmentId: string) => `/kpis/pillars/${encodeURIComponent(departmentId)}`,
+  departmentPillars: (departmentId: string) => `/organization/kpi-pillars/${encodeURIComponent(departmentId)}`,
+  /** KPI Deadlines: the day of the month each step is due by, a section of KPI Templates until 23 October 2026. */
+  deadlines: '/organization/kpi-deadlines',
   /** A scorecard. */
   scorecard: (id: string) => `/kpis/scorecards/${encodeURIComponent(id)}`,
   /**

@@ -15,6 +15,7 @@ import {
 } from '@trendlix/shared';
 import { formatDate } from '../../../../lib/format';
 import { formatEgp } from '../../employees/[id]/contracts/salary';
+import { shownCode } from '../../../../lib/hidden';
 
 // The run's inputs grid (owner's decisions, 16 October 2026): the month's figures HR types for each employee, laid out
 // like the owner's payroll sheet, until attendance fills the hours and days itself; without the sheet's Medical column,
@@ -362,8 +363,8 @@ export function dayRange(from: string, to: string): string {
   return from.slice(0, 7) === to.slice(0, 7) ? `${Number(from.slice(8, 10))}–${dayOf(to)}` : `${dayOf(from)}–${dayOf(to)}`;
 }
 
-/** A contract as a line names it: its number and version, "CON-2026-0012 v2". */
-export const contractLabel = (s: Pick<PayrollSegment, 'number' | 'version'>) => `${s.number} v${s.version}`;
+/** A contract as a line names it: its number and version, "CON-2026-0012 v2"; "Version 2" when its number is hidden. */
+export const contractLabel = (s: Pick<PayrollSegment, 'number' | 'version'>) => (shownCode(s.number) ? `${s.number} v${s.version}` : `Version ${s.version}`);
 
 /**
  * What the employee's cell says of a month under two contracts or more (owner, 17 October 2026: "take into consideration

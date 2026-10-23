@@ -5,13 +5,18 @@ import type { ExpiringContract } from '../../../lib/types';
 // person and the end date: a fixed term's non-renewal notice due date; a trainee's or an intern's agreement, which has
 // none (owner, 19 October 2026: "or can be only renewed 1 time, after that it should be converted to a full time
 // contract"), what follows it instead ("Training ends on 31/03/2027: renew it once, or convert to full-time."); and what
-// is already drafted after it. Pure code, tested; relative imports for the tests.
+// is already drafted after it. A developer gets the end date as null (owner, 23 October 2026: a person's contract dates
+// are hidden from them): an agreement's way forward is then worded without it. Pure code, tested; relative imports for
+// the tests.
 
 /** The line under a contract ending soon: the non-renewal notice due, an agreement's way forward, or nothing. */
 export type ExpiringLine = { kind: 'notice'; by: string } | { kind: 'training'; text: string } | { kind: 'none' };
 
 export function expiringLine(c: Pick<ExpiringContract, 'endDate' | 'nonRenewalNoticeBy' | 'training'>, today: string): ExpiringLine {
-  if (c.training) return { kind: 'training', text: trainingEndsText(c.endDate, c.training.next, today) };
+  if (c.training) {
+    if (c.endDate) return { kind: 'training', text: trainingEndsText(c.endDate, c.training.next, today) };
+    return { kind: 'training', text: c.training.next === 'renew_or_convert' ? 'Renew it once, or convert to full-time.' : 'Convert to full-time, or end the training.' };
+  }
   return c.nonRenewalNoticeBy ? { kind: 'notice', by: c.nonRenewalNoticeBy } : { kind: 'none' };
 }
 

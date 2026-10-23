@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { ApiError, apiFetch } from '@/lib/api';
 import { todayInCairo } from '../../../employees/ui';
 import { passSheetOn } from '../../../payroll/files';
-import { apiReason, textResponse as text } from '../../../templates/file-response';
+import { apiReason, textResponse as text } from '../../../organization/templates/file-response';
 import { readTurnoverYear } from '../../offboarding';
 
 // Serves the year's turnover as an Excel workbook (owner, 22 October 2026: the full module; the brief: "Excel, like the

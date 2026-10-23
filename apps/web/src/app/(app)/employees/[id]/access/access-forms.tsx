@@ -3,6 +3,7 @@
 import { SIGN_IN_EMAIL_LABELS, type SignInEmailChoice } from '@trendlix/shared';
 import { useActionState, useState } from 'react';
 import { FormErrors } from '@/components/form';
+import { SetUpEmailLink } from '@/components/set-up-email-link';
 import type { FormState } from '@/lib/types';
 import type { LinkState } from '../../access-actions';
 
@@ -100,6 +101,31 @@ export function GiveAccessForm({ action }: { action: (prev: FormState) => Promis
 }
 
 /**
+ * Give 7 days' grace (owner, 23 October 2026: "a 7 days grace period one time granted by the hr"; "Once per contract
+ * gap"), on Hold: asked about first with its last day (`question`), as it is given once in this gap and can't be extended.
+ */
+export function GraceForm({ action, question }: { action: (prev: FormState) => Promise<FormState>; question: string }) {
+  const [state, formAction, pending] = useActionState(action, {});
+  return (
+    <form
+      action={formAction}
+      onSubmit={(e) => {
+        if (!window.confirm(question)) e.preventDefault();
+      }}
+      className="space-y-3"
+    >
+      <FormErrors errors={state.errors} />
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="submit" disabled={pending} className="btn btn-primary">
+          {pending ? 'Giving it…' : 'Give 7 days’ grace'}
+        </button>
+        <Saved state={state} />
+      </div>
+    </form>
+  );
+}
+
+/**
  * Send invitation (or Resend), and Send password reset: by email when the server can send email, or a link to copy,
  * shown once here and sent by hand (WhatsApp). A new link stops the one before.
  */
@@ -109,6 +135,7 @@ export function LinkForm({
   emailReady,
   resend,
   email,
+  setUpEmail = false,
 }: {
   action: (prev: LinkState, fd: FormData) => Promise<LinkState>;
   purpose: 'invite' | 'reset';
@@ -117,6 +144,8 @@ export function LinkForm({
   resend: boolean;
   /** Where it goes. */
   email: string;
+  /** A Super Admin: "Set up email" after the not-set-up hint (23 October 2026: email set up on Organization → Email Settings). */
+  setUpEmail?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(action, {});
   const [copied, setCopied] = useState(false);
@@ -160,7 +189,17 @@ export function LinkForm({
           {copyLabel}
         </button>
       </div>
-      {!emailReady && <p className="hint">Email isn’t set up on the server yet: copy the link and send it to them yourself, by WhatsApp for example.</p>}
+      {!emailReady && (
+        <p className="hint">
+          Email isn’t set up on the server yet: copy the link and send it to them yourself, by WhatsApp for example.
+          {setUpEmail && (
+            <>
+              {' '}
+              <SetUpEmailLink />
+            </>
+          )}
+        </p>
+      )}
       {state.link ? (
         <div className="space-y-2 rounded-lg border border-line bg-canvas p-3">
           <p className="text-sm">{state.message}</p>

@@ -188,7 +188,7 @@ describe('the payday', () => {
 });
 
 describe('Your Rules without the check-in places (owner, 20 October 2026: "Own page, several locations")', () => {
-  it('no longer sends the office location or Zoho People\'s addresses: they are on Attendance → Check-in Setup', () => {
+  it('no longer sends the office location or Zoho People\'s addresses: they are on Check-in Setup', () => {
     const fd = form({ ...rules, officeLatitude: '30.0596', officeLongitude: '31.3462', officeRadiusMetres: '150', officeAddresses: 'Trendlix' });
     const { rules: sent, errors } = rulesBody(fd);
     expect(errors).toEqual([]);

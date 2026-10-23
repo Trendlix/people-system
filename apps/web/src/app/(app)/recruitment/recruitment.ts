@@ -19,6 +19,7 @@ import {
   type VacancyQuestion,
 } from '@trendlix/shared';
 import { parseDate } from '../../../lib/format';
+import { shownCode } from '../../../lib/hidden';
 
 // Recruitment on the site (owner, 22 October 2026: "where will we include the ATS?"; Phase 1): the addresses, who sees
 // what, the lists' filters, the vacancy's form, the screening questions' editor, the channels' links and Make offer.
@@ -335,7 +336,7 @@ export function offerFromApplication<D extends {
     shiftId: a.position.shiftId ?? '',
     workArrangement: a.position.workArrangement,
     durationMonths: a.position.durationMonths ?? base.durationMonths,
-    note: base.note || `From applicant ${a.number}`,
+    note: base.note || (shownCode(a.number) ? `From applicant ${a.number}` : 'From their application'),
   };
 }
 

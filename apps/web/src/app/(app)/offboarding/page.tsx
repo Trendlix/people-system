@@ -19,6 +19,7 @@ import {
   STATUS_STYLE,
   TURNOVER_PATH,
 } from './offboarding';
+import { joinShown, shownCode } from '@/lib/hidden';
 
 // Offboarding (owner, 21 October 2026: "when an employee resigns or contract ends with no renewal, where will the data be
 // stored? will it be another tab?"; 22 October 2026, the full module): the cases, those in clearance first (?status=
@@ -98,7 +99,7 @@ async function Cases({ searchParams }: { searchParams: PageProps<'/offboarding'>
                     <Link href={caseHref(c.id)} className="font-semibold">
                       {c.employee.fullNameEn}
                     </Link>
-                    <div className="text-xs text-muted">{[c.jobTitle, c.department].filter(Boolean).join(' · ') || c.employee.employeeCode}</div>
+                    <div className="text-xs text-muted">{joinShown([c.jobTitle, c.department]) || shownCode(c.employee.employeeCode)}</div>
                   </td>
                   <td className="whitespace-nowrap tabular-nums">
                     {c.lastWorkingDay ? formatDate(c.lastWorkingDay) : <span className="text-muted">—</span>}

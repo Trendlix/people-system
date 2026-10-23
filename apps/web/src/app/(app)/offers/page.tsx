@@ -23,6 +23,7 @@ import {
   type OfferFilters,
 } from './list';
 import { OfferStatusBadge } from './ui';
+import { Shown } from '@/components/hidden';
 
 // Job offers (owner's request, 15 October 2026): a candidate is not an employee. HR drafts an offer, sends it by email
 // or as a link, and the candidate accepts or declines it online; once accepted, the profile, the employment and a draft
@@ -93,7 +94,8 @@ function OfferRow({ offer: o, salary, today }: { offer: OfferListItem; salary: b
     <tr>
       <td className="whitespace-nowrap">
         <Link href={offerHref(o.id)} className="font-semibold tabular-nums">
-          {o.number}
+          {/* hidden from a developer (23 October 2026): the link still opens it, by its id */}
+          <Shown text={o.number} />
         </Link>
       </td>
       <td>

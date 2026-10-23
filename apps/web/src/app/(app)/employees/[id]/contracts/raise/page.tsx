@@ -12,6 +12,7 @@ import { changeOf, defaultEffectiveDate, editHref } from '../raise';
 import { loadPromotionPickers, loadRaiseRequest } from '../raise-data';
 import { RaiseForm, type RaiseDefaults } from '../raise-form';
 import { formatEgp } from '../salary';
+import { withCodeInBrackets } from '@/lib/hidden';
 
 // Entering a raise on the current employment's signed contract in force (owner's decisions, 16 October 2026): an
 // amendment or a new contract, from the 1st of a month, starting from the pay in force. It is saved as a draft, one at a
@@ -78,7 +79,7 @@ async function NewRaise({ params, searchParams }: { params: Promise<{ id: string
   } else if (draft) {
     body = (
       <Empty>
-        Version {draft.version} ({draft.number}) is still a draft: sign it, or have a Super Admin delete it, before adding a raise.{' '}
+        {withCodeInBrackets(`Version ${draft.version}`, draft.number)} is still a draft: sign it, or have a Super Admin delete it, before adding a raise.{' '}
         <Link href={editHref(employee.id, draft.id, changeOf(draft, contracts))}>Change the draft</Link>, or see it with the contract on the{' '}
         <Link href={back}>Employment tab</Link>.
       </Empty>
@@ -117,7 +118,7 @@ async function NewRaise({ params, searchParams }: { params: Promise<{ id: string
     body = (
       <div className="max-w-3xl space-y-4">
         <p className="text-sm text-muted">
-          A raise on version {active.version} ({active.number}), the contract in force
+          A raise on {withCodeInBrackets(`version ${active.version}`, active.number)}, the contract in force
           {active.endDate ? ` from ${formatDate(active.startDate)} to ${formatDate(active.endDate)}` : ` since ${formatDate(active.startDate)}`}
           {active.grossSalary !== null && `, paying a gross of ${formatEgp(active.grossSalary)} a month`}.{' '}
           {preparable

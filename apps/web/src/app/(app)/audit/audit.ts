@@ -2,6 +2,7 @@ import type { Role } from '@trendlix/shared';
 import { AUDIT_LOG_PATH } from '../../../components/nav';
 import { formatDate, parseDate } from '../../../lib/format';
 import { hasRole } from '../../../lib/roles';
+import { shownCode, withCode } from '../../../lib/hidden';
 
 // The Audit Log (owner, 19 October 2026: "an Audit Log page showing who changed what and when"): every change in the
 // system, who made it and when, for the Super Admin and the CEO; also an employee's History, from their profile. Plain
@@ -247,8 +248,8 @@ export const maskedText = (masked: 'changed' | 'set') => (masked === 'changed' ?
 /** A value, or a dash for none. */
 export const shown = (value: string | null) => value ?? '—';
 
-/** The record in words: "Contract CON-2026-0007", "Payroll run October 2026", "Employee". */
-export const recordText = (e: Pick<AuditEntry, 'entityLabel' | 'reference'>) => (e.reference ? `${e.entityLabel} ${e.reference}` : e.entityLabel);
+/** The record in words: "Contract CON-2026-0007", "Payroll run October 2026", "Employee" (a developer's: no person code). */
+export const recordText = (e: Pick<AuditEntry, 'entityLabel' | 'reference'>) => (shownCode(e.reference) ? `${e.entityLabel} ${e.reference}` : e.entityLabel);
 
 /** A user as the Who list names them: "Mona Hassan · mona@trendlix.com", "finance@trendlix.com (inactive)". */
 export function userOptionLabel(u: AuditPerson & { active: boolean }): string {
@@ -256,8 +257,8 @@ export function userOptionLabel(u: AuditPerson & { active: boolean }): string {
   return u.active ? label : `${label} (inactive)`;
 }
 
-/** An employee as the Employee list names them: "Mona Hassan · EMP-0007". */
-export const employeeOptionLabel = (e: AuditEmployee) => `${e.fullNameEn} · ${e.employeeCode}`;
+/** An employee as the Employee list names them: "Mona Hassan · EMP-0007" (a developer's: the tag alone). */
+export const employeeOptionLabel = (e: AuditEmployee) => withCode(e.fullNameEn, e.employeeCode);
 
 /** The filters in words for the heading over the entries: "From 01/10/2026 · Updated · Contract"; empty when none. */
 export function filtersText(f: AuditFilters, options: AuditOptions | null): string {

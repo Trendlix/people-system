@@ -12,6 +12,7 @@ import { contractHref } from '../../employees/tab-list';
 import { payslipHref } from '../payslips';
 import { CONFIDENTIAL_LINE_TITLE, HIDDEN_PAY_NOTE } from './access';
 import { breakdown, cutText, waivedByCeo, waiverOf, type BreakdownRow } from './breakdown';
+import { shownCode } from '@/lib/hidden';
 
 // The run's results (owner's decisions, 16 October 2026): what each employee earned, what is deducted, the net and what
 // the bank transfers, with the run's totals. Each row opens to every step of the employee's pay and its warnings, as
@@ -221,9 +222,11 @@ export function ResultsTable({
                               <span>
                                 <span className="font-semibold text-ink">{l.name}</span>
                                 <span className="sr-only">: {expanded ? 'close' : 'open'} the breakdown</span>
-                                <span className="block text-xs text-muted">
-                                  <span className="tabular-nums">{l.employeeCode}</span>
-                                </span>
+                                {shownCode(l.employeeCode) && (
+                                  <span className="block text-xs text-muted">
+                                    <span className="tabular-nums">{l.employeeCode}</span>
+                                  </span>
+                                )}
                               </span>
                             </button>
                             <div className="mt-1 flex flex-wrap gap-1 pl-5">

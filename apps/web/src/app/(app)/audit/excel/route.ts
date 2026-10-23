@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { ApiError, apiFetch } from '@/lib/api';
 import { passSheetOn } from '../../payroll/files';
-import { apiReason, textResponse as text } from '../../templates/file-response';
+import { apiReason, textResponse as text } from '../../organization/templates/file-response';
 import { apiExportPathOf } from '../audit';
 
 // Serves the Audit Log as an Excel workbook (owner, 19 October 2026: "an Audit Log page showing who changed what and

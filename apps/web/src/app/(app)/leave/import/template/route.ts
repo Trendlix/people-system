@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { ApiError, apiFetch } from '@/lib/api';
 import { passSheetOn } from '../../../payroll/files';
-import { textResponse as text } from '../../../templates/file-response';
+import { textResponse as text } from '../../../organization/templates/file-response';
 
 // Serves the leave import template (owner, 21 October 2026: "Our Excel template": the system gives a template to
 // download, HR fills it and uploads it) from the API under the web domain, with the caller's session: the browser never

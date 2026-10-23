@@ -144,7 +144,7 @@ describe('what the template lacks', () => {
         tag: 'national_id',
         label: 'National ID',
         what: "An offer never has this: it belongs on an employee's documents. Remove {{national_id}} from the job offer template, then publish it again.",
-        href: '/templates/offer_full_time',
+        href: '/organization/templates/offer_full_time',
         linkText: 'Open the template',
       },
     ]);
@@ -167,7 +167,7 @@ describe('what the template lacks', () => {
         tag: 'occupation_code',
         label: 'Occupation code (social insurance)',
         what: "An offer never has this: it belongs on an employee's documents. Remove {{occupation_code}} from the job offer template, then publish it again.",
-        href: '/templates/offer_full_time',
+        href: '/organization/templates/offer_full_time',
         linkText: 'Open the template',
       },
     ]);
@@ -183,7 +183,7 @@ describe('what the template lacks', () => {
       templateProblem(offer({ template: { slotKey: 'offer_full_time', name: 'Job offer · Full-time', status: 'missing', version: null, previewVersion: null } })),
     ).toEqual({
       text: 'There is no job offer template for Full-time yet. Upload and publish “Job offer · Full-time” in Templates.',
-      href: '/templates/offer_full_time',
+      href: '/organization/templates/offer_full_time',
     });
     expect(
       templateProblem(offer({ status: 'sent', template: { slotKey: 'offer_internship', name: 'Job offer · Trainee', status: 'draft', version: null, previewVersion: 1 } }))?.text,
@@ -194,7 +194,7 @@ describe('what the template lacks', () => {
     const draftOnly = { slotKey: 'offer_internship', name: 'Job offer · Trainee', status: 'draft', version: null, previewVersion: 3 } as const;
     expect(templateProblem(offer({ employmentType: 'trainee', template: draftOnly }))).toEqual({
       text: 'The job offer template “Job offer · Trainee” is only a draft: the offer is previewed with draft v3, but the template still has to be published in Templates before the offer can be sent.',
-      href: '/templates/offer_internship',
+      href: '/organization/templates/offer_internship',
     });
     expect(draftTemplateVersion(offer({ template: draftOnly }))).toBe(3);
     // a published template, none at all, or an offer already sent (its document is as sent): no draft is used

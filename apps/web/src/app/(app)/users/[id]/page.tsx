@@ -7,8 +7,11 @@ import { getCurrentUser } from '@/lib/session';
 import type { FingerprintDevice, OpenSession, UserAccount } from '@/lib/types';
 import { loadJson } from '../../payroll/load';
 import { profileHref } from '../../employees/tab-list';
+import { todayInCairo } from '../../employees/ui';
+import { standingBadge, standingBadgeClass } from '@/lib/access';
 import { AccountPanel } from '../account-panel';
 import { BackLink, Loading, managesAccessOnProfile, RequireAdmin, StatusBadge, USERS_PAGE_NOTE } from '../ui';
+import { shownCode } from '@/lib/hidden';
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -48,7 +51,7 @@ async function EditUser({ params }: { params: Promise<{ id: string }> }) {
               {user.employee ? (
                 <>
                   <Link href={profileHref(user.employee.id, 'access')}>
-                    {user.employee.fullNameEn} <span className="text-muted">· {user.employee.employeeCode}</span>
+                    {user.employee.fullNameEn} {shownCode(user.employee.employeeCode) && <span className="text-muted">· {user.employee.employeeCode}</span>}
                   </Link>
                   <p className="hint">Their account: HR chooses its sign-in email and sends their set-password link on their profile’s Access tab.</p>
                 </>
@@ -59,6 +62,16 @@ async function EditUser({ params }: { params: Promise<{ id: string }> }) {
                 </>
               )}
             </Row>
+            {/* an employee's access standing (owner, 23 October 2026: "Active - Grace - Hold - No Access"): from their
+                contract; never held for a Super Admin, the CEO or an account that isn't an employee's */}
+            {user.employee && user.standing && (
+              <Row label="Access">
+                <span className={standingBadgeClass(user.standing.standing)}>{standingBadge(user.standing.standing, user.standing.graceUntil, todayInCairo())}</span>
+                <p className="hint">
+                  From their contract. HR gives 7 days’ grace on their profile’s <Link href={profileHref(user.employee.id, 'access')}>Access tab</Link>.
+                </p>
+              </Row>
+            )}
             <Row label="Last sign-in">
               {user.lastSignInAt ? formatDateTime(user.lastSignInAt) : <span className="text-muted">Never</span>}
             </Row>

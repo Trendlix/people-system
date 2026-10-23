@@ -23,6 +23,7 @@ import {
   seesCorrections,
 } from './corrections';
 import { loadCorrections } from './data';
+import { joinShown } from '@/lib/hidden';
 
 // Attendance → Corrections (owner, 19 October 2026: "Attendance corrections with approval ("I forgot to check out")"):
 // for HR and the CEO, every attendance correction, those waiting for them first (HR's stage; a C-level person's for the
@@ -86,10 +87,7 @@ async function List({ searchParams }: { searchParams: PageProps<'/attendance/cor
                   <td className="min-w-44">
                     <span className="font-semibold">{c.employee.fullNameEn}</span>
                     {c.confidential && <CLevelBadge title="A C-level person: the CEO decides HR’s stage." className="ml-2" />}
-                    <div className="text-xs text-muted">
-                      {c.employee.employeeCode}
-                      {c.employee.department && ` · ${c.employee.department}`}
-                    </div>
+                    <div className="text-xs text-muted">{joinShown([c.employee.employeeCode, c.employee.department])}</div>
                   </td>
                   <td className="whitespace-nowrap tabular-nums">{correctionDayText(c)}</td>
                   <td>{correctionKindName(c.correctionKind)}</td>

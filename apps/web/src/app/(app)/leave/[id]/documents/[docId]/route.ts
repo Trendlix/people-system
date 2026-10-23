@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { LEAVE_DOCUMENT_TYPES } from '@trendlix/shared';
 import { ApiError, apiFetch } from '@/lib/api';
-import { textResponse as text } from '../../../../templates/file-response';
+import { textResponse as text } from '../../../../organization/templates/file-response';
 
 // Serves one document of a leave request (a medical certificate, proof of sitting the exam) from the API under the web
 // domain, with the caller's session: the browser never talks to the API (as a claim's receipts). The API lets the

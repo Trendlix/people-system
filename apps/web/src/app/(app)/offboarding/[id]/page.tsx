@@ -25,6 +25,7 @@ import { addItem, completeCase, declineInterview, markItem, recordInterview, set
 import { loadCase, offboardingNotLoaded } from '../data';
 import { AddItemForm, CompleteForm, DeclineForm, ExitInterviewForm, ItemActions, RehireForm } from '../forms';
 import { casePrintHref, ITEM_STYLE, OFFBOARDING_PATH, progressText, REHIRE_STYLE, STATUS_STYLE } from '../offboarding';
+import { joinShown } from '@/lib/hidden';
 
 // An offboarding case (owner, 22 October 2026: the full module: "clearance checklist (assets returned, laptop, access),
 // exit interview, rehire eligibility"): who is leaving and when, the clearance checklist (each item cleared by its owner,
@@ -197,7 +198,7 @@ async function Case({ params }: { params: PageProps<'/offboarding/[id]'>['params
           <span className={`badge ${STATUS_STYLE[c.status]}`}>{OFFBOARDING_STATUS_LABELS[c.status]}</span>
           {c.rehire && <span className={`badge ${REHIRE_STYLE[c.rehire]}`}>Rehire: {REHIRE_LABELS[c.rehire]}</span>}
         </div>
-        <p className="text-muted">{[c.jobTitle, c.department, c.employee.employeeCode].filter(Boolean).join(' · ')}</p>
+        <p className="text-muted">{joinShown([c.jobTitle, c.department, c.employee.employeeCode])}</p>
         <dl className="grid gap-x-6 gap-y-1 text-sm sm:grid-cols-[12rem_1fr]">
           <dt className="text-muted">Joined</dt>
           <dd className="tabular-nums">{formatDate(c.joinDate)}</dd>

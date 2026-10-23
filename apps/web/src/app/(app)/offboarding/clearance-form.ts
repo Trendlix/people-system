@@ -7,6 +7,7 @@
 
 import { CLEARANCE_ITEM_STATUS_LABELS, CLEARANCE_OWNER_LABELS, END_REASON_LABELS, type ClearanceOwner, type EndReason, type OffboardingCaseView } from '@trendlix/shared';
 import { formatDate } from '../../../lib/format';
+import { HIDDEN_LABEL, shownCode } from '../../../lib/hidden';
 
 const escape = (text: string | null | undefined) => (text ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] ?? c);
 
@@ -55,7 +56,7 @@ export function clearanceFormMarkup(c: OffboardingCaseView, brand: ClearanceBran
   const reason = c.endReason ? (END_REASON_LABELS[c.endReason as EndReason] ?? c.endReason) : null;
   const details =
     `<dl><dt>Employee</dt><dd>${escape(c.employee.fullNameEn)}</dd>` +
-    `<dt>Employee code</dt><dd class="mono">${escape(c.employee.employeeCode)}</dd>` +
+    `<dt>Employee code</dt><dd class="mono">${escape(shownCode(c.employee.employeeCode) ?? HIDDEN_LABEL)}</dd>` +
     `<dt>Job title</dt><dd>${escape(c.jobTitle ?? '—')}</dd>` +
     `<dt>Department</dt><dd>${escape(c.department ?? '—')}</dd>` +
     `<dt>Joined</dt><dd>${escape(formatDate(c.joinDate))}</dd>` +

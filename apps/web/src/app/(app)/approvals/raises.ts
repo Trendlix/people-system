@@ -6,6 +6,7 @@ import { formatEgp } from '../employees/[id]/contracts/salary';
 import { changeText, fromToText } from '../employees/[id]/salary-history/salary-history';
 import { figuresNote } from '../raise-requests/list';
 import type { FiguresFor } from '../raise-requests/request-forms';
+import { shownCode } from '../../../lib/hidden';
 
 // Pay raises waiting for the CEO, on Approvals (owner's decisions, 16 October 2026: "HR, then the CEO"): a raise HR
 // entered and sent (an amendment or a new contract, effective the 1st of a month), or a renewal with new pay, which
@@ -32,9 +33,10 @@ export function decidesRaises(user: WithRoles): boolean {
 export interface PendingRaiseView {
   /** "Amendment", "New contract", "Renewal". */
   kind: string;
-  /** "CON-2026-0001-A1 · version 3". */
+  /** "CON-2026-0001-A1 · version 3"; "Version 3" when the number is hidden (a developer's: 23 October 2026). */
   reference: string;
-  effective: string;
+  /** "From 01/11/2026", or its term; null when its dates are hidden (a developer's). */
+  effective: string | null;
   gross: string;
   /** "+EGP 2,500.00 (+25%)"; null without the pay before it. */
   change: string | null;
@@ -63,8 +65,8 @@ export function pendingRaiseView(r: PendingRaise): PendingRaiseView {
   const name = r.employee.fullNameEn;
   return {
     kind: PAY_CHANGE_LABELS[r.change] ?? r.change,
-    reference: `${r.number} · version ${r.version}`,
-    effective: r.endDate && r.change !== 'amendment' ? `${formatDate(r.startDate)} – ${formatDate(r.endDate)}` : `From ${formatDate(r.startDate)}`,
+    reference: shownCode(r.number) ? `${r.number} · version ${r.version}` : `Version ${r.version}`,
+    effective: !r.startDate ? null : r.endDate && r.change !== 'amendment' ? `${formatDate(r.startDate)} – ${formatDate(r.endDate)}` : `From ${formatDate(r.startDate)}`,
     gross: fromToText(grossBefore, gross),
     change: grossBefore !== null ? changeText(payDifference(grossBefore, gross)) : null,
     allowances: fromToText(before?.allowancesTotal ?? null, r.allowancesTotal ?? 0),
@@ -73,7 +75,7 @@ export function pendingRaiseView(r: PendingRaise): PendingRaiseView {
     reason: r.raise ? (RAISE_REASON_LABELS[r.raise.reason] ?? r.raise.reason) : null,
     promotion: promotion || null,
     sentAt: r.raise?.sentAt ? formatDateTime(r.raise.sentAt) : null,
-    confirmApprove: `Approve ${name}'s new pay, ${formatEgp(gross)} a month from ${formatDate(r.startDate)}? HR then has ${r.number} signed.`,
+    confirmApprove: `Approve ${name}'s new pay, ${formatEgp(gross)} a month${r.startDate ? ` from ${formatDate(r.startDate)}` : ''}? HR then has ${shownCode(r.number) ?? 'it'} signed.`,
   };
 }
 

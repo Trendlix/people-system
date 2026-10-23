@@ -17,38 +17,25 @@ import {
   myAttendanceInMenu,
   NAV,
   navFor,
+  ORGANIZATION_NAV,
   profileBack,
   RAISE_REQUESTS_PATH,
   REIMBURSEMENTS_PATH,
 } from './nav';
 
 const as = (...roles: Role[]) => ({ roles });
-const templates = NAV.find((n) => n.href === '/templates')!;
 
 describe('the sidebar', () => {
-  it('shows Library and Fields Guide under Templates, for the same people as Templates', () => {
-    expect(templates.items?.map((s) => [s.label, s.href])).toEqual([
-      ['Library', '/templates'],
-      ['Fields Guide', '/templates/tags'],
-    ]);
-    // the sub-items have no roles of their own: they show with their item
-    expect(templates.items?.every((s) => !('roles' in s))).toBe(true);
-    // a Super Admin's only (owner, 19 October 2026: "enable templates sidebar to super admin only")
-    expect(hasRole(as('super_admin'), ...(templates.roles ?? []))).toBe(true);
-    expect(hasRole(as('hr'), ...(templates.roles ?? []))).toBe(false);
-    expect(hasRole(as('ceo'), ...(templates.roles ?? []))).toBe(false);
-    expect(hasRole(as('admin'), ...(templates.roles ?? []))).toBe(false);
-    expect(hasRole(as('employee', 'manager', 'finance'), ...(templates.roles ?? []))).toBe(false);
-  });
-
-  it('highlights the Fields Guide on its page, and Library on every other page of the templates', () => {
-    const current = (path: string) => activeSubItem(templates, path)?.label ?? null;
-    expect(current('/templates')).toBe('Library');
-    expect(current('/templates/contract_full_time')).toBe('Library');
-    expect(current('/templates/nda/versions/0b8f/map')).toBe('Library');
-    expect(current('/templates/tags')).toBe('Fields Guide');
-    expect(current('/employees')).toBeNull();
-    expect(current('/templatesx')).toBeNull();
+  // the pages brought into Organization's setup menu (owner, 23 October 2026: "Check-in Setup, KPI Pillars and
+  // deadlines, Recruitment and checklists, Templates") are no longer under their old headings
+  it('no longer has Templates, Check-in Setup, KPI Pillars or Recruitment Settings, nor the checklists', () => {
+    const everywhere = NAV.flatMap((n) => [n.href, ...(n.items ?? []).map((s) => s.href)]);
+    for (const old of ['/templates', '/templates/tags', '/attendance/check-in-setup', '/kpis/pillars', '/recruitment/settings', '/onboarding/checklist', '/offboarding/checklist']) {
+      expect(everywhere).not.toContain(old);
+    }
+    expect(NAV.map((n) => n.label)).not.toContain('Templates');
+    const labels = NAV.flatMap((n) => (n.items ?? []).map((s) => `${n.label} → ${s.label}`));
+    for (const gone of ['Attendance → Check-in Setup', 'KPIs → KPI Pillars', 'Recruitment → Settings']) expect(labels).not.toContain(gone);
   });
 
   it('shows Payroll after People and Recruitment to HR, Finance and the CEO only, and no longer as coming next', () => {
@@ -133,12 +120,12 @@ describe('the sidebar', () => {
         .find((n) => n.label === 'Attendance')
         ?.items?.map((i) => [i.label, i.href]) ?? null;
 
-    it('is a heading after Requests, for HR, the CEO and Finance, linking to Daily Attendance; and for an Admin, for Check-in Setup', () => {
+    it('is a heading after Requests, for HR, the CEO and Finance, linking to Daily Attendance; no longer an Admin’s, as Check-in Setup moved to Organization (23 October 2026)', () => {
       const labels = NAV.map((n) => n.label);
       expect(labels.indexOf('Attendance')).toBe(labels.indexOf('Requests') + 1);
       expect(attendance).toMatchObject({ href: '/attendance', section: '/attendance' });
-      for (const role of ['hr', 'ceo', 'finance', 'admin', 'super_admin'] as const) expect(hasRole(as(role), ...(attendance.roles ?? []))).toBe(true);
-      expect(hasRole(as('employee', 'manager'), ...(attendance.roles ?? []))).toBe(false);
+      for (const role of ['hr', 'ceo', 'finance'] as const) expect(hasRole(as(role), ...(attendance.roles ?? []))).toBe(true);
+      expect(hasRole(as('employee', 'manager', 'admin', 'super_admin'), ...(attendance.roles ?? []))).toBe(false);
     });
 
     it('has Daily Attendance, Import (HR’s: "where am i going to import the sheets?"), Import History, Summary and Corrections for HR; the CEO all but Import; Finance neither Import nor Corrections', () => {
@@ -151,8 +138,8 @@ describe('the sidebar', () => {
         ['Corrections', '/attendance/corrections'],
         // the work-from-home days (21 October 2026: "Manager, then HR")
         ['Work From Home', '/attendance/wfh'],
-        // the check-in locations and the office network's lock (20 October 2026: "Own page, several locations")
-        ['Check-in Setup', '/attendance/check-in-setup'],
+        // the official duties (23 October 2026: "Official duty (OD) requests")
+        ['Official Duty', '/attendance/official-duty'],
       ]);
       expect(pagesFor('ceo')).toEqual([
         ['Daily Attendance', '/attendance'],
@@ -160,16 +147,16 @@ describe('the sidebar', () => {
         ['Summary', '/attendance/summary'],
         ['Corrections', '/attendance/corrections'],
         ['Work From Home', '/attendance/wfh'],
+        ['Official Duty', '/attendance/official-duty'],
       ]);
       expect(pagesFor('finance')).toEqual([
         ['Daily Attendance', '/attendance'],
         ['Import History', '/attendance/imports'],
         ['Summary', '/attendance/summary'],
       ]);
-      // an Admin and a Super Admin: Check-in Setup alone, the heading linking to it
-      expect(pagesFor('admin')).toEqual([['Check-in Setup', '/attendance/check-in-setup']]);
-      expect(pagesFor('super_admin')).toEqual([['Check-in Setup', '/attendance/check-in-setup']]);
-      expect(navFor({ roles: ['admin'], employeeId: 'x' }).find((n) => n.label === 'Attendance')?.href).toBe('/attendance/check-in-setup');
+      // an Admin and a Super Admin: none since Check-in Setup is under Organization (23 October 2026)
+      expect(pagesFor('admin')).toBeNull();
+      expect(pagesFor('super_admin')).toBeNull();
       expect(navFor({ roles: ['hr'], employeeId: 'x' }).find((n) => n.label === 'Attendance')?.href).toBe('/attendance');
     });
 
@@ -220,7 +207,8 @@ describe('the sidebar', () => {
     expect(isActive(item('/'), '/employees')).toBe(false);
     expect(isActive(item('/employees'), '/employees/abc')).toBe(true);
     expect(isActive(item('/payroll'), '/payroll/unsettled')).toBe(true);
-    expect(isActive(item('/templates'), '/templates/tags')).toBe(true);
+    expect(isActive(ORGANIZATION_NAV, '/organization/templates/tags')).toBe(true);
+    expect(isActive(ORGANIZATION_NAV, '/organization/check-in-setup')).toBe(true);
     expect(isActive(item('/approvals'), '/raise-requests')).toBe(false);
   });
 
@@ -233,10 +221,10 @@ describe('the sidebar', () => {
   });
 
   it('counts a page under a path, not one that only starts with the same letters', () => {
-    expect(isUnder('/templates', '/templates')).toBe(true);
-    expect(isUnder('/templates/tags', '/templates')).toBe(true);
-    expect(isUnder('/templates-old', '/templates')).toBe(false);
-    expect(isUnder('/templates', '/templates/tags')).toBe(false);
+    expect(isUnder('/organization/templates', '/organization/templates')).toBe(true);
+    expect(isUnder('/organization/templates/tags', '/organization/templates')).toBe(true);
+    expect(isUnder('/organization/templates-old', '/organization/templates')).toBe(false);
+    expect(isUnder('/organization/templates', '/organization/templates/tags')).toBe(false);
   });
 });
 
@@ -311,7 +299,7 @@ describe('the sidebar of an employee or a manager', () => {
   it('shows them no Organization, Employees or HR page', () => {
     for (const roles of [['employee'], ['manager'], ['employee', 'manager']] as Role[][]) {
       const hrefs = navFor({ roles, employeeId: ME }).map((n) => n.href);
-      for (const page of ['/organization/company', '/employees', '/contracts', '/payroll', '/attendance', '/raise-requests', '/requests/details-changes', '/reimbursements', '/leave', '/offers', '/approvals', '/templates', '/users']) {
+      for (const page of ['/organization/company', '/employees', '/contracts', '/payroll', '/attendance', '/raise-requests', '/requests/details-changes', '/reimbursements', '/leave', '/offers', '/approvals', '/organization/templates', '/users']) {
         expect(hrefs).not.toContain(page);
       }
     }
@@ -338,9 +326,10 @@ describe('the sidebar of HR, Finance, the CEO and Admins', () => {
     expect(labels('employee', 'hr')).toEqual(['Home', 'Organization', 'People', 'Recruitment', 'Payroll', 'Requests', 'Attendance', 'KPIs', 'Approvals']);
     expect(labels('employee', 'finance')).toEqual(['Home', 'Organization', 'People', 'Payroll', 'Requests', 'Attendance', 'KPIs']);
     expect(labels('ceo')).toEqual(['Home', 'Organization', 'People', 'Recruitment', 'Payroll', 'Requests', 'Attendance', 'KPIs', 'Approvals', 'Audit Log']);
-    // Attendance for Check-in Setup alone (20 October 2026: "Own page, several locations")
-    expect(labels('admin')).toEqual(['Home', 'Organization', 'People', 'Requests', 'Attendance', 'KPIs', 'Approvals', 'Users']);
-    expect(labels('super_admin')).toEqual(['Home', 'Organization', 'People', 'Recruitment', 'Requests', 'Attendance', 'KPIs', 'Approvals', 'Templates', 'Users', 'Audit Log']);
+    // no Attendance for an Admin, nor Templates for a Super Admin: Check-in Setup and Templates are under Organization
+    // (23 October 2026: "Check-in Setup, KPI Pillars and deadlines, Recruitment and checklists, Templates")
+    expect(labels('admin')).toEqual(['Home', 'Organization', 'People', 'Requests', 'KPIs', 'Approvals', 'Users']);
+    expect(labels('super_admin')).toEqual(['Home', 'Organization', 'People', 'Recruitment', 'Requests', 'KPIs', 'Approvals', 'Users', 'Audit Log']);
   });
 
   it('shows the Audit Log to the Super Admin, beside Users, and the CEO only (owner, 19 October 2026: "an Audit Log page showing who changed what and when")', () => {
@@ -394,10 +383,10 @@ describe('the sidebar of HR, Finance, the CEO and Admins', () => {
     const recruitmentFor = (...roles: Role[]) => navFor({ roles, employeeId: 'x' }).find((n) => n.label === 'Recruitment') ?? null;
     const pages = (...roles: Role[]) => recruitmentFor(...roles)?.items?.map((i) => i.label) ?? null;
 
-    it('has Vacancies, Applicants, Candidates, Interviews, Offers, Onboarding, Analytics and Settings for HR and the CEO (Offers not for a Super Admin), nothing for anyone else', () => {
-      expect(pages('hr')).toEqual(['Vacancies', 'Applicants', 'Candidates', 'Interviews', 'Offers', 'Onboarding', 'Analytics', 'Settings']);
-      expect(pages('ceo')).toEqual(['Vacancies', 'Applicants', 'Candidates', 'Interviews', 'Offers', 'Onboarding', 'Analytics', 'Settings']);
-      expect(pages('super_admin')).toEqual(['Vacancies', 'Applicants', 'Candidates', 'Interviews', 'Onboarding', 'Analytics', 'Settings']);
+    it('has Vacancies, Applicants, Candidates, Interviews, Offers, Onboarding and Analytics for HR and the CEO (Offers not for a Super Admin), nothing for anyone else; Settings is under Organization (23 October 2026)', () => {
+      expect(pages('hr')).toEqual(['Vacancies', 'Applicants', 'Candidates', 'Interviews', 'Offers', 'Onboarding', 'Analytics']);
+      expect(pages('ceo')).toEqual(['Vacancies', 'Applicants', 'Candidates', 'Interviews', 'Offers', 'Onboarding', 'Analytics']);
+      expect(pages('super_admin')).toEqual(['Vacancies', 'Applicants', 'Candidates', 'Interviews', 'Onboarding', 'Analytics']);
       for (const role of ['finance', 'admin', 'manager', 'employee'] as const) expect(recruitmentFor(role)).toBeNull();
       expect(recruitmentFor('hr')?.href).toBe('/recruitment/vacancies');
     });
@@ -408,7 +397,7 @@ describe('the sidebar of HR, Finance, the CEO and Admins', () => {
       expect(withHiring('employee')?.items?.map((i) => i.label)).toEqual(['My Hiring']);
       expect(withHiring('employee')?.href).toBe('/recruitment/my-hiring');
       expect(withHiring('employee', 'manager')?.items?.map((i) => i.label)).toEqual(['My Hiring']);
-      expect(withHiring('hr')?.items?.map((i) => i.label)).toEqual(['Vacancies', 'Applicants', 'Candidates', 'Interviews', 'My Hiring', 'Offers', 'Onboarding', 'Analytics', 'Settings']);
+      expect(withHiring('hr')?.items?.map((i) => i.label)).toEqual(['Vacancies', 'Applicants', 'Candidates', 'Interviews', 'My Hiring', 'Offers', 'Onboarding', 'Analytics']);
       expect(navFor({ roles: ['employee'], employeeId: 'x', hiring: false }).find((n) => n.label === 'Recruitment')).toBeUndefined();
     });
 
@@ -424,7 +413,8 @@ describe('the sidebar of HR, Finance, the CEO and Admins', () => {
       expect(activeSubItem(recruitment, '/recruitment/my-hiring')?.label).toBe('My Hiring');
       expect(activeSubItem(recruitment, '/onboarding/0b8f0c1e-2d3a-4b5c-8d9e-0f1a2b3c4d5e')?.label).toBe('Onboarding');
       expect(activeSubItem(recruitment, '/recruitment/analytics')?.label).toBe('Analytics');
-      expect(activeSubItem(recruitment, '/recruitment/settings')?.label).toBe('Settings');
+      // the checklist's page is Organization's now, not Onboarding's
+      expect(activeSubItem(recruitment, '/organization/onboarding-checklist')).toBeNull();
     });
   });
 
@@ -475,9 +465,7 @@ describe('the sidebar of HR, Finance, the CEO and Admins', () => {
           .find((n) => n.label === label)
           ?.items?.map((i) => i.label);
       expect(sub('Payroll', 'finance')).toEqual(['Overview', 'Unsettled', 'Additions / Deductions', 'Recurring Deductions', 'Reports']);
-      expect(sub('Templates', 'super_admin')).toEqual(['Library', 'Fields Guide']);
       expect(navFor({ roles: ['hr'], employeeId: 'x' }).find((n) => n.label === 'Payroll')?.href).toBe('/payroll');
-      expect(navFor({ roles: ['super_admin'], employeeId: 'x' }).find((n) => n.label === 'Templates')?.href).toBe('/templates');
     });
 
     it('doesn’t change NAV itself for the next user', () => {
@@ -507,7 +495,7 @@ describe('the KPIs (owner, 21 October 2026: "lets start with the KPI’s First")
   const kpis = (user: Parameters<typeof navFor>[0]) => navFor(user).find((n) => n.label === 'KPIs') ?? null;
   const pages = (user: Parameters<typeof navFor>[0]) => kpis(user)?.items?.map((i) => i.label) ?? null;
 
-  it('is a heading after Attendance with My KPIs, Team KPIs, All KPIs, KPI Templates and KPI Pillars', () => {
+  it('is a heading after Attendance with My KPIs, Team KPIs, All KPIs and KPI Templates (KPI Pillars under Organization since 23 October 2026)', () => {
     const labels = NAV.map((n) => n.label);
     expect(labels.indexOf('KPIs')).toBe(labels.indexOf('Attendance') + 1);
     expect(NAV).toContain(KPIS_NAV);
@@ -518,7 +506,6 @@ describe('the KPIs (owner, 21 October 2026: "lets start with the KPI’s First")
       ['Team KPIs', '/kpis/team'],
       ['All KPIs', '/kpis/all'],
       ['KPI Templates', '/kpis/templates'],
-      ['KPI Pillars', '/kpis/pillars'],
     ]);
   });
 
@@ -536,22 +523,20 @@ describe('the KPIs (owner, 21 October 2026: "lets start with the KPI’s First")
     expect(pages({ roles: ['employee'], employeeId: ME, leads: false })).toEqual(['My KPIs']);
     expect(pages({ roles: ['ceo'], employeeId: ME })).toEqual(['My KPIs', 'Team KPIs', 'All KPIs']);
     // in the full sidebar too: HR or an Admin who manage people, or lead a team
-    expect(pages({ roles: ['hr', 'manager'], employeeId: ME })).toEqual(['My KPIs', 'Team KPIs', 'All KPIs', 'KPI Templates', 'KPI Pillars']);
+    expect(pages({ roles: ['hr', 'manager'], employeeId: ME })).toEqual(['My KPIs', 'Team KPIs', 'All KPIs', 'KPI Templates']);
     expect(pages({ roles: ['admin'], employeeId: ME, leads: true })).toEqual(['My KPIs', 'Team KPIs']);
     expect(pages({ roles: ['finance'], employeeId: ME })).toEqual(['My KPIs']);
   });
 
-  it('shows All KPIs to HR, the CEO and the Super Admin, and KPI Templates and KPI Pillars to HR and the Super Admin ("Templates: HR")', () => {
-    expect(pages({ roles: ['hr'], employeeId: ME })).toEqual(['My KPIs', 'All KPIs', 'KPI Templates', 'KPI Pillars']);
-    expect(pages({ roles: ['super_admin'], employeeId: ME })).toEqual(['My KPIs', 'All KPIs', 'KPI Templates', 'KPI Pillars']);
+  it('shows All KPIs to HR, the CEO and the Super Admin, and KPI Templates to HR and the Super Admin ("Templates: HR")', () => {
+    expect(pages({ roles: ['hr'], employeeId: ME })).toEqual(['My KPIs', 'All KPIs', 'KPI Templates']);
+    expect(pages({ roles: ['super_admin'], employeeId: ME })).toEqual(['My KPIs', 'All KPIs', 'KPI Templates']);
     expect(pages({ roles: ['admin'], employeeId: ME })).toEqual(['My KPIs']);
     for (const roles of [['admin'], ['finance'], ['employee'], ['employee', 'manager']] as Role[][]) {
       expect(pages({ roles, employeeId: ME })).not.toContain('All KPIs');
       expect(pages({ roles, employeeId: ME })).not.toContain('KPI Templates');
-      expect(pages({ roles, employeeId: ME })).not.toContain('KPI Pillars');
     }
     expect(pages({ roles: ['ceo'], employeeId: ME })).not.toContain('KPI Templates');
-    expect(pages({ roles: ['ceo'], employeeId: ME })).not.toContain('KPI Pillars');
   });
 
   it('links the heading to the first page the user sees, and leaves it out for someone who sees none', () => {
@@ -578,23 +563,22 @@ describe('the KPIs (owner, 21 October 2026: "lets start with the KPI’s First")
     expect(current('/kpis/all')).toBe('All KPIs');
     expect(current('/kpis/templates')).toBe('KPI Templates');
     expect(current('/kpis/templates/0b8f2c1e-1111-4222-8333-444455556666')).toBe('KPI Templates');
-    expect(current('/kpis/pillars')).toBe('KPI Pillars');
-    expect(current('/kpis/pillars/0b8f2c1e-1111-4222-8333-444455556666')).toBe('KPI Pillars');
     // a scorecard: under My KPIs for those who have it, and the heading holding the page for everyone
     expect(current('/kpis/scorecards/0b8f2c1e-1111-4222-8333-444455556666')).toBe('My KPIs');
     const hr = kpis({ roles: ['hr'], employeeId: null })!;
     expect(activeSubItem(hr, '/kpis/scorecards/0b8f2c1e-1111-4222-8333-444455556666')).toBeNull();
     expect(isActive(hr, '/kpis/scorecards/0b8f2c1e-1111-4222-8333-444455556666')).toBe(true);
-    expect(isActive(KPIS_NAV, '/templates')).toBe(false);
-    // the document templates are not the KPI templates
-    expect(isActive(NAV.find((n) => n.href === '/templates')!, '/kpis/templates')).toBe(false);
+    expect(isActive(KPIS_NAV, '/organization/templates')).toBe(false);
+    // the document templates are not the KPI templates, nor the pillars the KPIs' any more
+    expect(isActive(ORGANIZATION_NAV, '/kpis/templates')).toBe(false);
+    expect(isActive(KPIS_NAV, '/organization/kpi-pillars')).toBe(false);
   });
 
   it('doesn’t change the heading itself for the next user', () => {
     navFor({ roles: ['admin'], employeeId: ME });
     navFor({ roles: ['employee'], employeeId: ME });
     expect(KPIS_NAV.href).toBe('/kpis');
-    expect(KPIS_NAV.items).toHaveLength(5);
+    expect(KPIS_NAV.items).toHaveLength(4);
   });
 });
 
@@ -756,5 +740,41 @@ describe('the back link of a profile', () => {
     // an API from before isSelf: told by the profile's id
     expect(profileBack({ roles: ['employee'], employeeId: ME }, { id: ME })).toBeNull();
     expect(profileBack({ roles: ['employee', 'manager'], employeeId: ME }, { id: 'report', isSelf: false })).toEqual({ href: MY_TEAM, label: 'My Team' });
+  });
+});
+
+// Organization, the setup home (owner, 23 October 2026: "Side menu with headings"): one link, for whoever sees a setup
+// page, to the first they see (organization/setup-pages.ts)
+describe('Organization', () => {
+  const organization = (user: Parameters<typeof navFor>[0]) => navFor(user).find((n) => n.label === 'Organization') ?? null;
+
+  it('stays one link, no heading of its own, highlighted on every setup page', () => {
+    expect(NAV).toContain(ORGANIZATION_NAV);
+    expect(ORGANIZATION_NAV.items).toBeUndefined();
+    expect(NAV.map((n) => n.label).indexOf('Organization')).toBe(1);
+    for (const page of ['/organization/company', '/organization/email', '/organization/templates/nda', '/organization/check-in-setup', '/organization/kpi-pillars/0b8f', '/organization/clearance-checklist']) {
+      expect(isActive(ORGANIZATION_NAV, page)).toBe(true);
+    }
+  });
+
+  it('is shown to whoever sees a setup page, linking to the first: Company Details for everyone who had the tabs', () => {
+    for (const roles of [['hr'], ['finance'], ['ceo'], ['admin'], ['super_admin'], ['employee', 'hr'], ['admin', 'finance']] as Role[][]) {
+      expect(organization({ roles, employeeId: 'x' })?.href).toBe('/organization/company');
+    }
+    // a developer, with a Super Admin's sight
+    expect(organization({ roles: ['super_admin'], developer: true })?.href).toBe('/organization/company');
+  });
+
+  it('is never an employee’s or a manager’s, nor anyone’s while who it is can’t be read', () => {
+    for (const roles of [['employee'], ['manager'], ['employee', 'manager']] as Role[][]) {
+      expect(organization({ roles, employeeId: 'x' })).toBeNull();
+      expect(organization({ roles, employeeId: 'x', leads: true, hiring: true })).toBeNull();
+    }
+    expect(organization(null)).toBeNull();
+  });
+
+  it('doesn’t change the item itself for the next user', () => {
+    navFor({ roles: ['hr'], employeeId: 'x' });
+    expect(ORGANIZATION_NAV).toEqual({ href: '/organization/company', label: 'Organization', section: '/organization' });
   });
 });

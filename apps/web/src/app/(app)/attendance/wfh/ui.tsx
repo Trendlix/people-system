@@ -5,6 +5,7 @@ import type { WfhRequestView } from '@/lib/wfh-types';
 import { placeOfEmployee } from '../../leave/list';
 import { LeaveStatusBadge } from '../../leave/ui';
 import { wfhDayText, wfhHref, wfhLabel, wfhProgressText, wfhSourceText } from './wfh';
+import { joinShown } from '@/lib/hidden';
 
 // Work from home requests in a list (owner, 21 October 2026: "think about how should we handle the working from home in
 // out erp"): the employee's own on My Requests, those waiting for a manager on My Team and for HR on Approvals, and
@@ -37,10 +38,7 @@ export function WfhTable({ requests, who = false, how = false, note }: { request
                   <td className="min-w-44">
                     <span className="font-semibold">{r.employee.fullNameEn}</span>
                     {r.confidential && <CLevelBadge title="A C-level person: the CEO decides HR’s stage." className="ml-2" />}
-                    <div className="text-xs text-muted">
-                      {r.employee.employeeCode}
-                      {place && ` · ${place}`}
-                    </div>
+                    <div className="text-xs text-muted">{joinShown([r.employee.employeeCode, place])}</div>
                   </td>
                 )}
                 <td className="whitespace-nowrap tabular-nums">{wfhDayText(r)}</td>

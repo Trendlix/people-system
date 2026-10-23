@@ -9,6 +9,7 @@ import { EditHeading, Empty, gradeLabel, Loading, profileHref, RequireHr, todayI
 import { loadEndingRules } from '../../contracts/data';
 import { EndingForm } from '../ending-form';
 import { endingRulesFor } from '../rules';
+import { shownCode } from '@/lib/hidden';
 
 // Ending the current employment: HR records how and when it ends (which counts as HR's approval), and it goes to the
 // CEO for approval. Once approved, HR completes it on or after the last working day, which ends the employment; the
@@ -73,7 +74,8 @@ async function NewEnding({ params, searchParams }: { params: Promise<{ id: strin
             <ul className="list-disc pl-5">
               {employee.reports.map((r) => (
                 <li key={r.id}>
-                  <Link href={profileHref(r.id, 'employment')}>{r.fullNameEn}</Link> ({r.employeeCode})
+                  <Link href={profileHref(r.id, 'employment')}>{r.fullNameEn}</Link>
+                  {shownCode(r.employeeCode) && ` (${r.employeeCode})`}
                 </li>
               ))}
             </ul>

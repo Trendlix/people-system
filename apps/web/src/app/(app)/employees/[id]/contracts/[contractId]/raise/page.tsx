@@ -10,6 +10,7 @@ import { loadAllowanceTypes, loadContractSettings, loadContracts } from '../../d
 import { changeOf, editHref, pendingKindLabel, stageOf, versionBefore } from '../../raise';
 import { loadPromotionPickers } from '../../raise-data';
 import { RaiseForm } from '../../raise-form';
+import { withCodeInBrackets } from '@/lib/hidden';
 
 // Changing a raise before it is signed (owner's decisions, 16 October 2026): a draft, one the CEO returned (sent again
 // once changed), or one the CEO approved, which goes back to HR as a draft once its terms change. Not while it is with
@@ -38,14 +39,14 @@ async function EditRaise({ params }: { params: Promise<{ id: string; contractId:
   } else if (raise.status !== 'draft') {
     body = (
       <Empty>
-        Version {raise.version} ({raise.number}) was signed{raise.signedOn && ` on ${formatDate(raise.signedOn)}`}: only its filing dates and note can
+        {withCodeInBrackets(`Version ${raise.version}`, raise.number)} was signed{raise.signedOn && ` on ${formatDate(raise.signedOn)}`}: only its filing dates and note can
         change, with the contract on the Employment tab. A change of pay is a new raise.
       </Empty>
     );
   } else if (stageOf(raise) === 'pending_ceo') {
     body = (
       <Empty>
-        Version {raise.version} ({raise.number}) is with the CEO: it can&apos;t be changed unless the CEO returns it. See it with the contract on the{' '}
+        {withCodeInBrackets(`Version ${raise.version}`, raise.number)} is with the CEO: it can&apos;t be changed unless the CEO returns it. See it with the contract on the{' '}
         <Link href={back}>Employment tab</Link>.
       </Empty>
     );
@@ -61,7 +62,7 @@ async function EditRaise({ params }: { params: Promise<{ id: string; contractId:
     body = (
       <div className="max-w-3xl space-y-4">
         <p className="text-sm text-muted">
-          Draft of version {raise.version} ({raise.number}), a {pendingKindLabel(change).toLowerCase()} of version {current.version} ({current.number}). Once
+          Draft of {withCodeInBrackets(`version ${raise.version}`, raise.number)}, a {pendingKindLabel(change).toLowerCase()} of {withCodeInBrackets(`version ${current.version}`, current.number)}. Once
           saved, send it to the CEO with the contract on the Employment tab.
         </p>
         {returned && (

@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { ApiError, apiFetch } from '@/lib/api';
-import { apiReason, textResponse as text } from '../../../templates/file-response';
+import { apiReason, textResponse as text } from '../../../organization/templates/file-response';
 import { apiPayslipsZipPath, passZipOn, PAYSLIPS_ZIP_NAME } from '../../payslips';
 
 // Serves all of a paid run's English payslips as one ZIP from the API under the web domain, with the caller's session:

@@ -11,13 +11,15 @@ import type { NotificationInput } from './notifications.service.js';
  * The kinds of request decided as leave is (the direct manager or the person in charge, then HR), working from home
  * among them (owner, 21 October 2026: "Manager, then HR").
  */
-export type LeaveLikeKind = 'leave' | 'permission' | 'correction' | 'wfh';
+export type LeaveLikeKind = 'leave' | 'permission' | 'correction' | 'wfh' | 'od';
 
 const NAMES: Record<LeaveLikeKind | 'reimbursement', { waiting: string; noun: string }> = {
   leave: { waiting: 'A leave request is waiting for you', noun: 'Leave request' },
   permission: { waiting: 'A permission request is waiting for you', noun: 'Permission request' },
   correction: { waiting: 'An attendance correction is waiting for you', noun: 'Attendance correction' },
   wfh: { waiting: 'A work from home request is waiting for you', noun: 'Work from home request' },
+  // official duty (owner, 23 October 2026: "Manager, then HR")
+  od: { waiting: 'An official duty request is waiting for you', noun: 'Official duty request' },
   reimbursement: { waiting: 'A reimbursement claim is waiting for you', noun: 'Reimbursement claim' },
 };
 
@@ -37,14 +39,15 @@ export function decidedText(kind: LeaveLikeKind, decision: 'approved' | 'rejecte
   return { kind: `${kind}_decided`, title: `${NAMES[kind].noun} ${decision}`, body: when, link };
 }
 
-const CANCELLED_BY_HR: Record<'leave' | 'permission' | 'wfh', string> = {
+const CANCELLED_BY_HR: Record<'leave' | 'permission' | 'wfh' | 'od', string> = {
   leave: 'Leave cancelled by HR',
   permission: 'Permission cancelled by HR',
   wfh: 'Work from home day cancelled by HR',
+  od: 'Official duty cancelled by HR',
 };
 
 /** HR cancelled the employee's approved leave, permission or work from home day. */
-export function cancelledByHrText(kind: 'leave' | 'permission' | 'wfh', when: string, link: string): NotificationInput {
+export function cancelledByHrText(kind: 'leave' | 'permission' | 'wfh' | 'od', when: string, link: string): NotificationInput {
   return { kind: `${kind}_decided`, title: CANCELLED_BY_HR[kind], body: when, link };
 }
 
@@ -179,6 +182,8 @@ export const TEXT_KINDS: readonly NotificationKind[] = [
   'kpi_ready_to_sign',
   'wfh_waiting',
   'wfh_decided',
+  'od_waiting',
+  'od_decided',
 ];
 
 // ---------- custody (Assets, step 3, 21 October 2026) ----------

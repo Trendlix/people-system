@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import {
   CHECK_IN_SOURCES,
   monthDays,
+  officialDutyDays,
   OWN_SOURCES,
   shiftWorkHours,
   type AttendanceDayStatus,
@@ -15,6 +16,7 @@ import { fromTimeOfDay } from '../common/time-of-day.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { employedIn } from '../payroll/adjustments/people.js';
 import { firstDay, lastDay } from '../payroll/months.js';
+import { approvedOds, dutyDaysOf } from '../official-duty/od-days.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 // A person's month of attendance days from every source (owner, 19 October 2026: "Check-in through the system (phone or
@@ -143,7 +145,7 @@ export class AttendanceDaysService {
     if (!ids.length) return out;
     const [first, last] = [firstDay(month), lastDay(month)];
     const range = { gte: toDateOnly(first), lte: toDateOnly(last) };
-    const [kept, employments, holidays, leave, checkIns] = await Promise.all([
+    const [kept, employments, holidays, leave, checkIns, ods] = await Promise.all([
       rows ?? db.attendanceDay.findMany({ where: { employeeId: { in: [...ids] }, date: range }, orderBy: { date: 'asc' }, select: DAY_SELECT }),
       db.employment.findMany({ where: { employeeId: { in: [...ids] }, ...employedIn(month) }, orderBy: { joinDate: 'desc' }, select: EMPLOYMENT_SELECT }),
       db.holiday.findMany({ where: { date: range }, select: { date: true } }),
@@ -157,12 +159,15 @@ export class AttendanceDaysService {
         where: { employeeId: { in: [...ids] }, source: { in: [...CHECK_IN_SOURCES] }, date: { lte: range.lte } },
         _min: { date: true },
       }),
+      // their official duties approved in the month (owner, 23 October 2026: "OD counted as attended")
+      approvedOds(db, ids, first, last),
     ]);
     const employmentOf = new Map<string, EmploymentRow>();
     for (const e of employments) if (!employmentOf.has(e.employeeId)) employmentOf.set(e.employeeId, e);
     const rowsOf = new Map<string, MonthDay[]>();
     for (const d of kept) if (ids.includes(d.employeeId)) rowsOf.set(d.employeeId, [...(rowsOf.get(d.employeeId) ?? []), monthDayOf(d)]);
     const holidayDays = holidays.map((h) => fromDateOnly(h.date));
+    const holidaySet = new Set(holidayDays);
     const firstCheckIn = new Map(checkIns.map((c) => [c.employeeId, c._min.date ? fromDateOnly(c._min.date) : null]));
 
     for (const id of ids) {
@@ -173,16 +178,17 @@ export class AttendanceDaysService {
         for (let d = fromDateOnly(l.startDate); d <= fromDateOnly(l.endDate); d = addDays(d, 1)) if (d >= first && d <= last) leaveDays.push(d);
       }
       const shift = employment?.shift ? shiftTimesOf(employment.shift) : null;
-      const days = monthDays(own, {
-        month,
-        today,
-        checkInFrom: firstCheckIn.get(id) ?? null,
-        workingDays: shift?.workingDays ?? null,
-        holidays: holidayDays,
-        leaveDays,
-        employedFrom: employment ? fromDateOnly(employment.joinDate) : null,
-        employedTo: employment ? fromDateOnly(employment.endDate) : null,
-      }).map((d) => ({ ...d, importId: 'importId' in d ? (d.importId as string | null) : null, flags: [...(d.flags ?? [])] }));
+      const checkInFrom = firstCheckIn.get(id) ?? null;
+      const employedFrom = employment ? fromDateOnly(employment.joinDate) : null;
+      const employedTo = employment ? fromDateOnly(employment.endDate) : null;
+      const base = monthDays(own, { month, today, checkInFrom, workingDays: shift?.workingDays ?? null, holidays: holidayDays, leaveDays, employedFrom, employedTo });
+      // an approved official duty's days attended for its hours, a day gone by without a press too (23 October 2026)
+      const duties = dutyDaysOf(ods, id, shift, holidaySet, first, last);
+      const days = officialDutyDays(base, duties, { today, checkInFrom, employedFrom, employedTo, shift }).map((d) => ({
+        ...d,
+        importId: 'importId' in d ? (d.importId as string | null) : null,
+        flags: [...(d.flags ?? [])],
+      }));
       if (!employment && !days.length) continue;
       out.set(id, {
         employeeId: id,

@@ -3,7 +3,7 @@ import { EMPLOYMENT_TYPES, LABELS, WORK_PATTERN_LABELS } from '@trendlix/shared'
 import { Shown } from '@/components/hidden';
 import { Select } from '@/components/select';
 import { formatDate } from '@/lib/format';
-import { isHidden, labelOf } from '@/lib/hidden';
+import { isHidden, joinShown, labelOf } from '@/lib/hidden';
 import type { ContractListItem } from '@/lib/types';
 import { ContractStatusBadge, termLabel } from '../employees/[id]/contracts/contract-section';
 import { allowancesLabel, formatEgp, hourlyTerms, payLabel } from '../employees/[id]/contracts/salary';
@@ -142,13 +142,13 @@ function ContractRow({ contract: c, salary }: { contract: ContractListItem; sala
         <Link href={contractHref(c.employee.id)} className="font-semibold">
           {c.employee.fullNameEn}
         </Link>
-        <div className="text-xs text-muted">
-          <span className="tabular-nums">{c.employee.employeeCode}</span>
-          {!c.employmentCurrent && ' · Past employment'}
-        </div>
+        {/* the code, hidden from a developer (23 October 2026), left out */}
+        <div className="text-xs text-muted tabular-nums">{joinShown([c.employee.employeeCode, !c.employmentCurrent && 'Past employment'])}</div>
       </td>
       <td className="whitespace-nowrap">
-        <span className="tabular-nums">{c.number}</span>
+        <span className="tabular-nums">
+          <Shown text={c.number} />
+        </span>
         <div className="text-xs text-muted">
           Version {c.version}
           {/* a trainee's or an intern's agreement converted to full-time (19 October 2026) */}

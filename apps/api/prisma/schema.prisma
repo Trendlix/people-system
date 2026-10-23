@@ -73,6 +73,7 @@ model User {
   interviewsMarked   Interview[]                @relation("InterviewOutcome")
   suggestionsMade    JobApplication[]           @relation("ApplicationSuggestion")
   recruitmentSettingsSet RecruitmentSettings[]  @relation("RecruitmentSettingsChange")
+  mailSettingsSet        MailSettings[]         @relation("MailSettingsChange") // the email settings, when this user saved them last
   onboardingDefaultsSet  OnboardingDefault[]    @relation("OnboardingDefaultChange")
   onboardingOpened       OnboardingChecklist[]  @relation("OnboardingOpening")
   onboardingCompleted    OnboardingChecklist[]  @relation("OnboardingCompletion")
@@ -118,6 +119,8 @@ model User {
   permissionSteps    PermissionRequestStep[]    @relation("PermissionStepActor") // steps of permission requests this user took
   wfhRequestsMade    WfhRequest[]               @relation("WfhRequestCreation") // work from home days this user asked for, recorded as HR or imported (21 October 2026)
   wfhSteps           WfhRequestStep[]           @relation("WfhStepActor") // steps of work from home requests this user took
+  odRequestsMade     OdRequest[]                @relation("OdRequestCreation") // official duties this user asked for (23 October 2026)
+  odSteps            OdRequestStep[]            @relation("OdStepActor") // steps of official duty requests this user took
   attendancePunches  AttendancePunch[]          @relation("AttendancePunchBy") // the presses of Check in and Check out this user made
   correctionsMade    AttendanceCorrection[]     @relation("AttendanceCorrectionCreation") // attendance corrections this user asked for, or made directly as HR
   correctionSteps    AttendanceCorrectionStep[] @relation("AttendanceCorrectionStepActor") // steps of attendance corrections this user took
@@ -168,6 +171,8 @@ model User {
   candidateMatchesDecided CandidateMatch[]         @relation("CandidateMatchDecision")
   candidateMergesMade     CandidateMerge[]         @relation("CandidateMergeBy")
   candidateMergesUndone   CandidateMerge[]         @relation("CandidateMergeUndo")
+  // access follows the contract (owner, 23 October 2026): the 7 days' grace this user gave
+  accessGracesGiven       AccessGrace[]            @relation("AccessGraceGrantedBy")
 
   @@map("users")
 }
@@ -406,6 +411,35 @@ model Company {
   updatedAt           DateTime  @updatedAt @map("updated_at") @db.Timestamptz
 
   @@map("company")
+}
+
+// The company's email (SMTP) settings (one row, id 1; owner, 23 October 2026: "why dont we add SMTP setup in the
+// organization setup"): Organization → Email Settings, a Super Admin's only. Used while switched on and complete; else
+// the server's deploy/.env, as before. The password is kept encrypted (AES-256-GCM, a key derived from JWT_SECRET:
+// apps/api/src/mail/mail-secret.ts), never returned; password_key_id says which key sealed it, so the page can say it
+// must be entered again without opening it. Lists stored as text take their values from packages/shared mail-settings.ts.
+model MailSettings {
+  id              Int       @id @default(1)
+  provider        String    @default("other") // MAIL_PROVIDERS: google, microsoft, zoho, other
+  host            String?
+  port            Int       @default(587)
+  security        String    @default("starttls") // MAIL_SECURITIES: starttls, ssl, none
+  username        String?
+  passwordEnc     String?   @map("password_enc") // "v1:iv:tag:ciphertext", base64url; RESTRICTED: never returned
+  passwordKeyId   String?   @map("password_key_id") // a fingerprint of the key that sealed it, never the key
+  fromName        String?   @map("from_name")
+  fromAddress     String?   @map("from_address")
+  replyTo         String?   @map("reply_to")
+  enabled         Boolean   @default(false)
+  updatedById     String?   @map("updated_by") @db.Uuid
+  updatedBy       User?     @relation("MailSettingsChange", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedAt       DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+  // the last "Send a test email": when, whether it went, and the result in words
+  lastTestAt      DateTime? @map("last_test_at") @db.Timestamptz
+  lastTestOk      Boolean?  @map("last_test_ok")
+  lastTestMessage String?   @map("last_test_message")
+
+  @@map("mail_settings")
 }
 
 // ---------- organisation ----------
@@ -670,6 +704,8 @@ model Employee {
   permissionsToDecide        PermissionRequest[]    @relation("PermissionManager") // the permission requests this person decided, or decides, as the requester's direct manager
   wfhDays                    WfhRequest[]           @relation("WfhRequester") // the work from home days this person asked for, or HR recorded for them (21 October 2026)
   wfhToDecide                WfhRequest[]           @relation("WfhManager") // the work from home requests this person decided, or decides, as the approver in charge
+  odRequests                 OdRequest[]            @relation("OdRequester") // the official duties this person asked for (23 October 2026)
+  odToDecide                 OdRequest[]            @relation("OdManager") // the official duty requests this person decided, or decides, as the approver in charge
   leaveBalances              LeaveBalanceYear[] // each year's annual leave: carried in, closed
   leaveAdjustments           LeaveAdjustment[] // HR's changes to the annual leave balance
   leading                    Department[]           @relation("DepartmentHead") // the departments this person heads and the teams they lead
@@ -680,6 +716,17 @@ model Employee {
   assetsHeld                 Asset[]                 @relation("AssetHolder") // the assets this person holds in custody now (21 October 2026)
   custodyRecords             CustodyRecord[]         @relation("CustodyEmployee") // the assets handed over to this person, record by record
   custodyHandedOver          CustodyRecord[]         @relation("CustodyHandedOverBy") // the custody records this person handed over
+  // access follows the contract (owner, 23 October 2026: "Active - Grace - Hold - No Access"; packages/shared
+  // employee-access.ts): the standing the sweep recorded last (ACCESS_STANDINGS; none: not recorded yet) and since when,
+  // so each change is audited and told once; the request's own standing is always read from the contract
+  accessStanding             String?                 @map("access_standing")
+  accessStandingAt           DateTime?               @map("access_standing_at") @db.Timestamptz
+  accessGraces               AccessGrace[] // the 7 days' grace HR gave them, one a contract gap
+  // no contract entered (owner, 23 October 2026: "Hold them after 7 days"): the day the sweep first recorded their
+  // account switched on without a signed contract ever in force (Cairo); on Hold from the 8th day after unless one is
+  // entered. Cleared once a signed contract starts (or they leave); kept while their account is off, so turning it off
+  // and on never starts the 7 days again
+  noContractSince            DateTime?               @map("no_contract_since") @db.Date
 
   @@map("employees")
 }
@@ -742,12 +789,14 @@ model Employment {
   leaveRequests    LeaveRequest[] // the leave taken under it
   permissions      PermissionRequest[] // the permission hours taken under it
   wfhDays          WfhRequest[] // the work from home days under it (21 October 2026)
+  odRequests       OdRequest[] // the official duties under it (23 October 2026)
   corrections      AttendanceCorrection[] // the attendance corrections of its days
   leaveBalances    LeaveBalanceYear[] // each year's annual leave under it
   leaveAdjustments LeaveAdjustment[]
   kpiScorecards    KpiScorecard[] // the KPI scorecards opened under it (21 October 2026)
   offboarding            OffboardingCase? // its offboarding case, once it is ending (22 October 2026)
   onboarding             OnboardingChecklist? // its onboarding checklist (22 October 2026)
+  accessGraces           AccessGrace[] // the grace given while no contract was entered in it (23 October 2026)
 
   @@index([employeeId])
   @@index([departmentId])
@@ -951,6 +1000,7 @@ model Contract {
   newGrade            Grade?              @relation("RaiseGrade", fields: [newGradeId], references: [id], onDelete: Restrict)
   form2From           DateTime?           @map("form2_from") @db.Date // Form 2 filed: the insured wage follows the new pay from this 1st of a month
   raiseRequest        RaiseRequest? // the request it was prepared from, if any
+  accessGraces        AccessGrace[] // the grace given in the gap its end opened (23 October 2026)
 
   @@unique([employmentId, version])
   @@index([status, endDate])
@@ -2733,6 +2783,63 @@ model WfhRequestStep {
   @@map("wfh_request_steps")
 }
 
+// An official duty, OD (owner, 23 October 2026: "Official duty (OD) requests. The plan has OD as a third attendance mode
+// beside Office and WFH, needing an approved request"; packages/shared official-duty.ts): work for the company away from
+// the office, a working day, not leave. One day or several in a row, a full day or part of one (from–to times, one day
+// only), where and why; asked ahead or up to 3 days after ("Ahead or up to 3 days after"), `late` when asked after its
+// first day; decided as a leave request is ("Manager, then HR": the same statuses, stages and steps), a C-level person's
+// HR stage by the CEO. Approved, its days count as attended for its hours, and a press within it is taken from anywhere
+// ("Check in from anywhere"), marked with it (AttendancePunch.odRequestId).
+model OdRequest {
+  id            String            @id @default(uuid()) @db.Uuid
+  employeeId    String            @map("employee_id") @db.Uuid
+  employee      Employee          @relation("OdRequester", fields: [employeeId], references: [id], onDelete: Cascade)
+  employmentId  String            @map("employment_id") @db.Uuid
+  employment    Employment        @relation(fields: [employmentId], references: [id], onDelete: Cascade)
+  startDate     DateTime          @map("start_date") @db.Date
+  endDate       DateTime          @map("end_date") @db.Date
+  fullDay       Boolean           @default(true) @map("full_day")
+  fromTime      DateTime?         @map("from_time") @db.Time(0) // part of a day only
+  toTime        DateTime?         @map("to_time") @db.Time(0)
+  place         String // where it is: free text
+  reason        String
+  late          Boolean           @default(false) // asked after its first day (Cairo)
+  status        String // LEAVE_STATUSES: with_manager, with_hr, approved, rejected, cancelled
+  managerId     String?           @map("manager_id") @db.Uuid
+  manager       Employee?         @relation("OdManager", fields: [managerId], references: [id], onDelete: Restrict)
+  approverRole  String?           @map("approver_role") // APPROVER_ROLES, set exactly when managerId is
+  rejectedStage String?           @map("rejected_stage") // LEAVE_STAGES: manager, hr
+  rejectReason  String?           @map("reject_reason")
+  createdById   String?           @map("created_by") @db.Uuid
+  createdBy     User?             @relation("OdRequestCreation", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime          @updatedAt @map("updated_at") @db.Timestamptz
+  steps         OdRequestStep[]
+  punches       AttendancePunch[]
+
+  @@index([employeeId, startDate])
+  @@index([status])
+  @@index([managerId])
+  @@index([startDate, endDate])
+  @@map("od_requests")
+}
+
+// Each step of an official duty request, in the order taken (OD_STEP_KINDS), as a leave request's: each decision with its comment.
+model OdRequestStep {
+  id        BigInt    @id @default(autoincrement())
+  requestId String    @map("request_id") @db.Uuid
+  request   OdRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  kind      String
+  decision  String? // LEAVE_DECISIONS, on the stages' decisions only
+  comment   String?
+  actorId   String?   @map("actor_id") @db.Uuid
+  actor     User?     @relation("OdStepActor", fields: [actorId], references: [id], onDelete: SetNull)
+  at        DateTime  @default(now()) @db.Timestamptz
+
+  @@index([requestId])
+  @@map("od_request_steps")
+}
+
 // Attendance files read on a draft payroll run (owner, 19 October 2026: attendance runs in Zoho People today, "Import
 // Zoho now, replace it later"): Zoho's daily attendance entries, one file with everyone or many, kept until applied as
 // each person's days (never an address: each check-in's place is kept as office or remote) and who HR matched them to.
@@ -2881,6 +2988,10 @@ model AttendancePunch {
   // address
   locationName   String?  @map("location_name")
   officeNetwork  String?  @map("office_network")
+  // pressed within an approved official duty (owner, 23 October 2026: "Check in from anywhere"): its request; the office's
+  // location rule and network lock didn't apply to it
+  odRequestId    String?    @map("od_request_id") @db.Uuid
+  odRequest      OdRequest? @relation(fields: [odRequestId], references: [id], onDelete: SetNull)
   source         String   @default("system") // system; device for a fingerprint or face device, later
   userId         String?  @map("user_id") @db.Uuid
   user           User?    @relation("AttendancePunchBy", fields: [userId], references: [id], onDelete: SetNull)
@@ -3834,4 +3945,32 @@ model AccessLinkRequest {
   @@index([kind, email, at])
   @@index([kind, ip, at])
   @@map("access_link_requests")
+}
+
+// A 7 days' grace (owner, 23 October 2026: "Access should be on hold with a 7 days grace period one time granted by the
+// hr"; asked, "Once per contract gap"): full access while no contract is in force, to the end of `until` (the 7th day
+// after it was given, Cairo time), given by HR to someone on Hold. Its gap is the contract version whose end opened it
+// (the signed one that ended last): one grace a gap (unique), never extended; a later gap (a new contract that ran out)
+// allows another. With no contract entered (owner, 23 October 2026: "Hold them after 7 days") the gap is the employment
+// with no signed contract (`contract_id` none, `employment_id` set), or, never employed, the person (both none: one, a
+// partial unique index in the migration).
+model AccessGrace {
+  id           String      @id @default(uuid()) @db.Uuid
+  employeeId   String      @map("employee_id") @db.Uuid
+  employee     Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  contractId   String?     @map("contract_id") @db.Uuid
+  contract     Contract?   @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  employmentId String?     @map("employment_id") @db.Uuid
+  employment   Employment? @relation(fields: [employmentId], references: [id], onDelete: Cascade)
+  until       DateTime  @db.Date
+  grantedById String?   @map("granted_by") @db.Uuid
+  grantedBy   User?     @relation("AccessGraceGrantedBy", fields: [grantedById], references: [id], onDelete: SetNull)
+  grantedAt   DateTime  @default(now()) @map("granted_at") @db.Timestamptz
+  // "Your grace ends tomorrow" sent, once
+  remindedAt  DateTime? @map("reminded_at") @db.Timestamptz
+
+  @@unique([employeeId, contractId])
+  @@unique([employeeId, employmentId])
+  @@index([until])
+  @@map("access_graces")
 }

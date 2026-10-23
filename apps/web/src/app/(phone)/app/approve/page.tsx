@@ -8,6 +8,7 @@ import { decidesEndings, getOrNull, PENDING_CHANGE_REQUESTS, PENDING_ENDINGS } f
 import { decidesRaises, PENDING_RAISES } from '../../../(app)/approvals/raises';
 import { loadWaitingCorrections } from '../../../(app)/attendance/corrections/data';
 import { loadWaitingWfh } from '../../../(app)/attendance/wfh/data';
+import { loadWaitingOd } from '../../../(app)/attendance/official-duty/data';
 import { loadWaitingHomes } from '../../../(app)/home-locations/data';
 import { seesHomes } from '../../../(app)/home-locations/home-locations';
 import { loadWaitingScorecards } from '../../../(app)/kpis/data';
@@ -31,7 +32,7 @@ import { waitingSections, waitingTotal } from './waiting';
 // approved by the HR and CEO") at the caller's step, for HR, the CEO and the Super Admin. KPI scorecards (owner, 21
 // October 2026: "Self, manager, HR, sign-off") at the caller's step on someone else's: the scoring, HR's calibration, the
 // manager's sign-off (their own are on Home and My Requests). Work from home requests (owner, 21 October 2026:
-// "Manager, then HR") at the caller's step, as the leave is.
+// "Manager, then HR") at the caller's step, as the leave is; official duty requests (owner, 23 October 2026) the same.
 
 export const metadata: Metadata = { title: 'To Approve · Trendlix People' };
 
@@ -65,10 +66,11 @@ async function Waiting({ searchParams }: { searchParams: PageProps<'/app/approve
   if (!decidesSomething(user)) {
     return <div className="card px-4 py-8 text-center text-sm text-muted">Nothing here is yours to decide: requests wait here for those who decide them.</div>;
   }
-  const [leave, permissions, wfh, claims, corrections, withHr, payRaises, homes, scorecards] = await Promise.all([
+  const [leave, permissions, wfh, od, claims, corrections, withHr, payRaises, homes, scorecards] = await Promise.all([
     loadWaitingLeave(),
     loadWaitingPermissions(),
     loadWaitingWfh(),
+    loadWaitingOd(),
     loadWaitingClaims(),
     loadWaitingCorrections(),
     countsRaiseRequests(user) ? loadRaiseRequests('with_hr') : null,
@@ -81,6 +83,7 @@ async function Waiting({ searchParams }: { searchParams: PageProps<'/app/approve
     leave: listOf(leave),
     permissions: listOf(permissions),
     wfh: listOf(wfh),
+    od: listOf(od),
     claims: listOf(claims),
     corrections: listOf(corrections),
     raiseRequests: withHr === null ? undefined : withHr.kind === 'ok' ? withHr.value.filter((r: RaiseRequest) => waitsForYou(user, r)) : withHr.kind === 'failed' ? null : [],

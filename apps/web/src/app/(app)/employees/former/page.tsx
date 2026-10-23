@@ -10,6 +10,7 @@ import { Empty, Loading } from '../../organization/ui';
 import { loadFormer, offboardingNotLoaded } from '../../offboarding/data';
 import { caseHref, FORMER_EMPLOYEES_PATH, managesOffboarding, OFFBOARDING_PATH, readFormerQuery, REHIRE_STYLE, STATUS_STYLE, type FormerQuery } from '../../offboarding/offboarding';
 import { todayInCairo } from '../ui';
+import { shownCode } from '@/lib/hidden';
 
 // Former Employees (owner, 21 October 2026, with the Employees list: "when an employee resigns or contract ends with no
 // renewal, where will the data be stored? will it be another tab?"; 22 October 2026, the full module): everyone who
@@ -112,7 +113,7 @@ async function List({ searchParams }: { searchParams: PageProps<'/employees/form
                     <Link href={`/employees/${r.employee.id}`} className="font-semibold">
                       {r.employee.fullNameEn}
                     </Link>
-                    <div className="text-xs text-muted">{r.employee.employeeCode}</div>
+                    {shownCode(r.employee.employeeCode) && <div className="text-xs text-muted">{r.employee.employeeCode}</div>}
                   </td>
                   <td className="whitespace-nowrap tabular-nums">{formatDate(r.endDate)}</td>
                   {r.restricted ? (

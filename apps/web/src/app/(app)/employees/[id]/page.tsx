@@ -13,6 +13,8 @@ import { OnboardingBanner } from '../../onboarding/profile-banner';
 import { loadProfileOrCard } from '../data';
 import { askedTab, BackLink, Loading, PROFILE_TABS, profileHref, seesEveryone, todayInCairo, type ProfileTabKey } from '../ui';
 import { AccessTab } from './access/access-tab';
+import { AttendanceHistoryTab } from './attendance/attendance-history-tab';
+import { readHistoryQuery, seesAttendanceHistory } from './attendance/history';
 import { BasicTab, EducationTab } from './details-tabs';
 import { EmployeeCardView } from './employee-card';
 import { EmployeeFile, EmployeeFileLoading } from './employee-file';
@@ -35,7 +37,9 @@ import { ProfileTabs } from './profile-tabs';
 // Admin (not HR) decides their change requests. Custody (Assets step 3; owner, 21 October 2026: "Yes, My custody"): on
 // the person's own profile only, once they have a custody record, what they hold and their records, read only. Access
 // (owner, 22 October 2026: "any active employee with active contract should have access", managed "On the employee
-// profile"): their sign-in, for HR, an Admin and a Super Admin; the person sees their own.
+// profile"): their sign-in, for HR, an Admin and a Super Admin; the person sees their own. Attendance (owner, 23 October
+// 2026: "Attendance history on the profile. Since joining: on-time %, average check-in time, late days by weekday and
+// trends; an Excel export"; "HR, CEO and Finance only"): their history, for HR, the CEO, Finance and the Super Admin.
 
 type Query = Record<string, string | string[] | undefined>;
 
@@ -67,7 +71,8 @@ async function Profile({ params, searchParams }: { params: Promise<{ id: string 
       (t.key !== 'documents' || p.access.identity) &&
       (t.key !== 'insurance' || hasRole(user, 'hr', 'admin')) &&
       (t.key !== 'custody' || custody !== null) &&
-      (t.key !== 'access' || seesAccess),
+      (t.key !== 'access' || seesAccess) &&
+      (t.key !== 'attendance' || seesAttendanceHistory(user)),
   );
   const visible = new Set<ProfileTabKey>(tabs.map((t) => t.key));
   const asked = askedTab(one(query.tab));
@@ -109,6 +114,11 @@ async function Profile({ params, searchParams }: { params: Promise<{ id: string 
             <InsuranceTab profile={p} />
           ) : tab === 'custody' && custody ? (
             <MyCustody view={custody} />
+          ) : tab === 'attendance' ? (
+            // their attendance since joining (23 October 2026): loads on its own, the period from the address
+            <Suspense fallback={<Loading />}>
+              <AttendanceHistoryTab profile={p} query={readHistoryQuery(query)} />
+            </Suspense>
           ) : tab === 'access' ? (
             <Suspense fallback={<Loading />}>
               <AccessTab profile={p} />

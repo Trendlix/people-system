@@ -1,4 +1,4 @@
-import type { Role } from '@trendlix/shared';
+import { HOLD_PATH, type Role } from '@trendlix/shared';
 import { decidesForTeam } from '../../../components/nav';
 import { hasRole } from '../../../lib/roles';
 import { APP_PATHS } from '../../../lib/surface';
@@ -8,7 +8,7 @@ import { APP_PATHS } from '../../../lib/surface';
 // Payslips, and To Approve for those who decide something there. Hiding a tab is a convenience: the API checks every
 // request, as on the site. Pure code, tested; relative imports, as vitest doesn't know the "@/" paths.
 
-export type AppTabKey = 'home' | 'requests' | 'attendance' | 'payslips' | 'approve';
+export type AppTabKey = 'home' | 'requests' | 'attendance' | 'payslips' | 'approve' | 'check_in';
 
 export interface AppTab {
   key: AppTabKey;
@@ -25,7 +25,13 @@ export const APP_TABS: readonly AppTab[] = [
   { key: 'approve', href: APP_PATHS.approve, label: 'To Approve' },
 ];
 
-type TabUser = { roles: readonly Role[]; leads?: boolean };
+/**
+ * The one tab of someone whose access is on hold (owner, 23 October 2026: on Hold "Check-in/out only", web and app): the
+ * tabs collapse to it, the Hold page with the check-in panel.
+ */
+export const CHECK_IN_TAB: AppTab = { key: 'check_in', href: HOLD_PATH, label: 'Check-in' };
+
+type TabUser = { roles: readonly Role[]; leads?: boolean; hold?: boolean };
 
 /**
  * Whether someone decides others' requests on the phone (To Approve): a direct manager, a department's head or a team's
@@ -35,13 +41,15 @@ type TabUser = { roles: readonly Role[]; leads?: boolean };
  */
 export const decidesSomething = (user: TabUser): boolean => decidesForTeam(user) || hasRole(user, 'hr', 'ceo', 'finance');
 
-/** The tabs this user gets; who it is couldn't be read (null): the four everyone has. */
+/** The tabs this user gets; who it is couldn't be read (null): the four everyone has; on Hold, Check-in alone. */
 export function tabsFor(user: TabUser | null): AppTab[] {
+  if (user?.hold) return [CHECK_IN_TAB];
   return APP_TABS.filter((t) => t.key !== 'approve' || (!!user && decidesSomething(user)));
 }
 
 /** The tab a page is under: Home on /app alone, each other on its path and the pages under it; null for none. */
 export function activeTab(pathname: string): AppTabKey | null {
+  if (pathname === HOLD_PATH) return 'check_in';
   if (pathname === APP_PATHS.home || pathname === `${APP_PATHS.home}/`) return 'home';
   const tab = APP_TABS.find((t) => t.key !== 'home' && (pathname === t.href || pathname.startsWith(`${t.href}/`)));
   return tab?.key ?? null;

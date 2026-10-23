@@ -1,4 +1,4 @@
-import { KPI_SETTING_LABELS, kpiMonthName, kpiPillarsText, type KpiFrameworkView, type KpiSettingsView, type KpiTemplateRow } from '@trendlix/shared';
+import { kpiMonthName, kpiPillarsText, type KpiFrameworkView, type KpiTemplateRow } from '@trendlix/shared';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
@@ -6,32 +6,22 @@ import { KPI_API, KPI_PATHS } from '@/lib/kpi-paths';
 import { getCurrentUser } from '@/lib/session';
 import type { SessionUser } from '@/lib/types';
 import { todayInCairo } from '../../employees/ui';
-import { NotLoaded, SettingRow } from '../../organization/payroll/section';
-import { dayOfMonth } from '../../organization/payroll/settings';
+import { NotLoaded } from '../../organization/payroll/section';
 import { Empty, Loading } from '../../organization/ui';
-import { draftAllKpiTemplates, publishKpiDrafts, updateKpiSettings } from './actions';
+import { draftAllKpiTemplates, publishKpiDrafts } from './actions';
 import { loadKpi } from './data';
 import { DraftAllForm } from './draft-all';
 import { oldPillarsBanner, ownPillarsCountText, pillarRowsOf, pillarsMonthOf } from './framework';
-import { KpiSettingsForm } from './settings-form';
 import { TemplatesTable } from './templates-table';
-import {
-  buildsKpiTemplates,
-  draftAllConfirmText,
-  groupTemplateRows,
-  jobTitlesLabel,
-  readsKpiTemplates,
-  SETTING_KEYS,
-  settingsChangedText,
-  templateCounts,
-} from './templates';
+import { buildsKpiTemplates, draftAllConfirmText, groupTemplateRows, jobTitlesLabel, readsKpiTemplates, templateCounts } from './templates';
 
 // KPI Templates, under KPIs in the sidebar (owner, 21 October 2026: "Templates: HR"; "Full framework per role"): every
 // job title, by department and team, with its KPI template as it stands: the version in force (the one the scorecards
 // opened now use), one published that opens from next month, its draft, how many versions and the people under it who
-// get a scorecard; each opening its builder. Below, the KPI settings: the deadlines of each month's steps ("a small KPI
-// settings section"), HR's and the Super Admin's to change. HR and the Super Admin have it in the sidebar; the CEO and
-// an Admin, whom the API answers too, may read it. The API checks every request again.
+// get a scorecard; each opening its builder. The KPI settings, the deadlines of each month's steps ("a small KPI
+// settings section"), were below until they moved to Organization → KPI Deadlines (owner, 23 October 2026: "Check-in
+// Setup, KPI Pillars and deadlines, Recruitment and checklists, Templates"). HR and the Super Admin have it in the
+// sidebar; the CEO and an Admin, whom the API answers too, may read it. The API checks every request again.
 // The KPI role library (owner, 21 October 2026: "can you add templetes for all departments and job roles"): for HR and
 // the Super Admin, "Draft templates for every job title" above the list, and "Publish selected drafts" on it.
 // The KPI pillars (owner, 21 October 2026: "am i able to edit the pillars of the KPIs?", "Fully flexible"): in KPI
@@ -128,40 +118,6 @@ async function KpiPillarsCard() {
   );
 }
 
-// ---------- the KPI settings ----------
-
-const SETTINGS_INTRO =
-  'Each month’s scorecard opens on the 1st of the next month (October’s on the 1st of November), and each step is due by a day of that month. A self-rating not sent by its day doesn’t hold up the manager, and a scorecard not signed by the sign-off day is final anyway; each is noted on it. One reminder goes the day before each deadline.';
-
-async function KpiSettingsSection({ user }: { user: SessionUser }) {
-  const loaded = await loadKpi<KpiSettingsView>(KPI_API.settings);
-  const changed = loaded.kind === 'ok' ? settingsChangedText(loaded.value) : null;
-  return (
-    <section id="kpi-settings" aria-labelledby="kpi-settings-heading" className="card scroll-mt-6 p-6">
-      <h2 id="kpi-settings-heading" className="text-lg font-semibold">
-        KPI Settings
-      </h2>
-      <p className="mt-1 max-w-3xl text-sm text-muted">{SETTINGS_INTRO}</p>
-      <div className="mt-5">
-        {loaded.kind !== 'ok' ? (
-          <NotLoaded what="the KPI settings" loaded={loaded} />
-        ) : buildsKpiTemplates(user) ? (
-          <KpiSettingsForm action={updateKpiSettings} settings={loaded.value} />
-        ) : (
-          <dl>
-            {SETTING_KEYS.map((k) => (
-              <SettingRow key={k} label={KPI_SETTING_LABELS[k]}>
-                {dayOfMonth(loaded.value[k])} of the next month
-              </SettingRow>
-            ))}
-          </dl>
-        )}
-        {changed && <p className="mt-4 text-xs text-muted">{changed}</p>}
-      </div>
-    </section>
-  );
-}
-
 // ---------- the page ----------
 
 async function KpiTemplates() {
@@ -177,7 +133,8 @@ async function KpiTemplates() {
           {buildsKpiTemplates(user)
             ? ' Draft every job title at once from the KPI role library, or open a job title to build its template, from a library role, a sample or another job title’s.'
             : ''}{' '}
-          The pillars, the company’s and each department’s, are on <Link href={KPI_PATHS.pillars}>KPI Pillars</Link>.
+          The pillars, the company’s and each department’s, are on <Link href={KPI_PATHS.pillars}>KPI Pillars</Link>, and the deadlines of each
+          month’s steps on <Link href={KPI_PATHS.deadlines}>KPI Deadlines</Link>, both under Organization.
         </p>
       </div>
       <Suspense fallback={<Loading />}>
@@ -185,9 +142,6 @@ async function KpiTemplates() {
       </Suspense>
       <Suspense fallback={<Loading />}>
         <KpiPillarsCard />
-      </Suspense>
-      <Suspense fallback={<Loading />}>
-        <KpiSettingsSection user={user} />
       </Suspense>
     </div>
   );

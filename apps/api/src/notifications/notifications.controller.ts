@@ -1,6 +1,6 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query } from '@nestjs/common';
 import type { CheckInReminderView, NotificationPage, NotificationSettings } from '@trendlix/shared';
-import { CurrentActiveSession, CurrentUser } from '../auth/decorators.js';
+import { CurrentActiveSession, CurrentUser, OpenOnHold } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import type { ActiveSession } from '../auth/sessions.service.js';
 import { ListNotificationsDto, NotificationSettingsDto, RegisterPushDeviceDto, UnregisterPushDeviceDto } from './notifications.dto.js';
@@ -21,7 +21,11 @@ export class NotificationsController {
     private readonly reminders: RemindersService,
   ) {}
 
-  /** Whether the popup "You haven't checked in yet" is due now (never while viewing as someone). */
+  /**
+   * Whether the popup "You haven't checked in yet" is due now (never while viewing as someone). Open on Hold, as the
+   * phone's push registration is (owner, 23 October 2026: "Check-in/out only": the check-in reminder keeps working).
+   */
+  @OpenOnHold()
   @Get('check-in-reminder')
   checkInReminder(@CurrentUser() user: SessionUser): Promise<CheckInReminderView> {
     return this.reminders.checkInReminderFor(user);
@@ -60,6 +64,7 @@ export class NotificationsController {
   }
 
   /** The app, signed in: this phone's push token is the user's, refreshed each time the app opens. */
+  @OpenOnHold()
   @Post('push-devices')
   @HttpCode(204)
   register(@Body() dto: RegisterPushDeviceDto, @CurrentUser() user: SessionUser, @CurrentActiveSession() session: ActiveSession): Promise<void> {
@@ -67,6 +72,7 @@ export class NotificationsController {
   }
 
   /** The app, signing out: this phone stops getting notifications. */
+  @OpenOnHold()
   @Post('push-devices/unregister')
   @HttpCode(204)
   unregister(@Body() dto: UnregisterPushDeviceDto): Promise<void> {

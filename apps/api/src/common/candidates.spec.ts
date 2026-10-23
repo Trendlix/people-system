@@ -30,12 +30,13 @@ import {
   type CandidateFacts,
   type MatchSignal,
 } from '@trendlix/shared';
+import { developerDigestOf, developerTagKeyOf } from '../auth/developer-tags.js';
 
 // Candidate profiles (owner, 22 October 2026: "how to make like a profile for each candidate to store history and prevent
 // duplication? even if the same candidate applied for 2 jobs"; "Email or mobile"; "Link and show rehire"; "and their is a
 // possible match from other fields, HR decides from suggested match"): the normalizing, the joining decision (the email
 // wins, the possible duplicate pair), the suggestions' signs and their ranking, the badges and the employee's line, and
-// the Developer's "Candidate CAN-0001". Every name is invented.
+// the Developer's "Candidate 7K3Q". Every name is invented.
 
 const facts = (f: Partial<CandidateFacts>): CandidateFacts => ({ emails: [], mobiles: [], linkedins: [], portfolios: [], names: [], cvHashes: [], cvEmails: [], cvPhones: [], ...f });
 const keys = (f: Partial<CandidateFacts>) => keySetOf(candidateKeys(facts(f)));
@@ -212,19 +213,26 @@ describe('candidate profiles: the badges and the employee', () => {
 });
 
 describe('candidate profiles: the Developer role', () => {
-  it('a candidate is "Candidate CAN-0001", their name scrubbed; a search by the code is kept, by a name not', () => {
-    const people = developerPeople({ employees: [], users: [], applicants: [], offers: [], candidates: [{ id: 'c1', code: 'CAN-0001', fullName: 'Mona Invented' }] });
+  // since 23 October 2026 ("in developer view use **** instead of IDs"): a tag, the code hidden, no search for them
+  it('a candidate is "Candidate" and a tag, their name scrubbed and their code hidden; no search finds them, by a code or a name', () => {
+    const people = developerPeople(
+      { employees: [], users: [], applicants: [], offers: [], candidates: [{ id: 'c1', code: 'CAN-0001', fullName: 'Mona Invented' }] },
+      developerDigestOf(developerTagKeyOf('a test secret, not the server’s')),
+    );
     const masked = maskForDeveloper(
       { id: 'c1', code: 'CAN-0001', fullName: 'Mona Invented', emailContacts: [{ email: 'mona@mail.test' }], mobileContacts: [{ mobile: '+201012345678' }], cvs: [{ cvFileName: 'Mona Invented CV.pdf' }], timeline: [{ text: 'Mona Invented applied' }] },
       '/api/recruitment/candidates/c1',
       people,
     ) as Record<string, unknown>;
-    expect(masked.fullName).toBe('Candidate CAN-0001');
+    expect(masked.fullName).toMatch(/^Candidate [2-9A-HJ-NP-Z]{4}$/);
+    expect(masked.fullName).toBe(people.byId.get('c1')!.en);
+    expect(masked.code).toBe('••••');
     expect(JSON.stringify(masked)).not.toContain('Mona Invented');
+    expect(JSON.stringify(masked)).not.toContain('CAN-0001');
     expect(JSON.stringify(masked)).not.toContain('mona@mail.test');
     expect(JSON.stringify(masked)).not.toContain('1012345678');
-    expect(DEVELOPER_CODE_SEARCH.test('CAN-0001')).toBe(true);
-    expect(developerQuery({ q: 'CAN-0001' })).toBeNull();
-    expect(developerQuery({ q: 'Mona' })).not.toBeNull();
+    expect(DEVELOPER_CODE_SEARCH.test('CAN-0001')).toBe(false);
+    expect(developerQuery({ q: 'CAN-0001' }, '/api/recruitment/candidates')).not.toBeNull();
+    expect(developerQuery({ q: 'Mona' }, '/api/recruitment/candidates')).not.toBeNull();
   });
 });

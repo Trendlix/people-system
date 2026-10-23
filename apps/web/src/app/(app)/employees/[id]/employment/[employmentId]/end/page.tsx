@@ -7,6 +7,7 @@ import { endEmployment } from '../../../../employment-actions';
 import { loadEmployment } from '../../../../data';
 import { EditHeading, Empty, gradeLabel, Loading, profileHref, RequireHr } from '../../../../ui';
 import { EndEmploymentForm } from '../../employment-form';
+import { shownCode } from '@/lib/hidden';
 
 // Recording a past ending: an HR correction tool for an employment that already ended outside People System (e.g.
 // before it was used, when entering someone's history). It sets the end directly, without notice, the CEO's approval
@@ -59,7 +60,8 @@ async function EndEmployment({ params }: { params: Promise<{ id: string; employm
                 <ul className="list-disc pl-5">
                   {employee.reports.map((r) => (
                     <li key={r.id}>
-                      <Link href={profileHref(r.id, 'employment')}>{r.fullNameEn}</Link> ({r.employeeCode})
+                      <Link href={profileHref(r.id, 'employment')}>{r.fullNameEn}</Link>
+                      {shownCode(r.employeeCode) && ` (${r.employeeCode})`}
                     </li>
                   ))}
                 </ul>

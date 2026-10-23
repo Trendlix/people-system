@@ -1,13 +1,10 @@
-import Link from 'next/link';
 import { PAY_BASIS_LABELS } from '@trendlix/shared';
-import { formatDate } from '@/lib/format';
-import type { ContractEmployeeRef, ContractListItem, EndingSummary, ExpiringContract, ProbationEnding, SessionUser } from '@/lib/types';
+import { shownCode } from '@/lib/hidden';
+import type { ContractListItem, EndingSummary, ExpiringContract, ProbationEnding, SessionUser } from '@/lib/types';
 import { followsEndings, getOrNull, PENDING_ENDINGS } from '../approvals/data';
-import { LawWarningBadges } from '../employees/law-badges';
-import { profileHref, todayInCairo } from '../employees/ui';
-import { dueNote } from '../organization/contracts/labels';
+import { todayInCairo } from '../employees/ui';
 import { loadContractList } from './data';
-import { draftedBadges, expiringLine } from './expiring';
+import { ContractPerson as Person, Due, ExpiringRow } from './ending-soon';
 import {
   APPROVED_ENDINGS,
   byDate,
@@ -22,35 +19,13 @@ import {
 // What needs doing about contracts, in compact panels: contracts ending soon (with the day the non-renewal notice is
 // due, or for a trainee's or an intern's agreement what follows it: 19 October 2026), drafts waiting to be signed, probations ending, and endings in progress. HR and the CEO see them all; Finance,
 // which doesn't get the alert and ending lists, only the drafts. Each row opens the employee's Employment tab. Like the
-// home page's cards (whose parts aren't exported), each panel shows a quiet line when it can't load.
+// home page's cards (their dates, people and contracts ending soon shared in ending-soon.tsx), each panel shows a quiet
+// line when it can't load.
 
 /** A panel's rows, or why there are none to show: it failed, or the API doesn't have the list yet. */
 type Rows<T> = T[] | 'failed' | 'unavailable';
 
 const rowsOf = <T,>(rows: T[] | null): Rows<T> => rows ?? 'failed';
-
-const TONE = { passed: 'text-danger', soon: 'text-warn' } as const;
-const NOTE_BADGE = { passed: 'bg-danger-soft text-danger', soon: 'bg-warn-soft text-warn' } as const;
-
-/** A date, highlighted with a word ("Passed", "In 3 days") when it has passed or is within a week. */
-function Due({ date, today }: { date: string; today: string }) {
-  const note = dueNote(date, today);
-  return (
-    <>
-      <span className={`tabular-nums ${note ? `font-semibold ${TONE[note.tone]}` : ''}`}>{formatDate(date)}</span>
-      {note && <span className={`badge ml-1.5 ${NOTE_BADGE[note.tone]}`}>{note.text}</span>}
-    </>
-  );
-}
-
-function Person({ employee }: { employee: ContractEmployeeRef }) {
-  return (
-    <Link href={profileHref(employee.id, 'employment')} className="font-medium">
-      {employee.fullNameEn}
-      <span className="font-normal text-muted"> · {employee.employeeCode}</span>
-    </Link>
-  );
-}
 
 function Panel<T>({
   title,
@@ -91,41 +66,7 @@ const subline = 'flex flex-wrap items-center justify-between gap-x-3 gap-y-1 tex
 function EndingSoon({ rows, today }: { rows: Rows<ExpiringContract>; today: string }) {
   return (
     <Panel title="Ending Soon" note={`Next ${CONTRACTS_WITHIN} days`} rows={rows} empty={`No contracts end in the next ${CONTRACTS_WITHIN} days.`}>
-      {(rows) =>
-        rows.map((c) => {
-          const below = expiringLine(c, today);
-          return (
-            <li key={c.id} className="space-y-1 py-2.5 text-sm">
-              <div className={line}>
-                <Person employee={c.employee} />
-                <span>
-                  Ends <Due date={c.endDate} today={today} />
-                </span>
-              </div>
-              <div className={subline}>
-                <span>
-                  {below.kind === 'notice' ? (
-                    <>
-                      Non-renewal notice by <Due date={below.by} today={today} />
-                    </>
-                  ) : below.kind === 'training' ? (
-                    below.text
-                  ) : null}
-                </span>
-                <span className="flex flex-wrap gap-1.5">
-                  {draftedBadges(c).map((b) => (
-                    <span key={b} className="badge">
-                      {b}
-                    </span>
-                  ))}
-                  {/* past its end without a signed renewal: open-ended by the law (Art. 88), 18 October 2026 */}
-                  <LawWarningBadges of={c} />
-                </span>
-              </div>
-            </li>
-          );
-        })
-      }
+      {(rows) => rows.map((c) => <ExpiringRow key={c.id} contract={c} today={today} />)}
     </Panel>
   );
 }
@@ -144,7 +85,9 @@ function DraftsToSign({ rows, today }: { rows: Rows<ContractListItem>; today: st
             </div>
             <div className={subline}>
               <span>
-                <span className="tabular-nums">{c.number}</span> · Version {c.version} · {PAY_BASIS_LABELS[c.payBasis] ?? PAY_BASIS_LABELS.monthly}
+                {/* its number, hidden from a developer (23 October 2026), left out */}
+                {shownCode(c.number) && <span className="tabular-nums">{c.number} · </span>}
+                Version {c.version} · {PAY_BASIS_LABELS[c.payBasis] ?? PAY_BASIS_LABELS.monthly}
               </span>
             </div>
           </li>

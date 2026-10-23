@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { ApiError, apiFetch } from '@/lib/api';
 import { todayInCairo } from '../../../employees/ui';
 import { passSheetOn } from '../../../payroll/files';
-import { apiReason, textResponse as text } from '../../../templates/file-response';
+import { apiReason, textResponse as text } from '../../../organization/templates/file-response';
 import { apiSummaryExcelPath, readSummaryPeriod } from '../../attendance';
 
 // Serves the attendance Summary as an Excel workbook (owner's brief, 19 October 2026: "Summary … with Excel export, like

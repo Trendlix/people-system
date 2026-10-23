@@ -29,6 +29,7 @@ import { contractsNote, lineItems } from './grid';
 import { InputsGrid, type GridRow } from './inputs-grid';
 import { ResultsTable } from './results-table';
 import { MarkPaid, ReturnRun } from './run-actions';
+import { shownCode } from '@/lib/hidden';
 
 // One month's payroll run (owner's decisions, 16 October 2026): where it stands (Draft → With the CEO → Approved →
 // Paid), its totals, what each role can do next (HR: refresh, send to the CEO, mark as paid; the CEO: approve, or return
@@ -195,7 +196,7 @@ function Person({ id, name, code, contract = false }: { id: string; name: string
   return (
     <Link href={contract ? contractHref(id) : profileHref(id)} className="font-medium">
       {name}
-      <span className="font-normal text-muted"> · {code}</span>
+      {shownCode(code) && <span className="font-normal text-muted"> · {code}</span>}
     </Link>
   );
 }

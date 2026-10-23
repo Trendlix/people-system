@@ -296,6 +296,7 @@ const RECRUITMENT: Role[] = ['hr', 'ceo', 'super_admin']; // vacancies and appli
 const ORG: Role[] = ['hr', 'finance', 'ceo', 'admin'];
 const USERS: Role[] = ['admin'];
 const TEMPLATES: Role[] = ['super_admin'];
+const MAIL: Role[] = ['super_admin']; // Organization → Email Settings (23 October 2026)
 const KPIS: Role[] = ['hr', 'ceo', 'super_admin']; // All KPIs and its scorecards (21 October 2026)
 const KPI_TEMPLATES: Role[] = ['hr', 'ceo', 'admin']; // the KPI templates' pages
 // the Assets pages (21 October 2026): by each user's Assets access, not a role; of the Audit Log's readers, a Super Admin
@@ -363,6 +364,8 @@ function targetOf(row: Pick<AuditRow, 'entityType' | 'entityId' | 'diff'>, refs:
       return id ? own(`/leave/permissions/${id}`, 'Open permission request', LEAVE) : null;
     case 'wfh_request':
       return id ? own(`/attendance/wfh/${id}`, 'Open work from home request', LEAVE) : null;
+    case 'od_request':
+      return id ? own(`/attendance/official-duty/${id}`, 'Open official duty request', LEAVE) : null;
     case 'attendance_correction':
       return id ? own(`/attendance/corrections/${id}`, 'Open attendance correction', LEAVE) : null;
     case 'attendance_day':
@@ -388,17 +391,18 @@ function targetOf(row: Pick<AuditRow, 'entityType' | 'entityId' | 'diff'>, refs:
     case 'interview':
       return { href: '/recruitment/interviews', label: 'Open interviews', roles: RECRUITMENT };
     case 'recruitment_settings':
-      return { href: '/recruitment/settings', label: 'Open recruitment settings', roles: RECRUITMENT };
+      // setup pages live under Organization (owner, 23 October 2026: "lets perform a regorganization of this menu")
+      return { href: '/organization/recruitment', label: 'Open recruitment settings', roles: RECRUITMENT };
     case 'recruitment_analytics':
       return { href: '/recruitment/analytics', label: 'Open recruitment analytics', roles: RECRUITMENT };
     case 'onboarding_checklist':
       return id ? own(`/onboarding/${id}`, 'Open onboarding checklist', RECRUITMENT) : null;
     case 'onboarding_defaults':
-      return { href: '/onboarding/checklist', label: 'Open onboarding checklist defaults', roles: RECRUITMENT };
+      return { href: '/organization/onboarding-checklist', label: 'Open onboarding checklist defaults', roles: RECRUITMENT };
     case 'user':
       return id ? own(`/users/${id}`, 'Open user account', USERS) : null;
     case 'template_version':
-      return record?.slot ? { href: `/templates/${record.slot}`, label: 'Open template', roles: TEMPLATES } : null;
+      return record?.slot ? { href: `/organization/templates/${record.slot}`, label: 'Open template', roles: TEMPLATES } : null;
     case 'department':
       return id ? own(`/organization/departments/${id}`, 'Open department', ORG) : null;
     case 'grade':
@@ -427,6 +431,8 @@ function targetOf(row: Pick<AuditRow, 'entityType' | 'entityId' | 'diff'>, refs:
       return { href: '/organization/leave', label: 'Open leave setup', roles: ORG };
     case 'leave_year_closing':
       return { href: '/organization/leave/year-closing', label: 'Open year closing', roles: ORG };
+    case 'mail_settings':
+      return { href: '/organization/email', label: 'Open email settings', roles: MAIL };
     case 'payroll_settings':
     case 'payroll_law_rates':
       return { href: '/organization/payroll', label: 'Open payroll setup', roles: ORG };
@@ -436,10 +442,10 @@ function targetOf(row: Pick<AuditRow, 'entityType' | 'entityId' | 'diff'>, refs:
     case 'kpi_template':
       return record?.parentId ? { href: `/kpis/templates/${record.parentId}`, label: 'Open KPI template', roles: KPI_TEMPLATES } : null;
     case 'kpi_settings':
-      return { href: '/kpis/templates', label: 'Open KPI templates', roles: KPI_TEMPLATES };
+      return { href: '/organization/kpi-deadlines', label: 'Open KPI deadlines', roles: KPI_TEMPLATES };
     case 'kpi_framework':
       // KPI Pillars (22 October 2026): the company's, or a department's page
-      return { href: record?.parentId ? `/kpis/pillars/${record.parentId}` : '/kpis/pillars', label: 'Open KPI pillars', roles: KPI_TEMPLATES };
+      return { href: record?.parentId ? `/organization/kpi-pillars/${record.parentId}` : '/organization/kpi-pillars', label: 'Open KPI pillars', roles: KPI_TEMPLATES };
     case 'kpi_report':
       return { href: '/kpis/all', label: 'Open all KPIs', roles: KPIS };
     // Assets (21 October 2026): an asset's page by its code (a photo's, its asset's); the rooms, kits and settings pages

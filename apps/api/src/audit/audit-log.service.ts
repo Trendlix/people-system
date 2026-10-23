@@ -333,6 +333,7 @@ function recordLookups(p: PrismaService): Readonly<Record<string, Lookup>> {
     leave_request: async (ids) => owned(await p.leaveRequest.findMany({ ...by(ids), select: owner })),
     permission_request: async (ids) => owned(await p.permissionRequest.findMany({ ...by(ids), select: owner })),
     wfh_request: async (ids) => owned(await p.wfhRequest.findMany({ ...by(ids), select: owner })),
+    od_request: async (ids) => owned(await p.odRequest.findMany({ ...by(ids), select: owner })),
     attendance_correction: async (ids) => owned(await p.attendanceCorrection.findMany({ ...by(ids), select: owner })),
     attendance_day: async (ids) => owned(await p.attendanceDay.findMany({ ...by(ids), select: owner })),
     leave_adjustment: async (ids) => owned(await p.leaveAdjustment.findMany({ ...by(ids), select: owner })),

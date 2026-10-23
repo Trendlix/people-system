@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LeaveCalendarEntry } from '../../../lib/types';
+import type { OdCalendarItem } from '../../../lib/od-types';
 import {
   calendarAgenda,
   calendarDays,
@@ -10,6 +11,7 @@ import {
   monthSummaryText,
   monthTitle,
   nextMonth,
+  odCellWords,
   offPerDay,
   offThisMonthText,
   permissionCellText,
@@ -178,5 +180,46 @@ describe('permission on the calendar (owner, 19 October 2026: "4 hours per month
 
   it('isn’t shown rejected or cancelled', () => {
     expect(calendarPeople([permission({ status: 'rejected' }), permission({ status: 'cancelled' })], days)).toEqual([]);
+  });
+});
+
+describe('official duty on the calendar (owner, 23 October 2026: "Official duty (OD) requests"; the spec: "Team calendar shows leave and OD")', () => {
+  const days = calendarDays('2026-11', [], '2026-10-23');
+  const od = (e: Partial<OdCalendarItem> & { who?: string } = {}): OdCalendarItem => ({
+    id: `od-${e.who ?? 'nour'}`,
+    kind: 'od',
+    employee: { id: e.who ?? 'nour', fullNameEn: e.who === 'karim' ? 'Karim Nabil' : 'Nour Adel', department: 'Marketing', team: null },
+    type: { id: 'od', nameEn: 'Official duty', nameAr: 'مأمورية' },
+    startDate: '2026-11-02',
+    endDate: '2026-11-03',
+    halfDay: false,
+    fullDay: true,
+    fromTime: null,
+    toTime: null,
+    status: 'approved',
+    ...e,
+  });
+
+  it('marks each of its days apart, not as a day off, counted on its own; part of a day with its times', () => {
+    const people = calendarPeople([od({}), od({ who: 'karim', startDate: '2026-11-04', endDate: '2026-11-04', fullDay: false, fromTime: '10:00', toTime: '14:00' })], days);
+    expect(people.map((p) => [p.name, p.daysOff, p.odDays])).toEqual([
+      ['Karim Nabil', 0, 1],
+      ['Nour Adel', 0, 2],
+    ]);
+    expect(people[1].cells[1]).toMatchObject({ typeName: 'Official duty', od: { times: null }, first: true, last: true, requestId: 'od-nour' });
+    expect(offPerDay(people, days.length).slice(1, 4)).toEqual([0, 0, 0]);
+    expect(cellLabel(people[0].cells[3]!, 'Karim Nabil', days[3])).toBe('Karim Nabil: Official duty, 10:00 AM–2:00 PM, approved, Wednesday 04/11/2026');
+    expect(odCellWords({ times: null })).toBe('Official duty');
+    expect(monthSummaryText(people)).toBe('No one off this month, 2 on official duty');
+    // on a phone, with its words
+    expect(calendarAgenda(people, days)[0].off[0]).toMatchObject({ name: 'Nour Adel', od: { times: null } });
+  });
+
+  it('gives way to leave on the same day, and isn’t shown rejected or cancelled', () => {
+    const [nour] = calendarPeople([od({}), entry({ startDate: '2026-11-02', endDate: '2026-11-02' })], days);
+    expect(nour.cells[1]).toMatchObject({ typeName: 'Annual leave' });
+    expect(nour.cells[1]?.od).toBeUndefined();
+    expect(nour.odDays).toBe(1);
+    expect(calendarPeople([od({ status: 'rejected' }), od({ status: 'cancelled' })], days)).toEqual([]);
   });
 });

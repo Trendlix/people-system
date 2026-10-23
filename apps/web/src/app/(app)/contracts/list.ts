@@ -151,12 +151,17 @@ export const PROBATION_WITHIN = 30;
 /** The endings HR approved and the CEO approved too: the employment is in its notice period until the last working day. */
 export const APPROVED_ENDINGS = '/endings?status=approved';
 
-/** Rows by a date (YYYY-MM-DD), soonest first; null stays null (it couldn't load). */
+/** Rows by a date (YYYY-MM-DD), soonest first, those without one last; null stays null (it couldn't load). */
 export function byDate<T>(rows: T[], date: (row: T) => string | null): T[];
 export function byDate<T>(rows: T[] | null, date: (row: T) => string | null): T[] | null;
 export function byDate<T>(rows: T[] | null, date: (row: T) => string | null): T[] | null {
-  // a developer gets none of these dates (owner, 22 October 2026: "Hide per-person details"): as they came then
-  return rows && [...rows].sort((a, b) => (date(a) ?? '').localeCompare(date(b) ?? ''));
+  // a developer gets none of these dates (owner, 22 October 2026: "Hide per-person details"; 23 October 2026: the
+  // contracts' too): last, in the order they came
+  return rows && [...rows].sort((a, b) => {
+    const x = date(a);
+    const y = date(b);
+    return x && y ? x.localeCompare(y) : x ? -1 : y ? 1 : 0;
+  });
 }
 
 /** The endings still going, by last working day: waiting for the CEO, and approved (in notice). Null when either couldn't load. */

@@ -2,6 +2,7 @@ import { CUSTODY_KIND_LABELS, NOT_SIGNED_TEXT, type CustodyRowView, type Custody
 import Link from 'next/link';
 import { formatDate } from '@/lib/format';
 import { custodyStatusText, custodyStatusTone, dueText, outText, valueText } from './custody';
+import { shownCode } from '@/lib/hidden';
 
 // Small building blocks of the custody pages (Assets step 3, 21 October 2026): a record's status badge, its return date
 // (red once overdue), "Signed copy not attached", the custody records' table and the table of what someone holds (the
@@ -52,7 +53,7 @@ export function CustodyTable({ rows, href, person = true }: { rows: CustodyRowVi
               {person && (
                 <td className="min-w-40">
                   {r.employee.fullNameEn}
-                  <span className="block text-xs text-muted">{r.employee.employeeCode}</span>
+                  {shownCode(r.employee.employeeCode) && <span className="block text-xs text-muted">{r.employee.employeeCode}</span>}
                 </td>
               )}
               <td className="whitespace-nowrap">{formatDate(r.outAt)}</td>

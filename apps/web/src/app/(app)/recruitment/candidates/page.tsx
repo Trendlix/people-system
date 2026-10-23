@@ -10,6 +10,7 @@ import { CANDIDATES_PATH, candidateHref, latestText, readCandidatesQuery } from 
 import { loadCandidates, recruitmentNotLoaded } from '../data';
 import { generalCvHref } from '../general';
 import { applicantHref, readsRecruitment, WHO_SEES } from '../recruitment';
+import { shownCode } from '@/lib/hidden';
 
 // Candidates (owner, 22 October 2026: "how to make like a profile for each candidate to store history and prevent
 // duplication? even if the same candidate applied for 2 jobs"): one row per person, whatever they applied for: their
@@ -41,7 +42,7 @@ function CandidatesTable({ rows }: { rows: CandidateListItem[] }) {
                   <Link href={candidateHref(c.id)} className="font-semibold">
                     {c.fullName}
                   </Link>
-                  <span className="block text-xs text-muted">{c.code}</span>
+                  {shownCode(c.code) && <span className="block text-xs text-muted">{c.code}</span>}
                   <span className="mt-1 flex flex-wrap gap-1">
                     {badge && <span className="badge bg-warn-soft text-warn">{badge}</span>}
                     {c.openMatches > 0 && <span className="badge bg-accent-soft text-accent">{c.openMatches === 1 ? 'Possible match' : `${c.openMatches} possible matches`}</span>}

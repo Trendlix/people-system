@@ -37,6 +37,7 @@ import {
 import { ASSET_PATHS, APP_ASSET_PATHS, type AssetQuery } from '../../../lib/asset-paths';
 import { formatDate, formatDateTime, parseDate } from '../../../lib/format';
 import { formatEgp } from '../employees/[id]/contracts/salary';
+import { withCode } from '../../../lib/hidden';
 
 // ---------- the register's address ----------
 
@@ -156,8 +157,8 @@ export function codeFromParam(raw: string): string | null {
 
 // ---------- what a row says ----------
 
-/** Who holds it: "Mona Hassan · EMP-0042"; null when nobody does. */
-export const holderText = (holder: AssetHolderRef | null): string | null => (holder ? `${holder.fullNameEn} · ${holder.employeeCode}` : null);
+/** Who holds it: "Mona Hassan · EMP-0042" (a developer's: the tag alone, 23 October 2026); null when nobody does. */
+export const holderText = (holder: AssetHolderRef | null): string | null => (holder ? withCode(holder.fullNameEn, holder.employeeCode) : null);
 
 /** Where it is: the room and the kit, "Studio A · PK-KIT-A Interview kit"; null for neither. */
 export function placeText(row: { room: { name: string } | null; kit: { code: string; name: string } | null }): string | null {

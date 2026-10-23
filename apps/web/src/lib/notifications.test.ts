@@ -67,6 +67,12 @@ describe('where a notification opens', () => {
     expect(notificationHref('/assets/custody/CUS-0042', 'custody_unsigned', 'site')).toBe('/assets/custody/CUS-0042');
   });
 
+  it('opens the Hold page as it is, in the app too (23 October 2026: on Hold "Check-in/out only")', () => {
+    expect(notificationHref('/hold', 'access_hold', 'app')).toBe('/hold');
+    expect(notificationHref('/hold', 'access_hold', 'site')).toBe('/hold');
+    expect(notificationHref('/holdings', 'access_hold', 'app')).toBe('/app/requests');
+  });
+
   it('opens the reminders on Home, where the check-in is', () => {
     expect(notificationHref('/my-attendance', 'check_in_reminder', 'app')).toBe('/app');
     expect(notificationHref(null, 'check_out_reminder', 'app')).toBe('/app');
@@ -89,6 +95,10 @@ describe('where a notification opens', () => {
     expect(notificationHref(`/attendance/wfh/${ID}`, 'wfh_waiting', 'app')).toBe(`/app/approve/wfh/${ID}`);
     expect(notificationHref(`/attendance/wfh/${ID}`, 'wfh_decided', 'app')).toBe(`/app/requests/wfh/${ID}`);
     expect(notificationHref(`/attendance/wfh/${ID}`, 'wfh_waiting', 'site')).toBe(`/attendance/wfh/${ID}`);
+    // official duty (owner, 23 October 2026: "Manager, then HR"): the same way
+    expect(notificationHref(`/attendance/official-duty/${ID}`, 'od_waiting', 'app')).toBe(`/app/approve/od/${ID}`);
+    expect(notificationHref(`/attendance/official-duty/${ID}`, 'od_decided', 'app')).toBe(`/app/requests/od/${ID}`);
+    expect(notificationHref(`/attendance/official-duty/${ID}`, 'od_waiting', 'site')).toBe(`/attendance/official-duty/${ID}`);
     expect(notificationHref('/raise-requests?status=with_hr', 'raise_request_waiting', 'app')).toBe('/app/approve');
     expect(notificationHref('/approvals', 'pay_raise_waiting', 'app')).toBe('/app/approve');
     // a kind from a newer API: the person's own requests

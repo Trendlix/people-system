@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { AttendanceController } from './attendance.controller.js';
 import { AttendanceDaysService } from './attendance-days.service.js';
+import { AttendanceHistoryService } from './attendance-history.service.js';
 import { AttendanceFillService } from './attendance-fill.service.js';
 import { AttendanceImportsController } from './attendance-imports.controller.js';
 import { AttendanceImportsService } from './attendance-imports.service.js';
@@ -45,6 +46,8 @@ import { HomeLocationsService } from './home-locations.service.js';
   ],
   providers: [
     AttendanceService,
+    // a person's attendance history on their profile (owner, 23 October 2026)
+    AttendanceHistoryService,
     AttendanceImportsService,
     AttendanceDaysService,
     AttendanceFillService,

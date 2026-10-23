@@ -18,6 +18,7 @@ import {
   type Role,
 } from '@trendlix/shared';
 import { formatDate } from '../../../lib/format';
+import { SETUP_PATHS } from '../organization/setup-pages';
 
 // Offboarding on the site (owner, 21 October 2026: "when an employee resigns or contract ends with no renewal, where will
 // the data be stored? will it be another tab?"; 22 October 2026, the full module: "Former Employees tab, clearance
@@ -26,7 +27,8 @@ import { formatDate } from '../../../lib/format';
 // the API checks everything again.
 
 export const OFFBOARDING_PATH = '/offboarding';
-export const OFFBOARDING_CHECKLIST_PATH = '/offboarding/checklist';
+/** The default clearance checklist, under Organization since 23 October 2026 (owner: "Recruitment and checklists"). */
+export const OFFBOARDING_CHECKLIST_PATH = SETUP_PATHS.clearanceChecklist;
 export const TURNOVER_PATH = '/offboarding/turnover';
 export const FORMER_EMPLOYEES_PATH = '/employees/former';
 export const MY_EXIT_INTERVIEW_PATH = '/my-requests/exit-interview';

@@ -47,6 +47,7 @@ import { z } from 'zod';
 import { ASSET_API, ASSET_PATHS, CUSTODY_PATHS } from '../asset-paths';
 import type { ApiAnswer, AssetsApi } from './assets-api';
 import type { FetchedImage, ImageRefusal } from './image-guard';
+import { withCodeInBrackets } from '../hidden';
 
 // The Claude connector's tools (owner, 21 October 2026: "i might link a claude account for the assets section only to
 // fetch data and help in the data entry"; then "the connection method"): reading the register, who holds what, overdue
@@ -136,7 +137,7 @@ export function rowFor(r: AssetRowView, ctx: ToolContext) {
     serial: r.serial,
     room: r.room?.name ?? null,
     kit: r.kit ? `${r.kit.code} ${r.kit.name}` : null,
-    holder: r.holder ? `${r.holder.fullNameEn} (${r.holder.employeeCode})` : null,
+    holder: r.holder ? withCodeInBrackets(r.holder.fullNameEn, r.holder.employeeCode) : null,
     ...(r.group === 'consumable' && { quantity: r.quantity, unit: r.unit, reorder: r.reorder }),
     ...(r.values && { values: r.values }),
     link: assetLink(ctx, r.code),
@@ -158,7 +159,7 @@ export function assetFor(a: AssetView, ctx: ToolContext) {
     serial: a.serial,
     room: a.room?.name ?? null,
     kit: a.kit ? `${a.kit.code} ${a.kit.name}` : null,
-    holder: a.holder ? `${a.holder.fullNameEn} (${a.holder.employeeCode})` : null,
+    holder: a.holder ? withCodeInBrackets(a.holder.fullNameEn, a.holder.employeeCode) : null,
     ...(a.group === 'consumable' && { quantity: a.quantity, unit: a.unit, reorder_level: a.reorderLevel, reorder: a.reorder }),
     purchase_date: a.purchaseDate,
     useful_life_years: a.usefulLifeYears,
@@ -492,7 +493,7 @@ export const ASSET_TOOLS: ConnectorTool[] = [
       if (!found.ok || !found.body) return apiRefusal(found, 'Who holds what could not be read.');
       if (!found.body.length) return said(`Nobody matching "${args.employee}" holds any asset.`);
       const people = found.body.map((h) => ({
-        employee: `${h.employee.fullNameEn} (${h.employee.employeeCode})`,
+        employee: withCodeInBrackets(h.employee.fullNameEn, h.employee.employeeCode),
         assets: h.assets.map((a) => ({ ...a, room: a.room?.name ?? null, kit: a.kit ? `${a.kit.code} ${a.kit.name}` : null, link: assetLink(ctx, a.code) })),
         custody: h.custody.map((c) => ({ ...c, link: custodyLink(ctx, c.code) })),
       }));
@@ -513,7 +514,7 @@ export const ASSET_TOOLS: ConnectorTool[] = [
       const late = found.body.map((o) => ({
         ...o,
         link: custodyLink(ctx, o.code),
-        employee: `${o.employee.fullNameEn} (${o.employee.employeeCode})`,
+        employee: withCodeInBrackets(o.employee.fullNameEn, o.employee.employeeCode),
         items: o.items.map((a) => ({ code: a.code, name: a.name, link: assetLink(ctx, a.code) })),
       }));
       return said(`${late.length} custody ${late.length === 1 ? 'record is' : 'records are'} overdue.`, late);

@@ -4,6 +4,7 @@ import { cLevelTitle } from '@/lib/confidential';
 import { departmentName } from '@/lib/departments';
 import type { EmployeeCard } from '@/lib/types';
 import { Avatar, StandingBadge } from '../ui';
+import { shownCode } from '@/lib/hidden';
 
 // A C-level person's directory card, in place of their profile, for those who may not see them (owner, 19 October 2026:
 // "make C level Employees details not visible to HR"): HR, Finance, Admin and managers. Who they are and where they
@@ -31,7 +32,7 @@ export function EmployeeCardView({ card: c }: { card: EmployeeCard }) {
           </div>
           <p className="text-muted">{e ? role || 'No job title yet' : c.standing === 'former' ? 'Former employee' : 'Not employed yet'}</p>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted">
-            <span className="rounded-md bg-ink px-2.5 py-1 font-semibold text-white tabular-nums">{c.employeeCode}</span>
+            {shownCode(c.employeeCode) && <span className="rounded-md bg-ink px-2.5 py-1 font-semibold text-white tabular-nums">{c.employeeCode}</span>}
             {c.workEmail && (
               <a href={`mailto:${c.workEmail}`} className="break-all">
                 {c.workEmail}

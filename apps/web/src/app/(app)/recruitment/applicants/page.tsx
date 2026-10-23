@@ -38,6 +38,7 @@ import {
 } from '../general';
 import { APPLICANTS_PATH, applicantsHref, GOOD_CV_MATCH_PERCENT, managesRecruitment, readApplicantsQuery, readsRecruitment, STAGE_FILTERS, vacancyHref, WHO_SEES } from '../recruitment';
 import { ApplicantsTable, VacancyStatusBadge } from '../ui';
+import { joinShown, shownCode } from '@/lib/hidden';
 
 // All applicants (owner, 22 October 2026: "where will we include the ATS?"): across the vacancies, best match first, by
 // stage, source, a good match (70% and over), experience, or a search on names, email, mobile and reference; those
@@ -245,7 +246,7 @@ function GeneralTable({ rows, manages }: { rows: GeneralCvListItem[]; manages: b
                   {c.fullName}
                 </Link>
                 <span className="block text-xs text-muted">
-                  {c.number} · {c.email}
+                  {joinShown([c.number, c.email])}
                 </span>
               </td>
               <td className="text-sm">{c.area}</td>
@@ -272,7 +273,7 @@ function GeneralTable({ rows, manages }: { rows: GeneralCvListItem[]; manages: b
                       </Link>
                     )}
                     {(c.status === 'new' || c.status === 'reviewed') && (
-                      <ActionButton action={setGeneralCvStatus.bind(null, c.id, 'archive')} label="Archive" pendingLabel="Archiving…" confirm={`Archive ${c.number}? It can be restored.`} />
+                      <ActionButton action={setGeneralCvStatus.bind(null, c.id, 'archive')} label="Archive" pendingLabel="Archiving…" confirm={`Archive ${shownCode(c.number) ?? 'this CV'}? It can be restored.`} />
                     )}
                   </div>
                 </td>

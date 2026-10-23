@@ -7,6 +7,7 @@ import { attendanceReviewHref, dayStatusText, dayTone } from '../payroll/[id]/at
 import { correctedNote, dayRow, daySourceText, extraHoursText, hoursText, sourceText, type FigureTile, type PunchRow } from './attendance';
 import { AllPresses, DayEndView } from './punch-ui';
 import { WFH_DAY_BADGE } from './wfh/wfh';
+import { OD_DAY_BADGE, odDayTitle, odHref } from './official-duty/od';
 
 // The Attendance pages' parts (owner, 19 October 2026: "the attendance is not active in the side menu"): the month with
 // the one before and after, a month's figures as tiles, a person's days, and where the days came from. No hooks and
@@ -20,6 +21,8 @@ import { WFH_DAY_BADGE } from './wfh/wfh';
 // them, "What It Was" the day's status with every press collapsed under it, and no Where column (the badges say it: a
 // day from Zoho People has its place on the check-in). A day worked from home (owner, 21 October 2026: "think about how
 // should we handle the working from home in out erp"): "Working from home" by its status, a dashed badge, not leave's.
+// A day of official duty (owner, 23 October 2026: "Official duty (OD) requests"; "OD counted as attended"): "On official
+// duty" by its status in its own colour, opening its request.
 
 const LINK = 'btn btn-secondary min-h-9 px-3 no-underline';
 const TONE = { danger: 'text-danger', warn: 'text-warn' } as const;
@@ -64,6 +67,16 @@ const NONE = <span className="text-muted">—</span>;
 /** The badge of a day worked from home (approved for them), a distinct style from leave: a dashed outline. */
 export function WfhDayBadge({ className = '' }: { className?: string }) {
   return <span className={`badge border border-dashed border-accent bg-card text-accent ${className}`}>{WFH_DAY_BADGE}</span>;
+}
+
+/** The badge of a day of official duty approved for them, in its own colour, opening its request (23 October 2026). */
+export function OdDayBadge({ od, className = '' }: { od: { requestId: string; fullDay: boolean; fromTime: string | null; toTime: string | null }; className?: string }) {
+  return (
+    <Link href={odHref(od.requestId)} prefetch={false} title={odDayTitle(od)} className={`badge border border-ok bg-ok-soft text-ok no-underline ${className}`}>
+      {OD_DAY_BADGE}
+      <span className="sr-only">: open the official duty request</span>
+    </Link>
+  );
 }
 
 /** Every day kept of a person's month, read only: where each came from, its flags. */
@@ -124,6 +137,7 @@ export function DaysTable({
                 <td className="min-w-32">
                   <span className={tone ? `font-medium ${TONE[tone]}` : undefined}>{dayStatusText(d.status)}</span>
                   {wfhDays.includes(d.date) && <WfhDayBadge className="mt-1 block w-fit" />}
+                  {d.od && <OdDayBadge od={d.od} className="mt-1 block w-fit" />}
                   {corrected && <span className="mt-0.5 block text-xs text-muted">{corrected}</span>}
                   {row.more && <AllPresses presses={row.presses} />}
                 </td>

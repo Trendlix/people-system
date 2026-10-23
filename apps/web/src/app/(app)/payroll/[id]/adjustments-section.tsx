@@ -3,6 +3,7 @@ import type { PayrollRunView } from '@/lib/types';
 import { formatEgp } from '../../employees/[id]/contracts/salary';
 import { adjustmentsHref, runAdjustments } from '../adjustments/adjustments';
 import { monthName } from '../list';
+import { withCodeInBrackets } from '@/lib/hidden';
 
 // The run's additions and deductions (owner, 17 October 2026: Additions / Deductions, one-off amounts per employee and
 // month, added to that month's run): what its lines take, with a link to the month's list, and the month's pending ones
@@ -34,7 +35,7 @@ export function RunAdjustments({ run, today }: { run: PayrollRunView; today: str
           <ul className="mt-1 list-disc pl-5">
             {missing.map((m) => (
               <li key={m.employeeId}>
-                {m.name} ({m.employeeCode}): {m.count} {m.count === 1 ? 'addition or deduction' : 'additions or deductions'}
+                {withCodeInBrackets(m.name, m.employeeCode)}: {m.count} {m.count === 1 ? 'addition or deduction' : 'additions or deductions'}
               </li>
             ))}
           </ul>

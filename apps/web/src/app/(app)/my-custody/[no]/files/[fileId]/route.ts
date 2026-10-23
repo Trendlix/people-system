@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { ApiError, apiFetch } from '@/lib/api';
 import { CUSTODY_API } from '@/lib/asset-paths';
 import { fileResponse } from '../../../../assets/custody/file-proxy';
-import { textResponse as text } from '../../../../templates/file-response';
+import { textResponse as text } from '../../../../organization/templates/file-response';
 import { custodyCodeFromParam } from '../../../../assets/custody';
 
 // Serves the person's own signed custody form (Assets step 3; owner, 21 October 2026: "Yes, My custody") from the API

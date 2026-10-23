@@ -12,9 +12,11 @@ import { asksPermission } from '../../../../(app)/leave/permissions';
 // when working from home"; everyone may ask, for occasional days at home too). Working from home (owner, 21 October
 // 2026: "think about how should we handle the working from home in out erp"): a day at home for someone expected at the
 // office, offered when their allowance says so (an Office or Hybrid arrangement, asking not turned off in Leave Setup);
-// Work from home, Outdoor and Indoor and outdoor never see it.
+// Work from home, Outdoor and Indoor and outdoor never see it. Official duty (owner, 23 October 2026: "Official duty
+// (OD) requests"): work away from the office, offered when its form says nothing refuses them (an employment, not a
+// freelancer).
 
-export type AskKind = 'leave' | 'permission' | 'wfh' | 'reimbursement' | 'correction' | 'raise' | 'home';
+export type AskKind = 'leave' | 'permission' | 'wfh' | 'od' | 'reimbursement' | 'correction' | 'raise' | 'home';
 
 export interface AskOption {
   key: AskKind;
@@ -28,6 +30,7 @@ const OPTIONS: Record<AskKind, AskOption> = {
   leave: { key: 'leave', href: APP_PATHS.newLeave, label: 'Leave', text: 'Days off: annual, sick, casual and the other types HR set up.' },
   permission: { key: 'permission', href: APP_PATHS.newPermission, label: 'Permission', text: 'A few hours away from a working day, to come late or leave early.' },
   wfh: { key: 'wfh', href: APP_PATHS.newWfh, label: 'Work from home', text: 'A working day from home instead of the office, asked a day before.' },
+  od: { key: 'od', href: APP_PATHS.newOd, label: 'Official duty', text: 'Work away from the office, e.g. at a client’s: asked ahead or up to 3 days after.' },
   reimbursement: { key: 'reimbursement', href: APP_PATHS.newReimbursement, label: 'Reimbursement', text: 'An expense you paid for the company, with a photo of the receipt.' },
   correction: { key: 'correction', href: APP_PATHS.newCorrection, label: 'Correction', text: 'A day of your attendance that isn’t right: a check-in or check-out forgotten.' },
   raise: { key: 'raise', href: APP_PATHS.newRaise, label: 'Raise', text: 'A raise for yourself, or for a direct report, with a reason.' },
@@ -40,6 +43,12 @@ const OPTIONS: Record<AskKind, AskOption> = {
  */
 export const offersWfh = (allowance: { offered: boolean; refusal: string | null; daysPerMonth: number } | null | undefined): boolean =>
   !!allowance && allowance.offered && !allowance.refusal && allowance.daysPerMonth > 0;
+
+/**
+ * Whether official duty is offered (owner, 23 October 2026): its form as read says nothing refuses them (an employment,
+ * not a freelancer); not read (null), not offered.
+ */
+export const offersOd = (form: { refusal: string | null } | null | undefined): boolean => !!form && !form.refusal;
 
 /**
  * Whether a raise is offered: to someone who sees raise requests (owner, 20 October 2026: "raises not to be visible to
@@ -57,12 +66,15 @@ export function askOptions(p: {
   asksRaise: boolean;
   /** Whether working from home may be asked for (offersWfh); left out: not offered. */
   asksWfh?: boolean;
+  /** Whether official duty may be asked for (offersOd, 23 October 2026); left out: not offered. */
+  asksOd?: boolean;
 }): AskOption[] {
   const e = p.employment;
   const keys: AskKind[] = [];
   if (e && underLabourLaw(e.employmentType)) keys.push('leave');
   if (asksPermission(e, p.permissionMonth)) keys.push('permission');
   if (e && p.asksWfh) keys.push('wfh');
+  if (e && p.asksOd) keys.push('od');
   keys.push('reimbursement');
   if (e) keys.push('correction');
   if (p.asksRaise) keys.push('raise');

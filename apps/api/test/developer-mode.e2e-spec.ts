@@ -1,5 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
-import { DEVELOPER_ACTS_AS, DEVELOPER_READ_ONLY, IDLE_TIMEOUT_MS, MODE_IN_APP, MODE_NOT_YOURS, VIEW_MODE_NOT_THEIRS } from '@trendlix/shared';
+import { DEVELOPER_ACTS_AS, DEVELOPER_READ_ONLY, HIDDEN, IDLE_TIMEOUT_MS, MODE_IN_APP, MODE_NOT_YOURS, VIEW_MODE_NOT_THEIRS } from '@trendlix/shared';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { addDays, todayInCairo, weekday } from '../src/common/date-only.js';
@@ -23,6 +23,9 @@ const DEV_NAME = `Dina Devmode ${RUN}`;
 const OTHER_NAME = `Omar Otherperson ${RUN}`;
 const PLAIN_NAME = `Pia Plainemployee ${RUN}`;
 const NEAR = { latitude: 30.0601, longitude: 31.3465, accuracy: 18.4 };
+/** A developer's pseudonym (23 October 2026): "Employee" and a tag, never the code. */
+const TAGGED = /^Employee [2-9A-HJ-NP-Z]{4,6}$/;
+const TAGGED_IN_TEXT = /"Employee [2-9A-HJ-NP-Z]{4,6}"/;
 
 const said = (res: { body: { message: string | string[] } }) => ([] as string[]).concat(res.body.message);
 const cookieOf = (res: request.Response) => {
@@ -143,7 +146,8 @@ describe('A developer chooses: as themselves or as a developer (e2e)', () => {
     // their own profile, real, no pseudonym
     const own = (await as('dev').get(`/employees/${devEmployeeId}`).expect(200)).body;
     expect(own.fullNameEn).toBe(DEV_NAME);
-    expect(JSON.stringify(own)).not.toContain(`Employee ${devCode}`);
+    expect(own.employeeCode).toBe(devCode);
+    expect(JSON.stringify(own)).not.toMatch(TAGGED_IN_TEXT);
 
     // someone else's: answered as for any employee
     for (const path of [`/employees/${otherEmployeeId}`, '/employees', '/payroll/runs', '/users', `/employees/${otherEmployeeId}/identity`]) {
@@ -189,10 +193,19 @@ describe('A developer chooses: as themselves or as a developer (e2e)', () => {
     expect(me.session.idleTimeoutMs).toBe(IDLE_TIMEOUT_MS);
 
     // everyone a pseudonym, themselves too
+    // (a tag, never the code: 23 October 2026, "in developer view use **** instead of IDs")
     const other = (await as('dev').get(`/employees/${otherEmployeeId}`).expect(200)).body;
-    expect(other.fullNameEn).toBe(`Employee ${otherCode}`);
+    expect(other.fullNameEn).toMatch(TAGGED);
+    expect(other.employeeCode).toBe(HIDDEN);
     expect(JSON.stringify(other)).not.toContain(OTHER_NAME);
-    expect((await as('dev').get(`/employees/${devEmployeeId}`).expect(200)).body.fullNameEn).toBe(`Employee ${devCode}`);
+    expect(JSON.stringify(other)).not.toContain(otherCode);
+    const self = (await as('dev').get(`/employees/${devEmployeeId}`).expect(200)).body;
+    expect(self.fullNameEn).toMatch(TAGGED);
+    expect(self.fullNameEn).not.toBe(other.fullNameEn);
+    expect(JSON.stringify(self)).not.toContain(devCode);
+    // the same tag in the list
+    const listed = (await as('dev').get('/employees').expect(200)).body as { id: string; fullNameEn: string }[];
+    expect(listed.find((e) => e.id === otherEmployeeId)?.fullNameEn).toBe(other.fullNameEn);
     expect(JSON.stringify((await as('dev').get('/employees').expect(200)).body)).not.toContain(DEV_NAME);
 
     // nothing changes
@@ -267,7 +280,9 @@ describe('A developer chooses: as themselves or as a developer (e2e)', () => {
     sessions.viewing = cookieOf(await as('viewing').post('/auth/view-as/mode', { mode: 'developer' }).expect(200));
     const asDev = (await as('viewing').get('/auth/me').expect(200)).body;
     expect(asDev).toMatchObject({ developer: true, mode: 'developer', viewAs: { act: false } });
-    expect((await as('viewing').get(`/employees/${otherEmployeeId}`).expect(200)).body.fullNameEn).toBe(`Employee ${otherCode}`);
+    const other = (await as('viewing').get(`/employees/${otherEmployeeId}`).expect(200)).body;
+    expect(other.fullNameEn).toMatch(TAGGED);
+    expect(other.employeeCode).toBe(HIDDEN);
     // Act as them changes nothing in the developer view: still read only
     sessions.viewing = cookieOf(await as('viewing').post('/auth/view-as/act', { act: true }).expect(200));
     expect(said(await as('viewing').post('/departments', { nameEn: `Nope ${RUN}` }).expect(403))).toEqual([DEVELOPER_READ_ONLY]);

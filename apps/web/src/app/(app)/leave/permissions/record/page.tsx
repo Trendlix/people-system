@@ -16,6 +16,7 @@ import { NewPermissionForm } from '../../permission-forms';
 import { noPermissionText, PERMISSION_OFF_TEXT, RECORD_PERMISSION_PATH, recordsPermission, requestListHref } from '../../permissions';
 import { LeaveEmployeePicker } from '../../record/employee-picker';
 import { MyPermissionTable } from '../../ui';
+import { withCode } from '@/lib/hidden';
 
 // Record permission, under Requests → Leave Requests (owner, 19 October 2026: permission "In the system, like leave"; HR
 // records it on an employee's behalf as it records leave): HR only. First who it is for, among everyone employed now
@@ -50,7 +51,7 @@ async function Record({ searchParams }: { searchParams: PageProps<'/leave/permis
   const employed = actionablePeople(people)
     .filter((p) => p.employment)
     .sort((a, b) => a.fullNameEn.localeCompare(b.fullNameEn, 'en'))
-    .map((p) => ({ id: p.id, label: `${p.fullNameEn} · ${p.employeeCode}` }));
+    .map((p) => ({ id: p.id, label: withCode(p.fullNameEn, p.employeeCode) }));
   const asked = readEmployee(query);
   const chosen = asked && employed.some((p) => p.id === asked) ? asked : null;
   const picker = <LeaveEmployeePicker options={employed} chosen={chosen} action={RECORD_PERMISSION_PATH} what="permission" />;

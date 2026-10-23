@@ -5,6 +5,7 @@ import { CheckInReminder } from '@/components/check-in-reminder';
 import { SessionWatch } from '@/components/session-watch';
 import { DeveloperBanner } from '@/components/developer-banner';
 import { ModeGate } from '@/components/mode-gate';
+import { HoldGate } from '@/components/hold-gate';
 import { ViewAsBanner } from '@/components/view-as-banner';
 import { ApiError } from '@/lib/api';
 import { getCurrentUser } from '@/lib/session';
@@ -60,6 +61,9 @@ export default function PhoneLayout({ children }: LayoutProps<'/app'>) {
             are always themselves; 22 October 2026) */}
         <Suspense fallback={null}>
           <ModeGate />
+          {/* someone whose access is on hold: the Hold page, its one tab Check-In (owner, 23 October 2026: "Check-in/out
+              only") */}
+          <HoldGate />
           <ViewAsBanner />
           <DeveloperBanner />
         </Suspense>

@@ -6,7 +6,7 @@ import { termLabel } from '../app/(app)/employees/[id]/contracts/dates';
 import { FORMS_HIDDEN, formsGap } from '../app/(app)/employees/[id]/insurance/insurance';
 import { directorySections, hiddenPlace } from '../app/(app)/employees/directory-groups';
 import { leadHidden, leadLine } from './department-leads';
-import { employmentHidden, filtersByJob, HIDDEN_LABEL, isHidden, labelOf, personCutOff, readsHidden, shownText } from './hidden';
+import { employmentHidden, filtersByJob, HIDDEN_LABEL, isHidden, joinShown, labelOf, personCutOff, readsHidden, shownCode, shownText, withCode, withCodeInBrackets } from './hidden';
 import type { ContractListItem, DocumentItem, EmployeeSummary, Employment } from './types';
 
 // What a developer is shown where the API hid a person's job or social insurance details (owner, 22 October 2026: "Hide
@@ -68,6 +68,9 @@ describe('the screens with hidden details', () => {
   it('contracts without their dates: sorted without crashing, the term Hidden', () => {
     const c = (number: string, startDate: string | null) => ({ number, startDate, endDate: null }) as unknown as ContractListItem;
     expect(byDate([c('C-2', null), c('C-1', null)], (x) => x.startDate).map((x) => x.number)).toEqual(['C-2', 'C-1']);
+    // dated ones first, soonest first; those without a date after them, as they came (23 October 2026)
+    expect(byDate([c('C-4', null), c('C-3', '2026-12-01'), c('C-2', null), c('C-1', '2026-11-01')], (x) => x.startDate).map((x) => x.number)).toEqual(['C-1', 'C-3', 'C-4', 'C-2']);
+    expect(byDate(null, (x: ContractListItem) => x.startDate)).toBeNull();
     expect(mergeAll([[], [c('C-1', null), c('C-3', null)]]).map((x) => x.number)).toEqual(['C-3', 'C-1']);
     expect(termLabel({ startDate: null, endDate: null })).toBe('Hidden');
     expect(termLabel({ startDate: '2026-11-01', endDate: '2027-10-31' })).toBe('01/11/2026 – 31/10/2027');
@@ -83,5 +86,36 @@ describe('the screens with hidden details', () => {
   it('the dashboard: no length of service without a join date', () => {
     expect(serviceLength(null, '2026-10-22')).toBeNull();
     expect(serviceLength('2025-10-22', '2026-10-22')).toBe('1 year');
+  });
+});
+
+// The owner, 23 October 2026: "in developer view use **** instead of IDs". A developer gets every person code as "••••"
+// and each name as a tag ("Employee 7K3Q"): beside a name, the code part is left out, never a dangling "· ••••".
+describe('a person’s code', () => {
+  it('shown as it is, or left out when hidden or missing', () => {
+    expect(shownCode('EMP-0182')).toBe('EMP-0182');
+    expect(shownCode(HIDDEN)).toBeNull();
+    expect(shownCode('')).toBeNull();
+    expect(shownCode(null)).toBeNull();
+    expect(shownCode(undefined)).toBeNull();
+    // an asset's or a custody's code is no person's, and stays
+    expect(shownCode('PK-CAM-0003')).toBe('PK-CAM-0003');
+  });
+
+  it('beside a name: "Omar Khaled · EMP-0182", or the tag alone', () => {
+    expect(withCode('Omar Khaled', 'EMP-0182')).toBe('Omar Khaled · EMP-0182');
+    expect(withCode('Employee 7K3Q', HIDDEN)).toBe('Employee 7K3Q');
+    expect(withCode('Employee 7K3Q', null)).toBe('Employee 7K3Q');
+    expect(withCode('Omar Khaled', 'EMP-0182', ' – ')).toBe('Omar Khaled – EMP-0182');
+    expect(withCodeInBrackets('Omar Khaled', 'EMP-0182')).toBe('Omar Khaled (EMP-0182)');
+    expect(withCodeInBrackets('Employee 7K3Q', HIDDEN)).toBe('Employee 7K3Q');
+    expect(withCodeInBrackets('version 2', HIDDEN)).toBe('version 2');
+  });
+
+  it('a line of parts without the empty and hidden ones', () => {
+    expect(joinShown(['EMP-0182', 'Editor', 'Production'])).toBe('EMP-0182 · Editor · Production');
+    expect(joinShown([HIDDEN, HIDDEN, `${HIDDEN} › ${HIDDEN}`])).toBe('');
+    expect(joinShown(['Employee 7K3Q', HIDDEN, null, undefined, false, '', 'Marketing'])).toBe('Employee 7K3Q · Marketing');
+    expect(joinShown(['a', 'b'], ', ')).toBe('a, b');
   });
 });

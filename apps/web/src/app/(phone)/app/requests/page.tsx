@@ -7,6 +7,7 @@ import { APP_PATHS, appRequestsHref } from '@/lib/surface';
 import { NoProfile } from '../../../(app)/dashboard/cards';
 import { loadMyCorrections } from '../../../(app)/attendance/corrections/data';
 import { loadMyWfh } from '../../../(app)/attendance/wfh/data';
+import { loadMyOd } from '../../../(app)/attendance/official-duty/data';
 import { loadMyHomes } from '../../../(app)/home-locations/data';
 import { HomeStatusBadge } from '../../../(app)/home-locations/ui';
 import { loadMyLeave, loadMyPermissions } from '../../../(app)/leave/data';
@@ -60,7 +61,7 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/app/reques
   const profile = await loadOwnProfile(user);
   if (!profile) return <NoProfile user={user} />;
   const seesRaises = seesRaiseRequests(user);
-  const [leave, permissions, claims, corrections, raises, homes, wfh] = await Promise.all([
+  const [leave, permissions, claims, corrections, raises, homes, wfh, od] = await Promise.all([
     loadMyLeave(),
     loadMyPermissions(),
     loadMyClaims(),
@@ -68,6 +69,8 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/app/reques
     seesRaises ? loadEmployeeRaiseRequests(profile.id) : null,
     loadMyHomes(),
     loadMyWfh(),
+    // official duty (23 October 2026)
+    loadMyOd(),
   ]);
   const rows = appRequestRows({
     leave: leave.kind === 'ok' ? leave.value : undefined,
@@ -77,8 +80,9 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/app/reques
     raises: raises?.kind === 'ok' ? raises.value.requests : undefined,
     homes: homes.kind === 'ok' ? homes.value : undefined,
     wfh: wfh.kind === 'ok' ? wfh.value : undefined,
+    od: od.kind === 'ok' ? od.value : undefined,
   });
-  const failed = [leave, permissions, claims, corrections, raises, homes, wfh].some((l) => l?.kind === 'failed');
+  const failed = [leave, permissions, claims, corrections, raises, homes, wfh, od].some((l) => l?.kind === 'failed');
   const kinds = appRequestKindsFor(seesRaises);
   const f = readAppRequestFilters(query, kinds);
   const shown = filterAppRequests(rows, f);

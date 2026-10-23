@@ -174,7 +174,8 @@ describe('Employees (e2e)', () => {
         confidential: false,
         restricted: false,
         // their access, for HR (22 October 2026): no employment, so no active contract
-        access: { state: 'not_eligible', withoutContract: false },
+        // no employment: No Access (owner, 23 October 2026: "Active - Grace - Hold - No Access")
+        access: { state: 'not_eligible', standing: 'no_access', graceUntil: null, noContract: null },
         employment: null,
         lastEnded: null,
       });
@@ -317,7 +318,8 @@ describe('Employees (e2e)', () => {
         confidential: false,
         restricted: false,
         // their access, for HR (22 October 2026): no email to sign in with
-        access: { state: 'no_email', withoutContract: false },
+        // hired without a signed contract yet: No Access until it is signed (23 October 2026)
+        access: { state: 'no_email', standing: 'no_access', graceUntil: null, noContract: null },
         employment: {
           id: hired.employment.id,
           status: 'active',

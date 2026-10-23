@@ -19,5 +19,6 @@ export async function CheckInReminder({ surface }: { surface: ReminderSurface })
   }
   // not in the developer view either: it changes nothing, checking in included (as themselves they check in; 22 October 2026)
   if (!user || user.viewAs || user.developer || !user.employeeId) return null;
-  return <CheckInReminderPopup surface={surface} />;
+  // on Hold (23 October 2026: "Check-in/out only") it keeps working: Check in opens the Hold page
+  return <CheckInReminderPopup surface={surface} held={!!user.hold} />;
 }

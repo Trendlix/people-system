@@ -1,4 +1,5 @@
 import type { OnboardingStatus, Role } from '@trendlix/shared';
+import { SETUP_PATHS } from '../organization/setup-pages';
 
 // Onboarding on the site (owner, 22 October 2026, the ATS's Phase 2; the original plan's spec §12: "onboarding checklist
 // (incl. ID & documents, JD sign-off, KPI template assignment)"): the addresses, who handles it, the list's filter and
@@ -6,7 +7,8 @@ import type { OnboardingStatus, Role } from '@trendlix/shared';
 // everything again.
 
 export const ONBOARDING_PATH = '/onboarding';
-export const ONBOARDING_CHECKLIST_PATH = '/onboarding/checklist';
+/** The default items, under Organization since 23 October 2026 (owner: "Recruitment and checklists"). */
+export const ONBOARDING_CHECKLIST_PATH = SETUP_PATHS.onboardingChecklist;
 export const onboardingHref = (id: string) => `${ONBOARDING_PATH}/${encodeURIComponent(id)}`;
 
 type WithRoles = { roles: readonly Role[] };

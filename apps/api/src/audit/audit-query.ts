@@ -43,6 +43,7 @@ const OWNED: readonly (readonly [entityType: string, table: string])[] = [
   ['leave_request', 'leave_requests'],
   ['permission_request', 'permission_requests'],
   ['wfh_request', 'wfh_requests'],
+  ['od_request', 'od_requests'],
   ['attendance_correction', 'attendance_corrections'],
   ['attendance_day', 'attendance_days'],
   ['leave_adjustment', 'leave_adjustments'],

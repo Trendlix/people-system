@@ -1,6 +1,6 @@
 'use client';
 
-import type { CheckInReminderView } from '@trendlix/shared';
+import { HOLD_PATH, type CheckInReminderView } from '@trendlix/shared';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
@@ -25,7 +25,8 @@ function storage(): Storage | null {
   }
 }
 
-export function CheckInReminderPopup({ surface }: { surface: ReminderSurface }) {
+/** `held`: their access is on hold (owner, 23 October 2026: "Check-in/out only"): Check in opens the Hold page's panel. */
+export function CheckInReminderPopup({ surface, held = false }: { surface: ReminderSurface; held?: boolean }) {
   const pathname = usePathname();
   const [reminder, setReminder] = useState<CheckInReminderView | null>(null);
   const [open, setOpen] = useState(false);
@@ -75,7 +76,7 @@ export function CheckInReminderPopup({ surface }: { surface: ReminderSurface }) 
   }, []);
 
   if (!open || !reminder) return null;
-  return <ReminderDialog href={checkInHref(surface, reminder)} line={popupLine(reminder.shiftStart)} big={surface === 'app'} onClosed={putOff} />;
+  return <ReminderDialog href={held ? HOLD_PATH : checkInHref(surface, reminder)} line={popupLine(reminder.shiftStart)} big={surface === 'app'} onClosed={putOff} />;
 }
 
 function ReminderDialog({ href, line, big, onClosed }: { href: string; line: string; big: boolean; onClosed: () => void }) {

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { LABELS } from '@trendlix/shared';
 import { formatDate, titleCase } from '@/lib/format';
-import { HIDDEN_LABEL, labelOf } from '@/lib/hidden';
+import { HIDDEN_LABEL, labelOf, shownCode } from '@/lib/hidden';
 import type { EmploymentSalaryHistory, PayEventDocument, SalaryEvent } from '@/lib/raise-types';
 import type { EmployeeProfile, GeneratedDocumentStatus } from '@/lib/types';
 import { recordForm2 } from '../../raise-actions';
@@ -135,7 +135,7 @@ function EventItem({
   canRecordForm2: boolean;
 }) {
   const what = `${v.title}, ${v.reference}`;
-  const name = `version ${event.version} (${event.number})`;
+  const name = `version ${event.version}${shownCode(event.number) ? ` (${event.number})` : ''}`;
   return (
     <li className="relative pb-6 pl-7 last:pb-0">
       {/* the line down the timeline to the next event, and this event's dot on it: filled once signed (paid) */}

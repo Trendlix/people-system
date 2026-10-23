@@ -11,6 +11,8 @@ import { daysText, leaveProgressText, periodText } from '../../../(app)/leave/li
 import { permissionWhenText } from '../../../(app)/leave/permissions';
 import { wfhDayText, wfhProgressText } from '../../../(app)/attendance/wfh/wfh';
 import type { WfhRequestView } from '../../../../lib/wfh-types';
+import { odProgressText, odWhenWords } from '../../../(app)/attendance/official-duty/od';
+import type { OdRequestView } from '../../../../lib/od-types';
 import { isOpenRaise } from '../../../(app)/my-requests/requests';
 import { effectiveFromText, progressText as raiseProgressText } from '../../../(app)/raise-requests/list';
 import { formatEgp } from '../../../(app)/employees/[id]/contracts/salary';
@@ -34,7 +36,8 @@ export type AppRequestRow =
   | { kind: 'correction'; id: string; at: string; open: boolean; request: AttendanceCorrectionView }
   | { kind: 'raise'; id: string; at: string; open: boolean; request: RaiseRequest }
   | { kind: 'home'; id: string; at: string; open: boolean; request: HomeLocationView }
-  | { kind: 'wfh'; id: string; at: string; open: boolean; request: WfhRequestView };
+  | { kind: 'wfh'; id: string; at: string; open: boolean; request: WfhRequestView }
+  | { kind: 'od'; id: string; at: string; open: boolean; request: OdRequestView };
 
 /** The filter chips' words, the kinds in the order the New buttons are. */
 export const APP_REQUEST_KIND_LABELS: Record<AppRequestKind, string> = {
@@ -45,6 +48,7 @@ export const APP_REQUEST_KIND_LABELS: Record<AppRequestKind, string> = {
   raise: 'Raises',
   home: 'Home locations',
   wfh: 'Work from home',
+  od: 'Official duty',
 };
 
 /** Still being decided: with the manager or HR (leave, permission, a correction); a claim or a raise being decided. */
@@ -59,6 +63,8 @@ export function appRequestRows(from: {
   raises?: readonly RaiseRequest[];
   homes?: readonly HomeLocationView[];
   wfh?: readonly WfhRequestView[];
+  /** Official duty (23 October 2026). */
+  od?: readonly OdRequestView[];
 }): AppRequestRow[] {
   const rows: AppRequestRow[] = [
     ...(from.leave ?? []).map((r) => ({ kind: 'leave' as const, id: r.id, at: r.createdAt, open: deciding(r.status), request: r })),
@@ -69,6 +75,8 @@ export function appRequestRows(from: {
     ...(from.homes ?? []).map((r) => ({ kind: 'home' as const, id: r.id, at: r.createdAt, open: isOpenHomeRequest(r), request: r })),
     // working from home (21 October 2026)
     ...(from.wfh ?? []).map((r) => ({ kind: 'wfh' as const, id: r.id, at: r.createdAt, open: deciding(r.status), request: r })),
+    // official duty (23 October 2026: "Manager, then HR")
+    ...(from.od ?? []).map((r) => ({ kind: 'od' as const, id: r.id, at: r.createdAt, open: deciding(r.status), request: r })),
   ];
   const seen = new Set<string>();
   return rows
@@ -111,7 +119,7 @@ export const filterAppRequests = (rows: readonly AppRequestRow[], f: AppRequestF
 /** How many each kind's chip lists, within the status chosen ('' for All). */
 export function appRequestCounts(rows: readonly AppRequestRow[], f: Pick<AppRequestFilters, 'status'>): Record<AppRequestKind | '', number> {
   const shown = rows.filter((r) => !f.status || r.open);
-  const counts: Record<AppRequestKind | '', number> = { '': shown.length, leave: 0, permission: 0, reimbursement: 0, correction: 0, raise: 0, home: 0, wfh: 0 };
+  const counts: Record<AppRequestKind | '', number> = { '': shown.length, leave: 0, permission: 0, reimbursement: 0, correction: 0, raise: 0, home: 0, wfh: 0, od: 0 };
   for (const r of shown) counts[r.kind] += 1;
   return counts;
 }
@@ -135,6 +143,8 @@ export function appRequestTitle(row: AppRequestRow): string {
       return 'Home location';
     case 'wfh':
       return 'Work from home';
+    case 'od':
+      return 'Official duty';
   }
 }
 
@@ -155,6 +165,8 @@ export function appRequestWhen(row: AppRequestRow): string {
       return homeWhatText(row.request);
     case 'wfh':
       return wfhDayText(row.request);
+    case 'od':
+      return odWhenWords(row.request);
   }
 }
 
@@ -169,6 +181,8 @@ export function appRequestProgress(row: AppRequestRow): string {
       return homeProgressText(row.request).text;
     case 'wfh':
       return wfhProgressText(row.request).text;
+    case 'od':
+      return odProgressText(row.request).text;
     default:
       return leaveProgressText(row.request).text;
   }

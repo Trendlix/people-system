@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { ApiError, apiFetch } from '@/lib/api';
 import { CUSTODY_API } from '@/lib/asset-paths';
-import { textResponse as text } from '../../../../../templates/file-response';
+import { textResponse as text } from '../../../../../organization/templates/file-response';
 import { fileResponse } from '../../../file-proxy';
 import { custodyCodeFromParam } from '../../../../custody';
 

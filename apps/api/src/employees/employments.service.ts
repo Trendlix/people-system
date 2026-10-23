@@ -133,8 +133,8 @@ export class EmploymentsService {
     const diff = changes(fields(before), values);
     if (Object.keys(diff).length) {
       await this.audit.record({ userId: user.id, action: 'update', entityType: ENTITY, entityId: employmentId, diff: { employeeId, ...diff } });
-      // their access follows (22 October 2026): an account made if they should have one now
-      await this.access.afterChange(employeeId);
+      // their access follows (22 October 2026): an account made if they should have one now, the standing recorded
+      await this.access.afterChange(employeeId, user.id);
     }
     return this.employees.get(employeeId, user);
   }

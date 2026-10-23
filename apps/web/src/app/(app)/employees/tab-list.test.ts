@@ -21,8 +21,13 @@ import {
 
 describe('the profile’s tabs', () => {
   it('have Employment hold the contract and Basic Data hold Education: no Contracts or Education tab', () => {
-    expect(PROFILE_TABS.map((t) => t.key)).toEqual(['basic', 'employment', 'insurance', 'documents', 'custody', 'access']);
-    expect(PROFILE_TABS.map((t) => t.label)).toEqual(['Basic Data', 'Employment', 'Social Insurance', 'Documents', 'Custody', 'Access']);
+    expect(PROFILE_TABS.map((t) => t.key)).toEqual(['basic', 'employment', 'attendance', 'insurance', 'documents', 'custody', 'access']);
+    expect(PROFILE_TABS.map((t) => t.label)).toEqual(['Basic Data', 'Employment', 'Attendance', 'Social Insurance', 'Documents', 'Custody', 'Access']);
+  });
+
+  it('have Attendance, their history since joining (owner, 23 October 2026: "Attendance history on the profile")', () => {
+    expect(profileHref('emp-1', 'attendance')).toBe('/employees/emp-1?tab=attendance');
+    expect(askedTab('attendance')).toBe('attendance');
   });
 
   it('have Access, where their sign-in is managed (owner, 22 October 2026: "On the employee profile")', () => {

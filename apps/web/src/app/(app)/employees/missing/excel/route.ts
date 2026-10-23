@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { ApiError, apiFetch } from '@/lib/api';
 import { passSheetOn } from '../../../payroll/files';
-import { textResponse as text } from '../../../templates/file-response';
+import { textResponse as text } from '../../../organization/templates/file-response';
 
 // Serves the Missing Details report as an Excel workbook (owner's request, 16 October 2026) from the API under the web
 // domain, with the caller's session: the browser never talks to the API. Everyone with something missing, one row

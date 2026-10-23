@@ -32,6 +32,7 @@ import {
   type StatusFilter,
 } from './list';
 import { FoldedRequestLog, HrRequestActions, PreparedRaise, Progress, RaiseRequestStatusBadge, RequestReason, RequestSent, Requester, Suggestion } from './ui';
+import { shownCode } from '@/lib/hidden';
 
 // Raise Requests (owner's decisions, 16 October 2026: "a place to request raise by employee, or his manager or the HR,
 // with a reason and to be going through an approval cycle"; reworked 17 October 2026): every request, newest first,
@@ -165,7 +166,8 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/raise-requ
                       </Link>
                       {r.confidential && <CLevelBadge className="ml-1.5" title="The CEO takes HR’s step on a C-level person’s raise request." />}
                       <div className="text-xs text-muted">
-                        <span className="tabular-nums">{r.employee.employeeCode}</span> · {askedWord(r)} {askedAt(r)}
+                        {shownCode(r.employee.employeeCode) && <span className="tabular-nums">{r.employee.employeeCode} · </span>}
+                        {askedWord(r)} {askedAt(r)}
                       </div>
                     </td>
                     <td className="min-w-40 align-top">

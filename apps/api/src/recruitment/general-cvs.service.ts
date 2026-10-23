@@ -575,7 +575,7 @@ export class GeneralCvsService {
 
   /** The person's email with their reference, when email is set up (best effort). */
   private async confirm(to: string, name: string, reference: string): Promise<void> {
-    if (!this.mail.configured) return;
+    if (!(await this.mail.ready())) return;
     try {
       const company = await this.prisma.company.findUnique({ where: { id: 1 }, select: { nameEn: true } });
       const from = company?.nameEn || 'the company';

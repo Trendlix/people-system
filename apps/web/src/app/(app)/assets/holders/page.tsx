@@ -6,6 +6,7 @@ import { itemsText, valueText } from '../custody';
 import { loadHolders } from '../custody-data';
 import { assetsCaller, assetsNotLoaded } from '../data';
 import { Empty, Loading, NoAccess } from '../ui';
+import { shownCode } from '@/lib/hidden';
 
 // Holdings (Assets step 3; the spec's Employees (holdings): "Type a name or ID to see what they hold"; cards with
 // holdings count and value): for anyone with Assets access, a search by a name or an employee code (current employees,
@@ -50,7 +51,7 @@ async function Cards({ searchParams }: { searchParams: PageProps<'/assets/holder
               <li key={c.employee.id}>
                 <Link href={CUSTODY_PATHS.person(c.employee.id)} className="card block h-full p-4 text-ink no-underline hover:border-accent">
                   <span className="block font-semibold">{c.employee.fullNameEn}</span>
-                  <span className="block text-xs text-muted">{c.employee.employeeCode}</span>
+                  {shownCode(c.employee.employeeCode) && <span className="block text-xs text-muted">{c.employee.employeeCode}</span>}
                   <span className="mt-3 flex flex-wrap gap-1.5 text-sm">
                     <span className="badge bg-accent-soft text-accent">{c.holding ? `Holds ${itemsText(c.holding)}` : 'Holds nothing now'}</span>
                     {c.overdue > 0 && <span className="badge bg-danger-soft text-danger">{c.overdue} overdue</span>}

@@ -1,4 +1,5 @@
 import { allPressesLabel, flagBadges, placeBadge, pressLabel, pressName, punchMap, type DayEnd, type PlaceBadge, type PunchRow } from './attendance';
+import { OD_PRESS_MARK } from './official-duty/od';
 
 // A day's check-in and check-out on the Attendance pages (owner, 20 October 2026, of a row listing a dozen presses:
 // "simplify this, i want to view if it is remote or office, and location link"): each its time, its place as a badge
@@ -6,7 +7,8 @@ import { allPressesLabel, flagBadges, placeBadge, pressLabel, pressName, punchMa
 // the CEO, the Super Admin, the employee); the flags as compact badges, their full words as the title; and every press
 // of the day in a collapsed "All presses (14)", each its time, place and Map. Used by DaysTable (ui.tsx: Daily
 // Attendance, a person's month, My Attendance, the team view) and the phone's day list; what each shows is worked out
-// in attendance.ts (dayRow), tested. No hooks, nothing server-only.
+// in attendance.ts (dayRow), tested. No hooks, nothing server-only. A press within an approved official duty (owner, 23
+// October 2026: "Check in from anywhere") is marked OD, in the official duty's colour.
 
 const TONES: Record<PlaceBadge['tone'], string> = { ok: 'bg-ok-soft text-ok', accent: 'bg-accent-soft text-accent', muted: 'bg-line-soft text-muted' };
 
@@ -16,6 +18,17 @@ export function PlaceBadgeView({ badge }: { badge: PlaceBadge | null }) {
     <span className={`badge ${TONES[badge.tone]}`} title={badge.title ?? undefined}>
       {badge.label}
       {badge.title && <span className="sr-only"> ({badge.title})</span>}
+    </span>
+  );
+}
+
+/** "OD" on a press made within an approved official duty (23 October 2026); nothing on any other. */
+export function OdPressMark({ press }: { press: Pick<PunchRow, 'odRequestId'> | null }) {
+  if (!press?.odRequestId) return null;
+  return (
+    <span className="badge border border-ok bg-ok-soft text-ok" title="Pressed within an approved official duty: taken from where they were.">
+      {OD_PRESS_MARK}
+      <span className="sr-only"> (official duty)</span>
     </span>
   );
 }
@@ -55,6 +68,7 @@ export function DayEndView({ end }: { end: DayEnd }) {
       <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
         {end.shown === 'missing' ? <span className="font-medium text-warn">Missing</span> : <span className="tabular-nums whitespace-nowrap">{end.time}</span>}
         <PlaceBadgeView badge={end.badge} />
+        <OdPressMark press={end.press} />
         <MapLink press={end.press} />
       </span>
       <FlagBadges flags={end.flags} />
@@ -72,6 +86,7 @@ export function AllPresses({ presses, className = 'mt-1' }: { presses: readonly 
           <li key={`${i}-${p.kind}-${p.at}`} className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span className="tabular-nums whitespace-nowrap">{pressLabel(p)}</span>
             <PlaceBadgeView badge={placeBadge(p.place, p)} />
+            <OdPressMark press={p} />
             <MapLink press={p} />
             <FlagBadges flags={p.flags} />
           </li>

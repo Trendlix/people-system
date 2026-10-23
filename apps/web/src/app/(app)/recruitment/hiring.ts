@@ -14,6 +14,7 @@ import {
 } from '@trendlix/shared';
 import { formatDateTime, parseDate, parseTime } from '../../../lib/format';
 import { vacancyHref } from './recruitment';
+import { SETUP_PATHS } from '../organization/setup-pages';
 
 // Recruitment on the site, Phase 2 (owner, 22 October 2026: "where will we include the ATS?"; "interview invites go by
 // email through the owner's SMTP settings"): the addresses, the board's drops, the interview and scorecard forms, the
@@ -23,9 +24,13 @@ import { vacancyHref } from './recruitment';
 export const INTERVIEWS_PATH = '/recruitment/interviews';
 export const MY_HIRING_PATH = '/recruitment/my-hiring';
 export const ANALYTICS_PATH = '/recruitment/analytics';
-export const SETTINGS_PATH = '/recruitment/settings';
+/**
+ * Recruitment Settings and the onboarding checklist, under Organization since 23 October 2026 (owner: "Recruitment and
+ * checklists").
+ */
+export const SETTINGS_PATH = SETUP_PATHS.recruitment;
 export const ONBOARDING_PATH = '/onboarding';
-export const ONBOARDING_CHECKLIST_PATH = '/onboarding/checklist';
+export const ONBOARDING_CHECKLIST_PATH = SETUP_PATHS.onboardingChecklist;
 
 export const onboardingHref = (id: string) => `${ONBOARDING_PATH}/${encodeURIComponent(id)}`;
 /** A vacancy's page showing its pipeline board (the list stays its default). */

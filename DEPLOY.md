@@ -6,7 +6,7 @@
 | API (NestJS, `apps/api`) + PostgreSQL | Hostinger VPS (`srv2055591.hstgr.cloud`), Docker Compose in `/opt/people-system` | `https://srv2055591.hstgr.cloud:8443` |
 | OCR (Python, `services/ocr`) | Same server, same Docker Compose | None outside: the API calls it at `http://ocr:8000` |
 | PDF converter (Gotenberg, LibreOffice) | Same server, same Docker Compose | None outside: the API calls it at `http://pdf:3000` |
-| Email (job offers) | The company's own email provider, by SMTP | Set in `deploy/.env` (see [Email](#email-job-offers)) |
+| Email | The company's own email provider, by SMTP | Set by a Super Admin in Organization → Email Settings; `deploy/.env` the fallback (see [Email](#email)) |
 | Push notifications (the employee app) | Firebase Cloud Messaging (HTTP v1), from the API | Set in `deploy/.env` and a GitHub secret (see [Push notifications](#push-notifications-fcm)) |
 
 The browser only talks to the web app on Vercel. Vercel calls the API server-to-server, so the API needs no CORS setup
@@ -188,11 +188,33 @@ docker compose ps pdf                 # "healthy"
 docker compose logs -f pdf
 ```
 
-## Email (job offers)
+## Email
 
-The API sends job offers through the company's own email provider by SMTP. Until it is set up, HR copies each offer's
-link and sends it from their own mailbox; nothing else needs email. To set it up, add to `deploy/.env` on the server
-(see `deploy/.env.example`), then run `./deploy.sh` (or push any backend change):
+The API sends the system's emails through the company's own email provider by SMTP: set-password links and
+invitations, job offers, interview invitations and the emails to applicants. Until email is set up, HR copies each
+link and sends it from their own mailbox.
+
+**The way to set it up: Organization → Email Settings** (a Super Admin's only; owner, 23 October 2026: "why dont we add
+SMTP setup in the organization setup"). No redeploy:
+
+1. Choose the provider: Google Workspace, Microsoft 365 or Zoho Mail fill the server, the port and the security
+   (`smtp.gmail.com`, `smtp.office365.com`, `smtp.zoho.com`, all 587 with STARTTLS); "Another provider" takes them
+   by hand. Google needs an app password (with 2-step verification on); Microsoft 365 needs SMTP AUTH turned on for the
+   mailbox; Zoho on zoho.eu or another region uses its regional server.
+2. Enter the mailbox's username and password, the sender's name and address (e.g. `TrendLIX HR`, `hr@trendlix.com`),
+   and a reply-to address if wanted.
+3. **Send a test email**: it is sent with the values on screen, saved or not, and answers in plain words ("The username
+   or password was refused", "Couldn't reach smtp.… on port 587", "The secure connection failed…", "The sender address
+   isn't allowed for this mailbox").
+4. Tick **Send the system's emails with these settings** and save. The page says where emails are sent from now.
+
+The password is kept encrypted in the database (AES-256-GCM), never shown again ("Set · Replace"), never sent to the
+browser, a developer or the audit log. Its key is derived from `JWT_SECRET`, so there is nothing more to set up; **if
+`JWT_SECRET` is ever changed** (which also signs everyone out), the saved password can't be read any more: the page says
+"The saved password can't be read any more: enter it again", and until it is, the server's settings below are used.
+
+**The fallback: `deploy/.env`.** While the page isn't filled in and switched on, the API uses these, exactly as before
+(see `deploy/.env.example`; after a change run `./deploy.sh`, or push any backend change):
 
 | Setting | Example |
 |---|---|
@@ -201,6 +223,9 @@ link and sends it from their own mailbox; nothing else needs email. To set it up
 | `SMTP_USER` | the sending mailbox, e.g. `hr@trendlix.com` |
 | `SMTP_PASS` | its password, or an app password (Google Workspace needs one; Microsoft 365 needs SMTP AUTH turned on for the mailbox) |
 | `MAIL_FROM` | the sender candidates see: `"TrendLIX HR <hr@trendlix.com>"` |
+
+Neither filled in: nothing is emailed, and the screens offer the links to send by hand. The server only needs to reach
+the provider's SMTP server (outgoing, usually port 587 or 465).
 
 The candidate's answers go to the HR user who sent the offer (reply-to), and the system emails them when the candidate
 accepts or declines. The offer page candidates open is on the web app (`https://people.trendlix.com/offer/…`), never on

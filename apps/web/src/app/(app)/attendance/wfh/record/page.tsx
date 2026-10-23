@@ -10,6 +10,7 @@ import { readEmployee } from '../../../raise-requests/list';
 import { recordWfh } from '../actions';
 import { RECORD_WFH_PATH, recordsWfh, WFH_PATH } from '../wfh';
 import { RecordWfhForm } from '../wfh-forms';
+import { withCode } from '@/lib/hidden';
 
 // Record a WFH day, under Attendance → Work From Home (owner, 21 October 2026: "think about how should we handle the
 // working from home in out erp"; HR records a day for someone, past, the same day or over the limit, "with a warning and
@@ -42,7 +43,7 @@ async function Record({ searchParams }: { searchParams: PageProps<'/attendance/w
   const employed = actionablePeople(people)
     .filter((p) => p.employment && p.id !== user.employeeId)
     .sort((a, b) => a.fullNameEn.localeCompare(b.fullNameEn, 'en'));
-  const options = employed.map((p) => ({ id: p.id, label: `${p.fullNameEn} · ${p.employeeCode}` }));
+  const options = employed.map((p) => ({ id: p.id, label: withCode(p.fullNameEn, p.employeeCode) }));
   const asked = readEmployee(query);
   const chosen = asked ? (employed.find((p) => p.id === asked) ?? null) : null;
   return (

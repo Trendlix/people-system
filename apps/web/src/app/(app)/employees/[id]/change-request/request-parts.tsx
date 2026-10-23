@@ -6,6 +6,7 @@ import type { ChangeRequest, ChangeRequestChange } from '@/lib/types';
 import { changeStatusLabel } from '../../../requests/details-changes/list';
 import { changeShown } from '../../confirmation';
 import { profileHref } from '../../tab-list';
+import { shownCode } from '@/lib/hidden';
 
 // Parts of a change request shown both to the employee (their requests) and to HR and Admin (Approvals, and Details
 // Changes under Requests). A C-level person's (owner, 19 October 2026: "make C level Employees details not visible to
@@ -80,7 +81,7 @@ export function ChangeRequestCard({ request: r, fromLabel = 'Current', children 
         <div className="min-w-0">
           <h3 className="font-semibold">
             <Link href={profileHref(r.employee.id)}>{name}</Link>
-            <span className="font-normal text-muted"> · {r.employee.employeeCode}</span>
+            {shownCode(r.employee.employeeCode) && <span className="font-normal text-muted"> · {r.employee.employeeCode}</span>}
             {r.confidential && <CLevelBadge className="ml-2 align-middle" title="The CEO or a Super Admin decides a C-level person’s change request, not HR." />}
           </h3>
           <p className="mt-0.5 text-sm text-muted">

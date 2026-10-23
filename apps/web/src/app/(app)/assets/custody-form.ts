@@ -17,6 +17,7 @@ import {
   type HoldingsView,
 } from '@trendlix/shared';
 import { formatDate, formatDateTime } from '../../../lib/format';
+import { HIDDEN_LABEL, shownCode } from '../../../lib/hidden';
 
 /**
  * An item's accessories as printed (step 4, owner, 22 October 2026: accessories): its checklist that went out ("Charger, 2
@@ -77,7 +78,7 @@ function signature(label: string, name: string | null): string {
 }
 
 const personRows = (p: { fullNameEn: string; employeeCode: string; jobTitle: string | null; department: string | null }) =>
-  `<dt>Employee</dt><dd>${escape(p.fullNameEn)}</dd><dt>Employee code</dt><dd class="mono">${escape(p.employeeCode)}</dd>` +
+  `<dt>Employee</dt><dd>${escape(p.fullNameEn)}</dd><dt>Employee code</dt><dd class="mono">${escape(shownCode(p.employeeCode) ?? HIDDEN_LABEL)}</dd>` +
   `<dt>Job title</dt><dd>${escape(p.jobTitle ?? '—')}</dd><dt>Department</dt><dd>${escape(p.department ?? '—')}</dd>`;
 
 /** The custody form's markup, the same in the preview and in the document printed. */

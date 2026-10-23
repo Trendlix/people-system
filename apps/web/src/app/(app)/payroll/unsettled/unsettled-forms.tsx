@@ -13,6 +13,7 @@ import { monthName, monthOf } from '../list';
 import type { AdvanceRow, PersonRef } from '../adjustments/adjustments';
 import { changePreview, firstMonthChoices, limitHref, limitText, planPreview, planProblem, postponeConfirm, SETTLE_CHOICES } from './installments';
 import { clearanceOption, METHOD_CHOICES, type ClearanceDocument } from './unsettled';
+import { joinShown } from '@/lib/hidden';
 
 // Unsettled's forms (owner, 17 October 2026), for HR: a final settlement marked settled (the day, the amount paid, a
 // note, the clearance document) or reopened; held pay recorded as paid out; an advance or loan recorded, changed or
@@ -522,8 +523,7 @@ export function NewAdvanceForm({ action, people, today }: { action: Action; peop
             <option value="">Choose…</option>
             {people.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.name} · {p.employeeCode}
-                {p.department ? ` · ${p.department}` : ''}
+                {joinShown([p.name, p.employeeCode, p.department])}
               </option>
             ))}
           </Select>

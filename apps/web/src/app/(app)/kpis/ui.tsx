@@ -5,6 +5,7 @@ import { formatDate } from '@/lib/format';
 import { KPI_PATHS } from '@/lib/kpi-paths';
 import { heatCell, latestOf, levelRows, levelsLabel, monthShort } from './heatmap';
 import { actionButton, actionText, LEVEL_BADGE, LEVEL_BAR, percentText, STATUS_BADGE, statusText } from './scorecard';
+import { joinShown, shownCode } from '@/lib/hidden';
 
 // The KPI pages' parts (owner, 21 October 2026: "Full framework per role"; the prototype's screens/KPIs.html): a level's
 // badge, a step's badge, a final % with its level (or a dash with the step, until it is shown), the heatmap of people ×
@@ -221,7 +222,7 @@ export function ScorecardsTable({ scorecards, showMonth = false }: { scorecards:
                   </Link>
                   {s.confidential && <CLevelBadge className="ml-1.5" title="A C-level person: the CEO scores their KPI, and HR doesn't see it." />}
                   {s.practice && <PracticeBadge className="ml-1.5" />}
-                  <span className="block text-xs text-muted">{[s.jobTitle, s.department].filter(Boolean).join(' · ') || s.employee.employeeCode}</span>
+                  <span className="block text-xs text-muted">{joinShown([s.jobTitle, s.department]) || shownCode(s.employee.employeeCode)}</span>
                 </td>
                 {showMonth && <td className="whitespace-nowrap">{monthShort(s.month)}</td>}
                 <td className="min-w-40">

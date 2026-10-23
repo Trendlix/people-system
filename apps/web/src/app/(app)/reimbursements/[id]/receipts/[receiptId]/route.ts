@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { REIMBURSEMENT_RECEIPT_TYPES } from '@trendlix/shared';
 import { ApiError, apiFetch } from '@/lib/api';
-import { textResponse as text } from '../../../../templates/file-response';
+import { textResponse as text } from '../../../../organization/templates/file-response';
 
 // Serves one receipt of a reimbursement claim from the API under the web domain, with the caller's session: the browser
 // never talks to the API (as the employee file's scans, app/paperwork/[itemId]). The API lets the claimant, the claim's

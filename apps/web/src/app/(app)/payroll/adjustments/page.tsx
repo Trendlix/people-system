@@ -46,6 +46,7 @@ import {
   type AdjustmentChoices,
   type AdjustmentRow,
 } from './adjustments';
+import { shownCode } from '@/lib/hidden';
 
 // Additions / Deductions (owner, 17 October 2026: "make the Payroll in the side tab a main title below it - Unsettled -
 // Additions / Deductions"; asked, the owner chose one-off amounts per employee and month, not recurring). For a month,
@@ -166,7 +167,7 @@ function AdjustmentsTable({ rows, choices, hr, today }: { rows: AdjustmentRow[];
                       <Link href={`/employees/${g.employee.id}`} className="font-semibold">
                         {g.employee.name}
                       </Link>
-                      <span className="font-normal text-muted"> · {g.employee.employeeCode}</span>
+                      {shownCode(g.employee.employeeCode) && <span className="font-normal text-muted"> · {g.employee.employeeCode}</span>}
                     </span>
                     <span className="font-normal tabular-nums">
                       +{formatEgp(g.sums.additions)} <span className="text-muted">·</span> −{formatEgp(g.sums.deductions)} <span className="text-muted">·</span>{' '}
@@ -323,7 +324,7 @@ async function MonthView({ searchParams }: { searchParams: Promise<Query> }) {
         <p role="status" className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
           <span>
             Showing {person ? <span className="font-semibold">{person.name}</span> : 'one employee'}
-            {person ? <span className="text-muted"> · {person.employeeCode}</span> : null} only.
+            {person && shownCode(person.employeeCode) ? <span className="text-muted"> · {person.employeeCode}</span> : null} only.
           </span>
           <Link href={adjustmentsHref(month, today)}>Show everyone</Link>
         </p>

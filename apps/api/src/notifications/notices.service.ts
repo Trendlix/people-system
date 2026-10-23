@@ -56,6 +56,8 @@ export const REQUEST_LINKS = {
   homeLocation: (id: string) => `/home-locations/${id}`,
   // working from home (owner, 21 October 2026): under Attendance, as the corrections are
   wfh: (id: string) => `/attendance/wfh/${id}`,
+  // official duty (owner, 23 October 2026): under Attendance, beside working from home
+  od: (id: string) => `/attendance/official-duty/${id}`,
 } as const;
 
 /** A request as the notices read it: whose it is, who it was sent to, where it stands, its name and its days. */
@@ -113,6 +115,18 @@ export class NoticesService {
       if (!r) return;
       const day = fromDateOnly(r.date);
       await this.leaveLike('wfh', { ...r, name: r.employee.fullNameEn, when: daysText(day, day), link: REQUEST_LINKS.wfh(id) }, event);
+    });
+  }
+
+  /** An official duty request (owner, 23 October 2026: "Manager, then HR"): told as a work from home request is, with its days. */
+  async od(id: string, event: RequestEvent): Promise<void> {
+    await this.safely('official duty', async () => {
+      const r = await this.prisma.odRequest.findUnique({
+        where: { id },
+        select: { employeeId: true, managerId: true, status: true, startDate: true, endDate: true, employee: { select: { fullNameEn: true } } },
+      });
+      if (!r) return;
+      await this.leaveLike('od', { ...r, name: r.employee.fullNameEn, when: daysText(fromDateOnly(r.startDate), fromDateOnly(r.endDate)), link: REQUEST_LINKS.od(id) }, event);
     });
   }
 

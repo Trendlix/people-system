@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PdfPageSize } from '@trendlix/shared';
-import { PdfPages } from '@/app/(app)/templates/[slot]/versions/[versionId]/fields/pdf-pages';
+import { PdfPages } from '@/app/(app)/organization/templates/[slot]/versions/[versionId]/fields/pdf-pages';
 
 // A PDF drawn in the page, its pages one under the other as wide as the screen (owner, 20 October 2026: the employee
 // app, "My attendance and payslips"): a payslip on the phone pages. A phone's web view (the app's) can't show a PDF in a

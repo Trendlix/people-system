@@ -3,6 +3,7 @@
 import { assetsCan, type AssetsAccessView, type Role } from '@trendlix/shared';
 import { ATTENDANCE_PATH, ATTENDANCE_SECTIONS } from '../app/(app)/attendance/sections';
 import { PAYROLL_SECTIONS } from '../app/(app)/payroll/sections';
+import { firstSetupPage, SETUP_PATHS } from '../app/(app)/organization/setup-pages';
 import { ASSET_PATHS, CUSTODY_PATHS } from '../lib/asset-paths';
 import { KPI_PATHS } from '../lib/kpi-paths';
 import { hasRole, isSelfService } from '../lib/roles';
@@ -57,8 +58,10 @@ export type NavAudience = 'profile' | 'team' | 'assets' | 'assets-register' | 'a
  * the scorecards they score, for a direct manager, a department's head or a team's lead (the person in charge scores:
  * "The manager is the approver in charge") and the CEO, who scores the C-level people ("For C-level people the CEO
  * scores"); All KPIs, every scorecard by month, for HR, the CEO and the Super Admin; KPI Templates for HR and the Super
- * Admin ("Templates: HR"); KPI Pillars, the company's and each department's (owner, 22 October 2026: "but i need
- * pillars to each department"), for them too. In both sidebars, each with the pages its user sees.
+ * Admin ("Templates: HR"). KPI Pillars, the company's and each department's (owner, 22 October 2026: "but i need
+ * pillars to each department"), were here for them too until they moved, with the deadlines, to Organization's setup
+ * menu (owner, 23 October 2026: "Check-in Setup, KPI Pillars and deadlines, Recruitment and checklists, Templates"). In
+ * both sidebars, each with the pages its user sees.
  */
 export const KPIS_NAV: NavItem = {
   href: KPI_PATHS.mine,
@@ -69,7 +72,6 @@ export const KPIS_NAV: NavItem = {
     { href: KPI_PATHS.team, label: 'Team KPIs', section: KPI_PATHS.team, roles: ['ceo'], audience: 'team' },
     { href: KPI_PATHS.all, label: 'All KPIs', section: KPI_PATHS.all, roles: ['hr', 'ceo', 'super_admin'] },
     { href: KPI_PATHS.templates, label: 'KPI Templates', section: KPI_PATHS.templates, roles: ['hr', 'super_admin'] },
-    { href: KPI_PATHS.pillars, label: 'KPI Pillars', section: KPI_PATHS.pillars, roles: ['hr', 'super_admin'] },
   ],
 };
 
@@ -130,8 +132,9 @@ export const LEAVE_PATH = '/leave';
 /**
  * Recruitment, the ATS (owner, 22 October 2026: "where will we include the ATS?"): the vacancies (the CEO approves them
  * before the careers page shows them), every applicant, the interviews to come, the job offers (moved here from People:
- * the offer stage, before someone is an employee; owner's request, 15 October 2026), onboarding, the analytics and the
- * settings (the rejection email), for HR, the CEO and a Super Admin; and My Hiring (Phase 2: "Show it only to people who
+ * the offer stage, before someone is an employee; owner's request, 15 October 2026), onboarding and the analytics, for
+ * HR, the CEO and a Super Admin (the settings, the rejection email, moved to Organization's setup menu on 23 October
+ * 2026: "Recruitment and checklists"); and My Hiring (Phase 2: "Show it only to people who
  * are a hiring manager or interviewer on something open"), for a vacancy's hiring manager and the interviewers, in
  * anyone's sidebar, an employee's too.
  */
@@ -148,16 +151,22 @@ export const RECRUITMENT_NAV: NavItem = {
     { href: '/offers', label: 'Offers', section: '/offers', roles: ['hr', 'ceo'] },
     { href: '/onboarding', label: 'Onboarding', section: '/onboarding', roles: ['hr', 'ceo', 'super_admin'] },
     { href: '/recruitment/analytics', label: 'Analytics', section: '/recruitment/analytics', roles: ['hr', 'ceo', 'super_admin'] },
-    { href: '/recruitment/settings', label: 'Settings', section: '/recruitment/settings', roles: ['hr', 'ceo', 'super_admin'] },
   ],
 };
 
 /** The Audit Log (app/(app)/audit): who changed what and when, for the Super Admin and the CEO. */
 export const AUDIT_LOG_PATH = '/audit';
 
+/**
+ * Organization, the setup home (owner, 23 October 2026: "lets perform a regorganization of this menu. we can perform
+ * groupings to related items"; "Side menu with headings"), one link: to the first setup page the user sees (navFor), for
+ * whoever sees one (organization/setup-pages.ts); its pages are in its own menu, not here.
+ */
+export const ORGANIZATION_NAV: NavItem = { href: SETUP_PATHS.company, label: 'Organization', section: '/organization' };
+
 export const NAV: NavItem[] = [
   { href: '/', label: 'Home' },
-  { href: '/organization/company', label: 'Organization', section: '/organization' },
+  ORGANIZATION_NAV,
   // the people the company employs, under one heading (owner, 17 October 2026: "i think employees, contracts and offers
   // need to be grouped from the side bar", with the Missing Details report; Search Documents and Card Reading Fixes left
   // it on 18 October 2026, as not used every day: the first is a button on the Employees page, the second a link in the
@@ -217,14 +226,14 @@ export const NAV: NavItem[] = [
   // attendance (owner, 19 October 2026: "the attendance is not active in the side menu"; it was under Coming Next until
   // then): a heading with its pages, for HR, the CEO and Finance (Finance read only); Import is HR's (owner, the same
   // day: "where am i going to import the sheets?"). A manager sees their team's from My Team, an employee their own on
-  // My Attendance. Check-in Setup (owner, 20 October 2026: "Own page, several locations"), the check-in locations and the
-  // office network's lock, HR's and Admin's: an Admin (or a Super Admin) sees that page alone here, the heading linking
-  // to it.
+  // My Attendance. Check-in Setup (owner, 20 October 2026: "Own page, several locations"), HR's and Admin's, was here,
+  // an Admin's one page under it, until it moved to Organization's setup menu (owner, 23 October 2026: "Check-in Setup,
+  // KPI Pillars and deadlines, Recruitment and checklists, Templates").
   {
     href: ATTENDANCE_PATH,
     label: 'Attendance',
     section: ATTENDANCE_PATH,
-    roles: ['hr', 'ceo', 'finance', 'admin'],
+    roles: ['hr', 'ceo', 'finance'],
     items: ATTENDANCE_SECTIONS.map((s) => ({ href: s.href, label: s.label, section: s.href, ...(s.roles && { roles: [...s.roles] }) })),
   },
   // the KPIs, after Attendance (owner, 21 October 2026)
@@ -232,18 +241,8 @@ export const NAV: NavItem[] = [
   // Assets, after the KPIs, for those with Assets access (owner, 21 October 2026)
   ASSETS_NAV,
   { href: '/approvals', label: 'Approvals', section: '/approvals', roles: ['hr', 'ceo', 'admin'] },
-  {
-    href: '/templates',
-    label: 'Templates',
-    section: '/templates',
-    // a Super Admin's only (owner, 19 October 2026: "enable templates sidebar to super admin only")
-    roles: ['super_admin'],
-    // the library, and the guide to the fields a template can use (owner's request, 15 October 2026)
-    items: [
-      { href: '/templates', label: 'Library', section: '/templates' },
-      { href: '/templates/tags', label: 'Fields Guide', section: '/templates/tags' },
-    ],
-  },
+  // Templates, a Super Admin's heading with the Library and the Fields Guide (owner, 19 October 2026: "enable templates
+  // sidebar to super admin only"), was here until it moved to Organization's setup menu (23 October 2026)
   { href: '/users', label: 'Users', section: '/users', roles: ['admin'] },
   // who changed what and when (owner, 19 October 2026: "an Audit Log page showing who changed what and when"): the
   // Super Admin's and the CEO's, last: beside Users for the Super Admin, after Approvals for the CEO
@@ -266,7 +265,7 @@ export const MY_ATTENDANCE = '/my-attendance';
  * whether they lead a department or a team (`leads`; left out by an API from before it), and their Assets access
  * (`assets`, 21 October 2026; left out by an API from before it: none).
  */
-type NavUser = { roles: readonly Role[]; employeeId?: string | null; leads?: boolean; assets?: AssetsAccessView | null; hiring?: boolean };
+type NavUser = { roles: readonly Role[]; employeeId?: string | null; leads?: boolean; assets?: AssetsAccessView | null; hiring?: boolean; developer?: boolean };
 
 /**
  * Whether someone decides others' leave and reimbursement claims first, on My Team: a direct manager, or the person in
@@ -359,9 +358,16 @@ function shownWithItems(user: NavUser, item: NavItem): NavItem[] {
 export function navFor(user: NavUser | null): NavItem[] {
   if (!user) return NAV.filter((item) => item.href === '/');
   if (isSelfService(user)) return selfServiceNav(user);
-  // a heading's href the first of its pages the user sees (shownWithItems): Payroll's, Attendance's, Templates' and
-  // People's first is their own page; Requests has none; the KPIs' first is My KPIs for those with a profile
-  return NAV.filter((item) => sees(user, item)).flatMap((item) => shownWithItems(user, item));
+  // a heading's href the first of its pages the user sees (shownWithItems): Payroll's, Attendance's and People's first is
+  // their own page; Requests has none; the KPIs' first is My KPIs for those with a profile; Organization's, the first
+  // setup page they see
+  return NAV.filter((item) => sees(user, item)).flatMap((item) => (item === ORGANIZATION_NAV ? organizationFor(user) : shownWithItems(user, item)));
+}
+
+/** Organization for whoever sees a setup page, linking to the first they see (23 October 2026); else left out. */
+function organizationFor(user: NavUser): NavItem[] {
+  const first = firstSetupPage(user);
+  return first ? [{ ...ORGANIZATION_NAV, href: first.href }] : [];
 }
 
 /**
@@ -373,7 +379,7 @@ export function profileBack(user: NavUser, profile: { id: string; isSelf?: boole
   return profile.isSelf || profile.id === user.employeeId ? null : { href: MY_TEAM, label: 'My Team' };
 }
 
-/** Whether `pathname` is `section` or a page under it ("/templates/tags" is under "/templates"; "/templatesx" isn't). */
+/** Whether `pathname` is `section` or a page under it ("/kpis/all/practice" is under "/kpis/all"; "/kpis/allx" isn't). */
 export function isUnder(pathname: string, section: string): boolean {
   return pathname === section || pathname.startsWith(`${section}/`);
 }

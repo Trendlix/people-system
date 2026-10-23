@@ -2,6 +2,7 @@ import {
   DEVELOPER_AGGREGATE_KEYS,
   DEVELOPER_COMPANY_PATHS,
   DEVELOPER_EMPLOYMENT_DATE_FIELDS,
+  DEVELOPER_EMPLOYMENT_PATHS,
   DEVELOPER_JOB_DATE_FIELDS,
   DEVELOPER_JOB_FLAG_FIELDS,
   DEVELOPER_JOB_ID_FIELDS,
@@ -14,8 +15,10 @@ import {
   HIDDEN,
   hideJobForDeveloper,
   isDeveloperCompanyPath,
+  isDeveloperEmploymentPath,
   maskForDeveloper,
 } from '@trendlix/shared';
+import { developerDigestOf, developerTagKeyOf } from '../auth/developer-tags.js';
 
 // The Developer role sees no per-person employment or social insurance details (owner, 22 October 2026: "why is the
 // employment data can be viewed by developer access"; chose "Hide per-person details", then "and the social
@@ -33,7 +36,9 @@ const OMAR = {
   personalEmail: null,
   emergencyName: null,
 };
-const people = developerPeople({ employees: [OMAR], users: [], applicants: [], offers: [] });
+const people = developerPeople({ employees: [OMAR], users: [], applicants: [], offers: [] }, developerDigestOf(developerTagKeyOf('a test secret, not the server’s')));
+/** Omar's pseudonym (a keyed tag, 23 October 2026: "in developer view use **** instead of IDs"). */
+const omar = people.byId.get(OMAR.id)!;
 const DEPT = { id: '1d1d1d1d-1111-4222-8333-444455556666', nameEn: 'Production', nameAr: 'الإنتاج', parent: null };
 const TEAM = { id: '2d2d2d2d-1111-4222-8333-444455556666', nameEn: 'Video Team', nameAr: null, parent: { id: DEPT.id, nameEn: 'Production', nameAr: 'الإنتاج' } };
 const JOB = { id: '3d3d3d3d-1111-4222-8333-444455556666', titleEn: 'Video Editor', titleAr: 'محرر فيديو', jdVersion: 2 };
@@ -97,8 +102,9 @@ describe('a person’s employment, on a page about people', () => {
     };
     expect(maskForDeveloper(profile, '/api/employees/1', people)).toEqual({
       id: OMAR.id,
-      employeeCode: 'EMP-0182',
-      fullNameEn: 'Employee EMP-0182',
+      // a person's code (23 October 2026: "in developer view use **** instead of IDs")
+      employeeCode: HIDDEN,
+      fullNameEn: omar.en,
       // C-level or not: a grade's mark
       confidential: null,
       employment: {
@@ -128,7 +134,8 @@ describe('a person’s employment, on a page about people', () => {
         createdAt: '2026-07-13T09:00:00.000Z',
         contract: {
           id: '6e6e6e6e-1111-4222-8333-444455556666',
-          number: 'CON-2026-0001',
+          // one person's contract: its number is a person's code too
+          number: HIDDEN,
           status: 'active',
           form: 'fixed',
           payBasis: HIDDEN,
@@ -146,7 +153,8 @@ describe('a person’s employment, on a page about people', () => {
           durationMonths: 12,
         },
       },
-      reports: [{ id: 'r', employeeCode: 'EMP-0007', fullNameEn: 'Employee EMP-0007', status: 'active', jobTitle: { titleEn: HIDDEN } }],
+      // someone the people don't have: a keyed tag of their id, never their code
+      reports: [{ id: 'r', employeeCode: HIDDEN, fullNameEn: `Employee ${people.tagOf('r')}`, status: 'active', jobTitle: { titleEn: HIDDEN } }],
     });
     // the answer itself is never changed
     expect(profile.employment.jobTitle.titleEn).toBe('Video Editor');
@@ -159,13 +167,13 @@ describe('a person’s employment, on a page about people', () => {
         '/api/employees/1',
         people,
       ),
-    ).toEqual({ employeeCode: 'EMP-0182', insuranceNo: HIDDEN, occupationCode: HIDDEN, occupationName: HIDDEN, insuranceStartDate: null, socialInsured: null, documentNo: HIDDEN });
+    ).toEqual({ employeeCode: HIDDEN, insuranceNo: HIDDEN, occupationCode: HIDDEN, occupationName: HIDDEN, insuranceStartDate: null, socialInsured: null, documentNo: HIDDEN });
   });
 
   it('a leave request: its days stay, where the person works hidden', () => {
     const leave = { id: 'l', employeeId: OMAR.id, startDate: '2026-10-05', endDate: '2026-10-06', days: 2, status: 'approved', employee: { id: OMAR.id, fullNameEn: OMAR.fullNameEn, department: 'Production', team: 'Video Team' } };
     expect(maskForDeveloper([leave], '/api/leave/requests', people)).toEqual([
-      { ...leave, employee: { id: OMAR.id, fullNameEn: 'Employee EMP-0182', department: HIDDEN, team: HIDDEN } },
+      { ...leave, employee: { id: OMAR.id, fullNameEn: omar.en, department: HIDDEN, team: HIDDEN } },
     ]);
   });
 
@@ -184,8 +192,8 @@ describe('a person’s employment, on a page about people', () => {
     expect(maskForDeveloper(line, '/api/payroll/runs/1', people)).toEqual({
       id: 'p',
       employeeId: OMAR.id,
-      employeeCode: 'EMP-0182',
-      name: 'Employee EMP-0182',
+      employeeCode: HIDDEN,
+      name: omar.en,
       department: HIDDEN,
       jobTitle: HIDDEN,
       employmentType: HIDDEN,
@@ -229,6 +237,129 @@ describe('a person’s employment, on a page about people', () => {
 
   it('a count under a job’s name stays; nothing else is touched', () => {
     expect(hideJobForDeveloper({ self: 2, team: 3, hr: 0, month: '2026-09' }, '/api/kpis/counts')).toEqual({ self: 2, team: 3, hr: 0, month: '2026-09' });
+  });
+});
+
+// The owner, 23 October 2026, as a developer, on the home page's Contracts Ending Soon: "Employee EMP-0023 · EMP-0023",
+// "Ends 11/03/2024". The row carries the contract's end beside the person, with none of an employment's marks.
+describe('contracts, employments, endings and raises: no dates, wherever they are in the answer', () => {
+  const EMPLOYEE = { id: OMAR.id, employeeCode: 'EMP-0182', fullNameEn: OMAR.fullNameEn };
+
+  it('a contract ending soon: no end, no notice date, no code; its statuses stay', () => {
+    const row = {
+      id: 'c',
+      number: 'CON-2023-0004',
+      employee: EMPLOYEE,
+      employmentId: 'e',
+      endDate: '2024-03-11',
+      nonRenewalNoticeBy: '2024-01-04',
+      renewalDraft: false,
+      conversionDraft: false,
+      becameOpenEnded: true,
+      training: null,
+    };
+    expect(maskForDeveloper([row], '/api/contracts/expiring', people)).toEqual([
+      { ...row, number: HIDDEN, employee: { id: OMAR.id, employeeCode: HIDDEN, fullNameEn: omar.en }, endDate: null, nonRenewalNoticeBy: null },
+    ]);
+    // the same row elsewhere: known by its marks
+    expect(hideJobForDeveloper({ rows: [{ endDate: '2024-03-11', becameOpenEnded: true }] }, '/api/x')).toEqual({ rows: [{ endDate: null, becameOpenEnded: true }] });
+  });
+
+  it('the law’s warnings: no date, no contract number in the message', () => {
+    const warning = {
+      kind: 'became_open_ended',
+      employee: EMPLOYEE,
+      employmentId: 'e',
+      contractId: 'c',
+      contractNumber: 'CON-2023-0004',
+      since: '2024-03-11',
+      message: 'CON-2023-0004 ended on 11/03/2024 and the work goes on without a signed renewal: by Labour Law Art. 88 it is now open-ended.',
+    };
+    expect(maskForDeveloper([warning], '/api/contracts/law-warnings', people)).toEqual([
+      {
+        ...warning,
+        employee: { id: OMAR.id, employeeCode: HIDDEN, fullNameEn: omar.en },
+        contractNumber: HIDDEN,
+        since: null,
+        message: `${HIDDEN} ended on ${HIDDEN} and the work goes on without a signed renewal: by Labour Law Art. 88 it is now open-ended.`,
+      },
+    ]);
+  });
+
+  it('an ending waiting for the CEO: the notice, its letter, the last day, the decision due and the deadlines null', () => {
+    const ending = {
+      id: 'n',
+      ruleLabel: 'Resignation',
+      status: 'pending_ceo',
+      noticeGivenOn: '2026-10-01',
+      lastWorkingDay: '2026-12-31',
+      certifiedOn: '2026-10-02',
+      decisionDueOn: '2026-10-08',
+      hrApprovedAt: '2026-10-03T09:00:00.000Z',
+      deadlines: { finalDuesBy: '2027-01-07', labourOfficeFilingBy: '2027-01-15' },
+      employee: EMPLOYEE,
+      employmentId: 'e',
+    };
+    expect(hideJobForDeveloper([ending], '/api/endings')).toEqual([
+      { ...ending, noticeGivenOn: null, lastWorkingDay: null, certifiedOn: null, decisionDueOn: null, deadlines: { finalDuesBy: null, labourOfficeFilingBy: null } },
+    ]);
+  });
+
+  it('a raise waiting for the CEO: its start and end and the version before’s null, at any depth; when it was sent stays', () => {
+    const raise = {
+      id: 'r',
+      number: 'CON-2026-0007-A1',
+      startDate: '2026-11-01',
+      endDate: '2027-07-12',
+      raise: { sentAt: '2026-10-20T08:00:00.000Z', form2From: null },
+      previous: { id: 'p', number: 'CON-2026-0007', version: 1, startDate: '2026-07-13', endDate: '2027-07-12' },
+      notes: ['Raised from 13/07/2026'],
+      employee: EMPLOYEE,
+    };
+    expect(hideJobForDeveloper(raise, '/api/raises/pending')).toEqual({
+      ...raise,
+      startDate: null,
+      endDate: null,
+      previous: { ...raise.previous, startDate: null, endDate: null },
+      notes: [`Raised from ${HIDDEN}`],
+    });
+  });
+
+  it('a probation ending, and the days a person was employed', () => {
+    expect(hideJobForDeveloper([{ employee: EMPLOYEE, employmentId: 'e', probationEnd: '2026-10-12' }], '/api/employments/probation-ending')).toEqual([
+      { employee: EMPLOYEE, employmentId: 'e', probationEnd: null },
+    ]);
+    expect(hideJobForDeveloper({ employedFrom: '2026-07-13', employedTo: null, jdAcknowledgedAt: '2026-07-13', day: '2026-10-05' }, '/api/attendance/employees/1')).toEqual({
+      employedFrom: null,
+      employedTo: null,
+      jdAcknowledgedAt: null,
+      day: '2026-10-05',
+    });
+  });
+
+  it('the list of those paths: contracts, employments, endings and raises in; leave and the rest out', () => {
+    for (const path of [
+      '/api/contracts',
+      '/api/contracts/expiring',
+      '/api/contracts/law-warnings',
+      '/api/employments/probation-ending',
+      '/api/endings',
+      '/api/raises/pending',
+      '/api/raise-requests',
+      '/api/employees/1/employments/2/contracts',
+      '/api/employees/1/salary-history',
+      '/api/employees/1/raise-requests',
+      '/api/reports/salary-raises',
+      '/api/payroll/final-settlements/1',
+    ]) {
+      expect(isDeveloperEmploymentPath(path), path).toBe(true);
+    }
+    for (const path of ['/api/leave/requests', '/api/employees', '/api/employees/1', '/api/contract-settings', '/api/ending-rules', '/api/attendance', '/api/kpis/scorecards', '/api/wfh']) {
+      expect(isDeveloperEmploymentPath(path), path).toBe(false);
+    }
+    expect(DEVELOPER_EMPLOYMENT_PATHS.length).toBeGreaterThan(2);
+    // a leave's start and end, elsewhere, stay
+    expect(hideJobForDeveloper({ startDate: '2026-10-05', endDate: '2026-10-06' }, '/api/leave/requests')).toEqual({ startDate: '2026-10-05', endDate: '2026-10-06' });
   });
 });
 
