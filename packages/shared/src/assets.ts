@@ -753,6 +753,14 @@ export interface AssetSettingsView {
    */
   custodyTerms: string[];
   custodyTermsStandard: boolean;
+  /**
+   * The Arabic terms printed beside them (owner, 24 October 2026: "Arabic and English"; custody.ts custodyTermsArOf):
+   * those an Assets manager wrote, else the standard Arabic wording while the English terms are the standard ones;
+   * empty: none, the forms print the English terms alone. `custodyTermsArStandard`: none were written in Arabic. Left
+   * out by an API from before.
+   */
+  custodyTermsAr?: string[];
+  custodyTermsArStandard?: boolean;
   updatedAt: string | null;
   updatedBy: AssetUserRef | null;
 }

@@ -3,7 +3,10 @@ import {
   assetActionsOf,
   CUSTODY_FILTERS,
   CUSTODY_TERMS_STANDARD,
+  CUSTODY_TERMS_STANDARD_AR,
   CUSTODY_UNSIGNED_DAYS,
+  custodyTermsArOf,
+  custodyTermsArPrinted,
   custodyDeductionProblem,
   custodyDeductionReason,
   custodyStatusOf,
@@ -19,6 +22,8 @@ import {
   normalCustodyCode,
   returnedDamagedNote,
   STATUS_ON_RETURN,
+  termsArProblems,
+  termsArToKeep,
   termsFromText,
   termsProblems,
   unsignedTooLong,
@@ -137,6 +142,36 @@ describe('custody (shared)', () => {
     expect(termsProblems([])).toEqual(['Write at least one term.']);
     expect(termsProblems(['x'.repeat(601)])).toEqual(['Keep each term to 600 characters or fewer.']);
     expect(termsProblems(Array.from({ length: 16 }, () => 'A term.'))).toEqual(['Keep the terms to 15 or fewer.']);
+  });
+
+  it('the Arabic terms (24 October 2026: "Arabic and English"): the standard Arabic only beside the standard English, a record’s as kept', () => {
+    // a faithful translation, term for term, in Arabic letters with 0–9 numbers (bilingual documents keep 0–9)
+    expect(CUSTODY_TERMS_STANDARD_AR).toHaveLength(CUSTODY_TERMS_STANDARD.length);
+    for (const term of CUSTODY_TERMS_STANDARD_AR) {
+      expect(term).toMatch(/^[\u0600-\u06FF0-9\s،.]+$/);
+      expect(term).not.toMatch(/[٠-٩]/);
+    }
+    expect(CUSTODY_TERMS_STANDARD_AR[3]).toContain('24 ساعة');
+    // in force: those written; else the standard Arabic while the English are the standard ones; else none
+    expect(custodyTermsArOf([], [])).toEqual([...CUSTODY_TERMS_STANDARD_AR]);
+    expect(custodyTermsArOf(null, undefined)).toEqual([...CUSTODY_TERMS_STANDARD_AR]);
+    expect(custodyTermsArOf([...CUSTODY_TERMS_STANDARD], [])).toEqual([...CUSTODY_TERMS_STANDARD_AR]);
+    expect(custodyTermsArOf(['Mine.'], [])).toEqual([]);
+    expect(custodyTermsArOf(['Mine.'], ['بندي.'])).toEqual(['بندي.']);
+    expect(custodyTermsArOf([], ['بندي.'])).toEqual(['بندي.']);
+    // the standard Arabic typed back unchanged is kept as none written, so it follows the English
+    expect(termsArToKeep([...CUSTODY_TERMS_STANDARD_AR])).toEqual([]);
+    expect(termsArToKeep(['بندي.'])).toEqual(['بندي.']);
+    // none written is allowed; the limits as the English
+    expect(termsArProblems([])).toEqual([]);
+    expect(termsArProblems(['ب'.repeat(601)])).toEqual(['Keep each Arabic term to 600 characters or fewer.']);
+    expect(termsArProblems(Array.from({ length: 16 }, () => 'بند.'))).toEqual(['Keep the Arabic terms to 15 or fewer.']);
+    expect(termsArProblems([' '])).toEqual(['An Arabic term can’t be empty.']);
+    // what a record's form prints: its own; a record from before with the standard English, the standard Arabic; else none
+    expect(custodyTermsArPrinted({ terms: ['Mine.'], termsAr: ['بندي.'] })).toEqual({ terms: ['بندي.'], source: 'record' });
+    expect(custodyTermsArPrinted({ terms: [...CUSTODY_TERMS_STANDARD] })).toEqual({ terms: [...CUSTODY_TERMS_STANDARD_AR], source: 'standard' });
+    expect(custodyTermsArPrinted({ terms: [...CUSTODY_TERMS_STANDARD], termsAr: [] })).toEqual({ terms: [...CUSTODY_TERMS_STANDARD_AR], source: 'standard' });
+    expect(custodyTermsArPrinted({ terms: ['Mine.'], termsAr: [] })).toEqual({ terms: [], source: 'none' });
   });
 
   it('HR decides a deduction from a damaged or missing item: Damage or loss, the employee’s own item', () => {

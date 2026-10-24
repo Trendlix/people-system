@@ -14,7 +14,9 @@ import { custodyCodeFromParam } from '../../../custody';
 // terms, blank signature lines for the employee and the person handing over; return sections appended per return)"):
 // the form as it prints, and Print form, which prints it alone on A4 from a frame in the page (custody-form.ts), the
 // company's name and logo from Organization at its top. The paper signing: printed, signed by the employee, and its
-// signed copy attached on the record's page. Printed again after a return, it carries that return's section too.
+// signed copy attached on the record's page. Printed again after a return, it carries that return's section too. Since
+// 24 October 2026 in Arabic and English on one page, signed by the employee and HR (owner: "Arabic and English",
+// "Employee and HR only"; custody-form.ts).
 
 export const metadata: Metadata = { title: 'Custody Form · People System' };
 
@@ -37,8 +39,8 @@ async function Form({ params }: { params: PageProps<'/assets/custody/[no]/form'>
         <div>
           <h1 className="text-2xl font-semibold">{title}</h1>
           <p className="mt-1 text-sm text-muted">
-            Print it on A4, have {r.employee.fullNameEn} sign it, then attach a photo or a scan of the signed page on the record.
-            {r.returns.length ? ' Each return is printed after the terms, with its own signature lines.' : ''}
+            Print it on A4, have {r.employee.fullNameEn} and HR sign it, then attach a photo or a scan of the signed page on the record.
+            {r.returns.length ? ' Each return is printed after the signatures, with its own signature lines.' : ''}
           </p>
         </div>
         <PrintDocumentButton document={custodyFormDocument(r, brand)} title={`${r.code} ${title}`} label="Print form" what="form" />

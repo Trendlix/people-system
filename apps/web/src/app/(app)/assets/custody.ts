@@ -29,6 +29,7 @@ import {
   normalAssetCode,
   normalCustodyCode,
   RETURN_CONDITION_LABELS,
+  termsArProblems,
   termsFromText,
   termsProblems,
   type AdjustmentStatus,
@@ -417,8 +418,13 @@ export function repairBody(fd: Pick<FormData, 'get'>, opts: { repair: boolean; v
   return { body, problems };
 }
 
-/** The terms as typed in Settings, one a line: the terms to send, and what is wrong with them. */
-export function termsBody(text: string): { terms: string[]; problems: string[] } {
+/**
+ * The terms as typed in Settings, one a line: the terms to send, and what is wrong with them. `arText` (24 October 2026:
+ * the form in "Arabic and English"): the Arabic beside them, one a line, sent as `termsAr` (empty: none written).
+ */
+export function termsBody(text: string, arText?: string): { terms: string[]; termsAr?: string[]; problems: string[] } {
   const terms = termsFromText(text);
-  return { terms, problems: termsProblems(terms) };
+  if (arText === undefined) return { terms, problems: termsProblems(terms) };
+  const termsAr = termsFromText(arText);
+  return { terms, termsAr, problems: [...termsProblems(terms), ...termsArProblems(termsAr)] };
 }

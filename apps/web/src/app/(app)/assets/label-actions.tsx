@@ -30,8 +30,11 @@ export function PrintDocumentButton({ document: html, title, label, what }: { do
     f.style.border = '0';
     f.style.right = '0';
     f.style.bottom = '0';
-    f.onload = () => {
+    f.onload = async () => {
       try {
+        // the fonts the document loads itself (the custody form's Arabic, 24 October 2026) before it prints, at most 3 seconds
+        const fonts = f.contentDocument?.fonts;
+        if (fonts) await Promise.race([fonts.ready, new Promise((done) => setTimeout(done, 3000))]);
         f.contentWindow?.focus();
         f.contentWindow?.print();
       } catch {

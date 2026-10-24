@@ -12,7 +12,8 @@ import { Empty, Loading, NoAccess } from '../../../ui';
 
 // A person's custody statement to print (Assets step 3; spec §5: "employee statement (everything held)"): everything they
 // hold today, on A4, with the company's name and logo and a signature line, printed alone from a frame in the page
-// (custody-form.ts). Never a value.
+// (custody-form.ts). Never a value. Since 24 October 2026 in Arabic and English, signed by the employee and HR (owner:
+// "Arabic and English", "Employee and HR only").
 
 export const metadata: Metadata = { title: 'Custody Statement · People System' };
 
@@ -34,7 +35,7 @@ async function Statement({ params }: { params: PageProps<'/assets/holders/[emplo
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold">Custody Statement</h1>
-          <p className="mt-1 text-sm text-muted">Everything {h.employee.fullNameEn} holds today, to print on A4 and sign.</p>
+          <p className="mt-1 text-sm text-muted">Everything {h.employee.fullNameEn} holds today, to print on A4 and have them and HR sign.</p>
         </div>
         <PrintDocumentButton document={custodyStatementDocument(h, brand, today)} title={`Custody statement of ${h.employee.fullNameEn}`} label="Print statement" what="statement" />
       </div>

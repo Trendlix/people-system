@@ -95,15 +95,20 @@ export async function assetPageAction(code: string, action: AssetPageAction, val
   return { message: a.done };
 }
 
-/** The custody terms, one a line (an Assets manager's); records already made keep the terms they were printed with. */
+/**
+ * The custody terms, one a line (an Assets manager's), and the Arabic beside them (24 October 2026: "Arabic and
+ * English"); records already made keep the terms they were printed with.
+ */
 export async function saveCustodyTerms(_prev: FormState, fd: FormData): Promise<FormState> {
   const text = String(fd.get('terms') ?? '');
-  const { terms, problems } = termsBody(text);
-  if (problems.length) return { errors: problems, values: { terms: text } };
+  const arText = fd.has('termsAr') ? String(fd.get('termsAr') ?? '') : undefined;
+  const typed = { terms: text, ...(arText !== undefined && { termsAr: arText }) };
+  const { terms, termsAr, problems } = termsBody(text, arText);
+  if (problems.length) return { errors: problems, values: typed };
   try {
-    await apiSend('PATCH', CUSTODY_API.terms, { terms });
+    await apiSend('PATCH', CUSTODY_API.terms, { terms, ...(termsAr && { termsAr }) });
   } catch (err) {
-    return { errors: messages(err), values: { terms: text } };
+    return { errors: messages(err), values: typed };
   }
   refresh();
   return { message: 'Saved. New custody forms print these terms; records already made keep theirs.' };
@@ -117,5 +122,5 @@ export async function restoreStandardTerms(): Promise<FormState> {
     return { errors: messages(err) };
   }
   refresh();
-  return { message: 'The standard wording is printed again.' };
+  return { message: 'The standard wording is printed again, in English and Arabic.' };
 }

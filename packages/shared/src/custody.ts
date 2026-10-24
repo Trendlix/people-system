@@ -29,6 +29,9 @@ export type CustodyKind = (typeof CUSTODY_KINDS)[number];
 
 export const CUSTODY_KIND_LABELS: Record<CustodyKind, string> = { shoot: 'Shoot', assignment: 'Long-term assignment' };
 
+/** The same in Arabic, as the bilingual custody form prints them (owner, 24 October 2026: "Arabic and English"). */
+export const CUSTODY_KIND_LABELS_AR: Record<CustodyKind, string> = { shoot: 'تصوير', assignment: 'عهدة طويلة الأجل' };
+
 export const CUSTODY_KIND_HINTS: Record<CustodyKind, string> = {
   shoot: 'For a shoot: it comes back by the return date.',
   assignment: 'Held long term, e.g. a laptop or a phone: no return date, it comes back at clearance.',
@@ -47,6 +50,18 @@ export const RETURN_CONDITIONS = ['good', 'damaged', 'missing'] as const;
 export type ReturnCondition = (typeof RETURN_CONDITIONS)[number];
 
 export const RETURN_CONDITION_LABELS: Record<ReturnCondition, string> = { good: 'Good', damaged: 'Damaged', missing: 'Missing' };
+
+/** The same in Arabic, as the bilingual custody form prints them (owner, 24 October 2026: "Arabic and English"). */
+export const RETURN_CONDITION_LABELS_AR: Record<ReturnCondition, string> = { good: 'سليم', damaged: 'تالف', missing: 'مفقود' };
+
+/** An asset's condition when it goes out (assets.ts ASSET_CONDITION_LABELS) in Arabic, as the bilingual custody form prints it. */
+export const ASSET_CONDITION_LABELS_AR: Record<AssetCondition, string> = {
+  new: 'جديد',
+  excellent: 'ممتاز',
+  good: 'جيد',
+  used: 'مستعمل',
+  needs_repair: 'يحتاج إلى إصلاح',
+};
 
 /** What each condition does to the asset, as the receive-back form says it. */
 export const RETURN_CONDITION_HINTS: Record<ReturnCondition, string> = {
@@ -300,6 +315,63 @@ export function termsProblems(terms: readonly string[]): string[] {
   return out;
 }
 
+// ---------- the terms in Arabic ----------
+
+/**
+ * The standard wording in Arabic (owner, 24 October 2026: the custody form in "Arabic and English" side by side): a
+ * faithful translation of CUSTODY_TERMS_STANDARD, term for term, in plain formal Arabic, worded so it reads the same for
+ * a man or a woman. Numbers stay 0–9, as in every bilingual document (22 October 2026). The owner's note applies to it
+ * too: "have a labour lawyer review this wording before use".
+ */
+export const CUSTODY_TERMS_STANDARD_AR: readonly string[] = [
+  'أقر بأنني استلمت الأصناف المبينة أعلاه بالحالة الموضحة، ومعها ملحقاتها.',
+  'أتعهد باستخدامها في أعمال الشركة فقط، وبعدم إعارتها لأي شخص آخر.',
+  'أتعهد بإرجاعها في موعد أقصاه تاريخ الإرجاع المحدد، ومتى طلبت الشركة ذلك، وقبل آخر يوم عمل لي.',
+  'أتعهد بالإبلاغ عن أي تلف أو فقد أو سرقة خلال 24 ساعة، وفي حالة السرقة أتعهد كذلك بتحرير محضر بقسم الشرطة.',
+  'أتحمل المسؤولية عن أي فقد أو تلف ينتج عن إهمالي أو سوء استخدامي لها، وذلك في حدود أحكام قانون العمل المصري.',
+];
+
+const sameTerms = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((t, i) => t === b[i]);
+
+/**
+ * The Arabic terms in force, from what Settings keeps (`en`, `ar`: the English and Arabic an Assets manager wrote, empty:
+ * none): those written in Arabic; else, while the English terms are the standard ones, the standard Arabic wording; else
+ * none (an empty list), so a form never prints an Arabic text that doesn't say what its English terms say. Claude's
+ * reading of the brief's "a standard Arabic wording when empty": the standard Arabic is the translation of the standard
+ * English only.
+ */
+export function custodyTermsArOf(en: readonly string[] | null | undefined, ar: readonly string[] | null | undefined): string[] {
+  if (ar && ar.length) return [...ar];
+  return sameTerms(custodyTermsOf(en), CUSTODY_TERMS_STANDARD) ? [...CUSTODY_TERMS_STANDARD_AR] : [];
+}
+
+/** Every problem with the Arabic terms, in words (none written is allowed); none: they can be saved. */
+export function termsArProblems(terms: readonly string[]): string[] {
+  const out: string[] = [];
+  if (terms.length > CUSTODY_TERMS_MAX) out.push(`Keep the Arabic terms to ${CUSTODY_TERMS_MAX} or fewer.`);
+  if (terms.some((t) => !t.trim())) out.push('An Arabic term can’t be empty.');
+  if (terms.some((t) => t.length > CUSTODY_TEXT_LIMITS.term)) out.push(`Keep each Arabic term to ${CUSTODY_TEXT_LIMITS.term} characters or fewer.`);
+  return out;
+}
+
+/**
+ * The Arabic terms as Settings keeps them, from those typed: the standard Arabic wording typed back unchanged is kept as
+ * none written, so it follows the English terms (it prints only beside the standard English ones).
+ */
+export const termsArToKeep = (terms: readonly string[]): string[] => (sameTerms(terms, CUSTODY_TERMS_STANDARD_AR) ? [] : [...terms]);
+
+/**
+ * What a record's form prints in Arabic beside its English terms (`terms`, the record's snapshot): the Arabic it kept
+ * (`record`); a record from before the Arabic terms (or saved with none in force) whose English terms are the standard
+ * ones gets the standard Arabic wording, which translates exactly them, said on the form (`standard`); any other: none,
+ * the English terms alone (`none`).
+ */
+export function custodyTermsArPrinted(r: { terms: readonly string[]; termsAr?: readonly string[] | null }): { terms: string[]; source: 'record' | 'standard' | 'none' } {
+  if (r.termsAr && r.termsAr.length) return { terms: [...r.termsAr], source: 'record' };
+  if (sameTerms(r.terms, CUSTODY_TERMS_STANDARD)) return { terms: [...CUSTODY_TERMS_STANDARD_AR], source: 'standard' };
+  return { terms: [], source: 'none' };
+}
+
 // ---------- damages to deductions ----------
 
 /**
@@ -431,6 +503,8 @@ export interface CustodyAssetRef {
 export interface CustodyPersonView extends AssetHolderRef {
   jobTitle: string | null;
   department: string | null;
+  /** Their name in Arabic, printed beside the English on the bilingual form (24 October 2026); empty or left out: none. */
+  fullNameAr?: string | null;
 }
 
 /** A signed copy attached (a photo or a PDF), served at GET /assets/custody/:code/signed/:fileId. */
@@ -497,6 +571,11 @@ export interface CustodyRecordView {
   notes: string | null;
   /** The terms printed on its form, as they were when it was saved. */
   terms: string[];
+  /**
+   * The Arabic terms printed beside them (24 October 2026), as they were when it was saved; empty or left out: a record
+   * from before them, or none were in force (custodyTermsArPrinted says what its form prints then).
+   */
+  termsAr?: string[];
   items: CustodyItemView[];
   returns: CustodyReturnView[];
   files: CustodyFileRef[];

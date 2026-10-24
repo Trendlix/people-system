@@ -134,7 +134,7 @@ export class CustodyPeopleQueryDto {
   q?: string;
 }
 
-/** The custody terms, one a term; `standard: true` for the standard wording again. */
+/** The custody terms, one a term, and since 24 October 2026 the Arabic beside them; `standard: true` for the standard wording again, in both. */
 export class CustodyTermsDto {
   @IsOptional()
   @IsArray({ message: 'Write the terms, one a line.' })
@@ -142,6 +142,17 @@ export class CustodyTermsDto {
   @IsString({ each: true, message: 'Write the terms, one a line.' })
   @MaxLength(CUSTODY_TEXT_LIMITS.term, { each: true, message: `Keep each term to ${CUSTODY_TEXT_LIMITS.term} characters or fewer.` })
   terms?: string[];
+
+  /**
+   * The Arabic terms beside them, one a term (owner, 24 October 2026: "Arabic and English"); empty: none written (the
+   * standard Arabic wording while the English terms are the standard ones); left out: as they were.
+   */
+  @IsOptional()
+  @IsArray({ message: 'Write the Arabic terms, one a line.' })
+  @ArrayMaxSize(CUSTODY_TERMS_MAX, { message: `Keep the Arabic terms to ${CUSTODY_TERMS_MAX} or fewer.` })
+  @IsString({ each: true, message: 'Write the Arabic terms, one a line.' })
+  @MaxLength(CUSTODY_TEXT_LIMITS.term, { each: true, message: `Keep each Arabic term to ${CUSTODY_TEXT_LIMITS.term} characters or fewer.` })
+  termsAr?: string[];
 
   @IsOptional() @IsIn([true], { message: 'Send standard: true for the standard wording.' })
   standard?: true;

@@ -33,8 +33,11 @@ export const loadAssetHistory = cache((code: string): Promise<Loaded<AssetHistor
 /** The signed-in person's own custody (owner, 21 October 2026: "Yes, My custody"), anyone's. */
 export const loadMyCustody = cache((): Promise<Loaded<MyCustodyView>> => loadJson<MyCustodyView>(CUSTODY_API.mine));
 
-/** The company as the printed forms name it: its name and its logo (Organization), the logo served by this site. */
+/**
+ * The company as the printed forms name it: its name, in Arabic too for the bilingual custody form (24 October 2026),
+ * and its logo (Organization), the logo served by this site.
+ */
 export async function formBrand(): Promise<FormBrand> {
   const brand = await getBrand();
-  return { company: brand.nameEn, logoSrc: brandMark(brand).full };
+  return { company: brand.nameEn, companyAr: brand.nameAr, logoSrc: brandMark(brand).full };
 }

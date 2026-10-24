@@ -421,6 +421,7 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   pillarsOf: 'Pillars of',
   // custody (Assets step 3, 21 October 2026)
   custodyTerms: 'Custody terms',
+  custodyTermsAr: 'Custody terms in Arabic', // 24 October 2026: the form in "Arabic and English"
   custodyItemId: 'Custody item',
   dueDate: 'Return date',
   handedOverBy: 'Handed over by',

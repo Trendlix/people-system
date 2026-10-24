@@ -1,7 +1,9 @@
 import type { INestApplication } from '@nestjs/common';
 import {
   CUSTODY_TERMS_STANDARD,
+  CUSTODY_TERMS_STANDARD_AR,
   type AssetHistoryView,
+  type AssetSettingsView,
   type AssetView,
   type CustodyListView,
   type CustodyRecordView,
@@ -135,7 +137,7 @@ describe('Custody (e2e)', () => {
     if (!(await prisma.custodyRecord.count())) await prisma.assetCodeCounter.deleteMany({ where: { prefix: 'CUS-' } });
     await prisma.notification.deleteMany({ where: { userId: { in: Object.values(users) } } });
     await prisma.employee.deleteMany({ where: { id: { in: employeeIds } } });
-    await prisma.assetSettings.updateMany({ data: { custodyTerms: [] } });
+    await prisma.assetSettings.updateMany({ data: { custodyTerms: [], custodyTermsAr: [] } });
     await app.close();
   });
 
@@ -165,8 +167,10 @@ describe('Custody (e2e)', () => {
       dueDate: TOMORROW,
       purpose: `Ad shoot ${RUN}`,
       handedOverBy: `Kareem Custodian ${RUN}`,
-      employee: { id: people.mona, fullNameEn: `Mona Holder ${RUN}` },
+      employee: { id: people.mona, fullNameEn: `Mona Holder ${RUN}`, fullNameAr: 'موظف تجريبي' },
       terms: [...CUSTODY_TERMS_STANDARD],
+      // the Arabic terms beside them (24 October 2026: "Arabic and English"): the standard Arabic wording, as a snapshot
+      termsAr: [...CUSTODY_TERMS_STANDARD_AR],
       signed: false,
       overdue: false,
       can: { receive: true, attach: true, deduction: false },
@@ -378,7 +382,44 @@ describe('Custody (e2e)', () => {
     const withTerms = (await handOver('manager', { employeeId: people.kareem, kind: 'assignment', items: [{ assetId: await assetId('camF') }] }).expect(201)).body as HandoverResult;
     expect(withTerms.record.terms).toEqual(terms);
     expect(((await record('viewer', first.code).expect(200)).body as CustodyRecordView).terms).toEqual([...CUSTODY_TERMS_STANDARD]);
+    // English terms of one's own with no Arabic written: the standard Arabic doesn't translate them, so none is printed
+    expect(withTerms.record.termsAr).toEqual([]);
     expect((await patch('manager', '/assets/settings/terms', { standard: true }).expect(200)).body).toMatchObject({ custodyTerms: [...CUSTODY_TERMS_STANDARD], custodyTermsStandard: true });
+  });
+
+  it('the Arabic terms (24 October 2026: "Arabic and English"): saved beside the English, a snapshot on each new record, audited', async () => {
+    const settings = async () => (await get('manager', '/assets/settings').expect(200)).body as AssetSettingsView;
+    expect(await settings()).toMatchObject({ custodyTermsAr: [...CUSTODY_TERMS_STANDARD_AR], custodyTermsArStandard: true });
+    // an Assets manager's alone, as the English; the limits checked
+    await patch('custodian', '/assets/settings/terms', { terms: ['x'], termsAr: ['س'] }).expect(403);
+    expect((await patch('manager', '/assets/settings/terms', { terms: ['x'], termsAr: ['س'.repeat(601)] }).expect(400)).body.message).toEqual(['Keep each Arabic term to 600 characters or fewer.']);
+    const terms = [`The manager’s term ${RUN}.`, 'I return it when asked.'];
+    const termsAr = [`بند المدير ${RUN}.`, ' أتعهد بإرجاعها عند الطلب. '];
+    const saved = (await patch('manager', '/assets/settings/terms', { terms, termsAr }).expect(200)).body as AssetSettingsView;
+    expect(saved).toMatchObject({ custodyTerms: terms, custodyTermsStandard: false, custodyTermsAr: [termsAr[0], 'أتعهد بإرجاعها عند الطلب.'], custodyTermsArStandard: false });
+    const entry = await prisma.auditLog.findFirstOrThrow({ where: { entityType: 'asset_settings', userId: users.manager }, orderBy: { at: 'desc' } });
+    expect(entry.diff).toEqual({
+      custodyTerms: { from: [...CUSTODY_TERMS_STANDARD], to: terms },
+      custodyTermsAr: { from: [...CUSTODY_TERMS_STANDARD_AR], to: [termsAr[0], 'أتعهد بإرجاعها عند الطلب.'] },
+    });
+    // a new handover keeps both as they are now; a record made before keeps its own
+    await asset('camG', camera('Camera G'));
+    const made = (await handOver('manager', { employeeId: people.kareem, kind: 'assignment', items: [{ assetId: await assetId('camG') }] }).expect(201)).body as HandoverResult;
+    expect(made.record).toMatchObject({ terms, termsAr: [termsAr[0], 'أتعهد بإرجاعها عند الطلب.'] });
+    expect((await prisma.custodyRecord.findUniqueOrThrow({ where: { code: made.record.code }, select: { termsAr: true } })).termsAr).toEqual([termsAr[0], 'أتعهد بإرجاعها عند الطلب.']);
+    expect(((await record('viewer', first.code).expect(200)).body as CustodyRecordView).termsAr).toEqual([...CUSTODY_TERMS_STANDARD_AR]);
+    // the English changed alone: the Arabic stays as written
+    expect((await patch('manager', '/assets/settings/terms', { terms: ['Only English changed.'] }).expect(200)).body).toMatchObject({ custodyTermsAr: [termsAr[0], 'أتعهد بإرجاعها عند الطلب.'] });
+    // the standard Arabic typed back unchanged counts as none written: beside English of one's own, none is printed
+    expect((await patch('manager', '/assets/settings/terms', { terms, termsAr: [...CUSTODY_TERMS_STANDARD_AR] }).expect(200)).body).toMatchObject({ custodyTermsAr: [], custodyTermsArStandard: true });
+    // the standard wording again, in both
+    expect((await patch('manager', '/assets/settings/terms', { standard: true }).expect(200)).body).toMatchObject({
+      custodyTerms: [...CUSTODY_TERMS_STANDARD],
+      custodyTermsStandard: true,
+      custodyTermsAr: [...CUSTODY_TERMS_STANDARD_AR],
+      custodyTermsArStandard: true,
+    });
+    expect(await prisma.assetSettings.findUniqueOrThrow({ where: { id: 1 }, select: { custodyTerms: true, custodyTermsAr: true } })).toEqual({ custodyTerms: [], custodyTermsAr: [] });
   });
 
   it('repairs, lost and found from the asset’s page: the status rules, a maintenance entry, the cost a value', async () => {

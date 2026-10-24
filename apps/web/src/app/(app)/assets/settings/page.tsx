@@ -1,3 +1,4 @@
+import { custodyTermsArOf } from '@trendlix/shared';
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { ASSET_PATHS } from '@/lib/asset-paths';
@@ -15,7 +16,8 @@ import { Empty, Loading, NoAccess } from '../ui';
 // exports"): the capitalization threshold, for an Assets manager and for the CEO, Finance and a Super Admin, who set the
 // values it decides on (spec §6.8: "Assets cheaper than the capitalization threshold are Expensed, book value 0"). The
 // rooms have a page of their own; the exports come with a later step. Since step 3 (custody, 21 October 2026): the terms
-// the custody forms print, an Assets manager's alone (the brief: "editable text, managers only").
+// the custody forms print, an Assets manager's alone (the brief: "editable text, managers only"); since 24 October 2026
+// in Arabic too, beside the English (owner: the form in "Arabic and English").
 
 export const metadata: Metadata = { title: 'Asset Settings · People System' };
 
@@ -41,9 +43,19 @@ async function Settings() {
             <h2 id="custody-terms" className="font-semibold">
               Custody Terms
             </h2>
-            <p className="mt-0.5 text-sm text-muted">What the employee agrees to when they sign a custody form. Each record keeps the terms it was printed with.</p>
+            <p className="mt-0.5 text-sm text-muted">
+              What the employee agrees to when they sign a custody form, in English and in Arabic side by side. Each record keeps the terms it was printed with.
+            </p>
           </div>
-          <TermsForm action={saveCustodyTerms} standardAction={restoreStandardTerms} terms={s.custodyTerms} standard={s.custodyTermsStandard} />
+          <TermsForm
+            action={saveCustodyTerms}
+            standardAction={restoreStandardTerms}
+            terms={s.custodyTerms}
+            standard={s.custodyTermsStandard}
+            // an API from before the Arabic terms: the Arabic its English terms would print
+            termsAr={s.custodyTermsAr ?? custodyTermsArOf(s.custodyTerms, [])}
+            arStandard={s.custodyTermsArStandard ?? true}
+          />
         </section>
       )}
     </div>

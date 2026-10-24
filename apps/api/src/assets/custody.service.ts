@@ -204,6 +204,7 @@ export class CustodyService {
       issuedBy: userRef(names, r.issuedBy),
       notes: r.outNotes,
       terms: r.terms ?? [],
+      termsAr: r.termsAr ?? [],
       items: r.items.map((i) => itemView(i, caller, names)),
       returns: returnsOf(r.items, names),
       files: r.files.map((f) => fileRef(names, f)),
@@ -399,7 +400,8 @@ export class CustodyService {
       const refused = assets.map((a) => handOverProblem(a)).filter((p): p is string => !!p);
       if (assets.length !== ids.length) refused.unshift('Some of the assets chosen aren’t in the register. Reload the page and choose again.');
       if (refused.length) throw new BadRequestException(refused);
-      const terms = await this.settings.custodyTerms(tx);
+      // the terms in force as a snapshot, the Arabic beside them too (24 October 2026: "Arabic and English")
+      const { terms, termsAr } = await this.settings.custodyTermsBoth(tx);
       const code = custodyCode(await nextCodeNumber(tx, CUSTODY_CODE_PREFIX));
       const record = await tx.custodyRecord.create({
         data: {
@@ -414,6 +416,7 @@ export class CustodyService {
           handedOverByName: handedOverBy,
           outNotes: input.notes,
           terms,
+          termsAr,
         },
         select: { id: true, code: true },
       });

@@ -56,9 +56,13 @@ export type RecordRow = Prisma.CustodyRecordGetPayload<{ select: typeof RECORD_R
 /** Newest first, the current employment (no end date) before all ended ones: as the profile orders them. */
 export const NEWEST_EMPLOYMENT = [{ endDate: { sort: 'desc', nulls: 'first' } }, { joinDate: 'desc' }] satisfies Prisma.EmploymentOrderByWithRelationInput[];
 
-/** The person as the form prints them: name, code, job title and where they work (their latest employment's). */
+/**
+ * The person as the form prints them: name (in Arabic too, beside it on the bilingual form, 24 October 2026), code, job
+ * title and where they work (their latest employment's).
+ */
 export const PERSON_DETAIL = {
   ...PERSON,
+  fullNameAr: true,
   employments: {
     orderBy: NEWEST_EMPLOYMENT,
     take: 1,
@@ -102,6 +106,7 @@ export const RECORD_DETAIL = {
   closedAt: true,
   outNotes: true,
   terms: true,
+  termsAr: true,
   handedOverByName: true,
   employeeId: true,
   employee: { select: PERSON_DETAIL },
@@ -146,6 +151,7 @@ export const personView = (p: PersonDetailRow) => ({
   id: p.id,
   employeeCode: p.employeeCode,
   fullNameEn: p.fullNameEn,
+  fullNameAr: p.fullNameAr.trim() || null,
   jobTitle: p.employments[0]?.jobTitle?.titleEn ?? null,
   department: placeOf(p.employments[0]?.department ?? null),
 });

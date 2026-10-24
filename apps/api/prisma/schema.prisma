@@ -3499,6 +3499,9 @@ model AssetSettings {
   // the terms printed on the custody forms (step 3), as an Assets manager wrote them; none: the standard wording
   // (packages/shared custody.ts CUSTODY_TERMS_STANDARD). Each record keeps the terms it was printed with.
   custodyTerms            String[] @default([]) @map("custody_terms")
+  // the Arabic terms printed beside them (owner, 24 October 2026: "Arabic and English"); none: the standard Arabic
+  // wording while the English terms are the standard ones, else none (packages/shared custody.ts custodyTermsArOf)
+  custodyTermsAr          String[] @default([]) @map("custody_terms_ar")
   updatedAt               DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
   updatedById             String?  @map("updated_by") @db.Uuid
   updatedBy               User?    @relation("AssetSettingsBy", fields: [updatedById], references: [id], onDelete: SetNull)
@@ -3693,6 +3696,7 @@ model CustodyRecord {
   handedOverByName String?     @map("handed_over_by_name")
   outNotes       String?       @map("out_notes")
   terms          String[] // the terms printed on its form, as they were
+  termsAr        String[]      @default([]) @map("terms_ar") // the Arabic terms beside them, as they were (24 October 2026); empty: none
   status         String        @default("open") // open, partial, closed
   outAt          DateTime      @default(now()) @map("out_at") @db.Timestamptz
   closedAt       DateTime?     @map("closed_at") @db.Timestamptz

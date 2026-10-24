@@ -155,13 +155,14 @@ export class AssetSettingsController {
   }
 
   /**
-   * The terms the custody forms print (step 3, the brief: "editable text, managers only"): { terms } one a term, or
-   * { standard: true } for the standard wording again.
+   * The terms the custody forms print (step 3, the brief: "editable text, managers only"): { terms } one a term, with
+   * { termsAr } the Arabic beside them (24 October 2026: "Arabic and English"), or { standard: true } for the standard
+   * wording again, in both languages.
    */
   @AssetsLevel('manager')
   @Patch('terms')
   updateTerms(@Body() dto: CustodyTermsDto, @CurrentAssetsCaller() caller: AssetsCaller) {
-    return this.settings.updateTerms(dto.standard ? null : (dto.terms ?? []), caller.user);
+    return this.settings.updateTerms(dto.standard ? null : (dto.terms ?? []), caller.user, dto.standard ? undefined : dto.termsAr);
   }
 }
 
