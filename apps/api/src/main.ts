@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
 import { configureApp } from './app.setup.js';
 import { CustodySchedulerService } from './assets/custody-scheduler.service.js';
+import { CheckInLocationEndingsService } from './attendance/check-in-location-endings.service.js';
 import { KpiSchedulerService } from './kpis/kpi-scheduler.service.js';
 import { EmployeeAccessSchedulerService } from './employee-access/employee-access-scheduler.service.js';
 import { OffboardingSchedulerService } from './offboarding/offboarding-scheduler.service.js';
@@ -23,6 +24,9 @@ async function bootstrap() {
   // custody's daily check (Assets step 3, 21 October 2026): overdue shoots told once a day, records not signed after
   // 3 days told once; the tests' apps don't start it either
   app.get(CustodySchedulerService).start();
+  // requested check-in locations' ends (24 October 2026): the employee and HR told 7 days before an end that is a date;
+  // the tests' apps don't start it either
+  app.get(CheckInLocationEndingsService).start();
   // offboarding's round (22 October 2026): leavers' sign-in disabled once their last working day has passed, and HR told
   // of the cases whose every item is cleared; the tests' apps don't start it either
   app.get(OffboardingSchedulerService).start();

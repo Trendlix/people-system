@@ -2,19 +2,21 @@ import { ConflictException, ForbiddenException, Injectable } from '@nestjs/commo
 import {
   APP_LOCATION_NEEDED_MESSAGE,
   checkInLocationsSet,
+  checkInLockRefusal,
   checkInPlaceAt,
   checkInRefusal,
   dayFromPunches,
   expectedPlace,
   expectedPlaceText,
+  gpsLockVerdict,
   locationRefusal,
+  lockedToCheckInLocations,
   lockedToOfficeNetwork,
   needsLocation,
   nextPunch,
   NO_LOCATION_MESSAGE,
   OD_CHECK_IN_TEXT,
   odWhenText,
-  OFF_NETWORK_MESSAGE,
   punchFlags,
   punchMessages,
   punchNetwork,
@@ -24,6 +26,7 @@ import {
   type CheckInPlace,
   type CheckInPlaces,
   type ExpectedPlace,
+  type GpsLockSetting,
   type LocationRule,
   type NetworkLockSetting,
   type OfficeLocation,
@@ -33,7 +36,7 @@ import {
 } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
-import { toDateOnly, weekday } from '../common/date-only.js';
+import { todayInCairo, toDateOnly, weekday } from '../common/date-only.js';
 import { fromTimeOfDay } from '../common/time-of-day.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -75,6 +78,12 @@ export interface CheckInTodayView {
    */
   network: { locked: boolean };
   /**
+   * Whether their check-ins and check-outs need a check-in location (owner, 24 October 2026: "Yes, add a GPS lock too"):
+   * Office staff with the GPS lock on, unless HR lets them check in from anywhere; never on a work from home day or within
+   * an official duty. With the network's lock too, either passing is enough.
+   */
+  gps: { locked: boolean };
+  /**
    * Whether the day is a work from home day approved for them (owner, 21 October 2026: "think about how should we handle
    * the working from home in out erp"; packages/shared wfh.ts): expected anywhere, the office network's lock waived.
    */
@@ -92,7 +101,8 @@ export interface CheckInTodayView {
   ownPlaces: string[];
   /**
    * Whether their presses on the website need a location (owner, 20 October 2026: "Company switch + exceptions"): the
-   * switch on and HR hasn't exempted them. Inside the app a location is always needed.
+   * switch on and HR hasn't exempted them, or (24 October 2026) the GPS lock holds them and HR hasn't let them check in
+   * without one. Inside the app a location is always needed.
    */
   location: { required: boolean };
   /**
@@ -170,6 +180,17 @@ export interface PunchContext {
 // home (packages/shared checkInPlaceAt); within a sub-location it is kept as remote with the sub-location's name, and
 // flagged "Not their location" for someone not linked to it. A locked Office person may press off the office network
 // within their own sub-location (Claude's default, which the owner can change), never on a mock location.
+// Locked to the check-in locations by GPS (owner, 24 October 2026: "while these aare not checked, people can still check in
+// and out from anywhere"; asked, "Yes, add a GPS lock too"; packages/shared gps-lock.ts): with Check-in Setup's switch on,
+// an Office employee HR hasn't let check in from anywhere is refused a check-in or a check-out (409, with how far they are
+// from the nearest check-in location) outside every circle they may press in (the main office, their own sub-locations,
+// the client locations, their approved home and remote sites, each with the reading's accuracy allowed for up to 100 m),
+// on a reading too rough to tell, or without a location (unless HR lets them check in without one); never on a work from
+// home day or within an official duty, nor from an office network the website signed. With the network's lock on too,
+// either passing is enough. A refused press is in the audit log (check_in_refused, its reason), never with the point.
+// Requested check-in locations (24 October 2026: "Home Location - Remote Site - Client Location"; home-locations.ts): a
+// press within a client location (everyone's) or one of their own remote sites is remote with its name and kind ("Client
+// · Acme", "Remote site · Flat"), their place: not flagged, and it waives the network's lock as their own sub-location does.
 @Injectable()
 export class CheckInService {
   constructor(
@@ -183,8 +204,14 @@ export class CheckInService {
 
   async today(user: SessionUser): Promise<CheckInTodayView> {
     const { employeeId, employment, refusal } = await this.who(user);
-    const [locations, places, lock, rule] = await Promise.all([this.setup.officeLocations(), this.setup.checkInPlaces(employeeId), this.setup.lockSetting(), this.setup.locationRule()]);
-    return this.view(this.prisma, employeeId, employment, refusal, { locations, places, lock, rule }, new Date());
+    const [locations, places, lock, rule, gps] = await Promise.all([
+      this.setup.officeLocations(),
+      this.setup.checkInPlaces(employeeId),
+      this.setup.lockSetting(),
+      this.setup.locationRule(),
+      this.setup.gpsLock(),
+    ]);
+    return this.view(this.prisma, employeeId, employment, refusal, { locations, places, lock, rule, gps }, new Date());
   }
 
   async punch(dto: PunchDto, user: SessionUser, context: PunchContext): Promise<PunchResultView> {
@@ -192,14 +219,17 @@ export class CheckInService {
     if (refusal || !employeeId || !employment) throw new ForbiddenException(refusal ?? 'You can’t check in on the system.');
     const reading = typeof dto.latitude === 'number' && typeof dto.longitude === 'number' ? { latitude: dto.latitude, longitude: dto.longitude, accuracy: dto.accuracy ?? null } : null;
     // their approved home, if any (20 October 2026): read against it after the office and the sub-locations, its point
-    // never kept with the punch; the main office and the sub-locations, with theirs (20 October 2026)
-    const [locations, places, lock, rule, home] = await Promise.all([
+    // never kept with the punch; the main office and the sub-locations, with theirs (20 October 2026); the client
+    // locations and their own remote sites in force (24 October 2026); the GPS lock (the same day)
+    const [locations, places, lock, rule, gpsSetting, own] = await Promise.all([
       this.setup.officeLocations(),
       this.setup.checkInPlaces(employeeId),
       this.setup.lockSetting(),
       this.setup.locationRule(),
-      this.homes.homePoint(employeeId),
+      this.setup.gpsLock(),
+      this.homes.ownPlaces(employeeId, todayInCairo()),
     ]);
+    const home = own.home;
     const now = new Date();
     const shift = shiftOf(employment);
     const date = shiftDayOf(now, shift);
@@ -211,24 +241,31 @@ export class CheckInService {
     const od = await approvedOdAt(this.prisma, employeeId, date, now, shift);
     // the place read from the point: the main office (Office), their own sub-location, any sub-location (remote, its
     // name kept), their home, remote, or unknown (20 October 2026)
-    const read = checkInPlaceAt(reading, places, home);
-    // the office network (20 October 2026): refused off it when locked, unless within their own sub-location on a
-    // location that isn't a mock one, or on a work from home day approved for them (21 October 2026); on it, at the office
-    const network = punchNetwork(lock, employment, context.signedIp.ip ?? null, waivesNetworkLock(read, mock) || workingFromHome || od !== null);
+    const read = checkInPlaceAt(reading, places, home, own.sites);
+    const waived = workingFromHome || od !== null;
+    // the office network (20 October 2026): refused off it when locked, unless within their own sub-location (a client
+    // location or their remote site too, 24 October 2026) on a location that isn't a mock one, or on a work from home day
+    // approved for them (21 October 2026) or within an official duty; on it, at the office
+    const network = punchNetwork(lock, employment, context.signedIp.ip ?? null, waivesNetworkLock(read, mock) || waived);
     // without a location: in the app always refused, read at the press and never tracked (owner, 20 October 2026: "App
     // only"); on the website when the company refuses it for them, unless from an office network ("Allow as Office")
     const withoutLocation = locationRefusal({ session: context.session, reading: reading !== null, rule, person: employment, officeNetwork: network.network !== null });
     if (withoutLocation === 'app') throw new ConflictException(APP_LOCATION_NEEDED_MESSAGE);
-    if (network.refused) {
+    // the GPS lock (owner, 24 October 2026: "Yes, add a GPS lock too"): inside a circle they may press in, with the
+    // accuracy allowed for; with the network's lock too, either passing is enough
+    const gps = gpsLockVerdict({ setting: gpsSetting, person: employment, places, own, reading, waived, officeNetwork: network.network !== null });
+    const locked = checkInLockRefusal({ locked: lockedToOfficeNetwork(lock, employment), refused: network.refused, signed: !!context.signedIp.ip }, gps);
+    if (locked) {
       await this.audit.record({
         userId: user.id,
         action: 'check_in_refused',
         entityType: 'employee',
         entityId: employeeId,
-        // never the address: what was pressed, the day, and why (none signed, or signed and off the networks)
-        diff: { kind: dto.kind, date, reason: context.signedIp.ip ? 'off_network' : 'not_signed' },
+        // never the address nor the point: what was pressed, the day, and why (the network's: none signed, or signed and
+        // off the networks; the check-in locations': outside them, too rough, no location)
+        diff: { kind: dto.kind, date, reason: locked.reason, ...(locked.lock === 'locations' && { lock: 'locations' }), ...(locked.network && { network: locked.network }) },
       });
-      throw new ConflictException(OFF_NETWORK_MESSAGE);
+      throw new ConflictException(locked.message);
     }
     if (withoutLocation === 'no_location') {
       // what was pressed, the day and why: there is no point to leave out
@@ -243,6 +280,8 @@ export class CheckInService {
     const { accuracyMetres } = read;
     const locationName = (officeNetwork ? (read.place === 'office' ? read.location : null) : read.location) ?? null;
     const subLocation = officeNetwork ? null : (read.subLocation ?? null);
+    // within a client location or their remote site (24 October 2026): which, for "Client · Acme", "Remote site · Flat"
+    const locationKind = officeNetwork ? null : (read.locationKind ?? null);
     const point = reading ? { latitude: coordinate(reading.latitude), longitude: coordinate(reading.longitude) } : { latitude: null, longitude: null };
     const expected = expectedPlace(employment.workArrangement, employment.officeDays, weekday(date), workingFromHome || od !== null);
     // a check-in breaking the arrangement's rule (not at their own sub-location), and any press on a location the phone
@@ -257,7 +296,23 @@ export class CheckInService {
       // the same press twice (a double tap): kept once
       if (last && last.kind === dto.kind && now.getTime() - last.at.getTime() < SAME_PRESS_MS) return { kept: false, earlier: before };
       await tx.attendancePunch.create({
-        data: { employeeId, date: toDateOnly(date), kind: dto.kind, at: now, place, accuracyMetres, ...point, expected, flags, locationName, officeNetwork, source: 'system', userId: user.id, odRequestId: od?.id ?? null },
+        data: {
+          employeeId,
+          date: toDateOnly(date),
+          kind: dto.kind,
+          at: now,
+          place,
+          accuracyMetres,
+          ...point,
+          expected,
+          flags,
+          locationName,
+          locationKind,
+          officeNetwork,
+          source: 'system',
+          userId: user.id,
+          odRequestId: od?.id ?? null,
+        },
       });
       const punches = [...before, { kind: dto.kind, at: now, place, flags }];
       const day = dayFromPunches(date, punches.map(asPunch), shift);
@@ -283,7 +338,7 @@ export class CheckInService {
       await this.corrections.rebuildIfCorrected(employeeId, date, user);
       await this.fill.fillMonth(employeeId, date.slice(0, 7), user);
     }
-    const view = await this.view(this.prisma, employeeId, employment, null, { locations, places, lock, rule }, now);
+    const view = await this.view(this.prisma, employeeId, employment, null, { locations, places, lock, rule, gps: gpsSetting }, now);
     const messages = kept
       ? punchMessages({ kind: dto.kind, at: now.toISOString(), place, flags, locationName }, earlier.map(asPunch), {
           locationError: dto.locationError ?? null,
@@ -307,10 +362,10 @@ export class CheckInService {
     employeeId: string | null,
     employment: CheckInEmploymentRow | null,
     refusal: string | null,
-    setup: { locations: readonly OfficeLocation[]; places: CheckInPlaces; lock: NetworkLockSetting; rule: LocationRule },
+    setup: { locations: readonly OfficeLocation[]; places: CheckInPlaces; lock: NetworkLockSetting; rule: LocationRule; gps: GpsLockSetting },
     now: Date,
   ): Promise<CheckInTodayView> {
-    const { locations, places, lock, rule } = setup;
+    const { locations, places, lock, rule, gps } = setup;
     const shift = employment ? shiftOf(employment) : null;
     const date = shiftDayOf(now, shift);
     const [punches, workingFromHome]: [PunchRow[], boolean] = employeeId
@@ -320,6 +375,8 @@ export class CheckInService {
     const [odToday, odNow] = employeeId ? await Promise.all([approvedOdOn(db, employeeId, date), approvedOdAt(db, employeeId, date, now, shift)]) : [null, null];
     const duty = odNow ?? odToday;
     const anywhere = workingFromHome || odNow !== null;
+    // held to the check-in locations by GPS (24 October 2026), never on a work from home day or within an official duty
+    const gpsLocked = !!employment && lockedToCheckInLocations(gps, places, employment) && !anywhere;
     const expected = employment ? expectedPlace(employment.workArrangement, employment.officeDays, weekday(date), anywhere) : null;
     return {
       refusal,
@@ -340,10 +397,11 @@ export class CheckInService {
           : null,
       officeLocationSet: checkInLocationsSet(locations),
       network: { locked: !!employment && lockedToOfficeNetwork(lock, employment) && !anywhere },
+      gps: { locked: gpsLocked },
       workingFromHome,
       officialDuty: duty && { requestId: duty.id, fullDay: duty.fullDay, fromTime: duty.fromTime, toTime: duty.toTime, now: odNow !== null },
       ownPlaces: places.subLocations.filter((l) => l.linked).map((l) => l.name),
-      location: { required: !!employment && needsLocation(rule, employment) },
+      location: { required: !!employment && (needsLocation(rule, employment) || (gpsLocked && !employment.checkInWithoutLocation)) },
       shift: shift && { startTime: shift.startTime, endTime: shift.endTime, hoursPerDay: shift.hoursPerDay ?? null, graceMinutes: shift.graceMinutes ?? 0, countUntil: shift.countUntil },
     };
   }

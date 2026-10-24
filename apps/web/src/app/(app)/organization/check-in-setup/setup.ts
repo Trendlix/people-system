@@ -1,6 +1,16 @@
 import {
   checkInLocationProblems,
+  GPS_ACCURACY_ALLOWANCE_MAX,
+  GPS_ROUGH_DEFAULT,
+  gpsRoughProblems,
+  HOME_STATUSES,
+  HOME_TYPE_LABELS,
+  HOME_TYPES,
+  homeStatusLabel,
+  isHomeStatus,
+  isHomeType,
   LINKED_PEOPLE_SHOWN,
+  locationKindLabel,
   NO_WEB_KEY_TEXT,
   OFFICE_RADIUS_DEFAULT,
   officeAddressesProblems,
@@ -9,10 +19,14 @@ import {
   SMALL_RADIUS_HINT,
   SMALL_RADIUS_METRES,
   subLocationLabel,
+  validityText,
+  type HomeStatus,
+  type HomeType,
   type OfficeNetwork,
   type Role,
   type SignedIpProblem,
 } from '@trendlix/shared';
+import { formatDate, parseDate } from '../../../../lib/format';
 import { latin, roundCoordinate, type MapCircle } from '../../../../lib/map-point';
 import { canDelete, hasRole } from '../../../../lib/roles';
 import type { ViewAs } from '../../../../lib/view-as';
@@ -27,7 +41,10 @@ import { joinShown } from '../../../../lib/hidden';
 // sees it, each form read into what the API takes, and what the page says. Relative imports: the tests run without the
 // "@/" alias. The main office and its sub-locations (owner, 20 October 2026: "main office location is the hero and other
 // locations are like sub locations. shown with their name and linked users"): the page laid out by them, the hero's
-// words, the people's chips, the picker's choices, and what Make main and Remove ask first.
+// words, the people's chips, the picker's choices, and what Make main and Remove ask first. The GPS lock (owner, 24 October
+// 2026: "Yes, add a GPS lock too"): its form read as the API takes it and what the page says of it. The client locations
+// (the same day: "all employees if a customer location"), laid out apart, their end said and changed; and HR's list of
+// the requested check-in locations, filtered by type and status.
 
 type WithRoles = { roles: readonly Role[]; viewAs?: ViewAs | null };
 
@@ -43,8 +60,15 @@ export const NETWORKS_ID = 'office-networks';
 /** The switch refusing presses without a location (owner, 20 October 2026: "Company switch + exceptions"). */
 export const LOCATION_RULE_ID = 'without-location';
 export const ZOHO_ID = 'zoho-addresses';
-/** The approved home locations (owner, 20 October 2026: "allow other users to request to add their home locations when working from home"). */
+/**
+ * The requested check-in locations (owner, 20 October 2026: "allow other users to request to add their home locations when
+ * working from home"; since 24 October 2026 a remote site or a client location too).
+ */
 export const HOMES_ID = 'home-locations';
+/** Office staff's check-ins locked to the check-in locations by GPS (owner, 24 October 2026: "Yes, add a GPS lock too"). */
+export const GPS_LOCK_ID = 'gps-lock';
+/** The client locations, everyone's (owner, 24 October 2026: "all employees if a customer location"). */
+export const CLIENTS_ID = 'client-locations';
 
 // ---------- the locations ----------
 
@@ -95,20 +119,31 @@ export const locationText = (l: { latitude: number; longitude: number; radiusMet
 // it needs to be more handsome. main office location is the hero and other locations are like sub locations. shown with
 // their name and linked users") ----------
 
-/** What of a location the page lays out by: whether it is the main office (left out by an API from before sub-locations). */
+/**
+ * What of a location the page lays out by: whether it is the main office (left out by an API from before sub-locations),
+ * and whether it is a client location (24 October 2026; left out by an API from before them).
+ */
 interface Located {
   isMain?: boolean;
+  kind?: 'office' | 'client';
 }
+
+const isClient = (l: Located) => l.kind === 'client';
 
 /**
  * The main office (none yet) and the sub-locations, in the API's order. From an API from before sub-locations (no
- * `isMain`), every location was the office: the first is shown as the main.
+ * `isMain`), every location was the office: the first is shown as the main. The client locations (24 October 2026) are
+ * neither: clientLocationsOf lays them out apart.
  */
 export function mainAndSubs<L extends Located>(locations: readonly L[]): { main: L | null; subs: L[] } {
-  const known = locations.some((l) => typeof l.isMain === 'boolean');
-  const main = known ? (locations.find((l) => l.isMain === true) ?? null) : (locations[0] ?? null);
-  return { main, subs: locations.filter((l) => l !== main) };
+  const office = locations.filter((l) => !isClient(l));
+  const known = office.some((l) => typeof l.isMain === 'boolean');
+  const main = known ? (office.find((l) => l.isMain === true) ?? null) : (office[0] ?? null);
+  return { main, subs: office.filter((l) => l !== main) };
 }
+
+/** The client locations (owner, 24 October 2026: "all employees if a customer location"), in the API's order. */
+export const clientLocationsOf = <L extends Located>(locations: readonly L[]): L[] => locations.filter(isClient);
 
 /** A radius in words: "Within 20 m". */
 export const withinText = (metres: number): string => `Within ${metres.toLocaleString('en-US')} m`;
@@ -119,9 +154,9 @@ export const radiusHint = (metres: number): string | null => (metres < SMALL_RAD
 /** How a check-in within a sub-location shows on the attendance pages: "Remote - Studio". */
 export const shownAsText = (name: string): string => subLocationLabel(name);
 
-/** The sub-locations as the main office's map draws them faintly: each its point, radius and name. */
-export const faintCircles = (subs: readonly { name: string; latitude: number; longitude: number; radiusMetres: number }[]): MapCircle[] =>
-  subs.map((l) => ({ latitude: l.latitude, longitude: l.longitude, radiusMetres: l.radiusMetres, name: `${l.name} (sub-location)` }));
+/** The sub-locations (and the client locations) as the main office's map draws them faintly: each its point, radius and name. */
+export const faintCircles = (subs: readonly { name: string; latitude: number; longitude: number; radiusMetres: number; kind?: 'office' | 'client' }[]): MapCircle[] =>
+  subs.map((l) => ({ latitude: l.latitude, longitude: l.longitude, radiusMetres: l.radiusMetres, name: `${l.name} (${l.kind === 'client' ? 'client location' : 'sub-location'})` }));
 
 /** A sub-location's linked people as its card shows them: the first five as chips, and how many more ("+N more"). */
 export function chipsOf<P>(people: readonly P[], shown = LINKED_PEOPLE_SHOWN): { shown: P[]; more: number } {
@@ -208,9 +243,15 @@ export function networkStatus(state: NetworksState, webKey: boolean): { ready: b
   return { ready: true, text: `Ready: the website and the server share the key. You are on ${ip}${network ? `, the office network ${network}` : ', which isn’t one of the office networks'}.` };
 }
 
-/** The lock as it stands, in a sentence. */
-export function lockText(state: Pick<NetworksState, 'lock' | 'inForce' | 'serverKey' | 'networks'>): string {
-  if (state.inForce) return 'On: Office staff check in and out on the office network only, or at a sub-location they are linked to, unless HR lets them check in from anywhere.';
+/**
+ * The lock as it stands, in a sentence; `gpsInForce`: the GPS lock is in force too (24 October 2026), when a press passing
+ * either lock is enough.
+ */
+export function lockText(state: Pick<NetworksState, 'lock' | 'inForce' | 'serverKey' | 'networks'>, gpsInForce = false): string {
+  if (state.inForce) {
+    const either = gpsInForce ? ' With the GPS lock on too (below), a press passes when either does: on the office network, or inside a check-in location.' : '';
+    return `On: Office staff check in and out on the office network only, or at a sub-location they are linked to, unless HR lets them check in from anywhere.${either}`;
+  }
   if (state.lock && !state.serverKey) return 'Switched on, but not in force: the server has no key, so no one is refused.';
   if (state.lock && !state.networks.length) return 'Switched on, but not in force: there is no office network.';
   return 'Off: everyone checks in from anywhere; a check-in on an office network still counts as at the office.';
@@ -222,20 +263,168 @@ export function lockText(state: Pick<NetworksState, 'lock' | 'inForce' | 'server
 /** The switch's form, as PUT /attendance/check-in-setup/location-rule takes it (a hidden "false", then the checkbox's "true"). */
 export const locationRuleBody = (fd: FormData): { refuseWithoutLocation: boolean } => ({ refuseWithoutLocation: fd.getAll('refuseWithoutLocation').includes('true') });
 
-/** The switch as it stands, in a sentence; `networkReady`: an office network counts without a location (the key in place and a network). */
-export function locationRuleText(rule: { refuseWithoutLocation: boolean }, networkReady: boolean | null): string {
-  if (!rule.refuseWithoutLocation) return 'Off: on the website a check-in without a location is kept as location unknown. In the app a location is always needed.';
+/**
+ * The switch as it stands, in a sentence; `networkReady`: an office network counts without a location (the key in place
+ * and a network); `gpsInForce`: the GPS lock (24 October 2026) refuses Office staff's presses without a location whatever
+ * this switch says.
+ */
+export function locationRuleText(rule: { refuseWithoutLocation: boolean }, networkReady: boolean | null, gpsInForce = false): string {
+  const gps = gpsInForce ? ` ${GPS_NO_LOCATION_TEXT}` : '';
+  if (!rule.refuseWithoutLocation) return `Off: on the website a check-in without a location is kept as location unknown. In the app a location is always needed.${gps}`;
   const office = networkReady
     ? ' A press from an office network without one counts as at the office.'
     : networkReady === false
       ? ' Without the key or an office network (above), a press from the office without a location is refused too.'
       : '';
-  return `On: on the website a check-in or check-out without a location is refused, unless HR lets the person check in without one on their profile.${office} In the app a location is always needed.`;
+  return `On: on the website a check-in or check-out without a location is refused, unless HR lets the person check in without one on their profile.${office} In the app a location is always needed.${gps}`;
 }
+
+/** What the location rule's section says of the GPS lock's own rule for presses without a location (24 October 2026). */
+export const GPS_NO_LOCATION_TEXT =
+  'With the GPS lock on (below), an Office person’s check-in or check-out without a location is refused on the website too, whatever this switch says, unless HR lets them check in without one.';
 
 /** What the saved switch says. */
 export const locationRuleSaved = (on: boolean): string =>
   on ? 'Saved. Check-ins and check-outs without a location are refused from now on.' : 'Saved. Check-ins without a location are kept as location unknown again.';
+
+// ---------- the GPS lock (owner, 24 October 2026: "while these aare not checked, people can still check in and out from
+// anywhere"; asked, "Yes, add a GPS lock too") ----------
+
+/** The GPS lock as GET /attendance/check-in-setup/gps-lock sends it. */
+export interface GpsLockState {
+  lock: boolean;
+  roughMetres: number;
+  inForce: boolean;
+}
+
+/**
+ * The GPS lock's form, as PUT /attendance/check-in-setup/gps-lock takes it: the switch (a hidden "false", then the
+ * checkbox's "true") and the accuracy past which a reading is too rough, whole metres (empty: 200), checked as the API does.
+ */
+export function gpsLockBody(fd: FormData): { body: { lock: boolean; roughMetres: number }; problems: string[] } {
+  const typed = latin(String(fd.get('roughMetres') ?? '')).trim();
+  const roughMetres = typed === '' ? GPS_ROUGH_DEFAULT : /^\d+$/.test(typed) ? Number(typed) : Number.NaN;
+  return { body: { lock: fd.getAll('lock').includes('true'), roughMetres }, problems: gpsRoughProblems(roughMetres) };
+}
+
+/**
+ * The GPS lock as it stands, in a sentence; `networkInForce`: the office network's lock is in force too, when a press
+ * passing either lock is enough.
+ */
+export function gpsLockText(state: GpsLockState, networkInForce = false): string {
+  if (state.inForce) {
+    const either = networkInForce ? ' With the office network’s lock on too, a press passes when either does: on the office network, or inside a check-in location.' : '';
+    return `On: Office staff check in and out only inside a check-in location or one of their own approved places, unless HR lets them check in from anywhere; a reading less accurate than ${state.roughMetres.toLocaleString('en-US')} m is refused as too rough.${either}`;
+  }
+  if (state.lock) return 'Switched on, but not in force: there is no main office yet, so no one is refused.';
+  return 'Off: a check-in outside every check-in location is kept as remote and flagged for HR on an office day, never refused.';
+}
+
+/** How the accuracy is allowed for, in words, for the form's hint. */
+export const GPS_ALLOWANCE_TEXT = `A reading counts as inside a location when its distance from the location’s point, less its accuracy (at most ${GPS_ACCURACY_ALLOWANCE_MAX} m), is within the radius.`;
+
+/** What the saved GPS lock says. */
+export const gpsLockSaved = (on: boolean): string =>
+  on ? 'Saved. Office staff now check in and out inside the check-in locations only.' : 'Saved. Check-ins outside the check-in locations are kept as remote again, never refused.';
+
+// ---------- the client locations (owner, 24 October 2026: "all employees if a customer location") ----------
+
+/** How a check-in within a client location shows on the attendance pages: "Client · Acme". */
+export const clientShownAsText = (name: string): string => locationKindLabel('client', name);
+
+/** A client location's end in words: "Ended 25/10/2026", "Until 31/12/2026", "No end". */
+export function clientEndText(l: { validUntil?: string | null; endedAt?: string | null }): string {
+  if (l.endedAt) return `Ended ${formatDate(l.endedAt)}`;
+  return l.validUntil ? `Until ${formatDate(l.validUntil)}` : 'No end';
+}
+
+/**
+ * A client location's end as typed (PATCH /attendance/check-in-setup/locations/:id { validUntil }): "No end" (null) or a
+ * date, DD/MM/YYYY, today or later (`today`: YYYY-MM-DD, Cairo).
+ */
+export function clientEndBody(fd: FormData, today: string): { body: { validUntil: string | null } | null; problems: string[] } {
+  if (String(fd.get('ends') ?? '') === 'no_end') return { body: { validUntil: null }, problems: [] };
+  const typed = String(fd.get('validUntil') ?? '');
+  const date = parseDate(typed);
+  if (!date) return { body: null, problems: ['Enter the date it lasts until as DD/MM/YYYY, e.g. 31/12/2026, or choose No end.'] };
+  if (date < today) return { body: null, problems: ['Choose an end date of today or later.'] };
+  return { body: { validUntil: date }, problems: [] };
+}
+
+/** What ending a client location asks first. */
+export const endClientConfirm = (name: string): string =>
+  `End ${name} now? Check-ins within it stop counting for everyone from now on; it stays listed as ended, with its request.`;
+
+// ---------- the requested check-in locations (owner, 24 October 2026: "Home Location - Remote Site - Client Location") ----------
+
+/** The types the list filters by, all of them first. */
+export const REQUEST_TYPE_FILTERS = ['all', ...HOME_TYPES] as const;
+export type RequestTypeFilter = (typeof REQUEST_TYPE_FILTERS)[number];
+
+/** The statuses the list filters by: approved first (the places in force or ended), then being decided, waiting for you, every status, all. */
+export const REQUEST_STATUS_FILTERS = ['approved', 'open', 'waiting', ...HOME_STATUSES.filter((s) => s !== 'approved' && s !== 'with_hr' && s !== 'with_ceo'), 'all'] as const;
+export type RequestStatusFilter = 'approved' | 'open' | 'waiting' | 'all' | HomeStatus;
+
+export const REQUEST_STATUS_FILTER_LABELS: Record<string, string> = { approved: 'Approved', open: 'Being decided', waiting: 'Waiting for you', all: 'All' };
+
+/** A filter's label: "Home Location", "Being decided", "Rejected". */
+export const requestFilterLabel = (f: string): string =>
+  f === 'all' ? 'All' : isHomeType(f) ? HOME_TYPE_LABELS[f] : (REQUEST_STATUS_FILTER_LABELS[f] ?? (isHomeStatus(f) ? homeStatusLabel(f) : f));
+
+type Query = Record<string, string | string[] | undefined>;
+const one = (v: string | string[] | undefined) => (typeof v === 'string' ? v : '');
+
+/** The list's filters from the page's address (?type=&status=): all types and the approved ones unless chosen. */
+export function readRequestFilters(query: Query): { type: RequestTypeFilter; status: RequestStatusFilter } {
+  const type = one(query.type);
+  const status = one(query.status);
+  return {
+    type: isHomeType(type) ? type : 'all',
+    status: (REQUEST_STATUS_FILTERS as readonly string[]).includes(status) ? (status as RequestStatusFilter) : 'approved',
+  };
+}
+
+/** The API's list for the filters (GET /home-locations?status=&type=): "all" left out. */
+export function requestsApi(f: { type: RequestTypeFilter; status: RequestStatusFilter }): string {
+  const q = new URLSearchParams();
+  if (f.status !== 'all') q.set('status', f.status);
+  if (f.type !== 'all') q.set('type', f.type);
+  const s = q.toString();
+  return s ? `/home-locations?${s}` : '/home-locations';
+}
+
+/** This page with other filters, at the list: "?type=client&status=approved#home-locations". */
+export function requestFilterHref(f: { type: RequestTypeFilter; status: RequestStatusFilter }, change: Partial<{ type: RequestTypeFilter; status: RequestStatusFilter }>): string {
+  const next = { ...f, ...change };
+  const q = new URLSearchParams();
+  if (next.type !== 'all') q.set('type', next.type);
+  if (next.status !== 'approved') q.set('status', next.status);
+  const s = q.toString();
+  return `${s ? `?${s}` : '?'}#${HOMES_ID}`;
+}
+
+/** A request as a row of the list says it: its type, its name (a home's label, or none), where it stands, and how long it lasts. */
+export function requestRowText(r: {
+  type?: HomeType;
+  label: string | null;
+  latitude: number | null;
+  status: HomeStatus;
+  confidential?: boolean;
+  validity?: string | null;
+  endsOn?: string | null;
+  inForce?: boolean;
+  location?: { name: string; endedAt: string | null } | null;
+}): { type: string; name: string; status: string; lasts: string | null; ended: boolean } {
+  const type = HOME_TYPE_LABELS[r.type ?? 'home'];
+  const name = r.location?.name ?? r.label ?? (r.latitude === null ? 'Point deleted' : r.type && r.type !== 'home' ? 'No name' : 'No label');
+  const approved = r.status === 'approved';
+  const lasts = approved
+    ? r.location?.endedAt
+      ? `Ended ${formatDate(r.location.endedAt)}`
+      : validityText(r.validity ?? (r.type === 'client' ? 'no_end' : null), r.endsOn ?? null, formatDate)
+    : null;
+  return { type, name, status: homeStatusLabel(r.status, r.confidential), lasts, ended: approved && r.inForce === false };
+}
 
 // ---------- Zoho People's check-in addresses ----------
 

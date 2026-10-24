@@ -2,6 +2,10 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import {
   CHECK_IN_LOCATIONS_MAX,
   checkInLocationProblems,
+  GPS_LOCK_NEEDS_OFFICE,
+  GPS_ROUGH_DEFAULT,
+  gpsLockInForce,
+  gpsRoughProblems,
   LOCK_NEEDS_KEY_MESSAGE,
   MAIN_OFFICE_LINK_REFUSED,
   MAIN_OFFICE_REMOVE_REFUSED,
@@ -12,6 +16,7 @@ import {
   SIGNED_IP_PROBLEM_TEXT,
   webKeyUsable,
   type CheckInPlaces,
+  type GpsLockSetting,
   type LocationRule,
   type NetworkLockSetting,
   type OfficeLocation,
@@ -21,17 +26,23 @@ import {
 import type { Request } from 'express';
 import { AuditService, changes } from '../audit/audit.service.js';
 import { readToken } from '../auth/auth.guard.js';
+import { fromDateOnly, toDateOnly, todayInCairo } from '../common/date-only.js';
 import { actsAs, assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import type { CreateCheckInLocationDto, LinkPeopleDto, UpdateCheckInLocationDto, UpdateLocationRuleDto, UpdateOfficeNetworksDto } from './check-in-setup.dto.js';
+import type { CreateCheckInLocationDto, LinkPeopleDto, UpdateCheckInLocationDto, UpdateGpsLockDto, UpdateLocationRuleDto, UpdateOfficeNetworksDto } from './check-in-setup.dto.js';
 import { verifySignedIp, type SignedIp } from './signed-ip.js';
 
 const LOCATION = 'check_in_location';
 const NETWORKS = 'office_networks';
 const LOCATION_RULE = 'check_in_location_rule';
+const GPS_LOCK = 'check_in_gps_lock';
+
+/** A client location counts on `today` (24 October 2026): not ended by HR, and not past the date it lasts until. */
+const clientInForce = (l: { kind: string; validUntil: Date | null; endedAt: Date | null }, today: string) =>
+  l.kind === 'client' && !l.endedAt && (!l.validUntil || fromDateOnly(l.validUntil) >= today);
 
 /** A person linked to a sub-location, as its card names them. */
 export interface LinkedPersonView {
@@ -55,6 +66,16 @@ export interface CheckInLocationView {
   isMain: boolean;
   /** A sub-location's linked people the caller may see (a C-level person only for the CEO and the Super Admin), by name; none on the main office. */
   people: LinkedPersonView[];
+  /**
+   * The office's (the main office and its sub-locations) or a client location (owner, 24 October 2026: "all employees if
+   * a customer location"), everyone's: the date it lasts until (none: no end), when HR ended it, whether it counts today,
+   * and the request it was approved from.
+   */
+  kind: 'office' | 'client';
+  validUntil: string | null;
+  endedAt: string | null;
+  inForce: boolean;
+  requestId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -77,11 +98,18 @@ export interface OfficeNetworksView {
   here: { signed: true; ip: string; network: string | null } | { signed: false; problem: SignedIpProblem };
 }
 
+/** Why a client location is never the main office, nor linked to people (24 October 2026): it is everyone's place at a client. */
+const CLIENT_NOT_MAIN = 'A client location can’t be the main office: it is everyone’s place at a client.';
+const CLIENT_LINK_REFUSED = 'A client location counts for everyone: there is no one to link to it.';
+
 /** A linked person as the cards name them. */
 const PERSON = { id: true, fullNameEn: true, employeeCode: true } satisfies Prisma.EmployeeSelect;
 
-/** A location with its linked people. */
-const WITH_PEOPLE = { people: { select: { employee: { select: PERSON } } } } satisfies Prisma.CheckInLocationInclude;
+/** A location with its linked people, and (a client location) the request it was approved from. */
+const WITH_PEOPLE = {
+  people: { select: { employee: { select: PERSON } } },
+  requests: { select: { id: true }, orderBy: { createdAt: 'desc' }, take: 1 },
+} satisfies Prisma.CheckInLocationInclude;
 
 type LocationRow = Prisma.CheckInLocationGetPayload<{ include: typeof WITH_PEOPLE }>;
 
@@ -89,7 +117,7 @@ type LocationRow = Prisma.CheckInLocationGetPayload<{ include: typeof WITH_PEOPL
 const LIST_ORDER = [{ isMain: 'desc' }, { createdAt: 'asc' }, { name: 'asc' }] satisfies Prisma.CheckInLocationOrderByWithRelationInput[];
 
 /** A location as the page gets it: a sub-location's people the caller may see (none hidden from them), by name; none on the main office. */
-const locationView = (l: LocationRow, hidden: ReadonlySet<string>): CheckInLocationView => ({
+const locationView = (l: LocationRow, hidden: ReadonlySet<string>, today = todayInCairo()): CheckInLocationView => ({
   id: l.id,
   name: l.name,
   latitude: l.latitude.toNumber(),
@@ -102,6 +130,11 @@ const locationView = (l: LocationRow, hidden: ReadonlySet<string>): CheckInLocat
         .map((p) => p.employee)
         .filter((e) => !hidden.has(e.id))
         .sort((a, b) => a.fullNameEn.localeCompare(b.fullNameEn, 'en')),
+  kind: l.kind === 'client' ? 'client' : 'office',
+  validUntil: l.validUntil ? fromDateOnly(l.validUntil) : null,
+  endedAt: l.endedAt?.toISOString() ?? null,
+  inForce: l.kind !== 'client' || clientInForce(l, today),
+  requestId: l.requests[0]?.id ?? null,
   createdAt: l.createdAt.toISOString(),
   updatedAt: l.updatedAt.toISOString(),
 });
@@ -229,6 +262,40 @@ export class CheckInSetupService {
     return { refuseWithoutLocation: dto.refuseWithoutLocation };
   }
 
+  // ---------- the GPS lock (owner, 24 October 2026: "Yes, add a GPS lock too") ----------
+
+  /** The switch and the accuracy past which a reading is too rough (off, and 200 m, unless set). */
+  async gpsLock(): Promise<GpsLockSetting> {
+    const s = await this.prisma.payrollSettings.findUnique({ where: { id: 1 }, select: { gpsLock: true, gpsRoughMetres: true } });
+    return { lock: s?.gpsLock ?? false, roughMetres: s?.gpsRoughMetres ?? GPS_ROUGH_DEFAULT };
+  }
+
+  /** GET …/gps-lock: the setting, and whether it is in force (switched on with the main office set). */
+  async gpsLockView(): Promise<GpsLockSetting & { inForce: boolean }> {
+    const [setting, places] = await Promise.all([this.gpsLock(), this.checkInPlaces(null)]);
+    return { ...setting, inForce: gpsLockInForce(setting, places) };
+  }
+
+  /**
+   * { lock, roughMetres? }: switched on only with the main office's point set (never a lock refusing every Office press);
+   * the limit whole metres from 50 to 500. In the audit log when it changes.
+   */
+  async updateGpsLock(dto: UpdateGpsLockDto, user: SessionUser): Promise<GpsLockSetting & { inForce: boolean }> {
+    const before = await this.gpsLock();
+    const roughMetres = dto.roughMetres ?? before.roughMetres;
+    const problems = gpsRoughProblems(roughMetres);
+    if (problems.length) throw new BadRequestException(problems);
+    if (dto.lock && !(await this.checkInPlaces(null)).main) throw new BadRequestException([GPS_LOCK_NEEDS_OFFICE]);
+    await this.prisma.payrollSettings.upsert({
+      where: { id: 1 },
+      update: { gpsLock: dto.lock, gpsRoughMetres: roughMetres },
+      create: { id: 1, gpsLock: dto.lock, gpsRoughMetres: roughMetres },
+    });
+    const diff = changes({ gpsLock: before.lock, gpsRoughMetres: before.roughMetres }, { gpsLock: dto.lock, gpsRoughMetres: roughMetres });
+    if (Object.keys(diff).length) await this.audit.record({ userId: user.id, action: 'update', entityType: GPS_LOCK, diff });
+    return this.gpsLockView();
+  }
+
   // ---------- the check-in locations ----------
 
   /** Every location: the main office first, then the sub-locations as they were added, each with the people the caller may see. */
@@ -246,14 +313,23 @@ export class CheckInSetupService {
    * The places a person's press is read against (packages/shared checkInPlaceAt): the main office, and each sub-location
    * with whether they are linked to it (none without a profile). Links to the main office don't count while it is the main.
    */
-  async checkInPlaces(employeeId: string | null): Promise<CheckInPlaces> {
+  async checkInPlaces(employeeId: string | null, today = todayInCairo()): Promise<CheckInPlaces> {
     const [rows, links] = await Promise.all([
-      this.prisma.checkInLocation.findMany({ orderBy: LIST_ORDER, select: { id: true, name: true, latitude: true, longitude: true, radiusMetres: true, isMain: true } }),
+      this.prisma.checkInLocation.findMany({
+        orderBy: LIST_ORDER,
+        select: { id: true, name: true, latitude: true, longitude: true, radiusMetres: true, isMain: true, kind: true, validUntil: true, endedAt: true },
+      }),
       employeeId ? this.prisma.checkInLocationPerson.findMany({ where: { employeeId }, select: { locationId: true } }) : [],
     ]);
     const linked = new Set(links.map((l) => l.locationId));
-    const main = rows.find((r) => r.isMain);
-    return { main: main ? pointOf(main) : null, subLocations: rows.filter((r) => !r.isMain).map((r) => ({ ...pointOf(r), linked: linked.has(r.id) })) };
+    const office = rows.filter((r) => r.kind !== 'client');
+    const main = office.find((r) => r.isMain);
+    return {
+      main: main ? pointOf(main) : null,
+      subLocations: office.filter((r) => !r.isMain).map((r) => ({ ...pointOf(r), linked: linked.has(r.id) })),
+      // the client locations in force (24 October 2026: "all employees if a customer location"), everyone's
+      clients: rows.filter((r) => clientInForce(r, today)).map(pointOf),
+    };
   }
 
   /** One location as the caller gets it. */
@@ -279,6 +355,11 @@ export class CheckInSetupService {
 
   async updateLocation(id: string, dto: UpdateCheckInLocationDto, user: SessionUser): Promise<CheckInLocationView> {
     const was = await this.row(id);
+    // a client location's end (24 October 2026: a date, or none), HR's to change on Check-in Setup; the office's have none
+    if (dto.validUntil !== undefined) {
+      if (was.kind !== 'client') throw new BadRequestException(['Only a client location has an end date: the main office and the sub-locations last until removed.']);
+      if (dto.validUntil !== null && dto.validUntil < todayInCairo()) throw new BadRequestException(['Choose an end date of today or later.']);
+    }
     const before = { name: was.name, latitude: was.latitude.toNumber(), longitude: was.longitude.toNumber(), radiusMetres: was.radiusMetres };
     const sent = {
       name: dto.name === undefined ? undefined : dto.name.trim().replace(/\s+/g, ' '),
@@ -293,9 +374,25 @@ export class CheckInSetupService {
       radiusMetres: sent.radiusMetres ?? before.radiusMetres,
     };
     await this.assertLocation(after, id);
-    await this.prisma.checkInLocation.update({ where: { id }, data: sent });
-    const diff = changes({ ...before }, sent);
+    const until = dto.validUntil === undefined ? undefined : dto.validUntil;
+    await this.prisma.checkInLocation.update({ where: { id }, data: { ...sent, ...(until !== undefined && { validUntil: until ? toDateOnly(until) : null, endingNoticeOn: null }) } });
+    const diff = changes({ ...before, ...(until !== undefined && { validUntil: was.validUntil ? fromDateOnly(was.validUntil) : null }) }, { ...sent, ...(until !== undefined && { validUntil: until }) });
     if (Object.keys(diff).length) await this.audit.record({ userId: user.id, action: 'update', entityType: LOCATION, entityId: id, diff });
+    return this.one(id, user);
+  }
+
+  /**
+   * A client location ended by HR or Admin (owner, 24 October 2026: HR "edits or ends it" on Check-in Setup): from now on
+   * no press counts within it; kept, with its request, and in the audit log. Ended already: as it is.
+   */
+  async endLocation(id: string, user: SessionUser): Promise<CheckInLocationView> {
+    const was = await this.row(id);
+    if (was.kind !== 'client') throw new BadRequestException(['Only a client location is ended: remove a sub-location instead.']);
+    if (!was.endedAt) {
+      const endedAt = new Date();
+      await this.prisma.checkInLocation.update({ where: { id }, data: { endedAt } });
+      await this.audit.record({ userId: user.id, action: 'end', entityType: LOCATION, entityId: id, diff: { name: was.name, kind: 'client', endedAt: endedAt.toISOString() } });
+    }
     return this.one(id, user);
   }
 
@@ -307,8 +404,9 @@ export class CheckInSetupService {
   async makeMain(id: string, user: SessionUser): Promise<CheckInLocationView[]> {
     const swapped = await this.prisma.$transaction(async (tx) => {
       await lockLocations(tx);
-      const target = await tx.checkInLocation.findUnique({ where: { id }, select: { id: true, name: true, isMain: true } });
+      const target = await tx.checkInLocation.findUnique({ where: { id }, select: { id: true, name: true, isMain: true, kind: true } });
       if (!target) throw new NotFoundException('Check-in location not found.');
+      if (target.kind === 'client') throw new BadRequestException([CLIENT_NOT_MAIN]);
       if (target.isMain) return null;
       const was = await tx.checkInLocation.findFirst({ where: { isMain: true }, select: { id: true, name: true } });
       await tx.checkInLocation.updateMany({ where: { isMain: true }, data: { isMain: false } });
@@ -337,7 +435,8 @@ export class CheckInSetupService {
       await lockLocations(tx);
       const l = await tx.checkInLocation.findUnique({ where: { id }, include: { _count: { select: { people: true } } } });
       if (!l) throw new NotFoundException('Check-in location not found.');
-      if (l.isMain && (await tx.checkInLocation.count({ where: { id: { not: id } } })) > 0) throw new BadRequestException([MAIN_OFFICE_REMOVE_REFUSED]);
+      // the main office only once it is the office's last (a client location doesn't keep it: 24 October 2026)
+      if (l.isMain && (await tx.checkInLocation.count({ where: { id: { not: id }, kind: { not: 'client' } } })) > 0) throw new BadRequestException([MAIN_OFFICE_REMOVE_REFUSED]);
       await tx.checkInLocation.delete({ where: { id } });
       return l;
     });
@@ -381,6 +480,7 @@ export class CheckInSetupService {
   async linkPeople(id: string, dto: LinkPeopleDto, user: SessionUser): Promise<CheckInLocationView> {
     const l = await this.row(id);
     if (l.isMain) throw new BadRequestException([MAIN_OFFICE_LINK_REFUSED]);
+    if (l.kind === 'client') throw new BadRequestException([CLIENT_LINK_REFUSED]);
     const ids = [...new Set(dto.employeeIds)];
     const [found, hidden, already] = await Promise.all([
       this.prisma.employee.findMany({ where: { id: { in: ids } }, select: PERSON }),
@@ -420,7 +520,7 @@ export class CheckInSetupService {
     }
     if (!(await this.prisma.employee.count({ where: { id: employeeId } }))) throw new NotFoundException('Employee not found.');
     const rows = await this.prisma.checkInLocationPerson.findMany({
-      where: { employeeId, location: { isMain: false } },
+      where: { employeeId, location: { isMain: false, kind: { not: 'client' } } },
       orderBy: { location: { name: 'asc' } },
       select: { location: { select: { id: true, name: true } } },
     });

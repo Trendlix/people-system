@@ -171,13 +171,14 @@ function employmentFields(e: Employment, linkPeople: boolean, topGrade: boolean)
     ...(e.hazardousWork !== undefined
       ? [{ key: 'hazardousWork', label: 'Hazardous work', value: e.hazardousWork ? 'Yes' : 'No', note: e.hazardousWork ? '7 more days of annual leave (Art. 124)' : undefined, hidden }]
       : []),
-    // where they check in from (20 October 2026: check-ins locked to the office network, "Office staff, plus exceptions")
+    // where they check in from (20 October 2026: check-ins locked to the office network, "Office staff, plus exceptions";
+    // 24 October 2026: or to the check-in locations by GPS, "Yes, add a GPS lock too")
     ...(e.checkInAnywhere !== undefined
       ? [
           {
             key: 'checkInAnywhere',
             label: 'Checks in from',
-            value: e.checkInAnywhere || e.workArrangement !== 'office' ? 'Anywhere' : 'The office network, when check-ins are locked to it',
+            value: e.checkInAnywhere || e.workArrangement !== 'office' ? 'Anywhere' : 'The office network or the check-in locations, when check-ins are locked to them',
             hidden,
             note: e.checkInAnywhere ? 'Can check in from anywhere (HR’s exception)' : undefined,
           },
@@ -190,7 +191,9 @@ function employmentFields(e: Employment, linkPeople: boolean, topGrade: boolean)
             key: 'checkInWithoutLocation',
             label: 'Checks in without a location',
             value: e.checkInWithoutLocation ? 'Yes' : 'No',
-            note: e.checkInWithoutLocation ? 'Can check in without a location (HR’s exception)' : 'Needs it when Check-in Setup refuses check-ins without one',
+            note: e.checkInWithoutLocation
+              ? 'Can check in without a location (HR’s exception)'
+              : 'Needs it when Check-in Setup refuses check-ins without one, or locks Office staff to the check-in locations',
           },
         ]
       : []),
@@ -420,7 +423,8 @@ async function DetailsSubTab({
             }
           >
             <FieldGrid fields={employmentFields(e, linkPeople, topGrade)} />
-            {/* their approved home (20 October 2026), for HR, the CEO and the Super Admin; loads on its own */}
+            {/* their check-in locations (their home, 20 October 2026; remote sites and client locations they asked for, 24 October
+                2026), with type, validity and status, for HR, the CEO and the Super Admin; loads on its own */}
             <Suspense fallback={null}>
               <HomeLocationLine employee={p} user={user} />
             </Suspense>

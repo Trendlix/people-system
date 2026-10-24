@@ -2,8 +2,8 @@
 
 // Recruitment (owner, 22 October 2026: "where will we include the ATS?"): saving a vacancy, moving it on (sent to the
 // CEO, approved or sent back by the CEO, held, reopened, closed), deleting one nobody applied to (a Super Admin), and
-// moving an applicant (shortlisted, interview, rejected with a reason, restored) or noting on them. Each forwards to
-// the API, which checks who may and every rule again.
+// moving an applicant (shortlisted, interview, rejected with a reason, restored). Each forwards to the API, which checks
+// who may and every rule again. Noting on them is a screening comment since 24 October 2026 (comment-actions.ts).
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import type { InterviewSaved, VacancyView } from '@trendlix/shared';
@@ -183,9 +183,4 @@ export async function saveRecruitmentSettings(_prev: FormState, fd: FormData): P
 
 export async function restoreApplicant(id: string): Promise<FormState> {
   return send('POST', `/recruitment/applications/${encodeURIComponent(id)}/restore`, {});
-}
-
-export async function saveApplicantNotes(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
-  const notes = fd.get('notes');
-  return send('PATCH', `/recruitment/applications/${encodeURIComponent(id)}/notes`, { notes: typeof notes === 'string' && notes.trim() ? notes.trim() : null }, typed(fd));
 }

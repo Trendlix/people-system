@@ -90,11 +90,13 @@ describe('what waits for the caller', () => {
     const home = { id: ID(7), employee: nour, stage: 'hr', latitude: 30.1, longitude: 31.3, label: 'Home, Nasr City', radiusMetres: 100 } as unknown as HomeLocationView;
     const ceoStep = { ...home, id: ID(8), stage: 'ceo', label: null, radiusMetres: 150 } as HomeLocationView;
     const [homes] = waitingSections({ homes: [home, ceoStep] });
-    expect(homes).toMatchObject({ key: 'home', title: 'Home Locations', failed: false });
+    expect(homes).toMatchObject({ key: 'home', title: 'Check-in Locations', failed: false });
     expect(homes.rows.map((r) => [r.href, r.name, r.line])).toEqual([
       [`/app/approve/home/${ID(7)}`, 'Nour Adel', 'HR’s step · Home, Nasr City · 100 m'],
       [`/app/approve/home/${ID(8)}`, 'Nour Adel', 'The CEO’s step · Point on the map · 150 m'],
     ]);
+    // a client location by its type and name (24 October 2026)
+    expect(waitingSections({ homes: [{ ...home, id: ID(9), type: 'client', label: 'Acme' } as HomeLocationView] })[0].rows[0].line).toBe('HR’s step · Client location: Acme · 100 m');
     expect(waitingSections({ homes: null })).toMatchObject([{ key: 'home', failed: true }]);
     expect(waitingSections({ homes: [] })).toEqual([]);
   });

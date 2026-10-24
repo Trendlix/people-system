@@ -7,8 +7,8 @@ import type { FormState } from '@/lib/types';
 
 // Recruitment's buttons (owner, 22 October 2026: "where will we include the ATS?"): a vacancy's moves (sent to the CEO,
 // approved, sent back or closed with a reason, held, reopened), deleting one nobody applied to, an applicant's stages
-// (shortlisted, interview, rejected with a reason, restored), HR's notes, and copying a channel's apply link. The API
-// checks each again.
+// (shortlisted, interview, rejected with a reason, restored), and copying a channel's apply link. The API checks each
+// again. HR's notes became screening comments (24 October 2026: screening-ui.tsx).
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -96,31 +96,6 @@ export function ReasonButton({
         <button type="button" onClick={() => setOpen(false)} className="btn btn-secondary">
           Cancel
         </button>
-      </div>
-    </form>
-  );
-}
-
-/** HR's notes on an applicant. */
-export function NotesForm({ action, notes }: { action: Action; notes: string | null }) {
-  const [state, formAction, pending] = useActionState(action, {});
-  const fid = useFieldIds();
-  return (
-    <form action={formAction} className="space-y-2">
-      <FormErrors errors={state.errors} />
-      <label htmlFor={fid('notes')} className="sr-only">
-        Notes
-      </label>
-      <textarea id={fid('notes')} name="notes" rows={4} maxLength={RECRUITMENT_LIMITS.notes} defaultValue={notes ?? ''} className="input" placeholder="What stood out, what to ask at the interview …" />
-      <div className="flex items-center gap-3">
-        <button type="submit" disabled={pending} className="btn btn-secondary">
-          {pending ? 'Saving…' : 'Save notes'}
-        </button>
-        {state.message && !state.errors && (
-          <span role="status" className="text-sm text-ok">
-            {state.message}
-          </span>
-        )}
       </div>
     </form>
   );

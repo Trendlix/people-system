@@ -2,7 +2,8 @@ import 'server-only';
 import { redirect } from 'next/navigation';
 import { cache } from 'react';
 import { ApiError, apiFetch, messagesOf } from '@/lib/api';
-import type { CheckInLocationView, LinkablePersonView, LocationRuleView, OfficeNetworksView } from '@/lib/attendance-types';
+import type { CheckInLocationView, GpsLockView, LinkablePersonView, LocationRuleView, OfficeNetworksView } from '@/lib/attendance-types';
+import type { HomeLocationView } from '@/lib/home-location-types';
 import type { MapsSettingsView } from '@trendlix/shared';
 import type { PayrollSettingsView } from '@/lib/types';
 import { loadJson, type Loaded } from '../../payroll/load';
@@ -39,6 +40,15 @@ export const loadNetworks = cache(async (): Promise<Loaded<OfficeNetworksView>> 
 
 /** GET /attendance/check-in-setup/location-rule: whether presses without a location are refused (20 October 2026). */
 export const loadLocationRule = cache(() => loadJson<LocationRuleView>('/attendance/check-in-setup/location-rule'));
+
+/** GET /attendance/check-in-setup/gps-lock: the GPS lock (owner, 24 October 2026: "Yes, add a GPS lock too"). */
+export const loadGpsLock = cache(() => loadJson<GpsLockView>('/attendance/check-in-setup/gps-lock'));
+
+/**
+ * GET /home-locations?status=&type=: the requested check-in locations (owner, 24 October 2026: "Home Location - Remote
+ * Site - Client Location"), HR's, the CEO's and the Super Admin's, as the list's filters ask (setup.ts requestsApi).
+ */
+export const loadRequests = cache((path: string) => loadJson<HomeLocationView[]>(path));
 
 /** GET /payroll/settings: Zoho People's check-in addresses are kept there. */
 export const loadSettings = cache(() => loadJson<PayrollSettingsView>('/payroll/settings'));

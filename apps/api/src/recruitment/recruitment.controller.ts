@@ -168,6 +168,21 @@ export class ApplicationsController {
     return this.applications.cvText(id, user);
   }
 
+  /**
+   * The CV as a PDF for the CV window (24 October 2026: "when opening a CV, open it in a popup window"): a PDF as sent, a
+   * Word file converted by the PDF service and kept (409 in words without one: downloaded instead). For those who may
+   * open the applicant; never a developer.
+   */
+  @NotForDevelopers()
+  @Get(':id/cv/preview')
+  @Header('Cache-Control', 'private, no-store')
+  @Header('X-Content-Type-Options', 'nosniff')
+  @Header('Content-Security-Policy', "default-src 'none'")
+  async cvPreview(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser): Promise<StreamableFile> {
+    const file = await this.applications.cvPreview(id, user);
+    return new StreamableFile(file.data, { type: 'application/pdf', length: file.data.length, disposition: contentDisposition(file.fileName) });
+  }
+
   /** The CV as sent: shown in the browser, or saved with ?download=1. For those who may open the applicant. */
   @NotForDevelopers()
   @Get(':id/cv')
@@ -210,10 +225,11 @@ export class ApplicationsController {
     return this.applications.restore(id, user);
   }
 
+  /** Gone (410) since HR's notes became screening comments (24 October 2026): POST /recruitment/comments instead. */
   @Roles(...MANAGES)
   @Patch(':id/notes')
-  notes(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ApplicationNotesDto, @CurrentUser() user: SessionUser) {
-    return this.applications.notes(id, dto.notes, user);
+  notes(@Param('id', ParseUUIDPipe) id: string, @Body() _dto: ApplicationNotesDto, @CurrentUser() user: SessionUser) {
+    return this.applications.notes(id, user);
   }
 }
 

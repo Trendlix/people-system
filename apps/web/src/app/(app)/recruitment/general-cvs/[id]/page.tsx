@@ -1,17 +1,21 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
-import { GENERAL_CV_EVENT_LABELS, GENERAL_CV_SOURCE_LABELS, GENERAL_CV_STATUS_LABELS, VACANCY_STATUS_LABELS, type GeneralCvView } from '@trendlix/shared';
+import { GENERAL_CV_EVENT_LABELS, GENERAL_CV_SOURCE_LABELS, GENERAL_CV_STATUS_LABELS, generalCvKey, VACANCY_STATUS_LABELS, type GeneralCvView } from '@trendlix/shared';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { BackLink, Empty, Loading } from '../../../organization/ui';
 import { RehireWarning } from '../../../offboarding/rehire-warning';
 import { FromTheCv } from '../../cv-card';
-import { loadGeneralCv, loadVacancies, recruitmentNotLoaded } from '../../data';
-import { ActionButton, NotesForm } from '../../forms';
-import { moveGeneralCv, saveGeneralCvNotes, setGeneralCvStatus } from '../../general-actions';
+import { CvDialogHost, CvOpenButton } from '../../cv-dialog';
+import { loadGeneralCv, loadGeneralCvComments, loadVacancies, recruitmentNotLoaded } from '../../data';
+import { ActionButton } from '../../forms';
+import { moveGeneralCv, setGeneralCvStatus } from '../../general-actions';
 import { generalCvFileHref, GENERAL_STATUS_STYLE, movableVacancies, tabHref } from '../../general';
 import { MoveForm } from '../../general-forms';
 import { applicantHref } from '../../recruitment';
+import { commentsOfRecord, kb, ownCv } from '../../screening';
+import { ScreeningCommentsCard } from '../../screening-ui';
+import { VerdictBadge } from '../../ui';
 import { shownCode } from '@/lib/hidden';
 
 // A general CV (owner, 22 October 2026: "i want a proper viweing, what came out of the posted jobs and what cam on
@@ -19,6 +23,10 @@ import { shownCode } from '@/lib/hidden';
 // WhatsApp, LinkedIn, in person or a referral), their consent (whose, when), the CV, HR's notes and its history. HR marks
 // it reviewed, archives (and restores) it, or adds it to an open vacancy at Applied or Shortlisted: an application made
 // from it, with the same reference. A warning when they worked here before (offboarding's rehire check).
+// Since 24 October 2026 (owner: "when opening a CV, open it in a popup window", "is there a way to add screening
+// comments?"): the CV opens in the CV window (?cv=, with the candidate's other CVs before and after it), and the
+// Screening Comments card replaces HR's notes (moved into the comments, "HR (earlier notes)"): this CV's comments (and
+// the application made from it), with the general ones; the latest verdict beside its status.
 
 export const metadata: Metadata = { title: 'General CV · People System' };
 
@@ -43,9 +51,14 @@ async function AddToVacancy({ c }: { c: GeneralCvView }) {
 
 async function GeneralCv({ params }: { params: PageProps<'/recruitment/general-cvs/[id]'>['params'] }) {
   const { id } = await params;
-  const loaded = await loadGeneralCv(id);
+  const [loaded, commentsLoaded] = await Promise.all([loadGeneralCv(id), loadGeneralCvComments(id)]);
   if (loaded.kind !== 'ok') return <Empty>{recruitmentNotLoaded(loaded, 'general CV')}</Empty>;
   const c = loaded.value;
+  // the screening comments and the CVs the window opens (24 October 2026); the page shows without them if they fail
+  const comments = commentsLoaded.kind === 'ok' ? commentsLoaded.value : null;
+  const commentsNotLoaded = commentsLoaded.kind === 'ok' ? '' : recruitmentNotLoaded(commentsLoaded, 'screening comments');
+  const ownKey = generalCvKey(c.id);
+  const cvs = comments?.cvs.length ? comments.cvs : ownCv('general_cv', { id: c.id, reference: c.number, title: 'General CV', sentAt: c.receivedAt }, c.cv);
   const consentBy = c.consentBy ? `recorded by ${c.consentBy.name ?? c.consentBy.email}` : 'given on the careers page';
   return (
     <div className="space-y-6">
@@ -54,6 +67,8 @@ async function GeneralCv({ params }: { params: PageProps<'/recruitment/general-c
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold">{c.fullName}</h1>
           <span className={`badge ${GENERAL_STATUS_STYLE[c.status]}`}>{GENERAL_CV_STATUS_LABELS[c.status]}</span>
+          {/* the latest screening verdict of this CV's comments (24 October 2026) */}
+          <VerdictBadge verdict={c.verdict} />
         </div>
         <p className="text-sm text-muted">
           {shownCode(c.number) && `${c.number} · `}
@@ -132,14 +147,13 @@ async function GeneralCv({ params }: { params: PageProps<'/recruitment/general-c
           </Fact>
           <Fact label="CV">
             {c.cv ? (
-              <span className="flex flex-wrap gap-3">
-                {c.cv.mimeType === 'application/pdf' && (
-                  <a href={generalCvFileHref(c.id)} target="_blank" rel="noopener noreferrer">
-                    Open
-                  </a>
-                )}
-                <a href={generalCvFileHref(c.id, true)}>Download</a>
-                <span className="text-muted">{Math.max(1, Math.round(c.cv.sizeBytes / 1024))} KB</span>
+              <span className="flex flex-wrap items-center gap-3">
+                {/* in the CV window (24 October 2026: "when opening a CV, open it in a popup window"), a Word file too */}
+                <CvOpenButton recordId={c.id}>Open</CvOpenButton>
+                <a href={generalCvFileHref(c.id, true)} className="inline-flex min-h-9 items-center">
+                  Download
+                </a>
+                <span className="text-muted">{kb(c.cv.sizeBytes)}</span>
               </span>
             ) : (
               'None'
@@ -155,23 +169,8 @@ async function GeneralCv({ params }: { params: PageProps<'/recruitment/general-c
         </Suspense>
       )}
 
-      {c.can.editNotes ? (
-        <section aria-labelledby="general-notes" className="card space-y-2 p-6">
-          <h2 id="general-notes" className="text-lg font-semibold">
-            Notes
-          </h2>
-          <NotesForm action={saveGeneralCvNotes.bind(null, c.id)} notes={c.notes} />
-        </section>
-      ) : (
-        c.notes && (
-          <section aria-labelledby="general-notes" className="card space-y-2 p-6">
-            <h2 id="general-notes" className="text-lg font-semibold">
-              Notes
-            </h2>
-            <p className="text-sm whitespace-pre-line">{c.notes}</p>
-          </section>
-        )
-      )}
+      {/* HR's notes are screening comments now (24 October 2026), the earlier ones moved in as "HR (earlier notes)" */}
+      <ScreeningCommentsCard data={comments} notLoaded={commentsNotLoaded} mode="record" comments={comments ? commentsOfRecord(comments, ownKey) : []} defaultTarget={ownKey} />
 
       <section aria-labelledby="general-history" className="card space-y-2 p-6">
         <h2 id="general-history" className="text-lg font-semibold">
@@ -190,6 +189,10 @@ async function GeneralCv({ params }: { params: PageProps<'/recruitment/general-c
           ))}
         </ol>
       </section>
+      {/* the CV window, opened by ?cv= (24 October 2026) */}
+      <Suspense fallback={null}>
+        <CvDialogHost cvs={cvs} data={comments} pageKey={ownKey} commentsNotLoaded={commentsNotLoaded} />
+      </Suspense>
     </div>
   );
 }

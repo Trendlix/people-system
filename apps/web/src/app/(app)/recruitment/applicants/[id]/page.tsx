@@ -10,6 +10,7 @@ import {
   INTERVIEW_KIND_LABELS,
   INTERVIEW_STATUS_LABELS,
   RECOMMENDATION_LABELS,
+  applicationKey,
   type ApplicationAnswerView,
   type ApplicationView,
   type InterviewView,
@@ -24,14 +25,17 @@ import { splitApplication } from '../../candidate-actions';
 import { CandidateApplicationsTable, EmployeeCard, MatchesCard } from '../../candidate-ui';
 import { candidateHref } from '../../candidates';
 import { FromTheCv } from '../../cv-card';
-import { cancelInterview, giveFeedback, markInterview, moveApplicant, rescheduleInterview, restoreApplicant, saveApplicantNotes, scheduleInterview, suggestNext } from '../../actions';
-import { loadApplicant, recruitmentNotLoaded } from '../../data';
-import { ActionButton, NotesForm, ReasonButton } from '../../forms';
+import { CvDialogHost, CvOpenButton } from '../../cv-dialog';
+import { cancelInterview, giveFeedback, markInterview, moveApplicant, rescheduleInterview, restoreApplicant, scheduleInterview, suggestNext } from '../../actions';
+import { loadApplicant, loadApplicantComments, recruitmentNotLoaded } from '../../data';
+import { ActionButton, ReasonButton } from '../../forms';
 import { interviewWhen, MY_HIRING_PATH } from '../../hiring';
 import { FeedbackForm, MoveInterview, ScheduleInterview, SuggestForm, type PersonOption } from '../../hiring-forms';
 import { vacancyOptions } from '../../pickers';
 import { applicantCvHref, makeOfferHref, matchText, vacancyHref } from '../../recruitment';
-import { StageBadge } from '../../ui';
+import { commentsOfRecord, kb, ownCv } from '../../screening';
+import { ScreeningCommentsCard } from '../../screening-ui';
+import { StageBadge, VerdictBadge } from '../../ui';
 import { shownCode } from '@/lib/hidden';
 import type { MeetingChoices } from '@trendlix/shared';
 import { fixInterviewMeeting } from '../../meeting-actions';
@@ -48,6 +52,12 @@ import { NO_MEETING_CHOICES } from '../../meetings';
 // calendar invitation), the interviewers' scorecards (an interviewer sees the others' once they gave theirs), the hiring
 // manager's suggestion, and Reject's "Email the candidate" tick. Their hiring manager and interviewers open it too,
 // without the expected salary, HR's notes or the job offers.
+// Since 24 October 2026 (owner: "when opening a CV, open it in a popup window", "is there a way to add screening
+// comments?"; "HR + hiring manager & interviewers"): the CV opens in the CV window (?cv=; for HR, the CEO and a Super
+// Admin with the candidate's other CVs before and after it), and the Screening Comments card replaces HR's notes (moved
+// into the comments, "HR (earlier notes)"): this application's comments (and the general CV it came from), with the
+// general ones for HR, the CEO and a Super Admin; its hiring manager and interviewers comment here too. The latest
+// verdict beside the stage.
 
 export const metadata: Metadata = { title: 'Applicant · People System' };
 
@@ -272,10 +282,15 @@ async function Interviews({ a }: { a: ApplicationView }) {
 
 async function Applicant({ params }: { params: PageProps<'/recruitment/applicants/[id]'>['params'] }) {
   const { id } = await params;
-  const loaded = await loadApplicant(id);
+  const [loaded, commentsLoaded] = await Promise.all([loadApplicant(id), loadApplicantComments(id)]);
   if (loaded.kind !== 'ok') return <Empty>{recruitmentNotLoaded(loaded, 'applicant')}</Empty>;
   const a = loaded.value;
   const participant = a.viewer === 'hiring_manager' || a.viewer === 'interviewer';
+  // the screening comments and the CVs the window opens (24 October 2026); the page shows without them if they fail
+  const comments = commentsLoaded.kind === 'ok' ? commentsLoaded.value : null;
+  const commentsNotLoaded = commentsLoaded.kind === 'ok' ? '' : recruitmentNotLoaded(commentsLoaded, 'screening comments');
+  const ownKey = applicationKey(a.id);
+  const cvs = comments?.cvs.length ? comments.cvs : ownCv('application', { id: a.id, reference: a.number, title: a.vacancy.title, sentAt: a.appliedAt }, a.cv);
   return (
     <div className="space-y-6">
       <div className="space-y-2">
@@ -283,6 +298,8 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold">{a.fullName}</h1>
           <StageBadge stage={a.stage} filteredOut={a.filteredOut} />
+          {/* the latest screening verdict of this application's comments (24 October 2026) */}
+          <VerdictBadge verdict={a.verdict} />
         </div>
         <p className="text-sm text-muted">
           {shownCode(a.number) && `${a.number} · `}
@@ -373,14 +390,13 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
           <Fact label="Consent">{formatDate(a.consentAt)}</Fact>
           <Fact label="CV">
             {a.cv ? (
-              <span className="flex flex-wrap gap-3">
-                {a.cv.mimeType === 'application/pdf' && (
-                  <a href={applicantCvHref(a.id)} target="_blank" rel="noopener noreferrer">
-                    Open
-                  </a>
-                )}
-                <a href={applicantCvHref(a.id, true)}>Download</a>
-                <span className="text-muted">{Math.max(1, Math.round(a.cv.sizeBytes / 1024))} KB</span>
+              <span className="flex flex-wrap items-center gap-3">
+                {/* in the CV window (24 October 2026: "when opening a CV, open it in a popup window"), a Word file too */}
+                <CvOpenButton recordId={a.id}>Open</CvOpenButton>
+                <a href={applicantCvHref(a.id, true)} className="inline-flex min-h-9 items-center">
+                  Download
+                </a>
+                <span className="text-muted">{kb(a.cv.sizeBytes)}</span>
               </span>
             ) : (
               'None'
@@ -440,22 +456,8 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
         </section>
       )}
 
-      {a.can.editNotes && (
-        <section aria-labelledby="applicant-notes" className="card space-y-2 p-6">
-          <h2 id="applicant-notes" className="text-lg font-semibold">
-            Notes
-          </h2>
-          <NotesForm action={saveApplicantNotes.bind(null, a.id)} notes={a.notes} />
-        </section>
-      )}
-      {!a.can.editNotes && a.notes && (
-        <section aria-labelledby="applicant-notes" className="card space-y-2 p-6">
-          <h2 id="applicant-notes" className="text-lg font-semibold">
-            Notes
-          </h2>
-          <p className="text-sm whitespace-pre-line">{a.notes}</p>
-        </section>
-      )}
+      {/* HR's notes are screening comments now (24 October 2026), the earlier ones moved in as "HR (earlier notes)" */}
+      <ScreeningCommentsCard data={comments} notLoaded={commentsNotLoaded} mode="record" comments={comments ? commentsOfRecord(comments, ownKey) : []} defaultTarget={ownKey} />
 
       {a.offers.length > 0 && !participant && (
         <section aria-labelledby="applicant-offers" className="card space-y-2 p-6">
@@ -494,6 +496,10 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
           ))}
         </ol>
       </section>
+      {/* the CV window, opened by ?cv= (24 October 2026) */}
+      <Suspense fallback={null}>
+        <CvDialogHost cvs={cvs} data={comments} pageKey={ownKey} commentsNotLoaded={commentsNotLoaded} />
+      </Suspense>
     </div>
   );
 }

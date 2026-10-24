@@ -2,7 +2,18 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
-import { FEEDBACK_CRITERIA, FEEDBACK_CRITERION_LABELS, INTERVIEW_KIND_LABELS, INTERVIEW_STATUS_LABELS, OFFER_STATUS_LABELS, RECOMMENDATION_LABELS, type CandidateView } from '@trendlix/shared';
+import {
+  FEEDBACK_CRITERIA,
+  FEEDBACK_CRITERION_LABELS,
+  GENERAL_KEY,
+  INTERVIEW_KIND_LABELS,
+  INTERVIEW_STATUS_LABELS,
+  OFFER_STATUS_LABELS,
+  RECOMMENDATION_LABELS,
+  type CandidateView,
+  type ScreeningComments,
+  type ScreeningCv,
+} from '@trendlix/shared';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { getCurrentUser } from '@/lib/session';
 import { BackLink, Empty, Loading, UUID } from '../../../organization/ui';
@@ -10,11 +21,14 @@ import { mergeWithCode, undoMerge } from '../../candidate-actions';
 import { MergeWithForm } from '../../candidate-forms';
 import { CandidateApplicationsTable, CandidateGeneralCvsTable, EmployeeCard, MatchesCard } from '../../candidate-ui';
 import { candidateHref, CANDIDATES_PATH, timelineByDay } from '../../candidates';
-import { loadCandidate, recruitmentNotLoaded } from '../../data';
+import { CvDialogHost, CvOpenButton } from '../../cv-dialog';
+import { loadCandidate, loadCandidateComments, recruitmentNotLoaded } from '../../data';
 import { ActionButton } from '../../forms';
-import { generalCvFileHref } from '../../general';
 import { interviewWhen } from '../../hiring';
-import { applicantCvHref, applicantHref, readsRecruitment, WHO_SEES } from '../../recruitment';
+import { applicantHref, readsRecruitment, WHO_SEES } from '../../recruitment';
+import { asScreeningCvs, cvFileHref, kb } from '../../screening';
+import { ScreeningCommentsCard } from '../../screening-ui';
+import { VerdictBadge } from '../../ui';
 import { joinShown, shownCode } from '@/lib/hidden';
 
 // A candidate's profile (owner, 22 October 2026: "how to make like a profile for each candidate to store history and
@@ -24,10 +38,12 @@ import { joinShown, shownCode } from '@/lib/hidden';
 // the employee they are, the possible duplicates and suggested matches, and a timeline of everything by date. HR merges
 // another candidate into it ("Merge with…", or a match confirmed); a Super Admin undoes a merge. HR, the CEO and a
 // Super Admin only.
+// Since 24 October 2026 (owner: "when opening a CV, open it in a popup window", "is there a way to add screening
+// comments?", "and i can add genearrl comments"): each CV opens in the CV window (?cv=), with its comments beside it;
+// the Screening Comments card holds every comment about them (filtered by General or a record), a new one General
+// unless another is chosen; the latest verdict beside their name.
 
 export const metadata: Metadata = { title: 'Candidate · People System' };
-
-const kb = (bytes: number) => `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
 function Contacts({ c }: { c: CandidateView }) {
   return (
@@ -85,32 +101,36 @@ function Contacts({ c }: { c: CandidateView }) {
   );
 }
 
-function Cvs({ c }: { c: CandidateView }) {
-  if (!c.cvs.length) return null;
+/** Every CV they sent: Open shows it in the CV window (a Word file too, converted), with its comments' count and verdict. */
+function Cvs({ cvs, comments }: { cvs: ScreeningCv[]; comments: ScreeningComments | null }) {
+  if (!cvs.length) return null;
   return (
     <section aria-labelledby="candidate-cvs" className="card space-y-2 p-6">
       <h2 id="candidate-cvs" className="text-lg font-semibold">
         CVs
       </h2>
       <ul className="space-y-2 text-sm">
-        {c.cvs.map((cv) => {
-          const open = cv.kind === 'application' ? applicantCvHref(cv.id) : generalCvFileHref(cv.id);
-          const download = cv.kind === 'application' ? applicantCvHref(cv.id, true) : generalCvFileHref(cv.id, true);
+        {cvs.map((cv) => {
+          const target = comments?.targets.find((t) => t.key === cv.key);
+          const linked = cv.linkedKey ? comments?.targets.find((t) => t.key === cv.linkedKey) : undefined;
+          const count = (target?.count ?? 0) + (linked?.count ?? 0);
           return (
-            <li key={`${cv.kind}-${cv.id}`} className="flex flex-wrap items-baseline justify-between gap-2 border-b border-line-soft pb-2 last:border-b-0 last:pb-0">
+            <li key={cv.key} className="flex flex-wrap items-center justify-between gap-2 border-b border-line-soft pb-2 last:border-b-0 last:pb-0">
               <span className="min-w-0">
                 <span className="font-semibold break-words">{cv.cvFileName}</span>
                 <span className="block text-xs text-muted">
                   {joinShown([cv.title, cv.reference, `sent ${formatDate(cv.sentAt)}`, kb(cv.sizeBytes)])}
+                  {count > 0 && ` · ${count} ${count === 1 ? 'comment' : 'comments'}`}
                 </span>
+                <VerdictBadge verdict={target?.verdict ?? linked?.verdict ?? null} className="mt-1" />
               </span>
-              <span className="flex gap-3">
-                {cv.mimeType === 'application/pdf' && (
-                  <a href={open} target="_blank" rel="noopener noreferrer">
-                    Open
-                  </a>
-                )}
-                <a href={download}>Download</a>
+              <span className="flex items-center gap-3">
+                <CvOpenButton recordId={cv.id}>
+                  Open<span className="sr-only">: {cv.cvFileName}</span>
+                </CvOpenButton>
+                <a href={cvFileHref(cv, true)} className="inline-flex min-h-9 items-center">
+                  Download
+                </a>
               </span>
             </li>
           );
@@ -233,11 +253,15 @@ async function Candidate({ params }: { params: PageProps<'/recruitment/candidate
   const [{ id }, user] = await Promise.all([params, getCurrentUser()]);
   if (!readsRecruitment(user)) return <Empty>{WHO_SEES}</Empty>;
   if (!UUID.test(id)) return <Empty>Candidate not found.</Empty>;
-  const loaded = await loadCandidate(id);
+  const [loaded, commentsLoaded] = await Promise.all([loadCandidate(id), loadCandidateComments(id)]);
   if (loaded.kind !== 'ok') return <Empty>{recruitmentNotLoaded(loaded, 'candidate')}</Empty>;
   const c = loaded.value;
   // merged into another: that one is the profile now
   if (c.mergedInto) redirect(candidateHref(c.mergedInto.id));
+  // the screening comments and the CVs the window opens (24 October 2026); the profile shows without them if they fail
+  const comments = commentsLoaded.kind === 'ok' ? commentsLoaded.value : null;
+  const commentsNotLoaded = commentsLoaded.kind === 'ok' ? '' : recruitmentNotLoaded(commentsLoaded, 'screening comments');
+  const cvs = comments?.cvs ?? asScreeningCvs(c.cvs);
   return (
     <div className="space-y-6">
       <div className="space-y-2">
@@ -246,6 +270,8 @@ async function Candidate({ params }: { params: PageProps<'/recruitment/candidate
           <h1 className="text-2xl font-semibold">{c.fullName}</h1>
           {shownCode(c.code) && <span className="badge bg-canvas text-ink">{c.code}</span>}
           {c.employee && <span className="badge bg-warn-soft text-warn">{c.employee.restricted ? 'Employee record' : c.employee.state === 'former' ? 'Former employee' : 'Employee'}</span>}
+          {/* the latest screening verdict across what the caller sees of them (24 October 2026) */}
+          <VerdictBadge verdict={c.verdict} />
         </div>
         <p className="text-sm text-muted">
           {c.applications.length} {c.applications.length === 1 ? 'application' : 'applications'}
@@ -280,11 +306,16 @@ async function Candidate({ params }: { params: PageProps<'/recruitment/candidate
         </section>
       )}
 
-      <Cvs c={c} />
+      <Cvs cvs={cvs} comments={comments} />
+      <ScreeningCommentsCard data={comments} notLoaded={commentsNotLoaded} mode="profile" defaultTarget={GENERAL_KEY} />
       <Interviews c={c} />
       <Offers c={c} />
       <Merges c={c} />
       <Timeline c={c} />
+      {/* the CV window, opened by ?cv= (24 October 2026: "when opening a CV, open it in a popup window") */}
+      <Suspense fallback={null}>
+        <CvDialogHost cvs={cvs} data={comments} pageKey={GENERAL_KEY} commentsNotLoaded={commentsNotLoaded} />
+      </Suspense>
     </div>
   );
 }

@@ -1,7 +1,10 @@
 import {
+  countsForEveryone,
   homeStage,
   keepsHomePoint,
+  locationStanding,
   removesHome,
+  setsLocationValidity,
   waitsForHome,
   withdrawsHome,
   type HomeDecision,
@@ -9,7 +12,12 @@ import {
   type HomeStage,
   type HomeStatus,
   type HomeStepKind,
+  type HomeType,
+  type LocationContract,
+  type LocationValidity,
+  type OverlapCandidate,
 } from '@trendlix/shared';
+import { fromDateOnly } from '../common/date-only.js';
 import type { SessionUser } from '../auth/session-user.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { placeOf } from '../leave/views.js';
@@ -19,7 +27,10 @@ import type { UserRef } from '../payroll/adjustments/people.js';
 // locations when working from home"): shaped as a correction is (its employee, status, stage, who decides it, the
 // steps), with `kind: 'home'`, the point and the label only while it is being decided or in force (the columns are
 // emptied once it isn't), the radius, and what the caller may do with it. Only ever sent to the employee, HR (not a
-// C-level person's), the CEO and the Super Admin: the service checks who asks before shaping it.
+// C-level person's), the CEO and the Super Admin: the service checks who asks before shaping it. Since 24 October 2026
+// (owner: "(Home Location - Remote Site - Client Location)"): its type, the reason, the end date wished, its validity and
+// where it stands today (its last day, whether it counts), the client location it became, and (for HR, the CEO and the
+// Super Admin) the check-in places it overlaps, a warning only.
 
 export const HOME_ENTITY = 'home_location';
 
@@ -41,6 +52,8 @@ export const HOME_INCLUDE = {
   },
   createdBy: { select: { id: true, roles: { select: { role: { select: { key: true } } } } } },
   steps: { orderBy: { id: 'asc' }, include: { actor: { select: { id: true, email: true } } } },
+  // the client location it became (24 October 2026), as Check-in Setup keeps it
+  location: { select: { id: true, name: true, validUntil: true, endedAt: true } },
 } satisfies Prisma.HomeLocationRequestInclude;
 
 export type HomeRow = Prisma.HomeLocationRequestGetPayload<{ include: typeof HOME_INCLUDE }>;
@@ -62,15 +75,53 @@ export const homeParties = (r: Pick<HomeRow, 'employeeId' | 'createdBy'>, caller
   byCeo: sentByCeo(r),
 });
 
+/** A place a request's circle overlaps, as HR and the CEO are warned of it: its name (none: a home), kind, radius and how far. */
+export type OverlapView = Omit<OverlapCandidate, 'latitude' | 'longitude'> & { distanceMetres: number };
+
+/** What a view needs besides the row: the day, the person's contract (for "until the contract ends"), and the overlaps (null: not shown to the caller). */
+export interface HomeViewFacts {
+  today: string;
+  contract: LocationContract | null;
+  overlaps: OverlapView[] | null;
+}
+
+/**
+ * Where an approved request stands today: a client location by the company location it became (its date, or HR's end; none
+ * left once a Super Admin removed it), anything else by its own validity.
+ */
+export function standingOf(r: Pick<HomeRow, 'status' | 'type' | 'validity' | 'validUntil' | 'location' | 'locationId'>, facts: Pick<HomeViewFacts, 'today' | 'contract'>) {
+  if (r.type === 'client' && r.status === 'approved') {
+    const end = r.location?.validUntil ? fromDateOnly(r.location.validUntil) : null;
+    return { end, inForce: !!r.location && !r.location.endedAt && (end === null || end >= facts.today) };
+  }
+  return locationStanding({ status: r.status, validity: r.validity, validUntil: r.validUntil ? fromDateOnly(r.validUntil) : null }, facts.contract, facts.today);
+}
+
 /** A request as `caller` sees it. `names`: who took each step, by user id. */
-export function homeView(r: HomeRow, caller: HomeCaller, names: ReadonlyMap<string, UserRef>) {
+export function homeView(r: HomeRow, caller: HomeCaller, names: ReadonlyMap<string, UserRef>, facts: HomeViewFacts) {
   const status = r.status as HomeStatus;
   const parties = homeParties(r, caller);
   const kept = keepsHomePoint(status);
   const job = r.employee.employments[0];
+  const type = r.type as HomeType;
+  const standing = standingOf(r, facts);
   return {
     id: r.id,
     kind: 'home' as const,
+    // Home Location, Remote Site or Client Location (24 October 2026); a client location counts for everyone once approved
+    type,
+    forEveryone: countsForEveryone(type),
+    reason: r.reason,
+    wishedEndDate: r.wishedEndDate ? fromDateOnly(r.wishedEndDate) : null,
+    validity: (r.validity as LocationValidity | null) ?? null,
+    validUntil: r.validUntil ? fromDateOnly(r.validUntil) : null,
+    // its last day (null: no end known) and whether it counts today
+    endsOn: standing.end,
+    inForce: standing.inForce,
+    // the client location it became, as Check-in Setup keeps it (ended there by HR)
+    location: r.location ? { id: r.location.id, name: r.location.name, endedAt: r.location.endedAt?.toISOString() ?? null } : null,
+    overlaps: facts.overlaps,
+    canSetValidity: setsLocationValidity(caller.user, { ...parties, status, type }),
     employee: {
       id: r.employee.id,
       employeeCode: r.employee.employeeCode,
@@ -93,7 +144,7 @@ export function homeView(r: HomeRow, caller: HomeCaller, names: ReadonlyMap<stri
     // a C-level person's (owner's brief, 20 October 2026): the CEO takes both steps, HR doesn't see it
     confidential: parties.confidential,
     canWithdraw: withdrawsHome({ ...parties, status }),
-    canRemove: removesHome(caller.user, { ...parties, status }),
+    canRemove: removesHome(caller.user, { ...parties, status, type }),
     rejectedStage: r.rejectedStage as HomeStage | null,
     rejectReason: r.rejectReason,
     approvedAt: r.approvedAt?.toISOString() ?? null,

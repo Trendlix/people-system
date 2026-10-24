@@ -168,7 +168,8 @@ export function waitingSections(from: {
   if (from.homes !== undefined) {
     add(
       'home',
-      'Home Locations',
+      // every requested check-in location since 24 October 2026; homeWhatText leads a remote site or a client location with its type
+      'Check-in Locations',
       from.homes === null,
       (from.homes ?? []).map((h) => ({
         key: `home:${h.id}`,

@@ -6,7 +6,7 @@ import type { RaiseRequest } from '../../../../lib/raise-types';
 import { APP_REQUEST_KINDS, appItemHref, type AppItemKind, type AppRequestKind, type AppSection } from '../../../../lib/surface';
 import type { LeaveRequestView, PermissionRequestView, ReimbursementClaimView } from '../../../../lib/types';
 import { correctionDayText, correctionKindName } from '../../../(app)/attendance/corrections/corrections';
-import { homeProgressText, homeWhatText, isOpenHomeRequest } from '../../../(app)/home-locations/home-locations';
+import { HOME_TYPE_LINES, homeProgressText, homeTypeOf, homeWhatText, isOpenHomeRequest } from '../../../(app)/home-locations/home-locations';
 import { daysText, leaveProgressText, periodText } from '../../../(app)/leave/list';
 import { permissionWhenText } from '../../../(app)/leave/permissions';
 import { wfhDayText, wfhProgressText } from '../../../(app)/attendance/wfh/wfh';
@@ -46,7 +46,8 @@ export const APP_REQUEST_KIND_LABELS: Record<AppRequestKind, string> = {
   reimbursement: 'Reimbursements',
   correction: 'Corrections',
   raise: 'Raises',
-  home: 'Home locations',
+  // every requested check-in location since 24 October 2026 ("Home Location - Remote Site - Client Location")
+  home: 'Check-in locations',
   wfh: 'Work from home',
   od: 'Official duty',
 };
@@ -140,7 +141,8 @@ export function appRequestTitle(row: AppRequestRow): string {
     case 'raise':
       return 'Raise request';
     case 'home':
-      return 'Home location';
+      // its type (24 October 2026): "Home location", "Remote site", "Client location"
+      return HOME_TYPE_LINES[homeTypeOf(row.request)];
     case 'wfh':
       return 'Work from home';
     case 'od':

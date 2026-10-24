@@ -570,3 +570,14 @@ export * from './maps-settings.js';
 // automatically generate meeting links?"; asked, "Google Meet, Microsoft Teams, Zoom", hosted "both" ways: a company
 // account a Super Admin connects once, and each HR person's own): the providers, the scopes, the choices, the views
 export * from './meetings.js';
+
+// screening comments with a verdict (owner, 24 October 2026, on a candidate's profile: "is there a way to add screening
+// comments?", "and i can add genearrl comments"; asked, "Yes: Good fit / Maybe / Not a fit" and "HR + hiring manager &
+// interviewers"): on an application, a general CV or the person in general, @mentions that notify, the latest verdict
+// as a badge and a filter; HR's single notes box of before moved into them
+export * from './screening.js';
+
+// Office staff's check-ins locked to the check-in locations by GPS (owner, 24 October 2026: "Yes, add a GPS lock too"):
+// the switch and its accuracy allowance, a press's verdict (inside a circle, too rough, no location), the two locks
+// together (either passing is enough), and the words of the refusals
+export * from './gps-lock.js';

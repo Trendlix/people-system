@@ -230,7 +230,10 @@ describe('General CVs and the bulk upload (e2e)', () => {
       await add('ceo', fields).expect(403);
       await add('outsider', fields).expect(403);
       added = (await add('hr', fields).expect(201)).body as GeneralCvView;
-      expect(added).toMatchObject({ status: 'new', source: 'email', area: `Video ${RUN} · Studio ${RUN}`, mobile: '+201001234568', noticePeriod: '1 month', notes: 'Sent to hr@', consentNote: 'Agreed to be considered (recorded by HR)', can: { review: true, archive: true, move: true } });
+      // HR's notes typed with it: its first screening comment, theirs (24 October 2026), the notes column left alone
+      expect(added).toMatchObject({ status: 'new', source: 'email', area: `Video ${RUN} · Studio ${RUN}`, mobile: '+201001234568', noticePeriod: '1 month', notes: null, consentNote: 'Agreed to be considered (recorded by HR)', can: { review: true, archive: true, move: true, editNotes: false } });
+      const first = (await get('hr', `/recruitment/general-cvs/${added.id}/comments`).expect(200)).body as { comments: { comment: string; authorRole: string; about: { kind: string } }[] };
+      expect(first.comments.map((c) => [c.comment, c.authorRole, c.about.kind])).toEqual([['Sent to hr@', 'hr', 'general_cv']]);
       // HR's too: a department with teams is no longer an area
       expect(said(await add('hr', { ...fields, departmentId }).expect(400))).toEqual(['Choose one of the areas, or Other and write it.']);
       expect(added.consentBy?.email).toBeTruthy();

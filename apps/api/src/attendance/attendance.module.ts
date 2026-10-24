@@ -6,6 +6,7 @@ import { AttendanceFillService } from './attendance-fill.service.js';
 import { AttendanceImportsController } from './attendance-imports.controller.js';
 import { AttendanceImportsService } from './attendance-imports.service.js';
 import { AttendanceService } from './attendance.service.js';
+import { CheckInLocationEndingsService } from './check-in-location-endings.service.js';
 import { CheckInSetupController, EmployeeCheckInPlacesController } from './check-in-setup.controller.js';
 import { CheckInSetupService } from './check-in-setup.service.js';
 import { CheckInController } from './check-in.controller.js';
@@ -62,6 +63,8 @@ import { MapsSettingsService } from './maps-settings.service.js';
     CorrectionDaysService,
     AttendanceCorrectionsService,
     HomeLocationsService,
+    // the ends of requested check-in locations told 7 days ahead (owner, 24 October 2026: "allow the HR to add an end date")
+    CheckInLocationEndingsService,
     MapsSettingsService,
   ],
   exports: [AttendanceDaysService, AttendanceFillService],

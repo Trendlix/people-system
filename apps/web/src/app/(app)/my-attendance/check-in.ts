@@ -3,6 +3,7 @@ import {
   CHECK_IN_FLAG_LABELS,
   CHECK_IN_LOCATION_ERRORS,
   CHECK_IN_PLACE_LABELS,
+  checkInLockText,
   checkInRefusal,
   formatHours,
   isCheckInFlag,
@@ -195,16 +196,17 @@ export function accuracyText(metres: number | null | undefined): string | null {
 
 /**
  * A place in words: Office, Home, Remote, Location unknown; within a sub-location (its name with the press; owner, 20
- * October 2026: "(Remote - Location name)"), "Remote - Studio".
+ * October 2026: "(Remote - Location name)"), "Remote - Studio"; within a client location or their remote site (24 October
+ * 2026), "Client · Acme", "Remote site · Flat".
  */
-export const placeLabel = (place: CheckInPlace | null | undefined, locationName?: string | null): string =>
-  place ? (place === 'remote' && locationName?.trim() ? pressPlaceLabel(place, locationName) : (CHECK_IN_PLACE_LABELS[place] ?? place)) : '—';
+export const placeLabel = (place: CheckInPlace | null | undefined, locationName?: string | null, locationKind?: string | null): string =>
+  place ? (place === 'remote' && locationName?.trim() ? pressPlaceLabel(place, locationName, locationKind) : (CHECK_IN_PLACE_LABELS[place] ?? place)) : '—';
 
 /** The day's place in words: its first check-in's (else its last check-out's), with the sub-location's name it was within. */
-export function dayPlaceLabel(day: Pick<PunchedDayView, 'place'>, punches: readonly Pick<PunchView, 'kind' | 'at' | 'place' | 'locationName'>[]): string {
+export function dayPlaceLabel(day: Pick<PunchedDayView, 'place'>, punches: readonly Pick<PunchView, 'kind' | 'at' | 'place' | 'locationName' | 'locationKind'>[]): string {
   const sorted = [...punches].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
   const shown = sorted.find((p) => p.kind === 'in') ?? sorted.filter((p) => p.kind === 'out').at(-1);
-  return shown && shown.place === day.place ? placeLabel(shown.place, shown.locationName) : placeLabel(day.place);
+  return shown && shown.place === day.place ? placeLabel(shown.place, shown.locationName, shown.locationKind) : placeLabel(day.place);
 }
 
 /**
@@ -212,6 +214,13 @@ export function dayPlaceLabel(day: Pick<PunchedDayView, 'place'>, punches: reado
  * sub-locations) that at their own check-in places they may check in off it (20 October 2026).
  */
 export const networkNote = (view: Pick<CheckInTodayView, 'ownPlaces'>): string => networkNeededText(view.ownPlaces ?? []);
+
+/**
+ * What the panel says before a press when they are locked (the office network, 20 October 2026; the check-in locations by
+ * GPS, 24 October 2026: "Yes, add a GPS lock too"; either passing is enough); null when neither holds them today.
+ */
+export const lockNote = (view: Pick<CheckInTodayView, 'ownPlaces' | 'network' | 'gps'>): string | null =>
+  checkInLockText({ network: !!view.network?.locked, gps: !!view.gps?.locked }, view.ownPlaces ?? []);
 
 /** The flags' words, the known ones once each ("Checked in outside the office on an office day"). */
 export const flagLabels = (flags: readonly string[] | null | undefined): string[] => [...new Set((flags ?? []).filter(isCheckInFlag))].map((f) => CHECK_IN_FLAG_LABELS[f]);
@@ -236,7 +245,7 @@ export function punchRows(punches: readonly PunchView[]): PunchRow[] {
       key: `${i}-${p.kind}-${p.at}`,
       label: PUNCH_KIND_LABELS[p.kind] ?? p.kind,
       time: cairoClock(p.at),
-      place: placeLabel(p.place, p.locationName),
+      place: placeLabel(p.place, p.locationName, p.locationKind),
       accuracy: accuracyText(p.accuracyMetres),
       flags: flagLabels(p.flags),
       map: punchMap(p),

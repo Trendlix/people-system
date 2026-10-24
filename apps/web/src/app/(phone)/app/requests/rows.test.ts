@@ -216,6 +216,13 @@ describe('home location requests', () => {
     expect(appRequestProgress(gone)).toBe('Removed: its point is deleted');
     expect(appRequestHref(open)).toBe(`/app/requests/home/${ID(6)}`);
   });
+
+  // owner, 24 October 2026: "(Home Location - Remote Site - Client Location)"
+  it('say their type: a remote site or a client location by its name', () => {
+    const [site, client] = appRequestRows({ homes: [{ ...home, id: ID(8), type: 'remote_site', label: 'Studio' } as HomeLocationView, { ...home, id: ID(9), type: 'client', label: 'Acme', createdAt: '2026-10-19T10:00:00.000Z' } as HomeLocationView] });
+    expect([appRequestTitle(site), appRequestWhen(site)]).toEqual(['Remote site', 'Remote site: Studio · 100 m']);
+    expect([appRequestTitle(client), appRequestWhen(client)]).toEqual(['Client location', 'Client location: Acme · 100 m']);
+  });
 });
 
 describe('official duty on the phone pages’ My Requests (owner, 23 October 2026: "Official duty (OD) requests")', () => {

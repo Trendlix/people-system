@@ -177,6 +177,7 @@ model User {
   candidateMatchesDecided CandidateMatch[]         @relation("CandidateMatchDecision")
   candidateMergesMade     CandidateMerge[]         @relation("CandidateMergeBy")
   candidateMergesUndone   CandidateMerge[]         @relation("CandidateMergeUndo")
+  screeningComments       ScreeningComment[]       @relation("ScreeningCommentAuthor")
   // access follows the contract (owner, 23 October 2026): the 7 days' grace this user gave
   accessGracesGiven       AccessGrace[]            @relation("AccessGraceGrantedBy")
 
@@ -1638,6 +1639,7 @@ model JobApplication {
   offers          JobOffer[]
   interviews      Interview[]
   onboarding      OnboardingChecklist[]
+  comments        ScreeningComment[] // the screening comments on it (24 October 2026)
 
   @@unique([vacancyId, email])
   @@index([stage])
@@ -1660,6 +1662,7 @@ model JobApplicationCv {
   // database itself (a generated column), never written
   sha256        String?
   createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz
+  preview       CvPreview? // a Word CV as a PDF for the CV window, kept (24 October 2026)
 
   @@map("job_application_cvs")
 }
@@ -1725,6 +1728,7 @@ model GeneralCv {
   file            GeneralCvFile?
   cvReading       CvReading? // its CV read and analysed (22 October 2026)
   events          GeneralCvEvent[]
+  comments        ScreeningComment[] // the screening comments on it (24 October 2026)
 
   @@index([email, createdAt])
   @@index([status])
@@ -1744,6 +1748,7 @@ model GeneralCvFile {
   // the file's SHA-256 (22 October 2026), as an application's CV's: a generated column, never written
   sha256      String?
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  preview     CvPreview? // a Word CV as a PDF for the CV window, kept (24 October 2026)
 
   @@map("general_cv_files")
 }
@@ -1849,6 +1854,7 @@ model Candidate {
   matchesB      CandidateMatch[]   @relation("CandidateMatchB")
   mergesKept    CandidateMerge[]   @relation("CandidateMergeKept")
   mergesMerged  CandidateMerge[]   @relation("CandidateMergeMerged")
+  comments      ScreeningComment[] // the screening comments about them (24 October 2026)
 
   @@index([mergedIntoId])
   @@index([employeeId])
@@ -1932,6 +1938,54 @@ model CandidateMerge {
   @@index([keptId, at])
   @@index([mergedId])
   @@map("candidate_merges")
+}
+
+// A screening comment (owner, 24 October 2026: "is there a way to add screening comments?", "and i can add genearrl
+// comments"; asked, "Yes: Good fit / Maybe / Not a fit" and "HR + hiring manager & interviewers"; packages/shared
+// screening.ts): about a candidate always; about one of their applications or general CVs, or neither (a general
+// comment). Its author (none: HR's earlier notes, named by authorLabel, or an account since removed) and their role then,
+// the text (at most 2,000 characters), an optional verdict, the accounts mentioned, when written and last edited (the
+// author edits it for 24 hours; only a Super Admin deletes it). fromNotes: HR's notes box of before, moved in once.
+// Moves with its record when candidates are merged or split.
+model ScreeningComment {
+  id            String          @id @default(uuid()) @db.Uuid
+  candidateId   String          @map("candidate_id") @db.Uuid
+  candidate     Candidate       @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  applicationId String?         @map("application_id") @db.Uuid
+  application   JobApplication? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  generalCvId   String?         @map("general_cv_id") @db.Uuid
+  generalCv     GeneralCv?      @relation(fields: [generalCvId], references: [id], onDelete: Cascade)
+  authorId      String?         @map("author_id") @db.Uuid
+  author        User?           @relation("ScreeningCommentAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  authorLabel   String?         @map("author_label") // "HR (earlier notes)"
+  authorRole    String?         @map("author_role") // SCREENING_AUTHOR_ROLES
+  text          String
+  verdict       String? // SCREENING_VERDICTS
+  mentions      String[]        @default([]) @db.Uuid // the accounts mentioned
+  fromNotes     Boolean         @default(false) @map("from_notes")
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  editedAt      DateTime?       @map("edited_at") @db.Timestamptz
+
+  @@index([candidateId, createdAt])
+  @@index([applicationId, createdAt])
+  @@index([generalCvId, createdAt])
+  @@index([authorId])
+  @@map("screening_comments")
+}
+
+// A Word CV as a PDF for the CV window (24 October 2026: "when opening a CV, open it in a popup window"), kept because the
+// converter is slow: an application's CV or a general CV's file, with the SHA-256 of the Word file it was made from.
+model CvPreview {
+  id            String            @id @default(uuid()) @db.Uuid
+  applicationId String?           @unique @map("application_id") @db.Uuid
+  applicationCv JobApplicationCv? @relation(fields: [applicationId], references: [applicationId], onDelete: Cascade)
+  generalCvId   String?           @unique @map("general_cv_id") @db.Uuid
+  generalCvFile GeneralCvFile?    @relation(fields: [generalCvId], references: [generalCvId], onDelete: Cascade)
+  sha256        String
+  data          Bytes
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("cv_previews")
 }
 
 // An interview (Phase 2, owner, 22 October 2026: "interview invites go by email through the owner's SMTP settings"):
@@ -2141,6 +2195,11 @@ model PayrollSettings {
   // out from unknown locations", then "Company switch + exceptions"): on the website a press without a reading is refused,
   // unless HR exempts the person or it comes from an office network the website signed
   refuseWithoutLocation   Boolean  @default(false) @map("refuse_without_location")
+  // "Refuse Office staff's check-ins and check-outs outside the check-in locations" (owner, 24 October 2026: "Yes, add a
+  // GPS lock too"): off to start with; a reading less accurate than gps_rough_metres (50 to 500, 200 to start with) is too
+  // rough to tell (packages/shared gps-lock.ts)
+  gpsLock                 Boolean  @default(false) @map("gps_lock")
+  gpsRoughMetres          Int      @default(200) @map("gps_rough_metres")
   updatedAt               DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   @@map("payroll_settings")
@@ -2163,6 +2222,14 @@ model CheckInLocation {
   radiusMetres Int                     @default(150) @map("radius_metres") // 20 to 5,000
   isMain       Boolean                 @default(false) @map("is_main") // the main office; the oldest when sub-locations came (20 October 2026)
   people       CheckInLocationPerson[] // the people linked to it, while it is a sub-location
+  // a client location (owner, 24 October 2026: "all employees if a customer location"): made by the CEO's approval of a
+  // request (home_location_requests.location_id), everyone's, never the main office nor linked to people; it lasts until
+  // valid_until (none: no end) unless HR ends it (ended_at); the notice 7 days before its end told on ending_notice_on
+  kind           String                @default("office") // office (the main office and the sub-locations), client
+  validUntil     DateTime?             @map("valid_until") @db.Date
+  endedAt        DateTime?             @map("ended_at") @db.Timestamptz
+  endingNoticeOn DateTime?             @map("ending_notice_on") @db.Date
+  requests       HomeLocationRequest[] @relation("HomeLocationCompanyPlace")
   createdAt    DateTime                @default(now()) @map("created_at") @db.Timestamptz
   updatedAt    DateTime                @updatedAt @map("updated_at") @db.Timestamptz
 
@@ -3077,6 +3144,9 @@ model AttendancePunch {
   // office network it came from, by its name (check-ins locked to the office network, 20 October 2026); never the
   // address
   locationName   String?  @map("location_name")
+  // within a client location or the person's remote site (24 October 2026: "Client · Acme", "Remote site · Flat"); null
+  // otherwise (a sub-location, the main office, none)
+  locationKind   String?  @map("location_kind")
   officeNetwork  String?  @map("office_network")
   // pressed within an approved official duty (owner, 23 October 2026: "Check in from anywhere"): its request; the office's
   // location rule and network lock didn't apply to it
@@ -3118,6 +3188,21 @@ model HomeLocationRequest {
   createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz
   updatedAt      DateTime           @updatedAt @map("updated_at") @db.Timestamptz
   steps          HomeLocationStep[]
+  // requested check-in locations (owner, 24 October 2026: "(Home Location - Remote Site - Client Location) with a comment
+  // reason"; packages/shared home-locations.ts): its type (home, remote_site, client), the label its name (a remote site's
+  // or a client location's required), the employee's reason (required since; none on those of before) and the end date
+  // they wished (a remote site or a client location). Its validity, set at HR's step and changed later by HR: until_date
+  // (valid_until), contract (the current employment's signed contract's end, read each time), or no_end (a client
+  // location, and the homes approved before, so they go on working as they did). A client location approved by the CEO is
+  // a company check-in location (location_id). The notice 7 days before an end that is a date told on ending_notice_on
+  type           String             @default("home")
+  reason         String?
+  wishedEndDate  DateTime?          @map("wished_end_date") @db.Date
+  validity       String?
+  validUntil     DateTime?          @map("valid_until") @db.Date
+  endingNoticeOn DateTime?          @map("ending_notice_on") @db.Date
+  locationId     String?            @map("location_id") @db.Uuid
+  location       CheckInLocation?   @relation("HomeLocationCompanyPlace", fields: [locationId], references: [id], onDelete: SetNull)
 
   @@index([employeeId, status])
   @@index([status])

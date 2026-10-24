@@ -34,7 +34,8 @@ const OPTIONS: Record<AskKind, AskOption> = {
   reimbursement: { key: 'reimbursement', href: APP_PATHS.newReimbursement, label: 'Reimbursement', text: 'An expense you paid for the company, with a photo of the receipt.' },
   correction: { key: 'correction', href: APP_PATHS.newCorrection, label: 'Correction', text: 'A day of your attendance that isn’t right: a check-in or check-out forgotten.' },
   raise: { key: 'raise', href: APP_PATHS.newRaise, label: 'Raise', text: 'A raise for yourself, or for a direct report, with a reason.' },
-  home: { key: 'home', href: APP_PATHS.newHome, label: 'Home location', text: 'Your home, for the days you work from there: check-ins there show as Home.' },
+  // any check-in location since 24 October 2026 ("Home Location - Remote Site - Client Location")
+  home: { key: 'home', href: APP_PATHS.newHome, label: 'Check-in location', text: 'Your home, a remote site or a client’s place to check in from: HR, then the CEO, approve it.' },
 };
 
 /**

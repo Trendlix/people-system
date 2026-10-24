@@ -676,6 +676,12 @@ export const DEVELOPER_HIDDEN_NULL_FIELDS_ON: Readonly<Record<string, RegExp>> =
   longitude: /^\/api\/(?!attendance\/check-in-setup\/locations(\/|$))/,
   accuracyMetres: /^\/api\/(?!attendance\/check-in-setup\/locations(\/|$))/,
   label: /^\/api\/(me\/)?home-locations(\/|$)/,
+  // requested check-in locations (24 October 2026: "Home Location - Remote Site - Client Location"): how far a request's
+  // circle is from the places it overlaps (a home's distance from the office tells where it is), on the requests' pages;
+  // and the name of the place a press was within, which is a person's own remote site's name since then, on every page but
+  // Check-in Setup's (its client locations and sub-locations are the company's)
+  distanceMetres: /^\/api\/(me\/)?home-locations(\/|$)/,
+  locationName: /^\/api\/(?!attendance\/check-in-setup(\/|$))/,
   // an interview's place (24 October 2026): an online one's is its meeting's join link, pasted or made by the system,
   // so null on every recruitment page (an applicant's interviews, Interviews, My Hiring)
   location: /^\/api\/recruitment(\/|$)/,
@@ -772,6 +778,11 @@ export const DEVELOPER_PERSON_KEYS: ReadonlySet<string> = new Set([
   'custodians',
   'reportsTo',
   'directReports',
+  // screening comments (owner, 24 October 2026: "is there a way to add screening comments?"; screening.ts): the
+  // colleagues mentioned in one, and those who may be. A comment's author is `author` above, its text `comment` (a free
+  // text field below, "••••"), the list of them `comments`
+  'mentions',
+  'mentionable',
 ]);
 const PERSON_NAME_KEYS_IN_PERSON = new Set(['name', 'nameEn', 'nameAr', 'shortName', 'label']);
 const BY_KEY = /[a-z]By$/;

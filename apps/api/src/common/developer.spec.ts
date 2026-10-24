@@ -325,6 +325,42 @@ describe('no real personal data for a developer', () => {
     expect(nour).toEqual({ en: `Candidate ${tagIn(nour.en)}`, ar: `مرشح ${tagIn(nour.en)}`, email: `candidate-${tagIn(nour.en).toLowerCase()}@hidden.invalid` });
   });
 
+  // screening comments (owner, 24 October 2026: "is there a way to add screening comments?"; screening.ts)
+  it('a screening comment: its text "••••", its author and those mentioned pseudonyms, what it is about without its code', () => {
+    const body = {
+      comments: [
+        {
+          id: 'c1',
+          about: { kind: 'application', id: SALMA_ID, reference: 'APP-2026-0001', title: 'Video Editor' },
+          aboutLabel: 'APP-2026-0001 · Video Editor',
+          author: { email: 'omar@trendlix.test', name: 'Omar Khaled Mahmoud' },
+          authorLabel: null,
+          authorRole: 'hr',
+          comment: 'Strong reel; ask Sara Adel about the colour work',
+          verdict: 'good_fit',
+          mentions: [{ id: SARA_ID, name: 'Sara Adel', email: 'sara@trendlix.test' }],
+        },
+      ],
+      people: [{ id: SARA_ID, name: 'Sara Adel', email: 'sara@trendlix.test', role: 'hiring_manager' }],
+    };
+    expect(maskForDeveloper(body, '/api/recruitment/candidates/1/comments', people)).toEqual({
+      comments: [
+        {
+          id: 'c1',
+          about: { kind: 'application', id: SALMA_ID, reference: HIDDEN, title: 'Video Editor' },
+          aboutLabel: `${HIDDEN} · Video Editor`,
+          author: { email: omar.email, name: omar.en },
+          authorLabel: null,
+          authorRole: 'hr',
+          comment: HIDDEN,
+          verdict: 'good_fit',
+          mentions: [{ id: SARA_ID, name: sara.en, email: sara.email }],
+        },
+      ],
+      people: [{ id: SARA_ID, name: sara.en, email: sara.email, role: 'hiring_manager' }],
+    });
+  });
+
   it('any text: real names, emails, phone numbers, national IDs and codes replaced; dates and enums kept', () => {
     expect(scrubText('Omar Khaled Mahmoud (EMP-0182) asked for leave; tell sara@trendlix.test or call +20 100 123 4567', people)).toBe(
       `${omar.en} (${HIDDEN}) asked for leave; tell ${sara.email} or call ••••`,

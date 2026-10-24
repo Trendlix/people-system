@@ -6,6 +6,7 @@ import {
   EMPLOYMENT_TYPES,
   isApplicationStage,
   isDictionarySkill,
+  isVerdictFilter,
   keySkillsOf,
   keySkillsProblems,
   MIN_YEARS_CHOICES,
@@ -22,6 +23,7 @@ import {
   type QuestionKind,
   type Role,
   type VacancyQuestion,
+  type VerdictFilter,
 } from '@trendlix/shared';
 import { parseDate } from '../../../lib/format';
 import { shownCode } from '../../../lib/hidden';
@@ -100,6 +102,8 @@ export interface ApplicantsQuery {
   sort: '' | 'cv' | 'years';
   /** A skill of the dictionary their CV names (24 October 2026); '' for any. */
   skill: string;
+  /** The latest screening verdict (owner, 24 October 2026: "Yes: Good fit / Maybe / Not a fit"), `none` for none yet; '' for any. */
+  verdict: VerdictFilter | '';
 }
 
 /** The "CV match ≥ 50%" filter's threshold. */
@@ -127,6 +131,7 @@ export function readApplicantsQuery(query: Record<string, string | string[] | un
     minCvMatch: num(one(query.minCvMatch), 100),
     sort: sortOf(one(query.sort)),
     skill: skillOf(query.skill),
+    verdict: verdictOf(query.verdict),
   };
 }
 
@@ -136,6 +141,12 @@ const sortOf = (v: string): ApplicantsQuery['sort'] => (v === 'cv' || v === 'yea
 export const skillOf = (v: string | string[] | undefined): string => {
   const s = one(v);
   return isDictionarySkill(s) ? s : '';
+};
+
+/** The Verdict filter as the address carries it (24 October 2026): a verdict, `none` (none yet), else '' (any). */
+export const verdictOf = (v: string | string[] | undefined): VerdictFilter | '' => {
+  const s = one(v);
+  return isVerdictFilter(s) ? s : '';
 };
 
 /** A years filter as the address carries it: 0 to 60 years, else none (null). */
@@ -173,6 +184,7 @@ function applicantParams(q: Partial<ApplicantsQuery>): URLSearchParams {
   if (q.minCvMatch !== null && q.minCvMatch !== undefined) params.set('minCvMatch', String(q.minCvMatch));
   if (q.sort) params.set('sort', q.sort);
   if (q.skill) params.set('skill', q.skill);
+  if (q.verdict) params.set('verdict', q.verdict);
   return params;
 }
 

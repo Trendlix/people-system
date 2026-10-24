@@ -10,8 +10,9 @@ import {
   type CandidateSummary,
   type CandidateTimelineItem,
   type PossibleMatchView,
+  type VerdictFilter,
 } from '@trendlix/shared';
-import { minYearsOf } from './recruitment';
+import { minYearsOf, verdictOf } from './recruitment';
 
 // Candidate profiles on the site (owner, 22 October 2026: "how to make like a profile for each candidate to store
 // history and prevent duplication? even if the same candidate applied for 2 jobs"; "Email or mobile"; "Link and show
@@ -33,14 +34,24 @@ const one = (v: string | string[] | undefined): string => (Array.isArray(v) ? (v
 export interface CandidatesQuery {
   q: string;
   minYears: number | null;
+  /** The latest screening verdict across what the caller sees of them (24 October 2026), `none` for none yet; '' for any. */
+  verdict: VerdictFilter | '';
 }
 
-export const readCandidatesQuery = (query: Record<string, string | string[] | undefined>): CandidatesQuery => ({ q: one(query.q).slice(0, 100), minYears: minYearsOf(query.minYears) });
+export const readCandidatesQuery = (query: Record<string, string | string[] | undefined>): CandidatesQuery => ({
+  q: one(query.q).slice(0, 100),
+  minYears: minYearsOf(query.minYears),
+  verdict: verdictOf(query.verdict),
+});
 
-export function candidatesApiPath(f: { q: string; minYears?: number | null }): string {
+/** Whether the Candidates list is searched or filtered: then "Nobody here." and Clear. */
+export const candidatesFiltering = (f: CandidatesQuery): boolean => !!(f.q || f.verdict || f.minYears !== null);
+
+export function candidatesApiPath(f: { q: string; minYears?: number | null; verdict?: VerdictFilter | '' }): string {
   const params = new URLSearchParams();
   if (f.q) params.set('q', f.q);
   if (f.minYears !== null && f.minYears !== undefined) params.set('minYears', String(f.minYears));
+  if (f.verdict) params.set('verdict', f.verdict);
   const s = params.toString().replace(/\+/g, '%20');
   return s ? `/recruitment/candidates?${s}` : '/recruitment/candidates';
 }

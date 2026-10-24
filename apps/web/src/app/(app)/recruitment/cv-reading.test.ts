@@ -236,7 +236,7 @@ describe('the lists’ Experience and Latest role (24 October 2026)', () => {
     expect(generalFiltering(readGeneralQuery({ skill: 'Excel' }))).toBe(true);
     expect(readGeneralQuery({ skill: 'excel', minYears: '-1' })).toMatchObject({ skill: '', minYears: null });
 
-    expect(readCandidatesQuery({ minYears: '10' })).toEqual({ q: '', minYears: 10 });
+    expect(readCandidatesQuery({ minYears: '10' })).toEqual({ q: '', minYears: 10, verdict: '' });
     expect(candidatesApiPath({ q: 'mona adel', minYears: 2 })).toBe('/recruitment/candidates?q=mona%20adel&minYears=2');
     expect(candidatesApiPath({ q: '', minYears: 2 })).toBe('/recruitment/candidates?minYears=2');
   });

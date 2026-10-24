@@ -26,6 +26,7 @@ import type { GeneralCvSource } from './general-cvs.js';
 import type { FeedbackView, InterviewView, RecruitmentViewer, SuggestionView } from './recruitment-hiring.js';
 import { phoneOk, phoneTidy } from './phone.js';
 import type { ApplicationCandidate, CandidateBadge } from './candidates.js';
+import type { ScreeningVerdict } from './screening.js';
 
 // ---------- the limits ----------
 
@@ -834,6 +835,11 @@ export interface ApplicationListItem {
    * (or left out by an API from before it).
    */
   fromCv?: CvListFacts | null;
+  /**
+   * Its latest screening verdict (owner, 24 October 2026: "Yes: Good fit / Maybe / Not a fit"; screening.ts): the newest
+   * of its own comments with one, the general ones not counting; null: none yet (or left out by an API from before it).
+   */
+  verdict?: ScreeningVerdict | null;
 }
 
 /** An answer as the applicant's page shows it, with how it did. */

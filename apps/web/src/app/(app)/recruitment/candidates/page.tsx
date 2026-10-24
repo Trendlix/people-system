@@ -6,11 +6,11 @@ import { formatDate } from '@/lib/format';
 import { getCurrentUser } from '@/lib/session';
 import { Empty, Loading } from '../../organization/ui';
 import { CandidatesTabs } from '../candidate-ui';
-import { CANDIDATES_PATH, candidateHref, latestText, readCandidatesQuery } from '../candidates';
+import { CANDIDATES_PATH, candidateHref, candidatesFiltering, latestText, readCandidatesQuery } from '../candidates';
 import { loadCandidates, recruitmentNotLoaded } from '../data';
 import { generalCvHref } from '../general';
 import { applicantHref, readsRecruitment, WHO_SEES } from '../recruitment';
-import { ExperienceCell, MinYearsSelect } from '../ui';
+import { ExperienceCell, MinYearsSelect, VerdictBadge, VerdictSelect } from '../ui';
 import { shownCode } from '@/lib/hidden';
 
 // Candidates (owner, 22 October 2026: "how to make like a profile for each candidate to store history and prevent
@@ -21,6 +21,8 @@ import { shownCode } from '@/lib/hidden';
 // Their experience too (owner, 24 October 2026: "why isn't the experience pulled off the CV?"; "CV years in list + more
 // rules"): of their applications and general CVs, the most years (those typed, else the CV's estimate, "≈ 4 y · CV"),
 // with a Min. experience filter by the same rule.
+// Their latest screening verdict across what the caller sees of them, with a Verdict filter (owner, 24 October 2026:
+// "Yes: Good fit / Maybe / Not a fit").
 
 export const metadata: Metadata = { title: 'Candidates · People System' };
 
@@ -49,6 +51,7 @@ function CandidatesTable({ rows }: { rows: CandidateListItem[] }) {
                   </Link>
                   {shownCode(c.code) && <span className="block text-xs text-muted">{c.code}</span>}
                   <span className="mt-1 flex flex-wrap gap-1">
+                    <VerdictBadge verdict={c.verdict} />
                     {badge && <span className="badge bg-warn-soft text-warn">{badge}</span>}
                     {c.openMatches > 0 && <span className="badge bg-accent-soft text-accent">{c.openMatches === 1 ? 'Possible match' : `${c.openMatches} possible matches`}</span>}
                   </span>
@@ -95,10 +98,11 @@ async function Candidates({ searchParams }: { searchParams: PageProps<'/recruitm
           <input id="candidate-search" name="q" defaultValue={f.q} placeholder="Name, email, mobile, code (CAN-0001) or the CV's text" className="input" />
         </div>
         <MinYearsSelect id="candidate-years" value={f.minYears} />
+        <VerdictSelect id="candidate-verdict" value={f.verdict} />
         <button type="submit" className="btn btn-secondary">
           Search
         </button>
-        {(f.q || f.minYears !== null) && (
+        {candidatesFiltering(f) && (
           <Link href={CANDIDATES_PATH} className="btn btn-secondary no-underline">
             Clear
           </Link>
@@ -107,7 +111,7 @@ async function Candidates({ searchParams }: { searchParams: PageProps<'/recruitm
       {loaded.kind !== 'ok' ? (
         <Empty>{recruitmentNotLoaded(loaded, 'candidates')}</Empty>
       ) : loaded.value.length === 0 ? (
-        <div className="card px-6 py-8 text-center text-sm text-muted">{f.q || f.minYears !== null ? 'Nobody here.' : 'No candidates yet. Everyone who applies or sends a CV gets one.'}</div>
+        <div className="card px-6 py-8 text-center text-sm text-muted">{candidatesFiltering(f) ? 'Nobody here.' : 'No candidates yet. Everyone who applies or sends a CV gets one.'}</div>
       ) : (
         <CandidatesTable rows={loaded.value} />
       )}

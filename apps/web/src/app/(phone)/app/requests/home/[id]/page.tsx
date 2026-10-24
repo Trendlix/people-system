@@ -8,7 +8,7 @@ import { PhoneLoading } from '../../../ui';
 // the site's page (home-locations/[id]/home-location.tsx), its back link to the phone pages' My Requests, and what is
 // done on it coming back here.
 
-export const metadata: Metadata = { title: 'Home Location · Trendlix People' };
+export const metadata: Metadata = { title: 'Check-in Location · Trendlix People' };
 
 export default function PhoneRequestsHomePage({ params, searchParams }: PageProps<'/app/requests/home/[id]'>) {
   return (

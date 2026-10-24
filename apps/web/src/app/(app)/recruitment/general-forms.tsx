@@ -157,10 +157,14 @@ export function AddCvForm({ action, areas }: { action: Action; areas: Area[] }) 
           <input id={fid('expectedSalary')} name="expectedSalary" inputMode="numeric" maxLength={12} defaultValue={v('expectedSalary')} className="input" />
         </div>
         <div className="sm:col-span-2">
+          {/* the CV's first screening comment, as the person adding it (24 October 2026: HR's notes became comments) */}
           <label htmlFor={fid('notes')} className="label">
-            Notes <span className="font-normal text-muted">(optional, for HR)</span>
+            First screening comment <span className="font-normal text-muted">(optional)</span>
           </label>
-          <textarea id={fid('notes')} name="notes" rows={3} maxLength={L.notes} defaultValue={v('notes')} className="input" />
+          <textarea id={fid('notes')} name="notes" rows={3} maxLength={L.notes} defaultValue={v('notes')} aria-describedby={fid('notes-hint')} className="input" />
+          <p id={fid('notes-hint')} className="hint">
+            Kept as your first comment on this CV, for HR, the CEO and a Super Admin.
+          </p>
         </div>
         <div className="sm:col-span-2">
           <label htmlFor={fid('cv')} className="label">

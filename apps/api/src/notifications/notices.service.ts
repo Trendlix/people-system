@@ -251,27 +251,35 @@ export class NoticesService {
     await this.safely('home location', async () => {
       const r = await this.prisma.homeLocationRequest.findUnique({
         where: { id },
-        select: { employeeId: true, status: true, createdAt: true, employee: { select: { fullNameEn: true } }, createdBy: { select: { roles: { select: { role: { select: { key: true } } } } } } },
+        select: {
+          employeeId: true,
+          status: true,
+          createdAt: true,
+          // Home Location, Remote Site or Client Location (24 October 2026), named so in the notice
+          type: true,
+          employee: { select: { fullNameEn: true } },
+          createdBy: { select: { roles: { select: { role: { select: { key: true } } } } } },
+        },
       });
       if (!r) return;
       const link = REQUEST_LINKS.homeLocation(id);
       const askedOn = cairoDay(r.createdAt);
       const notActor = (ids: readonly string[]) => ids.filter((u) => u !== actorId);
       if (r.status === 'with_hr') {
-        await this.notifications.notify(notActor(await this.stageDeciders('hr', r.employeeId)), homeWaitingText(r.employee.fullNameEn, askedOn, link));
+        await this.notifications.notify(notActor(await this.stageDeciders('hr', r.employeeId)), homeWaitingText(r.employee.fullNameEn, askedOn, link, r.type));
       } else if (r.status === 'with_ceo') {
         const own = (await this.usersOf([r.employeeId])).get(r.employeeId);
         const byCeo = r.createdBy?.roles.some((x) => x.role.key === 'ceo') ?? false;
         const ceos = await this.usersWith((roles) => roles.includes('ceo') || (byCeo && roles.includes('super_admin')));
-        await this.notifications.notify(notActor(ceos.filter((u) => u !== own)), homeWaitingText(r.employee.fullNameEn, askedOn, link));
+        await this.notifications.notify(notActor(ceos.filter((u) => u !== own)), homeWaitingText(r.employee.fullNameEn, askedOn, link, r.type));
       }
       if (event !== 'decided') return;
       if (r.status === 'with_ceo') {
         const actor = actorId ? await this.prisma.user.findUnique({ where: { id: actorId }, select: { roles: { select: { role: { select: { key: true } } } } } }) : null;
         const byTheCeo = (await this.confidential.isConfidential(r.employeeId)) && !!actor?.roles.some((x) => x.role.key === 'ceo');
-        await this.toEmployee(r.employeeId, homeDecidedText('first_step', askedOn, link, byTheCeo ? 'the CEO' : 'HR'));
+        await this.toEmployee(r.employeeId, homeDecidedText('first_step', askedOn, link, byTheCeo ? 'the CEO' : 'HR', r.type));
       } else if (r.status === 'approved' || r.status === 'rejected') {
-        await this.toEmployee(r.employeeId, homeDecidedText(r.status, askedOn, link));
+        await this.toEmployee(r.employeeId, homeDecidedText(r.status, askedOn, link, undefined, r.type));
       }
     });
   }

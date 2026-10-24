@@ -44,6 +44,7 @@ import {
   type PossibleMatchView,
   type RehireEligibility,
   type VacancyStatus,
+  type VerdictFilter,
 } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
 import { isSuperAdmin } from '../auth/roles.js';
@@ -58,6 +59,8 @@ import { InterviewsService } from './interviews.service.js';
 import { managesRecruitment, READS, vacancyWhere } from './recruitment-access.js';
 import { byExperience, cvListFactsOf, minYearsWhere, money } from './recruitment-views.js';
 import { recruitmentCaller } from './recruitment-scope.js';
+import { ScreeningCommentsService } from './screening-comments.service.js';
+import { moveEarlierNotes } from './screening-notes.js';
 
 // Candidate profiles (owner, 22 October 2026: "how to make like a profile for each candidate to store history and prevent
 // duplication? even if the same candidate applied for 2 jobs"; "Email or mobile"; "Link and show rehire"; "HR decides
@@ -83,6 +86,8 @@ interface Moved {
   applicationIds: string[];
   generalCvIds: string[];
   contactIds: string[];
+  /** The merged one's general screening comments (24 October 2026); its records' comments go with them. */
+  commentIds: string[];
   employeeId: string | null;
   linkedin: string | null;
   portfolio: string | null;
@@ -97,6 +102,7 @@ const movedOf = (value: Prisma.JsonValue): Moved => {
     applicationIds: ids(o.applicationIds),
     generalCvIds: ids(o.generalCvIds),
     contactIds: ids(o.contactIds),
+    commentIds: ids(o.commentIds),
     employeeId: str(o.employeeId),
     linkedin: str(o.linkedin),
     portfolio: str(o.portfolio),
@@ -174,6 +180,7 @@ export class CandidatesService implements OnModuleDestroy {
     private readonly audit: AuditService,
     private readonly confidential: ConfidentialService,
     private readonly interviews: InterviewsService,
+    private readonly comments: ScreeningCommentsService,
   ) {}
 
   // ---------- the backfill ----------
@@ -195,6 +202,10 @@ export class CandidatesService implements OnModuleDestroy {
     try {
       const r = await this.backfill();
       if (r && (r.applications || r.generalCvs)) this.logger.log(`Candidates: ${r.applications} applications and ${r.generalCvs} general CVs joined (${r.created} new candidates).`);
+      // HR's notes of before moved into first screening comments once their record has a candidate (24 October 2026;
+      // screening-notes.ts): idempotent, so after the first run it finds nothing
+      const moved = await moveEarlierNotes(this.prisma, this.audit);
+      if (moved.applications || moved.generalCvs) this.logger.log(`Screening comments: the notes of ${moved.applications} applications and ${moved.generalCvs} general CVs moved in.`);
     } catch (err) {
       this.logger.error(`The candidates' backfill failed: ${(err as Error).message}`);
     }
@@ -359,8 +370,10 @@ export class CandidatesService implements OnModuleDestroy {
    * those with an application or general CV of at least these years (typed, else the CV's: 24 October 2026). The latest
    * first.
    */
-  async list(query: { q?: string; minYears?: number }, user: SessionUser): Promise<CandidateListItem[]> {
+  async list(query: { q?: string; minYears?: number; verdict?: VerdictFilter }, user: SessionUser): Promise<CandidateListItem[]> {
     this.assertReads(user);
+    // the latest screening verdict across what the caller may read, or none yet (24 October 2026)
+    const verdictWhere = await this.comments.candidateVerdictWhere(query.verdict, user);
     const q = query.q;
     const visibleApps = { vacancy: vacancyWhere(user) };
     const text = q?.trim() ? { contains: q.trim(), mode: 'insensitive' as const } : null;
@@ -389,7 +402,7 @@ export class CandidatesService implements OnModuleDestroy {
     // the years and the CV's reading of each, for the Experience column (24 October 2026)
     const cvFacts = { yearsExperience: true, cvReading: { select: { status: true, facts: true } } } as const;
     const rows = await this.prisma.candidate.findMany({
-      where: { AND: [this.visibleWhere(user), search, years] },
+      where: { AND: [this.visibleWhere(user), search, years, verdictWhere] },
       orderBy: [{ lastAppliedAt: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
       take: CANDIDATE_LIMITS.list,
       select: {
@@ -422,7 +435,7 @@ export class CandidatesService implements OnModuleDestroy {
       },
     });
     const ids = rows.map((r) => r.id);
-    const [links, open] = await Promise.all([this.employeeLinks(rows.map((r) => r.employeeId), user), this.openCounts(ids, user)]);
+    const [links, open, verdicts] = await Promise.all([this.employeeLinks(rows.map((r) => r.employeeId), user), this.openCounts(ids, user), this.comments.candidateVerdicts(ids, user)]);
     return rows.map((r): CandidateListItem => {
       const a = r.applications[0];
       const g = r.generalCvs[0];
@@ -471,6 +484,7 @@ export class CandidatesService implements OnModuleDestroy {
         openMatches: open.get(r.id) ?? 0,
         yearsExperience: best?.typed ?? null,
         fromCv: best?.fromCv ?? null,
+        verdict: verdicts.get(r.id) ?? null,
       };
     });
   }
@@ -586,7 +600,7 @@ export class CandidatesService implements OnModuleDestroy {
     const employee = row.employeeId ? (links.get(row.employeeId) ?? null) : null;
     const appIds = row.applications.map((a) => a.id);
     const offerWhere = await this.confidential.offerWhere(user);
-    const [interviewLists, feedbackLists, offers, matches, names] = await Promise.all([
+    const [interviewLists, feedbackLists, offers, matches, names, commentLines, verdicts] = await Promise.all([
       Promise.all(row.applications.map((a) => this.interviews.ofApplication(a.id, caller))),
       Promise.all(row.applications.map((a) => this.interviews.feedbackOf(a.id, caller.selfId))),
       this.prisma.jobOffer.findMany({
@@ -599,6 +613,9 @@ export class CandidatesService implements OnModuleDestroy {
         this.prisma,
         row.mergesKept.map((m) => m.by),
       ),
+      // the screening comments the caller may read (24 October 2026): a line each, and the latest verdict
+      this.comments.timeline(id, user),
+      this.comments.candidateVerdicts([id], user),
     ]);
     const titleOf = new Map(row.applications.map((a) => [a.id, a.vacancy.title]));
     const interviews: CandidateInterview[] = row.applications.flatMap((a, i) =>
@@ -659,6 +676,7 @@ export class CandidatesService implements OnModuleDestroy {
       timeline.push({ at: m.at, kind: 'merge', text: `${m.merged.code} merged into this profile`, href: null });
       if (m.undoneAt) timeline.push({ at: m.undoneAt, kind: 'merge', text: `The merge of ${m.merged.code} undone`, href: `/recruitment/candidates/${m.merged.id}` });
     }
+    timeline.push(...commentLines);
     timeline.sort((x, y) => y.at.localeCompare(x.at));
     const manages = managesRecruitment(user);
     return {
@@ -681,6 +699,7 @@ export class CandidatesService implements OnModuleDestroy {
       matches,
       merges,
       timeline,
+      verdict: verdicts.get(row.id) ?? null,
       can: { merge: manages, dismiss: manages, split: manages, undoMerge: superAdmin },
     };
   }
@@ -764,14 +783,17 @@ export class CandidatesService implements OnModuleDestroy {
       const [k, o] = await Promise.all([tx.candidate.findUnique({ where: { id: keptId }, select }), tx.candidate.findUnique({ where: { id: otherId }, select })]);
       if (!k || !o) throw new NotFoundException(NOT_FOUND);
       if (k.mergedIntoId || o.mergedIntoId) throw new ConflictException('One of them was merged into another candidate meanwhile. Reload the page.');
-      const [apps, cvs, contacts] = await Promise.all([
+      const [apps, cvs, contacts, general] = await Promise.all([
         tx.jobApplication.findMany({ where: { candidateId: o.id }, select: { id: true } }),
         tx.generalCv.findMany({ where: { candidateId: o.id }, select: { id: true } }),
         tx.candidateContact.findMany({ where: { candidateId: o.id }, select: { id: true } }),
+        tx.screeningComment.findMany({ where: { candidateId: o.id, applicationId: null, generalCvId: null }, select: { id: true } }),
       ]);
       await tx.jobApplication.updateMany({ where: { candidateId: o.id }, data: { candidateId: k.id } });
       await tx.generalCv.updateMany({ where: { candidateId: o.id }, data: { candidateId: k.id } });
       await tx.candidateContact.updateMany({ where: { candidateId: o.id }, data: { candidateId: k.id } });
+      // the screening comments go with their records, and the general ones with the person (24 October 2026)
+      await tx.screeningComment.updateMany({ where: { candidateId: o.id }, data: { candidateId: k.id } });
       const linkedin = !k.linkedin && o.linkedin ? o.linkedin : null;
       const portfolio = !k.portfolio && o.portfolio ? o.portfolio : null;
       if (linkedin || portfolio) await tx.candidate.update({ where: { id: k.id }, data: { ...(linkedin && { linkedin }), ...(portfolio && { portfolio }) } });
@@ -808,6 +830,7 @@ export class CandidatesService implements OnModuleDestroy {
         applicationIds: apps.map((a) => a.id),
         generalCvIds: cvs.map((g) => g.id),
         contactIds: contacts.map((x) => x.id),
+        commentIds: general.map((x) => x.id),
         employeeId: !k.employeeId && o.employeeId ? o.employeeId : null,
         linkedin,
         portfolio,
@@ -847,6 +870,12 @@ export class CandidatesService implements OnModuleDestroy {
         tx.jobApplication.updateMany({ where: { id: { in: moved.applicationIds }, candidateId: m.kept.id }, data: back }),
         tx.generalCv.updateMany({ where: { id: { in: moved.generalCvIds }, candidateId: m.kept.id }, data: back }),
         tx.candidateContact.updateMany({ where: { id: { in: moved.contactIds }, candidateId: m.kept.id }, data: back }),
+        // the screening comments back with their records, and the merged one's general ones (24 October 2026); a general
+        // comment written on the kept profile since stays there
+        tx.screeningComment.updateMany({
+          where: { candidateId: m.kept.id, OR: [{ id: { in: moved.commentIds } }, { applicationId: { in: moved.applicationIds } }, { generalCvId: { in: moved.generalCvIds } }] },
+          data: back,
+        }),
       ]);
       const links: Prisma.CandidateUpdateInput = {
         ...(moved.linkedin && m.kept.linkedin === moved.linkedin && { linkedin: null }),
@@ -924,6 +953,8 @@ export class CandidatesService implements OnModuleDestroy {
       });
       await tx.jobApplication.update({ where: { id: app.id }, data: { candidateId: made.id } });
       if (movedCv) await tx.generalCv.update({ where: { id: movedCv }, data: { candidateId: made.id } });
+      // their screening comments go with them (24 October 2026); the general ones stay with the person they were about
+      await tx.screeningComment.updateMany({ where: { OR: [{ applicationId: app.id }, ...(movedCv ? [{ generalCvId: movedCv }] : [])] }, data: { candidateId: made.id } });
       // the contacts used only there go with it
       const rest = [...restApps, ...restCvs];
       const email = candidateEmail(app.email);

@@ -77,6 +77,21 @@ export class GeneralCvsController {
     return new StreamableFile(file.data, { type: file.mimeType, length: file.data.length, disposition: save ? attachment(file.fileName) : contentDisposition(file.fileName) });
   }
 
+  /**
+   * The CV as a PDF for the CV window (24 October 2026: "when opening a CV, open it in a popup window"): a PDF as sent, a
+   * Word file converted and kept (409 in words without the converter). Never for a developer.
+   */
+  @Roles(...READS)
+  @NotForDevelopers()
+  @Get(':id/cv/preview')
+  @Header('Cache-Control', 'private, no-store')
+  @Header('X-Content-Type-Options', 'nosniff')
+  @Header('Content-Security-Policy', "default-src 'none'")
+  async cvPreview(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser): Promise<StreamableFile> {
+    const file = await this.cvs.cvPreview(id, user);
+    return new StreamableFile(file.data, { type: 'application/pdf', length: file.data.length, disposition: contentDisposition(file.fileName) });
+  }
+
   @Roles(...MANAGES)
   @Post(':id/review')
   @HttpCode(200)
@@ -98,10 +113,11 @@ export class GeneralCvsController {
     return this.cvs.setStatus(id, 'restore', user);
   }
 
+  /** Gone (410) since HR's notes became screening comments (24 October 2026): POST /recruitment/comments instead. */
   @Roles(...MANAGES)
   @Patch(':id/notes')
-  notes(@Param('id', ParseUUIDPipe) id: string, @Body() dto: GeneralCvNotesDto, @CurrentUser() user: SessionUser) {
-    return this.cvs.notes(id, dto.notes, user);
+  notes(@Param('id', ParseUUIDPipe) id: string, @Body() _dto: GeneralCvNotesDto, @CurrentUser() user: SessionUser) {
+    return this.cvs.notes(id, user);
   }
 
   /** Add to a vacancy: { vacancyId, stage: applied | shortlisted }. */

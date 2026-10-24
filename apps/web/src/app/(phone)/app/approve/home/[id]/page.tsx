@@ -8,7 +8,7 @@ import { PhoneLoading } from '../../../ui';
 // CEO's, its point on a small map and every step: the site's page (home-locations/[id]/home-location.tsx), its back link
 // to the phone pages' To Approve, and what is done on it coming back here.
 
-export const metadata: Metadata = { title: 'Home Location · Trendlix People' };
+export const metadata: Metadata = { title: 'Check-in Location · Trendlix People' };
 
 export default function PhoneApproveHomePage({ params, searchParams }: PageProps<'/app/approve/home/[id]'>) {
   return (

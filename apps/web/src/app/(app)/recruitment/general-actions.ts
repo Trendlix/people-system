@@ -2,8 +2,9 @@
 
 // General CVs and the bulk upload (owner, 22 October 2026: "i want a proper viweing, what came out of the posted jobs and
 // what cam on randomly", "Both"; "is there a way to easy apply from linkedin?" … "why not"): HR's Add a CV, marking one
-// reviewed, archiving and restoring it, its notes, adding it to a vacancy; and a batch of CVs uploaded one by one, saved
-// or discarded. Each forwards to the API, which checks who may and every rule again.
+// reviewed, archiving and restoring it, adding it to a vacancy (its notes are screening comments since 24 October 2026:
+// comment-actions.ts); and a batch of CVs uploaded one by one, saved or discarded. Each forwards to the API, which
+// checks who may and every rule again.
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import type { CvBatchTarget, CvSaveResult, CvSaveRow, CvUploadView, GeneralCvView } from '@trendlix/shared';
@@ -42,11 +43,6 @@ export async function addGeneralCv(_prev: FormState, fd: FormData): Promise<Form
 
 export async function setGeneralCvStatus(id: string, to: 'review' | 'archive' | 'restore'): Promise<FormState> {
   return send('POST', path(id, `/${to}`), {}, to === 'review' ? 'Marked as reviewed.' : to === 'archive' ? 'Archived.' : 'Restored.');
-}
-
-export async function saveGeneralCvNotes(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
-  const notes = fd.get('notes');
-  return send('PATCH', path(id, '/notes'), { notes: typeof notes === 'string' && notes.trim() ? notes.trim() : null });
 }
 
 /** Adds a general CV to a vacancy at Applied or Shortlisted: an application made from it; then the applicant's page. */

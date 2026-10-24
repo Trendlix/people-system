@@ -325,13 +325,23 @@ export interface PlaceBadge {
  * press with its location's name; owner, 20 October 2026: "named with the location name (Remote - Location name)"),
  * "Remote - Studio". None without a place.
  */
-export function placeBadge(place: string | null | undefined, press?: Pick<PunchRow, 'locationName' | 'officeNetwork'> | null): PlaceBadge | null {
+export function placeBadge(place: string | null | undefined, press?: Pick<PunchRow, 'locationName' | 'officeNetwork' | 'locationKind'> | null): PlaceBadge | null {
   if (!place) return null;
   const sub = place === 'remote' ? press?.locationName?.trim() || null : null;
-  const label = sub ? pressPlaceLabel(place, sub) : (CHECK_IN_PLACE_LABELS[place as CheckInPlace] ?? place);
+  // within a client location or their remote site (24 October 2026): "Client · Acme", "Remote site · Flat"
+  const kind = sub ? (press?.locationKind ?? null) : null;
+  const label = sub ? pressPlaceLabel(place, sub, kind) : (CHECK_IN_PLACE_LABELS[place as CheckInPlace] ?? place);
   const tone = place === 'office' ? 'ok' : place === 'unknown' ? 'muted' : 'accent';
   const title =
-    place === 'office' ? (press?.locationName ?? (press?.officeNetwork ? `On the office network: ${press.officeNetwork}` : null)) : sub ? `Remote, at the sub-location ${sub}` : null;
+    place === 'office'
+      ? (press?.locationName ?? (press?.officeNetwork ? `On the office network: ${press.officeNetwork}` : null))
+      : sub
+        ? kind === 'client'
+          ? `Remote, at the client location ${sub}`
+          : kind === 'remote_site'
+            ? `Remote, at their remote site ${sub}`
+            : `Remote, at the sub-location ${sub}`
+        : null;
   return { label, tone, title };
 }
 

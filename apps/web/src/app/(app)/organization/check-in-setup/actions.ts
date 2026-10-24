@@ -8,14 +8,17 @@
 // visitor's address signed, as the API switches the lock on only when the website's signature arrives. The main office
 // and its sub-locations (owner, 20 October 2026: "main office location is the hero and other locations are like sub
 // locations. shown with their name and linked users"): Make main, and linking and unlinking a sub-location's people, HR's
-// and Admin's (a C-level person only by those who see them: the API answers 404 to anyone else).
+// and Admin's (a C-level person only by those who see them: the API answers 404 to anyone else). The GPS lock (owner, 24
+// October 2026: "Yes, add a GPS lock too"), HR's and Admin's; and a client location's end (the same day: "all employees if
+// a customer location"), changed or ended now by HR or Admin.
 import { refresh } from 'next/cache';
 import { ApiError, apiSend } from '@/lib/api';
 import type { MapsSettingsView } from '@trendlix/shared';
 import type { CheckInLocationView } from '@/lib/attendance-types';
 import { deleteRefusal } from '@/lib/session';
 import type { FormState } from '@/lib/types';
-import { addedText, addressesBody, locationBody, locationRuleBody, locationRuleSaved, networksBody } from './setup';
+import { todayInCairo } from '@/lib/date-picker';
+import { addedText, addressesBody, clientEndBody, gpsLockBody, gpsLockSaved, locationBody, locationRuleBody, locationRuleSaved, networksBody } from './setup';
 import { MAPS_REMOVED_TEXT, mapsIntentOf, mapsSavedText, mapsSettingsBody, type MapsFormState } from './maps-setup';
 
 /** The submitted values, so the form can be refilled after an error. */
@@ -102,6 +105,25 @@ export async function saveNetworks(_prev: FormState, fd: FormData): Promise<Form
 export async function saveLocationRule(_prev: FormState, fd: FormData): Promise<FormState> {
   const body = locationRuleBody(fd);
   return send(fd, () => apiSend('PUT', '/attendance/check-in-setup/location-rule', body), locationRuleSaved(body.refuseWithoutLocation));
+}
+
+/** The GPS lock (PUT /attendance/check-in-setup/gps-lock { lock, roughMetres }): switched on only with the main office set (the API says so). */
+export async function saveGpsLock(_prev: FormState, fd: FormData): Promise<FormState> {
+  const { body, problems } = gpsLockBody(fd);
+  if (problems.length) return { errors: problems, values: submitted(fd) };
+  return send(fd, () => apiSend('PUT', '/attendance/check-in-setup/gps-lock', body), gpsLockSaved(body.lock));
+}
+
+/** A client location's end changed (PATCH …/locations/:id { validUntil }): a date, or none. */
+export async function saveClientEnd(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
+  const { body, problems } = clientEndBody(fd, todayInCairo());
+  if (!body) return { errors: problems, values: submitted(fd) };
+  return send(fd, () => apiSend('PATCH', at(id), body), body.validUntil ? 'Saved. It counts until the date chosen.' : 'Saved. It has no end now, until HR ends it.');
+}
+
+/** A client location ended now (POST …/locations/:id/end): no check-in counts within it from now on. */
+export async function endClientLocation(id: string, name: string): Promise<FormState> {
+  return send(null, () => apiSend('POST', `${at(id)}/end`), `${name} is ended: check-ins within it no longer count.`);
 }
 
 /** Zoho People's check-in addresses (PATCH /payroll/settings { officeAddresses }). */

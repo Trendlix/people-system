@@ -2,7 +2,7 @@ import { Body, Controller, Get, Header, HttpCode, Param, ParseUUIDPipe, Post, Qu
 import { CurrentUser } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { ConfidentialOf } from '../employees/confidential.guard.js';
-import { CreateHomeLocationDto, DecideHomeLocationDto, ListHomeLocationsDto, RemoveHomeLocationDto } from './home-locations.dto.js';
+import { CreateHomeLocationDto, DecideHomeLocationDto, ListHomeLocationsDto, RemoveHomeLocationDto, SetLocationValidityDto } from './home-locations.dto.js';
 import { HomeLocationsService } from './home-locations.service.js';
 
 // Home locations (owner, 20 October 2026: "allow other users to request to add their home locations when working from
@@ -10,7 +10,9 @@ import { HomeLocationsService } from './home-locations.service.js';
 // withdrawing one while it is being decided and removing their approved home. HR, the CEO and the Super Admin: the
 // requests (HR not a C-level person's), how many wait for them, each one, the decision of its step, and removing an
 // approved home. Managers and Finance are refused; who decides each step the service checks, and it tells anyone else a
-// request isn't there.
+// request isn't there. Since 24 October 2026 (owner: "(Home Location - Remote Site - Client Location)"): a remote site and
+// a client location are asked and decided the same way, HR sets how long one lasts when approving, and changes a home's
+// or a remote site's later.
 
 /** The employee's own: anyone signed in with an employee profile. */
 @Controller('me/home-locations')
@@ -23,7 +25,7 @@ export class MyHomeLocationsController {
     return this.homes.mine(user);
   }
 
-  /** { latitude, longitude, accuracy?, label? }: with HR first; 409 while another is being decided. */
+  /** { type?, latitude, longitude, accuracy?, label?, reason?, radiusMetres?, wishedEndDate? }: with HR first; 409 while another of the type is being decided. */
   @Post()
   create(@Body() dto: CreateHomeLocationDto, @CurrentUser() user: SessionUser) {
     return this.homes.create(dto, user);
@@ -69,11 +71,18 @@ export class HomeLocationsController {
     return this.homes.one(id, user);
   }
 
-  /** { decision: approve | reject, comment? (required to reject), radiusMetres? (HR's step) }. */
+  /** { decision: approve | reject, comment? (required to reject), radiusMetres?, validity?, validUntil? (HR's step) }. */
   @Post(':id/decide')
   @HttpCode(200)
   decide(@Param('id', ParseUUIDPipe) id: string, @Body() dto: DecideHomeLocationDto, @CurrentUser() user: SessionUser) {
     return this.homes.decide(id, dto, user);
+  }
+
+  /** { validity, validUntil?, comment? }: an approved home's or remote site's validity changed by HR (a C-level person's by the CEO). */
+  @Post(':id/validity')
+  @HttpCode(200)
+  setValidity(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SetLocationValidityDto, @CurrentUser() user: SessionUser) {
+    return this.homes.setValidity(id, dto, user);
   }
 
   /** { comment? }: an approved home removed by HR, the CEO or the Super Admin (or its employee): its point deleted. */

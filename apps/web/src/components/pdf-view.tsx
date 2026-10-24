@@ -10,12 +10,28 @@ import { PdfPages } from '@/app/(app)/organization/templates/[slot]/versions/[ve
 // route, with the session. The page sizes are read from the file once it is opened, and the pages fitted to the width.
 // The document viewer draws its PDFs with it too on the phone pages and inside the app (the app's Phase 2, 20 October
 // 2026), from an address or a file chosen in the page; `bleed`: out to the screen's edges (a page's own PDF, the
-// payslip), else within its box (the viewer's window).
+// payslip), else within its box (the viewer's window). The CV window (owner, 24 October 2026: "when opening a CV, open it
+// in a popup window") zooms it (`zoom`: times the width that fits, 1 by default, sideways scrolling past it) and shows its
+// number of pages (`onPages`).
 
 /** The space PdfPages leaves around the pages (p-4), on each side. */
 const PADDING = 16;
 
-export function PdfView({ src, title, notLoaded, bleed = true }: { src: string | Blob; title: string; notLoaded: string; bleed?: boolean }) {
+export function PdfView({
+  src,
+  title,
+  notLoaded,
+  bleed = true,
+  zoom = 1,
+  onPages,
+}: {
+  src: string | Blob;
+  title: string;
+  notLoaded: string;
+  bleed?: boolean;
+  zoom?: number;
+  onPages?: (count: number) => void;
+}) {
   const box = useRef<HTMLDivElement>(null);
   const [pages, setPages] = useState<PdfPageSize[]>([]);
   const [width, setWidth] = useState(0);
@@ -28,12 +44,18 @@ export function PdfView({ src, title, notLoaded, bleed = true }: { src: string |
     return () => ro.disconnect();
   }, []);
 
-  const opened = useCallback((sizes: PdfPageSize[]) => setPages(sizes), []);
+  const opened = useCallback(
+    (sizes: PdfPageSize[]) => {
+      setPages(sizes);
+      onPages?.(sizes.length);
+    },
+    [onPages],
+  );
   const widest = Math.max(1, ...pages.map((p) => p.width));
-  const scale = width > PADDING * 2 ? (width - PADDING * 2) / widest : 1;
+  const scale = (width > PADDING * 2 ? (width - PADDING * 2) / widest : 1) * zoom;
 
   return (
-    <div ref={box} role="document" aria-label={title} className={`overflow-x-hidden bg-line-soft ${bleed ? '-mx-4' : ''}`}>
+    <div ref={box} role="document" aria-label={title} className={`${zoom > 1 ? 'overflow-x-auto' : 'overflow-x-hidden'} bg-line-soft ${bleed ? '-mx-4' : ''}`}>
       <PdfPages src={src} pages={pages} scale={scale} root={null} onOpened={opened} notLoaded={notLoaded}>
         {() => null}
       </PdfPages>

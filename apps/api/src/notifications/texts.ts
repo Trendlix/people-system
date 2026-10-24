@@ -84,22 +84,44 @@ export function payslipText(month: string, paidOn: string | null, link: string):
   return { kind: 'payslip_issued', title: `Your ${monthName(month)} payslip is ready`, body: paidOn ? `Paid on ${shownDate(paidOn)}` : 'Open it in your payslips', link };
 }
 
+/** What each type of requested check-in location is called in a notice (24 October 2026: "Home Location - Remote Site - Client Location"). */
+const PLACE_NOUNS: Record<string, { a: string; noun: string }> = {
+  home: { a: 'A home location', noun: 'Home location' },
+  remote_site: { a: 'A remote site', noun: 'Remote site' },
+  client: { a: 'A client location', noun: 'Client location' },
+};
+const placeNoun = (type: string | null | undefined) => PLACE_NOUNS[type ?? 'home'] ?? PLACE_NOUNS.home;
+
 /**
  * A home location waits for the decision of the one in charge of its step (owner, 20 October 2026: "then approved by the
- * HR and CEO"): "Mona Adel, asked on 20/10/2026". Never the point, the label or a comment.
+ * HR and CEO"): "Mona Adel, asked on 20/10/2026". Never the point, the label or a comment. A remote site or a client
+ * location (24 October 2026) by its type's name.
  */
-export function homeWaitingText(name: string, askedOn: string, link: string): NotificationInput {
-  return { kind: 'home_location_waiting', title: 'A home location is waiting for you', body: `${name}, asked on ${shownDate(askedOn)}`, link };
+export function homeWaitingText(name: string, askedOn: string, link: string, type: string = 'home'): NotificationInput {
+  return { kind: 'home_location_waiting', title: `${placeNoun(type).a} is waiting for you`, body: `${name}, asked on ${shownDate(askedOn)}`, link };
 }
 
 /**
  * The employee's home location decided at a step: approved at the first step (by HR, or the CEO for a C-level person's:
- * `firstStep`, as the pages name it), now with the CEO; approved, in force; or rejected (never the comment).
+ * `firstStep`, as the pages name it), now with the CEO; approved, in force; or rejected (never the comment). A remote
+ * site or a client location (24 October 2026) by its type's name.
  */
-export function homeDecidedText(outcome: 'first_step' | 'approved' | 'rejected', askedOn: string, link: string, firstStep = 'HR'): NotificationInput {
+export function homeDecidedText(outcome: 'first_step' | 'approved' | 'rejected', askedOn: string, link: string, firstStep = 'HR', type: string = 'home'): NotificationInput {
   const request = `Your request of ${shownDate(askedOn)}`;
-  if (outcome === 'first_step') return { kind: 'home_location_decided', title: `Home location approved by ${firstStep}`, body: `${request} is with the CEO now`, link };
-  return { kind: 'home_location_decided', title: `Home location ${outcome}`, body: request, link };
+  const noun = placeNoun(type).noun;
+  if (outcome === 'first_step') return { kind: 'home_location_decided', title: `${noun} approved by ${firstStep}`, body: `${request} is with the CEO now`, link };
+  return { kind: 'home_location_decided', title: `${noun} ${outcome}`, body: request, link };
+}
+
+/**
+ * A check-in location's end coming (owner, 24 October 2026: "allow the HR to add an end date"; told 7 days before an end
+ * that is a date): the employee's own ("Your remote site ends on 31/10/2026"), or HR's of someone's or of a client
+ * location ("Remote site of Mona Adel ends on 31/10/2026", "Client location Acme ends on 31/10/2026"). Never the point.
+ */
+export function checkInLocationEndingText(type: string, endsOn: string, link: string, of: { person?: string; place?: string } = {}): NotificationInput {
+  const noun = placeNoun(type).noun;
+  const title = of.place ? `${noun} ${of.place} ends soon` : of.person ? `${noun} of ${of.person} ends soon` : `Your ${noun.toLowerCase()} ends soon`;
+  return { kind: 'check_in_location_ending', title, body: `Its last day is ${shownDate(endsOn)}. Ask HR to extend it if it is still needed.`, link };
 }
 
 /** "You haven't checked in", from the shift's start every 10 minutes for 2 hours (owner, 20 October 2026). */

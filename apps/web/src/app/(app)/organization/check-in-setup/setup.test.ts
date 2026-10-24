@@ -4,6 +4,21 @@ import {
   addedText,
   addressesBody,
   chipsOf,
+  clientEndBody,
+  clientEndText,
+  clientLocationsOf,
+  clientShownAsText,
+  endClientConfirm,
+  GPS_ALLOWANCE_TEXT,
+  GPS_NO_LOCATION_TEXT,
+  gpsLockBody,
+  gpsLockSaved,
+  gpsLockText,
+  readRequestFilters,
+  requestFilterHref,
+  requestFilterLabel,
+  requestRowText,
+  requestsApi,
   coordinateFrom,
   faintCircles,
   linkButtonText,
@@ -249,5 +264,121 @@ describe('Zoho People’s check-in addresses (moved from Your Rules, 20 October 
       problems: [],
     });
     expect(addressesBody(form([['officeAddresses', 'Trendlix\ntrendlix']])).problems).toEqual(['"trendlix" is there twice: keep it once.']);
+  });
+});
+
+describe('the GPS lock (owner, 24 October 2026: "Yes, add a GPS lock too")', () => {
+  it('reads the switch and the "too rough" limit as the API takes them, 200 m unless typed', () => {
+    expect(gpsLockBody(form([['lock', 'false'], ['lock', 'true'], ['roughMetres', '150']]))).toEqual({ body: { lock: true, roughMetres: 150 }, problems: [] });
+    expect(gpsLockBody(form([['lock', 'false'], ['roughMetres', '']]))).toEqual({ body: { lock: false, roughMetres: 200 }, problems: [] });
+    expect(gpsLockBody(form([['lock', 'false'], ['roughMetres', '٣٠٠']])).body.roughMetres).toBe(300);
+    expect(gpsLockBody(form([['roughMetres', '40']])).problems[0]).toContain('from 50 to 500');
+    expect(gpsLockBody(form([['roughMetres', '1.5']])).problems[0]).toContain('from 50 to 500');
+  });
+
+  it('says where it stands: on with the limit, and either lock with the network’s on; on without the main office; off', () => {
+    const on = gpsLockText({ lock: true, roughMetres: 200, inForce: true });
+    expect(on).toMatch(/^On: Office staff check in and out only inside a check-in location/);
+    expect(on).toContain('less accurate than 200 m is refused as too rough');
+    expect(on).not.toContain('either');
+    expect(gpsLockText({ lock: true, roughMetres: 200, inForce: true }, true)).toContain('a press passes when either does');
+    expect(gpsLockText({ lock: true, roughMetres: 200, inForce: false })).toContain('there is no main office yet, so no one is refused');
+    expect(gpsLockText({ lock: false, roughMetres: 200, inForce: false })).toMatch(/^Off: a check-in outside every check-in location is kept as remote/);
+    expect(GPS_ALLOWANCE_TEXT).toContain('less its accuracy (at most 100 m), is within the radius');
+    expect([gpsLockSaved(true), gpsLockSaved(false)]).toEqual([
+      'Saved. Office staff now check in and out inside the check-in locations only.',
+      'Saved. Check-ins outside the check-in locations are kept as remote again, never refused.',
+    ]);
+  });
+
+  it('says either lock passing is enough on the networks’ status, and the GPS lock’s rule without a location', () => {
+    const networks = { lock: true, inForce: true, serverKey: true, networks: [{ label: 'Main office line', range: '41.33.10.0/24' }] };
+    expect(lockText(networks)).not.toContain('either');
+    expect(lockText(networks, true)).toContain('a press passes when either does');
+    expect(locationRuleText({ refuseWithoutLocation: false }, null, true)).toContain(GPS_NO_LOCATION_TEXT);
+    expect(locationRuleText({ refuseWithoutLocation: true }, true, true)).toContain('whatever this switch says');
+    expect(locationRuleText({ refuseWithoutLocation: true }, true)).not.toContain('GPS');
+  });
+});
+
+describe('the client locations (owner, 24 October 2026: "all employees if a customer location")', () => {
+  const MAIN = { id: 'm', name: 'Head', isMain: true, kind: 'office' as const };
+  const STUDIO = { id: 's', name: 'Studio', isMain: false, kind: 'office' as const };
+  const ACME = { id: 'c', name: 'Acme', isMain: false, kind: 'client' as const, validUntil: null, endedAt: null };
+
+  it('are laid out apart from the main office and the sub-locations', () => {
+    expect(mainAndSubs([MAIN, ACME, STUDIO])).toEqual({ main: MAIN, subs: [STUDIO] });
+    expect(clientLocationsOf([MAIN, ACME, STUDIO])).toEqual([ACME]);
+    // a client location is never taken for the main office, even with none
+    expect(mainAndSubs([ACME])).toEqual({ main: null, subs: [] });
+  });
+
+  it('show as "Client · Acme", how long they last, and are drawn faintly as client locations', () => {
+    expect(clientShownAsText(' Acme  Cairo ')).toBe('Client · Acme Cairo');
+    expect(clientEndText(ACME)).toBe('No end');
+    expect(clientEndText({ validUntil: '2026-12-31' })).toBe('Until 31/12/2026');
+    expect(clientEndText({ validUntil: '2026-12-31', endedAt: '2026-10-25T08:00:00.000Z' })).toBe('Ended 25/10/2026');
+    expect(faintCircles([{ name: 'Acme', latitude: 30, longitude: 31, radiusMetres: 120, kind: 'client' }])[0].name).toBe('Acme (client location)');
+  });
+
+  it('take a new end as a date, today or later, or no end; and ask before ending one', () => {
+    const today = '2026-10-24';
+    expect(clientEndBody(form([['ends', 'no_end'], ['validUntil', 'whatever']]), today)).toEqual({ body: { validUntil: null }, problems: [] });
+    expect(clientEndBody(form([['ends', 'until_date'], ['validUntil', '31/12/2026']]), today)).toEqual({ body: { validUntil: '2026-12-31' }, problems: [] });
+    expect(clientEndBody(form([['ends', 'until_date'], ['validUntil', '24/10/2026']]), today).body).toEqual({ validUntil: '2026-10-24' });
+    expect(clientEndBody(form([['ends', 'until_date'], ['validUntil', '23/10/2026']]), today)).toEqual({ body: null, problems: ['Choose an end date of today or later.'] });
+    expect(clientEndBody(form([['ends', 'until_date'], ['validUntil', '31/02/2026']]), today).problems[0]).toContain('DD/MM/YYYY');
+    expect(endClientConfirm('Acme')).toBe('End Acme now? Check-ins within it stop counting for everyone from now on; it stays listed as ended, with its request.');
+  });
+});
+
+describe('the requested check-in locations (owner, 24 October 2026: "Home Location - Remote Site - Client Location")', () => {
+  it('reads the filters from the address: every type and the approved ones unless chosen', () => {
+    expect(readRequestFilters({})).toEqual({ type: 'all', status: 'approved' });
+    expect(readRequestFilters({ type: 'client', status: 'open' })).toEqual({ type: 'client', status: 'open' });
+    expect(readRequestFilters({ type: 'nope', status: 'with_hr' })).toEqual({ type: 'all', status: 'approved' });
+    expect(readRequestFilters({ type: ['home'], status: 'rejected' })).toEqual({ type: 'all', status: 'rejected' });
+  });
+
+  it('asks the API for them, and links to the other filters at the list', () => {
+    expect(requestsApi({ type: 'all', status: 'approved' })).toBe('/home-locations?status=approved');
+    expect(requestsApi({ type: 'remote_site', status: 'waiting' })).toBe('/home-locations?status=waiting&type=remote_site');
+    expect(requestsApi({ type: 'all', status: 'all' })).toBe('/home-locations');
+    expect(requestFilterHref({ type: 'all', status: 'approved' }, { type: 'client' })).toBe('?type=client#home-locations');
+    expect(requestFilterHref({ type: 'client', status: 'approved' }, { status: 'all' })).toBe('?type=client&status=all#home-locations');
+    expect(requestFilterHref({ type: 'client', status: 'open' }, { type: 'all', status: 'approved' })).toBe('?#home-locations');
+    expect(['all', 'home', 'remote_site', 'client', 'open', 'waiting', 'rejected'].map(requestFilterLabel)).toEqual([
+      'All',
+      'Home Location',
+      'Remote Site',
+      'Client Location',
+      'Being decided',
+      'Waiting for you',
+      'Rejected',
+    ]);
+  });
+
+  it('says each in a row: its type, name, status, how long it lasts, and whether it has ended', () => {
+    const base = { label: 'Flat', latitude: 30.05, status: 'approved' as const, confidential: false };
+    expect(requestRowText({ ...base, type: 'remote_site', validity: 'until_date', endsOn: '2026-12-31', inForce: true })).toEqual({
+      type: 'Remote Site',
+      name: 'Flat',
+      status: 'Approved',
+      lasts: 'Until 31/12/2026',
+      ended: false,
+    });
+    expect(requestRowText({ ...base, type: 'home', label: null, validity: 'contract', endsOn: '2027-06-30', inForce: false })).toMatchObject({
+      name: 'No label',
+      lasts: 'Until the contract ends (30/06/2027)',
+      ended: true,
+    });
+    expect(requestRowText({ ...base, type: 'client', label: 'Acme', validity: 'no_end', location: { name: 'Acme (2)', endedAt: '2026-10-25T08:00:00.000Z' }, inForce: false })).toMatchObject({
+      name: 'Acme (2)',
+      lasts: 'Ended 25/10/2026',
+      ended: true,
+    });
+    // a request of before, without a type: a home; being decided, no end said yet; a C-level person's with HR is with the CEO
+    expect(requestRowText({ label: null, latitude: 30, status: 'with_hr', confidential: true })).toEqual({ type: 'Home Location', name: 'No label', status: 'With the CEO', lasts: null, ended: false });
+    expect(requestRowText({ ...base, latitude: null, label: null, status: 'rejected' }).name).toBe('Point deleted');
   });
 });

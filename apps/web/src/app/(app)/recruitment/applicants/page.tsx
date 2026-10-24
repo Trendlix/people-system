@@ -38,7 +38,7 @@ import {
   type ApplicantsTab,
 } from '../general';
 import { APPLICANTS_PATH, applicantsHref, GOOD_CV_MATCH_PERCENT, managesRecruitment, readApplicantsQuery, readsRecruitment, STAGE_FILTERS, vacancyHref, WHO_SEES } from '../recruitment';
-import { ApplicantsTable, ExperienceCell, LatestRoleCell, MinYearsSelect, SkillSelect, VacancyStatusBadge } from '../ui';
+import { ApplicantsTable, ExperienceCell, LatestRoleCell, MinYearsSelect, SkillSelect, VacancyStatusBadge, VerdictBadge, VerdictSelect } from '../ui';
 import { joinShown, shownCode } from '@/lib/hidden';
 
 // All applicants (owner, 22 October 2026: "where will we include the ATS?"): across the vacancies, best match first, by
@@ -51,6 +51,8 @@ import { joinShown, shownCode } from '@/lib/hidden';
 // The Experience column falls back to the CV's estimate, with a Min. experience filter, a Skill filter and a Latest
 // role column on both tabs (owner, 24 October 2026: "why isn't the experience pulled off the CV?"; "CV years in list +
 // more rules"); the Posted jobs sort by experience too.
+// The latest screening verdict's badge on both tabs, with a Verdict filter (owner, 24 October 2026: "Yes: Good fit / Maybe
+// / Not a fit").
 
 export const metadata: Metadata = { title: 'Applicants · People System' };
 
@@ -154,6 +156,7 @@ async function Posted({ query, summary }: { query: Query; summary: Loaded<Applic
         </div>
         <MinYearsSelect id="applicant-years" value={q.minYears} />
         <SkillSelect id="applicant-skill" value={q.skill} />
+        <VerdictSelect id="applicant-verdict" value={q.verdict} />
         <button type="submit" className="btn btn-secondary">
           Apply filters
         </button>
@@ -260,6 +263,12 @@ function GeneralTable({ rows, manages }: { rows: GeneralCvListItem[]; manages: b
               <ExperienceCell typed={c.yearsExperience} fromCv={c.fromCv} />
               <td>
                 <span className={`badge ${GENERAL_STATUS_STYLE[c.status]}`}>{GENERAL_CV_STATUS_LABELS[c.status]}</span>
+                {/* the latest screening verdict (24 October 2026) */}
+                {c.verdict && (
+                  <span className="mt-1 block">
+                    <VerdictBadge verdict={c.verdict} />
+                  </span>
+                )}
                 {c.movedTo && (
                   <Link href={vacancyHref(c.movedTo.vacancyId)} className="block text-xs">
                     {c.movedTo.vacancyTitle}
@@ -355,6 +364,7 @@ async function General({ query, manages }: { query: Query; manages: boolean }) {
         </div>
         <MinYearsSelect id="general-years" value={g.minYears} />
         <SkillSelect id="general-skill" value={g.skill} />
+        <VerdictSelect id="general-verdict" value={g.verdict} />
         <button type="submit" className="btn btn-secondary">
           Apply filters
         </button>

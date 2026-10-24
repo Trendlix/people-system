@@ -24,14 +24,16 @@ import { HomeDecisionForm } from '../home-locations/forms';
 import {
   APPROVALS_HOME_DONE,
   APPROVALS_HOME_ID,
+  HOME_TYPE_LINES,
   homeLocationHref,
   homesLabel,
   homeSourceText,
+  homeTypeOf,
   officeLockHint,
   seesHomes,
   WAITING_HOMES,
 } from '../home-locations/home-locations';
-import { HomeMap, HomeStatusBadge } from '../home-locations/ui';
+import { HomeMap, HomeOverlaps, HomeStatusBadge } from '../home-locations/ui';
 import { PracticeBadge } from '../kpis/ui';
 import { decideChangeRequest, decideEnding } from './actions';
 import { decidesEndings, followsEndings, getOrNull, PENDING_CHANGE_REQUESTS, PENDING_ENDINGS } from './data';
@@ -67,7 +69,10 @@ import { Hidden } from '@/components/hidden';
 // - Home locations (owner, 20 October 2026: "allow other users to request to add their home locations when working from
 //   home"; then "then approved by the HR and CEO"), at the user's step: HR's, with the point on a small map and the radius
 //   to approve it with (its circle following what is typed), or the CEO's; a C-level person's both by the CEO. Approve or
-//   reject with a comment; for HR, the CEO and the Super Admin only (never managers or Finance).
+//   reject with a comment; for HR, the CEO and the Super Admin only (never managers or Finance). Since 24 October 2026
+//   every requested check-in location (owner: "(Home Location - Remote Site - Client Location) with a comment reason"):
+//   its type and name, the reason, the overlaps (a warning), HR's step with how long it lasts, and a client location's
+//   "Approving makes this place count for everyone.".
 // - KPI scorecards (owner, 21 October 2026: "The KPI items waiting for someone are counted in the sidebar and on
 //   Approvals"): those waiting for the user to score, calibrate (HR; a C-level person's the CEO's) or sign as the
 //   manager, never their own (on My KPIs), the nearest deadline first, each opening the scorecard, where it is done.
@@ -268,7 +273,8 @@ async function PendingChangeRequests({ user }: { user: SessionUser }) {
 /** A home location waiting for the user's step: who, the point on a small map (HR's step: following the radius typed), and the decision. */
 function PendingHomeCard({ request: r }: { request: HomeLocationView }) {
   const stage = r.stage ?? 'hr';
-  const lockHint = r.employee.workArrangement ? officeLockHint({ workArrangement: r.employee.workArrangement, checkInAnywhere: r.employee.checkInAnywhere }) : null;
+  const type = homeTypeOf(r);
+  const lockHint = type === 'home' && r.employee.workArrangement ? officeLockHint({ workArrangement: r.employee.workArrangement, checkInAnywhere: r.employee.checkInAnywhere }) : null;
   return (
     <li className="card p-6">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -277,17 +283,25 @@ function PendingHomeCard({ request: r }: { request: HomeLocationView }) {
             <Link href={profileHref(r.employee.id, 'employment')}>{r.employee.fullNameEn}</Link>
             {shownCode(r.employee.employeeCode) && <span className="font-normal text-muted"> · {r.employee.employeeCode}</span>}
           </h3>
-          <p className="mt-0.5 text-sm">{r.label ?? 'No label: the point on the map'}</p>
+          <p className="mt-0.5 text-sm">
+            <span className="font-medium">{HOME_TYPE_LINES[type]}</span> · {r.label ?? 'No label: the point on the map'}
+          </p>
           <p className="text-xs text-muted">
             Sent {formatDateTime(r.createdAt)} · {homeSourceText(r.accuracyMetres)}
           </p>
         </div>
         <HomeStatusBadge status={r.status} confidential={r.confidential} />
       </div>
+      {r.reason && <p className="mt-3 text-sm whitespace-pre-line">“{r.reason}”</p>}
       {lockHint && (
         <p className="mt-3 text-sm text-muted">
-          {r.employee.fullNameEn} works at the office: while check-ins are locked to the office network, a check-in from home is still refused off it.
+          {r.employee.fullNameEn} works at the office: while check-ins are locked to the office network alone, a check-in from home is still refused off it.
         </p>
+      )}
+      {(r.overlaps?.length ?? 0) > 0 && (
+        <div className="mt-3">
+          <HomeOverlaps request={r} />
+        </div>
       )}
       {stage === 'ceo' && (
         <div className="mt-4">
@@ -307,13 +321,13 @@ function PendingHomeCard({ request: r }: { request: HomeLocationView }) {
 async function PendingHomes() {
   // read quietly, like the change requests: an API from before home locations must not take the endings down with it
   const homes = await getOrNull<HomeLocationView[]>(WAITING_HOMES);
-  if (homes === null) return <Empty>Home locations couldn&apos;t load.</Empty>;
-  if (homes.length === 0) return <Empty>No home locations are waiting for you.</Empty>;
+  if (homes === null) return <Empty>Check-in location requests couldn&apos;t load.</Empty>;
+  if (homes.length === 0) return <Empty>No check-in location requests are waiting for you.</Empty>;
   const atHr = homes.some((h) => h.stage === 'hr');
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted">
-        {homesLabel(homes.length)} waiting for you, newest first. {atHr ? `At HR’s step, approve it with the radius (100 m asked) or reject it; then the CEO decides it. ` : ''}A
+        {homesLabel(homes.length)} waiting for you, newest first. {atHr ? `At HR’s step, approve it with the radius and how long it lasts, or reject it; then the CEO decides it. ` : ''}A
         rejection needs a comment, which the employee sees; its point is deleted.
       </p>
       <ul className="space-y-4">
@@ -467,7 +481,7 @@ async function Approvals({ searchParams }: { searchParams: PageProps<'/approvals
         </Section>
       )}
       {homes && (
-        <Section title="Home Locations" id={APPROVALS_HOME_ID}>
+        <Section title="Check-in Locations" id={APPROVALS_HOME_ID}>
           <PendingHomes />
         </Section>
       )}

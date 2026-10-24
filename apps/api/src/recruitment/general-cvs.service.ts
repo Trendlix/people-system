@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, HttpException, HttpStatus, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, GoneException, HttpException, HttpStatus, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import {
   APPLICATION_STAGES,
   GENERAL_CV_IP_TOKEN,
@@ -47,6 +47,9 @@ import type { ApplyOrigin } from './public-careers.service.js';
 import { managesRecruitment, READS, vacancyWhere } from './recruitment-access.js';
 import { APPLICATION_ENTITY, cvListFactsOf, minYearsWhere, money, skillWhere, userRef } from './recruitment-views.js';
 import type { AddGeneralCvDto, GeneralCvFormDto, ListGeneralCvsDto, MoveGeneralCvDto } from './recruitment.dto.js';
+import { CvPreviewsService } from './cv-previews.service.js';
+import { NOTES_GONE } from './screening-notes.js';
+import { ScreeningCommentsService } from './screening-comments.service.js';
 
 // General CVs (owner, 22 October 2026: "i want a proper viweing, what came out of the posted jobs and what cam on
 // randomly"; "Both"; packages/shared general-cvs.ts): "Send us your CV" on the careers page, with the same protections as
@@ -164,6 +167,8 @@ export class GeneralCvsService {
     private readonly mail: MailService,
     private readonly notifications: NotificationsService,
     private readonly readings: CvReadingsService,
+    private readonly comments: ScreeningCommentsService,
+    private readonly previews: CvPreviewsService,
   ) {}
 
   // ---------- the careers page ----------
@@ -240,6 +245,8 @@ export class GeneralCvsService {
         ),
     );
     await this.audit.record({ userId: user.id, action: 'create', entityType: GENERAL_CV_ENTITY, entityId: made.id, diff: { number: made.number, source, area: made.area, candidate: made.candidate } });
+    // HR's notes typed with it: its first screening comment, theirs (24 October 2026: the notes "moved into comments")
+    if (input.notes) await this.comments.addFirst({ generalCvId: made.id }, input.notes, user);
     return this.get(made.id, user);
   }
 
@@ -250,9 +257,12 @@ export class GeneralCvsService {
   async list(query: ListGeneralCvsDto, user: SessionUser): Promise<GeneralCvListItem[]> {
     this.assertReads(user);
     const q = query.q ? { contains: query.q, mode: 'insensitive' as const } : null;
+    // the latest screening verdict, or none yet (24 October 2026)
+    const verdictWhere = await this.comments.generalCvVerdictWhere(query.verdict);
     const rows = await this.prisma.generalCv.findMany({
       where: {
         AND: [
+          verdictWhere,
           query.status === 'all' ? {} : query.status ? { status: query.status } : { status: { not: 'archived' } },
           query.source ? { source: query.source } : {},
           query.departmentId ? { departmentId: query.departmentId } : {},
@@ -270,24 +280,27 @@ export class GeneralCvsService {
       orderBy: { createdAt: 'desc' },
       take: LIST_CAP,
     });
-    const names = await userNames(this.prisma, rows.map((r) => r.createdBy));
-    return rows.map((r) => this.listItem(r, names));
+    const [names, verdicts] = await Promise.all([userNames(this.prisma, rows.map((r) => r.createdBy)), this.comments.generalCvVerdicts(rows.map((r) => r.id))]);
+    return rows.map((r) => ({ ...this.listItem(r, names), verdict: verdicts.get(r.id) ?? null }));
   }
 
   async get(id: string, user: SessionUser): Promise<GeneralCvView> {
     this.assertReads(user);
     const r = await this.prisma.generalCv.findUnique({ where: { id }, include: DETAIL_INCLUDE });
     if (!r) throw new NotFoundException(NOT_FOUND);
-    const names = await userNames(this.prisma, [r.createdBy, r.consentBy, ...r.events.map((e) => e.by)]);
+    const [names, verdicts] = await Promise.all([userNames(this.prisma, [r.createdBy, r.consentBy, ...r.events.map((e) => e.by)]), this.comments.generalCvVerdicts([r.id])]);
     const status = r.status as GeneralCvStatus;
     const manages = managesRecruitment(user);
     return {
       ...this.listItem(r, names),
+      // its latest screening verdict (24 October 2026), from its own comments
+      verdict: verdicts.get(r.id) ?? null,
       linkedin: r.linkedin,
       portfolio: r.portfolio,
       noticePeriod: r.noticePeriod,
       expectedSalary: money(r.expectedSalary),
       areaOther: r.areaOther,
+      // HR's notes of before, read only: moved into a first screening comment (24 October 2026)
       notes: r.notes,
       consentAt: r.consentAt.toISOString(),
       consentBy: userRef(r.consentBy, names),
@@ -300,7 +313,8 @@ export class GeneralCvsService {
         archive: manages && (status === 'new' || status === 'reviewed'),
         restore: manages && status === 'archived',
         move: manages && moveProblem(status) === null,
-        editNotes: manages,
+        // the notes became screening comments (24 October 2026)
+        editNotes: false,
       },
     };
   }
@@ -331,16 +345,20 @@ export class GeneralCvsService {
     return this.get(id, user);
   }
 
-  async notes(id: string, notes: string | null | undefined, user: SessionUser): Promise<GeneralCvView> {
+  /**
+   * HR's notes on a general CV: gone (410) since they became screening comments (24 October 2026); nothing else called it
+   * but the general CV page's notes box, retired with it. The notes kept stay read only.
+   */
+  async notes(id: string, user: SessionUser): Promise<never> {
     this.assertManages(user);
-    const r = await this.prisma.generalCv.findUnique({ where: { id }, select: { number: true, notes: true } });
-    if (!r) throw new NotFoundException(NOT_FOUND);
-    const next = text(notes ?? null);
-    if (next !== r.notes) {
-      await this.prisma.generalCv.update({ where: { id }, data: { notes: next } });
-      await this.audit.record({ userId: user.id, action: 'notes', entityType: GENERAL_CV_ENTITY, entityId: id, diff: { number: r.number, notes: { from: r.notes, to: next } } });
-    }
-    return this.get(id, user);
+    if (!(await this.prisma.generalCv.count({ where: { id } }))) throw new NotFoundException(NOT_FOUND);
+    throw new GoneException(NOTES_GONE);
+  }
+
+  /** The CV as a PDF for the CV window (24 October 2026): a PDF as sent, a Word file converted and kept; never a developer. */
+  async cvPreview(id: string, user: SessionUser): Promise<{ data: Buffer; fileName: string }> {
+    const file = await this.file(id, user);
+    return this.previews.pdfOf({ generalCvId: id }, file);
   }
 
   /**
@@ -531,7 +549,7 @@ export class GeneralCvsService {
           areaOther: input.departmentId ? null : (input.areaOther ?? null),
           source: how.source,
           referrer: how.source === 'referral' ? (input.referrer ?? null) : null,
-          notes: input.notes ?? null,
+          // HR's notes are its first screening comment now (24 October 2026: add()), never this column
           consentAt: new Date(),
           consentById: how.consentById,
           consentNote: how.consentNote,

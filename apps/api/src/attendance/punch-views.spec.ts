@@ -15,6 +15,7 @@ const row = (more: Partial<PunchRow> = {}): PunchRow => ({
   accuracyMetres: 12,
   flags: [],
   locationName: 'Head office',
+  locationKind: null,
   officeNetwork: null,
   latitude: decimal(30.0601),
   longitude: decimal(31.3465),

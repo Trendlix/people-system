@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsInt, IsNumber, IsObject, IsString, IsUUID, MaxLength, ValidateIf } from 'class-validator';
-import { LINK_PEOPLE_MAX, OFFICE_RADIUS_DEFAULT, OFFICE_RADIUS_MAX, OFFICE_RADIUS_MIN } from '@trendlix/shared';
+import { GPS_ROUGH_DEFAULT, GPS_ROUGH_MAX, GPS_ROUGH_MIN, LINK_PEOPLE_MAX, OFFICE_RADIUS_DEFAULT, OFFICE_RADIUS_MAX, OFFICE_RADIUS_MIN } from '@trendlix/shared';
+import { IsDateOnly } from '../common/date-only.js';
 
 // Attendance → Check-in Setup (owner, 20 October 2026: "Own page, several locations"; check-ins locked to the office
 // network, the same day). The types here; what is wrong in words, from the shared checks (checkInLocationProblems,
@@ -42,6 +43,10 @@ export class UpdateCheckInLocationDto {
 
   @Sent() @Type(() => Number) @IsInt({ message: RADIUS })
   radiusMetres?: number;
+
+  /** A client location's last day (24 October 2026), YYYY-MM-DD; null: no end. Sent for the office's: refused. */
+  @ValidateIf((_o, v) => v !== undefined && v !== null) @IsDateOnly('Enter the date the client location lasts until, e.g. 2026-12-31.')
+  validUntil?: string | null;
 }
 
 /**
@@ -66,6 +71,18 @@ export class UpdateOfficeNetworksDto {
 export class UpdateLocationRuleDto {
   @IsBoolean({ message: 'Send whether check-ins and check-outs without a location are refused as true or false.' })
   refuseWithoutLocation: boolean;
+}
+
+/**
+ * The switch "Refuse Office staff's check-ins and check-outs outside the check-in locations" (owner, 24 October 2026:
+ * "Yes, add a GPS lock too"), and the accuracy past which a reading is too rough, whole metres from 50 to 500.
+ */
+export class UpdateGpsLockDto {
+  @IsBoolean({ message: 'Send whether Office staff’s check-ins are locked to the check-in locations as true or false.' })
+  lock: boolean;
+
+  @Sent() @Type(() => Number) @IsInt({ message: `Enter the accuracy past which a reading is too rough in whole metres from ${GPS_ROUGH_MIN} to ${GPS_ROUGH_MAX}, e.g. ${GPS_ROUGH_DEFAULT}.` })
+  roughMetres?: number;
 }
 
 /**

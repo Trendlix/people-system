@@ -426,8 +426,9 @@ describe('Recruitment (e2e)', () => {
       a = (await post('hr', `/recruitment/applications/${sara}/restore`).expect(200)).body as ApplicationView;
       expect(a).toMatchObject({ stage: 'interview', rejectReason: null });
       expect(a.history.map((h) => h.event)).toEqual(['applied', 'shortlisted', 'interview', 'rejected', 'restored']);
-      await patch('hr', `/recruitment/applications/${sara}/notes`, { notes: 'Strong reel' }).expect(200);
-      expect((await get('ceo', `/recruitment/applications/${sara}`).expect(200)).body.notes).toBe('Strong reel');
+      // HR's notes are screening comments now (24 October 2026): the old address answers 410
+      await patch('hr', `/recruitment/applications/${sara}/notes`, { notes: 'Strong reel' }).expect(410);
+      expect((await get('ceo', `/recruitment/applications/${sara}`).expect(200)).body).toMatchObject({ notes: null, can: { editNotes: false } });
     });
 
     it('get a job offer from Make offer; withdrawn, back to shortlisted; accepted, hired and the vacancy filled', async () => {
@@ -473,7 +474,8 @@ describe('Recruitment (e2e)', () => {
 
     it('leave their steps in the audit log', async () => {
       const rows = await prisma.auditLog.findMany({ where: { entityType: 'job_application', entityId: sara }, orderBy: { at: 'asc' }, select: { action: true } });
-      expect(rows.map((r) => r.action)).toEqual(['apply', 'stage', 'stage', 'stage', 'restore', 'notes', 'stage', 'stage', 'stage', 'stage']);
+      // no notes since they became screening comments (24 October 2026: the old address answers 410)
+      expect(rows.map((r) => r.action)).toEqual(['apply', 'stage', 'stage', 'stage', 'restore', 'stage', 'stage', 'stage', 'stage']);
       const vacancyRows = await prisma.auditLog.findMany({ where: { entityType: 'vacancy', entityId: v.id }, orderBy: { at: 'asc' }, select: { action: true } });
       expect(vacancyRows.map((r) => r.action)).toEqual(['create', 'submit', 'approve', 'fill']);
     });

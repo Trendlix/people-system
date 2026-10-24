@@ -54,7 +54,7 @@ export default function PhoneNewRequestPage() {
     <div className="space-y-4">
       <PageTitle title="New Request" back={appBack('requests')}>
         What would you like to ask for? Your direct manager decides it first (without one, your team lead or the head of your department), then HR; a
-        home location goes to HR, then the CEO.
+        check-in location goes to HR, then the CEO.
       </PageTitle>
       <Suspense fallback={<PhoneLoading />}>
         <Options />

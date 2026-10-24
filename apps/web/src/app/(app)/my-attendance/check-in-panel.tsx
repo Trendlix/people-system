@@ -1,11 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useId, useRef, useState } from 'react';
 import { LOCATION_NEEDED_TEXT } from '@trendlix/shared';
 import type { CheckInTodayView, PunchResultView } from '@/lib/attendance-types';
 import { getPosition } from '@/lib/native';
+import { saveRequestedPlace } from '@/lib/requested-place';
 import { useNativeApp } from '@/lib/use-native';
 import { punchAttendance } from './actions';
 import { CheckInCounter } from './check-in-counter';
@@ -19,13 +20,13 @@ import {
   locationHelpText,
   LOCATION_NOTE,
   LOCATION_NOTE_IN_APP,
-  networkNote,
+  lockNote,
   OFFICE_NOT_SET_TEXT,
   punchBody,
   punchRows,
   type PunchPhase,
 } from './check-in';
-import { appLocationRefusal, correctionLinkFor } from './network-lock';
+import { appLocationRefusal, correctionLinkFor, requestPlaceHref } from './network-lock';
 
 // The Check in / Check out panel (owner, 19 October 2026: "Check-in through the system (phone or web with the office
 // location check, or a device) to replace Zoho"): one big button, Check in or Check out as the day stands, mostly pressed
@@ -51,7 +52,11 @@ import { appLocationRefusal, correctionLinkFor } from './network-lock';
 // same day: "Yes, keep the spot"): the note under the button says so, and today's list opens each on a map. A work from
 // home day approved for them (owner, 21 October 2026: "think about how should we handle the working from home in out
 // erp"): "Working from home today" above it on the site (the phone pages' Home says it on its own), and the office
-// network's lock waived.
+// network's lock waived. The GPS lock (owner, 24 October 2026: "Yes, add a GPS lock too"): a person held to the check-in
+// locations is told before pressing (with the office network's lock too, either passing is enough), and a press refused
+// outside them says how far they are and links to ask for a correction; refused for where it was (outside them, or off
+// the office network) with a reading, "Request this place" (the same day: "allow the employee to request adding this
+// location to his profile") opens the request form with that reading handed over in the tab (lib/requested-place.ts).
 
 export function CheckInPanel({ initial, compact = false, big = false }: { initial: CheckInTodayView; compact?: boolean; big?: boolean }) {
   const [pressed, setPressed] = useState<PunchResultView | null>(null);
@@ -61,7 +66,10 @@ export function CheckInPanel({ initial, compact = false, big = false }: { initia
   const [phase, setPhase] = useState<PunchPhase>('idle');
   // refused off the office network or without a location: the day's correction a click away
   const [askCorrection, setAskCorrection] = useState(false);
+  // refused for where it was, with a reading: that reading, to ask for the place (24 October 2026)
+  const [refusedAt, setRefusedAt] = useState<{ latitude: number; longitude: number; accuracy: number | null } | null>(null);
   const pathname = usePathname();
+  const router = useRouter();
   const inApp = useNativeApp();
   const noteId = useId();
   const view = latestView(initial, pressed);
@@ -77,6 +85,7 @@ export function CheckInPanel({ initial, compact = false, big = false }: { initia
     setMessages([]);
     setHelp(null);
     setAskCorrection(false);
+    setRefusedAt(null);
     setPhase('locating');
     const location = await getPosition();
     const help = 'locationError' in location ? locationHelpText(location.locationError, inApp) : null;
@@ -94,7 +103,8 @@ export function CheckInPanel({ initial, compact = false, big = false }: { initia
       const result = await punchAttendance(punchBody(kind, location));
       if ('errors' in result) {
         setErrors(result.errors);
-        setAskCorrection(!!result.offNetwork || !!result.noLocation);
+        setAskCorrection(!!result.offNetwork || !!result.noLocation || !!result.locationLock);
+        if (result.placeRefused && !('locationError' in location)) setRefusedAt({ latitude: location.latitude, longitude: location.longitude, accuracy: location.accuracy ?? null });
       } else {
         setPressed(result.view);
         setMessages(result.view.messages);
@@ -108,6 +118,8 @@ export function CheckInPanel({ initial, compact = false, big = false }: { initia
   }
 
   const day = view.day;
+  // locked to the office network or the check-in locations (either passing is enough): told before pressing
+  const note = lockNote(view);
   const rows = punchRows(view.punches);
   const dayFlags = flagLabels(day?.flags);
   // the press's words in amber when what it kept is flagged or its place unknown, else in green
@@ -120,9 +132,10 @@ export function CheckInPanel({ initial, compact = false, big = false }: { initia
         <p className="w-fit rounded-full border border-dashed border-accent px-3 py-1 text-sm font-semibold text-accent">Working from home today</p>
       )}
       {view.expectedText && <p className="text-sm">{view.expectedText}</p>}
-      {view.network?.locked && <p className="text-sm">{networkNote(view)}</p>}
-      {/* on the website, when the company refuses presses without a location for them (inside the app it is always needed) */}
-      {view.location?.required && !inApp && <p className="text-sm">{LOCATION_NEEDED_TEXT}</p>}
+      {note && <p className="text-sm">{note}</p>}
+      {/* on the website, when presses without a location are refused for them (inside the app it is always needed); the
+          GPS lock's note says so already */}
+      {view.location?.required && !inApp && !view.gps?.locked && <p className="text-sm">{LOCATION_NEEDED_TEXT}</p>}
 
       <div>
         <button
@@ -165,6 +178,22 @@ export function CheckInPanel({ initial, compact = false, big = false }: { initia
                 Ask for a correction
               </Link>
             </>
+          )}
+          {refusedAt && (
+            <p className="mt-2">
+              Work here often?{' '}
+              <button
+                type="button"
+                className="font-semibold text-danger underline"
+                onClick={() => {
+                  saveRequestedPlace(refusedAt);
+                  router.push(requestPlaceHref(pathname));
+                }}
+              >
+                Request this place
+              </button>{' '}
+              as your home, a remote site or a client&apos;s location: HR, then the CEO, decide it.
+            </p>
           )}
         </div>
       )}

@@ -3,7 +3,7 @@ import type { Request } from 'express';
 import { CurrentUser, DeletesRecords, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { ConfidentialOf } from '../employees/confidential.guard.js';
-import { CreateCheckInLocationDto, LinkPeopleDto, UpdateCheckInLocationDto, UpdateLocationRuleDto, UpdateOfficeNetworksDto } from './check-in-setup.dto.js';
+import { CreateCheckInLocationDto, LinkPeopleDto, UpdateCheckInLocationDto, UpdateGpsLockDto, UpdateLocationRuleDto, UpdateOfficeNetworksDto } from './check-in-setup.dto.js';
 import { CheckInSetupService } from './check-in-setup.service.js';
 
 // Attendance → Check-in Setup (owner, 20 October 2026: "Own page, several locations"): the check-in locations and the
@@ -13,7 +13,9 @@ import { CheckInSetupService } from './check-in-setup.service.js';
 // (owner, 20 October 2026: "Company switch + exceptions"), HR's and Admin's too. The main office and its sub-locations
 // (owner, 20 October 2026: "main office location is the hero and other locations are like sub locations. shown with their
 // name and linked users"): Make main, and the people linked to a sub-location, linked and unlinked by HR and Admin (a
-// C-level person only by those who see them; the service checks), and who can be linked.
+// C-level person only by those who see them; the service checks), and who can be linked. The GPS lock (owner, 24 October
+// 2026: "Yes, add a GPS lock too"), HR's and Admin's as the network's lock; and a client location (the same day: "all
+// employees if a customer location"), made by a request's approval, ended here by HR or Admin.
 @Controller('attendance/check-in-setup')
 export class CheckInSetupController {
   constructor(private readonly setup: CheckInSetupService) {}
@@ -37,6 +39,14 @@ export class CheckInSetupController {
   @Patch('locations/:id')
   updateLocation(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateCheckInLocationDto, @CurrentUser() user: SessionUser) {
     return this.setup.updateLocation(id, dto, user);
+  }
+
+  /** A client location ended: no press counts within it from now on. */
+  @Roles('hr', 'admin')
+  @Post('locations/:id/end')
+  @HttpCode(200)
+  endLocation(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {
+    return this.setup.endLocation(id, user);
   }
 
   /** This location becomes the main office, the main until now a sub-location; every location after it. */
@@ -106,6 +116,21 @@ export class CheckInSetupController {
   @Put('location-rule')
   updateLocationRule(@Body() dto: UpdateLocationRuleDto, @CurrentUser() user: SessionUser) {
     return this.setup.updateLocationRule(dto, user);
+  }
+
+  /** { lock, roughMetres, inForce }: Office staff's check-ins locked to the check-in locations by GPS. */
+  @Roles('hr', 'admin')
+  @Get('gps-lock')
+  @Header('Cache-Control', 'private, no-store')
+  gpsLock() {
+    return this.setup.gpsLockView();
+  }
+
+  /** { lock, roughMetres? }: switched on only with the main office set. */
+  @Roles('hr', 'admin')
+  @Put('gps-lock')
+  updateGpsLock(@Body() dto: UpdateGpsLockDto, @CurrentUser() user: SessionUser) {
+    return this.setup.updateGpsLock(dto, user);
   }
 }
 

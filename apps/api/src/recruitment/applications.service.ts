@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, GoneException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import {
   APPLICATION_STAGE_LABELS,
   BOARD_STAGES,
@@ -36,12 +36,15 @@ import { NotificationsService } from '../notifications/notifications.service.js'
 import { userNames } from '../payroll/adjustments/people.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CandidatesService } from './candidates.service.js';
+import { CvPreviewsService } from './cv-previews.service.js';
 import { CvReadingsService } from './cv-readings.service.js';
 import { InterviewsService } from './interviews.service.js';
 import { isConfidentialVacancy, vacancyWhere } from './recruitment-access.js';
 import { recruitmentCaller, viewerOf, visibleApplications, type RecruitmentCaller } from './recruitment-scope.js';
 import { APPLICATION_ENTITY, APPLICATION_LIST_SELECT, answersOf, applicationListView, byExperience, minYearsWhere, money, questionsOf, skillWhere, userRef } from './recruitment-views.js';
 import type { ListApplicationsDto } from './recruitment.dto.js';
+import { ScreeningCommentsService } from './screening-comments.service.js';
+import { NOTES_GONE } from './screening-notes.js';
 
 // The applicants (owner, 22 October 2026: "where will we include the ATS?"; packages/shared recruitment.ts): listed by
 // vacancy or all together, with their match and stage; an applicant's page with their answers (how each did), their CV,
@@ -109,6 +112,8 @@ export class ApplicationsService {
     private readonly notifications: NotificationsService,
     private readonly readings: CvReadingsService,
     private readonly candidates: CandidatesService,
+    private readonly comments: ScreeningCommentsService,
+    private readonly previews: CvPreviewsService,
   ) {}
 
   /** The applications the caller may see on the lists: those of the vacancies they see (HR, the CEO, a Super Admin). */
@@ -123,10 +128,13 @@ export class ApplicationsService {
   async list(query: ListApplicationsDto, user: SessionUser): Promise<ApplicationListItem[]> {
     const text = query.q ? { contains: query.q, mode: 'insensitive' as const } : null;
     const filtered = query.filtered ?? 'hide';
+    // the latest screening verdict, or none yet (24 October 2026: "Yes: Good fit / Maybe / Not a fit")
+    const verdictWhere = await this.comments.applicationVerdictWhere(query.verdict);
     const rows = await this.prisma.jobApplication.findMany({
       where: {
         AND: [
           this.where(user),
+          verdictWhere,
           query.vacancyId ? { vacancyId: query.vacancyId } : {},
           query.stage ? { stage: query.stage } : {},
           query.minMatch !== undefined ? { matchPercent: { gte: query.minMatch } } : {},
@@ -161,11 +169,14 @@ export class ApplicationsService {
       take: LIST_CAP,
     });
     // their candidates' badges: "2 applications", "Former employee" (22 October 2026)
-    const badges = await this.candidates.badges(
-      rows.map((r) => r.candidateId),
-      user,
-    );
-    const items = rows.map((r) => ({ ...applicationListView(r), candidate: r.candidateId ? (badges.get(r.candidateId) ?? null) : null }));
+    const [badges, verdicts] = await Promise.all([
+      this.candidates.badges(
+        rows.map((r) => r.candidateId),
+        user,
+      ),
+      this.comments.applicationVerdicts(rows.map((r) => r.id)),
+    ]);
+    const items = rows.map((r) => ({ ...applicationListView(r), candidate: r.candidateId ? (badges.get(r.candidateId) ?? null) : null, verdict: verdicts.get(r.id) ?? null }));
     // most experience first (24 October 2026): the years typed, else the CV's; the best match first among equals
     return query.sort === 'years' ? byExperience(items, (a) => ({ typed: a.yearsExperience, cvMonths: a.fromCv?.experienceMonths ?? null })) : items;
   }
@@ -210,7 +221,8 @@ export class ApplicationsService {
       reject: manages && stageMoveProblem(stage, 'rejected', { filteredOut: a.filteredOut, openOffer }) === null,
       restore: manages && restorable({ stage, filteredOut: a.filteredOut }),
       makeOffer: manages && offerable({ stage, filteredOut: a.filteredOut }) && !openOffer,
-      editNotes: manages,
+      // the notes became screening comments (24 October 2026): kept read only
+      editNotes: false,
       scheduleInterview: manages && !a.filteredOut && !settled,
       suggest: viewer === 'hiring_manager' && !settled,
       emailOnReject: manages && (await this.mail.ready()),
@@ -223,8 +235,11 @@ export class ApplicationsService {
       a.suggestion && !settled
         ? { kind: a.suggestion as HiringSuggestion, note: a.suggestionNote, by: userRef(a.suggestedBy, await userNames(this.prisma, [a.suggestedBy])), at: (a.suggestedAt ?? a.updatedAt).toISOString() }
         : null;
+    const verdict = (await this.comments.applicationVerdicts([a.id])).get(a.id) ?? null;
     return {
       ...applicationListView({ ...a, vacancy: { id: a.vacancy.id, number: a.vacancy.number, title: a.vacancy.title, status: a.vacancy.status } }),
+      // its latest screening verdict (24 October 2026), from its own comments
+      verdict,
       linkedin: a.linkedin,
       portfolio: a.portfolio,
       noticePeriod: a.noticePeriod,
@@ -234,6 +249,7 @@ export class ApplicationsService {
         const s = scored.get(q.key);
         return { key: q.key, text: q.text, kind: q.kind, answer: answers[q.key] ?? null, points: s?.points ?? 0, maxPoints: s?.maxPoints ?? 0, knockout: q.knockout, passed: s?.passed ?? null };
       }),
+      // HR's notes of before, read only: moved into a first screening comment (24 October 2026)
       notes: participant ? null : a.notes,
       rejectReason: a.stage === 'rejected' && !participant ? a.rejectReason : null,
       consentAt: a.consentAt.toISOString(),
@@ -272,6 +288,15 @@ export class ApplicationsService {
     if (!a) throw new NotFoundException(NOT_FOUND);
     if (!a.cv) throw new NotFoundException('This applicant sent no CV.');
     return { data: Buffer.from(a.cv.data), fileName: a.cv.fileName, mimeType: a.cv.mimeType };
+  }
+
+  /**
+   * The CV as the CV window shows it (24 October 2026: "when opening a CV, open it in a popup window"): a PDF as sent, a
+   * Word file converted and kept (cv-previews.service.ts). For the caller who may see the applicant; never a developer.
+   */
+  async cvPreview(id: string, user: SessionUser): Promise<{ data: Buffer; fileName: string }> {
+    const file = await this.cv(id, user);
+    return this.previews.pdfOf({ applicationId: id }, file);
   }
 
   /** The CV's text and the contacts found in it, for the caller who may see the CV (never a developer: the route refuses them). */
@@ -383,6 +408,8 @@ export class ApplicationsService {
       },
       orderBy: [{ matchPercent: { sort: 'desc', nulls: 'last' } }, { createdAt: 'asc' }],
     });
+    // each card's latest screening verdict (24 October 2026): its own comments, which whoever sees the card may read
+    const verdicts = await this.comments.applicationVerdicts(rows.map((r) => r.id));
     const filteredOut = c.reads ? await this.prisma.jobApplication.count({ where: { vacancyId, filteredOut: true } }) : 0;
     // the candidates' badges (22 October 2026), for HR, the CEO and a Super Admin: a hiring manager keeps what they saw
     const badges = c.reads
@@ -407,6 +434,7 @@ export class ApplicationsService {
         upcomingInterviews: r.interviews.length,
         suggestion: (r.suggestion as HiringSuggestion | null) ?? null,
         candidate: r.candidateId ? (badges.get(r.candidateId) ?? null) : null,
+        verdict: verdicts.get(r.id) ?? null,
       }),
     );
     return {
@@ -432,15 +460,13 @@ export class ApplicationsService {
     return this.get(id, user);
   }
 
-  /** HR's notes on an applicant. */
-  async notes(id: string, notes: string | null | undefined, user: SessionUser): Promise<ApplicationView> {
-    const { a } = await this.managedRow(id, user);
-    const next = notes ?? null;
-    if (next !== a.notes) {
-      await this.prisma.jobApplication.update({ where: { id }, data: { notes: next } });
-      await this.audit.record({ userId: user.id, action: 'notes', entityType: APPLICATION_ENTITY, entityId: id, diff: { number: a.number, notes: { from: a.notes ? '(text)' : null, to: next ? '(text)' : null } } });
-    }
-    return this.get(id, user);
+  /**
+   * HR's notes on an applicant: gone (410) since they became screening comments (24 October 2026: the notes "moved into
+   * comments"); nothing else called it but the applicant page's notes box, retired with it. The notes kept stay read only.
+   */
+  async notes(id: string, user: SessionUser): Promise<never> {
+    await this.managedRow(id, user);
+    throw new GoneException(NOTES_GONE);
   }
 
   /** One step: the application changed if it is still at `stage`, its history and the audit log. */

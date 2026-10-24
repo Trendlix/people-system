@@ -29,6 +29,8 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   // switch refusing presses without a location, "Company switch + exceptions")
   check_in_location: 'Check-in location',
   check_in_location_rule: 'Check-ins without a location',
+  // the GPS lock (owner, 24 October 2026: "Yes, add a GPS lock too"): Office staff's check-ins held to the check-in locations
+  check_in_gps_lock: 'Check-ins locked to the check-in locations',
   company: 'Company',
   contract: 'Contract',
   contract_settings: 'Contract defaults',
@@ -52,6 +54,9 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   // a candidate's profile (22 October 2026: "how to make like a profile for each candidate to store history and prevent
   // duplication?"): merged, a merge undone, a pair dismissed, an application split off, the backfill of those from before
   candidate: 'Candidate',
+  // a screening comment on an application, a general CV or a candidate in general (owner, 24 October 2026: "is there a
+  // way to add screening comments?"): written, edited, deleted by a Super Admin; HR's notes of before moved into them
+  screening_comment: 'Screening comment',
   job_offer: 'Job offer',
   job_title: 'Job title',
   // KPIs (owner, 21 October 2026: "lets start with the KPI's First"): the monthly scorecards, the templates per job title,
@@ -133,7 +138,8 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   change: 'Changed the amount',
   change_installment: 'Changed the installments',
   // a check-in or check-out refused off the office network (owner, 20 October 2026), or without a location (the same
-  // day: "Company switch + exceptions"), its reason in the change; never the address, never a point
+  // day: "Company switch + exceptions"), or outside the check-in locations by GPS (24 October 2026: "Yes, add a GPS lock
+  // too"), its reason in the change; never the address, never a point
   check_in_refused: 'Check-in or check-out refused',
   close: 'Closed',
   // recruitment (owner, 22 October 2026): a vacancy put on hold, sent back by the CEO, filled at its headcount; an
@@ -350,6 +356,8 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   dismiss_match: 'Marked not the same person',
   split: 'Moved to a new candidate',
   backfill: 'Joined the earlier ones to their candidates',
+  // HR's notes of before moved into first screening comments (24 October 2026)
+  move_notes: 'Moved the earlier notes into comments',
   mark_onboarding_item: 'Changed an onboarding item',
   add_onboarding_item: 'Added an onboarding item',
 };

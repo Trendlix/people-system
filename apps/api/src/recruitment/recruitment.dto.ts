@@ -25,6 +25,8 @@ import {
   type Recommendation,
   CV_BATCH_LIMIT,
   DICTIONARY_SKILL_NAMES,
+  VERDICT_FILTERS,
+  type VerdictFilter,
   GENERAL_CV_SOURCES,
   GENERAL_CV_STATUSES,
   MOVE_STAGES,
@@ -169,6 +171,10 @@ export class ListApplicationsDto {
   /** `match` (the default): the screening match first; `cv`: the CV match first; `years`: the most experience first (24 October 2026). */
   @IsOptional() @IsIn(['match', 'cv', 'years'])
   sort?: 'match' | 'cv' | 'years';
+
+  /** Only those whose latest screening verdict is this; `none`: those without one yet (24 October 2026). */
+  @IsOptional() @IsIn(VERDICT_FILTERS, { message: 'Choose a verdict.' })
+  verdict?: VerdictFilter;
 }
 
 export class MoveApplicationDto {
@@ -423,6 +429,10 @@ export class ListGeneralCvsDto {
   /** Only those whose CV names this skill of the dictionary (skills-dictionary.ts; 24 October 2026). */
   @IsOptional() @IsIn(DICTIONARY_SKILL_NAMES, { message: 'Choose a skill from the list.' })
   skill?: string;
+
+  /** Only those whose latest screening verdict is this; `none`: those without one yet (24 October 2026). */
+  @IsOptional() @IsIn(VERDICT_FILTERS, { message: 'Choose a verdict.' })
+  verdict?: VerdictFilter;
 }
 
 export class MoveGeneralCvDto {

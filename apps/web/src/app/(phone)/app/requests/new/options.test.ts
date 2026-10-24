@@ -25,7 +25,7 @@ describe('what the phone pages offer to ask for', () => {
 
   // owner, 20 October 2026: "allow other users to request to add their home locations when working from home"; everyone may ask
   it('offers a home location to everyone with a profile, last', () => {
-    expect(askOptions({ employment: null, permissionMonth: null, asksRaise: false }).at(-1)).toMatchObject({ key: 'home', label: 'Home location', href: '/app/requests/new/home' });
+    expect(askOptions({ employment: null, permissionMonth: null, asksRaise: false }).at(-1)).toMatchObject({ key: 'home', label: 'Check-in location', href: '/app/requests/new/home' });
   });
 
   it('opens each form on the phone pages', () => {

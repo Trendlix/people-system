@@ -83,6 +83,12 @@ export const NOTIFICATION_KINDS = [
   // online interview meetings (owner, 24 October 2026: "make it both"; meetings.ts): a meetings connection that needs
   // connecting again, for its owner (the company's: the Super Admins)
   'meeting_connection',
+  // screening comments (owner, 24 October 2026: "HR + hiring manager & interviewers"; screening.ts): a colleague
+  // @mentioned in a comment they may read; the comment itself is never in it
+  'screening_mention',
+  // requested check-in locations (owner, 24 October 2026: "allow the HR to add an end date"; home-locations.ts): the
+  // employee and HR told 7 days before a home's, a remote site's or a client location's end that is a date
+  'check_in_location_ending',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
@@ -152,6 +158,8 @@ export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
   od_decided: 'Official duty',
   access_no_contract: 'Access',
   meeting_connection: 'Meetings',
+  screening_mention: 'Screening comment',
+  check_in_location_ending: 'Check-in location',
 };
 
 // ---------- the reminders and the person's switches ----------

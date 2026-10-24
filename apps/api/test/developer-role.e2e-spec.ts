@@ -1,5 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
-import { cvFacts, DEVELOPER_NO_FILES, DEVELOPER_READ_ONLY, HIDDEN } from '@trendlix/shared';
+import { cvFacts, DEVELOPER_NO_FILES, DEVELOPER_READ_ONLY, HIDDEN, type ScreeningComments } from '@trendlix/shared';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { todayInCairo } from '../src/common/date-only.js';
@@ -55,6 +55,9 @@ const OFFER_EMAIL = `offer.${RUN}@mail.test`;
 const CANDIDATE_NAME = `Cand Person ${RUN}`;
 const CANDIDATE_EMAIL = `cand.${RUN}@mail.test`;
 const CANDIDATE_MOBILE = `+2011${String(Date.now() % 100_000_000).padStart(8, '0')}`;
+// a screening comment on the candidate (owner, 24 October 2026: "is there a way to add screening comments?"): free text
+// about a person, "••••" for a developer
+const SCREENING_TEXT = `Invented screening note ${RUN}`;
 // what the rules read from that CV (owner, 24 October 2026: "CV years in list + more rules"): the jobs of their past,
 // their school, their certification and their city, invented and distinctive (the city's name in letters alone, as the
 // rules take a city with its country)
@@ -93,6 +96,7 @@ const PERSONAL = [
   CV_SCHOOL,
   CV_CERTIFICATION,
   CV_CITY,
+  SCREENING_TEXT,
 ];
 // the person's job and social insurance (owner, 22 October 2026: "why is the employment data can be viewed by developer
 // access"; "Hide per-person details", "and the social insurance"): invented and distinctive, so every answer about people
@@ -317,6 +321,8 @@ describe('The Developer role (e2e)', () => {
     candidateId = cv.candidateId!;
     generalCvNumber = cv.number;
     candidateCode = (await prisma.candidate.findUniqueOrThrow({ where: { id: candidateId }, select: { code: true } })).code;
+    // HR's screening comment on them, with a verdict, mentioning the CEO (24 October 2026)
+    await as('hr').post('/recruitment/comments', { candidateId, comment: SCREENING_TEXT, verdict: 'good_fit', mentions: [users.ceo] }).expect(201);
     assetCode = (await as('superAdmin').post('/assets', { name: `Camera ${RUN}`, group: 'kit', type: 'CAM', condition: 'good', values: { purchasePrice: PURCHASE } }).expect(201)).body.code;
 
     // the second person (after the payroll run, so it isn't theirs): hired 15 months ago on a 1-year fixed term, signed,
@@ -446,6 +452,9 @@ describe('The Developer role (e2e)', () => {
       '/recruitment/candidates',
       '/recruitment/candidates/matches',
       `/recruitment/candidates/${candidateId}`,
+      // screening comments (24 October 2026): the text "••••", the authors and those mentioned pseudonyms
+      `/recruitment/candidates/${candidateId}/comments`,
+      `/recruitment/general-cvs/${generalCvId}/comments`,
       // interviews, their meetings' links hidden (24 October 2026: online meetings made by the system)
       '/recruitment/interviews',
       '/recruitment/my-hiring',
@@ -695,6 +704,24 @@ describe('The Developer role (e2e)', () => {
     expect((await as('hr').get(`/recruitment/candidates/${candidateId}`).expect(200)).body.fullName).toBe(CANDIDATE_NAME);
   });
 
+  // screening comments (owner, 24 October 2026: "is there a way to add screening comments?")
+  it('a screening comment: its text "••••", its author and those mentioned pseudonyms, its verdict as it is; HR reads it all', async () => {
+    const seen = (await as('developer').get(`/recruitment/candidates/${candidateId}/comments`).expect(200)).body as ScreeningComments;
+    const general = seen.comments.find((c) => c.about.kind === 'general')!;
+    expect(general).toMatchObject({ comment: HIDDEN, verdict: 'good_fit', authorRole: 'hr' });
+    expect(general.author?.email).not.toBe(emails.hr);
+    expect(general.mentions).toHaveLength(1);
+    expect(general.mentions[0].email).not.toBe(emails.ceo);
+    expect(personalLeaks(seen, Object.values(emails))).toEqual([]);
+    expect(codeLeaks(seen, codes())).toEqual([]);
+    const hr = (await as('hr').get(`/recruitment/candidates/${candidateId}/comments`).expect(200)).body as ScreeningComments;
+    expect(hr.comments.find((c) => c.about.kind === 'general')).toMatchObject({ comment: SCREENING_TEXT, author: { email: emails.hr } });
+    // and writes none
+    const res = await as('developer').post('/recruitment/comments', { candidateId, comment: 'x' });
+    expect(res.status).toBe(403);
+    expect(res.body.message).toBe(DEVELOPER_READ_ONLY);
+  });
+
   // more read from a CV (owner, 24 October 2026: "CV years in list + more rules")
   it('what a CV says: the past jobs, school, certifications and city "••••"; the years and the dictionary’s skills as they are', async () => {
     const hr = (await as('hr').get(`/recruitment/general-cvs/${generalCvId}`).expect(200)).body;
@@ -871,6 +898,9 @@ describe('The Developer role (e2e)', () => {
       '/meetings/mine',
       '/meetings/choices',
       `/recruitment/applications/${unknown}/cv`,
+      // the CV window's PDF (24 October 2026: "open it in a popup window")
+      `/recruitment/applications/${unknown}/cv/preview`,
+      `/recruitment/general-cvs/${generalCvId}/cv/preview`,
     ]) {
       const res = await as('developer').get(path);
       expect(res.status, path).toBe(403);

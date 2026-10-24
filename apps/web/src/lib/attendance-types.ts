@@ -194,6 +194,8 @@ export interface AttendancePunchRow {
   pointFrom?: PunchPointFrom | null;
   /** Pressed within an approved official duty (23 October 2026: "Check in from anywhere"): its request; none otherwise. */
   odRequestId?: string;
+  /** Within a client location or the person's remote site (24 October 2026): "Client · Acme", "Remote site · Flat"; none otherwise. */
+  locationKind?: 'remote_site' | 'client';
 }
 
 /** An import the days shown came from (the run's status for those who see payroll only). */
@@ -291,6 +293,8 @@ export interface PunchView {
   pointFrom?: PunchPointFrom | null;
   /** Pressed within an approved official duty (23 October 2026: "Check in from anywhere"): its request; none otherwise. */
   odRequestId?: string;
+  /** Within a client location or their remote site (24 October 2026): "Client · Acme", "Remote site · Flat"; none otherwise. */
+  locationKind?: 'remote_site' | 'client';
 }
 
 /** The day as today's punches make it: the first check-in, the last check-out after it, the place, flags and hours. */
@@ -323,6 +327,12 @@ export interface CheckInTodayView {
    * exceptions"). Left out by an API from before it.
    */
   network?: { locked: boolean };
+  /**
+   * Whether their check-ins and check-outs need a check-in location by GPS (owner, 24 October 2026: "Yes, add a GPS lock
+   * too"): Office staff with the lock on, unless HR lets them check in from anywhere, a work from home day or an official
+   * duty. With the network's lock too, either passing is enough. Left out by an API from before it.
+   */
+  gps?: { locked: boolean };
   /**
    * The sub-locations they are linked to, by name (owner, 20 October 2026: "own sublocation shows the sub location
    * name"): their own check-in places, where a locked Office person may check in off the office network. Left out by an
@@ -377,8 +387,28 @@ export interface CheckInLocationView {
   isMain?: boolean;
   /** A sub-location's linked people the caller may see (a C-level person only the CEO and the Super Admin), by name; none on the main office. */
   people?: LinkedPersonView[];
+  /**
+   * The office's (the main office and its sub-locations) or a client location (owner, 24 October 2026: "all employees if a
+   * customer location"): everyone's, approved from a request (`requestId`), lasting until `validUntil` (none: no end)
+   * unless HR ended it (`endedAt`); `inForce`: it counts today. Left out by an API from before them (every one the office's).
+   */
+  kind?: 'office' | 'client';
+  validUntil?: string | null;
+  endedAt?: string | null;
+  inForce?: boolean;
+  requestId?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * The GPS lock (owner, 24 October 2026: "Yes, add a GPS lock too"), as GET /attendance/check-in-setup/gps-lock sends it:
+ * the switch, the accuracy past which a reading is too rough, and whether it is in force (on, with the main office set).
+ */
+export interface GpsLockView {
+  lock: boolean;
+  roughMetres: number;
+  inForce: boolean;
 }
 
 /** A person linked to a sub-location, as its card names them. */

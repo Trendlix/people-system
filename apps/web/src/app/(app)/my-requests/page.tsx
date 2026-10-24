@@ -26,7 +26,7 @@ import { ASK_CORRECTION_PATH } from '../attendance/corrections/corrections';
 import { loadMyCorrections } from '../attendance/corrections/data';
 import { CorrectionsTable } from '../attendance/corrections/ui';
 import { loadMyHomes } from '../home-locations/data';
-import { approvedHomeOf, asksHome, homeProgressText, MY_HOME_ID, NEW_HOME_PATH } from '../home-locations/home-locations';
+import { asksHome, homeProgressText, MY_HOME_ID, NEW_HOME_PATH, placesInForce } from '../home-locations/home-locations';
 import { HomeMap, MyHomesTable } from '../home-locations/ui';
 import { loadMyExitInterview } from '../offboarding/data';
 import { MY_EXIT_INTERVIEW_PATH } from '../offboarding/offboarding';
@@ -510,7 +510,9 @@ async function OfficialDuty() {
  * Their home location (owner, 20 October 2026: "allow other users to request to add their home locations when working
  * from home"; GET /me/home-locations): the home in force, on a small map, and their requests, newest first, each opening
  * its page; Home location to ask for one while none is being decided. Nothing from an API from before them, nor without
- * a profile of their own.
+ * a profile of their own. Since 24 October 2026 every check-in location (owner: "(Home Location - Remote Site - Client
+ * Location)"): the places in force of every type, each on a small map, their requests of every type, and "Request a
+ * check-in location" while a type is still free (one being decided at a time of each).
  */
 async function HomeLocation() {
   const user = await getCurrentUser();
@@ -519,36 +521,41 @@ async function HomeLocation() {
   const homes = await loadMyHomes();
   if (homes.kind === 'unavailable') return null;
   const list = homes.kind === 'ok' ? homes.value : [];
-  const home = approvedHomeOf(list);
+  const inForce = placesInForce(list);
   return (
     <section id={MY_HOME_ID} aria-labelledby={`${MY_HOME_ID}-heading`} className="mt-10 scroll-mt-6 space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 id={`${MY_HOME_ID}-heading`} className="text-lg font-semibold">
-            Home Location
+            Check-in Locations
           </h2>
           <p className="text-sm text-muted">
-            For the days you work from home. HR approves it, then the CEO; approved, a check-in at home shows as Home. Only you, HR and the CEO see
-            it, never your manager.
+            Places you check in from besides the office: your home, a remote site or a client&apos;s place. HR approves each, then the CEO; approved, a
+            check-in there shows with its name. Your home and remote sites are only for you, seen by you, HR and the CEO, never your manager; a client
+            location counts for every employee.
           </p>
         </div>
         {homes.kind === 'ok' && asksHome(list) && (
           <Link href={NEW_HOME_PATH} className="btn btn-secondary">
-            {home ? 'Ask for another home location' : 'Home location'}
+            Request a check-in location
           </Link>
         )}
       </div>
       {homes.kind !== 'ok' ? (
-        <div className="card px-6 py-6 text-sm text-muted">Your home location couldn&apos;t be loaded. Please try again in a moment.</div>
+        <div className="card px-6 py-6 text-sm text-muted">Your check-in locations couldn&apos;t be loaded. Please try again in a moment.</div>
       ) : list.length === 0 ? (
-        <div className="card px-6 py-10 text-center text-sm text-muted">You haven&apos;t asked for a home location. Ask with Home location.</div>
+        <div className="card px-6 py-10 text-center text-sm text-muted">You haven&apos;t asked for a check-in location. Ask with Request a check-in location.</div>
       ) : (
         <>
-          {home && (
-            <div className="card space-y-3 p-5">
-              <p className="text-sm font-semibold">{homeProgressText(home).text}</p>
-              <HomeMap request={home} own height="h-[180px]" />
-            </div>
+          {inForce.length > 0 && (
+            <ul className="grid gap-4 sm:grid-cols-2">
+              {inForce.map((place) => (
+                <li key={place.id} className="card space-y-3 p-5">
+                  <p className="text-sm font-semibold">{homeProgressText(place).text}</p>
+                  <HomeMap request={place} own height="h-[180px]" />
+                </li>
+              ))}
+            </ul>
           )}
           <MyHomesTable requests={list} note="newest first." />
         </>

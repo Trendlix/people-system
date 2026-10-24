@@ -21,6 +21,7 @@ export const PUNCH_SELECT = {
   accuracyMetres: true,
   flags: true,
   locationName: true,
+  locationKind: true,
   officeNetwork: true,
   latitude: true,
   longitude: true,
@@ -45,6 +46,11 @@ export interface PunchPlaceView {
    * left out of a press without one.
    */
   odRequestId?: string;
+  /**
+   * Within a client location or the person's remote site (24 October 2026): which, so the pages say "Client · Acme",
+   * "Remote site · Flat"; left out otherwise.
+   */
+  locationKind?: 'remote_site' | 'client';
 }
 
 /** The spot, for those who see it: none (null) when the press has no point and none can stand in for it. */
@@ -71,6 +77,7 @@ export function punchView(p: PunchRow, seesSpot: boolean, locations: FallbackLoc
     locationName: p.locationName,
     officeNetwork: p.officeNetwork,
     ...(p.odRequestId && { odRequestId: p.odRequestId }),
+    ...((p.locationKind === 'remote_site' || p.locationKind === 'client') && { locationKind: p.locationKind }),
   };
   if (!seesSpot) return view;
   const point = punchPoint(

@@ -14,6 +14,7 @@
 // Pure code: the API enforces these rules, the web shows them. Tested in apps/api/src/common/general-cvs.spec.ts.
 
 import type { CvListFacts, CvReadingView } from './cv-analysis.js';
+import type { ScreeningVerdict } from './screening.js';
 import { APPLICATION_SOURCE_LABELS, applyProblems, normalEmail, RECRUITMENT_LIMITS, webLinkOf, type ApplicationSource, type ApplicationStage, type RecruitmentUserRef, type VacancyStatus } from './recruitment.js';
 
 // ---------- sources and statuses ----------
@@ -327,6 +328,8 @@ export interface GeneralCvListItem {
   movedTo: { applicationId: string; reference: string; vacancyId: string; vacancyTitle: string } | null;
   /** Its CV's reading, as an application's on the lists (24 October 2026); null without a CV or from an API before it. */
   fromCv?: CvListFacts | null;
+  /** Its latest screening verdict (24 October 2026; screening.ts): the newest of its own comments with one; null: none yet. */
+  verdict?: ScreeningVerdict | null;
 }
 
 /** What the caller may do to a general CV now. */

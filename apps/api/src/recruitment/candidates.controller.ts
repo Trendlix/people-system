@@ -1,7 +1,7 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { Transform } from 'class-transformer';
-import { IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
-import { RECRUITMENT_LIMITS } from '@trendlix/shared';
+import { IsIn, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
+import { RECRUITMENT_LIMITS, VERDICT_FILTERS, type VerdictFilter } from '@trendlix/shared';
 import { CurrentUser, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { Trim } from '../common/transforms.js';
@@ -23,6 +23,10 @@ export class CandidatesQueryDto {
   /** Only those with at least these years in one of their applications or general CVs: typed, else the CV's (24 October 2026). */
   @IsOptional() @Transform(({ value }) => (value === '' || value === undefined ? undefined : Number(value))) @IsNumber() @Min(0) @Max(RECRUITMENT_LIMITS.yearsExperience)
   minYears?: number;
+
+  /** Only those whose latest screening verdict is this (across what the caller may read); `none`: none yet (24 October 2026). */
+  @IsOptional() @IsIn(VERDICT_FILTERS, { message: 'Choose a verdict.' })
+  verdict?: VerdictFilter;
 }
 
 export class MergeCandidatesDto {
@@ -35,7 +39,7 @@ export class MergeCandidatesDto {
 export class CandidatesController {
   constructor(private readonly candidates: CandidatesService) {}
 
-  /** ?q= (name, email, mobile, code, the CVs' text), ?minYears= (the years typed, else the CV's). */
+  /** ?q= (name, email, mobile, code, the CVs' text), ?minYears= (the years typed, else the CV's), ?verdict= (the latest screening verdict). */
   @Roles(...READS)
   @Get()
   list(@Query() query: CandidatesQueryDto, @CurrentUser() user: SessionUser) {

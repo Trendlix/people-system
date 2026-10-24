@@ -21,6 +21,7 @@ import type { RehireEligibility } from './offboarding.js';
 import type { GeneralCvSource, GeneralCvStatus } from './general-cvs.js';
 import type { CvListFacts } from './cv-analysis.js';
 import type { FeedbackView, InterviewView } from './recruitment-hiring.js';
+import type { ScreeningVerdict } from './screening.js';
 
 // ---------- the code ----------
 
@@ -480,6 +481,11 @@ export interface CandidateListItem extends CandidateSummary {
    */
   yearsExperience?: number | null;
   fromCv?: CvListFacts | null;
+  /**
+   * Their latest screening verdict (owner, 24 October 2026: "Yes: Good fit / Maybe / Not a fit"; screening.ts): the newest
+   * comment with one of all those the caller may see about them; null: none yet.
+   */
+  verdict?: ScreeningVerdict | null;
 }
 
 /** An application on a profile. */
@@ -552,10 +558,10 @@ export interface CandidateMergeView {
   canUndo: boolean;
 }
 
-/** One line of a profile's timeline. */
+/** One line of a profile's timeline (a screening comment's since 24 October 2026). */
 export interface CandidateTimelineItem {
   at: string;
-  kind: 'application' | 'general_cv' | 'interview' | 'offer' | 'merge';
+  kind: 'application' | 'general_cv' | 'interview' | 'offer' | 'merge' | 'comment';
   text: string;
   /** The record's page on the site; null when none. */
   href: string | null;
@@ -581,6 +587,8 @@ export interface CandidateView extends CandidateRef {
   matches: PossibleMatchView[];
   merges: CandidateMergeView[];
   timeline: CandidateTimelineItem[];
+  /** Their latest screening verdict across every comment the caller may see (24 October 2026); null: none yet. */
+  verdict?: ScreeningVerdict | null;
   can: { merge: boolean; dismiss: boolean; split: boolean; undoMerge: boolean };
 }
 

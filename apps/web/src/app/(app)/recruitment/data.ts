@@ -16,6 +16,7 @@ import type {
   PublicGeneralForm,
   RecruitmentAnalytics,
   RecruitmentSettingsView,
+  ScreeningComments,
   VacancyBoard,
   VacancyListItem,
   VacancyView,
@@ -89,6 +90,16 @@ export const loadCandidates = (f: CandidatesQuery): Promise<Loaded<CandidateList
 export const loadCandidate = (id: string): Promise<Loaded<CandidateView>> => loadJson(`/recruitment/candidates/${encodeURIComponent(id)}`);
 
 export const loadPossibleMatches = (): Promise<Loaded<PossibleMatches>> => loadJson('/recruitment/candidates/matches');
+
+// Screening comments (owner, 24 October 2026: "is there a way to add screening comments?"; "HR + hiring manager &
+// interviewers"): a candidate's (HR, the CEO and a Super Admin), an applicant's (also their hiring manager and
+// interviewers, that application's only) and a general CV's, each with the CVs the caller may open in the CV window.
+
+export const loadCandidateComments = (id: string): Promise<Loaded<ScreeningComments>> => loadJson(`/recruitment/candidates/${encodeURIComponent(id)}/comments`);
+
+export const loadApplicantComments = (id: string): Promise<Loaded<ScreeningComments>> => loadJson(`/recruitment/applications/${encodeURIComponent(id)}/comments`);
+
+export const loadGeneralCvComments = (id: string): Promise<Loaded<ScreeningComments>> => loadJson(`/recruitment/general-cvs/${encodeURIComponent(id)}/comments`);
 
 /** What a page says in place of what it couldn't load. */
 export function recruitmentNotLoaded(loaded: Exclude<Loaded<unknown>, { kind: 'ok' }>, what: string): string {

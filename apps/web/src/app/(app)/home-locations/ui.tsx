@@ -4,13 +4,27 @@ import { CLevelBadge } from '@/components/c-level-badge';
 import { LocationsMap } from '@/components/map/maps';
 import { formatDateTime } from '@/lib/format';
 import type { HomeLocationView } from '@/lib/home-location-types';
-import { homeCircle, homeLocationHref, homeMapLabel, homeProgressText, homesLabel, homeStepText, homeStepTone, homeWhatText } from './home-locations';
+import {
+  homeCircle,
+  homeEnded,
+  homeLocationHref,
+  homeMapLabel,
+  homeProgressText,
+  homesLabel,
+  homeStepText,
+  homeStepTone,
+  homeValidityText,
+  homeWhatText,
+  overlapText,
+} from './home-locations';
 
 // Parts of a home location request (owner, 20 October 2026: "allow other users to request to add their home locations
 // when working from home"), shown on its page, on My Requests, on Approvals, on Check-in Setup and on a profile: its
 // status, where it stands with a rejection's comment, its point on a small map with the radius's circle (only while it is
 // kept: the point is deleted once rejected, withdrawn, replaced or removed), its log of every step, and the employee's
-// table of theirs. No hooks: the map is the shared one (components/map), loaded in the browser.
+// table of theirs. No hooks: the map is the shared one (components/map), loaded in the browser. Requested check-in
+// locations (owner, 24 October 2026: "(Home Location - Remote Site - Client Location)"): an approved one's end shown with
+// its status (Ended once it no longer counts), and the overlaps HR and the CEO are warned of.
 
 const STATUS_BADGE: Record<HomeStatus, string> = {
   with_hr: 'bg-warn-soft text-warn',
@@ -22,9 +36,37 @@ const STATUS_BADGE: Record<HomeStatus, string> = {
   removed: 'bg-line-soft text-muted',
 };
 
-/** With HR, With the CEO, Approved, Rejected, Withdrawn, Replaced or Removed; a C-level person's with HR: With the CEO. */
-export function HomeStatusBadge({ status, confidential }: { status: HomeStatus; confidential?: boolean }) {
+/**
+ * With HR, With the CEO, Approved, Rejected, Withdrawn, Replaced or Removed; a C-level person's with HR: With the CEO; an
+ * approved one that no longer counts (past its end, 24 October 2026): Ended.
+ */
+export function HomeStatusBadge({ status, confidential, inForce }: { status: HomeStatus; confidential?: boolean; inForce?: boolean }) {
+  if (homeEnded({ status, inForce })) return <span className="badge bg-line-soft text-muted">Ended</span>;
   return <span className={`badge ${STATUS_BADGE[status] ?? 'bg-line-soft text-muted'}`}>{homeStatusLabel(status, confidential)}</span>;
+}
+
+/** How long an approved one lasts, in a line ("Until the contract ends (30/06/2027)"); nothing before HR set it. */
+export function HomeValidity({ request }: { request: HomeLocationView }) {
+  const text = homeValidityText(request);
+  if (!text) return null;
+  return <span className="block text-xs text-muted">{text}</span>;
+}
+
+/** The check-in places its circle overlaps, for HR and the CEO: a warning, never a block (24 October 2026). */
+export function HomeOverlaps({ request }: { request: Pick<HomeLocationView, 'overlaps'> }) {
+  const overlaps = request.overlaps ?? [];
+  if (!overlaps.length) return null;
+  return (
+    <div className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn" role="note">
+      <p className="font-semibold">Overlaps another check-in place</p>
+      <ul className="mt-1 list-disc space-y-0.5 pl-5">
+        {overlaps.map((o, i) => (
+          <li key={`${o.kind}-${o.label ?? i}`}>{overlapText(o)}</li>
+        ))}
+      </ul>
+      <p className="mt-1">A warning only: it can still be approved. A check-in within both shows as the place read first: the office, then its sub-locations and the client locations, then the person’s own.</p>
+    </div>
+  );
 }
 
 /** Where it stands, with the comment of a rejection. */
@@ -77,7 +119,7 @@ export function MyHomesTable({ requests, note }: { requests: readonly HomeLocati
       <table className="table">
         <thead>
           <tr>
-            <th scope="col">Home</th>
+            <th scope="col">Place</th>
             <th scope="col">Where It Stands</th>
             <th scope="col">Status</th>
             <th scope="col">
@@ -94,14 +136,15 @@ export function MyHomesTable({ requests, note }: { requests: readonly HomeLocati
               </td>
               <td className="min-w-48">
                 <HomeProgress request={r} />
+                {r.status === 'approved' && <HomeValidity request={r} />}
               </td>
               <td>
-                <HomeStatusBadge status={r.status} confidential={r.confidential} />
+                <HomeStatusBadge status={r.status} confidential={r.confidential} inForce={r.inForce} />
                 {r.confidential && <CLevelBadge title="A C-level person: the CEO decides it." className="mt-1" />}
               </td>
               <td className="text-right">
                 <Link href={homeLocationHref(r.id)} className="btn btn-secondary min-h-9 px-3 no-underline">
-                  Open<span className="sr-only"> the home location request sent {formatDateTime(r.createdAt)}</span>
+                  Open<span className="sr-only"> the request sent {formatDateTime(r.createdAt)}</span>
                 </Link>
               </td>
             </tr>

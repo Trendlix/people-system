@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import {
   ALWAYS_ON_REMINDERS,
   CHECK_IN_REMINDER_EVERY_MINUTES,
@@ -25,12 +25,20 @@ import {
 // someone, a check-in reminder)"; packages/shared notifications.ts): the API keeps and sends them, the web shows them.
 
 const MIGRATION = new URL('../../prisma/migrations/20261020140000_notifications/migration.sql', import.meta.url);
+const MIGRATIONS = new URL('../../prisma/migrations/', import.meta.url);
 /**
- * The meeting providers' migration (24 October 2026), which gave the notifications meeting_connection after
- * access_no_contract (the no-contract-entered migration's, and the official duty, access and recruitment Phase 2 kinds
- * before them): the kinds as they are now.
+ * The kinds as they are now: those of the newest migration that defines the check, found by itself (24 October 2026:
+ * the screening comments' migration gave the notifications screening_mention after meeting_connection, and another made
+ * the same day may come after it), so a migration adding a kind needn't name itself here. Each such migration lists
+ * every kind of the one before it, then its own.
  */
-const KINDS_NOW = new URL('../../prisma/migrations/20261024110000_meeting_providers/migration.sql', import.meta.url);
+const KINDS_NOW = new URL(
+  `${readdirSync(MIGRATIONS)
+    .filter((m) => /^\d{14}_/.test(m) && readFileSync(new URL(`${m}/migration.sql`, MIGRATIONS), 'utf8').includes('"notifications_kind_check" CHECK'))
+    .sort()
+    .at(-1)}/migration.sql`,
+  MIGRATIONS,
+);
 
 describe('notifications (shared)', () => {
   it('has the kinds the database allows, each labelled', () => {
@@ -56,6 +64,23 @@ describe('notifications (shared)', () => {
     expect([CHECK_IN_REMINDER_EVERY_MINUTES, CHECK_IN_REMINDER_FOR_MINUTES, CHECK_IN_REMINDER_MAX, REMINDER_TICK_MINUTES]).toEqual([10, 120, 12, 1]);
     expect(PUSH_PLATFORMS).toEqual(['android', 'ios']);
     expect(PUSH_CHANNEL.id).toBe('general');
+  });
+
+  it('keeps every kind each time the check is defined again: each migration lists the one before it’s, then its own', () => {
+    const kindsOf = (sql: string) => [...(/"notifications_kind_check" CHECK \("kind" IN \(([^)]*)\)\)/.exec(sql)?.[1] ?? '').matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+    const defining = readdirSync(MIGRATIONS)
+      .filter((m) => /^\d{14}_/.test(m))
+      .sort()
+      .map((m) => ({ m, kinds: kindsOf(readFileSync(new URL(`${m}/migration.sql`, MIGRATIONS), 'utf8')) }))
+      .filter((x) => x.kinds.length > 0);
+    expect(defining.length).toBeGreaterThan(1);
+    for (let i = 1; i < defining.length; i++) {
+      const before = defining[i - 1].kinds;
+      expect(defining[i].kinds.slice(0, before.length), defining[i].m).toEqual(before);
+    }
+    // the screening comments' mention (24 October 2026), right after the meetings connection
+    const screening = defining.find((x) => x.m.endsWith('_screening_comments'))!;
+    expect(screening.kinds.slice(-2)).toEqual(['meeting_connection', 'screening_mention']);
   });
 
   it('opens what waits for the person under To approve, and their own news under their requests', () => {
