@@ -21,7 +21,7 @@
 // Pure code: the API enforces these rules, the web shows them. Tested in apps/api/src/common/recruitment.spec.ts.
 
 import type { EmploymentType, WorkArrangement } from './index.js';
-import type { CvReadingView } from './cv-analysis.js';
+import type { CvListFacts, CvReadingView } from './cv-analysis.js';
 import type { GeneralCvSource } from './general-cvs.js';
 import type { FeedbackView, InterviewView, RecruitmentViewer, SuggestionView } from './recruitment-hiring.js';
 import { phoneOk, phoneTidy } from './phone.js';
@@ -828,6 +828,12 @@ export interface ApplicationListItem {
    * Super Admin only; null (or left out by an API from before it) for anyone else, or before the backfill reached it.
    */
   candidate?: CandidateBadge | null;
+  /**
+   * Its CV's reading (24 October 2026: "why isn't the experience pulled off the CV?"): the Experience column's estimate
+   * when no years were typed ("≈ 4 y · CV"), "Reading…" while pending, and the Latest role column; null without a CV
+   * (or left out by an API from before it).
+   */
+  fromCv?: CvListFacts | null;
 }
 
 /** An answer as the applicant's page shows it, with how it did. */

@@ -597,6 +597,16 @@ export const DEVELOPER_HIDDEN_TEXT_FIELDS: ReadonlySet<string> = new Set([
   // a candidate's CV's file name, often their own name (candidate profiles, 22 October 2026), and why they left
   'cvFileName',
   'endReasonLabel',
+  // more read from a CV (owner, 24 October 2026: "CV years in list + more rules"): the jobs of the person's past (each
+  // title and company, the latest's on the lists too), their schools and universities, their certifications (free text);
+  // their city is `city` above, an education's degree and graduation year are hidden as nothing (below). The skills
+  // found, from the dictionary, stay
+  'latestTitle',
+  'latestCompany',
+  'pastTitle',
+  'pastCompany',
+  'institution',
+  'certifications',
   // what was read from a paper of the employee file (an ID card, the social insurance print), and a search's quote of it
   // (22 October 2026: "and the social insurance")
   'ocrText',
@@ -645,6 +655,12 @@ export const DEVELOPER_HIDDEN_NULL_FIELDS: ReadonlySet<string> = new Set([
   // their national ID card's issue and expiry dates (found 23 October 2026, with the contracts' dates): the card's own
   'issueDate',
   'expiryDate',
+  // an online interview's meeting (owner, 24 October 2026: "automatically generate meeting links"): its join link (a
+  // developer could join an interview with it) and its id at Google, Microsoft or Zoom (a Zoom meeting's id joins it
+  // too), in the interviews' answers and the audit log's entries
+  'joinUrl',
+  'meetingUrl',
+  'meetingId',
 ]);
 
 /**
@@ -660,6 +676,9 @@ export const DEVELOPER_HIDDEN_NULL_FIELDS_ON: Readonly<Record<string, RegExp>> =
   longitude: /^\/api\/(?!attendance\/check-in-setup\/locations(\/|$))/,
   accuracyMetres: /^\/api\/(?!attendance\/check-in-setup\/locations(\/|$))/,
   label: /^\/api\/(me\/)?home-locations(\/|$)/,
+  // an interview's place (24 October 2026): an online one's is its meeting's join link, pasted or made by the system,
+  // so null on every recruitment page (an applicant's interviews, Interviews, My Hiring)
+  location: /^\/api\/recruitment(\/|$)/,
 };
 
 /** Fields that hold a person's name, wherever they are: their pseudonym. */
@@ -707,6 +726,10 @@ export const DEVELOPER_EMAIL_FIELDS: ReadonlySet<string> = new Set([
   'fromAddress',
   'replyTo',
   'sentTo',
+  // the meetings connections' accounts in their audit entries (24 October 2026): the Google account, the host mailbox or
+  // Zoom user (the settings themselves are never a developer's: @NotForDevelopers)
+  'accountEmail',
+  'hostEmail',
 ]);
 
 /**

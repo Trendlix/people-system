@@ -83,8 +83,8 @@ describe('the Applicants page’s tabs', () => {
 
 describe('the general CVs’ list', () => {
   it('reads its filters, dropping what isn’t one', () => {
-    expect(readGeneralQuery({ status: 'reviewed', source: 'whatsapp', departmentId: AREA, q: ' mona ' })).toEqual({ status: 'reviewed', source: 'whatsapp', departmentId: AREA, q: 'mona' });
-    expect(readGeneralQuery({ status: 'deleted', source: 'tiktok', departmentId: 'x' })).toEqual({ status: '', source: '', departmentId: '', q: '' });
+    expect(readGeneralQuery({ status: 'reviewed', source: 'whatsapp', departmentId: AREA, q: ' mona ' })).toEqual({ status: 'reviewed', source: 'whatsapp', departmentId: AREA, q: 'mona', minYears: null, skill: '' });
+    expect(readGeneralQuery({ status: 'deleted', source: 'tiktok', departmentId: 'x' })).toEqual({ status: '', source: '', departmentId: '', q: '', minYears: null, skill: '' });
     expect(readGeneralQuery({ status: 'all' }).status).toBe('all');
   });
 

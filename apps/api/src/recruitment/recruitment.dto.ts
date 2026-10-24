@@ -24,6 +24,7 @@ import {
   type InterviewKind,
   type Recommendation,
   CV_BATCH_LIMIT,
+  DICTIONARY_SKILL_NAMES,
   GENERAL_CV_SOURCES,
   GENERAL_CV_STATUSES,
   MOVE_STAGES,
@@ -143,12 +144,16 @@ export class ListApplicationsDto {
   @IsOptional() @Transform(({ value }) => (value === '' || value === undefined ? undefined : Number(value))) @IsInt() @Min(0) @Max(100)
   minMatch?: number;
 
-  /** Only those with at least these years of experience. */
+  /** Only those with at least these years of experience: the years typed, else the CV's (24 October 2026). */
   @IsOptional() @Transform(({ value }) => (value === '' || value === undefined ? undefined : Number(value))) @IsNumber() @Min(0) @Max(L.yearsExperience)
   minYears?: number;
 
   @IsOptional() @IsIn(APPLICATION_SOURCES)
   source?: ApplicationSource;
+
+  /** Only those whose CV names this skill of the dictionary (skills-dictionary.ts; 24 October 2026). */
+  @IsOptional() @IsIn(DICTIONARY_SKILL_NAMES, { message: 'Choose a skill from the list.' })
+  skill?: string;
 
   /** `hide` (the default): not those filtered out; `only`: only them; `all`. */
   @IsOptional() @IsIn(['hide', 'only', 'all'])
@@ -161,9 +166,9 @@ export class ListApplicationsDto {
   @IsOptional() @Transform(({ value }) => (value === '' || value === undefined ? undefined : Number(value))) @IsInt() @Min(0) @Max(100)
   minCvMatch?: number;
 
-  /** `match` (the default): the screening match first; `cv`: the CV match first. */
-  @IsOptional() @IsIn(['match', 'cv'])
-  sort?: 'match' | 'cv';
+  /** `match` (the default): the screening match first; `cv`: the CV match first; `years`: the most experience first (24 October 2026). */
+  @IsOptional() @IsIn(['match', 'cv', 'years'])
+  sort?: 'match' | 'cv' | 'years';
 }
 
 export class MoveApplicationDto {
@@ -391,6 +396,14 @@ export class ListGeneralCvsDto {
 
   @IsOptional() @Trim() @IsString() @MaxLength(100)
   q?: string;
+
+  /** Only those with at least these years of experience: the years typed, else the CV's (24 October 2026). */
+  @IsOptional() @Transform(({ value }) => (value === '' || value === undefined ? undefined : Number(value))) @IsNumber() @Min(0) @Max(L.yearsExperience)
+  minYears?: number;
+
+  /** Only those whose CV names this skill of the dictionary (skills-dictionary.ts; 24 October 2026). */
+  @IsOptional() @IsIn(DICTIONARY_SKILL_NAMES, { message: 'Choose a skill from the list.' })
+  skill?: string;
 }
 
 export class MoveGeneralCvDto {

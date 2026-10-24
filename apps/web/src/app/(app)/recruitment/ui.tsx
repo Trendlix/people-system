@@ -1,12 +1,25 @@
-import { APPLICATION_STAGE_LABELS, applicationSourceText, VACANCY_STATUS_LABELS, type ApplicationListItem, type ApplicationStage, type CandidateBadge, type VacancyStatus } from '@trendlix/shared';
+import {
+  APPLICATION_STAGE_LABELS,
+  applicationSourceText,
+  VACANCY_STATUS_LABELS,
+  type ApplicationListItem,
+  type ApplicationStage,
+  type CandidateBadge,
+  type CvListFacts,
+  type VacancyStatus,
+} from '@trendlix/shared';
 import Link from 'next/link';
+import { Select } from '@/components/select';
 import { formatDate } from '@/lib/format';
 import { candidateBadges } from './candidates';
-import { applicantHref, matchText, STAGE_STYLE, VACANCY_STATUS_STYLE } from './recruitment';
+import { experienceCell, latestRoleOf } from './cv-reading';
+import { applicantHref, matchText, minYearsOptions, skillGroups, STAGE_STYLE, VACANCY_STATUS_STYLE } from './recruitment';
 import { joinShown } from '@/lib/hidden';
 
 // Recruitment's pieces (owner, 22 October 2026: "where will we include the ATS?"): the badges of a vacancy's status and an
-// applicant's stage, and the applicants' table.
+// applicant's stage, and the applicants' table. Since 24 October 2026 (owner: "why isn't the experience pulled off the
+// CV?"; "CV years in list + more rules"): the Experience cell with the CV's estimate, the Latest role cell, and the
+// Min. experience and Skill filters the lists share.
 
 export function VacancyStatusBadge({ status }: { status: VacancyStatus }) {
   return <span className={`badge ${VACANCY_STATUS_STYLE[status]}`}>{VACANCY_STATUS_LABELS[status]}</span>;
@@ -37,8 +50,86 @@ export function CandidateBadges({ candidate }: { candidate: CandidateBadge | nul
 }
 
 /**
+ * An Experience cell (24 October 2026): the years typed, else the CV's estimate muted with "From the dates in the CV"
+ * on it ("≈ 4 y · CV"), else "—" or "Reading…".
+ */
+export function ExperienceCell({ typed, fromCv }: { typed: number | null | undefined; fromCv: CvListFacts | null | undefined }) {
+  const cell = experienceCell(typed, fromCv);
+  return (
+    <td className="text-right whitespace-nowrap tabular-nums">
+      {cell.fromCv ? (
+        <span className="text-sm text-muted" title={cell.title ?? undefined}>
+          {cell.text}
+        </span>
+      ) : (
+        cell.text
+      )}
+    </td>
+  );
+}
+
+/** A Latest role cell (24 October 2026): the CV's latest title and company, cut short with the whole on hover. */
+export function LatestRoleCell({ fromCv }: { fromCv: CvListFacts | null | undefined }) {
+  const role = latestRoleOf(fromCv);
+  return (
+    <td className="text-sm">
+      {role ? (
+        <span className="block max-w-56 truncate" title={role} dir="auto">
+          {role}
+        </span>
+      ) : (
+        <span className="text-muted">—</span>
+      )}
+    </td>
+  );
+}
+
+/** The Min. experience filter (24 October 2026): any, 1+ … 10+ years, the years typed else the CV's estimate. */
+export function MinYearsSelect({ id, value }: { id: string; value: number | null }) {
+  return (
+    <div>
+      <label htmlFor={id} className="label">
+        Min. experience
+      </label>
+      <Select id={id} name="minYears" defaultValue={value === null ? '' : String(value)} className="input min-w-36">
+        <option value="">Any</option>
+        {minYearsOptions(value).map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </Select>
+    </div>
+  );
+}
+
+/** The Skill filter (24 October 2026): a skill of the dictionary (skills-dictionary.ts) the CV names, by group. */
+export function SkillSelect({ id, value }: { id: string; value: string }) {
+  return (
+    <div>
+      <label htmlFor={id} className="label">
+        Skill
+      </label>
+      <Select id={id} name="skill" defaultValue={value} className="input min-w-44">
+        <option value="">Any</option>
+        {skillGroups().map((g) => (
+          <optgroup key={g.label} label={g.label}>
+            {g.skills.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </optgroup>
+        ))}
+      </Select>
+    </div>
+  );
+}
+
+/**
  * Applicants in a table: who, their match, stage, experience, source and when they applied; `withVacancy` on All
- * Applicants. `bare`: inside a card already (the Applicants page's vacancy groups).
+ * Applicants. `bare`: inside a card already (the Applicants page's vacancy groups). The Latest role column (24 October
+ * 2026) where the Vacancy column isn't: a vacancy's own applicants (its group, its page), so the table is no wider.
  */
 export function ApplicantsTable({ rows, withVacancy, bare = false }: { rows: ApplicationListItem[]; withVacancy: boolean; bare?: boolean }) {
   return (
@@ -47,7 +138,7 @@ export function ApplicantsTable({ rows, withVacancy, bare = false }: { rows: App
         <thead>
           <tr>
             <th>Applicant</th>
-            {withVacancy && <th>Vacancy</th>}
+            {withVacancy ? <th>Vacancy</th> : <th>Latest role</th>}
             <th className="text-right">Match</th>
             <th className="text-right">CV match</th>
             <th>Stage</th>
@@ -68,13 +159,13 @@ export function ApplicantsTable({ rows, withVacancy, bare = false }: { rows: App
                 </span>
                 <CandidateBadges candidate={a.candidate} />
               </td>
-              {withVacancy && <td className="text-sm">{a.vacancy.title}</td>}
+              {withVacancy ? <td className="text-sm">{a.vacancy.title}</td> : <LatestRoleCell fromCv={a.fromCv} />}
               <td className="text-right tabular-nums">{matchText(a.matchPercent)}</td>
               <td className="text-right tabular-nums">{matchText(a.cvMatchPercent)}</td>
               <td>
                 <StageBadge stage={a.stage} filteredOut={a.filteredOut} />
               </td>
-              <td className="text-right tabular-nums">{a.yearsExperience === null ? '—' : `${a.yearsExperience} y`}</td>
+              <ExperienceCell typed={a.yearsExperience} fromCv={a.fromCv} />
               <td className="text-sm">{applicationSourceText(a)}</td>
               <td className="text-sm whitespace-nowrap">{formatDate(a.appliedAt)}</td>
             </tr>

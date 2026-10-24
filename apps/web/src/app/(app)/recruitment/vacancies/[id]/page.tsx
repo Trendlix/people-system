@@ -107,6 +107,10 @@ async function Applicants({ v, searchParams }: { v: VacancyView; searchParams: P
         <Link href={applicantsHref(base, { ...q, sort: q.sort === 'cv' ? '' : 'cv' })} className={`${chip} ${q.sort === 'cv' ? ACTIVE : IDLE}`} aria-pressed={q.sort === 'cv'}>
           Best CV match first
         </Link>
+        {/* the years typed, else the CV's estimate (owner, 24 October 2026: "CV years in list + more rules") */}
+        <Link href={applicantsHref(base, { ...q, sort: q.sort === 'years' ? '' : 'years' })} className={`${chip} ${q.sort === 'years' ? ACTIVE : IDLE}`} aria-pressed={q.sort === 'years'}>
+          Most experience first
+        </Link>
       </nav>
       {/* where they came from (owner, 22 October 2026: "what came out of the posted jobs"): each count lists them */}
       {sourceLine(v.sourceCounts ?? {}).length > 0 && (

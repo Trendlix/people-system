@@ -1,7 +1,7 @@
 import { PDFDocument, StandardFonts } from '@cantoo/pdf-lib';
 import type { INestApplication } from '@nestjs/common';
-import { CLIENT_IP_AT_HEADER, CLIENT_IP_HEADER, CLIENT_IP_SIGNATURE_HEADER, careersIpToken } from '@trendlix/shared';
-import type { ApplicationListItem, ApplicationView, CvSaveResult, CvTextView, CvUploadView, GeneralCvListItem, GeneralCvView, Role, VacancyView } from '@trendlix/shared';
+import { CLIENT_IP_AT_HEADER, CLIENT_IP_HEADER, CLIENT_IP_SIGNATURE_HEADER, CV_FACTS_VERSION, careersIpToken, HIDDEN } from '@trendlix/shared';
+import type { ApplicationListItem, ApplicationView, CandidateListItem, CvSaveResult, CvTextView, CvUploadView, GeneralCvListItem, GeneralCvView, Role, VacancyView } from '@trendlix/shared';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import request from 'supertest';
@@ -10,6 +10,7 @@ import { signatureOf } from '../src/attendance/signed-ip.js';
 import { addDays, todayInCairo } from '../src/common/date-only.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { CvReadingsService } from '../src/recruitment/cv-readings.service.js';
+import { RecruitmentSchedulerService } from '../src/recruitment/recruitment-scheduler.service.js';
 import { createApp, createUser, signIn } from './helpers.js';
 
 // Every CV read and analysed in the background (owner, 22 October 2026: "make the OCR egine reads the CV and analyse it.
@@ -17,7 +18,11 @@ import { createApp, createUser, signIn } from './helpers.js';
 // (a stand-in here), in English and again in Arabic when it came out mostly Arabic; a failing OCR service is tried
 // again later, three times in all. The rules then find the years, education, languages and the vacancy's key skills
 // (the CV match %), editable after people applied and every application scored again. The CV's text and contacts are
-// never a developer's. Every person and CV is invented; the test deletes what it made.
+// never a developer's. Since 24 October 2026 ("why isn't the experience pulled off the CV? is the pulled data all what
+// can be pulled from the uploaded cv?"; "CV years in list + more rules"): the work history and latest role, education
+// details, skills, certifications and city too, masked for a developer; the lists' years fall back to the CV's, and
+// filter by them; the CVs read before have their facts worked out again from their text, never read again. Every
+// person and CV is invented; the test deletes what it made.
 
 const RUN = `cv${Date.now().toString(36)}`;
 const TODAY = todayInCairo();
@@ -45,6 +50,7 @@ const scan = (mark: string) => Buffer.from(`%PDF-1.4\n% MARK:${mark}\n%%EOF\n`);
 const EDITOR_CV = [
   'Mona Reader',
   `mona.reader.${RUN}@mail.test  +20 100 222 3344`,
+  'Nasr City, Cairo',
   'Experience',
   'Senior Video Editor, Bright Studio, Jan 2022 - Present',
   'Video Editor, Nile Media, March 2019 - Dec 2021',
@@ -52,6 +58,8 @@ const EDITOR_CV = [
   'Bachelor of Fine Arts, Helwan University, 2014 - 2018',
   'Skills',
   `Adobe Premiere Pro, After-Effects, Zanzibarlogic${RUN}`,
+  'Certifications',
+  'Google Ads Search Certification, 2021',
   'Languages',
   'English, Arabic',
 ];
@@ -274,11 +282,14 @@ describe('CV reading and analysis (e2e)', () => {
     expect(seen.cvReading).toMatchObject({ status: 'read', education: 'bachelor' });
   });
 
+  let sara: string;
+
   it('reads HR’s general CVs too, searchable by their text', async () => {
     let req = api().post('/api/recruitment/general-cvs').set('Cookie', sessions.hr);
     const fields = { fullName: `Sara General ${RUN}`, email: email('sara'), mobile: '+20 100 999 8877', departmentId, consent: 'true', source: 'email' };
     for (const [k, v] of Object.entries(fields)) req = req.field(k, v);
-    const added = (await req.attach('cv', await pdfOf(['Sara General', 'Experience', 'Designer 2018 - 2020', `Figmaquest${RUN}`, 'Master of Design']), 'sara.pdf').expect(201)).body as GeneralCvView;
+    const added = (await req.attach('cv', await pdfOf(['Sara General', 'Experience', 'Designer 2018 - 2020', `Figmaquest${RUN}`, 'Figma, Photoshop', 'Master of Design']), 'sara.pdf').expect(201)).body as GeneralCvView;
+    sara = added.id;
     expect(added.cvReading).toMatchObject({ status: 'pending' });
     await drain();
     const after = (await get('hr', `/recruitment/general-cvs/${added.id}`).expect(200)).body as GeneralCvView;
@@ -308,6 +319,146 @@ describe('CV reading and analysis (e2e)', () => {
     expect(await readingOf({ applicationId: app2.id })).toMatchObject({ status: 'read', method: 'ocr_en' });
     await drain();
     expect(ocr.calls.length).toBe(callsBefore);
+  });
+
+  // ---------- more from each CV (24 October 2026) ----------
+
+  it('finds the work history, the latest role, the education details, the skills, the certifications and the city', async () => {
+    const a = (await get('hr', `/recruitment/applications/${mona}`).expect(200)).body as ApplicationView;
+    expect(a.cvReading).toMatchObject({
+      latestTitle: 'Senior Video Editor',
+      latestCompany: 'Bright Studio',
+      workHistory: [
+        { pastTitle: 'Senior Video Editor', pastCompany: 'Bright Studio', from: '2022-01', to: null, current: true },
+        { pastTitle: 'Video Editor', pastCompany: 'Nile Media', from: '2019-03', to: '2021-12', current: false },
+      ],
+      educationDetails: [{ institution: 'Helwan University', degree: 'Bachelor of Fine Arts', graduationYear: 2018 }],
+      cvSkills: ['Premiere Pro', 'After Effects', 'Google Ads'],
+      certifications: ['Google Ads Search Certification, 2021'],
+      city: 'Nasr City',
+    });
+    // a scan read by the OCR service in Arabic: its job and school too
+    const arabic = (await prisma.jobApplication.findFirstOrThrow({ where: { email: email('arabic') }, select: { id: true } })).id;
+    const ar = (await get('hr', `/recruitment/applications/${arabic}`).expect(200)).body as ApplicationView;
+    expect(ar.cvReading).toMatchObject({
+      latestTitle: 'مونتير',
+      latestCompany: 'استوديو برايت',
+      educationDetails: [{ institution: 'جامعة القاهرة', degree: 'بكالوريوس الإعلام', graduationYear: 2019 }],
+      cvSkills: ['Premiere Pro'],
+    });
+    const g = (await get('hr', `/recruitment/general-cvs/${sara}`).expect(200)).body as GeneralCvView;
+    expect(g.cvReading).toMatchObject({ latestTitle: 'Designer', latestCompany: null, cvSkills: ['Figma', 'Photoshop'], certifications: [], city: null });
+  });
+
+  it('lists the CV’s years where none were typed, filters by them on both tabs and Candidates, and sorts by them', async () => {
+    const idOf = async (who: string) => (await prisma.jobApplication.findFirstOrThrow({ where: { email: who }, select: { id: true } })).id;
+    const arabic = await idOf(email('arabic'));
+    const karim = await idOf(`karim.ocr.${RUN}@mail.test`);
+    // typed years win over the CV's (the Arabic CV's dates say over 6 years)
+    await prisma.jobApplication.update({ where: { id: arabic }, data: { yearsExperience: 3 } });
+    const list = (q: string) => get('hr', `/recruitment/applications?vacancyId=${vacancy.id}&filtered=all${q}`).expect(200).then((r) => r.body as ApplicationListItem[]);
+    const ids = (rows: { id: string }[]) => rows.map((r) => r.id).sort();
+    const all = await list('');
+    const m = all.find((x) => x.id === mona)!;
+    expect(m.yearsExperience).toBeNull();
+    expect(m.fromCv).toMatchObject({ status: 'read', latestTitle: 'Senior Video Editor', latestCompany: 'Bright Studio' });
+    // March 2019 to now
+    expect(m.fromCv!.experienceMonths).toBeGreaterThanOrEqual(90);
+    expect(all.find((x) => x.id === arabic)).toMatchObject({ yearsExperience: 3, fromCv: { status: 'read' } });
+    expect(all.find((x) => x.id === karim)!.fromCv).toMatchObject({ status: 'read', experienceMonths: 24, latestTitle: 'Editor', latestCompany: null });
+    expect(all.find((x) => x.email === email('empty'))!.fromCv).toMatchObject({ status: 'no_text', experienceMonths: null });
+    expect(all.find((x) => x.email === email('failing'))!.fromCv).toMatchObject({ status: 'failed', experienceMonths: null });
+    // 2+: Karim's 24 months; 3+: Arabic's typed 3; 5+: Mona's CV alone (Arabic's typed 3, though its CV says more)
+    expect(ids(await list('&minYears=2'))).toEqual([mona, arabic, karim].sort());
+    expect(ids(await list('&minYears=3'))).toEqual([mona, arabic].sort());
+    expect(ids(await list('&minYears=5'))).toEqual([mona]);
+    expect(await list('&minYears=20')).toEqual([]);
+    // most experience first, those without any last
+    expect((await list('&sort=years')).map((r) => r.id).slice(0, 3)).toEqual([mona, arabic, karim]);
+    // by a skill of the dictionary (the Arabic CV's "بريمير برو" is Premiere Pro)
+    expect(ids(await list(`&skill=${encodeURIComponent('Premiere Pro')}`))).toEqual([mona, arabic].sort());
+    expect(await list('&skill=Figma')).toEqual([]);
+    expect(said(await get('hr', '/recruitment/applications?skill=Juggling').expect(400))).toEqual(['Choose a skill from the list.']);
+
+    // the General CVs tab: Sara's 2 years (2018 – 2020), none typed
+    const general = (q: string) => get('hr', `/recruitment/general-cvs?q=${RUN}${q}`).expect(200).then((r) => r.body as GeneralCvListItem[]);
+    expect((await general('')).find((c) => c.id === sara)).toMatchObject({ yearsExperience: null, fromCv: { status: 'read', experienceMonths: 24, latestTitle: 'Designer', latestCompany: null } });
+    expect(ids(await general('&minYears=2'))).toEqual([sara]);
+    expect(await general('&minYears=3')).toEqual([]);
+    expect(ids(await general('&skill=Figma'))).toEqual([sara]);
+    expect(await general('&skill=Canva')).toEqual([]);
+    await get('hr', '/recruitment/general-cvs?skill=Juggling').expect(400);
+
+    // Candidates: the years of their applications and general CVs, typed else the CV's
+    const candidates = (q: string) => get('hr', `/recruitment/candidates?q=${RUN}${q}`).expect(200).then((r) => r.body as CandidateListItem[]);
+    const monaCandidate = (await prisma.jobApplication.findUniqueOrThrow({ where: { id: mona }, select: { candidateId: true } })).candidateId!;
+    const arabicCandidate = (await prisma.jobApplication.findUniqueOrThrow({ where: { id: arabic }, select: { candidateId: true } })).candidateId!;
+    const c = await candidates('');
+    expect(c.find((x) => x.id === monaCandidate)).toMatchObject({ yearsExperience: null, fromCv: { status: 'read', latestTitle: 'Senior Video Editor' } });
+    expect(c.find((x) => x.id === arabicCandidate)).toMatchObject({ yearsExperience: 3 });
+    expect((await candidates('&minYears=5')).map((x) => x.id)).toEqual([monaCandidate]);
+    expect(ids(await candidates('&minYears=3'))).toEqual([monaCandidate, arabicCandidate].sort());
+  });
+
+  it('a CV just in, not read yet, is "Reading…" on the lists', async () => {
+    // enough text of its own (a PDF with next to none is a scan's, for the OCR service)
+    const id = await apply('newcomer', '10.4.0.9', await pdfOf(['Nour Newcomer', 'An editor of short films and brand videos.', 'Experience', 'Editor 2020 - 2024']));
+    const rows = (await get('hr', `/recruitment/applications?vacancyId=${vacancy.id}`).expect(200)).body as ApplicationListItem[];
+    expect(rows.find((r) => r.id === id)).toMatchObject({ yearsExperience: null, fromCv: { status: 'pending', experienceMonths: null } });
+    await drain();
+    const after = (await get('hr', `/recruitment/applications?vacancyId=${vacancy.id}`).expect(200)).body as ApplicationListItem[];
+    expect(after.find((r) => r.id === id)!.fromCv).toMatchObject({ status: 'read', experienceMonths: 48 });
+  });
+
+  it('works out again the facts of the CVs read before, from their kept text: no OCR, once', async () => {
+    const arabic = (await prisma.jobApplication.findFirstOrThrow({ where: { email: email('arabic') }, select: { id: true } })).id;
+    const before = await prisma.cvReading.findUniqueOrThrow({ where: { applicationId: arabic }, select: { facts: true, text: true } });
+    // facts as kept before 24 October 2026 (version 1): the contacts, years, level and languages only
+    const old = (f: unknown) => {
+      const { emails, phones, linkedin, links, experienceMonths, education, languages } = f as Record<string, unknown>;
+      return { emails, phones, linkedin, links, experienceMonths, education, languages };
+    };
+    for (const applicationId of [mona, arabic]) {
+      const r = await prisma.cvReading.findUniqueOrThrow({ where: { applicationId }, select: { facts: true } });
+      await prisma.cvReading.update({ where: { applicationId }, data: { facts: old(r.facts) as object } });
+    }
+    // read back with the new facts empty
+    expect(((await get('hr', `/recruitment/applications/${mona}`).expect(200)).body as ApplicationView).cvReading).toMatchObject({ latestTitle: null, workHistory: [], cvSkills: [], city: null });
+    const calls = ocr.calls.length;
+    // the recruitment round, under its lock
+    await app.get(RecruitmentSchedulerService).runOnce();
+    expect(ocr.calls.length).toBe(calls);
+    const after = await prisma.cvReading.findUniqueOrThrow({ where: { applicationId: arabic }, select: { facts: true, text: true, method: true, updatedAt: true } });
+    expect(after).toMatchObject({ text: before.text, method: 'ocr_ar', facts: { version: CV_FACTS_VERSION, latestTitle: 'مونتير', latestCompany: 'استوديو برايت' } });
+    expect(after.facts).toEqual(before.facts);
+    expect(((await get('hr', `/recruitment/applications/${mona}`).expect(200)).body as ApplicationView).cvReading).toMatchObject({ latestTitle: 'Senior Video Editor', city: 'Nasr City' });
+    // once: nothing left to work out again, nothing written
+    expect(await readings.refreshFacts()).toBe(0);
+    await app.get(RecruitmentSchedulerService).runOnce();
+    expect((await prisma.cvReading.findUniqueOrThrow({ where: { applicationId: arabic }, select: { updatedAt: true } })).updatedAt).toEqual(after.updatedAt);
+  });
+
+  it('masks a developer’s view of them: the past jobs, schools, certifications and city; the years and skills stay', async () => {
+    const seen = (await get('developer', `/recruitment/applications/${mona}`).expect(200)).body as ApplicationView;
+    expect(seen.cvReading).toMatchObject({
+      latestTitle: HIDDEN,
+      latestCompany: HIDDEN,
+      workHistory: [
+        { pastTitle: HIDDEN, pastCompany: HIDDEN, from: '2022-01', to: null, current: true },
+        { pastTitle: HIDDEN, pastCompany: HIDDEN, from: '2019-03', to: '2021-12', current: false },
+      ],
+      educationDetails: [{ institution: HIDDEN, degree: null, graduationYear: null }],
+      cvSkills: ['Premiere Pro', 'After Effects', 'Google Ads'],
+      certifications: [HIDDEN],
+      city: HIDDEN,
+    });
+    const rows = (await get('developer', `/recruitment/applications?vacancyId=${vacancy.id}`).expect(200)).body as ApplicationListItem[];
+    const text = JSON.stringify(rows);
+    for (const v of ['Senior Video Editor', 'Bright Studio', 'Nile Media']) expect(text).not.toContain(v);
+    expect(rows.some((r) => r.fromCv?.latestTitle === HIDDEN && (r.fromCv.experienceMonths ?? 0) >= 90)).toBe(true);
+    const general = JSON.stringify([(await get('developer', `/recruitment/general-cvs/${sara}`).expect(200)).body, (await get('developer', '/recruitment/candidates').expect(200)).body]);
+    expect(general).not.toContain('"Designer"');
+    expect(general).not.toContain('Senior Video Editor');
   });
 
   const said = (res: request.Response) => (Array.isArray(res.body.message) ? res.body.message : [res.body.message]) as string[];

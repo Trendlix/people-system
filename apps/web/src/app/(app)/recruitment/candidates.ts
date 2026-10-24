@@ -11,6 +11,7 @@ import {
   type CandidateTimelineItem,
   type PossibleMatchView,
 } from '@trendlix/shared';
+import { minYearsOf } from './recruitment';
 
 // Candidate profiles on the site (owner, 22 October 2026: "how to make like a profile for each candidate to store
 // history and prevent duplication? even if the same candidate applied for 2 jobs"; "Email or mobile"; "Link and show
@@ -25,10 +26,24 @@ export const candidateHref = (id: string) => `${CANDIDATES_PATH}/${encodeURIComp
 
 const one = (v: string | string[] | undefined): string => (Array.isArray(v) ? (v[0] ?? '') : (v ?? '')).trim();
 
-/** The Candidates list's search, as the address carries it. */
-export const readCandidatesQuery = (query: Record<string, string | string[] | undefined>): { q: string } => ({ q: one(query.q).slice(0, 100) });
+/**
+ * The Candidates list's search and Min. experience filter (24 October 2026: "CV years in list + more rules": the years
+ * typed, else the CV's estimate), as the address carries them.
+ */
+export interface CandidatesQuery {
+  q: string;
+  minYears: number | null;
+}
 
-export const candidatesApiPath = (f: { q: string }) => (f.q ? `/recruitment/candidates?q=${encodeURIComponent(f.q)}` : '/recruitment/candidates');
+export const readCandidatesQuery = (query: Record<string, string | string[] | undefined>): CandidatesQuery => ({ q: one(query.q).slice(0, 100), minYears: minYearsOf(query.minYears) });
+
+export function candidatesApiPath(f: { q: string; minYears?: number | null }): string {
+  const params = new URLSearchParams();
+  if (f.q) params.set('q', f.q);
+  if (f.minYears !== null && f.minYears !== undefined) params.set('minYears', String(f.minYears));
+  const s = params.toString().replace(/\+/g, '%20');
+  return s ? `/recruitment/candidates?${s}` : '/recruitment/candidates';
+}
 
 /** An applicant's badges on a list or a card: "2 applications" or "Applied before", and "Former employee". */
 export function candidateBadges(c: CandidateBadge | null | undefined): string[] {

@@ -60,6 +60,7 @@ describe('the lists', () => {
       q: '',
       minCvMatch: null,
       sort: '',
+      skill: '',
     });
     expect(readApplicantsQuery({ stage: 'boss', minMatch: '170', source: 'x', filtered: 'x', vacancyId: '../x' })).toEqual({
       vacancyId: '',
@@ -71,6 +72,7 @@ describe('the lists', () => {
       q: '',
       minCvMatch: null,
       sort: '',
+      skill: '',
     });
     expect(applicantsApiPath({ vacancyId: ID, stage: 'offer', minMatch: 70, filtered: 'hide' })).toBe(`/recruitment/applications?vacancyId=${ID}&stage=offer&minMatch=70`);
     expect(applicantsHref(APPLICANTS_PATH, { stage: 'hired', filtered: 'all' })).toBe('/recruitment/applicants?stage=hired&filtered=all');

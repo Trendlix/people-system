@@ -33,9 +33,9 @@ const match = (a: CandidateSummary, b: CandidateSummary, extra: Partial<Possible
 describe('candidates on the site', () => {
   it('the addresses and the search', () => {
     expect(candidateHref('abc')).toBe('/recruitment/candidates/abc');
-    expect(readCandidatesQuery({ q: '  mona  ' })).toEqual({ q: 'mona' });
-    expect(readCandidatesQuery({ q: ['CAN-0001', 'x'] })).toEqual({ q: 'CAN-0001' });
-    expect(readCandidatesQuery({})).toEqual({ q: '' });
+    expect(readCandidatesQuery({ q: '  mona  ' })).toEqual({ q: 'mona', minYears: null });
+    expect(readCandidatesQuery({ q: ['CAN-0001', 'x'] })).toEqual({ q: 'CAN-0001', minYears: null });
+    expect(readCandidatesQuery({})).toEqual({ q: '', minYears: null });
     expect(candidatesApiPath({ q: '' })).toBe('/recruitment/candidates');
     expect(candidatesApiPath({ q: '+20 100' })).toBe('/recruitment/candidates?q=%2B20%20100');
   });

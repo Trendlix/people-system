@@ -19,6 +19,7 @@ import { phoneOk } from './phone.js';
 import type { EndReason } from './index.js';
 import type { RehireEligibility } from './offboarding.js';
 import type { GeneralCvSource, GeneralCvStatus } from './general-cvs.js';
+import type { CvListFacts } from './cv-analysis.js';
 import type { FeedbackView, InterviewView } from './recruitment-hiring.js';
 
 // ---------- the code ----------
@@ -472,6 +473,13 @@ export interface CandidateListItem extends CandidateSummary {
   employee: CandidateEmployeeState | 'restricted' | null;
   /** Possible matches HR hasn't decided. */
   openMatches: number;
+  /**
+   * The Experience column (24 October 2026: "why isn't the experience pulled off the CV?"): of their applications and
+   * general CVs, the one with the most years (the years typed, else its CV's estimate), else the latest; its years typed
+   * and its CV's reading. Left out by an API from before it.
+   */
+  yearsExperience?: number | null;
+  fromCv?: CvListFacts | null;
 }
 
 /** An application on a profile. */

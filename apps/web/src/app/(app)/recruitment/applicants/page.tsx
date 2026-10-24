@@ -24,6 +24,7 @@ import { setGeneralCvStatus } from '../general-actions';
 import {
   filtering,
   GENERAL_BULK_PATH,
+  generalFiltering,
   GENERAL_STATUS_STYLE,
   generalCvHref,
   generalHref,
@@ -37,7 +38,7 @@ import {
   type ApplicantsTab,
 } from '../general';
 import { APPLICANTS_PATH, applicantsHref, GOOD_CV_MATCH_PERCENT, managesRecruitment, readApplicantsQuery, readsRecruitment, STAGE_FILTERS, vacancyHref, WHO_SEES } from '../recruitment';
-import { ApplicantsTable, VacancyStatusBadge } from '../ui';
+import { ApplicantsTable, ExperienceCell, LatestRoleCell, MinYearsSelect, SkillSelect, VacancyStatusBadge } from '../ui';
 import { joinShown, shownCode } from '@/lib/hidden';
 
 // All applicants (owner, 22 October 2026: "where will we include the ATS?"): across the vacancies, best match first, by
@@ -47,6 +48,9 @@ import { joinShown, shownCode } from '@/lib/hidden';
 // "Both"): Posted jobs, the applicants grouped by vacancy (open, on hold, closed, filled), each with its counts by stage
 // and by source, every source's count a link to its applicants; and General CVs, those sent without a posted job (the
 // careers page's "Send us your CV", and those HR added from email, WhatsApp, LinkedIn, in person or a referral).
+// The Experience column falls back to the CV's estimate, with a Min. experience filter, a Skill filter and a Latest
+// role column on both tabs (owner, 24 October 2026: "why isn't the experience pulled off the CV?"; "CV years in list +
+// more rules"); the Posted jobs sort by experience too.
 
 export const metadata: Metadata = { title: 'Applicants · People System' };
 
@@ -145,14 +149,11 @@ async function Posted({ query, summary }: { query: Query; summary: Loaded<Applic
           <Select id="applicant-sort" name="sort" defaultValue={q.sort} className="input min-w-44">
             <option value="">Best match first</option>
             <option value="cv">Best CV match first</option>
+            <option value="years">Most experience first</option>
           </Select>
         </div>
-        <div>
-          <label htmlFor="applicant-years" className="label">
-            Experience, years at least
-          </label>
-          <input id="applicant-years" name="minYears" inputMode="decimal" defaultValue={q.minYears === null ? '' : String(q.minYears)} className="input w-28" />
-        </div>
+        <MinYearsSelect id="applicant-years" value={q.minYears} />
+        <SkillSelect id="applicant-skill" value={q.skill} />
         <button type="submit" className="btn btn-secondary">
           Apply filters
         </button>
@@ -231,6 +232,7 @@ function GeneralTable({ rows, manages }: { rows: GeneralCvListItem[]; manages: b
           <tr>
             <th>Person</th>
             <th>Area</th>
+            <th>Latest role</th>
             <th>Source</th>
             <th className="text-right">Experience</th>
             <th>Status</th>
@@ -250,11 +252,12 @@ function GeneralTable({ rows, manages }: { rows: GeneralCvListItem[]; manages: b
                 </span>
               </td>
               <td className="text-sm">{c.area}</td>
+              <LatestRoleCell fromCv={c.fromCv} />
               <td className="text-sm">
                 {GENERAL_CV_SOURCE_LABELS[c.source]}
                 {c.referrer && <span className="block text-xs text-muted">by {c.referrer}</span>}
               </td>
-              <td className="text-right tabular-nums">{c.yearsExperience === null ? '—' : `${c.yearsExperience} y`}</td>
+              <ExperienceCell typed={c.yearsExperience} fromCv={c.fromCv} />
               <td>
                 <span className={`badge ${GENERAL_STATUS_STYLE[c.status]}`}>{GENERAL_CV_STATUS_LABELS[c.status]}</span>
                 {c.movedTo && (
@@ -289,7 +292,7 @@ function GeneralTable({ rows, manages }: { rows: GeneralCvListItem[]; manages: b
 async function General({ query, manages }: { query: Query; manages: boolean }) {
   const g = readGeneralQuery(query);
   const [loaded, areas] = await Promise.all([loadGeneralCvs(g), loadGeneralAreas()]);
-  const filtered = !!(g.status || g.source || g.departmentId || g.q);
+  const filtered = generalFiltering(g);
   return (
     <div className="space-y-4">
       {manages && (
@@ -350,6 +353,8 @@ async function General({ query, manages }: { query: Query; manages: boolean }) {
             ))}
           </Select>
         </div>
+        <MinYearsSelect id="general-years" value={g.minYears} />
+        <SkillSelect id="general-skill" value={g.skill} />
         <button type="submit" className="btn btn-secondary">
           Apply filters
         </button>

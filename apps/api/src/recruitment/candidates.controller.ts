@@ -1,5 +1,7 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
-import { IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
+import { RECRUITMENT_LIMITS } from '@trendlix/shared';
 import { CurrentUser, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { Trim } from '../common/transforms.js';
@@ -17,6 +19,10 @@ import { MANAGES, READS } from './recruitment-access.js';
 export class CandidatesQueryDto {
   @IsOptional() @Trim() @IsString() @MaxLength(100)
   q?: string;
+
+  /** Only those with at least these years in one of their applications or general CVs: typed, else the CV's (24 October 2026). */
+  @IsOptional() @Transform(({ value }) => (value === '' || value === undefined ? undefined : Number(value))) @IsNumber() @Min(0) @Max(RECRUITMENT_LIMITS.yearsExperience)
+  minYears?: number;
 }
 
 export class MergeCandidatesDto {
@@ -29,11 +35,11 @@ export class MergeCandidatesDto {
 export class CandidatesController {
   constructor(private readonly candidates: CandidatesService) {}
 
-  /** ?q= (name, email, mobile, code, the CVs' text). */
+  /** ?q= (name, email, mobile, code, the CVs' text), ?minYears= (the years typed, else the CV's). */
   @Roles(...READS)
   @Get()
   list(@Query() query: CandidatesQueryDto, @CurrentUser() user: SessionUser) {
-    return this.candidates.list(query.q, user);
+    return this.candidates.list(query, user);
   }
 
   /** The possible matches HR hasn't decided: the duplicates and the suggestions, strongest first. */

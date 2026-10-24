@@ -1,12 +1,35 @@
 import { describe, expect, it } from 'vitest';
-import type { CvReadingView, CvUploadView } from '@trendlix/shared';
-import { applicantCvTextApiPath, CV_CARD_NOTE, cvTextMissing, findParts, foundText, generalCvTextApiPath, linksFound, readingFacts, readingStatusText, shortLink, skillsCountText } from './cv-reading';
-import { mergeReadings, rowOf } from './general';
-import { applicantsApiPath, applicantsHref, readApplicantsQuery, vacancyForm } from './recruitment';
+import { DICTIONARY_SKILL_NAMES, type CvListFacts, type CvReadingView, type CvUploadView } from '@trendlix/shared';
+import { candidatesApiPath, readCandidatesQuery } from './candidates';
+import {
+  applicantCvTextApiPath,
+  CV_CARD_NOTE,
+  cvTextMissing,
+  educationText,
+  experienceCell,
+  findParts,
+  foundText,
+  FROM_CV_DATES,
+  generalCvTextApiPath,
+  latestRoleOf,
+  latestRoleText,
+  linksFound,
+  moreFromCv,
+  periodText,
+  readingFacts,
+  readingStatusText,
+  shortLink,
+  skillsCountText,
+  workHistoryHeading,
+} from './cv-reading';
+import { filtering, generalApiPath, generalFiltering, generalHref, mergeReadings, readGeneralQuery, rowOf } from './general';
+import { applicantsApiPath, applicantsHref, minYearsOptions, readApplicantsQuery, skillGroups, vacancyForm } from './recruitment';
 
 // The "From the CV" card, the CV match's filter and sort, the vacancy's key skills and the bulk rows filled in by the
-// OCR service (owner, 22 October 2026: "make the OCR egine reads the CV and analyse it"; "Built-in rules only"). Every
-// person here is invented.
+// OCR service (owner, 22 October 2026: "make the OCR egine reads the CV and analyse it"; "Built-in rules only"); since
+// 24 October 2026 ("why isn't the experience pulled off the CV?"; "CV years in list + more rules"), the lists' Experience
+// and Latest role, their Min. experience, Skill and sort, and the card's work history, education and more. Every person
+// here is invented.
 
 const ID = '7d4c8f8e-2b6a-4f1e-9c3d-5a6b7c8d9e0f';
 
@@ -19,6 +42,16 @@ const reading = (over: Partial<CvReadingView> = {}): CvReadingView => ({
   languages: ['English', 'Arabic'],
   skills: { found: ['Premiere Pro'], missing: ['After Effects'] },
   cvMatchPercent: 50,
+  latestTitle: 'Senior Video Editor',
+  latestCompany: 'Bright Studio',
+  workHistory: [
+    { pastTitle: 'Senior Video Editor', pastCompany: 'Bright Studio', from: '2022-01', to: null, current: true },
+    { pastTitle: 'Video Editor', pastCompany: 'Nile Media', from: '2019-03', to: '2021-12', current: false },
+  ],
+  educationDetails: [{ institution: 'Helwan University', degree: 'Bachelor of Fine Arts', graduationYear: 2018 }],
+  cvSkills: ['Premiere Pro', 'Photoshop'],
+  certifications: ['Color Grading Masterclass'],
+  city: 'Cairo',
   ...over,
 });
 
@@ -33,11 +66,15 @@ describe('the From the CV card', () => {
 
   it('lists what the rules found, a dash for what they didn’t', () => {
     expect(readingFacts(reading())).toEqual([
+      { label: 'Latest role', value: 'Senior Video Editor · Bright Studio' },
       { label: 'Experience', value: 'About 4 years (from the dates in the CV)' },
+      { label: 'City', value: 'Cairo' },
       { label: 'Education', value: 'Bachelor' },
       { label: 'Languages', value: 'English, Arabic' },
     ]);
-    expect(readingFacts(reading({ experience: null, education: null, languages: [] })).map((f) => f.value)).toEqual(['—', '—', '—']);
+    expect(readingFacts(reading({ experience: null, education: null, languages: [], latestTitle: null, latestCompany: null, city: null })).map((f) => f.value)).toEqual(['—', '—', '—', '—', '—']);
+    // an API from before 24 October 2026: no latest role or city
+    expect(readingFacts({ experience: null, education: 'master', languages: [] }).map((f) => f.value)).toEqual(['—', '—', '—', 'Master', '—']);
   });
 
   it('counts the key skills found, none for a general CV', () => {
@@ -147,5 +184,100 @@ describe('a scanned CV of a bulk upload', () => {
     const old: Partial<CvUploadView> = upload({ textFound: false });
     delete old.reading;
     expect(rowOf(old as CvUploadView).reading).toBe(false);
+  });
+});
+
+describe('the lists’ Experience and Latest role (24 October 2026)', () => {
+  const facts = (over: Partial<CvListFacts> = {}): CvListFacts => ({ status: 'read', experienceMonths: 50, latestTitle: 'Motion Designer', latestCompany: 'Pyramid Pixels', ...over });
+
+  it('shows the years typed, else the CV’s estimate in whole years, else a dash or that the CV is being read', () => {
+    expect(experienceCell(3, facts())).toEqual({ text: '3 y', fromCv: false, title: null });
+    expect(experienceCell(2.5, null)).toEqual({ text: '2.5 y', fromCv: false, title: null });
+    expect(experienceCell(0, facts()).text).toBe('0 y');
+    expect(experienceCell(null, facts())).toEqual({ text: '≈ 4 y · CV', fromCv: true, title: FROM_CV_DATES });
+    expect(experienceCell(null, facts({ experienceMonths: 30 })).text).toBe('≈ 3 y · CV');
+    expect(experienceCell(null, facts({ experienceMonths: 12 })).text).toBe('≈ 1 y · CV');
+    expect(experienceCell(null, facts({ experienceMonths: 7 })).text).toBe('< 1 y · CV');
+    expect(experienceCell(null, facts({ experienceMonths: 0 })).text).toBe('< 1 y · CV');
+    expect(experienceCell(null, facts({ status: 'pending', experienceMonths: null }))).toMatchObject({ text: 'Reading…', fromCv: true });
+    expect(experienceCell(null, facts({ experienceMonths: null }))).toEqual({ text: '—', fromCv: false, title: null });
+    expect(experienceCell(null, facts({ status: 'failed', experienceMonths: null })).text).toBe('—');
+    // an API from before it: no fromCv
+    expect(experienceCell(null, undefined).text).toBe('—');
+    expect(FROM_CV_DATES).toBe('From the dates in the CV');
+  });
+
+  it('shows the latest role as title · company, one alone, or none', () => {
+    expect(latestRoleOf(facts())).toBe('Motion Designer · Pyramid Pixels');
+    expect(latestRoleOf(facts({ latestCompany: null }))).toBe('Motion Designer');
+    expect(latestRoleOf(facts({ latestTitle: null }))).toBe('Pyramid Pixels');
+    expect(latestRoleOf(facts({ latestTitle: null, latestCompany: null }))).toBeNull();
+    expect(latestRoleOf(null)).toBeNull();
+    expect(latestRoleText('مونتير أول', 'استوديو برايت')).toBe('مونتير أول · استوديو برايت');
+    expect(latestRoleText('  ', null)).toBeNull();
+    // a developer's, masked by the API, as it comes
+    expect(latestRoleText('••••', '••••')).toBe('•••• · ••••');
+  });
+
+  it('reads and sends the Min. experience, the Skill and the experience sort, refusing what isn’t one', () => {
+    expect(readApplicantsQuery({ minYears: '3', skill: 'Premiere Pro', sort: 'years' })).toMatchObject({ minYears: 3, skill: 'Premiere Pro', sort: 'years' });
+    expect(readApplicantsQuery({ minYears: '61', skill: 'Juggling', sort: 'age' })).toMatchObject({ minYears: null, skill: '', sort: '' });
+    expect(applicantsApiPath({ minYears: 5, skill: 'After Effects', sort: 'years' })).toBe('/recruitment/applications?minYears=5&sort=years&skill=After+Effects');
+    expect(filtering(readApplicantsQuery({ skill: 'Figma' }))).toBe(true);
+    expect(filtering(readApplicantsQuery({ minYears: '2' }))).toBe(true);
+    // a sort narrows nothing
+    expect(filtering(readApplicantsQuery({ sort: 'years' }))).toBe(false);
+
+    const g = readGeneralQuery({ minYears: '8', skill: 'Canva', q: 'mona' });
+    expect(g).toMatchObject({ minYears: 8, skill: 'Canva' });
+    expect(generalApiPath(g)).toBe('/recruitment/general-cvs?q=mona&minYears=8&skill=Canva');
+    expect(generalHref({ minYears: 1 })).toBe('/recruitment/applicants?minYears=1&tab=general');
+    expect(generalFiltering(readGeneralQuery({}))).toBe(false);
+    expect(generalFiltering(readGeneralQuery({ skill: 'Excel' }))).toBe(true);
+    expect(readGeneralQuery({ skill: 'excel', minYears: '-1' })).toMatchObject({ skill: '', minYears: null });
+
+    expect(readCandidatesQuery({ minYears: '10' })).toEqual({ q: '', minYears: 10 });
+    expect(candidatesApiPath({ q: 'mona adel', minYears: 2 })).toBe('/recruitment/candidates?q=mona%20adel&minYears=2');
+    expect(candidatesApiPath({ q: '', minYears: 2 })).toBe('/recruitment/candidates?minYears=2');
+  });
+
+  it('offers 1+ to 10+ years, and an old link’s other value too; the dictionary’s skills by group', () => {
+    expect(minYearsOptions(null).map((o) => o.label)).toEqual(['1+ years', '2+ years', '3+ years', '5+ years', '8+ years', '10+ years']);
+    expect(minYearsOptions(4).map((o) => o.value)).toEqual(['1', '2', '3', '4', '5', '8', '10']);
+    expect(minYearsOptions(3).map((o) => o.value)).toHaveLength(6);
+    const groups = skillGroups();
+    expect(groups.map((x) => x.label)).toEqual(['Video', 'Design', 'Marketing', 'Office', 'Content', 'Development', 'Finance']);
+    expect(groups.flatMap((x) => x.skills)).toEqual([...DICTIONARY_SKILL_NAMES]);
+    expect(groups[0].skills.slice(0, 2)).toEqual(['Premiere Pro', 'After Effects']);
+  });
+});
+
+describe('the card’s work history, education and more (24 October 2026)', () => {
+  it('says a job’s period in words', () => {
+    expect(periodText({ from: '2019-03', to: '2021-12', current: false })).toBe('Mar 2019 – Dec 2021');
+    expect(periodText({ from: '2022-01', to: null, current: true })).toBe('Jan 2022 – Present');
+    expect(periodText({ from: '2018', to: '2020', current: false })).toBe('2018 – 2020');
+    expect(periodText({ from: null, to: null, current: false })).toBeNull();
+    expect(workHistoryHeading(1)).toBe('Work History (1 role)');
+    expect(workHistoryHeading(3)).toBe('Work History (3 roles)');
+  });
+
+  it('says a school in a line: degree · institution · year, what was found', () => {
+    expect(educationText({ institution: 'Helwan University', degree: 'Bachelor of Fine Arts', graduationYear: 2018 })).toBe('Bachelor of Fine Arts · Helwan University · 2018');
+    expect(educationText({ institution: 'جامعة القاهرة', degree: null, graduationYear: null })).toBe('جامعة القاهرة');
+    expect(educationText({ institution: null, degree: null, graduationYear: null })).toBeNull();
+    // a developer's: the school masked, the degree and year none
+    expect(educationText({ institution: '••••', degree: null, graduationYear: null })).toBe('••••');
+  });
+
+  it('gathers what else was found, nothing from an API before it', () => {
+    expect(moreFromCv(reading())).toEqual({
+      workHistory: reading().workHistory,
+      education: ['Bachelor of Fine Arts · Helwan University · 2018'],
+      skills: ['Premiere Pro', 'Photoshop'],
+      certifications: ['Color Grading Masterclass'],
+    });
+    expect(moreFromCv({})).toEqual({ workHistory: [], education: [], skills: [], certifications: [] });
+    expect(moreFromCv({ workHistory: [{ pastTitle: null, pastCompany: null, from: '2020', to: '2021', current: false }], certifications: [' '] })).toMatchObject({ workHistory: [], certifications: [] });
   });
 });

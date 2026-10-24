@@ -240,6 +240,40 @@ describe('no real personal data for a developer', () => {
     expect(omar).toEqual({ en: `Employee ${tagIn(omar.en)}`, ar: `موظف ${tagIn(omar.en)}`, email: `employee-${tagIn(omar.en).toLowerCase()}@hidden.invalid` });
   });
 
+  // more read from a CV (owner, 24 October 2026: "CV years in list + more rules"); the person and the CV invented
+  it('what a CV says: the past jobs, schools, certifications and city hidden; the dictionary’s skills and the years as they are', () => {
+    const body = {
+      fromCv: { status: 'read', experienceMonths: 50, latestTitle: 'Senior Video Editor', latestCompany: 'Bright Studio' },
+      cvReading: {
+        status: 'read',
+        experience: 'About 4 years (from the dates in the CV)',
+        education: 'bachelor',
+        latestTitle: 'Senior Video Editor',
+        latestCompany: 'Bright Studio',
+        workHistory: [{ pastTitle: 'Senior Video Editor', pastCompany: 'Bright Studio', from: '2022-01', to: null, current: true }],
+        educationDetails: [{ institution: 'Helwan University', degree: 'Bachelor of Fine Arts', graduationYear: 2018 }],
+        cvSkills: ['Premiere Pro', 'After Effects'],
+        certifications: ['Color Grading Masterclass, 2021'],
+        city: 'Nasr City',
+      },
+    };
+    expect(maskForDeveloper(body, '/api/recruitment/general-cvs/1', people)).toEqual({
+      fromCv: { status: 'read', experienceMonths: 50, latestTitle: HIDDEN, latestCompany: HIDDEN },
+      cvReading: {
+        status: 'read',
+        experience: 'About 4 years (from the dates in the CV)',
+        education: 'bachelor',
+        latestTitle: HIDDEN,
+        latestCompany: HIDDEN,
+        workHistory: [{ pastTitle: HIDDEN, pastCompany: HIDDEN, from: '2022-01', to: null, current: true }],
+        educationDetails: [{ institution: HIDDEN, degree: null, graduationYear: null }],
+        cvSkills: ['Premiere Pro', 'After Effects'],
+        certifications: [HIDDEN],
+        city: HIDDEN,
+      },
+    });
+  });
+
   it('references to a person: the same pseudonym from their id, email or name, wherever they are', () => {
     const body = {
       createdBy: { email: 'omar@trendlix.test', name: 'Omar Khaled' },

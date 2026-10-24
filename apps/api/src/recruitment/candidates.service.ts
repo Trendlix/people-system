@@ -56,6 +56,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { attachCandidate, findCandidates, lockCandidates, nextCandidateCode, pairOf, refreshCandidate } from './candidate-links.js';
 import { InterviewsService } from './interviews.service.js';
 import { managesRecruitment, READS, vacancyWhere } from './recruitment-access.js';
+import { byExperience, cvListFactsOf, minYearsWhere, money } from './recruitment-views.js';
 import { recruitmentCaller } from './recruitment-scope.js';
 
 // Candidate profiles (owner, 22 October 2026: "how to make like a profile for each candidate to store history and prevent
@@ -353,9 +354,14 @@ export class CandidatesService implements OnModuleDestroy {
 
   // ---------- the lists ----------
 
-  /** The Candidates list: ?q= finds by name, email, mobile (as typed in any form), code or the CVs' text. The latest first. */
-  async list(q: string | undefined, user: SessionUser): Promise<CandidateListItem[]> {
+  /**
+   * The Candidates list: ?q= finds by name, email, mobile (as typed in any form), code or the CVs' text; ?minYears= keeps
+   * those with an application or general CV of at least these years (typed, else the CV's: 24 October 2026). The latest
+   * first.
+   */
+  async list(query: { q?: string; minYears?: number }, user: SessionUser): Promise<CandidateListItem[]> {
     this.assertReads(user);
+    const q = query.q;
     const visibleApps = { vacancy: vacancyWhere(user) };
     const text = q?.trim() ? { contains: q.trim(), mode: 'insensitive' as const } : null;
     const search: Prisma.CandidateWhereInput = text
@@ -370,8 +376,20 @@ export class CandidatesService implements OnModuleDestroy {
           ],
         }
       : {};
+    // an application (one the caller sees) or a general CV (not moved to one) with the years
+    const years: Prisma.CandidateWhereInput =
+      query.minYears !== undefined
+        ? {
+            OR: [
+              { applications: { some: { AND: [visibleApps, minYearsWhere(query.minYears)] } } },
+              { generalCvs: { some: { AND: [{ applicationId: null }, minYearsWhere(query.minYears)] } } },
+            ],
+          }
+        : {};
+    // the years and the CV's reading of each, for the Experience column (24 October 2026)
+    const cvFacts = { yearsExperience: true, cvReading: { select: { status: true, facts: true } } } as const;
     const rows = await this.prisma.candidate.findMany({
-      where: { AND: [this.visibleWhere(user), search] },
+      where: { AND: [this.visibleWhere(user), search, years] },
       orderBy: [{ lastAppliedAt: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
       take: CANDIDATE_LIMITS.list,
       select: {
@@ -383,9 +401,24 @@ export class CandidatesService implements OnModuleDestroy {
         applications: {
           where: visibleApps,
           orderBy: { createdAt: 'desc' },
-          select: { id: true, number: true, createdAt: true, stage: true, filteredOut: true, source: true, vacancy: { select: { title: true } }, generalCv: { select: { source: true } } },
+          select: {
+            id: true,
+            number: true,
+            createdAt: true,
+            stage: true,
+            filteredOut: true,
+            source: true,
+            vacancy: { select: { title: true } },
+            generalCv: { select: { source: true } },
+            cv: { select: { sizeBytes: true } },
+            ...cvFacts,
+          },
         },
-        generalCvs: { where: { applicationId: null }, orderBy: { createdAt: 'desc' }, select: { id: true, number: true, createdAt: true, status: true, source: true } },
+        generalCvs: {
+          where: { applicationId: null },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true, number: true, createdAt: true, status: true, source: true, file: { select: { sizeBytes: true } }, ...cvFacts },
+        },
       },
     });
     const ids = rows.map((r) => r.id);
@@ -419,6 +452,13 @@ export class CandidatesService implements OnModuleDestroy {
                 at: g.createdAt.toISOString(),
               }
             : null;
+      // the Experience column: of their applications and general CVs, the one with the most years (as the column shows
+      // them: typed, else the CV's), else the latest
+      const records = [
+        ...r.applications.map((x) => ({ at: x.createdAt, typed: money(x.yearsExperience), fromCv: cvListFactsOf(!!x.cv, x.cvReading) })),
+        ...r.generalCvs.map((x) => ({ at: x.createdAt, typed: money(x.yearsExperience), fromCv: cvListFactsOf(!!x.file, x.cvReading) })),
+      ].sort((x, y) => y.at.getTime() - x.at.getTime());
+      const best = byExperience(records, (x) => ({ typed: x.typed, cvMonths: x.fromCv?.experienceMonths ?? null }))[0];
       return {
         id: r.id,
         code: r.code,
@@ -429,6 +469,8 @@ export class CandidatesService implements OnModuleDestroy {
         latest,
         employee: CandidatesService.stateOf(r.employeeId ? links.get(r.employeeId) : undefined),
         openMatches: open.get(r.id) ?? 0,
+        yearsExperience: best?.typed ?? null,
+        fromCv: best?.fromCv ?? null,
       };
     });
   }

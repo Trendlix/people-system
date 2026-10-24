@@ -5,9 +5,14 @@ import {
   careersPath,
   EMPLOYMENT_TYPES,
   isApplicationStage,
+  isDictionarySkill,
   keySkillsOf,
   keySkillsProblems,
+  MIN_YEARS_CHOICES,
   QUESTION_KINDS,
+  SKILL_GROUP_LABELS,
+  SKILL_GROUPS,
+  SKILLS_DICTIONARY,
   VACANCY_STATUSES,
   WORK_ARRANGEMENTS,
   type ApplicationChannel,
@@ -91,8 +96,10 @@ export interface ApplicantsQuery {
   q: string;
   /** The CV match % at least (the key skills found in the CV; 22 October 2026). */
   minCvMatch: number | null;
-  /** '': best match first (the screening questions); 'cv': best CV match first. */
-  sort: '' | 'cv';
+  /** '': best match first (the screening questions); 'cv': best CV match first; 'years': most experience first (24 October 2026). */
+  sort: '' | 'cv' | 'years';
+  /** A skill of the dictionary their CV names (24 October 2026); '' for any. */
+  skill: string;
 }
 
 /** The "CV match ≥ 50%" filter's threshold. */
@@ -113,14 +120,46 @@ export function readApplicantsQuery(query: Record<string, string | string[] | un
     vacancyId: UUID.test(vacancyId) ? vacancyId : '',
     stage: isApplicationStage(stage) ? stage : '',
     minMatch: num(one(query.minMatch), 100),
-    minYears: num(one(query.minYears), 60),
+    minYears: minYearsOf(query.minYears),
     source: (APPLICATION_SOURCES as readonly string[]).includes(source) ? (source as ApplicationSource) : '',
     filtered: filtered === 'only' || filtered === 'all' ? filtered : 'hide',
     q: one(query.q).slice(0, 100),
     minCvMatch: num(one(query.minCvMatch), 100),
-    sort: one(query.sort) === 'cv' ? 'cv' : '',
+    sort: sortOf(one(query.sort)),
+    skill: skillOf(query.skill),
   };
 }
+
+const sortOf = (v: string): ApplicantsQuery['sort'] => (v === 'cv' || v === 'years' ? v : '');
+
+/** A skill filter as the address carries it: one of the dictionary's (skills-dictionary.ts), else none (''). */
+export const skillOf = (v: string | string[] | undefined): string => {
+  const s = one(v);
+  return isDictionarySkill(s) ? s : '';
+};
+
+/** A years filter as the address carries it: 0 to 60 years, else none (null). */
+export const minYearsOf = (v: string | string[] | undefined): number | null => {
+  const t = one(v);
+  const n = Number(t);
+  return t !== '' && Number.isFinite(n) && n >= 0 && n <= 60 ? n : null;
+};
+
+// ---------- the Min. experience and Skill filters (owner, 24 October 2026: "CV years in list + more rules") ----------
+
+/**
+ * The Min. experience filter's choices: 1+, 2+, 3+, 5+, 8+ and 10+ years (the years typed, else the CV's estimate: the
+ * API's rule), and an old link's other value too, so the filter shows what the list is filtered by.
+ */
+export function minYearsOptions(current: number | null): { value: string; label: string }[] {
+  const values: number[] = [...MIN_YEARS_CHOICES];
+  if (current !== null && current > 0 && !values.includes(current)) values.push(current);
+  return values.sort((a, b) => a - b).map((n) => ({ value: String(n), label: `${n}+ years` }));
+}
+
+/** The Skill filter's choices: the dictionary's skills by group, in its order. */
+export const skillGroups = (): { label: string; skills: string[] }[] =>
+  SKILL_GROUPS.map((g) => ({ label: SKILL_GROUP_LABELS[g], skills: SKILLS_DICTIONARY.filter((s) => s.group === g).map((s) => s.name) })).filter((g) => g.skills.length > 0);
 
 function applicantParams(q: Partial<ApplicantsQuery>): URLSearchParams {
   const params = new URLSearchParams();
@@ -133,6 +172,7 @@ function applicantParams(q: Partial<ApplicantsQuery>): URLSearchParams {
   if (q.q) params.set('q', q.q);
   if (q.minCvMatch !== null && q.minCvMatch !== undefined) params.set('minCvMatch', String(q.minCvMatch));
   if (q.sort) params.set('sort', q.sort);
+  if (q.skill) params.set('skill', q.skill);
   return params;
 }
 

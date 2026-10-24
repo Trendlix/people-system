@@ -45,7 +45,7 @@ import { CvReadingsService } from './cv-readings.service.js';
 import { createHrApplication } from './hr-applications.js';
 import type { ApplyOrigin } from './public-careers.service.js';
 import { managesRecruitment, READS, vacancyWhere } from './recruitment-access.js';
-import { APPLICATION_ENTITY, money, userRef } from './recruitment-views.js';
+import { APPLICATION_ENTITY, cvListFactsOf, minYearsWhere, money, skillWhere, userRef } from './recruitment-views.js';
 import type { AddGeneralCvDto, GeneralCvFormDto, ListGeneralCvsDto, MoveGeneralCvDto } from './recruitment.dto.js';
 
 // General CVs (owner, 22 October 2026: "i want a proper viweing, what came out of the posted jobs and what cam on
@@ -81,6 +81,9 @@ const LIST_SELECT = {
   createdAt: true,
   createdBy: { select: { id: true, email: true } },
   application: { select: { id: true, number: true, vacancy: { select: { id: true, title: true } } } },
+  // the CV's reading, for the Experience and Latest role columns (24 October 2026)
+  file: { select: { sizeBytes: true } },
+  cvReading: { select: { status: true, facts: true } },
 } satisfies Prisma.GeneralCvSelect;
 
 type ListRow = Prisma.GeneralCvGetPayload<{ select: typeof LIST_SELECT }>;
@@ -240,7 +243,10 @@ export class GeneralCvsService {
     return this.get(made.id, user);
   }
 
-  /** The general CVs: ?status= (a status, or all; none: all but archived), ?source=, ?departmentId=, ?q= (name, email, mobile, reference). */
+  /**
+   * The general CVs: ?status= (a status, or all; none: all but archived), ?source=, ?departmentId=, ?q= (name, email,
+   * mobile, reference, the CV's text), ?minYears= (the years typed, else the CV's) and ?skill= (24 October 2026).
+   */
   async list(query: ListGeneralCvsDto, user: SessionUser): Promise<GeneralCvListItem[]> {
     this.assertReads(user);
     const q = query.q ? { contains: query.q, mode: 'insensitive' as const } : null;
@@ -250,6 +256,10 @@ export class GeneralCvsService {
           query.status === 'all' ? {} : query.status ? { status: query.status } : { status: { not: 'archived' } },
           query.source ? { source: query.source } : {},
           query.departmentId ? { departmentId: query.departmentId } : {},
+          // the years typed, else the CV's, and a skill of the dictionary the CV names (owner, 24 October 2026: "why isn't
+          // the experience pulled off the CV?")
+          query.minYears !== undefined ? minYearsWhere(query.minYears) : {},
+          query.skill ? skillWhere(query.skill) : {},
           // the search also looks in the CVs' text (22 October 2026), and a mobile as typed in any form (+20…, 010…)
           q
             ? { OR: [{ fullName: q }, { email: q }, { mobile: q }, ...mobileSearchForms(query.q!).map((f) => ({ mobile: { contains: f } })), { number: q }, { cvReading: { is: { text: q } } }] }
@@ -554,6 +564,7 @@ export class GeneralCvsService {
       receivedAt: r.createdAt.toISOString(),
       addedBy: userRef(r.createdBy, names),
       movedTo: r.application ? { applicationId: r.application.id, reference: r.application.number, vacancyId: r.application.vacancy.id, vacancyTitle: r.application.vacancy.title } : null,
+      fromCv: cvListFactsOf(!!r.file, r.cvReading),
     };
   }
 

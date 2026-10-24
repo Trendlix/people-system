@@ -40,7 +40,7 @@ import { CvReadingsService } from './cv-readings.service.js';
 import { InterviewsService } from './interviews.service.js';
 import { isConfidentialVacancy, vacancyWhere } from './recruitment-access.js';
 import { recruitmentCaller, viewerOf, visibleApplications, type RecruitmentCaller } from './recruitment-scope.js';
-import { APPLICATION_ENTITY, APPLICATION_LIST_SELECT, answersOf, applicationListView, money, questionsOf, userRef } from './recruitment-views.js';
+import { APPLICATION_ENTITY, APPLICATION_LIST_SELECT, answersOf, applicationListView, byExperience, minYearsWhere, money, questionsOf, skillWhere, userRef } from './recruitment-views.js';
 import type { ListApplicationsDto } from './recruitment.dto.js';
 
 // The applicants (owner, 22 October 2026: "where will we include the ATS?"; packages/shared recruitment.ts): listed by
@@ -130,7 +130,10 @@ export class ApplicationsService {
           query.vacancyId ? { vacancyId: query.vacancyId } : {},
           query.stage ? { stage: query.stage } : {},
           query.minMatch !== undefined ? { matchPercent: { gte: query.minMatch } } : {},
-          query.minYears !== undefined ? { yearsExperience: { gte: query.minYears } } : {},
+          // the years typed, else the CV's (owner, 24 October 2026: "why isn't the experience pulled off the CV?")
+          query.minYears !== undefined ? minYearsWhere(query.minYears) : {},
+          // a skill of the dictionary the CV names (24 October 2026)
+          query.skill ? skillWhere(query.skill) : {},
           query.source ? { source: query.source } : {},
           filtered === 'hide' ? { filteredOut: false } : filtered === 'only' ? { filteredOut: true } : {},
           query.minCvMatch !== undefined ? { cvMatchPercent: { gte: query.minCvMatch } } : {},
@@ -162,7 +165,9 @@ export class ApplicationsService {
       rows.map((r) => r.candidateId),
       user,
     );
-    return rows.map((r) => ({ ...applicationListView(r), candidate: r.candidateId ? (badges.get(r.candidateId) ?? null) : null }));
+    const items = rows.map((r) => ({ ...applicationListView(r), candidate: r.candidateId ? (badges.get(r.candidateId) ?? null) : null }));
+    // most experience first (24 October 2026): the years typed, else the CV's; the best match first among equals
+    return query.sort === 'years' ? byExperience(items, (a) => ({ typed: a.yearsExperience, cvMonths: a.fromCv?.experienceMonths ?? null })) : items;
   }
 
   /** An applicant, as the caller may see them: HR, the CEO and a Super Admin in full; their hiring manager and interviewers without the expected salary and HR's notes; 404 for anyone else. */

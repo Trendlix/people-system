@@ -1,5 +1,6 @@
 import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
 import {
+  CV_FACTS_VERSION,
   CV_READING_LIMITS,
   cvFacts,
   cvFactsOf,
@@ -36,6 +37,9 @@ import { cvText } from './cv-text.js';
 // - The OCR service down or failing: tried again later (after 2, then 10 minutes), the third failure kept as failed.
 // - Then what the rules find (cvFacts) is kept; an application's CV match % is worked out from its vacancy's key skills;
 //   a bulk upload's row gets the name, email and mobile read from the scan (where HR's row is still empty).
+// - The rules grew (owner, 24 October 2026: "CV years in list + more rules": the work history, education details,
+//   skills, certifications and city): every CV read before has its facts worked out again from its kept text, never
+//   read again (refreshFacts, run by the recruitment round under its lock).
 
 const TICK_MS = 60_000;
 /** The minutes before a reading is tried again, after its 1st, 2nd and 3rd try. */
@@ -308,8 +312,9 @@ export class CvReadingsService implements OnModuleDestroy {
     r: { status: string; method: string | null; readAt: Date | null; facts: Prisma.JsonValue | null; text: string | null } | null,
     keySkills: readonly string[] | null,
   ): CvReadingView {
+    const none = { latestTitle: null, latestCompany: null, workHistory: [], educationDetails: [], cvSkills: [], certifications: [], city: null };
     // a CV come in a moment ago, before the round gave it a reading: being read
-    if (!r) return { status: 'pending', method: null, readAt: null, experience: null, education: null, languages: [], skills: keySkills && keySkills.length ? { found: [], missing: [...keySkills] } : null, cvMatchPercent: null };
+    if (!r) return { status: 'pending', method: null, readAt: null, experience: null, education: null, languages: [], skills: keySkills && keySkills.length ? { found: [], missing: [...keySkills] } : null, cvMatchPercent: null, ...none };
     const facts = cvFactsOf(r.facts);
     const skills = keySkills && keySkills.length ? (r.status === 'read' && r.text ? cvSkillsFound(r.text, keySkills) : { found: [], missing: [...keySkills] }) : null;
     return {
@@ -321,7 +326,46 @@ export class CvReadingsService implements OnModuleDestroy {
       languages: facts?.languages ?? [],
       skills,
       cvMatchPercent: keySkills && r.status === 'read' && r.text ? cvMatchPercent(skills?.found.length ?? 0, keySkills.length) : null,
+      // 24 October 2026: more found by the rules (a developer's masked by developer.ts, but for the skills)
+      ...(facts
+        ? {
+            latestTitle: facts.latestTitle,
+            latestCompany: facts.latestCompany,
+            workHistory: facts.workHistory,
+            educationDetails: facts.educationDetails,
+            cvSkills: facts.cvSkills,
+            certifications: facts.certifications,
+            city: facts.city,
+          }
+        : none),
     };
+  }
+
+  // ---------- the facts worked out again (24 October 2026) ----------
+
+  /**
+   * The facts of every CV read before the rules last grew (CV_FACTS_VERSION; 24 October 2026: "CV years in list + more
+   * rules") worked out again from its kept text: no reading again, so no OCR. Idempotent: facts of this version are left
+   * as they are, and each is worked out as of the month it was read ("present" stays that month, as when it was read).
+   * Run by the recruitment round (RecruitmentSchedulerService) under its lock; how many were worked out again.
+   */
+  async refreshFacts(batch = 200): Promise<number> {
+    let done = 0;
+    // at most 1,000 batches a round (200,000 CVs): the next round takes the rest
+    for (let round = 0; round < 1000; round++) {
+      const rows = await this.prisma.$queryRaw<{ id: string; text: string; read_at: Date | null }[]>`SELECT id, text, read_at FROM cv_readings
+        WHERE status = 'read' AND text IS NOT NULL
+          AND (facts IS NULL OR CASE WHEN jsonb_typeof(facts->'version') = 'number' THEN (facts->>'version')::numeric < ${CV_FACTS_VERSION} ELSE true END)
+        ORDER BY id
+        LIMIT ${batch}`;
+      for (const r of rows) {
+        const facts = cvFacts(r.text, r.read_at ?? new Date());
+        const { count } = await this.prisma.cvReading.updateMany({ where: { id: r.id, status: 'read' }, data: { facts: facts as unknown as Prisma.InputJsonValue } });
+        done += count;
+      }
+      if (rows.length < batch) break;
+    }
+    return done;
   }
 
   /** A CV's text and the contacts found in it (never for a developer: the route is refused to them). */

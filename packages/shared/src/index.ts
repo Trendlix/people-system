@@ -523,6 +523,9 @@ export * from './general-cvs.js';
 // rules only"): the reading's status, what the rules find (contacts, years, education, languages) and a vacancy's key
 // skills (the CV match %)
 export * from './cv-analysis.js';
+// the skills every CV is looked through for (owner, 24 October 2026: "CV years in list + more rules"), in a file HR can
+// later edit
+export * from './skills-dictionary.js';
 export * from './onboarding.js';
 
 // the Developer role (owner, 22 October 2026: "i want to create a role for develoeprs, not showing the real numbers"):

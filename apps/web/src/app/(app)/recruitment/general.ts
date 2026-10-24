@@ -16,7 +16,7 @@ import {
   type VacancyListItem,
 } from '@trendlix/shared';
 import { generalApiForm, generalInputOf, generalTypedValues, OTHER_AREA } from '../../careers/careers';
-import { APPLICANTS_PATH, applicantsHref, vacancyHref, type ApplicantsQuery } from './recruitment';
+import { APPLICANTS_PATH, applicantsHref, minYearsOf, skillOf, vacancyHref, type ApplicantsQuery } from './recruitment';
 import { shownCode } from '../../../lib/hidden';
 
 // General CVs and the applicants by posted job on the site (owner, 22 October 2026: "i want a proper viweing, what came
@@ -48,7 +48,7 @@ export const tabHref = (tab: ApplicantsTab) => (tab === 'general' ? `${APPLICANT
 
 /** Whether a filter narrows the posted jobs' list (then a vacancy without a match is left out). */
 export const filtering = (q: ApplicantsQuery): boolean =>
-  !!(q.vacancyId || q.stage || q.source || q.q || q.minMatch !== null || q.minYears !== null || q.minCvMatch !== null || q.filtered !== 'hide');
+  !!(q.vacancyId || q.stage || q.source || q.q || q.skill || q.minMatch !== null || q.minYears !== null || q.minCvMatch !== null || q.filtered !== 'hide');
 
 /**
  * The posted jobs' applicants grouped by vacancy, in the summary's order (open first, then on hold, closed, filled):
@@ -74,6 +74,10 @@ export interface GeneralQuery {
   source: GeneralCvSource | '';
   departmentId: string;
   q: string;
+  /** The years at least: those typed, else the CV's estimate (24 October 2026: "CV years in list + more rules"). */
+  minYears: number | null;
+  /** A skill of the dictionary their CV names; '' for any. */
+  skill: string;
 }
 
 export function readGeneralQuery(query: Record<string, string | string[] | undefined>): GeneralQuery {
@@ -85,8 +89,13 @@ export function readGeneralQuery(query: Record<string, string | string[] | undef
     source: (GENERAL_CV_SOURCES as readonly string[]).includes(source) ? (source as GeneralCvSource) : '',
     departmentId: UUID.test(departmentId) ? departmentId : '',
     q: one(query.q).slice(0, 100),
+    minYears: minYearsOf(query.minYears),
+    skill: skillOf(query.skill),
   };
 }
+
+/** Whether a filter narrows the general CVs (besides the status chips): then "Nobody here." and Clear. */
+export const generalFiltering = (g: GeneralQuery): boolean => !!(g.status || g.source || g.departmentId || g.q || g.skill || g.minYears !== null);
 
 function generalParams(q: Partial<GeneralQuery>): URLSearchParams {
   const params = new URLSearchParams();
@@ -94,6 +103,8 @@ function generalParams(q: Partial<GeneralQuery>): URLSearchParams {
   if (q.source) params.set('source', q.source);
   if (q.departmentId) params.set('departmentId', q.departmentId);
   if (q.q) params.set('q', q.q);
+  if (q.minYears !== null && q.minYears !== undefined) params.set('minYears', String(q.minYears));
+  if (q.skill) params.set('skill', q.skill);
   return params;
 }
 

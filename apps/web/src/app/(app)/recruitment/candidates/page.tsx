@@ -10,6 +10,7 @@ import { CANDIDATES_PATH, candidateHref, latestText, readCandidatesQuery } from 
 import { loadCandidates, recruitmentNotLoaded } from '../data';
 import { generalCvHref } from '../general';
 import { applicantHref, readsRecruitment, WHO_SEES } from '../recruitment';
+import { ExperienceCell, MinYearsSelect } from '../ui';
 import { shownCode } from '@/lib/hidden';
 
 // Candidates (owner, 22 October 2026: "how to make like a profile for each candidate to store history and prevent
@@ -17,6 +18,9 @@ import { shownCode } from '@/lib/hidden';
 // name and code, how many applications, their latest job and where it stands, when they last applied, where it came
 // from, and "Former employee". Search by name, email, mobile (as typed in any form), code or the CVs' text; the possible
 // matches HR hasn't decided apart, with their count. HR, the CEO and a Super Admin.
+// Their experience too (owner, 24 October 2026: "why isn't the experience pulled off the CV?"; "CV years in list + more
+// rules"): of their applications and general CVs, the most years (those typed, else the CV's estimate, "≈ 4 y · CV"),
+// with a Min. experience filter by the same rule.
 
 export const metadata: Metadata = { title: 'Candidates · People System' };
 
@@ -28,6 +32,7 @@ function CandidatesTable({ rows }: { rows: CandidateListItem[] }) {
           <tr>
             <th>Candidate</th>
             <th className="text-right">Applications</th>
+            <th className="text-right">Experience</th>
             <th>Latest</th>
             <th>Last applied</th>
             <th>Source</th>
@@ -52,6 +57,7 @@ function CandidatesTable({ rows }: { rows: CandidateListItem[] }) {
                   {c.applications}
                   {c.generalCvs > 0 && <span className="block text-xs text-muted">+ {c.generalCvs} general</span>}
                 </td>
+                <ExperienceCell typed={c.yearsExperience} fromCv={c.fromCv} />
                 <td className="text-sm">
                   {c.latest ? (
                     <>
@@ -88,10 +94,11 @@ async function Candidates({ searchParams }: { searchParams: PageProps<'/recruitm
           </label>
           <input id="candidate-search" name="q" defaultValue={f.q} placeholder="Name, email, mobile, code (CAN-0001) or the CV's text" className="input" />
         </div>
+        <MinYearsSelect id="candidate-years" value={f.minYears} />
         <button type="submit" className="btn btn-secondary">
           Search
         </button>
-        {f.q && (
+        {(f.q || f.minYears !== null) && (
           <Link href={CANDIDATES_PATH} className="btn btn-secondary no-underline">
             Clear
           </Link>
@@ -100,7 +107,7 @@ async function Candidates({ searchParams }: { searchParams: PageProps<'/recruitm
       {loaded.kind !== 'ok' ? (
         <Empty>{recruitmentNotLoaded(loaded, 'candidates')}</Empty>
       ) : loaded.value.length === 0 ? (
-        <div className="card px-6 py-8 text-center text-sm text-muted">{f.q ? 'Nobody here.' : 'No candidates yet. Everyone who applies or sends a CV gets one.'}</div>
+        <div className="card px-6 py-8 text-center text-sm text-muted">{f.q || f.minYears !== null ? 'Nobody here.' : 'No candidates yet. Everyone who applies or sends a CV gets one.'}</div>
       ) : (
         <CandidatesTable rows={loaded.value} />
       )}

@@ -1,12 +1,17 @@
 import {
   APPLICATION_STAGES,
   applicationSourceOf,
+  cvFactsOf,
+  cvMonthsAtLeast,
+  experienceOf,
   isGeneralCvSource,
   tidyQuestions,
   vacancyQuestionsProblems,
   type AnswerValue,
   type ApplicationListItem,
   type ApplicationStage,
+  type CvListFacts,
+  type CvReadingStatus,
   type EmploymentType,
   type PublicVacancySummary,
   type RecruitmentUserRef,
@@ -112,6 +117,9 @@ export const APPLICATION_LIST_SELECT = {
   generalCv: { select: { source: true } },
   // the candidate's profile, for the badges (22 October 2026)
   candidateId: true,
+  // the CV's reading, for the Experience and Latest role columns (24 October 2026)
+  cv: { select: { sizeBytes: true } },
+  cvReading: { select: { status: true, facts: true } },
 } satisfies Prisma.JobApplicationSelect;
 
 export type ApplicationListRow = Prisma.JobApplicationGetPayload<{ select: typeof APPLICATION_LIST_SELECT }>;
@@ -133,7 +141,54 @@ export const applicationListView = (a: ApplicationListRow): ApplicationListItem 
   source: applicationSourceOf(a.source),
   generalSource: a.generalCv && isGeneralCvSource(a.generalCv.source) ? a.generalCv.source : null,
   appliedAt: a.createdAt.toISOString(),
+  fromCv: cvListFactsOf(!!a.cv, a.cvReading),
 });
+
+// ---------- the CV's years and facts on the lists (24 October 2026) ----------
+// The owner, 24 October 2026, on the General CVs list (the Experience column "—" on every row): "why isn't the
+// experience pulled off the CV?"; chose "CV years in list + more rules": the years typed, else the CV's estimate, in the
+// column and its filter alike (packages/shared cv-analysis.ts experienceOf, meetsMinYears).
+
+/**
+ * What a list shows of a CV's reading: its status ("Reading…"), its months of experience and its latest job; a CV
+ * without a reading yet (come in a moment ago) as being read. Null without a CV.
+ */
+export function cvListFactsOf(hasCv: boolean, reading: { status: string; facts: Prisma.JsonValue | null } | null): CvListFacts | null {
+  if (!hasCv) return null;
+  if (!reading) return { status: 'pending', experienceMonths: null, latestTitle: null, latestCompany: null };
+  const facts = reading.status === 'read' ? cvFactsOf(reading.facts) : null;
+  return { status: reading.status as CvReadingStatus, experienceMonths: facts?.experienceMonths ?? null, latestTitle: facts?.latestTitle ?? null, latestCompany: facts?.latestCompany ?? null };
+}
+
+/**
+ * ?minYears= on an application's or a general CV's list: the years typed at least `min`, or none typed and the CV's
+ * dates at least as many (as the column rounds them: 3+ is 30 months).
+ */
+export const minYearsWhere = (min: number) => ({
+  OR: [{ yearsExperience: { gte: min } }, { yearsExperience: null, cvReading: { is: { status: 'read', facts: { path: ['experienceMonths'], gte: cvMonthsAtLeast(min) } } } }],
+});
+
+/** ?skill= (a dictionary skill, skills-dictionary.ts): the CVs whose reading found it. */
+export const skillWhere = (skill: string) => ({ cvReading: { is: { status: 'read', facts: { path: ['cvSkills'], array_contains: [skill] } } } });
+
+/**
+ * Most experience first (?sort=years): the years the column shows (typed, else the CV's as rounded), then the months,
+ * none last; a stable sort, so equals keep their order.
+ */
+export function byExperience<T>(rows: readonly T[], of: (row: T) => { typed: number | null; cvMonths: number | null }): T[] {
+  const key = (row: T) => {
+    const { typed, cvMonths } = of(row);
+    const shown = experienceOf(typed, cvMonths);
+    return shown ? [shown.years, typed !== null ? typed * 12 : (cvMonths ?? 0)] : null;
+  };
+  const keyed = rows.map((row) => ({ row, k: key(row) }));
+  return keyed
+    .sort((a, b) => {
+      if (!a.k || !b.k) return a.k ? -1 : b.k ? 1 : 0;
+      return b.k[0] - a.k[0] || b.k[1] - a.k[1];
+    })
+    .map((x) => x.row);
+}
 
 /** An open vacancy as the careers page lists it. */
 export const publicSummaryOf = (v: {

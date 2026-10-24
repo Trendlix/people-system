@@ -1,5 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
-import { DEVELOPER_NO_FILES, DEVELOPER_READ_ONLY, HIDDEN } from '@trendlix/shared';
+import { cvFacts, DEVELOPER_NO_FILES, DEVELOPER_READ_ONLY, HIDDEN } from '@trendlix/shared';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { todayInCairo } from '../src/common/date-only.js';
@@ -55,13 +55,45 @@ const OFFER_EMAIL = `offer.${RUN}@mail.test`;
 const CANDIDATE_NAME = `Cand Person ${RUN}`;
 const CANDIDATE_EMAIL = `cand.${RUN}@mail.test`;
 const CANDIDATE_MOBILE = `+2011${String(Date.now() % 100_000_000).padStart(8, '0')}`;
+// what the rules read from that CV (owner, 24 October 2026: "CV years in list + more rules"): the jobs of their past,
+// their school, their certification and their city, invented and distinctive (the city's name in letters alone, as the
+// rules take a city with its country)
+const LETTERS = RUN.split('').map((c) => 'abcdefghijklmnopqrstuvwxyz'[c.charCodeAt(0) % 26]).join('');
+const PAST_TITLE = `Colorist ${RUN}`;
+const PAST_COMPANY = `Studio ${RUN}`;
+const CV_SCHOOL = `Faculty of Film ${RUN}`;
+const CV_CERTIFICATION = `Certified Grader ${RUN}`;
+const CV_CITY = `Q${LETTERS}, UAE`;
+const CV_TEXT = [CANDIDATE_NAME, CV_CITY, 'Experience', `${PAST_TITLE}, ${PAST_COMPANY}, Jan 2022 - Present`, 'Education', `Bachelor of Film, ${CV_SCHOOL}, 2018`, 'Certifications', CV_CERTIFICATION, 'Skills', 'Premiere Pro'].join('\n');
 // a second person, whose fixed term ended three months ago while the work goes on (owner, 23 October 2026, as a
 // developer, on the home page: "Employee EMP-0023 · EMP-0023", "Ends 11/03/2024", "Passed", "Became open-ended — Art.
 // 88"): on Contracts Ending Soon and the law's warnings
 const ENDED_EN = `Ended Person ${RUN}`;
 const ENDED_EMAIL = `ended.${RUN}@trendlix.com`;
 const JOINED_BEFORE = `${monthsLater(CURRENT, -15)}-13`;
-const PERSONAL = [FULL_EN, FULL_AR, DISPLAY, WORK_EMAIL, PERSONAL_EMAIL, ADDRESS, CITY, BIRTH, EMERGENCY, UNIVERSITY, LOAN_REASON, CLAIM_TEXT, OFFER_NAME, OFFER_EMAIL, ENDED_EN, ENDED_EMAIL];
+const PERSONAL = [
+  FULL_EN,
+  FULL_AR,
+  DISPLAY,
+  WORK_EMAIL,
+  PERSONAL_EMAIL,
+  ADDRESS,
+  CITY,
+  BIRTH,
+  EMERGENCY,
+  UNIVERSITY,
+  LOAN_REASON,
+  CLAIM_TEXT,
+  OFFER_NAME,
+  OFFER_EMAIL,
+  ENDED_EN,
+  ENDED_EMAIL,
+  PAST_TITLE,
+  PAST_COMPANY,
+  CV_SCHOOL,
+  CV_CERTIFICATION,
+  CV_CITY,
+];
 // the person's job and social insurance (owner, 22 October 2026: "why is the employment data can be viewed by developer
 // access"; "Hide per-person details", "and the social insurance"): invented and distinctive, so every answer about people
 // can be searched for them. The company's own insurance office is set in the database, so no audit entry of the company
@@ -279,6 +311,9 @@ describe('The Developer role (e2e)', () => {
         .expect(201)
     ).body.id;
     const cv = await prisma.generalCv.findUniqueOrThrow({ where: { id: generalCvId }, select: { candidateId: true, number: true } });
+    // its CV read (24 October 2026): what the rules found in it, as the readings round keeps it
+    const read = { status: 'read', method: 'pdf', text: CV_TEXT, facts: cvFacts(CV_TEXT) as object, readAt: new Date() };
+    await prisma.cvReading.upsert({ where: { generalCvId }, create: { generalCvId, ...read }, update: read });
     candidateId = cv.candidateId!;
     generalCvNumber = cv.number;
     candidateCode = (await prisma.candidate.findUniqueOrThrow({ where: { id: candidateId }, select: { code: true } })).code;
@@ -655,6 +690,36 @@ describe('The Developer role (e2e)', () => {
     expect(merge.body.message).toBe(DEVELOPER_READ_ONLY);
     // HR sees them as they are
     expect((await as('hr').get(`/recruitment/candidates/${candidateId}`).expect(200)).body.fullName).toBe(CANDIDATE_NAME);
+  });
+
+  // more read from a CV (owner, 24 October 2026: "CV years in list + more rules")
+  it('what a CV says: the past jobs, school, certifications and city "••••"; the years and the dictionary’s skills as they are', async () => {
+    const hr = (await as('hr').get(`/recruitment/general-cvs/${generalCvId}`).expect(200)).body;
+    expect(hr.cvReading).toMatchObject({
+      latestTitle: PAST_TITLE,
+      latestCompany: PAST_COMPANY,
+      educationDetails: [{ institution: CV_SCHOOL, degree: 'Bachelor of Film', graduationYear: 2018 }],
+      certifications: [CV_CERTIFICATION],
+      cvSkills: ['Premiere Pro'],
+      city: CV_CITY,
+    });
+    const seen = (await as('developer').get(`/recruitment/general-cvs/${generalCvId}`).expect(200)).body;
+    expect(seen.cvReading).toMatchObject({
+      experience: hr.cvReading.experience,
+      latestTitle: HIDDEN,
+      latestCompany: HIDDEN,
+      workHistory: [{ pastTitle: HIDDEN, pastCompany: HIDDEN, from: '2022-01', to: null, current: true }],
+      educationDetails: [{ institution: HIDDEN, degree: null, graduationYear: null }],
+      certifications: [HIDDEN],
+      cvSkills: ['Premiere Pro'],
+      city: HIDDEN,
+    });
+    const lists = [(await as('developer').get('/recruitment/general-cvs').expect(200)).body, (await as('developer').get('/recruitment/candidates').expect(200)).body] as {
+      id: string;
+      fromCv?: { latestTitle: string | null; experienceMonths: number | null } | null;
+    }[][];
+    for (const rows of lists) expect(rows.find((r) => r.id === generalCvId || r.id === candidateId)?.fromCv).toMatchObject({ latestTitle: HIDDEN, experienceMonths: expect.any(Number) });
+    expect(personalLeaks([seen, lists], [])).toEqual([]);
   });
 
   // 23 October 2026: "people search is off for developers"; assets are still found by their codes
