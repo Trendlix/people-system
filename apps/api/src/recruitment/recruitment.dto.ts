@@ -30,6 +30,10 @@ import {
   GENERAL_CV_SOURCES,
   GENERAL_CV_STATUSES,
   MOVE_STAGES,
+  INVITE_LIMITS,
+  SUGGESTION_LIMITS,
+  SUGGESTION_STATUSES,
+  type SuggestionStatus,
   type CvSaveRow,
   type GeneralCvSource,
   type GeneralCvStatus,
@@ -279,6 +283,35 @@ export class RecruitmentSettingsDto {
 
   @IsOptional() @TrimOrNull() @IsString() @MaxLength(REJECTION_LIMITS.text, { message: `Keep the Arabic text to ${REJECTION_LIMITS.text} characters or fewer.` })
   rejectionAr?: string | null;
+
+  // Suggested From Earlier CVs (owner, 24 October 2026: "Suggest; HR adds"): how far back CVs count, and the invitation's words
+
+  @IsOptional()
+  @IsInt({ message: `Give how many months back CVs count: a whole number from ${SUGGESTION_LIMITS.recencyMonthsMin} to ${SUGGESTION_LIMITS.recencyMonthsMax}.` })
+  @Min(SUGGESTION_LIMITS.recencyMonthsMin, { message: `Give how many months back CVs count: a whole number from ${SUGGESTION_LIMITS.recencyMonthsMin} to ${SUGGESTION_LIMITS.recencyMonthsMax}.` })
+  @Max(SUGGESTION_LIMITS.recencyMonthsMax, { message: `Give how many months back CVs count: a whole number from ${SUGGESTION_LIMITS.recencyMonthsMin} to ${SUGGESTION_LIMITS.recencyMonthsMax}.` })
+  suggestMonths?: number;
+
+  @IsOptional() @TrimOrNull() @IsString() @MaxLength(INVITE_LIMITS.subject, { message: `Keep the invitation’s subject to ${INVITE_LIMITS.subject} characters or fewer.` })
+  inviteSubject?: string | null;
+
+  @IsOptional() @TrimOrNull() @IsString() @MaxLength(INVITE_LIMITS.text, { message: `Keep the invitation’s English text to ${INVITE_LIMITS.text} characters or fewer.` })
+  inviteEn?: string | null;
+
+  @IsOptional() @TrimOrNull() @IsString() @MaxLength(INVITE_LIMITS.text, { message: `Keep the invitation’s Arabic text to ${INVITE_LIMITS.text} characters or fewer.` })
+  inviteAr?: string | null;
+}
+
+/** ?status= on a vacancy's Suggested From Earlier CVs (24 October 2026): suggested unless asked. */
+export class ListSuggestionsDto {
+  @IsOptional() @IsIn(SUGGESTION_STATUSES, { message: 'Choose which suggestions to list.' })
+  status?: SuggestionStatus;
+}
+
+/** Dismissing a suggested CV: an optional reason. */
+export class DismissSuggestionDto {
+  @IsOptional() @TrimOrNull() @IsString() @MaxLength(SUGGESTION_LIMITS.reason, { message: `Keep the reason to ${SUGGESTION_LIMITS.reason} characters or fewer.` })
+  reason?: string | null;
 }
 
 /** ?year= and ?departmentId= for the analytics. */

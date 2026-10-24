@@ -7,11 +7,13 @@ import { getCurrentUser } from '@/lib/session';
 import { Empty, Loading } from '../../organization/ui';
 import { loadVacancies, recruitmentNotLoaded } from '../data';
 import { managesRecruitment, NEW_VACANCY_PATH, readsRecruitment, readVacancyFilter, vacanciesHref, VACANCY_FILTERS, vacancyHref, WHO_SEES } from '../recruitment';
+import { suggestionsHref } from '../suggestions';
 import { VacancyStatusBadge } from '../ui';
 
 // Vacancies (owner, 22 October 2026: "where will we include the ATS?"; "HR creates a vacancy and the CEO approves it"):
 // the active ones first (drafts, those waiting for the CEO, open, on hold), or by status, with their applicants (and those
-// still to review) and hires against the headcount. HR drafts a new one from a job title.
+// still to review) and hires against the headcount. HR drafts a new one from a job title. Since 24 October 2026 (owner:
+// "Suggest; HR adds"): "Suggestions: N", the earlier CVs waiting for HR on an open one, to its Suggested From Earlier CVs.
 
 export const metadata: Metadata = { title: 'Vacancies · People System' };
 
@@ -81,6 +83,11 @@ async function Vacancies({ searchParams }: { searchParams: PageProps<'/recruitme
                   </td>
                   <td>
                     <VacancyStatusBadge status={v.status} />
+                    {(v.suggestions ?? 0) > 0 && (
+                      <Link href={suggestionsHref(v.id)} className="mt-1 block text-xs font-semibold whitespace-nowrap">
+                        Suggestions: {v.suggestions}
+                      </Link>
+                    )}
                   </td>
                   <td className="text-sm">{v.department?.nameEn ?? '—'}</td>
                   <td className="text-right tabular-nums">

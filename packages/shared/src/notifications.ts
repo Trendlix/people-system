@@ -89,6 +89,9 @@ export const NOTIFICATION_KINDS = [
   // requested check-in locations (owner, 24 October 2026: "allow the HR to add an end date"; home-locations.ts): the
   // employee and HR told 7 days before a home's, a remote site's or a client location's end that is a date
   'check_in_location_ending',
+  // Suggested From Earlier CVs (owner, 24 October 2026: "Suggest; HR adds"; suggested-cvs.ts): HR told once a batch that
+  // earlier CVs match an open vacancy ("5 earlier CVs match Video Editor"); never a name
+  'cv_suggestions',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
@@ -160,6 +163,7 @@ export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
   meeting_connection: 'Meetings',
   screening_mention: 'Screening comment',
   check_in_location_ending: 'Check-in location',
+  cv_suggestions: 'Suggested CVs',
 };
 
 // ---------- the reminders and the person's switches ----------

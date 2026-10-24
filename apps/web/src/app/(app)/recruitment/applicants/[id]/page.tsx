@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import {
+  addedWithoutAnswers,
   APPLICATION_EVENT_LABELS,
   applicationSourceText,
   FEEDBACK_CRITERIA,
@@ -350,7 +351,8 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
             Details
           </h2>
           <p className="text-sm">
-            Match <span className="font-semibold tabular-nums">{matchText(a.matchPercent)}</span>
+            {/* added from the suggested CVs (24 October 2026): the screening questions weren't asked */}
+            Match <span className="font-semibold tabular-nums">{addedWithoutAnswers(a.source) ? 'No screening answers' : matchText(a.matchPercent)}</span>
             {a.maxPoints > 0 && (
               <span className="text-muted tabular-nums">
                 {' '}

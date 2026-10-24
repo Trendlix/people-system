@@ -577,6 +577,11 @@ export * from './meetings.js';
 // as a badge and a filter; HR's single notes box of before moved into them
 export * from './screening.js';
 
+// Suggested From Earlier CVs on each open vacancy (owner, 24 October 2026: "does the system automatically add recomended
+// general cv's to the opened posts?"; asked, "Suggest; HR adds", "General CVs + past applicants", "Yes, HR presses
+// 'Invite to apply'"): the pool and its exclusions, the score and its reasons, the invitation's words, the views
+export * from './suggested-cvs.js';
+
 // Office staff's check-ins locked to the check-in locations by GPS (owner, 24 October 2026: "Yes, add a GPS lock too"):
 // the switch and its accuracy allowance, a press's verdict (inside a circle, too rough, no location), the two locks
 // together (either passing is enough), and the words of the refusals

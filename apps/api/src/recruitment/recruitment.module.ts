@@ -27,6 +27,8 @@ import { VacanciesService } from './vacancies.service.js';
 import { CvPreviewsService } from './cv-previews.service.js';
 import { ScreeningCommentsController } from './screening-comments.controller.js';
 import { ScreeningCommentsService } from './screening-comments.service.js';
+import { SuggestionsController, VacancySuggestionsController } from './vacancy-suggestions.controller.js';
+import { VacancySuggestionsService } from './vacancy-suggestions.service.js';
 
 // Recruitment, the ATS (owner, 22 October 2026: "where will we include the ATS?"): Phase 1, vacancies, the careers page
 // and the applicants; Phase 2, the pipeline board, interviews, scorecards, the hiring manager's suggestions, the
@@ -52,6 +54,9 @@ import { ScreeningCommentsService } from './screening-comments.service.js';
     CandidatesController,
     // screening comments with a verdict (owner, 24 October 2026: "is there a way to add screening comments?")
     ScreeningCommentsController,
+    // Suggested From Earlier CVs on each open vacancy (owner, 24 October 2026: "Suggest; HR adds")
+    VacancySuggestionsController,
+    SuggestionsController,
   ],
   providers: [
     VacanciesService,
@@ -72,6 +77,8 @@ import { ScreeningCommentsService } from './screening-comments.service.js';
     // screening comments, and the CVs as PDFs for the CV window (24 October 2026: "open it in a popup window")
     ScreeningCommentsService,
     CvPreviewsService,
+    // the earlier CVs matched with each open vacancy, HR told of new matches (24 October 2026: "Suggest; HR adds")
+    VacancySuggestionsService,
   ],
   exports: [RecruitmentOffersService, InterviewsService, RecruitmentSchedulerService, CvReadingsService, CandidatesService, ScreeningCommentsService],
 })

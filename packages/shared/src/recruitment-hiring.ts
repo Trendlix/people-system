@@ -19,6 +19,7 @@ import type { GeneralCvSource } from './general-cvs.js';
 import type { CandidateBadge } from './candidates.js';
 import type { ScreeningVerdict } from './screening.js';
 import { isMeetingChoiceValue, MEETING_KEEP, parseMeetingChoice, type InterviewMeetingView, type MeetingOutcome } from './meetings.js';
+import type { InviteWords } from './suggested-cvs.js';
 
 // ---------- who looks ----------
 
@@ -664,6 +665,11 @@ export interface MyHiring {
 export interface RecruitmentSettingsView {
   rejection: RejectionWords;
   standard: { subject: string; en: string; ar: string };
+  /** Suggested From Earlier CVs (24 October 2026; suggested-cvs.ts): how far back CVs and applications count, in months. */
+  suggestions: { recencyMonths: number };
+  /** The invitation to apply's words as HR set them (null: the standard), and the standard ones. */
+  invite: InviteWords;
+  inviteStandard: { subject: string; en: string; ar: string };
   updatedAt: string | null;
   updatedBy: RecruitmentUserRef | null;
 }

@@ -126,15 +126,84 @@ function normalForMatch(text: string): string {
 
 /** Which of the key skills the text names (whole words, any case and punctuation), and which not, each in its order. */
 export function cvSkillsFound(text: string, skills: readonly string[]): { found: string[]; missing: string[] } {
+  return cvSkillsMatcher(text)(skills);
+}
+
+/**
+ * cvSkillsFound with the text made ready once (24 October 2026, the suggested CVs: one CV checked against every open
+ * vacancy's key skills): the matcher answers for any list of skills.
+ */
+export function cvSkillsMatcher(text: string): (skills: readonly string[]) => { found: string[]; missing: string[] } {
   const hay = ` ${normalForMatch(text)} `;
-  const found: string[] = [];
-  const missing: string[] = [];
-  for (const skill of skills) {
-    const needle = normalForMatch(skill);
-    if (needle && hay.includes(` ${needle} `)) found.push(skill);
-    else missing.push(skill);
-  }
-  return { found, missing };
+  return (skills) => {
+    const found: string[] = [];
+    const missing: string[] = [];
+    for (const skill of skills) {
+      const needle = normalForMatch(skill);
+      if (needle && hay.includes(` ${needle} `)) found.push(skill);
+      else missing.push(skill);
+    }
+    return { found, missing };
+  };
+}
+
+/**
+ * A job title's words as titles are compared (24 October 2026, the suggested CVs: "Video Editor before"): as skills are
+ * matched (lower case, plain digits and Arabic), without the words of rank or kind ("Senior", "Junior", "Lead", "Intern",
+ * "of", "and" …) and a plural's s ("Editors" is "editor"); each once.
+ */
+export function titleWords(title: string | null | undefined): string[] {
+  const words = normalForMatch(title ?? '')
+    .split(' ')
+    .filter((w) => w && !TITLE_STOP_WORDS.has(w))
+    .map((w) => (w.length > 3 && /[a-z]s$/.test(w) && !w.endsWith('ss') ? w.slice(0, -1) : w));
+  return [...new Set(words)];
+}
+
+const TITLE_STOP_WORDS = new Set([
+  'and',
+  'of',
+  'the',
+  'for',
+  'in',
+  'at',
+  'to',
+  'a',
+  'an',
+  'senior',
+  'junior',
+  'sr',
+  'jr',
+  'lead',
+  'principal',
+  'head',
+  'chief',
+  'assistant',
+  'associate',
+  'intern',
+  'internship',
+  'trainee',
+  'freelance',
+  'freelancer',
+  'part',
+  'full',
+  'time',
+  'mid',
+  'level',
+  'i',
+  'ii',
+  'iii',
+]);
+
+/**
+ * How much an earlier title resembles a job's (24 October 2026): the share of the job's words the earlier title has, 0
+ * to 1 ("Senior Video Editor" for "Video Editor": 1; "Video Producer": 0.5); 0 when the job's title has no words.
+ */
+export function titleLikeness(jobTitle: string | null | undefined, earlier: string | null | undefined): number {
+  const job = titleWords(jobTitle);
+  if (!job.length) return 0;
+  const had = new Set(titleWords(earlier));
+  return job.filter((w) => had.has(w)).length / job.length;
 }
 
 /** The CV match %: the key skills found ÷ those listed, rounded; null when none are listed. */

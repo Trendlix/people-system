@@ -1,4 +1,5 @@
 import {
+  addedWithoutAnswers,
   APPLICATION_STAGE_LABELS,
   applicationSourceText,
   VACANCY_STATUS_LABELS,
@@ -196,7 +197,16 @@ export function ApplicantsTable({ rows, withVacancy, bare = false }: { rows: App
                 <CandidateBadges candidate={a.candidate} />
               </td>
               {withVacancy ? <td className="text-sm">{a.vacancy.title}</td> : <LatestRoleCell fromCv={a.fromCv} />}
-              <td className="text-right tabular-nums">{matchText(a.matchPercent)}</td>
+              <td className="text-right tabular-nums">
+                {/* added from the suggested CVs, without the screening questions (24 October 2026): never a misleading 0% */}
+                {addedWithoutAnswers(a.source) ? (
+                  <span className="text-xs text-muted" title="Added from Suggested From Earlier CVs: the screening questions weren’t asked">
+                    No answers
+                  </span>
+                ) : (
+                  matchText(a.matchPercent)
+                )}
+              </td>
               <td className="text-right tabular-nums">{matchText(a.cvMatchPercent)}</td>
               <td>
                 <StageBadge stage={a.stage} filteredOut={a.filteredOut} />

@@ -2,19 +2,42 @@ import type { Metadata } from 'next';
 import { headers } from 'next/headers';
 import Link from 'next/link';
 import { Suspense } from 'react';
-import { APPLICATION_STAGE_LABELS, GOOD_MATCH_PERCENT, LABELS, QUESTION_KIND_LABELS, questionMaxPoints, sourceLine, type VacancyView } from '@trendlix/shared';
+import { APPLICATION_STAGE_LABELS, GENERAL_KEY, GOOD_MATCH_PERCENT, LABELS, QUESTION_KIND_LABELS, questionMaxPoints, sourceLine, type ScreeningCv, type VacancySuggestionView, type VacancyView } from '@trendlix/shared';
 import { RichText } from '@/components/rich-text';
+import { SetUpEmailLink } from '@/components/set-up-email-link';
+import { setsUpEmail } from '@/lib/email-setup';
 import { formatDate, formatDateTime } from '@/lib/format';
+import { isHidden, shownCode } from '@/lib/hidden';
+import { getCurrentUser } from '@/lib/session';
 import { BackLink, Empty, Loading } from '../../../organization/ui';
 import { originFrom } from '../../../offers/sending';
 import { deleteVacancy, moveOnBoard, moveVacancy } from '../../actions';
 import { PipelineBoard } from '../../board';
-import { loadApplicants, loadBoard, loadVacancy, recruitmentNotLoaded } from '../../data';
+import { candidateHref } from '../../candidates';
+import { CvDialogHost, CvOpenButton } from '../../cv-dialog';
+import { loadApplicants, loadBoard, loadSuggestions, loadVacancy, recruitmentNotLoaded } from '../../data';
 import { ActionButton, CopyLink, ReasonButton } from '../../forms';
 import { vacancyBulkHref } from '../../general';
 import { boardHref, MY_HIRING_PATH } from '../../hiring';
-import { applicantsHref, channelLinks, GOOD_CV_MATCH_PERCENT, readApplicantsQuery, STAGE_FILTERS, VACANCIES_PATH, vacancyEditHref, vacancyHref } from '../../recruitment';
-import { ApplicantsTable, VacancyStatusBadge } from '../../ui';
+import { applicantHref, applicantsHref, channelLinks, GOOD_CV_MATCH_PERCENT, readApplicantsQuery, STAGE_FILTERS, VACANCIES_PATH, vacancyEditHref, vacancyHref } from '../../recruitment';
+import { addSuggestion, dismissSuggestion, inviteSuggestion } from '../../suggestion-actions';
+import {
+  decisionText,
+  emptyText,
+  inviteConfirmText,
+  pausedText,
+  poolText,
+  readSuggestionStatus,
+  reasonChips,
+  scoreText,
+  SUGGESTED_VIEW,
+  suggestedViewLabel,
+  SUGGESTION_FILTERS,
+  statusChip,
+  sourceText,
+  suggestionsHref,
+} from '../../suggestions';
+import { ApplicantsTable, VacancyStatusBadge, VerdictBadge } from '../../ui';
 
 // A vacancy (owner, 22 October 2026: "where will we include the ATS?"): where it stands and what can be done (HR sends it
 // to the CEO, holds, reopens, closes it; the CEO approves it or sends it back with a reason), its position and internal
@@ -22,6 +45,10 @@ import { ApplicantsTable, VacancyStatusBadge } from '../../ui';
 // questions, and its applicants by stage (those filtered out by a must-have apart, a good match from 70%).
 // Phase 2 (22 October 2026): the applicants as a list or as the pipeline board (?view=board); the vacancy's hiring manager
 // sees it without the salary range, with its board from Shortlisted on.
+// Suggested From Earlier CVs (owner, 24 October 2026: "does the system automatically add recomended general cv's to the
+// opened posts?"; "Suggest; HR adds", "Yes, HR presses 'Invite to apply'"): a third view (?view=suggested) for HR, the CEO
+// and a Super Admin, never the hiring manager: the earlier CVs that match, each with its reasons, its CV in the CV window,
+// and HR's Add to this vacancy, Invite to apply (confirmed first) and Dismiss; a filter by what was decided.
 
 export const metadata: Metadata = { title: 'Vacancy · People System' };
 
@@ -137,6 +164,115 @@ async function Applicants({ v, searchParams }: { v: VacancyView; searchParams: P
   );
 }
 
+/** A suggested CV: who, where it came from, its score and reasons, its verdict, what was decided, and HR's actions. */
+function SuggestionCard({ r, v }: { r: VacancySuggestionView; v: VacancyView }) {
+  const decision = decisionText(r);
+  const code = shownCode(r.candidate.code);
+  return (
+    <li className="card space-y-3 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0 space-y-1">
+          <p className="flex flex-wrap items-center gap-2">
+            <Link href={candidateHref(r.candidate.id)} className="font-semibold">
+              {r.candidate.fullName}
+            </Link>
+            {code && <span className="text-xs text-muted">{code}</span>}
+            <VerdictBadge verdict={r.verdict} />
+          </p>
+          <p className="text-sm text-muted">{sourceText(r)}</p>
+        </div>
+        <p className="text-right">
+          <span className="block text-2xl font-semibold tabular-nums">{scoreText(r.score)}</span>
+          <span className="block text-xs text-muted">match of 100</span>
+        </p>
+      </div>
+      {r.reasons.length > 0 && (
+        <ul aria-label="Why it matches" className="flex flex-wrap gap-1.5">
+          {reasonChips(r.reasons).map((c) => (
+            <li key={c.key} className={`badge ${c.muted ? 'bg-canvas text-muted' : 'bg-accent-soft text-accent'}`} title={c.title ?? undefined}>
+              {c.text}
+            </li>
+          ))}
+        </ul>
+      )}
+      {decision && (
+        <p className="text-sm text-muted">
+          {decision}
+          {r.dismissReason && !isHidden(r.dismissReason) ? `: ${r.dismissReason}` : ''}
+        </p>
+      )}
+      <div className="flex flex-wrap items-start gap-2">
+        {r.cv && (
+          <CvOpenButton recordId={r.cv.id} className="btn btn-secondary">
+            Open CV
+          </CvOpenButton>
+        )}
+        {r.application && (
+          <Link href={applicantHref(r.application.id)} className="btn btn-secondary no-underline">
+            Open the application
+          </Link>
+        )}
+        {r.can.add && <ActionButton action={addSuggestion.bind(null, r.id)} label="Add to this vacancy" pendingLabel="Adding…" kind="primary" />}
+        {r.can.invite && <ActionButton action={inviteSuggestion.bind(null, r.id)} label="Invite to apply" pendingLabel="Sending…" confirm={inviteConfirmText(r, v.title)} />}
+        {r.can.dismiss && <ReasonButton action={dismissSuggestion.bind(null, r.id)} label="Dismiss" pendingLabel="Dismissing…" reasonLabel="Why it doesn’t fit" required={false} />}
+      </div>
+    </li>
+  );
+}
+
+/**
+ * Suggested From Earlier CVs (24 October 2026): worked out as the page opens (kept 2 minutes), best first; a chip a
+ * status; their CVs open in the CV window (?cv=), the screening comments on the candidate's profile.
+ */
+async function Suggestions({ v, searchParams }: { v: VacancyView; searchParams: PageProps<'/recruitment/vacancies/[id]'>['searchParams'] }) {
+  const status = readSuggestionStatus(await searchParams);
+  const [loaded, user] = await Promise.all([loadSuggestions(v.id, status), getCurrentUser()]);
+  if (loaded.kind !== 'ok') return <Empty>{recruitmentNotLoaded(loaded, 'suggested CVs')}</Empty>;
+  const s = loaded.value;
+  const paused = pausedText(s);
+  const cvs = s.rows.map((r) => r.cv).filter((c): c is ScreeningCv => !!c);
+  return (
+    <section aria-labelledby="vacancy-suggestions" className="space-y-3">
+      <div className="space-y-1">
+        <h2 id="vacancy-suggestions" className="text-lg font-semibold">
+          Suggested From Earlier CVs
+        </h2>
+        <p className="max-w-3xl text-sm text-muted">{poolText(s.recencyMonths)}</p>
+      </div>
+      {paused && (
+        <p role="note" className="rounded-lg bg-canvas px-4 py-3 text-sm text-muted">
+          {paused}
+        </p>
+      )}
+      {s.can.decide && !s.emailReady && (
+        <p className="text-sm text-muted">
+          Invite to apply needs email set up first. {setsUpEmail(user) && <SetUpEmailLink />}
+        </p>
+      )}
+      <nav aria-label="Suggested CVs by status" className="flex flex-wrap gap-2">
+        {SUGGESTION_FILTERS.map((f) => (
+          <Link key={f} href={suggestionsHref(v.id, f)} aria-current={s.status === f ? 'page' : undefined} className={`${chip} ${s.status === f ? ACTIVE : IDLE}`}>
+            {statusChip(f, s.counts)}
+          </Link>
+        ))}
+      </nav>
+      {s.rows.length === 0 ? (
+        <div className="card px-6 py-8 text-center text-sm text-muted">{emptyText(s.status)}</div>
+      ) : (
+        <ul className="space-y-3">
+          {s.rows.map((r) => (
+            <SuggestionCard key={r.id} r={r} v={v} />
+          ))}
+        </ul>
+      )}
+      {/* the CV window, opened by ?cv= (24 October 2026); the comments stay on the candidate's profile */}
+      <Suspense fallback={null}>
+        <CvDialogHost cvs={cvs} data={null} pageKey={GENERAL_KEY} commentsNotLoaded="Their screening comments are on the candidate’s profile." />
+      </Suspense>
+    </section>
+  );
+}
+
 /** The pipeline board (Phase 2): HR moves cards on it, the CEO and the hiring manager read it. */
 async function Board({ v }: { v: VacancyView }) {
   const loaded = await loadBoard(v.id);
@@ -156,7 +292,9 @@ async function Vacancy({ params, searchParams }: PageProps<'/recruitment/vacanci
   if (loaded.kind !== 'ok') return <Empty>{recruitmentNotLoaded(loaded, 'vacancy')}</Empty>;
   const v = loaded.value;
   const hiringManager = v.viewer === 'hiring_manager';
-  const view = hiringManager || (await searchParams).view === 'board' ? 'board' : 'list';
+  const asked = (await searchParams).view;
+  // the hiring manager never sees the suggested CVs (24 October 2026)
+  const view = hiringManager || asked === 'board' ? 'board' : asked === SUGGESTED_VIEW ? 'suggested' : 'list';
   const published = v.status === 'open' || v.status === 'on_hold';
   const origin = published ? originFrom(await headers()) : '';
   const range = v.salaryMin !== null || v.salaryMax !== null ? [money(v.salaryMin), money(v.salaryMax)].filter(Boolean).join(' – ') : null;
@@ -294,9 +432,14 @@ async function Vacancy({ params, searchParams }: PageProps<'/recruitment/vacanci
           <Link href={boardHref(v.id)} className={`${chip} ${view === 'board' ? ACTIVE : IDLE}`} aria-current={view === 'board' ? 'page' : undefined}>
             Board
           </Link>
+          <Link href={suggestionsHref(v.id)} className={`${chip} ${view === 'suggested' ? ACTIVE : IDLE}`} aria-current={view === 'suggested' ? 'page' : undefined}>
+            {suggestedViewLabel(v.suggestions)}
+          </Link>
         </nav>
       )}
-      <Suspense fallback={<Loading />}>{view === 'board' ? <Board v={v} /> : <Applicants v={v} searchParams={searchParams} />}</Suspense>
+      <Suspense fallback={<Loading />}>
+        {view === 'board' ? <Board v={v} /> : view === 'suggested' ? <Suggestions v={v} searchParams={searchParams} /> : <Applicants v={v} searchParams={searchParams} />}
+      </Suspense>
     </div>
   );
 }

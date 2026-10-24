@@ -181,6 +181,24 @@ export async function saveRecruitmentSettings(_prev: FormState, fd: FormData): P
   return send('PATCH', '/recruitment/settings', { rejectionSubject: field('rejectionSubject'), rejectionEn: field('rejectionEn'), rejectionAr: field('rejectionAr') }, typed(fd));
 }
 
+// Suggested From Earlier CVs (owner, 24 October 2026: "Suggest; HR adds", "Yes, HR presses 'Invite to apply'"): how far back
+// CVs count, and the invitation's words (empty: the standard)
+
+export async function saveSuggestionSettings(_prev: FormState, fd: FormData): Promise<FormState> {
+  const text = fd.get('suggestMonths');
+  const months = typeof text === 'string' && text.trim() ? Number(text.trim()) : NaN;
+  if (!Number.isInteger(months)) return { errors: ['Give how many months back CVs count: a whole number from 1 to 36.'], values: typed(fd) };
+  return send('PATCH', '/recruitment/settings', { suggestMonths: months }, typed(fd));
+}
+
+export async function saveInviteWords(_prev: FormState, fd: FormData): Promise<FormState> {
+  const field = (name: string) => {
+    const v = fd.get(name);
+    return typeof v === 'string' ? v.trim() : '';
+  };
+  return send('PATCH', '/recruitment/settings', { inviteSubject: field('inviteSubject'), inviteEn: field('inviteEn'), inviteAr: field('inviteAr') }, typed(fd));
+}
+
 export async function restoreApplicant(id: string): Promise<FormState> {
   return send('POST', `/recruitment/applications/${encodeURIComponent(id)}/restore`, {});
 }

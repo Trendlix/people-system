@@ -178,6 +178,8 @@ model User {
   candidateMergesMade     CandidateMerge[]         @relation("CandidateMergeBy")
   candidateMergesUndone   CandidateMerge[]         @relation("CandidateMergeUndo")
   screeningComments       ScreeningComment[]       @relation("ScreeningCommentAuthor")
+  // Suggested From Earlier CVs (24 October 2026): the suggestions this user added, invited or dismissed
+  vacancySuggestionsDecided VacancySuggestion[]    @relation("VacancySuggestionDecision")
   // access follows the contract (owner, 23 October 2026): the 7 days' grace this user gave
   accessGracesGiven       AccessGrace[]            @relation("AccessGraceGrantedBy")
 
@@ -1572,6 +1574,7 @@ model Vacancy {
   updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz
   applications     JobApplication[]
   cvUploads        CvUpload[] // the bulk upload's CVs waiting for it (22 October 2026)
+  suggestions      VacancySuggestion[] // Suggested From Earlier CVs (24 October 2026)
 
   @@index([status])
   @@index([jobTitleId])
@@ -1640,6 +1643,9 @@ model JobApplication {
   interviews      Interview[]
   onboarding      OnboardingChecklist[]
   comments        ScreeningComment[] // the screening comments on it (24 October 2026)
+  // Suggested From Earlier CVs (24 October 2026): the suggestions it was the earlier CV of, and those it closed (added, applied)
+  suggestedFrom   VacancySuggestion[]  @relation("VacancySuggestionSource")
+  suggestionsMet  VacancySuggestion[]  @relation("VacancySuggestionApplication")
 
   @@unique([vacancyId, email])
   @@index([stage])
@@ -1729,6 +1735,7 @@ model GeneralCv {
   cvReading       CvReading? // its CV read and analysed (22 October 2026)
   events          GeneralCvEvent[]
   comments        ScreeningComment[] // the screening comments on it (24 October 2026)
+  suggestions     VacancySuggestion[] // the vacancies it was suggested for (24 October 2026)
 
   @@index([email, createdAt])
   @@index([status])
@@ -1855,6 +1862,7 @@ model Candidate {
   mergesKept    CandidateMerge[]   @relation("CandidateMergeKept")
   mergesMerged  CandidateMerge[]   @relation("CandidateMergeMerged")
   comments      ScreeningComment[] // the screening comments about them (24 October 2026)
+  suggestions   VacancySuggestion[] // the vacancies they were suggested for (24 October 2026)
 
   @@index([mergedIntoId])
   @@index([employeeId])
@@ -2071,17 +2079,65 @@ model InterviewFeedback {
 }
 
 // Recruitment's settings (one row, id 1; Phase 2): the rejection email's subject and words, English and Arabic, as HR
-// wrote them; none: the standard (packages/shared recruitment-hiring.ts REJECTION_STANDARD).
+// wrote them; none: the standard (packages/shared recruitment-hiring.ts REJECTION_STANDARD). Since 24 October 2026
+// (Suggested From Earlier CVs, packages/shared suggested-cvs.ts): how far back CVs count, in months, and the invitation
+// to apply's subject and words (none: INVITE_STANDARD).
 model RecruitmentSettings {
   id               Int      @id @default(1)
   rejectionSubject String?  @map("rejection_subject")
   rejectionEn      String?  @map("rejection_en")
   rejectionAr      String?  @map("rejection_ar")
+  suggestMonths    Int      @default(12) @map("suggest_months")
+  inviteSubject    String?  @map("invite_subject")
+  inviteEn         String?  @map("invite_en")
+  inviteAr         String?  @map("invite_ar")
   updatedById      String?  @map("updated_by") @db.Uuid
   updatedBy        User?    @relation("RecruitmentSettingsChange", fields: [updatedById], references: [id], onDelete: SetNull)
   updatedAt        DateTime @default(now()) @map("updated_at") @db.Timestamptz
 
   @@map("recruitment_settings")
+}
+
+// An earlier CV suggested for an open vacancy (owner, 24 October 2026: "does the system automatically add recomended
+// general cv's to the opened posts?"; asked, "Suggest; HR adds", "General CVs + past applicants", "Yes, HR presses
+// 'Invite to apply'"; packages/shared suggested-cvs.ts): one a candidate a vacancy, from their best earlier CV (a general
+// CV, or an application to another job), with its score and reasons as worked out last. Suggested, then HR adds them (the
+// application made), invites them (the email's address and when), or dismisses them (an optional reason); applied once
+// they are on the vacancy otherwise. Decided ones stay, so a dismissed one never comes back; a suggested one no longer
+// matching is deleted when worked out again. `notifiedAt`: HR told of it (once a batch).
+model VacancySuggestion {
+  id                  String          @id @default(uuid()) @db.Uuid
+  vacancyId           String          @map("vacancy_id") @db.Uuid
+  vacancy             Vacancy         @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
+  candidateId         String          @map("candidate_id") @db.Uuid
+  candidate           Candidate       @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  sourceKind          String          @map("source_kind") // general_cv, application
+  generalCvId         String?         @map("general_cv_id") @db.Uuid
+  generalCv           GeneralCv?      @relation(fields: [generalCvId], references: [id], onDelete: SetNull)
+  sourceApplicationId String?         @map("source_application_id") @db.Uuid
+  sourceApplication   JobApplication? @relation("VacancySuggestionSource", fields: [sourceApplicationId], references: [id], onDelete: SetNull)
+  score               Int
+  reasons             Json            @default("[]") // SuggestionReason[]
+  status              String          @default("suggested") // SUGGESTION_STATUSES
+  invitedAt           DateTime?       @map("invited_at") @db.Timestamptz
+  invitedTo           String?         @map("invited_to") // the address the invitation went to
+  dismissReason       String?         @map("dismiss_reason")
+  applicationId       String?         @map("application_id") @db.Uuid // the application it led to: added, or applied
+  application         JobApplication? @relation("VacancySuggestionApplication", fields: [applicationId], references: [id], onDelete: SetNull)
+  decidedById         String?         @map("decided_by") @db.Uuid
+  decidedBy           User?           @relation("VacancySuggestionDecision", fields: [decidedById], references: [id], onDelete: SetNull)
+  decidedAt           DateTime?       @map("decided_at") @db.Timestamptz
+  notifiedAt          DateTime?       @map("notified_at") @db.Timestamptz
+  createdAt           DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt           DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@unique([vacancyId, candidateId])
+  @@index([vacancyId, status])
+  @@index([candidateId])
+  @@index([generalCvId])
+  @@index([sourceApplicationId])
+  @@index([applicationId])
+  @@map("vacancy_suggestions")
 }
 
 // HR's default onboarding items (Phase 2, 22 October 2026; packages/shared onboarding.ts), in order, each with the role

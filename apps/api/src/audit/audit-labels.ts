@@ -57,6 +57,9 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   // a screening comment on an application, a general CV or a candidate in general (owner, 24 October 2026: "is there a
   // way to add screening comments?"): written, edited, deleted by a Super Admin; HR's notes of before moved into them
   screening_comment: 'Screening comment',
+  // an earlier CV suggested for an open vacancy (owner, 24 October 2026: "Suggest; HR adds"): added, invited to apply,
+  // dismissed by HR; closed once the person is on the vacancy
+  vacancy_suggestion: 'Suggested CV',
   job_offer: 'Job offer',
   job_title: 'Job title',
   // KPIs (owner, 21 October 2026: "lets start with the KPI's First"): the monthly scorecards, the templates per job title,
@@ -354,6 +357,11 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   merge: 'Merged',
   undo_merge: 'Undid the merge',
   dismiss_match: 'Marked not the same person',
+  // Suggested From Earlier CVs (24 October 2026): one added to the vacancy, invited to apply (to whom, never the words),
+  // dismissed
+  add_suggestion: 'Added to the vacancy',
+  invite_to_apply: 'Invited to apply',
+  dismiss_suggestion: 'Dismissed the suggestion',
   split: 'Moved to a new candidate',
   backfill: 'Joined the earlier ones to their candidates',
   // HR's notes of before moved into first screening comments (24 October 2026)

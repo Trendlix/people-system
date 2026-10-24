@@ -67,6 +67,8 @@ export class CvReadingsService implements OnModuleDestroy {
   private timer: NodeJS.Timeout | null = null;
   private running = false;
   private again = false;
+  /** Told once a round has read CVs (Suggested From Earlier CVs, 24 October 2026: new CVs matched with the open vacancies). */
+  private readonly listeners: (() => Promise<void>)[] = [];
 
   constructor(
     private readonly prisma: PrismaService,
@@ -114,8 +116,32 @@ export class CvReadingsService implements OnModuleDestroy {
     }
   }
 
+  /**
+   * Something to do after a round that read an application's or a general CV's CV (VacancySuggestionsService: the new CVs
+   * matched with the open vacancies, HR told of new matches). Never fails the round.
+   */
+  onCvsRead(listener: () => Promise<void>): void {
+    this.listeners.push(listener);
+  }
+
   /** One round at `now`: the CVs without a reading given one, then those due read; how many were read or tried. */
   async runOnce(now = new Date()): Promise<number> {
+    let readAny = false;
+    const done = await this.readDue(now, () => (readAny = true));
+    if (readAny) {
+      for (const listener of this.listeners) {
+        try {
+          await listener();
+        } catch (err) {
+          this.logger.warn(`After the CVs were read: ${(err as Error).message}`);
+        }
+      }
+    }
+    return done;
+  }
+
+  /** The round itself: `read` told of each application's or general CV's CV read (with text or none). */
+  private async readDue(now: Date, read: () => void): Promise<number> {
     await this.enqueueMissing();
     // a reading whose last try was cut short (the API stopped while reading it): failed once that try's time is up
     await this.prisma.cvReading.updateMany({
@@ -127,7 +153,7 @@ export class CvReadingsService implements OnModuleDestroy {
       const row = await this.claim(now);
       if (!row) break;
       try {
-        await this.read(row, now);
+        if ((await this.read(row, now)) && !row.uploadId) read();
       } catch (err) {
         // anything unforeseen: the reading stays pending, tried again later (its next try was set when claimed)
         this.logger.warn(`A CV could not be read (try ${row.attempts}): ${(err as Error).message}`);
@@ -189,10 +215,13 @@ export class CvReadingsService implements OnModuleDestroy {
     return f ? { data: Buffer.from(f.data), mimeType: f.mimeType, fileName: f.fileName } : null;
   }
 
-  /** Reads one CV: its text, by its own text or the OCR service; then what the rules find, kept. */
-  private async read(row: Claimed, now: Date): Promise<void> {
+  /** Reads one CV: its text, by its own text or the OCR service; then what the rules find, kept. True once kept (read, or no text). */
+  private async read(row: Claimed, now: Date): Promise<boolean> {
     const file = await this.fileOf(row);
-    if (!file) return this.fail(row.id, 'The CV is gone.');
+    if (!file) {
+      await this.fail(row.id, 'The CV is gone.');
+      return false;
+    }
     let text = '';
     let method: CvReadingMethod | null = null;
     if (file.mimeType === DOCX) {
@@ -204,7 +233,10 @@ export class CvReadingsService implements OnModuleDestroy {
       if (textAmount(text) < CV_READING_LIMITS.minTextChars) {
         // a scan: the OCR service reads it, in English, then in Arabic when that came out mostly Arabic
         const en = await this.ocr.read(file.data, PDF, 'en');
-        if (en.status !== 'done') return this.retryLater(row, en.status === 'unavailable' ? 'The OCR service is not set up or not answering.' : 'The OCR service could not read it.');
+        if (en.status !== 'done') {
+          await this.retryLater(row, en.status === 'unavailable' ? 'The OCR service is not set up or not answering.' : 'The OCR service could not read it.');
+          return false;
+        }
         text = en.text;
         method = 'ocr_en';
         if (mostlyArabic(text)) {
@@ -216,7 +248,8 @@ export class CvReadingsService implements OnModuleDestroy {
         }
       }
     } else {
-      return this.fail(row.id, 'The CV is neither a PDF nor a Word file.');
+      await this.fail(row.id, 'The CV is neither a PDF nor a Word file.');
+      return false;
     }
     const kept = text.slice(0, CV_READING_LIMITS.chars);
     const status: CvReadingStatus = textAmount(kept) > 0 ? 'read' : 'no_text';
@@ -232,12 +265,13 @@ export class CvReadingsService implements OnModuleDestroy {
         error: null,
       },
     });
-    if (!count) return;
+    if (!count) return false;
     if (row.applicationId) await this.rescoreApplication(row.applicationId);
     if (row.uploadId && status === 'read') await this.fillUpload(row.uploadId, kept);
     // the contacts read from the CV may suggest a match (candidate profiles, 22 October 2026): its candidate worked out again
     if (status === 'read' && row.applicationId) await this.candidates.refreshFor({ applicationId: row.applicationId });
     if (status === 'read' && row.generalCvId) await this.candidates.refreshFor({ generalCvId: row.generalCvId });
+    return true;
   }
 
   /** The OCR service down or failing: tried again at its next try, or failed for good after the last. */

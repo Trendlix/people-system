@@ -1,5 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
-import { cvFacts, DEVELOPER_NO_FILES, DEVELOPER_READ_ONLY, HIDDEN, type ScreeningComments } from '@trendlix/shared';
+import { cvFacts, DEVELOPER_NO_FILES, DEVELOPER_READ_ONLY, HIDDEN, type ScreeningComments, type VacancySuggestions } from '@trendlix/shared';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { todayInCairo } from '../src/common/date-only.js';
@@ -323,6 +323,26 @@ describe('The Developer role (e2e)', () => {
     candidateCode = (await prisma.candidate.findUniqueOrThrow({ where: { id: candidateId }, select: { code: true } })).code;
     // HR's screening comment on them, with a verdict, mentioning the CEO (24 October 2026)
     await as('hr').post('/recruitment/comments', { candidateId, comment: SCREENING_TEXT, verdict: 'good_fit', mentions: [users.ceo] }).expect(201);
+    // the general CV suggested for the vacancy (Suggested From Earlier CVs, 24 October 2026), invited to apply at their
+    // address, its reason naming their past job's title: as the API keeps it, the vacancy still waiting for the CEO
+    await prisma.vacancySuggestion.create({
+      data: {
+        vacancyId,
+        candidateId,
+        sourceKind: 'general_cv',
+        generalCvId,
+        score: 64,
+        reasons: [
+          { kind: 'skills', found: ['Premiere Pro'], listed: 1, points: 35 },
+          { kind: 'title', from: 'cv', matchedTitle: PAST_TITLE, points: 20 },
+        ],
+        status: 'invited',
+        invitedAt: new Date(),
+        invitedTo: CANDIDATE_EMAIL,
+        decidedById: users.hr,
+        decidedAt: new Date(),
+      },
+    });
     assetCode = (await as('superAdmin').post('/assets', { name: `Camera ${RUN}`, group: 'kit', type: 'CAM', condition: 'good', values: { purchasePrice: PURCHASE } }).expect(201)).body.code;
 
     // the second person (after the payroll run, so it isn't theirs): hired 15 months ago on a 1-year fixed term, signed,
@@ -455,6 +475,8 @@ describe('The Developer role (e2e)', () => {
       // screening comments (24 October 2026): the text "••••", the authors and those mentioned pseudonyms
       `/recruitment/candidates/${candidateId}/comments`,
       `/recruitment/general-cvs/${generalCvId}/comments`,
+      // a vacancy's Suggested From Earlier CVs (24 October 2026): their people pseudonyms, codes "••••", titles hidden
+      `/recruitment/vacancies/${vacancyId}/suggestions?status=invited`,
       // interviews, their meetings' links hidden (24 October 2026: online meetings made by the system)
       '/recruitment/interviews',
       '/recruitment/my-hiring',
@@ -718,6 +740,32 @@ describe('The Developer role (e2e)', () => {
     expect(hr.comments.find((c) => c.about.kind === 'general')).toMatchObject({ comment: SCREENING_TEXT, author: { email: emails.hr } });
     // and writes none
     const res = await as('developer').post('/recruitment/comments', { candidateId, comment: 'x' });
+    expect(res.status).toBe(403);
+    expect(res.body.message).toBe(DEVELOPER_READ_ONLY);
+  });
+
+  // Suggested From Earlier CVs (owner, 24 October 2026: "Suggest; HR adds"; "Yes, HR presses 'Invite to apply'")
+  it('a suggested CV: its person a pseudonym, its codes "••••", the title its reason found and the invitation’s address hidden; HR reads them', async () => {
+    const seen = (await as('developer').get(`/recruitment/vacancies/${vacancyId}/suggestions?status=invited`).expect(200)).body as VacancySuggestions;
+    const row = seen.rows.find((r) => r.source?.id === generalCvId)!;
+    expect(row.candidate.fullName).toMatch(TAGGED);
+    expect(row.candidate.code).toBe(HIDDEN);
+    expect(row.source).toMatchObject({ kind: 'general_cv', number: HIDDEN });
+    expect(row.reasons).toEqual([
+      { kind: 'skills', found: ['Premiere Pro'], listed: 1, points: 35 },
+      { kind: 'title', from: 'cv', matchedTitle: HIDDEN, points: 20 },
+    ]);
+    expect(row.email).toMatch(/@hidden\.invalid$/);
+    expect(row.sentTo).toMatch(/@hidden\.invalid$/);
+    expect(row.cv?.cvFileName).toBe(HIDDEN);
+    const text = JSON.stringify(seen);
+    for (const real of [CANDIDATE_NAME, CANDIDATE_EMAIL, PAST_TITLE]) expect(text).not.toContain(real);
+    expect(codeLeaks(seen, codes())).toEqual([]);
+    expect(personalLeaks(seen, Object.values(emails))).toEqual([]);
+    const hr = (await as('hr').get(`/recruitment/vacancies/${vacancyId}/suggestions?status=invited`).expect(200)).body as VacancySuggestions;
+    expect(hr.rows.find((r) => r.source?.id === generalCvId)).toMatchObject({ candidate: { fullName: CANDIDATE_NAME, code: candidateCode }, sentTo: CANDIDATE_EMAIL });
+    // and decides on none
+    const res = await as('developer').post(`/recruitment/suggestions/${row.id}/dismiss`, {});
     expect(res.status).toBe(403);
     expect(res.body.message).toBe(DEVELOPER_READ_ONLY);
   });

@@ -607,6 +607,10 @@ export const DEVELOPER_HIDDEN_TEXT_FIELDS: ReadonlySet<string> = new Set([
   'pastCompany',
   'institution',
   'certifications',
+  // Suggested From Earlier CVs (owner, 24 October 2026: "Suggest; HR adds"): the title a suggestion's reason found like
+  // the job's ("Video Editor before"), a CV's latest or a job applied for before; its row's people are pseudonyms, its
+  // codes "••••", its email and the invitation's address (sentTo) pseudonymous, a dismissal's reason "••••" (…Reason)
+  'matchedTitle',
   // what was read from a paper of the employee file (an ID card, the social insurance print), and a search's quote of it
   // (22 October 2026: "and the social insurance")
   'ocrText',

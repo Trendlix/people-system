@@ -365,8 +365,10 @@ export class GeneralCvsService {
    * Add to a vacancy: an application on it made from the general CV (open or on hold, one the caller sees), at Applied or
    * Shortlisted, keeping its reference, its CV copied, source "General CV (<where it came from>)"; the general CV marked
    * moved and linked to it. 409 when that email applied for the vacancy already, or it was moved or archived meanwhile.
+   * `suggested` (24 October 2026: Suggested From Earlier CVs' "Add to this vacancy"): source "General CV (suggested)",
+   * its history saying so, without the screening answers.
    */
-  async move(id: string, dto: MoveGeneralCvDto, user: SessionUser): Promise<GeneralCvView> {
+  async move(id: string, dto: MoveGeneralCvDto, user: SessionUser, suggested = false): Promise<GeneralCvView> {
     this.assertManages(user);
     const v = await this.prisma.vacancy.findFirst({ where: { AND: [{ id: dto.vacancyId }, vacancyWhere(user)] }, select: { id: true, number: true, title: true, status: true } });
     if (!v) throw new NotFoundException('Vacancy not found.');
@@ -394,12 +396,14 @@ export class GeneralCvsService {
         yearsExperience: r.yearsExperience,
         noticePeriod: r.noticePeriod,
         expectedSalary: r.expectedSalary,
-        source: 'general',
+        source: suggested ? 'general_suggested' : 'general',
         consentAt: r.consentAt,
         consentById: r.consentById,
         consentNote: `From general CV ${r.number}`,
         cv: { fileName: r.file.fileName, mimeType: r.file.mimeType, sizeBytes: r.file.sizeBytes, data: r.file.data },
-        note: `Moved from a general CV (${GENERAL_CV_SOURCE_LABELS[source]})`,
+        note: suggested
+          ? `Added from Suggested From Earlier CVs: a general CV (${GENERAL_CV_SOURCE_LABELS[source]}), without screening answers`
+          : `Moved from a general CV (${GENERAL_CV_SOURCE_LABELS[source]})`,
         byId: user.id,
         // the general CV's candidate: a general CV then an application, one candidate (22 October 2026)
         candidateId: r.candidateId,
@@ -408,13 +412,16 @@ export class GeneralCvsService {
       // its CV's reading goes with it, so it isn't read again (22 October 2026)
       await this.readings.carry(tx, { generalCvId: id }, { applicationId: app.id });
       await tx.generalCv.update({ where: { id }, data: { status: 'moved', applicationId: app.id, movedAt: new Date() } });
-      await tx.generalCvEvent.create({ data: { generalCvId: id, event: 'moved', note: `${v.title} (${v.number}), at ${stage === 'applied' ? 'Applied' : 'Shortlisted'}`, byId: user.id } });
+      await tx.generalCvEvent.create({
+        data: { generalCvId: id, event: 'moved', note: `${v.title} (${v.number}), at ${stage === 'applied' ? 'Applied' : 'Shortlisted'}${suggested ? ', from Suggested From Earlier CVs' : ''}`, byId: user.id },
+      });
       return { app, number: r.number };
     });
     await this.readings.rescoreApplication(done.app.id);
     this.readings.kick();
-    await this.audit.record({ userId: user.id, action: 'move_to_vacancy', entityType: GENERAL_CV_ENTITY, entityId: id, diff: { number: done.number, vacancy: v.number, stage } });
-    await this.audit.record({ userId: user.id, action: 'create', entityType: APPLICATION_ENTITY, entityId: done.app.id, diff: { number: done.app.number, vacancy: v.number, source: 'general', stage, from: 'general CV' } });
+    const appSource = suggested ? 'general_suggested' : 'general';
+    await this.audit.record({ userId: user.id, action: 'move_to_vacancy', entityType: GENERAL_CV_ENTITY, entityId: id, diff: { number: done.number, vacancy: v.number, stage, ...(suggested && { suggested: true }) } });
+    await this.audit.record({ userId: user.id, action: 'create', entityType: APPLICATION_ENTITY, entityId: done.app.id, diff: { number: done.app.number, vacancy: v.number, source: appSource, stage, from: 'general CV' } });
     return this.get(id, user);
   }
 

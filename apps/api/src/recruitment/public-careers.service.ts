@@ -32,13 +32,16 @@ import { CvReadingsService } from './cv-readings.service.js';
 import { cvFileName, cvProblem, cvTypeOf } from './cv-file.js';
 import { APPLICATION_ENTITY, publicSummaryOf, questionsOf } from './recruitment-views.js';
 import type { ApplyDto } from './recruitment.dto.js';
+import { VacancySuggestionsService } from './vacancy-suggestions.service.js';
 
 // The careers page (owner, 22 October 2026: "where will we include the ATS?"; at people.trendlix.com/careers: "i dont
 // know how to decide it for now"), without signing in: the open vacancies (approved by the CEO, their closing date not
 // passed), a job's page with what its form asks (never the points, the must-have rules or the salary range), and the
 // application itself, with the CV. Protected by a field people never see (a form that fills it is a robot's), a limit
 // of applications an hour from one address, and one application per email a vacancy. HR is told of new applications
-// once a day a vacancy; the applicant gets an email with the reference when email is set up.
+// once a day a vacancy; the applicant gets an email with the reference when email is set up. An invitation's link
+// (?src=invite: Suggested From Earlier CVs, 24 October 2026) is kept as the source, and applying closes the person's
+// suggestion for the job, invited or not.
 
 const NOT_OPEN = 'This job is no longer open.';
 const NOT_FOUND = 'Job not found.';
@@ -105,6 +108,7 @@ export class PublicCareersService {
     private readonly mail: MailService,
     private readonly notifications: NotificationsService,
     private readonly readings: CvReadingsService,
+    private readonly suggestions: VacancySuggestionsService,
   ) {}
 
   /** The company and its open vacancies, newest first. */
@@ -255,6 +259,8 @@ export class PublicCareersService {
     });
     // the CV read in the background (22 October 2026)
     this.readings.kick();
+    // their suggestion for this job (invited or not) closed: they applied (24 October 2026)
+    await this.suggestions.closeFor(made.id);
     await this.tellHr(v);
     await this.confirm(email, input.fullName, made.number, v.title);
     return { reference: made.number };

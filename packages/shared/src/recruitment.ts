@@ -208,10 +208,21 @@ export const isVacancySlug = (value: unknown): value is string => typeof value =
 
 /**
  * Where an applicant came from: the careers page itself (reached directly, with no link), a channel's link (?src=), or
- * a general CV moved to the vacancy (22 October 2026: general-cvs.ts), which only HR's move sets.
+ * a general CV moved to the vacancy (22 October 2026: general-cvs.ts), which only HR's move sets. Since 24 October 2026
+ * (owner: "does the system automatically add recomended general cv's to the opened posts?"; suggested-cvs.ts): a general
+ * CV or an earlier applicant HR added from Suggested From Earlier CVs, and an invitation's link (?src=invite).
  */
-export const APPLICATION_SOURCES = ['careers', 'linkedin', 'facebook', 'job_board', 'referral', 'other', 'general'] as const;
+export const APPLICATION_SOURCES = ['careers', 'linkedin', 'facebook', 'job_board', 'referral', 'other', 'general', 'general_suggested', 'earlier_applicant', 'invite'] as const;
 export type ApplicationSource = (typeof APPLICATION_SOURCES)[number];
+
+/** The sources of an application HR added from Suggested From Earlier CVs: made without the screening questions' answers. */
+export const SUGGESTED_SOURCES = ['general_suggested', 'earlier_applicant'] as const satisfies readonly ApplicationSource[];
+
+/** Whether an application was added from the suggested CVs, so has no screening answers (its match "No screening answers", never 0%). */
+export const addedWithoutAnswers = (source: string): boolean => (SUGGESTED_SOURCES as readonly string[]).includes(source);
+
+/** An invitation to apply's source (?src=invite): the suggested CVs' email, never a channel to post. */
+export const INVITE_SOURCE = 'invite' as const satisfies ApplicationSource;
 
 /** The sources a posted link can carry (?src=): every one but a general CV's. */
 export const APPLICATION_CHANNELS = ['careers', 'linkedin', 'facebook', 'job_board', 'referral', 'other'] as const satisfies readonly ApplicationSource[];
@@ -229,11 +240,21 @@ export const APPLICATION_SOURCE_LABELS: Record<ApplicationSource, string> = {
   referral: 'Referral',
   other: 'Other',
   general: 'General CV',
+  general_suggested: 'General CV (suggested)',
+  earlier_applicant: 'Earlier applicant (suggested)',
+  invite: 'Invited to apply',
 };
 
-/** The source a link's ?src= names: one of the channels; none, the careers page; anything else (a general CV's too), Other. */
-export function sourceOf(value: unknown): ApplicationChannel {
+/** What a link's ?src= may name: a channel, or an invitation's (INVITE_SOURCE). */
+export type LinkSource = ApplicationChannel | typeof INVITE_SOURCE;
+
+/**
+ * The source a link's ?src= names: one of the channels, or an invitation (24 October 2026); none, the careers page;
+ * anything else (a general CV's, a suggested one's too), Other.
+ */
+export function sourceOf(value: unknown): LinkSource {
   if (value === undefined || value === null || value === '') return 'careers';
+  if (value === INVITE_SOURCE) return INVITE_SOURCE;
   return (APPLICATION_CHANNELS as readonly unknown[]).includes(value) ? (value as ApplicationChannel) : 'other';
 }
 
@@ -752,6 +773,11 @@ export interface VacancyListItem {
   createdAt: string;
   /** For a C-level grade or job title: the CEO's and a Super Admin's only. */
   confidential: boolean;
+  /**
+   * Its earlier CVs still waiting for HR in Suggested From Earlier CVs (24 October 2026: suggested-cvs.ts), for HR, the
+   * CEO and a Super Admin; 0 for a C-level one (or left out by an API from before it).
+   */
+  suggestions?: number;
 }
 
 /** What the caller may do to a vacancy now. */

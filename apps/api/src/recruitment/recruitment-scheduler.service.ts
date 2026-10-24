@@ -2,6 +2,7 @@ import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CvReadingsService } from './cv-readings.service.js';
 import { InterviewsService } from './interviews.service.js';
+import { VacancySuggestionsService } from './vacancy-suggestions.service.js';
 
 // Recruitment's round (Phase 2, owner, 22 October 2026; the brief: "a reminder notification the day after an interview
 // without feedback"): every hour the API reminds each interviewer of a scorecard not given the day after their interview
@@ -11,6 +12,8 @@ import { InterviewsService } from './interviews.service.js';
 // Also (owner, 24 October 2026: "CV years in list + more rules"): the facts of the CVs read before the rules grew worked
 // out again from their kept text (CvReadingsService.refreshFacts), once, on the first round after the deploy; later
 // rounds find none left.
+// And (owner, 24 October 2026: "is there a run to fetch previously updated CV's?"; "Suggest; HR adds"): every open
+// vacancy's Suggested From Earlier CVs worked out again, HR told of new matches (VacancySuggestionsService.refreshAll).
 
 const LOCK_NAME = 'people-system recruitment round';
 
@@ -27,6 +30,7 @@ export class RecruitmentSchedulerService implements OnModuleDestroy {
     private readonly prisma: PrismaService,
     private readonly interviews: InterviewsService,
     private readonly readings: CvReadingsService,
+    private readonly suggestions: VacancySuggestionsService,
   ) {}
 
   /** Starts looking every hour (main.ts, once the API listens). The timer never keeps the process alive. */
@@ -74,6 +78,8 @@ export class RecruitmentSchedulerService implements OnModuleDestroy {
     } catch (err) {
       this.logger.error(`The CVs' facts could not be worked out again: ${(err as Error).message}`);
     }
+    // the earlier CVs matched with the open vacancies (never throws)
+    await this.suggestions.refreshAll({ notify: true });
     return told;
   }
 }

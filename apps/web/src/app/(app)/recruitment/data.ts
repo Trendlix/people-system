@@ -17,8 +17,10 @@ import type {
   RecruitmentAnalytics,
   RecruitmentSettingsView,
   ScreeningComments,
+  SuggestionStatus,
   VacancyBoard,
   VacancyListItem,
+  VacancySuggestions,
   VacancyView,
 } from '@trendlix/shared';
 import { publicGet } from '@/lib/public-api';
@@ -28,6 +30,7 @@ import { applicantCvTextApiPath, generalCvTextApiPath } from './cv-reading';
 import { analyticsSearch, type AnalyticsQuery } from './hiring';
 import { applicantsApiPath, vacanciesApiPath, type ApplicantsQuery, type VacancyFilter } from './recruitment';
 import { candidatesApiPath, type CandidatesQuery } from './candidates';
+import { suggestionsApiPath } from './suggestions';
 
 // Reading recruitment (owner, 22 October 2026: "where will we include the ATS?"): the vacancies, a vacancy, the
 // applicants (a vacancy's or all) and an applicant, as the API allows the caller. An API from before them answers 404:
@@ -100,6 +103,11 @@ export const loadCandidateComments = (id: string): Promise<Loaded<ScreeningComme
 export const loadApplicantComments = (id: string): Promise<Loaded<ScreeningComments>> => loadJson(`/recruitment/applications/${encodeURIComponent(id)}/comments`);
 
 export const loadGeneralCvComments = (id: string): Promise<Loaded<ScreeningComments>> => loadJson(`/recruitment/general-cvs/${encodeURIComponent(id)}/comments`);
+
+// Suggested From Earlier CVs (owner, 24 October 2026: "Suggest; HR adds"): a vacancy's, at a status; HR, the CEO and a
+// Super Admin (a hiring manager is refused: 403).
+
+export const loadSuggestions = (vacancyId: string, status: SuggestionStatus): Promise<Loaded<VacancySuggestions>> => loadJson(suggestionsApiPath(vacancyId, status));
 
 /** What a page says in place of what it couldn't load. */
 export function recruitmentNotLoaded(loaded: Exclude<Loaded<unknown>, { kind: 'ok' }>, what: string): string {

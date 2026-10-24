@@ -4,6 +4,7 @@ import {
   APPLICATION_SOURCE_LABELS,
   APPLICATION_SOURCES,
   APPLICATION_STAGE_LABELS,
+  applicationSourceOf,
   GENERAL_CV_SOURCE_LABELS,
   GENERAL_CV_SOURCES,
   averageDays,
@@ -12,7 +13,6 @@ import {
   furthestStage,
   percentOf,
   seesConfidential,
-  sourceOf,
   zonedMoment,
   type ApplicationSource,
   type FunnelStage,
@@ -75,8 +75,9 @@ export class RecruitmentAnalyticsService {
     });
     const furthest = applied.map((a) => furthestStage([a.stage, ...a.steps.map((s) => s.stage)]));
     const rank = (f: FunnelStage) => ['applied', 'shortlisted', 'interview', 'offer', 'hired'].indexOf(f);
+    // each source as kept: a general CV's, the suggested ones' and an invitation's too (24 October 2026)
     const sources = APPLICATION_SOURCES.map((source: ApplicationSource) => {
-      const of = applied.map((a, i) => ({ source: sourceOf(a.source), f: furthest[i] })).filter((x) => x.source === source);
+      const of = applied.map((a, i) => ({ source: applicationSourceOf(a.source), f: furthest[i] })).filter((x) => x.source === source);
       return { source, applicants: of.length, shortlisted: of.filter((x) => rank(x.f) >= 1).length, hired: of.filter((x) => x.f === 'hired').length };
     }).filter((s) => s.applicants > 0);
 

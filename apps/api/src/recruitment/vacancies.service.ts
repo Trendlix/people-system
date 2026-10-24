@@ -33,12 +33,15 @@ import { CvReadingsService } from './cv-readings.service.js';
 import { approvesVacancies, isConfidentialVacancy, managesRecruitment, vacancyWhere } from './recruitment-access.js';
 import { emptyCounts, money, questionsOf, userRef, VACANCY_ENTITY, VACANCY_INCLUDE, vacancyListView, type VacancyCounts, type VacancyRow } from './recruitment-views.js';
 import type { CreateVacancyDto, ListVacanciesDto, UpdateVacancyDto } from './recruitment.dto.js';
+import { VacancySuggestionsService } from './vacancy-suggestions.service.js';
 
 // Vacancies (owner, 22 October 2026: "where will we include the ATS?"; "HR creates a vacancy and the CEO approves it";
 // packages/shared recruitment.ts). HR drafts one from a job title (its JD filled into the public description), sends it
 // to the CEO, who approves it (it is published on the careers page) or sends it back with a reason; HR holds, reopens
 // and closes it; it is filled once its hires reach the headcount (RecruitmentOffersService). Each change is audited, the
 // CEO told of one waiting, its makers of the CEO's decision. A C-level one is the CEO's and a Super Admin's only.
+// Suggested From Earlier CVs (owner, 24 October 2026: "Suggest; HR adds"; vacancy-suggestions.service.ts): worked out
+// when one is approved or opened again (HR told of the matches) and when its page opens; the list counts those waiting.
 
 const NOT_FOUND = 'Vacancy not found.';
 const LIST_CAP = 500;
@@ -69,6 +72,7 @@ export class VacanciesService {
     private readonly confidential: ConfidentialService,
     private readonly notifications: NotificationsService,
     private readonly readings: CvReadingsService,
+    private readonly suggestions: VacancySuggestionsService,
   ) {}
 
   // ---------- reading ----------
@@ -89,7 +93,9 @@ export class VacanciesService {
       take: LIST_CAP,
     });
     const counts = await this.counts(rows.map((r) => r.id));
-    return rows.map((r) => vacancyListView(r, counts.get(r.id) ?? emptyCounts()));
+    // the earlier CVs waiting for HR (24 October 2026), never a C-level vacancy's
+    const suggested = await this.suggestions.counts(rows.map((r) => r.id));
+    return rows.map((r) => ({ ...vacancyListView(r, counts.get(r.id) ?? emptyCounts()), suggestions: suggested.get(r.id) ?? 0 }));
   }
 
   /**
@@ -97,7 +103,12 @@ export class VacanciesService {
    * see the salary range"), without the salary range and with nothing to do; 404 for anyone else.
    */
   async get(id: string, user: SessionUser): Promise<VacancyView> {
-    if (user.roles.some((r) => r === 'hr' || r === 'ceo' || r === 'super_admin')) return this.view(await this.row(id, user), user);
+    if (user.roles.some((r) => r === 'hr' || r === 'ceo' || r === 'super_admin')) {
+      const v = await this.row(id, user);
+      // its suggested CVs worked out as its page opens, unless they were in the last 2 minutes (24 October 2026)
+      await this.suggestions.refreshIfStale(v.id, user);
+      return { ...(await this.view(v, user)), suggestions: (await this.suggestions.counts([v.id])).get(v.id) ?? 0 };
+    }
     const selfId = await this.confidential.selfId(user);
     const v = selfId ? await this.prisma.vacancy.findFirst({ where: { id, hiringManagerId: selfId }, include: VACANCY_INCLUDE }) : null;
     if (!v) throw new NotFoundException(NOT_FOUND);
@@ -370,6 +381,8 @@ export class VacanciesService {
       diff: { number: v.number, status: { from: status, to }, ...(reason && { reason }) },
     });
     await this.notifyMove(v, move);
+    // published or open again: its suggested CVs worked out, HR told of the matches (24 October 2026: "Suggest; HR adds")
+    if (move === 'approve' || move === 'reopen') await this.suggestions.refreshVacancy(id, { notify: true });
     return this.get(id, user);
   }
 
