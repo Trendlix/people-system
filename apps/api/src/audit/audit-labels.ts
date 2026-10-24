@@ -85,6 +85,10 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   // provider's app and the default (Organization → Meetings), and a meetings connection, the company's or a person's own
   meeting_settings: 'Meeting settings',
   meeting_connection: 'Meetings connection',
+  // WhatsApp notifications (owner, 24 October 2026: "how to make whatsapp notifications?"; "Directly to Meta"): the
+  // settings (Organization → Company → WhatsApp), and a person's own choice to get them
+  whatsapp_settings: 'WhatsApp settings',
+  whatsapp_opt_in: 'WhatsApp messages choice',
   ocr_correction: 'Card reading fix',
   // offboarding (owner, 22 October 2026: the full module): a leaver's case (clearance, exit interview, rehire
   // eligibility), the default clearance checklist, and the turnover's Excel
@@ -291,6 +295,17 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   meeting_delete: 'Deleted the online meeting',
   meeting_failed: 'The online meeting was refused',
   meeting_link: 'Pasted the meeting link',
+  // WhatsApp (24 October 2026): a test message, a new verify token, the templates submitted and their status synced;
+  // a person turning their messages on, changing what they get, turning them off, or replying STOP; never the token,
+  // the app secret or a number
+  send_test_message: 'Sent a test message',
+  new_verify_token: 'Made a new verify token',
+  submit_templates: 'Submitted the WhatsApp templates',
+  sync_templates: 'Synced the WhatsApp templates’ status',
+  whatsapp_opt_in: 'Turned WhatsApp messages on',
+  whatsapp_choices: 'Changed what they get on WhatsApp',
+  whatsapp_opt_out: 'Turned WhatsApp messages off',
+  whatsapp_stop: 'Replied STOP on WhatsApp',
   // an approved home location removed (its point deleted), and one replaced by a newer approved one (20 October 2026)
   remove: 'Removed',
   reopen: 'Reopened',
@@ -477,6 +492,17 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   hostEmail: 'Host',
   accountEmail: 'Account',
   meetingId: 'Meeting ID',
+  // the WhatsApp settings (24 October 2026): the ids, the business number, the secrets (only ever "changed"), quiet
+  // hours; a person's choices
+  phoneNumberId: 'Phone number ID',
+  businessAccountId: 'WhatsApp Business Account ID',
+  displayPhone: 'Business number',
+  accessToken: 'Access token',
+  appSecret: 'App secret',
+  verifyToken: 'Verify token',
+  quietFrom: 'Quiet hours from',
+  quietTo: 'Quiet hours to',
+  groups: 'Messages chosen',
 };
 
 /**

@@ -10,6 +10,7 @@ import { CandidatesService } from './recruitment/candidates.service.js';
 import { CvReadingsService } from './recruitment/cv-readings.service.js';
 import { RecruitmentSchedulerService } from './recruitment/recruitment-scheduler.service.js';
 import { RemindersService } from './notifications/reminders.service.js';
+import { WhatsAppSenderService } from './whatsapp/whatsapp-sender.service.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -40,5 +41,8 @@ async function bootstrap() {
   // candidate profiles (22 October 2026: "how to make like a profile for each candidate …"): the applications and general
   // CVs from before joined to theirs once, under an advisory lock, then a sweep every 10 minutes; the tests run it themselves
   app.get(CandidatesService).start();
+  // WhatsApp's sender (owner, 24 October 2026: "Directly to Meta"): a round every 15 seconds, the candidates' reminders
+  // the day before their interview with it; the tests' apps don't start it either: they run its rounds themselves
+  app.get(WhatsAppSenderService).start();
 }
 await bootstrap();

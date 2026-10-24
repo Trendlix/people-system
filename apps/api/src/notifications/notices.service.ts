@@ -1,10 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { cairoDay, decidesConfidentialStage, type Role } from '@trendlix/shared';
+import { cairoDay, decidesConfidentialStage, type Role, type WhatsAppRequestWhat, type WhatsAppSpan } from '@trendlix/shared';
 import { actsAs } from '../auth/roles.js';
 import { fromDateOnly } from '../common/date-only.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { activeAccountsOf } from '../users/employee-accounts.js';
+import type { WhatsAppNotice } from '../whatsapp/whatsapp.service.js';
 import { NotificationsService, type NotificationInput } from './notifications.service.js';
 import {
   cancelledByHrText,
@@ -37,6 +38,9 @@ import {
 //   the CEO, or HR with Super Admin), then the CEO's to the CEO (a CEO's own to a Super Admin), never the person
 //   themself nor the one who just decided; the employee once HR or the CEO decides, never with the point or the label.
 // None of it ever throws into the flow: a failure is logged and the step stands.
+// Each carries its WhatsApp message's facts too (owner, 24 October 2026: "how to make whatsapp notifications?";
+// "Approvals waiting, Request decisions"): names, days and the month only, the requester's name in Arabic for an Arabic
+// message, and whom it is about, so a C-level person's never shows in HR's log. The emitter sends it to those who opted in.
 
 /** A request's steps as leave's are (with_manager → with_hr), and a claim's (… → with_finance). */
 type Stage = 'manager' | 'hr' | 'finance';
@@ -66,7 +70,11 @@ interface RequestFacts {
   managerId: string | null;
   status: string;
   name: string;
+  /** Their name in Arabic, for an Arabic WhatsApp message (24 October 2026). */
+  nameAr?: string | null;
   when: string;
+  /** Its days, for the WhatsApp message (24 October 2026). */
+  span: WhatsAppSpan;
   link: string;
 }
 
@@ -91,30 +99,31 @@ export class NoticesService {
     await this.safely('leave', async () => {
       const r = await this.prisma.leaveRequest.findUnique({
         where: { id },
-        select: { employeeId: true, managerId: true, status: true, startDate: true, endDate: true, halfDay: true, employee: { select: { fullNameEn: true } } },
+        select: { employeeId: true, managerId: true, status: true, startDate: true, endDate: true, halfDay: true, employee: { select: { fullNameEn: true, fullNameAr: true } } },
       });
       if (!r) return;
-      const when = daysText(fromDateOnly(r.startDate), fromDateOnly(r.endDate), r.halfDay);
-      await this.leaveLike('leave', { ...r, name: r.employee.fullNameEn, when, link: REQUEST_LINKS.leave(id) }, event);
+      const span = { from: fromDateOnly(r.startDate), to: fromDateOnly(r.endDate), halfDay: r.halfDay };
+      const when = daysText(span.from, span.to, r.halfDay);
+      await this.leaveLike('leave', { ...r, name: r.employee.fullNameEn, nameAr: r.employee.fullNameAr, when, span, link: REQUEST_LINKS.leave(id) }, event);
     });
   }
 
   async permission(id: string, event: RequestEvent): Promise<void> {
     await this.safely('permission', async () => {
-      const r = await this.prisma.permissionRequest.findUnique({ where: { id }, select: { employeeId: true, managerId: true, status: true, date: true, employee: { select: { fullNameEn: true } } } });
+      const r = await this.prisma.permissionRequest.findUnique({ where: { id }, select: { employeeId: true, managerId: true, status: true, date: true, employee: { select: { fullNameEn: true, fullNameAr: true } } } });
       if (!r) return;
       const day = fromDateOnly(r.date);
-      await this.leaveLike('permission', { ...r, name: r.employee.fullNameEn, when: daysText(day, day), link: REQUEST_LINKS.permission(id) }, event);
+      await this.leaveLike('permission', { ...r, name: r.employee.fullNameEn, nameAr: r.employee.fullNameAr, when: daysText(day, day), span: { from: day, to: day }, link: REQUEST_LINKS.permission(id) }, event);
     });
   }
 
   /** A work from home request (owner, 21 October 2026: "Manager, then HR"): told as a permission's is. */
   async wfh(id: string, event: RequestEvent): Promise<void> {
     await this.safely('work from home', async () => {
-      const r = await this.prisma.wfhRequest.findUnique({ where: { id }, select: { employeeId: true, managerId: true, status: true, date: true, employee: { select: { fullNameEn: true } } } });
+      const r = await this.prisma.wfhRequest.findUnique({ where: { id }, select: { employeeId: true, managerId: true, status: true, date: true, employee: { select: { fullNameEn: true, fullNameAr: true } } } });
       if (!r) return;
       const day = fromDateOnly(r.date);
-      await this.leaveLike('wfh', { ...r, name: r.employee.fullNameEn, when: daysText(day, day), link: REQUEST_LINKS.wfh(id) }, event);
+      await this.leaveLike('wfh', { ...r, name: r.employee.fullNameEn, nameAr: r.employee.fullNameAr, when: daysText(day, day), span: { from: day, to: day }, link: REQUEST_LINKS.wfh(id) }, event);
     });
   }
 
@@ -123,33 +132,36 @@ export class NoticesService {
     await this.safely('official duty', async () => {
       const r = await this.prisma.odRequest.findUnique({
         where: { id },
-        select: { employeeId: true, managerId: true, status: true, startDate: true, endDate: true, employee: { select: { fullNameEn: true } } },
+        select: { employeeId: true, managerId: true, status: true, startDate: true, endDate: true, employee: { select: { fullNameEn: true, fullNameAr: true } } },
       });
       if (!r) return;
-      await this.leaveLike('od', { ...r, name: r.employee.fullNameEn, when: daysText(fromDateOnly(r.startDate), fromDateOnly(r.endDate)), link: REQUEST_LINKS.od(id) }, event);
+      const span = { from: fromDateOnly(r.startDate), to: fromDateOnly(r.endDate) };
+      await this.leaveLike('od', { ...r, name: r.employee.fullNameEn, nameAr: r.employee.fullNameAr, when: daysText(span.from, span.to), span, link: REQUEST_LINKS.od(id) }, event);
     });
   }
 
   async correction(id: string, event: Exclude<RequestEvent, 'cancelled_by_hr'>): Promise<void> {
     await this.safely('correction', async () => {
-      const r = await this.prisma.attendanceCorrection.findUnique({ where: { id }, select: { employeeId: true, managerId: true, status: true, date: true, employee: { select: { fullNameEn: true } } } });
+      const r = await this.prisma.attendanceCorrection.findUnique({ where: { id }, select: { employeeId: true, managerId: true, status: true, date: true, employee: { select: { fullNameEn: true, fullNameAr: true } } } });
       if (!r) return;
       const day = fromDateOnly(r.date);
-      await this.leaveLike('correction', { ...r, name: r.employee.fullNameEn, when: daysText(day, day), link: REQUEST_LINKS.correction(id) }, event);
+      await this.leaveLike('correction', { ...r, name: r.employee.fullNameEn, nameAr: r.employee.fullNameAr, when: daysText(day, day), span: { from: day, to: day }, link: REQUEST_LINKS.correction(id) }, event);
     });
   }
 
   private async leaveLike(kind: LeaveLikeKind, r: RequestFacts, event: RequestEvent): Promise<void> {
     if (event === 'cancelled_by_hr') {
-      if (kind !== 'correction' && r.status === 'cancelled') await this.toEmployee(r.employeeId, cancelledByHrText(kind, r.when, r.link));
+      if (kind !== 'correction' && r.status === 'cancelled') await this.toEmployee(r.employeeId, { ...cancelledByHrText(kind, r.when, r.link), whatsapp: updateOf(kind, r.span, 'cancelled') });
       return;
     }
     const stage = stageOf(r.status);
     if (stage) {
-      await this.notifications.notify(await this.deciders(stage, r), waitingText(kind, r.name, r.when, r.link));
+      await this.notifications.notify(await this.deciders(stage, r), { ...waitingText(kind, r.name, r.when, r.link), whatsapp: waitingOf(kind, r) });
       return;
     }
-    if (event === 'decided' && (r.status === 'approved' || r.status === 'rejected')) await this.toEmployee(r.employeeId, decidedText(kind, r.status, r.when, r.link));
+    if (event === 'decided' && (r.status === 'approved' || r.status === 'rejected')) {
+      await this.toEmployee(r.employeeId, { ...decidedText(kind, r.status, r.when, r.link), whatsapp: updateOf(kind, r.span, r.status) });
+    }
   }
 
   // ---------- reimbursement claims (the manager, HR, then Finance; paid with the payroll) ----------
@@ -158,20 +170,24 @@ export class NoticesService {
     await this.safely('reimbursement', async () => {
       const r = await this.prisma.reimbursementClaim.findUnique({
         where: { id },
-        select: { employeeId: true, managerId: true, status: true, expenseDate: true, payMonth: true, employee: { select: { fullNameEn: true } } },
+        select: { employeeId: true, managerId: true, status: true, expenseDate: true, payMonth: true, employee: { select: { fullNameEn: true, fullNameAr: true } } },
       });
       if (!r) return;
       const link = REQUEST_LINKS.reimbursement(id);
       const expenseDate = fromDateOnly(r.expenseDate);
+      const span = { from: expenseDate, to: expenseDate };
       const stage = stageOf(r.status);
       if (stage) {
-        const facts = { ...r, name: r.employee.fullNameEn, when: daysText(expenseDate, expenseDate), link };
-        await this.notifications.notify(await this.deciders(stage, facts), waitingText('reimbursement', facts.name, facts.when, link));
+        const facts = { ...r, name: r.employee.fullNameEn, nameAr: r.employee.fullNameAr, when: daysText(expenseDate, expenseDate), span, link };
+        await this.notifications.notify(await this.deciders(stage, facts), { ...waitingText('reimbursement', facts.name, facts.when, link), whatsapp: waitingOf('reimbursement', facts) });
         return;
       }
       if (event !== 'decided') return;
-      if (r.status === 'approved' && r.payMonth) await this.toEmployee(r.employeeId, claimDecidedText({ approved: true, payMonth: fromDateOnly(r.payMonth) }, link));
-      if (r.status === 'rejected') await this.toEmployee(r.employeeId, claimDecidedText({ approved: false, expenseDate }, link));
+      if (r.status === 'approved' && r.payMonth) {
+        const payMonth = fromDateOnly(r.payMonth);
+        await this.toEmployee(r.employeeId, { ...claimDecidedText({ approved: true, payMonth }, link), whatsapp: updateOf('reimbursement', span, 'approved', { payMonth }) });
+      }
+      if (r.status === 'rejected') await this.toEmployee(r.employeeId, { ...claimDecidedText({ approved: false, expenseDate }, link), whatsapp: updateOf('reimbursement', span, 'rejected') });
     });
   }
 
@@ -189,7 +205,7 @@ export class NoticesService {
       const paidOn = run.paidOn ? fromDateOnly(run.paidOn) : null;
       for (const line of lines) {
         const userId = users.get(line.employeeId);
-        if (userId) await this.notifications.notify([userId], payslipText(month, paidOn, REQUEST_LINKS.payslip(line.id)));
+        if (userId) await this.notifications.notify([userId], { ...payslipText(month, paidOn, REQUEST_LINKS.payslip(line.id)), whatsapp: { facts: { template: 'payslip_ready', month } } });
       }
       const claims = await this.prisma.reimbursementClaim.findMany({
         where: { status: 'approved', payMonth: run.month, employeeId: { in: lines.map((l) => l.employeeId) } },
@@ -217,11 +233,15 @@ export class NoticesService {
   /** A raise sent to the CEO (from a raise request HR approved, or a raise HR prepared): the CEO decides it. */
   async payRaiseSent(contractId: string): Promise<void> {
     await this.safely('raise', async () => {
-      const c = await this.prisma.contract.findUnique({ where: { id: contractId }, select: { approval: true, employment: { select: { employeeId: true, employee: { select: { fullNameEn: true } } } } } });
+      const c = await this.prisma.contract.findUnique({ where: { id: contractId }, select: { approval: true, employment: { select: { employeeId: true, employee: { select: { fullNameEn: true, fullNameAr: true } } } } } });
       if (!c || c.approval !== 'pending_ceo') return;
       const own = await this.usersOf([c.employment.employeeId]);
       const ceos = (await this.usersWith((roles) => roles.includes('ceo'))).filter((id) => id !== own.get(c.employment.employeeId));
-      await this.notifications.notify(ceos, payRaiseWaitingText(c.employment.employee.fullNameEn, REQUEST_LINKS.approvals));
+      const who = { en: c.employment.employee.fullNameEn, ar: c.employment.employee.fullNameAr };
+      await this.notifications.notify(ceos, {
+        ...payRaiseWaitingText(c.employment.employee.fullNameEn, REQUEST_LINKS.approvals),
+        whatsapp: { facts: { template: 'approval_waiting', what: 'raise', who }, about: c.employment.employeeId },
+      });
     });
   }
 
@@ -257,7 +277,7 @@ export class NoticesService {
           createdAt: true,
           // Home Location, Remote Site or Client Location (24 October 2026), named so in the notice
           type: true,
-          employee: { select: { fullNameEn: true } },
+          employee: { select: { fullNameEn: true, fullNameAr: true } },
           createdBy: { select: { roles: { select: { role: { select: { key: true } } } } } },
         },
       });
@@ -265,21 +285,28 @@ export class NoticesService {
       const link = REQUEST_LINKS.homeLocation(id);
       const askedOn = cairoDay(r.createdAt);
       const notActor = (ids: readonly string[]) => ids.filter((u) => u !== actorId);
+      // a home location, a remote site or a client location, on WhatsApp by its type (24 October 2026)
+      const what = placeWhat(r.type);
+      const span = { from: askedOn, to: askedOn };
+      const waiting = { facts: { template: 'approval_waiting', what, who: { en: r.employee.fullNameEn, ar: r.employee.fullNameAr }, span }, about: r.employeeId } as const;
       if (r.status === 'with_hr') {
-        await this.notifications.notify(notActor(await this.stageDeciders('hr', r.employeeId)), homeWaitingText(r.employee.fullNameEn, askedOn, link, r.type));
+        await this.notifications.notify(notActor(await this.stageDeciders('hr', r.employeeId)), { ...homeWaitingText(r.employee.fullNameEn, askedOn, link, r.type), whatsapp: waiting });
       } else if (r.status === 'with_ceo') {
         const own = (await this.usersOf([r.employeeId])).get(r.employeeId);
         const byCeo = r.createdBy?.roles.some((x) => x.role.key === 'ceo') ?? false;
         const ceos = await this.usersWith((roles) => roles.includes('ceo') || (byCeo && roles.includes('super_admin')));
-        await this.notifications.notify(notActor(ceos.filter((u) => u !== own)), homeWaitingText(r.employee.fullNameEn, askedOn, link, r.type));
+        await this.notifications.notify(notActor(ceos.filter((u) => u !== own)), { ...homeWaitingText(r.employee.fullNameEn, askedOn, link, r.type), whatsapp: waiting });
       }
       if (event !== 'decided') return;
       if (r.status === 'with_ceo') {
         const actor = actorId ? await this.prisma.user.findUnique({ where: { id: actorId }, select: { roles: { select: { role: { select: { key: true } } } } } }) : null;
         const byTheCeo = (await this.confidential.isConfidential(r.employeeId)) && !!actor?.roles.some((x) => x.role.key === 'ceo');
-        await this.toEmployee(r.employeeId, homeDecidedText('first_step', askedOn, link, byTheCeo ? 'the CEO' : 'HR', r.type));
+        await this.toEmployee(r.employeeId, {
+          ...homeDecidedText('first_step', askedOn, link, byTheCeo ? 'the CEO' : 'HR', r.type),
+          whatsapp: updateOf(what, span, 'first_step', { firstStepBy: byTheCeo ? 'ceo' : 'hr' }),
+        });
       } else if (r.status === 'approved' || r.status === 'rejected') {
-        await this.toEmployee(r.employeeId, homeDecidedText(r.status, askedOn, link, undefined, r.type));
+        await this.toEmployee(r.employeeId, { ...homeDecidedText(r.status, askedOn, link, undefined, r.type), whatsapp: updateOf(what, span, r.status) });
       }
     });
   }
@@ -336,3 +363,22 @@ export class NoticesService {
     }
   }
 }
+
+// ---------- the WhatsApp facts (24 October 2026) ----------
+
+/** A request waiting, on WhatsApp: its kind, the requester (in English and Arabic) and its days; about the requester. */
+const waitingOf = (what: WhatsAppRequestWhat, r: Pick<RequestFacts, 'employeeId' | 'name' | 'nameAr' | 'span'>): WhatsAppNotice => ({
+  facts: { template: 'approval_waiting', what, who: { en: r.name, ar: r.nameAr ?? null }, span: r.span },
+  about: r.employeeId,
+});
+
+/** The employee's own request decided (or cancelled by HR), on WhatsApp: its kind, its days and the decision. */
+const updateOf = (
+  what: WhatsAppRequestWhat,
+  span: WhatsAppSpan,
+  outcome: 'approved' | 'rejected' | 'cancelled' | 'first_step',
+  more: { payMonth?: string; firstStepBy?: 'hr' | 'ceo' } = {},
+): WhatsAppNotice => ({ facts: { template: 'request_update', what, span, outcome, ...more } });
+
+/** A requested check-in location's type as the WhatsApp message names it: a home location, a remote site, a client location. */
+const placeWhat = (type: string | null | undefined): 'home' | 'remote_site' | 'client' => (type === 'remote_site' || type === 'client' ? type : 'home');

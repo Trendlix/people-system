@@ -79,8 +79,8 @@ describe('the audit log in words', () => {
     for (const label of [...Object.values(ACTION_LABELS), ...Object.values(ENTITY_LABELS)]) {
       expect(label[0]).toBe(label[0].toUpperCase());
       // sentence case: no word after the first capitalised, but names (Act as them, CEO, HR, Claude: the connector, 21
-      // October 2026; Google Maps, 24 October 2026)
-      expect(label.slice(1).split(' ').filter((w) => /^[A-Z][a-z]/.test(w) && !['Act', 'Claude', 'Google', 'Maps'].includes(w))).toEqual([]);
+      // October 2026; Google Maps, 24 October 2026; WhatsApp, 24 October 2026)
+      expect(label.slice(1).split(' ').filter((w) => /^[A-Z][a-z]/.test(w) && !['Act', 'Claude', 'Google', 'Maps', 'WhatsApp'].includes(w))).toEqual([]);
     }
   });
 

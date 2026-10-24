@@ -50,6 +50,7 @@ import type { AddGeneralCvDto, GeneralCvFormDto, ListGeneralCvsDto, MoveGeneralC
 import { CvPreviewsService } from './cv-previews.service.js';
 import { NOTES_GONE } from './screening-notes.js';
 import { ScreeningCommentsService } from './screening-comments.service.js';
+import { WhatsAppService } from '../whatsapp/whatsapp.service.js';
 
 // General CVs (owner, 22 October 2026: "i want a proper viweing, what came out of the posted jobs and what cam on
 // randomly"; "Both"; packages/shared general-cvs.ts): "Send us your CV" on the careers page, with the same protections as
@@ -169,6 +170,7 @@ export class GeneralCvsService {
     private readonly readings: CvReadingsService,
     private readonly comments: ScreeningCommentsService,
     private readonly previews: CvPreviewsService,
+    private readonly whatsapp: WhatsAppService,
   ) {}
 
   // ---------- the careers page ----------
@@ -202,13 +204,17 @@ export class GeneralCvsService {
     if (problems.length) throw new BadRequestException(problems);
     const email = normalEmail(input.email);
     const userAgent = (text(dto.userAgent) ?? origin.userAgent)?.slice(0, 500) ?? null;
+    // "Send me updates about my application on WhatsApp" (24 October 2026), off unless ticked; the page's language
+    const whatsapp = dto.whatsapp === 'true' || dto.whatsapp === 'on' ? { language: dto.whatsappLanguage === 'ar' ? ('ar' as const) : ('en' as const) } : null;
     // one CV every 30 days by the same person: their email, or their candidate (candidate profiles, 22 October 2026)
-    const made = await this.create(input, file!, { source: 'careers', consentById: null, consentNote: null, createdById: null, ip, userAgent, note: null }, (recent) =>
+    const made = await this.create(input, file!, { source: 'careers', consentById: null, consentNote: null, createdById: null, ip, userAgent, note: null, whatsapp }, (recent) =>
       new ConflictException(`You sent us your CV on ${shownDate(dayInCairo(recent.createdAt))} already. HR will be in touch.`),
     );
     await this.audit.record({ userId: null, action: 'apply', entityType: GENERAL_CV_ENTITY, entityId: made.id, diff: { number: made.number, source: 'careers', area: made.area, candidate: made.candidate } });
     await this.tellHr();
     await this.confirm(email, input.fullName, made.number);
+    // on WhatsApp too, when ticked (never throws)
+    if (whatsapp) await this.whatsapp.cvReceived(made.id);
     return { reference: made.number };
   }
 
@@ -411,6 +417,10 @@ export class GeneralCvsService {
       });
       // its CV's reading goes with it, so it isn't read again (22 October 2026)
       await this.readings.carry(tx, { generalCvId: id }, { applicationId: app.id });
+      // and its WhatsApp tick, as its consent does (24 October 2026): their updates about this job on WhatsApp too
+      if (r.whatsappOptInAt) {
+        await tx.jobApplication.update({ where: { id: app.id }, data: { whatsappOptInAt: r.whatsappOptInAt, whatsappLanguage: r.whatsappLanguage, whatsappStoppedAt: r.whatsappStoppedAt } });
+      }
       await tx.generalCv.update({ where: { id }, data: { status: 'moved', applicationId: app.id, movedAt: new Date() } });
       await tx.generalCvEvent.create({
         data: { generalCvId: id, event: 'moved', note: `${v.title} (${v.number}), at ${stage === 'applied' ? 'Applied' : 'Shortlisted'}${suggested ? ', from Suggested From Earlier CVs' : ''}`, byId: user.id },
@@ -529,7 +539,17 @@ export class GeneralCvsService {
   private async create(
     input: GeneralCvInput,
     file: Express.Multer.File,
-    how: { source: GeneralCvSource; consentById: string | null; consentNote: string | null; createdById: string | null; ip: string | null; userAgent: string | null; note: string | null },
+    how: {
+      source: GeneralCvSource;
+      consentById: string | null;
+      consentNote: string | null;
+      createdById: string | null;
+      ip: string | null;
+      userAgent: string | null;
+      note: string | null;
+      /** The WhatsApp tick on the careers page (24 October 2026); none for HR's Add a CV, which never asks. */
+      whatsapp?: { language: 'en' | 'ar' } | null;
+    },
     refuseRecent: (recent: { number: string; createdAt: Date; email: string }) => Error,
   ): Promise<{ id: string; number: string; area: string; candidate: string }> {
     const type = cvTypeOf(file.buffer)!;
@@ -560,6 +580,7 @@ export class GeneralCvsService {
           consentAt: new Date(),
           consentById: how.consentById,
           consentNote: how.consentNote,
+          ...(how.whatsapp && { whatsappOptInAt: new Date(), whatsappLanguage: how.whatsapp.language }),
           ip: how.ip,
           userAgent: how.userAgent,
           createdById: how.createdById,
@@ -569,6 +590,8 @@ export class GeneralCvsService {
         select: { id: true, number: true, department: { select: { nameEn: true } }, areaOther: true },
       });
       await refreshCandidate(tx, candidate.id);
+      // the tick kept on their candidate too, with its time (a new tick after a STOP is a new consent)
+      if (how.whatsapp) await tx.candidate.update({ where: { id: candidate.id }, data: { whatsappOptInAt: new Date(), whatsappStoppedAt: null } });
       return { id: row.id, number: row.number, area: areaOf(row), candidate: candidate.code };
     }).finally(() => this.readings.kick());
   }

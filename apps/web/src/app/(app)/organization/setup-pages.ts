@@ -1,4 +1,4 @@
-import type { Role } from '@trendlix/shared';
+import { WHATSAPP_SETTINGS_PATH, type Role } from '@trendlix/shared';
 import { EMAIL_SETTINGS_PATH } from '../../../lib/email-setup';
 import { MEETING_SETTINGS_PATH } from '../../../lib/meetings';
 import { hasRole } from '../../../lib/roles';
@@ -19,6 +19,7 @@ export const SETUP_PATHS = {
   company: '/organization/company',
   email: EMAIL_SETTINGS_PATH,
   meetings: MEETING_SETTINGS_PATH,
+  whatsapp: WHATSAPP_SETTINGS_PATH,
   templates: '/organization/templates',
   departments: '/organization/departments',
   grades: '/organization/grades',
@@ -62,6 +63,7 @@ export type SetupKey =
   | 'company'
   | 'email'
   | 'meetings'
+  | 'whatsapp'
   | 'templates'
   | 'departments'
   | 'grades'
@@ -94,6 +96,10 @@ export const SETUP_GROUPS: readonly SetupGroup[] = [
       // automatically generate meeting links?"; "make it both"): the providers' apps and the company's accounts, a Super
       // Admin's only, never a developer's, as lib/meetings.ts seesMeetingSettings
       { key: 'meetings', href: SETUP_PATHS.meetings, label: 'Meetings', roles: ['super_admin'], noDevelopers: true },
+      // WhatsApp notifications (owner, 24 October 2026: "how to make whatsapp notifications?"; "Directly to Meta"): the
+      // WhatsApp Cloud API's number, token and templates, a Super Admin's only, never a developer's, as lib/whatsapp.ts
+      // seesWhatsAppSettings
+      { key: 'whatsapp', href: SETUP_PATHS.whatsapp, label: 'WhatsApp', roles: ['super_admin'], noDevelopers: true },
       // the document templates, from their own sidebar heading: a Super Admin's (owner, 19 October 2026: "enable
       // templates sidebar to super admin only"), as templates/wording.ts seesTemplates
       { key: 'templates', href: SETUP_PATHS.templates, label: 'Templates', roles: ['super_admin'] },

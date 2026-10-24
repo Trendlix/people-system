@@ -5,8 +5,9 @@ import { inboxHref, kindLabel, notificationHref, notificationTime, notLoadedText
 import { getCurrentUser } from '@/lib/session';
 import { isViewOnly } from '@/lib/view-as';
 import { markAllNotificationsRead, openNotification } from './actions';
-import { loadInbox, loadReminderSettings } from './data';
+import { loadInbox, loadMyWhatsApp, loadReminderSettings } from './data';
 import { ReminderSettingsForm } from './reminder-settings';
+import { WhatsAppSettingsForm } from './whatsapp-settings';
 
 // The inbox (owner, 20 October 2026: "Push notifications: yes (decisions, things waiting for someone, a check-in
 // reminder)"; apps/mobile/README.md, Phase 4: "the bell + inbox page, notification settings (which reminders)"): the
@@ -177,6 +178,35 @@ export async function Reminders({ surface }: { surface: InboxSurface }) {
         <ReminderSettingsForm initial={switchesOf(loaded.value)} big={surface === 'app'} />
       ) : (
         <p className="text-sm text-muted">{notLoadedText(loaded, 'reminders')}</p>
+      )}
+    </section>
+  );
+}
+
+/**
+ * The person's own WhatsApp messages (owner, 24 October 2026: "how to make whatsapp notifications?"; employees who opt
+ * in), under the reminders, for those with an employee profile (the messages go to its mobile): on or off, the language
+ * and the groups. Left out by an API from before it (404).
+ */
+export async function WhatsAppMessages({ surface }: { surface: InboxSurface }) {
+  const user = await getCurrentUser();
+  if (!user.employeeId) return null;
+  const loaded = await loadMyWhatsApp();
+  if (loaded.kind === 'unavailable') return null;
+  return (
+    <section id="whatsapp" aria-labelledby="whatsapp-heading" className={`card scroll-mt-20 space-y-3 ${surface === 'app' ? 'p-4' : 'p-6'}`}>
+      <div>
+        <h2 id="whatsapp-heading" className="font-semibold">
+          WhatsApp Messages
+        </h2>
+        <p className="mt-1 text-sm text-muted">Get what waits for you, decisions on your requests, the check-in reminders and your interviews on WhatsApp too, if you like.</p>
+      </div>
+      {loaded.kind === 'ok' ? (
+        <WhatsAppSettingsForm initial={loaded.value} viewingAs={!!user.viewAs} big={surface === 'app'} />
+      ) : (
+        <p className="text-sm text-muted">
+          {loaded.kind === 'forbidden' ? 'Your WhatsApp messages can’t be shown here.' : `Your WhatsApp messages couldn’t be loaded. ${loaded.messages.join(' ')}`}
+        </p>
       )}
     </section>
   );

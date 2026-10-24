@@ -66,6 +66,18 @@ describe('the application form', () => {
     expect(robot.get('source')).toBe('other');
   });
 
+  // the WhatsApp tick (owner, 24 October 2026: "how to make whatsapp notifications?"; candidates who tick it)
+  it('sends the WhatsApp tick only when ticked, with the page’s language, and keeps it after a refusal', () => {
+    const ticked = apiForm(form({ ...good, whatsapp: 'on' }), QUESTIONS, { source: null });
+    expect(ticked.get('whatsapp')).toBe('true');
+    expect(ticked.get('whatsappLanguage')).toBe('en');
+    const unticked = apiForm(form(good), QUESTIONS, { source: null });
+    expect(unticked.get('whatsapp')).toBeNull();
+    expect(unticked.get('whatsappLanguage')).toBeNull();
+    expect(typedValues(form({ ...good, whatsapp: 'on' }), QUESTIONS).whatsapp).toBe('on');
+    expect(typedValues(form(good), QUESTIONS)).not.toHaveProperty('whatsapp');
+  });
+
   it('links a job for a channel and lines up its facts', () => {
     expect(jobHref('video-producer-vac-2026-0003')).toBe('/careers/video-producer-vac-2026-0003');
     expect(jobHref('video-producer-vac-2026-0003', 'facebook')).toBe('/careers/video-producer-vac-2026-0003?src=facebook');
@@ -100,6 +112,12 @@ describe('the general CV form', () => {
     const other = generalApiForm(form({ ...person, area: OTHER_AREA, areaOther: 'Photography' }), {});
     expect(other.get('departmentId')).toBeNull();
     expect(other.get('areaOther')).toBe('Photography');
+  });
+
+  it('sends the WhatsApp tick only when ticked, and keeps it after a refusal (24 October 2026)', () => {
+    expect(generalApiForm(form({ ...person, area: AREA, whatsapp: 'on' }), {}).get('whatsapp')).toBe('true');
+    expect(generalApiForm(form({ ...person, area: AREA }), {}).get('whatsapp')).toBeNull();
+    expect(generalTypedValues(form({ ...person, area: AREA, whatsapp: 'on' })).whatsapp).toBe('on');
   });
 
   it('keeps what was typed to show again, never the CV', () => {

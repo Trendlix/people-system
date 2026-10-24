@@ -33,7 +33,8 @@ describe('the headings that open and close', () => {
       ['Assets', 'assets'],
       // Templates was one until it moved to Organization's setup menu (23 October 2026)
     ]);
-    expect(NAV.filter((item) => !isGroup(item)).map((item) => item.label)).toEqual(['Home', 'Organization', 'Approvals', 'Users', 'Audit Log']);
+    // WhatsApp Messages, last (owner, 24 October 2026: "how to make whatsapp notifications?")
+    expect(NAV.filter((item) => !isGroup(item)).map((item) => item.label)).toEqual(['Home', 'Organization', 'Approvals', 'Users', 'Audit Log', 'WhatsApp Messages']);
     expect(groupListId('requests')).toBe('nav-group-requests');
     expect(groupKey({ label: ' Leave & Attendance ' })).toBe('leave-attendance');
     // an employee's own sidebar has the KPIs' alone (owner, 21 October 2026)

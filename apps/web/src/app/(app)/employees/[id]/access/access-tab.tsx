@@ -1,4 +1,4 @@
-import { ASSETS_ACCESS_LABELS, graceUntilOf, type AccessStandingView, type EmployeeAccessView } from '@trendlix/shared';
+import { ASSETS_ACCESS_LABELS, graceUntilOf, type AccessStandingView, type EmployeeAccessView, type WhatsAppPersonView } from '@trendlix/shared';
 import Link from 'next/link';
 import {
   accessBadgeClass,
@@ -19,8 +19,9 @@ import {
 import { setsUpEmail } from '@/lib/email-setup';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { getCurrentUser } from '@/lib/session';
+import { personWhatsAppLines } from '@/lib/whatsapp';
 import type { EmployeeProfile, FingerprintDevice, OpenSession, UserAccount } from '@/lib/types';
-import { loadJson, notLoadedText } from '../../../payroll/load';
+import { loadJson, notLoadedText, type Loaded } from '../../../payroll/load';
 import { AccountPanel } from '../../../users/account-panel';
 import { RoleBadges } from '../../../users/ui';
 import { giveAccessNow, giveGrace, sendAccessLink, setSignInEmail } from '../../access-actions';
@@ -67,6 +68,9 @@ export async function AccessTab({ profile }: { profile: Pick<EmployeeProfile, 'i
   if (!v.can.invite) return <YourSignIn view={v} today={today} />;
 
   const a = v.account;
+  // their WhatsApp messages, read only (owner, 24 October 2026: "how to make whatsapp notifications?"; the brief: "HR can
+  // see the status but can't opt someone in"); a developer, or anyone the API refuses, sees nothing of it
+  const whatsapp = me.developer ? null : loadJson<WhatsAppPersonView>(`/whatsapp/people/${profile.id}`);
   // the Users page's tools, for an Admin and a Super Admin (the API checks them again)
   const panel =
     a && v.can.manageAccount
@@ -160,6 +164,8 @@ export async function AccessTab({ profile }: { profile: Pick<EmployeeProfile, 'i
         </section>
       )}
 
+      <WhatsAppStatus loaded={whatsapp ? await whatsapp : null} name={profile.fullNameEn} />
+
       {panel &&
         (panel[0].kind === 'ok' && panel[1].kind === 'ok' ? (
           <AccountPanel me={me} user={panel[0].value} sessions={panel[1].value} devices={panel[2]} temporaryPassword={false} />
@@ -167,6 +173,26 @@ export async function AccessTab({ profile }: { profile: Pick<EmployeeProfile, 'i
           <p className="text-sm text-muted">Their account’s roles and sessions couldn’t be loaded. Please try again.</p>
         ))}
     </div>
+  );
+}
+
+/** Whether they get WhatsApp messages, read only: HR sees it, only the person turns it on. Hidden when it can't be read. */
+function WhatsAppStatus({ loaded, name }: { loaded: Loaded<WhatsAppPersonView> | null; name: string }) {
+  if (!loaded || loaded.kind !== 'ok') return null;
+  const lines = personWhatsAppLines(loaded.value, name, dateTime);
+  return (
+    <section className="card max-w-xl space-y-2 p-6">
+      <div className="flex flex-wrap items-center gap-3">
+        <h3 className="font-semibold">WhatsApp Messages</h3>
+        <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${loaded.value.on ? 'bg-ok-soft text-ok' : 'bg-canvas text-muted'}`}>{lines.status}</span>
+      </div>
+      {lines.details.map((d) => (
+        <p key={d} className="text-sm">
+          {d}
+        </p>
+      ))}
+      <p className="hint">{lines.note}</p>
+    </section>
   );
 }
 

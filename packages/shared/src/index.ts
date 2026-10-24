@@ -586,3 +586,8 @@ export * from './suggested-cvs.js';
 // the switch and its accuracy allowance, a press's verdict (inside a circle, too rough, no location), the two locks
 // together (either passing is enough), and the words of the refusals
 export * from './gps-lock.js';
+
+// WhatsApp notifications (owner, 24 October 2026: "how to make whatsapp notifications?"; asked, "Employees and
+// candidates", "Approvals waiting, Request decisions, Check-in reminders, Interviews", "Directly to Meta"): one more
+// channel beside the bell, push and email, for those who opt in, with Meta's approved templates in English and Arabic
+export * from './whatsapp.js';

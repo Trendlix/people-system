@@ -5,11 +5,12 @@
 // marks it read and opens its page there (lib/notifications.ts, notificationHref), Mark all as read, and the person's two
 // reminder switches. Each is the caller's own; the API decides. While a Super Admin views as someone view only, the API
 // refuses every change: opening still opens the page, the rest says the API's words.
-import { DEFAULT_NOTIFICATION_SETTINGS, NOTIFICATION_SETTING_LABELS, type NotificationSettings } from '@trendlix/shared';
+import { DEFAULT_NOTIFICATION_SETTINGS, NOTIFICATION_SETTING_LABELS, type MyWhatsAppView, type NotificationSettings } from '@trendlix/shared';
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { ApiError, apiSend } from '@/lib/api';
 import { notificationHref, type InboxSurface } from '@/lib/notifications';
+import { myWhatsAppBody, type WhatsAppChoiceState } from './whatsapp-choice';
 
 /** The longest id taken from the page (the API's are UUIDs). */
 const MAX_ID = 100;
@@ -84,5 +85,21 @@ export async function saveReminderSettings(_prev: ReminderSettingsState, formDat
     if (!(err instanceof ApiError)) throw err;
     const error = err.status === 404 ? 'Reminder settings aren’t on the server yet. Please try again after its next update.' : err.messages.join(' ');
     return { error, values };
+  }
+}
+
+/**
+ * The person's WhatsApp messages' Save (PUT /me/whatsapp; owner, 24 October 2026: "how to make whatsapp notifications?";
+ * employees who opt in): on or off, the language, the groups ticked. The API answers the choice as it now stands, with
+ * when they opted in; it refuses anyone viewing as someone (only the person themself opts in), in its own words.
+ */
+export async function saveMyWhatsApp(prev: WhatsAppChoiceState, formData: FormData): Promise<WhatsAppChoiceState> {
+  try {
+    const view = (await apiSend<MyWhatsAppView>('PUT', '/me/whatsapp', myWhatsAppBody(formData)))!;
+    return { saved: true, view };
+  } catch (err) {
+    if (!(err instanceof ApiError)) throw err;
+    const error = err.status === 404 ? 'WhatsApp messages aren’t on the server yet. Please try again after its next update.' : err.messages.join(' ');
+    return { error, view: prev.view };
   }
 }

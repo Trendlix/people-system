@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { inboxPage } from '@/lib/notifications';
-import { Inbox, Reminders } from './inbox';
+import { Inbox, Reminders, WhatsAppMessages } from './inbox';
 
 // The inbox on the site (owner, 20 October 2026: "Push notifications: yes (decisions, things waiting for someone, a
 // check-in reminder)"; apps/mobile/README.md, Phase 4), opened from the bell in the header: the body is shared with the
@@ -26,6 +26,9 @@ export default function NotificationsPage({ searchParams }: PageProps<'/notifica
       </Suspense>
       <Suspense fallback={null}>
         <Reminders surface="site" />
+      </Suspense>
+      <Suspense fallback={null}>
+        <WhatsAppMessages surface="site" />
       </Suspense>
     </div>
   );

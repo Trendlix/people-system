@@ -126,7 +126,8 @@ export class AccessStandingService {
           },
         });
         if (to === 'hold') {
-          await this.toEmployee(person.id, { kind: 'access_hold', title: 'Your access is on hold', body: ACCESS_HOLD_MESSAGE, link: HOLD_PATH });
+          // on WhatsApp too for those who opted in (24 October 2026: "Request decisions … access on hold")
+          await this.toEmployee(person.id, { kind: 'access_hold', title: 'Your access is on hold', body: ACCESS_HOLD_MESSAGE, link: HOLD_PATH, whatsapp: { facts: { template: 'access_on_hold' } } });
           held.push({ id: person.id, name: person.fullNameEn, noContract: !!s.result.noContract });
         } else if (to === 'grace' && s.result.grace) {
           await this.toEmployee(person.id, {
@@ -134,6 +135,7 @@ export class AccessStandingService {
             title: '7 days’ grace',
             body: `HR gave you full access until ${shownDate(s.result.grace.until)}, while your contract is renewed.`,
             link: '/',
+            whatsapp: { facts: { template: 'access_grace', until: s.result.grace.until } },
           });
         }
       } catch (err) {
@@ -201,6 +203,7 @@ export class AccessStandingService {
         title: 'Your grace ends tomorrow',
         body: `Your full access ends after ${shownDate(addDays(today, 1))} unless your contract is renewed. Checking in and out goes on working.`,
         link: '/',
+        whatsapp: { facts: { template: 'access_grace_ending', lastDay: addDays(today, 1) } },
       });
       told++;
     }

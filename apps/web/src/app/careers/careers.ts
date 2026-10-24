@@ -28,6 +28,23 @@ export const jobHref = (slug: string, source?: ApplicationSource) => (source && 
 /** The form field of a question's answer. */
 export const answerField = (key: string) => `answer-${key}`;
 
+/**
+ * The tick "Send me updates about my application on WhatsApp" (owner, 24 October 2026: "how to make whatsapp
+ * notifications?"; asked whom, "Employees and candidates": candidates who tick it on the careers form), off unless
+ * ticked: sent to the API as whatsapp=true, with the page's language (these pages are English).
+ */
+export const WHATSAPP_FIELD = 'whatsapp';
+
+/** Whether the WhatsApp tick is ticked. */
+const whatsappTicked = (fd: FormData): boolean => fd.get(WHATSAPP_FIELD) !== null;
+
+/** The WhatsApp tick as the API takes it: whatsapp=true and the page's language, only when ticked. */
+function setWhatsApp(fd: FormData, out: FormData): void {
+  if (!whatsappTicked(fd)) return;
+  out.set(WHATSAPP_FIELD, 'true');
+  out.set('whatsappLanguage', 'en');
+}
+
 /** The honeypot: a field hidden from people, so only a robot fills it. */
 export const HONEYPOT = 'website';
 
@@ -66,6 +83,7 @@ export function typedValues(fd: FormData, questions: readonly PublicQuestion[]):
   for (const name of PERSON_FIELDS) out[name] = text(fd, name);
   for (const q of questions) out[answerField(q.key)] = text(fd, answerField(q.key));
   if (fd.get('consent')) out.consent = 'on';
+  if (whatsappTicked(fd)) out[WHATSAPP_FIELD] = 'on';
   return out;
 }
 
@@ -107,6 +125,7 @@ export function apiForm(fd: FormData, questions: readonly PublicQuestion[], from
   const out = personForm(fd);
   out.set('answers', JSON.stringify(answersFrom(fd, questions)));
   if (fd.get('consent') !== null) out.set('consent', 'true');
+  setWhatsApp(fd, out);
   out.set('source', sourceOf(from.source));
   const honeypot = text(fd, HONEYPOT);
   if (honeypot) out.set(HONEYPOT, honeypot);
@@ -166,6 +185,7 @@ export function generalTypedValues(fd: FormData): Record<string, string> {
   const out: Record<string, string> = {};
   for (const name of GENERAL_FIELDS) out[name] = text(fd, name);
   if (fd.get('consent')) out.consent = 'on';
+  if (whatsappTicked(fd)) out[WHATSAPP_FIELD] = 'on';
   return out;
 }
 
@@ -202,6 +222,7 @@ export function generalApiForm(fd: FormData, from: { ip?: string; userAgent?: st
   if (input.departmentId) out.set('departmentId', input.departmentId);
   if (input.areaOther) out.set('areaOther', input.areaOther);
   if (input.consent) out.set('consent', 'true');
+  setWhatsApp(fd, out);
   const honeypot = text(fd, HONEYPOT);
   if (honeypot) out.set(HONEYPOT, honeypot);
   if (from.ip) out.set('ip', from.ip);

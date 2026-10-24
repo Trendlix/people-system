@@ -7,6 +7,7 @@ import { NoticeInput } from '@/components/notice-input';
 import { PhoneInput } from '@/components/phone-input';
 import { Select } from '@/components/select';
 import { answerField, HONEYPOT } from '../careers';
+import { WhatsAppTick } from '../whatsapp-tick';
 import { Checked, EmailInput, useFieldChecks, YearsInput } from '../fields';
 import type { ApplyState } from './actions';
 
@@ -190,6 +191,8 @@ export function ApplyForm({ action, questions, title }: { action: Action; questi
         <input type="checkbox" name="consent" required defaultChecked={v('consent') === 'on'} className="mt-1 size-4 shrink-0" />
         <span>{APPLY_CONSENT_TEXT}</span>
       </label>
+
+      <WhatsAppTick defaultChecked={v('whatsapp') === 'on'} />
 
       <button
         type="submit"

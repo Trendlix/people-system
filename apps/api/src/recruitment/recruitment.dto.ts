@@ -366,6 +366,16 @@ export class ApplyDto {
   @IsOptional() @IsString() @MaxLength(40)
   source?: string;
 
+  /**
+   * "true" when "Send me updates about my application on WhatsApp" is ticked (owner, 24 October 2026: candidates "who
+   * tick it on the careers form"), and the page's language (en, ar; English unless said).
+   */
+  @IsOptional() @IsString() @MaxLength(10)
+  whatsapp?: string;
+
+  @IsOptional() @IsString() @MaxLength(5)
+  whatsappLanguage?: string;
+
   /** The honeypot: a field people never see, so never fill in. */
   @IsOptional() @IsString() @MaxLength(1000)
   website?: string;
@@ -416,6 +426,13 @@ export class GeneralCvFormDto {
   /** "true" when the consent is ticked. */
   @IsOptional() @IsString() @MaxLength(10)
   consent?: string;
+
+  /** "true" when the WhatsApp tick is ticked (24 October 2026), and the page's language; HR's Add a CV never reads them. */
+  @IsOptional() @IsString() @MaxLength(10)
+  whatsapp?: string;
+
+  @IsOptional() @IsString() @MaxLength(5)
+  whatsappLanguage?: string;
 
   /** The honeypot: a field people never see, so never fill in. */
   @IsOptional() @IsString() @MaxLength(1000)

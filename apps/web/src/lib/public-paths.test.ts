@@ -44,6 +44,17 @@ describe('pages open without signing in', () => {
   });
 });
 
+// Meta's WhatsApp webhook (owner, 24 October 2026: "how to make whatsapp notifications?").
+describe('the WhatsApp webhook', () => {
+  it('is open without signing in, nothing under it nor the settings', () => {
+    expect(isPublicPath('/whatsapp/webhook')).toBe(true);
+    expect(isPublicPath('/whatsapp/webhook/other')).toBe(false);
+    expect(isPublicPath('/whatsapp')).toBe(false);
+    expect(isPublicPath('/whatsapp-messages')).toBe(false);
+    expect(isPublicPath('/organization/whatsapp')).toBe(false);
+  });
+});
+
 // The careers page (owner, 22 October 2026: "where will we include the ATS?").
 describe('the careers page', () => {
   it('is open without signing in, its jobs and their forms too', () => {

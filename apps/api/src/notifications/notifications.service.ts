@@ -16,6 +16,7 @@ import {
 import type { SessionUser } from '../auth/session-user.js';
 import type { ActiveSession } from '../auth/sessions.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { WhatsAppService, type WhatsAppNotice } from '../whatsapp/whatsapp.service.js';
 import { FcmSender } from './fcm-sender.service.js';
 
 // Notifications (owner, 20 October 2026: "Push notifications: yes (decisions, things waiting for someone, a check-in
@@ -31,6 +32,11 @@ export interface NotificationInput {
   body: string;
   /** An address on the site ("/leave/<id>"); anything else is dropped. */
   link?: string | null;
+  /**
+   * Its WhatsApp message's facts (owner, 24 October 2026: "how to make whatsapp notifications?"): added for those who
+   * opted in, for the kinds packages/shared WHATSAPP_NOTIFICATION_KINDS lists; none: the bell and push only.
+   */
+  whatsapp?: WhatsAppNotice | null;
 }
 
 /** A notification as kept, cleaned: its texts cut to their limits, a link only on the site. */
@@ -66,6 +72,7 @@ export class NotificationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly fcm: FcmSender,
+    private readonly whatsapp: WhatsAppService,
   ) {}
 
   // ---------- the emitter ----------
@@ -88,6 +95,8 @@ export class NotificationsService {
       if (!users.length) return;
       const rows = await this.prisma.notification.createManyAndReturn({ data: users.map((u) => ({ userId: u.id, ...n })), select: { id: true, userId: true } });
       if (this.fcm.enabled) this.track(this.push(rows, n));
+      // WhatsApp beside them, never in their place (24 October 2026): for those who opted in (never throws)
+      if (input.whatsapp) await this.whatsapp.fromNotification(users.map((u) => u.id), { kind: n.kind, link: n.link, whatsapp: input.whatsapp });
     } catch (err) {
       this.logger.error(`A notification of kind "${input.kind}" could not be kept: ${(err as Error).message}`);
     }
@@ -115,6 +124,8 @@ export class NotificationsService {
       }
       id ??= (await this.prisma.notification.create({ data: { userId, ...n }, select: { id: true } })).id;
       if (this.fcm.enabled) this.track(this.push([{ id, userId }], { ...n, tag: options.tag }));
+      // WhatsApp beside them (24 October 2026): once a reminder's kind a day, whatever its steps (never throws)
+      if (input.whatsapp) await this.whatsapp.fromNotification([userId], { kind: n.kind, link: n.link, whatsapp: input.whatsapp });
       return id;
     } catch (err) {
       this.logger.error(`A reminder of kind "${input.kind}" could not be kept: ${(err as Error).message}`);

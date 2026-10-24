@@ -225,6 +225,9 @@ export const DEVELOPER_ID_FIELDS: ReadonlySet<string> = new Set([
   // the number printed on a paper of the employee file: a card's, a passport's, the social insurance print's (22 October
   // 2026: "and the social insurance")
   'documentNo',
+  // WhatsApp (24 October 2026): the business number on the settings; people's own numbers are `mobile` (an opt-in, HR's
+  // view of it, the log), all on routes a developer is refused anyway
+  'displayPhone',
 ]);
 
 /** Texts that may carry amounts in words (a payroll line's warnings): their digits hidden. */

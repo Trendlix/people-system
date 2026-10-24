@@ -107,13 +107,22 @@ export class RemindersService implements OnModuleDestroy {
       { timeout: 60_000, maxWait: 10_000 },
     );
     for (const r of due) {
+      // WhatsApp beside them for those who opted in (24 October 2026: "Check-in reminders"): once a kind a day, never in
+      // quiet hours (WhatsAppService)
       if (r.kind === 'check_in_reminder') {
-        const id = await this.notifications.remind(r.userId, checkInReminderText(r.shiftStart, REQUEST_LINKS.myAttendance), { rowId: r.notificationId, tag: CHECK_IN_REMINDER_TAG });
+        const id = await this.notifications.remind(
+          r.userId,
+          { ...checkInReminderText(r.shiftStart, REQUEST_LINKS.myAttendance), whatsapp: { facts: { template: 'check_in_reminder', shiftStart: r.shiftStart } } },
+          { rowId: r.notificationId, tag: CHECK_IN_REMINDER_TAG },
+        );
         if (id && id !== r.notificationId) {
           await this.prisma.reminderSent.updateMany({ where: { userId: r.userId, day: toDateOnly(r.day), kind: r.kind }, data: { notificationId: id } });
         }
       } else {
-        await this.notifications.notify([r.userId], checkOutReminderText(r.checkedInAt, REQUEST_LINKS.myAttendance));
+        await this.notifications.notify([r.userId], {
+          ...checkOutReminderText(r.checkedInAt, REQUEST_LINKS.myAttendance),
+          whatsapp: { facts: { template: 'check_out_reminder', checkedInAt: new Date(r.checkedInAt).toISOString() } },
+        });
       }
     }
     if (due.length) this.logger.log(`Sent ${due.length} reminder${due.length === 1 ? '' : 's'}.`);

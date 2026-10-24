@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { inboxPage } from '@/lib/notifications';
-import { Inbox, Reminders } from '../../../(app)/notifications/inbox';
+import { Inbox, Reminders, WhatsAppMessages } from '../../../(app)/notifications/inbox';
 import { PageTitle, PhoneLoading } from '../ui';
 
 // The inbox on the phone pages (owner, 20 October 2026: "Push notifications: yes (decisions, things waiting for someone,
@@ -25,6 +25,9 @@ export default function PhoneNotificationsPage({ searchParams }: PageProps<'/app
       </Suspense>
       <Suspense fallback={null}>
         <Reminders surface="app" />
+      </Suspense>
+      <Suspense fallback={null}>
+        <WhatsAppMessages surface="app" />
       </Suspense>
     </div>
   );

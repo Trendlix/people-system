@@ -23,6 +23,9 @@ const PUBLIC_PATHS = new Set([
   '/.well-known/oauth-protected-resource',
   '/.well-known/oauth-protected-resource/api/mcp',
   '/.well-known/oauth-authorization-server',
+  // Meta's WhatsApp webhook (owner, 24 October 2026: "how to make whatsapp notifications?"; "Directly to Meta"): Meta
+  // calls it from its servers without a session; the API checks the verify token and each event's signature itself
+  '/whatsapp/webhook',
 ]);
 
 /**

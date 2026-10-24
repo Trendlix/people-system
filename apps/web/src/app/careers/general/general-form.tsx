@@ -7,6 +7,7 @@ import { NoticeInput } from '@/components/notice-input';
 import { PhoneInput } from '@/components/phone-input';
 import { Select } from '@/components/select';
 import { HONEYPOT, OTHER_AREA } from '../careers';
+import { WhatsAppTick } from '../whatsapp-tick';
 import { Checked, EmailInput, useFieldChecks, YearsInput } from '../fields';
 import type { GeneralState } from './actions';
 
@@ -163,6 +164,8 @@ export function GeneralForm({ action, areas }: { action: Action; areas: PublicGe
         <input type="checkbox" name="consent" required defaultChecked={v('consent') === 'on'} className="mt-1 size-4 shrink-0" />
         <span>{GENERAL_CV_CONSENT_TEXT}</span>
       </label>
+
+      <WhatsAppTick defaultChecked={v('whatsapp') === 'on'} />
 
       <button
         type="submit"

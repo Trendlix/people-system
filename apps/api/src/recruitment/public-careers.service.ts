@@ -32,6 +32,7 @@ import { CvReadingsService } from './cv-readings.service.js';
 import { cvFileName, cvProblem, cvTypeOf } from './cv-file.js';
 import { APPLICATION_ENTITY, publicSummaryOf, questionsOf } from './recruitment-views.js';
 import type { ApplyDto } from './recruitment.dto.js';
+import { WhatsAppService } from '../whatsapp/whatsapp.service.js';
 import { VacancySuggestionsService } from './vacancy-suggestions.service.js';
 
 // The careers page (owner, 22 October 2026: "where will we include the ATS?"; at people.trendlix.com/careers: "i dont
@@ -109,6 +110,7 @@ export class PublicCareersService {
     private readonly notifications: NotificationsService,
     private readonly readings: CvReadingsService,
     private readonly suggestions: VacancySuggestionsService,
+    private readonly whatsapp: WhatsAppService,
   ) {}
 
   /** The company and its open vacancies, newest first. */
@@ -195,6 +197,9 @@ export class PublicCareersService {
     const type = cvTypeOf(file!.buffer)!;
     const source = sourceOf(text(dto.source));
     const now = new Date();
+    // "Send me updates about my application on WhatsApp" (24 October 2026), off unless ticked; the page's language
+    const whatsapp = dto.whatsapp === 'true' || dto.whatsapp === 'on';
+    const whatsappLanguage = dto.whatsappLanguage === 'ar' ? 'ar' : 'en';
     const made = await this.prisma.$transaction(async (tx) => {
       // their candidate profile (owner, 22 October 2026: "how to make like a profile for each candidate …"; "Email or
       // mobile"): the candidates' lock first; the same person (by email or mobile) applying for this job again refused
@@ -226,6 +231,7 @@ export class PublicCareersService {
           filteredOut,
           source,
           consentAt: now,
+          ...(whatsapp && { whatsappOptInAt: now, whatsappLanguage }),
           ip,
           userAgent,
           cv: { create: { fileName: cvFileName(file!.originalname, type), mimeType: type, sizeBytes: file!.buffer.length, data: new Uint8Array(file!.buffer) } },
@@ -240,6 +246,8 @@ export class PublicCareersService {
       });
       // its keys, possible matches and employee worked out with it in
       await refreshCandidate(tx, candidate.id);
+      // the tick kept on their candidate too, with its time (a new tick after a STOP is a new consent)
+      if (whatsapp) await tx.candidate.update({ where: { id: candidate.id }, data: { whatsappOptInAt: now, whatsappStoppedAt: null } });
       return { ...row, candidate };
     });
     await this.audit.record({
@@ -263,6 +271,8 @@ export class PublicCareersService {
     await this.suggestions.closeFor(made.id);
     await this.tellHr(v);
     await this.confirm(email, input.fullName, made.number, v.title);
+    // on WhatsApp too, when ticked (never throws)
+    if (whatsapp) await this.whatsapp.applicationReceived(made.id);
     return { reference: made.number };
   }
 

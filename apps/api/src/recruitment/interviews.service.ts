@@ -28,6 +28,7 @@ import {
   type MeetingProvider,
   type MyHiring,
   type Recommendation,
+  type WhatsAppPanelChange,
 } from '@trendlix/shared';
 import { randomUUID } from 'node:crypto';
 import { AuditService } from '../audit/audit.service.js';
@@ -41,6 +42,7 @@ import { MeetingsService, type MadeMeeting, type MeetingRef } from '../meetings/
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { accountOfEmployee } from '../users/employee-accounts.js';
+import { WhatsAppService } from '../whatsapp/whatsapp.service.js';
 import { vacancyWhere } from './recruitment-access.js';
 import { hiringManagerApplications, recruitmentCaller, visibleApplications, type RecruitmentCaller } from './recruitment-scope.js';
 import { APPLICATION_ENTITY } from './recruitment-views.js';
@@ -128,6 +130,7 @@ export class InterviewsService {
     private readonly notifications: NotificationsService,
     private readonly confidential: ConfidentialService,
     private readonly meetings: MeetingsService,
+    private readonly whatsapp: WhatsAppService,
   ) {}
 
   async caller(user: SessionUser): Promise<RecruitmentCaller> {
@@ -706,14 +709,26 @@ export class InterviewsService {
         email = 'failed';
       }
     }
+    // on WhatsApp too, when they ticked it on the careers form (owner, 24 October 2026: "Interviews"): the invitation,
+    // a change, or the cancellation; never for an online one still without its link (never throws)
+    if (!silent) await this.whatsapp.interview(kind, r.id);
 
     // the interviewers: a notification, and the invitation by email to those with a work email
     const when = `${cairoDay(r.startsAt)} ${cairoClock(r.startsAt)}`;
     const link = `/recruitment/applicants/${r.application.id}`;
-    const notifyEmployees = async (ids: readonly string[], title: string, body: string, m: 'REQUEST' | 'CANCEL') => {
+    // a C-level vacancy's interview is never shown in HR's WhatsApp log (24 October 2026)
+    const cLevel = r.application.vacancy.grade?.confidential === true || r.application.vacancy.jobTitle.minGrade?.confidential === true;
+    const notifyEmployees = async (ids: readonly string[], title: string, body: string, m: 'REQUEST' | 'CANCEL', change: WhatsAppPanelChange) => {
       const employees = ids.length ? await this.prisma.employee.findMany({ where: { id: { in: [...ids] } }, select: { id: true, fullNameEn: true, workEmail: true } }) : [];
       const users = (await Promise.all(employees.map((e) => this.userOf(e.id)))).filter((u): u is string => !!u);
-      await this.notifications.notify(users, { kind: 'interview_scheduled', title, body, link });
+      await this.notifications.notify(users, {
+        kind: 'interview_scheduled',
+        title,
+        body,
+        link,
+        // on WhatsApp for interviewers who opted in (24 October 2026: "Interviews"): the candidate, the job and when
+        whatsapp: { facts: { template: 'interview_panel', change, candidate: r.application.fullName, job, at: r.startsAt.toISOString() }, confidential: cLevel },
+      });
       if (!(await this.mail.ready())) return;
       for (const e of employees) {
         if (!e.workEmail) continue;
@@ -732,12 +747,14 @@ export class InterviewsService {
     };
     try {
       if (kind === 'cancelled') {
-        await notifyEmployees(dropped, 'Interview cancelled', `${r.application.fullName} on ${when}`, 'CANCEL');
+        await notifyEmployees(dropped, 'Interview cancelled', `${r.application.fullName} on ${when}`, 'CANCEL', 'cancelled');
       } else {
         // the meeting's service beside it (24 October 2026); its link is on the applicant's page and in the email, never in
         // a notification (they show on a locked phone)
-        if (!silent) await notifyEmployees(told, kind === 'moved' ? 'Interview moved' : 'Interview scheduled', `${r.application.fullName} on ${when}, ${r.minutes} minutes${meetingName ? `, on ${meetingName}` : ''}`, 'REQUEST');
-        if (dropped.length) await notifyEmployees(dropped, 'Interview cancelled for you', `${r.application.fullName}: you are no longer on the panel`, 'CANCEL');
+        if (!silent) {
+          await notifyEmployees(told, kind === 'moved' ? 'Interview moved' : 'Interview scheduled', `${r.application.fullName} on ${when}, ${r.minutes} minutes${meetingName ? `, on ${meetingName}` : ''}`, 'REQUEST', kind === 'moved' ? 'moved' : 'scheduled');
+        }
+        if (dropped.length) await notifyEmployees(dropped, 'Interview cancelled for you', `${r.application.fullName}: you are no longer on the panel`, 'CANCEL', 'dropped');
       }
     } catch (err) {
       this.logger.warn(`The interviewers of ${r.application.number} could not be told: ${(err as Error).message}`);

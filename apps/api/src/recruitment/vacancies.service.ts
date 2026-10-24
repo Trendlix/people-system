@@ -430,7 +430,14 @@ export class VacanciesService {
     const link = `/recruitment/vacancies/${v.id}`;
     if (move === 'submit') {
       const ceos = await this.usersWithRoles(isConfidentialVacancy(v) ? ['ceo', 'super_admin'] : ['ceo']);
-      await this.notifications.notify(ceos, { kind: 'vacancy_waiting', title: 'A vacancy waits for your approval', body: `${v.title} (${v.number})`, link });
+      // on WhatsApp too for the CEO who opted in (24 October 2026: "Approvals waiting"); a C-level one's never shown to HR
+      await this.notifications.notify(ceos, {
+        kind: 'vacancy_waiting',
+        title: 'A vacancy waits for your approval',
+        body: `${v.title} (${v.number})`,
+        link,
+        whatsapp: { facts: { template: 'approval_waiting', what: 'vacancy', who: { en: `${v.title} (${v.number})` } }, confidential: isConfidentialVacancy(v) },
+      });
     } else if (move === 'approve' || move === 'send_back') {
       const makers = [v.createdById, v.submittedById];
       await this.notifications.notify(makers, {

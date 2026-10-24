@@ -182,6 +182,11 @@ model User {
   vacancySuggestionsDecided VacancySuggestion[]    @relation("VacancySuggestionDecision")
   // access follows the contract (owner, 23 October 2026): the 7 days' grace this user gave
   accessGracesGiven       AccessGrace[]            @relation("AccessGraceGrantedBy")
+  // WhatsApp notifications (owner, 24 October 2026: "how to make whatsapp notifications?"): the settings this user saved
+  // last, their own opt-in, and the WhatsApp messages sent to them
+  whatsAppSettingsSet     WhatsAppSettings[]       @relation("WhatsAppSettingsChange")
+  whatsAppOptIn           WhatsAppOptIn?
+  whatsAppMessages        WhatsAppMessage[]
 
   @@map("users")
 }
@@ -523,6 +528,134 @@ model MeetingConnection {
   @@unique([provider, userId])
   @@index([userId])
   @@map("meeting_connections")
+}
+
+// WhatsApp notifications (owner, 24 October 2026: "how to make whatsapp notifications?"; asked, "Employees and
+// candidates", "Approvals waiting, Request decisions, Check-in reminders, Interviews", "Directly to Meta"; packages/shared
+// whatsapp.ts): the WhatsApp Cloud API's settings (one row, id 1), a Super Admin's on Organization → Company → WhatsApp.
+// The access token (a system user's permanent one) and the app secret (the webhook's signatures) sealed (AES-256-GCM, a
+// key derived from JWT_SECRET with its own info, apps/api/src/whatsapp/whatsapp-secret.ts), never returned; *_key_id
+// says which key sealed each. The webhook's verify token is made by the system and shown, to paste in Meta. Quiet hours
+// in Cairo ("HH:mm"; none: messages at any hour). The last test, the templates' last sync, the webhook's last
+// verification and last signed call.
+model WhatsAppSettings {
+  id                Int       @id @default(1)
+  phoneNumberId     String?   @map("phone_number_id")
+  businessAccountId String?   @map("business_account_id")
+  displayPhone      String?   @map("display_phone")
+  accessTokenEnc    String?   @map("access_token_enc") // "v1:iv:tag:ciphertext"; RESTRICTED: never returned
+  accessTokenKeyId  String?   @map("access_token_key_id")
+  appSecretEnc      String?   @map("app_secret_enc") // RESTRICTED: never returned
+  appSecretKeyId    String?   @map("app_secret_key_id")
+  verifyToken       String    @map("verify_token")
+  enabled           Boolean   @default(false)
+  quietFrom         String?   @default("22:00") @map("quiet_from")
+  quietTo           String?   @default("08:00") @map("quiet_to")
+  updatedById       String?   @map("updated_by") @db.Uuid
+  updatedBy         User?     @relation("WhatsAppSettingsChange", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedAt         DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+  lastTestAt        DateTime? @map("last_test_at") @db.Timestamptz
+  lastTestOk        Boolean?  @map("last_test_ok")
+  lastTestMessage   String?   @map("last_test_message")
+  templatesSyncedAt DateTime? @map("templates_synced_at") @db.Timestamptz
+  webhookVerifiedAt DateTime? @map("webhook_verified_at") @db.Timestamptz
+  webhookEventAt    DateTime? @map("webhook_event_at") @db.Timestamptz
+
+  @@map("whatsapp_settings")
+}
+
+// A template in a language, as Meta last said (WHATSAPP_TEMPLATE_KEYS × en, ar): submitted, then its status (approved,
+// pending, rejected with its reason…) synced. Only an approved one is ever sent.
+model WhatsAppTemplate {
+  key         String // WHATSAPP_TEMPLATE_KEYS
+  language    String // WHATSAPP_LANGUAGES: en, ar
+  name        String // its name on Meta, people_<key>
+  status      String    @default("not_submitted") // WHATSAPP_TEMPLATE_STATUSES
+  reason      String? // why Meta rejected it, in words
+  metaId      String?   @map("meta_id")
+  submittedAt DateTime? @map("submitted_at") @db.Timestamptz
+  syncedAt    DateTime? @map("synced_at") @db.Timestamptz
+  updatedAt   DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@id([key, language])
+  @@map("whatsapp_templates")
+}
+
+// An employee's own choice to get WhatsApp messages (required by Meta: opt-in), made on their account, never by HR: the
+// mobile it was given for (their profile's, +201012345678: a changed mobile stops it until they turn it on again), the
+// language, the groups (all on when they opt in), when. Turned off by them, or by their replying STOP (stopped_by).
+model WhatsAppOptIn {
+  userId     String    @id @map("user_id") @db.Uuid
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mobile     String
+  language   String    @default("en") // WHATSAPP_LANGUAGES
+  approvals  Boolean   @default(true)
+  decisions  Boolean   @default(true)
+  checkIn    Boolean   @default(true) @map("check_in")
+  interviews Boolean   @default(true)
+  optedInAt  DateTime  @map("opted_in_at") @db.Timestamptz
+  stoppedAt  DateTime? @map("stopped_at") @db.Timestamptz
+  stoppedBy  String?   @map("stopped_by") // self, stop
+  updatedAt  DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@index([mobile])
+  @@map("whatsapp_opt_ins")
+}
+
+// A WhatsApp message: to an employee who opted in (user_id), a candidate who ticked it (candidate_id, with the
+// application or general CV it is about), or the test's number. Its template and language, the variables (names, dates
+// and references only, as push's), the page its button opens, its reference for HR's log (APP-2026-0042, or what it is
+// about), whether it is about a C-level person (never shown to HR). Queued (waiting for its time, quiet hours, or a
+// retry), sending (claimed by a round), then Meta's statuses sent, delivered, read; or failed (why, in plain words, and
+// Meta's code), or cancelled (not sent: too late, opted out). Meta's message id (wamid) matches the webhook's statuses.
+// `dedupe_key`: at most one of a kind (a reminder's kind a day, an interview's reminder).
+model WhatsAppMessage {
+  id            String          @id @default(uuid()) @db.Uuid
+  userId        String?         @map("user_id") @db.Uuid
+  user          User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  candidateId   String?         @map("candidate_id") @db.Uuid
+  candidate     Candidate?      @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+  applicationId String?         @map("application_id") @db.Uuid
+  application   JobApplication? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  generalCvId   String?         @map("general_cv_id") @db.Uuid
+  generalCv     GeneralCv?      @relation(fields: [generalCvId], references: [id], onDelete: SetNull)
+  interviewId   String?         @map("interview_id") @db.Uuid
+  interview     Interview?      @relation(fields: [interviewId], references: [id], onDelete: SetNull)
+  mobile        String // +201012345678
+  template      String // WHATSAPP_TEMPLATE_KEYS, or stop_confirmation
+  templateName  String          @map("template_name") // its name on Meta
+  language      String // WHATSAPP_LANGUAGES
+  kind          String? // the notification's kind, or the candidate's event
+  groupKey      String?         @map("group_key") // WHATSAPP_GROUPS
+  variables     Json            @default("{}") // { body: string[], button: string | null } (stop_confirmation: { text })
+  reference     String?
+  link          String?
+  confidential  Boolean         @default(false)
+  status        String          @default("queued") // WHATSAPP_MESSAGE_STATUSES
+  wamid         String?         @unique
+  error         String?
+  errorCode     Int?            @map("error_code")
+  attempts      Int             @default(0)
+  nextAttemptAt DateTime        @default(now()) @map("next_attempt_at") @db.Timestamptz
+  sendBefore    DateTime?       @map("send_before") @db.Timestamptz
+  dedupeKey     String?         @unique @map("dedupe_key")
+  claimedAt     DateTime?       @map("claimed_at") @db.Timestamptz
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  sentAt        DateTime?       @map("sent_at") @db.Timestamptz
+  deliveredAt   DateTime?       @map("delivered_at") @db.Timestamptz
+  readAt        DateTime?       @map("read_at") @db.Timestamptz
+  failedAt      DateTime?       @map("failed_at") @db.Timestamptz
+  updatedAt     DateTime        @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@index([status, nextAttemptAt])
+  @@index([createdAt(sort: Desc)])
+  @@index([userId, createdAt])
+  @@index([mobile])
+  @@index([candidateId])
+  @@index([applicationId])
+  @@index([generalCvId])
+  @@index([interviewId])
+  @@map("whatsapp_messages")
 }
 
 // ---------- organisation ----------
@@ -1646,6 +1779,13 @@ model JobApplication {
   // Suggested From Earlier CVs (24 October 2026): the suggestions it was the earlier CV of, and those it closed (added, applied)
   suggestedFrom   VacancySuggestion[]  @relation("VacancySuggestionSource")
   suggestionsMet  VacancySuggestion[]  @relation("VacancySuggestionApplication")
+  // WhatsApp (owner, 24 October 2026: candidates "who tick it on the careers form"): when they ticked "Send me updates
+  // about my application on WhatsApp" (none: no opt-in; HR's own Add a CV never asks), the language of the page, and
+  // when they replied STOP; the messages sent about it
+  whatsappOptInAt   DateTime?          @map("whatsapp_opt_in_at") @db.Timestamptz
+  whatsappLanguage  String?            @map("whatsapp_language") // WHATSAPP_LANGUAGES
+  whatsappStoppedAt DateTime?          @map("whatsapp_stopped_at") @db.Timestamptz
+  whatsAppMessages  WhatsAppMessage[]
 
   @@unique([vacancyId, email])
   @@index([stage])
@@ -1736,6 +1876,11 @@ model GeneralCv {
   events          GeneralCvEvent[]
   comments        ScreeningComment[] // the screening comments on it (24 October 2026)
   suggestions     VacancySuggestion[] // the vacancies it was suggested for (24 October 2026)
+  // WhatsApp (24 October 2026), as an application's: the tick on "Send us your CV", its page's language, a STOP reply
+  whatsappOptInAt   DateTime?        @map("whatsapp_opt_in_at") @db.Timestamptz
+  whatsappLanguage  String?          @map("whatsapp_language")
+  whatsappStoppedAt DateTime?        @map("whatsapp_stopped_at") @db.Timestamptz
+  whatsAppMessages  WhatsAppMessage[]
 
   @@index([email, createdAt])
   @@index([status])
@@ -1863,6 +2008,10 @@ model Candidate {
   mergesMerged  CandidateMerge[]   @relation("CandidateMergeMerged")
   comments      ScreeningComment[] // the screening comments about them (24 October 2026)
   suggestions   VacancySuggestion[] // the vacancies they were suggested for (24 October 2026)
+  // WhatsApp (24 October 2026): when they last ticked it on a careers form, and when they replied STOP; the messages
+  whatsappOptInAt   DateTime?         @map("whatsapp_opt_in_at") @db.Timestamptz
+  whatsappStoppedAt DateTime?         @map("whatsapp_stopped_at") @db.Timestamptz
+  whatsAppMessages  WhatsAppMessage[]
 
   @@index([mergedIntoId])
   @@index([employeeId])
@@ -2034,6 +2183,9 @@ model Interview {
   meetingId           String?            @map("meeting_id")
   meetingHost         String?            @map("meeting_host")
   meetingProblem      String?            @map("meeting_problem")
+  // WhatsApp (24 October 2026): the candidate's reminder the day before, once (cleared when it moves)
+  whatsappRemindedAt  DateTime?          @map("whatsapp_reminded_at") @db.Timestamptz
+  whatsAppMessages    WhatsAppMessage[]
   interviewers  InterviewInterviewer[]
   feedback      InterviewFeedback[]
 

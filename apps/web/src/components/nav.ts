@@ -1,6 +1,6 @@
 // Sidebar items. Kept out of the 'use client' file so server components can read them. Relative imports: the tests run
 // without the "@/" alias.
-import { assetsCan, type AssetsAccessView, type Role } from '@trendlix/shared';
+import { assetsCan, WHATSAPP_MESSAGES_PATH, type AssetsAccessView, type Role } from '@trendlix/shared';
 import { ATTENDANCE_PATH, ATTENDANCE_SECTIONS } from '../app/(app)/attendance/sections';
 import { PAYROLL_SECTIONS } from '../app/(app)/payroll/sections';
 import { firstSetupPage, SETUP_PATHS } from '../app/(app)/organization/setup-pages';
@@ -18,6 +18,11 @@ export interface NavItem {
    * convenience: the API checks every request.
    */
   roles?: Role[];
+  /**
+   * Never a developer's, though a developer is answered with a Super Admin's sight: a page that carries what they may
+   * not see (WhatsApp Messages, 24 October 2026: people's numbers).
+   */
+  noDevelopers?: true;
   /**
    * Links shown under this one (indented, smaller), each for whoever sees the item or for the roles it names. An item
    * with them is a heading that opens and closes them, no longer a link (owner, 20 October 2026: "make the side menu
@@ -294,6 +299,9 @@ export const NAV: NavItem[] = [
   // who changed what and when (owner, 19 October 2026: "an Audit Log page showing who changed what and when"): the
   // Super Admin's and the CEO's, last: beside Users for the Super Admin, after Approvals for the CEO
   { href: AUDIT_LOG_PATH, label: 'Audit Log', section: AUDIT_LOG_PATH, roles: ['super_admin', 'ceo'] },
+  // the WhatsApp messages sent (owner, 24 October 2026: "how to make whatsapp notifications?"; the brief: "a WhatsApp
+  // Messages log (Super Admin and HR)"), last, so the Audit Log stays beside Users; never a developer's (people's numbers)
+  { href: WHATSAPP_MESSAGES_PATH, label: 'WhatsApp Messages', section: WHATSAPP_MESSAGES_PATH, roles: ['hr', 'super_admin'], noDevelopers: true },
 ];
 
 // ---------- the employee's own side (owner's decisions, 17 October 2026) ----------
@@ -431,7 +439,7 @@ export function navFor(user: NavUser | null): NavItem[] {
   // a heading's href the first of its pages the user sees (shownWithItems): Payroll's, Attendance's and People's first is
   // their own page; Requests has none; the KPIs' first is My KPIs for those with a profile; Organization's, the first
   // setup page they see
-  return NAV.filter((item) => sees(user, item)).flatMap((item) => (item === ORGANIZATION_NAV ? organizationFor(user) : shownWithItems(user, item)));
+  return NAV.filter((item) => sees(user, item) && !(item.noDevelopers && user.developer)).flatMap((item) => (item === ORGANIZATION_NAV ? organizationFor(user) : shownWithItems(user, item)));
 }
 
 /** Organization for whoever sees a setup page, linking to the first they see (23 October 2026); else left out. */

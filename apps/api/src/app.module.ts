@@ -39,6 +39,7 @@ import { UsersModule } from './users/users.module.js';
 import { EmployeeAccessModule } from './employee-access/employee-access.module.js';
 import { WfhModule } from './wfh/wfh.module.js';
 import { OdModule } from './official-duty/od.module.js';
+import { WhatsAppModule } from './whatsapp/whatsapp.module.js';
 
 @Module({
   imports: [
@@ -47,6 +48,9 @@ import { OdModule } from './official-duty/od.module.js';
     AuditModule,
     ConfidentialModule,
     MailModule,
+    // WhatsApp notifications (owner, 24 October 2026: "how to make whatsapp notifications?"; "Directly to Meta"): a
+    // channel beside the bell, push and email, for those who opt in
+    WhatsAppModule,
     NotificationsModule,
     PdfModule,
     AuthModule,

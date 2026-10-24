@@ -326,13 +326,21 @@ describe('the sidebar of HR, Finance, the CEO and Admins', () => {
   it('is the sidebar, each item for the roles it names: Employees and Contracts under People, Offers under Recruitment', () => {
     // the KPIs after Attendance (owner, 21 October 2026), My KPIs at least for everyone with a profile; Recruitment after
     // People (22 October 2026: "where will we include the ATS?")
-    expect(labels('employee', 'hr')).toEqual(['Home', 'Organization', 'People', 'Recruitment', 'Payroll', 'Requests', 'Attendance', 'KPIs', 'Approvals']);
+    expect(labels('employee', 'hr')).toEqual(['Home', 'Organization', 'People', 'Recruitment', 'Payroll', 'Requests', 'Attendance', 'KPIs', 'Approvals', 'WhatsApp Messages']);
     expect(labels('employee', 'finance')).toEqual(['Home', 'Organization', 'People', 'Payroll', 'Requests', 'Attendance', 'KPIs']);
     expect(labels('ceo')).toEqual(['Home', 'Organization', 'People', 'Recruitment', 'Payroll', 'Requests', 'Attendance', 'KPIs', 'Approvals', 'Audit Log']);
     // no Attendance for an Admin, nor Templates for a Super Admin: Check-in Setup and Templates are under Organization
     // (23 October 2026: "Check-in Setup, KPI Pillars and deadlines, Recruitment and checklists, Templates")
     expect(labels('admin')).toEqual(['Home', 'Organization', 'People', 'Requests', 'KPIs', 'Approvals', 'Users']);
-    expect(labels('super_admin')).toEqual(['Home', 'Organization', 'People', 'Recruitment', 'Requests', 'KPIs', 'Approvals', 'Users', 'Audit Log']);
+    expect(labels('super_admin')).toEqual(['Home', 'Organization', 'People', 'Recruitment', 'Requests', 'KPIs', 'Approvals', 'Users', 'Audit Log', 'WhatsApp Messages']);
+  });
+
+  it('shows WhatsApp Messages to HR and the Super Admin, never a developer (owner, 24 October 2026: "how to make whatsapp notifications?")', () => {
+    const log = NAV.find((n) => n.label === 'WhatsApp Messages')!;
+    expect(log).toMatchObject({ href: '/whatsapp-messages', section: '/whatsapp-messages' });
+    for (const role of ['ceo', 'finance', 'admin'] as const) expect(labels(role)).not.toContain('WhatsApp Messages');
+    expect(navFor({ roles: ['super_admin', 'hr'], employeeId: 'x', developer: true }).map((n) => n.label)).not.toContain('WhatsApp Messages');
+    expect(isActive(log, '/whatsapp-messages')).toBe(true);
   });
 
   it('shows the Audit Log to the Super Admin, beside Users, and the CEO only (owner, 19 October 2026: "an Audit Log page showing who changed what and when")', () => {

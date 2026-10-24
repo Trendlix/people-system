@@ -1,5 +1,5 @@
 import 'server-only';
-import type { NotificationPage, NotificationSettings } from '@trendlix/shared';
+import type { MyWhatsAppView, NotificationPage, NotificationSettings } from '@trendlix/shared';
 import { cache } from 'react';
 import { unreadOf } from '@/lib/notifications';
 import { getOrNull } from '../approvals/data';
@@ -22,3 +22,6 @@ export const loadInbox = (page: number): Promise<Loaded<NotificationPage>> => lo
 
 /** The person's reminder switches. */
 export const loadReminderSettings = (): Promise<Loaded<NotificationSettings>> => loadJson<NotificationSettings>('/me/notification-settings');
+
+/** The person's own WhatsApp messages (owner, 24 October 2026: "how to make whatsapp notifications?"): on or off, and their choices. */
+export const loadMyWhatsApp = (): Promise<Loaded<MyWhatsAppView>> => loadJson<MyWhatsAppView>('/me/whatsapp');
