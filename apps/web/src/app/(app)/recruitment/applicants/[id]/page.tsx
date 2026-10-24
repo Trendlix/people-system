@@ -33,6 +33,12 @@ import { vacancyOptions } from '../../pickers';
 import { applicantCvHref, makeOfferHref, matchText, vacancyHref } from '../../recruitment';
 import { StageBadge } from '../../ui';
 import { shownCode } from '@/lib/hidden';
+import type { MeetingChoices } from '@trendlix/shared';
+import { fixInterviewMeeting } from '../../meeting-actions';
+import { loadMeetingChoices } from '../../meeting-data';
+import { MeetingFix } from '../../meeting-fix';
+import { MeetingJoin } from '../../meeting-ui';
+import { NO_MEETING_CHOICES } from '../../meetings';
 
 // An applicant (owner, 22 October 2026: "where will we include the ATS?"): who they are, their match and how each answer
 // did (a must-have failed filters them out: kept, restorable), their CV, HR's notes, what can be done now (shortlist,
@@ -129,7 +135,20 @@ function OtherApplications({ a }: { a: ApplicationView }) {
  * `setUpEmail`: a Super Admin, offered "Set up email" after the candidate's email problem when email isn't set up (owner,
  * 23 October 2026: "why dont we add SMTP setup in the organization setup").
  */
-function InterviewItem({ i, people, feedbackOf, setUpEmail }: { i: InterviewView; people: PersonOption[]; feedbackOf: ApplicationView['feedback']; setUpEmail: boolean }) {
+function InterviewItem({
+  i,
+  people,
+  feedbackOf,
+  setUpEmail,
+  meetings = NO_MEETING_CHOICES,
+}: {
+  i: InterviewView;
+  people: PersonOption[];
+  feedbackOf: ApplicationView['feedback'];
+  setUpEmail: boolean;
+  /** "Create the meeting with" (24 October 2026: "automatically generate meeting links"), for Move and Try again. */
+  meetings?: MeetingChoices;
+}) {
   const mine = feedbackOf.find((f) => f.interviewId === i.id && f.mine) ?? null;
   return (
     <li className="space-y-3 border-b border-line-soft py-4 last:border-b-0">
@@ -139,6 +158,8 @@ function InterviewItem({ i, people, feedbackOf, setUpEmail }: { i: InterviewView
         </p>
         <span className={`badge ${i.status === 'scheduled' ? 'bg-accent-soft text-accent' : i.status === 'done' ? 'bg-ok-soft text-ok' : 'bg-canvas text-muted'}`}>{INTERVIEW_STATUS_LABELS[i.status]}</span>
       </div>
+      {/* the meeting's service and Join (24 October 2026: "automatically generate meeting links") */}
+      {i.kind === 'online' && <MeetingJoin interview={i} />}
       {i.location && (
         <p className="text-sm break-words">
           {i.kind === 'online' ? (
@@ -150,6 +171,8 @@ function InterviewItem({ i, people, feedbackOf, setUpEmail }: { i: InterviewView
           )}
         </p>
       )}
+      {i.meetingProblem && <p className="text-sm text-warn">{i.meetingProblem}</p>}
+      {i.can.meeting && <MeetingFix action={fixInterviewMeeting.bind(null, i.id)} choices={meetings} />}
       <p className="text-sm text-muted">
         With{' '}
         {i.interviewers.map((x, n) => (
@@ -176,7 +199,7 @@ function InterviewItem({ i, people, feedbackOf, setUpEmail }: { i: InterviewView
         <p className="text-xs text-muted">The candidate was emailed {formatDateTime(i.emailedAt)}.</p>
       ) : null}
       <div className="flex flex-wrap items-start gap-2">
-        {i.can.reschedule && <MoveInterview action={rescheduleInterview.bind(null, i.id)} people={people} interview={i} />}
+        {i.can.reschedule && <MoveInterview action={rescheduleInterview.bind(null, i.id)} people={people} interview={i} meetings={meetings} />}
         {i.can.mark && <ActionButton action={markInterview.bind(null, i.id, 'done')} label="Mark done" pendingLabel="Saving…" kind="primary" />}
         {i.can.mark && <ActionButton action={markInterview.bind(null, i.id, 'no_show')} label="No-show" pendingLabel="Saving…" />}
         {i.can.cancel && <ReasonButton action={cancelInterview.bind(null, i.id)} label="Cancel interview" pendingLabel="Cancelling…" reasonLabel="Why (for the record)" required={false} kind="danger" />}
@@ -226,6 +249,8 @@ async function Interviews({ a }: { a: ApplicationView }) {
   if (!a.interviews.length && !a.can.scheduleInterview) return null;
   // "Set up email" for a Super Admin, once an interview's candidate wasn't emailed for the lack of it
   const setUpEmail = a.interviews.some((i) => isEmailNotSetUp(i.emailProblem)) && setsUpEmail(await getCurrentUser());
+  // what an online interview's meeting can be made with (24 October 2026), for the forms HR sees
+  const meetings = manages && (a.can.scheduleInterview || a.interviews.some((i) => i.can.reschedule || i.can.meeting)) ? await loadMeetingChoices() : NO_MEETING_CHOICES;
   return (
     <section aria-labelledby="applicant-interviews" className="card space-y-3 p-6">
       <h2 id="applicant-interviews" className="text-lg font-semibold">
@@ -234,11 +259,13 @@ async function Interviews({ a }: { a: ApplicationView }) {
       {a.interviews.length > 0 && (
         <ul>
           {a.interviews.map((i) => (
-            <InterviewItem key={i.id} i={i} people={people} feedbackOf={a.feedback} setUpEmail={setUpEmail} />
+            <InterviewItem key={i.id} i={i} people={people} feedbackOf={a.feedback} setUpEmail={setUpEmail} meetings={meetings} />
           ))}
         </ul>
       )}
-      {a.can.scheduleInterview && <ScheduleInterview action={scheduleInterview.bind(null, a.id)} people={people} defaultInterviewerIds={a.position.hiringManagerId ? [a.position.hiringManagerId] : []} />}
+      {a.can.scheduleInterview && (
+        <ScheduleInterview action={scheduleInterview.bind(null, a.id)} people={people} defaultInterviewerIds={a.position.hiringManagerId ? [a.position.hiringManagerId] : []} meetings={meetings} />
+      )}
     </section>
   );
 }

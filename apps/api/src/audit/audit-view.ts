@@ -436,6 +436,11 @@ function targetOf(row: Pick<AuditRow, 'entityType' | 'entityId' | 'diff'>, refs:
     // Check-in Setup's Google Maps section (24 October 2026), a Super Admin's as Email Settings are
     case 'maps_settings':
       return { href: '/organization/check-in-setup#google-maps', label: 'Open the Google Maps settings', roles: MAIL };
+    // Organization → Meetings (24 October 2026), a Super Admin's as Email Settings are; a person's own connection is on
+    // their own Your Meetings, which isn't anyone else's to open
+    case 'meeting_settings':
+    case 'meeting_connection':
+      return { href: '/organization/meetings', label: 'Open the meeting settings', roles: MAIL };
     case 'payroll_settings':
     case 'payroll_law_rates':
       return { href: '/organization/payroll', label: 'Open payroll setup', roles: ORG };

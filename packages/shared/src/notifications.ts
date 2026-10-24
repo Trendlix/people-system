@@ -80,6 +80,9 @@ export const NOTIFICATION_KINDS = [
   // no contract entered (owner, 23 October 2026: "Hold them after 7 days"; employee-access.ts): the employee told once
   // that their access is on hold from a date unless their contract is entered
   'access_no_contract',
+  // online interview meetings (owner, 24 October 2026: "make it both"; meetings.ts): a meetings connection that needs
+  // connecting again, for its owner (the company's: the Super Admins)
+  'meeting_connection',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
@@ -148,6 +151,7 @@ export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
   od_waiting: 'Official duty',
   od_decided: 'Official duty',
   access_no_contract: 'Access',
+  meeting_connection: 'Meetings',
 };
 
 // ---------- the reminders and the person's switches ----------

@@ -26,10 +26,11 @@ import {
 
 const MIGRATION = new URL('../../prisma/migrations/20261020140000_notifications/migration.sql', import.meta.url);
 /**
- * The no-contract-entered migration (23 October 2026), which gave the notifications access_no_contract after the official
- * duty kinds (and the access ones, and the recruitment Phase 2 migration's before them): the kinds as they are now.
+ * The meeting providers' migration (24 October 2026), which gave the notifications meeting_connection after
+ * access_no_contract (the no-contract-entered migration's, and the official duty, access and recruitment Phase 2 kinds
+ * before them): the kinds as they are now.
  */
-const KINDS_NOW = new URL('../../prisma/migrations/20261023130000_access_no_contract/migration.sql', import.meta.url);
+const KINDS_NOW = new URL('../../prisma/migrations/20261024110000_meeting_providers/migration.sql', import.meta.url);
 
 describe('notifications (shared)', () => {
   it('has the kinds the database allows, each labelled', () => {

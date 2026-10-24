@@ -17,6 +17,7 @@ import { HealthController } from './health/health.controller.js';
 import { KpisModule } from './kpis/kpis.module.js';
 import { LeaveModule } from './leave/leave.module.js';
 import { MailModule } from './mail/mail.module.js';
+import { MeetingsModule } from './meetings/meetings.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
 import { OffersModule } from './offers/offers.module.js';
 import { OffboardingModule } from './offboarding/offboarding.module.js';
@@ -74,6 +75,8 @@ import { OdModule } from './official-duty/od.module.js';
     OffboardingModule,
     // recruitment, the ATS (owner, 22 October 2026: "where will we include the ATS?"): vacancies, the careers page, applicants
     RecruitmentModule,
+    // online interview meetings (owner, 24 October 2026: "Google Meet, Microsoft Teams, Zoom"; "make it both")
+    MeetingsModule,
     OnboardingModule,
     // KPIs (owner, 21 October 2026: "lets start with the KPI's First")
     KpisModule,

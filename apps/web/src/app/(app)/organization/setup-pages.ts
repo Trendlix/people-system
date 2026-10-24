@@ -1,5 +1,6 @@
 import type { Role } from '@trendlix/shared';
 import { EMAIL_SETTINGS_PATH } from '../../../lib/email-setup';
+import { MEETING_SETTINGS_PATH } from '../../../lib/meetings';
 import { hasRole } from '../../../lib/roles';
 
 // Organization, the setup home (owner, 23 October 2026: "lets perform a regorganization of this menu. we can perform
@@ -17,6 +18,7 @@ import { hasRole } from '../../../lib/roles';
 export const SETUP_PATHS = {
   company: '/organization/company',
   email: EMAIL_SETTINGS_PATH,
+  meetings: MEETING_SETTINGS_PATH,
   templates: '/organization/templates',
   departments: '/organization/departments',
   grades: '/organization/grades',
@@ -59,6 +61,7 @@ export interface SetupGroup {
 export type SetupKey =
   | 'company'
   | 'email'
+  | 'meetings'
   | 'templates'
   | 'departments'
   | 'grades'
@@ -87,6 +90,10 @@ export const SETUP_GROUPS: readonly SetupGroup[] = [
       // the company's email (owner, 23 October 2026: "why dont we add SMTP setup in the organization setup"): a Super
       // Admin's only, as lib/email-setup.ts seesEmailSettings
       { key: 'email', href: SETUP_PATHS.email, label: 'Email Settings', roles: ['super_admin'], noDevelopers: true },
+      // online interview meetings (owner, 24 October 2026: "can i link an online meeting service provider to
+      // automatically generate meeting links?"; "make it both"): the providers' apps and the company's accounts, a Super
+      // Admin's only, never a developer's, as lib/meetings.ts seesMeetingSettings
+      { key: 'meetings', href: SETUP_PATHS.meetings, label: 'Meetings', roles: ['super_admin'], noDevelopers: true },
       // the document templates, from their own sidebar heading: a Super Admin's (owner, 19 October 2026: "enable
       // templates sidebar to super admin only"), as templates/wording.ts seesTemplates
       { key: 'templates', href: SETUP_PATHS.templates, label: 'Templates', roles: ['super_admin'] },

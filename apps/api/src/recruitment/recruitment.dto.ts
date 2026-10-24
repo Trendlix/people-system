@@ -211,6 +211,25 @@ export class InterviewDto {
 
   @IsOptional() @TrimOrNull() @IsString() @MaxLength(IL.note, { message: `Keep the note to ${IL.note} characters or fewer.` })
   note?: string | null;
+
+  /**
+   * Online (24 October 2026: "automatically generate meeting links"): what creates the meeting ("company:google",
+   * "personal:zoom"), "keep" on a move, or "link" / nothing for the link pasted in `location`, as before.
+   */
+  @IsOptional() @TrimOrNull() @IsString({ message: 'Choose what creates the meeting, or paste its link.' }) @MaxLength(40, { message: 'Choose what creates the meeting, or paste its link.' })
+  meeting?: string | null;
+}
+
+/**
+ * An online interview still without its link (24 October 2026): "Try again" with a choice ("company:google"), or "Paste a
+ * link"; one of the two.
+ */
+export class InterviewMeetingDto {
+  @IsOptional() @TrimOrNull() @IsString({ message: 'Choose what creates the meeting.' }) @MaxLength(40, { message: 'Choose what creates the meeting.' })
+  meeting?: string | null;
+
+  @IsOptional() @TrimOrNull() @IsString({ message: 'Give the meeting’s link in full, starting with https://.' }) @MaxLength(IL.location, { message: `Keep the link to ${IL.location} characters or fewer.` })
+  link?: string | null;
 }
 
 export class CancelInterviewDto {

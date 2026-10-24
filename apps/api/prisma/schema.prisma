@@ -75,6 +75,11 @@ model User {
   recruitmentSettingsSet RecruitmentSettings[]  @relation("RecruitmentSettingsChange")
   mailSettingsSet        MailSettings[]         @relation("MailSettingsChange") // the email settings, when this user saved them last
   mapsSettingsSet        MapsSettings[]         @relation("MapsSettingsChange") // the Google Maps settings, when this user saved them last
+  // online interview meetings (owner, 24 October 2026: "make it both"): the meeting apps this user saved last, their own
+  // meetings connections (an HR person's Google, Microsoft or Zoom account), and the connections this user made
+  meetingAppsSet         MeetingApp[]           @relation("MeetingAppChange")
+  meetingConnections     MeetingConnection[]    @relation("MeetingConnectionOwner")
+  meetingConnectionsMade MeetingConnection[]    @relation("MeetingConnectionBy")
   onboardingDefaultsSet  OnboardingDefault[]    @relation("OnboardingDefaultChange")
   onboardingOpened       OnboardingChecklist[]  @relation("OnboardingOpening")
   onboardingCompleted    OnboardingChecklist[]  @relation("OnboardingCompletion")
@@ -459,6 +464,62 @@ model MapsSettings {
   updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz
 
   @@map("maps_settings")
+}
+
+// Online interview meetings (owner, 24 October 2026: "can i link an online meeting service provider to automatically
+// generate meeting links?"; asked, "Google Meet, Microsoft Teams, Zoom", and "make it both": a company account a Super
+// Admin connects once, and each HR person's own; packages/shared meetings.ts). A provider's app, one row each, set by a
+// Super Admin on Organization → Meetings: Google's OAuth client; Microsoft's Entra app registration (tenant, client,
+// secret), for the company's host mailbox (application permission) and each HR person's own (delegated); Zoom's
+// Server-to-Server OAuth app (account, client, secret) for the company's host, and its General app (user_client_*) for
+// each HR person's own. The secrets sealed (AES-256-GCM, a key derived from JWT_SECRET with its own info,
+// apps/api/src/meetings/meeting-secret.ts), never returned; *_key_id says which key sealed each.
+model MeetingApp {
+  provider              String    @id // MEETING_PROVIDERS: google, microsoft, zoom
+  clientId              String?   @map("client_id")
+  clientSecretEnc       String?   @map("client_secret_enc") // "v1:iv:tag:ciphertext"; RESTRICTED: never returned
+  clientSecretKeyId     String?   @map("client_secret_key_id")
+  tenantId              String?   @map("tenant_id") // Microsoft only
+  accountId             String?   @map("account_id") // Zoom only: the Server-to-Server OAuth app's account
+  userClientId          String?   @map("user_client_id") // Zoom only: the General app, for each HR person's own
+  userClientSecretEnc   String?   @map("user_client_secret_enc") // RESTRICTED: never returned
+  userClientSecretKeyId String?   @map("user_client_secret_key_id")
+  updatedById           String?   @map("updated_by") @db.Uuid
+  updatedBy             User?     @relation("MeetingAppChange", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedAt             DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@map("meeting_apps")
+}
+
+// A meetings connection: the company's (user_id empty, one a provider: a partial unique index in the migration) or an
+// HR person's own (one a provider and person). Google's and each personal one signed in by OAuth, its refresh token
+// sealed (never returned, refreshed automatically); the company's Microsoft and Zoom host by the app alone, as the host
+// mailbox or user named here. A refresh refused marks it needs_reconnecting with why, and tells its owner. At most one
+// company connection is the default for new online interviews (another partial unique index).
+model MeetingConnection {
+  id              String      @id @default(uuid()) @db.Uuid
+  provider        String // MEETING_PROVIDERS
+  userId          String?     @map("user_id") @db.Uuid
+  user            User?       @relation("MeetingConnectionOwner", fields: [userId], references: [id], onDelete: Cascade)
+  accountEmail    String      @map("account_email") // the account it is connected as, or the host
+  refreshTokenEnc String?     @map("refresh_token_enc") // RESTRICTED: never returned
+  tokenKeyId      String?     @map("token_key_id")
+  status          String      @default("connected") // MEETING_CONNECTION_STATUSES: connected, needs_reconnecting
+  problem         String? // why it needs reconnecting, in words
+  isDefault       Boolean     @default(false) @map("is_default")
+  connectedById   String?     @map("connected_by") @db.Uuid
+  connectedBy     User?       @relation("MeetingConnectionBy", fields: [connectedById], references: [id], onDelete: SetNull)
+  connectedAt     DateTime    @default(now()) @map("connected_at") @db.Timestamptz
+  lastUsedAt      DateTime?   @map("last_used_at") @db.Timestamptz
+  // the last "Create a test meeting": when, whether it worked, and the result in words
+  lastTestAt      DateTime?   @map("last_test_at") @db.Timestamptz
+  lastTestOk      Boolean?    @map("last_test_ok")
+  lastTestMessage String?     @map("last_test_message")
+  interviews      Interview[]
+
+  @@unique([provider, userId])
+  @@index([userId])
+  @@map("meeting_connections")
 }
 
 // ---------- organisation ----------
@@ -1902,11 +1963,21 @@ model Interview {
   updatedById   String?                @map("updated_by") @db.Uuid
   updatedBy     User?                  @relation("InterviewChange", fields: [updatedById], references: [id], onDelete: SetNull)
   updatedAt     DateTime               @updatedAt @map("updated_at") @db.Timestamptz
+  // the meeting the system made for an online one (24 October 2026: Google Meet, Microsoft Teams or Zoom), its link the
+  // location: its provider, the connection it was made with (kept to move and delete it), its id there and the mailbox or
+  // user it lives in; what the provider refused, in words
+  meetingProvider     String?            @map("meeting_provider") // MEETING_PROVIDERS
+  meetingConnectionId String?            @map("meeting_connection_id") @db.Uuid
+  meetingConnection   MeetingConnection? @relation(fields: [meetingConnectionId], references: [id], onDelete: SetNull)
+  meetingId           String?            @map("meeting_id")
+  meetingHost         String?            @map("meeting_host")
+  meetingProblem      String?            @map("meeting_problem")
   interviewers  InterviewInterviewer[]
   feedback      InterviewFeedback[]
 
   @@index([applicationId])
   @@index([status, startsAt])
+  @@index([meetingConnectionId])
   @@map("interviews")
 }
 

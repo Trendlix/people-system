@@ -18,11 +18,13 @@ import {
   type FeedbackView,
   type InterviewKind,
   type InterviewView,
+  type MeetingChoices,
 } from '@trendlix/shared';
 import { DateInput, TimeInput } from '@/components/date-time-inputs';
 import { FormErrors, useFieldIds } from '@/components/form';
 import { formatDateTime } from '@/lib/format';
 import type { FormState } from '@/lib/types';
+import { makesMeeting, meetingOptions, NO_MEETING_CHOICES } from './meetings';
 
 // Recruitment's Phase 2 forms (owner, 22 October 2026: "where will we include the ATS?"; "interview invites go by email
 // through the owner's SMTP settings"): scheduling or moving an interview (the day as DD/MM/YYYY, the time on the
@@ -55,7 +57,11 @@ function dayAndTime(startsAt: string | null): { day: string; time: string } {
   return { day: day ?? '', time: time ?? '' };
 }
 
-/** Scheduling an interview, or moving one (`interview`: its details to start from). */
+/**
+ * Scheduling an interview, or moving one (`interview`: its details to start from). `meetings`: what the scheduler may
+ * create an online one's meeting with (owner, 24 October 2026: "automatically generate meeting links"; "Google Meet,
+ * Microsoft Teams, Zoom"), the company's default first, else their own; "Paste a link" always, as before.
+ */
 export function InterviewForm({
   action,
   people,
@@ -63,6 +69,7 @@ export function InterviewForm({
   interview,
   submitLabel,
   onCancel,
+  meetings = NO_MEETING_CHOICES,
 }: {
   action: Action;
   people: PersonOption[];
@@ -70,12 +77,17 @@ export function InterviewForm({
   interview?: InterviewView;
   submitLabel: string;
   onCancel?: () => void;
+  meetings?: MeetingChoices;
 }) {
   const [state, formAction, pending] = useActionState(action, {});
   const fid = useFieldIds();
   const v = state.values ?? {};
   const start = dayAndTime(interview?.startsAt ?? null);
   const [kind, setKind] = useState<InterviewKind>((str(v.kind) as InterviewKind) || interview?.kind || 'in_person');
+  const meetingChoice = meetingOptions(meetings, interview);
+  const [meeting, setMeeting] = useState<string>(str(v.meeting) ?? meetingChoice.start);
+  // the link box: in person, by phone, or online with "Paste a link"
+  const pasted = kind !== 'online' || !makesMeeting(meeting);
   const chosen = new Set(interview ? interview.interviewers.map((i) => i.employeeId) : defaultInterviewerIds);
   return (
     <form action={formAction} className="space-y-4 rounded-lg border border-line p-4">
@@ -119,20 +131,39 @@ export function InterviewForm({
             ))}
           </Select>
         </div>
-        <div className="sm:col-span-2">
-          <label htmlFor={fid('location')} className="label">
-            {kind === 'online' ? 'Meeting link' : kind === 'phone' ? 'Phone note' : 'Where'}
-            {kind !== 'online' && <span className="font-normal text-muted"> (optional)</span>}
-          </label>
-          <input
-            id={fid('location')}
-            name="location"
-            defaultValue={str(v.location) ?? interview?.location ?? ''}
-            maxLength={INTERVIEW_LIMITS.location}
-            placeholder={kind === 'online' ? 'https://meet.google.com/…' : kind === 'phone' ? 'We call them on their mobile unless you say otherwise' : 'The office’s address unless you give another'}
-            className="input"
-          />
-        </div>
+        {kind === 'online' && (
+          <div>
+            <label htmlFor={fid('meeting')} className="label">
+              Create the meeting with
+            </label>
+            <Select id={fid('meeting')} name="meeting" value={meeting} onChange={(e) => setMeeting(e.target.value)} aria-describedby={fid('meeting-hint')} className="input">
+              {meetingChoice.options.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </Select>
+            <p id={fid('meeting-hint')} className="hint">
+              {pasted ? 'Paste the link of a meeting you made yourself.' : 'The link goes into the invitations.'}
+            </p>
+          </div>
+        )}
+        {pasted && (
+          <div className={kind === 'online' ? '' : 'sm:col-span-2'}>
+            <label htmlFor={fid('location')} className="label">
+              {kind === 'online' ? 'Meeting link' : kind === 'phone' ? 'Phone note' : 'Where'}
+              {kind !== 'online' && <span className="font-normal text-muted"> (optional)</span>}
+            </label>
+            <input
+              id={fid('location')}
+              name="location"
+              defaultValue={str(v.location) ?? (interview?.meeting ? '' : (interview?.location ?? ''))}
+              maxLength={INTERVIEW_LIMITS.location}
+              placeholder={kind === 'online' ? 'https://meet.google.com/…' : kind === 'phone' ? 'We call them on their mobile unless you say otherwise' : 'The office’s address unless you give another'}
+              className="input"
+            />
+          </div>
+        )}
       </div>
       <fieldset className="space-y-2">
         <legend className="label">Interviewers</legend>
@@ -168,7 +199,7 @@ export function InterviewForm({
 }
 
 /** "Schedule an interview", opening the form. */
-export function ScheduleInterview({ action, people, defaultInterviewerIds }: { action: Action; people: PersonOption[]; defaultInterviewerIds: string[] }) {
+export function ScheduleInterview({ action, people, defaultInterviewerIds, meetings }: { action: Action; people: PersonOption[]; defaultInterviewerIds: string[]; meetings?: MeetingChoices }) {
   const [open, setOpen] = useState(false);
   if (!open) {
     return (
@@ -177,11 +208,11 @@ export function ScheduleInterview({ action, people, defaultInterviewerIds }: { a
       </button>
     );
   }
-  return <InterviewForm action={action} people={people} defaultInterviewerIds={defaultInterviewerIds} submitLabel="Schedule and invite" onCancel={() => setOpen(false)} />;
+  return <InterviewForm action={action} people={people} defaultInterviewerIds={defaultInterviewerIds} submitLabel="Schedule and invite" onCancel={() => setOpen(false)} meetings={meetings} />;
 }
 
 /** "Move", opening the form with the interview's details. */
-export function MoveInterview({ action, people, interview }: { action: Action; people: PersonOption[]; interview: InterviewView }) {
+export function MoveInterview({ action, people, interview, meetings }: { action: Action; people: PersonOption[]; interview: InterviewView; meetings?: MeetingChoices }) {
   const [open, setOpen] = useState(false);
   if (!open) {
     return (
@@ -190,7 +221,7 @@ export function MoveInterview({ action, people, interview }: { action: Action; p
       </button>
     );
   }
-  return <InterviewForm action={action} people={people} defaultInterviewerIds={[]} interview={interview} submitLabel="Move and tell them" onCancel={() => setOpen(false)} />;
+  return <InterviewForm action={action} people={people} defaultInterviewerIds={[]} interview={interview} submitLabel="Move and tell them" onCancel={() => setOpen(false)} meetings={meetings} />;
 }
 
 /** An interviewer's scorecard: each criterion from 1 to 5, the recommendation, notes; their own to change afterwards. */

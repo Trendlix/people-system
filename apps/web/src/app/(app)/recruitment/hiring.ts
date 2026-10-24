@@ -4,6 +4,8 @@ import {
   INTERVIEW_KINDS,
   isHiringSuggestion,
   isRecommendation,
+  MEETING_KEEP,
+  parseMeetingChoice,
   type ApplicationStage,
   type BoardCard,
   type BoardMove,
@@ -57,6 +59,11 @@ export interface InterviewBody {
   location: string | null;
   interviewerIds: string[];
   note: string | null;
+  /**
+   * Online (owner, 24 October 2026: "automatically generate meeting links"): what creates the meeting ("company:google",
+   * "personal:zoom"), "keep" on a move, or "link" for the one pasted; left out when the form has no such choice.
+   */
+  meeting?: string;
 }
 
 const text = (fd: FormData, name: string) => {
@@ -81,8 +88,20 @@ export function interviewForm(fd: FormData): { body: InterviewBody | null; error
   const interviewerIds = fd.getAll('interviewerIds').filter((v): v is string => typeof v === 'string' && v !== '');
   if (!interviewerIds.length) errors.push('Choose who interviews them.');
   if (errors.length) return { body: null, errors };
+  // online, "Create the meeting with" (24 October 2026): a meeting the system makes (or keeps) brings its own link
+  const meeting = kind === 'online' ? text(fd, 'meeting') : '';
+  const made = meeting === MEETING_KEEP || parseMeetingChoice(meeting) !== null;
   return {
-    body: { date: date!, time: time!, minutes, kind: kind as InterviewKind, location: text(fd, 'location') || null, interviewerIds, note: text(fd, 'note') || null },
+    body: {
+      date: date!,
+      time: time!,
+      minutes,
+      kind: kind as InterviewKind,
+      location: made ? null : text(fd, 'location') || null,
+      interviewerIds,
+      note: text(fd, 'note') || null,
+      ...(meeting && { meeting }),
+    },
     errors: [],
   };
 }

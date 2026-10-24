@@ -22,6 +22,7 @@ import {
   CancelInterviewDto,
   FeedbackDto,
   InterviewDto,
+  InterviewMeetingDto,
   InterviewOutcomeDto,
   RecruitmentSettingsDto,
   SuggestionDto,
@@ -239,6 +240,17 @@ export class InterviewsController {
   @HttpCode(200)
   cancel(@Param('id', ParseUUIDPipe) id: string, @Body() dto: CancelInterviewDto, @CurrentUser() user: SessionUser) {
     return this.interviews.cancel(id, dto.reason, user);
+  }
+
+  /**
+   * An online interview still without its link (24 October 2026: its meeting refused): { meeting } to try again with a
+   * choice, or { link } to paste one; then the candidate and the interviewers are told.
+   */
+  @Roles(...MANAGES)
+  @Post(':id/meeting')
+  @HttpCode(200)
+  meeting(@Param('id', ParseUUIDPipe) id: string, @Body() dto: InterviewMeetingDto, @CurrentUser() user: SessionUser) {
+    return this.interviews.retryMeeting(id, dto, user);
   }
 
   /** { outcome: done | no_show }, once it has started. */

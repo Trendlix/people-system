@@ -565,3 +565,8 @@ export * from './attendance-history.js';
 // Google Maps for every map (owner, 24 October 2026, on Check-in Setup's map: "is there another map provider?", then
 // "Google Maps"): the browser key a Super Admin pastes on Check-in Setup, how it is shown, and who receives it
 export * from './maps-settings.js';
+
+// online interview meetings made by the system (owner, 24 October 2026: "can i link an online meeting service provider to
+// automatically generate meeting links?"; asked, "Google Meet, Microsoft Teams, Zoom", hosted "both" ways: a company
+// account a Super Admin connects once, and each HR person's own): the providers, the scopes, the choices, the views
+export * from './meetings.js';

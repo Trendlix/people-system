@@ -10,6 +10,10 @@ import {
   interviewMail,
   interviewProblems,
   INTERVIEW_KIND_LABELS,
+  INTERVIEW_LIMITS,
+  MEETING_KEEP,
+  MEETING_PROVIDER_LABELS,
+  parseMeetingChoice,
   zonedMoment,
   type ApplicationStage,
   type FeedbackCriterion,
@@ -20,22 +24,27 @@ import {
   type InterviewSaved,
   type InterviewStatus,
   type InterviewView,
+  type MeetingOutcome,
+  type MeetingProvider,
   type MyHiring,
   type Recommendation,
 } from '@trendlix/shared';
+import { randomUUID } from 'node:crypto';
 import { AuditService } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { toDateOnly, todayInCairo } from '../common/date-only.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { MailService } from '../mail/mail.service.js';
+import type { MeetingDetails } from '../meetings/meeting-providers.js';
+import { MeetingsService, type MadeMeeting, type MeetingRef } from '../meetings/meetings.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { accountOfEmployee } from '../users/employee-accounts.js';
 import { vacancyWhere } from './recruitment-access.js';
 import { hiringManagerApplications, recruitmentCaller, visibleApplications, type RecruitmentCaller } from './recruitment-scope.js';
 import { APPLICATION_ENTITY } from './recruitment-views.js';
-import type { FeedbackDto, InterviewDto } from './recruitment.dto.js';
+import type { FeedbackDto, InterviewDto, InterviewMeetingDto } from './recruitment.dto.js';
 
 // Interviews (Phase 2, owner, 22 October 2026: "where will we include the ATS?"; accepted: "interview invites go by email
 // through the owner's SMTP settings"; packages/shared recruitment-hiring.ts):
@@ -49,6 +58,16 @@ import type { FeedbackDto, InterviewDto } from './recruitment.dto.js';
 // - Done or a no-show, once it has started. Each interviewer gives a scorecard after it; reminded the day after when
 //   they haven't (remindFeedback, the round).
 // Every change is audited; the emails and notifications go after it is saved, never failing it.
+//
+// Online meetings made by the system (owner, 24 October 2026: "can i link an online meeting service provider to
+// automatically generate meeting links?"; "Google Meet, Microsoft Teams, Zoom"; "make it both"; meetings.service.ts): HR
+// chooses what creates the meeting (the company's connection or their own), or pastes a link as before. The meeting is
+// made once the interview is saved, with its title, start and length, and its join link becomes the location, so the
+// candidate's email, the interviewers' and the .ics carry it; moving the interview moves the meeting, cancelling it
+// deletes it, and changing the choice replaces it. When the provider refuses, the interview is saved all the same and
+// HR is told in plain words ("Google refused: …"); an online interview without its link tells nobody until it has one
+// (Try again, or Paste a link: retryMeeting). Each meeting made, moved, deleted or refused is audited with its provider
+// and its id there, never a token.
 
 export const INTERVIEW_ENTITY = 'interview';
 
@@ -59,6 +78,7 @@ const INCLUDE = {
   interviewers: { include: { employee: { select: { id: true, fullNameEn: true, workEmail: true } } }, orderBy: { employee: { fullNameEn: 'asc' } } },
   feedback: { select: { employeeId: true } },
   createdBy: USER,
+  meetingConnection: { select: { userId: true } },
   application: {
     select: {
       id: true,
@@ -83,6 +103,17 @@ const DAY_AR = new Intl.DateTimeFormat('ar-EG-u-nu-latn', { timeZone: 'Africa/Ca
 /** The interview's calendar UID: the same for its whole life, so calendars update or remove one event. */
 export const interviewUid = (id: string): string => `interview-${id}@people.trendlix.com`;
 
+/** An online interview still without its link (its meeting refused, or not made yet): nobody is told until it has one. */
+const linkless = (r: { kind: string; location: string | null }): boolean => r.kind === 'online' && !r.location;
+
+/** An interview's made meeting, to move or delete it; null for none (a pasted link, or not online). */
+const meetingRefOf = (r: { meetingProvider: string | null; meetingConnectionId: string | null; meetingId: string | null; meetingHost: string | null }): MeetingRef | null =>
+  r.meetingProvider && r.meetingId ? { provider: r.meetingProvider as MeetingProvider, connectionId: r.meetingConnectionId, meetingId: r.meetingId, host: r.meetingHost } : null;
+
+/** The interview's columns for a made meeting, its join link the location; and for none. */
+const madeColumns = (m: MadeMeeting) => ({ location: m.joinUrl, meetingProvider: m.provider, meetingConnectionId: m.connectionId, meetingId: m.meetingId, meetingHost: m.host, meetingProblem: null });
+const NO_MEETING = { meetingProvider: null, meetingConnectionId: null, meetingId: null, meetingHost: null } as const;
+
 /** The stages an interview may be scheduled at: before the applicant is hired or rejected. */
 const SCHEDULABLE: readonly ApplicationStage[] = ['applied', 'shortlisted', 'interview', 'offer'];
 
@@ -96,6 +127,7 @@ export class InterviewsService {
     private readonly mail: MailService,
     private readonly notifications: NotificationsService,
     private readonly confidential: ConfidentialService,
+    private readonly meetings: MeetingsService,
   ) {}
 
   async caller(user: SessionUser): Promise<RecruitmentCaller> {
@@ -201,11 +233,16 @@ export class InterviewsService {
       cancelReason: r.cancelReason,
       createdBy: r.createdBy ? { email: r.createdBy.email, name: null } : null,
       application: { id: r.application.id, number: r.application.number, fullName: r.application.fullName, vacancy: { id: r.application.vacancy.id, number: r.application.vacancy.number, title: r.application.vacancy.title } },
+      meeting: r.meetingProvider
+        ? { provider: r.meetingProvider as MeetingProvider, owner: r.meetingConnection ? (r.meetingConnection.userId ? 'personal' : 'company') : null, joinUrl: r.location }
+        : null,
+      meetingProblem: r.meetingProblem,
       can: {
         reschedule: c.manages && interviewChangeable(status),
         cancel: c.manages && interviewChangeable(status),
         mark: c.manages && status === 'scheduled' && r.startsAt.getTime() <= now,
         feedback: sits && feedbackOpen({ status, startsAt: r.startsAt }, now),
+        meeting: c.manages && status === 'scheduled' && linkless(r),
       },
     };
   }
@@ -258,7 +295,10 @@ export class InterviewsService {
     const stage = a.stage as ApplicationStage;
     if (a.filteredOut) throw new ConflictException('They failed a must-have question and were filtered out: restore them first.');
     if (!SCHEDULABLE.includes(stage)) throw new ConflictException(`They are ${APPLICATION_STAGE_LABELS[stage].toLowerCase()}: no interview can be scheduled.`);
+    if (dto.meeting === MEETING_KEEP) throw new BadRequestException(['Choose what creates the meeting, or paste its link.']);
     const d = await this.checked(dto, now.getTime());
+    // online with a choice: the connection checked before anything is saved; the meeting made once it is
+    const connection = dto.kind === 'online' && parseMeetingChoice(dto.meeting) ? await this.meetings.connectionFor(dto.meeting!, user) : null;
     const id = await this.prisma.$transaction(async (tx) => {
       const made = await tx.interview.create({
         data: {
@@ -266,7 +306,7 @@ export class InterviewsService {
           startsAt: d.startsAt,
           minutes: dto.minutes,
           kind: dto.kind,
-          location: d.location,
+          location: connection ? null : d.location,
           note: d.note,
           createdById: user.id,
           updatedById: user.id,
@@ -290,9 +330,11 @@ export class InterviewsService {
     if (stage === 'applied' || stage === 'shortlisted') {
       await this.audit.record({ userId: user.id, action: 'stage', entityType: APPLICATION_ENTITY, entityId: applicationId, diff: { number: a.number, vacancy: a.vacancy.number, stage: { from: stage, to: 'interview' } } });
     }
+    let meeting: MeetingOutcome = 'none';
+    if (connection) meeting = await this.makeMeeting(await this.row(id, c), connection, user);
     const row = await this.row(id, c);
     const email = await this.tell(row, 'invite', user, d.interviewers.map((i) => i.id), []);
-    return { interview: this.view(await this.row(id, c), c, now.getTime()), email };
+    return { interview: this.view(await this.row(id, c), c, now.getTime()), email, meeting, meetingProblem: row.meetingProblem };
   }
 
   /** Moves an interview (still scheduled) to another time, place or panel: the candidate and the interviewers get the new time. */
@@ -301,7 +343,25 @@ export class InterviewsService {
     this.assertManages(c);
     const before = await this.row(id, c);
     if (!interviewChangeable(before.status as InterviewStatus)) throw new ConflictException('Only a scheduled interview can be moved.');
-    const d = await this.checked(dto, now.getTime());
+    // its meeting (24 October 2026): kept and moved, replaced by another choice's, or deleted (a pasted link, not online)
+    const had = meetingRefOf(before);
+    const online = dto.kind === 'online';
+    // nothing said (an older page) and the link left as it was: the meeting it has is kept
+    const unsaid = !dto.meeting && !!had && online && (!dto.location || dto.location === before.location);
+    const choice = unsaid ? MEETING_KEEP : dto.meeting;
+    if (online && choice === MEETING_KEEP && !had && !(before.kind === 'online' && before.location)) throw new BadRequestException(['It has no meeting to keep: choose what creates one, or paste its link.']);
+    const d = await this.checked(
+      { date: dto.date, time: dto.time, minutes: dto.minutes, kind: dto.kind, location: dto.location, interviewerIds: dto.interviewerIds, note: dto.note, meeting: choice },
+      now.getTime(),
+    );
+    let connection = online && parseMeetingChoice(choice) ? await this.meetings.connectionFor(choice!, user) : null;
+    // the same connection as its meeting's: moved, not made again
+    let keep = online && choice === MEETING_KEEP;
+    if (connection && had && had.connectionId === connection.id) {
+      keep = true;
+      connection = null;
+    }
+    const location = keep ? before.location : connection ? null : d.location;
     const old = new Set(before.interviewers.map((i) => i.employeeId));
     const next = new Set(d.interviewers.map((i) => i.id));
     const removed = [...old].filter((x) => !next.has(x));
@@ -309,7 +369,7 @@ export class InterviewsService {
     await this.prisma.$transaction(async (tx) => {
       const { count } = await tx.interview.updateMany({
         where: { id, status: 'scheduled', sequence: before.sequence },
-        data: { startsAt: d.startsAt, minutes: dto.minutes, kind: dto.kind, location: d.location, note: d.note, sequence: { increment: 1 }, updatedById: user.id },
+        data: { startsAt: d.startsAt, minutes: dto.minutes, kind: dto.kind, location, note: d.note, sequence: { increment: 1 }, updatedById: user.id },
       });
       if (!count) throw new ConflictException('The interview changed meanwhile. Reload the page to see it.');
       if (removed.length) await tx.interviewInterviewer.deleteMany({ where: { interviewId: id, employeeId: { in: removed } } });
@@ -328,9 +388,19 @@ export class InterviewsService {
         ...(added.length || removed.length ? { interviewers: d.interviewers.map((i) => i.fullNameEn) } : {}),
       },
     });
+    let meeting: MeetingOutcome = 'none';
+    if (had && keep) {
+      meeting = await this.moveMeeting(await this.row(id, c), had, user);
+    } else if (had) {
+      meeting = await this.deleteMeeting(await this.row(id, c), had, user, 'replaced');
+    } else {
+      await this.prisma.interview.update({ where: { id }, data: { meetingProblem: null } });
+    }
+    // a new meeting; an earlier one that couldn't be deleted stays said beside it
+    if (connection) meeting = await this.makeMeeting(await this.row(id, c), connection, user, meeting === 'failed');
     const row = await this.row(id, c);
     const email = await this.tell(row, 'moved', user, [...next], removed);
-    return { interview: this.view(await this.row(id, c), c, now.getTime()), email };
+    return { interview: this.view(await this.row(id, c), c, now.getTime()), email, meeting, meetingProblem: row.meetingProblem };
   }
 
   /** Cancels a scheduled interview: the candidate and the interviewers get the cancellation. */
@@ -351,9 +421,109 @@ export class InterviewsService {
       entityId: id,
       diff: { application: before.application.number, status: { from: 'scheduled', to: 'cancelled' }, ...(reason && { reason }) },
     });
+    const had = meetingRefOf(before);
+    const meeting: MeetingOutcome = had ? await this.deleteMeeting(await this.row(id, c), had, user, 'cancelled') : 'none';
     const row = await this.row(id, c);
     const email = await this.tell(row, 'cancelled', user, [], row.interviewers.map((i) => i.employeeId));
-    return { interview: this.view(row, c, now.getTime()), email };
+    return { interview: this.view(row, c, now.getTime()), email, meeting, meetingProblem: row.meetingProblem };
+  }
+
+  /**
+   * An online interview still without its link (its meeting refused): "Try again" with a choice, or "Paste a link".
+   * Once it has one, the candidate and the interviewers are told (invited, or told of the move when they had been told
+   * before).
+   */
+  async retryMeeting(id: string, dto: InterviewMeetingDto, user: SessionUser, now = new Date()): Promise<InterviewSaved> {
+    const c = await this.caller(user);
+    this.assertManages(c);
+    const before = await this.row(id, c);
+    if (before.status !== 'scheduled') throw new ConflictException('Only a scheduled interview gets a meeting.');
+    if (!linkless(before)) throw new ConflictException(before.kind === 'online' ? 'It has its link already: move the interview to change its meeting.' : 'Only an online interview gets a meeting.');
+    const link = dto.link?.trim() || null;
+    if (!link === !dto.meeting) throw new BadRequestException(['Choose what creates the meeting, or paste its link.']);
+    let meeting: MeetingOutcome = 'none';
+    if (link) {
+      if (link.length > INTERVIEW_LIMITS.location || !/^https:\/\/[^\s/]+\.[^\s]+$/i.test(link)) throw new BadRequestException(['Give the meeting’s link in full, starting with https://.']);
+      await this.prisma.interview.update({ where: { id }, data: { location: link, ...NO_MEETING, meetingProblem: null, updatedById: user.id } });
+      await this.audit.record({ userId: user.id, action: 'meeting_link', entityType: INTERVIEW_ENTITY, entityId: id, diff: { application: before.application.number } });
+    } else {
+      const connection = await this.meetings.connectionFor(dto.meeting!, user);
+      meeting = await this.makeMeeting(before, connection, user);
+    }
+    const row = await this.row(id, c);
+    const email = await this.tell(row, row.emailedAt ? 'moved' : 'invite', user, row.interviewers.map((i) => i.employeeId), []);
+    return { interview: this.view(await this.row(id, c), c, now.getTime()), email, meeting, meetingProblem: row.meetingProblem };
+  }
+
+  // ---------- the meeting (24 October 2026) ----------
+
+  /** What a meeting is made (or moved) with: the interview's title, start and length; a note it came from here. */
+  private meetingDetails(r: Row): MeetingDetails {
+    const job = r.application.vacancy.title;
+    return {
+      title: `Interview: ${r.application.fullName} · ${job}`,
+      description: `Online interview for ${job} (${r.application.vacancy.number}), scheduled in People System. The candidate and the interviewers get People System’s invitation.`,
+      start: r.startsAt,
+      minutes: r.minutes,
+      requestId: randomUUID(),
+    };
+  }
+
+  /**
+   * Makes the interview's meeting with the connection: its link becomes the location; refused, the problem is kept on
+   * the interview (`also`: keep the problem already there beside it). Audited either way.
+   */
+  private async makeMeeting(r: Row, connection: Awaited<ReturnType<MeetingsService['connectionFor']>>, user: SessionUser, also = false): Promise<MeetingOutcome> {
+    const provider = connection.provider as MeetingProvider;
+    const made = await this.meetings.make(connection, this.meetingDetails(r));
+    if (made.ok) {
+      await this.prisma.interview.update({ where: { id: r.id }, data: { ...madeColumns(made.value), ...(also && { meetingProblem: r.meetingProblem }) } });
+      await this.audit.record({
+        userId: user.id,
+        action: 'meeting_create',
+        entityType: INTERVIEW_ENTITY,
+        entityId: r.id,
+        diff: { application: r.application.number, provider, owner: made.value.owner, meetingId: made.value.meetingId },
+      });
+      return 'created';
+    }
+    const problem = `${made.problem} Nobody was told yet: try again, or paste a link.`;
+    await this.prisma.interview.update({ where: { id: r.id }, data: { meetingProblem: also && r.meetingProblem ? `${r.meetingProblem} ${problem}` : problem } });
+    await this.audit.record({ userId: user.id, action: 'meeting_failed', entityType: INTERVIEW_ENTITY, entityId: r.id, diff: { application: r.application.number, provider, step: 'create', reason: made.problem } });
+    return 'failed';
+  }
+
+  /** Moves the interview's meeting to its new time; refused, the link stays and the problem is said. */
+  private async moveMeeting(r: Row, ref: MeetingRef, user: SessionUser): Promise<MeetingOutcome> {
+    const moved = await this.meetings.move(ref, this.meetingDetails(r));
+    if (moved.ok) {
+      await this.prisma.interview.update({ where: { id: r.id }, data: { meetingProblem: null } });
+      await this.audit.record({ userId: user.id, action: 'meeting_update', entityType: INTERVIEW_ENTITY, entityId: r.id, diff: { application: r.application.number, provider: ref.provider, meetingId: ref.meetingId, ...(moved.value === 'gone' && { gone: true }) } });
+      return 'updated';
+    }
+    const label = MEETING_PROVIDER_LABELS[ref.provider];
+    await this.prisma.interview.update({ where: { id: r.id }, data: { meetingProblem: `${moved.problem} The ${label} link stays the same; move the meeting there yourself if it matters.` } });
+    await this.audit.record({ userId: user.id, action: 'meeting_failed', entityType: INTERVIEW_ENTITY, entityId: r.id, diff: { application: r.application.number, provider: ref.provider, meetingId: ref.meetingId, step: 'update', reason: moved.problem } });
+    return 'failed';
+  }
+
+  /**
+   * Deletes the interview's meeting (`why`: the interview cancelled, or its meeting replaced by another or by a pasted
+   * link): it comes off the interview either way; refused, the problem is said, to delete it there by hand.
+   */
+  private async deleteMeeting(r: Row, ref: MeetingRef, user: SessionUser, why: 'cancelled' | 'replaced'): Promise<MeetingOutcome> {
+    const removed = await this.meetings.remove(ref);
+    const label = MEETING_PROVIDER_LABELS[ref.provider];
+    const problem = removed.ok ? null : `The earlier ${label} meeting couldn’t be deleted: ${removed.problem} Delete it there yourself.`;
+    await this.prisma.interview.update({ where: { id: r.id }, data: { ...NO_MEETING, meetingProblem: problem } });
+    await this.audit.record({
+      userId: user.id,
+      action: removed.ok ? 'meeting_delete' : 'meeting_failed',
+      entityType: INTERVIEW_ENTITY,
+      entityId: r.id,
+      diff: { application: r.application.number, provider: ref.provider, meetingId: ref.meetingId, step: why === 'cancelled' ? 'delete' : 'replace', ...(!removed.ok && { reason: removed.problem }) },
+    });
+    return removed.ok ? 'deleted' : 'failed';
   }
 
   /** Marks a scheduled interview done or a no-show, once it has started. */
@@ -466,6 +636,10 @@ export class InterviewsService {
    * those `dropped` the cancellation. Never throws.
    */
   private async tell(r: Row, kind: InterviewMailKind, user: SessionUser, told: readonly string[], dropped: readonly string[]): Promise<InterviewSaved['email']> {
+    // online without its link yet (its meeting refused, 24 October 2026): nobody is invited until it has one; those taken
+    // off the panel are still told
+    const silent = kind !== 'cancelled' && linkless(r);
+    const meetingName = r.kind === 'online' && r.meetingProvider ? MEETING_PROVIDER_LABELS[r.meetingProvider as MeetingProvider] : null;
     const company = await this.prisma.company.findUnique({ where: { id: 1 }, select: { nameEn: true } });
     const companyName = company?.nameEn ?? 'the company';
     const job = r.application.vacancy.title;
@@ -481,6 +655,7 @@ export class InterviewsService {
       location: r.location,
       mobile: r.application.mobile,
       note: r.note,
+      meetingName,
     };
     const organizer = { name: `${companyName} HR`, email: user.email };
     const panel = r.interviewers.map((i) => ({ name: i.employee.fullNameEn, email: i.employee.workEmail ?? '' })).filter((p) => p.email);
@@ -492,7 +667,13 @@ export class InterviewsService {
         start: r.startsAt,
         minutes: r.minutes,
         summary: `Interview: ${r.application.fullName} · ${job}`,
-        description: [`${INTERVIEW_KIND_LABELS[facts.kind]} interview for ${job} (${r.application.vacancy.number}).`, r.note ?? ''].filter(Boolean).join('\n'),
+        description: [
+          `${INTERVIEW_KIND_LABELS[facts.kind]} interview for ${job} (${r.application.vacancy.number}).`,
+          r.kind === 'online' && r.location ? `Join${meetingName ? ` on ${meetingName}` : ''}: ${r.location}` : '',
+          r.note ?? '',
+        ]
+          .filter(Boolean)
+          .join('\n'),
         location: r.location ?? '',
         organizer,
         attendees,
@@ -508,7 +689,9 @@ export class InterviewsService {
 
     // the candidate
     let email: InterviewSaved['email'];
-    if (!(await this.mail.ready())) {
+    if (silent) {
+      email = 'not_sent';
+    } else if (!(await this.mail.ready())) {
       email = 'not_set_up';
       await this.prisma.interview.update({ where: { id: r.id }, data: { emailProblem: 'Email isn’t set up on the server: tell the candidate yourself.' } });
     } else {
@@ -539,7 +722,7 @@ export class InterviewsService {
             to: e.workEmail,
             replyTo: user.email,
             subject: `${title}: ${r.application.fullName} · ${job}`,
-            text: `${body}\n\n${INTERVIEW_KIND_LABELS[facts.kind]}${r.location ? `: ${r.location}` : ''}\n\nOpen the applicant in People System → Recruitment → My Hiring.`,
+            text: `${body}\n\n${INTERVIEW_KIND_LABELS[facts.kind]}${meetingName ? ` (${meetingName})` : ''}${r.location ? `: ${r.location}` : ''}\n\nOpen the applicant in People System → Recruitment → My Hiring.`,
             attachments: [attach(m, [candidate, ...panel])],
           });
         } catch (err) {
@@ -551,7 +734,9 @@ export class InterviewsService {
       if (kind === 'cancelled') {
         await notifyEmployees(dropped, 'Interview cancelled', `${r.application.fullName} on ${when}`, 'CANCEL');
       } else {
-        await notifyEmployees(told, kind === 'moved' ? 'Interview moved' : 'Interview scheduled', `${r.application.fullName} on ${when}, ${r.minutes} minutes`, 'REQUEST');
+        // the meeting's service beside it (24 October 2026); its link is on the applicant's page and in the email, never in
+        // a notification (they show on a locked phone)
+        if (!silent) await notifyEmployees(told, kind === 'moved' ? 'Interview moved' : 'Interview scheduled', `${r.application.fullName} on ${when}, ${r.minutes} minutes${meetingName ? `, on ${meetingName}` : ''}`, 'REQUEST');
         if (dropped.length) await notifyEmployees(dropped, 'Interview cancelled for you', `${r.application.fullName}: you are no longer on the panel`, 'CANCEL');
       }
     } catch (err) {

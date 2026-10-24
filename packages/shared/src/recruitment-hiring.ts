@@ -17,6 +17,7 @@
 import { APPLICATION_STAGE_LABELS, offerable, stageMoveProblem, type ApplicationSource, type ApplicationStage, type HandStage, type RecruitmentUserRef } from './recruitment.js';
 import type { GeneralCvSource } from './general-cvs.js';
 import type { CandidateBadge } from './candidates.js';
+import { isMeetingChoiceValue, MEETING_KEEP, parseMeetingChoice, type InterviewMeetingView, type MeetingOutcome } from './meetings.js';
 
 // ---------- who looks ----------
 
@@ -125,6 +126,12 @@ export interface InterviewInput {
   interviewerIds: string[];
   /** A few words to the candidate, in the invitation. */
   note?: string | null;
+  /**
+   * Online (owner, 24 October 2026: "automatically generate meeting links"): what makes the meeting, "company:google",
+   * "personal:zoom" (meetings.ts MeetingChoiceKey); "keep" on a move, the meeting it has; "link" or nothing, the link
+   * pasted in `location`, as before.
+   */
+  meeting?: string | null;
 }
 
 const isLink = (v: string) => /^https:\/\/[^\s/]+\.[^\s]+$/i.test(v);
@@ -150,7 +157,10 @@ export function interviewProblems(input: Partial<InterviewInput>, startsAt: numb
   if (!isInterviewKind(input.kind)) problems.push('Choose how it is held: in person, online or by phone.');
   const location = typeof input.location === 'string' ? input.location.trim() : '';
   if (location.length > L.location) problems.push(`Keep the place to ${L.location} characters or fewer.`);
-  if (input.kind === 'online' && !isLink(location)) problems.push('Give the meeting’s link in full, starting with https://.');
+  // a meeting the system makes (or keeps) brings its own link (24 October 2026); else it is pasted, as before
+  const made = input.kind === 'online' && (parseMeetingChoice(input.meeting) !== null || input.meeting === MEETING_KEEP);
+  if (!isMeetingChoiceValue(input.meeting)) problems.push('Choose what creates the meeting, or paste its link.');
+  else if (input.kind === 'online' && !made && !isLink(location)) problems.push('Give the meeting’s link in full, starting with https://.');
   const ids = Array.isArray(input.interviewerIds) ? input.interviewerIds : [];
   if (!ids.length) problems.push('Choose who interviews them.');
   else if (ids.length > L.interviewers) problems.push(`Choose at most ${L.interviewers} interviewers.`);
@@ -269,18 +279,20 @@ export interface InterviewMailFacts {
   /** Their mobile, for one by phone. */
   mobile: string | null;
   note: string | null;
+  /** Online, the meeting's service when the system made it ("Google Meet", 24 October 2026), said beside the link. */
+  meetingName?: string | null;
 }
 
 export type InterviewMailKind = 'invite' | 'moved' | 'cancelled';
 
 function howEn(f: InterviewMailFacts): string {
-  if (f.kind === 'online') return `Online: ${f.location ?? ''}`.trim();
+  if (f.kind === 'online') return `Online${f.meetingName ? ` (${f.meetingName})` : ''}: ${f.location ?? ''}`.trim();
   if (f.kind === 'phone') return f.location ? `By phone: ${f.location}` : `By phone: we will call you${f.mobile ? ` on ${f.mobile}` : ''}`;
   return `In person: ${f.location ?? f.company}`;
 }
 
 function howAr(f: InterviewMailFacts): string {
-  if (f.kind === 'online') return `عبر الإنترنت: ${f.location ?? ''}`.trim();
+  if (f.kind === 'online') return `عبر الإنترنت${f.meetingName ? ` (${f.meetingName})` : ''}: ${f.location ?? ''}`.trim();
   if (f.kind === 'phone') return f.location ? `عبر الهاتف: ${f.location}` : `عبر الهاتف: سنتصل بك${f.mobile ? ` على ${f.mobile}` : ''}`;
   return `حضوريًا: ${f.location ?? f.company}`;
 }
@@ -559,7 +571,14 @@ export interface InterviewView {
   cancelReason: string | null;
   createdBy: RecruitmentUserRef | null;
   application: { id: string; number: string; fullName: string; vacancy: { id: string; number: string; title: string } };
-  can: { reschedule: boolean; cancel: boolean; mark: boolean; feedback: boolean };
+  /**
+   * The meeting the system made for it (24 October 2026: Google Meet, Microsoft Teams or Zoom), its link the location;
+   * null for one pasted or none. `meetingProblem`: what the provider refused, in words ("Google refused: …").
+   */
+  meeting: InterviewMeetingView | null;
+  meetingProblem: string | null;
+  /** `meeting`: an online interview still without its link, for "Try again" or "Paste a link" (HR, a Super Admin). */
+  can: { reschedule: boolean; cancel: boolean; mark: boolean; feedback: boolean; meeting: boolean };
 }
 
 /** An interviewer's scorecard, as those who may see it see it. */
@@ -589,6 +608,13 @@ export interface InterviewSaved {
   interview: InterviewView;
   /** sent, not_set_up (email isn't set up on the server), failed (the provider refused), not_sent (nothing to tell). */
   email: 'sent' | 'not_set_up' | 'failed' | 'not_sent';
+  /**
+   * What happened to its meeting (24 October 2026): none (a pasted link, or not online), created, updated, deleted, or
+   * failed with `meetingProblem` in words. An online interview whose meeting failed is saved, and nobody is told until it
+   * has a link (Try again, or Paste a link).
+   */
+  meeting?: MeetingOutcome;
+  meetingProblem?: string | null;
 }
 
 /** A card on the pipeline board. */

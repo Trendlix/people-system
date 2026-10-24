@@ -9,7 +9,8 @@ import { redirect } from 'next/navigation';
 import type { InterviewSaved, VacancyView } from '@trendlix/shared';
 import { ApiError, apiSend } from '@/lib/api';
 import type { FormState } from '@/lib/types';
-import { emailText, feedbackForm, interviewForm, rejectedText, suggestionForm } from './hiring';
+import { feedbackForm, interviewForm, rejectedText, suggestionForm } from './hiring';
+import { interviewSavedText } from './meetings';
 import { vacancyForm, vacancyHref, VACANCIES_PATH } from './recruitment';
 
 /** What was typed, kept to show again after a refusal. */
@@ -121,7 +122,8 @@ async function sendInterview(method: 'POST' | 'PUT', path: string, fd: FormData)
     throw err;
   }
   refresh();
-  return { message: emailText(saved?.email ?? 'not_sent') };
+  // the meeting too (24 October 2026: "automatically generate meeting links"): made, moved, deleted, or what was refused
+  return { message: saved ? interviewSavedText(saved) : 'Saved.' };
 }
 
 export async function scheduleInterview(applicationId: string, _prev: FormState, fd: FormData): Promise<FormState> {
@@ -142,7 +144,8 @@ export async function cancelInterview(id: string, _prev: FormState, fd: FormData
     throw err;
   }
   refresh();
-  return { message: emailText(saved?.email ?? 'not_sent') };
+  // the meeting too (24 October 2026: "automatically generate meeting links"): made, moved, deleted, or what was refused
+  return { message: saved ? interviewSavedText(saved) : 'Saved.' };
 }
 
 export async function markInterview(id: string, outcome: 'done' | 'no_show'): Promise<FormState> {

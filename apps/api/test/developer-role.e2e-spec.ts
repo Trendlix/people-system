@@ -446,6 +446,9 @@ describe('The Developer role (e2e)', () => {
       '/recruitment/candidates',
       '/recruitment/candidates/matches',
       `/recruitment/candidates/${candidateId}`,
+      // interviews, their meetings' links hidden (24 October 2026: online meetings made by the system)
+      '/recruitment/interviews',
+      '/recruitment/my-hiring',
       '/assets',
       `/assets/${assetCode}`,
       '/assets/custody',
@@ -863,6 +866,10 @@ describe('The Developer role (e2e)', () => {
       `/paperwork/${unknown}/file`,
       '/payroll/statistics/workbook',
       '/audit/export',
+      // the meetings' apps, connections and choices (24 October 2026: "make it both"): their credentials and accounts
+      '/meetings/settings',
+      '/meetings/mine',
+      '/meetings/choices',
       `/recruitment/applications/${unknown}/cv`,
     ]) {
       const res = await as('developer').get(path);

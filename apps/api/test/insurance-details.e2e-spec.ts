@@ -315,7 +315,8 @@ describe('Social insurance details (e2e)', () => {
       expect(audit[0].diff).toMatchObject({ insuranceBasicWage: 'changed', insuranceComprehensiveWage: null });
       expect(audit[0].diff).not.toHaveProperty('insuranceInsuredWage');
       expect(audit.slice(1).map((a) => a.diff)).toEqual([{ insuranceBasicWage: 'changed', insuranceComprehensiveWage: 'changed' }, { insuranceBasicWage: 'changed' }]);
-      expect(JSON.stringify(audit.map((a) => a.diff))).not.toMatch(/600|700|15000/);
+      // the amounts as numbers of their own: the run's tag (base 36, e.g. "mvm3700c") may hold the same digits
+      expect(JSON.stringify(audit.map((a) => a.diff))).not.toMatch(/(?<![0-9a-z])(600|700|15000)(?![0-9a-z])/i);
     });
 
     it('refuses amounts out of range', async () => {

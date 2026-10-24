@@ -1,6 +1,7 @@
 import type { Role } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 import { seesEmailSettings } from '../../../lib/email-setup';
+import { seesMeetingSettings } from '../../../lib/meetings';
 import { isSelfService } from '../../../lib/roles';
 import { buildsKpiTemplates } from '../kpis/templates/templates';
 import { managesOffboarding } from '../offboarding/offboarding';
@@ -28,6 +29,7 @@ describe('the setup menu', () => {
         [
           ['Company Details', '/organization/company'],
           ['Email Settings', '/organization/email'],
+          ['Meetings', '/organization/meetings'],
           ['Templates', '/organization/templates'],
         ],
       ],
@@ -80,9 +82,9 @@ describe('the setup menu', () => {
     expect(setupPage('kpi-deadlines' as SetupKey).label).toBe('KPI Deadlines');
   });
 
-  it('shows a Super Admin every page, Email Settings and Templates included', () => {
+  it('shows a Super Admin every page, Email Settings, Meetings and Templates included', () => {
     expect(menu(as('super_admin'))).toEqual([
-      'Company: Company Details, Email Settings, Templates',
+      'Company: Company Details, Email Settings, Meetings, Templates',
       'Structure: Departments & Job Titles, Grades',
       'Time & Leave: Shifts, Holidays, Leave, Check-in Setup',
       'Pay & Contracts: Allowances, Contracts & Endings, Payroll Setup',
@@ -91,7 +93,7 @@ describe('the setup menu', () => {
     ]);
   });
 
-  it('shows a developer a Super Admin’s pages but Email Settings', () => {
+  it('shows a developer a Super Admin’s pages but Email Settings and Meetings', () => {
     const developer = { roles: ['super_admin'] as Role[], developer: true };
     expect(menu(developer)[0]).toBe('Company: Company Details, Templates');
     expect(menu(developer).slice(1)).toEqual(menu(as('super_admin')).slice(1));
@@ -173,6 +175,12 @@ describe('each page keeps the roles it had', () => {
   it('Email Settings as lib/email-setup.ts, a developer never', () => {
     for (const roles of ROLES) expect(sees('email', as(...roles))).toBe(seesEmailSettings(as(...roles)));
     expect(sees('email', { roles: ['super_admin'], developer: true })).toBe(false);
+  });
+
+  // online interview meetings (owner, 24 October 2026: "make it both"): the company's, a Super Admin's
+  it('Meetings as lib/meetings.ts, a developer never', () => {
+    for (const roles of ROLES) expect(sees('meetings', as(...roles))).toBe(seesMeetingSettings(as(...roles)));
+    expect(sees('meetings', { roles: ['super_admin'], developer: true })).toBe(false);
   });
 
   it('the pages brought in, as their own modules decide', () => {

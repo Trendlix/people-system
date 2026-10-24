@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { logout } from '@/app/login/actions';
 import { ApiError } from '@/lib/api';
+import { meetingsInMenu, MY_MEETINGS_PATH } from '@/lib/meetings';
 import { ROLE_LABELS } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import { modeSwitch } from '@/lib/session-mode';
@@ -56,6 +57,12 @@ export async function UserMenu() {
       {user && !user.viewAs && (
         <Link href="/account/sessions" className="text-sm whitespace-nowrap">
           Sessions
+        </Link>
+      )}
+      {/* one's own meetings account, for those who schedule interviews (owner, 24 October 2026: "make it both") */}
+      {user && meetingsInMenu(user) && (
+        <Link href={MY_MEETINGS_PATH} className="text-sm whitespace-nowrap">
+          Meetings
         </Link>
       )}
       <form action={logout}>

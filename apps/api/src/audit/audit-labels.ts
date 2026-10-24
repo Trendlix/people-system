@@ -73,6 +73,10 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   mail_settings: 'Email settings',
   // Organization → Check-in Setup → Google Maps (owner, 24 October 2026: "Google Maps"): the browser key, only as changed
   maps_settings: 'Google Maps settings',
+  // online interview meetings (owner, 24 October 2026: "Google Meet, Microsoft Teams, Zoom"; "make it both"): a
+  // provider's app and the default (Organization → Meetings), and a meetings connection, the company's or a person's own
+  meeting_settings: 'Meeting settings',
+  meeting_connection: 'Meetings connection',
   ocr_correction: 'Card reading fix',
   // offboarding (owner, 22 October 2026: the full module): a leaver's case (clearance, exit interview, rehire
   // eligibility), the default clearance checklist, and the turnover's Excel
@@ -264,6 +268,20 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   // the Google Maps key removed, every map back on OpenStreetMap (24 October 2026); never the key
   remove_key: 'Removed the Google Maps key',
   send_test: 'Sent a test email',
+  // online interview meetings (24 October 2026): a connection made, removed, refused or needing connecting again (the
+  // provider refused its sign-in), a test meeting, the default; an interview's meeting created, moved, deleted, refused,
+  // or its link pasted after; never a token or a secret
+  connect: 'Connected',
+  connect_failed: 'Couldn’t connect',
+  disconnect: 'Disconnected',
+  needs_reconnecting: 'Needs connecting again',
+  test_meeting: 'Created a test meeting',
+  set_default: 'Changed the default',
+  meeting_create: 'Created the online meeting',
+  meeting_update: 'Moved the online meeting',
+  meeting_delete: 'Deleted the online meeting',
+  meeting_failed: 'The online meeting was refused',
+  meeting_link: 'Pasted the meeting link',
   // an approved home location removed (its point deleted), and one replaced by a newer approved one (20 October 2026)
   remove: 'Removed',
   reopen: 'Reopened',
@@ -432,6 +450,16 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   // the Google Maps settings (24 October 2026): the browser key (only ever "changed") and the Map ID
   browserKey: 'Google Maps key',
   mapId: 'Map ID',
+  // the meeting settings (24 October 2026): a provider's app (only ever "changed"), and the hosts and accounts
+  clientId: 'Client ID',
+  clientSecret: 'Client secret',
+  tenantId: 'Tenant ID',
+  accountId: 'Account ID',
+  userClientId: 'General app’s client ID',
+  userClientSecret: 'General app’s client secret',
+  hostEmail: 'Host',
+  accountEmail: 'Account',
+  meetingId: 'Meeting ID',
 };
 
 /**
