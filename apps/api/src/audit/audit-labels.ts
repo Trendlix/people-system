@@ -71,6 +71,8 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   leave_year_closing: 'Leave year closing',
   // Organization → Email Settings (owner, 23 October 2026: "why dont we add SMTP setup in the organization setup")
   mail_settings: 'Email settings',
+  // Organization → Check-in Setup → Google Maps (owner, 24 October 2026: "Google Maps"): the browser key, only as changed
+  maps_settings: 'Google Maps settings',
   ocr_correction: 'Card reading fix',
   // offboarding (owner, 22 October 2026: the full module): a leaver's case (clearance, exit interview, rehire
   // eligibility), the default clearance checklist, and the turnover's Excel
@@ -259,6 +261,8 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   reject: 'Rejected',
   // the email settings' saved password removed, and a test email sent (23 October 2026); never the password
   remove_password: 'Removed the saved password',
+  // the Google Maps key removed, every map back on OpenStreetMap (24 October 2026); never the key
+  remove_key: 'Removed the Google Maps key',
   send_test: 'Sent a test email',
   // an approved home location removed (its point deleted), and one replaced by a newer approved one (20 October 2026)
   remove: 'Removed',
@@ -425,6 +429,9 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   fromAddress: 'Sender’s address',
   replyTo: 'Reply-to address',
   sentTo: 'Sent to',
+  // the Google Maps settings (24 October 2026): the browser key (only ever "changed") and the Map ID
+  browserKey: 'Google Maps key',
+  mapId: 'Map ID',
 };
 
 /**

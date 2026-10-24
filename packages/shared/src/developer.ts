@@ -613,6 +613,8 @@ export const DEVELOPER_HIDDEN_TEXT_FIELDS: ReadonlySet<string> = new Set([
   // where an official duty is (owner, 23 October 2026: "Official duty (OD) requests"): a client's site, an address, free
   // text about the person's day (its reason is a free text field already)
   'dutyPlace',
+  // the Google Maps key (24 October 2026: "Google Maps"): its routes are never a developer's (@NotForDevelopers)
+  'browserKey',
 ]);
 
 /**
@@ -651,6 +653,13 @@ export const DEVELOPER_HIDDEN_NULL_FIELDS: ReadonlySet<string> = new Set([
  */
 export const DEVELOPER_HIDDEN_NULL_FIELDS_ON: Readonly<Record<string, RegExp>> = {
   expiresOn: /^\/api\/(employees\/[^/]+\/paperwork|paperwork)(\/|$)/,
+  // people's points on a map (found 24 October 2026, as every map turned Google's: owner, "Google Maps"): where a
+  // check-in or a check-out was pressed (its point and the reading's accuracy) and a home location's point, null on every
+  // page but Check-in Setup's locations, which are the company's own; and a home's label, often its address
+  latitude: /^\/api\/(?!attendance\/check-in-setup\/locations(\/|$))/,
+  longitude: /^\/api\/(?!attendance\/check-in-setup\/locations(\/|$))/,
+  accuracyMetres: /^\/api\/(?!attendance\/check-in-setup\/locations(\/|$))/,
+  label: /^\/api\/(me\/)?home-locations(\/|$)/,
 };
 
 /** Fields that hold a person's name, wherever they are: their pseudonym. */

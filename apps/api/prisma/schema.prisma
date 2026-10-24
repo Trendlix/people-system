@@ -74,6 +74,7 @@ model User {
   suggestionsMade    JobApplication[]           @relation("ApplicationSuggestion")
   recruitmentSettingsSet RecruitmentSettings[]  @relation("RecruitmentSettingsChange")
   mailSettingsSet        MailSettings[]         @relation("MailSettingsChange") // the email settings, when this user saved them last
+  mapsSettingsSet        MapsSettings[]         @relation("MapsSettingsChange") // the Google Maps settings, when this user saved them last
   onboardingDefaultsSet  OnboardingDefault[]    @relation("OnboardingDefaultChange")
   onboardingOpened       OnboardingChecklist[]  @relation("OnboardingOpening")
   onboardingCompleted    OnboardingChecklist[]  @relation("OnboardingCompletion")
@@ -440,6 +441,24 @@ model MailSettings {
   lastTestMessage String?   @map("last_test_message")
 
   @@map("mail_settings")
+}
+
+// Google Maps for every map in the system (one row, id 1; owner, 24 October 2026, on Check-in Setup's map: "is there
+// another map provider?", then "Google Maps"): Organization → Check-in Setup → Google Maps, a Super Admin's only. With a
+// key, every map is Google's (a Map/Satellite switch, Google's place search); without one, OpenStreetMap's, as before.
+// The browser key is restricted by Google to the website's address and two APIs, and handed to the browser on every page
+// with a map, so it is public by nature and kept as it is; still never answered in full (its last four characters) nor
+// written to the audit log ("changed"), and handed out only to staff whose pages show a map, never to a developer
+// (packages/shared maps-settings.ts). The Map ID is optional: Google's newer pins (Advanced Markers) need one.
+model MapsSettings {
+  id          Int      @id @default(1)
+  browserKey  String?  @map("browser_key") // RESTRICTED: GET /maps/key only; anywhere else its last four characters
+  mapId       String?  @map("map_id")
+  updatedById String?  @map("updated_by") @db.Uuid
+  updatedBy   User?    @relation("MapsSettingsChange", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@map("maps_settings")
 }
 
 // ---------- organisation ----------

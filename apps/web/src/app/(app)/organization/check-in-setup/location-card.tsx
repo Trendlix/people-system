@@ -6,7 +6,7 @@ import { DeleteForm, FormErrors } from '@/components/form';
 import { LocationsMap } from '@/components/map/maps';
 import type { CheckInLocationView, LinkedPersonView } from '@/lib/attendance-types';
 import { titleCase } from '@/lib/format';
-import { mapHref, type MapCircle } from '@/lib/map-point';
+import { googleMapsHref, type MapCircle } from '@/lib/map-point';
 import type { FormState } from '@/lib/types';
 import { profileHref } from '../../employees/tab-list';
 import { LinkPeople } from './link-people';
@@ -23,14 +23,15 @@ import { withCode } from '@/lib/hidden';
 //   people as name chips (the first five, then "+N more"; each unlinked with its ×), Link people, Edit, Make main, and
 //   Remove for a Super Admin.
 // While a location is edited, its form's map (click, drag, search, paste a link, use my current location) takes its
-// card's place. "See it on a map" opens OpenStreetMap's own site. HR and Admin keep them; the API checks every request.
+// card's place. "See it on a map" opens Google Maps (since 24 October 2026, owner: "Google Maps"; OpenStreetMap's own
+// site before). HR and Admin keep them; the API checks every request.
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
-/** "See it on a map", opening OpenStreetMap's own site in a new tab. */
+/** "See it on a map", opening Google Maps in a new tab (google.com/maps?q=…, as a press's "Map" does). */
 function SeeOnMap({ location: l }: { location: CheckInLocationView }) {
   return (
-    <a href={mapHref(l)} target="_blank" rel="noopener noreferrer">
+    <a href={googleMapsHref(l)} target="_blank" rel="noopener noreferrer">
       See it on a map<span className="sr-only"> ({l.name}, opens in a new tab)</span>
     </a>
   );

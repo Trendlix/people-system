@@ -18,6 +18,8 @@ import { AddLocation } from './add-location';
 import { loadLinkable, loadLocationRule, loadLocations, loadNetworks, loadSettings } from './data';
 import { HomeLocationsSection } from './home-locations-section';
 import { MainOfficeCard, SubLocationCard } from './location-card';
+import { MapsSection } from './maps-section';
+import { seesMapsSettings } from './maps-setup';
 import { LocationRuleForm } from './location-rule-form';
 import { NetworksForm } from './networks-form';
 import {
@@ -235,6 +237,12 @@ async function Gate() {
       {seesHomes(user) && (
         <Suspense fallback={<Loading />}>
           <HomeLocationsSection />
+        </Suspense>
+      )}
+      {/* Google Maps for every map (owner, 24 October 2026: "Google Maps"): the key, a Super Admin's */}
+      {seesMapsSettings(user) && (
+        <Suspense fallback={<Loading />}>
+          <MapsSection user={user} />
         </Suspense>
       )}
     </>

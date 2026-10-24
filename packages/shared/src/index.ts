@@ -558,3 +558,7 @@ export * from './official-duty.js';
 // joining: on-time %, average check-in time, late days by weekday and trends; an Excel export"; "HR, CEO and Finance
 // only"): the periods, each day of the log, the figures, the on-time trend, the check-in times and late days by weekday
 export * from './attendance-history.js';
+
+// Google Maps for every map (owner, 24 October 2026, on Check-in Setup's map: "is there another map provider?", then
+// "Google Maps"): the browser key a Super Admin pastes on Check-in Setup, how it is shown, and who receives it
+export * from './maps-settings.js';

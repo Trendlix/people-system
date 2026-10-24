@@ -15,6 +15,8 @@ import { AttendanceCorrectionsController, MyCorrectionsController } from './corr
 import { AttendanceCorrectionsService } from './corrections.service.js';
 import { HomeLocationsController, MyHomeLocationsController } from './home-locations.controller.js';
 import { HomeLocationsService } from './home-locations.service.js';
+import { MapsKeyController, MapsSettingsController } from './maps-settings.controller.js';
+import { MapsSettingsService } from './maps-settings.service.js';
 
 // Attendance (owner, 19 October 2026: attendance runs in Zoho People today, "Import Zoho now, replace it later"): Zoho
 // People's attendance entries imported on a draft payroll run, each day kept (AttendanceDay) for the system's own
@@ -43,6 +45,10 @@ import { HomeLocationsService } from './home-locations.service.js';
     AttendanceCorrectionsController,
     MyHomeLocationsController,
     HomeLocationsController,
+    // Google Maps for every map (owner, 24 October 2026: "Google Maps"): the key a Super Admin pastes on Check-in Setup,
+    // and the key at runtime for the pages that draw a map
+    MapsSettingsController,
+    MapsKeyController,
   ],
   providers: [
     AttendanceService,
@@ -56,6 +62,7 @@ import { HomeLocationsService } from './home-locations.service.js';
     CorrectionDaysService,
     AttendanceCorrectionsService,
     HomeLocationsService,
+    MapsSettingsService,
   ],
   exports: [AttendanceDaysService, AttendanceFillService],
 })

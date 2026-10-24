@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { cache } from 'react';
 import { ApiError, apiFetch, messagesOf } from '@/lib/api';
 import type { CheckInLocationView, LinkablePersonView, LocationRuleView, OfficeNetworksView } from '@/lib/attendance-types';
+import type { MapsSettingsView } from '@trendlix/shared';
 import type { PayrollSettingsView } from '@/lib/types';
 import { loadJson, type Loaded } from '../../payroll/load';
 
@@ -41,3 +42,6 @@ export const loadLocationRule = cache(() => loadJson<LocationRuleView>('/attenda
 
 /** GET /payroll/settings: Zoho People's check-in addresses are kept there. */
 export const loadSettings = cache(() => loadJson<PayrollSettingsView>('/payroll/settings'));
+
+/** GET /maps-settings: the Google Maps key's last four characters and the Map ID (owner, 24 October 2026: "Google Maps"), a Super Admin's. */
+export const loadMapsSettings = cache(() => loadJson<MapsSettingsView>('/maps-settings'));

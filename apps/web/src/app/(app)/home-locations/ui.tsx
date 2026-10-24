@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { homeStatusLabel, type HomeStatus } from '@trendlix/shared';
+import { homeStatusLabel, keepsHomePoint, type HomeStatus } from '@trendlix/shared';
 import { CLevelBadge } from '@/components/c-level-badge';
 import { LocationsMap } from '@/components/map/maps';
 import { formatDateTime } from '@/lib/format';
@@ -41,6 +41,8 @@ export function HomeProgress({ request }: { request: HomeLocationView }) {
 /** The home's point and its radius's circle on a small map (`radiusMetres`: another radius, e.g. while HR types one); a line once the point is deleted. */
 export function HomeMap({ request, radiusMetres, own = false, height = 'h-[200px]' }: { request: HomeLocationView; radiusMetres?: number; own?: boolean; height?: string }) {
   const circle = homeCircle(request, radiusMetres);
+  // a home being decided or in force keeps its point: without one, it was hidden (a developer's view, 24 October 2026)
+  if (!circle && keepsHomePoint(request.status)) return <p className="rounded-lg bg-line-soft px-4 py-3 text-sm text-muted">Its point is hidden in the developer view.</p>;
   if (!circle) return <p className="rounded-lg bg-line-soft px-4 py-3 text-sm text-muted">Its point is deleted: it is no longer kept.</p>;
   return <LocationsMap circles={[circle]} label={homeMapLabel({ ...request, radiusMetres: circle.radiusMetres }, own)} height={height} />;
 }

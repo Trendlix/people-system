@@ -11,10 +11,12 @@
 // and Admin's (a C-level person only by those who see them: the API answers 404 to anyone else).
 import { refresh } from 'next/cache';
 import { ApiError, apiSend } from '@/lib/api';
+import type { MapsSettingsView } from '@trendlix/shared';
 import type { CheckInLocationView } from '@/lib/attendance-types';
 import { deleteRefusal } from '@/lib/session';
 import type { FormState } from '@/lib/types';
 import { addedText, addressesBody, locationBody, locationRuleBody, locationRuleSaved, networksBody } from './setup';
+import { MAPS_REMOVED_TEXT, mapsIntentOf, mapsSavedText, mapsSettingsBody, type MapsFormState } from './maps-setup';
 
 /** The submitted values, so the form can be refilled after an error. */
 function submitted(fd: FormData): Record<string, string> {
@@ -107,4 +109,28 @@ export async function saveZohoAddresses(_prev: FormState, fd: FormData): Promise
   const { body, problems } = addressesBody(fd);
   if (problems.length) return { errors: problems, values: submitted(fd) };
   return send(fd, () => apiSend('PATCH', '/payroll/settings', body), 'Saved. The next Zoho People import reads check-ins with these.');
+}
+
+/**
+ * Check-in Setup → Google Maps (owner, 24 October 2026: "Google Maps"): Save (PUT /maps-settings; an empty key box keeps
+ * the saved key) or Remove the key (DELETE /maps-settings/key), a Super Admin's in their own session: the API checks the
+ * session and every value again. The key typed goes on to the API once and never comes back: the answer carries its last
+ * four characters only.
+ */
+export async function submitMapsSettings(prev: MapsFormState, fd: FormData): Promise<MapsFormState> {
+  try {
+    if (mapsIntentOf(fd) === 'remove') {
+      await apiSend<MapsSettingsView>('DELETE', '/maps-settings/key');
+      refresh();
+      return { message: MAPS_REMOVED_TEXT, saved: (prev.saved ?? 0) + 1 };
+    }
+    const { body, errors } = mapsSettingsBody(fd);
+    if (errors.length) return { errors, saved: prev.saved };
+    const view = (await apiSend<MapsSettingsView>('PUT', '/maps-settings', body))!;
+    refresh();
+    return { message: mapsSavedText(view), saved: (prev.saved ?? 0) + 1 };
+  } catch (err) {
+    if (err instanceof ApiError) return { errors: err.messages, saved: prev.saved };
+    throw err;
+  }
 }
