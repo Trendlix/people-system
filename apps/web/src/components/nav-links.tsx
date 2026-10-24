@@ -2,19 +2,16 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useState, useSyncExternalStore } from 'react';
+import { useSyncExternalStore } from 'react';
 import { activeSubItem, isActive, type NavItem } from './nav';
 import {
   groupCount,
-  groupHolding,
   groupKey,
   groupListId,
   GROUPS_STORAGE_KEY,
   isGroup,
   isGroupOpen,
   NOTHING_REMEMBERED,
-  OPEN_REMEMBERED_SCRIPT,
-  parseRemembered,
   remember,
   type NavCounts,
   type NavGroup,
@@ -44,63 +41,41 @@ function Count({ count, className = 'md:ml-auto' }: { count: number | undefined;
   );
 }
 
-// ---------- the headings the user opened or closed, kept in the browser (localStorage) ----------
-// Read with useSyncExternalStore: the server and the page's first run in the browser have nothing remembered (the
-// heading holding the page open, the others closed), then the browser's. A script in the page's HTML opens the
-// remembered ones as it arrives (OPEN_REMEMBERED_SCRIPT), so nothing jumps open once the menu runs. Every read and write
-// is in try/catch: without the storage (a private window, storage blocked or full) the menu works, for the page.
+// ---------- the headings the user opened or closed since the page was loaded ----------
+// Kept in this tab's memory only, so a sign-in or a refresh starts with every heading closed (owner, 24 October 2026:
+// "on login and refresh make sure all items are collapsed"); moving between pages keeps them as the user left them. Read
+// with useSyncExternalStore: the server and the page's first run have nothing opened, so nothing jumps.
 
 const listeners = new Set<() => void>();
-/** The user's choices in this tab once they make one: kept even when the browser refuses to store them. */
-let chosen: Remembered | null = null;
-/** What the storage held when last read, and what it says (the same object while it holds the same). */
-let stored: { raw: string | null; remembered: Remembered } = { raw: null, remembered: NOTHING_REMEMBERED };
+/** The user's choices since this page was loaded (a module of the page: a new load starts it again). */
+let chosen: Remembered = NOTHING_REMEMBERED;
+let oldStorageCleared = false;
 
 function readRemembered(): Remembered {
-  if (chosen) return chosen;
-  let raw: string | null;
-  try {
-    raw = window.localStorage.getItem(GROUPS_STORAGE_KEY);
-  } catch {
-    return NOTHING_REMEMBERED;
+  if (!oldStorageCleared) {
+    oldStorageCleared = true;
+    // earlier versions kept the opened headings in the browser and reopened them on every load
+    try {
+      window.localStorage.removeItem(GROUPS_STORAGE_KEY);
+    } catch {
+      // nothing to clear without the storage
+    }
   }
-  if (raw !== stored.raw) stored = { raw, remembered: parseRemembered(raw) };
-  return stored.remembered;
+  return chosen;
 }
 
 const nothingRemembered = () => NOTHING_REMEMBERED;
 
 function saveRemembered(key: string, open: boolean) {
-  chosen = remember(readRemembered(), key, open);
-  try {
-    window.localStorage.setItem(GROUPS_STORAGE_KEY, JSON.stringify(chosen));
-  } catch {
-    // kept for this tab alone
-  }
+  chosen = remember(chosen, key, open);
   for (const listener of listeners) listener();
 }
 
 function subscribe(onChange: () => void) {
   listeners.add(onChange);
-  // opened or closed in another tab of this browser
-  const onStorage = (event: StorageEvent) => {
-    if (event.key !== GROUPS_STORAGE_KEY && event.key !== null) return;
-    chosen = null;
-    onChange();
-  };
-  window.addEventListener('storage', onStorage);
   return () => {
     listeners.delete(onChange);
-    window.removeEventListener('storage', onStorage);
   };
-}
-
-/**
- * A script the browser runs as the server's HTML arrives (Next.js's guide, preventing a flash before hydration); in the
- * browser's own renders a data block, never run.
- */
-function InlineScript({ html }: { html: string }) {
-  return <script type={typeof window === 'undefined' ? 'text/javascript' : 'text/plain'} suppressHydrationWarning dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
 /** A link without pages under it (Home, Organization, Approvals), with its count. */
@@ -149,8 +124,6 @@ function NavGroupLinks({
         aria-controls={listId}
         data-nav-group={key}
         onClick={onToggle}
-        // the script may have opened it before the menu ran (OPEN_REMEMBERED_SCRIPT), as the menu then does
-        suppressHydrationWarning
         className={`group peer ${base} shrink-0 cursor-pointer text-left whitespace-nowrap md:w-full ${active ? (current ? holds : on) : off}`}
       >
         <span className="md:mr-auto">{item.label}</span>
@@ -195,31 +168,22 @@ function NavGroupLinks({
  * `items`: the user's sidebar (navFor in nav.ts: an employee's own, or the items for HR's, Finance's, the CEO's and
  * Admins' roles). `counts`: how many things wait behind a link, by its href (e.g. endings waiting for the CEO, beside
  * Approvals; the raise requests waiting for HR, beside Raise Requests under Requests). A heading with pages under it
- * opens and closes them (NavGroupLinks): the one holding the page is open whenever a page opens, even one the user
- * closed on the page before; the others are as the user left them in this browser, closed until then (nav-groups.ts).
+ * opens and closes them (NavGroupLinks): every heading starts closed when the page is loaded (after signing in, on a
+ * refresh), the one holding the page too, which still shows as current; one the user opens stays open while they move
+ * between pages (nav-groups.ts; owner, 24 October 2026).
  */
 export function NavLinks({ items, counts }: { items: NavItem[]; counts?: NavCounts }) {
   const pathname = usePathname();
   const remembered = useSyncExternalStore(subscribe, readRemembered, nothingRemembered);
-  // the heading holding the page, closed by the user on it; on the next page it is open again (state reset as a value
-  // changes: https://react.dev/reference/react/useState#storing-information-from-previous-renders)
-  const [closed, setClosed] = useState<{ path: string; key: string } | null>(null);
-  if (closed && closed.path !== pathname) setClosed(null);
-  const holding = groupHolding(items, pathname);
-  const closedHere = closed?.path === pathname ? closed.key : null;
   return (
     <>
       {items.map((item) => {
         if (!isGroup(item)) return <NavLink key={item.href} item={item} pathname={pathname} counts={counts} />;
         const key = groupKey(item);
-        const open = isGroupOpen(key, { holding, remembered, closedHere });
-        const toggle = () => {
-          saveRemembered(key, !open);
-          if (key === holding) setClosed(open ? { path: pathname, key } : null);
-        };
+        const open = isGroupOpen(key, remembered);
+        const toggle = () => saveRemembered(key, !open);
         return <NavGroupLinks key={`group:${key}`} item={item} pathname={pathname} open={open} onToggle={toggle} counts={counts} />;
       })}
-      <InlineScript html={OPEN_REMEMBERED_SCRIPT} />
     </>
   );
 }

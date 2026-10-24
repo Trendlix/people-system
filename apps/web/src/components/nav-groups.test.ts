@@ -11,8 +11,6 @@ import {
   isGroup,
   isGroupOpen,
   NOTHING_REMEMBERED,
-  OPEN_REMEMBERED_SCRIPT,
-  parseRemembered,
   remember,
 } from './nav-groups';
 
@@ -75,71 +73,29 @@ describe('the headings that open and close', () => {
   });
 });
 
-describe('what the browser remembers', () => {
-  it('reads only headings opened or closed, and nothing from anything else', () => {
-    expect(parseRemembered('{"payroll":true,"requests":false}')).toEqual({ payroll: true, requests: false });
-    expect(parseRemembered('{"payroll":true,"people":"yes","attendance":1,"templates":null}')).toEqual({ payroll: true });
-    for (const raw of [null, undefined, '', 'not json', '[]', '[true]', 'null', 'true', '3', '"payroll"', '{}', '{"payroll":"true"}']) {
-      expect(parseRemembered(raw)).toBe(NOTHING_REMEMBERED);
-    }
+// owner, 24 October 2026: "on login and refresh make sure all items are collapsed"
+describe('the headings opened since the page was loaded', () => {
+  it('starts every heading closed, the one holding the page too', () => {
+    for (const key of ['people', 'payroll', 'requests', 'attendance', 'kpis', 'assets']) expect(isGroupOpen(key, NOTHING_REMEMBERED)).toBe(false);
   });
 
-  it('keeps each choice, leaving what was remembered before as it was', () => {
-    const before = parseRemembered('{"payroll":true}');
+  it('opens a heading the user opened, and closes it again when they close it', () => {
+    const opened = remember(NOTHING_REMEMBERED, 'payroll', true);
+    expect(isGroupOpen('payroll', opened)).toBe(true);
+    expect(isGroupOpen('requests', opened)).toBe(false);
+    expect(isGroupOpen('payroll', remember(opened, 'payroll', false))).toBe(false);
+  });
+
+  it('keeps each choice, leaving what was chosen before as it was', () => {
+    const before = remember(NOTHING_REMEMBERED, 'payroll', true);
     const after = remember(before, 'requests', true);
     expect(after).toEqual({ payroll: true, requests: true });
     expect(before).toEqual({ payroll: true });
     expect(remember(after, 'payroll', false)).toEqual({ payroll: false, requests: true });
-    expect(parseRemembered(JSON.stringify(remember(after, 'payroll', false)))).toEqual({ payroll: false, requests: true });
+  });
+
+  it('names the key earlier versions kept in the browser, so it can be cleared', () => {
     expect(GROUPS_STORAGE_KEY).toBe('trendlix-people:sidebar-groups');
-  });
-
-  it('opens the heading holding the page, even one closed before, until the user closes it on the page', () => {
-    const remembered = { requests: false };
-    expect(isGroupOpen('requests', { holding: 'requests', remembered })).toBe(true);
-    expect(isGroupOpen('requests', { holding: 'requests', remembered, closedHere: 'requests' })).toBe(false);
-    expect(isGroupOpen('requests', { holding: 'requests', remembered: NOTHING_REMEMBERED, closedHere: null })).toBe(true);
-  });
-
-  it('starts every other heading closed, then as the user left it', () => {
-    expect(isGroupOpen('payroll', { holding: 'requests', remembered: NOTHING_REMEMBERED })).toBe(false);
-    expect(isGroupOpen('payroll', { holding: null, remembered: NOTHING_REMEMBERED })).toBe(false);
-    expect(isGroupOpen('payroll', { holding: 'requests', remembered: { payroll: true } })).toBe(true);
-    expect(isGroupOpen('payroll', { holding: null, remembered: { payroll: false } })).toBe(false);
-    // closing the one holding the page doesn't close another
-    expect(isGroupOpen('payroll', { holding: 'requests', remembered: { payroll: true }, closedHere: 'requests' })).toBe(true);
-  });
-});
-
-describe('the script that opens the remembered headings as the page arrives', () => {
-  /** Runs the script on buttons (key → aria-expanded), with the storage holding `raw` (a function: it throws). */
-  function run(buttons: Record<string, string>, raw: string | null | (() => never)) {
-    const shown = Object.entries(buttons).map(([key, expanded]) => {
-      const attrs: Record<string, string> = { 'data-nav-group': key, 'aria-expanded': expanded };
-      return { attrs, getAttribute: (name: string) => attrs[name] ?? null, setAttribute: (name: string, value: string) => void (attrs[name] = value) };
-    });
-    const storage = { getItem: (key: string) => (typeof raw === 'function' ? raw() : key === GROUPS_STORAGE_KEY ? raw : null) };
-    const document = { querySelectorAll: (selector: string) => (selector === 'button[data-nav-group]' ? shown : []) };
-    new Function('localStorage', 'document', OPEN_REMEMBERED_SCRIPT)(storage, document);
-    return Object.fromEntries(shown.map((b) => [b.attrs['data-nav-group'], b.attrs['aria-expanded']]));
-  }
-
-  it('opens the ones opened last and leaves the rest as the server drew them, as the menu does once it runs', () => {
-    const page = { people: 'false', payroll: 'false', requests: 'true', attendance: 'false' };
-    expect(run(page, '{"payroll":true,"requests":false,"attendance":"yes"}')).toEqual({ people: 'false', payroll: 'true', requests: 'true', attendance: 'false' });
-    // the same as the menu: open where isGroupOpen is, for the page holding Requests
-    const remembered = parseRemembered('{"payroll":true,"requests":false,"attendance":"yes"}');
-    expect(Object.keys(page).filter((key) => isGroupOpen(key, { holding: 'requests', remembered }))).toEqual(['payroll', 'requests']);
-  });
-
-  it('changes nothing without anything remembered, or when the storage is refused', () => {
-    const page = { people: 'false', payroll: 'true' };
-    for (const raw of [null, '', 'not json', 'null', '[]', '{"people":1}']) expect(run(page, raw)).toEqual(page);
-    expect(
-      run(page, () => {
-        throw new Error('SecurityError');
-      }),
-    ).toEqual(page);
   });
 });
 
