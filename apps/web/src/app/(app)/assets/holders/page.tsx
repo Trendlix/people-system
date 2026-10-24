@@ -5,6 +5,7 @@ import { CUSTODY_PATHS } from '@/lib/asset-paths';
 import { itemsText, valueText } from '../custody';
 import { loadHolders } from '../custody-data';
 import { assetsCaller, assetsNotLoaded } from '../data';
+import { AssetsFrame } from '../frame';
 import { Empty, Loading, NoAccess } from '../ui';
 import { shownCode } from '@/lib/hidden';
 
@@ -68,16 +69,19 @@ async function Cards({ searchParams }: { searchParams: PageProps<'/assets/holder
   );
 }
 
+// Custody → Holdings (owner, 24 October 2026: "7 entries, the rest as tabs"): its tab names it, under Custody's heading
+// (frame.tsx)
 export default function HoldersPage({ searchParams }: PageProps<'/assets/holders'>) {
   return (
-    <div className="max-w-6xl">
-      <h1 className="text-2xl font-semibold">Holdings</h1>
-      <p className="mt-1 text-muted">What each employee holds of the company&apos;s assets, since when, and what came back damaged or missing.</p>
-      <div className="mt-6">
-        <Suspense fallback={<Loading />}>
-          <Cards searchParams={searchParams} />
-        </Suspense>
+    <AssetsFrame tab={CUSTODY_PATHS.holders}>
+      <div className="max-w-6xl">
+        <p className="text-muted">What each employee holds of the company&apos;s assets, since when, and what came back damaged or missing.</p>
+        <div className="mt-6">
+          <Suspense fallback={<Loading />}>
+            <Cards searchParams={searchParams} />
+          </Suspense>
+        </div>
       </div>
-    </div>
+    </AssetsFrame>
   );
 }

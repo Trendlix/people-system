@@ -6,6 +6,7 @@ import { asCustodyQuery, custodyChips, custodyPagesOf, readCustodyQuery, records
 import { loadCustodyList } from '../custody-data';
 import { CustodyTable } from '../custody-ui';
 import { assetsCaller, assetsNotLoaded } from '../data';
+import { AssetsFrame } from '../frame';
 import { Empty, Loading, NoAccess } from '../ui';
 
 // Custody (Assets step 3; the spec's Custody: "Filters: Active, Overdue, Not signed, Closed, All. 'New handover'"): the
@@ -94,11 +95,11 @@ async function List({ searchParams }: { searchParams: PageProps<'/assets/custody
   );
 }
 
+// Custody → Records (owner, 24 October 2026: "7 entries, the rest as tabs"), under Custody's heading (frame.tsx)
 export default function CustodyPage({ searchParams }: PageProps<'/assets/custody'>) {
   return (
-    <div className="max-w-7xl">
-      <h1 className="text-2xl font-semibold">Custody</h1>
-      <p className="mt-1 text-muted">
+    <AssetsFrame tab={CUSTODY_PATHS.list}>
+      <p className="text-muted">
         Assets handed over to employees: for a shoot, back by its return date, or held long term until clearance. Each record&apos;s form is printed,
         signed on paper, and its signed copy attached.
       </p>
@@ -107,6 +108,6 @@ export default function CustodyPage({ searchParams }: PageProps<'/assets/custody
           <List searchParams={searchParams} />
         </Suspense>
       </div>
-    </div>
+    </AssetsFrame>
   );
 }

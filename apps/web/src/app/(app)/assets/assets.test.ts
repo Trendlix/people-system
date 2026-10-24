@@ -11,7 +11,6 @@ import {
   doneText,
   draftDefaults,
   draftedText,
-  draftsLinkText,
   editDefaults,
   groupChips,
   holderText,
@@ -334,13 +333,11 @@ describe('drafts from Claude (step 2, owner, 21 October 2026: "the connection me
     });
   });
 
-  it('says who drafted it and when, and how many wait', () => {
+  it('says who drafted it and when', () => {
     expect(draftedText({ createdAt: '2026-10-21T14:42:00Z', createdBy: { email: 'mona@trendlix.com', name: 'Mona Hassan' } })).toBe(
       'Drafted with Claude by Mona Hassan on 21/10/2026, 5:42 PM',
     );
     expect(draftedText({ createdAt: '2026-10-21T14:42:00Z', createdBy: null })).toBe('Drafted with Claude on 21/10/2026, 5:42 PM');
-    expect(draftsLinkText(3)).toBe('Drafts from Claude (3)');
-    expect(draftsLinkText(0)).toBeNull();
   });
 });
 

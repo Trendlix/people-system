@@ -6,6 +6,7 @@ import { Suspense } from 'react';
 import { ASSET_PATHS } from '@/lib/asset-paths';
 import { originFromHeaders } from '@/lib/connector/site';
 import { assetsCaller } from '../data';
+import { AssetsFrame } from '../frame';
 import { Loading, NoAccess } from '../ui';
 import { CopyAddress } from './copy-address';
 
@@ -125,19 +126,20 @@ async function Connect() {
   );
 }
 
+// Setup → Connect Claude (owner, 24 October 2026: "7 entries, the rest as tabs"; "Keep them inside Assets"): its tab
+// names it, under Setup's heading (frame.tsx); for a viewer or a custodian without the values, Setup's one page
 export default function ConnectClaudePage() {
   return (
-    <div className="max-w-3xl space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold">Connect Claude</h1>
-        <p className="mt-1 text-muted">
+    <AssetsFrame tab={ASSET_PATHS.connectClaude}>
+      <div className="max-w-3xl space-y-4">
+        <p className="text-muted">
           Add Trendlix People to your own Claude as a connector: Claude then reads the Assets section with your access, and drafts assets for you to confirm
           here.
         </p>
+        <Suspense fallback={<Loading />}>
+          <Connect />
+        </Suspense>
       </div>
-      <Suspense fallback={<Loading />}>
-        <Connect />
-      </Suspense>
-    </div>
+    </AssetsFrame>
   );
 }

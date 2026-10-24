@@ -1,9 +1,11 @@
-import type { AssetsAccess, Role } from '@trendlix/shared';
+import { assetDraftPath, type AssetsAccess, type Role } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 import { hasRole } from '../lib/roles';
 import {
+  actionFor,
   activeSubItem,
   ASSETS_NAV,
+  ASSETS_TABS,
   AUDIT_LOG_PATH,
   decidesForTeam,
   DETAILS_CHANGES_PATH,
@@ -21,6 +23,7 @@ import {
   profileBack,
   RAISE_REQUESTS_PATH,
   REIMBURSEMENTS_PATH,
+  tabsFor,
 } from './nav';
 
 const as = (...roles: Role[]) => ({ roles });
@@ -585,33 +588,113 @@ describe('the KPIs (owner, 21 October 2026: "lets start with the KPI’s First")
 describe('Assets (owner, 21 October 2026: "i want to add this module with a special permission to the system")', () => {
   const ME = '3f1c2a9e-5b7d-4e1f-9a2b-6c8d0e4f1a2b';
   const at = (access: AssetsAccess, values = false) => ({ access, values, ai: false });
+  type User = NonNullable<Parameters<typeof navFor>[0]>;
   const assets = (user: Parameters<typeof navFor>[0]) => navFor(user).find((n) => n.label === 'Assets') ?? null;
-  const pages = (user: Parameters<typeof navFor>[0]) => assets(user)?.items?.map((i) => i.label) ?? null;
+  const entries = (user: User) => assets(user)?.items?.map((i) => i.label) ?? null;
+  const entry = (user: User, label: string) => assets(user)?.items?.find((i) => i.label === label) ?? null;
+  // an entry as the menu defines it, every tab whoever sees it, as the pages read it (assets/frame.tsx)
+  const defined = (label: string) => ASSETS_NAV.items!.find((i) => i.label === label)!;
+  // the tabs a page draws for the user (none when only one: the page alone)
+  const tabs = (user: User, label: string) => tabsFor(user, defined(label)).map((t) => t.label);
+  const addsAssets = (user: User) => actionFor(user, defined('All Assets'));
 
-  it('is a heading after the KPIs with All Assets, Custody, Holdings, Add Asset, Drafts From Claude, Needs Values, Kits, Rooms, Settings and Connect Claude, for no role as such', () => {
+  // the users the owner named, one of each: the three levels ("3 levels per user"), and those who see the values ("CEO
+  // and Finance", a Super Admin too) at a level each
+  const user = (roles: Role[], access: AssetsAccess, values = false): User => ({ roles, employeeId: ME, assets: at(access, values) });
+  const VIEWER = user(['employee'], 'viewer');
+  const CUSTODIAN = user(['employee'], 'custodian');
+  const MANAGER = user(['hr'], 'manager');
+  const FINANCE = user(['finance'], 'viewer', true);
+  const CEO = user(['ceo'], 'custodian', true);
+  const SUPER_ADMIN = user(['super_admin'], 'manager', true);
+
+  const SEVEN = ['Dashboard', 'All Assets', 'Custody', 'Kits', 'Stock', 'Counts & Labels', 'Setup'];
+
+  // what each saw before, page by page (14 entries until 24 October 2026); each still reaches those, and no other
+  const BEFORE: Record<string, string> = {
+    'All Assets': '/assets',
+    Dashboard: '/assets/dashboard',
+    Custody: '/assets/custody',
+    Holdings: '/assets/holders',
+    'Add Asset': '/assets/new',
+    'Drafts From Claude': '/assets/drafts',
+    'Needs Values': '/assets/needs-values',
+    Kits: '/assets/kits',
+    Stock: '/assets/stock',
+    Counts: '/assets/counts',
+    'Label Sheets': '/assets/labels',
+    Rooms: '/assets/rooms',
+    Settings: '/assets/settings',
+    'Connect Claude': '/assets/connect-claude',
+  };
+  const VIEWER_BEFORE = ['All Assets', 'Dashboard', 'Custody', 'Holdings', 'Kits', 'Stock', 'Counts', 'Connect Claude'];
+  const CUSTODIAN_BEFORE = [...VIEWER_BEFORE, 'Add Asset', 'Drafts From Claude', 'Label Sheets'];
+
+  // owner, 24 October 2026: "i thing we need to arragne the assets menu"; asked, "7 entries, the rest as tabs"
+  it('is a heading after the KPIs with 7 entries, the other pages their tabs, for no role as such', () => {
     const labels = NAV.map((n) => n.label);
     expect(labels.indexOf('Assets')).toBe(labels.indexOf('KPIs') + 1);
     expect(NAV).toContain(ASSETS_NAV);
-    expect(ASSETS_NAV).toMatchObject({ href: '/assets', section: '/assets' });
+    // opening on the Dashboard, its first page; highlighted on every page under /assets
+    expect(ASSETS_NAV).toMatchObject({ href: '/assets/dashboard', section: '/assets' });
     expect(ASSETS_NAV.roles).toBeUndefined();
-    expect(ASSETS_NAV.items?.map((i) => [i.label, i.href])).toEqual([
-      ['All Assets', '/assets'],
-      ['Dashboard', '/assets/dashboard'],
-      ['Custody', '/assets/custody'],
-      ['Holdings', '/assets/holders'],
-      ['Add Asset', '/assets/new'],
-      ['Drafts From Claude', '/assets/drafts'],
-      ['Needs Values', '/assets/needs-values'],
-      ['Kits', '/assets/kits'],
-      ['Stock', '/assets/stock'],
-      ['Counts', '/assets/counts'],
-      ['Label Sheets', '/assets/labels'],
-      ['Rooms', '/assets/rooms'],
-      ['Settings', '/assets/settings'],
-      ['Connect Claude', '/assets/connect-claude'],
+    expect(ASSETS_NAV.items?.map((i) => [i.label, i.href, i.tabs?.map((t) => [t.label, t.href]) ?? null])).toEqual([
+      ['Dashboard', '/assets/dashboard', null],
+      [
+        'All Assets',
+        '/assets',
+        [
+          ['All', '/assets'],
+          ['Needs values', '/assets/needs-values'],
+          ['Drafts from Claude', '/assets/drafts'],
+        ],
+      ],
+      [
+        'Custody',
+        '/assets/custody',
+        [
+          ['Records', '/assets/custody'],
+          ['Holdings', '/assets/holders'],
+        ],
+      ],
+      ['Kits', '/assets/kits', null],
+      ['Stock', '/assets/stock', null],
+      [
+        'Counts & Labels',
+        '/assets/counts',
+        [
+          ['Counts', '/assets/counts'],
+          ['Label sheets', '/assets/labels'],
+        ],
+      ],
+      [
+        'Setup',
+        '/assets/rooms',
+        [
+          ['Rooms', '/assets/rooms'],
+          ['Settings', '/assets/settings'],
+          ['Connect Claude', '/assets/connect-claude'],
+        ],
+      ],
     ]);
-    // the Assets access decides, never a role
-    expect(ASSETS_NAV.items?.every((i) => !i.roles && i.audience)).toBe(true);
+    // Add Asset left the menu: a button at the top right of All Assets' pages, its page where it was
+    expect(ASSETS_NAV.items?.find((i) => i.label === 'All Assets')?.action).toEqual({ href: '/assets/new', label: 'Add asset', audience: 'assets-register' });
+    expect(ASSETS_NAV.items?.some((i) => i.href === '/assets/new' || i.tabs?.some((t) => t.href === '/assets/new'))).toBe(false);
+    // the Assets access decides, never a role: an entry by its own audience, or by its tabs'
+    for (const i of ASSETS_NAV.items ?? []) {
+      expect(i.roles).toBeUndefined();
+      if (i.tabs) {
+        expect(i.audience).toBeUndefined();
+        expect(i.tabs.every((t) => !t.roles && t.audience)).toBe(true);
+      } else expect(i.audience).toBe('assets');
+    }
+  });
+
+  it('keeps every page at its address, each once, Add Asset’s as the button', () => {
+    const pages = (ASSETS_NAV.items ?? []).flatMap((i) => (i.tabs ? i.tabs.map((t) => t.href) : [i.href]));
+    expect(new Set(pages).size).toBe(pages.length);
+    expect([...pages, '/assets/new'].sort()).toEqual(Object.values(BEFORE).sort());
+    for (const tab of Object.values(ASSETS_TABS)) expect(tab.section).toBe(tab.href);
   });
 
   it('is hidden without Assets access, whatever the roles, and from an API from before it', () => {
@@ -622,109 +705,107 @@ describe('Assets (owner, 21 October 2026: "i want to add this module with a spec
     }
   });
 
-  it('shows each page for its level: a viewer reads, a custodian adds, a manager has the rooms and settings', () => {
-    expect(pages({ roles: ['employee'], employeeId: ME, assets: at('viewer') })).toEqual(['All Assets', 'Dashboard', 'Custody', 'Holdings', 'Kits', 'Stock', 'Counts', 'Connect Claude']);
-    expect(pages({ roles: ['employee'], employeeId: ME, assets: at('custodian') })).toEqual([
-      'All Assets',
-      'Dashboard',
-      'Custody',
-      'Holdings',
-      'Add Asset',
-      'Drafts From Claude',
-      'Kits',
-      'Stock',
-      'Counts',
-      'Label Sheets',
-      'Connect Claude',
-    ]);
-    expect(pages({ roles: ['hr'], employeeId: ME, assets: at('manager') })).toEqual([
-      'All Assets',
-      'Dashboard',
-      'Custody',
-      'Holdings',
-      'Add Asset',
-      'Drafts From Claude',
-      'Kits',
-      'Stock',
-      'Counts',
-      'Label Sheets',
-      'Rooms',
-      'Settings',
-      'Connect Claude',
-    ]);
+  it.each([
+    ['a viewer', VIEWER, VIEWER_BEFORE],
+    ['a custodian', CUSTODIAN, CUSTODIAN_BEFORE],
+    ['a manager', MANAGER, [...CUSTODIAN_BEFORE, 'Rooms', 'Settings']],
+    ['Finance, a viewer who sees the values', FINANCE, [...VIEWER_BEFORE, 'Needs Values', 'Settings']],
+    ['the CEO, a custodian who sees the values', CEO, [...CUSTODIAN_BEFORE, 'Needs Values', 'Settings']],
+    ['a Super Admin, a manager who sees the values', SUPER_ADMIN, Object.keys(BEFORE)],
+  ])('gives %s the pages they had, in the 7 entries and their tabs', (_who, u, before) => {
+    expect(entries(u)).toEqual(SEVEN);
+    const reached = (assets(u)?.items ?? []).flatMap((i) => (i.tabs ? i.tabs.map((t) => t.href) : [i.href]));
+    const add = addsAssets(u);
+    expect([...reached, ...(add ? [add.href] : [])].sort()).toEqual(before.map((label) => BEFORE[label]).sort());
+    // the tabs the pages draw are those the sidebar's entries have
+    for (const label of ['All Assets', 'Custody', 'Counts & Labels', 'Setup']) expect(entry(u, label)?.tabs?.map((t) => t.label)).toEqual(tabs(u, label));
   });
 
-  it('shows Needs Values and Settings to those who see the values ("CEO and Finance"), whatever their level', () => {
-    expect(pages({ roles: ['finance'], employeeId: ME, assets: at('viewer', true) })).toEqual([
-      'All Assets',
-      'Dashboard',
-      'Custody',
-      'Holdings',
-      'Needs Values',
-      'Kits',
-      'Stock',
-      'Counts',
-      'Settings',
-      'Connect Claude',
-    ]);
-    expect(pages({ roles: ['ceo'], employeeId: ME, assets: at('custodian', true) })).toEqual([
-      'All Assets',
-      'Dashboard',
-      'Custody',
-      'Holdings',
-      'Add Asset',
-      'Drafts From Claude',
-      'Needs Values',
-      'Kits',
-      'Stock',
-      'Counts',
-      'Label Sheets',
-      'Settings',
-      'Connect Claude',
-    ]);
-    expect(pages({ roles: ['super_admin'], employeeId: ME, assets: at('manager', true) })).toEqual([
-      'All Assets',
-      'Dashboard',
-      'Custody',
-      'Holdings',
-      'Add Asset',
-      'Drafts From Claude',
-      'Needs Values',
-      'Kits',
-      'Stock',
-      'Counts',
-      'Label Sheets',
-      'Rooms',
-      'Settings',
-      'Connect Claude',
-    ]);
+  it('shows a viewer the register alone, the custody records and holdings, the counts and Connect Claude', () => {
+    expect(tabs(VIEWER, 'All Assets')).toEqual(['All']);
+    expect(tabs(VIEWER, 'Custody')).toEqual(['Records', 'Holdings']);
+    expect(tabs(VIEWER, 'Counts & Labels')).toEqual(['Counts']);
+    expect(tabs(VIEWER, 'Setup')).toEqual(['Connect Claude']);
+    // one tab alone: no row of tabs, the page alone; the entry links to it
+    expect(entry(VIEWER, 'Setup')?.href).toBe('/assets/connect-claude');
+    expect(entry(VIEWER, 'All Assets')?.href).toBe('/assets');
+    expect(addsAssets(VIEWER)).toBeNull();
+  });
+
+  it('shows a custodian the drafts, the label sheets and Add asset too, and a manager the rooms and settings', () => {
+    expect(tabs(CUSTODIAN, 'All Assets')).toEqual(['All', 'Drafts from Claude']);
+    expect(tabs(CUSTODIAN, 'Counts & Labels')).toEqual(['Counts', 'Label sheets']);
+    expect(tabs(CUSTODIAN, 'Setup')).toEqual(['Connect Claude']);
+    expect(addsAssets(CUSTODIAN)?.href).toBe('/assets/new');
+    expect(tabs(MANAGER, 'All Assets')).toEqual(['All', 'Drafts from Claude']);
+    expect(tabs(MANAGER, 'Counts & Labels')).toEqual(['Counts', 'Label sheets']);
+    expect(tabs(MANAGER, 'Setup')).toEqual(['Rooms', 'Settings', 'Connect Claude']);
+    expect(entry(MANAGER, 'Setup')?.href).toBe('/assets/rooms');
+    expect(addsAssets(MANAGER)?.href).toBe('/assets/new');
+  });
+
+  it('shows Needs values and Settings to those who see the values ("CEO and Finance"), whatever their level', () => {
+    expect(tabs(FINANCE, 'All Assets')).toEqual(['All', 'Needs values']);
+    expect(tabs(FINANCE, 'Counts & Labels')).toEqual(['Counts']);
+    expect(tabs(FINANCE, 'Setup')).toEqual(['Settings', 'Connect Claude']);
+    expect(entry(FINANCE, 'Setup')?.href).toBe('/assets/settings');
+    // a viewer: they don't add assets
+    expect(addsAssets(FINANCE)).toBeNull();
+    expect(tabs(CEO, 'All Assets')).toEqual(['All', 'Needs values', 'Drafts from Claude']);
+    expect(tabs(CEO, 'Counts & Labels')).toEqual(['Counts', 'Label sheets']);
+    expect(tabs(CEO, 'Setup')).toEqual(['Settings', 'Connect Claude']);
+    expect(addsAssets(CEO)?.href).toBe('/assets/new');
+    expect(tabs(SUPER_ADMIN, 'All Assets')).toEqual(['All', 'Needs values', 'Drafts from Claude']);
+    expect(tabs(SUPER_ADMIN, 'Custody')).toEqual(['Records', 'Holdings']);
+    expect(tabs(SUPER_ADMIN, 'Counts & Labels')).toEqual(['Counts', 'Label sheets']);
+    expect(tabs(SUPER_ADMIN, 'Setup')).toEqual(['Rooms', 'Settings', 'Connect Claude']);
+    expect(addsAssets(SUPER_ADMIN)?.href).toBe('/assets/new');
     // a manager who isn't the CEO, Finance or a Super Admin: no values
-    expect(pages({ roles: ['hr'], employeeId: ME, assets: at('manager') })).not.toContain('Needs Values');
+    expect(tabs(MANAGER, 'All Assets')).not.toContain('Needs values');
   });
 
-  it('is in an employee’s own sidebar too, after the KPIs, for an employee-only custodian', () => {
-    const labels = navFor({ roles: ['employee'], employeeId: ME, assets: at('custodian') }).map((n) => n.label);
+  it('is in an employee’s own sidebar too, after the KPIs, for an employee-only custodian, opening on the Dashboard', () => {
+    const labels = navFor(CUSTODIAN).map((n) => n.label);
     expect(labels).toContain('Assets');
     expect(labels.indexOf('Assets')).toBe(labels.indexOf('KPIs') + 1);
-    expect(assets({ roles: ['employee'], employeeId: ME, assets: at('custodian') })?.href).toBe('/assets');
+    expect(assets(CUSTODIAN)?.href).toBe('/assets/dashboard');
+    expect(entries(CUSTODIAN)).toEqual(SEVEN);
   });
 
-  it('highlights the page it is on, an asset’s page under All Assets', () => {
-    expect(activeSubItem(ASSETS_NAV, '/assets/new')?.label).toBe('Add Asset');
-    expect(activeSubItem(ASSETS_NAV, '/assets/PK-CAM-0001')?.label).toBe('All Assets');
-    expect(activeSubItem(ASSETS_NAV, '/assets/needs-values')?.label).toBe('Needs Values');
-    expect(activeSubItem(ASSETS_NAV, '/assets/drafts')?.label).toBe('Drafts From Claude');
-    expect(activeSubItem(ASSETS_NAV, '/assets/connect-claude')?.label).toBe('Connect Claude');
-    // custody (step 3): a record, its form and a new handover under Custody; a person's holdings under Holdings
-    expect(activeSubItem(ASSETS_NAV, '/assets/custody/CUS-0042/form')?.label).toBe('Custody');
-    expect(activeSubItem(ASSETS_NAV, '/assets/custody/new')?.label).toBe('Custody');
-    expect(activeSubItem(ASSETS_NAV, '/assets/holders/3f1c2a9e-5b7d-4e1f-9a2b-6c8d0e4f1a2b')?.label).toBe('Holdings');
-    // step 5 (22 October 2026): the dashboard, a count and a new one under Counts, the sheets to print under Label Sheets
-    expect(activeSubItem(ASSETS_NAV, '/assets/dashboard')?.label).toBe('Dashboard');
-    expect(activeSubItem(ASSETS_NAV, '/assets/counts/new')?.label).toBe('Counts');
-    expect(activeSubItem(ASSETS_NAV, '/assets/counts/3f1c2a9e-5b7d-4e1f-9a2b-6c8d0e4f1a2b')?.label).toBe('Counts');
-    expect(activeSubItem(ASSETS_NAV, '/assets/labels/print')?.label).toBe('Label Sheets');
+  it('highlights the entry on any of its tabs’ pages and the pages under them', () => {
+    const on = (pathname: string, item = ASSETS_NAV) => activeSubItem(item, pathname)?.label ?? null;
+    // an asset's page (its QR label's address) and its own pages, Add asset and a draft's review on its form
+    for (const page of ['/assets', '/assets/PK-CAM-0001', '/assets/PK-CAM-0001/edit', '/assets/PK-CAM-0001/values', '/assets/PK-CAM-0001/label', '/assets/new']) {
+      expect(on(page)).toBe('All Assets');
+    }
+    expect(on(new URL(assetDraftPath(ME), 'https://people.trendlix.com').pathname)).toBe('All Assets');
+    expect(on('/assets/needs-values')).toBe('All Assets');
+    expect(on('/assets/drafts')).toBe('All Assets');
+    // a custody record, its form, a new handover; the holdings, a person's and their statement
+    for (const page of ['/assets/custody', '/assets/custody/new', '/assets/custody/CUS-0042', '/assets/custody/CUS-0042/form', '/assets/holders', `/assets/holders/${ME}`, `/assets/holders/${ME}/statement`]) {
+      expect(on(page)).toBe('Custody');
+    }
+    expect(on('/assets/kits')).toBe('Kits');
+    expect(on('/assets/stock')).toBe('Stock');
+    // a count, a new one; the label sheets and the sheets to print
+    for (const page of ['/assets/counts', '/assets/counts/new', `/assets/counts/${ME}`, '/assets/labels', '/assets/labels/print']) expect(on(page)).toBe('Counts & Labels');
+    for (const page of ['/assets/rooms', '/assets/settings', '/assets/connect-claude']) expect(on(page)).toBe('Setup');
+    expect(on('/assets/dashboard')).toBe('Dashboard');
+    // as each user's sidebar has them: their entry, linking to its first tab they see
+    expect(activeSubItem(assets(VIEWER)!, '/assets/connect-claude')?.href).toBe('/assets/connect-claude');
+    expect(activeSubItem(assets(FINANCE)!, '/assets/settings')?.href).toBe('/assets/settings');
+    expect(activeSubItem(assets(VIEWER)!, `/assets/holders/${ME}`)?.label).toBe('Custody');
+    expect(activeSubItem(assets(CEO)!, '/assets/needs-values')?.label).toBe('All Assets');
+    // not the photos, nor the phone pages (/app/assets…, which have their own menu)
     expect(isActive(ASSETS_NAV, '/asset-photo/PK-CAM-0001/x')).toBe(false);
+    expect(isActive(ASSETS_NAV, '/app/assets')).toBe(false);
+  });
+
+  it('doesn’t change the menu itself for the next user', () => {
+    const before = JSON.stringify(ASSETS_NAV);
+    navFor(VIEWER);
+    navFor(FINANCE);
+    expect(JSON.stringify(ASSETS_NAV)).toBe(before);
   });
 });
 

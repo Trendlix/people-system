@@ -1,11 +1,13 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
+import { ASSET_PATHS } from '@/lib/asset-paths';
 import { formatDateTime } from '@/lib/format';
 import { saveAssetSettings } from '../actions';
 import { moneyText } from '../assets';
 import { restoreStandardTerms, saveCustodyTerms } from '../custody-actions';
 import { TermsForm } from '../terms-form';
 import { assetsCaller, assetsNotLoaded, loadAssetSettings } from '../data';
+import { AssetsFrame } from '../frame';
 import { ThresholdForm } from '../place-forms';
 import { Empty, Loading, NoAccess } from '../ui';
 
@@ -48,11 +50,12 @@ async function Settings() {
   );
 }
 
+// Setup → Settings (owner, 24 October 2026: "7 entries, the rest as tabs"; "Keep them inside Assets"): its tab names it,
+// under Setup's heading (frame.tsx)
 export default function AssetSettingsPage() {
   return (
-    <div className="max-w-4xl">
-      <h1 className="text-2xl font-semibold">Asset Settings</h1>
-      <p className="mt-1 text-muted">
+    <AssetsFrame tab={ASSET_PATHS.settings}>
+      <p className="text-muted">
         The capitalization threshold: an asset cheaper than it is Expensed, its book value 0. Every other fixed asset loses its value in a straight
         line over its useful life.
       </p>
@@ -61,6 +64,6 @@ export default function AssetSettingsPage() {
           <Settings />
         </Suspense>
       </div>
-    </div>
+    </AssetsFrame>
   );
 }

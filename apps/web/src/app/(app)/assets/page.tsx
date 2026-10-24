@@ -3,8 +3,9 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import { Select } from '@/components/select';
 import { ASSET_PATHS } from '@/lib/asset-paths';
-import { asQuery, draftsLinkText, groupChips, isFiltered, readAssetQuery, statusChips, type ChipLink } from './assets';
-import { assetsCaller, assetsNotLoaded, listOrEmpty, loadAssets, loadDrafts, loadKits, loadRooms } from './data';
+import { asQuery, groupChips, isFiltered, readAssetQuery, statusChips, type ChipLink } from './assets';
+import { assetsCaller, assetsNotLoaded, listOrEmpty, loadAssets, loadKits, loadRooms } from './data';
+import { AssetsFrame } from './frame';
 import { AssetTable, Empty, Loading, NoAccess, Pages } from './ui';
 
 // The asset register (owner, 21 October 2026: "i want to add this module with a special permission to the system"; the
@@ -14,7 +15,7 @@ import { AssetTable, Empty, Loading, NoAccess, Pages } from './ui';
 // Finance and a Super Admin ("CEO and Finance"), whom the API alone answers it to. Disposed assets leave the register
 // (spec §2.4: "Excluded from all totals") unless the Disposed chip is chosen.
 
-export const metadata: Metadata = { title: 'Assets · People System' };
+export const metadata: Metadata = { title: 'All Assets · People System' };
 
 const chip = 'inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-sm font-semibold whitespace-nowrap no-underline';
 const ACTIVE = 'border-ink bg-ink text-white hover:text-white';
@@ -37,10 +38,7 @@ async function Register({ searchParams }: { searchParams: PageProps<'/assets'>['
   const [{ access, can }, params] = await Promise.all([assetsCaller(), searchParams]);
   if (!can.view) return <NoAccess />;
   const query = readAssetQuery(params);
-  // the drafts from Claude waiting (step 2, owner, 21 October 2026: "the connection method"), for those who confirm them
-  const [loaded, rooms, kits, drafts] = await Promise.all([loadAssets(asQuery(query)), loadRooms(), loadKits(), can.register ? loadDrafts() : null]);
-  const openDrafts = drafts?.kind === 'ok' ? drafts.value.length : 0;
-  const draftsText = draftsLinkText(openDrafts);
+  const [loaded, rooms, kits] = await Promise.all([loadAssets(asQuery(query)), loadRooms(), loadKits()]);
   const deleted = typeof params.deleted === 'string' ? params.deleted : null;
   const counts = loaded.kind === 'ok' ? loaded.value.counts : null;
   const roomList = listOrEmpty(rooms);
@@ -97,17 +95,6 @@ async function Register({ searchParams }: { searchParams: PageProps<'/assets'>['
             Clear
           </Link>
         )}
-        {draftsText && (
-          <Link href={ASSET_PATHS.drafts} aria-label={draftsText} className="btn btn-secondary sm:ml-auto">
-            Drafts from Claude
-            <span className="badge bg-accent-soft text-accent tabular-nums">{openDrafts}</span>
-          </Link>
-        )}
-        {can.register && (
-          <Link href={ASSET_PATHS.new} className={`btn btn-primary ${draftsText ? '' : 'sm:ml-auto'}`}>
-            Add asset
-          </Link>
-        )}
       </form>
 
       <div className="space-y-2">
@@ -135,11 +122,13 @@ async function Register({ searchParams }: { searchParams: PageProps<'/assets'>['
   );
 }
 
+// All Assets → All (owner, 24 October 2026: "7 entries, the rest as tabs"): the register, under All Assets' heading
+// with Add asset at its top right for a custodian or a manager, and the drafts from Claude waiting counted on their tab
+// (frame.tsx), both of which were in the search's row until then
 export default function AssetsPage({ searchParams }: PageProps<'/assets'>) {
   return (
-    <div className="max-w-7xl">
-      <h1 className="text-2xl font-semibold">Assets</h1>
-      <p className="mt-1 text-muted">
+    <AssetsFrame tab={ASSET_PATHS.list}>
+      <p className="text-muted">
         The studio&apos;s register: everything the company owns, where it is and who holds it. Each asset has a code that never changes, the
         address its QR label opens.
       </p>
@@ -148,6 +137,6 @@ export default function AssetsPage({ searchParams }: PageProps<'/assets'>) {
           <Register searchParams={searchParams} />
         </Suspense>
       </div>
-    </div>
+    </AssetsFrame>
   );
 }

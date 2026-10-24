@@ -78,7 +78,7 @@ async function Consent({ searchParams }: { searchParams: PageProps<'/oauth/autho
         <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-danger">
           {check.message}
         </p>
-        <p className="text-muted">Add the connector again in Claude, from Assets → Connect Claude.</p>
+        <p className="text-muted">Add the connector again in Claude, from Assets → Setup → Connect Claude.</p>
         <Link href="/" className="btn btn-secondary">
           Go to Trendlix People
         </Link>

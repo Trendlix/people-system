@@ -6,6 +6,7 @@ import { ASSET_PATHS } from '@/lib/asset-paths';
 import { formatDate } from '@/lib/format';
 import { readLabelQuery } from '../counts';
 import { assetsCaller, assetsNotLoaded, listOrEmpty, loadKits, loadRooms } from '../data';
+import { AssetsFrame } from '../frame';
 import { loadLabelChoices } from '../step5-data';
 import { Empty, Loading, NoAccess, StatusBadge } from '../ui';
 
@@ -133,19 +134,22 @@ async function Choices({ searchParams }: { searchParams: PageProps<'/assets/labe
   );
 }
 
+// Counts & Labels → Label sheets (owner, 24 October 2026: "7 entries, the rest as tabs"): its tab names it, under
+// Counts & Labels' heading (frame.tsx)
 export default function LabelSheetsPage({ searchParams }: PageProps<'/assets/labels'>) {
   return (
-    <div className="max-w-4xl">
-      <h1 className="text-2xl font-semibold">Label Sheets</h1>
-      <p className="mt-1 text-muted">
-        A4 sheets of 24 labels ({LABEL_SHEET.columns} × {LABEL_SHEET.rows}, {LABEL_SHEET.labelWidthMm} × {LABEL_SHEET.labelHeightMm} mm). Each label&apos;s QR code opens
-        its asset&apos;s page.
-      </p>
-      <div className="mt-6">
-        <Suspense fallback={<Loading />}>
-          <Choices searchParams={searchParams} />
-        </Suspense>
+    <AssetsFrame tab={ASSET_PATHS.labels}>
+      <div className="max-w-4xl">
+        <p className="text-muted">
+          A4 sheets of 24 labels ({LABEL_SHEET.columns} × {LABEL_SHEET.rows}, {LABEL_SHEET.labelWidthMm} × {LABEL_SHEET.labelHeightMm} mm). Each label&apos;s QR code
+          opens its asset&apos;s page.
+        </p>
+        <div className="mt-6">
+          <Suspense fallback={<Loading />}>
+            <Choices searchParams={searchParams} />
+          </Suspense>
+        </div>
       </div>
-    </div>
+    </AssetsFrame>
   );
 }

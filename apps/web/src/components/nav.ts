@@ -47,6 +47,34 @@ export interface NavSubItem {
    * them. A word, not a function: the sidebar's items go to the browser as they are.
    */
   audience?: NavAudience;
+  /**
+   * Its pages as tabs (owner, 24 October 2026, on the 14 pages under Assets: "i thing we need to arragne the assets
+   * menu"; asked, "7 entries, the rest as tabs"), each page keeping its own address and its own `roles` or `audience`, as
+   * a sub-item's: the sub-item is shown to whoever sees at least one of them and links to the first they see (its own
+   * roles and audience are left out then), and it is highlighted on any of their pages and the pages under them. The
+   * pages draw the row of tabs the user sees (tabsFor), none when they see one alone.
+   */
+  tabs?: NavTab[];
+  /** A button at the top right of its pages, for whoever it names (the Assets' Add asset: actionFor). */
+  action?: NavAction;
+}
+
+/** A page shown as a tab on a sidebar page's pages (NavSubItem.tabs); its label in sentence case, as tabs are. */
+export interface NavTab {
+  href: string;
+  label: string;
+  /** Its sub-item is highlighted on every page under this path. */
+  section: string;
+  roles?: Role[];
+  audience?: NavAudience;
+}
+
+/** A button on a sidebar page's pages (NavSubItem.action), for its roles or audience, as a tab's; sentence case. */
+export interface NavAction {
+  href: string;
+  label: string;
+  roles?: Role[];
+  audience?: NavAudience;
 }
 
 /** Who a sub-item is for besides its roles (NavSubItem.audience). */
@@ -87,33 +115,52 @@ export const KPIS_NAV: NavItem = {
  * and Holdings, what each person holds, after All Assets, for anyone with access (a custodian or a manager hands over and
  * receives back from them). Step 4 (22 October 2026: "kits / stock / repairs / disposal"): Stock, the consumables with
  * Use and Restock, after Kits, for anyone with access (a custodian or a manager moves the stock).
- * Step 5 (22 October 2026): the Dashboard after All Assets (the heading still opens the register), for anyone with
- * access; Counts after Stock, for anyone with access (a custodian or a manager counts); Label Sheets for a custodian or a
- * manager.
+ * Step 5 (22 October 2026): the Dashboard, for anyone with access; Counts after Stock, for anyone with access (a
+ * custodian or a manager counts); Label Sheets for a custodian or a manager.
+ * Those 14 pages arranged in 7 entries (owner, 24 October 2026: "i thing we need to arragne the assets menu"; asked, "7
+ * entries, the rest as tabs", and "Keep them inside Assets", as Assets has its own access): the Dashboard first, All
+ * Assets with the register, Needs values and the drafts as tabs and Add asset as a button (its page stays, no longer in
+ * the menu), Custody with the records and the holdings, Kits, Stock, Counts & Labels, and Setup with the rooms, the
+ * settings and Connect Claude. Every page keeps its address and its audience: each person sees the pages they saw.
+ * ASSETS_TABS are the pages shown as tabs; ASSETS_NAV the heading with its entries.
  */
+export const ASSETS_TABS = {
+  register: { href: ASSET_PATHS.list, label: 'All', section: ASSET_PATHS.list, audience: 'assets' },
+  needsValues: { href: ASSET_PATHS.needsValues, label: 'Needs values', section: ASSET_PATHS.needsValues, audience: 'asset-values' },
+  drafts: { href: ASSET_PATHS.drafts, label: 'Drafts from Claude', section: ASSET_PATHS.drafts, audience: 'assets-register' },
+  custody: { href: CUSTODY_PATHS.list, label: 'Records', section: CUSTODY_PATHS.list, audience: 'assets' },
+  holdings: { href: CUSTODY_PATHS.holders, label: 'Holdings', section: CUSTODY_PATHS.holders, audience: 'assets' },
+  // step 5 (22 October 2026: "stock counts, label sheets"): the counts for anyone with access (a custodian or a manager
+  // counts), the label sheets for a custodian or a manager
+  counts: { href: ASSET_PATHS.counts, label: 'Counts', section: ASSET_PATHS.counts, audience: 'assets' },
+  labels: { href: ASSET_PATHS.labels, label: 'Label sheets', section: ASSET_PATHS.labels, audience: 'assets-register' },
+  rooms: { href: ASSET_PATHS.rooms, label: 'Rooms', section: ASSET_PATHS.rooms, audience: 'assets-manager' },
+  settings: { href: ASSET_PATHS.settings, label: 'Settings', section: ASSET_PATHS.settings, audience: 'assets-settings' },
+  connectClaude: { href: ASSET_PATHS.connectClaude, label: 'Connect Claude', section: ASSET_PATHS.connectClaude, audience: 'assets' },
+} as const satisfies Record<string, NavTab>;
+
 export const ASSETS_NAV: NavItem = {
-  href: ASSET_PATHS.list,
+  href: ASSET_PATHS.dashboard,
   label: 'Assets',
   section: ASSET_PATHS.list,
   items: [
-    { href: ASSET_PATHS.list, label: 'All Assets', section: ASSET_PATHS.list, audience: 'assets' },
     // step 5 (22 October 2026: "the Assets dashboard"): the figures, the chips that need attention and the exports
     { href: ASSET_PATHS.dashboard, label: 'Dashboard', section: ASSET_PATHS.dashboard, audience: 'assets' },
-    { href: CUSTODY_PATHS.list, label: 'Custody', section: CUSTODY_PATHS.list, audience: 'assets' },
-    { href: CUSTODY_PATHS.holders, label: 'Holdings', section: CUSTODY_PATHS.holders, audience: 'assets' },
-    { href: ASSET_PATHS.new, label: 'Add Asset', section: ASSET_PATHS.new, audience: 'assets-register' },
-    { href: ASSET_PATHS.drafts, label: 'Drafts From Claude', section: ASSET_PATHS.drafts, audience: 'assets-register' },
-    { href: ASSET_PATHS.needsValues, label: 'Needs Values', section: ASSET_PATHS.needsValues, audience: 'asset-values' },
+    // the register's pages, an asset's own (/assets/{code}) and a draft's review on the Add form (/assets/new?draft=) under
+    // it; Add asset for a custodian or a manager
+    {
+      href: ASSET_PATHS.list,
+      label: 'All Assets',
+      section: ASSET_PATHS.list,
+      tabs: [ASSETS_TABS.register, ASSETS_TABS.needsValues, ASSETS_TABS.drafts],
+      action: { href: ASSET_PATHS.new, label: 'Add asset', audience: 'assets-register' },
+    },
+    { href: CUSTODY_PATHS.list, label: 'Custody', section: CUSTODY_PATHS.list, tabs: [ASSETS_TABS.custody, ASSETS_TABS.holdings] },
     { href: ASSET_PATHS.kits, label: 'Kits', section: ASSET_PATHS.kits, audience: 'assets' },
     // step 4 (22 October 2026): the consumables' stock, Use and Restock
     { href: ASSET_PATHS.stock, label: 'Stock', section: ASSET_PATHS.stock, audience: 'assets' },
-    // step 5 (22 October 2026: "stock counts, label sheets"): the counts for anyone with access (a custodian or a manager
-    // counts), the label sheets for a custodian or a manager
-    { href: ASSET_PATHS.counts, label: 'Counts', section: ASSET_PATHS.counts, audience: 'assets' },
-    { href: ASSET_PATHS.labels, label: 'Label Sheets', section: ASSET_PATHS.labels, audience: 'assets-register' },
-    { href: ASSET_PATHS.rooms, label: 'Rooms', section: ASSET_PATHS.rooms, audience: 'assets-manager' },
-    { href: ASSET_PATHS.settings, label: 'Settings', section: ASSET_PATHS.settings, audience: 'assets-settings' },
-    { href: ASSET_PATHS.connectClaude, label: 'Connect Claude', section: ASSET_PATHS.connectClaude, audience: 'assets' },
+    { href: ASSET_PATHS.counts, label: 'Counts & Labels', section: ASSET_PATHS.counts, tabs: [ASSETS_TABS.counts, ASSETS_TABS.labels] },
+    { href: ASSET_PATHS.rooms, label: 'Setup', section: ASSET_PATHS.rooms, tabs: [ASSETS_TABS.rooms, ASSETS_TABS.settings, ASSETS_TABS.connectClaude] },
   ],
 };
 
@@ -330,8 +377,8 @@ function inAudience(user: NavUser, audience: NavAudience | undefined): boolean {
 }
 
 /**
- * Whether the user sees an item or a sub-item: with neither roles nor an audience, yes; else when they have one of its
- * roles or are among its audience.
+ * Whether the user sees an item, a sub-item, a tab or a button: with neither roles nor an audience, yes; else when they
+ * have one of its roles or are among its audience.
  */
 function sees(user: NavUser, entry: { roles?: Role[]; audience?: NavAudience }): boolean {
   if (!entry.roles && !entry.audience) return true;
@@ -345,8 +392,31 @@ function sees(user: NavUser, entry: { roles?: Role[]; audience?: NavAudience }):
  */
 function shownWithItems(user: NavUser, item: NavItem): NavItem[] {
   if (!item.items) return [item];
-  const items = item.items.filter((sub) => sees(user, sub));
+  const items = item.items.flatMap((sub) => shownSubItem(user, sub));
   return items.length ? [{ ...item, href: items[0].href, items }] : [];
+}
+
+/**
+ * A sub-item as the user sees it: one with tabs with the tabs they see, linking to the first (24 October 2026), or left
+ * out when they see none; any other as it is, when they see it.
+ */
+function shownSubItem(user: NavUser, sub: NavSubItem): NavSubItem[] {
+  if (!sub.tabs) return sees(user, sub) ? [sub] : [];
+  const tabs = tabsFor(user, sub);
+  return tabs.length ? [{ ...sub, href: tabs[0].href, section: tabs[0].section, tabs }] : [];
+}
+
+/**
+ * The tabs of a sidebar page the user sees, in their order (owner, 24 October 2026: "7 entries, the rest as tabs"): the
+ * row its pages draw, left out when there is one alone. None for a page without tabs.
+ */
+export function tabsFor(user: NavUser, sub: Pick<NavSubItem, 'tabs'>): NavTab[] {
+  return (sub.tabs ?? []).filter((tab) => sees(user, tab));
+}
+
+/** The button at the top right of a sidebar page's pages, when the user is among those it is for; else null. */
+export function actionFor(user: NavUser, sub: Pick<NavSubItem, 'action'>): NavAction | null {
+  return sub.action && sees(user, sub.action) ? sub.action : null;
 }
 
 /**
@@ -392,11 +462,21 @@ export function isActive(item: Pick<NavItem, 'href' | 'section' | 'items'>, path
   return (item.section ? pathname.startsWith(item.section) : pathname === item.href) || activeSubItem(item, pathname) !== null;
 }
 
-/** The sub-item highlighted on this page: the one whose section matches most closely; null when none does. */
+/**
+ * The sub-item highlighted on this page: the one whose section matches most closely, a sub-item with tabs by its tabs'
+ * (24 October 2026: Custody on a holding's page, /assets/holders/…); null when none does.
+ */
 export function activeSubItem(item: Pick<NavItem, 'items'>, pathname: string): NavSubItem | null {
   let best: NavSubItem | null = null;
+  let matched = -1;
   for (const sub of item.items ?? []) {
-    if (isUnder(pathname, sub.section) && (!best || sub.section.length > best.section.length)) best = sub;
+    const sections = sub.tabs?.length ? sub.tabs.map((tab) => tab.section) : [sub.section];
+    for (const section of sections) {
+      if (isUnder(pathname, section) && section.length > matched) {
+        best = sub;
+        matched = section.length;
+      }
+    }
   }
   return best;
 }

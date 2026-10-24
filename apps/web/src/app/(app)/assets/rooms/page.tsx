@@ -8,6 +8,7 @@ import { canDelete } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import { createRoom, deleteRoom, setRoomArchived, updateRoom } from '../actions';
 import { assetsCaller, assetsNotLoaded, loadRooms } from '../data';
+import { AssetsFrame } from '../frame';
 import { ArchiveButton, NameNotesForm } from '../place-forms';
 import { Empty, Loading, NoAccess } from '../ui';
 
@@ -85,16 +86,17 @@ async function Rooms() {
   );
 }
 
+// Setup → Rooms (owner, 24 October 2026: "7 entries, the rest as tabs"; "Keep them inside Assets"): its tab names it,
+// under Setup's heading (frame.tsx)
 export default function RoomsPage() {
   return (
-    <div className="max-w-4xl">
-      <h1 className="text-2xl font-semibold">Rooms</h1>
-      <p className="mt-1 text-muted">Where the assets are kept when nobody holds them: the studios, the storeroom, the offices.</p>
+    <AssetsFrame tab={ASSET_PATHS.rooms}>
+      <p className="text-muted">Where the assets are kept when nobody holds them: the studios, the storeroom, the offices.</p>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>
           <Rooms />
         </Suspense>
       </div>
-    </div>
+    </AssetsFrame>
   );
 }

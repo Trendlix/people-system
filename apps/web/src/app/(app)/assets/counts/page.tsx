@@ -6,6 +6,7 @@ import { ASSET_PATHS } from '@/lib/asset-paths';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { countedText, countFiguresText, scopeKindText } from '../counts';
 import { assetsCaller, assetsNotLoaded, listOrEmpty, loadKits, loadRooms } from '../data';
+import { AssetsFrame } from '../frame';
 import { loadCounts } from '../step5-data';
 import { Empty, Loading, NoAccess } from '../ui';
 
@@ -168,11 +169,12 @@ async function Counts({ searchParams }: { searchParams: PageProps<'/assets/count
   );
 }
 
+// Counts & Labels → Counts (owner, 24 October 2026: "7 entries, the rest as tabs"): its tab names it, under Counts &
+// Labels' heading (frame.tsx)
 export default function CountsPage({ searchParams }: PageProps<'/assets/counts'>) {
   return (
-    <div className="max-w-5xl">
-      <h1 className="text-2xl font-semibold">Counts</h1>
-      <p className="mt-1 text-muted">
+    <AssetsFrame tab={ASSET_PATHS.counts}>
+      <p className="text-muted">
         Tick what is there, by tapping, typing or scanning labels. Whatever isn&apos;t ticked is missing; what is in custody counts as out. Mark a missing asset lost
         from its count once it is looked for.
       </p>
@@ -181,6 +183,6 @@ export default function CountsPage({ searchParams }: PageProps<'/assets/counts'>
           <Counts searchParams={searchParams} />
         </Suspense>
       </div>
-    </div>
+    </AssetsFrame>
   );
 }

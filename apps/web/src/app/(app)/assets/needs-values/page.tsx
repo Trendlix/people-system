@@ -5,6 +5,7 @@ import { Suspense } from 'react';
 import { ASSET_PATHS } from '@/lib/asset-paths';
 import { readAssetQuery } from '../assets';
 import { assetsCaller, assetsNotLoaded, loadAssets } from '../data';
+import { AssetsFrame } from '../frame';
 import { AssetThumb, Empty, Loading, NoAccess, Pages, StatusBadge } from '../ui';
 
 // Needs Values (owner's decisions, 21 October 2026: "CEO and Finance"; "Assets without a purchase cost show in a 'Needs
@@ -107,19 +108,22 @@ async function NeedsValues({ searchParams }: { searchParams: PageProps<'/assets/
   );
 }
 
+// All Assets → Needs values (owner, 24 October 2026: "7 entries, the rest as tabs"): its tab names it, under All
+// Assets' heading (frame.tsx)
 export default function NeedsValuesPage({ searchParams }: PageProps<'/assets/needs-values'>) {
   return (
-    <div className="max-w-5xl">
-      <h1 className="text-2xl font-semibold">Needs Values</h1>
-      <p className="mt-1 text-muted">
-        The assets without a purchase cost, for the CEO, Finance and a Super Admin to fill in from the invoice, with the market value. Only you see
-        the values.
-      </p>
-      <div className="mt-6">
-        <Suspense fallback={<Loading />}>
-          <NeedsValues searchParams={searchParams} />
-        </Suspense>
+    <AssetsFrame tab={ASSET_PATHS.needsValues}>
+      <div className="max-w-5xl">
+        <p className="text-muted">
+          The assets without a purchase cost, for the CEO, Finance and a Super Admin to fill in from the invoice, with the market value. Only you
+          see the values.
+        </p>
+        <div className="mt-6">
+          <Suspense fallback={<Loading />}>
+            <NeedsValues searchParams={searchParams} />
+          </Suspense>
+        </div>
       </div>
-    </div>
+    </AssetsFrame>
   );
 }

@@ -429,9 +429,6 @@ export function draftedText(draft: Pick<AssetDraftView, 'createdAt' | 'createdBy
   return `Drafted with Claude${who} on ${formatDateTime(draft.createdAt)}`;
 }
 
-/** What the register's link to the drafts says: "Drafts from Claude (3)"; null when none is waiting. */
-export const draftsLinkText = (open: number): string | null => (open > 0 ? `Drafts from Claude (${open})` : null);
-
 // ---------- photos ----------
 
 /** What the photo box says: how many more can be added (an asset has at most `max`). */

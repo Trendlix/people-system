@@ -7,6 +7,7 @@ import { titleCase } from '@/lib/format';
 import { draftedText, placeText, quantityText } from '../assets';
 import { assetsCaller, assetsNotLoaded, loadDrafts } from '../data';
 import { DiscardDraftButton, DraftProductImages } from '../drafts-ui';
+import { AssetsFrame } from '../frame';
 import { Empty, Loading, NoAccess } from '../ui';
 
 // Drafts from Claude (step 2, owner, 21 October 2026: "i might link a claude account for the assets section only to fetch
@@ -79,19 +80,20 @@ async function Drafts() {
   );
 }
 
+// All Assets → Drafts from Claude (owner, 24 October 2026: "7 entries, the rest as tabs"): its tab names it, with how
+// many wait, under All Assets' heading (frame.tsx)
 export default function DraftsPage() {
   return (
-    <div className="max-w-4xl space-y-4">
-      <div>
-        <h1 className="text-2xl font-semibold">Drafts From Claude</h1>
-        <p className="mt-1 text-muted">
+    <AssetsFrame tab={ASSET_PATHS.drafts}>
+      <div className="max-w-4xl space-y-4">
+        <p className="text-muted">
           Assets Claude drafted through the Trendlix People connector. None is in the register yet: review each, add its photos and confirm it, and it gets its
           code; or discard it.
         </p>
+        <Suspense fallback={<Loading />}>
+          <Drafts />
+        </Suspense>
       </div>
-      <Suspense fallback={<Loading />}>
-        <Drafts />
-      </Suspense>
-    </div>
+    </AssetsFrame>
   );
 }
