@@ -6,6 +6,8 @@ import { AttendanceFillService } from './attendance-fill.service.js';
 import { AttendanceImportsController } from './attendance-imports.controller.js';
 import { AttendanceImportsService } from './attendance-imports.service.js';
 import { AttendanceService } from './attendance.service.js';
+import { CheckInExemptionsController, EmployeeCheckInExemptionsController } from './check-in-exemptions.controller.js';
+import { CheckInExemptionsService } from './check-in-exemptions.service.js';
 import { CheckInLocationEndingsService } from './check-in-location-endings.service.js';
 import { CheckInSetupController, EmployeeCheckInPlacesController } from './check-in-setup.controller.js';
 import { CheckInSetupService } from './check-in-setup.service.js';
@@ -16,6 +18,7 @@ import { AttendanceCorrectionsController, MyCorrectionsController } from './corr
 import { AttendanceCorrectionsService } from './corrections.service.js';
 import { HomeLocationsController, MyHomeLocationsController } from './home-locations.controller.js';
 import { HomeLocationsService } from './home-locations.service.js';
+import { HoursByPairsService } from './hours-by-pairs.service.js';
 import { MapsKeyController, MapsSettingsController } from './maps-settings.controller.js';
 import { MapsSettingsService } from './maps-settings.service.js';
 
@@ -33,7 +36,10 @@ import { MapsSettingsService } from './maps-settings.service.js';
 // other users to request to add their home locations when working from home"): asked by anyone, decided by HR then the
 // CEO; a check-in within the person's approved home is Home (HomeLocationsService). The main office and its
 // sub-locations (owner, 20 October 2026: "main office location is the hero and other locations are like sub locations"),
-// each sub-location's people, and a person's check-in places on their profile (EmployeeCheckInPlacesController).
+// each sub-location's people, and a person's check-in places on their profile (EmployeeCheckInPlacesController). A day as
+// the sum of its pairs (owner, 25 October 2026: "the working hours to be calculated between the checkin and out only, not
+// the first and last"): the days of the months not yet paid recounted once on deploy (HoursByPairsService). People exempt
+// from check-in (owner, 25 October 2026: "Profile + a list in Check-in Setup"; CheckInExemptionsService).
 @Global()
 @Module({
   controllers: [
@@ -50,6 +56,9 @@ import { MapsSettingsService } from './maps-settings.service.js';
     // and the key at runtime for the pages that draw a map
     MapsSettingsController,
     MapsKeyController,
+    // people exempt from check-in (25 October 2026): Check-in Setup's list, and a person's on their profile
+    CheckInExemptionsController,
+    EmployeeCheckInExemptionsController,
   ],
   providers: [
     AttendanceService,
@@ -66,6 +75,9 @@ import { MapsSettingsService } from './maps-settings.service.js';
     // the ends of requested check-in locations told 7 days ahead (owner, 24 October 2026: "allow the HR to add an end date")
     CheckInLocationEndingsService,
     MapsSettingsService,
+    // a day as the sum of its pairs (25 October 2026): the recount on deploy, and an exemption's change
+    HoursByPairsService,
+    CheckInExemptionsService,
   ],
   exports: [AttendanceDaysService, AttendanceFillService],
 })

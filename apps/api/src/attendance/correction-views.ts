@@ -10,6 +10,7 @@ import {
   type LeaveStage,
   type LeaveStatus,
   type LeaveStepKind,
+  type PressPair,
 } from '@trendlix/shared';
 import { fromDateOnly } from '../common/date-only.js';
 import type { Prisma } from '../generated/prisma/client.js';
@@ -50,6 +51,9 @@ export interface DayBefore {
   checkOut: string | null;
   place: DayPlace | null;
   source: AttendanceSource;
+  /** Its pairs and open last check-in, when kept by them (owner, 25 October 2026); missing on one asked before. */
+  pairs?: PressPair[] | null;
+  openAt?: string | null;
 }
 
 /**

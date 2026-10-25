@@ -124,6 +124,7 @@ describe('the history’s figures', () => {
       zohoLeaveDays: 1,
       wfhDays: 1,
       odDays: 1,
+      exemptDays: 0,
       extraHours: 0.5,
       offDaysWorked: 1,
       lateMinutes: 80,

@@ -187,6 +187,9 @@ model User {
   whatsAppSettingsSet     WhatsAppSettings[]       @relation("WhatsAppSettingsChange")
   whatsAppOptIn           WhatsAppOptIn?
   whatsAppMessages        WhatsAppMessage[]
+  // people exempt from check-in (owner, 25 October 2026): the exemptions this user added, and those they ended
+  checkInExemptionsAdded  CheckInExemption[]       @relation("CheckInExemptionAddedBy")
+  checkInExemptionsEnded  CheckInExemption[]       @relation("CheckInExemptionEndedBy")
 
   @@map("users")
 }
@@ -972,6 +975,7 @@ model Employee {
   // entered. Cleared once a signed contract starts (or they leave); kept while their account is off, so turning it off
   // and on never starts the 7 days again
   noContractSince            DateTime?               @map("no_contract_since") @db.Date
+  checkInExemptions          CheckInExemption[] // their periods exempt from check-in (owner, 25 October 2026)
 
   @@map("employees")
 }
@@ -3293,10 +3297,44 @@ model AttendanceDay {
   correctedFrom   Json?                 @map("corrected_from")
   correctionId    String?               @map("correction_id") @db.Uuid
   correction      AttendanceCorrection? @relation(fields: [correctionId], references: [id], onDelete: SetNull)
+  // a day as the sum of its pairs (owner, 25 October 2026: "the working hours to be calculated between the checkin and
+  // out only, not the first and last"): a day of the system's check-ins (or a correction's) keeps its check-in →
+  // check-out pairs ([{ in, out }], moments ISO; null: not kept by pairs, as Zoho's days), the time between them within
+  // the shift's window in minutes, and the moment of a last check-in without a check-out (null: none)
+  pairs           Json?
+  breakMinutes    Int?                  @map("break_minutes")
+  openAt          DateTime?             @map("open_at") @db.Timestamptz
 
   @@unique([employeeId, date, source])
   @@index([date])
   @@map("attendance_days")
+}
+
+// A period exempt from check-in (owner, 25 October 2026: "allow me to select people that are not eligable for
+// attendance checkins and outs, trat them as if they achived their full working hours"; asked, "Optional check-in" and
+// "Profile + a list in Check-in Setup"): a person's working days from start_date to end_date (null: no end) count as
+// full hours, their presses kept for reference only (packages/shared check-in-exemptions.ts). Added by HR, an Admin or
+// a Super Admin with a reason (a C-level person's by the CEO or a Super Admin), several at once from Check-in Setup;
+// ended by "End now" (end_date today, ended_by, ended_at); one not started yet is cancelled instead (cancelled_at, kept,
+// never read: it never applied, and only a Super Admin deletes records). One person's periods never overlap, the
+// cancelled ones left out (the API checks). Every change is audited.
+model CheckInExemption {
+  id          String    @id @default(uuid()) @db.Uuid
+  employeeId  String    @map("employee_id") @db.Uuid
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  reason      String
+  startDate   DateTime  @map("start_date") @db.Date
+  endDate     DateTime? @map("end_date") @db.Date
+  createdById String?   @map("created_by") @db.Uuid
+  createdBy   User?     @relation("CheckInExemptionAddedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  endedById   String?   @map("ended_by") @db.Uuid
+  endedBy     User?     @relation("CheckInExemptionEndedBy", fields: [endedById], references: [id], onDelete: SetNull)
+  endedAt     DateTime? @map("ended_at") @db.Timestamptz
+  cancelledAt DateTime? @map("cancelled_at") @db.Timestamptz
+
+  @@index([employeeId, startDate])
+  @@map("check_in_exemptions")
 }
 
 // An attendance correction (owner, 19 October 2026, "Proceed with those": "Attendance corrections with approval ("I

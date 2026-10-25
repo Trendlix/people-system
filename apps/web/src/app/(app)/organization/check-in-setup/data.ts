@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { cache } from 'react';
 import { ApiError, apiFetch, messagesOf } from '@/lib/api';
 import type { CheckInLocationView, GpsLockView, LinkablePersonView, LocationRuleView, OfficeNetworksView } from '@/lib/attendance-types';
+import type { CheckInExemptionsList } from '@/lib/exemption-types';
 import type { HomeLocationView } from '@/lib/home-location-types';
 import type { MapsSettingsView } from '@trendlix/shared';
 import type { PayrollSettingsView } from '@/lib/types';
@@ -55,3 +56,9 @@ export const loadSettings = cache(() => loadJson<PayrollSettingsView>('/payroll/
 
 /** GET /maps-settings: the Google Maps key's last four characters and the Map ID (owner, 24 October 2026: "Google Maps"), a Super Admin's. */
 export const loadMapsSettings = cache(() => loadJson<MapsSettingsView>('/maps-settings'));
+
+/**
+ * GET /attendance/check-in-exemptions: the people exempt from check-in now or from a day to come (owner, 25 October 2026:
+ * "Profile + a list in Check-in Setup"), and whether the caller adds any.
+ */
+export const loadExemptions = cache(() => loadJson<CheckInExemptionsList>('/attendance/check-in-exemptions'));

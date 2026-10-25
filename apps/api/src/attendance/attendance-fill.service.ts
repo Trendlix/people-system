@@ -110,6 +110,8 @@ export class AttendanceFillService {
           systemPermissionHours: permissions.find((p) => p.employeeId === line.employeeId)?._sum.hours?.toNumber() ?? 0,
           permissionHoursPerMonth: allowance,
           hourly: line.payBasis === 'hourly',
+          // a day missing its check-out taken as the shift's hours a day until corrected (owner, 25 October 2026: "Not short until corrected")
+          hoursADay: person.hoursADay,
         });
         const fields = Object.keys(filled) as ImportedInput[];
         inputs = { ...EMPTY_PAYROLL_INPUTS, ...was, ...(filled as Partial<PayrollInputs>) };

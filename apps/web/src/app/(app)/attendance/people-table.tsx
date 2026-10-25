@@ -8,7 +8,7 @@ import type { AttendancePersonMonth } from '@/lib/attendance-types';
 import { cLevelTitle } from '@/lib/confidential';
 import type { DepartmentGroup } from '@/lib/place-groups';
 import { filledText, hoursText, personHref } from './attendance';
-import { DaysTable } from './ui';
+import { DaysTable, ExemptBadge } from './ui';
 import { joinShown } from '@/lib/hidden';
 
 // A month's people, one row each with the month's figures, grouped by department, then team, in Organization's order
@@ -20,7 +20,8 @@ import { joinShown } from '@/lib/hidden';
 // check-in and check-out with its place and, for HR and the CEO, a Map link to where it was pressed (owner, 20 October
 // 2026: "location link"; a manager gets the place only: the API leaves the spot out). A day worked from home (owner, 21
 // October 2026: "think about how should we handle the working from home in out erp") says so, and the month's are
-// counted under the remote days.
+// counted under the remote days. Someone with days exempt from check-in that month (owner, 25 October 2026: "trat them
+// as if they achived their full working hours") carries an "Exempt" badge by their name.
 
 const COLUMNS = 11;
 
@@ -101,6 +102,7 @@ export function PeopleTable({ groups, month, link, hidden }: { groups: Departmen
                               <span className="font-semibold">{name}</span>
                             )}
                             {p.employee.confidential && <CLevelBadge title={cLevelTitle(false)} className="ml-2" />}
+                            <ExemptBadge of={f} className="ml-2" />
                             <div className="text-xs text-muted">{joinShown([p.employee.employeeCode, p.employee.jobTitle])}</div>
                           </td>
                           <td className="text-right tabular-nums">

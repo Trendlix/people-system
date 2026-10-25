@@ -305,7 +305,9 @@ export class AttendanceCorrectionsService {
       }
       if (problems.length) throw new BadRequestException(problems);
       const moments = correctionMoments(date, dto, day, shift);
-      const dayBefore: DayBefore | null = shown ? { status: shown.status, checkIn: shown.checkIn, checkOut: shown.checkOut, place: shown.place, source: shown.source } : null;
+      const dayBefore: DayBefore | null = shown
+        ? { status: shown.status, checkIn: shown.checkIn, checkOut: shown.checkOut, place: shown.place, source: shown.source, ...(shown.pairs && { pairs: [...shown.pairs], openAt: shown.openAt ?? null }) }
+        : null;
       const made = await tx.attendanceCorrection.create({
         data: {
           employeeId,

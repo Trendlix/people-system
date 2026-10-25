@@ -15,11 +15,18 @@
 //   press; on a flexible shift a check-in past its start and grace is late here though the day's hours may still be full;
 // - overtime is the system's own extra time: the hours a day counts past the shift's hours a day, which only a shift
 //   that counts hours until a time counts (attendance-days.ts extraHours); the payroll doesn't pay overtime now.
+// - a day as the sum of its pairs (owner, 25 October 2026: "the working hours to be calculated between the checkin and
+//   out only, not the first and last"): the log shows its pairs, its break and an open last check-in; lateness is still by
+//   the first check-in; a day missing its last check-out isn't counted towards the average until corrected;
+// - a day exempt from check-in (owner, 25 October 2026: "trat them as if they achived their full working hours";
+//   check-in-exemptions.ts) is Exempt: attended and on time, its full hours counted; its presses, kept for reference,
+//   aren't in the average check-in nor its distribution.
 // Pure: the API works the figures out with these and the web shows the same words.
 
 import { shiftWindowOn, zonedMoment, type ShiftWindowTimes } from './attendance.js';
 import { countsDayHours, type AttendanceDayView } from './attendance-days.js';
 import type { AttendanceDayStatus } from './attendance-import.js';
+import type { PressPair } from './attendance.js';
 import type { AttendanceSource } from './check-in.js';
 import { odCoversStart } from './official-duty.js';
 
@@ -69,7 +76,7 @@ export const trendByQuarter = (range: { from: string; to: string }): boolean => 
 // ---------- a day ----------
 
 /** What a day was, as the log shows it (the brief: "Office / WFH / OD / Leave / Absent / Holiday"). */
-export const HISTORY_MODES = ['office', 'remote', 'wfh', 'od', 'leave', 'absent', 'holiday', 'rest', 'no_check_in', 'zoho_leave'] as const;
+export const HISTORY_MODES = ['office', 'remote', 'wfh', 'od', 'exempt', 'leave', 'absent', 'holiday', 'rest', 'no_check_in', 'zoho_leave'] as const;
 export type HistoryMode = (typeof HISTORY_MODES)[number];
 
 export const HISTORY_MODE_LABELS: Record<HistoryMode, string> = {
@@ -77,6 +84,7 @@ export const HISTORY_MODE_LABELS: Record<HistoryMode, string> = {
   remote: 'Remote',
   wfh: 'Working from home',
   od: 'Official duty',
+  exempt: 'Exempt',
   leave: 'Leave',
   absent: 'Absent',
   holiday: 'Holiday',
@@ -97,7 +105,8 @@ export const HISTORY_FILTER_LABELS: Record<HistoryFilter, string> = { late: 'Lat
 export const isHistoryFilter = (v: unknown): v is HistoryFilter => (HISTORY_FILTERS as readonly unknown[]).includes(v);
 
 /** A day as the history reads it: the attendance's day, and what the API knows of it besides. */
-export type HistoryDayInput = Pick<AttendanceDayView, 'date' | 'status' | 'checkIn' | 'checkOut' | 'place' | 'hoursCounted' | 'extraHours' | 'od' | 'correctionId'> & {
+export type HistoryDayInput = Pick<AttendanceDayView, 'date' | 'status' | 'checkIn' | 'checkOut' | 'place' | 'hoursCounted' | 'extraHours' | 'od' | 'correctionId'> &
+  Partial<Pick<AttendanceDayView, 'pairs' | 'openAt' | 'breakMinutes' | 'exempt'>> & {
   source: AttendanceSource;
   /** A work from home day approved for them (wfh.ts). */
   wfh: boolean;
@@ -138,6 +147,12 @@ export interface HistoryDay {
   /** The official duty's request (its page), and the correction's. */
   odRequestId: string | null;
   correctionId: string | null;
+  /** Its check-in → check-out pairs (none: not kept by pairs), open last check-in and break (owner, 25 October 2026). */
+  pairs: readonly PressPair[] | null;
+  openAt: string | null;
+  breakMinutes: number | null;
+  /** Exempt from check-in that day (owner, 25 October 2026): full hours, on time. */
+  exempt: boolean;
 }
 
 const EXPECTED_STATUSES: readonly AttendanceDayStatus[] = ['worked', 'absent', 'no_check_in'];
@@ -148,15 +163,18 @@ export function historyDay(d: HistoryDayInput): HistoryDay {
   const expected = d.scheduled && EXPECTED_STATUSES.includes(d.status);
   const attended = expected && (d.status === 'worked' || d.status === 'no_check_in');
   const worked = d.status === 'worked';
+  const exempt = worked && !!d.exempt;
   let mode: HistoryMode;
-  if (worked) mode = d.od ? 'od' : d.wfh || d.place === 'home' ? 'wfh' : d.place === 'remote' ? 'remote' : 'office';
+  if (worked) mode = d.od ? 'od' : exempt ? 'exempt' : d.wfh || d.place === 'home' ? 'wfh' : d.place === 'remote' ? 'remote' : 'office';
   else mode = d.status as HistoryMode;
   const midnight = zonedMoment(d.date, '00:00');
-  const checkInMinutes = d.checkIn && Number.isFinite(midnight) ? Math.floor((Date.parse(d.checkIn) - midnight) / 60_000) : null;
+  // an exempt day's presses are for reference only (25 October 2026): not in the check-in times
+  const checkInMinutes = d.checkIn && !exempt && Number.isFinite(midnight) ? Math.floor((Date.parse(d.checkIn) - midnight) / 60_000) : null;
   let onTime: boolean | null = null;
   let lateMinutes = 0;
   if (expected && worked) {
-    if (d.od && odCoversStart(d.date, d.od, d.shift)) onTime = true;
+    // never late on an exempt day (25 October 2026), nor on official duty from the start
+    if (exempt || (d.od && odCoversStart(d.date, d.od, d.shift))) onTime = true;
     else if (d.checkIn && d.shift) {
       const window = shiftWindowOn(d.date, d.shift);
       if (window) {
@@ -186,6 +204,10 @@ export function historyDay(d: HistoryDayInput): HistoryDay {
     source: d.source,
     odRequestId: d.od?.requestId ?? null,
     correctionId: d.correctionId ?? null,
+    pairs: d.pairs ?? null,
+    openAt: d.openAt ?? null,
+    breakMinutes: d.breakMinutes ?? null,
+    exempt,
   };
 }
 
@@ -231,6 +253,8 @@ export interface HistoryFigures {
   zohoLeaveDays: number;
   wfhDays: number;
   odDays: number;
+  /** Days exempt from check-in (owner, 25 October 2026). */
+  exemptDays: number;
   /** The system's extra time (attendance-days.ts extraHours), the overtime figure. */
   extraHours: number;
   /** Days worked on a rest day or an official holiday. */
@@ -271,6 +295,7 @@ const NO_FIGURES: HistoryFigures = {
   zohoLeaveDays: 0,
   wfhDays: 0,
   odDays: 0,
+  exemptDays: 0,
   extraHours: 0,
   offDaysWorked: 0,
   lateMinutes: 0,
@@ -308,6 +333,7 @@ export function historyFigures(days: readonly HistoryDay[]): HistoryFigures {
     if (d.mode === 'zoho_leave') f.zohoLeaveDays++;
     if (d.mode === 'wfh') f.wfhDays++;
     if (d.mode === 'od') f.odDays++;
+    if (d.exempt) f.exemptDays++;
     if (d.offDay) f.offDaysWorked++;
     f.extraHours += d.extraHours;
   }

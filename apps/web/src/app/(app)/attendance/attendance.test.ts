@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { attendanceDayView, attendanceFigures, NO_ATTENDANCE_FIGURES } from '@trendlix/shared';
+import { attendanceDayView, attendanceFigures, dayFromPunches, EXEMPT_BADGE, EXEMPTION_LABEL, NO_ATTENDANCE_FIGURES } from '@trendlix/shared';
 import { undoConfirmText } from '../payroll/[id]/attendance/attendance';
 import { addMonths } from '../payroll/list';
 import {
@@ -12,6 +12,11 @@ import {
   correctedNote,
   dailyHref,
   dayFlagTexts,
+  dayPairs,
+  EXEMPT_DAY_TITLE,
+  exemptBadge,
+  exemptDaysText,
+  exemptionsText,
   daySourceText,
   deletedImportHref,
   deletedImportNotice,
@@ -265,7 +270,8 @@ describe('a month’s figures in words', () => {
       ['Short hours', '0:30', "Against the shift's 9:00 a day", 'warn'],
       ['Permission hours', '0:00', 'Approved in the system', null],
       ['Leave days', '0', 'And 1 day of leave in Zoho only, to record', 'warn'],
-      ['Missing check-outs', '0', 'A check-in without a check-out: no hours', null],
+      // a missing check-out is never short until corrected (owner, 25 October 2026: "Not short until corrected")
+      ['Missing check-outs', '0', 'A check-in without a check-out: not short until corrected', null],
     ]);
     expect(figureTiles(NO_ATTENDANCE_FIGURES, { averageHours: null }).find((t) => t.key === 'hours')?.note).toBeNull();
     // no one checks in on the system, and none missing or flagged: no tiles for them
@@ -462,5 +468,76 @@ describe('make-up hours on the Attendance pages (owner, 20 October 2026: "within
     // no extra time: no tile, no note
     expect(figureTiles(NO_ATTENDANCE_FIGURES, { averageHours: null }).map((t) => t.key)).not.toContain('filled');
     expect([filledText(NO_ATTENDANCE_FIGURES), filledText({})]).toEqual([null, null]);
+  });
+});
+
+describe('a day as the sum of its pairs (owner, 25 October 2026: "the working hours to be calculated between the checkin and out only, not the first and last")', () => {
+  const DATE = '2026-10-20';
+  const at = (time: string) => `${DATE}T${time}:00+03:00`;
+  const MORNING = { startTime: '09:00', endTime: '19:00', hoursPerDay: 9, graceMinutes: 15 };
+  const presses = (...p: [kind: 'in' | 'out', time: string][]) => p.map(([kind, time]) => ({ kind, at: at(time), place: 'office' as const }));
+  /** A kept day from its presses, as the API shows it. */
+  const viewOf = (punched: ReturnType<typeof dayFromPunches>) =>
+    attendanceDayView({ ...punched, date: DATE, status: 'worked', zohoStatus: null, permissionHours: 0, source: 'system' }, 9);
+
+  it('lists several pairs with the break between them, the hours their sum', () => {
+    const day = viewOf(dayFromPunches(DATE, presses(['in', '09:02'], ['out', '13:10'], ['in', '14:00'], ['out', '18:05']), MORNING));
+    expect(day).toMatchObject({ hoursCounted: 8 + 13 / 60, breakMinutes: 50, openAt: null, missingCheckOut: false, shortHours: 47 / 60 });
+    expect(dayPairs(day)).toEqual({ pairs: '9:02 AM–1:10 PM · 2:00 PM–6:05 PM', break: 'Break 50 min', open: null });
+  });
+
+  it('says an open last check-in after the pairs, "flag the open one": a missing check-out, never short until corrected', () => {
+    const day = viewOf(dayFromPunches(DATE, presses(['in', '09:00'], ['out', '13:00'], ['in', '14:00'], ['out', '18:00'], ['in', '18:30']), MORNING));
+    expect(day).toMatchObject({ hoursCounted: 8, missingCheckOut: true, shortHours: 0, extraHours: 0, openAt: at('18:30') });
+    expect(dayPairs(day)).toEqual({ pairs: '9:00 AM–1:00 PM · 2:00 PM–6:00 PM', break: 'Break 1 h 30 min', open: 'Checked in 6:30 PM · not checked out' });
+    // one pair, then a check-in not checked out: the pair and the open press
+    const one = viewOf(dayFromPunches(DATE, presses(['in', '09:00'], ['out', '13:00'], ['in', '14:00']), MORNING));
+    expect(dayPairs(one)).toEqual({ pairs: '9:00 AM–1:00 PM', break: 'Break 1 h', open: 'Checked in 2:00 PM · not checked out' });
+  });
+
+  it('adds nothing for a day of one pair, a day with only a check-in, or a day not kept by pairs (Zoho’s, an API from before them)', () => {
+    expect(dayPairs(viewOf(dayFromPunches(DATE, presses(['in', '09:00'], ['out', '18:00']), MORNING)))).toBeNull();
+    // only a check-in: its check-out shows Missing, as before
+    const open = viewOf(dayFromPunches(DATE, presses(['in', '09:00']), MORNING));
+    expect(open.missingCheckOut).toBe(true);
+    expect(dayPairs(open)).toBeNull();
+    expect(dayPairs({ pairs: null, openAt: null })).toBeNull();
+    expect(dayPairs({})).toBeNull();
+  });
+
+  it('keeps the day’s check-in and check-out cells as before: the first check-in, the last check-out', () => {
+    const day = viewOf(dayFromPunches(DATE, presses(['in', '09:00'], ['out', '13:00'], ['in', '14:00'], ['out', '18:00']), MORNING));
+    const row = dayRow(day, []);
+    expect([row.checkIn.time, row.checkOut.time, row.checkIn.shown, row.checkOut.shown]).toEqual(['9:00 AM', '6:00 PM', 'time', 'time']);
+  });
+});
+
+describe('exempt from check-in (owner, 25 October 2026: "trat them as if they achived their full working hours")', () => {
+  it('badges an exempt day and a month with exempt days, nothing else', () => {
+    expect(exemptBadge({ exempt: true })).toEqual({ label: EXEMPT_BADGE, title: EXEMPT_DAY_TITLE });
+    expect(EXEMPT_DAY_TITLE).toBe(`${EXEMPTION_LABEL}: counted as full hours; any presses are kept for reference only`);
+    expect(exemptBadge({ exemptDays: 3 })?.label).toBe('Exempt');
+    expect([exemptBadge({ exempt: false }), exemptBadge({ exemptDays: 0 }), exemptBadge({})]).toEqual([null, null, null]);
+    expect([exemptDaysText({ exemptDays: 3 }), exemptDaysText({ exemptDays: 1 }), exemptDaysText({ exemptDays: 0 }), exemptDaysText({})]).toEqual(['3 exempt days', '1 exempt day', null, null]);
+  });
+
+  it('says the month’s periods at its top', () => {
+    expect(exemptionsText([{ startDate: '2026-11-01', endDate: '2026-11-30' }])).toBe('Exempt from check-in: from 01/11/2026 until 30/11/2026');
+    expect(exemptionsText([{ startDate: '2026-11-01', endDate: '2026-11-10' }, { startDate: '2026-11-20', endDate: null }])).toBe(
+      'Exempt from check-in: from 01/11/2026 until 10/11/2026; from 20/11/2026, no end date',
+    );
+    expect([exemptionsText([]), exemptionsText(undefined)]).toEqual([null, null]);
+  });
+
+  it('adds an Exempt days tile only with exempt days, and an exempt day is neither short nor missing a press', () => {
+    const exempt = attendanceDayView(
+      { date: '2026-11-02', status: 'worked', checkIn: '2026-11-02T08:30:00.000Z', checkOut: null, place: 'remote', zohoStatus: null, permissionHours: 0, hoursCounted: 9, exempt: true, flags: ['outside_office'] },
+      9,
+    );
+    expect(exempt).toMatchObject({ exempt: true, missingCheckOut: false, missingCheckIn: false, shortHours: 0, extraHours: 0, flags: [] });
+    const f = attendanceFigures([exempt]);
+    expect(f).toMatchObject({ exemptDays: 1, absentDays: 0, missingCheckOuts: 0, hoursCounted: 9 });
+    expect(figureTiles(f, { averageHours: 9 }).find((t) => t.key === 'exempt')).toEqual({ key: 'exempt', label: 'Exempt days', value: '1', note: 'Exempt from check-in: counted as full hours', tone: null });
+    expect(figureTiles(NO_ATTENDANCE_FIGURES, { averageHours: null }).map((t) => t.key)).not.toContain('exempt');
   });
 });

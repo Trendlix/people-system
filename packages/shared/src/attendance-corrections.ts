@@ -9,9 +9,13 @@
 // 'correction' over the day it corrects, which stays as it was (shown "corrected from …"), its hours counted again by
 // the shift's rule, and the month's draft payroll line refilled. HR may also correct a day directly, with a reason,
 // approved at once. Pure: the API enforces these and the web shows the same checks. Dates YYYY-MM-DD, times HH:MM
-// (Cairo), moments ISO.
+// (Cairo), moments ISO. A day as the sum of its pairs (owner, 25 October 2026: "the working hours to be calculated
+// between the checkin and out only, not the first and last"): a correction giving both times replaces the day's presses
+// with that one pair, as before; one giving the check-out alone closes the day's open last check-in (its missing
+// check-out, "flag the open one" for HR to correct), else moves its last check-out; one giving the check-in alone moves
+// its first check-in; the day's other pairs stay, so a break stays uncounted (correctedDay).
 
-import { hoursCountedForDay, mostHoursCountedADay, shiftWindowOn, zonedMoment, type ShiftWindowTimes } from './attendance.js';
+import { breakMinutesOf, mostHoursCountedADay, shiftWindowOn, spanHours, spansOfPairs, zonedMoment, type PressPair, type ShiftWindowTimes, type TimeSpan } from './attendance.js';
 import type { AttendanceDayStatus } from './attendance-import.js';
 import { cairoClock, isCheckInFlag, type AttendanceSource, type CheckInFlag, type CountingShift, type DayPlace } from './check-in.js';
 
@@ -53,6 +57,9 @@ export interface CorrectableDay {
   zohoStatus?: string | null;
   permissionHours?: number;
   hoursCounted?: number;
+  /** Its check-in → check-out pairs and open last check-in (owner, 25 October 2026); none: not kept by pairs. */
+  pairs?: readonly PressPair[] | null;
+  openAt?: string | null;
 }
 
 /** A correction as typed: the day, what was wrong, the right times (HH:MM, Cairo; none: as on record) and why. */
@@ -148,8 +155,9 @@ export function correctionProblems(input: CorrectionInput, ctx: CorrectionContex
     if (!inTime) problems.push(`Enter the time ${ctx.name ? 'they' : 'you'} came in.`);
     else if (day?.checkIn) problems.push(`${ctx.name ? `${ctx.name} checked` : 'You checked'} in at ${recorded(day.checkIn)} on ${when} already: choose “${CORRECTION_KIND_LABELS.wrong_time}” to change it.`);
   } else if (kind === 'forgot_check_out') {
+    // a last check-in without a check-out after the day's pairs is the check-out forgotten (25 October 2026)
     if (!outTime) problems.push(`Enter the time ${ctx.name ? 'they' : 'you'} left.`);
-    else if (day?.checkOut) problems.push(`${ctx.name ? `${ctx.name} checked` : 'You checked'} out at ${recorded(day.checkOut)} on ${when} already: choose “${CORRECTION_KIND_LABELS.wrong_time}” to change it.`);
+    else if (day?.checkOut && !day.openAt) problems.push(`${ctx.name ? `${ctx.name} checked` : 'You checked'} out at ${recorded(day.checkOut)} on ${when} already: choose “${CORRECTION_KIND_LABELS.wrong_time}” to change it.`);
   } else if (kind === 'wrong_time') {
     if (!inTime && !outTime) problems.push('Enter the right time of the check-in, of the check-out, or both.');
     else if (!day?.checkIn && !day?.checkOut) problems.push(`There is no check-in or check-out on ${when} to correct: choose “${CORRECTION_KIND_LABELS.forgot_check_in}”.`);
@@ -164,6 +172,9 @@ export function correctionProblems(input: CorrectionInput, ctx: CorrectionContex
   const checkOut = moments.checkOut ?? day?.checkOut ?? null;
   if (checkIn && checkOut && Date.parse(checkOut) <= Date.parse(checkIn)) {
     problems.push(`The check-out (${cairoClock(checkOut)}) must be after the check-in (${cairoClock(checkIn)}) on the same day.`);
+  } else if (kind === 'forgot_check_out' && moments.checkOut && day?.openAt && Date.parse(moments.checkOut) <= Date.parse(day.openAt)) {
+    // closing the open last check-in (25 October 2026): after it
+    problems.push(`The check-out (${cairoClock(moments.checkOut)}) must be after the last check-in (${cairoClock(day.openAt)}), the one without a check-out.`);
   }
   return problems;
 }
@@ -186,19 +197,83 @@ export interface CorrectedDay {
   place: DayPlace | null;
   flags: CheckInFlag[];
   hoursCounted: number;
+  /** Its pairs, its open last check-in (null: none) and the break between them (owner, 25 October 2026). */
+  pairs: PressPair[];
+  openAt: string | null;
+  breakMinutes: number;
 }
 
 /**
  * The day a correction makes of the one on record (owner's brief, 19 October 2026: "Approved → the day is changed
  * (source 'correction', the original times kept …), hours recounted"): the right times over those on record, worked;
  * worked remotely or at a client, remote and no longer flagged (the manager and HR approved it); its hours counted by
- * the shift's rule within its window moved by the grace (attendance.ts).
+ * the shift's rule within its window moved by the grace (attendance.ts). By its pairs (owner, 25 October 2026: "the
+ * working hours to be calculated between the checkin and out only, not the first and last"; "Not short until
+ * corrected"): both times given, the day is that one pair (its presses replaced, as before); the check-out alone closes
+ * the open last check-in when after it, else ends the last pair there (a pair starting after it dropped); the check-in
+ * alone starts the first pair there (a pair ending before it dropped), the only check-in of a day without pairs, or
+ * pairs with a check-out that had none. A day not kept by pairs (Zoho's, one gone by) is its check-in to its check-out.
  */
 export function correctedDay(base: CorrectableDay | CorrectedDay | null, c: AppliedCorrection, date: string, shift: CountingShift | null): CorrectedDay {
-  const checkIn = c.checkIn ?? base?.checkIn ?? null;
-  const checkOut = c.checkOut ?? base?.checkOut ?? null;
   const remote = c.kind === 'worked_remotely';
-  const hours = checkIn && checkOut ? hoursCountedForDay(checkIn, checkOut, shift ? mostHoursCountedADay(shift) : null, shift ? shiftWindowOn(date, shift) : null) : 0;
+  // each moment as it was given (an ISO string kept as it is)
+  const given = new Map<number, string>();
+  const ms = (iso: string | null | undefined): number | null => {
+    if (!iso) return null;
+    const m = Date.parse(iso);
+    if (!Number.isFinite(m)) return null;
+    if (!given.has(m)) given.set(m, iso);
+    return m;
+  };
+  const iso = (m: number) => given.get(m) ?? new Date(m).toISOString();
+  const [baseIn, baseOut] = [ms(base?.checkIn), ms(base?.checkOut)];
+  for (const p of base?.pairs ?? []) {
+    ms(p.in);
+    ms(p.out);
+  }
+  let pairs: TimeSpan[] = base?.pairs ? spansOfPairs(base.pairs) : baseIn !== null && baseOut !== null && baseOut > baseIn ? [{ from: baseIn, to: baseOut }] : [];
+  let open: number | null = base?.pairs ? ms(base.openAt) : baseIn !== null && baseOut === null ? baseIn : null;
+  // a time typed as it is on record (to the minute) changes nothing: the other one alone is corrected
+  const minute = (m: number | null) => (m === null ? null : Math.floor(m / 60_000));
+  const firstOnRecord = minute(Math.min(pairs[0]?.from ?? Number.POSITIVE_INFINITY, open ?? Number.POSITIVE_INFINITY));
+  const lastOnRecord = open === null && pairs.length ? minute(pairs[pairs.length - 1].to) : null;
+  let [cin, cout] = [ms(c.checkIn), ms(c.checkOut)];
+  if (cin !== null && cout !== null) {
+    if (minute(cin) === firstOnRecord) cin = null;
+    else if (minute(cout) === lastOnRecord) cout = null;
+  }
+  if (cin !== null && cout !== null) {
+    // both times: the day is that one pair, its presses replaced
+    pairs = cout > cin ? [{ from: cin, to: cout }] : [];
+    open = cout > cin ? null : cin;
+  } else if (cout !== null) {
+    if (open !== null && cout > open) {
+      // the check-out forgotten: closes the open last check-in
+      pairs = [...pairs, { from: open, to: cout }];
+      open = null;
+    } else if (pairs.length) {
+      // the last check-out at another time: the pairs before it, the last ending then
+      const kept = pairs.filter((p) => p.from < cout).map((p) => ({ ...p }));
+      if (kept.length) kept[kept.length - 1].to = cout;
+      pairs = kept;
+    }
+  } else if (cin !== null) {
+    if (pairs.length) {
+      // the first check-in at another time: the pairs after it, the first starting then
+      const kept = pairs.filter((p) => p.to > cin).map((p) => ({ ...p }));
+      if (kept.length) kept[0].from = cin;
+      else if (open === null) open = cin;
+      pairs = kept;
+    } else if (open !== null) open = cin;
+    else if (baseOut !== null && baseOut > cin) pairs = [{ from: cin, to: baseOut }];
+    else open = cin;
+  }
+  const window = shift ? shiftWindowOn(date, shift) : null;
+  const hours = spanHours(pairs, window, shift ? mostHoursCountedADay(shift) : null);
+  const firstIn = Math.min(pairs[0]?.from ?? Number.POSITIVE_INFINITY, open ?? Number.POSITIVE_INFINITY);
+  const checkIn = Number.isFinite(firstIn) ? iso(firstIn) : null;
+  // a check-out with no check-in at all (forgot to check in, not yet corrected): as given, or as on record
+  const checkOut = pairs.length ? iso(pairs[pairs.length - 1].to) : checkIn ? null : (c.checkOut ?? base?.checkOut ?? null);
   return {
     status: 'worked',
     checkIn,
@@ -206,6 +281,9 @@ export function correctedDay(base: CorrectableDay | CorrectedDay | null, c: Appl
     place: remote ? 'remote' : (base?.place ?? null),
     flags: remote ? [] : (base?.flags ?? []).filter(isCheckInFlag),
     hoursCounted: Math.round(hours * 60) / 60,
+    pairs: pairs.map((p) => ({ in: iso(p.from), out: iso(p.to) })),
+    openAt: open === null ? null : iso(open),
+    breakMinutes: breakMinutesOf(pairs, open, window),
   };
 }
 
@@ -216,11 +294,19 @@ export interface CorrectedFrom {
   checkIn: string | null;
   checkOut: string | null;
   place: DayPlace | null;
+  /** Its pairs and open last check-in, when it was kept by them (owner, 25 October 2026); missing on one from before. */
+  pairs?: PressPair[] | null;
+  openAt?: string | null;
 }
 
 /** "Corrected from 9:30 AM – no check-out", "Corrected from absent", "Corrected from no day on record". */
 export function correctedFromText(from: CorrectedFrom | null | undefined): string {
   if (!from) return 'Corrected from no day on record';
+  // a day of several pairs, or with an open last check-in (25 October 2026): each, "9:02 AM – 1:10 PM · 2:00 PM – no check-out"
+  if ((from.pairs && from.pairs.length > 1) || (from.openAt && from.pairs?.length)) {
+    const parts = [...from.pairs.map((p) => `${cairoClock(p.in)} – ${cairoClock(p.out)}`), ...(from.openAt ? [`${cairoClock(from.openAt)} – no check-out`] : [])];
+    return `Corrected from ${parts.join(' · ')}`;
+  }
   if (!from.checkIn && !from.checkOut) return from.status === 'worked' ? 'Corrected from no check-in or check-out' : `Corrected from ${from.status === 'absent' ? 'absent' : 'a day not worked'}`;
   return `Corrected from ${from.checkIn ? cairoClock(from.checkIn) : 'no check-in'} – ${from.checkOut ? cairoClock(from.checkOut) : 'no check-out'}`;
 }

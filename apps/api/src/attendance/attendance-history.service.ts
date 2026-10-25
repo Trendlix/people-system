@@ -6,6 +6,7 @@ import {
   checkInBins,
   clockText,
   DEFAULT_WORKING_DAYS,
+  exemptDays,
   HISTORY_FIGURE_DEFINITIONS,
   HISTORY_MODE_LABELS,
   HISTORY_PERIOD_LABELS,
@@ -20,6 +21,8 @@ import {
   monthDays,
   monthRange,
   officialDutyDays,
+  openPressText,
+  pairsText,
   percentText,
   shiftWorkHours,
   trendByQuarter,
@@ -39,6 +42,7 @@ import { addDays, fromDateOnly, todayInCairo, toDateOnly, weekday } from '../com
 import { ConfidentialService } from '../employees/confidential.service.js';
 import { addSheet, type Column } from '../employees/missing-workbook.js';
 import { approvedOds, dutyDaysOf } from '../official-duty/od-days.js';
+import { exemptionsOf } from './exemption-days.js';
 import { firstDay, lastDay } from '../payroll/months.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { approvedWfhDays } from '../wfh/wfh-days.js';
@@ -179,7 +183,7 @@ export class AttendanceHistoryService {
     const within = { gte: toDateOnly(range.from), lte: toDateOnly(range.to) };
 
     // the period's days in one query, and what they are read with
-    const [rows, holidays, leave, wfh, ods, checkIns] = await Promise.all([
+    const [rows, holidays, leave, wfh, ods, checkIns, exemptions] = await Promise.all([
       this.prisma.attendanceDay.findMany({ where: { employeeId, date: within }, orderBy: { date: 'asc' }, select: DAY_SELECT }),
       this.prisma.holiday.findMany({ where: { date: within }, select: { date: true } }),
       this.prisma.leaveRequest.findMany({
@@ -189,6 +193,8 @@ export class AttendanceHistoryService {
       approvedWfhDays(this.prisma, [employeeId], range.from, range.to),
       approvedOds(this.prisma, [employeeId], range.from, range.to),
       this.prisma.attendanceDay.aggregate({ where: { employeeId, source: { in: [...CHECK_IN_SOURCES] }, date: { lte: within.lte } }, _min: { date: true } }),
+      // their periods exempt from check-in (owner, 25 October 2026): those days Exempt, full and on time
+      exemptionsOf(this.prisma, [employeeId], range.from, range.to),
     ]);
     const kept = rows.map(monthDayOf);
     const holidayDays = holidays.map((h) => fromDateOnly(h.date));
@@ -213,8 +219,17 @@ export class AttendanceHistoryService {
         for (const w of workingDays) working.add(w);
         const base = monthDays(ofMonth, { month, today, checkInFrom, workingDays, holidays: holidayDays, leaveDays, employedFrom, employedTo });
         const duties = dutyDaysOf(ods, employeeId, shift, holidaySet, first, last);
-        const days = officialDutyDays(base, duties, { today, checkInFrom, employedFrom, employedTo, shift });
         const hoursADay = shift ? shiftWorkHours(shift) : null;
+        const days = exemptDays(officialDutyDays(base, duties, { today, checkInFrom, employedFrom, employedTo, shift }), exemptions.get(employeeId) ?? [], {
+          month,
+          today,
+          workingDays,
+          holidays: holidayDays,
+          leaveDays,
+          employedFrom,
+          employedTo,
+          hoursADay,
+        });
         for (const d of days) {
           // within this employment and the period: a rehire's gap is left out
           if (d.date < range.from || d.date > range.to || d.date < employedFrom || (employedTo !== null && d.date > employedTo)) continue;
@@ -284,6 +299,8 @@ function figureRows(b: Built, f: HistoryFigures): FigureRow[] {
     { figure: 'Leave in Zoho only', value: f.zohoLeaveDays, meaning: 'Days Zoho People marks as leave with no leave in the system.' },
     { figure: 'Work from home days', value: f.wfhDays, meaning: D.wfhDays },
     { figure: 'Official duty days', value: f.odDays, meaning: D.odDays },
+    // exempt from check-in (owner, 25 October 2026)
+    { figure: 'Exempt days', value: f.exemptDays, meaning: 'Working days exempt from check-in: counted as full hours and on time, whatever was pressed.' },
     { figure: 'Overtime (extra time)', value: hoursText(f.extraHours), meaning: D.extraHours },
     { figure: 'Days worked off', value: f.offDaysWorked, meaning: 'Days checked in on a rest day or an official holiday.' },
   ];
@@ -311,4 +328,7 @@ const DAY_COLUMNS: readonly Column<HistoryDay>[] = [
   { header: 'Late minutes', width: 12, value: (d) => (d.lateMinutes > 0 ? d.lateMinutes : null), numFmt: '0' },
   { header: 'On time', width: 9, value: (d) => (d.onTime === null ? null : d.onTime ? 'Yes' : 'No') },
   { header: 'Source', width: 18, value: (d) => HISTORY_SOURCE_LABELS[d.source] ?? d.source },
+  // a day as the sum of its pairs (owner, 25 October 2026): its pairs and an open last check-in, the break between them
+  { header: 'Pairs', width: 44, value: (d) => ((d.pairs?.length ?? 0) > 1 || d.openAt ? [pairsText(d.pairs ?? []), d.openAt ? openPressText(d.openAt) : null].filter(Boolean).join(' · ') : null) },
+  { header: 'Break', width: 9, value: (d) => (d.breakMinutes ? asTime(d.breakMinutes / 60) : null), numFmt: HOURS },
 ];

@@ -4,7 +4,8 @@ import { DateInput } from '@/components/date-time-inputs';
 import type { AttendanceHistoryView } from '@/lib/attendance-history-types';
 import { formatDate, formatDateTime } from '@/lib/format';
 import type { EmployeeProfile } from '@/lib/types';
-import { hoursText } from '../../../attendance/attendance';
+import { dayPairs, EXEMPT_DAY_TITLE, hoursText } from '../../../attendance/attendance';
+import { DayPairsLine, OpenPressLine } from '../../../attendance/ui';
 import { Empty } from '../../../organization/ui';
 import { loadJson } from '../../../payroll/load';
 import { ColumnBarChart, TrendLineChart } from './history-charts';
@@ -35,7 +36,10 @@ import {
 // the on-time trend (by month, by quarter past 12 months), the check-in times by 15 minutes and the late days by
 // weekday, each chart with its table, then the daily log, latest first, filtered (late, WFH, OD, leave, absent) and
 // paged by the server, an official duty's row linking to its request and a corrected one to its correction; the Excel
-// of the whole period (never a developer's, the API refuses it) and the month page a click away.
+// of the whole period (never a developer's, the API refuses it) and the month page a click away. A day of several
+// check-in → check-out pairs (owner, 25 October 2026: "the working hours to be calculated between the checkin and out
+// only, not the first and last") lists them and its break under its hours, an open last check-in under its last out;
+// an exempt day (owner, 25 October 2026: "trat them as if they achived their full working hours") is an "Exempt" badge.
 
 const chip = 'inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3.5 text-sm font-semibold no-underline';
 const ACTIVE = 'border-ink bg-ink text-white hover:text-white';
@@ -211,7 +215,15 @@ function ModeCell({ d }: { d: HistoryDay }) {
         {label}
       </Link>
     ) : (
-      <span className={d.mode === 'absent' ? 'font-semibold text-danger' : undefined}>{label}</span>
+      d.mode === 'exempt' ? (
+        // exempt from check-in (25 October 2026): a badge, its full hours counted
+        <span className="badge border border-line bg-card text-ink" title={EXEMPT_DAY_TITLE}>
+          {label}
+          <span className="sr-only"> ({EXEMPT_DAY_TITLE})</span>
+        </span>
+      ) : (
+        <span className={d.mode === 'absent' ? 'font-semibold text-danger' : undefined}>{label}</span>
+      )
     );
   return (
     <>
@@ -285,8 +297,14 @@ function Log({ v, q }: { v: AttendanceHistoryView; q: HistoryQuery }) {
                     <ModeCell d={d} />
                   </td>
                   <td className="whitespace-nowrap tabular-nums">{d.checkIn ? cairoClock(d.checkIn) : <span className="text-muted">—</span>}</td>
-                  <td className="whitespace-nowrap tabular-nums">{d.checkOut ? cairoClock(d.checkOut) : <span className="text-muted">—</span>}</td>
-                  <td className="whitespace-nowrap tabular-nums">{d.status === 'worked' ? hoursText(d.hours) : <span className="text-muted">—</span>}</td>
+                  <td className="whitespace-nowrap tabular-nums">
+                    {d.checkOut ? cairoClock(d.checkOut) : <span className="text-muted">—</span>}
+                    <OpenPressLine pairs={dayPairs(d)} exempt={d.exempt} />
+                  </td>
+                  <td className="tabular-nums">
+                    <span className="whitespace-nowrap">{d.status === 'worked' ? hoursText(d.hours) : <span className="text-muted">—</span>}</span>
+                    <DayPairsLine pairs={dayPairs(d)} />
+                  </td>
                   <td className="whitespace-nowrap tabular-nums">{d.onTime === false ? <span className="font-semibold text-warn">{lateText(d.lateMinutes)}</span> : <span className="text-muted">—</span>}</td>
                   <td className="whitespace-nowrap">
                     <SourceCell d={d} />

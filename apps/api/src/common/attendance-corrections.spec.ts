@@ -80,7 +80,18 @@ describe('asking for a correction', () => {
 describe('the day a correction makes', () => {
   it('puts the right times over those on record, worked, its hours counted again by the shift’s rule', () => {
     const made = correctedDay(worked(), { kind: 'forgot_check_out', checkIn: null, checkOut: at('18:30') }, DAY, MORNING);
-    expect(made).toEqual({ status: 'worked', checkIn: at('09:05'), checkOut: at('18:30'), place: 'office', flags: [], hoursCounted: 9 });
+    expect(made).toEqual({
+      status: 'worked',
+      checkIn: at('09:05'),
+      checkOut: at('18:30'),
+      place: 'office',
+      flags: [],
+      hoursCounted: 9,
+      // its one pair (25 October 2026)
+      pairs: [{ in: at('09:05'), out: at('18:30') }],
+      openAt: null,
+      breakMinutes: 0,
+    });
     // a day with no record at all, absent: from the times given
     const absent = correctedDay({ status: 'absent', checkIn: null, checkOut: null, place: null, source: 'system' }, { kind: 'forgot_check_in', checkIn: at('10:00'), checkOut: at('17:30') }, DAY, MORNING);
     expect(absent).toMatchObject({ status: 'worked', hoursCounted: 7.5, place: null });

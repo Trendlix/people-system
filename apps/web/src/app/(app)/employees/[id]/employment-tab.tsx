@@ -39,6 +39,7 @@ import { loadContracts } from './contracts/data';
 import { ProbationBanner } from './contracts/probation-banner';
 import { GeneratedDocuments, GeneratedDocumentsLoading } from './documents/document-rows';
 import { EndingPanel } from './ending/ending-panel';
+import { CheckInExemptionSection } from './check-in-exemption';
 import { CheckInPlacesLine } from './check-in-places';
 import { HomeLocationLine } from './home-location';
 import { DeleteRowButton } from './inline-forms';
@@ -436,6 +437,13 @@ async function DetailsSubTab({
               The social insurance forms are on the <Link href={profileHref(p.id, 'insurance')}>Social Insurance tab</Link>.
             </p>
           </ProfileSection>
+          {/* exempt from check-in (owner, 25 October 2026: "Profile + a list in Check-in Setup"), by their attendance details,
+              for HR, Admin, the CEO and themself; loads on its own */}
+          <div id="exempt-from-check-in" className="scroll-mt-6 empty:hidden">
+            <Suspense fallback={null}>
+              <CheckInExemptionSection employee={p} user={user} />
+            </Suspense>
+          </div>
           {/* the employment's contract, right with it; where a missing contract detail links to (#contract) */}
           <div id="contract" className="scroll-mt-6">
             {/* loads on its own, so a slow contract list doesn't hold up the tab */}

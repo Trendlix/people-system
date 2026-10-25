@@ -4,7 +4,20 @@ import { formatDate } from '@/lib/format';
 import { weekdayOf } from '../organization/holidays/holidays';
 import { addMonths, monthName } from '../payroll/list';
 import { attendanceReviewHref, dayStatusText, dayTone } from '../payroll/[id]/attendance/attendance';
-import { correctedNote, dayRow, daySourceText, extraHoursText, hoursText, sourceText, type FigureTile, type PunchRow } from './attendance';
+import {
+  correctedNote,
+  dayPairs,
+  dayRow,
+  daySourceText,
+  exemptBadge,
+  exemptionsText,
+  extraHoursText,
+  hoursText,
+  sourceText,
+  type DayPairs,
+  type FigureTile,
+  type PunchRow,
+} from './attendance';
 import { AllPresses, DayEndView } from './punch-ui';
 import { WFH_DAY_BADGE } from './wfh/wfh';
 import { OD_DAY_BADGE, odDayTitle, odHref } from './official-duty/od';
@@ -22,7 +35,12 @@ import { OD_DAY_BADGE, odDayTitle, odHref } from './official-duty/od';
 // day from Zoho People has its place on the check-in). A day worked from home (owner, 21 October 2026: "think about how
 // should we handle the working from home in out erp"): "Working from home" by its status, a dashed badge, not leave's.
 // A day of official duty (owner, 23 October 2026: "Official duty (OD) requests"; "OD counted as attended"): "On official
-// duty" by its status in its own colour, opening its request.
+// duty" by its status in its own colour, opening its request. A day as the sum of its pairs (owner, 25 October 2026: "the
+// working hours to be calculated between the checkin and out only, not the first and last"; "Count the closed pairs,
+// flag the open one"): a day of several pairs lists them and its break under what it was, and an open last check-in
+// says so in amber under the check-out ("Not short until corrected": its short hours stay empty). An exempt day (owner,
+// 25 October 2026: "trat them as if they achived their full working hours") carries an "Exempt" badge, its presses
+// still shown for reference.
 
 const LINK = 'btn btn-secondary min-h-9 px-3 no-underline';
 const TONE = { danger: 'text-danger', warn: 'text-warn' } as const;
@@ -63,6 +81,49 @@ export function FigureTiles({ tiles, label }: { tiles: FigureTile[]; label: stri
 }
 
 const NONE = <span className="text-muted">—</span>;
+
+/** "Exempt" (owner, 25 October 2026): on an exempt day, or a person's month with exempt days; nothing otherwise. */
+export function ExemptBadge({ of, className = '' }: { of: Parameters<typeof exemptBadge>[0]; className?: string }) {
+  const badge = exemptBadge(of);
+  if (!badge) return null;
+  return (
+    <span className={`badge border border-line bg-card text-ink ${className}`} title={badge.title}>
+      {badge.label}
+      <span className="sr-only"> ({badge.title})</span>
+    </span>
+  );
+}
+
+/** A person's month's periods exempt from check-in, at its top (25 October 2026); nothing without any. */
+export function ExemptionNote({ periods, self = false, className = '' }: { periods: Parameters<typeof exemptionsText>[0]; self?: boolean; className?: string }) {
+  const text = exemptionsText(periods);
+  if (!text) return null;
+  return (
+    <p className={`flex flex-wrap items-center gap-2 text-sm ${className}`}>
+      <ExemptBadge of={{ exempt: true }} />
+      <span>
+        {text}. {self ? 'Your working days count as full hours; checking in is optional.' : 'Their working days count as full hours; any presses are kept for reference.'}
+      </span>
+    </p>
+  );
+}
+
+/** A day's pairs and break (25 October 2026), under what the day was; nothing for a day of one pair. */
+export function DayPairsLine({ pairs, className = 'mt-1' }: { pairs: DayPairs | null; className?: string }) {
+  if (!pairs) return null;
+  return (
+    <span className={`block text-xs ${className}`}>
+      {pairs.pairs && <span className="block tabular-nums">{pairs.pairs}</span>}
+      {pairs.break && <span className="block text-muted">{pairs.break}</span>}
+    </span>
+  );
+}
+
+/** An open last check-in after the day's pairs, in amber (muted on an exempt day, where nothing is missing). */
+export function OpenPressLine({ pairs, exempt = false, className = 'mt-1' }: { pairs: DayPairs | null; exempt?: boolean; className?: string }) {
+  if (!pairs?.open) return null;
+  return <span className={`block text-xs ${exempt ? 'text-muted' : 'font-medium text-warn'} ${className}`}>{pairs.open}</span>;
+}
 
 /** The badge of a day worked from home (approved for them), a distinct style from leave: a dashed outline. */
 export function WfhDayBadge({ className = '' }: { className?: string }) {
@@ -129,6 +190,7 @@ export function DaysTable({
             const row = dayRow(d, punches);
             const corrected = correctedNote(d);
             const extra = extraHoursText(d);
+            const pairs = dayPairs(d);
             return (
               <tr key={d.date} className="align-top">
                 <td className="whitespace-nowrap tabular-nums">
@@ -138,6 +200,9 @@ export function DaysTable({
                   <span className={tone ? `font-medium ${TONE[tone]}` : undefined}>{dayStatusText(d.status)}</span>
                   {wfhDays.includes(d.date) && <WfhDayBadge className="mt-1 block w-fit" />}
                   {d.od && <OdDayBadge od={d.od} className="mt-1 block w-fit" />}
+                  <ExemptBadge of={d} className="mt-1 block w-fit" />
+                  {/* its pairs and break (25 October 2026: "the working hours to be calculated between the checkin and out only") */}
+                  <DayPairsLine pairs={pairs} />
                   {corrected && <span className="mt-0.5 block text-xs text-muted">{corrected}</span>}
                   {row.more && <AllPresses presses={row.presses} />}
                 </td>
@@ -146,6 +211,8 @@ export function DaysTable({
                 </td>
                 <td className="min-w-36">
                   <DayEndView end={row.checkOut} />
+                  {/* a last check-in without a check-out (25 October 2026: "flag the open one") */}
+                  <OpenPressLine pairs={pairs} exempt={d.exempt} />
                 </td>
                 <td className="text-right tabular-nums">
                   {d.status === 'worked' ? hoursText(d.hoursCounted) : NONE}

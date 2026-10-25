@@ -4,6 +4,9 @@ import {
   ATTENDANCE_SOURCE_LABELS,
   CHECK_IN_FLAG_LABELS,
   CHECK_IN_PLACE_LABELS,
+  EXEMPT_BADGE,
+  openPressText,
+  pairsText,
   type AttendanceDayView,
   type AttendanceFigures,
   type AttendanceSource,
@@ -50,6 +53,8 @@ function figureColumns<T>(f: (row: T) => AttendanceFigures, average: (row: T) =>
     // checking in on the system (19 October 2026): a check-out without a check-in, and the check-ins flagged
     { header: 'Missing check-ins', width: 14, value: (r) => f(r).missingCheckIns, numFmt: '0' },
     { header: 'Flagged days', width: 12, value: (r) => f(r).flaggedDays, numFmt: '0' },
+    // people exempt from check-in (owner, 25 October 2026): their days counted as full
+    { header: 'Exempt days', width: 11, value: (r) => f(r).exemptDays ?? 0, numFmt: '0' },
   ];
 }
 
@@ -106,7 +111,20 @@ const DAY_COLUMNS: readonly Column<DayRow>[] = [
   // where the day came from, and a check-in on the system flagged by its work arrangement (19 October 2026)
   { header: 'From', width: 22, value: (r) => ATTENDANCE_SOURCE_LABELS[(r.day.source ?? 'zoho') as AttendanceSource] ?? r.day.source ?? null },
   { header: 'Flagged', width: 40, value: (r) => (r.day.flags.length ? r.day.flags.map((f) => CHECK_IN_FLAG_LABELS[f]).join('; ') : null) },
+  // a day as the sum of its pairs (owner, 25 October 2026: "the working hours to be calculated between the checkin and out
+  // only, not the first and last"): its pairs and an open last check-in, the break between them
+  { header: 'Pairs', width: 44, value: (r) => dayPairsCell(r.day) },
+  { header: 'Break', width: 9, value: (r) => (r.day.breakMinutes ? asTime(r.day.breakMinutes / 60) : null), numFmt: HOURS },
+  // exempt from check-in (25 October 2026): counted as full
+  { header: 'Exempt', width: 9, value: (r) => (r.day.exempt ? EXEMPT_BADGE : null) },
 ];
+
+/** A day's pairs and its open last check-in in a cell: "9:02 AM–1:10 PM · Checked in 2:00 PM · not checked out"; none with one pair or less. */
+function dayPairsCell(day: Pick<AttendanceDayView, 'pairs' | 'openAt'>): string | null {
+  const pairs = day.pairs ?? [];
+  if (pairs.length < 2 && !day.openAt) return null;
+  return [pairsText(pairs), day.openAt ? openPressText(day.openAt) : null].filter(Boolean).join(' · ');
+}
 
 /** The Summary's rows as the first sheet lists them: each department, then its teams; those without one as "No department". */
 export function placeRows(report: Pick<AttendanceSummaryReport, 'groups'>): PlaceRow[] {

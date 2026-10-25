@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkInRefusal, dayFromPunches, NETWORK_NEEDED_TEXT } from '@trendlix/shared';
+import { checkInRefusal, dayFromPunches, EXEMPT_CHECK_IN_TEXT, NETWORK_NEEDED_TEXT } from '@trendlix/shared';
 import type { CheckInTodayView, PunchView } from '../../../lib/attendance-types';
 import {
   accuracyText,
@@ -9,16 +9,20 @@ import {
   counterShows,
   counterWords,
   countRuleOf,
+  dayBreakText,
   dayHoursText,
   dayTimesText,
   dayTitle,
   durationClock,
+  exemptToday,
+  expectedTextOf,
   flagLabels,
   hoursToWorkText,
   latestView,
   LOCATION_OPTIONS,
   locationErrorOf,
   locationHelpText,
+  lockNote,
   mockRefused,
   noteServerTime,
   placeLabel,
@@ -413,7 +417,7 @@ describe('the check-in counter', () => {
       day: { checkIn: new Date(at('09:05:00')).toISOString(), checkOut: new Date(at('17:57:00')).toISOString(), place: 'office', flags: [], hoursCounted: 8 + 52 / 60 },
     };
     expect(counterShows(out, at('18:30:00'))).toEqual({ kind: 'total', text: 'Worked 8:52 today' });
-    // checked in again after checking out: attendance counts from the first check-in to the last check-out
+    // checked in again after checking out, from an API from before the pairs (25 October 2026): from the first check-in, as then
     const again: CheckInTodayView = { ...out, next: 'out' };
     expect(counterShows(again, at('18:00:00'))).toMatchObject({ kind: 'live', value: '8:55:00' });
     // a day off, a holiday or leave: no check-in, nothing new
@@ -445,5 +449,82 @@ describe('the check-in counter', () => {
     // a newer one: measured again
     expect(noteServerTime(seen, 20_000, 18_000)).toEqual({ newest: 20_000, skew: 2_000 });
     expect(noteServerTime(seen, Number.NaN, 1)).toBe(seen);
+  });
+});
+
+// A day as the sum of its pairs (owner, 25 October 2026: "the working hours to be calculated between the checkin and out
+// only, not the first and last"; "Count the closed pairs, flag the open one"), on the MORNING shift as above.
+describe('today’s pairs on the panel and the counter', () => {
+  const DATE = '2026-10-20';
+  const at = (time: string) => Date.parse(`${DATE}T${time}+03:00`);
+  const iso = (time: string) => new Date(at(time)).toISOString();
+  const MORNING = { startTime: '09:00', endTime: '19:00', hoursPerDay: 9, graceMinutes: 15 };
+  const pressesOf = (...p: [kind: 'in' | 'out', time: string][]) => p.map(([kind, time]) => ({ kind, at: iso(`${time}:00`), place: 'office' as const }));
+  /** Today's view after these presses, the day as the API keeps it (dayFromPunches). */
+  const viewAfter = (...p: [kind: 'in' | 'out', time: string][]): CheckInTodayView => {
+    const punches = pressesOf(...p);
+    return { ...TODAY, date: DATE, shift: MORNING, next: p.at(-1)?.[0] === 'in' ? 'out' : 'in', day: dayFromPunches(DATE, punches, MORNING) };
+  };
+
+  it('says today so far as its pairs, the break and a check-in since', () => {
+    const day = viewAfter(['in', '09:02'], ['out', '13:10'], ['in', '14:00'], ['out', '18:05']).day!;
+    expect(dayTimesText(day)).toBe('9:02 AM–1:10 PM · 2:00 PM–6:05 PM');
+    expect(dayHoursText(day)).toBe('8:13 counted');
+    expect(dayBreakText(day)).toBe('Break 50 min');
+    const open = viewAfter(['in', '09:00'], ['out', '13:00'], ['in', '14:00']).day!;
+    expect(dayTimesText(open)).toBe('9:00 AM–1:00 PM · 2:00 PM → not checked out yet');
+    expect(dayHoursText(open)).toBe('4:00 counted so far');
+    expect(dayBreakText(open)).toBe('Break 1 h');
+    // one pair, or only a check-in: as before
+    expect(dayTimesText(viewAfter(['in', '09:05'], ['out', '17:10']).day!)).toBe('9:05 AM → 5:10 PM');
+    expect(dayTimesText(viewAfter(['in', '09:05']).day!)).toBe('9:05 AM → not checked out yet');
+    expect(dayBreakText(viewAfter(['in', '09:05'], ['out', '17:10']).day!)).toBeNull();
+  });
+
+  it('counts the closed pairs and the time since the last check-in, never the break', () => {
+    const view = viewAfter(['in', '09:00'], ['out', '13:00'], ['in', '14:00']);
+    expect(counterShows(view, at('16:30:00'))).toEqual({
+      kind: 'live',
+      value: '6:30:00',
+      note: 'Counting since 2:00 PM, with 4:00 from earlier today; the break isn’t counted',
+      status: 'Your 9 hours are done at 7:00 PM',
+    });
+    // as the API counts the day once they check out at that moment
+    const out = dayFromPunches(DATE, pressesOf(['in', '09:00'], ['out', '13:00'], ['in', '14:00'], ['out', '16:30']), MORNING);
+    expect(out.hoursCounted).toBe(6.5);
+  });
+
+  it('stops at the hours to work and at the window’s end, with the pairs before', () => {
+    const view = viewAfter(['in', '09:00'], ['out', '13:00'], ['in', '14:00'], ['out', '18:00'], ['in', '18:30']);
+    // 8 hours counted already, the 9th can't be done by 7:15 PM
+    expect(counterShows(view, at('19:00:00'))).toMatchObject({ kind: 'live', value: '8:30:00', status: 'Hours count until 7:15 PM' });
+    expect(counterShows(view, at('19:40:00'))).toMatchObject({ kind: 'live', value: '8:45:00', status: 'Hours counted until 7:15 PM' });
+    // done before the break was over: the hours to work, no more
+    const long = viewAfter(['in', '08:00'], ['out', '17:30'], ['in', '18:00']);
+    expect(long.day!.hoursCounted).toBe(8.5);
+    expect(counterShows(long, at('18:45:00'))).toMatchObject({ kind: 'live', value: '9:00:00', status: 'Your 9 hours are done' });
+    // once checked out: the day's total, its pairs together
+    expect(counterShows(viewAfter(['in', '09:00'], ['out', '13:00'], ['in', '14:00'], ['out', '18:00']), at('18:30:00'))).toEqual({ kind: 'total', text: 'Worked 8:00 today' });
+  });
+
+  it('counts a closed pair from the time before, as checkInCount’s `before`', () => {
+    const rule = countRuleOf(DATE, MORNING);
+    expect(checkInCount({ ...rule, checkIn: at('14:00:00'), now: at('15:00:00'), before: 4 * 3_600_000 })).toMatchObject({ countedMs: 5 * 3_600_000, phase: 'counting', doneAt: at('19:00:00'), before: 4 * 3_600_000 });
+    // none: as before
+    expect(checkInCount({ ...rule, checkIn: at('14:00:00'), now: at('15:00:00') })).toMatchObject({ countedMs: 3_600_000, before: 0 });
+  });
+});
+
+describe('exempt from check-in today (owner, 25 October 2026: "Optional check-in")', () => {
+  const exempt: CheckInTodayView = { ...TODAY, exemption: { startDate: '2026-10-01', endDate: null }, network: { locked: true }, gps: { locked: true } };
+
+  it('shows the badge with the period, says checking in is optional, and no lock', () => {
+    expect(exemptToday(exempt)).toEqual({ label: 'Exempt', title: 'Exempt from check-in', when: 'From 01/10/2026, no end date' });
+    expect(expectedTextOf(exempt)).toBe(EXEMPT_CHECK_IN_TEXT);
+    expect(lockNote(exempt)).toBeNull();
+    // not exempt (or an API from before it): as before
+    expect([exemptToday(TODAY), exemptToday({ ...TODAY, exemption: null })]).toEqual([null, null]);
+    expect(expectedTextOf(TODAY)).toBe(TODAY.expectedText);
+    expect(lockNote({ ...exempt, exemption: null })).not.toBeNull();
   });
 });

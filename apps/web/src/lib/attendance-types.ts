@@ -7,9 +7,11 @@ import type {
   AttendanceSummaryRow,
   CheckInFlag,
   CheckInPlace,
+  ExemptionPeriod,
   ExpectedPlace,
   OfficeNetwork,
   PayrollStatus,
+  PressPair,
   PunchKind,
   PunchPointFrom,
   SignedIpProblem,
@@ -171,6 +173,11 @@ export interface AttendancePersonMonth {
    * order, each with its request: those days show "On official duty" with a link to it. Left out by an API from before it.
    */
   odDays?: OdDayView[];
+  /**
+   * Their periods exempt from check-in that overlap the month (owner, 25 October 2026: "trat them as if they achived their
+   * full working hours"): said at the top of their month with an "Exempt" badge. Left out by an API from before them.
+   */
+  exemptions?: ExemptionPeriod[];
 }
 
 /**
@@ -297,13 +304,21 @@ export interface PunchView {
   locationKind?: 'remote_site' | 'client';
 }
 
-/** The day as today's punches make it: the first check-in, the last check-out after it, the place, flags and hours. */
+/**
+ * The day as today's punches make it: the first check-in, the last check-out after it, the place, flags and hours; since
+ * 25 October 2026 (owner: "the working hours to be calculated between the checkin and out only, not the first and last")
+ * its check-in → check-out pairs, the hours their closed pairs count, the break between them and an open last check-in
+ * (left out by an API from before them).
+ */
 export interface PunchedDayView {
   checkIn: string | null;
   checkOut: string | null;
   place: CheckInPlace | null;
   flags: CheckInFlag[];
   hoursCounted: number;
+  pairs?: PressPair[];
+  openAt?: string | null;
+  breakMinutes?: number;
 }
 
 /** GET /me/attendance/today: whether they check in, today's punches and day, and what the next press is. */
@@ -360,6 +375,12 @@ export interface CheckInTodayView {
    * October 2026: make-up hours; null, or left out by an API from before it: none).
    */
   shift: { startTime: string; endTime: string; hoursPerDay: number | null; graceMinutes: number; countUntil?: string | null } | null;
+  /**
+   * Their exemption from check-in in force today (owner, 25 October 2026: "Optional check-in"): checking in is optional,
+   * the presses kept for reference, the days counted as full; the expected text says so. Null: none; left out by an API
+   * from before it.
+   */
+  exemption?: ExemptionPeriod | null;
 }
 
 /** POST /me/attendance/punches: the day after the punch, and what to tell them. */

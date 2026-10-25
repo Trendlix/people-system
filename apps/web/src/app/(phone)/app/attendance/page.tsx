@@ -8,7 +8,7 @@ import { appAttendanceHref, appCorrectionHref, appRequestsHref } from '@/lib/sur
 import { figureTiles, notImportedYetText, readAttendanceMonth, type PunchRow } from '../../../(app)/attendance/attendance';
 import { loadMine } from '../../../(app)/attendance/data';
 import { notLoaded } from '../../../(app)/attendance/not-loaded';
-import { FigureTiles, MonthNav } from '../../../(app)/attendance/ui';
+import { ExemptionNote, FigureTiles, MonthNav } from '../../../(app)/attendance/ui';
 import { NoProfile } from '../../../(app)/dashboard/cards';
 import { todayInCairo } from '../../../(app)/employees/ui';
 import { monthName } from '../../../(app)/payroll/list';
@@ -53,6 +53,8 @@ async function Month({ searchParams }: { searchParams: PageProps<'/app/attendanc
       {view.corrections && view.correctable && !view.correctable.allowed && view.correctable.reason && (
         <p className="rounded-lg bg-white px-4 py-3 text-sm text-muted">{view.correctable.reason}</p>
       )}
+      {/* exempt from check-in (25 October 2026): the month's periods */}
+      <ExemptionNote periods={p.exemptions} self />
       {p.days.length === 0 ? (
         <div className="card px-4 py-8 text-center text-sm text-muted">{notImportedYetText(month)}</div>
       ) : (

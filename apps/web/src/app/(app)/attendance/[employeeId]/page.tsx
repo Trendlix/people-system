@@ -15,7 +15,7 @@ import { hrCorrectionHref } from '../corrections/corrections';
 import { DayCorrectionCell } from '../corrections/day-cell';
 import { loadPerson } from '../data';
 import { notLoaded } from '../not-loaded';
-import { DaysTable, FigureTiles, MonthNav, SourcesNote } from '../ui';
+import { DaysTable, ExemptionNote, FigureTiles, MonthNav, SourcesNote } from '../ui';
 import { joinShown } from '@/lib/hidden';
 import { historyHref } from '../../employees/[id]/attendance/history';
 
@@ -25,7 +25,8 @@ import { historyHref } from '../../employees/[id]/attendance/history';
 // and after a click away, and where the days came from. HR, the CEO and Finance; a C-level person's only the CEO and the
 // Super Admin (the API answers 404 for the rest, as for anyone not there). Attendance corrections (owner, 19 October
 // 2026: "Attendance corrections with approval"): HR's Correct on each day (never their own), a correction being decided
-// on its day, a corrected day "corrected from …", and every press of the day under it.
+// on its day, a corrected day "corrected from …", and every press of the day under it. Exempt from check-in (owner, 25
+// October 2026: "trat them as if they achived their full working hours"): the month's periods said at its top.
 
 export const metadata: Metadata = { title: 'Attendance · People System' };
 
@@ -67,6 +68,7 @@ async function PersonMonth({ params, searchParams }: { params: PageProps<'/atten
         </p>
       </div>
       <MonthNav month={month} hrefFor={(m) => personHref(p.employee.id, m)} />
+      <ExemptionNote periods={p.exemptions} />
       {p.days.length === 0 ? (
         <div className="card space-y-3 px-6 py-8 text-center">
           <p className="text-muted">

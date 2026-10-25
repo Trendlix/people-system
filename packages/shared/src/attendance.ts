@@ -164,7 +164,8 @@ export function shiftWindowOn(day: string, shift: ShiftWindowTimes, timeZone = '
  * October 2026: "i have a window the employee have to fill 9 hours within the window": coming early or staying late
  * adds nothing; shiftWindowOn; none given: not clipped), in whole minutes, never more than `mostHours` (the shift's:
  * mostHoursCountedADay; null: no shift, or a shift that counts hours until a time, owner, 20 October 2026: not capped,
- * the window's end its limit), never below 0. 0 when either isn't a moment.
+ * the window's end its limit), never below 0. 0 when either isn't a moment. One pair of hoursCountedForPresses (owner,
+ * 25 October 2026: a day is the sum of its check-in → check-out pairs), which every day's hours are counted with.
  */
 export function hoursCountedForDay(
   checkIn: Date | string,
@@ -172,14 +173,148 @@ export function hoursCountedForDay(
   mostHours: number | null,
   window: ShiftWindow | null = null,
 ): number {
-  let [from, to] = [momentOf(checkIn), momentOf(checkOut)];
-  if (!Number.isFinite(from) || !Number.isFinite(to)) return 0;
-  if (window) {
-    from = Math.max(from, window.start);
-    to = Math.min(to, window.end);
+  return hoursCountedForPresses(
+    [
+      { kind: 'in', at: checkIn },
+      { kind: 'out', at: checkOut },
+    ],
+    mostHours,
+    window,
+  );
+}
+
+// ---------- a day's check-in → check-out pairs (owner, 25 October 2026) ----------
+// The owner, 25 October 2026: "on checkin and out several ttimes, the working hours to be calculated between the checkin
+// and out only, not the first and last"; asked, "Count the closed pairs, flag the open one": a day's hours are the sum
+// of its finished check-in → check-out pairs, each within the shift's window, the sum at most the shift's hours a day;
+// the time between the pairs (a break) isn't counted; a last check-in without a check-out pairs with nothing yet and is
+// the day's open press, its check-out missing for HR to correct (attendance-days.ts). The day's check-in stays its first
+// check-in (lateness by it, as before) and its check-out its last check-out.
+
+/** A press as the pairing reads it: a check-in or a check-out, and its moment (a Date, an ISO string, milliseconds). */
+export interface PressMoment {
+  kind: string;
+  at: Date | string | number;
+}
+
+/** A finished check-in → check-out pair, as a day keeps it: the moments, ISO. */
+export interface PressPair {
+  in: string;
+  out: string;
+}
+
+/** A span of time in milliseconds: a pair, or part of a day of official duty (official-duty.ts). */
+export interface TimeSpan {
+  from: number;
+  to: number;
+}
+
+/**
+ * A day's presses paired (owner, 25 October 2026), in the order pressed (two at the same moment in the order given):
+ * each check-in with the check-out after it. A check-in while already checked in starts nothing new (the earliest is
+ * kept); after a check-in, several check-outs in a row end its pair at the last of them; a check-out with no check-in
+ * before it pairs with nothing. A last check-in with no check-out after it is the day's open press (`open`, its moment;
+ * null: none). Presses that aren't moments, or neither a check-in nor a check-out, are left out.
+ */
+export function pairPresses(presses: readonly PressMoment[]): { pairs: TimeSpan[]; open: number | null } {
+  const sorted = presses
+    .map((p, i) => ({ kind: p.kind, at: momentOf(p.at), i }))
+    .filter((p) => Number.isFinite(p.at) && (p.kind === 'in' || p.kind === 'out'))
+    .sort((a, b) => a.at - b.at || a.i - b.i);
+  const pairs: TimeSpan[] = [];
+  let start: number | null = null;
+  let end: number | null = null;
+  for (const p of sorted) {
+    if (p.kind === 'in') {
+      // already in, no check-out since: the earliest check-in kept
+      if (start !== null && end === null) continue;
+      if (start !== null && end !== null) pairs.push({ from: start, to: end });
+      start = p.at;
+      end = null;
+    } else if (start !== null) {
+      // the last check-out after a check-in ends its pair
+      end = p.at;
+    }
   }
-  if (to <= from) return 0;
+  if (start !== null && end !== null) pairs.push({ from: start, to: end });
+  return { pairs, open: start !== null && end === null ? start : null };
+}
+
+/**
+ * The hours of time spans together within a window (none: not clipped), overlaps counted once (their union: a pair and
+ * part of a day of official duty that cover the same time count it once), in whole minutes (a part minute of the total
+ * isn't counted, as a day always was), never more than `mostHours` (null: not capped), never below 0.
+ */
+export function spanHours(spans: readonly TimeSpan[], window: ShiftWindow | null, mostHours: number | null): number {
+  const clipped = spans
+    .map((s) => (window ? { from: Math.max(s.from, window.start), to: Math.min(s.to, window.end) } : { ...s }))
+    .filter((s) => Number.isFinite(s.from) && Number.isFinite(s.to) && s.to > s.from)
+    .sort((a, b) => a.from - b.from);
+  let total = 0;
+  let cur: TimeSpan | null = null;
+  for (const s of clipped) {
+    if (cur && s.from <= cur.to) cur.to = Math.max(cur.to, s.to);
+    else {
+      if (cur) total += cur.to - cur.from;
+      cur = { ...s };
+    }
+  }
+  if (cur) total += cur.to - cur.from;
   // whole minutes: a part minute isn't counted
-  const hours = Math.floor((to - from) / 60_000) / 60;
+  const hours = Math.floor(total / 60_000) / 60;
   return typeof mostHours === 'number' && mostHours >= 0 ? Math.min(hours, mostHours) : hours;
+}
+
+/**
+ * The hours a day counts from its presses (owner, 25 October 2026: "the working hours to be calculated between the
+ * checkin and out only, not the first and last"): its finished check-in → check-out pairs (pairPresses), each within the
+ * shift's window that day (shiftWindowOn; none given: not clipped), summed in whole minutes, never more than `mostHours`
+ * (the shift's: mostHoursCountedADay; null: not capped). An open last check-in counts nothing. `alsoSpans`: other time
+ * that counts as worked that day (part of a day of official duty, official-duty.ts), its overlap with the pairs once.
+ */
+export function hoursCountedForPresses(
+  presses: readonly PressMoment[],
+  mostHours: number | null,
+  window: ShiftWindow | null = null,
+  alsoSpans: readonly TimeSpan[] = [],
+): number {
+  return spanHours([...pairPresses(presses).pairs, ...alsoSpans], window, mostHours);
+}
+
+/**
+ * The break of a day (owner, 25 October 2026): the time between its pairs (and between its last pair and an open last
+ * check-in), within the shift's window (none: not clipped), to the nearest minute; 0 with one pair or none.
+ */
+export function breakMinutesOf(pairs: readonly TimeSpan[], open: number | null, window: ShiftWindow | null = null): number {
+  const sorted = [...pairs].sort((a, b) => a.from - b.from);
+  const gaps: TimeSpan[] = [];
+  for (let i = 1; i < sorted.length; i++) gaps.push({ from: sorted[i - 1].to, to: sorted[i].from });
+  if (open !== null && sorted.length) gaps.push({ from: sorted[sorted.length - 1].to, to: open });
+  let total = 0;
+  for (const g of gaps) {
+    const from = window ? Math.max(g.from, window.start) : g.from;
+    const to = window ? Math.min(g.to, window.end) : g.to;
+    if (to > from) total += to - from;
+  }
+  return Math.round(total / 60_000);
+}
+
+/** Pairs as a day keeps them: their moments ISO. */
+export const pressPairsOf = (pairs: readonly TimeSpan[]): PressPair[] => pairs.map((p) => ({ in: new Date(p.from).toISOString(), out: new Date(p.to).toISOString() }));
+
+/** A day's kept pairs as spans (an entry that isn't two moments in order is left out). */
+export const spansOfPairs = (pairs: readonly PressPair[] | null | undefined): TimeSpan[] =>
+  (pairs ?? []).map((p) => ({ from: momentOf(p.in), to: momentOf(p.out) })).filter((s) => Number.isFinite(s.from) && Number.isFinite(s.to) && s.to >= s.from);
+
+/** Whether a value read back from the database (a day's pairs, JSON) is a list of pairs; anything else is none. */
+export function readPressPairs(value: unknown): PressPair[] | null {
+  if (!Array.isArray(value)) return null;
+  const out: PressPair[] = [];
+  for (const v of value) {
+    if (!v || typeof v !== 'object') return null;
+    const { in: from, out: to } = v as Record<string, unknown>;
+    if (typeof from !== 'string' || typeof to !== 'string' || !Number.isFinite(Date.parse(from)) || !Number.isFinite(Date.parse(to))) return null;
+    out.push({ in: from, out: to });
+  }
+  return out;
 }

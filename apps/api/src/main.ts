@@ -3,6 +3,7 @@ import { AppModule } from './app.module.js';
 import { configureApp } from './app.setup.js';
 import { CustodySchedulerService } from './assets/custody-scheduler.service.js';
 import { CheckInLocationEndingsService } from './attendance/check-in-location-endings.service.js';
+import { HoursByPairsService } from './attendance/hours-by-pairs.service.js';
 import { KpiSchedulerService } from './kpis/kpi-scheduler.service.js';
 import { EmployeeAccessSchedulerService } from './employee-access/employee-access-scheduler.service.js';
 import { OffboardingSchedulerService } from './offboarding/offboarding-scheduler.service.js';
@@ -36,6 +37,10 @@ async function bootstrap() {
   // recruitment's round (22 October 2026, Phase 2): each interviewer reminded of a scorecard not given the day after the
   // interview; the tests' apps don't start it either
   app.get(RecruitmentSchedulerService).start();
+  // a day as the sum of its check-in → check-out pairs (owner, 25 October 2026: "the working hours to be calculated between
+  // the checkin and out only, not the first and last"; "Months not yet paid"): the days kept before recounted once, under
+  // an advisory lock, the drafts refilled; idempotent, so later starts find nothing to change; the tests run it themselves
+  app.get(HoursByPairsService).start();
   // the CVs read in the background, the ones already here first (22 October 2026: "make the OCR egine reads the CV and analyse it")
   app.get(CvReadingsService).start();
   // candidate profiles (22 October 2026: "how to make like a profile for each candidate …"): the applications and general

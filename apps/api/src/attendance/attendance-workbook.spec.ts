@@ -75,7 +75,7 @@ describe('the attendance Summary workbook', () => {
     expect(people[1].slice(0, 5)).toEqual(['September 2026', 'EMP-1', 'Rania Invented', 'Sales', 'Field Team']);
 
     const days = rowsOf(wb.getWorksheet('Days')!);
-    expect(days[0]).toEqual(['Date', 'Code', 'Name', 'Department', 'What it was', 'Check-in', 'Check-out', 'Hours counted', 'Short hours', 'Where', 'Permission hours', 'Zoho says', 'From', 'Flagged']);
+    expect(days[0]).toEqual(['Date', 'Code', 'Name', 'Department', 'What it was', 'Check-in', 'Check-out', 'Hours counted', 'Short hours', 'Where', 'Permission hours', 'Zoho says', 'From', 'Flagged', 'Pairs', 'Break', 'Exempt']);
     expect(days[1].slice(0, 7)).toEqual(['01/09/2026', 'EMP-1', 'Rania Invented', 'Sales › Field Team', 'Worked', '10:23 AM', '6:31 PM']);
     // 9 − 8:08 short
     expect(hoursOf(days[1][8])).toBeCloseTo(52 / 60, 5);

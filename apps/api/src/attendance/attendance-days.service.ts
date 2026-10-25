@@ -1,14 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import {
   CHECK_IN_SOURCES,
+  exemptDays,
   monthDays,
   officialDutyDays,
   OWN_SOURCES,
+  readPressPairs,
   shiftWorkHours,
   type AttendanceDayStatus,
   type AttendanceSource,
   type CorrectedFrom,
   type DayPlace,
+  type ExemptionPeriod,
   type SourcedDay,
 } from '@trendlix/shared';
 import { addDays, fromDateOnly, todayInCairo, toDateOnly } from '../common/date-only.js';
@@ -18,13 +21,18 @@ import { employedIn } from '../payroll/adjustments/people.js';
 import { firstDay, lastDay } from '../payroll/months.js';
 import { approvedOds, dutyDaysOf } from '../official-duty/od-days.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { exemptionsOf } from './exemption-days.js';
 
 // A person's month of attendance days from every source (owner, 19 October 2026: "Check-in through the system (phone or
 // web with the office location check, or a device) to replace Zoho"): the days kept from Zoho People's imports, from
 // their check-ins on the system (and later a device's), and the corrections approved, one a date by SOURCE_PRECEDENCE,
 // with the days gone by since their first check-in on the system that have none (an absent working day, a rest day, a
 // holiday or approved leave: packages/shared monthDays). The Attendance section shows them and a draft payroll run's
-// lines are filled from them (attendance-fill.service.ts), so both count the same days.
+// lines are filled from them (attendance-fill.service.ts), so both count the same days. A day kept on the system's
+// check-ins carries its pairs, break and open last check-in (owner, 25 October 2026: "the working hours to be calculated
+// between the checkin and out only, not the first and last"). People exempt from check-in (owner, 25 October 2026: "trat
+// them as if they achived their full working hours"): their exempt days are read full here (packages/shared exemptDays),
+// never written, so the pages, the payroll and the KPIs read them alike.
 
 type Db = PrismaService | Prisma.TransactionClient;
 
@@ -44,6 +52,9 @@ export const DAY_SELECT = {
   flags: true,
   correctedFrom: true,
   correctionId: true,
+  pairs: true,
+  breakMinutes: true,
+  openAt: true,
 } satisfies Prisma.AttendanceDaySelect;
 
 export type DayRow = Prisma.AttendanceDayGetPayload<{ select: typeof DAY_SELECT }>;
@@ -84,6 +95,8 @@ export interface PersonDays {
   own: boolean;
   /** The sources of the days shown. */
   sources: AttendanceSource[];
+  /** Their periods exempt from check-in with a day in the month (owner, 25 October 2026), in date order. */
+  exemptions: ExemptionPeriod[];
 }
 
 /** A kept row as a month's day. */
@@ -102,6 +115,10 @@ export function monthDayOf(d: DayRow): MonthDay {
     importId: d.importId,
     // a correction approved (owner, 19 October 2026: "Attendance corrections with approval"): the day it was applied over
     ...(d.source === 'correction' && { correctedFrom: (d.correctedFrom as unknown as CorrectedFrom | null) ?? null, correctionId: d.correctionId }),
+    // its pairs, break and open last check-in (25 October 2026); none on Zoho's days and those kept before
+    pairs: readPressPairs(d.pairs),
+    breakMinutes: d.breakMinutes,
+    openAt: d.openAt?.toISOString() ?? null,
   };
 }
 
@@ -121,14 +138,19 @@ export class AttendanceDaysService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Those employed in a month who checked in on the system (or a device) on or before its end: their month has days
-   * (the working days gone by without a check-in among them) even when nothing was kept in it.
+   * Those employed in a month who checked in on the system (or a device) on or before its end, or were exempt from
+   * check-in in it (owner, 25 October 2026): their month has days (the working days gone by without a check-in, the exempt
+   * days) even when nothing was kept in it.
    */
   async checkInPeople(month: string, db: Db = this.prisma): Promise<string[]> {
+    const [first, last] = [toDateOnly(firstDay(month)), toDateOnly(lastDay(month))];
     const rows = await db.employee.findMany({
       where: {
         employments: { some: employedIn(month) },
-        attendanceDays: { some: { source: { in: [...CHECK_IN_SOURCES] }, date: { lte: toDateOnly(lastDay(month)) } } },
+        OR: [
+          { attendanceDays: { some: { source: { in: [...CHECK_IN_SOURCES] }, date: { lte: last } } } },
+          { checkInExemptions: { some: { cancelledAt: null, startDate: { lte: last }, OR: [{ endDate: null }, { endDate: { gte: first } }] } } },
+        ],
       },
       select: { id: true },
     });
@@ -145,7 +167,7 @@ export class AttendanceDaysService {
     if (!ids.length) return out;
     const [first, last] = [firstDay(month), lastDay(month)];
     const range = { gte: toDateOnly(first), lte: toDateOnly(last) };
-    const [kept, employments, holidays, leave, checkIns, ods] = await Promise.all([
+    const [kept, employments, holidays, leave, checkIns, ods, exemptions] = await Promise.all([
       rows ?? db.attendanceDay.findMany({ where: { employeeId: { in: [...ids] }, date: range }, orderBy: { date: 'asc' }, select: DAY_SELECT }),
       db.employment.findMany({ where: { employeeId: { in: [...ids] }, ...employedIn(month) }, orderBy: { joinDate: 'desc' }, select: EMPLOYMENT_SELECT }),
       db.holiday.findMany({ where: { date: range }, select: { date: true } }),
@@ -161,6 +183,8 @@ export class AttendanceDaysService {
       }),
       // their official duties approved in the month (owner, 23 October 2026: "OD counted as attended")
       approvedOds(db, ids, first, last),
+      // their periods exempt from check-in (owner, 25 October 2026)
+      exemptionsOf(db, ids, first, last),
     ]);
     const employmentOf = new Map<string, EmploymentRow>();
     for (const e of employments) if (!employmentOf.has(e.employeeId)) employmentOf.set(e.employeeId, e);
@@ -184,7 +208,12 @@ export class AttendanceDaysService {
       const base = monthDays(own, { month, today, checkInFrom, workingDays: shift?.workingDays ?? null, holidays: holidayDays, leaveDays, employedFrom, employedTo });
       // an approved official duty's days attended for its hours, a day gone by without a press too (23 October 2026)
       const duties = dutyDaysOf(ods, id, shift, holidaySet, first, last);
-      const days = officialDutyDays(base, duties, { today, checkInFrom, employedFrom, employedTo, shift }).map((d) => ({
+      const withDuty = officialDutyDays(base, duties, { today, checkInFrom, employedFrom, employedTo, shift });
+      // the exempt days full, whatever was pressed (25 October 2026), a day gone by with nothing kept too
+      const hoursADay = shift ? shiftWorkHours(shift) : null;
+      const periods = exemptions.get(id) ?? [];
+      const exempt = employment ? exemptDays(withDuty, periods, { month, today, workingDays: shift?.workingDays ?? null, holidays: holidayDays, leaveDays, employedFrom, employedTo, hoursADay }) : withDuty;
+      const days = exempt.map((d) => ({
         ...d,
         importId: 'importId' in d ? (d.importId as string | null) : null,
         flags: [...(d.flags ?? [])],
@@ -193,11 +222,13 @@ export class AttendanceDaysService {
       out.set(id, {
         employeeId: id,
         employment,
-        hoursADay: shift ? shiftWorkHours(shift) : null,
+        hoursADay,
         days,
-        // the days gone by without a check-in count too: someone who checks in on the system and didn't all month
-        own: days.some((d) => (OWN_SOURCES as readonly string[]).includes(d.source)),
+        // the days gone by without a check-in count too: someone who checks in on the system and didn't all month; and
+        // the exempt days (25 October 2026), so an exempt person's line is filled from them
+        own: days.some((d) => d.exempt || (OWN_SOURCES as readonly string[]).includes(d.source)),
         sources: [...new Set(days.map((d) => d.source))],
+        exemptions: periods,
       });
     }
     return out;

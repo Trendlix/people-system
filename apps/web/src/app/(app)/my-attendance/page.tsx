@@ -13,7 +13,7 @@ import { askCorrectionHref, MY_CORRECTIONS_HREF } from '../attendance/correction
 import { DayCorrectionCell } from '../attendance/corrections/day-cell';
 import { loadMine } from '../attendance/data';
 import { notLoaded } from '../attendance/not-loaded';
-import { DaysTable, FigureTiles, MonthNav } from '../attendance/ui';
+import { DaysTable, ExemptionNote, FigureTiles, MonthNav } from '../attendance/ui';
 import { TodayCheckIn } from './check-in-card';
 
 // My Attendance (owner, 19 October 2026: "the attendance is not active in the side menu"): the employee's own month, in
@@ -61,6 +61,8 @@ async function Mine({ searchParams }: { searchParams: PageProps<'/my-attendance'
       {corrections && view.correctable && !view.correctable.allowed && view.correctable.reason && (
         <p className="rounded-lg bg-canvas px-4 py-3 text-sm text-muted">{view.correctable.reason}</p>
       )}
+      {/* exempt from check-in (25 October 2026): the month's periods */}
+      <ExemptionNote periods={p.exemptions} self />
       {p.days.length === 0 ? (
         <div className="card px-6 py-8 text-center text-sm text-muted">{notImportedYetText(month)}</div>
       ) : (

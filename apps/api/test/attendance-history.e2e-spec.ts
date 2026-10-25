@@ -291,7 +291,8 @@ describe('Attendance history (e2e)', () => {
     await wb.xlsx.load(res.body as never);
     expect(wb.worksheets.map((w) => w.name)).toEqual(['Figures', 'On-Time Trend', 'Daily Log']);
     const log = wb.getWorksheet('Daily Log')!;
-    expect(log.getRow(1).values).toEqual([undefined, 'Date', 'Day', 'Mode', 'First in', 'Last out', 'Hours', 'Late minutes', 'On time', 'Source']);
+    // the day's pairs and break since 25 October 2026 (owner: "the working hours to be calculated between the checkin and out only")
+    expect(log.getRow(1).values).toEqual([undefined, 'Date', 'Day', 'Mode', 'First in', 'Last out', 'Hours', 'Late minutes', 'On time', 'Source', 'Pairs', 'Break']);
     const lateDay = seeded.find((s) => s.kind === 'late')!.date;
     const row = log.getRows(2, log.rowCount - 1)!.find((r) => r.getCell(1).value === lateDay.split('-').reverse().join('/'))!;
     expect([row.getCell(3).value, row.getCell(7).value, row.getCell(8).value, row.getCell(9).value]).toEqual(['Office', 40, 'No', 'Zoho import']);

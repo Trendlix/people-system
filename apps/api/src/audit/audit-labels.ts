@@ -31,6 +31,9 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   check_in_location_rule: 'Check-ins without a location',
   // the GPS lock (owner, 24 October 2026: "Yes, add a GPS lock too"): Office staff's check-ins held to the check-in locations
   check_in_gps_lock: 'Check-ins locked to the check-in locations',
+  // people exempt from check-in (owner, 25 October 2026: "allow me to select people that are not eligable for attendance
+  // checkins and outs"): a period added, ended or removed
+  check_in_exemption: 'Exemption from check-in',
   company: 'Company',
   contract: 'Contract',
   contract_settings: 'Contract defaults',
@@ -379,6 +382,9 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   dismiss_suggestion: 'Dismissed the suggestion',
   split: 'Moved to a new candidate',
   backfill: 'Joined the earlier ones to their candidates',
+  // a day as the sum of its pairs (owner, 25 October 2026: "the working hours to be calculated between the checkin and
+  // out only, not the first and last"): the days of the months not yet paid recounted once
+  recount_hours: 'Recounted the hours by check-in → check-out pairs',
   // HR's notes of before moved into first screening comments (24 October 2026)
   move_notes: 'Moved the earlier notes into comments',
   mark_onboarding_item: 'Changed an onboarding item',

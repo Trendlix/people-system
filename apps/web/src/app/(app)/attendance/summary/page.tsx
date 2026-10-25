@@ -12,6 +12,8 @@ import {
   attendanceMonthChoices,
   attendancePeriodTitle,
   canSeeAttendance,
+  EXEMPT_DAY_TITLE,
+  exemptDaysText,
   filledText,
   hoursText,
   quickSummaryPeriods,
@@ -28,7 +30,9 @@ import { ATTENDANCE_SUMMARY_PATH } from '../sections';
 // range of months, each department with everyone who worked in it or its teams that month, then each team, in
 // Organization's order, those without a department last, and everyone together; with the workbook (by department and
 // team, by person, each day). The C-level people are left out for anyone but the CEO and the Super Admin (owner, 19
-// October 2026), the workbook too, and the page says so. HR, the CEO and Finance; the API checks it again.
+// October 2026), the workbook too, and the page says so. HR, the CEO and Finance; the API checks it again. Days exempt
+// from check-in (owner, 25 October 2026: "trat them as if they achived their full working hours") are said under the
+// days worked, an "Exempt" badge: "3 exempt days".
 
 export const metadata: Metadata = { title: 'Attendance Summary · People System' };
 
@@ -82,7 +86,16 @@ function Cells({ r, strong = false }: { r: AttendanceSummaryRow; strong?: boolea
   return (
     <>
       <td className={cell}>{r.people}</td>
-      <td className={cell}>{f.daysWorked}</td>
+      <td className={cell}>
+        {f.daysWorked}
+        {exemptDaysText(f) && (
+          <div className="mt-0.5">
+            <span className="badge border border-line bg-card text-xs font-normal text-ink" title={EXEMPT_DAY_TITLE}>
+              {exemptDaysText(f)}
+            </span>
+          </div>
+        )}
+      </td>
       <td className={cell}>{hoursText(f.hoursCounted)}</td>
       <td className={cell}>{hoursText(r.averageHours)}</td>
       <td className={`${cell} ${f.absentDays ? 'text-danger' : ''}`}>{f.absentDays}</td>

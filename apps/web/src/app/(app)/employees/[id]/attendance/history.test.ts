@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { HISTORY_FIGURE_DEFINITIONS, type HistoryBin, type HistoryFigures, type HistoryTrendPoint, type HistoryWeekday } from '@trendlix/shared';
 import {
+  EXEMPT_DAYS_DEFINITION,
   binsChart,
   columnPath,
   countTicks,
@@ -46,6 +47,7 @@ const FIGURES: HistoryFigures = {
   zohoLeaveDays: 1,
   wfhDays: 4,
   odDays: 2,
+  exemptDays: 0,
   extraHours: 1.5,
   offDaysWorked: 1,
   lateMinutes: 95,
@@ -122,6 +124,13 @@ describe('the figures', () => {
     expect(tiles.find((t) => t.key === 'leave')?.note).toBe('And 1 day of leave in Zoho only');
     expect(tiles.every((t) => t.definition.length > 20)).toBe(true);
     expect(tiles.find((t) => t.key === 'od')?.definition).toBe(HISTORY_FIGURE_DEFINITIONS.odDays);
+  });
+
+  it('adds an Exempt days tile only with exempt days (owner, 25 October 2026: "trat them as if they achived their full working hours")', () => {
+    expect(historyTiles({ figures: FIGURES, definitions: HISTORY_FIGURE_DEFINITIONS }).map((t) => t.key)).not.toContain('exempt');
+    const tiles = historyTiles({ figures: { ...FIGURES, exemptDays: 5 }, definitions: HISTORY_FIGURE_DEFINITIONS });
+    expect(tiles.find((t) => t.key === 'exempt')).toEqual({ key: 'exempt', label: 'Exempt days', value: '5', note: null, definition: EXEMPT_DAYS_DEFINITION, tone: null });
+    expect(tiles.map((t) => t.key).indexOf('exempt')).toBe(tiles.map((t) => t.key).indexOf('od') + 1);
   });
 
   it('says none as a dash', () => {

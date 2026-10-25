@@ -11,13 +11,15 @@
 // days, anyone else anywhere): a check-in elsewhere is kept but flagged for the manager and HR on Daily Attendance, never
 // refused (no one is locked out). Several presses a day are kept as punches; the day's check-in is the first in and its
 // check-out the last out, as Zoho People has them, its hours counted by the shift's rule with the grace minutes
-// (attendance.ts). A fingerprint or face device isn't here yet (no device details yet): its days would come as the
+// (attendance.ts): since 25 October 2026 (owner: "the working hours to be calculated between the checkin and out only,
+// not the first and last") its check-in → check-out pairs' hours together, a break between them not counted, a last
+// check-in without a check-out its open press (dayFromPunches). A fingerprint or face device isn't here yet (no device details yet): its days would come as the
 // source 'device' (ATTENDANCE_SOURCES). Pure: the API decides with these and the web shows the same words. Home
 // locations (owner, 20 October 2026: "allow other users to request to add their home locations when working from home",
 // then "Label Home, flag elsewhere"): within a person's approved home a check-in is Home (remote for every other rule),
 // and a remote one elsewhere is flagged for them; the home's own point is never kept on a punch.
 
-import { hoursCountedForDay, mostHoursCountedADay, shiftWindowOn, type ShiftWindowTimes } from './attendance.js';
+import { breakMinutesOf, mostHoursCountedADay, pairPresses, pressPairsOf, shiftWindowOn, spanHours, type PressPair, type ShiftWindowTimes } from './attendance.js';
 import type { WorkPlace } from './attendance-import.js';
 import type { ShiftTimes } from './payroll.js';
 
@@ -350,13 +352,21 @@ export interface PunchLike {
 
 /** A day of check-ins as kept (source 'system'): what the punches make it. */
 export interface PunchedDay {
+  /** The first check-in (lateness is by it), and the last check-out of a pair. */
   checkIn: string | null;
   checkOut: string | null;
   /** The first check-in's place, else (only check-outs) the last check-out's. */
   place: CheckInPlace | null;
   /** Every check-in's flags, and fake GPS suspected on a check-out too, once each. */
   flags: CheckInFlag[];
+  /** The finished pairs' hours together (owner, 25 October 2026), by the shift's rule. */
   hoursCounted: number;
+  /** The finished check-in → check-out pairs, in order (owner, 25 October 2026). */
+  pairs: PressPair[];
+  /** A last check-in with no check-out after it: its moment, the day's open press; null: none. */
+  openAt: string | null;
+  /** The time between the pairs (and before an open last check-in) within the shift's window, in minutes. */
+  breakMinutes: number;
 }
 
 /** A shift as a day's hours are counted with it: its window, hours to work and grace minutes. */
@@ -365,9 +375,11 @@ export type CountingShift = ShiftWindowTimes & Pick<ShiftTimes, 'hoursPerDay'>;
 /**
  * A day from its punches (owner's brief, 19 October 2026: "the day's check-in is the first in, check-out the last out
  * (the Zoho meaning)"): the first check-in, the last check-out after it (none after it: none; no check-in at all: the
- * last check-out, a check-out without a check-in), the place and flags, and the hours counted by the shift's rule
- * (attendance.ts hoursCountedForDay, within the window on `date` moved by the grace; no shift: from check-in to
- * check-out), to the minute.
+ * last check-out, a check-out without a check-in), the place and flags. Its hours (owner, 25 October 2026: "the working
+ * hours to be calculated between the checkin and out only, not the first and last"; "Count the closed pairs, flag the
+ * open one") are its check-in → check-out pairs' (attendance.ts pairPresses), each within the shift's window on `date`
+ * moved by the grace, together at most the shift's hours a day (no shift: not clipped nor capped), to the minute; the
+ * pairs, the break between them and an open last check-in are kept with the day.
  */
 export function dayFromPunches(date: string, punches: readonly PunchLike[], shift: CountingShift | null): PunchedDay {
   const sorted = [...punches].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
@@ -377,14 +389,19 @@ export function dayFromPunches(date: string, punches: readonly PunchLike[], shif
   const lastOut = (firstIn ? outs.filter((p) => Date.parse(p.at) > Date.parse(firstIn.at)) : outs).at(-1) ?? null;
   // the check-ins' flags; of a check-out's, only fake GPS (its place breaks no rule), in the order pressed
   const flags = [...new Set(sorted.flatMap((p) => (p.flags ?? []).filter(isCheckInFlag).filter((f) => p.kind === 'in' || f === 'fake_gps')))];
-  const hours =
-    firstIn && lastOut ? hoursCountedForDay(firstIn.at, lastOut.at, shift ? mostHoursCountedADay(shift) : null, shift ? shiftWindowOn(date, shift) : null) : 0;
+  const { pairs, open } = pairPresses(sorted);
+  const window = shift ? shiftWindowOn(date, shift) : null;
+  const hours = spanHours(pairs, window, shift ? mostHoursCountedADay(shift) : null);
   return {
     checkIn: firstIn?.at ?? null,
+    // the last check-out after the first check-in ends the last pair; with no check-in, the last check-out
     checkOut: lastOut?.at ?? null,
     place: firstIn?.place ?? lastOut?.place ?? null,
     flags,
     hoursCounted: Math.round(hours * 60) / 60,
+    pairs: pressPairsOf(pairs),
+    openAt: open === null ? null : (ins.find((p) => Date.parse(p.at) === open)?.at ?? new Date(open).toISOString()),
+    breakMinutes: breakMinutesOf(pairs, open, window),
   };
 }
 
@@ -400,6 +417,24 @@ export const cairoDay = (moment: Date | string | number): string => CAIRO_DAY.fo
 
 /** A moment as the screens and messages show its time in Cairo: 12-hour, "9:05 AM". */
 export const cairoClock = (moment: Date | string | number): string => CAIRO_CLOCK.format(new Date(moment)).replace(/ /g, ' ');
+
+// ---------- a day's pairs in words (owner, 25 October 2026) ----------
+
+/** A pair as the day lists show it, on the 12-hour clock: "9:02 AM–1:10 PM". */
+export const pairText = (pair: PressPair): string => `${cairoClock(pair.in)}–${cairoClock(pair.out)}`;
+
+/** A day's pairs: "9:02 AM–1:10 PM · 2:00 PM–6:05 PM"; empty with none. */
+export const pairsText = (pairs: readonly PressPair[]): string => pairs.map(pairText).join(' · ');
+
+/** A day's break: "Break 50 min", "Break 1 h 5 min"; null with none. */
+export function breakText(minutes: number | null | undefined): string | null {
+  if (typeof minutes !== 'number' || !Number.isFinite(minutes) || minutes <= 0) return null;
+  const m = Math.round(minutes);
+  return m < 60 ? `Break ${m} min` : `Break ${Math.floor(m / 60)} h${m % 60 ? ` ${m % 60} min` : ''}`;
+}
+
+/** An open last check-in (owner, 25 October 2026: "flag the open one"): "Checked in 6:30 PM · not checked out". */
+export const openPressText = (openAt: string): string => `Checked in ${cairoClock(openAt)} · not checked out`;
 
 const nextDate = (ymd: string, days: number) => new Date(Date.parse(`${ymd}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
 
@@ -442,11 +477,13 @@ export function punchMessages(
   if (punch.kind === 'in') {
     messages.push(`Checked in at ${time}, ${where}.`);
     if (ins.length) {
-      const stillIn = nextPunch(earlier) === 'out';
+      // still in since the open check-in (the pairs', owner, 25 October 2026): a check-in while in starts nothing new
+      const open = pairPresses(earlier).open;
       messages.push(
-        stillIn
-          ? `You were checked in already since ${cairoClock(ins[0].at)}: this check-in is kept too, and your day still starts at ${cairoClock(ins[0].at)}.`
-          : `Checked in again: your day still starts at ${cairoClock(ins[0].at)} and ends at your last check-out.`,
+        open !== null
+          ? `You were checked in already since ${cairoClock(open)}: this check-in is kept too, and your day still starts at ${cairoClock(ins[0].at)}.`
+          : // the time since the last check-out is a break, not counted (owner, 25 October 2026)
+            `Checked in again: your day still starts at ${cairoClock(ins[0].at)}; the time since your last check-out is a break, not counted.`,
       );
     }
   } else {

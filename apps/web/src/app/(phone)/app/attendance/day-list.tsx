@@ -3,12 +3,13 @@ import type { MonthCorrectable, MonthCorrection } from '@/lib/correction-types';
 import type { AttendanceDay } from '@/lib/attendance-types';
 import { formatDate } from '@/lib/format';
 import { appCorrectionHref, appItemHref } from '@/lib/surface';
-import { correctedNote, dayRow, daySourceText, extraHoursText, hoursText, type PunchRow } from '../../../(app)/attendance/attendance';
+import { correctedNote, dayPairs, dayRow, daySourceText, extraHoursText, hoursText, type PunchRow } from '../../../(app)/attendance/attendance';
 import { dayCorrection } from '../../../(app)/attendance/corrections/corrections';
 import { isWfhDay, WFH_DAY_BADGE } from '../../../(app)/attendance/wfh/wfh';
 import { OD_DAY_BADGE } from '../../../(app)/attendance/official-duty/od';
 import { leaveStatusLabel } from '../../../(app)/leave/list';
 import { AllPresses, DayEndView } from '../../../(app)/attendance/punch-ui';
+import { DayPairsLine, ExemptBadge, OpenPressLine } from '../../../(app)/attendance/ui';
 import { weekdayOf } from '../../../(app)/organization/holidays/holidays';
 import { dayStatusText, dayTone } from '../../../(app)/payroll/[id]/attendance/attendance';
 
@@ -22,7 +23,10 @@ import { dayStatusText, dayTone } from '../../../(app)/payroll/[id]/attendance/a
 // check-in and the check-out each with its place as a badge, a Map link to where it was pressed (their own spot) and the
 // flags in a word or two, and every press of the day collapsed in "All presses (14)" (punch-ui.tsx). A work from home day
 // approved for them (owner, 21 October 2026: "think about how should we handle the working from home in out erp") says
-// "Working from home" beside what the day was.
+// "Working from home" beside what the day was. A day of several check-in → check-out pairs (owner, 25 October 2026: "the
+// working hours to be calculated between the checkin and out only, not the first and last") lists them with its break,
+// and an open last check-in says "Checked in 6:30 PM · not checked out" under the check-out ("Count the closed pairs,
+// flag the open one"); an exempt day (owner, 25 October 2026) carries an "Exempt" badge, its presses kept for reference.
 
 const TONE = { danger: 'text-danger', warn: 'text-warn' } as const;
 
@@ -76,6 +80,7 @@ export function DayList({
         const tone = dayTone(d.status);
         const row = dayRow(d, punches);
         const corrected = correctedNote(d);
+        const pairs = dayPairs(d);
         return (
           <li key={d.date} className="card p-4">
             <div className="flex items-baseline justify-between gap-3">
@@ -84,6 +89,7 @@ export function DayList({
               </h3>
               <span className="flex flex-wrap items-baseline justify-end gap-2">
                 {isWfhDay({ wfhDays }, d.date) && <span className="badge bg-accent-soft text-accent">{WFH_DAY_BADGE}</span>}
+                <ExemptBadge of={d} />
                 {/* a day of official duty (23 October 2026), opening its request */}
                 {d.od && (
                   <Link href={appItemHref('requests', 'od', d.od.requestId)} className="badge bg-ok-soft text-ok no-underline">
@@ -99,6 +105,7 @@ export function DayList({
               </Figure>
               <Figure label="Check-out">
                 <DayEndView end={row.checkOut} />
+                <OpenPressLine pairs={pairs} exempt={d.exempt} />
               </Figure>
               <Figure label="Hours counted">
                 {d.status === 'worked' ? hoursText(d.hoursCounted) : '—'}
@@ -109,6 +116,7 @@ export function DayList({
                 {d.shortHours > 0 ? hoursText(d.shortHours) : '—'}
               </Figure>
             </dl>
+            <DayPairsLine pairs={pairs} className="mt-2" />
             <p className="mt-2 text-xs text-muted">{[d.permissionHours > 0 ? `Permission ${hoursText(d.permissionHours)}` : null, daySourceText(d)].filter(Boolean).join(' · ')}</p>
             {corrected && <p className="mt-1 text-xs text-muted">{corrected}</p>}
             {row.more && <AllPresses presses={row.presses} className="mt-2" />}

@@ -6,6 +6,7 @@ import {
   checkInPlaceAt,
   checkInRefusal,
   dayFromPunches,
+  EXEMPT_CHECK_IN_TEXT,
   expectedPlace,
   expectedPlaceText,
   gpsLockVerdict,
@@ -22,14 +23,15 @@ import {
   punchNetwork,
   shiftDayOf,
   waivesNetworkLock,
-  type CheckInFlag,
   type CheckInPlace,
   type CheckInPlaces,
+  type ExemptionPeriod,
   type ExpectedPlace,
   type GpsLockSetting,
   type LocationRule,
   type NetworkLockSetting,
   type OfficeLocation,
+  type PunchedDay,
   type PunchKind,
   type PunchLike,
   type SessionKind,
@@ -46,6 +48,7 @@ import { AttendanceFillService } from './attendance-fill.service.js';
 import { CheckInSetupService } from './check-in-setup.service.js';
 import type { PunchDto } from './check-in.dto.js';
 import { CorrectionDaysService } from './correction-days.service.js';
+import { exemptionOn } from './exemption-days.js';
 import { HomeLocationsService } from './home-locations.service.js';
 import { coordinate, PUNCH_SELECT, punchView, type PunchRow, type PunchView } from './punch-views.js';
 import type { SignedIp } from './signed-ip.js';
@@ -65,8 +68,19 @@ export interface CheckInTodayView {
   now: string;
   next: PunchKind;
   punches: PunchView[];
-  /** The day as the punches make it: the first check-in, the last check-out, the place, the flags, the hours counted. */
-  day: { checkIn: string | null; checkOut: string | null; place: CheckInPlace | null; flags: CheckInFlag[]; hoursCounted: number } | null;
+  /**
+   * The day as the punches make it: the first check-in, the last check-out, the place, the flags, the hours counted; and
+   * (owner, 25 October 2026: "the working hours to be calculated between the checkin and out only, not the first and
+   * last") its check-in → check-out pairs so far, the break between them and an open last check-in: the hours counted are
+   * the finished pairs'.
+   */
+  day: PunchedDay | null;
+  /**
+   * Their period exempt from check-in today (owner, 25 October 2026: "Optional check-in"; packages/shared
+   * check-in-exemptions.ts): their day counts as full, a press is kept for reference only, never refused by a lock nor
+   * flagged. Null: not exempt today.
+   */
+  exemption: ExemptionPeriod | null;
   /** Where their work arrangement expects them today, and in words. */
   expected: ExpectedPlace | null;
   expectedText: string | null;
@@ -191,6 +205,11 @@ export interface PunchContext {
 // Requested check-in locations (24 October 2026: "Home Location - Remote Site - Client Location"; home-locations.ts): a
 // press within a client location (everyone's) or one of their own remote sites is remote with its name and kind ("Client
 // · Acme", "Remote site · Flat"), their place: not flagged, and it waives the network's lock as their own sub-location does.
+// A day as the sum of its pairs (owner, 25 October 2026: "the working hours to be calculated between the checkin and out
+// only, not the first and last"): the day kept from the punches keeps its check-in → check-out pairs, the break between
+// them and an open last check-in, its hours the finished pairs' (packages/shared dayFromPunches). Exempt from check-in
+// (owner, 25 October 2026: "Optional check-in"): on a day of their exemption a press is kept for reference, never
+// refused by the network's lock nor the GPS lock and never flagged; their day counts as full wherever it is read.
 @Injectable()
 export class CheckInService {
   constructor(
@@ -236,13 +255,16 @@ export class CheckInService {
     const mock = dto.mock === true;
     // a work from home day approved for them (owner, 21 October 2026): expected anywhere, the network's lock waived
     const workingFromHome = await approvedWfhOn(this.prisma, employeeId, date);
+    // exempt from check-in today (owner, 25 October 2026: "Optional check-in"): the press kept for reference only, never
+    // refused by the network's lock nor the GPS lock, never flagged
+    const exempt = (await exemptionOn(this.prisma, employeeId, date)) !== null;
     // within an official duty approved for them (owner, 23 October 2026: "Check in from anywhere"): expected anywhere, the
     // network's lock waived, the spot kept as any press's, the press marked with it
     const od = await approvedOdAt(this.prisma, employeeId, date, now, shift);
     // the place read from the point: the main office (Office), their own sub-location, any sub-location (remote, its
     // name kept), their home, remote, or unknown (20 October 2026)
     const read = checkInPlaceAt(reading, places, home, own.sites);
-    const waived = workingFromHome || od !== null;
+    const waived = workingFromHome || od !== null || exempt;
     // the office network (20 October 2026): refused off it when locked, unless within their own sub-location (a client
     // location or their remote site too, 24 October 2026) on a location that isn't a mock one, or on a work from home day
     // approved for them (21 October 2026) or within an official duty; on it, at the office
@@ -287,7 +309,7 @@ export class CheckInService {
     // a check-in breaking the arrangement's rule (not at their own sub-location), and any press on a location the phone
     // said is a mock one (fake GPS); a remote check-in by someone with an approved home, away from it, the office and
     // the sub-locations (not at home or the office); one within a sub-location they aren't linked to (not their location)
-    const flags = punchFlags(dto.kind, expected, place, mock, home !== null, subLocation);
+    const flags = exempt ? [] : punchFlags(dto.kind, expected, place, mock, home !== null, subLocation);
 
     const { kept, earlier } = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT 1 FROM employees WHERE id = ${employeeId}::uuid FOR UPDATE`;
@@ -316,16 +338,7 @@ export class CheckInService {
       });
       const punches = [...before, { kind: dto.kind, at: now, place, flags }];
       const day = dayFromPunches(date, punches.map(asPunch), shift);
-      const data = {
-        checkIn: day.checkIn ? new Date(day.checkIn) : null,
-        checkOut: day.checkOut ? new Date(day.checkOut) : null,
-        status: 'worked',
-        place: day.place,
-        flags: day.flags,
-        hoursCounted: Math.round(day.hoursCounted * 100) / 100,
-        importedById: user.id,
-        importedAt: now,
-      };
+      const data = { ...keptDayData(day), importedById: user.id, importedAt: now };
       await tx.attendanceDay.upsert({
         where: { employeeId_date_source: { employeeId, date: toDateOnly(date), source: 'system' } },
         create: { employeeId, date: toDateOnly(date), source: 'system', zohoStatus: null, permissionHours: null, importId: null, ...data },
@@ -371,10 +384,13 @@ export class CheckInService {
     const [punches, workingFromHome]: [PunchRow[], boolean] = employeeId
       ? await Promise.all([db.attendancePunch.findMany({ where: { employeeId, date: toDateOnly(date) }, orderBy: { at: 'asc' }, select: PUNCH_SELECT }), approvedWfhOn(db, employeeId, date)])
       : [[], false];
-    // an official duty approved for them today, and whether it is on now (23 October 2026)
-    const [odToday, odNow] = employeeId ? await Promise.all([approvedOdOn(db, employeeId, date), approvedOdAt(db, employeeId, date, now, shift)]) : [null, null];
+    // an official duty approved for them today, and whether it is on now (23 October 2026); exempt from check-in today
+    // (25 October 2026)
+    const [odToday, odNow, exemption] = employeeId
+      ? await Promise.all([approvedOdOn(db, employeeId, date), approvedOdAt(db, employeeId, date, now, shift), exemptionOn(db, employeeId, date)])
+      : [null, null, null];
     const duty = odNow ?? odToday;
-    const anywhere = workingFromHome || odNow !== null;
+    const anywhere = workingFromHome || odNow !== null || exemption !== null;
     // held to the check-in locations by GPS (24 October 2026), never on a work from home day or within an official duty
     const gpsLocked = !!employment && lockedToCheckInLocations(gps, places, employment) && !anywhere;
     const expected = employment ? expectedPlace(employment.workArrangement, employment.officeDays, weekday(date), anywhere) : null;
@@ -386,14 +402,17 @@ export class CheckInService {
       // their own: with the spot (owner, 20 October 2026: "Yes, keep the spot")
       punches: punches.map((p) => punchView(p, true, locations)),
       day: punches.length ? dayFromPunches(date, punches.map(asPunch), shift) : null,
+      exemption,
       expected,
       expectedText:
         employment && expected
-          ? odNow
-            ? OD_CHECK_IN_TEXT
-            : odToday
-              ? `Official duty today, ${odWhenText(odToday).split(', ')[1] ?? 'part of the day'}: check in from where you are then. ${expectedPlaceText(employment.workArrangement, expected, workingFromHome)}`
-              : expectedPlaceText(employment.workArrangement, expected, workingFromHome)
+          ? exemption
+            ? EXEMPT_CHECK_IN_TEXT
+            : odNow
+              ? OD_CHECK_IN_TEXT
+              : odToday
+                ? `Official duty today, ${odWhenText(odToday).split(', ')[1] ?? 'part of the day'}: check in from where you are then. ${expectedPlaceText(employment.workArrangement, expected, workingFromHome)}`
+                : expectedPlaceText(employment.workArrangement, expected, workingFromHome)
           : null,
       officeLocationSet: checkInLocationsSet(locations),
       network: { locked: !!employment && lockedToOfficeNetwork(lock, employment) && !anywhere },
@@ -420,6 +439,24 @@ function shiftOf(e: CheckInEmploymentRow) {
         countUntil: s.countUntil ? fromTimeOfDay(s.countUntil) : null,
       }
     : null;
+}
+
+/**
+ * A day of the system's check-ins as kept from its punches (attendance_days): the first check-in, the last check-out, the
+ * place, the flags, the hours counted, and (owner, 25 October 2026) its pairs, break and open last check-in.
+ */
+export function keptDayData(day: PunchedDay) {
+  return {
+    checkIn: day.checkIn ? new Date(day.checkIn) : null,
+    checkOut: day.checkOut ? new Date(day.checkOut) : null,
+    status: 'worked',
+    place: day.place,
+    flags: day.flags,
+    hoursCounted: Math.round(day.hoursCounted * 100) / 100,
+    pairs: day.pairs.map((p) => ({ in: p.in, out: p.out })),
+    breakMinutes: day.breakMinutes,
+    openAt: day.openAt ? new Date(day.openAt) : null,
+  };
 }
 
 /** A kept punch as the shared rules take it. */

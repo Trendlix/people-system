@@ -1,15 +1,21 @@
 import {
+  breakText,
   cairoClock,
   CHECK_IN_FLAG_LABELS,
   CHECK_IN_LOCATION_ERRORS,
   CHECK_IN_PLACE_LABELS,
   checkInLockText,
+  EXEMPT_BADGE,
+  EXEMPT_CHECK_IN_TEXT,
+  EXEMPTION_LABEL,
+  exemptionWhenText,
   checkInRefusal,
   formatHours,
   isCheckInFlag,
   isPunchKind,
   makesUpHours,
   networkNeededText,
+  pairsText,
   pressPlaceLabel,
   PUNCH_KIND_LABELS,
   shiftWindowOn,
@@ -32,7 +38,10 @@ import { weekdayOf } from '../organization/holidays/holidays';
 // browser without it) with Check in or Check out; never a time: the server's is the punch's. The API reads the point
 // against the office's, and keeps it with the press (owner, 20 October 2026: "Yes, keep the spot"), read only then and
 // never tracked; the panel says so, and today's list opens each press's own spot on a map. Pure code, tested: reading
-// the location, the press as the API takes it, and the panel's words. Relative imports: the tests run without "@/".
+// the location, the press as the API takes it, and the panel's words. Relative imports: the tests run without "@/". A
+// day as the sum of its pairs (owner, 25 October 2026: "the working hours to be calculated between the checkin and out
+// only, not the first and last"): the panel lists today's pairs so far and their hours, and the counter counts them
+// with the time since the last check-in, never the break between them.
 
 // ---------- the browser's location ----------
 
@@ -217,10 +226,23 @@ export const networkNote = (view: Pick<CheckInTodayView, 'ownPlaces'>): string =
 
 /**
  * What the panel says before a press when they are locked (the office network, 20 October 2026; the check-in locations by
- * GPS, 24 October 2026: "Yes, add a GPS lock too"; either passing is enough); null when neither holds them today.
+ * GPS, 24 October 2026: "Yes, add a GPS lock too"; either passing is enough); null when neither holds them today, and
+ * never for someone exempt from check-in today (owner, 25 October 2026: "Optional check-in": no lock refuses them).
  */
-export const lockNote = (view: Pick<CheckInTodayView, 'ownPlaces' | 'network' | 'gps'>): string | null =>
-  checkInLockText({ network: !!view.network?.locked, gps: !!view.gps?.locked }, view.ownPlaces ?? []);
+export const lockNote = (view: Pick<CheckInTodayView, 'ownPlaces' | 'network' | 'gps' | 'exemption'>): string | null =>
+  view.exemption ? null : checkInLockText({ network: !!view.network?.locked, gps: !!view.gps?.locked }, view.ownPlaces ?? []);
+
+/**
+ * Exempt from check-in today (owner, 25 October 2026: "allow me to select people that are not eligable for attendance
+ * checkins and outs, trat them as if they achived their full working hours"; "Optional check-in"): the badge, its title
+ * and the period, "From 01/11/2026 until 30/11/2026"; null when not exempt (or an API from before it).
+ */
+export function exemptToday(view: Pick<CheckInTodayView, 'exemption'>): { label: string; title: string; when: string } | null {
+  return view.exemption ? { label: EXEMPT_BADGE, title: EXEMPTION_LABEL, when: exemptionWhenText(view.exemption) } : null;
+}
+
+/** What the panel says of where they are expected: exempt today, that checking in is optional; else the API's words. */
+export const expectedTextOf = (view: Pick<CheckInTodayView, 'expectedText' | 'exemption'>): string | null => (view.exemption ? EXEMPT_CHECK_IN_TEXT : view.expectedText);
 
 /** The flags' words, the known ones once each ("Checked in outside the office on an office day"). */
 export const flagLabels = (flags: readonly string[] | null | undefined): string[] => [...new Set((flags ?? []).filter(isCheckInFlag))].map((f) => CHECK_IN_FLAG_LABELS[f]);
@@ -252,17 +274,32 @@ export function punchRows(punches: readonly PunchView[]): PunchRow[] {
     }));
 }
 
-/** The day so far: "9:05 AM → 5:10 PM", "9:05 AM → not checked out yet", "No check-in → 5:10 PM". */
-export function dayTimesText(day: Pick<PunchedDayView, 'checkIn' | 'checkOut'>): string {
+/** Whether a day lists its pairs (25 October 2026): several of them, or one with a check-in after it not checked out. */
+const listsPairs = (day: Pick<PunchedDayView, 'pairs' | 'openAt'>): boolean => (day.pairs?.length ?? 0) > 1 || ((day.pairs?.length ?? 0) > 0 && !!day.openAt);
+
+/**
+ * The day so far: "9:05 AM → 5:10 PM", "9:05 AM → not checked out yet", "No check-in → 5:10 PM"; a day of several pairs
+ * (owner, 25 October 2026: "the working hours to be calculated between the checkin and out only, not the first and
+ * last") each of them, "9:02 AM–1:10 PM · 2:00 PM–6:05 PM", and a check-in since, "· 2:00 PM → not checked out yet".
+ */
+export function dayTimesText(day: Pick<PunchedDayView, 'checkIn' | 'checkOut'> & Partial<Pick<PunchedDayView, 'pairs' | 'openAt'>>): string {
+  if (listsPairs(day)) return [pairsText(day.pairs ?? []), ...(day.openAt ? [`${cairoClock(day.openAt)} → not checked out yet`] : [])].join(' · ');
   return `${day.checkIn ? cairoClock(day.checkIn) : 'No check-in'} → ${day.checkOut ? cairoClock(day.checkOut) : 'not checked out yet'}`;
 }
 
-/** The day's hours: counted once they check out by the shift's rule, none without a check-in. */
-export function dayHoursText(day: Pick<PunchedDayView, 'checkIn' | 'checkOut' | 'hoursCounted'>): string {
+/**
+ * The day's hours: counted once they check out by the shift's rule, none without a check-in; checked in again after
+ * their pairs (25 October 2026), the pairs' hours so far.
+ */
+export function dayHoursText(day: Pick<PunchedDayView, 'checkIn' | 'checkOut' | 'hoursCounted'> & Partial<Pick<PunchedDayView, 'pairs' | 'openAt'>>): string {
+  if (day.checkIn && day.checkOut && day.openAt) return `${formatHours(day.hoursCounted)} counted so far`;
   if (day.checkIn && day.checkOut) return `${formatHours(day.hoursCounted)} counted`;
   if (day.checkIn) return 'Counted once you check out';
   return 'No hours counted without a check-in';
 }
+
+/** The day's break between its pairs (25 October 2026): "Break 50 min"; null with none. */
+export const dayBreakText = (day: Partial<Pick<PunchedDayView, 'breakMinutes'>>): string | null => breakText(day.breakMinutes);
 
 // ---------- the check-in counter ----------
 // Owner, 20 October 2026: "employees need to see a checkin counter after their checkin." While checked in, the time
@@ -334,6 +371,8 @@ export interface CheckInCount {
   doneAt: number | null;
   countUntil: number | null;
   hoursToWork: number | null;
+  /** The time today's closed pairs counted before this check-in (25 October 2026), ms; 0 with none. */
+  before?: number;
 }
 
 const moment = (n: number | null | undefined): number | null => (typeof n === 'number' && Number.isFinite(n) ? n : null);
@@ -342,9 +381,11 @@ const moment = (n: number | null | undefined): number | null => (typeof n === 'n
  * The time counted from a check-in to `now` by a rule (CountRule), as attendance would count a check-out at `now`
  * (there to the minute; here to the second): from the later of the check-in and the window's start, to the earlier of
  * now and `countUntil`, at most the hours to work unless extra time counts, never below 0. Null when the check-in or
- * now isn't a moment.
+ * now isn't a moment. `before` (owner, 25 October 2026: "the working hours to be calculated between the checkin and out
+ * only, not the first and last"): the time today's closed pairs counted already (ms), the check-in being the one since
+ * the last check-out, so the break between them never counts; together at most the hours to work as before.
  */
-export function checkInCount(input: CountRule & { checkIn: number; now: number }): CheckInCount | null {
+export function checkInCount(input: CountRule & { checkIn: number; now: number; before?: number }): CheckInCount | null {
   const checkIn = moment(input.checkIn);
   const now = moment(input.now);
   if (checkIn === null || now === null) return null;
@@ -352,12 +393,15 @@ export function checkInCount(input: CountRule & { checkIn: number; now: number }
   const countUntil = moment(input.countUntil);
   const hoursToWork = typeof input.hoursToWork === 'number' && input.hoursToWork > 0 && Number.isFinite(input.hoursToWork) ? input.hoursToWork : null;
   const target = hoursToWork === null ? null : Math.round(hoursToWork * 3_600_000);
+  const before = Math.max(0, moment(input.before) ?? 0);
   const countsFrom = windowStart === null ? checkIn : Math.max(checkIn, windowStart);
   const end = countUntil === null ? now : Math.min(now, countUntil);
-  const span = Math.max(0, end - countsFrom);
+  const span = before + Math.max(0, end - countsFrom);
   const hoursDone = target !== null && span >= target;
   const counted = hoursDone && !input.extraCounts ? target : span;
-  const doneAt = target === null || (countUntil !== null && countsFrom + target > countUntil) ? null : countsFrom + target;
+  // the hours still to work since this check-in
+  const left = target === null ? null : Math.max(0, target - before);
+  const doneAt = left === null || (countUntil !== null && countsFrom + left > countUntil) ? null : countsFrom + left;
   const passed = countUntil !== null && now >= countUntil;
   const phase: CountPhase =
     countUntil !== null && countsFrom >= countUntil
@@ -380,6 +424,7 @@ export function checkInCount(input: CountRule & { checkIn: number; now: number }
     doneAt,
     countUntil,
     hoursToWork,
+    before,
   };
 }
 
@@ -415,7 +460,14 @@ export function counterWords(c: CheckInCount): CounterWords {
   else if (c.phase === 'stopped') status = `Hours counted until ${until}`;
   else if (c.doneAt !== null && yours) status = `${yours} at ${cairoClock(c.doneAt)}`;
   else if (until) status = `Hours count until ${until}`;
-  const note = c.fromWindowStart && c.phase !== 'after_limit' ? `Counting from ${cairoClock(c.countsFrom)}, when your shift starts` : null;
+  // checked in again after a check-out (25 October 2026): counting since then, with the pairs before it
+  const earlier = (c.before ?? 0) > 0 ? `${formatHours(Math.floor((c.before ?? 0) / 60_000) / 60)} from earlier today` : null;
+  const note =
+    c.fromWindowStart && c.phase !== 'after_limit'
+      ? `Counting from ${cairoClock(c.countsFrom)}, when your shift starts${earlier ? `, with ${earlier}` : ''}`
+      : earlier
+        ? `Counting since ${cairoClock(c.countsFrom)}, with ${earlier}; the break isn’t counted`
+        : null;
   return { value: durationClock(c.countedMs), note, status };
 }
 
@@ -424,16 +476,20 @@ export type CounterShows = ({ kind: 'live' } & CounterWords) | { kind: 'total'; 
 
 /**
  * The counter for today's view at `now` (the server's clock, ms): while the day's last punch is a check-in, the time
- * counted from the day's first check-in (attendance counts from the first check-in to the last check-out, so a second
- * check-in after checking out goes on from the first) by today's shift (countRuleOf); once checked out, "Worked 8:52
- * today", the hours the server counted; nothing before a check-in (a day off, a holiday, leave), or for a check-out
- * without one.
+ * counted by today's shift (countRuleOf): since 25 October 2026 (owner: "the working hours to be calculated between the
+ * checkin and out only, not the first and last") the closed pairs' hours the server counted and the time since the open
+ * check-in (`openAt`), the break between them not counted; from an API from before the pairs, from the day's first
+ * check-in, as then. Once checked out, "Worked 8:52 today", the hours the server counted; nothing before a check-in (a
+ * day off, a holiday, leave), or for a check-out without one.
  */
 export function counterShows(view: Pick<CheckInTodayView, 'date' | 'next' | 'day' | 'shift'>, now: number): CounterShows {
   const day = view.day;
   if (!day?.checkIn) return null;
   if (view.next === 'in') return day.checkOut ? { kind: 'total', text: `Worked ${formatHours(day.hoursCounted)} today` } : null;
-  const count = checkInCount({ ...countRuleOf(view.date, view.shift), checkIn: Date.parse(day.checkIn), now });
+  const paired = Array.isArray(day.pairs);
+  const since = paired && day.openAt ? Date.parse(day.openAt) : Date.parse(day.checkIn);
+  const before = paired && day.openAt && day.pairs!.length ? Math.round(day.hoursCounted * 3_600_000) : 0;
+  const count = checkInCount({ ...countRuleOf(view.date, view.shift), checkIn: since, now, before });
   return count ? { kind: 'live', ...counterWords(count) } : null;
 }
 

@@ -24,8 +24,9 @@ import { addDays, weekday } from '../common/date-only.js';
 // - "Still checked in?": checked in and not out by the time hours stop counting (the shift's "Count hours until" when
 //   set, else its end and grace: shiftWindowOn); sent within 4 hours of it, once a day, unless switched off.
 // Only for someone with an active user account and a current employment under a shift (not a freelancer: they don't
-// check in); never on a day kept from Zoho People's import. A night shift's day is the day it starts, so the day before
-// today is looked at too. Pure, tested with a fake clock.
+// check in); never on a day kept from Zoho People's import, nor on a day they are exempt from check-in (owner, 25 October
+// 2026: "Optional check-in": no check-in or check-out reminder, on the bell, the phone or WhatsApp). A night shift's day
+// is the day it starts, so the day before today is looked at too. Pure, tested with a fake clock.
 
 /** "Still checked in?" isn't sent once this long has passed since hours stopped counting (the API was down meanwhile). */
 export const CHECK_OUT_REMINDER_FOR_MS = 4 * 60 * 60_000;
@@ -74,6 +75,8 @@ export interface ReminderFacts {
   permission: ReadonlyMap<string, readonly PermissionSpan[]>;
   /** The days kept from Zoho People's import. */
   zoho: ReadonlySet<string>;
+  /** The days they are exempt from check-in (owner, 25 October 2026); missing: none. */
+  exempt?: ReadonlySet<string>;
   /** The day's check-ins and check-outs on the system. */
   punches: ReadonlyMap<string, readonly { kind: PunchKind; at: Date }[]>;
   /** The reminders already sent: `${userId}:${day}:${kind}`. */
@@ -141,7 +144,7 @@ function workingDay(person: ReminderPerson, facts: ReminderFacts, day: string) {
   const shift = employmentOn(person.employments, day)?.shift;
   if (!shift || !shift.workingDays.includes(weekday(day))) return null;
   const key = dayKey(person.employeeId, day);
-  if (facts.leave.has(key) || facts.zoho.has(key)) return null;
+  if (facts.leave.has(key) || facts.zoho.has(key) || facts.exempt?.has(key)) return null;
   const window = shiftWindowOn(day, shift);
   return window ? { shift, window, key } : null;
 }

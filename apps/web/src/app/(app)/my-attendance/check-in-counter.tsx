@@ -11,6 +11,8 @@ import { counterShows, noteServerTime, type ServerClock } from './check-in';
 // from the server sets how far this device's clock is off (the newest view's only, so a page Next.js shows again from
 // before doesn't set it back), and one timer for every counter on the page ticks while any is shown, cleared when the
 // last one goes. The ticking seconds aren't read out (aria-live off); what is next is said politely, as it changes.
+// Checked in again after a check-out (owner, 25 October 2026: "the working hours to be calculated between the checkin
+// and out only, not the first and last"), it counts today's closed pairs and the time since that check-in, never the break.
 
 let clock: ServerClock = { newest: Number.NEGATIVE_INFINITY, skew: 0 };
 const listeners = new Set<() => void>();

@@ -30,6 +30,7 @@ import {
 import { AddLocation } from './add-location';
 import { ClientLocationCard } from './client-location-card';
 import { loadGpsLock, loadLinkable, loadLocationRule, loadLocations, loadNetworks, loadSettings } from './data';
+import { ExemptionsSection } from './exemptions-section';
 import { GpsLockForm } from './gps-lock-form';
 import { HomeLocationsSection } from './home-locations-section';
 import { MainOfficeCard, SubLocationCard } from './location-card';
@@ -80,7 +81,10 @@ import { ZohoAddressesForm } from './zoho-form';
 // the switch refusing presses without a location. The client locations (the same day: "all employees if a customer
 // location"), approved from employees' requests, everyone's, in their own group under the sub-locations, each changed or
 // ended here; and HR's list of the requested check-in locations of all three types (Home Location, Remote Site, Client
-// Location), filtered by type and status through the page's address, in place of the approved homes' list.
+// Location), filtered by type and status through the page's address, in place of the approved homes' list. People exempt
+// from check-in (owner, 25 October 2026: "allow me to select people that are not eligable for attendance checkins and
+// outs, trat them as if they achived their full working hours"; asked, "Profile + a list in Check-in Setup"): Exempt From
+// Check-in, after the locks, with "Add people" and "End now".
 
 export const metadata: Metadata = { title: 'Check-in Setup · People System' };
 
@@ -311,6 +315,9 @@ async function Gate({ searchParams }: { searchParams: PageProps<'/organization/c
         <GpsLockSection />
       </Suspense>
       <Suspense fallback={<Loading />}>
+        <ExemptionsSection />
+      </Suspense>
+      <Suspense fallback={<Loading />}>
         <ZohoSection />
       </Suspense>
       {seesHomes(user) && (
@@ -337,8 +344,9 @@ export default function CheckInSetupPage({ searchParams }: PageProps<'/organizat
         Where a check-in counts as Office: the main office and the office&apos;s networks, with the lock that keeps Office staff&apos;s check-ins to the
         office network; the sub-locations people work from, shown as Remote with their name, and the client locations, everyone&apos;s; whether a check-in
         needs the location; the GPS lock that keeps Office staff&apos;s check-ins to the check-in locations (with both locks on, either passing is enough);
-        the places employees asked to check in from; and Zoho People&apos;s addresses for its import. Who can check in from anywhere, or without a location,
-        is set on each person&apos;s <Link href="/employees">profile</Link>, with their work arrangement.
+        the people exempt from check-in, whose working days count as full hours; the places employees asked to check in from; and Zoho People&apos;s
+        addresses for its import. Who can check in from anywhere, or without a location, is set on each person&apos;s <Link href="/employees">profile</Link>,
+        with their work arrangement.
       </p>
       <Suspense fallback={<Loading />}>
         <Gate searchParams={searchParams} />

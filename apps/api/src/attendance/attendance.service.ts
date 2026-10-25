@@ -22,6 +22,7 @@ import {
   type AttendancePlace,
   type AttendanceSummaryGroup,
   type AttendanceSummaryRow,
+  type ExemptionPeriod,
   type PayrollStatus,
   type PersonMonthFigures,
   type ShiftWindowTimes,
@@ -101,6 +102,11 @@ export interface AttendancePersonMonth {
    * duty" on those days, attended for its hours, expected anywhere within it (their office day's flags left out).
    */
   odDays: OdDayView[];
+  /**
+   * Their periods exempt from check-in with a day in the month (owner, 25 October 2026: "trat them as if they achived
+   * their full working hours"), in date order: their exempt days are full, said Exempt.
+   */
+  exemptions: ExemptionPeriod[];
   /**
    * Daily Attendance and the team view (owner, 20 October 2026: "location link"): every press of the month on the
    * system, in order, the spot only for those who see it (punch-views.ts). Left out elsewhere (the Summary).
@@ -419,6 +425,7 @@ export class AttendanceService {
         days: [],
         wfhDays: [],
         odDays: [],
+        exemptions: [],
       };
     }
     const payroll = seesEveryonesAttendance(user);
@@ -530,6 +537,7 @@ export class AttendanceService {
         days: dayViews,
         wfhDays,
         odDays,
+        exemptions: m.exemptions,
       });
     }
     return { people, places, shifts };

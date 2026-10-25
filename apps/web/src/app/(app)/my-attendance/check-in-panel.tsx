@@ -12,9 +12,12 @@ import { punchAttendance } from './actions';
 import { CheckInCounter } from './check-in-counter';
 import {
   buttonLabel,
+  dayBreakText,
   dayHoursText,
   dayPlaceLabel,
   dayTimesText,
+  exemptToday,
+  expectedTextOf,
   flagLabels,
   latestView,
   locationHelpText,
@@ -57,6 +60,10 @@ import { appLocationRefusal, correctionLinkFor, requestPlaceHref } from './netwo
 // outside them says how far they are and links to ask for a correction; refused for where it was (outside them, or off
 // the office network) with a reading, "Request this place" (the same day: "allow the employee to request adding this
 // location to his profile") opens the request form with that reading handed over in the tab (lib/requested-place.ts).
+// A day as the sum of its pairs (owner, 25 October 2026: "the working hours to be calculated between the checkin and out
+// only, not the first and last"): today so far lists its pairs and its break, the counter counts the pairs' hours and the
+// time since the last check-in. Exempt from check-in today (owner, 25 October 2026: "Optional check-in"): an "Exempt"
+// badge with the period, and that checking in is optional; the button stays, no lock is said.
 
 export function CheckInPanel({ initial, compact = false, big = false }: { initial: CheckInTodayView; compact?: boolean; big?: boolean }) {
   const [pressed, setPressed] = useState<PunchResultView | null>(null);
@@ -125,13 +132,25 @@ export function CheckInPanel({ initial, compact = false, big = false }: { initia
   // the press's words in amber when what it kept is flagged or its place unknown, else in green
   const last = pressed ? [...pressed.punches].sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).at(-1) : undefined;
   const warned = !!last && (last.flags.length > 0 || last.place === 'unknown');
+  const exempt = exemptToday(view);
+  const expectedText = expectedTextOf(view);
+  const breakTime = day ? dayBreakText(day) : null;
 
   return (
     <div className="space-y-4">
       {view.workingFromHome && !big && (
         <p className="w-fit rounded-full border border-dashed border-accent px-3 py-1 text-sm font-semibold text-accent">Working from home today</p>
       )}
-      {view.expectedText && <p className="text-sm">{view.expectedText}</p>}
+      {exempt && (
+        <p className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="badge border border-line bg-card text-ink" title={exempt.title}>
+            {exempt.label}
+            <span className="sr-only"> ({exempt.title})</span>
+          </span>
+          <span className="text-muted">{exempt.when}</span>
+        </p>
+      )}
+      {expectedText && <p className="text-sm">{expectedText}</p>}
       {note && <p className="text-sm">{note}</p>}
       {/* on the website, when presses without a location are refused for them (inside the app it is always needed); the
           GPS lock's note says so already */}
@@ -205,6 +224,8 @@ export function CheckInPanel({ initial, compact = false, big = false }: { initia
           <div>
             <dt className="text-xs text-muted">Today so far</dt>
             <dd className="font-semibold tabular-nums">{dayTimesText(day)}</dd>
+            {/* the break between today's pairs (25 October 2026), not counted */}
+            {breakTime && <dd className="text-xs text-muted">{breakTime}, not counted</dd>}
             {day.place && <dd className="text-xs text-muted">{dayPlaceLabel(day, view.punches)}</dd>}
           </div>
           {/* with a check-in, the counter above says the hours */}

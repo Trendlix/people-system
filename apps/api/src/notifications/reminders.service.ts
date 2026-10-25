@@ -1,5 +1,6 @@
 import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
-import { CHECK_IN_REMINDER_MAX, CHECK_IN_REMINDER_TAG, DEFAULT_NOTIFICATION_SETTINGS, REMINDER_TICK_MINUTES, type CheckInReminderView, type PunchKind } from '@trendlix/shared';
+import { CHECK_IN_REMINDER_MAX, CHECK_IN_REMINDER_TAG, DEFAULT_NOTIFICATION_SETTINGS, exemptOn, REMINDER_TICK_MINUTES, type CheckInReminderView, type PunchKind } from '@trendlix/shared';
+import { exemptionsOf } from '../attendance/exemption-days.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { fromDateOnly, toDateOnly } from '../common/date-only.js';
 import { fromTimeOfDay } from '../common/time-of-day.js';
@@ -221,13 +222,15 @@ export class RemindersService implements OnModuleDestroy {
     const userIds = people.map((p) => p.userId);
     const dates = days.map(toDateOnly);
     const [first, last] = [dates[0], dates[dates.length - 1]];
-    const [holidays, leave, permission, zoho, punches, sent] = await Promise.all([
+    const [holidays, leave, permission, zoho, punches, sent, exemptions] = await Promise.all([
       db.holiday.findMany({ where: { date: { in: dates } }, select: { date: true } }),
       db.leaveRequest.findMany({ where: { employeeId: { in: employeeIds }, status: 'approved', startDate: { lte: last }, endDate: { gte: first } }, select: { employeeId: true, startDate: true, endDate: true } }),
       db.permissionRequest.findMany({ where: { employeeId: { in: employeeIds }, status: 'approved', date: { in: dates } }, select: { employeeId: true, date: true, fromTime: true, toTime: true } }),
       db.attendanceDay.findMany({ where: { employeeId: { in: employeeIds }, date: { in: dates }, source: 'zoho' }, select: { employeeId: true, date: true } }),
       db.attendancePunch.findMany({ where: { employeeId: { in: employeeIds }, date: { in: dates } }, orderBy: { at: 'asc' }, select: { employeeId: true, date: true, kind: true, at: true } }),
       db.reminderSent.findMany({ where: { userId: { in: userIds }, day: { in: dates } }, select: { userId: true, day: true, kind: true, count: true, lastSentAt: true } }),
+      // exempt from check-in (owner, 25 October 2026): no reminder those days
+      exemptionsOf(db, employeeIds, days[0], days[days.length - 1]),
     ]);
     const leaveDays = new Set<string>();
     for (const l of leave) {
@@ -248,6 +251,7 @@ export class RemindersService implements OnModuleDestroy {
       leave: leaveDays,
       permission: permitted,
       zoho: new Set(zoho.map((z) => dayKey(z.employeeId, fromDateOnly(z.date)))),
+      exempt: new Set(employeeIds.flatMap((id) => days.filter((day) => exemptOn(day, exemptions.get(id) ?? [])).map((day) => dayKey(id, day)))),
       punches: punched,
       sent: new Map<string, SentReminder>(sent.map((s) => [sentKey(s.userId, fromDateOnly(s.day), s.kind as DueReminder['kind']), { count: s.count, lastSentAt: s.lastSentAt }])),
     };

@@ -22,7 +22,11 @@ export interface CorrectionDayChange {
 // as it was: the day of the first other source there is (the system's check-ins, a device's, Zoho's import: or one
 // gone by without a check-in, absent), each correction approved applied over it in the order approved (packages/shared
 // correctedDay: the right times, worked remotely remote and no longer flagged, the hours counted again by the shift's
-// rule), with the day it was applied over as it was then (correctedFrom). Made again whenever that day changes (a
+// rule), with the day it was applied over as it was then (correctedFrom). By the day's pairs since 25 October 2026 (owner:
+// "the working hours to be calculated between the checkin and out only, not the first and last"): a correction of one
+// time keeps the day's other pairs (the check-out forgotten closes its open last check-in), one of both times replaces
+// its presses with that pair, as before; corrections only ever set the day's check-in and check-out, never a single
+// press in between. Made again whenever that day changes (a
 // check-in on the system that day, a Zoho import applied or undone), so a correction of today still takes a later
 // check-out; gone when no correction of the day is approved.
 @Injectable()
@@ -59,7 +63,10 @@ export class CorrectionDaysService {
       day = correctedDay(day, { kind: c.kind as CorrectionKind, checkIn: c.checkIn?.toISOString() ?? null, checkOut: c.checkOut?.toISOString() ?? null }, date, shift);
     }
     const after = day as CorrectedDay;
-    const before: CorrectedFrom | null = base ? { source: base.source, status: base.status, checkIn: base.checkIn, checkOut: base.checkOut, place: base.place } : null;
+    // its pairs and open last check-in too, when it was kept by them (25 October 2026)
+    const before: CorrectedFrom | null = base
+      ? { source: base.source, status: base.status, checkIn: base.checkIn, checkOut: base.checkOut, place: base.place, ...(base.pairs && { pairs: [...base.pairs], openAt: base.openAt ?? null }) }
+      : null;
     const data = {
       status: after.status,
       checkIn: after.checkIn ? new Date(after.checkIn) : null,
@@ -67,6 +74,10 @@ export class CorrectionDaysService {
       place: after.place,
       flags: after.flags,
       hoursCounted: Math.round(after.hoursCounted * 100) / 100,
+      // by its pairs (owner, 25 October 2026: "the working hours to be calculated between the checkin and out only")
+      pairs: after.pairs.map((p) => ({ in: p.in, out: p.out })),
+      breakMinutes: after.breakMinutes,
+      openAt: after.openAt ? new Date(after.openAt) : null,
       // Zoho's status and permission of the day it corrects, as they were
       zohoStatus: base?.zohoStatus ?? null,
       permissionHours: base && (base.source === 'zoho' || base.source === 'correction') && base.permissionHours > 0 ? base.permissionHours : null,

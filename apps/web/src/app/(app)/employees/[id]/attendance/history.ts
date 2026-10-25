@@ -162,6 +162,12 @@ export interface HistoryTile {
   tone: 'danger' | 'warn' | null;
 }
 
+/**
+ * What the Exempt days tile means (owner, 25 October 2026: "trat them as if they achived their full working hours"), when
+ * the API sends no definition of it.
+ */
+export const EXEMPT_DAYS_DEFINITION = 'Working days exempt from check-in: counted as full hours, never late or absent; any presses are kept for reference.';
+
 /** The period's figures as tiles (the brief's list), in order, each with the API's definition of it. */
 export function historyTiles(v: Pick<AttendanceHistoryView, 'figures' | 'definitions'>): HistoryTile[] {
   const f = v.figures;
@@ -176,6 +182,10 @@ export function historyTiles(v: Pick<AttendanceHistoryView, 'figures' | 'definit
     { key: 'leave', label: 'Leave days', value: String(f.leaveDays), note: f.zohoLeaveDays > 0 ? `And ${days(f.zohoLeaveDays)} of leave in Zoho only` : null, definition: d.leaveDays, tone: null },
     { key: 'wfh', label: 'Work from home days', value: String(f.wfhDays), note: null, definition: d.wfhDays, tone: null },
     { key: 'od', label: 'Official duty days', value: String(f.odDays), note: null, definition: d.odDays, tone: null },
+    // exempt from check-in (owner, 25 October 2026): only with exempt days; an API from before them has none
+    ...((f.exemptDays ?? 0) > 0
+      ? [{ key: 'exempt', label: 'Exempt days', value: String(f.exemptDays), note: null, definition: (d as Partial<Record<string, string>>).exemptDays ?? EXEMPT_DAYS_DEFINITION, tone: null }]
+      : []),
     { key: 'extra', label: 'Overtime (extra time)', value: hoursText(f.extraHours), note: f.offDaysWorked > 0 ? `${days(f.offDaysWorked)} worked on a rest day or holiday` : null, definition: d.extraHours, tone: null },
   ];
 }

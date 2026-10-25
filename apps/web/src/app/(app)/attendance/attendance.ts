@@ -1,14 +1,20 @@
 import {
   ATTENDANCE_SOURCE_LABELS,
   attendancePeriod,
+  breakText,
   cairoClock,
   CHECK_IN_FLAG_LABELS,
   CHECK_IN_FLAG_SHORT_LABELS,
   CHECK_IN_PLACE_LABELS,
   correctedFromText,
+  EXEMPT_BADGE,
+  EXEMPTION_LABEL,
+  exemptionWhenText,
   formatHours,
   isAttendanceFilter,
   isCheckInFlag,
+  openPressText,
+  pairsText,
   PAYROLL_STATUS_LABELS,
   pressPlaceLabel,
   type AttendanceFigures,
@@ -17,7 +23,9 @@ import {
   type CheckInFlag,
   type CheckInPlace,
   type CorrectedFrom,
+  type ExemptionPeriod,
   type PayrollStatus,
+  type PressPair,
   type Role,
 } from '@trendlix/shared';
 import type { AttendanceImportRow, AttendancePunchRow, AttendanceRunRef, AttendanceSource } from '../../../lib/attendance-types';
@@ -43,7 +51,12 @@ import { ATTENDANCE_IMPORT_PATH, ATTENDANCE_IMPORTS_PATH, ATTENDANCE_PATH, ATTEN
 // time filled. Simpler rows (owner, 20 October 2026, of a row listing a dozen presses: "simplify this, i want to view if
 // it is remote or office, and location link"): a day's check-in and check-out each with its place as a badge and a small
 // Map link where it was pressed (for those the API gives the spot: HR, the CEO, the Super Admin, the employee), the
-// flags in a word or two, and every press of the day in a collapsed "All presses (14)".
+// flags in a word or two, and every press of the day in a collapsed "All presses (14)". A day as the sum of its pairs
+// (owner, 25 October 2026: "the working hours to be calculated between the checkin and out only, not the first and
+// last"; "Count the closed pairs, flag the open one"; "Not short until corrected"): a day of several check-in → check-out
+// pairs lists them with its break, and an open last check-in says "Checked in 6:30 PM · not checked out" (dayPairs).
+// People exempt from check-in (owner, 25 October 2026: "trat them as if they achived their full working hours"): an
+// exempt day, a person's month with exempt days and its periods carry an "Exempt" badge (exemptBadge, exemptionsText).
 
 type WithRoles = { roles: readonly Role[] };
 type Query = Record<string, string | string[] | undefined>;
@@ -219,10 +232,20 @@ export function figureTiles(
       note: f.zohoLeaveDays > 0 ? `And ${daysText(f.zohoLeaveDays)} of leave in Zoho only, to record` : 'On leave in the system',
       tone: f.zohoLeaveDays > 0 ? 'warn' : null,
     },
-    { key: 'checkouts', label: 'Missing check-outs', value: String(f.missingCheckOuts), note: 'A check-in without a check-out: no hours', tone: f.missingCheckOuts > 0 ? 'warn' : null },
+    // a last check-in without a check-out is never short until corrected (owner, 25 October 2026: "Not short until corrected")
+    { key: 'checkouts', label: 'Missing check-outs', value: String(f.missingCheckOuts), note: 'A check-in without a check-out: not short until corrected', tone: f.missingCheckOuts > 0 ? 'warn' : null },
     // checking in on the system (19 October 2026); an API from before it has neither
     ...checkInTiles(f, o.checksIn === true),
+    // exempt from check-in (25 October 2026): only with exempt days
+    ...exemptTiles(f),
   ];
+}
+
+/** The month's exempt days (owner, 25 October 2026), once there is any (an API from before them has none). */
+function exemptTiles(f: Partial<Pick<AttendanceFigures, 'exemptDays'>>): FigureTile[] {
+  const n = typeof f.exemptDays === 'number' ? f.exemptDays : 0;
+  if (!(n > 0)) return [];
+  return [{ key: 'exempt', label: 'Exempt days', value: String(n), note: `${EXEMPTION_LABEL}: counted as full hours`, tone: null }];
 }
 
 /** The month's extra time and the short hours it filled, once there is any (an API from before 20 October 2026 has none). */
@@ -422,6 +445,57 @@ export function dayRow(
     presses,
     more: morePresses(presses, ends),
   };
+}
+
+// ---------- a day's pairs (owner, 25 October 2026: "the working hours to be calculated between the checkin and out
+// only, not the first and last") ----------
+
+/** A day's pairs as its row shows them: the pairs, the break between them, and an open last check-in. */
+export interface DayPairs {
+  /** "9:02 AM–1:10 PM · 2:00 PM–6:05 PM". */
+  pairs: string;
+  /** "Break 50 min"; null with none. */
+  break: string | null;
+  /** "Checked in 6:30 PM · not checked out" (owner, 25 October 2026: "flag the open one"); null without one. */
+  open: string | null;
+}
+
+/**
+ * What a day's row adds for its pairs: a day of several pairs, or one with a last check-in after them and no check-out,
+ * lists the pairs, the break and the open check-in; a day of one pair, a day with only a check-in (its check-out shows
+ * Missing, as before) and a day not kept by pairs (Zoho's, an API from before them) add nothing.
+ */
+export function dayPairs(day: { pairs?: readonly PressPair[] | null; openAt?: string | null; breakMinutes?: number | null }): DayPairs | null {
+  const pairs = day.pairs ?? [];
+  const open = pairs.length > 0 && !!day.openAt;
+  if (pairs.length < 2 && !open) return null;
+  return { pairs: pairsText(pairs), break: breakText(day.breakMinutes), open: open ? openPressText(day.openAt!) : null };
+}
+
+// ---------- exempt from check-in (owner, 25 October 2026: "trat them as if they achived their full working hours") ----------
+
+/** The badge, and what it says on hover and to a screen reader. */
+export const EXEMPT_DAY_TITLE = `${EXEMPTION_LABEL}: counted as full hours; any presses are kept for reference only`;
+
+/** The "Exempt" badge of a day, or of a person's month with exempt days; null for anything else. */
+export function exemptBadge(of: { exempt?: boolean | null; exemptDays?: number | null }): { label: string; title: string } | null {
+  const on = !!of.exempt || (typeof of.exemptDays === 'number' && of.exemptDays > 0);
+  return on ? { label: EXEMPT_BADGE, title: EXEMPT_DAY_TITLE } : null;
+}
+
+/** "3 exempt days", "1 exempt day"; null with none (an API from before them has none). */
+export function exemptDaysText(f: { exemptDays?: number | null }): string | null {
+  const n = typeof f.exemptDays === 'number' ? f.exemptDays : 0;
+  return n > 0 ? `${n} exempt ${n === 1 ? 'day' : 'days'}` : null;
+}
+
+/**
+ * A person's month's periods exempt from check-in, said once at its top: "Exempt from check-in: from 01/11/2026 until
+ * 30/11/2026"; null with none (an API from before them has none).
+ */
+export function exemptionsText(periods: readonly ExemptionPeriod[] | null | undefined): string | null {
+  if (!periods?.length) return null;
+  return `${EXEMPTION_LABEL}: ${periods.map((p) => exemptionWhenText(p).replace(/^From/, 'from')).join('; ')}`;
 }
 
 // ---------- where the days came from ----------

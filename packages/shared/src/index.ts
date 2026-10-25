@@ -591,6 +591,12 @@ export * from './gps-lock.js';
 // candidates", "Approvals waiting, Request decisions, Check-in reminders, Interviews", "Directly to Meta"): one more
 // channel beside the bell, push and email, for those who opt in, with Meta's approved templates in English and Arabic
 export * from './whatsapp.js';
+
 // Twilio as a second way to send them (owner, 25 October 2026: "Add Twilio as a choice"; "No, WhatsApp only"): the same
 // templates as Twilio Content, the requests' parts, the sender, the settings' checks and the owner's steps in Twilio
 export * from './whatsapp-twilio.js';
+
+// people exempt from check-in (owner, 25 October 2026: "allow me to select people that are not eligable for attendance
+// checkins and outs, trat them as if they achived their full working hours"; asked, "Optional check-in" and "Profile + a
+// list in Check-in Setup"): the dated periods, what an exempt day counts, and the checks of adding and ending one
+export * from './check-in-exemptions.js';

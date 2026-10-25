@@ -25,6 +25,7 @@
 // Pure: the API reads the files and applies these, and the web shows the same words.
 
 import { hoursCountedForDay, mostHoursCountedADay, shiftWindowOn } from './attendance.js';
+import { missingCheckOutOn, type KeptDay } from './attendance-days.js';
 import type { ShiftTimes } from './payroll.js';
 
 // ---------- office or remote ----------
@@ -515,12 +516,27 @@ export function importedInputRefusal(field: ImportedInput, name: string, at: str
   return `${IMPORTED_INPUT_LABELS[field]} for ${name} came from the Zoho import of ${day}: import the month again to change them, or undo that import on its review.`;
 }
 
-/** A day as a line's figures are taken from it: what it was, the hours it counts, its permission and source. */
-export interface LineDay {
+/**
+ * A day as a line's figures are taken from it: what it was, the hours it counts, its permission and source; and (since
+ * 25 October 2026) its presses as far as a missing check-out is told from them.
+ */
+export interface LineDay extends Partial<Pick<KeptDay, 'checkIn' | 'checkOut' | 'openAt' | 'od' | 'exempt'>> {
   status: AttendanceDayStatus;
   hoursCounted: number;
   permissionHours: number;
   source?: string;
+}
+
+/**
+ * The hours a day gives a payroll line: the hours it counts; a day on the system's own attendance (not Zoho's) missing
+ * its check-out (owner, 25 October 2026: "Not short until corrected": "nothing is cut" while it is flagged for HR) the
+ * shift's hours a day until it is corrected, whatever its closed pairs counted (none without a shift: its hours).
+ */
+export function lineDayHours(d: LineDay, hoursADay: number | null | undefined): number {
+  const hours = d.hoursCounted > 0 ? d.hoursCounted : 0;
+  const own = (d.source ?? 'zoho') !== 'zoho';
+  const pending = own && missingCheckOutOn({ status: d.status, checkIn: d.checkIn ?? null, checkOut: d.checkOut ?? null, openAt: d.openAt ?? null, od: d.od ?? null, exempt: d.exempt });
+  return pending && typeof hoursADay === 'number' && hoursADay > 0 ? Math.max(hours, hoursADay) : hours;
 }
 
 /**
@@ -529,13 +545,17 @@ export interface LineDay {
  * the hours counted (to the minute), the absent days as no-show days, and the permission hours: none when the system's
  * approved permission requests count (`systemPermissionHours` > 0: the line has them from its terms) or there are none,
  * else Zoho's column of its days within the month's allowance, as an import fills them. Pay by the hour: the hours only.
+ * A day on the system missing its check-out counts the shift's hours a day (`hoursADay`) until corrected (lineDayHours,
+ * owner, 25 October 2026: "Not short until corrected"), on a monthly salary: paid by the hour, only the hours its closed
+ * pairs counted are paid (no time is paid that no press shows). An exempt day counts its full hours already
+ * (check-in-exemptions.ts).
  */
 export function attendanceLineInputs(
   days: readonly LineDay[],
-  opts: { systemPermissionHours: number; permissionHoursPerMonth: number; hourly: boolean },
+  opts: { systemPermissionHours: number; permissionHoursPerMonth: number; hourly: boolean; hoursADay?: number | null },
 ): Partial<Record<ImportedInput, number | null>> {
   const worked = days.filter((d) => d.status === 'worked');
-  const workedHours = minutes(worked.reduce((sum, d) => sum + (d.hoursCounted > 0 ? d.hoursCounted : 0), 0));
+  const workedHours = minutes(worked.reduce((sum, d) => sum + lineDayHours(d, opts.hourly ? null : opts.hoursADay), 0));
   if (opts.hourly) return { workedHours };
   // Zoho's column: its days', and a corrected day's over one of Zoho's (which carries it)
   const zoho = halfHoursOrMinutes(days.filter((d) => ['zoho', 'correction'].includes(d.source ?? 'zoho')).reduce((sum, d) => sum + (d.permissionHours > 0 ? d.permissionHours : 0), 0));

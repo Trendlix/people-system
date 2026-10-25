@@ -300,6 +300,8 @@ describe('The Attendance section (e2e)', () => {
         noCheckInDays: 0,
         holidays: 0,
         restDays: 1,
+        // exempt from check-in (25 October 2026): none
+        exemptDays: 0,
       });
       expect(rami.days.map((d) => [d.date, d.status, d.shortHours, d.missingCheckOut])).toEqual(
         [

@@ -20,7 +20,7 @@
 // - a press counts as within a part day's hours from 30 minutes before it starts to 30 minutes after it ends (travel).
 // Pure: the API enforces these and the web shows the same checks live. Dates are YYYY-MM-DD, times HH:MM (Cairo).
 
-import { hoursCountedForDay, mostHoursCountedADay, shiftWindowOn, timeOfDayText, zonedMoment, type ShiftWindowTimes } from './attendance.js';
+import { hoursCountedForDay, mostHoursCountedADay, shiftWindowOn, spanHours, spansOfPairs, timeOfDayText, zonedMoment, type ShiftWindowTimes } from './attendance.js';
 import type { KeptDay, SourcedDay } from './attendance-days.js';
 import type { CountingShift } from './check-in.js';
 import { LEAVE_STEP_KIND_LABELS } from './leaves.js';
@@ -293,32 +293,15 @@ export function odCoversStart(date: string, od: { fullDay: boolean; fromTime: st
   return part.from <= window.start + grace && part.to > window.start;
 }
 
-/** The hours of time spans together within a window, overlaps counted once, in whole minutes, at most `most`. */
-function unionHours(spans: readonly { from: number; to: number }[], window: { start: number; end: number } | null, most: number | null): number {
-  const clipped = spans
-    .map((s) => (window ? { from: Math.max(s.from, window.start), to: Math.min(s.to, window.end) } : s))
-    .filter((s) => s.to > s.from)
-    .sort((a, b) => a.from - b.from);
-  let total = 0;
-  let cur: { from: number; to: number } | null = null;
-  for (const s of clipped) {
-    if (cur && s.from <= cur.to) cur.to = Math.max(cur.to, s.to);
-    else {
-      if (cur) total += cur.to - cur.from;
-      cur = { ...s };
-    }
-  }
-  if (cur) total += cur.to - cur.from;
-  const hours = Math.floor(total / 60_000) / 60;
-  return typeof most === 'number' && most >= 0 ? Math.min(hours, most) : hours;
-}
-
 /**
  * A kept day with an approved official duty on it (owner, 23 October 2026: "OD counted as attended"; "If they forget, the
  * approved hours still count as attended"): a day without a check-in (absent, Zoho's present without one, Zoho's leave)
  * is worked for the duty's hours; a day worked counts the duty's hours with its own, overlaps once (a full day: at least
- * the shift's hours a day), within the shift's window and its most a day. A day of leave, a holiday and a rest day stay as
- * they are. The duty is kept on the day (`od`) for the pages to show.
+ * the shift's hours a day), within the shift's window and its most a day. Since 25 October 2026 (owner: "the working
+ * hours to be calculated between the checkin and out only, not the first and last") part of a day joins the day's
+ * check-in → check-out pairs as one more span, their union counted (attendance.ts spanHours); a day not kept by pairs
+ * (Zoho's) has its check-in to its check-out as its one pair. A day of leave, a holiday and a rest day stay as they are.
+ * The duty is kept on the day (`od`) for the pages to show.
  */
 export function withOfficialDuty<D extends KeptDay>(day: D, od: DayOfficialDuty, shift: CountingShift | null): D {
   if (day.status === 'leave' || day.status === 'holiday' || day.status === 'rest') return day;
@@ -328,7 +311,8 @@ export function withOfficialDuty<D extends KeptDay>(day: D, od: DayOfficialDuty,
   if (!day.checkIn || !day.checkOut) return { ...kept, hoursCounted: toMinute(Math.max(day.hoursCounted, od.hours)) };
   const part = partMoments(day.date, od, shift);
   if (!part) return kept;
-  const hours = unionHours([{ from: Date.parse(day.checkIn), to: Date.parse(day.checkOut) }, part], shift ? shiftWindowOn(day.date, shift) : null, shift ? mostHoursCountedADay(shift) : null);
+  const pairs = day.pairs ? spansOfPairs(day.pairs) : [{ from: Date.parse(day.checkIn), to: Date.parse(day.checkOut) }];
+  const hours = spanHours([...pairs, part], shift ? shiftWindowOn(day.date, shift) : null, shift ? mostHoursCountedADay(shift) : null);
   return { ...kept, hoursCounted: toMinute(Math.max(day.hoursCounted, hours)) };
 }
 
