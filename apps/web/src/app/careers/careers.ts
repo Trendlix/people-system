@@ -1,17 +1,26 @@
 import {
   applyProblems,
+  checkPortfolio,
   emailProblem,
   generalCvProblems,
+  HIDDEN_PORTFOLIO,
+  LINKEDIN_TICKET_FIELD,
   mobileProblem,
   noticeOf,
   noticeProblem,
   OTHER_POSITION,
+  PORTFOLIO_FILE_FIELD,
+  PORTFOLIO_LIMITS,
+  PORTFOLIO_LINKS_FIELD,
+  portfolioLinkField,
   sourceOf,
   webLinkOf,
   yearsProblem,
   type ApplicationSource,
   type ApplyInput,
   type GeneralCvInput,
+  type PortfolioAsk,
+  type PublicGeneralForm,
   type PublicQuestion,
   type VacancyQuestion,
 } from '@trendlix/shared';
@@ -69,11 +78,53 @@ export function answersFrom(fd: FormData, questions: readonly PublicQuestion[]):
   return Object.fromEntries(questions.map((q) => [q.key, text(fd, answerField(q.key))]));
 }
 
-/** The person's fields, as the forms name them: the mobile as kept (PhoneInput's hidden field), the notice period's number and unit (NoticeInput's). */
-const PERSON_FIELDS = ['fullName', 'email', 'mobile', 'linkedin', 'portfolio', 'yearsExperience', 'noticeNumber', 'noticeUnit', 'expectedSalary'] as const;
+/**
+ * The person's fields, as the forms name them: the mobile as kept (PhoneInput's hidden field), the notice period's number
+ * and unit (NoticeInput's). The one portfolio box of before became the portfolio's link boxes (owner, 25 October 2026:
+ * "for creatives, they need to add their portfolios"; asked, "Portfolio per position": PORTFOLIO_BOXES), and LinkedIn's
+ * ticket ("Fill in with LinkedIn") is kept with them.
+ */
+const PERSON_FIELDS = ['fullName', 'email', 'mobile', 'linkedin', 'yearsExperience', 'noticeNumber', 'noticeUnit', 'expectedSalary'] as const;
 
-/** The fields sent to the API as typed (the notice period goes as one, noticeFrom). */
-const SENT_FIELDS = ['fullName', 'email', 'mobile', 'linkedin', 'portfolio', 'yearsExperience', 'expectedSalary'] as const;
+/** The fields sent to the API as typed (the notice period goes as one, noticeFrom; the portfolio as its links, portfolioOf). */
+const SENT_FIELDS = ['fullName', 'email', 'mobile', 'linkedin', 'yearsExperience', 'expectedSalary'] as const;
+
+/** The portfolio's link boxes on a form: portfolioLink-0 … portfolioLink-2 (at most 3 links, portfolio.ts). */
+export const PORTFOLIO_BOXES = Array.from({ length: PORTFOLIO_LIMITS.links }, (_, i) => portfolioLinkField(i));
+
+/** The portfolio links typed, in order, the empty boxes left out. */
+export const portfolioLinksOf = (fd: FormData): string[] => PORTFOLIO_BOXES.map((name) => text(fd, name)).filter(Boolean);
+
+/** The PDF case study attached, when one is (an empty file box sends an empty file). */
+function portfolioFileOf(fd: FormData): Blob | null {
+  const f = fd.get(PORTFOLIO_FILE_FIELD);
+  return f instanceof Blob && f.size > 0 ? f : null;
+}
+
+const PORTFOLIO_FILE_BYTES = PORTFOLIO_LIMITS.fileMb * 1024 * 1024;
+
+/**
+ * What is wrong with the form's portfolio for what it asks (portfolio.ts checkPortfolio: the links' shapes, how many,
+ * Required with none), and the PDF case study's: a PDF of 5 MB at most. Nothing when it isn't asked (hidden).
+ */
+export function portfolioProblems(fd: FormData, ask: PortfolioAsk = HIDDEN_PORTFOLIO): string[] {
+  if (ask.mode === 'hidden') return [];
+  const file = ask.kinds.includes('pdf') ? portfolioFileOf(fd) : null;
+  const problems = [...checkPortfolio({ links: portfolioLinksOf(fd), file: !!file }, ask).problems];
+  if (file) {
+    const name = file instanceof File ? file.name : '';
+    if (!(file.type === 'application/pdf' || /\.pdf$/i.test(name))) problems.push('Your portfolio file must be a PDF.');
+    else if (file.size > PORTFOLIO_FILE_BYTES) problems.push(`Your portfolio PDF must be ${PORTFOLIO_LIMITS.fileMb} MB or smaller.`);
+  }
+  return problems;
+}
+
+/** The portfolio a position asks for on "Send us your CV": the position's, Other's, or none (hidden) before one is chosen. */
+export function generalPortfolioAsk(position: string, form: Pick<PublicGeneralForm, 'portfolios' | 'otherPortfolio'> | null | undefined): PortfolioAsk {
+  if (!position) return HIDDEN_PORTFOLIO;
+  if (position === OTHER_POSITION) return form?.otherPortfolio ?? HIDDEN_PORTFOLIO;
+  return form?.portfolios?.[position] ?? HIDDEN_PORTFOLIO;
+}
 
 /** The notice period as kept, "30 days" or "2 months", from the form's number and unit; null without a number. */
 export const noticeFrom = (fd: FormData): string | null => noticeOf(text(fd, 'noticeNumber'), text(fd, 'noticeUnit'));
@@ -82,10 +133,21 @@ export const noticeFrom = (fd: FormData): string | null => noticeOf(text(fd, 'no
 export function typedValues(fd: FormData, questions: readonly PublicQuestion[]): Record<string, string> {
   const out: Record<string, string> = {};
   for (const name of PERSON_FIELDS) out[name] = text(fd, name);
+  keepPortfolio(fd, out);
   for (const q of questions) out[answerField(q.key)] = text(fd, answerField(q.key));
   if (fd.get('consent')) out.consent = 'on';
   if (whatsappTicked(fd)) out[WHATSAPP_FIELD] = 'on';
   return out;
+}
+
+/** The portfolio's boxes and LinkedIn's ticket, kept to show again after a refusal (never the PDF). */
+function keepPortfolio(fd: FormData, out: Record<string, string>): void {
+  for (const name of PORTFOLIO_BOXES) {
+    const v = text(fd, name);
+    if (v) out[name] = v;
+  }
+  const ticket = text(fd, LINKEDIN_TICKET_FIELD);
+  if (ticket) out[LINKEDIN_TICKET_FIELD] = ticket;
 }
 
 const numberOf = (t: string): number | null => (t === '' ? null : Number(t.replace(/,/g, '')));
@@ -97,7 +159,8 @@ export function applyInputOf(fd: FormData, questions: readonly PublicQuestion[])
     email: text(fd, 'email'),
     mobile: text(fd, 'mobile'),
     linkedin: webLinkOf(text(fd, 'linkedin')) || null,
-    portfolio: webLinkOf(text(fd, 'portfolio')) || null,
+    // the portfolio's links are checked by what the position asks (portfolioProblems), not as one link
+    portfolio: null,
     yearsExperience: numberOf(text(fd, 'yearsExperience')),
     noticePeriod: noticeFrom(fd),
     expectedSalary: numberOf(text(fd, 'expectedSalary')),
@@ -109,10 +172,14 @@ export function applyInputOf(fd: FormData, questions: readonly PublicQuestion[])
 /** The years of experience, asked on a job's form (the general form's are optional). */
 export const YEARS_REQUIRED = 'Write your years of experience as a number, e.g. 3.';
 
-/** What is wrong with the form before it is sent, in words (the CV's checks are the API's). */
-export function applyFormProblems(fd: FormData, questions: readonly PublicQuestion[]): string[] {
+/**
+ * What is wrong with the form before it is sent, in words (the CV's checks are the API's); its portfolio by what the
+ * vacancy asks (25 October 2026), none when it asks for none.
+ */
+export function applyFormProblems(fd: FormData, questions: readonly PublicQuestion[], portfolio: PortfolioAsk = HIDDEN_PORTFOLIO): string[] {
   const problems = applyProblems(applyInputOf(fd, questions), questions.map(asRules));
   if (!text(fd, 'yearsExperience')) problems.push(YEARS_REQUIRED);
+  problems.push(...portfolioProblems(fd, portfolio));
   const cv = fd.get('cv');
   if (!(cv instanceof Blob) || cv.size === 0) problems.push('Attach your CV, as a PDF or a Word file.');
   return problems;
@@ -146,6 +213,13 @@ function personForm(fd: FormData): FormData {
   }
   const notice = noticeFrom(fd);
   if (notice) out.set('noticePeriod', notice);
+  // the portfolio (25 October 2026): its links as a list, the PDF case study; and LinkedIn's ticket, for the email's mark
+  const links = portfolioLinksOf(fd);
+  if (links.length) out.set(PORTFOLIO_LINKS_FIELD, JSON.stringify(links));
+  const file = portfolioFileOf(fd);
+  if (file) out.set(PORTFOLIO_FILE_FIELD, file, file instanceof File && file.name ? file.name : 'portfolio.pdf');
+  const ticket = text(fd, LINKEDIN_TICKET_FIELD);
+  if (ticket) out.set(LINKEDIN_TICKET_FIELD, ticket);
   return out;
 }
 
@@ -195,6 +269,7 @@ const GENERAL_FIELDS = [...PERSON_FIELDS, POSITION_FIELD, 'positionOther', 'area
 export function generalTypedValues(fd: FormData): Record<string, string> {
   const out: Record<string, string> = {};
   for (const name of GENERAL_FIELDS) out[name] = text(fd, name);
+  keepPortfolio(fd, out);
   if (fd.get('consent')) out.consent = 'on';
   if (whatsappTicked(fd)) out[WHATSAPP_FIELD] = 'on';
   return out;
@@ -213,7 +288,8 @@ export function generalInputOf(fd: FormData): GeneralCvInput {
     email: text(fd, 'email'),
     mobile: text(fd, 'mobile'),
     linkedin: webLinkOf(text(fd, 'linkedin')) || null,
-    portfolio: webLinkOf(text(fd, 'portfolio')) || null,
+    // the portfolio's links are checked by what the position asks (portfolioProblems), not as one link
+    portfolio: null,
     yearsExperience: numberOf(text(fd, 'yearsExperience')),
     noticePeriod: noticeFrom(fd),
     expectedSalary: numberOf(text(fd, 'expectedSalary')),
@@ -225,9 +301,13 @@ export function generalInputOf(fd: FormData): GeneralCvInput {
   };
 }
 
-/** What is wrong with the general form before it is sent, in words (the CV's checks are the API's). */
-export function generalFormProblems(fd: FormData): string[] {
+/**
+ * What is wrong with the general form before it is sent, in words (the CV's checks are the API's); its portfolio by
+ * what the chosen position asks (25 October 2026: `form`'s portfolios), none without them.
+ */
+export function generalFormProblems(fd: FormData, form?: Pick<PublicGeneralForm, 'portfolios' | 'otherPortfolio'> | null): string[] {
   const problems = generalCvProblems(generalInputOf(fd), { byHr: false });
+  problems.push(...portfolioProblems(fd, generalPortfolioAsk(text(fd, POSITION_FIELD), form)));
   const cv = fd.get('cv');
   if (!(cv instanceof Blob) || cv.size === 0) problems.push('Attach your CV, as a PDF or a Word file.');
   return problems;

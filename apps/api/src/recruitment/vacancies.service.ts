@@ -32,6 +32,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { CvReadingsService } from './cv-readings.service.js';
 import { approvesVacancies, isConfidentialVacancy, managesRecruitment, vacancyWhere } from './recruitment-access.js';
 import { emptyCounts, money, questionsOf, userRef, VACANCY_ENTITY, VACANCY_INCLUDE, vacancyListView, type VacancyCounts, type VacancyRow } from './recruitment-views.js';
+import { titleAsk } from './portfolio-settings.service.js';
 import type { CreateVacancyDto, ListVacanciesDto, UpdateVacancyDto } from './recruitment.dto.js';
 import { RecruitmentDeletesService } from './recruitment-deletes.service.js';
 import { VacancySuggestionsService } from './vacancy-suggestions.service.js';
@@ -179,6 +180,9 @@ export class VacanciesService {
       requirements: v.requirements,
       questions: questionsOf(v.questions),
       keySkills: v.keySkills,
+      // its form's portfolio (25 October 2026): its own mode (none: as the job title), and the job title's
+      portfolioMode: v.portfolioMode === 'hidden' || v.portfolioMode === 'optional' || v.portfolioMode === 'required' ? v.portfolioMode : null,
+      jobTitlePortfolio: await titleAsk(this.prisma, v.jobTitle),
       stageCounts: counts.byStage,
       filteredOut: counts.filteredOut,
       sourceCounts: Object.fromEntries(bySource.map((g) => [g.source, g._count._all])),
@@ -233,6 +237,7 @@ export class VacanciesService {
       requirements: dto.requirements === undefined ? sanitizeJdHtml(job.jdRequirements) : html(dto.requirements),
       questions: (questions ?? []) as unknown as Prisma.InputJsonValue,
       keySkills: keySkills ?? [],
+      portfolioMode: dto.portfolioMode ?? null,
     };
     const made = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('people-system:vacancy-number'))`;
@@ -313,6 +318,7 @@ export class VacanciesService {
       ...(dto.requirements !== undefined && { requirements: html(dto.requirements) }),
       ...(questions !== undefined && { questions: questions as unknown as Prisma.InputJsonValue }),
       ...(keySkills !== undefined && { keySkills }),
+      ...(dto.portfolioMode !== undefined && { portfolioMode: dto.portfolioMode }),
     };
     const before = {
       title: v.title,
@@ -332,6 +338,7 @@ export class VacanciesService {
       requirements: v.requirements,
       questions: questionsOf(v.questions),
       keySkills: v.keySkills,
+      portfolioMode: v.portfolioMode,
     };
     const after = { ...before };
     for (const key of Object.keys(before) as (keyof typeof before)[]) {

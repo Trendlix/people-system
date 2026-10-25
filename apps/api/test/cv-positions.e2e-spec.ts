@@ -80,7 +80,9 @@ describe('The positions on “Send us your CV” (e2e)', () => {
       .set(CLIENT_IP_HEADER, ip)
       .set(CLIENT_IP_AT_HEADER, at)
       .set(CLIENT_IP_SIGNATURE_HEADER, signatureOf(process.env.WEB_KEY!, ip, at, GENERAL_CV_IP_TOKEN));
-    for (const [k, v] of Object.entries({ fullName: nameOf(who), email: email(who), mobile: mobileOf(who), consent: 'true', ip, ...fields })) req = req.field(k, v);
+    // a showreel of their own: a video editor's position asks for one (owner, 25 October 2026: "Portfolio per position")
+    const reel = `https://vimeo.com/${mobileOf(who).slice(-8)}`;
+    for (const [k, v] of Object.entries({ fullName: nameOf(who), email: email(who), mobile: mobileOf(who), consent: 'true', ip, portfolioLinks: JSON.stringify([reel]), ...fields })) req = req.field(k, v);
     return req.attach('cv', cv, 'My CV.pdf');
   }
 

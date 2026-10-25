@@ -598,6 +598,8 @@ export const DEVELOPER_HIDDEN_TEXT_FIELDS: ReadonlySet<string> = new Set([
   'previousEmployers',
   'linkedin',
   'portfolio',
+  // every portfolio link sent on the careers forms (owner, 25 October 2026: "Portfolio per position"), each "••••"
+  'portfolioLinks',
   'cvText',
   // a candidate's CV's file name, often their own name (candidate profiles, 22 October 2026), and why they left
   'cvFileName',
@@ -670,6 +672,10 @@ export const DEVELOPER_HIDDEN_NULL_FIELDS: ReadonlySet<string> = new Set([
   'joinUrl',
   'meetingUrl',
   'meetingId',
+  // the careers forms (owner, 25 October 2026): the PDF case study sent as a portfolio (its file is never a developer's:
+  // @NotForDevelopers), and the email LinkedIn confirmed ("Fill in with LinkedIn"), hidden as the CV's contacts are
+  'portfolioFile',
+  'emailConfirmedBy',
 ]);
 
 /**

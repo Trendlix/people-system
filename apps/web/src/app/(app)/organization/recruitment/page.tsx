@@ -1,18 +1,29 @@
 import type { Metadata } from 'next';
+import { headers } from 'next/headers';
 import { Suspense } from 'react';
+import { careersBaseFrom } from '@/lib/careers-base';
+import { isSuperAdmin } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import { Empty, Loading } from '../ui';
 import { saveInviteWords, savePositionChoices, saveRecruitmentSettings, saveSuggestionSettings } from '../../recruitment/actions';
 import { loadCvPositions, loadRecruitmentSettings, recruitmentNotLoaded } from '../../recruitment/data';
 import { managesRecruitment, readsRecruitment, WHO_SEES } from '../../recruitment/recruitment';
 import { InviteWordsForm, PositionsForm, PositionsList, RejectionWordsForm, SuggestionSettingsForm } from './settings-form';
+import { redirectUrlFor } from '../../recruitment/linkedin-settings';
+import { loadLinkedInSettings, loadPortfolioSettings } from '../../recruitment/portfolio-data';
+import { saveLinkedInSettings, savePortfolioSettings } from '../../recruitment/settings-actions';
+import { LinkedInSettingsForm } from './linkedin-form';
+import { PortfolioSettingsForm, PortfolioSettingsList } from './portfolio-form';
 
 // Recruitment Settings (Phase 2, owner, 22 October 2026): the rejection email's words, sent when HR ticks "Email the
 // candidate" on Reject, English then Arabic; empty, the standard ones. HR and a Super Admin change them; the CEO reads.
 // Since 24 October 2026 (Suggested From Earlier CVs, owner: "Suggest; HR adds", "Yes, HR presses 'Invite to apply'"): how
 // far back CVs count for each vacancy's suggestions, and the invitation to apply's words. Since 25 October 2026 (owner:
 // "should it be the positions?"; asked, "Position, grouped by team"): the positions on "Send us your CV", each shown or
-// hidden there, with an optional public name.
+// hidden there, with an optional public name. And since then too (owner: "can i use linkedin to complete the data? and for
+// creatives, they need to add their portfolios"; asked, all three): the portfolio each position asks for on both careers
+// forms ("Portfolio on the Forms", HR's to change), and the LinkedIn sign-in's setup ("LinkedIn Sign-in", a Super
+// Admin's only, in their own session; never a developer's).
 
 export const metadata: Metadata = { title: 'Recruitment Settings · People System' };
 
@@ -108,8 +119,64 @@ async function Settings() {
           <PositionsList positions={positions.value.positions} />
         )}
       </section>
+
+      <section aria-labelledby="portfolio-forms" className="card space-y-4 p-6">
+        <div className="space-y-1">
+          <h2 id="portfolio-forms" className="text-lg font-semibold">
+            Portfolio on the Forms
+          </h2>
+          <p className="max-w-3xl text-sm text-muted">
+            What both careers forms ask each position for: hidden, optional or required, a hint under the field, the kinds taken and how many links. Links are checked
+            by their shape only, never opened by the system. A position you haven’t set follows the default for its name (a video editor’s showreel, a
+            designer’s Behance …). A vacancy can ask otherwise on its own form.
+          </p>
+        </div>
+        <Suspense fallback={<Loading />}>
+          <PortfolioSection manages={manages} />
+        </Suspense>
+      </section>
+
+      {/* a Super Admin's only (never a developer's): the app's secret is set here */}
+      {isSuperAdmin(user) && !user.developer && (
+        <section aria-labelledby="linkedin-signin" className="card space-y-4 p-6">
+          <div className="space-y-1">
+            <h2 id="linkedin-signin" className="text-lg font-semibold">
+              LinkedIn Sign-in
+            </h2>
+            <p className="max-w-3xl text-sm text-muted">
+              “Fill in with LinkedIn” on both careers forms: the person signs in with LinkedIn, and their name and email are filled in where empty. LinkedIn shares
+              only those (never the work history); an email LinkedIn confirmed shows “Confirmed by LinkedIn” to HR. No account is made and nothing else is kept.
+            </p>
+          </div>
+          {user.viewAs ? (
+            <p className="text-sm text-muted">Open this in your own session to set it up: not while viewing as someone.</p>
+          ) : (
+            <Suspense fallback={<Loading />}>
+              <LinkedInSection />
+            </Suspense>
+          )}
+        </section>
+      )}
     </div>
   );
+}
+
+/** The portfolio per position: HR's form (HR, a Super Admin), or the list the CEO reads. */
+async function PortfolioSection({ manages }: { manages: boolean }) {
+  const loaded = await loadPortfolioSettings();
+  if (loaded.kind !== 'ok') return <p className="text-sm text-muted">{recruitmentNotLoaded(loaded, 'portfolio settings')}</p>;
+  const { positions } = loaded.value;
+  if (!positions.length) return <p className="text-sm text-muted">No positions yet: they come from the job titles.</p>;
+  return manages ? <PortfolioSettingsForm action={savePortfolioSettings} positions={positions} /> : <PortfolioSettingsList positions={positions} />;
+}
+
+/** The LinkedIn sign-in's setup, with the redirect URL at the careers pages' address (lib/careers-base.ts). */
+async function LinkedInSection() {
+  const [loaded, h] = await Promise.all([loadLinkedInSettings(), headers()]);
+  if (loaded.kind !== 'ok') {
+    return <p className="text-sm text-muted">{loaded.kind === 'forbidden' ? 'Only a Super Admin sets up the LinkedIn sign-in.' : recruitmentNotLoaded(loaded, 'LinkedIn sign-in')}</p>;
+  }
+  return <LinkedInSettingsForm action={saveLinkedInSettings} view={loaded.value} redirectUrl={redirectUrlFor(careersBaseFrom(h))} />;
 }
 
 // Under Organization since 23 October 2026 (owner: "Check-in Setup, KPI Pillars and deadlines, Recruitment and

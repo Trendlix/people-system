@@ -14,6 +14,8 @@ import {
   takesApplications,
   tidyAnswers,
   tidyNotice,
+  checkPortfolio,
+  linkedinFormKey,
   type ApplyInput,
   type ApplyResult,
   type PublicCareers,
@@ -34,6 +36,9 @@ import { APPLICATION_ENTITY, publicSummaryOf, questionsOf } from './recruitment-
 import type { ApplyDto } from './recruitment.dto.js';
 import { WhatsAppService } from '../whatsapp/whatsapp.service.js';
 import { VacancySuggestionsService } from './vacancy-suggestions.service.js';
+import { LinkedInSignInService } from './linkedin-signin.service.js';
+import { portfolioFileProblem, portfolioFileRow, portfolioSent } from './portfolio-file.js';
+import { vacancyAsk } from './portfolio-settings.service.js';
 
 // The careers page (owner, 22 October 2026: "where will we include the ATS?"; at people.trendlix.com/careers: "i dont
 // know how to decide it for now"), without signing in: the open vacancies (approved by the CEO, their closing date not
@@ -67,7 +72,9 @@ const PUBLIC_SELECT = {
   requirements: true,
   questions: true,
   grade: { select: { confidential: true } },
-  jobTitle: { select: { minGrade: { select: { confidential: true } } } },
+  jobTitle: { select: { id: true, titleEn: true, minGrade: { select: { confidential: true } } } },
+  // its form's portfolio (25 October 2026: "Portfolio per position"): its own mode over its job title's
+  portfolioMode: true,
 } satisfies Prisma.VacancySelect;
 
 /** Where the application came from, as the website saw it. */
@@ -111,6 +118,7 @@ export class PublicCareersService {
     private readonly readings: CvReadingsService,
     private readonly suggestions: VacancySuggestionsService,
     private readonly whatsapp: WhatsAppService,
+    private readonly linkedin: LinkedInSignInService,
   ) {}
 
   /** The company and its open vacancies, newest first. */
@@ -131,6 +139,9 @@ export class PublicCareersService {
       responsibilities: v.responsibilities,
       requirements: v.requirements,
       questions: questionsOf(v.questions).map(publicQuestionOf),
+      // the portfolio its form asks for, and "Fill in with LinkedIn" (25 October 2026)
+      portfolio: await vacancyAsk(this.prisma, v),
+      linkedinSignIn: await this.linkedin.isOn(),
     };
   }
 
@@ -139,7 +150,7 @@ export class PublicCareersService {
    * too many from the address this hour (429), the form's problems in words (400), the CV's (400), the same person (by email or mobile) having
    * applied already (409). Scored with the vacancy's questions; one failing a must-have is kept, filtered out.
    */
-  async apply(slug: string, dto: ApplyDto, file: Express.Multer.File | undefined, origin: ApplyOrigin): Promise<ApplyResult> {
+  async apply(slug: string, dto: ApplyDto, file: Express.Multer.File | undefined, origin: ApplyOrigin, portfolioFile?: Express.Multer.File): Promise<ApplyResult> {
     if (text(dto.website)) throw new BadRequestException([NOT_SENT]);
     const v = await this.bySlug(slug);
     const ip = applicantIp(slug, text(dto.ip), origin);
@@ -182,11 +193,18 @@ export class PublicCareersService {
       answers: answersSent,
       consent: dto.consent === 'true' || dto.consent === 'on',
     };
-    const problems = applyProblems(input, questions);
+    // the portfolio its form asks for (25 October 2026: "Portfolio per position"); none asked, whatever was sent is left aside
+    const portfolio = checkPortfolio({ links: portfolioSent(dto), file: !!portfolioFile?.buffer?.length }, await vacancyAsk(this.prisma, v));
+    input.portfolio = portfolio.links[0] ?? null;
+    const problems = [...applyProblems(input, questions), ...portfolio.problems];
+    const fileSaid = portfolio.file ? portfolioFileProblem(portfolioFile) : null;
+    if (fileSaid) problems.push(fileSaid);
     const cvSaid = cvProblem(file);
     if (cvSaid) problems.push(cvSaid);
     if (problems.length) throw new BadRequestException(problems);
     const email = normalEmail(input.email);
+    // "Confirmed by LinkedIn": the email LinkedIn verified for this job's form, sent as it gave it (25 October 2026)
+    const emailConfirmedBy = this.linkedin.confirmedBy(dto.linkedinTicket, linkedinFormKey({ kind: 'job', slug: v.slug }), email);
     const before = await this.prisma.jobApplication.findUnique({ where: { vacancyId_email: { vacancyId: v.id, email } }, select: { createdAt: true } });
     // the same person again, by their email (or, below, their mobile: candidate profiles, 22 October 2026)
     if (before) throw new ConflictException(ALREADY_APPLIED);
@@ -220,6 +238,9 @@ export class PublicCareersService {
           mobile: input.mobile,
           linkedin: input.linkedin ?? null,
           portfolio: input.portfolio ?? null,
+          portfolioLinks: portfolio.links,
+          emailConfirmedBy,
+          ...(portfolio.file && { portfolioFile: { create: portfolioFileRow(portfolioFile!) } }),
           yearsExperience: input.yearsExperience ?? null,
           noticePeriod: input.noticePeriod ?? null,
           expectedSalary: input.expectedSalary ?? null,

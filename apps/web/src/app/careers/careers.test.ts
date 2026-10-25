@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { OTHER_POSITION, type PublicQuestion } from '@trendlix/shared';
+import { HIDDEN_PORTFOLIO, OTHER_POSITION, portfolioLinkField, type PortfolioAsk, type PublicQuestion } from '@trendlix/shared';
 import {
   answerField,
   apiForm,
@@ -8,10 +8,13 @@ import {
   fieldProblems,
   generalApiForm,
   generalFormProblems,
+  generalPortfolioAsk,
   generalTypedValues,
   jobHref,
   noticeFrom,
   OTHER_AREA,
+  portfolioLinksOf,
+  portfolioProblems,
   typedValues,
   YEARS_REQUIRED,
 } from './careers';
@@ -195,6 +198,98 @@ describe('the email, mobile, years and notice period', () => {
   it('wants the years on a job’s form before sending, not on the general one', () => {
     expect(applyFormProblems(form({ ...good, yearsExperience: '' }), QUESTIONS)).toEqual([YEARS_REQUIRED]);
     expect(generalFormProblems(form({ fullName: 'Mona Adel', email: 'mona@mail.test', mobile: '01001234567', position: OTHER_POSITION, positionOther: 'Sound engineer', consent: 'on' }))).toEqual([]);
+  });
+});
+
+// A portfolio per position (owner, 25 October 2026: "for creatives, they need to add their portfolios. so based on the
+// positions i have, what kind of portfolios i might need to ask them for?"; asked, "Portfolio per position") and "Fill in
+// with LinkedIn" ("can i use linkedin to complete the data?"): the link boxes, the PDF case study and LinkedIn's ticket.
+describe('the portfolio and LinkedIn’s ticket on the forms', () => {
+  const SHOWREEL: PortfolioAsk = { mode: 'required', hint: 'A showreel on Vimeo or YouTube', kinds: ['vimeo', 'youtube', 'behance'], maxLinks: 3 };
+  const DESIGN: PortfolioAsk = { mode: 'optional', hint: 'Behance or Dribbble, or a PDF portfolio', kinds: ['behance', 'dribbble', 'pdf', 'website'], maxLinks: 2 };
+  const pdf = (bytes: number, name = 'Case study.pdf', type = 'application/pdf') => new File([new Uint8Array(bytes)], name, { type });
+  const withFile = (fields: Record<string, string>, file: File) => {
+    const fd = form(fields);
+    fd.set('portfolioFile', file, file.name);
+    return fd;
+  };
+
+  it('reads the link boxes in order, the empty ones left out', () => {
+    expect(portfolioLinksOf(form({ [portfolioLinkField(0)]: ' vimeo.com/123456 ', [portfolioLinkField(1)]: '', [portfolioLinkField(2)]: 'youtu.be/abcdef12' }))).toEqual([
+      'vimeo.com/123456',
+      'youtu.be/abcdef12',
+    ]);
+    expect(portfolioLinksOf(form({}))).toEqual([]);
+  });
+
+  it('asks for a required portfolio before sending, and takes a Vimeo link', () => {
+    expect(applyFormProblems(form(good), QUESTIONS, SHOWREEL)).toEqual(['Add your portfolio: a showreel on Vimeo or YouTube.']);
+    expect(applyFormProblems(form({ ...good, [portfolioLinkField(0)]: 'vimeo.com/123456789' }), QUESTIONS, SHOWREEL)).toEqual([]);
+    // a link of the wrong shape, or of a platform not asked for
+    expect(portfolioProblems(form({ [portfolioLinkField(0)]: 'vimeo.com' }), SHOWREEL)).toHaveLength(1);
+    expect(portfolioProblems(form({ [portfolioLinkField(0)]: 'github.com/mona' }), SHOWREEL)).toHaveLength(1);
+    expect(portfolioProblems(form({ [portfolioLinkField(0)]: 'http://vimeo.com/123456' }), SHOWREEL)[0]).toMatch(/https:\/\//);
+  });
+
+  it('ignores the portfolio when the position asks for none', () => {
+    expect(applyFormProblems(form({ ...good, [portfolioLinkField(0)]: 'not a link' }), QUESTIONS)).toEqual([]);
+    expect(portfolioProblems(form({ [portfolioLinkField(0)]: 'not a link' }), HIDDEN_PORTFOLIO)).toEqual([]);
+  });
+
+  it('takes a PDF case study when the position does, at most 5 MB, and only a PDF', () => {
+    expect(portfolioProblems(withFile({}, pdf(10)), DESIGN)).toEqual([]);
+    expect(portfolioProblems(withFile({}, pdf(5 * 1024 * 1024 + 1)), DESIGN)).toEqual(['Your portfolio PDF must be 5 MB or smaller.']);
+    expect(portfolioProblems(withFile({}, pdf(10, 'work.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')), DESIGN)).toEqual([
+      'Your portfolio file must be a PDF.',
+    ]);
+    // a required one is met by the PDF alone
+    expect(portfolioProblems(withFile({}, pdf(10)), { ...DESIGN, mode: 'required' })).toEqual([]);
+    // more links than allowed
+    expect(portfolioProblems(form({ [portfolioLinkField(0)]: 'behance.net/mona', [portfolioLinkField(1)]: 'dribbble.com/mona', [portfolioLinkField(2)]: 'mona.design' }), DESIGN)).toEqual([
+      'Add at most 2 portfolio links.',
+    ]);
+  });
+
+  it('sends the links as a list, the PDF and LinkedIn’s ticket, never the old one-box portfolio', () => {
+    const fields = { ...good, portfolio: 'behance.net/old', [portfolioLinkField(0)]: 'behance.net/mona', [portfolioLinkField(1)]: ' ', linkedinTicket: 'v1:sealed' };
+    const out = apiForm(withFile(fields, pdf(10)), QUESTIONS, { source: null });
+    expect(JSON.parse(out.get('portfolioLinks') as string)).toEqual(['behance.net/mona']);
+    expect(out.get('portfolio')).toBeNull();
+    expect(out.get('portfolioFile')).toBeInstanceOf(Blob);
+    expect(out.get('linkedinTicket')).toBe('v1:sealed');
+    const bare = apiForm(form(good), QUESTIONS, { source: null });
+    expect(bare.get('portfolioLinks')).toBeNull();
+    expect(bare.get('portfolioFile')).toBeNull();
+    expect(bare.get('linkedinTicket')).toBeNull();
+    // an empty file box sends no file
+    const empty = form(good);
+    empty.set('portfolioFile', new File([], ''));
+    expect(apiForm(empty, QUESTIONS, { source: null }).get('portfolioFile')).toBeNull();
+    const general = generalApiForm(form({ ...fields, position: OTHER_POSITION, positionOther: 'Designer' }), {});
+    expect(JSON.parse(general.get('portfolioLinks') as string)).toEqual(['behance.net/mona']);
+    expect(general.get('linkedinTicket')).toBe('v1:sealed');
+  });
+
+  it('keeps the boxes and the ticket to show again after a refusal, never the PDF', () => {
+    const typed = typedValues(withFile({ ...good, [portfolioLinkField(0)]: 'vimeo.com/1234', linkedinTicket: 'v1:sealed' }, pdf(10)), QUESTIONS);
+    expect(typed).toMatchObject({ [portfolioLinkField(0)]: 'vimeo.com/1234', linkedinTicket: 'v1:sealed' });
+    expect(typed).not.toHaveProperty('portfolioFile');
+    expect(generalTypedValues(form({ [portfolioLinkField(1)]: 'behance.net/mona' }))).toMatchObject({ [portfolioLinkField(1)]: 'behance.net/mona' });
+  });
+
+  it('asks on the general form what the chosen position asks, Other’s for Other, none before one is chosen', () => {
+    const KEY = '00000000-0000-4000-8000-000000000001:video editor';
+    const asks = { portfolios: { [KEY]: SHOWREEL }, otherPortfolio: DESIGN };
+    expect(generalPortfolioAsk(KEY, asks)).toBe(SHOWREEL);
+    expect(generalPortfolioAsk(OTHER_POSITION, asks)).toBe(DESIGN);
+    expect(generalPortfolioAsk('', asks)).toBe(HIDDEN_PORTFOLIO);
+    expect(generalPortfolioAsk('unknown:key', asks)).toBe(HIDDEN_PORTFOLIO);
+    expect(generalPortfolioAsk(KEY, null)).toBe(HIDDEN_PORTFOLIO);
+    const person = { fullName: 'Mona Adel', email: 'mona@mail.test', mobile: '01001234567', consent: 'on' };
+    expect(generalFormProblems(form({ ...person, position: KEY }), asks)).toEqual(['Add your portfolio: a showreel on Vimeo or YouTube.']);
+    expect(generalFormProblems(form({ ...person, position: KEY, [portfolioLinkField(0)]: 'youtube.com/watch?v=abcdef123' }), asks)).toEqual([]);
+    // without the asks (an API from before them) nothing is asked
+    expect(generalFormProblems(form({ ...person, position: KEY }))).toEqual([]);
   });
 });
 

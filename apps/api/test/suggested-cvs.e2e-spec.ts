@@ -105,7 +105,9 @@ describe('Suggested From Earlier CVs (e2e)', () => {
       .set(CLIENT_IP_HEADER, ip)
       .set(CLIENT_IP_AT_HEADER, at)
       .set(CLIENT_IP_SIGNATURE_HEADER, signatureOf(process.env.WEB_KEY!, ip, at, careersIpToken(v.slug)));
-    const fields = { fullName: nameOf(who), email: email(who), mobile: mobileOf(who), consent: 'true', yearsExperience: '3', ip, ...extra };
+    // a showreel of their own: a video editor's and a motion designer's forms ask for one (owner, 25 October 2026: "Portfolio per position")
+    const reel = `https://vimeo.com/${mobileOf(who).slice(-8)}`;
+    const fields = { fullName: nameOf(who), email: email(who), mobile: mobileOf(who), consent: 'true', yearsExperience: '3', ip, portfolioLinks: JSON.stringify([reel]), ...extra };
     for (const [k, val] of Object.entries(fields)) req = req.field(k, val);
     ok(await req.attach('cv', await pdfOf([`${nameOf(who)} curriculum vitae`]), `${who}.pdf`), 201);
     return prisma.jobApplication.findFirstOrThrow({ where: { vacancyId: v.id, email: email(who) }, select: { id: true, number: true, candidateId: true } });
@@ -386,6 +388,8 @@ describe('Suggested From Earlier CVs (e2e)', () => {
     expect(app2.cv?.sha256).toBe(earlier.cv?.sha256);
     expect(app2.cvReading?.status).toBe('read');
     expect(app2.consentNote).toBe(`From earlier application ${earlier.number}`);
+    // their showreel with it (25 October 2026: "Portfolio per position")
+    expect((await prisma.jobApplication.findUniqueOrThrow({ where: { id: made.applicationId }, select: { portfolioLinks: true } })).portfolioLinks).toEqual([`https://vimeo.com/${mobileOf('omar').slice(-8)}`]);
     expect(app2.steps[0].note).toContain(earlier.number);
     // the applicants' list shows the new sources
     const listed = ok(await get('hr', `/recruitment/applications?vacancyId=${V.id}&filtered=all`)).body as { id: string; source: string }[];

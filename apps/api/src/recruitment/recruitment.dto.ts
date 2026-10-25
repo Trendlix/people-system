@@ -35,6 +35,8 @@ import {
   SUGGESTION_STATUSES,
   type SuggestionStatus,
   CV_POSITION_LIMITS,
+  PORTFOLIO_MODES,
+  type PortfolioMode,
   type CvPositionChoiceInput,
   type CvSaveRow,
   type GeneralCvSource,
@@ -101,6 +103,10 @@ class VacancyFieldsDto {
   /** The key skills each CV is checked for (22 October 2026): a list, or text with commas; checked by the service (keySkillsProblems). */
   @IsOptional() @Allow()
   keySkills?: unknown;
+
+  /** Its form's portfolio (25 October 2026: "Portfolio: as the job title / Hidden / Optional / Required"): null as the job title. */
+  @IsOptional() @IsIn(PORTFOLIO_MODES, { message: 'Choose the portfolio: as the job title, Hidden, Optional or Required.' })
+  portfolioMode?: PortfolioMode | null;
 }
 
 export class CreateVacancyDto extends VacancyFieldsDto {
@@ -347,6 +353,14 @@ export class ApplyDto {
   @IsOptional() @IsString() @MaxLength(1000)
   portfolio?: string;
 
+  /** The portfolio links (25 October 2026: "Portfolio per position"), as JSON: a list of texts; checked by the service. */
+  @IsOptional() @IsString() @MaxLength(4000)
+  portfolioLinks?: string;
+
+  /** What "Fill in with LinkedIn" gave, sealed by the API (25 October 2026): the email's "Confirmed by LinkedIn". */
+  @IsOptional() @IsString() @MaxLength(4000)
+  linkedinTicket?: string;
+
   @IsOptional() @IsString() @MaxLength(20)
   yearsExperience?: string;
 
@@ -408,6 +422,14 @@ export class GeneralCvFormDto {
 
   @IsOptional() @IsString() @MaxLength(1000)
   portfolio?: string;
+
+  /** The portfolio links (25 October 2026: "Portfolio per position"), as JSON: a list of texts; checked by the service. */
+  @IsOptional() @IsString() @MaxLength(4000)
+  portfolioLinks?: string;
+
+  /** What "Fill in with LinkedIn" gave, sealed by the API (25 October 2026): the email's "Confirmed by LinkedIn". */
+  @IsOptional() @IsString() @MaxLength(4000)
+  linkedinTicket?: string;
 
   @IsOptional() @IsString() @MaxLength(20)
   yearsExperience?: string;

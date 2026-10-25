@@ -17,6 +17,8 @@ import type { CvListFacts, CvReadingView } from './cv-analysis.js';
 import type { OpenPositionFit } from './cv-fit.js';
 import { CV_POSITION_LIMITS, type CvPositionGroup } from './cv-positions.js';
 import type { ScreeningVerdict } from './screening.js';
+import type { EmailConfirmedBy } from './linkedin-signin.js';
+import type { PortfolioAsk } from './portfolio.js';
 import { APPLICATION_SOURCE_LABELS, applyProblems, normalEmail, RECRUITMENT_LIMITS, webLinkOf, type ApplicationSource, type ApplicationStage, type RecruitmentUserRef, type VacancyStatus } from './recruitment.js';
 
 // ---------- sources and statuses ----------
@@ -386,6 +388,10 @@ export interface GeneralCvView extends GeneralCvListItem {
   /** Other Open Positions (25 October 2026): the top 3 open vacancies its CV fits at 50% or more. */
   openPositions?: OpenPositionFit[];
   linkedin: string | null;
+  /** Every portfolio link, the PDF case study and "Confirmed by LinkedIn", as an application's (25 October 2026). */
+  portfolioLinks?: string[];
+  portfolioFile?: { fileName: string; sizeBytes: number } | null;
+  emailConfirmedBy?: EmailConfirmedBy | null;
   portfolio: string | null;
   noticePeriod: string | null;
   expectedSalary: number | null;
@@ -411,6 +417,14 @@ export interface PublicGeneralForm {
   /** None from an API before the positions. */
   positions?: CvPositionGroup[];
   areas: GeneralArea[];
+  /**
+   * The portfolio each position asks for, by its key (25 October 2026: "Portfolio per position"; portfolio.ts: the
+   * strictest of its job titles'), and Other's; a position left out asks for none. Left out by an API from before it.
+   */
+  portfolios?: Record<string, PortfolioAsk>;
+  otherPortfolio?: PortfolioAsk;
+  /** "Fill in with LinkedIn" is on (25 October 2026; linkedin-signin.ts). */
+  linkedinSignIn?: boolean;
 }
 
 /** An area a general CV may be for: a team (or a department without teams), its id the one a CV is saved with. */

@@ -312,7 +312,9 @@ describe('Recruitment (e2e)', () => {
     it('takes a link typed without https://, keeping it whole', async () => {
       await apply(v.slug, applicant('Link Typer', '10.7.0.1', undefined, { linkedin: 'www.linkedin.com/in/link-typer-1', portfolio: 'behance.net/link-typer' })).expect(201);
       const kept = await prisma.jobApplication.findFirstOrThrow({ where: { email: `link.typer.${RUN}@mail.test` }, select: { linkedin: true, portfolio: true } });
-      expect(kept).toEqual({ linkedin: 'https://www.linkedin.com/in/link-typer-1', portfolio: 'https://behance.net/link-typer' });
+      // the portfolio left aside: a video producer's form asks for none (owner, 25 October 2026: "Portfolio per position";
+      // a portfolio asked for is checked in careers-prefill.e2e-spec.ts)
+      expect(kept).toEqual({ linkedin: 'https://www.linkedin.com/in/link-typer-1', portfolio: null });
       expect(said(await apply(v.slug, applicant('Bad Link', '10.7.0.2', undefined, { linkedin: 'not a link' })).expect(400))).toEqual([
         'Write your LinkedIn link, e.g. linkedin.com/in/your-name, or leave it empty.',
       ]);

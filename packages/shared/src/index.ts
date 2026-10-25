@@ -624,3 +624,12 @@ export * from './check-in-exemptions.js';
 // team"): the job titles with their levels merged ("Video Editor" for Junior and Senior), never C-level, grouped by
 // team, plus "Other (write it)"; HR hides a position or names it otherwise in Recruitment Settings
 export * from './cv-positions.js';
+
+// the careers forms filled in from the CV, "Fill in with LinkedIn" and a portfolio per position (owner, 25 October 2026:
+// "can i use linkedin to complete the data? and for creatives, they need to add their portfolios"; asked, all three):
+// the CV's name, email, mobile, links and years; the sign-in's form, problems and settings; the portfolio's kinds, modes,
+// defaults by position, link shapes and HR's settings
+export * from './careers-base.js';
+export * from './cv-contacts.js';
+export * from './linkedin-signin.js';
+export * from './portfolio.js';

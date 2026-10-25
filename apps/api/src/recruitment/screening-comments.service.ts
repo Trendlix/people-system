@@ -89,6 +89,8 @@ const APP_SELECT = {
   vacancy: { select: { title: true, hiringManagerId: true, grade: { select: { confidential: true } }, jobTitle: { select: { minGrade: { select: { confidential: true } } } } } },
   interviews: { select: { interviewers: { select: { employeeId: true } } } },
   cv: { select: { fileName: true, mimeType: true, sizeBytes: true } },
+  // the portfolio links, for the CV window (25 October 2026: "Portfolio per position")
+  portfolioLinks: true,
   generalCv: { select: { id: true } },
   // the CV window's CV Fit (25 October 2026)
   cvFit: true,
@@ -103,6 +105,7 @@ const GCV_SELECT = {
   fullName: true,
   applicationId: true,
   file: { select: { fileName: true, mimeType: true, sizeBytes: true } },
+  portfolioLinks: true,
 } satisfies Prisma.GeneralCvSelect;
 type GcvRow = Prisma.GeneralCvGetPayload<{ select: typeof GCV_SELECT }>;
 
@@ -292,6 +295,7 @@ export class ScreeningCommentsService {
       mimeType: a.cv!.mimeType,
       sizeBytes: a.cv!.sizeBytes,
       sentAt: a.createdAt.toISOString(),
+      portfolioLinks: a.portfolioLinks,
       key: applicationKey(a.id),
       linkedKey,
     };
@@ -307,6 +311,7 @@ export class ScreeningCommentsService {
       mimeType: g.file!.mimeType,
       sizeBytes: g.file!.sizeBytes,
       sentAt: g.createdAt.toISOString(),
+      portfolioLinks: g.portfolioLinks,
       key: generalCvKey(g.id),
       linkedKey,
     };

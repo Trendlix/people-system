@@ -1,5 +1,5 @@
-import { Body, Controller, Delete, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, StreamableFile, UploadedFile, UseFilters, UseInterceptors } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { Body, Controller, Delete, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, StreamableFile, UploadedFiles, UseFilters, UseInterceptors } from '@nestjs/common';
+import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import type { Request } from 'express';
 import { CurrentUser, DeletesRecords, NotForDevelopers, Public, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
@@ -11,8 +11,8 @@ import { ApplicationsService } from './applications.service.js';
 import { InterviewsService } from './interviews.service.js';
 import { RecruitmentAnalyticsService } from './recruitment-analytics.service.js';
 import { RecruitmentSettingsService } from './recruitment-settings.service.js';
-import { CV_UPLOAD } from './cv-file.js';
 import { CvUploadFilter } from './cv-upload.filter.js';
+import { CAREERS_FILES, CAREERS_UPLOAD, type CareersFiles } from './portfolio-file.js';
 import { PublicCareersService } from './public-careers.service.js';
 import { RecruitmentDeletesService } from './recruitment-deletes.service.js';
 import { APPROVES, MANAGES, READS } from './recruitment-access.js';
@@ -404,13 +404,13 @@ export class PublicCareersController {
     return this.careers.get(slug);
   }
 
-  /** A multipart form: the fields of ApplyDto, and the CV as `cv`. */
+  /** A multipart form: the fields of ApplyDto, the CV as `cv` and a PDF case study as `portfolioFile` (25 October 2026). */
   @Post(':slug/apply')
   @HttpCode(201)
   @Header('Cache-Control', 'no-store')
   @UseFilters(CvUploadFilter)
-  @UseInterceptors(FileInterceptor('cv', CV_UPLOAD))
-  apply(@Param('slug') slug: string, @Body() dto: ApplyDto, @UploadedFile() file: Express.Multer.File | undefined, @Req() req: Request) {
-    return this.careers.apply(slug, dto, file, { ip: req.ip ?? null, userAgent: req.headers['user-agent'] ?? null, headers: req.headers });
+  @UseInterceptors(FileFieldsInterceptor(CAREERS_FILES, CAREERS_UPLOAD))
+  apply(@Param('slug') slug: string, @Body() dto: ApplyDto, @UploadedFiles() files: CareersFiles, @Req() req: Request) {
+    return this.careers.apply(slug, dto, files?.cv?.[0], { ip: req.ip ?? null, userAgent: req.headers['user-agent'] ?? null, headers: req.headers }, files?.portfolioFile?.[0]);
   }
 }

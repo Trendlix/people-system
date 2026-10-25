@@ -101,6 +101,8 @@ const DETAIL_INCLUDE = {
     },
   },
   cv: { select: { fileName: true, mimeType: true, sizeBytes: true } },
+  // the PDF case study sent as a portfolio (25 October 2026: "Portfolio per position")
+  portfolioFile: { select: { fileName: true, sizeBytes: true } },
   // the CV read and analysed (22 October 2026)
   cvReading: { select: { status: true, method: true, readAt: true, facts: true, text: true } },
   steps: { orderBy: { at: 'asc' }, include: { by: { select: { id: true, email: true } } } },
@@ -270,6 +272,10 @@ export class ApplicationsService {
       verdict,
       linkedin: a.linkedin,
       portfolio: a.portfolio,
+      // every portfolio link, the PDF case study and "Confirmed by LinkedIn" (25 October 2026)
+      portfolioLinks: a.portfolioLinks.length ? a.portfolioLinks : a.portfolio ? [a.portfolio] : [],
+      portfolioFile: a.portfolioFile ?? null,
+      emailConfirmedBy: a.emailConfirmedBy === 'linkedin' ? 'linkedin' : null,
       noticePeriod: a.noticePeriod,
       // never for a hiring manager or an interviewer (the brief: "They never see the salary range or the candidate's expected salary")
       expectedSalary: participant ? null : money(a.expectedSalary),
@@ -319,6 +325,15 @@ export class ApplicationsService {
     if (!a) throw new NotFoundException(NOT_FOUND);
     if (!a.cv) throw new NotFoundException('This applicant sent no CV.');
     return { data: Buffer.from(a.cv.data), fileName: a.cv.fileName, mimeType: a.cv.mimeType };
+  }
+
+  /** The PDF case study sent as a portfolio (25 October 2026), for the caller who may see the applicant; never a developer. */
+  async portfolioFile(id: string, user: SessionUser): Promise<{ data: Buffer; fileName: string; mimeType: string }> {
+    const c = await this.caller(user);
+    const a = await this.prisma.jobApplication.findFirst({ where: { AND: [{ id }, visibleApplications(c)] }, select: { portfolioFile: { select: { data: true, fileName: true, mimeType: true } } } });
+    if (!a) throw new NotFoundException(NOT_FOUND);
+    if (!a.portfolioFile) throw new NotFoundException('This applicant sent no portfolio file.');
+    return { data: Buffer.from(a.portfolioFile.data), fileName: a.portfolioFile.fileName, mimeType: a.portfolioFile.mimeType };
   }
 
   /**

@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import { LABELS, sourceOf, type PublicVacancyView } from '@trendlix/shared';
+import { LABELS, linkedinFormKey, sourceOf, type PublicVacancyView } from '@trendlix/shared';
 import { RichText } from '@/components/rich-text';
 import { formatDate } from '@/lib/format';
 import { publicGet } from '@/lib/public-api';
@@ -11,7 +11,10 @@ import { ApplyForm } from './apply-form';
 // role, the responsibilities, the requirements: never the salary range), and its application form. The link a channel
 // is shared with carries ?src= (LinkedIn, Facebook groups, job boards …), kept with the application. A job no longer open
 // says so. Dressed as trendlix.com (owner, 22 October 2026: "i need it to match the UI"; then its new design): its page
-// hero (a small label, the title in big letters), the facts as its meta list, its article's headings and text.
+// hero (a small label, the title in big letters), the facts as its meta list, its article's headings and text. Since 25
+// October 2026 (owner: "can i use linkedin to complete the data? and for creatives, they need to add their
+// portfolios"): the form asks for the portfolio the vacancy asks for, and offers "Fill in with LinkedIn" when it is on;
+// back from LinkedIn the address says how it went (?linkedin=), which the form reads.
 
 type Props = { params: Promise<{ slug: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> };
 
@@ -39,6 +42,7 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
 async function Job({ params, searchParams }: Props) {
   const [{ slug }, query] = await Promise.all([params, searchParams]);
   const src = Array.isArray(query.src) ? query.src[0] : query.src;
+  const returned = Array.isArray(query.linkedin) ? query.linkedin[0] : query.linkedin;
   const result = await publicGet<PublicVacancyView>(`/careers/${encodeURIComponent(slug)}`);
   if (!result.ok) {
     return (
@@ -69,7 +73,13 @@ async function Job({ params, searchParams }: Props) {
           </article>
         )}
         <div>
-          <ApplyForm action={applyForJob.bind(null, slug, sourceOf(src))} questions={job.questions} title={job.title} />
+          <ApplyForm
+            action={applyForJob.bind(null, slug, sourceOf(src))}
+            questions={job.questions}
+            title={job.title}
+            portfolio={job.portfolio}
+            linkedin={{ on: job.linkedinSignIn === true, formKey: linkedinFormKey({ kind: 'job', slug }), src: src ?? null, returned: returned ?? null }}
+          />
         </div>
       </div>
     </div>

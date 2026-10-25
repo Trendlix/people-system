@@ -537,6 +537,8 @@ export interface CandidateCv {
   mimeType: string;
   sizeBytes: number;
   sentAt: string;
+  /** The portfolio links sent with it (25 October 2026: "Portfolio per position"), for the CV window; hidden from a developer. */
+  portfolioLinks?: string[];
 }
 
 /** A job offer made to them. */
@@ -579,6 +581,8 @@ export interface CandidateTimelineItem {
 export interface CandidateView extends CandidateRef {
   linkedin: string | null;
   portfolio: string | null;
+  /** Every portfolio link of their applications and general CVs, the newest first, each once (25 October 2026). */
+  portfolioLinks?: string[];
   createdAt: string;
   lastAppliedAt: string | null;
   /** Merged into another profile: that one (the web opens it). */

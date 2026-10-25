@@ -9,6 +9,7 @@ import { formatDate } from '@/lib/format';
 import { CommentForm, CommentList } from './screening-ui';
 import { CvFitSection, OpenPositions } from './cv-fit-ui';
 import { recordOfCv } from './cv-fit';
+import { PortfolioChips } from './portfolio-chips';
 import { commentsOfCv, cvBelongsTo, cvFileHref, cvIndexOf, cvPositionText, cvPreviewHref, CV_PARAM, defaultTargetKey, kb, readCvParam, stepCv, withCvParam } from './screening';
 
 // A CV in a pop-up window over the page (owner, 24 October 2026, on a candidate's profile: "when opening a CV, open it in
@@ -209,6 +210,14 @@ function CvWindow({ cvs, index, data, pageKey, commentsNotLoaded }: { cvs: reado
           </svg>
         </button>
       </div>
+
+      {/* the portfolio links sent with this CV, each with its platform (owner, 25 October 2026: "Portfolio per position") */}
+      {!!cv.portfolioLinks?.length && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-2">
+          <span className="text-xs font-medium tracking-wide text-muted uppercase">Portfolio</span>
+          <PortfolioChips links={cv.portfolioLinks} />
+        </div>
+      )}
 
       <div className="flex min-h-0 flex-1">
         <div className={`min-h-0 min-w-0 flex-1 overflow-y-auto bg-line-soft ${comments ? 'hidden lg:block' : ''}`}>

@@ -1,13 +1,14 @@
 'use client';
 
 import Link from 'next/link';
-import { EMPLOYMENT_TYPES, KEY_SKILLS_LIMITS, LABELS, RECRUITMENT_LIMITS, WORK_ARRANGEMENTS, type VacancyQuestion } from '@trendlix/shared';
+import { EMPLOYMENT_TYPES, KEY_SKILLS_LIMITS, LABELS, PORTFOLIO_MODE_LABELS, PORTFOLIO_MODES, RECRUITMENT_LIMITS, WORK_ARRANGEMENTS, type PortfolioAsk, type VacancyQuestion } from '@trendlix/shared';
 import { DateInput } from '@/components/date-time-inputs';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import { RichTextEditor } from '@/components/rich-text-editor';
 import { Select } from '@/components/select';
 import { formatDate } from '@/lib/format';
 import type { FormState } from '@/lib/types';
+import { jobTitleAskText, PORTFOLIO_MODE_FIELD } from './portfolio';
 import { QuestionsEditor } from './questions-editor';
 import { jobTitleName, openingKeySkills } from './cv-fit';
 import { KeySkillsField } from './key-skills-field';
@@ -39,6 +40,10 @@ export interface VacancyDefaults {
   requirements: string;
   questions: VacancyQuestion[];
   keySkills: string[];
+  /** The portfolio its form asks for (owner, 25 October 2026: "Portfolio per position"): '' as the job title, or a mode. */
+  portfolioMode: string;
+  /** What the job title asks (its setting, else the rule's), when known: said under the choice. */
+  jobTitlePortfolio?: PortfolioAsk | null;
 }
 
 const L = RECRUITMENT_LIMITS;
@@ -245,6 +250,31 @@ export function VacancyForm({
         <RichTextEditor name="about" label="About the role" rows={3} defaultValue={valueOf(state, 'about', defaults.about)} />
         <RichTextEditor name="responsibilities" label="Responsibilities" rows={5} defaultValue={valueOf(state, 'responsibilities', defaults.responsibilities)} />
         <RichTextEditor name="requirements" label="Requirements" rows={4} defaultValue={valueOf(state, 'requirements', defaults.requirements)} />
+        {/* the portfolio on the application form (owner, 25 October 2026: "Portfolio per position"): the job title's, as
+            Recruitment Settings' "Portfolio on the Forms" says, unless this vacancy says otherwise */}
+        <div className="max-w-md">
+          <label htmlFor={fid('portfolioMode')} className="label">
+            Portfolio
+          </label>
+          <Select
+            id={fid('portfolioMode')}
+            name={PORTFOLIO_MODE_FIELD}
+            defaultValue={valueOf(state, PORTFOLIO_MODE_FIELD, defaults.portfolioMode)}
+            aria-describedby={fid('portfolioModeHint')}
+            className="input"
+          >
+            <option value="">As the job title</option>
+            {PORTFOLIO_MODES.map((m) => (
+              <option key={m} value={m}>
+                {PORTFOLIO_MODE_LABELS[m]}
+              </option>
+            ))}
+          </Select>
+          <p id={fid('portfolioModeHint')} className="hint">
+            {jobTitleAskText(defaults.jobTitlePortfolio) ?? 'As the job title: what Recruitment Settings’ Portfolio on the Forms says for it.'} Optional or Required here
+            keep the job title’s kinds and hint (every kind when it asks for none).
+          </p>
+        </div>
       </section>
 
       {/* Key skills looked for in each CV (owner, 22 October 2026: "make the OCR egine reads the CV and analyse it"; "Built-in

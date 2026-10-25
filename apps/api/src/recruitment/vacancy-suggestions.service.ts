@@ -744,7 +744,7 @@ export class VacancySuggestionsService implements OnModuleInit {
     const earlier = await this.prisma.jobApplication.findFirst({
       where: { candidateId, vacancyId: { not: v.id }, cv: { isNot: null }, vacancy: { NOT: CONFIDENTIAL_VACANCY } },
       orderBy: { createdAt: 'desc' },
-      include: { cv: true },
+      include: { cv: true, portfolioFile: true },
     });
     if (!earlier?.cv) throw new ConflictException('Their earlier CV is gone, so they can’t be added from it. Add their CV with Bulk upload instead.');
     const cv = earlier.cv;
@@ -757,6 +757,10 @@ export class VacancySuggestionsService implements OnModuleInit {
         mobile: earlier.mobile,
         linkedin: earlier.linkedin,
         portfolio: earlier.portfolio,
+        // its portfolio links, PDF case study and LinkedIn mark go with it (owner, 25 October 2026: "Portfolio per position")
+        portfolioLinks: earlier.portfolioLinks.length ? earlier.portfolioLinks : earlier.portfolio ? [earlier.portfolio] : [],
+        portfolioFile: earlier.portfolioFile && { fileName: earlier.portfolioFile.fileName, mimeType: earlier.portfolioFile.mimeType, sizeBytes: earlier.portfolioFile.sizeBytes, data: earlier.portfolioFile.data },
+        emailConfirmedBy: earlier.emailConfirmedBy,
         yearsExperience: earlier.yearsExperience,
         noticePeriod: earlier.noticePeriod,
         expectedSalary: earlier.expectedSalary,

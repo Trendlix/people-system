@@ -597,11 +597,11 @@ export class CandidatesService implements OnModuleDestroy {
         applications: {
           where: { vacancy: vacancyWhere(user) },
           orderBy: { createdAt: 'desc' },
-          select: { ...APP_SELECT, cv: { select: { fileName: true, mimeType: true, sizeBytes: true, createdAt: true } }, steps: { orderBy: { at: 'asc' }, select: { event: true, at: true } } },
+          select: { ...APP_SELECT, portfolioLinks: true, cv: { select: { fileName: true, mimeType: true, sizeBytes: true, createdAt: true } }, steps: { orderBy: { at: 'asc' }, select: { event: true, at: true } } },
         },
         generalCvs: {
           orderBy: { createdAt: 'desc' },
-          select: { ...GCV_SELECT, file: { select: { fileName: true, mimeType: true, sizeBytes: true } }, events: { orderBy: { at: 'asc' }, select: { event: true, at: true } } },
+          select: { ...GCV_SELECT, portfolioLinks: true, file: { select: { fileName: true, mimeType: true, sizeBytes: true } }, events: { orderBy: { at: 'asc' }, select: { event: true, at: true } } },
         },
         mergesKept: { orderBy: { at: 'desc' }, select: { id: true, at: true, undoneAt: true, moved: true, by: { select: { id: true, email: true } }, merged: { select: { id: true, code: true, fullName: true } } } },
       },
@@ -644,10 +644,10 @@ export class CandidatesService implements OnModuleDestroy {
     const cvs: CandidateCv[] = [
       ...row.applications
         .filter((a) => a.cv && !movedApps.has(a.id))
-        .map((a): CandidateCv => ({ kind: 'application', id: a.id, reference: a.number, title: a.vacancy.title, cvFileName: a.cv!.fileName, mimeType: a.cv!.mimeType, sizeBytes: a.cv!.sizeBytes, sentAt: a.createdAt.toISOString() })),
+        .map((a): CandidateCv => ({ kind: 'application', id: a.id, reference: a.number, title: a.vacancy.title, cvFileName: a.cv!.fileName, mimeType: a.cv!.mimeType, sizeBytes: a.cv!.sizeBytes, sentAt: a.createdAt.toISOString(), portfolioLinks: a.portfolioLinks })),
       ...row.generalCvs
         .filter((g) => g.file)
-        .map((g): CandidateCv => ({ kind: 'general_cv', id: g.id, reference: g.number, title: 'General CV', cvFileName: g.file!.fileName, mimeType: g.file!.mimeType, sizeBytes: g.file!.sizeBytes, sentAt: g.createdAt.toISOString() })),
+        .map((g): CandidateCv => ({ kind: 'general_cv', id: g.id, reference: g.number, title: 'General CV', cvFileName: g.file!.fileName, mimeType: g.file!.mimeType, sizeBytes: g.file!.sizeBytes, sentAt: g.createdAt.toISOString(), portfolioLinks: g.portfolioLinks })),
     ].sort((x, y) => y.sentAt.localeCompare(x.sentAt));
     const offerViews: CandidateOffer[] = offers.map((o) => ({
       id: o.id,
@@ -702,6 +702,8 @@ export class CandidatesService implements OnModuleDestroy {
       fullName: row.fullName,
       linkedin: row.linkedin,
       portfolio: row.portfolio,
+      // every portfolio link they sent, the newest first, each once (25 October 2026: "Portfolio per position")
+      portfolioLinks: [...new Set([...row.applications, ...row.generalCvs].sort((x, y) => y.createdAt.getTime() - x.createdAt.getTime()).flatMap((r) => r.portfolioLinks))].slice(0, 10),
       createdAt: row.createdAt.toISOString(),
       lastAppliedAt: row.lastAppliedAt?.toISOString() ?? null,
       mergedInto: null,

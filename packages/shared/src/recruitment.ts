@@ -28,6 +28,8 @@ import type { FeedbackView, InterviewView, RecruitmentViewer, SuggestionView } f
 import { phoneOk, phoneTidy } from './phone.js';
 import type { ApplicationCandidate, CandidateBadge } from './candidates.js';
 import type { ScreeningVerdict } from './screening.js';
+import type { EmailConfirmedBy } from './linkedin-signin.js';
+import type { PortfolioAsk, PortfolioMode } from './portfolio.js';
 
 // ---------- the limits ----------
 
@@ -816,6 +818,13 @@ export interface VacancyView extends VacancyListItem {
   questions: VacancyQuestion[];
   /** The skills each CV is checked for (the CV match %; 22 October 2026). */
   keySkills: string[];
+  /**
+   * The portfolio its form asks for (owner, 25 October 2026: "Portfolio per position"; portfolio.ts): the vacancy's own
+   * mode (null: as the job title), and what the job title asks (its setting, else the rule's default). Left out by an API
+   * from before it.
+   */
+  portfolioMode?: PortfolioMode | null;
+  jobTitlePortfolio?: PortfolioAsk;
   stageCounts: Record<ApplicationStage, number>;
   filteredOut: number;
   /** Its applicants by source (22 October 2026: the posted links apart from the careers page reached directly). */
@@ -931,6 +940,14 @@ export interface ApplicationCan {
 export interface ApplicationView extends ApplicationListItem {
   linkedin: string | null;
   portfolio: string | null;
+  /**
+   * Since 25 October 2026 (owner: "Portfolio per position"; portfolio.ts): every portfolio link sent (`portfolio` is the
+   * first), the PDF case study's file (at …/portfolio-file), and "Confirmed by LinkedIn" (linkedin-signin.ts). Left out
+   * by an API from before them; hidden from a developer.
+   */
+  portfolioLinks?: string[];
+  portfolioFile?: { fileName: string; sizeBytes: number } | null;
+  emailConfirmedBy?: EmailConfirmedBy | null;
   noticePeriod: string | null;
   expectedSalary: number | null;
   answers: ApplicationAnswerView[];
@@ -1012,6 +1029,10 @@ export interface PublicVacancyView extends PublicVacancySummary {
   responsibilities: string | null;
   requirements: string | null;
   questions: PublicQuestion[];
+  /** The portfolio its form asks for (25 October 2026; portfolio.ts); left out by an API from before it: hidden. */
+  portfolio?: PortfolioAsk;
+  /** "Fill in with LinkedIn" is on (25 October 2026; linkedin-signin.ts). */
+  linkedinSignIn?: boolean;
 }
 
 /** GET /public/careers: the company and its open vacancies. */

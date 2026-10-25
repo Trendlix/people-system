@@ -27,6 +27,7 @@ import {
 } from '@trendlix/shared';
 import { parseDate } from '../../../lib/format';
 import { shownCode } from '../../../lib/hidden';
+import { PORTFOLIO_MODE_FIELD, vacancyPortfolioModeOf } from './portfolio';
 
 // Recruitment on the site (owner, 22 October 2026: "where will we include the ATS?"; Phase 1): the addresses, who sees
 // what, the lists' filters, the vacancy's form, the screening questions' editor, the channels' links and Make offer.
@@ -222,6 +223,8 @@ export interface VacancyBody {
   questions?: VacancyQuestion[];
   /** Up to 20 short skills looked for in each CV (owner, 22 October 2026: "make the OCR egine reads the CV and analyse it"). */
   keySkills: string[];
+  /** The portfolio on its form (owner, 25 October 2026: "Portfolio per position"): a mode, or null as the job title. */
+  portfolioMode: 'hidden' | 'optional' | 'required' | null;
 }
 
 const field = (fd: FormData, name: string): string => {
@@ -296,6 +299,7 @@ export function vacancyForm(fd: FormData, { withQuestions }: { withQuestions: bo
       requirements: html('requirements'),
       ...(questions !== undefined && { questions }),
       keySkills,
+      portfolioMode: vacancyPortfolioModeOf(field(fd, PORTFOLIO_MODE_FIELD)),
     },
     errors: [],
   };

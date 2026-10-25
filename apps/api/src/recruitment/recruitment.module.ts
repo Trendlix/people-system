@@ -31,6 +31,11 @@ import { ScreeningCommentsService } from './screening-comments.service.js';
 import { KeySkillsController, SuggestionsController, VacancySuggestionsController } from './vacancy-suggestions.controller.js';
 import { CvFitsService } from './cv-fits.service.js';
 import { VacancySuggestionsService } from './vacancy-suggestions.service.js';
+import { CareersExtrasController, CareersSettingsController, PortfolioFilesController } from './careers-extras.controller.js';
+import { CvPrefillService } from './cv-prefill.service.js';
+import { LinkedInHttp } from './linkedin-http.js';
+import { LinkedInSignInService } from './linkedin-signin.service.js';
+import { PortfolioSettingsService } from './portfolio-settings.service.js';
 
 // Recruitment, the ATS (owner, 22 October 2026: "where will we include the ATS?"): Phase 1, vacancies, the careers page
 // and the applicants; Phase 2, the pipeline board, interviews, scorecards, the hiring manager's suggestions, the
@@ -61,6 +66,10 @@ import { VacancySuggestionsService } from './vacancy-suggestions.service.js';
     SuggestionsController,
     // the key skills suggested from a vacancy's texts (owner, 25 October 2026: "Full CV fit score")
     KeySkillsController,
+    // the careers forms filled in from the CV, "Fill in with LinkedIn" and a portfolio per position (25 October 2026)
+    CareersExtrasController,
+    CareersSettingsController,
+    PortfolioFilesController,
   ],
   providers: [
     VacanciesService,
@@ -84,6 +93,11 @@ import { VacancySuggestionsService } from './vacancy-suggestions.service.js';
     // screening comments, and the CVs as PDFs for the CV window (24 October 2026: "open it in a popup window")
     ScreeningCommentsService,
     CvPreviewsService,
+    // the careers forms filled in from the CV, "Fill in with LinkedIn" and a portfolio per position (25 October 2026)
+    CvPrefillService,
+    LinkedInHttp,
+    LinkedInSignInService,
+    PortfolioSettingsService,
     // the earlier CVs matched with each open vacancy, HR told of new matches (24 October 2026: "Suggest; HR adds")
     VacancySuggestionsService,
     // a Super Admin deletes an applicant, or a vacancy with its applicants (owner, 25 October 2026: "Vacancy alone -

@@ -31,6 +31,8 @@ import { applicantHref, readsRecruitment, WHO_SEES } from '../../recruitment';
 import { asScreeningCvs, cvFileHref, kb } from '../../screening';
 import { ScreeningCommentsCard } from '../../screening-ui';
 import { VerdictBadge } from '../../ui';
+import { portfolioLinksOf } from '../../portfolio';
+import { PortfolioChips } from '../../portfolio-chips';
 import { joinShown, shownCode } from '@/lib/hidden';
 
 // A candidate's profile (owner, 22 October 2026: "how to make like a profile for each candidate to store history and
@@ -85,19 +87,19 @@ function Contacts({ c }: { c: CandidateView }) {
           </ul>
         </div>
       </div>
-      {(c.linkedin || c.portfolio) && (
+      {c.linkedin && (
         <p className="flex flex-wrap gap-4 text-sm">
-          {c.linkedin && (
-            <a href={c.linkedin} target="_blank" rel="noopener noreferrer nofollow">
-              LinkedIn profile
-            </a>
-          )}
-          {c.portfolio && (
-            <a href={c.portfolio} target="_blank" rel="noopener noreferrer nofollow">
-              Portfolio
-            </a>
-          )}
+          <a href={c.linkedin} target="_blank" rel="noopener noreferrer nofollow">
+            LinkedIn profile
+          </a>
         </p>
+      )}
+      {/* every portfolio link of theirs, each with its platform (owner, 25 October 2026: "Portfolio per position") */}
+      {portfolioLinksOf(c).length > 0 && (
+        <div className="space-y-1">
+          <p className="text-xs font-medium tracking-wide text-muted uppercase">Portfolio</p>
+          <PortfolioChips links={portfolioLinksOf(c)} />
+        </div>
       )}
     </section>
   );

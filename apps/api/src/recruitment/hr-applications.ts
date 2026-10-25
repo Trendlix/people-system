@@ -19,6 +19,10 @@ export interface HrApplicationInput {
   mobile: string;
   linkedin?: string | null;
   portfolio?: string | null;
+  /** Every portfolio link, its PDF case study and "Confirmed by LinkedIn", as the general CV kept them (25 October 2026). */
+  portfolioLinks?: string[];
+  portfolioFile?: { fileName: string; mimeType: string; sizeBytes: number; data: Uint8Array } | null;
+  emailConfirmedBy?: string | null;
   yearsExperience?: number | Prisma.Decimal | null;
   noticePeriod?: string | null;
   expectedSalary?: number | Prisma.Decimal | null;
@@ -72,6 +76,9 @@ export async function createHrApplication(tx: Prisma.TransactionClient, a: HrApp
         mobile: a.mobile.trim(),
         linkedin: a.linkedin ?? null,
         portfolio: a.portfolio ?? null,
+        portfolioLinks: a.portfolioLinks ?? (a.portfolio ? [a.portfolio] : []),
+        emailConfirmedBy: a.emailConfirmedBy ?? null,
+        ...(a.portfolioFile && { portfolioFile: { create: { ...a.portfolioFile, data: new Uint8Array(a.portfolioFile.data) } } }),
         yearsExperience: a.yearsExperience ?? null,
         noticePeriod: a.noticePeriod ?? null,
         expectedSalary: a.expectedSalary ?? null,

@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Req, StreamableFile, UploadedFile, UseFilters, UseInterceptors } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { Body, Controller, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Req, StreamableFile, UploadedFile, UploadedFiles, UseFilters, UseInterceptors } from '@nestjs/common';
+import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import type { Request } from 'express';
 import { CurrentUser, NotForDevelopers, Public, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
@@ -10,6 +10,7 @@ import { CV_UPLOAD } from './cv-file.js';
 import { CvUploadFilter } from './cv-upload.filter.js';
 import { CvUploadsService } from './cv-uploads.service.js';
 import { GeneralCvsService } from './general-cvs.service.js';
+import { CAREERS_FILES, CAREERS_UPLOAD, type CareersFiles } from './portfolio-file.js';
 import { MANAGES, READS } from './recruitment-access.js';
 import {
   AddGeneralCvDto,
@@ -189,13 +190,13 @@ export class PublicGeneralCvsController {
     return this.cvs.publicForm();
   }
 
-  /** A multipart form: GeneralCvFormDto's fields, and the CV as `cv`. */
+  /** A multipart form: GeneralCvFormDto's fields, the CV as `cv` and a PDF case study as `portfolioFile` (25 October 2026). */
   @Post()
   @HttpCode(201)
   @Header('Cache-Control', 'no-store')
   @UseFilters(CvUploadFilter)
-  @UseInterceptors(FileInterceptor('cv', CV_UPLOAD))
-  send(@Body() dto: GeneralCvFormDto, @UploadedFile() file: Express.Multer.File | undefined, @Req() req: Request) {
-    return this.cvs.send(dto, file, { ip: req.ip ?? null, userAgent: req.headers['user-agent'] ?? null, headers: req.headers });
+  @UseInterceptors(FileFieldsInterceptor(CAREERS_FILES, CAREERS_UPLOAD))
+  send(@Body() dto: GeneralCvFormDto, @UploadedFiles() files: CareersFiles, @Req() req: Request) {
+    return this.cvs.send(dto, files?.cv?.[0], { ip: req.ip ?? null, userAgent: req.headers['user-agent'] ?? null, headers: req.headers }, files?.portfolioFile?.[0]);
   }
 }

@@ -19,6 +19,7 @@ import {
   tidyNotice,
   webLinkOf,
   withinDays,
+  checkPortfolio,
   type ApplicantsSummary,
   type ApplicationStage,
   type CvPosition,
@@ -57,6 +58,9 @@ import { CvPreviewsService } from './cv-previews.service.js';
 import { NOTES_GONE } from './screening-notes.js';
 import { ScreeningCommentsService } from './screening-comments.service.js';
 import { WhatsAppService } from '../whatsapp/whatsapp.service.js';
+import { LinkedInSignInService } from './linkedin-signin.service.js';
+import { PortfolioSettingsService } from './portfolio-settings.service.js';
+import { portfolioFileProblem, portfolioFileRow, portfolioSent } from './portfolio-file.js';
 
 // General CVs (owner, 22 October 2026: "i want a proper viweing, what came out of the posted jobs and what cam on
 // randomly"; "Both"; packages/shared general-cvs.ts): "Send us your CV" on the careers page, with the same protections as
@@ -115,6 +119,8 @@ const DETAIL_INCLUDE = {
   consentBy: { select: { id: true, email: true } },
   application: { select: { id: true, number: true, vacancy: { select: { id: true, title: true } } } },
   file: { select: { fileName: true, mimeType: true, sizeBytes: true } },
+  // the PDF case study sent as a portfolio (25 October 2026)
+  portfolioFile: { select: { fileName: true, sizeBytes: true } },
   // the CV read and analysed (22 October 2026)
   cvReading: { select: { status: true, method: true, readAt: true, facts: true, text: true } },
   events: { orderBy: { at: 'asc' }, include: { by: { select: { id: true, email: true } } } },
@@ -193,6 +199,9 @@ export class GeneralCvsService {
     private readonly previews: CvPreviewsService,
     private readonly whatsapp: WhatsAppService,
     private readonly fits: CvFitsService,
+    // the portfolio per position and "Fill in with LinkedIn" (25 October 2026)
+    private readonly portfolios: PortfolioSettingsService,
+    private readonly linkedin: LinkedInSignInService,
   ) {}
 
   // ---------- the careers page ----------
@@ -202,12 +211,15 @@ export class GeneralCvsService {
    * of before (areasOf), for one release for a page that still asks for one.
    */
   async publicForm(): Promise<PublicGeneralForm> {
-    const [company, positions, areas] = await Promise.all([
+    const [company, positions, areas, asks, linkedinSignIn] = await Promise.all([
       this.prisma.company.findUnique({ where: { id: 1 }, select: { nameEn: true, nameAr: true } }),
       positionsOf(this.prisma),
       areasOf(this.prisma),
+      // each position's portfolio and "Fill in with LinkedIn" (25 October 2026)
+      this.portfolios.generalAsks(),
+      this.linkedin.isOn(),
     ]);
-    return { company: { nameEn: company?.nameEn ?? '', nameAr: company?.nameAr ?? null }, positions: positionGroups(positions, { withHidden: false }), areas };
+    return { company: { nameEn: company?.nameEn ?? '', nameAr: company?.nameAr ?? null }, positions: positionGroups(positions, { withHidden: false }), areas, ...asks, linkedinSignIn };
   }
 
   /**
@@ -215,7 +227,7 @@ export class GeneralCvsService {
    * address this hour, or in all (429), the form's problems in words (400), the CV's (400), a CV from the email in the
    * last 30 days (409). Answers its reference.
    */
-  async send(dto: GeneralCvFormDto, file: Express.Multer.File | undefined, origin: ApplyOrigin): Promise<{ reference: string }> {
+  async send(dto: GeneralCvFormDto, file: Express.Multer.File | undefined, origin: ApplyOrigin, portfolioFile?: Express.Multer.File): Promise<{ reference: string }> {
     if (text(dto.website)) throw new BadRequestException([NOT_SENT]);
     const ip = senderIp(text(dto.ip), origin);
     const since = new Date(Date.now() - HOUR);
@@ -232,13 +244,25 @@ export class GeneralCvsService {
     // a position of the careers page's list (never a hidden one), or an older page's area
     const placed = await this.place(input, { withHidden: false });
     problems.push(...placed.problems);
+    // the portfolio the position asks for (25 October 2026: "Portfolio per position"): the strictest of its job titles'
+    // (Other's: taken, never asked); none asked, whatever was sent is left aside
+    const portfolio = checkPortfolio({ links: portfolioSent(dto), file: !!portfolioFile?.buffer?.length }, await this.portfolios.positionAsk(placed.position));
+    problems.push(...portfolio.problems);
+    const fileSaid = portfolio.file ? portfolioFileProblem(portfolioFile) : null;
+    if (fileSaid) problems.push(fileSaid);
     if (problems.length) throw new BadRequestException(problems);
+    input.portfolio = portfolio.links[0] ?? null;
     const email = normalEmail(input.email);
     const userAgent = (text(dto.userAgent) ?? origin.userAgent)?.slice(0, 500) ?? null;
     // "Send me updates about my application on WhatsApp" (24 October 2026), off unless ticked; the page's language
     const whatsapp = dto.whatsapp === 'true' || dto.whatsapp === 'on' ? { language: dto.whatsappLanguage === 'ar' ? ('ar' as const) : ('en' as const) } : null;
     // one CV every 30 days by the same person: their email, or their candidate (candidate profiles, 22 October 2026)
-    const made = await this.create(input, file!, { source: 'careers', consentById: null, consentNote: null, createdById: null, ip, userAgent, note: null, whatsapp, position: placed.position }, (recent) =>
+    const extras = {
+      portfolio: { links: portfolio.links, file: portfolio.file ? portfolioFile! : null },
+      // "Confirmed by LinkedIn": the email LinkedIn verified for this form, sent as it gave it (25 October 2026)
+      emailConfirmedBy: this.linkedin.confirmedBy(dto.linkedinTicket, 'general', email),
+    };
+    const made = await this.create(input, file!, { source: 'careers', consentById: null, consentNote: null, createdById: null, ip, userAgent, note: null, whatsapp, position: placed.position, ...extras }, (recent) =>
       new ConflictException(`You sent us your CV on ${shownDate(dayInCairo(recent.createdAt))} already. HR will be in touch.`),
     );
     await this.audit.record({
@@ -366,6 +390,10 @@ export class GeneralCvsService {
       verdict: verdicts.get(r.id) ?? null,
       linkedin: r.linkedin,
       portfolio: r.portfolio,
+      // every portfolio link, the PDF case study and "Confirmed by LinkedIn" (25 October 2026)
+      portfolioLinks: r.portfolioLinks.length ? r.portfolioLinks : r.portfolio ? [r.portfolio] : [],
+      portfolioFile: r.portfolioFile ?? null,
+      emailConfirmedBy: r.emailConfirmedBy === 'linkedin' ? 'linkedin' : null,
       noticePeriod: r.noticePeriod,
       expectedSalary: money(r.expectedSalary),
       areaOther: r.areaOther,
@@ -397,6 +425,14 @@ export class GeneralCvsService {
       user,
     );
     return shown.get(r.id)?.length ? shown.get(r.id)! : r.applicationId ? (shown.get(r.applicationId) ?? []) : [];
+  }
+
+  /** The PDF case study sent as a portfolio (25 October 2026): HR, the CEO, a Super Admin; never a developer (the route). */
+  async portfolioFile(id: string, user: SessionUser): Promise<{ fileName: string; mimeType: string; data: Buffer }> {
+    this.assertReads(user);
+    const f = await this.prisma.generalCvPortfolio.findUnique({ where: { generalCvId: id }, select: { fileName: true, mimeType: true, data: true } });
+    if (!f) throw new NotFoundException('No portfolio file was sent with this CV.');
+    return { fileName: f.fileName, mimeType: f.mimeType, data: Buffer.from(f.data) };
   }
 
   /** The CV as sent. */
@@ -458,7 +494,7 @@ export class GeneralCvsService {
       // the candidates' lock before any row's (candidate-links.ts: never a deadlock with a merge)
       await lockCandidates(tx);
       await tx.$queryRaw`SELECT id FROM general_cvs WHERE id = ${id}::uuid FOR UPDATE`;
-      const r = await tx.generalCv.findUnique({ where: { id }, include: { file: true } });
+      const r = await tx.generalCv.findUnique({ where: { id }, include: { file: true, portfolioFile: true } });
       if (!r) throw new NotFoundException(NOT_FOUND);
       const problem = moveProblem(r.status as GeneralCvStatus);
       if (problem) throw new ConflictException(problem);
@@ -473,6 +509,10 @@ export class GeneralCvsService {
         mobile: r.mobile,
         linkedin: r.linkedin,
         portfolio: r.portfolio,
+        // its portfolio links, PDF case study and LinkedIn mark go with it (25 October 2026)
+        portfolioLinks: r.portfolioLinks.length ? r.portfolioLinks : r.portfolio ? [r.portfolio] : [],
+        portfolioFile: r.portfolioFile && { fileName: r.portfolioFile.fileName, mimeType: r.portfolioFile.mimeType, sizeBytes: r.portfolioFile.sizeBytes, data: r.portfolioFile.data },
+        emailConfirmedBy: r.emailConfirmedBy,
         yearsExperience: r.yearsExperience,
         noticePeriod: r.noticePeriod,
         expectedSalary: r.expectedSalary,
@@ -645,6 +685,10 @@ export class GeneralCvsService {
       whatsapp?: { language: 'en' | 'ar' } | null;
       /** The position chosen, from the list (25 October 2026); none: Other in words, or an older page's area. */
       position: CvPosition | null;
+      /** The portfolio links checked and the PDF case study (25 October 2026); none: the one link of HR's Add a CV. */
+      portfolio?: { links: string[]; file: Express.Multer.File | null };
+      /** "Confirmed by LinkedIn" (25 October 2026). */
+      emailConfirmedBy?: 'linkedin' | null;
     },
     refuseRecent: (recent: { number: string; createdAt: Date; email: string }) => Error,
   ): Promise<{ id: string; number: string; area: string; position: string | null; candidate: string }> {
@@ -665,6 +709,9 @@ export class GeneralCvsService {
           mobile: input.mobile,
           linkedin: input.linkedin ?? null,
           portfolio: input.portfolio ?? null,
+          portfolioLinks: how.portfolio?.links ?? (input.portfolio ? [input.portfolio] : []),
+          emailConfirmedBy: how.emailConfirmedBy ?? null,
+          ...(how.portfolio?.file && { portfolioFile: { create: portfolioFileRow(how.portfolio.file) } }),
           yearsExperience: input.yearsExperience ?? null,
           noticePeriod: input.noticePeriod ?? null,
           expectedSalary: input.expectedSalary ?? null,

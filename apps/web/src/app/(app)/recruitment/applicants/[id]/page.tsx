@@ -39,6 +39,8 @@ import { APPLICANTS_PATH, applicantCvHref, makeOfferHref, matchText, vacancyHref
 import { commentsOfRecord, kb, ownCv } from '../../screening';
 import { ScreeningCommentsCard } from '../../screening-ui';
 import { StageBadge, VerdictBadge } from '../../ui';
+import { applicantPortfolioHref, portfolioLinksOf } from '../../portfolio';
+import { LinkedInMark, PortfolioChips, PortfolioFileLinks } from '../../portfolio-chips';
 import { shownCode } from '@/lib/hidden';
 import type { MeetingChoices } from '@trendlix/shared';
 import { fixInterviewMeeting } from '../../meeting-actions';
@@ -380,6 +382,8 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
         <dl className="grid gap-4 sm:grid-cols-3">
           <Fact label="Email">
             <a href={`mailto:${a.email}`}>{a.email}</a>
+            {/* "Fill in with LinkedIn" (25 October 2026): the email LinkedIn confirmed */}
+            <LinkedInMark by={a.emailConfirmedBy} />
           </Fact>
           <Fact label="Mobile">
             <a href={`tel:${a.mobile.replace(/[^\d+]/g, '')}`}>{a.mobile}</a>
@@ -389,15 +393,6 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
             {a.linkedin ? (
               <a href={a.linkedin} target="_blank" rel="noopener noreferrer nofollow">
                 Open profile
-              </a>
-            ) : (
-              '—'
-            )}
-          </Fact>
-          <Fact label="Portfolio">
-            {a.portfolio ? (
-              <a href={a.portfolio} target="_blank" rel="noopener noreferrer nofollow">
-                Open portfolio
               </a>
             ) : (
               '—'
@@ -420,6 +415,14 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
               'None'
             )}
           </Fact>
+          {/* every link with its platform, and the PDF case study (owner, 25 October 2026: "Portfolio per position") */}
+          <div className="min-w-0 sm:col-span-3">
+            <dt className="text-xs font-medium tracking-wide text-muted uppercase">Portfolio</dt>
+            <dd className="mt-1 space-y-2 text-sm break-words">
+              <PortfolioChips links={portfolioLinksOf(a)} empty={a.portfolioFile ? null : '—'} />
+              {a.portfolioFile && <PortfolioFileLinks file={a.portfolioFile} href={applicantPortfolioHref(a.id)} downloadHref={applicantPortfolioHref(a.id, true)} />}
+            </dd>
+          </div>
         </dl>
       </section>
 

@@ -74,6 +74,8 @@ model User {
   suggestionsMade    JobApplication[]           @relation("ApplicationSuggestion")
   recruitmentSettingsSet RecruitmentSettings[]  @relation("RecruitmentSettingsChange")
   cvPositionChoicesSet   CvPositionChoice[]     @relation("CvPositionChoiceChange")
+  portfolioSettingsSet   PortfolioSetting[]     @relation("PortfolioSettingChange") // a job title's portfolio on the careers forms (25 October 2026)
+  linkedinSettingsSet    LinkedInSettings[]     @relation("LinkedInSettingsChange") // "Fill in with LinkedIn" (25 October 2026)
   mailSettingsSet        MailSettings[]         @relation("MailSettingsChange") // the email settings, when this user saved them last
   mapsSettingsSet        MapsSettings[]         @relation("MapsSettingsChange") // the Google Maps settings, when this user saved them last
   // online interview meetings (owner, 24 October 2026: "make it both"): the meeting apps this user saved last, their own
@@ -782,6 +784,7 @@ model JobTitle {
   promotions     Contract[]     @relation("RaiseJobTitle") // raises that promote to this job title
   kpiTemplates   KpiTemplate[] // its KPI template's versions (21 October 2026): a draft and the published ones
   vacancies      Vacancy[] // the vacancies for it (recruitment, 22 October 2026)
+  portfolio      PortfolioSetting? // what its careers forms ask for as a portfolio (25 October 2026); none: the rule's default
 
   @@unique([departmentId, titleEn])
   @@map("job_titles")
@@ -1736,6 +1739,7 @@ model Vacancy {
   requirements     String? // HTML
   questions        Json             @default("[]")
   keySkills        String[]         @default([]) @map("key_skills") // the skills a CV is checked for (CV match %), at most 20 (22 October 2026)
+  portfolioMode    String?          @map("portfolio_mode") // its form's portfolio: hidden, optional, required; none: as the job title (25 October 2026)
   submittedAt      DateTime?        @map("submitted_at") @db.Timestamptz
   submittedById    String?          @map("submitted_by") @db.Uuid
   submittedBy      User?            @relation("VacancySubmission", fields: [submittedById], references: [id], onDelete: SetNull)
@@ -1779,7 +1783,11 @@ model JobApplication {
   email           String // trimmed, in lower case
   mobile          String
   linkedin        String?
-  portfolio       String?
+  portfolio       String? // the first of portfolioLinks, for older code and pages
+  // every portfolio link sent, at most 3 (owner, 25 October 2026: "Portfolio per position"; packages/shared portfolio.ts),
+  // and "Confirmed by LinkedIn": 'linkedin' when LinkedIn gave this email, verified (linkedin-signin.ts); none otherwise
+  portfolioLinks   String[]            @default([]) @map("portfolio_links")
+  emailConfirmedBy String?             @map("email_confirmed_by")
   yearsExperience Decimal?             @map("years_experience") @db.Decimal(4, 1)
   noticePeriod    String?              @map("notice_period")
   expectedSalary  Decimal?             @map("expected_salary") @db.Decimal(12, 2)
@@ -1819,6 +1827,7 @@ model JobApplication {
   candidate       Candidate?           @relation(fields: [candidateId], references: [id], onDelete: Restrict)
   generalCv       GeneralCv? // the general CV it was moved from
   cv              JobApplicationCv?
+  portfolioFile   JobApplicationPortfolio? // the PDF case study sent as a portfolio (25 October 2026)
   cvReading       CvReading? // its CV read and analysed (22 October 2026)
   steps           JobApplicationStep[]
   offers          JobOffer[]
@@ -1863,6 +1872,20 @@ model JobApplicationCv {
   @@map("job_application_cvs")
 }
 
+// An application's PDF case study (owner, 25 October 2026: "for creatives, they need to add their portfolios"; a position
+// that takes "PDF case study (upload)"), kept as its CV is: apart, so the lists never read it; a PDF, at most 5 MB.
+model JobApplicationPortfolio {
+  applicationId String         @id @map("application_id") @db.Uuid
+  application   JobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  fileName      String         @map("file_name")
+  mimeType      String         @map("mime_type")
+  sizeBytes     Int            @map("size_bytes")
+  data          Bytes
+  createdAt     DateTime       @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("job_application_portfolios")
+}
+
 // What happened to an application, in order (APPLICATION_EVENTS): applied, filtered out, shortlisted, moved to interview,
 // a job offer drafted, hired, rejected, restored, an offer declined or withdrawn; the stage after it, a note, who (none:
 // the applicant or the system) and when. Ready for Phase 2's pipeline and analytics (time to hire, the funnel).
@@ -1895,7 +1918,10 @@ model GeneralCv {
   email           String // trimmed, in lower case
   mobile          String
   linkedin        String?
-  portfolio       String?
+  portfolio       String? // the first of portfolioLinks, for older code and pages
+  // every portfolio link and "Confirmed by LinkedIn", as an application's (25 October 2026)
+  portfolioLinks   String[]        @default([]) @map("portfolio_links")
+  emailConfirmedBy String?         @map("email_confirmed_by")
   yearsExperience Decimal?         @map("years_experience") @db.Decimal(4, 1)
   noticePeriod    String?          @map("notice_period")
   expectedSalary  Decimal?         @map("expected_salary") @db.Decimal(12, 2)
@@ -1927,6 +1953,7 @@ model GeneralCv {
   candidateId     String?          @map("candidate_id") @db.Uuid
   candidate       Candidate?       @relation(fields: [candidateId], references: [id], onDelete: Restrict)
   file            GeneralCvFile?
+  portfolioFile   GeneralCvPortfolio? // the PDF case study sent as a portfolio (25 October 2026)
   cvReading       CvReading? // its CV read and analysed (22 October 2026)
   events          GeneralCvEvent[]
   comments        ScreeningComment[] // the screening comments on it (24 October 2026)
@@ -1960,6 +1987,19 @@ model GeneralCvFile {
   preview     CvPreview? // a Word CV as a PDF for the CV window, kept (24 October 2026)
 
   @@map("general_cv_files")
+}
+
+// A general CV's PDF case study (25 October 2026), as an application's.
+model GeneralCvPortfolio {
+  generalCvId String    @id @map("general_cv_id") @db.Uuid
+  generalCv   GeneralCv @relation(fields: [generalCvId], references: [id], onDelete: Cascade)
+  fileName    String    @map("file_name")
+  mimeType    String    @map("mime_type")
+  sizeBytes   Int       @map("size_bytes")
+  data        Bytes
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("general_cv_portfolios")
 }
 
 // What happened to a general CV, in order: received, reviewed, archived, restored, moved; a note, who (none: the person
@@ -2319,6 +2359,40 @@ model CvPositionChoice {
   updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz
 
   @@map("cv_position_choices")
+}
+
+// What HR set for a job title's portfolio on the careers forms (owner, 25 October 2026: "Portfolio per position";
+// Recruitment Settings' "Portfolio on the Forms"; packages/shared portfolio.ts): Hidden, Optional or Required, a hint, the
+// kinds taken (PORTFOLIO_KINDS) and how many links (1 to 3). No row: the default by the rule (portfolioDefaultFor).
+model PortfolioSetting {
+  jobTitleId  String   @id @map("job_title_id") @db.Uuid
+  jobTitle    JobTitle @relation(fields: [jobTitleId], references: [id], onDelete: Cascade)
+  mode        String // PORTFOLIO_MODES
+  hint        String?
+  kinds       String[] @default([])
+  maxLinks    Int      @default(3) @map("max_links")
+  updatedById String?  @map("updated_by") @db.Uuid
+  updatedBy   User?    @relation("PortfolioSettingChange", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@map("portfolio_settings")
+}
+
+// "Fill in with LinkedIn" on the careers forms (one row, id 1; owner, 25 October 2026: "can i use linkedin to complete
+// the data?"; Recruitment Settings' "LinkedIn Sign-in", a Super Admin's; packages/shared linkedin-signin.ts): on or off,
+// the LinkedIn app's client ID and its secret, sealed (apps/api/src/recruitment/linkedin-secret.ts), never returned, with
+// the fingerprint of the key that sealed it.
+model LinkedInSettings {
+  id              Int      @id @default(1)
+  enabled         Boolean  @default(false)
+  clientId        String?  @map("client_id")
+  clientSecretEnc String?  @map("client_secret_enc")
+  secretKeyId     String?  @map("secret_key_id")
+  updatedById     String?  @map("updated_by") @db.Uuid
+  updatedBy       User?    @relation("LinkedInSettingsChange", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedAt       DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@map("linkedin_settings")
 }
 
 // An earlier CV suggested for an open vacancy (owner, 24 October 2026: "does the system automatically add recomended

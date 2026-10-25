@@ -17,6 +17,8 @@ import { applicantHref } from '../../recruitment';
 import { commentsOfRecord, kb, ownCv } from '../../screening';
 import { ScreeningCommentsCard } from '../../screening-ui';
 import { VerdictBadge } from '../../ui';
+import { generalPortfolioHref, portfolioLinksOf } from '../../portfolio';
+import { LinkedInMark, PortfolioChips, PortfolioFileLinks } from '../../portfolio-chips';
 import { shownCode } from '@/lib/hidden';
 
 // A general CV (owner, 22 October 2026: "i want a proper viweing, what came out of the posted jobs and what cam on
@@ -118,6 +120,8 @@ async function GeneralCv({ params }: { params: PageProps<'/recruitment/general-c
         <dl className="grid gap-4 sm:grid-cols-3">
           <Fact label="Email">
             <a href={`mailto:${c.email}`}>{c.email}</a>
+            {/* "Fill in with LinkedIn" (25 October 2026): the email LinkedIn confirmed */}
+            <LinkedInMark by={c.emailConfirmedBy} />
           </Fact>
           <Fact label="Mobile">
             <a href={`tel:${c.mobile.replace(/[^\d+]/g, '')}`}>{c.mobile}</a>
@@ -129,15 +133,6 @@ async function GeneralCv({ params }: { params: PageProps<'/recruitment/general-c
             {c.linkedin ? (
               <a href={c.linkedin} target="_blank" rel="noopener noreferrer nofollow">
                 Open profile
-              </a>
-            ) : (
-              '—'
-            )}
-          </Fact>
-          <Fact label="Portfolio">
-            {c.portfolio ? (
-              <a href={c.portfolio} target="_blank" rel="noopener noreferrer nofollow">
-                Open portfolio
               </a>
             ) : (
               '—'
@@ -163,6 +158,14 @@ async function GeneralCv({ params }: { params: PageProps<'/recruitment/general-c
               'None'
             )}
           </Fact>
+          {/* every link with its platform, and the PDF case study (owner, 25 October 2026: "Portfolio per position") */}
+          <div className="min-w-0 sm:col-span-3">
+            <dt className="text-xs font-medium tracking-wide text-muted uppercase">Portfolio</dt>
+            <dd className="mt-1 space-y-2 text-sm break-words">
+              <PortfolioChips links={portfolioLinksOf(c)} empty={c.portfolioFile ? null : '—'} />
+              {c.portfolioFile && <PortfolioFileLinks file={c.portfolioFile} href={generalPortfolioHref(c.id)} downloadHref={generalPortfolioHref(c.id, true)} />}
+            </dd>
+          </div>
         </dl>
       </section>
 

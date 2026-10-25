@@ -133,7 +133,9 @@ describe('WhatsApp notifications (e2e)', () => {
       .set(CLIENT_IP_HEADER, ip)
       .set(CLIENT_IP_AT_HEADER, at)
       .set(CLIENT_IP_SIGNATURE_HEADER, signatureOf(process.env.WEB_KEY!, ip, at, careersIpToken(slug)));
-    for (const [k, v] of Object.entries({ ...fields, ip })) req = req.field(k, v);
+    // a showreel of their own: a video editor's form asks for one (owner, 25 October 2026: "Portfolio per position")
+    const reel = `https://vimeo.com/${Array.from({ length: (fields.email ?? fields.fullName).length }, (_, i) => (fields.email ?? fields.fullName).charCodeAt(i)).reduce((h, c) => (Math.imul(h, 31) + c) >>> 0, 7)}`;
+    for (const [k, v] of Object.entries({ portfolioLinks: JSON.stringify([reel]), ...fields, ip })) req = req.field(k, v);
     return req.attach('cv', PDF, 'cv.pdf');
   }
 
