@@ -216,7 +216,9 @@ describe('Payroll (e2e)', () => {
   afterAll(async () => {
     // runs keep their people on record: remove them so other test files can delete theirs
     await prisma.payrollRun.deleteMany();
-    await prisma.payrollSettings.update({ where: { id: 1 }, data: { ...PAYROLL_RULE_DEFAULTS, cibDebitAccount: null, cibDebitAccountName: null, achPurpose: 'CASH' } });
+    // Payroll Setup's rules: the KPI's attendance switch is the KPI settings', not one of them (25 October 2026)
+    const { kpiIncludesAttendance: _, ...setupRules } = PAYROLL_RULE_DEFAULTS;
+    await prisma.payrollSettings.update({ where: { id: 1 }, data: { ...setupRules, cibDebitAccount: null, cibDebitAccountName: null, achPurpose: 'CASH' } });
     await api().patch('/api/company').set('Cookie', hr).send({ emailDomain: emailDomainBefore ?? '' }).expect(200);
     await app.close();
   });

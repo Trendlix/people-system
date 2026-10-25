@@ -162,6 +162,9 @@ describe('the start form', () => {
   it('offers each choice in words', () => {
     expect(personChoiceLabel({ employee: OMAR, jobTitle: { id: 'j1', titleEn: 'Data Analyst' } })).toBe('Omar Ali · TLX-0007 · Data Analyst');
     expect(monthChoiceLabel('2026-10', '2026-10')).toBe('October 2026 (this month: attendance so far)');
+    // attendance out of the KPI (owner, 25 October 2026: "Fixed cut only"): it counts in no score, so not said
+    expect(monthChoiceLabel('2026-10', '2026-10', false)).toBe('October 2026 (this month)');
+    expect(monthChoiceLabel('2026-09', '2026-10', false)).toBe('September 2026');
     expect(monthChoiceLabel('2026-09', '2026-10')).toBe('September 2026');
     expect(choice.templates.map(templateChoiceLabel)).toEqual(['Version 3 · Draft · 7 metrics', 'Version 2 · In force · 1 metric']);
   });

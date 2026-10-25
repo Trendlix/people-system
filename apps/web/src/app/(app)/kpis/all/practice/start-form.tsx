@@ -11,9 +11,19 @@ import { monthChoiceLabel, personChoiceLabel, START_FIELDS, templateChoiceLabel 
 // from a draft or published template"): the employee (anyone HR may see whose job title has a template), the month
 // (this one by default, its attendance so far; any back to the month they joined) and the version (the job title's
 // newest by default, a draft first: "Let them pick a draft explicitly, since testing a draft is the point"). It opens
-// as the month's real one would, notifies nobody, and opens on its page.
+// as the month's real one would, notifies nobody, and opens on its page. While attendance is out of the KPI (owner, 25
+// October 2026: "Fixed cut only"), this month isn't said to have its attendance so far: it counts in no score.
 
-export function StartPracticeForm({ choices, action }: { choices: KpiPracticeChoices; action: (prev: FormState, fd: FormData) => Promise<FormState> }) {
+export function StartPracticeForm({
+  choices,
+  action,
+  attendanceInKpi = true,
+}: {
+  choices: KpiPracticeChoices;
+  action: (prev: FormState, fd: FormData) => Promise<FormState>;
+  /** Whether the Attendance metric counts in the KPI (the setting); on unless sent. */
+  attendanceInKpi?: boolean;
+}) {
   const { state, pending, form } = useKeptForm(action);
   const fid = useFieldIds();
   const [employeeId, setEmployeeId] = useState('');
@@ -54,7 +64,7 @@ export function StartPracticeForm({ choices, action }: { choices: KpiPracticeCho
           <Select id={fid('month')} name={START_FIELDS.month} required value={month} onChange={(e) => setMonth(e.target.value)} disabled={!person} className="input">
             {(person?.months ?? [choices.month]).map((m) => (
               <option key={m} value={m}>
-                {monthChoiceLabel(m, choices.month)}
+                {monthChoiceLabel(m, choices.month, attendanceInKpi)}
               </option>
             ))}
           </Select>

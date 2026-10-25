@@ -163,6 +163,9 @@ describe('KPIs (e2e)', () => {
 
   beforeAll(async () => {
     ({ app, prisma } = await createApp());
+    // the Attendance metric counting in the KPI, as it did until 25 October 2026 ("Fixed cut only": off since, tested in
+    // kpi-without-attendance.e2e-spec.ts): switched on for these tests, off again after them
+    await prisma.kpiSettings.upsert({ where: { id: 1 }, update: { attendanceInKpi: true }, create: { id: 1, attendanceInKpi: true } });
     clock = app.get(KpiSchedulerService);
     // two months in a row with no payroll run: M, whose run is made here for the attendance, and P = M + 1
     for (const offset of [-10, -9, -8, -7, -6, -5, -4, -3]) {
@@ -214,6 +217,7 @@ describe('KPIs (e2e)', () => {
   });
 
   afterAll(async () => {
+    await prisma.kpiSettings.update({ where: { id: 1 }, data: { attendanceInKpi: false } });
     await app.get(NotificationsService).flush();
     await prisma.kpiScorecard.deleteMany({ where: { employeeId: { in: people } } });
     await prisma.kpiTemplate.deleteMany({ where: { jobTitleId: { in: [analystId, otherTitleId, designerId].filter(Boolean) } } });
@@ -359,7 +363,7 @@ describe('KPIs (e2e)', () => {
       expect(of('clara')).toMatchObject({ scorer: 'ceo', managerId: null });
 
       const tia = await card(cards.tia, sessions.tia);
-      expect(tia.attendance).toEqual({ points: 20, achieved: 10, ratio: 0.5, score: 0.5, source: 'payroll' });
+      expect(tia.attendance).toEqual({ points: 20, achieved: 10, ratio: 0.5, score: 0.5, source: 'payroll', counted: true });
       expect(tia.pillars[3]).toMatchObject({ name: 'Discipline & Growth', achieved: 10, max: 20 });
       expect((await card(cards.ben, sessions.ben)).attendance).toMatchObject({ achieved: 20, ratio: null, source: 'none' });
 
@@ -538,7 +542,7 @@ describe('KPIs (e2e)', () => {
       runId = run.id;
       runIds.push(run.id);
       const all = await lines();
-      expect(lineOf(all, 'ben').terms.kpi).toEqual({ month: M, scorecardId: cards.ben, finalPercent: 85, level: 'needs_improvement' });
+      expect(lineOf(all, 'ben').terms.kpi).toEqual({ month: M, scorecardId: cards.ben, finalPercent: 85, level: 'needs_improvement', attendanceCounted: true });
       expect(lineOf(all, 'ben').result).toMatchObject({ kpiScore: 1, kpiCut: 0 });
       expect(lineOf(all, 'nora').terms.kpi).toBeNull();
       expect(lineOf(all, 'nora').result.kpiCut).toBe(0);
@@ -568,7 +572,7 @@ describe('KPIs (e2e)', () => {
       await post(`/payroll/runs/${runId}/return`, sessions.ceo, { reason: 'Take the KPIs' }).expect(200);
       await post(`/payroll/runs/${runId}/refresh`, sessions.hr).expect(200);
       const all = await lines();
-      expect(lineOf(all, 'nora').terms.kpi).toEqual({ month: M, scorecardId: cards.nora, finalPercent: 70, level: 'needs_improvement' });
+      expect(lineOf(all, 'nora').terms.kpi).toEqual({ month: M, scorecardId: cards.nora, finalPercent: 70, level: 'needs_improvement', attendanceCounted: true });
       expect(lineOf(all, 'nora').result).toMatchObject({ kpiScore: 0.7, variable: 2400, kpiCut: 720 });
       expect(lineOf(all, 'ben').result.kpiCut).toBe(0);
       expect(lineOf(all, 'sam').result).toMatchObject({ kpiScore: 1, kpiCut: 0 });

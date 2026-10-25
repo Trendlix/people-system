@@ -11,7 +11,7 @@ import { NotLoaded } from '../../payroll/section';
 import { BackLink, Empty, Loading, UUID } from '../../ui';
 import { saveKpiFramework } from '../../../kpis/templates/actions';
 import { loadKpi } from '../../../kpis/templates/data';
-import { aboveRow, companyNewest, departmentRow, effectiveNewest, inForceText, jobTitlesCount, nextText } from '../../../kpis/templates/framework';
+import { aboveRow, attendanceInKpiOf, companyNewest, departmentRow, effectiveNewest, inForceText, jobTitlesCount, nextText } from '../../../kpis/templates/framework';
 import { buildsKpiTemplates, readsKpiTemplates } from '../../../kpis/templates/templates';
 import { DepartmentPillarsChoice } from '../department-choice';
 import { FrameworkVersion, PillarsList } from '../ui';
@@ -49,6 +49,8 @@ async function DepartmentPillars({ params }: { params: PageProps<'/organization/
   const above = parent ? effectiveNewest(view, parent) : companyNewest(view);
   const aboveInForce = parent ? (parent.inForce ?? view.inForce) : view.inForce;
   const aboveText = parentName ? `${parentName}’s pillars` : 'the company’s pillars';
+  // the Attendance metric's pillar marked only while it counts in the KPI (owner, 25 October 2026: "Fixed cut only")
+  const attendance = attendanceInKpiOf(view);
   return (
     <div className="space-y-6">
       <BackLink href={KPI_PATHS.pillars}>KPI Pillars</BackLink>
@@ -69,12 +71,12 @@ async function DepartmentPillars({ params }: { params: PageProps<'/organization/
         </h2>
         <div className="grid items-start gap-6 lg:grid-cols-2">
           {row.inForce ? (
-            <FrameworkVersion title="In Force" version={row.inForce} note={`Its own. ${inForceText(row.inForce)}`} />
+            <FrameworkVersion title="In Force" version={row.inForce} note={`Its own. ${inForceText(row.inForce)}`} attendance={attendance} />
           ) : (
             <div className="space-y-2">
               <h3 className="font-semibold">In Force</h3>
               <p className="text-sm text-muted">{parentName ? `The department’s pillars (${parentName}).` : 'The company’s pillars.'}</p>
-              <PillarsList version={aboveInForce} />
+              <PillarsList version={aboveInForce} attendance={attendance} />
             </div>
           )}
           {row.next ? (
@@ -85,10 +87,10 @@ async function DepartmentPillars({ params }: { params: PageProps<'/organization/
                   Back to {aboveText} from {kpiMonthName(row.next.appliesFrom)}’s scorecards, which open on {formatDate(row.next.opensFrom)}. It can be changed
                   until then.
                 </p>
-                <PillarsList version={above} />
+                <PillarsList version={above} attendance={attendance} />
               </div>
             ) : (
-              <FrameworkVersion title="Next" version={row.next} note={`Its own. ${nextText(row.next)}`} />
+              <FrameworkVersion title="Next" version={row.next} note={`Its own. ${nextText(row.next)}`} attendance={attendance} />
             )
           ) : (
             <p className="text-sm text-muted lg:pt-8">No change of its pillars is coming.</p>

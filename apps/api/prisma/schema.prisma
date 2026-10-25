@@ -3808,16 +3808,19 @@ model LeaveYearClosing {
 // The KPI settings (one row, id 1): the days of the next month each step of a month's scorecard is due by: the
 // self-rating by the 3rd, the manager's scoring by the 6th, HR's calibration by the 8th, the sign-off by the 10th. A
 // reminder goes the day before each; a missed self-rating is noted and the manager goes on, and a scorecard not signed
-// by the sign-off day is final anyway. HR (or a Super Admin) changes them.
+// by the sign-off day is final anyway. HR (or a Super Admin) changes them. And Attendance in the KPI (owner, 25 October
+// 2026: "Fixed cut only"): whether the Attendance metric counts in the KPI, off from then, so attendance is cut on the
+// fixed part of the pay only; the scorecards not final follow it (kpi_scorecards.attendance_counted).
 model KpiSettings {
-  id            Int      @id @default(1) // always 1
-  selfRatingDay Int      @default(3) @map("self_rating_day")
-  managerDay    Int      @default(6) @map("manager_day")
-  hrDay         Int      @default(8) @map("hr_day")
-  signOffDay    Int      @default(10) @map("sign_off_day")
-  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
-  updatedById   String?  @map("updated_by") @db.Uuid
-  updatedBy     User?    @relation("KpiSettingsBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  id              Int      @id @default(1) // always 1
+  selfRatingDay   Int      @default(3) @map("self_rating_day")
+  managerDay      Int      @default(6) @map("manager_day")
+  hrDay           Int      @default(8) @map("hr_day")
+  signOffDay      Int      @default(10) @map("sign_off_day")
+  attendanceInKpi Boolean  @default(false) @map("attendance_in_kpi")
+  updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+  updatedById     String?  @map("updated_by") @db.Uuid
+  updatedBy       User?    @relation("KpiSettingsBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   @@map("kpi_settings")
 }
@@ -3950,6 +3953,7 @@ model KpiScorecard {
   attendanceScore     Decimal?           @map("attendance_score") @db.Decimal(8, 4)
   attendanceAchieved  Int                @map("attendance_achieved")
   attendanceSource    String             @map("attendance_source") // payroll, attendance, none
+  attendanceCounted   Boolean            @default(true) @map("attendance_counted") // the Attendance metric counts in its score (25 October 2026: the setting while not final, kept once final)
   selfComment         String?            @map("self_comment")
   selfSubmittedAt     DateTime?          @map("self_submitted_at") @db.Timestamptz
   selfMissed          Boolean            @default(false) @map("self_missed")

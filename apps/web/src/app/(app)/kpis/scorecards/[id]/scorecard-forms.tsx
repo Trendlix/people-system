@@ -20,12 +20,15 @@ import type { FormState } from '@/lib/types';
 import { standInTitle } from '../../practice';
 import {
   allMetrics,
+  attendanceCounts,
   attendanceText,
   COMMENT_FIELD,
   countedChoice,
   isChange,
+  leftOutText,
   liveScore,
   NOTE_FIELD,
+  performanceOnlyNote,
   PICK_FIELD,
   pickText,
   pointsText,
@@ -44,7 +47,8 @@ import { LevelBadge } from '../../ui';
 // "Self, manager, HR, sign-off"): its pillars with their weights (its template version's, as it was published: owner,
 // 21 October 2026, "Fully flexible"), each metric with its definition, how it is measured, the JD duty it comes from and
 // its criteria scale (the target marked), and the automatic Attendance metric read-only in its pillar (Discipline &
-// Growth unless the framework chose another). Read as it stands, or as the caller's step: the employee's self-rating, the scorer's
+// Growth unless the framework chose another), hidden while attendance is out of the KPI (owner, 25 October 2026:
+// "Fixed cut only"), the pillar it was alone in then not scored, its weight spread over the others. Read as it stands, or as the caller's step: the employee's self-rating, the scorer's
 // scoring with the self-rating beside each metric, HR's calibration (the manager's pick preselected, a reason required
 // for each change), each as radio choices with the final %, the pillars' % and the level worked out live as they are
 // picked (shared kpiScore). The sign-off is "I've read it", with an optional comment. The API checks everything again.
@@ -98,10 +102,9 @@ function ScoreSummary({ title, score, notes }: { title: string; score: KpiScoreR
                 <dt className="text-xs text-muted" title={p.name}>
                   {p.short} · {p.weight}%
                 </dt>
-                <dd className="text-lg font-semibold tabular-nums">{kpiPercentText(p.percent)}</dd>
-                <dd className="text-[11px] text-muted tabular-nums">
-                  {p.achieved} / {pointsText(p.max)}
-                </dd>
+                {/* left out while attendance is out of the KPI (25 October 2026): its weight spread over the others */}
+                <dd className="text-lg font-semibold tabular-nums">{p.leftOut ? '—' : kpiPercentText(p.percent)}</dd>
+                <dd className="text-[11px] text-muted tabular-nums">{p.leftOut ? 'Not scored' : `${p.achieved} / ${pointsText(p.max)}`}</dd>
               </div>
             ))}
           </dl>
@@ -330,7 +333,10 @@ function PillarCard({
   soFar?: boolean;
   children: React.ReactNode;
 }) {
-  const attendance = pillar.key === view.attendancePillar;
+  // the Attendance metric only while it counts (owner, 25 October 2026: "Fixed cut only"); the pillar it was alone in
+  // is then not scored
+  const attendance = pillar.key === view.attendancePillar && attendanceCounts(view);
+  const leftOut = !!(score?.leftOut ?? pillar.leftOut);
   return (
     <section aria-labelledby={`kpi-pillar-${pillar.key}`} className="card overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3 bg-canvas/60 px-5 py-4">
@@ -343,13 +349,19 @@ function PillarCard({
           </h2>
         </div>
         <div className="flex items-baseline gap-4">
-          <span className="text-sm text-muted tabular-nums">{score ? `${score.achieved} / ${pointsText(score.max)}` : `of ${pointsText(pillar.max)}`}</span>
-          <span className="text-2xl font-semibold tabular-nums">{score ? kpiPercentText(score.percent) : '—'}</span>
+          {leftOut ? (
+            <span className="text-sm text-muted">Not scored</span>
+          ) : (
+            <span className="text-sm text-muted tabular-nums">{score ? `${score.achieved} / ${pointsText(score.max)}` : `of ${pointsText(pillar.max)}`}</span>
+          )}
+          <span className="text-2xl font-semibold tabular-nums">{score && !leftOut ? kpiPercentText(score.percent) : '—'}</span>
         </div>
       </div>
       {children}
       {attendance && <AttendanceRow view={view} soFar={soFar} />}
-      {pillar.metrics.length === 0 && !attendance && <p className="border-t border-line-soft px-5 py-4 text-sm text-muted">No metrics in this pillar.</p>}
+      {pillar.metrics.length === 0 && !attendance && (
+        <p className="border-t border-line-soft px-5 py-4 text-sm text-muted">{leftOut ? leftOutText(pillar) : 'No metrics in this pillar.'}</p>
+      )}
     </section>
   );
 }
@@ -367,6 +379,7 @@ function shownSummary(view: KpiScorecardView, own: boolean): { title: string; sc
         view.calibrated > 0 && `HR changed ${view.calibrated === 1 ? 'one pick' : `${view.calibrated} picks`}, each with its reason.`,
         view.score.capped && 'Capped at 110%.',
         view.selfScore && `Self-rating: ${scoreLine(view.selfScore)}.`,
+        performanceOnlyNote(view),
       ],
     };
   }
@@ -374,10 +387,10 @@ function shownSummary(view: KpiScorecardView, own: boolean): { title: string; sc
     return {
       title: own ? 'Your Self-rating' : 'Self-rating',
       score: view.selfScore,
-      notes: [own ? 'Your own rating. The score that counts shows here from the sign-off.' : 'The employee’s own rating; not scored yet.'],
+      notes: [own ? 'Your own rating. The score that counts shows here from the sign-off.' : 'The employee’s own rating; not scored yet.', performanceOnlyNote(view)],
     };
   }
-  return { title: 'Score', score: null, notes: [own ? 'The score that counts shows here from the sign-off.' : 'Not scored yet.'] };
+  return { title: 'Score', score: null, notes: [own ? 'The score that counts shows here from the sign-off.' : 'Not scored yet.', performanceOnlyNote(view)] };
 }
 
 /** The scorecard's pillars as it stands, with its score: no form. `soFar`: its attendance is this month's so far. */
@@ -476,6 +489,7 @@ export function ScorecardForm({
     score.capped && 'Capped at 110%.',
     mode !== 'self' && view.selfScore && `Self-rating: ${scoreLine(view.selfScore)}.`,
     mode === 'calibrate' && view.score && `The manager’s score: ${scoreLine(view.score)}.`,
+    performanceOnlyNote(view),
   ];
 
   return (

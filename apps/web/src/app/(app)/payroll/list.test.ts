@@ -118,7 +118,7 @@ describe('what each role may do on a run', () => {
 
 describe('the rules in words', () => {
   it('says each rule the run was worked out with', () => {
-    expect(rulesSummary({ ...PAYROLL_RULE_DEFAULTS, payOvertime: true })).toEqual([
+    expect(rulesSummary({ ...PAYROLL_RULE_DEFAULTS, payOvertime: true, kpiIncludesAttendance: undefined })).toEqual([
       'A month counts as 30 days, for day rates and part months.',
       'Attendance counts in full from 90%; below it, the fixed part follows it.',
       "The KPI (last month's final scorecard) counts in full from 80%; below it, the variable part follows it. With none, it isn't cut.",
@@ -133,6 +133,20 @@ describe('the rules in words', () => {
     expect(rulesSummary({ ...PAYROLL_RULE_DEFAULTS, noShowDayMultiplier: 1 }).at(-1)).toBe(
       "A no-show day costs 1 day's pay; its hours come out of the expected hours, so attendance doesn't count it again.",
     );
+  });
+
+  it('says the KPI is performance only once attendance is out of it (owner, 25 October 2026: "Fixed cut only")', () => {
+    // off from then: the rules a run copies now
+    expect(rulesSummary(PAYROLL_RULE_DEFAULTS)[2]).toBe(
+      "The KPI (last month's final scorecard) counts in full from 80%; below it, the variable part follows it. With none, it isn't cut. It is performance only: attendance is cut on the fixed part alone.",
+    );
+    // on, and as copied before the switch existed: as before
+    for (const kpiIncludesAttendance of [true, undefined]) {
+      expect(rulesSummary({ ...PAYROLL_RULE_DEFAULTS, kpiIncludesAttendance })[2]).toBe(
+        "The KPI (last month's final scorecard) counts in full from 80%; below it, the variable part follows it. With none, it isn't cut.",
+      );
+    }
+    expect(rulesSummary(PAYROLL_RULE_DEFAULTS)).toHaveLength(5);
   });
 
   it('counts employees', () => {

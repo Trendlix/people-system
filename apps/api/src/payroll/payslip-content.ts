@@ -6,8 +6,11 @@ import {
   KPI_LEVEL_LABELS,
   KPI_LEVEL_LABELS_AR,
   KPI_PAY_TIMING_NOTE,
+  KPI_PERFORMANCE_ONLY_NOTE,
+  kpiAveragesAttendance,
   kpiMonthForPayroll,
   kpiPercentText,
+  kpiPerformanceOnly,
   LABELS,
   leaveDaysOf,
   lineDays,
@@ -161,6 +164,9 @@ export interface PayslipContent {
 // ---------- the words, in both languages (the proposal's) ----------
 
 type Words = { en: string; ar: string };
+
+/** KPI_PERFORMANCE_ONLY_NOTE in Arabic (owner, 25 October 2026: "Fixed cut only"). */
+const PERFORMANCE_ONLY_AR = 'مؤشرات الأداء للأداء فقط: يُخصم الحضور من الجزء الثابت.';
 
 const L = {
   payslip: { en: 'Payslip', ar: 'قسيمة الراتب' },
@@ -498,9 +504,12 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
       cells.push({ label: num(label), value: '—', note: ar ? 'لا توجد بطاقة أداء نهائية: لا يُخصم من المتغير' : 'No final scorecard: the variable part isn’t cut' });
     }
     kpiLine = ar ? 'مؤشرات أداء الشهر الماضي تُحتسب في أجر هذا الشهر.' : KPI_PAY_TIMING_NOTE;
+    // a scorecard without attendance (owner, 25 October 2026: "Fixed cut only"): the KPI is performance only
+    if (kpiPerformanceOnly(terms.kpi)) kpiLine = `${kpiLine} ${ar ? PERFORMANCE_ONLY_AR : KPI_PERFORMANCE_ONLY_NOTE}`;
   }
 
-  // the KPI average, as payrollLine takes it: the attendance score and the KPIs given (lines made before the KPIs module)
+  // the KPI average, as payrollLine takes it: the attendance score and the KPIs given (lines made before the KPIs module);
+  // the KPIs given alone where the run's rules don't average attendance in (25 October 2026: "Fixed cut only")
   const typed: [Words, number | null][] = [
     [L.softSkills, inputs.softSkills],
     [L.performance, inputs.performance],
@@ -508,7 +517,8 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
   ];
   const kpis = typed.filter((k): k is [Words, number] => k[1] !== null);
   if (!hourly && terms.kpi === undefined && kpis.length) {
-    const scores = [result.attendanceScore, ...kpis.map(([, v]) => v / 100)];
+    const withAttendance = kpiAveragesAttendance(rules);
+    const scores = [...(withAttendance ? [result.attendanceScore] : []), ...kpis.map(([, v]) => v / 100)];
     const average = Math.round((scores.reduce((sum, v) => sum + v, 0) / scores.length) * 1e10) / 1e10;
     const grace = percentOf(rules.kpiGracePercent);
     const note =
@@ -520,9 +530,8 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
           ? `تُحتسب كاملة (${grace} فأكثر)`
           : `Counts as full (${grace} or more)`;
     cells.push({ label: t(L.kpiAverage), value: num(percent2(average)), note: num(note) });
-    kpiLine = num(
-      [...kpis.map(([label, v]) => `${t(label)} ${percentOf(v)}`), `${t(L.attendance)} ${percentOf(result.attendanceScore * 100)}`].join(' · '),
-    );
+    const typedLine = [...kpis.map(([label, v]) => `${t(label)} ${percentOf(v)}`), ...(withAttendance ? [`${t(L.attendance)} ${percentOf(result.attendanceScore * 100)}`] : [])].join(' · ');
+    kpiLine = num(withAttendance ? typedLine : `${typedLine}. ${ar ? PERFORMANCE_ONLY_AR : KPI_PERFORMANCE_ONLY_NOTE}`);
   }
   if (waived > 0) {
     cells.push({

@@ -9,6 +9,7 @@ import {
   paydayDate,
   payingBody,
   rulesBody,
+  RULE_FIELDS,
   INSTALLMENT_LIMIT_ERROR,
   SALARY_REVIEW_ERROR,
   seesPayrollSettings,
@@ -74,6 +75,13 @@ describe('Your Rules', () => {
     ]);
     // no switch on the form (an API from before it): none sent, the overtime fields as before
     expect(rulesBody(form(rules)).rules).not.toHaveProperty('payOvertime');
+  });
+
+  it('never sends whether the KPI average takes attendance in: a run copies it from the KPI setting (owner, 25 October 2026: "Fixed cut only")', () => {
+    expect(RULE_FIELDS).not.toContain('kpiIncludesAttendance');
+    const sent = form(rules);
+    sent.append('kpiIncludesAttendance', 'true');
+    expect(rulesBody(sent).rules).not.toHaveProperty('kpiIncludesAttendance');
   });
 
   it('leaves out a default the form doesn’t have (an API from before it)', () => {

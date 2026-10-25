@@ -7,7 +7,7 @@ import { KPI_PATHS } from '@/lib/kpi-paths';
 import { canDelete } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import { Empty, Loading } from '../../../organization/ui';
-import { kpiNotLoaded, loadPracticeChoices, loadPracticeRows } from '../../data';
+import { kpiNotLoaded, loadKpiSettings, loadPracticeChoices, loadPracticeRows } from '../../data';
 import { deletedText, practiceLabel, rowTemplateText, seesKpiPractice, startedText } from '../../practice';
 import { deleteAllPractice, deletePractice, startPractice } from '../../practice-actions';
 import { AllKpisTabs, PracticeBadge, StatusBadge } from '../../ui';
@@ -88,7 +88,9 @@ function PracticeList({ rows, deletes }: { rows: KpiPracticeRow[]; deletes: bool
 async function Practice({ searchParams }: { searchParams: PageProps<'/kpis/all/practice'>['searchParams'] }) {
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
   if (!seesKpiPractice(user)) return <Empty>Only HR, the CEO and a Super Admin start and see practice scorecards.</Empty>;
-  const [rows, choices] = await Promise.all([loadPracticeRows(), loadPracticeChoices()]);
+  const [rows, choices, settings] = await Promise.all([loadPracticeRows(), loadPracticeChoices(), loadKpiSettings()]);
+  // "attendance so far" only while attendance counts in the KPI (owner, 25 October 2026: "Fixed cut only")
+  const attendanceInKpi = settings.kind !== 'ok' || settings.value.attendanceInKpi !== false;
   const deletes = canDelete(user);
   const deleted = deletedText(query);
   return (
@@ -108,7 +110,7 @@ async function Practice({ searchParams }: { searchParams: PageProps<'/kpis/all/p
         <h2 id="practice-start" className="text-lg font-semibold">
           Start a Practice Scorecard
         </h2>
-        {choices.kind === 'ok' ? <StartPracticeForm choices={choices.value} action={startPractice} /> : <Empty>{kpiNotLoaded(choices, 'people to choose from')}</Empty>}
+        {choices.kind === 'ok' ? <StartPracticeForm choices={choices.value} action={startPractice} attendanceInKpi={attendanceInKpi} /> : <Empty>{kpiNotLoaded(choices, 'people to choose from')}</Empty>}
       </section>
 
       <section aria-labelledby="practice-list" className="card">

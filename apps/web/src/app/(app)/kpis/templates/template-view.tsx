@@ -1,5 +1,5 @@
 import { KPI_ATTENDANCE_METRIC, type KpiTemplateView } from '@trendlix/shared';
-import { aboveTarget, pillarGroups, pillarsFromText, UNPLACED_TITLE } from './[jobTitleId]/builder';
+import { aboveTarget, leftOutPillarNote, pillarGroups, pillarsFromText, UNPLACED_TITLE } from './[jobTitleId]/builder';
 
 // A version of a job title's KPI template as everyone reads it (owner, 21 October 2026: "Managers can view their team's
 // templates"): its pillars with their weights and max points, each metric with the JD duty it is linked to, its
@@ -7,18 +7,23 @@ import { aboveTarget, pillarGroups, pillarsFromText, UNPLACED_TITLE } from './[j
 // pillar. As the prototype's templates by role: JD duty → KPI metric → criteria → max. The pillars are the version's own
 // (owner, 21 October 2026: "Fully flexible"): those it was published with; a draft's, the KPI framework's newest, those
 // whose pillar is gone under Unplaced. Whose pillars they are (owner, 22 October 2026: "but i need pillars to each
-// department"): its department's own, or the company's, and whether the job title weights them its own way.
+// department"): its department's own, or the company's, and whether the job title weights them its own way. While
+// attendance is out of the KPI (owner, 25 October 2026: "Fixed cut only"), the Attendance metric isn't shown, and a
+// pillar it was alone in says it isn't scored.
 
 const none = <span className="text-muted">—</span>;
 
 export function TemplateView({
   template,
   headingLevel = 'h4',
+  attendance = true,
 }: {
   template: Pick<KpiTemplateView, 'metrics' | 'attendancePoints' | 'pillars' | 'attendancePillar'> &
     // an API from before department pillars sends neither
     Partial<Pick<KpiTemplateView, 'pillarsFrom' | 'ownWeights'>>;
   headingLevel?: 'h3' | 'h4';
+  /** Whether the Attendance metric counts in the KPI (the setting, 25 October 2026); on unless sent. */
+  attendance?: boolean;
 }) {
   const Heading = headingLevel;
   const whose = pillarsFromText(template.pillarsFrom);
@@ -30,7 +35,7 @@ export function TemplateView({
           {template.ownWeights && <span className="badge bg-accent-soft text-accent">Own weights for this job title</span>}
         </p>
       )}
-      {pillarGroups(template.metrics, template.attendancePoints, { pillars: template.pillars, attendancePillar: template.attendancePillar }).map((g) => (
+      {pillarGroups(template.metrics, template.attendancePoints, { pillars: template.pillars, attendancePillar: template.attendancePillar }, attendance).map((g) => (
         <section key={g.pillar?.key ?? 'unplaced'} className="space-y-2">
           <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
             <Heading className={g.pillar ? 'font-semibold' : 'font-semibold text-warn'}>{g.pillar ? g.pillar.name : UNPLACED_TITLE}</Heading>
@@ -90,7 +95,7 @@ export function TemplateView({
                 {g.metrics.length === 0 && !g.attendance && (
                   <tr>
                     <td colSpan={4} className="text-sm text-muted">
-                      No metric in this pillar.
+                      {g.leftOut && g.pillar ? leftOutPillarNote(g.pillar) : 'No metric in this pillar.'}
                     </td>
                   </tr>
                 )}

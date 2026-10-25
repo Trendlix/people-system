@@ -205,6 +205,14 @@ describe('where the record is', () => {
     expect(linkOf(row({ entityType: 'department', entityId: DEPT }), refs(), null, superAdmin)?.href).toBe(`/organization/departments/${DEPT}`);
   });
 
+  it('links the KPI settings to the page each was changed on: Attendance in the KPI to KPI Pillars, the deadlines to theirs', () => {
+    // owner, 25 October 2026: "Fixed cut only", the switch on KPI Pillars
+    const switched = row({ entityType: 'kpi_settings', entityId: null, diff: { attendanceInKpi: { from: true, to: false }, rescored: 2 } });
+    expect(linkOf(switched, refs(), null, ceo)).toEqual({ href: '/organization/kpi-pillars', label: 'Open KPI pillars' });
+    const days = row({ entityType: 'kpi_settings', entityId: null, diff: { signOffDay: { from: 10, to: 12 } } });
+    expect(linkOf(days, refs(), null, ceo)).toEqual({ href: '/organization/kpi-deadlines', label: 'Open KPI deadlines' });
+  });
+
   it('has no link to a record deleted since', () => {
     expect(linkOf(row({ entityType: 'payroll_run', entityId: GONE, action: 'delete' }), refs(), null, ceo)).toBeNull();
     expect(linkOf(row({ entityType: 'department', entityId: GONE, action: 'delete' }), refs(), null, ceo)).toBeNull();

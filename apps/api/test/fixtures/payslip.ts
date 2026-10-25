@@ -70,13 +70,19 @@ export const HOURLY_TERMS: PayrollTerms = {
 
 export const HOURLY_INPUTS: SavedPayrollInputs = { ...EMPTY_PAYROLL_INPUTS, workedHours: 92.5 };
 
+/**
+ * The rules of a run made before 25 October 2026 ("Fixed cut only"): without kpiIncludesAttendance, so the KPI average of
+ * the KPI inputs typed takes the attendance in, as Mariam's October line was worked out.
+ */
+const { kpiIncludesAttendance: _kpiIncludesAttendance, ...RULES_BEFORE } = PAYROLL_RULE_DEFAULTS;
+
 /** A payslip source: Mariam's (monthly) or Youssef's (hourly), with the terms, inputs or rules changed as given. */
 export function payslipSource(
   kind: 'monthly' | 'hourly',
   change: { terms?: Partial<PayrollTerms>; inputs?: Partial<SavedPayrollInputs>; rules?: Partial<PayrollRules>; source?: Partial<PayslipSource> } = {},
 ): PayslipSource {
   const monthly = kind === 'monthly';
-  const rules = { ...PAYROLL_RULE_DEFAULTS, ...change.rules };
+  const rules: PayrollRules = { ...RULES_BEFORE, ...change.rules };
   const terms = { ...(monthly ? MONTHLY_TERMS : HOURLY_TERMS), ...change.terms };
   const inputs = { ...(monthly ? MONTHLY_INPUTS : HOURLY_INPUTS), ...change.inputs };
   const lawRates = lawRatesFor(terms.year);

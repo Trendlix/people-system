@@ -6,10 +6,13 @@ import {
   formatHours,
   isBeforeTax,
   KPI_PAY_TIMING_NOTE,
+  KPI_PERFORMANCE_ONLY_NOTE,
+  kpiAveragesAttendance,
   kpiMonthForPayroll,
   kpiMonthName,
   kpiPayText,
   kpiPercentText,
+  kpiPerformanceOnly,
   lawRatesFor,
   leaveDaysOf,
   measuredExpectedHours,
@@ -67,7 +70,10 @@ import { contractLabel, dayRange } from './grid';
 // month's scorecard (PayrollTerms.kpi), and its KPI step says it, "KPI (September 2026): 86% · Needs improvement · paid
 // in full (80%+)", with the scorecard's link and that last month's KPI counts in this month's pay; with no final
 // scorecard, "no final scorecard · not cut". A line made before then keeps its KPI inputs, averaged with attendance,
-// as it was worked out. Pure code, tested; relative imports, as vitest doesn't know the @/ paths.
+// as it was worked out. Attendance out of the KPI (owner, 25 October 2026: "Fixed cut only"): a scorecard that is
+// performance only says so, "The KPI is performance only: attendance is cut on the fixed part."; and the KPI inputs of
+// a line whose run's rules don't average attendance in (kpiIncludesAttendance off) are averaged alone, said so. Pure
+// code, tested; relative imports, as vitest doesn't know the @/ paths.
 
 export interface BreakdownRow {
   key: string;
@@ -224,7 +230,8 @@ export function kpiStep(kpi: PayrollKpi | null, rules: Pick<PayrollRules, 'kpiGr
     label: 'KPI score',
     value: kpi ? kpiPercentText(kpi.finalPercent) : 'None',
     kind: 'info',
-    note: `${text}. ${KPI_PAY_TIMING_NOTE}`,
+    // a scorecard that is performance only (25 October 2026: "Fixed cut only") says so
+    note: `${text}. ${KPI_PAY_TIMING_NOTE}${kpiPerformanceOnly(kpi) ? ` ${KPI_PERFORMANCE_ONLY_NOTE}` : ''}`,
     ...(kpi && { link: { href: KPI_PATHS.scorecard(kpi.scorecardId), label: `Open the ${kpiMonthName(kpi.month)} scorecard` } }),
   };
 }
@@ -314,8 +321,11 @@ function monthlySteps(line: Line, rules: PayrollRules, split: SplitPart[] | null
           label: 'KPI score',
           value: percentText(r.kpiScore),
           kind: 'info',
+          // the attendance in the average only while the run's rules take it in (25 October 2026: "Fixed cut only")
           note: kpis.length
-            ? `The average of ${listed([...kpis, `attendance ${percentText(r.attendanceScore)}`])}; at or above ${rules.kpiGracePercent}% counts in full`
+            ? kpiAveragesAttendance(rules)
+              ? `The average of ${listed([...kpis, `attendance ${percentText(r.attendanceScore)}`])}; at or above ${rules.kpiGracePercent}% counts in full`
+              : `The average of ${listed(kpis)}; at or above ${rules.kpiGracePercent}% counts in full. ${KPI_PERFORMANCE_ONLY_NOTE}`
             : // a line worked out before 16 October 2026 took the attendance alone
               r.kpiScore < 1
               ? 'No KPIs given: the attendance alone'

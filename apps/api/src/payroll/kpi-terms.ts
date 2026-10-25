@@ -10,6 +10,8 @@ import { firstDay } from './months.js';
 // KPI on refresh; a run with the CEO, approved or paid keeps its figures). Someone with none final: null, so the variable
 // part isn't cut ("with no KPI given it isn't cut"). packages/shared payroll.ts kpiPayScore works the score out.
 // Never a practice scorecard (owner, 22 October 2026: "never reaches payroll"): the real one only, so the payslips too.
+// With whether its Attendance metric counted (owner, 25 October 2026: "Fixed cut only": not since, the KPI being
+// performance only and attendance cut on the fixed part alone), which the payroll line and the payslip say.
 
 type Db = PrismaService | Prisma.TransactionClient;
 
@@ -20,11 +22,11 @@ export async function finalKpis(db: Db, payrollMonth: string, employeeIds: reado
   const month = kpiMonthForPayroll(payrollMonth);
   const rows = await db.kpiScorecard.findMany({
     where: { month: toDateOnly(firstDay(month)), status: 'final', practice: false, employeeId: { in: [...employeeIds] } },
-    select: { id: true, employeeId: true, month: true, finalPercent: true, level: true },
+    select: { id: true, employeeId: true, month: true, finalPercent: true, level: true, attendanceCounted: true },
   });
   for (const r of rows) {
     if (r.finalPercent === null || !isKpiLevel(r.level)) continue;
-    out.set(r.employeeId, { month: fromDateOnly(r.month).slice(0, 7), scorecardId: r.id, finalPercent: r.finalPercent.toNumber(), level: r.level });
+    out.set(r.employeeId, { month: fromDateOnly(r.month).slice(0, 7), scorecardId: r.id, finalPercent: r.finalPercent.toNumber(), level: r.level, attendanceCounted: r.attendanceCounted });
   }
   return out;
 }

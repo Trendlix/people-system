@@ -258,22 +258,26 @@ describe('payroll: attendance', () => {
 });
 
 describe('payroll: KPIs', () => {
+  // the KPI inputs typed on a line, averaged with the attendance as the sheet did: the rules of a run made before 25
+  // October 2026 ("Fixed cut only"), which don't have kpiIncludesAttendance (kpi-without-attendance.spec.ts: since)
+  const { kpiIncludesAttendance: _, ...sheet } = PAYROLL_RULE_DEFAULTS;
+
   it('cuts the variable part for a KPI average below 80%', () => {
     // attendance not tracked counts as 100%: (100 + 60 + 50 + 70) ÷ 4 = 70%, so 2,400 × 30% = 720
-    expect(payrollLine(salaried, inputs({ softSkills: 60, performance: 50, clientSatisfaction: 70 }))).toMatchObject({ kpiScore: 0.7, kpiCut: 720, attendanceCut: 0, earned: 11_280 });
+    expect(payrollLine(salaried, inputs({ softSkills: 60, performance: 50, clientSatisfaction: 70 }), sheet)).toMatchObject({ kpiScore: 0.7, kpiCut: 720, attendanceCut: 0, earned: 11_280 });
     // only the KPIs given count: (100 + 50) ÷ 2 = 75%, so 2,400 × 25% = 600
-    expect(payrollLine(salaried, inputs({ performance: 50 }))).toMatchObject({ kpiScore: 0.75, kpiCut: 600 });
+    expect(payrollLine(salaried, inputs({ performance: 50 }), sheet)).toMatchObject({ kpiScore: 0.75, kpiCut: 600 });
     // with attendance at 85%: (85 + 60) ÷ 2 = 72.5%, so 2,400 × 27.5% = 660, and 1,440 off the fixed part
-    expect(payrollLine(shiftOf(270), inputs({ workedHours: 229.5, performance: 60 }))).toMatchObject({ kpiScore: 0.725, kpiCut: 660, attendanceCut: 1_440, earned: 9_900 });
+    expect(payrollLine(shiftOf(270), inputs({ workedHours: 229.5, performance: 60 }), sheet)).toMatchObject({ kpiScore: 0.725, kpiCut: 660, attendanceCut: 1_440, earned: 9_900 });
   });
 
   it('pays the whole variable part at or above 80%, never more', () => {
-    expect(payrollLine(salaried, inputs({ softSkills: 70, performance: 80, clientSatisfaction: 90 }))).toMatchObject({ kpiScore: 1, kpiCut: 0, earned: 12_000 });
+    expect(payrollLine(salaried, inputs({ softSkills: 70, performance: 80, clientSatisfaction: 90 }), sheet)).toMatchObject({ kpiScore: 1, kpiCut: 0, earned: 12_000 });
     // exactly 80%: (100 + 70 + 70 + 80) ÷ 4
-    expect(payrollLine(salaried, inputs({ softSkills: 70, performance: 70, clientSatisfaction: 80 }))).toMatchObject({ kpiScore: 1, kpiCut: 0 });
-    expect(payrollLine(salaried, inputs({ softSkills: 150, performance: 200, clientSatisfaction: 120 }))).toMatchObject({ kpiScore: 1, kpiCut: 0, earned: 12_000 });
+    expect(payrollLine(salaried, inputs({ softSkills: 70, performance: 70, clientSatisfaction: 80 }), sheet)).toMatchObject({ kpiScore: 1, kpiCut: 0 });
+    expect(payrollLine(salaried, inputs({ softSkills: 150, performance: 200, clientSatisfaction: 120 }), sheet)).toMatchObject({ kpiScore: 1, kpiCut: 0, earned: 12_000 });
     // a grace above 100% doesn't turn a high average into extra pay
-    expect(payrollLine(salaried, inputs({ performance: 150 }), { ...PAYROLL_RULE_DEFAULTS, kpiGracePercent: 150 })).toMatchObject({ kpiScore: 1.25, kpiCut: 0 });
+    expect(payrollLine(salaried, inputs({ performance: 150 }), { ...sheet, kpiGracePercent: 150 })).toMatchObject({ kpiScore: 1.25, kpiCut: 0 });
   });
 });
 
@@ -952,8 +956,10 @@ describe('payroll: the attendance deduction waived by the CEO (owner, 17 October
   });
 
   it('leaves the KPI cut and the no-show cut as they are worked out', () => {
-    // the attendance still counts in the KPI average: (80% + 70%) ÷ 2 = 75%, below 80%: 25% of the variable 2,400 = 600
-    const kpi = payrollLine(shiftOf(200), inputs({ workedHours: 160, softSkills: 70, attendanceWaived: true }));
+    // the attendance still counts in the KPI average (the rules of before 25 October 2026, which average it in): (80% +
+    // 70%) ÷ 2 = 75%, below 80%: 25% of the variable 2,400 = 600
+    const { kpiIncludesAttendance: _, ...sheet } = PAYROLL_RULE_DEFAULTS;
+    const kpi = payrollLine(shiftOf(200), inputs({ workedHours: 160, softSkills: 70, attendanceWaived: true }), sheet);
     expect(kpi).toMatchObject({ attendanceCut: 0, attendanceWaived: 1_920, kpiScore: 0.75, kpiCut: 600, earned: 11_400 });
     // 100 of 200 hours: 50%, a cut of 4,800; 10 no-show days would cost 8,000, capped at the 7,200 left after the cut:
     // still 7,200 once the cut is waived, so 9,600 + 2,400 − 7,200 = 4,800 is earned

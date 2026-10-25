@@ -99,17 +99,24 @@ const line = { payBasis: 'monthly' as const, terms, inputs, result };
 
 type Line = Parameters<typeof breakdown>[0];
 
-const row = (key: string) => breakdown(line, PAYROLL_RULE_DEFAULTS).find((r) => r.key === key);
+/**
+ * The rules of a run made before attendance left the KPI (owner, 25 October 2026: "Fixed cut only"): copied without
+ * kpiIncludesAttendance, so the KPI inputs typed on a line (as this one's performance) are averaged with the attendance,
+ * as worked out by hand above.
+ */
+const RULES_BEFORE = { ...PAYROLL_RULE_DEFAULTS, kpiIncludesAttendance: undefined };
 
-/** A line as payrollLine works it out now. */
-const lineOf = (t: PayrollTerms, i: PayrollInputs): Line => ({ payBasis: t.payBasis, terms: t, inputs: i, result: payrollLine(t, i) });
+const row = (key: string) => breakdown(line, RULES_BEFORE).find((r) => r.key === key);
+
+/** A line as payrollLine works it out now (with the rules sent: those a run copies now unless sent). */
+const lineOf = (t: PayrollTerms, i: PayrollInputs, rules: Parameters<typeof payrollLine>[2] = PAYROLL_RULE_DEFAULTS): Line => ({ payBasis: t.payBasis, terms: t, inputs: i, result: payrollLine(t, i, rules) });
 
 /** A step of a line's breakdown, by its key. */
 const stepOf = (l: Line, key: string) => breakdown(l, PAYROLL_RULE_DEFAULTS).find((s) => s.key === key);
 
 describe('a line’s breakdown', () => {
   it('is payrollLine’s line, worked out by hand above', () => {
-    expect(payrollLine(terms, inputs)).toEqual(result);
+    expect(payrollLine(terms, inputs, RULES_BEFORE)).toEqual(result);
   });
 
   it('goes through every step, in order', () => {
@@ -178,7 +185,7 @@ describe('a line’s breakdown', () => {
   });
 
   it('lists every KPI given; with none, the variable part isn’t cut (owner, 16 October 2026: "fixed only")', () => {
-    const kpi = (i: Partial<PayrollInputs>, r: Partial<PayrollResult>) => breakdown({ ...line, inputs: { ...inputs, ...i }, result: { ...result, ...r } }, PAYROLL_RULE_DEFAULTS).find((s) => s.key === 'kpi');
+    const kpi = (i: Partial<PayrollInputs>, r: Partial<PayrollResult>) => breakdown({ ...line, inputs: { ...inputs, ...i }, result: { ...result, ...r } }, RULES_BEFORE).find((s) => s.key === 'kpi');
     // (100 + 70 + 65 + 72.5) ÷ 4 = 76.875%
     expect(kpi({ softSkills: 70, clientSatisfaction: 72.5 }, { attendanceScore: 1, kpiScore: 0.76875 })).toMatchObject({
       value: '76.88%',
@@ -187,6 +194,20 @@ describe('a line’s breakdown', () => {
     expect(kpi({ performance: null }, { kpiScore: 1, kpiCut: 0 })).toMatchObject({ value: '100%', note: "No KPIs given: the variable part isn't cut" });
     // a line worked out before then took the attendance alone
     expect(kpi({ performance: null }, { kpiScore: 0.875 })).toMatchObject({ value: '87.5%', note: 'No KPIs given: the attendance alone' });
+  });
+
+  it('averages the KPIs given alone once attendance is out of the KPI (owner, 25 October 2026: "Fixed cut only")', () => {
+    // a draft refreshed since: its rules don't take attendance in, so the performance of 65% alone, 700 off the variable 2,000
+    const now = lineOf(terms, inputs);
+    expect(now.result).toMatchObject({ attendanceScore: 0.875, kpiScore: 0.65, kpiCut: 700, attendanceCut: 1000 });
+    expect(breakdown(now, PAYROLL_RULE_DEFAULTS).find((s) => s.key === 'kpi')).toMatchObject({
+      value: '65%',
+      note: 'The average of performance 65%; at or above 80% counts in full. The KPI is performance only: attendance is cut on the fixed part.',
+    });
+    // the attendance is still cut on the fixed part, as before
+    expect(breakdown(now, PAYROLL_RULE_DEFAULTS).find((s) => s.key === 'attendanceCut')?.value).toBe('−EGP 1,000.00');
+    // a run with the CEO, approved or paid keeps the rules it copied: averaged with the attendance, as it was
+    expect(lineOf(terms, inputs, RULES_BEFORE).result).toEqual(result);
   });
 
   it('says when attendance isn’t tracked or can’t be counted, the part month, and who has no insurance deducted', () => {
@@ -572,8 +593,8 @@ describe('breakdown: a line saved with the grid’s figures (before 17 October 2
   // 8,000 − 1,000 + 2,000 − 475 − 666.67 + 533.33 + 1,000 − 100 = 9,291.66
   const typed: SavedPayrollInputs = { ...inputs, bonusDays: 2, penaltyDays: 1, commission: 1000, settlements: -100 };
   const was = { ...terms, adjustments: undefined };
-  const old = lineOf(was, typed);
-  const steps = breakdown(old, PAYROLL_RULE_DEFAULTS);
+  const old = lineOf(was, typed, RULES_BEFORE);
+  const steps = breakdown(old, RULES_BEFORE);
   const step = (key: string) => steps.find((s) => s.key === key);
 
   it('has its Bonus, Commission, Settlements and Penalties rows, with the days typed', () => {
@@ -669,7 +690,8 @@ describe('a line’s breakdown with make-up hours (owner, 20 October 2026: "with
 describe('a line’s KPI from the KPIs module (owner, 21 October 2026: "Last month’s KPI, this pay")', () => {
   // the October run reads September's final scorecard; the line's KPI inputs (a performance of 65%) don't count then
   const kpiOf = (finalPercent: number, level: 'needs_improvement' | 'meets' | 'unsatisfactory') => ({ month: '2026-09', scorecardId: 'sc-1', finalPercent, level });
-  const step = (t: PayrollTerms, key = 'kpi') => breakdown(lineOf(t, inputs), PAYROLL_RULE_DEFAULTS, undefined, '2026-10').find((s) => s.key === key);
+  // the rules of a run made before attendance left the KPI: a line from before the module averaged it in
+  const step = (t: PayrollTerms, key = 'kpi') => breakdown(lineOf(t, inputs, RULES_BEFORE), RULES_BEFORE, undefined, '2026-10').find((s) => s.key === key);
 
   it('says the final %, the level and what it does to the variable part, with the scorecard’s link ("As the sheet: full at 80%+")', () => {
     expect(step({ ...terms, kpi: kpiOf(86, 'needs_improvement') })).toEqual({
@@ -710,6 +732,16 @@ describe('a line’s KPI from the KPIs module (owner, 21 October 2026: "Last mon
     );
     expect(kpiStep(kpiOf(92, 'meets'), PAYROLL_RULE_DEFAULTS).note?.startsWith('KPI (September 2026): 92%')).toBe(true);
     expect(kpiStep(null, { kpiGracePercent: 80 }).note).toBe("KPI: no final scorecard · not cut. Last month's KPI counts in this month's pay.");
+  });
+
+  it('says a scorecard that is performance only is so (owner, 25 October 2026: "Fixed cut only")', () => {
+    expect(kpiStep({ ...kpiOf(86, 'needs_improvement'), attendanceCounted: false }, PAYROLL_RULE_DEFAULTS, '2026-11').note).toBe(
+      "KPI (October 2026): 86% · Needs improvement · paid in full (80%+). Last month's KPI counts in this month's pay. The KPI is performance only: attendance is cut on the fixed part.",
+    );
+    // one whose Attendance metric counted, or a line from before then: as it was
+    for (const kpi of [{ ...kpiOf(86, 'needs_improvement'), attendanceCounted: true }, kpiOf(86, 'needs_improvement')]) {
+      expect(kpiStep(kpi, PAYROLL_RULE_DEFAULTS, '2026-11').note).toBe("KPI (October 2026): 86% · Needs improvement · paid in full (80%+). Last month's KPI counts in this month's pay.");
+    }
   });
 
   it('keeps a line from before the module as it was: the KPI inputs averaged with attendance', () => {

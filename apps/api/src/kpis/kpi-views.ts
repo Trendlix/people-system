@@ -2,6 +2,7 @@ import {
   isKpiPillarKey,
   KPI_DEFAULT_PILLAR_SET,
   KPI_STEP_LABELS,
+  kpiAttendanceIn,
   kpiDeadlines,
   kpiOwnWeights,
   kpiPayrollMonth,
@@ -45,6 +46,10 @@ import { kpiActionFor, kpiCan, kpiShown, takesOwnSteps, type KpiCaller } from '.
 // published, its metrics in Unplaced left out. In one's own session nobody takes its steps as themself (no `can`, no
 // action), its starter and a Super Admin see every pick and stand in for each step (`standIn`), and a step taken
 // standing in says for whom ("Hazem Magdy for the manager").
+// Attendance out of the KPI (owner, 25 October 2026: "Fixed cut only"): a scorecard whose Attendance metric doesn't
+// count (attendance_counted: the setting while it isn't final, kept once it is) is scored without it (kpiScore with no
+// attendance), the pillar the metric was alone in left out of its pillars' kept percents (null), and says so
+// (attendance.counted false), so the pages hide the metric.
 
 export const SCORECARD_ENTITY = 'kpi_scorecard';
 
@@ -157,14 +162,21 @@ export function scoredMetrics(row: Pick<CardRow, 'practice' | 'template'>): Card
   return row.template.metrics.filter((m) => !!kpiPillarOf(set, m.pillar));
 }
 
-/** The score of a scorecard's picks at a step, with its Attendance metric, in its template version's pillars. */
-export function scoreOf(row: Pick<CardRow, 'scores' | 'template' | 'attendanceAchieved'>, step: 'self' | 'manager' | 'final'): KpiScoreResult {
+/** A scorecard's Attendance metric as kpiScore takes it: none while it doesn't count (25 October 2026). */
+export const attendanceOfCard = (row: Pick<CardRow, 'template' | 'attendanceAchieved' | 'attendanceCounted'>) =>
+  kpiAttendanceIn(row.attendanceCounted, row.template.attendancePoints, row.attendanceAchieved);
+
+/** The score of a scorecard's picks at a step, with its Attendance metric while it counts, in its template version's pillars. */
+export function scoreOf(row: Pick<CardRow, 'scores' | 'template' | 'attendanceAchieved' | 'attendanceCounted'>, step: 'self' | 'manager' | 'final'): KpiScoreResult {
   const metrics = row.template.metrics.map(metricView);
-  return kpiScore(metrics, choicesOf(row, step), { points: row.template.attendancePoints, achieved: row.attendanceAchieved }, cardPillarSet(row.template));
+  return kpiScore(metrics, choicesOf(row, step), attendanceOfCard(row), cardPillarSet(row.template));
 }
 
-/** The pillars' percents kept with the score, for the departments' averages, by the pillars' keys: { "delivery": 92.5, … }. */
-export const pillarsJson = (score: KpiScoreResult) => Object.fromEntries(score.pillars.map((p) => [p.key, p.percent]));
+/**
+ * The pillars' percents kept with the score, for the departments' averages, by the pillars' keys: { "delivery": 92.5, … };
+ * a pillar left out of it (attendance out of the KPI, 25 October 2026) null, so no average counts it.
+ */
+export const pillarsJson = (score: KpiScoreResult) => Object.fromEntries(score.pillars.map((p) => [p.key, p.leftOut ? null : p.percent]));
 
 /** The pillars' percents kept with a score, by their keys (those kept as numbers). */
 export function keptPillars(value: Prisma.JsonValue | null): Record<string, number | null> {
@@ -264,10 +276,10 @@ export function scorecardView(row: CardRow, caller: KpiCaller, settings: KpiSett
     };
   });
   const set = cardPillarSet(row.template);
-  const score = official ?? kpiScore(metrics, {}, { points: row.template.attendancePoints, achieved: row.attendanceAchieved }, set);
+  const score = official ?? kpiScore(metrics, {}, attendanceOfCard(row), set);
   const pillars = set.pillars.map((p) => {
     const s = score.pillars.find((x) => x.key === p.key)!;
-    return { ...p, metrics: metrics.filter((m) => m.pillar === p.key), achieved: s.achieved, max: s.max, percent: s.percent, complete: s.complete };
+    return { ...p, metrics: metrics.filter((m) => m.pillar === p.key), achieved: s.achieved, max: s.max, percent: s.percent, complete: s.complete, ...(s.leftOut && { leftOut: true as const }) };
   });
   return {
     ...summary,
@@ -280,6 +292,7 @@ export function scorecardView(row: CardRow, caller: KpiCaller, settings: KpiSett
       ratio: row.attendanceRatio?.toNumber() ?? null,
       score: row.attendanceScore?.toNumber() ?? null,
       source: row.attendanceSource as 'payroll' | 'attendance' | 'none',
+      counted: row.attendanceCounted,
     },
     score: official,
     selfScore: self,

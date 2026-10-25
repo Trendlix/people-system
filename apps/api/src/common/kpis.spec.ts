@@ -30,6 +30,7 @@ import {
   kpiStatusAfterScoring,
   kpiStepDeadline,
   kpiTemplateProblems,
+  PAYROLL_RULE_DEFAULTS,
   payrollLine,
   type KpiMetric,
   type KpiScoredMetric,
@@ -352,8 +353,9 @@ describe('the payroll', () => {
   });
 
   it('works a line made before the KPIs module out as it was: its KPI inputs averaged with the attendance', () => {
-    // (1 + 0.4) / 2 = 0.7, below 80%: 30% of the variable cut
-    const old = payrollLine(terms, { ...EMPTY_PAYROLL_INPUTS, performance: 40 });
+    // (1 + 0.4) / 2 = 0.7, below 80%: 30% of the variable cut; with the rules of then (no kpiIncludesAttendance: 25 October 2026)
+    const { kpiIncludesAttendance: _, ...then } = PAYROLL_RULE_DEFAULTS;
+    const old = payrollLine(terms, { ...EMPTY_PAYROLL_INPUTS, performance: 40 }, then);
     expect(old.kpiScore).toBe(0.7);
     expect(old.kpiCut).toBe(720);
     expect(payrollLine(terms, EMPTY_PAYROLL_INPUTS).kpiCut).toBe(0);

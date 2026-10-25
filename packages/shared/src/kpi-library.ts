@@ -5,7 +5,9 @@
 // the framework of kpis.ts as the three samples do (kpi-framework.json): metrics in the plan's four pillars with their
 // weights (Delivery & Timeliness 30, Quality of Work 25, Clients & Teamwork 25, Discipline & Growth 20), each with its
 // definition, how it's measured, the kind of JD duty it measures and a criteria scale whose "100%" criterion is its
-// target; Discipline & Growth also has the automatic Attendance metric (20 or 25 points, as the samples).
+// target; Discipline & Growth also has the automatic Attendance metric (20 or 25 points, as the samples), which counts
+// only while attendance is in the KPI (owner, 25 October 2026: "Fixed cut only"; off from then, kpis.ts): a role with
+// no metric of its own there has that pillar left out of the score then, its weight spread over the others.
 // - "Draft templates for every job title": each job title with no template yet gets a draft from the role that matches
 //   it (matchLibraryTemplate: its title, then its department, then the universal template), never published by itself.
 // - A title that leads people (Head, Lead, Manager, Director, Supervisor; Chief too) also gets "Team delivery and

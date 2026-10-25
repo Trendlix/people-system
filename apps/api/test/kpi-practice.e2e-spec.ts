@@ -105,6 +105,9 @@ describe('Practice KPI scorecards (e2e)', () => {
 
   beforeAll(async () => {
     ({ app, prisma } = await createApp());
+    // the Attendance metric counting in the KPI, as it did until 25 October 2026 ("Fixed cut only": off since, tested in
+    // kpi-without-attendance.e2e-spec.ts): switched on for these tests, off again after them
+    await prisma.kpiSettings.upsert({ where: { id: 1 }, update: { attendanceInKpi: true }, create: { id: 1, attendanceInKpi: true } });
     clock = app.get(KpiSchedulerService);
     await account('hr', ['hr']);
     await account('hr2', ['hr']);
@@ -139,6 +142,7 @@ describe('Practice KPI scorecards (e2e)', () => {
   });
 
   afterAll(async () => {
+    await prisma.kpiSettings.update({ where: { id: 1 }, data: { attendanceInKpi: false } });
     await app.get(NotificationsService).flush();
     await prisma.kpiScorecard.deleteMany({ where: { OR: [{ employeeId: { in: people } }, { template: { jobTitleId: titleId } }] } });
     if (titleId) await prisma.kpiTemplate.deleteMany({ where: { jobTitleId: titleId } });

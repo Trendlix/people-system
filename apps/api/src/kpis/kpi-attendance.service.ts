@@ -24,7 +24,8 @@ import { PrismaService } from '../prisma/prisma.service.js';
 // imports included); else worked out the same way from the month's attendance days (the system's check-ins, Zoho's
 // imported days): the roster's terms for the month (the shift's expected hours less the holidays, leave and permission)
 // and the hours the days count, through payrollLine. With neither (no attendance kept, no shift, paid by the hour) none:
-// payroll counts the attendance as full then, and so does the metric.
+// payroll counts the attendance as full then, and so does the metric. Read while attendance is out of the KPI too
+// (owner, 25 October 2026: "Fixed cut only"): kept on the scorecard, it counts once the setting is switched on again.
 
 type Db = PrismaService | Prisma.TransactionClient;
 

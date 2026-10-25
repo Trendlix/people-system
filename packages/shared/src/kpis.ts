@@ -19,6 +19,13 @@
 //   for it) has an automatic Attendance metric,
 //   worth points set on the template (20 by default), achieved = those points × the month's attendance score as payroll
 //   works it out for the person and month, capped at 1, rounded to whole points. Nobody picks it.
+//   Out of the KPI from 25 October 2026 (the owner asked whether attendance is cut twice, on the fixed part below the
+//   90% grace and through this metric on the variable part, and chose "Fixed cut only"): a company setting, Attendance
+//   in the KPI (KpiSettingsView.attendanceInKpi), off from then and kept as a switch. Off, the KPI measures performance
+//   only and attendance is cut on the fixed part alone: no Attendance points in any pillar (kpiScore with no
+//   attendance), the metric hidden, its points and pillar kept for when it is switched on again; the pillar it was
+//   alone in is left out, its weight spread over the other pillars in proportion. Each scorecard keeps whether it
+//   counts (KpiScorecardAttendance.counted): those not final follow the setting, a final one keeps its result.
 // - Timing "Last month's KPI, this pay": a month's scorecard opens on the 1st of the next month and counts in that
 //   month's payroll: the payroll of month M reads the final scorecard of M − 1.
 // - Templates "HR": HR (and the Super Admin) build them, a draft and published versions; a version published in a month
@@ -187,6 +194,22 @@ export const KPI_ATTENDANCE_METRIC = 'Attendance';
 /** The Attendance metric's points on a new template (owner's brief, 21 October 2026: "default 20"). */
 export const KPI_ATTENDANCE_POINTS_DEFAULT = 20;
 
+/**
+ * Attendance in the KPI (owner, 25 October 2026: "Fixed cut only"): whether the Attendance metric counts in the KPI.
+ * Off from then: attendance is cut on the fixed part of the pay only, so it is never cut twice. A company setting HR and
+ * a Super Admin switch, kept in the KPI settings.
+ */
+export const KPI_ATTENDANCE_IN_KPI_DEFAULT = false;
+
+/** The setting as the screens name it (a label: sentence case). */
+export const KPI_ATTENDANCE_IN_KPI_LABEL = 'Attendance in the KPI';
+
+/** What the payroll line, the payslip and the KPI pages say while attendance is out of the KPI (25 October 2026). */
+export const KPI_PERFORMANCE_ONLY_NOTE = 'The KPI is performance only: attendance is cut on the fixed part.';
+
+/** The Attendance metric as kpiScore takes it: its points and those achieved, or none (null) while it doesn't count. */
+export const kpiAttendanceIn = (counted: boolean, points: number, achieved: number): { points: number; achieved: number } | null => (counted ? { points, achieved } : null);
+
 /** The limits of a template's content. */
 export const KPI_TEMPLATE_LIMITS = {
   metrics: 30,
@@ -209,13 +232,16 @@ const isWholePoints = (n: unknown, min: number): n is number => typeof n === 'nu
  * What is wrong with a template's content, each in words (none: it can be saved), its metrics placed in `pillars` (the
  * KPI framework's; the default four unless sent). A metric in Unplaced (no pillar) may be saved. `publishing`: also
  * what stops it being published: Unplaced emptied, a metric in each pillar but the Attendance metric's (which always
- * has Attendance), and each metric's best criterion reaching its target.
+ * has Attendance), and each metric's best criterion reaching its target. `attendance`: whether the Attendance metric
+ * counts in the KPI (the setting; on unless sent): off (owner, 25 October 2026: "Fixed cut only"), its points aren't
+ * checked (kept as they are), and its pillar still needs no metric of its own: with none, it is left out of the score.
  */
-export function kpiTemplateProblems(content: KpiTemplateContent, options: { publishing?: boolean; pillars?: KpiPillarSet } = {}): string[] {
+export function kpiTemplateProblems(content: KpiTemplateContent, options: { publishing?: boolean; pillars?: KpiPillarSet; attendance?: boolean } = {}): string[] {
   const L = KPI_TEMPLATE_LIMITS;
   const set = options.pillars ?? KPI_DEFAULT_PILLAR_SET;
+  const attendance = options.attendance !== false;
   const problems: string[] = [];
-  if (!isWholePoints(content.attendancePoints, 1)) problems.push(`Give the Attendance metric whole points from 1 to ${L.points}.`);
+  if (attendance && !isWholePoints(content.attendancePoints, 1)) problems.push(`Give the Attendance metric whole points from 1 to ${L.points}.`);
   const metrics = Array.isArray(content.metrics) ? content.metrics : [];
   if (metrics.length > L.metrics) problems.push(`A template takes at most ${L.metrics} metrics.`);
   const names = new Map<string, number>();
@@ -230,8 +256,13 @@ export function kpiTemplateProblems(content: KpiTemplateContent, options: { publ
     } else if (!kpiPillarOf(set, m.pillar)) problems.push(`${which}: choose one of the framework’s pillars.`);
     if (!name) problems.push(`${which}: give it a name.`);
     else if (name.length > L.name) problems.push(`${which}: its name can be at most ${L.name} characters.`);
-    else if (name.toLowerCase() === KPI_ATTENDANCE_METRIC.toLowerCase()) problems.push(`${which}: Attendance is filled in by the system already; name this metric otherwise.`);
-    else {
+    else if (name.toLowerCase() === KPI_ATTENDANCE_METRIC.toLowerCase()) {
+      problems.push(
+        attendance
+          ? `${which}: Attendance is filled in by the system already; name this metric otherwise.`
+          : `${which}: attendance is out of the KPI, cut on the fixed part of the pay; name this metric otherwise.`,
+      );
+    } else {
       const key = name.toLowerCase();
       if (names.has(key)) problems.push(`${which}: metric ${names.get(key)! + 1} has the same name.`);
       else names.set(key, i);
@@ -286,6 +317,12 @@ export interface KpiPillarScore {
   percent: number;
   /** Every metric in it picked. */
   complete: boolean;
+  /**
+   * Left out of the final % (owner, 25 October 2026: "Fixed cut only"): the Attendance metric's pillar with no metric of
+   * its own while attendance is out of the KPI, so nothing in it is scored; its weight is spread over the other pillars
+   * in proportion to theirs. Left out of the answer otherwise.
+   */
+  leftOut?: true;
 }
 
 /** A scorecard's score: its pillars, the final % (capped at 110, to one decimal) and its level. */
@@ -317,15 +354,19 @@ export function kpiAttendanceAchieved(points: number, score: number | null | und
  * its version was published with; the default four unless sent). Pillar % = achieved ÷ max points (the targets added
  * up, Attendance's in its pillar); final % = Σ pillar % × that pillar's weight, at most 110 (owner, 21 October 2026).
  * A metric in no pillar of the set counts nowhere.
+ * `attendance` null: the Attendance metric doesn't count (owner, 25 October 2026: "Fixed cut only"; kpiAttendanceIn).
+ * No pillar has its points, so each pillar's % is its metrics' alone; the Attendance metric's pillar with no metric of
+ * its own (the templates and the library leave Discipline & Growth to it alone) has nothing to score, and is left out
+ * (`leftOut`): its weight is spread over the other pillars in proportion to theirs, so the final % is the performance
+ * measured, never a free 100% nor a 0% for it. With the metric counting, the score is as it always was.
  */
 export function kpiScore(
   metrics: readonly KpiScoredMetric[],
   choices: Readonly<Record<string, number | null | undefined>>,
-  attendance: { points: number; achieved: number },
+  attendance: { points: number; achieved: number } | null,
   set: KpiPillarSet = KPI_DEFAULT_PILLAR_SET,
 ): KpiScoreResult {
-  let total = 0;
-  const pillars = set.pillars.map((p): KpiPillarScore => {
+  const scored = set.pillars.map((p) => {
     let achieved = 0;
     let max = 0;
     let complete = true;
@@ -337,13 +378,21 @@ export function kpiScore(
       if (criterion) achieved += criterion.points;
       else complete = false;
     }
-    if (p.key === set.attendancePillar) {
+    if (attendance && p.key === set.attendancePillar) {
       max += attendance.points;
       achieved += attendance.achieved;
     }
+    return { p, achieved, max, complete, leftOut: !attendance && p.key === set.attendancePillar && max === 0 };
+  });
+  // the weight of a pillar left out spread over the others in proportion: each counts its weight × all ÷ those kept
+  const all = scored.reduce((sum, s) => sum + s.p.weight, 0);
+  const kept = scored.reduce((sum, s) => sum + (s.leftOut ? 0 : s.p.weight), 0);
+  const spread = kept !== all;
+  let total = 0;
+  const pillars = scored.map(({ p, achieved, max, complete, leftOut }): KpiPillarScore => {
     const fraction = max > 0 ? achieved / max : 0;
-    total += fraction * p.weight;
-    return { key: p.key, name: p.name, short: p.short, weight: p.weight, achieved, max, percent: round1(fraction * 100), complete };
+    if (!leftOut) total += spread ? (kept > 0 ? (fraction * p.weight * all) / kept : 0) : fraction * p.weight;
+    return { key: p.key, name: p.name, short: p.short, weight: p.weight, achieved, max, percent: round1(fraction * 100), complete, ...(leftOut && { leftOut: true as const }) };
   });
   const capped = total > KPI_FINAL_CAP;
   const finalPercent = round1(Math.min(KPI_FINAL_CAP, total));
@@ -594,7 +643,15 @@ export interface PayrollKpi {
   scorecardId: string;
   finalPercent: number;
   level: KpiLevel;
+  /**
+   * Whether its Attendance metric counted in it (owner, 25 October 2026: "Fixed cut only": false since, the KPI being
+   * performance only); missing on the lines made before then, whose scorecards all counted it.
+   */
+  attendanceCounted?: boolean;
 }
+
+/** Whether a line's KPI is performance only: its scorecard's Attendance metric didn't count (25 October 2026). */
+export const kpiPerformanceOnly = (kpi: Pick<PayrollKpi, 'attendanceCounted'> | null | undefined): boolean => kpi?.attendanceCounted === false;
 
 /**
  * The KPI score payroll works the variable part out with (owner, 21 October 2026: "As the sheet: full at 80%+"): 1 at
@@ -732,6 +789,11 @@ export interface KpiJobTitleTemplates {
   versions: KpiTemplateView[];
   /** Whether the caller builds templates (HR, Super Admin). */
   canEdit: boolean;
+  /**
+   * The setting Attendance in the KPI now (owner, 25 October 2026: "Fixed cut only"): off, the Attendance metric is
+   * hidden and its points aren't checked. Missing from an API before then: on.
+   */
+  attendanceInKpi?: boolean;
 }
 
 /** A sample to start a draft from (KPI_SAMPLE_TEMPLATES), as GET /kpis/templates/samples lists them. */
@@ -814,6 +876,8 @@ export interface KpiScorecardPillar extends KpiPillar {
   max: number;
   percent: number;
   complete: boolean;
+  /** Nothing in it is scored while attendance is out of the KPI: its weight spread over the others (KpiPillarScore.leftOut). */
+  leftOut?: true;
 }
 
 /** The automatic Attendance metric on a scorecard. */
@@ -826,6 +890,12 @@ export interface KpiScorecardAttendance {
   score: number | null;
   /** Where it was read: the month's payroll line, the attendance days, or nothing (counted as full). */
   source: 'payroll' | 'attendance' | 'none';
+  /**
+   * Whether it counts in the score (owner, 25 October 2026: "Fixed cut only"): as the setting Attendance in the KPI is
+   * while the scorecard isn't final, kept once it is. False: the scorecard is performance only, and the metric is
+   * hidden. Missing from an API before then: it counted.
+   */
+  counted?: boolean;
 }
 
 /** GET /kpis/scorecards/:id. */
@@ -925,11 +995,18 @@ export interface KpiOpenResult {
   opened: number;
 }
 
-/** GET and PATCH /kpis/settings: the deadlines, and who changed them last. */
+/**
+ * GET and PATCH /kpis/settings: the deadlines, Attendance in the KPI (owner, 25 October 2026: "Fixed cut only"; off
+ * from then; missing from an API before then: on), and who changed them last.
+ */
 export interface KpiSettingsView extends KpiSettings {
+  attendanceInKpi?: boolean;
   updatedAt: string | null;
   updatedBy: KpiUserRef | null;
 }
+
+/** PATCH /kpis/settings: the days sent, and Attendance in the KPI switched on or off (25 October 2026). */
+export type KpiSettingsInput = Partial<KpiSettings> & { attendanceInKpi?: boolean };
 
 // ---------- what the pages send ----------
 

@@ -4,7 +4,8 @@
 // the Super Admin) edit in KPI Settings, audited:
 // - Pillars: an ordered list of { key, name, short, weight }, from 1 to 8, the names different, the weights whole
 //   percents adding up to 100; and "Attendance counts in": the pillar of the automatic Attendance metric (Discipline &
-//   Growth by default).
+//   Growth by default), neither shown nor asked for while attendance is out of the KPI (owner, 25 October 2026: "Fixed
+//   cut only"; kpis.ts), kept for when it is switched on again.
 // - "Applies from": a scorecard month, next month unless chosen (that month's scorecards open on the 1st of the month
 //   after), never a month whose scorecards are open already. The next framework can be changed until it applies; one
 //   at a time. The first version is the four of the plan, put in force by the migration, so nothing changed until HR
@@ -119,9 +120,10 @@ export function kpiPillarSetOf(input: { pillars: readonly KpiPillarInput[]; atte
 /**
  * What is wrong with a framework's pillars, each in words (none: they can be saved): from 1 to 8 pillars, each with a
  * name (different from the others'), a short name and a key, the weights whole percents from 1 to 100 adding up to
- * 100, and the Attendance metric's pillar one of them.
+ * 100, and the Attendance metric's pillar one of them. `attendance`: whether the Attendance metric counts in the KPI
+ * (the setting; on unless sent): off (owner, 25 October 2026: "Fixed cut only"), its pillar isn't asked for.
  */
-export function kpiPillarSetProblems(set: Pick<KpiPillarSet, 'pillars' | 'attendancePillar'>): string[] {
+export function kpiPillarSetProblems(set: Pick<KpiPillarSet, 'pillars' | 'attendancePillar'>, options: { attendance?: boolean } = {}): string[] {
   const L = KPI_FRAMEWORK_LIMITS;
   const problems: string[] = [];
   const pillars = Array.isArray(set.pillars) ? set.pillars : [];
@@ -155,7 +157,7 @@ export function kpiPillarSetProblems(set: Pick<KpiPillarSet, 'pillars' | 'attend
     } else total += w;
   });
   if (whole && pillars.length && total !== 100) problems.push(`The weights add up to ${total}%: make them add up to 100%.`);
-  if (!pillars.some((p) => p.key === set.attendancePillar)) problems.push('Choose the pillar the Attendance metric counts in.');
+  if (options.attendance !== false && !pillars.some((p) => p.key === set.attendancePillar)) problems.push('Choose the pillar the Attendance metric counts in.');
   return problems;
 }
 
@@ -423,4 +425,9 @@ export interface KpiFrameworkView {
   canEdit: boolean;
   /** Every key a pillar has had, so a new pillar gets one of its own (kpiPillarKeyFor). */
   usedKeys: string[];
+  /**
+   * The setting Attendance in the KPI now (owner, 25 October 2026: "Fixed cut only"): off, the Attendance metric's
+   * pillar is neither shown nor asked for (kept as it is, for when it is switched on). Missing from an API before then: on.
+   */
+  attendanceInKpi?: boolean;
 }

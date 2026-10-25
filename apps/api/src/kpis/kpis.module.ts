@@ -5,6 +5,7 @@ import { KpiNoticesService } from './kpi-notices.service.js';
 import { KpiOpeningService } from './kpi-opening.service.js';
 import { KpiOverviewService } from './kpi-overview.service.js';
 import { KpiPracticeService } from './kpi-practice.service.js';
+import { KpiRescoreService } from './kpi-rescore.service.js';
 import { KpiSchedulerService } from './kpi-scheduler.service.js';
 import { KpiScorecardsService } from './kpi-scorecards.service.js';
 import { KpiSettingsService } from './kpi-settings.service.js';
@@ -33,6 +34,8 @@ import { KpiFrameworkController, KpiPracticeController, KpiScorecardsController,
     KpiOverviewService,
     KpiSchedulerService,
     KpiPracticeService,
+    // the scorecards not final follow Attendance in the KPI (25 October 2026), worked out again at the start too
+    KpiRescoreService,
   ],
   exports: [KpiSchedulerService],
 })

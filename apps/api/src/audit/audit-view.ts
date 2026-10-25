@@ -315,6 +315,9 @@ const profile = (id: string, rest = '') => `/employees/${id}${rest}`;
 const EMPLOYMENT = '?tab=employment';
 const SALARY = '?tab=employment&sub=salary';
 
+/** Whether an entry's changes have a field. */
+const diffHas = (diff: unknown, field: string): boolean => !!diff && typeof diff === 'object' && !Array.isArray(diff) && field in diff;
+
 /** Where the record is, for whoever can open it; null when it has no page of its own, or is gone. */
 function targetOf(row: Pick<AuditRow, 'entityType' | 'entityId' | 'diff'>, refs: AuditRefs, employee: AuditEmployee | null): Target | null {
   const id = row.entityId;
@@ -459,7 +462,10 @@ function targetOf(row: Pick<AuditRow, 'entityType' | 'entityId' | 'diff'>, refs:
     case 'kpi_template':
       return record?.parentId ? { href: `/kpis/templates/${record.parentId}`, label: 'Open KPI template', roles: KPI_TEMPLATES } : null;
     case 'kpi_settings':
-      return { href: '/organization/kpi-deadlines', label: 'Open KPI deadlines', roles: KPI_TEMPLATES };
+      // Attendance in the KPI is switched on KPI Pillars (owner, 25 October 2026: "Fixed cut only"); the deadlines have their own page
+      return diffHas(row.diff, 'attendanceInKpi')
+        ? { href: '/organization/kpi-pillars', label: 'Open KPI pillars', roles: KPI_TEMPLATES }
+        : { href: '/organization/kpi-deadlines', label: 'Open KPI deadlines', roles: KPI_TEMPLATES };
     case 'kpi_framework':
       // KPI Pillars (22 October 2026): the company's, or a department's page
       return { href: record?.parentId ? `/organization/kpi-pillars/${record.parentId}` : '/organization/kpi-pillars', label: 'Open KPI pillars', roles: KPI_TEMPLATES };

@@ -156,8 +156,12 @@ export function templateChoiceLabel(t: Pick<KpiPracticeTemplateChoice, 'version'
   return parts.filter(Boolean).join(' · ');
 }
 
-/** A month as the start form offers it: "October 2026 (this month: attendance so far)". */
-export const monthChoiceLabel = (month: string, current: string) => (month === current ? `${kpiMonthName(month)} (this month: attendance so far)` : kpiMonthName(month));
+/**
+ * A month as the start form offers it: "October 2026 (this month: attendance so far)"; "October 2026 (this month)"
+ * while attendance is out of the KPI (`attendance` off; owner, 25 October 2026: "Fixed cut only").
+ */
+export const monthChoiceLabel = (month: string, current: string, attendance = true) =>
+  month === current ? `${kpiMonthName(month)} (this month${attendance ? ': attendance so far' : ''})` : kpiMonthName(month);
 
 /** Someone as the start form offers them: "Omar Ali · TLX-0007 · Data Analyst"; without what is hidden from a developer. */
 export const personChoiceLabel = (c: Pick<KpiPracticeChoice, 'employee' | 'jobTitle'>) => joinShown([c.employee.fullNameEn, c.employee.employeeCode, c.jobTitle.titleEn]);

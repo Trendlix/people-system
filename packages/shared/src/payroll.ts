@@ -46,7 +46,8 @@
 // The attendance deduction waived (owner, 17 October 2026: "if there is an attendance deduction, allow the CEO to wave
 // the deduction by ticking a box"): while the run is with the CEO, the CEO may waive a line's attendance cut; the line
 // is worked out with none, the cut it would have been kept as attendanceWaived. The no-show and KPI cuts stay as they
-// are worked out, and the attendance still counts in the KPI average: the CEO waives the money, not the measure.
+// are worked out, and the attendance still counts in the KPI average where the rules average it in
+// (kpiAveragesAttendance): the CEO waives the money, not the measure.
 // Leave (owner, 18 October 2026: "can you apply the leaves according to the law?"): the month's approved leave from the
 // Leave module fills in the Leave days (paid leave: nothing cut) and a new Unpaid leave days (unpaid leave, and the
 // unpaid share of a partly paid one such as sick leave below 100%: a day of the gross ÷ the day divisor cut for each),
@@ -83,6 +84,13 @@
 // them. With overtime paid, the hours are counted as worked, uncapped, and overtime is worked out from them as before.
 // Lines worked out before then, and every other shift's, are as they were; a run with the CEO, approved or paid keeps
 // its terms, so its figures never change.
+// Attendance out of the KPI (owner, 25 October 2026, asked whether attendance is cut twice, on the fixed part and in
+// the KPI: "Fixed cut only"; kpis.ts): the short hours cut the fixed part as before (below the attendance grace, the
+// CEO's waiver too) and nothing else. The scorecards are performance only from then (the KPI setting Attendance in
+// the KPI, off), and the KPI average of a line with KPI inputs typed (no scorecard: the KPIs module paragraph below)
+// is of those inputs alone: the rules' kpiIncludesAttendance, copied from that setting when a run is made or
+// refreshed, off. Rules copied before then don't have it and read as on, so a run with the CEO, approved or paid, and
+// a draft until it is refreshed, are worked out as they were.
 
 // The KPIs module (owner, 21 October 2026: "lets start with the KPI's First"; kpis.ts): the variable part follows the
 // final % of last month's scorecard ("Last month's KPI, this pay"), taken with the line's terms (PayrollTerms.kpi): at
@@ -133,6 +141,14 @@ export interface PayrollRules {
   overtimeRate: number;
   /** A no-show day costs this many days' pay (the sheet: 2); its hours aren't counted again in attendance. */
   noShowDayMultiplier: number;
+  /**
+   * Whether the KPI average of a line with KPI inputs typed (no scorecard) takes the attendance score in, as the sheet
+   * did (owner, 25 October 2026: "Fixed cut only"): copied from the KPI setting Attendance in the KPI when a run is
+   * made or refreshed, off from then, so the average is of the KPI inputs alone and attendance is cut on the fixed part
+   * only. Missing on the rules runs copied before then, which averaged it in: read as on (kpiAveragesAttendance), so
+   * their figures never change. Not a Payroll Setup field: the KPI setting is its only source.
+   */
+  kpiIncludesAttendance?: boolean;
 }
 
 export const PAYROLL_RULE_DEFAULTS: Required<PayrollRules> = {
@@ -144,7 +160,15 @@ export const PAYROLL_RULE_DEFAULTS: Required<PayrollRules> = {
   overtimeAbovePercent: 110,
   overtimeRate: 1.5,
   noShowDayMultiplier: 2,
+  // off from 25 October 2026 ("Fixed cut only")
+  kpiIncludesAttendance: false,
 };
+
+/**
+ * Whether rules average the attendance score into the KPI inputs typed on a line: as their switch says; rules copied
+ * onto a run before the switch existed (25 October 2026) did, so a missing switch reads as on.
+ */
+export const kpiAveragesAttendance = (rules: PayrollRules): boolean => rules.kpiIncludesAttendance !== false;
 
 /**
  * Whether rules pay overtime: as their switch says; rules copied onto a run before the switch existed (16 October 2026)
@@ -1040,8 +1064,9 @@ export function payrollLine(
  * of the shift each; never typed since 20 October 2026 (owner: "expected hours to be locked based on shifts and
  * attendance data"), so without a shift there are none and attendance isn't counted, with a warning saying so. A line
  * saved before then with HR's figure is worked out with it, taken as it is (without a shift, with a warning when there
- * are days off to leave out of it). With a KPI given, the KPI average is that attendance score and the KPIs given,
- * counted as full at or above its grace percent (80); with none, the variable part isn't cut ("fixed only"). Overtime,
+ * are days off to leave out of it). With a KPI given, the KPI average is that attendance score and the KPIs given (the
+ * KPIs given alone where the rules don't average attendance in: 25 October 2026, "Fixed cut only"), counted as full at
+ * or above its grace percent (80); with none, the variable part isn't cut ("fixed only"). Overtime,
  * while the rules pay it (off from 16 October 2026: "No overtime for now"), is paid on the fixed part for the days paid
  * (the expected hours are the part month's) for attendance above the overtime percent (110), at the overtime rate
  * (1.5). Worked hours above the most attendance counts (the shift's hours to work a day on its days: mostCountedHours)
@@ -1125,10 +1150,12 @@ function monthlyPart(
   const attendanceScore = attendanceRatio === null || attendanceRatio >= rules.attendanceGracePercent / 100 ? 1 : attendanceRatio;
 
   // the KPI (owner, 21 October 2026: "Last month's KPI, this pay"; "As the sheet: full at 80%+"): last month's final
-  // scorecard's final %, its attendance in it already; none final, not cut. A line made before the KPIs module: the KPI
-  // inputs given, averaged with the attendance score, as the sheet did
+  // scorecard's final % (performance only since 25 October 2026: "Fixed cut only"); none final, not cut. A line made
+  // before the KPIs module: the KPI inputs given, averaged with the attendance score as the sheet did while the rules
+  // average it in (kpiAveragesAttendance), else the KPI inputs alone
   const kpis = [i.softSkills, i.performance, i.clientSatisfaction].filter((v): v is number => v !== null).map((v) => v / 100);
-  const kpiAverage = fraction([attendanceScore, ...kpis].reduce((sum, v) => sum + v, 0) / (kpis.length + 1));
+  const averaged = kpiAveragesAttendance(rules) ? [attendanceScore, ...kpis] : kpis;
+  const kpiAverage = averaged.length ? fraction(averaged.reduce((sum, v) => sum + v, 0) / averaged.length) : 1;
   const kpiScore =
     pay.kpi !== undefined ? kpiPayScore(pay.kpi, rules.kpiGracePercent) : kpis.length === 0 || kpiAverage >= rules.kpiGracePercent / 100 ? 1 : kpiAverage;
 
@@ -1146,7 +1173,7 @@ function monthlyPart(
   if (unpaidLeaveFull > unpaidLeaveCut) warnings.push('The unpaid leave days cost more than the salary left for the days paid: the cut is capped there');
   // the CEO waived the attendance deduction (owner, 17 October 2026: "if there is an attendance deduction, allow the CEO
   // to wave the deduction by ticking a box"): none taken, what it was kept; the no-show cut stays as worked out with it,
-  // and the attendance score still counts in the KPI average
+  // and the attendance score still counts in the KPI average where the rules average it in
   const waived = i.attendanceWaived === true ? workedOut : 0;
   const attendanceCut = piasters(workedOut - waived);
 

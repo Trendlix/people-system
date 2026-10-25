@@ -31,6 +31,9 @@ import { userName, wholeOf } from './templates';
 // instead, changed the same way on its own page, or go back to the company's from a month. A team's job titles take
 // their department's. The same form changes either, starting from the department's own pillars, or the company's
 // newest when it has none.
+// Attendance out of the KPI (owner, 25 October 2026: "Fixed cut only"; the setting Attendance in the KPI, off): the
+// pillar the Attendance metric counts in is neither shown nor asked for; the form keeps sending the one it had, for when
+// the setting is switched on again.
 
 /** A pillar as typed. `rowKey`: the form's own; `key`: the pillar's, kept when it is renamed ('' for a new one). */
 export interface PillarRow {
@@ -95,11 +98,17 @@ export function frameworkInputOf(form: FrameworkForm, usedKeys: readonly string[
 /** The pillars sent as the rules read them: names tidied, a short name from the name when none. */
 export const pillarSetOfInput = (input: Pick<KpiFrameworkInput, 'pillars' | 'attendancePillar'>): KpiPillarSet => kpiPillarSetOf(input);
 
-/** What stops the pillars being saved, as the API says it (the pillars' rules, then the month's). `today`: YYYY-MM-DD. */
-export function frameworkProblems(form: FrameworkForm, usedKeys: readonly string[], today: string): string[] {
+/**
+ * What stops the pillars being saved, as the API says it (the pillars' rules, then the month's). `today`: YYYY-MM-DD.
+ * `attendance`: whether the Attendance metric counts in the KPI (the setting; off: its pillar isn't asked for).
+ */
+export function frameworkProblems(form: FrameworkForm, usedKeys: readonly string[], today: string, attendance = true): string[] {
   const input = frameworkInputOf(form, usedKeys);
-  return [...kpiPillarSetProblems(pillarSetOfInput(input)), ...kpiFrameworkMonthProblems(input.appliesFrom, today)];
+  return [...kpiPillarSetProblems(pillarSetOfInput(input), { attendance }), ...kpiFrameworkMonthProblems(input.appliesFrom, today)];
 }
+
+/** Whether the Attendance metric counts in the KPI, as the API says (25 October 2026); one from before then: it does. */
+export const attendanceInKpiOf = (view: { attendanceInKpi?: boolean } | null | undefined): boolean => view?.attendanceInKpi !== false;
 
 /** The weights typed, added up (those not whole left out). */
 export const weightTotal = (form: Pick<FrameworkForm, 'pillars'>): number => form.pillars.reduce((sum, p) => sum + (Number.isFinite(wholeOf(p.weight)) ? wholeOf(p.weight) : 0), 0);

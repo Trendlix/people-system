@@ -99,7 +99,7 @@ function versionFacts(v: KpiTemplateView): string {
   return parts.filter(Boolean).join(' · ');
 }
 
-function Versions({ versions, today, openInForce }: { versions: KpiTemplateView[]; today: string; openInForce: boolean }) {
+function Versions({ versions, today, openInForce, attendance }: { versions: KpiTemplateView[]; today: string; openInForce: boolean; attendance: boolean }) {
   return (
     <section aria-labelledby="kpi-versions" className="space-y-3">
       <h2 id="kpi-versions" className="text-lg font-semibold">
@@ -125,7 +125,7 @@ function Versions({ versions, today, openInForce }: { versions: KpiTemplateView[
                 <details open={openInForce && v.inForce} className="mt-3">
                   <summary className="min-h-9 cursor-pointer text-sm font-semibold text-accent">View version {v.version}</summary>
                   <div className="mt-4">
-                    <TemplateView template={v} />
+                    <TemplateView template={v} attendance={attendance} />
                   </div>
                 </details>
               </li>
@@ -138,7 +138,7 @@ function Versions({ versions, today, openInForce }: { versions: KpiTemplateView[
 }
 
 /** The draft as those who don't build templates read it (the CEO, an Admin): what it has, read only. */
-function DraftReadOnly({ draft }: { draft: KpiTemplateView }) {
+function DraftReadOnly({ draft, attendance }: { draft: KpiTemplateView; attendance: boolean }) {
   return (
     <section aria-labelledby="kpi-draft" className="card space-y-3 p-6">
       <div className="flex flex-wrap items-center gap-2">
@@ -151,7 +151,7 @@ function DraftReadOnly({ draft }: { draft: KpiTemplateView }) {
       <details>
         <summary className="min-h-9 cursor-pointer text-sm font-semibold text-accent">View the draft</summary>
         <div className="mt-4">
-          <TemplateView template={draft} headingLevel="h3" />
+          <TemplateView template={draft} headingLevel="h3" attendance={attendance} />
         </div>
       </details>
     </section>
@@ -169,6 +169,9 @@ async function Builder({ params, searchParams }: { params: PageProps<'/kpis/temp
   if (!UUID.test(jobTitleId)) notFound();
   const [user, data] = await Promise.all([getCurrentUser(), apiGet<KpiJobTitleTemplates>(KPI_API.jobTitleTemplates(jobTitleId))]);
   const { jobTitle, draft, versions, canEdit } = data;
+  // the Attendance metric shown and checked only while it counts in the KPI (owner, 25 October 2026: "Fixed cut only");
+  // an API from before then doesn't say, and it counts
+  const attendance = data.attendanceInKpi !== false;
   const today = todayInCairo();
   const starting = canEdit && !draft;
   // to start a draft from: the samples, the library's roles and the other job titles' versions, read quietly (none: that
@@ -219,13 +222,14 @@ async function Builder({ params, searchParams }: { params: PageProps<'/kpis/temp
               key={`${draft.id}:${draft.updatedAt}`}
               draft={draft}
               duties={jobTitle.duties}
+              attendanceInKpi={attendance}
               action={sendKpiDraft.bind(null, jobTitleId, draft.id)}
               // only a Super Admin deletes (owner's decision, 15 October 2026)
               discard={canDelete(user) ? discardKpiDraft.bind(null, jobTitleId, draft.id) : null}
               confirmPublish={publishConfirmText(draft.version, today, framework ? pillarsMonthOf(framework, pillarRowsOf(framework, jobTitle.department)) : null)}
             />
           )}
-          {draft && !canEdit && <DraftReadOnly draft={draft} />}
+          {draft && !canEdit && <DraftReadOnly draft={draft} attendance={attendance} />}
           {oldNewest && !draft && (
             <p role="status" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
               <span className="font-semibold">Version {oldNewest.version} uses the old pillars.</span>{' '}
@@ -249,7 +253,7 @@ async function Builder({ params, searchParams }: { params: PageProps<'/kpis/temp
               {versions.length ? 'The versions published, newest first. HR builds the templates.' : 'No KPI template is published for this job title yet. HR builds the templates.'}
             </p>
           )}
-          <Versions versions={versions} today={today} openInForce={!canEdit} />
+          <Versions versions={versions} today={today} openInForce={!canEdit} attendance={attendance} />
         </div>
         <aside className="min-w-0 xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:overflow-y-auto">
           <JobDescription jobTitle={jobTitle} editLink={canEdit && canEditOrganisation(user)} />

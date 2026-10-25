@@ -46,8 +46,11 @@ function numberFrom(raw: string, limits: { min: number; max: number; whole?: boo
 
 // ---------- 1 Your Rules ----------
 
-/** The rules typed as numbers; Pay overtime is a switch. */
-type RuleField = Exclude<keyof PayrollRules, 'payOvertime'>;
+/**
+ * The rules typed as numbers; Pay overtime is a switch. Whether the KPI average takes attendance in isn't one of them
+ * (owner, 25 October 2026: "Fixed cut only"): a run copies it from the KPI setting Attendance in the KPI.
+ */
+type RuleField = Exclude<keyof PayrollRules, 'payOvertime' | 'kpiIncludesAttendance'>;
 
 /** The overtime's percent and rate: left off the form (disabled, so not sent) while overtime isn't paid. */
 const OVERTIME_FIELDS: readonly RuleField[] = ['overtimeAbovePercent', 'overtimeRate'];

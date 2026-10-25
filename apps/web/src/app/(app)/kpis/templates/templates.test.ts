@@ -10,6 +10,10 @@ import {
 } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 import {
+  ATTENDANCE_IN_KPI_TEXT,
+  attendanceInKpiConfirmText,
+  attendanceInKpiSavedText,
+  attendanceInKpiSent,
   buildsKpiTemplates,
   copyChoices,
   draftAllConfirmText,
@@ -288,5 +292,30 @@ describe('the KPI settings: the deadlines', () => {
     expect(settingsChangedText({ updatedAt: '2026-10-21T14:42:00.000Z', updatedBy: { email: 'hr@trendlix.com', name: null } })).toBe(
       'Last changed by hr@trendlix.com on 21/10/2026, 5:42 PM',
     );
+  });
+});
+
+describe('the KPI settings: attendance in the KPI (owner, 25 October 2026: "Fixed cut only")', () => {
+  const sent = (...values: string[]) => {
+    const fd = new FormData();
+    for (const v of values) fd.append('attendanceInKpi', v);
+    return fd;
+  };
+
+  it('reads the switch: the hidden "false", and the checkbox’s "true" while it is ticked', () => {
+    expect(attendanceInKpiSent(sent('false'))).toBe(false);
+    expect(attendanceInKpiSent(sent('false', 'true'))).toBe(true);
+    expect(attendanceInKpiSent(sent())).toBe(false);
+  });
+
+  it('says what it means, what Save asks and what was saved', () => {
+    expect(ATTENDANCE_IN_KPI_TEXT.off).toMatch(/^Off: the KPI is performance only\. Attendance is cut on the fixed part of the pay alone/);
+    expect(ATTENDANCE_IN_KPI_TEXT.on).toMatch(/^On: the automatic Attendance metric counts in its pillar/);
+    expect(attendanceInKpiConfirmText(false)).toContain('final ones don’t change');
+    expect(attendanceInKpiConfirmText(true)).toMatch(/^Count attendance in the KPI again\?/);
+    expect(attendanceInKpiSavedText(false)).toBe(
+      'Saved: the KPI is performance only, and attendance is cut on the fixed part. The scorecards not yet final were worked out again without it.',
+    );
+    expect(attendanceInKpiSavedText(true)).toBe('Saved: attendance counts in the KPI again. The scorecards not yet final were worked out again with it.');
   });
 });

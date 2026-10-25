@@ -12,6 +12,8 @@
 // By department (owner, 22 October 2026: "but i need pillars to each department / wights can be changed for each
 // department and Job title"): a department's own pillars saved the same way, or its going back to the company's from a
 // month; a draft's own weights for its pillars checked first, then sent with it.
+// Attendance in the KPI (owner, 25 October 2026: "Fixed cut only"): HR and the Super Admin switch it on KPI Pillars; a
+// draft saved while it is off isn't asked for the Attendance metric's points.
 import {
   kpiSettingsProblems,
   kpiTemplateProblems,
@@ -19,6 +21,7 @@ import {
   type KpiDraftAllResult,
   type KpiFrameworkInput,
   type KpiPublishDraftsResult,
+  type KpiSettingsInput,
 } from '@trendlix/shared';
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
@@ -29,7 +32,17 @@ import type { FormState } from '@/lib/types';
 import { shown } from '../../organization/payroll/replies';
 import { contentFromJson, pillarsFromJson } from './[jobTitleId]/builder';
 import { followCompanySavedText, frameworkSavedText } from './framework';
-import { draftSourceOf, SETTING_KEYS, settingsOf, settingsSummary, templateIdsOf, type DraftAllState, type PublishDraftsState } from './templates';
+import {
+  attendanceInKpiSavedText,
+  attendanceInKpiSent,
+  draftSourceOf,
+  SETTING_KEYS,
+  settingsOf,
+  settingsSummary,
+  templateIdsOf,
+  type DraftAllState,
+  type PublishDraftsState,
+} from './templates';
 
 const UUID = /^[0-9a-f-]{36}$/i;
 
@@ -56,6 +69,21 @@ export async function updateKpiSettings(_prev: FormState, fd: FormData): Promise
   }
   refresh();
   return { message: `Saved: ${settingsSummary(settings)} of the month after the scorecard's.` };
+}
+
+/**
+ * Attendance in the KPI switched on or off (PATCH /kpis/settings; owner, 25 October 2026: "Fixed cut only"): the API
+ * works the scorecards not yet final out again, and audits it.
+ */
+export async function updateAttendanceInKpi(_prev: FormState, fd: FormData): Promise<FormState> {
+  const attendanceInKpi = attendanceInKpiSent(fd);
+  try {
+    await apiSend('PATCH', KPI_API.settings, { attendanceInKpi } satisfies KpiSettingsInput);
+  } catch (err) {
+    return refused(err);
+  }
+  refresh();
+  return { message: attendanceInKpiSavedText(attendanceInKpi) };
 }
 
 /**
@@ -124,8 +152,10 @@ export async function sendKpiDraft(jobTitleId: string, templateId: string, _prev
   const publish = fd.get('intent') === 'publish';
   // checked first in the pillars the page placed it in, when it sent them; the API checks it in the framework's newest
   const pillars = pillarsFromJson(fd.get('pillars'));
+  // the Attendance metric's points only while it counts in the KPI (25 October 2026), as the page had it
+  const attendance = fd.get('attendance') !== 'off';
   const problems = pillars
-    ? [...kpiTemplateProblems(content, { publishing: publish, pillars }), ...(content.weights ? kpiWeightsProblems(pillars, content.weights) : [])]
+    ? [...kpiTemplateProblems(content, { publishing: publish, pillars, attendance }), ...(content.weights ? kpiWeightsProblems(pillars, content.weights) : [])]
     : [];
   if (problems.length) return { errors: problems };
   try {

@@ -1,9 +1,11 @@
 import {
   KPI_ACTION_LABELS,
   KPI_COMMENT_MAX,
+  KPI_PERFORMANCE_ONLY_NOTE,
   KPI_PRACTICE_BADGE,
   KPI_STATUS_LABELS,
   kpiMonthAdd,
+  kpiAttendanceIn,
   kpiMonthName,
   kpiPercentText,
   kpiScore,
@@ -12,6 +14,7 @@ import {
   type KpiCalibrateInput,
   type KpiLevel,
   type KpiPicksInput,
+  type KpiPillar,
   type KpiScorecardAttendance,
   type KpiScorecardMetric,
   type KpiScorecardSummary,
@@ -222,6 +225,24 @@ export function attendanceText(a: Pick<KpiScorecardAttendance, 'ratio' | 'score'
   return { source, detail: `${text.charAt(0).toUpperCase()}${text.slice(1)}.` };
 }
 
+/**
+ * Whether a scorecard's Attendance metric counts in its score (owner, 25 October 2026, asked whether attendance is cut
+ * twice: "Fixed cut only"): as the setting Attendance in the KPI says while it isn't final, kept once it is; an API
+ * from before then sends nothing, and it counted. Not counting, the metric is hidden and the KPI is performance only.
+ */
+export const attendanceCounts = (view: { attendance: Pick<KpiScorecardAttendance, 'counted'> }): boolean => view.attendance.counted !== false;
+
+/** What a performance-only scorecard says under its score (25 October 2026); none while the Attendance metric counts. */
+export const performanceOnlyNote = (view: { attendance: Pick<KpiScorecardAttendance, 'counted'> }): string | null => (attendanceCounts(view) ? null : KPI_PERFORMANCE_ONLY_NOTE);
+
+/**
+ * A pillar left out of the score (25 October 2026: the Attendance metric's pillar with no metric of its own, while
+ * attendance is out of the KPI): "Not scored: attendance is out of the KPI, so this pillar's 20% is spread over the
+ * others."
+ */
+export const leftOutText = (pillar: Pick<KpiPillar, 'weight'>): string =>
+  `Not scored: attendance is out of the KPI, so this pillar’s ${pillar.weight}% is spread over the other pillars.`;
+
 // ---------- the picks ----------
 
 /** What the caller does with the scorecard's metrics: reads them, rates themself, scores them, or calibrates the scoring. */
@@ -286,11 +307,13 @@ export function startingComment(view: Pick<KpiScorecardView, 'comments'>, mode: 
 }
 
 /**
- * The score of the picks so far, live as the radios change (shared kpiScore, with the Attendance metric's points), in
- * the scorecard's own pillars (its template version's: owner, 21 October 2026, "Fully flexible").
+ * The score of the picks so far, live as the radios change (shared kpiScore, with the Attendance metric's points while
+ * it counts: 25 October 2026, "Fixed cut only"), in the scorecard's own pillars (its template version's: owner, 21
+ * October 2026, "Fully flexible").
  */
 export function liveScore(view: Pick<KpiScorecardView, 'pillars' | 'attendance' | 'attendancePillar'>, picks: Readonly<Record<string, number | null>>): KpiScoreResult {
-  return kpiScore(allMetrics(view), picks, { points: view.attendance.points, achieved: view.attendance.achieved }, { pillars: view.pillars, attendancePillar: view.attendancePillar });
+  const attendance = kpiAttendanceIn(attendanceCounts(view), view.attendance.points, view.attendance.achieved);
+  return kpiScore(allMetrics(view), picks, attendance, { pillars: view.pillars, attendancePillar: view.attendancePillar });
 }
 
 /** The names of the metrics not picked yet, in order. */

@@ -6,6 +6,7 @@ import type { Prisma } from '../generated/prisma/client.js';
 import { approverFor } from '../organisation/departments/leads.js';
 import { firstDay, lastDay } from '../payroll/months.js';
 import { KpiAttendanceService, type KpiAttendanceRead } from './kpi-attendance.service.js';
+import { attendanceInKpi } from './kpi-rescore.service.js';
 
 // Opening a month's KPI scorecards (owner, 21 October 2026: "Last month's KPI, this pay": October's opens on 1
 // November; the brief: "Scorecards, one per employee and month, created on the 1st for every employee with a published
@@ -15,8 +16,10 @@ import { KpiAttendanceService, type KpiAttendanceRead } from './kpi-attendance.s
 // has come), and who has no scorecard for M yet. Each keeps the version it opened with, where they worked, its scorer
 // (packages/shared kpiScorerOf: the person in charge as leave's manager stage has it, approverFor; HR when nobody is;
 // the CEO for a C-level person, a Super Admin for the CEO's own) and the month's attendance score for its Attendance
-// metric (kpi-attendance.service.ts), refreshed again as it is scored. A row for each metric's picks, and the step
-// "Opened". Done in the caller's transaction (the scheduler's, holding its lock).
+// metric (kpi-attendance.service.ts), refreshed again as it is scored, and whether that metric counts: Attendance in the
+// KPI as it is (owner, 25 October 2026: "Fixed cut only": off from then; the attendance is still read, for when it is
+// switched on again). A row for each metric's picks, and the step "Opened". Done in the caller's transaction (the
+// scheduler's, holding its lock).
 
 type Tx = Prisma.TransactionClient;
 
@@ -77,10 +80,11 @@ export class KpiOpeningService {
     const people = [...latest.values()].filter((e) => inForce.has(e.jobTitleId!));
     if (!people.length) return [];
 
-    const [confidential, ceoEmails, reads] = await Promise.all([
+    const [confidential, ceoEmails, reads, counted] = await Promise.all([
       this.confidential.ids(tx),
       tx.user.findMany({ where: { isActive: true, roles: { some: { role: { key: 'ceo' } } } }, select: { employeeId: true } }),
       this.attendance.readMonth(month, people.map((e) => e.employeeId), tx),
+      attendanceInKpi(tx),
     ]);
     // the CEO's own profile by their account's link (users.employee_id, 22 October 2026: never by email)
     const ceos = new Set(ceoEmails.flatMap((u) => (u.employeeId ? [u.employeeId] : [])));
@@ -103,6 +107,7 @@ export class KpiOpeningService {
           managerId: scorer === 'manager' ? approver!.employeeId : null,
           approverRole: scorer === 'manager' ? approver!.role : null,
           ...attendanceColumns(reads.get(e.employeeId) ?? { ratio: null, score: null, source: 'none' }, template.attendancePoints),
+          attendanceCounted: counted,
           scores: { create: template.metrics.map((m) => ({ metricId: m.id })) },
           steps: { create: { kind: 'opened' } },
         },

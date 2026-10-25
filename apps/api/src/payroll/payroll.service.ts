@@ -44,7 +44,7 @@ import { finalKpis, withKpi } from './kpi-terms.js';
 import { json, savedInputs, withAdjustments, worked } from './line-work.js';
 import { firstDay, lastDay, monthName, monthShort, monthsLater } from './months.js';
 import type { AttendanceWaiverDto, CibFileQueryDto, CreatePayrollRunDto, PaidPayrollDto, ReturnPayrollDto, UpdatePayrollLinesDto } from './payroll.dto.js';
-import { PayrollSettingsService, rulesOf } from './payroll-settings.service.js';
+import { PayrollSettingsService } from './payroll-settings.service.js';
 import { PayslipsService } from './payslips.service.js';
 import { registerWorkbook } from './register.js';
 import { roster, type Exclusion, type RosterEmployment, type RosterLine } from './roster.js';
@@ -324,7 +324,8 @@ export class PayrollService {
       throw new ConflictException(`There is already a payroll for ${monthName(month)}.`);
     }
 
-    const rules = rulesOf(await this.settings.row());
+    // the KPI's attendance switch with them (25 October 2026: "Fixed cut only"; runRules)
+    const rules = await this.settings.runRules();
     const law = await this.lawRates.forYear(Number(month.slice(0, 4)));
     const { lines, exclusions } = await this.roster(month, rules, law);
     // the month's recurring deductions first (18 October 2026), then its additions and deductions (17 October 2026),
@@ -373,7 +374,8 @@ export class PayrollService {
     const run = await this.row(id);
     const month = monthOf(run);
     this.assertStatus(run, 'draft', 'refreshed');
-    const rules = rulesOf(await this.settings.row());
+    // as they are now, the KPI's attendance switch too (25 October 2026: a draft takes it on refresh)
+    const rules = await this.settings.runRules();
     const law = await this.lawRates.forYear(Number(month.slice(0, 4)));
     const { lines, exclusions } = await this.roster(month, rules, law);
     await this.recurring.addToMonth(month, user);

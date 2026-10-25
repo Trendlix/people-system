@@ -4,6 +4,7 @@ import {
   actionButton,
   actionText,
   allKpisHref,
+  attendanceCounts,
   attendanceText,
   averageChangeText,
   calibrateBody,
@@ -14,6 +15,7 @@ import {
   isChange,
   kpiExcelHref,
   kpiExcelName,
+  leftOutText,
   liveScore,
   NOTE_FIELD,
   openedText,
@@ -22,6 +24,7 @@ import {
   ownWaiting,
   payrollText,
   percentText,
+  performanceOnlyNote,
   PILLARS_CHANGED_THIS_MONTH,
   PICK_FIELD,
   pickText,
@@ -283,6 +286,39 @@ describe('the picks a form starts from, and the live score', () => {
     // 50 × 25/35 + 30 + 20 × 49/50 = 35.71 + 30 + 19.6
     expect(s.finalPercent).toBe(85.3);
     expect(s.complete).toBe(true);
+  });
+
+  it('leaves the Attendance metric out once attendance is out of the KPI (owner, 25 October 2026: "Fixed cut only")', () => {
+    const off = view({ attendance: { ...view().attendance, counted: false } });
+    expect(attendanceCounts(off)).toBe(false);
+    // counted, and an API from before then (nothing said): it counts
+    expect(attendanceCounts(view({ attendance: { ...view().attendance, counted: true } }))).toBe(true);
+    expect(attendanceCounts(view())).toBe(true);
+    expect(performanceOnlyNote(off)).toBe('The KPI is performance only: attendance is cut on the fixed part.');
+    expect(performanceOnlyNote(view())).toBeNull();
+    // Discipline & Growth: the plan's 0 of 25 alone, the 24 attendance points gone
+    expect(liveScore(off, {}).pillars[3]).toMatchObject({ achieved: 0, max: 25, percent: 0 });
+    // every target met: 100%, the attendance (24 of 25) no longer taking any off
+    expect(liveScore(off, { m1: 0, m2: 0, m3: 0, m4: 0 }).finalPercent).toBe(100);
+    // poor attendance scores the same as full attendance
+    const poor = view({ attendance: { points: 25, achieved: 5, ratio: 0.2, score: 0.2, source: 'payroll', counted: false } });
+    const picks = { m1: 1, m2: 0, m3: 1, m4: 1 };
+    expect(liveScore(poor, picks).finalPercent).toBe(liveScore(off, picks).finalPercent);
+  });
+
+  it('spreads the weight of a pillar the Attendance metric was alone in over the others, while it is out', () => {
+    const alone = view({ pillars: [pillar(1, [delivery]), pillar(2, [quality]), pillar(3, [clients]), pillar(4, [])], attendance: { ...view().attendance, counted: false } });
+    const s = liveScore(alone, { m1: 1, m2: 0, m3: 1 });
+    expect(s.pillars[3]).toMatchObject({ key: 'discipline', leftOut: true, max: 0 });
+    // (30 × 25/35 + 25 × 35/35 + 25 × 20/30) ÷ 80% = (21.43 + 25 + 16.67) ÷ 0.8
+    expect(s.finalPercent).toBe(78.9);
+    expect(leftOutText(alone.pillars[3])).toBe('Not scored: attendance is out of the KPI, so this pillar’s 20% is spread over the other pillars.');
+    // counted: as before, the Attendance metric alone in it (24 of 25), nothing spread
+    const counted = liveScore({ ...alone, attendance: view().attendance }, { m1: 1, m2: 0, m3: 1 });
+    expect(counted.pillars[3]).toMatchObject({ achieved: 24, max: 25, percent: 96 });
+    expect(counted.pillars[3].leftOut).toBeUndefined();
+    // 21.43 + 25 + 16.67 + 20 × 96%
+    expect(counted.finalPercent).toBe(82.3);
   });
 
   it('marks the target and words a pick', () => {

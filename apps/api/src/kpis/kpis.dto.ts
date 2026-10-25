@@ -12,7 +12,10 @@ const MONTH_MESSAGE = 'Choose a month as YYYY-MM, e.g. 2026-10.';
 const COMMENT_LENGTH = `Keep the comment to ${KPI_COMMENT_MAX} characters or fewer.`;
 const day = (label: string) => `${label}: choose a day from 1 to ${KPI_LAST_DEADLINE_DAY}.`;
 
-/** The deadlines: each day sent replaces it (packages/shared kpiSettingsProblems checks them together). */
+/**
+ * The deadlines: each day sent replaces it (packages/shared kpiSettingsProblems checks them together); and Attendance in
+ * the KPI, switched when sent.
+ */
 export class KpiSettingsDto {
   @IsOptional() @IsInt({ message: day('Self-rating by') }) @Min(1, { message: day('Self-rating by') }) @Max(KPI_LAST_DEADLINE_DAY, { message: day('Self-rating by') })
   selfRatingDay?: number;
@@ -25,6 +28,10 @@ export class KpiSettingsDto {
 
   @IsOptional() @IsInt({ message: day('Sign-off by') }) @Min(1, { message: day('Sign-off by') }) @Max(KPI_LAST_DEADLINE_DAY, { message: day('Sign-off by') })
   signOffDay?: number;
+
+  /** Attendance in the KPI (owner, 25 October 2026: "Fixed cut only"): on or off; left out, as it is. */
+  @IsOptional() @IsBoolean({ message: 'Say whether attendance counts in the KPI: on or off.' })
+  attendanceInKpi?: boolean;
 }
 
 /**
@@ -48,7 +55,8 @@ export class KpiFrameworkDto {
   @Matches(MONTH, { message: 'Choose the month the pillars apply from, e.g. 2026-11.' })
   appliesFrom!: string;
 
-  @ValidateIf((o: KpiFrameworkDto) => o.followsCompany !== true)
+  // left out while attendance is out of the KPI (25 October 2026: "Fixed cut only"); the rules ask for it while it counts
+  @ValidateIf((o: KpiFrameworkDto) => o.followsCompany !== true && o.attendancePillar !== undefined)
   @IsString({ message: 'Choose the pillar the Attendance metric counts in.' })
   @MaxLength(40, { message: 'Choose the pillar the Attendance metric counts in.' })
   attendancePillar?: string;

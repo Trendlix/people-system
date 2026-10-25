@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { OFFICE_ADDRESS_DEFAULTS, officeAddressesProblems, type PayrollRules } from '@trendlix/shared';
+import { KPI_ATTENDANCE_IN_KPI_DEFAULT, OFFICE_ADDRESS_DEFAULTS, officeAddressesProblems, type PayrollRules } from '@trendlix/shared';
 import { AuditService, changes } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
 import type { PayrollSettings } from '../generated/prisma/client.js';
@@ -13,8 +13,14 @@ const ID = 1;
 export const OFFICE_POINT_MOVED =
   "The office's location is a check-in location now: add or change it on Attendance → Check-in Setup, where several can be kept.";
 
+/**
+ * The rules Payroll Setup keeps: every rule a run copies but kpiIncludesAttendance, which is the KPI setting Attendance
+ * in the KPI's (25 October 2026: "Fixed cut only"; runRules).
+ */
+export type PayrollSetupRules = Required<Omit<PayrollRules, 'kpiIncludesAttendance'>>;
+
 /** The settings as the API sends them: the rules a run copies, and the company's side of the bank files. */
-export interface PayrollSettingsView extends Required<PayrollRules> {
+export interface PayrollSettingsView extends PayrollSetupRules {
   /** The company's CIB account the salaries are paid from (12 digits), and its name as CIB has it. */
   cibDebitAccount: string | null;
   cibDebitAccountName: string | null;
@@ -46,8 +52,8 @@ export interface PayrollSettingsView extends Required<PayrollRules> {
   officeAddresses: string[];
 }
 
-/** The rules a run is worked out with, as the settings have them now: Pay overtime always says on or off. */
-export const rulesOf = (s: PayrollSettings): Required<PayrollRules> => ({
+/** The rules Payroll Setup has now: Pay overtime always says on or off. A run takes them with runRules. */
+export const rulesOf = (s: PayrollSettings): PayrollSetupRules => ({
   dayDivisor: s.dayDivisor,
   attendanceGracePercent: s.attendanceGracePercent.toNumber(),
   kpiGracePercent: s.kpiGracePercent.toNumber(),
@@ -102,6 +108,16 @@ export class PayrollSettingsService {
 
   async get(): Promise<PayrollSettingsView> {
     return view(await this.row());
+  }
+
+  /**
+   * The rules a run made or refreshed now copies: Payroll Setup's, and whether the KPI average of a line with KPI inputs
+   * typed takes the attendance in, from the KPI setting Attendance in the KPI (owner, 25 October 2026: "Fixed cut
+   * only"; off from then: those inputs alone, attendance cut on the fixed part only).
+   */
+  async runRules(): Promise<Required<PayrollRules>> {
+    const [settings, kpi] = await Promise.all([this.row(), this.prisma.kpiSettings.findUnique({ where: { id: 1 }, select: { attendanceInKpi: true } })]);
+    return { ...rulesOf(settings), kpiIncludesAttendance: kpi?.attendanceInKpi ?? KPI_ATTENDANCE_IN_KPI_DEFAULT };
   }
 
   async update(dto: UpdatePayrollSettingsDto, user: SessionUser): Promise<PayrollSettingsView> {

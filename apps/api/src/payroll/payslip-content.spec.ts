@@ -1,4 +1,4 @@
-import { payrollLine, PAYROLL_RULE_DEFAULTS, type PayrollAdjustmentItem, type PayrollSegment } from '@trendlix/shared';
+import { payrollLine, type PayrollAdjustmentItem, type PayrollSegment } from '@trendlix/shared';
 import { BONUS_DAY, MONTHLY_TERMS, payslipSource } from '../../test/fixtures/payslip.js';
 import {
   arabicNumerals,
@@ -675,7 +675,7 @@ describe('numbers as printed', () => {
 
   it('the line’s figures are payrollLine’s: nothing in the money is worked out again', () => {
     const source = payslipSource('monthly');
-    expect(source.line.result).toEqual(payrollLine(source.line.terms, source.line.inputs, PAYROLL_RULE_DEFAULTS));
+    expect(source.line.result).toEqual(payrollLine(source.line.terms, source.line.inputs, source.run.rules));
     const c = payslipContent(source, 'en');
     expect(c.deductions!.rows.find((r) => r.label === 'Salary tax')!.value).toBe(source.line.result.monthlyTax);
     expect(c.deductions!.total.value).toBe(source.line.result.deductions);

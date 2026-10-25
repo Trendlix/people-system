@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import {
+  KPI_ATTENDANCE_PILLAR,
   KPI_DEFAULT_PILLAR_SET,
   KPI_FRAMEWORK_LIMITS,
   kpiFrameworkDefaultMonth,
@@ -28,8 +29,20 @@ import type { Prisma } from '../generated/prisma/client.js';
 import { userNames } from '../payroll/adjustments/people.js';
 import { firstDay } from '../payroll/months.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { attendanceInKpi } from './kpi-rescore.service.js';
 import { monthOfCard, pillarSetOf, pillarsJsonOf } from './kpi-views.js';
 import type { KpiFrameworkDto } from './kpis.dto.js';
+
+/**
+ * The Attendance metric's pillar of pillars saved while attendance is out of the KPI (owner, 25 October 2026: "Fixed cut
+ * only"), when the one sent isn't one of them (it is neither shown nor asked for then): that of the pillars they replace
+ * if it still is one, else Discipline & Growth's key if there, else the last pillar. The pillars always keep one
+ * (kpi_frameworks_attendance_pillar_check), so switching it on again finds it where it was.
+ */
+export function keptAttendancePillar(set: Pick<KpiPillarSet, 'pillars'>, replaced: Pick<KpiPillarSet, 'attendancePillar'> | null | undefined): string {
+  for (const key of [replaced?.attendancePillar, KPI_ATTENDANCE_PILLAR]) if (key && kpiPillarOf(set, key)) return key;
+  return set.pillars.at(-1)?.key ?? '';
+}
 
 // The KPI framework (owner, 21 October 2026: "am i able to edit the pillars of the KPIs?", "Fully flexible"; the rules:
 // packages/shared kpi-framework.ts): versions of the pillars, in KPI Settings. Everyone signed in reads them (the
@@ -339,6 +352,8 @@ export class KpiFrameworkService {
       oldTemplates: companyOld,
       canEdit: user.roles.includes('hr') || user.roles.includes('super_admin'),
       usedKeys: [...new Set(versions.flatMap((v) => v.set.pillars.map((p) => p.key)))],
+      // off (25 October 2026: "Fixed cut only"), the Attendance metric's pillar is neither shown nor asked for
+      attendanceInKpi: await attendanceInKpi(this.prisma),
     };
   }
 
@@ -361,10 +376,12 @@ export class KpiFrameworkService {
       if (!found) throw new NotFoundException('Department not found.');
       scope = { id: found.id, nameEn: found.nameEn, parent: found.parent };
     } else if (following) throw new BadRequestException(['Only a department or a team goes back to the pillars above it: choose one.']);
-    const set: KpiPillarSet & { pillars: KpiPillar[] } = following
+    let set: KpiPillarSet & { pillars: KpiPillar[] } = following
       ? { pillars: [], attendancePillar: '' }
       : kpiPillarSetOf({ pillars: (Array.isArray(dto.pillars) ? dto.pillars : []) as KpiPillarInput[], attendancePillar: dto.attendancePillar ?? '' });
-    const problems = [...(following ? [] : kpiPillarSetProblems(set)), ...kpiFrameworkMonthProblems(dto.appliesFrom, today)];
+    // while attendance is out of the KPI (25 October 2026) the Attendance metric's pillar isn't asked for
+    const counted = await attendanceInKpi(this.prisma);
+    const problems = [...(following ? [] : kpiPillarSetProblems(set, { attendance: counted })), ...kpiFrameworkMonthProblems(dto.appliesFrom, today)];
     if (problems.length) throw new BadRequestException(problems);
     const month = toDateOnly(firstDay(dto.appliesFrom));
     const done = await this.prisma.$transaction(async (tx) => {
@@ -374,6 +391,8 @@ export class KpiFrameworkService {
       const { applied, next } = scope
         ? ownOn(versions, today)
         : (({ inForce, next: coming }) => ({ applied: inForce as FrameworkVersion | null, next: coming }))(frameworksOn(versions, today));
+      // not sent, or not one of the pillars, while attendance is out of the KPI: the one of the pillars they replace
+      if (!following && !kpiPillarOf(set, set.attendancePillar)) set = { ...set, attendancePillar: keptAttendancePillar(set, (next ?? applied)?.set) };
       if (dto.nextId !== undefined && (dto.nextId ?? null) !== (next?.id ?? null)) {
         throw new ConflictException(
           next ? 'Someone saved other pillars meanwhile. Reload the page to see them.' : 'The pillars you were changing apply now, so they can’t be changed. Reload the page.',

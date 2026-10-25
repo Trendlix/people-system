@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   addPillar,
   appliesFromHint,
+  attendanceInKpiOf,
   canFollowCompany,
   companyNewest,
   departmentPillarsText,
@@ -127,6 +128,21 @@ describe('the form', () => {
       'Choose the pillar the Attendance metric counts in.',
       'The scorecards of September 2026 are open already: choose October 2026 or a later month.',
     ]);
+  });
+
+  it('asks for no Attendance pillar while attendance is out of the KPI, and sends the one it had (owner, 25 October 2026: "Fixed cut only")', () => {
+    const removed = removePillar(frameworkFormOf(VIEW), 'p3');
+    expect(frameworkProblems({ ...removed, appliesFrom: '2026-09' }, VIEW.usedKeys, TODAY, false)).toEqual([
+      'The weights add up to 80%: make them add up to 100%.',
+      'The scorecards of September 2026 are open already: choose October 2026 or a later month.',
+    ]);
+    // the form keeps the pillar it had, sent as it was for when the setting is back on
+    expect(frameworkInputOf(frameworkFormOf(VIEW), VIEW.usedKeys).attendancePillar).toBe('discipline');
+    expect(attendanceInKpiOf({ attendanceInKpi: false })).toBe(false);
+    // on, and an API from before then (nothing said): it counts
+    expect(attendanceInKpiOf({ attendanceInKpi: true })).toBe(true);
+    expect(attendanceInKpiOf({})).toBe(true);
+    expect(attendanceInKpiOf(null)).toBe(true);
   });
 
   it('adds pillars up to 8, removes them down to 1, and moves them', () => {

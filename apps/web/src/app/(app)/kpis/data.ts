@@ -1,6 +1,6 @@
 import 'server-only';
 import { cache } from 'react';
-import type { KpiHeatmap, KpiOverview, KpiPracticeChoices, KpiPracticeRow, KpiScorecardSummary, KpiScorecardView } from '@trendlix/shared';
+import type { KpiHeatmap, KpiOverview, KpiPracticeChoices, KpiPracticeRow, KpiScorecardSummary, KpiScorecardView, KpiSettingsView } from '@trendlix/shared';
 import { KPI_API } from '@/lib/kpi-paths';
 import { loadJson, type Loaded } from '../payroll/load';
 
@@ -46,6 +46,12 @@ export function loadPracticeRows(): Promise<Loaded<KpiPracticeRow[]>> {
 export function loadPracticeChoices(): Promise<Loaded<KpiPracticeChoices>> {
   return loadJson<KpiPracticeChoices>(KPI_API.practiceChoices);
 }
+
+/**
+ * GET /kpis/settings: the deadlines and Attendance in the KPI (owner, 25 October 2026: "Fixed cut only"), for a page
+ * that words the Attendance metric. Read once a request.
+ */
+export const loadKpiSettings = cache(() => loadJson<KpiSettingsView>(KPI_API.settings));
 
 /** What a KPI page says in place of what it couldn't load. */
 export function kpiNotLoaded(loaded: Exclude<Loaded<unknown>, { kind: 'ok' }>, what: string): string {

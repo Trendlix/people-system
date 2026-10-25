@@ -3,6 +3,7 @@ import {
   KPI_ATTENDANCE_POINTS_DEFAULT,
   KPI_DEFAULT_PILLAR_SET,
   KPI_SAMPLE_TEMPLATES,
+  KPI_TEMPLATE_LIMITS,
   kpiEligibleType,
   kpiLibraryDraft,
   kpiLibraryMatchOf,
@@ -45,6 +46,7 @@ import { firstDay } from '../payroll/months.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { FRAMEWORK_LOCK, KpiFrameworkService, type PillarsBase } from './kpi-framework.service.js';
 import { KpiPracticeService } from './kpi-practice.service.js';
+import { attendanceInKpi } from './kpi-rescore.service.js';
 import { criteriaOf, metricView, pillarSetOf, pillarsJsonOf } from './kpi-views.js';
 import type { KpiDraftDto, KpiPublishDraftsDto, KpiTemplateContentDto } from './kpis.dto.js';
 
@@ -81,6 +83,10 @@ import type { KpiDraftDto, KpiPublishDraftsDto, KpiTemplateContentDto } from './
 // self-rating, on its new metrics); saved as it was (Publish from the editor saves first), they are kept; published,
 // they carry on on the published version (its metrics are the same rows); discarded, they are deleted with it. Each is
 // in the audit log. A version's count of scorecards is of the real ones, its practice ones counted apart.
+// Attendance out of the KPI (owner, 25 October 2026: "Fixed cut only"): while Attendance in the KPI is off, a draft's
+// Attendance points aren't checked (those it has are kept when what is sent isn't whole points it may have), and the
+// pages are told so (attendanceInKpi) to hide the metric; its pillar still needs no metric of its own (with none it is
+// left out of the score, its weight spread over the others: the role library leaves Discipline & Growth to it alone).
 
 export const TEMPLATE_ENTITY = 'kpi_template';
 
@@ -248,6 +254,7 @@ export class KpiTemplatesService {
       draft: views.find((v) => v.status === 'draft') ?? null,
       versions: views.filter((v) => v.status === 'published'),
       canEdit: buildsTemplates(user),
+      attendanceInKpi: await attendanceInKpi(this.prisma),
     };
   }
 
@@ -391,8 +398,12 @@ export class KpiTemplatesService {
     const before = await this.draft(id, 'changed');
     const base = await this.framework.pillarsFor(before.jobTitle.departmentId);
     const set = base.framework.set;
-    const content = contentOf(dto);
-    const problems = kpiTemplateProblems(content, { pillars: set });
+    const counted = await attendanceInKpi(this.prisma);
+    const sentContent = contentOf(dto);
+    // the Attendance points while attendance is out of the KPI (25 October 2026): not checked, and kept as they are
+    // unless those sent are whole points it may have
+    const content = counted || keepablePoints(sentContent.attendancePoints) ? sentContent : { ...sentContent, attendancePoints: before.attendancePoints };
+    const problems = kpiTemplateProblems(content, { pillars: set, attendance: counted });
     if (dto.weights !== undefined && dto.weights !== null) problems.push(...kpiWeightsProblems(set, dto.weights));
     if (problems.length) throw new BadRequestException(problems);
     const weights = kpiOwnWeights(set, dto.weights === undefined ? before.ownWeights : dto.weights);
@@ -573,7 +584,7 @@ export class KpiTemplatesService {
       const base = await this.framework.pillarsFor(row.jobTitle.departmentId, tx);
       const set = base.framework.set;
       const placed = kpiPlaceMetrics(row.metrics.map(metricView), pillarSetOf(row), set);
-      const problems = kpiTemplateProblems({ attendancePoints: row.attendancePoints, metrics: placed }, { publishing: true, pillars: set });
+      const problems = kpiTemplateProblems({ attendancePoints: row.attendancePoints, metrics: placed }, { publishing: true, pillars: set, attendance: await attendanceInKpi(tx) });
       if (problems.length) throw new BadRequestException(problems);
       // the job title's own weights, when they fit the pillars
       const weights = kpiOwnWeights(set, row.ownWeights);
@@ -662,13 +673,14 @@ export class KpiTemplatesService {
     if (!rows.length) return [];
     const opening = toDateOnly(firstDay(openingNow()));
     const inForce = new Map<string, string>();
-    const [forced, pillarsOf] = await Promise.all([
+    const [forced, pillarsOf, counted] = await Promise.all([
       this.prisma.kpiTemplate.findMany({
         where: { jobTitleId: { in: [...new Set(rows.map((r) => r.jobTitleId))] }, status: 'published', opensFrom: { lte: opening } },
         orderBy: { version: 'desc' },
         select: { id: true, jobTitleId: true },
       }),
       this.framework.resolver(),
+      attendanceInKpi(this.prisma),
     ]);
     for (const f of forced) if (!inForce.has(f.jobTitleId)) inForce.set(f.jobTitleId, f.id);
     const names = await userNames(this.prisma, rows.map((r) => r.publishedBy));
@@ -705,7 +717,7 @@ export class KpiTemplatesService {
         updatedAt: r.updatedAt.toISOString(),
         scorecards: r._count.scorecards,
         practiceScorecards: practice.get(r.id) ?? 0,
-        problems: draft ? kpiTemplateProblems({ attendancePoints: r.attendancePoints, metrics }, { publishing: true, pillars: set }) : [],
+        problems: draft ? kpiTemplateProblems({ attendancePoints: r.attendancePoints, metrics }, { publishing: true, pillars: set, attendance: counted }) : [],
         pillars: [...pillars.pillars],
         attendancePillar: pillars.attendancePillar,
         // a draft saved on these pillars (with or without its own weights) hasn't changed
@@ -756,6 +768,9 @@ function sameContent(
   }));
   return JSON.stringify(kept) === JSON.stringify(metricRows(content.metrics));
 }
+
+/** Attendance points a draft may keep (kpi_templates_attendance_points_check): whole, from 1 to the most a criterion may be. */
+const keepablePoints = (v: unknown): boolean => typeof v === 'number' && Number.isInteger(v) && v >= 1 && v <= KPI_TEMPLATE_LIMITS.points;
 
 /** A metric copied into a new draft: without the id of the one it was copied from. */
 function withoutId(m: KpiMetric): KpiMetric {

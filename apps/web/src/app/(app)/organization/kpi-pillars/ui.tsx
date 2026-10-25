@@ -3,10 +3,14 @@ import { frameworkChangedText, pillarsLabel } from '../../kpis/templates/framewo
 
 // The KPI pillars as everyone reads them (owner, 21 October 2026: "Fully flexible"; 22 October 2026: "but i need pillars
 // to each department"): a version's pillars, each with its short name and weight, the Attendance metric's marked; the
-// company's and a department's alike.
+// company's and a department's alike. While attendance is out of the KPI (owner, 25 October 2026: "Fixed cut only"; the
+// setting Attendance in the KPI, off), the Attendance metric's pillar isn't marked: it counts in none.
 
-/** A version's pillars, read only: each with its short name and weight, the Attendance metric's marked. */
-export function PillarsList({ version: v }: { version: Pick<KpiFrameworkVersionView, 'pillars' | 'attendancePillar'> }) {
+/**
+ * A version's pillars, read only: each with its short name and weight, the Attendance metric's marked while it counts
+ * in the KPI (`attendance`, on unless sent).
+ */
+export function PillarsList({ version: v, attendance = true }: { version: Pick<KpiFrameworkVersionView, 'pillars' | 'attendancePillar'>; attendance?: boolean }) {
   return (
     <div className="overflow-x-auto rounded-lg border border-line">
       <table className="table">
@@ -24,7 +28,7 @@ export function PillarsList({ version: v }: { version: Pick<KpiFrameworkVersionV
             <tr key={p.key}>
               <td className="font-medium">
                 {p.name}
-                {p.key === v.attendancePillar && <span className="badge ml-2 bg-line-soft text-muted">Attendance counts here</span>}
+                {attendance && p.key === v.attendancePillar && <span className="badge ml-2 bg-line-soft text-muted">Attendance counts here</span>}
               </td>
               <td className="text-muted">{p.short}</td>
               <td className="text-right tabular-nums">{p.weight}%</td>
@@ -36,22 +40,26 @@ export function PillarsList({ version: v }: { version: Pick<KpiFrameworkVersionV
   );
 }
 
-/** A version under its title ("In Force", "Next"): its number, how many pillars, where Attendance counts, who saved it. */
-export function FrameworkVersion({ title, version: v, note }: { title: string; version: KpiFrameworkVersionView; note: string }) {
+/**
+ * A version under its title ("In Force", "Next"): its number, how many pillars, where Attendance counts (while it counts
+ * in the KPI: `attendance`, on unless sent), who saved it.
+ */
+export function FrameworkVersion({ title, version: v, note, attendance = true }: { title: string; version: KpiFrameworkVersionView; note: string; attendance?: boolean }) {
   const changed = frameworkChangedText(v);
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <h3 className="font-semibold">{title}</h3>
         <span className="text-sm text-muted">
-          Version {v.version} · {pillarsLabel(v.pillars.length)} · Attendance in {kpiPillarOf(v, v.attendancePillar)?.name ?? '—'}
+          Version {v.version} · {pillarsLabel(v.pillars.length)}
+          {attendance && ` · Attendance in ${kpiPillarOf(v, v.attendancePillar)?.name ?? '—'}`}
         </span>
       </div>
       <p className="text-sm text-muted">
         {note}
         {changed ? ` ${changed}.` : ''}
       </p>
-      <PillarsList version={v} />
+      <PillarsList version={v} attendance={attendance} />
     </div>
   );
 }

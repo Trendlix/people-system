@@ -328,3 +328,35 @@ export function settingsChangedText(view: Pick<KpiSettingsView, 'updatedAt' | 'u
   const who = userName(view.updatedBy);
   return `Last changed${who ? ` by ${who}` : ''} on ${formatDateTime(view.updatedAt)}`;
 }
+
+// ---------- the KPI settings: attendance in the KPI ----------
+
+// Attendance in the KPI (owner, 25 October 2026, asked whether attendance is cut twice, on the fixed part below the
+// attendance grace and through the KPI's Attendance metric on the variable part: "Fixed cut only"): a switch on KPI
+// Pillars, HR's and the Super Admin's, off from then; switching it works the scorecards not yet final out again, and a
+// final one never changes. The API checks and audits it.
+
+/** The switch as the form sent it: a hidden "false" and the checkbox's "true", sent only while it is ticked. */
+export const attendanceInKpiSent = (fd: Pick<FormData, 'getAll'>): boolean => fd.getAll('attendanceInKpi').includes('true');
+
+/** What the setting means, off and on, as KPI Pillars says it. */
+export const ATTENDANCE_IN_KPI_TEXT: Record<'off' | 'on', string> = {
+  off: 'Off: the KPI is performance only. Attendance is cut on the fixed part of the pay alone, below the attendance grace (90% unless Payroll Setup says otherwise), so it is never cut twice. The Attendance metric is hidden, and a pillar it was alone in isn’t scored: its weight is spread over the other pillars.',
+  on: 'On: the automatic Attendance metric counts in its pillar on every scorecard, as before, besides the cut on the fixed part of the pay.',
+};
+
+/** What switching it does to the scorecards, said beside the switch. */
+export const ATTENDANCE_IN_KPI_RESCORE_NOTE =
+  'Switching it works out again the scorecards not yet final (from the self-rating to the sign-off, practice ones too); a final scorecard never changes, nor does payroll that is with the CEO, approved or paid. A draft payroll takes it when it is refreshed.';
+
+/** What Save asks first. */
+export const attendanceInKpiConfirmText = (on: boolean): string =>
+  on
+    ? 'Count attendance in the KPI again? The scorecards not yet final are worked out again with the Attendance metric; final ones don’t change.'
+    : 'Take attendance out of the KPI? The scorecards not yet final are worked out again without the Attendance metric; final ones don’t change.';
+
+/** What the page says once it is saved. */
+export const attendanceInKpiSavedText = (on: boolean): string =>
+  on
+    ? 'Saved: attendance counts in the KPI again. The scorecards not yet final were worked out again with it.'
+    : 'Saved: the KPI is performance only, and attendance is cut on the fixed part. The scorecards not yet final were worked out again without it.';

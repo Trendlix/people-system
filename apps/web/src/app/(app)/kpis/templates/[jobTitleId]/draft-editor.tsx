@@ -22,6 +22,7 @@ import {
   dutyChoice,
   formGroups,
   formOf,
+  leftOutPillarNote,
   moveMetric,
   onlyForPublishing,
   PILLARS_CHANGED_NOTE,
@@ -60,6 +61,9 @@ import {
 // link to KPI Pillars; each pillar's weight is typed on its header, the department's shown beside it when it differs,
 // with the total and "Use the department's weights"; a draft whose own weights were reset (the pillars gained or lost
 // one) says so.
+// Attendance out of the KPI (owner, 25 October 2026: "Fixed cut only"; the setting Attendance in the KPI, off): the
+// Attendance metric and its points aren't shown or asked for (its points are sent as they were, kept for when it is
+// back), and a pillar it was alone in says it isn't scored, its weight spread over the others, until a metric is added.
 
 type SetForm = (change: (form: DraftForm) => DraftForm) => void;
 
@@ -428,6 +432,7 @@ function PillarEditor({
       </div>
       {!pillar && <p className="max-w-3xl text-sm text-warn">{UNPLACED_NOTE}</p>}
       {attendance && <AttendanceEditor value={form.attendancePoints} fid={fid} setForm={setForm} />}
+      {group.leftOut && pillar && metrics.length === 0 && <p className="max-w-3xl text-sm text-muted">{leftOutPillarNote(pillar)} Add a metric to score it.</p>}
       {metrics.length > 0 ? (
         <ol className="space-y-3">
           {metrics.map((m) => (
@@ -446,7 +451,7 @@ function PillarEditor({
           ))}
         </ol>
       ) : (
-        !attendance && <p className="text-sm text-muted">No metric yet. Every pillar is scored: add one before publishing.</p>
+        !attendance && !group.leftOut && <p className="text-sm text-muted">No metric yet. Every pillar is scored: add one before publishing.</p>
       )}
       {pillar && (
         <button
@@ -499,6 +504,7 @@ export function DraftEditor({
   action,
   discard,
   confirmPublish,
+  attendanceInKpi = true,
 }: {
   draft: Pick<KpiTemplateView, 'version' | 'updatedAt' | 'attendancePoints' | 'metrics' | 'pillars' | 'attendancePillar' | 'pillarsChanged'> &
     // an API from before department pillars sends none of these (nor, before practice scorecards, their count)
@@ -511,14 +517,16 @@ export function DraftEditor({
   discard: ((prev: FormState, fd: FormData) => Promise<FormState>) | null;
   /** What Publish asks first. */
   confirmPublish: string;
+  /** Whether the Attendance metric counts in the KPI (the setting, 25 October 2026); on unless sent. */
+  attendanceInKpi?: boolean;
 }) {
   const fid = useFieldIds();
   // the KPI framework's newest pillars, which the API placed the draft's metrics in
   const [pillars] = useState<KpiPillarSet>(() => ({ pillars: draft.pillars, attendancePillar: draft.attendancePillar }));
-  const [form, setFormState] = useState<DraftForm>(() => formOf(draft, duties, pillars, draft.baseWeights ?? null));
+  const [form, setFormState] = useState<DraftForm>(() => formOf(draft, duties, pillars, draft.baseWeights ?? null, attendanceInKpi));
   // the draft as saved, to say when there are changes not saved yet (placed in new pillars, or its own weights reset:
   // not saved so yet)
-  const [saved] = useState(() => (draft.pillarsChanged || draft.weightsReset ? '' : JSON.stringify(contentOf(formOf(draft, duties, pillars, draft.baseWeights ?? null)))));
+  const [saved] = useState(() => (draft.pillarsChanged || draft.weightsReset ? '' : JSON.stringify(contentOf(formOf(draft, duties, pillars, draft.baseWeights ?? null, attendanceInKpi)))));
   const [state, dispatch, pending] = useActionState(action, {});
   const [intent, setIntent] = useState<'save' | 'publish'>('save');
   const counter = useRef(0);
@@ -530,11 +538,12 @@ export function DraftEditor({
   const setForm: SetForm = (change) => setFormState(change);
 
   const content = contentOf(form);
-  const saving = [...kpiTemplateProblems(content, { pillars }), ...weightsProblems(form)];
+  // the Attendance metric's points checked only while it counts in the KPI (25 October 2026)
+  const saving = [...kpiTemplateProblems(content, { pillars, attendance: attendanceInKpi }), ...weightsProblems(form)];
   const whose = pillarsFromText(draft.pillarsFrom);
   const baseLabel = baseWeightLabel(draft.pillarsFrom);
   const total = draftWeightTotal(form);
-  const publishing = onlyForPublishing(kpiTemplateProblems(content, { publishing: true, pillars }), saving);
+  const publishing = onlyForPublishing(kpiTemplateProblems(content, { publishing: true, pillars, attendance: attendanceInKpi }), saving);
   const dirty = JSON.stringify(content) !== saved;
   // the practice scorecards trying this draft (owner, 22 October 2026: "Practice scorecards"): started again when it is
   // saved changed, carried on when it is published, deleted with it when it is discarded
@@ -559,6 +568,7 @@ export function DraftEditor({
     fd.set('intent', which);
     fd.set('content', JSON.stringify(content));
     fd.set('pillars', JSON.stringify(pillars));
+    if (!attendanceInKpi) fd.set('attendance', 'off');
     startTransition(() => dispatch(fd));
   }
 

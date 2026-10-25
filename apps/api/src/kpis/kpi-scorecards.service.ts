@@ -33,7 +33,9 @@ import type { KpiCalibrateDto, KpiListQueryDto, KpiPicksDto, KpiSignDto } from '
 // do what: kpi-access.ts. Each step is saved in one transaction that checks the scorecard is still where it was, logged
 // on the scorecard (its steps) and in the audit log, and told to whoever is next (kpi-notices.service.ts). The score kept
 // on the scorecard (final %, level, pillars) is the manager's picks', calibrated: set when the scoring is sent, again at
-// the calibration; the Attendance metric is read again at both (the month's attendance as payroll has it then). A
+// the calibration; the Attendance metric is read again at both (the month's attendance as payroll has it then), and
+// counts only while the scorecard's attendance_counted says so (owner, 25 October 2026: "Fixed cut only"; kpi-views.ts
+// scoreOf: the setting's while it isn't final, kept once it is; kpi-rescore.service.ts makes them follow it). A
 // scorecard final, the next month's payroll takes its final % (payroll/kpi-terms.ts). C-level people's (owner, 19
 // October 2026: "make C level Employees details not visible to HR"): the CEO scores them and HR never sees them.
 // Practice scorecards (owner, 22 October 2026: "Practice scorecards"; packages/shared kpi-practice.ts): left out of

@@ -14,6 +14,7 @@ import {
   dutyChoice,
   formGroups,
   formOf,
+  leftOutPillarNote,
   moveMetric,
   onlyForPublishing,
   ownWeightsOf,
@@ -121,6 +122,17 @@ describe('the draft as the form holds it', () => {
       'Give the Attendance metric whole points from 1 to 200.',
       'Metric 1 (Time-to-hire): give its target whole points from 1 to 200.',
     ]);
+    // attendance out of the KPI (owner, 25 October 2026: "Fixed cut only"): its points aren't asked for
+    expect(kpiTemplateProblems(sent, { attendance: false })).toEqual(['Metric 1 (Time-to-hire): give its target whole points from 1 to 200.']);
+  });
+
+  it('keeps the Attendance metric’s points as they were while attendance is out of the KPI, sending them unchanged', () => {
+    const off = formOf(content, DUTIES, FOUR, null, false);
+    expect(off.attendance).toBe(false);
+    expect(contentOf(off)).toEqual(contentOf(formOf(content, DUTIES, FOUR)));
+    expect(contentOf(off).attendancePoints).toBe(20);
+    // on unless sent: nothing more on the form
+    expect(formOf(content, DUTIES, FOUR)).not.toHaveProperty('attendance');
   });
 
   it('reads the content a form sent, and nothing else', () => {
@@ -162,6 +174,35 @@ describe('the pillars', () => {
     ]);
     // no Unplaced group when every metric has a pillar
     expect(pillarGroups(content.metrics, 20, THREE).map((g) => g.pillar?.key)).toEqual(['delivery', 'quality', 'growth']);
+  });
+
+  it('have no Attendance metric while attendance is out of the KPI, its lone pillar not scored (owner, 25 October 2026: "Fixed cut only")', () => {
+    const groups = pillarGroups(content.metrics, 20, FOUR, false);
+    expect(groups.map((g) => [g.pillar?.key, g.attendance, g.leftOut, g.max])).toEqual([
+      ['delivery', false, false, 35],
+      ['quality', false, false, 50],
+      ['clients', false, false, 0],
+      ['discipline', false, true, 0],
+    ]);
+    expect(leftOutPillarNote(groups[3].pillar!)).toBe(
+      'Not scored while attendance is out of the KPI: the Attendance metric was its only one, so its 20% is spread over the other pillars.',
+    );
+    // with a metric of its own it is scored, the Attendance metric's points not in its max
+    expect(pillarGroups(sample.metrics, sample.attendancePoints, FOUR, false).map((g) => [g.max, g.leftOut])).toEqual([
+      [65, false],
+      [75, false],
+      [55, false],
+      [100, false],
+    ]);
+    // on: as before, never left out
+    expect(pillarGroups(content.metrics, 20, FOUR).map((g) => g.leftOut)).toEqual([false, false, false, false]);
+    // the form's groups follow the form
+    expect(formGroups(formOf(content, DUTIES, FOUR, null, false)).map((g) => [g.attendance, g.leftOut])).toEqual([
+      [false, false],
+      [false, false],
+      [false, false],
+      [false, true],
+    ]);
   });
 
   it('number the form’s metrics as the problems do, a target not whole counting 0', () => {

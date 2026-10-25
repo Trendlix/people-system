@@ -8,6 +8,7 @@ import type { FormState } from '@/lib/types';
 import {
   addPillar,
   appliesFromHint,
+  attendanceInKpiOf,
   followCompanyConfirmText,
   frameworkConfirmText,
   frameworkFormOf,
@@ -28,7 +29,8 @@ import {
 // Attendance metric counts in; the month they apply from (next month unless chosen, this month at the earliest). What
 // stops them being saved shows as it is typed, as the API checks it (packages/shared kpi-framework.ts); Save asks first,
 // saying when they apply and that every template must then place its metrics in them. The next pillars, once saved, are
-// changed the same way until they apply.
+// changed the same way until they apply. While attendance is out of the KPI (owner, 25 October 2026: "Fixed cut only"),
+// the pillar the Attendance metric counts in isn't asked for: the one it had is sent as it was, for when it is back.
 // A department's own pillars (owner, 22 October 2026: "but i need pillars to each department"): the same form on the
 // department's page, starting from its own pillars, or from the company's newest when it takes those; and going back
 // to the company's pillars from a month (FollowCompanyForm). A team's (owner, 22 October 2026: "Yes, add team
@@ -66,7 +68,9 @@ export function KpiFrameworkForm({
   const [form, setForm] = useState<FrameworkForm>(() => frameworkFormOf(view, department?.row ?? null, department?.above?.newest ?? null));
   const [state, dispatch, pending] = useActionState(action, {});
   const counter = useRef(0);
-  const problems = frameworkProblems(form, view.usedKeys, today);
+  // the Attendance metric's pillar only while it counts in the KPI (25 October 2026)
+  const attendanceInKpi = attendanceInKpiOf(view);
+  const problems = frameworkProblems(form, view.usedKeys, today, attendanceInKpi);
   const total = weightTotal(form);
   // the next change of the scope, which a save changes (or replaces: a department going back to the company's)
   const next = department ? department.row.next : view.next;
@@ -212,31 +216,33 @@ export function KpiFrameworkForm({
         </p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
-        <div>
-          <label htmlFor={fid('attendance')} className="label">
-            Attendance counts in
-          </label>
-          <Select
-            id={fid('attendance')}
-            value={form.attendance}
-            onChange={(e) => {
-              const attendance = e.target.value;
-              setForm((f) => ({ ...f, attendance }));
-            }}
-            aria-describedby={fid('attendance-hint')}
-            className="input"
-          >
-            {!form.pillars.some((p) => p.rowKey === form.attendance) && <option value="">Choose a pillar</option>}
-            {form.pillars.map((p, i) => (
-              <option key={p.rowKey} value={p.rowKey}>
-                {p.name.trim() || `Pillar ${i + 1}`}
-              </option>
-            ))}
-          </Select>
-          <p id={fid('attendance-hint')} className="hint">
-            {department ? 'The pillar of the automatic Attendance metric, on every template of its job titles.' : 'The pillar of the automatic Attendance metric, on every template.'}
-          </p>
-        </div>
+        {attendanceInKpi && (
+          <div>
+            <label htmlFor={fid('attendance')} className="label">
+              Attendance counts in
+            </label>
+            <Select
+              id={fid('attendance')}
+              value={form.attendance}
+              onChange={(e) => {
+                const attendance = e.target.value;
+                setForm((f) => ({ ...f, attendance }));
+              }}
+              aria-describedby={fid('attendance-hint')}
+              className="input"
+            >
+              {!form.pillars.some((p) => p.rowKey === form.attendance) && <option value="">Choose a pillar</option>}
+              {form.pillars.map((p, i) => (
+                <option key={p.rowKey} value={p.rowKey}>
+                  {p.name.trim() || `Pillar ${i + 1}`}
+                </option>
+              ))}
+            </Select>
+            <p id={fid('attendance-hint')} className="hint">
+              {department ? 'The pillar of the automatic Attendance metric, on every template of its job titles.' : 'The pillar of the automatic Attendance metric, on every template.'}
+            </p>
+          </div>
+        )}
         <div>
           <label htmlFor={fid('appliesFrom')} className="label">
             Applies from

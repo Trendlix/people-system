@@ -16,6 +16,9 @@ import { wholeOf } from '../templates';
 // pillar's weight is typed on its header, the total shown, "Use the department's weights" puts the department's (or
 // the company's) back. Saved with the draft (`weights`: null when they are the department's), published with it, so
 // they apply from next month like any change; the pillars themselves are the department's (KPI Pillars).
+// Attendance out of the KPI (owner, 25 October 2026: "Fixed cut only"; the setting Attendance in the KPI, off): the
+// Attendance metric and its points are hidden and not checked (kpiTemplateProblems with `attendance` off), the points
+// kept and sent as they were; a pillar it was alone in isn't scored, its weight spread over the others (said so).
 
 /** A criterion as typed: its label and points. `key`: the form's own, to keep each row's fields apart. */
 export interface CriterionForm {
@@ -54,6 +57,8 @@ export interface DraftForm {
    * the API doesn't take a job title's own weights (one from before them), so none are typed or sent.
    */
   baseWeights: Record<string, number> | null;
+  /** Whether the Attendance metric counts in the KPI (the setting, 25 October 2026); left out: it does. */
+  attendance?: boolean;
 }
 
 /** A pillar's place in the set's order; Unplaced (or a pillar not in the set) after them all. */
@@ -97,8 +102,11 @@ export function formOf(
   duties: readonly string[],
   pillars: KpiPillarSet,
   baseWeights: Record<string, number> | null = null,
+  /** Whether the Attendance metric counts in the KPI (25 October 2026: "Fixed cut only"); on unless sent. */
+  attendance = true,
 ): DraftForm {
   return {
+    ...(!attendance && { attendance: false }),
     attendancePoints: String(content.attendancePoints),
     metrics: inPillarOrder(content.metrics, pillars).map((m, i) => metricFormOf(m, `m${i}`, duties)),
     pillars,
@@ -230,8 +238,13 @@ export function weightsResetNote(pillarsFrom: { nameEn: string } | null | undefi
  */
 export interface PillarGroup<M> {
   pillar: KpiPillar | null;
-  /** It has the Attendance metric. */
+  /** It has the Attendance metric (only while it counts in the KPI). */
   attendance: boolean;
+  /**
+   * Not scored (25 October 2026: "Fixed cut only"): the Attendance metric's pillar with no metric of its own while
+   * attendance is out of the KPI, its weight spread over the other pillars.
+   */
+  leftOut: boolean;
   metrics: M[];
   max: number;
 }
@@ -241,24 +254,35 @@ const pointsOrZero = (n: number) => (Number.isFinite(n) ? n : 0);
 /**
  * The pillars with their metrics and max points (pillar % = achieved ÷ max points; owner, 21 October 2026), each
  * metric with its number in the template: Metric 1 the first of the first pillar; Unplaced last, when a metric is in it.
+ * `attendanceIn`: whether the Attendance metric counts in the KPI (owner, 25 October 2026: "Fixed cut only"; on unless
+ * sent): off, no pillar has it or its points, and its pillar with no metric of its own is left out (`leftOut`).
  */
 export function pillarGroups<M extends { pillar: string | null; targetPoints: number }>(
   metrics: readonly M[],
   attendancePoints: number,
   set: KpiPillarSet,
+  attendanceIn = true,
 ): PillarGroup<M & { number: number }>[] {
   const numbered = inPillarOrder(metrics, set).map((m, i) => ({ ...m, number: i + 1 }));
   const known = new Set(set.pillars.map((p) => p.key));
   const groups: PillarGroup<M & { number: number }>[] = set.pillars.map((pillar) => {
     const inIt = numbered.filter((m) => m.pillar === pillar.key);
-    const attendance = pillar.key === set.attendancePillar;
+    const its = pillar.key === set.attendancePillar;
+    const attendance = its && attendanceIn;
     const targets = inIt.reduce((sum, m) => sum + pointsOrZero(m.targetPoints), 0);
-    return { pillar, attendance, metrics: inIt, max: targets + (attendance ? pointsOrZero(attendancePoints) : 0) };
+    return { pillar, attendance, leftOut: its && !attendanceIn && inIt.length === 0, metrics: inIt, max: targets + (attendance ? pointsOrZero(attendancePoints) : 0) };
   });
   const unplaced = numbered.filter((m) => m.pillar === null || !known.has(m.pillar));
-  if (unplaced.length) groups.push({ pillar: null, attendance: false, metrics: unplaced, max: unplaced.reduce((sum, m) => sum + pointsOrZero(m.targetPoints), 0) });
+  if (unplaced.length) groups.push({ pillar: null, attendance: false, leftOut: false, metrics: unplaced, max: unplaced.reduce((sum, m) => sum + pointsOrZero(m.targetPoints), 0) });
   return groups;
 }
+
+/**
+ * A pillar not scored while attendance is out of the KPI (25 October 2026): its only metric was Attendance. Said on the
+ * template and in the builder, where adding a metric scores it again.
+ */
+export const leftOutPillarNote = (pillar: Pick<KpiPillar, 'weight'>): string =>
+  `Not scored while attendance is out of the KPI: the Attendance metric was its only one, so its ${pillar.weight}% is spread over the other pillars.`;
 
 /** The form's metrics by pillar, as the content numbers them, each with its max points; Unplaced last. */
 export function formGroups(form: DraftForm): PillarGroup<{ form: MetricForm; number: number }>[] {
@@ -268,6 +292,7 @@ export function formGroups(form: DraftForm): PillarGroup<{ form: MetricForm; num
     sorted.map((m, i) => ({ form: m, pillar: m.pillar, targetPoints: content.metrics[i].targetPoints })),
     content.attendancePoints,
     form.pillars,
+    form.attendance !== false,
   ).map((g) => ({ ...g, metrics: g.metrics.map((m) => ({ form: m.form, number: m.number })) }));
 }
 

@@ -25,6 +25,7 @@ import { placeName, userNames } from '../payroll/adjustments/people.js';
 import { firstDay, lastDay } from '../payroll/months.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { KpiOpeningService } from './kpi-opening.service.js';
+import { attendanceInKpi } from './kpi-rescore.service.js';
 import { KpiScorecardsService } from './kpi-scorecards.service.js';
 import { monthOfCard, SCORECARD_ENTITY } from './kpi-views.js';
 import type { KpiPracticeStartDto } from './kpis.dto.js';
@@ -228,6 +229,8 @@ export class KpiPracticeService {
     const scorer = kpiScorerOf({ confidential: isConfidential, isCeo, approverId: approver?.employeeId ?? null });
     // the month's attendance as payroll has it now: this month's so far
     const attendance = await this.opening.attendanceOf(month, person.id, template.attendancePoints);
+    // and whether it counts: Attendance in the KPI as it is, as a real one opening now (owner, 25 October 2026: "Fixed cut only")
+    const counted = await attendanceInKpi(this.prisma);
     const draft = template.status === 'draft';
     const made = await this.prisma.kpiScorecard.create({
       data: {
@@ -241,6 +244,7 @@ export class KpiPracticeService {
         managerId: scorer === 'manager' ? approver!.employeeId : null,
         approverRole: scorer === 'manager' ? approver!.role : null,
         ...attendance,
+        attendanceCounted: counted,
         practice: true,
         practiceById: user.id,
         practiceAt: new Date(),
