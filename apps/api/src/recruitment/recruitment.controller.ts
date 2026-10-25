@@ -28,6 +28,7 @@ import {
   InterviewOutcomeDto,
   RecruitmentSettingsDto,
   CvPositionChoicesDto,
+  EarlierOffersDto,
   SuggestionDto,
   CreateVacancyDto,
   ListApplicationsDto,
@@ -363,6 +364,23 @@ export class RecruitmentSettingsController {
   @Put('positions')
   savePositions(@Body() dto: CvPositionChoicesDto, @CurrentUser() user: SessionUser) {
     return this.settings.savePositions(dto, user);
+  }
+
+  /**
+   * "Entering earlier offers" (owner, 25 October 2026: "allow the HR to add for now job offers with a past duedate to
+   * enter the previous data"): HR, the CEO and a Super Admin read it (the offer forms follow it).
+   */
+  @Roles(...READS)
+  @Get('earlier-offers')
+  earlierOffers() {
+    return this.settings.earlierOffers();
+  }
+
+  /** Switched on or off by HR or a Super Admin, audited. */
+  @Roles(...MANAGES)
+  @Put('earlier-offers')
+  setEarlierOffers(@Body() dto: EarlierOffersDto, @CurrentUser() user: SessionUser) {
+    return this.settings.setEarlierOffers(dto, user);
   }
 }
 

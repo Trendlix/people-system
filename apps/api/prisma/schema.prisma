@@ -1845,7 +1845,7 @@ model JobOffer {
   pdf               Bytes? // the same as PDF, when the converter answered
   // sending
   tokenHash         String?          @unique @map("token_hash") // SHA-256 of the link's secret; sending again replaces it
-  sentVia           String?          @map("sent_via") // email, link
+  sentVia           String?          @map("sent_via") // OFFER_SENT_WAYS: email, link, outside (recorded as sent earlier)
   sentTo            String?          @map("sent_to")
   sentAt            DateTime?        @map("sent_at") @db.Timestamptz
   sentById          String?          @map("sent_by") @db.Uuid
@@ -1863,6 +1863,10 @@ model JobOffer {
   withdrawnAt       DateTime?        @map("withdrawn_at") @db.Timestamptz
   withdrawReason    String?          @map("withdraw_reason")
   hiredAt           DateTime?        @map("hired_at") @db.Timestamptz // the profile, employment and draft contract were made from it
+  // an earlier offer (owner, 25 October 2026: "allow the HR to add for now job offers with a past duedate to enter the
+  // previous data"): saved with a past last day, or recorded as sent outside the system, while Recruitment Settings'
+  // "Entering earlier offers" was on; never emailed, linked or told to the candidate
+  recordedEarlier   Boolean          @default(false) @map("recorded_earlier")
   // the application it was made from (recruitment, 22 October 2026: Make offer); its answer moves the application on
   applicationId     String?          @map("application_id") @db.Uuid
   application       JobApplication?  @relation(fields: [applicationId], references: [id], onDelete: SetNull)
@@ -2510,7 +2514,9 @@ model InterviewFeedback {
 // Recruitment's settings (one row, id 1; Phase 2): the rejection email's subject and words, English and Arabic, as HR
 // wrote them; none: the standard (packages/shared recruitment-hiring.ts REJECTION_STANDARD). Since 24 October 2026
 // (Suggested From Earlier CVs, packages/shared suggested-cvs.ts): how far back CVs count, in months, and the invitation
-// to apply's subject and words (none: INVITE_STANDARD).
+// to apply's subject and words (none: INVITE_STANDARD). Since 25 October 2026 (owner: "allow the HR to add for now job
+// offers with a past duedate to enter the previous data"): the switch "Entering earlier offers", on for now (also with no
+// row), HR's and a Super Admin's to change.
 model RecruitmentSettings {
   id               Int      @id @default(1)
   rejectionSubject String?  @map("rejection_subject")
@@ -2520,6 +2526,7 @@ model RecruitmentSettings {
   inviteSubject    String?  @map("invite_subject")
   inviteEn         String?  @map("invite_en")
   inviteAr         String?  @map("invite_ar")
+  earlierOffers    Boolean  @default(true) @map("earlier_offers")
   updatedById      String?  @map("updated_by") @db.Uuid
   updatedBy        User?    @relation("RecruitmentSettingsChange", fields: [updatedById], references: [id], onDelete: SetNull)
   updatedAt        DateTime @default(now()) @map("updated_at") @db.Timestamptz

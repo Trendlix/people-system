@@ -10,6 +10,7 @@ import {
   INTERVIEW_STATUS_LABELS,
   OFFER_STATUS_LABELS,
   RECOMMENDATION_LABELS,
+  RECORDED_EARLIER_MARK,
   type CandidateView,
   type ScreeningComments,
   type ScreeningCv,
@@ -192,6 +193,8 @@ function Offers({ c }: { c: CandidateView }) {
               {' '}
               · {OFFER_STATUS_LABELS[o.status as keyof typeof OFFER_STATUS_LABELS] ?? o.status}
               {o.vacancyTitle ? ` · ${o.vacancyTitle}` : ''} · {formatDate(o.createdAt)}
+              {/* an earlier offer, entered after it was given (25 October 2026) */}
+              {o.recordedEarlier ? ` · ${RECORDED_EARLIER_MARK}` : ''}
             </span>
           </li>
         ))}

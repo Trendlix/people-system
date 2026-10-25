@@ -1,4 +1,5 @@
 import 'server-only';
+import type { EarlierOffersSetting } from '@trendlix/shared';
 import { notFound, redirect } from 'next/navigation';
 import { ApiError, apiFetch, messagesOf } from '@/lib/api';
 import type { AllowanceType, ContractSettings, OfferListItem, OfferView } from '@/lib/types';
@@ -70,4 +71,12 @@ export async function loadAllowanceTypes(): Promise<AllowanceType[]> {
 /** What a new contract, and so a new offer, starts with: the probation and the length, in months. */
 export function loadContractSettings(): Promise<ContractSettings | null> {
   return getOrNull<ContractSettings>('/contract-settings');
+}
+
+/**
+ * Recruitment Settings' "Entering earlier offers" (owner, 25 October 2026): whether it is on. False when it can't be
+ * read: the form then says nothing of earlier offers (the API decides either way).
+ */
+export async function loadEarlierOffers(): Promise<boolean> {
+  return (await getOrNull<EarlierOffersSetting>('/recruitment/settings/earlier-offers'))?.on === true;
 }

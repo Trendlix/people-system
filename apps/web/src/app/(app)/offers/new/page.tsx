@@ -8,7 +8,7 @@ import { BackLink, Empty, Loading } from '../../organization/ui';
 import { loadApplicant } from '../../recruitment/data';
 import { applicantHref, offerFromApplication } from '../../recruitment/recruitment';
 import { createOffer } from '../actions';
-import { loadAllowanceTypes, loadContractSettings } from '../data';
+import { loadAllowanceTypes, loadContractSettings, loadEarlierOffers } from '../data';
 import { newOfferDefaults } from '../form-body';
 import { managesOffers, WHO_CHANGES } from '../list';
 import { OfferForm } from '../offer-form';
@@ -24,12 +24,14 @@ async function NewOffer({ searchParams }: { searchParams: PageProps<'/offers/new
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
   if (!managesOffers(user)) return <Empty>{WHO_CHANGES}</Empty>;
   const applicationId = typeof query.application === 'string' && UUID.test(query.application) ? query.application : null;
-  const [pickers, allowanceTypes, settings, lawYears, applicant] = await Promise.all([
+  const [pickers, allowanceTypes, settings, lawYears, applicant, earlierOffers] = await Promise.all([
     loadPickers(),
     loadAllowanceTypes(),
     loadContractSettings(),
     loadLawRates(),
     applicationId ? loadApplicant(applicationId) : Promise.resolve(null),
+    // Recruitment Settings' "Entering earlier offers" (25 October 2026): a past last day is then taken
+    loadEarlierOffers(),
   ]);
   const today = todayInCairo();
   const base = newOfferDefaults(settings, today);
@@ -60,6 +62,7 @@ async function NewOffer({ searchParams }: { searchParams: PageProps<'/offers/new
         cancelHref={from ? applicantHref(from.id) : '/offers'}
         submitLabel="Save draft"
         applicationId={from?.id}
+        earlierOffers={earlierOffers}
       />
     </div>
   );

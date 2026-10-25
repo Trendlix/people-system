@@ -52,10 +52,19 @@ async function EditOffer({ params }: { params: Promise<{ id: string }> }) {
         lawYears={lawYears}
         cancelHref={back}
         submitLabel="Save draft"
+        earlierOffers={offer.earlierOffers === true}
       />
     );
   } else if (status === 'sent' || status === 'expired') {
-    body = <SentOfferForm action={updateSentOffer.bind(null, offer.id)} expiresOn={offer.expiresOn} note={offer.note} cancelHref={back} />;
+    body = (
+      <SentOfferForm
+        action={updateSentOffer.bind(null, offer.id)}
+        expiresOn={offer.expiresOn}
+        note={offer.note}
+        cancelHref={back}
+        earlier={offer.recordedEarlier === true && offer.earlierOffers === true}
+      />
+    );
   } else {
     body = <Empty>This offer is {statusLabel(status).toLowerCase()}: it can&apos;t be changed.</Empty>;
   }

@@ -958,7 +958,8 @@ export interface ApplicationView extends ApplicationListItem {
   /** The CV read and what the rules found in it (22 October 2026); null without a CV. */
   cvReading: CvReadingView | null;
   history: ApplicationStepView[];
-  offers: { id: string; number: string; status: string }[];
+  /** `recordedEarlier`: an earlier offer, entered after it was given (25 October 2026); left out by an API from before. */
+  offers: { id: string; number: string; status: string; recordedEarlier?: boolean }[];
   /** The profile made when they were hired from a job offer. */
   employeeId: string | null;
   /** How the caller sees them (Phase 2): a hiring manager and an interviewer never see the expected salary nor HR's notes. */

@@ -1,5 +1,5 @@
 import 'server-only';
-import type { LinkedInSettingsView, PortfolioSettingsView } from '@trendlix/shared';
+import type { EarlierOffersSetting, LinkedInSettingsView, PortfolioSettingsView } from '@trendlix/shared';
 import { loadJson, type Loaded } from '../payroll/load';
 
 // Recruitment Settings' newer sections (owner, 25 October 2026: "can i use linkedin to complete the data? and for
@@ -10,3 +10,6 @@ import { loadJson, type Loaded } from '../payroll/load';
 export const loadPortfolioSettings = (): Promise<Loaded<PortfolioSettingsView>> => loadJson('/recruitment/settings/portfolio');
 
 export const loadLinkedInSettings = (): Promise<Loaded<LinkedInSettingsView>> => loadJson('/recruitment/settings/linkedin');
+
+/** "Entering earlier offers" (25 October 2026): HR, the CEO and a Super Admin read it. */
+export const loadEarlierOffersSetting = (): Promise<Loaded<EarlierOffersSetting>> => loadJson('/recruitment/settings/earlier-offers');

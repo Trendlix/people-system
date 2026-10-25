@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { offerSlotKey, TEMPLATE_SLOTS, type OfferShownStatus, type TemplateSlot } from '@trendlix/shared';
-import { addDays, addMonths, fromDateOnly, todayInCairo } from '../common/date-only.js';
+import { addDays, addMonths, fromDateOnly, shownDate, todayInCairo } from '../common/date-only.js';
 import { sourceTag, type MissingTag, type Where } from '../documents/values.js';
 
 // The rules of a job offer that need no database (owner's request, 15 October 2026): its shown status, the dates its
@@ -22,6 +22,53 @@ export function shownStatus(o: { status: string; expiresOn: Date }, today = toda
 
 /** Whether the offer's last day has passed (in Cairo). */
 export const pastLastDay = (o: { expiresOn: Date }, today = todayInCairo()) => fromDateOnly(o.expiresOn) < today;
+
+// ---------- earlier offers (owner, 25 October 2026: "allow the HR to add for now job offers with a past duedate to
+// enter the previous data"; packages/shared offers.ts) ----------
+
+export const PAST_LAST_DAY = "The offer's last day can't be in the past.";
+
+/**
+ * Why a last day can't be saved, or null. One in the past only while "Entering earlier offers" is on (`earlierOn`): for
+ * a draft (which is then an earlier one), or for a sent offer that is an earlier one (`recordedEarlier`), never before
+ * the day it was recorded as sent (`sentOn`). Otherwise as before the switch: never in the past.
+ */
+export function lastDayProblem(
+  lastDay: string,
+  today: string,
+  { earlierOn, draft, recordedEarlier = false, sentOn = null }: { earlierOn: boolean; draft: boolean; recordedEarlier?: boolean; sentOn?: string | null },
+): string | null {
+  if (lastDay < today && !(earlierOn && (draft || recordedEarlier))) return PAST_LAST_DAY;
+  if (!draft && recordedEarlier && sentOn && lastDay < sentOn) return `The offer's last day can't be before the day it was sent, ${shownDate(sentOn)}.`;
+  return null;
+}
+
+/** Why an offer can't be recorded as sent on `sentOn`, or null: not in the future, and not after its last day. */
+export function recordSentProblem(sentOn: string, lastDay: string, today: string): string | null {
+  if (sentOn > today) return "The day it was sent can't be in the future.";
+  if (sentOn > lastDay) return `It can't have been sent after its last day, ${shownDate(lastDay)}. Choose an earlier day, or edit the last day first.`;
+  return null;
+}
+
+/**
+ * Why an answer can't be dated `answeredOn`, or null. Another day than today only for an earlier offer while the switch
+ * is on (`leeway`); never in the future, nor before the day the offer was sent (`sentOn`).
+ */
+export function answerDayProblem(answeredOn: string, today: string, { leeway, sentOn }: { leeway: boolean; sentOn: string | null }): string | null {
+  if (answeredOn > today) return "The day of the answer can't be in the future.";
+  if (answeredOn !== today && !leeway) return "Only an earlier offer's answer is dated another day than today, while entering earlier offers is on.";
+  if (sentOn && answeredOn < sentOn) return `The answer can't be before the offer was sent, on ${shownDate(sentOn)}.`;
+  return null;
+}
+
+/**
+ * The moment kept for a day HR picked (an earlier offer's sending or answer): midday in Cairo (10:00 UTC, 12:00 or 13:00
+ * there), so it falls on that day whatever the clock, and never later than now (today's, early in the morning).
+ */
+export function momentOn(ymd: string, now = new Date()): Date {
+  const midday = new Date(`${ymd}T10:00:00.000Z`);
+  return midday.getTime() > now.getTime() ? now : midday;
+}
 
 /**
  * The dates a contract made from the offer has, as ContractsService works them out for version 1: it starts on the

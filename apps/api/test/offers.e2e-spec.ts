@@ -176,6 +176,9 @@ describe('Job offers (e2e)', () => {
     await prisma.generatedDocument.deleteMany();
     await prisma.jobOffer.deleteMany();
     await prisma.templateVersion.deleteMany();
+    // the rules as before "Entering earlier offers" (25 October 2026), which is on for now: earlier-offers.e2e-spec.ts
+    // tests it
+    await prisma.recruitmentSettings.upsert({ where: { id: 1 }, create: { id: 1, earlierOffers: false }, update: { earlierOffers: false } });
 
     hrEmail = await createUser(prisma, ['hr']);
     hr = await signIn(app, hrEmail);
@@ -238,6 +241,7 @@ describe('Job offers (e2e)', () => {
     await prisma.jobOffer.deleteMany();
     await prisma.allowanceType.deleteMany({ where: { id: { in: [housingId, phoneId] } } }).catch(() => undefined);
     if (companyBefore) await prisma.company.update({ where: { id: 1 }, data: companyBefore });
+    await prisma.recruitmentSettings.updateMany({ where: { id: 1 }, data: { earlierOffers: true } });
     await app.close();
   });
 

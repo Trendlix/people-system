@@ -106,7 +106,8 @@ const DETAIL_INCLUDE = {
   // the CV read and analysed (22 October 2026)
   cvReading: { select: { status: true, method: true, readAt: true, facts: true, text: true } },
   steps: { orderBy: { at: 'asc' }, include: { by: { select: { id: true, email: true } } } },
-  offers: { orderBy: { createdAt: 'asc' }, select: { id: true, number: true, status: true } },
+  // an earlier one marked (25 October 2026)
+  offers: { orderBy: { createdAt: 'asc' }, select: { id: true, number: true, status: true, recordedEarlier: true } },
   suggestedBy: { select: { id: true, email: true } },
   // moved from a general CV (22 October 2026): where that CV came from
   generalCv: { select: { source: true } },

@@ -310,6 +310,15 @@ export class RecruitmentSettingsDto {
   inviteAr?: string | null;
 }
 
+/**
+ * Recruitment Settings' "Entering earlier offers" (owner, 25 October 2026: "allow the HR to add for now job offers with
+ * a past duedate to enter the previous data"): on or off.
+ */
+export class EarlierOffersDto {
+  @IsBoolean({ message: 'Say whether entering earlier offers is on or off.' })
+  on: boolean;
+}
+
 /** ?status= on a vacancy's Suggested From Earlier CVs (24 October 2026): suggested unless asked. */
 export class ListSuggestionsDto {
   @IsOptional() @IsIn(SUGGESTION_STATUSES, { message: 'Choose which suggestions to list.' })

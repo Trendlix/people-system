@@ -618,7 +618,18 @@ export class CandidatesService implements OnModuleDestroy {
       this.prisma.jobOffer.findMany({
         where: { AND: [offerWhere, { OR: [{ applicationId: { in: appIds } }, ...(employee && !employee.restricted && row.employeeId ? [{ employeeId: row.employeeId }] : [])] }] },
         orderBy: { createdAt: 'desc' },
-        select: { id: true, number: true, status: true, applicationId: true, createdAt: true, sentAt: true, respondedAt: true, withdrawnAt: true, application: { select: { vacancy: { select: { title: true } } } } },
+        select: {
+          id: true,
+          number: true,
+          status: true,
+          applicationId: true,
+          createdAt: true,
+          sentAt: true,
+          respondedAt: true,
+          withdrawnAt: true,
+          recordedEarlier: true,
+          application: { select: { vacancy: { select: { title: true } } } },
+        },
       }),
       this.matchViews({ status: 'open', OR: [{ candidateAId: id }, { candidateBId: id }] }, user),
       userNames(
@@ -653,6 +664,7 @@ export class CandidatesService implements OnModuleDestroy {
       id: o.id,
       number: o.number,
       status: o.status,
+      recordedEarlier: o.recordedEarlier,
       applicationId: o.applicationId,
       vacancyTitle: o.application?.vacancy.title ?? (o.applicationId ? (titleOf.get(o.applicationId) ?? null) : null),
       createdAt: o.createdAt.toISOString(),
@@ -685,7 +697,8 @@ export class CandidatesService implements OnModuleDestroy {
     for (const o of offers) {
       const label = (s: string) => OFFER_STATUS_LABELS[s as keyof typeof OFFER_STATUS_LABELS] ?? s;
       timeline.push({ at: o.createdAt.toISOString(), kind: 'offer', text: `Job offer ${o.number} drafted`, href: `/offers/${o.id}` });
-      if (o.sentAt) timeline.push({ at: o.sentAt.toISOString(), kind: 'offer', text: `Job offer ${o.number} sent`, href: `/offers/${o.id}` });
+      // an earlier offer (25 October 2026): recorded as sent outside the system
+      if (o.sentAt) timeline.push({ at: o.sentAt.toISOString(), kind: 'offer', text: `Job offer ${o.number} sent${o.recordedEarlier ? ' (recorded earlier)' : ''}`, href: `/offers/${o.id}` });
       if (o.respondedAt) timeline.push({ at: o.respondedAt.toISOString(), kind: 'offer', text: `Job offer ${o.number}: ${label(o.status)}`, href: `/offers/${o.id}` });
       else if (o.withdrawnAt) timeline.push({ at: o.withdrawnAt.toISOString(), kind: 'offer', text: `Job offer ${o.number}: ${label('withdrawn')}`, href: `/offers/${o.id}` });
     }

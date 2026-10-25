@@ -12,6 +12,7 @@ import { formatDate, parseDate } from '@/lib/format';
 import type { AllowanceType, FormState } from '@/lib/types';
 import type { EmploymentPickers } from '../employees/employment-fields';
 import { plainAmount } from '../employees/[id]/contracts/salary';
+import { earlierNote } from './earlier';
 import type { OfferDefaults } from './form-body';
 import { OfferPositionFields } from './offer-position';
 import { OfferTerms } from './offer-terms';
@@ -23,7 +24,9 @@ import { withCode } from '@/lib/hidden';
 // and the offer itself (its last day to accept, a few words to the candidate, a note for HR). It is saved as a draft;
 // nothing reaches the candidate until HR sends it from the offer's page (owner's request, 15 October 2026). The salary
 // is estimated with the rates set by law of the join date's year (owner's request, 16 October 2026), from the years the
-// page loaded (`lawYears`).
+// page loaded (`lawYears`). While Recruitment Settings' "Entering earlier offers" is on (`earlierOffers`; owner, 25
+// October 2026: "allow the HR to add for now job offers with a past duedate to enter the previous data"), a last day that
+// has passed is taken, and the form says the offer is then an earlier one.
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -42,6 +45,7 @@ const amountText = (n: number | null) => (n === null ? '' : plainAmount(n));
  */
 const TRACKED = [
   'joinDate',
+  'expiresOn',
   'employmentType',
   'payBasis',
   'salaryBasis',
@@ -76,6 +80,7 @@ export function OfferForm({
   cancelHref,
   submitLabel,
   applicationId,
+  earlierOffers = false,
 }: {
   action: Action;
   pickers: OfferPickers;
@@ -88,6 +93,8 @@ export function OfferForm({
   submitLabel: string;
   /** Made from an applicant (recruitment, 22 October 2026: Make offer): sent with the new offer. */
   applicationId?: string;
+  /** Whether "Entering earlier offers" is on: a past last day is then taken (25 October 2026). */
+  earlierOffers?: boolean;
 }) {
   // Kept form: a refused save leaves everything as typed and chosen.
   const { state, pending, form } = useKeptForm(action);
@@ -95,6 +102,7 @@ export function OfferForm({
 
   const [typed, setTyped] = useState<Tracked>(() => ({
     joinDate: valueOf(state, 'joinDate', formatDate(defaults.joinDate)),
+    expiresOn: valueOf(state, 'expiresOn', formatDate(defaults.expiresOn)),
     employmentType: valueOf(state, 'employmentType', defaults.employmentType),
     payBasis: valueOf(state, 'payBasis', defaults.payBasis),
     salaryBasis: valueOf(state, 'salaryBasis', 'gross'),
@@ -113,6 +121,8 @@ export function OfferForm({
   const year = Number((join || today).slice(0, 4));
   const rates = lawRatesFor(year, lawYears);
   const termsTyped: TermsTyped = typed;
+  // a last day that has passed, while entering earlier offers is on: the offer is an earlier one
+  const earlier = earlierNote(typed.expiresOn, today, earlierOffers);
 
   function track(e: React.FormEvent<HTMLFormElement>) {
     const t = e.target;
@@ -273,7 +283,13 @@ export function OfferForm({
             />
             <p id={fid('expiresOn-hint')} className="hint">
               The last day the candidate can accept. It can be extended later.
+              {earlierOffers && !earlier && ' While entering earlier offers is on, a past day records an earlier offer.'}
             </p>
+            {earlier && (
+              <p role="status" className="mt-1 text-sm font-semibold text-warn">
+                {earlier}
+              </p>
+            )}
           </div>
         </div>
         <div id="field-message" className="scroll-mt-6">
@@ -323,17 +339,22 @@ export function OfferForm({
   );
 }
 
-/** A sent (or expired) offer: only its last day to accept and its note can change. */
+/**
+ * A sent (or expired) offer: only its last day to accept and its note can change. An earlier one's (`earlier`: recorded
+ * as sent earlier, while entering earlier offers is on; 25 October 2026) can be a past day.
+ */
 export function SentOfferForm({
   action,
   expiresOn,
   note,
   cancelHref,
+  earlier = false,
 }: {
   action: Action;
   expiresOn: string;
   note: string | null;
   cancelHref: string;
+  earlier?: boolean;
 }) {
   const { state, pending, form } = useKeptForm(action);
   const fid = useFieldIds();
@@ -356,6 +377,7 @@ export function SentOfferForm({
         />
         <p id={fid('expiresOn-hint')} className="hint">
           The last day the candidate can accept.
+          {earlier && ' An earlier offer: a past day is kept, not before the day it was sent.'}
         </p>
       </div>
       <div>

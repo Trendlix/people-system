@@ -24,6 +24,39 @@ export const OFFER_VALID_DAYS = 7;
 export const OFFER_SEND_WAYS = ['email', 'link'] as const;
 export type OfferSendWay = (typeof OFFER_SEND_WAYS)[number];
 
+// ---------- earlier offers (owner, 25 October 2026) ----------
+// "allow the HR to add for now job offers with a past duedate to enter the previous data": while the switch "Entering
+// earlier offers" is on (Organization → Recruitment Settings; on for now, the owner switches it off once the old offers
+// are in), an offer can be saved with a past last day (it is then an earlier one), recorded as sent outside the system on
+// the day HR picks, and its answer recorded with the day it was given. Nothing is emailed, linked or told to the
+// candidate for such an offer; emailing or linking one past its last day stays refused.
+
+/**
+ * How a sent offer went: by the system's email, as a link HR sent, or outside the system before it was entered here
+ * ("Record as sent earlier": no email and no link).
+ */
+export const OFFER_SENT_WAYS = [...OFFER_SEND_WAYS, 'outside'] as const;
+export type OfferSentWay = (typeof OFFER_SENT_WAYS)[number];
+
+/** The switch's name, as Recruitment Settings shows it. */
+export const EARLIER_OFFERS_SWITCH = 'Entering earlier offers';
+
+/** What the offer form says under a last day that has passed, while the switch is on. */
+export const EARLIER_OFFER_NOTE = 'Last day passed: this offer is recorded as an earlier one.';
+
+/** The small mark an earlier offer carries in the lists and on its page. */
+export const RECORDED_EARLIER_MARK = 'Recorded earlier';
+
+/** Said when something only earlier offers may do is asked with the switch off. */
+export const EARLIER_OFFERS_OFF = 'Entering earlier offers is switched off (Organization → Recruitment Settings).';
+
+/** GET /recruitment/settings/earlier-offers: the switch, and who changed it last. */
+export interface EarlierOffersSetting {
+  on: boolean;
+  updatedAt: string | null;
+  updatedBy: { email: string; name: string | null } | null;
+}
+
 /**
  * The job offer template for an employment type: its slot in the template library. The slots kept their keys when the
  * types changed (owner, 18 October 2026): one paid by commission (full-time only) is offer_sales, which is used only when

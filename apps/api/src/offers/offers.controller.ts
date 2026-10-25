@@ -3,7 +3,18 @@ import type { Request, Response } from 'express';
 import { CurrentUser, DeletesRecords, NotForDevelopers, Public, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { pdfFile, pdfOnly, wantsDownload } from '../pdf/pdf-file.js';
-import { AcceptOfferDto, AnswerOfferDto, CreateOfferDto, DeclineOfferDto, ListOffersDto, OfferDocumentQueryDto, SendOfferDto, UpdateOfferDto, WithdrawOfferDto } from './offers.dto.js';
+import {
+  AcceptOfferDto,
+  AnswerOfferDto,
+  CreateOfferDto,
+  DeclineOfferDto,
+  ListOffersDto,
+  OfferDocumentQueryDto,
+  RecordSentOfferDto,
+  SendOfferDto,
+  UpdateOfferDto,
+  WithdrawOfferDto,
+} from './offers.dto.js';
 import { OffersService } from './offers.service.js';
 import { PublicOffersService, type ResponseOrigin } from './public-offers.service.js';
 
@@ -11,7 +22,9 @@ import { PublicOffersService, type ResponseOrigin } from './public-offers.servic
 // way; HR and the CEO read them (the amounts only for those who see salaries); only a Super Admin deletes one. The
 // candidate answers on the offer's page, without signing in, by the link's secret (PublicOffersController). The offer's
 // document is given only as a protected PDF (owner's request, 15 October 2026: "No doc file export, just a protected
-// PDF"), shown in the browser, or saved with ?download=1.
+// PDF"), shown in the browser, or saved with ?download=1. Earlier offers (owner, 25 October 2026: "allow the HR to add
+// for now job offers with a past duedate to enter the previous data"): HR, the CEO and a Super Admin record one as sent
+// earlier and record its answer, while Recruitment Settings' "Entering earlier offers" is on (the service checks it).
 
 @Controller('offers')
 export class OffersController {
@@ -87,12 +100,23 @@ export class OffersController {
     return this.offers.withdraw(id, dto, user);
   }
 
-  /** An answer the candidate gave another way, recorded by HR. */
-  @Roles('hr')
+  /**
+   * An answer the candidate gave another way, recorded by HR; an earlier offer's also by the CEO or a Super Admin, while
+   * entering earlier offers is on (the service refuses them any other offer's).
+   */
+  @Roles('hr', 'ceo', 'super_admin')
   @Post(':id/answer')
   @HttpCode(200)
   answer(@Param('id', ParseUUIDPipe) id: string, @Body() dto: AnswerOfferDto, @CurrentUser() user: SessionUser) {
     return this.offers.answer(id, dto, user);
+  }
+
+  /** "Record as sent earlier": a draft marked sent outside the system on a past day; no email, no link. */
+  @Roles('hr', 'ceo', 'super_admin')
+  @Post(':id/record-sent')
+  @HttpCode(200)
+  recordSent(@Param('id', ParseUUIDPipe) id: string, @Body() dto: RecordSentOfferDto, @CurrentUser() user: SessionUser) {
+    return this.offers.recordSent(id, dto, user);
   }
 
   /** Makes the profile, employment and draft contract from an accepted offer, when that failed before. */

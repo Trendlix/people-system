@@ -1576,7 +1576,7 @@ export interface AllowanceLine {
 // with `salaryHidden`, for anyone else. Dates are "YYYY-MM-DD"; moments are ISO.
 
 type OfferStatusShown = import('@trendlix/shared').OfferShownStatus;
-type OfferWay = import('@trendlix/shared').OfferSendWay;
+type OfferWay = import('@trendlix/shared').OfferSentWay;
 type OfferPayBasis = import('@trendlix/shared').PayBasis;
 
 /** One row of GET /offers?status=&q= (status: a shown status, or 'open' = drafts and sent ones not expired). */
@@ -1603,6 +1603,8 @@ export interface OfferListItem {
   respondedAt: string | null;
   /** Once accepted and the profile is made (or a former employee offered again): their profile. */
   employeeId: string | null;
+  /** An earlier offer, entered after it was given (25 October 2026): marked "Recorded earlier". Left out by an API from before. */
+  recordedEarlier?: boolean;
 }
 
 /** Something the job offer template needs that the offer (or the company profile) lacks, and where it is filled in. */
@@ -1678,6 +1680,7 @@ export interface OfferView {
    * `hasPdf`: a PDF was kept when it was sent (else the API makes one when it is opened, with the converter).
    */
   document: { fileName: string; hasPdf: boolean; documentDate: string } | null;
+  /** By email, as a link, or outside the system (recorded as sent earlier: no email, no link). */
   sentVia: OfferWay | null;
   sentTo: string | null;
   sentAt: string | null;
@@ -1699,6 +1702,14 @@ export interface OfferView {
   emailConfigured: boolean;
   /** Whether the server can make PDFs (the converter is set up): without it, the offer's document can't be made or sent. */
   pdfAvailable: boolean;
+  /**
+   * An earlier offer (owner, 25 October 2026: "allow the HR to add for now job offers with a past duedate to enter the
+   * previous data"): saved with a past last day or recorded as sent earlier; never emailed or linked. Left out by an API
+   * from before.
+   */
+  recordedEarlier?: boolean;
+  /** Whether Recruitment Settings' "Entering earlier offers" is on now. Left out by an API from before. */
+  earlierOffers?: boolean;
   createdAt: string;
   createdBy: { email: string } | null;
 }

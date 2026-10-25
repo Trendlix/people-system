@@ -8,6 +8,7 @@ import {
   newOfferDefaults,
   offerBody,
   offerDefaults,
+  recordSentBody,
   sentOfferBody,
   submitted,
   withdrawBody,
@@ -264,6 +265,23 @@ describe('the small forms', () => {
     expect(errors).toEqual([]);
     answerBody(form({ answer: 'maybe' }), errors);
     expect(errors).toEqual(['Choose whether the candidate accepted or declined.']);
+  });
+
+  it("an earlier offer's answer with the day it was given, today when left empty (25 October 2026)", () => {
+    const errors: string[] = [];
+    expect(answerBody(form({ answer: 'accepted', answeredOn: '22/09/2026' }), errors)).toEqual({ answer: 'accepted', answeredOn: '2026-09-22' });
+    expect(answerBody(form({ answer: 'declined', answeredOn: ' ' }), errors)).toEqual({ answer: 'declined' });
+    expect(errors).toEqual([]);
+    answerBody(form({ answer: 'accepted', answeredOn: '31/09/2026' }), errors);
+    expect(errors).toEqual(['Enter the day of the answer as DD/MM/YYYY, e.g. 14/10/2026.']);
+  });
+
+  it('records as sent earlier on the day typed (25 October 2026)', () => {
+    const errors: string[] = [];
+    expect(recordSentBody(form({ sentOn: '20/9/2026' }), errors)).toEqual({ sentOn: '2026-09-20' });
+    expect(errors).toEqual([]);
+    recordSentBody(form({ sentOn: '' }), errors);
+    expect(errors).toEqual(['Enter the day the offer was sent, e.g. 14/10/2026.']);
   });
 
   it('sends by email to a valid address', () => {

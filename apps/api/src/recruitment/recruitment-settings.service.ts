@@ -9,16 +9,18 @@ import {
   SUGGESTION_LIMITS,
   type CvPosition,
   type CvPositionsView,
+  type EarlierOffersSetting,
   type RecruitmentSettingsView,
 } from '@trendlix/shared';
 import { AuditService, changes } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { userNames } from '../payroll/adjustments/people.js';
+import { earlierOffersOn } from '../offers/earlier-offers.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { positionsOf } from './cv-positions.js';
 import { areasOf } from './general-cvs.service.js';
 import { userRef } from './recruitment-views.js';
-import type { CvPositionChoicesDto, RecruitmentSettingsDto } from './recruitment.dto.js';
+import type { CvPositionChoicesDto, EarlierOffersDto, RecruitmentSettingsDto } from './recruitment.dto.js';
 
 // Recruitment Settings (Phase 2, owner, 22 October 2026; the brief: "a polite standard text that an HR-editable
 // Recruitment Settings section can change (English and Arabic)"): the rejection email's subject and words, HR's (or a
@@ -28,7 +30,9 @@ import type { CvPositionChoicesDto, RecruitmentSettingsDto } from './recruitment
 // Since 25 October 2026 ("Positions on the CV Form"; owner, on "Send us your CV": "should it be the positions?", then
 // "Position, grouped by team"; packages/shared cv-positions.ts): every position with HR's choices, each shown on the
 // careers page or hidden, and a public name; HR (or a Super Admin) changes them, HR and the CEO read them, and HR's lists
-// filter by their teams. Each change audited: the positions hidden, shown again and renamed.
+// filter by their teams. Each change audited: the positions hidden, shown again and renamed. And since then too (owner:
+// "allow the HR to add for now job offers with a past duedate to enter the previous data"): the switch "Entering earlier
+// offers", on for now; HR (or a Super Admin) switches it, HR and the CEO read it; audited.
 
 export const SETTINGS_ENTITY = 'recruitment_settings';
 
@@ -102,6 +106,34 @@ export class RecruitmentSettingsService {
       diff: { ...diff, ...(rejectionChanged && { rejectionText: 'changed' }), ...(inviteChanged && { inviteText: 'changed' }) },
     });
     return this.get();
+  }
+
+  // ---------- entering earlier offers (25 October 2026) ----------
+
+  /** The switch, on for now (also before the settings' row exists), and who changed Recruitment Settings last. */
+  async earlierOffers(): Promise<EarlierOffersSetting> {
+    const [on, row] = await Promise.all([
+      earlierOffersOn(this.prisma),
+      this.prisma.recruitmentSettings.findUnique({ where: { id: 1 }, select: { updatedAt: true, updatedBy: USER } }),
+    ]);
+    const names = await userNames(this.prisma, [row?.updatedBy ?? null]);
+    return { on, updatedAt: row?.updatedAt.toISOString() ?? null, updatedBy: userRef(row?.updatedBy ?? null, names) };
+  }
+
+  /**
+   * Switched on or off: off, the job offers' rules are as before it (no past last day, no "Record as sent earlier", an
+   * answer dated today, refused past its last day). Audited when it changes.
+   */
+  async setEarlierOffers(dto: EarlierOffersDto, user: SessionUser): Promise<EarlierOffersSetting> {
+    const before = await earlierOffersOn(this.prisma);
+    if (before === dto.on) return this.earlierOffers();
+    await this.prisma.recruitmentSettings.upsert({
+      where: { id: 1 },
+      create: { id: 1, earlierOffers: dto.on, updatedById: user.id },
+      update: { earlierOffers: dto.on, updatedById: user.id, updatedAt: new Date() },
+    });
+    await this.audit.record({ userId: user.id, action: 'update', entityType: SETTINGS_ENTITY, entityId: null, diff: { earlierOffers: { from: before, to: dto.on } } });
+    return this.earlierOffers();
   }
 
   // ---------- the positions on the CV form (25 October 2026) ----------

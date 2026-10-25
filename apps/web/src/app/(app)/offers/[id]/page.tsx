@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
-import { INTERN_NO_WAGE_TEXT, LABELS, OFFER_VALID_DAYS, PAY_BASIS_LABELS } from '@trendlix/shared';
+import { EARLIER_OFFER_NOTE, INTERN_NO_WAGE_TEXT, LABELS, OFFER_VALID_DAYS, PAY_BASIS_LABELS } from '@trendlix/shared';
 import { DocumentViewer } from '@/components/document-viewer';
 import { PrintPdf } from '@/components/print-pdf';
 import { allowanceAmountText } from '@/lib/allowances';
@@ -17,12 +17,13 @@ import { formatEgp, hourlyNetTerms } from '../../employees/[id]/contracts/salary
 import { outsideLawShort, workNatureLabel, workPatternNote } from '../../employees/employment-law';
 import { arrangementLabel, FieldGrid, todayInCairo, type GridField } from '../../employees/ui';
 import { BackLink, Empty, Loading } from '../../organization/ui';
-import { answerOffer, deleteOffer, emailOffer, extendOffer, hireFromOffer, linkOffer, withdrawOffer } from '../actions';
+import { answerOffer, deleteOffer, emailOffer, extendOffer, hireFromOffer, linkOffer, recordSentOffer, withdrawOffer } from '../actions';
 import { loadOffer } from '../data';
 import { canSeeOffers, managesOffers, offerDocumentHref, placeName, shownStatus, WHO_SEES } from '../list';
 import { canBeSent, documentLabels, documentState, draftTemplateVersion, missingHelp, offerTimeline, templateProblem, waitingText, type TimelineEvent } from '../timeline';
-import { OfferStatusBadge } from '../ui';
-import { ExtendOffer, RecordAnswer, SendOffer, WithdrawOffer } from './offer-actions';
+import { answerLeeway, answersNow, canRecordSent, recordsEarlier, recordSentDocumentHint } from '../earlier';
+import { OfferStatusBadge, RecordedEarlierMark } from '../ui';
+import { ExtendOffer, RecordAnswer, RecordSentEarlier, SendOffer, WithdrawOffer } from './offer-actions';
 import { ASK_SUPER_ADMIN, seesTemplates, TEMPLATES_PATH } from '../../organization/templates/wording';
 import { RehireWarning } from '../../offboarding/rehire-warning';
 import { shownCode } from '@/lib/hidden';
@@ -33,7 +34,10 @@ import { Shown } from '@/components/hidden';
 // extend it, withdraw it, record an answer given another way, make the profile once accepted; a Super Admin deletes one
 // that wasn't accepted (owner's decisions, 15 October 2026). The CEO sees all of it, without the actions. Its document
 // is only ever a protected PDF, never a Word file (owner's request, 15 October 2026: "No doc file export, just a
-// protected PDF"): without the server's PDF converter, it can't be made or sent (timeline.ts, documentState).
+// protected PDF"): without the server's PDF converter, it can't be made or sent (timeline.ts, documentState). An earlier
+// offer (owner, 25 October 2026: "allow the HR to add for now job offers with a past duedate to enter the previous
+// data") is marked "Recorded earlier" and never sent; while Recruitment Settings' "Entering earlier offers" is on, HR,
+// the CEO and a Super Admin record it as sent earlier and record its answer with the day it was given (earlier.ts).
 
 const small = 'btn min-h-9 px-3';
 
@@ -45,6 +49,8 @@ function MissingValues({ offer: o, status, templates }: { offer: OfferView; stat
   const problem = templateProblem(o);
   const help = o.status === 'draft' ? missingHelp(o) : [];
   if ((status !== 'draft' && status !== 'sent') || (!problem && help.length === 0)) return null;
+  // an earlier offer recorded as sent is never sent again (25 October 2026)
+  if (o.recordedEarlier && o.status !== 'draft') return null;
   return (
     <section aria-labelledby="offer-missing" role="alert" className="space-y-2 rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
       <h2 id="offer-missing" className="font-semibold">
@@ -74,7 +80,15 @@ function MissingValues({ offer: o, status, templates }: { offer: OfferView; stat
           ))}
         </ul>
       )}
-      <p>{o.status === 'draft' ? 'Sending it by email or as a link waits for this.' : 'Sending it again waits for this.'}</p>
+      <p>
+        {o.status !== 'draft'
+          ? 'Sending it again waits for this.'
+          : !o.recordedEarlier
+            ? 'Sending it by email or as a link waits for this.'
+            : problem
+              ? 'Recorded as sent earlier meanwhile, it keeps no document.'
+              : 'Recording it as sent earlier waits for this.'}
+      </p>
     </section>
   );
 }
@@ -275,7 +289,7 @@ function Timeline({ events, waiting }: { events: TimelineEvent[]; waiting: strin
           <span aria-hidden="true" className={`mt-1.5 size-2.5 shrink-0 rounded-full ${TONE[e.tone]}`} />
           <div className="min-w-0 text-sm">
             <p>
-              <span className="font-semibold">{e.label}</span> <span className="text-muted tabular-nums">· {formatDateTime(e.at)}</span>
+              <span className="font-semibold">{e.label}</span> <span className="text-muted tabular-nums">· {e.dateOnly ? formatDate(e.at) : formatDateTime(e.at)}</span>
             </p>
             {e.detail && <p className="break-words text-muted">{e.detail}</p>}
             {e.href && (
@@ -316,9 +330,12 @@ async function Offer({ params, searchParams }: { params: Promise<{ id: string }>
   const brand = await getBrand();
   const today = todayInCairo();
   const status = shownStatus(o.status, o.expiresOn, today);
-  // a draft past its last day can't be sent or answered until it has a later one (the API refuses it with 409)
+  // a draft past its last day can't be sent or answered until it has a later one (the API refuses it with 409); an
+  // earlier offer's answer can, while entering earlier offers is on (25 October 2026), by HR, the CEO or a Super Admin
   const pastLastDay = o.expiresOn < today;
-  const answerable = (status === 'draft' || status === 'sent') && !pastLastDay;
+  const leeway = answerLeeway(o);
+  const answerable = answersNow(o, status, today, user);
+  const recordsSent = canRecordSent(o) && recordsEarlier(user);
   // why the profile couldn't be made when HR recorded the acceptance (answerOffer puts it in the address)
   const hireErrorParam = (await searchParams).hireError;
   const hireError = status === 'accepted' && !o.hiredAt && typeof hireErrorParam === 'string' ? hireErrorParam.slice(0, 500) : null;
@@ -331,7 +348,8 @@ async function Offer({ params, searchParams }: { params: Promise<{ id: string }>
   const name = number ? `offer ${number}` : `offer to ${o.fullNameEn}`;
   const offerName = number ? `Job offer ${number}` : 'Job offer';
   // the actions card only when it has something in it (e.g. not for the CEO on a withdrawn offer without a document)
-  const hasActions = doc.pdf || Boolean(doc.why) || Boolean(o.hiredAt) || canDelete(user) || (manages && status !== 'withdrawn' && status !== 'declined');
+  const hasActions =
+    doc.pdf || Boolean(doc.why) || Boolean(o.hiredAt) || canDelete(user) || (manages && status !== 'withdrawn' && status !== 'declined') || answerable || recordsSent;
   const mail = {
     to: o.email,
     name: o.fullNameEn,
@@ -348,6 +366,7 @@ async function Offer({ params, searchParams }: { params: Promise<{ id: string }>
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold">{o.fullNameEn}</h1>
           <OfferStatusBadge status={status} />
+          {o.recordedEarlier && <RecordedEarlierMark />}
         </div>
         <p className="text-sm text-muted">
           {number && <span className="tabular-nums">{number} · </span>}
@@ -410,10 +429,12 @@ async function Offer({ params, searchParams }: { params: Promise<{ id: string }>
                 <span className="sr-only"> {name}</span>
               </Link>
             )}
-            {manages && (status === 'sent' || status === 'expired') && (
+            {/* an earlier offer is never sent again: its last day is changed with Edit date and note */}
+            {manages && (status === 'sent' || status === 'expired') && !o.recordedEarlier && (
               <ExtendOffer action={extendOffer.bind(null, o.id)} expiresOn={o.expiresOn} suggested={addDays(o.expiresOn < today ? today : o.expiresOn, OFFER_VALID_DAYS)} />
             )}
-            {manages && answerable && <RecordAnswer action={answerOffer.bind(null, o.id)} />}
+            {recordsSent && <RecordSentEarlier action={recordSentOffer.bind(null, o.id)} expiresOn={o.expiresOn} documentHint={recordSentDocumentHint(o)} />}
+            {answerable && <RecordAnswer action={answerOffer.bind(null, o.id)} withDay={leeway} />}
             {manages && (status === 'draft' || status === 'sent' || status === 'expired') && <WithdrawOffer action={withdrawOffer.bind(null, o.id)} number={number ?? `to ${o.fullNameEn}`} />}
             {manages && status === 'accepted' && !o.hiredAt && (
               <ActionButton action={hireFromOffer.bind(null, o.id)} pendingText="Making the profile…" variant="primary">
@@ -450,10 +471,14 @@ async function Offer({ params, searchParams }: { params: Promise<{ id: string }>
               />
             </div>
           )}
-          {manages && status === 'expired' && (
+          {manages && status === 'expired' && !o.recordedEarlier && (
             <p className="text-sm text-muted">Extend the offer to send it again, or to record an answer the candidate gave before its last day.</p>
           )}
-          {manages && status === 'draft' && pastLastDay && (
+          {o.recordedEarlier && !leeway && (status === 'sent' || status === 'expired') && (
+            <p className="text-sm text-muted">An earlier offer, recorded after it was given: it is never emailed or linked. Recording its answer past its last day needs entering earlier offers switched on (Recruitment Settings).</p>
+          )}
+          {status === 'draft' && pastLastDay && leeway && <p className="text-sm text-muted">{EARLIER_OFFER_NOTE} Record it as sent earlier, or record the answer, each with the day it happened.</p>}
+          {manages && status === 'draft' && pastLastDay && !leeway && (
             <p className="text-sm text-warn">
               Its last day, {formatDate(o.expiresOn)}, has passed. Edit it to set a later one, then send it or record the answer.
             </p>

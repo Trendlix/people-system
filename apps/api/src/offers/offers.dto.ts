@@ -156,7 +156,10 @@ class OfferFieldsDto {
   @AllowanceRows()
   allowances?: AllowanceAmountDto[];
 
-  /** The last day to accept: OFFER_VALID_DAYS from today unless sent; never in the past. */
+  /**
+   * The last day to accept: OFFER_VALID_DAYS from today unless sent; never in the past, but while "Entering earlier
+   * offers" is on (25 October 2026), when the offer is an earlier one.
+   */
   @Sent() @IsDateOnly("Enter the offer's last day as a real date.")
   expiresOn?: string;
 
@@ -269,6 +272,23 @@ export class AnswerOfferDto {
   /** Why they declined, when they said. */
   @TrimOrNull() @IsOptional() @IsString() @MaxLength(1000)
   reason?: string | null;
+
+  /**
+   * The day they answered: today unless sent. Another day only for an earlier offer while "Entering earlier offers" is
+   * on (owner, 25 October 2026); never in the future (checked by the service).
+   */
+  @IsOptional() @IsDateOnly('Enter the day of the answer as a real date.')
+  answeredOn?: string;
+}
+
+/**
+ * "Record as sent earlier" (owner, 25 October 2026: "allow the HR to add for now job offers with a past duedate to enter
+ * the previous data"): a draft marked sent outside the system on that day, with no email and no link.
+ */
+export class RecordSentOfferDto {
+  /** The day it was sent: not in the future, nor after its last day. */
+  @IsDateOnly('Enter the day the offer was sent as a real date.')
+  sentOn: string;
 }
 
 /** Where the candidate answered from, as the web app saw it (kept shortened). */

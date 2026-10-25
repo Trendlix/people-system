@@ -3,8 +3,9 @@
 // Saving Recruitment Settings' newer sections (owner, 25 October 2026: "can i use linkedin to complete the data? and for
 // creatives, they need to add their portfolios"; asked, all three): the portfolio per position (HR and a Super Admin;
 // every row of the form sent), and the LinkedIn sign-in (a Super Admin; the client secret only when one was pasted, and
-// never kept to show again after a refusal). Each forwards to the API, which checks who may and every rule again, and
-// audits the change.
+// never kept to show again after a refusal). And the switch "Entering earlier offers" (owner, the same day: "allow the
+// HR to add for now job offers with a past duedate to enter the previous data"; HR and a Super Admin). Each forwards to
+// the API, which checks who may and every rule again, and audits the change.
 import { refresh } from 'next/cache';
 import { ApiError, apiSend } from '@/lib/api';
 import type { FormState } from '@/lib/types';
@@ -27,6 +28,11 @@ async function send(path: string, body: unknown, values: Record<string, string |
 
 export async function savePortfolioSettings(_prev: FormState, fd: FormData): Promise<FormState> {
   return send('/recruitment/settings/portfolio', { positions: portfolioSettingsOf(fd) }, typedPortfolioValues(fd), 'Saved the portfolio settings.');
+}
+
+export async function saveEarlierOffers(_prev: FormState, fd: FormData): Promise<FormState> {
+  const on = fd.get('on') === 'on';
+  return send('/recruitment/settings/earlier-offers', { on }, on ? { on: 'on' } : {}, on ? 'Entering earlier offers is on.' : 'Entering earlier offers is off: the usual rules are back.');
 }
 
 export async function saveLinkedInSettings(_prev: FormState, fd: FormData): Promise<FormState> {

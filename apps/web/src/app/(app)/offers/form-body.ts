@@ -202,12 +202,21 @@ export function withdrawBody(fd: FormData) {
   return reason ? { reason } : {};
 }
 
-/** An answer the candidate gave another way (by phone, in person), recorded by HR. */
+/**
+ * An answer the candidate gave another way (by phone, in person), recorded by HR; an earlier offer's (25 October 2026)
+ * with the day it was given, when typed (empty: today).
+ */
 export function answerBody(fd: FormData, errors: string[]) {
   const answer = text(fd, 'answer');
   if (answer !== 'accepted' && answer !== 'declined') errors.push('Choose whether the candidate accepted or declined.');
   const reason = text(fd, 'reason');
-  return { answer, ...(reason && { reason }) };
+  const answeredOn = text(fd, 'answeredOn') ? dateFrom(fd, 'answeredOn', 'day of the answer', errors) : '';
+  return { answer, ...(reason && { reason }), ...(answeredOn && { answeredOn }) };
+}
+
+/** Record as sent earlier (25 October 2026): the day the offer was sent, outside the system. */
+export function recordSentBody(fd: FormData, errors: string[]) {
+  return { sentOn: requiredDate(fd, 'sentOn', 'day the offer was sent', errors) };
 }
 
 /** Sending by email: to the address typed (the offer's email to start with). */

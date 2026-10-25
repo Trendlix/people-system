@@ -22,7 +22,7 @@ import {
   WHO_SEES,
   type OfferFilters,
 } from './list';
-import { OfferStatusBadge } from './ui';
+import { OfferStatusBadge, RecordedEarlierMark } from './ui';
 import { Shown } from '@/components/hidden';
 
 // Job offers (owner's request, 15 October 2026): a candidate is not an employee. HR drafts an offer, sends it by email
@@ -120,7 +120,11 @@ function OfferRow({ offer: o, salary, today }: { offer: OfferListItem; salary: b
         </td>
       )}
       <td>
-        <OfferStatusBadge status={status} />
+        <div className="flex flex-wrap items-center gap-1.5">
+          <OfferStatusBadge status={status} />
+          {/* an earlier offer, entered after it was given (25 October 2026) */}
+          {o.recordedEarlier && <RecordedEarlierMark />}
+        </div>
       </td>
       <td className="whitespace-nowrap tabular-nums">{o.sentAt ? formatDate(o.sentAt) : dash}</td>
       <td className="whitespace-nowrap tabular-nums">{open ? formatDate(o.expiresOn) : dash}</td>

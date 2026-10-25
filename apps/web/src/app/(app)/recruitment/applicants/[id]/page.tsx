@@ -10,6 +10,7 @@ import {
   INTERVIEW_KIND_LABELS,
   INTERVIEW_STATUS_LABELS,
   RECOMMENDATION_LABELS,
+  RECORDED_EARLIER_MARK,
   applicationKey,
   type ApplicationAnswerView,
   type ApplicationView,
@@ -492,6 +493,8 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
             {a.offers.map((o) => (
               <li key={o.id}>
                 <Link href={`/offers/${o.id}`}>{shownCode(o.number) ?? 'Job offer'}</Link> <span className="text-muted">· {o.status}</span>
+                {/* an earlier offer, entered after it was given (25 October 2026) */}
+                {o.recordedEarlier && <span className="text-muted"> · {RECORDED_EARLIER_MARK}</span>}
               </li>
             ))}
           </ul>

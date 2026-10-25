@@ -2,12 +2,14 @@ import { randomBytes } from 'node:crypto';
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
   ServiceUnavailableException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import {
+  EARLIER_OFFERS_OFF,
   INTERN_DEFAULT_MONTHS,
   INTERN_MAX_MONTHS,
   INTERN_NO_WAGE_MESSAGE,
@@ -21,9 +23,9 @@ import {
 import { AllowancesService } from '../allowances/allowances.service.js';
 import { allowanceData, allowancesTotal, allowanceView, type AllowanceSnapshot } from '../allowances/rows.js';
 import { AuditService, changes } from '../audit/audit.service.js';
-import { assertDeletes } from '../auth/roles.js';
+import { actsAs, assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
-import { addDays, fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../common/date-only.js';
+import { addDays, dayInCairo, fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../common/date-only.js';
 import { assertTrainingGap } from '../contracts/training.js';
 import { seesSalary } from '../employees/access.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
@@ -36,11 +38,12 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { FILLED_FROM, fillVersion } from '../documents/fill-version.js';
 import { restrictedTags } from '../documents/values.js';
 import { PDF_NOT_SET_UP } from '../pdf/pdf.service.js';
+import { earlierOffersOn } from './earlier-offers.js';
 import { FILL_IN, OfferDocumentsService } from './offer-documents.service.js';
 import { OfferHiringService, salaryMasked, type HireResult } from './offer-hiring.service.js';
 import { offerEmail } from './offer-mail.js';
-import type { AnswerOfferDto, CreateOfferDto, ListOffersDto, SendOfferDto, UpdateOfferDto, WithdrawOfferDto } from './offers.dto.js';
-import { offerSlot, pastLastDay, shownStatus, termDates, tokenHash } from './rules.js';
+import type { AnswerOfferDto, CreateOfferDto, ListOffersDto, RecordSentOfferDto, SendOfferDto, UpdateOfferDto, WithdrawOfferDto } from './offers.dto.js';
+import { answerDayProblem, lastDayProblem, momentOn, offerSlot, pastLastDay, recordSentProblem, shownStatus, termDates, tokenHash } from './rules.js';
 import { OFFER_INCLUDE, OFFER_LIST_SELECT, offerListView, offerView, WITHOUT_FILES, type OfferRow, type OfferView } from './views.js';
 
 const ENTITY = 'job_offer';
@@ -122,6 +125,12 @@ const allowanceNames = (rows: readonly AllowanceSnapshot[]) => rows.map((a) => a
 // HR sends; the candidate answers on the offer's page (PublicOffersService), or HR records an answer given another
 // way. Accepting makes the profile, the employment and a draft contract (OfferHiringService). HR writes; HR and the
 // CEO read; the amounts only for those who see salaries; only a Super Admin deletes.
+//
+// Earlier offers (owner, 25 October 2026: "allow the HR to add for now job offers with a past duedate to enter the
+// previous data"): while Recruitment Settings' "Entering earlier offers" is on, a draft can be saved with a past last
+// day (it is then an earlier one), recorded as sent outside the system on a past day (recordSent: no email, no link),
+// and its answer recorded with the day it was given, past its last day too; HR, the CEO and a Super Admin record them.
+// An earlier offer is never emailed or linked, and nobody is told of its answer; off, the rules are as before.
 @Injectable()
 export class OffersService {
   constructor(
@@ -173,13 +182,16 @@ export class OffersService {
     // made from an applicant (recruitment, 22 October 2026: Make offer): one the caller sees, ready for an offer
     const applicationId = dto.applicationId ?? null;
     if (applicationId) await this.recruitment.assertOfferable(applicationId, user);
-    const { values, allowances } = await this.checked(null, dto);
+    const { values, allowances, recordedEarlier } = await this.checked(null, dto);
     const rows = allowances ?? [];
     const created = await this.prisma.$transaction(async (tx) => {
       // one number at a time
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('people-system:offer-number'))`;
       const number = await nextNumber(tx);
-      const row = await tx.jobOffer.create({ data: { ...toData(values), number, createdById: user.id, applicationId }, select: { id: true, number: true } });
+      const row = await tx.jobOffer.create({
+        data: { ...toData(values), number, createdById: user.id, applicationId, recordedEarlier: recordedEarlier === true },
+        select: { id: true, number: true },
+      });
       if (rows.length) await tx.offerAllowance.createMany({ data: allowanceData(rows).map((a) => ({ ...a, offerId: row.id })) });
       return row;
     });
@@ -188,15 +200,17 @@ export class OffersService {
       action: 'create',
       entityType: ENTITY,
       entityId: created.id,
-      diff: salaryMasked({ number: created.number, ...values, allowances: allowanceNames(rows), ...(applicationId && { applicationId }) }),
+      diff: salaryMasked({ number: created.number, ...values, allowances: allowanceNames(rows), ...(applicationId && { applicationId }), ...(recordedEarlier && { recordedEarlier }) }),
     });
     if (applicationId) await this.recruitment.offerMade(applicationId, created, user.id);
     return this.get(created.id, user);
   }
 
   /**
-   * Changes an offer. A draft: any field, and what follows from them is worked out again. A sent one (expired or not):
-   * only its last day (a later one opens an expired offer again) and the note; anything else is a new offer.
+   * Changes an offer. A draft: any field, and what follows from them is worked out again (a past last day, while
+   * entering earlier offers is on, makes it an earlier one; a later one, an ordinary draft again). A sent one (expired or
+   * not): only its last day (a later one opens an expired offer again; a past one only for an earlier offer while the
+   * switch is on) and the note; anything else is a new offer.
    */
   async update(id: string, dto: UpdateOfferDto, user: SessionUser) {
     const before = await this.row(id, user);
@@ -205,15 +219,16 @@ export class OffersService {
     let diff: Record<string, unknown>;
 
     if (before.status === 'draft') {
-      const { values, allowances } = await this.checked(before, dto);
+      const { values, allowances, recordedEarlier } = await this.checked(before, dto);
       await this.prisma.$transaction(async (tx) => {
-        await tx.jobOffer.update({ where: { id }, data: toData(values) });
+        await tx.jobOffer.update({ where: { id }, data: { ...toData(values), ...(recordedEarlier !== undefined && { recordedEarlier }) } });
         if (allowances) {
           await tx.offerAllowance.deleteMany({ where: { offerId: id } });
           if (allowances.length) await tx.offerAllowance.createMany({ data: allowanceData(allowances).map((a) => ({ ...a, offerId: id })) });
         }
       });
       diff = salaryMasked(changes(was, values));
+      if (recordedEarlier !== undefined && recordedEarlier !== before.recordedEarlier) diff.recordedEarlier = { from: before.recordedEarlier, to: recordedEarlier };
       const wereAllowances = before.allowances.map(allowanceView);
       if (allowances && JSON.stringify(allowances.map((a) => [a.allowanceTypeId, a.amount])) !== JSON.stringify(wereAllowances.map((a) => [a.allowanceTypeId, a.amount]))) {
         diff.allowances = { from: allowanceNames(wereAllowances), to: allowanceNames(allowances) };
@@ -223,7 +238,16 @@ export class OffersService {
       if (others.length || dto.allowances !== undefined) {
         throw new ConflictException(`${before.number} was sent: only its last day and the note can be changed. For other changes, withdraw it and draft a new offer.`);
       }
-      if (dto.expiresOn !== undefined && dto.expiresOn < todayInCairo()) throw new BadRequestException("The offer's last day can't be in the past.");
+      if (dto.expiresOn !== undefined) {
+        // a past one only for an earlier offer while the switch is on, never before the day it was recorded as sent
+        const problem = lastDayProblem(dto.expiresOn, todayInCairo(), {
+          earlierOn: await earlierOffersOn(this.prisma),
+          draft: false,
+          recordedEarlier: before.recordedEarlier,
+          sentOn: before.sentAt ? dayInCairo(before.sentAt) : null,
+        });
+        if (problem) throw new BadRequestException(problem);
+      }
       const values = { expiresOn: dto.expiresOn, note: dto.note };
       await this.prisma.jobOffer.update({ where: { id }, data: { expiresOn: dto.expiresOn ? toDateOnly(dto.expiresOn) : undefined, note: dto.note } });
       diff = changes(was, values);
@@ -289,13 +313,18 @@ export class OffersService {
    * PDF; a new link replaces the one before, which stops working. By email: to the candidate, the answer going to the
    * HR user, with the protected PDF attached, never the Word file (owner's request, 15 October 2026: "No doc file
    * export, just a protected PDF"). Refused without a PDF converter (409) or when it fails (503): the offer is then left
-   * as it was. Refused once the last day has passed (set a later one first), and for an answered or withdrawn offer.
+   * as it was. Refused once the last day has passed (set a later one first), and for an answered or withdrawn offer. An
+   * earlier offer (25 October 2026) is never emailed or linked: one past its last day is refused as any other, and one
+   * recorded as sent earlier and given a later last day is refused too.
    */
   async send(id: string, dto: SendOfferDto, user: SessionUser): Promise<{ offer: OfferView; link: string }> {
     const o = await this.row(id, user);
     if (o.status !== 'draft' && o.status !== 'sent') throw new ConflictException(`${o.number} ${STANDING[shownStatus(o)]}, so it can't be sent.`);
     if (pastLastDay(o)) {
       throw new ConflictException(`The offer's last day, ${shownDate(fromDateOnly(o.expiresOn))}, has passed. Set a later last day, then send it again.`);
+    }
+    if (o.recordedEarlier) {
+      throw new ConflictException(`${o.number} is an earlier offer, recorded as sent outside the system: it is never emailed or linked. To send the candidate an offer now, draft a new one.`);
     }
     if (dto.via === 'email' && !(await this.mail.ready())) throw new ServiceUnavailableException(EMAIL_NOT_SET_UP);
     if (!this.documents.pdfAvailable) throw new ConflictException(NOT_SENT_WITHOUT_PDF);
@@ -380,26 +409,95 @@ export class OffersService {
   }
 
   /**
+   * "Record as sent earlier" (owner, 25 October 2026: "allow the HR to add for now job offers with a past duedate to
+   * enter the previous data"): a draft marked sent outside the system on the day HR picked (not in the future, nor after
+   * its last day), while "Entering earlier offers" is on; it is an earlier offer from then on. Nothing is emailed and no
+   * link is made. With the employment type's job offer template published, the document is filled in as of that day and
+   * kept, as sending keeps it (refused, 422, while a value it prints is missing), with its protected PDF when the
+   * converter answers (else converted when it is opened); without a published one, it is recorded with no document, and
+   * its page says so. HR, the CEO and a Super Admin record it.
+   */
+  async recordSent(id: string, dto: RecordSentOfferDto, user: SessionUser) {
+    const o = await this.row(id, user);
+    if (!(await earlierOffersOn(this.prisma))) throw new ConflictException(`${EARLIER_OFFERS_OFF} Send the offer by email or as a link instead.`);
+    if (o.status !== 'draft') throw new ConflictException(`${o.number} ${STANDING[shownStatus(o)]}: only a draft can be recorded as sent earlier.`);
+    const problem = recordSentProblem(dto.sentOn, fromDateOnly(o.expiresOn), todayInCairo());
+    if (problem) throw new BadRequestException(problem);
+
+    // the document as it was sent, dated that day, when the template is published
+    const template = await this.documents.template(o);
+    const filled = template.status === 'published' ? await this.documents.fill(o, dto.sentOn) : null;
+    const pdf = filled && this.documents.pdfAvailable ? await this.documents.toPdf(filled.data, filled.fileName).catch(() => null) : null;
+    const document: Prisma.JobOfferUncheckedUpdateManyInput = filled
+      ? { templateVersionId: filled.templateVersionId, documentDate: toDateOnly(dto.sentOn), fileName: filled.fileName, data: new Uint8Array(filled.data), pdf: pdf ? new Uint8Array(pdf) : null }
+      : {};
+
+    const { count } = await this.prisma.jobOffer.updateMany({
+      where: { id, status: 'draft' },
+      data: {
+        status: 'sent',
+        recordedEarlier: true,
+        sentVia: 'outside',
+        sentTo: null,
+        sentAt: momentOn(dto.sentOn),
+        sentById: user.id,
+        sentCount: { increment: 1 },
+        tokenHash: null,
+        viewedAt: null,
+        ...document,
+      },
+    });
+    if (!count) throw await this.changedMeanwhile(id);
+    await this.audit.record({
+      userId: user.id,
+      action: 'record_sent',
+      entityType: ENTITY,
+      entityId: id,
+      diff: {
+        number: o.number,
+        status: { from: 'draft', to: 'sent' },
+        via: 'outside',
+        sentOn: dto.sentOn,
+        recordedEarlier: true,
+        document: filled
+          ? { templateVersion: filled.templateVersion, documentDate: dto.sentOn, fileName: filled.fileName, pdf: pdf !== null }
+          : `none: the ${template.name} template isn't published`,
+      },
+    });
+    return this.get(id, user);
+  }
+
+  /**
    * Records an answer the candidate gave another way: for a sent offer, or a draft handed over on paper, while it is
-   * open (its last day not passed: set a later one first if they answered in time). Accepted, the profile is made
-   * (see OfferHiringService); if that fails, the acceptance stays and `hireError` says why.
+   * open (its last day not passed: set a later one first if they answered in time), on today. Accepted, the profile is
+   * made (see OfferHiringService); if that fails, the acceptance stays and `hireError` says why. An earlier offer's
+   * (owner, 25 October 2026), while entering earlier offers is on: past its last day too, on the day it was given
+   * (`answeredOn`: not in the future, nor before it was sent), by HR, the CEO or a Super Admin, and nobody is told.
    */
   async answer(id: string, dto: AnswerOfferDto, user: SessionUser): Promise<OfferView & { hireError: string | null }> {
     const o = await this.row(id, user);
     if (o.status !== 'draft' && o.status !== 'sent') throw new ConflictException(`${o.number} ${STANDING[shownStatus(o)]}, so its answer can't be recorded.`);
-    if (pastLastDay(o)) {
+    const today = todayInCairo();
+    // an earlier offer while the switch is on: answered past its last day too, on the day it was given
+    const leeway = o.recordedEarlier && (await earlierOffersOn(this.prisma));
+    if (!leeway && !actsAs(user.roles, ['hr'])) {
+      throw new ForbiddenException("Only HR records a candidate's answer. The CEO and a Super Admin record an earlier offer's, while entering earlier offers is on.");
+    }
+    if (pastLastDay(o) && !leeway) {
       throw new ConflictException(`The offer's last day, ${shownDate(fromDateOnly(o.expiresOn))}, has passed. If the candidate answered in time, set a later last day first.`);
     }
+    const answeredOn = dto.answeredOn ?? today;
+    const dayProblem = answerDayProblem(answeredOn, today, { leeway, sentOn: o.sentAt ? dayInCairo(o.sentAt) : null });
+    if (dayProblem) throw new BadRequestException(dayProblem);
     const accepted = dto.answer === 'accepted';
-    const respondedAt = new Date();
+    const respondedAt = answeredOn === today ? new Date() : momentOn(answeredOn);
 
-    // a draft handed over on paper keeps the copy as accepted, when its template can be filled in
+    // a draft handed over on paper keeps the copy as accepted, when its template can be filled in (dated the day of the answer)
     let document: Prisma.JobOfferUncheckedUpdateManyInput = {};
     if (accepted && o.status === 'draft') {
-      const today = todayInCairo();
-      const filled = await this.documents.fill(o, today).catch(() => null);
+      const filled = await this.documents.fill(o, answeredOn).catch(() => null);
       if (filled) {
-        document = { templateVersionId: filled.templateVersionId, documentDate: toDateOnly(today), fileName: filled.fileName, data: new Uint8Array(filled.data), pdf: null };
+        document = { templateVersionId: filled.templateVersionId, documentDate: toDateOnly(answeredOn), fileName: filled.fileName, data: new Uint8Array(filled.data), pdf: null };
       }
     }
     const { count } = await this.prisma.jobOffer.updateMany({
@@ -418,13 +516,21 @@ export class OffersService {
       action: 'answer',
       entityType: ENTITY,
       entityId: id,
-      diff: { number: o.number, status: { from: o.status, to: dto.answer }, recordedByHr: true, ...(!accepted && { reason: dto.reason ?? null }) },
+      diff: {
+        number: o.number,
+        status: { from: o.status, to: dto.answer },
+        recordedByHr: true,
+        ...(!accepted && { reason: dto.reason ?? null }),
+        ...(answeredOn !== today && { answeredOn }),
+        ...(o.recordedEarlier && { recordedEarlier: true }),
+      },
     });
 
     let hired: HireResult | null = null;
     if (accepted) hired = await this.hiring.tryHire(id, user.id);
     await this.recruitment.offerEnded(id, dto.answer, hired && 'employeeId' in hired ? hired.employeeId : null, user.id);
-    await this.hiring.notify({ ...o, respondedAt, declineReason: dto.reason ?? null }, dto.answer, { userId: user.id }, hired);
+    // nobody is told of an earlier offer's answer: it is HR entering what happened before
+    if (!o.recordedEarlier) await this.hiring.notify({ ...o, respondedAt, declineReason: dto.reason ?? null }, dto.answer, { userId: user.id }, hired);
     return { ...(await this.get(id, user)), hireError: hired && 'error' in hired ? hired.error : null };
   }
 
@@ -448,11 +554,12 @@ export class OffersService {
   }
 
   private async view(o: OfferRow, user: SessionUser): Promise<OfferView> {
-    const [template, draft, hasPdf, lawYears] = await Promise.all([
+    const [template, draft, hasPdf, lawYears, earlierOffers] = await Promise.all([
       this.documents.template(o),
       this.previewTemplate(o),
       o.fileName ? this.hasPdf(o.id) : Promise.resolve(false),
       this.lawRates.years(),
+      earlierOffersOn(this.prisma),
     ]);
     // a draft's missing values: from the published template, else from the draft it is previewed with
     const missing =
@@ -470,6 +577,7 @@ export class OffersService {
       hasPdf,
       emailConfigured: await this.mail.ready(),
       pdfAvailable: this.documents.pdfAvailable,
+      earlierOffers,
     });
   }
 
@@ -536,9 +644,13 @@ export class OffersService {
    * title takes, a current manager, a shift, office days for Hybrid), the pay (by the hour, the gross is worked out),
    * the probation (once per employer, Art. 90) and the fixed term, the allowances and the last day. A draft changed is
    * checked as it will be saved; only what was sent, and what depends on it, is checked against the records again.
-   * The allowances come back only when they were sent (or for a new offer).
+   * The allowances come back only when they were sent (or for a new offer); `recordedEarlier` only when the last day was
+   * (or for a new offer): whether it has passed, which only "Entering earlier offers" allows (25 October 2026).
    */
-  private async checked(before: OfferRow | null, dto: CreateOfferDto | UpdateOfferDto): Promise<{ values: OfferFields; allowances: AllowanceSnapshot[] | undefined }> {
+  private async checked(
+    before: OfferRow | null,
+    dto: CreateOfferDto | UpdateOfferDto,
+  ): Promise<{ values: OfferFields; allowances: AllowanceSnapshot[] | undefined; recordedEarlier: boolean | undefined }> {
     const creating = before === null;
     const sent = sentFields(dto);
     const today = todayInCairo();
@@ -733,8 +845,14 @@ export class OffersService {
       throw new BadRequestException("The net salary can't be more than the gross salary and allowances together.");
     }
 
-    if ((creating || dto.expiresOn !== undefined) && v.expiresOn < today) throw new BadRequestException("The offer's last day can't be in the past.");
-    return { values: v, allowances };
+    // a past last day only while entering earlier offers is on: the draft is then an earlier one
+    let recordedEarlier: boolean | undefined;
+    if (creating || dto.expiresOn !== undefined) {
+      const problem = lastDayProblem(v.expiresOn, today, { earlierOn: v.expiresOn < today && (await earlierOffersOn(this.prisma)), draft: true });
+      if (problem) throw new BadRequestException(problem);
+      recordedEarlier = v.expiresOn < today;
+    }
+    return { values: v, allowances, recordedEarlier };
   }
 }
 

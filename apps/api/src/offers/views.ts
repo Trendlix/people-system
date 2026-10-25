@@ -1,4 +1,4 @@
-import { insuredWageOf, lawRatesFor, workPatternOf, type LawRates, type OfferShownStatus, type WorkNature } from '@trendlix/shared';
+import { insuredWageOf, lawRatesFor, workPatternOf, type LawRates, type OfferSentWay, type OfferShownStatus, type WorkNature } from '@trendlix/shared';
 import { ALLOWANCE_ORDER, allowancesTotal, allowanceView } from '../allowances/rows.js';
 import { fromDateOnly } from '../common/date-only.js';
 import { departmentName } from '../contracts/views.js';
@@ -60,6 +60,8 @@ export interface OfferContext {
   emailConfigured: boolean;
   /** Whether a PDF converter is set up: without one, no document is given out and no offer is sent. */
   pdfAvailable: boolean;
+  /** Recruitment Settings' "Entering earlier offers" (25 October 2026): whether it is on now. */
+  earlierOffers: boolean;
 }
 
 /**
@@ -128,7 +130,7 @@ export function offerView(o: OfferRow, ctx: OfferContext) {
     template: { ...ctx.template, previewVersion: ctx.previewVersion },
     missing: ctx.missing,
     document: o.fileName ? { fileName: o.fileName, hasPdf: ctx.hasPdf, documentDate: fromDateOnly(o.documentDate) } : null,
-    sentVia: o.sentVia,
+    sentVia: o.sentVia as OfferSentWay | null,
     sentTo: o.sentTo,
     sentAt: iso(o.sentAt),
     sentBy: o.sentBy,
@@ -143,6 +145,10 @@ export function offerView(o: OfferRow, ctx: OfferContext) {
     hiredAt: iso(o.hiredAt),
     emailConfigured: ctx.emailConfigured,
     pdfAvailable: ctx.pdfAvailable,
+    // an earlier offer (owner, 25 October 2026: "allow the HR to add for now job offers with a past duedate to enter the
+    // previous data"), and whether entering them is on now
+    recordedEarlier: o.recordedEarlier,
+    earlierOffers: ctx.earlierOffers,
     createdAt: o.createdAt.toISOString(),
     createdBy: o.createdBy,
   };
@@ -169,6 +175,7 @@ export const OFFER_LIST_SELECT = {
   sentAt: true,
   respondedAt: true,
   employeeId: true,
+  recordedEarlier: true,
 } satisfies Prisma.JobOfferSelect;
 
 type OfferListRow = Prisma.JobOfferGetPayload<{ select: typeof OFFER_LIST_SELECT }>;
@@ -196,6 +203,8 @@ export function offerListView(o: OfferListRow, seesSalary: boolean) {
     sentAt: iso(o.sentAt),
     respondedAt: iso(o.respondedAt),
     employeeId: o.employeeId,
+    // marked "Recorded earlier" in the list (25 October 2026)
+    recordedEarlier: o.recordedEarlier,
   };
 }
 

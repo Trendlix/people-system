@@ -12,7 +12,7 @@ import { ApiError, apiSend } from '@/lib/api';
 import { allowancesFrom } from '@/lib/allowances';
 import { deleteRefusal } from '@/lib/session';
 import type { FormState, OfferSendResult, OfferView } from '@/lib/types';
-import { answerBody, emailSendBody, extendBody, offerBody, sentOfferBody, submitted, withdrawBody } from './form-body';
+import { answerBody, emailSendBody, extendBody, offerBody, recordSentBody, sentOfferBody, submitted, withdrawBody } from './form-body';
 import { offerHref } from './list';
 import { EMAIL_NOT_SET_UP, originFrom, type OfferSendState } from './sending';
 
@@ -124,6 +124,18 @@ export async function linkOffer(id: string): Promise<OfferSendState> {
     if (err instanceof ApiError) return { errors: messagesOf(err) };
     throw err;
   }
+}
+
+/**
+ * Record as sent earlier (owner, 25 October 2026: "allow the HR to add for now job offers with a past duedate to enter
+ * the previous data"): a draft marked sent outside the system on the day typed; nothing is emailed and no link is made.
+ * HR, the CEO and a Super Admin, while Recruitment Settings' "Entering earlier offers" is on (the API checks).
+ */
+export async function recordSentOffer(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
+  const errors: string[] = [];
+  const body = recordSentBody(fd, errors);
+  if (errors.length) return { errors, values: submitted(fd) };
+  return act(() => apiSend('POST', `/offers/${id}/record-sent`, body), 'Recorded as sent earlier.', fd);
 }
 
 /** Withdraws the offer, with the reason if HR gives one: its link stops working. */

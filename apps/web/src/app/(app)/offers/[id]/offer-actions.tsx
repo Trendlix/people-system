@@ -10,9 +10,10 @@ import { focusFirstField, useClosesOnSave } from '../../employees/[id]/contracts
 import { EMAIL_NOT_SET_UP, newLinkConfirm, offerMailto, type OfferMailParts, type OfferSendState } from '../sending';
 
 // The actions on an offer's page that take a few words or show an answer: sending by email, making the link to copy,
-// extending, withdrawing and recording an answer given another way. Each small form opens from its button and closes
-// once its action went through; a refused one stays open with the reason. One-click actions (Create the profile,
-// Delete) use the profile's ActionButton.
+// extending, withdrawing and recording an answer given another way; for an earlier offer (25 October 2026), recording it
+// as sent earlier and its answer with the day it was given. Each small form opens from its button and closes once its
+// action went through; a refused one stays open with the reason. One-click actions (Create the profile, Delete) use
+// the profile's ActionButton.
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 type SendAction = (prev: OfferSendState, fd: FormData) => Promise<OfferSendState>;
@@ -294,8 +295,58 @@ export function WithdrawOffer({ action, number }: { action: Action; number: stri
   );
 }
 
-/** Record an answer the candidate gave another way: by phone, in person or by email. Accepting makes the profile, as online. */
-export function RecordAnswer({ action }: { action: Action }) {
+/**
+ * Record as sent earlier (owner, 25 October 2026: "allow the HR to add for now job offers with a past duedate to enter
+ * the previous data"): a draft marked sent outside the system, on the day it was sent. Nothing is emailed and no link is
+ * made; `documentHint` says what is kept.
+ */
+export function RecordSentEarlier({ action, expiresOn, documentHint }: { action: Action; expiresOn: string; documentHint: string }) {
+  const { state, pending, form } = useKeptForm(action);
+  const [open, setOpen] = useClosesOnSave(state);
+  const fid = useFieldIds();
+  if (!open) {
+    return (
+      <div className="space-y-1">
+        <button type="button" aria-expanded={false} onClick={() => setOpen(true)} className={`${small} btn-secondary`}>
+          Record as sent earlier
+        </button>
+        {state.message && (
+          <p role="status" className="text-xs text-ok">
+            {state.message}
+          </p>
+        )}
+      </div>
+    );
+  }
+  return (
+    <form {...form} ref={focusFirstField} aria-label="Record the offer as sent earlier" className={panel}>
+      <FormErrors errors={state.errors} />
+      <div className="max-w-60">
+        <label htmlFor={fid('sentOn')} className="label">
+          Sent on
+        </label>
+        <DateInput id={fid('sentOn')} name="sentOn" required aria-describedby={fid('sentOn-hint')} defaultValue={valueOf(state, 'sentOn', '')} />
+      </div>
+      <p id={fid('sentOn-hint')} className="hint">
+        The day the candidate was given the offer, outside the system: not in the future, nor after its last day, {formatDate(expiresOn)}. {documentHint}
+      </p>
+      <div className="flex flex-wrap gap-3">
+        <SubmitButton busy={pending} pendingText="Recording…">
+          Record as sent
+        </SubmitButton>
+        <button type="button" onClick={() => setOpen(false)} disabled={pending} className="btn btn-secondary">
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/**
+ * Record an answer the candidate gave another way: by phone, in person or by email. Accepting makes the profile, as
+ * online. An earlier offer's (`withDay`, 25 October 2026): with the day it was given, today when left empty.
+ */
+export function RecordAnswer({ action, withDay = false }: { action: Action; withDay?: boolean }) {
   const { state, pending, form } = useKeptForm(action);
   const [open, setOpen] = useClosesOnSave(state);
   const fid = useFieldIds();
@@ -355,6 +406,17 @@ export function RecordAnswer({ action }: { action: Action }) {
         <textarea id={fid('reason')} name="reason" rows={2} maxLength={1000} defaultValue={valueOf(state, 'reason', '')} className="input" />
         <p className="hint">E.g. how they answered (by phone, in person) and anything they said.</p>
       </div>
+      {withDay && (
+        <div className="max-w-60">
+          <label htmlFor={fid('answeredOn')} className="label">
+            Answered on {optional}
+          </label>
+          <DateInput id={fid('answeredOn')} name="answeredOn" aria-describedby={fid('answeredOn-hint')} defaultValue={valueOf(state, 'answeredOn', '')} />
+          <p id={fid('answeredOn-hint')} className="hint">
+            The day the candidate answered: not in the future, nor before the offer was sent. Empty: today.
+          </p>
+        </div>
+      )}
       <div className="flex flex-wrap gap-3">
         <SubmitButton busy={pending} pendingText="Recording…">
           Record

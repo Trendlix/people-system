@@ -283,3 +283,64 @@ describe('sending', () => {
     expect(canBeSent(offer({ status: 'sent', pdfAvailable: false }), today)).toBe(false);
   });
 });
+
+// Earlier offers (owner, 25 October 2026: "allow the HR to add for now job offers with a past duedate to enter the
+// previous data"): recorded as sent outside the system, answered on the day HR gave, never sent from the system.
+describe('an earlier offer', () => {
+  const earlier = (o: Partial<OfferView> = {}) =>
+    offer({
+      recordedEarlier: true,
+      earlierOffers: true,
+      expiresOn: '2026-09-27',
+      sentVia: 'outside',
+      sentAt: '2026-09-20T10:00:00.000Z',
+      sentBy: { email: 'hr@trendlix.com' },
+      sentCount: 1,
+      ...o,
+    });
+
+  it('shows its sending and answer on the days HR gave, without a time', () => {
+    const events = offerTimeline(earlier({ status: 'accepted', respondedAt: '2026-09-22T10:00:00.000Z', answeredBy: { email: 'hr@trendlix.com' } }));
+    expect(events.find((e) => e.key === 'sent')).toEqual({
+      key: 'sent',
+      label: 'Sent',
+      at: '2026-09-20T10:00:00.000Z',
+      detail: 'Outside the system: recorded as sent earlier · by hr@trendlix.com',
+      tone: 'accent',
+      dateOnly: true,
+    });
+    expect(events.find((e) => e.key === 'answered')).toMatchObject({ label: 'Accepted', detail: 'Recorded by hr@trendlix.com', dateOnly: true });
+    // in the order they happened: the sending and answer before the day it was entered
+    expect(events.map((e) => e.key)).toEqual(['sent', 'answered', 'drafted']);
+  });
+
+  it('is never emailed or linked, whatever its last day', () => {
+    expect(canBeSent(earlier({ status: 'sent', expiresOn: '2026-11-30' }), '2026-10-25')).toBe(false);
+    expect(canBeSent(earlier({ status: 'draft', sentVia: null, sentAt: null, expiresOn: '2026-11-30' }), '2026-10-25')).toBe(false);
+    expect(canBeSent(offer({ status: 'sent', expiresOn: '2026-11-30' }), '2026-10-25')).toBe(true);
+  });
+
+  it('says what it waits for while entering earlier offers is on, and as before once it is off', () => {
+    expect(waitingText(earlier({ status: 'draft', sentVia: null, sentAt: null }))).toBe('An earlier offer: record it as sent earlier, then the answer the candidate gave.');
+    expect(waitingText(earlier({ status: 'sent', expiresOn: '2026-11-30' }))).toBe("Recorded as sent earlier: record the candidate's answer.");
+    expect(waitingText(earlier({ status: 'expired' }))).toBe('Recorded as sent earlier; its last day was 27/09/2026. Record the answer the candidate gave, with its day.');
+    expect(waitingText(earlier({ status: 'expired', earlierOffers: false }))).toBe(
+      'Not answered by 27/09/2026, its last day. Extend it to give more time, or record an answer given another way.',
+    );
+  });
+
+  it('says why no document was kept, when its template was not published', () => {
+    expect(documentState(earlier({ status: 'sent', document: null }), 'expired')).toEqual({
+      pdf: false,
+      why: "No document was kept: its job offer template wasn't published when it was recorded as sent earlier.",
+      draftTemplate: null,
+    });
+    // kept: given out as any sent offer's
+    expect(documentState(earlier({ status: 'sent', document: { fileName: 'Job offer.docx', hasPdf: true, documentDate: '2026-09-20' } }), 'expired')).toEqual({
+      pdf: true,
+      why: null,
+      draftTemplate: null,
+    });
+  });
+});
+

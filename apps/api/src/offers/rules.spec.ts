@@ -1,5 +1,5 @@
 import { isWebOrigin } from './offers.dto.js';
-import { comparableName, nameMatches, offerMissing, shownStatus, termDates } from './rules.js';
+import { answerDayProblem, comparableName, lastDayProblem, momentOn, nameMatches, offerMissing, PAST_LAST_DAY, recordSentProblem, shownStatus, termDates } from './rules.js';
 
 describe('job offer rules', () => {
   it('a sent offer past its last day shows as expired; the last day itself is still open', () => {
@@ -113,5 +113,63 @@ describe('job offer rules', () => {
     expect(isWebOrigin('javascript:alert(1)')).toBe(false);
     expect(isWebOrigin('ftp://people.example.com')).toBe(false);
     expect(isWebOrigin('people.example.com')).toBe(false);
+  });
+});
+
+// Earlier offers (owner, 25 October 2026: "allow the HR to add for now job offers with a past duedate to enter the
+// previous data"): what "Entering earlier offers" allows while it is on, and what stays as before.
+describe('earlier job offers', () => {
+  const TODAY = '2026-10-25';
+
+  it('a past last day only while the switch is on: for a draft, or for a sent offer that is an earlier one', () => {
+    // off: as before the switch
+    expect(lastDayProblem('2026-10-24', TODAY, { earlierOn: false, draft: true })).toBe(PAST_LAST_DAY);
+    expect(lastDayProblem('2026-10-25', TODAY, { earlierOn: false, draft: true })).toBeNull();
+    // on: a draft takes one (it is then an earlier one)
+    expect(lastDayProblem('2025-03-01', TODAY, { earlierOn: true, draft: true })).toBeNull();
+    // a sent offer: only an earlier one, never one sent from the system
+    expect(lastDayProblem('2026-10-01', TODAY, { earlierOn: true, draft: false, recordedEarlier: false })).toBe(PAST_LAST_DAY);
+    expect(lastDayProblem('2026-10-01', TODAY, { earlierOn: true, draft: false, recordedEarlier: true, sentOn: '2026-09-20' })).toBeNull();
+    expect(lastDayProblem('2026-10-01', TODAY, { earlierOn: false, draft: false, recordedEarlier: true, sentOn: '2026-09-20' })).toBe(PAST_LAST_DAY);
+    // never before the day it was recorded as sent
+    expect(lastDayProblem('2026-09-19', TODAY, { earlierOn: true, draft: false, recordedEarlier: true, sentOn: '2026-09-20' })).toBe(
+      "The offer's last day can't be before the day it was sent, 20/09/2026.",
+    );
+    // a later one is fine whatever the switch
+    expect(lastDayProblem('2026-11-30', TODAY, { earlierOn: false, draft: false, recordedEarlier: true, sentOn: '2026-09-20' })).toBeNull();
+  });
+
+  it('recorded as sent on a day that is not in the future, nor after its last day', () => {
+    expect(recordSentProblem('2026-09-20', '2026-09-27', TODAY)).toBeNull();
+    expect(recordSentProblem('2026-09-27', '2026-09-27', TODAY)).toBeNull();
+    expect(recordSentProblem(TODAY, '2026-11-01', TODAY)).toBeNull();
+    expect(recordSentProblem('2026-10-26', '2026-11-01', TODAY)).toBe("The day it was sent can't be in the future.");
+    expect(recordSentProblem('2026-09-28', '2026-09-27', TODAY)).toBe(
+      "It can't have been sent after its last day, 27/09/2026. Choose an earlier day, or edit the last day first.",
+    );
+  });
+
+  it("an answer dated another day only for an earlier offer while the switch is on, never in the future nor before it was sent", () => {
+    expect(answerDayProblem(TODAY, TODAY, { leeway: false, sentOn: '2026-10-20' })).toBeNull();
+    expect(answerDayProblem('2026-10-24', TODAY, { leeway: false, sentOn: null })).toBe(
+      "Only an earlier offer's answer is dated another day than today, while entering earlier offers is on.",
+    );
+    expect(answerDayProblem('2026-09-22', TODAY, { leeway: true, sentOn: '2026-09-20' })).toBeNull();
+    // after its last day too: a late answer of an earlier offer is entered as it was given
+    expect(answerDayProblem('2026-10-10', TODAY, { leeway: true, sentOn: '2026-09-20' })).toBeNull();
+    expect(answerDayProblem('2026-09-19', TODAY, { leeway: true, sentOn: '2026-09-20' })).toBe("The answer can't be before the offer was sent, on 20/09/2026.");
+    expect(answerDayProblem('2026-10-26', TODAY, { leeway: true, sentOn: null })).toBe("The day of the answer can't be in the future.");
+  });
+
+  it("a day HR picked is kept as midday in Cairo, on that day, never later than now", () => {
+    const now = new Date('2026-10-25T15:00:00.000Z');
+    expect(momentOn('2026-09-20', now).toISOString()).toBe('2026-09-20T10:00:00.000Z');
+    // Cairo's day either side of the clock change
+    for (const day of ['2026-04-30', '2026-05-01', '2026-10-29', '2026-10-30']) {
+      expect(new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo' }).format(momentOn(day, new Date('2027-01-01T00:00:00.000Z')))).toBe(day);
+    }
+    // today, early in the morning in Cairo: now
+    const early = new Date('2026-10-24T22:30:00.000Z');
+    expect(momentOn('2026-10-25', early)).toBe(early);
   });
 });

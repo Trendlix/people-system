@@ -152,6 +152,8 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
 /** Each action, in the past tense and sentence case ("Updated", "Sent for approval"). */
 export const ACTION_LABELS: Readonly<Record<string, string>> = {
   answer: 'Recorded the answer',
+  // an earlier job offer (25 October 2026): marked sent outside the system on a past day, with no email and no link
+  record_sent: 'Recorded as sent earlier',
   apply: 'Applied',
   approve: 'Approved',
   attendance_summary_file: 'Downloaded the attendance summary',

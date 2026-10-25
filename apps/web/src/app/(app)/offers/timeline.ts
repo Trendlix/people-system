@@ -16,6 +16,8 @@ export interface TimelineEvent {
   tone: 'ok' | 'danger' | 'muted' | 'accent';
   /** A link to follow from it: the profile made. */
   href?: string;
+  /** A day HR entered for an earlier offer (25 October 2026): shown without a time. */
+  dateOnly?: boolean;
 }
 
 const by = (who: { email: string } | null | undefined) => (who?.email ? `by ${who.email}` : null);
@@ -32,9 +34,11 @@ function answerDetail(o: OfferView): string | null {
 export function offerTimeline(o: OfferView): TimelineEvent[] {
   const events: TimelineEvent[] = [{ key: 'drafted', label: 'Drafted', at: o.createdAt, detail: by(o.createdBy), tone: 'muted' }];
   if (o.sentAt) {
-    const how = o.sentVia === 'email' ? `By email${o.sentTo ? ` to ${o.sentTo}` : ''}` : 'As a link, sent by HR';
+    // an earlier offer (25 October 2026): sent outside the system before it was entered here, on the day HR gave
+    const outside = o.sentVia === 'outside';
+    const how = o.sentVia === 'email' ? `By email${o.sentTo ? ` to ${o.sentTo}` : ''}` : outside ? 'Outside the system: recorded as sent earlier' : 'As a link, sent by HR';
     const times = o.sentCount > 1 ? `sent ${o.sentCount} times, the latest shown` : null;
-    events.push({ key: 'sent', label: 'Sent', at: o.sentAt, detail: joined(how, times, by(o.sentBy)), tone: 'accent' });
+    events.push({ key: 'sent', label: 'Sent', at: o.sentAt, detail: joined(how, times, by(o.sentBy)), tone: 'accent', ...(outside && { dateOnly: true }) });
   }
   if (o.viewedAt) events.push({ key: 'viewed', label: 'Opened by the candidate', at: o.viewedAt, detail: null, tone: 'muted' });
   if (o.respondedAt && (o.status === 'accepted' || o.status === 'declined')) {
@@ -44,6 +48,8 @@ export function offerTimeline(o: OfferView): TimelineEvent[] {
       at: o.respondedAt,
       detail: answerDetail(o),
       tone: o.status === 'accepted' ? 'ok' : 'danger',
+      // an earlier offer's answer, on the day it was given
+      ...(o.recordedEarlier && { dateOnly: true }),
     });
   }
   if (o.withdrawnAt) events.push({ key: 'withdrawn', label: 'Withdrawn', at: o.withdrawnAt, detail: o.withdrawReason ? `“${o.withdrawReason}”` : null, tone: 'muted' });
@@ -61,14 +67,19 @@ export function offerTimeline(o: OfferView): TimelineEvent[] {
   return events.map((e, i) => ({ e, i })).sort((a, b) => Date.parse(a.e.at) - Date.parse(b.e.at) || a.i - b.i).map(({ e }) => e);
 }
 
-/** What the offer waits for, in a sentence; null when nothing does. */
-export function waitingText(o: Pick<OfferView, 'status' | 'expiresOn' | 'hiredAt' | 'sentAt'>): string | null {
+/**
+ * What the offer waits for, in a sentence; null when nothing does. An earlier one (25 October 2026), while entering them
+ * is on: being recorded as sent earlier, then its answer.
+ */
+export function waitingText(o: Pick<OfferView, 'status' | 'expiresOn' | 'hiredAt' | 'sentAt'> & Partial<Pick<OfferView, 'recordedEarlier' | 'earlierOffers'>>): string | null {
+  const earlier = o.recordedEarlier === true && o.earlierOffers === true;
   switch (o.status) {
     case 'draft':
-      return 'Not sent yet. Check the PDF, then send it by email or copy the link.';
+      return earlier ? 'An earlier offer: record it as sent earlier, then the answer the candidate gave.' : 'Not sent yet. Check the PDF, then send it by email or copy the link.';
     case 'sent':
-      return `Waiting for the candidate's answer. Open until ${formatDate(o.expiresOn)}.`;
+      return earlier ? "Recorded as sent earlier: record the candidate's answer." : `Waiting for the candidate's answer. Open until ${formatDate(o.expiresOn)}.`;
     case 'expired':
+      if (earlier) return `Recorded as sent earlier; its last day was ${formatDate(o.expiresOn)}. Record the answer the candidate gave, with its day.`;
       return `Not answered by ${formatDate(o.expiresOn)}, its last day. Extend it to give more time, or record an answer given another way.`;
     case 'accepted':
       return o.hiredAt ? null : "Accepted, but the employee profile hasn't been made yet: press Make the profile.";
@@ -166,7 +177,7 @@ const NO_CONVERTER = "The PDF converter isn't set up on the server yet, so";
  * `status`: as shown (a sent offer past its last day is expired).
  */
 export function documentState(
-  o: Pick<OfferView, 'status' | 'template' | 'employmentType' | 'missing' | 'document' | 'pdfAvailable'>,
+  o: Pick<OfferView, 'status' | 'template' | 'employmentType' | 'missing' | 'document' | 'pdfAvailable'> & Partial<Pick<OfferView, 'sentVia'>>,
   status: OfferShownStatus,
 ): { pdf: boolean; why: string | null; draftTemplate: number | null } {
   if (o.status === 'draft') {
@@ -174,7 +185,11 @@ export function documentState(
     if ((templateProblem(o) && draftTemplate === null) || o.missing.length > 0) return { pdf: false, why: null, draftTemplate: null };
     return { pdf: o.pdfAvailable, why: o.pdfAvailable ? null : `${NO_CONVERTER} the offer's document can't be opened or sent.`, draftTemplate };
   }
-  if (!o.document) return { pdf: false, why: o.status === 'withdrawn' ? null : 'No document was kept for this offer.', draftTemplate: null };
+  if (!o.document) {
+    // recorded as sent earlier while its template wasn't published (25 October 2026)
+    if (o.sentVia === 'outside') return { pdf: false, why: "No document was kept: its job offer template wasn't published when it was recorded as sent earlier.", draftTemplate: null };
+    return { pdf: false, why: o.status === 'withdrawn' ? null : 'No document was kept for this offer.', draftTemplate: null };
+  }
   if (o.pdfAvailable) return { pdf: true, why: null, draftTemplate: null };
   // an offer still open would be sent again otherwise
   const again = status === 'sent';
@@ -202,14 +217,16 @@ export function templateProblem(o: Pick<OfferView, 'template' | 'employmentType'
 }
 
 /**
- * Whether Send by email and Copy link are offered: for a draft or a sent offer before its last day has passed, whose
- * document can be made. Sending fills the document in afresh, so it needs the employment type's published template
+ * Whether Send by email and Copy link are offered: for a draft or a sent offer before its last day has passed, not an
+ * earlier one (recorded after it was given: never emailed or linked), whose document can be made. Sending fills the document in afresh, so it needs the employment type's published template
  * (a draft offer previewed with a draft of it can't be sent yet), and for a draft every value the template prints (the
  * API refuses it otherwise). It goes as a protected PDF only (owner's request, 15 October 2026), so it needs the
  * server's PDF converter too. When it can't be made, the page says why, once, and the sending buttons are left out.
  */
-export function canBeSent(o: Pick<OfferView, 'status' | 'expiresOn' | 'template' | 'missing' | 'pdfAvailable'>, today: string): boolean {
+export function canBeSent(o: Pick<OfferView, 'status' | 'expiresOn' | 'template' | 'missing' | 'pdfAvailable'> & Partial<Pick<OfferView, 'recordedEarlier'>>, today: string): boolean {
   if ((o.status !== 'draft' && o.status !== 'sent') || o.expiresOn < today) return false;
+  // an earlier offer (25 October 2026) is never emailed or linked
+  if (o.recordedEarlier) return false;
   if (o.template && o.template.status !== 'published') return false;
   if (!o.pdfAvailable) return false;
   return o.status !== 'draft' || (o.missing ?? []).length === 0;

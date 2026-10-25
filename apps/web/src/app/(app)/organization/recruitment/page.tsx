@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { EARLIER_OFFERS_SWITCH } from '@trendlix/shared';
 import { headers } from 'next/headers';
 import { Suspense } from 'react';
 import { careersBaseFrom } from '@/lib/careers-base';
@@ -10,8 +11,9 @@ import { loadCvPositions, loadRecruitmentSettings, recruitmentNotLoaded } from '
 import { managesRecruitment, readsRecruitment, WHO_SEES } from '../../recruitment/recruitment';
 import { InviteWordsForm, PositionsForm, PositionsList, RejectionWordsForm, SuggestionSettingsForm } from './settings-form';
 import { redirectUrlFor } from '../../recruitment/linkedin-settings';
-import { loadLinkedInSettings, loadPortfolioSettings } from '../../recruitment/portfolio-data';
-import { saveLinkedInSettings, savePortfolioSettings } from '../../recruitment/settings-actions';
+import { loadEarlierOffersSetting, loadLinkedInSettings, loadPortfolioSettings } from '../../recruitment/portfolio-data';
+import { saveEarlierOffers, saveLinkedInSettings, savePortfolioSettings } from '../../recruitment/settings-actions';
+import { EarlierOffersForm } from './earlier-offers-form';
 import { LinkedInSettingsForm } from './linkedin-form';
 import { PortfolioSettingsForm, PortfolioSettingsList } from './portfolio-form';
 
@@ -23,7 +25,9 @@ import { PortfolioSettingsForm, PortfolioSettingsList } from './portfolio-form';
 // hidden there, with an optional public name. And since then too (owner: "can i use linkedin to complete the data? and for
 // creatives, they need to add their portfolios"; asked, all three): the portfolio each position asks for on both careers
 // forms ("Portfolio on the Forms", HR's to change), and the LinkedIn sign-in's setup ("LinkedIn Sign-in", a Super
-// Admin's only, in their own session; never a developer's).
+// Admin's only, in their own session; never a developer's). And since then too (owner: "allow the HR to add for now job
+// offers with a past duedate to enter the previous data"): "Earlier Offers", the switch "Entering earlier offers", on for
+// now, HR's and a Super Admin's to change, the CEO's to read.
 
 export const metadata: Metadata = { title: 'Recruitment Settings · People System' };
 
@@ -36,6 +40,22 @@ async function Settings() {
   const manages = managesRecruitment(user);
   return (
     <div className="space-y-6">
+      <section aria-labelledby="earlier-offers" className="card space-y-4 p-6">
+        <div className="space-y-1">
+          <h2 id="earlier-offers" className="text-lg font-semibold">
+            Earlier Offers
+          </h2>
+          <p className="max-w-3xl text-sm text-muted">
+            For entering the job offers made before the system. While it is on, an offer can be saved with a past last day, recorded as sent earlier (no email, no
+            link) and have its answer recorded with the day it was given. Nothing is sent to the candidate, and emailing or linking an offer past its last day
+            stays refused. Switch it off once the earlier offers are in: the usual rules come back.
+          </p>
+        </div>
+        <Suspense fallback={<Loading />}>
+          <EarlierOffersSection manages={manages} />
+        </Suspense>
+      </section>
+
       <section aria-labelledby="rejection-email" className="card space-y-4 p-6">
         <div className="space-y-1">
           <h2 id="rejection-email" className="text-lg font-semibold">
@@ -158,6 +178,18 @@ async function Settings() {
         </section>
       )}
     </div>
+  );
+}
+
+/** "Entering earlier offers": HR's switch (HR, a Super Admin), or where it stands for the CEO. */
+async function EarlierOffersSection({ manages }: { manages: boolean }) {
+  const loaded = await loadEarlierOffersSetting();
+  if (loaded.kind !== 'ok') return <p className="text-sm text-muted">{recruitmentNotLoaded(loaded, 'earlier offers switch')}</p>;
+  if (manages) return <EarlierOffersForm action={saveEarlierOffers} setting={loaded.value} />;
+  return (
+    <p className="text-sm">
+      {EARLIER_OFFERS_SWITCH}: <span className="font-semibold">{loaded.value.on ? 'On' : 'Off'}</span>
+    </p>
   );
 }
 

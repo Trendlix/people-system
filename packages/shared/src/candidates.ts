@@ -546,6 +546,8 @@ export interface CandidateOffer {
   id: string;
   number: string;
   status: string;
+  /** An earlier offer, entered after it was given (25 October 2026); left out by an API from before. */
+  recordedEarlier?: boolean;
   applicationId: string | null;
   vacancyTitle: string | null;
   createdAt: string;
