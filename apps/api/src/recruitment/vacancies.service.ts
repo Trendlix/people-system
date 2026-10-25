@@ -19,7 +19,7 @@ import {
   type VacancyStatus,
   type VacancyView,
 } from '@trendlix/shared';
-import { assertDeletes, isSuperAdmin } from '../auth/roles.js';
+import { isSuperAdmin } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { AuditService, changes } from '../audit/audit.service.js';
 import { fromDateOnly, todayInCairo, toDateOnly } from '../common/date-only.js';
@@ -33,6 +33,7 @@ import { CvReadingsService } from './cv-readings.service.js';
 import { approvesVacancies, isConfidentialVacancy, managesRecruitment, vacancyWhere } from './recruitment-access.js';
 import { emptyCounts, money, questionsOf, userRef, VACANCY_ENTITY, VACANCY_INCLUDE, vacancyListView, type VacancyCounts, type VacancyRow } from './recruitment-views.js';
 import type { CreateVacancyDto, ListVacanciesDto, UpdateVacancyDto } from './recruitment.dto.js';
+import { RecruitmentDeletesService } from './recruitment-deletes.service.js';
 import { VacancySuggestionsService } from './vacancy-suggestions.service.js';
 
 // Vacancies (owner, 22 October 2026: "where will we include the ATS?"; "HR creates a vacancy and the CEO approves it";
@@ -73,6 +74,7 @@ export class VacanciesService {
     private readonly notifications: NotificationsService,
     private readonly readings: CvReadingsService,
     private readonly suggestions: VacancySuggestionsService,
+    private readonly deletes: RecruitmentDeletesService,
   ) {}
 
   // ---------- reading ----------
@@ -158,7 +160,8 @@ export class VacanciesService {
       hold: manages && canMoveVacancy('hold', status),
       reopen: manages && canMoveVacancy('reopen', status),
       close: manages && canMoveVacancy('close', status),
-      delete: isSuperAdmin(user) && counts.total === 0,
+      // also once people applied (owner, 25 October 2026: "Vacancy alone - applicant alone - superadmin only"); never a developer
+      delete: isSuperAdmin(user) && !user.developer,
     };
     return {
       ...vacancyListView(v, counts),
@@ -386,13 +389,14 @@ export class VacanciesService {
     return this.get(id, user);
   }
 
-  /** Deletes a vacancy nobody applied to (a Super Admin only). */
-  async remove(id: string, user: SessionUser): Promise<void> {
-    assertDeletes(user);
-    const v = await this.row(id, user);
-    if (await this.prisma.jobApplication.count({ where: { vacancyId: id } })) throw new ConflictException('People applied to it, so it stays on record. Close it instead.');
-    await this.prisma.vacancy.delete({ where: { id } });
-    await this.audit.record({ userId: user.id, action: 'delete', entityType: VACANCY_ENTITY, entityId: id, diff: { number: v.number, title: v.title, status: v.status } });
+  /**
+   * Deletes a vacancy (a Super Admin only). Since 25 October 2026 (owner, on a closed vacancy with one rejected applicant:
+   * "i want to delete this"; "Vacancy alone - applicant alone - superadmin only") also once people applied: its
+   * applications go with it, `confirm` its number typed (recruitment-deletes.service.ts); refused while any of them stays
+   * on record (hired, an offer sent, an interview to come).
+   */
+  async remove(id: string, confirm: string | null | undefined, user: SessionUser): Promise<void> {
+    await this.deletes.removeVacancy(id, confirm, user);
   }
 
   // ---------- helpers ----------

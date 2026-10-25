@@ -7,6 +7,7 @@ import { CvUploadsService } from './cv-uploads.service.js';
 import { ApplicantsSummaryController, CvUploadsController, GeneralCvsController, PublicGeneralCvsController } from './general-cvs.controller.js';
 import { GeneralCvsService } from './general-cvs.service.js';
 import { PublicCareersService } from './public-careers.service.js';
+import { RecruitmentDeletesService } from './recruitment-deletes.service.js';
 import { RecruitmentOffersService } from './recruitment-offers.service.js';
 import { InterviewsService } from './interviews.service.js';
 import { RecruitmentAnalyticsService } from './recruitment-analytics.service.js';
@@ -79,6 +80,9 @@ import { VacancySuggestionsService } from './vacancy-suggestions.service.js';
     CvPreviewsService,
     // the earlier CVs matched with each open vacancy, HR told of new matches (24 October 2026: "Suggest; HR adds")
     VacancySuggestionsService,
+    // a Super Admin deletes an applicant, or a vacancy with its applicants (owner, 25 October 2026: "Vacancy alone -
+    // applicant alone - superadmin only")
+    RecruitmentDeletesService,
   ],
   exports: [RecruitmentOffersService, InterviewsService, RecruitmentSchedulerService, CvReadingsService, CandidatesService, ScreeningCommentsService],
 })

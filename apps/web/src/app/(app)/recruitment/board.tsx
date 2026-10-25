@@ -8,6 +8,7 @@ import { APPLICATION_SOURCE_LABELS, APPLICATION_STAGE_LABELS, HIRING_SUGGESTION_
 import { FormErrors, useFieldIds } from '@/components/form';
 import type { FormState } from '@/lib/types';
 import { candidateBadges } from './candidates';
+import { DeleteApplicantButton } from './delete-ui';
 import { daysText, dropOn } from './hiring';
 import { applicantHref, makeOfferHref, matchText, STAGE_STYLE } from './recruitment';
 import { VerdictBadge } from './ui';
@@ -49,7 +50,8 @@ function RejectPrompt({ card, onSend, onCancel, pending }: { card: BoardCard; on
   );
 }
 
-export function PipelineBoard({ board, move }: { board: VacancyBoard; move: Move }) {
+/** `deletes`: a Super Admin's Delete applicant on each card (owner, 25 October 2026: "applicant alone - superadmin only"). */
+export function PipelineBoard({ board, move, deletes = false }: { board: VacancyBoard; move: Move; deletes?: boolean }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [state, setState] = useState<FormState>({});
@@ -169,6 +171,7 @@ export function PipelineBoard({ board, move }: { board: VacancyBoard; move: Move
                       </Select>
                     </label>
                   )}
+                  {deletes && <DeleteApplicantButton id={card.id} number={card.number} compact />}
                 </li>
               ))}
             </ul>

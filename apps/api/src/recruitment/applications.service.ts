@@ -27,6 +27,7 @@ import {
   type HandStage,
   type WorkArrangement,
 } from '@trendlix/shared';
+import { isSuperAdmin } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { AuditService } from '../audit/audit.service.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
@@ -226,6 +227,8 @@ export class ApplicationsService {
       scheduleInterview: manages && !a.filteredOut && !settled,
       suggest: viewer === 'hiring_manager' && !settled,
       emailOnReject: manages && (await this.mail.ready()),
+      // Delete applicant (owner, 25 October 2026: "Vacancy alone - applicant alone - superadmin only"); never a developer
+      delete: isSuperAdmin(c.user) && !c.user.developer,
     };
     const [interviews, allFeedback] = await Promise.all([this.interviews.ofApplication(a.id, c), this.interviews.feedbackOf(a.id, c.selfId)]);
     const gaveOwn = allFeedback.some((f) => f.mine);

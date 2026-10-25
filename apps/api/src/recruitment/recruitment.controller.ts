@@ -14,6 +14,7 @@ import { RecruitmentSettingsService } from './recruitment-settings.service.js';
 import { CV_UPLOAD } from './cv-file.js';
 import { CvUploadFilter } from './cv-upload.filter.js';
 import { PublicCareersService } from './public-careers.service.js';
+import { RecruitmentDeletesService } from './recruitment-deletes.service.js';
 import { APPROVES, MANAGES, READS } from './recruitment-access.js';
 import {
   AnalyticsQueryDto,
@@ -40,7 +41,9 @@ import { VacanciesService } from './vacancies.service.js';
 // Vacancies and applicants: HR, the CEO and a Super Admin read them (a C-level vacancy only the CEO and a Super Admin:
 // the services answer 404); HR (and a Super Admin) drafts, changes, sends for approval, holds, reopens and closes
 // vacancies and moves applicants; the CEO (and a Super Admin) approves or sends back a vacancy; only a Super Admin
-// deletes one, nobody having applied. The careers page's addresses are public (PublicCareersController).
+// deletes one, since 25 October 2026 with its applications, and one applicant on their own (owner: "Vacancy alone -
+// applicant alone - superadmin only"; recruitment-deletes.service.ts). The careers page's addresses are public
+// (PublicCareersController).
 // Phase 2 (owner, 22 October 2026; packages/shared recruitment-hiring.ts): a vacancy's page, its pipeline board and an
 // applicant's page (and CV) are open to its hiring manager and the applicant's interviewers too, the services answering
 // as each may see them (404 otherwise); interviews, scorecards, the hiring manager's suggestion, My Hiring, Recruitment
@@ -48,7 +51,10 @@ import { VacanciesService } from './vacancies.service.js';
 
 @Controller('recruitment/vacancies')
 export class VacanciesController {
-  constructor(private readonly vacancies: VacanciesService) {}
+  constructor(
+    private readonly vacancies: VacanciesService,
+    private readonly deletes: RecruitmentDeletesService,
+  ) {}
 
   /** ?status= (a status, active: the default, or all) and ?q= (title, number, job title). */
   @Roles(...READS)
@@ -119,11 +125,19 @@ export class VacanciesController {
     return this.vacancies.move(id, 'close', dto.reason, user);
   }
 
+  /** What deleting it takes with it (its applications, the candidate profiles left with nothing), or why it stays: a Super Admin only. */
+  @Roles('super_admin')
+  @Get(':id/deletion')
+  deletion(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {
+    return this.deletes.vacancyDeletion(id, user);
+  }
+
+  /** ?confirm=: its number typed (VAC-2026-0001), needed once people applied (25 October 2026): their applications go with it. */
   @DeletesRecords()
   @Delete(':id')
   @HttpCode(204)
-  remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {
-    return this.vacancies.remove(id, user);
+  remove(@Param('id', ParseUUIDPipe) id: string, @Query('confirm') confirm: string | undefined, @CurrentUser() user: SessionUser) {
+    return this.vacancies.remove(id, typeof confirm === 'string' ? confirm : null, user);
   }
 }
 
@@ -143,6 +157,7 @@ export class ApplicationsController {
   constructor(
     private readonly applications: ApplicationsService,
     private readonly interviews: InterviewsService,
+    private readonly deletes: RecruitmentDeletesService,
   ) {}
 
   /** ?vacancyId=, ?stage=, ?minMatch=, ?minYears=, ?source=, ?filtered= (hide: the default, only, all), ?q=. */
@@ -224,6 +239,25 @@ export class ApplicationsController {
   @HttpCode(200)
   restore(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {
     return this.applications.restore(id, user);
+  }
+
+  /**
+   * What deleting the applicant takes with it (interviews, comments, files, their candidate profile when nothing else is
+   * left), or why they stay on record (owner, 25 October 2026: "Vacancy alone - applicant alone - superadmin only"): a
+   * Super Admin only, never a developer.
+   */
+  @Roles('super_admin')
+  @Get(':id/deletion')
+  deletion(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {
+    return this.deletes.applicationDeletion(id, user);
+  }
+
+  /** Deletes the applicant on their own (409 in words when hired, an offer was sent, or an interview is still to come). */
+  @DeletesRecords()
+  @Delete(':id')
+  @HttpCode(204)
+  remove(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {
+    return this.deletes.removeApplication(id, user);
   }
 
   /** Gone (410) since HR's notes became screening comments (24 October 2026): POST /recruitment/comments instead. */

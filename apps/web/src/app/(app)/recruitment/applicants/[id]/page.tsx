@@ -27,13 +27,15 @@ import { CandidateApplicationsTable, EmployeeCard, MatchesCard } from '../../can
 import { candidateHref } from '../../candidates';
 import { FromTheCv } from '../../cv-card';
 import { CvDialogHost, CvOpenButton } from '../../cv-dialog';
+import { DeleteApplicantButton } from '../../delete-ui';
+import { APPLICANT_GONE } from '../../deletes';
 import { cancelInterview, giveFeedback, markInterview, moveApplicant, rescheduleInterview, restoreApplicant, scheduleInterview, suggestNext } from '../../actions';
 import { loadApplicant, loadApplicantComments, recruitmentNotLoaded } from '../../data';
 import { ActionButton, ReasonButton } from '../../forms';
 import { interviewWhen, MY_HIRING_PATH } from '../../hiring';
 import { FeedbackForm, MoveInterview, ScheduleInterview, SuggestForm, type PersonOption } from '../../hiring-forms';
 import { vacancyOptions } from '../../pickers';
-import { applicantCvHref, makeOfferHref, matchText, vacancyHref } from '../../recruitment';
+import { APPLICANTS_PATH, applicantCvHref, makeOfferHref, matchText, vacancyHref } from '../../recruitment';
 import { commentsOfRecord, kb, ownCv } from '../../screening';
 import { ScreeningCommentsCard } from '../../screening-ui';
 import { StageBadge, VerdictBadge } from '../../ui';
@@ -59,6 +61,9 @@ import { NO_MEETING_CHOICES } from '../../meetings';
 // into the comments, "HR (earlier notes)"): this application's comments (and the general CV it came from), with the
 // general ones for HR, the CEO and a Super Admin; its hiring manager and interviewers comment here too. The latest
 // verdict beside the stage.
+// Delete applicant (owner, 25 October 2026, on a closed vacancy's rejected applicant: "i want to delete this"; asked,
+// "Vacancy alone - applicant alone - superadmin only"): a Super Admin's, its window saying what goes or why it stays on
+// record; a link to one deleted since lands on a plain "deleted, or you can't open it", never an error page.
 
 export const metadata: Metadata = { title: 'Applicant · People System' };
 
@@ -100,6 +105,8 @@ function Actions({ a }: { a: ApplicationView }) {
           emailOption={c.emailOnReject}
         />
       )}
+      {/* a Super Admin's, never a developer's (owner, 25 October 2026: "applicant alone - superadmin only"): then its vacancy */}
+      {c.delete && <DeleteApplicantButton id={a.id} number={a.number} back={{ vacancyId: a.vacancy.id }} />}
     </div>
   );
 }
@@ -284,6 +291,15 @@ async function Interviews({ a }: { a: ApplicationView }) {
 async function Applicant({ params }: { params: PageProps<'/recruitment/applicants/[id]'>['params'] }) {
   const { id } = await params;
   const [loaded, commentsLoaded] = await Promise.all([loadApplicant(id), loadApplicantComments(id)]);
+  // 404: deleted since (25 October 2026), or not theirs to open: said plainly, an old notification's or email's link too
+  if (loaded.kind === 'unavailable') {
+    return (
+      <div className="space-y-4">
+        <BackLink href={APPLICANTS_PATH}>Applicants</BackLink>
+        <Empty>{APPLICANT_GONE}</Empty>
+      </div>
+    );
+  }
   if (loaded.kind !== 'ok') return <Empty>{recruitmentNotLoaded(loaded, 'applicant')}</Empty>;
   const a = loaded.value;
   const participant = a.viewer === 'hiring_manager' || a.viewer === 'interviewer';

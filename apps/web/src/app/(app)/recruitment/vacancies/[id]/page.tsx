@@ -8,13 +8,15 @@ import { SetUpEmailLink } from '@/components/set-up-email-link';
 import { setsUpEmail } from '@/lib/email-setup';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { isHidden, shownCode } from '@/lib/hidden';
+import { canDelete } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import { BackLink, Empty, Loading } from '../../../organization/ui';
 import { originFrom } from '../../../offers/sending';
-import { deleteVacancy, moveOnBoard, moveVacancy } from '../../actions';
+import { moveOnBoard, moveVacancy } from '../../actions';
 import { PipelineBoard } from '../../board';
 import { candidateHref } from '../../candidates';
 import { CvDialogHost, CvOpenButton } from '../../cv-dialog';
+import { DeleteVacancyButton } from '../../delete-ui';
 import { loadApplicants, loadBoard, loadSuggestions, loadVacancy, recruitmentNotLoaded } from '../../data';
 import { ActionButton, CopyLink, ReasonButton } from '../../forms';
 import { vacancyBulkHref } from '../../general';
@@ -49,6 +51,9 @@ import { ApplicantsTable, VacancyStatusBadge, VerdictBadge } from '../../ui';
 // opened posts?"; "Suggest; HR adds", "Yes, HR presses 'Invite to apply'"): a third view (?view=suggested) for HR, the CEO
 // and a Super Admin, never the hiring manager: the earlier CVs that match, each with its reasons, its CV in the CV window,
 // and HR's Add to this vacancy, Invite to apply (confirmed first) and Dismiss; a filter by what was decided.
+// Deleting (owner, 25 October 2026, on a closed vacancy with one rejected applicant: "i want to delete this"; asked,
+// "Vacancy alone - applicant alone - superadmin only"): a Super Admin's Delete, also once people applied (its applications
+// go with it, its number typed to confirm), and Delete applicant on each row of the list and each card of the board.
 
 export const metadata: Metadata = { title: 'Vacancy · People System' };
 
@@ -82,14 +87,15 @@ function Moves({ v }: { v: VacancyView }) {
       {c.hold && <ActionButton action={moveVacancy.bind(null, v.id, 'hold')} label="Put on hold" pendingLabel="Saving…" />}
       {c.reopen && <ActionButton action={moveVacancy.bind(null, v.id, 'reopen')} label="Open again" pendingLabel="Saving…" kind="primary" />}
       {c.close && <ReasonButton action={moveVacancy.bind(null, v.id, 'close')} label="Close" pendingLabel="Closing…" reasonLabel="Why it closes" required={false} kind="danger" />}
-      {c.delete && <ActionButton action={deleteVacancy.bind(null, v.id)} label="Delete" pendingLabel="Deleting…" kind="danger" confirm={`Delete ${v.number}? Nobody has applied; this can't be undone.`} />}
+      {/* also once people applied (owner, 25 October 2026: "Vacancy alone - applicant alone - superadmin only"): its number typed to confirm */}
+      {c.delete && <DeleteVacancyButton id={v.id} number={v.number} applicants={v.applicants} />}
     </div>
   );
 }
 
 async function Applicants({ v, searchParams }: { v: VacancyView; searchParams: PageProps<'/recruitment/vacancies/[id]'>['searchParams'] }) {
   const q = readApplicantsQuery(await searchParams);
-  const loaded = await loadApplicants({ ...q, vacancyId: v.id });
+  const [loaded, user] = await Promise.all([loadApplicants({ ...q, vacancyId: v.id }), getCurrentUser()]);
   const base = vacancyHref(v.id);
   const total = Object.values(v.stageCounts).reduce((a, b) => a + b, 0);
   return (
@@ -158,7 +164,8 @@ async function Applicants({ v, searchParams }: { v: VacancyView; searchParams: P
       ) : loaded.value.length === 0 ? (
         <div className="card px-6 py-8 text-center text-sm text-muted">{total ? 'Nobody here.' : 'Nobody has applied yet.'}</div>
       ) : (
-        <ApplicantsTable rows={loaded.value} withVacancy={false} />
+        // Delete applicant on each row, a Super Admin's only (owner, 25 October 2026: "applicant alone - superadmin only")
+        <ApplicantsTable rows={loaded.value} withVacancy={false} deletes={canDelete(user)} />
       )}
     </section>
   );
@@ -275,13 +282,13 @@ async function Suggestions({ v, searchParams }: { v: VacancyView; searchParams: 
 
 /** The pipeline board (Phase 2): HR moves cards on it, the CEO and the hiring manager read it. */
 async function Board({ v }: { v: VacancyView }) {
-  const loaded = await loadBoard(v.id);
+  const [loaded, user] = await Promise.all([loadBoard(v.id), getCurrentUser()]);
   return (
     <section aria-labelledby="vacancy-board" className="space-y-3">
       <h2 id="vacancy-board" className="text-lg font-semibold">
         Pipeline
       </h2>
-      {loaded.kind !== 'ok' ? <Empty>{recruitmentNotLoaded(loaded, 'board')}</Empty> : <PipelineBoard board={loaded.value} move={moveOnBoard} />}
+      {loaded.kind !== 'ok' ? <Empty>{recruitmentNotLoaded(loaded, 'board')}</Empty> : <PipelineBoard board={loaded.value} move={moveOnBoard} deletes={canDelete(user)} />}
     </section>
   );
 }

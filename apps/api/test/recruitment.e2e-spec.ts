@@ -466,9 +466,11 @@ describe('Recruitment (e2e)', () => {
       const filled = (await get('hr', `/recruitment/vacancies/${v.id}`).expect(200)).body as VacancyView;
       expect(filled).toMatchObject({ status: 'filled', hired: 1 });
       await api().get(`/api/public/careers/${v.slug}`).expect(404);
-      // a vacancy someone applied to stays
-      expect(said(await api().delete(`/api/recruitment/vacancies/${v.id}`).set('Cookie', sessions.superAdmin).expect(409))).toEqual([
-        'People applied to it, so it stays on record. Close it instead.',
+      // a vacancy someone was hired from stays (since 25 October 2026 one people applied to goes with its applications,
+      // its number typed: recruitment-deletes.e2e-spec.ts)
+      const hiredNumber = a.number;
+      expect(said(await api().delete(`/api/recruitment/vacancies/${v.id}?confirm=${v.number}`).set('Cookie', sessions.superAdmin).expect(409))).toEqual([
+        `One application stays on record, so the vacancy stays: ${hiredNumber}: they were hired from it.`,
       ]);
     });
 

@@ -17,6 +17,7 @@ import Link from 'next/link';
 import { Select } from '@/components/select';
 import { formatDate } from '@/lib/format';
 import { candidateBadges } from './candidates';
+import { DeleteApplicantButton } from './delete-ui';
 import { experienceCell, latestRoleOf } from './cv-reading';
 import { applicantHref, matchText, minYearsOptions, skillGroups, STAGE_STYLE, VACANCY_STATUS_STYLE } from './recruitment';
 import { verdictBadge } from './screening';
@@ -167,8 +168,9 @@ export function SkillSelect({ id, value }: { id: string; value: string }) {
  * Applicants in a table: who, their match, stage, experience, source and when they applied; `withVacancy` on All
  * Applicants. `bare`: inside a card already (the Applicants page's vacancy groups). The Latest role column (24 October
  * 2026) where the Vacancy column isn't: a vacancy's own applicants (its group, its page), so the table is no wider.
+ * `deletes`: a Super Admin's Delete applicant on each row (owner, 25 October 2026: "applicant alone - superadmin only").
  */
-export function ApplicantsTable({ rows, withVacancy, bare = false }: { rows: ApplicationListItem[]; withVacancy: boolean; bare?: boolean }) {
+export function ApplicantsTable({ rows, withVacancy, bare = false, deletes = false }: { rows: ApplicationListItem[]; withVacancy: boolean; bare?: boolean; deletes?: boolean }) {
   return (
     <div className={bare ? 'overflow-x-auto' : 'card overflow-x-auto'}>
       <table className="table">
@@ -182,6 +184,11 @@ export function ApplicantsTable({ rows, withVacancy, bare = false }: { rows: App
             <th className="text-right">Experience</th>
             <th>Source</th>
             <th>Applied</th>
+            {deletes && (
+              <th>
+                <span className="sr-only">Actions</span>
+              </th>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -220,6 +227,11 @@ export function ApplicantsTable({ rows, withVacancy, bare = false }: { rows: App
               <ExperienceCell typed={a.yearsExperience} fromCv={a.fromCv} />
               <td className="text-sm">{applicationSourceText(a)}</td>
               <td className="text-sm whitespace-nowrap">{formatDate(a.appliedAt)}</td>
+              {deletes && (
+                <td className="whitespace-nowrap">
+                  <DeleteApplicantButton id={a.id} number={a.number} compact />
+                </td>
+              )}
             </tr>
           ))}
         </tbody>

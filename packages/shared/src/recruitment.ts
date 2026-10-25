@@ -790,6 +790,11 @@ export interface VacancyCan {
   hold: boolean;
   reopen: boolean;
   close: boolean;
+  /**
+   * A Super Admin's, never a developer's; since 25 October 2026 also once people applied (owner: "Vacancy alone -
+   * applicant alone - superadmin only"), its applications going with it and its number typed to confirm
+   * (recruitment-deletes.ts).
+   */
   delete: boolean;
 }
 
@@ -903,6 +908,12 @@ export interface ApplicationCan {
   suggest: boolean;
   /** Phase 2: Reject may email the candidate (email is set up on the server). */
   emailOnReject: boolean;
+  /**
+   * Delete applicant (owner, 25 October 2026: "Vacancy alone - applicant alone - superadmin only"): a Super Admin, never
+   * a developer; whether it stays on record (hired, an offer sent, an interview to come) the deletion's preview says
+   * (recruitment-deletes.ts). Left out by an API from before it.
+   */
+  delete?: boolean;
 }
 
 /** GET /recruitment/applications/:id. */

@@ -1,9 +1,10 @@
 'use server';
 
 // Recruitment (owner, 22 October 2026: "where will we include the ATS?"): saving a vacancy, moving it on (sent to the
-// CEO, approved or sent back by the CEO, held, reopened, closed), deleting one nobody applied to (a Super Admin), and
-// moving an applicant (shortlisted, interview, rejected with a reason, restored). Each forwards to the API, which checks
-// who may and every rule again. Noting on them is a screening comment since 24 October 2026 (comment-actions.ts).
+// CEO, approved or sent back by the CEO, held, reopened, closed), and moving an applicant (shortlisted, interview,
+// rejected with a reason, restored). Each forwards to the API, which checks who may and every rule again. Noting on them
+// is a screening comment since 24 October 2026 (comment-actions.ts). Deleting a vacancy or an applicant (a Super Admin,
+// owner, 25 October 2026: "Vacancy alone - applicant alone - superadmin only"): delete-actions.ts.
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import type { InterviewSaved, VacancyView } from '@trendlix/shared';
@@ -65,16 +66,6 @@ export async function moveVacancy(id: string, move: keyof typeof MOVES, _prev: F
   const reason = fd.get('reason');
   const body = typeof reason === 'string' && reason.trim() ? { reason: reason.trim() } : {};
   return send('POST', `/recruitment/vacancies/${encodeURIComponent(id)}/${MOVES[move]}`, body, typed(fd));
-}
-
-export async function deleteVacancy(id: string): Promise<FormState> {
-  try {
-    await apiSend('DELETE', `/recruitment/vacancies/${encodeURIComponent(id)}`);
-  } catch (err) {
-    if (err instanceof ApiError) return { errors: err.messages };
-    throw err;
-  }
-  redirect(VACANCIES_PATH);
 }
 
 /** Moves an applicant (shortlisted, interview, rejected with a reason); a rejection emails the candidate when "Email the candidate" is ticked (Phase 2). */

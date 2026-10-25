@@ -592,6 +592,11 @@ export * from './screening.js';
 // 'Invite to apply'"): the pool and its exclusions, the score and its reasons, the invitation's words, the views
 export * from './suggested-cvs.js';
 
+// deleting an applicant, or a vacancy people applied to (owner, 25 October 2026: "i want to delete this"; asked, "Vacancy
+// alone - applicant alone - superadmin only"): what goes with an application, why one stays on record (hired, an offer
+// sent, an interview to come), the vacancy's number typed to confirm, and the API's answers
+export * from './recruitment-deletes.js';
+
 // Office staff's check-ins locked to the check-in locations by GPS (owner, 24 October 2026: "Yes, add a GPS lock too"):
 // the switch and its accuracy allowance, a press's verdict (inside a circle, too rough, no location), the two locks
 // together (either passing is enough), and the words of the refusals

@@ -1706,7 +1706,8 @@ model JobOffer {
 // job descriptions are, filled in from the job title's JD; the screening questions ([VacancyQuestion], at most 10). Its
 // status: draft, pending (the CEO decides), open, on_hold, closed, filled (its hires reached the headcount). A C-level
 // one (a confidential grade, or a job title only for one) is the CEO's and a Super Admin's only. Only a Super Admin
-// deletes one, and only without applicants.
+// deletes one; since 25 October 2026 also with applicants, their applications deleted with it first (its number typed;
+// apps/api/src/recruitment/recruitment-deletes.service.ts), so applications stay Restrict here.
 model Vacancy {
   id               String           @id @default(uuid()) @db.Uuid
   number           String           @unique
