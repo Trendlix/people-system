@@ -14,9 +14,11 @@ import { PayslipsService } from './payslips.service.js';
 // which a run takes out of each shift's working days for the expected hours. The expected hours are worked out, never
 // typed (owner, 20 October 2026: "expected hours to be locked based on shifts and attendance data"): ExpectedHoursService
 // clears any a draft's line had typed. The employee's own payslips (owner, 20 October 2026, the employee app: "My
-// attendance and payslips"): MyPayslipsController.
+// attendance and payslips"): MyPayslipsController. The contracts module takes a person's draft lines again when a
+// signing is undone or a draft deleted (owner's report, 25 October 2026): PayrollService.rebuildDraftLines.
 @Module({
   controllers: [PayrollSettingsController, HolidaysController, PayrollController, PayslipsController, MyPayslipsController],
   providers: [PayrollSettingsService, HolidaysService, PayrollService, PayslipsService, ExpectedHoursService],
+  exports: [PayrollService],
 })
 export class PayrollModule {}

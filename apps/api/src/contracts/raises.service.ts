@@ -26,8 +26,9 @@ import { ConfidentialService } from '../employees/confidential.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { NoticesService } from '../notifications/notices.service.js';
 import { LawRatesService } from '../payroll/law-rates/law-rates.service.js';
+import { PayrollService } from '../payroll/payroll.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { assertCurrent, comparable, ContractsService, fields, payTermsOf, salaryMasked, toData, type EmploymentRow } from './contracts.service.js';
+import { assertCurrent, comparable, ContractsService, deleteRefusal, fields, payTermsOf, salaryMasked, toData, type EmploymentRow } from './contracts.service.js';
 import { MAX_MONEY } from './contracts.dto.js';
 import { openDirectRequest, syncDirectRequest } from './direct-requests.js';
 import { checkedPromotion, type Promotion } from './promotion.js';
@@ -136,6 +137,7 @@ export class RaisesService {
     private readonly lawRates: LawRatesService,
     private readonly confidential: ConfidentialService,
     private readonly notices: NoticesService,
+    private readonly payroll: PayrollService,
   ) {}
 
   /**
@@ -396,13 +398,15 @@ export class RaisesService {
 
   /**
    * The CEO rejects it, with a comment: the draft goes (it was never signed), and the request it was prepared from is
-   * declined with it. The audit log keeps what was declined.
+   * declined with it. The audit log keeps what was declined. A draft whose signing was undone before 25 October 2026
+   * may still have draft payroll lines on it: taken again first, as when a draft is deleted (ContractsService.remove).
    */
   async decline(id: string, dto: RaiseCommentDto, user: SessionUser) {
     const comment = commentOf(dto);
     const before = await this.raise(id);
     if (before.approval !== 'pending_ceo') throw this.wrongStep(before, 'rejected');
-    await this.prisma.$transaction(async (tx) => {
+    const rebuilt = await this.prisma.$transaction(async (tx) => {
+      const rebuilt = await this.payroll.freeContract(tx, id, (payroll, status) => deleteRefusal(before.number, payroll, status));
       if (before.raiseRequest) {
         await tx.raiseRequest.update({
           where: { id: before.raiseRequest.id },
@@ -411,6 +415,7 @@ export class RaisesService {
         await recordStep(tx, before.raiseRequest.id, user.id, { kind: 'ceo_decision', decision: 'reject', comment, contractNumber: before.number });
       }
       await tx.contract.delete({ where: { id } });
+      return rebuilt;
     });
     await this.audit.record({
       userId: user.id,
@@ -428,6 +433,7 @@ export class RaisesService {
         diff: { contract: before.number, status: { from: before.raiseRequest.status, to: 'declined' }, stage: 'ceo', decision: 'reject', comment },
       });
     }
+    await this.payroll.recordRebuilt(rebuilt, user, { draftDeleted: before.number });
     // to HR (Phase 4: notifications)
     await this.notices.payRaiseDecided(before.employmentId, 'rejected', user.id);
   }

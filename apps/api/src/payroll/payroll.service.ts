@@ -47,7 +47,7 @@ import type { AttendanceWaiverDto, CibFileQueryDto, CreatePayrollRunDto, PaidPay
 import { PayrollSettingsService, rulesOf } from './payroll-settings.service.js';
 import { PayslipsService } from './payslips.service.js';
 import { registerWorkbook } from './register.js';
-import { roster, type RosterEmployment, type RosterLine } from './roster.js';
+import { roster, type Exclusion, type RosterEmployment, type RosterLine } from './roster.js';
 import { STATUS_TEXT } from './status.js';
 import {
   bankDetailsOf,
@@ -66,6 +66,24 @@ import {
 
 const RUN = 'payroll_run';
 const LINE = 'payroll_line';
+/** The database, or a transaction in it. */
+type Db = PrismaService | Prisma.TransactionClient;
+
+/**
+ * One person's line on a draft run taken again (PayrollService.rebuildDraftLines), for the audit log: the contract it
+ * was worked out on and the one now (null: taken off the run, `excluded` saying why), and its days paid when they
+ * changed.
+ */
+export interface RebuiltLine {
+  runId: string;
+  month: string;
+  lineId: string;
+  employeeId: string;
+  employeeCode: string;
+  contract: { from: string | null; to: string | null };
+  paidDays: { from: number; to: number } | null;
+  excluded: string | null;
+}
 
 /**
  * Inputs that are money: the audit log only says they changed, as for a contract's salary. The commission and the
@@ -179,6 +197,23 @@ const fromRoster = (l: RosterLine) => ({
   payBasis: l.payBasis,
   terms: json(l.terms),
 });
+
+/**
+ * A line's data as a run made or refreshed takes it from the roster: its terms with the month's additions and
+ * deductions (17 October 2026) and last month's final KPI (21 October 2026), its inputs, worked out with the rules and
+ * the rates set by law.
+ */
+const lineData = (
+  l: RosterLine,
+  inputs: PayrollInputs,
+  pending: Awaited<ReturnType<RunAdjustmentsService['pendingByEmployee']>>,
+  kpis: Awaited<ReturnType<typeof finalKpis>>,
+  rules: PayrollRules,
+  law: LawRates,
+) => {
+  const terms = withKpi(withAdjustments(l.terms, pending.get(l.employeeId)), kpis.get(l.employeeId));
+  return { ...fromRoster(l), terms: json(terms), inputs: json(inputs), ...worked(terms, inputs, rules, law) };
+};
 
 /** How many additions and deductions the run's lines take (owner, 17 October 2026). */
 const countOn = (lines: readonly RosterLine[], pending: ReadonlyMap<string, readonly unknown[]>) => lines.reduce((n, l) => n + (pending.get(l.employeeId)?.length ?? 0), 0);
@@ -303,10 +338,7 @@ export class PayrollService {
         data: { month: toDateOnly(firstDay(month)), rules: json(rules), lawRates: json(law), exclusions: json(exclusions), createdById: user.id },
       });
       await tx.payrollLine.createMany({
-        data: lines.map((l) => {
-          const terms = withKpi(withAdjustments(l.terms, pending.get(l.employeeId)), kpis.get(l.employeeId));
-          return { runId: made.id, employeeId: l.employeeId, ...fromRoster(l), terms: json(terms), inputs: json(EMPTY_PAYROLL_INPUTS), ...worked(terms, EMPTY_PAYROLL_INPUTS, rules, law) };
-        }),
+        data: lines.map((l) => ({ runId: made.id, employeeId: l.employeeId, ...lineData(l, EMPTY_PAYROLL_INPUTS, pending, kpis, rules, law) })),
       });
       return made;
     });
@@ -357,9 +389,7 @@ export class PayrollService {
       this.prisma.payrollLine.deleteMany({ where: { id: { in: removed.map((l) => l.id) } } }),
       ...lines.map((l) => {
         const before = kept.get(l.employeeId);
-        const inputs = before ? savedInputs(before.inputs) : EMPTY_PAYROLL_INPUTS;
-        const terms = withKpi(withAdjustments(l.terms, pending.get(l.employeeId)), kpis.get(l.employeeId));
-        const data = { ...fromRoster(l), terms: json(terms), inputs: json(inputs), ...worked(terms, inputs, rules, law) };
+        const data = lineData(l, before ? savedInputs(before.inputs) : EMPTY_PAYROLL_INPUTS, pending, kpis, rules, law);
         return before
           ? this.prisma.payrollLine.update({ where: { id: before.id }, data })
           : this.prisma.payrollLine.create({ data: { runId: id, employeeId: l.employeeId, ...data } });
@@ -401,6 +431,110 @@ export class PayrollService {
     const result = await this.attendance.fillRun(id, user);
     await this.audit.record({ userId: user.id, action: 'refresh_attendance', entityType: RUN, entityId: id, diff: { month: monthOf(run), ...result } });
     return this.get(id, user);
+  }
+
+  /**
+   * Takes one person's lines on these runs again, each as a refresh takes it (the roster from the signed contracts as
+   * they are now, the month's additions and deductions, last month's KPI), with the run's own rules and rates set by
+   * law; the inputs typed, the hold and the comments stay. Someone with no signed contract for the month any more is
+   * taken off the run, with why among its exclusions. Only drafts: a run with the CEO, approved or paid never changes.
+   * For a contract whose signing is undone, or a draft deleted (owner's report, 25 October 2026: a renewal's signing
+   * undone after a draft run had used it left the run's line on the draft, so the draft couldn't be deleted). `db` is
+   * the caller's transaction, so the contracts and the lines change together; recordRebuilt records what changed once
+   * it is saved.
+   */
+  async rebuildDraftLines(employeeId: string, runIds: readonly string[], db: Db = this.prisma): Promise<RebuiltLine[]> {
+    const runs = await db.payrollRun.findMany({
+      where: { id: { in: [...runIds] }, status: 'draft' },
+      orderBy: { month: 'asc' },
+      include: { lines: { where: { employeeId } } },
+    });
+    const out: RebuiltLine[] = [];
+    for (const run of runs) {
+      const before = run.lines[0];
+      if (!before) continue;
+      const month = monthOf(run);
+      const rules = run.rules as unknown as PayrollRules;
+      const law = runLawRates(run);
+      const { lines, exclusions } = await this.roster(month, rules, law, db, employeeId);
+      const line = lines.find((l) => l.employeeId === employeeId);
+      if (line) {
+        const pending = await this.adjustments.pendingByEmployee(month, [employeeId], db);
+        const kpis = await finalKpis(db, month, [employeeId]);
+        await db.payrollLine.update({ where: { id: before.id }, data: lineData(line, savedInputs(before.inputs), pending, kpis, rules, law) });
+      } else {
+        await db.payrollLine.delete({ where: { id: before.id } });
+      }
+      // the person left out as the roster says now; everyone else as when the run was made or last refreshed
+      const was = (run.exclusions ?? []) as unknown as Exclusion[];
+      const now = [...was.filter((x) => x.employeeId !== employeeId), ...exclusions];
+      if (JSON.stringify(now) !== JSON.stringify(was)) await db.payrollRun.update({ where: { id: run.id }, data: { exclusions: json(now) } });
+
+      const numbers = new Map(
+        (await db.contract.findMany({ where: { id: { in: [before.contractId, ...(line ? [line.contractId] : [])] } }, select: { id: true, number: true } })).map((c) => [c.id, c.number]),
+      );
+      const paidDays = { from: (before.terms as unknown as PayrollTerms).paidDays, to: line?.terms.paidDays ?? 0 };
+      out.push({
+        runId: run.id,
+        month,
+        lineId: before.id,
+        employeeId,
+        employeeCode: before.employeeCode,
+        contract: { from: numbers.get(before.contractId) ?? null, to: line ? (numbers.get(line.contractId) ?? null) : null },
+        paidDays: line && paidDays.from !== paidDays.to ? paidDays : null,
+        excluded: line ? null : (exclusions[0]?.reason ?? null),
+      });
+    }
+    return out;
+  }
+
+  /**
+   * Frees a contract from the payroll, in the caller's transaction once the contract is a draft (owner's report, 25
+   * October 2026: deleting a renewal's draft said "This record is linked to other records", as a draft payroll run had
+   * used it while it was signed): the draft runs' lines worked out on it are taken again (rebuildDraftLines) on the
+   * signed contracts as they are now, the version before it or none. A run with the CEO, approved or paid keeps its lines
+   * for good, so then nothing changes: refused, `refused` saying why with the earliest such run ("the September 2026
+   * payroll") and its status. Returns the lines taken again, for recordRebuilt once saved.
+   */
+  async freeContract(tx: Prisma.TransactionClient, contractId: string, refused: (payroll: string, status: PayrollStatus) => string): Promise<RebuiltLine[]> {
+    const used = await tx.payrollLine.findMany({
+      where: { contractId },
+      select: { employeeId: true, run: { select: { id: true, month: true, status: true } } },
+      orderBy: { run: { month: 'asc' } },
+    });
+    const kept = used.find((l) => l.run.status !== 'draft');
+    if (kept) throw new ConflictException(refused(`the ${monthName(monthOf(kept.run))} payroll`, kept.run.status as PayrollStatus));
+    const rebuilt: RebuiltLine[] = [];
+    for (const employeeId of new Set(used.map((l) => l.employeeId))) {
+      rebuilt.push(...(await this.rebuildDraftLines(employeeId, used.filter((l) => l.employeeId === employeeId).map((l) => l.run.id), tx)));
+    }
+    return rebuilt;
+  }
+
+  /**
+   * Records the lines rebuildDraftLines took again, once saved (`why`: what changed the contract, e.g. { signingUndone:
+   * 'CON-2026-0004' }), then fills those still on their runs from the month's attendance days again, as a refresh does.
+   */
+  async recordRebuilt(rebuilt: readonly RebuiltLine[], user: SessionUser, why: Record<string, unknown>): Promise<void> {
+    for (const r of rebuilt) {
+      await this.audit.record({
+        userId: user.id,
+        // a line taken off the run is gone with it
+        action: r.contract.to === null ? 'delete' : 'update',
+        entityType: LINE,
+        entityId: r.lineId,
+        diff: {
+          runId: r.runId,
+          month: r.month,
+          employeeCode: r.employeeCode,
+          contract: r.contract,
+          ...(r.paidDays && { paidDays: r.paidDays }),
+          ...(r.excluded && { excluded: r.excluded }),
+          ...why,
+        },
+      });
+    }
+    for (const r of rebuilt) if (r.contract.to !== null) await this.attendance.fillRun(r.runId, user, [r.employeeId]);
   }
 
   /**
@@ -706,14 +840,15 @@ export class PayrollService {
 
   /**
    * Who is on the month's run, and who is left out, as the employments and contracts are now; the expected hours with
-   * the month's holidays as they are now (a holiday added since the run was made counts once it is refreshed).
+   * the month's holidays as they are now (a holiday added since the run was made counts once it is refreshed). Only
+   * `employeeId`'s employments when given; read in `db`, the caller's transaction, when given.
    */
-  private async roster(month: string, rules: PayrollRules, law: LawRates) {
+  private async roster(month: string, rules: PayrollRules, law: LawRates, db: Db = this.prisma, employeeId?: string) {
     const from = toDateOnly(firstDay(month));
     const to = toDateOnly(lastDay(month));
     const [rows, holidays, leaveSetup] = await Promise.all([
-      this.prisma.employment.findMany({
-        where: { joinDate: { lte: to }, OR: [{ endDate: null }, { endDate: { gte: from } }] },
+      db.employment.findMany({
+        where: { ...(employeeId && { employeeId }), joinDate: { lte: to }, OR: [{ endDate: null }, { endDate: { gte: from } }] },
         select: rosterSelect(from, to),
       }),
       this.holidays.datesBetween(firstDay(month), lastDay(month)),

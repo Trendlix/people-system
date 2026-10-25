@@ -29,7 +29,9 @@ import { ConfidentialService } from '../employees/confidential.service.js';
 import { EmployeesService } from '../employees/employees.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { NoticesService } from '../notifications/notices.service.js';
+import { PayrollService } from '../payroll/payroll.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { deleteRefusal } from './contracts.service.js';
 import { payOf, recordStep, STEP_INCLUDE, stepFigures, stepView, typedFigure, type RequestViewer } from './raise-request-steps.js';
 import { commentOf, type CreateRaiseRequestDto, type RaiseCommentDto } from './raises.dto.js';
 
@@ -223,6 +225,7 @@ export class RaiseRequestsService {
     private readonly employees: EmployeesService,
     private readonly confidential: ConfidentialService,
     private readonly notices: NoticesService,
+    private readonly payroll: PayrollService,
   ) {}
 
   /**
@@ -399,7 +402,8 @@ export class RaiseRequestsService {
 
   /**
    * HR rejects a request with HR, with a comment (the employee who asked and their manager see it). A raise prepared
-   * from it and not yet sent (or returned by the CEO) goes with it.
+   * from it and not yet sent (or returned by the CEO) goes with it; draft payroll lines still on it (a signing undone
+   * before 25 October 2026) taken again first, as when a draft is deleted (ContractsService.remove).
    */
   async decline(id: string, dto: RaiseCommentDto, user: SessionUser) {
     const comment = commentOf(dto);
@@ -414,13 +418,15 @@ export class RaiseRequestsService {
       throw new ConflictException(`This request is ${RAISE_REQUEST_STATUS_LABELS[before.status as RaiseRequestStatus].toLowerCase()}, so HR can't reject it now.`);
     }
     const draft = before.contract && before.contract.status === 'draft' ? before.contract : null;
-    await this.prisma.$transaction(async (tx) => {
+    const rebuilt = await this.prisma.$transaction(async (tx) => {
+      const rebuilt = draft ? await this.payroll.freeContract(tx, draft.id, (payroll, status) => deleteRefusal(draft.number, payroll, status)) : [];
       await tx.raiseRequest.update({
         where: { id },
         data: { status: 'declined', declinedStage: 'hr', declineReason: comment, declinedById: user.id, declinedAt: new Date(), contractId: null },
       });
       await recordStep(tx, id, user.id, { kind: 'hr_decision', decision: 'reject', comment });
       if (draft) await tx.contract.delete({ where: { id: draft.id } });
+      return rebuilt;
     });
     await this.audit.record({
       userId: user.id,
@@ -432,6 +438,7 @@ export class RaiseRequestsService {
     if (draft) {
       await this.audit.record({ userId: user.id, action: 'delete', entityType: 'contract', entityId: draft.id, diff: { employmentId: draft.employmentId, number: draft.number, version: draft.version, request: id } });
     }
+    await this.payroll.recordRebuilt(rebuilt, user, { draftDeleted: draft?.number });
     return this.one(id, user);
   }
 

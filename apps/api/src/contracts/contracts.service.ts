@@ -20,6 +20,7 @@ import {
   type ContractForm,
   type ContractStatus,
   type PayBasis,
+  type PayrollStatus,
   type PayTerms,
   type RaiseReason,
   type EmploymentType,
@@ -37,6 +38,8 @@ import { EmployeeAccessService } from '../employee-access/employee-access.servic
 import { EmployeesService } from '../employees/employees.service.js';
 import { Prisma, type EmployeeStatus } from '../generated/prisma/client.js';
 import { LawRatesService } from '../payroll/law-rates/law-rates.service.js';
+import { PayrollService, type RebuiltLine } from '../payroll/payroll.service.js';
+import { STATUS_TEXT } from '../payroll/status.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ContractSettingsService } from './contract-settings.service.js';
 import { dropDirectRequest, openDirectRequest, syncDirectRequest } from './direct-requests.js';
@@ -72,6 +75,17 @@ const ENTITY = 'contract';
 type Db = PrismaService | Prisma.TransactionClient;
 /** Undoing a signing is for a Super Admin only, like deleting (owner's decision, 15 October 2026). */
 export const ONLY_SUPER_ADMIN_UNSIGNS = 'Only a Super Admin can undo a signing.';
+/**
+ * Why a signing can't be undone (owner's report, 25 October 2026): a payroll past its draft was worked out on the
+ * contract, and keeps it for good. `payroll` reads "the September 2026 payroll".
+ */
+export const unsignRefusal = (number: string, payroll: string, status: PayrollStatus) =>
+  `${number} was used in ${payroll}, which ${STATUS_TEXT[status]}: its signing stays on record${status === 'pending_ceo' ? ' unless the CEO returns that payroll to HR' : ''}.`;
+/** Why a draft can't be deleted: a payroll past its draft is still worked out on it (a signing undone before 25 October 2026). */
+export const deleteRefusal = (number: string, payroll: string, status: PayrollStatus) =>
+  `${number} was used in ${payroll}, which ${STATUS_TEXT[status]}, so it can't be deleted: ${
+    status === 'pending_ceo' ? 'have the CEO return that payroll to HR first, or sign it again.' : 'sign it again, as that payroll keeps the terms it was worked out on.'
+  }`;
 const DATE_FIELDS = ['startDate', 'endDate', 'probationEnd', 'signedOn', 'insuranceFiledOn', 'labourOfficeFiledOn', 'form2From'] as const;
 /**
  * Restricted (HR, Finance, CEO): the audit log only says they changed, as for bank details. A trainee's training stages
@@ -288,6 +302,9 @@ export function assertCurrent(e: Pick<EmploymentRow, 'endDate'>) {
   }
 }
 
+/** The months whose draft payroll lines were taken again, for the contract's audit entry; none, nothing. */
+const payrollRebuilt = (rebuilt: readonly RebuiltLine[]) => (rebuilt.length ? { payrollRebuilt: [...new Set(rebuilt.map((r) => r.month))] } : {});
+
 function assertNotFuture(date: string | null | undefined, what: string) {
   if (date && date > todayInCairo()) throw new BadRequestException(`The ${what} date can't be in the future.`);
 }
@@ -322,6 +339,7 @@ export class ContractsService {
     private readonly lawRates: LawRatesService,
     private readonly confidential: ConfidentialService,
     private readonly access: EmployeeAccessService,
+    private readonly payroll: PayrollService,
   ) {}
 
   /** An employment's contract versions, newest first. */
@@ -584,7 +602,9 @@ export class ContractsService {
   /**
    * Deletes a draft (a Super Admin only, owner's decision, 15 October 2026). A signed contract stays on record. A raise
    * request it was prepared from is HR's again; one prepared directly by HR goes with it (19 October 2026: nobody asked
-   * for it, so nothing is left to decide).
+   * for it, so nothing is left to decide). A draft whose signing was undone before 25 October 2026 may still have draft
+   * payroll lines worked out on it (owner's report, 25 October 2026: "This record is linked to other records"): they are
+   * taken again first (PayrollService.freeContract); lines of a run past its draft refuse it, saying which.
    */
   async remove(id: string, user: SessionUser) {
     assertDeletes(user);
@@ -592,18 +612,29 @@ export class ContractsService {
     if (c.status !== 'draft') throw new ConflictException(`${c.number} is signed: only a draft can be deleted, and a signed contract stays on record.`);
     const direct = c.raiseRequest?.origin === 'direct' ? c.raiseRequest : null;
     const employeeId = direct ? (await this.employmentOf(c)).employeeId : null;
-    const requestAudit = await this.prisma.$transaction(async (tx) => {
-      const dropped = direct ? await dropDirectRequest(tx, direct.id, { employeeId: employeeId!, number: c.number }, user.id, 'raise_deleted') : null;
-      await tx.contract.delete({ where: { id } });
-      // the request it was prepared from is HR's again, to prepare anew or decline
-      if (c.raiseRequest && !direct) {
-        await tx.raiseRequest.update({ where: { id: c.raiseRequest.id }, data: { status: 'with_hr' } });
-        await recordStep(tx, c.raiseRequest.id, user.id, { kind: 'raise_deleted', contractNumber: c.number });
-      }
-      return dropped;
+    const { requestAudit, rebuilt } = await this.prisma.$transaction(
+      async (tx) => {
+        const rebuilt = await this.payroll.freeContract(tx, id, (payroll, status) => deleteRefusal(c.number, payroll, status));
+        const dropped = direct ? await dropDirectRequest(tx, direct.id, { employeeId: employeeId!, number: c.number }, user.id, 'raise_deleted') : null;
+        await tx.contract.delete({ where: { id } });
+        // the request it was prepared from is HR's again, to prepare anew or decline
+        if (c.raiseRequest && !direct) {
+          await tx.raiseRequest.update({ where: { id: c.raiseRequest.id }, data: { status: 'with_hr' } });
+          await recordStep(tx, c.raiseRequest.id, user.id, { kind: 'raise_deleted', contractNumber: c.number });
+        }
+        return { requestAudit: dropped, rebuilt };
+      },
+      { timeout: TX_TIMEOUT_MS },
+    );
+    await this.audit.record({
+      userId: user.id,
+      action: 'delete',
+      entityType: ENTITY,
+      entityId: id,
+      diff: { employmentId: c.employmentId, number: c.number, version: c.version, ...payrollRebuilt(rebuilt) },
     });
-    await this.audit.record({ userId: user.id, action: 'delete', entityType: ENTITY, entityId: id, diff: { employmentId: c.employmentId, number: c.number, version: c.version } });
     if (requestAudit) await this.audit.record(requestAudit);
+    await this.payroll.recordRebuilt(rebuilt, user, { draftDeleted: c.number });
   }
 
   /**
@@ -748,6 +779,9 @@ export class ContractsService {
    * employment's contract again, and for version 1 the employment's probation end and status go back to what they were
    * (each unless changed since). Refused once a signed copy of one of its documents is uploaded, which shows it was
    * really signed; for a version already replaced or ended; with the next version drafted; or while an ending is open.
+   * The draft payroll runs' lines worked out on it are taken again on the contract now in force, the version before it
+   * or none, with the signing undone (owner's report, 25 October 2026: they had stayed on it, so the draft couldn't be
+   * deleted); refused when a run with the CEO, approved or paid used it, which keeps it for good.
    */
   async unsign(id: string, user: SessionUser) {
     if (!isSuperAdmin(user)) throw new ForbiddenException(ONLY_SUPER_ADMIN_UNSIGNS);
@@ -778,36 +812,41 @@ export class ContractsService {
     const employmentChange =
       before.version === 1 || before.newJobTitleId || before.newGradeId || before.convertsTo ? await this.beforeSigning(employment, before.number) : null;
 
-    const row = await this.prisma.$transaction(async (tx) => {
-      const draft = await tx.contract.update({
-        where: { id },
-        data: {
-          status: 'draft',
-          signedOn: null,
-          insuranceFiledOn: null,
-          labourOfficeFiledOn: null,
-          jobTitleEn: null,
-          jobTitleAr: null,
-          gradeCode: null,
-          departmentName: null,
-          shiftCode: null,
-        },
-        include: CONTRACT_INCLUDE,
-      });
-      if (restored) await tx.contract.update({ where: { id: restored.id }, data: { status: 'active' } });
-      // the raise request it was prepared from is approved again, waiting for the signing
-      if (before.raiseRequest) {
-        await tx.raiseRequest.update({ where: { id: before.raiseRequest.id }, data: { status: 'approved', doneAt: null } });
-        await recordStep(tx, before.raiseRequest.id, user.id, { kind: 'unsigned', contractNumber: before.number });
-      }
-      if (employmentChange) {
-        await tx.employment.update({
-          where: { id: employment.id },
-          data: toData({ ...employmentChange }),
+    const { row, rebuilt } = await this.prisma.$transaction(
+      async (tx) => {
+        const draft = await tx.contract.update({
+          where: { id },
+          data: {
+            status: 'draft',
+            signedOn: null,
+            insuranceFiledOn: null,
+            labourOfficeFiledOn: null,
+            jobTitleEn: null,
+            jobTitleAr: null,
+            gradeCode: null,
+            departmentName: null,
+            shiftCode: null,
+          },
+          include: CONTRACT_INCLUDE,
         });
-      }
-      return draft;
-    });
+        if (restored) await tx.contract.update({ where: { id: restored.id }, data: { status: 'active' } });
+        // the raise request it was prepared from is approved again, waiting for the signing
+        if (before.raiseRequest) {
+          await tx.raiseRequest.update({ where: { id: before.raiseRequest.id }, data: { status: 'approved', doneAt: null } });
+          await recordStep(tx, before.raiseRequest.id, user.id, { kind: 'unsigned', contractNumber: before.number });
+        }
+        if (employmentChange) {
+          await tx.employment.update({
+            where: { id: employment.id },
+            data: toData({ ...employmentChange }),
+          });
+        }
+        // last, on the contracts and the employment as they are now: the draft runs' lines on the contract now in force
+        const rebuilt = await this.payroll.freeContract(tx, id, (payroll, status) => unsignRefusal(before.number, payroll, status));
+        return { row: draft, rebuilt };
+      },
+      { timeout: TX_TIMEOUT_MS },
+    );
 
     const was = fields(before);
     await this.audit.record({
@@ -821,6 +860,7 @@ export class ContractsService {
         version: before.version,
         ...changes(was, { status: 'draft', signedOn: null, insuranceFiledOn: null, labourOfficeFiledOn: null }),
         ...(restored && { restored: restored.number }),
+        ...payrollRebuilt(rebuilt),
       },
     });
     if (employmentChange) {
@@ -838,6 +878,7 @@ export class ContractsService {
     if (before.raiseRequest) {
       await this.audit.record({ userId: user.id, action: 'update', entityType: 'raise_request', entityId: before.raiseRequest.id, diff: { contract: before.number, signingUndone: true, status: { from: 'done', to: 'approved' } } });
     }
+    await this.payroll.recordRebuilt(rebuilt, user, { signingUndone: before.number });
     return contractView(row, await this.context(user, employment));
   }
 
