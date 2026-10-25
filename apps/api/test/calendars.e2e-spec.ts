@@ -1,7 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
 import {
   CALENDARS_EMPLOYEES_ONLY,
-  CALENDARS_OWN_ACCOUNT,
   CALENDARS_SUPER_ADMIN_ONLY,
   DEVELOPER_NO_FILES,
   DEVELOPER_READ_ONLY,
@@ -30,7 +29,9 @@ import { createApp, createUser, signIn } from './helpers.js';
 // calendar "failed"; a plain employee connects their own Google and Zoho calendars; HR's own meetings connections share
 // busy times (Microsoft's always, Google's once its free/busy scope is allowed: else "Reconnect"); the company's
 // Microsoft 365 reads them through its host mailbox; a revoked sign-in needs connecting again; disconnecting revokes.
-// Nobody else opens the company's settings, nor a developer, nor a Super Admin viewing as someone; no token or secret is
+// One's own calendar is an account of one's own emails (her personal Gmail here: act-as-calendars.e2e-spec.ts has the
+// refusals). Nobody else opens the company's settings, nor a developer, nor a Super Admin viewing as someone (who sees
+// the person's own calendars, view only until Act as them, act-as-calendars.e2e-spec.ts); no token or secret is
 // in any answer or audit entry, and no event's title or place in any busy time. Every name is invented; this file
 // deletes what it made.
 
@@ -297,6 +298,8 @@ describe('Calendars for busy times (e2e)', () => {
   describe('one’s own calendars', () => {
     it('a plain employee connects their own Google calendar for busy times only, and tests it', async () => {
       await as('superAdmin').put('/meetings/apps/google', { clientId: APPS.google.clientId, clientSecret: APPS.google.clientSecret }).expect(200);
+      // her Google account is her personal email's (the account signed in to must be one of hers, 25 October 2026)
+      await prisma.employee.update({ where: { id: people.sara }, data: { personalEmail: `sara.home.${RUN}@gmail.test` } });
       const mine = (await as('sara').get('/calendars/mine').expect(200)).body as MyCalendarsView;
       expect(mine.providers.map((p) => [p.provider, p.available, p.connection])).toEqual([
         ['zoho', true, null],
@@ -320,10 +323,14 @@ describe('Calendars for busy times (e2e)', () => {
       expect(read.sources.sort()).toEqual(['Google Calendar', 'Zoho Calendar']);
       expect(read.blocks).toContainEqual({ start: at(12).getTime(), end: at(13).getTime(), tentative: false });
       expect(JSON.stringify(read)).not.toContain('Gym');
-      // a Super Admin viewing as her: not theirs to see
+      // a Super Admin viewing as her (25 October 2026): her calendars as she sees them, view only until Act as them
       const viewing = await api().post('/api/auth/view-as').set('Cookie', sessions.superAdmin).send({ userId: users.sara }).expect(200);
       const cookie = ([] as string[]).concat(viewing.headers['set-cookie'] ?? []).find((c) => c.startsWith('ps_session='))!.split(';')[0];
-      expect((await api().get('/api/calendars/mine').set('Cookie', cookie).expect(403)).body.message).toBe(CALENDARS_OWN_ACCOUNT);
+      const seen = (await api().get('/api/calendars/mine').set('Cookie', cookie).expect(200)).body as MyCalendarsView;
+      expect(seen.providers.find((p) => p.provider === 'google')?.connection).toMatchObject({ owner: 'personal', accountEmail: `sara.home.${RUN}@gmail.test` });
+      expect((await api().post('/api/calendars/mine/google/disconnect').set('Cookie', cookie).expect(403)).body.message).toMatch(/: view only\. Switch on Act as them to make changes\.$/);
+      // the company's settings stay a Super Admin's in their own session
+      expect((await api().get('/api/calendars/settings').set('Cookie', cookie).expect(403)).body.message).toBe(CALENDARS_SUPER_ADMIN_ONLY);
       await api().post('/api/auth/view-as/stop').set('Cookie', cookie).expect(200);
       sessions.superAdmin = await signIn(app, emails.superAdmin);
     });

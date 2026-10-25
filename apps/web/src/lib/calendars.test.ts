@@ -15,6 +15,7 @@ import {
 
 const when = (iso: string) => `[${iso}]`;
 const viewAs = { by: { id: 'x', email: 'a@b.c' }, act: true };
+const viewOnly = { by: { id: 'x', email: 'a@b.c' }, act: false };
 
 describe('who sees the calendar pages', () => {
   it('the company’s settings: a Super Admin, never a developer', () => {
@@ -23,12 +24,17 @@ describe('who sees the calendar pages', () => {
     for (const r of ['hr', 'admin', 'ceo', 'finance', 'employee'] as const) expect(seesCalendarSettings({ roles: [r] })).toBe(false);
   });
 
-  it('one’s own interview hours: anyone with an employee profile, never a developer; the menu in their own session', () => {
+  it('one’s own interview hours: anyone with an employee profile, never a developer; the menu while a Super Admin views as them too', () => {
     expect(hasInterviewHours({ roles: ['employee'], employeeId: 'e1' })).toBe(true);
     expect(hasInterviewHours({ roles: ['hr'], employeeId: null })).toBe(false);
     expect(hasInterviewHours({ roles: ['employee'], employeeId: 'e1', developer: true })).toBe(false);
     expect(interviewHoursInMenu({ roles: ['manager'], employeeId: 'e1' })).toBe(true);
-    expect(interviewHoursInMenu({ roles: ['manager'], employeeId: 'e1', viewAs })).toBe(false);
+    // acting as them, and view only (the page read only): 25 October 2026, "by acting as them"
+    expect(interviewHoursInMenu({ roles: ['manager'], employeeId: 'e1', viewAs })).toBe(true);
+    expect(interviewHoursInMenu({ roles: ['employee'], employeeId: 'e1', viewAs: viewOnly })).toBe(true);
+    // never for someone without a profile, nor a developer (seen in the developer view)
+    expect(interviewHoursInMenu({ roles: ['hr'], employeeId: null, viewAs })).toBe(false);
+    expect(interviewHoursInMenu({ roles: ['employee'], employeeId: 'e1', developer: true, viewAs })).toBe(false);
   });
 });
 
@@ -59,6 +65,39 @@ describe('coming back from a calendar’s sign-in', () => {
     expect(calendarCallbackTarget({ back: 'https://evil.example/', ok: true, problem: null, said: null }, 'microsoft')).toBe('/account/interview-hours?connected=microsoft');
     expect(calendarCallbackTarget(null, 'zoho', 'not_allowed')).toBe('/account/interview-hours?connect=zoho&problem=not_allowed');
     expect(calendarCallbackTarget(null, 'zoho')).toBe('/account/interview-hours?connect=zoho&problem=unreachable');
+  });
+
+  it('says whose the account should have been: its masked email only, and the person acted as by name', () => {
+    const back = '/account/interview-hours';
+    const refused = calendarCallbackTarget({ back, ok: false, problem: 'other_account', said: null, account: 'ha***@trendlix.com' }, 'zoho');
+    expect(refused).toBe('/account/interview-hours?connect=zoho&problem=other_account&account=ha***%40trendlix.com');
+    // an email in full, or words, never travel in the address
+    expect(calendarCallbackTarget({ back, ok: false, problem: 'other_account', said: null, account: 'hazem@trendlix.com' }, 'zoho')).toBe(
+      '/account/interview-hours?connect=zoho&problem=other_account',
+    );
+    expect(calendarCallbackTarget({ back, ok: false, problem: 'refused', said: null, account: 'ha***@trendlix.com' }, 'zoho')).toBe('/account/interview-hours?connect=zoho&problem=refused');
+    const query = Object.fromEntries(new URL(refused, 'https://x.test').searchParams);
+    expect(calendarBanner(query, 'Mona Hassan')).toEqual({
+      tone: 'danger',
+      text: 'This Zoho account is ha***@trendlix.com, not Mona Hassan’s. Sign out of Zoho in this browser, then sign in as Mona Hassan.',
+    });
+    expect(calendarBanner(query)?.text).toBe(
+      'This Zoho account is ha***@trendlix.com, not one of your emails (work, sign-in or personal). Sign out of Zoho in this browser, then sign in with your own.',
+    );
+    expect(calendarBanner({ ...query, account: 'Call 0100 now' }, 'Mona Hassan')?.text).toBe('This Zoho account isn’t Mona Hassan’s. Sign out of Zoho in this browser, then sign in as Mona Hassan.');
+    expect(calendarBanner({ connect: 'zoho', problem: 'unchecked_account' }, 'Mona Hassan')?.text).toBe(
+      'Zoho didn’t say which account signed in, so it couldn’t be checked as Mona Hassan’s and nothing was connected. Try again, or Mona Hassan connects it in their own session.',
+    );
+  });
+
+  it('says one’s own Zoho connected without its email is read for the email shown', () => {
+    const target = calendarCallbackTarget({ back: '/account/interview-hours', ok: true, problem: null, said: 'no_email' }, 'zoho');
+    expect(target).toBe('/account/interview-hours?connected=zoho&said=no_email');
+    expect(calendarBanner({ connected: 'zoho', said: 'no_email' })).toEqual({
+      tone: 'ok',
+      text: 'The Zoho account is connected, but Zoho didn’t say which account signed in: its busy times are read for the email shown below. Check the busy times to be sure it’s your calendar.',
+    });
+    expect(calendarCallbackTarget({ back: '/account/interview-hours', ok: true, problem: null, said: 'something' }, 'zoho')).toBe('/account/interview-hours?connected=zoho');
   });
 
   it('passes on the code, the state, the error and Zoho’s sign-in address, nothing else', () => {

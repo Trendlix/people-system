@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  accountIsTheirs,
   CALENDAR_CHECK_MS,
   CALENDAR_COMPANY_NAMES,
   CALENDAR_PAGES,
@@ -16,6 +17,7 @@ import {
   isCalendarProvider,
   isEmail,
   isZohoDataCentre,
+  maskedEmail,
   MEETING_CONNECT_MINUTES,
   normalEmail,
   zohoAppReady,
@@ -73,11 +75,18 @@ import type { CalendarAppDto } from './calendars.dto.js';
 //   Application at api-console.zoho.com: its client ID, its secret sealed and never returned, the data centre), the
 //   company's Zoho connection (a Super Admin signs in once; colleagues' free/busy is then read by their work email, as
 //   far as the organization's free/busy sharing allows), a test, and disconnecting.
-// - Each person's own (their Interview Hours page, anyone with an employee profile, in their own session): connecting
-//   their own Zoho, Google or Microsoft calendar, for busy times only, the fallback when the company's can't read
-//   theirs; Google's and Microsoft's sign in with the meetings' apps (Organization → Meetings). Hosting meetings stays
-//   with Your Meetings, whose own Google (once its free/busy scope is allowed) and Microsoft connections share their
-//   busy times too.
+// - Each person's own (their Interview Hours page, anyone with an employee profile): connecting their own Zoho, Google or
+//   Microsoft calendar, for busy times only, the fallback when the company's can't read theirs; Google's and Microsoft's
+//   sign in with the meetings' apps (Organization → Meetings). Hosting meetings stays with Your Meetings, whose own
+//   Google (once its free/busy scope is allowed) and Microsoft connections share their busy times too. In their own
+//   session, or by a Super Admin viewing as them (owner, 25 October 2026: "i need to be able to set it up on behalf of
+//   the employee, by acting as them"): seen while viewing, changed only with Act as them on (the guard refuses every
+//   change before), the sign-in tied to that session and Super Admin, and audited as theirs "acting as" the person.
+// - Whose account it is: after the provider's sign-in, the account's email must be one of the person's own (their work,
+//   sign-in or personal email, in any case: accountIsTheirs), acting or not, so nobody links someone else's calendar by
+//   mistake (a Super Admin's own Zoho, still signed in in their browser); else refused, the sign-in revoked and nothing
+//   kept. One's own Zoho that doesn't say which account signed in is connected as their work email, and said so; while
+//   acting it is refused (it can't be checked).
 // - busyTimes, for "Find a time" and the warnings: every source that reads a person's calendar, asked together, live,
 //   5 seconds at most; what didn't answer is "Couldn't check …" and the times are offered all the same, marked.
 // Only busy and free is ever read: never an event's title, place or attendees. Every change is audited: the app (its
@@ -103,7 +112,10 @@ export interface PersonBusy {
   blocks: { start: number; end: number; tentative: boolean }[];
 }
 
-/** The sign-in's state, sealed: provider, owner, user, redirect URI, verifier, expiry (ms). */
+/**
+ * The sign-in's state, sealed: provider, owner, user, redirect URI, verifier, expiry (ms), the session it was started in
+ * (`s`) and the Super Admin acting as the user (`b`, null in one's own session): its return is that session's only.
+ */
 interface SignInState {
   p: CalendarProvider;
   o: MeetingOwner;
@@ -111,6 +123,8 @@ interface SignInState {
   r: string;
   v: string;
   e: number;
+  s: string;
+  b: string | null;
 }
 
 const ORIGIN = /^https?:\/\/[a-z0-9.-]+(:\d{1,5})?$/i;
@@ -164,11 +178,20 @@ export class CalendarsService {
     if (user.viewAs) throw new ForbiddenException(CALENDARS_OWN_ACCOUNT);
   }
 
-  /** Someone who interviews (an account with an employee profile), in their own session; never a developer. */
+  /**
+   * Someone who interviews (an account with an employee profile), never a developer: in their own session, or a Super
+   * Admin viewing as them (25 October 2026), who changes anything only with Act as them on (the guard refuses it before).
+   */
   private assertPerson(user: SessionUser): void {
     if (user.developer) throw new ForbiddenException(DEVELOPER_NO_FILES);
-    if (user.viewAs) throw new ForbiddenException(CALENDARS_OWN_ACCOUNT);
     if (!user.employeeId) throw new ForbiddenException(CALENDARS_EMPLOYEES_ONLY);
+  }
+
+  /** The person's own emails, the ones a calendar account of theirs may be: work, sign-in and personal. */
+  private async emailsOf(user: SessionUser): Promise<{ work: string | null; all: string[] }> {
+    const e = user.employeeId ? await this.prisma.employee.findUnique({ where: { id: user.employeeId }, select: { workEmail: true, personalEmail: true } }) : null;
+    const work = e?.workEmail ? normalEmail(e.workEmail) : null;
+    return { work, all: [user.email, e?.workEmail, e?.personalEmail].filter((x): x is string => !!x).map(normalEmail) };
   }
 
   private provider(value: string): CalendarProvider {
@@ -326,17 +349,20 @@ export class CalendarsService {
     return this.mineView(user);
   }
 
+  /** A sign-in revoked at the provider (best effort): Google's and Zoho's; Microsoft has no revocation of one token. */
+  private async revoke(provider: CalendarProvider, refreshToken: string | null, accountsServer: string | null): Promise<void> {
+    if (!refreshToken) return;
+    if (provider === 'google') await this.http.send(googleRevokeRequest(refreshToken));
+    if (provider === 'zoho') {
+      const app = this.zohoCredentials(await this.zohoApp());
+      if (app) await this.http.send(zohoRevokeRequest(app, accountsServer, refreshToken));
+    }
+  }
+
   /** A connection removed: its sign-in revoked at the provider (best effort), its tokens forgotten. */
   private async disconnect(c: CalendarConnection, user: SessionUser): Promise<void> {
     const provider = c.provider as CalendarProvider;
-    const refreshToken = this.open(c.refreshTokenEnc, c.tokenKeyId, 'refresh_token');
-    if (refreshToken) {
-      if (provider === 'google') await this.http.send(googleRevokeRequest(refreshToken));
-      if (provider === 'zoho') {
-        const app = this.zohoCredentials(await this.zohoApp());
-        if (app) await this.http.send(zohoRevokeRequest(app, c.accountsServer, refreshToken));
-      }
-    }
+    await this.revoke(provider, this.open(c.refreshTokenEnc, c.tokenKeyId, 'refresh_token'), c.accountsServer);
     await this.prisma.calendarConnection.delete({ where: { id: c.id } });
     this.kept.delete(c.id);
     await this.audit.record({ userId: user.id, action: 'disconnect', entityType: CALENDAR_CONNECTION_ENTITY, entityId: c.id, diff: { provider, owner: ownerOf(c), accountEmail: c.accountEmail } });
@@ -394,9 +420,10 @@ export class CalendarsService {
 
   /**
    * POST /calendars/oauth/start: the provider's sign-in page for the company's Zoho account (a Super Admin) or one's own
-   * calendar (anyone with an employee profile), returning to the website's /calendars/oauth/<provider>.
+   * calendar (anyone with an employee profile, or a Super Admin acting as them), returning to the website's
+   * /calendars/oauth/<provider>. `sessionId`: the session it is started in, which alone may finish it.
    */
-  async start(dto: { provider: string; owner: string; origin: string }, user: SessionUser): Promise<CalendarConnectStart> {
+  async start(dto: { provider: string; owner: string; origin: string }, user: SessionUser, sessionId: string): Promise<CalendarConnectStart> {
     const provider = this.provider(dto.provider);
     const owner: MeetingOwner = dto.owner === 'company' ? 'company' : 'personal';
     if (owner === 'company') this.assertSuperAdmin(user);
@@ -410,7 +437,17 @@ export class CalendarsService {
     const accounts = provider === 'zoho' ? zohoDataCentre((await this.zohoApp())?.dataCentre).accounts : null;
     const redirectUri = calendarRedirectUri(origin, provider);
     const { verifier, challenge } = pkcePair();
-    const state: SignInState & { n: string } = { p: provider, o: owner, u: user.id, r: redirectUri, v: verifier, e: Date.now() + MEETING_CONNECT_MINUTES * 60_000, n: randomBytes(8).toString('base64url') };
+    const state: SignInState & { n: string } = {
+      p: provider,
+      o: owner,
+      u: user.id,
+      r: redirectUri,
+      v: verifier,
+      e: Date.now() + MEETING_CONNECT_MINUTES * 60_000,
+      s: sessionId,
+      b: user.viewAs?.by.id ?? null,
+      n: randomBytes(8).toString('base64url'),
+    };
     const sealed = sealCalendarSecret(JSON.stringify(state), this.key, 'oauth_state');
     return { url: calendarAuthorizeUrl(provider, { clientId: creds.clientId, tenantId }, { redirectUri, state: sealed, challenge, accounts }) };
   }
@@ -420,7 +457,14 @@ export class CalendarsService {
     if (!plain) return null;
     try {
       const raw = JSON.parse(plain) as Record<string, unknown>;
-      return isCalendarProvider(raw.p) && (raw.o === 'company' || raw.o === 'personal') && typeof raw.u === 'string' && typeof raw.r === 'string' && typeof raw.v === 'string' && typeof raw.e === 'number'
+      return isCalendarProvider(raw.p) &&
+        (raw.o === 'company' || raw.o === 'personal') &&
+        typeof raw.u === 'string' &&
+        typeof raw.r === 'string' &&
+        typeof raw.v === 'string' &&
+        typeof raw.e === 'number' &&
+        typeof raw.s === 'string' &&
+        (raw.b === null || typeof raw.b === 'string')
         ? (raw as unknown as SignInState)
         : null;
     } catch {
@@ -430,21 +474,37 @@ export class CalendarsService {
 
   /**
    * POST /calendars/oauth/finish: the provider's return (the website passes its code, state or error on, and Zoho's
-   * accounts server): checked, the code traded for tokens at the account's own data centre, the account read, the
-   * connection saved (its refresh token sealed). Always answered with where to return the person and how it went.
+   * accounts server): checked (the same person, the same session, the same Super Admin acting as them, or none), the
+   * code traded for tokens at the account's own data centre, the account read and, for one's own, checked as theirs
+   * (accountIsTheirs: else refused and revoked, nothing kept), the connection saved (its refresh token sealed). Always
+   * answered with where to return the person and how it went.
    */
-  async finish(dto: { provider: string; code?: string | null; state?: string | null; error?: string | null; accountsServer?: string | null }, user: SessionUser): Promise<CalendarConnectResult> {
+  async finish(
+    dto: { provider: string; code?: string | null; state?: string | null; error?: string | null; accountsServer?: string | null },
+    user: SessionUser,
+    sessionId: string,
+  ): Promise<CalendarConnectResult> {
     const provider = this.provider(dto.provider);
     const state = this.openState(dto.state);
     const owner: MeetingOwner = state?.o ?? 'personal';
-    const result = (problem: MeetingConnectProblem | null, said: string | null = null): CalendarConnectResult => ({ provider, back: CALENDAR_PAGES[owner], ok: !problem, problem, said });
-    const failed = async (problem: MeetingConnectProblem, said: string | null = null) => {
-      await this.audit.record({ userId: user.id, action: 'connect_failed', entityType: CALENDAR_CONNECTION_ENTITY, entityId: null, diff: { provider, owner, problem, ...(said && { said }) } });
-      return result(problem, said);
+    const result = (problem: MeetingConnectProblem | null, said: string | null = null, account: string | null = null): CalendarConnectResult => ({
+      provider,
+      back: CALENDAR_PAGES[owner],
+      ok: !problem,
+      problem,
+      said,
+      ...(account && { account }),
+    });
+    // `accountEmail`: the account refused, in full in the audit log only (the answer has it masked)
+    const failed = async (problem: MeetingConnectProblem, said: string | null = null, accountEmail: string | null = null) => {
+      await this.audit.record({ userId: user.id, action: 'connect_failed', entityType: CALENDAR_CONNECTION_ENTITY, entityId: null, diff: { provider, owner, problem, ...(said && { said }), ...(accountEmail && { accountEmail }) } });
+      return result(problem, said, maskedEmail(accountEmail));
     };
     if (!state || state.p !== provider || state.e < Date.now()) return result('expired');
-    if (state.u !== user.id) return result('other_user');
-    if (user.developer || user.viewAs || (owner === 'company' ? !isSuperAdmin(user) || provider !== 'zoho' : !user.employeeId)) return result('not_allowed');
+    if (state.u !== user.id || state.b !== (user.viewAs?.by.id ?? null)) return result('other_user');
+    if (state.s !== sessionId) return result('expired');
+    const acting = !!user.viewAs?.act;
+    if (user.developer || (user.viewAs && !acting) || (owner === 'company' ? !!user.viewAs || !isSuperAdmin(user) || provider !== 'zoho' : !user.employeeId)) return result('not_allowed');
     const error = typeof dto.error === 'string' && dto.error ? dto.error.slice(0, 60) : null;
     if (error) return failed(error === 'access_denied' ? 'denied' : 'refused', /^[a-z0-9_.-]+$/i.test(error) ? error : null);
     if (!dto.code) return failed('refused', 'no_code');
@@ -470,6 +530,23 @@ export class CalendarsService {
     if (provider === 'google' && !grantsScope(grant.scope, GOOGLE_FREEBUSY_SCOPE)) return failed('denied', 'freebusy_not_allowed');
     let email = emailOfIdToken(grant.idToken);
     if (!email && provider === 'zoho') email = zohoEmailOf(await this.http.send(zohoUserInfoRequest(accounts, grant.accessToken), CALENDAR_SIGN_IN_TIMEOUT_MS));
+    // whose account it is (25 October 2026): one's own must be one of the person's emails, acting or not
+    let unchecked = false;
+    if (owner === 'personal') {
+      const theirs = await this.emailsOf(user);
+      if (!email && provider === 'zoho') {
+        // Zoho without the email: refused while acting (it can't be checked); one's own connected as their work email
+        if (acting) {
+          await this.revoke(provider, grant.refreshToken, accounts);
+          return failed('unchecked_account');
+        }
+        email = theirs.work ?? normalEmail(user.email);
+        unchecked = true;
+      } else if (email && !accountIsTheirs(email, theirs.all)) {
+        await this.revoke(provider, grant.refreshToken, accounts);
+        return failed('other_account', null, email);
+      }
+    }
     if (!email) return failed('no_account');
 
     const sealed = this.seal(grant.refreshToken, 'refresh_token');
@@ -483,9 +560,15 @@ export class CalendarsService {
       action: 'connect',
       entityType: CALENDAR_CONNECTION_ENTITY,
       entityId: saved.id,
-      diff: { provider, owner, accountEmail: before && before.accountEmail !== email ? { from: before.accountEmail, to: email } : email, ...(accounts && { dataCentre: zohoDataCentreOfAccounts(accounts) }) },
+      diff: {
+        provider,
+        owner,
+        accountEmail: before && before.accountEmail !== email ? { from: before.accountEmail, to: email } : email,
+        ...(accounts && { dataCentre: zohoDataCentreOfAccounts(accounts) }),
+        ...(unchecked && { accountChecked: false }),
+      },
     });
-    return result(null);
+    return result(null, unchecked ? 'no_email' : null);
   }
 
   // ---------- tokens ----------

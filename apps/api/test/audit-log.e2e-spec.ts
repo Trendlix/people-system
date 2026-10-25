@@ -275,7 +275,7 @@ describe('Audit Log (e2e)', () => {
   });
 
   describe('a Super Admin viewing as someone', () => {
-    it('is named on what they did in the user’s name: "Super Admin X as Y", and found by either', async () => {
+    it('is named on what they did in the user’s name: "Super Admin X acting as Y", and found by either', async () => {
       const cookie = (res: request.Response) =>
         ([] as string[])
           .concat(res.headers['set-cookie'] ?? [])
@@ -289,7 +289,7 @@ describe('Audit Log (e2e)', () => {
       const page = await log({ q: `Omar Acted ${RUN}` });
       expect(page.total).toBe(1);
       expect(page.entries[0].who).toEqual({
-        text: `Super Admin ${superEmail} as ${hrEmail}`,
+        text: `Super Admin ${superEmail} acting as ${hrEmail}`,
         user: { id: hrId, email: hrEmail, name: null },
         by: { id: superId, email: superEmail, name: null },
         via: null,

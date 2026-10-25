@@ -1,13 +1,15 @@
 import { Body, Controller, Get, Header, HttpCode, Param, Post, Put, SetMetadata } from '@nestjs/common';
 import { CALENDARS_SUPER_ADMIN_ONLY } from '@trendlix/shared';
-import { CurrentUser, FORBIDDEN_MESSAGE, NotForDevelopers, Roles } from '../auth/decorators.js';
+import { CurrentActiveSession, CurrentUser, FORBIDDEN_MESSAGE, NotForDevelopers, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
+import type { ActiveSession } from '../auth/sessions.service.js';
 import { CalendarAppDto, CalendarFinishDto, CalendarStartDto, CalendarTestDto } from './calendars.dto.js';
 import { CalendarsService } from './calendars.service.js';
 
 // Calendars read for interviewers' busy times (owner, 25 October 2026: "Hours + calendar"; "its zoho mails"):
 // Organization → Calendars, a Super Admin's (the service also refuses one viewing as someone); each person's own
-// calendars, anyone's with an employee profile (the service checks); and the sign-in's start and return. Never a
+// calendars, anyone's with an employee profile (the service checks), or a Super Admin's acting as them (25 October 2026:
+// the guard refuses every change while only viewing); and the sign-in's start and return, tied to the session. Never a
 // developer's, not even to read (@NotForDevelopers): the routes hold the Zoho app's credentials and the connections'
 // accounts; a developer's writes are refused by the guard as every write is. Disconnecting is a POST, so anyone may
 // disconnect their own: every DELETE is a Super Admin's (15 October 2026).
@@ -61,16 +63,16 @@ export class CalendarsController {
   @NotForDevelopers()
   @Post('oauth/start')
   @HttpCode(200)
-  start(@Body() dto: CalendarStartDto, @CurrentUser() user: SessionUser) {
-    return this.calendars.start(dto, user);
+  start(@Body() dto: CalendarStartDto, @CurrentUser() user: SessionUser, @CurrentActiveSession() session: ActiveSession) {
+    return this.calendars.start(dto, user, session.id);
   }
 
   /** The provider's return, passed on by the website: where to send the person back, and how it went. */
   @NotForDevelopers()
   @Post('oauth/finish')
   @HttpCode(200)
-  finish(@Body() dto: CalendarFinishDto, @CurrentUser() user: SessionUser) {
-    return this.calendars.finish(dto, user);
+  finish(@Body() dto: CalendarFinishDto, @CurrentUser() user: SessionUser, @CurrentActiveSession() session: ActiveSession) {
+    return this.calendars.finish(dto, user, session.id);
   }
 
   /** One's own calendar connections, and what reads one's busy times without one. */

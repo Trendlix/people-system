@@ -1,13 +1,15 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Put, SetMetadata } from '@nestjs/common';
 import { MEETINGS_SCHEDULERS_ONLY, MEETINGS_SUPER_ADMIN_ONLY } from '@trendlix/shared';
-import { CurrentUser, FORBIDDEN_MESSAGE, NotForDevelopers, Roles } from '../auth/decorators.js';
+import { CurrentActiveSession, CurrentUser, FORBIDDEN_MESSAGE, NotForDevelopers, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
+import type { ActiveSession } from '../auth/sessions.service.js';
 import { MeetingAppDto, MeetingDefaultDto, MeetingFinishDto, MeetingHostDto, MeetingStartDto } from './meetings.dto.js';
 import { MeetingsService } from './meetings.service.js';
 
 // Online interview meetings (owner, 24 October 2026: "can i link an online meeting service provider to automatically
 // generate meeting links?"; "make it both"): Organization → Meetings, a Super Admin's (the service also refuses one
-// viewing as someone); Your Meetings, HR's and a Super Admin's own; and the sign-in's start and return. Never a
+// viewing as someone); Your Meetings, HR's and a Super Admin's own (also a Super Admin's acting as them, 25 October 2026:
+// the guard refuses every change while only viewing); and the sign-in's start and return, tied to the session. Never a
 // developer's, not even to read (@NotForDevelopers): the routes hold the apps' credentials and the connections'
 // accounts; a developer's writes are refused by the guard as every write is. Disconnecting is a POST, so HR may
 // disconnect their own: every DELETE is a Super Admin's (15 October 2026).
@@ -77,16 +79,16 @@ export class MeetingsController {
   @NotForDevelopers()
   @Post('oauth/start')
   @HttpCode(200)
-  start(@Body() dto: MeetingStartDto, @CurrentUser() user: SessionUser) {
-    return this.meetings.start(dto, user);
+  start(@Body() dto: MeetingStartDto, @CurrentUser() user: SessionUser, @CurrentActiveSession() session: ActiveSession) {
+    return this.meetings.start(dto, user, session.id);
   }
 
   /** The provider's return, passed on by the website: where to send the person back, and how it went. */
   @NotForDevelopers()
   @Post('oauth/finish')
   @HttpCode(200)
-  finish(@Body() dto: MeetingFinishDto, @CurrentUser() user: SessionUser) {
-    return this.meetings.finish(dto, user);
+  finish(@Body() dto: MeetingFinishDto, @CurrentUser() user: SessionUser, @CurrentActiveSession() session: ActiveSession) {
+    return this.meetings.finish(dto, user, session.id);
   }
 
   /** Your Meetings: one's own connections. */

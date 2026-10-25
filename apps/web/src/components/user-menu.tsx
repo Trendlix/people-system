@@ -60,13 +60,15 @@ export async function UserMenu() {
           Sessions
         </Link>
       )}
-      {/* one's own meetings account, for those who schedule interviews (owner, 24 October 2026: "make it both") */}
+      {/* one's own meetings account, for those who schedule interviews (owner, 24 October 2026: "make it both"); while a
+          Super Admin views as them too, to set it up acting as them, read only until Act as them (25 October 2026) */}
       {user && meetingsInMenu(user) && (
         <Link href={MY_MEETINGS_PATH} className="text-sm whitespace-nowrap">
           Meetings
         </Link>
       )}
-      {/* one's own interview hours, for anyone HR can put on a panel (owner, 25 October 2026: "Hours + calendar") */}
+      {/* one's own interview hours, for anyone HR can put on a panel (owner, 25 October 2026: "Hours + calendar"); while a
+          Super Admin views as them too ("i need to be able to set it up on behalf of the employee, by acting as them") */}
       {user && interviewHoursInMenu(user) && (
         <Link href={MY_INTERVIEW_HOURS_PATH} className="text-sm whitespace-nowrap">
           Interview hours

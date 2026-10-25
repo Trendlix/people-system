@@ -14,14 +14,18 @@ describe('who sees the meetings pages', () => {
     for (const r of ['hr', 'admin', 'ceo', 'finance', 'employee'] as const) expect(seesMeetingSettings({ roles: [r] })).toBe(false);
   });
 
-  it('one’s own: those who schedule interviews, HR and a Super Admin; the menu only in their own session', () => {
+  it('one’s own: those who schedule interviews, HR and a Super Admin; the menu while a Super Admin views as them too', () => {
     expect(connectsOwnMeetings({ roles: ['hr'] })).toBe(true);
     expect(connectsOwnMeetings({ roles: ['super_admin'] })).toBe(true);
     expect(connectsOwnMeetings({ roles: ['ceo'] })).toBe(false);
     expect(connectsOwnMeetings({ roles: ['employee', 'manager'] })).toBe(false);
     expect(connectsOwnMeetings({ roles: ['super_admin'], developer: true })).toBe(false);
     expect(meetingsInMenu({ roles: ['hr'] })).toBe(true);
-    expect(meetingsInMenu({ roles: ['hr'], viewAs: { by: { id: 'x', email: 'a@b.c' }, act: true } })).toBe(false);
+    // acting as them, and view only (the page read only): 25 October 2026, "by acting as them"
+    expect(meetingsInMenu({ roles: ['hr'], viewAs: { by: { id: 'x', email: 'a@b.c' }, act: true } })).toBe(true);
+    expect(meetingsInMenu({ roles: ['hr'], viewAs: { by: { id: 'x', email: 'a@b.c' }, act: false } })).toBe(true);
+    expect(meetingsInMenu({ roles: ['employee'], viewAs: { by: { id: 'x', email: 'a@b.c' }, act: true } })).toBe(false);
+    expect(meetingsInMenu({ roles: ['hr'], developer: true })).toBe(false);
   });
 });
 
@@ -45,6 +49,14 @@ describe('coming back from a provider’s sign-in', () => {
     expect(callbackTarget({ back: 'https://evil.example/', ok: true, problem: null, said: null }, 'microsoft')).toBe('/account/meetings?connected=microsoft');
     expect(callbackTarget({ back: '/organization/meetings', ok: false, problem: null, said: 'bad words here' }, 'google')).toBe('/organization/meetings?connect=google&problem=unreachable');
     expect(callbackTarget(null, 'google', 'not_allowed')).toBe('/account/meetings?connect=google&problem=not_allowed');
+  });
+
+  it('says whose the account should have been, acting as someone: its masked email only', () => {
+    const target = callbackTarget({ back: '/account/meetings', ok: false, problem: 'other_account', said: null, account: 'ha***@trendlix.com' }, 'google');
+    expect(target).toBe('/account/meetings?connect=google&problem=other_account&account=ha***%40trendlix.com');
+    const query = Object.fromEntries(new URL(target, 'https://x.test').searchParams);
+    expect(meetingBanner(query, 'Mona Hassan')?.text).toBe('This Google account is ha***@trendlix.com, not Mona Hassan’s. Sign out of Google in this browser, then sign in as Mona Hassan.');
+    expect(meetingBanner({ ...query, account: 'hazem@trendlix.com' }, 'Mona Hassan')?.text).toBe('This Google account isn’t Mona Hassan’s. Sign out of Google in this browser, then sign in as Mona Hassan.');
   });
 
   it('passes on the code, the state and the error only, each on one line', () => {

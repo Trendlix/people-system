@@ -1,4 +1,18 @@
-import { calendarAppProblems, calendarRedirectUri, CALENDAR_CALLBACK_PATHS, GOOGLE_FREEBUSY_SCOPE, zohoAppReady, zohoDataCentre, zohoDataCentreOfAccounts, ZOHO_CALENDAR_SCOPES } from '@trendlix/shared';
+import {
+  accountIsTheirs,
+  calendarAppProblems,
+  calendarRedirectUri,
+  CALENDAR_CALLBACK_PATHS,
+  GOOGLE_FREEBUSY_SCOPE,
+  isMaskedEmail,
+  maskedEmail,
+  otherAccountText,
+  uncheckedAccountText,
+  zohoAppReady,
+  zohoDataCentre,
+  zohoDataCentreOfAccounts,
+  ZOHO_CALENDAR_SCOPES,
+} from '@trendlix/shared';
 import { randomBytes } from 'node:crypto';
 import { grantsScope, type HttpAnswer } from '../meetings/meeting-providers.js';
 import {
@@ -238,5 +252,54 @@ describe('Refusals in plain words', () => {
   it('never put a token or a secret in its words', () => {
     const e = calendarProblemOf('zoho', ok({ error: 'invalid_client', error_description: 'Bad client' }), 'connect');
     expect(e.message).not.toContain(SECRET);
+  });
+});
+
+describe('Whose account it is (25 October 2026: "by acting as them")', () => {
+  const MONA = ['mona@trendlix.com', 'user17-1@test.local', 'Mona.Home@Gmail.com'];
+
+  it('is the person’s when its email is any of theirs, in any case: work, sign-in or personal', () => {
+    expect(accountIsTheirs('mona@trendlix.com', MONA)).toBe(true);
+    expect(accountIsTheirs('MONA@TRENDLIX.COM', MONA)).toBe(true);
+    expect(accountIsTheirs(' User17-1@Test.Local ', MONA)).toBe(true);
+    expect(accountIsTheirs('mona.home@gmail.com', MONA)).toBe(true);
+    // the Super Admin's own, or anyone else's
+    expect(accountIsTheirs('hazem@trendlix.com', MONA)).toBe(false);
+    expect(accountIsTheirs('mona@trendlix.co', MONA)).toBe(false);
+    // nothing to compare: never theirs
+    expect(accountIsTheirs(null, MONA)).toBe(false);
+    expect(accountIsTheirs('', MONA)).toBe(false);
+    expect(accountIsTheirs('not an email', ['not an email'])).toBe(false);
+    expect(accountIsTheirs('mona@trendlix.com', [null, undefined, ''])).toBe(false);
+  });
+
+  it('shows the account’s email masked, and only that shape from a return address', () => {
+    expect(maskedEmail('Hazem.Magdy@Trendlix.com')).toBe('ha***@trendlix.com');
+    expect(maskedEmail('ali@trendlix.com')).toBe('a***@trendlix.com');
+    expect(maskedEmail('a@b.co')).toBe('a***@b.co');
+    expect(maskedEmail('nobody')).toBeNull();
+    expect(maskedEmail('@trendlix.com')).toBeNull();
+    expect(maskedEmail(null)).toBeNull();
+    expect(isMaskedEmail('ha***@trendlix.com')).toBe(true);
+    expect(isMaskedEmail('hazem@trendlix.com')).toBe(false);
+    expect(isMaskedEmail('ha***@trendlix.com. Click here')).toBe(false);
+    expect(isMaskedEmail('<b>***@x.com')).toBe(false);
+  });
+
+  it('says whose it should have been, in the brief’s words', () => {
+    expect(otherAccountText('Zoho', { account: 'ha***@trendlix.com', person: 'Mona Hassan' })).toBe(
+      'This Zoho account is ha***@trendlix.com, not Mona Hassan’s. Sign out of Zoho in this browser, then sign in as Mona Hassan.',
+    );
+    expect(otherAccountText('Google', { account: null, person: 'Mona Hassan' })).toBe('This Google account isn’t Mona Hassan’s. Sign out of Google in this browser, then sign in as Mona Hassan.');
+    expect(otherAccountText('Zoho', { account: 'so***@gmail.com' })).toBe(
+      'This Zoho account is so***@gmail.com, not one of your emails (work, sign-in or personal). Sign out of Zoho in this browser, then sign in with your own.',
+    );
+    // anything but a masked email is left out
+    expect(otherAccountText('Zoho', { account: 'evil text', person: null })).toBe(
+      'This Zoho account isn’t one of your emails (work, sign-in or personal). Sign out of Zoho in this browser, then sign in with your own.',
+    );
+    expect(uncheckedAccountText('Zoho', { person: 'Mona Hassan' })).toBe(
+      'Zoho didn’t say which account signed in, so it couldn’t be checked as Mona Hassan’s and nothing was connected. Try again, or Mona Hassan connects it in their own session.',
+    );
   });
 });

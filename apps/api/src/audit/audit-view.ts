@@ -4,8 +4,8 @@ import { monthName } from '../payroll/months.js';
 import { actionLabel, entityLabel, fieldLabel } from './audit-labels.js';
 
 // An audit_log entry shaped for reading on the Audit Log page and in its Excel export (owner, 19 October 2026: "an
-// Audit Log page showing who changed what and when"): who did it (a Super Admin viewing as someone: "Super Admin X as
-// Y"), when, the action and the record in words, the person it is about, where the record is in the system when it still
+// Audit Log page showing who changed what and when"): who did it (a Super Admin viewing as someone: "Super Admin X acting
+// as Y", or "viewing as Y" for what they looked at), when, the action and the record in words, the person it is about, where the record is in the system when it still
 // is and the caller can open that page, and the diff as from → to pairs. Pure: the service reads what the entries name
 // from the database (AuditRefs) and passes it in. The values the services masked before writing them ("changed" or
 // "set": the national ID, bank account, wages …) stay masked: they are shown as changed or set, never looked up.
@@ -88,7 +88,7 @@ export interface AuditEntryView {
   /** In Cairo, as the screens write it: "19/10/2026, 5:42 PM". */
   when: string;
   who: {
-    /** "Mona Hassan", "hr@trendlix.com", "System", "Super Admin Hazem Magdy as Mona Hassan". */
+    /** "Mona Hassan", "hr@trendlix.com", "System", "Super Admin Hazem Magdy acting as Mona Hassan". */
     text: string;
     user: AuditPerson | null;
     /** The Super Admin who did it viewing as `user` (audit_log.on_behalf_by), or null. */
@@ -217,8 +217,15 @@ export function changeText(c: AuditChange): string {
 const personText = (p: AuditPerson | null | undefined) => p?.name ?? p?.email ?? 'A user no longer on record';
 
 /**
- * Who did it, in words; a Super Admin who viewed as someone with Act as them on: "Super Admin X as Y"; through the Claude
- * connector (owner, 21 October 2026: "the connection method"): "Y via Claude connector".
+ * What a Super Admin viewing as someone only looked at or downloaded (no change: allowed with Act as them off too): the
+ * restricted data seen, the files and the prints.
+ */
+const isLook = (action: string) => action === 'view_restricted' || action === 'view_hidden' || action === 'print' || action === 'download_unprotected' || action.endsWith('_file');
+
+/**
+ * Who did it, in words; a Super Admin who viewed as someone (owner, 25 October 2026: "the audit shows the acting"): a
+ * change, made only with Act as them on, "Super Admin X acting as Y"; what they looked at "Super Admin X viewing as Y";
+ * through the Claude connector (owner, 21 October 2026: "the connection method"): "Y via Claude connector".
  */
 export function whoOf(row: Pick<AuditRow, 'userId' | 'onBehalfById' | 'via' | 'action' | 'entityType'>, users: ReadonlyMap<string, AuditPerson>): AuditEntryView['who'] {
   const user = row.userId ? (users.get(row.userId) ?? null) : null;
@@ -230,7 +237,7 @@ export function whoOf(row: Pick<AuditRow, 'userId' | 'onBehalfById' | 'via' | 'a
   else if (row.entityType === 'job_application' && (row.action === 'apply' || row.action === 'reapply')) text = 'The applicant, on the careers page';
   else if (row.entityType === 'general_cv' && row.action === 'apply') text = 'The person, on the careers page';
   else text = 'System';
-  if (row.onBehalfById) text = `Super Admin ${personText(by)} as ${text}`;
+  if (row.onBehalfById) text = `Super Admin ${personText(by)} ${isLook(row.action) ? 'viewing' : 'acting'} as ${text}`;
   const via = row.via === AUDIT_VIA_CONNECTOR ? AUDIT_VIA_CONNECTOR : null;
   if (via) text = `${text} via Claude connector`;
   return { text, user, by, via };

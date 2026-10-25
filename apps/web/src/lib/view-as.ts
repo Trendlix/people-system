@@ -41,6 +41,12 @@ export function isViewOnly(user: { viewAs?: ViewAs | null }): boolean {
   return !!user.viewAs && !user.viewAs.act;
 }
 
+/**
+ * Said on a page that is read only while viewing as someone without Act as them (owner, 25 October 2026: their interview
+ * hours, calendars and meetings, which a Super Admin may set up on their behalf by acting as them).
+ */
+export const TICK_ACT_AS_THEM = 'Tick Act as them to change this.';
+
 /** What the API answers a change while viewing only; `who`: the user's name, or their email. */
 export const viewOnlyMessage = (who: string) => `Viewing as ${who}: view only. Switch on Act as them to make changes.`;
 

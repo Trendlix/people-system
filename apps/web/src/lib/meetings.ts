@@ -1,4 +1,5 @@
 import {
+  isMaskedEmail,
   isMeetingConnectProblem,
   isMeetingProvider,
   MEETING_ACCOUNT_LABELS,
@@ -30,8 +31,11 @@ export const seesMeetingSettings = (user: Viewer): boolean => user.roles.include
 /** Who connects their own meetings account: those who schedule interviews, HR and a Super Admin; never a developer. */
 export const connectsOwnMeetings = (user: Viewer): boolean => (user.roles.includes('hr') || user.roles.includes('super_admin')) && !user.developer;
 
-/** The user menu's "Meetings": for those who connect their own, in their own session. */
-export const meetingsInMenu = (user: Viewer): boolean => connectsOwnMeetings(user) && !user.viewAs;
+/**
+ * The user menu's "Meetings": for those who connect their own; while a Super Admin views as them too (owner, 25 October
+ * 2026: "by acting as them"), the page read only until Act as them is on.
+ */
+export const meetingsInMenu = (user: Viewer): boolean => connectsOwnMeetings(user);
 
 const one = (v: string | string[] | undefined): string => (Array.isArray(v) ? (v[0] ?? '') : (v ?? '')).trim();
 
@@ -43,15 +47,17 @@ export type MeetingBanner = { tone: 'ok' | 'danger'; text: string } | null;
 
 /**
  * The banner of `?connected=google` or `?connect=zoom&problem=refused&said=invalid_client`: only known providers and
- * problems, in the system's own words (a provider's code beside, letters only), never anything else from the address.
+ * problems, in the system's own words (a provider's code beside, letters only; an account refused as not the person's,
+ * its masked email only), never anything else from the address. `actingFor`: the name of whom a Super Admin acts as.
  */
-export function meetingBanner(query: Record<string, string | string[] | undefined>): MeetingBanner {
+export function meetingBanner(query: Record<string, string | string[] | undefined>, actingFor: string | null = null): MeetingBanner {
   const connected = one(query.connected);
   if (isMeetingProvider(connected)) return { tone: 'ok', text: `The ${MEETING_ACCOUNT_LABELS[connected]} is connected.` };
   const provider = one(query.connect);
   const problem = one(query.problem);
   if (isMeetingProvider(provider) && isMeetingConnectProblem(problem)) {
-    return { tone: 'danger', text: meetingConnectProblemText(problem, provider, saidOf(one(query.said))) };
+    const account = one(query.account);
+    return { tone: 'danger', text: meetingConnectProblemText(problem, provider, saidOf(one(query.said)), { account: isMaskedEmail(account) ? account : null, person: actingFor }) };
   }
   return null;
 }
@@ -71,12 +77,13 @@ const PAGES = Object.values(MEETING_PAGES);
  * Where the return from a provider's sign-in sends the person: the page it was started from (one of the two, else Your
  * Meetings), saying connected or why not. `fallback`: the problem when the API gave no answer.
  */
-export function callbackTarget(result: Pick<MeetingConnectResult, 'back' | 'ok' | 'problem' | 'said'> | null, provider: MeetingProvider, fallback: MeetingConnectProblem = 'unreachable'): string {
+export function callbackTarget(result: Pick<MeetingConnectResult, 'back' | 'ok' | 'problem' | 'said' | 'account'> | null, provider: MeetingProvider, fallback: MeetingConnectProblem = 'unreachable'): string {
   const back = result && PAGES.includes(result.back) ? result.back : MY_MEETINGS_PATH;
   if (result?.ok) return `${back}?connected=${provider}`;
   const problem = result?.problem && isMeetingConnectProblem(result.problem) ? result.problem : fallback;
   const said = saidOf(result?.said);
-  return `${back}?connect=${provider}&problem=${problem}${said ? `&said=${encodeURIComponent(said)}` : ''}`;
+  const account = problem === 'other_account' && result && isMaskedEmail(result.account) ? result.account : null;
+  return `${back}?connect=${provider}&problem=${problem}${said ? `&said=${encodeURIComponent(said)}` : ''}${account ? `&account=${encodeURIComponent(account)}` : ''}`;
 }
 
 /** What the return address carries for the API: the code, the state and the provider's error, each on its own line and short. */

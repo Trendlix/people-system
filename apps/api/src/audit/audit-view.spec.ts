@@ -53,11 +53,13 @@ describe('who did it', () => {
     expect(whoOf(row({ userId: BARE.id }), refs().users).text).toBe('finance@trendlix.com');
   });
 
-  it('says "Super Admin X as Y" for what a Super Admin did viewing as someone', () => {
+  it('says "Super Admin X acting as Y" for what a Super Admin changed viewing as someone, "viewing as" for what they looked at', () => {
     const who = whoOf(row({ onBehalfById: SUPER.id }), refs().users);
-    expect(who.text).toBe('Super Admin Hazem Magdy as Mona Hassan');
+    expect(who.text).toBe('Super Admin Hazem Magdy acting as Mona Hassan');
     expect(who.by?.email).toBe('hazem@trendlix.com');
     expect(who.user?.email).toBe('mona@trendlix.com');
+    for (const action of ['connect', 'connect_failed', 'disconnect', 'create', 'test_calendar']) expect(whoOf(row({ onBehalfById: SUPER.id, action }), refs().users).text, action).toBe('Super Admin Hazem Magdy acting as Mona Hassan');
+    for (const action of ['view_restricted', 'view_hidden', 'print', 'payslip_file', 'download_unprotected']) expect(whoOf(row({ onBehalfById: SUPER.id, action }), refs().users).text, action).toBe('Super Admin Hazem Magdy viewing as Mona Hassan');
   });
 
   it('says "Y via Claude connector" for what the user’s Claude did through the connector (21 October 2026)', () => {
@@ -231,7 +233,7 @@ describe('an entry for reading', () => {
       id: '41',
       at: '2026-10-19T14:42:00.000Z',
       when: '19/10/2026, 5:42 PM',
-      who: { text: 'Super Admin Hazem Magdy as Mona Hassan' },
+      who: { text: 'Super Admin Hazem Magdy acting as Mona Hassan' },
       action: 'update',
       actionLabel: 'Updated',
       entityType: 'contract',

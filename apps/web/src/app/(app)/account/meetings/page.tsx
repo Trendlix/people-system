@@ -1,4 +1,4 @@
-import { MEETING_ACCOUNT_LABELS, MEETING_COMPANY_NAMES, MEETING_PROVIDER_LABELS, MEETINGS_OWN_ACCOUNT, MEETINGS_SCHEDULERS_ONLY, type MyMeetingsView } from '@trendlix/shared';
+import { MEETING_ACCOUNT_LABELS, MEETING_COMPANY_NAMES, MEETING_PROVIDER_LABELS, MEETINGS_SCHEDULERS_ONLY, type MyMeetingsView } from '@trendlix/shared';
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
@@ -7,6 +7,7 @@ import { ApiError, apiFetch, messagesOf } from '@/lib/api';
 import { startMeetingConnect } from '@/lib/meeting-actions';
 import { connectsOwnMeetings, meetingBanner } from '@/lib/meetings';
 import { getCurrentUser } from '@/lib/session';
+import { isViewOnly, TICK_ACT_AS_THEM } from '@/lib/view-as';
 import { disconnectMyMeetings, testMyMeetings } from './actions';
 
 // Your Meetings (owner, 24 October 2026: "can i link an online meeting service provider to automatically generate meeting
@@ -15,6 +16,9 @@ import { disconnectMyMeetings, testMyMeetings } from './actions';
 // Connect my account (the provider's sign-in), connected as whom and since when, or why it needs connecting again,
 // Create a test meeting, and Disconnect. A provider's own connection works only once a Super Admin has set up the
 // company's app for it (Organization → Meetings). Interviews then offer "My Google Meet", "My Zoom"… to make the meeting.
+// A Super Admin viewing as one of them sees their page as theirs (owner, 25 October 2026: "by acting as them"): with Act
+// as them on, they connect or disconnect the person's accounts (the API checks the account signed in to is the
+// person's); view only, the page is read only and says "Tick Act as them to change this".
 
 export const metadata: Metadata = { title: 'Your Meetings · People System' };
 
@@ -49,13 +53,19 @@ async function Mine({ searchParams }: { searchParams: PageProps<'/account/meetin
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
   if (user.developer) return <Note>Meeting connections hold your accounts: they aren’t open to developers.</Note>;
   if (!connectsOwnMeetings(user)) return <Note>{MEETINGS_SCHEDULERS_ONLY}</Note>;
-  if (user.viewAs) return <Note>{MEETINGS_OWN_ACCOUNT}</Note>;
   const loaded = await loadMine();
   if (loaded.kind === 'unavailable') return <Note>Not available yet: the server doesn’t make meetings yet. Please try again after its next update.</Note>;
   if (loaded.kind === 'failed') return <Note>Your meeting connections could not be loaded. {loaded.messages.join(' ')}</Note>;
-  const banner = meetingBanner(query);
+  // whose account a refused sign-in should have been: the person acted as, by name
+  const banner = meetingBanner(query, user.viewAs ? (user.name ?? user.email) : null);
+  const readOnly = isViewOnly(user);
   return (
     <div className="space-y-4">
+      {readOnly && (
+        <p role="note" className="rounded-lg bg-accent-soft px-4 py-3 text-sm font-semibold text-accent">
+          {TICK_ACT_AS_THEM}
+        </p>
+      )}
       {banner && (
         <p role={banner.tone === 'danger' ? 'alert' : 'status'} className={`rounded-lg px-4 py-3 text-sm font-semibold ${banner.tone === 'ok' ? 'bg-ok-soft text-ok' : 'bg-danger-soft text-danger'}`}>
           {banner.text}
@@ -76,6 +86,7 @@ async function Mine({ searchParams }: { searchParams: PageProps<'/account/meetin
               disconnect={disconnectMyMeetings.bind(null, provider)}
               disconnectConfirm={DISCONNECT_MINE}
               test={testMyMeetings.bind(null, provider)}
+              readOnly={readOnly}
             />
           ) : (
             <p className="text-sm text-muted">A Super Admin sets up the company’s {MEETING_COMPANY_NAMES[provider]} app first (Organization → Meetings).</p>

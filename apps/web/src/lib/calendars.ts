@@ -3,7 +3,11 @@ import {
   CALENDAR_COMPANY_NAMES,
   CALENDAR_PAGES,
   isCalendarProvider,
+  isMaskedEmail,
   isMeetingConnectProblem,
+  otherAccountText,
+  uncheckedAccountText,
+  type ConnectAbout,
   type CalendarConnectResult,
   type CalendarConnectionView,
   type CalendarProvider,
@@ -34,8 +38,12 @@ export const seesCalendarSettings = (user: Viewer): boolean => user.roles.includ
  */
 export const hasInterviewHours = (user: Viewer): boolean => !!user.employeeId && !user.developer;
 
-/** The user menu's "Interview hours": for those with hours of their own, in their own session. */
-export const interviewHoursInMenu = (user: Viewer): boolean => hasInterviewHours(user) && !user.viewAs;
+/**
+ * The user menu's "Interview hours": for those with hours of their own; while a Super Admin views as them too (owner, 25
+ * October 2026: "i need to be able to set it up on behalf of the employee, by acting as them"), the page read only until
+ * Act as them is on.
+ */
+export const interviewHoursInMenu = (user: Viewer): boolean => hasInterviewHours(user);
 
 const one = (v: string | string[] | undefined): string => (Array.isArray(v) ? (v[0] ?? '') : (v ?? '')).trim();
 
@@ -45,8 +53,11 @@ const saidOf = (v: string | null | undefined): string | null => (v && /^[a-z0-9_
 /** Where a calendar's app is set up: Zoho's on Organization → Calendars; Google's and Microsoft's are the Meetings apps. */
 const appPage = (provider: CalendarProvider): string => (provider === 'zoho' ? 'Organization → Calendars' : 'Organization → Meetings');
 
-/** The words of a connect problem for a calendar; `said`: the provider's error code (e.g. redirect_uri_mismatch). */
-export function calendarConnectProblemText(problem: MeetingConnectProblem, provider: CalendarProvider, said?: string | null): string {
+/**
+ * The words of a connect problem for a calendar; `said`: the provider's error code (e.g. redirect_uri_mismatch); `about`:
+ * whose account it was (the masked email, the person acted as), for `other_account` and `unchecked_account`.
+ */
+export function calendarConnectProblemText(problem: MeetingConnectProblem, provider: CalendarProvider, said?: string | null, about?: ConnectAbout): string {
   const who = CALENDAR_COMPANY_NAMES[provider];
   const code = saidOf(said);
   switch (problem) {
@@ -65,9 +76,13 @@ export function calendarConnectProblemText(problem: MeetingConnectProblem, provi
     case 'unreachable':
       return `${who} couldn’t be reached. Try again in a moment.`;
     case 'not_allowed':
-      return 'Calendars are connected by the people who interview, each in their own session; the company’s by a Super Admin.';
+      return 'Calendars are connected by the people who interview, in their own session or by a Super Admin acting as them with Act as them on; the company’s by a Super Admin in their own session.';
     case 'no_account':
       return `${who} didn’t say which account signed in. Try again.`;
+    case 'other_account':
+      return otherAccountText(who, about);
+    case 'unchecked_account':
+      return uncheckedAccountText(who, about);
   }
 }
 
@@ -76,15 +91,26 @@ export type CalendarBanner = { tone: 'ok' | 'danger'; text: string } | null;
 
 /**
  * The banner of `?connected=zoho` or `?connect=google&problem=refused&said=invalid_client`: only known providers and
- * problems, in the system's own words (a provider's code beside, letters only), never anything else from the address.
+ * problems, in the system's own words (a provider's code beside, letters only; an account refused as not the person's,
+ * its masked email only), never anything else from the address. `actingFor`: the name of whom a Super Admin acts as, or
+ * null in one's own session. One's own Zoho connected without its email said (`said=no_email`): connected, and said so.
  */
-export function calendarBanner(query: Record<string, string | string[] | undefined>): CalendarBanner {
+export function calendarBanner(query: Record<string, string | string[] | undefined>, actingFor: string | null = null): CalendarBanner {
   const connected = one(query.connected);
-  if (isCalendarProvider(connected)) return { tone: 'ok', text: `The ${CALENDAR_ACCOUNT_LABELS[connected]} is connected: its busy times are read from now on.` };
+  if (isCalendarProvider(connected)) {
+    if (one(query.said) === 'no_email') {
+      return {
+        tone: 'ok',
+        text: `The ${CALENDAR_ACCOUNT_LABELS[connected]} is connected, but ${CALENDAR_COMPANY_NAMES[connected]} didn’t say which account signed in: its busy times are read for the email shown below. Check the busy times to be sure it’s your calendar.`,
+      };
+    }
+    return { tone: 'ok', text: `The ${CALENDAR_ACCOUNT_LABELS[connected]} is connected: its busy times are read from now on.` };
+  }
   const provider = one(query.connect);
   const problem = one(query.problem);
   if (isCalendarProvider(provider) && isMeetingConnectProblem(problem)) {
-    return { tone: 'danger', text: calendarConnectProblemText(problem, provider, saidOf(one(query.said))) };
+    const account = one(query.account);
+    return { tone: 'danger', text: calendarConnectProblemText(problem, provider, saidOf(one(query.said)), { account: isMaskedEmail(account) ? account : null, person: actingFor }) };
   }
   return null;
 }
@@ -102,18 +128,20 @@ const PAGES: string[] = Object.values(CALENDAR_PAGES);
 
 /**
  * Where the return from a calendar's sign-in sends the person: the page it was started from (one of the two, else their
- * Interview Hours), saying connected or why not. `fallback`: the problem when the API gave no answer.
+ * Interview Hours), saying connected or why not (an account refused as not theirs with its masked email, the only email
+ * the address ever carries). `fallback`: the problem when the API gave no answer.
  */
 export function calendarCallbackTarget(
-  result: Pick<CalendarConnectResult, 'back' | 'ok' | 'problem' | 'said'> | null,
+  result: Pick<CalendarConnectResult, 'back' | 'ok' | 'problem' | 'said' | 'account'> | null,
   provider: CalendarProvider,
   fallback: MeetingConnectProblem = 'unreachable',
 ): string {
   const back = result && PAGES.includes(result.back) ? result.back : MY_INTERVIEW_HOURS_PATH;
-  if (result?.ok) return `${back}?connected=${provider}`;
+  if (result?.ok) return `${back}?connected=${provider}${result.said === 'no_email' ? '&said=no_email' : ''}`;
   const problem = result?.problem && isMeetingConnectProblem(result.problem) ? result.problem : fallback;
   const said = saidOf(result?.said);
-  return `${back}?connect=${provider}&problem=${problem}${said ? `&said=${encodeURIComponent(said)}` : ''}`;
+  const account = problem === 'other_account' && result && isMaskedEmail(result.account) ? result.account : null;
+  return `${back}?connect=${provider}&problem=${problem}${said ? `&said=${encodeURIComponent(said)}` : ''}${account ? `&account=${encodeURIComponent(account)}` : ''}`;
 }
 
 /**

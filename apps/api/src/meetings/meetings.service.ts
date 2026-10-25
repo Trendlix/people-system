@@ -1,11 +1,13 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import {
+  accountIsTheirs,
   companyAppReady,
   companyConnectsBy,
   DEVELOPER_NO_FILES,
   GOOGLE_FREEBUSY_SCOPE,
   isEmail,
   isMeetingProvider,
+  maskedEmail,
   MEETING_COMPANY_NAMES,
   MEETING_CONNECT_MINUTES,
   MEETING_PAGES,
@@ -86,9 +88,13 @@ import type { MeetingAppDto } from './meetings.dto.js';
 //   account; Microsoft and Zoom: naming the host mailbox or user, checked with the app's own token), the default for new
 //   online interviews, and "Create a test meeting" (made and deleted, said in plain words).
 // - Your Meetings, each HR person's (and a Super Admin's) own: connecting their Google, Microsoft or Zoom account, once
-//   the company's app for it is set up; disconnecting anytime.
-// - The sign-in: the state sealed (who started it, for whom, the return address, the PKCE verifier, ten minutes), so the
-//   return is the same person's, in time, for the provider it went to.
+//   the company's app for it is set up; disconnecting anytime. Also by a Super Admin viewing as them (owner, 25 October
+//   2026: "i need to be able to set it up on behalf of the employee, by acting as them"): seen while viewing, changed
+//   only with Act as them on (the guard refuses every change before), and then the account signed in to must be one of
+//   the person's emails (work, sign-in or personal: accountIsTheirs), so the Super Admin's own isn't linked by mistake.
+// - The sign-in: the state sealed (who started it, for whom, in which session, the Super Admin acting as them if any,
+//   the return address, the PKCE verifier, ten minutes), so the return is the same person's, in the same session, in
+//   time, for the provider it went to.
 // - For interviews (interviews.service.ts): a meeting made with the scheduler's choice, moved with the interview,
 //   deleted when it is cancelled; the provider's refusals in plain words, never failing the interview.
 // Every change is written to the audit log: connections made and removed, the apps' credentials (only as "changed"), the
@@ -116,7 +122,10 @@ export interface MeetingRef {
 
 export type MeetingResult<T> = { ok: true; value: T } | { ok: false; problem: string };
 
-/** The sign-in's state, sealed: provider, owner, user, redirect URI, verifier, expiry (ms). */
+/**
+ * The sign-in's state, sealed: provider, owner, user, redirect URI, verifier, expiry (ms), the session it was started in
+ * (`s`) and the Super Admin acting as the user (`b`, null in one's own session).
+ */
 interface SignInState {
   p: MeetingProvider;
   o: MeetingOwner;
@@ -124,6 +133,8 @@ interface SignInState {
   r: string;
   v: string;
   e: number;
+  s: string;
+  b: string | null;
 }
 
 const ORIGIN = /^https?:\/\/[a-z0-9.-]+(:\d{1,5})?$/i;
@@ -154,11 +165,28 @@ export class MeetingsService {
     if (user.viewAs) throw new ForbiddenException(MEETINGS_OWN_ACCOUNT);
   }
 
-  /** Someone who schedules interviews (HR, a Super Admin), in their own session. */
+  /**
+   * Someone who schedules interviews (HR, a Super Admin): in their own session, or a Super Admin viewing as them (25
+   * October 2026), who changes anything only with Act as them on (the guard refuses it before).
+   */
   private assertScheduler(user: SessionUser): void {
     if (user.developer) throw new ForbiddenException(DEVELOPER_NO_FILES);
     if (!managesRecruitment(user)) throw new ForbiddenException(MEETINGS_SCHEDULERS_ONLY);
-    if (user.viewAs) throw new ForbiddenException(MEETINGS_OWN_ACCOUNT);
+  }
+
+  /** The person's own emails, the ones an account of theirs may be: sign-in, and their profile's work and personal. */
+  private async emailsOf(user: SessionUser): Promise<string[]> {
+    const e = user.employeeId ? await this.prisma.employee.findUnique({ where: { id: user.employeeId }, select: { workEmail: true, personalEmail: true } }) : null;
+    return [user.email, e?.workEmail, e?.personalEmail].filter((x): x is string => !!x).map(normalEmail);
+  }
+
+  /** A sign-in revoked at the provider (best effort): Google's and Zoom's; Microsoft has no revocation of one token. */
+  private async revoke(provider: MeetingProvider, owner: MeetingOwner, refreshToken: string | null): Promise<void> {
+    if (refreshToken && provider === 'google') await this.http.send(googleRevokeRequest(refreshToken));
+    if (refreshToken && provider === 'zoom') {
+      const app = this.tokens.credentials(await this.tokens.app('zoom'), owner);
+      if (app) await this.http.send(zoomRevokeRequest(app, refreshToken));
+    }
   }
 
   private provider(value: string): MeetingProvider {
@@ -422,12 +450,7 @@ export class MeetingsService {
   /** A connection removed: its sign-in revoked at the provider when it has one (best effort), its tokens forgotten. */
   private async disconnect(c: MeetingConnection, user: SessionUser): Promise<void> {
     const provider = c.provider as MeetingProvider;
-    const refreshToken = this.tokens.open(c.refreshTokenEnc, c.tokenKeyId, 'refresh_token');
-    if (refreshToken && provider === 'google') await this.http.send(googleRevokeRequest(refreshToken));
-    if (refreshToken && provider === 'zoom') {
-      const app = this.tokens.credentials(await this.tokens.app('zoom'), ownerOf(c));
-      if (app) await this.http.send(zoomRevokeRequest(app, refreshToken));
-    }
+    await this.revoke(provider, ownerOf(c), this.tokens.open(c.refreshTokenEnc, c.tokenKeyId, 'refresh_token'));
     await this.prisma.meetingConnection.delete({ where: { id: c.id } });
     this.tokens.forgetConnection(c.id);
     await this.audit.record({ userId: user.id, action: 'disconnect', entityType: MEETING_CONNECTION_ENTITY, entityId: c.id, diff: { provider, owner: ownerOf(c), accountEmail: c.accountEmail } });
@@ -475,9 +498,10 @@ export class MeetingsService {
 
   /**
    * POST /meetings/oauth/start: the provider's sign-in page for the company's Google account (a Super Admin) or one's own
-   * (HR, a Super Admin), returning to the website's /meetings/oauth/<provider> (`origin`: the website's own address).
+   * (HR, a Super Admin, or a Super Admin acting as them), returning to the website's /meetings/oauth/<provider>
+   * (`origin`: the website's own address). `sessionId`: the session it is started in, which alone may finish it.
    */
-  async start(dto: { provider: string; owner: string; origin: string }, user: SessionUser): Promise<MeetingConnectStart> {
+  async start(dto: { provider: string; owner: string; origin: string }, user: SessionUser, sessionId: string): Promise<MeetingConnectStart> {
     const provider = this.provider(dto.provider);
     const owner: MeetingOwner = dto.owner === 'company' ? 'company' : 'personal';
     if (owner === 'company') this.assertSuperAdmin(user);
@@ -490,28 +514,61 @@ export class MeetingsService {
     if (!creds) throw new BadRequestException([this.tokens.noApp(provider).message]);
     const redirectUri = meetingRedirectUri(origin, provider);
     const { verifier, challenge } = pkcePair();
-    const state: SignInState & { n: string } = { p: provider, o: owner, u: user.id, r: redirectUri, v: verifier, e: Date.now() + MEETING_CONNECT_MINUTES * 60_000, n: randomBytes(8).toString('base64url') };
+    const state: SignInState & { n: string } = {
+      p: provider,
+      o: owner,
+      u: user.id,
+      r: redirectUri,
+      v: verifier,
+      e: Date.now() + MEETING_CONNECT_MINUTES * 60_000,
+      s: sessionId,
+      b: user.viewAs?.by.id ?? null,
+      n: randomBytes(8).toString('base64url'),
+    };
     return { url: authorizeUrl(provider, { clientId: creds.clientId, tenantId: creds.tenantId }, { redirectUri, state: this.tokens.sealState(state), challenge }) };
   }
 
   /**
-   * POST /meetings/oauth/finish: the provider's return (the website passes its code, state or error on): checked, the
-   * code traded for tokens, the account read, the connection saved (its refresh token sealed). Always answered with where
-   * to return the person and how it went.
+   * POST /meetings/oauth/finish: the provider's return (the website passes its code, state or error on): checked (the
+   * same person, the same session, the same Super Admin acting as them, or none), the code traded for tokens, the account
+   * read and, while a Super Admin acts as the person, checked as theirs (accountIsTheirs: else refused and revoked,
+   * nothing kept), the connection saved (its refresh token sealed). Always answered with where to return the person and
+   * how it went.
    */
-  async finish(dto: { provider: string; code?: string | null; state?: string | null; error?: string | null }, user: SessionUser): Promise<MeetingConnectResult> {
+  async finish(dto: { provider: string; code?: string | null; state?: string | null; error?: string | null }, user: SessionUser, sessionId: string): Promise<MeetingConnectResult> {
     const provider = this.provider(dto.provider);
     const raw = this.tokens.openState(dto.state);
-    const state = raw && isMeetingProvider(raw.p) && (raw.o === 'company' || raw.o === 'personal') && typeof raw.u === 'string' && typeof raw.r === 'string' && typeof raw.v === 'string' && typeof raw.e === 'number' ? (raw as unknown as SignInState) : null;
+    const state =
+      raw &&
+      isMeetingProvider(raw.p) &&
+      (raw.o === 'company' || raw.o === 'personal') &&
+      typeof raw.u === 'string' &&
+      typeof raw.r === 'string' &&
+      typeof raw.v === 'string' &&
+      typeof raw.e === 'number' &&
+      typeof raw.s === 'string' &&
+      (raw.b === null || typeof raw.b === 'string')
+        ? (raw as unknown as SignInState)
+        : null;
     const owner: MeetingOwner = state?.o ?? 'personal';
-    const result = (problem: MeetingConnectProblem | null, said: string | null = null): MeetingConnectResult => ({ provider, back: MEETING_PAGES[owner], ok: !problem, problem, said });
-    const failed = async (problem: MeetingConnectProblem, said: string | null = null) => {
-      await this.audit.record({ userId: user.id, action: 'connect_failed', entityType: MEETING_CONNECTION_ENTITY, entityId: null, diff: { provider, owner, problem, ...(said && { said }) } });
-      return result(problem, said);
+    const result = (problem: MeetingConnectProblem | null, said: string | null = null, account: string | null = null): MeetingConnectResult => ({
+      provider,
+      back: MEETING_PAGES[owner],
+      ok: !problem,
+      problem,
+      said,
+      ...(account && { account }),
+    });
+    // `accountEmail`: the account refused, in full in the audit log only (the answer has it masked)
+    const failed = async (problem: MeetingConnectProblem, said: string | null = null, accountEmail: string | null = null) => {
+      await this.audit.record({ userId: user.id, action: 'connect_failed', entityType: MEETING_CONNECTION_ENTITY, entityId: null, diff: { provider, owner, problem, ...(said && { said }), ...(accountEmail && { accountEmail }) } });
+      return result(problem, said, maskedEmail(accountEmail));
     };
     if (!state || state.p !== provider || state.e < Date.now()) return result('expired');
-    if (state.u !== user.id) return result('other_user');
-    if (user.developer || user.viewAs || (owner === 'company' ? !isSuperAdmin(user) : !managesRecruitment(user))) return result('not_allowed');
+    if (state.u !== user.id || state.b !== (user.viewAs?.by.id ?? null)) return result('other_user');
+    if (state.s !== sessionId) return result('expired');
+    const acting = !!user.viewAs?.act;
+    if (user.developer || (user.viewAs && !acting) || (owner === 'company' ? !!user.viewAs || !isSuperAdmin(user) : !managesRecruitment(user))) return result('not_allowed');
     const error = typeof dto.error === 'string' && dto.error ? dto.error.slice(0, 60) : null;
     if (error) return failed(error === 'access_denied' ? 'denied' : 'refused', /^[a-z0-9_.-]+$/i.test(error) ? error : null);
     if (!dto.code) return failed('refused', 'no_code');
@@ -529,6 +586,11 @@ export class MeetingsService {
     if (provider === 'google' && !grantsGoogleCalendar(grant.scope)) return failed('denied', 'calendar_not_allowed');
     const email = provider === 'zoom' ? zoomEmailOf(await this.http.send(zoomMeRequest(grant.accessToken))) : emailOfIdToken(grant.idToken);
     if (!email) return failed('no_account');
+    // a Super Admin acting as the person: the account must be one of theirs (25 October 2026), else nothing is kept
+    if (acting && owner === 'personal' && !accountIsTheirs(email, await this.emailsOf(user))) {
+      await this.revoke(provider, owner, grant.refreshToken);
+      return failed('other_account', null, email);
+    }
 
     const sealed = this.tokens.seal(grant.refreshToken, 'refresh_token');
     const userId = owner === 'company' ? null : user.id;

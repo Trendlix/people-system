@@ -10,7 +10,8 @@ import type { FormState } from '@/lib/types';
 // A calendar connection with its buttons (owner, 25 October 2026: "Hours + calendar"; "its zoho mails"): the company's
 // Zoho on Organization → Calendars, one's own on Your Interview Hours. Connected as whom and since when, or why it needs
 // reconnecting; Connect (the provider's sign-in) or Connect again; Check the busy times (read now, how many said, never
-// what they are); and Disconnect. Never a token: the API answers the status only.
+// what they are); and Disconnect. Never a token: the API answers the status only. Read only (`readOnly`, the buttons
+// disabled) while a Super Admin views as the person without Act as them (owner, 25 October 2026).
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -46,7 +47,7 @@ function ActionForm({ action, label, pendingLabel, kind = 'secondary', confirm, 
 }
 
 /** "Check the busy times": read now; `withEmail`, the company's, may check a colleague's by their work email. */
-function TestForm({ action, last, withEmail }: { action: TestAction; last: CalendarTestView | null; withEmail: boolean }) {
+function TestForm({ action, last, withEmail, disabled = false }: { action: TestAction; last: CalendarTestView | null; withEmail: boolean; disabled?: boolean }) {
   const [state, formAction, pending] = useActionState(action, {});
   const fid = useFieldIds();
   const shown = state.test ?? last;
@@ -62,7 +63,7 @@ function TestForm({ action, last, withEmail }: { action: TestAction; last: Calen
             <input id={fid('email')} name="email" type="email" autoComplete="off" maxLength={254} placeholder="name@trendlix.com" aria-describedby={fid('email-hint')} className="input" />
           </div>
         )}
-        <button type="submit" disabled={pending} className="btn btn-secondary">
+        <button type="submit" disabled={pending || disabled} className="btn btn-secondary">
           {pending ? 'Checking…' : 'Check the busy times'}
         </button>
       </div>
@@ -90,6 +91,7 @@ export function CalendarConnection({
   disconnectConfirm,
   test,
   testWithEmail = false,
+  readOnly = false,
 }: {
   connection: CalendarConnectionView | null;
   connect: Action;
@@ -101,6 +103,8 @@ export function CalendarConnection({
   disconnectConfirm: string;
   test: TestAction;
   testWithEmail?: boolean;
+  /** Shown, never changed: every button disabled. */
+  readOnly?: boolean;
 }) {
   const reconnect = connection?.status === 'needs_reconnecting';
   return (
@@ -114,11 +118,11 @@ export function CalendarConnection({
       )}
       <div className="flex flex-wrap items-start gap-2">
         {(!connection || reconnect) && (
-          <ActionForm action={connect} label={reconnect ? 'Connect again' : connectLabel} pendingLabel="Opening the sign-in…" kind="primary" disabled={!canConnect} />
+          <ActionForm action={connect} label={reconnect ? 'Connect again' : connectLabel} pendingLabel="Opening the sign-in…" kind="primary" disabled={!canConnect || readOnly} />
         )}
-        {connection && <ActionForm action={disconnect} label="Disconnect" pendingLabel="Disconnecting…" confirm={disconnectConfirm} />}
+        {connection && <ActionForm action={disconnect} label="Disconnect" pendingLabel="Disconnecting…" confirm={disconnectConfirm} disabled={readOnly} />}
       </div>
-      {connection && !reconnect && <TestForm action={test} last={connection.lastTest} withEmail={testWithEmail} />}
+      {connection && !reconnect && <TestForm action={test} last={connection.lastTest} withEmail={testWithEmail} disabled={readOnly} />}
       {!canConnect && cannotConnect && (!connection || reconnect) && <p className="text-sm text-muted">{cannotConnect}</p>}
     </div>
   );

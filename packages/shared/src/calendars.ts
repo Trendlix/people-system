@@ -181,5 +181,8 @@ export interface CalendarConnectResult {
   back: string;
   ok: boolean;
   problem: MeetingConnectProblem | null;
+  /** The provider's error code; on a connection made, `no_email`: one's own Zoho, which didn't say which account signed in. */
   said: string | null;
+  /** `other_account`: the account's email, masked (maskedEmail); left out otherwise. */
+  account?: string;
 }

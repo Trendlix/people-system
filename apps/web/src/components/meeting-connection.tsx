@@ -10,7 +10,8 @@ import type { FormState } from '@/lib/types';
 // A meetings connection with its buttons (owner, 24 October 2026: "make it both"): the company's on Organization →
 // Meetings, one's own on Your Meetings. Connected as whom and since when, or why it needs reconnecting; Connect (the
 // provider's sign-in) or Connect again; Create a test meeting (made and deleted at once, the result in plain words); and
-// Disconnect. Never a token: the API answers the status only.
+// Disconnect. Never a token: the API answers the status only. Read only (`readOnly`, the buttons disabled) while a Super
+// Admin views as the person without Act as them (owner, 25 October 2026).
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -45,13 +46,13 @@ function ActionForm({ action, label, pendingLabel, kind = 'secondary', confirm, 
   );
 }
 
-function TestButton({ action, last }: { action: TestAction; last: MeetingTestView | null }) {
+function TestButton({ action, last, disabled = false }: { action: TestAction; last: MeetingTestView | null; disabled?: boolean }) {
   const [state, formAction, pending] = useActionState(action, {});
   const shown = state.test ?? last;
   return (
     <form action={formAction} className="space-y-2">
       <FormErrors errors={state.errors} />
-      <button type="submit" disabled={pending} className="btn btn-secondary">
+      <button type="submit" disabled={pending || disabled} className="btn btn-secondary">
         {pending ? 'Creating a test meeting…' : 'Create a test meeting'}
       </button>
       {shown && !pending && (
@@ -72,6 +73,7 @@ export function MeetingConnection({
   disconnect,
   disconnectConfirm,
   test,
+  readOnly = false,
 }: {
   connection: MeetingConnectionView | null;
   /** The provider's sign-in (left out where the company's account is the host named, Microsoft's and Zoom's). */
@@ -83,6 +85,8 @@ export function MeetingConnection({
   disconnect: Action;
   disconnectConfirm: string;
   test: TestAction;
+  /** Shown, never changed: every button disabled. */
+  readOnly?: boolean;
 }) {
   const reconnect = connection?.status === 'needs_reconnecting';
   return (
@@ -96,10 +100,10 @@ export function MeetingConnection({
       )}
       <div className="flex flex-wrap items-start gap-2">
         {connect && (!connection || reconnect) && (
-          <ActionForm action={connect} label={reconnect ? 'Connect again' : (connectLabel ?? 'Connect')} pendingLabel="Opening the sign-in…" kind="primary" disabled={!canConnect} />
+          <ActionForm action={connect} label={reconnect ? 'Connect again' : (connectLabel ?? 'Connect')} pendingLabel="Opening the sign-in…" kind="primary" disabled={!canConnect || readOnly} />
         )}
-        {connection && !reconnect && <TestButton action={test} last={connection.lastTest} />}
-        {connection && <ActionForm action={disconnect} label="Disconnect" pendingLabel="Disconnecting…" confirm={disconnectConfirm} />}
+        {connection && !reconnect && <TestButton action={test} last={connection.lastTest} disabled={readOnly} />}
+        {connection && <ActionForm action={disconnect} label="Disconnect" pendingLabel="Disconnecting…" confirm={disconnectConfirm} disabled={readOnly} />}
       </div>
       {connect && !canConnect && cannotConnect && <p className="text-sm text-muted">{cannotConnect}</p>}
     </div>

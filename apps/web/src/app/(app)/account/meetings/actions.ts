@@ -2,7 +2,8 @@
 
 // Your Meetings (owner, 24 October 2026: "make it both": each HR person's own Google, Microsoft or Zoom account, connected
 // by them): Disconnect and Create a test meeting, forwarded to the API, which checks it is HR or a Super Admin in their
-// own session, so calling these directly bypasses nothing. Connecting is lib/meeting-actions.ts startMeetingConnect.
+// own session (or a Super Admin's acting as them, 25 October 2026), so calling these directly bypasses nothing.
+// Connecting is lib/meeting-actions.ts startMeetingConnect.
 import { isMeetingProvider, type MeetingTestView, type MyMeetingsView } from '@trendlix/shared';
 import { refresh } from 'next/cache';
 import type { MeetingTestState } from '@/components/meeting-connection';

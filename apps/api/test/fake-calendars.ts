@@ -53,7 +53,10 @@ export interface FakeCalendars {
   calls: FakeCalendarCall[];
   /** Every token and secret given or taken: none may reach an answer or the audit log. */
   secrets: Set<string>;
-  /** A sign-in code that becomes a sign-in as this account, once (Zoho's at `accountsServer`, else the US one). */
+  /**
+   * A sign-in code that becomes a sign-in as this account, once (Zoho's at `accountsServer`, else the US one); `noEmail`:
+   * Zoho says nothing of the account's email, neither in the ID token nor in its userinfo.
+   */
   code(provider: Provider, code: string, email: string, accountsServer?: string, options?: { scope?: string; noEmail?: boolean }): void;
   /** Someone's busy times, replacing any given before. */
   busy(email: string, blocks: FakeBusy[]): void;
@@ -100,14 +103,14 @@ export function fakeCalendars(run: string, apps: FakeCalendarApps): FakeCalendar
   const secrets = new Set<string>([apps.zoho.clientSecret, ...(apps.google ? [apps.google.clientSecret] : []), ...(apps.microsoft ? [apps.microsoft.clientSecret] : [])]);
   const codes = new Map<string, { provider: Provider; email: string; dc: string; scope?: string; noEmail?: boolean }>();
   /** Valid access tokens: whose (`app`: Microsoft's client credentials), and Zoho's data centre. */
-  const access = new Map<string, { provider: Provider; email: string | null; app?: boolean; dc?: string }>();
+  const access = new Map<string, { provider: Provider; email: string | null; app?: boolean; dc?: string; noEmail?: boolean }>();
   const refresh = new Map<string, { provider: Provider; email: string; dc?: string }>();
   const busy = new Map<string, FakeBusy[]>();
   const failing = new Map<string, number>();
   const slow = new Map<string, number>();
   let n = 0;
 
-  const issue = (provider: Provider, email: string | null, extra: { app?: boolean; dc?: string } = {}) => {
+  const issue = (provider: Provider, email: string | null, extra: { app?: boolean; dc?: string; noEmail?: boolean } = {}) => {
     const token = `${provider}-cal-at-${run}-${++n}`;
     access.set(token, { provider, email, ...extra });
     secrets.add(token);
@@ -196,7 +199,7 @@ export function fakeCalendars(run: string, apps: FakeCalendarApps): FakeCalendar
           if (!form.get('redirect_uri')?.endsWith('/calendars/oauth/zoho')) return json(200, { error: 'invalid_redirect_uri' });
           codes.delete(form.get('code')!);
           return json(200, {
-            access_token: issue('zoho', c.email, { dc }),
+            access_token: issue('zoho', c.email, { dc, ...(c.noEmail && { noEmail: true }) }),
             refresh_token: issueRefresh('zoho', c.email, dc),
             ...(c.noEmail ? {} : { id_token: jwt({ sub: `${run}.${n}`, email: c.email, email_verified: true, iss: `https://${u.host}` }) }),
             api_domain: `https://www.zohoapis.${dc.replace(/^zoho\./, '')}`,
@@ -215,7 +218,7 @@ export function fakeCalendars(run: string, apps: FakeCalendarApps): FakeCalendar
       if (u.pathname === '/oauth/v2/userinfo') {
         const who = access.get(bearer(init.headers));
         if (!who || who.provider !== 'zoho') return json(401, { response: 'error', cause: 'INVALID_OAUTHTOKEN' });
-        return json(200, { sub: `${run}`, email: who.email, name: 'Zoho User' });
+        return json(200, { sub: `${run}`, ...(!who.noEmail && { email: who.email }), name: 'Zoho User' });
       }
       return json(404, { error: 'not_found' });
     }

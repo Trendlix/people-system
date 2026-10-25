@@ -178,14 +178,77 @@ export const companyConnectsBy = (provider: MeetingProvider): 'oauth' | 'host' =
 /**
  * Why connecting didn't work, as the website's return address says it (a code, never words from the address: the page
  * says these). `refused`: the provider refused the sign-in (its own error code shown beside, letters only).
+ * `other_account`: the account signed in to isn't the person's (accountIsTheirs); `unchecked_account`: the provider
+ * didn't say which account signed in, while a Super Admin acts as the person, so it couldn't be checked (25 October 2026).
  */
-export const MEETING_CONNECT_PROBLEMS = ['denied', 'expired', 'other_user', 'no_app', 'refused', 'unreachable', 'not_allowed', 'no_account'] as const;
+export const MEETING_CONNECT_PROBLEMS = ['denied', 'expired', 'other_user', 'no_app', 'refused', 'unreachable', 'not_allowed', 'no_account', 'other_account', 'unchecked_account'] as const;
 export type MeetingConnectProblem = (typeof MEETING_CONNECT_PROBLEMS)[number];
 
 export const isMeetingConnectProblem = (v: unknown): v is MeetingConnectProblem => typeof v === 'string' && (MEETING_CONNECT_PROBLEMS as readonly string[]).includes(v);
 
-/** The words of a connect problem; `said`: the provider's error code (e.g. redirect_uri_mismatch), letters and _ only. */
-export function meetingConnectProblemText(problem: MeetingConnectProblem, provider: MeetingProvider, said?: string | null): string {
+// ---------- whose account it is ----------
+
+const lowerEmail = (v: string) => v.trim().toLowerCase();
+
+/**
+ * Whether the account a sign-in came back with is the person's own (owner, 25 October 2026: "i need to be able to set it
+ * up on behalf of the employee, by acting as them"): its email is one of theirs, their work email, their sign-in email
+ * or their personal email, in any case. The safety check after a provider's sign-in, so a Super Admin acting as someone
+ * doesn't link their own account by mistake (the browser still signed in to it), nor anyone someone else's.
+ */
+export function accountIsTheirs(accountEmail: string | null | undefined, emails: readonly (string | null | undefined)[]): boolean {
+  const account = accountEmail ? lowerEmail(accountEmail) : '';
+  if (!account.includes('@')) return false;
+  return emails.some((e) => !!e && lowerEmail(e) === account);
+}
+
+/**
+ * An account's email as a refusal shows it, masked (it travels in the return address and stays in the browser's
+ * history): its first two letters (one, for a short name), then ***, then the domain, e.g. "ha***@trendlix.com". Null
+ * when it isn't an email.
+ */
+export function maskedEmail(email: string | null | undefined): string | null {
+  const e = email ? lowerEmail(email) : '';
+  const at = e.lastIndexOf('@');
+  if (at < 1 || at === e.length - 1) return null;
+  const name = e.slice(0, at);
+  return `${name.slice(0, name.length > 3 ? 2 : 1)}***${e.slice(at)}`;
+}
+
+/** A masked email as the return address may carry it (maskedEmail's shape, plain letters only), else nothing is shown. */
+export const isMaskedEmail = (v: unknown): v is string => typeof v === 'string' && v.length <= 120 && /^[a-z0-9._+-]{1,2}\*\*\*@[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(v);
+
+/**
+ * What a refusal says about whose account it is: `account`, the account's masked email (or null when not known);
+ * `person`, the name of whom a Super Admin acts as, or null in one's own session.
+ */
+export interface ConnectAbout {
+  account?: string | null;
+  person?: string | null;
+}
+
+/**
+ * "This Zoho account is ha***@trendlix.com, not Mona Hassan’s. Sign out of Zoho in this browser, then sign in as Mona
+ * Hassan." (the brief's words); in one's own session, not one of their own emails. `who`: the provider's name.
+ */
+export function otherAccountText(who: string, about: ConnectAbout = {}): string {
+  const account = about.account && isMaskedEmail(about.account) ? about.account : null;
+  const person = about.person?.trim() || null;
+  if (person) return `This ${who} account ${account ? `is ${account}, not` : 'isn’t'} ${person}’s. Sign out of ${who} in this browser, then sign in as ${person}.`;
+  return `This ${who} account ${account ? `is ${account}, not` : 'isn’t'} one of your emails (work, sign-in or personal). Sign out of ${who} in this browser, then sign in with your own.`;
+}
+
+/** The provider didn't say which account signed in, while a Super Admin acts as the person: nothing was connected. */
+export function uncheckedAccountText(who: string, about: ConnectAbout = {}): string {
+  const person = about.person?.trim() || null;
+  return `${who} didn’t say which account signed in, so it couldn’t be checked as ${person ? `${person}’s` : 'theirs'} and nothing was connected. Try again, or ${person ?? 'they'} connect${person ? 's' : ''} it in their own session.`;
+}
+
+/**
+ * The words of a connect problem; `said`: the provider's error code (e.g. redirect_uri_mismatch), letters and _ only;
+ * `about`: whose account it was, for `other_account` and `unchecked_account`.
+ */
+export function meetingConnectProblemText(problem: MeetingConnectProblem, provider: MeetingProvider, said?: string | null, about?: ConnectAbout): string {
   const who = MEETING_COMPANY_NAMES[provider];
   const code = said && /^[a-z0-9_.-]{1,60}$/i.test(said) ? said : null;
   switch (problem) {
@@ -204,9 +267,13 @@ export function meetingConnectProblemText(problem: MeetingConnectProblem, provid
     case 'unreachable':
       return `${who} couldn’t be reached. Try again in a moment.`;
     case 'not_allowed':
-      return 'Only HR and a Super Admin connect a meetings account, each in their own session.';
+      return 'Only HR and a Super Admin connect a meetings account: each in their own session, or a Super Admin acting as them with Act as them on.';
     case 'no_account':
       return `${who} didn’t say which account signed in. Try again.`;
+    case 'other_account':
+      return otherAccountText(who, about);
+    case 'unchecked_account':
+      return uncheckedAccountText(who, about);
   }
 }
 
@@ -231,6 +298,8 @@ export interface MeetingConnectResult {
   ok: boolean;
   problem: MeetingConnectProblem | null;
   said: string | null;
+  /** `other_account`: the account's email, masked (maskedEmail); left out otherwise. */
+  account?: string;
 }
 
 // ---------- the refusals ----------

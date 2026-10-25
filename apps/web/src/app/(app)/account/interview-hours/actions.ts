@@ -2,8 +2,9 @@
 
 // Your Interview Hours (owner, 25 October 2026: "Hours + calendar": each interviewer sets weekly interview hours once,
 // on their own Account page, and may connect a calendar for its busy times): saving the hours, and Disconnect and Check
-// the busy times of their own calendar, forwarded to the API, which checks it is their own session and every value
-// again, so calling these directly bypasses nothing. Connecting is lib/calendar-actions.ts startCalendarConnect.
+// the busy times of their own calendar, forwarded to the API, which checks it is their own session (or a Super Admin's
+// acting as them, 25 October 2026) and every value again, so calling these directly bypasses nothing. Connecting is
+// lib/calendar-actions.ts startCalendarConnect.
 import { isCalendarProvider, type CalendarTestView, type MyCalendarsView, type MyInterviewHoursView } from '@trendlix/shared';
 import { refresh } from 'next/cache';
 import type { CalendarTestState } from '@/components/calendar-connections';

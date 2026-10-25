@@ -2,7 +2,6 @@ import {
   CALENDAR_ACCOUNT_LABELS,
   CALENDAR_COMPANY_NAMES,
   CALENDAR_PROVIDER_LABELS,
-  CALENDARS_OWN_ACCOUNT,
   INTERVIEW_KIND_LABELS,
   type MyCalendarsView,
   type MyInterviewHoursView,
@@ -21,7 +20,7 @@ import { rulesText } from '@/lib/interview-hours';
 import { loadJson } from '@/lib/interview-hours-data';
 import { MY_MEETINGS_PATH } from '@/lib/meetings';
 import { getCurrentUser } from '@/lib/session';
-import type { Session } from '@/lib/view-as';
+import { isViewOnly, TICK_ACT_AS_THEM, type Session } from '@/lib/view-as';
 import { disconnectMyCalendar, saveMyInterviewHours, testMyCalendar } from './actions';
 
 // Your Interview Hours (owner, 25 October 2026: "is it better for each interviewer to add his available interviews
@@ -31,6 +30,10 @@ import { disconnectMyCalendar, saveMyInterviewHours, testMyCalendar } from './ac
 // hours, the day they count from, their notice and buffer, and one-off changes; their calendar (read through the
 // company's Zoho connection by their work email when there is one, else connected here: Zoho, Google or Microsoft, for
 // busy and free only, never what an event is); and their interviews to come. HR then books the times they are free.
+// A Super Admin viewing as someone sees their page as theirs (owner, 25 October 2026: "i need to be able to set it up on
+// behalf of the employee, by acting as them"): with Act as them on, they set the person's hours and connect or
+// disconnect the person's calendars (the API checks the account signed in to is the person's); view only, the page is
+// read only and says "Tick Act as them to change this".
 
 export const metadata: Metadata = { title: 'Your Interview Hours · People System' };
 
@@ -40,9 +43,9 @@ function Note({ children }: { children: React.ReactNode }) {
 
 const DISCONNECT_MINE = 'Disconnect your calendar? HR’s times won’t leave out your busy times from it until you connect it again.';
 
-/** Their calendar: read by the company's connection, connected here, or nothing to connect yet. */
+/** Their calendar: read by the company's connection, connected here, or nothing to connect yet; read only viewing only. */
 async function YourCalendar({ user }: { user: Session }) {
-  if (user.viewAs) return <Note>{CALENDARS_OWN_ACCOUNT}</Note>;
+  const readOnly = isViewOnly(user);
   const loaded = await loadJson<MyCalendarsView>('/calendars/mine');
   if (loaded.kind === 'unavailable') return <Note>Not available yet: the server doesn’t read calendars yet. Please try again after its next update.</Note>;
   if (loaded.kind !== 'ok') return <Note>Your calendar connections could not be loaded. {loaded.messages.join(' ')}</Note>;
@@ -88,6 +91,7 @@ async function YourCalendar({ user }: { user: Session }) {
             disconnect={disconnectMyCalendar.bind(null, provider)}
             disconnectConfirm={DISCONNECT_MINE}
             test={testMyCalendar.bind(null, provider)}
+            readOnly={readOnly}
           />
         </div>
       ))}
@@ -138,9 +142,16 @@ async function Mine({ searchParams }: { searchParams: PageProps<'/account/interv
   if (loaded.kind === 'unavailable') return <Note>Not available yet: the server doesn’t keep interview hours yet. Please try again after its next update.</Note>;
   if (loaded.kind !== 'ok') return <Note>Your interview hours could not be loaded. {loaded.messages.join(' ')}</Note>;
   const view = loaded.value;
-  const banner = calendarBanner(query);
+  // whose account a refused sign-in should have been: the person acted as, by name (else one's own)
+  const banner = calendarBanner(query, user.viewAs ? (user.name ?? user.email) : null);
+  const readOnly = isViewOnly(user);
   return (
     <div className="space-y-4">
+      {readOnly && (
+        <p role="note" className="rounded-lg bg-accent-soft px-4 py-3 text-sm font-semibold text-accent">
+          {TICK_ACT_AS_THEM}
+        </p>
+      )}
       {banner && (
         <p role={banner.tone === 'danger' ? 'alert' : 'status'} className={`rounded-lg px-4 py-3 text-sm font-semibold ${banner.tone === 'ok' ? 'bg-ok-soft text-ok' : 'bg-danger-soft text-danger'}`}>
           {banner.text}
@@ -155,7 +166,15 @@ async function Mine({ searchParams }: { searchParams: PageProps<'/account/interv
         <p className="text-sm text-muted">
           {view.hours ? `In effect: ${rulesText(view.hours, view.defaults)}.` : `None set yet. The company asks for ${rulesText(null, view.defaults)}.`}
         </p>
-        <InterviewHoursForm action={saveMyInterviewHours} hours={view.hours} defaults={view.defaults} today={todayInCairo()} updatedAt={view.updatedAt} updatedBy={view.updatedBy} />
+        <InterviewHoursForm
+          action={saveMyInterviewHours}
+          hours={view.hours}
+          defaults={view.defaults}
+          today={todayInCairo()}
+          updatedAt={view.updatedAt}
+          updatedBy={view.updatedBy}
+          readOnly={readOnly}
+        />
       </section>
       <Suspense fallback={<Note>Loading your calendar…</Note>}>
         <YourCalendar user={user} />
