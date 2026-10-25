@@ -2,8 +2,8 @@
 // the posted jobs and what cam on randomly"; asked what "randomly" means: "Both"):
 // - General CVs: people who send a CV without applying for a posted vacancy: "Send us your CV" on the careers page, and
 //   the CVs HR adds that came by email, WhatsApp, LinkedIn, in person or by referral. Each has the person's details, the
-//   area they would like to work in (a department, or Other in words), where it came from, and a reference in the
-//   applications' series (APP-2026-0007). New, reviewed, moved to a vacancy (an application made from it, at Applied or
+//   position they would like (since 25 October 2026, grouped by team: cv-positions.ts; before, the area they would like
+//   to work in), or Other in words, where it came from, and a reference in the applications' series (APP-2026-0007). New, reviewed, moved to a vacancy (an application made from it, at Applied or
 //   Shortlisted, its source "General CV (Email)"), or archived (and restored).
 // - The posted jobs: the applicants grouped by vacancy, each with its counts by stage and by source: the links posted
 //   (LinkedIn, Facebook groups, job boards, referral) apart from the careers page reached directly, with no link.
@@ -14,6 +14,7 @@
 // Pure code: the API enforces these rules, the web shows them. Tested in apps/api/src/common/general-cvs.spec.ts.
 
 import type { CvListFacts, CvReadingView } from './cv-analysis.js';
+import { CV_POSITION_LIMITS, type CvPositionGroup } from './cv-positions.js';
 import type { ScreeningVerdict } from './screening.js';
 import { APPLICATION_SOURCE_LABELS, applyProblems, normalEmail, RECRUITMENT_LIMITS, webLinkOf, type ApplicationSource, type ApplicationStage, type RecruitmentUserRef, type VacancyStatus } from './recruitment.js';
 
@@ -72,6 +73,8 @@ export const GENERAL_CV_LIMITS = {
   /** General CVs from the careers page an hour in all: a cap on a flood. */
   perHour: 100,
   areaOther: 80,
+  /** "Other (write it)" for the position (25 October 2026). */
+  positionOther: CV_POSITION_LIMITS.other,
   referrer: 120,
 } as const;
 
@@ -101,7 +104,16 @@ export interface GeneralCvInput {
   yearsExperience?: number | null;
   noticePeriod?: string | null;
   expectedSalary?: number | null;
-  /** The area of interest: a department's id, or none with `areaOther` in words. */
+  /**
+   * The position they would like (owner, 25 October 2026: "Position, grouped by team"; cv-positions.ts): its key, or none
+   * with `positionOther` in words ("Other (write it)").
+   */
+  positionKey?: string | null;
+  positionOther?: string | null;
+  /**
+   * The area of interest of before: a team's id, or none with `areaOther` in words. Taken for one release from a page sent
+   * before the positions (an old cached page), as its team with no position.
+   */
   departmentId?: string | null;
   areaOther?: string | null;
   consent: boolean;
@@ -120,15 +132,21 @@ export const GENERAL_CV_CONSENT_TEXT =
 export const HR_CONSENT_TEXT = 'The person agreed to be considered for jobs here, and to their CV being kept for that.';
 
 /**
- * What is wrong with a general CV, each in words: the person's details as an application's (applyProblems), the area of
- * interest (a department, or Other in words), the consent; and, HR's (`byHr`), the source (a referral with who referred
- * them) and the notes.
+ * What is wrong with a general CV, each in words: the person's details as an application's (applyProblems), the position
+ * they would like (one of the list, or Other in words; 25 October 2026), or an older page's area (a team, or Other in
+ * words), the consent; and, HR's (`byHr`), the source (a referral with who referred them) and the notes. Whether the
+ * position is on the list is the API's to check (POSITION_NOT_LISTED).
  */
 export function generalCvProblems(input: Partial<GeneralCvInput>, { byHr }: { byHr: boolean }): string[] {
   const G = GENERAL_CV_LIMITS;
   const problems = applyProblems({ ...input, answers: {}, consent: true, linkedin: webLinkOf(input.linkedin) || null, portfolio: webLinkOf(input.portfolio) || null }, []);
-  const other = typeof input.areaOther === 'string' ? input.areaOther.trim() : '';
-  if (!input.departmentId && !other) problems.push(byHr ? 'Choose the area they would like to work in, or Other and write it.' : 'Choose the area you would like to work in, or Other and write it.');
+  const trimmed = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+  const positionOther = trimmed(input.positionOther);
+  const other = trimmed(input.areaOther);
+  if (!trimmed(input.positionKey) && !positionOther && !input.departmentId && !other) {
+    problems.push(byHr ? 'Choose the position they would like, or Other and write it.' : 'Choose the position you would like, or Other and write it.');
+  }
+  if (positionOther.length > G.positionOther) problems.push(`Keep the position to ${G.positionOther} characters or fewer.`);
   if (other.length > G.areaOther) problems.push(`Keep the area to ${G.areaOther} characters or fewer.`);
   if (byHr) {
     if (!isHrCvSource(input.source)) problems.push('Choose how the CV came: email, WhatsApp, LinkedIn, in person, referral or other.');
@@ -288,7 +306,10 @@ export interface CvSaveRow {
   email: string;
   mobile: string;
   source: string;
-  /** A general CV's area of interest. */
+  /** A general CV's position (25 October 2026: its key from HR's list, hidden ones too), or Other in words. */
+  positionKey?: string | null;
+  positionOther?: string | null;
+  /** A general CV's area of interest, from a page sent before the positions (one release): a team's id, or Other in words. */
   departmentId?: string | null;
   areaOther?: string | null;
   /** A general CV from a referral: who referred them. */
@@ -315,9 +336,22 @@ export interface GeneralCvListItem {
   email: string;
   mobile: string;
   yearsExperience: number | null;
-  /** The area of interest in words: the department's name, or what they wrote for Other. */
+  /**
+   * The area of interest in words: its team's name as HR's lists name it ("Video · Production"), or what they wrote for
+   * Other on an older CV, or "Other".
+   */
   area: string;
+  /** Its team (or department): the position's, or an older CV's area; null when none is known. */
   departmentId: string | null;
+  /** Its team in words, "Video · Production"; null when none is known (Other). From 25 October 2026. */
+  team?: string | null;
+  /**
+   * The position chosen (25 October 2026; cv-positions.ts): its key and its name as shown when chosen; null for Other
+   * (`positionOther`, in words) and for an older CV, sent for an area.
+   */
+  positionKey?: string | null;
+  positionName?: string | null;
+  positionOther?: string | null;
   source: GeneralCvSource;
   referrer: string | null;
   status: GeneralCvStatus;
@@ -360,9 +394,14 @@ export interface GeneralCvView extends GeneralCvListItem {
   can: GeneralCvCan;
 }
 
-/** The areas the careers page's general form offers (generalAreas), in the organisation's order. */
+/**
+ * The careers page's general form: the positions to choose from, grouped by team (25 October 2026; cv-positions.ts), and
+ * the areas of before (generalAreas), kept for one release for a page that still asks for one.
+ */
 export interface PublicGeneralForm {
   company: { nameEn: string; nameAr: string | null };
+  /** None from an API before the positions. */
+  positions?: CvPositionGroup[];
   areas: GeneralArea[];
 }
 

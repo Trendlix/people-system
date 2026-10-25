@@ -5,6 +5,7 @@ import {
   mobileProblem,
   noticeOf,
   noticeProblem,
+  OTHER_POSITION,
   sourceOf,
   webLinkOf,
   yearsProblem,
@@ -175,10 +176,20 @@ export const factsLine = (parts: readonly (string | null | undefined)[]) => part
 
 export const GENERAL_PATH = '/careers/general';
 
-/** The general form's area field: a department's id, or OTHER_AREA with the words typed in `areaOther`. */
+/**
+ * The general form's position field (owner, 25 October 2026: "should it be the positions?"; asked, "Position, grouped by
+ * team"): a position's key, or OTHER_POSITION ("Other (write it)") with the words typed in `positionOther`.
+ */
+export const POSITION_FIELD = 'position';
+
+/**
+ * The area field of before (a team's id, or OTHER_AREA with the words in `areaOther`): read for one release from a page
+ * still open from before the positions, which sends `area` and no `position`; the API keeps it as its team, with no
+ * position.
+ */
 export const OTHER_AREA = 'other';
 
-const GENERAL_FIELDS = [...PERSON_FIELDS, 'area', 'areaOther'] as const;
+const GENERAL_FIELDS = [...PERSON_FIELDS, POSITION_FIELD, 'positionOther', 'area', 'areaOther'] as const;
 
 /** What was typed on the general form, kept to show again after a refusal (never the CV). */
 export function generalTypedValues(fd: FormData): Record<string, string> {
@@ -189,9 +200,14 @@ export function generalTypedValues(fd: FormData): Record<string, string> {
   return out;
 }
 
-/** The general form as the rules check it. */
+/**
+ * The general form as the rules check it: the position chosen (its key) or Other in words; from a page of before the
+ * positions (an `area` and no `position`), the area as before: a team's id, or Other in words.
+ */
 export function generalInputOf(fd: FormData): GeneralCvInput {
-  const area = text(fd, 'area');
+  const position = text(fd, POSITION_FIELD);
+  const legacy = !position && fd.get(POSITION_FIELD) === null;
+  const area = legacy ? text(fd, 'area') : '';
   return {
     fullName: text(fd, 'fullName'),
     email: text(fd, 'email'),
@@ -201,6 +217,8 @@ export function generalInputOf(fd: FormData): GeneralCvInput {
     yearsExperience: numberOf(text(fd, 'yearsExperience')),
     noticePeriod: noticeFrom(fd),
     expectedSalary: numberOf(text(fd, 'expectedSalary')),
+    positionKey: position && position !== OTHER_POSITION ? position : null,
+    positionOther: position === OTHER_POSITION ? text(fd, 'positionOther') || null : null,
     departmentId: area && area !== OTHER_AREA ? area : null,
     areaOther: area === OTHER_AREA ? text(fd, 'areaOther') || null : null,
     consent: fd.get('consent') !== null,
@@ -219,6 +237,9 @@ export function generalFormProblems(fd: FormData): string[] {
 export function generalApiForm(fd: FormData, from: { ip?: string; userAgent?: string }): FormData {
   const input = generalInputOf(fd);
   const out = personForm(fd);
+  if (input.positionKey) out.set('positionKey', input.positionKey);
+  if (input.positionOther) out.set('positionOther', input.positionOther);
+  // a page of before the positions: its area as it sent it (one release)
   if (input.departmentId) out.set('departmentId', input.departmentId);
   if (input.areaOther) out.set('areaOther', input.areaOther);
   if (input.consent) out.set('consent', 'true');

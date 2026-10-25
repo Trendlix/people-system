@@ -25,6 +25,7 @@ import {
   InterviewMeetingDto,
   InterviewOutcomeDto,
   RecruitmentSettingsDto,
+  CvPositionChoicesDto,
   SuggestionDto,
   CreateVacancyDto,
   ListApplicationsDto,
@@ -310,6 +311,23 @@ export class RecruitmentSettingsController {
   @Patch()
   update(@Body() dto: RecruitmentSettingsDto, @CurrentUser() user: SessionUser) {
     return this.settings.update(dto, user);
+  }
+
+  /**
+   * The positions on "Send us your CV" (owner, 25 October 2026: "Position, grouped by team"): every one, hidden ones too,
+   * and the teams HR's lists filter by. HR, the CEO and a Super Admin read (HR's Add a CV and the bulk upload too).
+   */
+  @Roles(...READS)
+  @Get('positions')
+  positions() {
+    return this.settings.positions();
+  }
+
+  /** HR's choices for them: each shown or hidden, and a public name; HR and a Super Admin, audited. */
+  @Roles(...MANAGES)
+  @Put('positions')
+  savePositions(@Body() dto: CvPositionChoicesDto, @CurrentUser() user: SessionUser) {
+    return this.settings.savePositions(dto, user);
   }
 }
 

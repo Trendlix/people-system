@@ -4,9 +4,12 @@ import {
   GENERAL_CV_STATUSES,
   generalCvProblems,
   HR_CV_SOURCES,
+  OTHER_POSITION,
+  CV_POSITION_LIMITS,
   type ApplicationListItem,
   type ApplicationSource,
   type CvBatchTarget,
+  type CvPosition,
   type CvSaveRow,
   type CvUploadView,
   type GeneralCvInput,
@@ -16,15 +19,17 @@ import {
   type VacancyListItem,
   type VerdictFilter,
 } from '@trendlix/shared';
-import { generalApiForm, generalInputOf, generalTypedValues, OTHER_AREA } from '../../careers/careers';
+import { generalApiForm, generalInputOf, generalTypedValues } from '../../careers/careers';
 import { APPLICANTS_PATH, applicantsHref, minYearsOf, skillOf, vacancyHref, verdictOf, type ApplicantsQuery } from './recruitment';
 import { shownCode } from '../../../lib/hidden';
 
 // General CVs and the applicants by posted job on the site (owner, 22 October 2026: "i want a proper viweing, what came
 // out of the posted jobs and what cam on randomly", "Both"; "is there a way to easy apply from linkedin?" … "why not";
 // packages/shared general-cvs.ts): the addresses, the Applicants page's two tabs, the posted jobs grouped by vacancy
-// with their sources, the general CVs' filters, and the bulk upload's rows. Pure code (relative imports), tested in
-// general.test.ts; the API checks everything again.
+// with their sources, the general CVs' filters, and the bulk upload's rows. Since 25 October 2026 a general CV is for a
+// position (owner: "should it be the positions?"; asked, "Position, grouped by team"; packages/shared cv-positions.ts),
+// its team known from it: HR's lists show the position with its team, and filter by either. Pure code (relative
+// imports), tested in general.test.ts; the API checks everything again.
 
 export const GENERAL_CVS_PATH = '/recruitment/general-cvs';
 export const NEW_GENERAL_CV_PATH = '/recruitment/general-cvs/new';
@@ -73,7 +78,10 @@ export const sourceFilterHref = (vacancyId: string, source: ApplicationSource) =
 export interface GeneralQuery {
   status: GeneralCvStatus | 'all' | '';
   source: GeneralCvSource | '';
+  /** The team (25 October 2026: "Team", once "Area"): a team's or a department's id; the position's, or an older CV's area. */
   departmentId: string;
+  /** The position (25 October 2026): its key, or OTHER_POSITION for those written for Other; '' for any. */
+  positionKey: string;
   q: string;
   /** The years at least: those typed, else the CV's estimate (24 October 2026: "CV years in list + more rules"). */
   minYears: number | null;
@@ -87,10 +95,12 @@ export function readGeneralQuery(query: Record<string, string | string[] | undef
   const status = one(query.status);
   const source = one(query.source);
   const departmentId = one(query.departmentId);
+  const positionKey = one(query.positionKey);
   return {
     status: status === 'all' || (GENERAL_CV_STATUSES as readonly string[]).includes(status) ? (status as GeneralQuery['status']) : '',
     source: (GENERAL_CV_SOURCES as readonly string[]).includes(source) ? (source as GeneralCvSource) : '',
     departmentId: UUID.test(departmentId) ? departmentId : '',
+    positionKey: isPositionFilter(positionKey) ? positionKey : '',
     q: one(query.q).slice(0, 100),
     minYears: minYearsOf(query.minYears),
     skill: skillOf(query.skill),
@@ -99,13 +109,21 @@ export function readGeneralQuery(query: Record<string, string | string[] | undef
 }
 
 /** Whether a filter narrows the general CVs (besides the status chips): then "Nobody here." and Clear. */
-export const generalFiltering = (g: GeneralQuery): boolean => !!(g.status || g.source || g.departmentId || g.q || g.skill || g.verdict || g.minYears !== null);
+export const generalFiltering = (g: GeneralQuery): boolean => !!(g.status || g.source || g.departmentId || g.positionKey || g.q || g.skill || g.verdict || g.minYears !== null);
+
+/** A position's key as the filter takes it, "<team id>:video editor", or OTHER_POSITION for the written ones. */
+export function isPositionFilter(value: string): boolean {
+  if (value === OTHER_POSITION) return true;
+  const at = value.indexOf(':');
+  return at === 36 && UUID.test(value.slice(0, at)) && value.length > at + 1 && value.length <= CV_POSITION_LIMITS.key;
+}
 
 function generalParams(q: Partial<GeneralQuery>): URLSearchParams {
   const params = new URLSearchParams();
   if (q.status) params.set('status', q.status);
   if (q.source) params.set('source', q.source);
   if (q.departmentId) params.set('departmentId', q.departmentId);
+  if (q.positionKey) params.set('positionKey', q.positionKey);
   if (q.q) params.set('q', q.q);
   if (q.minYears !== null && q.minYears !== undefined) params.set('minYears', String(q.minYears));
   if (q.skill) params.set('skill', q.skill);
@@ -136,7 +154,7 @@ export const batchSources = (target: CvBatchTarget): readonly string[] => (targe
 /** The source a batch's rows start with: LinkedIn (its Easy Apply CVs, the owner's reason for the bulk upload). */
 export const DEFAULT_BATCH_SOURCE = 'linkedin';
 
-/** A row of the batch as HR edits it (a general CV's area: a department's id, or OTHER_AREA with `areaOther`). */
+/** A row of the batch as HR edits it (a general CV's position: a position's key, or OTHER_POSITION with `positionOther`). */
 export interface BatchRow {
   id: string;
   fileName: string;
@@ -149,15 +167,15 @@ export interface BatchRow {
   email: string;
   mobile: string;
   source: string;
-  departmentId: string;
-  areaOther: string;
+  position: string;
+  positionOther: string;
   referrer: string;
   keep: boolean;
   skip: boolean;
   duplicate: CvUploadView['duplicate'];
 }
 
-/** An uploaded CV as a row to check: its guesses, LinkedIn, no area yet. */
+/** An uploaded CV as a row to check: its guesses, LinkedIn, no position yet. */
 export const rowOf = (u: CvUploadView): BatchRow => ({
   id: u.id,
   fileName: u.fileName,
@@ -169,8 +187,8 @@ export const rowOf = (u: CvUploadView): BatchRow => ({
   email: u.guess.email ?? '',
   mobile: u.guess.mobile ?? '',
   source: DEFAULT_BATCH_SOURCE,
-  departmentId: '',
-  areaOther: '',
+  position: '',
+  positionOther: '',
   referrer: '',
   keep: false,
   skip: false,
@@ -193,7 +211,7 @@ export function mergeReadings(rows: readonly BatchRow[], uploads: readonly CvUpl
   });
 }
 
-/** The rows as the save takes them: a vacancy's without the general CVs' area, referrer and keep. */
+/** The rows as the save takes them: a vacancy's without the general CVs' position, referrer and keep. */
 export function saveRows(rows: readonly BatchRow[], target: CvBatchTarget): CvSaveRow[] {
   return rows.map((r) => ({
     id: r.id,
@@ -202,8 +220,8 @@ export function saveRows(rows: readonly BatchRow[], target: CvBatchTarget): CvSa
     mobile: r.mobile.trim(),
     source: r.source,
     ...(target.kind === 'general' && {
-      departmentId: r.departmentId && r.departmentId !== OTHER_AREA ? r.departmentId : null,
-      areaOther: r.departmentId === OTHER_AREA ? r.areaOther.trim() || null : null,
+      positionKey: r.position && r.position !== OTHER_POSITION ? r.position : null,
+      positionOther: r.position === OTHER_POSITION ? r.positionOther.trim() || null : null,
       referrer: r.source === 'referral' ? r.referrer.trim() || null : null,
       keep: r.keep,
     }),
@@ -230,6 +248,64 @@ export function duplicateText(d: CvUploadView['duplicate'], target: CvBatchTarge
   if (d.inBatch) return 'The same email is earlier in this batch.';
   const ref = shownCode(d.reference) ? ` (${d.reference})` : '';
   return target.kind === 'vacancy' ? `Applied for this job already${ref}: it will be skipped.` : `Sent a CV in the last 30 days${ref}: tick Keep to save it anyway.`;
+}
+
+// ---------- the position on HR's lists and pages (25 October 2026) ----------
+
+/** What a general CV says of its position: the one chosen, or written for Other; its team; an older one's area. */
+type PositionOf = { positionName?: string | null; positionOther?: string | null; team?: string | null; area: string };
+
+/**
+ * A general CV's Position cell (owner, 25 October 2026: "Position, grouped by team"): the position chosen with its team
+ * under it (`sub`, muted); "Other: Photographer" for one written; the area for an older CV, sent for an area.
+ */
+export function positionCell(c: PositionOf): { main: string; sub: string | null } {
+  if (c.positionName) return { main: c.positionName, sub: c.team ?? null };
+  if (c.positionOther) return { main: `Other: ${c.positionOther}`, sub: null };
+  return { main: c.area, sub: null };
+}
+
+/**
+ * A general CV's Position and Team on its page and the candidate's: the position chosen, "Other: …" for one written, "—"
+ * for an older CV; the team known (its position's, or an older CV's area: its team, or the words written), else "—".
+ */
+export function positionFacts(c: PositionOf): { position: string; team: string } {
+  const position = c.positionName || (c.positionOther ? `Other: ${c.positionOther}` : '—');
+  if (c.positionName || c.positionOther) return { position, team: c.team || '—' };
+  return { position, team: c.team || c.area || '—' };
+}
+
+/** The positions by team, in their order, for Recruitment Settings: each team named as HR's lists name it. */
+export function positionsByTeam(positions: readonly CvPosition[]): { teamId: string; team: string; positions: CvPosition[] }[] {
+  const out: { teamId: string; team: string; positions: CvPosition[] }[] = [];
+  for (const p of positions) {
+    const last = out[out.length - 1];
+    if (last && last.teamId === p.teamId) last.positions.push(p);
+    else out.push({ teamId: p.teamId, team: p.teamHrName, positions: [p] });
+  }
+  return out;
+}
+
+/** The form fields of a position's row on Recruitment Settings: its key, its own name, its switch and its public name. */
+export const positionField = {
+  key: 'key',
+  merged: (key: string) => `merged-${key}`,
+  shown: (key: string) => `shown-${key}`,
+  publicName: (key: string) => `name-${key}`,
+} as const;
+
+/**
+ * HR's choices of positions as the API takes them (PUT /recruitment/settings/positions): every row on the form (its key
+ * in `key`), hidden when its switch is off, its public name as typed (empty, or its own name typed: none).
+ */
+export function positionChoicesOf(fd: FormData): { key: string; hidden: boolean; publicName: string | null }[] {
+  const keys = [...new Set(fd.getAll(positionField.key).filter((k): k is string => typeof k === 'string' && k.length > 0))];
+  return keys.map((key) => {
+    const typed = fd.get(positionField.publicName(key));
+    const merged = fd.get(positionField.merged(key));
+    const name = typeof typed === 'string' ? typed.trim().replace(/\s+/g, ' ') : '';
+    return { key, hidden: fd.get(positionField.shown(key)) === null, publicName: name && name !== merged ? name : null };
+  });
 }
 
 // ---------- a general CV's page and HR's Add a CV ----------

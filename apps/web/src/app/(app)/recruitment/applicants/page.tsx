@@ -10,15 +10,18 @@ import {
   GENERAL_CV_STATUS_LABELS,
   GENERAL_CV_STATUSES,
   GOOD_MATCH_PERCENT,
+  OTHER_POSITION,
+  positionGroups,
   sourceLine,
   type ApplicantsSummary,
   type GeneralCvListItem,
 } from '@trendlix/shared';
+import { PositionOptions } from '@/components/position-options';
 import { Select } from '@/components/select';
 import { formatDate, titleCase } from '@/lib/format';
 import { getCurrentUser } from '@/lib/session';
 import { Empty, Loading } from '../../organization/ui';
-import { loadApplicants, loadApplicantsSummary, loadGeneralAreas, loadGeneralCvs, recruitmentNotLoaded, type Loaded } from '../data';
+import { loadApplicants, loadApplicantsSummary, loadCvPositionsOrNone, loadGeneralCvs, recruitmentNotLoaded, type Loaded } from '../data';
 import { ActionButton } from '../forms';
 import { setGeneralCvStatus } from '../general-actions';
 import {
@@ -30,6 +33,7 @@ import {
   generalHref,
   groupApplicants,
   NEW_GENERAL_CV_PATH,
+  positionCell,
   readGeneralQuery,
   readTab,
   sourceFilterHref,
@@ -53,6 +57,9 @@ import { joinShown, shownCode } from '@/lib/hidden';
 // more rules"); the Posted jobs sort by experience too.
 // The latest screening verdict's badge on both tabs, with a Verdict filter (owner, 24 October 2026: "Yes: Good fit / Maybe
 // / Not a fit").
+// General CVs by position (owner, 25 October 2026, on the "Area" filter: "what do you mean by area here?", "should it be
+// the positions?"; asked, "Position, grouped by team"): a Position column with its team under it, and Position and Team
+// filters, Team once "Area"; an older CV, sent for an area, shows its area.
 
 export const metadata: Metadata = { title: 'Applicants · People System' };
 
@@ -234,7 +241,7 @@ function GeneralTable({ rows, manages }: { rows: GeneralCvListItem[]; manages: b
         <thead>
           <tr>
             <th>Person</th>
-            <th>Area</th>
+            <th>Position</th>
             <th>Latest role</th>
             <th>Source</th>
             <th className="text-right">Experience</th>
@@ -244,54 +251,60 @@ function GeneralTable({ rows, manages }: { rows: GeneralCvListItem[]; manages: b
           </tr>
         </thead>
         <tbody>
-          {rows.map((c) => (
-            <tr key={c.id}>
-              <td>
-                <Link href={generalCvHref(c.id)} className="font-semibold">
-                  {c.fullName}
-                </Link>
-                <span className="block text-xs text-muted">
-                  {joinShown([c.number, c.email])}
-                </span>
-              </td>
-              <td className="text-sm">{c.area}</td>
-              <LatestRoleCell fromCv={c.fromCv} />
-              <td className="text-sm">
-                {GENERAL_CV_SOURCE_LABELS[c.source]}
-                {c.referrer && <span className="block text-xs text-muted">by {c.referrer}</span>}
-              </td>
-              <ExperienceCell typed={c.yearsExperience} fromCv={c.fromCv} />
-              <td>
-                <span className={`badge ${GENERAL_STATUS_STYLE[c.status]}`}>{GENERAL_CV_STATUS_LABELS[c.status]}</span>
-                {/* the latest screening verdict (24 October 2026) */}
-                {c.verdict && (
-                  <span className="mt-1 block">
-                    <VerdictBadge verdict={c.verdict} />
-                  </span>
-                )}
-                {c.movedTo && (
-                  <Link href={vacancyHref(c.movedTo.vacancyId)} className="block text-xs">
-                    {c.movedTo.vacancyTitle}
-                  </Link>
-                )}
-              </td>
-              <td className="text-sm whitespace-nowrap">{formatDate(c.receivedAt)}</td>
-              {manages && (
+          {rows.map((c) => {
+            const position = positionCell(c);
+            return (
+              <tr key={c.id}>
                 <td>
-                  <div className="flex flex-wrap justify-end gap-2">
-                    {(c.status === 'new' || c.status === 'reviewed') && (
-                      <Link href={generalCvHref(c.id)} className="btn btn-secondary min-h-9 px-3 text-sm no-underline">
-                        Add to a vacancy
-                      </Link>
-                    )}
-                    {(c.status === 'new' || c.status === 'reviewed') && (
-                      <ActionButton action={setGeneralCvStatus.bind(null, c.id, 'archive')} label="Archive" pendingLabel="Archiving…" confirm={`Archive ${shownCode(c.number) ?? 'this CV'}? It can be restored.`} />
-                    )}
-                  </div>
+                  <Link href={generalCvHref(c.id)} className="font-semibold">
+                    {c.fullName}
+                  </Link>
+                  <span className="block text-xs text-muted">
+                    {joinShown([c.number, c.email])}
+                  </span>
                 </td>
-              )}
-            </tr>
-          ))}
+                <td className="text-sm">
+                  {position.main}
+                  {position.sub && <span className="block text-xs text-muted">{position.sub}</span>}
+                </td>
+                <LatestRoleCell fromCv={c.fromCv} />
+                <td className="text-sm">
+                  {GENERAL_CV_SOURCE_LABELS[c.source]}
+                  {c.referrer && <span className="block text-xs text-muted">by {c.referrer}</span>}
+                </td>
+                <ExperienceCell typed={c.yearsExperience} fromCv={c.fromCv} />
+                <td>
+                  <span className={`badge ${GENERAL_STATUS_STYLE[c.status]}`}>{GENERAL_CV_STATUS_LABELS[c.status]}</span>
+                  {/* the latest screening verdict (24 October 2026) */}
+                  {c.verdict && (
+                    <span className="mt-1 block">
+                      <VerdictBadge verdict={c.verdict} />
+                    </span>
+                  )}
+                  {c.movedTo && (
+                    <Link href={vacancyHref(c.movedTo.vacancyId)} className="block text-xs">
+                      {c.movedTo.vacancyTitle}
+                    </Link>
+                  )}
+                </td>
+                <td className="text-sm whitespace-nowrap">{formatDate(c.receivedAt)}</td>
+                {manages && (
+                  <td>
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {(c.status === 'new' || c.status === 'reviewed') && (
+                        <Link href={generalCvHref(c.id)} className="btn btn-secondary min-h-9 px-3 text-sm no-underline">
+                          Add to a vacancy
+                        </Link>
+                      )}
+                      {(c.status === 'new' || c.status === 'reviewed') && (
+                        <ActionButton action={setGeneralCvStatus.bind(null, c.id, 'archive')} label="Archive" pendingLabel="Archiving…" confirm={`Archive ${shownCode(c.number) ?? 'this CV'}? It can be restored.`} />
+                      )}
+                    </div>
+                  </td>
+                )}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -300,7 +313,7 @@ function GeneralTable({ rows, manages }: { rows: GeneralCvListItem[]; manages: b
 
 async function General({ query, manages }: { query: Query; manages: boolean }) {
   const g = readGeneralQuery(query);
-  const [loaded, areas] = await Promise.all([loadGeneralCvs(g), loadGeneralAreas()]);
+  const [loaded, { positions, teams }] = await Promise.all([loadGeneralCvs(g), loadCvPositionsOrNone()]);
   const filtered = generalFiltering(g);
   return (
     <div className="space-y-4">
@@ -337,14 +350,24 @@ async function General({ query, manages }: { query: Query; manages: boolean }) {
           <input id="general-search" name="q" defaultValue={g.q} placeholder="Name, email, mobile, reference or the CV's text" className="input" />
         </div>
         <div>
-          <label htmlFor="general-area" className="label">
-            Area
+          <label htmlFor="general-position" className="label">
+            Position
           </label>
-          <Select id="general-area" name="departmentId" defaultValue={g.departmentId} className="input min-w-40">
+          <Select id="general-position" name="positionKey" defaultValue={g.positionKey} className="input min-w-40">
             <option value="">Any</option>
-            {areas.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
+            <PositionOptions groups={positionGroups(positions, { withHidden: true })} />
+            <option value={OTHER_POSITION}>Other (written)</option>
+          </Select>
+        </div>
+        <div>
+          <label htmlFor="general-team" className="label">
+            Team
+          </label>
+          <Select id="general-team" name="departmentId" defaultValue={g.departmentId} className="input min-w-40">
+            <option value="">Any</option>
+            {teams.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
               </option>
             ))}
           </Select>

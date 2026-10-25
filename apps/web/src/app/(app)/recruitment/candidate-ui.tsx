@@ -15,7 +15,7 @@ import { dismissMatch, mergeCandidates } from './candidate-actions';
 import { CANDIDATE_MATCHES_PATH, CANDIDATES_PATH, candidateHref, matchesCountText, mergeOrder, otherOf } from './candidates';
 import { loadPossibleMatches } from './data';
 import { ActionButton } from './forms';
-import { generalCvHref } from './general';
+import { generalCvHref, positionCell } from './general';
 import { applicantHref, matchText, vacancyHref } from './recruitment';
 import { StageBadge } from './ui';
 import { shownCode, withCodeInBrackets } from '@/lib/hidden';
@@ -163,7 +163,20 @@ export function CandidateApplicationsTable({ rows }: { rows: CandidateApplicatio
   );
 }
 
-/** A candidate's general CVs: the reference, the area, how it came, where it stands. */
+/** A general CV's position, its team muted under it (positionCell). */
+function PositionCell({ cell }: { cell: { main: string; sub: string | null } }) {
+  return (
+    <td className="text-sm">
+      {cell.main}
+      {cell.sub && <span className="block text-xs text-muted">{cell.sub}</span>}
+    </td>
+  );
+}
+
+/**
+ * A candidate's general CVs: the reference, the position with its team (owner, 25 October 2026: "Position, grouped by
+ * team"; an older CV's area), how it came, where it stands.
+ */
 export function CandidateGeneralCvsTable({ rows }: { rows: CandidateGeneralCv[] }) {
   return (
     <div className="overflow-x-auto">
@@ -171,7 +184,7 @@ export function CandidateGeneralCvsTable({ rows }: { rows: CandidateGeneralCv[] 
         <thead>
           <tr>
             <th>General CV</th>
-            <th>Area</th>
+            <th>Position</th>
             <th>Source</th>
             <th>Status</th>
             <th>Received</th>
@@ -185,7 +198,7 @@ export function CandidateGeneralCvsTable({ rows }: { rows: CandidateGeneralCv[] 
                   <Shown text={g.number} />
                 </Link>
               </td>
-              <td className="text-sm">{g.area}</td>
+              <PositionCell cell={positionCell(g)} />
               <td className="text-sm">{GENERAL_CV_SOURCE_LABELS[g.source]}</td>
               <td className="text-sm">
                 {GENERAL_CV_STATUS_LABELS[g.status]}

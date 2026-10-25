@@ -53,7 +53,8 @@ import { ScreeningCommentsService } from './screening-comments.service.js';
 //   reviewed) and the applications to other jobs of the last months (Recruitment Settings, 12 unless changed), one a
 //   candidate, scored with their reasons; the top 50 kept in vacancy_suggestions. Decided ones stay, so a dismissed one
 //   never comes back; a suggested one no longer matching is deleted; one now on the vacancy (applied, or added another
-//   way) closed as applied.
+//   way) closed as applied. A general CV's position (owner, 25 October 2026: "Position, grouped by team"), the one chosen
+//   or written for Other, counts as a title beside its CV's latest, the better taken; its team counts as the area did.
 // - When: the vacancy's page opens (kept 2 minutes; never for a developer, who changes nothing); a vacancy approved or
 //   opened again; a round of the CV readings that read an application's or a general CV's CV; the recruitment round,
 //   every hour. HR told once a batch ("5 earlier CVs match Video Editor"): the new ones nobody was told of, never those
@@ -104,7 +105,20 @@ const ROW_SELECT = {
   createdAt: true,
   candidate: { select: { id: true, code: true, fullName: true } },
   generalCv: {
-    select: { id: true, number: true, status: true, fullName: true, email: true, createdAt: true, areaOther: true, department: { select: { nameEn: true, parent: { select: { nameEn: true } } } }, file: CV_FILE },
+    select: {
+      id: true,
+      number: true,
+      status: true,
+      fullName: true,
+      email: true,
+      createdAt: true,
+      areaOther: true,
+      department: { select: { nameEn: true, parent: { select: { nameEn: true } } } },
+      // the position chosen, or written for Other (25 October 2026)
+      positionName: true,
+      positionOther: true,
+      file: CV_FILE,
+    },
   },
   sourceApplication: { select: { id: true, number: true, fullName: true, email: true, createdAt: true, vacancy: { select: { id: true, number: true, title: true } }, cv: CV_FILE } },
   application: { select: { id: true, number: true } },
@@ -227,7 +241,8 @@ export class VacancySuggestionsService implements OnModuleInit {
       this.prisma.department.findMany({ select: { id: true, parentId: true } }),
       this.prisma.generalCv.findMany({
         where: { status: { in: ['new', 'reviewed'] }, createdAt: { gte: since }, candidateId: { not: null } },
-        select: { id: true, candidateId: true, createdAt: true, status: true, departmentId: true, yearsExperience: true, cvReading: READING },
+        // the position chosen counts as a title (25 October 2026: "Position, grouped by team")
+        select: { id: true, candidateId: true, createdAt: true, status: true, departmentId: true, positionName: true, positionOther: true, yearsExperience: true, cvReading: READING },
       }),
       this.prisma.jobApplication.findMany({
         where: { createdAt: { gte: since }, candidateId: { not: null } },
@@ -323,6 +338,7 @@ export class VacancySuggestionsService implements OnModuleInit {
           topDepartmentId: topOf(g.departmentId),
           yearsTyped: money(g.yearsExperience),
           ...cv(g.cvReading),
+          positionTitle: g.positionName ?? g.positionOther,
         }),
       ),
       ...applications.map(
@@ -529,7 +545,14 @@ export class VacancySuggestionsService implements OnModuleInit {
     const open = isOpenSuggestion(status);
     const email = g?.email ?? a?.email ?? null;
     const source: VacancySuggestionView['source'] = g
-      ? { kind: 'general_cv', id: g.id, number: g.number, area: areaOf(g), receivedAt: g.createdAt.toISOString() }
+      ? {
+          kind: 'general_cv',
+          id: g.id,
+          number: g.number,
+          area: areaOf(g),
+          position: g.positionName ?? (g.positionOther ? `Other: ${g.positionOther}` : null),
+          receivedAt: g.createdAt.toISOString(),
+        }
       : a
         ? { kind: 'application', id: a.id, number: a.number, vacancy: a.vacancy, appliedAt: a.createdAt.toISOString() }
         : null;

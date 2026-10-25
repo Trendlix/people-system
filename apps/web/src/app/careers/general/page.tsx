@@ -6,13 +6,15 @@ import { sendGeneralCv } from './actions';
 import { GeneralForm } from './general-form';
 
 // "Send us your CV" on the careers page (owner, 22 October 2026: "what came out of the posted jobs and what cam on
-// randomly", "Both"): for someone who doesn't see their role among the open jobs, with the areas (the company's teams,
-// by their own names: "remove the department from the dropdown menu", 22 October 2026) to choose from. Public, like the
-// open jobs; dressed as trendlix.com ("i need it to match the UI"): its page hero, then the form.
+// randomly", "Both"): for someone who doesn't see their role among the open jobs, with the positions to choose from
+// (owner, 25 October 2026: "should it be the positions?"; asked, "Position, grouped by team": the job titles with their
+// levels merged, under the teams by their own names, never C-level). Public, like the open jobs; dressed as
+// trendlix.com ("i need it to match the UI"): its page hero, then the form. An API from before the positions has none
+// to offer: the form waits for it ("can't be shown right now") rather than asking for an area it no longer keeps.
 
 async function General() {
   const form = await publicGet<PublicGeneralForm>('/general-cvs/form');
-  if (!form.ok) {
+  if (!form.ok || !Array.isArray(form.data.positions)) {
     return (
       <Notice title="This Form Can’t Be Shown Right Now" back>
         <p>Please try again in a few minutes.</p>
@@ -26,7 +28,7 @@ async function General() {
         <p className="careers-page-lead">No job open for you right now? Tell us what you do, and we will contact you when one fits.</p>
       </PageHead>
       <div className="mt-12 max-w-3xl lg:mt-16">
-        <GeneralForm action={sendGeneralCv} areas={form.data.areas} />
+        <GeneralForm action={sendGeneralCv} positions={form.data.positions} />
       </div>
     </div>
   );

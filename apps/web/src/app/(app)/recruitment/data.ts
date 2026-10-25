@@ -6,6 +6,7 @@ import type {
   CandidateListItem,
   CandidateView,
   CvBatchTarget,
+  CvPositionsView,
   CvTextView,
   CvUploadView,
   GeneralCvListItem,
@@ -13,7 +14,6 @@ import type {
   InterviewView,
   MyHiring,
   PossibleMatches,
-  PublicGeneralForm,
   RecruitmentAnalytics,
   RecruitmentSettingsView,
   ScreeningComments,
@@ -23,7 +23,6 @@ import type {
   VacancySuggestions,
   VacancyView,
 } from '@trendlix/shared';
-import { publicGet } from '@/lib/public-api';
 import { loadJson, type Loaded } from '../payroll/load';
 import { generalApiPath, uploadsApiPath, type GeneralQuery } from './general';
 import { applicantCvTextApiPath, generalCvTextApiPath } from './cv-reading';
@@ -69,13 +68,16 @@ export const loadGeneralCv = (id: string): Promise<Loaded<GeneralCvView>> => loa
 export const loadCvUploads = (target: CvBatchTarget): Promise<Loaded<CvUploadView[]>> => loadJson(uploadsApiPath(target));
 
 /**
- * The areas a general CV can name, the careers page's form's (teams, and departments without teams), each named as HR's
- * lists name it, "Video · Production" (the careers page shows "Video" alone: owner, 22 October 2026, "remove the
- * department from the dropdown menu"); none when unavailable.
+ * The positions a general CV can be for (owner, 25 October 2026: "should it be the positions?"; asked, "Position, grouped
+ * by team"): every one, the hidden ones too (HR's lists mark them), and the teams HR's lists filter by, named as HR's
+ * lists name them ("Video · Production"). Recruitment Settings' "Positions on the CV Form" shows and changes them.
  */
-export async function loadGeneralAreas(): Promise<{ id: string; name: string }[]> {
-  const form = await publicGet<PublicGeneralForm>('/general-cvs/form');
-  return form.ok ? form.data.areas.map((a) => ({ id: a.id, name: a.hrName ?? a.name })) : [];
+export const loadCvPositions = (): Promise<Loaded<CvPositionsView>> => loadJson('/recruitment/settings/positions');
+
+/** The positions and the teams, or none of either when they can't be loaded (an API from before them). */
+export async function loadCvPositionsOrNone(): Promise<Pick<CvPositionsView, 'positions' | 'teams'>> {
+  const loaded = await loadCvPositions();
+  return loaded.kind === 'ok' ? { positions: loaded.value.positions ?? [], teams: loaded.value.teams ?? [] } : { positions: [], teams: [] };
 }
 
 // A CV's text and the contacts found in it (22 October 2026: "make the OCR egine reads the CV and analyse it"): refused to

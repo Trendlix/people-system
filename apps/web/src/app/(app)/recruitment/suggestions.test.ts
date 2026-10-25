@@ -81,6 +81,17 @@ describe('a row', () => {
       'Applied for Motion Designer on 12/05/2026',
     );
     expect(sourceText(row({ source: null }))).toBe('The earlier CV has gone');
+    // its position (25 October 2026: "Position, grouped by team"), with its team; Other in words, without a team
+    const general = { kind: 'general_cv' as const, id: 'g1', number: 'APP-2026-0007', receivedAt: '2026-09-03T08:00:00.000Z' };
+    expect(sourceText(row({ source: { ...general, area: 'Video · Production', position: 'Video Editor' } }))).toBe('General CV APP-2026-0007 · Video Editor (Video · Production), 03/09/2026');
+    expect(sourceText(row({ source: { ...general, area: 'Other', position: 'Other: Photographer' } }))).toBe('General CV APP-2026-0007 · Other: Photographer, 03/09/2026');
+    expect(sourceText(row({ source: { ...general, number: HIDDEN, area: HIDDEN, position: 'Video Editor' } }))).toBe('General CV · Video Editor, 03/09/2026');
+  });
+
+  // a general CV's position counts as a title (25 October 2026)
+  it('says a position chosen matched the job', () => {
+    expect(reasonChips([{ kind: 'title', from: 'position', matchedTitle: 'Video Editor', points: 20 }]).map((c) => c.text)).toEqual(['Position: Video Editor']);
+    expect(reasonChips([{ kind: 'title', from: 'position', matchedTitle: HIDDEN, points: 20 }]).map((c) => c.text)).toEqual(['A similar position chosen']);
   });
 
   it('shows its reasons as chips, the years below the least asked muted, the skills found on hover', () => {

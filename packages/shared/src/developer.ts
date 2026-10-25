@@ -1033,7 +1033,8 @@ export const DEVELOPER_COMPANY_PATHS: readonly RegExp[] = [
   /^\/api\/wfh\/settings$/,
   /^\/api\/attendance\/check-in-setup\/(locations|networks|location-rule)(\/|$)/,
   /^\/api\/(onboarding|offboarding)\/checklist$/,
-  /^\/api\/recruitment\/(vacancies(\/[^/]+)?|settings)$/,
+  // the positions on "Send us your CV" (25 October 2026): the job titles with their levels merged, the company's
+  /^\/api\/recruitment\/(vacancies(\/[^/]+)?|settings(\/positions)?)$/,
   /^\/api\/public\/careers(\/|$)/,
   /^\/api\/templates(\/(?!versions\/[^/]+\/preview-people)|$)/,
 ];

@@ -73,6 +73,7 @@ model User {
   interviewsMarked   Interview[]                @relation("InterviewOutcome")
   suggestionsMade    JobApplication[]           @relation("ApplicationSuggestion")
   recruitmentSettingsSet RecruitmentSettings[]  @relation("RecruitmentSettingsChange")
+  cvPositionChoicesSet   CvPositionChoice[]     @relation("CvPositionChoiceChange")
   mailSettingsSet        MailSettings[]         @relation("MailSettingsChange") // the email settings, when this user saved them last
   mapsSettingsSet        MapsSettings[]         @relation("MapsSettingsChange") // the Google Maps settings, when this user saved them last
   // online interview meetings (owner, 24 October 2026: "make it both"): the meeting apps this user saved last, their own
@@ -1894,9 +1895,14 @@ model GeneralCv {
   yearsExperience Decimal?         @map("years_experience") @db.Decimal(4, 1)
   noticePeriod    String?          @map("notice_period")
   expectedSalary  Decimal?         @map("expected_salary") @db.Decimal(12, 2)
-  departmentId    String?          @map("department_id") @db.Uuid // the area of interest; none: area_other
+  departmentId    String?          @map("department_id") @db.Uuid // its team: the position's, or the area of interest of before; none: Other
   department      Department?      @relation(fields: [departmentId], references: [id], onDelete: SetNull)
-  areaOther       String?          @map("area_other")
+  areaOther       String?          @map("area_other") // an older CV's area in words (Other)
+  // the position they would like (owner, 25 October 2026: "Position, grouped by team"; packages/shared cv-positions.ts):
+  // its key and its name as shown when chosen, or what they wrote for Other; none on an older CV, sent for an area
+  positionKey     String?          @map("position_key")
+  positionName    String?          @map("position_name")
+  positionOther   String?          @map("position_other")
   source          String // GENERAL_CV_SOURCES
   referrer        String?
   notes           String? // HR's
@@ -1931,6 +1937,7 @@ model GeneralCv {
   @@index([status])
   @@index([ip, createdAt])
   @@index([candidateId, createdAt])
+  @@index([positionKey])
   @@map("general_cvs")
 }
 
@@ -2293,6 +2300,20 @@ model RecruitmentSettings {
   updatedAt        DateTime @default(now()) @map("updated_at") @db.Timestamptz
 
   @@map("recruitment_settings")
+}
+
+// What HR chose for a position on "Send us your CV" (owner, 25 October 2026: "Position, grouped by team"; Recruitment
+// Settings' "Positions on the CV Form"; packages/shared cv-positions.ts), by its key (its team's id and its merged name):
+// hidden from the careers page, and a public name. No row: shown, by its own name (a new job title's position too).
+model CvPositionChoice {
+  key         String   @id // "<team id>:video editor"
+  hidden      Boolean  @default(false)
+  publicName  String?  @map("public_name")
+  updatedById String?  @map("updated_by") @db.Uuid
+  updatedBy   User?    @relation("CvPositionChoiceChange", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedAt   DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@map("cv_position_choices")
 }
 
 // An earlier CV suggested for an open vacancy (owner, 24 October 2026: "does the system automatically add recomended

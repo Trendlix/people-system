@@ -74,23 +74,28 @@ export const SUGGESTION_POINTS = { team: 30, department: 15, skills: 35, title: 
 /**
  * Why an earlier CV matches, each with its points (the chips on the row): the area (`exact`: the vacancy's own team, or
  * department when it has none; else the same department); the key skills its CV names; a title like the job's (the CV's
- * latest, or the job applied for before), named `matchedTitle` so a developer never reads it (developer.ts); the years
- * (typed, else the CV's) against the least the vacancy's screening questions ask (`met` null: none asked); and how recent.
+ * latest, the job applied for before, or a general CV's position: 25 October 2026), named `matchedTitle` so a developer
+ * never reads it (developer.ts); the years (typed, else the CV's) against the least the vacancy's screening questions ask
+ * (`met` null: none asked); and how recent.
  */
 export type SuggestionReason =
   | { kind: 'area'; exact: boolean; ofTeam: boolean; points: number }
   | { kind: 'skills'; found: string[]; listed: number; points: number }
-  | { kind: 'title'; from: 'cv' | 'vacancy'; matchedTitle: string; points: number }
+  | { kind: 'title'; from: 'cv' | 'vacancy' | 'position'; matchedTitle: string; points: number }
   | { kind: 'experience'; years: number; fromCv: boolean; minYears: number | null; met: boolean | null; points: number }
   | { kind: 'recency'; months: number; points: number };
 
-/** A reason in words, as its chip says it: "Same team", "4 of 6 key skills", "Video Editor before", "≈ 3 y", "Recent". */
+/**
+ * A reason in words, as its chip says it: "Same team", "4 of 6 key skills", "Video Editor before", "Position: Video
+ * Editor", "≈ 3 y", "Recent".
+ */
 export function reasonText(r: SuggestionReason): string {
   if (r.kind === 'area') return r.exact && r.ofTeam ? 'Same team' : 'Same department';
   if (r.kind === 'skills') return `${r.found.length} of ${r.listed} key skills`;
   if (r.kind === 'title') {
     const title = r.matchedTitle && r.matchedTitle !== HIDDEN ? r.matchedTitle : null;
     if (r.from === 'cv') return title ? `${title} before` : 'A similar job before';
+    if (r.from === 'position') return title ? `Position: ${title}` : 'A similar position chosen';
     return title ? `Applied for ${title}` : 'Applied for a similar job';
   }
   if (r.kind === 'experience') {
@@ -169,14 +174,20 @@ export interface SuggestionRecord {
   /** What its CV's reading found: the months of experience and the latest title (null: not read, or none). */
   cvMonths: number | null;
   cvLatestTitle: string | null;
+  /**
+   * A general CV's position (25 October 2026: the owner's "Position, grouped by team"): the one chosen as shown then, or
+   * what they wrote for Other; null: none (an older CV, sent for an area).
+   */
+  positionTitle?: string | null;
   /** The key skills its CV names (cv-analysis.ts cvSkillsMatcher of its text); null when not read. */
   skillsFound: ((skills: readonly string[]) => { found: string[] }) | null;
 }
 
 /**
  * An earlier CV's score for a vacancy, 0 to 100, and its reasons in the chips' order (SUGGESTION_POINTS): the area, the
- * key skills found (by share), a title like the job's (the better of the CV's latest and, for an application, the job
- * applied for; from half the job's words), the years against the least asked (counting only when met), and recency.
+ * key skills found (by share), a title like the job's (the best of the CV's latest, for an application the job applied
+ * for, and for a general CV the position chosen: 25 October 2026; from half the job's words, the first on a tie), the
+ * years against the least asked (counting only when met), and recency.
  */
 export function scoreSuggestion(v: SuggestionVacancy, r: SuggestionRecord, now: Date = new Date()): { score: number; reasons: SuggestionReason[] } {
   const P = SUGGESTION_POINTS;
@@ -187,9 +198,11 @@ export function scoreSuggestion(v: SuggestionVacancy, r: SuggestionRecord, now: 
     const found = r.skillsFound(v.keySkills).found;
     if (found.length) reasons.push({ kind: 'skills', found, listed: v.keySkills.length, points: Math.round((P.skills * found.length) / v.keySkills.length) });
   }
-  const titles: { from: 'cv' | 'vacancy'; title: string | null | undefined }[] = [{ from: 'cv', title: r.cvLatestTitle }];
+  type From = 'cv' | 'vacancy' | 'position';
+  const titles: { from: From; title: string | null | undefined }[] = [{ from: 'cv', title: r.cvLatestTitle }];
   if (r.kind === 'application') titles.push({ from: 'vacancy', title: r.vacancyTitle });
-  let like: { from: 'cv' | 'vacancy'; title: string; share: number } | null = null;
+  if (r.kind === 'general_cv') titles.push({ from: 'position', title: r.positionTitle });
+  let like: { from: From; title: string; share: number } | null = null;
   for (const t of titles) {
     if (!t.title) continue;
     const share = titleLikeness(v.title, t.title);
@@ -402,7 +415,15 @@ export function inviteMail(words: InviteWords, vars: { name: string; job: string
 
 /** Where a suggestion came from: a general CV, or an application to another job. */
 export type SuggestionSourceView =
-  | { kind: 'general_cv'; id: string; number: string; area: string; receivedAt: string }
+  | {
+      kind: 'general_cv';
+      id: string;
+      number: string;
+      area: string;
+      /** The position chosen as shown then, or "Other: …" (25 October 2026); null: an older CV, sent for an area. */
+      position?: string | null;
+      receivedAt: string;
+    }
   | { kind: 'application'; id: string; number: string; vacancy: { id: string; number: string; title: string }; appliedAt: string };
 
 /** A row of Suggested From Earlier CVs. */

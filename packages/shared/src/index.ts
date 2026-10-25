@@ -606,3 +606,8 @@ export * from './whatsapp-twilio.js';
 // checkins and outs, trat them as if they achived their full working hours"; asked, "Optional check-in" and "Profile + a
 // list in Check-in Setup"): the dated periods, what an exempt day counts, and the checks of adding and ending one
 export * from './check-in-exemptions.js';
+
+// the positions on "Send us your CV" (owner, 25 October 2026: "should it be the positions?"; asked, "Position, grouped by
+// team"): the job titles with their levels merged ("Video Editor" for Junior and Senior), never C-level, grouped by
+// team, plus "Other (write it)"; HR hides a position or names it otherwise in Recruitment Settings
+export * from './cv-positions.js';

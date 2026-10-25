@@ -2,22 +2,24 @@ import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { getCurrentUser } from '@/lib/session';
 import { Empty, Loading } from '../ui';
-import { saveInviteWords, saveRecruitmentSettings, saveSuggestionSettings } from '../../recruitment/actions';
-import { loadRecruitmentSettings, recruitmentNotLoaded } from '../../recruitment/data';
+import { saveInviteWords, savePositionChoices, saveRecruitmentSettings, saveSuggestionSettings } from '../../recruitment/actions';
+import { loadCvPositions, loadRecruitmentSettings, recruitmentNotLoaded } from '../../recruitment/data';
 import { managesRecruitment, readsRecruitment, WHO_SEES } from '../../recruitment/recruitment';
-import { InviteWordsForm, RejectionWordsForm, SuggestionSettingsForm } from './settings-form';
+import { InviteWordsForm, PositionsForm, PositionsList, RejectionWordsForm, SuggestionSettingsForm } from './settings-form';
 
 // Recruitment Settings (Phase 2, owner, 22 October 2026): the rejection email's words, sent when HR ticks "Email the
 // candidate" on Reject, English then Arabic; empty, the standard ones. HR and a Super Admin change them; the CEO reads.
 // Since 24 October 2026 (Suggested From Earlier CVs, owner: "Suggest; HR adds", "Yes, HR presses 'Invite to apply'"): how
-// far back CVs count for each vacancy's suggestions, and the invitation to apply's words.
+// far back CVs count for each vacancy's suggestions, and the invitation to apply's words. Since 25 October 2026 (owner:
+// "should it be the positions?"; asked, "Position, grouped by team"): the positions on "Send us your CV", each shown or
+// hidden there, with an optional public name.
 
 export const metadata: Metadata = { title: 'Recruitment Settings · People System' };
 
 async function Settings() {
   const user = await getCurrentUser();
   if (!readsRecruitment(user)) return <Empty>{WHO_SEES}</Empty>;
-  const loaded = await loadRecruitmentSettings();
+  const [loaded, positions] = await Promise.all([loadRecruitmentSettings(), loadCvPositions()]);
   if (loaded.kind !== 'ok') return <Empty>{recruitmentNotLoaded(loaded, 'settings')}</Empty>;
   const s = loaded.value;
   const manages = managesRecruitment(user);
@@ -83,6 +85,27 @@ async function Settings() {
               {s.invite.ar ?? s.inviteStandard.ar}
             </p>
           </div>
+        )}
+      </section>
+
+      <section aria-labelledby="cv-positions" className="card space-y-4 p-6">
+        <div className="space-y-1">
+          <h2 id="cv-positions" className="text-lg font-semibold">
+            Positions on the CV Form
+          </h2>
+          <p className="max-w-3xl text-sm text-muted">
+            The positions people choose from on “Send us your CV”, grouped by team: the job titles with their levels merged (“Video Editor” for Junior and Senior), never a
+            C-level one. A new job title’s position is shown until you hide it. A hidden one leaves the careers page only: HR’s lists keep it, marked hidden.
+          </p>
+        </div>
+        {positions.kind !== 'ok' ? (
+          <p className="text-sm text-muted">{recruitmentNotLoaded(positions, 'positions')}</p>
+        ) : positions.value.positions.length === 0 ? (
+          <p className="text-sm text-muted">No positions yet: they come from the job titles.</p>
+        ) : manages ? (
+          <PositionsForm action={savePositionChoices} positions={positions.value.positions} />
+        ) : (
+          <PositionsList positions={positions.value.positions} />
         )}
       </section>
     </div>

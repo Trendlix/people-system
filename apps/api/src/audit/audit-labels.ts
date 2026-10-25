@@ -521,6 +521,10 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   standInId: 'Stand-in',
   standInHr: 'HR stands in',
   standingInFor: 'Standing in for',
+  // the positions on the CV form (25 October 2026): those HR hid, showed again or named otherwise
+  positionsOnCvForm: 'Positions on the CV form',
+  shownAgain: 'Shown again',
+  publicNames: 'Public names',
 };
 
 /**

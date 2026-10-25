@@ -1,9 +1,11 @@
 'use client';
 
 import { useActionState } from 'react';
-import { INVITE_LIMITS, REJECTION_LIMITS, SUGGESTION_LIMITS, type RecruitmentSettingsView } from '@trendlix/shared';
+import { CV_POSITION_LIMITS, INVITE_LIMITS, REJECTION_LIMITS, SUGGESTION_LIMITS, type CvPosition, type RecruitmentSettingsView } from '@trendlix/shared';
 import { FormErrors, useFieldIds } from '@/components/form';
+import { titleCase } from '@/lib/format';
 import type { FormState } from '@/lib/types';
+import { positionField, positionsByTeam } from '../../recruitment/general';
 
 // The rejection email's words (Phase 2, owner, 22 October 2026; the brief: "a polite standard text that an HR-editable
 // Recruitment Settings section can change (English and Arabic)"): left empty, the standard words go.
@@ -147,5 +149,98 @@ export function InviteWordsForm({ action, settings }: { action: Action; settings
         )}
       </div>
     </form>
+  );
+}
+
+/**
+ * The positions on "Send us your CV" (owner, 25 October 2026: "should it be the positions?"; asked, "Position, grouped by
+ * team"; packages/shared cv-positions.ts): every one under its team, each with a switch, on unless HR hides it from the
+ * careers page, and a public name (empty: its own); the job titles it merges under it. Every row is sent on Save.
+ */
+export function PositionsForm({ action, positions }: { action: Action; positions: readonly CvPosition[] }) {
+  const [state, formAction, pending] = useActionState(action, {});
+  const fid = useFieldIds();
+  const v = state.values;
+  const groups = positionsByTeam(positions);
+  return (
+    <form action={formAction} className="space-y-5">
+      <FormErrors errors={state.errors} />
+      {groups.map((g) => (
+        <fieldset key={g.teamId} className="space-y-2">
+          <legend className="text-xs font-semibold tracking-wide text-muted uppercase">{titleCase(g.team)}</legend>
+          <ul className="divide-y divide-line-soft rounded-lg border border-line">
+            {g.positions.map((p) => {
+              const shown = v ? str(v[positionField.shown(p.key)]) === 'on' : !p.hidden;
+              return (
+                <li key={p.key} className="grid gap-3 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,16rem)] sm:items-center">
+                  <input type="hidden" name={positionField.key} value={p.key} />
+                  <input type="hidden" name={positionField.merged(p.key)} value={p.name} />
+                  <div className="min-w-0 space-y-1">
+                    <label className="flex min-h-11 w-fit cursor-pointer items-center gap-3 text-sm font-semibold">
+                      <input
+                        type="checkbox"
+                        role="switch"
+                        name={positionField.shown(p.key)}
+                        defaultChecked={shown}
+                        aria-label={`${p.name}: shown on the careers page`}
+                        className="size-5 shrink-0 accent-accent"
+                      />
+                      <span className="break-words">{p.name}</span>
+                    </label>
+                    <p className="text-xs text-muted break-words">From: {p.titles.join(', ')}</p>
+                  </div>
+                  <div>
+                    <label htmlFor={fid(`name-${p.key}`)} className="label">
+                      Public name <span className="font-normal text-muted">(optional)</span>
+                    </label>
+                    <input
+                      id={fid(`name-${p.key}`)}
+                      name={positionField.publicName(p.key)}
+                      maxLength={CV_POSITION_LIMITS.publicName}
+                      defaultValue={v ? (str(v[positionField.publicName(p.key)]) ?? '') : (p.publicName ?? '')}
+                      placeholder={p.name}
+                      className="input"
+                    />
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </fieldset>
+      ))}
+      <p className="hint">The switch on: shown on the careers page. Off: hidden there, still on HR’s lists (marked hidden).</p>
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="submit" disabled={pending} className="btn btn-primary">
+          {pending ? 'Saving…' : 'Save the positions'}
+        </button>
+        {state.message && !state.errors && (
+          <span role="status" className="text-sm text-ok">
+            {state.message}
+          </span>
+        )}
+      </div>
+    </form>
+  );
+}
+
+/** The positions as the CEO reads them (they don't change them): by team, the hidden ones marked. */
+export function PositionsList({ positions }: { positions: readonly CvPosition[] }) {
+  return (
+    <div className="space-y-4">
+      {positionsByTeam(positions).map((g) => (
+        <section key={g.teamId} className="space-y-1">
+          <h3 className="text-xs font-semibold tracking-wide text-muted uppercase">{titleCase(g.team)}</h3>
+          <ul className="space-y-1 text-sm">
+            {g.positions.map((p) => (
+              <li key={p.key} className={p.hidden ? 'text-muted' : undefined}>
+                {p.shownName}
+                {p.hidden && <span className="badge ms-2 bg-canvas text-muted">Hidden</span>}
+                <span className="block text-xs text-muted">From: {p.titles.join(', ')}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ))}
+    </div>
   );
 }

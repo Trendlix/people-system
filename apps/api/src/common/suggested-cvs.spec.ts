@@ -218,6 +218,23 @@ describe('the score and its reasons', () => {
     expect(reasonText({ kind: 'title', from: 'vacancy', matchedTitle: HIDDEN, points: 20 })).toBe('Applied for a similar job');
   });
 
+  // owner, 25 October 2026: "Position, grouped by team": a general CV's chosen position counts as a title, beside its CV's
+  it('the title: a general CV’s position counts as one, the better of it and the CV’s latest taken', () => {
+    // a CV not read: its position alone
+    const chosen = scoreSuggestion(VACANCY, generalCv({ cvLatestTitle: null, positionTitle: 'Video Editor' }), NOW).reasons.find((r) => r.kind === 'title');
+    expect(chosen).toEqual({ kind: 'title', from: 'position', matchedTitle: 'Video Editor', points: 20 });
+    expect(reasonText(chosen!)).toBe('Position: Video Editor');
+    // the position beats a weaker latest title, and the CV's latest wins a tie
+    expect(scoreSuggestion(VACANCY, generalCv({ cvLatestTitle: 'Video Producer', positionTitle: 'Video Editor' }), NOW).reasons.find((r) => r.kind === 'title')).toMatchObject({ from: 'position', points: 20 });
+    expect(scoreSuggestion(VACANCY, generalCv({ cvLatestTitle: 'Video Editor', positionTitle: 'Video Editor' }), NOW).reasons.find((r) => r.kind === 'title')).toMatchObject({ from: 'cv', points: 20 });
+    // what they wrote for Other counts the same way; unlike the job, nothing
+    expect(scoreSuggestion(VACANCY, generalCv({ cvLatestTitle: null, positionTitle: 'Video producer' }), NOW).reasons.find((r) => r.kind === 'title')).toMatchObject({ from: 'position', points: 10 });
+    expect(scoreSuggestion(VACANCY, generalCv({ cvLatestTitle: null, positionTitle: 'Accountant' }), NOW).reasons.some((r) => r.kind === 'title')).toBe(false);
+    // an application's position is never read (only a general CV has one)
+    expect(scoreSuggestion(VACANCY, application({ vacancyTitle: 'Accountant', positionTitle: 'Video Editor' }), NOW).reasons.some((r) => r.kind === 'title')).toBe(false);
+    expect(reasonText({ kind: 'title', from: 'position', matchedTitle: HIDDEN, points: 20 })).toBe('A similar position chosen');
+  });
+
   it('experience: counted only against the least the screening questions ask, shown either way', () => {
     const below = scoreSuggestion({ ...VACANCY, minYears: 5 }, generalCv(), NOW).reasons.find((r) => r.kind === 'experience')!;
     expect(below).toMatchObject({ met: false, points: 0 });

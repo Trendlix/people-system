@@ -22,24 +22,29 @@ import {
 // proper viweing, what came out of the posted jobs and what cam on randomly", "Both"; "is there a way to easy apply from
 // linkedin?" … "why not"; packages/shared general-cvs.ts). Every CV here is made up.
 
-const good = { fullName: 'Mona Adel', email: 'Mona.Adel@Mail.test', mobile: '+20 100 123 4567', consent: true, departmentId: '00000000-0000-4000-8000-000000000001' };
+const good = { fullName: 'Mona Adel', email: 'Mona.Adel@Mail.test', mobile: '+20 100 123 4567', consent: true, positionKey: '00000000-0000-4000-8000-000000000001:video editor' };
 
 describe('a general CV’s rules', () => {
-  it('takes the careers page’s form with an area and the consent', () => {
+  // owner, 25 October 2026: "Position, grouped by team"; an older page's area still taken for one release
+  it('takes the careers page’s form with a position (or Other in words, or an older page’s area) and the consent', () => {
     expect(generalCvProblems(good, { byHr: false })).toEqual([]);
-    expect(generalCvProblems({ ...good, departmentId: null, areaOther: 'Photography' }, { byHr: false })).toEqual([]);
+    expect(generalCvProblems({ ...good, positionKey: null, positionOther: 'Photographer' }, { byHr: false })).toEqual([]);
+    expect(generalCvProblems({ ...good, positionKey: null, departmentId: '00000000-0000-4000-8000-000000000001' }, { byHr: false })).toEqual([]);
+    expect(generalCvProblems({ ...good, positionKey: null, areaOther: 'Photography' }, { byHr: false })).toEqual([]);
     expect(generalCvProblems({ ...good, linkedin: 'linkedin.com/in/mona' }, { byHr: false })).toEqual([]);
   });
 
-  it('names every problem: the details, the area, the consent', () => {
+  it('names every problem: the details, the position, the consent', () => {
     expect(generalCvProblems({ fullName: 'M', email: 'x', mobile: '1', consent: false }, { byHr: false })).toEqual([
       'Write your full name.',
       'Write a full email address, e.g. name@example.com.',
       'Write the mobile number without the 0 in front, after choosing the country code.',
-      'Choose the area you would like to work in, or Other and write it.',
+      'Choose the position you would like, or Other and write it.',
       'Tick that we may keep your details and CV to consider you for jobs.',
     ]);
-    expect(generalCvProblems({ ...good, departmentId: null, areaOther: 'x'.repeat(81) }, { byHr: false })).toEqual(['Keep the area to 80 characters or fewer.']);
+    expect(generalCvProblems({ ...good, positionKey: '  ', positionOther: ' ' }, { byHr: false })).toEqual(['Choose the position you would like, or Other and write it.']);
+    expect(generalCvProblems({ ...good, positionKey: null, positionOther: 'x'.repeat(81) }, { byHr: false })).toEqual(['Keep the position to 80 characters or fewer.']);
+    expect(generalCvProblems({ ...good, positionKey: null, areaOther: 'x'.repeat(81) }, { byHr: false })).toEqual(['Keep the area to 80 characters or fewer.']);
   });
 
   it('HR’s Add a CV: how it came, who referred them, the person’s agreement', () => {
@@ -50,7 +55,7 @@ describe('a general CV’s rules', () => {
     ]);
     expect(generalCvProblems({ ...good, source: 'referral' }, { byHr: true })).toEqual(['Write who referred them.']);
     expect(generalCvProblems({ ...good, source: 'referral', referrer: 'Omar Khaled' }, { byHr: true })).toEqual([]);
-    expect(generalCvProblems({ ...good, departmentId: null, source: 'email' }, { byHr: true })).toEqual(['Choose the area they would like to work in, or Other and write it.']);
+    expect(generalCvProblems({ ...good, positionKey: null, source: 'email' }, { byHr: true })).toEqual(['Choose the position they would like, or Other and write it.']);
   });
 
   it('moves a new or reviewed one only', () => {

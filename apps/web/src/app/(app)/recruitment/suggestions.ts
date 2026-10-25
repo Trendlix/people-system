@@ -49,8 +49,10 @@ export const suggestedViewLabel = (count: number | null | undefined) => `Suggest
 export const statusChip = (status: SuggestionStatus, counts: Partial<Record<SuggestionStatus, number>>) => `${SUGGESTION_STATUS_LABELS[status]} (${counts[status] ?? 0})`;
 
 /**
- * Where it came from: "General CV APP-2026-0007 · Video · Production, 03/09/2026", or "Applied for Motion Designer on
- * 12/05/2026" (a developer's code left out); "The earlier CV has gone" when it was deleted since.
+ * Where it came from: "General CV APP-2026-0007 · Video · Production, 03/09/2026", with its position since 25 October
+ * 2026 (owner: "Position, grouped by team"): "General CV APP-2026-0007 · Video Editor (Video · Production), 03/09/2026";
+ * or "Applied for Motion Designer on 12/05/2026" (a developer's code and team left out); "The earlier CV has gone" when
+ * it was deleted since.
  */
 export function sourceText(row: Pick<VacancySuggestionView, 'source'>): string {
   const s = row.source;
@@ -58,7 +60,9 @@ export function sourceText(row: Pick<VacancySuggestionView, 'source'>): string {
   if (s.kind === 'general_cv') {
     const ref = shownCode(s.number);
     const area = isHidden(s.area) ? null : s.area;
-    return `General CV${ref ? ` ${ref}` : ''}${area ? ` · ${area}` : ''}, ${formatDate(s.receivedAt)}`;
+    const position = s.position && !isHidden(s.position) ? s.position : null;
+    const what = position ? (area && area !== 'Other' ? `${position} (${area})` : position) : area;
+    return `General CV${ref ? ` ${ref}` : ''}${what ? ` · ${what}` : ''}, ${formatDate(s.receivedAt)}`;
   }
   return `Applied for ${s.vacancy.title} on ${formatDate(s.appliedAt)}`;
 }

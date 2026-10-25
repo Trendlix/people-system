@@ -1,32 +1,34 @@
 'use client';
 
 import { startTransition, useActionState, useState } from 'react';
-import { GENERAL_CV_CONSENT_TEXT, GENERAL_CV_LIMITS, RECRUITMENT_LIMITS, type PublicGeneralForm } from '@trendlix/shared';
+import { GENERAL_CV_CONSENT_TEXT, GENERAL_CV_LIMITS, OTHER_POSITION, RECRUITMENT_LIMITS, type CvPositionGroup } from '@trendlix/shared';
 import { FormErrors, useFieldIds } from '@/components/form';
 import { NoticeInput } from '@/components/notice-input';
 import { PhoneInput } from '@/components/phone-input';
+import { PositionOptions } from '@/components/position-options';
 import { Select } from '@/components/select';
-import { HONEYPOT, OTHER_AREA } from '../careers';
+import { HONEYPOT, POSITION_FIELD } from '../careers';
 import { WhatsAppTick } from '../whatsapp-tick';
 import { Checked, EmailInput, useFieldChecks, YearsInput } from '../fields';
 import type { GeneralState } from './actions';
 
 // "Send us your CV" on the careers page (owner, 22 October 2026: "what came out of the posted jobs and what cam on
-// randomly", "Both"): the person's details, the area they would like to work in (a department, or Other in words), the
-// CV (a PDF or a Word file, at most 5 MB) and the consent; once sent, the reference to keep. A field hidden from people
-// catches robots. Made for a phone first; in trendlix.com's contact form's look (careers.css, 22 October 2026: "i need it
-// to match the UI"). The email, mobile, years and notice period as the owner asked on 22 October 2026 (fields.tsx), as
-// on a job's form; the years optional here.
+// randomly", "Both"): the person's details, the position they would like (owner, 25 October 2026: "should it be the
+// positions?"; asked, "Position, grouped by team": the job titles with their levels merged, under their teams, or "Other
+// (write it)"), the CV (a PDF or a Word file, at most 5 MB) and the consent; once sent, the reference to keep. A field
+// hidden from people catches robots. Made for a phone first; in trendlix.com's contact form's look (careers.css, 22
+// October 2026: "i need it to match the UI"). The email, mobile, years and notice period as the owner asked on 22
+// October 2026 (fields.tsx), as on a job's form; the years optional here.
 
 type Action = (prev: GeneralState, fd: FormData) => Promise<GeneralState>;
 
 const L = RECRUITMENT_LIMITS;
 
-export function GeneralForm({ action, areas }: { action: Action; areas: PublicGeneralForm['areas'] }) {
+export function GeneralForm({ action, positions }: { action: Action; positions: readonly CvPositionGroup[] }) {
   const [state, formAction, pending] = useActionState(action, {});
   const fid = useFieldIds();
   const v = (name: string) => state.values?.[name] ?? '';
-  const [area, setArea] = useState(v('area'));
+  const [position, setPosition] = useState(v(POSITION_FIELD));
   const checks = useFieldChecks(fid, { yearsRequired: false });
 
   if (state.reference !== undefined) {
@@ -80,26 +82,22 @@ export function GeneralForm({ action, areas }: { action: Action; areas: PublicGe
             <PhoneInput id={fid('mobile')} name="mobile" label="Mobile" required autoComplete="tel" variant="careers" defaultValue={v('mobile')} {...checks.ids('mobile')} />
           </Checked>
         </div>
-        <div className={area === OTHER_AREA ? '' : 'sm:col-span-2'}>
-          <label htmlFor={fid('area')} className="label">
-            The area you would like to work in
+        <div className={position === OTHER_POSITION ? '' : 'sm:col-span-2'}>
+          <label htmlFor={fid('position')} className="label">
+            The position you would like
           </label>
-          <Select id={fid('area')} name="area" required value={area} onChange={(e) => setArea(e.target.value)} className="input">
+          <Select id={fid('position')} name={POSITION_FIELD} required value={position} onChange={(e) => setPosition(e.target.value)} className="input">
             <option value="">Choose…</option>
-            {areas.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-            <option value={OTHER_AREA}>Other</option>
+            <PositionOptions groups={positions} />
+            <option value={OTHER_POSITION}>Other (write it)</option>
           </Select>
         </div>
-        {area === OTHER_AREA && (
+        {position === OTHER_POSITION && (
           <div>
-            <label htmlFor={fid('areaOther')} className="label">
-              Which area
+            <label htmlFor={fid('positionOther')} className="label">
+              Which position
             </label>
-            <input id={fid('areaOther')} name="areaOther" required maxLength={GENERAL_CV_LIMITS.areaOther} defaultValue={v('areaOther')} className="input" />
+            <input id={fid('positionOther')} name="positionOther" required maxLength={GENERAL_CV_LIMITS.positionOther} defaultValue={v('positionOther')} className="input" />
           </div>
         )}
         <div>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { PublicQuestion } from '@trendlix/shared';
+import { OTHER_POSITION, type PublicQuestion } from '@trendlix/shared';
 import {
   answerField,
   apiForm,
@@ -85,44 +85,64 @@ describe('the application form', () => {
   });
 });
 
-// "Send us your CV" (owner, 22 October 2026: "what came out of the posted jobs and what cam on randomly").
+// "Send us your CV" (owner, 22 October 2026: "what came out of the posted jobs and what cam on randomly"); the position
+// they would like since 25 October 2026 ("should it be the positions?"; asked, "Position, grouped by team").
 describe('the general CV form', () => {
   const AREA = '00000000-0000-4000-8000-000000000001';
+  const POSITION = `${AREA}:video editor`;
   const person = { fullName: 'Mona Adel', email: 'mona@mail.test', mobile: '+20 100 123 4567', consent: 'on' };
 
-  it('takes an area or Other in words, and names what is missing', () => {
-    expect(generalFormProblems(form({ ...person, area: AREA }))).toEqual([]);
-    expect(generalFormProblems(form({ ...person, area: OTHER_AREA, areaOther: 'Photography' }))).toEqual([]);
-    expect(generalFormProblems(form({ fullName: 'Mona Adel', email: 'mona@mail.test', mobile: '+20 100 123 4567', area: OTHER_AREA }, null))).toEqual([
-      'Choose the area you would like to work in, or Other and write it.',
+  it('takes a position or Other in words, and names what is missing', () => {
+    expect(generalFormProblems(form({ ...person, position: POSITION }))).toEqual([]);
+    expect(generalFormProblems(form({ ...person, position: OTHER_POSITION, positionOther: 'Photographer' }))).toEqual([]);
+    expect(generalFormProblems(form({ fullName: 'Mona Adel', email: 'mona@mail.test', mobile: '+20 100 123 4567', position: OTHER_POSITION }, null))).toEqual([
+      'Choose the position you would like, or Other and write it.',
       'Tick that we may keep your details and CV to consider you for jobs.',
       'Attach your CV, as a PDF or a Word file.',
     ]);
+    // none chosen: the position is asked, never an old page's area
+    expect(generalFormProblems(form({ ...person, position: '', area: AREA }))).toEqual(['Choose the position you would like, or Other and write it.']);
+    expect(generalFormProblems(form({ ...person, position: OTHER_POSITION, positionOther: 'x'.repeat(81) }))).toEqual(['Keep the position to 80 characters or fewer.']);
   });
 
-  it('is passed on with the department or the words, where it came from and the CV', () => {
-    const out = generalApiForm(form({ ...person, area: AREA, areaOther: 'ignored', linkedin: 'linkedin.com/in/mona', website: '' }), { ip: '10.0.0.1', userAgent: 'Phone' });
-    expect(out.get('departmentId')).toBe(AREA);
+  it('is passed on with the position’s key or the words, where it came from and the CV', () => {
+    const out = generalApiForm(form({ ...person, position: POSITION, positionOther: 'ignored', linkedin: 'linkedin.com/in/mona', website: '' }), { ip: '10.0.0.1', userAgent: 'Phone' });
+    expect(out.get('positionKey')).toBe(POSITION);
+    expect(out.get('positionOther')).toBeNull();
+    expect(out.get('departmentId')).toBeNull();
     expect(out.get('areaOther')).toBeNull();
     expect(out.get('consent')).toBe('true');
     expect(out.get('linkedin')).toBe('linkedin.com/in/mona');
     expect(out.get('ip')).toBe('10.0.0.1');
     expect(out.get('website')).toBeNull();
     expect(out.get('cv')).toBeInstanceOf(Blob);
+    const other = generalApiForm(form({ ...person, position: OTHER_POSITION, positionOther: ' Photographer ' }), {});
+    expect(other.get('positionKey')).toBeNull();
+    expect(other.get('positionOther')).toBe('Photographer');
+  });
+
+  // a page still open from before the positions sends its area (one release): passed on as it was, for its team
+  it('still takes an older page’s area, a team or Other in words', () => {
+    expect(generalFormProblems(form({ ...person, area: AREA }))).toEqual([]);
+    const team = generalApiForm(form({ ...person, area: AREA, areaOther: 'ignored' }), {});
+    expect(team.get('departmentId')).toBe(AREA);
+    expect(team.get('areaOther')).toBeNull();
+    expect(team.get('positionKey')).toBeNull();
     const other = generalApiForm(form({ ...person, area: OTHER_AREA, areaOther: 'Photography' }), {});
     expect(other.get('departmentId')).toBeNull();
     expect(other.get('areaOther')).toBe('Photography');
+    expect(generalFormProblems(form({ ...person, area: OTHER_AREA }))).toEqual(['Choose the position you would like, or Other and write it.']);
   });
 
   it('sends the WhatsApp tick only when ticked, and keeps it after a refusal (24 October 2026)', () => {
-    expect(generalApiForm(form({ ...person, area: AREA, whatsapp: 'on' }), {}).get('whatsapp')).toBe('true');
-    expect(generalApiForm(form({ ...person, area: AREA }), {}).get('whatsapp')).toBeNull();
-    expect(generalTypedValues(form({ ...person, area: AREA, whatsapp: 'on' })).whatsapp).toBe('on');
+    expect(generalApiForm(form({ ...person, position: POSITION, whatsapp: 'on' }), {}).get('whatsapp')).toBe('true');
+    expect(generalApiForm(form({ ...person, position: POSITION }), {}).get('whatsapp')).toBeNull();
+    expect(generalTypedValues(form({ ...person, position: POSITION, whatsapp: 'on' })).whatsapp).toBe('on');
   });
 
   it('keeps what was typed to show again, never the CV', () => {
-    const typed = generalTypedValues(form({ ...person, area: OTHER_AREA, areaOther: 'Photography' }));
-    expect(typed).toMatchObject({ fullName: 'Mona Adel', area: OTHER_AREA, areaOther: 'Photography', consent: 'on' });
+    const typed = generalTypedValues(form({ ...person, position: OTHER_POSITION, positionOther: 'Photographer' }));
+    expect(typed).toMatchObject({ fullName: 'Mona Adel', position: OTHER_POSITION, positionOther: 'Photographer', consent: 'on' });
     expect(typed).not.toHaveProperty('cv');
   });
 });
@@ -141,7 +161,7 @@ describe('the email, mobile, years and notice period', () => {
     expect(out.get('yearsExperience')).toBe('3');
     expect(apiForm(form({ ...good, noticeNumber: '1', noticeUnit: 'months' }), QUESTIONS, { source: null }).get('noticePeriod')).toBe('1 month');
     expect(apiForm(form({ ...good, noticeNumber: '', noticeUnit: 'months' }), QUESTIONS, { source: null }).get('noticePeriod')).toBeNull();
-    const general = generalApiForm(form({ ...good, area: OTHER_AREA, areaOther: 'Sound', noticeNumber: '2', noticeUnit: 'months' }), {});
+    const general = generalApiForm(form({ ...good, position: OTHER_POSITION, positionOther: 'Sound engineer', noticeNumber: '2', noticeUnit: 'months' }), {});
     expect(general.get('noticePeriod')).toBe('2 months');
     expect(noticeFrom(form({ noticeNumber: '0' }))).toBe('0 days');
     expect(noticeFrom(form({ noticeNumber: '1', noticeUnit: 'days' }))).toBe('1 day');
@@ -174,7 +194,7 @@ describe('the email, mobile, years and notice period', () => {
 
   it('wants the years on a job’s form before sending, not on the general one', () => {
     expect(applyFormProblems(form({ ...good, yearsExperience: '' }), QUESTIONS)).toEqual([YEARS_REQUIRED]);
-    expect(generalFormProblems(form({ fullName: 'Mona Adel', email: 'mona@mail.test', mobile: '01001234567', area: OTHER_AREA, areaOther: 'Sound', consent: 'on' }))).toEqual([]);
+    expect(generalFormProblems(form({ fullName: 'Mona Adel', email: 'mona@mail.test', mobile: '01001234567', position: OTHER_POSITION, positionOther: 'Sound engineer', consent: 'on' }))).toEqual([]);
   });
 });
 

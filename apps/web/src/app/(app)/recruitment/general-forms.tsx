@@ -10,9 +10,11 @@ import {
   HR_CV_SOURCES,
   MOVE_STAGES,
   APPLICATION_STAGE_LABELS,
+  OTHER_POSITION,
   RECRUITMENT_LIMITS,
   type ApplicationSource,
   type CvBatchTarget,
+  type CvPositionGroup,
   type CvSaveResult,
   type CvUploadView,
   type GeneralCvSource,
@@ -20,9 +22,10 @@ import {
 import { FormErrors, useFieldIds, useKeptForm } from '@/components/form';
 import { NoticeInput } from '@/components/notice-input';
 import { PhoneInput } from '@/components/phone-input';
+import { PositionOptions } from '@/components/position-options';
 import { Select } from '@/components/select';
 import type { FormState } from '@/lib/types';
-import { OTHER_AREA } from '../../careers/careers';
+import { POSITION_FIELD } from '../../careers/careers';
 import { discardBatch, readBatch, saveBatch, uploadBatchCv } from './general-actions';
 import { batchSources, duplicateText, inBatchRepeats, mergeReadings, rowOf, saveRows, type BatchRow } from './general';
 
@@ -31,10 +34,11 @@ import { batchSources, duplicateText, inBatchRepeats, mergeReadings, rowOf, save
 // and the bulk upload: many CVs dropped at once, each read for the person's name, email and mobile, checked by HR row by
 // row, then saved. The API checks each again. Add a CV takes the mobile and the notice period as the careers page's forms
 // do (22 October 2026: the mobile "like the one applied in the system, country code and no extra zero"; the notice period
-// "in Days" … "and a selectoor to make it months").
+// "in Days" … "and a selectoor to make it months"). Since 25 October 2026 (owner: "should it be the positions?"; asked,
+// "Position, grouped by team") a general CV is for a position, picked from HR's list (the careers page's, with the hidden
+// ones too, marked) or Other in words; its team is the position's.
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
-type Area = { id: string; name: string };
 
 const L = RECRUITMENT_LIMITS;
 const CV_ACCEPT = '.pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -51,11 +55,11 @@ const str = (state: FormState, name: string, fallback = '') => {
 // ---------- Add a CV ----------
 
 /** HR adds a CV that came by email, WhatsApp, LinkedIn, in person or by referral, with the person's agreement. */
-export function AddCvForm({ action, areas }: { action: Action; areas: Area[] }) {
+export function AddCvForm({ action, positions }: { action: Action; positions: readonly CvPositionGroup[] }) {
   const { state, pending, form } = useKeptForm(action);
   const fid = useFieldIds();
   const v = (name: string) => str(state, name);
-  const [area, setArea] = useState(v('area'));
+  const [position, setPosition] = useState(v(POSITION_FIELD));
   const [source, setSource] = useState(v('source'));
   return (
     <form {...form} className="card space-y-5 p-6">
@@ -103,25 +107,21 @@ export function AddCvForm({ action, areas }: { action: Action; areas: Area[] }) 
           <PhoneInput id={fid('mobile')} name="mobile" label="Mobile" required defaultValue={v('mobile')} />
         </div>
         <div>
-          <label htmlFor={fid('area')} className="label">
-            The area they would like to work in
+          <label htmlFor={fid('position')} className="label">
+            The position they would like
           </label>
-          <Select id={fid('area')} name="area" required value={area} onChange={(e) => setArea(e.target.value)} className="input">
+          <Select id={fid('position')} name={POSITION_FIELD} required value={position} onChange={(e) => setPosition(e.target.value)} className="input">
             <option value="">Choose…</option>
-            {areas.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.name}
-              </option>
-            ))}
-            <option value={OTHER_AREA}>Other</option>
+            <PositionOptions groups={positions} />
+            <option value={OTHER_POSITION}>Other (write it)</option>
           </Select>
         </div>
-        {area === OTHER_AREA ? (
+        {position === OTHER_POSITION ? (
           <div>
-            <label htmlFor={fid('areaOther')} className="label">
-              Which area
+            <label htmlFor={fid('positionOther')} className="label">
+              Which position
             </label>
-            <input id={fid('areaOther')} name="areaOther" required maxLength={GENERAL_CV_LIMITS.areaOther} defaultValue={v('areaOther')} className="input" />
+            <input id={fid('positionOther')} name="positionOther" required maxLength={GENERAL_CV_LIMITS.positionOther} defaultValue={v('positionOther')} className="input" />
           </div>
         ) : (
           <div className="hidden sm:block" />
@@ -244,7 +244,7 @@ const sourceLabel = (target: CvBatchTarget, s: string) => (target.kind === 'vaca
  * the source (LinkedIn to start with), then saves them: applications at Applied on a vacancy, or general CVs. A row whose
  * email applied already is skipped; a general CV's sent in the last 30 days is kept only when ticked.
  */
-export function BulkUpload({ target, initial, areas, doneHref }: { target: CvBatchTarget; initial: CvUploadView[]; areas: Area[]; doneHref: string }) {
+export function BulkUpload({ target, initial, positions, doneHref }: { target: CvBatchTarget; initial: CvUploadView[]; positions: readonly CvPositionGroup[]; doneHref: string }) {
   const [rows, setRows] = useState<BatchRow[]>(() => initial.map(rowOf));
   const [progress, setProgress] = useState<{ done: number; of: number } | null>(null);
   const [problems, setProblems] = useState<string[]>([]);
@@ -416,16 +416,12 @@ export function BulkUpload({ target, initial, areas, doneHref }: { target: CvBat
               </Select>
               {general && (
                 <>
-                  <label htmlFor={fid('all-area')} className="text-sm">
-                    Area for all
+                  <label htmlFor={fid('all-position')} className="text-sm">
+                    Position for all
                   </label>
-                  <Select id={fid('all-area')} value="" onChange={(e) => e.target.value && setRows((all) => all.map((r) => ({ ...r, departmentId: e.target.value })))} className="input min-w-36">
+                  <Select id={fid('all-position')} value="" onChange={(e) => e.target.value && setRows((all) => all.map((r) => ({ ...r, position: e.target.value })))} className="input min-w-36">
                     <option value="">Choose…</option>
-                    {areas.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.name}
-                      </option>
-                    ))}
+                    <PositionOptions groups={positions} />
                   </Select>
                 </>
               )}
@@ -440,7 +436,7 @@ export function BulkUpload({ target, initial, areas, doneHref }: { target: CvBat
                   <th>Email</th>
                   <th>Mobile</th>
                   <th>Source</th>
-                  {general && <th>Area</th>}
+                  {general && <th>Position</th>}
                   <th>Save</th>
                   <th className="sr-only">Remove</th>
                 </tr>
@@ -495,22 +491,18 @@ export function BulkUpload({ target, initial, areas, doneHref }: { target: CvBat
                       </td>
                       {general && (
                         <td>
-                          <Select aria-label={`Area, ${r.fileName}`} value={r.departmentId} onChange={(e) => edit(r.id, { departmentId: e.target.value })} className="input min-w-36">
+                          <Select aria-label={`Position, ${r.fileName}`} value={r.position} onChange={(e) => edit(r.id, { position: e.target.value })} className="input min-w-36">
                             <option value="">Choose…</option>
-                            {areas.map((a) => (
-                              <option key={a.id} value={a.id}>
-                                {a.name}
-                              </option>
-                            ))}
-                            <option value={OTHER_AREA}>Other</option>
+                            <PositionOptions groups={positions} />
+                            <option value={OTHER_POSITION}>Other (write it)</option>
                           </Select>
-                          {r.departmentId === OTHER_AREA && (
+                          {r.position === OTHER_POSITION && (
                             <input
-                              aria-label={`Which area, ${r.fileName}`}
-                              placeholder="Which area"
-                              value={r.areaOther}
-                              maxLength={GENERAL_CV_LIMITS.areaOther}
-                              onChange={(e) => edit(r.id, { areaOther: e.target.value })}
+                              aria-label={`Which position, ${r.fileName}`}
+                              placeholder="Which position"
+                              value={r.positionOther}
+                              maxLength={GENERAL_CV_LIMITS.positionOther}
+                              onChange={(e) => edit(r.id, { positionOther: e.target.value })}
                               className="input mt-2 min-w-36"
                             />
                           )}

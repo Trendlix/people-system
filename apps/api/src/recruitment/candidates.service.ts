@@ -134,6 +134,9 @@ const GCV_SELECT = {
   createdAt: true,
   areaOther: true,
   department: { select: { nameEn: true, parent: { select: { nameEn: true } } } },
+  // the position chosen, or written for Other (25 October 2026: "Position, grouped by team")
+  positionName: true,
+  positionOther: true,
   application: { select: { id: true, number: true } },
 } satisfies Prisma.GeneralCvSelect;
 type GcvRow = Prisma.GeneralCvGetPayload<{ select: typeof GCV_SELECT }>;
@@ -165,6 +168,9 @@ const generalView = (g: GcvRow): CandidateGeneralCv => ({
   number: g.number,
   status: (isGeneralCvStatus(g.status) ? g.status : 'new') as GeneralCvStatus,
   area: areaOf(g),
+  team: g.department ? (g.department.parent ? `${g.department.nameEn} · ${g.department.parent.nameEn}` : g.department.nameEn) : null,
+  positionName: g.positionName,
+  positionOther: g.positionOther,
   source: (isGeneralCvSource(g.source) ? g.source : 'other') as GeneralCvSource,
   receivedAt: g.createdAt.toISOString(),
   movedTo: g.application ? { applicationId: g.application.id, reference: g.application.number } : null,

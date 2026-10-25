@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { ApplicationListItem, CvUploadView, VacancyApplicantsGroup } from '@trendlix/shared';
-import { APPLICATION_STAGE_LABELS } from '@trendlix/shared';
+import type { ApplicationListItem, CvPosition, CvUploadView, VacancyApplicantsGroup } from '@trendlix/shared';
+import { APPLICATION_STAGE_LABELS, OTHER_POSITION } from '@trendlix/shared';
 import {
   addCvApiForm,
   addCvProblems,
@@ -9,10 +9,17 @@ import {
   duplicateText,
   filtering,
   generalApiPath,
+  generalFiltering,
   generalHref,
   groupApplicants,
   inBatchRepeats,
+  isPositionFilter,
   movableVacancies,
+  positionCell,
+  positionChoicesOf,
+  positionFacts,
+  positionField,
+  positionsByTeam,
   readGeneralQuery,
   readTab,
   rowOf,
@@ -83,8 +90,26 @@ describe('the Applicants page’s tabs', () => {
 
 describe('the general CVs’ list', () => {
   it('reads its filters, dropping what isn’t one', () => {
-    expect(readGeneralQuery({ status: 'reviewed', source: 'whatsapp', departmentId: AREA, q: ' mona ' })).toEqual({ status: 'reviewed', source: 'whatsapp', departmentId: AREA, q: 'mona', minYears: null, skill: '', verdict: '' });
-    expect(readGeneralQuery({ status: 'deleted', source: 'tiktok', departmentId: 'x' })).toEqual({ status: '', source: '', departmentId: '', q: '', minYears: null, skill: '', verdict: '' });
+    expect(readGeneralQuery({ status: 'reviewed', source: 'whatsapp', departmentId: AREA, q: ' mona ' })).toEqual({
+      status: 'reviewed',
+      source: 'whatsapp',
+      departmentId: AREA,
+      positionKey: '',
+      q: 'mona',
+      minYears: null,
+      skill: '',
+      verdict: '',
+    });
+    expect(readGeneralQuery({ status: 'deleted', source: 'tiktok', departmentId: 'x', positionKey: 'video editor' })).toEqual({
+      status: '',
+      source: '',
+      departmentId: '',
+      positionKey: '',
+      q: '',
+      minYears: null,
+      skill: '',
+      verdict: '',
+    });
     expect(readGeneralQuery({ status: 'all' }).status).toBe('all');
   });
 
@@ -92,6 +117,18 @@ describe('the general CVs’ list', () => {
     expect(generalApiPath({})).toBe('/recruitment/general-cvs');
     expect(generalApiPath({ status: 'new', q: 'mona' })).toBe('/recruitment/general-cvs?status=new&q=mona');
     expect(generalHref({ source: 'referral' })).toBe('/recruitment/applicants?source=referral&tab=general');
+    expect(generalApiPath({ positionKey: `${AREA}:video editor`, departmentId: AREA })).toBe(`/recruitment/general-cvs?departmentId=${AREA}&positionKey=${encodeURIComponent(`${AREA}:video editor`).replace(/%20/g, '+')}`);
+  });
+
+  // owner, 25 October 2026: "should it be the positions?"; asked, "Position, grouped by team"
+  it('filters by a position’s key, or the written ones, and by the team', () => {
+    expect(readGeneralQuery({ positionKey: `${AREA}:video editor` }).positionKey).toBe(`${AREA}:video editor`);
+    expect(readGeneralQuery({ positionKey: OTHER_POSITION }).positionKey).toBe(OTHER_POSITION);
+    expect(isPositionFilter(`${AREA}:`)).toBe(false);
+    expect(isPositionFilter('not-a-team:video editor')).toBe(false);
+    expect(isPositionFilter(`${AREA}:${'x'.repeat(200)}`)).toBe(false);
+    expect(generalFiltering(readGeneralQuery({ positionKey: OTHER_POSITION }))).toBe(true);
+    expect(generalFiltering(readGeneralQuery({}))).toBe(false);
   });
 
   it('offers the open vacancies and those on hold to add a CV to', () => {
@@ -107,12 +144,14 @@ describe('HR’s Add a CV', () => {
     if (cv) f.set('cv', new Blob(['%PDF-1.4'], { type: 'application/pdf' }), 'cv.pdf');
     return f;
   };
-  const person = { fullName: 'Mona Adel', email: 'mona@mail.test', mobile: '+20 100 123 4567', area: AREA, consent: 'on' };
+  const POSITION = `${AREA}:video editor`;
+  const person = { fullName: 'Mona Adel', email: 'mona@mail.test', mobile: '+20 100 123 4567', position: POSITION, consent: 'on' };
 
   it('asks how it came, who referred them, the agreement and the CV', () => {
     expect(addCvProblems(fd({ ...person, source: 'email' }))).toEqual([]);
     expect(addCvProblems(fd({ ...person, source: 'referral' }))).toEqual(['Write who referred them.']);
-    expect(addCvProblems(fd({ fullName: 'Mona Adel', email: 'mona@mail.test', mobile: '+20 100 123 4567', area: AREA }, false))).toEqual([
+    expect(addCvProblems(fd({ ...person, position: '', source: 'email' }))).toEqual(['Choose the position they would like, or Other and write it.']);
+    expect(addCvProblems(fd({ fullName: 'Mona Adel', email: 'mona@mail.test', mobile: '+20 100 123 4567', position: POSITION }, false))).toEqual([
       'Choose how the CV came: email, WhatsApp, LinkedIn, in person, referral or other.',
       'Tick that the person agreed to be considered.',
       'Attach the CV, as a PDF or a Word file.',
@@ -124,8 +163,12 @@ describe('HR’s Add a CV', () => {
     expect(out.get('source')).toBe('referral');
     expect(out.get('referrer')).toBe('Omar Khaled');
     expect(out.get('notes')).toBe('Strong reel');
-    expect(out.get('departmentId')).toBe(AREA);
+    expect(out.get('positionKey')).toBe(POSITION);
+    expect(out.get('departmentId')).toBeNull();
     expect(out.get('cv')).toBeInstanceOf(Blob);
+    const other = addCvApiForm(fd({ ...person, position: OTHER_POSITION, positionOther: ' Photographer ', source: 'email' }));
+    expect(other.get('positionKey')).toBeNull();
+    expect(other.get('positionOther')).toBe('Photographer');
     expect(addCvApiForm(fd({ ...person, source: 'email', referrer: 'Omar Khaled' })).get('referrer')).toBeNull();
   });
 });
@@ -158,11 +201,19 @@ describe('the bulk upload', () => {
     expect(rowOf(upload({ textFound: false, guess: { fullName: 'Scan', email: null, mobile: null } }))).toMatchObject({ fullName: 'Scan', email: '', mobile: '' });
   });
 
-  it('saves a vacancy’s rows without a general CV’s area, and a general CV’s with it', () => {
-    const r = { ...rowOf(upload()), fullName: ' Mona Adel ', departmentId: AREA, referrer: 'Omar' };
+  it('saves a vacancy’s rows without a general CV’s position, and a general CV’s with it', () => {
+    const POSITION = `${AREA}:video editor`;
+    expect(rowOf(upload())).toMatchObject({ position: '', positionOther: '' });
+    const r = { ...rowOf(upload()), fullName: ' Mona Adel ', position: POSITION, referrer: 'Omar' };
     expect(saveRows([r], vacancy)).toEqual([{ id: 'u1', fullName: 'Mona Adel', email: 'mona@mail.test', mobile: '+201001234567', source: 'linkedin' }]);
-    expect(saveRows([r], general)).toEqual([{ id: 'u1', fullName: 'Mona Adel', email: 'mona@mail.test', mobile: '+201001234567', source: 'linkedin', departmentId: AREA, areaOther: null, referrer: null, keep: false }]);
-    expect(saveRows([{ ...r, departmentId: 'other', areaOther: ' Photography ', source: 'referral', keep: true }], general)[0]).toMatchObject({ departmentId: null, areaOther: 'Photography', referrer: 'Omar', keep: true });
+    expect(saveRows([r], general)).toEqual([{ id: 'u1', fullName: 'Mona Adel', email: 'mona@mail.test', mobile: '+201001234567', source: 'linkedin', positionKey: POSITION, positionOther: null, referrer: null, keep: false }]);
+    expect(saveRows([{ ...r, position: OTHER_POSITION, positionOther: ' Photographer ', source: 'referral', keep: true }], general)[0]).toMatchObject({
+      positionKey: null,
+      positionOther: 'Photographer',
+      referrer: 'Omar',
+      keep: true,
+    });
+    expect(saveRows([{ ...r, position: '' }], general)[0]).toMatchObject({ positionKey: null, positionOther: null });
     expect(saveRows([{ ...r, skip: true }], vacancy)[0]).toMatchObject({ skip: true });
   });
 
@@ -173,5 +224,67 @@ describe('the bulk upload', () => {
     expect(duplicateText({ reference: 'APP-2026-0007', inBatch: false, date: '2026-10-01' }, vacancy)).toBe('Applied for this job already (APP-2026-0007): it will be skipped.');
     expect(duplicateText({ reference: 'APP-2026-0007', inBatch: false, date: '2026-10-01' }, general)).toBe('Sent a CV in the last 30 days (APP-2026-0007): tick Keep to save it anyway.');
     expect(duplicateText({ reference: null, inBatch: true, date: null }, general)).toBe('The same email is earlier in this batch.');
+  });
+});
+
+// The position on HR's lists and pages (owner, 25 October 2026: "should it be the positions?"; asked, "Position, grouped by
+// team"; "Area" renamed "Team").
+describe('a general CV’s position', () => {
+  it('shows the position with its team under it, "Other: …" for one written, the area for an older CV', () => {
+    expect(positionCell({ positionName: 'Video Editor', team: 'Video · Production', area: 'Video · Production' })).toEqual({ main: 'Video Editor', sub: 'Video · Production' });
+    expect(positionCell({ positionOther: 'Photographer', team: null, area: 'Other' })).toEqual({ main: 'Other: Photographer', sub: null });
+    expect(positionCell({ area: 'Sound · Studio' })).toEqual({ main: 'Sound · Studio', sub: null });
+    // an API from before the positions
+    expect(positionCell({ positionName: undefined, area: 'Photography' })).toEqual({ main: 'Photography', sub: null });
+  });
+
+  it('gives its page the position and the team, "—" where none is known', () => {
+    expect(positionFacts({ positionName: 'Video Editor', team: 'Video · Production', area: 'Video · Production' })).toEqual({ position: 'Video Editor', team: 'Video · Production' });
+    expect(positionFacts({ positionOther: 'Photographer', team: null, area: 'Other' })).toEqual({ position: 'Other: Photographer', team: '—' });
+    // an older CV: no position, its area as its team (a team, or the words written for Other)
+    expect(positionFacts({ positionName: null, positionOther: null, team: 'Sound · Studio', area: 'Sound · Studio' })).toEqual({ position: '—', team: 'Sound · Studio' });
+    expect(positionFacts({ team: null, area: 'Photography' })).toEqual({ position: '—', team: 'Photography' });
+  });
+
+  const position = (over: Partial<CvPosition>): CvPosition => ({
+    key: 't1:video editor',
+    name: 'Video Editor',
+    publicName: null,
+    shownName: 'Video Editor',
+    hidden: false,
+    teamId: 't1',
+    team: 'Video',
+    teamHrName: 'Video · Production',
+    titleIds: ['j1', 'j2'],
+    titles: ['Junior Video Editor', 'Senior Video Editor'],
+    ...over,
+  });
+
+  it('lists the positions under their teams, in their order, each team as HR’s lists name it', () => {
+    const groups = positionsByTeam([position({}), position({ key: 't1:colorist', name: 'Colorist' }), position({ key: 't2:video editor', teamId: 't2', teamHrName: 'Video · Marketing' })]);
+    expect(groups.map((g) => [g.team, g.positions.map((p) => p.key)])).toEqual([
+      ['Video · Production', ['t1:video editor', 't1:colorist']],
+      ['Video · Marketing', ['t2:video editor']],
+    ]);
+  });
+
+  it('reads HR’s choices: hidden when the switch is off, a public name only when it differs from its own', () => {
+    const fd = new FormData();
+    for (const [key, merged, shown, name] of [
+      ['t1:video editor', 'Video Editor', true, ' Video  editor (Reels) '],
+      ['t1:colorist', 'Colorist', false, ''],
+      ['t2:video editor', 'Video Editor', true, 'Video Editor'],
+    ] as const) {
+      fd.append(positionField.key, key);
+      fd.set(positionField.merged(key), merged);
+      if (shown) fd.set(positionField.shown(key), 'on');
+      fd.set(positionField.publicName(key), name);
+    }
+    fd.append(positionField.key, 't1:video editor');
+    expect(positionChoicesOf(fd)).toEqual([
+      { key: 't1:video editor', hidden: false, publicName: 'Video editor (Reels)' },
+      { key: 't1:colorist', hidden: true, publicName: null },
+      { key: 't2:video editor', hidden: false, publicName: null },
+    ]);
   });
 });

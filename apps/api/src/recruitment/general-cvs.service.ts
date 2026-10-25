@@ -12,12 +12,16 @@ import {
   mobileSearchForms,
   moveProblem,
   normalEmail,
+  OTHER_POSITION,
+  POSITION_NOT_LISTED,
+  positionGroups,
   RECRUITMENT_LIMITS,
   tidyNotice,
   webLinkOf,
   withinDays,
   type ApplicantsSummary,
   type ApplicationStage,
+  type CvPosition,
   type GeneralArea,
   type GeneralCvInput,
   type GeneralCvListItem,
@@ -42,6 +46,7 @@ import { nextApplicationNumber } from './application-numbers.js';
 import { attachCandidate, findCandidates, foundIds, lockCandidates, refreshCandidate } from './candidate-links.js';
 import { cvFileName, cvProblem, cvTypeOf } from './cv-file.js';
 import { CvReadingsService } from './cv-readings.service.js';
+import { positionOf, positionsOf } from './cv-positions.js';
 import { createHrApplication } from './hr-applications.js';
 import type { ApplyOrigin } from './public-careers.service.js';
 import { managesRecruitment, READS, vacancyWhere } from './recruitment-access.js';
@@ -61,6 +66,11 @@ import { WhatsAppService } from '../whatsapp/whatsapp.service.js';
 // made from it, keeping its reference). Each step in its history and the audit log. HR is told of the careers page's new
 // CVs once a day. Also the Applicants page's summary: the two tabs' counts and each vacancy's applicants by stage and
 // source (the posted links apart from the careers page reached directly).
+// Since 25 October 2026 (owner: "should it be the positions?"; asked, "Position, grouped by team"; cv-positions.ts): the
+// person chooses a position, not an area: one of the list (the careers page's shown ones; HR's, hidden ones too), kept
+// with its name as shown then and its team (department_id, as the area was, so the team filters and the suggestions keep
+// working), or Other in words. An older page's area (a team's id, or Other in words) is still taken for one release: a
+// careers page opened before the change sends it, kept as its team with no position.
 
 export const GENERAL_CV_ENTITY = 'general_cv';
 
@@ -79,6 +89,10 @@ const LIST_SELECT = {
   departmentId: true,
   department: { select: { nameEn: true, parent: { select: { nameEn: true } } } },
   areaOther: true,
+  // the position chosen, or written for Other (25 October 2026)
+  positionKey: true,
+  positionName: true,
+  positionOther: true,
   source: true,
   referrer: true,
   status: true,
@@ -125,6 +139,9 @@ const areaName = (d: { nameEn: string; parent?: { nameEn: string } | null }) => 
 const areaOf = (r: { department: { nameEn: string; parent?: { nameEn: string } | null } | null; areaOther: string | null }) =>
   r.department ? areaName(r.department) : (r.areaOther ?? 'Other');
 
+/** A general CV's position in words, for the audit log: the one chosen, "Other: …", or none (an older page's area). */
+const positionText = (r: { positionName: string | null; positionOther: string | null }) => r.positionName ?? (r.positionOther ? `Other: ${r.positionOther}` : null);
+
 /** C-level (owner, 22 October 2026: "C Level isn't an option for any user or even HR"): every job title for a confidential grade, as G9 Executive. */
 const cLevel = (titles: readonly { minGrade: { confidential: boolean } | null }[]) => titles.length > 0 && titles.every((t) => t.minGrade?.confidential === true);
 
@@ -132,8 +149,9 @@ const cLevel = (titles: readonly { minGrade: { confidential: boolean } | null }[
  * The areas a CV may be for, in the organisation's order (generalAreas in packages/shared general-cvs.ts; owner, 22
  * October 2026: "remove the department from the dropdown menu, area you would like to work in"): each team by its own
  * name, a department only when it has no teams, never a C-level one (cLevel: a department whose job titles, its teams'
- * too, are all for a confidential grade is left out with its teams, and so is such a team). The careers page's list,
- * and the only ones taken from it, from HR's Add a CV and from the bulk upload.
+ * too, are all for a confidential grade is left out with its teams, and so is such a team). The careers page's list
+ * until 25 October 2026, when positions took its place (cv-positions.ts): still the only ones taken from a page sent
+ * before them (one release), and with the positions' teams the Team filter's options (RecruitmentSettingsService).
  */
 export async function areasOf(prisma: PrismaService): Promise<GeneralArea[]> {
   const titles = { select: { minGrade: { select: { confidential: true } } } } as const;
@@ -175,10 +193,17 @@ export class GeneralCvsService {
 
   // ---------- the careers page ----------
 
-  /** The general form: the company, and the areas to choose from (areasOf). */
+  /**
+   * The general form: the company, the positions to choose from by team (the shown ones; 25 October 2026), and the areas
+   * of before (areasOf), for one release for a page that still asks for one.
+   */
   async publicForm(): Promise<PublicGeneralForm> {
-    const [company, areas] = await Promise.all([this.prisma.company.findUnique({ where: { id: 1 }, select: { nameEn: true, nameAr: true } }), areasOf(this.prisma)]);
-    return { company: { nameEn: company?.nameEn ?? '', nameAr: company?.nameAr ?? null }, areas };
+    const [company, positions, areas] = await Promise.all([
+      this.prisma.company.findUnique({ where: { id: 1 }, select: { nameEn: true, nameAr: true } }),
+      positionsOf(this.prisma),
+      areasOf(this.prisma),
+    ]);
+    return { company: { nameEn: company?.nameEn ?? '', nameAr: company?.nameAr ?? null }, positions: positionGroups(positions, { withHidden: false }), areas };
   }
 
   /**
@@ -200,17 +225,25 @@ export class GeneralCvsService {
     const problems = generalCvProblems(input, { byHr: false });
     const cvSaid = cvProblem(file);
     if (cvSaid) problems.push(cvSaid);
-    problems.push(...(await this.areaProblems(input.departmentId)));
+    // a position of the careers page's list (never a hidden one), or an older page's area
+    const placed = await this.place(input, { withHidden: false });
+    problems.push(...placed.problems);
     if (problems.length) throw new BadRequestException(problems);
     const email = normalEmail(input.email);
     const userAgent = (text(dto.userAgent) ?? origin.userAgent)?.slice(0, 500) ?? null;
     // "Send me updates about my application on WhatsApp" (24 October 2026), off unless ticked; the page's language
     const whatsapp = dto.whatsapp === 'true' || dto.whatsapp === 'on' ? { language: dto.whatsappLanguage === 'ar' ? ('ar' as const) : ('en' as const) } : null;
     // one CV every 30 days by the same person: their email, or their candidate (candidate profiles, 22 October 2026)
-    const made = await this.create(input, file!, { source: 'careers', consentById: null, consentNote: null, createdById: null, ip, userAgent, note: null, whatsapp }, (recent) =>
+    const made = await this.create(input, file!, { source: 'careers', consentById: null, consentNote: null, createdById: null, ip, userAgent, note: null, whatsapp, position: placed.position }, (recent) =>
       new ConflictException(`You sent us your CV on ${shownDate(dayInCairo(recent.createdAt))} already. HR will be in touch.`),
     );
-    await this.audit.record({ userId: null, action: 'apply', entityType: GENERAL_CV_ENTITY, entityId: made.id, diff: { number: made.number, source: 'careers', area: made.area, candidate: made.candidate } });
+    await this.audit.record({
+      userId: null,
+      action: 'apply',
+      entityType: GENERAL_CV_ENTITY,
+      entityId: made.id,
+      diff: { number: made.number, source: 'careers', area: made.area, ...(made.position && { position: made.position }), candidate: made.candidate },
+    });
     await this.tellHr();
     await this.confirm(email, input.fullName, made.number);
     // on WhatsApp too, when ticked (never throws)
@@ -227,7 +260,9 @@ export class GeneralCvsService {
     const problems = generalCvProblems(input, { byHr: true });
     const cvSaid = cvProblem(file);
     if (cvSaid) problems.push(cvSaid.replace('your CV', 'the CV').replace('Your CV', 'The CV'));
-    problems.push(...(await this.areaProblems(input.departmentId)));
+    // a position of HR's list, hidden ones too (25 October 2026), or an older page's area
+    const placed = await this.place(input, { withHidden: true });
+    problems.push(...placed.problems);
     if (problems.length) throw new BadRequestException(problems);
     const email = normalEmail(input.email);
     const source = input.source as GeneralCvSource;
@@ -242,6 +277,7 @@ export class GeneralCvsService {
         ip: null,
         userAgent: null,
         note: `Added by HR (${GENERAL_CV_SOURCE_LABELS[source]})`,
+        position: placed.position,
       },
       (recent) =>
         new ConflictException(
@@ -250,15 +286,23 @@ export class GeneralCvsService {
             : `The same person (by their mobile) sent a CV on ${shownDate(dayInCairo(recent.createdAt))} already (${recent.number}): open it instead.`,
         ),
     );
-    await this.audit.record({ userId: user.id, action: 'create', entityType: GENERAL_CV_ENTITY, entityId: made.id, diff: { number: made.number, source, area: made.area, candidate: made.candidate } });
+    await this.audit.record({
+      userId: user.id,
+      action: 'create',
+      entityType: GENERAL_CV_ENTITY,
+      entityId: made.id,
+      diff: { number: made.number, source, area: made.area, ...(made.position && { position: made.position }), candidate: made.candidate },
+    });
     // HR's notes typed with it: its first screening comment, theirs (24 October 2026: the notes "moved into comments")
     if (input.notes) await this.comments.addFirst({ generalCvId: made.id }, input.notes, user);
     return this.get(made.id, user);
   }
 
   /**
-   * The general CVs: ?status= (a status, or all; none: all but archived), ?source=, ?departmentId=, ?q= (name, email,
-   * mobile, reference, the CV's text), ?minYears= (the years typed, else the CV's) and ?skill= (24 October 2026).
+   * The general CVs: ?status= (a status, or all; none: all but archived), ?source=, ?departmentId= (the team: the
+   * position's, or an older CV's area), ?positionKey= (a position's key, or `other` for those written; 25 October 2026),
+   * ?q= (name, email, mobile, reference, the CV's text), ?minYears= (the years typed, else the CV's) and ?skill= (24
+   * October 2026).
    */
   async list(query: ListGeneralCvsDto, user: SessionUser): Promise<GeneralCvListItem[]> {
     this.assertReads(user);
@@ -272,6 +316,7 @@ export class GeneralCvsService {
           query.status === 'all' ? {} : query.status ? { status: query.status } : { status: { not: 'archived' } },
           query.source ? { source: query.source } : {},
           query.departmentId ? { departmentId: query.departmentId } : {},
+          query.positionKey ? (query.positionKey === OTHER_POSITION ? { positionOther: { not: null } } : { positionKey: query.positionKey }) : {},
           // the years typed, else the CV's, and a skill of the dictionary the CV names (owner, 24 October 2026: "why isn't
           // the experience pulled off the CV?")
           query.minYears !== undefined ? minYearsWhere(query.minYears) : {},
@@ -505,8 +550,7 @@ export class GeneralCvsService {
       // "30 days", "2 months" (22 October 2026)
       noticePeriod: tidyNotice(dto.noticePeriod),
       expectedSalary: numberOf(dto.expectedSalary),
-      departmentId: text(dto.departmentId),
-      areaOther: text(dto.departmentId) ? null : text(dto.areaOther),
+      ...this.placeOf(dto),
       consent: dto.consent === 'true' || dto.consent === 'on',
       source: text(hr.source),
       referrer: text(hr.referrer),
@@ -514,10 +558,31 @@ export class GeneralCvsService {
     };
   }
 
-  /** The area chosen, when one is: one of areasOf (a team, or a department without teams; never a C-level one). */
-  private async areaProblems(departmentId: string | null | undefined): Promise<string[]> {
-    if (!departmentId) return [];
-    return (await isArea(this.prisma, departmentId)) ? [] : ['Choose one of the areas, or Other and write it.'];
+  /**
+   * What the CV is for, as sent: a position's key, or Other in words (25 October 2026); else, from a page sent before the
+   * positions (one release), an area: a team's id, or Other in words.
+   */
+  private placeOf(dto: GeneralCvFormDto): Pick<GeneralCvInput, 'positionKey' | 'positionOther' | 'departmentId' | 'areaOther'> {
+    const typedKey = text(dto.positionKey);
+    const positionKey = typedKey && typedKey !== OTHER_POSITION ? typedKey : null;
+    const positionOther = positionKey ? null : text(dto.positionOther);
+    if (positionKey || positionOther) return { positionKey, positionOther, departmentId: null, areaOther: null };
+    const departmentId = text(dto.departmentId);
+    return { positionKey: null, positionOther: null, departmentId, areaOther: departmentId ? null : text(dto.areaOther) };
+  }
+
+  /**
+   * The position chosen, when one is: one of the list (`withHidden`: HR's, hidden ones too; else the careers page's), else
+   * "Choose a position from the list."; or an older page's area: one of areasOf (a team, or a department without teams;
+   * never a C-level one).
+   */
+  private async place(input: GeneralCvInput, { withHidden }: { withHidden: boolean }): Promise<{ problems: string[]; position: CvPosition | null }> {
+    if (input.positionKey) {
+      const position = await positionOf(this.prisma, input.positionKey, { withHidden });
+      return position ? { problems: [], position } : { problems: [POSITION_NOT_LISTED], position: null };
+    }
+    if (input.departmentId && !(await isArea(this.prisma, input.departmentId))) return { problems: ['Choose one of the areas, or Other and write it.'], position: null };
+    return { problems: [], position: null };
   }
 
   /** A general CV in the last 30 days from the email, or from the same person (their candidate, by email or mobile; 22 October 2026). */
@@ -549,9 +614,11 @@ export class GeneralCvsService {
       note: string | null;
       /** The WhatsApp tick on the careers page (24 October 2026); none for HR's Add a CV, which never asks. */
       whatsapp?: { language: 'en' | 'ar' } | null;
+      /** The position chosen, from the list (25 October 2026); none: Other in words, or an older page's area. */
+      position: CvPosition | null;
     },
     refuseRecent: (recent: { number: string; createdAt: Date; email: string }) => Error,
-  ): Promise<{ id: string; number: string; area: string; candidate: string }> {
+  ): Promise<{ id: string; number: string; area: string; position: string | null; candidate: string }> {
     const type = cvTypeOf(file.buffer)!;
     return this.prisma.$transaction(async (tx) => {
       const email = normalEmail(input.email);
@@ -572,8 +639,12 @@ export class GeneralCvsService {
           yearsExperience: input.yearsExperience ?? null,
           noticePeriod: input.noticePeriod ?? null,
           expectedSalary: input.expectedSalary ?? null,
-          departmentId: input.departmentId ?? null,
-          areaOther: input.departmentId ? null : (input.areaOther ?? null),
+          // the position's team (25 October 2026), or an older page's area
+          departmentId: how.position?.teamId ?? input.departmentId ?? null,
+          areaOther: how.position || input.departmentId ? null : (input.areaOther ?? null),
+          positionKey: how.position?.key ?? null,
+          positionName: how.position?.shownName ?? null,
+          positionOther: how.position ? null : (input.positionOther ?? null),
           source: how.source,
           referrer: how.source === 'referral' ? (input.referrer ?? null) : null,
           // HR's notes are its first screening comment now (24 October 2026: add()), never this column
@@ -587,12 +658,12 @@ export class GeneralCvsService {
           file: { create: { fileName: cvFileName(file.originalname, type), mimeType: type, sizeBytes: file.buffer.length, data: new Uint8Array(file.buffer) } },
           events: { create: { event: 'received', note: how.note, byId: how.createdById } },
         },
-        select: { id: true, number: true, department: { select: { nameEn: true } }, areaOther: true },
+        select: { id: true, number: true, department: { select: { nameEn: true, parent: { select: { nameEn: true } } } }, areaOther: true, positionName: true, positionOther: true },
       });
       await refreshCandidate(tx, candidate.id);
       // the tick kept on their candidate too, with its time (a new tick after a STOP is a new consent)
       if (how.whatsapp) await tx.candidate.update({ where: { id: candidate.id }, data: { whatsappOptInAt: new Date(), whatsappStoppedAt: null } });
-      return { id: row.id, number: row.number, area: areaOf(row), candidate: candidate.code };
+      return { id: row.id, number: row.number, area: areaOf(row), position: positionText(row), candidate: candidate.code };
     }).finally(() => this.readings.kick());
   }
 
@@ -606,6 +677,11 @@ export class GeneralCvsService {
       yearsExperience: money(r.yearsExperience),
       area: areaOf(r),
       departmentId: r.departmentId,
+      // its team, and the position chosen or written (25 October 2026)
+      team: r.department ? areaName(r.department) : null,
+      positionKey: r.positionKey,
+      positionName: r.positionName,
+      positionOther: r.positionOther,
       source: (isGeneralCvSource(r.source) ? r.source : 'other') as GeneralCvSource,
       referrer: r.referrer,
       status: (isGeneralCvStatus(r.status) ? r.status : 'new') as GeneralCvStatus,

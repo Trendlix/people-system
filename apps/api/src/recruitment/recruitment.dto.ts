@@ -34,6 +34,8 @@ import {
   SUGGESTION_LIMITS,
   SUGGESTION_STATUSES,
   type SuggestionStatus,
+  CV_POSITION_LIMITS,
+  type CvPositionChoiceInput,
   type CvSaveRow,
   type GeneralCvSource,
   type GeneralCvStatus,
@@ -416,7 +418,17 @@ export class GeneralCvFormDto {
   @IsOptional() @IsString() @MaxLength(30)
   expectedSalary?: string;
 
-  /** The area of interest: a department's id, or none with `areaOther`. */
+  /**
+   * The position they would like (owner, 25 October 2026: "Position, grouped by team"): its key, or none with
+   * `positionOther` in words; checked by the service against the list.
+   */
+  @IsOptional() @IsString() @MaxLength(CV_POSITION_LIMITS.key)
+  positionKey?: string;
+
+  @IsOptional() @IsString() @MaxLength(200)
+  positionOther?: string;
+
+  /** The area of interest of before (a team's id, or none with `areaOther`): from a page sent before the positions, one release. */
   @IsOptional() @IsString() @MaxLength(40)
   departmentId?: string;
 
@@ -466,8 +478,13 @@ export class ListGeneralCvsDto {
   @IsOptional() @IsIn(GENERAL_CV_SOURCES, { message: 'Choose a source.' })
   source?: GeneralCvSource;
 
+  /** Its team (25 October 2026: "Team", once "Area"): the position's, or an older CV's area. */
   @IsOptional() @IsUUID('all')
   departmentId?: string;
+
+  /** Only those for this position (its key), or `other`: those who wrote one (25 October 2026). */
+  @IsOptional() @Trim() @IsString() @MaxLength(CV_POSITION_LIMITS.key)
+  positionKey?: string;
 
   @IsOptional() @Trim() @IsString() @MaxLength(100)
   q?: string;
@@ -502,6 +519,15 @@ export class GeneralCvNotesDto {
 export class CvUploadTargetDto {
   @IsOptional() @IsUUID('all', { message: 'Choose the vacancy.' })
   vacancyId?: string;
+}
+
+/**
+ * HR's choices for the positions on the CV form (Recruitment Settings, 25 October 2026): each shown or hidden, and a
+ * public name; checked by the service (positionChoiceProblems).
+ */
+export class CvPositionChoicesDto {
+  @IsArray({ message: 'Send the positions as a list.' }) @ArrayMaxSize(2000, { message: 'Too many positions at once.' })
+  positions!: CvPositionChoiceInput[];
 }
 
 /** The rows of a bulk upload, as HR checked them: each checked by the service. */

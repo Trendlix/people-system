@@ -167,7 +167,7 @@ describe('General CVs and the bulk upload (e2e)', () => {
         'Write your full name.',
         'Write a full email address, e.g. name@example.com.',
         'Write the mobile number without the 0 in front, after choosing the country code.',
-        'Choose the area you would like to work in, or Other and write it.',
+        'Choose the position you would like, or Other and write it.',
         'Tick that we may keep your details and CV to consider you for jobs.',
       ]);
       expect(said(await send(person('Nocv', '10.6.0.1'), null).expect(400))).toEqual(['Attach your CV, as a PDF or a Word file.']);
@@ -370,7 +370,7 @@ describe('General CVs and the bulk upload (e2e)', () => {
       expect(first.saved).toEqual([]);
       expect(first.skipped.map((s) => s.reason)).toEqual([
         expect.stringMatching(/sent a CV on .* \(APP-.*\): tick Keep to save it anyway\.$/),
-        'Choose the area they would like to work in, or Other and write it.',
+        'Choose the position they would like, or Other and write it.',
       ]);
       // a team is an area here too (the bulk upload took only departments before, 22 October 2026)
       const second = (await post('hr', '/recruitment/cv-uploads/save', { rows: [row(recent, { departmentId: teamId, keep: true }), row(fresh, { areaOther: 'Sound' })] }).expect(200)).body as CvSaveResult;

@@ -10,7 +10,10 @@ import {
   keptMobile,
   MOBILE_PROBLEM,
   normalEmail,
+  OTHER_POSITION,
+  POSITION_NOT_LISTED,
   type ApplicationChannel,
+  type CvPosition,
   type CvGuess,
   type CvSaveResult,
   type CvSaveRow,
@@ -26,6 +29,7 @@ import { nextApplicationNumber } from './application-numbers.js';
 import { attachCandidate, candidateIdsOf, findCandidates, foundIds, refreshCandidate } from './candidate-links.js';
 import { cvFileName, cvProblem, cvTypeOf, type CvType } from './cv-file.js';
 import { CvReadingsService } from './cv-readings.service.js';
+import { positionsOf } from './cv-positions.js';
 import { cvText } from './cv-text.js';
 import { GENERAL_CV_ENTITY, isArea } from './general-cvs.service.js';
 import { createHrApplication } from './hr-applications.js';
@@ -40,12 +44,28 @@ import { APPLICATION_ENTITY } from './recruitment-views.js';
 // with the email there already is skipped, as is the same email twice in the batch), or general CVs (one in the last 30
 // days from the email skipped unless HR keeps it). The consent is HR's ("By HR (LinkedIn Easy Apply)"). A batch is its
 // uploader's own; discarded, or saved, its CVs go; any left a day go on the next upload.
+// A general CV's row names a position since 25 October 2026 (owner: "Position, grouped by team"; cv-positions.ts): one of
+// HR's list (hidden ones too), kept with its team, or Other in words; a page opened before still sends an area (one
+// release).
 
 const DAY = 24 * 60 * 60 * 1000;
 const NOT_FOUND = 'Vacancy not found.';
 
 /** Where a batch goes: a vacancy's applicants, or the general CVs (`vacancyId` null). */
 type Target = { vacancyId: string | null };
+
+/** A row's text field as sent (any JSON): trimmed, empty as null. */
+const textOf = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim().replace(/\s+/g, ' ') : null);
+
+/** What a general CV's row is for: a position's key, or Other in words; else (a page from before) an area. */
+function rowPlace(r: CvSaveRow): { positionKey: string | null; positionOther: string | null; departmentId: string | null; areaOther: string | null } {
+  const typedKey = textOf(r.positionKey);
+  const positionKey = typedKey && typedKey !== OTHER_POSITION ? typedKey : null;
+  const positionOther = positionKey ? null : textOf(r.positionOther);
+  if (positionKey || positionOther) return { positionKey, positionOther, departmentId: null, areaOther: null };
+  const departmentId = textOf(r.departmentId);
+  return { positionKey: null, positionOther: null, departmentId, areaOther: departmentId ? null : textOf(r.areaOther) };
+}
 
 const UPLOAD_SELECT = {
   id: true,
@@ -132,7 +152,7 @@ export class CvUploadsService {
   }
 
   /**
-   * The rows saved, in the batch's order: each checked (the name, email and mobile; the source; a general CV's area),
+   * The rows saved, in the batch's order: each checked (the name, email and mobile; the source; a general CV's position),
    * then an application at Applied on the vacancy, or a general CV; those skipped said with why. Saved rows leave the
    * batch; skipped ones stay to fix or discard.
    */
@@ -143,6 +163,8 @@ export class CvUploadsService {
     const sent = new Map(rows.map((r) => [r.id, r]));
     const result: CvSaveResult = { saved: [], skipped: [] };
     const emails = new Set<string>();
+    // the positions a general CV's row may name: HR's list, hidden ones too (25 October 2026)
+    const positions = vacancy ? [] : await positionsOf(this.prisma);
     for (const u of uploads) {
       const r = sent.get(u.id);
       if (!r) continue;
@@ -163,10 +185,17 @@ export class CvUploadsService {
           continue;
         }
       }
-      const problems = vacancy ? this.vacancyRowProblems(r) : this.generalRowProblems(r);
+      const place = rowPlace(r);
+      const problems = vacancy ? this.vacancyRowProblems(r) : this.generalRowProblems(r, place);
+      let position: CvPosition | null = null;
       if (!vacancy && !problems.length) {
-        const dept = await this.departmentProblem(r);
-        if (dept) problems.push(dept);
+        if (place.positionKey) {
+          position = positions.find((p) => p.key === place.positionKey) ?? null;
+          if (!position) problems.push(POSITION_NOT_LISTED);
+        } else {
+          const dept = await this.departmentProblem(place.departmentId);
+          if (dept) problems.push(dept);
+        }
       }
       if (problems.length) {
         result.skipped.push({ id: u.id, fileName: u.fileName, reason: problems.join(' ') });
@@ -226,8 +255,12 @@ export class CvUploadsService {
                 fullName: r.fullName.trim().replace(/\s+/g, ' '),
                 email,
                 mobile: keptMobile(r.mobile),
-                departmentId: r.departmentId || null,
-                areaOther: r.departmentId ? null : r.areaOther?.trim() || null,
+                // the position's team (25 October 2026), or a page's area from before
+                departmentId: position?.teamId ?? place.departmentId,
+                areaOther: position ? null : place.areaOther,
+                positionKey: position?.key ?? null,
+                positionName: position?.shownName ?? null,
+                positionOther: position ? null : place.positionOther,
                 source,
                 referrer: source === 'referral' ? r.referrer?.trim() || null : null,
                 consentAt: new Date(),
@@ -249,7 +282,14 @@ export class CvUploadsService {
             continue;
           }
           this.readings.kick();
-          await this.audit.record({ userId: user.id, action: 'create', entityType: GENERAL_CV_ENTITY, entityId: made.row.id, diff: { number: made.row.number, source, via: 'bulk upload' } });
+          const positionSaid = position?.shownName ?? (place.positionOther ? `Other: ${place.positionOther}` : null);
+          await this.audit.record({
+            userId: user.id,
+            action: 'create',
+            entityType: GENERAL_CV_ENTITY,
+            entityId: made.row.id,
+            diff: { number: made.row.number, source, ...(positionSaid && { position: positionSaid }), via: 'bulk upload' },
+          });
           result.saved.push({ id: u.id, reference: made.row.number, fullName: r.fullName.trim() });
         }
         emails.add(email);
@@ -283,18 +323,15 @@ export class CvUploadsService {
     return problems;
   }
 
-  /** A general CV's row: the person's details, how it came, and the area. */
-  private generalRowProblems(r: CvSaveRow): string[] {
-    return generalCvProblems(
-      { fullName: r.fullName, email: r.email, mobile: r.mobile, consent: true, departmentId: r.departmentId ?? null, areaOther: r.areaOther ?? null, source: r.source, referrer: r.referrer ?? null },
-      { byHr: true },
-    ).map(theirs);
+  /** A general CV's row: the person's details, how it came, and the position (or a page's area from before). */
+  private generalRowProblems(r: CvSaveRow, place: ReturnType<typeof rowPlace>): string[] {
+    return generalCvProblems({ fullName: r.fullName, email: r.email, mobile: r.mobile, consent: true, ...place, source: r.source, referrer: r.referrer ?? null }, { byHr: true }).map(theirs);
   }
 
-  /** A general CV's row: the area chosen, one of the list's (areasOf: a team, or a department without teams), as on Add a CV. */
-  private async departmentProblem(r: CvSaveRow): Promise<string> {
-    if (!r.departmentId) return '';
-    return (await isArea(this.prisma, r.departmentId)) ? '' : 'Choose one of the areas, or Other and write it.';
+  /** A general CV's row from a page before the positions: the area chosen, one of the list's (areasOf: a team, or a department without teams). */
+  private async departmentProblem(departmentId: string | null): Promise<string> {
+    if (!departmentId) return '';
+    return (await isArea(this.prisma, departmentId)) ? '' : 'Choose one of the areas, or Other and write it.';
   }
 
   /** The rows as the page shows them: what each guessed, and what may make it a duplicate (there already, or earlier in the batch). */

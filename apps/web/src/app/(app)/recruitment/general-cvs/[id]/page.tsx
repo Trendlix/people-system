@@ -10,7 +10,7 @@ import { CvDialogHost, CvOpenButton } from '../../cv-dialog';
 import { loadGeneralCv, loadGeneralCvComments, loadVacancies, recruitmentNotLoaded } from '../../data';
 import { ActionButton } from '../../forms';
 import { moveGeneralCv, setGeneralCvStatus } from '../../general-actions';
-import { generalCvFileHref, GENERAL_STATUS_STYLE, movableVacancies, tabHref } from '../../general';
+import { generalCvFileHref, GENERAL_STATUS_STYLE, movableVacancies, positionFacts, tabHref } from '../../general';
 import { MoveForm } from '../../general-forms';
 import { applicantHref } from '../../recruitment';
 import { commentsOfRecord, kb, ownCv } from '../../screening';
@@ -27,6 +27,8 @@ import { shownCode } from '@/lib/hidden';
 // comments?"): the CV opens in the CV window (?cv=, with the candidate's other CVs before and after it), and the
 // Screening Comments card replaces HR's notes (moved into the comments, "HR (earlier notes)"): this CV's comments (and
 // the application made from it), with the general ones; the latest verdict beside its status.
+// Since 25 October 2026 (owner: "should it be the positions?"; asked, "Position, grouped by team"): the position they would
+// like and its team, Team once "Area of interest"; an older CV, sent for an area, has "—" for its position.
 
 export const metadata: Metadata = { title: 'General CV · People System' };
 
@@ -119,7 +121,8 @@ async function GeneralCv({ params }: { params: PageProps<'/recruitment/general-c
           <Fact label="Mobile">
             <a href={`tel:${c.mobile.replace(/[^\d+]/g, '')}`}>{c.mobile}</a>
           </Fact>
-          <Fact label="Area of interest">{c.area}</Fact>
+          <Fact label="Position">{positionFacts(c).position}</Fact>
+          <Fact label="Team">{positionFacts(c).team}</Fact>
           <Fact label="Experience">{c.yearsExperience === null ? '—' : `${c.yearsExperience} years`}</Fact>
           <Fact label="LinkedIn">
             {c.linkedin ? (

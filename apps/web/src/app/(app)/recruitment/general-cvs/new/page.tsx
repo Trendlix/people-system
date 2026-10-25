@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
+import { positionGroups } from '@trendlix/shared';
 import { getCurrentUser } from '@/lib/session';
 import { BackLink, Empty, Loading } from '../../../organization/ui';
-import { loadGeneralAreas } from '../../data';
+import { loadCvPositionsOrNone } from '../../data';
 import { addGeneralCv } from '../../general-actions';
 import { tabHref } from '../../general';
 import { AddCvForm } from '../../general-forms';
@@ -10,15 +11,16 @@ import { managesRecruitment } from '../../recruitment';
 
 // HR's Add a CV (owner, 22 October 2026: "what came out of the posted jobs and what cam on randomly", "Both"): one that
 // came by email, WhatsApp, LinkedIn, in person or by referral, kept as a general CV with the person's agreement as HR
-// ticked it (who and when).
+// ticked it (who and when). For a position (owner, 25 October 2026: "Position, grouped by team"): HR's list, the hidden
+// ones too, marked, or Other in words.
 
 export const metadata: Metadata = { title: 'Add a CV · People System' };
 
 async function AddCv() {
   const user = await getCurrentUser();
   if (!managesRecruitment(user)) return <Empty>Only HR and a Super Admin add CVs.</Empty>;
-  const areas = await loadGeneralAreas();
-  return <AddCvForm action={addGeneralCv} areas={areas} />;
+  const { positions } = await loadCvPositionsOrNone();
+  return <AddCvForm action={addGeneralCv} positions={positionGroups(positions, { withHidden: true })} />;
 }
 
 export default function AddCvPage() {

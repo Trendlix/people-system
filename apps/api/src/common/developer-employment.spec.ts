@@ -447,6 +447,7 @@ describe('the company’s setup pages stay readable, their people cut off', () =
       '/api/attendance/check-in-setup/locations',
       '/api/recruitment/vacancies',
       '/api/recruitment/vacancies/1',
+      '/api/recruitment/settings/positions',
       '/api/templates/tags',
       '/api/reimbursement-types',
     ]) {

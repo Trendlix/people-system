@@ -9,6 +9,7 @@ import { redirect } from 'next/navigation';
 import type { InterviewSaved, VacancyView } from '@trendlix/shared';
 import { ApiError, apiSend } from '@/lib/api';
 import type { FormState } from '@/lib/types';
+import { positionChoicesOf } from './general';
 import { feedbackForm, interviewForm, rejectedText, suggestionForm } from './hiring';
 import { interviewSavedText } from './meetings';
 import { vacancyForm, vacancyHref, VACANCIES_PATH } from './recruitment';
@@ -20,7 +21,7 @@ function typed(fd: FormData): Record<string, string> {
   return out;
 }
 
-async function send(method: 'POST' | 'PATCH', path: string, body: unknown, values?: Record<string, string>, said = 'Saved.'): Promise<FormState> {
+async function send(method: 'POST' | 'PUT' | 'PATCH', path: string, body: unknown, values?: Record<string, string>, said = 'Saved.'): Promise<FormState> {
   try {
     await apiSend(method, path, body);
   } catch (err) {
@@ -197,6 +198,13 @@ export async function saveInviteWords(_prev: FormState, fd: FormData): Promise<F
     return typeof v === 'string' ? v.trim() : '';
   };
   return send('PATCH', '/recruitment/settings', { inviteSubject: field('inviteSubject'), inviteEn: field('inviteEn'), inviteAr: field('inviteAr') }, typed(fd));
+}
+
+// The positions on "Send us your CV" (owner, 25 October 2026: "should it be the positions?"; asked, "Position, grouped by
+// team"): HR hides a position from the careers page, or gives it a public name; every row of the form is sent
+
+export async function savePositionChoices(_prev: FormState, fd: FormData): Promise<FormState> {
+  return send('PUT', '/recruitment/settings/positions', { positions: positionChoicesOf(fd) }, typed(fd), 'Saved the positions.');
 }
 
 export async function restoreApplicant(id: string): Promise<FormState> {

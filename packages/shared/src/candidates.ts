@@ -510,7 +510,12 @@ export interface CandidateGeneralCv {
   id: string;
   number: string;
   status: GeneralCvStatus;
+  /** Its team, or an older CV's area, in words (general-cvs.ts GeneralCvListItem's). */
   area: string;
+  /** Its team in words, and the position chosen (or written for Other), from 25 October 2026 (cv-positions.ts). */
+  team?: string | null;
+  positionName?: string | null;
+  positionOther?: string | null;
   source: GeneralCvSource;
   receivedAt: string;
   movedTo: { applicationId: string; reference: string } | null;
