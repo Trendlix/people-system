@@ -86,7 +86,18 @@ describe('Templates (e2e)', () => {
     });
     const copy = list.find((s) => s.key === 'contract_full_time_insurance')!;
     // its own file since 15 October 2026 (the owner's file holds both copies, worded differently); its salary tags read the insured salary
-    expect([copy.copyOf, copy.overrides]).toEqual([null, { gross_salary: 'insured_salary', gross_salary_words: 'insured_salary_words', gross_salary_words_en: 'insured_salary_words_en' }]);
+    expect([copy.copyOf, copy.overrides]).toEqual([
+      null,
+      {
+        gross_salary: 'insured_salary',
+        gross_salary_words: 'insured_salary_words',
+        gross_salary_words_en: 'insured_salary_words_en',
+        // its term is the subscription year (owner, 25 October 2026)
+        start_date: 'insurance_year_start',
+        end_date: 'insurance_year_end',
+        duration: 'insurance_year_duration',
+      },
+    ]);
   });
 
   it('a Super Admin uploads a draft: the tags are read, and it is version 1', async () => {

@@ -83,6 +83,9 @@ const OFFER_FIELDS: Record<string, string> = {
   employment_type_en: 'employmentType',
   join_date: 'joinDate',
   insurance_start_date: 'joinDate', // an offer has no subscription start of its own: its join date
+  insurance_year_start: 'joinDate',
+  insurance_year_end: 'joinDate',
+  insurance_year_duration: 'joinDate',
   work_arrangement: 'workArrangement',
   work_arrangement_ar: 'workArrangement',
   work_arrangement_en: 'workArrangement',

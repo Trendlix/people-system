@@ -93,7 +93,16 @@ export const TEMPLATE_SLOTS: readonly TemplateSlot[] = [
     appliesTo: ['full_time'],
     triggers: ['on_hire', 'renewal'],
     signers: 'both',
-    overrides: { gross_salary: 'insured_salary', gross_salary_words: 'insured_salary_words', gross_salary_words_en: 'insured_salary_words_en' },
+    // its term is the subscription year (owner, 25 October 2026: "for the insurance, take the insurance start date make it
+    // for 1 year"; asked, "Anniversary year"): insurance_year_start, _end and _duration in place of the contract's
+    overrides: {
+      gross_salary: 'insured_salary',
+      gross_salary_words: 'insured_salary_words',
+      gross_salary_words_en: 'insured_salary_words_en',
+      start_date: 'insurance_year_start',
+      end_date: 'insurance_year_end',
+      duration: 'insurance_year_duration',
+    },
   },
   { key: 'contract_part_time', name: 'Contract · Part-time', folder: 'contracts', language: null, appliesTo: ['part_time'], triggers: ['on_hire', 'renewal'], signers: 'both' },
   // employment types by the labour law (owner, 18 October 2026): every slot keeps its key, so the templates uploaded
@@ -273,6 +282,11 @@ export const TEMPLATE_TAGS: readonly TemplateTag[] = [
   // the social insurance subscription start Form 1 prints, the employee's own on the Social Insurance tab (owner, 16
   // October 2026)
   { tag: 'insurance_start_date', group: 'job_contract', labelEn: 'Subscription start (social insurance)', labelAr: 'تاريخ بدء الاشتراك', source: 'Social Insurance tab: the employee’s, else the join date', note: 'DD/MM/YYYY' },
+  // the subscription year a contract version falls in (owner, 25 October 2026: "take the insurance start date make it for
+  // 1 year"; "Anniversary year"): the social insurance copy's term
+  { tag: 'insurance_year_start', group: 'job_contract', labelEn: 'Subscription year start (social insurance)', labelAr: 'بداية سنة الاشتراك', source: 'The subscription start’s anniversary the contract version starts in (up to 3 months early takes the next one)', note: 'DD/MM/YYYY; the social insurance copy’s start date' },
+  { tag: 'insurance_year_end', group: 'job_contract', labelEn: 'Subscription year end (social insurance)', labelAr: 'نهاية سنة الاشتراك', source: 'A year after the subscription year’s start, less a day', note: 'DD/MM/YYYY; the social insurance copy’s end date' },
+  { tag: 'insurance_year_duration', group: 'job_contract', labelEn: 'Subscription year length (social insurance)', labelAr: 'مدة سنة الاشتراك', source: 'One year', note: 'سنة ميلادية واحدة; the social insurance copy’s duration' },
   {
     tag: 'work_arrangement',
     group: 'job_contract',

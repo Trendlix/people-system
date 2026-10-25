@@ -112,7 +112,7 @@ describe('the Fields Guide', () => {
     expect(row('cert_internship').slice(3, 4)).toEqual(['Trainee, Unpaid internship (outside the labour law)']);
     // the social insurance copy's salary tags read the insured salary
     expect(row('contract_full_time_insurance')[1]).toBe(
-      'On this template, {{gross_salary}} prints the value of {{insured_salary}}, {{gross_salary_words}} the value of {{insured_salary_words}} and {{gross_salary_words_en}} the value of {{insured_salary_words_en}}.',
+      'On this template, {{gross_salary}} prints the value of {{insured_salary}}, {{gross_salary_words}} the value of {{insured_salary_words}}, {{gross_salary_words_en}} the value of {{insured_salary_words_en}}, {{start_date}} the value of {{insurance_year_start}}, {{end_date}} the value of {{insurance_year_end}} and {{duration}} the value of {{insurance_year_duration}}.',
     );
   });
 

@@ -29,7 +29,7 @@ import {
   type WorkArrangement,
   type WorkNature,
 } from '@trendlix/shared';
-import { fromDateOnly, todayInCairo } from '../common/date-only.js';
+import { addDays, addMonths, fromDateOnly, todayInCairo } from '../common/date-only.js';
 import { fromTimeOfDay } from '../common/time-of-day.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { arabicAmountInWords, arabicDuration, arabicWeekday, englishAmountInWords, isBlankValue, type TagValue } from './engine/index.js';
@@ -253,6 +253,18 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
   // the comprehensive wage Form 1 prints: the employee's own, else the contract's gross and allowances (after a raise,
   // those before it until its insured-wage date)
   const comprehensive = amount(e.insuranceComprehensiveWage) ?? (src.insuredContractTotal !== undefined ? src.insuredContractTotal : totalSalary);
+  // the subscription year the contract version starts in, for the social insurance copy's term (owner, 25 October 2026:
+  // "take the insurance start date make it for 1 year"; asked, "Anniversary year"): the latest anniversary of the
+  // subscription start on or before the version's start plus 3 months, so a renewal on 30/07 of a subscription from
+  // 01/08 takes the year from that 01/08 and a raise in March the year it falls in; never before the subscription began
+  const insuranceYear = (): { start: string; end: string } | null => {
+    const since = ymd(e.insuranceStartDate ?? job?.joinDate);
+    if (!since) return null;
+    const until = addMonths(ymd(c?.startDate) ?? since, 3);
+    let start = since;
+    for (let years = 1; addMonths(since, 12 * years) <= until; years++) start = addMonths(since, 12 * years);
+    return { start, end: addDays(addMonths(start, 12), -1) };
+  };
   // the comprehensive wage within this year's insurable limits: none without one
   const insuredWage = () => (comprehensive === null ? null : insuredWageFrom(comprehensive, lawRatesFor(Number(todayInCairo().slice(0, 4)), src.lawYears)).amount);
   // by the hour, the net of an hour: the approximate net ÷ the hours of a month (hours a week × 52 ÷ 12), to the piaster
@@ -377,6 +389,9 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
     join_date: () => printedDate(ymd(job?.joinDate)),
     // the subscription start Form 1 prints (owner, 16 October 2026): the employee's own, else the join date
     insurance_start_date: () => printedDate(ymd(e.insuranceStartDate ?? job?.joinDate)),
+    insurance_year_start: () => printedDate(insuranceYear()?.start ?? null),
+    insurance_year_end: () => printedDate(insuranceYear()?.end ?? null),
+    insurance_year_duration: () => (insuranceYear() ? arabicDuration(12) : ''),
     work_arrangement: () => workArrangement(language),
     work_arrangement_ar: () => workArrangement('ar'),
     work_arrangement_en: () => workArrangement('en'),
@@ -601,6 +616,9 @@ const WHERE: Record<string, Where> = {
   join_date: EMPLOYMENT('joinDate'),
   // the employee's own, or the join date; both empty: set it on the Social Insurance tab
   insurance_start_date: { tab: 'insurance', key: 'insuranceStartDate' },
+  insurance_year_start: { tab: 'insurance', key: 'insuranceStartDate' },
+  insurance_year_end: { tab: 'insurance', key: 'insuranceStartDate' },
+  insurance_year_duration: { tab: 'insurance', key: 'insuranceStartDate' },
   work_arrangement: EMPLOYMENT('workArrangement'),
   work_arrangement_ar: EMPLOYMENT('workArrangement'),
   work_arrangement_en: EMPLOYMENT('workArrangement'),

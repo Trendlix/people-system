@@ -489,6 +489,26 @@ describe('the Social Insurance tab’s dates and wages', () => {
     });
   });
 
+  // the social insurance copy's term (owner, 25 October 2026: "take the insurance start date make it for 1 year";
+  // "Anniversary year")
+  it('the subscription year a contract version starts in: a renewal days before the anniversary takes the next year', () => {
+    const YEAR = ['insurance_year_start', 'insurance_year_end', 'insurance_year_duration'];
+    const at = (contractStart: string, since: string | null) => {
+      const src = withContract({ startDate: new Date(`${contractStart}T00:00:00Z`) });
+      return resolveValues({ ...src, employee: { ...src.employee, insuranceStartDate: since ? new Date(`${since}T00:00:00Z`) : null } }, YEAR);
+    };
+    // version 1 from 30/07/2025, subscribed from 01/08/2025
+    expect(at('2025-07-30', '2025-08-01')).toEqual({ insurance_year_start: '01/08/2025', insurance_year_end: '31/07/2026', insurance_year_duration: 'سنة ميلادية واحدة' });
+    // its renewal from 30/07/2026
+    expect(at('2026-07-30', '2025-08-01')).toMatchObject({ insurance_year_start: '01/08/2026', insurance_year_end: '31/07/2027' });
+    // a raise in March: the year it falls in
+    expect(at('2026-03-01', '2025-08-01')).toMatchObject({ insurance_year_start: '01/08/2025', insurance_year_end: '31/07/2026' });
+    // subscribed months after the contract began: from the subscription, never before it
+    expect(at('2025-07-30', '2025-11-01')).toMatchObject({ insurance_year_start: '01/11/2025', insurance_year_end: '31/10/2026' });
+    // no subscription date: the join date (15/01/2026)
+    expect(at('2026-01-15', null)).toMatchObject({ insurance_year_start: '15/01/2026', insurance_year_end: '14/01/2027' });
+  });
+
   it('the contract’s gross and allowances above the year’s maximum: capped at it', () => {
     const src = withContract({ grossSalary: d(20000), insuredSalary: d(16700) });
     expect(resolveValues(src, ['insurance_insured_salary', 'insurance_total_salary'])).toEqual({ insurance_insured_salary: '16,700', insurance_total_salary: '21,000' });
