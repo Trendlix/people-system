@@ -591,3 +591,6 @@ export * from './gps-lock.js';
 // candidates", "Approvals waiting, Request decisions, Check-in reminders, Interviews", "Directly to Meta"): one more
 // channel beside the bell, push and email, for those who opt in, with Meta's approved templates in English and Arabic
 export * from './whatsapp.js';
+// Twilio as a second way to send them (owner, 25 October 2026: "Add Twilio as a choice"; "No, WhatsApp only"): the same
+// templates as Twilio Content, the requests' parts, the sender, the settings' checks and the owner's steps in Twilio
+export * from './whatsapp-twilio.js';

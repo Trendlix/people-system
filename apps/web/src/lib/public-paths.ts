@@ -26,6 +26,10 @@ const PUBLIC_PATHS = new Set([
   // Meta's WhatsApp webhook (owner, 24 October 2026: "how to make whatsapp notifications?"; "Directly to Meta"): Meta
   // calls it from its servers without a session; the API checks the verify token and each event's signature itself
   '/whatsapp/webhook',
+  // and Twilio's (owner, 25 October 2026: "Add Twilio as a choice"): each message's status callback and what people write
+  // to the business number; the API checks each call's X-Twilio-Signature itself
+  '/whatsapp/twilio/status',
+  '/whatsapp/twilio/incoming',
 ]);
 
 /**

@@ -537,7 +537,10 @@ model MeetingConnection {
 // key derived from JWT_SECRET with its own info, apps/api/src/whatsapp/whatsapp-secret.ts), never returned; *_key_id
 // says which key sealed each. The webhook's verify token is made by the system and shown, to paste in Meta. Quiet hours
 // in Cairo ("HH:mm"; none: messages at any hour). The last test, the templates' last sync, the webhook's last
-// verification and last signed call.
+// verification and last signed call. Twilio, a second way to send (owner, 25 October 2026: "Add Twilio as a choice";
+// packages/shared whatsapp-twilio.ts): `provider` says which one sends; Twilio's Account SID, its Auth Token sealed as the
+// token is (never returned), the WhatsApp sender (whatsapp:+20…, or a Messaging Service SID MG…), its templates' last
+// sync and its last signed call.
 model WhatsAppSettings {
   id                Int       @id @default(1)
   phoneNumberId     String?   @map("phone_number_id")
@@ -560,6 +563,13 @@ model WhatsAppSettings {
   templatesSyncedAt DateTime? @map("templates_synced_at") @db.Timestamptz
   webhookVerifiedAt DateTime? @map("webhook_verified_at") @db.Timestamptz
   webhookEventAt    DateTime? @map("webhook_event_at") @db.Timestamptz
+  provider                String    @default("meta") // WHATSAPP_PROVIDERS: meta, twilio
+  twilioAccountSid        String?   @map("twilio_account_sid")
+  twilioAuthTokenEnc      String?   @map("twilio_auth_token_enc") // RESTRICTED: never returned
+  twilioAuthTokenKeyId    String?   @map("twilio_auth_token_key_id")
+  twilioSender            String?   @map("twilio_sender")
+  twilioTemplatesSyncedAt DateTime? @map("twilio_templates_synced_at") @db.Timestamptz
+  twilioEventAt           DateTime? @map("twilio_event_at") @db.Timestamptz
 
   @@map("whatsapp_settings")
 }
@@ -579,6 +589,24 @@ model WhatsAppTemplate {
 
   @@id([key, language])
   @@map("whatsapp_templates")
+}
+
+// A template in a language on Twilio (owner, 25 October 2026: "Add Twilio as a choice"): the same text made as Twilio
+// Content (its SID, HX…), named people_<key>_<language>, submitted for WhatsApp's approval, then its status synced.
+// Twilio's own approval, apart from Meta's: only an approved one is sent while Twilio sends.
+model WhatsAppTwilioTemplate {
+  key         String // WHATSAPP_TEMPLATE_KEYS
+  language    String // WHATSAPP_LANGUAGES: en, ar
+  name        String // people_<key>_<language>
+  contentSid  String?   @unique @map("content_sid")
+  status      String    @default("not_submitted") // WHATSAPP_TEMPLATE_STATUSES
+  reason      String? // why it was rejected, in words
+  submittedAt DateTime? @map("submitted_at") @db.Timestamptz
+  syncedAt    DateTime? @map("synced_at") @db.Timestamptz
+  updatedAt   DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@id([key, language])
+  @@map("whatsapp_twilio_templates")
 }
 
 // An employee's own choice to get WhatsApp messages (required by Meta: opt-in), made on their account, never by HR: the
@@ -632,7 +660,8 @@ model WhatsAppMessage {
   link          String?
   confidential  Boolean         @default(false)
   status        String          @default("queued") // WHATSAPP_MESSAGE_STATUSES
-  wamid         String?         @unique
+  wamid         String?         @unique // Meta's message id, or Twilio's message SID (SM…)
+  provider      String? // who sent it: meta, twilio (25 October 2026); none while it waits
   error         String?
   errorCode     Int?            @map("error_code")
   attempts      Int             @default(0)

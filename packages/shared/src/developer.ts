@@ -228,6 +228,8 @@ export const DEVELOPER_ID_FIELDS: ReadonlySet<string> = new Set([
   // WhatsApp (24 October 2026): the business number on the settings; people's own numbers are `mobile` (an opt-in, HR's
   // view of it, the log), all on routes a developer is refused anyway
   'displayPhone',
+  // and Twilio's WhatsApp sender (25 October 2026: "Add Twilio as a choice"), the same business number, whatsapp:+20…
+  'sender',
 ]);
 
 /** Texts that may carry amounts in words (a payroll line's warnings): their digits hidden. */

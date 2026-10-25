@@ -95,7 +95,10 @@ function Days({ page }: { page: WhatsAppMessagePage }) {
         <h2 id="wa-days" className="font-semibold">
           Messages a Day
         </h2>
-        <p className="text-xs text-muted">Meta charges for each template message delivered; failed and waiting ones cost nothing. The STOP answers are free.</p>
+        <p className="text-xs text-muted">
+          Meta charges for each template message delivered; failed and waiting ones cost nothing. The STOP answers are free at Meta. Through Twilio, Twilio
+          adds its own small fee per message, sent or received.
+        </p>
       </div>
       <div className="overflow-x-auto">
         <table className="table">
@@ -289,7 +292,7 @@ export default function WhatsAppMessagesPage({ searchParams }: PageProps<'/whats
         <div>
           <h1 className="text-2xl font-semibold">WhatsApp Messages</h1>
           <p className="mt-1 max-w-3xl text-muted">
-            Every WhatsApp message the system made, newest first: to whom, which template, and whether Meta delivered it. What a message said is never kept
+            Every WhatsApp message the system made, newest first: to whom, which template, and whether it was delivered. What a message said is never kept
             here, only its template and the record it is about.
           </p>
         </div>

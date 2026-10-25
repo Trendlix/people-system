@@ -3,8 +3,10 @@ import { WHATSAPP_SETTINGS_SUPER_ADMIN_ONLY, isWhatsAppGroup, type MyWhatsAppVie
 import type { Request } from 'express';
 import { CurrentUser, FORBIDDEN_MESSAGE, NotForDevelopers, Public, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
-import { ListWhatsAppMessagesDto, MyWhatsAppDto, WhatsAppSettingsDto, WhatsAppTestDto } from './whatsapp.dto.js';
+import { EMPTY_TWIML } from './twilio.js';
+import { ListWhatsAppMessagesDto, MyWhatsAppDto, WhatsAppSettingsDto, WhatsAppTemplatesDto, WhatsAppTestDto } from './whatsapp.dto.js';
 import { WhatsAppSettingsService } from './whatsapp-settings.service.js';
+import { WhatsAppTwilioWebhookService } from './whatsapp-twilio-webhook.service.js';
 import { WhatsAppWebhookService } from './whatsapp-webhook.service.js';
 import { WhatsAppService } from './whatsapp.service.js';
 
@@ -16,6 +18,7 @@ import { WhatsAppService } from './whatsapp.service.js';
 // - Whether someone gets them: HR, an Admin, the CEO; never a developer's; nobody changes it but the person.
 // - Their own choice: every signed-in person's (/me/whatsapp).
 // - Meta's webhook: public (no session), its own checks (the verify token, the signature) and rate limit.
+// - Twilio's calls (25 October 2026: "Add Twilio as a choice"): public too, refused without Twilio's signature.
 
 @Controller('whatsapp/settings')
 @Roles('super_admin')
@@ -42,7 +45,7 @@ export class WhatsAppSettingsController {
   @Post('test')
   @HttpCode(200)
   test(@Body() dto: WhatsAppTestDto, @CurrentUser() user: SessionUser) {
-    return this.settings.test(dto.to, user);
+    return this.settings.test(dto.to, user, dto.provider);
   }
 
   /** "Make a new verify token". */
@@ -65,16 +68,16 @@ export class WhatsAppTemplatesController {
   @NotForDevelopers()
   @Post('submit')
   @HttpCode(200)
-  submit(@CurrentUser() user: SessionUser) {
-    return this.settings.submit(user);
+  submit(@Body() dto: WhatsAppTemplatesDto, @CurrentUser() user: SessionUser) {
+    return this.settings.submit(user, dto.provider);
   }
 
   /** "Sync status": each template's status at Meta now. */
   @NotForDevelopers()
   @Post('sync')
   @HttpCode(200)
-  sync(@CurrentUser() user: SessionUser) {
-    return this.settings.sync(user);
+  sync(@Body() dto: WhatsAppTemplatesDto, @CurrentUser() user: SessionUser) {
+    return this.settings.sync(user, dto.provider);
   }
 }
 
@@ -136,5 +139,42 @@ export class WhatsAppWebhookController {
   @Header('Cache-Control', 'no-store')
   receive(@Req() req: Request & { rawBody?: Buffer }) {
     return this.webhook.receive(req.rawBody, req.headers['x-hub-signature-256'], req.body, req.ip);
+  }
+}
+
+/** The query string Twilio called the website with (passed on by it), for the signature's URL. */
+const searchOf = (req: Request) => {
+  const i = req.originalUrl.indexOf('?');
+  return i < 0 ? '' : req.originalUrl.slice(i);
+};
+
+/**
+ * Twilio's calls, without signing in (owner, 25 October 2026: "Add Twilio as a choice"): the website passes them on with
+ * their bytes and X-Twilio-Signature unchanged. 403 without a valid signature; an empty TwiML otherwise (nothing is said
+ * back in the answer: the STOP answer goes through the queue).
+ */
+@Public()
+@Controller('public/whatsapp/twilio')
+export class WhatsAppTwilioWebhookController {
+  constructor(private readonly webhook: WhatsAppTwilioWebhookService) {}
+
+  /** A message's status (StatusCallback). */
+  @Post('status')
+  @HttpCode(200)
+  @Header('Content-Type', 'text/xml; charset=utf-8')
+  @Header('Cache-Control', 'no-store')
+  async status(@Req() req: Request & { rawBody?: Buffer }): Promise<string> {
+    await this.webhook.status(req.rawBody, req.headers['x-twilio-signature'], searchOf(req), req.ip);
+    return EMPTY_TWIML;
+  }
+
+  /** What someone wrote to the business number ("When a message comes in"): STOP. */
+  @Post('incoming')
+  @HttpCode(200)
+  @Header('Content-Type', 'text/xml; charset=utf-8')
+  @Header('Cache-Control', 'no-store')
+  async incoming(@Req() req: Request & { rawBody?: Buffer }): Promise<string> {
+    await this.webhook.incoming(req.rawBody, req.headers['x-twilio-signature'], searchOf(req), req.ip);
+    return EMPTY_TWIML;
   }
 }

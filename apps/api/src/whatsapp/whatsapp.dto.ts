@@ -1,14 +1,21 @@
-import { WHATSAPP_LANGUAGES, WHATSAPP_LIMITS, WHATSAPP_MESSAGE_STATUSES, WHATSAPP_TEMPLATE_KEYS, type WhatsAppLanguage } from '@trendlix/shared';
+import { WHATSAPP_LANGUAGES, WHATSAPP_LIMITS, WHATSAPP_MESSAGE_STATUSES, WHATSAPP_PROVIDERS, WHATSAPP_TEMPLATE_KEYS, type WhatsAppLanguage, type WhatsAppProvider } from '@trendlix/shared';
 import { Type } from 'class-transformer';
 import { IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
 import { TrimOrNull } from '../common/transforms.js';
 
 // What the WhatsApp pages send (owner, 24 October 2026: "how to make whatsapp notifications?"). The shapes are checked
 // here, the rules (Meta's ids, what a switched-on set needs, quiet hours) by packages/shared whatsappSettingsProblems in
-// the service. A token or a secret is never echoed in a message.
+// the service. A token or a secret is never echoed in a message. Twilio's (25 October 2026: "Add Twilio as a choice"):
+// the provider and Twilio's fields, checked by packages/shared whatsappTwilioProblems.
+
+const PROVIDER = { message: 'Choose how WhatsApp messages are sent: Meta directly or Twilio.' } as const;
 
 /** PUT /whatsapp/settings. An empty token or app secret keeps the saved one. */
 export class WhatsAppSettingsDto {
+  /** Left out: the saved one stays. */
+  @IsOptional() @IsIn(WHATSAPP_PROVIDERS, PROVIDER)
+  provider?: WhatsAppProvider;
+
   @IsOptional() @TrimOrNull() @IsString() @MaxLength(WHATSAPP_LIMITS.id, { message: 'The phone number ID is the long number in WhatsApp → API Setup, digits only.' })
   phoneNumberId?: string | null;
 
@@ -36,13 +43,34 @@ export class WhatsAppSettingsDto {
 
   @IsOptional() @TrimOrNull() @IsString() @MaxLength(5)
   quietTo?: string | null;
+
+  /** Twilio's: left out, the saved one stays; empty, cleared. */
+  @IsOptional() @TrimOrNull() @IsString() @MaxLength(40, { message: 'The Account SID is AC and 32 letters and digits, as the Twilio Console’s home page shows it.' })
+  twilioAccountSid?: string | null;
+
+  /** Empty or left out: the saved one stays. */
+  @IsOptional() @IsString({ message: 'Paste the Auth Token as text.' }) @MaxLength(64, { message: 'Paste the Auth Token on its own, as the Twilio Console shows it.' })
+  twilioAuthToken?: string | null;
+
+  /** whatsapp:+20…, or a Messaging Service SID (MG…); left out, the saved one stays; empty, cleared. */
+  @IsOptional() @TrimOrNull() @IsString() @MaxLength(60, { message: 'Write the WhatsApp sender as whatsapp:+20…, or paste its Messaging Service SID (MG…).' })
+  twilioSender?: string | null;
 }
 
-/** POST /whatsapp/settings/test: the number to send the test to. */
+/** POST /whatsapp/settings/test: the number to send the test to, and through which provider (left out: the one chosen). */
 export class WhatsAppTestDto {
   @IsString({ message: 'Write the number to send the test to.' })
   @MaxLength(WHATSAPP_LIMITS.phone + 10, { message: 'Write the number to send the test to with its country code, e.g. +20 100 123 4567.' })
   to!: string;
+
+  @IsOptional() @IsIn(WHATSAPP_PROVIDERS, PROVIDER)
+  provider?: WhatsAppProvider;
+}
+
+/** POST /whatsapp/templates/submit and sync: whose templates (left out: the provider chosen's). */
+export class WhatsAppTemplatesDto {
+  @IsOptional() @IsIn(WHATSAPP_PROVIDERS, PROVIDER)
+  provider?: WhatsAppProvider;
 }
 
 /** GET /whatsapp/messages: the filters. */

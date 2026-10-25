@@ -3,11 +3,13 @@
 // Organization → Company → WhatsApp (owner, 24 October 2026: "how to make whatsapp notifications?"; "Directly to Meta"):
 // the page's one form, by the button pressed. Each forwards to the API, which checks the session, that it is a Super
 // Admin in their own session, and every value again, so calling this directly bypasses nothing. The access token and the
-// app secret typed are sent on to the API once and never come back: the answer carries neither.
+// app secret typed are sent on to the API once and never come back: the answer carries neither; Twilio's Auth Token
+// likewise (25 October 2026: "Add Twilio as a choice"). The test and the templates' presses go to the provider chosen on
+// the form ("Send through"), saved or not, with that provider's saved settings.
 import type { WhatsAppSettingsView, WhatsAppTemplatesResult, WhatsAppTestView } from '@trendlix/shared';
 import { refresh } from 'next/cache';
 import { ApiError, apiSend } from '@/lib/api';
-import { intentOf, savedMessage, whatsappSettingsBody, whatsappTestBody, type WhatsAppFormState } from './settings';
+import { intentOf, providerOf, savedMessage, whatsappSettingsBody, whatsappTestBody, type WhatsAppFormState } from './settings';
 
 /** The request's answer, or the API's refusal as the form's errors. */
 async function refused(prev: WhatsAppFormState, request: () => Promise<WhatsAppFormState>): Promise<WhatsAppFormState> {
@@ -43,12 +45,14 @@ export async function submitWhatsAppSettings(prev: WhatsAppFormState, fd: FormDa
     });
   }
 
-  // Submit templates (POST /whatsapp/templates/submit) and Sync status (POST /whatsapp/templates/sync): Meta's answer
+  // Submit templates (POST /whatsapp/templates/submit) and Sync status (POST /whatsapp/templates/sync): Meta's answer,
+  // or Twilio's, for the provider chosen on the form
   if (intent === 'submit' || intent === 'sync') {
+    const provider = providerOf(fd);
     return refused(prev, async () => {
-      const templates = (await apiSend<WhatsAppTemplatesResult>('POST', `/whatsapp/templates/${intent}`))!;
+      const templates = (await apiSend<WhatsAppTemplatesResult>('POST', `/whatsapp/templates/${intent}`, { provider }))!;
       refresh();
-      return { templates, saved: prev.saved };
+      return { templates, templatesProvider: provider, saved: prev.saved };
     });
   }
 

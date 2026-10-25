@@ -7,13 +7,15 @@
 // approved, outside the person's choices) falls back silently to today's channels. Short and general, as push is: names,
 // dates and references, never an amount, a reason or a comment; each employee message with a button into the system.
 // Pure code: the API builds and sends with it, the web shows the same words. Tested in
-// apps/api/src/common/whatsapp.spec.ts.
+// apps/api/src/common/whatsapp.spec.ts. Twilio, a second way to send the same messages (owner, 25 October 2026: "Add
+// Twilio as a choice"): whatsapp-twilio.ts.
 
 import { zonedMoment } from './attendance.js';
 import { cairoDay } from './check-in.js';
 import type { NotificationKind } from './notifications.js';
 import { toArabicDigits } from './pdf-fields.js';
 import { phoneOk, phoneTidy } from './phone.js';
+import type { WhatsAppProvider, WhatsAppTwilioView } from './whatsapp-twilio.js';
 
 // ---------- Meta's Graph API ----------
 
@@ -930,6 +932,8 @@ export const WHATSAPP_SETUP_STEPS: readonly { title: string; text: string }[] = 
 
 /** The settings as GET /whatsapp/settings answers them: never the access token or the app secret, nor any part of them. */
 export interface WhatsAppSettingsView {
+  /** How the messages go now (25 October 2026: "Add Twilio as a choice"): Meta directly, or Twilio (`twilio` below). */
+  provider: WhatsAppProvider;
   phoneNumberId: string | null;
   businessAccountId: string | null;
   /** The number as people see it, +201012345678. */
@@ -945,7 +949,7 @@ export interface WhatsAppSettingsView {
   enabled: boolean;
   /** Quiet hours in Cairo; null: none (messages at any hour). */
   quietHours: WhatsAppQuietHours | null;
-  /** What the settings lack to be used, in words; empty when complete. */
+  /** What the settings of the provider chosen lack to be used, in words; empty when complete. */
   missing: string[];
   updatedAt: string | null;
   updatedBy: { id: string; name: string } | null;
@@ -955,6 +959,8 @@ export interface WhatsAppSettingsView {
   templatesSyncedAt: string | null;
   /** Meta's webhook: when it was last verified, and when Meta last called it with something signed. */
   webhook: { verifiedAt: string | null; lastEventAt: string | null };
+  /** Twilio's settings and its own templates' approval (whatsapp-twilio.ts): never the Auth Token. */
+  twilio: WhatsAppTwilioView;
   /** Whether WhatsApp messages go now, and why not in words. */
   sending: { on: boolean; why: string | null };
 }
@@ -980,6 +986,8 @@ export interface WhatsAppTestView {
 
 /** What PUT /whatsapp/settings takes. A token or app secret left empty keeps the saved one. */
 export interface WhatsAppSettingsInput {
+  /** Meta directly or Twilio; left out, the saved one stays. */
+  provider?: WhatsAppProvider;
   phoneNumberId: string | null;
   businessAccountId: string | null;
   displayPhone: string | null;
@@ -990,6 +998,11 @@ export interface WhatsAppSettingsInput {
   quietHours: boolean;
   quietFrom?: string | null;
   quietTo?: string | null;
+  /** Twilio's (whatsapp-twilio.ts): left out, the saved one stays; an empty Auth Token box keeps the saved one too. */
+  twilioAccountSid?: string | null;
+  twilioAuthToken?: string | null;
+  /** whatsapp:+20…, or a Messaging Service SID (MG…). */
+  twilioSender?: string | null;
 }
 
 /** What submitting or syncing the templates came to. */
@@ -1005,7 +1018,8 @@ const SECRET = /^[A-Za-z0-9]+$/;
 
 /**
  * What is wrong with the settings to save, in words; empty when fine. `tokenSaved`, `secretSaved`: a readable one is
- * saved, so an empty box keeps it. Switched off, they may be saved unfinished.
+ * saved, so an empty box keeps it. Switched off, they may be saved unfinished; and while Twilio sends (25 October 2026),
+ * Meta's may be (whatsapp-twilio.ts whatsappTwilioProblems checks Twilio's).
  */
 export function whatsappSettingsProblems(input: Partial<WhatsAppSettingsInput>, opts: { tokenSaved: boolean; secretSaved: boolean }): string[] {
   const out: string[] = [];
@@ -1023,7 +1037,7 @@ export function whatsappSettingsProblems(input: Partial<WhatsAppSettingsInput>, 
     if (!isTimeOfDay(input.quietFrom) || !isTimeOfDay(input.quietTo)) out.push('Choose when quiet hours start and end, e.g. 22:00 to 08:00.');
     else if (input.quietFrom === input.quietTo) out.push('Quiet hours start and end at different times.');
   }
-  if (input.enabled) {
+  if (input.enabled && input.provider !== 'twilio') {
     const lacking = whatsappMissing({ phoneNumberId: id, businessAccountId: waba, token: !!token || opts.tokenSaved, appSecret: !!secret || opts.secretSaved });
     if (lacking.length) out.push(`To send WhatsApp messages, enter ${lacking.length <= 1 ? (lacking[0] ?? '') : `${lacking.slice(0, -1).join(', ')} and ${lacking[lacking.length - 1]}`}.`);
   }

@@ -1,16 +1,34 @@
-import { WHATSAPP_TOKEN_UNREADABLE, type WhatsAppSettingsView, type WhatsAppTemplateStatusView } from '@trendlix/shared';
+import { WHATSAPP_TOKEN_UNREADABLE, WHATSAPP_TWILIO_TOKEN_UNREADABLE, type WhatsAppSettingsView, type WhatsAppTemplateStatusView, type WhatsAppTwilioView } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
-import { approvedText, intentOf, lastTestText, quietStart, savedMessage, templatesByKey, whatsappSettingsBody, whatsappStatus, whatsappTestBody } from './settings';
+import {
+  approvedText,
+  intentOf,
+  lastTestText,
+  providerOf,
+  quietStart,
+  savedMessage,
+  switchNote,
+  templatesByKey,
+  templatesFor,
+  whatsappSettingsBody,
+  whatsappStatus,
+  whatsappTestBody,
+} from './settings';
 
 // Organization → Company → WhatsApp (owner, 24 October 2026: "how to make whatsapp notifications?"; "Directly to
 // Meta"): what the form sends, and what the page says about whether messages go out.
 
 /** The form as the page sends it: the hidden "false" before each switch, and the switch's "true" when on. */
-function form(values: Record<string, string>, opts: { enabled?: boolean; quiet?: boolean; tokenSaved?: boolean; secretSaved?: boolean; intent?: string } = {}): FormData {
+function form(
+  values: Record<string, string>,
+  opts: { enabled?: boolean; quiet?: boolean; tokenSaved?: boolean; secretSaved?: boolean; twilioTokenSaved?: boolean; intent?: string; provider?: string } = {},
+): FormData {
   const fd = new FormData();
   if (opts.intent) fd.set('intent', opts.intent);
+  if (opts.provider) fd.set('provider', opts.provider);
   fd.set('tokenSaved', String(opts.tokenSaved ?? false));
   fd.set('secretSaved', String(opts.secretSaved ?? false));
+  fd.set('twilioTokenSaved', String(opts.twilioTokenSaved ?? false));
   for (const [k, v] of Object.entries(values)) fd.set(k, v);
   fd.append('enabled', 'false');
   if (opts.enabled) fd.append('enabled', 'true');
@@ -42,7 +60,25 @@ const template = (over: Partial<WhatsAppTemplateStatusView>): WhatsAppTemplateSt
   ...over,
 });
 
+const SID = `AC${'0123456789abcdef'.repeat(2)}`;
+
+const twilio = (over: Partial<WhatsAppTwilioView> = {}): WhatsAppTwilioView => ({
+  accountSid: SID,
+  authTokenSet: true,
+  authTokenUnreadable: false,
+  sender: 'whatsapp:+201000005555',
+  senderKind: 'number',
+  statusCallbackUrl: 'https://people.trendlix.com/whatsapp/twilio/status',
+  incomingUrl: 'https://people.trendlix.com/whatsapp/twilio/incoming',
+  templates: [template({ name: 'people_approval_waiting_en', status: 'not_submitted' }), template({ name: 'people_approval_waiting_ar', language: 'ar', status: 'not_submitted' })],
+  templatesSyncedAt: null,
+  lastEventAt: null,
+  missing: [],
+  ...over,
+});
+
 const view = (over: Partial<WhatsAppSettingsView> = {}): WhatsAppSettingsView => ({
+  provider: 'meta',
   phoneNumberId: '123456789012345',
   businessAccountId: '987654321098765',
   displayPhone: '+201001234567',
@@ -61,6 +97,7 @@ const view = (over: Partial<WhatsAppSettingsView> = {}): WhatsAppSettingsView =>
   templates: [template({}), template({ language: 'ar', status: 'pending' })],
   templatesSyncedAt: null,
   webhook: { verifiedAt: null, lastEventAt: null },
+  twilio: twilio(),
   sending: { on: true, why: null },
   ...over,
 });
@@ -78,6 +115,7 @@ describe('whatsappSettingsBody', () => {
     const { body, errors } = whatsappSettingsBody(form(filled, { enabled: true, quiet: true }));
     expect(errors).toEqual([]);
     expect(body).toEqual({
+      provider: 'meta',
       phoneNumberId: '123456789012345',
       businessAccountId: '987654321098765',
       displayPhone: '+201001234567',
@@ -87,6 +125,8 @@ describe('whatsappSettingsBody', () => {
       quietHours: true,
       quietFrom: '22:00',
       quietTo: '08:00',
+      twilioAccountSid: null,
+      twilioSender: null,
     });
   });
 
@@ -108,9 +148,68 @@ describe('whatsappSettingsBody', () => {
   });
 });
 
+describe('Twilio on the form (25 October 2026: "Add Twilio as a choice")', () => {
+  it('sends the provider chosen, Meta directly unless Twilio is', () => {
+    expect(providerOf(form({}, { provider: 'twilio' }))).toBe('twilio');
+    expect(providerOf(form({}))).toBe('meta');
+    expect(providerOf(form({}, { provider: 'sms' }))).toBe('meta');
+  });
+
+  it('sends Twilio’s fields beside Meta’s, the Auth Token only when typed; Meta’s may be unfinished while Twilio is chosen', () => {
+    const fields = { twilioAccountSid: ` ${SID} `, twilioAuthToken: 'a'.repeat(32), twilioSender: 'whatsapp:+20 100 000 5555' };
+    const { body, errors } = whatsappSettingsBody(form(fields, { enabled: true, provider: 'twilio' }));
+    expect(errors).toEqual([]);
+    expect(body).toMatchObject({ provider: 'twilio', twilioAccountSid: SID, twilioAuthToken: 'a'.repeat(32), twilioSender: 'whatsapp:+20 100 000 5555', phoneNumberId: null });
+    const kept = whatsappSettingsBody(form({ ...fields, twilioAuthToken: '' }, { enabled: true, provider: 'twilio', twilioTokenSaved: true }));
+    expect(kept.errors).toEqual([]);
+    expect(kept.body).not.toHaveProperty('twilioAuthToken');
+  });
+
+  it('says what a switched-on Twilio lacks, and what is wrong with its fields, as the API would', () => {
+    expect(whatsappSettingsBody(form({}, { enabled: true, provider: 'twilio' })).errors).toEqual([
+      'To send WhatsApp messages through Twilio, enter the Account SID, the Auth Token and the WhatsApp sender.',
+    ]);
+    expect(whatsappSettingsBody(form({ twilioSender: 'not a number' })).errors).toEqual([expect.stringContaining('WhatsApp sender')]);
+  });
+
+  it('sends the test and the templates’ presses to the provider chosen', () => {
+    expect(whatsappTestBody(form({ testTo: '+201001234567' }, { provider: 'twilio' }))).toEqual({ body: { to: '+201001234567', provider: 'twilio' }, errors: [] });
+  });
+
+  it('says where messages go through Twilio, and an Auth Token that can’t be read', () => {
+    const on = view({ provider: 'twilio', twilio: twilio({ templates: [template({ name: 'people_approval_waiting_en' })] }) });
+    expect(whatsappStatus(on)).toMatchObject({ tone: 'ok', headline: 'WhatsApp messages go out through Twilio from +201000005555', alert: null });
+    expect(whatsappStatus(on).notes).toEqual(['1 of 1 template approved on Twilio: only approved templates are used; anything else goes by the bell, push and email only.']);
+    const service = `MG${'0'.repeat(32)}`;
+    expect(whatsappStatus(view({ provider: 'twilio', twilio: twilio({ sender: service, senderKind: 'service' }) })).headline).toBe(`WhatsApp messages go out through Twilio, from the Messaging Service ${service}`);
+    const stuck = view({ provider: 'twilio', tokenUnreadable: true, twilio: twilio({ authTokenUnreadable: true }), sending: { on: false, why: 'Enter the Auth Token.' } });
+    expect(whatsappStatus(stuck)).toMatchObject({ tone: 'warn', alert: WHATSAPP_TWILIO_TOKEN_UNREADABLE });
+    expect(savedMessage(stuck)).toBe(`Saved, but not used yet. ${WHATSAPP_TWILIO_TOKEN_UNREADABLE}`);
+    expect(savedMessage(on)).toBe('Saved. WhatsApp messages go out through Twilio from now on.');
+  });
+
+  it('says what a switch means before saving: messages waiting go that way too, and only with its own approved templates', () => {
+    expect(switchNote(view(), 'meta')).toBeNull();
+    expect(switchNote(view(), 'twilio')).toBe(
+      'Once saved, WhatsApp messages go through Twilio, those already waiting too. None of Twilio’s templates is approved yet, so nothing goes on WhatsApp until they are: submit them below and sync their status until they are approved. The bell, push and email go on meanwhile.',
+    );
+    const some = view({ twilio: twilio({ templates: [template({}), template({ language: 'ar', status: 'pending' })] }) });
+    expect(switchNote(some, 'twilio')).toBe(
+      'Once saved, WhatsApp messages go through Twilio, those already waiting too. 1 of 2 templates approved there: the others go by the bell, push and email only until they are approved.',
+    );
+    const back = view({ provider: 'twilio', templates: [template({})] });
+    expect(switchNote(back, 'meta')).toBe('Once saved, WhatsApp messages go through Meta directly, those already waiting too.');
+  });
+
+  it('lists each provider’s own templates', () => {
+    expect(templatesFor(view(), 'twilio').templates.map((t) => t.name)).toEqual(['people_approval_waiting_en', 'people_approval_waiting_ar']);
+    expect(templatesFor(view({ templatesSyncedAt: '2026-10-25T08:00:00.000Z' }), 'meta')).toMatchObject({ syncedAt: '2026-10-25T08:00:00.000Z' });
+  });
+});
+
 describe('whatsappTestBody', () => {
   it('sends the number written, and asks for one', () => {
-    expect(whatsappTestBody(form({ testTo: '+201001234567' }))).toEqual({ body: { to: '+201001234567' }, errors: [] });
+    expect(whatsappTestBody(form({ testTo: '+201001234567' }))).toEqual({ body: { to: '+201001234567', provider: 'meta' }, errors: [] });
     expect(whatsappTestBody(form({})).errors).toEqual(['Write the number to send the test message to, with its country code.']);
   });
 });

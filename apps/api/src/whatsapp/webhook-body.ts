@@ -10,9 +10,26 @@ import type { NextFunction, Request, Response } from 'express';
 /** The webhook's address on the API. */
 export const WHATSAPP_WEBHOOK_ROUTE = '/api/public/whatsapp/webhook';
 
+/**
+ * Twilio's calls' addresses on the API (owner, 25 October 2026: "Add Twilio as a choice"): the status callback and the
+ * incoming messages, form-encoded. Their signature is over the parameters as Twilio sent them, so they are read from the
+ * exact bytes here too (the service reads them with URLSearchParams), never by Nest's urlencoded parser, which makes
+ * nested objects of names with brackets.
+ */
+export const WHATSAPP_TWILIO_ROUTE = '/api/public/whatsapp/twilio';
+
 const LIMIT = 1024 * 1024;
 
 export function whatsappWebhookBody(req: Request, res: Response, next: NextFunction): void {
+  readRaw(req, res, next, (raw) => (raw.length ? (JSON.parse(raw.toString('utf8')) as unknown) : {}));
+}
+
+/** Twilio's: the bytes kept (req.rawBody), the body left empty (the parameters are read from the bytes). */
+export function twilioWebhookBody(req: Request, res: Response, next: NextFunction): void {
+  readRaw(req, res, next, () => ({}));
+}
+
+function readRaw(req: Request, res: Response, next: NextFunction, parse: (raw: Buffer) => unknown): void {
   if (req.method !== 'POST') return next();
   const chunks: Buffer[] = [];
   let size = 0;
@@ -34,7 +51,7 @@ export function whatsappWebhookBody(req: Request, res: Response, next: NextFunct
     const raw = Buffer.concat(chunks);
     (req as Request & { rawBody?: Buffer }).rawBody = raw;
     try {
-      req.body = raw.length ? (JSON.parse(raw.toString('utf8')) as unknown) : {};
+      req.body = parse(raw);
     } catch {
       req.body = {};
     }

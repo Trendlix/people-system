@@ -1,10 +1,4 @@
-import {
-  WHATSAPP_SETTINGS_OWN_ACCOUNT,
-  WHATSAPP_SETTINGS_SUPER_ADMIN_ONLY,
-  WHATSAPP_SETUP_STEPS,
-  type MyWhatsAppView,
-  type WhatsAppSettingsView,
-} from '@trendlix/shared';
+import { WHATSAPP_SETTINGS_OWN_ACCOUNT, WHATSAPP_SETTINGS_SUPER_ADMIN_ONLY, type MyWhatsAppView, type WhatsAppSettingsView } from '@trendlix/shared';
 import type { Metadata } from 'next';
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
@@ -23,7 +17,8 @@ import { WhatsAppSettingsForm } from './whatsapp-form';
 // Meta, the connection (its token and app secret kept encrypted, never shown again), quiet hours and the switch, Send a
 // test message with Meta's answer in plain words, and the templates, submitted and synced. WhatsApp is added to the
 // bell, push and email, never in their place. The API refuses everyone else, a developer and a Super Admin viewing as
-// someone too.
+// someone too. Since 25 October 2026 ("Add Twilio as a choice"): sent through Meta directly or Twilio; the form shows
+// the steps, connection and templates of the one chosen (whatsapp-form.tsx).
 
 export const metadata: Metadata = { title: 'WhatsApp · People System' };
 
@@ -73,31 +68,6 @@ function Status({ view }: { view: WhatsAppSettingsView }) {
   );
 }
 
-/** The owner's steps in Meta, as they are, in order. */
-function Steps() {
-  return (
-    <section aria-labelledby="whatsapp-steps" className="card p-6">
-      <h2 id="whatsapp-steps" className="text-lg font-semibold">
-        Set Up in Meta
-      </h2>
-      <p className="mt-1 max-w-3xl text-sm text-muted">Once, in this order. Meta charges per message; the company pays Meta directly.</p>
-      <ol className="mt-4 space-y-3">
-        {WHATSAPP_SETUP_STEPS.map((step, i) => (
-          <li key={step.title} className="flex gap-3">
-            <span aria-hidden="true" className="flex size-7 shrink-0 items-center justify-center rounded-full bg-accent-soft text-sm font-semibold text-accent">
-              {i + 1}
-            </span>
-            <span className="min-w-0">
-              <span className="block font-medium">{step.title}</span>
-              <span className="block text-sm text-muted">{step.text}</span>
-            </span>
-          </li>
-        ))}
-      </ol>
-    </section>
-  );
-}
-
 async function Gate() {
   const user = await getCurrentUser();
   if (user.developer) return <Empty>The WhatsApp settings hold the company’s number and its token: they aren’t open to developers.</Empty>;
@@ -109,12 +79,11 @@ async function Gate() {
   return (
     <div className="space-y-6">
       <p className="max-w-3xl text-sm text-muted">
-        WhatsApp messages through Meta’s WhatsApp Cloud API, from the company’s own WhatsApp Business number: to employees who turn them on (approvals
-        waiting, decisions on their requests, check-in reminders, interviews they sit on) and to candidates who tick it on the careers forms (their
-        application received and their interviews). They are added to the bell, push and email, never in their place.
+        WhatsApp messages from the company’s own WhatsApp Business number, sent through Meta’s WhatsApp Cloud API directly or through Twilio: to employees
+        who turn them on (approvals waiting, decisions on their requests, check-in reminders, interviews they sit on) and to candidates who tick it on the
+        careers forms (their application received and their interviews). They are added to the bell, push and email, never in their place.
       </p>
       <Status view={loaded.value} />
-      <Steps />
       {/* the test goes to the Super Admin's own mobile unless they write another */}
       <WhatsAppSettingsForm action={submitWhatsAppSettings} view={loaded.value} testTo={mine.kind === 'ok' ? mine.value.mobile : null} />
     </div>

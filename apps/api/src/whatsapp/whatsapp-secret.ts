@@ -18,8 +18,11 @@ const KEY_ID_INFO = 'trendlix-whatsapp-v1 key id';
 const IV_BYTES = 12;
 const TAG_BYTES = 16;
 
-/** What a sealed value is: its purpose is its additional data. */
-export type WhatsAppSecretPurpose = 'access_token' | 'app_secret';
+/**
+ * What a sealed value is: its purpose is its additional data. Twilio's Auth Token (owner, 25 October 2026: "Add Twilio
+ * as a choice") is sealed with the same key, for its own purpose: it calls Twilio and checks Twilio's signatures.
+ */
+export type WhatsAppSecretPurpose = 'access_token' | 'app_secret' | 'twilio_auth_token';
 
 const aadOf = (purpose: WhatsAppSecretPurpose) => Buffer.from(`whatsapp.${purpose}`, 'utf8');
 

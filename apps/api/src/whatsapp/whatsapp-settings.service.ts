@@ -4,6 +4,7 @@ import {
   DEVELOPER_NO_FILES,
   phoneOk,
   phoneTidy,
+  twilioSenderOf,
   WHATSAPP_CATEGORY,
   WHATSAPP_HELLO_WORLD,
   WHATSAPP_LANGUAGES,
@@ -13,14 +14,16 @@ import {
   WHATSAPP_TEMPLATE_KEYS,
   WHATSAPP_TEMPLATES,
   WHATSAPP_TOKEN_UNREADABLE,
+  WHATSAPP_TWILIO_TOKEN_UNREADABLE,
+  whatsappAllSettingsProblems,
   whatsappContent,
   whatsappMissing,
   whatsappNumber,
-  whatsappSettingsProblems,
   whatsappTemplateMessage,
   whatsappTemplateRequest,
   whatsappWebhookUrl,
   type WhatsAppLanguage,
+  type WhatsAppProvider,
   type WhatsAppSettingsView,
   type WhatsAppTemplateKey,
   type WhatsAppTemplateStatus,
@@ -39,6 +42,7 @@ import { createdTemplateOf, createTemplateRequest, listedTemplatesOf, listTempla
 import type { WhatsAppSettingsDto } from './whatsapp.dto.js';
 import { WhatsAppHttp } from './whatsapp-http.js';
 import { newVerifyToken } from './whatsapp-secret.js';
+import { WhatsAppTwilioService } from './whatsapp-twilio.service.js';
 import { quietOf, WHATSAPP_SETTINGS_ENTITY, WhatsAppService } from './whatsapp.service.js';
 
 // Organization → Company → WhatsApp (owner, 24 October 2026: "how to make whatsapp notifications?", "Directly to Meta"):
@@ -46,19 +50,26 @@ import { quietOf, WHATSAPP_SETTINGS_ENTITY, WhatsAppService } from './whatsapp.s
 // anything runs (@NotForDevelopers; their writes by the guard), and a Super Admin viewing as someone, here. The access
 // token and the app secret sealed, never returned, never in the audit log ("changed"); the webhook's verify token made
 // by the system and shown; Send a test message with Meta's errors in plain words; Submit templates and Sync status.
-// Every write audited.
+// Every write audited. Since 25 October 2026 ("Add Twilio as a choice"): "Send through" Meta directly or Twilio, one at
+// a time, and Twilio's settings beside Meta's (its Auth Token sealed and audited as the token is); the test and the
+// templates' presses work on the provider asked for (the one chosen unless said), Twilio's in WhatsAppTwilioService.
 
 const USER = { select: { id: true, email: true } } as const;
 
 /** What a save shows in the audit log and compares: everything but the secrets. */
 const shown = (r: Partial<WhatsAppSettings> | null) => ({
+  provider: r?.provider ?? null,
   phoneNumberId: r?.phoneNumberId ?? null,
   businessAccountId: r?.businessAccountId ?? null,
   displayPhone: r?.displayPhone ?? null,
   enabled: r?.enabled ?? null,
   quietFrom: r?.quietFrom ?? null,
   quietTo: r?.quietTo ?? null,
+  twilioAccountSid: r?.twilioAccountSid ?? null,
+  twilioSender: r?.twilioSender ?? null,
 });
+
+const providerOf = (row: Pick<WhatsAppSettings, 'provider'> | null): WhatsAppProvider => (row?.provider === 'twilio' ? 'twilio' : 'meta');
 
 /** "already exists" at Meta: the template was submitted before (by an earlier press, or by hand). */
 const ALREADY = /already exists|same name|2388024|2388023/i;
@@ -73,6 +84,7 @@ export class WhatsAppSettingsService {
     private readonly audit: AuditService,
     private readonly whatsapp: WhatsAppService,
     private readonly http: WhatsAppHttp,
+    private readonly twilio: WhatsAppTwilioService,
   ) {
     this.origin = webOriginOf(config);
   }
@@ -97,20 +109,31 @@ export class WhatsAppSettingsService {
   }
 
   private async view(): Promise<WhatsAppSettingsView> {
-    const [row, templates] = await Promise.all([this.prisma.whatsAppSettings.findUnique({ where: { id: 1 }, include: { updatedBy: USER } }), this.templates()]);
+    const [row, templates, twilioTemplates] = await Promise.all([
+      this.prisma.whatsAppSettings.findUnique({ where: { id: 1 }, include: { updatedBy: USER } }),
+      this.templates(),
+      this.twilio.templates(),
+    ]);
     const names = await userNames(this.prisma, [row?.updatedBy ?? null]);
     const tokenOk = this.whatsapp.readable(row, 'access_token');
     const secretOk = this.whatsapp.readable(row, 'app_secret');
-    const missing = whatsappMissing({ phoneNumberId: row?.phoneNumberId ?? null, businessAccountId: row?.businessAccountId ?? null, token: tokenOk, appSecret: secretOk });
-    const approved = templates.filter((t) => t.status === 'approved').length;
+    const provider = providerOf(row);
+    const twilio = this.twilio.viewOf(row, twilioTemplates);
+    // what the provider chosen lacks, and its own templates' approval
+    const missing =
+      provider === 'twilio' ? twilio.missing : whatsappMissing({ phoneNumberId: row?.phoneNumberId ?? null, businessAccountId: row?.businessAccountId ?? null, token: tokenOk, appSecret: secretOk });
+    const approved = (provider === 'twilio' ? twilioTemplates : templates).filter((t) => t.status === 'approved').length;
     const why = !row?.enabled
       ? 'WhatsApp messages are switched off.'
       : missing.length
         ? `Enter ${missing.join(', ')}.`
         : !approved
-          ? 'No template is approved by Meta yet: submit them, then sync their status.'
+          ? provider === 'twilio'
+            ? 'No template is approved on Twilio yet: submit them, then sync their status.'
+            : 'No template is approved by Meta yet: submit them, then sync their status.'
           : null;
     return {
+      provider,
       phoneNumberId: row?.phoneNumberId ?? null,
       businessAccountId: row?.businessAccountId ?? null,
       displayPhone: row?.displayPhone ?? null,
@@ -129,6 +152,7 @@ export class WhatsAppSettingsService {
       templates,
       templatesSyncedAt: row?.templatesSyncedAt?.toISOString() ?? null,
       webhook: { verifiedAt: row?.webhookVerifiedAt?.toISOString() ?? null, lastEventAt: row?.webhookEventAt?.toISOString() ?? null },
+      twilio,
       sending: { on: !why, why },
     };
   }
@@ -155,18 +179,29 @@ export class WhatsAppSettingsService {
     );
   }
 
-  /** PUT /whatsapp/settings: an empty token or app secret keeps the saved one. Audited, the secrets only as "changed". */
+  /**
+   * PUT /whatsapp/settings: an empty token, app secret or Auth Token keeps the saved one; the provider and Twilio's
+   * fields left out keep theirs. Audited, the secrets only as "changed".
+   */
   async update(dto: WhatsAppSettingsDto, user: SessionUser): Promise<WhatsAppSettingsView> {
     this.assertOwner(user);
     const before = await this.row();
+    const provider: WhatsAppProvider = dto.provider ?? providerOf(before);
     const token = dto.accessToken?.trim() || null;
     const secret = dto.appSecret?.trim() || null;
+    const twilioToken = dto.twilioAuthToken?.trim() || null;
     const tokenSaved = this.whatsapp.readable(before, 'access_token');
     const secretSaved = this.whatsapp.readable(before, 'app_secret');
-    if (dto.enabled && !token && before.accessTokenEnc && !tokenSaved) throw new BadRequestException([WHATSAPP_TOKEN_UNREADABLE]);
-    if (dto.enabled && !secret && before.appSecretEnc && !secretSaved) throw new BadRequestException([WHATSAPP_SECRET_UNREADABLE]);
-    const problems = whatsappSettingsProblems(
+    const twilioTokenSaved = this.whatsapp.readable(before, 'twilio_auth_token');
+    // a saved secret that can't be read any more stops a switched-on save only for the provider chosen
+    if (dto.enabled && provider === 'meta' && !token && before.accessTokenEnc && !tokenSaved) throw new BadRequestException([WHATSAPP_TOKEN_UNREADABLE]);
+    if (dto.enabled && provider === 'meta' && !secret && before.appSecretEnc && !secretSaved) throw new BadRequestException([WHATSAPP_SECRET_UNREADABLE]);
+    if (dto.enabled && provider === 'twilio' && !twilioToken && before.twilioAuthTokenEnc && !twilioTokenSaved) throw new BadRequestException([WHATSAPP_TWILIO_TOKEN_UNREADABLE]);
+    const twilioAccountSid = dto.twilioAccountSid === undefined ? before.twilioAccountSid : dto.twilioAccountSid?.trim() || null;
+    const twilioSender = dto.twilioSender === undefined ? before.twilioSender : dto.twilioSender?.trim() || null;
+    const problems = whatsappAllSettingsProblems(
       {
+        provider,
         phoneNumberId: dto.phoneNumberId ?? null,
         businessAccountId: dto.businessAccountId ?? null,
         displayPhone: dto.displayPhone ?? null,
@@ -176,32 +211,42 @@ export class WhatsAppSettingsService {
         quietHours: dto.quietHours,
         quietFrom: dto.quietFrom ?? null,
         quietTo: dto.quietTo ?? null,
+        twilioAccountSid,
+        twilioAuthToken: twilioToken,
+        twilioSender,
       },
-      { tokenSaved, secretSaved },
+      { tokenSaved, secretSaved, twilioTokenSaved },
     );
     if (problems.length) throw new BadRequestException(problems);
 
     const next = {
+      provider,
       phoneNumberId: dto.phoneNumberId?.trim() || null,
       businessAccountId: dto.businessAccountId?.trim() || null,
       displayPhone: dto.displayPhone?.trim() ? phoneTidy(dto.displayPhone) : null,
       enabled: dto.enabled,
       quietFrom: dto.quietHours ? dto.quietFrom! : null,
       quietTo: dto.quietHours ? dto.quietTo! : null,
+      twilioAccountSid,
+      // as Twilio takes it: whatsapp:+201001234567, or the Messaging Service SID
+      twilioSender: twilioSender ? (twilioSenderOf(twilioSender)?.value ?? null) : null,
     };
     const diff: Record<string, unknown> = changes(shown(before), shown(next));
     // the secrets only as "changed": never their value, length or any part
     if (token) diff.accessToken = 'changed';
     if (secret) diff.appSecret = 'changed';
+    if (twilioToken) diff.twilioAuthToken = 'changed';
     if (!Object.keys(diff).length) return this.view();
     const sealedToken = token ? this.whatsapp.seal(token, 'access_token') : null;
     const sealedSecret = secret ? this.whatsapp.seal(secret, 'app_secret') : null;
+    const sealedTwilio = twilioToken ? this.whatsapp.seal(twilioToken, 'twilio_auth_token') : null;
     await this.prisma.whatsAppSettings.update({
       where: { id: 1 },
       data: {
         ...next,
         ...(sealedToken && { accessTokenEnc: sealedToken.enc, accessTokenKeyId: sealedToken.keyId }),
         ...(sealedSecret && { appSecretEnc: sealedSecret.enc, appSecretKeyId: sealedSecret.keyId }),
+        ...(sealedTwilio && { twilioAuthTokenEnc: sealedTwilio.enc, twilioAuthTokenKeyId: sealedTwilio.keyId }),
         updatedById: user.id,
         updatedAt: new Date(),
       },
@@ -238,12 +283,13 @@ export class WhatsAppSettingsService {
    * POST /whatsapp/settings/test: a test message to `to` with the saved settings (switched on or not): our own test
    * template once Meta approves it in English, until then Meta's sample "hello_world", which every new WhatsApp
    * Business Account has. Answers sent or why not in plain words, either way 200; kept as the last test, in the log and
-   * the audit log.
+   * the audit log. Through Twilio when it is asked for, or chosen (WhatsAppTwilioService.test).
    */
-  async test(to: string, user: SessionUser): Promise<WhatsAppTestView> {
+  async test(to: string, user: SessionUser, provider?: WhatsAppProvider): Promise<WhatsAppTestView> {
     this.assertOwner(user);
     const mobile = phoneTidy(to);
     if (!phoneOk(mobile)) throw new BadRequestException(['Write the number to send the test to with its country code, e.g. +20 100 123 4567.']);
+    if ((provider ?? providerOf(await this.row())) === 'twilio') return this.twilio.test(mobile, user);
     const { row, token } = await this.connection('send');
     const ours = await this.prisma.whatsAppTemplate.findUnique({ where: { key_language: { key: 'test_message', language: 'en' } }, select: { status: true } });
     const company = (await this.prisma.company.findUnique({ where: { id: 1 }, select: { nameEn: true } }))?.nameEn?.trim() || 'the company';
@@ -267,6 +313,7 @@ export class WhatsAppSettingsService {
         reference: 'Test',
         status: wamid ? 'sent' : 'failed',
         wamid,
+        provider: 'meta',
         error: problem?.message ?? null,
         errorCode: problem?.code ?? null,
         attempts: 1,
@@ -290,9 +337,11 @@ export class WhatsAppSettingsService {
   /**
    * POST /whatsapp/templates/submit: every template in each language not already approved or under review, submitted
    * for Meta's review (Utility, with its examples and the button to the website); then their statuses synced. Audited.
+   * Twilio's own when it is asked for, or chosen (WhatsAppTwilioService.submit).
    */
-  async submit(user: SessionUser): Promise<WhatsAppTemplatesResult> {
+  async submit(user: SessionUser, provider?: WhatsAppProvider): Promise<WhatsAppTemplatesResult> {
     this.assertOwner(user);
+    if ((provider ?? providerOf(await this.row())) === 'twilio') return this.twilio.submit(user);
     const { row, token } = await this.connection('templates');
     const kept = new Map((await this.prisma.whatsAppTemplate.findMany()).map((t) => [`${t.key}:${t.language}`, t]));
     let submitted = 0;
@@ -328,9 +377,13 @@ export class WhatsAppSettingsService {
     return { ok: !refused.length, message, templates: await this.templates() };
   }
 
-  /** POST /whatsapp/templates/sync: every template's status as Meta has it now (approved, pending, rejected and why). Audited. */
-  async sync(user: SessionUser): Promise<WhatsAppTemplatesResult> {
+  /**
+   * POST /whatsapp/templates/sync: every template's status as Meta has it now (approved, pending, rejected and why).
+   * Audited. Twilio's when it is asked for, or chosen (WhatsAppTwilioService.sync).
+   */
+  async sync(user: SessionUser, provider?: WhatsAppProvider): Promise<WhatsAppTemplatesResult> {
     this.assertOwner(user);
+    if ((provider ?? providerOf(await this.row())) === 'twilio') return this.twilio.sync(user);
     const { row, token } = await this.connection('templates');
     try {
       const message = await this.syncNow(row, token);

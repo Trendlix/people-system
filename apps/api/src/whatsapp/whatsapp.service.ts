@@ -46,6 +46,7 @@ import {
   type WhatsAppMessageRow,
   type WhatsAppMessageStatus,
   type WhatsAppPersonView,
+  type WhatsAppProvider,
   type WhatsAppQuietHours,
   type WhatsAppTemplateKey,
 } from '@trendlix/shared';
@@ -72,6 +73,8 @@ import { openWhatsAppSecret, sameWhatsAppKey, sealWhatsAppSecret, whatsappKeyIdO
 // - nothing about a C-level person reaches a message HR could see: the messages go only to the person concerned or
 //   their approvers (as the notifications do), and those about a C-level person are kept marked, never shown to HR.
 // Never throws into a flow: a failure is logged and the flow goes on. The sender (whatsapp-sender.service.ts) sends.
+// Twilio, a second way to send (owner, 25 October 2026: "Add Twilio as a choice"): the same messages, opt-ins, quiet
+// hours, queue and log; the provider chosen sends, with its own approved templates (config: `approved` is its).
 
 export const WHATSAPP_SETTINGS_ENTITY = 'whatsapp_settings';
 export const WHATSAPP_OPT_IN_ENTITY = 'whatsapp_opt_in';
@@ -88,9 +91,16 @@ export interface WhatsAppNotice {
 /** The settings and the approved templates as the sending reads them. */
 export interface WhatsAppConfig {
   row: WhatsAppSettings | null;
-  /** "<key>:<language>" of each approved template. */
+  /** Who sends now (25 October 2026): Meta directly, or Twilio. */
+  provider: WhatsAppProvider;
+  /** "<key>:<language>" of each template approved by the provider who sends (Meta's, or Twilio's with its Content SID). */
   approved: Set<string>;
-  /** Switched on, and complete: the ids, a token and an app secret readable with this server's key. */
+  /** Twilio's: each approved template's Content SID, by "<key>:<language>". */
+  contentSids: Map<string, string>;
+  /**
+   * Switched on, and complete for the provider who sends: Meta's ids, a token and an app secret readable with this
+   * server's key; or Twilio's Account SID, sender and a readable Auth Token.
+   */
   ready: boolean;
   quiet: WhatsAppQuietHours | null;
 }
@@ -204,17 +214,28 @@ export class WhatsAppService {
   }
 
   private async read(): Promise<WhatsAppConfig> {
-    const [row, templates] = await Promise.all([
+    const [row, templates, twilio] = await Promise.all([
       this.prisma.whatsAppSettings.findUnique({ where: { id: 1 } }),
       this.prisma.whatsAppTemplate.findMany({ where: { status: 'approved' }, select: { key: true, language: true } }),
+      this.prisma.whatsAppTwilioTemplate.findMany({ where: { status: 'approved', contentSid: { not: null } }, select: { key: true, language: true, contentSid: true } }),
     ]);
+    const provider: WhatsAppProvider = row?.provider === 'twilio' ? 'twilio' : 'meta';
+    const contentSids = new Map(twilio.map((t) => [`${t.key}:${t.language}`, t.contentSid!]));
+    if (provider === 'twilio') {
+      const ready = !!row?.enabled && !!row.twilioAccountSid && !!row.twilioSender && this.readable(row, 'twilio_auth_token');
+      return { row, provider, approved: new Set(contentSids.keys()), contentSids, ready, quiet: quietOf(row) };
+    }
     const ready = !!row?.enabled && !!row.phoneNumberId && !!row.businessAccountId && this.readable(row, 'access_token') && this.readable(row, 'app_secret');
-    return { row, approved: new Set(templates.map((t) => `${t.key}:${t.language}`)), ready, quiet: quietOf(row) };
+    return { row, provider, approved: new Set(templates.map((t) => `${t.key}:${t.language}`)), contentSids, ready, quiet: quietOf(row) };
   }
 
   /** Whether a saved secret opens with this server's key, told by its fingerprint: never opened to tell. */
-  readable(row: Pick<WhatsAppSettings, 'accessTokenEnc' | 'accessTokenKeyId' | 'appSecretEnc' | 'appSecretKeyId'> | null, purpose: WhatsAppSecretPurpose): boolean {
+  readable(
+    row: Pick<WhatsAppSettings, 'accessTokenEnc' | 'accessTokenKeyId' | 'appSecretEnc' | 'appSecretKeyId' | 'twilioAuthTokenEnc' | 'twilioAuthTokenKeyId'> | null,
+    purpose: WhatsAppSecretPurpose,
+  ): boolean {
     if (!row) return false;
+    if (purpose === 'twilio_auth_token') return !!row.twilioAuthTokenEnc && sameWhatsAppKey(row.twilioAuthTokenKeyId, this.key);
     return purpose === 'access_token' ? !!row.accessTokenEnc && sameWhatsAppKey(row.accessTokenKeyId, this.key) : !!row.appSecretEnc && sameWhatsAppKey(row.appSecretKeyId, this.key);
   }
 
@@ -231,6 +252,11 @@ export class WhatsAppService {
   /** The saved app secret, opened: only to check a webhook's signature. */
   appSecret(row: Pick<WhatsAppSettings, 'appSecretEnc'> | null): string | null {
     return openWhatsAppSecret(row?.appSecretEnc, this.key, 'app_secret');
+  }
+
+  /** The saved Twilio Auth Token, opened: only to call Twilio, or to check a Twilio call's signature. */
+  twilioToken(row: Pick<WhatsAppSettings, 'twilioAuthTokenEnc'> | null): string | null {
+    return openWhatsAppSecret(row?.twilioAuthTokenEnc, this.key, 'twilio_auth_token');
   }
 
   // ---------- from the notifications ----------

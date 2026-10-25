@@ -1,7 +1,10 @@
 import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   inQuietHours,
   quietHoursEnd,
+  twilioContentVariables,
+  twilioTemplateName,
   WHATSAPP_MAX_ATTEMPTS,
   WHATSAPP_REMINDER_TEMPLATES,
   WHATSAPP_RETRY_MINUTES,
@@ -10,10 +13,14 @@ import {
   whatsappNumber,
   whatsappTemplateMessage,
   whatsappTextMessage,
+  whatsappTwilioStatusUrl,
+  type WhatsAppLanguage,
   type WhatsAppTemplateKey,
 } from '@trendlix/shared';
+import { webOriginOf } from '../employee-access/employee-access.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { sendRequest, wamidOf, whatsappProblem } from './graph.js';
+import { sendRequest, wamidOf, whatsappProblem, type GraphRequest } from './graph.js';
+import { twilioMessageForm, twilioMessageSidOf, twilioProblem, twilioSendRequest } from './twilio.js';
 import { WhatsAppHttp } from './whatsapp-http.js';
 import { WhatsAppService } from './whatsapp.service.js';
 
@@ -27,6 +34,10 @@ import { WhatsAppService } from './whatsapp.service.js';
 //   with its template only while it is approved; a refusal worth trying again goes back in the queue after 1, 5, 30 and
 //   120 minutes, then fails; any other fails at once, with the reason in plain words.
 // Started by main.ts, so the tests' apps don't run it by themselves: they call runOnce with a moment of their own.
+// Through the provider chosen when it is sent (owner, 25 October 2026: "Add Twilio as a choice"): Meta's Cloud API, or
+// Twilio's Messages API (the template's Content SID and its variables, or the STOP answer's text; Twilio's message SID
+// kept as the message's id, its status callback with each). A message queued before a switch goes by the new provider,
+// with its own approved templates; one not approved there isn't sent (the bell, push and email had it already).
 
 const LOCK_NAME = 'people-system whatsapp sender';
 
@@ -46,12 +57,17 @@ export class WhatsAppSenderService implements OnModuleDestroy {
   private readonly logger = new Logger('WhatsAppSender');
   private timer: NodeJS.Timeout | null = null;
   private running = false;
+  /** Twilio's status callback, sent with each message (the website passes it on). */
+  private readonly statusCallback: string;
 
   constructor(
+    config: ConfigService,
     private readonly prisma: PrismaService,
     private readonly whatsapp: WhatsAppService,
     private readonly http: WhatsAppHttp,
-  ) {}
+  ) {
+    this.statusCallback = whatsappTwilioStatusUrl(webOriginOf(config));
+  }
 
   /** Starts a round every 15 seconds (main.ts, once the API listens). The timer never keeps the process alive. */
   start(): void {
@@ -142,34 +158,52 @@ export class WhatsAppSenderService implements OnModuleDestroy {
     const m = await this.prisma.whatsAppMessage.findUnique({ where: { id } });
     if (!m || m.status !== 'sending') return;
     const config = await this.whatsapp.config();
-    const token = config.ready ? this.whatsapp.token(config.row) : null;
-    if (!config.row?.phoneNumberId || !token) {
+    const twilio = config.provider === 'twilio';
+    const token = !config.ready ? null : twilio ? this.whatsapp.twilioToken(config.row) : this.whatsapp.token(config.row);
+    const phoneNumberId = config.row?.phoneNumberId ?? null;
+    const accountSid = config.row?.twilioAccountSid ?? null;
+    const sender = config.row?.twilioSender ?? null;
+    if (!token || (twilio ? !accountSid || !sender : !phoneNumberId)) {
       await this.prisma.whatsAppMessage.update({ where: { id }, data: { status: 'queued', claimedAt: null, updatedAt: now } });
       return;
     }
     const vars = (m.variables ?? {}) as { body?: unknown; button?: unknown; text?: unknown };
-    let message: Record<string, unknown>;
+    let request: GraphRequest;
     if (m.template === 'stop_confirmation') {
-      message = whatsappTextMessage(whatsappNumber(m.mobile), typeof vars.text === 'string' ? vars.text : '');
+      const text = typeof vars.text === 'string' ? vars.text : '';
+      request = twilio
+        ? twilioSendRequest(accountSid!, token, twilioMessageForm({ to: m.mobile, sender: sender!, text, statusCallback: this.statusCallback }))
+        : sendRequest(phoneNumberId!, token, whatsappTextMessage(whatsappNumber(m.mobile), text));
     } else {
-      // only an approved template is ever sent: one Meta paused or rejected since falls back to the other channels
-      if (!config.approved.has(`${m.template as WhatsAppTemplateKey}:${m.language}`)) {
-        await this.prisma.whatsAppMessage.update({ where: { id }, data: { status: 'cancelled', error: 'Its template isn’t approved by Meta any more: not sent.', updatedAt: now } });
+      // only an approved template is ever sent: one Meta (or Twilio) paused or rejected since, or one not approved yet
+      // by the provider switched to, falls back to the other channels
+      const key = `${m.template as WhatsAppTemplateKey}:${m.language}`;
+      if (!config.approved.has(key)) {
+        const error = twilio ? 'Its template isn’t approved on Twilio (not yet, or not any more): not sent.' : 'Its template isn’t approved by Meta any more: not sent.';
+        await this.prisma.whatsAppMessage.update({ where: { id }, data: { status: 'cancelled', error, updatedAt: now } });
         round.cancelled++;
         return;
       }
       const body = Array.isArray(vars.body) ? vars.body.map(String) : [];
-      message = whatsappTemplateMessage(whatsappNumber(m.mobile), { name: m.templateName, language: m.language }, body, typeof vars.button === 'string' ? vars.button : null);
+      const button = typeof vars.button === 'string' ? vars.button : null;
+      request = twilio
+        ? twilioSendRequest(accountSid!, token, twilioMessageForm({ to: m.mobile, sender: sender!, content: { sid: config.contentSids.get(key)!, variables: twilioContentVariables(body, button) }, statusCallback: this.statusCallback }))
+        : sendRequest(phoneNumberId!, token, whatsappTemplateMessage(whatsappNumber(m.mobile), { name: m.templateName, language: m.language }, body, button));
     }
-    const answer = await this.http.send(sendRequest(config.row.phoneNumberId, token, message));
-    const wamid = answer && answer.status >= 200 && answer.status < 300 ? wamidOf(answer.body) : null;
+    const answer = await this.http.send(request);
+    const wamid = twilio ? twilioMessageSidOf(answer) : answer && answer.status >= 200 && answer.status < 300 ? wamidOf(answer.body) : null;
     const attempts = m.attempts + 1;
     if (wamid) {
-      await this.prisma.whatsAppMessage.update({ where: { id }, data: { status: 'sent', wamid, sentAt: now, attempts, error: null, errorCode: null, claimedAt: null, updatedAt: now } });
+      // Twilio's template by its name there (people_<key>_<lang>), so the log says what went
+      const templateName = twilio && m.template !== 'stop_confirmation' ? twilioTemplateName(m.template as WhatsAppTemplateKey, m.language as WhatsAppLanguage) : m.templateName;
+      await this.prisma.whatsAppMessage.update({
+        where: { id },
+        data: { status: 'sent', wamid, provider: config.provider, templateName, sentAt: now, attempts, error: null, errorCode: null, claimedAt: null, updatedAt: now },
+      });
       round.sent++;
       return;
     }
-    const problem = whatsappProblem(answer);
+    const problem = twilio ? twilioProblem(answer) : whatsappProblem(answer);
     if (problem.retry && attempts < WHATSAPP_MAX_ATTEMPTS) {
       const next = Math.max(now.getTime() + WHATSAPP_RETRY_MINUTES[attempts - 1] * 60_000, quietHoursEnd(now.getTime() + WHATSAPP_RETRY_MINUTES[attempts - 1] * 60_000, config.quiet));
       await this.prisma.whatsAppMessage.update({
@@ -181,7 +215,16 @@ export class WhatsAppSenderService implements OnModuleDestroy {
     }
     await this.prisma.whatsAppMessage.update({
       where: { id },
-      data: { status: 'failed', attempts, failedAt: now, error: problem.retry ? `${problem.message.replace(/: it will be tried again\.$/, '.')} Tried ${attempts} times.` : problem.message, errorCode: problem.code, claimedAt: null, updatedAt: now },
+      data: {
+        status: 'failed',
+        provider: config.provider,
+        attempts,
+        failedAt: now,
+        error: problem.retry ? `${problem.message.replace(/: it will be tried again\.$/, '.')} Tried ${attempts} times.` : problem.message,
+        errorCode: problem.code,
+        claimedAt: null,
+        updatedAt: now,
+      },
     });
     round.failed++;
   }

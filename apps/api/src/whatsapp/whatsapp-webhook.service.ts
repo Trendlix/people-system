@@ -22,8 +22,8 @@ export const WEBHOOK_LIMITS = { perMinute: 1200, perAddress: 600 } as const;
 const NOT_VERIFIED = 'The verify token doesn’t match the one in WhatsApp Settings.';
 const BAD_SIGNATURE = 'The signature doesn’t match.';
 
-/** A minute's count of calls, in all and by address. */
-class Window {
+/** A minute's count of calls, in all and by address (Twilio's calls have their own: whatsapp-twilio-webhook.service.ts). */
+export class Window {
   private minute = 0;
   private total = 0;
   private readonly byAddress = new Map<string, number>();
@@ -108,10 +108,19 @@ export class WhatsAppWebhookService {
     return { statuses: kept, stops };
   }
 
-  /** A message's status: forward only (sent → delivered → read), or failed with why; a message not ours is left aside. */
+  /** A message's status from Meta: forward only (sent → delivered → read), or failed with why. */
   private async status(s: WebhookStatus, now: Date): Promise<boolean> {
+    return this.keep(s.wamid, s.status, s.at, s.status === 'failed' ? whatsappProblem(s.error ? { error: s.error } : null) : null, now);
+  }
+
+  /**
+   * A message's status, by its id at the provider (Meta's wamid, or Twilio's message SID: its status callback, 25 October
+   * 2026): forward only (sent → delivered → read), or failed with why in plain words; a message not ours is left aside.
+   */
+  async keep(wamid: string, status: WebhookStatus['status'], at: Date, failure: { message: string; code: number | null } | null, now: Date): Promise<boolean> {
+    const s = { wamid, status, at };
     if (s.status === 'failed') {
-      const p = whatsappProblem(s.error ? { error: s.error } : null);
+      const p = failure ?? { message: 'It failed, without a reason given.', code: null };
       const { count } = await this.prisma.whatsAppMessage.updateMany({
         where: { wamid: s.wamid, status: { in: ['sending', 'sent'] } },
         data: { status: 'failed', failedAt: s.at, error: p.message, errorCode: p.code, updatedAt: now },

@@ -53,6 +53,13 @@ describe('the WhatsApp webhook', () => {
     expect(isPublicPath('/whatsapp-messages')).toBe(false);
     expect(isPublicPath('/organization/whatsapp')).toBe(false);
   });
+
+  it('through Twilio too (25 October 2026: "Add Twilio as a choice"): its status callback and incoming messages, nothing else', () => {
+    expect(isPublicPath('/whatsapp/twilio/status')).toBe(true);
+    expect(isPublicPath('/whatsapp/twilio/incoming')).toBe(true);
+    expect(isPublicPath('/whatsapp/twilio')).toBe(false);
+    expect(isPublicPath('/whatsapp/twilio/other')).toBe(false);
+  });
 });
 
 // The careers page (owner, 22 October 2026: "where will we include the ATS?").
