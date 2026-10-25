@@ -1,5 +1,5 @@
 import {
-  ALREADY_APPLIED,
+  APPLICATION_CLOSED,
   applicationsBadge,
   candidateCode,
   candidateDecision,
@@ -122,8 +122,9 @@ describe('candidate profiles: joining one (the owner’s "Email or mobile")', ()
     expect(candidateDecision({ byEmail: 'a', byMobile: 'b' })).toEqual({ join: 'a', possibleDuplicateOf: 'b' });
   });
 
-  it('the careers page’s refusal of the same job twice', () => {
-    expect(ALREADY_APPLIED).toBe("You've already applied for this job. We'll be in touch.");
+  // the same job again updates an open application (25 October 2026: "Update their application"; reapply.spec.ts)
+  it('the careers page’s refusal of the same job again once its application is closed', () => {
+    expect(APPLICATION_CLOSED).toBe('Your application for this job is closed. You can apply for other jobs.');
   });
 });
 

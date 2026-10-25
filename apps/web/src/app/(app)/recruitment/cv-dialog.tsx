@@ -10,6 +10,7 @@ import { CommentForm, CommentList } from './screening-ui';
 import { CvFitSection, OpenPositions } from './cv-fit-ui';
 import { recordOfCv } from './cv-fit';
 import { PortfolioChips } from './portfolio-chips';
+import { EarlierCvList } from './ui';
 import { commentsOfCv, cvBelongsTo, cvFileHref, cvIndexOf, cvPositionText, cvPreviewHref, CV_PARAM, defaultTargetKey, kb, readCvParam, stepCv, withCvParam } from './screening';
 
 // A CV in a pop-up window over the page (owner, 24 October 2026, on a candidate's profile: "when opening a CV, open it in
@@ -20,7 +21,8 @@ import { commentsOfCv, cvBelongsTo, cvFileHref, cvIndexOf, cvPositionText, cvPre
 // and the ← and → keys) when the candidate sent several. Beside it on a computer, the screening comments of what the CV
 // belongs to with the form; on a phone, a Comments button switches to them. The address carries ?cv=<the application's
 // or general CV's id>: a link opens it, opening it adds a step to the browser's history (Back closes it), the previous
-// and next replace it, closing it takes it away.
+// and next replace it, closing it takes it away. An application's Earlier CVs beside it (applying again, owner, 25 October
+// 2026: "Update their application"): the date, the name and Open.
 
 /** Whether the window put ?cv= in the history itself (so closing it goes back), or came with the address (closing takes it away). */
 let pushedHere = false;
@@ -230,6 +232,13 @@ function CvWindow({ cvs, index, data, pageKey, commentsNotLoaded }: { cvs: reado
             <div className="mb-4 space-y-4 border-b border-line pb-4">
               {cv.fit && <CvFitSection fit={cv.fit} id={`${panelId}-fit`} />}
               {cv.openPositions && <OpenPositions positions={cv.openPositions} record={recordOfCv(cv)} id={`${panelId}-positions`} />}
+            </div>
+          )}
+          {/* the CVs this application held before this one (25 October 2026: "Update their application") */}
+          {cv.kind === 'application' && !!cv.earlierCvs?.length && (
+            <div className="mb-4 space-y-2 border-b border-line pb-4">
+              <h3 className="font-semibold">Earlier CVs</h3>
+              <EarlierCvList applicationId={cv.id} cvs={cv.earlierCvs} />
             </div>
           )}
           <h3 className="mb-3 font-semibold">Screening Comments</h3>

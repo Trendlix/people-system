@@ -214,6 +214,26 @@ export class ApplicationsController {
     return new StreamableFile(file.data, { type: file.mimeType, length: file.data.length, disposition: save ? attachment(file.fileName) : contentDisposition(file.fileName) });
   }
 
+  /**
+   * An earlier CV as it was sent (applying again, 25 October 2026: "Update their application"): shown in the browser, or
+   * saved with ?download=1 (a Word file always saved). For those who may open the applicant, as the CV; never a developer.
+   */
+  @NotForDevelopers()
+  @Get(':id/earlier-cvs/:cvId')
+  @Header('Cache-Control', 'private, no-store')
+  @Header('X-Content-Type-Options', 'nosniff')
+  @Header('Content-Security-Policy', "default-src 'none'")
+  async earlierCv(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('cvId', ParseUUIDPipe) cvId: string,
+    @Query('download') download: string | undefined,
+    @CurrentUser() user: SessionUser,
+  ): Promise<StreamableFile> {
+    const file = await this.applications.earlierCv(id, cvId, user);
+    const save = wantsDownload(download) || file.mimeType !== 'application/pdf';
+    return new StreamableFile(file.data, { type: file.mimeType, length: file.data.length, disposition: save ? attachment(file.fileName) : contentDisposition(file.fileName) });
+  }
+
   /** { to: shortlisted | interview | rejected, reason } (a reason to reject). */
   @Roles(...MANAGES)
   @Post(':id/stage')

@@ -95,6 +95,8 @@ export const WHATSAPP_TEMPLATE_KEYS = [
   'check_out_reminder',
   'interview_panel',
   'application_received',
+  // the same person applying again for the job while it is open (owner, 25 October 2026: "Update their application")
+  'application_updated',
   'cv_received',
   'interview_invitation',
   'interview_updated',
@@ -303,6 +305,18 @@ export const WHATSAPP_TEMPLATES: Readonly<Record<WhatsAppTemplateKey, WhatsAppTe
     body: {
       en: 'Hello {{1}}, thank you for applying for {{2}} at {{3}}. We received your application; its reference is {{4}}.\n\nWe will contact you about the next step if your application fits what we are looking for.',
       ar: 'مرحبًا {{1}}، شكرًا لتقديمك على وظيفة {{2}} في {{3}}. استلمنا طلبك، ورقمه المرجعي {{4}}.\n\nسنتواصل معك بشأن الخطوة التالية إذا كان طلبك مناسبًا لما نبحث عنه.',
+    },
+    examples: { en: ['Sara', 'Video Editor', 'TrendLIX', 'APP-2026-0042'], ar: ['سارة', 'Video Editor', 'TrendLIX', 'APP-2026-0042'] },
+  }),
+  application_updated: def({
+    key: 'application_updated',
+    audience: 'candidate',
+    group: null,
+    label: 'Application updated',
+    variables: ['Their first name', 'The job', 'The company', 'The reference'],
+    body: {
+      en: 'Hello {{1}}, we’ve updated your application for {{2}} at {{3}} with what you just sent; its reference is still {{4}}.\n\nWe will contact you about the next step if your application fits what we are looking for.',
+      ar: 'مرحبًا {{1}}، حدّثنا طلبك لوظيفة {{2}} في {{3}} بما أرسلته الآن، ورقمه المرجعي ما زال {{4}}.\n\nسنتواصل معك بشأن الخطوة التالية إذا كان طلبك مناسبًا لما نبحث عنه.',
     },
     examples: { en: ['Sara', 'Video Editor', 'TrendLIX', 'APP-2026-0042'], ar: ['سارة', 'Video Editor', 'TrendLIX', 'APP-2026-0042'] },
   }),
@@ -632,7 +646,7 @@ export type WhatsAppFacts =
   | { template: 'check_in_reminder'; shiftStart: string }
   | { template: 'check_out_reminder'; checkedInAt: string }
   | { template: 'interview_panel'; change: WhatsAppPanelChange; candidate: string; job: string; at: string }
-  | { template: 'application_received'; name: string; job: string; company: string; reference: string }
+  | { template: 'application_received' | 'application_updated'; name: string; job: string; company: string; reference: string }
   | { template: 'cv_received'; name: string; company: string; reference: string }
   | { template: 'interview_invitation' | 'interview_updated'; name: string; job: string; company: string; at: string; place: WhatsAppInterviewPlace }
   | { template: 'interview_cancelled'; name: string; job: string; company: string; at: string }
@@ -688,6 +702,7 @@ export function whatsappContent(facts: WhatsAppFacts, lang: WhatsAppLanguage, ct
     case 'interview_panel':
       return out([hello, PANEL_CHANGES[facts.change][lang], facts.candidate, facts.job, dayAndTime(facts.at, lang)]);
     case 'application_received':
+    case 'application_updated':
       return out([firstNameOf(facts.name) || hello, facts.job, facts.company, facts.reference]);
     case 'cv_received':
       return out([firstNameOf(facts.name) || hello, facts.company, facts.reference]);

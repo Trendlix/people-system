@@ -30,6 +30,7 @@ import type { ApplicationCandidate, CandidateBadge } from './candidates.js';
 import type { ScreeningVerdict } from './screening.js';
 import type { EmailConfirmedBy } from './linkedin-signin.js';
 import type { PortfolioAsk, PortfolioMode } from './portfolio.js';
+import type { EarlierCvView } from './reapply.js';
 
 // ---------- the limits ----------
 
@@ -733,7 +734,7 @@ export const restorable = (a: { stage: ApplicationStage; filteredOut: boolean })
 export const offerable = (a: { stage: ApplicationStage; filteredOut: boolean }): boolean => !a.filteredOut && (a.stage === 'shortlisted' || a.stage === 'interview' || a.stage === 'offer');
 
 /** What happened to an application, as its history lists it. */
-export const APPLICATION_EVENTS = ['applied', 'filtered_out', 'shortlisted', 'interview', 'offer', 'hired', 'rejected', 'restored', 'offer_declined', 'offer_withdrawn'] as const;
+export const APPLICATION_EVENTS = ['applied', 'filtered_out', 'shortlisted', 'interview', 'offer', 'hired', 'rejected', 'restored', 'offer_declined', 'offer_withdrawn', 'updated'] as const;
 export type ApplicationEvent = (typeof APPLICATION_EVENTS)[number];
 
 export const APPLICATION_EVENT_LABELS: Record<ApplicationEvent, string> = {
@@ -747,6 +748,8 @@ export const APPLICATION_EVENT_LABELS: Record<ApplicationEvent, string> = {
   restored: 'Restored',
   offer_declined: 'Job offer declined',
   offer_withdrawn: 'Job offer withdrawn',
+  // applying again for the same job while it is open (owner, 25 October 2026: "Update their application"; reapply.ts)
+  updated: 'Updated by the candidate',
 };
 
 // ---------- the API's answers ----------
@@ -891,6 +894,13 @@ export interface ApplicationListItem {
    * of its own comments with one, the general ones not counting; null: none yet (or left out by an API from before it).
    */
   verdict?: ScreeningVerdict | null;
+  /**
+   * When they last sent a new CV by applying again (owner, 25 October 2026: "Update their application"; reapply.ts), and
+   * whether that was in the last 7 days (the "CV updated" mark, worked out by the API). Null, false (or left out by an
+   * API from before it): the CV they applied with.
+   */
+  cvUpdatedAt?: string | null;
+  cvUpdated?: boolean;
 }
 
 /** An answer as the applicant's page shows it, with how it did. */
@@ -955,6 +965,8 @@ export interface ApplicationView extends ApplicationListItem {
   rejectReason: string | null;
   consentAt: string;
   cv: { fileName: string; mimeType: string; sizeBytes: number } | null;
+  /** The CVs it held before the current one, the newest first (applying again, 25 October 2026); left out by an API from before it. */
+  earlierCvs?: EarlierCvView[];
   /** The CV read and what the rules found in it (22 October 2026); null without a CV. */
   cvReading: CvReadingView | null;
   history: ApplicationStepView[];
@@ -1045,4 +1057,10 @@ export interface PublicCareers {
 /** POST /public/careers/:slug/apply: the application's reference. */
 export interface ApplyResult {
   reference: string;
+  /**
+   * The same person applied again for the job while their application was open (owner, 25 October 2026: "Update their
+   * application"; reapply.ts): that application updated with what they sent, its reference the same. Left out for a new
+   * application.
+   */
+  updated?: true;
 }

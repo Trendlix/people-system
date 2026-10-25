@@ -4,6 +4,7 @@ import {
   cvFactsOf,
   cvFitFrom,
   cvMonthsAtLeast,
+  cvUpdatedMark,
   experienceOf,
   isGeneralCvSource,
   tidyQuestions,
@@ -13,6 +14,7 @@ import {
   type ApplicationStage,
   type CvListFacts,
   type CvReadingStatus,
+  type EarlierCvView,
   type EmploymentType,
   type PublicVacancySummary,
   type RecruitmentUserRef,
@@ -122,6 +124,8 @@ export const APPLICATION_LIST_SELECT = {
   // the CV's reading, for the Experience and Latest role columns (24 October 2026)
   cv: { select: { sizeBytes: true } },
   cvReading: { select: { status: true, facts: true } },
+  // a new CV sent by applying again (25 October 2026): the "CV updated" mark for 7 days
+  cvUpdatedAt: true,
 } satisfies Prisma.JobApplicationSelect;
 
 export type ApplicationListRow = Prisma.JobApplicationGetPayload<{ select: typeof APPLICATION_LIST_SELECT }>;
@@ -145,6 +149,23 @@ export const applicationListView = (a: ApplicationListRow): ApplicationListItem 
   generalSource: a.generalCv && isGeneralCvSource(a.generalCv.source) ? a.generalCv.source : null,
   appliedAt: a.createdAt.toISOString(),
   fromCv: cvListFactsOf(!!a.cv, a.cvReading),
+  cvUpdatedAt: a.cvUpdatedAt?.toISOString() ?? null,
+  cvUpdated: cvUpdatedMark(a.cvUpdatedAt),
+});
+
+// ---------- an application's earlier CVs (applying again, 25 October 2026: "Update their application") ----------
+
+/** An earlier CV as its application's page and the CV window list it (its file apart). */
+export const EARLIER_CV_SELECT = { id: true, fileName: true, mimeType: true, sizeBytes: true, sentAt: true, replacedAt: true } satisfies Prisma.JobApplicationEarlierCvSelect;
+
+/** An earlier CV as the pages show it: its name as `cvFileName` (hidden from a developer, as the CV's is). */
+export const earlierCvView = (c: Prisma.JobApplicationEarlierCvGetPayload<{ select: typeof EARLIER_CV_SELECT }>): EarlierCvView => ({
+  id: c.id,
+  cvFileName: c.fileName,
+  mimeType: c.mimeType,
+  sizeBytes: c.sizeBytes,
+  sentAt: c.sentAt.toISOString(),
+  replacedAt: c.replacedAt.toISOString(),
 });
 
 // ---------- the CV's years and facts on the lists (24 October 2026) ----------

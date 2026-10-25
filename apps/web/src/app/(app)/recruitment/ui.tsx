@@ -1,6 +1,7 @@
 import {
   APPLICATION_STAGE_LABELS,
   applicationSourceText,
+  CV_UPDATED_LABEL,
   VACANCY_STATUS_LABELS,
   VERDICT_FILTER_LABELS,
   VERDICT_FILTERS,
@@ -8,6 +9,7 @@ import {
   type ApplicationStage,
   type CandidateBadge,
   type CvListFacts,
+  type EarlierCvView,
   type ScreeningVerdict,
   type VacancyStatus,
   type VerdictFilter,
@@ -19,8 +21,8 @@ import { candidateBadges } from './candidates';
 import { DeleteApplicantButton } from './delete-ui';
 import { experienceCell, latestRoleOf } from './cv-reading';
 import { BetterFitLink, FitPercent, MatchValue } from './cv-fit-ui';
-import { applicantHref, minYearsOptions, skillGroups, STAGE_STYLE, VACANCY_STATUS_STYLE } from './recruitment';
-import { verdictBadge } from './screening';
+import { applicantHref, earlierCvHref, minYearsOptions, skillGroups, STAGE_STYLE, VACANCY_STATUS_STYLE } from './recruitment';
+import { kb, verdictBadge } from './screening';
 import { joinShown } from '@/lib/hidden';
 
 // Recruitment's pieces (owner, 22 October 2026: "where will we include the ATS?"): the badges of a vacancy's status and an
@@ -39,6 +41,41 @@ export function StageBadge({ stage, filteredOut }: { stage: ApplicationStage; fi
       <span className={`badge ${STAGE_STYLE[stage]}`}>{APPLICATION_STAGE_LABELS[stage]}</span>
       {filteredOut && <span className="badge bg-danger-soft text-danger">Filtered out</span>}
     </span>
+  );
+}
+
+/**
+ * "CV updated" (owner, 25 October 2026: "Update their application"): they applied again with a new CV in the last 7 days
+ * (the API says when); nothing otherwise.
+ */
+export function CvUpdatedBadge({ shown, at, className = '' }: { shown: boolean | undefined; at?: string | null; className?: string }) {
+  if (!shown) return null;
+  return (
+    <span className={`badge bg-accent-soft text-accent ${className}`} title={at ? `They applied again with a new CV on ${formatDate(at)}` : 'They applied again with a new CV'}>
+      {CV_UPDATED_LABEL}
+    </span>
+  );
+}
+
+/**
+ * An application's earlier CVs (applying again, 25 October 2026), the newest first: when each was sent, its name, Open (a
+ * PDF in a new tab, a Word file saved). Nothing when there are none.
+ */
+export function EarlierCvList({ applicationId, cvs, className = '' }: { applicationId: string; cvs: readonly EarlierCvView[] | undefined; className?: string }) {
+  if (!cvs?.length) return null;
+  return (
+    <ul className={`space-y-1 text-sm ${className}`}>
+      {cvs.map((c) => (
+        <li key={c.id} className="flex flex-wrap items-baseline gap-x-2">
+          <span className="whitespace-nowrap text-muted">{formatDate(c.sentAt)}</span>
+          <span className="min-w-0 break-all">{c.cvFileName}</span>
+          <span className="text-xs text-muted">{kb(c.sizeBytes)}</span>
+          <a href={earlierCvHref(applicationId, c.id)} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-9 items-center">
+            Open<span className="sr-only"> the CV sent {formatDate(c.sentAt)}</span>
+          </a>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -202,6 +239,12 @@ export function ApplicantsTable({ rows, withVacancy, bare = false, deletes = fal
                   {joinShown([a.number, a.email])}
                 </span>
                 <CandidateBadges candidate={a.candidate} />
+                {/* they applied again with a new CV in the last 7 days (25 October 2026: "Update their application") */}
+                {a.cvUpdated && (
+                  <span className="mt-1 block">
+                    <CvUpdatedBadge shown={a.cvUpdated} at={a.cvUpdatedAt} />
+                  </span>
+                )}
                 {/* another open vacancy the CV fits better (owner, 25 October 2026: "and if it recomended to another position based on the CV") */}
                 {a.betterFit && (
                   <span className="mt-1 block">

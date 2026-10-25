@@ -172,11 +172,9 @@ export function mobileTail(value: unknown): string | null {
   return digits.length >= 9 ? digits.slice(-9) : null;
 }
 
-/**
- * The careers page's refusal of the same person applying for the same job again, by their email or their mobile (the
- * public side's only change: no candidate signs in). HR's own paths name the application there instead.
- */
-export const ALREADY_APPLIED = "You've already applied for this job. We'll be in touch.";
+// The same person applying for the same job again, by their email or their mobile (the public side: no candidate signs
+// in), updates their application while it is open, and is refused once it is closed (owner, 25 October 2026: "Update
+// their application"; reapply.ts APPLICATION_CLOSED). HR's own paths name the application there instead.
 
 // ---------- joining a profile ----------
 

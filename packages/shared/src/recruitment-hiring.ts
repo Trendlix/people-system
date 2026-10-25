@@ -650,6 +650,8 @@ export interface BoardCard {
   candidate?: CandidateBadge | null;
   /** The application's latest screening verdict (24 October 2026; screening.ts); null: none yet. */
   verdict?: ScreeningVerdict | null;
+  /** A new CV sent by applying again in the last 7 days: the "CV updated" mark (25 October 2026; reapply.ts). */
+  cvUpdated?: boolean;
 }
 
 /** GET /recruitment/vacancies/:id/board. */

@@ -1,6 +1,10 @@
+import { createHash } from 'node:crypto';
 import { BadRequestException, ConflictException, HttpException, HttpStatus, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import {
-  ALREADY_APPLIED,
+  APPLICATION_CLOSED,
+  APPLICATION_SOURCE_LABELS,
+  APPLICATION_STAGE_LABELS,
+  applicationSourceOf,
   applyProblems,
   isVacancySlug,
   keptMobile,
@@ -16,23 +20,29 @@ import {
   tidyNotice,
   checkPortfolio,
   linkedinFormKey,
+  reapplyChanges,
+  reapplyFilter,
+  reapplyNote,
+  reapplyOutcome,
+  type ApplicationStage,
   type ApplyInput,
   type ApplyResult,
   type PublicCareers,
   type PublicVacancyView,
+  type ReapplySent,
 } from '@trendlix/shared';
 import { verifySignedIp } from '../attendance/signed-ip.js';
 import { AuditService } from '../audit/audit.service.js';
 import { dayInCairo, fromDateOnly, todayInCairo, toDateOnly } from '../common/date-only.js';
-import type { Prisma } from '../generated/prisma/client.js';
+import { Prisma } from '../generated/prisma/client.js';
 import { MailService } from '../mail/mail.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { nextApplicationNumber } from './application-numbers.js';
 import { attachCandidate, findCandidates, foundIds, refreshCandidate } from './candidate-links.js';
 import { CvReadingsService } from './cv-readings.service.js';
-import { cvFileName, cvProblem, cvTypeOf } from './cv-file.js';
-import { APPLICATION_ENTITY, publicSummaryOf, questionsOf } from './recruitment-views.js';
+import { cvFileName, cvProblem, cvTypeOf, type CvType } from './cv-file.js';
+import { APPLICATION_ENTITY, answersOf, money, publicSummaryOf, questionsOf } from './recruitment-views.js';
 import type { ApplyDto } from './recruitment.dto.js';
 import { WhatsAppService } from '../whatsapp/whatsapp.service.js';
 import { VacancySuggestionsService } from './vacancy-suggestions.service.js';
@@ -48,6 +58,13 @@ import { vacancyAsk } from './portfolio-settings.service.js';
 // once a day a vacancy; the applicant gets an email with the reference when email is set up. An invitation's link
 // (?src=invite: Suggested From Earlier CVs, 24 October 2026) is kept as the source, and applying closes the person's
 // suggestion for the job, invited or not.
+// Applying again for the same job (owner, 25 October 2026: "if an employee updated the cv and reapplied, how will he be
+// treated in the system?"; asked, "Update their application"; packages/shared reapply.ts): the same person (the email,
+// or their candidate by email or mobile) whose application is still open updates it: the new CV current (the earlier
+// kept, read again, its fit worked out again), what they sent and the answers scored again, their candidate refreshed,
+// a step "Updated by the candidate", HR told ("CV updated", once a day an applicant), the applicant told "We've updated
+// your application"; the answer { reference, updated: true }. Closed (rejected, hired): refused in words. The hourly
+// limits count each CV an update replaced too, from its address.
 
 const NOT_OPEN = 'This job is no longer open.';
 const NOT_FOUND = 'Job not found.';
@@ -98,6 +115,49 @@ export function applicantIp(slug: string, named: string | null, origin: ApplyOri
   return signed.problem === 'no_server_key' ? (named ?? origin.ip) : origin.ip;
 }
 
+/** What an application is read with when its person applies again for the job. */
+const REAPPLY_SELECT = {
+  id: true,
+  number: true,
+  email: true,
+  stage: true,
+  employeeId: true,
+  candidateId: true,
+  source: true,
+  fullName: true,
+  mobile: true,
+  linkedin: true,
+  portfolioLinks: true,
+  yearsExperience: true,
+  noticePeriod: true,
+  expectedSalary: true,
+  answers: true,
+  matchPercent: true,
+  filteredOut: true,
+  knockedOut: true,
+  emailConfirmedBy: true,
+  whatsappOptInAt: true,
+  whatsappStoppedAt: true,
+  whatsappLanguage: true,
+  offers: { select: { status: true } },
+  cv: { select: { sha256: true } },
+} satisfies Prisma.JobApplicationSelect;
+
+type ReapplyRow = Prisma.JobApplicationGetPayload<{ select: typeof REAPPLY_SELECT }>;
+
+/** What the transaction made or updated, for what follows it (the audit, the reading, HR, the applicant). */
+type Applied =
+  | { kind: 'created'; id: string; number: string; candidate: { code: string; possibleDuplicateOf: { code: string } | null } }
+  | {
+      kind: 'updated';
+      id: string;
+      number: string;
+      newCv: boolean;
+      /** Anything changed (a new CV, or a field): HR told, a step kept. */
+      changed: boolean;
+      diff: Record<string, unknown>;
+    };
+
 /** A form field as text: trimmed, empty as null. */
 const text = (v: string | undefined): string | null => (typeof v === 'string' && v.trim() ? v.trim().replace(/\s+/g, ' ') : null);
 /** A form field as a number: empty as null, anything else that isn't a number as NaN (refused by the rules). */
@@ -105,6 +165,9 @@ const numberOf = (v: string | undefined): number | null => {
   const t = text(v);
   return t === null ? null : Number(t.replace(/,/g, ''));
 };
+
+/** A vacancy as HR is told of its applicants. */
+type TellsHr = { id: string; number: string; title: string; grade: { confidential: boolean } | null; jobTitle: { minGrade: { confidential: boolean } | null } };
 
 @Injectable()
 export class PublicCareersService {
@@ -147,8 +210,10 @@ export class PublicCareersService {
 
   /**
    * An application (a multipart form with the CV as `cv`). Refused: the honeypot filled (400), the job not open (404),
-   * too many from the address this hour (429), the form's problems in words (400), the CV's (400), the same person (by email or mobile) having
-   * applied already (409). Scored with the vacancy's questions; one failing a must-have is kept, filtered out.
+   * too many from the address this hour (429), the form's problems in words (400), the CV's (400), the same person (by
+   * email or mobile) whose application for it is closed (409, APPLICATION_CLOSED). The same person whose application is
+   * still open updates it ({ reference, updated: true }; 25 October 2026). Scored with the vacancy's questions; one
+   * failing a must-have is kept, filtered out.
    */
   async apply(slug: string, dto: ApplyDto, file: Express.Multer.File | undefined, origin: ApplyOrigin, portfolioFile?: Express.Multer.File): Promise<ApplyResult> {
     if (text(dto.website)) throw new BadRequestException([NOT_SENT]);
@@ -157,14 +222,22 @@ export class PublicCareersService {
     const userAgent = (text(dto.userAgent) ?? origin.userAgent)?.slice(0, 500) ?? null;
     if (ip) {
       const since = new Date(Date.now() - 60 * 60 * 1000);
-      const recent = await this.prisma.jobApplication.count({ where: { ip, createdAt: { gte: since } } });
-      if (recent >= RECRUITMENT_LIMITS.applyPerHour) {
+      // an update's new CV from the address counts as an application does (25 October 2026: applying again)
+      const [recent, replaced] = await Promise.all([
+        this.prisma.jobApplication.count({ where: { ip, createdAt: { gte: since } } }),
+        this.prisma.jobApplicationEarlierCv.count({ where: { ip, replacedAt: { gte: since } } }),
+      ]);
+      if (recent + replaced >= RECRUITMENT_LIMITS.applyPerHour) {
         throw new HttpException('You have sent several applications in the last hour. Please try again later.', HttpStatus.TOO_MANY_REQUESTS);
       }
     }
     // a cap on a flood to one job, whatever addresses it comes from
-    const lastHour = await this.prisma.jobApplication.count({ where: { vacancyId: v.id, createdAt: { gte: new Date(Date.now() - 60 * 60 * 1000) } } });
-    if (lastHour >= RECRUITMENT_LIMITS.applyPerVacancyHour) {
+    const hourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const [lastHour, replacedLastHour] = await Promise.all([
+      this.prisma.jobApplication.count({ where: { vacancyId: v.id, createdAt: { gte: hourAgo } } }),
+      this.prisma.jobApplicationEarlierCv.count({ where: { application: { vacancyId: v.id }, replacedAt: { gte: hourAgo } } }),
+    ]);
+    if (lastHour + replacedLastHour >= RECRUITMENT_LIMITS.applyPerVacancyHour) {
       throw new HttpException('This job has had many applications in the last hour. Please try again later.', HttpStatus.TOO_MANY_REQUESTS);
     }
     let answersSent: Record<string, unknown> = {};
@@ -205,10 +278,6 @@ export class PublicCareersService {
     const email = normalEmail(input.email);
     // "Confirmed by LinkedIn": the email LinkedIn verified for this job's form, sent as it gave it (25 October 2026)
     const emailConfirmedBy = this.linkedin.confirmedBy(dto.linkedinTicket, linkedinFormKey({ kind: 'job', slug: v.slug }), email);
-    const before = await this.prisma.jobApplication.findUnique({ where: { vacancyId_email: { vacancyId: v.id, email } }, select: { createdAt: true } });
-    // the same person again, by their email (or, below, their mobile: candidate profiles, 22 October 2026)
-    if (before) throw new ConflictException(ALREADY_APPLIED);
-
     const answers = tidyAnswers(questions, answersSent);
     const match = scoreAnswers(questions, answers);
     const filteredOut = match.knockedOut.length > 0;
@@ -218,13 +287,41 @@ export class PublicCareersService {
     // "Send me updates about my application on WhatsApp" (24 October 2026), off unless ticked; the page's language
     const whatsapp = dto.whatsapp === 'true' || dto.whatsapp === 'on';
     const whatsappLanguage = dto.whatsappLanguage === 'ar' ? 'ar' : 'en';
-    const made = await this.prisma.$transaction(async (tx) => {
+    const made: Applied = await this.prisma.$transaction(async (tx) => {
       // their candidate profile (owner, 22 October 2026: "how to make like a profile for each candidate …"; "Email or
-      // mobile"): the candidates' lock first; the same person (by email or mobile) applying for this job again refused
+      // mobile"): the candidates' lock first; the same person (by email or mobile) applying for this job again updates
+      // their application while it is open, and is refused once it is closed (25 October 2026: "Update their application")
       const found = await findCandidates(tx, { email, mobile: input.mobile });
       const ids = foundIds(found);
-      const again = await tx.jobApplication.findFirst({ where: { vacancyId: v.id, OR: [{ email }, ...(ids.length ? [{ candidateId: { in: ids } }] : [])] }, select: { id: true } });
-      if (again) throw new ConflictException(ALREADY_APPLIED);
+      const earlier = await tx.jobApplication.findMany({
+        where: { vacancyId: v.id, OR: [{ email }, ...(ids.length ? [{ candidateId: { in: ids } }] : [])] },
+        select: REAPPLY_SELECT,
+        orderBy: { createdAt: 'desc' },
+      });
+      if (earlier.length) {
+        // the one with this email first, else their candidate's newest
+        const a = earlier.find((x) => x.email === email) ?? earlier[0];
+        if (reapplyOutcome(a) === 'closed') throw new ConflictException(APPLICATION_CLOSED);
+        return this.reapply(tx, a, {
+          input,
+          email,
+          emailConfirmedBy,
+          portfolio,
+          portfolioFile,
+          answers,
+          match,
+          file: file!,
+          type,
+          source,
+          whatsapp,
+          whatsappLanguage,
+          ip,
+          userAgent,
+          now,
+          found,
+          stageLabel: APPLICATION_STAGE_LABELS[a.stage as ApplicationStage] ?? a.stage,
+        });
+      }
       const candidate = await attachCandidate(tx, { fullName: input.fullName, email, mobile: input.mobile, linkedin: input.linkedin, portfolio: input.portfolio, at: now }, found);
       // the applications' and general CVs' one series (application-numbers.ts)
       const number = await nextApplicationNumber(tx);
@@ -269,8 +366,9 @@ export class PublicCareersService {
       await refreshCandidate(tx, candidate.id);
       // the tick kept on their candidate too, with its time (a new tick after a STOP is a new consent)
       if (whatsapp) await tx.candidate.update({ where: { id: candidate.id }, data: { whatsappOptInAt: now, whatsappStoppedAt: null } });
-      return { ...row, candidate };
+      return { kind: 'created', ...row, candidate };
     });
+    if (made.kind === 'updated') return this.afterUpdate(v, made, { email, name: input.fullName, whatsapp });
     await this.audit.record({
       userId: null,
       action: 'apply',
@@ -297,6 +395,178 @@ export class PublicCareersService {
     return { reference: made.number };
   }
 
+  // ---------- applying again (25 October 2026: "Update their application") ----------
+
+  /**
+   * The open application of the person applying again, updated in the caller's transaction (the candidates' lock held):
+   * a new CV current (a file other than the current one: the current kept among the earlier CVs, its reading, preview
+   * and open positions' fits gone, to be worked out again), what they sent, the answers scored again (filtered out as
+   * reapplyFilter says), their candidate refreshed, the step "Updated by the candidate". Nothing changed: nothing kept.
+   */
+  private async reapply(
+    tx: Prisma.TransactionClient,
+    a: ReapplyRow,
+    x: {
+      input: ApplyInput;
+      email: string;
+      emailConfirmedBy: string | null;
+      portfolio: { links: string[]; file: boolean };
+      portfolioFile: Express.Multer.File | undefined;
+      answers: ReturnType<typeof tidyAnswers>;
+      match: ReturnType<typeof scoreAnswers>;
+      file: Express.Multer.File;
+      type: CvType;
+      source: string;
+      whatsapp: boolean;
+      whatsappLanguage: 'en' | 'ar';
+      ip: string | null;
+      userAgent: string | null;
+      now: Date;
+      found: Awaited<ReturnType<typeof findCandidates>>;
+      stageLabel: string;
+    },
+  ): Promise<Applied> {
+    const { input, now } = x;
+    const fullName = input.fullName.trim().replace(/\s+/g, ' ');
+    // the same file sent again is no new CV: nothing kept twice, nothing read again
+    const sha256 = createHash('sha256').update(x.file.buffer).digest('hex');
+    const newCv = !a.cv || a.cv.sha256 !== sha256;
+    const before: ReapplySent = {
+      fullName: a.fullName,
+      mobile: a.mobile,
+      linkedin: a.linkedin,
+      portfolioLinks: a.portfolioLinks,
+      portfolioFile: false,
+      yearsExperience: money(a.yearsExperience),
+      noticePeriod: a.noticePeriod,
+      expectedSalary: money(a.expectedSalary),
+      answers: answersOf(a.answers),
+      whatsapp: !!a.whatsappOptInAt && !a.whatsappStoppedAt,
+      whatsappLanguage: a.whatsappLanguage,
+    };
+    const after: ReapplySent = {
+      fullName,
+      mobile: input.mobile,
+      linkedin: input.linkedin ?? null,
+      portfolioLinks: x.portfolio.links,
+      portfolioFile: x.portfolio.file,
+      yearsExperience: input.yearsExperience ?? null,
+      noticePeriod: input.noticePeriod ?? null,
+      expectedSalary: input.expectedSalary ?? null,
+      answers: x.answers,
+      whatsapp: x.whatsapp,
+      whatsappLanguage: x.whatsapp ? x.whatsappLanguage : a.whatsappLanguage,
+    };
+    const changed = reapplyChanges(before, after);
+    const filter = reapplyFilter({ stage: a.stage, filteredOut: a.filteredOut, knockedOut: a.knockedOut }, x.match.knockedOut);
+    // where this one came from, when it differs from the application's (?src=: LinkedIn, an invitation…)
+    const sourceDiffers = x.source !== a.source;
+    const diff = {
+      number: a.number,
+      newCv,
+      changed,
+      ...(changed.includes('answers') && { matchPercent: { from: a.matchPercent, to: x.match.matchPercent } }),
+      ...(filter.filteredOut !== a.filteredOut && { filteredOut: { from: a.filteredOut, to: filter.filteredOut } }),
+      ...(filter.change === 'kept_by_hr' && { mustHavesNotMet: x.match.knockedOut.length }),
+      ...(sourceDiffers && { source: x.source }),
+    };
+    if (!newCv && !changed.length) return { kind: 'updated', id: a.id, number: a.number, newCv, changed: false, diff };
+
+    if (newCv) {
+      // the current CV kept among the earlier ones as it was (copied in the database: never read into the API), then replaced
+      if (a.cv) {
+        await tx.$executeRaw`INSERT INTO job_application_earlier_cvs (id, application_id, file_name, mime_type, size_bytes, data, sent_at, replaced_at, ip)
+          SELECT gen_random_uuid(), application_id, file_name, mime_type, size_bytes, data, created_at, ${now.toISOString()}::timestamptz, ${x.ip}
+          FROM job_application_cvs WHERE application_id = ${a.id}::uuid`;
+      }
+      const cv = { fileName: cvFileName(x.file.originalname, x.type), mimeType: x.type, sizeBytes: x.file.buffer.length, data: new Uint8Array(x.file.buffer), createdAt: now };
+      await tx.jobApplicationCv.upsert({ where: { applicationId: a.id }, create: { applicationId: a.id, ...cv }, update: cv });
+      // read again by the round (its fit, and the other open positions' fits, worked out again once it is read)
+      await tx.cvPreview.deleteMany({ where: { applicationId: a.id } });
+      await tx.cvReading.deleteMany({ where: { applicationId: a.id } });
+      await tx.cvReading.create({ data: { applicationId: a.id } });
+      await tx.cvOpenFit.deleteMany({ where: { applicationId: a.id } });
+    }
+    if (x.portfolio.file && x.portfolioFile) {
+      const row = portfolioFileRow(x.portfolioFile);
+      await tx.jobApplicationPortfolio.upsert({ where: { applicationId: a.id }, create: { applicationId: a.id, ...row }, update: { ...row, createdAt: now } });
+    }
+    // their candidate: the new email or mobile joined, the latest name and links kept, worked out again
+    const candidate = await attachCandidate(
+      tx,
+      { fullName, email: x.email, mobile: input.mobile, linkedin: input.linkedin, portfolio: input.portfolio, at: now, candidateId: a.candidateId },
+      x.found,
+    );
+    await tx.jobApplication.update({
+      where: { id: a.id },
+      data: {
+        candidateId: candidate.id,
+        fullName,
+        mobile: input.mobile,
+        linkedin: input.linkedin ?? null,
+        portfolio: input.portfolio ?? null,
+        portfolioLinks: x.portfolio.links,
+        // the email they applied with stays the application's; LinkedIn's confirmation of it kept, or given now
+        ...(x.email === a.email && x.emailConfirmedBy && { emailConfirmedBy: x.emailConfirmedBy }),
+        yearsExperience: input.yearsExperience ?? null,
+        noticePeriod: input.noticePeriod ?? null,
+        expectedSalary: input.expectedSalary ?? null,
+        answers: x.answers as Prisma.InputJsonValue,
+        points: x.match.points,
+        maxPoints: x.match.maxPoints,
+        matchPercent: x.match.matchPercent,
+        knockedOut: x.match.knockedOut,
+        filteredOut: filter.filteredOut,
+        // their own consent, given again with what they sent (an HR-recorded one of before replaced)
+        consentAt: now,
+        consentById: null,
+        consentNote: null,
+        // the WhatsApp tick as sent this time (unticked: no more messages about it)
+        ...(x.whatsapp ? { whatsappOptInAt: now, whatsappLanguage: x.whatsappLanguage, whatsappStoppedAt: null } : { whatsappOptInAt: null }),
+        ...(newCv && { cvUpdatedAt: now, cvMatchPercent: null, cvFit: Prisma.DbNull }),
+      },
+    });
+    const stage = a.stage as ApplicationStage;
+    await tx.jobApplicationStep.createMany({
+      data: [
+        {
+          applicationId: a.id,
+          event: 'updated',
+          stage,
+          note: reapplyNote({
+            newCv,
+            changed,
+            match: { from: a.matchPercent, to: x.match.matchPercent },
+            filter: filter.change,
+            knockedOut: x.match.knockedOut.length,
+            stageLabel: x.stageLabel,
+            sourceLabel: sourceDiffers ? APPLICATION_SOURCE_LABELS[applicationSourceOf(x.source)] : null,
+          }),
+          at: now,
+        },
+        ...(filter.change === 'now_filtered'
+          ? [{ applicationId: a.id, event: 'filtered_out', stage, note: `${x.match.knockedOut.length} must-have ${x.match.knockedOut.length === 1 ? 'question' : 'questions'} not met`, at: now }]
+          : []),
+      ],
+    });
+    await refreshCandidate(tx, candidate.id);
+    if (x.whatsapp) await tx.candidate.update({ where: { id: candidate.id }, data: { whatsappOptInAt: now, whatsappStoppedAt: null } });
+    return { kind: 'updated', id: a.id, number: a.number, newCv, changed: true, diff: { ...diff, candidate: candidate.code } };
+  }
+
+  /** After an update: the audit, the reading, HR told, the applicant told "We've updated your application"; the answer. */
+  private async afterUpdate(v: TellsHr, made: Extract<Applied, { kind: 'updated' }>, to: { email: string; name: string; whatsapp: boolean }): Promise<ApplyResult> {
+    await this.audit.record({ userId: null, action: 'reapply', entityType: APPLICATION_ENTITY, entityId: made.id, diff: { ...made.diff, vacancy: v.number } });
+    if (made.newCv) this.readings.kick();
+    // the same CV, other years: its fit worked out again at once (a new CV's once it is read)
+    else if (made.changed) await this.readings.rescoreApplication(made.id);
+    await this.suggestions.closeFor(made.id);
+    if (made.changed) await this.tellHrUpdated(v, made);
+    await this.confirm(to.email, to.name, made.number, v.title, true);
+    if (to.whatsapp) await this.whatsapp.applicationUpdated(made.id);
+    return { reference: made.number, updated: true };
+  }
+
   // ---------- helpers ----------
 
   private async bySlug(slug: string) {
@@ -311,27 +581,57 @@ export class PublicCareersService {
    * HR told of new applications for the vacancy, once a day (the brief: "group them … not one per application"); a
    * C-level one's, the CEO and a Super Admin. Never fails the application.
    */
-  private async tellHr(v: { id: string; number: string; title: string; grade: { confidential: boolean } | null; jobTitle: { minGrade: { confidential: boolean } | null } }): Promise<void> {
+  private async tellHr(v: TellsHr): Promise<void> {
     try {
       const link = `/recruitment/vacancies/${v.id}`;
-      const last = await this.prisma.notification.findFirst({ where: { kind: 'applications_new', link }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } });
-      if (last && dayInCairo(last.createdAt) === todayInCairo()) return;
-      const confidential = v.grade?.confidential === true || v.jobTitle.minGrade?.confidential === true;
-      const users = await this.prisma.user.findMany({
-        where: { isActive: true, roles: { some: { role: { key: { in: confidential ? ['ceo', 'super_admin'] : ['hr'] } } } } },
-        select: { id: true },
-      });
-      await this.notifications.notify(
-        users.map((u) => u.id),
-        { kind: 'applications_new', title: 'New applications', body: `${v.title} (${v.number}): open the vacancy to review them.`, link },
-      );
+      if (await this.toldToday(link)) return;
+      await this.notifications.notify(await this.hrOf(v), { kind: 'applications_new', title: 'New applications', body: `${v.title} (${v.number}): open the vacancy to review them.`, link });
     } catch (err) {
       this.logger.warn(`Telling HR of new applications for ${v.number} failed: ${(err as Error).message}`);
     }
   }
 
-  /** The applicant's email with their reference, when email is set up (best effort: a failure is only logged). */
-  private async confirm(to: string, name: string, reference: string, title: string): Promise<void> {
+  /**
+   * HR told an applicant applied again (25 October 2026: "tell HR 'CV updated'"), as of new applications (the kind
+   * applications_new; a C-level vacancy's, the CEO and a Super Admin), once a day an applicant. Never fails the update.
+   */
+  private async tellHrUpdated(v: TellsHr, made: { id: string; number: string; newCv: boolean }): Promise<void> {
+    try {
+      const link = `/recruitment/applicants/${made.id}`;
+      if (await this.toldToday(link)) return;
+      const a = await this.prisma.jobApplication.findUnique({ where: { id: made.id }, select: { fullName: true } });
+      await this.notifications.notify(await this.hrOf(v), {
+        kind: 'applications_new',
+        title: made.newCv ? 'CV updated' : 'Application updated',
+        body: `${a?.fullName ?? 'An applicant'} applied again for ${v.title} (${v.number})${made.newCv ? ' with a new CV' : ''}: open the applicant to see what changed.`,
+        link,
+      });
+    } catch (err) {
+      this.logger.warn(`Telling HR of the updated application ${made.number} failed: ${(err as Error).message}`);
+    }
+  }
+
+  /** Whether HR was told of this page (applications_new) today, in Cairo. */
+  private async toldToday(link: string): Promise<boolean> {
+    const last = await this.prisma.notification.findFirst({ where: { kind: 'applications_new', link }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } });
+    return !!last && dayInCairo(last.createdAt) === todayInCairo();
+  }
+
+  /** Who hears of a vacancy's applicants: HR; a C-level one's, the CEO and a Super Admin. */
+  private async hrOf(v: TellsHr): Promise<string[]> {
+    const confidential = v.grade?.confidential === true || v.jobTitle.minGrade?.confidential === true;
+    const users = await this.prisma.user.findMany({
+      where: { isActive: true, roles: { some: { role: { key: { in: confidential ? ['ceo', 'super_admin'] : ['hr'] } } } } },
+      select: { id: true },
+    });
+    return users.map((u) => u.id);
+  }
+
+  /**
+   * The applicant's email with their reference, when email is set up (best effort: a failure is only logged); `updated`:
+   * they applied again, "We've updated your application" (25 October 2026).
+   */
+  private async confirm(to: string, name: string, reference: string, title: string, updated = false): Promise<void> {
     if (!(await this.mail.ready())) return;
     try {
       const company = await this.prisma.company.findUnique({ where: { id: 1 }, select: { nameEn: true } });
@@ -340,7 +640,9 @@ export class PublicCareersService {
       const lines = [
         `Dear ${first},`,
         '',
-        `Thank you for applying for ${title} at ${from}. We received your application; its reference is ${reference}.`,
+        updated
+          ? `We've updated your application for ${title} at ${from} with what you just sent, your CV included; its reference is still ${reference}.`
+          : `Thank you for applying for ${title} at ${from}. We received your application; its reference is ${reference}.`,
         'We read every application. If yours fits what we are looking for, we will contact you about the next step.',
         '',
         `${from} HR`,
@@ -348,7 +650,7 @@ export class PublicCareersService {
       const escape = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
       await this.mail.send({
         to,
-        subject: `Your application for ${title} (${reference})`,
+        subject: updated ? `Your updated application for ${title} (${reference})` : `Your application for ${title} (${reference})`,
         text: lines.join('\n'),
         html: lines.map((l) => (l ? `<p>${escape(l)}</p>` : '')).join(''),
       });

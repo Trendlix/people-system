@@ -2011,6 +2011,10 @@ model JobApplication {
   candidate       Candidate?           @relation(fields: [candidateId], references: [id], onDelete: Restrict)
   generalCv       GeneralCv? // the general CV it was moved from
   cv              JobApplicationCv?
+  // applying again for the job while it is open (owner, 25 October 2026: "Update their application"; packages/shared
+  // reapply.ts): the CVs it held before the current one, and when the last new one came (the "CV updated" mark)
+  earlierCvs      JobApplicationEarlierCv[]
+  cvUpdatedAt     DateTime?            @map("cv_updated_at") @db.Timestamptz
   portfolioFile   JobApplicationPortfolio? // the PDF case study sent as a portfolio (25 October 2026)
   cvReading       CvReading? // its CV read and analysed (22 October 2026)
   steps           JobApplicationStep[]
@@ -2054,6 +2058,29 @@ model JobApplicationCv {
   preview       CvPreview? // a Word CV as a PDF for the CV window, kept (24 October 2026)
 
   @@map("job_application_cvs")
+}
+
+// An application's earlier CV (owner, 25 October 2026: "if an employee updated the cv and reapplied, how will he be treated
+// in the system?"; asked, "Update their application"; packages/shared reapply.ts): the CV it held until the person applied
+// again with a new one, kept as it was (apart, so the lists never read it), with when it was sent, when the new one
+// replaced it and the address that new one came from (counted in the careers page's hourly limits). Deleted with its
+// application; never a developer's file.
+model JobApplicationEarlierCv {
+  id            String         @id @default(uuid()) @db.Uuid
+  applicationId String         @map("application_id") @db.Uuid
+  application   JobApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  fileName      String         @map("file_name")
+  mimeType      String         @map("mime_type")
+  sizeBytes     Int            @map("size_bytes")
+  data          Bytes
+  sentAt        DateTime       @map("sent_at") @db.Timestamptz
+  replacedAt    DateTime       @default(now()) @map("replaced_at") @db.Timestamptz
+  ip            String?
+
+  @@index([applicationId, sentAt])
+  @@index([ip, replacedAt])
+  @@index([replacedAt])
+  @@map("job_application_earlier_cvs")
 }
 
 // An application's PDF case study (owner, 25 October 2026: "for creatives, they need to add their portfolios"; a position

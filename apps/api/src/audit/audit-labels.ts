@@ -155,6 +155,8 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   // an earlier job offer (25 October 2026): marked sent outside the system on a past day, with no email and no link
   record_sent: 'Recorded as sent earlier',
   apply: 'Applied',
+  // the same person applying again for the job while it is open (owner, 25 October 2026: "Update their application")
+  reapply: 'Updated their application',
   approve: 'Approved',
   attendance_summary_file: 'Downloaded the attendance summary',
   // a person's attendance history as Excel (owner, 23 October 2026: "Attendance history on the profile … an Excel export")
@@ -426,6 +428,9 @@ export const actionLabel = (action: string): string => ACTION_LABELS[action] ?? 
 const FIELD_LABELS: Readonly<Record<string, string>> = {
   // a vacancy's key skills, each CV checked for them (22 October 2026)
   keySkills: 'Key skills',
+  // an application updated by the candidate applying again (25 October 2026): a new CV, the must-haves now not met
+  newCv: 'New CV',
+  mustHavesNotMet: 'Must-have questions not met',
   employeeId: 'Employee',
   employmentId: 'Employment',
   managerId: 'Direct manager',

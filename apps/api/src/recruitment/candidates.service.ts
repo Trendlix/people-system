@@ -597,7 +597,7 @@ export class CandidatesService implements OnModuleDestroy {
         applications: {
           where: { vacancy: vacancyWhere(user) },
           orderBy: { createdAt: 'desc' },
-          select: { ...APP_SELECT, portfolioLinks: true, cv: { select: { fileName: true, mimeType: true, sizeBytes: true, createdAt: true } }, steps: { orderBy: { at: 'asc' }, select: { event: true, at: true } } },
+          select: { ...APP_SELECT, portfolioLinks: true, cvUpdatedAt: true, cv: { select: { fileName: true, mimeType: true, sizeBytes: true, createdAt: true } }, steps: { orderBy: { at: 'asc' }, select: { event: true, at: true } } },
         },
         generalCvs: {
           orderBy: { createdAt: 'desc' },
@@ -650,12 +650,14 @@ export class CandidatesService implements OnModuleDestroy {
       interviewLists[i].map((iv) => ({ ...iv, vacancyTitle: a.vacancy.title, feedback: feedbackLists[i].filter((f) => f.interviewId === iv.id) })),
     );
     interviews.sort((x, y) => y.startsAt.localeCompare(x.startsAt));
-    // every CV they sent, the newest first: an application's, and a general CV's (an application moved from a general CV holds its copy: listed once, as the general CV's)
+    // every CV they sent, the newest first: an application's (its current one: a new one sent by applying again, 25 October
+    // 2026), and a general CV's (an application moved from a general CV holds its copy: listed once, as the general CV's,
+    // until a new one was sent to the application)
     const movedApps = new Set(row.generalCvs.map((g) => g.application?.id).filter((x): x is string => !!x));
     const cvs: CandidateCv[] = [
       ...row.applications
-        .filter((a) => a.cv && !movedApps.has(a.id))
-        .map((a): CandidateCv => ({ kind: 'application', id: a.id, reference: a.number, title: a.vacancy.title, cvFileName: a.cv!.fileName, mimeType: a.cv!.mimeType, sizeBytes: a.cv!.sizeBytes, sentAt: a.createdAt.toISOString(), portfolioLinks: a.portfolioLinks })),
+        .filter((a) => a.cv && (!movedApps.has(a.id) || a.cvUpdatedAt))
+        .map((a): CandidateCv => ({ kind: 'application', id: a.id, reference: a.number, title: a.vacancy.title, cvFileName: a.cv!.fileName, mimeType: a.cv!.mimeType, sizeBytes: a.cv!.sizeBytes, sentAt: (a.cvUpdatedAt ?? a.createdAt).toISOString(), portfolioLinks: a.portfolioLinks })),
       ...row.generalCvs
         .filter((g) => g.file)
         .map((g): CandidateCv => ({ kind: 'general_cv', id: g.id, reference: g.number, title: 'General CV', cvFileName: g.file!.fileName, mimeType: g.file!.mimeType, sizeBytes: g.file!.sizeBytes, sentAt: g.createdAt.toISOString(), portfolioLinks: g.portfolioLinks })),

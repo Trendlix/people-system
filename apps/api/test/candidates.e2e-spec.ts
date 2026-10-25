@@ -1,7 +1,6 @@
 import { PDFDocument, StandardFonts } from '@cantoo/pdf-lib';
 import type { INestApplication } from '@nestjs/common';
 import {
-  ALREADY_APPLIED,
   CLIENT_IP_AT_HEADER,
   CLIENT_IP_HEADER,
   CLIENT_IP_SIGNATURE_HEADER,
@@ -203,7 +202,12 @@ describe('Candidate profiles (e2e)', () => {
     await prisma.notification.deleteMany({ where: { userId: { in: Object.values(users) } } });
     // "New CVs" and "New applications" told to every HR account there was, once a day: taken back so the next file's are sent
     await prisma.notification.deleteMany({
-      where: { kind: 'applications_new', createdAt: { gte: STARTED }, link: { in: ['/recruitment/applicants?tab=general', ...vacancyIds.map((id) => `/recruitment/vacancies/${id}`)] } },
+      where: {
+        kind: 'applications_new',
+        createdAt: { gte: STARTED },
+        // and "CV updated", told of an applicant who applied again (25 October 2026)
+        link: { in: ['/recruitment/applicants?tab=general', ...vacancyIds.map((id) => `/recruitment/vacancies/${id}`), ...apps.map((a) => `/recruitment/applicants/${a.id}`)] },
+      },
     });
     await app.close();
   });
@@ -265,10 +269,13 @@ describe('Candidate profiles (e2e)', () => {
       expect(audit.diff).toMatchObject({ candidate: expect.stringMatching(/^CAN-/), possibleDuplicateOf: expect.stringMatching(/^CAN-/) });
     });
 
-    it('the same job twice, by email or by mobile: refused on the careers page; another job joins; HR is told which', async () => {
+    it('the same job twice, by email or by mobile: her one application updated on the careers page; another job joins; HR is told which', async () => {
       status(await apply(A, 'sara'), 201);
-      expect(said(status(await apply(A, 'sara'), 409))).toEqual([ALREADY_APPLIED]);
-      expect(said(status(await apply(A, 'sara.other', { mobile: mobile('sara') }), 409))).toEqual([ALREADY_APPLIED]);
+      // the same job again updates her open application (25 October 2026: "Update their application"; reapply.e2e-spec.ts)
+      const first = await appOf(A, 'sara');
+      expect(status(await apply(A, 'sara'), 201).body).toEqual({ reference: first.number, updated: true });
+      expect(status(await apply(A, 'sara.other', { mobile: mobile('sara') }), 201).body).toEqual({ reference: first.number, updated: true });
+      expect(await prisma.jobApplication.count({ where: { vacancyId: A.id, candidateId: first.candidateId } })).toBe(1);
       status(await apply(B, 'sara.other', { mobile: mobile('sara') }), 201);
       const id = await candidateOf(A, 'sara');
       expect(await candidateOf(B, 'sara.other')).toBe(id);

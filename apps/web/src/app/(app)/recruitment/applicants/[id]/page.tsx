@@ -39,7 +39,7 @@ import { vacancyOptions } from '../../pickers';
 import { APPLICANTS_PATH, applicantCvHref, makeOfferHref, matchText, vacancyHref } from '../../recruitment';
 import { commentsOfRecord, kb, ownCv } from '../../screening';
 import { ScreeningCommentsCard } from '../../screening-ui';
-import { StageBadge, VerdictBadge } from '../../ui';
+import { CvUpdatedBadge, EarlierCvList, StageBadge, VerdictBadge } from '../../ui';
 import { applicantPortfolioHref, portfolioLinksOf } from '../../portfolio';
 import { LinkedInMark, PortfolioChips, PortfolioFileLinks } from '../../portfolio-chips';
 import { shownCode } from '@/lib/hidden';
@@ -67,6 +67,9 @@ import { NO_MEETING_CHOICES } from '../../meetings';
 // Delete applicant (owner, 25 October 2026, on a closed vacancy's rejected applicant: "i want to delete this"; asked,
 // "Vacancy alone - applicant alone - superadmin only"): a Super Admin's, its window saying what goes or why it stays on
 // record; a link to one deleted since lands on a plain "deleted, or you can't open it", never an error page.
+// Applying again (owner, 25 October 2026: "if an employee updated the cv and reapplied, how will he be treated in the
+// system?"; asked, "Update their application"): the current CV with when it came, Earlier CVs (date, name, Open), the
+// "CV updated" mark for 7 days, and the step "Updated by the candidate" in the history.
 
 export const metadata: Metadata = { title: 'Applicant · People System' };
 
@@ -310,7 +313,7 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
   const comments = commentsLoaded.kind === 'ok' ? commentsLoaded.value : null;
   const commentsNotLoaded = commentsLoaded.kind === 'ok' ? '' : recruitmentNotLoaded(commentsLoaded, 'screening comments');
   const ownKey = applicationKey(a.id);
-  const cvs = comments?.cvs.length ? comments.cvs : ownCv('application', { id: a.id, reference: a.number, title: a.vacancy.title, sentAt: a.appliedAt }, a.cv);
+  const cvs = comments?.cvs.length ? comments.cvs : ownCv('application', { id: a.id, reference: a.number, title: a.vacancy.title, sentAt: a.cvUpdatedAt ?? a.appliedAt, earlierCvs: a.earlierCvs }, a.cv);
   return (
     <div className="space-y-6">
       <div className="space-y-2">
@@ -320,6 +323,8 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
           <StageBadge stage={a.stage} filteredOut={a.filteredOut} />
           {/* the latest screening verdict of this application's comments (24 October 2026) */}
           <VerdictBadge verdict={a.verdict} />
+          {/* they applied again with a new CV in the last 7 days (25 October 2026) */}
+          <CvUpdatedBadge shown={a.cvUpdated} at={a.cvUpdatedAt} />
         </div>
         <p className="text-sm text-muted">
           {shownCode(a.number) && `${a.number} · `}
@@ -411,11 +416,22 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
                   Download
                 </a>
                 <span className="text-muted">{kb(a.cv.sizeBytes)}</span>
+                {/* a new one sent by applying again (25 October 2026: "Update their application") */}
+                {a.cvUpdatedAt && <span className="text-muted">sent {formatDate(a.cvUpdatedAt)}</span>}
               </span>
             ) : (
               'None'
             )}
           </Fact>
+          {/* the CVs it held before the current one, the newest first (25 October 2026: "Update their application") */}
+          {!!a.earlierCvs?.length && (
+            <div className="min-w-0 sm:col-span-3">
+              <dt className="text-xs font-medium tracking-wide text-muted uppercase">Earlier CVs</dt>
+              <dd className="mt-1">
+                <EarlierCvList applicationId={a.id} cvs={a.earlierCvs} />
+              </dd>
+            </div>
+          )}
           {/* every link with its platform, and the PDF case study (owner, 25 October 2026: "Portfolio per position") */}
           <div className="min-w-0 sm:col-span-3">
             <dt className="text-xs font-medium tracking-wide text-muted uppercase">Portfolio</dt>

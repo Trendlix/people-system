@@ -12,7 +12,7 @@ import { BetterFitLink, FitPercent, MatchValue } from './cv-fit-ui';
 import { DeleteApplicantButton } from './delete-ui';
 import { daysText, dropOn } from './hiring';
 import { applicantHref, makeOfferHref, STAGE_STYLE } from './recruitment';
-import { VerdictBadge } from './ui';
+import { CvUpdatedBadge, VerdictBadge } from './ui';
 
 // A vacancy's pipeline board (Phase 2, owner, 22 October 2026; the brief: "a board with a column per stage, and cards with
 // name, match %, source and days in stage"; "drag between columns (keyboard-accessible too), with the same rules as the
@@ -148,6 +148,8 @@ export function PipelineBoard({ board, move, deletes = false }: { board: Vacancy
                     {card.suggestion && <span className="badge bg-warn-soft text-warn">Suggested: {HIRING_SUGGESTION_LABELS[card.suggestion]}</span>}
                     {/* the latest screening verdict (24 October 2026: "Yes: Good fit / Maybe / Not a fit") */}
                     <VerdictBadge verdict={card.verdict} />
+                    {/* they applied again with a new CV in the last 7 days (25 October 2026: "Update their application") */}
+                    <CvUpdatedBadge shown={card.cvUpdated} />
                     {/* their candidate profile (22 October 2026): "2 applications", "Former employee"; HR, the CEO and a Super Admin only */}
                     {candidateBadges(card.candidate).map((b) => (
                       <span key={b} className={`badge ${b === 'Former employee' || b.startsWith('Employee') ? 'bg-warn-soft text-warn' : 'bg-canvas text-ink'}`}>

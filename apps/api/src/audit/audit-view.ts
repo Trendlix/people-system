@@ -227,7 +227,7 @@ export function whoOf(row: Pick<AuditRow, 'userId' | 'onBehalfById' | 'via' | 'a
   if (row.userId) text = personText(user);
   else if (row.action === 'login_failed') text = 'Not signed in';
   else if (row.entityType === 'job_offer' && row.action === 'answer') text = 'The candidate, online';
-  else if (row.entityType === 'job_application' && row.action === 'apply') text = 'The applicant, on the careers page';
+  else if (row.entityType === 'job_application' && (row.action === 'apply' || row.action === 'reapply')) text = 'The applicant, on the careers page';
   else if (row.entityType === 'general_cv' && row.action === 'apply') text = 'The person, on the careers page';
   else text = 'System';
   if (row.onBehalfById) text = `Super Admin ${personText(by)} as ${text}`;

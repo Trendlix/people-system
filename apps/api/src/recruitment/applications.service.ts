@@ -11,6 +11,7 @@ import {
   restorable,
   applicationSourceOf,
   cvFitFrom,
+  cvUpdatedMark,
   scoreAnswers,
   stageMoveProblem,
   stageSince,
@@ -45,7 +46,7 @@ import { CvReadingsService } from './cv-readings.service.js';
 import { InterviewsService } from './interviews.service.js';
 import { isConfidentialVacancy, vacancyWhere } from './recruitment-access.js';
 import { recruitmentCaller, viewerOf, visibleApplications, type RecruitmentCaller } from './recruitment-scope.js';
-import { APPLICATION_ENTITY, APPLICATION_LIST_SELECT, answersOf, applicationListView, byExperience, minYearsWhere, money, questionsOf, skillWhere, userRef } from './recruitment-views.js';
+import { APPLICATION_ENTITY, APPLICATION_LIST_SELECT, answersOf, applicationListView, byExperience, EARLIER_CV_SELECT, earlierCvView, minYearsWhere, money, questionsOf, skillWhere, userRef } from './recruitment-views.js';
 import type { ListApplicationsDto } from './recruitment.dto.js';
 import { ScreeningCommentsService } from './screening-comments.service.js';
 import { NOTES_GONE } from './screening-notes.js';
@@ -101,6 +102,8 @@ const DETAIL_INCLUDE = {
     },
   },
   cv: { select: { fileName: true, mimeType: true, sizeBytes: true } },
+  // the CVs it held before (applying again, 25 October 2026: "Update their application"), the newest first, never their files
+  earlierCvs: { orderBy: { sentAt: 'desc' }, select: EARLIER_CV_SELECT },
   // the PDF case study sent as a portfolio (25 October 2026: "Portfolio per position")
   portfolioFile: { select: { fileName: true, sizeBytes: true } },
   // the CV read and analysed (22 October 2026)
@@ -289,6 +292,7 @@ export class ApplicationsService {
       rejectReason: a.stage === 'rejected' && !participant ? a.rejectReason : null,
       consentAt: a.consentAt.toISOString(),
       cv: a.cv,
+      earlierCvs: a.earlierCvs.map(earlierCvView),
       // the CV fit as kept (25 October 2026: "Full CV fit score")
       cvReading: a.cv ? this.readings.view(a.cvReading, a.vacancy.keySkills, cvFitFrom(a.cvFit)) : null,
       // Other Open Positions (25 October 2026): HR, the CEO and a Super Admin only
@@ -326,6 +330,22 @@ export class ApplicationsService {
     if (!a) throw new NotFoundException(NOT_FOUND);
     if (!a.cv) throw new NotFoundException('This applicant sent no CV.');
     return { data: Buffer.from(a.cv.data), fileName: a.cv.fileName, mimeType: a.cv.mimeType };
+  }
+
+  /**
+   * An earlier CV as it was sent (applying again, 25 October 2026: "Update their application"), for the caller who may
+   * see the applicant (as the CV); never a developer.
+   */
+  async earlierCv(id: string, cvId: string, user: SessionUser): Promise<{ data: Buffer; fileName: string; mimeType: string }> {
+    const c = await this.caller(user);
+    const a = await this.prisma.jobApplication.findFirst({
+      where: { AND: [{ id }, visibleApplications(c)] },
+      select: { earlierCvs: { where: { id: cvId }, select: { data: true, fileName: true, mimeType: true } } },
+    });
+    if (!a) throw new NotFoundException(NOT_FOUND);
+    const f = a.earlierCvs[0];
+    if (!f) throw new NotFoundException('This earlier CV isn’t on record.');
+    return { data: Buffer.from(f.data), fileName: f.fileName, mimeType: f.mimeType };
   }
 
   /** The PDF case study sent as a portfolio (25 October 2026), for the caller who may see the applicant; never a developer. */
@@ -453,6 +473,7 @@ export class ApplicationsService {
         offers: { where: OPEN_OFFER, select: { id: true } },
         interviews: { where: { status: 'scheduled', startsAt: { gte: now } }, select: { id: true } },
         candidateId: true,
+        cvUpdatedAt: true,
       },
       orderBy: [{ matchPercent: { sort: 'desc', nulls: 'last' } }, { createdAt: 'asc' }],
     });
@@ -488,6 +509,8 @@ export class ApplicationsService {
         suggestion: (r.suggestion as HiringSuggestion | null) ?? null,
         candidate: r.candidateId ? (badges.get(r.candidateId) ?? null) : null,
         verdict: verdicts.get(r.id) ?? null,
+        // a new CV sent by applying again in the last 7 days (25 October 2026)
+        cvUpdated: cvUpdatedMark(r.cvUpdatedAt, now),
       }),
     );
     return {

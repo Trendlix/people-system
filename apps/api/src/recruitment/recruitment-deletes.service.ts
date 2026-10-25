@@ -60,7 +60,8 @@ const APP_SELECT = {
   interviews: { select: { id: true, status: true, startsAt: true, minutes: true } },
   generalCv: { select: { id: true, number: true, status: true } },
   cv: { select: { preview: { select: { id: true } } } },
-  _count: { select: { onboarding: true, comments: true } },
+  // its earlier CVs (applying again, 25 October 2026) go with it too
+  _count: { select: { onboarding: true, comments: true, earlierCvs: true } },
 } satisfies Prisma.JobApplicationSelect;
 
 type AppRow = Prisma.JobApplicationGetPayload<{ select: typeof APP_SELECT }>;
@@ -108,7 +109,7 @@ export class RecruitmentDeletesService {
       refusal: refusalOf(a, new Date())?.text ?? null,
       interviews: a.interviews.length,
       comments: a._count.comments,
-      files: a.cv ? 1 + (a.cv.preview ? 1 : 0) : 0,
+      files: (a.cv ? 1 + (a.cv.preview ? 1 : 0) : 0) + a._count.earlierCvs,
       draftOffers: a.offers.filter((o) => !offerWentOut(o)).length,
       candidate: candidate && { id: candidate.id, code: candidate.code, goes: going.has(candidate.id) },
     };

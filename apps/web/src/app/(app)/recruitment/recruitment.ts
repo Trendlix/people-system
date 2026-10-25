@@ -42,6 +42,8 @@ export const vacancyHref = (id: string) => `${VACANCIES_PATH}/${encodeURICompone
 export const vacancyEditHref = (id: string) => `${vacancyHref(id)}/edit`;
 export const applicantHref = (id: string) => `${APPLICANTS_PATH}/${encodeURIComponent(id)}`;
 export const applicantCvHref = (id: string, download = false) => `${applicantHref(id)}/cv${download ? '?download=1' : ''}`;
+/** An earlier CV of an applicant (applying again, 25 October 2026: "Update their application"): a PDF opens, a Word file is saved. */
+export const earlierCvHref = (applicationId: string, cvId: string, download = false) => `${applicantHref(applicationId)}/cv/earlier/${encodeURIComponent(cvId)}${download ? '?download=1' : ''}`;
 /** Make offer: the job offer form filled in from the applicant and their vacancy. */
 export const makeOfferHref = (applicationId: string) => `/offers/new?application=${encodeURIComponent(applicationId)}`;
 

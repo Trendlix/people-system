@@ -53,7 +53,7 @@ import {
 import { AuditService } from '../audit/audit.service.js';
 import { actsAs } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
-import { addDays } from '../common/date-only.js';
+import { addDays, dayInCairo } from '../common/date-only.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
 import { Prisma, type WhatsAppSettings } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -375,6 +375,27 @@ export class WhatsAppService {
         { ...a, kind: 'application' },
         { template: 'application_received', name: a.fullName, job: a.vacancy.title, company, reference: a.number },
         { applicationId: a.id, confidential: confidentialVacancy(a.vacancy) },
+        now,
+      );
+    });
+  }
+
+  /**
+   * "We've updated your application" (owner, 25 October 2026: "Update their application"): the same person applied again
+   * for the job, the tick on; once a day an application. Never throws.
+   */
+  async applicationUpdated(applicationId: string, now = new Date()): Promise<void> {
+    await this.safely('an application updated', async () => {
+      const a = await this.prisma.jobApplication.findUnique({
+        where: { id: applicationId },
+        select: { id: true, number: true, fullName: true, mobile: true, candidateId: true, whatsappOptInAt: true, whatsappStoppedAt: true, whatsappLanguage: true, vacancy: { select: { title: true, ...VACANCY_FLAGS } } },
+      });
+      if (!a) return;
+      const company = await this.companyName();
+      await this.toCandidate(
+        { ...a, kind: 'application' },
+        { template: 'application_updated', name: a.fullName, job: a.vacancy.title, company, reference: a.number },
+        { applicationId: a.id, confidential: confidentialVacancy(a.vacancy), dedupeKey: `application_updated:${a.id}:${dayInCairo(now)}` },
         now,
       );
     });

@@ -568,6 +568,11 @@ export * from './session-modes.js';
 // suggested to HR, a former employee linked with their rehire eligibility
 export * from './candidates.js';
 
+// applying again for the same job (owner, 25 October 2026: "if an employee updated the cv and reapplied, how will he be
+// treated in the system?"; asked, "Update their application"): while it is open, the one application updated (the new
+// CV current, the earlier kept, the answers scored again, HR told "CV updated"); closed, refused in words
+export * from './reapply.js';
+
 // the company's email (SMTP) set up in the system (owner, 23 October 2026: "why dont we add SMTP setup in the
 // organization setup"): Organization → Email Settings, a Super Admin's only; the server's deploy/.env the fallback
 export * from './mail-settings.js';

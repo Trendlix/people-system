@@ -8,6 +8,7 @@ import {
   screeningCommentProblems,
   uniqueMentions,
   type CandidateCv,
+  type EarlierCvView,
   type ScreeningCommentView,
   type ScreeningComments,
   type ScreeningCv,
@@ -103,7 +104,7 @@ export function withCvParam(search: string, id: string | null): string {
 /** A page's own CV, for the window when the comments (with the candidate's CVs) couldn't be loaded. */
 export function ownCv(
   kind: 'application' | 'general_cv',
-  record: { id: string; reference: string; title: string; sentAt: string },
+  record: { id: string; reference: string; title: string; sentAt: string; earlierCvs?: EarlierCvView[] },
   file: { fileName: string; mimeType: string; sizeBytes: number } | null,
 ): ScreeningCv[] {
   if (!file) return [];
@@ -119,6 +120,8 @@ export function ownCv(
       sentAt: record.sentAt,
       key: `${kind}:${record.id}`,
       linkedKey: null,
+      // an application's CVs before this one (applying again, 25 October 2026)
+      ...(record.earlierCvs?.length && { earlierCvs: record.earlierCvs }),
     },
   ];
 }

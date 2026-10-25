@@ -18,6 +18,7 @@
 import type { CandidateCv } from './candidates.js';
 import type { CvFit, OpenPositionFit } from './cv-fit.js';
 import type { RecruitmentUserRef } from './recruitment.js';
+import type { EarlierCvView } from './reapply.js';
 
 // ---------- the verdict ----------
 
@@ -252,6 +253,8 @@ export interface ScreeningCv extends CandidateCv {
   fit?: CvFit | null;
   /** Its Other Open Positions (25 October 2026), for HR, the CEO and a Super Admin: the top 3 at 50% or more. */
   openPositions?: OpenPositionFit[];
+  /** An application's CVs before this one, the newest first (applying again, 25 October 2026: "Update their application"). */
+  earlierCvs?: EarlierCvView[];
 }
 
 /**

@@ -41,6 +41,7 @@ import { activeAccountsOf } from '../users/employee-accounts.js';
 import { CvFitsService } from './cv-fits.service.js';
 import { isConfidentialVacancy, READS, vacancyWhere } from './recruitment-access.js';
 import { recruitmentCaller, visibleApplications, type RecruitmentCaller } from './recruitment-scope.js';
+import { EARLIER_CV_SELECT, earlierCvView } from './recruitment-views.js';
 import { applicationReaders, authorRoleOf, commentWhere, generalReaders, readerCandidates, type ReaderAccount } from './screening-access.js';
 import { moveEarlierNotes, SCREENING_ENTITY } from './screening-notes.js';
 
@@ -94,6 +95,9 @@ const APP_SELECT = {
   generalCv: { select: { id: true } },
   // the CV window's CV Fit (25 October 2026)
   cvFit: true,
+  // applying again (25 October 2026: "Update their application"): when the current CV came, and the earlier ones
+  cvUpdatedAt: true,
+  earlierCvs: { orderBy: { sentAt: 'desc' }, select: EARLIER_CV_SELECT },
 } satisfies Prisma.JobApplicationSelect;
 type AppRow = Prisma.JobApplicationGetPayload<{ select: typeof APP_SELECT }>;
 
@@ -294,10 +298,12 @@ export class ScreeningCommentsService {
       cvFileName: a.cv!.fileName,
       mimeType: a.cv!.mimeType,
       sizeBytes: a.cv!.sizeBytes,
-      sentAt: a.createdAt.toISOString(),
+      // the current CV's: a new one sent by applying again, else the application's own (25 October 2026)
+      sentAt: (a.cvUpdatedAt ?? a.createdAt).toISOString(),
       portfolioLinks: a.portfolioLinks,
       key: applicationKey(a.id),
       linkedKey,
+      ...(a.earlierCvs.length && { earlierCvs: a.earlierCvs.map(earlierCvView) }),
     };
   }
 
@@ -328,7 +334,8 @@ export class ScreeningCommentsService {
     const accounts = await this.participantAccounts(apps);
     const appIds = new Set(apps.map((a) => a.id));
     const hrSees = gcvs.length > 0 || apps.some((a) => !isConfidentialVacancy(a.vacancy));
-    // a general CV and the application made from it hold the same CV: listed once (the general CV's), their comments together
+    // a general CV and the application made from it hold the same CV: listed once (the general CV's), their comments
+    // together; unless the person sent the application a new CV since (applying again, 25 October 2026): then both
     const linkOfApp = new Map(gcvs.filter((g) => g.applicationId && appIds.has(g.applicationId)).map((g) => [g.applicationId!, g.id]));
     const all = new Set<string>();
     const targets: ScreeningTarget[] = [];
@@ -342,7 +349,7 @@ export class ScreeningCommentsService {
     for (const a of apps) add(appAbout(a), linkOfApp.has(a.id) ? generalCvKey(linkOfApp.get(a.id)!) : null, applicationReaders(a, readers, accounts));
     for (const g of gcvs) add(gcvAbout(g), g.applicationId && appIds.has(g.applicationId) ? applicationKey(g.applicationId) : null, generalReaders(readers, true));
     const cvs: ScreeningCv[] = [
-      ...apps.filter((a) => a.cv && !linkOfApp.has(a.id)).map((a) => this.appCv(a, null)),
+      ...apps.filter((a) => a.cv && (!linkOfApp.has(a.id) || a.cvUpdatedAt)).map((a) => this.appCv(a, linkOfApp.has(a.id) ? generalCvKey(linkOfApp.get(a.id)!) : null)),
       ...gcvs.filter((g) => g.file).map((g) => this.gcvCv(g, g.applicationId && appIds.has(g.applicationId) ? applicationKey(g.applicationId) : null)),
     ].sort((x, y) => y.sentAt.localeCompare(x.sentAt));
     return {

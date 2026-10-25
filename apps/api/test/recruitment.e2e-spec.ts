@@ -1,5 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
-import { ALREADY_APPLIED, CLIENT_IP_AT_HEADER, CLIENT_IP_HEADER, CLIENT_IP_SIGNATURE_HEADER, careersIpToken } from '@trendlix/shared';
+import { CLIENT_IP_AT_HEADER, CLIENT_IP_HEADER, CLIENT_IP_SIGNATURE_HEADER, careersIpToken } from '@trendlix/shared';
 import type { ApplicationListItem, ApplicationView, PublicCareers, PublicVacancyView, Role, VacancyListItem, VacancyQuestion, VacancyView } from '@trendlix/shared';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
@@ -294,9 +294,14 @@ describe('Recruitment (e2e)', () => {
       expect(fady).toMatchObject({ filteredOut: true, matchPercent: 75 });
     });
 
-    it('refuses duplicates, the honeypot, a bad or missing CV, missing answers and a closed job', async () => {
-      // the same person again (by email or mobile: candidate profiles, 22 October 2026)
-      expect(said(await apply(v.slug, applicant('Sara Strong', '10.1.0.4')).expect(409))).toEqual([ALREADY_APPLIED]);
+    it('takes the same person again as an update; refuses the honeypot, a bad or missing CV, missing answers and a closed job', async () => {
+      // the same person again (by email or mobile: candidate profiles, 22 October 2026) updates their open application
+      // (25 October 2026: "Update their application"; reapply.e2e-spec.ts): the same CV and answers change nothing
+      const sara = await appByEmail(`sara.strong.${RUN}@mail.test`);
+      const again = await apply(v.slug, { ...applicant('Sara Strong', '10.1.0.4'), linkedin: 'https://linkedin.com/in/sara', source: 'linkedin' }).expect(201);
+      expect(again.body).toEqual({ reference: sara.number, updated: true });
+      expect(await prisma.jobApplication.count({ where: { email: `sara.strong.${RUN}@mail.test` } })).toBe(1);
+      expect(await prisma.jobApplicationStep.count({ where: { applicationId: sara.id, event: 'updated' } })).toBe(0);
       expect(said(await apply(v.slug, { ...applicant('Robo Bot', '10.1.0.5'), website: 'http://spam.test' }).expect(400))).toEqual(["Your application couldn't be sent. Please try again."]);
       expect(said(await apply(v.slug, applicant('No Cv', '10.1.0.6'), null).expect(400))).toEqual(['Attach your CV, as a PDF or a Word file.']);
       expect(said(await apply(v.slug, applicant('Svg Cv', '10.1.0.7'), { data: Buffer.from('<svg onload="x()"/>'), name: 'cv.pdf' }).expect(400))).toEqual([

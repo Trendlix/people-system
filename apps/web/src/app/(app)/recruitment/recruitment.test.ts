@@ -3,6 +3,7 @@ import type { ApplicationView } from '@trendlix/shared';
 import {
   applicantCvHref,
   applicantsApiPath,
+  earlierCvHref,
   applicantsHref,
   APPLICANTS_PATH,
   approvesVacancies,
@@ -86,6 +87,9 @@ describe('the lists', () => {
     expect(matchText(null)).toBe('—');
     expect(applicantCvHref(ID)).toBe(`/recruitment/applicants/${ID}/cv`);
     expect(applicantCvHref(ID, true)).toBe(`/recruitment/applicants/${ID}/cv?download=1`);
+    // an earlier CV, kept when they applied again with a new one (25 October 2026: "Update their application")
+    expect(earlierCvHref(ID, ID)).toBe(`/recruitment/applicants/${ID}/cv/earlier/${ID}`);
+    expect(earlierCvHref(ID, ID, true)).toBe(`/recruitment/applicants/${ID}/cv/earlier/${ID}?download=1`);
     expect(makeOfferHref(ID)).toBe(`/offers/new?application=${ID}`);
   });
 });
