@@ -54,8 +54,8 @@ export interface KpiLibraryTemplate {
   keywords: readonly string[];
   attendancePoints: number;
   /**
-   * Its metrics, in pillar order. Each `jdDuty` is the kind of duty it measures, read only to link it to the job
-   * title's own duty rows (a draft never keeps it as it is).
+   * Its metrics, in pillar order. Each one's `jdDuties` is the kind of duty it measures, one (25 October 2026: a list
+   * of it), read only to link it to the job title's own duty rows (a draft never keeps it as it is).
    */
   metrics: readonly KpiMetric[];
 }
@@ -78,7 +78,7 @@ type Scale = readonly (readonly [label: string, points: number])[];
  */
 function metric(pillar: KpiDefaultPillarNo, name: string, definition: string, howMeasured: string, duty: string, scale: Scale, target?: number): KpiMetric {
   const criteria = scale.map(([label, points]) => ({ label, points }));
-  return { pillar: kpiDefaultPillarKey(pillar), name, definition, howMeasured, jdDuty: duty, targetPoints: target ?? topCriterionPoints({ criteria }), criteria };
+  return { pillar: kpiDefaultPillarKey(pillar), name, definition, howMeasured, jdDuties: [duty], targetPoints: target ?? topCriterionPoints({ criteria }), criteria };
 }
 
 // the scales several roles share, as the samples write them
@@ -883,8 +883,8 @@ export const KPI_DUTY_LINK_MIN_SHARE = 0.25;
  * row more of whose words are shared, then the first. Null when none is close enough. A row longer than a metric's JD
  * duty may be is cut to fit.
  */
-export function linkJdDuty(metric: Pick<KpiMetric, 'name' | 'definition' | 'jdDuty'>, duties: readonly string[]): string | null {
-  const mine = wordsOf([metric.name, metric.definition, metric.jdDuty].filter(Boolean).join(' '));
+export function linkJdDuty(metric: Pick<KpiMetric, 'name' | 'definition' | 'jdDuties'>, duties: readonly string[]): string | null {
+  const mine = wordsOf([metric.name, metric.definition, ...metric.jdDuties].filter(Boolean).join(' '));
   let best: { duty: string; shared: number; share: number } | null = null;
   for (const duty of duties) {
     const theirs = wordsOf(duty);
@@ -913,7 +913,8 @@ export interface KpiLibraryDraft {
 /**
  * A job title's draft content from a library template: its metrics (copies), "Team delivery and development" added at
  * the end of Clients & Teamwork for a title that leads people, and each metric linked to the job title's JD duty row it
- * measures (linkJdDuty), else to none. `title`: both its titles (kpiLibraryTitleOf). Null for a key not in the library.
+ * measures (linkJdDuty; its jdDuties a list of it), else to none. `title`: both its titles (kpiLibraryTitleOf). Null
+ * for a key not in the library.
  */
 export function kpiLibraryDraft(key: string, job: { title: string; duties?: readonly string[] }): KpiLibraryDraft | null {
   const template = kpiLibraryTemplate(key);
@@ -930,7 +931,13 @@ export function kpiLibraryDraft(key: string, job: { title: string; duties?: read
   return {
     template,
     leadership,
-    content: { attendancePoints: template.attendancePoints, metrics: metrics.map((m) => ({ ...m, jdDuty: linkJdDuty(m, duties) })) },
+    content: {
+      attendancePoints: template.attendancePoints,
+      metrics: metrics.map((m) => {
+        const linked = linkJdDuty(m, duties);
+        return { ...m, jdDuties: linked ? [linked] : [] };
+      }),
+    },
   };
 }
 

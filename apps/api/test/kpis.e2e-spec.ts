@@ -29,7 +29,12 @@ const NEXT = monthsLater(CURRENT, 1);
 /** A moment on a day, at noon in Cairo whatever the season. */
 const at = (day: string) => new Date(`${day}T10:00:00Z`);
 
-/** The template's three metrics, each worth 10: a pick of 0 gives 10, 1 gives 5, 2 gives 0; Attendance worth 20. */
+/**
+ * The template's three metrics, each worth 10: a pick of 0 gives 10, 1 gives 5, 2 gives 0; Attendance worth 20. The
+ * first measures several JD duties (owner, 25 October 2026: "Yes, several duties"), two of the JD's rows and one typed;
+ * the second its one duty as a client from before sends it (`jdDuty`).
+ */
+const DUTIES = ['Deliver reports on time', 'Keep data accurate', 'Send each report to its readers'];
 const CONTENT = {
   attendancePoints: 20,
   metrics: [
@@ -38,7 +43,7 @@ const CONTENT = {
       name: 'Reports on time',
       definition: 'Monthly reports delivered by their date',
       howMeasured: 'Delivered against due dates',
-      jdDuty: 'Deliver reports on time',
+      jdDuties: DUTIES,
       targetPoints: 10,
       criteria: [
         { label: 'All on time', points: 10 },
@@ -264,6 +269,17 @@ describe('KPIs (e2e)', () => {
       expect(said(await put(`/kpis/templates/${draft.id}`, sessions.hr, { attendancePoints: 20, metrics: [{ ...CONTENT.metrics[0], name: ' ' }] }).expect(400))).toEqual([
         'Metric 1: give it a name.',
       ]);
+      // its JD duties: a list of texts, at most 10, each at most 300 characters
+      const withDuties = (jdDuties: unknown) => ({ attendancePoints: 20, metrics: [{ ...CONTENT.metrics[0], jdDuties }] });
+      expect(said(await put(`/kpis/templates/${draft.id}`, sessions.hr, withDuties(Array.from({ length: 11 }, (_, i) => `Duty ${i + 1}`))).expect(400))).toEqual([
+        'Metric 1 (Reports on time): link it to at most 10 JD duties.',
+      ]);
+      expect(said(await put(`/kpis/templates/${draft.id}`, sessions.hr, withDuties(['Deliver reports on time', 'x'.repeat(301)])).expect(400))).toEqual([
+        'Metric 1 (Reports on time): its JD duty 2 can be at most 300 characters.',
+      ]);
+      expect(said(await put(`/kpis/templates/${draft.id}`, sessions.hr, withDuties([{ duty: 'Deliver reports on time' }])).expect(400))).toEqual([
+        'Metric 1 (Reports on time): its JD duties must be a list of texts.',
+      ]);
       const saved = (await put(`/kpis/templates/${draft.id}`, sessions.hr, CONTENT).expect(200)).body as KpiTemplateView;
       expect(saved.metrics.map((m) => [m.pillar, m.name, m.targetPoints, m.criteria.length])).toEqual([
         ['delivery', 'Reports on time', 10, 3],
@@ -271,6 +287,18 @@ describe('KPIs (e2e)', () => {
         ['clients', 'Stakeholder feedback', 10, 3],
       ]);
       expect(saved.problems).toEqual([]);
+      // every duty kept, tidied (one sent twice in another case kept once); the old client's one duty as a list of it
+      expect(saved.metrics.map((m) => m.jdDuties)).toEqual([DUTIES, ['Keep data accurate'], []]);
+      expect(saved.metrics.some((m) => 'jdDuty' in m)).toBe(false);
+      const again = (await put(`/kpis/templates/${draft.id}`, sessions.hr, withDuties([...DUTIES, ' send EACH report to its readers '])).expect(200)).body as KpiTemplateView;
+      expect(again.metrics[0].jdDuties).toEqual(DUTIES);
+      await put(`/kpis/templates/${draft.id}`, sessions.hr, CONTENT).expect(200);
+      // the first is kept as its one duty too, for a build from before
+      expect(await prisma.kpiMetric.findMany({ where: { templateId: draft.id }, orderBy: { position: 'asc' }, select: { jdDuty: true, jdDuties: true } })).toEqual([
+        { jdDuty: 'Deliver reports on time', jdDuties: DUTIES },
+        { jdDuty: 'Keep data accurate', jdDuties: ['Keep data accurate'] },
+        { jdDuty: null, jdDuties: [] },
+      ]);
 
       v1 = (await post(`/kpis/templates/${draft.id}/publish`, sessions.hr).expect(200)).body;
       expect(v1).toMatchObject({ version: 1, status: 'published', opensFrom: `${NEXT}-01`, firstMonth: CURRENT, inForce: false, problems: [] });
@@ -278,7 +306,13 @@ describe('KPIs (e2e)', () => {
       expect(said(await put(`/kpis/templates/${v1.id}`, sessions.hr, CONTENT).expect(409))[0]).toBe("Version 1 is published, so it can't be changed: start a draft from it instead.");
 
       const actions = (await prisma.auditLog.findMany({ where: { entityType: 'kpi_template', entityId: v1.id }, orderBy: { id: 'asc' } })).map((a) => a.action);
-      expect(actions).toEqual(['create', 'update', 'publish']);
+      expect(actions).toEqual(['create', 'update', 'update', 'update', 'publish']);
+      expect(v1.metrics[0].jdDuties).toEqual(DUTIES);
+
+      // a metric kept before several duties (25 October 2026), its one duty in jd_duty alone, reads as a list of it
+      await prisma.kpiMetric.update({ where: { id: v1.metrics[2].id }, data: { jdDuty: 'Keep stakeholders informed', jdDuties: [] } });
+      const kept = (await get(`/kpis/templates/${v1.id}`, sessions.hr).expect(200)).body as KpiTemplateView;
+      expect(kept.metrics.map((m) => m.jdDuties)).toEqual([DUTIES, ['Keep data accurate'], ['Keep stakeholders informed']]);
     });
 
     it('a second version starts from a copy of the published one, one draft at a time, and keeps the history', async () => {
@@ -288,6 +322,11 @@ describe('KPIs (e2e)', () => {
       expect(draft.metrics.map((m) => m.id)).not.toEqual(v1.metrics.map((m) => m.id));
       expect(said(await post(`/kpis/templates/job-titles/${analystId}/draft`, sessions.hr, { from: 'blank' }).expect(409))[0]).toContain('has a draft already');
       await put(`/kpis/templates/${draft.id}`, sessions.hr, { ...CONTENT, attendancePoints: 25 }).expect(200);
+      // a change of its JD duties alone is audited as any edit of a draft is
+      const fewer = { ...CONTENT, attendancePoints: 25, metrics: [{ ...CONTENT.metrics[0], jdDuties: DUTIES.slice(0, 2) }, ...CONTENT.metrics.slice(1)] };
+      expect(((await put(`/kpis/templates/${draft.id}`, sessions.hr, fewer).expect(200)).body as KpiTemplateView).metrics[0].jdDuties).toEqual(DUTIES.slice(0, 2));
+      const edit = await prisma.auditLog.findFirst({ where: { entityType: 'kpi_template', entityId: draft.id, action: 'update' }, orderBy: { id: 'desc' } });
+      expect(edit).toMatchObject({ userId: users.hr, diff: { jobTitleId: analystId, version: 2 } });
       v2 = (await post(`/kpis/templates/${draft.id}/publish`, sessions.hr).expect(200)).body;
       expect(v2).toMatchObject({ version: 2, attendancePoints: 25, opensFrom: `${NEXT}-01` });
 
@@ -365,6 +404,8 @@ describe('KPIs (e2e)', () => {
       const tia = await card(cards.tia, sessions.tia);
       expect(tia.attendance).toEqual({ points: 20, achieved: 10, ratio: 0.5, score: 0.5, source: 'payroll', counted: true });
       expect(tia.pillars[3]).toMatchObject({ name: 'Discipline & Growth', achieved: 10, max: 20 });
+      // every duty a metric measures (25 October 2026: "Yes, several duties"), one kept before as a list of it
+      expect(tia.pillars.map((p) => p.metrics.map((m) => m.jdDuties))).toEqual([[DUTIES], [['Keep data accurate']], [['Keep stakeholders informed']], []]);
       expect((await card(cards.ben, sessions.ben)).attendance).toMatchObject({ achieved: 20, ratio: null, source: 'none' });
 
       // the employee is told theirs is open

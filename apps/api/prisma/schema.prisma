@@ -4001,7 +4001,8 @@ model KpiMetric {
   name         String
   definition   String?
   howMeasured  String?     @map("how_measured")
-  jdDuty       String?     @map("jd_duty")
+  jdDuty       String?     @map("jd_duty") // before 25 October 2026 its one duty; since, its first (none: NULL)
+  jdDuties     String[]    @default([]) @map("jd_duties") // its duties (owner, 25 October 2026: "Yes, several duties"); none kept before: jd_duty's
   targetPoints Int         @map("target_points")
   criteria     Json
   scores       KpiScore[]

@@ -167,7 +167,7 @@ describe('templates', () => {
     name: 'On time',
     definition: null,
     howMeasured: null,
-    jdDuty: null,
+    jdDuties: [],
     targetPoints: 30,
     criteria: [
       { label: 'No delays', points: 30 },

@@ -1,27 +1,29 @@
-import { KPI_DEFAULT_PILLAR_SET, kpiSample, kpiTemplateProblems, type KpiPillarSet, type KpiTemplateContent } from '@trendlix/shared';
+import { KPI_DEFAULT_PILLAR_SET, kpiSample, kpiTemplateProblems, type KpiMetric, type KpiPillarSet, type KpiTemplateContent } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 import {
   aboveTarget,
   addCriterion,
   addMetric,
+  addTypedDuty,
   baseWeightLabel,
   canMove,
-  chooseDuty,
   contentFromJson,
   contentOf,
-  DUTY_TYPED,
   draftWeightTotal,
-  dutyChoice,
+  dutiesFull,
   formGroups,
   formOf,
+  hasDuty,
   leftOutPillarNote,
   moveMetric,
   onlyForPublishing,
   ownWeightsOf,
+  pickDuty,
   pillarGroups,
   pillarsFromJson,
   pillarsFromText,
   removeCriterion,
+  removeDuty,
   removeMetric,
   resetWeights,
   setPillarWeight,
@@ -56,7 +58,7 @@ const content: KpiTemplateContent = {
       name: 'Monthly payroll accuracy',
       definition: 'Payroll inputs correct',
       howMeasured: null,
-      jdDuty: 'Prepare payroll inputs',
+      jdDuties: ['Prepare payroll inputs'],
       targetPoints: 50,
       criteria: [
         { label: '0 errors', points: 50 },
@@ -69,7 +71,7 @@ const content: KpiTemplateContent = {
       name: 'Time-to-hire',
       definition: null,
       howMeasured: 'Days to offer',
-      jdDuty: 'Something typed',
+      jdDuties: ['Something typed'],
       targetPoints: 35,
       criteria: [
         { label: 'No delays', points: 35 },
@@ -81,12 +83,12 @@ const content: KpiTemplateContent = {
 };
 
 describe('the draft as the form holds it', () => {
-  it('starts from the content in pillar order, numbers as text, a duty not in the JD as typed', () => {
+  it('starts from the content in pillar order, numbers as text, its duties as they are', () => {
     const form = formOf(content, DUTIES, FOUR);
     expect(form.attendancePoints).toBe('20');
-    expect(form.metrics.map((m) => [m.key, m.id, m.pillar, m.name, m.jdDuty, m.dutyTyped, m.targetPoints])).toEqual([
-      ['m0', 'd1', 'delivery', 'Time-to-hire', 'Something typed', true, '35'],
-      ['m1', 'q1', 'quality', 'Monthly payroll accuracy', 'Prepare payroll inputs', false, '50'],
+    expect(form.metrics.map((m) => [m.key, m.id, m.pillar, m.name, m.jdDuties, m.dutyDraft, m.targetPoints])).toEqual([
+      ['m0', 'd1', 'delivery', 'Time-to-hire', ['Something typed'], '', '35'],
+      ['m1', 'q1', 'quality', 'Monthly payroll accuracy', ['Prepare payroll inputs'], '', '50'],
     ]);
     expect(form.metrics[0].criteria).toEqual([
       { key: 'm0c0', label: 'No delays', points: '35' },
@@ -99,8 +101,8 @@ describe('the draft as the form holds it', () => {
   it('gives back the content, trimmed, empty texts as none, in pillar order', () => {
     const form = formOf(content, DUTIES, FOUR);
     expect(contentOf(form)).toEqual({ attendancePoints: 20, metrics: [content.metrics[1], content.metrics[0]] });
-    const typed = updateMetric(form, 'm0', { name: '  Time-to-hire  ', definition: '   ', jdDuty: '' });
-    expect(contentOf(typed).metrics[0]).toMatchObject({ name: 'Time-to-hire', definition: null, jdDuty: null });
+    const typed = updateMetric(form, 'm0', { name: '  Time-to-hire  ', definition: '   ', jdDuties: [] });
+    expect(contentOf(typed).metrics[0]).toMatchObject({ name: 'Time-to-hire', definition: null, jdDuties: [] });
   });
 
   it('starts from a sample as it is, its duties typed when they aren’t the JD’s rows', () => {
@@ -108,9 +110,10 @@ describe('the draft as the form holds it', () => {
     expect(form.metrics).toHaveLength(8);
     expect(contentOf(form)).toEqual({ attendancePoints: 20, metrics: sample.metrics });
     expect(kpiTemplateProblems(contentOf(form), { publishing: true })).toEqual([]);
-    // two of its duties are the JD's rows here
-    expect(form.metrics.filter((m) => !m.dutyTyped).map((m) => m.jdDuty)).toEqual(['Run recruitment end to end', 'Prepare payroll inputs']);
-    expect(form.metrics.filter((m) => m.dutyTyped)).toHaveLength(6);
+    // two of its duties are the JD's rows here, ticked; the others typed
+    const ticked = (m: { jdDuties: string[] }) => DUTIES.some((d) => hasDuty(m, d));
+    expect(form.metrics.filter(ticked).map((m) => m.jdDuties)).toEqual([['Run recruitment end to end'], ['Prepare payroll inputs']]);
+    expect(form.metrics.filter((m) => !ticked(m))).toHaveLength(6);
   });
 
   it('sends numbers not whole as NaN, which the rules refuse', () => {
@@ -291,14 +294,53 @@ describe('changing the draft', () => {
   });
 });
 
-describe('the JD duty ("so HR can link duties")', () => {
-  it('is one of the JD’s rows, typed, or none', () => {
-    expect(dutyChoice({ jdDuty: 'Prepare payroll inputs', dutyTyped: false }, DUTIES)).toBe('Prepare payroll inputs');
-    expect(dutyChoice({ jdDuty: 'Something typed', dutyTyped: true }, DUTIES)).toBe(DUTY_TYPED);
-    expect(dutyChoice({ jdDuty: '', dutyTyped: false }, DUTIES)).toBe('');
-    expect(chooseDuty({ jdDuty: 'Prepare payroll inputs' }, DUTY_TYPED)).toEqual({ dutyTyped: true, jdDuty: 'Prepare payroll inputs' });
-    expect(chooseDuty({ jdDuty: 'x' }, 'Run recruitment end to end')).toEqual({ dutyTyped: false, jdDuty: 'Run recruitment end to end' });
-    expect(chooseDuty({ jdDuty: 'x' }, '')).toEqual({ dutyTyped: false, jdDuty: '' });
+describe('the JD duties ("so HR can link duties"; owner, 25 October 2026: "Yes, several duties")', () => {
+  const none = { jdDuties: [] as string[], dutyDraft: '' };
+
+  it('ticks the JD’s rows and adds typed ones, each once, in the order added, and removes any', () => {
+    let m = { ...none, ...pickDuty(none, 'Prepare payroll inputs', true) };
+    m = { ...m, ...pickDuty(m, 'Run recruitment end to end', true) };
+    // ticked again, in another case: once
+    m = { ...m, ...pickDuty(m, 'prepare payroll inputs', true) };
+    expect(m.jdDuties).toEqual(['Prepare payroll inputs', 'Run recruitment end to end']);
+    m = { ...m, ...addTypedDuty({ ...m, dutyDraft: '  Answer payroll questions  ' }) };
+    expect(m).toEqual({ jdDuties: ['Prepare payroll inputs', 'Run recruitment end to end', 'Answer payroll questions'], dutyDraft: '' });
+    // typed again in another case: once, the box emptied; nothing typed: nothing
+    expect(addTypedDuty({ ...m, dutyDraft: 'ANSWER payroll  questions' })).toEqual({ jdDuties: m.jdDuties, dutyDraft: '' });
+    expect(addTypedDuty({ ...m, dutyDraft: '   ' })).toEqual({ jdDuties: m.jdDuties, dutyDraft: '   ' });
+    expect(hasDuty(m, 'run recruitment END to end')).toBe(true);
+    expect(pickDuty(m, 'Run recruitment end to end', false).jdDuties).toEqual(['Prepare payroll inputs', 'Answer payroll questions']);
+    expect(removeDuty(m, 'answer payroll questions').jdDuties).toEqual(['Prepare payroll inputs', 'Run recruitment end to end']);
+    expect(removeDuty(m, 'Not linked').jdDuties).toEqual(m.jdDuties);
+  });
+
+  it('takes at most 10: then nothing else is ticked or added', () => {
+    const ten = { jdDuties: Array.from({ length: 10 }, (_, i) => `Duty ${i + 1}`), dutyDraft: 'Duty 11' };
+    expect(dutiesFull(ten)).toBe(true);
+    expect(pickDuty(ten, 'Prepare payroll inputs', true).jdDuties).toEqual(ten.jdDuties);
+    expect(addTypedDuty(ten)).toEqual(ten);
+    expect(dutiesFull({ jdDuties: ten.jdDuties.slice(1) })).toBe(false);
+    // removing one makes room again
+    expect(pickDuty(removeDuty(ten, 'Duty 1'), 'Prepare payroll inputs', true).jdDuties).toHaveLength(10);
+  });
+
+  it('sends them all, one still typed in the box with them; the rules refuse an 11th', () => {
+    const form = formOf(content, DUTIES, FOUR);
+    const linked = updateMetric(form, 'm1', { ...pickDuty(form.metrics[1], 'Run recruitment end to end', true), dutyDraft: ' Check payroll before it is paid ' });
+    expect(contentOf(linked).metrics[1].jdDuties).toEqual(['Prepare payroll inputs', 'Run recruitment end to end', 'Check payroll before it is paid']);
+    const eleven = updateMetric(form, 'm0', { jdDuties: Array.from({ length: 10 }, (_, i) => `Duty ${i + 1}`), dutyDraft: 'One more' });
+    expect(kpiTemplateProblems(contentOf(eleven))).toEqual(['Metric 1 (Time-to-hire): link it to at most 10 JD duties.']);
+  });
+
+  it('reads a metric saved before with its one duty as a list of it, written as the JD’s row it is; never sends that one', () => {
+    const { pillar, name, definition, howMeasured, targetPoints, criteria } = content.metrics[0];
+    // as an API from before 25 October 2026 answered it
+    const old = { id: 'q1', pillar, name, definition, howMeasured, jdDuty: 'prepare  payroll inputs', targetPoints, criteria } as unknown as KpiMetric;
+    const form = formOf({ attendancePoints: 20, metrics: [old] }, DUTIES, FOUR);
+    expect(form.metrics[0].jdDuties).toEqual(['Prepare payroll inputs']);
+    const sent = contentOf(form).metrics[0];
+    expect(sent.jdDuties).toEqual(['Prepare payroll inputs']);
+    expect('jdDuty' in sent).toBe(false);
   });
 });
 

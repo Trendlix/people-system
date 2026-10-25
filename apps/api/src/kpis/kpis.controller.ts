@@ -132,7 +132,11 @@ export class KpiTemplatesController {
     return this.templates.one(id, user);
   }
 
-  /** A draft's content: { attendancePoints, metrics: [{ pillar, name, definition, howMeasured, jdDuty, targetPoints, criteria: [{ label, points }] }] }. */
+  /**
+   * A draft's content: { attendancePoints, metrics: [{ pillar, name, definition, howMeasured, jdDuties, targetPoints,
+   * criteria: [{ label, points }] }] }; jdDuties a list of texts (25 October 2026), one duty as text or an old client's
+   * `jdDuty` still taken as a list of it.
+   */
   @Roles('hr', 'super_admin')
   @Put(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: KpiTemplateContentDto, @CurrentUser() user: SessionUser) {

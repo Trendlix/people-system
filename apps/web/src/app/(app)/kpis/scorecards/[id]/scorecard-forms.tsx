@@ -5,6 +5,7 @@ import {
   KPI_ATTENDANCE_METRIC,
   KPI_COMMENT_MAX,
   KPI_LEVEL_LABELS,
+  kpiMetricDuties,
   kpiPast,
   kpiPercentText,
   type KpiPillarScore,
@@ -45,7 +46,7 @@ import { LevelBadge } from '../../ui';
 
 // A KPI scorecard's pillars and metrics, and the forms of its steps (owner, 21 October 2026: "Full framework per role";
 // "Self, manager, HR, sign-off"): its pillars with their weights (its template version's, as it was published: owner,
-// 21 October 2026, "Fully flexible"), each metric with its definition, how it is measured, the JD duty it comes from and
+// 21 October 2026, "Fully flexible"), each metric with its definition, how it is measured, the JD duties it measures and
 // its criteria scale (the target marked), and the automatic Attendance metric read-only in its pillar (Discipline &
 // Growth unless the framework chose another), hidden while attendance is out of the KPI (owner, 25 October 2026:
 // "Fixed cut only"), the pillar it was alone in then not scored, its weight spread over the others. Read as it stands, or as the caller's step: the employee's self-rating, the scorer's
@@ -158,6 +159,8 @@ function MetricRow({
   fid: (name: string) => string;
 }) {
   const target = targetIndex(m);
+  // the JD duties it measures (owner, 25 October 2026: "Yes, several duties"; one of before a list of it)
+  const duties = kpiMetricDuties(m);
   const managerPick = m.manager?.choice ?? null;
   const changed = mode === 'calibrate' && isChange(managerPick, pick);
   const points = typeof pick === 'number' ? (m.criteria[pick]?.points ?? null) : mode === 'view' ? m.points : null;
@@ -187,9 +190,9 @@ function MetricRow({
               <span className="font-semibold">How it’s measured:</span> {m.howMeasured}
             </p>
           )}
-          {m.jdDuty && (
+          {duties.length > 0 && (
             <p className="text-xs text-accent">
-              <span className="font-semibold">From the JD:</span> {m.jdDuty}
+              <span className="font-semibold">Measures:</span> {duties.join(' · ')}
             </p>
           )}
         </div>

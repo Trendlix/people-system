@@ -13,21 +13,23 @@ import {
   aboveTarget,
   addCriterion,
   addMetric,
+  addTypedDuty,
   baseWeightLabel,
   canMove,
-  chooseDuty,
   contentOf,
   draftWeightTotal,
-  DUTY_TYPED,
-  dutyChoice,
+  dutiesFull,
   formGroups,
   formOf,
+  hasDuty,
   leftOutPillarNote,
   moveMetric,
   onlyForPublishing,
   PILLARS_CHANGED_NOTE,
+  pickDuty,
   pillarsFromText,
   removeCriterion,
+  removeDuty,
   removeMetric,
   resetWeights,
   setPillarWeight,
@@ -48,7 +50,8 @@ import {
 // A job title's KPI template draft, as HR (or the Super Admin) builds it (owner, 21 October 2026: "Full framework per
 // role"; "Templates: HR"): the pillars with their weights and max points, the automatic Attendance metric's points
 // in its pillar (it can't be removed), and the metrics, each with its pillar, name, definition, how it's
-// measured, the JD duty it is linked to (one of the JD's duty rows, beside the builder, or typed), its target points and
+// measured, the JD duties it is linked to (the JD's duty rows, beside the builder, and typed ones; several from 25
+// October 2026: "Yes, several duties"), its target points and
 // its criteria scale, 2 to 6 rows, a criterion allowed to give more than the target ("above target": a final % may
 // reach 110%). Metrics are added, removed and moved within their pillar. What stops it being saved, and what stops it
 // being published, show as it is typed (kpiTemplateProblems). Save draft keeps it; Publish saves it and publishes it,
@@ -171,7 +174,6 @@ function MetricEditor({
 }) {
   const id = (field: string) => fid(`${metric.key}-${field}`);
   const update = (patch: Partial<Omit<MetricForm, 'key' | 'id' | 'criteria' | 'wasIn'>>) => setForm((f) => updateMetric(f, metric.key, patch));
-  const choice = dutyChoice(metric, duties);
   return (
     <li className="space-y-4 rounded-lg border border-line p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -262,50 +264,7 @@ function MetricEditor({
       </div>
 
       <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_10rem]">
-        <div className="space-y-2">
-          <div>
-            <label htmlFor={id('duty')} className="label">
-              JD duty <span className="font-normal text-muted">(optional)</span>
-            </label>
-            <Select
-              id={id('duty')}
-              value={choice}
-              onChange={(e) => update(chooseDuty(metric, e.target.value))}
-              aria-describedby={id('duty-hint')}
-              className="input"
-            >
-              <option value="">None</option>
-              {duties.length > 0 && (
-                <optgroup label="The job description’s duties">
-                  {duties.map((d, i) => (
-                    <option key={`${i}:${d}`} value={d}>
-                      {d}
-                    </option>
-                  ))}
-                </optgroup>
-              )}
-              <option value={DUTY_TYPED}>{duties.length > 0 ? 'Type another duty' : 'Type the duty'}</option>
-            </Select>
-            <p id={id('duty-hint')} className="hint">
-              {duties.length > 0 ? 'The duty of the job description it measures.' : 'The job description has no duties listed: type the duty it measures.'}
-            </p>
-          </div>
-          {metric.dutyTyped && (
-            <div>
-              <label htmlFor={id('dutyText')} className="label">
-                Duty
-              </label>
-              <input
-                id={id('dutyText')}
-                value={metric.jdDuty}
-                maxLength={L.duty}
-                autoComplete="off"
-                onChange={(e) => update({ jdDuty: e.target.value })}
-                className="input"
-              />
-            </div>
-          )}
-        </div>
+        <DutiesEditor metric={metric} number={number} duties={duties} id={id} update={update} />
         <div>
           <label htmlFor={id('target')} className="label">
             Target points
@@ -328,6 +287,120 @@ function MetricEditor({
 
       <CriteriaEditor metric={metric} number={number} id={id} setForm={setForm} newKey={newKey} />
     </li>
+  );
+}
+
+// a JD duty row to tick, at least 44px tall for a finger, its words wrapping on a phone
+const dutyRow = 'flex min-h-11 cursor-pointer items-start gap-2.5 rounded-md px-2 py-2.5 text-sm hover:bg-canvas has-checked:bg-accent-soft';
+
+/**
+ * A metric's JD duties (owner, 25 October 2026, on "JD duty": "can i select 2 job descriptions?", then "Yes, several
+ * duties"): those linked as chips, each removable; the job description's duty rows to tick, folded away; and "Add
+ * another duty" for one typed, added with Add or Enter (one left typed is saved with them). At most 10.
+ */
+function DutiesEditor({
+  metric,
+  number,
+  duties,
+  id,
+  update,
+}: {
+  metric: MetricForm;
+  number: number;
+  duties: readonly string[];
+  id: (field: string) => string;
+  update: (patch: Partial<Pick<MetricForm, 'jdDuties' | 'dutyDraft'>>) => void;
+}) {
+  const full = dutiesFull(metric);
+  const ticked = duties.filter((d) => hasDuty(metric, d)).length;
+  const add = () => update(addTypedDuty(metric));
+  return (
+    <fieldset className="min-w-0 space-y-2" aria-describedby={id('duty-hint')}>
+      <legend className="label">
+        JD duties <span className="font-normal text-muted">(optional)</span>
+      </legend>
+      <p id={id('duty-hint')} className="hint -mt-1">
+        {duties.length > 0 ? 'The duties of the job description it measures: tick them, or add another duty.' : 'The job description has no duties listed: add the duties it measures.'}{' '}
+        Up to {L.duties}.
+      </p>
+      {metric.jdDuties.length > 0 ? (
+        <ul aria-label={`Metric ${number}’s duties`} className="flex flex-wrap gap-2">
+          {metric.jdDuties.map((d) => (
+            <li key={d} className="inline-flex max-w-full items-start gap-1 rounded-2xl bg-accent-soft py-1 ps-3 pe-1 text-sm text-ink">
+              <span dir="auto" className="min-w-0 py-0.5 break-words">
+                {d}
+              </span>
+              <button
+                type="button"
+                onClick={() => update(removeDuty(metric, d))}
+                aria-label={`Remove ${d} from metric ${number}`}
+                className="inline-flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted hover:bg-line hover:text-ink"
+              >
+                <span aria-hidden="true">×</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-muted">None linked.</p>
+      )}
+      {duties.length > 0 && (
+        <details className="rounded-lg border border-line">
+          <summary className="flex min-h-11 cursor-pointer items-center px-3 text-sm font-semibold">
+            <span>
+              The job description’s duties{' '}
+              <span className="font-normal text-muted">
+                ({ticked} of {duties.length} ticked)
+              </span>
+            </span>
+          </summary>
+          <div className="space-y-0.5 border-t border-line-soft p-1.5">
+            {duties.map((d, i) => {
+              const on = hasDuty(metric, d);
+              return (
+                <label key={`${i}:${d}`} className={dutyRow}>
+                  <input
+                    type="checkbox"
+                    checked={on}
+                    disabled={!on && full}
+                    onChange={(e) => update(pickDuty(metric, d, e.target.checked))}
+                    className="mt-0.5 size-4 shrink-0 accent-accent"
+                  />
+                  <span className="min-w-0 break-words">{d}</span>
+                </label>
+              );
+            })}
+          </div>
+        </details>
+      )}
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="min-w-48 flex-1">
+          <label htmlFor={id('dutyText')} className="label">
+            {duties.length > 0 ? 'Add another duty' : 'Add a duty'}
+          </label>
+          <input
+            id={id('dutyText')}
+            value={metric.dutyDraft}
+            maxLength={L.duty}
+            autoComplete="off"
+            disabled={full}
+            onChange={(e) => update({ dutyDraft: e.target.value })}
+            onKeyDown={(e) => {
+              // Enter adds it, never saves the draft
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                add();
+              }
+            }}
+            className="input"
+          />
+        </div>
+        <button type="button" onClick={add} disabled={full || !metric.dutyDraft.trim()} className="btn btn-secondary">
+          Add<span className="sr-only"> the duty to metric {number}</span>
+        </button>
+      </div>
+      {full && <p className="hint">It has {L.duties} duties, the most: remove one to add another.</p>}
+    </fieldset>
   );
 }
 

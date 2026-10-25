@@ -108,7 +108,7 @@ describe('the role library', () => {
     for (const t of KPI_LIBRARY) {
       for (const m of t.metrics) {
         const which = `${t.key}: ${m.name}`;
-        expect({ which, definition: !!m.definition, howMeasured: !!m.howMeasured, duty: !!m.jdDuty }).toEqual({ which, definition: true, howMeasured: true, duty: true });
+        expect({ which, definition: !!m.definition, howMeasured: !!m.howMeasured, duties: m.jdDuties.length }).toEqual({ which, definition: true, howMeasured: true, duties: 1 });
         expect(m.criteria.length).toBeGreaterThanOrEqual(KPI_TEMPLATE_LIMITS.criteriaMin);
         expect(m.criteria.length).toBeLessThanOrEqual(KPI_TEMPLATE_LIMITS.criteriaMax);
         // the target is one of its criteria (the one that is 100%); only a stretch criterion is worth more
@@ -330,7 +330,7 @@ describe('titles that lead people', () => {
 });
 
 describe('linking metrics to the JD’s duties', () => {
-  const metric = { name: 'Sprint tasks delivered on time', definition: 'Share of assigned sprint tasks closed by their due date', jdDuty: 'Deliver sprint tasks on time with accurate estimates' };
+  const metric = { name: 'Sprint tasks delivered on time', definition: 'Share of assigned sprint tasks closed by their due date', jdDuties: ['Deliver sprint tasks on time with accurate estimates'] };
   const duties = [
     'Develop responsive web pages from Figma designs',
     'Deliver assigned sprint tasks on time',
@@ -340,23 +340,23 @@ describe('linking metrics to the JD’s duties', () => {
 
   it('links the duty row sharing the most meaningful words, by their stems', () => {
     expect(linkJdDuty(metric, duties)).toBe('Deliver assigned sprint tasks on time');
-    expect(linkJdDuty({ name: 'Reopened bugs after QA', definition: 'Tickets sent back after being marked done', jdDuty: 'Fix bugs before release and keep reopened bugs low' }, duties)).toBe('Fix bugs reported by QA before release');
+    expect(linkJdDuty({ name: 'Reopened bugs after QA', definition: 'Tickets sent back after being marked done', jdDuties: ['Fix bugs before release and keep reopened bugs low'] }, duties)).toBe('Fix bugs reported by QA before release');
     // "delivered", "delivery" and "deliver" are one word to it
-    expect(linkJdDuty({ name: 'Delivery of reports', definition: null, jdDuty: null }, ['Delivering the monthly reports', 'Answering the phone'])).toBe('Delivering the monthly reports');
+    expect(linkJdDuty({ name: 'Delivery of reports', definition: null, jdDuties: [] }, ['Delivering the monthly reports', 'Answering the phone'])).toBe('Delivering the monthly reports');
   });
 
   it('leaves it empty when no row is close enough: one shared word, or too small a share of a long row', () => {
     expect(linkJdDuty(metric, ['Keep the office tidy', 'Plan the sprint'])).toBeNull();
-    expect(linkJdDuty({ name: 'Tasks on time', definition: null, jdDuty: null }, ['Coordinate across marketing, design, video, content and accounts to plan every campaign, task and launch in time'])).toBeNull();
+    expect(linkJdDuty({ name: 'Tasks on time', definition: null, jdDuties: [] }, ['Coordinate across marketing, design, video, content and accounts to plan every campaign, task and launch in time'])).toBeNull();
     expect(linkJdDuty(metric, [])).toBeNull();
     // words like "the", "and", "ensure", "monthly" don't count
-    expect(linkJdDuty({ name: 'The monthly work', definition: 'Ensure the work and the duties', jdDuty: null }, ['Ensure the monthly work and duties are done'])).toBeNull();
+    expect(linkJdDuty({ name: 'The monthly work', definition: 'Ensure the work and the duties', jdDuties: [] }, ['Ensure the monthly work and duties are done'])).toBeNull();
     // Arabic duties are compared too, but an English metric shares nothing with them
     expect(linkJdDuty(metric, ['تسليم مهام السبرنت في موعدها'])).toBeNull();
   });
 
   it('breaks a tie by the share of the row’s words, then takes the first', () => {
-    const m = { name: 'Client feedback', definition: 'Rating from the client', jdDuty: null };
+    const m = { name: 'Client feedback', definition: 'Rating from the client', jdDuties: [] };
     expect(linkJdDuty(m, ['Collect client feedback after every campaign and share it with the team', 'Client feedback'])).toBe('Client feedback');
     expect(linkJdDuty(m, ['Client feedback forms', 'Forms for client feedback'])).toBe('Client feedback forms');
   });
@@ -372,13 +372,15 @@ describe('linking metrics to the JD’s duties', () => {
 
   it('a draft keeps the rows linked, the others empty, never the library’s own words; the library is left as it is', () => {
     const drafted = kpiLibraryDraft('frontend-developer', { title: 'Frontend Developer', duties })!;
-    const linked = Object.fromEntries(drafted.content.metrics.map((m) => [m.name, m.jdDuty]));
+    // a list of the one linked (25 October 2026: "Yes, several duties"), else none
+    expect(drafted.content.metrics.every((m) => m.jdDuties.length <= 1)).toBe(true);
+    const linked = Object.fromEntries(drafted.content.metrics.map((m) => [m.name, m.jdDuties[0] ?? null]));
     expect(linked['Sprint tasks delivered on time']).toBe('Deliver assigned sprint tasks on time');
     expect(linked['Reopened bugs after QA']).toBe('Fix bugs reported by QA before release');
     expect(linked['PM / client feedback']).toBe('Attend client calls and update the project manager');
     expect(linked['Development plan']).toBeNull();
     for (const duty of Object.values(linked)) if (duty !== null) expect(duties).toContain(duty);
-    expect(kpiLibraryDraft('frontend-developer', { title: 'Frontend Developer' })!.content.metrics.every((m) => m.jdDuty === null)).toBe(true);
+    expect(kpiLibraryDraft('frontend-developer', { title: 'Frontend Developer' })!.content.metrics.every((m) => m.jdDuties.length === 0)).toBe(true);
     drafted.content.metrics[0].criteria[0].points = 1;
     expect(kpiLibraryTemplate('frontend-developer')!.metrics[0].criteria[0].points).toBe(35);
     expect(kpiLibraryDraft('no-such-role', { title: 'X' })).toBeNull();

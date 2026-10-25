@@ -9,6 +9,7 @@ import {
   kpiLibraryMatchOf,
   kpiLibraryRoles,
   kpiLibraryTitleOf,
+  kpiMetricDuties,
   kpiMonthAdd,
   kpiMonthName,
   kpiOwnWeights,
@@ -131,6 +132,17 @@ const asObject = (v: unknown): Record<string, unknown> => (v && typeof v === 'ob
 /** A metric's pillar as sent: a key, or none (Unplaced); anything else no key at all ("?"), which the rules refuse. */
 const pillarSent = (v: unknown): string | null => (v === null || v === undefined || v === '' ? null : typeof v === 'string' ? v.trim() || null : '?');
 
+/**
+ * A metric's JD duties as sent (owner, 25 October 2026: "Yes, several duties"): a list of texts, tidied; one duty as
+ * text, or the one `jdDuty` an old client sends, as a list of it (kpiMetricDuties). Anything else is kept as it came,
+ * for the rules to refuse ("its JD duties must be a list of texts").
+ */
+const dutiesSent = (m: Record<string, unknown>): string[] => {
+  const sent = m.jdDuties;
+  const readable = sent === undefined || sent === null || typeof sent === 'string' || (Array.isArray(sent) && sent.every((d) => typeof d === 'string'));
+  return readable ? kpiMetricDuties(m) : (sent as string[]);
+};
+
 /** A draft's content as sent, tidied (texts trimmed, empty ones null), for the shared rules to check. */
 export function contentOf(dto: Pick<KpiTemplateContentDto, 'attendancePoints' | 'metrics'>): KpiTemplateContent {
   return {
@@ -144,7 +156,7 @@ export function contentOf(dto: Pick<KpiTemplateContentDto, 'attendancePoints' | 
         name: text(m.name),
         definition: textOrNull(m.definition),
         howMeasured: textOrNull(m.howMeasured),
-        jdDuty: textOrNull(m.jdDuty),
+        jdDuties: dutiesSent(m),
         targetPoints: m.targetPoints as number,
         criteria: Array.isArray(m.criteria) ? m.criteria.map((c) => ({ label: text(asObject(c).label), points: asObject(c).points as number })) : [],
       };
@@ -152,7 +164,10 @@ export function contentOf(dto: Pick<KpiTemplateContentDto, 'attendancePoints' | 
   };
 }
 
-/** A template's metrics as rows to save: in Unplaced, with the name of the pillar each was in. */
+/**
+ * A template's metrics as rows to save: in Unplaced, with the name of the pillar each was in; its JD duties, the first
+ * as its one duty too (what a build from before 25 October 2026 reads).
+ */
 const metricRows = (metrics: readonly KpiMetric[]) =>
   metrics.map((m, i) => ({
     position: i + 1,
@@ -161,7 +176,8 @@ const metricRows = (metrics: readonly KpiMetric[]) =>
     name: m.name,
     definition: m.definition,
     howMeasured: m.howMeasured,
-    jdDuty: m.jdDuty,
+    jdDuty: kpiMetricDuties(m)[0] ?? null,
+    jdDuties: kpiMetricDuties(m),
     targetPoints: m.targetPoints,
     criteria: m.criteria.map((c) => ({ label: c.label, points: c.points })) as Prisma.InputJsonValue,
   }));
@@ -750,7 +766,7 @@ function shownMetric<M extends { pillar: string | null; wasIn?: string | null }>
 function sameContent(
   before: {
     attendancePoints: number;
-    metrics: readonly { pillar: string | null; wasIn: string | null; name: string; definition: string | null; howMeasured: string | null; jdDuty: string | null; targetPoints: number; criteria: Prisma.JsonValue }[];
+    metrics: readonly { pillar: string | null; wasIn: string | null; name: string; definition: string | null; howMeasured: string | null; jdDuty: string | null; jdDuties: string[]; targetPoints: number; criteria: Prisma.JsonValue }[];
   },
   content: KpiTemplateContent,
 ): boolean {
@@ -762,7 +778,9 @@ function sameContent(
     name: m.name,
     definition: m.definition,
     howMeasured: m.howMeasured,
-    jdDuty: m.jdDuty,
+    // one duty saved before (25 October 2026) as a list of it: the same as it sent again
+    jdDuty: kpiMetricDuties(m)[0] ?? null,
+    jdDuties: kpiMetricDuties(m),
     targetPoints: m.targetPoints,
     criteria: criteriaOf(m.criteria),
   }));

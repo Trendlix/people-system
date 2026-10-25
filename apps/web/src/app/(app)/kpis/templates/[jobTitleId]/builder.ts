@@ -1,4 +1,15 @@
-import { KPI_TEMPLATE_LIMITS, kpiWeightsProblems, type KpiCriterion, type KpiMetric, type KpiPillar, type KpiPillarSet, type KpiTemplateContent } from '@trendlix/shared';
+import {
+  KPI_TEMPLATE_LIMITS,
+  kpiMetricDuties,
+  kpiSameDuty,
+  kpiTidyDuties,
+  kpiWeightsProblems,
+  type KpiCriterion,
+  type KpiMetric,
+  type KpiPillar,
+  type KpiPillarSet,
+  type KpiTemplateContent,
+} from '@trendlix/shared';
 import { wholeOf } from '../templates';
 
 // A job title's KPI template builder (owner, 21 October 2026: "Full framework per role"; "Templates: HR"): the draft as
@@ -38,9 +49,13 @@ export interface MetricForm {
   name: string;
   definition: string;
   howMeasured: string;
-  /** The JD duty it is linked to: one of the JD's duty rows, or typed (`dutyTyped`). */
-  jdDuty: string;
-  dutyTyped: boolean;
+  /**
+   * The JD duties it is linked to, in the order added (owner, 25 October 2026: "Yes, several duties"): the JD's duty
+   * rows ticked and duties typed, each once, at most KPI_TEMPLATE_LIMITS.duties.
+   */
+  jdDuties: string[];
+  /** What is typed in "Add another duty" and not added yet: sent with the duties all the same. */
+  dutyDraft: string;
   targetPoints: string;
   criteria: CriterionForm[];
 }
@@ -71,12 +86,11 @@ const orderOf = (set: Pick<KpiPillarSet, 'pillars'>, pillar: string | null): num
 export const inPillarOrder = <M extends { pillar: string | null }>(metrics: readonly M[], set: Pick<KpiPillarSet, 'pillars'>): M[] =>
   [...metrics].sort((a, b) => orderOf(set, a.pillar) - orderOf(set, b.pillar));
 
-/** The Select's choice for a duty typed rather than picked from the JD's rows. */
-export const DUTY_TYPED = '__typed__';
-
-/** A saved metric (or a sample's) as the form shows it. */
+/**
+ * A saved metric (or a sample's) as the form shows it; its duties (one saved before 25 October 2026 a list of it), one
+ * that is a JD duty row in another case or spacing written as the row, so it shows ticked.
+ */
 function metricFormOf(m: KpiMetric, key: string, duties: readonly string[]): MetricForm {
-  const duty = m.jdDuty ?? '';
   return {
     key,
     ...(m.id ? { id: m.id } : {}),
@@ -85,8 +99,8 @@ function metricFormOf(m: KpiMetric, key: string, duties: readonly string[]): Met
     name: m.name,
     definition: m.definition ?? '',
     howMeasured: m.howMeasured ?? '',
-    jdDuty: duty,
-    dutyTyped: duty !== '' && !duties.includes(duty),
+    jdDuties: kpiMetricDuties(m).map((d) => duties.find((row) => kpiSameDuty(row, d)) ?? d),
+    dutyDraft: '',
     targetPoints: String(m.targetPoints),
     criteria: m.criteria.map((c, j) => ({ key: `${key}c${j}`, label: c.label, points: String(c.points) })),
   };
@@ -133,7 +147,7 @@ export function contentOf(form: DraftForm): KpiTemplateContent {
         name: m.name.trim(),
         definition: textOrNull(m.definition),
         howMeasured: textOrNull(m.howMeasured),
-        jdDuty: textOrNull(m.jdDuty),
+        jdDuties: kpiTidyDuties([...m.jdDuties, m.dutyDraft]),
         targetPoints: wholeOf(m.targetPoints),
         criteria: m.criteria.map((c): KpiCriterion => ({ label: c.label.trim(), points: wholeOf(c.points) })),
       }),
@@ -315,8 +329,8 @@ export function addMetric(form: DraftForm, pillar: string, key: string): DraftFo
     name: '',
     definition: '',
     howMeasured: '',
-    jdDuty: '',
-    dutyTyped: false,
+    jdDuties: [],
+    dutyDraft: '',
     targetPoints: '',
     criteria: [0, 1, 2].map((j) => ({ key: `${key}c${j}`, label: '', points: '' })),
   };
@@ -373,19 +387,37 @@ export function updateCriterion(form: DraftForm, key: string, criterionKey: stri
   return withCriteria(form, key, (criteria) => criteria.map((c) => (c.key === criterionKey ? { ...c, ...patch } : c)));
 }
 
-// ---------- the JD duty ----------
+// ---------- the JD duties ----------
+// Several (owner, 25 October 2026, on "JD duty": "can i select 2 job descriptions?", then "Yes, several duties"): a
+// metric is linked to any of the JD's duty rows, ticked, and to duties typed ("Add another duty"), each a chip that can
+// be removed, each once, at most 10; one saved before with its one duty reads as a list of it.
 
-/** The duty Select's value: one of the JD's rows, typed, or none (''). */
-export function dutyChoice(metric: Pick<MetricForm, 'jdDuty' | 'dutyTyped'>, duties: readonly string[]): string {
-  if (metric.dutyTyped) return DUTY_TYPED;
-  return duties.includes(metric.jdDuty) ? metric.jdDuty : '';
+/** Whether a metric is linked to a duty (in any case). */
+export const hasDuty = (metric: Pick<MetricForm, 'jdDuties'>, duty: string): boolean => metric.jdDuties.some((d) => kpiSameDuty(d, duty));
+
+/** Whether a metric has as many duties as it may (10): no other can be ticked or added. */
+export const dutiesFull = (metric: Pick<MetricForm, 'jdDuties'>): boolean => metric.jdDuties.length >= KPI_TEMPLATE_LIMITS.duties;
+
+/** A JD duty row ticked (added after the others, unless the metric is full) or unticked (removed). */
+export function pickDuty(metric: Pick<MetricForm, 'jdDuties'>, duty: string, on: boolean): Pick<MetricForm, 'jdDuties'> {
+  if (!on) return removeDuty(metric, duty);
+  return { jdDuties: hasDuty(metric, duty) || dutiesFull(metric) ? metric.jdDuties : [...metric.jdDuties, duty] };
 }
 
-/** What choosing in the duty Select changes: a JD row, none, or typing one (starting from the duty there was). */
-export function chooseDuty(metric: Pick<MetricForm, 'jdDuty'>, value: string): Pick<MetricForm, 'jdDuty' | 'dutyTyped'> {
-  if (value === DUTY_TYPED) return { dutyTyped: true, jdDuty: metric.jdDuty };
-  return { dutyTyped: false, jdDuty: value };
+/**
+ * "Add another duty": what is typed added after the others, trimmed, and the box emptied; one it has already (in any
+ * case) isn't added twice. Nothing changes with nothing typed, or with the metric full.
+ */
+export function addTypedDuty(metric: Pick<MetricForm, 'jdDuties' | 'dutyDraft'>): Pick<MetricForm, 'jdDuties' | 'dutyDraft'> {
+  const typed = metric.dutyDraft.trim();
+  if (!typed || dutiesFull(metric)) return { jdDuties: metric.jdDuties, dutyDraft: metric.dutyDraft };
+  return { jdDuties: kpiTidyDuties([...metric.jdDuties, typed]), dutyDraft: '' };
 }
+
+/** A duty's chip removed. */
+export const removeDuty = (metric: Pick<MetricForm, 'jdDuties'>, duty: string): Pick<MetricForm, 'jdDuties'> => ({
+  jdDuties: metric.jdDuties.filter((d) => !kpiSameDuty(d, duty)),
+});
 
 // ---------- the problems ----------
 

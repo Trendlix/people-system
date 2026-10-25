@@ -4,6 +4,7 @@ import {
   KPI_STEP_LABELS,
   kpiAttendanceIn,
   kpiDeadlines,
+  kpiMetricDuties,
   kpiOwnWeights,
   kpiPayrollMonth,
   kpiPillarOf,
@@ -101,7 +102,10 @@ export type CardRow = Prisma.KpiScorecardGetPayload<{ include: typeof CARD_INCLU
 
 export const monthOfCard = (row: { month: Date }) => fromDateOnly(row.month).slice(0, 7);
 
-/** A saved metric as the pages read it: its pillar's key (none: in Unplaced, with the pillar it was in). */
+/**
+ * A saved metric as the pages read it: its pillar's key (none: in Unplaced, with the pillar it was in), and its JD
+ * duties (25 October 2026: "Yes, several duties"), one saved before read as a list of it (kpiMetricDuties).
+ */
 export function metricView(m: {
   id: string;
   pillar: string | null;
@@ -110,6 +114,7 @@ export function metricView(m: {
   definition: string | null;
   howMeasured: string | null;
   jdDuty: string | null;
+  jdDuties: string[];
   targetPoints: number;
   criteria: Prisma.JsonValue;
 }): KpiMetricView {
@@ -120,7 +125,7 @@ export function metricView(m: {
     name: m.name,
     definition: m.definition,
     howMeasured: m.howMeasured,
-    jdDuty: m.jdDuty,
+    jdDuties: kpiMetricDuties(m),
     targetPoints: m.targetPoints,
     criteria: criteriaOf(m.criteria),
   };

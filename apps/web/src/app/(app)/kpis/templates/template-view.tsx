@@ -1,4 +1,4 @@
-import { KPI_ATTENDANCE_METRIC, type KpiTemplateView } from '@trendlix/shared';
+import { KPI_ATTENDANCE_METRIC, kpiMetricDuties, type KpiTemplateView } from '@trendlix/shared';
 import { aboveTarget, leftOutPillarNote, pillarGroups, pillarsFromText, UNPLACED_TITLE } from './[jobTitleId]/builder';
 
 // A version of a job title's KPI template as everyone reads it (owner, 21 October 2026: "Managers can view their team's
@@ -12,6 +12,23 @@ import { aboveTarget, leftOutPillarNote, pillarGroups, pillarsFromText, UNPLACED
 // pillar it was alone in says it isn't scored.
 
 const none = <span className="text-muted">—</span>;
+
+/**
+ * A metric's JD duties, each on its line (several from 25 October 2026: "Yes, several duties"; one saved before, or
+ * answered by an API from before, a list of it); none: a dash.
+ */
+function DutyList({ duties }: { duties: string[] }) {
+  if (!duties.length) return none;
+  return (
+    <ul className={duties.length > 1 ? 'list-disc space-y-1 ps-4' : undefined}>
+      {duties.map((d) => (
+        <li key={d} dir="auto">
+          {d}
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export function TemplateView({
   template,
@@ -50,7 +67,7 @@ export function TemplateView({
               <thead>
                 <tr>
                   <th scope="col">KPI metric</th>
-                  <th scope="col">JD duty</th>
+                  <th scope="col">JD duties</th>
                   <th scope="col">Criteria</th>
                   <th scope="col" className="text-right">
                     Target
@@ -66,7 +83,9 @@ export function TemplateView({
                       {m.definition && <span className="block text-xs text-muted">{m.definition}</span>}
                       {m.howMeasured && <span className="mt-1 block text-xs text-muted">Measured: {m.howMeasured}</span>}
                     </td>
-                    <td className="min-w-40 align-top text-sm">{m.jdDuty ?? none}</td>
+                    <td className="min-w-48 align-top text-sm">
+                      <DutyList duties={kpiMetricDuties(m)} />
+                    </td>
                     <td className="min-w-48 align-top">
                       <ul className="space-y-0.5 text-sm">
                         {m.criteria.map((c, j) => (

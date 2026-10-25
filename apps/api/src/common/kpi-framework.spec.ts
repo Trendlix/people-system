@@ -219,7 +219,7 @@ describe('a template in other pillars', () => {
     name,
     definition: null,
     howMeasured: null,
-    jdDuty: null,
+    jdDuties: [],
     targetPoints: 10,
     criteria: [
       { label: 'Good', points: 10 },

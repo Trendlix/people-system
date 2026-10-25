@@ -2,10 +2,11 @@
 // config/kpi-framework.json). The owner chose:
 // - "Full framework per role": one framework of four pillars with fixed weights (Delivery & Timeliness 30%, Quality of
 //   Work 25%, Clients & Teamwork 25%, Discipline & Growth 20%), and for every job title a KPI template built from its job
-//   description: metrics, each with its pillar, name, definition, how it's measured, the linked JD duty, the points that
-//   count as its target and a criteria scale ("No delays = 35 / 1–2 delays = 30 / 3+ = 20"). Each month one criterion
-//   is picked per metric. Pillar % = achieved ÷ max points; final % = Σ pillar % × weight, capped at 110% (a criterion
-//   may be worth more than the metric's target). Levels: Unacceptable < 50 · Unsatisfactory 50–70 · Needs improvement
+//   description: metrics, each with its pillar, name, definition, how it's measured, the linked JD duties (several from
+//   25 October 2026: "Yes, several duties"; KpiMetric.jdDuties), the points that count as its target and a criteria
+//   scale ("No delays = 35 / 1–2 delays = 30 / 3+ = 20"). Each month one criterion is picked per metric. Pillar % =
+//   achieved ÷ max points; final % = Σ pillar % × weight, capped at 110% (a criterion may be worth more than the
+//   metric's target). Levels: Unacceptable < 50 · Unsatisfactory 50–70 · Needs improvement
 //   70–90 · Meets expectations 90–100 · Above expectations 100–110; shown, they don't change pay.
 // - Pay "As the sheet: full at 80%+": the KPI payroll uses is the scorecard's final %: at or above the rules' KPI grace
 //   percent (80) the variable part is paid in full, below it in proportion; with no final scorecard there is no cut.
@@ -171,7 +172,17 @@ export interface KpiMetric {
   name: string;
   definition: string | null;
   howMeasured: string | null;
-  jdDuty: string | null;
+  /**
+   * The JD duties it measures (owner, 25 October 2026, asked on the draft's "JD duty": "can i select 2 job
+   * descriptions?", then "Yes, several duties"): any of the job description's duty rows and duties typed, in order, each
+   * once (kpiTidyDuties), at most KPI_TEMPLATE_LIMITS.duties; none: [].
+   */
+  jdDuties: string[];
+  /**
+   * The one duty a metric had before then: read as `[jdDuty]` (kpiMetricDuties), so what was saved before keeps it; no
+   * longer sent or answered.
+   */
+  jdDuty?: string | null;
   targetPoints: number;
   criteria: KpiCriterion[];
 }
@@ -218,10 +229,43 @@ export const KPI_TEMPLATE_LIMITS = {
   name: 120,
   text: 500,
   duty: 300,
+  /** The most JD duties a metric is linked to (25 October 2026: "Yes, several duties"; kpi_metrics_jd_duties_check). */
+  duties: 10,
   label: 80,
   /** The most points a criterion, a target or the Attendance metric may be worth. */
   points: 200,
 } as const;
+
+/** A duty as metrics' duties are compared: in any case, its spaces as one. */
+const dutyKey = (duty: string): string => duty.trim().replace(/\s+/g, ' ').toLowerCase();
+
+/** Whether two duties are the same one, in any case (kpiTidyDuties). */
+export const kpiSameDuty = (a: string, b: string): boolean => dutyKey(a) === dutyKey(b);
+
+/** A metric's JD duties tidied: each trimmed, empty ones left out, one given twice (in any case) kept once, the first. */
+export function kpiTidyDuties(duties: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const tidy: string[] = [];
+  for (const duty of duties) {
+    const key = dutyKey(duty);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    tidy.push(duty.trim());
+  }
+  return tidy;
+}
+
+/**
+ * A metric's JD duties, tidied, from what is kept or sent (25 October 2026: "Yes, several duties"): its `jdDuties` (a
+ * list; one duty as text, as an old client may send it), else the one `jdDuty` a metric had before. So the templates,
+ * the versions and the scorecards on them saved before keep their one duty, with nothing migrated. Anything not text
+ * is left out.
+ */
+export function kpiMetricDuties(metric: { jdDuties?: unknown; jdDuty?: unknown }): string[] {
+  const sent = typeof metric.jdDuties === 'string' ? [metric.jdDuties] : Array.isArray(metric.jdDuties) ? metric.jdDuties : [];
+  const duties = kpiTidyDuties(sent.filter((d): d is string => typeof d === 'string'));
+  return duties.length || typeof metric.jdDuty !== 'string' ? duties : kpiTidyDuties([metric.jdDuty]);
+}
 
 /** The highest points a metric's criteria give. */
 export const topCriterionPoints = (metric: Pick<KpiMetric, 'criteria'>): number => metric.criteria.reduce((top, c) => Math.max(top, c.points), 0);
@@ -270,10 +314,19 @@ export function kpiTemplateProblems(content: KpiTemplateContent, options: { publ
     for (const [field, label, max] of [
       ['definition', 'definition', L.text],
       ['howMeasured', 'how it’s measured', L.text],
-      ['jdDuty', 'JD duty', L.duty],
     ] as const) {
       const value = m[field];
       if (value !== null && value !== undefined && (typeof value !== 'string' || value.length > max)) problems.push(`${which}: its ${label} can be at most ${max} characters.`);
+    }
+    // its JD duties (owner, 25 October 2026: "Yes, several duties"), tidied; one of before (jdDuty) read as a list of it
+    const sentDuties: unknown = m.jdDuties === undefined ? kpiMetricDuties(m) : m.jdDuties;
+    if (!Array.isArray(sentDuties) || sentDuties.some((d) => typeof d !== 'string')) problems.push(`${which}: its JD duties must be a list of texts.`);
+    else {
+      const duties = kpiTidyDuties(sentDuties as string[]);
+      if (duties.length > L.duties) problems.push(`${which}: link it to at most ${L.duties} JD duties.`);
+      duties.forEach((d, j) => {
+        if (d.length > L.duty) problems.push(`${which}: its JD duty ${j + 1} can be at most ${L.duty} characters.`);
+      });
     }
     if (!isWholePoints(m.targetPoints, 1)) problems.push(`${which}: give its target whole points from 1 to ${L.points}.`);
     const criteria = Array.isArray(m.criteria) ? m.criteria : [];
@@ -1109,11 +1162,12 @@ export const KPI_SAMPLE_TEMPLATES: readonly KpiSampleView[] = [
 
 /**
  * A sample's metric in one of the four pillars it is written for (by their number: their keys in KPI_PILLARS), its
- * target its best criterion's points. A draft from it is placed in the framework's pillars by name.
+ * target its best criterion's points, its one duty as a list of it. A draft from it is placed in the framework's
+ * pillars by name.
  */
-function sample(pillar: KpiDefaultPillarNo, name: string, definition: string, howMeasured: string, jdDuty: string, criteria: [string, number][]): KpiMetric {
+function sample(pillar: KpiDefaultPillarNo, name: string, definition: string, howMeasured: string, duty: string, criteria: [string, number][]): KpiMetric {
   const scale = criteria.map(([label, points]) => ({ label, points }));
-  return { pillar: kpiDefaultPillarKey(pillar), name, definition, howMeasured, jdDuty, targetPoints: topCriterionPoints({ criteria: scale }), criteria: scale };
+  return { pillar: kpiDefaultPillarKey(pillar), name, definition, howMeasured, jdDuties: [duty], targetPoints: topCriterionPoints({ criteria: scale }), criteria: scale };
 }
 
 /** A sample by its code (FE-SR v2, MED-VP v1, HR-SP v3); none for another. */

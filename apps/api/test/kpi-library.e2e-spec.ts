@@ -149,14 +149,16 @@ describe('KPI role library (e2e)', () => {
     // drafts only, version 1, the role's metrics linked to the JD's duty rows
     const frontend = (await get(`/kpis/templates/${made('frontend')!.templateId}`, sessions.hr).expect(200)).body as KpiTemplateView;
     expect(frontend).toMatchObject({ jobTitleId: titles.frontend, version: 1, status: 'draft', attendancePoints: 25, opensFrom: null, problems: [] });
-    const duty = Object.fromEntries(frontend.metrics.map((m) => [m.name, m.jdDuty]));
+    // each a list of the one linked (25 October 2026: "Yes, several duties"), else none
+    expect(frontend.metrics.every((m) => m.jdDuties.length <= 1)).toBe(true);
+    const duty = Object.fromEntries(frontend.metrics.map((m) => [m.name, m.jdDuties[0] ?? null]));
     expect(duty['Sprint tasks delivered on time']).toBe('Deliver assigned sprint tasks on time');
     expect(duty['Reopened bugs after QA']).toBe('Fix bugs reported by QA before release');
     expect(duty['Development plan']).toBeNull();
     expect(Object.values(duty)).not.toContain('Keep the office plants watered');
     const head = (await get(`/kpis/templates/${made('head')!.templateId}`, sessions.hr).expect(200)).body as KpiTemplateView;
     expect(head.metrics.filter((m) => m.pillar === 'clients').map((m) => m.name)).toContain('Team delivery and development');
-    expect(head.metrics.every((m) => m.jdDuty === null)).toBe(true);
+    expect(head.metrics.every((m) => m.jdDuties.length === 0)).toBe(true);
     const page = await get(`/kpis/templates/job-titles/${titles.arabic}`, sessions.hr).expect(200);
     expect(page.body.draft).toMatchObject({ status: 'draft', version: 1 });
 
@@ -196,7 +198,7 @@ describe('KPI role library (e2e)', () => {
     expect(said(await post(path, sessions.hr, { from: 'library' }).expect(400))).toEqual(['Choose a role from the library.']);
     const draft = (await post(path, sessions.hr, { from: 'library', libraryKey: 'seo-specialist' }).expect(201)).body as KpiTemplateView;
     expect(draft).toMatchObject({ status: 'draft', version: 1, attendancePoints: 20, problems: [] });
-    expect(draft.metrics.find((m) => m.name === 'Technical SEO health')!.jdDuty).toBe('Run technical SEO audits and fixes on client sites');
+    expect(draft.metrics.find((m) => m.name === 'Technical SEO health')!.jdDuties).toEqual(['Run technical SEO audits and fixes on client sites']);
     // "Lead": the leadership metric too
     expect(draft.metrics.map((m) => m.name)).toContain('Team delivery and development');
     const audit = await prisma.auditLog.findFirst({ where: { action: 'create', entityType: 'kpi_template', entityId: draft.id } });
