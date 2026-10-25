@@ -356,20 +356,54 @@ describe('Attendance corrections (e2e)', () => {
     });
   });
 
+  // Today by a clock pinned in the test (Date alone, as src/documents/values.spec.ts pins it), never the real one: run
+  // before 08:55 in Cairo, the check-out made "now" came before the check-in corrected to 08:55, so the day kept none
+  // (26 October 2026). Days before the real today: a clock ahead of the real one would end HR's session as idle.
   describe('a correction of today', () => {
+    /** Runs `steps` with the clock stopped at `time` in Cairo on `day`, which is today meanwhile. */
+    async function withClockAt(day: string, time: string, steps: () => Promise<void>): Promise<void> {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(zonedMoment(day, time));
+      try {
+        expect(todayInCairo()).toBe(day);
+        await steps();
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+    const corrected = (day: string) => prisma.attendanceDay.findUniqueOrThrow({ where: { employeeId_date_source: { employeeId: ids.rami, date: toDateOnly(day), source: 'correction' } } });
+
     it('takes a check-out made after it was approved', async () => {
-      const res = (await ask('rami', { date: TODAY, kind: 'forgot_check_in', checkIn: '08:55', reason: 'Forgot this morning' }).expect(201)).body as Correction;
-      await decide(res.id, sessions.mona, 'approve').expect(200);
-      await decide(res.id, hr, 'approve').expect(200);
-      const before = await prisma.attendanceDay.findUniqueOrThrow({ where: { employeeId_date_source: { employeeId: ids.rami, date: toDateOnly(TODAY), source: 'correction' } } });
-      expect(before.checkIn?.toISOString()).toBe(at(TODAY, '08:55'));
-      expect(before.checkOut).toBeNull();
-      // he checks out on the system now
-      await api().post('/api/me/attendance/punches').set('Cookie', sessions.rami).send({ kind: 'out', locationError: 'denied' }).expect(200);
-      const after = await prisma.attendanceDay.findUniqueOrThrow({ where: { employeeId_date_source: { employeeId: ids.rami, date: toDateOnly(TODAY), source: 'correction' } } });
-      expect(after.checkIn?.toISOString()).toBe(at(TODAY, '08:55'));
-      expect(after.checkOut).not.toBeNull();
-      expect(after.correctedFrom).toMatchObject({ source: 'system', checkIn: null });
+      const day = addDays(TODAY, -1);
+      await withClockAt(day, '18:30', async () => {
+        const res = (await ask('rami', { date: day, kind: 'forgot_check_in', checkIn: '08:55', reason: 'Forgot this morning' }).expect(201)).body as Correction;
+        await decide(res.id, sessions.mona, 'approve').expect(200);
+        await decide(res.id, hr, 'approve').expect(200);
+        const before = await corrected(day);
+        expect(before.checkIn?.toISOString()).toBe(at(day, '08:55'));
+        expect(before.checkOut).toBeNull();
+        // he checks out on the system now
+        await api().post('/api/me/attendance/punches').set('Cookie', sessions.rami).send({ kind: 'out', locationError: 'denied' }).expect(200);
+        const after = await corrected(day);
+        expect(after.checkIn?.toISOString()).toBe(at(day, '08:55'));
+        expect(after.checkOut?.toISOString()).toBe(at(day, '18:30'));
+        expect(after.correctedFrom).toMatchObject({ source: 'system', checkIn: null });
+      });
+    });
+
+    // pinned to 00:30 in Cairo, when Cairo's day is a day ahead of UTC's: asked for, and checked out, on Cairo's day
+    it('takes one at 00:30 in Cairo, on Cairo’s day and not the UTC day before', async () => {
+      const day = addDays(TODAY, -2);
+      await withClockAt(day, '00:30', async () => {
+        const res = (await ask('rami', { date: day, kind: 'forgot_check_in', checkIn: '00:10', reason: 'Came in after midnight' }).expect(201)).body as Correction;
+        await decide(res.id, sessions.mona, 'approve').expect(200);
+        await decide(res.id, hr, 'approve').expect(200);
+        await api().post('/api/me/attendance/punches').set('Cookie', sessions.rami).send({ kind: 'out', locationError: 'denied' }).expect(200);
+        const after = await corrected(day);
+        expect([after.checkIn?.toISOString(), after.checkOut?.toISOString()]).toEqual([at(day, '00:10'), at(day, '00:30')]);
+        const punches = await prisma.attendancePunch.findMany({ where: { employeeId: ids.rami, date: { in: [toDateOnly(addDays(day, -1)), toDateOnly(day)] } }, select: { date: true, at: true } });
+        expect(punches.map((p) => [fromDateOnly(p.date), p.at.toISOString()])).toEqual([[day, at(day, '00:30')]]);
+      });
     });
   });
 });

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
 import ExcelJS from 'exceljs';
 import request from 'supertest';
@@ -236,6 +237,27 @@ describe('Audit Log (e2e)', () => {
       await get('/audit?userId=not-an-id', ceo).expect(400);
       await get('/audit?action=DROP%20TABLE', ceo).expect(400);
       await get('/audit?limit=500', ceo).expect(400);
+    });
+
+    // Pinned to 00:30 in Cairo, a day ahead of UTC's (26 October 2026: on a database whose own time zone is Cairo's, what
+    // was written between Cairo's midnight and 03:00 was kept 3 hours early and missed by its day; src/prisma/pg-adapter.ts)
+    it('find what was done at 00:30 in Cairo on Cairo’s day, not the UTC day before', async () => {
+      const [{ zone }] = await prisma.$queryRaw<{ zone: string }[]>`SELECT current_setting('TimeZone') AS zone`;
+      expect(zone).toBe('UTC');
+      const entityId = randomUUID();
+      // 00:30 on 1 July (summer time, UTC+3) and on 15 January (UTC+2) in Cairo; 23:30 on 30 June in Cairo
+      const moments = ['2026-06-30T21:30:00.000Z', '2026-01-14T22:30:00.000Z', '2026-06-30T20:30:00.000Z'];
+      await prisma.auditLog.createMany({ data: moments.map((at) => ({ userId: null, action: 'update', entityType: 'employee', entityId, at: new Date(at) })) });
+      try {
+        const july = await log({ entityId, from: '2026-07-01', to: '2026-07-01' });
+        expect(july.entries.map((e) => [e.at, e.when])).toEqual([[moments[0], '01/07/2026, 12:30 AM']]);
+        expect((await log({ entityId, from: '2026-06-30', to: '2026-06-30' })).entries.map((e) => e.when)).toEqual(['30/06/2026, 11:30 PM']);
+        expect((await log({ entityId, from: '2026-01-15', to: '2026-01-15' })).total).toBe(1);
+        expect((await log({ entityId, from: '2026-01-14', to: '2026-01-14' })).total).toBe(0);
+        expect((await log({ entityId, from: '2026-07-02' })).total).toBe(0);
+      } finally {
+        await prisma.auditLog.deleteMany({ where: { entityId } });
+      }
     });
 
     it('find text in what changed, whatever the case', async () => {

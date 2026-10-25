@@ -2,14 +2,15 @@
 // and the rates set by law, the law's leave types and the Leave Setup, and the first admin account (Admin, HR and Super
 // Admin). Safe to run more than once; existing rows are left as they are.
 import 'dotenv/config';
-import { PrismaPg } from '@prisma/adapter-pg';
 import { ACCOUNTS_ALLOWANCE, BUILT_IN_LAW_RATES, ENDING_RULE_DEFAULTS, ENDING_RULES, LAW_LEAVE_TYPES, normalTaxTiers, ROLE_LABELS, ROLES } from '@trendlix/shared';
 import { PrismaClient, type Prisma } from '../src/generated/prisma/client.js';
 import { hashPassword } from '../src/auth/password.js';
 import { toTimeOfDay } from '../src/common/time-of-day.js';
+import { pgAdapter } from '../src/prisma/pg-adapter.js';
 
+// its sessions in UTC, as the API's (src/prisma/pg-adapter.ts)
 const prisma = new PrismaClient({
-  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
+  adapter: pgAdapter(process.env.DATABASE_URL),
 });
 
 const SHIFTS = [
