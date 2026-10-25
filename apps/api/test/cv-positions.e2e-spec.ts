@@ -76,7 +76,7 @@ describe('The positions on “Send us your CV” (e2e)', () => {
     const ip = `10.77.${Math.floor(++ipN / 200)}.${(ipN % 200) + 1}`;
     const at = String(Date.now());
     let req = api()
-      .post('/api/public/general-cvs')
+      .post('/api/public/general-cvs').set('x-careers-key', process.env.CAREERS_KEY!)
       .set(CLIENT_IP_HEADER, ip)
       .set(CLIENT_IP_AT_HEADER, at)
       .set(CLIENT_IP_SIGNATURE_HEADER, signatureOf(process.env.WEB_KEY!, ip, at, GENERAL_CV_IP_TOKEN));
@@ -93,7 +93,7 @@ describe('The positions on “Send us your CV” (e2e)', () => {
     return req.attach('cv', cv, 'Their CV.pdf');
   }
 
-  const form = async () => (await api().get('/api/public/general-cvs/form').expect(200)).body as PublicGeneralForm;
+  const form = async () => (await api().get('/api/public/general-cvs/form').set('x-careers-key', process.env.CAREERS_KEY!).expect(200)).body as PublicGeneralForm;
   const mine = (f: PublicGeneralForm) => (f.positions ?? []).filter((g) => Object.values(dept).includes(g.teamId));
   /** HR's list of this test's general CVs, with these filters; `byEmail`: one person's. */
   const list = async (query: string) => (await get('hr', `/recruitment/general-cvs?q=${RUN}&${query}`).expect(200)).body as GeneralCvListItem[];

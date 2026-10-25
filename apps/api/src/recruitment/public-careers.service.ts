@@ -92,7 +92,7 @@ export interface ApplyOrigin {
  * form is ignored and the connection's counts, so nobody posting to the API directly gets round the limit by naming
  * another address each time. Without the key on the server yet (deploy/web-key.sh not run), the one named, as before.
  */
-export function applicantIp(slug: string, named: string | null, origin: ApplyOrigin, key: string | undefined = process.env.WEB_KEY, now: number = Date.now()): string | null {
+export function applicantIp(slug: string, named: string | null, origin: ApplyOrigin, key: string | undefined = process.env.CAREERS_KEY, now: number = Date.now()): string | null {
   const signed = verifySignedIp(origin.headers ?? {}, careersIpToken(slug), key, now);
   if (signed.ip) return signed.ip;
   return signed.problem === 'no_server_key' ? (named ?? origin.ip) : origin.ip;

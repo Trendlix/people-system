@@ -135,7 +135,7 @@ describe('CV fit and other open positions (e2e)', () => {
     const ip = `10.93.${Math.floor(++ipN / 200)}.${(ipN % 200) + 1}`;
     const at = String(Date.now());
     let req = api()
-      .post(`/api/public/careers/${to.slug}/apply`)
+      .post(`/api/public/careers/${to.slug}/apply`).set('x-careers-key', process.env.CAREERS_KEY!)
       .set(CLIENT_IP_HEADER, ip)
       .set(CLIENT_IP_AT_HEADER, at)
       .set(CLIENT_IP_SIGNATURE_HEADER, signatureOf(process.env.WEB_KEY!, ip, at, careersIpToken(to.slug)));

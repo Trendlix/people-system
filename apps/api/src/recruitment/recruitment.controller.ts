@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, StreamableFile, UploadedFiles, UseFilters, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, Req, StreamableFile, UploadedFiles, UseFilters, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
 import type { Request } from 'express';
 import { CurrentUser, DeletesRecords, NotForDevelopers, Public, Roles } from '../auth/decorators.js';
@@ -11,6 +11,7 @@ import { ApplicationsService } from './applications.service.js';
 import { InterviewsService } from './interviews.service.js';
 import { RecruitmentAnalyticsService } from './recruitment-analytics.service.js';
 import { RecruitmentSettingsService } from './recruitment-settings.service.js';
+import { CareersKeyGuard } from './careers-key.guard.js';
 import { CvUploadFilter } from './cv-upload.filter.js';
 import { CAREERS_FILES, CAREERS_UPLOAD, type CareersFiles } from './portfolio-file.js';
 import { PublicCareersService } from './public-careers.service.js';
@@ -388,6 +389,7 @@ export class RecruitmentAnalyticsController {
 
 /** The careers page, without signing in. */
 @Public()
+@UseGuards(CareersKeyGuard)
 @Controller('public/careers')
 export class PublicCareersController {
   constructor(private readonly careers: PublicCareersService) {}

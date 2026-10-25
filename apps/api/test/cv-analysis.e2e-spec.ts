@@ -141,7 +141,7 @@ describe('CV reading and analysis (e2e)', () => {
   async function apply(who: string, ip: string, file: Buffer): Promise<string> {
     const at = String(Date.now());
     const req = api()
-      .post(`/api/public/careers/${vacancy.slug}/apply`)
+      .post(`/api/public/careers/${vacancy.slug}/apply`).set('x-careers-key', process.env.CAREERS_KEY!)
       .set(CLIENT_IP_HEADER, ip)
       .set(CLIENT_IP_AT_HEADER, at)
       .set(CLIENT_IP_SIGNATURE_HEADER, signatureOf(process.env.WEB_KEY!, ip, at, careersIpToken(vacancy.slug)));

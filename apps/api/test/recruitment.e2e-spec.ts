@@ -79,7 +79,7 @@ describe('Recruitment (e2e)', () => {
    * posting to the API directly would.
    */
   function apply(slug: string, fields: Record<string, string>, cv: { data: Buffer; name: string } | null = { data: PDF, name: 'My CV.pdf' }, signed = true) {
-    let req = api().post(`/api/public/careers/${slug}/apply`);
+    let req = api().post(`/api/public/careers/${slug}/apply`).set('x-careers-key', process.env.CAREERS_KEY!);
     if (signed && fields.ip) {
       const at = String(Date.now());
       req = req
@@ -206,7 +206,7 @@ describe('Recruitment (e2e)', () => {
 
     it('go to the CEO, who sends one back with a reason, then approves it: on the careers page without its salary or scoring', async () => {
       const v = await vacancy('hr');
-      await api().get(`/api/public/careers/${v.slug}`).expect(404);
+      await api().get(`/api/public/careers/${v.slug}`).set('x-careers-key', process.env.CAREERS_KEY!).expect(404);
       await post('hr', `/recruitment/vacancies/${v.id}/approve`).expect(403);
       const pending = (await post('hr', `/recruitment/vacancies/${v.id}/submit`).expect(200)).body as VacancyView;
       expect(pending.status).toBe('pending');
@@ -222,9 +222,11 @@ describe('Recruitment (e2e)', () => {
       expect(open).toMatchObject({ status: 'open', sentBackReason: null });
       expect(open.publishedAt).not.toBeNull();
 
-      const careers = (await api().get('/api/public/careers').expect(200)).body as PublicCareers;
+      await api().get('/api/public/careers').expect(401);
+      await api().get('/api/public/careers').set('x-careers-key', 'wrong').expect(401);
+      const careers = (await api().get('/api/public/careers').set('x-careers-key', process.env.CAREERS_KEY!).expect(200)).body as PublicCareers;
       expect(careers.vacancies.map((x) => x.slug)).toContain(v.slug);
-      const page = await api().get(`/api/public/careers/${v.slug}`).expect(200);
+      const page = await api().get(`/api/public/careers/${v.slug}`).set('x-careers-key', process.env.CAREERS_KEY!).expect(200);
       const job = page.body as PublicVacancyView;
       expect(job.questions[0]).toEqual({ key: 'q1', kind: 'yes_no', text: 'Do you live in Cairo?', required: true, options: null });
       expect(job.questions[2].options).toEqual(['Premiere Pro', 'Other']);
@@ -236,9 +238,9 @@ describe('Recruitment (e2e)', () => {
         'The vacancy is published: its employment type stays. Close it and open a new one instead.',
       ]);
       await post('hr', `/recruitment/vacancies/${v.id}/hold`).expect(200);
-      await api().get(`/api/public/careers/${v.slug}`).expect(404);
+      await api().get(`/api/public/careers/${v.slug}`).set('x-careers-key', process.env.CAREERS_KEY!).expect(404);
       await post('hr', `/recruitment/vacancies/${v.id}/reopen`).expect(200);
-      await api().get(`/api/public/careers/${v.slug}`).expect(200);
+      await api().get(`/api/public/careers/${v.slug}`).set('x-careers-key', process.env.CAREERS_KEY!).expect(200);
     });
 
     it('for a C-level position are the CEO’s and a Super Admin’s alone', async () => {
@@ -305,7 +307,7 @@ describe('Recruitment (e2e)', () => {
         'Answer: Which editor do you use most?',
         'Tick that we may keep your application and CV to consider you for this job.',
       ]);
-      await api().get('/api/public/careers/no-such-job-vac-2026-9999').expect(404);
+      await api().get('/api/public/careers/no-such-job-vac-2026-9999').set('x-careers-key', process.env.CAREERS_KEY!).expect(404);
     });
 
     // 22 October 2026: an applicant typed "www.linkedin.com/in/…" and the form wanted https://
@@ -467,7 +469,7 @@ describe('Recruitment (e2e)', () => {
       expect(a.offers.map((o) => o.status)).toEqual(['withdrawn', 'accepted']);
       const filled = (await get('hr', `/recruitment/vacancies/${v.id}`).expect(200)).body as VacancyView;
       expect(filled).toMatchObject({ status: 'filled', hired: 1 });
-      await api().get(`/api/public/careers/${v.slug}`).expect(404);
+      await api().get(`/api/public/careers/${v.slug}`).set('x-careers-key', process.env.CAREERS_KEY!).expect(404);
       // a vacancy someone was hired from stays (since 25 October 2026 one people applied to goes with its applications,
       // its number typed: recruitment-deletes.e2e-spec.ts)
       const hiredNumber = a.number;

@@ -119,14 +119,14 @@ describe('Careers forms: filled from the CV, LinkedIn sign-in, portfolio per pos
 
   /** The CV read for the form, as the website sends it (its address signed for the prefill). */
   function prefill(file: Buffer | null, name = 'My CV.pdf', ip = nextIp()) {
-    const req = api().post('/api/public/cv-prefill').set(signed(ip, CV_PREFILL_IP_TOKEN)).field('ip', ip);
+    const req = api().post('/api/public/cv-prefill').set('x-careers-key', process.env.CAREERS_KEY!).set(signed(ip, CV_PREFILL_IP_TOKEN)).field('ip', ip);
     return file ? req.attach('cv', file, name) : req;
   }
 
   /** An application as the website sends it. */
   function apply(job: VacancyView, who: string, extra: Record<string, string> = {}, files: { portfolioFile?: Buffer } = {}) {
     const ip = nextIp();
-    let req = api().post(`/api/public/careers/${job.slug}/apply`).set(signed(ip, careersIpToken(job.slug)));
+    let req = api().post(`/api/public/careers/${job.slug}/apply`).set('x-careers-key', process.env.CAREERS_KEY!).set(signed(ip, careersIpToken(job.slug)));
     const fields = { fullName: `${who} Person ${RUN}`, email: email(who), mobile: mobileOf(who), yearsExperience: '3', consent: 'true', answers: '{}', ip, ...extra };
     for (const [k, v] of Object.entries(fields)) req = req.field(k, v);
     req = req.attach('cv', cv, 'My CV.pdf');
@@ -136,7 +136,7 @@ describe('Careers forms: filled from the CV, LinkedIn sign-in, portfolio per pos
   /** "Send us your CV" as the website sends it. */
   function sendGeneral(who: string, extra: Record<string, string>) {
     const ip = nextIp();
-    let req = api().post('/api/public/general-cvs').set(signed(ip, GENERAL_CV_IP_TOKEN));
+    let req = api().post('/api/public/general-cvs').set('x-careers-key', process.env.CAREERS_KEY!).set(signed(ip, GENERAL_CV_IP_TOKEN));
     const fields = { fullName: `${who} Person ${RUN}`, email: email(who), mobile: mobileOf(who), consent: 'true', ip, ...extra };
     for (const [k, v] of Object.entries(fields)) req = req.field(k, v);
     return req.attach('cv', cv, 'My CV.pdf');
@@ -240,7 +240,7 @@ describe('Careers forms: filled from the CV, LinkedIn sign-in, portfolio per pos
   // ---------- the portfolio on a job's form ----------
 
   it('a video editor’s job asks for a showreel: refused without one or malformed, taken with a Vimeo link', async () => {
-    const page = (await api().get(`/api/public/careers/${editorJob.slug}`).expect(200)).body as PublicVacancyView;
+    const page = (await api().get(`/api/public/careers/${editorJob.slug}`).set('x-careers-key', process.env.CAREERS_KEY!).expect(200)).body as PublicVacancyView;
     expect(page.portfolio).toEqual({ mode: 'required', hint: 'A 1–2 minute showreel', kinds: ['vimeo', 'youtube', 'google_drive', 'frame_io'], maxLinks: 3 });
     expect(page.linkedinSignIn).toBe(false);
 
@@ -262,7 +262,7 @@ describe('Careers forms: filled from the CV, LinkedIn sign-in, portfolio per pos
   });
 
   it('an accountant’s job asks for none: what is sent is left aside', async () => {
-    const page = (await api().get(`/api/public/careers/${accountantJob.slug}`).expect(200)).body as PublicVacancyView;
+    const page = (await api().get(`/api/public/careers/${accountantJob.slug}`).set('x-careers-key', process.env.CAREERS_KEY!).expect(200)).body as PublicVacancyView;
     expect(page.portfolio?.mode).toBe('hidden');
     await apply(accountantJob, 'hidden', { portfolioLinks: JSON.stringify(['not a link at all']), portfolio: 'nor this' }, { portfolioFile: await pdfOf(['A case study']) }).expect(201);
     expect(await applicationOf('hidden')).toMatchObject({ portfolioLinks: [], portfolio: null, portfolioFile: null });
@@ -273,7 +273,7 @@ describe('Careers forms: filled from the CV, LinkedIn sign-in, portfolio per pos
     expect(changed).toMatchObject({ portfolioMode: 'required', jobTitlePortfolio: { mode: 'hidden' } });
     const audit = await prisma.auditLog.findFirstOrThrow({ where: { entityId: accountantJob.id, action: 'update' }, orderBy: { at: 'desc' } });
     expect(audit.diff).toMatchObject({ portfolioMode: { from: null, to: 'required' } });
-    const page = (await api().get(`/api/public/careers/${accountantJob.slug}`).expect(200)).body as PublicVacancyView;
+    const page = (await api().get(`/api/public/careers/${accountantJob.slug}`).set('x-careers-key', process.env.CAREERS_KEY!).expect(200)).body as PublicVacancyView;
     expect(page.portfolio).toMatchObject({ mode: 'required', kinds: [...PORTFOLIO_KINDS] });
 
     expect(said(await apply(accountantJob, 'override-none').expect(400)).some((m) => m.startsWith('Add your portfolio:'))).toBe(true);
@@ -289,7 +289,7 @@ describe('Careers forms: filled from the CV, LinkedIn sign-in, portfolio per pos
     await as('outsider').get(`/recruitment/applications/${row.id}/portfolio-file`).expect(404);
 
     await as('hr').patch(`/recruitment/vacancies/${accountantJob.id}`, { portfolioMode: null }).expect(200);
-    expect(((await api().get(`/api/public/careers/${accountantJob.slug}`).expect(200)).body as PublicVacancyView).portfolio?.mode).toBe('hidden');
+    expect(((await api().get(`/api/public/careers/${accountantJob.slug}`).set('x-careers-key', process.env.CAREERS_KEY!).expect(200)).body as PublicVacancyView).portfolio?.mode).toBe('hidden');
   });
 
   // ---------- Recruitment Settings: "Portfolio on the Forms" ----------
@@ -310,7 +310,7 @@ describe('Careers forms: filled from the CV, LinkedIn sign-in, portfolio per pos
     const audit = await prisma.auditLog.findFirstOrThrow({ where: { entityType: 'recruitment_settings', userId: users.hr }, orderBy: { at: 'desc' } });
     expect((audit.diff as { portfolioOnForms: string[] }).portfolioOnForms).toEqual([`Accountant ${RUN} (Post ${RUN} · Studio ${RUN}): Hidden → Optional: github; 1 link; “Your GitHub”`]);
     // the job's form asks for it now, one link at most
-    expect(((await api().get(`/api/public/careers/${accountantJob.slug}`).expect(200)).body as PublicVacancyView).portfolio).toEqual({ mode: 'optional', hint: 'Your GitHub', kinds: ['github'], maxLinks: 1 });
+    expect(((await api().get(`/api/public/careers/${accountantJob.slug}`).set('x-careers-key', process.env.CAREERS_KEY!).expect(200)).body as PublicVacancyView).portfolio).toEqual({ mode: 'optional', hint: 'Your GitHub', kinds: ['github'], maxLinks: 1 });
     expect(said(await apply(accountantJob, 'two-links', { portfolioLinks: JSON.stringify(['github.com/a-dev', 'github.com/b-dev']) }).expect(400))).toEqual(['Add one portfolio link.']);
 
     // back to its default: no row
@@ -324,7 +324,7 @@ describe('Careers forms: filled from the CV, LinkedIn sign-in, portfolio per pos
     await prisma.portfolioSetting.create({ data: { jobTitleId: juniorMotionId, mode: 'optional', kinds: ['github'], maxLinks: 1 } });
     const settings = (await as('hr').get('/recruitment/settings/portfolio').expect(200)).body as PortfolioSettingsView;
     expect(settings.positions.find((x) => x.key === motionKey)).toMatchObject({ mixed: true, set: true, ask: { mode: 'required', kinds: ['behance', 'vimeo', 'youtube', 'github'] } });
-    const form = (await api().get('/api/public/general-cvs/form').expect(200)).body as PublicGeneralForm;
+    const form = (await api().get('/api/public/general-cvs/form').set('x-careers-key', process.env.CAREERS_KEY!).expect(200)).body as PublicGeneralForm;
     expect(form.portfolios?.[motionKey]).toEqual({ mode: 'required', hint: 'A showreel on Vimeo or YouTube', kinds: ['behance', 'vimeo', 'youtube', 'github'], maxLinks: 3 });
     // the accountant's (hidden) is left out; Other's takes any
     expect(form.portfolios?.[positionKeyOf(teamId, positionNameOf(`Accountant ${RUN}`))]).toBeUndefined();
@@ -389,11 +389,11 @@ describe('Careers forms: filled from the CV, LinkedIn sign-in, portfolio per pos
     };
     http.fetch = fake;
     try {
-      const page = (await api().get(`/api/public/careers/${editorJob.slug}`).expect(200)).body as PublicVacancyView;
+      const page = (await api().get(`/api/public/careers/${editorJob.slug}`).set('x-careers-key', process.env.CAREERS_KEY!).expect(200)).body as PublicVacancyView;
       expect(page.linkedinSignIn).toBe(true);
       const form = `job:${editorJob.slug}`;
       const start = async () => {
-        const s = (await api().post('/api/public/linkedin/start').set(signed(nextIp(), LINKEDIN_IP_TOKEN)).send({ form, src: 'linkedin', origin: ORIGIN }).expect(200)).body as LinkedInStart;
+        const s = (await api().post('/api/public/linkedin/start').set('x-careers-key', process.env.CAREERS_KEY!).set(signed(nextIp(), LINKEDIN_IP_TOKEN)).send({ form, src: 'linkedin', origin: ORIGIN }).expect(200)).body as LinkedInStart;
         if (!s.ok) throw new Error(`start refused: ${s.problem}`);
         const url = new URL(s.url);
         expect(`${url.origin}${url.pathname}`).toBe(LINKEDIN_AUTHORIZE_URL);
@@ -401,13 +401,13 @@ describe('Careers forms: filled from the CV, LinkedIn sign-in, portfolio per pos
         expect(s.url).not.toContain(CLIENT_SECRET);
         return { state: url.searchParams.get('state')!, nonce: url.searchParams.get('nonce')!, binding: s.binding };
       };
-      const finish = (body: object) => api().post('/api/public/linkedin/finish').set(signed(nextIp(), LINKEDIN_IP_TOKEN)).send(body).expect(200);
+      const finish = (body: object) => api().post('/api/public/linkedin/finish').set('x-careers-key', process.env.CAREERS_KEY!).set(signed(nextIp(), LINKEDIN_IP_TOKEN)).send(body).expect(200);
 
       // the careers pages at an address of their own (CAREERS_BASE_URL, e.g. the main site's /careers): the redirect URL is there
-      const www = (await api().post('/api/public/linkedin/start').set(signed(nextIp(), LINKEDIN_IP_TOKEN)).send({ form, origin: ORIGIN, careersBase: 'https://www.example.test/careers' }).expect(200))
+      const www = (await api().post('/api/public/linkedin/start').set('x-careers-key', process.env.CAREERS_KEY!).set(signed(nextIp(), LINKEDIN_IP_TOKEN)).send({ form, origin: ORIGIN, careersBase: 'https://www.example.test/careers' }).expect(200))
         .body as LinkedInStart;
       expect(www.ok && new URL(www.url).searchParams.get('redirect_uri')).toBe('https://www.example.test/careers/linkedin/callback');
-      expect((await api().post('/api/public/linkedin/start').set(signed(nextIp(), LINKEDIN_IP_TOKEN)).send({ form, careersBase: 'http://www.example.test/careers' }).expect(200)).body).toEqual({
+      expect((await api().post('/api/public/linkedin/start').set('x-careers-key', process.env.CAREERS_KEY!).set(signed(nextIp(), LINKEDIN_IP_TOKEN)).send({ form, careersBase: 'http://www.example.test/careers' }).expect(200)).body).toEqual({
         ok: false,
         problem: 'failed',
       });
@@ -438,9 +438,9 @@ describe('Careers forms: filled from the CV, LinkedIn sign-in, portfolio per pos
       expect((await finish({ state: three.state, binding: three.binding, code: 'good-code' })).body).toMatchObject({ ok: false, problem: 'failed' });
 
       // the form opens it (its own form only), no photo in it
-      const details = (await api().post('/api/public/linkedin/open').send({ ticket: done.ticket, form }).expect(200)).body;
+      const details = (await api().post('/api/public/linkedin/open').set('x-careers-key', process.env.CAREERS_KEY!).send({ ticket: done.ticket, form }).expect(200)).body;
       expect(details).toEqual({ fullName: `Mona LinkedIn ${RUN}`, email: `mona.linkedin.${RUN}@mail.test`, emailConfirmed: true, ticket: done.ticket });
-      await api().post('/api/public/linkedin/open').send({ ticket: done.ticket, form: 'general' }).expect(400);
+      await api().post('/api/public/linkedin/open').set('x-careers-key', process.env.CAREERS_KEY!).send({ ticket: done.ticket, form: 'general' }).expect(400);
 
       // applied with that email: "Confirmed by LinkedIn"; with another, not
       const vimeo = JSON.stringify(['vimeo.com/987654321']);
@@ -456,8 +456,8 @@ describe('Careers forms: filled from the CV, LinkedIn sign-in, portfolio per pos
 
       // switched off: the forms don't offer it, a start is refused
       await as('superAdmin').put('/recruitment/settings/linkedin', { enabled: false }).expect(200);
-      expect(((await api().get(`/api/public/careers/${editorJob.slug}`).expect(200)).body as PublicVacancyView).linkedinSignIn).toBe(false);
-      expect((await api().post('/api/public/linkedin/start').set(signed(nextIp(), LINKEDIN_IP_TOKEN)).send({ form, origin: ORIGIN }).expect(200)).body).toEqual({ ok: false, problem: 'off' });
+      expect(((await api().get(`/api/public/careers/${editorJob.slug}`).set('x-careers-key', process.env.CAREERS_KEY!).expect(200)).body as PublicVacancyView).linkedinSignIn).toBe(false);
+      expect((await api().post('/api/public/linkedin/start').set('x-careers-key', process.env.CAREERS_KEY!).set(signed(nextIp(), LINKEDIN_IP_TOKEN)).send({ form, origin: ORIGIN }).expect(200)).body).toEqual({ ok: false, problem: 'off' });
     } finally {
       http.fetch = real;
     }

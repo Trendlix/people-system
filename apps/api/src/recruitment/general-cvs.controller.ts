@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Req, StreamableFile, UploadedFile, UploadedFiles, UseFilters, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Req, StreamableFile, UploadedFile, UploadedFiles, UseFilters, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import type { Request } from 'express';
 import { CurrentUser, NotForDevelopers, Public, Roles } from '../auth/decorators.js';
@@ -7,6 +7,7 @@ import { contentDisposition } from '../paperwork/paperwork-file.js';
 import { wantsDownload } from '../pdf/pdf-file.js';
 import { attachment } from '../templates/template-file.js';
 import { CV_UPLOAD } from './cv-file.js';
+import { CareersKeyGuard } from './careers-key.guard.js';
 import { CvUploadFilter } from './cv-upload.filter.js';
 import { CvUploadsService } from './cv-uploads.service.js';
 import { GeneralCvsService } from './general-cvs.service.js';
@@ -179,6 +180,7 @@ export class CvUploadsController {
 
 /** "Send us your CV" on the careers page, without signing in. */
 @Public()
+@UseGuards(CareersKeyGuard)
 @Controller('public/general-cvs')
 export class PublicGeneralCvsController {
   constructor(private readonly cvs: GeneralCvsService) {}

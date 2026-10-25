@@ -129,7 +129,7 @@ describe('WhatsApp notifications (e2e)', () => {
     const ip = `198.51.100.${(Object.keys(fields).length * 7 + fields.fullName.length) % 250}`;
     const at = String(Date.now());
     let req = api()
-      .post(`/api/public/careers/${slug}/apply`)
+      .post(`/api/public/careers/${slug}/apply`).set('x-careers-key', process.env.CAREERS_KEY!)
       .set(CLIENT_IP_HEADER, ip)
       .set(CLIENT_IP_AT_HEADER, at)
       .set(CLIENT_IP_SIGNATURE_HEADER, signatureOf(process.env.WEB_KEY!, ip, at, careersIpToken(slug)));

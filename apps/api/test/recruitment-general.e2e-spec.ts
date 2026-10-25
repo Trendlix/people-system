@@ -71,7 +71,7 @@ describe('General CVs and the bulk upload (e2e)', () => {
 
   /** "Send us your CV" as the website sends it: the address signed for the general form (`signed` false: only named). */
   function send(fields: Record<string, string>, file: Buffer | null = cv, signed = true) {
-    let req = api().post('/api/public/general-cvs');
+    let req = api().post('/api/public/general-cvs').set('x-careers-key', process.env.CAREERS_KEY!);
     if (signed && fields.ip) {
       const at = String(Date.now());
       req = req.set(CLIENT_IP_HEADER, fields.ip).set(CLIENT_IP_AT_HEADER, at).set(CLIENT_IP_SIGNATURE_HEADER, signatureOf(process.env.WEB_KEY!, fields.ip, at, GENERAL_CV_IP_TOKEN));
@@ -146,7 +146,7 @@ describe('General CVs and the bulk upload (e2e)', () => {
     // any user or even HR, how will someone apply for a c-level"; then "remove the department from the dropdown menu,
     // area you would like to work in"
     it('offers each team by its own name, a department only without teams, and never a C-level one', async () => {
-      const form = (await api().get('/api/public/general-cvs/form').expect(200)).body as PublicGeneralForm;
+      const form = (await api().get('/api/public/general-cvs/form').set('x-careers-key', process.env.CAREERS_KEY!).expect(200)).body as PublicGeneralForm;
       expect(form.areas).toContainEqual({ id: teamId, name: `Video ${RUN}`, hrName: `Video ${RUN} · Studio ${RUN}` });
       expect(form.areas).toContainEqual({ id: loneId, name: `Finance ${RUN}`, hrName: `Finance ${RUN}` });
       // Studio has job titles of its own, but it has teams: never an option
@@ -156,7 +156,7 @@ describe('General CVs and the bulk upload (e2e)', () => {
     });
 
     it('tells apart two teams with the same name by their departments, in the organisation’s order', async () => {
-      const form = (await api().get('/api/public/general-cvs/form').expect(200)).body as PublicGeneralForm;
+      const form = (await api().get('/api/public/general-cvs/form').set('x-careers-key', process.env.CAREERS_KEY!).expect(200)).body as PublicGeneralForm;
       const sounds = form.areas.filter((a) => a.id === soundStudioId || a.id === soundOtherId);
       expect(sounds.map((a) => a.name).sort()).toEqual([`Sound ${RUN} (Radio ${RUN})`, `Sound ${RUN} (Studio ${RUN})`]);
       expect(form.areas.find((a) => a.id === teamId)?.name).toBe(`Video ${RUN}`);

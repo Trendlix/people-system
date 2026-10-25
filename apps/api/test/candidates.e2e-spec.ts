@@ -107,7 +107,7 @@ describe('Candidate profiles (e2e)', () => {
     const ip = `10.77.${Math.floor(++ipN / 200)}.${(ipN % 200) + 1}`;
     const at = String(Date.now());
     let req = api()
-      .post(`/api/public/careers/${v.slug}/apply`)
+      .post(`/api/public/careers/${v.slug}/apply`).set('x-careers-key', process.env.CAREERS_KEY!)
       .set(CLIENT_IP_HEADER, ip)
       .set(CLIENT_IP_AT_HEADER, at)
       .set(CLIENT_IP_SIGNATURE_HEADER, signatureOf(process.env.WEB_KEY!, ip, at, careersIpToken(v.slug)));
@@ -120,7 +120,7 @@ describe('Candidate profiles (e2e)', () => {
   async function sendCv(who: string, extra: Record<string, string> = {}): Promise<request.Response> {
     const ip = `10.78.${Math.floor(++ipN / 200)}.${(ipN % 200) + 1}`;
     const at = String(Date.now());
-    let req = api().post('/api/public/general-cvs').set(CLIENT_IP_HEADER, ip).set(CLIENT_IP_AT_HEADER, at).set(CLIENT_IP_SIGNATURE_HEADER, signatureOf(process.env.WEB_KEY!, ip, at, GENERAL_CV_IP_TOKEN));
+    let req = api().post('/api/public/general-cvs').set('x-careers-key', process.env.CAREERS_KEY!).set(CLIENT_IP_HEADER, ip).set(CLIENT_IP_AT_HEADER, at).set(CLIENT_IP_SIGNATURE_HEADER, signatureOf(process.env.WEB_KEY!, ip, at, GENERAL_CV_IP_TOKEN));
     const fields = { fullName: nameOf(who), email: email(who), mobile: mobile(who), areaOther: 'Video', consent: 'true', ip, ...extra };
     for (const [k, val] of Object.entries(fields)) req = req.field(k, val);
     return await req.attach('cv', await pdfOf([`${who} ${RUN} general cv`]), `${who}.pdf`);

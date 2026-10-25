@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Header, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, StreamableFile, UploadedFile, UseFilters, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, Header, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req, StreamableFile, UploadedFile, UseFilters, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { LINKEDIN_IP_TOKEN } from '@trendlix/shared';
 import type { Request } from 'express';
@@ -12,6 +12,7 @@ import { ApplicationsService } from './applications.service.js';
 import { CvPrefillDto, LinkedInFinishDto, LinkedInOpenDto, LinkedInSettingsDto, LinkedInStartDto, PortfolioSettingsDto } from './careers-extras.dto.js';
 import { CV_UPLOAD } from './cv-file.js';
 import { CvPrefillService } from './cv-prefill.service.js';
+import { CareersKeyGuard } from './careers-key.guard.js';
 import { CvUploadFilter } from './cv-upload.filter.js';
 import { GeneralCvsService } from './general-cvs.service.js';
 import { LinkedInSignInService } from './linkedin-signin.service.js';
@@ -32,6 +33,7 @@ function linkedinIp(req: Request): string | null {
 
 /** The careers page's: the CV read for the form, and LinkedIn's sign-in. */
 @Public()
+@UseGuards(CareersKeyGuard)
 @Controller('public')
 export class CareersExtrasController {
   constructor(
