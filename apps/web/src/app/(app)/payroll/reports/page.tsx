@@ -17,6 +17,7 @@ import { CostTrendChart } from './cost-chart';
 import {
   apiStatisticsPath,
   canSeeReports,
+  CONTRACTS_REPORT_HREF,
   costChart,
   excelHref,
   FIGURE_COLUMNS,
@@ -33,9 +34,10 @@ import {
 // can be shared (this calendar year unless asked), what the runs the CEO approved paid and cost: the totals, the company
 // cost's trend, month by month (headcount, gross, net, transfer, salary tax, both social insurance shares, the Martyrs'
 // Fund, company cost), by department and team, and this year to date; with the Excel workbook, and the Salary Raises
-// report linked. One GET /payroll/statistics call. HR, Finance and the CEO, as salaries; the API checks it again. The
-// C-level people are left out for anyone but the CEO and the Super Admin (owner, 19 October 2026: "make C level
-// Employees details not visible to HR"), the workbook too, and the page says so.
+// and Contracts reports linked (the Contracts one since 25 October 2026). One GET /payroll/statistics call. HR, Finance
+// and the CEO, as salaries; the API checks it again. The C-level people are left out for anyone but the CEO and the
+// Super Admin (owner, 19 October 2026: "make C level Employees details not visible to HR"), the workbook too, and the
+// page says so.
 
 export const metadata: Metadata = { title: 'Payroll Reports · People System' };
 
@@ -319,8 +321,8 @@ export default function PayrollReportsPage({ searchParams }: PageProps<'/payroll
       <div className="max-w-6xl">
         <h1 className="text-2xl font-semibold">Payroll Reports</h1>
         <p className="mt-1 text-muted">
-          What the approved payroll paid and cost, by month, department and team, and this year to date. The salary raises have a report of their own:{' '}
-          <Link href={SALARY_RAISES_HREF}>Salary Raises</Link>.
+          What the approved payroll paid and cost, by month, department and team, and this year to date. The salary raises and the contracts have reports of
+          their own: <Link href={SALARY_RAISES_HREF}>Salary Raises</Link> and <Link href={CONTRACTS_REPORT_HREF}>Contracts</Link>.
         </p>
         <div className="mt-6">
           <Suspense fallback={<Loading />}>

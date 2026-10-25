@@ -1161,9 +1161,10 @@ export const DEVELOPER_JOB_FLAG_FIELDS: ReadonlySet<string> = new Set([
 /**
  * An employment's or a contract's own dates (its start, its end, its signing, the end a warning dates from): null within
  * one, an object with an employment's or a contract's marks (EMPLOYMENT_MARKS) or under EMPLOYMENT_KEYS. A leave's start
- * and end are the same names, and stay.
+ * and end are the same names, and stay. And the days left to a contract's end (the Contracts report, 25 October 2026),
+ * which would give its end away.
  */
-export const DEVELOPER_EMPLOYMENT_DATE_FIELDS: ReadonlySet<string> = new Set(['startDate', 'endDate', 'signedOn', 'effectiveDate', 'since', 'renewAt']);
+export const DEVELOPER_EMPLOYMENT_DATE_FIELDS: ReadonlySet<string> = new Set(['startDate', 'endDate', 'signedOn', 'effectiveDate', 'since', 'renewAt', 'daysLeft']);
 const EMPLOYMENT_MARKS = [
   'joinDate',
   'employmentType',
@@ -1191,12 +1192,12 @@ const EMPLOYMENT_KEYS = new Set(['employment', 'employments', 'contract', 'contr
  * them null (DEVELOPER_EMPLOYMENT_DATE_FIELDS), and the dates written in their texts hidden, wherever they are in the
  * answer. The contracts list, the contracts ending, the law's warnings, the probations ending, the endings (the CEO's
  * Approvals among them), the raises waiting and the raise requests, a person's employments, contracts, pay history and
- * hiring, the raises report and a final settlement.
+ * hiring, the raises report, the Contracts report (25 October 2026) and a final settlement.
  */
 export const DEVELOPER_EMPLOYMENT_PATHS: readonly RegExp[] = [
   /^\/api\/(contracts|employments|endings|raises|raise-requests)(\/|$)/,
   /^\/api\/employees\/[^/]+\/(employments|salary-history|raise-requests|hire)(\/|$)/,
-  /^\/api\/reports\/salary-raises(\/|$)/,
+  /^\/api\/reports\/(salary-raises|contracts)(\/|$)/,
   /^\/api\/payroll\/final-settlements(\/|$)/,
 ];
 
@@ -1246,8 +1247,8 @@ export const DEVELOPER_JOB_PARAMS: ReadonlySet<string> = new Set([
   'employmentType',
   'workArrangement',
 ]);
-/** Where `type` is the employment type (the contracts list), not a leave's or an adjustment's. */
-const EMPLOYMENT_TYPE_PARAM_PATH = /^\/api\/(contracts|employees|employments)(\/|$)/;
+/** Where `type` is the employment type (the contracts list and the Contracts report), not a leave's or an adjustment's. */
+const EMPLOYMENT_TYPE_PARAM_PATH = /^\/api\/(contracts|employees|employments|reports\/contracts)(\/|$)/;
 
 /**
  * Audit entries about the company's setup (a vacancy among them): their job details stay, but a department's head, a

@@ -335,6 +335,10 @@ export * from './salary-history.js';
 // the company-wide Salary Raises report: the raises in a period, their totals, by department, and who is due for review
 export * from './salary-raises.js';
 
+// the Contracts report (owner, 25 October 2026: "Dates and status", no pay): a period's contract versions with their
+// status, start and end, days left, one per employment or every one, and their totals
+export * from './contracts-report.js';
+
 // one-off additions and deductions on a month's pay, advances and loans, final settlements and held pay: Unsettled
 export * from './payroll-adjustments.js';
 

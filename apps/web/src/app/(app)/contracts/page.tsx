@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import { getCurrentUser } from '@/lib/session';
 import { Empty, Loading } from '../organization/ui';
+import { CONTRACTS_REPORT_PATH } from '../payroll/reports/contracts/contracts-report';
 import { AllContracts } from './all-contracts';
 import { NeedsAttention } from './attention';
 import { canSeeContracts, seesSalary } from './list';
@@ -42,7 +43,13 @@ export default function ContractsPage({ searchParams }: PageProps<'/contracts'>)
         Every employee&apos;s contracts in one place; each is drafted, signed and renewed on the employee&apos;s Employment tab. Their{' '}
         <Link href="/organization/contracts">defaults and ending rules</Link> are under Organization → Contracts &amp; Endings.
       </p>
-      <Link href="/contracts/calculator" className="btn btn-secondary mt-4">Salary calculator</Link>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Link href="/contracts/calculator" className="btn btn-secondary">Salary calculator</Link>
+        {/* status, start and end dates with an Excel download (owner, 25 October 2026: "A report under Reports") */}
+        <Link href={CONTRACTS_REPORT_PATH} className="btn btn-secondary">
+          Contracts report
+        </Link>
+      </div>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>
           <Contracts searchParams={searchParams} />

@@ -41,11 +41,12 @@ export const hiddenLinesLabel = (count: number): string => `${confidentialPeople
 
 /**
  * What a page, a report or a download says when C-level people are left out for the caller (none: null): "C-level (2
- * people) are left out: only the CEO and the Super Admin see their amounts."
+ * people) are left out: only the CEO and the Super Admin see their amounts." `what` they see instead of their amounts:
+ * "contracts" on the Contracts report (25 October 2026), which has no amounts.
  */
-export function confidentialExcludedNote(count: number): string | null {
+export function confidentialExcludedNote(count: number, what = 'amounts'): string | null {
   if (!(count > 0)) return null;
-  return `${confidentialPeople(count)} ${count === 1 ? 'is' : 'are'} left out: only the CEO and the Super Admin see their amounts.`;
+  return `${confidentialPeople(count)} ${count === 1 ? 'is' : 'are'} left out: only the CEO and the Super Admin see their ${what}.`;
 }
 
 /** Whether these roles hold `role` as the guards count it: a Super Admin counts as an Admin (auth/roles.ts actsAs). */

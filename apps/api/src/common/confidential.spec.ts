@@ -94,6 +94,8 @@ describe('what the screens say', () => {
     expect(confidentialExcludedNote(0)).toBeNull();
     expect(confidentialExcludedNote(1)).toBe('C-level (1 person) is left out: only the CEO and the Super Admin see their amounts.');
     expect(confidentialExcludedNote(2)).toBe('C-level (2 people) are left out: only the CEO and the Super Admin see their amounts.');
+    // the Contracts report has no amounts (25 October 2026)
+    expect(confidentialExcludedNote(1, 'contracts')).toBe('C-level (1 person) is left out: only the CEO and the Super Admin see their contracts.');
     expect(CONFIDENTIAL_NOTE).toBe('C-level: only the CEO and the Super Admin see the rest.');
   });
 });

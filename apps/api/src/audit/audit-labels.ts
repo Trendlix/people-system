@@ -118,6 +118,8 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   reimbursement_receipt: 'Reimbursement receipt',
   reimbursement_type: 'Reimbursement type',
   salary_raises_report: 'Salary raises report',
+  // the Contracts report (25 October 2026): its workbook downloaded
+  contracts_report: 'Contracts report',
   shift: 'Shift',
   template_version: 'Template version',
   user: 'User account',
@@ -126,6 +128,8 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   // recruitment, Phase 2 (22 October 2026): an interview, the rejection email's words, the analytics' Excel; onboarding
   interview: 'Interview',
   recruitment_settings: 'Recruitment settings',
+  // "Fill in with LinkedIn" on the careers forms (25 October 2026), a Super Admin's
+  linkedin_settings: 'LinkedIn sign-in settings',
   recruitment_analytics: 'Recruitment analytics',
   onboarding_checklist: 'Onboarding checklist',
   onboarding_defaults: 'Onboarding checklist defaults',
@@ -319,6 +323,7 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   restore_attendance: 'Restored the attendance cut',
   return: 'Returned',
   salary_raises_file: 'Downloaded the salary raises',
+  contracts_report_file: 'Downloaded the contracts report',
   // a KPI scorecard's scoring sent by its manager, HR or the CEO (21 October 2026)
   score: 'Scored',
   // an employee's KPI self-rating sent (21 October 2026)

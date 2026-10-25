@@ -507,6 +507,8 @@ describe('The Developer role (e2e)', () => {
       '/wfh',
       '/wfh/calendar',
       '/reports/salary-raises',
+      // the Contracts report (25 October 2026), every version of every year, the person's among them
+      '/reports/contracts?status=all&show=every&from=2000-01&to=2030-12',
       `/offboarding/employees/${employeeId}`,
       `/onboarding/employees/${employeeId}`,
       `/audit?entityType=employment&entityId=${employmentId}`,

@@ -2,6 +2,7 @@ import { monthRange, PAYROLL_FIGURE_KEYS, PAYROLL_FIGURE_LABELS, type MonthStati
 import { hasRole } from '../../../../lib/roles';
 import { formatEgp } from '../../employees/[id]/contracts/salary';
 import { compactAmount, niceTicks } from '../../employees/[id]/salary-history/salary-history';
+import { CONTRACTS_REPORT_PATH } from './contracts/contracts-report';
 import { RAISES_PATH } from './salary-raises/salary-raises';
 import { monthName } from '../list';
 import { REPORTS_PATH } from '../sections';
@@ -27,6 +28,9 @@ export const canSeeReports = (user: WithRoles) => hasRole(user, 'hr', 'finance',
 
 /** The Salary Raises report, a report of its own (it moves under Reports in the sidebar later). */
 export const SALARY_RAISES_HREF = RAISES_PATH;
+
+/** The Contracts report, beside it (owner, 25 October 2026: "A report under Reports"). */
+export const CONTRACTS_REPORT_HREF = CONTRACTS_REPORT_PATH;
 
 const query = (p: ReportPeriod) => `from=${p.from}&to=${p.to}`;
 

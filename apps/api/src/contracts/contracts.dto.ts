@@ -1,3 +1,4 @@
+import { applyDecorators } from '@nestjs/common';
 import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
@@ -264,7 +265,7 @@ export class SignContractDto {
 }
 
 /** A query parameter sent empty (e.g. a filter left on "All") counts as not sent; text is trimmed. */
-const EmptyIsUnset = () =>
+export const EmptyIsUnset = () =>
   Transform(({ value }) => {
     if (typeof value !== 'string') return value;
     const trimmed = value.trim();
@@ -272,6 +273,24 @@ const EmptyIsUnset = () =>
   });
 
 const ENDING_WITHIN_MESSAGE = 'Enter endingWithin as a whole number of days, 0 to 1830 (e.g. 30).';
+/** A search of contracts: the Contracts page's and the Contracts report's (25 October 2026). */
+export const SEARCH_MESSAGE = 'Search with one text, e.g. a name or a contract number.';
+export const SEARCH_LENGTH_MESSAGE = 'Search with at most 100 characters.';
+
+/**
+ * ?endingWithin=N: signed contracts that end within N days of today, a whole number from 0 to 1830; empty counts as not
+ * sent. The Contracts page's and the Contracts report's (25 October 2026).
+ */
+export const EndingWithinDays = () =>
+  applyDecorators(
+    Transform(({ value }) => {
+      if (typeof value !== 'string') return value;
+      const trimmed = value.trim();
+      return trimmed === '' ? undefined : Number(trimmed); // not a number: NaN, refused below
+    }),
+    IsOptional(),
+    ValidateBy({ name: 'isDays', validator: { validate: (v) => Number.isInteger(v) && v >= 0 && v <= 1830, defaultMessage: () => ENDING_WITHIN_MESSAGE } }),
+  );
 
 /** The company-wide list (GET /contracts): every filter is optional. */
 export class ListContractsDto {
@@ -280,7 +299,7 @@ export class ListContractsDto {
   status?: ContractStatus;
 
   /** The employee's name (English or Arabic), employee code or the contract number; case doesn't matter. */
-  @EmptyIsUnset() @IsOptional() @IsString({ message: 'Search with one text, e.g. a name or a contract number.' }) @MaxLength(100, { message: 'Search with at most 100 characters.' })
+  @EmptyIsUnset() @IsOptional() @IsString({ message: SEARCH_MESSAGE }) @MaxLength(100, { message: SEARCH_LENGTH_MESSAGE })
   q?: string;
 
   /** The contract's length: fixed, open_ended or specific_job. */
@@ -292,13 +311,7 @@ export class ListContractsDto {
   type?: EmploymentType;
 
   /** Signed contracts that end within this many days of today, those already past their end included. */
-  @Transform(({ value }) => {
-    if (typeof value !== 'string') return value;
-    const trimmed = value.trim();
-    return trimmed === '' ? undefined : Number(trimmed); // not a number: NaN, refused below
-  })
-  @IsOptional()
-  @ValidateBy({ name: 'isDays', validator: { validate: (v) => Number.isInteger(v) && v >= 0 && v <= 1830, defaultMessage: () => ENDING_WITHIN_MESSAGE } })
+  @EndingWithinDays()
   endingWithin?: number;
 }
 

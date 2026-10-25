@@ -50,11 +50,14 @@ export function documentsText(missing: readonly Missing[]): string {
 /** The name the workbook is saved under: "Missing details 2026-10-16.xlsx", with the day (Cairo) it was made. */
 export const missingDetailsFileName = (today: string) => `Missing details ${today}.xlsx`;
 
-/** A column of a sheet: its header, width and each row's value. The Salary Raises workbook is written with these too. */
+/**
+ * A column of a sheet: its header, width and each row's value. The Salary Raises and Contracts workbooks are written with
+ * these too; a Date is a real Excel date (the Contracts report's, 25 October 2026), shown by its `numFmt`.
+ */
 export interface Column<T> {
   header: string;
   width: number;
-  value: (row: T) => string | number | null;
+  value: (row: T) => string | number | Date | null;
   /** A number format; text otherwise. */
   numFmt?: string;
   /** Long text, wrapped in its cell. */

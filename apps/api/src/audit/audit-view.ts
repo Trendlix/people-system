@@ -356,6 +356,9 @@ function targetOf(row: Pick<AuditRow, 'entityType' | 'entityId' | 'diff'>, refs:
       return { href: '/payroll/reports', label: 'Open payroll reports', roles: PAY };
     case 'salary_raises_report':
       return { href: '/payroll/reports/salary-raises', label: 'Open salary raises', roles: PAY };
+    // HR, Finance and the CEO, as the Contracts page
+    case 'contracts_report':
+      return { href: '/payroll/reports/contracts', label: 'Open contracts report', roles: PAY };
     case 'leave_request':
       return id ? own(`/leave/${id}`, 'Open leave request', LEAVE) : null;
     case 'leave_document':
@@ -395,6 +398,9 @@ function targetOf(row: Pick<AuditRow, 'entityType' | 'entityId' | 'diff'>, refs:
       return { href: '/organization/recruitment', label: 'Open recruitment settings', roles: RECRUITMENT };
     case 'recruitment_analytics':
       return { href: '/recruitment/analytics', label: 'Open recruitment analytics', roles: RECRUITMENT };
+    // Recruitment Settings' LinkedIn Sign-in (25 October 2026), a Super Admin's as Email Settings are
+    case 'linkedin_settings':
+      return { href: '/organization/recruitment#linkedin-signin', label: 'Open the LinkedIn sign-in settings', roles: MAIL };
     case 'onboarding_checklist':
       return id ? own(`/onboarding/${id}`, 'Open onboarding checklist', RECRUITMENT) : null;
     case 'onboarding_defaults':

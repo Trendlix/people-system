@@ -69,6 +69,8 @@ describe('the sidebar', () => {
     expect(current('/payroll/adjustments')).toBe('Additions / Deductions');
     expect(current('/payroll/recurring-deductions')).toBe('Recurring Deductions');
     expect(current('/payroll/reports/salary-raises')).toBe('Reports');
+    // and the Contracts report beside it (25 October 2026)
+    expect(current('/payroll/reports/contracts')).toBe('Reports');
     // Raise Requests is under Requests, not Payroll
     expect(payroll.items?.map((i) => i.label)).not.toContain('Raise Requests');
   });
