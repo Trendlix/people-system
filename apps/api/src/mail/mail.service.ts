@@ -58,6 +58,8 @@ interface Sender {
   from: { name: string; address: string } | string;
   fromText: string;
   replyTo: string | null;
+  /** The server it goes through, to say in plain words why it was refused (the Email Settings page's). */
+  at?: { host: string; port: number; provider?: MailProvider };
 }
 
 /** A test email's settings: what the form says, the password opened. */
@@ -179,7 +181,9 @@ export class MailService {
       await sender.transport.sendMail({ ...mail, from: sender.from, replyTo });
     } catch (err) {
       this.logger.error(`Sending to ${mail.to} failed: ${(err as Error).message}`);
-      throw new ServiceUnavailableException('The email could not be sent: the email provider refused it. Check the email settings, or send the link yourself.');
+      // why, in plain words (owner, 25 October 2026: an offer to an outside address was refused, with no reason given)
+      const why = smtpProblem(err, sender.at ?? { host: 'the email server', port: 0 });
+      throw new ServiceUnavailableException(`${why} Check Organization → Email Settings, or send the link yourself.`);
     }
     if (this.memory) this.outbox.push({ ...mail, ...(replyTo && { replyTo }), from: sender.fromText, source: sender.source });
   }
@@ -251,6 +255,7 @@ export class MailService {
       from: { name: row.fromName ?? '', address: row.fromAddress },
       fromText: mailFromText(row.fromName, row.fromAddress),
       replyTo: row.replyTo,
+      at: { host: row.host, port: row.port, provider: row.provider as MailProvider },
     };
   }
 }

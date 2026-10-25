@@ -113,6 +113,14 @@ describe('a failed send in plain words', () => {
     expect(smtpProblem(smtpError('Message failed', 'EMESSAGE', '554 5.2.252 SendAsDenied; hr@example.com not allowed to send as ceo@example.com', 'DATA'), at)).toBe(said);
   });
 
+  // the owner, 25 October 2026: offers to outside addresses refused, those inside the company sent
+  it('says the server won’t send outside the company, naming smtppro for Zoho', () => {
+    const relay = smtpError('Can\'t send mail - all recipients were rejected', 'EENVELOPE', '553 Relaying disallowed. Invalid Domain - gmail.com', 'RCPT TO');
+    expect(smtpProblem(relay, { host: 'smtp.zoho.com', port: 587, provider: 'zoho' })).toMatch(/^Zoho refused to send outside the company.*smtppro\.zoho\.com/);
+    expect(smtpProblem(relay, { host: 'mail.example.com', port: 587, provider: 'other' })).toMatch(/^The email server refused to send outside the company/);
+    expect(smtpProblem(smtpError('Recipient command failed', 'EENVELOPE', '554 5.7.1 Relay access denied', 'RCPT TO'), at)).toMatch(/outside the company/);
+  });
+
   it('says a refused recipient, and else gives the server’s own words, short and on one line', () => {
     expect(smtpProblem(smtpError('Recipient command failed', 'EENVELOPE', '550 5.1.1 No such user', 'RCPT TO'), at)).toBe('The email server refused to send to that address.');
     expect(smtpProblem(smtpError('Message failed', 'EMESSAGE', '552 5.3.4 Message\r\n too big', 'DATA'), at)).toBe('The email couldn’t be sent: the server said “552 5.3.4 Message too big”.');
@@ -127,11 +135,12 @@ describe('the providers’ presets', () => {
     expect(MAIL_PRESETS).toEqual({
       google: expect.objectContaining({ host: 'smtp.gmail.com', port: 587, security: 'starttls' }),
       microsoft: expect.objectContaining({ host: 'smtp.office365.com', port: 587, security: 'starttls' }),
-      zoho: expect.objectContaining({ host: 'smtp.zoho.com', port: 587, security: 'starttls' }),
+      zoho: expect.objectContaining({ host: 'smtppro.zoho.com', port: 587, security: 'starttls' }),
     });
     expect(mailProviderNote('google')).toMatch(/app password.*2-step verification/);
     expect(mailProviderNote('microsoft')).toMatch(/SMTP AUTH/);
     expect(mailProviderNote('zoho')).toMatch(/zoho\.eu.*regional/);
+    expect(mailProviderNote('zoho')).toMatch(/smtppro\.zoho\.com.*smtp\.zoho\.com/);
     expect(mailPreset('other')).toBeNull();
     expect(mailProviderNote('other')).toBe(MAIL_OTHER_NOTE);
   });

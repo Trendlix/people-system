@@ -48,6 +48,8 @@ interface SmtpError {
 const TLS_WORDS = /wrong version number|ssl|tls|certificate|handshake|EPROTO|self[- ]signed|unable to verify|greeting never received/i;
 const NOT_FOUND = /ENOTFOUND|EAI_AGAIN|EAI_NONAME|getaddrinfo/i;
 const UNREACHABLE = /ECONNREFUSED|EHOSTUNREACH|ENETUNREACH|ECONNRESET|ETIMEDOUT|timeout/i;
+/** The server won't pass mail on outside its own domain (owner, 25 October 2026: Zoho's "553 Relaying disallowed"). */
+const RELAY_REFUSED = /relaying disallowed|relay(ing)? (access )?denied|not permitted to relay|unable to relay|relay not permitted/i;
 const SENDER_REFUSED = /SendAsDenied|not allowed to send as|send as|sender address rejected|not owned by user|sender .*(not|isn.t) allowed|5\.7\.60|5\.2\.252|5\.7\.1 .*sender/i;
 const MICROSOFT_AUTH_OFF = /SmtpClientAuthentication|5\.7\.139/i;
 const GOOGLE_APP_PASSWORD = /Application-specific password|InvalidSecondFactor|534[- ]5\.7\.9/i;
@@ -92,6 +94,14 @@ export function smtpProblem(err: unknown, at: { host: string; port: number; prov
 
   // the envelope: the sender refused (MAIL FROM, or after the message as Microsoft does), or the recipient
   if (e.responseCode === 530 || /authentication required/i.test(said)) return 'The server asks for a username and password: enter them.';
+  // mail inside the company goes, outside it is refused: Zoho's personal server for a company domain, or a sender that
+  // isn't the mailbox signed in with
+  if (RELAY_REFUSED.test(said)) {
+    if (at.provider === 'zoho' || /zoho/i.test(at.host)) {
+      return 'Zoho refused to send outside the company (“Relaying disallowed”): a company domain on a paid Zoho plan sends through smtppro.zoho.com, from the mailbox you sign in with or one of its aliases.';
+    }
+    return 'The email server refused to send outside the company (it doesn’t relay): check the server, and send from the mailbox you sign in with or one of its aliases.';
+  }
   if ((code === 'EENVELOPE' && command === 'MAIL FROM') || SENDER_REFUSED.test(said)) return 'The sender address isn’t allowed for this mailbox.';
   if (code === 'EENVELOPE' && command === 'RCPT TO') return 'The email server refused to send to that address.';
 

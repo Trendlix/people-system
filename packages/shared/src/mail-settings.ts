@@ -57,11 +57,13 @@ export const MAIL_PRESETS: Readonly<Record<Exclude<MailProvider, 'other'>, MailP
     security: 'starttls',
     note: 'Microsoft 365 needs SMTP AUTH (authenticated SMTP) turned on for the mailbox, in the Microsoft 365 admin center.',
   },
+  // a company's own domain on a paid plan sends through smtppro (owner, 25 October 2026: offers to outside addresses were
+  // refused through smtp.zoho.com, Zoho's server for personal and free accounts)
   zoho: {
-    host: 'smtp.zoho.com',
+    host: 'smtppro.zoho.com',
     port: 587,
     security: 'starttls',
-    note: 'If the account is on zoho.eu, zoho.in or another region, use its regional server instead, e.g. smtp.zoho.eu.',
+    note: 'A company domain on a paid Zoho plan sends through smtppro.zoho.com; a personal or free account through smtp.zoho.com. Send from the mailbox you sign in with, or one of its aliases. If the account is on zoho.eu, zoho.in or another region, use its regional server instead, e.g. smtppro.zoho.eu.',
   },
 };
 
