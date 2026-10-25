@@ -14,14 +14,17 @@ import { assertTestDatabase } from './test-env.js';
 // Employment types by Labour Law 14/2025 (owner, 18 October 2026: "can we update the employment types based on the
 // labour law?"): Sales became Full-time paid by commission, Internship became Trainee (المتدرج, Arts. 28–30), Freelance
 // kept outside the law (Art. 1(1)); the contract's length (Arts. 87, 88, 155), the nature of the work (Art. 1(6–8)) and
-// remote work (Art. 96(1)) recorded, with the law's warnings. Dates that depend on today are counted from today in
-// Cairo. Everyone here is invented, and deleted at the end.
+// remote work (Art. 96(1)) recorded, with the law's warnings. The trainee went on 25 October 2026 (owner: "unpaid
+// internship and training are the same thing"): the unpaid internship is the one internship (trainees-interns and
+// unpaid-interns). Dates that depend on today are counted from today in Cairo. Everyone here is invented, and deleted
+// at the end.
 
 const RUN = Date.now().toString(36).toLowerCase();
 const MIGRATIONS = fileURLToPath(new URL('../prisma/migrations/', import.meta.url));
 const MIGRATION = '20261018190000_employment_types_by_law';
 const SCHEMA = 'employment_types_check';
-const TYPE_MESSAGE = 'Choose an employment type: full_time, part_time, trainee, intern (an unpaid internship, outside the labour law) or freelance (outside the labour law).';
+const TYPE_MESSAGE =
+  'Choose an employment type: full_time, part_time, intern (an unpaid internship, outside the labour law; a trainee is an intern now) or freelance (outside the labour law).';
 
 interface Contract {
   id: string;
@@ -201,6 +204,8 @@ describe('Employment types by the labour law (e2e)', () => {
       const e = await addEmployee('Type Refused');
       expect(messageOf(await postHire(e.id, { employmentType: 'sales' }, {}).expect(400))).toEqual([TYPE_MESSAGE]);
       expect(messageOf(await postHire(e.id, { employmentType: 'internship' }, {}).expect(400))).toEqual([TYPE_MESSAGE]);
+      // nor the trainee since 25 October 2026: an intern now
+      expect(messageOf(await postHire(e.id, { employmentType: 'trainee' }, {}).expect(400))).toEqual([TYPE_MESSAGE]);
       expect(messageOf(await postHire(e.id, { employmentType: 'part_time', paidByCommission: true }, {}).expect(400))).toBe(
         'Paid by commission is for a full-time employment only. Choose Full-time, or leave paid by commission off.',
       );
@@ -326,70 +331,20 @@ describe('Employment types by the labour law (e2e)', () => {
     });
   });
 
-  describe('the trainee’s training agreement (Arts. 28–30)', () => {
-    const STAGES = [
-      { name: 'Basics', months: 3, pay: 4000 },
-      { name: 'Practice', months: 3, pay: 7000 },
-    ];
-
-    it('needs its stages, each paying more than the one before, the trainee at least 14, the last at least the minimum wage', async () => {
-      const e = await addEmployee('Tamer Trainee', { dateOfBirth: '2008-05-01' });
-      const job = { employmentType: 'trainee', joinDate: '2026-10-01' };
-      expect(messageOf(await postHire(e.id, job, {}).expect(400))).toEqual([
-        'Add at least one training stage: a training agreement sets the training’s stages and the pay of each (Labour Law Art. 29).',
-      ]);
-      expect(messageOf(await postHire(e.id, job, { traineeStages: [STAGES[1], STAGES[0]] }).expect(400))).toEqual([
-        'Training stage 2’s pay must be more than stage 1’s (7,000 EGP): the pay rises from stage to stage (Labour Law Art. 29).',
-      ]);
-      expect(messageOf(await postHire(e.id, job, { traineeStages: [{ name: '', months: 0.5, pay: 4000 }] }).expect(400))).toEqual([
-        'Training stage 1 needs a name.',
-        'Training stage 1’s length must be a whole number of months, 1 or more.',
-      ]);
-      expect(messageOf(await postHire(e.id, job, { traineeStages: STAGES, payBasis: 'hourly', hourlyRate: 50, hoursPerWeek: 20 }).expect(400))).toBe(
-        'A trainee is paid by the training stages, a month each: choose a monthly salary.',
-      );
-      expect(messageOf(await postHire(e.id, job, { traineeStages: STAGES, form: 'open_ended' }).expect(400))).toBe(
-        'A trainee’s training agreement runs for the training’s length, which its stages set (Labour Law Art. 29): leave the contract fixed-term.',
-      );
-
-      // too young on the start date (Art. 28)
-      const young = await addEmployee('Yara Young', { dateOfBirth: '2012-10-02' });
-      expect(messageOf(await postHire(young.id, job, { traineeStages: STAGES }).expect(400))).toEqual([
-        'A trainee must be at least 14 years old on the start date (Labour Law Art. 28): this one would be 13.',
-      ]);
-
-      // the minimum wage set for the year (the Super Admin, Payroll Setup): the last stage at least that
+  describe('the minimum wage (Payroll Setup)', () => {
+    it('is kept by year, set by the Super Admin alone; a contract takes no training stages since the trainee went (25 October 2026)', async () => {
       const rates = normalLawRates(lawRatesFor(2026));
       const { year: _year, ...sent } = rates;
       const set = await api().put('/api/payroll/law-rates/2026').set('Cookie', superAdmin).send({ ...sent, minimumWage: 7500 }).expect(200);
       expect(set.body.minimumWage).toBe(7500);
       expect(((await api().get('/api/payroll/law-rates').set('Cookie', hr).expect(200)).body as { year: number; minimumWage: number | null }[]).find((y) => y.year === 2026)!.minimumWage).toBe(7500);
       await api().put('/api/payroll/law-rates/2026').set('Cookie', hr).send({ ...sent, minimumWage: 1 }).expect(403);
-      expect(messageOf(await postHire(e.id, job, { traineeStages: STAGES }).expect(400))).toEqual([
-        'The last training stage’s pay (7,000 EGP) must be at least the minimum wage, 7,500 EGP (Labour Law Art. 29).',
-      ]);
+
+      // the paid trainee's training stages went with it: a field no contract takes, for anyone
+      const e = await addEmployee('Tamer Stages');
+      await postHire(e.id, {}, { traineeStages: [{ name: 'Basics', months: 3, pay: 4000 }] }).expect(400);
+      await postHire(e.id, { employmentType: 'intern' }, { grossSalary: undefined, traineeStages: [{ name: 'Basics', months: 3, pay: 4000 }] }).expect(400);
       expect(await prisma.employment.count({ where: { employeeId: e.id } })).toBe(0);
-
-      // as the law has it: the gross is the first stage's pay, the term the stages' months together
-      const stages = [STAGES[0], { ...STAGES[1], pay: 7500 }];
-      const profile = (await postHire(e.id, job, { traineeStages: stages, grossSalary: 99999 }).expect(201)).body as Profile;
-      const [draft] = await contractsOf(e.id, profile.employment!.id);
-      expect(draft).toMatchObject({ form: 'fixed', grossSalary: 4000, durationMonths: 6, startDate: '2026-10-01', endDate: '2027-03-31', traineeStages: stages, traineeMonths: 6 });
-      expect(draft.traineeStage).toEqual({ number: 1, name: 'Basics', pay: 4000 });
-      // the stages' pay is salary data: the audit log only says they were set
-      const audit = await prisma.auditLog.findFirst({ where: { entityType: 'contract', entityId: draft.id, action: 'create' } });
-      expect(audit?.diff).toMatchObject({ form: 'fixed', durationMonths: 6, grossSalary: 'changed', traineeStages: 'changed' });
-      expect(await sign(draft)).toMatchObject({ status: 'active' });
-
-      // stages are a trainee's only; a trainee's pay follows them, not a raise
-      const other = await addEmployee('Fatma Fulltime');
-      expect(messageOf(await postHire(other.id, {}, { traineeStages: STAGES }).expect(400))).toBe('Training stages are for a trainee’s training agreement only.');
-      const raise = await api()
-        .post(`/api/employees/${e.id}/employments/${profile.employment!.id}/raises`)
-        .set('Cookie', hr)
-        .send({ way: 'amendment', effectiveDate: '2026-12-01', grossSalary: 5000, reason: 'annual' })
-        .expect(400);
-      expect(messageOf(raise)).toBe('A trainee is paid by the stages of the training agreement (Labour Law Art. 29): to change the pay, add a new training agreement with new stages.');
     });
   });
 
@@ -458,12 +413,15 @@ describe('Employment types by the labour law (e2e)', () => {
       const now = (await api().get(`/api/offers/${draft.id}`).set('Cookie', hr).expect(200)).body;
       expect(now.template).toMatchObject({ slotKey: 'offer_sales', name: 'Job offer · Full-time, paid by commission', status: 'published' });
       // changed to another type: no longer paid by commission
-      expect((await api().patch(`/api/offers/${draft.id}`).set('Cookie', hr).send({ employmentType: 'trainee' }).expect(200)).body).toMatchObject({
-        employmentType: 'trainee',
+      expect((await api().patch(`/api/offers/${draft.id}`).set('Cookie', hr).send({ employmentType: 'intern' }).expect(200)).body).toMatchObject({
+        employmentType: 'intern',
         paidByCommission: false,
-        // the trainee's own offer since 19 October 2026 (offer_internship is the unpaid intern's)
-        template: { slotKey: 'offer_trainee', name: 'Job offer · Trainee' },
+        grossSalary: 0,
+        // the unpaid intern's offer (owner, 19 October 2026), the one internship since 25 October 2026
+        template: { slotKey: 'offer_internship', name: 'Job offer · Unpaid internship' },
       });
+      // the trainee's offer is no more
+      expect(messageOf(await api().patch(`/api/offers/${draft.id}`).set('Cookie', hr).send({ employmentType: 'trainee' }).expect(400))).toEqual([TYPE_MESSAGE]);
     });
   });
 
@@ -492,10 +450,13 @@ describe('Employment types by the labour law (e2e)', () => {
   describe('reimbursement types', () => {
     it('are limited to the employment types', async () => {
       const create = (employmentTypes: string[]) => api().post('/api/reimbursement-types').set('Cookie', hr).send({ nameEn: `Law ${RUN} ${employmentTypes.join(' ')}`, nameAr: 'نوع', employmentTypes });
-      expect(messageOf(await create(['sales']).expect(400))).toEqual(['Choose the employment types from: full_time, part_time, trainee, intern, freelance; [] for every employment type.']);
-      const made = (await create(['trainee', 'full_time']).expect(201)).body;
+      const refused = ['Choose the employment types from: full_time, part_time, intern, freelance; [] for every employment type.'];
+      expect(messageOf(await create(['sales']).expect(400))).toEqual(refused);
+      // the trainee went on 25 October 2026: an intern now
+      expect(messageOf(await create(['trainee', 'full_time']).expect(400))).toEqual(refused);
+      const made = (await create(['intern', 'full_time']).expect(201)).body;
       reimbursementTypes.push(made.id);
-      expect(made.employmentTypes).toEqual(['trainee', 'full_time']);
+      expect(made.employmentTypes).toEqual(['intern', 'full_time']);
     });
   });
 });

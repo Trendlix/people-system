@@ -13,18 +13,15 @@ import { createApp, createUser, signIn } from './helpers.js';
 
 // A student on the Education tab (owner, 25 October 2026, on the trainee contract template's {{qualification}}: "if the
 // intern is a student, how will we deal with it? … i am talking about the field mapping"; asked, "Add a Student
-// option"): the "Still studying" switch with the year and the expected graduation, saved and audited; the trainee's
-// contract printing the student's wording while Qualification (Arabic) is empty; Missing Details before and after the
+// option"): the "Still studying" switch with the year and the expected graduation, saved and audited; the intern's
+// internship agreement (the one internship since 25 October 2026) printing the student's wording while Qualification
+// (Arabic) is empty; Missing Details before and after the
 // expected graduation; the employee's own change request; a developer's view; the warning on a renewal or a conversion
 // drafted past the expected graduation. The people are made up.
 
 const RUN = `${Date.now().toString(36)}5`;
-const STAGES = [
-  { name: 'Basics', months: 3, pay: 4000 },
-  { name: 'Practice', months: 3, pay: 6000 },
-];
-// a training agreement's renewal sets its stages afresh (Labour Law Art. 29); the same pay, so no raise
-const RENEWAL = { traineeStages: STAGES };
+// an internship agreement's renewal: no wage again, so no raise (owner, 19 October 2026)
+const RENEWAL = {};
 const WORDING = 'طالبة بالفرقة الثالثة – كلية التجارة – جامعة القاهرة';
 
 interface Gap {
@@ -96,13 +93,13 @@ describe('A student on the Education tab (e2e)', () => {
     return res.body as Profile;
   }
 
-  /** A trainee hired in one form (owner's decision, 16 October 2026), the training agreement signed from today. */
-  async function trainee(name: string, details: object) {
+  /** An intern hired in one form (owner's decision, 16 October 2026), the internship agreement signed from today. */
+  async function intern(name: string, details: object) {
     const e = await addEmployee(name, details);
     const hired = (await api()
       .post(`/api/employees/${e.id}/hire`)
       .set('Cookie', hr)
-      .send({ employment: { employmentType: 'trainee', joinDate: today }, contract: { traineeStages: STAGES } })
+      .send({ employment: { employmentType: 'intern', joinDate: today }, contract: {} })
       .expect(201)).body as Profile;
     const [draft] = await contractsOf(e.id, hired.employment!.id);
     await api().post(`/api/contracts/${draft.id}/sign`).set('Cookie', hr).send({ signedOn: today }).expect(200);
@@ -122,11 +119,11 @@ describe('A student on the Education tab (e2e)', () => {
     emailDomainBefore = (await api().get('/api/company').set('Cookie', hr).expect(200)).body.emailDomain;
     await api().patch('/api/company').set('Cookie', hr).send({ emailDomain: '' }).expect(200);
 
-    // the trainee's training agreement, printing {{qualification}} (المؤهل العلمي) as the owner's template does
+    // the intern's internship agreement, printing {{qualification}} (المؤهل العلمي) as the owner's template does
     const upload = await api()
-      .post('/api/templates/contract_trainee/versions')
+      .post('/api/templates/contract_internship/versions')
       .set('Cookie', superAdmin)
-      .attach('file', docx({ body: p(r('الطرف الثاني (المتدرب): {{full_name_ar}}')) + p(r('المؤهل العلمي: {{qualification}}')) }), 'contract_trainee.docx')
+      .attach('file', docx({ body: p(r('الطرف الثاني (المتدرب): {{full_name_ar}}')) + p(r('المؤهل العلمي: {{qualification}}')) }), 'contract_internship.docx')
       .field('language', 'ar')
       .expect(201);
     templateId = upload.body.id;
@@ -187,13 +184,13 @@ describe('A student on the Education tab (e2e)', () => {
     expect(created.diff).toMatchObject({ stillStudying: true, studyYear: 'masters', expectedGraduation: '2027-01-01' });
   });
 
-  it('the trainee’s contract prints the student’s wording while Qualification (Arabic) is empty, the typed text once set', async () => {
-    const t = await trainee('Salma Trainee', { university: 'Cairo University', faculty: 'Commerce', stillStudying: true, studyYear: 'year_3', expectedGraduation: ahead });
-    const check = () => api().get(`/api/employees/${t.id}/documents/check`).query({ slotKey: 'contract_trainee', contractId: t.contract.id }).set('Cookie', hr);
+  it('the intern’s agreement prints the student’s wording while Qualification (Arabic) is empty, the typed text once set', async () => {
+    const t = await intern('Salma Intern', { university: 'Cairo University', faculty: 'Commerce', stillStudying: true, studyYear: 'year_3', expectedGraduation: ahead });
+    const check = () => api().get(`/api/employees/${t.id}/documents/check`).query({ slotKey: 'contract_internship', contractId: t.contract.id }).set('Cookie', hr);
     expect((await check().expect(200)).body).toEqual({ missing: [], usesRestricted: false });
 
     const generate = async () => {
-      const res = await api().post(`/api/employees/${t.id}/documents`).set('Cookie', hr).send({ slotKey: 'contract_trainee', contractId: t.contract.id, documentDate: today }).expect(201);
+      const res = await api().post(`/api/employees/${t.id}/documents`).set('Cookie', hr).send({ slotKey: 'contract_internship', contractId: t.contract.id, documentDate: today }).expect(201);
       const filled = await docxOf(res.body.id);
       expect(readDocx(filled)).toEqual({ tags: [], unknownTags: [], broken: [] });
       return textOf(filled);
@@ -256,7 +253,7 @@ describe('A student on the Education tab (e2e)', () => {
   });
 
   it('a renewal or a conversion drafted past the expected graduation is warned, never refused', async () => {
-    const t = await trainee('Rania Renewal', { university: 'Cairo University', faculty: 'Commerce', stillStudying: true, studyYear: 'year_4', expectedGraduation: ahead });
+    const t = await intern('Rania Renewal', { university: 'Cairo University', faculty: 'Commerce', stillStudying: true, studyYear: 'year_4', expectedGraduation: ahead });
     const draft = (body: object) => api().post(`/api/employees/${t.id}/employments/${t.employmentId}/contracts`).set('Cookie', hr).send(body);
     const remove = (c: Contract) => api().delete(`/api/contracts/${c.id}`).set('Cookie', superAdmin).expect(204);
 

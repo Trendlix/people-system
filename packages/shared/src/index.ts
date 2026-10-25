@@ -26,24 +26,25 @@ export const ROLE_LABELS: Record<Role, string> = {
 /**
  * The employment types, by Labour Law 14/2025 (owner, 18 October 2026: "can we update the employment types based on the
  * labour law?"). Sales became Full-time paid by commission (Employment.paidByCommission: the law's wage includes "العمولة
- * أو النسبة المئوية", Art. 1(4)(أ), so a sales person is a full-time worker); Internship became Trainee, the law's
- * المتدرج (Art. 1(2): "كل من التحق لدى صاحب عمل بقصد تعلم مهنة أو صنعة أو حرفة لقاء أجر"), with a written training
- * agreement (Arts. 28–30); Freelance is kept, outside the labour law, whose worker works for an employer "تحت إدارته أو
- * إشرافه" (Art. 1(1)): a freelancer doesn't, so they get no leave, no company social insurance and a service agreement
- * rather than an employment contract. More of the law's dimensions: employment-types.ts.
+ * أو النسبة المئوية", Art. 1(4)(أ), so a sales person is a full-time worker); Freelance is kept, outside the labour law,
+ * whose worker works for an employer "تحت إدارته أو إشرافه" (Art. 1(1)): a freelancer doesn't, so they get no leave, no
+ * company social insurance and a service agreement rather than an employment contract. More of the law's dimensions:
+ * employment-types.ts.
  *
  * The unpaid internship (owner, 19 October 2026: "in case of trainee, we are not paying them salary, its just
- * transportation allowance. can i add the gross with 0?"): the law's trainee is paid (Art. 1(2): "لقاء أجر", the last
- * stage at least the minimum wage, Art. 29), so the owner chose a type of its own, outside the labour law like freelance:
+ * transportation allowance. can i add the gross with 0?"): a type of its own, outside the labour law like freelance:
  * Intern, whose internship agreement pays no wage, only allowances (the transportation allowance), with no leave and no
- * company social insurance. Trainee stays for paid trainees under the law.
+ * company social insurance. The internship is the one training type: the paid trainee of Labour Law Arts. 28–30 (المتدرج,
+ * with training stages and rising pay) was taken out on 25 October 2026 (owner: "unpaid internship and training are the
+ * same thing .. keep the unpaid internship with its document and delete the trainee with its documents"), its records
+ * made interns' (migration 20261026010000_one_internship_type).
  */
-export const EMPLOYMENT_TYPES = ['full_time', 'part_time', 'trainee', 'intern', 'freelance'] as const;
+export const EMPLOYMENT_TYPES = ['full_time', 'part_time', 'intern', 'freelance'] as const;
 export type EmploymentType = (typeof EMPLOYMENT_TYPES)[number];
 
 /**
  * Whether an employment type is under the labour law: all but freelance (Art. 1(1)) and the unpaid internship (owner,
- * 19 October 2026: outside the law, since the law's trainee is paid); see EMPLOYMENT_TYPES.
+ * 19 October 2026: outside the law, which pays its trainee, Art. 1(2): "لقاء أجر"); see EMPLOYMENT_TYPES.
  */
 export const underLabourLaw = (type: EmploymentType | string): boolean => type !== 'freelance' && type !== 'intern';
 
@@ -90,8 +91,8 @@ export const LABELS = {
   employmentType: {
     full_time: 'Full-time',
     part_time: 'Part-time',
-    trainee: 'Trainee',
-    intern: 'Unpaid internship (outside the labour law)',
+    // the one internship (owner, 25 October 2026: "unpaid internship and training are the same thing")
+    intern: 'Unpaid internship',
     freelance: 'Freelance (outside the labour law)',
   },
   status: {
@@ -139,13 +140,13 @@ export const WORK_ARRANGEMENT_LABELS_AR: Record<WorkArrangement, string> = {
 
 /**
  * The employment types in Arabic, as an Arabic document prints them ({{employment_type_ar}}); the screens show
- * LABELS.employmentType. Part-time in the law's words, "العمل بعض الوقت" (Art. 96(2)); the trainee "المتدرج" (Art. 1(2)).
+ * LABELS.employmentType. Part-time in the law's words, "العمل بعض الوقت" (Art. 96(2)); the unpaid internship "تدريب غير
+ * مدفوع" (owner, 25 October 2026), its intern being "متدرب".
  */
 export const EMPLOYMENT_TYPE_LABELS_AR: Record<EmploymentType, string> = {
   full_time: 'دوام كامل',
   part_time: 'عمل بعض الوقت',
-  trainee: 'متدرج',
-  intern: 'تدريب غير مدفوع (غير خاضع لقانون العمل)',
+  intern: 'تدريب غير مدفوع',
   freelance: 'عمل حر (غير خاضع لقانون العمل)',
 };
 
@@ -225,9 +226,8 @@ export function paperworkType(current: EmploymentType | null | undefined, latest
 
 /**
  * Why an employment ended. Resigned gives the status Resigned; the others give Terminated. Training completed (owner,
- * 19 October 2026: "interns to be labeled trainees instead of probation and their contracts are never renewed"): a
- * trainee's training agreement, or an intern's internship agreement, that ended with its term (Labour Law Arts. 28–30),
- * in Arabic "انتهاء التدرج".
+ * 19 October 2026: "interns to be labeled trainees instead of probation and their contracts are never renewed"): an
+ * intern's internship agreement that ended with its term, in Arabic "انتهاء التدريب".
  */
 export const END_REASONS = ['resigned', 'terminated', 'contract_ended', 'training_completed', 'mutual_agreement', 'retired', 'deceased', 'disability', 'other'] as const;
 export type EndReason = (typeof END_REASONS)[number];
@@ -245,18 +245,18 @@ export const END_REASON_LABELS: Record<EndReason, string> = {
 };
 
 /**
- * Where someone stands, for the directory: their current employment's status, or no current employment. A trainee
- * stands as Trainee and an intern as Intern rather than Probation or Active (owner, 19 October 2026: "interns to be
- * labeled trainees instead of probation"): a training or internship agreement has no probation, the probation of Labour
- * Law Art. 90 being an employment contract's. On leave and Notice period still show when they apply (employmentStanding).
+ * Where someone stands, for the directory: their current employment's status, or no current employment. An intern
+ * stands as Intern rather than Probation or Active (owner, 19 October 2026: "interns to be labeled trainees instead of
+ * probation"; since 25 October 2026 the intern is the only trainee): an internship agreement has no probation, the
+ * probation of Labour Law Art. 90 being an employment contract's. On leave and Notice period still show when they apply
+ * (employmentStanding).
  */
-export const STANDINGS = ['active', 'probation', 'trainee', 'intern', 'on_leave', 'notice_period', 'former', 'not_employed'] as const;
+export const STANDINGS = ['active', 'probation', 'intern', 'on_leave', 'notice_period', 'former', 'not_employed'] as const;
 export type Standing = (typeof STANDINGS)[number];
 
 export const STANDING_LABELS: Record<Standing, string> = {
   active: 'Active',
   probation: 'Probation',
-  trainee: 'Trainee',
   intern: 'Intern',
   on_leave: 'On leave',
   notice_period: 'Notice period',
@@ -265,11 +265,11 @@ export const STANDING_LABELS: Record<Standing, string> = {
 };
 
 /**
- * Where someone with a current employment stands: its status, except that a trainee's or an intern's Active (or a
- * Probation from before 19 October 2026) is Trainee or Intern; On leave and Notice period show as they are.
+ * Where someone with a current employment stands: its status, except that an intern's Active (or a Probation from before
+ * 19 October 2026) is Intern; On leave and Notice period show as they are.
  */
 export function employmentStanding(e: { status: EmployeeStatus | string; employmentType: EmploymentType | string }): Standing {
-  if ((e.employmentType === 'trainee' || e.employmentType === 'intern') && (e.status === 'active' || e.status === 'probation')) return e.employmentType;
+  if (e.employmentType === 'intern' && (e.status === 'active' || e.status === 'probation')) return 'intern';
   return e.status as Standing;
 }
 
@@ -359,7 +359,7 @@ export * from './reimbursements.js';
 export * from './installments.js';
 
 // employment types by the labour law (owner, 18 October 2026): the nature of the work (temporary, casual, seasonal),
-// remote work, the trainee's training stages, and when a fixed-term contract has become open-ended (Art. 88)
+// remote work, the intern's internship agreement, and when a fixed-term contract has become open-ended (Art. 88)
 export * from './employment-types.js';
 
 // leave (Labour Law 14/2025, Arts. 54–57 and 124–133): the law's leave types, the annual leave's days, counting a leave's
@@ -510,7 +510,7 @@ export * from './asset-counts.js';
 
 // the contract status the Employees list shows in place of the employee code (owner, 21 October 2026: "instead of the
 // Emp code, add contract status"; "State + end date"): signed and when it ends, the probation, a draft, the notice of an
-// approved ending, ended, none, the agreements of trainees and interns, freelance; an end within 30 days in amber
+// approved ending, ended, none, the agreements of interns, freelance; an end within 30 days in amber
 export * from './contract-status.js';
 
 // offboarding (owner, 21 October 2026: "when an employee resigns or contract ends with no renewal, where will the data be

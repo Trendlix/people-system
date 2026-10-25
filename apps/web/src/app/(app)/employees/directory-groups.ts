@@ -4,8 +4,8 @@ import { groupByPlace, type DepartmentGroup, type PlaceOrder } from '../../../li
 import type { EmployeeSummary } from '../../../lib/types';
 
 // The Employees list grouped (owner's request, 16 October 2026: "group active and inactive, then department, then
-// team"): Active, everyone employed now (on probation, active, trainees and interns, on notice or on leave), then
-// Inactive, those not employed yet and those who left; each by department, then by team. Pure code, tested.
+// team"): Active, everyone employed now (on probation, active, interns, on notice or on leave), then Inactive, those not
+// employed yet and those who left; each by department, then by team. Pure code, tested.
 
 export interface DirectorySection<T> {
   key: 'active' | 'inactive';
@@ -35,7 +35,7 @@ export function directorySections<T extends Pick<EmployeeSummary, 'employment'>>
   place: (row: T) => string | null = placeNow,
 ): DirectorySection<T>[] {
   const sections = [
-    { key: 'active' as const, label: 'Active', note: 'Employed now: on probation, active, trainees and interns, on notice or on leave', rows: rows.filter((e) => e.employment !== null) },
+    { key: 'active' as const, label: 'Active', note: 'Employed now: on probation, active, interns, on notice or on leave', rows: rows.filter((e) => e.employment !== null) },
     { key: 'inactive' as const, label: 'Inactive', note: 'Not employed yet, or left', rows: rows.filter((e) => e.employment === null) },
   ];
   return sections

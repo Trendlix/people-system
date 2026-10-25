@@ -1127,7 +1127,6 @@ export const DEVELOPER_JOB_DATE_FIELDS: ReadonlySet<string> = new Set([
   'yearsOfService',
   'tenureMonths',
   'priorServiceMonths',
-  'traineeMonths',
   // social insurance: the subscription's start, the contract's registration with the office, Form 2's date, and from
   // when the insured wage follows a raise
   'insuranceStartDate',
@@ -1136,7 +1135,7 @@ export const DEVELOPER_JOB_DATE_FIELDS: ReadonlySet<string> = new Set([
   'form2From',
   'insuredWageFrom',
   'insuredWageAsBefore',
-  // when a trainee's or an intern's last agreement ended, and a new one may start
+  // when an intern's last agreement ended, and a new one may start
   'nextTraining',
   // an ending's (23 October 2026, found missed when the home page showed a contract's end): the notice given, its
   // certified letter, the CEO's decision due, and the deadlines counted from the last day; the days a person was employed

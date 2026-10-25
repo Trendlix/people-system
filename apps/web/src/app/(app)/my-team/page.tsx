@@ -103,7 +103,7 @@ async function Team() {
                 </td>
                 <td>{r.jobTitle?.titleEn ?? dash}</td>
                 <td>
-                  {/* Trainee or Intern for a trainee's or an intern's Active (19 October 2026) */}
+                  {/* Intern for an intern's Active (19 October 2026) */}
                   <StandingBadge standing={reportStanding(r)} />
                 </td>
                 <td className="whitespace-nowrap">

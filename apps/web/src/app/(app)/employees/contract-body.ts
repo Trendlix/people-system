@@ -1,8 +1,7 @@
-import { CONTRACT_FORMS, RAISE_REASONS, traineeMonths, type ContractForm, type PayBasis, type RaiseReason } from '@trendlix/shared';
+import { CONTRACT_FORMS, RAISE_REASONS, type ContractForm, type PayBasis, type RaiseReason } from '@trendlix/shared';
 import { allowancesFrom } from '../../../lib/allowances';
 import { dateFrom } from '../../../lib/form-data';
 import { MAX_HOURS_PER_WEEK, parseAmount, parseHours } from './[id]/contracts/salary';
-import { traineeStagesFrom } from './[id]/contracts/trainee-stages';
 
 // The contract form's fields as the API takes them (pure code, tested; relative imports for the tests), for the
 // drafting actions in contract-actions.ts; its pay fields (payBody) also for the raise form (contracts/raise.ts). Dates
@@ -117,16 +116,10 @@ export function raiseReasonFrom(fd: FormData, key: string, errors: string[]): Ra
 /**
  * The contract's length (owner, 18 October 2026: "can we update the employment types based on the labour law?"), as the
  * API takes it: fixed-term (the default) for its months, 1 to 60; open-ended with no length or end date (Labour Law Art.
- * 87); for a specific job with the job, required, and its expected end date, if known (Art. 155). A trainee's (the form
- * sends the training stages) is the training agreement: a fixed term of its stages' months, with the stages (Art. 29).
+ * 87); for a specific job with the job, required, and its expected end date, if known (Art. 155).
  * `draft`: changing a draft, where an emptied expected end date is cleared (null).
  */
 export function lengthBody(fd: FormData, errors: string[], draft: boolean) {
-  if (fd.has('traineeStageName')) {
-    const traineeStages = traineeStagesFrom(fd, errors);
-    const months = traineeMonths(traineeStages);
-    return { form: 'fixed' as const, ...(Number.isInteger(months) && months >= 1 && { durationMonths: months }), traineeStages };
-  }
   const raw = text(fd, 'form');
   const form: ContractForm = (CONTRACT_FORMS as readonly string[]).includes(raw) ? (raw as ContractForm) : 'fixed';
   if (form === 'open_ended') return { form };
@@ -153,7 +146,7 @@ export function lengthBody(fd: FormData, errors: string[], draft: boolean) {
 export function contractBody(fd: FormData, errors: string[], renewal: boolean, draft: boolean) {
   const startDate = renewal ? '' : dateFrom(fd, 'startDate', 'start date', errors);
   const length = lengthBody(fd, errors, draft);
-  // a trainee's or an intern's agreement has no probation (19 October 2026): its form sends 0
+  // an intern's agreement has no probation (19 October 2026): its form sends 0
   const probationMonths = renewal ? undefined : monthsFrom(fd, 'probationMonths', 'probation', 3, errors);
   const pay = payBody(fd, errors, draft);
   const raiseReason = text(fd, 'payChange') === 'changes' ? raiseReasonFrom(fd, 'raiseReason', errors) : undefined;
@@ -168,7 +161,7 @@ export function contractBody(fd: FormData, errors: string[], renewal: boolean, d
 }
 
 /**
- * Converting a trainee's or an intern's agreement to a full-time contract (owner, 19 October 2026: "or can be only
+ * Converting an intern's agreement to a full-time contract (owner, 19 October 2026: "or can be only
  * renewed 1 time, after that it should be converted to a full time contract"), as POST …/contracts takes it: the
  * full-time contract form's fields (contractBody, not a renewal: its start date and probation are sent, the agreement
  * having had none), with convertsTo. Signing it makes the employment full-time. No reason for a change of pay: it isn't a

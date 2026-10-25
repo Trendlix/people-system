@@ -40,7 +40,7 @@ describe('what kind of value a tag has', () => {
     expect(isAmountTag('gross_salary_words')).toBe(false);
     expect(isAmountTag('basic_percent')).toBe(false);
     expect(isAmountTag('allowances_ar')).toBe(false);
-    // a trainee's training stages are a list, in words (18 October 2026)
+    // the training stages tags left the dictionary with the paid trainee (25 October 2026)
     expect(isAmountTag('trainee_stages')).toBe(false);
     expect(isAmountTag('trainee_stages_en')).toBe(false);
     // the accounts allowance's line (25 October 2026): words, no amount

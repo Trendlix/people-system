@@ -52,7 +52,7 @@ describe('a contract ending soon, for a developer', () => {
     expect(html).toContain(`href="/employees/${ID}?tab=employment"`);
   });
 
-  it('a trainee’s agreement: its way forward without the date', () => {
+  it('an intern’s agreement: its way forward without the date', () => {
     expect(text(row(hidden({ becameOpenEnded: false, training: { agreement: 1, next: 'renew_or_convert' } })))).toContain('Renew it once, or convert to full-time.');
   });
 

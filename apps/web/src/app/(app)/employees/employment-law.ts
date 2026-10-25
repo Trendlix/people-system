@@ -4,8 +4,6 @@ import {
   INTERN_DEFAULT_MONTHS,
   INTERN_MAX_MONTHS,
   LABELS,
-  TRAINEE_MIN_AGE,
-  TRAINEE_NOTICE_DAYS,
   TRAINING_AGAIN_AFTER_MONTHS,
   WORK_NATURE_LABELS,
   WORK_PATTERN_LABELS,
@@ -18,9 +16,8 @@ import { addDays, addMonths } from './[id]/contracts/dates';
 import { formatEgp } from './[id]/contracts/salary';
 
 // Employment types by Labour Law 14/2025 (owner, 18 October 2026: "can we update the employment types based on the labour
-// law?"), in the screens' words: Sales became Full-time paid by commission, Internship became Trainee (the law's
-// المتدرج, with a written training agreement, Arts. 28–30), Freelance stays, outside the labour law (Art. 1(1)); and the
-// law's other dimensions the owner chose to record: the contract's length (Arts. 87, 88, 155), the nature of the work
+// law?"), in the screens' words: Sales became Full-time paid by commission, Freelance stays, outside the labour law (Art.
+// 1(1)); and the law's other dimensions the owner chose to record: the contract's length (Arts. 87, 88, 155), the nature of the work
 // (Art. 1(6–8)) and remote work (Art. 96(1)), with HR's warnings when a fixed-term contract has become open-ended and when
 // casual work has gone past its 6 months. The rules themselves are in @trendlix/shared (employment-types.ts); here the
 // hints, the labels and the badges' words. Pure code, tested; relative imports, as vitest doesn't know the @/ paths.
@@ -28,20 +25,22 @@ import { formatEgp } from './[id]/contracts/salary';
 // Since 19 October 2026 (owner: "interns to be labeled trainees instead of probation and their contracts are never
 // renewed", then "or can be only renewed 1 time, after that it should be converted to a full time contract. a new trainee
 // contract can be issued after 6 months of the expiration of the last trainee contract"; and "in case of trainee, we are
-// not paying them salary, its just transportation allowance"): a trainee's training agreement and an intern's internship
-// agreement have no probation, are renewed once at most, then converted to a full-time contract or ended; and the
-// unpaid internship is a type of its own, outside the labour law like freelance: no wage, only allowances.
+// not paying them salary, its just transportation allowance"): an intern's internship agreement has no probation, is
+// renewed once at most, then converted to a full-time contract or ended; and the unpaid internship is a type of its own,
+// outside the labour law like freelance: no wage, only allowances. It is the one internship since 25 October 2026 (owner:
+// "unpaid internship and training are the same thing .. keep the unpaid internship with its document and delete the
+// trainee with its documents"): the paid trainee and its training agreement went.
 
 /**
- * An employment type as a sentence names it, in small letters and without the label's note: "full-time", "trainee",
- * "freelance" (the label is "Freelance (outside the labour law)"), "unpaid internship".
+ * An employment type as a sentence names it, in small letters and without the label's note: "full-time", "freelance"
+ * (the label is "Freelance (outside the labour law)"), "unpaid internship".
  */
 export function typeWord(type: EmploymentType | string): string {
   const label: string = LABELS.employmentType[type as EmploymentType] ?? type;
   return label.replace(/\s*\(.*\)$/, '').toLowerCase();
 }
 
-/** The same with its article: "a full-time", "a trainee", "an unpaid internship". */
+/** The same with its article: "a full-time", "a part-time", "an unpaid internship". */
 export function aTypeWord(type: EmploymentType | string): string {
   const word = typeWord(type);
   return `${/^[aeiou]/.test(word) ? 'an' : 'a'} ${word}`;
@@ -58,11 +57,8 @@ export const FREELANCE_NO_LEAVE =
 /** The same in a few words, under the type on the profile. */
 export const FREELANCE_SHORT = 'Outside the labour law (Art. 1(1)): no leave, no company social insurance, a service agreement';
 
-/** How a training or internship agreement goes on (19 October 2026): renewed once, then full-time or ended; again after 6 months. */
+/** How an internship agreement goes on (19 October 2026): renewed once, then full-time or ended; again after 6 months. */
 export const TRAINING_RENEWAL_RULE = `No probation. Renewed once at most, then converted to a full-time contract or ended; a new one starts ${TRAINING_AGAIN_AFTER_MONTHS} months after the last one ended at the earliest.`;
-
-/** A trainee: who it is, and the training agreement their contract is. */
-export const TRAINEE_NOTE = `Learns a trade for pay (Labour Law Art. 1(2): “بقصد تعلم مهنة أو صنعة أو حرفة لقاء أجر”), at least ${TRAINEE_MIN_AGE} years old (Art. 28). The contract is the training agreement: its stages, each with its pay rising, the last at least the minimum wage (Art. 29); either side may end it with ${TRAINEE_NOTICE_DAYS} days' notice (Art. 30). ${TRAINING_RENEWAL_RULE}`;
 
 /** An intern (19 October 2026: "we are not paying them salary, its just transportation allowance"): the unpaid internship. */
 export const INTERN_NOTE = `Unpaid, outside the labour law: an internship agreement that pays no wage, only allowances such as transportation, for ${INTERN_DEFAULT_MONTHS} months unless you choose another (${INTERN_MAX_MONTHS} at most). No leave and no company social insurance. ${TRAINING_RENEWAL_RULE}`;
@@ -90,16 +86,10 @@ export function outsideLawShort(type: EmploymentType | string): string | undefin
  */
 export type TermsPlace = 'below' | 'tab' | 'offer';
 
-const STAGES_PLACE: Record<TermsPlace, string> = {
-  below: 'Its stages are set below.',
-  tab: 'Its stages are set on the contract, on the Employment tab.',
-  offer: 'Its stages are set on the contract once the offer is accepted.',
-};
-
 /**
  * The hint under the employment type, for the type chosen: where part-time pay is set (not on an offer, whose terms
- * have it), the trainee's training agreement and freelance outside the law. Null for full-time (paid by commission
- * has its own hint).
+ * have it), the unpaid internship and freelance outside the law. Null for full-time (paid by commission has its own
+ * hint).
  */
 export function employmentTypeHint(type: string, place: TermsPlace): string | null {
   // the pay terms belong to the contract, not the employment (owner, 15 October 2026)
@@ -109,7 +99,6 @@ export function employmentTypeHint(type: string, place: TermsPlace): string | nu
       ? "Pay by the hour, hours a week and days a week are the contract's terms, below."
       : "Pay by the hour, hours a week and days a week are the contract's terms: a new version of it, on the Employment tab.";
   }
-  if (type === 'trainee') return `${TRAINEE_NOTE} ${STAGES_PLACE[place]}`;
   if (type === 'intern') return INTERN_NOTE;
   if (type === 'freelance') return FREELANCE_NOTE;
   return null;
@@ -181,14 +170,14 @@ export const CASUAL_TOO_LONG: LawWarning = {
 };
 
 /**
- * The warning that a trainee's or an intern's agreement has ended while the work goes on with nothing signed after it
- * (19 October 2026): never open-ended, it is renewed once, converted to full-time or ended.
+ * The warning that an intern's agreement has ended while the work goes on with nothing signed after it (19 October
+ * 2026): never open-ended, it is renewed once, converted to full-time or ended.
  */
 export const TRAINING_ENDED: LawWarning = {
   key: 'training_ended',
-  text: 'Training ended',
+  text: 'Internship ended',
   detail:
-    'The training or internship agreement has ended, and the work goes on with nothing signed after it. Renew it, if it hasn’t been renewed yet; convert it to a full-time contract; or end the training with End employment, choosing Training completed.',
+    'The internship agreement has ended, and the work goes on with nothing signed after it. Renew it, if it hasn’t been renewed yet; convert it to a full-time contract; or end the internship with End employment, choosing Training completed.',
 };
 
 /** HR's warnings on an employment or a contract, as the API sends them (each left out by an older API). */

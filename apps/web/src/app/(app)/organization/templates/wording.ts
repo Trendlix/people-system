@@ -66,7 +66,7 @@ export const SIGNER_LABELS: Record<TemplateSigners, string> = {
 };
 
 /**
- * "All employment types", or the ones named: "Full-time", "Part-time, Trainee". A Sales slot (`paidByCommission`;
+ * "All employment types", or the ones named: "Full-time", "Part-time, Unpaid internship". A Sales slot (`paidByCommission`;
  * owner, 18 October 2026: Sales became Full-time paid by commission): "Full-time, paid by commission (the full-time one
  * until this is published)".
  */

@@ -1,16 +1,11 @@
 import { BUILT_IN_LAW_RATES } from '@trendlix/shared';
 import { Prisma } from '../generated/prisma/client.js';
-import { EMPLOYMENT_TYPES_AR, printedTraineeStages } from './format.js';
+import { EMPLOYMENT_TYPES_AR } from './format.js';
 import { missingTags, resolveValues, rightFor, type ValueSources } from './values.js';
 
 // The tags of employment types by the labour law (owner, 18 October 2026): the contract's length, the job of a
-// specific-job contract, the nature of the work, remote work, paid by commission and a trainee's training stages, each
-// in Arabic and English. Everyone here is invented.
-
-const STAGES = [
-  { name: 'الأساسيات', months: 3, pay: 4000 },
-  { name: 'التطبيق', months: 1, pay: 5500.5 },
-];
+// specific-job contract, the nature of the work, remote work and paid by commission, each in Arabic and English (a
+// trainee's training stages went with the trainee on 25 October 2026). Everyone here is invented.
 
 function sources(over: { employment?: Partial<NonNullable<ValueSources['employment']>>; contract?: Partial<NonNullable<ValueSources['contract']>> } = {}, language: ValueSources['language'] = 'ar'): ValueSources {
   return {
@@ -74,7 +69,6 @@ function sources(over: { employment?: Partial<NonNullable<ValueSources['employme
       daysPerWeek: null,
       allowances: [],
       jobToDo: 'تطوير الموقع الإلكتروني',
-      traineeStages: null,
       ...over.contract,
     },
     ending: null,
@@ -115,31 +109,23 @@ describe('the labour law’s tags', () => {
     expect(resolveValues(before, ['work_nature_en', 'paid_by_commission_en'])).toEqual({ work_nature_en: 'Regular', paid_by_commission_en: 'No' });
   });
 
-  it('print a trainee’s stages in order, restricted as pay', () => {
-    const src = sources({ employment: { employmentType: 'trainee', paidByCommission: false }, contract: { form: 'fixed', jobToDo: null, traineeStages: STAGES } });
-    expect(resolveValues(src, ['trainee_stages_ar', 'employment_type'])).toEqual({
-      trainee_stages_ar: '1. الأساسيات: ثلاثة أشهر، 4,000 شهريًا؛ 2. التطبيق: شهر واحد، 5,500.50 شهريًا',
-      employment_type: 'متدرج',
-    });
-    expect(printedTraineeStages([{ name: 'Basics', months: 3, pay: 4000 }], 'en')).toBe('1. Basics: 3 months, 4,000 a month');
-    expect(rightFor('trainee_stages')).toBe('salary');
+  it('have no training stages any more (25 October 2026): nothing is printed for them, and nothing is restricted', () => {
+    const src = sources({ contract: { form: 'fixed', jobToDo: null } });
+    expect(resolveValues(src, ['trainee_stages', 'trainee_stages_ar'])).toEqual({ trainee_stages: '', trainee_stages_ar: '' });
+    expect(rightFor('trainee_stages')).toBeNull();
   });
 
   it('are missing where there is nothing to print, and say where to fill it in', () => {
     const src = sources({ contract: { form: 'fixed', jobToDo: null } });
-    const values = resolveValues(src, ['job_to_do', 'trainee_stages']);
-    expect(missingTags(values, Object.keys(values))).toEqual([
-      { tag: 'job_to_do', label: 'The job (specific-job contract)', where: { tab: 'contracts', key: 'jobToDo' } },
-      { tag: 'trainee_stages', label: 'Training stages', where: { tab: 'contracts', key: 'traineeStages' } },
-    ]);
+    const values = resolveValues(src, ['job_to_do']);
+    expect(missingTags(values, Object.keys(values))).toEqual([{ tag: 'job_to_do', label: 'The job (specific-job contract)', where: { tab: 'contracts', key: 'jobToDo' } }]);
   });
 
-  it('name the employment types in the law’s Arabic', () => {
+  it('name the employment types in the law’s Arabic, the unpaid internship تدريب غير مدفوع (25 October 2026)', () => {
     expect(EMPLOYMENT_TYPES_AR).toEqual({
       full_time: 'دوام كامل',
       part_time: 'عمل بعض الوقت',
-      trainee: 'متدرج',
-      intern: 'تدريب غير مدفوع (غير خاضع لقانون العمل)',
+      intern: 'تدريب غير مدفوع',
       freelance: 'عمل حر (غير خاضع لقانون العمل)',
     });
   });
@@ -151,8 +137,8 @@ describe('the labour law’s tags', () => {
     const tags = ['employment_type', 'employment_type_en', 'gross_salary', 'gross_salary_words', 'gross_salary_words_en', 'basic_salary', 'allowances', 'allowances_total', 'total_salary'];
     const values = resolveValues(intern, tags);
     expect(values).toEqual({
-      employment_type: 'تدريب غير مدفوع (غير خاضع لقانون العمل)',
-      employment_type_en: 'Unpaid internship (outside the labour law)',
+      employment_type: 'تدريب غير مدفوع',
+      employment_type_en: 'Unpaid internship',
       gross_salary: '0',
       gross_salary_words: 'صفر جنيه مصري فقط لا غير',
       gross_salary_words_en: 'Zero Egyptian pounds only',
@@ -163,6 +149,6 @@ describe('the labour law’s tags', () => {
     });
     // a gross of 0 is a value: nothing is missing
     expect(missingTags(values, tags)).toEqual([]);
-    expect(resolveValues(sources({ employment: { employmentType: 'trainee' } }, 'en'), ['employment_type'])).toEqual({ employment_type: 'Trainee' });
+    expect(resolveValues(sources({ employment: { employmentType: 'intern' } }, 'en'), ['employment_type'])).toEqual({ employment_type: 'Unpaid internship' });
   });
 });

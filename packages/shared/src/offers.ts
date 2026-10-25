@@ -28,7 +28,7 @@ export type OfferSendWay = (typeof OFFER_SEND_WAYS)[number];
  * The job offer template for an employment type: its slot in the template library. The slots kept their keys when the
  * types changed (owner, 18 October 2026): one paid by commission (full-time only) is offer_sales, which is used only when
  * it has a published version (offerSlotFor). Since 19 October 2026 an intern's (the unpaid internship) is
- * offer_internship, the owner's internship offer, and a trainee's offer_trainee.
+ * offer_internship, the owner's internship offer.
  */
 export function offerSlotKey(employmentType: string, paidByCommission = false): string {
   if (paidByCommission && employmentType === 'full_time') return 'offer_sales';

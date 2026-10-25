@@ -148,6 +148,8 @@ describe('an item', () => {
     expect(templateStateText({ templateStatus: 'missing', templateVersion: null }).text).toBe('No template yet');
     expect(templateStateText({ templateStatus: 'draft', templateVersion: null }).text).toBe('Draft template only, publish it first');
     expect(templateStateText({ templateStatus: 'published', templateVersion: 3 }).text).toBe('Template v3');
+    // a retired slot's documents, kept on record (25 October 2026: the trainee's training agreement and job offer)
+    expect(templateStateText({ templateStatus: 'retired', templateVersion: null })).toEqual({ text: 'Retired template, kept on record', tone: 'muted' });
   });
 
   it('groups a contract’s documents by version, newest first', () => {

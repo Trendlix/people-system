@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { insuredWageDate, payEvents, salarySummary, TEMPLATE_SLOTS, type PayEvent, type PayVersion } from '@trendlix/shared';
+import { insuredWageDate, payEvents, salarySummary, slotName, type PayEvent, type PayVersion } from '@trendlix/shared';
 import { ALLOWANCE_ORDER } from '../allowances/rows.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { fromDateOnly, todayInCairo } from '../common/date-only.js';
@@ -46,8 +46,6 @@ type EmploymentRow = Prisma.EmploymentGetPayload<{ select: typeof EMPLOYMENT }>;
 
 /** A contract version as PAY_VERSIONS loads it. */
 export type PayVersionRow = EmploymentRow['contracts'][number];
-
-const SLOT_NAMES = new Map(TEMPLATE_SLOTS.map((s) => [s.key, s.name]));
 
 /**
  * The approvers of these versions by name, where their sign-in email is an employee's work email: { email → name },
@@ -135,7 +133,7 @@ export class SalaryHistoryService {
               documents &&
               documents
                 .filter((d) => d.contractId === ev.contractId)
-                .map((d) => ({ id: d.id, slotKey: d.slotKey, name: SLOT_NAMES.get(d.slotKey) ?? d.slotKey, status: d.status, fileName: d.fileName, generatedAt: d.generatedAt })),
+                .map((d) => ({ id: d.id, slotKey: d.slotKey, name: slotName(d.slotKey), status: d.status, fileName: d.fileName, generatedAt: d.generatedAt })),
           })),
           // the pay actually received, month by month (oldest first)
           paid: e.payrollLines.map((l) => ({

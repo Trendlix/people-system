@@ -82,10 +82,10 @@ export interface OfferAllowanceInput {
  * worked out, and typing the net per hour (rateBasis 'net'), `hourlyRate` is the gross rate worked out from it; typing
  * the net, `grossSalary` is the gross worked out from it; `netSalary` is the net worked out, either way.
  *
- * A trainee's or an intern's offer has no probation (owner, 19 October 2026: "interns to be labeled trainees instead of
- * probation"): 0 is sent. An intern's (the unpaid internship: "we are not paying them salary, its just transportation
- * allowance") is a monthly one with no gross, net or basic part sent (the API keeps the gross at 0), the allowances paid
- * on top, for 1 to 12 months.
+ * An intern's offer has no probation (owner, 19 October 2026: "interns to be labeled trainees instead of probation"): 0
+ * is sent. It is the unpaid internship ("we are not paying them salary, its just transportation allowance"), a monthly
+ * one with no gross, net or basic part sent (the API keeps the gross at 0), the allowances paid on top, for 1 to 12
+ * months.
  */
 export function offerBody(fd: FormData, errors: string[], { draft, allowances }: { draft: boolean; allowances: OfferAllowanceInput[] }) {
   const cleared = draft ? null : undefined;
@@ -114,8 +114,7 @@ export function offerBody(fd: FormData, errors: string[], { draft, allowances }:
   if (workArrangement === 'hybrid' && officeDays.length === 0) errors.push('Pick at least one office day for a hybrid arrangement.');
   const joinDate = requiredDate(fd, 'joinDate', 'join date', errors);
 
-  const training = isTrainingType(employmentType);
-  const intern = employmentType === 'intern';
+  const intern = isTrainingType(employmentType);
   const payBasis: PayBasis = intern ? 'monthly' : payBasisFrom(text(fd, 'payBasis'));
   const hourly = payBasis === 'hourly';
   const net = text(fd, 'salaryBasis') === 'net';
@@ -147,7 +146,7 @@ export function offerBody(fd: FormData, errors: string[], { draft, allowances }:
     ? undefined
     : wholeFrom(fd, 'basicPercent', 1, 100, 'Enter the basic part as a whole percent of the gross, from 1 to 100, e.g. 80.', errors);
   const netSalary = intern ? null : amountFrom(fd, 'netSalary', 'net salary', errors);
-  const probationMonths = training ? 0 : wholeFrom(fd, 'probationMonths', 0, 3, 'Enter the probation as a whole number of months, from 0 to 3.', errors);
+  const probationMonths = intern ? 0 : wholeFrom(fd, 'probationMonths', 0, 3, 'Enter the probation as a whole number of months, from 0 to 3.', errors);
   const durationMonths = intern
     ? wholeFrom(fd, 'durationMonths', 1, INTERN_MAX_MONTHS, INTERN_TERM_MESSAGE, errors)
     : wholeFrom(fd, 'durationMonths', 1, 60, "Enter the contract's length as a whole number of months, from 1 to 60.", errors);

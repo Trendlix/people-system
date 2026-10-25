@@ -43,7 +43,7 @@ export const TEMPLATE_TRIGGER_LABELS: Record<TemplateTrigger, string> = {
   resignation_recorded: 'When a resignation is recorded',
   last_working_day: 'On the last working day',
   end_of_service: 'At the end of service',
-  end_of_internship: 'At the end of the training',
+  end_of_internship: 'At the end of the internship',
   raise: 'On a raise',
 };
 
@@ -58,7 +58,7 @@ export type TemplateLanguage = (typeof TEMPLATE_LANGUAGES)[number];
 export const TEMPLATE_SIGNERS = ['both', 'employee', 'company', 'none'] as const;
 export type TemplateSigners = (typeof TEMPLATE_SIGNERS)[number];
 
-const ALL: readonly EmploymentType[] = ['full_time', 'part_time', 'trainee', 'intern', 'freelance'];
+const ALL: readonly EmploymentType[] = ['full_time', 'part_time', 'intern', 'freelance'];
 
 export interface TemplateSlot {
   key: string;
@@ -106,12 +106,11 @@ export const TEMPLATE_SLOTS: readonly TemplateSlot[] = [
   },
   { key: 'contract_part_time', name: 'Contract · Part-time', folder: 'contracts', language: null, appliesTo: ['part_time'], triggers: ['on_hire', 'renewal'], signers: 'both' },
   // employment types by the labour law (owner, 18 October 2026): every slot keeps its key, so the templates uploaded
-  // keep working. Internship became Trainee, whose contract is the training agreement (Labour Law 14/2025 Art. 29: "يجب
-  // أن يكون اتفاق التدرج مكتوبا"); Sales became Full-time paid by commission, its slots chosen for one (paidByCommission);
-  // a freelancer, outside the labour law, signs a service agreement rather than an employment contract. The unpaid
-  // internship (owner, 19 October 2026: an intern is paid no wage, only the transportation allowance): the owner's
-  // internship slots were written for these interns, so they are the intern's again, and the paid trainee's training
-  // agreement and offer have slots of their own; an agreement renewed once has its document again
+  // keep working. Sales became Full-time paid by commission, its slots chosen for one (paidByCommission); a freelancer,
+  // outside the labour law, signs a service agreement rather than an employment contract. The unpaid internship (owner,
+  // 19 October 2026: an intern is paid no wage, only the transportation allowance): the owner's internship slots were
+  // written for these interns; an agreement renewed once has its document again. The paid trainee's training agreement
+  // and offer went on 25 October 2026 (RETIRED_SLOT_NAMES)
   {
     key: 'contract_internship',
     name: 'Internship agreement · Unpaid internship',
@@ -121,7 +120,6 @@ export const TEMPLATE_SLOTS: readonly TemplateSlot[] = [
     triggers: ['on_hire', 'renewal'],
     signers: 'both',
   },
-  { key: 'contract_trainee', name: 'Training agreement · Trainee', folder: 'contracts', language: null, appliesTo: ['trainee'], triggers: ['on_hire', 'renewal'], signers: 'both' },
   {
     key: 'contract_sales',
     name: 'Contract · Full-time, paid by commission',
@@ -140,7 +138,6 @@ export const TEMPLATE_SLOTS: readonly TemplateSlot[] = [
   { key: 'offer_part_time', name: 'Job offer · Part-time', folder: 'job_offers', language: null, appliesTo: ['part_time'], triggers: ['offer_stage'], signers: 'both' },
   { key: 'offer_freelance', name: 'Job offer · Freelance', folder: 'job_offers', language: null, appliesTo: ['freelance'], triggers: ['offer_stage'], signers: 'both' },
   { key: 'offer_internship', name: 'Job offer · Unpaid internship', folder: 'job_offers', language: null, appliesTo: ['intern'], triggers: ['offer_stage'], signers: 'both' },
-  { key: 'offer_trainee', name: 'Job offer · Trainee', folder: 'job_offers', language: null, appliesTo: ['trainee'], triggers: ['offer_stage'], signers: 'both' },
   {
     key: 'offer_sales',
     name: 'Job offer · Full-time, paid by commission',
@@ -153,7 +150,8 @@ export const TEMPLATE_SLOTS: readonly TemplateSlot[] = [
   },
   { key: 'nda', name: 'NDA', folder: 'nda', language: null, appliesTo: ALL, triggers: ['on_hire'], signers: 'both' },
   { key: 'cert_experience', name: 'Experience certificate', folder: 'certificates', language: null, appliesTo: ALL, triggers: ['end_of_service', 'on_request'], signers: 'company' },
-  { key: 'cert_internship', name: 'Internship or training certificate', folder: 'certificates', language: null, appliesTo: ['trainee', 'intern'], triggers: ['end_of_internship'], signers: 'company' },
+  // the intern's alone since 25 October 2026 (owner: "unpaid internship and training are the same thing")
+  { key: 'cert_internship', name: 'Internship certificate', folder: 'certificates', language: null, appliesTo: ['intern'], triggers: ['end_of_internship'], signers: 'company' },
   { key: 'hr_letter_en', name: 'HR letter · English', folder: 'letters', language: 'en', appliesTo: ALL, triggers: ['on_request'], signers: 'company' },
   { key: 'hr_letter_ar', name: 'HR letter · Arabic', folder: 'letters', language: 'ar', appliesTo: ALL, triggers: ['on_request'], signers: 'company' },
   { key: 'bank_letter', name: 'Bank account letter', folder: 'letters', language: null, appliesTo: ALL, triggers: ['on_hire', 'on_request'], signers: 'company' },
@@ -167,6 +165,21 @@ export const TEMPLATE_SLOTS: readonly TemplateSlot[] = [
   { key: 'resignation_request', name: 'Resignation request (طلب استقالة)', folder: 'resignation', language: 'ar', appliesTo: ALL, triggers: ['resignation_recorded'], signers: 'employee' },
   { key: 'clearance_dues', name: 'Clearance and dues (إقرار إخلاء طرف واستلام مستحقات)', folder: 'resignation', language: 'ar', appliesTo: ALL, triggers: ['last_working_day'], signers: 'both' },
 ];
+
+/**
+ * The slots taken out of the library (owner, 25 October 2026: "unpaid internship and training are the same thing ..
+ * keep the unpaid internship with its document and delete the trainee with its documents"): the paid trainee's training
+ * agreement and job offer. Their versions went, but for those a generated document or a job offer was filled in from:
+ * kept as records, retired (migration 20261026010000_one_internship_type). Nothing is uploaded to them or made from them,
+ * and the library doesn't list them; their names, for the documents and offers on record.
+ */
+export const RETIRED_SLOT_NAMES: Readonly<Record<string, string>> = {
+  contract_trainee: 'Training agreement · Trainee (retired)',
+  offer_trainee: 'Job offer · Trainee (retired)',
+};
+
+/** A slot's name: the library's, a retired slot's (RETIRED_SLOT_NAMES), else its key. */
+export const slotName = (key: string): string => TEMPLATE_SLOTS.find((s) => s.key === key)?.name ?? RETIRED_SLOT_NAMES[key] ?? key;
 
 /**
  * The commission slots and the full-time slot each stands in for (owner, 18 October 2026: Sales became Full-time paid by
@@ -394,19 +407,6 @@ export const TEMPLATE_TAGS: readonly TemplateTag[] = [
     source: 'Contract or offer: by the hour, the approximate net ÷ the hours of a month (hours a week × 52 ÷ 12)',
     restricted: true,
   },
-  // a trainee's training agreement (owner, 18 October 2026; Labour Law Art. 29: "ومراحلها المتتابعة والمكافأة التى يحصل
-  // عليها المتدرج فى كل مرحلة بصورة تصاعدية"): each stage, its months and its pay a month, in order
-  {
-    tag: 'trainee_stages',
-    group: 'pay',
-    labelEn: 'Training stages',
-    labelAr: 'مراحل التدرج',
-    source: 'Contract: a trainee’s training stages, each with its months and pay a month, in the template’s language',
-    restricted: true,
-    note: 'e.g. 1. Basics: 3 months, 4,000 a month; 2. Practice: 3 months, 5,500 a month',
-  },
-  { tag: 'trainee_stages_ar', group: 'pay', labelEn: 'Training stages (Arabic)', labelAr: 'مراحل التدرج بالعربي', source: 'Contract: a trainee’s training stages', restricted: true, note: 'e.g. 1. الأساسيات: ثلاثة أشهر، 4,000 شهريًا' },
-  { tag: 'trainee_stages_en', group: 'pay', labelEn: 'Training stages (English)', labelAr: 'مراحل التدرج بالإنجليزية', source: 'Contract: a trainee’s training stages', restricted: true, note: 'e.g. 1. Basics: 3 months, 4,000 a month' },
   { tag: 'allowances', group: 'pay', labelEn: 'Allowances', labelAr: 'البدلات', source: 'Contract or offer: each allowance and its amount a month, in the template’s language', restricted: true },
   { tag: 'allowances_ar', group: 'pay', labelEn: 'Allowances (Arabic)', labelAr: 'البدلات بالعربي', source: 'Contract or offer: each allowance and its amount a month', restricted: true },
   { tag: 'allowances_en', group: 'pay', labelEn: 'Allowances (English)', labelAr: 'البدلات بالإنجليزية', source: 'Contract or offer: each allowance and its amount a month', restricted: true },

@@ -96,14 +96,14 @@ function JobDescriptionField({ state, fid, employment }: { state: FormState; fid
  * Hiring: the job (as Add employment always asked it) and, below it in the same form, the first contract's terms (the
  * contract form's own fields), saved in one request as the employment and its contract version 1, a draft to print and
  * sign. The contract starts on the join date, and the employment type decides its kind (full time: the social
- * insurance copy; a trainee: the training agreement, with its stages).
+ * insurance copy; an intern: the internship agreement, with no wage).
  */
 export function HireForm({
   pickers,
   contract,
 }: {
   pickers: EmploymentPickers;
-  /** The contract form's props: the hire's action, the first contract's defaults, the person's date of birth … */
+  /** The contract form's props: the hire's action, the first contract's defaults, the person's last agreement … */
   contract: Omit<React.ComponentProps<typeof ContractForm>, 'job' | 'employmentType' | 'renewal'>;
 }) {
   return (

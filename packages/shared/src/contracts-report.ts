@@ -85,7 +85,7 @@ export interface ReportContractVersion {
   kind: string;
   /** CONTRACT_FORMS. */
   form: string;
-  /** A trainee's or an intern's agreement converted to full-time by this version: the type it converts to. */
+  /** An intern's agreement converted to full-time by this version: the type it converts to. */
   convertsTo: string | null;
   /** CONTRACT_STATUSES. */
   status: string;
@@ -125,7 +125,7 @@ export const CONTRACT_VERSION_KIND_LABELS: Record<ContractVersionKind, string> =
 };
 
 /**
- * What a version is: the first (no version before it); a trainee's or an intern's agreement converted to full-time;
+ * What a version is: the first (no version before it); an intern's agreement converted to full-time;
  * otherwise as the Salary History reads it (payChangeOf): a salary amendment, a new contract starting within the term
  * of the one before (a raise's), or a renewal after it.
  */

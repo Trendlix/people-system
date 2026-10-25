@@ -9,7 +9,6 @@ import { ContractStatusBadge, termLabel } from '../employees/[id]/contracts/cont
 import { allowancesLabel, formatEgp, hourlyTerms, payLabel } from '../employees/[id]/contracts/salary';
 import { contractLengthText, workNatureLabel } from '../employees/employment-law';
 import { LawWarningBadges } from '../employees/law-badges';
-import { trainingLengthText } from '../employees/[id]/contracts/trainee-stages';
 import { contractHref } from '../employees/ui';
 import { loadContractList } from './data';
 import {
@@ -151,7 +150,7 @@ function ContractRow({ contract: c, salary }: { contract: ContractListItem; sala
         </span>
         <div className="text-xs text-muted">
           Version {c.version}
-          {/* a trainee's or an intern's agreement converted to full-time (19 October 2026) */}
+          {/* an intern's agreement converted to full-time (19 October 2026) */}
           {c.convertsTo && ' · Conversion to full-time'}
         </div>
       </td>
@@ -168,7 +167,7 @@ function ContractRow({ contract: c, salary }: { contract: ContractListItem; sala
         {c.departmentName && !isHidden(c.departmentName) && <div className="text-xs text-muted">{c.departmentName}</div>}
       </td>
       <td>
-        <div className="text-xs text-muted">{c.traineeMonths ? trainingLengthText(c.traineeMonths) : contractLengthText(c)}</div>
+        <div className="text-xs text-muted">{contractLengthText(c)}</div>
         <span className="whitespace-nowrap tabular-nums">
           <Shown text={termLabel(c)} />
         </span>

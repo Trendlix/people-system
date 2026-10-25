@@ -67,7 +67,7 @@ export const ENDING_RULES = [
   'retirement',
   'death',
   'disability',
-  // a trainee's training agreement or an intern's internship agreement ending with its term (owner, 19 October 2026:
+  // an intern's internship agreement ending with its term (owner, 19 October 2026:
   // "their contracts are never renewed", then "or can be only renewed 1 time, after that it should be converted to a full
   // time contract"): it is renewed once at most, and ends with its last day unless converted to a full-time contract
   'training_completed',
@@ -90,7 +90,8 @@ export const ENDING_RULE_DEFAULTS: Record<
   retirement: { label: 'Retirement at 60', initiator: 'company', noticeAmount: 0, noticeUnit: 'days', payInLieu: false, endReason: 'retired', source: 'Labour Law Art. 171' },
   death: { label: 'Death', initiator: 'none', noticeAmount: 0, noticeUnit: 'days', payInLieu: false, endReason: 'deceased', source: 'Labour Law Art. 169' },
   disability: { label: 'Total disability', initiator: 'none', noticeAmount: 0, noticeUnit: 'days', payInLieu: false, endReason: 'disability', source: 'Labour Law Art. 170' },
-  // nobody's notice: it ends with the agreement's last day (the last working day), as its term runs out
+  // nobody's notice: it ends with the agreement's last day (the last working day), as its term runs out; the intern's
+  // internship agreement alone since 25 October 2026, no longer the Labour Law's training agreement (Arts. 28–30)
   training_completed: {
     label: 'Training completed',
     initiator: 'none',
@@ -98,7 +99,7 @@ export const ENDING_RULE_DEFAULTS: Record<
     noticeUnit: 'days',
     payInLieu: false,
     endReason: 'training_completed',
-    source: 'Labour Law Arts. 28–30; the internship agreement',
+    source: 'The internship agreement',
   },
 };
 

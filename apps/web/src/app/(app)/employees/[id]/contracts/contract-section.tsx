@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { agreementName, CONTRACT_STATUS_LABELS, INTERN_NO_WAGE_TEXT, isPerAccount, PAY_BASIS_LABELS, PER_ACCOUNT_TEXT, type ContractStatus } from '@trendlix/shared';
+import { CONTRACT_STATUS_LABELS, INTERNSHIP_AGREEMENT, INTERN_NO_WAGE_TEXT, isPerAccount, PAY_BASIS_LABELS, PER_ACCOUNT_TEXT, type ContractStatus } from '@trendlix/shared';
 import { treatmentText } from '@/lib/allowances';
 import { ApiError } from '@/lib/api';
 import { formatDate } from '@/lib/format';
@@ -16,7 +16,6 @@ import { loadContracts } from './data';
 import { daysBetween, termLabel } from './dates';
 import { RaiseCard } from './raise-card';
 import { allowancesLabel, daysLabel, formatEgp, hourlyNetTerms, hourlyTerms, payLabel } from './salary';
-import { stageLabel, trainingSummary } from './trainee-stages';
 import { CONVERSION_SIGN_HINT, contractActions, convertHref, draftKind, trainingReminder } from './training';
 import { shownCode, withCodeInBrackets } from '@/lib/hidden';
 import { Hidden } from '@/components/hidden';
@@ -31,14 +30,14 @@ import { Hidden } from '@/components/hidden';
 // Its length by the labour law (owner, 18 October 2026: "can we update the employment types based on the labour law?";
 // on 15 October every contract was fixed-term): fixed-term (renewed in writing; past its end without a signed renewal
 // the law counts it as open-ended, Art. 88(3), warned here), open-ended (no end date and no renewal, Art. 156) or for a
-// specific job (Art. 155); a trainee's is the training agreement, with its stages and the pay of each (Art. 29).
+// specific job (Art. 155).
 //
-// Trainees' and interns' agreements (owner, 19 October 2026: "interns to be labeled trainees instead of probation and
-// their contracts are never renewed", then "or can be only renewed 1 time, after that it should be converted to a full
+// Interns' agreements (owner, 19 October 2026: "interns to be labeled trainees instead of probation and their
+// contracts are never renewed", then "or can be only renewed 1 time, after that it should be converted to a full
 // time contract"): Renew only while the first agreement is in force, Convert to full-time always (a full-time contract as
 // the employment's next version, which signing makes the employment full-time); near and past its end, the agreement's
 // way forward instead of the renewal warning (never "renew in writing", the non-renewal notice or Art. 88); no Raise; and
-// an intern's (the unpaid internship) shows No wage for its gross.
+// the unpaid internship shows No wage for its gross.
 //
 // Pay raises during a contract (owner's decisions, 16 October 2026): HR raises the pay of the signed contract in force
 // (Raise, beside Renew), as an amendment or a new contract; a raise, or a renewal with new pay, waits in its own card for
@@ -93,7 +92,7 @@ function AllowanceList({ lines }: { lines: AllowanceLine[] }) {
   );
 }
 
-/** Under a trainee's or an intern's agreement's length: which one it is, and what follows it (19 October 2026). */
+/** Under an intern's agreement's length: which one it is, and what follows it (19 October 2026). */
 function agreementNote(c: Contract): string | undefined {
   if (!c.training) return undefined;
   return c.training.next === 'convert_or_end' ? 'Renewed once: next, converted to full-time or ended' : 'Renewed once at most, then converted to full-time';
@@ -105,8 +104,6 @@ function agreementNote(c: Contract): string | undefined {
  */
 function contractFields(c: Contract, unpaid: boolean): GridField[] {
   const hourly = c.payBasis === 'hourly';
-  // a trainee's training agreement (18 October 2026)
-  const stages = c.traineeStages?.length ? c.traineeStages : null;
   const position = [c.jobTitleEn, c.gradeCode, c.departmentName, c.shiftCode && `Shift ${c.shiftCode}`].filter(Boolean).join(' · ');
   // a developer gets none of the contract's dates and terms (owner, 22 October 2026: "Hide per-person details", "and the
   // social insurance"): a signed contract always has a start, so none says it was hidden; each shows Hidden
@@ -114,41 +111,20 @@ function contractFields(c: Contract, unpaid: boolean): GridField[] {
   const fields: GridField[] = [
     // its number hidden from a developer (owner, 23 October 2026: "in developer view use **** instead of IDs")
     { key: 'contract-number', label: 'Contract number', value: shownCode(c.number) ?? <Hidden />, note: `Version ${c.version}` },
-    stages
-      ? { key: 'contract-form', label: 'Contract length', value: 'Training agreement', note: [trainingSummary(stages), agreementNote(c)].filter(Boolean).join('. ') }
-      : unpaid
-        ? { key: 'contract-form', label: 'Contract length', value: 'Internship agreement', note: [contractLengthText(c), agreementNote(c)].filter(Boolean).join('. ') }
-        : {
-            key: 'contract-form',
-            label: 'Contract length',
-            value: contractLengthText(c),
-            note: c.form === 'open_ended' ? OPEN_ENDED_NOTE : c.form === 'specific_job' ? SPECIFIC_JOB_NOTE : agreementNote(c),
-          },
+    unpaid
+      ? { key: 'contract-form', label: 'Contract length', value: 'Internship agreement', note: [contractLengthText(c), agreementNote(c)].filter(Boolean).join('. ') }
+      : {
+          key: 'contract-form',
+          label: 'Contract length',
+          value: contractLengthText(c),
+          note: c.form === 'open_ended' ? OPEN_ENDED_NOTE : c.form === 'specific_job' ? SPECIFIC_JOB_NOTE : agreementNote(c),
+        },
     {
       key: 'contract-period',
       label: 'Start – end',
       value: termLabel(c),
       note: c.form === 'specific_job' && c.endDate ? 'The end: when the job is expected to be done' : undefined,
     },
-    ...(stages
-      ? [
-          {
-            key: 'contract-stages',
-            label: 'Training stages',
-            value: (
-              <ol className="list-decimal space-y-0.5 pl-4">
-                {stages.map((s, i) => (
-                  <li key={i}>{stageLabel(s)}</li>
-                ))}
-              </ol>
-            ),
-            protected: !c.salaryHidden,
-            note: c.traineeStage
-              ? `Now stage ${c.traineeStage.number}, ${c.traineeStage.name}. The pay rises from stage to stage (Labour Law Art. 29); payroll pays each stage’s in its months`
-              : 'The pay rises from stage to stage (Labour Law Art. 29); payroll pays each stage’s in its months',
-          },
-        ]
-      : []),
     {
       key: 'contract-probation',
       label: 'Probation end date',
@@ -247,7 +223,7 @@ function contractFields(c: Contract, unpaid: boolean): GridField[] {
  * an open-ended contract, nor one for a specific job (carried on after the job, it counts as renewed: Art. 155).
  */
 function RenewalWarning({ contract: c, today }: { contract: Contract; today: string }) {
-  // a trainee's or an intern's agreement isn't renewed in writing nor given a non-renewal notice: TrainingReminder
+  // an intern's agreement isn't renewed in writing nor given a non-renewal notice: TrainingReminder
   if (!c.endDate || c.form !== 'fixed' || c.becameOpenEnded || c.training) return null;
   const toEnd = daysBetween(today, c.endDate);
   const noticeBy = c.nonRenewalNoticeBy;
@@ -274,8 +250,8 @@ function RenewalWarning({ contract: c, today }: { contract: Contract; today: str
 }
 
 /**
- * A trainee's or an intern's agreement near or past its end (19 October 2026): "Training ends on 31/03/2027: renew it
- * once, or convert to full-time.", with where each is done; from 60 days before the end.
+ * An intern's agreement near or past its end (19 October 2026): "Internship ends on 31/03/2027: renew it once, or
+ * convert to full-time.", with where each is done; from 60 days before the end.
  */
 function TrainingReminder({ contract: c, today }: { contract: Contract; today: string }) {
   const reminder = trainingReminder(c, today);
@@ -309,7 +285,7 @@ function DraftCard({
   const name = withCodeInBrackets(`version ${d.version}`, d.number);
   const allowances = d.allowances ?? [];
   const what = [
-    d.traineeStages?.length ? `Training agreement, ${trainingSummary(d.traineeStages)}` : contractLengthText(d),
+    contractLengthText(d),
     termLabel(d),
     d.probationMonths > 0 ? `${d.probationMonths} months' probation` : 'no probation',
     unpaid ? 'no wage (unpaid internship)' : payLabel(d),
@@ -466,11 +442,10 @@ export async function ContractSection({
   const active = contracts.find((c) => c.status === 'active');
   const draft = contracts.find((c) => c.status === 'draft');
   const previous = contracts.find((c) => c.status !== 'draft');
-  // HR renews the last one (one draft at a time), unless it is open-ended (never renewed, Art. 156) or a trainee's or an
-  // intern's agreement renewed once already (19 October 2026), which is converted to full-time instead; an employment
-  // with no contract at all is asked for one below. HR raises the pay of the signed contract in force, one change at a
-  // time (owner's decisions, 16 October 2026); not a trainee's, paid by the training agreement's stages (18 October
-  // 2026), nor an intern's, unpaid (training.ts)
+  // HR renews the last one (one draft at a time), unless it is open-ended (never renewed, Art. 156) or an intern's
+  // agreement renewed once already (19 October 2026), which is converted to full-time instead; an employment with no
+  // contract at all is asked for one below. HR raises the pay of the signed contract in force, one change at a time
+  // (owner's decisions, 16 October 2026); not an intern's, unpaid (training.ts)
   const can = contractActions({ canEdit, hasDraft: !!draft, endingInProgress, previous, active: !!active, employmentType: e.employmentType });
   const offer = can.renew && 'Renew';
   const raise = can.raise;
@@ -493,7 +468,7 @@ export async function ContractSection({
           <>
             {can.convert && (
               <Link href={convertHref(employee.id)} className={`${small} btn-secondary`}>
-                Convert<span className="sr-only"> the {agreementName(e.employmentType)}</span> to full-time
+                Convert<span className="sr-only"> the {INTERNSHIP_AGREEMENT}</span> to full-time
               </Link>
             )}
             {raise && (
@@ -512,7 +487,7 @@ export async function ContractSection({
       }
     >
       {active && !draft && !endingInProgress && <RenewalWarning contract={active} today={today} />}
-      {/* a trainee's or an intern's agreement: renewed once, converted to full-time or ended (19 October 2026) */}
+      {/* an intern's agreement: renewed once, converted to full-time or ended (19 October 2026) */}
       {active && !draft && !endingInProgress && <TrainingReminder contract={active} today={today} />}
       {/* by the labour law (18 October 2026): a fixed term that became open-ended (Art. 88); casual work past its 6 months
           is the employment's, warned with it */}

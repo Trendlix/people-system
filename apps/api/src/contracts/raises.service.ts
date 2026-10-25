@@ -547,7 +547,6 @@ export class RaisesService {
         // the contract's length and job as they are (an open-ended one has no end, Art. 87)
         form: current.form as ContractForm,
         jobToDo: current.jobToDo,
-        traineeStages: null,
         startDate: input.effectiveDate,
         // the contract's term as it is: its end, no length or probation of its own
         durationMonths: null,
@@ -650,11 +649,6 @@ export class RaisesService {
   /** The contract in force a raise is made on: signed, with no draft after it, and no ending of the employment in progress. */
   private async raisable(employment: EmploymentRow): Promise<ContractRow> {
     assertCurrent(employment);
-    // a trainee is paid by the training agreement's stages (owner, 18 October 2026; Labour Law Art. 29: "المكافأة التى
-    // يحصل عليها المتدرج فى كل مرحلة بصورة تصاعدية"), which payroll follows: not by a raise
-    if (employment.employmentType === 'trainee') {
-      throw new BadRequestException('A trainee is paid by the stages of the training agreement (Labour Law Art. 29): to change the pay, add a new training agreement with new stages.');
-    }
     // an intern is paid no wage (owner, 19 October 2026: the unpaid internship, outside the labour law): nothing to raise
     if (employment.employmentType === 'intern') {
       throw new BadRequestException(

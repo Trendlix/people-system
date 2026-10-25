@@ -1,14 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { INestApplication } from '@nestjs/common';
-import {
-  INTERN_NO_WAGE_MESSAGE,
-  INTERN_TERM_MESSAGE,
-  noProbationMessage,
-  renewedOnceMessage,
-  trainingAgainFrom,
-  trainingTooSoonMessage,
-} from '@trendlix/shared';
+import { INTERN_NO_WAGE_MESSAGE, INTERN_TERM_MESSAGE, NO_PROBATION_MESSAGE, RENEWED_ONCE_MESSAGE, trainingAgainFrom, trainingTooSoonMessage } from '@trendlix/shared';
 import pg from 'pg';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
@@ -21,8 +14,11 @@ import { assertTestDatabase } from './test-env.js';
 // labeled trainees instead of probation and their contracts are never renewed", then "or can be only renewed 1 time,
 // after that it should be converted to a full time contract. a new trainee contract can be issued after 6 months of the
 // expiration of the last trainee contract"; and "in case of trainee, we are not paying them salary, its just
-// transportation allowance" (the unpaid internship, outside the labour law). Dates that depend on today are counted from
-// today in Cairo. Everyone here is invented, and deleted at the end.
+// transportation allowance" (the unpaid internship, outside the labour law). Since 25 October 2026 the intern is the one
+// trainee (owner: "unpaid internship and training are the same thing .. keep the unpaid internship with its document and
+// delete the trainee with its documents"): the rules hold for interns, and the paid trainee is refused. The migration of
+// 19 October 2026 is replayed as it ran. Dates that depend on today are counted from today in Cairo. Everyone here is
+// invented, and deleted at the end.
 
 const RUN = Date.now().toString(36).toLowerCase();
 const MIGRATIONS = fileURLToPath(new URL('../prisma/migrations/', import.meta.url));
@@ -46,10 +42,7 @@ interface Profile {
   [key: string]: unknown;
 }
 
-const STAGES = [
-  { name: 'Basics', months: 3, pay: 4000 },
-  { name: 'Practice', months: 3, pay: 7000 },
-];
+const TYPE_MESSAGE = 'Choose an employment type: full_time, part_time, intern (an unpaid internship, outside the labour law; a trainee is an intern now) or freelance (outside the labour law).';
 
 describe('Trainees and interns (e2e)', () => {
   let app: INestApplication<App>;
@@ -250,30 +243,47 @@ describe('Trainees and interns (e2e)', () => {
   });
 
   describe('a trainee', () => {
-    it('stands as Trainee, with no probation, and is left out of the probations ending', async () => {
+    it('is refused: an intern now, the unpaid internship (owner, 25 October 2026)', async () => {
       const t = await addEmployee('Tala Trainee');
-      const job = { employmentType: 'trainee', joinDate: addMonths(today, -1) };
-      expect(messageOf(await postHire(t.id, job, { traineeStages: STAGES, probationMonths: 2 }).expect(400))).toBe(noProbationMessage('trainee'));
+      expect(messageOf(await postHire(t.id, { employmentType: 'trainee' }, { grossSalary: 8000 }).expect(400))).toEqual([TYPE_MESSAGE]);
+      // nor its training stages, for anyone
+      await postHire(t.id, { employmentType: 'intern' }, { traineeStages: [{ name: 'Basics', months: 3, pay: 4000 }] }).expect(400);
+      expect(await prisma.employment.count({ where: { employeeId: t.id } })).toBe(0);
+      // nor later, on an employment of another type
+      const f = await hire('Tina Typed', { joinDate: today }, { grossSalary: 12000 });
+      const path = `/api/employees/${f.id}/employments/${f.employmentId}`;
+      expect(messageOf(await api().patch(path).set('Cookie', hr).send({ employmentType: 'trainee' }).expect(400))).toEqual([TYPE_MESSAGE]);
+      expect((await profileOf(f.id)).employment).toMatchObject({ employmentType: 'full_time' });
+      // nor in the company-wide list's filter
+      expect(messageOf(await api().get('/api/contracts?type=trainee').set('Cookie', hr).expect(400))).toEqual([TYPE_MESSAGE]);
+    });
+  });
+
+  describe('an intern’s standing', () => {
+    it('stands as Intern, with no probation, and is left out of the probations ending', async () => {
+      const t = await addEmployee('Tala Intern');
+      const job = { employmentType: 'intern', joinDate: addMonths(today, -1) };
+      expect(messageOf(await postHire(t.id, job, { probationMonths: 2 }).expect(400))).toBe(NO_PROBATION_MESSAGE);
       expect(await prisma.employment.count({ where: { employeeId: t.id } })).toBe(0);
 
-      const profile = (await postHire(t.id, job, { traineeStages: STAGES }).expect(201)).body as Profile;
-      expect(profile.employment).toMatchObject({ employmentType: 'trainee', status: 'active', probationEnd: null });
+      const profile = (await postHire(t.id, job).expect(201)).body as Profile;
+      expect(profile.employment).toMatchObject({ employmentType: 'intern', status: 'active', probationEnd: null });
       const [draft] = await contractsOf(t.id, profile.employment!.id);
       expect(draft).toMatchObject({ probationMonths: 0, probationEnd: null, training: { agreement: 1, next: 'renew_or_convert' }, convertsTo: null });
-      expect(await listed(t.id)).toMatchObject({ standing: 'trainee' });
+      expect(await listed(t.id)).toMatchObject({ standing: 'intern' });
       const signed = await sign(draft);
       expect(signed).toMatchObject({ status: 'active', probationEnd: null, nonRenewalNoticeBy: null, becameOpenEnded: false });
       expect((await profileOf(t.id)).employment).toMatchObject({ status: 'active', probationEnd: null });
-      expect(await listed(t.id)).toMatchObject({ standing: 'trainee' });
+      expect(await listed(t.id)).toMatchObject({ standing: 'intern' });
       const missing = (await api().get('/api/employees/missing').set('Cookie', hr).expect(200)).body as { rows: { id: string; standing: string }[] };
-      expect(missing.rows.find((r) => r.id === t.id)).toMatchObject({ standing: 'trainee' });
+      expect(missing.rows.find((r) => r.id === t.id)).toMatchObject({ standing: 'intern' });
 
-      // even one left on Probation from before 19 October 2026: Trainee, never on the probation list, nothing to confirm
+      // even one left on Probation from before 19 October 2026: Intern, never on the probation list, nothing to confirm
       await prisma.employment.update({ where: { id: profile.employment!.id }, data: { status: 'probation', probationEnd: new Date(`${addDays(today, 10)}T00:00:00.000Z`) } });
-      expect(await listed(t.id)).toMatchObject({ standing: 'trainee' });
+      expect(await listed(t.id)).toMatchObject({ standing: 'intern' });
       expect(await probationEnding()).not.toContain(profile.employment!.id);
       const confirm = await api().post(`/api/employees/${t.id}/employments/${profile.employment!.id}/confirm-probation`).set('Cookie', hr).expect(409);
-      expect(messageOf(confirm)).toBe(`Tala Trainee ${RUN} is a trainee: a training agreement has no probation, so there is nothing to confirm.`);
+      expect(messageOf(confirm)).toBe(`Tala Intern ${RUN} is an intern: an internship agreement has no probation, so there is nothing to confirm.`);
       // an edit of the employment puts it right: Active, no probation end; or HR chooses On leave straight away
       await api().patch(`/api/employees/${t.id}/employments/${profile.employment!.id}`).set('Cookie', hr).send({ status: 'on_leave' }).expect(200);
       expect((await profileOf(t.id)).employment).toMatchObject({ status: 'on_leave', probationEnd: null });
@@ -285,7 +295,7 @@ describe('Trainees and interns (e2e)', () => {
       // a manager's direct reports show where each stands
       const boss = await hire('Badr Boss', { joinDate: addMonths(today, -12) }, { grossSalary: 20000 });
       await api().patch(`/api/employees/${t.id}/employments/${profile.employment!.id}`).set('Cookie', hr).send({ managerId: boss.id }).expect(200);
-      expect(((await profileOf(boss.id)).reports as { id: string; standing: string }[]).find((r) => r.id === t.id)).toMatchObject({ status: 'active', standing: 'trainee' });
+      expect(((await profileOf(boss.id)).reports as { id: string; standing: string }[]).find((r) => r.id === t.id)).toMatchObject({ status: 'active', standing: 'intern' });
 
       // a full-time hire is on probation, and on the list, as before
       const f = await hire('Fady Fulltime', { joinDate: today }, { grossSalary: 12000 });
@@ -306,8 +316,7 @@ describe('Trainees and interns (e2e)', () => {
         'An intern is paid no wage, so not by the hour: leave the pay monthly, the gross at 0.',
       );
       expect(messageOf(await postHire(i.id, job, { form: 'open_ended' }).expect(400))).toBe(`An intern’s internship agreement is a short fixed term: leave the contract fixed-term. ${INTERN_TERM_MESSAGE}`);
-      expect(messageOf(await postHire(i.id, job, { probationMonths: 1 }).expect(400))).toBe(noProbationMessage('intern'));
-      expect(messageOf(await postHire(i.id, job, { traineeStages: STAGES }).expect(400))).toBe('Training stages are for a trainee’s training agreement only.');
+      expect(messageOf(await postHire(i.id, job, { probationMonths: 1 }).expect(400))).toBe(NO_PROBATION_MESSAGE);
 
       const profile = (await postHire(i.id, job, { allowances: transport }).expect(201)).body as Profile;
       expect(profile.employment).toMatchObject({ employmentType: 'intern', status: 'active', probationEnd: null, underLabourLaw: false });
@@ -323,7 +332,6 @@ describe('Trainees and interns (e2e)', () => {
         allowancesTotal: 1500,
         totalSalary: 1500,
         probationMonths: 0,
-        traineeStages: null,
         training: { agreement: 1, next: 'renew_or_convert' },
       });
       expect(await listed(i.id)).toMatchObject({ standing: 'intern' });
@@ -344,7 +352,7 @@ describe('Trainees and interns (e2e)', () => {
       const v1End = addDays(addMonths(today, -2), -1);
       expect(v1).toMatchObject({ endDate: v1End, training: { agreement: 1, next: 'renew_or_convert' }, nonRenewalNoticeBy: null, becameOpenEnded: false });
 
-      // past its end, not renewed: "training ended", never the Art. 88 warning
+      // past its end, not renewed: "internship ended", never the Art. 88 warning
       const warnings = await lawWarnings();
       expect(warnings.filter((w) => w.contractId === v1.id)).toEqual([
         {
@@ -354,7 +362,7 @@ describe('Trainees and interns (e2e)', () => {
           contractId: v1.id,
           contractNumber: v1.number,
           since: v1End,
-          message: `${v1.number}: Training ended on ${shownDate(v1End)}: renew it once, or convert to full-time.`,
+          message: `${v1.number}: Internship ended on ${shownDate(v1End)}: renew it once, or convert to full-time.`,
         },
       ]);
       expect((await expiring()).find((c) => c.id === v1.id)).toMatchObject({
@@ -375,7 +383,7 @@ describe('Trainees and interns (e2e)', () => {
       expect((await expiring()).find((c) => c.id === v2.id)).toMatchObject({ nonRenewalNoticeBy: null, training: { agreement: 2, next: 'convert_or_end' } });
 
       // not a second time
-      expect(messageOf(await draftVersion(i, {}).expect(409))).toBe(renewedOnceMessage('intern'));
+      expect(messageOf(await draftVersion(i, {}).expect(409))).toBe(RENEWED_ONCE_MESSAGE);
 
       // converted to a full-time contract: the employment's next version, with an employment contract's probation
       const conversion = (await draftVersion(i, { convertsTo: 'full_time', grossSalary: 9000, probationMonths: 2 }).expect(201)).body as Contract;
@@ -428,29 +436,29 @@ describe('Trainees and interns (e2e)', () => {
       await sign(signed);
       expect((await profileOf(i.id)).employment).toMatchObject({ employmentType: 'full_time' });
 
-      // only a trainee's or an intern's agreement is converted
+      // only an intern's agreement is converted
       const f = await hire('Farah Fulltime', { joinDate: addMonths(today, -2) }, { grossSalary: 12000 });
       await sign(f.contract);
       expect(messageOf(await draftVersion(f, { convertsTo: 'full_time', grossSalary: 13000 }).expect(400))).toBe(
-        'Only a trainee’s training agreement or an intern’s internship agreement is converted to a full-time contract.',
+        'Only an intern’s internship agreement is converted to a full-time contract.',
       );
       expect(messageOf(await draftVersion(f, { convertsTo: 'part_time', grossSalary: 13000 }).expect(400))).toEqual([
-        'A training or internship agreement is converted to full_time: send convertsTo as full_time, or leave it out.',
+        'An internship agreement is converted to full_time: send convertsTo as full_time, or leave it out.',
       ]);
     });
   });
 
   describe('Training completed, and a new agreement 6 months later', () => {
-    it('ends a trainee’s agreement with its last day, with no Art. 154 note; a new one starts 6 months after it at the earliest', async () => {
+    it('ends an intern’s agreement with its last day, with no Art. 154 note; a new one starts 6 months after it at the earliest', async () => {
       const joinDate = addMonths(today, -7);
-      const t = await hire('Tarek Trainee', { employmentType: 'trainee', joinDate }, { traineeStages: STAGES });
+      const t = await hire('Tarek Intern', { employmentType: 'intern', joinDate }, { durationMonths: 6 });
       await sign(t.contract);
       const end = addDays(addMonths(joinDate, 6), -1);
       const endings = (body: object) => api().post(`/api/employees/${t.id}/employments/${t.employmentId}/endings`).set('Cookie', hr).send(body);
 
       // not a fixed term the company doesn't renew
       expect(messageOf(await endings({ ruleKey: 'non_renewal', noticeGivenOn: addMonths(joinDate, 1) }).expect(400))).toBe(
-        'A training agreement isn’t renewed as a fixed term is: end it as Training completed, or convert it to a full-time contract.',
+        'An internship agreement isn’t renewed as a fixed term is: end it as Training completed, or convert it to a full-time contract.',
       );
       const ending = (await endings({ ruleKey: 'training_completed', noticeGivenOn: addMonths(joinDate, 1) }).expect(201)).body;
       expect(ending).toMatchObject({ ruleKey: 'training_completed', ruleLabel: 'Training completed', initiator: null, lastWorkingDay: end, endReason: 'training_completed', art154Note: null, art154Estimate: null });
@@ -463,11 +471,11 @@ describe('Trainees and interns (e2e)', () => {
       const from = trainingAgainFrom(end);
       expect(ended.nextTraining).toEqual({ lastEnded: end, from });
 
-      // Training completed is a trainee's or an intern's only
+      // Training completed is an intern's only
       const f = await hire('Fouad Fulltime', { joinDate: addMonths(today, -2) }, { grossSalary: 12000 });
       await sign(f.contract);
       const refused = await api().post(`/api/employees/${f.id}/employments/${f.employmentId}/endings`).set('Cookie', hr).send({ ruleKey: 'training_completed', noticeGivenOn: today }).expect(400);
-      expect(messageOf(refused)).toBe(`Fouad Fulltime ${RUN} isn’t a trainee or an intern: "Training completed" ends a training or internship agreement. Choose another way to end the employment.`);
+      expect(messageOf(refused)).toBe(`Fouad Fulltime ${RUN} isn’t an intern: "Training completed" ends an internship agreement. Choose another way to end the employment.`);
 
       // a job offer for a new agreement before then: refused when drafted, and when accepted
       const offer = (body: object) =>
@@ -475,17 +483,15 @@ describe('Trainees and interns (e2e)', () => {
           .post('/api/offers')
           .set('Cookie', hr)
           .send({ fullNameEn: t.name, fullNameAr: 'متدرب تجريبي', email: `tarek.${RUN}@mail.test`, employeeId: t.id, joinDate: addDays(from, -1), ...body });
-      expect(messageOf(await offer({ employmentType: 'trainee', grossSalary: 8000 }).expect(400))).toBe(trainingTooSoonMessage(t.name, 'trainee', end));
+      expect(messageOf(await offer({ employmentType: 'intern' }).expect(400))).toBe(trainingTooSoonMessage(t.name, end));
       const fullTime = (await offer({ employmentType: 'full_time', grossSalary: 8000 }).expect(201)).body;
       offers.push(fullTime.id);
-      await prisma.jobOffer.update({ where: { id: fullTime.id }, data: { employmentType: 'trainee' } });
+      await prisma.jobOffer.update({ where: { id: fullTime.id }, data: { employmentType: 'intern', grossSalary: 0, probationMonths: 0 } });
       const answered = (await api().post(`/api/offers/${fullTime.id}/answer`).set('Cookie', hr).send({ answer: 'accepted' }).expect(200)).body;
-      expect(answered).toMatchObject({ status: 'accepted', hiredAt: null, hireError: trainingTooSoonMessage(t.name, 'trainee', end) });
+      expect(answered).toMatchObject({ status: 'accepted', hiredAt: null, hireError: trainingTooSoonMessage(t.name, end) });
 
-      // rehired as a trainee or an intern before then: refused with the day it becomes possible; from that day, made
-      expect(messageOf(await postHire(t.id, { employmentType: 'trainee', joinDate: addDays(end, 1) }, { traineeStages: STAGES }).expect(400))).toBe(
-        trainingTooSoonMessage(t.name, 'trainee', end),
-      );
+      // rehired as an intern before then: refused with the day it becomes possible; from that day, made
+      expect(messageOf(await postHire(t.id, { employmentType: 'intern', joinDate: addDays(end, 1) }).expect(400))).toBe(trainingTooSoonMessage(t.name, end));
       expect(messageOf(await postHire(t.id, { employmentType: 'intern', joinDate: addDays(from, -1) }).expect(400))).toBe(
         `A new internship agreement for ${t.name} can start from ${shownDate(from)}, six months after their last one ended on ${shownDate(end)}.`,
       );
@@ -496,17 +502,17 @@ describe('Trainees and interns (e2e)', () => {
   });
 
   describe('job offers', () => {
-    it('offer a trainee or an intern no probation, and an intern no wage', async () => {
+    it('offer an intern no probation and no wage, and a trainee not at all', async () => {
       const offer = (name: string, body: object) =>
         api()
           .post('/api/offers')
           .set('Cookie', hr)
           .send({ fullNameEn: `${name} ${RUN}`, fullNameAr: 'مرشح', email: `${name.toLowerCase().replace(/ /g, '.')}.${RUN}@mail.test`, joinDate: addDays(today, 30), ...body });
-      expect(messageOf(await offer('Taha Trainee', { employmentType: 'trainee', grossSalary: 8000, probationMonths: 2 }).expect(400))).toBe(noProbationMessage('trainee'));
-      const trainee = (await offer('Taha Trainee', { employmentType: 'trainee', grossSalary: 8000 }).expect(201)).body;
-      offers.push(trainee.id);
-      expect(trainee).toMatchObject({ employmentType: 'trainee', probationMonths: 0, template: { slotKey: 'offer_trainee', name: 'Job offer · Trainee' } });
+      // the paid trainee went on 25 October 2026: an intern now
+      expect(messageOf(await offer('Taha Trainee', { employmentType: 'trainee', grossSalary: 8000 }).expect(400))).toEqual([TYPE_MESSAGE]);
+      expect(await prisma.jobOffer.count({ where: { fullNameEn: `Taha Trainee ${RUN}` } })).toBe(0);
 
+      expect(messageOf(await offer('Inas Intern', { employmentType: 'intern', probationMonths: 2 }).expect(400))).toBe(NO_PROBATION_MESSAGE);
       expect(messageOf(await offer('Inas Intern', { employmentType: 'intern', grossSalary: 4000 }).expect(400))).toBe(INTERN_NO_WAGE_MESSAGE);
       expect(messageOf(await offer('Inas Intern', { employmentType: 'intern', durationMonths: 18 }).expect(400))).toBe(INTERN_TERM_MESSAGE);
       const intern = (await offer('Inas Intern', { employmentType: 'intern', allowances: [{ allowanceTypeId: transportId, amount: 1200 }] }).expect(201)).body;

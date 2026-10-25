@@ -7,13 +7,12 @@ describe('the first contract, as hiring in one form starts it', () => {
   it('takes the settings’ length and probation, and the company’s basic share, with a monthly salary still to type', () => {
     expect(firstContractDefaults(settings, '', false)).toEqual({
       startDate: '',
-      // fixed-term stays the default (owner, 18 October 2026), with no job and no training stages
+      // fixed-term stays the default (owner, 18 October 2026), with no job
       form: 'fixed',
       durationMonths: 12,
       jobToDo: '',
       endDate: '',
       probationMonths: 3,
-      traineeStages: null,
       payBasis: 'monthly',
       grossSalary: null,
       hourlyRate: null,
@@ -32,9 +31,8 @@ describe('the first contract, as hiring in one form starts it', () => {
     expect(noProbationAgain('Omar Khaled')).toBe('0: Omar Khaled was employed here before, and probation comes only once with an employer (Labour Law Art. 90).');
   });
 
-  // owner, 19 October 2026: a trainee's or an intern's agreement has no probation; an intern's runs 3 months to start with
-  it('has no probation for a trainee or an intern, and 3 months for an intern', () => {
-    expect(firstContractDefaults(settings, '', false, 'trainee')).toMatchObject({ probationMonths: 0, durationMonths: 12 });
+  // owner, 19 October 2026: an intern's agreement has no probation, and runs 3 months to start with
+  it('has no probation for an intern, and 3 months', () => {
     expect(firstContractDefaults(settings, '', false, 'intern')).toMatchObject({ probationMonths: 0, durationMonths: 3 });
     expect(firstContractDefaults(settings, '', false, 'full_time')).toMatchObject({ probationMonths: 3, durationMonths: 12 });
   });

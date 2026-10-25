@@ -2,8 +2,8 @@
 // "instead of the Emp code, add contract status"). Asked, the owner chose the Employees list only, and "State + end
 // date": "Signed · ends 31/12/2026", "On probation until 15/01/2027", "Draft, not signed", "Ended 30/09/2026", "No
 // contract", an end within 30 days in amber ("Signed · ends 05/11/2026 (in 15 days)"). Of the current employment: its
-// approved ending's notice, else the contract in force (its latest signed version), else its latest draft. A trainee's
-// training agreement and an intern's unpaid internship say so; freelance has no labour contract (Labour Law Art. 1(1)).
+// approved ending's notice, else the contract in force (its latest signed version), else its latest draft. An intern's
+// unpaid internship says so; freelance has no labour contract (Labour Law Art. 1(1)).
 // Pure: the API sends the facts, the web words them with today in Cairo. Dates: YYYY-MM-DD; shown DD/MM/YYYY.
 
 /** The days before an end that the status turns amber: an end within 30 days ("in 15 days"), or one already past. */
@@ -69,9 +69,9 @@ export interface ContractStatusView {
  * 30/09/2026", "No employment"); an approved ending ("Ending 30/11/2026 (notice)"); freelance ("Freelance: no labour
  * contract"); no contract ("No contract"); a draft ("Draft, not signed"); a signed one starting later ("Signed · starts
  * 01/11/2026"), on probation ("On probation until 15/01/2027"), past its end ("Ended 30/09/2026"), ending ("Signed · ends
- * 31/12/2026") or without an end ("Signed · open-ended", "Signed · for a specific job"). A trainee's reads "Training
- * agreement · …" and an intern's "Unpaid internship · …", neither with probation. An end within 30 days adds when, "(in 15
- * days)", "(tomorrow)", "(today)", and is amber, as is one already past.
+ * 31/12/2026") or without an end ("Signed · open-ended", "Signed · for a specific job"). An intern's reads "Unpaid
+ * internship · …", without probation. An end within 30 days adds when, "(in 15 days)", "(tomorrow)", "(today)", and is
+ * amber, as is one already past.
  */
 export function contractStatusOf(input: ContractStatusInput, today: string = todayInCairo()): ContractStatusView {
   const e = input.employment;
@@ -88,11 +88,11 @@ export function contractStatusOf(input: ContractStatusInput, today: string = tod
   }
   if (e.employmentType === 'freelance') return { state: 'freelance', text: 'Freelance: no labour contract', endsOn: null, tone: 'muted' };
 
-  // a trainee's training agreement (Arts. 28–30) and an intern's unpaid internship: agreements, not employment contracts
-  const agreement = e.employmentType === 'trainee' ? 'Training agreement' : e.employmentType === 'intern' ? 'Unpaid internship' : null;
+  // an intern's unpaid internship: an agreement, not an employment contract
+  const agreement = e.employmentType === 'intern' ? 'Unpaid internship' : null;
   const c = e.contract;
   if (!c) {
-    const text = e.employmentType === 'trainee' ? 'No training agreement' : e.employmentType === 'intern' ? 'Unpaid internship · no agreement' : 'No contract';
+    const text = agreement ? 'Unpaid internship · no agreement' : 'No contract';
     return { state: 'no_contract', text, endsOn: null, tone: 'muted' };
   }
   if (c.status === 'draft') return { state: 'draft', text: agreement ? `${agreement} · draft, not signed` : 'Draft, not signed', endsOn: null, tone: 'muted' };
@@ -118,7 +118,7 @@ export function contractStatusOf(input: ContractStatusInput, today: string = tod
   return { state: 'signed', text: `${agreement ?? 'Signed'} · ends ${shown(c.endDate)}${soon(days)}`, endsOn: c.endDate, tone: toneOf(days) };
 }
 
-/** "Ended 30/09/2026", or an agreement's "Training agreement · ended 30/09/2026"; without the date when it has none. */
+/** "Ended 30/09/2026", or an agreement's "Unpaid internship · ended 30/09/2026"; without the date when it has none. */
 function endedText(agreement: string | null, end: string | null): string {
   const on = end ? ` ${shown(end)}` : '';
   return agreement ? `${agreement} · ended${on}` : `Ended${on}`;

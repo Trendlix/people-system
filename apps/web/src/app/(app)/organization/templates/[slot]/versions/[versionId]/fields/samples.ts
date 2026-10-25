@@ -42,12 +42,12 @@ export function dateKind(tag: string | null | undefined): 'date' | 'month' | nul
 
 /**
  * An amount of the Pay group (15,000.50), whose pounds or piastres alone can go in boxes; not its words or a share, nor
- * a list (the allowances, a trainee's training stages: 18 October 2026), nor the accounts allowance's line (25 October
- * 2026). The final settlement's total deducted is one too (20 October 2026); its deductions are lines of words.
+ * a list (the allowances), nor the accounts allowance's line (25 October 2026). The final settlement's total deducted
+ * is one too (20 October 2026); its deductions are lines of words.
  */
 export function isAmountTag(tag: string | null | undefined): boolean {
   const t = tagInfo(tag);
-  return !!t && ((t.group === 'pay' && !/words|percent|^allowances(_ar|_en)?$|^trainee_stages|^accounts_allowance/.test(t.tag)) || t.tag === 'deductions_total');
+  return !!t && ((t.group === 'pay' && !/words|percent|^allowances(_ar|_en)?$|^accounts_allowance/.test(t.tag)) || t.tag === 'deductions_total');
 }
 
 const DIGITS = '1234567890';

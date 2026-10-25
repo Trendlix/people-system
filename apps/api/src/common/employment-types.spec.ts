@@ -14,14 +14,11 @@ import {
   offerSlotFor,
   offerSlotKey,
   requiredPaperwork,
+  RETIRED_SLOT_NAMES,
   slotChosenByPay,
+  slotName,
   TEMPLATE_SLOTS,
   TEMPLATE_TAG_NAMES,
-  traineeMonths,
-  traineeNotes,
-  traineeProblems,
-  traineeStageOn,
-  traineeStagePeriods,
   underLabourLaw,
   WORK_NATURE_LABELS,
   WORK_NATURE_LABELS_AR,
@@ -30,8 +27,6 @@ import {
   WORK_PATTERN_LABELS_AR,
   WORK_PATTERNS,
   workPatternOf,
-  type TraineeInput,
-  type TraineeStage,
 } from '@trendlix/shared';
 
 // Employment types by Labour Law 14/2025 (owner, 18 October 2026: "can we update the employment types based on the
@@ -39,33 +34,33 @@ import {
 // templates.ts (the slots and tags).
 
 describe('the employment types', () => {
-  it('are the four the owner chose and the unpaid internship (19 October 2026), with their labels in English and Arabic', () => {
-    expect(EMPLOYMENT_TYPES).toEqual(['full_time', 'part_time', 'trainee', 'intern', 'freelance']);
+  // one internship since 25 October 2026 (owner: "unpaid internship and training are the same thing .. keep the unpaid
+  // internship with its document and delete the trainee with its documents")
+  it('are the ones the owner chose, with one internship, the unpaid one, and their labels in English and Arabic', () => {
+    expect(EMPLOYMENT_TYPES).toEqual(['full_time', 'part_time', 'intern', 'freelance']);
     expect(LABELS.employmentType).toEqual({
       full_time: 'Full-time',
       part_time: 'Part-time',
-      trainee: 'Trainee',
-      intern: 'Unpaid internship (outside the labour law)',
+      intern: 'Unpaid internship',
       freelance: 'Freelance (outside the labour law)',
     });
     expect(EMPLOYMENT_TYPE_LABELS_AR).toEqual({
       full_time: 'دوام كامل',
       part_time: 'عمل بعض الوقت',
-      trainee: 'متدرج',
-      intern: 'تدريب غير مدفوع (غير خاضع لقانون العمل)',
+      intern: 'تدريب غير مدفوع',
       freelance: 'عمل حر (غير خاضع لقانون العمل)',
     });
   });
 
   it('are all under the labour law but freelance (Art. 1(1)) and the unpaid internship', () => {
-    expect(EMPLOYMENT_TYPES.filter(underLabourLaw)).toEqual(['full_time', 'part_time', 'trainee']);
+    expect(EMPLOYMENT_TYPES.filter(underLabourLaw)).toEqual(['full_time', 'part_time']);
     expect(underLabourLaw('freelance')).toBe(false);
     expect(underLabourLaw('intern')).toBe(false);
   });
 
   it('keep the paperwork lists: full-time the full list, the others the national ID', () => {
     expect(requiredPaperwork('full_time', 'male')).toContain('military_certificate');
-    expect(requiredPaperwork('trainee', 'male')).toEqual(['national_id_front', 'national_id_back']);
+    expect(requiredPaperwork('part_time', 'male')).toEqual(['national_id_front', 'national_id_back']);
   });
 });
 
@@ -125,104 +120,28 @@ describe('remote work (Art. 96(1))', () => {
   });
 });
 
-describe('the training agreement (Arts. 28–30)', () => {
-  const STAGES: TraineeStage[] = [
-    { name: 'Basics', months: 3, pay: 4000 },
-    { name: 'Practice', months: 3, pay: 5500 },
-    { name: 'Practice', months: 6, pay: 7000 },
-  ];
-  const input = (over: Partial<TraineeInput> = {}): TraineeInput => ({ stages: STAGES, minimumWage: 7000, dateOfBirth: '2008-01-01', startDate: '2026-11-01', ...over });
-
-  it('passes stages that rise to the minimum wage, for a trainee of 14 or more', () => {
-    expect(traineeProblems(input())).toEqual([]);
-    expect(traineeNotes(input())).toEqual([]);
-    expect(traineeMonths(STAGES)).toBe(12);
-  });
-
-  it('needs at least one stage', () => {
-    expect(traineeProblems(input({ stages: [] }))).toEqual([
-      'Add at least one training stage: a training agreement sets the training’s stages and the pay of each (Labour Law Art. 29).',
-    ]);
-  });
-
-  it('needs a name, whole months of 1 or more, and pay of more than 0', () => {
-    expect(traineeProblems(input({ stages: [{ name: ' ', months: 1.5, pay: 0 }], minimumWage: null }))).toEqual([
-      'Training stage 1 needs a name.',
-      'Training stage 1’s length must be a whole number of months, 1 or more.',
-      'Training stage 1’s pay must be more than 0.',
-    ]);
-    expect(traineeProblems(input({ stages: [{ name: 'All', months: 0, pay: 7000 }] }))).toEqual(['Training stage 1’s length must be a whole number of months, 1 or more.']);
-  });
-
-  it('needs each stage’s pay more than the one before (بصورة تصاعدية)', () => {
-    const stages = [STAGES[0], { ...STAGES[1], pay: 4000 }, STAGES[2]];
-    expect(traineeProblems(input({ stages }))).toEqual([
-      'Training stage 2’s pay must be more than stage 1’s (4,000 EGP): the pay rises from stage to stage (Labour Law Art. 29).',
-    ]);
-  });
-
-  it('needs the last stage at least the minimum wage, when it is set', () => {
-    const stages = [STAGES[0], { ...STAGES[2], pay: 6999.5 }];
-    expect(traineeProblems(input({ stages }))).toEqual(['The last training stage’s pay (6,999.5 EGP) must be at least the minimum wage, 7,000 EGP (Labour Law Art. 29).']);
-    // not set: not checked, and a note says so
-    expect(traineeProblems(input({ stages, minimumWage: null }))).toEqual([]);
-    expect(traineeNotes(input({ minimumWage: null }))).toEqual([
-      'The minimum wage isn’t set in Payroll Setup’s rates set by law, so the last stage’s pay can’t be checked against it (Labour Law Art. 29).',
-    ]);
-  });
-
-  it('needs the trainee at least 14 on the start date (Art. 28)', () => {
-    expect(traineeProblems(input({ dateOfBirth: '2012-11-02' }))).toEqual([
-      'A trainee must be at least 14 years old on the start date (Labour Law Art. 28): this one would be 13.',
-    ]);
-    // the 14th birthday on the start date is enough
-    expect(traineeProblems(input({ dateOfBirth: '2012-11-01' }))).toEqual([]);
-    // no date of birth: not checked, and a note says so
-    expect(traineeProblems(input({ dateOfBirth: null }))).toEqual([]);
-    expect(traineeNotes(input({ dateOfBirth: null }))).toEqual(['The date of birth isn’t on the profile, so the trainee’s age (at least 14, Labour Law Art. 28) can’t be checked.']);
-  });
-
-  it('keeps the training within 60 months', () => {
-    expect(traineeProblems(input({ stages: [{ name: 'A', months: 30, pay: 6000 }, { name: 'B', months: 31, pay: 7000 }] }))).toEqual([
-      'The training runs for 61 months: make it 60 months or less.',
-    ]);
-  });
-
-  it('lays the stages out one after the other from the start', () => {
-    expect(traineeStagePeriods(STAGES, '2026-03-15').map((p) => [p.index, p.from, p.to])).toEqual([
-      [0, '2026-03-15', '2026-06-14'],
-      [1, '2026-06-15', '2026-09-14'],
-      [2, '2026-09-15', '2027-03-14'],
-    ]);
-  });
-
-  it('tells the stage in force on a date and its pay', () => {
-    expect(traineeStageOn(STAGES, '2026-03-15', '2026-03-14')).toBeNull();
-    expect(traineeStageOn(STAGES, '2026-03-15', '2026-03-15')).toEqual({ index: 0, name: 'Basics', pay: 4000 });
-    expect(traineeStageOn(STAGES, '2026-03-15', '2026-06-14')).toEqual({ index: 0, name: 'Basics', pay: 4000 });
-    expect(traineeStageOn(STAGES, '2026-03-15', '2026-06-15')).toEqual({ index: 1, name: 'Practice', pay: 5500 });
-    expect(traineeStageOn(STAGES, '2026-03-15', '2027-03-14')).toEqual({ index: 2, name: 'Practice', pay: 7000 });
-    // past the last stage: the last one's pay, never lower
-    expect(traineeStageOn(STAGES, '2026-03-15', '2028-01-01')).toEqual({ index: 2, name: 'Practice', pay: 7000 });
-    expect(traineeStageOn([], '2026-03-15', '2026-04-01')).toBeNull();
-  });
-});
-
 describe('the template slots and tags', () => {
   const slot = (key: string) => TEMPLATE_SLOTS.find((s) => s.key === key)!;
 
   it('keep every slot key, relabelled for the new types', () => {
-    // the owner's internship slots are the unpaid intern's again (19 October 2026); the paid trainee has slots of its own
+    // the owner's internship slots are the unpaid intern's again (19 October 2026)
     expect(slot('contract_internship')).toMatchObject({ name: 'Internship agreement · Unpaid internship', appliesTo: ['intern'], triggers: ['on_hire', 'renewal'] });
-    expect(slot('contract_trainee')).toMatchObject({ name: 'Training agreement · Trainee', appliesTo: ['trainee'], triggers: ['on_hire', 'renewal'] });
     expect(slot('offer_internship')).toMatchObject({ name: 'Job offer · Unpaid internship', appliesTo: ['intern'] });
-    expect(slot('offer_trainee')).toMatchObject({ name: 'Job offer · Trainee', appliesTo: ['trainee'] });
-    expect(slot('cert_internship')).toMatchObject({ name: 'Internship or training certificate', appliesTo: ['trainee', 'intern'] });
+    expect(slot('cert_internship')).toMatchObject({ name: 'Internship certificate', appliesTo: ['intern'] });
     expect(slot('agreement_freelance').name).toBe('Service agreement · Freelance (outside the labour law)');
     expect(slot('contract_sales')).toMatchObject({ appliesTo: ['full_time'], paidByCommission: true });
     expect(slot('offer_sales')).toMatchObject({ appliesTo: ['full_time'], paidByCommission: true });
     // no slot names a type that is gone
     for (const s of TEMPLATE_SLOTS) for (const t of s.appliesTo) expect(EMPLOYMENT_TYPES).toContain(t);
+  });
+
+  it('retire the paid trainee’s training agreement and offer (25 October 2026), named still for the documents on record', () => {
+    expect(TEMPLATE_SLOTS.map((s) => s.key)).not.toContain('contract_trainee');
+    expect(TEMPLATE_SLOTS.map((s) => s.key)).not.toContain('offer_trainee');
+    expect(RETIRED_SLOT_NAMES).toEqual({ contract_trainee: 'Training agreement · Trainee (retired)', offer_trainee: 'Job offer · Trainee (retired)' });
+    expect(slotName('contract_trainee')).toBe('Training agreement · Trainee (retired)');
+    expect(slotName('offer_internship')).toBe('Job offer · Unpaid internship');
+    expect(slotName('no_such_slot')).toBe('no_such_slot');
   });
 
   it('choose the commission slot for one paid by commission when it is published, else the full-time one', () => {
@@ -243,20 +162,19 @@ describe('the template slots and tags', () => {
 
   it('give each type its job offer slot', () => {
     expect(offerSlotKey('full_time')).toBe('offer_full_time');
-    expect(offerSlotKey('trainee')).toBe('offer_trainee');
     expect(offerSlotKey('intern')).toBe('offer_internship');
     expect(offerSlotKey('full_time', true)).toBe('offer_sales');
     expect(offerSlotKey('part_time', true)).toBe('offer_part_time');
     expect(offerSlotFor('full_time', true, (k) => k === 'offer_sales')).toBe('offer_sales');
     expect(offerSlotFor('full_time', true, () => false)).toBe('offer_full_time');
-    expect(offerSlotFor('trainee', false, () => true)).toBe('offer_trainee');
     expect(offerSlotFor('intern', false, () => true)).toBe('offer_internship');
   });
 
-  it('have the new tags', () => {
-    for (const tag of ['contract_form', 'work_nature', 'work_pattern', 'paid_by_commission', 'trainee_stages']) {
+  it('have the new tags, and the training stages’ no more (25 October 2026)', () => {
+    for (const tag of ['contract_form', 'work_nature', 'work_pattern', 'paid_by_commission']) {
       for (const t of [tag, `${tag}_ar`, `${tag}_en`]) expect(TEMPLATE_TAG_NAMES.has(t)).toBe(true);
     }
     expect(TEMPLATE_TAG_NAMES.has('job_to_do')).toBe(true);
+    for (const t of ['trainee_stages', 'trainee_stages_ar', 'trainee_stages_en']) expect(TEMPLATE_TAG_NAMES.has(t)).toBe(false);
   });
 });

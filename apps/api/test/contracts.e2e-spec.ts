@@ -273,11 +273,8 @@ describe('Contracts (e2e)', () => {
         number: expect.stringMatching(/^CON-2026-\d{4}$/),
         version: 1,
         form: 'fixed',
-        // by the labour law (owner, 18 October 2026): no job (a specific job's), no training stages (a trainee's)
+        // by the labour law (owner, 18 October 2026): no job (a specific job's)
         jobToDo: null,
-        traineeStages: null,
-        traineeMonths: null,
-        traineeStage: null,
         startDate: '2026-01-15',
         endDate: '2027-01-14',
         durationMonths: 12,
@@ -309,7 +306,7 @@ describe('Contracts (e2e)', () => {
         nonRenewalNoticeBy: null, // a draft
         // neither of the law's warnings (Art. 88(3), Art. 1(7))
         becameOpenEnded: false,
-        // not a trainee's or an intern's agreement, nor a conversion of one (19 October 2026)
+        // not an intern's agreement, nor a conversion of one (19 October 2026)
         convertsTo: null,
         training: null,
         casualTooLong: false,
@@ -1181,7 +1178,7 @@ describe('Contracts (e2e)', () => {
         endDate: soonContract.endDate,
         nonRenewalNoticeBy: soonContract.nonRenewalNoticeBy,
         renewalDraft: false,
-        // neither a trainee's or an intern's agreement, nor its conversion to full-time drafted (19 October 2026)
+        // neither an intern's agreement, nor its conversion to full-time drafted (19 October 2026)
         conversionDraft: false,
         // not past its end yet (Art. 88(3))
         becameOpenEnded: false,

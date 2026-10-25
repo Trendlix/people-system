@@ -38,7 +38,7 @@ const amountText = (n: number | null) => (n === null ? '' : plainAmount(n));
 
 /**
  * The fields the previews follow, by name (the allowance rows tell theirs through onChange); the employment type for the
- * terms a trainee's or an intern's offer has (19 October 2026: no probation; an intern no wage).
+ * terms an intern's offer has (19 October 2026: no probation and no wage).
  */
 const TRACKED = [
   'joinDate',

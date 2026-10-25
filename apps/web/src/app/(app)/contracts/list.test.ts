@@ -77,8 +77,10 @@ describe('the filters in the address', () => {
     expect(isFiltered({ ...NO_FILTERS, form: 'open_ended' })).toBe(true);
   });
 
-  it('knows the employment types by the labour law: Sales and Internship are gone', () => {
-    expect(readFilters({ type: 'trainee' }).type).toBe('trainee');
+  it('knows the employment types by the labour law: Sales, Internship and Trainee are gone', () => {
+    expect(readFilters({ type: 'intern' }).type).toBe('intern');
+    // the paid trainee went on 25 October 2026 (owner: "unpaid internship and training are the same thing")
+    expect(readFilters({ type: 'trainee' })).toEqual(NO_FILTERS);
     expect(readFilters({ type: 'sales' })).toEqual(NO_FILTERS);
     expect(readFilters({ type: 'internship' })).toEqual(NO_FILTERS);
   });
@@ -113,14 +115,14 @@ describe('the addresses', () => {
       '/contracts?q=Omar+Khaled&status=all&type=full_time&endingWithin=30',
     );
     // the contract's length (18 October 2026), after the type
-    expect(contractsHref({ ...NO_FILTERS, type: 'trainee', form: 'open_ended' })).toBe('/contracts?type=trainee&form=open_ended');
+    expect(contractsHref({ ...NO_FILTERS, type: 'part_time', form: 'open_ended' })).toBe('/contracts?type=part_time&form=open_ended');
   });
 
   it('asks the API once, with the status as chosen', () => {
     expect(listPaths(NO_FILTERS)).toEqual(['/contracts']);
     expect(listPaths({ ...NO_FILTERS, status: 'draft' })).toEqual(['/contracts?status=draft']);
     expect(listPaths({ ...NO_FILTERS, status: 'superseded', q: 'TLX-2026' })).toEqual(['/contracts?q=TLX-2026&status=superseded']);
-    expect(listPaths({ ...NO_FILTERS, endingWithin: 90, type: 'trainee' })).toEqual(['/contracts?type=trainee&endingWithin=90']);
+    expect(listPaths({ ...NO_FILTERS, endingWithin: 90, type: 'intern' })).toEqual(['/contracts?type=intern&endingWithin=90']);
     expect(listPaths({ ...NO_FILTERS, form: 'specific_job' })).toEqual(['/contracts?form=specific_job']);
   });
 

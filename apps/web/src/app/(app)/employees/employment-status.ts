@@ -1,8 +1,8 @@
-import { agreementName, CHOSEN_STATUSES, isTrainingType, LABELS, STANDING_LABELS, type ChosenStatus, type EmployeeStatus } from '@trendlix/shared';
+import { CHOSEN_STATUSES, INTERNSHIP_AGREEMENT, isTrainingType, LABELS, STANDING_LABELS, type ChosenStatus, type EmployeeStatus } from '@trendlix/shared';
 
 // How the employment form shows the status. HR chooses only Active or On leave; Probation and Notice period are the
-// system's (owner's decision, 16 October 2026), and an ended employment's follows why it ended. A new trainee's or
-// intern's shows as Trainee or Intern, with no probation (19 October 2026). Pure code, so it is tested on its own.
+// system's (owner's decision, 16 October 2026), and an ended employment's follows why it ended. A new intern's shows as
+// Intern, with no probation (19 October 2026). Pure code, so it is tested on its own.
 
 export type StatusField =
   /** A select of these statuses, sent with the form. */
@@ -25,9 +25,9 @@ export function isChosenStatus(status: string): status is ChosenStatus {
  * same form (`type`).
  */
 export function statusField(employment?: { status: EmployeeStatus; endDate: string | null }, type?: string): StatusField {
-  // a new employment: Probation while the worked-out probation runs, else Active; a trainee's or an intern's has none
+  // a new employment: Probation while the worked-out probation runs, else Active; an intern's has none
   if (!employment && isTrainingType(type)) {
-    return { kind: 'shown', value: 'Set by the system', hint: `${STANDING_LABELS[type]} while the ${agreementName(type)} runs: no probation.` };
+    return { kind: 'shown', value: 'Set by the system', hint: `${STANDING_LABELS[type]} while the ${INTERNSHIP_AGREEMENT} runs: no probation.` };
   }
   if (!employment) return { kind: 'shown', value: 'Set by the system', hint: 'Probation until the probation end (Active for a rehire).' };
   if (employment.endDate) return { kind: 'shown', value: LABELS.status[employment.status], hint: 'Follows why the employment ended.' };

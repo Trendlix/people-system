@@ -196,15 +196,14 @@ export class EmploymentsService {
   }
 
   /**
-   * Confirms someone on probation: the status becomes Active. Never a trainee or an intern (owner, 19 October 2026:
-   * "interns to be labeled trainees instead of probation"): their agreements have no probation.
+   * Confirms someone on probation: the status becomes Active. Never an intern (owner, 19 October 2026: "interns to be
+   * labeled trainees instead of probation"): their agreements have no probation.
    */
   async confirmProbation(employeeId: string, employmentId: string, user: SessionUser) {
     const before = await this.row(employeeId, employmentId);
     if (isTrainingType(before.employmentType)) {
       const person = await this.person(employeeId);
-      const what = before.employmentType === 'intern' ? 'an intern: an internship agreement' : 'a trainee: a training agreement';
-      throw new ConflictException(`${person.fullNameEn} is ${what} has no probation, so there is nothing to confirm.`);
+      throw new ConflictException(`${person.fullNameEn} is an intern: an internship agreement has no probation, so there is nothing to confirm.`);
     }
     if (before.endDate || before.status !== 'probation') {
       const person = await this.person(employeeId);
@@ -252,7 +251,7 @@ export class EmploymentsService {
    */
   private async assertStatusChosen(employeeId: string, before: Employment) {
     if (before.status !== 'probation' && before.status !== 'notice_period') return;
-    // a trainee's or an intern's Probation from before 19 October 2026 is no probation: their agreements have none
+    // an intern's Probation from before 19 October 2026 is no probation: their agreements have none
     if (before.status === 'probation' && isTrainingType(before.employmentType)) return;
     const person = await this.person(employeeId);
     throw new BadRequestException(
@@ -350,14 +349,13 @@ export class EmploymentsService {
       derived.officeDays = arrangement === 'hybrid' ? days : [];
     }
 
-    // the probation end is never typed (owner, 15 October 2026): worked out again at every save; none for a trainee or an
-    // intern (owner, 19 October 2026: "interns to be labeled trainees instead of probation"), who is Active, not on
-    // Probation
+    // the probation end is never typed (owner, 15 October 2026): worked out again at every save; none for an intern
+    // (owner, 19 October 2026: "interns to be labeled trainees instead of probation"), who is Active, not on Probation
     const joinDate = dto.joinDate ?? current!.joinDate!;
     derived.probationEnd = isTrainingType(type) ? null : await this.probationEnd(employeeId, before, joinDate);
     if (isTrainingType(type) && before?.status === 'probation' && !('status' in dto && dto.status !== undefined)) derived.status = 'active';
 
-    // a new training or internship agreement for the same person 6 months after their last one ended at the earliest
+    // a new internship agreement for the same person 6 months after their last one ended at the earliest
     // (owner, 19 October 2026: "a new trainee contract can be issued after 6 months of the expiration of the last trainee
     // contract"); checked when the type or the join date is chosen
     if (isTrainingType(type) && (!before || dto.employmentType !== undefined || dto.joinDate !== undefined)) {
@@ -370,7 +368,7 @@ export class EmploymentsService {
   /**
    * When probation ends (Labour Law Art. 90: at most 3 months, once per employer): the first contract's probation once
    * there is one, drafted or signed (a draft made from a job offer has the offer's, which the employment was given
-   * when it was made), or the signed full-time contract a trainee's or an intern's agreement was converted to (19
+   * when it was made), or the signed full-time contract an intern's agreement was converted to (19
    * October 2026); before that the contract settings' months from the join date, to the day before (as the contract
    * will have it); none for someone who already worked for the company.
    */

@@ -35,8 +35,8 @@ export class PutLawRatesDto {
   taxTiers: TaxTier[];
 
   /**
-   * The private sector's minimum wage a month (owner, 18 October 2026): a trainee's last training stage is paid at least
-   * this (Labour Law 14/2025 Art. 29). Null clears it; left out, the year keeps the one it has.
+   * The private sector's minimum wage a month (owner, 18 October 2026), for reference (the paid trainee's last stage
+   * floor until the trainee went on 25 October 2026). Null clears it; left out, the year keeps the one it has.
    */
   @IsOptional() @Numeric('the minimum wage')
   minimumWage?: number | null;

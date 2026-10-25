@@ -549,7 +549,11 @@ export const KPI_ACTION_LABELS: Record<KpiAction, string> = {
 /** The longest comment on a pick, a step or a sign-off, and a calibration's reason. */
 export const KPI_COMMENT_MAX = 1000;
 
-/** Who gets a scorecard (owner's brief, 21 October 2026): "Not freelancers or unpaid interns; trainees yes". */
+/**
+ * Who gets a scorecard (owner's brief, 21 October 2026): "Not freelancers or unpaid interns; trainees yes". The paid
+ * trainee went on 25 October 2026 (owner: "unpaid internship and training are the same thing"), so: not freelancers or
+ * interns.
+ */
 export const kpiEligibleType = (type: EmploymentType | string): boolean => type !== 'freelance' && type !== 'intern';
 
 // ---------- months, deadlines and reminders ----------

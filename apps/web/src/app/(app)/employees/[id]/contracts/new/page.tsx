@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
-import { agreementName, INTERN_DEFAULT_MONTHS } from '@trendlix/shared';
+import { INTERN_DEFAULT_MONTHS, INTERNSHIP_AGREEMENT } from '@trendlix/shared';
 import { formatDate } from '@/lib/format';
 import { loadLawRates } from '@/lib/law-rates';
 import { convertToFullTime, createContract } from '../../../contract-actions';
@@ -28,7 +28,7 @@ import { shownCode, withCodeInBrackets } from '@/lib/hidden';
 // decisions, 16 October 2026): a renewal with new pay counts as a raise, with its reason, and the CEO approves it before
 // it is signed.
 //
-// A trainee's or an intern's agreement (owner, 19 October 2026: "or can be only renewed 1 time, after that it should be
+// An intern's agreement (owner, 19 October 2026: "or can be only renewed 1 time, after that it should be
 // converted to a full time contract") is renewed once: renewing it again is refused here, with the way instead. With
 // ?convert=full_time (Convert to full-time on the Employment tab) the page drafts the full-time contract it converts to,
 // as the employment's next version: the contract form as a full-time one (fixed-term for the settings' months, from the
@@ -60,7 +60,7 @@ async function NewContract({ params, searchParams }: { params: Promise<{ id: str
   } else if (convert && !draft && !previous?.training) {
     body = (
       <Empty>
-        Only a trainee&apos;s or an intern&apos;s agreement is converted to a full-time contract. See the contract on the <Link href={back}>Employment tab</Link>.
+        Only an intern&apos;s agreement is converted to a full-time contract. See the contract on the <Link href={back}>Employment tab</Link>.
       </Empty>
     );
   } else if (convert && !draft && previous) {
@@ -69,7 +69,7 @@ async function NewContract({ params, searchParams }: { params: Promise<{ id: str
     body = (
       <div className="max-w-3xl space-y-4">
         <p className="text-sm text-muted">
-          Version {previous.version + 1}: the full-time contract the {agreementName(e.employmentType)} (version {previous.version}
+          Version {previous.version + 1}: the full-time contract the {INTERNSHIP_AGREEMENT} (version {previous.version}
           {shownCode(previous.number) && `, ${previous.number}`}) converts
           to{previous.endDate ? `, after it ends on ${formatDate(previous.endDate)}` : ''}. Signing it makes the employment full-time, on probation while its
           probation runs. It is saved as a draft: sign it on the Employment tab once the employee and the company have signed it.
@@ -82,7 +82,6 @@ async function NewContract({ params, searchParams }: { params: Promise<{ id: str
           probationHint={employedBefore ? noProbationAgain(employee.fullNameEn) : CONVERSION_PROBATION_HINT}
           startHint={CONVERSION_START_HINT}
           employmentType="full_time"
-          dateOfBirth={employee.dateOfBirth}
           today={today}
           lawYears={lawYears}
           cancelHref={back}
@@ -105,11 +104,11 @@ async function NewContract({ params, searchParams }: { params: Promise<{ id: str
         sign it with the contract on the <Link href={back}>Employment tab</Link>. Only a Super Admin can delete it.
       </Empty>
     );
-  } else if (renewalRefusal(previous, e.employmentType)) {
-    // renewed once already (19 October 2026): converted to full-time instead, or the training ends
+  } else if (renewalRefusal(previous)) {
+    // renewed once already (19 October 2026): converted to full-time instead, or the internship ends
     body = (
       <Empty>
-        {renewalRefusal(previous, e.employmentType)} <Link href={convertHref(employee.id)}>Convert to full-time</Link>, or end the training with End
+        {renewalRefusal(previous)} <Link href={convertHref(employee.id)}>Convert to full-time</Link>, or end the internship with End
         employment on the <Link href={back}>Employment tab</Link>.
       </Empty>
     );
@@ -121,13 +120,12 @@ async function NewContract({ params, searchParams }: { params: Promise<{ id: str
     const defaults: ContractDefaults = previous
       ? {
           startDate: '',
-          // a renewal goes on as the version renewed: its length, its job, a trainee's stages; an internship's months
+          // a renewal goes on as the version renewed: its length, its job; an internship's months
           form: previous.form,
           durationMonths: intern ? (previous.durationMonths ?? INTERN_DEFAULT_MONTHS) : settings.durationMonths,
           jobToDo: previous.jobToDo ?? '',
           endDate: '',
           probationMonths: 0,
-          traineeStages: previous.traineeStages ?? null,
           // the pay so far, to start from
           payBasis: previous.payBasis ?? 'monthly',
           grossSalary: previous.grossSalary,
@@ -146,7 +144,7 @@ async function NewContract({ params, searchParams }: { params: Promise<{ id: str
           {previous
             ? `Version ${previous.version + 1}, renewing ${withCodeInBrackets(`version ${previous.version}`, previous.number)}${previous.endDate ? `, which ends on ${formatDate(previous.endDate)}` : ''}.`
             : `The first contract of the employment since ${formatDate(e.joinDate)}.`}{' '}
-          {previous?.training && `${onlyRenewalNote(e.employmentType)} `}
+          {previous?.training && `${onlyRenewalNote()} `}
           It is saved as a draft: sign it on the Employment tab once the employee and the company have signed it.
         </p>
         <ContractForm
@@ -157,7 +155,6 @@ async function NewContract({ params, searchParams }: { params: Promise<{ id: str
           payChange={previous && !intern ? { version: previous.version, pay: versionPay(previous), changes: false, reason: null } : undefined}
           probationHint={hadProbation && !previous ? noProbationAgain(employee.fullNameEn) : undefined}
           employmentType={e.employmentType}
-          dateOfBirth={employee.dateOfBirth}
           today={today}
           lawYears={lawYears}
           cancelHref={back}

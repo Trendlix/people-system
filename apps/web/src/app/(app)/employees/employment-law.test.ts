@@ -18,7 +18,6 @@ import {
   lawWarnings,
   noLeaveText,
   outsideLawShort,
-  TRAINEE_NOTE,
   TRAINING_ENDED,
   typeWord,
   WORK_NATURE_HINTS,
@@ -27,28 +26,23 @@ import {
 } from './employment-law';
 
 describe('the employment types by the labour law (18 October 2026)', () => {
-  it('are full-time, part-time, trainee, the unpaid internship and freelance, the last two named outside the law', () => {
-    // the unpaid internship since 19 October 2026: the law's trainee is paid
-    expect(EMPLOYMENT_TYPES).toEqual(['full_time', 'part_time', 'trainee', 'intern', 'freelance']);
-    expect(EMPLOYMENT_TYPES.map((t) => LABELS.employmentType[t])).toEqual([
-      'Full-time',
-      'Part-time',
-      'Trainee',
-      'Unpaid internship (outside the labour law)',
-      'Freelance (outside the labour law)',
-    ]);
+  it('are full-time, part-time, the unpaid internship and freelance, freelance named outside the law', () => {
+    // the unpaid internship since 19 October 2026, the one internship since 25 October 2026 (owner: "unpaid internship
+    // and training are the same thing"): the paid trainee is gone
+    expect(EMPLOYMENT_TYPES).toEqual(['full_time', 'part_time', 'intern', 'freelance']);
+    expect(EMPLOYMENT_TYPES.map((t) => LABELS.employmentType[t])).toEqual(['Full-time', 'Part-time', 'Unpaid internship', 'Freelance (outside the labour law)']);
   });
 
   it('names a type in a sentence without the label’s note', () => {
     expect(typeWord('full_time')).toBe('full-time');
-    expect(typeWord('trainee')).toBe('trainee');
+    expect(typeWord('part_time')).toBe('part-time');
     expect(typeWord('freelance')).toBe('freelance');
     expect(typeWord('intern')).toBe('unpaid internship');
     // a value the screens don't know is shown as it is
     expect(typeWord('robot')).toBe('robot');
     // with its article
     expect(aTypeWord('full_time')).toBe('a full-time');
-    expect(aTypeWord('trainee')).toBe('a trainee');
+    expect(aTypeWord('part_time')).toBe('a part-time');
     expect(aTypeWord('intern')).toBe('an unpaid internship');
   });
 
@@ -59,8 +53,8 @@ describe('the employment types by the labour law (18 October 2026)', () => {
     expect(employmentTypeHint('part_time', 'tab')).toMatch(/on the Employment tab\.$/);
     // an offer has the pay terms itself
     expect(employmentTypeHint('part_time', 'offer')).toBeNull();
-    expect(employmentTypeHint('trainee', 'below')).toMatch(/at least 14 years old \(Art\. 28\).*Its stages are set below\.$/);
-    expect(employmentTypeHint('trainee', 'offer')).toMatch(/once the offer is accepted\.$/);
+    // a trainee is no type of its own any more (25 October 2026)
+    expect(employmentTypeHint('trainee', 'below')).toBeNull();
     expect(employmentTypeHint('freelance', 'tab')).toBe(FREELANCE_NOTE);
     expect(FREELANCE_NOTE).toMatch(/^Outside the labour law.*Art\. 1\(1\).*No leave and no company social insurance; a service agreement/);
     expect(employmentTypeHint('intern', 'below')).toBe(INTERN_NOTE);
@@ -68,8 +62,8 @@ describe('the employment types by the labour law (18 October 2026)', () => {
   });
 
   // owner, 19 October 2026: no probation, renewed once, then full-time; a new one 6 months after the last
-  it('says a training or internship agreement has no probation, is renewed once, then converted to full-time', () => {
-    expect(TRAINEE_NOTE).toMatch(/No probation\. Renewed once at most, then converted to a full-time contract or ended; a new one starts 6 months after/);
+  it('says an internship agreement has no probation, is renewed once, then converted to full-time', () => {
+    expect(INTERN_NOTE).toMatch(/No probation\. Renewed once at most, then converted to a full-time contract or ended; a new one starts 6 months after/);
     expect(INTERN_NOTE).toMatch(/^Unpaid, outside the labour law: an internship agreement that pays no wage, only allowances such as transportation, for 3 months/);
     expect(INTERN_NOTE).toMatch(/12 at most\)\. No leave and no company social insurance\. No probation\. Renewed once at most/);
   });
@@ -78,10 +72,10 @@ describe('the employment types by the labour law (18 October 2026)', () => {
     expect(noLeaveText('freelance')).toBe(FREELANCE_NO_LEAVE);
     expect(noLeaveText('intern')).toBe(INTERN_NO_LEAVE);
     expect(INTERN_NO_LEAVE).toMatch(/^No leave under an unpaid internship/);
-    for (const t of ['full_time', 'part_time', 'trainee']) expect(noLeaveText(t)).toBeNull();
+    for (const t of ['full_time', 'part_time']) expect(noLeaveText(t)).toBeNull();
     expect(outsideLawShort('freelance')).toBe(FREELANCE_SHORT);
     expect(outsideLawShort('intern')).toBe(INTERN_SHORT);
-    expect(outsideLawShort('trainee')).toBeUndefined();
+    expect(outsideLawShort('part_time')).toBeUndefined();
   });
 });
 
@@ -127,8 +121,8 @@ describe('HR’s warnings', () => {
 
   it('warns of a training or internship agreement past its end with the way forward, never open-ended (19 October 2026)', () => {
     expect(TRAINING_ENDED.key).toBe('training_ended');
-    expect(TRAINING_ENDED.text).toBe('Training ended');
-    expect(TRAINING_ENDED.detail).toMatch(/convert it to a full-time contract; or end the training with End employment, choosing Training completed\.$/);
+    expect(TRAINING_ENDED.text).toBe('Internship ended');
+    expect(TRAINING_ENDED.detail).toMatch(/convert it to a full-time contract; or end the internship with End employment, choosing Training completed\.$/);
     expect(TRAINING_ENDED.detail).not.toMatch(/open-ended|Art\. 88|in writing/);
   });
 });

@@ -180,6 +180,8 @@ function ItemRow({ item, employee, can, today }: { item: DocumentItem; employee:
   const template = templateStateText(item);
   const documents = newestFirst(item.documents ?? []);
   const published = item.templateStatus === 'published';
+  // a retired slot's (25 October 2026): its documents stay on record, nothing new is made from it, and it has no template page
+  const retired = item.templateStatus === 'retired';
   return (
     <li className="space-y-3 border-b border-line-soft p-5 last:border-0">
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
@@ -188,7 +190,7 @@ function ItemRow({ item, employee, can, today }: { item: DocumentItem; employee:
           <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs">
             {context && <span className="text-muted">{context} ·</span>}
             <span className={`font-medium ${TONE_TEXT[template.tone]}`}>{template.text}</span>
-            {can.act && !published &&
+            {can.act && !published && !retired &&
               (can.templates ? (
                 <Link href={itemTemplateHref(item)} className="font-semibold">
                   {item.templateStatus === 'missing' ? 'Upload it in Templates' : 'Open the template'}

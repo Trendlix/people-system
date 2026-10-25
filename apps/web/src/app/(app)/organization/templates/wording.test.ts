@@ -95,11 +95,11 @@ describe('a slot as the library words it', () => {
 
   it('names the employment types, or says all of them', () => {
     expect(appliesToLabel(['full_time'])).toBe('Full-time');
-    expect(appliesToLabel(['part_time', 'trainee'])).toBe('Part-time, Trainee');
-    expect(appliesToLabel(['full_time', 'part_time', 'trainee', 'intern', 'freelance'])).toBe('All employment types');
-    // the unpaid internship (19 October 2026) is one of them
-    expect(appliesToLabel(['full_time', 'part_time', 'trainee', 'freelance'])).toBe('Full-time, Part-time, Trainee, Freelance (outside the labour law)');
-    expect(appliesToLabel(['trainee', 'intern'])).toBe('Trainee, Unpaid internship (outside the labour law)');
+    expect(appliesToLabel(['part_time', 'intern'])).toBe('Part-time, Unpaid internship');
+    expect(appliesToLabel(['full_time', 'part_time', 'intern', 'freelance'])).toBe('All employment types');
+    // the unpaid internship (19 October 2026) is one of them, the one internship since 25 October 2026
+    expect(appliesToLabel(['full_time', 'part_time', 'freelance'])).toBe('Full-time, Part-time, Freelance (outside the labour law)');
+    expect(appliesToLabel(['intern'])).toBe('Unpaid internship');
     // the Sales slots (18 October 2026): full-time paid by commission
     expect(appliesToLabel(['full_time'], true)).toBe('Full-time, paid by commission (the full-time one until this is published)');
     expect(appliesToLabel(['freelance'])).toBe('Freelance (outside the labour law)');
@@ -175,13 +175,13 @@ describe('progress', () => {
   it('counts the templates in use, not the copy slots', () => {
     // the social insurance copy of the full-time contract has its own file, so every slot counts
     const slots = library();
-    // the trainee's training agreement and job offer have their own since 19 October 2026
-    expect(progress(slots)).toEqual({ inUse: 0, total: 27, text: '0 of 27 templates in use' });
+    // the trainee's training agreement and job offer went on 25 October 2026 (owner: "delete the trainee with its documents")
+    expect(progress(slots)).toEqual({ inUse: 0, total: 25, text: '0 of 25 templates in use' });
 
     slots[0].published = published(1); // the full-time contract (official copy)
     slots[1].published = published(1); // its social insurance copy, a template of its own
     slots[5].latestDraft = draft(1); // a draft isn't in use
-    expect(progress(slots).text).toBe('2 of 27 templates in use');
+    expect(progress(slots).text).toBe('2 of 25 templates in use');
     // a slot printed from another's file is not counted
     expect(progress([{ copyOf: 'contract_full_time', published: published(1) }, { copyOf: null, published: published(1) }]).text).toBe('1 of 1 template in use');
   });

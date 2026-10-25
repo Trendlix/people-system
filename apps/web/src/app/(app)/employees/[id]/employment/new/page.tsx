@@ -66,9 +66,8 @@ async function AddEmployment({ params }: { params: Promise<{ id: string }> }) {
                       defaults: firstContractDefaults(settings, '', employedBefore),
                       allowanceTypes,
                       probationHint: employedBefore ? noProbationAgain(employee.fullNameEn) : undefined,
-                      // a new trainee's or intern's agreement 6 months after the last one ended at the earliest (19 October 2026)
+                      // a new intern's agreement 6 months after the last one ended at the earliest (19 October 2026)
                       trainingAgain: employee.nextTraining ? { name: employee.fullNameEn, ...employee.nextTraining } : null,
-                      dateOfBirth: employee.dateOfBirth,
                       today: todayInCairo(),
                       lawYears,
                       cancelHref: back,

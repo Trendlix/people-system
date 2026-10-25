@@ -72,12 +72,13 @@ describe('a template previewed with data', () => {
   });
 
   it('a job offer template says it is filled with a job offer’s data', () => {
-    // an intern's is offer_internship, a trainee's offer_trainee (19 October 2026)
-    for (const key of ['offer_full_time', 'offer_part_time', 'offer_freelance', 'offer_internship', 'offer_trainee', 'offer_sales']) {
+    // an intern's is offer_internship (19 October 2026)
+    for (const key of ['offer_full_time', 'offer_part_time', 'offer_freelance', 'offer_internship', 'offer_sales']) {
       expect(isOfferSlot(key)).toBe(true);
       expect(previewHint(key)).toBe(OFFER_PREVIEW_HINT);
     }
-    for (const key of ['contract_full_time', 'contract_trainee', 'hr_letter_en', 'nda', 'offer', 'offer_intern']) {
+    // the trainee's slots went on 25 October 2026: offer_trainee is no job offer template any more
+    for (const key of ['contract_full_time', 'contract_internship', 'offer_trainee', 'hr_letter_en', 'nda', 'offer', 'offer_intern']) {
       expect(isOfferSlot(key)).toBe(false);
       expect(previewHint(key)).toBe(PREVIEW_HINT);
     }

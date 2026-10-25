@@ -109,8 +109,8 @@ function WaitingForYou({ count }: { count: number | null }) {
 // ---------- the labour law's warnings (HR and the CEO) ----------
 
 /**
- * GET /contracts/law-warnings: fixed terms become open-ended, casual work past its 6 months; a trainee's or an intern's
- * agreement past its end with nothing signed after it (19 October 2026).
+ * GET /contracts/law-warnings: fixed terms become open-ended, casual work past its 6 months; an intern's agreement past
+ * its end with nothing signed after it (19 October 2026).
  */
 const LAW_WARNINGS = '/contracts/law-warnings';
 
@@ -120,8 +120,8 @@ const WARNING_OF = { became_open_ended: BECAME_OPEN_ENDED, casual_too_long: CASU
  * What the labour law warns HR of (owner, 18 October 2026: "can we update the employment types based on the labour
  * law?"): a signed fixed-term contract past its end while the work goes on without a signed renewal, which the law
  * counts as open-ended (Labour Law 14/2025 Art. 88(3)), and casual work past its 6 months (Art. 1(7)); since 19 October
- * 2026 a trainee's or an intern's agreement past its end with nothing signed after it (Training ended: renewed once,
- * converted to full-time or ended, never open-ended). Each opens the employee's Employment tab, where it is put right.
+ * 2026 an intern's agreement past its end with nothing signed after it (Internship ended: renewed once, converted to
+ * full-time or ended, never open-ended). Each opens the employee's Employment tab, where it is put right.
  */
 function LawWarnings({ rows }: { rows: LawWarningItem[] }) {
   return (

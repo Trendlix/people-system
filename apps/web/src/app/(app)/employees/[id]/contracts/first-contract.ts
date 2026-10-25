@@ -12,9 +12,8 @@ const BASIC_PERCENT = 80;
 /**
  * The first contract's defaults: fixed-term for the settings' length, their probation, none for someone employed here
  * before (probation comes once with an employer, Labour Law Art. 90), the company's basic share, and a monthly salary
- * still to type (a trainee's training stages too). For the employment's type when it is known (`employmentType`; hiring
- * in one form, it is chosen there): a trainee's or an intern's agreement has no probation, and an intern's runs for 3
- * months unless HR chooses another (owner, 19 October 2026).
+ * still to type. For the employment's type when it is known (`employmentType`; hiring in one form, it is chosen there):
+ * an intern's agreement has no probation, and runs for 3 months unless HR chooses another (owner, 19 October 2026).
  * `startDate` is YYYY-MM-DD, or '' when it is the join date still to be typed.
  */
 export function firstContractDefaults(settings: ContractSettings, startDate: string, employedBefore: boolean, employmentType = ''): ContractDefaults {
@@ -26,7 +25,6 @@ export function firstContractDefaults(settings: ContractSettings, startDate: str
     jobToDo: '',
     endDate: '',
     probationMonths: employedBefore || isTrainingType(employmentType) ? 0 : settings.probationMonths,
-    traineeStages: null,
     payBasis: 'monthly',
     grossSalary: null,
     hourlyRate: null,

@@ -27,7 +27,6 @@ import { assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../common/date-only.js';
 import { fromTimeOfDay } from '../common/time-of-day.js';
-import { traineeStagesOf } from '../contracts/views.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
 import { Prisma } from '../generated/prisma/client.js';
 import { NoticesService } from '../notifications/notices.service.js';
@@ -138,8 +137,6 @@ export const rosterSelect = (from: Date, to: Date) =>
         grossSalary: true,
         basicPercent: true,
         hourlyRate: true,
-        // a trainee's training stages: each paid at its own pay in its own days (roster.ts byTraineeStage)
-        traineeStages: true,
         // with each one's basis (25 October 2026): a per-account one pays the client accounts
         allowances: { orderBy: ALLOWANCE_ORDER, select: { nameEn: true, amount: true, taxable: true, insured: true, basis: true } },
       },
@@ -177,7 +174,6 @@ export function rosterEmployment(e: EmploymentRow): RosterEmployment {
       grossSalary: c.grossSalary.toNumber(),
       basicPercent: c.basicPercent,
       hourlyRate: c.hourlyRate?.toNumber() ?? null,
-      traineeStages: traineeStagesOf(c),
       allowances: c.allowances.map((a) => ({ ...a, amount: a.amount.toNumber() })),
     })),
     leaves: e.leaveRequests.map((l) => ({

@@ -249,7 +249,7 @@ describe('the steps', () => {
   });
 
   it('gives a scorecard to everyone but freelancers and unpaid interns', () => {
-    expect(['full_time', 'part_time', 'trainee'].map(kpiEligibleType)).toEqual([true, true, true]);
+    expect(['full_time', 'part_time'].map(kpiEligibleType)).toEqual([true, true]);
     expect(['freelance', 'intern'].map(kpiEligibleType)).toEqual([false, false]);
   });
 });

@@ -15,7 +15,8 @@ import {
   trainingWayText,
 } from './training';
 
-// Trainees' and interns' agreements (owner, 19 October 2026): renewed once at most, then converted to full-time.
+// Interns' agreements (owner, 19 October 2026): renewed once at most, then converted to full-time; the one internship
+// since 25 October 2026 (owner: "unpaid internship and training are the same thing").
 
 const first = { agreement: 1, next: 'renew_or_convert' } as const;
 const renewal = { agreement: 2, next: 'convert_or_end' } as const;
@@ -30,8 +31,8 @@ describe('the Contract section’s actions', () => {
     expect(contractActions({ ...base, previous: { form: 'fixed', status: 'active' } }).renew).toBe(true);
   });
 
-  it('renews a trainee’s or an intern’s first agreement, never its renewal, and converts either to full-time', () => {
-    expect(contractActions({ ...base, employmentType: 'trainee', previous: { form: 'fixed', status: 'active', training: first } })).toEqual({
+  it('renews an intern’s first agreement, never its renewal, and converts either to full-time', () => {
+    expect(contractActions({ ...base, employmentType: 'intern', previous: { form: 'fixed', status: 'active', training: first } })).toEqual({
       renew: true,
       convert: true,
       raise: false,
@@ -61,17 +62,17 @@ describe('the Contract section’s actions', () => {
 describe('the reminder of an agreement’s end', () => {
   it('says when it ends and the way forward, from 60 days before', () => {
     expect(trainingReminder({ endDate: '2027-03-31', training: first }, '2027-02-01')).toEqual({
-      text: 'Training ends on 31/03/2027: renew it once, or convert to full-time.',
+      text: 'Internship ends on 31/03/2027: renew it once, or convert to full-time.',
       way: trainingWayText('renew_or_convert'),
       passed: false,
     });
     expect(trainingReminder({ endDate: '2027-03-31', training: renewal }, '2027-03-31')).toEqual({
-      text: 'Training ends on 31/03/2027: convert to full-time, or end the training.',
+      text: 'Internship ends on 31/03/2027: convert to full-time, or end the internship.',
       way: trainingWayText('convert_or_end'),
       passed: false,
     });
     expect(trainingReminder({ endDate: '2027-03-31', training: renewal }, '2027-04-02')).toMatchObject({
-      text: 'Training ended on 31/03/2027: convert to full-time, or end the training.',
+      text: 'Internship ended on 31/03/2027: convert to full-time, or end the internship.',
       passed: true,
     });
   });
@@ -85,7 +86,7 @@ describe('the reminder of an agreement’s end', () => {
 
   it('words the way forward without a renewal in writing, a non-renewal notice or Art. 88', () => {
     expect(trainingWayText('renew_or_convert')).toBe(
-      'Renew it once with Renew, or convert it with Convert to full-time. To end the training, use End employment and choose Training completed.',
+      'Renew it once with Renew, or convert it with Convert to full-time. To end the internship, use End employment and choose Training completed.',
     );
     expect(trainingWayText('convert_or_end')).toMatch(/^It was renewed once already, so it isn’t renewed again: convert it with Convert to full-time/);
     for (const next of ['renew_or_convert', 'convert_or_end'] as const) expect(trainingWayText(next)).not.toMatch(/in writing|non-renewal|Art\. 88/);
@@ -100,19 +101,17 @@ describe('drafts and the renewal', () => {
   });
 
   it('refuses a second renewal with the way instead', () => {
-    expect(renewalRefusal({ training: renewal }, 'trainee')).toBe('A training agreement is renewed once. Convert it to a full-time contract instead.');
-    expect(renewalRefusal({ training: renewal }, 'intern')).toBe('An internship agreement is renewed once. Convert it to a full-time contract instead.');
-    expect(renewalRefusal({ training: first }, 'trainee')).toBeNull();
-    expect(renewalRefusal({ training: null }, 'full_time')).toBeNull();
-    expect(renewalRefusal(undefined, 'trainee')).toBeNull();
-    expect(onlyRenewalNote('intern')).toBe(
-      'This is the internship agreement’s one renewal: when it ends, it is converted to a full-time contract or the training ends.',
+    expect(renewalRefusal({ training: renewal })).toBe('An internship agreement is renewed once. Convert it to a full-time contract instead.');
+    expect(renewalRefusal({ training: first })).toBeNull();
+    expect(renewalRefusal({ training: null })).toBeNull();
+    expect(renewalRefusal(undefined)).toBeNull();
+    expect(onlyRenewalNote()).toBe(
+      'This is the internship agreement’s one renewal: when it ends, it is converted to a full-time contract or the internship ends.',
     );
   });
 
-  it('says plainly why a trainee or an intern has no probation', () => {
-    expect(noProbationHint('trainee')).toMatch(/^None: a trainee has no probation, as a training agreement isn’t an employment contract/);
-    expect(noProbationHint('intern')).toMatch(/^None: an intern has no probation, as an internship agreement isn’t an employment contract/);
+  it('says plainly why an intern has no probation', () => {
+    expect(noProbationHint()).toMatch(/^None: an intern has no probation, as an internship agreement isn’t an employment contract/);
   });
 });
 
@@ -133,7 +132,6 @@ describe('converting an agreement to full-time', () => {
       jobToDo: '',
       endDate: '',
       probationMonths: 3,
-      traineeStages: null,
       payBasis: 'monthly',
       grossSalary: null,
       hourlyRate: null,
@@ -158,18 +156,18 @@ describe('a new agreement six months after the last', () => {
   const base = { name: 'Sara Ali', today: '2027-02-01', nextTraining };
 
   it('warns when the join date typed, or today, is before the six months are up', () => {
-    const message = 'A new training agreement for Sara Ali can start from 01/05/2027, six months after their last one ended on 31/10/2026.';
-    expect(hireTooSoonText({ ...base, type: 'trainee', joinDate: '2027-04-30' })).toBe(message);
-    expect(hireTooSoonText({ ...base, type: 'trainee', joinDate: null })).toBe(message);
-    expect(hireTooSoonText({ ...base, type: 'intern', joinDate: '' })).toBe(
-      'A new internship agreement for Sara Ali can start from 01/05/2027, six months after their last one ended on 31/10/2026.',
-    );
+    const message = 'A new internship agreement for Sara Ali can start from 01/05/2027, six months after their last one ended on 31/10/2026.';
+    expect(hireTooSoonText({ ...base, type: 'intern', joinDate: '2027-04-30' })).toBe(message);
+    expect(hireTooSoonText({ ...base, type: 'intern', joinDate: null })).toBe(message);
+    expect(hireTooSoonText({ ...base, type: 'intern', joinDate: '' })).toBe(message);
   });
 
   it('says nothing from the six months on, for another type, or for someone who never had one', () => {
-    expect(hireTooSoonText({ ...base, type: 'trainee', joinDate: '2027-05-01' })).toBeNull();
+    expect(hireTooSoonText({ ...base, type: 'intern', joinDate: '2027-05-01' })).toBeNull();
     expect(hireTooSoonText({ ...base, type: 'full_time', joinDate: '2027-02-01' })).toBeNull();
-    expect(hireTooSoonText({ ...base, type: 'trainee', joinDate: '2027-02-01', nextTraining: null })).toBeNull();
+    expect(hireTooSoonText({ ...base, type: 'intern', joinDate: '2027-02-01', nextTraining: null })).toBeNull();
+    // a trainee is no type of its own any more (25 October 2026)
+    expect(hireTooSoonText({ ...base, type: 'trainee', joinDate: '2027-02-01' })).toBeNull();
     expect(hireTooSoonText({ ...base, type: '', joinDate: null })).toBeNull();
   });
 });

@@ -83,9 +83,8 @@ export async function createContract(employeeId: string, employmentId: string, r
 }
 
 /**
- * Drafts the full-time contract a trainee's or an intern's agreement converts to (owner, 19 October 2026: "after that it
- * should be converted to a full time contract"), as the employment's next version; signing it makes the employment
- * full-time.
+ * Drafts the full-time contract an intern's agreement converts to (owner, 19 October 2026: "after that it should be
+ * converted to a full time contract"), as the employment's next version; signing it makes the employment full-time.
  */
 export async function convertToFullTime(employeeId: string, employmentId: string, _prev: FormState, fd: FormData): Promise<FormState> {
   const errors: string[] = [];

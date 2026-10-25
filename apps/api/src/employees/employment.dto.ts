@@ -21,10 +21,11 @@ const Sent = () => ValidateIf((_o, v) => v !== undefined);
 
 /**
  * The employment types by the labour law (owner, 18 October 2026), with the unpaid internship (19 October 2026), as the
- * messages name them.
+ * messages name them; trainee is refused since 25 October 2026 (owner: "unpaid internship and training are the same
+ * thing"), the message saying where it went.
  */
 export const EMPLOYMENT_TYPE_MESSAGE =
-  'Choose an employment type: full_time, part_time, trainee, intern (an unpaid internship, outside the labour law) or freelance (outside the labour law).';
+  'Choose an employment type: full_time, part_time, intern (an unpaid internship, outside the labour law; a trainee is an intern now) or freelance (outside the labour law).';
 export const WORK_NATURE_MESSAGE = 'Choose the nature of the work: regular, temporary, casual or seasonal.';
 export const COMMISSION_MESSAGE = 'Send whether the pay is by commission as true or false.';
 

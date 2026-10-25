@@ -140,18 +140,8 @@ describe('a new offer', () => {
   });
 });
 
-// owner, 19 October 2026: trainees and interns have no probation; an intern is unpaid, for a short term
-describe('a trainee’s or an intern’s offer', () => {
-  it('sends a trainee’s with no probation, the pay as typed', () => {
-    const errors: string[] = [];
-    expect(offerBody(form({ ...filled, employmentType: 'trainee', probationMonths: '3' }), errors, { draft: false, allowances })).toMatchObject({
-      employmentType: 'trainee',
-      probationMonths: 0,
-      grossSalary: 15000,
-    });
-    expect(errors).toEqual([]);
-  });
-
+// owner, 19 October 2026: interns have no probation; an intern is unpaid, for a short term
+describe('an intern’s offer', () => {
   it('sends an intern’s monthly, with no gross, net or basic part, no probation, and its allowances', () => {
     const errors: string[] = [];
     const intern = { ...filled, employmentType: 'intern', payBasis: 'hourly', grossSalary: '', netSalary: '', probationMonths: '0', durationMonths: '3' };

@@ -197,7 +197,7 @@ export default function TurnoverPage({ searchParams }: PageProps<'/offboarding/t
         <h1 className="text-2xl font-semibold">Turnover</h1>
         <p className="mt-1 max-w-3xl text-muted">
           Who left in the year and how many, against the average headcount: voluntary (resigned, mutual agreement, retired) or involuntary (terminated, a
-          fixed term or a training agreement not renewed), by department, reason and how long they stayed. Freelancers are left out.
+          fixed term or an internship agreement not renewed), by department, reason and how long they stayed. Freelancers are left out.
         </p>
       </div>
       <Suspense fallback={<Loading />}>

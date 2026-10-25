@@ -267,6 +267,7 @@ function FormsReadiness({ forms, checks, templates }: { forms: DocumentItem[]; c
                 <h3 className="font-semibold">{titleCase(form.name)}</h3>
                 <span className={`badge ${READY_BADGE[r.state]}`}>{readyText(r)}</span>
                 {r.state === 'template' &&
+                  form.templateStatus !== 'retired' &&
                   (templates ? (
                     <Link href={itemTemplateHref(form)} className={`text-sm ${LINK}`}>
                       {form.templateStatus === 'missing' ? 'Upload it in Templates' : 'Open the template'}

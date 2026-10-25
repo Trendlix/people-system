@@ -225,9 +225,9 @@ describe('Job offers (e2e)', () => {
     );
     await publish('offer_part_time', docx({ body: p(r('{{full_name_en}}: {{pay_basis_en}}, {{hourly_rate}} an hour, {{hours_per_week}} hours over {{days_per_week}} days ({{gross_salary}} a month)')) }), 'en');
     // drafts only: the commission offer (owner, 18 October 2026: Sales became Full-time paid by commission, its offer
-    // used once published) and the trainee's (its own slot since 19 October 2026, the internship's the unpaid intern's)
+    // used once published) and the unpaid intern's (19 October 2026; the one internship since 25 October 2026)
     await publish('offer_sales', docx({ body: p(r('{{full_name_en}}')) }), 'en', true);
-    await publish('offer_trainee', docx({ body: p(r('{{full_name_en}}')) }), 'en', true);
+    await publish('offer_internship', docx({ body: p(r('{{full_name_en}}')) }), 'en', true);
     await publish('nda', docx({ body: p(r('{{full_name_en}} accepted {{offer_number}}')) }), 'en');
   });
 
@@ -446,10 +446,10 @@ describe('Job offers (e2e)', () => {
       expect(freelance.template).toEqual({ slotKey: 'offer_freelance', name: 'Job offer · Freelance', status: 'missing', version: null, previewVersion: null });
       const res = await documentOf(freelance.id).expect(409);
       expect(JSON.parse((res.body as Buffer).toString('utf8')).message).toBe('Publish the Job offer · Freelance template first (Templates).');
-      const trainee = await draft('Tara Trainee', { employmentType: 'trainee' });
-      expect(trainee.template).toMatchObject({ slotKey: 'offer_trainee', status: 'draft', version: null });
-      const refused = await send(trainee.id, { via: 'link', origin: ORIGIN }).expect(409);
-      expect(refused.body.message).toBe('Publish the Job offer · Trainee template first (Templates).');
+      const intern = await draft('Tara Intern', { employmentType: 'intern', grossSalary: undefined });
+      expect(intern.template).toMatchObject({ slotKey: 'offer_internship', status: 'draft', version: null });
+      const refused = await send(intern.id, { via: 'link', origin: ORIGIN }).expect(409);
+      expect(refused.body.message).toBe('Publish the Job offer · Unpaid internship template first (Templates).');
       // paid by commission while the commission offer is a draft only: the full-time one (owner, 18 October 2026)
       const sales = await draft('Sara Sales', { paidByCommission: true });
       expect(sales.template).toMatchObject({ slotKey: 'offer_full_time', status: 'published' });
@@ -458,17 +458,17 @@ describe('Job offers (e2e)', () => {
 
     it('a draft is previewed with the newest draft of its template while none is published; sending still needs a published one', async () => {
       // owner's request, 15 October 2026: "Job offer preview should call data from the offer tab, even if not published yet"
-      const o = await draft('Sami Trainee', { employmentType: 'trainee' });
-      expect(o.template).toEqual({ slotKey: 'offer_trainee', name: 'Job offer · Trainee', status: 'draft', version: null, previewVersion: 1 });
+      const o = await draft('Sami Intern', { employmentType: 'intern', grossSalary: undefined });
+      expect(o.template).toEqual({ slotKey: 'offer_internship', name: 'Job offer · Unpaid internship', status: 'draft', version: null, previewVersion: 1 });
       expect(o.missing).toEqual([]);
       const res = await documentOf(o.id).expect(200);
       expect(res.headers['x-template-draft']).toBe('1');
       expect(res.headers['content-type']).toBe('application/pdf');
-      expect(decodeURIComponent(res.headers['content-disposition'])).toContain(`Job offer · Trainee - ${o.number} - Sami Trainee ${RUN}.pdf`);
-      expect(textOf(lastFilled())).toBe(`Sami Trainee ${RUN}`);
+      expect(decodeURIComponent(res.headers['content-disposition'])).toContain(`Job offer · Unpaid internship - ${o.number} - Sami Intern ${RUN}.pdf`);
+      expect(textOf(lastFilled())).toBe(`Sami Intern ${RUN}`);
 
       // a newer draft is used: here one printing the salary, and a value the offer lacks until it is filled in
-      await publish('offer_trainee', docx({ body: p(r('{{full_name_en}}: {{gross_salary}} over {{days_per_week}} days')) }), 'en', true);
+      await publish('offer_internship', docx({ body: p(r('{{full_name_en}}: {{gross_salary}} over {{days_per_week}} days')) }), 'en', true);
       const now = await getOffer(o.id);
       expect(now.template).toMatchObject({ status: 'draft', version: null, previewVersion: 2 });
       const missing = [{ tag: 'days_per_week', label: expect.any(String), where: { tab: 'offer', key: 'daysPerWeek' } }];
@@ -478,7 +478,8 @@ describe('Job offers (e2e)', () => {
       await patch(o.id, { daysPerWeek: 5 }).expect(200);
       const filled = await documentOf(o.id).expect(200);
       expect(filled.headers['x-template-draft']).toBe('2');
-      expect(textOf(lastFilled())).toBe(`Sami Trainee ${RUN}: 20,000 over 5 days`);
+      // an intern's gross: 0, unpaid (owner, 19 October 2026)
+      expect(textOf(lastFilled())).toBe(`Sami Intern ${RUN}: 0 over 5 days`);
       // the salary seen: audited, with the draft it was filled in from
       const audit = await prisma.auditLog.findFirst({ where: { entityType: 'job_offer', entityId: o.id, action: 'view_restricted' }, orderBy: { id: 'desc' } });
       expect(audit?.diff).toEqual({ number: o.number, fields: ['gross_salary'], seen: 'document', templateDraft: 2 });
@@ -487,7 +488,7 @@ describe('Job offers (e2e)', () => {
 
       // sending still needs a published template, and nothing was kept
       const refused = await send(o.id, { via: 'link', origin: ORIGIN }).expect(409);
-      expect(refused.body.message).toBe('Publish the Job offer · Trainee template first (Templates).');
+      expect(refused.body.message).toBe('Publish the Job offer · Unpaid internship template first (Templates).');
       expect(await prisma.jobOffer.findUniqueOrThrow({ where: { id: o.id }, select: { status: true, fileName: true } })).toEqual({ status: 'draft', fileName: null });
 
       // with a published template, nothing is said of a draft
@@ -543,7 +544,7 @@ describe('Job offers (e2e)', () => {
 
     it('prints the fields added on 15 October 2026, missing until the offer has them, each on its own field', async () => {
       // owner's request, "add the missing fields"; a bilingual template: the tags that depend on the language in Arabic
-      // (a freelancer's offer: a trainee's or an intern's has no probation since 19 October 2026, an intern's no hourly pay)
+      // (a freelancer's offer: an intern's has no probation since 19 October 2026, nor hourly pay)
       await publish(
         'offer_freelance',
         docx({

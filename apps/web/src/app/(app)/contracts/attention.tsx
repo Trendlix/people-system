@@ -17,7 +17,7 @@ import {
 } from './list';
 
 // What needs doing about contracts, in compact panels: contracts ending soon (with the day the non-renewal notice is
-// due, or for a trainee's or an intern's agreement what follows it: 19 October 2026), drafts waiting to be signed, probations ending, and endings in progress. HR and the CEO see them all; Finance,
+// due, or for an intern's agreement what follows it: 19 October 2026), drafts waiting to be signed, probations ending, and endings in progress. HR and the CEO see them all; Finance,
 // which doesn't get the alert and ending lists, only the drafts. Each row opens the employee's Employment tab. Like the
 // home page's cards (their dates, people and contracts ending soon shared in ending-soon.tsx), each panel shows a quiet
 // line when it can't load.

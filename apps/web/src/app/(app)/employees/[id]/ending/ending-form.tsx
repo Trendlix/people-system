@@ -15,9 +15,9 @@ import { trainingLastDay } from './rules';
 // pay in lieu, and for a resignation its certification at the labour office. While HR types, it shows the rule's
 // notice and the last working day, and for a fixed term the company doesn't renew, Art. 154's note and estimate (owner,
 // 18 October 2026: "فإذا كان الإنهاء من جانب صاحب العمل استحق العامل مكافأة تعادل أجر شهر عن كل سنة من سنوات الخدمة"),
-// information only. HR saving it counts as HR's approval; it then goes to the CEO. A trainee's or an intern's agreement
-// (19 October 2026) ends with Training completed: no notice, the last working day the agreement's last day (or the day
-// recorded, after it).
+// information only. HR saving it counts as HR's approval; it then goes to the CEO. An intern's agreement (19 October
+// 2026) ends with Training completed: no notice, the last working day the agreement's last day (or the day recorded,
+// after it).
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -32,7 +32,7 @@ function noticeWording(rule: EndingRule | undefined, initiator: string, noticeBy
   if (rule.key === 'training_completed') {
     return {
       label: 'Recorded on',
-      hint: 'The day the ending is recorded. No notice: the training ends with the agreement’s last day, or this day when it is after it.',
+      hint: 'The day the ending is recorded. No notice: the internship ends with the agreement’s last day, or this day when it is after it.',
     };
   }
   if (rule.key === 'non_renewal') {
@@ -161,7 +161,7 @@ export function EndingForm({
   initialRule?: string;
   /** The signed fixed-term contract, for a non-renewal: it ends on its end date, with notice by 45 working days before. */
   contract: { endDate: string; nonRenewalNoticeBy: string | null } | null;
-  /** A trainee's or an intern's agreement, for Training completed: it ends on its end date (19 October 2026). */
+  /** An intern's agreement, for Training completed: it ends on its end date (19 October 2026). */
   training?: { endDate: string } | null;
   /** While on probation: its end date, by which notice during probation must be given. */
   probationEnd: string | null;

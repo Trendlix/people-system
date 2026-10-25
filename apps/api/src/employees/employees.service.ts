@@ -138,7 +138,7 @@ export function employmentView(e: EmploymentRow, { seesEndings, ...ctx }: Employ
     underLabourLaw: underLabourLaw(e.employmentType),
     workPattern: workPatternOf(e.workArrangement),
     casualTooLong: employmentCasualTooLong(e),
-    // a trainee's or an intern's agreement never becomes open-ended: it isn't an employment contract (19 October 2026)
+    // an intern's agreement never becomes open-ended: it isn't an employment contract (19 October 2026)
     becameOpenEnded: contract && !contractShown?.training ? contractBecameOpenEnded(contract, endDate) : false,
   };
 }
@@ -348,8 +348,7 @@ export class EmployeesService {
         ...e,
         photoId: photos?.get(e.id)?.id ?? null,
         photoCrop: photos?.get(e.id)?.crop ?? null,
-        // a trainee's or an intern's Active is Trainee or Intern (owner, 19 October 2026: "interns to be labeled trainees
-        // instead of probation")
+        // an intern's Active is Intern (owner, 19 October 2026: "interns to be labeled trainees instead of probation")
         standing: (current ? employmentStanding(current) : ended ? 'former' : 'not_employed') as Standing,
         confidential: confidential.all.has(e.id),
       };
@@ -427,7 +426,7 @@ export class EmployeesService {
     const nonRenewal = employments.some((x) => x.contracts.some((c) => c.form === 'fixed'))
       ? await this.prisma.endingRule.findUnique({ where: { key: 'non_renewal' }, select: { noticeAmount: true, noticeUnit: true } })
       : null;
-    // a trainee's or an intern's agreements (19 October 2026): which one the contract in force is, and when the last one
+    // an intern's agreements (19 October 2026): which one the contract in force is, and when the last one
     // ended, a new one starting 6 months after it at the earliest
     const training = await this.prisma.employment.findMany({ where: { employeeId: id }, select: TRAINING_HISTORY });
     const agreementsOf = (employmentId: string) => {
@@ -478,7 +477,7 @@ export class EmployeesService {
       // `leads` on the current employment; an ended one's is null
       employment: current && { ...current, leads },
       employments: history.map((x) => ({ ...x, leads: x === current ? leads : null })),
-      // with where each stands, a trainee or an intern as such (19 October 2026)
+      // with where each stands, an intern as such (19 October 2026)
       reports: managing.map((m) => ({ ...m.employee, status: m.status, standing: employmentStanding(m), jobTitle: m.jobTitle })),
       ...(identity && { identity: maskedIdentity(idRow) }),
       ...(bank && { bank: maskedBank(bankRow) }),
@@ -493,7 +492,7 @@ export class EmployeesService {
       }),
       confirmation: confirmationView(confirmed ?? null, own),
       changeRequests,
-      // the end of the person's last training or internship agreement and the first day a new one may start (owner, 19
+      // the end of the person's last internship agreement and the first day a new one may start (owner, 19
       // October 2026: "a new trainee contract can be issued after 6 months of the expiration of the last trainee
       // contract"); null when they never had one
       nextTraining: lastEnded && { lastEnded, from: trainingAgainFrom(lastEnded) },

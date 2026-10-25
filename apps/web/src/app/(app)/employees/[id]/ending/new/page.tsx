@@ -13,9 +13,9 @@ import { shownCode } from '@/lib/hidden';
 
 // Ending the current employment: HR records how and when it ends (which counts as HR's approval), and it goes to the
 // CEO for approval. Once approved, HR completes it on or after the last working day, which ends the employment; the
-// profile stays, and the person is then a former employee. `?rule=probation` comes from the probation banner. A
-// trainee's or an intern's agreement (owner, 19 October 2026) ends with Training completed, on the agreement's last day:
-// no non-renewal and no Art. 154 note for it.
+// profile stays, and the person is then a former employee. `?rule=probation` comes from the probation banner. An
+// intern's agreement (owner, 19 October 2026) ends with Training completed, on the agreement's last day: no non-renewal
+// and no Art. 154 note for it.
 
 type Query = Record<string, string | string[] | undefined>;
 
@@ -46,7 +46,7 @@ async function NewEnding({ params, searchParams }: { params: Promise<{ id: strin
     );
   } else {
     // Probation can end only while on probation; a non-renewal needs a signed fixed-term contract, ending on its end date;
-    // a trainee's or an intern's agreement ends with Training completed instead (rules.ts)
+    // an intern's agreement ends with Training completed instead (rules.ts)
     const fixed =
       e.contract?.form === 'fixed' && e.contract.endDate ? { endDate: e.contract.endDate, nonRenewalNoticeBy: e.contract.nonRenewalNoticeBy } : null;
     const training = isTrainingType(e.employmentType);

@@ -116,23 +116,17 @@ describe('the contract status outside an employment contract', () => {
     }
   });
 
-  it('is the training agreement for a trainee, never probation', () => {
-    const trainee = (over: Partial<NonNullable<ContractStatusInput['employment']>> = {}) => current({ employmentType: 'trainee', probationEnd: null, ...over });
-    expect(status(trainee())).toEqual({ state: 'signed', text: 'Training agreement · ends 31/12/2026', endsOn: '2026-12-31', tone: 'ok' });
-    expect(status(trainee({ status: 'probation', probationEnd: '2027-01-15' }))).toMatchObject({ state: 'signed', text: 'Training agreement · ends 31/12/2026' });
-    expect(status(trainee({ contract: signed({ endDate: '2026-11-05' }) }))).toMatchObject({ text: 'Training agreement · ends 05/11/2026 (in 15 days)', tone: 'warn' });
-    expect(status(trainee({ contract: signed({ endDate: '2026-09-30' }) }))).toMatchObject({ state: 'ended', text: 'Training agreement · ended 30/09/2026', tone: 'warn' });
-    expect(status(trainee({ contract: signed({ status: 'draft' }) }))).toMatchObject({ state: 'draft', text: 'Training agreement · draft, not signed', tone: 'muted' });
-    expect(status(trainee({ contract: null }))).toMatchObject({ state: 'no_contract', text: 'No training agreement', tone: 'muted' });
-    expect(status(trainee({ joinDate: '2026-11-01', contract: signed({ startDate: '2026-11-01' }) }))).toMatchObject({ state: 'starts', text: 'Training agreement · starts 01/11/2026' });
-  });
-
-  it('is the unpaid internship for an intern', () => {
+  // the one internship since 25 October 2026 (owner: "unpaid internship and training are the same thing")
+  it('is the unpaid internship for an intern, never probation', () => {
     const intern = (over: Partial<NonNullable<ContractStatusInput['employment']>> = {}) => current({ employmentType: 'intern', probationEnd: null, ...over });
+    expect(status(intern())).toEqual({ state: 'signed', text: 'Unpaid internship · ends 31/12/2026', endsOn: '2026-12-31', tone: 'ok' });
+    expect(status(intern({ status: 'probation', probationEnd: '2027-01-15' }))).toMatchObject({ state: 'signed', text: 'Unpaid internship · ends 31/12/2026' });
     expect(status(intern({ contract: signed({ endDate: '2027-01-15' }) }))).toEqual({ state: 'signed', text: 'Unpaid internship · ends 15/01/2027', endsOn: '2027-01-15', tone: 'ok' });
     expect(status(intern({ contract: signed({ endDate: '2026-11-05' }) }))).toMatchObject({ text: 'Unpaid internship · ends 05/11/2026 (in 15 days)', tone: 'warn' });
-    expect(status(intern({ contract: signed({ status: 'draft' }) }))).toMatchObject({ text: 'Unpaid internship · draft, not signed' });
+    expect(status(intern({ contract: signed({ endDate: '2026-09-30' }) }))).toMatchObject({ state: 'ended', text: 'Unpaid internship · ended 30/09/2026', tone: 'warn' });
+    expect(status(intern({ contract: signed({ status: 'draft' }) }))).toMatchObject({ state: 'draft', text: 'Unpaid internship · draft, not signed', tone: 'muted' });
     expect(status(intern({ contract: null }))).toMatchObject({ state: 'no_contract', text: 'Unpaid internship · no agreement', tone: 'muted' });
+    expect(status(intern({ joinDate: '2026-11-01', contract: signed({ startDate: '2026-11-01' }) }))).toMatchObject({ state: 'starts', text: 'Unpaid internship · starts 01/11/2026' });
   });
 });
 

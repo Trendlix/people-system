@@ -179,11 +179,11 @@ describe('payslipContent: rows that are 0 are left out', () => {
     // the salary rows are 0, so left out
     expect(c.earnings!.rows).toEqual([{ label: 'Transportation allowance', note: 'Not taxed', amount: '1,500.00', value: 1500 }]);
     expect(c.deductions).toBeNull();
-    expect(c.facts).toContainEqual({ label: 'Employment', value: 'Unpaid internship (outside the labour law) · since 01/03/2025' });
+    expect(c.facts).toContainEqual({ label: 'Employment', value: 'Unpaid internship · since 01/03/2025' });
     expect(c.facts.map((f) => f.label)).not.toContain('Social insurance no.');
     expect(c.net.amount).toBe('1,500.00');
     expect(c.companyShare).toBeNull();
-    expect(texts(payslipContent(intern, 'ar')).join(' ')).toContain('تدريب غير مدفوع (غير خاضع لقانون العمل)');
+    expect(texts(payslipContent(intern, 'ar')).join(' ')).toContain('تدريب غير مدفوع');
   });
 
   it('not registered with social insurance: no insurance row, number or company share; the year to date leaves it out', () => {

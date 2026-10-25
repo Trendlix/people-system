@@ -238,13 +238,10 @@ export class RaiseRequestsService {
     const { employee, employment, requester, viewer } = await this.asker(employeeId, user);
     if (!requester || !viewer) throw new ForbiddenException('Only the employee themself, their direct manager or HR can ask for a raise for them.');
     if (!employment) throw new ConflictException(`${employee.fullNameEn} has no current employment: a raise is asked for under one.`);
-    // refused when asked, not only when HR would prepare it: a trainee's pay is the agreement's stages, an intern has none
-    // (owner, 19 October 2026: the unpaid internship, outside the labour law)
+    // refused when asked, not only when HR would prepare it: an intern has no pay (owner, 19 October 2026: the unpaid
+    // internship, outside the labour law)
     if (employment.employmentType === 'intern') {
       throw new ConflictException(`${employee.fullNameEn} is an intern, paid no wage (an unpaid internship): there is no pay to raise. HR can convert the internship to a full-time contract instead.`);
-    }
-    if (employment.employmentType === 'trainee') {
-      throw new ConflictException(`${employee.fullNameEn} is a trainee, paid by the stages of the training agreement (Labour Law Art. 29): HR changes the pay with a new training agreement, not a raise.`);
     }
     const effectiveProblem = effectiveFromProblem(dto.effectiveFrom, todayInCairo());
     if (effectiveProblem) throw new BadRequestException(effectiveProblem);

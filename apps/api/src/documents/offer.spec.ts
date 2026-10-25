@@ -1,5 +1,5 @@
 import { TEMPLATE_SLOTS } from '@trendlix/shared';
-import { isVersionSlot, offered, offeredSlots, sectionOf, SECTION_SLOTS, versionSlots } from './offer.js';
+import { isVersionSlot, offered, offeredSlots, RETIRED_SECTIONS, retiredSlotsWith, sectionOf, SECTION_SLOTS, versionSlots } from './offer.js';
 
 describe('which documents the Employment tab offers', () => {
   it('lists every slot in one section, except the payslips', () => {
@@ -43,21 +43,15 @@ describe('which documents the Employment tab offers', () => {
     expect(offered('clearance_dues', s)).toBe(false);
   });
 
-  it('a trainee gets the training agreement and offer of their own (19 October 2026), and the certificate; payslips never', () => {
-    const s = { employmentType: 'trainee', ending: null, ended: false } as const;
-    expect(offeredSlots(s)).toEqual({
-      contract: ['contract_trainee', 'contract_amendment'],
-      hiring: ['offer_trainee', 'nda'],
-      insurance: [],
-      letters: ['bank_letter', 'hr_letter_ar', 'hr_letter_en', 'cert_experience', 'cert_internship'],
-      leaving: [],
-    });
-    expect(offered('payslip_ar', s)).toBe(false);
-    expect(offered('offer_full_time', s)).toBe(false);
-    // the internship slots are the unpaid interns'
-    expect(offered('contract_internship', s)).toBe(false);
-    expect(offered('offer_internship', s)).toBe(false);
-    expect(offered('no_such_slot', s)).toBe(false);
+  it('never offers the retired slots of the paid trainee (25 October 2026), whose documents on record still show', () => {
+    expect(SECTION_SLOTS.contract).not.toContain('contract_trainee');
+    expect(SECTION_SLOTS.hiring).not.toContain('offer_trainee');
+    expect(RETIRED_SECTIONS).toEqual({ contract_trainee: 'contract', offer_trainee: 'hiring' });
+    const docs = [{ slotKey: 'contract_trainee' }, { slotKey: 'offer_trainee' }, { slotKey: 'nda' }];
+    expect(retiredSlotsWith('contract', docs)).toEqual(['contract_trainee']);
+    expect(retiredSlotsWith('hiring', docs)).toEqual(['offer_trainee']);
+    expect(retiredSlotsWith('hiring', [{ slotKey: 'offer_internship' }])).toEqual([]);
+    expect(retiredSlotsWith('letters', docs)).toEqual([]);
   });
 
   it('an unpaid intern gets the owner’s internship agreement and offer, and the certificate; no social insurance forms (19 October 2026)', () => {
@@ -72,6 +66,9 @@ describe('which documents the Employment tab offers', () => {
     expect(offered('contract_trainee', s)).toBe(false);
     expect(offered('offer_trainee', s)).toBe(false);
     expect(offered('insurance_form_1', s)).toBe(false);
+    expect(offered('payslip_ar', s)).toBe(false);
+    expect(offered('offer_full_time', s)).toBe(false);
+    expect(offered('no_such_slot', s)).toBe(false);
     // an ending: the clearance, and Form 6 never (no company social insurance)
     expect(offeredSlots({ ...s, ending: { initiator: 'company' } })).toMatchObject({ insurance: [], leaving: ['clearance_dues'] });
   });

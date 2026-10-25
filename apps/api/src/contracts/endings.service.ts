@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { agreementName, ENDING_STATUS_LABELS, isTrainingType, NOTICE_UNIT_LABELS, type EndingStatus, type NoticeUnit } from '@trendlix/shared';
+import { ENDING_STATUS_LABELS, INTERNSHIP_AGREEMENT, isTrainingType, NOTICE_UNIT_LABELS, type EndingStatus, type NoticeUnit } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { addDays, fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../common/date-only.js';
@@ -97,17 +97,17 @@ export class EndingsService {
       }
     }
 
-    // a trainee's training agreement or an intern's internship agreement (owner, 19 October 2026: "their contracts are
-    // never renewed", then renewed once at most): not a fixed term the company doesn't renew, it ends as Training
-    // completed; and Training completed ends nothing else
+    // an intern's internship agreement (owner, 19 October 2026: "their contracts are never renewed", then renewed once at
+    // most): not a fixed term the company doesn't renew, it ends as Training completed; and Training completed ends
+    // nothing else
     const training = isTrainingType(employment.employmentType);
     if (rule.key === 'non_renewal' && training) {
       throw new BadRequestException(
-        `A${employment.employmentType === 'intern' ? 'n' : ''} ${agreementName(employment.employmentType)} isn’t renewed as a fixed term is: end it as Training completed, or convert it to a full-time contract.`,
+        `An ${INTERNSHIP_AGREEMENT} isn’t renewed as a fixed term is: end it as Training completed, or convert it to a full-time contract.`,
       );
     }
     if (rule.key === 'training_completed' && !training) {
-      throw new BadRequestException(`${employment.employee.fullNameEn} isn’t a trainee or an intern: "${rule.label}" ends a training or internship agreement. Choose another way to end the employment.`);
+      throw new BadRequestException(`${employment.employee.fullNameEn} isn’t an intern: "${rule.label}" ends an ${INTERNSHIP_AGREEMENT}. Choose another way to end the employment.`);
     }
 
     // a resignation is certified at the labour office (Decree 187/2025); the company decides within 10 days, or it counts as accepted
@@ -147,7 +147,7 @@ export class EndingsService {
     if (rule.key === 'training_completed') {
       const contract = await this.prisma.contract.findFirst({ where: { employmentId, status: 'active' }, orderBy: { version: 'desc' } });
       if (!contract?.endDate) {
-        throw new BadRequestException(`Only a signed ${agreementName(employment.employmentType)} ends as "${rule.label}". Sign it first, or choose another way to end the employment.`);
+        throw new BadRequestException(`Only a signed ${INTERNSHIP_AGREEMENT} ends as "${rule.label}". Sign it first, or choose another way to end the employment.`);
       }
       const end = fromDateOnly(contract.endDate);
       lastWorkingDay = givenOn > end ? givenOn : end;

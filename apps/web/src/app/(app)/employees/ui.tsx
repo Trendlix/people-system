@@ -49,9 +49,8 @@ export function RequireHr({ profile, children }: { profile: Pick<EmployeeProfile
 export { reportStanding, standingOf };
 
 /**
- * An employment's status. With the current employment's type (`employmentType`), a trainee's or an intern's Active (or
- * an older Probation) shows as Trainee or Intern (owner, 19 October 2026: "interns to be labeled trainees instead of
- * probation").
+ * An employment's status. With the current employment's type (`employmentType`), an intern's Active (or an older
+ * Probation) shows as Intern (owner, 19 October 2026: "interns to be labeled trainees instead of probation").
  */
 export function StatusBadge({ status, employmentType }: { status: EmployeeStatus; employmentType?: EmploymentType | null }) {
   const training = trainingStanding(status, employmentType);
@@ -59,7 +58,7 @@ export function StatusBadge({ status, employmentType }: { status: EmployeeStatus
   return <span className={`badge ${STATUS_STYLE[status]}`}>{LABELS.status[status]}</span>;
 }
 
-/** Where someone stands: their current employment's status (Trainee or Intern for one), or Former employee / Not employed yet. */
+/** Where someone stands: their current employment's status (Intern for an intern), or Former employee / Not employed yet. */
 export function StandingBadge({ standing }: { standing: Standing }) {
   return <span className={`badge ${STANDING_STYLE[standing]}`}>{STANDING_LABELS[standing]}</span>;
 }

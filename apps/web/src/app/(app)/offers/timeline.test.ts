@@ -186,14 +186,14 @@ describe('what the template lacks', () => {
       href: '/organization/templates/offer_full_time',
     });
     expect(
-      templateProblem(offer({ status: 'sent', template: { slotKey: 'offer_internship', name: 'Job offer · Trainee', status: 'draft', version: null, previewVersion: 1 } }))?.text,
+      templateProblem(offer({ status: 'sent', template: { slotKey: 'offer_internship', name: 'Job offer · Unpaid internship', status: 'draft', version: null, previewVersion: 1 } }))?.text,
     ).toMatch(/only a draft\. Publish it in Templates/);
   });
 
   it('a draft offer is previewed with the draft template meanwhile, but it has to be published before the offer is sent', () => {
-    const draftOnly = { slotKey: 'offer_internship', name: 'Job offer · Trainee', status: 'draft', version: null, previewVersion: 3 } as const;
-    expect(templateProblem(offer({ employmentType: 'trainee', template: draftOnly }))).toEqual({
-      text: 'The job offer template “Job offer · Trainee” is only a draft: the offer is previewed with draft v3, but the template still has to be published in Templates before the offer can be sent.',
+    const draftOnly = { slotKey: 'offer_internship', name: 'Job offer · Unpaid internship', status: 'draft', version: null, previewVersion: 3 } as const;
+    expect(templateProblem(offer({ employmentType: 'intern', template: draftOnly }))).toEqual({
+      text: 'The job offer template “Job offer · Unpaid internship” is only a draft: the offer is previewed with draft v3, but the template still has to be published in Templates before the offer can be sent.',
       href: '/organization/templates/offer_internship',
     });
     expect(draftTemplateVersion(offer({ template: draftOnly }))).toBe(3);
@@ -219,8 +219,8 @@ describe('the document, a protected PDF only', () => {
       draftTemplate: null,
     });
     // previewed with the draft template meanwhile
-    const draftOnly = { slotKey: 'offer_internship', name: 'Job offer · Trainee', status: 'draft', version: null, previewVersion: 3 } as const;
-    expect(documentState(offer({ employmentType: 'trainee', template: draftOnly }), 'draft')).toEqual({ pdf: true, why: null, draftTemplate: 3 });
+    const draftOnly = { slotKey: 'offer_internship', name: 'Job offer · Unpaid internship', status: 'draft', version: null, previewVersion: 3 } as const;
+    expect(documentState(offer({ employmentType: 'intern', template: draftOnly }), 'draft')).toEqual({ pdf: true, why: null, draftTemplate: 3 });
     // missing values or no template at all: the warning at the top says why, once
     const missing = [{ tag: 'job_title_ar', label: 'Job title (Arabic)', where: { tab: 'offer', key: 'jobTitleId' } }];
     expect(documentState(offer({ missing }), 'draft')).toEqual({ pdf: false, why: null, draftTemplate: null });

@@ -14,7 +14,7 @@ import {
   INTERN_TERM_MESSAGE,
   isTrainingType,
   monthlyFromHourly,
-  noProbationMessage,
+  NO_PROBATION_MESSAGE,
   OFFER_VALID_DAYS,
   type OfferShownStatus,
 } from '@trendlix/shared';
@@ -703,10 +703,10 @@ export class OffersService {
     }
 
     // probation once per employer (Art. 90): none for someone who already had an employment with the company; none for
-    // a trainee or an intern (owner, 19 October 2026: "interns to be labeled trainees instead of probation"), whose
-    // agreement isn't an employment contract, and the settings' again for one that was a trainee's or an intern's
+    // an intern (owner, 19 October 2026: "interns to be labeled trainees instead of probation"), whose agreement isn't an
+    // employment contract, and the settings' again for one that was an intern's
     if (isTrainingType(v.employmentType)) {
-      if (dto.probationMonths) throw new BadRequestException(noProbationMessage(v.employmentType));
+      if (dto.probationMonths) throw new BadRequestException(NO_PROBATION_MESSAGE);
       v.probationMonths = 0;
     } else if (hadEmployment) {
       if (dto.probationMonths) throw new BadRequestException(`${personName} already had a probation with the company; the law allows it once (Art. 90).`);
@@ -714,7 +714,7 @@ export class OffersService {
     } else if (before && isTrainingType(before.employmentType) && dto.probationMonths === undefined) {
       v.probationMonths = settings.probationMonths;
     }
-    // a new training or internship agreement for a former employee 6 months after their last one ended at the earliest
+    // a new internship agreement for a former employee 6 months after their last one ended at the earliest
     // (owner, 19 October 2026: "a new trainee contract can be issued after 6 months of the expiration of the last trainee
     // contract")
     if (v.employeeId && isTrainingType(v.employmentType) && (creating || dto.employeeId !== undefined || dto.joinDate !== undefined || dto.employmentType !== undefined)) {

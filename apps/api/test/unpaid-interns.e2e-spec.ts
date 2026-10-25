@@ -14,9 +14,11 @@ import { createApp, createUser, signIn } from './helpers.js';
 // of trainee, we are not paying them salary, its just transportation allowance. can i add the gross with 0?"): an
 // intern's internship agreement pays no wage (the gross 0) and its allowances on top; outside the labour law, like
 // freelance, so no social insurance, no salary tax or Martyrs' Fund, no leave and no raise; the owner's internship
-// templates are the intern's, the paid trainee's have slots of their own. The interns and the trainee are put in the
-// database as they would be hired, so these tests don't depend on the hiring forms. Months are counted from today in
-// Cairo: the run is for last month. Everyone here is invented, and deleted at the end.
+// templates are the intern's, the one internship since 25 October 2026 (owner: "unpaid internship and training are the
+// same thing .. keep the unpaid internship with its document and delete the trainee with its documents"). The intern
+// and a full-timer to compare with are put in the database as they would be hired, so these tests don't depend on the
+// hiring forms. Months are counted from today in Cairo: the run is for last month. Everyone here is invented, and
+// deleted at the end.
 
 const RUN = `${Date.now().toString(36)}5`;
 const TODAY = todayInCairo();
@@ -57,7 +59,7 @@ describe('Unpaid interns (e2e)', () => {
   let internSession: string;
   let transportId: string;
   let intern: Person; // with a sign-in, flagged as registered with social insurance
-  let trainee: Person; // a paid trainee, for the slots
+  let fullTimer: Person; // paid under the law, to compare with
   const api = () => request(app.getHttpServer());
   /** Everyone this file adds, deleted at the end with what was made for them. */
   const added: string[] = [];
@@ -67,17 +69,13 @@ describe('Unpaid interns (e2e)', () => {
 
   const messageOf = (res: request.Response) => res.body.message as string | string[];
 
-  /** Someone hired as an intern (gross 0, the transportation allowance) or a trainee, signed, as the hiring forms would. */
-  async function hired(name: string, type: 'intern' | 'trainee', workEmail?: string): Promise<Person> {
+  /** Someone hired as an intern (gross 0, the transportation allowance) or full-time, signed, as the hiring forms would. */
+  async function hired(name: string, type: 'intern' | 'full_time', workEmail?: string): Promise<Person> {
     const fullNameEn = `${name} ${RUN}`;
     const person = await api().post('/api/employees').set('Cookie', hr).send({ fullNameEn, fullNameAr: 'متدرب تجريبي' }).expect(201);
     added.push(person.body.id);
     if (workEmail) await prisma.employee.update({ where: { id: person.body.id }, data: { workEmail } });
     const employment = await prisma.employment.create({ data: { employeeId: person.body.id, employmentType: type, status: 'active', joinDate: toDateOnly(JOINED) } });
-    const stages = [
-      { name: 'Basics', months: 3, pay: 8000 },
-      { name: 'Practice', months: 3, pay: 9000 },
-    ];
     const contract = await prisma.contract.create({
       data: {
         number: `INT-${RUN}-${++n}`,
@@ -93,7 +91,6 @@ describe('Unpaid interns (e2e)', () => {
         payBasis: 'monthly',
         status: 'active',
         signedOn: toDateOnly(JOINED),
-        ...(type === 'trainee' && { traineeStages: stages }),
         allowances: { create: [{ allowanceTypeId: transportId, nameEn: 'Transportation', nameAr: 'بدل انتقال', taxable: true, insured: false, amount: TRANSPORT }] },
       },
     });
@@ -117,7 +114,7 @@ describe('Unpaid interns (e2e)', () => {
     transportId = (await api().post('/api/allowance-types').set('Cookie', hr).send({ nameEn: `Transportation ${RUN}`, nameAr: 'بدل انتقال', taxable: true }).expect(201)).body.id;
     intern = await hired('Ilham Intern', 'intern', internEmail);
     await prisma.employee.update({ where: { id: intern.id }, data: { socialInsured: true } });
-    trainee = await hired('Tarek Trainee', 'trainee');
+    fullTimer = await hired('Fadi Fulltime', 'full_time');
   });
 
   afterAll(async () => {
@@ -159,8 +156,8 @@ describe('Unpaid interns (e2e)', () => {
         transfer: TRANSPORT,
         companyCost: TRANSPORT,
       });
-      // a paid trainee under the law: the stage's pay, taxed
-      const paid = run.lines.find((l) => l.employeeId === trainee.id)!;
+      // a full-timer under the law: the gross, taxed
+      const paid = run.lines.find((l) => l.employeeId === fullTimer.id)!;
       expect(paid.terms).toMatchObject({ gross: 8000, statutory: true });
       expect(paid.result.monthlyTax).toBeGreaterThan(0);
     });
@@ -210,7 +207,7 @@ describe('Unpaid interns (e2e)', () => {
       return Object.fromEntries(res.sections.map((s) => [s.key, s.items.map((i) => i.slotKey)]));
     };
 
-    it('offer an intern the owner’s internship agreement and offer, a trainee their own; the certificate to both', async () => {
+    it('offer an intern the owner’s internship agreement and offer, and the internship certificate, which is theirs alone', async () => {
       expect(await tab(intern.id)).toEqual({
         contract: ['contract_internship'],
         hiring: ['offer_internship', 'nda'],
@@ -218,16 +215,21 @@ describe('Unpaid interns (e2e)', () => {
         letters: ['bank_letter', 'hr_letter_ar', 'hr_letter_en', 'cert_experience', 'cert_internship'],
         leaving: [],
       });
-      expect(await tab(trainee.id)).toMatchObject({ contract: ['contract_trainee'], hiring: ['offer_trainee', 'nda'], insurance: [] });
-      expect((await tab(trainee.id)).letters).toContain('cert_internship');
+      expect(await tab(fullTimer.id)).toMatchObject({ hiring: ['offer_full_time', 'nda'] });
+      expect((await tab(fullTimer.id)).contract).not.toContain('contract_internship');
+      expect((await tab(fullTimer.id)).letters).not.toContain('cert_internship');
 
       const check = (who: Person, slotKey: string) => api().get(`/api/employees/${who.id}/documents/check`).query({ slotKey, contractId: who.contractId }).set('Cookie', hr);
-      expect(messageOf(await check(intern, 'contract_trainee').expect(400))).toBe(
-        `Training agreement · Trainee is for trainee employments; ${intern.name}’s is unpaid internship (outside the labour law). Choose the document for an unpaid internship (outside the labour law) employment.`,
+      expect(messageOf(await check(fullTimer, 'contract_internship').expect(400))).toBe(
+        `Internship agreement · Unpaid internship is for unpaid internship employments; ${fullTimer.name}’s is full-time. Choose the document for a full-time employment.`,
       );
-      expect(messageOf(await check(trainee, 'contract_internship').expect(400))).toBe(
-        `Internship agreement · Unpaid internship is for unpaid internship (outside the labour law) employments; ${trainee.name}’s is trainee. Choose the document for a trainee employment.`,
+      expect(messageOf(await check(fullTimer, 'cert_internship').expect(400))).toBe(
+        `Internship certificate is for unpaid internship employments; ${fullTimer.name}’s is full-time. Choose the document for a full-time employment.`,
       );
+      // the trainee's training agreement and offer went on 25 October 2026: not in the library, not offered to anyone
+      for (const gone of ['contract_trainee', 'offer_trainee']) {
+        expect(messageOf(await check(intern, gone).expect(400))).toBe('Choose a document the Employment tab offers.');
+      }
     });
 
     it('print the intern’s type, the gross as 0 and the transportation allowance on the internship agreement', async () => {
@@ -238,22 +240,25 @@ describe('Unpaid interns (e2e)', () => {
       });
       const made = (await api().post(`/api/employees/${intern.id}/documents`).set('Cookie', hr).send({ slotKey: 'contract_internship', contractId: intern.contractId }).expect(201)).body as { id: string };
       const kept = await prisma.generatedDocument.findUniqueOrThrow({ where: { id: made.id }, select: { data: true } });
-      expect(textOf(Buffer.from(kept.data))).toBe([intern.name, 'Unpaid internship (outside the labour law)', '0', 'Transportation: 1,500'].join('\n'));
+      expect(textOf(Buffer.from(kept.data))).toBe([intern.name, 'Unpaid internship', '0', 'Transportation: 1,500'].join('\n'));
     });
   });
 
   describe('reimbursement types', () => {
-    it('may be for interns: offered to an intern, not one for trainees only', async () => {
+    it('may be for interns: offered to an intern, not one for full-timers only; no longer for trainees', async () => {
       const create = (employmentTypes: string[]) =>
         api().post('/api/reimbursement-types').set('Cookie', hr).send({ nameEn: `Interns ${RUN} ${employmentTypes.join(' ')}`, nameAr: 'نوع', employmentTypes });
       const forInterns = (await create(['intern']).expect(201)).body as { id: string; employmentTypes: string[] };
-      const forTrainees = (await create(['trainee']).expect(201)).body as { id: string };
-      reimbursementTypes.push(forInterns.id, forTrainees.id);
+      const forFullTimers = (await create(['full_time']).expect(201)).body as { id: string };
+      reimbursementTypes.push(forInterns.id, forFullTimers.id);
       expect(forInterns.employmentTypes).toEqual(['intern']);
       const mine = ((await api().get('/api/me/reimbursement-types').set('Cookie', internSession).expect(200)).body as { id: string }[]).map((t) => t.id);
       expect(mine).toContain(forInterns.id);
-      expect(mine).not.toContain(forTrainees.id);
-      expect(messageOf(await create(['interns']).expect(400))).toEqual(['Choose the employment types from: full_time, part_time, trainee, intern, freelance; [] for every employment type.']);
+      expect(mine).not.toContain(forFullTimers.id);
+      const refused = ['Choose the employment types from: full_time, part_time, intern, freelance; [] for every employment type.'];
+      expect(messageOf(await create(['interns']).expect(400))).toEqual(refused);
+      // the trainee went on 25 October 2026 (owner: "unpaid internship and training are the same thing")
+      expect(messageOf(await create(['trainee']).expect(400))).toEqual(refused);
     });
   });
 

@@ -41,8 +41,8 @@ export function ContractPerson({ employee }: { employee: ContractEmployeeRef }) 
 }
 
 /**
- * A contract ending soon: the person and its end; under them, the day the non-renewal notice is due (or, for a trainee's
- * or an intern's agreement, what follows it: 19 October 2026), what is drafted after it, and the law's warning.
+ * A contract ending soon: the person and its end; under them, the day the non-renewal notice is due (or, for an
+ * intern's agreement, what follows it: 19 October 2026), what is drafted after it, and the law's warning.
  */
 export function ExpiringRow({ contract: c, today }: { contract: ExpiringContract; today: string }) {
   const below = expiringLine(c, today);

@@ -170,32 +170,16 @@ describe('the contract’s length by the labour law (18 October 2026)', () => {
     expect(missing).toEqual(['Enter the job the contract is for: a contract for a specific job ends when it is done (Labour Law Art. 155).']);
   });
 
-  it('sends a trainee’s training agreement: fixed-term for its stages’ months, with the stages (Art. 29)', () => {
+  it('sends no training stages: the paid trainee went on 25 October 2026, a fixed term for its months alone', () => {
     const errors: string[] = [];
-    const stages = { traineeStageName: ['Basics', 'Practice'], traineeStageMonths: ['3', '9'], traineeStagePay: ['4,000', '6,000'] };
-    expect(lengthBody(form({ form: 'fixed', durationMonths: '24', ...stages }), errors, false)).toEqual({
-      form: 'fixed',
-      durationMonths: 12,
-      traineeStages: [
-        { name: 'Basics', months: 3, pay: 4000 },
-        { name: 'Practice', months: 9, pay: 6000 },
-      ],
-    });
+    const stages = { traineeStageName: ['Basics'], traineeStageMonths: ['3'], traineeStagePay: ['4,000'] };
+    expect(lengthBody(form({ form: 'fixed', durationMonths: '6', ...stages }), errors, false)).toEqual({ form: 'fixed', durationMonths: 6 });
     expect(errors).toEqual([]);
-    // the whole contract: the stages go with the pay
-    expect(contractBody(form({ ...monthly, ...stages }), errors, false, false)).toMatchObject({ form: 'fixed', durationMonths: 12, traineeStages: expect.any(Array) });
-    expect(errors).toEqual([]);
-    const falling: string[] = [];
-    lengthBody(form({ traineeStageName: ['Basics', 'Practice'], traineeStageMonths: ['3', ''], traineeStagePay: ['6000', '4000'] }), falling, false);
-    expect(falling).toEqual([
-      'Training stage 2’s length must be a whole number of months, 1 or more.',
-      expect.stringMatching(/^Training stage 2’s pay must be more than stage 1’s/),
-    ]);
   });
 });
 
-// owner, 19 October 2026: trainees and interns have no probation; an intern is unpaid; an agreement converts to full-time
-describe('trainees’, interns’ and converted contracts', () => {
+// owner, 19 October 2026: interns have no probation; an intern is unpaid; an agreement converts to full-time
+describe('interns’ and converted contracts', () => {
   it('sends an intern’s agreement without a gross, a net or a basic part, its allowances on top', () => {
     const errors: string[] = [];
     const intern = { startDate: '1/11/2026', form: 'fixed', durationMonths: '3', probationMonths: '0', unpaid: '1', payBasis: 'monthly', daysPerWeek: '5', note: '' };
@@ -222,7 +206,7 @@ describe('trainees’, interns’ and converted contracts', () => {
     expect(errors).toEqual([]);
   });
 
-  it('sends a trainee’s or an intern’s probation as the form gives it: 0', () => {
+  it('sends an intern’s probation as the form gives it: 0', () => {
     const errors: string[] = [];
     expect(contractBody(form({ ...monthly, probationMonths: '0' }), errors, false, false)).toMatchObject({ probationMonths: 0 });
     expect(errors).toEqual([]);

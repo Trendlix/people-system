@@ -4,8 +4,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
-  agreementName,
   EMPLOYMENT_TYPES,
+  INTERNSHIP_AGREEMENT,
   isTrainingType,
   LABELS,
   PROBATION_MONTHS,
@@ -32,12 +32,12 @@ import { withCode } from '@/lib/hidden';
 // The fields of an employment, used by the Add employment page (above the first contract's terms: hiring in one form,
 // owner's decision, 16 October 2026) and the Edit employment page. The employment types are the labour law's (owner, 18
 // October 2026: "can we update the employment types based on the labour law?"): Sales became Full-time with Paid by
-// commission, Internship became Trainee, Freelance is outside the labour law; with them the nature of the work (Labour
+// commission, Freelance is outside the labour law; with them the nature of the work (Labour
 // Law Art. 1(6–8)), casual work warned past its 6 months. Adding an employment, choosing its department or team fills in
 // the Direct manager with its lead (owner, 19 October 2026: "i want to add department lead person, the person in
 // charge"): the team lead, else the department's head, while the manager is still empty or still that suggestion; one
-// HR picked is never changed. A trainee's or an intern's employment has no probation (19 October 2026: "interns to be
-// labeled trainees instead of probation"), which the status and the join date say.
+// HR picked is never changed. An intern's employment has no probation (19 October 2026: "interns to be labeled trainees
+// instead of probation"), which the status and the join date say.
 
 export type EmploymentPickers = {
   departments: Department[];
@@ -62,8 +62,8 @@ const OFFICE_DAYS = [
   [4, 'Thu'],
 ] as const;
 
-/** Only people with a current employment can be picked as a new manager. A current trainee or intern too (19 October 2026). */
-const EMPLOYED: readonly string[] = ['active', 'probation', 'trainee', 'intern', 'on_leave', 'notice_period'];
+/** Only people with a current employment can be picked as a new manager. A current intern too (19 October 2026). */
+const EMPLOYED: readonly string[] = ['active', 'probation', 'intern', 'on_leave', 'notice_period'];
 
 /** The office days ticked before a failed save, else the saved ones. */
 function officeDaysOf(state: FormState, saved: number[]): Set<number> {
@@ -384,7 +384,7 @@ export function EmploymentFields({
           {/* the probation end is worked out, never typed (owner, 15 October 2026) */}
           <p id={fid('joinDate-hint')} className="hint">
             {isTrainingType(type)
-              ? `The ${agreementName(type)} starts on it, with no probation.`
+              ? `The ${INTERNSHIP_AGREEMENT} starts on it, with no probation.`
               : contractBelow
                 ? "The contract starts on it, and its probation, set below, runs from it: at most 3 months, and none for someone who worked here before (Labour Law Art. 90)."
                 : `Probation is worked out from it: ${PROBATION_MONTHS} months, or none for someone who worked here before (Labour Law Art. 90). Once the first contract is drafted, its probation applies.`}

@@ -116,10 +116,14 @@ export function itemContext(item: Pick<DocumentItem, 'contractNumber' | 'contrac
   return `Contract${number ? ` ${number}` : ''}${item.contractVersion ? `, v${item.contractVersion}` : ''}`;
 }
 
-/** Where the item's template stands, in words: none, only a draft, or the version in use. */
+/**
+ * Where the item's template stands, in words: none, only a draft, the version in use, or retired: a slot taken out of the
+ * library (owner, 25 October 2026: "delete the trainee with its documents"), listed for the documents made from it.
+ */
 export function templateStateText(item: Pick<DocumentItem, 'templateStatus' | 'templateVersion'>): { text: string; tone: Tone } {
   if (item.templateStatus === 'missing') return { text: 'No template yet', tone: 'warn' };
   if (item.templateStatus === 'draft') return { text: 'Draft template only, publish it first', tone: 'warn' };
+  if (item.templateStatus === 'retired') return { text: 'Retired template, kept on record', tone: 'muted' };
   return { text: item.templateVersion ? `Template v${item.templateVersion}` : 'Template published', tone: 'muted' };
 }
 

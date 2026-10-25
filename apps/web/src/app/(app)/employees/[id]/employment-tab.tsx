@@ -111,7 +111,7 @@ function employmentFields(e: Employment, linkPeople: boolean, topGrade: boolean)
       // the unpaid internship (19 October 2026)
       note: e.paidByCommission ? 'Paid by commission' : outsideLawShort(e.employmentType),
     },
-    // a trainee's or an intern's Active shows as Trainee or Intern (19 October 2026)
+    // an intern's Active shows as Intern (19 October 2026)
     { key: 'status', label: 'Status', value: <StatusBadge status={e.status} employmentType={e.employmentType} /> },
     { key: 'team', label: placeLabel(e), value: e.department && departmentName(e.department), required: true },
     {

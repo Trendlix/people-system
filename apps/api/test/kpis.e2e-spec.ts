@@ -14,7 +14,7 @@ import { createApp, createUser, signIn } from './helpers.js';
 // HR"): the KPI settings; HR building a job title's template, a draft and published versions, publishing applying to
 // the scorecards opened from next month, samples and copies, managers reading their team's; a month M's scorecards
 // opened on the 1st of M + 1 for everyone under a job title with a template in force (not freelancers or unpaid interns,
-// trainees yes), the Attendance metric from the month's payroll line; the steps with their roles: the employee's
+// part-timers yes), the Attendance metric from the month's payroll line; the steps with their roles: the employee's
 // self-rating, the direct manager's scoring, a team lead standing in, HR scoring for someone with nobody in charge, HR's
 // calibration with a reason, the sign-off, a missed self-rating noted, final on the 10th unsigned; a C-level person's
 // scored by the CEO and hidden from HR; the payroll of M + 1 reading M's final %: 85% no cut, 70% 30% of the variable
@@ -213,7 +213,7 @@ describe('KPIs (e2e)', () => {
     await person('nora', 'Nora Teamed', emails.nora, { departmentId: teamId, jobTitleId: analystId });
     await person('omar', 'Omar Alone', emails.omar, { departmentId: deptId, jobTitleId: analystId });
     await person('tia', 'Tia Timed', emails.tia, { departmentId: deptId, jobTitleId: analystId, managerId: ids.mona, shiftId: shiftA });
-    await person('tom', 'Tom Trainee', emails.tom, { departmentId: deptId, jobTitleId: analystId, managerId: ids.mona, employmentType: 'trainee' });
+    await person('tom', 'Tom Parttime', emails.tom, { departmentId: deptId, jobTitleId: analystId, managerId: ids.mona, employmentType: 'part_time' });
     await person('clara', 'Clara Chief', emails.clara, { departmentId: deptId, jobTitleId: analystId, gradeId: g9.id });
     await person('sam', 'Sam Other', emails.sam, { departmentId: deptId, jobTitleId: otherTitleId });
     await person('fay', 'Fay Freelance', null, { departmentId: deptId, jobTitleId: analystId, employmentType: 'freelance' });
@@ -383,7 +383,7 @@ describe('KPIs (e2e)', () => {
         .expect(200);
     });
 
-    it('opens on the 1st of the next month for everyone under a template in force: not freelancers or unpaid interns, trainees yes', async () => {
+    it('opens on the 1st of the next month for everyone under a template in force: not freelancers or unpaid interns, part-timers yes', async () => {
       const round = await clock.runOnce(at(day(1)));
       expect(round).toMatchObject({ month: M, opened: 6, selfMissed: 0, finalized: 0 });
       // once

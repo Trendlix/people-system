@@ -3,21 +3,19 @@ import { ENDING_RULE_DEFAULTS, ENDING_RULES } from '@trendlix/shared';
 import type { EndingRule } from '../../../../../lib/types';
 import { endingRulesFor, trainingLastDay } from './rules';
 
-// Training completed for trainees and interns (owner, 19 October 2026), the others as before.
+// Training completed for interns (owner, 19 October 2026), the others as before; the paid trainee went on 25 October 2026.
 
 const rules: EndingRule[] = ENDING_RULES.map((key) => ({ key, ...ENDING_RULE_DEFAULTS[key], active: true }));
 const keys = (list: EndingRule[]) => list.map((r) => r.key);
 
 describe('the ways of ending an employment offered', () => {
-  it('offers a trainee or an intern Training completed, never Non-renewal or Probation', () => {
-    for (const employmentType of ['trainee', 'intern']) {
-      for (const status of ['active', 'probation']) {
-        const offered = keys(endingRulesFor(rules, { status, employmentType }, true));
-        expect(offered).toContain('training_completed');
-        expect(offered).not.toContain('non_renewal');
-        expect(offered).not.toContain('probation');
-        expect(offered).toContain('resignation');
-      }
+  it('offers an intern Training completed, never Non-renewal or Probation', () => {
+    for (const status of ['active', 'probation']) {
+      const offered = keys(endingRulesFor(rules, { status, employmentType: 'intern' }, true));
+      expect(offered).toContain('training_completed');
+      expect(offered).not.toContain('non_renewal');
+      expect(offered).not.toContain('probation');
+      expect(offered).toContain('resignation');
     }
   });
 

@@ -215,7 +215,7 @@ describe('a permission, in words', () => {
 
   it('isn’t for a freelancer or an unpaid intern, outside the labour law', () => {
     expect(noPermissionText('full_time')).toBeNull();
-    expect(noPermissionText('trainee')).toBeNull();
+    expect(noPermissionText('part_time')).toBeNull();
     expect(noPermissionText('freelance')).toContain('No permission under a freelance employment');
     expect(noPermissionText('intern')).toContain('No permission under an unpaid internship');
   });

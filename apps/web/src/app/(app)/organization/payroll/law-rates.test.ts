@@ -236,7 +236,7 @@ describe('the form', () => {
     expect(formProblems(typedOf(Y2026), null)).toEqual([]);
   });
 
-  it('takes the minimum wage, left empty while it isn’t set (18 October 2026: a trainee’s last stage, Art. 29)', () => {
+  it('takes the minimum wage, left empty while it isn’t set (18 October 2026, for reference)', () => {
     expect(typedOf(Y2026).minimumWage).toBe('');
     expect(typedOf({ ...Y2026, minimumWage: 7000 }).minimumWage).toBe('7000');
     expect(lawRatesOf({ ...typedOf(Y2026), minimumWage: '7,000' }).minimumWage).toBe(7000);

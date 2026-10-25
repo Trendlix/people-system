@@ -27,8 +27,8 @@ export const myTeamIntro = (seesRaises: boolean) =>
 /**
  * A report's probation while they are on it: when it ends, how many days from today (negative once passed), and whether
  * that is soon (within PROBATION_SOON_DAYS, or passed while they are still on probation). Null when they aren't on
- * probation, or it has no end date; and for a trainee or an intern, whose agreement has none (19 October 2026), even with
- * a Probation from before then.
+ * probation, or it has no end date; and for an intern, whose agreement has none (19 October 2026), even with a Probation
+ * from before then.
  */
 export function probationOf(
   e: (Pick<Employment, 'status' | 'probationEnd'> & { employmentType?: Employment['employmentType'] }) | null | undefined,

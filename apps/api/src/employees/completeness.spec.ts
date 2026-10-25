@@ -12,7 +12,7 @@ const profile = (values: Partial<Employee>, today = '2026-10-25'): ProfileOnFile
   identity: null,
   bank: null,
   employment: null,
-  latestType: 'trainee',
+  latestType: 'intern',
   topRank: null,
   papers: [],
   today,

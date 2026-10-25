@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { Suspense } from 'react';
-import { agreementName } from '@trendlix/shared';
+import { INTERNSHIP_AGREEMENT } from '@trendlix/shared';
 import { formatDate } from '@/lib/format';
 import { loadLawRates } from '@/lib/law-rates';
 import { updateContract } from '../../../../contract-actions';
@@ -17,8 +17,8 @@ import { withCodeInBrackets } from '@/lib/hidden';
 // filing dates and note, with the contract on the Employment tab. A renewal asks whether its pay changes (owner's
 // decisions, 16 October 2026): with new pay it counts as a raise, which can't change while it is with the CEO, and an
 // approved one changed goes back to HR, to send to the CEO again. A raise (an amendment, or a new contract within the
-// term) is changed on its own page. The full-time contract a trainee's or an intern's agreement converts to (19 October
-// 2026) is changed as a full-time contract, its start date and probation too: it isn't a renewal.
+// term) is changed on its own page. The full-time contract an intern's agreement converts to (19 October 2026) is
+// changed as a full-time contract, its start date and probation too: it isn't a renewal.
 
 async function EditContract({ params }: { params: Promise<{ id: string; contractId: string }> }) {
   const { contractId } = await params;
@@ -63,7 +63,7 @@ async function EditContract({ params }: { params: Promise<{ id: string; contract
         <p className="text-sm text-muted">
           Draft of {withCodeInBrackets(`version ${contract.version}`, contract.number)}
           {conversion
-            ? `, the full-time contract the ${agreementName(e.employmentType)} (version ${contract.version - 1}) converts to; signing it makes the employment full-time`
+            ? `, the full-time contract the ${INTERNSHIP_AGREEMENT} (version ${contract.version - 1}) converts to; signing it makes the employment full-time`
             : renewal
               ? `, renewing version ${contract.version - 1}`
               : ''}
@@ -93,7 +93,6 @@ async function EditContract({ params }: { params: Promise<{ id: string; contract
             // a specific job's expected end (a fixed term's follows its length)
             endDate: contract.form === 'specific_job' ? (contract.endDate ?? '') : '',
             probationMonths: contract.probationMonths,
-            traineeStages: contract.traineeStages ?? null,
             payBasis: contract.payBasis ?? 'monthly',
             grossSalary: contract.grossSalary,
             hourlyRate: contract.hourlyRate ?? null,
@@ -114,7 +113,6 @@ async function EditContract({ params }: { params: Promise<{ id: string; contract
           probationHint={conversion ? CONVERSION_PROBATION_HINT : undefined}
           startHint={conversion ? CONVERSION_START_HINT : undefined}
           employmentType={conversion ? 'full_time' : e.employmentType}
-          dateOfBirth={employee.dateOfBirth}
           today={today}
           lawYears={lawYears}
           cancelHref={back}

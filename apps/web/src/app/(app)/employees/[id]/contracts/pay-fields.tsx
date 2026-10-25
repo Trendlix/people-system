@@ -56,10 +56,6 @@ import { SalaryBreakdownList } from './salary-breakdown';
 // day): the gross rate is worked out to the piaster and sent as hourlyRate, with the net worked out; the typed net rate
 // (netRate) and the switch (rateBasis) go along only to be kept if the save is refused.
 //
-// A trainee's contract is the training agreement (owner, 18 October 2026: Internship became Trainee, Labour Law Art.
-// 29): its gross is the first training stage's pay, typed in the stages (`fixedGross`), so the gross shows read-only and
-// the pay is a monthly salary from it.
-//
 // An intern's internship agreement pays no wage (owner, 19 October 2026: "in case of trainee, we are not paying them
 // salary, its just transportation allowance. can i add the gross with 0?"; the owner chose the unpaid internship, outside
 // the labour law): `noWage` shows the gross as No wage (unpaid internship), sent as nothing (the API keeps it at 0), with
@@ -95,17 +91,9 @@ export const choice =
 /**
  * What the pay fields hold while HR types (the fields themselves stay uncontrolled), and the salary worked out from it
  * with `rates`, the rates set by law of the year the version starts. A refused save (`state`) leaves it as typed.
- * `fixedGross`: a gross the form sets itself, as typed there (a trainee's, the first training stage's pay: owner, 18
- * October 2026), a monthly salary from the gross while it is given; null or left out, HR types the pay here.
  */
-export function usePay(
-  state: FormState,
-  defaults: PayDefaults,
-  allowanceTypes: readonly AllowanceType[],
-  rates: LawRates,
-  fixedGross: string | null = null,
-) {
-  const [own, setTyped] = useState<Record<PayKey, string>>(() => ({
+export function usePay(state: FormState, defaults: PayDefaults, allowanceTypes: readonly AllowanceType[], rates: LawRates) {
+  const [typed, setTyped] = useState<Record<PayKey, string>>(() => ({
     payBasis: valueOf(state, 'payBasis', defaults.payBasis),
     salaryBasis: valueOf(state, 'salaryBasis', 'gross'),
     grossSalary: valueOf(state, 'grossSalary', amountText(defaults.grossSalary)),
@@ -118,8 +106,6 @@ export function usePay(
   }));
   // the allowance rows report their own changes
   const [rows, setRows] = useState<AllowanceRow[]>(() => allowanceRows(state, defaults.allowances));
-  // what HR typed is kept underneath a fixed gross, for when it is no longer given (e.g. the employment type changed)
-  const typed: Record<PayKey, string> = fixedGross === null ? own : { ...own, payBasis: 'monthly', salaryBasis: 'gross', grossSalary: fixedGross };
 
   const hourly = typed.payBasis === 'hourly';
   const terms = allowanceTerms(rows, allowanceTypes);
@@ -162,7 +148,7 @@ export function usePay(
     return true;
   }
 
-  return { typed, rows, setRows, terms, hourly, basis, rateBasis, fromNetRate, pay, salary, calc, split, insured, savedNet, rates, defaults, track, fixedGross, allowanceTypes };
+  return { typed, rows, setRows, terms, hourly, basis, rateBasis, fromNetRate, pay, salary, calc, split, insured, savedNet, rates, defaults, track, allowanceTypes };
 }
 
 export type Pay = ReturnType<typeof usePay>;
@@ -218,8 +204,7 @@ export function PayFields({
   noWage?: boolean;
 }) {
   if (noWage) return <UnpaidFields pay={pay} state={state} fid={fid} allowanceTypes={allowanceTypes} lead={lead} />;
-  const { typed, rows, setRows, terms, hourly, basis, rateBasis, fromNetRate, pay: hourlyPay, salary, calc, split, insured, savedNet, rates, defaults, fixedGross } = pay;
-  const fixed = fixedGross !== null;
+  const { typed, rows, setRows, terms, hourly, basis, rateBasis, fromNetRate, pay: hourlyPay, salary, calc, split, insured, savedNet, rates, defaults } = pay;
   const insuredText = fullTime && insured ? `Insured salary on the social insurance copy: ${formatMoney(insured.amount)}, ${insured.why}.` : null;
   const what = hourly ? `${fromNetRate ? 'net per hour' : 'hourly rate'} and the hours a week` : `${basis === 'net' ? 'net' : 'gross'} salary`;
 
@@ -227,32 +212,24 @@ export function PayFields({
     <div className="space-y-5 border-t border-line pt-6">
       {lead}
 
-      {fixed ? (
-        // a gross the form sets (a trainee's first stage): a monthly salary from the gross, nothing to choose
-        <>
-          <input type="hidden" name="payBasis" value="monthly" />
-          <input type="hidden" name="salaryBasis" value="gross" />
-        </>
-      ) : (
-        <fieldset aria-describedby={fid('payBasis-hint')}>
-          <legend className="label">Pay basis</legend>
-          <div className="flex flex-wrap gap-2">
-            {PAY_BASES.map((b) => (
-              <label key={b} className={choice}>
-                <input type="radio" name="payBasis" value={b} defaultChecked={typed.payBasis === b} className="size-4 accent-accent" />
-                {PAY_BASIS_LABELS[b]}
-              </label>
-            ))}
-          </div>
-          <p id={fid('payBasis-hint')} className="hint">
-            {hourly
-              ? 'Part-time by the hour, e.g. 2 or 3 days a week: the gross is the monthly estimate, the hourly rate × the hours a week × 52 ÷ 12.'
-              : 'A monthly salary, set from the gross or from the net wanted.'}
-          </p>
-        </fieldset>
-      )}
+      <fieldset aria-describedby={fid('payBasis-hint')}>
+        <legend className="label">Pay basis</legend>
+        <div className="flex flex-wrap gap-2">
+          {PAY_BASES.map((b) => (
+            <label key={b} className={choice}>
+              <input type="radio" name="payBasis" value={b} defaultChecked={typed.payBasis === b} className="size-4 accent-accent" />
+              {PAY_BASIS_LABELS[b]}
+            </label>
+          ))}
+        </div>
+        <p id={fid('payBasis-hint')} className="hint">
+          {hourly
+            ? 'Part-time by the hour, e.g. 2 or 3 days a week: the gross is the monthly estimate, the hourly rate × the hours a week × 52 ÷ 12.'
+            : 'A monthly salary, set from the gross or from the net wanted.'}
+        </p>
+      </fieldset>
 
-      {fixed ? null : hourly ? (
+      {hourly ? (
         <fieldset key="rateBasis" aria-describedby={fid('rateBasis-hint')}>
           <legend className="label">Start from</legend>
           <div className="flex flex-wrap gap-2">
@@ -367,24 +344,6 @@ export function PayFields({
               </p>
             </div>
           </>
-        ) : fixed ? (
-          <div key="fixedGross">
-            <label htmlFor={fid('grossSalary')} className="label">
-              Gross salary (EGP)
-            </label>
-            {/* sent as it shows: the first training stage's pay, typed in the stages above */}
-            <input
-              id={fid('grossSalary')}
-              name="grossSalary"
-              value={typed.grossSalary}
-              readOnly
-              aria-describedby={fid('grossSalary-hint')}
-              className="input bg-canvas text-muted tabular-nums"
-            />
-            <p id={fid('grossSalary-hint')} className="hint">
-              The first training stage&apos;s pay, from the stages above; payroll pays each stage&apos;s pay in its months. Without the allowances.
-            </p>
-          </div>
         ) : basis === 'gross' ? (
           <div key="gross">
             <label htmlFor={fid('grossSalary')} className="label">

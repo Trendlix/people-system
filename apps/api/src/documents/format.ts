@@ -1,4 +1,4 @@
-import { EMPLOYMENT_TYPE_LABELS_AR, isFlexibleShift, shiftWorkHours, type EmploymentType, type Governorate, type TemplateLanguage, type TraineeStage } from '@trendlix/shared';
+import { EMPLOYMENT_TYPE_LABELS_AR, isFlexibleShift, shiftWorkHours, type EmploymentType, type Governorate, type TemplateLanguage } from '@trendlix/shared';
 import { shownDate } from '../common/date-only.js';
 import { arabicDayName, arabicMonths } from './engine/index.js';
 
@@ -97,26 +97,11 @@ export function printedAddress(addressAr: string | null, city: string | null, go
 /**
  * The employment types in Arabic, for Arabic templates (the screens' English labels are LABELS.employmentType): the
  * law's words since 18 October 2026 (owner: "can we update the employment types based on the labour law?"), part-time
- * "عمل بعض الوقت" (Labour Law 14/2025 Art. 96(2)), the trainee "متدرج" (Art. 1(2)), shared with the web; since 19
- * October 2026 the unpaid internship "تدريب غير مدفوع (غير خاضع لقانون العمل)", outside the law as freelance is.
+ * "عمل بعض الوقت" (Labour Law 14/2025 Art. 96(2)), shared with the web; since 19 October 2026 the unpaid internship,
+ * outside the law as freelance is, "تدريب غير مدفوع" (owner, 25 October 2026: "unpaid internship and training are the
+ * same thing").
  */
 export const EMPLOYMENT_TYPES_AR: Record<EmploymentType, string> = EMPLOYMENT_TYPE_LABELS_AR;
-
-/**
- * A trainee's training stages as printed (owner, 18 October 2026; Labour Law 14/2025 Art. 29: the agreement sets
- * "مراحلها المتتابعة والمكافأة التى يحصل عليها المتدرج فى كل مرحلة"), in order: "1. Basics: 3 months, 4,000 a month;
- * 2. Practice: 3 months, 5,500 a month"; in Arabic "1. الأساسيات: ثلاثة أشهر، 4,000 شهريًا؛ 2. …". Empty for none.
- */
-export function printedTraineeStages(stages: readonly TraineeStage[] | null, language: PrintedLanguage): string {
-  if (!stages?.length) return '';
-  return stages
-    .map((s, i) =>
-      language === 'ar'
-        ? `${i + 1}. ${s.name}: ${arabicMonths(s.months)}، ${printedMoney(s.pay)} شهريًا`
-        : `${i + 1}. ${s.name}: ${s.months} ${s.months === 1 ? 'month' : 'months'}, ${printedMoney(s.pay)} a month`,
-    )
-    .join(language === 'ar' ? '؛ ' : '; ');
-}
 
 /** A name in the template's language: the Arabic one on an Arabic template when there is one, else the English. */
 export const inLanguage = (language: TemplateLanguage, en: string | null | undefined, ar: string | null | undefined): string =>

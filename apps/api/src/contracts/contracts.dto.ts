@@ -1,8 +1,6 @@
 import { applyDecorators } from '@nestjs/common';
 import { Transform, Type } from 'class-transformer';
 import {
-  ArrayMaxSize,
-  IsArray,
   IsBoolean,
   IsIn,
   IsInt,
@@ -15,7 +13,6 @@ import {
   MinLength,
   ValidateBy,
   ValidateIf,
-  ValidateNested,
 } from 'class-validator';
 import {
   CONTRACT_FORMS,
@@ -56,7 +53,6 @@ const BASIC_PERCENT_DEFAULT_MESSAGE = 'Enter the basic share of the gross as a w
  */
 export const FORM_MESSAGE = 'Choose the contract’s length: fixed (fixed-term), open_ended or specific_job.';
 const JOB_TO_DO_MESSAGE = 'Enter the job the contract is for, up to 500 characters (Labour Law Art. 155).';
-const STAGES_MESSAGE = 'Send the training stages as a list, each with its name, months and pay a month, e.g. [{ "name": "Basics", "months": 3, "pay": 4000 }].';
 /** decimal(12, 2) holds up to 9,999,999,999.99 */
 export const MAX_MONEY = 9_999_999_999.99;
 /** decimal(10, 2) holds up to 99,999,999.99 */
@@ -163,23 +159,6 @@ export class PayTermsDto {
 }
 
 /**
- * A stage of a trainee's training agreement (Labour Law 14/2025 Art. 29): its name, whole months and pay a month. Only
- * the kinds are checked here; the rules (each stage's pay more than the one before, the last at least the minimum wage
- * …) by traineeProblems in packages/shared, the same check the page makes, so the messages are the same.
- */
-export class TraineeStageDto {
-  @Trim() @IsString({ message: 'Enter each training stage’s name.' }) @MaxLength(100, { message: 'Keep each training stage’s name to 100 characters.' })
-  name: string;
-
-  @IsNumber({ allowNaN: false, allowInfinity: false }, { message: 'Enter each training stage’s months as a number.' })
-  months: number;
-
-  @IsNumber({ maxDecimalPlaces: 2, allowNaN: false, allowInfinity: false }, { message: 'Enter each training stage’s pay a month as an amount, e.g. 4000.' })
-  @Max(MAX_MONEY)
-  pay: number;
-}
-
-/**
  * A contract's terms: what HR types. The end date, probation end and insured salary follow from them, and by the hour
  * the gross too.
  */
@@ -187,7 +166,7 @@ class ContractTermsDto extends PayTermsDto {
   /**
    * The contract's length: fixed-term unless sent (for a renewal, the version before's). Open-ended: no duration and no
    * end date, it ends by notice (Art. 156); for a specific job: the job (jobToDo) and, optional, the day it is expected
-   * to be done (endDate). A trainee's training agreement is fixed-term, for the training's length.
+   * to be done (endDate).
    */
   @Sent() @IsIn(CONTRACT_FORMS, { message: FORM_MESSAGE })
   form?: ContractForm;
@@ -199,17 +178,6 @@ class ContractTermsDto extends PayTermsDto {
   /** For a specific job only: the day the job is expected to be done, on or after the start; empty for none. */
   @TrimOrNull() @IsOptional() @IsDateOnly('Enter a real date for when the job is expected to be done.')
   endDate?: string | null;
-
-  /**
-   * A trainee's training agreement only (required then): its stages in order (Art. 29). The gross is the first stage's
-   * pay (whatever gross is sent) and the duration the stages' months together; payroll pays the stage in force.
-   */
-  @IsOptional()
-  @IsArray({ message: STAGES_MESSAGE })
-  @ArrayMaxSize(24, { message: 'Keep the training to 24 stages or fewer.' })
-  @ValidateNested({ each: true })
-  @Type(() => TraineeStageDto)
-  traineeStages?: TraineeStageDto[] | null;
 
   /** Version 1: the join date unless sent; a renewal: the day after the version before ends. */
   @Sent() @IsDateOnly('Enter the start date.')
@@ -234,11 +202,11 @@ class ContractTermsDto extends PayTermsDto {
 
 export class CreateContractDto extends ContractTermsDto {
   /**
-   * A trainee's or an intern's agreement converted to a full-time contract (owner, 19 October 2026: "or can be only
+   * An intern's agreement converted to a full-time contract (owner, 19 October 2026: "or can be only
    * renewed 1 time, after that it should be converted to a full time contract"): this version is the full-time contract,
    * after the agreement; signing it makes the employment full-time (the same employment, so the service counts on).
    */
-  @Sent() @IsIn(['full_time'], { message: 'A training or internship agreement is converted to full_time: send convertsTo as full_time, or leave it out.' })
+  @Sent() @IsIn(['full_time'], { message: 'An internship agreement is converted to full_time: send convertsTo as full_time, or leave it out.' })
   convertsTo?: 'full_time';
 }
 

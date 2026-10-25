@@ -58,7 +58,7 @@ export class KpiOpeningService {
         joinDate: { lte: toDateOnly(lastDay(month)) },
         OR: [{ endDate: null }, { endDate: { gte: openDay } }],
         jobTitleId: { not: null },
-        // not freelancers or unpaid interns; trainees yes (packages/shared kpiEligibleType)
+        // not freelancers or unpaid interns (packages/shared kpiEligibleType; the paid trainee went on 25 October 2026)
         employmentType: { notIn: ['freelance', 'intern'] },
         // a real one: a practice scorecard of the month never stands in its way (owner, 22 October 2026: "Practice scorecards")
         employee: { kpiScorecards: { none: { month: monthDay, practice: false } } },

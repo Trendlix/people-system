@@ -10,20 +10,19 @@ export type SectionKey = (typeof SECTION_KEYS)[number];
 /** Each section's slots, in the order the tab lists them. Payslips are in none: there is no payroll yet. */
 export const SECTION_SLOTS: Record<SectionKey, readonly string[]> = {
   // one item per copy for each contract version
-  // a salary amendment's own letter instead (owner's decisions, 16 October 2026); a paid trainee's training agreement
-  // and offer, and an unpaid intern's internship agreement and offer, each their own (owner, 19 October 2026: the
-  // internship slots are the unpaid interns' again)
+  // a salary amendment's own letter instead (owner's decisions, 16 October 2026); an unpaid intern's internship agreement
+  // and offer their own (owner, 19 October 2026: the internship slots are the unpaid interns' again); the paid trainee's
+  // went on 25 October 2026 (RETIRED_SLOT_NAMES: their documents still show, under the retired slot)
   contract: [
     'contract_full_time',
     'contract_full_time_insurance',
     'contract_part_time',
-    'contract_trainee',
     'contract_internship',
     'contract_sales',
     'agreement_freelance',
     'contract_amendment',
   ],
-  hiring: ['offer_full_time', 'offer_part_time', 'offer_trainee', 'offer_internship', 'offer_freelance', 'offer_sales', 'nda'],
+  hiring: ['offer_full_time', 'offer_part_time', 'offer_internship', 'offer_freelance', 'offer_sales', 'nda'],
   // Form 2 for each approved raise (owner's decision, 16 October 2026: "From the next January unless amended in Form 2")
   insurance: ['insurance_form_1', 'insurance_form_2', 'insurance_form_6'],
   letters: ['bank_letter', 'hr_letter_ar', 'hr_letter_en', 'cert_experience', 'cert_internship'],
@@ -31,6 +30,17 @@ export const SECTION_SLOTS: Record<SectionKey, readonly string[]> = {
 };
 
 export const SLOTS: ReadonlyMap<string, TemplateSlot> = new Map(TEMPLATE_SLOTS.map((s) => [s.key, s]));
+
+/**
+ * The retired slots (packages/shared RETIRED_SLOT_NAMES: the paid trainee's, gone on 25 October 2026) and the section
+ * their documents on record are still listed in: the training agreement under its contract version, the offer with the
+ * hiring documents. Nothing is generated from them.
+ */
+export const RETIRED_SECTIONS: Readonly<Record<string, SectionKey>> = { contract_trainee: 'contract', offer_trainee: 'hiring' };
+
+/** The retired slots of `section` that have documents among `docs`, for the tab to list them still. */
+export const retiredSlotsWith = (section: SectionKey, docs: readonly { slotKey: string }[]): string[] =>
+  Object.keys(RETIRED_SECTIONS).filter((key) => RETIRED_SECTIONS[key] === section && docs.some((d) => d.slotKey === key));
 
 /** The section a slot is listed in; null for a slot the tab never offers (payslips). */
 export function sectionOf(slotKey: string): SectionKey | null {
@@ -77,7 +87,7 @@ export interface Situation {
 /**
  * When each trigger's moment has come. Every document of the hire is offered for as long as the employment is there
  * (HR prints them again on request). The experience certificate (end of service, or on request) is therefore always
- * offered, and so is the internship or training certificate to an intern or a trainee (19 October 2026): they ask for
+ * offered, and so is the internship certificate to an intern (19 October 2026): they ask for
  * it before the last day as well (decisions, 15 October 2026). Form 6 once the employment is ending or has ended. The resignation request only when
  * the employee started the ending (a resignation, family reasons, or ending their own probation), and the clearance
  * whenever there is an ending. Payslips never: there is no payroll yet.

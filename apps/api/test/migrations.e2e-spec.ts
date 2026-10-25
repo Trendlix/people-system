@@ -752,4 +752,147 @@ describe('Migrations (e2e)', () => {
     expect(rows.map((r: { serialKey: string | null }) => r.serialKey)).toEqual(serials.map((s) => assetSerialKey(s)));
     expect(rows.map((r: { serialKey: string | null }) => r.serialKey)).toEqual(['ABC123', 'ABC123', '456XY', 'ABC123', null, null]);
   });
+
+  it('one internship type: every trainee record becomes an intern’s, audited, the training stages and the trainee’s templates go (owner, 25 October 2026)', async () => {
+    const migration = readdirSync(MIGRATIONS).find((m) => m.endsWith('_one_internship_type'))!;
+    await migratedUpTo(migration);
+    const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+    const stages = JSON.stringify([
+      { name: 'Basics', months: 3, pay: 6000 },
+      { name: 'Practice', months: 3, pay: 7500 },
+    ]);
+    // before: a trainee with training stages, an intern, and a full-timer converted from a trainee's agreement; a trainee
+    // offer filled from the trainee's offer template, a trainee vacancy, the trainee's templates (some with a document or
+    // an offer made from them), a template of another slot with a training stages tag, and a payroll line's copy
+    await db.query(`
+      INSERT INTO departments (id, name_en, updated_at) VALUES ('${id(91)}', 'Creative', now());
+      INSERT INTO job_titles (id, department_id, title_en, updated_at) VALUES ('${id(92)}', '${id(91)}', 'Video Editor', now());
+      INSERT INTO employees (id, employee_code, full_name_en, full_name_ar, updated_at) VALUES
+        ('${id(101)}', 'EMP-0101', 'Tamer Trainee', 'تامر', now()),
+        ('${id(102)}', 'EMP-0102', 'Ines Intern', 'إيناس', now()),
+        ('${id(103)}', 'EMP-0103', 'Fadi Fulltime', 'فادي', now());
+      INSERT INTO employments (id, employee_id, employment_type, status, join_date, updated_at) VALUES
+        ('${id(1)}', '${id(101)}', 'trainee', 'active', '2026-09-01', now()),
+        ('${id(2)}', '${id(102)}', 'intern', 'active', '2026-09-15', now()),
+        ('${id(3)}', '${id(103)}', 'full_time', 'active', '2026-01-01', now());
+      INSERT INTO contracts (id, number, employment_id, version, start_date, end_date, duration_months, gross_salary, insured_salary, pay_basis, status,
+          trainee_stages, converts_to, updated_at) VALUES
+        ('${id(11)}', 'CON-2026-0101', '${id(1)}', 1, '2026-09-01', '2027-02-28', 6, 6000, 6000, 'monthly', 'active', '${stages}', NULL, now()),
+        ('${id(12)}', 'CON-2026-0102', '${id(2)}', 1, '2026-09-15', '2026-12-14', 3, 0, 0, 'monthly', 'active', NULL, NULL, now()),
+        ('${id(13)}', 'CON-2026-0103', '${id(3)}', 1, '2026-01-01', '2026-06-30', 6, 6000, 6000, 'monthly', 'superseded', '${stages}', NULL, now()),
+        ('${id(14)}', 'CON-2026-0104', '${id(3)}', 2, '2026-07-01', '2027-06-30', 12, 12000, 12000, 'monthly', 'active', NULL, 'full_time', now());
+      INSERT INTO template_versions (id, slot_key, version, file_name, mime_type, size_bytes, data, language, tags, unknown_tags, broken, status) VALUES
+        ('${id(61)}', 'contract_trainee', 1, 'Training agreement.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 3, '\\x010203', 'ar', ARRAY['full_name_ar', 'trainee_stages'], '{}', '{}', 'published'),
+        ('${id(62)}', 'contract_trainee', 2, 'Training agreement v2.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 3, '\\x010203', 'ar', ARRAY['full_name_ar'], '{}', '{}', 'draft'),
+        ('${id(63)}', 'offer_trainee', 1, 'Trainee offer.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 3, '\\x010203', 'en', ARRAY['full_name_en'], '{}', '{}', 'retired'),
+        ('${id(64)}', 'offer_trainee', 2, 'Trainee offer v2.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 3, '\\x010203', 'en', ARRAY['full_name_en'], '{}', '{}', 'published'),
+        ('${id(65)}', 'contract_internship', 1, 'Internship.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 3, '\\x010203', 'ar', ARRAY['full_name_ar', 'trainee_stages_ar', 'allowances'], ARRAY['old_tag'], '{}', 'published'),
+        ('${id(66)}', 'nda', 1, 'NDA.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 3, '\\x010203', 'ar', ARRAY['full_name_ar'], '{}', '{}', 'published');
+      INSERT INTO generated_documents (id, employee_id, employment_id, contract_id, slot_key, template_version_id, document_date, file_name, data, size_bytes, has_restricted) VALUES
+        ('${id(71)}', '${id(101)}', '${id(1)}', '${id(11)}', 'contract_trainee', '${id(61)}', '2026-09-01', 'Training agreement - Tamer.docx', '\\x01', 1, true);
+      INSERT INTO job_offers (id, number, full_name_en, full_name_ar, email, employment_type, join_date, gross_salary, probation_months, status, expires_on, template_version_id, updated_at) VALUES
+        ('${id(31)}', 'OFF-2026-0101', 'Dina Draft', 'دينا', 'dina@mail.test', 'trainee', '2026-11-01', 5000, 0, 'sent', '2026-10-30', '${id(64)}', now()),
+        ('${id(32)}', 'OFF-2026-0102', 'Fawzy Full', 'فوزي', 'fawzy@mail.test', 'full_time', '2026-11-01', 9000, 3, 'draft', '2026-10-30', NULL, now());
+      INSERT INTO vacancies (id, number, slug, title, job_title_id, employment_type, updated_at) VALUES
+        ('${id(81)}', 'VAC-2026-0001', 'video-editor-trainee', 'Video Editor Trainee', '${id(92)}', 'trainee', now()),
+        ('${id(82)}', 'VAC-2026-0002', 'video-editor', 'Video Editor', '${id(92)}', 'full_time', now());
+      INSERT INTO reimbursement_types (id, name_en, name_ar, employment_types, updated_at) VALUES
+        ('${id(41)}', 'Books', 'كتب', ARRAY['trainee', 'part_time'], now()),
+        ('${id(42)}', 'Transport', 'انتقال', ARRAY['trainee', 'intern'], now()),
+        ('${id(43)}', 'Fuel', 'وقود', ARRAY['full_time'], now());
+      INSERT INTO payroll_runs (id, month, rules, updated_at) VALUES ('${id(21)}', '2026-09-01', '{}', now());
+      INSERT INTO payroll_lines (id, run_id, employee_id, employment_id, contract_id, employee_code, name_en, employment_type, pay_basis, terms, inputs, result,
+          earned, allowances, employee_insurance, employer_insurance, monthly_tax, martyrs_fund, deductions, net, released, transfer, company_cost, updated_at)
+        VALUES ('${id(22)}', '${id(21)}', '${id(101)}', '${id(1)}', '${id(11)}', 'EMP-0101', 'Tamer Trainee', 'trainee', 'monthly', '{}', '{}', '{}',
+          6000, 0, 660, 1125, 0, 30, 0, 5310, 0, 5310, 7125, now());
+    `);
+    const before = Number((await db.query<{ n: string }>('SELECT count(*) AS n FROM audit_log')).rows[0].n);
+
+    // its own tables are dropped at its end, never ON COMMIT (its comments aside)
+    expect(sql(migration).replace(/--.*$/gm, '')).not.toMatch(/ON\s+COMMIT\s+DROP/i);
+    await db.query(sql(migration));
+    const rows = async (query: string) => (await db.query(query)).rows;
+
+    // every trainee record is an intern's; the others as they were
+    expect(await rows('SELECT right(id::text, 1) AS id, employment_type AS type FROM employments ORDER BY id')).toEqual([
+      { id: '1', type: 'intern' },
+      { id: '2', type: 'intern' },
+      { id: '3', type: 'full_time' },
+    ]);
+    expect(await rows('SELECT number, employment_type AS type, template_version_id IS NOT NULL AS filled FROM job_offers ORDER BY number')).toEqual([
+      { number: 'OFF-2026-0101', type: 'intern', filled: true },
+      { number: 'OFF-2026-0102', type: 'full_time', filled: false },
+    ]);
+    expect(await rows('SELECT number, employment_type AS type FROM vacancies ORDER BY number')).toEqual([
+      { number: 'VAC-2026-0001', type: 'intern' },
+      { number: 'VAC-2026-0002', type: 'full_time' },
+    ]);
+    expect(await rows('SELECT employment_type AS type FROM payroll_lines')).toEqual([{ type: 'intern' }]);
+    // the training stages are gone, the gross as recorded; the conversion to full-time kept
+    expect(await rows(`SELECT 1 FROM information_schema.columns WHERE table_schema = '${SCHEMA}' AND table_name = 'contracts' AND column_name = 'trainee_stages'`)).toEqual([]);
+    expect(await rows('SELECT number, gross_salary::float AS gross, converts_to FROM contracts ORDER BY number')).toEqual([
+      { number: 'CON-2026-0101', gross: 6000, converts_to: null },
+      { number: 'CON-2026-0102', gross: 0, converts_to: null },
+      { number: 'CON-2026-0103', gross: 6000, converts_to: null },
+      { number: 'CON-2026-0104', gross: 12000, converts_to: 'full_time' },
+    ]);
+    // who may claim: intern in place of trainee, each once
+    expect(await rows('SELECT name_en AS name, employment_types AS types FROM reimbursement_types ORDER BY name_en')).toEqual([
+      { name: 'Books', types: ['intern', 'part_time'] },
+      { name: 'Fuel', types: ['full_time'] },
+      { name: 'Transport', types: ['intern'] },
+    ]);
+    // the trainee's templates: deleted unless something was made from them, then retired; the documents stay
+    expect(await rows('SELECT slot_key AS slot, version, status, tags, unknown_tags AS unknown FROM template_versions ORDER BY slot_key, version')).toEqual([
+      { slot: 'contract_internship', version: 1, status: 'published', tags: ['full_name_ar', 'allowances'], unknown: ['old_tag', 'trainee_stages_ar'] },
+      { slot: 'contract_trainee', version: 1, status: 'retired', tags: ['full_name_ar', 'trainee_stages'], unknown: [] },
+      { slot: 'nda', version: 1, status: 'published', tags: ['full_name_ar'], unknown: [] },
+      { slot: 'offer_trainee', version: 2, status: 'retired', tags: ['full_name_en'], unknown: [] },
+    ]);
+    expect(await rows(`SELECT slot_key AS slot, template_version_id = '${id(61)}' AS kept FROM generated_documents`)).toEqual([{ slot: 'contract_trainee', kept: true }]);
+    // Training completed: the internship agreement's
+    expect(await rows("SELECT source FROM ending_rules WHERE key = 'training_completed'")).toEqual([{ source: 'The internship agreement' }]);
+
+    // one audit entry per record changed, by the system, with the reason
+    const audited = await rows(`SELECT a.action, a.entity_type AS entity, right(a.entity_id::text, 2) AS id, a.user_id, a.diff FROM audit_log a ORDER BY a.id OFFSET ${before}`);
+    expect(audited.every((a) => a.user_id === null && typeof a.diff.reason === 'string' && a.diff.reason.startsWith('One internship type'))).toBe(true);
+    expect(audited.map(({ action, entity, id }) => `${action} ${entity} ${id ?? '-'}`)).toEqual([
+      'update employment 01',
+      'update contract 11',
+      'update contract 13',
+      'update job_offer 31',
+      'update vacancy 81',
+      'update reimbursement_type 41',
+      'update reimbursement_type 42',
+      'delete template_version 62',
+      'delete template_version 63',
+      'update template_version 61',
+      'update template_version 64',
+      'update template_version 65',
+      'update ending_rule -',
+    ]);
+    const diff = (entity: string, id: string) => audited.find((a) => a.entity === entity && a.id === id)!.diff;
+    expect(diff('employment', '01')).toMatchObject({ employmentType: { from: 'trainee', to: 'intern' } });
+    // the stages hold pay: only that they changed
+    expect(diff('contract', '11')).toMatchObject({ traineeStages: 'changed' });
+    expect(JSON.stringify(diff('contract', '11'))).not.toMatch(/6000|7500|Basics/);
+    expect(diff('reimbursement_type', '41')).toMatchObject({ employmentTypes: { from: ['trainee', 'part_time'], to: ['intern', 'part_time'] } });
+    expect(diff('template_version', '64')).toMatchObject({ slotKey: 'offer_trainee', status: { from: 'published', to: 'retired' } });
+    expect(diff('template_version', '65')).toMatchObject({ unknownTags: { from: ['old_tag'], to: ['old_tag', 'trainee_stages_ar'] } });
+    expect(audited.find((a) => a.entity === 'ending_rule')!.diff).toMatchObject({
+      key: 'training_completed',
+      source: { from: 'Labour Law Arts. 28–30; the internship agreement', to: 'The internship agreement' },
+    });
+
+    // the type has four values and the old one is gone; the database refuses a trainee, and a conversion is to full-time
+    const labels = await rows(`
+      SELECT e.enumlabel AS label FROM pg_enum e JOIN pg_type t ON t.oid = e.enumtypid JOIN pg_namespace n ON n.oid = t.typnamespace
+      WHERE n.nspname = '${SCHEMA}' AND t.typname = 'employment_type' ORDER BY e.enumsortorder`);
+    expect(labels.map((l) => l.label)).toEqual(['full_time', 'part_time', 'intern', 'freelance']);
+    expect(await rows(`SELECT 1 FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace WHERE n.nspname = '${SCHEMA}' AND t.typname = 'employment_type_before_one_internship'`)).toEqual([]);
+    await expect(db.query(`UPDATE employments SET employment_type = 'trainee' WHERE id = '${id(2)}'`)).rejects.toThrow(/invalid input value for enum/);
+    await expect(db.query(`UPDATE reimbursement_types SET employment_types = ARRAY['trainee'] WHERE id = '${id(43)}'`)).rejects.toThrow(/reimbursement_types_employment_types_check/);
+    await expect(db.query(`UPDATE contracts SET converts_to = 'intern' WHERE id = '${id(14)}'`)).rejects.toThrow(/contracts_converts_to_check/);
+    await expect(db.query(`UPDATE employments SET paid_by_commission = true WHERE id = '${id(2)}'`)).rejects.toThrow(/employments_paid_by_commission_check/);
+  });
 });

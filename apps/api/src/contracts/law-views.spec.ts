@@ -10,14 +10,13 @@ import {
   employmentCasualTooLong,
   endingView,
   lawFieldsOf,
-  traineeStagesOf,
   type ContractRow,
   type EndingRow,
 } from './views.js';
 
 // Employment types by the labour law in the API's views (owner, 18 October 2026: "can we update the employment types
-// based on the labour law?"): the warnings (Labour Law 14/2025 Art. 88(3), Art. 1(7)), a trainee's stages, and Art. 154's
-// note on a fixed term the company doesn't renew. Everyone here is invented.
+// based on the labour law?"): the warnings (Labour Law 14/2025 Art. 88(3), Art. 1(7)) and Art. 154's note on a fixed term
+// the company doesn't renew. Everyone here is invented.
 
 const day = (ymd: string) => new Date(`${ymd}T00:00:00.000Z`);
 
@@ -29,7 +28,6 @@ function contract(over: Partial<ContractRow> = {}): ContractRow {
     version: 1,
     form: 'fixed',
     jobToDo: null,
-    traineeStages: null,
     startDate: day('2025-01-01'),
     endDate: day('2025-12-31'),
     durationMonths: 12,
@@ -138,28 +136,13 @@ describe('casual work past six months (Art. 1(7))', () => {
   });
 });
 
-describe('a trainee’s training agreement (Art. 29)', () => {
-  const stages = [
-    { name: 'Basics', months: 3, pay: 4000 },
-    { name: 'Practice', months: 3, pay: 5500 },
-  ];
-
-  it('reads the stages as kept, none for an empty list', () => {
-    expect(traineeStagesOf({ traineeStages: stages })).toEqual(stages);
-    expect(traineeStagesOf({ traineeStages: [] })).toBeNull();
-    expect(traineeStagesOf({ traineeStages: null })).toBeNull();
-  });
-
-  it('shows the stages and the one in force, their pay only to those who see salaries', () => {
-    const c = contract({ traineeStages: stages, startDate: day('2026-01-01'), endDate: day('2026-06-30'), durationMonths: 6, grossSalary: new Prisma.Decimal(4000) });
-    const view = contractView(c, CTX);
-    expect(view.traineeStages).toEqual(stages);
-    expect(view.traineeMonths).toBe(6);
-    expect(view.traineeStage).toMatchObject({ name: expect.any(String), pay: expect.any(Number) });
-    const hidden = contractView(c, { ...CTX, seesSalary: false });
-    expect(hidden.traineeStages).toEqual(stages.map((s) => ({ ...s, pay: null })));
-    expect(hidden.traineeStage?.pay).toBeNull();
-    expect(contractView(contract(), CTX)).toMatchObject({ traineeStages: null, traineeMonths: null, traineeStage: null });
+// the paid trainee's training stages went on 25 October 2026 (owner: "unpaid internship and training are the same thing")
+describe('a contract without training stages', () => {
+  it('shows none of the trainee’s fields any more', () => {
+    const view = contractView(contract(), CTX);
+    expect(view).not.toHaveProperty('traineeStages');
+    expect(view).not.toHaveProperty('traineeMonths');
+    expect(view).not.toHaveProperty('traineeStage');
   });
 });
 
@@ -219,26 +202,26 @@ describe('a fixed term the company doesn’t renew (Art. 154)', () => {
     expect(endingView(ending({ ruleKey: 'resignation' }), true)).toMatchObject({ art154Note: null, art154Estimate: null });
   });
 
-  it('is never a trainee’s or an intern’s, whose agreement isn’t an employment contract (19 October 2026)', () => {
-    for (const employmentType of ['trainee', 'intern'] as const) {
-      const e = ending();
-      expect(endingView({ ...e, employment: { ...e.employment, employmentType } }, true)).toMatchObject({ art154Note: null, art154Estimate: null });
-    }
+  it('is never an intern’s, whose agreement isn’t an employment contract (19 October 2026)', () => {
+    const e = ending();
+    expect(endingView({ ...e, employment: { ...e.employment, employmentType: 'intern' } }, true)).toMatchObject({ art154Note: null, art154Estimate: null });
   });
 });
 
-// Trainees and interns (owner, 19 October 2026: "or can be only renewed 1 time, after that it should be converted to a
-// full time contract"): which versions are an employment's agreements, and how one is shown.
-describe('a trainee’s or an intern’s agreement in the views', () => {
+// Interns (owner, 19 October 2026: "or can be only renewed 1 time, after that it should be converted to a full time
+// contract"): which versions are an employment's agreements, and how one is shown.
+describe('an intern’s agreement in the views', () => {
   const versions = [
     { version: 1, kind: 'contract', convertsTo: null },
     { version: 2, kind: 'contract', convertsTo: null },
     { version: 3, kind: 'contract', convertsTo: 'full_time' },
   ];
 
-  it('is a whole contract of a trainee’s or an intern’s employment, a conversion to full-time and salary amendments left out', () => {
-    expect(agreementVersions('trainee', versions)).toEqual([1, 2]);
+  it('is a whole contract of an intern’s employment, a conversion to full-time and salary amendments left out', () => {
+    expect(agreementVersions('intern', versions)).toEqual([1, 2]);
     expect(agreementVersions('intern', [...versions, { version: 4, kind: 'amendment', convertsTo: null }].reverse())).toEqual([1, 2]);
+    // a trainee is no type any more (25 October 2026): no agreements
+    expect(agreementVersions('trainee', versions)).toBeNull();
     expect(agreementVersions('full_time', versions)).toBeNull();
     expect(agreementVersions('freelance', versions)).toBeNull();
     expect(agreementNumber({ version: 1, kind: 'contract', convertsTo: null }, [1, 2])).toBe(1);
@@ -248,7 +231,7 @@ describe('a trainee’s or an intern’s agreement in the views', () => {
   });
 
   it('says which agreement it is and what follows it, with no non-renewal notice and no Art. 88 warning', () => {
-    const past = contract({ traineeStages: [{ name: 'Basics', months: 12, pay: 10000 }] as unknown as Prisma.JsonValue });
+    const past = contract();
     const first = contractView(past, { ...CTX, agreements: [1] });
     expect(first).toMatchObject({ training: { agreement: 1, next: 'renew_or_convert' }, nonRenewalNoticeBy: null, becameOpenEnded: false, convertsTo: null });
     const renewal = contractView(contract({ version: 2 }), { ...CTX, agreements: [1, 2] });

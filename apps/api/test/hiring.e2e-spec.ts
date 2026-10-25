@@ -215,12 +215,19 @@ describe('Hiring in one form (e2e)', () => {
     await nothingMade(e.id);
   });
 
+  it('refuses a trainee, who is an intern now (owner, 25 October 2026: "unpaid internship and training are the same thing"), making neither', async () => {
+    const e = await addEmployee('Trainee Refused');
+    const trainee = await postHire(e.id, { employment: job({ employmentType: 'trainee' }), contract: { grossSalary: 8000 } }).expect(400);
+    expect(trainee.body.message).toEqual(['Choose an employment type: full_time, part_time, intern (an unpaid internship, outside the labour law; a trainee is an intern now) or freelance (outside the labour law).']);
+    await nothingMade(e.id);
+  });
+
   it('checks both parts at once: the messages of each come back together', async () => {
     const e = await addEmployee('Both Parts');
     const both = await postHire(e.id, { employment: { joinDate: 'soon' }, contract: { grossSalary: -1, durationMonths: 0 } }).expect(400);
     expect(both.body.message).toEqual(
       expect.arrayContaining([
-        'Choose an employment type: full_time, part_time, trainee, intern (an unpaid internship, outside the labour law) or freelance (outside the labour law).',
+        'Choose an employment type: full_time, part_time, intern (an unpaid internship, outside the labour law; a trainee is an intern now) or freelance (outside the labour law).',
         'Enter the join date.',
         'Enter a gross salary of more than 0.',
         'A fixed term runs for 1 to 60 months.',

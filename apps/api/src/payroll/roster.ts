@@ -11,7 +11,6 @@ import {
   shiftDaysIn,
   shiftExpectedHours,
   shiftWorkHours,
-  traineeStagePeriods,
   underLabourLaw,
   type EmploymentType,
   type HeldAccount,
@@ -23,7 +22,6 @@ import {
   type PayrollRules,
   type PayrollSegment,
   type PayrollTerms,
-  type TraineeStage,
 } from '@trendlix/shared';
 import { addDays } from '../common/date-only.js';
 import { departmentName } from '../contracts/views.js';
@@ -108,8 +106,6 @@ export interface RosterContract {
   /** Its number within the employment, and, for a raise, from when the insured wage follows its pay (raises.ts). */
   version: number;
   insuredWageFrom?: string | null;
-  /** A trainee's training agreement: its stages, each paid in its own days (byTraineeStage); none otherwise. */
-  traineeStages?: readonly TraineeStage[] | null;
 }
 
 /** Someone on the run: whose pay it is, what is shown with it, and what it is worked out from. */
@@ -205,20 +201,6 @@ export function permissionTermsOf(month: string, parts: readonly { from: string;
 }
 
 /**
- * A trainee's training agreement as the month pays it (owner, 18 October 2026; Labour Law 14/2025 Art. 29: "المكافأة
- * التى يحصل عليها المتدرج فى كل مرحلة بصورة تصاعدية"): each stage from its first day at its own pay, as a renewal's days
- * are paid on its own (contractParts), so a stage that starts mid-month splits the month by days; the last stage to the
- * agreement's end. Other contracts as they are.
- */
-export function byTraineeStage(contracts: readonly RosterContract[]): RosterContract[] {
-  return contracts.flatMap((c) => {
-    const periods = c.traineeStages?.length ? traineeStagePeriods(c.traineeStages, c.startDate) : [];
-    if (!periods.length) return [c];
-    return periods.map((p, i) => ({ ...c, startDate: p.from, endDate: i === periods.length - 1 ? c.endDate : p.to, grossSalary: p.pay }));
-  });
-}
-
-/**
  * The parts of the days from `from` to `to` (YYYY-MM-DD) under each signed contract, in date order (owner, 17 October
  * 2026): each day under the contract in force on it, the latest start winning (a raise's amendment runs beside the
  * version it changes, from its 1st), consecutive days under the same one together. A day under none (between two
@@ -273,8 +255,7 @@ export function roster(
     }
     // the days employed in the month under each signed contract (owner, 17 October 2026); the line is the contract's at
     // the month's end
-    // a trainee's stages each at its own pay (byTraineeStage)
-    const parts = contractParts(e.joinDate > from ? e.joinDate : from, e.endDate !== null && e.endDate < to ? e.endDate : to, byTraineeStage(e.contracts));
+    const parts = contractParts(e.joinDate > from ? e.joinDate : from, e.endDate !== null && e.endDate < to ? e.endDate : to, e.contracts);
     if (!parts.length) {
       out(NO_CONTRACT);
       continue;

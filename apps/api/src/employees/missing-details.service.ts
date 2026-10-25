@@ -66,7 +66,7 @@ export class MissingDetailsService {
         employeeCode: employee.employeeCode,
         fullNameEn: employee.fullNameEn,
         fullNameAr: employee.fullNameAr,
-        // a trainee or an intern stands as such (19 October 2026), as in the directory
+        // an intern stands as such (19 October 2026), as in the directory
         standing: (current ? employmentStanding(current) : 'not_employed') as Standing,
         department: current?.department ?? null,
         jobTitle: current?.jobTitle ?? null,

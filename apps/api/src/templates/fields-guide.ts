@@ -182,8 +182,8 @@ function slotRow(slot: TemplateSlot): string[] {
 }
 
 /**
- * "All employment types", or the ones named: "Full-time", "Part-time, Trainee"; a commission slot "Full-time, paid by
- * commission" (owner, 18 October 2026: Sales became Full-time with the flag).
+ * "All employment types", or the ones named: "Full-time", "Part-time, Unpaid internship"; a commission slot "Full-time,
+ * paid by commission" (owner, 18 October 2026: Sales became Full-time with the flag).
  */
 function appliesTo(types: readonly EmploymentType[], paidByCommission = false): string {
   if (EMPLOYMENT_TYPES.every((t) => types.includes(t))) return 'All employment types';

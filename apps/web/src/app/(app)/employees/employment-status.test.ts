@@ -5,8 +5,8 @@ describe('the employment’s status field', () => {
   it('is set by the system for a new employment', () => {
     expect(statusField()).toEqual({ kind: 'shown', value: 'Set by the system', hint: 'Probation until the probation end (Active for a rehire).' });
     expect(statusField(undefined, 'full_time')).toEqual(statusField());
-    // a trainee's or an intern's agreement has no probation (19 October 2026)
-    expect(statusField(undefined, 'trainee')).toEqual({ kind: 'shown', value: 'Set by the system', hint: 'Trainee while the training agreement runs: no probation.' });
+    // an intern's agreement has no probation (19 October 2026); a trainee is no type of its own any more (25 October 2026)
+    expect(statusField(undefined, 'trainee')).toEqual(statusField());
     expect(statusField(undefined, 'intern')).toEqual({ kind: 'shown', value: 'Set by the system', hint: 'Intern while the internship agreement runs: no probation.' });
   });
 

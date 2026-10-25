@@ -25,11 +25,11 @@ describe('who may claim a type', () => {
   it('takes an unpaid intern for a type chosen for interns, or for every type (19 October 2026)', () => {
     const intern = { ...place, employmentType: 'intern' };
     expect(mayClaimType(rules({ employmentTypes: ['intern'] }), intern)).toBe(true);
-    expect(mayClaimType(rules({ employmentTypes: ['trainee', 'intern'] }), intern)).toBe(true);
+    expect(mayClaimType(rules({ employmentTypes: ['full_time', 'intern'] }), intern)).toBe(true);
     expect(mayClaimType(rules(), intern)).toBe(true);
-    // a paid trainee's type isn't an intern's, nor the other way round
-    expect(mayClaimType(rules({ employmentTypes: ['trainee'] }), intern)).toBe(false);
-    expect(mayClaimType(rules({ employmentTypes: ['intern'] }), { ...place, employmentType: 'trainee' })).toBe(false);
+    // a type chosen for others isn't an intern's, nor the other way round
+    expect(mayClaimType(rules({ employmentTypes: ['full_time'] }), intern)).toBe(false);
+    expect(mayClaimType(rules({ employmentTypes: ['intern'] }), { ...place, employmentType: 'full_time' })).toBe(false);
   });
 });
 

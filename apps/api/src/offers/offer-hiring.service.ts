@@ -1,5 +1,5 @@
 import { ConflictException, HttpException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { isTrainingType, TEMPLATE_SLOTS } from '@trendlix/shared';
+import { isTrainingType, RETIRED_SLOT_NAMES, TEMPLATE_SLOTS } from '@trendlix/shared';
 import { allowanceData } from '../allowances/rows.js';
 import { AuditService } from '../audit/audit.service.js';
 import { fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../common/date-only.js';
@@ -106,7 +106,7 @@ export class OfferHiringService {
           person = { ...e, created: true };
         }
 
-        // a trainee's or an intern's agreement (owner, 19 October 2026): none for the same person until 6 months after
+        // an intern's agreement (owner, 19 October 2026): none for the same person until 6 months after
         // their last one ended, and no probation (an offer from before then may still have some)
         await assertTrainingGap(tx, person, o.employmentType, joinDate);
         const probationMonths = isTrainingType(o.employmentType) ? 0 : o.probationMonths;
@@ -178,15 +178,18 @@ export class OfferHiringService {
         // the offer as sent, on the profile's Employment tab
         let document: { id: string; slotKey: string; fileName: string; sizeBytes: number; documentDate: string } | null = null;
         if (o.data && o.templateVersionId && o.templateVersion && o.fileName) {
-          // the slot it was filled from (a commission offer's may be the commission one: OfferDocumentsService.slotOf)
-          const slot = TEMPLATE_SLOTS.find((s) => s.key === o.templateVersion!.slotKey) ?? offerSlot(o.employmentType);
+          // the slot it was filled from (a commission offer's may be the commission one: OfferDocumentsService.slotOf); a
+          // retired one's kept (the paid trainee's offer, gone on 25 October 2026: RETIRED_SLOT_NAMES), as it was made
+          const filledFrom = o.templateVersion.slotKey;
+          const slot = TEMPLATE_SLOTS.find((s) => s.key === filledFrom) ?? offerSlot(o.employmentType);
+          const slotKey = RETIRED_SLOT_NAMES[filledFrom] ? filledFrom : slot.key;
           const online = !o.answeredById && o.acceptedName && o.respondedAt;
           const documentDate = o.documentDate ? fromDateOnly(o.documentDate) : todayInCairo();
           const row = await tx.generatedDocument.create({
             data: {
               employeeId: person.id,
               employmentId: employment.id,
-              slotKey: slot.key,
+              slotKey,
               templateVersionId: o.templateVersionId,
               documentDate: toDateOnly(documentDate),
               fileName: o.fileName,
@@ -199,7 +202,7 @@ export class OfferHiringService {
             },
             select: { id: true },
           });
-          document = { id: row.id, slotKey: slot.key, fileName: o.fileName, sizeBytes: o.data.length, documentDate };
+          document = { id: row.id, slotKey, fileName: o.fileName, sizeBytes: o.data.length, documentDate };
         }
 
         await tx.jobOffer.update({ where: { id: offerId }, data: { employeeId: person.id } });

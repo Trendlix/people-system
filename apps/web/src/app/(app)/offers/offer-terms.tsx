@@ -31,10 +31,11 @@ import { estimateText, insuredAllowancesOf, offerBreakdownRows, offerSalary, pay
 // allowances in it (terms.ts), with the rates set by law of the join date's year. The form sends the gross worked out (grossSalary), the
 // gross rate worked out from a net rate (hourlyRate) and the net worked out (netSalary), as the contract form does.
 //
-// A trainee's or an intern's offer (owner, 19 October 2026: "interns to be labeled trainees instead of probation") has no
-// probation: 0, not editable. An intern's, the unpaid internship ("we are not paying them salary, its just transportation
-// allowance"), is monthly with no wage: the gross shows as No wage (unpaid internship) and isn't sent, nor a basic part
-// or a net; the allowances are what the intern is paid; and its length is 3 months unless HR chooses another, 12 at most.
+// An intern's offer (owner, 19 October 2026: "interns to be labeled trainees instead of probation") has no probation: 0,
+// not editable. It is the unpaid internship ("we are not paying them salary, its just transportation allowance"), the one
+// internship since 25 October 2026, monthly with no wage: the gross shows as No wage (unpaid internship) and isn't sent,
+// nor a basic part or a net; the allowances are what the intern is paid; and its length is 3 months unless HR chooses
+// another, 12 at most.
 
 const optional = <span className="font-normal text-muted">(optional)</span>;
 const radio =
@@ -70,9 +71,8 @@ export function OfferTerms({
   /** That year's rates set by law (lawRatesFor on the years kept). */
   rates: LawRates;
 }) {
-  // a trainee's or an intern's agreement has no probation; an intern's pays no wage, monthly (19 October 2026)
-  const training = isTrainingType(employmentType);
-  const intern = employmentType === 'intern';
+  // an intern's agreement has no probation and pays no wage, monthly (19 October 2026)
+  const intern = isTrainingType(employmentType);
   const hourly = !intern && payBasisFrom(typed.payBasis) === 'hourly';
   const start = salaryStartFrom(typed.salaryBasis);
   const rateStart = salaryStartFrom(typed.rateBasis);
@@ -361,8 +361,8 @@ export function OfferTerms({
           <label htmlFor={fid('probationMonths')} className="label">
             Probation in months
           </label>
-          {training ? (
-            // a trainee's or an intern's agreement: none, sent as 0
+          {intern ? (
+            // an intern's agreement: none, sent as 0
             <>
               <input id={fid('probationMonths')} value="0" readOnly aria-describedby={fid('probationMonths-hint')} className="input bg-canvas text-muted" />
               <input type="hidden" name="probationMonths" value="0" />
@@ -383,8 +383,8 @@ export function OfferTerms({
             />
           )}
           <p id={fid('probationMonths-hint')} className="hint">
-            {training
-              ? noProbationHint(employmentType)
+            {intern
+              ? noProbationHint()
               : 'At most 3 months, and only once with the company (Labour Law Art. 90): 0 for someone employed here before. 0 for none.'}
           </p>
         </div>

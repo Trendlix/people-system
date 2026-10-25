@@ -35,8 +35,8 @@ const OFFICE_DAYS = [
   [4, 'Thu'],
 ] as const;
 
-/** Only people with a current employment can be picked as the manager. A current trainee or intern too (19 October 2026). */
-const EMPLOYED: readonly string[] = ['active', 'probation', 'trainee', 'intern', 'on_leave', 'notice_period'];
+/** Only people with a current employment can be picked as the manager. A current intern too (19 October 2026). */
+const EMPLOYED: readonly string[] = ['active', 'probation', 'intern', 'on_leave', 'notice_period'];
 
 /** The office days ticked before a refused save, else the saved ones. */
 function officeDaysOf(state: FormState, saved: number[]): Set<number> {
@@ -99,7 +99,7 @@ export function OfferPositionFields({
     suggestManager(pickers.departments, departmentId, { canPick: (id) => pickers.managers.some((m) => m.id === id && EMPLOYED.includes(m.standing)) }),
   );
   const officeDays = officeDaysOf(state, defaults.officeDays);
-  // trainee and freelance say what they mean by the law
+  // the unpaid internship and freelance say what they mean by the law
   const typeHint = employmentTypeHint(type, 'offer');
   const pattern = workPatternNote(arrangement);
 

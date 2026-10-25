@@ -202,6 +202,10 @@ describe('Recruitment (e2e)', () => {
       expect(said(res)).toEqual(['Question 1 (Car?): choose the answer wanted, Yes or No.']);
       const terms = await post('hr', '/recruitment/vacancies', { jobTitleId, employmentType: 'full_time', salaryMin: 30000, salaryMax: 20000, closingDate: addDays(TODAY, -1) }).expect(400);
       expect(said(terms)).toEqual(['The least salary is more than the most: swap them.', 'The closing date has passed: choose today or a later day.']);
+      // the paid trainee went on 25 October 2026 (owner: "unpaid internship and training are the same thing"): an intern now
+      expect(said(await post('hr', '/recruitment/vacancies', { jobTitleId, employmentType: 'trainee' }).expect(400))).toEqual([
+        'Choose an employment type: full_time, part_time, intern (an unpaid internship, outside the labour law; a trainee is an intern now) or freelance (outside the labour law).',
+      ]);
     });
 
     it('go to the CEO, who sends one back with a reason, then approves it: on the careers page without its salary or scoring', async () => {

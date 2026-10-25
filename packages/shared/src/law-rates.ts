@@ -42,9 +42,9 @@ export interface LawRates {
   /** The salary tax's tiers, lowest first (Law 91/2005 Art. 8 as replaced by Law 7/2024). */
   taxTiers: readonly TaxTier[];
   /**
-   * The private sector's minimum wage a month (owner, 18 October 2026): a trainee's last training stage is paid at least
-   * this (Labour Law 14/2025 Art. 29: "على ألا تقل فى المرحلة الأخيرة عن الحد الأدنى للأجر"). Not built in: the owner
-   * sets it; missing or null when not set, and nothing is checked against it.
+   * The private sector's minimum wage a month (owner, 18 October 2026), kept for reference: it was the paid trainee's
+   * last training stage's floor (Labour Law 14/2025 Art. 29), and that trainee went on 25 October 2026. Not built in: the
+   * owner sets it; missing or null when not set, and nothing is checked against it.
    */
   minimumWage?: number | null;
   /**

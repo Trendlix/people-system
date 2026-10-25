@@ -7,8 +7,9 @@ import { formatMoney, formatPercent, parseAmount, plainAmount } from '../../empl
 // Organization → Payroll, Rates Set by Law (owner's request, 16 October 2026: "creating a setup page for payroll to
 // enter the variables that might affect the sheet"): by year, the social insurance shares and the insurable wage's
 // limits, the personal exemption, the Martyrs' Fund, comprehensive health insurance and the salary tax's tiers and
-// bands, "editable by superadmin, to modify it if the law changed"; since 18 October 2026 the minimum wage too, which a
-// trainee's last training stage is paid at least (Labour Law 14/2025 Art. 29), left empty until the owner sets it; since
+// bands, "editable by superadmin, to modify it if the law changed"; since 18 October 2026 the minimum wage too, for
+// reference (the paid trainee's last stage floor, Labour Law 14/2025 Art. 29, until the trainee went on 25 October 2026),
+// left empty until the owner sets it; since
 // 20 October 2026 (owner, on the employee's medical share: "Before Tax i think") the before-tax health insurance limit a
 // year, which caps what the recurring deductions ticked "Deducted before tax" lower the taxable pay by (a twelfth a
 // month), left empty for no limit, as the tax law's limit is the accountant's to give. Each
@@ -151,7 +152,7 @@ export interface LawRatesTyped {
   personalExemption: string;
   martyrsRate: string;
   healthInsuranceRate: string;
-  /** Empty: not set (owner, 18 October 2026: the owner sets it; a trainee's last stage is checked against it). */
+  /** Empty: not set (owner, 18 October 2026: the owner sets it, for reference; nothing is checked against it). */
   minimumWage: string;
   /** EGP a year; empty: no limit (owner, 20 October 2026: "Before Tax i think"). */
   beforeTaxHealthLimit: string;

@@ -8,8 +8,8 @@ import { daysBetween, daysLabel } from './dates';
 
 // While the current employment is on probation (3 months at most, once per employer: Labour Law Art. 90): until when,
 // or that its end date has passed without a decision. HR confirms it (the status becomes Active) or ends the
-// employment during probation, which goes to the CEO like every ending. Never for a trainee or an intern, whose agreement
-// has no probation (19 October 2026), even with a Probation from before then: the API refuses to confirm one.
+// employment during probation, which goes to the CEO like every ending. Never for an intern, whose agreement has no
+// probation (19 October 2026), even with a Probation from before then: the API refuses to confirm one.
 
 const small = 'btn min-h-9 px-3';
 
