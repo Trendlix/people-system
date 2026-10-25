@@ -43,6 +43,10 @@ describe('what kind of value a tag has', () => {
     // a trainee's training stages are a list, in words (18 October 2026)
     expect(isAmountTag('trainee_stages')).toBe(false);
     expect(isAmountTag('trainee_stages_en')).toBe(false);
+    // the accounts allowance's line (25 October 2026): words, no amount
+    expect(isAmountTag('accounts_allowance')).toBe(false);
+    expect(isAmountTag('accounts_allowance_ar')).toBe(false);
+    expect(isAmountTag('accounts_allowance_en')).toBe(false);
     expect(isAmountTag('national_id')).toBe(false);
     // the final settlement's total deducted, not its lines (20 October 2026)
     expect(isAmountTag('deductions_total')).toBe(true);

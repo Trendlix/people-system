@@ -20,7 +20,7 @@ const NEWEST_FIRST = [{ endDate: { sort: 'desc', nulls: 'first' } }, { joinDate:
 export const PAY_VERSIONS = {
   orderBy: { version: 'asc' },
   include: {
-    allowances: { orderBy: ALLOWANCE_ORDER, select: { nameEn: true, amount: true } },
+    allowances: { orderBy: ALLOWANCE_ORDER, select: { nameEn: true, amount: true, basis: true } },
     approvedBy: { select: { email: true } },
     newJobTitle: { select: { titleEn: true } },
     newGrade: { select: { code: true } },
@@ -75,7 +75,8 @@ export function payVersion(c: PayVersionRow, names: ReadonlyMap<string, string>)
     payBasis: c.payBasis,
     grossSalary: c.grossSalary.toNumber(),
     hourlyRate: c.hourlyRate?.toNumber() ?? null,
-    allowances: c.allowances.map((a) => ({ nameEn: a.nameEn, amount: a.amount.toNumber() })),
+    // a per-account one (25 October 2026) with its basis, so it reads "Per client account assigned", not 0.00
+    allowances: c.allowances.map((a) => ({ nameEn: a.nameEn, amount: a.amount.toNumber(), basis: a.basis })),
     raiseReason: c.raiseReason,
     newJobTitle: c.newJobTitle?.titleEn ?? null,
     newGrade: c.newGrade?.code ?? null,

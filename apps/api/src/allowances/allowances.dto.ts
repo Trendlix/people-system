@@ -1,6 +1,7 @@
 import { Type } from 'class-transformer';
 import { applyDecorators } from '@nestjs/common';
-import { ArrayMaxSize, ArrayUnique, IsArray, IsBoolean, IsInt, IsNumber, IsUUID, Max, Min, ValidateBy, ValidateIf, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayUnique, IsArray, IsBoolean, IsIn, IsInt, IsNumber, IsUUID, Max, Min, ValidateBy, ValidateIf, ValidateNested } from 'class-validator';
+import { ALLOWANCE_BASES, type AllowanceBasis } from '@trendlix/shared';
 import { Trim } from '../common/transforms.js';
 
 // The kinds of allowance (owner's request, 15 October 2026), and the allowances of a contract or a job offer: a kind
@@ -33,6 +34,10 @@ export class CreateAllowanceTypeDto {
   /** Counted in the insured wage, within its limits: no unless sent. */
   @Sent() @IsBoolean({ message: 'Choose whether the allowance counts in the insured wage.' })
   insured?: boolean;
+
+  /** How it is paid (25 October 2026): a fixed amount a month unless sent, or per client account. */
+  @Sent() @IsIn(ALLOWANCE_BASES, { message: 'Choose how the allowance is paid: a fixed amount a month, or per client account.' })
+  basis?: AllowanceBasis;
 }
 
 export class UpdateAllowanceTypeDto {
@@ -55,15 +60,25 @@ export class UpdateAllowanceTypeDto {
   /** Lower first in the lists. */
   @Sent() @IsInt({ message: 'Enter the order as a whole number, 0 to 999.' }) @Min(0, { message: 'Enter the order as 0 to 999.' }) @Max(999, { message: 'Enter the order as 0 to 999.' })
   sortOrder?: number;
+
+  /** Changed only while no contract or offer has the kind (the service checks). */
+  @Sent() @IsIn(ALLOWANCE_BASES, { message: 'Choose how the allowance is paid: a fixed amount a month, or per client account.' })
+  basis?: AllowanceBasis;
 }
 
-/** One allowance of a contract or an offer: its kind and its amount a month. */
+/**
+ * One allowance of a contract or an offer: its kind and its amount a month; none (left out, or null) for a kind paid per
+ * client account (25 October 2026), which the service checks, as only it knows the kind.
+ */
 export class AllowanceAmountDto {
   @IsUUID('all', { message: 'Choose the allowance.' })
   allowanceTypeId: string;
 
-  @IsNumber({ maxDecimalPlaces: 2 }, { message: AMOUNT_MESSAGE }) @Min(0.01, { message: AMOUNT_MESSAGE }) @Max(MAX_MONEY, { message: AMOUNT_MESSAGE })
-  amount: number;
+  @ValidateIf((_o, v) => v !== undefined && v !== null)
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: AMOUNT_MESSAGE })
+  @Min(0.01, { message: AMOUNT_MESSAGE })
+  @Max(MAX_MONEY, { message: AMOUNT_MESSAGE })
+  amount?: number | null;
 }
 
 /**

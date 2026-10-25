@@ -20,6 +20,8 @@ interface Kind {
   insured: boolean;
   active: boolean;
   sortOrder: number;
+  /** Fixed, or per client account (25 October 2026). */
+  basis: 'fixed' | 'per_account';
   inUse: boolean;
 }
 
@@ -62,6 +64,7 @@ describe('Allowance kinds (e2e)', () => {
       insured: true,
       active: true,
       sortOrder: expect.any(Number),
+      basis: 'fixed',
       inUse: false,
     });
     const meals = (await post({ nameEn: `Meals ${RUN}`, nameAr: 'بدل وجبات', taxable: false }, admin).expect(201)).body as Kind;
@@ -104,8 +107,8 @@ describe('Allowance kinds (e2e)', () => {
   it('HR or an Admin changes a kind, with an audit entry; a rename may not take another kind’s name', async () => {
     const kind = await add('Changing');
     const other = await add('Taken');
-    const changed = await patch(kind.id, { nameEn: `Changed ${RUN}`, nameAr: 'بدل معدل', taxable: false, insured: true, active: false, sortOrder: 7 }).expect(200);
-    expect(changed.body).toEqual({ ...kind, nameEn: `Changed ${RUN}`, nameAr: 'بدل معدل', taxable: false, insured: true, active: false, sortOrder: 7 });
+    const changed = await patch(kind.id, { nameEn: `Changed ${RUN}`, nameAr: 'بدل معدل', taxable: false, insured: true, active: false, sortOrder: 900 }).expect(200);
+    expect(changed.body).toEqual({ ...kind, nameEn: `Changed ${RUN}`, nameAr: 'بدل معدل', taxable: false, insured: true, active: false, sortOrder: 900 });
     expect((await patch(kind.id, { active: true }, admin).expect(200)).body.active).toBe(true);
     // only the case changes: still its own name
     expect((await patch(kind.id, { nameEn: `CHANGED ${RUN}` }).expect(200)).body.nameEn).toBe(`CHANGED ${RUN}`);
@@ -126,7 +129,8 @@ describe('Allowance kinds (e2e)', () => {
       taxable: { from: true, to: false },
       insured: { from: false, to: true },
       active: { from: true, to: false },
-      sortOrder: { from: kind.sortOrder, to: 7 },
+      // an order no kind is given when added (they count up from the seeded Accounts allowance's), so it always changes
+      sortOrder: { from: kind.sortOrder, to: 900 },
     });
   });
 
@@ -157,5 +161,31 @@ describe('Allowance kinds (e2e)', () => {
     await api().delete(`/api/contracts/${contract.body.id}`).set('Cookie', superAdmin).expect(204);
     expect((await list()).find((k) => k.id === used.id)).toMatchObject({ inUse: false });
     await remove(used.id).expect(204);
+  });
+
+  // an allowance per client account (owner, 25 October 2026: "if an employee has an allowance per account, how can we
+  // deal with it?"): the seeded Accounts allowance, and kinds HR adds so
+  it('a kind paid per client account: the seeded Accounts allowance, chosen on a contract with no amount, once', async () => {
+    const seeded = (await list(staff)).find((k) => k.nameEn === 'Accounts allowance');
+    expect(seeded).toMatchObject({ nameAr: 'بدل حسابات', taxable: true, insured: false, active: true, basis: 'per_account' });
+    const kind = await add('Per Account', { basis: 'per_account' });
+    expect(kind).toMatchObject({ basis: 'per_account', taxable: true, insured: false });
+    expect((await prisma.auditLog.findFirstOrThrow({ where: { entityType: 'allowance_type', entityId: kind.id, action: 'create' } })).diff).toMatchObject({ basis: 'per_account' });
+    await post({ nameEn: `Bad Basis ${RUN}`, nameAr: 'بدل', basis: 'hourly' }).expect(400);
+
+    const person = await api().post('/api/employees').set('Cookie', hr).send({ fullNameEn: `Account Holder ${RUN}`, fullNameAr: 'موظف' }).expect(201);
+    const hired = await api().post(`/api/employees/${person.body.id}/employments`).set('Cookie', hr).send({ employmentType: 'full_time', joinDate: '2026-03-01' }).expect(201);
+    const contracts = `/api/employees/${person.body.id}/employments/${hired.body.employment.id}/contracts`;
+    // eligibility only: no amount sent, 0 kept, its basis with it
+    const contract = await api().post(contracts).set('Cookie', hr).send({ grossSalary: 10000, allowances: [{ allowanceTypeId: kind.id }] }).expect(201);
+    expect(contract.body).toMatchObject({ allowances: [{ allowanceTypeId: kind.id, basis: 'per_account', amount: 0 }], allowancesTotal: 0, totalSalary: 10000 });
+    // one per-account kind at most
+    const twice = await api().patch(`/api/contracts/${contract.body.id}`).set('Cookie', hr).send({ allowances: [{ allowanceTypeId: kind.id }, { allowanceTypeId: seeded!.id }] }).expect(400);
+    expect(twice.body.message).toBe('Add one per-account allowance at most: the client accounts are paid once, as that allowance.');
+    // in use: how it is paid no longer changes
+    expect((await patch(kind.id, { basis: 'fixed' }).expect(409)).body.message).toBe(`Per Account ${RUN} is on contracts or offers, so how it is paid can't change. Add another allowance paid a fixed amount instead.`);
+    const free = await add('Free Basis');
+    expect((await patch(free.id, { basis: 'per_account' }).expect(200)).body.basis).toBe('per_account');
+    await api().delete(`/api/contracts/${contract.body.id}`).set('Cookie', superAdmin).expect(204);
   });
 });

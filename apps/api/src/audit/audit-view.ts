@@ -303,6 +303,8 @@ const KPI_TEMPLATES: Role[] = ['hr', 'ceo', 'admin']; // the KPI templates' page
 // is always an Assets manager and the CEO at least a viewer who sets the values; the Rooms page is a manager's
 const ASSETS: Role[] = ['super_admin', 'ceo'];
 const ASSET_ROOMS: Role[] = ['super_admin'];
+// Clients → Client Accounts (25 October 2026): HR, the CEO, Finance and a Super Admin
+const CLIENTS: Role[] = ['hr', 'ceo', 'finance', 'super_admin'];
 
 interface Target {
   href: string;
@@ -422,6 +424,15 @@ function targetOf(row: Pick<AuditRow, 'entityType' | 'entityId' | 'diff'>, refs:
       return id ? own(`/organization/shifts/${id}`, 'Open shift', ORG) : null;
     case 'allowance_type':
       return id ? own(`/organization/allowances/${id}`, 'Open allowance type', ORG) : null;
+    // an account, or a person on it, on the Client Accounts page (25 October 2026)
+    case 'client_account':
+      return id ? { href: `/clients/accounts?account=${id}`, label: 'Open client account', roles: CLIENTS } : null;
+    case 'client_account_assignment': {
+      const account = stringAt(row.diff, 'accountId');
+      return { href: account ? `/clients/accounts?account=${account}` : '/clients/accounts', label: 'Open client account', roles: CLIENTS };
+    }
+    case 'client_account_tier':
+      return { href: '/clients/accounts', label: 'Open client accounts', roles: CLIENTS };
     case 'leave_type':
       return id ? own(`/organization/leave/types/${id}`, 'Open leave type', ORG) : null;
     case 'reimbursement_type':

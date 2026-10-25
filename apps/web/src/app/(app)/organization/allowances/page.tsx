@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
+import { ALLOWANCE_BASIS_LABELS } from '@trendlix/shared';
 import { apiGet } from '@/lib/api';
 import { canEditOrganisation, getCurrentUser } from '@/lib/session';
 import type { AllowanceType } from '@/lib/types';
@@ -39,6 +40,7 @@ async function AllowancesList() {
               <tr>
                 <th>Allowance</th>
                 <th>Arabic Name</th>
+                <th>Paid</th>
                 <th>Taxed</th>
                 <th>Insured</th>
                 <th>Status</th>
@@ -59,6 +61,7 @@ async function AllowancesList() {
                   <td lang="ar" dir="rtl" className="text-right">
                     {a.nameAr}
                   </td>
+                  <td>{ALLOWANCE_BASIS_LABELS[a.basis ?? 'fixed']}</td>
                   <td>{yesNo(a.taxable)}</td>
                   <td>{yesNo(a.insured)}</td>
                   <td>
@@ -91,6 +94,11 @@ async function AllowancesList() {
         <p>
           <span className="font-medium text-ink">Inactive:</span> not offered for new contracts and job offers. Those it is
           already on keep it.
+        </p>
+        <p>
+          <span className="font-medium text-ink">Per client account assigned:</span> no amount on the contract or the job offer;
+          payroll pays the amounts of the client accounts the person is assigned to under Clients → Client Accounts, by the
+          days held in the month (25 October 2026).
         </p>
       </div>
     </>

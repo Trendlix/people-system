@@ -233,6 +233,10 @@ describe('allowances on top of the gross', () => {
   it('lists a contract’s allowances with their amounts', () => {
     expect(allowancesLabel([{ nameEn: 'Transport', amount: 1000 }, { nameEn: 'Mobile', amount: 500.5 }])).toBe('Transport EGP 1,000.00 · Mobile EGP 500.50');
     expect(allowancesLabel([])).toBe('');
+    // paid per client account (25 October 2026): no amount on the contract
+    expect(allowancesLabel([{ nameEn: 'Transport', amount: 1000 }, { nameEn: 'Accounts allowance', amount: 0, basis: 'per_account' }])).toBe(
+      'Transport EGP 1,000.00 · Accounts allowance: Per client account assigned',
+    );
   });
 });
 

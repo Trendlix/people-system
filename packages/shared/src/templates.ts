@@ -414,6 +414,19 @@ export const TEMPLATE_TAGS: readonly TemplateTag[] = [
   // in words too (owner, 25 October 2026: "{{allowances_total}} i need it in arabic words")
   { tag: 'allowances_total_words', group: 'pay', labelEn: 'Allowances in total in words (Arabic)', labelAr: 'تفقيط إجمالي البدلات', source: 'Contract or offer: in Arabic words, فقط … لا غير', restricted: true },
   { tag: 'allowances_total_words_en', group: 'pay', labelEn: 'Allowances in total in words (English)', labelAr: 'تفقيط إجمالي البدلات بالإنجليزية', source: 'Contract or offer: in English words', note: 'E.g. One thousand Egyptian pounds only', restricted: true },
+  // the accounts allowance (owner, 25 October 2026: "if an employee has an allowance per account, how can we deal with
+  // it?"): a per-account allowance has no amount on the contract or the offer, only this line; blank without one
+  {
+    tag: 'accounts_allowance',
+    group: 'pay',
+    labelEn: 'Accounts allowance',
+    labelAr: 'بدل الحسابات',
+    source: 'Contract or offer with a per-account allowance: its line, in the template’s language; blank without one',
+    restricted: true,
+    note: 'An accounts allowance for each client account assigned, at the amount set for that account',
+  },
+  { tag: 'accounts_allowance_ar', group: 'pay', labelEn: 'Accounts allowance (Arabic)', labelAr: 'بدل الحسابات بالعربي', source: 'Contract or offer with a per-account allowance; blank without one', restricted: true, note: 'بدل حسابات عن كل حساب عميل يُسند إليه، بالقيمة المحددة لهذا الحساب' },
+  { tag: 'accounts_allowance_en', group: 'pay', labelEn: 'Accounts allowance (English)', labelAr: 'بدل الحسابات بالإنجليزية', source: 'Contract or offer with a per-account allowance; blank without one', restricted: true, note: 'An accounts allowance for each client account assigned, at the amount set for that account' },
   { tag: 'total_salary', group: 'pay', labelEn: 'Gross salary and allowances', labelAr: 'إجمالي الراتب والبدلات', source: 'Contract or offer: a month', restricted: true },
   { tag: 'total_salary_words', group: 'pay', labelEn: 'Gross salary and allowances in words (Arabic)', labelAr: 'تفقيط إجمالي الراتب والبدلات', source: 'Contract or offer: in Arabic words', restricted: true },
   { tag: 'total_salary_words_en', group: 'pay', labelEn: 'Gross salary and allowances in words (English)', labelAr: 'تفقيط إجمالي الراتب والبدلات بالإنجليزية', source: 'Contract or offer: in English words', restricted: true },

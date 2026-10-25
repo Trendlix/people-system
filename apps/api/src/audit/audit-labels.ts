@@ -34,6 +34,10 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   // people exempt from check-in (owner, 25 October 2026: "allow me to select people that are not eligable for attendance
   // checkins and outs"): a period added, ended or removed
   check_in_exemption: 'Exemption from check-in',
+  // Clients → Client Accounts (owner, 25 October 2026: an allowance per client account): an account, a person on it, a size
+  client_account: 'Client account',
+  client_account_assignment: 'Client account assignment',
+  client_account_tier: 'Client account size',
   company: 'Company',
   contract: 'Contract',
   contract_settings: 'Contract defaults',

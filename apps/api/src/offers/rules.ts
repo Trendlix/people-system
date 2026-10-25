@@ -145,6 +145,10 @@ const OFFER_FIELDS: Record<string, string> = {
   allowances_total: 'allowances',
   allowances_total_words: 'allowances',
   allowances_total_words_en: 'allowances',
+  // the accounts allowance's line (25 October 2026): an offer's per-account allowance
+  accounts_allowance: 'allowances',
+  accounts_allowance_ar: 'allowances',
+  accounts_allowance_en: 'allowances',
   offer_number: 'number',
   offer_expiry: 'expiresOn',
 };

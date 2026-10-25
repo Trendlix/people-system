@@ -173,6 +173,8 @@ export const DEVELOPER_MONEY_FIELDS: ReadonlySet<string> = new Set([
   'capPerClaim',
   'capPerMonth',
   'capPerYear',
+  // client accounts (25 October 2026): an account's and a size tier's default amount a month (an assignment's is `amount`)
+  'defaultAmount',
   // recruitment
   'salaryMin',
   'salaryMax',

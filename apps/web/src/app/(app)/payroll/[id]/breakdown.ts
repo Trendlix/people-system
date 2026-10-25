@@ -1,4 +1,6 @@
 import {
+  accountShareText,
+  accountsAllowanceLabel,
   adjustmentTypeLabel,
   BEFORE_TAX_LABEL,
   daysText,
@@ -108,6 +110,23 @@ const variablePercent = (basicPercent: number) => Math.round((100 - basicPercent
 
 /** The allowances' names, for the note: none, nothing to say. */
 const allowanceNames = (allowances: readonly PayrollAllowance[]) => allowances.map((a) => a.name).join(', ') || undefined;
+
+/**
+ * The accounts allowance (owner, 25 October 2026: an allowance per client account, "By days"), already in the
+ * allowances above: "Accounts allowance (2 accounts)" with each account and what it came to, "Acme EGP 1,500.00 · Beta
+ * EGP 232.26 (8 of 31 days)". Null on a line without one.
+ */
+export function accountsRow(t: Pick<PayrollTerms, 'allowances' | 'segments'>): BreakdownRow | null {
+  const a = t.allowances.find((x) => x.accounts?.length) ?? t.segments?.at(-1)?.allowances.find((x) => x.accounts?.length);
+  if (!a?.accounts) return null;
+  return {
+    key: 'accountsAllowance',
+    label: accountsAllowanceLabel(a.name, a.accounts.length),
+    value: formatEgp(a.amount),
+    kind: 'info',
+    note: a.accounts.map((s) => accountShareText(s, formatEgp(s.amount))).join(' · '),
+  };
+}
 
 /**
  * Where a line's expected hours came from on a line worked out before 17 October 2026, and what came out of them: as
@@ -492,6 +511,8 @@ export function breakdown(given: Line, rules: PayrollRules, law?: LawRates, mont
     ...adjustmentRows(line, 'addition', true),
     { key: 'earned', label: 'Earned', value: formatEgp(r.earned), kind: 'total' },
     ...allowances,
+    // the accounts allowance's accounts (25 October 2026)
+    ...[accountsRow(t)].filter((x): x is BreakdownRow => x !== null),
     {
       key: 'insuredWage',
       label: 'Insured wage',

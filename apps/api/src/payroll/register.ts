@@ -44,6 +44,9 @@ import { byDepartment } from './roster.js';
 // their own before the income tax, which they lowered, and out of the Deductions (after tax); in the Additions and
 // deductions column each says "before tax", with what the taxable pay was lowered by when the year's limit held it back.
 
+/** A line's accounts allowance (25 October 2026), as paid: its amount, already for the days each account was held; null without one. */
+export const accountsAllowanceOf = (terms: Pick<PayrollTerms, 'allowances'>): number | null => terms.allowances.find((a) => a.accounts)?.amount ?? null;
+
 export interface RegisterLine {
   department: string | null;
   employeeCode: string;
@@ -152,6 +155,9 @@ export const REGISTER_COLUMNS: readonly Column[] = [
   { header: 'Settlements', kind: 'money', width: 12, value: (l) => l.result.settlements ?? null },
   // the month's additions and deductions (owner, 17 October 2026): none on lines worked out before then
   { header: 'Additions (taxed)', kind: 'money', width: 12, value: (l) => resultAdjustments(l.result).taxed },
+  // the accounts allowance (owner, 25 October 2026: per client account, "By days"), its own column, also in Allowances;
+  // empty on a line without one
+  { header: 'Accounts allowance', kind: 'money', width: 12, value: (l) => accountsAllowanceOf(l.terms) },
   { header: 'Allowances', kind: 'money', width: 12, value: (l) => l.result.allowances },
   { header: 'Earned', kind: 'money', width: 14, value: (l) => l.result.earned },
   { header: 'Social insurance (employee)', kind: 'money', width: 14, value: (l) => l.result.employeeInsurance },

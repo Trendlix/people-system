@@ -3,7 +3,7 @@
 // Admin). Safe to run more than once; existing rows are left as they are.
 import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { BUILT_IN_LAW_RATES, ENDING_RULE_DEFAULTS, ENDING_RULES, LAW_LEAVE_TYPES, normalTaxTiers, ROLE_LABELS, ROLES } from '@trendlix/shared';
+import { ACCOUNTS_ALLOWANCE, BUILT_IN_LAW_RATES, ENDING_RULE_DEFAULTS, ENDING_RULES, LAW_LEAVE_TYPES, normalTaxTiers, ROLE_LABELS, ROLES } from '@trendlix/shared';
 import { PrismaClient, type Prisma } from '../src/generated/prisma/client.js';
 import { hashPassword } from '../src/auth/password.js';
 import { toTimeOfDay } from '../src/common/time-of-day.js';
@@ -78,6 +78,14 @@ async function main() {
     await prisma.leaveType.upsert({ where: { key }, update: {}, create: { key, ...t } });
   }
   await prisma.leaveSettings.upsert({ where: { id: 1 }, update: {}, create: { id: 1 } });
+
+  // the per-account allowance (owner, 25 October 2026: "if an employee has an allowance per account, how can we deal
+  // with it?"): taxed, not insured; the client accounts migration adds it to existing databases
+  const accounts = await prisma.allowanceType.findFirst({ where: { nameEn: { equals: ACCOUNTS_ALLOWANCE.nameEn, mode: 'insensitive' } } });
+  if (!accounts) {
+    const { _max } = await prisma.allowanceType.aggregate({ _max: { sortOrder: true } });
+    await prisma.allowanceType.create({ data: { ...ACCOUNTS_ALLOWANCE, taxable: true, insured: false, basis: 'per_account', sortOrder: (_max.sortOrder ?? 0) + 1 } });
+  }
 
   for (const s of SHIFTS) {
     await prisma.shift.upsert({

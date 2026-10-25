@@ -1,15 +1,19 @@
 'use client';
 
+import { isPerAccount, PER_ACCOUNT_TEXT } from '@trendlix/shared';
 import { useState } from 'react';
 import { useFieldIds } from '@/components/form';
 import { Select } from '@/components/select';
-import { treatmentText, type AllowanceRow } from '@/lib/allowances';
+import { PER_ACCOUNT_MARK, treatmentText, type AllowanceRow } from '@/lib/allowances';
 import type { AllowanceType } from '@/lib/types';
 
 // Allowance rows for a contract or a job offer (owner's request, 15 October 2026): a kind and its amount a month, one
 // row per kind. Each row sends allowanceTypeId and allowanceAmount (read by allowancesFrom in lib/allowances.ts).
 // `onChange` gets the rows whenever they change, for working out the net while HR types; a form that tracks its fields
-// by name should skip these two names.
+// by name should skip these two names. A kind paid per client account (owner, 25 October 2026: "if an employee has an
+// allowance per account, how can we deal with it?") has no amount: its row says "Per client account assigned" and
+// sends PER_ACCOUNT_MARK in place of one (the person is eligible; payroll pays the client accounts assigned to them
+// under Clients → Client Accounts).
 
 const small = 'btn min-h-9 px-3';
 
@@ -45,6 +49,7 @@ export function AllowanceRows({
       <legend className="label">{legend}</legend>
       <p id={fid('hint')} className="hint">
         {hint}
+        {types.some((t) => isPerAccount(t)) && ' One paid per client account has no amount here: it is paid for each client account assigned under Clients → Client Accounts.'}
       </p>
       {rows.length > 0 && (
         <ul className="space-y-2">
@@ -60,7 +65,12 @@ export function AllowanceRows({
                     id={fid(`kind-${i}`)}
                     name="allowanceTypeId"
                     value={row.allowanceTypeId}
-                    onChange={(e) => update(rows.map((r, j) => (j === i ? { ...r, allowanceTypeId: e.target.value } : r)))}
+                    // a per-account kind has no amount: none kept when the kind changes to or from one
+                    onChange={(e) => {
+                      const next = types.find((t) => t.id === e.target.value);
+                      const changesBasis = isPerAccount(next ?? {}) !== isPerAccount(kind ?? {});
+                      update(rows.map((r, j) => (j === i ? { ...r, allowanceTypeId: e.target.value, ...(changesBasis && { amount: '' }) } : r)));
+                    }}
                     className="input"
                   >
                     <option value="">Choose…</option>
@@ -73,21 +83,29 @@ export function AllowanceRows({
                   </Select>
                   {kind && <p className="hint">{treatmentText(kind)}</p>}
                 </div>
-                <div className="w-40">
-                  <label htmlFor={fid(`amount-${i}`)} className="sr-only">
-                    Allowance {i + 1}: amount in EGP a month
-                  </label>
-                  <input
-                    id={fid(`amount-${i}`)}
-                    name="allowanceAmount"
-                    inputMode="decimal"
-                    autoComplete="off"
-                    placeholder="EGP a month"
-                    value={row.amount}
-                    onChange={(e) => update(rows.map((r, j) => (j === i ? { ...r, amount: e.target.value } : r)))}
-                    className="input tabular-nums"
-                  />
-                </div>
+                {kind && isPerAccount(kind) ? (
+                  // no amount: paid for each client account assigned
+                  <div className="w-40 py-2 text-sm">
+                    <input type="hidden" name="allowanceAmount" value={PER_ACCOUNT_MARK} />
+                    {PER_ACCOUNT_TEXT}
+                  </div>
+                ) : (
+                  <div className="w-40">
+                    <label htmlFor={fid(`amount-${i}`)} className="sr-only">
+                      Allowance {i + 1}: amount in EGP a month
+                    </label>
+                    <input
+                      id={fid(`amount-${i}`)}
+                      name="allowanceAmount"
+                      inputMode="decimal"
+                      autoComplete="off"
+                      placeholder="EGP a month"
+                      value={row.amount}
+                      onChange={(e) => update(rows.map((r, j) => (j === i ? { ...r, amount: e.target.value } : r)))}
+                      className="input tabular-nums"
+                    />
+                  </div>
+                )}
                 <button type="button" onClick={() => update(rows.filter((_, j) => j !== i))} className={`${small} btn-secondary`}>
                   Remove<span className="sr-only"> allowance {i + 1}</span>
                 </button>

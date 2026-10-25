@@ -1,4 +1,5 @@
 import {
+  accountsAllowance,
   DEFAULT_WORKING_DAYS,
   insuredWageVersion,
   lawRatesFor,
@@ -13,8 +14,10 @@ import {
   traineeStagePeriods,
   underLabourLaw,
   type EmploymentType,
+  type HeldAccount,
   type LawRates,
   type PayBasis,
+  type PayrollAllowance,
   type PayrollLeave,
   type PayrollLeaveDays,
   type PayrollRules,
@@ -49,6 +52,14 @@ import { firstDay, lastDay } from './months.js';
 // for pay by the hour. A shift that counts hours until a time (owner, 20 October 2026: "within the same month with no
 // working hours to be counted after 8 PM"; attendance.ts makesUpHours) marks a monthly-paid line's terms makeUpHours: its
 // long days fill the month's short hours, at most the expected hours while overtime isn't paid (payroll.ts).
+// The accounts allowance (owner, 25 October 2026: "if an employee has an allowance per account, how can we deal with
+// it?"; asked, a "Client accounts list", the rate "variable", "By days"; packages/shared client-accounts.ts): for the
+// days under a contract with the per-account allowance, each of the person's client accounts held in the month at its
+// amount a month × its calendar days held ÷ the month's calendar days, summed, as one allowance with that kind's name,
+// taxed and insured flags, its accounts kept with it (PayrollAllowance.accounts); in the line's allowances and the last
+// part's, paid as it is (payrollLine). The per-account allowance has no amount on the contract, so it never changes the
+// insured wage, which stands on the contract's gross and amounts. Accounts held without it on any of the month's
+// contracts: nothing paid, the line's terms counting them for a warning (accountsWithoutAllowance).
 
 /** An employment as the roster reads it, with its signed contracts that may be in force in the month. */
 export interface RosterEmployment {
@@ -77,6 +88,8 @@ export interface RosterEmployment {
   leaves?: PayrollLeave[];
   /** The employment's approved permission in the month (19 October 2026): each day and its hours; none when missing. */
   permissions?: { date: string; hours: number }[];
+  /** The client accounts held under it that touch the month (25 October 2026); none when missing. */
+  accounts?: HeldAccount[];
 }
 
 /** A signed contract (a version of the employment's) that may be in force in the month. */
@@ -90,7 +103,8 @@ export interface RosterContract {
   grossSalary: number;
   basicPercent: number;
   hourlyRate: number | null;
-  allowances: { nameEn: string; amount: number; taxable: boolean; insured: boolean }[];
+  /** Each with its kind's basis as drafted (25 October 2026): a per-account one (amount 0) pays the client accounts. */
+  allowances: { nameEn: string; amount: number; taxable: boolean; insured: boolean; basis?: string }[];
   /** Its number within the employment, and, for a raise, from when the insured wage follows its pay (raises.ts). */
   version: number;
   insuredWageFrom?: string | null;
@@ -268,7 +282,21 @@ export function roster(
     paid.add(p.id);
     const contract = parts[parts.length - 1].contract;
     const paidDays = paidDaysOf(month, parts, rules.dayDivisor);
-    const allowancesOf = (c: RosterContract) => c.allowances.map((a) => ({ name: a.nameEn, amount: a.amount, taxable: a.taxable, insured: a.insured }));
+    // a per-account allowance has no amount of its own: the client accounts it pays are worked out below
+    const allowancesOf = (c: RosterContract): PayrollAllowance[] =>
+      c.allowances.filter((a) => a.basis !== 'per_account').map((a) => ({ name: a.nameEn, amount: a.amount, taxable: a.taxable, insured: a.insured }));
+    const perAccountOf = (c: RosterContract) => c.allowances.find((a) => a.basis === 'per_account') ?? null;
+    // the accounts allowance (25 October 2026): the accounts held on the days under a contract with it, by days held
+    const eligible = parts.filter((part) => perAccountOf(part.contract));
+    const held = e.accounts ?? [];
+    const accountsShare = held.length && eligible.length ? accountsAllowance(month, held, eligible) : null;
+    const kind = eligible.length ? (perAccountOf(contract) ?? perAccountOf(eligible[eligible.length - 1].contract)!) : null;
+    const accounts: PayrollAllowance | null =
+      kind && accountsShare?.accounts.length
+        ? { name: kind.nameEn, amount: accountsShare.amount, taxable: kind.taxable, insured: kind.insured, accounts: accountsShare.accounts }
+        : null;
+    // held without a per-account allowance on any of the month's contracts: nothing paid, a warning
+    const accountsWithoutAllowance = held.length && !eligible.length ? accountsAllowance(month, held, parts).accounts.length : 0;
     const segments: PayrollSegment[] = parts.map((part, i) => ({
       contractId: part.contract.id,
       number: part.contract.number,
@@ -280,10 +308,11 @@ export function roster(
       gross: part.contract.grossSalary,
       basicPercent: part.contract.basicPercent,
       hourlyRate: part.contract.payBasis === 'hourly' ? part.contract.hourlyRate : null,
-      allowances: allowancesOf(part.contract),
+      // the accounts allowance with the last part, paid as it is whichever part it is in
+      allowances: [...allowancesOf(part.contract), ...(accounts && i === parts.length - 1 ? [accounts] : [])],
     }));
 
-    const allowances = allowancesOf(contract);
+    const allowances = [...allowancesOf(contract), ...(accounts ? [accounts] : [])];
     // after a raise the insured wage stands on the pay before it until its insured-wage date, the salary tax on the new
     // pay at once (owner's decision, 16 October 2026: "From the next January unless amended in Form 2")
     const insuredOn = insuredWageVersion(contract, e.contracts, from);
@@ -331,6 +360,8 @@ export function roster(
         ...(permissionHours !== null && { permissionHours }),
         // a long day fills the month's short hours (owner, 20 October 2026: "within the same month"), for the monthly paid
         ...(contract.payBasis === 'monthly' && e.shift && makesUpHours(e.shift) && { makeUpHours: true }),
+        // client accounts held with no per-account allowance on the month's contracts (25 October 2026)
+        ...(accountsWithoutAllowance > 0 && { accountsWithoutAllowance }),
       },
     });
   }

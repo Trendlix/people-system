@@ -4,6 +4,7 @@
 // the session and the role (HR or Admin; Admin only for the order of departments and teams; a Super Admin only for
 // deleting), so calling these directly can't bypass permissions.
 import { redirect } from 'next/navigation';
+import { ALLOWANCE_BASES, type AllowanceBasis } from '@trendlix/shared';
 import { ApiError, apiSend } from '@/lib/api';
 import { timeFrom } from '@/lib/form-data';
 import { HOURS_TO_WORK_ERROR, hoursToWorkFrom } from '@/lib/shifts';
@@ -195,13 +196,18 @@ export async function deleteShift(id: string, _prev: FormState, fd: FormData): P
 
 // The kinds of allowance paid a month on top of the gross (owner's request, 15 October 2026), e.g. Transport: each taxed
 // or not and insured or not. The API checks the role (HR or Admin; a Super Admin for deleting). A checkbox is sent only
-// when ticked, so both are always sent, as true or false.
-const allowanceTypeBody = (fd: FormData) => ({
-  nameEn: text(fd, 'nameEn'),
-  nameAr: text(fd, 'nameAr'),
-  taxable: fd.get('taxable') === 'on',
-  insured: fd.get('insured') === 'on',
-});
+// when ticked, so both are always sent, as true or false. How it is paid (owner, 25 October 2026: a fixed amount a
+// month, or per client account) is sent when the form has the choice: a kind on contracts or offers keeps its own.
+const allowanceTypeBody = (fd: FormData) => {
+  const basis = text(fd, 'basis');
+  return {
+    nameEn: text(fd, 'nameEn'),
+    nameAr: text(fd, 'nameAr'),
+    taxable: fd.get('taxable') === 'on',
+    insured: fd.get('insured') === 'on',
+    ...((ALLOWANCE_BASES as readonly string[]).includes(basis) && { basis: basis as AllowanceBasis }),
+  };
+};
 
 export async function createAllowanceType(_prev: FormState, fd: FormData): Promise<FormState> {
   return save(fd, () => apiSend('POST', '/allowance-types', allowanceTypeBody(fd)), '/organization/allowances');

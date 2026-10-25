@@ -40,6 +40,7 @@ import { ProbationBanner } from './contracts/probation-banner';
 import { GeneratedDocuments, GeneratedDocumentsLoading } from './documents/document-rows';
 import { EndingPanel } from './ending/ending-panel';
 import { CheckInExemptionSection } from './check-in-exemption';
+import { ClientAccountsSection } from './client-accounts/client-accounts-section';
 import { CheckInPlacesLine } from './check-in-places';
 import { HomeLocationLine } from './home-location';
 import { DeleteRowButton } from './inline-forms';
@@ -474,6 +475,14 @@ async function DetailsSubTab({
         </div>
       )}
       {lastEnding && <EndingPanel ending={lastEnding} employeeName={p.fullNameEn} canEdit={p.access.edit} isCeo={isCeo} today={today} />}
+
+      {/* the client accounts they are on (25 October 2026: the accounts allowance), loading on their own; nothing for those
+          who may not see them */}
+      <div id="client-accounts" className="scroll-mt-6 empty:hidden">
+        <Suspense fallback={null}>
+          <ClientAccountsSection employee={p} />
+        </Suspense>
+      </div>
 
       {/* the leave balance and requests (18 October 2026), loading on their own; nothing for those who may not see them */}
       <div id="leave" className="scroll-mt-6">

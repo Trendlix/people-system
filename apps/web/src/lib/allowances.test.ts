@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { allowanceRows, allowancesFrom, allowanceTerms, sameAllowances, treatmentText } from './allowances';
+import { allowanceAmountText, allowanceRows, allowancesFrom, allowanceTerms, PER_ACCOUNT_MARK, sameAllowances, treatmentText } from './allowances';
 import type { AllowanceType } from './types';
 
 const kind = (id: string, taxable: boolean, insured: boolean): AllowanceType => ({
@@ -114,5 +114,47 @@ describe('allowances on a form', () => {
   it('words a kind’s treatment', () => {
     expect(treatmentText({ taxable: true, insured: false })).toBe('Taxed, not insured');
     expect(treatmentText({ taxable: false, insured: true })).toBe('Not taxed, insured');
+  });
+});
+
+describe('an allowance paid per client account (owner, 25 October 2026: "if an employee has an allowance per account")', () => {
+  const accounts: AllowanceType = { ...kind('acc', true, false), basis: 'per_account' };
+
+  it('sends the kind alone, no amount, and still refuses a fixed row without one', () => {
+    const errors: string[] = [];
+    expect(
+      allowancesFrom(
+        form([
+          ['t', '1,000'],
+          ['acc', PER_ACCOUNT_MARK],
+        ]),
+        errors,
+      ),
+    ).toEqual([{ allowanceTypeId: 't', amount: 1000 }, { allowanceTypeId: 'acc' }]);
+    expect(errors).toEqual([]);
+    const missing: string[] = [];
+    allowancesFrom(form([['t', '']]), missing);
+    expect(missing).toHaveLength(1);
+    // a row with no kind and only the mark is an empty row
+    expect(allowancesFrom(form([['', PER_ACCOUNT_MARK]]), missing)).toEqual([]);
+  });
+
+  it('refills it with no amount, as sent or as saved (0), and it matches the saved one', () => {
+    expect(allowanceRows({ values: { allowanceTypeId: ['acc'], allowanceAmount: [PER_ACCOUNT_MARK] } })).toEqual([{ allowanceTypeId: 'acc', amount: '' }]);
+    expect(allowanceRows({}, [{ allowanceTypeId: 'acc', amount: 0 }, { allowanceTypeId: 't', amount: 500 }])).toEqual([
+      { allowanceTypeId: 'acc', amount: '' },
+      { allowanceTypeId: 't', amount: '500' },
+    ]);
+    expect(sameAllowances([{ allowanceTypeId: 'acc', amount: '' }], [{ allowanceTypeId: 'acc', amount: 0 }])).toBe(true);
+  });
+
+  it('adds nothing to the net worked out, and reads "Per client account assigned"', () => {
+    expect(allowanceTerms([{ allowanceTypeId: 'acc', amount: '' }, { allowanceTypeId: 't', amount: '500' }], [accounts, kind('t', false, false)])).toEqual([
+      { amount: 500, taxable: false, insured: false },
+    ]);
+    const money = (n: number) => `EGP ${n}`;
+    expect(allowanceAmountText({ amount: 0, basis: 'per_account' }, money)).toBe('Per client account assigned');
+    expect(allowanceAmountText({ amount: 500, basis: 'fixed' }, money)).toBe('EGP 500');
+    expect(allowanceAmountText({ amount: 500 }, money)).toBe('EGP 500');
   });
 });

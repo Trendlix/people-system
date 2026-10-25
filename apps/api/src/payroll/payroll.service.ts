@@ -111,6 +111,12 @@ export const rosterSelect = (from: Date, to: Date) =>
     // the approved permission in the month (owner, 19 October 2026: "4 hours per month with a maximum 2 hours per day"):
     // the grid's permission hours, counted as worked (roster.ts permissionTermsOf)
     permissions: { where: { status: 'approved', date: { gte: from, lte: to } }, select: { date: true, hours: true } },
+    // the client accounts held under it that touch the month (owner, 25 October 2026: the accounts allowance, "By days";
+    // roster.ts)
+    clientAccounts: {
+      where: { fromDate: { lte: to }, OR: [{ toDate: null }, { toDate: { gte: from } }] },
+      select: { accountId: true, fromDate: true, toDate: true, amount: true, account: { select: { nameEn: true } } },
+    },
     // signed versions (active, superseded or ended) that may be in force in the month, and those a raise's insured wage
     // may still stand on (owner's decision, 16 October 2026): ended within 13 months before it, as a raise's insured wage
     // follows its pay at the latest from the next 1 January after it takes effect (raises.ts)
@@ -134,7 +140,8 @@ export const rosterSelect = (from: Date, to: Date) =>
         hourlyRate: true,
         // a trainee's training stages: each paid at its own pay in its own days (roster.ts byTraineeStage)
         traineeStages: true,
-        allowances: { orderBy: ALLOWANCE_ORDER, select: { nameEn: true, amount: true, taxable: true, insured: true } },
+        // with each one's basis (25 October 2026): a per-account one pays the client accounts
+        allowances: { orderBy: ALLOWANCE_ORDER, select: { nameEn: true, amount: true, taxable: true, insured: true, basis: true } },
       },
     },
   }) satisfies Prisma.EmploymentSelect;
@@ -182,6 +189,7 @@ export function rosterEmployment(e: EmploymentRow): RosterEmployment {
       calendarDays: l.type.calendarDays,
     })),
     permissions: e.permissions.map((p) => ({ date: fromDateOnly(p.date), hours: p.hours.toNumber() })),
+    accounts: e.clientAccounts.map((a) => ({ accountId: a.accountId, name: a.account.nameEn, from: fromDateOnly(a.fromDate), to: fromDateOnly(a.toDate), amount: a.amount.toNumber() })),
   };
 }
 

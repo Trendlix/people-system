@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useActionState } from 'react';
+import { ALLOWANCE_BASIS_LABELS, ALLOWANCE_BASES } from '@trendlix/shared';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import type { AllowanceType, FormState } from '@/lib/types';
 
@@ -12,7 +13,9 @@ const choice =
 
 /**
  * A kind of allowance paid a month on top of the gross, e.g. Transport (owner's request, 15 October 2026): its names and
- * whether it is taxed and insured. A new one starts taxed and not insured, as a cash allowance is by law.
+ * whether it is taxed and insured. A new one starts taxed and not insured, as a cash allowance is by law. How it is paid
+ * (owner, 25 October 2026: "if an employee has an allowance per account, how can we deal with it?"): a fixed amount a
+ * month, or per client account assigned, chosen while no contract or offer has the kind (the API refuses otherwise).
  */
 export function AllowanceTypeForm({ action, allowance }: { action: Action; allowance?: AllowanceType }) {
   const { state, pending, form } = useKeptForm(action);
@@ -62,6 +65,33 @@ export function AllowanceTypeForm({ action, allowance }: { action: Action; allow
         As it shows on contracts and job offers, and in their documents in each language. Each allowance has its own English
         name.
       </p>
+      {allowance?.inUse ? (
+        <div>
+          <p className="label">How it is paid</p>
+          <p>{ALLOWANCE_BASIS_LABELS[allowance.basis ?? 'fixed']}</p>
+          <p className="hint">It is on contracts or job offers, so how it is paid stays. Add another allowance to pay it the other way.</p>
+        </div>
+      ) : (
+        <fieldset className="space-y-2" aria-describedby={fid('basis-hint')}>
+          <legend className="label">How it is paid</legend>
+          {ALLOWANCE_BASES.map((b) => (
+            <label key={b} className={choice}>
+              <input
+                type="radio"
+                name="basis"
+                value={b}
+                defaultChecked={valueOf(state, 'basis', allowance?.basis ?? 'fixed') === b}
+                className="size-4 accent-accent"
+              />
+              {ALLOWANCE_BASIS_LABELS[b]}
+            </label>
+          ))}
+          <p id={fid('basis-hint')} className="hint">
+            Per client account assigned: a contract or a job offer takes it with no amount, and payroll pays, each month, the
+            amounts of the client accounts the person is assigned to under Clients → Client Accounts, by the days held.
+          </p>
+        </fieldset>
+      )}
       <fieldset className="space-y-4">
         <legend className="label">Tax and insurance</legend>
         <div>

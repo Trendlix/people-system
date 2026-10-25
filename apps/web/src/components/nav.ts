@@ -209,6 +209,22 @@ export const RECRUITMENT_NAV: NavItem = {
 /** The Audit Log (app/(app)/audit): who changed what and when, for the Super Admin and the CEO. */
 export const AUDIT_LOG_PATH = '/audit';
 
+/** The Client Accounts page (app/(app)/clients/accounts), under Clients. */
+export const CLIENT_ACCOUNTS_PATH = '/clients/accounts';
+
+/**
+ * Clients (owner, 25 October 2026: "if an employee has an allowance per account, how can we deal with it?"; asked, a
+ * "Client accounts list"): a heading with Client Accounts, the company's client accounts and the people assigned to each
+ * with their dates and amounts (paid as the accounts allowance), for HR and the CEO, who change them, and Finance and a
+ * Super Admin, who read them (the amounts for those who see salaries). The heading will later hold Projects and
+ * Timesheets. Not in an employee's own sidebar: their current accounts are on My Profile.
+ */
+export const CLIENTS_NAV: NavItem = {
+  href: CLIENT_ACCOUNTS_PATH,
+  label: 'Clients',
+  items: [{ href: CLIENT_ACCOUNTS_PATH, label: 'Client Accounts', section: CLIENT_ACCOUNTS_PATH, roles: ['hr', 'ceo', 'finance', 'super_admin'] }],
+};
+
 /**
  * Organization, the setup home (owner, 23 October 2026: "lets perform a regorganization of this menu. we can perform
  * groupings to related items"; "Side menu with headings"), one link: to the first setup page the user sees (navFor), for
@@ -292,6 +308,9 @@ export const NAV: NavItem[] = [
   KPIS_NAV,
   // Assets, after the KPIs, for those with Assets access (owner, 21 October 2026)
   ASSETS_NAV,
+  // Clients, after Assets (the KPIs stay right after Attendance), for HR, the CEO, Finance and a Super Admin (25 October
+  // 2026)
+  CLIENTS_NAV,
   { href: '/approvals', label: 'Approvals', section: '/approvals', roles: ['hr', 'ceo', 'admin'] },
   // Templates, a Super Admin's heading with the Library and the Fields Guide (owner, 19 October 2026: "enable templates
   // sidebar to super admin only"), was here until it moved to Organization's setup menu (23 October 2026)

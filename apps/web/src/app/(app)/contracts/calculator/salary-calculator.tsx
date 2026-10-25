@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { lawRatesFor, PAY_BASES, PAY_BASIS_LABELS, type LawRates } from '@trendlix/shared';
+import { isPerAccount, lawRatesFor, PAY_BASES, PAY_BASIS_LABELS, type LawRates } from '@trendlix/shared';
 import { AllowanceRows } from '@/components/allowance-rows';
 import { useFieldIds } from '@/components/form';
 import { Select } from '@/components/select';
@@ -289,7 +289,8 @@ export function SalaryCalculator({
           </div>
 
           <AllowanceRows
-            types={allowanceTypes}
+            // one paid per client account (25 October 2026) has no amount to work out
+            types={allowanceTypes.filter((t) => !isPerAccount(t))}
             defaultRows={initial.allowances}
             onChange={(rows) => change({ allowances: rows })}
             hint="A month each, on top of the gross, taxed and insured as each kind is set in Organization → Allowances."

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { INTERN_NO_WAGE_TEXT, PAY_BASES, PAY_BASIS_LABELS, type LawRates, type PayBasis, type PayTerms as VersionPay } from '@trendlix/shared';
+import { INTERN_NO_WAGE_TEXT, isPerAccount, PAY_BASES, PAY_BASIS_LABELS, type LawRates, type PayBasis, type PayTerms as VersionPay } from '@trendlix/shared';
 import { AllowanceRows } from '@/components/allowance-rows';
 import { valueOf } from '@/components/form';
 import { allowanceRows, allowanceTerms, sameAllowances, type AllowanceRow } from '@/lib/allowances';
@@ -162,7 +162,7 @@ export function usePay(
     return true;
   }
 
-  return { typed, rows, setRows, terms, hourly, basis, rateBasis, fromNetRate, pay, salary, calc, split, insured, savedNet, rates, defaults, track, fixedGross };
+  return { typed, rows, setRows, terms, hourly, basis, rateBasis, fromNetRate, pay, salary, calc, split, insured, savedNet, rates, defaults, track, fixedGross, allowanceTypes };
 }
 
 export type Pay = ReturnType<typeof usePay>;
@@ -182,6 +182,8 @@ export function typedPayOf(pay: Pay): VersionPay | null {
     hoursPerWeek: rate?.hours ?? null,
     basicPercent,
     allowances: pay.rows.flatMap((r) => {
+      // one paid per client account (25 October 2026) has no amount: 0, as a version keeps it
+      if (r.allowanceTypeId && pay.allowanceTypes.some((t) => t.id === r.allowanceTypeId && isPerAccount(t))) return [{ allowanceTypeId: r.allowanceTypeId, amount: 0 }];
       const amount = parseAmount(r.amount);
       return r.allowanceTypeId && amount !== null && !Number.isNaN(amount) && amount > 0 ? [{ allowanceTypeId: r.allowanceTypeId, amount }] : [];
     }),

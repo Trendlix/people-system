@@ -328,7 +328,8 @@ describe('Job offers (e2e)', () => {
 
     it('allowances are kept as their kinds are now, and count in the total and the insured wage', async () => {
       const o = await draft('Ali Allowance', { grossSalary: 10000, allowances: [{ allowanceTypeId: housingId, amount: 2000 }] });
-      expect(o.allowances).toEqual([{ allowanceTypeId: housingId, nameEn: `Housing ${RUN}`, nameAr: 'بدل سكن', taxable: true, insured: true, amount: 2000 }]);
+      // paid a fixed amount a month (an allowance per client account has none: 25 October 2026)
+      expect(o.allowances).toEqual([{ allowanceTypeId: housingId, nameEn: `Housing ${RUN}`, nameAr: 'بدل سكن', taxable: true, insured: true, basis: 'fixed', amount: 2000 }]);
       expect(o).toMatchObject({ allowancesTotal: 2000, totalSalary: 12000, insuredSalary: 12000 });
       // the kind renamed later: the offer keeps the name it was drafted with
       await prisma.allowanceType.update({ where: { id: housingId }, data: { nameEn: `Housing renamed ${RUN}` } });
@@ -338,6 +339,16 @@ describe('Job offers (e2e)', () => {
       const none = (await patch(o.id, { allowances: [] }).expect(200)).body as Offer;
       expect(none).toMatchObject({ allowances: [], allowancesTotal: 0, totalSalary: 10000 });
       await create(candidate('Bad', { allowances: [{ allowanceTypeId: housingId, amount: 1 }, { allowanceTypeId: housingId, amount: 2 }] })).expect(400);
+    });
+
+    // the accounts allowance (owner, 25 October 2026: an allowance per client account): chosen with no amount, eligibility
+    // only, adding nothing to the totals
+    it('an allowance per client account: no amount, nothing in the totals', async () => {
+      const kinds = (await api().get('/api/allowance-types').set('Cookie', hr).expect(200)).body as { id: string; nameEn: string; basis: string }[];
+      const accounts = kinds.find((k) => k.nameEn === 'Accounts allowance' && k.basis === 'per_account')!.id;
+      const o = await draft('Pia Accounts', { grossSalary: 10000, allowances: [{ allowanceTypeId: housingId, amount: 2000 }, { allowanceTypeId: accounts }] });
+      expect((o.allowances as { allowanceTypeId: string }[]).find((a) => a.allowanceTypeId === accounts)).toMatchObject({ nameEn: 'Accounts allowance', basis: 'per_account', amount: 0 });
+      expect(o).toMatchObject({ allowancesTotal: 2000, totalSalary: 12000 });
     });
 
     it('a former employee has no probation again (Art. 90) and joins after their last employment', async () => {

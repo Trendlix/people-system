@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { agreementName, CONTRACT_STATUS_LABELS, INTERN_NO_WAGE_TEXT, PAY_BASIS_LABELS, type ContractStatus } from '@trendlix/shared';
+import { agreementName, CONTRACT_STATUS_LABELS, INTERN_NO_WAGE_TEXT, isPerAccount, PAY_BASIS_LABELS, PER_ACCOUNT_TEXT, type ContractStatus } from '@trendlix/shared';
 import { treatmentText } from '@/lib/allowances';
 import { ApiError } from '@/lib/api';
 import { formatDate } from '@/lib/format';
@@ -68,13 +68,24 @@ export function ContractStatusBadge({ status }: { status: ContractStatus }) {
 // in dates.ts, where the raise card uses it too; still exported from here
 export { termLabel };
 
-/** Each allowance with its amount a month and how it is treated. */
+/**
+ * Each allowance with its amount a month and how it is treated; one paid per client account (25 October 2026) with no
+ * amount: "Accounts allowance: Per client account assigned" (payroll pays the month's client accounts).
+ */
 function AllowanceList({ lines }: { lines: AllowanceLine[] }) {
   return (
     <ul className="space-y-0.5">
       {lines.map((a) => (
         <li key={a.allowanceTypeId}>
-          {a.nameEn} <span className="tabular-nums">{formatEgp(a.amount)}</span>
+          {isPerAccount(a) ? (
+            <>
+              {a.nameEn}: {PER_ACCOUNT_TEXT}
+            </>
+          ) : (
+            <>
+              {a.nameEn} <span className="tabular-nums">{formatEgp(a.amount)}</span>
+            </>
+          )}
           <span className="block text-xs text-muted">{treatmentText(a)}</span>
         </li>
       ))}

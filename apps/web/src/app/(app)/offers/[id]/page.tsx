@@ -3,6 +3,7 @@ import { Suspense } from 'react';
 import { INTERN_NO_WAGE_TEXT, LABELS, OFFER_VALID_DAYS, PAY_BASIS_LABELS } from '@trendlix/shared';
 import { DocumentViewer } from '@/components/document-viewer';
 import { PrintPdf } from '@/components/print-pdf';
+import { allowanceAmountText } from '@/lib/allowances';
 import { getBrand } from '@/lib/api';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { pdfFileName, PROTECTED_PDF_HINT } from '@/lib/protected-pdf';
@@ -142,7 +143,7 @@ function termsFields(o: OfferView): GridField[] {
             <ul>
               {o.allowances.map((a) => (
                 <li key={a.allowanceTypeId}>
-                  {a.nameEn}: {formatEgp(a.amount)}
+                  {a.nameEn}: {allowanceAmountText(a, formatEgp)}
                 </li>
               ))}
             </ul>
@@ -179,7 +180,7 @@ function termsFields(o: OfferView): GridField[] {
             <ul>
               {o.allowances.map((a) => (
                 <li key={a.allowanceTypeId}>
-                  {a.nameEn}: {formatEgp(a.amount)}
+                  {a.nameEn}: {allowanceAmountText(a, formatEgp)}
                 </li>
               ))}
             </ul>

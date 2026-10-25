@@ -3,9 +3,11 @@ import {
   hourlyRateFromNet,
   insurableWageLimits,
   insuredWageOf,
+  isPerAccount,
   monthlyFromHourly,
   netToGross,
   PAY_BASIS_LABELS,
+  PER_ACCOUNT_TEXT,
   ratesOf,
   WEEKS_PER_MONTH,
   type AllowanceTerms,
@@ -386,9 +388,12 @@ export function daysLabel(days: number | null): string | null {
   return days ? `${days} ${days === 1 ? 'day' : 'days'} a week` : null;
 }
 
-/** A contract's allowances, each with its amount a month: "Transport EGP 1,000.00 · Mobile EGP 500.00". */
-export function allowancesLabel(lines: readonly { nameEn: string; amount: number }[]): string {
-  return lines.map((a) => `${a.nameEn} ${formatEgp(a.amount)}`).join(' · ');
+/**
+ * A contract's allowances, each with its amount a month: "Transport EGP 1,000.00 · Mobile EGP 500.00"; one paid per
+ * client account (25 October 2026) has none: "Accounts allowance: Per client account assigned".
+ */
+export function allowancesLabel(lines: readonly { nameEn: string; amount: number; basis?: string }[]): string {
+  return lines.map((a) => (isPerAccount(a) ? `${a.nameEn}: ${PER_ACCOUNT_TEXT}` : `${a.nameEn} ${formatEgp(a.amount)}`)).join(' · ');
 }
 
 /** A contract's (or offer's) pay terms as the API sends them; the amounts are null when the salary is hidden. */

@@ -12,7 +12,7 @@ import {
 } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 import { formatEgp } from '../../employees/[id]/contracts/salary';
-import { breakdown, cutText, expectedHoursNote, kpiStep, percentText, shiftHoursNote, waivedByCeo, waiverOf } from './breakdown';
+import { accountsRow, breakdown, cutText, expectedHoursNote, kpiStep, percentText, shiftHoursNote, waivedByCeo, waiverOf } from './breakdown';
 
 // An invented employee's month, worked out by hand. The shift: 22 working days in the month less 1 holiday, at 8:00 to
 // work a day, 168:00 scheduled; a no-show day and a leave day come out of them, a day of the shift each (owner,
@@ -752,5 +752,52 @@ describe('a line’s KPI from the KPIs module (owner, 21 October 2026: "Last mon
   it('has no KPI step on pay by the hour, which has no KPI cut', () => {
     const hourly = { ...terms, payBasis: 'hourly' as const, hourlyRate: 100, expectedHours: null, expectedDays: null, kpi: kpiOf(60, 'unsatisfactory') };
     expect(breakdown(lineOf(hourly, { ...EMPTY_PAYROLL_INPUTS, workedHours: 100 }), PAYROLL_RULE_DEFAULTS, undefined, '2026-10').find((s) => s.key === 'kpi')).toBeUndefined();
+  });
+});
+
+describe('a line’s accounts allowance (owner, 25 October 2026: an allowance per client account, "By days")', () => {
+  // invented accounts: Acme held the whole of October, Beta from the 24th (8 of 31 days of 900)
+  const accounts = {
+    name: 'Accounts allowance',
+    amount: 1732.26,
+    taxable: true,
+    insured: false,
+    accounts: [
+      { accountId: 'acme', name: 'Acme Foods', from: '2026-10-01', to: '2026-10-31', days: 31, monthDays: 31, monthly: 1500, amount: 1500 },
+      { accountId: 'beta', name: 'Beta Labs', from: '2026-10-24', to: '2026-10-31', days: 8, monthDays: 31, monthly: 900, amount: 232.26 },
+    ],
+  };
+  const withAccounts: PayrollTerms = { ...terms, allowances: [...terms.allowances, accounts] };
+
+  it('says the count and each account’s share after the allowances, which have it', () => {
+    const rows = breakdown(lineOf(withAccounts, inputs), PAYROLL_RULE_DEFAULTS);
+    const at = rows.findIndex((r) => r.key === 'allowances');
+    expect(rows[at]).toMatchObject({ value: formatEgp(2232.26), note: 'Transport, Accounts allowance' });
+    expect(rows[at + 1]).toEqual({
+      key: 'accountsAllowance',
+      label: 'Accounts allowance (2 accounts)',
+      value: formatEgp(1732.26),
+      kind: 'info',
+      note: `Acme Foods ${formatEgp(1500)} · Beta Labs ${formatEgp(232.26)} (8 of 31 days)`,
+    });
+  });
+
+  it('is read from the last part of a split month, and is none without accounts', () => {
+    const segment = (allowances: PayrollTerms['allowances']): PayrollSegment => ({
+      contractId: 'c',
+      number: 'CON-2026-0001',
+      version: 1,
+      from: '2026-10-01',
+      to: '2026-10-31',
+      days: 30,
+      payBasis: 'monthly',
+      gross: 10_000,
+      basicPercent: 80,
+      hourlyRate: null,
+      allowances,
+    });
+    expect(accountsRow({ allowances: [], segments: [segment(terms.allowances), segment([accounts])] })?.label).toBe('Accounts allowance (2 accounts)');
+    expect(accountsRow(terms)).toBeNull();
+    expect(breakdown(line, PAYROLL_RULE_DEFAULTS).some((r) => r.key === 'accountsAllowance')).toBe(false);
   });
 });

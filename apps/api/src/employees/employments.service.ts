@@ -3,6 +3,7 @@ import { isTrainingType, PROBATION_MONTHS } from '@trendlix/shared';
 import { AuditService, changes } from '../audit/audit.service.js';
 import { assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
+import { endAssignmentsForLeaving } from '../client-accounts/leaving.js';
 import { addDays, addMonths, fromDateOnly, toDateOnly, todayInCairo } from '../common/date-only.js';
 import { assertTrainingGap } from '../contracts/training.js';
 import type { Employment, Prisma } from '../generated/prisma/client.js';
@@ -155,8 +156,9 @@ export class EmploymentsService {
    * What ending an employment does, by hand (End employment) or when HR completes an approved ending (the contracts
    * module): the checks, the end date, reason and status, and the signed contract marked ended (owner's decisions, 15
    * October 2026); the employee's recurring deductions stop from the month after the last working day (owner, 18
-   * October 2026: a monthly share, e.g. a medical subscription, ends with the employment). `db` is the transaction to
-   * run in, when the caller has one.
+   * October 2026: a monthly share, e.g. a medical subscription, ends with the employment), and their client accounts
+   * under it end on the last working day (25 October 2026: the accounts allowance). `db` is the transaction to run in,
+   * when the caller has one.
    */
   async close(employeeId: string, employmentId: string, dto: EndEmploymentDto, user: SessionUser, db: Db = this.prisma) {
     const before = await this.row(employeeId, employmentId, db);
@@ -190,6 +192,7 @@ export class EmploymentsService {
       },
     });
     await this.recurring.stopForLeaving(employeeId, dto.endDate, user, db);
+    await endAssignmentsForLeaving(db, this.audit, employmentId, dto.endDate, user.id);
   }
 
   /**

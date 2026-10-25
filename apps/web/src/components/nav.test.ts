@@ -7,6 +7,8 @@ import {
   ASSETS_NAV,
   ASSETS_TABS,
   AUDIT_LOG_PATH,
+  CLIENT_ACCOUNTS_PATH,
+  CLIENTS_NAV,
   decidesForTeam,
   DETAILS_CHANGES_PATH,
   isActive,
@@ -328,13 +330,14 @@ describe('the sidebar of HR, Finance, the CEO and Admins', () => {
   it('is the sidebar, each item for the roles it names: Employees and Contracts under People, Offers under Recruitment', () => {
     // the KPIs after Attendance (owner, 21 October 2026), My KPIs at least for everyone with a profile; Recruitment after
     // People (22 October 2026: "where will we include the ATS?")
-    expect(labels('employee', 'hr')).toEqual(['Home', 'Organization', 'People', 'Recruitment', 'Payroll', 'Requests', 'Attendance', 'KPIs', 'Approvals', 'WhatsApp Messages']);
-    expect(labels('employee', 'finance')).toEqual(['Home', 'Organization', 'People', 'Payroll', 'Requests', 'Attendance', 'KPIs']);
-    expect(labels('ceo')).toEqual(['Home', 'Organization', 'People', 'Recruitment', 'Payroll', 'Requests', 'Attendance', 'KPIs', 'Approvals', 'Audit Log']);
+    // Clients after the KPIs and Assets (25 October 2026)
+    expect(labels('employee', 'hr')).toEqual(['Home', 'Organization', 'People', 'Recruitment', 'Payroll', 'Requests', 'Attendance', 'KPIs', 'Clients', 'Approvals', 'WhatsApp Messages']);
+    expect(labels('employee', 'finance')).toEqual(['Home', 'Organization', 'People', 'Payroll', 'Requests', 'Attendance', 'KPIs', 'Clients']);
+    expect(labels('ceo')).toEqual(['Home', 'Organization', 'People', 'Recruitment', 'Payroll', 'Requests', 'Attendance', 'KPIs', 'Clients', 'Approvals', 'Audit Log']);
     // no Attendance for an Admin, nor Templates for a Super Admin: Check-in Setup and Templates are under Organization
     // (23 October 2026: "Check-in Setup, KPI Pillars and deadlines, Recruitment and checklists, Templates")
     expect(labels('admin')).toEqual(['Home', 'Organization', 'People', 'Requests', 'KPIs', 'Approvals', 'Users']);
-    expect(labels('super_admin')).toEqual(['Home', 'Organization', 'People', 'Recruitment', 'Requests', 'KPIs', 'Approvals', 'Users', 'Audit Log', 'WhatsApp Messages']);
+    expect(labels('super_admin')).toEqual(['Home', 'Organization', 'People', 'Recruitment', 'Requests', 'KPIs', 'Clients', 'Approvals', 'Users', 'Audit Log', 'WhatsApp Messages']);
   });
 
   it('shows WhatsApp Messages to HR and the Super Admin, never a developer (owner, 24 October 2026: "how to make whatsapp notifications?")', () => {
@@ -867,5 +870,19 @@ describe('Organization', () => {
   it('doesn’t change the item itself for the next user', () => {
     navFor({ roles: ['hr'], employeeId: 'x' });
     expect(ORGANIZATION_NAV).toEqual({ href: '/organization/company', label: 'Organization', section: '/organization' });
+  });
+});
+
+describe('Clients (owner, 25 October 2026: "if an employee has an allowance per account, how can we deal with it?")', () => {
+  const clients = (...roles: Role[]) => navFor({ roles, employeeId: 'x' }).find((n) => n.label === 'Clients') ?? null;
+
+  it('is a heading with Client Accounts, for HR, the CEO, Finance and a Super Admin; never an Admin’s or an employee’s', () => {
+    expect(NAV).toContain(CLIENTS_NAV);
+    expect(CLIENTS_NAV.items?.map((i) => [i.label, i.href, i.roles])).toEqual([['Client Accounts', '/clients/accounts', ['hr', 'ceo', 'finance', 'super_admin']]]);
+    for (const roles of [['hr'], ['ceo'], ['finance'], ['super_admin']] as Role[][]) {
+      expect(clients(...roles)).toMatchObject({ href: CLIENT_ACCOUNTS_PATH, items: [{ label: 'Client Accounts' }] });
+    }
+    for (const roles of [['admin'], ['employee'], ['employee', 'manager']] as Role[][]) expect(clients(...roles)).toBeNull();
+    expect(activeSubItem(CLIENTS_NAV, '/clients/accounts')?.label).toBe('Client Accounts');
   });
 });

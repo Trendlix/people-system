@@ -99,6 +99,7 @@
 // isn't averaged with the attendance again. Lines made before then keep their KPI inputs and are worked out as they were;
 // pay by the hour has no KPI cut, as before.
 
+import type { PayrollAccountShare } from './client-accounts.js';
 import type { AllowanceTerms } from './contracts.js';
 import { kpiPayScore, type PayrollKpi } from './kpis.js';
 import { adjustmentSums, DAYS_TYPE_OF, isDaysType, mayBeBeforeTax, sumAmounts, type AdjustmentKind, type AdjustmentType } from './payroll-adjustments.js';
@@ -179,6 +180,12 @@ export const paysOvertime = (rules: PayrollRules): boolean => rules.payOvertime 
 /** An allowance on a payroll line: the contract's, by name. */
 export interface PayrollAllowance extends AllowanceTerms {
   name: string;
+  /**
+   * The accounts allowance (owner, 25 October 2026: a per-account allowance, "By days"): the month's client accounts it
+   * was worked out from, its amount their sum already for the days held, so paid as it is, never for the days paid
+   * again. Missing on every other allowance.
+   */
+  accounts?: PayrollAccountShare[];
 }
 
 /**
@@ -294,6 +301,11 @@ export interface PayrollTerms {
    * keep their KPI inputs (soft skills, performance, client satisfaction) as they were.
    */
   kpi?: PayrollKpi | null;
+  /**
+   * The client accounts held in the month while no contract of the month has a per-account allowance (owner's brief, 25
+   * October 2026: "nothing otherwise, with a draft warning"): how many, nothing paid for them. Missing otherwise.
+   */
+  accountsWithoutAllowance?: number;
 }
 
 /** A month's approved leave as a line's terms keep it: the paid days and the unpaid days, whole, half or in shares. */
@@ -891,6 +903,11 @@ export function payrollLine(
   const i: PayrollInputs = { ...EMPTY_PAYROLL_INPUTS, ...inputs };
   const warnings: string[] = [];
   if (terms.paidDays < days) warnings.push(`Paid for ${terms.paidDays} of ${days} days: employed or under contract for part of the month`);
+  // client accounts held without a per-account allowance on the month's contracts (25 October 2026): nothing paid for them
+  const unpaid = terms.accountsWithoutAllowance ?? 0;
+  if (unpaid > 0) {
+    warnings.push(`Holds ${unpaid} client ${unpaid === 1 ? 'account' : 'accounts'} this month, but the contract has no per-account allowance: nothing is paid for ${unpaid === 1 ? 'it' : 'them'}`);
+  }
 
   // the contract at the month's end: its gross for the no-show and bonus days and the penalty days' net
   const gross = piasters(terms.gross);
@@ -914,8 +931,9 @@ export function payrollLine(
   const parts = segments.map((s) => {
     const g = piasters(s.gross);
     const f = piasters((g * s.basicPercent) / 100);
-    // the contract's allowances for its days, never below 0 (as salary.ts counts them)
-    const allowances = s.allowances.map((a) => ({ taxable: a.taxable, amount: forDays(Math.max(0, a.amount), s.days) }));
+    // the contract's allowances for its days, never below 0 (as salary.ts counts them); the accounts allowance (25
+    // October 2026) as it is, already for the days each account was held
+    const allowances = s.allowances.map((a) => ({ taxable: a.taxable, amount: a.accounts ? piasters(Math.max(0, a.amount)) : forDays(Math.max(0, a.amount), s.days) }));
     return {
       contractId: s.contractId,
       fixed: forDays(f, s.days),

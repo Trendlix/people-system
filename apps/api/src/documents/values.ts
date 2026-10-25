@@ -1,8 +1,11 @@
 import {
+  ACCOUNTS_ALLOWANCE_LINE_AR,
+  ACCOUNTS_ALLOWANCE_LINE_EN,
   bankNamed,
   CONTRACT_FORM_LABELS,
   CONTRACT_FORM_LABELS_AR,
   insuredWageFrom,
+  isPerAccount,
   LABELS,
   lawRatesFor,
   nationalityAr,
@@ -10,6 +13,8 @@ import {
   PAY_BASIS_LABELS,
   PAY_BASIS_LABELS_AR,
   payDifference,
+  PER_ACCOUNT_TEXT,
+  PER_ACCOUNT_TEXT_AR,
   printedQualificationAr,
   RAISE_REASON_LABELS,
   RAISE_REASON_LABELS_AR,
@@ -151,8 +156,8 @@ export interface ValueSources {
     hourlyRate: Decimal | null;
     hoursPerWeek: Decimal | null;
     daysPerWeek: number | null;
-    /** A month each, as on the contract or offer. */
-    allowances: readonly { nameEn: string; nameAr: string; amount: Decimal }[];
+    /** A month each, as on the contract or offer; one paid per client account (25 October 2026) with no amount (0). */
+    allowances: readonly { nameEn: string; nameAr: string; amount: Decimal; basis?: string | null }[];
     /** A specific job's contract: the job (Art. 155); a trainee's training agreement: its stages (Art. 29). Missing: none. */
     jobToDo?: string | null;
     traineeStages?: Prisma.JsonValue | null;
@@ -325,16 +330,21 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
     const html = job?.jobTitle?.jdDuties ?? '';
     return isBlankValue({ html }) ? '' : { html };
   };
-  // none is a value too: "لا يوجد" / "None"
-  const allowancesOf = (rows: readonly { nameEn: string; nameAr: string; amount: Decimal }[] | undefined, lang: Lang) =>
+  // none is a value too: "لا يوجد" / "None"; one paid per client account (owner, 25 October 2026) has no amount: "Accounts
+  // allowance: Per client account assigned"
+  const allowancesOf = (rows: readonly { nameEn: string; nameAr: string; amount: Decimal; basis?: string | null }[] | undefined, lang: Lang) =>
     !rows
       ? ''
       : rows.length === 0
         ? lang === 'ar'
           ? 'لا يوجد'
           : 'None'
-        : rows.map((a) => `${inLanguage(lang, a.nameEn, a.nameAr)}: ${printedMoney(a.amount.toNumber())}`).join(lang === 'ar' ? '، ' : ', ');
+        : rows
+            .map((a) => `${inLanguage(lang, a.nameEn, a.nameAr)}: ${isPerAccount(a) ? (lang === 'ar' ? PER_ACCOUNT_TEXT_AR : PER_ACCOUNT_TEXT) : printedMoney(a.amount.toNumber())}`)
+            .join(lang === 'ar' ? '، ' : ', ');
   const allowances = (lang: Lang) => allowancesOf(c?.allowances, lang);
+  // the accounts allowance's line (25 October 2026), with a per-account allowance on the contract or offer; blank without
+  const accountsLine = (lang: Lang) => (c?.allowances.some((a) => isPerAccount(a)) ? (lang === 'ar' ? ACCOUNTS_ALLOWANCE_LINE_AR : ACCOUNTS_ALLOWANCE_LINE_EN) : '');
 
   // a raise (owner's decisions, 16 October 2026): the pay before it, why, the promotion and the wage change for Form 2
   const raise = c ? (src.raise ?? null) : null;
@@ -465,6 +475,9 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
     allowances_total: () => printedMoney(allowancesTotal),
     allowances_total_words: () => words(allowancesTotal),
     allowances_total_words_en: () => wordsEn(allowancesTotal),
+    accounts_allowance: () => accountsLine(language),
+    accounts_allowance_ar: () => accountsLine('ar'),
+    accounts_allowance_en: () => accountsLine('en'),
     total_salary: () => printedMoney(totalSalary),
     total_salary_words: () => words(totalSalary),
     total_salary_words_en: () => wordsEn(totalSalary),
@@ -680,6 +693,9 @@ const WHERE: Record<string, Where> = {
   allowances_total: CONTRACTS('allowances'),
   allowances_total_words: CONTRACTS('allowances'),
   allowances_total_words_en: CONTRACTS('allowances'),
+  accounts_allowance: CONTRACTS('allowances'),
+  accounts_allowance_ar: CONTRACTS('allowances'),
+  accounts_allowance_en: CONTRACTS('allowances'),
   total_salary: CONTRACTS('grossSalary'),
   total_salary_words: CONTRACTS('grossSalary'),
   total_salary_words_en: CONTRACTS('grossSalary'),
@@ -774,7 +790,8 @@ const TAGS = new Map(TEMPLATE_TAGS.map((t) => [t.tag, t]));
  * Tags printed blank when they have no value, never stopping a document: {{title_ar}} without a gender (owner, 22
  * October 2026: "if no gender leave blank").
  */
-const MAY_BE_BLANK: ReadonlySet<string> = new Set(['title_ar']);
+// and the accounts allowance's line without a per-account allowance (25 October 2026): the line is for those who have one
+const MAY_BE_BLANK: ReadonlySet<string> = new Set(['title_ar', 'accounts_allowance', 'accounts_allowance_ar', 'accounts_allowance_en']);
 
 /** How an Arabic document addresses the person by their gender: السيد, السيدة, or nothing without one. */
 export const arabicTitle = (gender: string | null | undefined): string => (gender === 'male' ? 'السيد' : gender === 'female' ? 'السيدة' : '');

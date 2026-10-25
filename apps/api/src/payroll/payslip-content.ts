@@ -1,4 +1,7 @@
 import {
+  accountShareText,
+  accountsAllowanceLabel,
+  accountsAllowanceLabelAr,
   adjustmentTypeLabel,
   adjustmentTypeLabelAr,
   formatHours,
@@ -630,6 +633,20 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
     : [{ allowances: terms.allowances, days: terms.paidDays, part: null }];
   for (const { allowances, days: paidFor, part } of allowanceParts) {
     for (const a of allowances) {
+      // the accounts allowance (owner, 25 October 2026: "By days"): already for the days each account was held, with its
+      // count, "Accounts allowance (2 accounts)"; on the English payslip each account by name (never its code) and what
+      // it came to, "Acme 1,500.00 · Beta 375.00 (8 of 31 days)"
+      if (a.accounts) {
+        const amount = piasters(Math.max(0, a.amount));
+        if (amount === 0) continue;
+        const name = (ar ? source.allowancesAr[a.name]?.trim() : null) || a.name;
+        const label = ar ? accountsAllowanceLabelAr(name, a.accounts.length, (n) => num(String(n))) : accountsAllowanceLabel(name, a.accounts.length);
+        const shares = ar ? null : a.accounts.map((s) => accountShareText(s, formatAmount(s.amount))).join(' · ');
+        const notes = [shares, a.taxable ? null : t(L.notTaxed)].filter((n): n is string => !!n);
+        const note = notes.map((n, i) => (i && !ar ? n[0].toLowerCase() + n.slice(1) : n)).join(ar ? '، ' : ', ');
+        earnings.push(row(label, amount, note || null));
+        continue;
+      }
       const amount = piasters((Math.max(0, a.amount) * paidFor) / days);
       if (amount === 0) continue;
       // "For 19 of 30 days, not taxed"

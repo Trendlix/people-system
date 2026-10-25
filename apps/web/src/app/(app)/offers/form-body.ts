@@ -66,10 +66,13 @@ function wholeFrom(fd: FormData, key: string, min: number, max: number, mistake:
   return n;
 }
 
-/** An allowance as the API takes it (lib/allowances.ts reads the rows). */
+/**
+ * An allowance as the API takes it (lib/allowances.ts reads the rows): one paid per client account (25 October 2026)
+ * without an amount.
+ */
 export interface OfferAllowanceInput {
   allowanceTypeId: string;
-  amount: number;
+  amount?: number;
 }
 
 /**

@@ -21,7 +21,8 @@ export interface PayVersion {
   payBasis: string;
   grossSalary: number;
   hourlyRate: number | null;
-  allowances: readonly { nameEn: string; amount: number }[];
+  /** One paid per client account (25 October 2026) has basis per_account and no amount (0). */
+  allowances: readonly { nameEn: string; amount: number; basis?: string }[];
   raiseReason: string | null;
   /** The promotion that comes with it, if any. */
   newJobTitle: string | null;
@@ -55,7 +56,7 @@ export interface PayEvent {
   /** The version before it's pay; null for the hire. */
   from: PayAmounts | null;
   to: PayAmounts;
-  allowances: { nameEn: string; amount: number }[];
+  allowances: { nameEn: string; amount: number; basis?: string }[];
   /** The gross's change from the version before (null for the hire). */
   difference: { amount: number; percent: number | null } | null;
   /** The same pay as the version before (a renewal as it was); false for the hire. */
@@ -103,7 +104,7 @@ export function payEvents(versions: readonly PayVersion[]): PayEvent[] {
       hourlyRate: v.hourlyRate,
       from,
       to,
-      allowances: v.allowances.map((a) => ({ nameEn: a.nameEn, amount: money(a.amount) })),
+      allowances: v.allowances.map((a) => ({ nameEn: a.nameEn, amount: money(a.amount), ...(a.basis === 'per_account' && { basis: a.basis }) })),
       difference: from ? payDifference(from.gross, to.gross) : null,
       samePay: same,
       raise: v.approval !== null,

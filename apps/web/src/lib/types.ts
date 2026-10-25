@@ -1,6 +1,7 @@
 import type {
   AccessStanding,
   AccessState,
+  AllowanceBasis,
   ApproverRole,
   AssetsAccess,
   AssetsAccessView,
@@ -1553,15 +1554,26 @@ export interface AllowanceType {
   active: boolean;
   sortOrder: number;
   inUse: boolean;
+  /**
+   * How it is paid (owner, 25 October 2026: an allowance per client account): a fixed amount a month, or per client
+   * account assigned (no amount on the contract: payroll pays the month's client accounts). Missing from an API before
+   * then: fixed.
+   */
+  basis?: AllowanceBasis;
 }
 
-/** An allowance on a contract or offer, a month: its kind's name and treatment as when drafted. */
+/**
+ * An allowance on a contract or offer, a month: its kind's name and treatment as when drafted. One paid per client
+ * account (25 October 2026) has no amount (0): the person is eligible, payroll pays their accounts.
+ */
 export interface AllowanceLine {
   allowanceTypeId: string;
   nameEn: string;
   nameAr: string;
   taxable: boolean;
   insured: boolean;
+  /** Missing from an API before 25 October 2026: fixed. */
+  basis?: AllowanceBasis;
   amount: number;
 }
 
