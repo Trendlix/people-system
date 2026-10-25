@@ -36,7 +36,8 @@ import { createApp, createUser, signIn } from './helpers.js';
 // sources), invites one (the email through the memory outbox, MAIL_TRANSPORT=memory, then their application through
 // ?src=invite closes it), dismisses one (it never comes back); HR told once a batch, again only for a new CV; a hiring
 // manager refused; a developer's answer masked; each step in the audit log. Every name is invented; the test deletes
-// what it made.
+// what it made. Since 25 October 2026 ("Full CV fit score"; cv-fit.ts) a read CV is ranked by its CV fit for the vacancy
+// (the area, 65 × the fit ÷ 100, recency) in place of the key skills, title and years.
 
 process.env.MAIL_TRANSPORT = 'memory';
 
@@ -269,21 +270,29 @@ describe('Suggested From Earlier CVs (e2e)', () => {
     const mona = await rowOf('mona');
     expect(mona).toMatchObject({ status: 'suggested', email: email('mona'), candidate: { fullName: nameOf('mona') }, source: { kind: 'general_cv', area: `Video ${RUN} · Studio ${RUN}` } });
     expect(mona!.candidate.code).toMatch(/^CAN-\d{4,}$/);
-    // the same team (30), 3 of the 4 key skills (26), Video Editor before (13: 2 of the title's 3 words), about 4 years
-    // against the 2 asked (10), recent (5)
-    expect(mona!.reasons.map((r) => r.kind)).toEqual(['area', 'skills', 'title', 'experience', 'recency']);
+    // the same team (30); her CV fit 79% (3 of the 4 key skills 75, weight 35; "Video Editor" for "Video Editor …" 2 of
+    // its 3 words 67, weight 25; about 5 years against the 2 the questions ask 100, weight 20; nothing else asked):
+    // 65 × 79 ÷ 100 = 51; recent (5)
+    expect(mona!.reasons.map((r) => r.kind)).toEqual(['area', 'fit', 'recency']);
     expect(mona!.reasons[0]).toMatchObject({ kind: 'area', exact: true, ofTeam: true, points: 30 });
-    expect(mona!.reasons[1]).toMatchObject({ kind: 'skills', found: ['Premiere Pro', 'After Effects', 'DaVinci Resolve'], listed: 4, points: 26 });
-    expect(mona!.reasons[2]).toMatchObject({ kind: 'title', from: 'cv', matchedTitle: 'Video Editor', points: 13 });
-    expect(mona!.reasons[3]).toMatchObject({ kind: 'experience', fromCv: true, minYears: 2, met: true, points: 10 });
-    expect(mona!.score).toBe(30 + 26 + 13 + 10 + 5);
+    const fit = mona!.reasons[1];
+    expect(fit).toMatchObject({ kind: 'fit', percent: 79, points: 51 });
+    expect(fit.kind === 'fit' && fit.parts.map((p) => [p.key, p.score])).toEqual([
+      ['skills', 75],
+      ['title', 67],
+      ['experience', 100],
+    ]);
+    expect(fit.kind === 'fit' && fit.parts.find((p) => p.key === 'title')).toMatchObject({ matchedTitle: 'Video Editor', titleFrom: 'latest' });
+    expect(fit.kind === 'fit' && fit.parts.find((p) => p.key === 'experience')).toMatchObject({ fromCv: true, wanted: { min: 2, max: null, from: 'questions' } });
+    expect(mona!.score).toBe(30 + 51 + 5);
     expect(mona!.cv).toMatchObject({ kind: 'general_cv', id: mona!.source!.id, key: `general_cv:${mona!.source!.id}` });
     expect(mona!.can).toEqual({ add: true, invite: true, dismiss: true });
     // Omar, rejected for the Motion Designer job (not "Not a fit"): the same department, his years as typed
     const omar = await rowOf('omar');
     expect(omar).toMatchObject({ source: { kind: 'application', vacancy: { id: vacancies.motion.id } } });
     expect(omar!.reasons[0]).toMatchObject({ kind: 'area', exact: false, points: 15 });
-    expect(omar!.reasons.find((r) => r.kind === 'experience')).toMatchObject({ fromCv: false, years: 3, met: true });
+    const omarFit = omar!.reasons.find((r) => r.kind === 'fit');
+    expect(omarFit?.kind === 'fit' && omarFit.parts.find((p) => p.key === 'experience')).toMatchObject({ fromCv: false, years: 3, score: 100 });
     // best first
     const scores = s.rows.map((r) => r.score);
     expect([...scores].sort((a, b) => b - a)).toEqual(scores);
@@ -463,6 +472,8 @@ describe('Suggested From Earlier CVs (e2e)', () => {
       expect(r.candidate.fullName).toMatch(/^(Candidate|Applicant|Employee) [2-9A-HJ-NP-Z]{4,6}$/);
       expect(r.candidate.code).toBe(HIDDEN);
       for (const reason of r.reasons) if (reason.kind === 'title') expect(reason.matchedTitle).toBe(HIDDEN);
+      // the fit's past titles too (25 October 2026)
+      for (const reason of r.reasons) if (reason.kind === 'fit') for (const p of reason.parts) if (p.key === 'title' && p.matchedTitle !== null) expect(p.matchedTitle).toBe(HIDDEN);
       if (r.email) expect(r.email).toMatch(/@hidden\.invalid$/);
       if (r.sentTo) expect(r.sentTo).toMatch(/@hidden\.invalid$/);
       if (r.cv) expect(r.cv.cvFileName).toBe(HIDDEN);

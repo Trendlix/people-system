@@ -22,6 +22,7 @@
 
 import type { EmploymentType, WorkArrangement } from './index.js';
 import type { CvListFacts, CvReadingView } from './cv-analysis.js';
+import type { BetterFitBadge, CvFit, OpenPositionFit } from './cv-fit.js';
 import type { GeneralCvSource } from './general-cvs.js';
 import type { FeedbackView, InterviewView, RecruitmentViewer, SuggestionView } from './recruitment-hiring.js';
 import { phoneOk, phoneTidy } from './phone.js';
@@ -846,8 +847,18 @@ export interface ApplicationListItem {
   stage: ApplicationStage;
   filteredOut: boolean;
   matchPercent: number | null;
-  /** The vacancy's key skills found in the CV, %; null when none are listed or the CV isn't read (22 October 2026). */
+  /**
+   * The CV match %: since 25 October 2026 the CV fit's (cv-fit.ts), once the vacancy's key skills found in the CV; null
+   * when the CV isn't read (22 October 2026).
+   */
   cvMatchPercent: number | null;
+  /** The CV fit's parts, for the breakdown on hover (25 October 2026); null when not read (or left out by an API from before it). */
+  cvFit?: CvFit | null;
+  /**
+   * "Better fit: Media Buyer 82%" (owner, 25 October 2026: "and if it recomended to another position based on the CV"):
+   * another open vacancy the CV fits at 60% or more and 10 points above this one; HR, the CEO and a Super Admin only.
+   */
+  betterFit?: BetterFitBadge | null;
   points: number;
   maxPoints: number;
   yearsExperience: number | null;
@@ -960,6 +971,11 @@ export interface ApplicationView extends ApplicationListItem {
    * they are and the possible matches; HR, the CEO and a Super Admin only (null for a hiring manager or an interviewer).
    */
   candidateProfile?: ApplicationCandidate | null;
+  /**
+   * Other Open Positions (owner, 25 October 2026: "and if it recomended to another position based on the CV"): the top 3
+   * open vacancies the CV fits at 50% or more; HR, the CEO and a Super Admin only (null for anyone else).
+   */
+  openPositions?: OpenPositionFit[] | null;
 }
 
 /** A question as the careers page asks it: no points, no must-have rules, a choice's options by their words. */

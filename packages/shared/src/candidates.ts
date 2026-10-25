@@ -20,6 +20,7 @@ import type { EndReason } from './index.js';
 import type { RehireEligibility } from './offboarding.js';
 import type { GeneralCvSource, GeneralCvStatus } from './general-cvs.js';
 import type { CvListFacts } from './cv-analysis.js';
+import type { CvFit, OpenPositionFit } from './cv-fit.js';
 import type { FeedbackView, InterviewView } from './recruitment-hiring.js';
 import type { ScreeningVerdict } from './screening.js';
 
@@ -499,6 +500,8 @@ export interface CandidateApplication {
   rejectReason: string | null;
   matchPercent: number | null;
   cvMatchPercent: number | null;
+  /** The CV fit's parts (25 October 2026), for the breakdown on hover. */
+  cvFit?: CvFit | null;
   source: ApplicationSource;
   /** Where it came from, in words. */
   sourceText: string;
@@ -594,6 +597,11 @@ export interface CandidateView extends CandidateRef {
   timeline: CandidateTimelineItem[];
   /** Their latest screening verdict across every comment the caller may see (24 October 2026); null: none yet. */
   verdict?: ScreeningVerdict | null;
+  /**
+   * Other Open Positions (owner, 25 October 2026: "and if it recomended to another position based on the CV"): the top 3
+   * open vacancies their CVs fit at 50% or more, the best of their CVs for each.
+   */
+  openPositions?: OpenPositionFit[];
   can: { merge: boolean; dismiss: boolean; split: boolean; undoMerge: boolean };
 }
 

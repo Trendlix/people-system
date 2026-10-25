@@ -1755,6 +1755,7 @@ model Vacancy {
   applications     JobApplication[]
   cvUploads        CvUpload[] // the bulk upload's CVs waiting for it (22 October 2026)
   suggestions      VacancySuggestion[] // Suggested From Earlier CVs (24 October 2026)
+  openFits         CvOpenFit[] // the earlier CVs' fits for it while open (25 October 2026)
 
   @@index([status])
   @@index([jobTitleId])
@@ -1786,7 +1787,8 @@ model JobApplication {
   points          Int                  @default(0)
   maxPoints       Int                  @default(0) @map("max_points")
   matchPercent    Int?                 @map("match_percent")
-  cvMatchPercent  Int?                 @map("cv_match_percent") // the vacancy's key skills found in the CV's text, %; none: no skills listed or the CV not read (22 October 2026)
+  cvMatchPercent  Int?                 @map("cv_match_percent") // the CV fit's % since 25 October 2026 (once the key skills found, 22 October 2026); none: the CV not read
+  cvFit           Json?                @map("cv_fit") // the CV fit with its parts and version (owner, 25 October 2026: "Full CV fit score"; packages/shared cv-fit.ts)
   knockedOut      String[]             @default([]) @map("knocked_out") // the must-have questions not passed, by key
   source          String               @default("careers") // APPLICATION_SOURCES
   consentAt       DateTime             @map("consent_at") @db.Timestamptz
@@ -1826,6 +1828,7 @@ model JobApplication {
   // Suggested From Earlier CVs (24 October 2026): the suggestions it was the earlier CV of, and those it closed (added, applied)
   suggestedFrom   VacancySuggestion[]  @relation("VacancySuggestionSource")
   suggestionsMet  VacancySuggestion[]  @relation("VacancySuggestionApplication")
+  openFits        CvOpenFit[] // its CV's fits for the other open vacancies (25 October 2026)
   // WhatsApp (owner, 24 October 2026: candidates "who tick it on the careers form"): when they ticked "Send me updates
   // about my application on WhatsApp" (none: no opt-in; HR's own Add a CV never asks), the language of the page, and
   // when they replied STOP; the messages sent about it
@@ -1928,6 +1931,7 @@ model GeneralCv {
   events          GeneralCvEvent[]
   comments        ScreeningComment[] // the screening comments on it (24 October 2026)
   suggestions     VacancySuggestion[] // the vacancies it was suggested for (24 October 2026)
+  openFits        CvOpenFit[] // its CV's fits for the open vacancies (25 October 2026)
   // WhatsApp (24 October 2026), as an application's: the tick on "Send us your CV", its page's language, a STOP reply
   whatsappOptInAt   DateTime?        @map("whatsapp_opt_in_at") @db.Timestamptz
   whatsappLanguage  String?          @map("whatsapp_language")
@@ -2357,6 +2361,30 @@ model VacancySuggestion {
   @@index([sourceApplicationId])
   @@index([applicationId])
   @@map("vacancy_suggestions")
+}
+
+// An earlier CV's fit for an open vacancy (owner, 25 October 2026: "and if it recomended to another position based on
+// the CV"; packages/shared cv-fit.ts, suggested-cvs.ts openFitsFor): the person's side of Suggested From Earlier CVs, one
+// a CV (an application, or a general CV) a vacancy, kept when 50% or more, worked out with the vacancy's suggestions.
+// Read for an applicant's "Better fit" badge, the CV window's and the candidate's Other Open Positions and the General
+// CVs' "Best open position", each time with the vacancy still open and the person not on it nor decided there.
+model CvOpenFit {
+  id            String          @id @default(uuid()) @db.Uuid
+  vacancyId     String          @map("vacancy_id") @db.Uuid
+  vacancy       Vacancy         @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
+  applicationId String?         @map("application_id") @db.Uuid
+  application   JobApplication? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  generalCvId   String?         @map("general_cv_id") @db.Uuid
+  generalCv     GeneralCv?      @relation(fields: [generalCvId], references: [id], onDelete: Cascade)
+  percent       Int
+  fit           Json
+  updatedAt     DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@unique([vacancyId, applicationId])
+  @@unique([vacancyId, generalCvId])
+  @@index([applicationId])
+  @@index([generalCvId])
+  @@map("cv_open_fits")
 }
 
 // HR's default onboarding items (Phase 2, 22 October 2026; packages/shared onboarding.ts), in order, each with the role

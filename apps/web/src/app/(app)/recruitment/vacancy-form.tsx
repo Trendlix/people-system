@@ -9,6 +9,8 @@ import { Select } from '@/components/select';
 import { formatDate } from '@/lib/format';
 import type { FormState } from '@/lib/types';
 import { QuestionsEditor } from './questions-editor';
+import { jobTitleName, openingKeySkills } from './cv-fit';
+import { KeySkillsField } from './key-skills-field';
 
 // A vacancy's form (owner, 22 October 2026: "where will we include the ATS?"): its job title and title on the careers
 // page, the position (grade, hiring manager, headcount, employment type, where the work is done, shift, contract length,
@@ -51,6 +53,7 @@ export function VacancyForm({
   cancelHref,
   submitLabel,
   jobTitleNote,
+  suggestKeySkills = false,
 }: {
   action: Action;
   defaults: VacancyDefaults;
@@ -63,10 +66,13 @@ export function VacancyForm({
   submitLabel: string;
   /** Under the job title: e.g. how to fill the description from another one. */
   jobTitleNote?: React.ReactNode;
+  /** Opened to suggest key skills (?suggest=1, 25 October 2026): with none listed, the chips start with those suggested. */
+  suggestKeySkills?: boolean;
 }) {
   const { state, form } = useKeptForm(action);
   const fid = useFieldIds();
   const jobTitle = options.jobTitles.find((j) => j.id === defaults.jobTitleId);
+  const opening = openingKeySkills(defaults, jobTitleName(jobTitle?.label), suggestKeySkills);
 
   return (
     <form {...form} className="card max-w-3xl space-y-6 p-6">
@@ -242,34 +248,20 @@ export function VacancyForm({
       </section>
 
       {/* Key skills looked for in each CV (owner, 22 October 2026: "make the OCR egine reads the CV and analyse it"; "Built-in
-          rules only"). Unlike the questions, they can change after people applied: every application is scored again. */}
+          rules only"). Unlike the questions, they can change after people applied: every application is scored again. Since
+          25 October 2026 ("Full CV fit score") they are one part of the CV fit, as chips HR keeps, removes or adds to, with
+          Suggest key skills ("suggest them from its description for HR to confirm"); saved only with the form. */}
       <section aria-labelledby={fid('keySkills')} className="space-y-3 border-t border-line pt-6">
         <div>
           <h2 id={fid('keySkills')} className="text-lg font-semibold">
             Key Skills
           </h2>
           <p className="mt-1 text-sm text-muted">
-            Looked for in each applicant&apos;s CV: the CV match % is how many of them the CV names. It never filters anyone out. Not shown on the careers
-            page.
+            Up to {KEY_SKILLS_LIMITS.max}, looked for in each applicant&apos;s CV: with its title, years, requirements and education they make the CV match %.
+            It never filters anyone out. Not shown on the careers page.
           </p>
         </div>
-        <div>
-          <label htmlFor={fid('keySkillsInput')} className="label">
-            Key skills, separated by commas
-          </label>
-          <textarea
-            id={fid('keySkillsInput')}
-            name="keySkills"
-            rows={2}
-            aria-describedby={fid('keySkillsHint')}
-            defaultValue={valueOf(state, 'keySkills', defaults.keySkills.join(', '))}
-            placeholder="e.g. Premiere Pro, After Effects, color grading"
-            className="input"
-          />
-          <p id={fid('keySkillsHint')} className="hint">
-            Up to {KEY_SKILLS_LIMITS.max}, each up to {KEY_SKILLS_LIMITS.length} characters. Found as whole words in any case, in English or Arabic.
-          </p>
-        </div>
+        <KeySkillsField initial={opening.skills} initialNote={opening.note} jobTitles={options.jobTitles} inputId={fid('keySkillsInput')} hintId={fid('keySkillsHint')} />
       </section>
 
       <section aria-labelledby={fid('questions')} className="space-y-3 border-t border-line pt-6">

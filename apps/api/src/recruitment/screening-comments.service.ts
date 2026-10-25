@@ -6,6 +6,7 @@ import {
   applicationVerdicts,
   candidateVerdicts,
   canEditComment,
+  cvFitFrom,
   editableUntil,
   generalCvKey,
   latestVerdict,
@@ -37,6 +38,7 @@ import { NotificationsService } from '../notifications/notifications.service.js'
 import { userNames } from '../payroll/adjustments/people.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { activeAccountsOf } from '../users/employee-accounts.js';
+import { CvFitsService } from './cv-fits.service.js';
 import { isConfidentialVacancy, READS, vacancyWhere } from './recruitment-access.js';
 import { recruitmentCaller, visibleApplications, type RecruitmentCaller } from './recruitment-scope.js';
 import { applicationReaders, authorRoleOf, commentWhere, generalReaders, readerCandidates, type ReaderAccount } from './screening-access.js';
@@ -88,6 +90,8 @@ const APP_SELECT = {
   interviews: { select: { interviewers: { select: { employeeId: true } } } },
   cv: { select: { fileName: true, mimeType: true, sizeBytes: true } },
   generalCv: { select: { id: true } },
+  // the CV window's CV Fit (25 October 2026)
+  cvFit: true,
 } satisfies Prisma.JobApplicationSelect;
 type AppRow = Prisma.JobApplicationGetPayload<{ select: typeof APP_SELECT }>;
 
@@ -154,7 +158,30 @@ export class ScreeningCommentsService {
     private readonly audit: AuditService,
     private readonly confidential: ConfidentialService,
     private readonly notifications: NotificationsService,
+    private readonly fits: CvFitsService,
   ) {}
+
+  /**
+   * The CV window's CV Fit and Other Open Positions (owner, 25 October 2026: "Full CV fit score"; "and if it recomended
+   * to another position based on the CV"): an application's fit for its vacancy (a general CV moved to one, that
+   * application's), and each CV's open positions for HR, the CEO and a Super Admin.
+   */
+  private async withFits(cvs: ScreeningCv[], apps: readonly AppRow[], candidateId: string | null, c: RecruitmentCaller): Promise<ScreeningCv[]> {
+    const appOf = new Map(apps.map((a) => [a.id, a]));
+    const recordOf = (cv: ScreeningCv) => (cv.kind === 'general_cv' && cv.linkedKey?.startsWith('application:') ? cv.linkedKey.slice('application:'.length) : null);
+    const positions = c.reads
+      ? await this.fits.shownFor(
+          cvs.flatMap((cv) => [{ kind: cv.kind, id: cv.id, candidateId }, ...(recordOf(cv) ? [{ kind: 'application' as const, id: recordOf(cv)!, candidateId }] : [])]),
+          c.user,
+        )
+      : new Map();
+    return cvs.map((cv) => {
+      const app = appOf.get(cv.kind === 'application' ? cv.id : (recordOf(cv) ?? ''));
+      const linked = recordOf(cv);
+      const open = positions.get(cv.id)?.length ? positions.get(cv.id) : linked ? positions.get(linked) : undefined;
+      return { ...cv, fit: app ? cvFitFrom(app.cvFit) : null, ...(c.reads && { openPositions: open ?? [] }) };
+    });
+  }
 
   private async caller(user: SessionUser): Promise<RecruitmentCaller> {
     return recruitmentCaller(user, await this.confidential.selfId(user));
@@ -318,7 +345,7 @@ export class ScreeningCommentsService {
       comments: await this.views(rows, c),
       targets,
       people: await this.people([...all].filter((id) => id !== c.user.id), readers, apps),
-      cvs,
+      cvs: await this.withFits(cvs, apps, candidateId, c),
       verdict: latestVerdict(rows),
       can: { add: true },
     };
@@ -339,7 +366,7 @@ export class ScreeningCommentsService {
       comments: await this.views(rows, c),
       targets: [{ key: aboutKey(about), about, label: aboutLabel(about), linkedKey: null, count: rows.length, verdict: latestVerdict(rows), mentionable }],
       people: await this.people(mentionable, readers, [a]),
-      cvs: a.cv ? [this.appCv(a, null)] : [],
+      cvs: a.cv ? await this.withFits([this.appCv(a, null)], [a], a.candidateId, c) : [],
       verdict: latestVerdict(rows),
       can: { add: !!a.candidateId },
     };

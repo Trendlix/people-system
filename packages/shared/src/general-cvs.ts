@@ -14,6 +14,7 @@
 // Pure code: the API enforces these rules, the web shows them. Tested in apps/api/src/common/general-cvs.spec.ts.
 
 import type { CvListFacts, CvReadingView } from './cv-analysis.js';
+import type { OpenPositionFit } from './cv-fit.js';
 import { CV_POSITION_LIMITS, type CvPositionGroup } from './cv-positions.js';
 import type { ScreeningVerdict } from './screening.js';
 import { APPLICATION_SOURCE_LABELS, applyProblems, normalEmail, RECRUITMENT_LIMITS, webLinkOf, type ApplicationSource, type ApplicationStage, type RecruitmentUserRef, type VacancyStatus } from './recruitment.js';
@@ -364,6 +365,11 @@ export interface GeneralCvListItem {
   fromCv?: CvListFacts | null;
   /** Its latest screening verdict (24 October 2026; screening.ts): the newest of its own comments with one; null: none yet. */
   verdict?: ScreeningVerdict | null;
+  /**
+   * The "Best open position" column (owner, 25 October 2026: "and if it recomended to another position based on the CV"):
+   * the open vacancy its CV fits best, at 50% or more; null: none.
+   */
+  bestPosition?: { vacancy: { id: string; number: string; title: string }; percent: number } | null;
 }
 
 /** What the caller may do to a general CV now. */
@@ -377,6 +383,8 @@ export interface GeneralCvCan {
 
 /** GET /recruitment/general-cvs/:id. */
 export interface GeneralCvView extends GeneralCvListItem {
+  /** Other Open Positions (25 October 2026): the top 3 open vacancies its CV fits at 50% or more. */
+  openPositions?: OpenPositionFit[];
   linkedin: string | null;
   portfolio: string | null;
   noticePeriod: string | null;

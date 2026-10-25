@@ -8,9 +8,10 @@ import { APPLICATION_SOURCE_LABELS, APPLICATION_STAGE_LABELS, HIRING_SUGGESTION_
 import { FormErrors, useFieldIds } from '@/components/form';
 import type { FormState } from '@/lib/types';
 import { candidateBadges } from './candidates';
+import { BetterFitLink, FitPercent, MatchValue } from './cv-fit-ui';
 import { DeleteApplicantButton } from './delete-ui';
 import { daysText, dropOn } from './hiring';
-import { applicantHref, makeOfferHref, matchText, STAGE_STYLE } from './recruitment';
+import { applicantHref, makeOfferHref, STAGE_STYLE } from './recruitment';
 import { VerdictBadge } from './ui';
 
 // A vacancy's pipeline board (Phase 2, owner, 22 October 2026; the brief: "a board with a column per stage, and cards with
@@ -131,11 +132,17 @@ export function PipelineBoard({ board, move, deletes = false }: { board: Vacancy
                     {card.fullName}
                   </Link>
                   <p className="text-xs text-muted">
-                    Match {matchText(card.matchPercent)}
-                    {typeof card.cvMatchPercent === 'number' && ` · CV ${matchText(card.cvMatchPercent)}`} · {APPLICATION_SOURCE_LABELS[card.source]} ·{' '}
-                    {daysText(card.daysInStage)}
+                    {/* not asked the screening questions: the CV fit, "72% · CV" (owner, 25 October 2026: "Full CV fit score") */}
+                    Match <MatchValue a={card} className="" /> · {APPLICATION_SOURCE_LABELS[card.source]} · {daysText(card.daysInStage)}
                   </p>
+                  {typeof card.cvMatchPercent === 'number' && (
+                    <div className="text-xs text-muted">
+                      CV match <FitPercent percent={card.cvMatchPercent} fit={card.cvFit} className="text-ink" />
+                    </div>
+                  )}
                   <div className="flex flex-wrap gap-1">
+                    {/* another open vacancy the CV fits better (25 October 2026: "and if it recomended to another position based on the CV") */}
+                    {card.betterFit && <BetterFitLink badge={card.betterFit} />}
                     {card.upcomingInterviews > 0 && <span className={`badge ${STAGE_STYLE.interview}`}>Interview booked</span>}
                     {card.openOffer && <span className={`badge ${STAGE_STYLE.offer}`}>Offer open</span>}
                     {card.suggestion && <span className="badge bg-warn-soft text-warn">Suggested: {HIRING_SUGGESTION_LABELS[card.suggestion]}</span>}

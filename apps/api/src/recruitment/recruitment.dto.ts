@@ -500,6 +500,10 @@ export class ListGeneralCvsDto {
   /** Only those whose latest screening verdict is this; `none`: those without one yet (24 October 2026). */
   @IsOptional() @IsIn(VERDICT_FILTERS, { message: 'Choose a verdict.' })
   verdict?: VerdictFilter;
+
+  /** `fit`: the best open position's fit first (25 October 2026: "and if it recomended to another position"); none: the newest first. */
+  @IsOptional() @IsIn(['fit'])
+  sort?: 'fit';
 }
 
 export class MoveGeneralCvDto {

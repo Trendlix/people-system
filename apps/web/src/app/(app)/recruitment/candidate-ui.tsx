@@ -13,10 +13,11 @@ import {
 import { formatDate } from '@/lib/format';
 import { dismissMatch, mergeCandidates } from './candidate-actions';
 import { CANDIDATE_MATCHES_PATH, CANDIDATES_PATH, candidateHref, matchesCountText, mergeOrder, otherOf } from './candidates';
+import { FitPercent, MatchValue } from './cv-fit-ui';
 import { loadPossibleMatches } from './data';
 import { ActionButton } from './forms';
 import { generalCvHref, positionCell } from './general';
-import { applicantHref, matchText, vacancyHref } from './recruitment';
+import { applicantHref, vacancyHref } from './recruitment';
 import { StageBadge } from './ui';
 import { shownCode, withCodeInBrackets } from '@/lib/hidden';
 import { Shown } from '@/components/hidden';
@@ -152,8 +153,13 @@ export function CandidateApplicationsTable({ rows }: { rows: CandidateApplicatio
                 <StageBadge stage={a.stage} filteredOut={a.filteredOut} />
                 {a.rejectReason && <span className="block max-w-xs text-xs text-muted">{a.rejectReason}</span>}
               </td>
-              <td className="text-right tabular-nums">{matchText(a.matchPercent)}</td>
-              <td className="text-right tabular-nums">{matchText(a.cvMatchPercent)}</td>
+              {/* not asked the screening questions: the CV fit, "72% · CV"; the CV fit's breakdown on hover or tap (25 October 2026) */}
+              <td className="text-right tabular-nums">
+                <MatchValue a={a} />
+              </td>
+              <td className="text-right">
+                <FitPercent percent={a.cvMatchPercent} fit={a.cvFit} />
+              </td>
               <td className="text-sm">{a.sourceText}</td>
             </tr>
           ))}

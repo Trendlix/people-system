@@ -28,7 +28,8 @@ import { VacanciesService } from './vacancies.service.js';
 import { CvPreviewsService } from './cv-previews.service.js';
 import { ScreeningCommentsController } from './screening-comments.controller.js';
 import { ScreeningCommentsService } from './screening-comments.service.js';
-import { SuggestionsController, VacancySuggestionsController } from './vacancy-suggestions.controller.js';
+import { KeySkillsController, SuggestionsController, VacancySuggestionsController } from './vacancy-suggestions.controller.js';
+import { CvFitsService } from './cv-fits.service.js';
 import { VacancySuggestionsService } from './vacancy-suggestions.service.js';
 
 // Recruitment, the ATS (owner, 22 October 2026: "where will we include the ATS?"): Phase 1, vacancies, the careers page
@@ -58,6 +59,8 @@ import { VacancySuggestionsService } from './vacancy-suggestions.service.js';
     // Suggested From Earlier CVs on each open vacancy (owner, 24 October 2026: "Suggest; HR adds")
     VacancySuggestionsController,
     SuggestionsController,
+    // the key skills suggested from a vacancy's texts (owner, 25 October 2026: "Full CV fit score")
+    KeySkillsController,
   ],
   providers: [
     VacanciesService,
@@ -73,6 +76,9 @@ import { VacancySuggestionsService } from './vacancy-suggestions.service.js';
     // every CV read and analysed in the background (22 October 2026: "make the OCR egine reads the CV and analyse it")
     CvReadingsService,
     OcrClient,
+    // the other open positions a CV fits, kept with each vacancy's suggestions (25 October 2026: "and if it recomended to
+    // another position based on the CV")
+    CvFitsService,
     // one profile per candidate, the backfill started by main.ts (22 October 2026)
     CandidatesService,
     // screening comments, and the CVs as PDFs for the CV window (24 October 2026: "open it in a popup window")

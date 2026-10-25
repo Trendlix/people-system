@@ -17,6 +17,7 @@
 import { APPLICATION_STAGE_LABELS, offerable, stageMoveProblem, type ApplicationSource, type ApplicationStage, type HandStage, type RecruitmentUserRef } from './recruitment.js';
 import type { GeneralCvSource } from './general-cvs.js';
 import type { CandidateBadge } from './candidates.js';
+import type { BetterFitBadge, CvFit } from './cv-fit.js';
 import type { ScreeningVerdict } from './screening.js';
 import { isMeetingChoiceValue, MEETING_KEEP, parseMeetingChoice, type InterviewMeetingView, type MeetingOutcome } from './meetings.js';
 import type { InviteWords } from './suggested-cvs.js';
@@ -625,8 +626,12 @@ export interface BoardCard {
   number: string;
   fullName: string;
   matchPercent: number | null;
-  /** The vacancy's key skills found in the CV, % (22 October 2026). */
+  /** The CV match %: the CV fit's since 25 October 2026 (cv-fit.ts), once the key skills' (22 October 2026). */
   cvMatchPercent: number | null;
+  /** The CV fit's parts, for the breakdown (25 October 2026). */
+  cvFit?: CvFit | null;
+  /** Another open vacancy the CV fits better (25 October 2026): HR, the CEO and a Super Admin only. */
+  betterFit?: BetterFitBadge | null;
   source: ApplicationSource;
   stage: ApplicationStage;
   filteredOut: boolean;

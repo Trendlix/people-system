@@ -536,6 +536,10 @@ export * from './cv-analysis.js';
 // the skills every CV is looked through for (owner, 24 October 2026: "CV years in list + more rules"), in a file HR can
 // later edit
 export * from './skills-dictionary.js';
+// the CV fit (owner, 25 October 2026: "aren't you supposed to match the candidate to the job based on the CV and ATS?";
+// "Full CV fit score"): key skills, title, years, requirements and education with their breakdown, the key skills
+// suggested from a vacancy's texts, and the other open positions a CV fits ("and if it recomended to another position")
+export * from './cv-fit.js';
 export * from './onboarding.js';
 
 // the Developer role (owner, 22 October 2026: "i want to create a role for develoeprs, not showing the real numbers"):

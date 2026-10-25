@@ -16,6 +16,7 @@
 // Tested in apps/api/src/common/screening.spec.ts.
 
 import type { CandidateCv } from './candidates.js';
+import type { CvFit, OpenPositionFit } from './cv-fit.js';
 import type { RecruitmentUserRef } from './recruitment.js';
 
 // ---------- the verdict ----------
@@ -244,6 +245,13 @@ export interface ScreeningTarget {
 export interface ScreeningCv extends CandidateCv {
   key: string;
   linkedKey: string | null;
+  /**
+   * The CV window's CV Fit (25 October 2026: "Full CV fit score"): an application's fit for its vacancy; null for a
+   * general CV, a CV not read, or one the API leaves out.
+   */
+  fit?: CvFit | null;
+  /** Its Other Open Positions (25 October 2026), for HR, the CEO and a Super Admin: the top 3 at 50% or more. */
+  openPositions?: OpenPositionFit[];
 }
 
 /**

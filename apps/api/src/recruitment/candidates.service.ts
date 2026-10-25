@@ -3,6 +3,7 @@ import {
   APPLICATION_EVENT_LABELS,
   applicationSourceOf,
   applicationSourceText,
+  cvFitFrom,
   CANDIDATE_LIMITS,
   candidateEmail,
   candidateMobile,
@@ -55,6 +56,7 @@ import type { Prisma } from '../generated/prisma/client.js';
 import { userNames } from '../payroll/adjustments/people.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { attachCandidate, findCandidates, lockCandidates, nextCandidateCode, pairOf, refreshCandidate } from './candidate-links.js';
+import { CvFitsService } from './cv-fits.service.js';
 import { InterviewsService } from './interviews.service.js';
 import { managesRecruitment, READS, vacancyWhere } from './recruitment-access.js';
 import { byExperience, cvListFactsOf, minYearsWhere, money } from './recruitment-views.js';
@@ -119,6 +121,8 @@ const APP_SELECT = {
   rejectReason: true,
   matchPercent: true,
   cvMatchPercent: true,
+  // the CV fit's parts (25 October 2026)
+  cvFit: true,
   source: true,
   employeeId: true,
   vacancy: { select: { id: true, number: true, title: true, status: true } },
@@ -154,6 +158,7 @@ const applicationView = (a: AppRow): CandidateApplication => {
     rejectReason: a.stage === 'rejected' ? a.rejectReason : null,
     matchPercent: a.matchPercent,
     cvMatchPercent: a.cvMatchPercent,
+    cvFit: cvFitFrom(a.cvFit),
     source,
     sourceText: applicationSourceText({ source, generalSource }),
     employeeId: a.employeeId,
@@ -187,6 +192,7 @@ export class CandidatesService implements OnModuleDestroy {
     private readonly confidential: ConfidentialService,
     private readonly interviews: InterviewsService,
     private readonly comments: ScreeningCommentsService,
+    private readonly fits: CvFitsService,
   ) {}
 
   // ---------- the backfill ----------
@@ -623,6 +629,11 @@ export class CandidatesService implements OnModuleDestroy {
       this.comments.timeline(id, user),
       this.comments.candidateVerdicts([id], user),
     ]);
+    // Other Open Positions (owner, 25 October 2026: "and if it recomended to another position based on the CV"): the best of their CVs for each
+    const openPositions = await this.fits.forPerson(
+      [...row.applications.map((a) => ({ kind: 'application' as const, id: a.id, candidateId: row.id })), ...row.generalCvs.map((g) => ({ kind: 'general_cv' as const, id: g.id, candidateId: row.id }))],
+      user,
+    );
     const titleOf = new Map(row.applications.map((a) => [a.id, a.vacancy.title]));
     const interviews: CandidateInterview[] = row.applications.flatMap((a, i) =>
       interviewLists[i].map((iv) => ({ ...iv, vacancyTitle: a.vacancy.title, feedback: feedbackLists[i].filter((f) => f.interviewId === iv.id) })),
@@ -706,6 +717,7 @@ export class CandidatesService implements OnModuleDestroy {
       merges,
       timeline,
       verdict: verdicts.get(row.id) ?? null,
+      openPositions,
       can: { merge: manages, dismiss: manages, split: manages, undoMerge: superAdmin },
     };
   }

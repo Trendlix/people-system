@@ -1,8 +1,11 @@
-import { ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, ServiceUnavailableException, type OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, ServiceUnavailableException, type OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   cvFactsOf,
+  cvFitOf,
   cvSkillsMatcher,
+  openFitsFor,
+  SUGGESTION_FIT_POINTS,
   inviteLink,
   inviteMail,
   isOpenSuggestion,
@@ -16,6 +19,9 @@ import {
   suggestionsNotice,
   takesApplications,
   type RehireEligibility,
+  type CvFit,
+  type FitCv,
+  type FitJob,
   type ScreeningCv,
   type ScreeningVerdict,
   type SuggestionAdded,
@@ -38,6 +44,8 @@ import { MailService } from '../mail/mail.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { userNames } from '../payroll/adjustments/people.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { fitCvOf, fitJobOf, positionOf } from './cv-fit-inputs.js';
+import { CvFitsService } from './cv-fits.service.js';
 import { CvReadingsService } from './cv-readings.service.js';
 import { GeneralCvsService } from './general-cvs.service.js';
 import { createHrApplication } from './hr-applications.js';
@@ -64,6 +72,11 @@ import { ScreeningCommentsService } from './screening-comments.service.js';
 //   by email (only when HR presses it, with email set up and the vacancy taking applications: the job and its link with
 //   ?src=invite; applying through it closes the suggestion), or dismisses one (an optional reason). Each in the audit log
 //   (an invitation by its address, never its words). The CEO reads; a hiring manager never sees them.
+// - Ranked by the CV fit (owner, 25 October 2026: "Full CV fit score"; packages/shared cv-fit.ts) where the CV is read:
+//   the area as before, 65 × the fit's percent ÷ 100 in place of the key skills, title and years, and recency. And kept
+//   with each earlier CV's fit of 50% or more for the person's side (cv_open_fits, CvFitsService: "and if it recomended to
+//   another position based on the CV"), the same fit and the same people, so the two always agree; from there HR adds
+//   one ("Add to this vacancy" on an applicant or a general CV: addRecommended), through the add here.
 
 export const SUGGESTION_ENTITY = 'vacancy_suggestion';
 
@@ -81,8 +94,12 @@ const VACANCY_SELECT = {
   departmentId: true,
   keySkills: true,
   questions: true,
-  grade: { select: { confidential: true } },
-  jobTitle: { select: { minGrade: { select: { confidential: true } } } },
+  // what its CV fits read (25 October 2026: cv-fit-inputs.ts)
+  requirements: true,
+  responsibilities: true,
+  about: true,
+  grade: { select: { confidential: true, description: true } },
+  jobTitle: { select: { titleEn: true, minGrade: { select: { confidential: true } } } },
 } satisfies Prisma.VacancySelect;
 
 type VacancyRow = Prisma.VacancyGetPayload<{ select: typeof VACANCY_SELECT }>;
@@ -156,6 +173,7 @@ export class VacancySuggestionsService implements OnModuleInit {
     private readonly notifications: NotificationsService,
     private readonly confidential: ConfidentialService,
     private readonly readings: CvReadingsService,
+    private readonly fits: CvFitsService,
     private readonly generalCvs: GeneralCvsService,
     private readonly comments: ScreeningCommentsService,
     private readonly config: ConfigService,
@@ -190,9 +208,14 @@ export class VacancySuggestionsService implements OnModuleInit {
   async refreshAll(opts: { notify: boolean }): Promise<number> {
     try {
       const vacancies = await this.openVacancies();
-      if (!vacancies.length) return 0;
+      if (!vacancies.length) {
+        await this.fits.forgetClosed([]);
+        return 0;
+      }
       const pool = await this.pool();
       for (const v of vacancies) await this.apply(v, pool, { notify: opts.notify, seen: false });
+      // the fits kept for vacancies no longer open: gone (25 October 2026)
+      await this.fits.forgetClosed(vacancies.map((v) => v.id));
       return vacancies.length;
     } catch (err) {
       this.logger.error(`The suggested CVs could not be worked out: ${(err as Error).message}`);
@@ -207,7 +230,11 @@ export class VacancySuggestionsService implements OnModuleInit {
   async refreshVacancy(id: string, opts: { notify: boolean; seen?: boolean }): Promise<void> {
     try {
       const v = await this.prisma.vacancy.findUnique({ where: { id }, select: VACANCY_SELECT });
-      if (!v || this.pausedOf(v)) return;
+      if (!v || this.pausedOf(v)) {
+        // not open now: its CVs' fits recommend it no more (25 October 2026)
+        if (v) await this.prisma.cvOpenFit.deleteMany({ where: { vacancyId: v.id } });
+        return;
+      }
       await this.apply(v, await this.pool(), { notify: opts.notify, seen: opts.seen ?? false });
     } catch (err) {
       this.logger.error(`The suggested CVs of a vacancy could not be worked out: ${(err as Error).message}`);
@@ -256,6 +283,8 @@ export class VacancySuggestionsService implements OnModuleInit {
           yearsExperience: true,
           vacancy: { select: { title: true, departmentId: true, grade: { select: { confidential: true } }, jobTitle: { select: { minGrade: { select: { confidential: true } } } } } },
           cvReading: READING,
+          // moved from a general CV: its position counts in the CV fit as a title (25 October 2026)
+          generalCv: { select: { positionName: true, positionOther: true } },
         },
       }),
     ]);
@@ -314,15 +343,26 @@ export class VacancySuggestionsService implements OnModuleInit {
         inProcess: busy.has(c.id),
       });
     }
-    const cv = (reading: { status: string; text: string | null; facts: Prisma.JsonValue | null } | null) => {
+    const cv = (reading: { status: string; text: string | null; facts: Prisma.JsonValue | null } | null, yearsTyped: Prisma.Decimal | null, position: string | null) => {
       const read = reading?.status === 'read';
       const facts = read ? cvFactsOf(reading.facts) : null;
       const text = read ? reading.text : null;
       let matcher: ReturnType<typeof cvSkillsMatcher> | null = null;
+      // its CV fit for each vacancy (25 October 2026), the CV prepared once and each vacancy's fit worked out once
+      let prepared: FitCv | null | undefined;
+      const fitted = new WeakMap<FitJob, CvFit | null>();
+      const fitFor = (job: FitJob): CvFit | null => {
+        if (!fitted.has(job)) {
+          if (prepared === undefined) prepared = fitCvOf(reading, yearsTyped, position);
+          fitted.set(job, cvFitOf(job, prepared));
+        }
+        return fitted.get(job) ?? null;
+      };
       return {
         cvMonths: facts?.experienceMonths ?? null,
         cvLatestTitle: facts?.latestTitle ?? null,
         skillsFound: text ? (skills: readonly string[]) => (matcher ??= cvSkillsMatcher(text))(skills) : null,
+        fitFor: text ? fitFor : null,
       };
     };
     const records: SuggestionRecord[] = [
@@ -337,7 +377,7 @@ export class VacancySuggestionsService implements OnModuleInit {
           departmentId: g.departmentId,
           topDepartmentId: topOf(g.departmentId),
           yearsTyped: money(g.yearsExperience),
-          ...cv(g.cvReading),
+          ...cv(g.cvReading, g.yearsExperience, positionOf(g)),
           positionTitle: g.positionName ?? g.positionOther,
         }),
       ),
@@ -356,7 +396,7 @@ export class VacancySuggestionsService implements OnModuleInit {
           departmentId: a.vacancy.departmentId,
           topDepartmentId: topOf(a.vacancy.departmentId),
           yearsTyped: money(a.yearsExperience),
-          ...cv(a.cvReading),
+          ...cv(a.cvReading, a.yearsExperience, positionOf(a.generalCv)),
         }),
       ),
     ];
@@ -377,6 +417,8 @@ export class VacancySuggestionsService implements OnModuleInit {
       ofTeam: pool.isTeam(v.departmentId),
       keySkills: v.keySkills,
       minYears: minYearsWanted(questionsOf(v.questions)),
+      // ranked by the CV fit where the CV is read (25 October 2026)
+      fitJob: fitJobOf(v),
     };
     const [here, kept] = await Promise.all([
       this.prisma.jobApplication.findMany({ where: { vacancyId: v.id }, select: { id: true, number: true, candidateId: true, email: true, createdAt: true } }),
@@ -392,6 +434,8 @@ export class VacancySuggestionsService implements OnModuleInit {
       appliedHere: (candidateId) => byCandidate.has(candidateId),
       decided: (candidateId, recordIds) => decidedCandidates.has(candidateId) || recordIds.some((id) => decidedRecords.has(id)),
     });
+    // the person's side (25 October 2026): every earlier CV the vacancy could be suggested from, its fit at 50% or more
+    const openFits = openFitsFor(target, pool.people, pool.records, { now: pool.now, recencyMonths: pool.recencyMonths, appliedHere: (candidateId) => byCandidate.has(candidateId) });
     const now = new Date();
     const closed = await this.prisma.$transaction(
       async (tx) => {
@@ -427,6 +471,7 @@ export class VacancySuggestionsService implements OnModuleInit {
         // no longer matching (or past the top 50): never decided, so deleted
         const gone = [...suggested.entries()].filter(([candidateId]) => !keep.has(candidateId)).map(([, id]) => id);
         if (gone.length) await tx.vacancySuggestion.deleteMany({ where: { id: { in: gone }, status: 'suggested' } });
+        await this.fits.replace(tx, v.id, openFits);
         return done;
       },
       { timeout: 60_000, maxWait: 30_000 },
@@ -634,6 +679,56 @@ export class VacancySuggestionsService implements OnModuleInit {
       diff: { vacancy: v.number, candidate: r.candidate.code, from: made.from, application: made.number, status: { from: r.status, to: 'added' } },
     });
     return { applicationId: made.id, number: made.number };
+  }
+
+  /**
+   * Add to this vacancy from the person's side (owner, 25 October 2026: "and if it recomended to another position based
+   * on the CV"): an applicant's or a general CV's Other Open Positions, while still recommended (CvFitsService: the vacancy
+   * open, the fit 50% or more, the person not on it nor decided there). Through the suggestions' add, so the consent, the
+   * history's note, the audit log and the CV's reading go as there: their suggestion for the vacancy added, made first
+   * (from this CV, with its fit) when the vacancy had none of them.
+   */
+  async addRecommended(vacancyId: string, sent: { applicationId?: string; generalCvId?: string }, user: SessionUser): Promise<SuggestionAdded> {
+    this.assertManages(user);
+    if ([sent.applicationId, sent.generalCvId].filter(Boolean).length !== 1) throw new BadRequestException(['Say which CV: an applicant’s or a general CV’s.']);
+    const v = await this.prisma.vacancy.findFirst({ where: { AND: [{ id: vacancyId }, vacancyWhere(user)] }, select: VACANCY_SELECT });
+    if (!v || isConfidentialVacancy(v)) throw new NotFoundException(VACANCY_NOT_FOUND);
+    if (this.pausedOf(v)) throw new ConflictException('The vacancy isn’t taking applications now, so nobody can be added to it from here.');
+    const kind = sent.applicationId ? ('application' as const) : ('general_cv' as const);
+    const id = (sent.applicationId ?? sent.generalCvId)!;
+    const owner =
+      kind === 'application'
+        ? await this.prisma.jobApplication.findFirst({ where: { id, vacancy: vacancyWhere(user) }, select: { candidateId: true } })
+        : await this.prisma.generalCv.findUnique({ where: { id }, select: { candidateId: true } });
+    if (!owner) throw new NotFoundException(kind === 'application' ? 'Applicant not found.' : 'CV not found.');
+    const shown = owner.candidateId ? (await this.fits.ofRecords([{ kind, id, candidateId: owner.candidateId }], user)).get(id)?.find((p) => p.vacancy.id === v.id) : undefined;
+    if (!owner.candidateId || !shown) throw new ConflictException('They aren’t recommended for this vacancy now: their CV fits it less, they are on it already, or it was decided. Reload the page to see where it stands.');
+    const candidateId = owner.candidateId;
+    let row = await this.prisma.vacancySuggestion.findUnique({ where: { vacancyId_candidateId: { vacancyId: v.id, candidateId } }, select: { id: true } });
+    if (!row) {
+      const reasons: SuggestionReason[] = [{ kind: 'fit', percent: shown.percent, parts: shown.fit?.parts ?? [], points: Math.round((SUGGESTION_FIT_POINTS * shown.percent) / 100) }];
+      try {
+        row = await this.prisma.vacancySuggestion.create({
+          data: {
+            vacancyId: v.id,
+            candidateId,
+            sourceKind: kind,
+            generalCvId: kind === 'general_cv' ? id : null,
+            sourceApplicationId: kind === 'application' ? id : null,
+            score: reasons[0].points,
+            reasons: reasons as unknown as Prisma.InputJsonValue,
+            // HR is looking at it: never told of it again
+            notifiedAt: new Date(),
+          },
+          select: { id: true },
+        });
+      } catch {
+        // made meanwhile (the vacancy's suggestions worked out at the same moment): that one
+        row = await this.prisma.vacancySuggestion.findUnique({ where: { vacancyId_candidateId: { vacancyId: v.id, candidateId } }, select: { id: true } });
+        if (!row) throw new ConflictException('They couldn’t be added just now. Reload the page and try again.');
+      }
+    }
+    return this.add(row.id, user);
   }
 
   /** A general CV moved to the vacancy as a suggested one (GeneralCvsService.move: its reference kept, its CV and reading with it). */

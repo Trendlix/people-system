@@ -14,6 +14,9 @@ import { VacancySuggestionsService } from './vacancy-suggestions.service.js';
 // rounds find none left.
 // And (owner, 24 October 2026: "is there a run to fetch previously updated CV's?"; "Suggest; HR adds"): every open
 // vacancy's Suggested From Earlier CVs worked out again, HR told of new matches (VacancySuggestionsService.refreshAll).
+// And (owner, 25 October 2026: "Full CV fit score"): the CV fits of an older version (the key skills' CV match of before
+// among them) worked out again (CvReadingsService.refreshFits), in batches, on the first round after the deploy, which
+// main.ts starts without waiting for it; later rounds find none left.
 
 const LOCK_NAME = 'people-system recruitment round';
 
@@ -77,6 +80,12 @@ export class RecruitmentSchedulerService implements OnModuleDestroy {
       if (redone) this.logger.log(`Recruitment: the facts of ${redone} CV(s) worked out again from their text.`);
     } catch (err) {
       this.logger.error(`The CVs' facts could not be worked out again: ${(err as Error).message}`);
+    }
+    try {
+      const refit = await this.readings.refreshFits();
+      if (refit) this.logger.log(`Recruitment: the CV fit of ${refit} application(s) worked out again.`);
+    } catch (err) {
+      this.logger.error(`The CV fits could not be worked out again: ${(err as Error).message}`);
     }
     // the earlier CVs matched with the open vacancies (never throws)
     await this.suggestions.refreshAll({ notify: true });

@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import {
-  addedWithoutAnswers,
   APPLICATION_EVENT_LABELS,
   applicationSourceText,
   FEEDBACK_CRITERIA,
@@ -26,6 +25,7 @@ import { splitApplication } from '../../candidate-actions';
 import { CandidateApplicationsTable, EmployeeCard, MatchesCard } from '../../candidate-ui';
 import { candidateHref } from '../../candidates';
 import { FromTheCv } from '../../cv-card';
+import { MatchValue, OpenPositions } from '../../cv-fit-ui';
 import { CvDialogHost, CvOpenButton } from '../../cv-dialog';
 import { DeleteApplicantButton } from '../../delete-ui';
 import { APPLICANT_GONE } from '../../deletes';
@@ -367,8 +367,8 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
             Details
           </h2>
           <p className="text-sm">
-            {/* added from the suggested CVs (24 October 2026): the screening questions weren't asked */}
-            Match <span className="font-semibold tabular-nums">{addedWithoutAnswers(a.source) ? 'No screening answers' : matchText(a.matchPercent)}</span>
+            {/* not asked the screening questions (added from the suggested CVs or by HR): the CV fit, "72% · CV" (25 October 2026) */}
+            Match <span className="font-semibold tabular-nums">{a.matchPercent !== null ? matchText(a.matchPercent) : <MatchValue a={a} />}</span>
             {a.maxPoints > 0 && (
               <span className="text-muted tabular-nums">
                 {' '}
@@ -429,6 +429,9 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
           <FromTheCv reading={a.cvReading} subject={{ applicationId: a.id }} />
         </Suspense>
       )}
+
+      {/* the other open vacancies the CV fits (owner, 25 October 2026: "and if it recomended to another position based on the CV"); HR, the CEO and a Super Admin */}
+      {a.openPositions && <OpenPositions positions={a.openPositions} record={{ applicationId: a.id }} id="applicant-open-positions" level="h2" card />}
 
       {a.answers.length > 0 && (
         <section aria-labelledby="applicant-answers" className="card overflow-x-auto">

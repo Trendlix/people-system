@@ -45,6 +45,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { nextApplicationNumber } from './application-numbers.js';
 import { attachCandidate, findCandidates, foundIds, lockCandidates, refreshCandidate } from './candidate-links.js';
 import { cvFileName, cvProblem, cvTypeOf } from './cv-file.js';
+import { CvFitsService } from './cv-fits.service.js';
 import { CvReadingsService } from './cv-readings.service.js';
 import { positionOf, positionsOf } from './cv-positions.js';
 import { createHrApplication } from './hr-applications.js';
@@ -102,6 +103,8 @@ const LIST_SELECT = {
   // the CV's reading, for the Experience and Latest role columns (24 October 2026)
   file: { select: { sizeBytes: true } },
   cvReading: { select: { status: true, facts: true } },
+  // the Best open position column (25 October 2026)
+  candidateId: true,
 } satisfies Prisma.GeneralCvSelect;
 
 type ListRow = Prisma.GeneralCvGetPayload<{ select: typeof LIST_SELECT }>;
@@ -189,6 +192,7 @@ export class GeneralCvsService {
     private readonly comments: ScreeningCommentsService,
     private readonly previews: CvPreviewsService,
     private readonly whatsapp: WhatsAppService,
+    private readonly fits: CvFitsService,
   ) {}
 
   // ---------- the careers page ----------
@@ -331,8 +335,22 @@ export class GeneralCvsService {
       orderBy: { createdAt: 'desc' },
       take: LIST_CAP,
     });
-    const [names, verdicts] = await Promise.all([userNames(this.prisma, rows.map((r) => r.createdBy)), this.comments.generalCvVerdicts(rows.map((r) => r.id))]);
-    return rows.map((r) => ({ ...this.listItem(r, names), verdict: verdicts.get(r.id) ?? null }));
+    const [names, verdicts, best] = await Promise.all([
+      userNames(
+        this.prisma,
+        rows.map((r) => r.createdBy),
+      ),
+      this.comments.generalCvVerdicts(rows.map((r) => r.id)),
+      // the open vacancy each CV fits best (owner, 25 October 2026: "and if it recomended to another position based on the CV")
+      this.fits.bestFor(rows, user),
+    ]);
+    const items = rows.map((r) => ({ ...this.listItem(r, names), verdict: verdicts.get(r.id) ?? null, bestPosition: best.get(r.id) ?? null }));
+    // ?sort=fit: the best fit first, those without one last (as they came, the newest first)
+    if (query.sort !== 'fit') return items;
+    return items
+      .map((row, i) => ({ row, i, k: row.bestPosition?.percent ?? -1 }))
+      .sort((a, b) => b.k - a.k || a.i - b.i)
+      .map((x) => x.row);
   }
 
   async get(id: string, user: SessionUser): Promise<GeneralCvView> {
@@ -358,6 +376,8 @@ export class GeneralCvsService {
       consentNote: r.consentNote,
       cv: r.file,
       cvReading: r.file ? this.readings.view(r.cvReading, null) : null,
+      // Other Open Positions (25 October 2026): moved to a vacancy, its application's
+      openPositions: await this.openPositionsOf(r, user),
       history: r.events.map((e) => ({ event: e.event, note: e.note, by: userRef(e.by, names), at: e.at.toISOString() })),
       can: {
         review: manages && status === 'new',
@@ -368,6 +388,15 @@ export class GeneralCvsService {
         editNotes: false,
       },
     };
+  }
+
+  /** A general CV's Other Open Positions (the top 3 at 50% or more), or those of the application it was moved to. */
+  private async openPositionsOf(r: { id: string; candidateId: string | null; applicationId: string | null }, user: SessionUser) {
+    const shown = await this.fits.shownFor(
+      [{ kind: 'general_cv', id: r.id, candidateId: r.candidateId }, ...(r.applicationId ? [{ kind: 'application' as const, id: r.applicationId, candidateId: r.candidateId }] : [])],
+      user,
+    );
+    return shown.get(r.id)?.length ? shown.get(r.id)! : r.applicationId ? (shown.get(r.applicationId) ?? []) : [];
   }
 
   /** The CV as sent. */

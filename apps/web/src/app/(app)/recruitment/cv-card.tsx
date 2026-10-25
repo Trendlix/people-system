@@ -1,8 +1,9 @@
 import type { CvReadingView } from '@trendlix/shared';
-import { CV_CARD_NOTE, cvTextMissing, latestRoleText, linksFound, moreFromCv, periodText, readingFacts, readingStatusText, shortLink, skillsCountText, workHistoryHeading } from './cv-reading';
+import { CV_CARD_NOTE, cvTextMissing, latestRoleText, linksFound, moreFromCv, periodText, readingFacts, readingStatusText, shortLink, workHistoryHeading } from './cv-reading';
+import { CvFitSection, FitPercent } from './cv-fit-ui';
+import { NO_KEY_SKILLS_NOTE } from './cv-fit';
 import { CvTextViewer } from './cv-text-viewer';
 import { loadApplicantCvText, loadGeneralCvText } from './data';
-import { matchText } from './recruitment';
 
 // "From the CV" on the applicant page and the general CV page (owner, 22 October 2026: "make the OCR egine reads the CV
 // and analyse it. is that applicable?"; "Built-in rules only"): the reading's status, the years (estimated from the
@@ -13,12 +14,14 @@ import { matchText } from './recruitment';
 // list + more rules"): the latest role and the city with the facts; the education details, the work history (folded),
 // the dictionary's skills and the certifications, each when found. A developer's titles, companies, schools,
 // certifications and city come masked ("••••").
+// The CV match became the CV fit (owner, 25 October 2026: "aren't you supposed to match the candidate to the job based on
+// the CV and ATS?"; "Full CV fit score"): its percent with the breakdown on hover or tap, and a CV Fit section with each
+// part (key skills, title, experience, requirements, education), what it found and its share of the fit.
 
 export async function FromTheCv({ reading, subject }: { reading: CvReadingView; subject: { applicationId: string } | { generalCvId: string } }) {
   const forApplicant = 'applicationId' in subject;
   const text = reading.status === 'read' ? await ('applicationId' in subject ? loadApplicantCvText(subject.applicationId) : loadGeneralCvText(subject.generalCvId)) : null;
   const links = text?.kind === 'ok' ? linksFound(text.value) : [];
-  const count = skillsCountText(reading.skills);
   const more = moreFromCv(reading);
   return (
     <section aria-labelledby="from-the-cv" className="card space-y-4 p-6">
@@ -26,11 +29,11 @@ export async function FromTheCv({ reading, subject }: { reading: CvReadingView; 
         <h2 id="from-the-cv" className="text-lg font-semibold">
           From the CV
         </h2>
+        {/* the CV fit's percent (25 October 2026), its parts in CV Fit below; the key skills alone no longer make it */}
         {forApplicant && (
-          <p className="text-sm">
-            CV match <span className="font-semibold tabular-nums">{matchText(reading.cvMatchPercent)}</span>
-            {count && reading.status === 'read' && <span className="text-muted tabular-nums"> ({count})</span>}
-          </p>
+          <div className="text-sm">
+            CV match <FitPercent percent={reading.cvMatchPercent} fit={reading.fit} className="font-semibold" />
+          </div>
         )}
       </div>
       <p className={`text-sm ${reading.status === 'failed' ? 'text-warn' : 'text-muted'}`}>{readingStatusText(reading)}</p>
@@ -57,6 +60,8 @@ export async function FromTheCv({ reading, subject }: { reading: CvReadingView; 
           )}
         </dl>
       )}
+
+      {forApplicant && reading.status === 'read' && reading.fit && <CvFitSection fit={reading.fit} id="from-the-cv-fit" />}
 
       {reading.status === 'read' && more.education.length > 0 && (
         <div className="space-y-2">
@@ -140,7 +145,7 @@ export async function FromTheCv({ reading, subject }: { reading: CvReadingView; 
             )}
           </div>
         ) : (
-          <p className="text-sm text-muted">The vacancy lists no key skills. Add them on its form to see which the CV names and its CV match.</p>
+          <p className="text-sm text-muted">{NO_KEY_SKILLS_NOTE} Add them on the vacancy&apos;s form to see which the CV names.</p>
         ))}
 
       {text && (text.kind === 'ok' ? text.value.cvText && <CvTextViewer text={text.value.cvText} /> : <p className="text-sm text-muted">{cvTextMissing(text)}</p>)}

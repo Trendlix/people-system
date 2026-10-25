@@ -14,6 +14,7 @@
 // the certifications and the city (see "more facts by the rules" below); and the years as the lists show them.
 // Pure code, tested in apps/api/src/common/cv-analysis.spec.ts.
 
+import type { CvFit } from './cv-fit.js';
 import { SKILLS_DICTIONARY, type DictionarySkill } from './skills-dictionary.js';
 
 // ---------- the reading ----------
@@ -112,8 +113,11 @@ const SIGNED: [RegExp, string][] = [
   [/\.net\b/g, ' dotnet '],
 ];
 
-/** A text as skills are matched in it: lower case, plain digits and Arabic, words separated by single spaces. */
-function normalForMatch(text: string): string {
+/**
+ * A text as skills are matched in it: lower case, plain digits and Arabic, words separated by single spaces. Exported
+ * for the CV fit's requirements terms (cv-fit.ts, 25 October 2026), matched as the key skills are.
+ */
+export function normalForMatch(text: string): string {
   let t = plainArabic(plainDigits(text).toLowerCase());
   for (const [re, word] of SIGNED) t = t.replace(re, word);
   return t
@@ -1341,8 +1345,13 @@ export interface CvReadingView {
   languages: string[];
   /** For an application: the vacancy's key skills found and not; none for a general CV. */
   skills: { found: string[]; missing: string[] } | null;
-  /** The CV match %; null when the vacancy lists no key skills or the CV isn't read. */
+  /**
+   * The CV match %: since 25 October 2026 the CV fit's (cv-fit.ts: key skills, title, years, requirements, education),
+   * no longer the key skills alone; null when the CV isn't read (or nothing could be scored).
+   */
   cvMatchPercent: number | null;
+  /** The CV fit with its parts (25 October 2026), as kept on the application; null for a general CV or a CV not read. */
+  fit?: CvFit | null;
   // 24 October 2026: more found by the rules (CvFacts); a developer's masked (developer.ts) but for the skills
   latestTitle: string | null;
   latestCompany: string | null;

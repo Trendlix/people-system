@@ -22,7 +22,10 @@ import { createApp, createUser, signIn } from './helpers.js';
 // can be pulled from the uploaded cv?"; "CV years in list + more rules"): the work history and latest role, education
 // details, skills, certifications and city too, masked for a developer; the lists' years fall back to the CV's, and
 // filter by them; the CVs read before have their facts worked out again from their text, never read again. Every
-// person and CV is invented; the test deletes what it made.
+// person and CV is invented; the test deletes what it made. Since 25 October 2026 ("Full CV fit score"; cv-fit.ts) the
+// CV match % is the CV fit's: here the job title "Reader …" is like none of theirs (the title part 0) and the vacancy asks
+// no years nor has requirements, so the fit is its key skills (35) and title (25), re-weighted (cv-fit.e2e-spec.ts has
+// the rest).
 
 const RUN = `cv${Date.now().toString(36)}`;
 const TODAY = todayInCairo();
@@ -208,15 +211,20 @@ describe('CV reading and analysis (e2e)', () => {
     await drain();
     expect(await readingOf({ applicationId: mona })).toMatchObject({ status: 'read', method: 'pdf', attempts: 1, error: null });
     const a = (await get('hr', `/recruitment/applications/${mona}`).expect(200)).body as ApplicationView;
-    expect(a.cvMatchPercent).toBe(50);
+    // the CV fit: 2 of the 4 key skills (50, weight 35) and no title like "Reader …" (0, weight 25): 50 × 35 ÷ 60 = 29
+    expect(a.cvMatchPercent).toBe(29);
     expect(a.cvReading).toMatchObject({
       status: 'read',
       method: 'pdf',
       education: 'bachelor',
       languages: ['English', 'Arabic'],
       skills: { found: ['Premiere Pro', 'after effects'], missing: ['Final Cut Pro', 'Color Grading'] },
-      cvMatchPercent: 50,
+      cvMatchPercent: 29,
     });
+    expect(a.cvReading!.fit!.parts.map((p) => [p.key, p.score])).toEqual([
+      ['skills', 50],
+      ['title', 0],
+    ]);
     expect(a.cvReading!.experience).toMatch(/^About \d+ years \(from the dates in the CV\)$/);
     // the OCR service wasn't needed
     expect(ocr.calls).toEqual([]);
@@ -231,7 +239,8 @@ describe('CV reading and analysis (e2e)', () => {
     ]);
     expect(await readingOf({ applicationId: id })).toMatchObject({ status: 'read', method: 'ocr_ar' });
     const a = (await get('hr', `/recruitment/applications/${id}`).expect(200)).body as ApplicationView;
-    expect(a.cvReading).toMatchObject({ education: 'bachelor', languages: ['English', 'Arabic'], skills: { found: [], missing: vacancy.keySkills }, cvMatchPercent: 0 });
+    // "بريمير" is Premiere Pro's Arabic name in the skills dictionary (found so since 25 October 2026): 1 of 4 (25 × 35 ÷ 60 = 15)
+    expect(a.cvReading).toMatchObject({ education: 'bachelor', languages: ['English', 'Arabic'], skills: { found: ['Premiere Pro'], missing: vacancy.keySkills.slice(1) }, cvMatchPercent: 15 });
   });
 
   it('a scan the OCR service finds nothing in is "no text"; one it fails on is tried again later, failed after the third try', async () => {
@@ -255,8 +264,8 @@ describe('CV reading and analysis (e2e)', () => {
 
   it('lists the CV match, filters and sorts by it, and searches the CVs’ text', async () => {
     const list = (q: string) => get('hr', `/recruitment/applications?vacancyId=${vacancy.id}${q}`).expect(200).then((r) => r.body as ApplicationListItem[]);
-    expect((await list('')).find((a) => a.id === mona)?.cvMatchPercent).toBe(50);
-    expect((await list('&minCvMatch=50')).map((a) => a.id)).toEqual([mona]);
+    expect((await list('')).find((a) => a.id === mona)?.cvMatchPercent).toBe(29);
+    expect((await list('&minCvMatch=29')).map((a) => a.id)).toEqual([mona]);
     expect((await list('&sort=cv'))[0].id).toBe(mona);
     expect((await list(`&q=zanzibarlogic${RUN}`)).map((a) => a.id)).toEqual([mona]);
   });
@@ -265,7 +274,8 @@ describe('CV reading and analysis (e2e)', () => {
     const changed = (await patch('hr', `/recruitment/vacancies/${vacancy.id}`, { keySkills: ['Premiere Pro', 'After Effects', 'بريمير برو'] }).expect(200)).body as VacancyView;
     expect(changed.keySkills).toEqual(['Premiere Pro', 'After Effects', 'بريمير برو']);
     const rows = await prisma.jobApplication.findMany({ where: { vacancyId: vacancy.id }, select: { email: true, cvMatchPercent: true } });
-    expect(Object.fromEntries(rows.map((r) => [r.email.split('.')[0], r.cvMatchPercent]))).toEqual({ mona: 67, arabic: 33, empty: null, failing: null });
+    // 2 of the 3 each (the Arabic CV's "بريمير برو" and "Premiere Pro" under its Arabic name): 67 × 35 ÷ 60 = 39
+    expect(Object.fromEntries(rows.map((r) => [r.email.split('.')[0], r.cvMatchPercent]))).toEqual({ mona: 39, arabic: 39, empty: null, failing: null });
     const entry = await prisma.auditLog.findFirstOrThrow({ where: { entityType: 'vacancy', entityId: vacancy.id, action: 'update' }, orderBy: { at: 'desc' } });
     expect(entry.diff).toMatchObject({ keySkills: { from: ['Premiere Pro', 'after effects', 'Final Cut Pro', 'Color Grading'], to: ['Premiere Pro', 'After Effects', 'بريمير برو'] } });
     expect(said(await patch('hr', `/recruitment/vacancies/${vacancy.id}`, { keySkills: Array.from({ length: 21 }, (_, i) => `S${i}`) }).expect(400))).toEqual(['List at most 20 key skills.']);

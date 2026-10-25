@@ -7,6 +7,7 @@ import { updateVacancy } from '../../../actions';
 import { loadVacancy, recruitmentNotLoaded } from '../../../data';
 import { vacancyOptions } from '../../../pickers';
 import { managesRecruitment, vacancyHref } from '../../../recruitment';
+import { wantsSuggestion } from '../../../cv-fit';
 import { VacancyForm } from '../../../vacancy-form';
 
 // Changing a vacancy (owner, 22 October 2026: "where will we include the ATS?"): everything while a draft; once published,
@@ -15,8 +16,8 @@ import { VacancyForm } from '../../../vacancy-form';
 
 export const metadata: Metadata = { title: 'Edit Vacancy · People System' };
 
-async function EditVacancy({ params }: { params: PageProps<'/recruitment/vacancies/[id]/edit'>['params'] }) {
-  const [{ id }, user] = await Promise.all([params, getCurrentUser()]);
+async function EditVacancy({ params, searchParams }: PageProps<'/recruitment/vacancies/[id]/edit'>) {
+  const [{ id }, user, query] = await Promise.all([params, getCurrentUser(), searchParams]);
   if (!managesRecruitment(user)) return <Empty>Only HR (or a Super Admin) changes vacancies.</Empty>;
   const [loaded, options] = await Promise.all([loadVacancy(id), vacancyOptions()]);
   if (loaded.kind !== 'ok') return <Empty>{recruitmentNotLoaded(loaded, 'vacancy')}</Empty>;
@@ -64,16 +65,18 @@ async function EditVacancy({ params }: { params: PageProps<'/recruitment/vacanci
         withQuestions={v.can.editQuestions}
         cancelHref={vacancyHref(v.id)}
         submitLabel="Save"
+        /* "Suggest key skills" from the vacancy's page (owner, 25 October 2026: "suggest them from its description for HR to confirm") */
+        suggestKeySkills={wantsSuggestion(query)}
       />
     </>
   );
 }
 
-export default function EditVacancyPage({ params }: PageProps<'/recruitment/vacancies/[id]/edit'>) {
+export default function EditVacancyPage(props: PageProps<'/recruitment/vacancies/[id]/edit'>) {
   return (
     <div className="space-y-4">
       <Suspense fallback={<Loading />}>
-        <EditVacancy params={params} />
+        <EditVacancy {...props} />
       </Suspense>
     </div>
   );

@@ -40,6 +40,7 @@ import {
   stageCountsText,
   tabHref,
   type ApplicantsTab,
+  type GeneralQuery,
 } from '../general';
 import { APPLICANTS_PATH, applicantsHref, GOOD_CV_MATCH_PERCENT, managesRecruitment, readApplicantsQuery, readsRecruitment, STAGE_FILTERS, vacancyHref, WHO_SEES } from '../recruitment';
 import { ApplicantsTable, ExperienceCell, LatestRoleCell, MinYearsSelect, SkillSelect, VacancyStatusBadge, VerdictBadge, VerdictSelect } from '../ui';
@@ -60,6 +61,8 @@ import { joinShown, shownCode } from '@/lib/hidden';
 // General CVs by position (owner, 25 October 2026, on the "Area" filter: "what do you mean by area here?", "should it be
 // the positions?"; asked, "Position, grouped by team"): a Position column with its team under it, and Position and Team
 // filters, Team once "Area"; an older CV, sent for an area, shows its area.
+// A Best open position column (owner, 25 October 2026: "and if it recomended to another position based on the CV"): the
+// open vacancy each general CV fits best (50% or more, by the CV fit), sortable best first.
 
 export const metadata: Metadata = { title: 'Applicants · People System' };
 
@@ -234,7 +237,8 @@ async function Posted({ query, summary }: { query: Query; summary: Loaded<Applic
 
 // ---------- General CVs ----------
 
-function GeneralTable({ rows, manages }: { rows: GeneralCvListItem[]; manages: boolean }) {
+function GeneralTable({ rows, manages, q }: { rows: GeneralCvListItem[]; manages: boolean; q: GeneralQuery }) {
+  const byFit = q.sort === 'fit';
   return (
     <div className="card overflow-x-auto">
       <table className="table">
@@ -242,6 +246,12 @@ function GeneralTable({ rows, manages }: { rows: GeneralCvListItem[]; manages: b
           <tr>
             <th>Person</th>
             <th>Position</th>
+            <th aria-sort={byFit ? 'descending' : 'none'}>
+              {/* sortable: the best fit first, again for the newest first */}
+              <Link href={generalHref({ ...q, sort: byFit ? '' : 'fit' })} className="text-inherit" title={byFit ? 'Show the newest first' : 'Show the best fit first'}>
+                Best open position{byFit && <span aria-hidden="true"> ↓</span>}
+              </Link>
+            </th>
             <th>Latest role</th>
             <th>Source</th>
             <th className="text-right">Experience</th>
@@ -266,6 +276,16 @@ function GeneralTable({ rows, manages }: { rows: GeneralCvListItem[]; manages: b
                 <td className="text-sm">
                   {position.main}
                   {position.sub && <span className="block text-xs text-muted">{position.sub}</span>}
+                </td>
+                <td className="text-sm">
+                  {c.bestPosition ? (
+                    <>
+                      <Link href={vacancyHref(c.bestPosition.vacancy.id)}>{c.bestPosition.vacancy.title}</Link>
+                      <span className="block text-xs text-muted tabular-nums">{c.bestPosition.percent}% CV fit</span>
+                    </>
+                  ) : (
+                    <span className="text-muted">—</span>
+                  )}
                 </td>
                 <LatestRoleCell fromCv={c.fromCv} />
                 <td className="text-sm">
@@ -343,6 +363,7 @@ async function General({ query, manages }: { query: Query; manages: boolean }) {
       <form method="get" className="flex flex-wrap items-end gap-3" role="search">
         <input type="hidden" name="tab" value="general" />
         {g.status && <input type="hidden" name="status" value={g.status} />}
+        {g.sort && <input type="hidden" name="sort" value={g.sort} />}
         <div className="min-w-56 flex-1">
           <label htmlFor="general-search" className="label">
             Search
@@ -402,7 +423,7 @@ async function General({ query, manages }: { query: Query; manages: boolean }) {
       ) : loaded.value.length === 0 ? (
         <div className="card px-6 py-8 text-center text-sm text-muted">{filtered ? 'Nobody here.' : 'No general CVs yet. They come from “Send us your CV” on the careers page, or HR adds them.'}</div>
       ) : (
-        <GeneralTable rows={loaded.value} manages={manages} />
+        <GeneralTable rows={loaded.value} manages={manages} q={g} />
       )}
     </div>
   );

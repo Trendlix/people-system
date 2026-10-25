@@ -16,6 +16,7 @@ import { moveOnBoard, moveVacancy } from '../../actions';
 import { PipelineBoard } from '../../board';
 import { candidateHref } from '../../candidates';
 import { CvDialogHost, CvOpenButton } from '../../cv-dialog';
+import { NO_KEY_SKILLS_NOTE, suggestKeySkillsHref } from '../../cv-fit';
 import { DeleteVacancyButton } from '../../delete-ui';
 import { loadApplicants, loadBoard, loadSuggestions, loadVacancy, recruitmentNotLoaded } from '../../data';
 import { ActionButton, CopyLink, ReasonButton } from '../../forms';
@@ -415,8 +416,12 @@ async function Vacancy({ params, searchParams }: PageProps<'/recruitment/vacanci
         <h2 id="vacancy-key-skills" className="text-lg font-semibold">
           Key Skills
         </h2>
+        {/* none listed (owner, 25 October 2026: "when a vacancy has no key skills, suggest them from its description for HR to confirm") */}
         {v.keySkills.length === 0 ? (
-          <p className="text-sm text-muted">None yet. List them on the vacancy&apos;s form to see which each CV names, and its CV match.</p>
+          <p role="note" className="text-sm text-muted">
+            {NO_KEY_SKILLS_NOTE}{' '}
+            {v.can.edit ? <Link href={suggestKeySkillsHref(v.id)}>Suggest key skills</Link> : 'HR can suggest key skills on its form.'}
+          </p>
         ) : (
           <>
             <ul className="flex flex-wrap gap-2">
@@ -426,7 +431,7 @@ async function Vacancy({ params, searchParams }: PageProps<'/recruitment/vacanci
                 </li>
               ))}
             </ul>
-            <p className="text-xs text-muted">Looked for in each applicant&apos;s CV; the CV match % is how many it names. It never filters anyone out.</p>
+            <p className="text-xs text-muted">Looked for in each applicant&apos;s CV: one part of the CV match %, with the title, years, requirements and education. It never filters anyone out.</p>
           </>
         )}
       </section>

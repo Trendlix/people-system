@@ -7,6 +7,8 @@ import type { ScreeningComments, ScreeningCv } from '@trendlix/shared';
 import { PdfView } from '@/components/pdf-view';
 import { formatDate } from '@/lib/format';
 import { CommentForm, CommentList } from './screening-ui';
+import { CvFitSection, OpenPositions } from './cv-fit-ui';
+import { recordOfCv } from './cv-fit';
 import { commentsOfCv, cvBelongsTo, cvFileHref, cvIndexOf, cvPositionText, cvPreviewHref, CV_PARAM, defaultTargetKey, kb, readCvParam, stepCv, withCvParam } from './screening';
 
 // A CV in a pop-up window over the page (owner, 24 October 2026, on a candidate's profile: "when opening a CV, open it in
@@ -212,7 +214,15 @@ function CvWindow({ cvs, index, data, pageKey, commentsNotLoaded }: { cvs: reado
         <div className={`min-h-0 min-w-0 flex-1 overflow-y-auto bg-line-soft ${comments ? 'hidden lg:block' : ''}`}>
           <PdfView key={cv.key} src={cvPreviewHref(cv)} title={cv.cvFileName} notLoaded="This CV could not be shown. Download it instead." bleed={false} zoom={zoom} onPages={onPages} />
         </div>
-        <aside id={panelId} aria-label="Screening comments" className={`min-h-0 w-full overflow-y-auto border-line p-4 lg:block lg:w-[26rem] lg:shrink-0 lg:border-l ${comments ? 'block' : 'hidden'}`}>
+        <aside id={panelId} aria-label="The CV’s fit and screening comments" className={`min-h-0 w-full overflow-y-auto border-line p-4 lg:block lg:w-[26rem] lg:shrink-0 lg:border-l ${comments ? 'block' : 'hidden'}`}>
+          {/* the CV fit for its vacancy and the other open positions it fits (owner, 25 October 2026: "Full CV fit score";
+              "and if it recomended to another position based on the CV"); HR, the CEO and a Super Admin see the positions */}
+          {(cv.fit || cv.openPositions) && (
+            <div className="mb-4 space-y-4 border-b border-line pb-4">
+              {cv.fit && <CvFitSection fit={cv.fit} id={`${panelId}-fit`} />}
+              {cv.openPositions && <OpenPositions positions={cv.openPositions} record={recordOfCv(cv)} id={`${panelId}-positions`} />}
+            </div>
+          )}
           <h3 className="mb-3 font-semibold">Screening Comments</h3>
           {!data ? (
             <p className="text-sm text-muted">{commentsNotLoaded}</p>

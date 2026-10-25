@@ -1,16 +1,19 @@
 import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
 import {
   CV_FACTS_VERSION,
+  CV_FIT_VERSION,
   CV_READING_LIMITS,
   cvFacts,
   cvFactsOf,
+  cvFitOf,
   cvGuesses,
-  cvMatchPercent,
-  cvSkillsFound,
   experienceText,
+  keySkillsFound,
   mostlyArabic,
   textAmount,
+  type CvFit,
   type CvGuess,
+  type FitJob,
   type CvReadingMethod,
   type CvReadingStatus,
   type CvReadingView,
@@ -21,6 +24,7 @@ import { OcrClient } from '../paperwork/ocr.client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CandidatesService } from './candidates.service.js';
 import { DOCX, PDF } from './cv-file.js';
+import { canonical, FIT_READING, FIT_VACANCY_SELECT, fitCvOf, fitJobOf, positionOf } from './cv-fit-inputs.js';
 import { cvText } from './cv-text.js';
 
 // Every CV read and analysed (owner, 22 October 2026: "make the OCR egine reads the CV and analyse it. is that
@@ -40,6 +44,11 @@ import { cvText } from './cv-text.js';
 // - The rules grew (owner, 24 October 2026: "CV years in list + more rules": the work history, education details,
 //   skills, certifications and city): every CV read before has its facts worked out again from its kept text, never
 //   read again (refreshFacts, run by the recruitment round under its lock).
+// - The CV match became the CV fit (owner, 25 October 2026: "aren't you supposed to match the candidate to the job based
+//   on the CV and ATS?"; "Full CV fit score"; packages/shared cv-fit.ts): an application's fit for its vacancy is kept
+//   with its parts (job_applications.cv_fit), its percent the CV match % the lists sort and filter by; worked out when its
+//   CV is read, when it is made (moved from a general CV, added from the suggestions, a bulk upload's), when its vacancy
+//   changes what it is scored by, and for those of an older version by the recruitment round (refreshFits).
 
 const TICK_MS = 60_000;
 /** The minutes before a reading is tried again, after its 1st, 2nd and 3rd try. */
@@ -299,29 +308,55 @@ export class CvReadingsService implements OnModuleDestroy {
     await this.prisma.cvUpload.update({ where: { id: uploadId }, data: { textFound: true, guess: guess as unknown as Prisma.InputJsonValue } });
   }
 
-  // ---------- the CV match ----------
+  // ---------- the CV fit (25 October 2026) ----------
 
-  /** An application's CV match %, from its vacancy's key skills and its CV's text: kept on it for the lists. */
-  async rescoreApplication(applicationId: string, db: Db = this.prisma): Promise<void> {
-    const a = await db.jobApplication.findUnique({
-      where: { id: applicationId },
-      select: { cvMatchPercent: true, vacancy: { select: { keySkills: true } }, cvReading: { select: { status: true, text: true } } },
-    });
-    if (!a) return;
-    const percent = matchOf(a.vacancy.keySkills, a.cvReading);
-    if (percent !== a.cvMatchPercent) await db.jobApplication.update({ where: { id: applicationId }, data: { cvMatchPercent: percent } });
+  /** An application's CV fit for its vacancy, kept on it with its percent as the CV match % (the lists sort and filter by it). */
+  async rescoreApplication(applicationId: string, db: Db = this.prisma): Promise<boolean> {
+    const a = await db.jobApplication.findUnique({ where: { id: applicationId }, select: { ...APP_FIT_SELECT, vacancy: { select: FIT_VACANCY_SELECT } } });
+    return a ? this.keepFit(a, fitJobOf(a.vacancy), db) : false;
   }
 
-  /** Every application of a vacancy scored again (its key skills changed). */
-  async rescoreVacancy(vacancyId: string): Promise<void> {
-    const apps = await this.prisma.jobApplication.findMany({
-      where: { vacancyId },
-      select: { id: true, cvMatchPercent: true, cvReading: { select: { status: true, text: true } }, vacancy: { select: { keySkills: true } } },
-    });
-    for (const a of apps) {
-      const percent = matchOf(a.vacancy.keySkills, a.cvReading);
-      if (percent !== a.cvMatchPercent) await this.prisma.jobApplication.update({ where: { id: a.id }, data: { cvMatchPercent: percent } });
+  /** Every application of a vacancy scored again (what it is scored by changed: its title, key skills, texts, grade or job title); how many changed. */
+  async rescoreVacancy(vacancyId: string): Promise<number> {
+    const v = await this.prisma.vacancy.findUnique({ where: { id: vacancyId }, select: FIT_VACANCY_SELECT });
+    if (!v) return 0;
+    const job = fitJobOf(v);
+    const apps = await this.prisma.jobApplication.findMany({ where: { vacancyId }, select: APP_FIT_SELECT });
+    let changed = 0;
+    for (const a of apps) if (await this.keepFit(a, job)) changed++;
+    return changed;
+  }
+
+  /** An application's fit worked out for its vacancy and kept when it changed; whether it did. */
+  private async keepFit(a: AppFitRow, job: FitJob, db: Db = this.prisma): Promise<boolean> {
+    const fit = cvFitOf(job, fitCvOf(a.cvReading, a.yearsExperience, positionOf(a.generalCv)));
+    const percent = fit?.percent ?? null;
+    if (percent === a.cvMatchPercent && canonical(fit) === canonical(a.cvFit)) return false;
+    await db.jobApplication.update({ where: { id: a.id }, data: { cvMatchPercent: percent, cvFit: fit ? (fit as unknown as Prisma.InputJsonValue) : Prisma.DbNull } });
+    return true;
+  }
+
+  /**
+   * The fits of every application whose CV is read and whose fit is missing or of an older version (CV_FIT_VERSION; the
+   * CV match of before, the key skills alone, among them) worked out again, in batches by id, never reading a CV again.
+   * Run by the recruitment round (RecruitmentSchedulerService, on the first round after a deploy) under its lock; how many
+   * changed. Idempotent: a fit of this version is left as it is.
+   */
+  async refreshFits(batch = 200): Promise<number> {
+    let done = 0;
+    let after = '00000000-0000-0000-0000-000000000000';
+    // at most 1,000 batches a round (200,000 applications): the next round takes the rest
+    for (let round = 0; round < 1000; round++) {
+      const rows = await this.prisma.$queryRaw<{ id: string }[]>`SELECT a.id FROM job_applications a JOIN cv_readings r ON r.application_id = a.id
+        WHERE r.status = 'read' AND r.text IS NOT NULL AND a.id > ${after}::uuid
+          AND (a.cv_fit IS NULL OR CASE WHEN jsonb_typeof(a.cv_fit->'version') = 'number' THEN (a.cv_fit->>'version')::numeric < ${CV_FIT_VERSION} ELSE true END)
+        ORDER BY a.id
+        LIMIT ${batch}`;
+      for (const r of rows) if (await this.rescoreApplication(r.id)) done++;
+      if (rows.length < batch) break;
+      after = rows[rows.length - 1].id;
     }
+    return done;
   }
 
   /**
@@ -341,16 +376,22 @@ export class CvReadingsService implements OnModuleDestroy {
 
   // ---------- what the pages show ----------
 
-  /** A reading as a page shows it; `keySkills`: the vacancy's (an application), or none (a general CV). */
+  /**
+   * A reading as a page shows it; `keySkills`: the vacancy's (an application), or none (a general CV); `fit`: the
+   * application's CV fit as kept (25 October 2026), its percent the CV match %.
+   */
   view(
     r: { status: string; method: string | null; readAt: Date | null; facts: Prisma.JsonValue | null; text: string | null } | null,
     keySkills: readonly string[] | null,
+    fit: CvFit | null = null,
   ): CvReadingView {
     const none = { latestTitle: null, latestCompany: null, workHistory: [], educationDetails: [], cvSkills: [], certifications: [], city: null };
     // a CV come in a moment ago, before the round gave it a reading: being read
-    if (!r) return { status: 'pending', method: null, readAt: null, experience: null, education: null, languages: [], skills: keySkills && keySkills.length ? { found: [], missing: [...keySkills] } : null, cvMatchPercent: null, ...none };
+    if (!r) return { status: 'pending', method: null, readAt: null, experience: null, education: null, languages: [], skills: keySkills && keySkills.length ? { found: [], missing: [...keySkills] } : null, cvMatchPercent: null, fit: null, ...none };
     const facts = cvFactsOf(r.facts);
-    const skills = keySkills && keySkills.length ? (r.status === 'read' && r.text ? cvSkillsFound(r.text, keySkills) : { found: [], missing: [...keySkills] }) : null;
+    // the key skills as the fit finds them: a dictionary skill under any of its names too (25 October 2026)
+    const skills = keySkills && keySkills.length ? (r.status === 'read' && r.text ? keySkillsFound(r.text, keySkills) : { found: [], missing: [...keySkills] }) : null;
+    const read = r.status === 'read' && !!r.text;
     return {
       status: r.status as CvReadingStatus,
       method: (r.method as CvReadingMethod | null) ?? null,
@@ -359,7 +400,9 @@ export class CvReadingsService implements OnModuleDestroy {
       education: facts?.education ?? null,
       languages: facts?.languages ?? [],
       skills,
-      cvMatchPercent: keySkills && r.status === 'read' && r.text ? cvMatchPercent(skills?.found.length ?? 0, keySkills.length) : null,
+      // the CV fit's (25 October 2026), as kept on the application
+      cvMatchPercent: keySkills && read ? (fit?.percent ?? null) : null,
+      fit: keySkills && read ? fit : null,
       // 24 October 2026: more found by the rules (a developer's masked by developer.ts, but for the skills)
       ...(facts
         ? {
@@ -387,7 +430,7 @@ export class CvReadingsService implements OnModuleDestroy {
     let done = 0;
     // at most 1,000 batches a round (200,000 CVs): the next round takes the rest
     for (let round = 0; round < 1000; round++) {
-      const rows = await this.prisma.$queryRaw<{ id: string; text: string; read_at: Date | null }[]>`SELECT id, text, read_at FROM cv_readings
+      const rows = await this.prisma.$queryRaw<{ id: string; text: string; read_at: Date | null; application_id: string | null }[]>`SELECT id, text, read_at, application_id FROM cv_readings
         WHERE status = 'read' AND text IS NOT NULL
           AND (facts IS NULL OR CASE WHEN jsonb_typeof(facts->'version') = 'number' THEN (facts->>'version')::numeric < ${CV_FACTS_VERSION} ELSE true END)
         ORDER BY id
@@ -396,6 +439,8 @@ export class CvReadingsService implements OnModuleDestroy {
         const facts = cvFacts(r.text, r.read_at ?? new Date());
         const { count } = await this.prisma.cvReading.updateMany({ where: { id: r.id, status: 'read' }, data: { facts: facts as unknown as Prisma.InputJsonValue } });
         done += count;
+        // its application's fit reads the facts too (25 October 2026)
+        if (count && r.application_id) await this.rescoreApplication(r.application_id);
       }
       if (rows.length < batch) break;
     }
@@ -418,8 +463,15 @@ export class CvReadingsService implements OnModuleDestroy {
   }
 }
 
-/** The CV match % of a CV's reading against key skills: null without skills listed or a CV read. */
-function matchOf(keySkills: readonly string[], reading: { status: string; text: string | null } | null): number | null {
-  if (!keySkills.length || !reading || reading.status !== 'read' || !reading.text) return null;
-  return cvMatchPercent(cvSkillsFound(reading.text, keySkills).found.length, keySkills.length);
-}
+/** What an application is read with for its CV fit (its vacancy's apart). */
+const APP_FIT_SELECT = {
+  id: true,
+  cvMatchPercent: true,
+  cvFit: true,
+  yearsExperience: true,
+  // moved from a general CV: its position counts as a title (25 October 2026)
+  generalCv: { select: { positionName: true, positionOther: true } },
+  cvReading: FIT_READING,
+} satisfies Prisma.JobApplicationSelect;
+
+type AppFitRow = Prisma.JobApplicationGetPayload<{ select: typeof APP_FIT_SELECT }>;

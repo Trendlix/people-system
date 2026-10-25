@@ -1,4 +1,6 @@
 import {
+  CV_FIT_VERSION,
+  cvFitLine,
   isSuggestionStatus,
   reasonText,
   SUGGESTION_STATUS_LABELS,
@@ -73,8 +75,8 @@ export function reasonChips(reasons: readonly SuggestionReason[]): { key: string
     key: `${r.kind}-${i}`,
     text: reasonText(r),
     muted: r.kind === 'experience' && r.met === false,
-    // the key skills found, on hover
-    title: r.kind === 'skills' ? r.found.join(', ') : null,
+    // the key skills found, on hover; the CV fit's breakdown (owner, 25 October 2026: "Full CV fit score")
+    title: r.kind === 'skills' ? r.found.join(', ') : r.kind === 'fit' ? cvFitLine({ percent: r.percent, version: CV_FIT_VERSION, parts: r.parts ?? [] }) : null,
   }));
 }
 

@@ -7,6 +7,7 @@ import { BackLink, Empty, Loading } from '../../../organization/ui';
 import { RehireWarning } from '../../../offboarding/rehire-warning';
 import { FromTheCv } from '../../cv-card';
 import { CvDialogHost, CvOpenButton } from '../../cv-dialog';
+import { OpenPositions } from '../../cv-fit-ui';
 import { loadGeneralCv, loadGeneralCvComments, loadVacancies, recruitmentNotLoaded } from '../../data';
 import { ActionButton } from '../../forms';
 import { moveGeneralCv, setGeneralCvStatus } from '../../general-actions';
@@ -170,6 +171,11 @@ async function GeneralCv({ params }: { params: PageProps<'/recruitment/general-c
         <Suspense fallback={<Loading />}>
           <FromTheCv reading={c.cvReading} subject={{ generalCvId: c.id }} />
         </Suspense>
+      )}
+
+      {/* the open vacancies its CV fits (owner, 25 October 2026: "and if it recomended to another position based on the CV"); moved: its application's */}
+      {c.openPositions && (
+        <OpenPositions positions={c.openPositions} record={c.movedTo ? { applicationId: c.movedTo.applicationId } : { generalCvId: c.id }} id="general-open-positions" level="h2" card />
       )}
 
       {/* HR's notes are screening comments now (24 October 2026), the earlier ones moved in as "HR (earlier notes)" */}

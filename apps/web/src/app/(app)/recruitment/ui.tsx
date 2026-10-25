@@ -1,5 +1,4 @@
 import {
-  addedWithoutAnswers,
   APPLICATION_STAGE_LABELS,
   applicationSourceText,
   VACANCY_STATUS_LABELS,
@@ -19,7 +18,8 @@ import { formatDate } from '@/lib/format';
 import { candidateBadges } from './candidates';
 import { DeleteApplicantButton } from './delete-ui';
 import { experienceCell, latestRoleOf } from './cv-reading';
-import { applicantHref, matchText, minYearsOptions, skillGroups, STAGE_STYLE, VACANCY_STATUS_STYLE } from './recruitment';
+import { BetterFitLink, FitPercent, MatchValue } from './cv-fit-ui';
+import { applicantHref, minYearsOptions, skillGroups, STAGE_STYLE, VACANCY_STATUS_STYLE } from './recruitment';
 import { verdictBadge } from './screening';
 import { joinShown } from '@/lib/hidden';
 
@@ -202,19 +202,22 @@ export function ApplicantsTable({ rows, withVacancy, bare = false, deletes = fal
                   {joinShown([a.number, a.email])}
                 </span>
                 <CandidateBadges candidate={a.candidate} />
+                {/* another open vacancy the CV fits better (owner, 25 October 2026: "and if it recomended to another position based on the CV") */}
+                {a.betterFit && (
+                  <span className="mt-1 block">
+                    <BetterFitLink badge={a.betterFit} />
+                  </span>
+                )}
               </td>
               {withVacancy ? <td className="text-sm">{a.vacancy.title}</td> : <LatestRoleCell fromCv={a.fromCv} />}
               <td className="text-right tabular-nums">
-                {/* added from the suggested CVs, without the screening questions (24 October 2026): never a misleading 0% */}
-                {addedWithoutAnswers(a.source) ? (
-                  <span className="text-xs text-muted" title="Added from Suggested From Earlier CVs: the screening questions weren’t asked">
-                    No answers
-                  </span>
-                ) : (
-                  matchText(a.matchPercent)
-                )}
+                {/* not asked the screening questions (added from the suggested CVs or by HR): the CV fit, "72% · CV" (25 October 2026) */}
+                <MatchValue a={a} />
               </td>
-              <td className="text-right tabular-nums">{matchText(a.cvMatchPercent)}</td>
+              <td className="text-right">
+                {/* the CV fit, its breakdown on hover or tap (owner, 25 October 2026: "Full CV fit score") */}
+                <FitPercent percent={a.cvMatchPercent} fit={a.cvFit} />
+              </td>
               <td>
                 <StageBadge stage={a.stage} filteredOut={a.filteredOut} />
                 {/* the latest screening verdict (24 October 2026) */}

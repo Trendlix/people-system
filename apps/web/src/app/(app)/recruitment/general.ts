@@ -89,6 +89,11 @@ export interface GeneralQuery {
   skill: string;
   /** The latest screening verdict (24 October 2026), `none` for none yet; '' for any. */
   verdict: VerdictFilter | '';
+  /**
+   * `fit`: the best open position's CV fit first (owner, 25 October 2026: "and if it recomended to another position based
+   * on the CV"); '': the newest first.
+   */
+  sort: 'fit' | '';
 }
 
 export function readGeneralQuery(query: Record<string, string | string[] | undefined>): GeneralQuery {
@@ -105,6 +110,7 @@ export function readGeneralQuery(query: Record<string, string | string[] | undef
     minYears: minYearsOf(query.minYears),
     skill: skillOf(query.skill),
     verdict: verdictOf(query.verdict),
+    sort: one(query.sort) === 'fit' ? 'fit' : '',
   };
 }
 
@@ -128,6 +134,7 @@ function generalParams(q: Partial<GeneralQuery>): URLSearchParams {
   if (q.minYears !== null && q.minYears !== undefined) params.set('minYears', String(q.minYears));
   if (q.skill) params.set('skill', q.skill);
   if (q.verdict) params.set('verdict', q.verdict);
+  if (q.sort) params.set('sort', q.sort);
   return params;
 }
 

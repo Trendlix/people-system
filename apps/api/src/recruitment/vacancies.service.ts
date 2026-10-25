@@ -46,6 +46,8 @@ import { VacancySuggestionsService } from './vacancy-suggestions.service.js';
 
 const NOT_FOUND = 'Vacancy not found.';
 const LIST_CAP = 500;
+/** What a vacancy's CV fits read (25 October 2026; cv-fit-inputs.ts): a change scores its applications again. */
+const FIT_FIELDS = ['title', 'keySkills', 'requirements', 'responsibilities', 'about', 'questions', 'gradeId', 'jobTitleId'] as const;
 const ACTIVE: VacancyStatus[] = ['draft', 'pending', 'open', 'on_hold'];
 
 /** The public description's fields, cleaned as job descriptions are. */
@@ -336,11 +338,20 @@ export class VacanciesService {
       if (key in data) (after as Record<string, unknown>)[key] = key === 'closingDate' ? (dto.closingDate ?? null) : (data as Record<string, unknown>)[key];
     }
     const diff = changes(auditFields(before), auditFields(after));
+    // a description's text changed though "(text)" before and after (found 25 October 2026, as the CV fit reads them)
+    for (const key of ['about', 'responsibilities', 'requirements'] as const) {
+      if (!(key in diff) && before[key] && after[key] && before[key] !== after[key]) diff[key] = { from: '(text)', to: '(text changed)' };
+    }
     if (!Object.keys(diff).length) return this.view(v, user);
     const { count } = await this.prisma.vacancy.updateMany({ where: { id, status: v.status }, data: data as Prisma.VacancyUpdateManyMutationInput });
     if (!count) throw new ConflictException('The vacancy changed meanwhile. Reload the page to see where it stands.');
     await this.audit.record({ userId: user.id, action: 'update', entityType: VACANCY_ENTITY, entityId: id, diff: { number: v.number, ...diff } });
-    if ('keySkills' in diff) await this.readings.rescoreVacancy(id);
+    // what the CV fit reads changed (owner, 25 October 2026: "Full CV fit score"): its applications scored again, and its
+    // earlier CVs' fits (Suggested From Earlier CVs and the person's side) worked out again while it is open
+    if (FIT_FIELDS.some((f) => f in diff)) {
+      await this.readings.rescoreVacancy(id);
+      await this.suggestions.refreshVacancy(id, { notify: false });
+    }
     return this.get(id, user);
   }
 

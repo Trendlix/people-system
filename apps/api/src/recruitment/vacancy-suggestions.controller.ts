@@ -1,7 +1,10 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import { suggestKeySkills } from '@trendlix/shared';
 import { CurrentUser, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
-import { DECIDES_SUGGESTIONS, READS } from './recruitment-access.js';
+import { PrismaService } from '../prisma/prisma.service.js';
+import { AddRecommendedDto, SuggestKeySkillsDto } from './cv-fit.dto.js';
+import { DECIDES_SUGGESTIONS, MANAGES, READS } from './recruitment-access.js';
 import { DismissSuggestionDto, ListSuggestionsDto } from './recruitment.dto.js';
 import { VacancySuggestionsService } from './vacancy-suggestions.service.js';
 
@@ -18,6 +21,35 @@ export class VacancySuggestionsController {
   @Get(':id/suggestions')
   list(@Param('id', ParseUUIDPipe) id: string, @Query() query: ListSuggestionsDto, @CurrentUser() user: SessionUser) {
     return this.suggestions.list(id, query.status, user);
+  }
+
+  /**
+   * Add to this vacancy from an applicant's or a general CV's Other Open Positions (owner, 25 October 2026: "and if it
+   * recomended to another position based on the CV"): { applicationId } or { generalCvId }, through the suggestions' add.
+   */
+  @Roles(...DECIDES_SUGGESTIONS)
+  @Post(':id/recommended/add')
+  @HttpCode(200)
+  addRecommended(@Param('id', ParseUUIDPipe) id: string, @Body() dto: AddRecommendedDto, @CurrentUser() user: SessionUser) {
+    return this.suggestions.addRecommended(id, dto, user);
+  }
+}
+
+/**
+ * Key skills suggested from a vacancy's title and texts (owner, 25 October 2026: "when a vacancy has no key skills,
+ * suggest them from its description for HR to confirm"; packages/shared cv-fit.ts suggestKeySkills): for the vacancy
+ * form, which shows them as chips HR keeps, removes or adds to; nothing is saved here.
+ */
+@Controller('recruitment/key-skills')
+export class KeySkillsController {
+  constructor(private readonly prisma: PrismaService) {}
+
+  @Roles(...MANAGES)
+  @Post('suggest')
+  @HttpCode(200)
+  async suggest(@Body() dto: SuggestKeySkillsDto): Promise<{ skills: string[] }> {
+    const job = dto.jobTitleId ? await this.prisma.jobTitle.findUnique({ where: { id: dto.jobTitleId }, select: { titleEn: true } }) : null;
+    return { skills: suggestKeySkills({ title: dto.title, jobTitle: job?.titleEn ?? null, requirements: dto.requirements, responsibilities: dto.responsibilities, about: dto.about }) };
   }
 }
 

@@ -2,6 +2,7 @@ import {
   APPLICATION_STAGES,
   applicationSourceOf,
   cvFactsOf,
+  cvFitFrom,
   cvMonthsAtLeast,
   experienceOf,
   isGeneralCvSource,
@@ -106,8 +107,9 @@ export const APPLICATION_LIST_SELECT = {
   stage: true,
   filteredOut: true,
   matchPercent: true,
-  // the vacancy's key skills found in the CV (22 October 2026)
+  // the CV match % (22 October 2026), the CV fit's since 25 October 2026, and the fit's parts for the breakdown
   cvMatchPercent: true,
+  cvFit: true,
   points: true,
   maxPoints: true,
   yearsExperience: true,
@@ -135,6 +137,7 @@ export const applicationListView = (a: ApplicationListRow): ApplicationListItem 
   filteredOut: a.filteredOut,
   matchPercent: a.matchPercent,
   cvMatchPercent: a.cvMatchPercent,
+  cvFit: cvFitFrom(a.cvFit),
   points: a.points,
   maxPoints: a.maxPoints,
   yearsExperience: money(a.yearsExperience),

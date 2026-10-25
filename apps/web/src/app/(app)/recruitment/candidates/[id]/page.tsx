@@ -22,6 +22,8 @@ import { MergeWithForm } from '../../candidate-forms';
 import { CandidateApplicationsTable, CandidateGeneralCvsTable, EmployeeCard, MatchesCard } from '../../candidate-ui';
 import { candidateHref, CANDIDATES_PATH, timelineByDay } from '../../candidates';
 import { CvDialogHost, CvOpenButton } from '../../cv-dialog';
+import { CandidateFits, OpenPositions } from '../../cv-fit-ui';
+import { recordFor } from '../../cv-fit';
 import { loadCandidate, loadCandidateComments, recruitmentNotLoaded } from '../../data';
 import { ActionButton } from '../../forms';
 import { interviewWhen } from '../../hiring';
@@ -305,6 +307,11 @@ async function Candidate({ params }: { params: PageProps<'/recruitment/candidate
           <CandidateGeneralCvsTable rows={c.generalCvs} />
         </section>
       )}
+
+      {/* the open vacancies their CVs fit, the best of their CVs for each (owner, 25 October 2026: "and if it recomended to another position based on the CV") */}
+      {c.openPositions && <OpenPositions positions={c.openPositions} record={(vacancyId) => recordFor(vacancyId, cvs, c.openPositions ?? [])} id="candidate-open-positions" level="h2" card />}
+      {/* each application's CV fit with its parts (owner, 25 October 2026: "Full CV fit score") */}
+      <CandidateFits rows={c.applications} />
 
       <Cvs cvs={cvs} comments={comments} />
       <ScreeningCommentsCard data={comments} notLoaded={commentsNotLoaded} mode="profile" defaultTarget={GENERAL_KEY} />

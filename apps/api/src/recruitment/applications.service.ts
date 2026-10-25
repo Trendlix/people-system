@@ -10,10 +10,12 @@ import {
   rejectionMail,
   restorable,
   applicationSourceOf,
+  cvFitFrom,
   scoreAnswers,
   stageMoveProblem,
   stageSince,
   type ApplicationCan,
+  type BetterFitBadge,
   type CandidateBadge,
   type BoardCard,
   type HiringSuggestion,
@@ -37,6 +39,7 @@ import { NotificationsService } from '../notifications/notifications.service.js'
 import { userNames } from '../payroll/adjustments/people.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CandidatesService } from './candidates.service.js';
+import { CvFitsService } from './cv-fits.service.js';
 import { CvPreviewsService } from './cv-previews.service.js';
 import { CvReadingsService } from './cv-readings.service.js';
 import { InterviewsService } from './interviews.service.js';
@@ -61,6 +64,18 @@ import { NOTES_GONE } from './screening-notes.js';
 
 const NOT_FOUND = 'Applicant not found.';
 const LIST_CAP = 1000;
+/**
+ * The match first (25 October 2026): the screening questions' %, else, not asked them (added from the suggestions or by
+ * HR), the CV fit's; none last. Stable: equals keep their order.
+ */
+function byMatch<T extends { matchPercent: number | null; cvMatchPercent: number | null }>(rows: readonly T[]): T[] {
+  const key = (r: T) => r.matchPercent ?? r.cvMatchPercent;
+  return rows
+    .map((row, i) => ({ row, i, k: key(row) }))
+    .sort((a, b) => (a.k === null ? (b.k === null ? a.i - b.i : 1) : b.k === null ? -1 : b.k - a.k || a.i - b.i))
+    .map((x) => x.row);
+}
+
 /** A job offer still open: drafted or sent. */
 export const OPEN_OFFER: Prisma.JobOfferWhereInput = { status: { in: ['draft', 'sent'] } };
 
@@ -115,6 +130,7 @@ export class ApplicationsService {
     private readonly candidates: CandidatesService,
     private readonly comments: ScreeningCommentsService,
     private readonly previews: CvPreviewsService,
+    private readonly fits: CvFitsService,
   ) {}
 
   /** The applications the caller may see on the lists: those of the vacancies they see (HR, the CEO, a Super Admin). */
@@ -177,9 +193,18 @@ export class ApplicationsService {
       ),
       this.comments.applicationVerdicts(rows.map((r) => r.id)),
     ]);
-    const items = rows.map((r) => ({ ...applicationListView(r), candidate: r.candidateId ? (badges.get(r.candidateId) ?? null) : null, verdict: verdicts.get(r.id) ?? null }));
+    // "Better fit: Media Buyer 82%" (owner, 25 October 2026: "and if it recomended to another position based on the CV")
+    const better = await this.fits.badges(rows, user);
+    const items = rows.map((r) => ({
+      ...applicationListView(r),
+      candidate: r.candidateId ? (badges.get(r.candidateId) ?? null) : null,
+      verdict: verdicts.get(r.id) ?? null,
+      betterFit: this.fits.sees(user) ? (better.get(r.id) ?? null) : undefined,
+    }));
     // most experience first (24 October 2026): the years typed, else the CV's; the best match first among equals
-    return query.sort === 'years' ? byExperience(items, (a) => ({ typed: a.yearsExperience, cvMonths: a.fromCv?.experienceMonths ?? null })) : items;
+    if (query.sort === 'years') return byExperience(items, (a) => ({ typed: a.yearsExperience, cvMonths: a.fromCv?.experienceMonths ?? null }));
+    // the match: the screening's, else (not asked the screening questions) the CV fit's (25 October 2026)
+    return query.sort === 'cv' ? items : byMatch(items);
   }
 
   /** An applicant, as the caller may see them: HR, the CEO and a Super Admin in full; their hiring manager and interviewers without the expected salary and HR's notes; 404 for anyone else. */
@@ -257,7 +282,10 @@ export class ApplicationsService {
       rejectReason: a.stage === 'rejected' && !participant ? a.rejectReason : null,
       consentAt: a.consentAt.toISOString(),
       cv: a.cv,
-      cvReading: a.cv ? this.readings.view(a.cvReading, a.vacancy.keySkills) : null,
+      // the CV fit as kept (25 October 2026: "Full CV fit score")
+      cvReading: a.cv ? this.readings.view(a.cvReading, a.vacancy.keySkills, cvFitFrom(a.cvFit)) : null,
+      // Other Open Positions (25 October 2026): HR, the CEO and a Super Admin only
+      openPositions: c.reads ? ((await this.fits.shownFor([{ kind: 'application', id: a.id, candidateId: a.candidateId }], c.user)).get(a.id) ?? []) : null,
       history: a.steps.map(
         (s): ApplicationStepView => ({ event: s.event as ApplicationEvent, stage: s.stage as ApplicationStage, note: s.note, by: userRef(s.by, names), at: s.at.toISOString() }),
       ),
@@ -399,6 +427,7 @@ export class ApplicationsService {
         fullName: true,
         matchPercent: true,
         cvMatchPercent: true,
+        cvFit: true,
         source: true,
         stage: true,
         filteredOut: true,
@@ -421,6 +450,8 @@ export class ApplicationsService {
           user,
         )
       : new Map<string, CandidateBadge>();
+    // another open vacancy the CV fits better (25 October 2026), as the list's badge
+    const better = c.reads ? await this.fits.badges(rows, user) : new Map<string, BetterFitBadge>();
     const stages = viewer === 'hiring_manager' ? BOARD_STAGES.filter((s) => s !== 'applied') : [...BOARD_STAGES];
     const cards = rows.map(
       (r): BoardCard => ({
@@ -429,6 +460,8 @@ export class ApplicationsService {
         fullName: r.fullName,
         matchPercent: r.matchPercent,
         cvMatchPercent: r.cvMatchPercent,
+        cvFit: cvFitFrom(r.cvFit),
+        betterFit: c.reads ? (better.get(r.id) ?? null) : undefined,
         // as kept: a general CV's, the suggested ones' and an invitation's too (24 October 2026)
         source: applicationSourceOf(r.source),
         stage: r.stage as ApplicationStage,
@@ -445,7 +478,8 @@ export class ApplicationsService {
       vacancy: { id: v.id, number: v.number, title: v.title, status: v.status },
       viewer,
       canMove: c.manages,
-      columns: stages.map((stage) => ({ stage, cards: cards.filter((x) => x.stage === stage) })),
+      // the screening match first, else the CV fit's (25 October 2026)
+      columns: stages.map((stage) => ({ stage, cards: byMatch(cards.filter((x) => x.stage === stage)) })),
       filteredOut,
     };
   }

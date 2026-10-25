@@ -14,6 +14,7 @@
 // apps/api/src/common/suggested-cvs.spec.ts.
 
 import { experienceOf, meetsMinYears, titleLikeness } from './cv-analysis.js';
+import { OPEN_POSITION_RULES, type CvFit, type CvFitPart, type FitJob } from './cv-fit.js';
 import { HIDDEN } from './developer.js';
 import type { RehireEligibility } from './offboarding.js';
 import type { RecruitmentUserRef, VacancyQuestion, VacancyStatus } from './recruitment.js';
@@ -72,6 +73,13 @@ export function recencyMonthsProblem(value: unknown): string | null {
 export const SUGGESTION_POINTS = { team: 30, department: 15, skills: 35, title: 20, experience: 10, recent: 5, halfYear: 3 } as const;
 
 /**
+ * Since 25 October 2026 (owner: "Full CV fit score"; cv-fit.ts), an earlier CV that is read is ranked by its CV fit for
+ * the vacancy instead of its key skills, title and years: the area 30 (the same team) or 15 (the same department), the
+ * fit's percent × 65 / 100, and recency 5 or 3; 100 at most. One not read keeps the points above.
+ */
+export const SUGGESTION_FIT_POINTS = 65;
+
+/**
  * Why an earlier CV matches, each with its points (the chips on the row): the area (`exact`: the vacancy's own team, or
  * department when it has none; else the same department); the key skills its CV names; a title like the job's (the CV's
  * latest, the job applied for before, or a general CV's position: 25 October 2026), named `matchedTitle` so a developer
@@ -83,7 +91,9 @@ export type SuggestionReason =
   | { kind: 'skills'; found: string[]; listed: number; points: number }
   | { kind: 'title'; from: 'cv' | 'vacancy' | 'position'; matchedTitle: string; points: number }
   | { kind: 'experience'; years: number; fromCv: boolean; minYears: number | null; met: boolean | null; points: number }
-  | { kind: 'recency'; months: number; points: number };
+  | { kind: 'recency'; months: number; points: number }
+  /** The CV fit for the vacancy (25 October 2026), its parts for the breakdown (a past title in them is `matchedTitle`). */
+  | { kind: 'fit'; percent: number; parts: CvFitPart[]; points: number };
 
 /**
  * A reason in words, as its chip says it: "Same team", "4 of 6 key skills", "Video Editor before", "Position: Video
@@ -102,6 +112,7 @@ export function reasonText(r: SuggestionReason): string {
     const years = r.fromCv && r.years === 0 ? '< 1 y' : `${r.fromCv ? '≈ ' : ''}${r.years} y`;
     return r.met === false && r.minYears !== null ? `${years} (${r.minYears}+ wanted)` : years;
   }
+  if (r.kind === 'fit') return `CV fit ${r.percent}%`;
   return r.points >= SUGGESTION_POINTS.recent ? 'Recent' : 'Within 6 months';
 }
 
@@ -147,6 +158,8 @@ export interface SuggestionVacancy {
   keySkills: readonly string[];
   /** The least years its screening questions ask (minYearsWanted); null when none do. */
   minYears: number | null;
+  /** The job as its CV fits are worked out (cv-fit.ts prepareFitJob; 25 October 2026); none: the points of before. */
+  fitJob?: FitJob | null;
 }
 
 /** An earlier CV: a general CV, or an application to another vacancy. */
@@ -181,6 +194,8 @@ export interface SuggestionRecord {
   positionTitle?: string | null;
   /** The key skills its CV names (cv-analysis.ts cvSkillsMatcher of its text); null when not read. */
   skillsFound: ((skills: readonly string[]) => { found: string[] }) | null;
+  /** Its CV's fit for a job (cv-fit.ts; 25 October 2026); null or left out: not read. */
+  fitFor?: ((job: FitJob) => CvFit | null) | null;
 }
 
 /**
@@ -194,6 +209,14 @@ export function scoreSuggestion(v: SuggestionVacancy, r: SuggestionRecord, now: 
   const reasons: SuggestionReason[] = [];
   if (v.departmentId && r.departmentId === v.departmentId) reasons.push({ kind: 'area', exact: true, ofTeam: v.ofTeam, points: P.team });
   else if (v.topDepartmentId && r.topDepartmentId === v.topDepartmentId) reasons.push({ kind: 'area', exact: false, ofTeam: v.ofTeam, points: P.department });
+  // read: its CV fit for the vacancy in place of the key skills, the title and the years (25 October 2026)
+  const fit = v.fitJob && r.fitFor ? r.fitFor(v.fitJob) : null;
+  const age = (now.getTime() - time(r.at)) / MONTH_MS;
+  if (fit && fit.percent !== null) {
+    reasons.push({ kind: 'fit', percent: fit.percent, parts: fit.parts, points: Math.round((SUGGESTION_FIT_POINTS * fit.percent) / 100) });
+    if (age <= 6) reasons.push({ kind: 'recency', months: monthsSince(r.at, now), points: age <= 3 ? P.recent : P.halfYear });
+    return { score: Math.min(100, reasons.reduce((n, x) => n + x.points, 0)), reasons };
+  }
   if (v.keySkills.length && r.skillsFound) {
     const found = r.skillsFound(v.keySkills).found;
     if (found.length) reasons.push({ kind: 'skills', found, listed: v.keySkills.length, points: Math.round((P.skills * found.length) / v.keySkills.length) });
@@ -214,7 +237,6 @@ export function scoreSuggestion(v: SuggestionVacancy, r: SuggestionRecord, now: 
     const met = v.minYears === null ? null : meetsMinYears(r.yearsTyped, r.cvMonths, v.minYears);
     reasons.push({ kind: 'experience', years: shown.years, fromCv: shown.fromCv, minYears: v.minYears, met, points: met ? P.experience : 0 });
   }
-  const age = (now.getTime() - time(r.at)) / MONTH_MS;
   if (age <= 6) reasons.push({ kind: 'recency', months: monthsSince(r.at, now), points: age <= 3 ? P.recent : P.halfYear });
   return { score: Math.min(100, reasons.reduce((n, x) => n + x.points, 0)), reasons };
 }
@@ -335,6 +357,37 @@ export function suggestionsFor(
     if (best) out.push(best);
   }
   return out.sort((a, b) => b.score - a.score || (a.at < b.at ? 1 : a.at > b.at ? -1 : 0)).slice(0, opts.limit ?? SUGGESTION_LIMITS.shown);
+}
+
+/** An earlier CV's fit for a vacancy, kept for the person's side (cv_open_fits): 50% or more. */
+export interface OpenFitFound {
+  candidateId: string;
+  record: { kind: 'general_cv' | 'application'; id: string };
+  fit: CvFit & { percent: number };
+}
+
+/**
+ * The person's side of Suggested From Earlier CVs (owner, 25 October 2026: "and if it recomended to another position
+ * based on the CV"; cv-fit.ts OPEN_POSITION_RULES): every earlier CV the vacancy could be suggested from, by the same
+ * rules (personExclusion, recordExclusion; decisions on it are read when shown), each with its CV fit for the vacancy
+ * when 50% or more. Each CV apart, so an applicant's row and the CV window show their own CV's.
+ */
+export function openFitsFor(
+  v: Pick<SuggestionVacancy, 'id' | 'fitJob'>,
+  people: ReadonlyMap<string, SuggestionPerson>,
+  records: readonly SuggestionRecord[],
+  opts: { now?: Date; recencyMonths?: number; appliedHere: (candidateId: string) => boolean },
+): OpenFitFound[] {
+  if (!v.fitJob) return [];
+  const since = monthsBefore(opts.now ?? new Date(), opts.recencyMonths ?? SUGGESTION_LIMITS.recencyMonths);
+  const out: OpenFitFound[] = [];
+  for (const r of records) {
+    const person = people.get(r.candidateId);
+    if (!person || !r.fitFor || personExclusion(person, { applied: opts.appliedHere(r.candidateId), decided: false }) || recordExclusion(r, v.id, since)) continue;
+    const fit = r.fitFor(v.fitJob);
+    if (fit && fit.percent !== null && fit.percent >= OPEN_POSITION_RULES.shownMin) out.push({ candidateId: r.candidateId, record: { kind: r.kind, id: r.id }, fit: fit as CvFit & { percent: number } });
+  }
+  return out;
 }
 
 // ---------- HR told ----------

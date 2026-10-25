@@ -99,6 +99,7 @@ describe('the general CVs’ list', () => {
       minYears: null,
       skill: '',
       verdict: '',
+      sort: '',
     });
     expect(readGeneralQuery({ status: 'deleted', source: 'tiktok', departmentId: 'x', positionKey: 'video editor' })).toEqual({
       status: '',
@@ -109,6 +110,7 @@ describe('the general CVs’ list', () => {
       minYears: null,
       skill: '',
       verdict: '',
+      sort: '',
     });
     expect(readGeneralQuery({ status: 'all' }).status).toBe('all');
   });
