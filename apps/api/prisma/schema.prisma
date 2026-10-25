@@ -90,6 +90,11 @@ model User {
   calendarAppsSet        CalendarApp[]          @relation("CalendarAppChange")
   calendarConnections    CalendarConnection[]   @relation("CalendarConnectionOwner")
   calendarConnectionsMade CalendarConnection[]  @relation("CalendarConnectionBy")
+  // Zoho People's attendance pulled in (owner, 25 October 2026: "Yes, daily + backfill"): the connection this user made,
+  // and the fetches they started or cancelled
+  zohoPeopleConnectionsMade ZohoPeopleConnection[] @relation("ZohoPeopleConnectionBy")
+  zohoPeopleRunsStarted   ZohoPeopleRun[]        @relation("ZohoPeopleRunStartedBy")
+  zohoPeopleRunsCancelled ZohoPeopleRun[]        @relation("ZohoPeopleRunCancelledBy")
   onboardingDefaultsSet  OnboardingDefault[]    @relation("OnboardingDefaultChange")
   onboardingOpened       OnboardingChecklist[]  @relation("OnboardingOpening")
   onboardingCompleted    OnboardingChecklist[]  @relation("OnboardingCompletion")
@@ -626,6 +631,79 @@ model CalendarConnection {
   @@unique([provider, userId])
   @@index([userId])
   @@map("calendar_connections")
+}
+
+// Zoho People's connection (owner, 25 October 2026: "can i fetch checkin and out transactions from zoho people through
+// api?"; asked, "Yes, daily + backfill": "a Super Admin connects Zoho once"): one row (id 1), the Zoho account a Super
+// Admin signed in as (a Zoho People admin, who reads everyone's attendance), through the Zoho app shared with the
+// calendars (CalendarApp 'zoho': its client ID, secret and data centre) with its own scopes (ZOHO_PEOPLE_SCOPES). Its
+// refresh token sealed with its own key (HKDF of JWT_SECRET, info trendlix-zoho-people-v1; never returned), the sign-in's
+// data centre (its accounts server), Zoho People's own time zone and date format as its organization says, the last
+// test. A refresh refused marks it needs_reconnecting with why; the page and the dashboard say so.
+model ZohoPeopleConnection {
+  id              Int       @id @default(1)
+  accountEmail    String    @map("account_email")
+  refreshTokenEnc String    @map("refresh_token_enc") // RESTRICTED: never returned
+  tokenKeyId      String    @map("token_key_id")
+  accountsServer  String?   @map("accounts_server") // Zoho's: https://accounts.zoho.com, .eu, …
+  status          String    @default("connected") // connected, needs_reconnecting
+  problem         String?
+  timeZone        String?   @map("time_zone") // Zoho People's organization's, e.g. Africa/Cairo
+  dateFormat      String?   @map("date_format") // its date format, e.g. dd-MMM-yyyy
+  connectedById   String?   @map("connected_by") @db.Uuid
+  connectedBy     User?     @relation("ZohoPeopleConnectionBy", fields: [connectedById], references: [id], onDelete: SetNull)
+  connectedAt     DateTime  @default(now()) @map("connected_at") @db.Timestamptz
+  lastTestAt      DateTime? @map("last_test_at") @db.Timestamptz
+  lastTestOk      Boolean?  @map("last_test_ok")
+  lastTestMessage String?   @map("last_test_message")
+
+  @@map("zoho_people_connections")
+}
+
+// A fetch of Zoho People's attendance (owner, 25 October 2026: "every night it pulls yesterday's check-ins and
+// check-outs for everyone automatically; plus a "Fetch from Zoho" button for any date range"; then "but can it fetch
+// historical data?": up to 12 months a run, everyone employed in it, former employees too): the nightly one (one a day,
+// nightly_for its day) or HR's, its days, everyone or the people chosen, where it stands, and what it did. Its plan (each
+// person's work email and the ranges of their employments within its days) and where it got to (cursor: the person and
+// month next) are kept, so a run goes on after the API restarts. One goes at a time. The days it kept say so
+// (attendance_days.zoho_run_id). Never deleted: the page lists the last ones.
+model ZohoPeopleRun {
+  id                String          @id @default(uuid()) @db.Uuid
+  kind              String // ZOHO_RUN_KINDS: nightly, fetch
+  nightlyFor        DateTime?       @unique @map("nightly_for") @db.Date
+  fromDate          DateTime        @map("from_date") @db.Date
+  toDate            DateTime        @map("to_date") @db.Date
+  employeeIds       String[]        @default([]) @map("employee_ids") @db.Uuid // the people chosen; none: everyone
+  status            String          @default("running") // ZOHO_RUN_STATUSES
+  startedById       String?         @map("started_by") @db.Uuid
+  startedBy         User?           @relation("ZohoPeopleRunStartedBy", fields: [startedById], references: [id], onDelete: SetNull)
+  startedAt         DateTime        @default(now()) @map("started_at") @db.Timestamptz
+  finishedAt        DateTime?       @map("finished_at") @db.Timestamptz
+  heartbeatAt       DateTime        @default(now()) @map("heartbeat_at") @db.Timestamptz
+  cancelRequestedAt DateTime?       @map("cancel_requested_at") @db.Timestamptz
+  cancelledById     String?         @map("cancelled_by") @db.Uuid
+  cancelledBy       User?           @relation("ZohoPeopleRunCancelledBy", fields: [cancelledById], references: [id], onDelete: SetNull)
+  waitingUntil      DateTime?       @map("waiting_until") @db.Timestamptz
+  plan              Json
+  cursor            Json?
+  peopleTotal       Int             @map("people_total")
+  peopleDone        Int             @default(0) @map("people_done")
+  callsTotal        Int             @map("calls_total")
+  callsDone         Int             @default(0) @map("calls_done")
+  daysAdded         Int             @default(0) @map("days_added")
+  punchesAdded      Int             @default(0) @map("punches_added")
+  daysReplaced      Int             @default(0) @map("days_replaced")
+  daysUnchanged     Int             @default(0) @map("days_unchanged")
+  daysRecorded      Int             @default(0) @map("days_recorded") // added to a month whose payroll is with the CEO, approved or paid
+  linesRefilled     Int             @default(0) @map("lines_refilled")
+  skipped           Json            @default("{}") // { reason: days }
+  notFound          String[]        @default([]) @map("not_found") @db.Uuid // employees Zoho People doesn't know
+  errors            Json            @default("[]") // at most 50 short lines
+  problem           String?
+  days              AttendanceDay[]
+
+  @@index([startedAt])
+  @@map("zoho_people_runs")
 }
 
 // WhatsApp notifications (owner, 24 October 2026: "how to make whatsapp notifications?"; asked, "Employees and
@@ -3705,6 +3783,10 @@ model AttendanceDay {
   pairs           Json?
   breakMinutes    Int?                  @map("break_minutes")
   openAt          DateTime?             @map("open_at") @db.Timestamptz
+  // a Zoho day kept by a fetch from Zoho People's API (owner, 25 October 2026: "Yes, daily + backfill"), not by an Excel
+  // import: which run kept it last. Its pairs are Zoho's entries; a draft payroll line is filled from such days.
+  zohoRunId       String?               @map("zoho_run_id") @db.Uuid
+  zohoRun         ZohoPeopleRun?        @relation(fields: [zohoRunId], references: [id], onDelete: SetNull)
 
   @@unique([employeeId, date, source])
   @@index([date])

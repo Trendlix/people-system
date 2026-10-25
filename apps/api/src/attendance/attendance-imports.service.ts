@@ -772,9 +772,10 @@ export class AttendanceImportsService {
   /**
    * Each matched person's month by the system's rules: their employment's shift and dates (the line's employment, else
    * the latest in the month), the month's holidays, their approved leave days, their approved permission hours, the
-   * Leave Setup's allowance.
+   * Leave Setup's allowance. Public for Zoho People's fetch (25 October 2026: "the same path the import uses"), whose
+   * days are worked out the same way.
    */
-  private async months(month: string, who: { employeeId: string; employmentId: string | null; days: ImportedDay[] }[]): Promise<Map<string, AttendanceMonthResult>> {
+  async months(month: string, who: { employeeId: string; employmentId: string | null; days: ImportedDay[] }[]): Promise<Map<string, AttendanceMonthResult>> {
     const out = new Map<string, AttendanceMonthResult>();
     if (!who.length) return out;
     const [first, last] = [firstDay(month), lastDay(month)];

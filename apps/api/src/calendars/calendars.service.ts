@@ -34,6 +34,7 @@ import {
   type MeetingConnectProblem,
   type MeetingOwner,
   type MyCalendarsView,
+  type ZohoDataCentre,
 } from '@trendlix/shared';
 import { randomBytes } from 'node:crypto';
 import { AuditService } from '../audit/audit.service.js';
@@ -209,6 +210,18 @@ export class CalendarsService {
   private zohoCredentials(app: CalendarApp | null): AppCredentials | null {
     const secret = this.open(app?.clientSecretEnc, app?.clientSecretKeyId, 'client_secret');
     return app?.clientId && secret && isZohoDataCentre(app.dataCentre) ? { clientId: app.clientId, clientSecret: secret } : null;
+  }
+
+  /**
+   * The Zoho app for the company's other Zoho connection, Zoho People's attendance (owner, 25 October 2026: "Yes, daily +
+   * backfill"; the brief: "Reuse its Zoho OAuth and data-centre handling"): one Server-based Application serves both,
+   * each sign-in asking its own scopes with its own redirect URI. Its credentials (the secret opened: only to call
+   * Zoho; null when not set up or not readable), its data centre, and its view (never the secret).
+   */
+  async sharedZohoApp(): Promise<{ credentials: AppCredentials | null; dataCentre: ZohoDataCentre | null; view: CalendarAppView }> {
+    const app = await this.zohoApp();
+    const names = await this.names([app?.updatedById ?? null]);
+    return { credentials: this.zohoCredentials(app), dataCentre: isZohoDataCentre(app?.dataCentre) ? app.dataCentre : null, view: this.appView(app, names) };
   }
 
   /** A provider's app for one's calendar: Zoho's own; Google's and Microsoft's the meetings' (as for each HR person's own). */

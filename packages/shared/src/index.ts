@@ -651,3 +651,8 @@ export * from './careers-base.js';
 export * from './cv-contacts.js';
 export * from './linkedin-signin.js';
 export * from './portfolio.js';
+
+// Zoho People's check-ins and check-outs pulled in (owner, 25 October 2026: "can i fetch checkin and out transactions
+// from zoho people through api?"; asked, "Yes, daily + backfill"; then "but can it fetch historical data?"): the scopes,
+// Zoho's limits, the runs' words and views, a range's checks and how long it takes
+export * from './zoho-people.js';

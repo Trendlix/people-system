@@ -24,7 +24,7 @@
 //   Permission column counts, within the month's allowance, never both.
 // Pure: the API reads the files and applies these, and the web shows the same words.
 
-import { hoursCountedForDay, mostHoursCountedADay, shiftWindowOn } from './attendance.js';
+import { hoursCountedForDay, mostHoursCountedADay, shiftWindowOn, spanHours, spansOfPairs, type PressPair } from './attendance.js';
 import { missingCheckOutOn, type KeptDay } from './attendance-days.js';
 import type { ShiftTimes } from './payroll.js';
 
@@ -264,6 +264,13 @@ export interface ImportedDay {
   zohoStatus: string | null;
   /** Zoho's Permission column that day, in hours (0: none). */
   permissionHours: number;
+  /**
+   * Its check-in → check-out pairs when Zoho gave each one (its API, 25 October 2026: "fetch checkin and out
+   * transactions from zoho people"): the hours are theirs (owner, 25 October 2026: "the working hours to be calculated
+   * between the checkin and out only, not the first and last"); none (the Excel export's first and last): from
+   * check-in to check-out as before.
+   */
+  pairs?: PressPair[] | null;
 }
 
 /**
@@ -386,7 +393,10 @@ export function attendanceMonth(input: AttendanceMonthInput): AttendanceMonthRes
     let hours = 0;
     if (d.checkIn) {
       status = 'worked';
-      if (d.checkOut) hours = hoursCountedForDay(d.checkIn, d.checkOut, most, shift ? shiftWindowOn(d.date, shift) : null);
+      const window = shift ? shiftWindowOn(d.date, shift) : null;
+      // by its pairs when Zoho gave them (its API), each within the window, together at most the hours to work
+      if (d.pairs?.length) hours = spanHours(spansOfPairs(d.pairs), window, most);
+      else if (d.checkOut && !d.pairs) hours = hoursCountedForDay(d.checkIn, d.checkOut, most, window);
       else noCheckOut++;
     } else if (holidays.has(d.date)) status = 'holiday';
     else if (!working.has(weekdayOf(d.date))) status = 'rest';

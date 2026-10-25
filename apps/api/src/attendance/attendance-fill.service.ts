@@ -45,8 +45,10 @@ export interface AttendanceFillResult {
 // importing leave: "whatever the source, Zoho attendance included"; packages/shared withLeaveNow). A line marked from attendance
 // whose days are gone gets back what it had before. Done when a run is made or refreshed, on Refresh from attendance,
 // after each check-in on the system and each correction approved (the month's draft only: a run sent to the CEO never
-// changes). Every line changed is in the audit log. C-level lines too: the figures are the attendance's, nobody types
-// them, and HR's views keep hiding them (owner, 19 October 2026: "make C level Employees details not visible to HR").
+// changes). Since 25 October 2026 (owner: "Yes, daily + backfill") someone whose month has Zoho days fetched from Zoho
+// People's API (not an Excel import) is filled from their days too, as someone who checks in on the system: the fetch
+// keeps their days each night, so their line follows. Every line changed is in the audit log. C-level lines too: the
+// figures are the attendance's, nobody types them, and HR's views keep hiding them (owner, 19 October 2026: "make C level Employees details not visible to HR").
 @Injectable()
 export class AttendanceFillService {
   constructor(
@@ -84,7 +86,7 @@ export class AttendanceFillService {
     if (!run || run.status !== 'draft' || !run.lines.length) return { filled: 0, cleared: 0, leaveCounted: 0 };
     const month = fromDateOnly(run.month).slice(0, 7);
     const ids = run.lines.map((l) => l.employeeId);
-    const [people, permissions, setup] = await Promise.all([
+    const [people, permissions, setup, fetched] = await Promise.all([
       this.days.monthOf(month, ids),
       this.prisma.permissionRequest.groupBy({
         by: ['employeeId'],
@@ -92,7 +94,14 @@ export class AttendanceFillService {
         _sum: { hours: true },
       }),
       this.prisma.leaveSettings.findUnique({ where: { id: 1 }, select: { permissionHoursPerMonth: true } }),
+      // those with days kept by Zoho People's fetch this month (25 October 2026: "Yes, daily + backfill")
+      this.prisma.attendanceDay.findMany({
+        where: { employeeId: { in: ids }, source: 'zoho', zohoRunId: { not: null }, date: { gte: toDateOnly(firstDay(month)), lte: toDateOnly(lastDay(month)) } },
+        distinct: ['employeeId'],
+        select: { employeeId: true },
+      }),
     ]);
+    const fromZohoFetch = new Set(fetched.map((f) => f.employeeId));
     const allowance = setup?.permissionHoursPerMonth.toNumber() ?? PERMISSION_RULE_DEFAULTS.hoursPerMonth;
     const rules = run.rules as unknown as PayrollRules;
     const law = runLawRates(run);
@@ -105,7 +114,9 @@ export class AttendanceFillService {
       const was = savedInputs(line.inputs);
       let inputs: PayrollInputs;
       let next: AttendanceImportMark | null;
-      if (person?.own) {
+      // the system's own days, or Zoho People's fetched each night (owner, 25 October 2026: "Yes, daily + backfill":
+      // "Draft payroll runs for those months are refilled for the people changed"): filled from the month's days
+      if (person && (person.own || fromZohoFetch.has(line.employeeId))) {
         const filled = attendanceLineInputs(person.days, {
           systemPermissionHours: permissions.find((p) => p.employeeId === line.employeeId)?._sum.hours?.toNumber() ?? 0,
           permissionHoursPerMonth: allowance,

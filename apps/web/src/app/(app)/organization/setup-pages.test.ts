@@ -4,6 +4,7 @@ import { seesEmailSettings } from '../../../lib/email-setup';
 import { seesCalendarSettings } from '../../../lib/calendars';
 import { seesMeetingSettings } from '../../../lib/meetings';
 import { seesWhatsAppSettings } from '../../../lib/whatsapp';
+import { seesZohoPeople } from '../../../lib/zoho-people';
 import { isSelfService } from '../../../lib/roles';
 import { buildsKpiTemplates } from '../kpis/templates/templates';
 import { managesOffboarding } from '../offboarding/offboarding';
@@ -51,6 +52,7 @@ describe('the setup menu', () => {
           ['Holidays', '/organization/holidays'],
           ['Leave', '/organization/leave'],
           ['Check-in Setup', '/organization/check-in-setup'],
+          ['Zoho People', '/organization/zoho-people'],
         ],
       ],
       [
@@ -87,28 +89,29 @@ describe('the setup menu', () => {
     expect(setupPage('kpi-deadlines' as SetupKey).label).toBe('KPI Deadlines');
   });
 
-  it('shows a Super Admin every page, Email Settings, Meetings, Calendars, WhatsApp and Templates included', () => {
+  it('shows a Super Admin every page, Email Settings, Meetings, Calendars, WhatsApp, Zoho People and Templates included', () => {
     expect(menu(as('super_admin'))).toEqual([
       'Company: Company Details, Email Settings, Meetings, Calendars, WhatsApp, Templates',
       'Structure: Departments & Job Titles, Grades',
-      'Time & Leave: Shifts, Holidays, Leave, Check-in Setup',
+      'Time & Leave: Shifts, Holidays, Leave, Check-in Setup, Zoho People',
       'Pay & Contracts: Allowances, Contracts & Endings, Payroll Setup',
       'Performance: KPI Pillars, KPI Deadlines',
       'Hiring & Leaving: Recruitment Settings, Interview Hours, Onboarding Checklist, Clearance Checklist',
     ]);
   });
 
-  it('shows a developer a Super Admin’s pages but Email Settings, Meetings, Calendars and WhatsApp', () => {
+  it('shows a developer a Super Admin’s pages but Email Settings, Meetings, Calendars, WhatsApp and Zoho People', () => {
     const developer = { roles: ['super_admin'] as Role[], developer: true };
     expect(menu(developer)[0]).toBe('Company: Company Details, Templates');
-    expect(menu(developer).slice(1)).toEqual(menu(as('super_admin')).slice(1));
+    expect(menu(developer)[2]).toBe('Time & Leave: Shifts, Holidays, Leave, Check-in Setup');
+    expect([menu(developer)[1], ...menu(developer).slice(3)]).toEqual([menu(as('super_admin'))[1], ...menu(as('super_admin')).slice(3)]);
   });
 
-  it('shows HR the nine, Check-in Setup, the KPI pages and Hiring & Leaving, not Email Settings or Templates', () => {
+  it('shows HR the nine, Check-in Setup, Zoho People, the KPI pages and Hiring & Leaving, not Email Settings or Templates', () => {
     expect(menu(as('hr'))).toEqual([
       'Company: Company Details',
       'Structure: Departments & Job Titles, Grades',
-      'Time & Leave: Shifts, Holidays, Leave, Check-in Setup',
+      'Time & Leave: Shifts, Holidays, Leave, Check-in Setup, Zoho People',
       'Pay & Contracts: Allowances, Contracts & Endings, Payroll Setup',
       'Performance: KPI Pillars, KPI Deadlines',
       'Hiring & Leaving: Recruitment Settings, Interview Hours, Onboarding Checklist, Clearance Checklist',
@@ -192,6 +195,13 @@ describe('each page keeps the roles it had', () => {
   it('Calendars as lib/calendars.ts, a developer never', () => {
     for (const roles of ROLES) expect(sees('calendars', as(...roles))).toBe(seesCalendarSettings(as(...roles)));
     expect(sees('calendars', { roles: ['super_admin'], developer: true })).toBe(false);
+  });
+
+  // Zoho People's check-ins pulled in (owner, 25 October 2026: "Yes, daily + backfill"): HR and a Super Admin's
+  it('Zoho People as lib/zoho-people.ts, a developer never', () => {
+    for (const roles of ROLES) expect(sees('zoho-people', as(...roles))).toBe(seesZohoPeople(as(...roles)));
+    expect(sees('zoho-people', { roles: ['super_admin'], developer: true })).toBe(false);
+    expect(sees('zoho-people', { roles: ['hr'], developer: true })).toBe(false);
   });
 
   // WhatsApp notifications (owner, 24 October 2026: "Directly to Meta"): the company's number and token, a Super Admin's

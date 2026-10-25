@@ -1,4 +1,4 @@
-import { WHATSAPP_SETTINGS_PATH, type Role } from '@trendlix/shared';
+import { WHATSAPP_SETTINGS_PATH, ZOHO_PEOPLE_PAGE, type Role } from '@trendlix/shared';
 import { EMAIL_SETTINGS_PATH } from '../../../lib/email-setup';
 import { MEETING_SETTINGS_PATH } from '../../../lib/meetings';
 import { CALENDAR_SETTINGS_PATH } from '../../../lib/calendars';
@@ -30,6 +30,7 @@ export const SETUP_PATHS = {
   holidays: '/organization/holidays',
   leave: '/organization/leave',
   checkInSetup: '/organization/check-in-setup',
+  zohoPeople: ZOHO_PEOPLE_PAGE,
   allowances: '/organization/allowances',
   contracts: '/organization/contracts',
   payroll: '/organization/payroll',
@@ -76,6 +77,7 @@ export type SetupKey =
   | 'holidays'
   | 'leave'
   | 'check-in-setup'
+  | 'zoho-people'
   | 'allowances'
   | 'contracts'
   | 'payroll'
@@ -129,6 +131,9 @@ export const SETUP_GROUPS: readonly SetupGroup[] = [
       { key: 'leave', href: SETUP_PATHS.leave, label: 'Leave' },
       // from Attendance: HR's and Admin's, as check-in-setup/setup.ts seesCheckInSetup
       { key: 'check-in-setup', href: SETUP_PATHS.checkInSetup, label: 'Check-in Setup', roles: ['hr', 'admin'] },
+      // Zoho People's check-ins pulled in (owner, 25 October 2026: "Yes, daily + backfill"): HR fetches, a Super Admin
+      // connects too; never a developer's, as lib/zoho-people.ts seesZohoPeople
+      { key: 'zoho-people', href: SETUP_PATHS.zohoPeople, label: 'Zoho People', roles: ['hr', 'super_admin'], noDevelopers: true },
     ],
   },
   {

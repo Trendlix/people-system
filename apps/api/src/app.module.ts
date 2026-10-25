@@ -43,6 +43,7 @@ import { EmployeeAccessModule } from './employee-access/employee-access.module.j
 import { WfhModule } from './wfh/wfh.module.js';
 import { OdModule } from './official-duty/od.module.js';
 import { WhatsAppModule } from './whatsapp/whatsapp.module.js';
+import { ZohoPeopleModule } from './zoho-people/zoho-people.module.js';
 
 @Module({
   imports: [
@@ -89,6 +90,9 @@ import { WhatsAppModule } from './whatsapp/whatsapp.module.js';
     // interviewers' availability (25 October 2026): the calendars read for busy times, and the interview hours
     CalendarsModule,
     InterviewHoursModule,
+    // Zoho People's check-ins and check-outs pulled in, nightly and on HR's "Fetch from Zoho" (owner, 25 October 2026:
+    // "Yes, daily + backfill"), through the calendars' Zoho app and the attendance import's way
+    ZohoPeopleModule,
     OnboardingModule,
     // KPIs (owner, 21 October 2026: "lets start with the KPI's First")
     KpisModule,

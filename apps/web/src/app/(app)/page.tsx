@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { connection } from 'next/server';
 import { Suspense } from 'react';
 import { InterviewHoursBanner } from '@/components/interview-hours-banner';
+import { ZohoPeopleNoteBanner } from '@/components/zoho-people-note';
 import { API_URL, ApiError } from '@/lib/api';
 import { isSelfService } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
@@ -218,6 +219,12 @@ function StaffHome() {
     <div className="max-w-4xl">
       <h1 className="text-2xl font-semibold">Welcome</h1>
       <p className="mt-1 text-muted">TrendLIX People System. Modules go live one at a time.</p>
+
+      {/* last night's fetch from Zoho People failed, or its connection needs connecting again (25 October 2026): HR's and
+          a Super Admin's, the API says when */}
+      <Suspense fallback={null}>
+        <ZohoPeopleNoteBanner />
+      </Suspense>
 
       <Suspense fallback={null}>
         <StaffCheckIn />

@@ -13,6 +13,7 @@ import { CvReadingsService } from './recruitment/cv-readings.service.js';
 import { RecruitmentSchedulerService } from './recruitment/recruitment-scheduler.service.js';
 import { RemindersService } from './notifications/reminders.service.js';
 import { WhatsAppSenderService } from './whatsapp/whatsapp-sender.service.js';
+import { ZohoPeopleSchedulerService } from './zoho-people/zoho-people-scheduler.service.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -53,5 +54,9 @@ async function bootstrap() {
   // WhatsApp's sender (owner, 24 October 2026: "Directly to Meta"): a round every 15 seconds, the candidates' reminders
   // the day before their interview with it; the tests' apps don't start it either: they run its rounds themselves
   app.get(WhatsAppSenderService).start();
+  // Zoho People's clock (owner, 25 October 2026: "Yes, daily + backfill"): every minute a fetch left without a process
+  // (the API restarted) taken on again, and from 02:00 Cairo the night's fetch of yesterday, once; the tests' apps don't
+  // start it either: they call its rounds themselves
+  app.get(ZohoPeopleSchedulerService).start();
 }
 await bootstrap();

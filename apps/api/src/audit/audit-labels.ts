@@ -100,6 +100,10 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   interview_hours: 'Interview hours',
   calendar_settings: 'Calendar settings',
   calendar_connection: 'Calendar connection',
+  // Zoho People's attendance pulled in (owner, 25 October 2026: "Yes, daily + backfill"): the connection a Super Admin
+  // makes once, and each fetch (the nightly one, or HR's "Fetch from Zoho")
+  zoho_people_connection: 'Zoho People connection',
+  zoho_people_run: 'Fetch from Zoho People',
   // WhatsApp notifications (owner, 24 October 2026: "how to make whatsapp notifications?"; "Directly to Meta"): the
   // settings (Organization → Company → WhatsApp), and a person's own choice to get them
   whatsapp_settings: 'WhatsApp settings',
@@ -314,6 +318,9 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   test_meeting: 'Created a test meeting',
   // a calendar connection's test (25 October 2026): its busy times read, never what they are
   test_calendar: 'Tested the calendar',
+  // Zoho People's test (25 October 2026): today's attendance read, in counts; and a person's month of days a fetch kept
+  test_zoho_people: 'Tested Zoho People',
+  zoho_fetch: 'Kept days fetched from Zoho People',
   set_default: 'Changed the default',
   meeting_create: 'Created the online meeting',
   meeting_update: 'Moved the online meeting',

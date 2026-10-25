@@ -79,6 +79,8 @@ import { MapsSettingsService } from './maps-settings.service.js';
     HoursByPairsService,
     CheckInExemptionsService,
   ],
-  exports: [AttendanceDaysService, AttendanceFillService],
+  // Zoho People's fetch (25 October 2026) keeps its days the import's way: its month worked out by the import, the
+  // corrected days made again, the drafts refilled
+  exports: [AttendanceDaysService, AttendanceFillService, AttendanceImportsService, CorrectionDaysService],
 })
 export class AttendanceModule {}
