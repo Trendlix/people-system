@@ -3,14 +3,16 @@
 // for?"; asked, they chose "Portfolio per position"). Both careers forms (a job's and "Send us your CV") ask for it as
 // the position says:
 // - its mode: Hidden, Optional or Required;
+// - a section title, the portfolio part's heading ("Your showreel"; owner, 26 October 2026: "this part needs to be more
+//   clearer .. i cant visualize that this is a portfolio section"; asked, "a section title per position");
 // - a hint ("A showreel on Vimeo or YouTube");
 // - the kinds taken: Behance, Dribbble, Vimeo, YouTube, Instagram, TikTok, GitHub, App Store, Google Play, Google Drive,
 //   Frame.io, Figma, ArtStation, Medium, a personal website, a PDF case study (uploaded);
 // - how many links: 1 to 3.
 // HR sets them per job title in Recruitment Settings ("Portfolio on the Forms"); a job title without a setting takes the
-// default by the rule below (portfolioDefaultFor, by the words of its merged position name). A job's form uses its
-// vacancy's job title's (the vacancy may say otherwise: Hidden, Optional or Required); "Send us your CV" the chosen
-// position's, the strictest of its job titles (strictestAsk).
+// default by the rule below (portfolioDefaultFor, by the words of its merged position name; a section title left blank,
+// the rule's). A job's form uses its vacancy's job title's (the vacancy may say otherwise: Hidden, Optional or Required);
+// "Send us your CV" the chosen position's, the strictest of its job titles (strictestAsk).
 // Each link is checked by its shape only: https, and a known platform's address (behance.net/name, vimeo.com/123 …), or
 // any https site when a personal website is taken. The links are never fetched: the platforms block automatic checks,
 // and the server must never fetch an address people type.
@@ -103,46 +105,61 @@ export const PORTFOLIO_LIMITS = {
   linksMin: 1,
   /** HR's hint, at most. */
   hint: 120,
+  /** The section title, at most (26 October 2026). */
+  title: 40,
   /** The PDF case study, as the CV: at most 5 MB. */
   fileMb: RECRUITMENT_LIMITS.cvMb,
 } as const;
 
-/** What a form asks for: the mode, the hint (none: no line under it), the kinds taken, how many links at most. */
+/** The section title of a position no rule names, and of "Other (write it)" (owner's brief, 26 October 2026). */
+export const DEFAULT_PORTFOLIO_TITLE = 'Your work samples';
+
+/**
+ * What a form asks for: the mode, the section title (the portfolio part's heading, always one), the hint (none: no line
+ * under it), the kinds taken, how many links at most.
+ */
 export interface PortfolioAsk {
   mode: PortfolioMode;
+  /** The portfolio part's heading on the forms ("Your case studies"; 26 October 2026): HR's, else the rule's. */
+  title: string;
   hint: string | null;
   kinds: PortfolioKind[];
   maxLinks: number;
 }
 
 /** Not asked: the form has no portfolio. */
-export const HIDDEN_PORTFOLIO: PortfolioAsk = { mode: 'hidden', hint: null, kinds: [], maxLinks: PORTFOLIO_LIMITS.links };
+export const HIDDEN_PORTFOLIO: PortfolioAsk = { mode: 'hidden', title: DEFAULT_PORTFOLIO_TITLE, hint: null, kinds: [], maxLinks: PORTFOLIO_LIMITS.links };
 
-const ask = (mode: PortfolioMode, kinds: PortfolioKind[], hint: string | null): PortfolioAsk => ({ mode, hint, kinds, maxLinks: PORTFOLIO_LIMITS.links });
+const ask = (mode: PortfolioMode, kinds: PortfolioKind[], hint: string | null, title: string): PortfolioAsk => ({ mode, title, hint, kinds, maxLinks: PORTFOLIO_LIMITS.links });
 
 // ---------- the defaults, by rule (the owner's table, 25 October 2026) ----------
 
 /**
  * The rows of the table, in the order they are tried: "seo content" before "content creator" and "seo specialist",
  * "motion" before "graphic designer" ("Motion Graphics Designer" is motion's), "flutter" before "developer". Each is the words of a merged position name, English, in lower case.
+ * Each row's section title (owner's brief, 26 October 2026): a designer's "Your portfolio", motion's and video's "Your
+ * showreel", a reel or content creator's "Your content", SEO content's "Your writing samples", a developer's and a
+ * tester's "Your GitHub and projects", a media buyer's (traffic, marketing manager, SEO specialist) "Your case studies",
+ * a page moderator's "Your pages" (the brief's "Pages you managed" is its hint already); everything else's
+ * DEFAULT_PORTFOLIO_TITLE.
  */
 const DEFAULT_RULES: readonly { words: RegExp; ask: PortfolioAsk }[] = [
-  { words: /\bseo content\b/, ask: ask('required', ['medium', 'google_drive', 'website'], 'Links to published articles or samples') },
-  { words: /\bmotion\b/, ask: ask('required', ['vimeo', 'youtube', 'behance'], 'A showreel on Vimeo or YouTube') },
-  { words: /\bgraphics? designer\b/, ask: ask('required', ['behance', 'dribbble', 'pdf', 'website'], 'Behance or Dribbble, or a PDF portfolio') },
-  { words: /\bui ?\/? ?ux\b|\bux ?\/? ?ui\b/, ask: ask('required', ['behance', 'dribbble', 'figma', 'website'], 'Behance or Dribbble, plus one case study') },
-  { words: /\bvideo editor\b/, ask: ask('required', ['vimeo', 'youtube', 'google_drive', 'frame_io'], 'A 1–2 minute showreel') },
-  { words: /\bvideographer\b/, ask: ask('required', ['vimeo', 'youtube', 'instagram'], 'A showreel') },
-  { words: /\breels? creator\b/, ask: ask('required', ['instagram', 'tiktok', 'youtube'], 'Your Reels, TikTok or Shorts account') },
-  { words: /\bcontent creator\b/, ask: ask('required', ['instagram', 'tiktok', 'youtube', 'google_drive'], 'Your account or writing samples') },
-  { words: /\bflutter\b/, ask: ask('optional', ['github', 'app_store', 'google_play'], 'GitHub or your apps in the stores') },
-  { words: /\bdevelopers?\b|\bfull ?stack\b|\bword ?press\b/, ask: ask('optional', ['github', 'website'], 'GitHub and sites you built') },
-  { words: /\btesting\b|\btesters?\b/, ask: ask('optional', ['github'], null) },
+  { words: /\bseo content\b/, ask: ask('required', ['medium', 'google_drive', 'website'], 'Links to published articles or samples', 'Your writing samples') },
+  { words: /\bmotion\b/, ask: ask('required', ['vimeo', 'youtube', 'behance'], 'A showreel on Vimeo or YouTube', 'Your showreel') },
+  { words: /\bgraphics? designer\b/, ask: ask('required', ['behance', 'dribbble', 'pdf', 'website'], 'Behance or Dribbble, or a PDF portfolio', 'Your portfolio') },
+  { words: /\bui ?\/? ?ux\b|\bux ?\/? ?ui\b/, ask: ask('required', ['behance', 'dribbble', 'figma', 'website'], 'Behance or Dribbble, plus one case study', 'Your portfolio') },
+  { words: /\bvideo editor\b/, ask: ask('required', ['vimeo', 'youtube', 'google_drive', 'frame_io'], 'A 1–2 minute showreel', 'Your showreel') },
+  { words: /\bvideographer\b/, ask: ask('required', ['vimeo', 'youtube', 'instagram'], 'A showreel', 'Your showreel') },
+  { words: /\breels? creator\b/, ask: ask('required', ['instagram', 'tiktok', 'youtube'], 'Your Reels, TikTok or Shorts account', 'Your content') },
+  { words: /\bcontent creator\b/, ask: ask('required', ['instagram', 'tiktok', 'youtube', 'google_drive'], 'Your account or writing samples', 'Your content') },
+  { words: /\bflutter\b/, ask: ask('optional', ['github', 'app_store', 'google_play'], 'GitHub or your apps in the stores', 'Your GitHub and projects') },
+  { words: /\bdevelopers?\b|\bfull ?stack\b|\bword ?press\b/, ask: ask('optional', ['github', 'website'], 'GitHub and sites you built', 'Your GitHub and projects') },
+  { words: /\btesting\b|\btesters?\b/, ask: ask('optional', ['github'], null, 'Your GitHub and projects') },
   {
     words: /\bmedia buy(?:er|ers|ing)\b|\btraffic\b|\bmarketing manager\b|\bseo specialist\b/,
-    ask: ask('optional', ['pdf', 'google_drive', 'website'], 'Case studies with results (ROAS, CPA, rankings)'),
+    ask: ask('optional', ['pdf', 'google_drive', 'website'], 'Case studies with results (ROAS, CPA, rankings)', 'Your case studies'),
   },
-  { words: /\bpages? moderator\b/, ask: ask('optional', ['instagram', 'website'], 'Pages you managed') },
+  { words: /\bpages? moderator\b/, ask: ask('optional', ['instagram', 'website'], 'Pages you managed', 'Your pages') },
 ];
 
 /** A position's name as the rules read it: its levels merged, lower case, "ui/ux" and "UI-UX" alike, single spaces. */
@@ -158,7 +175,8 @@ function ruleWords(title: string): string {
 /**
  * The portfolio a job title asks for when HR set none (owner's table, 25 October 2026), by the words of its merged
  * position name in English: a graphic designer's, a UI/UX designer's, motion's, a video editor's … Required; a
- * developer's, a tester's, a media buyer's … Optional; everything else Hidden.
+ * developer's, a tester's, a media buyer's … Optional; everything else Hidden. Its section title by the same row (26
+ * October 2026), DEFAULT_PORTFOLIO_TITLE for everything else; also the title of a job title HR set without one.
  */
 export function portfolioDefaultFor(title: string | null | undefined): PortfolioAsk {
   const words = ruleWords(title ?? '');
@@ -172,17 +190,19 @@ export const orderedKinds = (kinds: readonly PortfolioKind[]): PortfolioKind[] =
 
 /**
  * One ask from several (a position on "Send us your CV" that merges several job titles): the strictest mode; the kinds
- * of every one that asks, together; the most links; the hint of the first of the strictest that has one. None asking:
- * hidden.
+ * of every one that asks, together; the most links; the hint of the first of the strictest that has one, and the
+ * section title of that one (else of the first of the strictest). None asking: hidden, with the first one's title.
  */
 export function strictestAsk(asks: readonly PortfolioAsk[]): PortfolioAsk {
   const asking = asks.filter((a) => a.mode !== 'hidden');
-  if (!asking.length) return { ...HIDDEN_PORTFOLIO, kinds: [] };
+  if (!asking.length) return { ...HIDDEN_PORTFOLIO, title: asks[0]?.title ?? DEFAULT_PORTFOLIO_TITLE, kinds: [] };
   const mode = asking.reduce<PortfolioMode>((m, a) => (STRICTNESS[a.mode] > STRICTNESS[m] ? a.mode : m), 'optional');
   const strictest = asking.filter((a) => a.mode === mode);
+  const lead = strictest.find((a) => a.hint) ?? strictest[0];
   return {
     mode,
-    hint: strictest.find((a) => a.hint)?.hint ?? null,
+    title: lead.title,
+    hint: lead.hint ?? null,
     kinds: orderedKinds(asking.flatMap((a) => a.kinds)),
     maxLinks: Math.max(...asking.map((a) => a.maxLinks)),
   };
@@ -190,16 +210,17 @@ export function strictestAsk(asks: readonly PortfolioAsk[]): PortfolioAsk {
 
 /**
  * A vacancy's own say (owner's brief: "Portfolio: as the job title / Hidden / Optional / Required"): `mode` null keeps
- * the job title's; otherwise its mode with the job title's kinds and hint, or every kind when the job title takes none.
+ * the job title's; otherwise its mode with the job title's kinds, hint and section title (26 October 2026: the title
+ * goes as the hint does), or every kind when the job title takes none.
  */
 export function withVacancyMode(title: PortfolioAsk, mode: PortfolioMode | null | undefined): PortfolioAsk {
   if (!mode || mode === title.mode) return title;
-  if (mode === 'hidden') return { ...HIDDEN_PORTFOLIO, kinds: [] };
-  return { mode, hint: title.hint, kinds: title.kinds.length ? [...title.kinds] : [...PORTFOLIO_KINDS], maxLinks: title.maxLinks || PORTFOLIO_LIMITS.links };
+  if (mode === 'hidden') return { ...HIDDEN_PORTFOLIO, title: title.title, kinds: [] };
+  return { mode, title: title.title, hint: title.hint, kinds: title.kinds.length ? [...title.kinds] : [...PORTFOLIO_KINDS], maxLinks: title.maxLinks || PORTFOLIO_LIMITS.links };
 }
 
 /** "Other (write it)" on "Send us your CV": a portfolio taken but never asked for, any kind, as the form had before. */
-export const OTHER_POSITION_PORTFOLIO: PortfolioAsk = { mode: 'optional', hint: null, kinds: [...PORTFOLIO_KINDS], maxLinks: PORTFOLIO_LIMITS.links };
+export const OTHER_POSITION_PORTFOLIO: PortfolioAsk = { mode: 'optional', title: DEFAULT_PORTFOLIO_TITLE, hint: null, kinds: [...PORTFOLIO_KINDS], maxLinks: PORTFOLIO_LIMITS.links };
 
 // ---------- the links ----------
 
@@ -392,10 +413,15 @@ export interface PortfolioSettingInput {
   /** The position's key (cv-positions.ts). */
   key: string;
   mode: PortfolioMode;
+  /** The section title (26 October 2026); blank or none: the rule's (portfolioDefaultFor). */
+  title?: string | null;
   hint?: string | null;
   kinds: PortfolioKind[];
   maxLinks: number;
 }
+
+/** A section title as typed: trimmed, its spaces single; '' for none. */
+const tidyTitle = (title: unknown): string => (typeof title === 'string' ? title.trim().replace(/\s+/g, ' ') : '');
 
 /** What is wrong with a position's setting, in words (`name`: the position's, to say which). */
 export function portfolioSettingProblems(s: Partial<PortfolioSettingInput>, name: string): string[] {
@@ -403,6 +429,7 @@ export function portfolioSettingProblems(s: Partial<PortfolioSettingInput>, name
   if (!isPortfolioMode(s.mode)) problems.push(`Choose Hidden, Optional or Required for ${name}.`);
   const hint = typeof s.hint === 'string' ? s.hint.trim() : '';
   if (hint.length > PORTFOLIO_LIMITS.hint) problems.push(`Keep the hint for ${name} to ${PORTFOLIO_LIMITS.hint} characters or fewer.`);
+  if (tidyTitle(s.title).length > PORTFOLIO_LIMITS.title) problems.push(`Keep the section title for ${name} to ${PORTFOLIO_LIMITS.title} characters or fewer.`);
   const kinds = Array.isArray(s.kinds) ? s.kinds : [];
   if (kinds.some((k) => !isPortfolioKind(k))) problems.push(`Choose the kinds of portfolio for ${name} from the list.`);
   if (s.mode !== 'hidden' && isPortfolioMode(s.mode) && !kinds.some(isPortfolioKind)) problems.push(`Choose at least one kind of portfolio for ${name}.`);
@@ -412,15 +439,25 @@ export function portfolioSettingProblems(s: Partial<PortfolioSettingInput>, name
   return problems;
 }
 
-/** A setting as kept: its kinds in order and each once, the hint trimmed (none when empty), hidden with no kinds. */
-export function tidyAsk(s: Pick<PortfolioSettingInput, 'mode' | 'hint' | 'kinds' | 'maxLinks'>): PortfolioAsk {
+/**
+ * A setting as kept: its kinds in order and each once, the hint trimmed (none when empty), the section title trimmed
+ * (blank: `defaultTitle`, the rule's for the job title), hidden with no kinds.
+ */
+export function tidyAsk(s: Pick<PortfolioSettingInput, 'mode' | 'title' | 'hint' | 'kinds' | 'maxLinks'>, defaultTitle: string = DEFAULT_PORTFOLIO_TITLE): PortfolioAsk {
   const hint = typeof s.hint === 'string' && s.hint.trim() ? s.hint.trim().replace(/\s+/g, ' ') : null;
-  return { mode: s.mode, hint, kinds: orderedKinds(s.kinds.filter(isPortfolioKind)), maxLinks: s.maxLinks };
+  return { mode: s.mode, title: tidyTitle(s.title) || defaultTitle, hint, kinds: orderedKinds(s.kinds.filter(isPortfolioKind)), maxLinks: s.maxLinks };
 }
+
+/** The section title as kept for a job title: none when it is the rule's (`defaultTitle`), so the rule's stays its own. */
+export const keptPortfolioTitle = (ask: Pick<PortfolioAsk, 'title'>, defaultTitle: string): string | null => (ask.title === defaultTitle ? null : ask.title);
 
 /** Whether two asks are the same (a setting the same as the default is kept as none). */
 export const sameAsk = (a: PortfolioAsk, b: PortfolioAsk): boolean =>
-  a.mode === b.mode && (a.hint ?? null) === (b.hint ?? null) && a.maxLinks === b.maxLinks && orderedKinds(a.kinds).join() === orderedKinds(b.kinds).join();
+  a.mode === b.mode &&
+  a.title === b.title &&
+  (a.hint ?? null) === (b.hint ?? null) &&
+  a.maxLinks === b.maxLinks &&
+  orderedKinds(a.kinds).join() === orderedKinds(b.kinds).join();
 
 /** A position with its portfolio: what the forms ask (the strictest of its job titles'), and the rule's default. */
 export interface PortfolioPositionView {
@@ -433,7 +470,7 @@ export interface PortfolioPositionView {
   titles: string[];
   /** What the forms ask for it. */
   ask: PortfolioAsk;
-  /** The rule's, for a job title without a setting. */
+  /** The rule's, for a job title without a setting (its title: what a blank section title means). */
   defaultAsk: PortfolioAsk;
   /** HR set it (one of its job titles at least); false: the rule's default. */
   set: boolean;

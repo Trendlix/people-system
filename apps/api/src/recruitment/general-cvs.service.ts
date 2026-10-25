@@ -59,6 +59,7 @@ import { NOTES_GONE } from './screening-notes.js';
 import { ScreeningCommentsService } from './screening-comments.service.js';
 import { WhatsAppService } from '../whatsapp/whatsapp.service.js';
 import { LinkedInSignInService } from './linkedin-signin.service.js';
+import { portfolioTitlesOf } from './portfolio-asks.js';
 import { PortfolioSettingsService } from './portfolio-settings.service.js';
 import { portfolioFileProblem, portfolioFileRow, portfolioSent } from './portfolio-file.js';
 
@@ -393,6 +394,8 @@ export class GeneralCvsService {
       // every portfolio link, the PDF case study and "Confirmed by LinkedIn" (25 October 2026)
       portfolioLinks: r.portfolioLinks.length ? r.portfolioLinks : r.portfolio ? [r.portfolio] : [],
       portfolioFile: r.portfolioFile ?? null,
+      // the section title its position's portfolio goes under, as set now (26 October 2026)
+      portfolioTitle: (await portfolioTitlesOf(this.prisma, { generalCvs: [r] })).get(r.id),
       emailConfirmedBy: r.emailConfirmedBy === 'linkedin' ? 'linkedin' : null,
       noticePeriod: r.noticePeriod,
       expectedSalary: money(r.expectedSalary),

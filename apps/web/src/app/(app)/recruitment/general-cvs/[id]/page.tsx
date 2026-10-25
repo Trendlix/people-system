@@ -18,7 +18,7 @@ import { commentsOfRecord, kb, ownCv } from '../../screening';
 import { ScreeningCommentsCard } from '../../screening-ui';
 import { VerdictBadge } from '../../ui';
 import { generalPortfolioHref, portfolioLinksOf } from '../../portfolio';
-import { LinkedInMark, PortfolioChips, PortfolioFileLinks } from '../../portfolio-chips';
+import { LinkedInMark, PortfolioSent } from '../../portfolio-chips';
 import { shownCode } from '@/lib/hidden';
 
 // A general CV (owner, 22 October 2026: "i want a proper viweing, what came out of the posted jobs and what cam on
@@ -158,12 +158,12 @@ async function GeneralCv({ params }: { params: PageProps<'/recruitment/general-c
               'None'
             )}
           </Fact>
-          {/* every link with its platform, and the PDF case study (owner, 25 October 2026: "Portfolio per position") */}
+          {/* every link with its platform, and the PDF case study (owner, 25 October 2026: "Portfolio per position"), under
+              the section title its position's form shows (26 October 2026: "Your case studies: link, link, PDF") */}
           <div className="min-w-0 sm:col-span-3">
             <dt className="text-xs font-medium tracking-wide text-muted uppercase">Portfolio</dt>
-            <dd className="mt-1 space-y-2 text-sm break-words">
-              <PortfolioChips links={portfolioLinksOf(c)} empty={c.portfolioFile ? null : '—'} />
-              {c.portfolioFile && <PortfolioFileLinks file={c.portfolioFile} href={generalPortfolioHref(c.id)} downloadHref={generalPortfolioHref(c.id, true)} />}
+            <dd className="mt-1 text-sm break-words">
+              <PortfolioSent title={c.portfolioTitle} links={portfolioLinksOf(c)} file={c.portfolioFile} href={generalPortfolioHref(c.id)} downloadHref={generalPortfolioHref(c.id, true)} />
             </dd>
           </div>
         </dl>

@@ -41,7 +41,7 @@ import { commentsOfRecord, kb, ownCv } from '../../screening';
 import { ScreeningCommentsCard } from '../../screening-ui';
 import { CvUpdatedBadge, EarlierCvList, StageBadge, VerdictBadge } from '../../ui';
 import { applicantPortfolioHref, portfolioLinksOf } from '../../portfolio';
-import { LinkedInMark, PortfolioChips, PortfolioFileLinks } from '../../portfolio-chips';
+import { LinkedInMark, PortfolioSent } from '../../portfolio-chips';
 import { shownCode } from '@/lib/hidden';
 import type { MeetingChoices } from '@trendlix/shared';
 import { fixInterviewMeeting } from '../../meeting-actions';
@@ -432,12 +432,12 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
               </dd>
             </div>
           )}
-          {/* every link with its platform, and the PDF case study (owner, 25 October 2026: "Portfolio per position") */}
+          {/* every link with its platform, and the PDF case study (owner, 25 October 2026: "Portfolio per position"), under
+              the section title its form shows (26 October 2026: "Your case studies: link, link, PDF") */}
           <div className="min-w-0 sm:col-span-3">
             <dt className="text-xs font-medium tracking-wide text-muted uppercase">Portfolio</dt>
-            <dd className="mt-1 space-y-2 text-sm break-words">
-              <PortfolioChips links={portfolioLinksOf(a)} empty={a.portfolioFile ? null : '—'} />
-              {a.portfolioFile && <PortfolioFileLinks file={a.portfolioFile} href={applicantPortfolioHref(a.id)} downloadHref={applicantPortfolioHref(a.id, true)} />}
+            <dd className="mt-1 text-sm break-words">
+              <PortfolioSent title={a.portfolioTitle} links={portfolioLinksOf(a)} file={a.portfolioFile} href={applicantPortfolioHref(a.id)} downloadHref={applicantPortfolioHref(a.id, true)} />
             </dd>
           </div>
         </dl>

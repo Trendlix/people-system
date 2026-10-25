@@ -18,14 +18,18 @@ import {
 // "Portfolio per position"; packages/shared portfolio.ts): Recruitment Settings' "Portfolio on the Forms" read into what
 // the API takes, the positions grouped by team, an ask in words, a vacancy's "Portfolio" choice, and the links an
 // applicant or a general CV sent as chips with their platform (never fetched: the platforms block automatic checks, and
-// nothing fetches an address people type). Pure code, tested in portfolio.test.ts; the API checks everything again.
+// nothing fetches an address people type). Since 26 October 2026 (owner, on the careers site's form: "i cant visualize
+// that this is a portfolio section"; asked, "a section title per position"), each position's section title too: HR's
+// beside the hint (blank: the rule's), and the links shown under it. Pure code, tested in portfolio.test.ts; the API
+// checks everything again.
 
 // ---------- Recruitment Settings: "Portfolio on the Forms" ----------
 
-/** The form fields of a position's row: its key, its mode, its hint, its kinds (one box each) and its links allowed. */
+/** The form fields of a position's row: its key, its mode, its section title, its hint, its kinds (one box each) and its links allowed. */
 export const portfolioField = {
   key: 'portfolioKey',
   mode: (key: string) => `mode-${key}`,
+  title: (key: string) => `title-${key}`,
   hint: (key: string) => `hint-${key}`,
   kinds: (key: string) => `kinds-${key}`,
   links: (key: string) => `links-${key}`,
@@ -41,8 +45,9 @@ const text = (fd: FormData, name: string): string => {
 
 /**
  * HR's settings as the API takes them (PUT /recruitment/settings/portfolio): every row on the form (its key in
- * `portfolioKey`), with its mode, hint (empty: none), the kinds ticked (in their own order) and the links allowed. A mode
- * or a number that isn't one is passed on as typed, for the API to refuse in words.
+ * `portfolioKey`), with its mode, section title (empty: none, the rule's), hint (empty: none), the kinds ticked (in their
+ * own order) and the links allowed. A mode or a number that isn't one is passed on as typed, for the API to refuse in
+ * words.
  */
 export function portfolioSettingsOf(fd: FormData): PortfolioSettingInput[] {
   const keys = [...new Set(fd.getAll(portfolioField.key).filter((k): k is string => typeof k === 'string' && k.length > 0))];
@@ -53,6 +58,7 @@ export function portfolioSettingsOf(fd: FormData): PortfolioSettingInput[] {
     return {
       key,
       mode: (isPortfolioMode(mode) ? mode : mode || 'hidden') as PortfolioMode,
+      title: text(fd, portfolioField.title(key)).replace(/\s+/g, ' ') || null,
       hint: text(fd, portfolioField.hint(key)).replace(/\s+/g, ' ') || null,
       kinds: PORTFOLIO_KINDS.filter((k) => ticked.includes(k)),
       maxLinks: Number.isFinite(links) ? links : NaN,
@@ -90,9 +96,20 @@ export function askText(ask: PortfolioAsk): string {
   return `${PORTFOLIO_MODE_LABELS[ask.mode]}${kinds ? `: ${kinds}` : ''}, ${links}`;
 }
 
+/** "“Your showreel” · Required: Vimeo, YouTube or Behance, up to 3 links", with its section title; "Hidden" (no section). */
+export function askWithTitleText(ask: PortfolioAsk): string {
+  return ask.mode === 'hidden' || !ask.title ? askText(ask) : `“${ask.title}” · ${askText(ask)}`;
+}
+
+/** The section title as the row shows it: blank when it is the rule's (the field's placeholder says it), else HR's. */
+export const titleFieldValue = (p: Pick<PortfolioPositionView, 'ask' | 'defaultAsk'>): string => (!p.ask.title || p.ask.title === p.defaultAsk.title ? '' : p.ask.title);
+
 /** A row's values as the form shows them: what was sent before a refused save, else the position's ask. */
-export function rowValues(p: PortfolioPositionView, sent?: Record<string, string | string[]>): { mode: PortfolioMode; hint: string; kinds: PortfolioKind[]; maxLinks: number } {
-  if (!sent) return { mode: p.ask.mode, hint: p.ask.hint ?? '', kinds: [...p.ask.kinds], maxLinks: p.ask.maxLinks };
+export function rowValues(
+  p: PortfolioPositionView,
+  sent?: Record<string, string | string[]>,
+): { mode: PortfolioMode; title: string; hint: string; kinds: PortfolioKind[]; maxLinks: number } {
+  if (!sent) return { mode: p.ask.mode, title: titleFieldValue(p), hint: p.ask.hint ?? '', kinds: [...p.ask.kinds], maxLinks: p.ask.maxLinks };
   const one = (name: string) => {
     const v = sent[name];
     return (Array.isArray(v) ? v[0] : v) ?? '';
@@ -105,6 +122,7 @@ export function rowValues(p: PortfolioPositionView, sent?: Record<string, string
   const links = Number(one(portfolioField.links(p.key)));
   return {
     mode: isPortfolioMode(mode) ? mode : p.ask.mode,
+    title: one(portfolioField.title(p.key)),
     hint: one(portfolioField.hint(p.key)),
     kinds: PORTFOLIO_KINDS.filter((k) => many(portfolioField.kinds(p.key)).includes(k)),
     maxLinks: LINK_CHOICES.includes(links) ? links : p.ask.maxLinks,
@@ -131,6 +149,15 @@ export function vacancyPortfolioText(mode: PortfolioMode | null | undefined, tit
 }
 
 // ---------- the links and the file, on HR's pages ----------
+
+/**
+ * The section title before what was sent ("Your case studies:"; 26 October 2026), for HR's pages: none without a title
+ * (an API from before it) or with nothing sent.
+ */
+export function sentUnderText(title: string | null | undefined, sent: boolean): string | null {
+  const t = title?.trim();
+  return t && sent ? `${t}:` : null;
+}
 
 /** Every portfolio link of an application or a general CV: its list (25 October 2026), else the one link of before. */
 export function portfolioLinksOf(r: { portfolioLinks?: readonly string[] | null; portfolio?: string | null }): string[] {

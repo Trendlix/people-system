@@ -391,6 +391,8 @@ export interface GeneralCvView extends GeneralCvListItem {
   /** Every portfolio link, the PDF case study and "Confirmed by LinkedIn", as an application's (25 October 2026). */
   portfolioLinks?: string[];
   portfolioFile?: { fileName: string; sizeBytes: number } | null;
+  /** The section title its position's portfolio goes under, as set now ("Your case studies"; 26 October 2026; portfolio.ts). */
+  portfolioTitle?: string;
   emailConfirmedBy?: EmailConfirmedBy | null;
   portfolio: string | null;
   noticePeriod: string | null;
@@ -420,6 +422,7 @@ export interface PublicGeneralForm {
   /**
    * The portfolio each position asks for, by its key (25 October 2026: "Portfolio per position"; portfolio.ts: the
    * strictest of its job titles'), and Other's; a position left out asks for none. Left out by an API from before it.
+   * Each with its section title, the portfolio part's heading (`title`, since 26 October 2026).
    */
   portfolios?: Record<string, PortfolioAsk>;
   otherPortfolio?: PortfolioAsk;

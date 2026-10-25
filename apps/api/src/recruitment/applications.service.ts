@@ -44,6 +44,7 @@ import { CvFitsService } from './cv-fits.service.js';
 import { CvPreviewsService } from './cv-previews.service.js';
 import { CvReadingsService } from './cv-readings.service.js';
 import { InterviewsService } from './interviews.service.js';
+import { portfolioTitlesOf } from './portfolio-asks.js';
 import { isConfidentialVacancy, vacancyWhere } from './recruitment-access.js';
 import { recruitmentCaller, viewerOf, visibleApplications, type RecruitmentCaller } from './recruitment-scope.js';
 import { APPLICATION_ENTITY, APPLICATION_LIST_SELECT, answersOf, applicationListView, byExperience, EARLIER_CV_SELECT, earlierCvView, minYearsWhere, money, questionsOf, skillWhere, userRef } from './recruitment-views.js';
@@ -89,7 +90,9 @@ const DETAIL_INCLUDE = {
       status: true,
       questions: true,
       grade: { select: { confidential: true } },
-      jobTitle: { select: { minGrade: { select: { confidential: true } } } },
+      // its job title's portfolio and the vacancy's own say, for the portfolio's section title (26 October 2026)
+      jobTitle: { select: { id: true, titleEn: true, minGrade: { select: { confidential: true } } } },
+      portfolioMode: true,
       jobTitleId: true,
       departmentId: true,
       gradeId: true,
@@ -279,6 +282,8 @@ export class ApplicationsService {
       // every portfolio link, the PDF case study and "Confirmed by LinkedIn" (25 October 2026)
       portfolioLinks: a.portfolioLinks.length ? a.portfolioLinks : a.portfolio ? [a.portfolio] : [],
       portfolioFile: a.portfolioFile ?? null,
+      // the section title its form shows them under, as its vacancy's portfolio is set now (26 October 2026)
+      portfolioTitle: (await portfolioTitlesOf(this.prisma, { applications: [a] })).get(a.id),
       emailConfirmedBy: a.emailConfirmedBy === 'linkedin' ? 'linkedin' : null,
       noticePeriod: a.noticePeriod,
       // never for a hiring manager or an interviewer (the brief: "They never see the salary range or the candidate's expected salary")

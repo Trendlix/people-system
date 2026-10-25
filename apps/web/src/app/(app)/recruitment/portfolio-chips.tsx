@@ -1,11 +1,13 @@
 import { EMAIL_CONFIRMED_LABEL, type EmailConfirmedBy } from '@trendlix/shared';
-import { portfolioChip } from './portfolio';
+import { portfolioChip, sentUnderText } from './portfolio';
 
 // An applicant's or a general CV's portfolio on HR's pages (owner, 25 October 2026: "for creatives, they need to add
 // their portfolios"; asked, "Portfolio per position"): each link a chip with its platform ("Vimeo · vimeo.com/123…"),
 // opened in a new tab and never fetched by the system; the PDF case study, opened or saved like the CV; and the small
 // "Confirmed by LinkedIn" mark by an email LinkedIn confirmed ("Fill in with LinkedIn"). Used on the application, the
 // general CV, the candidate's profile and the CV window. No hooks: a server page or a client window shows them alike.
+// Since 26 October 2026 (owner: "a section title per position"), on the application, the general CV and the CV window
+// under the section title the form showed them under: "Your case studies: link, link, PDF".
 
 /** The links as chips, wrapping on a phone; `empty` without any. */
 export function PortfolioChips({ links, empty = '—' }: { links: readonly string[]; empty?: React.ReactNode }) {
@@ -45,6 +47,39 @@ export function PortfolioChips({ links, empty = '—' }: { links: readonly strin
         );
       })}
     </ul>
+  );
+}
+
+/** The section title before the links ("Your case studies:"), when there is one and something was sent. */
+export function PortfolioTitle({ title, sent = true, className = 'font-medium' }: { title?: string | null; sent?: boolean; className?: string }) {
+  const shown = sentUnderText(title, sent);
+  return shown ? <span className={className}>{shown}</span> : null;
+}
+
+/**
+ * What was sent as a portfolio, on one line that wraps: its section title, the links as chips and the PDF case study
+ * ("Your case studies: [Behance · …] [Website · …] Open the PDF case study"); "—" without anything.
+ */
+export function PortfolioSent({
+  title,
+  links,
+  file,
+  href,
+  downloadHref,
+}: {
+  title?: string | null;
+  links: readonly string[];
+  file?: { fileName: string; sizeBytes: number } | null;
+  href: string;
+  downloadHref: string;
+}) {
+  if (!links.length && !file) return <>—</>;
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+      <PortfolioTitle title={title} />
+      {links.length > 0 && <PortfolioChips links={links} />}
+      {file && <PortfolioFileLinks file={file} href={href} downloadHref={downloadHref} />}
+    </div>
   );
 }
 

@@ -537,6 +537,11 @@ export interface CandidateCv {
   sentAt: string;
   /** The portfolio links sent with it (25 October 2026: "Portfolio per position"), for the CV window; hidden from a developer. */
   portfolioLinks?: string[];
+  /**
+   * The section title they went under, as set now (26 October 2026: "Your showreel"; portfolio.ts): an application's
+   * vacancy's, a general CV's position's. Left out without links, or by an API from before it.
+   */
+  portfolioTitle?: string;
 }
 
 /** A job offer made to them. */

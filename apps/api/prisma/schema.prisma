@@ -2664,6 +2664,8 @@ model PortfolioSetting {
   jobTitleId  String   @id @map("job_title_id") @db.Uuid
   jobTitle    JobTitle @relation(fields: [jobTitleId], references: [id], onDelete: Cascade)
   mode        String // PORTFOLIO_MODES
+  // the section title, the portfolio part's heading ("Your showreel", at most 40; 26 October 2026); none: the rule's
+  title       String?
   hint        String?
   kinds       String[] @default([])
   maxLinks    Int      @default(3) @map("max_links")

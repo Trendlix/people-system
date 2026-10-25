@@ -39,6 +39,7 @@ import { userNames } from '../payroll/adjustments/people.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { activeAccountsOf } from '../users/employee-accounts.js';
 import { CvFitsService } from './cv-fits.service.js';
+import { portfolioTitlesOf } from './portfolio-asks.js';
 import { isConfidentialVacancy, READS, vacancyWhere } from './recruitment-access.js';
 import { recruitmentCaller, visibleApplications, type RecruitmentCaller } from './recruitment-scope.js';
 import { EARLIER_CV_SELECT, earlierCvView } from './recruitment-views.js';
@@ -87,7 +88,16 @@ const APP_SELECT = {
   stage: true,
   rejectedFrom: true,
   filteredOut: true,
-  vacancy: { select: { title: true, hiringManagerId: true, grade: { select: { confidential: true } }, jobTitle: { select: { minGrade: { select: { confidential: true } } } } } },
+  vacancy: {
+    select: {
+      title: true,
+      hiringManagerId: true,
+      grade: { select: { confidential: true } },
+      // its job title's portfolio and the vacancy's own say, for the links' section title (26 October 2026)
+      jobTitle: { select: { id: true, titleEn: true, minGrade: { select: { confidential: true } } } },
+      portfolioMode: true,
+    },
+  },
   interviews: { select: { interviewers: { select: { employeeId: true } } } },
   cv: { select: { fileName: true, mimeType: true, sizeBytes: true } },
   // the portfolio links, for the CV window (25 October 2026: "Portfolio per position")
@@ -110,6 +120,8 @@ const GCV_SELECT = {
   applicationId: true,
   file: { select: { fileName: true, mimeType: true, sizeBytes: true } },
   portfolioLinks: true,
+  // the position chosen, for the links' section title (26 October 2026)
+  positionKey: true,
 } satisfies Prisma.GeneralCvSelect;
 type GcvRow = Prisma.GeneralCvGetPayload<{ select: typeof GCV_SELECT }>;
 
@@ -286,10 +298,18 @@ export class ScreeningCommentsService {
     const c = await this.caller(user);
     if (g.candidateId) return this.ofCandidate(g.candidateId, c);
     // not joined to a candidate yet (the backfill does it within minutes): its CV, nothing to write on yet
-    return { candidateId: null, comments: [], targets: [], people: [], cvs: g.file ? [this.gcvCv(g, null)] : [], verdict: null, can: { add: false } };
+    return { candidateId: null, comments: [], targets: [], people: [], cvs: g.file ? [this.gcvCv(g, null, await this.portfolioTitles([], [g]))] : [], verdict: null, can: { add: false } };
   }
 
-  private appCv(a: AppRow, linkedKey: string | null): ScreeningCv {
+  /**
+   * The section title each CV's portfolio links went under, as set now (owner, 26 October 2026: "a section title per
+   * position"), by its record's id: only those sent with links (the CV window shows no portfolio without them).
+   */
+  private portfolioTitles(apps: readonly AppRow[], gcvs: readonly GcvRow[]): Promise<Map<string, string>> {
+    return portfolioTitlesOf(this.prisma, { applications: apps.filter((a) => a.portfolioLinks.length), generalCvs: gcvs.filter((g) => g.portfolioLinks.length) });
+  }
+
+  private appCv(a: AppRow, linkedKey: string | null, titles: ReadonlyMap<string, string>): ScreeningCv {
     return {
       kind: 'application',
       id: a.id,
@@ -301,13 +321,14 @@ export class ScreeningCommentsService {
       // the current CV's: a new one sent by applying again, else the application's own (25 October 2026)
       sentAt: (a.cvUpdatedAt ?? a.createdAt).toISOString(),
       portfolioLinks: a.portfolioLinks,
+      portfolioTitle: titles.get(a.id),
       key: applicationKey(a.id),
       linkedKey,
       ...(a.earlierCvs.length && { earlierCvs: a.earlierCvs.map(earlierCvView) }),
     };
   }
 
-  private gcvCv(g: GcvRow, linkedKey: string | null): ScreeningCv {
+  private gcvCv(g: GcvRow, linkedKey: string | null, titles: ReadonlyMap<string, string>): ScreeningCv {
     return {
       kind: 'general_cv',
       id: g.id,
@@ -318,6 +339,7 @@ export class ScreeningCommentsService {
       sizeBytes: g.file!.sizeBytes,
       sentAt: g.createdAt.toISOString(),
       portfolioLinks: g.portfolioLinks,
+      portfolioTitle: titles.get(g.id),
       key: generalCvKey(g.id),
       linkedKey,
     };
@@ -348,9 +370,10 @@ export class ScreeningCommentsService {
     add(GENERAL, null, generalReaders(readers, hrSees));
     for (const a of apps) add(appAbout(a), linkOfApp.has(a.id) ? generalCvKey(linkOfApp.get(a.id)!) : null, applicationReaders(a, readers, accounts));
     for (const g of gcvs) add(gcvAbout(g), g.applicationId && appIds.has(g.applicationId) ? applicationKey(g.applicationId) : null, generalReaders(readers, true));
+    const titles = await this.portfolioTitles(apps, gcvs);
     const cvs: ScreeningCv[] = [
-      ...apps.filter((a) => a.cv && (!linkOfApp.has(a.id) || a.cvUpdatedAt)).map((a) => this.appCv(a, linkOfApp.has(a.id) ? generalCvKey(linkOfApp.get(a.id)!) : null)),
-      ...gcvs.filter((g) => g.file).map((g) => this.gcvCv(g, g.applicationId && appIds.has(g.applicationId) ? applicationKey(g.applicationId) : null)),
+      ...apps.filter((a) => a.cv && (!linkOfApp.has(a.id) || a.cvUpdatedAt)).map((a) => this.appCv(a, linkOfApp.has(a.id) ? generalCvKey(linkOfApp.get(a.id)!) : null, titles)),
+      ...gcvs.filter((g) => g.file).map((g) => this.gcvCv(g, g.applicationId && appIds.has(g.applicationId) ? applicationKey(g.applicationId) : null, titles)),
     ].sort((x, y) => y.sentAt.localeCompare(x.sentAt));
     return {
       candidateId,
@@ -378,7 +401,7 @@ export class ScreeningCommentsService {
       comments: await this.views(rows, c),
       targets: [{ key: aboutKey(about), about, label: aboutLabel(about), linkedKey: null, count: rows.length, verdict: latestVerdict(rows), mentionable }],
       people: await this.people(mentionable, readers, [a]),
-      cvs: a.cv ? await this.withFits([this.appCv(a, null)], [a], a.candidateId, c) : [],
+      cvs: a.cv ? await this.withFits([this.appCv(a, null, await this.portfolioTitles([a], []))], [a], a.candidateId, c) : [],
       verdict: latestVerdict(rows),
       can: { add: !!a.candidateId },
     };

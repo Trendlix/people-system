@@ -201,8 +201,8 @@ describe('the email, mobile, years and notice period', () => {
 // positions i have, what kind of portfolios i might need to ask them for?"; asked, "Portfolio per position") and "Fill in
 // with LinkedIn" ("can i use linkedin to complete the data?"): the link boxes, the PDF case study and LinkedIn's ticket.
 describe('the portfolio and LinkedIn’s ticket on the forms', () => {
-  const SHOWREEL: PortfolioAsk = { mode: 'required', hint: 'A showreel on Vimeo or YouTube', kinds: ['vimeo', 'youtube', 'behance'], maxLinks: 3 };
-  const DESIGN: PortfolioAsk = { mode: 'optional', hint: 'Behance or Dribbble, or a PDF portfolio', kinds: ['behance', 'dribbble', 'pdf', 'website'], maxLinks: 2 };
+  const SHOWREEL: PortfolioAsk = { mode: 'required', title: 'Your showreel', hint: 'A showreel on Vimeo or YouTube', kinds: ['vimeo', 'youtube', 'behance'], maxLinks: 3 };
+  const DESIGN: PortfolioAsk = { mode: 'optional', title: 'Your portfolio', hint: 'Behance or Dribbble, or a PDF portfolio', kinds: ['behance', 'dribbble', 'pdf', 'website'], maxLinks: 2 };
   const pdf = (bytes: number, name = 'Case study.pdf', type = 'application/pdf') => new File([new Uint8Array(bytes)], name, { type });
   const withFile = (fields: Record<string, string>, file: File) => {
     const fd = form(fields);

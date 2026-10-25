@@ -1,8 +1,8 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import {
   HIDDEN_PORTFOLIO,
-  isPortfolioKind,
   isPortfolioMode,
+  keptPortfolioTitle,
   OTHER_POSITION_PORTFOLIO,
   PORTFOLIO_MODE_LABELS,
   portfolioDefaultFor,
@@ -25,6 +25,7 @@ import type { SessionUser } from '../auth/session-user.js';
 import { userNames } from '../payroll/adjustments/people.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { positionsOf } from './cv-positions.js';
+import { askOfRow, asksOfTitles } from './portfolio-asks.js';
 import { userRef } from './recruitment-views.js';
 import { SETTINGS_ENTITY } from './recruitment-settings.service.js';
 
@@ -36,19 +37,18 @@ import { SETTINGS_ENTITY } from './recruitment-settings.service.js';
 // CV Form" does: HR (or a Super Admin) sets a position, which sets each of its job titles; one set like its default
 // keeps no row. Each save audited (the positions changed, their mode before and after). A job's form asks its vacancy's
 // job title's (the vacancy's own mode, when set, over it); "Send us your CV" a position's, the strictest of its titles'.
+// Since 26 October 2026 (owner, on the careers site's form: "this part needs to be more clearer .. i cant visualize that
+// this is a portfolio section"; asked, "a section title per position"), each with its section title, the portfolio
+// part's heading: HR's beside the hint (blank: the rule's, kept as none), going with the hint wherever it goes; HR's
+// pages show it by the links sent (portfolio-asks.ts portfolioTitlesOf).
 
 type Db = Pick<PrismaService, 'portfolioSetting'>;
-
-/** A job title's kept setting as an ask; null for none (or one that can't be read: its default then). */
-function askOfRow(r: { mode: string; hint: string | null; kinds: string[]; maxLinks: number } | null | undefined): PortfolioAsk | null {
-  if (!r || !isPortfolioMode(r.mode)) return null;
-  return tidyAsk({ mode: r.mode, hint: r.hint, kinds: r.kinds.filter(isPortfolioKind), maxLinks: r.maxLinks });
-}
 
 /** What a job title asks: its setting, else the rule's default for its name. */
 export async function titleAsk(prisma: Db, jobTitle: { id: string; titleEn: string }): Promise<PortfolioAsk> {
   const row = await prisma.portfolioSetting.findUnique({ where: { jobTitleId: jobTitle.id } });
-  return askOfRow(row) ?? portfolioDefaultFor(jobTitle.titleEn);
+  const byRule = portfolioDefaultFor(jobTitle.titleEn);
+  return askOfRow(row, byRule.title) ?? byRule;
 }
 
 /** What a vacancy's form asks: its job title's, its own mode over it when set. */
@@ -56,8 +56,9 @@ export async function vacancyAsk(prisma: Db, v: { portfolioMode: string | null; 
   return withVacancyMode(await titleAsk(prisma, v.jobTitle), isPortfolioMode(v.portfolioMode) ? v.portfolioMode : null);
 }
 
-/** "Required: Vimeo, YouTube", for the audit log. */
-const askText = (a: PortfolioAsk) => (a.mode === 'hidden' ? 'Hidden' : `${PORTFOLIO_MODE_LABELS[a.mode]}: ${a.kinds.join(', ')}; ${a.maxLinks} ${a.maxLinks === 1 ? 'link' : 'links'}${a.hint ? `; “${a.hint}”` : ''}`);
+/** "Required: vimeo, youtube; 3 links; “A showreel”; title “Your showreel”", for the audit log. */
+const askText = (a: PortfolioAsk) =>
+  `${a.mode === 'hidden' ? 'Hidden' : `${PORTFOLIO_MODE_LABELS[a.mode]}: ${a.kinds.join(', ')}; ${a.maxLinks} ${a.maxLinks === 1 ? 'link' : 'links'}${a.hint ? `; “${a.hint}”` : ''}`}; title “${a.title}”`;
 
 @Injectable()
 export class PortfolioSettingsService {
@@ -67,13 +68,8 @@ export class PortfolioSettingsService {
   ) {}
 
   /** Every job title's ask, by id, for the positions given (their settings, else the defaults by name). */
-  private async asksOf(positions: readonly CvPosition[]): Promise<Map<string, PortfolioAsk>> {
-    const ids = positions.flatMap((p) => p.titleIds);
-    const rows = ids.length ? await this.prisma.portfolioSetting.findMany({ where: { jobTitleId: { in: ids } } }) : [];
-    const byId = new Map(rows.map((r) => [r.jobTitleId, r]));
-    const out = new Map<string, PortfolioAsk>();
-    for (const p of positions) p.titleIds.forEach((id, i) => out.set(id, askOfRow(byId.get(id)) ?? portfolioDefaultFor(p.titles[i] ?? p.name)));
-    return out;
+  private asksOf(positions: readonly CvPosition[]): Promise<Map<string, PortfolioAsk>> {
+    return asksOfTitles(this.prisma, positions);
   }
 
   /** A position's view: what its titles ask together (the strictest), the rule's default, whether set and alike. */
@@ -117,6 +113,8 @@ export class PortfolioSettingsService {
       return {
         key: typeof row.key === 'string' ? row.key : '',
         mode: row.mode as PortfolioMode,
+        // the section title (26 October 2026): none or blank, the rule's
+        title: typeof row.title === 'string' ? row.title : null,
         hint: typeof row.hint === 'string' ? row.hint : null,
         kinds: Array.isArray(row.kinds) ? (row.kinds as PortfolioKind[]) : [],
         maxLinks: typeof row.maxLinks === 'number' ? row.maxLinks : NaN,
@@ -127,30 +125,29 @@ export class PortfolioSettingsService {
     if (sent.some((s) => !byKey.has(s.key ?? ''))) throw new BadRequestException(['The positions changed since the page opened: reload it and try again.']);
     const problems = [...new Set(sent.flatMap((s) => portfolioSettingProblems(s, byKey.get(s.key!)!.shownName)))];
     if (problems.length) throw new BadRequestException(problems);
-    const chosen = sent.filter((s) => byKey.has(s.key!)).map((s) => ({ position: byKey.get(s.key!)!, ask: tidyAsk(s as PortfolioSettingInput) }));
+    const chosen = sent.filter((s) => byKey.has(s.key!)).map((s) => ({ position: byKey.get(s.key!)!, setting: s as PortfolioSettingInput }));
     const asks = await this.asksOf(chosen.map((c) => c.position));
     const now = new Date();
     const writes: Prisma.PrismaPromise<unknown>[] = [];
     const changed: string[] = [];
-    for (const { position, ask } of chosen) {
+    for (const { position, setting } of chosen) {
       let any = false;
       position.titleIds.forEach((id, i) => {
+        // a blank section title is each job title's rule's (26 October 2026), kept as none
+        const byRule = portfolioDefaultFor(position.titles[i] ?? position.name);
+        const ask = tidyAsk(setting, byRule.title);
         if (sameAsk(asks.get(id) ?? HIDDEN_PORTFOLIO, ask)) return;
         any = true;
-        const asDefault = sameAsk(ask, portfolioDefaultFor(position.titles[i] ?? position.name));
+        const kept = { mode: ask.mode, title: keptPortfolioTitle(ask, byRule.title), hint: ask.hint, kinds: ask.kinds, maxLinks: ask.maxLinks, updatedById: user.id, updatedAt: now };
         writes.push(
-          asDefault
+          sameAsk(ask, byRule)
             ? this.prisma.portfolioSetting.deleteMany({ where: { jobTitleId: id } })
-            : this.prisma.portfolioSetting.upsert({
-                where: { jobTitleId: id },
-                create: { jobTitleId: id, mode: ask.mode, hint: ask.hint, kinds: ask.kinds, maxLinks: ask.maxLinks, updatedById: user.id, updatedAt: now },
-                update: { mode: ask.mode, hint: ask.hint, kinds: ask.kinds, maxLinks: ask.maxLinks, updatedById: user.id, updatedAt: now },
-              }),
+            : this.prisma.portfolioSetting.upsert({ where: { jobTitleId: id }, create: { jobTitleId: id, ...kept }, update: kept }),
         );
       });
       if (any) {
         const before = strictestAsk(position.titleIds.map((id) => asks.get(id) ?? HIDDEN_PORTFOLIO));
-        changed.push(`${position.shownName} (${position.teamHrName}): ${askText(before)} → ${askText(ask)}`);
+        changed.push(`${position.shownName} (${position.teamHrName}): ${askText(before)} → ${askText(tidyAsk(setting, portfolioDefaultFor(position.name).title))}`);
       }
     }
     if (!writes.length) return this.view();

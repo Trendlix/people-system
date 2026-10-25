@@ -3,6 +3,7 @@ import { HIDDEN_PORTFOLIO, portfolioDefaultFor, type PortfolioPositionView } fro
 import {
   applicantPortfolioHref,
   askText,
+  askWithTitleText,
   generalPortfolioHref,
   jobTitleAskText,
   portfolioByTeam,
@@ -11,6 +12,8 @@ import {
   portfolioLinksOf,
   portfolioSettingsOf,
   rowValues,
+  sentUnderText,
+  titleFieldValue,
   typedPortfolioValues,
   vacancyPortfolioModeOf,
   vacancyPortfolioText,
@@ -18,8 +21,8 @@ import {
 import { vacancyForm } from './recruitment';
 
 // A portfolio per position on HR's side (owner, 25 October 2026: "Portfolio per position"): Recruitment Settings' rows
-// read for the API, the positions by team, an ask in words, a vacancy's own choice, and the links as chips. Every
-// position, team and link here is made up.
+// read for the API, the positions by team, an ask in words, a vacancy's own choice, and the links as chips; each
+// position's section title (26 October 2026: "a section title per position"). Every position, team and link here is made up.
 
 const KEY = 'team-1:video editor';
 
@@ -33,6 +36,7 @@ describe('Portfolio on the Forms: the rows read for the API', () => {
     const fd = new FormData();
     fd.append(portfolioField.key, KEY);
     fd.set(portfolioField.mode(KEY), 'required');
+    fd.set(portfolioField.title(KEY), '  Your   edits ');
     fd.set(portfolioField.hint(KEY), '  A   showreel  ');
     fd.append(portfolioField.kinds(KEY), 'youtube');
     fd.append(portfolioField.kinds(KEY), 'vimeo');
@@ -42,8 +46,9 @@ describe('Portfolio on the Forms: the rows read for the API', () => {
     fd.set(portfolioField.mode('team-2:copywriter'), 'hidden');
     fd.set(portfolioField.links('team-2:copywriter'), '3');
     expect(portfolioSettingsOf(fd)).toEqual([
-      { key: KEY, mode: 'required', hint: 'A showreel', kinds: ['vimeo', 'youtube'], maxLinks: 2 },
-      { key: 'team-2:copywriter', mode: 'hidden', hint: null, kinds: [], maxLinks: 3 },
+      { key: KEY, mode: 'required', title: 'Your edits', hint: 'A showreel', kinds: ['vimeo', 'youtube'], maxLinks: 2 },
+      // no section title typed: none, the rule's
+      { key: 'team-2:copywriter', mode: 'hidden', title: null, hint: null, kinds: [], maxLinks: 3 },
     ]);
   });
 
@@ -63,6 +68,7 @@ describe('Portfolio on the Forms: the rows read for the API', () => {
     const fd = new FormData();
     fd.append(portfolioField.key, KEY);
     fd.set(portfolioField.mode(KEY), 'optional');
+    fd.set(portfolioField.title(KEY), 'Your reels');
     fd.set(portfolioField.hint(KEY), 'Reels');
     fd.append(portfolioField.kinds(KEY), 'instagram');
     fd.append(portfolioField.kinds(KEY), 'tiktok');
@@ -70,9 +76,17 @@ describe('Portfolio on the Forms: the rows read for the API', () => {
     const typed = typedPortfolioValues(fd);
     expect(typed[portfolioField.kinds(KEY)]).toEqual(['instagram', 'tiktok']);
     expect(typed).not.toHaveProperty(portfolioField.key);
-    expect(rowValues(position(), typed)).toEqual({ mode: 'optional', hint: 'Reels', kinds: ['instagram', 'tiktok'], maxLinks: 1 });
-    // nothing sent: the position's own ask
-    expect(rowValues(position())).toEqual({ mode: 'required', hint: 'A 1–2 minute showreel', kinds: ['vimeo', 'youtube', 'google_drive', 'frame_io'], maxLinks: 3 });
+    expect(rowValues(position(), typed)).toEqual({ mode: 'optional', title: 'Your reels', hint: 'Reels', kinds: ['instagram', 'tiktok'], maxLinks: 1 });
+    // nothing sent: the position's own ask, its section title blank as the rule's
+    expect(rowValues(position())).toEqual({ mode: 'required', title: '', hint: 'A 1–2 minute showreel', kinds: ['vimeo', 'youtube', 'google_drive', 'frame_io'], maxLinks: 3 });
+  });
+
+  it('shows a section title HR set, and leaves the rule’s blank for its placeholder', () => {
+    const byRule = portfolioDefaultFor('Video Editor');
+    expect(byRule.title).toBe('Your showreel');
+    expect(titleFieldValue(position())).toBe('');
+    expect(titleFieldValue(position({ ask: { ...byRule, title: 'Your edits' } }))).toBe('Your edits');
+    expect(rowValues(position({ ask: { ...byRule, title: 'Your edits' }, set: true })).title).toBe('Your edits');
   });
 
   it('groups the positions by team, in their order', () => {
@@ -87,6 +101,11 @@ describe('Portfolio on the Forms: the rows read for the API', () => {
     expect(askText(portfolioDefaultFor('Motion Designer'))).toBe('Required: Behance, Vimeo or YouTube, up to 3 links');
     expect(askText({ ...portfolioDefaultFor('Flutter Developer'), maxLinks: 1 })).toBe('Optional: GitHub, App Store or Google Play, 1 link');
     expect(askText(HIDDEN_PORTFOLIO)).toBe('Hidden');
+  });
+
+  it('says an ask with its section title, none when hidden', () => {
+    expect(askWithTitleText(portfolioDefaultFor('Media Buyer'))).toBe('“Your case studies” · Optional: Google Drive, your own website or a PDF case study, up to 3 links');
+    expect(askWithTitleText(portfolioDefaultFor('Accountant'))).toBe('Hidden');
   });
 });
 
@@ -124,6 +143,14 @@ describe('the links and the file on HR’s pages', () => {
     expect(portfolioChip('https://studio-of-someone.example').platform).toBe('Website');
     expect(portfolioChip('javascript:alert(1)').href).toBeNull();
     expect(portfolioChip(`https://drive.google.com/${'x'.repeat(80)}`).shown).toHaveLength(48);
+  });
+
+  it('puts the section title before what was sent, none with nothing sent or no title', () => {
+    expect(sentUnderText('Your case studies', true)).toBe('Your case studies:');
+    expect(sentUnderText('  Your showreel ', true)).toBe('Your showreel:');
+    expect(sentUnderText('Your case studies', false)).toBeNull();
+    expect(sentUnderText(undefined, true)).toBeNull();
+    expect(sentUnderText('', true)).toBeNull();
   });
 
   it('opens the PDF case study through the site', () => {

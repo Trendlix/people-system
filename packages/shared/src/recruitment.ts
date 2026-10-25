@@ -958,6 +958,11 @@ export interface ApplicationView extends ApplicationListItem {
    */
   portfolioLinks?: string[];
   portfolioFile?: { fileName: string; sizeBytes: number } | null;
+  /**
+   * The section title its form shows the portfolio under ("Your showreel"; owner, 26 October 2026: "a section title per
+   * position"): its vacancy's portfolio's as set now (portfolio.ts). Left out by an API from before it.
+   */
+  portfolioTitle?: string;
   emailConfirmedBy?: EmailConfirmedBy | null;
   noticePeriod: string | null;
   expectedSalary: number | null;
@@ -1043,7 +1048,10 @@ export interface PublicVacancyView extends PublicVacancySummary {
   responsibilities: string | null;
   requirements: string | null;
   questions: PublicQuestion[];
-  /** The portfolio its form asks for (25 October 2026; portfolio.ts); left out by an API from before it: hidden. */
+  /**
+   * The portfolio its form asks for (25 October 2026; portfolio.ts), with its section title, the portfolio part's heading
+   * (`title`, since 26 October 2026); left out by an API from before it: hidden.
+   */
   portfolio?: PortfolioAsk;
   /** "Fill in with LinkedIn" is on (25 October 2026; linkedin-signin.ts). */
   linkedinSignIn?: boolean;

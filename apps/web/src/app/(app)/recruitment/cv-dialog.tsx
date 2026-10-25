@@ -9,7 +9,7 @@ import { formatDate } from '@/lib/format';
 import { CommentForm, CommentList } from './screening-ui';
 import { CvFitSection, OpenPositions } from './cv-fit-ui';
 import { recordOfCv } from './cv-fit';
-import { PortfolioChips } from './portfolio-chips';
+import { PortfolioChips, PortfolioTitle } from './portfolio-chips';
 import { EarlierCvList } from './ui';
 import { commentsOfCv, cvBelongsTo, cvFileHref, cvIndexOf, cvPositionText, cvPreviewHref, CV_PARAM, defaultTargetKey, kb, readCvParam, stepCv, withCvParam } from './screening';
 
@@ -213,10 +213,12 @@ function CvWindow({ cvs, index, data, pageKey, commentsNotLoaded }: { cvs: reado
         </button>
       </div>
 
-      {/* the portfolio links sent with this CV, each with its platform (owner, 25 October 2026: "Portfolio per position") */}
+      {/* the portfolio links sent with this CV, each with its platform (owner, 25 October 2026: "Portfolio per position"),
+          under the section title its form shows (26 October 2026: "Your showreel:") */}
       {!!cv.portfolioLinks?.length && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-line px-4 py-2">
           <span className="text-xs font-medium tracking-wide text-muted uppercase">Portfolio</span>
+          <PortfolioTitle title={cv.portfolioTitle} className="text-sm font-medium" />
           <PortfolioChips links={cv.portfolioLinks} />
         </div>
       )}

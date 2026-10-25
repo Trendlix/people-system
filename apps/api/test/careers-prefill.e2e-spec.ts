@@ -26,6 +26,7 @@ import {
   type PublicGeneralForm,
   type PublicVacancyView,
   type Role,
+  type ScreeningComments,
   type VacancyView,
 } from '@trendlix/shared';
 import request from 'supertest';
@@ -45,7 +46,10 @@ import { createApp, createUser, signIn } from './helpers.js';
 // link, taken with a Vimeo link; an accountant's job asks for none (what is sent is left aside), until its vacancy says
 // Required (a PDF case study enough). Recruitment Settings' "Portfolio on the Forms" (HR changes, audited) and a
 // position merging two job titles asking the strictest; "LinkedIn Sign-in" (a Super Admin's: the secret sealed, never
-// sent back, audited only as changed). LinkedIn's sign-in against a fake LinkedIn: a bad state refused without calling
+// sent back, audited only as changed). Each position's section title, the portfolio part's heading (owner, 26 October
+// 2026: "a section title per position"): the rule's on the job page and the general form, HR's once set (audited), kept
+// by a vacancy's own mode, shown on the application, the general CV and the CV window, blank back to the rule's.
+// LinkedIn's sign-in against a fake LinkedIn: a bad state refused without calling
 // it, a cancelled one said so, a good one giving the name and the verified email, which marks the application
 // "Confirmed by LinkedIn" (only for that email and that form). A developer sees none of it. Every name is invented; the
 // test deletes what it made.
@@ -244,7 +248,7 @@ describe('Careers forms: filled from the CV, LinkedIn sign-in, portfolio per pos
 
   it('a video editor’s job asks for a showreel: refused without one or malformed, taken with a Vimeo link', async () => {
     const page = (await api().get(`/api/public/careers/${editorJob.slug}`).set('x-careers-key', process.env.CAREERS_KEY!).expect(200)).body as PublicVacancyView;
-    expect(page.portfolio).toEqual({ mode: 'required', hint: 'A 1–2 minute showreel', kinds: ['vimeo', 'youtube', 'google_drive', 'frame_io'], maxLinks: 3 });
+    expect(page.portfolio).toEqual({ mode: 'required', title: 'Your showreel', hint: 'A 1–2 minute showreel', kinds: ['vimeo', 'youtube', 'google_drive', 'frame_io'], maxLinks: 3 });
     expect(page.linkedinSignIn).toBe(false);
 
     expect(said(await apply(editorJob, 'nolink').expect(400))).toContain('Add your portfolio: a 1–2 minute showreel.');
@@ -266,7 +270,7 @@ describe('Careers forms: filled from the CV, LinkedIn sign-in, portfolio per pos
 
   it('an accountant’s job asks for none: what is sent is left aside', async () => {
     const page = (await api().get(`/api/public/careers/${accountantJob.slug}`).set('x-careers-key', process.env.CAREERS_KEY!).expect(200)).body as PublicVacancyView;
-    expect(page.portfolio?.mode).toBe('hidden');
+    expect(page.portfolio).toMatchObject({ mode: 'hidden', title: 'Your work samples' });
     await apply(accountantJob, 'hidden', { portfolioLinks: JSON.stringify(['not a link at all']), portfolio: 'nor this' }, { portfolioFile: await pdfOf(['A case study']) }).expect(201);
     expect(await applicationOf('hidden')).toMatchObject({ portfolioLinks: [], portfolio: null, portfolioFile: null });
   });
@@ -277,7 +281,8 @@ describe('Careers forms: filled from the CV, LinkedIn sign-in, portfolio per pos
     const audit = await prisma.auditLog.findFirstOrThrow({ where: { entityId: accountantJob.id, action: 'update' }, orderBy: { at: 'desc' } });
     expect(audit.diff).toMatchObject({ portfolioMode: { from: null, to: 'required' } });
     const page = (await api().get(`/api/public/careers/${accountantJob.slug}`).set('x-careers-key', process.env.CAREERS_KEY!).expect(200)).body as PublicVacancyView;
-    expect(page.portfolio).toMatchObject({ mode: 'required', kinds: [...PORTFOLIO_KINDS] });
+    // the job title's section title, as its hint (26 October 2026)
+    expect(page.portfolio).toMatchObject({ mode: 'required', title: 'Your work samples', hint: null, kinds: [...PORTFOLIO_KINDS] });
 
     expect(said(await apply(accountantJob, 'override-none').expect(400)).some((m) => m.startsWith('Add your portfolio:'))).toBe(true);
     expect(said(await apply(accountantJob, 'override-word', {}, { portfolioFile: Buffer.from('PK not a pdf') }).expect(400))).toContain('Your portfolio file must be a PDF.');
@@ -311,9 +316,17 @@ describe('Careers forms: filled from the CV, LinkedIn sign-in, portfolio per pos
     const saved = (await as('hr').put('/recruitment/settings/portfolio', { positions: [setting] }).expect(200)).body as PortfolioSettingsView;
     expect(saved.positions.find((x) => x.key === accountantKey)).toMatchObject({ set: true, ask: { mode: 'optional', hint: 'Your GitHub', kinds: ['github'], maxLinks: 1 } });
     const audit = await prisma.auditLog.findFirstOrThrow({ where: { entityType: 'recruitment_settings', userId: users.hr }, orderBy: { at: 'desc' } });
-    expect((audit.diff as { portfolioOnForms: string[] }).portfolioOnForms).toEqual([`Accountant ${RUN} (Post ${RUN} · Studio ${RUN}): Hidden → Optional: github; 1 link; “Your GitHub”`]);
+    expect((audit.diff as { portfolioOnForms: string[] }).portfolioOnForms).toEqual([
+      `Accountant ${RUN} (Post ${RUN} · Studio ${RUN}): Hidden; title “Your work samples” → Optional: github; 1 link; “Your GitHub”; title “Your work samples”`,
+    ]);
     // the job's form asks for it now, one link at most
-    expect(((await api().get(`/api/public/careers/${accountantJob.slug}`).set('x-careers-key', process.env.CAREERS_KEY!).expect(200)).body as PublicVacancyView).portfolio).toEqual({ mode: 'optional', hint: 'Your GitHub', kinds: ['github'], maxLinks: 1 });
+    expect(((await api().get(`/api/public/careers/${accountantJob.slug}`).set('x-careers-key', process.env.CAREERS_KEY!).expect(200)).body as PublicVacancyView).portfolio).toEqual({
+      mode: 'optional',
+      title: 'Your work samples',
+      hint: 'Your GitHub',
+      kinds: ['github'],
+      maxLinks: 1,
+    });
     expect(said(await apply(accountantJob, 'two-links', { portfolioLinks: JSON.stringify(['github.com/a-dev', 'github.com/b-dev']) }).expect(400))).toEqual(['Add one portfolio link.']);
 
     // back to its default: no row
@@ -328,10 +341,10 @@ describe('Careers forms: filled from the CV, LinkedIn sign-in, portfolio per pos
     const settings = (await as('hr').get('/recruitment/settings/portfolio').expect(200)).body as PortfolioSettingsView;
     expect(settings.positions.find((x) => x.key === motionKey)).toMatchObject({ mixed: true, set: true, ask: { mode: 'required', kinds: ['behance', 'vimeo', 'youtube', 'github'] } });
     const form = (await api().get('/api/public/general-cvs/form').set('x-careers-key', process.env.CAREERS_KEY!).expect(200)).body as PublicGeneralForm;
-    expect(form.portfolios?.[motionKey]).toEqual({ mode: 'required', hint: 'A showreel on Vimeo or YouTube', kinds: ['behance', 'vimeo', 'youtube', 'github'], maxLinks: 3 });
+    expect(form.portfolios?.[motionKey]).toEqual({ mode: 'required', title: 'Your showreel', hint: 'A showreel on Vimeo or YouTube', kinds: ['behance', 'vimeo', 'youtube', 'github'], maxLinks: 3 });
     // the accountant's (hidden) is left out; Other's takes any
     expect(form.portfolios?.[positionKeyOf(teamId, positionNameOf(`Accountant ${RUN}`))]).toBeUndefined();
-    expect(form.otherPortfolio).toMatchObject({ mode: 'optional', kinds: [...PORTFOLIO_KINDS] });
+    expect(form.otherPortfolio).toMatchObject({ mode: 'optional', title: 'Your work samples', kinds: [...PORTFOLIO_KINDS] });
     expect(form.linkedinSignIn).toBe(false);
 
     expect(said(await sendGeneral('gen-none', { positionKey: motionKey }).expect(400))).toContain('Add your portfolio: a showreel on Vimeo or YouTube.');
@@ -344,6 +357,66 @@ describe('Careers forms: filled from the CV, LinkedIn sign-in, portfolio per pos
     const moved = (await as('hr').post(`/recruitment/general-cvs/${g.id}/move`, { vacancyId: editorJob.id }).expect(200)).body as GeneralCvView;
     const app2 = await prisma.jobApplication.findUniqueOrThrow({ where: { id: moved.movedTo!.applicationId } });
     expect(app2.portfolioLinks).toEqual(['https://www.youtube.com/@a-reel']);
+  });
+
+  // ---------- each position's section title (owner, 26 October 2026: "a section title per position") ----------
+
+  it('HR titles a position’s section (audited): the job page, the general form, HR’s pages and the CV window follow; blank is the rule’s', async () => {
+    const editorKey = positionKeyOf(teamId, positionNameOf(`Video Editor ${RUN}`));
+    const motionKey = positionKeyOf(teamId, positionNameOf(`Junior Motion Designer ${RUN}`));
+    const jobPage = async () => ((await api().get(`/api/public/careers/${editorJob.slug}`).set('x-careers-key', process.env.CAREERS_KEY!).expect(200)).body as PublicVacancyView).portfolio;
+    const vimeo = await applicationOf('vimeo');
+    const windowCv = async (path: string, id: string) => ((await as('hr').get(path).expect(200)).body as ScreeningComments).cvs.find((x) => x.id === id);
+
+    // the rule's first: on the settings, the job page, the application and its CV window
+    const before = (await as('hr').get('/recruitment/settings/portfolio').expect(200)).body as PortfolioSettingsView;
+    const editor = before.positions.find((x) => x.key === editorKey)!;
+    expect(editor).toMatchObject({ set: false, ask: { title: 'Your showreel' }, defaultAsk: { title: 'Your showreel' } });
+    expect((await jobPage())?.title).toBe('Your showreel');
+    expect(((await as('hr').get(`/recruitment/applications/${vimeo.id}`).expect(200)).body as ApplicationView).portfolioTitle).toBe('Your showreel');
+
+    // HR's own: too long refused; trimmed, kept, audited
+    const setting = { key: editorKey, mode: editor.ask.mode, title: '  Your   edit reel ', hint: editor.ask.hint, kinds: editor.ask.kinds, maxLinks: editor.ask.maxLinks };
+    expect(said(await as('hr').put('/recruitment/settings/portfolio', { positions: [{ ...setting, title: 'x'.repeat(41) }] }).expect(400))).toEqual([
+      `Keep the section title for Video Editor ${RUN} to 40 characters or fewer.`,
+    ]);
+    const saved = (await as('hr').put('/recruitment/settings/portfolio', { positions: [setting] }).expect(200)).body as PortfolioSettingsView;
+    expect(saved.positions.find((x) => x.key === editorKey)).toMatchObject({ set: true, ask: { mode: 'required', title: 'Your edit reel' }, defaultAsk: { title: 'Your showreel' } });
+    expect(await prisma.portfolioSetting.findUniqueOrThrow({ where: { jobTitleId: editorTitleId } })).toMatchObject({ mode: 'required', title: 'Your edit reel', hint: 'A 1–2 minute showreel' });
+    const audit = await prisma.auditLog.findFirstOrThrow({ where: { entityType: 'recruitment_settings', userId: users.hr }, orderBy: { at: 'desc' } });
+    const asked = 'Required: vimeo, youtube, google_drive, frame_io; 3 links; “A 1–2 minute showreel”';
+    expect((audit.diff as { portfolioOnForms: string[] }).portfolioOnForms).toEqual([
+      `Video Editor ${RUN} (Post ${RUN} · Studio ${RUN}): ${asked}; title “Your showreel” → ${asked}; title “Your edit reel”`,
+    ]);
+
+    // the public job data follows, every other field as it was
+    expect(await jobPage()).toEqual({ mode: 'required', title: 'Your edit reel', hint: 'A 1–2 minute showreel', kinds: ['vimeo', 'youtube', 'google_drive', 'frame_io'], maxLinks: 3 });
+    // the vacancy's own mode keeps it, as it keeps the hint
+    await as('hr').patch(`/recruitment/vacancies/${editorJob.id}`, { portfolioMode: 'optional' }).expect(200);
+    expect(await jobPage()).toMatchObject({ mode: 'optional', title: 'Your edit reel', hint: 'A 1–2 minute showreel' });
+    await as('hr').patch(`/recruitment/vacancies/${editorJob.id}`, { portfolioMode: null }).expect(200);
+
+    // HR's pages: the application and its CV window show the links under it
+    expect(((await as('hr').get(`/recruitment/applications/${vimeo.id}`).expect(200)).body as ApplicationView).portfolioTitle).toBe('Your edit reel');
+    expect(await windowCv(`/recruitment/applications/${vimeo.id}/comments`, vimeo.id)).toMatchObject({ portfolioLinks: ['https://vimeo.com/123456789'], portfolioTitle: 'Your edit reel' });
+
+    // the general form's positions carry theirs (the motion one's, Other's); a general CV's page and window its position's
+    const form = (await api().get('/api/public/general-cvs/form').set('x-careers-key', process.env.CAREERS_KEY!).expect(200)).body as PublicGeneralForm;
+    expect(form.portfolios?.[motionKey]?.title).toBe('Your showreel');
+    expect(form.otherPortfolio?.title).toBe('Your work samples');
+    await sendGeneral('gen-titled', { positionKey: motionKey, portfolioLinks: JSON.stringify(['https://vimeo.com/987654321']) }).expect(201);
+    const g = await prisma.generalCv.findFirstOrThrow({ where: { email: email('gen-titled') } });
+    expect(((await as('hr').get(`/recruitment/general-cvs/${g.id}`).expect(200)).body as GeneralCvView).portfolioTitle).toBe('Your showreel');
+    expect(await windowCv(`/recruitment/general-cvs/${g.id}/comments`, g.id)).toMatchObject({ portfolioLinks: ['https://vimeo.com/987654321'], portfolioTitle: 'Your showreel' });
+    // Other (written): Other's
+    await sendGeneral('gen-other', { positionKey: 'other', positionOther: `Puppeteer ${RUN}`, portfolioLinks: JSON.stringify(['https://vimeo.com/192837465']) }).expect(201);
+    const other = await prisma.generalCv.findFirstOrThrow({ where: { email: email('gen-other') } });
+    expect(((await as('hr').get(`/recruitment/general-cvs/${other.id}`).expect(200)).body as GeneralCvView).portfolioTitle).toBe('Your work samples');
+
+    // blank: the rule's again, no row kept (the rest as its default)
+    await as('hr').put('/recruitment/settings/portfolio', { positions: [{ ...setting, title: '   ' }] }).expect(200);
+    expect(await prisma.portfolioSetting.count({ where: { jobTitleId: editorTitleId } })).toBe(0);
+    expect((await jobPage())?.title).toBe('Your showreel');
   });
 
   // ---------- Recruitment Settings: "LinkedIn Sign-in" ----------
