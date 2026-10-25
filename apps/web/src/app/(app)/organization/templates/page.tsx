@@ -6,7 +6,7 @@ import { SetupFrame } from '../setup-menu';
 import { Empty, Loading } from '../ui';
 import { loadLibrary } from './data';
 import { SlotDetails, StatusLines } from './parts';
-import { byFolder, COPY_NOTE, FIELDS_GUIDE_PAGE, folderLabel, OVERRIDES_NOTE, managesTemplates, NOT_AVAILABLE, progress, seesTemplates, sourceName, statusLines, templateHref, uploadLabel, WHO_SEES } from './wording';
+import { byFolder, COPY_NOTE, FIELDS_GUIDE_DOCX_HREF, FIELDS_GUIDE_PAGE, FIELDS_GUIDE_PDF_HREF, folderLabel, OVERRIDES_NOTE, managesTemplates, NOT_AVAILABLE, progress, seesTemplates, sourceName, statusLines, templateHref, uploadLabel, WHO_SEES } from './wording';
 import { titleCase } from '@/lib/format';
 
 // The template library (spec §8, owner's request of 15 October 2026): one slot per document, by folder, each with where
@@ -87,6 +87,19 @@ export default function TemplatesPage() {
         Upload each Word file exactly as you use it today, with merge tags like <code className="font-mono text-xs">{'{{full_name_ar}}'}</code> where the data
         goes. The system only fills in the tags. The tags you can use are in the <Link href={FIELDS_GUIDE_PAGE}>Fields Guide</Link>.
       </p>
+      {/* the Fields Guide as buttons too (owner, 25 October 2026: "i still cant find the Fields Guide": the link in the
+          text above was easy to miss) */}
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Link href={FIELDS_GUIDE_PAGE} className="btn btn-primary">
+          Fields Guide
+        </Link>
+        <a href={FIELDS_GUIDE_DOCX_HREF} className="btn btn-secondary">
+          Download as Word
+        </a>
+        <a href={FIELDS_GUIDE_PDF_HREF} target="_blank" rel="noopener" className="btn btn-secondary">
+          Open as PDF
+        </a>
+      </div>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>
           <Library />
