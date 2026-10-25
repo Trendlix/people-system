@@ -136,6 +136,8 @@ const OFFER_FIELDS: Record<string, string> = {
   allowances_ar: 'allowances',
   allowances_en: 'allowances',
   allowances_total: 'allowances',
+  allowances_total_words: 'allowances',
+  allowances_total_words_en: 'allowances',
   offer_number: 'number',
   offer_expiry: 'expiresOn',
 };

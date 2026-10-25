@@ -13,7 +13,8 @@ import { fillPdfTemplate } from './pdf-engine/index.js';
 // October 2026): the rule is applied here, so every way a form is filled (generated, previewed) follows it.
 // Every document in Arabic (a Word template or a PDF form) prints its tags' numbers in ٠-٩ too, an email's and an
 // English tag's (_en) kept (owner, 22 October 2026: "in contracts, i need the dates and numbers in arabic ٠-٩", then
-// "make sure this in any arabic document").
+// "make sure this in any arabic document"); in a Word template, the digits typed in its text as well (owner, 25 October
+// 2026: "make sure that numbers are ٠-٩"). English and bilingual documents keep 0-9.
 
 /** What filling a version in reads of it, beside its tags. */
 export const FILLED_FROM = { slotKey: true, format: true, data: true, pdfFields: true, language: true } satisfies Prisma.TemplateVersionSelect;
@@ -51,7 +52,45 @@ export async function fillVersion(version: FillableVersion, values: Readonly<Rec
     return fillPdfTemplate(version.data, fields, values, version.language);
   }
   // a picture's transparency set in Word (the watermark's 15%) baked into it, so the PDF converter keeps it (22 October 2026)
-  return bakeImageOpacity(fillTemplate(Buffer.from(version.data), arabicDocument(version.language) ? arabicDigitValues(values) : values));
+  if (!arabicDocument(version.language)) return bakeImageOpacity(fillTemplate(Buffer.from(version.data), values));
+  // an Arabic document: the values in ٠-٩, and the digits typed in the Word file too (owner, 25 October 2026: "make sure
+  // that numbers are ٠-٩", of "قانون العمل رقم (14) لسنة 2025" typed in a contract), but what keeps its 0-9
+  return bakeImageOpacity(fillTemplate(Buffer.from(version.data), markLatinKept(arabicDigitValues(values)), arabicTypedDigits));
+}
+
+/** Private-use marks around a value that keeps its 0-9 in an Arabic document (an email's, an English tag's), so the pass over the typed text leaves it. */
+const KEEP_OPEN = '\uE000';
+const KEEP_CLOSE = '\uE001';
+
+/** The values that keep their 0-9 (keepsLatinDigits) inside the marks; a value with formatting, each of its texts. */
+export function markLatinKept(values: Readonly<Record<string, TagValue>>): Record<string, TagValue> {
+  const mark = (t: string) => (t.trim() ? `${KEEP_OPEN}${t}${KEEP_CLOSE}` : t);
+  const out: Record<string, TagValue> = {};
+  for (const [tag, value] of Object.entries(values)) {
+    if (!keepsLatinDigits(tag)) out[tag] = value;
+    else if (typeof value === 'string') out[tag] = value ? mark(value) : value;
+    else out[tag] = { ...value, html: value.html.split(/(<[^>]*>)/).map((part) => (part.startsWith('<') ? part : mark(part))).join('') };
+  }
+  return out;
+}
+
+/**
+ * An Arabic document's text with its numbers in ٠-٩ (arabicNumberText: a word with a Latin letter, an email or a web
+ * address keeps its own; dates year first), the text between the marks (markLatinKept) as it is, and the marks taken
+ * out. Only what Word prints (<w:t>), never field codes; an entity (&amp;) as it is.
+ */
+export function arabicTypedDigits(xml: string): string {
+  let kept = false;
+  const converted = xml.replace(/(<w:t(?:\s[^>]*)?>)([^<]*)(<\/w:t>)/g, (_m, open: string, text: string, close: string) => {
+    let out = '';
+    for (const part of text.split(/([\uE000\uE001])/)) {
+      if (part === KEEP_OPEN) kept = true;
+      else if (part === KEEP_CLOSE) kept = false;
+      else out += kept ? part : part.replace(/&#?\w+;|[^&]+/g, (t) => (t.startsWith('&') ? t : arabicNumberText(t)));
+    }
+    return open + out + close;
+  });
+  return converted.replace(/[\uE000\uE001]/g, '');
 }
 
 /**

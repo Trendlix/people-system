@@ -635,12 +635,15 @@ describe('amounts in English words', () => {
       documentDate: '2026-10-15',
       inputs: {},
     } as unknown as Parameters<typeof resolveValues>[0];
-    const values = resolveValues(sources, ['gross_salary_words', 'gross_salary_words_en', 'net_salary_words_en', 'insured_salary_words_en', 'total_salary_words_en']);
+    const values = resolveValues(sources, ['gross_salary_words', 'gross_salary_words_en', 'net_salary_words_en', 'insured_salary_words_en', 'total_salary_words_en', 'allowances_total_words', 'allowances_total_words_en']);
     expect(values.gross_salary_words).toMatch(/لا غير$/);
     expect(values.gross_salary_words_en).toBe('Fifteen thousand Egyptian pounds only');
     expect(values.net_salary_words_en).toBe('Thirteen thousand sixty-nine Egyptian pounds and sixty-five piasters only');
     expect(values.insured_salary_words_en).toBe('Fifteen thousand Egyptian pounds only');
     expect(values.total_salary_words_en).toBe('Sixteen thousand Egyptian pounds only');
+    // the allowances in total in words (owner, 25 October 2026)
+    expect(values.allowances_total_words).toBe('ألف جنيه مصري فقط لا غير');
+    expect(values.allowances_total_words_en).toBe('One thousand Egyptian pounds only');
   });
 });
 

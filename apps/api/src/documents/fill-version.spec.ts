@@ -140,4 +140,26 @@ describe('an Arabic document’s numbers in ٠-٩', () => {
     const en = await fillVersion({ slotKey: 'hr_letter_en', format: 'docx', data: docx({ body: p(r('From {{start_date}}')) }), language: 'en' }, { start_date: '15/07/2025' });
     expect(readZip(en).read('word/document.xml')!.toString('utf8')).toContain('From 15/07/2025');
   });
+
+  // the owner, 25 October 2026: "make sure that numbers are ٠-٩", of "قانون العمل رقم (14) لسنة 2025" typed in a contract
+  it('turns the digits typed in an Arabic Word file too; an email, a web address, a Latin word and an English tag keep theirs', async () => {
+    const body =
+      p(r('وفقا لقانون العمل رقم (14) لسنة 2025 &amp; المادة 88')) +
+      p(r('البريد {{personal_email}} والاسم {{full_name_en}} والراتب {{gross_salary}}')) +
+      p(r('الموقع https://trendlix.com/2025 ونموذج ISO9001 وكود CON-2026-0044')) +
+      p(r('توقيع: {{signature_date}}'));
+    const values = { personal_email: 'omar2@mail.test', full_name_en: 'Omar 2nd', gross_salary: '10,500', signature_date: '06/05/2026' };
+    const xml = (language: string) =>
+      fillVersion({ slotKey: 'contract_full_time', format: 'docx', data: docx({ body }), language }, values).then((b) => readZip(b).read('word/document.xml')!.toString('utf8'));
+    const ar = await xml('ar');
+    expect(ar).toContain('وفقا لقانون العمل رقم (١٤) لسنة ٢٠٢٥ &amp; المادة ٨٨');
+    expect(ar).toContain('البريد omar2@mail.test والاسم Omar 2nd والراتب ١٠,٥٠٠');
+    expect(ar).toContain('الموقع https://trendlix.com/2025 ونموذج ISO9001 وكود CON-2026-0044');
+    expect(ar).toContain('توقيع: ٢٠٢٦/٥/٦');
+    // the marks that kept the English values never reach the file
+    expect(ar).not.toMatch(/[]/);
+    // English and bilingual documents as typed
+    expect(await xml('en')).toContain('رقم (14) لسنة 2025');
+    expect(await xml('bilingual')).toContain('رقم (14) لسنة 2025 &amp; المادة 88');
+  });
 });

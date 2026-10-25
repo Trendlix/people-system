@@ -388,6 +388,9 @@ export const TEMPLATE_TAGS: readonly TemplateTag[] = [
   { tag: 'allowances_ar', group: 'pay', labelEn: 'Allowances (Arabic)', labelAr: 'البدلات بالعربي', source: 'Contract or offer: each allowance and its amount a month', restricted: true },
   { tag: 'allowances_en', group: 'pay', labelEn: 'Allowances (English)', labelAr: 'البدلات بالإنجليزية', source: 'Contract or offer: each allowance and its amount a month', restricted: true },
   { tag: 'allowances_total', group: 'pay', labelEn: 'Allowances in total', labelAr: 'إجمالي البدلات', source: 'Contract or offer: a month', restricted: true },
+  // in words too (owner, 25 October 2026: "{{allowances_total}} i need it in arabic words")
+  { tag: 'allowances_total_words', group: 'pay', labelEn: 'Allowances in total in words (Arabic)', labelAr: 'تفقيط إجمالي البدلات', source: 'Contract or offer: in Arabic words, فقط … لا غير', restricted: true },
+  { tag: 'allowances_total_words_en', group: 'pay', labelEn: 'Allowances in total in words (English)', labelAr: 'تفقيط إجمالي البدلات بالإنجليزية', source: 'Contract or offer: in English words', note: 'E.g. One thousand Egyptian pounds only', restricted: true },
   { tag: 'total_salary', group: 'pay', labelEn: 'Gross salary and allowances', labelAr: 'إجمالي الراتب والبدلات', source: 'Contract or offer: a month', restricted: true },
   { tag: 'total_salary_words', group: 'pay', labelEn: 'Gross salary and allowances in words (Arabic)', labelAr: 'تفقيط إجمالي الراتب والبدلات', source: 'Contract or offer: in Arabic words', restricted: true },
   { tag: 'total_salary_words_en', group: 'pay', labelEn: 'Gross salary and allowances in words (English)', labelAr: 'تفقيط إجمالي الراتب والبدلات بالإنجليزية', source: 'Contract or offer: in English words', restricted: true },

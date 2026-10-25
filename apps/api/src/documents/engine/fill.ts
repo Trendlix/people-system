@@ -11,8 +11,10 @@ import { fillTags } from './tags.js';
 // (rich.ts), which prints as paragraphs on a line of its own. The result is zipped again in the same order: the parts
 // changed are deflated afresh, every other entry is copied as stored, byte for byte.
 
-/** The .docx `template` with every {{tag}} replaced by `values[tag]` (XML-escaped, keeping the run's formatting). */
-export function fillTemplate(template: Buffer, values: Readonly<Record<string, TagValue>>): Buffer {
+/** The .docx `template` with every {{tag}} replaced by `values[tag]` (XML-escaped, keeping the run's formatting).
+ * `afterFill`: a last pass over each part's XML once its tags are in (an Arabic document's typed digits, fill-version.ts).
+ */
+export function fillTemplate(template: Buffer, values: Readonly<Record<string, TagValue>>, afterFill?: (xml: string) => string): Buffer {
   const zip = readZip(template);
   if (!zip.has('word/document.xml')) throw new Error('Not a Word document: it has no word/document.xml');
 
@@ -34,7 +36,9 @@ export function fillTemplate(template: Buffer, values: Readonly<Record<string, T
   detachMailMerge(pkg);
   for (const name of textParts(names)) {
     const xml = pkg.read(name);
-    if (xml !== null) pkg.write(name, fillTags(unwrapFields(xml), values));
+    if (xml === null) continue;
+    const filled = fillTags(unwrapFields(xml), values);
+    pkg.write(name, afterFill ? afterFill(filled) : filled);
   }
 
   const files = zip.entries
