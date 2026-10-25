@@ -136,7 +136,7 @@ const numberOf = (v: string | number | undefined | null): number | null => {
 };
 
 /** The address a general CV counts against in the hourly limit: one the website signed for the general form (as an application's). */
-function senderIp(named: string | null, origin: ApplyOrigin, key: string | undefined = process.env.WEB_KEY): string | null {
+function senderIp(named: string | null, origin: ApplyOrigin, key: string | undefined = process.env.CAREERS_KEY): string | null {
   const signed = verifySignedIp(origin.headers ?? {}, GENERAL_CV_IP_TOKEN, key, Date.now());
   if (signed.ip) return signed.ip;
   return signed.problem === 'no_server_key' ? (named ?? origin.ip) : origin.ip;
