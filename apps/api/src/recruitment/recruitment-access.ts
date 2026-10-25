@@ -14,10 +14,16 @@ export const READS: Role[] = ['hr', 'ceo', 'super_admin'];
 export const MANAGES: Role[] = ['hr', 'super_admin'];
 /** Approve a vacancy or send it back. */
 export const APPROVES: Role[] = ['ceo', 'super_admin'];
+/**
+ * Add, invite or dismiss a vacancy's suggested CVs (owner, 25 October 2026: the CEO "Yes, the CEO too"): HR, the CEO
+ * and a Super Admin.
+ */
+export const DECIDES_SUGGESTIONS: Role[] = ['hr', 'ceo', 'super_admin'];
 
 const has = (user: Pick<SessionUser, 'roles'>, roles: readonly Role[]) => user.roles.some((r) => roles.includes(r));
 
 export const managesRecruitment = (user: Pick<SessionUser, 'roles'>): boolean => has(user, MANAGES);
+export const decidesSuggestions = (user: Pick<SessionUser, 'roles'>): boolean => has(user, DECIDES_SUGGESTIONS);
 export const approvesVacancies = (user: Pick<SessionUser, 'roles'>): boolean => has(user, APPROVES);
 
 /** The vacancies hidden from those who don't see C-level people: a C-level grade, or a job title only for one. */

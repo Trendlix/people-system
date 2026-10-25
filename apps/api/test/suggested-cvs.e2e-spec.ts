@@ -288,10 +288,10 @@ describe('Suggested From Earlier CVs (e2e)', () => {
     const scores = s.rows.map((r) => r.score);
     expect([...scores].sort((a, b) => b - a)).toEqual(scores);
     expect(s.rows.length).toBeLessThanOrEqual(50);
-    // the CEO reads them, deciding nothing
+    // the CEO reads them and decides them as HR does (owner, 25 October 2026: "Yes, the CEO too")
     const ceo = await suggestions('ceo');
-    expect(ceo.can).toEqual({ decide: false, invite: false });
-    expect(ceo.rows.find((r) => r.id === mona!.id)?.can).toEqual({ add: false, invite: false, dismiss: false });
+    expect(ceo.can).toEqual(s.can);
+    expect(ceo.rows.find((r) => r.id === mona!.id)?.can).toEqual(s.rows.find((r) => r.id === mona!.id)?.can);
   });
 
   it('never someone hired, a current employee, "Not a fit", already applied, archived, older than 12 months, a C-level applicant, filtered out or in the running elsewhere', async () => {
@@ -316,16 +316,13 @@ describe('Suggested From Earlier CVs (e2e)', () => {
     expect(await prisma.vacancySuggestion.count({ where: { candidateId: await candidateOf('chief') } })).toBe(0);
   });
 
-  it('refuses a hiring manager, the CEO’s decisions, and anyone else', async () => {
+  it('refuses a hiring manager and anyone else', async () => {
     // the hiring manager opens the vacancy, never its suggestions
     expect(ok(await get('manager', `/recruitment/vacancies/${V.id}`)).body.viewer).toBe('hiring_manager');
     await get('manager', `/recruitment/vacancies/${V.id}/suggestions`).expect(403);
     await get('outsider', `/recruitment/vacancies/${V.id}/suggestions`).expect(403);
     const lina = (await rowOf('lina'))!;
     await post('manager', `/recruitment/suggestions/${lina.id}/add`).expect(403);
-    await post('ceo', `/recruitment/suggestions/${lina.id}/add`).expect(403);
-    await post('ceo', `/recruitment/suggestions/${lina.id}/invite`).expect(403);
-    await post('ceo', `/recruitment/suggestions/${lina.id}/dismiss`, {}).expect(403);
     expect((await rowOf('lina'))?.status).toBe('suggested');
   });
 
@@ -414,9 +411,9 @@ describe('Suggested From Earlier CVs (e2e)', () => {
     await prisma.recruitmentSettings.updateMany({ where: { id: 1 }, data: { inviteSubject: null } });
   });
 
-  it('dismisses one with a reason: it never comes back', async () => {
+  it('dismisses one with a reason (the CEO may too): it never comes back', async () => {
     const dana = (await rowOf('dana'))!;
-    const done = ok(await post('hr', `/recruitment/suggestions/${dana.id}/dismiss`, { reason: 'Saw them last month' })).body as VacancySuggestionView;
+    const done = ok(await post('ceo', `/recruitment/suggestions/${dana.id}/dismiss`, { reason: 'Saw them last month' })).body as VacancySuggestionView;
     expect(done).toMatchObject({ status: 'dismissed', dismissReason: 'Saw them last month', can: { add: false, invite: false, dismiss: false } });
     await app.get(VacancySuggestionsService).refreshVacancy(V.id, { notify: false });
     expect(await rowOf('dana')).toBeUndefined();

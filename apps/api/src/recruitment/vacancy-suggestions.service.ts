@@ -41,7 +41,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { CvReadingsService } from './cv-readings.service.js';
 import { GeneralCvsService } from './general-cvs.service.js';
 import { createHrApplication } from './hr-applications.js';
-import { CONFIDENTIAL_VACANCY, isConfidentialVacancy, managesRecruitment, READS, vacancyWhere } from './recruitment-access.js';
+import { CONFIDENTIAL_VACANCY, decidesSuggestions, isConfidentialVacancy, READS, vacancyWhere } from './recruitment-access.js';
 import { APPLICATION_ENTITY, money, questionsOf, userRef } from './recruitment-views.js';
 import type { MoveGeneralCvDto } from './recruitment.dto.js';
 import { ScreeningCommentsService } from './screening-comments.service.js';
@@ -205,7 +205,7 @@ export class VacancySuggestionsService implements OnModuleInit {
     if (user.developer) return;
     const at = this.fresh.get(id);
     if (at !== undefined && Date.now() - at < SUGGESTION_LIMITS.freshMinutes * 60_000) return;
-    await this.refreshVacancy(id, { notify: false, seen: managesRecruitment(user) });
+    await this.refreshVacancy(id, { notify: false, seen: decidesSuggestions(user) });
   }
 
   /** The months back CVs count (Recruitment Settings). */
@@ -493,7 +493,7 @@ export class VacancySuggestionsService implements OnModuleInit {
     const shown: SuggestionStatus = status ?? 'suggested';
     const counts = Object.fromEntries(SUGGESTION_STATUSES.map((s) => [s, 0])) as Record<SuggestionStatus, number>;
     const [emailReady, recencyMonths] = await Promise.all([this.mail.ready(), this.recencyMonths()]);
-    const decide = managesRecruitment(user) && paused !== 'c_level';
+    const decide = decidesSuggestions(user) && paused !== 'c_level';
     const invite = decide && emailReady && paused === null;
     const base = { vacancy: { id: v.id, number: v.number, title: v.title, status: v.status as VacancyStatus }, status: shown, paused, emailReady, recencyMonths, can: { decide, invite } };
     // never for or from a C-level vacancy (owner, 19 October 2026: "make C level Employees details not visible to HR")
@@ -726,8 +726,8 @@ export class VacancySuggestionsService implements OnModuleInit {
   private async one(id: string, user: SessionUser): Promise<VacancySuggestionView> {
     const r = await this.prisma.vacancySuggestion.findUniqueOrThrow({ where: { id }, select: { ...ROW_SELECT, vacancy: { select: VACANCY_SELECT } } });
     const [verdicts, names, emailReady] = await Promise.all([this.comments.candidateVerdicts([r.candidateId], user), userNames(this.prisma, [r.decidedBy]), this.mail.ready()]);
-    const decide = managesRecruitment(user) && (r.vacancy.status === 'open' || r.vacancy.status === 'on_hold');
-    return this.view(r, { decide, invite: managesRecruitment(user) && emailReady && this.pausedOf(r.vacancy) === null, verdict: verdicts.get(r.candidateId) ?? null, names });
+    const decide = decidesSuggestions(user) && (r.vacancy.status === 'open' || r.vacancy.status === 'on_hold');
+    return this.view(r, { decide, invite: decidesSuggestions(user) && emailReady && this.pausedOf(r.vacancy) === null, verdict: verdicts.get(r.candidateId) ?? null, names });
   }
 
   // ---------- helpers ----------
@@ -737,6 +737,6 @@ export class VacancySuggestionsService implements OnModuleInit {
   }
 
   private assertManages(user: SessionUser): void {
-    if (!managesRecruitment(user)) throw new ForbiddenException('Only HR and a Super Admin add, invite or dismiss suggested CVs.');
+    if (!decidesSuggestions(user)) throw new ForbiddenException('Only HR, the CEO and a Super Admin add, invite or dismiss suggested CVs.');
   }
 }

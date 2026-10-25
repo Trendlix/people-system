@@ -1,7 +1,7 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { CurrentUser, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
-import { MANAGES, READS } from './recruitment-access.js';
+import { DECIDES_SUGGESTIONS, READS } from './recruitment-access.js';
 import { DismissSuggestionDto, ListSuggestionsDto } from './recruitment.dto.js';
 import { VacancySuggestionsService } from './vacancy-suggestions.service.js';
 
@@ -26,7 +26,7 @@ export class SuggestionsController {
   constructor(private readonly suggestions: VacancySuggestionsService) {}
 
   /** Add to this vacancy: the application made from the earlier CV, at Applied. */
-  @Roles(...MANAGES)
+  @Roles(...DECIDES_SUGGESTIONS)
   @Post(':id/add')
   @HttpCode(200)
   add(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {
@@ -34,7 +34,7 @@ export class SuggestionsController {
   }
 
   /** Invite to apply: the email with the job's apply link, sent now (HR confirmed on the page). */
-  @Roles(...MANAGES)
+  @Roles(...DECIDES_SUGGESTIONS)
   @Post(':id/invite')
   @HttpCode(200)
   invite(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {
@@ -42,7 +42,7 @@ export class SuggestionsController {
   }
 
   /** { reason }: optional. */
-  @Roles(...MANAGES)
+  @Roles(...DECIDES_SUGGESTIONS)
   @Post(':id/dismiss')
   @HttpCode(200)
   dismiss(@Param('id', ParseUUIDPipe) id: string, @Body() dto: DismissSuggestionDto, @CurrentUser() user: SessionUser) {
