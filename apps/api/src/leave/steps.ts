@@ -1,4 +1,4 @@
-import type { LeaveDecision, LeaveStepKind } from '@trendlix/shared';
+import type { LeaveDecision, LeaveRequestStepKind } from '@trendlix/shared';
 import type { Prisma } from '../generated/prisma/client.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 
@@ -7,12 +7,17 @@ import type { PrismaService } from '../prisma/prisma.service.js';
 
 type Db = PrismaService | Prisma.TransactionClient;
 
-/** Logs a step on a request, by `actorId` (null: none, e.g. sent straight to HR), in the transaction the step is taken in. */
+/**
+ * Logs a step on a request, by `actorId` (null: none, e.g. sent straight to HR), in the transaction the step is taken in;
+ * a stand-in's decision with the approver they stood in for (`onBehalfOf`, 25 October 2026).
+ */
 export async function recordLeaveStep(
   db: Db,
   requestId: string,
   actorId: string | null,
-  step: { kind: LeaveStepKind; decision?: LeaveDecision; comment?: string | null },
+  step: { kind: LeaveRequestStepKind; decision?: LeaveDecision; comment?: string | null; onBehalfOf?: string | null },
 ): Promise<void> {
-  await db.leaveRequestStep.create({ data: { requestId, actorId, kind: step.kind, decision: step.decision ?? null, comment: step.comment ?? null } });
+  await db.leaveRequestStep.create({
+    data: { requestId, actorId, kind: step.kind, decision: step.decision ?? null, comment: step.comment ?? null, onBehalfOfId: step.onBehalfOf ?? null },
+  });
 }

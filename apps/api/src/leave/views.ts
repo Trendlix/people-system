@@ -10,13 +10,13 @@ import {
   type LeaveRules,
   type LeaveStage,
   type LeaveStatus,
-  type LeaveStepKind,
+  type LeaveRequestStepKind,
   type LeaveTypeRules,
 } from '@trendlix/shared';
 import { fromDateOnly } from '../common/date-only.js';
 import type { LeaveSettings, LeaveType, Prisma } from '../generated/prisma/client.js';
 import type { UserRef } from '../payroll/adjustments/people.js';
-import { hrMayCancel, isConfidentialRequest, isRequester, waitsFor, type Caller } from './access.js';
+import { hrMayCancel, hiddenRequest, isConfidentialRequest, isRequester, seesEveryRequest, standingInFor, waitsFor, type Caller } from './access.js';
 
 // Leave types, the Leave Setup and requests as the API sends them (owner, 18 October 2026): dates YYYY-MM-DD, moments as
 // ISO strings, days as numbers (half days allowed).
@@ -27,6 +27,7 @@ export const REQUEST_ENTITY = 'leave_request';
 export const DOCUMENT_ENTITY = 'leave_document';
 export const ADJUSTMENT_ENTITY = 'leave_adjustment';
 export const CLOSING_ENTITY = 'leave_year_closing';
+export const STAFFING_ENTITY = 'leave_staffing_limit';
 
 const num = (d: Prisma.Decimal | null | undefined) => (d === null || d === undefined ? null : d.toNumber());
 
@@ -105,7 +106,11 @@ export const REQUEST_INCLUDE = {
   type: true,
   manager: { select: { id: true, fullNameEn: true } },
   documents: { orderBy: [{ uploadedAt: 'asc' }, { id: 'asc' }], select: { id: true, fileName: true, mimeType: true, sizeBytes: true } },
-  steps: { orderBy: { id: 'asc' }, include: { actor: { select: { id: true, email: true } } } },
+  // a stand-in's decision: the approver they stood in for (25 October 2026)
+  steps: { orderBy: { id: 'asc' }, include: { actor: { select: { id: true, email: true } }, onBehalfOf: { select: { id: true, fullNameEn: true } } } },
+  // leave coverage (25 October 2026): the colleague who covers, and the approver's stand-in
+  cover: { select: { id: true, fullNameEn: true } },
+  standIn: { select: { id: true, fullNameEn: true } },
 } satisfies Prisma.LeaveRequestInclude;
 
 export type RequestRow = Prisma.LeaveRequestGetPayload<{ include: typeof REQUEST_INCLUDE }>;
@@ -133,21 +138,25 @@ export function requestView(r: RequestRow, caller: Caller, names: ReadonlyMap<st
   const status = r.status as LeaveStatus;
   const parties = partiesOf(r);
   const startDate = fromDateOnly(r.startDate);
+  const endDate = fromDateOnly(r.endDate);
+  const requester = isRequester(parties, caller);
   return {
     id: r.id,
     employee: { id: r.employee.id, fullNameEn: r.employee.fullNameEn, fullNameAr: r.employee.fullNameAr, ...placeOf(r.employment.department) },
     type: { id: r.type.id, key: r.type.key, nameEn: r.type.nameEn, nameAr: r.type.nameAr, paid: r.type.paid as LeavePay },
     startDate,
-    endDate: fromDateOnly(r.endDate),
+    endDate,
     halfDay: r.halfDay,
     days: r.days.toNumber(),
     reason: r.reason,
     status,
     stage: leaveStage(status),
     waitingForYou: waitsFor({ ...parties, status }, caller),
+    // the approver the caller decides it for, standing in (owner, 25 October 2026: "To a stand-in")
+    standingInFor: standingInFor(parties, caller),
     // a C-level person's (owner, 19 October 2026): its HR stage is the CEO's
     confidential: isConfidentialRequest(parties, caller),
-    canCancel: isRequester(parties, caller) && employeeMayCancelLeave({ status, startDate }, today),
+    canCancel: requester && employeeMayCancelLeave({ status, startDate }, today),
     hrCanCancel: hrMayCancel({ ...parties, status }, caller),
     // who decides (or decided) the manager stage, and as what (owner, 19 October 2026: "the person in charge"):
     // APPROVER_ROLES, the direct manager, or for someone without one their team lead, else their department's head
@@ -156,12 +165,25 @@ export function requestView(r: RequestRow, caller: Caller, names: ReadonlyMap<st
     rejectReason: r.rejectReason,
     recordedByHr: r.recordedByHr,
     documents: r.documents.map((d) => ({ id: d.id, fileName: d.fileName, mimeType: d.mimeType, sizeBytes: d.sizeBytes })),
+    // leave coverage (owner, 25 October 2026): the colleague who covers and the employee's handover note to them; whether
+    // it broke the team's staffing limit when sent (HR approves it too); the approver's stand-in for its days (a person or
+    // HR), shown to its employee, HR and the CEO; and whether its employee may change the cover now (being decided, or
+    // approved and not ended)
+    cover: r.cover && { id: r.cover.id, fullNameEn: r.cover.fullNameEn },
+    handoverNote: r.handoverNote,
+    overStaffingLimit: r.overStaffingLimit,
+    standIn:
+      (r.standIn || r.standInHr) && (requester || (seesEveryRequest(caller.user) && !hiddenRequest(parties, caller)))
+        ? { employee: r.standIn && { id: r.standIn.id, fullNameEn: r.standIn.fullNameEn }, hr: r.standInHr }
+        : null,
+    canChangeCover: requester && (status === 'with_manager' || status === 'with_hr' || (status === 'approved' && endDate >= today)),
     steps: r.steps.map((s) => ({
       id: s.id.toString(),
-      kind: s.kind as LeaveStepKind,
+      kind: s.kind as LeaveRequestStepKind,
       decision: s.decision as LeaveDecision | null,
       comment: s.comment,
       actor: s.actor ? (names.get(s.actor.id)?.name ?? s.actor.email) : null,
+      onBehalfOf: s.onBehalfOf ? { id: s.onBehalfOf.id, fullNameEn: s.onBehalfOf.fullNameEn } : null,
       at: s.at.toISOString(),
     })),
     balanceAfter,

@@ -114,7 +114,13 @@ export const viewedAs = (user: SessionUser, viewMode?: SessionMode): SessionUser
 export interface Me extends SessionUser {
   employeeId: string | null;
   name: string | null;
+  /** In charge of a department or team, or standing in today for an approver on leave (25 October 2026). */
   leads: boolean;
+  /**
+   * The approvers on leave the person stands in for today, by name, with their leave's last day (owner, 25 October 2026:
+   * "To a stand-in"): their team's requests come to them meanwhile.
+   */
+  standingInFor: { id: string; fullNameEn: string; until: string }[];
   /**
    * Their Assets access in effect, whether they see the asset values, and whether the Assets AI is set up (owner, 21
    * October 2026: "3 levels per user"; "CEO and Finance"): the web shows the Assets pages with it.

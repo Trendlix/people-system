@@ -431,6 +431,9 @@ function targetOf(row: Pick<AuditRow, 'entityType' | 'entityId' | 'diff'>, refs:
       return { href: '/organization/leave', label: 'Open leave setup', roles: ORG };
     case 'leave_year_closing':
       return { href: '/organization/leave/year-closing', label: 'Open year closing', roles: ORG };
+    // a team's staffing limit (25 October 2026), in the Leave Setup's Staffing section
+    case 'leave_staffing_limit':
+      return { href: '/organization/leave#staffing', label: 'Open staffing limits', roles: ORG };
     case 'mail_settings':
       return { href: '/organization/email', label: 'Open email settings', roles: MAIL };
     // Check-in Setup's Google Maps section (24 October 2026), a Super Admin's as Email Settings are

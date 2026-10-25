@@ -14,7 +14,7 @@ import {
 } from '@trendlix/shared';
 import { fromDateOnly } from '../common/date-only.js';
 import type { LeaveSettings, Prisma } from '../generated/prisma/client.js';
-import { hrMayCancel, isConfidentialRequest, isRequester, waitsFor, type Caller } from '../leave/access.js';
+import { hrMayCancel, isConfidentialRequest, isRequester, standingInFor, waitsFor, type Caller } from '../leave/access.js';
 import { placeOf } from '../leave/views.js';
 import type { UserRef } from '../payroll/adjustments/people.js';
 
@@ -43,7 +43,8 @@ export const WFH_INCLUDE = {
   },
   employment: { select: { department: { select: { id: true, nameEn: true, parent: { select: { id: true, nameEn: true } } } } } },
   manager: { select: { id: true, fullNameEn: true } },
-  steps: { orderBy: { id: 'asc' }, include: { actor: { select: { id: true, email: true } } } },
+  // a stand-in's decision: the approver they stood in for (25 October 2026)
+  steps: { orderBy: { id: 'asc' }, include: { actor: { select: { id: true, email: true } }, onBehalfOf: { select: { id: true, fullNameEn: true } } } },
 } satisfies Prisma.WfhRequestInclude;
 
 export type WfhRow = Prisma.WfhRequestGetPayload<{ include: typeof WFH_INCLUDE }>;
@@ -98,6 +99,8 @@ export function wfhView(r: WfhRow, caller: Caller, names: ReadonlyMap<string, Us
     status,
     stage: leaveStage(status),
     waitingForYou: waitsFor({ ...parties, status }, caller),
+    // the approver the caller decides it for, standing in (owner, 25 October 2026: "To a stand-in")
+    standingInFor: standingInFor(parties, caller),
     // a C-level person's (owner, 19 October 2026): its HR stage is the CEO's
     confidential: isConfidentialRequest(parties, caller),
     // by the person while it is being decided (owner's brief, 21 October 2026)
@@ -115,6 +118,7 @@ export function wfhView(r: WfhRow, caller: Caller, names: ReadonlyMap<string, Us
       decision: s.decision as LeaveDecision | null,
       comment: s.comment,
       actor: s.actor ? (names.get(s.actor.id)?.name ?? s.actor.email) : null,
+      onBehalfOf: s.onBehalfOf ? { id: s.onBehalfOf.id, fullNameEn: s.onBehalfOf.fullNameEn } : null,
       at: s.at.toISOString(),
     })),
     monthUsed,

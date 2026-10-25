@@ -78,6 +78,8 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   leave_import: 'Leave import',
   leave_request: 'Leave request',
   leave_settings: 'Leave setup',
+  // a team's staffing limit for annual leave (owner, 25 October 2026: "Warn and need HR")
+  leave_staffing_limit: 'Staffing limit',
   leave_type: 'Leave type',
   leave_year_closing: 'Leave year closing',
   // Organization → Email Settings (owner, 23 October 2026: "why dont we add SMTP setup in the organization setup")
@@ -509,6 +511,16 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   quietFrom: 'Quiet hours from',
   quietTo: 'Quiet hours to',
   groups: 'Messages chosen',
+  // leave coverage (25 October 2026): the colleague who covers and the note to them, the staffing limit and a request over
+  // it, an approver's stand-in, and a decision taken standing in
+  coverId: 'Covered by',
+  handoverNote: 'Handover note',
+  maxOff: 'At most on annual leave at once',
+  minAtWorkPercent: 'At least at work (%)',
+  overStaffingLimit: 'Over the staffing limit',
+  standInId: 'Stand-in',
+  standInHr: 'HR stands in',
+  standingInFor: 'Standing in for',
 };
 
 /**

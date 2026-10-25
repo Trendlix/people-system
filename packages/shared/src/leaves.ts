@@ -387,6 +387,16 @@ export const LEAVE_STEP_KIND_LABELS: Record<LeaveStepKind, string> = {
   cancelled: 'Cancelled',
 };
 
+/**
+ * A leave request's steps: those it shares with permission, working from home and official duty, and the colleague who
+ * covers it changed by its employee (owner, 25 October 2026: "if the cover becomes unavailable, the requester can change
+ * the cover"; leave-coverage.ts).
+ */
+export const LEAVE_REQUEST_STEP_KINDS = [...LEAVE_STEP_KINDS, 'cover_changed'] as const;
+export type LeaveRequestStepKind = (typeof LEAVE_REQUEST_STEP_KINDS)[number];
+
+export const LEAVE_REQUEST_STEP_KIND_LABELS: Record<LeaveRequestStepKind, string> = { ...LEAVE_STEP_KIND_LABELS, cover_changed: 'Cover changed' };
+
 /** The step a stage's decision is logged as. */
 export const leaveDecisionStepKind = (stage: LeaveStage): LeaveStepKind => `${stage}_decision`;
 

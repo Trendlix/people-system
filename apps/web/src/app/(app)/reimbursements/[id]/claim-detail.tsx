@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { CLevelBadge } from '@/components/c-level-badge';
 import { DocumentViewer } from '@/components/document-viewer';
+import { StandingInNote } from '@/components/standing-in-note';
 import { approverLabel } from '@/lib/department-leads';
 import { formatDate, formatDateTime, titleCase } from '@/lib/format';
 import { getCurrentUser } from '@/lib/session';
@@ -160,6 +161,12 @@ export async function ClaimDetail({
 
           {c.waitingForYou && c.stage && (
             <Section title={`Your Decision as ${decidingAsTitle(user, c.stage, `the ${titleCase(approverLabel(c.manager))}`, c.confidential)}`}>
+              {/* deciding the manager step for a manager on leave (owner, 25 October 2026: "To a stand-in") */}
+              {c.standingInFor && (
+                <div className="mb-4">
+                  <StandingInNote person={c.standingInFor} />
+                </div>
+              )}
               <DecisionForm
                 action={decideClaim.bind(null, c.id, currentAmount(c), c.stage)}
                 stage={c.stage}

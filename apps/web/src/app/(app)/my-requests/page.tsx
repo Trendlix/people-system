@@ -12,6 +12,9 @@ import { Loading, todayInCairo } from '../employees/ui';
 import { loadTeam } from '../my-team/data';
 import { loadOwnProfile } from '../own-profile';
 import { RaiseCard } from './raise-card';
+import { COVERING_ID, coveringCountText, coveringToCome } from './covering';
+import { loadMyCovering } from './covering-data';
+import { CoveringList } from './covering-list';
 import { loadEmployeeRaiseRequests } from '../raise-requests/data';
 import { justSent, newRaiseRequestHref } from '../raise-requests/list';
 import { RequestSent } from '../raise-requests/ui';
@@ -79,6 +82,9 @@ import {
 // Working from home (owner, 21 October 2026: "think about how should we handle the working from home in out erp"): a
 // section of its own, their requests the latest day first, each opening its page, and Work from home to ask for a day,
 // hidden when their work arrangement never needs one (Work from home, Outdoor, Indoor and outdoor; a freelancer).
+// I'm Covering (owner, 25 October 2026: "Required over 2 days", "Names, no leave types"): the colleagues' leave they were
+// named to cover, current or to come, each with whom, the days, approved or waiting and the handover note, never its
+// type; only when there is some (#covering, where a cover's notification opens).
 
 export const metadata: Metadata = { title: 'My Requests · People System' };
 
@@ -565,6 +571,33 @@ async function HomeLocation() {
 }
 
 /**
+ * The colleagues' leave they cover (owner, 25 October 2026: "Required over 2 days"; GET /me/leave/covering): current or to
+ * come, the nearest first, with whom, the days, approved or still waiting, and the handover note; never the leave's type.
+ * Only when there is some; nothing from an API from before it.
+ */
+async function Covering() {
+  const loaded = await loadMyCovering();
+  if (loaded.kind !== 'ok') return null;
+  const today = todayInCairo();
+  const list = coveringToCome(loaded.value, today);
+  if (!list.length) return null;
+  return (
+    <section id={COVERING_ID} aria-labelledby={`${COVERING_ID}-heading`} className="mt-10 scroll-mt-6 space-y-3">
+      <div>
+        <h2 id={`${COVERING_ID}-heading`} className="text-lg font-semibold">
+          I’m Covering
+        </h2>
+        <p className="text-sm text-muted">
+          Colleagues who named you to cover their work while they are away: {coveringCountText(list.length)}, the nearest first. Asking for leave on these
+          days yourself is still possible, with a warning, and HR sees it.
+        </p>
+      </div>
+      <CoveringList list={list} today={today} />
+    </section>
+  );
+}
+
+/**
  * The exit interview (owner, 22 October 2026: offboarding, the full module), while the person's offboarding case is open
  * and it isn't done: a card above everything else, opening its form. Nothing otherwise.
  */
@@ -603,6 +636,9 @@ export default function MyRequestsPage({ searchParams }: PageProps<'/my-requests
           <Requests searchParams={searchParams} />
         </Suspense>
       </div>
+      <Suspense fallback={null}>
+        <Covering />
+      </Suspense>
       <Suspense fallback={null}>
         <Leave />
       </Suspense>

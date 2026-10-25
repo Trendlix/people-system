@@ -92,6 +92,11 @@ export const NOTIFICATION_KINDS = [
   // Suggested From Earlier CVs (owner, 24 October 2026: "Suggest; HR adds"; suggested-cvs.ts): HR told once a batch that
   // earlier CVs match an open vacancy ("5 earlier CVs match Video Editor"); never a name
   'cv_suggestions',
+  // leave coverage (owner, 25 October 2026: "Required over 2 days", "To a stand-in"; leave-coverage.ts): a colleague
+  // named to cover someone's leave (or no longer), never its type; and a stand-in told, when an approver's leave starts,
+  // that their step's requests come to them and how many wait
+  'leave_cover',
+  'stand_in',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
@@ -110,6 +115,8 @@ export const WAITING_KINDS = [
   'kpi_waiting',
   'wfh_waiting',
   'od_waiting',
+  // a stand-in's requests waiting (25 October 2026)
+  'stand_in',
 ] as const satisfies readonly NotificationKind[];
 
 /** Where the phone pages open a notification's request: To approve for what the person decides, else their own requests. */
@@ -164,6 +171,8 @@ export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
   screening_mention: 'Screening comment',
   check_in_location_ending: 'Check-in location',
   cv_suggestions: 'Suggested CVs',
+  leave_cover: 'Covering',
+  stand_in: 'Stand-in',
 };
 
 // ---------- the reminders and the person's switches ----------

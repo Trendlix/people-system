@@ -356,6 +356,12 @@ export * from './employment-types.js';
 // days, the requests' statuses and steps, their problems, Year Closing, and the month's leave days for the payroll
 export * from './leaves.js';
 
+// leave coverage (owner, 25 October 2026: "if there are leaves applied by an employee and another employee in the same
+// department is on a leave, how can we manage it without affecting the workflow?"; asked, "Warn and need HR", "Required
+// over 2 days", "To a stand-in", "Names, no leave types"): who else is off, a team's staffing limit, the colleague who
+// covers, and the stand-in who approves while an approver is away
+export * from './leave-coverage.js';
+
 // department heads and team leads (owner, 19 October 2026: "i want to add department lead person, the person in
 // charge"): what they are called, the default direct manager when hiring, and who approves when there is no manager
 export * from './department-leads.js';

@@ -56,7 +56,10 @@ export const WHATSAPP_GROUP_LABELS: Readonly<Record<WhatsAppGroup, { label: stri
     label: 'Approvals waiting',
     hint: 'A request waiting for your approval: leave, work from home, official duty, permission, attendance correction, reimbursement or check-in location; for the CEO, a raise or a vacancy.',
   },
-  decisions: { label: 'Request decisions', hint: 'Your own requests approved or rejected, your payslip issued, and your access on hold or given grace.' },
+  decisions: {
+    label: 'Request decisions',
+    hint: 'Your own requests approved or rejected, a colleague naming you to cover their leave, your payslip issued, and your access on hold or given grace.',
+  },
   check_in: { label: 'Check-in reminders', hint: '“You haven’t checked in” and “Still checked in?”, at most once a day each, never at night.' },
   interviews: { label: 'Interviews', hint: 'An interview you are on as an interviewer: scheduled, moved or cancelled.' },
 };
@@ -82,6 +85,8 @@ export const WHATSAPP_TEMPLATE_KEYS = [
   'approval_waiting',
   'approvals_digest',
   'request_update',
+  // a colleague named to cover someone's leave (owner, 25 October 2026: "Required over 2 days"; leave-coverage.ts)
+  'cover_assigned',
   'payslip_ready',
   'access_on_hold',
   'access_grace',
@@ -179,6 +184,20 @@ export const WHATSAPP_TEMPLATES: Readonly<Record<WhatsAppTemplateKey, WhatsAppTe
     examples: { en: ['Omar', 'leave request', '02/11/2026–04/11/2026', 'approved'], ar: ['عمر', 'طلب الإجازة الخاص بك', 'من ٠٢/١١/٢٠٢٦ إلى ٠٤/١١/٢٠٢٦', 'تمت الموافقة'] },
     button: OPEN,
     buttonExample: 'leave/7c9e6679-7425-40de-944b-e07fc1f90ae7',
+  }),
+  cover_assigned: def({
+    key: 'cover_assigned',
+    audience: 'employee',
+    group: 'decisions',
+    label: 'Covering a colleague',
+    variables: ['Their first name', 'The colleague', 'The leave’s days'],
+    body: {
+      en: 'Hello {{1}}, {{2}} named you to cover their work while they are on leave ({{3}}).\n\nOpen Trendlix People for their handover note.',
+      ar: 'مرحبًا {{1}}، اختارك {{2}} لتغطية عمله أثناء إجازته ({{3}}).\n\nافتح Trendlix People للاطلاع على ملاحظات التسليم.',
+    },
+    examples: { en: ['Sara', 'Omar Khaled', '12/11/2026–14/11/2026'], ar: ['سارة', 'عمر خالد', 'من ١٢/١١/٢٠٢٦ إلى ١٤/١١/٢٠٢٦'] },
+    button: OPEN,
+    buttonExample: 'my-requests',
   }),
   payslip_ready: def({
     key: 'payslip_ready',
@@ -605,6 +624,7 @@ export type WhatsAppFacts =
   | { template: 'approval_waiting'; what: WhatsAppApprovalWhat; who: WhatsAppName; span?: WhatsAppSpan | null }
   | { template: 'approvals_digest'; count: number }
   | { template: 'request_update'; what: WhatsAppRequestWhat; span: WhatsAppSpan; outcome: WhatsAppOutcome; payMonth?: string | null; firstStepBy?: 'hr' | 'ceo' | null }
+  | { template: 'cover_assigned'; who: WhatsAppName; span: WhatsAppSpan }
   | { template: 'payslip_ready'; month: string }
   | { template: 'access_on_hold' }
   | { template: 'access_grace'; until: string }
@@ -651,6 +671,8 @@ export function whatsappContent(facts: WhatsAppFacts, lang: WhatsAppLanguage, ct
       const n = REQUEST_NAMES[facts.what];
       return out([hello, lang === 'ar' ? n.arYours : n.noun, whatsappSpan(facts.span, lang), outcomeText(facts, lang)]);
     }
+    case 'cover_assigned':
+      return out([hello, nameIn(facts.who, lang), whatsappSpan(facts.span, lang)]);
     case 'payslip_ready':
       return out([hello, whatsappMonth(facts.month, lang)]);
     case 'access_on_hold':
@@ -696,8 +718,8 @@ export function whatsappContent(facts: WhatsAppFacts, lang: WhatsAppLanguage, ct
  * chooses, with the templates its facts may name. Everything else stays on the bell, push and email only.
  * - Approvals waiting: the *_waiting kinds for the approver of the step (leave, work from home, official duty,
  *   permission, attendance correction, reimbursement, check-in location; for the CEO a raise and a vacancy).
- * - Request decisions: the *_decided kinds for the requester (a check-in location's too), the payslip issued, access on
- *   hold, grace given and grace ending.
+ * - Request decisions: the *_decided kinds for the requester (a check-in location's too), a colleague naming them to cover
+ *   their leave (25 October 2026), the payslip issued, access on hold, grace given and grace ending.
  * - Check-in reminders: "You haven't checked in" and "Still checked in?" (one WhatsApp a kind a day).
  * - Interviews: the interview scheduled, moved or cancelled, for its interviewers.
  */
@@ -718,6 +740,8 @@ export const WHATSAPP_NOTIFICATION_KINDS: Readonly<Partial<Record<NotificationKi
   od_decided: { group: 'decisions', templates: ['request_update'] },
   reimbursement_decided: { group: 'decisions', templates: ['request_update'] },
   home_location_decided: { group: 'decisions', templates: ['request_update'] },
+  // a colleague named to cover someone's leave (25 October 2026); "no longer covering" stays on the bell and push
+  leave_cover: { group: 'decisions', templates: ['cover_assigned'] },
   payslip_issued: { group: 'decisions', templates: ['payslip_ready'] },
   access_hold: { group: 'decisions', templates: ['access_on_hold'] },
   access_grace: { group: 'decisions', templates: ['access_grace'] },

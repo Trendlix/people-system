@@ -19,8 +19,9 @@ import { permissionTimesText } from './permissions';
 // brief: on the leave calendar and the team's "as a distinct style from leave") marks its day apart too, and isn't a day
 // off either: a working day elsewhere. An official duty (owner, 23 October 2026: "Official duty (OD) requests"; the
 // spec: "Team calendar shows leave and OD") marks each of its days apart in its own colour, a working day away from the
-// office, not a day off; part of a day with its times. Pure code, tested; relative imports, as vitest doesn't know the @/ paths. Dates
-// are YYYY-MM-DD.
+// office, not a day off; part of a day with its times. A leave's colleague who covers it (owner's brief, 25 October 2026:
+// "My Team's calendar: unchanged, plus the cover person on hover or detail") is in its cell's words, its tooltip, and the
+// phone's list. Pure code, tested; relative imports, as vitest doesn't know the @/ paths. Dates are YYYY-MM-DD.
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const MONTH = /^(\d{4})-(\d{2})$/;
@@ -129,6 +130,8 @@ export interface CalendarCell {
    * in words ("10:00 AM–2:00 PM"), null for a full day.
    */
   od?: { times: string | null };
+  /** A leave's colleague who covers it, by name (25 October 2026); none named, or not leave: absent. */
+  cover?: string | null;
 }
 
 /**
@@ -213,6 +216,8 @@ export function calendarPeople(entries: readonly (LeaveCalendarEntry | WfhCalend
         permission,
         ...(wfh && { wfh: true }),
         ...(od && { od }),
+        // who covers the leave (25 October 2026)
+        ...(!permission && !wfh && !od && 'cover' in e && e.cover && { cover: e.cover.fullNameEn }),
       };
     });
   }
@@ -250,8 +255,11 @@ export function cellLabel(cell: CalendarCell, name: string, day: Pick<CalendarDa
   if (cell.wfh) return `${name}: ${WFH_CELL_WORDS}, ${cell.waiting ? 'being decided' : 'approved'}, ${when}`;
   if (cell.od) return `${name}: ${odCellWords(cell.od)}, ${cell.waiting ? 'being decided' : 'approved'}, ${when}`;
   if (cell.permission) return `${name}: ${permissionCellWords(cell.typeName, cell.permission)}, ${cell.waiting ? 'being decided' : 'approved'}, ${when}`;
-  return `${name}: ${cell.typeName}${cell.halfDay ? ', half a day' : ''}${cell.waiting ? ', being decided' : ''}, ${when}`;
+  return `${name}: ${cell.typeName}${cell.halfDay ? ', half a day' : ''}${cell.waiting ? ', being decided' : ''}${coverWords(cell)}, ${when}`;
 }
+
+/** Who covers a leave, as its cell's words say it: ", covered by Sara Ali"; nothing when nobody is named (25 October 2026). */
+export const coverWords = (cell: Pick<CalendarCell, 'cover'>): string => (cell.cover ? `, covered by ${cell.cover}` : '');
 
 /** A work from home day's mark in the grid, and its words (21 October 2026). */
 export const WFH_CELL_TEXT = 'WFH';
@@ -274,6 +282,8 @@ export interface AgendaPerson {
   permission: CalendarPermission | null;
   wfh?: boolean;
   od?: { times: string | null };
+  /** A leave's colleague who covers it, by name (25 October 2026). */
+  cover?: string | null;
 }
 
 /** A day of the phone's list: the day, its holidays, and who is off on it. */
@@ -290,7 +300,21 @@ export function calendarAgenda(people: readonly CalendarPerson[], days: readonly
       off: people.flatMap((p) => {
         const c = p.cells[i];
         return c
-          ? [{ id: p.id, name: p.name, place: p.place, typeName: c.typeName, halfDay: c.halfDay, waiting: c.waiting, requestId: c.requestId, permission: c.permission, ...(c.wfh && { wfh: true }), ...(c.od && { od: c.od }) }]
+          ? [
+              {
+                id: p.id,
+                name: p.name,
+                place: p.place,
+                typeName: c.typeName,
+                halfDay: c.halfDay,
+                waiting: c.waiting,
+                requestId: c.requestId,
+                permission: c.permission,
+                ...(c.wfh && { wfh: true }),
+                ...(c.od && { od: c.od }),
+                ...(c.cover && { cover: c.cover }),
+              },
+            ]
           : [];
       }),
     }))

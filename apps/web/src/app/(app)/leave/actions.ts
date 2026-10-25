@@ -8,10 +8,12 @@
 // balance, an overlap, who decides each stage and that nobody decides their own, so calling these directly can't bypass
 // that. Once sent, the request's page opens: the site's, or the phone pages' for a form sent from them (owner, 20 October
 // 2026: "what if we tried to build a mobile app for the employees? to enable them to check in and out, and apply for their
-// requests"; lib/surface.ts).
+// requests"; lib/surface.ts). Leave coverage (owner, 25 October 2026: "Warn and need HR", "Required over 2 days", "To a
+// stand-in", "Names, no leave types"): the new request's coverage read again as its dates and type are chosen, the
+// colleague who covers, the handover note and the stand-in sent with it, and the employee changing their cover later.
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
-import type { LeaveStage } from '@trendlix/shared';
+import { HANDOVER_NOTE_MAX, type LeaveFormCoverage, type LeaveStage } from '@trendlix/shared';
 import { ApiError, apiFetch, apiSend, apiUpload, messagesOf } from '@/lib/api';
 import { afterAction } from '@/lib/surface';
 import type { EmployeeLeave, FormState, Holiday, LeaveBalances, LeaveRequestView } from '@/lib/types';
@@ -30,6 +32,10 @@ function multipart(fields: NonNullable<ReturnType<typeof leaveForm>['fields']>, 
   form.append('endDate', fields.endDate);
   form.append('halfDay', String(fields.halfDay));
   if (fields.reason) form.append('reason', fields.reason);
+  // who covers, the note to them and the stand-in (25 October 2026); none sent: none, and the default stand-in
+  if (fields.coverId) form.append('coverId', fields.coverId);
+  if (fields.handoverNote) form.append('handoverNote', fields.handoverNote);
+  if (fields.standIn) form.append('standIn', fields.standIn);
   for (const file of documents) form.append('documents', file, file.name);
   return form;
 }
@@ -105,6 +111,62 @@ export async function leaveYearData(year: number, employeeId: string | null): Pr
   ]);
   if ('errors' in balances) return balances;
   return { balances: balances.value, holidays: 'value' in holidays ? holidays.value : [] };
+}
+
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The new request's coverage as the employee types it (GET /me/leave/coverage): who of their team is off on its days
+ * (names only), "N of M at work", the staffing limit and whether it breaks it, whether a colleague must cover and who
+ * may, the stand-in when they approve for others, and the colleagues they cover on those days. `coverage: null` from an
+ * API from before it (404): the form shows none of it, and the API checks what it does when it is sent.
+ */
+export async function leaveCoverage(from: string, to: string, typeId: string, halfDay: boolean): Promise<{ coverage: LeaveFormCoverage | null } | { errors: string[] }> {
+  if (!DAY.test(from) || !DAY.test(to) || to < from) return { errors: ['Choose the first and last day.'] };
+  const params = new URLSearchParams({ from, to });
+  if (typeId && UUID.test(typeId)) params.set('typeId', typeId);
+  if (halfDay) params.set('halfDay', 'true');
+  let res: Response;
+  try {
+    res = await apiFetch(`/me/leave/coverage?${params.toString()}`);
+  } catch (err) {
+    if (err instanceof ApiError) return { errors: err.messages };
+    throw err;
+  }
+  if (res.status === 401) redirect('/login');
+  if (res.status === 404) return { coverage: null };
+  if (!res.ok) return { errors: shown(await messagesOf(res)) };
+  try {
+    return { coverage: (await res.json()) as LeaveFormCoverage };
+  } catch {
+    return { errors: ['The server sent an answer that could not be read.'] };
+  }
+}
+
+/**
+ * The employee changes the colleague who covers their request, or the handover note (POST /me/leave/requests/:id/cover;
+ * owner's brief, 25 October 2026: "if the cover becomes unavailable, the requester can change the cover, which is
+ * audited"): the API checks who may cover, tells the new one and the one before, and logs it. A request that moved on
+ * meanwhile (decided, cancelled, over) comes back saying so.
+ */
+export async function changeLeaveCover(requestId: string, _prev: FormState, fd: FormData): Promise<FormState> {
+  const coverId = String(fd.get('coverId') ?? '').trim();
+  const handoverNote = String(fd.get('handoverNote') ?? '').trim();
+  const values = { coverId, handoverNote };
+  const errors: string[] = [];
+  if (coverId && !UUID.test(coverId)) errors.push('Choose the colleague who covers from the list.');
+  if (handoverNote.length > HANDOVER_NOTE_MAX) errors.push(`Keep the handover note to ${HANDOVER_NOTE_MAX} characters; it has ${handoverNote.length}.`);
+  if (errors.length) return { errors, values };
+  try {
+    await apiSend('POST', `/me/leave/requests/${encodeURIComponent(requestId)}/cover`, { coverId: coverId || null, handoverNote: handoverNote || null });
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 409) redirect(afterAction(fd, leaveDoneHref(requestId, 'moved')));
+    if (err instanceof ApiError) return { errors: shown(err.messages), values };
+    throw err;
+  }
+  refresh();
+  redirect(afterAction(fd, leaveDoneHref(requestId, 'cover')));
 }
 
 /**

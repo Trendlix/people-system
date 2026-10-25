@@ -8,6 +8,7 @@ import { formatDate, formatDateTime } from '@/lib/format';
 import { employmentHidden, labelOf, shownCode } from '@/lib/hidden';
 import { hasRole } from '@/lib/roles';
 import { shiftTimesText } from '@/lib/shifts';
+import { standingInBannerText } from '@/lib/stand-in';
 import type { EmployeeProfile, Holiday } from '@/lib/types';
 import type { Session } from '@/lib/view-as';
 import { getOrNull } from '../approvals/data';
@@ -15,6 +16,9 @@ import { ChangeRequestStatusBadge } from '../employees/[id]/change-request/reque
 import { daysBetween, termLabel } from '../employees/[id]/contracts/dates';
 import { arrangementLabel, employeeRaiseRequestsHref, reportStanding, seesEveryone, StandingBadge, StatusBadge, todayInCairo } from '../employees/ui';
 import { myRequests, requestLabel } from '../my-requests/requests';
+import { COVERING_HREF, coveringToCome } from '../my-requests/covering';
+import { loadMyCovering } from '../my-requests/covering-data';
+import { CoveringList } from '../my-requests/covering-list';
 import { loadTeam } from '../my-team/data';
 import { askedByText, probationOf, raiseNews } from '../my-team/team';
 import { loadOwnProfile } from '../own-profile';
@@ -50,7 +54,11 @@ import { greetingName, holidayWhen, holidayYears, inDaysText, serviceLength, toD
 // Zoho"): Check in / Check out with today's punches, for someone with a current employment (my-attendance/
 // check-in-card.tsx). Raises (owner, 20 October 2026: "raises not to be visible to employee level for now", then "Hide
 // from managers too"): to someone who doesn't see raise requests (seesRaiseRequests, packages/shared raises.ts) none of
-// them, not read: no raise on My Requests nor Request a raise, and My Team without its Raise Requests news.
+// them, not read: no raise on My Requests nor Request a raise, and My Team without its Raise Requests news. Leave
+// coverage (owner, 25 October 2026: "Required over 2 days", "To a stand-in", "Names, no leave types"): I'm Covering, the
+// colleagues' leave they were named to cover (whom, the days, approved or waiting, the handover note; never its type),
+// only when there is some; and while they stand in for an approver on leave, a line saying for whom and until when, the
+// team's requests coming to them (the approval cards below show them, as `leads` is true meanwhile).
 
 const dash = <span className="text-muted">—</span>;
 const small = 'btn min-h-9 px-3';
@@ -515,6 +523,31 @@ async function LeaveToApproveCard() {
   );
 }
 
+/**
+ * The colleagues' leave they cover, current or to come (owner, 25 October 2026: "Required over 2 days"; GET
+ * /me/leave/covering): the nearest three, each with whom, the days, approved or waiting and the handover note. Only when
+ * there is some.
+ */
+async function CoveringCard({ today }: { today: string }) {
+  const loaded = await loadMyCovering();
+  if (loaded.kind !== 'ok') return null;
+  const list = coveringToCome(loaded.value, today);
+  if (!list.length) return null;
+  return (
+    <Card
+      title="I’m Covering"
+      action={
+        <Link href={COVERING_HREF} className="text-sm">
+          Open My Requests
+        </Link>
+      }
+    >
+      <CoveringList list={list.slice(0, 3)} today={today} compact />
+      {list.length > 3 && <p className="mt-2 text-xs text-muted">And {list.length - 3} more on My Requests.</p>}
+    </Card>
+  );
+}
+
 // ---------- To Do ----------
 
 /** What is left for them to do, only what applies; a friendly line when nothing is. */
@@ -647,12 +680,22 @@ export function NoProfile({ user }: { user: Session }) {
 export async function Dashboard({ user }: { user: Session }) {
   const profile = await loadOwnProfile(user);
   const today = todayInCairo();
+  // standing in for an approver on leave (owner, 25 October 2026: "To a stand-in")
+  const standingIn = standingInBannerText(user.standingInFor);
   return (
     <div className="max-w-6xl space-y-6">
       <div>
         <h1 className="text-2xl font-semibold">{profile ? `Welcome, ${greetingName(profile)}` : 'Welcome'}</h1>
         <p className="mt-1 text-muted">Checking in today, your job, the official holidays coming up, your leave, your requests and what is left to do.</p>
       </div>
+      {standingIn && (
+        <p role="status" className="rounded-lg bg-accent-soft px-4 py-3 text-sm">
+          {standingIn}{' '}
+          <Link href={MY_TEAM} className="font-semibold">
+            Open My Team
+          </Link>
+        </p>
+      )}
       {!profile && <NoProfile user={user} />}
       <div className="grid items-start gap-4 lg:grid-cols-2">
         {/* checking in on the system (19 October 2026): a current employment's, first */}
@@ -675,6 +718,9 @@ export async function Dashboard({ user }: { user: Session }) {
             )}
             <Suspense fallback={<CardLoading title="My Requests" />}>
               <MyRequestsCard profile={profile} seesRaises={seesRaiseRequests(user)} />
+            </Suspense>
+            <Suspense fallback={null}>
+              <CoveringCard today={today} />
             </Suspense>
             <ToDoCard profile={profile} />
           </>

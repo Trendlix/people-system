@@ -14,6 +14,7 @@ import { fromDateOnly } from '../common/date-only.js';
 import type { Prisma, ReimbursementType } from '../generated/prisma/client.js';
 import type { UserRef } from '../payroll/adjustments/people.js';
 import { isClaimant, isConfidentialClaim, waitsFor, type Caller } from './access.js';
+import { standingInFor } from '../leave/access.js';
 
 // Reimbursement types and claims as the API sends them (owner, 18 October 2026): dates YYYY-MM-DD, the moments as ISO
 // strings, money as numbers to the piaster.
@@ -82,7 +83,8 @@ export const CLAIM_INCLUDE = {
   manager: { select: { id: true, fullNameEn: true } },
   adjustment: { select: { status: true, month: true } },
   receipts: { orderBy: [{ uploadedAt: 'asc' }, { id: 'asc' }], select: { id: true, fileName: true, mimeType: true, sizeBytes: true } },
-  steps: { orderBy: { id: 'asc' }, include: { actor: { select: { id: true, email: true } } } },
+  // a stand-in's decision: the approver they stood in for (25 October 2026)
+  steps: { orderBy: { id: 'asc' }, include: { actor: { select: { id: true, email: true } }, onBehalfOf: { select: { id: true, fullNameEn: true } } } },
 } satisfies Prisma.ReimbursementClaimInclude;
 
 export type ClaimRow = Prisma.ReimbursementClaimGetPayload<{ include: typeof CLAIM_INCLUDE }>;
@@ -117,6 +119,8 @@ export function claimView(r: ClaimRow, caller: Caller, names: ReadonlyMap<string
     status,
     stage: reimbursementStage(status),
     waitingForYou: waitsFor(r, caller),
+    // the approver the caller decides it for, standing in (owner, 25 October 2026: "To a stand-in")
+    standingInFor: standingInFor(r, caller),
     canCancel: isClaimant(r, caller) && isOpenReimbursement(status),
     // a C-level person's (owner, 19 October 2026): its HR and Finance stages are the CEO's
     confidential: isConfidentialClaim(r, caller),
@@ -137,6 +141,7 @@ export function claimView(r: ClaimRow, caller: Caller, names: ReadonlyMap<string
       comment: s.comment,
       payMonth: fromDateOnly(s.payMonth),
       actor: s.actor ? (names.get(s.actor.id)?.name ?? s.actor.email) : null,
+      onBehalfOf: s.onBehalfOf ? { id: s.onBehalfOf.id, fullNameEn: s.onBehalfOf.fullNameEn } : null,
       at: s.at.toISOString(),
     })),
     createdAt: r.createdAt.toISOString(),

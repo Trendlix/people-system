@@ -64,9 +64,10 @@ export const leaveDocumentHref = (requestId: string, docId: string) => `${leaveH
 
 /**
  * What was just done on a request, said on its page by `?done=`: sent, recorded by HR, cancelled, a stage's decision
- * ("hr_approve"), or a decision refused because the request had moved on meanwhile (`moved`).
+ * ("hr_approve"), a decision refused because the request had moved on meanwhile (`moved`), or its cover changed by its
+ * employee (`cover`, 25 October 2026).
  */
-export type LeaveDone = 'sent' | 'recorded' | 'cancelled' | 'moved' | `${LeaveStage}_${LeaveDecision}`;
+export type LeaveDone = 'sent' | 'recorded' | 'cancelled' | 'moved' | 'cover' | `${LeaveStage}_${LeaveDecision}`;
 
 /** A request's page after something was done on it: "/leave/<id>?done=sent". */
 export const leaveDoneHref = (id: string, done: LeaveDone) => `${leaveHref(id)}?done=${done}`;
@@ -308,6 +309,8 @@ export function leaveDoneText(
   if (done === 'sent' || done === 'recorded') return { text: leaveSentText(status, manager, confidential), tone: 'ok' };
   if (done === 'cancelled') return { text: 'Leave cancelled. Its days are back in the balance; it stays on the list, cancelled.', tone: 'ok' };
   if (done === 'moved') return { text: LEAVE_MOVED_ON, tone: 'warn' };
+  // the colleague who covers changed by the employee (25 October 2026)
+  if (done === 'cover') return { text: 'Cover saved. The colleague who covers now is told, and the one before is told they no longer cover it.', tone: 'ok' };
   const [stage, decision] = done.split('_');
   if (!(LEAVE_STAGES as readonly string[]).includes(stage) || !(LEAVE_DECISIONS as readonly string[]).includes(decision)) return null;
   return { text: leaveDecidedText(decision as LeaveDecision, stage as LeaveStage, confidential), tone: 'ok' };
@@ -337,10 +340,20 @@ export function leaveStepText(s: Pick<LeaveRequestStep, 'kind' | 'decision' | 'c
     }
     case 'cancelled':
       return 'Cancelled, the days given back';
+    // the employee changed the colleague who covers it (owner, 25 October 2026: "Required over 2 days")
+    case 'cover_changed':
+      return 'Cover changed';
     default:
       return String(s.kind);
   }
 }
+
+/**
+ * Who a stand-in stood in for, beside who took a step (owner, 25 October 2026: "To a stand-in"; the step and the audit log
+ * keep both): "standing in for Ahmed Ali"; null for a step taken as themself.
+ */
+export const standingInText = (onBehalfOf: { fullNameEn: string } | null | undefined): string | null =>
+  onBehalfOf ? `standing in for ${onBehalfOf.fullNameEn}` : null;
 
 /** Whether a step is a decision, and which way, for its mark on the timeline. */
 export function leaveStepTone(s: Pick<LeaveRequestStep, 'kind' | 'decision'>): 'ok' | 'danger' | null {

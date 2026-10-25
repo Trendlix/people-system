@@ -113,7 +113,9 @@ describe('Access on hold (e2e)', () => {
 
   const auditsOf = (key: string, action = 'access_standing') =>
     prisma.auditLog.findMany({ where: { entityType: 'employee', entityId: people[key].id, action }, orderBy: { at: 'asc' }, select: { userId: true, diff: true } });
-  const noticesOf = (key: string, kind: string) => prisma.notification.findMany({ where: { userId: users[key], kind }, select: { title: true, body: true, link: true } });
+  // oldest first (and by id on a tie), so "the ones after" a count are the new ones whatever order the database returns
+  const noticesOf = (key: string, kind: string) =>
+    prisma.notification.findMany({ where: { userId: users[key], kind }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], select: { title: true, body: true, link: true } });
 
   beforeAll(async () => {
     ({ app, prisma } = await createApp());

@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   annualAvailable,
+  coverRequired,
   DEFAULT_WORKING_DAYS,
   employeeMayCancelLeave,
   firstLeaveStatus,
@@ -30,6 +31,7 @@ import { userNames } from '../payroll/adjustments/people.js';
 import { lastDay } from '../payroll/months.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
+  decidedOnBehalfOf,
   decidesStage,
   hiddenRequest,
   hrMayCancel,
@@ -41,14 +43,18 @@ import {
   othersWhere,
   scopeWhere,
   seesRequest,
+  standInRefusal,
   waitingWhere,
   type Caller,
 } from './access.js';
 import { checkedDocuments } from './documents.js';
 import { LeaveBalancesService, TAKING, type LeaveBalancesView, type LeaveEmployment } from './leave-balances.service.js';
-import type { CreateLeaveRequestDto, DecideLeaveDto, HrCancelLeaveDto, LeaveCalendarQueryDto, ListLeaveRequestsDto, RecordLeaveRequestDto } from './leave.dto.js';
+import { LeaveCoverageService } from './leave-coverage.service.js';
+import type { ChangeCoverDto, CreateLeaveRequestDto, DecideLeaveDto, HrCancelLeaveDto, LeaveCalendarQueryDto, ListLeaveRequestsDto, RecordLeaveRequestDto } from './leave.dto.js';
 import { LeavePayrollService } from './leave-payroll.service.js';
 import { PermissionRequestsService, type PermissionCalendarItem } from './permissions.service.js';
+import { StandInSchedulerService } from './stand-in-scheduler.service.js';
+import { standInViewOf } from './stand-ins.js';
 import { recordLeaveStep } from './steps.js';
 import { DOCUMENT_ENTITY, partiesOf, placeOf, REQUEST_ENTITY, REQUEST_INCLUDE, requestView, rulesOf, type LeaveRequestView, type RequestRow } from './views.js';
 
@@ -70,6 +76,8 @@ export interface LeaveCalendarItem {
   endDate: string;
   halfDay: boolean;
   status: LeaveStatus;
+  /** The colleague who covers it (owner, 25 October 2026: on My Team's calendar, "the cover person on hover or detail"). */
+  cover: { id: string; fullNameEn: string } | null;
 }
 
 // Leave requests (owner, 18 October 2026: "can you apply the leaves according to the law?"; the approval he chose: the
@@ -88,6 +96,11 @@ export interface LeaveCalendarItem {
 // document too. Those who may not see a request (its employee, the manager it was sent to, their manager now, HR, the
 // CEO) are told it isn't there. A C-level person's (owner, 19 October 2026: "make C level Employees details not visible
 // to HR"): its HR stage is the CEO's, HR and their manager now don't see it, nor their balances (access.ts).
+// Leave coverage (owner, 25 October 2026: "Warn and need HR", "Required over 2 days", "To a stand-in"; leave-coverage.
+// service.ts): a request names the colleague who covers (required for annual and unpaid leave of more than 2 working
+// days), who is told and may be changed by the employee later; an approver's names a stand-in, who decides what waits at
+// their step during the leave's days (stand-ins.ts) and is told when it starts; one breaking its team's staffing limit is
+// marked so, and HR approves it as always after the manager.
 @Injectable()
 export class LeaveRequestsService {
   constructor(
@@ -98,6 +111,8 @@ export class LeaveRequestsService {
     private readonly confidential: ConfidentialService,
     private readonly permissions: PermissionRequestsService,
     private readonly notices: NoticesService,
+    private readonly coverage: LeaveCoverageService,
+    private readonly standIns: StandInSchedulerService,
   ) {}
 
   // ---------- the employee's own ----------
@@ -123,9 +138,10 @@ export class LeaveRequestsService {
     if (!caller.employeeId) throw new ForbiddenException('Only an employee can ask for leave: your sign-in has no employee profile.');
     const employment = await this.balances.employmentOf(caller.employeeId);
     if (!employment || employment.endDate !== null) throw new ConflictException("You have no current employment, so you can't ask for leave.");
-    const id = await this.submit(employment, dto, files, caller, false);
-    // to the one in charge of its first step (Phase 4: notifications), once it is saved
+    const { id, coverId } = await this.submit(employment, dto, files, caller, false);
+    // to the one in charge of its first step (Phase 4: notifications), once it is saved; and the colleague who covers
     await this.notices.leave(id, 'sent');
+    if (coverId) await this.notices.cover(id, coverId);
     return this.one(id, user);
   }
 
@@ -154,6 +170,56 @@ export class LeaveRequestsService {
     return this.one(id, user);
   }
 
+  /**
+   * The employee changes the colleague who covers their request, or the handover note (owner's brief, 25 October 2026:
+   * "if the cover becomes unavailable, the requester can change the cover, which is audited"): while it is being decided,
+   * or approved and not ended. A request that needs a cover keeps one. The new colleague is told, and the one before that
+   * they no longer cover it; the change is a step of the request and in the audit log.
+   */
+  async changeCover(id: string, dto: ChangeCoverDto, user: SessionUser): Promise<LeaveRequestView> {
+    const caller = await this.caller(user);
+    const before = await this.prisma.leaveRequest.findUnique({
+      where: { id },
+      select: { employeeId: true, status: true, startDate: true, endDate: true, days: true, coverId: true, handoverNote: true, recordedByHr: true, type: { select: { kind: true, nameEn: true } } },
+    });
+    if (!before || !isRequester({ employeeId: before.employeeId, managerId: null }, caller)) throw new NotFoundException(NOT_FOUND);
+    const startDate = fromDateOnly(before.startDate);
+    const endDate = fromDateOnly(before.endDate);
+    const open = (LEAVE_OPEN_STATUSES as readonly string[]).includes(before.status) || (before.status === 'approved' && endDate >= todayInCairo());
+    if (!open) throw new ConflictException(`This request is ${before.status === 'approved' ? 'over' : statusWords(before.status)}, so its cover can't change.`);
+    const coverId = dto.coverId === undefined ? before.coverId : dto.coverId;
+    const handoverNote = dto.handoverNote === undefined ? before.handoverNote : dto.handoverNote;
+    if (!coverId && !before.recordedByHr && coverRequired(before.type.kind, before.days.toNumber())) {
+      throw new BadRequestException([`${before.type.nameEn} of more than 2 working days needs a colleague who covers: choose another one rather than none.`]);
+    }
+    if (coverId && coverId !== before.coverId) {
+      const { problems } = await this.coverage.coverProblemsFor(before.employeeId, coverId, startDate, endDate, id);
+      if (problems.length) throw new BadRequestException(problems);
+    }
+    if (coverId === before.coverId && handoverNote === before.handoverNote) return this.one(id, user);
+    await this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.leaveRequest.updateMany({ where: { id, status: before.status }, data: { coverId, handoverNote } });
+      if (!count) throw new ConflictException('This request was decided or cancelled meanwhile. Reload the page to see where it is.');
+      if (coverId !== before.coverId) await recordLeaveStep(tx, id, user.id, { kind: 'cover_changed' });
+    });
+    await this.audit.record({
+      userId: user.id,
+      action: 'update',
+      entityType: REQUEST_ENTITY,
+      entityId: id,
+      diff: {
+        employeeId: before.employeeId,
+        ...(coverId !== before.coverId && { coverId: { from: before.coverId, to: coverId } }),
+        ...(handoverNote !== before.handoverNote && { handoverNote: { from: before.handoverNote, to: handoverNote } }),
+      },
+    });
+    if (coverId !== before.coverId) {
+      if (coverId) await this.notices.cover(id, coverId);
+      if (before.coverId) await this.notices.cover(id, before.coverId, true);
+    }
+    return this.one(id, user);
+  }
+
   // ---------- HR on an employee's behalf ----------
 
   /**
@@ -174,8 +240,11 @@ export class LeaveRequestsService {
     });
     const employment = covering ? (await this.balances.employments([covering.id]))[0] : null;
     if (!employment) throw new BadRequestException([`Choose days within one of ${person.fullNameEn}'s employments.`]);
-    const id = await this.submit(employment, dto, files, caller, true);
+    const { id, coverId } = await this.submit(employment, dto, files, caller, true);
     await this.payroll.syncDrafts(dto.employeeId, dto.startDate, dto.endDate, user);
+    if (coverId) await this.notices.cover(id, coverId);
+    // approved at once: a stand-in whose days have started is told now
+    await this.standIns.tick();
     return this.one(id, user);
   }
 
@@ -245,6 +314,9 @@ export class LeaveRequestsService {
     const stage = leaveStage(before.status);
     if (!stage) throw new ConflictException(`This request is ${statusWords(before.status)}, so there is nothing left to decide. Reload the page to see it.`);
     if (isRequester(parties, caller)) throw new ForbiddenException('Someone else has to decide your own leave request.');
+    // the approver it was sent to, away with a stand-in: theirs meanwhile (owner, 25 October 2026: "To a stand-in")
+    const away = standInRefusal({ ...parties, status: before.status }, caller);
+    if (away) throw new ConflictException(away);
     if (!decidesStage(stage, parties, caller)) {
       // one of its deciders, on a page left open while it moved on (or not with them yet)
       if (isRequestManager(parties, caller) || decidesStage('hr', parties, caller)) {
@@ -258,23 +330,29 @@ export class LeaveRequestsService {
     }
     const comment = dto.comment ?? null;
     if (leaveDecisionNeedsComment(dto.decision) && !comment) throw new BadRequestException('Write a comment: why the leave is rejected.');
+    // after the manager, HR approves it too, as always: one over its team's staffing limit (overStaffingLimit) is marked
+    // so for HR (owner, 25 October 2026: "Warn and need HR")
     const to: LeaveStatus = dto.decision === 'reject' ? 'rejected' : leaveStatusAfterApproval(stage);
+    // a stand-in's decision keeps the approver they stood in for, on the step and in the audit log
+    const onBehalfOf = decidedOnBehalfOf(stage, parties, caller);
     await this.prisma.$transaction(async (tx) => {
       const { count } = await tx.leaveRequest.updateMany({
         where: { id, status: before.status },
         data: to === 'rejected' ? { status: to, rejectedStage: stage, rejectReason: comment } : { status: to },
       });
       if (!count) throw new ConflictException('This request was decided or cancelled meanwhile. Reload the page to see where it is.');
-      await recordLeaveStep(tx, id, user.id, { kind: leaveDecisionStepKind(stage), decision: dto.decision, comment });
+      await recordLeaveStep(tx, id, user.id, { kind: leaveDecisionStepKind(stage), decision: dto.decision, comment, onBehalfOf });
     });
     await this.audit.record({
       userId: user.id,
       action: dto.decision === 'reject' ? 'reject' : 'approve',
       entityType: REQUEST_ENTITY,
       entityId: id,
-      diff: { employeeId: before.employeeId, stage, decision: dto.decision, status: { from: before.status, to }, ...(comment && { comment }) },
+      diff: { employeeId: before.employeeId, stage, decision: dto.decision, status: { from: before.status, to }, ...(comment && { comment }), ...(onBehalfOf && { standingInFor: onBehalfOf }) },
     });
     if (to === 'approved') await this.payroll.syncDrafts(before.employeeId, fromDateOnly(before.startDate), fromDateOnly(before.endDate), user);
+    // an approver's leave approved: a stand-in whose days have started is told now
+    if (to === 'approved' && (before.standInId || before.standInHr)) await this.standIns.tick();
     // to the next step's decider, or the employee once it is approved or rejected (Phase 4: notifications)
     await this.notices.leave(id, 'decided');
     return this.one(id, user);
@@ -361,6 +439,7 @@ export class LeaveRequestsService {
         employee: { select: { id: true, fullNameEn: true } },
         employment: { select: { department: { select: { nameEn: true, parent: { select: { nameEn: true } } } } } },
         type: { select: { id: true, nameEn: true, nameAr: true } },
+        cover: { select: { id: true, fullNameEn: true } },
       },
     });
     const leave = rows.map((r) => ({
@@ -372,6 +451,7 @@ export class LeaveRequestsService {
       endDate: fromDateOnly(r.endDate),
       halfDay: r.halfDay,
       status: r.status as LeaveStatus,
+      cover: r.cover,
     }));
     const permissions = await this.permissions.calendarItems(scopeWhere(caller), isHr(user) ? TAKING : ['approved'], from, to, query.departmentId);
     return [...leave, ...permissions];
@@ -386,14 +466,21 @@ export class LeaveRequestsService {
       // the C-level people, and those hidden from the caller (owner, 19 October 2026)
       this.confidential.view(user),
     ]);
-    return { user, employeeId: me?.id ?? null, confidential };
+    // whom they stand in for today, and their own stand-in while away (owner, 25 October 2026: "To a stand-in")
+    return { user, employeeId: me?.id ?? null, confidential, standIn: await standInViewOf(this.prisma, me?.id ?? null, user) };
   }
 
   /**
    * A request saved, checked against its type's rules in a transaction holding the employee's row (two sent together
    * can't both take the last days): an employee's to the direct manager (or HR), HR's approved at once.
    */
-  private async submit(employment: LeaveEmployment, dto: CreateLeaveRequestDto, files: Express.Multer.File[] | undefined, caller: Caller, byHr: boolean): Promise<string> {
+  private async submit(
+    employment: LeaveEmployment,
+    dto: CreateLeaveRequestDto,
+    files: Express.Multer.File[] | undefined,
+    caller: Caller,
+    byHr: boolean,
+  ): Promise<{ id: string; coverId: string | null }> {
     const user = caller.user;
     const employeeId = employment.employeeId;
     const name = byHr ? employment.employee.fullNameEn : null;
@@ -422,6 +509,20 @@ export class LeaveRequestsService {
     const approverRole = approver?.role ?? null;
     const status: LeaveStatus = byHr ? 'approved' : firstLeaveStatus(managerId !== null);
     const uploadedAt = Date.now();
+    // the colleague who covers, the stand-in of someone who approves, and the team's staffing limit (owner, 25 October
+    // 2026: "Required over 2 days", "To a stand-in", "Warn and need HR"): checked with the type's rules
+    const coverage = await this.coverage.checkNew({
+      employment,
+      type,
+      startDate: dto.startDate,
+      endDate: dto.endDate,
+      days,
+      holidays,
+      coverId: dto.coverId,
+      handoverNote: dto.handoverNote,
+      standIn: dto.standIn,
+      byHr,
+    });
 
     const id = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT 1 FROM employees WHERE id = ${employeeId}::uuid FOR UPDATE`;
@@ -444,6 +545,7 @@ export class LeaveRequestsService {
             gender: (employment.employee.gender as LeaveGender | null) ?? null,
           },
         ),
+        ...coverage.problems,
       ];
       if (problems.length) throw new BadRequestException(problems);
       // never on days another request already takes
@@ -482,6 +584,11 @@ export class LeaveRequestsService {
           approverRole,
           recordedByHr: byHr,
           createdById: user.id,
+          coverId: coverage.coverId,
+          handoverNote: coverage.handoverNote,
+          overStaffingLimit: coverage.overStaffingLimit,
+          standInId: coverage.standInId,
+          standInHr: coverage.standInHr,
           documents: {
             create: documents.map((d, i) => ({ fileName: d.fileName, mimeType: d.mimeType, sizeBytes: d.sizeBytes, data: new Uint8Array(d.data), uploadedAt: new Date(uploadedAt + i) })),
           },
@@ -513,9 +620,14 @@ export class LeaveRequestsService {
         managerId,
         approverRole,
         status,
+        coverId: coverage.coverId,
+        handoverNote: coverage.handoverNote,
+        overStaffingLimit: coverage.overStaffingLimit,
+        standInId: coverage.standInId,
+        standInHr: coverage.standInHr,
       },
     });
-    return id;
+    return { id, coverId: coverage.coverId };
   }
 
   /** A year whose annual balance is closed takes no more leave from it, nor gives any back. */

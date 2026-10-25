@@ -5,10 +5,13 @@ import { startTransition, useActionState, useRef, useState, useTransition } from
 import {
   LEAVE_DECISION_LABELS,
   LEAVE_DECISIONS,
+  HANDOVER_NOTE_MAX,
   LEAVE_DOCUMENTS_MAX,
   leaveDecisionNeedsComment,
   leaveTypeRulesText,
+  type CoverCandidate,
   type LeaveDecision,
+  type LeaveFormCoverage,
   type LeaveGender,
   type LeaveStage,
 } from '@trendlix/shared';
@@ -24,11 +27,13 @@ import type { FormState, Holiday, LeaveBalances, LeaveTypeView } from '@/lib/typ
 import { choice } from '../employees/[id]/contracts/pay-fields';
 import { shrinkPhoto } from '../employees/shrink-photo';
 import { sizeText } from '../reimbursements/claim';
-import { leaveYearData } from './actions';
+import { leaveCoverage, leaveYearData } from './actions';
+import { CoverageFields, type CoverageChoice } from './coverage-fields';
+import { placeText } from './coverage';
 import { daysNumber, daysText, hrStageName, LEAVE_COMMENT_READERS, leaveCommentReaders, leaveDecisionButton } from './list';
 import { correctionDecisionButton } from '../attendance/corrections/corrections';
 import { permissionDecisionButton } from './permissions';
-import { balanceAfter, countLeaveDays, countText, DOCUMENT_ACCEPT, leaveFormProblems, REASON_MAX, requestYear, rulesOf, type TypedLeave } from './request';
+import { balanceAfter, countLeaveDays, countText, coverProblems, DOCUMENT_ACCEPT, leaveFormProblems, readDates, REASON_MAX, requestYear, rulesOf, type TypedLeave } from './request';
 
 // The forms of a leave request (owner, 18 October 2026: "can you apply the leaves according to the law?"): the new
 // request, for an employee themself or recorded by HR on their behalf, with the type's rules in words beside it, its days
@@ -37,7 +42,11 @@ import { balanceAfter, countLeaveDays, countText, DOCUMENT_ACCEPT, leaveFormProb
 // an approver's decision on the request's page (Approve, or Reject with a comment); the employee's Cancel; HR's Cancel of
 // an approved one, with a comment; and HR's adjustment of a balance. The API checks everything again. A permission
 // request (owner, 19 October 2026: "In the system, like leave") is decided and cancelled with the same forms, worded for
-// it (`kind`): its hours, not days, go back.
+// it (`kind`): its hours, not days, go back. Leave coverage (owner, 25 October 2026: "Names, no leave types", "Warn and
+// need HR", "Required over 2 days", "To a stand-in"): the employee's own request reads, as its days and type are chosen,
+// who else of their team is off (names only), the staffing limit's warning (still sendable), the colleagues they cover
+// on those days, and asks for the colleague who covers (required over 2 working days of annual or unpaid leave), a
+// handover note and, for someone who approves for others, their stand-in; its employee changes the cover later.
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -265,6 +274,16 @@ export function NewLeaveForm({
   const asked = useRef(initial.year);
   const [documents, setDocuments] = useState<Chosen[]>([]);
   const [shrinking, setShrinking] = useState(false);
+  // who else is off, the cover and the stand-in (25 October 2026): the employee's own request only
+  const [coverage, setCoverage] = useState<LeaveFormCoverage | null>(null);
+  const [coverageProblem, setCoverageProblem] = useState<string | null>(null);
+  const [readingCoverage, startCoverage] = useTransition();
+  const coverageAsked = useRef('');
+  const [choice, setChoice] = useState<CoverageChoice>(() => ({
+    coverId: valueOf(state, 'coverId'),
+    handoverNote: valueOf(state, 'handoverNote'),
+    standIn: valueOf(state, 'standIn'),
+  }));
 
   const type = types.find((t) => t.id === typed.typeId) ?? null;
   const year = requestYear(typed, today);
@@ -279,6 +298,12 @@ export function NewLeaveForm({
     ctx,
   );
   if (checking || (stale && !loadProblem)) problems.push(`Checking the balance and the holidays of ${year}…`);
+  if (!byHr && coverage) {
+    problems.push(...coverProblems(coverage.cover.required, choice.coverId, choice.handoverNote));
+    // the colleague chosen is off on the days chosen since
+    if (choice.coverId && !coverage.cover.candidates.some((c: CoverCandidate) => c.id === choice.coverId)) problems.push('The colleague chosen to cover is off on some of these days: choose another.');
+  }
+  if (!byHr && readingCoverage) problems.push('Checking who else is off on these days…');
   const blocked = problems.length > 0 || shrinking || sending;
 
   /** The balances and holidays again, for the year of the first day typed. */
@@ -294,12 +319,42 @@ export function NewLeaveForm({
     });
   }
 
+  /**
+   * Who else is off on the days typed, the limit, the cover and the stand-in (GET /me/leave/coverage), read again once
+   * the days, the type or the half day change (25 October 2026); the latest asked wins.
+   */
+  function readCoverage(next: TypedLeave) {
+    if (byHr) return;
+    const { startDate, endDate } = readDates(next);
+    if (!startDate || !endDate || endDate < startDate) {
+      // while a date is being typed the last answer stays (Send waits for the dates anyway); none once they are cleared
+      coverageAsked.current = '';
+      if (next.startDate.trim() === '') setCoverage(null);
+      return;
+    }
+    const key = `${startDate}|${endDate}|${next.typeId}|${next.halfDay}`;
+    if (key === coverageAsked.current) return;
+    coverageAsked.current = key;
+    startCoverage(async () => {
+      const answer = await leaveCoverage(startDate, endDate, next.typeId, next.halfDay);
+      if (coverageAsked.current !== key) return;
+      if ('coverage' in answer) {
+        setCoverage(answer.coverage);
+        setCoverageProblem(null);
+      } else {
+        setCoverage(null);
+        setCoverageProblem(`Who else is off couldn't be checked: ${answer.errors.join(' ')} The cover and the limit are checked when you send it.`);
+      }
+    });
+  }
+
   function set<K extends keyof TypedLeave>(key: K, value: TypedLeave[K]) {
     setTyped((t) => ({ ...t, [key]: value }));
     if (key === 'startDate') {
       const date = parseDate(value as string);
       if (date) readFor(Number(date.slice(0, 4)));
     }
+    if (key === 'startDate' || key === 'endDate' || key === 'typeId' || key === 'halfDay') readCoverage({ ...typed, [key]: value });
   }
 
   function send(e: React.FormEvent<HTMLFormElement>) {
@@ -439,6 +494,19 @@ export function NewLeaveForm({
         <div className="sm:col-span-2">
           <DocumentsField fid={fid} documents={documents} onChange={setDocuments} onBusy={setShrinking} required={!!type?.documentRequired} />
         </div>
+        {!byHr && (
+          <div className="space-y-4 sm:col-span-2">
+            <CoverageFields
+              fid={fid}
+              coverage={coverage}
+              reading={readingCoverage}
+              problem={coverageProblem}
+              choice={choice}
+              onChange={(next) => setChoice((c) => ({ ...c, ...next }))}
+              toCeo={toCeo}
+            />
+          </div>
+        )}
       </div>
 
       {loadProblem && <p className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">{loadProblem}</p>}
@@ -456,7 +524,9 @@ export function NewLeaveForm({
         ) : (
           <p className="rounded-lg bg-ok-soft px-4 py-3 text-sm text-ok">
             Ready to {byHr ? 'record' : 'send'}: {daysText(days)} of {type?.nameEn.toLowerCase()}
-            {byHr ? ` for ${person.name}, approved at once.` : `, to your direct manager (without one, your lead), then ${hrStageName(toCeo)}.`}
+            {byHr
+              ? ` for ${person.name}, approved at once.`
+              : `, to your direct manager (without one, your lead), then ${hrStageName(toCeo)}${coverage?.overLimit ? ' (over the staffing limit)' : ''}.`}
           </p>
         )}
       </div>
@@ -626,6 +696,86 @@ export function HrCancelLeaveForm({ action, what, kind = 'leave' }: { action: Ac
       <button type="submit" disabled={pending || comment.trim() === ''} className="btn btn-danger">
         {pending ? 'Cancelling…' : `Cancel the ${kind}`}
       </button>
+    </form>
+  );
+}
+
+/**
+ * The employee changes the colleague who covers their request, or the handover note (owner's brief, 25 October 2026: "if
+ * the cover becomes unavailable, the requester can change the cover, which is audited"): those not off on its days, the
+ * team first; none only where the leave doesn't need one. The API checks it again, tells the new colleague and the one
+ * before, and logs it.
+ */
+export function ChangeCoverForm({
+  action,
+  cover,
+  note,
+  candidates,
+  required,
+  groupName,
+}: {
+  action: Action;
+  cover: { id: string; fullNameEn: string } | null;
+  note: string | null;
+  /** Those who may cover its days now (null: they couldn't be read: only the note can change). */
+  candidates: CoverCandidate[] | null;
+  required: boolean;
+  groupName: string | null;
+}) {
+  const [state, formAction, pending] = useActionState(action, {});
+  const fid = useFieldIds();
+  const [open, setOpen] = useState(() => !!state.errors?.length);
+  const [coverId, setCoverId] = useState(() => valueOf(state, 'coverId', cover?.id ?? ''));
+  if (!open) {
+    return (
+      <button type="button" onClick={() => setOpen(true)} className="btn btn-secondary min-h-9 px-3">
+        Change the cover
+      </button>
+    );
+  }
+  const list = candidates ?? [];
+  const team = list.filter((c) => c.sameTeam);
+  const others = list.filter((c) => !c.sameTeam);
+  // the one covering now, even if the list no longer has them (off on some of the days since)
+  const kept = cover && !list.some((c) => c.id === cover.id) ? cover : null;
+  const option = (c: CoverCandidate) => (
+    <option key={c.id} value={c.id}>
+      {c.fullNameEn}
+      {placeText(c) ? ` · ${placeText(c)}` : ''}
+    </option>
+  );
+  return (
+    <form action={formAction} aria-label="Change who covers this leave" className="space-y-4">
+      <FormErrors errors={state.errors} />
+      <SurfaceField />
+      <div>
+        <label htmlFor={fid('coverId')} className="label">
+          Colleague who covers {!required && optional}
+        </label>
+        <Select id={fid('coverId')} name="coverId" required={required} value={coverId} onChange={(e) => setCoverId(e.target.value)} aria-describedby={fid('coverId-hint')} className="input">
+          <option value="">{required ? 'Choose a colleague' : 'Nobody'}</option>
+          {kept && <option value={kept.id}>{kept.fullNameEn} (off on some of these days now)</option>}
+          {team.length > 0 && <optgroup label={groupName ?? 'Your team'}>{team.map(option)}</optgroup>}
+          {others.length > 0 && <optgroup label={team.length ? 'Everyone else' : 'Colleagues'}>{others.map(option)}</optgroup>}
+        </Select>
+        <p id={fid('coverId-hint')} className="hint">
+          {candidates ? 'Colleagues not off on these days. The new one is told, and the one before is told they no longer cover it.' : 'The colleagues couldn’t be loaded: try again in a moment.'}
+        </p>
+      </div>
+      <div>
+        <label htmlFor={fid('handoverNote')} className="label">
+          Handover note {optional}
+        </label>
+        <textarea id={fid('handoverNote')} name="handoverNote" rows={2} maxLength={HANDOVER_NOTE_MAX} defaultValue={valueOf(state, 'handoverNote', note ?? '')} className="input" />
+      </div>
+      <div className="flex flex-wrap gap-3">
+        <button type="submit" disabled={pending || (required && !coverId)} className="btn btn-primary min-h-9 px-3 disabled:cursor-not-allowed disabled:opacity-60">
+          {pending ? 'Saving…' : 'Save the cover'}
+        </button>
+        <button type="button" onClick={() => setOpen(false)} className="btn btn-secondary min-h-9 px-3">
+          Close
+        </button>
+      </div>
     </form>
   );
 }

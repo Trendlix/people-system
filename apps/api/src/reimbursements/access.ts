@@ -3,6 +3,8 @@ import { actsAs } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import type { ConfidentialView } from '../employees/confidential.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
+import { managerWaiting, movedToStandIn, standsInFor } from '../leave/access.js';
+import type { StandInView } from '../leave/stand-ins.js';
 
 // Who may see, decide and cancel a reimbursement claim (owner, 18 October 2026: "allow the employee to add
 // reimbursement request … for specific preset up conditions"; asked, the owner chose the direct manager, then HR, then
@@ -10,6 +12,8 @@ import type { Prisma } from '../generated/prisma/client.js';
 // October 2026: "make C level Employees details not visible to HR"; their HR stages go to the CEO): HR's and Finance's
 // stages are the CEO's (or HR's and Finance's with Super Admin: packages/shared decidesConfidentialStage), and HR and
 // Finance don't see it; the manager it was sent to still decides the manager stage, as the request is theirs to decide.
+// Stand-ins (owner, 25 October 2026: "To a stand-in"; leave/stand-ins.ts): while the manager it was sent to is on leave
+// with a stand-in, the manager stage is the stand-in's, as leave's is (leave/access.ts); HR's and Finance's never move.
 
 /**
  * The caller, their own employee profile (the one their account is linked to), if any, and the C-level people,
@@ -19,6 +23,8 @@ export interface Caller {
   user: SessionUser;
   employeeId: string | null;
   confidential?: ConfidentialView;
+  /** Whom the caller stands in for today, and their own stand-in while they are away (25 October 2026). */
+  standIn?: StandInView;
 }
 
 /** Whether the claim is a C-level person's (its HR and Finance stages the CEO's). */
@@ -47,7 +53,7 @@ export const isClaimManager = (claim: ClaimParties, caller: Caller) => caller.em
  * not HR nor Finance (owner, 19 October 2026), the CEO and a Super Admin with HR or Finance instead.
  */
 export const seesClaim = (claim: ClaimParties, caller: Caller) =>
-  (seesEveryClaim(caller.user) && !hiddenClaim(claim, caller)) || isClaimant(claim, caller) || isClaimManager(claim, caller);
+  (seesEveryClaim(caller.user) && !hiddenClaim(claim, caller)) || isClaimant(claim, caller) || isClaimManager(claim, caller) || standsInFor(claim, caller);
 
 /**
  * Whether the caller decides a stage of the claim: the manager stage its direct manager, HR's stage HR and Finance's
@@ -55,7 +61,8 @@ export const seesClaim = (claim: ClaimParties, caller: Caller) =>
  */
 export function decidesStage(stage: ReimbursementStage, claim: ClaimParties, caller: Caller): boolean {
   if (isClaimant(claim, caller)) return false;
-  if (stage === 'manager') return isClaimManager(claim, caller);
+  // the manager it was sent to, unless away with a stand-in; their stand-in meanwhile (25 October 2026)
+  if (stage === 'manager') return (isClaimManager(claim, caller) && !movedToStandIn(claim, caller)) || standsInFor(claim, caller);
   if (isConfidentialClaim(claim, caller)) return decidesConfidentialStage(caller.user, [stage]);
   return actsAs(caller.user.roles, [stage]);
 }
@@ -74,7 +81,8 @@ export function waitsFor(claim: ClaimParties & { status: string }, caller: Calle
 export function waitingWhere(caller: Caller): Prisma.ReimbursementClaimWhereInput {
   const or: Prisma.ReimbursementClaimWhereInput[] = [];
   const confidential = [...(caller.confidential?.all ?? [])];
-  if (caller.employeeId) or.push({ status: 'with_manager', managerId: caller.employeeId });
+  // the manager stage as leave's: theirs unless it moved to their stand-in, and those of whom they stand in for
+  if (caller.employeeId) or.push(...(managerWaiting(caller) as Prisma.ReimbursementClaimWhereInput[]));
   for (const stage of ['hr', 'finance'] as const) {
     const status = stage === 'hr' ? 'with_hr' : 'with_finance';
     const ordinary = actsAs(caller.user.roles, [stage]);

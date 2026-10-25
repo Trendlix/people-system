@@ -1267,6 +1267,8 @@ const COMPANY_AUDIT_ENTITIES = new Set([
   'template_version',
   'leave_type',
   'leave_settings',
+  // a team's staffing limit (25 October 2026): its numbers and the team's name, no person
+  'leave_staffing_limit',
   'reimbursement_type',
   'kpi_template',
   'kpi_framework',

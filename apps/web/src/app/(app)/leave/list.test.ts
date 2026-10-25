@@ -33,6 +33,7 @@ import {
   recordsLeave,
   requestsLabel,
   stageTitle,
+  standingInText,
   upcomingLeave,
   WAITING_LEAVE,
 } from './list';
@@ -191,6 +192,11 @@ describe('a request in words', () => {
     expect(leaveStepTone({ kind: 'hr_decision', decision: 'reject' })).toBe('danger');
     expect(leaveStepTone({ kind: 'recorded_by_hr', decision: null })).toBe('ok');
     expect(leaveStepTone({ kind: 'submitted', decision: null })).toBeNull();
+    // leave coverage (25 October 2026): the cover changed by the employee, and a stand-in's decision
+    expect(leaveStepText({ kind: 'cover_changed', decision: null, comment: null })).toBe('Cover changed');
+    expect(standingInText({ fullNameEn: 'Ahmed Ali' })).toBe('standing in for Ahmed Ali');
+    expect(standingInText(null)).toBeNull();
+    expect(leaveDoneText({ done: 'cover' }, 'with_manager')?.text).toMatch(/^Cover saved/);
   });
 
   it('says what was just done on its page', () => {

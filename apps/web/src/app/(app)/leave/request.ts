@@ -1,5 +1,6 @@
 import {
   DEFAULT_WORKING_DAYS,
+  HANDOVER_NOTE_MAX,
   isLeaveKind,
   LEAVE_DOCUMENT_MAX_MB,
   LEAVE_DOCUMENT_TYPES,
@@ -214,14 +215,23 @@ export const requestYear = (typed: Pick<TypedLeave, 'startDate'>, today: string)
 
 // ---------- the form as the server action reads it ----------
 
-/** What POST /me/leave/requests (and HR's POST /leave/requests) take besides the documents. */
+/**
+ * What POST /me/leave/requests (and HR's POST /leave/requests) take besides the documents. Leave coverage (owner, 25
+ * October 2026: "Required over 2 days", "To a stand-in"): the colleague who covers ("" none), the handover note to them,
+ * and the stand-in of someone who approves ("hr", an employee's id, or "" for the default).
+ */
 export interface LeaveFields {
   typeId: string;
   startDate: string;
   endDate: string;
   halfDay: boolean;
   reason: string;
+  coverId: string;
+  handoverNote: string;
+  standIn: string;
 }
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const text = (fd: FormData, key: string) => String(fd.get(key) ?? '').trim();
 
@@ -242,15 +252,34 @@ export function leaveForm(fd: FormData): { fields: LeaveFields | null; documents
   if (startDate && endDate && endDate < startDate) errors.push("The last day can't be before the first.");
   const reason = text(fd, 'reason');
   if (reason.length > REASON_MAX) errors.push(`Keep the reason to ${REASON_MAX} characters; it has ${reason.length}.`);
+  // who covers, the note to them and the stand-in (25 October 2026): the API checks who may, and when one is required
+  const coverId = text(fd, 'coverId');
+  if (coverId && !UUID.test(coverId)) errors.push('Choose the colleague who covers from the list.');
+  const handoverNote = text(fd, 'handoverNote');
+  if (handoverNote.length > HANDOVER_NOTE_MAX) errors.push(`Keep the handover note to ${HANDOVER_NOTE_MAX} characters; it has ${handoverNote.length}.`);
+  const standIn = text(fd, 'standIn');
+  if (standIn && standIn !== 'hr' && !UUID.test(standIn)) errors.push('Choose your stand-in from the list, or HR.');
   const documents = fd.getAll('documents').filter((v): v is File => typeof v === 'object' && v !== null && 'size' in v && (v as File).size > 0);
   errors.push(...documentProblems(documents));
   if (errors.length) return { fields: null, documents, errors };
-  return { fields: { typeId, startDate: startDate!, endDate: endDate!, halfDay: fd.get('halfDay') === 'true', reason }, documents, errors };
+  return { fields: { typeId, startDate: startDate!, endDate: endDate!, halfDay: fd.get('halfDay') === 'true', reason, coverId, handoverNote, standIn }, documents, errors };
 }
 
 /** The fields as the form shows them again after a refusal (not the documents: a file box can't be refilled). */
 export const typedLeaveValues = (fd: FormData): Record<string, string> =>
-  Object.fromEntries(['typeId', 'startDate', 'endDate', 'halfDay', 'reason', 'employeeId'].map((k) => [k, String(fd.get(k) ?? '')]));
+  Object.fromEntries(['typeId', 'startDate', 'endDate', 'halfDay', 'reason', 'employeeId', 'coverId', 'handoverNote', 'standIn'].map((k) => [k, String(fd.get(k) ?? '')]));
+
+/**
+ * Why the request can't be sent yet for its coverage (owner, 25 October 2026: "Required over 2 days"): annual (or unpaid)
+ * leave of more than 2 working days names a colleague who covers; the handover note within its length. None: it can.
+ * `required`: the API's answer for the days typed (GET /me/leave/coverage).
+ */
+export function coverProblems(required: boolean, coverId: string, handoverNote: string): string[] {
+  const problems: string[] = [];
+  if (required && !coverId) problems.push('Choose the colleague who covers your work: leave of more than 2 working days needs one.');
+  if (handoverNote.trim().length > HANDOVER_NOTE_MAX) problems.push(`Keep the handover note to ${HANDOVER_NOTE_MAX} characters; it has ${handoverNote.trim().length}.`);
+  return problems;
+}
 
 // ---------- who it is for ----------
 

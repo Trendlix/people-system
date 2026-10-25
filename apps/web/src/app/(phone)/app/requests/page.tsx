@@ -5,6 +5,10 @@ import { seesRaiseRequests } from '@trendlix/shared';
 import { getCurrentUser } from '@/lib/session';
 import { APP_PATHS, appRequestsHref } from '@/lib/surface';
 import { NoProfile } from '../../../(app)/dashboard/cards';
+import { todayInCairo } from '../../../(app)/employees/ui';
+import { coveringCountText, coveringToCome } from '../../../(app)/my-requests/covering';
+import { loadMyCovering } from '../../../(app)/my-requests/covering-data';
+import { CoveringList } from '../../../(app)/my-requests/covering-list';
 import { loadMyCorrections } from '../../../(app)/attendance/corrections/data';
 import { loadMyWfh } from '../../../(app)/attendance/wfh/data';
 import { loadMyOd } from '../../../(app)/attendance/official-duty/data';
@@ -45,9 +49,29 @@ import {
 // October 2026: "allow other users to request to add their home locations when working from home"). Their own KPI
 // scorecard when it waits for them to rate themself or to sign (owner's brief, 21 October 2026: "a card on Home and
 // Requests for the employee's self-rating and sign-off"), above the list. Their work from home days (owner, 21 October
-// 2026: "think about how should we handle the working from home in out erp"): asked, recorded by HR or imported.
+// 2026: "think about how should we handle the working from home in out erp"): asked, recorded by HR or imported. The
+// colleagues' leave they cover (owner, 25 October 2026: "Required over 2 days"), above the list when there is some: a
+// cover's notification opens here on the phone.
 
 export const metadata: Metadata = { title: 'My Requests · Trendlix People' };
+
+/** I'm Covering (25 October 2026): the colleagues' leave they were named to cover, current or to come; never its type. */
+async function Covering() {
+  const loaded = await loadMyCovering();
+  if (loaded.kind !== 'ok') return null;
+  const today = todayInCairo();
+  const list = coveringToCome(loaded.value, today);
+  if (!list.length) return null;
+  return (
+    <section aria-labelledby="covering-heading" className="card space-y-2 p-4">
+      <h2 id="covering-heading" className="font-semibold">
+        I’m Covering
+      </h2>
+      <p className="text-xs text-muted">Colleagues who named you to cover their work while they are away: {coveringCountText(list.length)}.</p>
+      <CoveringList list={list} today={today} compact />
+    </section>
+  );
+}
 
 function StatusBadge({ row }: { row: AppRequestRow }) {
   if (row.kind === 'reimbursement') return <ClaimStatusBadge status={row.request.status} confidential={row.request.confidential} />;
@@ -96,6 +120,9 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/app/reques
       </Link>
       <Suspense fallback={null}>
         <MyKpiCard user={user} />
+      </Suspense>
+      <Suspense fallback={null}>
+        <Covering />
       </Suspense>
       {failed && <Quiet>Some of your requests couldn&apos;t be loaded. Please try again in a moment.</Quiet>}
       <nav aria-label="Filter by kind" className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">

@@ -4,6 +4,7 @@ import {
   balanceAfter,
   countLeaveDays,
   countText,
+  coverProblems,
   documentProblems,
   fullMonths,
   leaveForm,
@@ -193,10 +194,30 @@ describe('the form as the server action reads it', () => {
 
   it('sends the dates as YYYY-MM-DD, the half day as true or false, the reason', () => {
     expect(leaveForm(form({ typeId: 'annual', startDate: '25/10/2026', endDate: '', halfDay: 'true', reason: ' Family ' }))).toEqual({
-      fields: { typeId: 'annual', startDate: '2026-10-25', endDate: '2026-10-25', halfDay: true, reason: 'Family' },
+      fields: { typeId: 'annual', startDate: '2026-10-25', endDate: '2026-10-25', halfDay: true, reason: 'Family', coverId: '', handoverNote: '', standIn: '' },
       documents: [],
       errors: [],
     });
+  });
+
+  it('sends the colleague who covers, the handover note and the stand-in (25 October 2026)', () => {
+    const cover = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
+    const sent = leaveForm(form({ typeId: 'annual', startDate: '25/10/2026', endDate: '28/10/2026', coverId: cover, handoverNote: ' The client files ', standIn: 'hr' }));
+    expect(sent.fields).toMatchObject({ coverId: cover, handoverNote: 'The client files', standIn: 'hr' });
+    expect(leaveForm(form({ typeId: 'annual', startDate: '25/10/2026', endDate: '', coverId: 'x', standIn: 'y' })).errors).toEqual([
+      'Choose the colleague who covers from the list.',
+      'Choose your stand-in from the list, or HR.',
+    ]);
+    expect(leaveForm(form({ typeId: 'annual', startDate: '25/10/2026', endDate: '', handoverNote: 'x'.repeat(1001) })).errors).toEqual([
+      'Keep the handover note to 1000 characters; it has 1001.',
+    ]);
+  });
+
+  it('needs a cover when the API says so, and the note within its length', () => {
+    expect(coverProblems(true, '', '')).toEqual(['Choose the colleague who covers your work: leave of more than 2 working days needs one.']);
+    expect(coverProblems(true, 'c', '')).toEqual([]);
+    expect(coverProblems(false, '', '')).toEqual([]);
+    expect(coverProblems(false, '', 'x'.repeat(1001))).toEqual(['Keep the handover note to 1000 characters; it has 1001.']);
   });
 
   it('says what is wrong before the upload', () => {

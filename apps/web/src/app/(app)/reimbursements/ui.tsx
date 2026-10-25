@@ -4,6 +4,7 @@ import { asLeadNote } from '@/lib/department-leads';
 import { formatDate, formatDateTime } from '@/lib/format';
 import type { ReimbursementClaimView } from '@/lib/types';
 import { formatEgp } from '../employees/[id]/contracts/salary';
+import { standingInText } from '../leave/list';
 import { claimHref, lowerApproved, payMonthOf, progressText, STATUS_BADGE, statusLabel, stepsLabel, stepText, stepTone } from './list';
 
 // Parts of a reimbursement claim (owner, 18 October 2026) shown on its page, on Requests → Reimbursements, on My
@@ -48,7 +49,8 @@ const DOT: Record<'ok' | 'danger' | 'warn' | 'none', string> = { ok: 'bg-ok', da
 
 /**
  * The claim's log: every step in order, what happened and the amount with it, the comment, who and when (a C-level
- * person's HR and Finance stages by the stage, which the CEO decides).
+ * person's HR and Finance stages by the stage, which the CEO decides), and for a stand-in's decision whom they stood in
+ * for (owner, 25 October 2026: "To a stand-in").
  */
 export function ClaimTimeline({ claim }: { claim: Pick<ReimbursementClaimView, 'steps' | 'manager' | 'confidential'> }) {
   const steps = claim.steps ?? [];
@@ -64,7 +66,12 @@ export function ClaimTimeline({ claim }: { claim: Pick<ReimbursementClaimView, '
             {t.detail && <p className="text-xs text-muted tabular-nums">{t.detail}</p>}
             {s.comment && <p className="mt-0.5 text-sm whitespace-pre-line">“{s.comment}”</p>}
             <p className="text-xs text-muted">
-              {s.actor && <span className="break-words">{s.actor} · </span>}
+              {s.actor && (
+                <span className="break-words">
+                  {s.actor}
+                  {standingInText(s.onBehalfOf) && `, ${standingInText(s.onBehalfOf)}`} ·{' '}
+                </span>
+              )}
               {formatDateTime(s.at)}
             </p>
           </li>

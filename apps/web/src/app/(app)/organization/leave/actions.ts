@@ -4,7 +4,8 @@
 // with the year closing"): saving the annual leave's days (PATCH /leave/settings), adding a leave type, changing one
 // (its rules, turning it off or on) and deleting one no request uses, and closing a year (or opening it again). Each
 // forwards to the API, which checks the role (HR changes them; only a Super Admin deletes) and the rules again, so calling
-// these directly can't bypass them.
+// these directly can't bypass them. A team's staffing limit for annual leave (owner, 25 October 2026: "Warn and need
+// HR"), set by HR or a Super Admin (PUT /leave/staffing/:departmentId).
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { ApiError, apiSend } from '@/lib/api';
@@ -13,6 +14,7 @@ import type { FormState } from '@/lib/types';
 import { asShown } from '../../leave/request';
 import { closingBody } from './year-closing';
 import { LEAVE_TYPES_HREF, settingsBody, typeBody, yearClosingHref } from './setup';
+import { staffingBody, staffingSavedText } from './staffing';
 
 /** The submitted values, so the form can be refilled after an error. */
 function submitted(fd: FormData): Record<string, string> {
@@ -105,4 +107,22 @@ export async function reopenLeaveYear(year: number): Promise<FormState> {
   }
   refresh();
   redirect(`${yearClosingHref(year)}&done=reopened`);
+}
+
+/**
+ * A team's staffing limit (or a department's without teams), PUT /leave/staffing/:departmentId (owner, 25 October 2026:
+ * "Warn and need HR"): at most so many on annual leave at once and/or at least so many percent at work; both empty removes
+ * it. What the API refuses (a department with teams, a figure out of range) shows on the row, with what was typed.
+ */
+export async function saveStaffingLimit(departmentId: string, name: string, _prev: FormState, fd: FormData): Promise<FormState> {
+  const { body, errors } = staffingBody(fd);
+  if (errors.length) return { errors, values: submitted(fd) };
+  try {
+    await apiSend('PUT', `/leave/staffing/${encodeURIComponent(departmentId)}`, body);
+  } catch (err) {
+    if (err instanceof ApiError) return { errors: err.messages, values: submitted(fd) };
+    throw err;
+  }
+  refresh();
+  return { message: staffingSavedText(name, body) };
 }

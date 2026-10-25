@@ -1,7 +1,8 @@
 import { notFound } from 'next/navigation';
-import { LEAVE_PAY_LABELS } from '@trendlix/shared';
+import { coverRequired, LEAVE_PAY_LABELS } from '@trendlix/shared';
 import { CLevelBadge } from '@/components/c-level-badge';
 import { DocumentViewer } from '@/components/document-viewer';
+import { StandingInNote } from '@/components/standing-in-note';
 import { formatDateTime, titleCase } from '@/lib/format';
 import { approverLabel } from '@/lib/department-leads';
 import { getCurrentUser } from '@/lib/session';
@@ -10,11 +11,13 @@ import type { LeaveRequestView } from '@/lib/types';
 import { sizeText } from '../../reimbursements/claim';
 import { BackLink, Empty, UUID } from '../../organization/ui';
 import { notLoadedText } from '../../payroll/load';
-import { cancelLeaveByHr, cancelMyLeave, decideLeave } from '../actions';
-import { CancelLeaveForm, HrCancelLeaveForm, LeaveDecisionForm } from '../leave-forms';
-import { loadLeaveRequest } from '../data';
+import { cancelLeaveByHr, cancelMyLeave, changeLeaveCover, decideLeave } from '../actions';
+import { standInText } from '../coverage';
+import { RequestCoverage } from '../coverage-fields';
+import { CancelLeaveForm, ChangeCoverForm, HrCancelLeaveForm, LeaveDecisionForm } from '../leave-forms';
+import { loadLeaveCoverage, loadLeaveRequest, loadOwnCoverage } from '../data';
 import { daysNumber, daysText, decidingAsTitle, hrStageName, leaveBack, leaveDocumentHref, leaveDoneText, periodText, placeOfEmployee, recordsLeave } from '../list';
-import { LeaveProgress, LeaveStatusBadge, LeaveTimeline } from '../ui';
+import { LeaveProgress, LeaveStatusBadge, LeaveTimeline, OverLimitBadge } from '../ui';
 
 // A leave request (owner, 18 October 2026: "can you apply the leaves according to the law?"), for the employee, their
 // direct manager, HR and the CEO (anyone else gets the 404 page: the API says it isn't there): the type and its pay, when
@@ -29,6 +32,12 @@ import { LeaveProgress, LeaveStatusBadge, LeaveTimeline } from '../ui';
 // decision form when it waits for them (`waitingForYou`, the API's).
 // Shown on the site and on the phone pages (owner, 20 October 2026: the employee app, "managers and team leads approve
 // from the phone"), where the back link goes to the section's list and what is done on it comes back there.
+// Leave coverage (owner, 25 October 2026: "Names, no leave types", "Warn and need HR", "Required over 2 days", "To a
+// stand-in"): while it is being decided or approved, who else of the team is off on its days (its employee reads names
+// only, an approver names and "leave", HR and the CEO the types), "N of M at work", the clash with the team's staffing
+// limit highlighted ("Over the staffing limit": HR approves it too) and the colleagues its employee covers then; the
+// colleague who covers it and the handover note, which its employee may change; an approver's stand-in for its days (to
+// its employee, HR and the CEO); and "Standing in for Ahmed" when the user decides it for an approver on leave.
 
 type Query = Record<string, string | string[] | undefined>;
 
@@ -92,6 +101,10 @@ export async function LeaveRequestDetail({
   if (loaded.kind === 'forbidden') return <Empty>This leave request isn&apos;t yours to see.</Empty>;
   if (loaded.kind === 'failed') return <Empty>{notLoadedText(loaded, 'leave request')}</Empty>;
   const r = loaded.value;
+  // who else is off on its days, while it is being decided or approved; the colleagues who may cover it, for its employee
+  // changing the cover (25 October 2026)
+  const live = r.status === 'with_manager' || r.status === 'with_hr' || r.status === 'approved';
+  const [coverage, own] = await Promise.all([live ? loadLeaveCoverage(r.id) : null, r.canChangeCover ? loadOwnCoverage(r) : null]);
   const back = surface === 'site' ? leaveBack(user, r) : appBack(surface);
   const done = leaveDoneText(query, r.status, r.manager, r.confidential);
   const place = placeOfEmployee(r.employee);
@@ -104,6 +117,7 @@ export async function LeaveRequestDetail({
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold">{titleCase(r.type.nameEn)}</h1>
           <LeaveStatusBadge status={r.status} confidential={r.confidential} />
+          {r.overStaffingLimit && <OverLimitBadge />}
           {r.confidential && <CLevelBadge title="A C-level person: the CEO decides HR’s stage, and HR doesn’t see the request." />}
         </div>
         <p className="text-muted">
@@ -157,8 +171,42 @@ export async function LeaveRequestDetail({
                   <span className="text-muted">None: sent straight to {hrStageName(r.confidential)}</span>
                 )}
               </Fact>
+              {r.overStaffingLimit && (
+                <Fact label="Staffing limit">
+                  <span className="text-warn">Over its team’s limit when sent</span>
+                  <span className="block text-xs text-muted">So {hrStageName(r.confidential)} approves it too, after the manager.</span>
+                </Fact>
+              )}
+              {r.cover !== undefined && (
+                <Fact label="Covered by">
+                  {r.cover ? r.cover.fullNameEn : <span className="text-muted">Nobody named</span>}
+                  {r.cover && <span className="block text-xs text-muted">Told, and sees the handover note</span>}
+                </Fact>
+              )}
+              {r.standIn && (
+                <Fact label="Stand-in">
+                  {standInText(r.standIn)}
+                  <span className="block text-xs text-muted">Decides what waits for {r.employee.fullNameEn} during these days, once approved</span>
+                </Fact>
+              )}
+              {r.handoverNote && (
+                <Fact label="Handover note" wide>
+                  <span className="whitespace-pre-line">{r.handoverNote}</span>
+                </Fact>
+              )}
             </dl>
           </Section>
+
+          {coverage?.kind === 'ok' && (
+            <Section title="Who Else Is Off">
+              <RequestCoverage coverage={coverage.value} employeeName={r.employee.fullNameEn} />
+            </Section>
+          )}
+          {coverage?.kind === 'failed' && (
+            <Section title="Who Else Is Off">
+              <p className="text-sm text-muted">{notLoadedText(coverage, 'who else is off')}</p>
+            </Section>
+          )}
 
           <Section title="Documents">
             <Documents request={r} />
@@ -166,7 +214,29 @@ export async function LeaveRequestDetail({
 
           {r.waitingForYou && r.stage && (
             <Section title={`Your Decision as ${decidingAsTitle(user, r.stage, r.manager, r.confidential)}`}>
+              {r.standingInFor && (
+                <div className="mb-4">
+                  <StandingInNote person={r.standingInFor} />
+                </div>
+              )}
               <LeaveDecisionForm action={decideLeave.bind(null, r.id, r.stage)} stage={r.stage} name={r.employee.fullNameEn} confidential={r.confidential} />
+            </Section>
+          )}
+
+          {r.canChangeCover && (
+            <Section title="Who Covers It">
+              <p className="mb-3 text-sm text-muted">
+                {r.cover ? `${r.cover.fullNameEn} covers your work on these days.` : 'Nobody is named to cover your work on these days.'} If they can’t any more, choose
+                someone else: both are told.
+              </p>
+              <ChangeCoverForm
+                action={changeLeaveCover.bind(null, r.id)}
+                cover={r.cover ?? null}
+                note={r.handoverNote ?? null}
+                candidates={own?.kind === 'ok' ? own.value.cover.candidates : null}
+                required={!r.recordedByHr && coverRequired(r.type.key, r.days)}
+                groupName={own?.kind === 'ok' ? (own.value.group?.nameEn ?? null) : null}
+              />
             </Section>
           )}
 

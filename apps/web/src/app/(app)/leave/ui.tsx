@@ -1,10 +1,10 @@
 import Link from 'next/link';
-import type { LeaveStatus } from '@trendlix/shared';
+import type { LeaveStatus, LeaveStepKind } from '@trendlix/shared';
 import { asLeadNote } from '@/lib/department-leads';
 import { formatDateTime } from '@/lib/format';
 import type { LeaveBalances, LeaveRequestStep, LeaveRequestView, LeaveTypeView, PermissionRequestView, RequestApprover } from '@/lib/types';
 import { annualFigures, availableText, typeLeftText } from './balance';
-import { daysText, leaveProgressText, leaveStatusLabel, leaveStepText, leaveStepTone, periodText, STATUS_BADGE } from './list';
+import { daysText, leaveProgressText, leaveStatusLabel, leaveStepText, leaveStepTone, periodText, standingInText, STATUS_BADGE } from './list';
 import { isPermission, permissionDayText, permissionHoursLine, permissionWhenText, requestHref, type RequestRow } from './permissions';
 
 // Parts of a leave request (owner, 18 October 2026: "can you apply the leaves according to the law?") shown on its page,
@@ -40,15 +40,20 @@ const DOT: Record<'ok' | 'danger' | 'none', string> = { ok: 'bg-ok', danger: 'bg
 
 /**
  * The request's log: every step in order, what happened, the comment, who and when (the manager stage by who decides it;
- * a C-level person's HR stage by the stage, which the CEO decides). `stepText`: how a step is said, a permission
- * request's its own (permissionStepText: its hours given back).
+ * a C-level person's HR stage by the stage, which the CEO decides), and for a stand-in's decision whom they stood in for
+ * (owner, 25 October 2026: "To a stand-in"). `stepText`: how a step is said, a permission request's its own
+ * (permissionStepText: its hours given back).
  */
 export function LeaveTimeline({
   request,
   stepText = leaveStepText,
 }: {
   request: Pick<LeaveRequestView, 'steps' | 'manager' | 'confidential'>;
-  stepText?: (s: Pick<LeaveRequestStep, 'kind' | 'decision' | 'comment'>, manager?: Pick<RequestApprover, 'role'> | null, confidential?: boolean | null) => string;
+  /**
+   * The steps the requests share (LeaveStepKind) are what each wording takes; a leave's own (its cover changed) only
+   * leaveStepText words, the default.
+   */
+  stepText?: (s: Pick<LeaveRequestStep, 'decision' | 'comment'> & { kind: LeaveStepKind }, manager?: Pick<RequestApprover, 'role'> | null, confidential?: boolean | null) => string;
 }) {
   const steps = request.steps ?? [];
   if (!steps.length) return <p className="text-sm text-muted">No steps logged yet.</p>;
@@ -57,15 +62,29 @@ export function LeaveTimeline({
       {steps.map((s) => (
         <li key={s.id} className="relative">
           <span aria-hidden="true" className={`absolute top-1.5 -left-[23px] size-3 rounded-full border-2 border-card ${DOT[leaveStepTone(s) ?? 'none']}`} />
-          <p className="text-sm font-medium">{stepText(s, request.manager, request.confidential)}</p>
+          <p className="text-sm font-medium">{stepText(s as Pick<LeaveRequestStep, 'decision' | 'comment'> & { kind: LeaveStepKind }, request.manager, request.confidential)}</p>
           {s.comment && <p className="mt-0.5 text-sm whitespace-pre-line">“{s.comment}”</p>}
           <p className="text-xs text-muted">
-            {s.actor && <span className="break-words">{s.actor} · </span>}
+            {s.actor && (
+              <span className="break-words">
+                {s.actor}
+                {standingInText(s.onBehalfOf) && `, ${standingInText(s.onBehalfOf)}`} ·{' '}
+              </span>
+            )}
             {formatDateTime(s.at)}
           </p>
         </li>
       ))}
     </ol>
+  );
+}
+
+/** A request over its team's staffing limit (owner, 25 October 2026: "Warn and need HR"): HR approves it too. */
+export function OverLimitBadge() {
+  return (
+    <span className="badge bg-warn-soft text-warn" title="It broke its team’s staffing limit when sent: HR approves it too.">
+      Over the staffing limit
+    </span>
   );
 }
 
@@ -163,6 +182,12 @@ export function WaitingLeaveTable({ requests }: { requests: RequestRow[] }) {
               </td>
               <td className="min-w-40">
                 <TypeLink request={r} who />
+                {/* over its team's staffing limit (25 October 2026): HR approves it too */}
+                {!isPermission(r) && r.overStaffingLimit && (
+                  <div className="mt-1">
+                    <OverLimitBadge />
+                  </div>
+                )}
                 {r.reason && <p className="text-xs break-words text-muted">{r.reason}</p>}
               </td>
               <td className="min-w-40">

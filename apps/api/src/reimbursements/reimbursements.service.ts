@@ -27,6 +27,8 @@ import { RunAdjustmentsService } from '../payroll/adjustments/run-adjustments.se
 import { ADJUSTMENT } from '../payroll/adjustments/views.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { decidesStage, isClaimant, isClaimManager, seesClaim, seesEveryClaim, waitingWhere, type Caller } from './access.js';
+import { decidedOnBehalfOf, standInRefusal, standInScope } from '../leave/access.js';
+import { standInViewOf } from '../leave/stand-ins.js';
 import { recordClaimStep } from './claim-steps.js';
 import { checkedReceipts } from './receipts.js';
 import { additionReason, mayClaimType, useOf, type CountedClaim } from './rules.js';
@@ -254,6 +256,9 @@ export class ReimbursementsService {
     const stage = reimbursementStage(before.status);
     if (!stage) throw new ConflictException(`This claim is ${statusWords(before.status)}, so there is nothing left to decide. Reload the page to see it.`);
     if (isClaimant(before, caller)) throw new ForbiddenException('Someone else has to decide your own claim.');
+    // the manager it was sent to, away with a stand-in: theirs meanwhile (owner, 25 October 2026: "To a stand-in")
+    const away = standInRefusal(before, caller);
+    if (away) throw new ConflictException(away);
     if (!decidesStage(stage, before, caller)) {
       // one of its deciders, on a page left open while it moved on (or not with them yet)
       const decider = isClaimManager(before, caller) || decidesStage('hr', before, caller) || decidesStage('finance', before, caller);
@@ -277,6 +282,8 @@ export class ReimbursementsService {
       approved = dto.amount!;
     }
     const to: ReimbursementStatus = approved === null ? 'rejected' : statusAfterApproval(stage);
+    // a stand-in's decision keeps the manager they stood in for, on the step and in the audit log
+    const onBehalfOf = decidedOnBehalfOf(stage, before, caller);
     const paying = to === 'approved' && approved !== null;
     const reason = additionReason(before.type.nameEn, before.description);
 
@@ -286,7 +293,7 @@ export class ReimbursementsService {
         data: approved === null ? { status: to, rejectedStage: stage, rejectReason: comment } : { status: to, approvedAmount: approved },
       });
       if (!count) throw new ConflictException('This claim was decided or cancelled meanwhile. Reload the page to see where it is.');
-      await recordClaimStep(tx, id, user.id, { kind: decisionStepKind(stage), decision: dto.decision, amount: approved, comment });
+      await recordClaimStep(tx, id, user.id, { kind: decisionStepKind(stage), decision: dto.decision, amount: approved, comment, onBehalfOf });
       if (!paying) return null;
       // paid with the payroll of this month in Cairo, or of the first after it whose run isn't approved or paid yet
       const closed = await tx.payrollRun.findMany({ where: { status: { in: ['approved', 'paid'] } }, select: { month: true } });
@@ -323,6 +330,7 @@ export class ReimbursementsService {
         ...(approved !== null && { amount: approved }),
         ...(comment && { comment }),
         ...(added && { payMonth: added.payMonth, adjustmentId: added.adjustmentId }),
+        ...(onBehalfOf && { standingInFor: onBehalfOf }),
       },
     });
     if (added) {
@@ -350,7 +358,8 @@ export class ReimbursementsService {
       (user.employeeId ? this.prisma.employee.findUnique({ where: { id: user.employeeId }, select: { id: true } }) : null),
       this.confidential.view(user),
     ]);
-    return { user, employeeId: me?.id ?? null, confidential };
+    // whom they stand in for today, and their own stand-in while away (owner, 25 October 2026: "To a stand-in")
+    return { user, employeeId: me?.id ?? null, confidential, standIn: await standInViewOf(this.prisma, me?.id ?? null, user) };
   }
 
   /**
@@ -363,7 +372,10 @@ export class ReimbursementsService {
       if (!hidden.length) return {};
       return caller.employeeId ? { OR: [{ employeeId: { notIn: hidden } }, { managerId: caller.employeeId }] } : { employeeId: { notIn: hidden } };
     }
-    return caller.employeeId ? { managerId: caller.employeeId } : { id: { in: [] } };
+    if (!caller.employeeId) return { id: { in: [] } };
+    // a stand-in's also those sent to whom they stand in for today (25 October 2026)
+    const standingIn = standInScope(caller) as Prisma.ReimbursementClaimWhereInput[];
+    return standingIn.length ? { OR: [{ managerId: caller.employeeId }, ...standingIn] } : { managerId: caller.employeeId };
   }
 
   /** A claim the caller may see; otherwise it isn't there. */

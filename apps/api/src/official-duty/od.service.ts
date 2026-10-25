@@ -24,6 +24,7 @@ import { fromTimeOfDay, toTimeOfDay } from '../common/time-of-day.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import {
+  decidedOnBehalfOf,
   decidesStage,
   hrMayCancel,
   isConfidentialRequest,
@@ -33,9 +34,11 @@ import {
   othersWhere,
   scopeWhere,
   seesRequest,
+  standInRefusal,
   waitingWhere,
   type Caller,
 } from '../leave/access.js';
+import { standInViewOf } from '../leave/stand-ins.js';
 import type { DecideLeaveDto } from '../leave/leave.dto.js';
 import { placeOf } from '../leave/views.js';
 import { NoticesService } from '../notifications/notices.service.js';
@@ -247,6 +250,9 @@ export class OdService {
     const stage = leaveStage(before.status);
     if (!stage) throw new ConflictException(`This request is ${statusWords(before.status)}, so there is nothing left to decide. Reload the page to see it.`);
     if (isRequester(parties, caller)) throw new ForbiddenException('Someone else has to decide your own official duty request.');
+    // the approver it was sent to, away with a stand-in: theirs meanwhile (owner, 25 October 2026: "To a stand-in")
+    const away = standInRefusal({ ...parties, status: before.status }, caller);
+    if (away) throw new ConflictException(away);
     if (!decidesStage(stage, parties, caller)) {
       if (isRequestManager(parties, caller) || decidesStage('hr', parties, caller)) {
         throw new ConflictException(`This request is ${statusWords(before.status)} now, so it isn't waiting for your decision. Reload the page to see where it is.`);
@@ -260,13 +266,15 @@ export class OdService {
     const comment = dto.comment ?? null;
     if (leaveDecisionNeedsComment(dto.decision) && !comment) throw new BadRequestException('Write a comment: why the official duty is rejected.');
     const to: LeaveStatus = dto.decision === 'reject' ? 'rejected' : leaveStatusAfterApproval(stage);
+    // a stand-in's decision keeps the approver they stood in for, on the step and in the audit log
+    const onBehalfOf = decidedOnBehalfOf(stage, parties, caller);
     await this.prisma.$transaction(async (tx) => {
       const { count } = await tx.odRequest.updateMany({
         where: { id, status: before.status },
         data: to === 'rejected' ? { status: to, rejectedStage: stage, rejectReason: comment } : { status: to },
       });
       if (!count) throw new ConflictException('This request was decided or cancelled meanwhile. Reload the page to see where it is.');
-      await this.step(tx, id, user.id, { kind: leaveDecisionStepKind(stage), decision: dto.decision, comment });
+      await this.step(tx, id, user.id, { kind: leaveDecisionStepKind(stage), decision: dto.decision, comment, onBehalfOf });
     });
     await this.audit.record({
       userId: user.id,
@@ -280,7 +288,7 @@ export class OdService {
         stage,
         decision: dto.decision,
         status: { from: before.status, to },
-        ...(comment && { comment }),
+        ...(comment && { comment }), ...(onBehalfOf && { standingInFor: onBehalfOf }),
       },
     });
     // to the next step's decider, or the employee once it is approved or rejected
@@ -347,7 +355,8 @@ export class OdService {
       user.employeeId ? this.prisma.employee.findUnique({ where: { id: user.employeeId }, select: { id: true } }) : null,
       this.confidential.view(user),
     ]);
-    return { user, employeeId: me?.id ?? null, confidential };
+    // whom they stand in for today, and their own stand-in while away (owner, 25 October 2026: "To a stand-in")
+    return { user, employeeId: me?.id ?? null, confidential, standIn: await standInViewOf(this.prisma, me?.id ?? null, user) };
   }
 
   /** The employment a day is in, if any. */
@@ -486,8 +495,8 @@ export class OdService {
   }
 
   /** Logs a step on a request, in the transaction the step is taken in. */
-  private async step(db: Db, requestId: string, actorId: string | null, step: { kind: string; decision?: string; comment?: string | null }) {
-    await db.odRequestStep.create({ data: { requestId, actorId, kind: step.kind, decision: step.decision ?? null, comment: step.comment ?? null } });
+  private async step(db: Db, requestId: string, actorId: string | null, step: { kind: string; decision?: string; comment?: string | null; onBehalfOf?: string | null }) {
+    await db.odRequestStep.create({ data: { requestId, actorId, kind: step.kind, decision: step.decision ?? null, comment: step.comment ?? null, onBehalfOfId: step.onBehalfOf ?? null } });
   }
 
   /** A request the caller may see; otherwise it isn't there. */

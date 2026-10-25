@@ -18,6 +18,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import {
+  HANDOVER_NOTE_MAX,
   LEAVE_BALANCES,
   LEAVE_DECISIONS,
   LEAVE_PAYS,
@@ -53,6 +54,16 @@ const BooleanOf = () =>
     if (typeof value !== 'string') return value;
     const typed = value.trim().toLowerCase();
     return typed === 'true' ? true : typed === 'false' ? false : value;
+  });
+
+/** A stand-in: "hr", or an employee's id. */
+const IsStandIn = () =>
+  ValidateBy({
+    name: 'isStandIn',
+    validator: {
+      validate: (v) => v === 'hr' || (typeof v === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v)),
+      defaultMessage: () => 'Choose your stand-in from the list, or HR.',
+    },
   });
 
 /** A name of 1 to 100 characters (after trimming), with one message whatever is wrong. */
@@ -195,6 +206,24 @@ export class CreateLeaveRequestDto {
 
   @TrimOrNull() @IsOptional() @IsString({ message: 'Write the reason.' }) @MaxLength(500, { message: 'Keep the reason to 500 characters or fewer.' })
   reason?: string | null;
+
+  /**
+   * The colleague who covers the work (owner, 25 October 2026: "Required over 2 days"): required for annual and unpaid
+   * leave of more than 2 working days, optional otherwise.
+   */
+  @TrimOrNull() @IsOptional() @IsUUID('all', { message: 'Choose the colleague who covers from the list.' })
+  coverId?: string | null;
+
+  /** A note to the colleague who covers: what to hand over (free text). */
+  @TrimOrNull() @IsOptional() @IsString({ message: 'Write the handover note.' }) @MaxLength(HANDOVER_NOTE_MAX, { message: `Keep the handover note to ${HANDOVER_NOTE_MAX} characters or fewer.` })
+  handoverNote?: string | null;
+
+  /**
+   * Who decides what waits at the requester's step while they are away (owner, 25 October 2026: "To a stand-in"): an
+   * employee's id, or "hr"; none: the default (their department's head, else HR). Only for someone who approves for others.
+   */
+  @TrimOrNull() @IsOptional() @IsStandIn()
+  standIn?: string | null;
 }
 
 /** HR recording leave on an employee's behalf: whose it is, then as a request. */
@@ -251,6 +280,44 @@ export class LeaveCalendarQueryDto {
 
   @IsOptional() @IsUUID('all', { message: 'Choose a department or team.' })
   departmentId?: string;
+}
+
+// ---------- coverage (owner, 25 October 2026: "Warn and need HR", "Required over 2 days", "To a stand-in") ----------
+
+/** ?from=&to=&typeId=&halfDay=: the new request's days as typed (the last day: the first unless sent). */
+export class CoverageQueryDto {
+  @IsDateOnly('Enter the first day, e.g. 2026-11-01.')
+  from: string;
+
+  @IsOptional() @IsDateOnly('Enter the last day, e.g. 2026-11-02.')
+  to?: string;
+
+  @IsOptional() @IsUUID('all', { message: 'Choose the leave type.' })
+  typeId?: string;
+
+  @BooleanOf() @IsOptional() @IsBoolean({ message: 'Send whether it is a half day as true or false.' })
+  halfDay?: boolean;
+}
+
+/** The colleague who covers a request, changed by its employee (null: none, for leave that doesn't need one), and the note. */
+export class ChangeCoverDto {
+  @TrimOrNull() @IsOptional() @IsUUID('all', { message: 'Choose the colleague who covers from the list.' })
+  coverId?: string | null;
+
+  @TrimOrNull() @IsOptional() @IsString({ message: 'Write the handover note.' }) @MaxLength(HANDOVER_NOTE_MAX, { message: `Keep the handover note to ${HANDOVER_NOTE_MAX} characters or fewer.` })
+  handoverNote?: string | null;
+}
+
+/**
+ * A team's staffing limit (or a department's without teams): at most so many people on annual leave at once, and/or at
+ * least so many percent at work; both empty (or null) removes it. Checked by staffingLimitProblems.
+ */
+export class StaffingLimitDto {
+  @IsOptional() @IsInt({ message: 'Enter the most people on annual leave at once as a whole number, or leave it empty.' })
+  maxOff?: number | null;
+
+  @IsOptional() @IsInt({ message: 'Enter the least share at work as a whole percent, or leave it empty.' })
+  minAtWorkPercent?: number | null;
 }
 
 // ---------- balances ----------

@@ -29,6 +29,7 @@ import { userNames } from '../payroll/adjustments/people.js';
 import { firstDay, lastDay } from '../payroll/months.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
+  decidedOnBehalfOf,
   decidesStage,
   hiddenRequest,
   hrMayCancel,
@@ -38,10 +39,12 @@ import {
   isRequester,
   othersWhere,
   seesRequest,
+  standInRefusal,
   waitingWhere,
   type Caller,
   type RequestWhere,
 } from './access.js';
+import { standInViewOf } from './stand-ins.js';
 import { LeaveBalancesService, TAKING, type LeaveEmployment } from './leave-balances.service.js';
 import { LeavePayrollService } from './leave-payroll.service.js';
 import type { DecideLeaveDto, HrCancelLeaveDto } from './leave.dto.js';
@@ -228,6 +231,9 @@ export class PermissionRequestsService {
     const stage = leaveStage(before.status);
     if (!stage) throw new ConflictException(`This request is ${statusWords(before.status)}, so there is nothing left to decide. Reload the page to see it.`);
     if (isRequester(parties, caller)) throw new ForbiddenException('Someone else has to decide your own permission request.');
+    // the approver it was sent to, away with a stand-in: theirs meanwhile (owner, 25 October 2026: "To a stand-in")
+    const away = standInRefusal({ ...parties, status: before.status }, caller);
+    if (away) throw new ConflictException(away);
     if (!decidesStage(stage, parties, caller)) {
       if (isRequestManager(parties, caller) || decidesStage('hr', parties, caller)) {
         throw new ConflictException(`This request is ${statusWords(before.status)} now, so it isn't waiting for your decision. Reload the page to see where it is.`);
@@ -241,20 +247,22 @@ export class PermissionRequestsService {
     const comment = dto.comment ?? null;
     if (leaveDecisionNeedsComment(dto.decision) && !comment) throw new BadRequestException('Write a comment: why the permission is rejected.');
     const to: LeaveStatus = dto.decision === 'reject' ? 'rejected' : leaveStatusAfterApproval(stage);
+    // a stand-in's decision keeps the approver they stood in for, on the step and in the audit log
+    const onBehalfOf = decidedOnBehalfOf(stage, parties, caller);
     await this.prisma.$transaction(async (tx) => {
       const { count } = await tx.permissionRequest.updateMany({
         where: { id, status: before.status },
         data: to === 'rejected' ? { status: to, rejectedStage: stage, rejectReason: comment } : { status: to },
       });
       if (!count) throw new ConflictException('This request was decided or cancelled meanwhile. Reload the page to see where it is.');
-      await this.step(tx, id, user.id, { kind: leaveDecisionStepKind(stage), decision: dto.decision, comment });
+      await this.step(tx, id, user.id, { kind: leaveDecisionStepKind(stage), decision: dto.decision, comment, onBehalfOf });
     });
     await this.audit.record({
       userId: user.id,
       action: dto.decision === 'reject' ? 'reject' : 'approve',
       entityType: PERMISSION_ENTITY,
       entityId: id,
-      diff: { employeeId: before.employeeId, stage, decision: dto.decision, status: { from: before.status, to }, ...(comment && { comment }) },
+      diff: { employeeId: before.employeeId, stage, decision: dto.decision, status: { from: before.status, to }, ...(comment && { comment }), ...(onBehalfOf && { standingInFor: onBehalfOf }) },
     });
     const date = fromDateOnly(before.date);
     if (to === 'approved') await this.payroll.syncDrafts(before.employeeId, date, date, user);
@@ -368,7 +376,8 @@ export class PermissionRequestsService {
       (user.employeeId ? this.prisma.employee.findUnique({ where: { id: user.employeeId }, select: { id: true } }) : null),
       this.confidential.view(user),
     ]);
-    return { user, employeeId: me?.id ?? null, confidential };
+    // whom they stand in for today, and their own stand-in while away (owner, 25 October 2026: "To a stand-in")
+    return { user, employeeId: me?.id ?? null, confidential, standIn: await standInViewOf(this.prisma, me?.id ?? null, user) };
   }
 
   /** A person's permission hours of a month: approved, being decided, left, and by day. */
@@ -486,8 +495,8 @@ export class PermissionRequestsService {
   }
 
   /** Logs a step on a request, in the transaction the step is taken in. */
-  private async step(db: Db, requestId: string, actorId: string | null, step: { kind: string; decision?: string; comment?: string | null }) {
-    await db.permissionRequestStep.create({ data: { requestId, actorId, kind: step.kind, decision: step.decision ?? null, comment: step.comment ?? null } });
+  private async step(db: Db, requestId: string, actorId: string | null, step: { kind: string; decision?: string; comment?: string | null; onBehalfOf?: string | null }) {
+    await db.permissionRequestStep.create({ data: { requestId, actorId, kind: step.kind, decision: step.decision ?? null, comment: step.comment ?? null, onBehalfOfId: step.onBehalfOf ?? null } });
   }
 
   /** A request the caller may see; otherwise it isn't there. */

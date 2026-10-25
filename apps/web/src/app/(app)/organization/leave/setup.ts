@@ -36,6 +36,12 @@ type WithRoles = { roles: readonly Role[] };
 /** HR changes the Leave Setup and the types, and closes a year. */
 export const editsLeaveSetup = (user: WithRoles) => hasRole(user, 'hr');
 
+/**
+ * HR and a Super Admin set the teams' staffing limits (owner's brief, 25 October 2026: "HR and Super Admin set it"); the
+ * other staff read them (Organization → Leave → Staffing).
+ */
+export const editsStaffing = (user: WithRoles) => hasRole(user, 'hr', 'super_admin');
+
 /** HR and the CEO see a year's closing (GET /leave/year-closing/:year); HR closes it. */
 export const seesYearClosing = (user: WithRoles) => hasRole(user, 'hr', 'ceo');
 

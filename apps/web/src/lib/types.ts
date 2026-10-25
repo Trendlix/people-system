@@ -26,9 +26,9 @@ import type {
   LeaveBalanceKind,
   LeaveDecision,
   LeavePay,
+  LeaveRequestStepKind,
   LeaveStage,
   LeaveStatus,
-  LeaveStepKind,
   MaritalStatus,
   MilitaryStatus,
   NoticeUnit,
@@ -80,6 +80,12 @@ export interface SessionUser {
    * who have no direct manager, so they get My Team even without the manager role. Left out by an API from before it.
    */
   leads?: boolean;
+  /**
+   * The approvers on leave they stand in for today, with each one's last day of leave (owner, 25 October 2026: "To a
+   * stand-in"): their team's requests come to them meanwhile (`leads` is true then too). Left out by an API from before
+   * it.
+   */
+  standingInFor?: { id: string; fullNameEn: string; until: string }[];
   /**
    * Their Assets access in effect, whether they see the asset values, and whether the Assets AI is set up (owner, 21
    * October 2026: "i want to add this module with a special permission to the system"; "3 levels per user"; values for
@@ -1996,6 +2002,8 @@ export interface ReimbursementClaimStep {
   payMonth: string | null;
   /** Who, by their display name; null for a user since removed. */
   actor: string | null;
+  /** The manager step decided by a stand-in (owner, 25 October 2026: "To a stand-in"): the manager they stood in for. */
+  onBehalfOf?: StepPerson | null;
   at: string;
 }
 
@@ -2017,6 +2025,8 @@ export interface ReimbursementClaimView {
   status: ReimbursementStatus;
   stage: ReimbursementStage | null;
   waitingForYou: boolean;
+  /** The manager the caller decides it for, standing in while they are on leave (25 October 2026); null otherwise. */
+  standingInFor?: StepPerson | null;
   canCancel: boolean;
   /** Who decides its manager stage, and as what: see `RequestApprover`. Null: nobody, it went straight to HR. */
   manager: RequestApprover | null;
@@ -2197,14 +2207,29 @@ export interface LeaveSettingsView {
   permissionMaxHoursPerDay?: number;
 }
 
-/** A step logged on a leave request: sent, sent straight to HR, recorded by HR, each stage's decision, cancelled. */
+/** A person named on a request by the leave coverage (25 October 2026): who covers, whom a stand-in stood in for. */
+export interface StepPerson {
+  id: string;
+  fullNameEn: string;
+}
+
+/**
+ * A step logged on a leave request: sent, sent straight to HR, recorded by HR, each stage's decision, cancelled, and the
+ * colleague who covers it changed (25 October 2026). Permission, work from home, official duty and attendance
+ * corrections share it.
+ */
 export interface LeaveRequestStep {
   id: string;
-  kind: LeaveStepKind;
+  kind: LeaveRequestStepKind;
   decision: LeaveDecision | null;
   comment: string | null;
   /** Who, by their display name; null for a user since removed. */
   actor: string | null;
+  /**
+   * A decision by a stand-in (owner, 25 October 2026: "To a stand-in"): the approver they stood in for, kept on the step
+   * and in the audit log. Left out by an API from before it.
+   */
+  onBehalfOf?: StepPerson | null;
   at: string;
 }
 
@@ -2226,6 +2251,8 @@ export interface LeaveRequestView {
   status: LeaveStatus;
   stage: LeaveStage | null;
   waitingForYou: boolean;
+  /** The approver the caller decides it for, standing in while they are on leave (25 October 2026); null otherwise. */
+  standingInFor?: StepPerson | null;
   /** The employee may cancel it now: theirs, being decided, or approved and not started. */
   canCancel: boolean;
   /** HR may cancel it now: approved, and not HR's own. Optional: left out by an API that doesn't send it. */
@@ -2239,6 +2266,17 @@ export interface LeaveRequestView {
   steps: LeaveRequestStep[];
   balanceAfter: number | null;
   createdAt: string;
+  /**
+   * Leave coverage (owner, 25 October 2026: "Required over 2 days", "Warn and need HR", "To a stand-in"): the colleague
+   * who covers and the employee's handover note to them; whether it broke its team's staffing limit when sent (HR
+   * approves it too); the approver's stand-in for its days (a person, or HR), shown to its employee, HR and the CEO; and
+   * whether its employee may change the cover now. Left out by an API from before it.
+   */
+  cover?: StepPerson | null;
+  handoverNote?: string | null;
+  overStaffingLimit?: boolean;
+  standIn?: { employee: StepPerson | null; hr: boolean } | null;
+  canChangeCover?: boolean;
   /**
    * The employee is C-level (owner, 19 October 2026): HR's stage is the CEO's (or HR with Super Admin); `waitingForYou`
    * says whether it waits for the caller. Left out by an API from before it.
@@ -2319,6 +2357,8 @@ export interface LeaveCalendarEntry {
   hours?: number;
   fromTime?: string | null;
   toTime?: string | null;
+  /** A leave's colleague who covers it (owner, 25 October 2026: on the calendar "on hover or detail"). */
+  cover?: StepPerson | null;
 }
 
 /**
@@ -2360,6 +2400,8 @@ export interface PermissionRequestView {
   status: LeaveStatus;
   stage: LeaveStage | null;
   waitingForYou: boolean;
+  /** The approver the caller decides it for, standing in while they are on leave (25 October 2026); null otherwise. */
+  standingInFor?: StepPerson | null;
   /** The employee may cancel it now: theirs, being decided, or approved and its day still to come. */
   canCancel: boolean;
   /** HR may cancel it now: approved, and not HR's own. */

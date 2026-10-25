@@ -14,6 +14,7 @@ import {
   type SessionMode,
 } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
+import { standInViewOf } from '../leave/stand-ins.js';
 import { assetsCallerOf, assetsMe } from '../assets/assets-access.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { DeviceCredentialsService } from './device-credentials.service.js';
@@ -144,8 +145,11 @@ export class AuthService {
       user.employeeId ? this.prisma.employee.findUnique({ where: { id: user.employeeId }, select: { id: true, fullNameEn: true } }) : null,
       assetsCallerOf(this.prisma, user),
     ]);
-    // in charge of a department or team, while a current employee (owner, 19 October 2026: the person in charge)
+    // in charge of a department or team, while a current employee (owner, 19 October 2026: the person in charge); or standing
+    // in today for an approver on leave (owner, 25 October 2026: "To a stand-in"), whose team's requests they decide
     const leading = own ? await this.prisma.department.count({ where: { headId: own.id, head: { employments: { some: { endDate: null } } } } }) : 0;
+    const standIn = own ? await standInViewOf(this.prisma, own.id, { roles: [] }) : null;
+    const standingInFor = [...(standIn?.for ?? new Map())].map(([id, e]) => ({ id, fullNameEn: e.fullNameEn, until: e.until }));
     // hiring for an open vacancy, or on an interview to come or of the last 60 days (recruitment, Phase 2, 22 October 2026)
     const hiring = own
       ? (await this.prisma.vacancy.count({ where: { hiringManagerId: own.id, status: { in: ['open', 'on_hold'] } } })) +
@@ -157,7 +161,8 @@ export class AuthService {
       viewAs: user.viewAs ?? null,
       employeeId: own?.id ?? null,
       name: own?.fullNameEn ?? null,
-      leads: leading > 0,
+      leads: leading > 0 || standingInFor.length > 0,
+      standingInFor,
       assets: assetsMe(assets),
       hiring,
       session: { id: session.id, kind: session.kind, idleTimeoutMs: session.idleTimeoutMs },

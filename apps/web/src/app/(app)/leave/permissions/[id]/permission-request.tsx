@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { permissionClock, permissionHoursText } from '@trendlix/shared';
 import { CLevelBadge } from '@/components/c-level-badge';
+import { StandingInNote } from '@/components/standing-in-note';
 import { approverLabel } from '@/lib/department-leads';
 import { formatDateTime } from '@/lib/format';
 import { getCurrentUser } from '@/lib/session';
@@ -144,6 +145,12 @@ export async function PermissionRequestDetail({
 
           {r.waitingForYou && r.stage && (
             <Section title={`Your Decision as ${decidingAsTitle(user, r.stage, r.manager, r.confidential)}`}>
+              {/* deciding it for an approver on leave (owner, 25 October 2026: "To a stand-in") */}
+              {r.standingInFor && (
+                <div className="mb-4">
+                  <StandingInNote person={r.standingInFor} />
+                </div>
+              )}
               <LeaveDecisionForm
                 action={decidePermission.bind(null, r.id, r.stage)}
                 stage={r.stage}

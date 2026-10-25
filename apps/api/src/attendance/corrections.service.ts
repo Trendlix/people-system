@@ -19,6 +19,7 @@ import { fromDateOnly, todayInCairo, toDateOnly } from '../common/date-only.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
 import { Prisma } from '../generated/prisma/client.js';
 import {
+  decidedOnBehalfOf,
   decidesStage,
   hiddenRequest,
   isConfidentialRequest,
@@ -27,9 +28,11 @@ import {
   isRequester,
   othersWhere,
   seesRequest,
+  standInRefusal,
   waitingWhere,
   type Caller,
 } from '../leave/access.js';
+import { standInViewOf } from '../leave/stand-ins.js';
 import type { DecideLeaveDto } from '../leave/leave.dto.js';
 import { NoticesService } from '../notifications/notices.service.js';
 import { approverFor } from '../organisation/departments/leads.js';
@@ -185,6 +188,9 @@ export class AttendanceCorrectionsService {
     const stage = leaveStage(before.status);
     if (!stage) throw new ConflictException(`This correction is ${statusWords(before.status)}, so there is nothing left to decide. Reload the page to see it.`);
     if (isRequester(parties, caller)) throw new ForbiddenException('Someone else has to decide your own correction.');
+    // the approver it was sent to, away with a stand-in: theirs meanwhile (owner, 25 October 2026: "To a stand-in")
+    const away = standInRefusal({ ...parties, status: before.status }, caller);
+    if (away) throw new ConflictException(away);
     if (!decidesStage(stage, parties, caller)) {
       if (isRequestManager(parties, caller) || decidesStage('hr', parties, caller)) {
         throw new ConflictException(`This correction is ${statusWords(before.status)} now, so it isn't waiting for your decision. Reload the page to see where it is.`);
@@ -198,6 +204,8 @@ export class AttendanceCorrectionsService {
     const comment = dto.comment ?? null;
     if (leaveDecisionNeedsComment(dto.decision) && !comment) throw new BadRequestException('Write a comment: why the correction is rejected.');
     const to: LeaveStatus = dto.decision === 'reject' ? 'rejected' : leaveStatusAfterApproval(stage);
+    // a stand-in's decision keeps the approver they stood in for, on the step and in the audit log
+    const onBehalfOf = decidedOnBehalfOf(stage, parties, caller);
     const date = fromDateOnly(before.date);
     if (to === 'approved') {
       const refusal = correctionApplyRefusal(date, await this.runStatus(date));
@@ -209,7 +217,7 @@ export class AttendanceCorrectionsService {
         data: to === 'rejected' ? { status: to, rejectedStage: stage, rejectReason: comment } : { status: to, ...(to === 'approved' && { appliedAt: new Date() }) },
       });
       if (!count) throw new ConflictException('This correction was decided or cancelled meanwhile. Reload the page to see where it is.');
-      await this.step(tx, id, user.id, { kind: leaveDecisionStepKind(stage), decision: dto.decision, comment });
+      await this.step(tx, id, user.id, { kind: leaveDecisionStepKind(stage), decision: dto.decision, comment, onBehalfOf });
       return to === 'approved' ? this.correctionDays.rebuild(before.employeeId, date, user, tx) : null;
     });
     await this.audit.record({
@@ -217,7 +225,7 @@ export class AttendanceCorrectionsService {
       action: dto.decision === 'reject' ? 'reject' : 'approve',
       entityType: CORRECTION_ENTITY,
       entityId: id,
-      diff: { employeeId: before.employeeId, date, stage, decision: dto.decision, status: { from: before.status, to }, ...(comment && { comment }) },
+      diff: { employeeId: before.employeeId, date, stage, decision: dto.decision, status: { from: before.status, to }, ...(comment && { comment }), ...(onBehalfOf && { standingInFor: onBehalfOf }) },
     });
     if (change) await this.applied(before.employeeId, date, id, change, user);
     // to the next step's decider, or the employee once it is approved or rejected (Phase 4: notifications)
@@ -256,7 +264,8 @@ export class AttendanceCorrectionsService {
   /** The caller, with their own employee profile and the C-level people. */
   private async caller(user: SessionUser): Promise<Caller> {
     const [me, confidential] = await Promise.all([this.confidential.selfId(user), this.confidential.view(user)]);
-    return { user, employeeId: me, confidential };
+    // whom they stand in for today, and their own stand-in while away (owner, 25 October 2026: "To a stand-in")
+    return { user, employeeId: me, confidential, standIn: await standInViewOf(this.prisma, me, user) };
   }
 
   /** The status of the month's payroll run a day is in; none: no run. */
@@ -375,8 +384,8 @@ export class AttendanceCorrectionsService {
   }
 
   /** Logs a step on a correction, in the transaction the step is taken in. */
-  private async step(db: Db, correctionId: string, actorId: string | null, step: { kind: string; decision?: string; comment?: string | null }) {
-    await db.attendanceCorrectionStep.create({ data: { correctionId, actorId, kind: step.kind, decision: step.decision ?? null, comment: step.comment ?? null } });
+  private async step(db: Db, correctionId: string, actorId: string | null, step: { kind: string; decision?: string; comment?: string | null; onBehalfOf?: string | null }) {
+    await db.attendanceCorrectionStep.create({ data: { correctionId, actorId, kind: step.kind, decision: step.decision ?? null, comment: step.comment ?? null, onBehalfOfId: step.onBehalfOf ?? null } });
   }
 
   /** A correction the caller may see; otherwise it isn't there. */

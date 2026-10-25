@@ -160,6 +160,17 @@ describe('permission on the calendar (owner, 19 October 2026: "4 hours per month
     expect(cellLabel(nour.cells[3]!, nour.name, days[3])).toBe('Nour Adel: Annual leave, half a day, being decided, Wednesday 04/11/2026');
   });
 
+  it('names the colleague who covers a leave on hover and in the phone’s list (25 October 2026)', () => {
+    const covered = entry({ startDate: '2026-11-04', endDate: '2026-11-05', cover: { id: 'sara', fullNameEn: 'Sara Ali' } });
+    const [nour] = calendarPeople([covered], days);
+    expect(nour.cells[3]).toMatchObject({ cover: 'Sara Ali' });
+    expect(cellLabel(nour.cells[3]!, nour.name, days[3])).toBe('Nour Adel: Annual leave, covered by Sara Ali, Wednesday 04/11/2026');
+    expect(calendarAgenda([nour], days).find((d) => d.day.date === '2026-11-04')!.off[0]).toMatchObject({ name: 'Nour Adel', cover: 'Sara Ali' });
+    // nobody named: as before
+    const [plain] = calendarPeople([entry({ startDate: '2026-11-04', endDate: '2026-11-04', cover: null })], days);
+    expect(plain.cells[3]).not.toHaveProperty('cover');
+  });
+
   it('gives way to leave on the same day, and two of a day show their hours together', () => {
     const [nour] = calendarPeople([permission({}), entry({ startDate: '2026-11-03', endDate: '2026-11-03' })], days);
     expect(nour.cells[2]).toMatchObject({ typeName: 'Annual leave', permission: null });

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
-import { leaveTypeRulesText } from '@trendlix/shared';
+import { leaveTypeRulesText, type StaffingUnitView } from '@trendlix/shared';
 import { LEAVE_PATH } from '@/components/nav';
 import { DeleteForm } from '@/components/form';
 import { titleCase } from '@/lib/format';
@@ -13,11 +13,12 @@ import { loadLeaveSettings, loadLeaveTypes } from '../../leave/data';
 import { rulesOf } from '../../leave/request';
 import { NotLoaded, SettingRow, SetupSection } from '../payroll/section';
 import { Loading } from '../ui';
-import { deleteLeaveType, saveLeaveSettings } from './actions';
+import { deleteLeaveType, saveLeaveSettings, saveStaffingLimit } from './actions';
 import { LeaveSettingsForm } from './settings-form';
 import {
   balanceText,
   editsLeaveSetup,
+  editsStaffing,
   LEAVE_TYPES_ID,
   leaveTypeHref,
   NEW_LEAVE_TYPE_HREF,
@@ -32,6 +33,9 @@ import {
   yearClosingHref,
 } from './setup';
 import { closingYear } from './year-closing';
+import { limitNowText, peopleNowText, STAFFING_ID, staffingGroups, takesLimit, unitLimitText } from './staffing';
+import { loadStaffing } from './staffing-data';
+import { StaffingLimitForm } from './staffing-form';
 import { saveWfhSettings } from '../../attendance/wfh/actions';
 import { loadWfhSettings } from '../../attendance/wfh/data';
 import { WfhSettingsForm } from '../../attendance/wfh/wfh-forms';
@@ -49,7 +53,11 @@ import { WfhSettingsForm } from '../../attendance/wfh/wfh-forms';
 // section, Annual Leave and Permission: its hours a month and most hours a day, saved with the annual leave's days.
 // Working from home (owner, 21 October 2026: "its 2 days per month with a gap of 1 week between each record
 // (Biweekly)", the limits in Leave Setup) has a section of its own after it: the days a month and the days between two,
-// HR's to change, read by the other staff.
+// HR's to change, read by the other staff. Staffing (owner, 25 October 2026: "if there are leaves applied by an employee
+// and another employee in the same department is on a leave, how can we manage it without affecting the workflow?";
+// asked, "Warn and need HR"), after the types: each team's limit for annual leave (a department's without teams), "At
+// most N people on annual leave at once" and/or "At least P% at work", set by HR and a Super Admin, read by the other
+// staff; a request over it is still sent, with a warning, and HR approves it too; never sick or casual leave.
 
 export const metadata: Metadata = { title: 'Leave Setup · People System' };
 
@@ -192,6 +200,74 @@ async function LeaveTypes({ user }: { user: SessionUser }) {
   );
 }
 
+/** A team's (or a department's) row of Staffing: its name, its people now, its limit in words and what it means, and its form. */
+function StaffingRow({ unit: u, edits }: { unit: StaffingUnitView; edits: boolean }) {
+  const now = limitNowText(u);
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h3 className="font-semibold">
+          {titleCase(u.nameEn)} {u.team && <span className="text-xs font-normal text-muted">Team</span>}
+        </h3>
+        <span className="text-sm text-muted tabular-nums">{peopleNowText(u.members)}</span>
+      </div>
+      {takesLimit(u) ? (
+        <>
+          <p className="text-sm">{unitLimitText(u)}</p>
+          {now && <p className="text-xs text-muted">{now}</p>}
+          {edits && <StaffingLimitForm action={saveStaffingLimit.bind(null, u.id, u.nameEn)} unit={u} />}
+        </>
+      ) : (
+        <p className="text-sm text-muted">It has teams: each team below has its own limit.</p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The teams' staffing limits for annual leave (owner, 25 October 2026: "Warn and need HR"; GET /leave/staffing): every
+ * department with its teams under it, each team (or a department without teams) with its people now and its limit; HR
+ * and a Super Admin change them row by row (editsStaffing), the other staff read them. Nothing from an API from before it.
+ */
+async function Staffing({ user }: { user: SessionUser }) {
+  const loaded = await loadStaffing();
+  if (loaded.kind === 'unavailable') return null;
+  const edits = editsStaffing(user);
+  let body: React.ReactNode;
+  if (loaded.kind === 'forbidden') body = <p className="text-sm text-muted">Only HR, the CEO, Finance and Admins see the staffing limits.</p>;
+  else if (loaded.kind === 'failed') body = <NotLoaded what="the staffing limits" loaded={{ kind: 'failed', message: loaded.messages.join(' ') }} />;
+  else if (loaded.value.length === 0) body = <p className="text-sm text-muted">No departments yet: they are added on Organization → Departments.</p>;
+  else {
+    body = (
+      <ul className="space-y-4">
+        {staffingGroups(loaded.value).map((g) => (
+          <li key={g.department.id} className="rounded-lg border border-line p-4">
+            <StaffingRow unit={g.department} edits={edits} />
+            {g.teams.length > 0 && (
+              <ul className="mt-4 space-y-4 border-l-2 border-line-soft pl-4" aria-label={`Teams of ${g.department.nameEn}`}>
+                {g.teams.map((t) => (
+                  <li key={t.id}>
+                    <StaffingRow unit={t} edits={edits} />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </li>
+        ))}
+      </ul>
+    );
+  }
+  return (
+    <SetupSection
+      id={STAFFING_ID}
+      title="Staffing"
+      intro="How many of a team may be on annual leave at once, so leave doesn't stop its work: at most so many people, or at least a share of them at work, either, both or none; a department without teams has its own. A request of annual or unpaid leave that would break it on any day, counting the approved and waiting ones, is still sent: the employee is warned, the manager and HR see the clash, and HR approves it too, marked Over the staffing limit. Sick and casual leave are never limited, as the law doesn't let them be refused. HR and the Super Admin set the limits."
+    >
+      {body}
+    </SetupSection>
+  );
+}
+
 /**
  * Working from home (owner, 21 October 2026: "its 2 days per month with a gap of 1 week between each record
  * (Biweekly)"): the days a calendar month someone may work from home and the fewest days between two, HR's to change
@@ -254,6 +330,9 @@ async function LeaveSetup() {
       </Section>
       <Section>
         <LeaveTypes user={user} />
+      </Section>
+      <Section>
+        <Staffing user={user} />
       </Section>
       <YearClosingSection user={user} />
     </div>

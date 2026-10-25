@@ -233,8 +233,11 @@ export function wfhDoneText(query: Query, status: LeaveStatus, manager?: Pick<Re
   return { text: wfhDecidedText(decision as LeaveDecision, stage as LeaveStage, confidential), tone: 'ok' };
 }
 
-/** A step as its timeline shows it: as a leave request's, HR's recording, an import and a cancelling in their words. */
-export function wfhStepText(s: Pick<WfhRequestStep, 'kind' | 'decision' | 'comment'>, manager?: Pick<RequestApprover, 'role'> | null, confidential?: boolean | null): string {
+/**
+ * A step as its timeline shows it: as a leave request's, HR's recording, an import and a cancelling in their words. Typed
+ * as the leave timeline's steps too (their kinds widened with the cover changed, 25 October 2026), as OD's is.
+ */
+export function wfhStepText(s: Pick<WfhRequestStep | LeaveRequestStep, 'kind' | 'decision' | 'comment'>, manager?: Pick<RequestApprover, 'role'> | null, confidential?: boolean | null): string {
   if (s.kind === 'imported') return 'Imported from Zoho People, approved';
   if (s.kind === 'recorded_by_hr') return 'Recorded by HR, approved at once';
   if (s.kind === 'cancelled') return 'Cancelled';

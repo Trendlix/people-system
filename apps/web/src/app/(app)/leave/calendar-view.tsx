@@ -7,6 +7,7 @@ import { permissionClock } from '@trendlix/shared';
 import {
   calendarAgenda,
   cellLabel,
+  coverWords,
   monthSummaryText,
   monthTitle,
   nextMonth,
@@ -213,6 +214,8 @@ function MonthAgenda({ days, people }: { days: CalendarDay[]; people: CalendarPe
                     {o.od ? odCellWords(o.od) : o.wfh ? WFH_CELL_WORDS : o.permission ? permissionCellWords(o.typeName, o.permission) : o.typeName}
                     {o.halfDay && ', half a day'}
                     {o.waiting && ', being decided'}
+                    {/* who covers the leave (25 October 2026) */}
+                    {coverWords(o)}
                   </span>
                 </li>
               ))}

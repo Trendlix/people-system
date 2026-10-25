@@ -188,6 +188,8 @@ describe('which notifications go on WhatsApp', () => {
       'access_hold',
       'correction_decided',
       'home_location_decided',
+      // a colleague named to cover someone's leave (25 October 2026)
+      'leave_cover',
       'leave_decided',
       'od_decided',
       'payslip_issued',

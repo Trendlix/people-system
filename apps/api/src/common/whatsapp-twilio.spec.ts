@@ -26,16 +26,16 @@ import {
   whatsappTwilioStatusUrl,
 } from '@trendlix/shared';
 
-// Twilio as a second way to send WhatsApp (owner, 25 October 2026: "Add Twilio as a choice"): the same 17 templates and
-// texts made as Twilio Content, the variables sent, Twilio's approval words, the sender, the settings' checks and the
-// owner's steps. packages/shared whatsapp-twilio.ts.
+// Twilio as a second way to send WhatsApp (owner, 25 October 2026: "Add Twilio as a choice"): the same 18 templates (the
+// cover's since leave coverage, 25 October 2026) and texts made as Twilio Content, the variables sent, Twilio's approval
+// words, the sender, the settings' checks and the owner's steps. packages/shared whatsapp-twilio.ts.
 
 const ORIGIN = 'https://people.trendlix.com/';
 const SID = `AC${'0123456789abcdef'.repeat(2)}`;
 
 describe('the templates as Twilio Content', () => {
-  it('are the 17 in both languages, named people_<key>_<lang>, Utility, with the same texts and the STOP line', () => {
-    expect(WHATSAPP_TEMPLATE_KEYS).toHaveLength(17);
+  it('are the 18 in both languages, named people_<key>_<lang>, Utility, with the same texts and the STOP line', () => {
+    expect(WHATSAPP_TEMPLATE_KEYS).toHaveLength(18);
     for (const key of WHATSAPP_TEMPLATE_KEYS) {
       for (const lang of WHATSAPP_LANGUAGES) {
         const d = WHATSAPP_TEMPLATES[key];

@@ -29,6 +29,11 @@ export interface AttendanceCorrectionView {
   status: LeaveStatus;
   stage: LeaveStage | null;
   waitingForYou: boolean;
+  /**
+   * The approver on leave the caller decides it for, standing in (owner, 25 October 2026: "To a stand-in"); null when
+   * they decide as themself. Left out by an API from before it. Its steps' stand-ins: LeaveRequestStep.onBehalfOf.
+   */
+  standingInFor?: { id: string; fullNameEn: string } | null;
   /** The employee may cancel it now: theirs, while being decided. */
   canCancel: boolean;
   /** The employee is C-level: HR's stage is the CEO's (or HR with Super Admin). */

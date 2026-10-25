@@ -20,7 +20,9 @@ import { offeredTypes, personFacts } from '../request';
 // again. Once sent, the request's page opens.
 // The page's heading and body, shown on the site (/leave/new) and on the phone pages (/app/requests/new/leave; owner, 20
 // October 2026: the employee app, "apply for their requests"), where the back link and Cancel go to the phone pages'
-// My Requests and the form, once sent, opens the request there.
+// My Requests and the form, once sent, opens the request there. Leave coverage (owner, 25 October 2026: "Names, no leave
+// types", "Required over 2 days", "To a stand-in"): the form reads who else of the team is off as the days are chosen,
+// and asks for the colleague who covers and, for someone who approves for others, the stand-in (leave-forms.tsx).
 
 export function NewLeaveHeading({ back }: { back: { href: string; label: string } | null }) {
   return (
@@ -29,7 +31,8 @@ export function NewLeaveHeading({ back }: { back: { href: string; label: string 
       <h1 className="text-2xl font-semibold">New Leave</h1>
       <p className="text-muted">
         Ask for leave: the type, the first and last day, and a reason, with a document when the type needs one. Your direct manager decides it first
-        (without one, your team lead, else the head of your department), then HR; each step shows on the request.
+        (without one, your team lead, else the head of your department), then HR; each step shows on the request. As you choose the days you
+        see who else in your team is off; annual leave of more than 2 working days names a colleague who covers your work.
       </p>
     </div>
   );

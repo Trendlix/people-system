@@ -18,6 +18,8 @@ export interface ClaimStepInput {
   comment?: string | null;
   /** added_to_payroll: the month's first day, YYYY-MM-DD. */
   payMonth?: string | null;
+  /** The manager step decided by a stand-in: the manager they stood in for (25 October 2026). */
+  onBehalfOf?: string | null;
 }
 
 /** Logs a step on a claim, by `actorId` (null: none, e.g. sent straight to HR), in the transaction the step is taken in. */
@@ -31,6 +33,7 @@ export async function recordClaimStep(db: Db, claimId: string, actorId: string |
       amount: step.amount ?? null,
       comment: step.comment ?? null,
       payMonth: step.payMonth ? toDateOnly(step.payMonth) : null,
+      onBehalfOfId: step.onBehalfOf ?? null,
     },
   });
 }

@@ -1,8 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { cairoDay, decidesConfidentialStage, type Role, type WhatsAppRequestWhat, type WhatsAppSpan } from '@trendlix/shared';
+import { cairoDay, decidesConfidentialStage, movesToStandIn, type Role, type WhatsAppRequestWhat, type WhatsAppSpan } from '@trendlix/shared';
 import { actsAs } from '../auth/roles.js';
 import { fromDateOnly } from '../common/date-only.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
+import { standInOfApprover } from '../leave/stand-ins.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { activeAccountsOf } from '../users/employee-accounts.js';
 import type { WhatsAppNotice } from '../whatsapp/whatsapp.service.js';
@@ -11,6 +12,7 @@ import {
   cancelledByHrText,
   claimDecidedText,
   claimPaidText,
+  coverText,
   daysText,
   decidedText,
   homeDecidedText,
@@ -19,6 +21,7 @@ import {
   payRaiseWaitingText,
   payslipText,
   raiseRequestWaitingText,
+  standInText,
   waitingText,
   type LeaveLikeKind,
 } from './texts.js';
@@ -41,6 +44,10 @@ import {
 // Each carries its WhatsApp message's facts too (owner, 24 October 2026: "how to make whatsapp notifications?";
 // "Approvals waiting, Request decisions"): names, days and the month only, the requester's name in Arabic for an Arabic
 // message, and whom it is about, so a C-level person's never shows in HR's log. The emitter sends it to those who opted in.
+// Leave coverage (owner, 25 October 2026: "Required over 2 days", "To a stand-in"): the colleague named to cover a leave
+// is told (and the one no longer covering it), on WhatsApp too for those who opted in; while an approver is on leave with
+// a stand-in, what waits at their step is told to the stand-in instead (a person, or HR), never a C-level person's to a
+// stand-in who doesn't see them; and the stand-in is told when the leave starts, with how many wait.
 
 /** A request's steps as leave's are (with_manager → with_hr), and a claim's (… → with_finance). */
 type Stage = 'manager' | 'hr' | 'finance';
@@ -62,6 +69,11 @@ export const REQUEST_LINKS = {
   wfh: (id: string) => `/attendance/wfh/${id}`,
   // official duty (owner, 23 October 2026): under Attendance, beside working from home
   od: (id: string) => `/attendance/official-duty/${id}`,
+  // leave coverage (25 October 2026): what the caller covers, on My Requests; a stand-in's waiting requests, on My Team
+  // (a person) or Leave Requests (HR)
+  covering: '/my-requests#covering',
+  myTeam: '/my-team',
+  leaveWaiting: '/leave?status=waiting',
 } as const;
 
 /** A request as the notices read it: whose it is, who it was sent to, where it stands, its name and its days. */
@@ -313,14 +325,88 @@ export class NoticesService {
 
   // ---------- who ----------
 
-  /** The one in charge of a step: the manager it was sent to; HR or Finance (the CEO for a C-level person's). */
+  /**
+   * The one in charge of a step: the manager it was sent to (their stand-in while they are on leave with one, 25 October
+   * 2026); HR or Finance (the CEO for a C-level person's).
+   */
   private async deciders(stage: Stage, r: Pick<RequestFacts, 'employeeId' | 'managerId'>): Promise<string[]> {
     if (stage === 'manager') {
       if (!r.managerId || r.managerId === r.employeeId) return [];
+      const standIn = await standInOfApprover(this.prisma, r.managerId);
+      if (standIn && movesToStandIn(r, standIn, await this.confidential.ids())) return this.standInUsers(standIn.employeeId, r.managerId, r.employeeId);
       const manager = (await this.usersOf([r.managerId])).get(r.managerId);
       return manager ? [manager] : [];
     }
     return this.stageDeciders(stage, r.employeeId);
+  }
+
+  /** A stand-in's accounts: the person's, or HR's (never the absent approver's own, nor the requester's). */
+  private async standInUsers(standInId: string | null, approverId: string, requesterId: string): Promise<string[]> {
+    if (standInId) {
+      const user = (await this.usersOf([standInId])).get(standInId);
+      return user ? [user] : [];
+    }
+    const away = (await this.usersOf([approverId])).get(approverId);
+    return (await this.stageDeciders('hr', requesterId)).filter((id) => id !== away);
+  }
+
+  // ---------- leave coverage (25 October 2026) ----------
+
+  /**
+   * The colleague named to cover a leave (owner: "The colleague is told and can see what they cover"): its employee's
+   * name and days, never its type; on WhatsApp too. `ended`: they no longer cover it (the cover changed).
+   */
+  async cover(requestId: string, coverId: string, ended = false): Promise<void> {
+    await this.safely('cover', async () => {
+      const r = await this.prisma.leaveRequest.findUnique({
+        where: { id: requestId },
+        select: { employeeId: true, startDate: true, endDate: true, halfDay: true, employee: { select: { fullNameEn: true, fullNameAr: true } } },
+      });
+      if (!r) return;
+      const span = { from: fromDateOnly(r.startDate), to: fromDateOnly(r.endDate), halfDay: r.halfDay };
+      const text = coverText(r.employee.fullNameEn, daysText(span.from, span.to, r.halfDay), REQUEST_LINKS.covering, ended);
+      const user = (await this.usersOf([coverId])).get(coverId);
+      if (!user) return;
+      await this.notifications.notify([user], {
+        ...text,
+        whatsapp: ended ? null : { facts: { template: 'cover_assigned', who: { en: r.employee.fullNameEn, ar: r.employee.fullNameAr }, span }, about: r.employeeId },
+      });
+    });
+  }
+
+  /**
+   * An approver's leave with a stand-in has started (told once: StandInSchedulerService): the stand-in (a person, or HR)
+   * is told that what waits at the approver's step comes to them until its last day, and how many wait now (those that
+   * move to them: movesToStandIn).
+   */
+  async standInStarted(requestId: string): Promise<void> {
+    await this.safely('stand-in', async () => {
+      const r = await this.prisma.leaveRequest.findUnique({ where: { id: requestId }, select: { employeeId: true, employee: { select: { fullNameEn: true } } } });
+      if (!r) return;
+      const standIn = await standInOfApprover(this.prisma, r.employeeId);
+      if (!standIn) return;
+      const cLevel = [...(await this.confidential.ids())];
+      const moved = {
+        status: 'with_manager',
+        managerId: r.employeeId,
+        AND: [
+          ...(standIn.employeeId ? [{ employeeId: { not: standIn.employeeId } }] : []),
+          ...(!standIn.seesConfidential && cLevel.length ? [{ employeeId: { notIn: cLevel } }] : []),
+        ],
+      };
+      const counts = await Promise.all([
+        this.prisma.leaveRequest.count({ where: moved }),
+        this.prisma.permissionRequest.count({ where: moved }),
+        this.prisma.wfhRequest.count({ where: moved }),
+        this.prisma.odRequest.count({ where: moved }),
+        this.prisma.attendanceCorrection.count({ where: moved }),
+        this.prisma.reimbursementClaim.count({ where: moved }),
+      ]);
+      const waiting = counts.reduce((a, b) => a + b, 0);
+      const users = await this.standInUsers(standIn.employeeId, r.employeeId, r.employeeId);
+      const link = standIn.employeeId ? REQUEST_LINKS.myTeam : REQUEST_LINKS.leaveWaiting;
+      await this.notifications.notify(users, standInText(r.employee.fullNameEn, standIn.until, waiting, link, !standIn.employeeId));
+    });
   }
 
   /**

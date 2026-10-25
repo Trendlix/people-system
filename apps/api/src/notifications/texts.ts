@@ -51,6 +51,32 @@ export function cancelledByHrText(kind: 'leave' | 'permission' | 'wfh' | 'od', w
   return { kind: `${kind}_decided`, title: CANCELLED_BY_HR[kind], body: when, link };
 }
 
+/**
+ * A colleague named to cover someone's leave (owner, 25 October 2026: "Required over 2 days"): who and when, never its
+ * type ("Omar Khaled named you to cover their leave", "12/11/2026–14/11/2026"); or told they no longer cover it (the
+ * cover changed).
+ */
+export function coverText(name: string, when: string, link: string, ended = false): NotificationInput {
+  return ended
+    ? { kind: 'leave_cover', title: `You no longer cover ${name}`, body: `${when}: they named someone else`, link }
+    : { kind: 'leave_cover', title: `${name} named you to cover their leave`, body: when, link };
+}
+
+/**
+ * A stand-in told, when an approver's leave starts (owner, 25 October 2026: "To a stand-in"), that what waits at their
+ * step comes to them until its last day, and how many wait now: "You are standing in for Ahmed Ali"; HR's "HR is
+ * standing in for Ahmed Ali".
+ */
+export function standInText(name: string, until: string, waiting: number, link: string, asHr = false): NotificationInput {
+  const count = waiting === 0 ? 'none waiting now' : `${waiting} waiting now`;
+  return {
+    kind: 'stand_in',
+    title: asHr ? `HR is standing in for ${name}` : `You are standing in for ${name}`,
+    body: `Their team’s requests come to ${asHr ? 'HR' : 'you'} until ${shownDate(until)}: ${count}`,
+    link,
+  };
+}
+
 /** The employee's claim approved by Finance (to be paid with a month's payroll), or rejected at a step. */
 export function claimDecidedText(decision: { approved: true; payMonth: string } | { approved: false; expenseDate: string }, link: string): NotificationInput {
   return decision.approved

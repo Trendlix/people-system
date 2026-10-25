@@ -10,6 +10,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   StreamableFile,
   UploadedFiles,
@@ -24,10 +25,13 @@ import { ConfidentialOf } from '../employees/confidential.guard.js';
 import { contentDisposition } from '../paperwork/paperwork-file.js';
 import { DOCUMENT_UPLOAD, DocumentUploadFilter } from './documents.js';
 import { LeaveBalancesService } from './leave-balances.service.js';
+import { LeaveCoverageService } from './leave-coverage.service.js';
 import { LeaveRequestsService } from './leave-requests.service.js';
 import { LeaveTypesService } from './leave-types.service.js';
 import {
+  ChangeCoverDto,
   CloseYearDto,
+  CoverageQueryDto,
   CreateLeaveRequestDto,
   CreateLeaveTypeDto,
   DecideLeaveDto,
@@ -37,6 +41,7 @@ import {
   LeaveYearQueryDto,
   ListLeaveRequestsDto,
   RecordLeaveRequestDto,
+  StaffingLimitDto,
   UpdateLeaveSettingsDto,
   UpdateLeaveTypeDto,
 } from './leave.dto.js';
@@ -50,7 +55,10 @@ import { YearClosingService } from './year-closing.service.js';
 // cancels approved leave. An employee's leave: HR, the CEO, Finance, the employee and their manager; HR adjusts it. The
 // calendar: each sees as far as they see requests. Year Closing: HR and the CEO see it, HR closes and reopens it. A
 // C-level person's leave (owner, 19 October 2026: "make C level Employees details not visible to HR"): HR's stage is the
-// CEO's, and HR and their manager now don't see it nor their balances (checked by the services; 404 below).
+// CEO's, and HR and their manager now don't see it nor their balances (checked by the services; 404 below). Coverage
+// (owner, 25 October 2026: "Warn and need HR", "Required over 2 days", "To a stand-in", "Names, no leave types"): the new
+// request's as the employee types it, a request's for those who see it, what the caller covers, the employee changing
+// their cover; and the teams' staffing limits, read by the staff, set by HR and a Super Admin.
 
 @Controller('leave/types')
 export class LeaveTypesController {
@@ -101,7 +109,29 @@ export class LeaveSettingsController {
 /** The employee's own: anyone signed in with an employee profile. */
 @Controller('me/leave')
 export class MyLeaveController {
-  constructor(private readonly requests: LeaveRequestsService) {}
+  constructor(
+    private readonly requests: LeaveRequestsService,
+    private readonly coverage: LeaveCoverageService,
+  ) {}
+
+  /** ?from=&to=&typeId=&halfDay=: who of their team is off on the days, the limit, the cover and the stand-in, as typed. */
+  @Get('coverage')
+  formCoverage(@Query() query: CoverageQueryDto, @CurrentUser() user: SessionUser) {
+    return this.coverage.formCoverage(query, user);
+  }
+
+  /** The colleagues' leave the caller covers, current or to come. */
+  @Get('covering')
+  covering(@CurrentUser() user: SessionUser) {
+    return this.coverage.covering(user);
+  }
+
+  /** { coverId, handoverNote }: the employee changes the colleague who covers their request, or the note. */
+  @Post('requests/:id/cover')
+  @HttpCode(200)
+  changeCover(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ChangeCoverDto, @CurrentUser() user: SessionUser) {
+    return this.requests.changeCover(id, dto, user);
+  }
 
   /** ?year=: this year in Cairo unless sent. */
   @Get('balances')
@@ -131,7 +161,10 @@ export class MyLeaveController {
 
 @Controller('leave/requests')
 export class LeaveRequestsController {
-  constructor(private readonly requests: LeaveRequestsService) {}
+  constructor(
+    private readonly requests: LeaveRequestsService,
+    private readonly coverage: LeaveCoverageService,
+  ) {}
 
   /** ?status=<a status, or waiting>&employeeId=&from=&to=: HR and the CEO everyone's; a manager those sent to them and their team's. */
   @Get()
@@ -159,6 +192,12 @@ export class LeaveRequestsController {
     return this.requests.one(id, user);
   }
 
+  /** Who else of its employee's team is off on its days: names to its employee, "leave" to an approver, types to HR and the CEO. */
+  @Get(':id/coverage')
+  requestCoverage(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {
+    return this.coverage.requestCoverage(id, user);
+  }
+
   @NotForDevelopers()
   @Get(':id/documents/:documentId')
   @Header('Cache-Control', 'private, no-store')
@@ -182,6 +221,25 @@ export class LeaveRequestsController {
   @HttpCode(200)
   cancel(@Param('id', ParseUUIDPipe) id: string, @Body() dto: HrCancelLeaveDto, @CurrentUser() user: SessionUser) {
     return this.requests.hrCancel(id, dto, user);
+  }
+}
+
+/** The teams' staffing limits for annual leave (Organization → Leave → Staffing): the staff read them, HR and a Super Admin set them. */
+@Controller('leave/staffing')
+export class LeaveStaffingController {
+  constructor(private readonly coverage: LeaveCoverageService) {}
+
+  @Roles('hr', 'ceo', 'finance', 'admin')
+  @Get()
+  list() {
+    return this.coverage.staffing();
+  }
+
+  /** { maxOff, minAtWorkPercent }: a team's (or a department's without teams); both empty removes it. */
+  @Roles('hr', 'super_admin')
+  @Put(':departmentId')
+  set(@Param('departmentId', ParseUUIDPipe) departmentId: string, @Body() dto: StaffingLimitDto, @CurrentUser() user: SessionUser) {
+    return this.coverage.setStaffing(departmentId, dto, user);
   }
 }
 

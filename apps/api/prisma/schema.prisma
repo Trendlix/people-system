@@ -115,6 +115,7 @@ model User {
   leaveClosings      LeaveYearClosing[]         @relation("LeaveYearClosingBy") // the years this user closed the leave balances of
   leaveYearsClosed   LeaveBalanceYear[]         @relation("LeaveBalanceClosedBy") // the balances this user closed: at a Year Closing, or paid on leaving
   leaveSetupChanged  LeaveSettings[]            @relation("LeaveSettingsBy") // the Leave Setup, when this user changed it last
+  staffingLimitsSet  LeaveStaffingLimit[]       @relation("StaffingLimitBy") // the staffing limits this user set last (25 October 2026)
   leaveImports       LeaveImport[]              @relation("LeaveImportBy") // leave files this user uploaded (21 October 2026)
   leaveImportApplied LeaveImport[]              @relation("LeaveImportAppliedBy") // leave imports this user applied last
   leaveImportsUndone LeaveImport[]              @relation("LeaveImportUndoneBy") // leave imports this user undid last
@@ -718,6 +719,7 @@ model Department {
   kpiScorecards KpiScorecard[] // the KPI scorecards of people who worked here when they opened (21 October 2026)
   kpiFrameworks KpiFramework[] // its own KPI pillars' versions (22 October 2026)
   generalCvs  GeneralCv[] // the general CVs of people who would like to work in it (22 October 2026)
+  staffingLimit LeaveStaffingLimit? // its staffing limit for annual leave: a team's, or a department's without teams (25 October 2026)
 
   @@unique([parentId, nameEn])
   @@index([headId])
@@ -954,6 +956,16 @@ model Employee {
   wfhToDecide                WfhRequest[]           @relation("WfhManager") // the work from home requests this person decided, or decides, as the approver in charge
   odRequests                 OdRequest[]            @relation("OdRequester") // the official duties this person asked for (23 October 2026)
   odToDecide                 OdRequest[]            @relation("OdManager") // the official duty requests this person decided, or decides, as the approver in charge
+  // leave coverage (owner, 25 October 2026: "Required over 2 days", "To a stand-in"): the leave this person covers for a
+  // colleague, the leave they stand in for an approver during, and the steps they took standing in for someone else
+  leaveCovering              LeaveRequest[]         @relation("LeaveCover")
+  leaveStandingIn            LeaveRequest[]         @relation("LeaveStandIn")
+  leaveStepsStoodIn          LeaveRequestStep[]     @relation("LeaveStepOnBehalf") // the leave steps taken by a stand-in for this person
+  permissionStepsStoodIn     PermissionRequestStep[] @relation("PermissionStepOnBehalf")
+  wfhStepsStoodIn            WfhRequestStep[]       @relation("WfhStepOnBehalf")
+  odStepsStoodIn             OdRequestStep[]        @relation("OdStepOnBehalf")
+  correctionStepsStoodIn     AttendanceCorrectionStep[] @relation("CorrectionStepOnBehalf")
+  claimStepsStoodIn          ReimbursementClaimStep[] @relation("ClaimStepOnBehalf")
   leaveBalances              LeaveBalanceYear[] // each year's annual leave: carried in, closed
   leaveAdjustments           LeaveAdjustment[] // HR's changes to the annual leave balance
   leading                    Department[]           @relation("DepartmentHead") // the departments this person heads and the teams they lead
@@ -2910,6 +2922,8 @@ model ReimbursementClaimStep {
   payMonth DateTime?          @map("pay_month") @db.Date // added_to_payroll: the first day of the month
   actorId  String?            @map("actor_id") @db.Uuid
   actor    User?              @relation("ReimbursementStepActor", fields: [actorId], references: [id], onDelete: SetNull)
+  onBehalfOfId String?        @map("on_behalf_of") @db.Uuid // the manager step decided by a stand-in: the approver they stood in for (25 October 2026)
+  onBehalfOf   Employee?      @relation("ClaimStepOnBehalf", fields: [onBehalfOfId], references: [id], onDelete: SetNull)
   at       DateTime           @default(now()) @db.Timestamptz
 
   @@index([claimId])
@@ -3003,6 +3017,24 @@ model LeaveSettings {
   @@map("leave_settings")
 }
 
+// A team's staffing limit for annual leave (owner, 25 October 2026: "if there are leaves applied by an employee and
+// another employee in the same department is on a leave, how can we manage it without affecting the workflow?"; asked,
+// "Warn and need HR"), or a department's without teams: at most so many on annual (and unpaid) leave at once, and/or at
+// least so many percent at work; at least one of them (none: no row). A request that would break it on any day (counting
+// approved and pending annual leave) is still sent, with a warning, and HR approves it too. Set by HR and a Super Admin
+// (Organization → Leave → Staffing). Never sick or casual leave. Rules: packages/shared leave-coverage.ts.
+model LeaveStaffingLimit {
+  departmentId     String     @id @map("department_id") @db.Uuid
+  department       Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  maxOff           Int?       @map("max_off") // 0–500
+  minAtWorkPercent Int?       @map("min_at_work_percent") // 1–100
+  updatedById      String?    @map("updated_by") @db.Uuid
+  updatedBy        User?      @relation("StaffingLimitBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedAt        DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("leave_staffing_limits")
+}
+
 // A leave request: the employee and the employment it is under, the type, the first and last day, a half day, its
 // days as counted when sent (LEAVE_STATUSES), the direct manager when it was sent (who decides the manager stage), and
 // where it is. Rejected: at which stage, and why. Recorded by HR on the employee's behalf (e.g. sick leave reported
@@ -3042,12 +3074,29 @@ model LeaveRequest {
   importId      String?            @map("import_id") @db.Uuid
   leaveImport   LeaveImport?       @relation(fields: [importId], references: [id], onDelete: Restrict)
   zohoLinkId    String?            @unique @map("zoho_link_id")
+  // leave coverage (owner, 25 October 2026; packages/shared leave-coverage.ts). The colleague who covers the work, required
+  // for annual (and unpaid) leave of more than 2 working days ("Required over 2 days"), never the employee, and the
+  // employee's handover note to them (free text)
+  coverId           String?          @map("cover_id") @db.Uuid
+  cover             Employee?        @relation("LeaveCover", fields: [coverId], references: [id], onDelete: SetNull)
+  handoverNote      String?          @map("handover_note")
+  // it broke the team's staffing limit on some day when sent ("Warn and need HR"): HR approves it too, marked so
+  overStaffingLimit Boolean          @default(false) @map("over_staffing_limit")
+  // an approver's leave ("To a stand-in"): who decides what waits at their step during its days once it is approved, a
+  // person (never the employee) or HR (standInHr; never both); none for someone who approves for nobody. When the stand-in
+  // was told it started (once)
+  standInId         String?          @map("stand_in_id") @db.Uuid
+  standIn           Employee?        @relation("LeaveStandIn", fields: [standInId], references: [id], onDelete: SetNull)
+  standInHr         Boolean          @default(false) @map("stand_in_hr")
+  standInToldAt     DateTime?        @map("stand_in_told_at") @db.Timestamptz
 
   @@index([employeeId, startDate])
   @@index([status])
   @@index([managerId])
   @@index([typeId])
   @@index([importId])
+  @@index([coverId])
+  @@index([standInId])
   @@map("leave_requests")
 }
 
@@ -3062,6 +3111,9 @@ model LeaveRequestStep {
   comment   String?
   actorId   String?      @map("actor_id") @db.Uuid
   actor     User?        @relation("LeaveStepActor", fields: [actorId], references: [id], onDelete: SetNull)
+  // a decision by a stand-in (25 October 2026): the approver they stood in for
+  onBehalfOfId String?   @map("on_behalf_of") @db.Uuid
+  onBehalfOf   Employee? @relation("LeaveStepOnBehalf", fields: [onBehalfOfId], references: [id], onDelete: SetNull)
   at        DateTime     @default(now()) @db.Timestamptz
 
   @@index([requestId])
@@ -3115,6 +3167,8 @@ model PermissionRequestStep {
   comment   String?
   actorId   String?           @map("actor_id") @db.Uuid
   actor     User?             @relation("PermissionStepActor", fields: [actorId], references: [id], onDelete: SetNull)
+  onBehalfOfId String?        @map("on_behalf_of") @db.Uuid // a decision by a stand-in: the approver they stood in for (25 October 2026)
+  onBehalfOf   Employee?      @relation("PermissionStepOnBehalf", fields: [onBehalfOfId], references: [id], onDelete: SetNull)
   at        DateTime          @default(now()) @db.Timestamptz
 
   @@index([requestId])
@@ -3175,6 +3229,8 @@ model WfhRequestStep {
   comment   String?
   actorId   String?    @map("actor_id") @db.Uuid
   actor     User?      @relation("WfhStepActor", fields: [actorId], references: [id], onDelete: SetNull)
+  onBehalfOfId String?   @map("on_behalf_of") @db.Uuid // a decision by a stand-in: the approver they stood in for (25 October 2026)
+  onBehalfOf   Employee? @relation("WfhStepOnBehalf", fields: [onBehalfOfId], references: [id], onDelete: SetNull)
   at        DateTime   @default(now()) @db.Timestamptz
 
   @@index([requestId])
@@ -3232,6 +3288,8 @@ model OdRequestStep {
   comment   String?
   actorId   String?   @map("actor_id") @db.Uuid
   actor     User?     @relation("OdStepActor", fields: [actorId], references: [id], onDelete: SetNull)
+  onBehalfOfId String?  @map("on_behalf_of") @db.Uuid // a decision by a stand-in: the approver they stood in for (25 October 2026)
+  onBehalfOf   Employee? @relation("OdStepOnBehalf", fields: [onBehalfOfId], references: [id], onDelete: SetNull)
   at        DateTime  @default(now()) @db.Timestamptz
 
   @@index([requestId])
@@ -3387,6 +3445,8 @@ model AttendanceCorrectionStep {
   comment      String?
   actorId      String?              @map("actor_id") @db.Uuid
   actor        User?                @relation("AttendanceCorrectionStepActor", fields: [actorId], references: [id], onDelete: SetNull)
+  onBehalfOfId String?              @map("on_behalf_of") @db.Uuid // a decision by a stand-in: the approver they stood in for (25 October 2026)
+  onBehalfOf   Employee?            @relation("CorrectionStepOnBehalf", fields: [onBehalfOfId], references: [id], onDelete: SetNull)
   at           DateTime             @default(now()) @db.Timestamptz
 
   @@index([correctionId])

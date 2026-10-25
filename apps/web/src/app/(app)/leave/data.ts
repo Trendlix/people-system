@@ -1,5 +1,6 @@
 import 'server-only';
 import { cache } from 'react';
+import type { LeaveCoverageView, LeaveFormCoverage } from '@trendlix/shared';
 import type {
   EmployeeLeave,
   EmployeePermissionMonth,
@@ -45,6 +46,26 @@ export const loadMyBalances = cache((year: number) => loadJson<LeaveBalances>(`/
 /** GET /leave/requests/:id: one request, for the employee, their manager, HR and the CEO; anyone else gets 404. */
 export function loadLeaveRequest(id: string): Promise<Loaded<LeaveRequestView>> {
   return loadJson<LeaveRequestView>(`/leave/requests/${encodeURIComponent(id)}`);
+}
+
+/**
+ * GET /leave/requests/:id/coverage: who else of its employee's team is off on its days (owner, 25 October 2026: "Names, no
+ * leave types"), as the caller reads it: its employee names only, an approver names and "leave", HR and the CEO the types;
+ * the clash with the team's staffing limit, and the colleagues its employee covers then. Not available from an API from
+ * before it.
+ */
+export function loadLeaveCoverage(id: string): Promise<Loaded<LeaveCoverageView>> {
+  return loadJson<LeaveCoverageView>(`/leave/requests/${encodeURIComponent(id)}/coverage`);
+}
+
+/**
+ * GET /me/leave/coverage for the days of the employee's own request: the colleagues who may cover them now, for changing
+ * the cover (25 October 2026: "if the cover becomes unavailable, the requester can change the cover").
+ */
+export function loadOwnCoverage(r: Pick<LeaveRequestView, 'startDate' | 'endDate' | 'halfDay' | 'type'>): Promise<Loaded<LeaveFormCoverage>> {
+  const params = new URLSearchParams({ from: r.startDate, to: r.endDate, typeId: r.type.id });
+  if (r.halfDay) params.set('halfDay', 'true');
+  return loadJson<LeaveFormCoverage>(`/me/leave/coverage?${params.toString()}`);
 }
 
 /** GET /leave/types: the active types for anyone signed in; every type for HR, the CEO and Admin. */

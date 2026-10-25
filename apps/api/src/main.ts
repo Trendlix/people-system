@@ -5,6 +5,7 @@ import { CustodySchedulerService } from './assets/custody-scheduler.service.js';
 import { CheckInLocationEndingsService } from './attendance/check-in-location-endings.service.js';
 import { HoursByPairsService } from './attendance/hours-by-pairs.service.js';
 import { KpiSchedulerService } from './kpis/kpi-scheduler.service.js';
+import { StandInSchedulerService } from './leave/stand-in-scheduler.service.js';
 import { EmployeeAccessSchedulerService } from './employee-access/employee-access-scheduler.service.js';
 import { OffboardingSchedulerService } from './offboarding/offboarding-scheduler.service.js';
 import { CandidatesService } from './recruitment/candidates.service.js';
@@ -29,6 +30,9 @@ async function bootstrap() {
   // requested check-in locations' ends (24 October 2026): the employee and HR told 7 days before an end that is a date;
   // the tests' apps don't start it either
   app.get(CheckInLocationEndingsService).start();
+  // stand-ins told when an approver's leave starts (owner, 25 October 2026: "To a stand-in"); the tests' apps don't start
+  // it either: they call its rounds themselves
+  app.get(StandInSchedulerService).start();
   // offboarding's round (22 October 2026): leavers' sign-in disabled once their last working day has passed, and HR told
   // of the cases whose every item is cleared; the tests' apps don't start it either
   app.get(OffboardingSchedulerService).start();

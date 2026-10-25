@@ -4,6 +4,7 @@ import { CLevelBadge } from '@/components/c-level-badge';
 import { approverLabel } from '@/lib/department-leads';
 import { formatDateTime } from '@/lib/format';
 import { getCurrentUser } from '@/lib/session';
+import { standingInNoteText } from '@/lib/stand-in';
 import { appBack, appRequestsHref, type Surface } from '@/lib/surface';
 import type { LeaveRequestStep } from '@/lib/types';
 import { decidingAsTitle, hrStageName, placeOfEmployee } from '../../../leave/list';
@@ -138,6 +139,8 @@ export async function OdRequestDetail({
 
           {r.waitingForYou && r.stage && (
             <Section title={`Your Decision as ${decidingAsTitle(user, r.stage, r.manager, r.confidential)}`}>
+              {/* deciding it standing in for the approver on leave (owner, 25 October 2026: "To a stand-in") */}
+              {standingInNoteText(r.standingInFor) && <p className="mb-4 rounded-lg bg-accent-soft px-4 py-3 text-sm">{standingInNoteText(r.standingInFor)}</p>}
               <OdDecisionForm action={decideOd.bind(null, r.id, r.stage)} stage={r.stage} name={r.employee.fullNameEn} confidential={r.confidential} />
             </Section>
           )}
