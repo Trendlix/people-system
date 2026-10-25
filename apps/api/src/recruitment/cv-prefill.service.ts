@@ -19,7 +19,9 @@ import type { ApplyOrigin } from './public-careers.service.js';
 const READ = { pages: 5, chars: 60_000 };
 
 /** The address a prefill counts against: one the website signed for the prefill, else (no key on the server) the one named. */
-export function prefillIp(named: string | null, origin: ApplyOrigin, key: string | undefined = process.env.WEB_KEY, now: number = Date.now()): string | null {
+// signed with CAREERS_KEY, as the applications' and general CVs' are, since the careers pages moved to www.trendlix.com
+// (d937f18, db0638a; 25 October 2026): with WEB_KEY every visitor counted as the website's own address
+export function prefillIp(named: string | null, origin: ApplyOrigin, key: string | undefined = process.env.CAREERS_KEY, now: number = Date.now()): string | null {
   const signed = verifySignedIp(origin.headers ?? {}, CV_PREFILL_IP_TOKEN, key, now);
   if (signed.ip) return signed.ip;
   return signed.problem === 'no_server_key' ? (named ?? origin.ip) : origin.ip;

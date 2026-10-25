@@ -27,7 +27,8 @@ import { MANAGES, READS } from './recruitment-access.js';
 
 /** The address a sign-in's start or return counts against: one the website signed for LinkedIn's, else the connection's. */
 function linkedinIp(req: Request): string | null {
-  const signed = verifySignedIp(req.headers, LINKEDIN_IP_TOKEN, process.env.WEB_KEY, Date.now());
+  // CAREERS_KEY, as the careers forms sign it since they moved to www.trendlix.com (25 October 2026)
+  const signed = verifySignedIp(req.headers, LINKEDIN_IP_TOKEN, process.env.CAREERS_KEY, Date.now());
   return signed.ip ?? req.ip ?? null;
 }
 
