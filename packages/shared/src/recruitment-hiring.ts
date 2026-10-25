@@ -618,6 +618,11 @@ export interface InterviewSaved {
    */
   meeting?: MeetingOutcome;
   meetingProblem?: string | null;
+  /**
+   * The time's conflicts for the interviewers (25 October 2026: "hand-typed times get conflict warnings, never blocks";
+   * interview-availability.ts slotWarnings): saved all the same, said in words; none when it suits them all.
+   */
+  warnings?: string[];
 }
 
 /** A card on the pipeline board. */

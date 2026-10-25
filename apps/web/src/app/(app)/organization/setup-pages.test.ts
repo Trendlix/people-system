@@ -1,6 +1,7 @@
 import type { Role } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 import { seesEmailSettings } from '../../../lib/email-setup';
+import { seesCalendarSettings } from '../../../lib/calendars';
 import { seesMeetingSettings } from '../../../lib/meetings';
 import { seesWhatsAppSettings } from '../../../lib/whatsapp';
 import { isSelfService } from '../../../lib/roles';
@@ -31,6 +32,7 @@ describe('the setup menu', () => {
           ['Company Details', '/organization/company'],
           ['Email Settings', '/organization/email'],
           ['Meetings', '/organization/meetings'],
+          ['Calendars', '/organization/calendars'],
           ['WhatsApp', '/organization/whatsapp'],
           ['Templates', '/organization/templates'],
         ],
@@ -70,6 +72,7 @@ describe('the setup menu', () => {
         'Hiring & Leaving',
         [
           ['Recruitment Settings', '/organization/recruitment'],
+          ['Interview Hours', '/organization/interview-hours'],
           ['Onboarding Checklist', '/organization/onboarding-checklist'],
           ['Clearance Checklist', '/organization/clearance-checklist'],
         ],
@@ -84,18 +87,18 @@ describe('the setup menu', () => {
     expect(setupPage('kpi-deadlines' as SetupKey).label).toBe('KPI Deadlines');
   });
 
-  it('shows a Super Admin every page, Email Settings, Meetings, WhatsApp and Templates included', () => {
+  it('shows a Super Admin every page, Email Settings, Meetings, Calendars, WhatsApp and Templates included', () => {
     expect(menu(as('super_admin'))).toEqual([
-      'Company: Company Details, Email Settings, Meetings, WhatsApp, Templates',
+      'Company: Company Details, Email Settings, Meetings, Calendars, WhatsApp, Templates',
       'Structure: Departments & Job Titles, Grades',
       'Time & Leave: Shifts, Holidays, Leave, Check-in Setup',
       'Pay & Contracts: Allowances, Contracts & Endings, Payroll Setup',
       'Performance: KPI Pillars, KPI Deadlines',
-      'Hiring & Leaving: Recruitment Settings, Onboarding Checklist, Clearance Checklist',
+      'Hiring & Leaving: Recruitment Settings, Interview Hours, Onboarding Checklist, Clearance Checklist',
     ]);
   });
 
-  it('shows a developer a Super Admin’s pages but Email Settings, Meetings and WhatsApp', () => {
+  it('shows a developer a Super Admin’s pages but Email Settings, Meetings, Calendars and WhatsApp', () => {
     const developer = { roles: ['super_admin'] as Role[], developer: true };
     expect(menu(developer)[0]).toBe('Company: Company Details, Templates');
     expect(menu(developer).slice(1)).toEqual(menu(as('super_admin')).slice(1));
@@ -108,7 +111,7 @@ describe('the setup menu', () => {
       'Time & Leave: Shifts, Holidays, Leave, Check-in Setup',
       'Pay & Contracts: Allowances, Contracts & Endings, Payroll Setup',
       'Performance: KPI Pillars, KPI Deadlines',
-      'Hiring & Leaving: Recruitment Settings, Onboarding Checklist, Clearance Checklist',
+      'Hiring & Leaving: Recruitment Settings, Interview Hours, Onboarding Checklist, Clearance Checklist',
     ]);
   });
 
@@ -118,7 +121,7 @@ describe('the setup menu', () => {
       'Structure: Departments & Job Titles, Grades',
       'Time & Leave: Shifts, Holidays, Leave',
       'Pay & Contracts: Allowances, Contracts & Endings, Payroll Setup',
-      'Hiring & Leaving: Recruitment Settings, Onboarding Checklist, Clearance Checklist',
+      'Hiring & Leaving: Recruitment Settings, Interview Hours, Onboarding Checklist, Clearance Checklist',
     ]);
   });
 
@@ -185,6 +188,12 @@ describe('each page keeps the roles it had', () => {
     expect(sees('meetings', { roles: ['super_admin'], developer: true })).toBe(false);
   });
 
+  // the calendars read for busy times (owner, 25 October 2026: "its zoho mails"): the company's Zoho, a Super Admin's
+  it('Calendars as lib/calendars.ts, a developer never', () => {
+    for (const roles of ROLES) expect(sees('calendars', as(...roles))).toBe(seesCalendarSettings(as(...roles)));
+    expect(sees('calendars', { roles: ['super_admin'], developer: true })).toBe(false);
+  });
+
   // WhatsApp notifications (owner, 24 October 2026: "Directly to Meta"): the company's number and token, a Super Admin's
   it('WhatsApp as lib/whatsapp.ts, a developer never', () => {
     for (const roles of ROLES) expect(sees('whatsapp', as(...roles))).toBe(seesWhatsAppSettings(as(...roles)));
@@ -200,6 +209,8 @@ describe('each page keeps the roles it had', () => {
       expect(sees('kpi-pillars', user)).toBe(buildsKpiTemplates(user));
       expect(sees('kpi-deadlines', user)).toBe(buildsKpiTemplates(user));
       expect(sees('recruitment', user)).toBe(readsRecruitment(user));
+      // interviewers' hours (25 October 2026: "Hours + calendar"), as Recruitment Settings
+      expect(sees('interview-hours', user)).toBe(readsRecruitment(user));
       expect(sees('onboarding-checklist', user)).toBe(managesOnboarding(user));
       expect(sees('clearance-checklist', user)).toBe(managesOffboarding(user));
     }

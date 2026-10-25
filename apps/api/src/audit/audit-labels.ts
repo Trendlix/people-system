@@ -94,6 +94,12 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   // provider's app and the default (Organization → Meetings), and a meetings connection, the company's or a person's own
   meeting_settings: 'Meeting settings',
   meeting_connection: 'Meetings connection',
+  // interviewers' availability (owner, 25 October 2026: "Hours + calendar"; "its zoho mails"): the company's interview
+  // defaults, someone's interview hours, the Zoho Calendar app (Organization → Calendars) and a calendar connection
+  interview_settings: 'Interview defaults',
+  interview_hours: 'Interview hours',
+  calendar_settings: 'Calendar settings',
+  calendar_connection: 'Calendar connection',
   // WhatsApp notifications (owner, 24 October 2026: "how to make whatsapp notifications?"; "Directly to Meta"): the
   // settings (Organization → Company → WhatsApp), and a person's own choice to get them
   whatsapp_settings: 'WhatsApp settings',
@@ -302,6 +308,8 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   disconnect: 'Disconnected',
   needs_reconnecting: 'Needs connecting again',
   test_meeting: 'Created a test meeting',
+  // a calendar connection's test (25 October 2026): its busy times read, never what they are
+  test_calendar: 'Tested the calendar',
   set_default: 'Changed the default',
   meeting_create: 'Created the online meeting',
   meeting_update: 'Moved the online meeting',
@@ -509,6 +517,14 @@ const FIELD_LABELS: Readonly<Record<string, string>> = {
   hostEmail: 'Host',
   accountEmail: 'Account',
   meetingId: 'Meeting ID',
+  // interview hours and their defaults (25 October 2026); the Zoho app's data centre
+  windows: 'Weekly hours',
+  changes: 'One-off changes',
+  effectiveFrom: 'Counts from',
+  noticeHours: 'Minimum notice (hours)',
+  bufferMinutes: 'Buffer (minutes)',
+  dataCentre: 'Data centre',
+  warnings: 'Warnings',
   // the WhatsApp settings (24 October 2026): the ids, the business number, the secrets (only ever "changed"), quiet
   // hours; a person's choices
   phoneNumberId: 'Phone number ID',

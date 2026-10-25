@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { connection } from 'next/server';
 import { Suspense } from 'react';
+import { InterviewHoursBanner } from '@/components/interview-hours-banner';
 import { API_URL, ApiError } from '@/lib/api';
 import { isSelfService } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
@@ -261,7 +262,15 @@ async function Home() {
   } catch (err) {
     if (!(err instanceof ApiError)) throw err;
   }
-  return user && isSelfService(user) ? <Dashboard user={user} /> : <StaffHome />;
+  // "Set your interview hours so HR can book you" (owner, 25 October 2026: "Hours + calendar"), on both home pages
+  return (
+    <>
+      <Suspense fallback={null}>
+        <InterviewHoursBanner />
+      </Suspense>
+      {user && isSelfService(user) ? <Dashboard user={user} /> : <StaffHome />}
+    </>
+  );
 }
 
 export default function HomePage() {

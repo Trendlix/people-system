@@ -464,6 +464,14 @@ function targetOf(row: Pick<AuditRow, 'entityType' | 'entityId' | 'diff'>, refs:
     case 'meeting_settings':
     case 'meeting_connection':
       return { href: '/organization/meetings', label: 'Open the meeting settings', roles: MAIL };
+    // interviewers' availability (25 October 2026): the defaults and anyone's hours on Organization → Interview Hours;
+    // the Zoho Calendar app and the company's connection on Organization → Calendars, a Super Admin's
+    case 'interview_settings':
+    case 'interview_hours':
+      return { href: '/organization/interview-hours', label: 'Open interview hours', roles: RECRUITMENT };
+    case 'calendar_settings':
+    case 'calendar_connection':
+      return { href: '/organization/calendars', label: 'Open the calendar settings', roles: MAIL };
     case 'payroll_settings':
     case 'payroll_law_rates':
       return { href: '/organization/payroll', label: 'Open payroll setup', roles: ORG };

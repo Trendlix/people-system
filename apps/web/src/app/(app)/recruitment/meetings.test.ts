@@ -73,6 +73,13 @@ describe('what a save did', () => {
       'Saved, but Google refused: the account didn’t allow its calendar. Nobody was told yet: try again or paste a link on the interview.',
     );
   });
+
+  it('a time with conflicts: saved all the same, its warnings after (25 October 2026)', () => {
+    expect(interviewSavedText({ email: 'sent', warnings: ['Sara has another interview at 2:30 PM.', 'Outside Omar’s interview hours.'] })).toBe(
+      'The candidate was emailed, with the calendar invitation. Saved with warnings: Sara has another interview at 2:30 PM. Outside Omar’s interview hours.',
+    );
+    expect(interviewSavedText({ email: 'sent', warnings: [] })).toBe('The candidate was emailed, with the calendar invitation.');
+  });
 });
 
 describe('Join', () => {

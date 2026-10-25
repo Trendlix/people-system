@@ -3,6 +3,7 @@ import {
   companyAppReady,
   companyConnectsBy,
   DEVELOPER_NO_FILES,
+  GOOGLE_FREEBUSY_SCOPE,
   isEmail,
   isMeetingProvider,
   MEETING_COMPANY_NAMES,
@@ -54,6 +55,7 @@ import {
   goneAnswer,
   googleRevokeRequest,
   grantsGoogleCalendar,
+  grantsScope,
   hostKept,
   madeOf,
   MeetingProviderError,
@@ -197,6 +199,8 @@ export class MeetingsService {
       connectedBy: c.connectedById ? (names.get(c.connectedById) ?? null) : null,
       lastUsedAt: c.lastUsedAt?.toISOString() ?? null,
       lastTest: c.lastTestAt ? { at: c.lastTestAt.toISOString(), ok: !!c.lastTestOk, message: c.lastTestMessage ?? '' } : null,
+      // a person's own shares their busy times with "Find a time" (25 October 2026); the company's never
+      busyTimes: !!c.userId && c.busyTimes,
     };
   }
 
@@ -529,7 +533,10 @@ export class MeetingsService {
     const sealed = this.tokens.seal(grant.refreshToken, 'refresh_token');
     const userId = owner === 'company' ? null : user.id;
     const before = await this.prisma.meetingConnection.findFirst({ where: { provider, userId } });
-    const data = { accountEmail: email, refreshTokenEnc: sealed.enc, tokenKeyId: sealed.keyId, status: 'connected', problem: null, connectedById: user.id, connectedAt: new Date() };
+    // busy times shared with "Find a time" (owner, 25 October 2026: "Hours + calendar"): a person's own Microsoft always
+    // (its calendar permission reads them), their Google once the free/busy scope was allowed
+    const busyTimes = owner === 'personal' && (provider === 'microsoft' || (provider === 'google' && grantsScope(grant.scope, GOOGLE_FREEBUSY_SCOPE)));
+    const data = { accountEmail: email, refreshTokenEnc: sealed.enc, tokenKeyId: sealed.keyId, status: 'connected', problem: null, connectedById: user.id, connectedAt: new Date(), busyTimes };
     const saved = before
       ? await this.prisma.meetingConnection.update({ where: { id: before.id }, data })
       : await this.prisma.meetingConnection.create({ data: { provider, userId, ...data } });

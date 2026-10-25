@@ -19,6 +19,8 @@ import { KpisModule } from './kpis/kpis.module.js';
 import { LeaveModule } from './leave/leave.module.js';
 import { MailModule } from './mail/mail.module.js';
 import { MeetingsModule } from './meetings/meetings.module.js';
+import { CalendarsModule } from './calendars/calendars.module.js';
+import { InterviewHoursModule } from './interview-hours/interview-hours.module.js';
 import { NotificationsModule } from './notifications/notifications.module.js';
 import { OffersModule } from './offers/offers.module.js';
 import { OffboardingModule } from './offboarding/offboarding.module.js';
@@ -84,6 +86,9 @@ import { WhatsAppModule } from './whatsapp/whatsapp.module.js';
     RecruitmentModule,
     // online interview meetings (owner, 24 October 2026: "Google Meet, Microsoft Teams, Zoom"; "make it both")
     MeetingsModule,
+    // interviewers' availability (25 October 2026): the calendars read for busy times, and the interview hours
+    CalendarsModule,
+    InterviewHoursModule,
     OnboardingModule,
     // KPIs (owner, 21 October 2026: "lets start with the KPI's First")
     KpisModule,

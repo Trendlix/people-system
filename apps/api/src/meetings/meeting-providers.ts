@@ -194,6 +194,9 @@ export function emailOfIdToken(idToken: string | null | undefined): string | nul
 /** Whether Google's granted scopes include the calendar's events (the person may untick it on Google's page). */
 export const grantsGoogleCalendar = (scope: string | null): boolean => !!scope && scope.split(/\s+/).includes('https://www.googleapis.com/auth/calendar.events');
 
+/** Whether granted scopes (space- or comma-separated) include one (25 October 2026: Google's free/busy, for busy times). */
+export const grantsScope = (scope: string | null, wanted: string): boolean => !!scope && scope.split(/[\s,]+/).includes(wanted);
+
 /** Who signed in to Zoom: GET /users/me. */
 export const zoomMeRequest = (token: string): HttpRequest => ({ method: 'GET', url: `${MEETING_ENDPOINTS.zoom.api}/users/me`, headers: { authorization: `Bearer ${token}`, accept: 'application/json' } });
 

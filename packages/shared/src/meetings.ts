@@ -83,8 +83,10 @@ export const MEETINGS_GOOGLE_PROJECT = 'trendlix-people';
  * What a Google account is asked for (the owner's brief: "the Calendar events scope only"): its calendar's events, and
  * who it is (openid email: the address the page says it is connected as). Offline access, so the system keeps a refresh
  * token. calendar.events is a "sensitive" scope: an "Internal" consent screen (Google Workspace) needs no verification.
+ * Since 25 October 2026 (interviewers' availability, calendars.ts): also calendar.freebusy, so an HR person's own
+ * connection shares their busy times; one connected before shows "Reconnect to share your busy times".
  */
-export const GOOGLE_SCOPES = ['openid', 'email', 'https://www.googleapis.com/auth/calendar.events'] as const;
+export const GOOGLE_SCOPES = ['openid', 'email', 'https://www.googleapis.com/auth/calendar.events', 'https://www.googleapis.com/auth/calendar.freebusy'] as const;
 
 /** Microsoft Graph's application permission for company meetings, granted with admin consent. */
 export const MICROSOFT_APPLICATION_PERMISSIONS = ['Calendars.ReadWrite'] as const;
@@ -283,6 +285,11 @@ export interface MeetingConnectionView {
   connectedBy: { id: string; name: string } | null;
   lastUsedAt: string | null;
   lastTest: MeetingTestView | null;
+  /**
+   * A person's own connection shares their busy times with "Find a time" (25 October 2026): Microsoft's always (its
+   * calendar permission reads them), Google's once the free/busy scope was allowed; false for the company's.
+   */
+  busyTimes?: boolean;
 }
 
 /** GET /meetings/settings: the three apps, the company's connections, and the default for new online interviews. */

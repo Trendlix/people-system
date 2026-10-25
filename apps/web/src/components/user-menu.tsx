@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { logout } from '@/app/login/actions';
 import { ApiError } from '@/lib/api';
+import { interviewHoursInMenu, MY_INTERVIEW_HOURS_PATH } from '@/lib/calendars';
 import { meetingsInMenu, MY_MEETINGS_PATH } from '@/lib/meetings';
 import { ROLE_LABELS } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
@@ -63,6 +64,12 @@ export async function UserMenu() {
       {user && meetingsInMenu(user) && (
         <Link href={MY_MEETINGS_PATH} className="text-sm whitespace-nowrap">
           Meetings
+        </Link>
+      )}
+      {/* one's own interview hours, for anyone HR can put on a panel (owner, 25 October 2026: "Hours + calendar") */}
+      {user && interviewHoursInMenu(user) && (
+        <Link href={MY_INTERVIEW_HOURS_PATH} className="text-sm whitespace-nowrap">
+          Interview hours
         </Link>
       )}
       <form action={logout}>

@@ -219,11 +219,12 @@ describe('signing in at each provider', () => {
       state: 'st',
       code_challenge: challenge,
       code_challenge_method: 'S256',
-      scope: 'openid email https://www.googleapis.com/auth/calendar.events',
+      scope: 'openid email https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.freebusy',
       access_type: 'offline',
       prompt: 'consent',
     });
-    expect(GOOGLE_SCOPES).toEqual(['openid', 'email', 'https://www.googleapis.com/auth/calendar.events']);
+    // the free/busy scope too since 25 October 2026, so an HR person's own connection shares their busy times
+    expect(GOOGLE_SCOPES).toEqual(['openid', 'email', 'https://www.googleapis.com/auth/calendar.events', 'https://www.googleapis.com/auth/calendar.freebusy']);
     // the secret is never in the address the browser goes to
     expect(url.toString()).not.toContain(SECRET);
   });

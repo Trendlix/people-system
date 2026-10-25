@@ -43,6 +43,7 @@ import { NotificationsService } from '../notifications/notifications.service.js'
 import { PrismaService } from '../prisma/prisma.service.js';
 import { accountOfEmployee } from '../users/employee-accounts.js';
 import { WhatsAppService } from '../whatsapp/whatsapp.service.js';
+import { AvailabilityService } from '../interview-hours/availability.service.js';
 import { vacancyWhere } from './recruitment-access.js';
 import { hiringManagerApplications, recruitmentCaller, visibleApplications, type RecruitmentCaller } from './recruitment-scope.js';
 import { APPLICATION_ENTITY } from './recruitment-views.js';
@@ -70,6 +71,12 @@ import type { FeedbackDto, InterviewDto, InterviewMeetingDto } from './recruitme
 // HR is told in plain words ("Google refused: …"); an online interview without its link tells nobody until it has one
 // (Try again, or Paste a link: retryMeeting). Each meeting made, moved, deleted or refused is audited with its provider
 // and its id there, never a token.
+//
+// The interviewers' availability (owner, 25 October 2026: "Hours + calendar"; "HR only"; interview-hours/
+// availability.service.ts): HR finds the times every interviewer is free and books one, or types a time by hand; either
+// way the time is checked on scheduling and moving (their leave as "unavailable", holidays, days from home for an
+// in-person one, their other interviews with the buffer, their interview hours and calendars) and saved all the same,
+// the warnings in the answer and the audit entry.
 
 export const INTERVIEW_ENTITY = 'interview';
 
@@ -131,6 +138,7 @@ export class InterviewsService {
     private readonly confidential: ConfidentialService,
     private readonly meetings: MeetingsService,
     private readonly whatsapp: WhatsAppService,
+    private readonly availability: AvailabilityService,
   ) {}
 
   async caller(user: SessionUser): Promise<RecruitmentCaller> {
@@ -300,6 +308,9 @@ export class InterviewsService {
     if (!SCHEDULABLE.includes(stage)) throw new ConflictException(`They are ${APPLICATION_STAGE_LABELS[stage].toLowerCase()}: no interview can be scheduled.`);
     if (dto.meeting === MEETING_KEEP) throw new BadRequestException(['Choose what creates the meeting, or paste its link.']);
     const d = await this.checked(dto, now.getTime());
+    // the interviewers' availability (owner, 25 October 2026: "hand-typed times get conflict warnings, never blocks"):
+    // their leave, holidays, interviews, hours and calendars, said in words; saved all the same
+    const warnings = await this.availability.warningsFor({ interviewerIds: dto.interviewerIds, startsAt: d.startsAt, minutes: dto.minutes, kind: dto.kind }, user, now);
     // online with a choice: the connection checked before anything is saved; the meeting made once it is
     const connection = dto.kind === 'online' && parseMeetingChoice(dto.meeting) ? await this.meetings.connectionFor(dto.meeting!, user) : null;
     const id = await this.prisma.$transaction(async (tx) => {
@@ -328,7 +339,7 @@ export class InterviewsService {
       action: 'schedule',
       entityType: INTERVIEW_ENTITY,
       entityId: id,
-      diff: { application: a.number, vacancy: a.vacancy.number, startsAt: d.startsAt.toISOString(), minutes: dto.minutes, kind: dto.kind, interviewers: d.interviewers.map((i) => i.fullNameEn) },
+      diff: { application: a.number, vacancy: a.vacancy.number, startsAt: d.startsAt.toISOString(), minutes: dto.minutes, kind: dto.kind, interviewers: d.interviewers.map((i) => i.fullNameEn), ...(warnings.length && { warnings }) },
     });
     if (stage === 'applied' || stage === 'shortlisted') {
       await this.audit.record({ userId: user.id, action: 'stage', entityType: APPLICATION_ENTITY, entityId: applicationId, diff: { number: a.number, vacancy: a.vacancy.number, stage: { from: stage, to: 'interview' } } });
@@ -337,7 +348,7 @@ export class InterviewsService {
     if (connection) meeting = await this.makeMeeting(await this.row(id, c), connection, user);
     const row = await this.row(id, c);
     const email = await this.tell(row, 'invite', user, d.interviewers.map((i) => i.id), []);
-    return { interview: this.view(await this.row(id, c), c, now.getTime()), email, meeting, meetingProblem: row.meetingProblem };
+    return { interview: this.view(await this.row(id, c), c, now.getTime()), email, meeting, meetingProblem: row.meetingProblem, warnings };
   }
 
   /** Moves an interview (still scheduled) to another time, place or panel: the candidate and the interviewers get the new time. */
@@ -357,6 +368,8 @@ export class InterviewsService {
       { date: dto.date, time: dto.time, minutes: dto.minutes, kind: dto.kind, location: dto.location, interviewerIds: dto.interviewerIds, note: dto.note, meeting: choice },
       now.getTime(),
     );
+    // the same checks on a move (25 October 2026), the interview itself left out of their booked ones
+    const warnings = await this.availability.warningsFor({ interviewerIds: dto.interviewerIds, startsAt: d.startsAt, minutes: dto.minutes, kind: dto.kind, excludeId: id }, user, now);
     let connection = online && parseMeetingChoice(choice) ? await this.meetings.connectionFor(choice!, user) : null;
     // the same connection as its meeting's: moved, not made again
     let keep = online && choice === MEETING_KEEP;
@@ -389,6 +402,7 @@ export class InterviewsService {
         ...(before.minutes !== dto.minutes && { minutes: { from: before.minutes, to: dto.minutes } }),
         ...(before.kind !== dto.kind && { kind: { from: before.kind, to: dto.kind } }),
         ...(added.length || removed.length ? { interviewers: d.interviewers.map((i) => i.fullNameEn) } : {}),
+        ...(warnings.length && { warnings }),
       },
     });
     let meeting: MeetingOutcome = 'none';
@@ -403,7 +417,7 @@ export class InterviewsService {
     if (connection) meeting = await this.makeMeeting(await this.row(id, c), connection, user, meeting === 'failed');
     const row = await this.row(id, c);
     const email = await this.tell(row, 'moved', user, [...next], removed);
-    return { interview: this.view(await this.row(id, c), c, now.getTime()), email, meeting, meetingProblem: row.meetingProblem };
+    return { interview: this.view(await this.row(id, c), c, now.getTime()), email, meeting, meetingProblem: row.meetingProblem, warnings };
   }
 
   /** Cancels a scheduled interview: the candidate and the interviewers get the cancellation. */

@@ -80,6 +80,10 @@ async function Mine({ searchParams }: { searchParams: PageProps<'/account/meetin
           ) : (
             <p className="text-sm text-muted">A Super Admin sets up the company’s {MEETING_COMPANY_NAMES[provider]} app first (Organization → Meetings).</p>
           )}
+          {/* busy times for "Find a time" (25 October 2026): a Google connection made before its free/busy scope was asked */}
+          {provider === 'google' && connection?.status === 'connected' && connection.busyTimes === false && (
+            <p className="text-sm text-warn">Reconnect to share your busy times: disconnect, then connect your Google account again and allow it.</p>
+          )}
         </section>
       ))}
     </div>

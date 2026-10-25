@@ -83,6 +83,13 @@ model User {
   meetingAppsSet         MeetingApp[]           @relation("MeetingAppChange")
   meetingConnections     MeetingConnection[]    @relation("MeetingConnectionOwner")
   meetingConnectionsMade MeetingConnection[]    @relation("MeetingConnectionBy")
+  // interviewers' availability (owner, 25 October 2026: "Hours + calendar"): the company's interview defaults and anyone's
+  // interview hours this user saved last, the Zoho app they saved, their own calendar connections and those they made
+  interviewSettingsSet   InterviewSettings[]    @relation("InterviewSettingsChange")
+  interviewHoursSet      InterviewHours[]       @relation("InterviewHoursChange")
+  calendarAppsSet        CalendarApp[]          @relation("CalendarAppChange")
+  calendarConnections    CalendarConnection[]   @relation("CalendarConnectionOwner")
+  calendarConnectionsMade CalendarConnection[]  @relation("CalendarConnectionBy")
   onboardingDefaultsSet  OnboardingDefault[]    @relation("OnboardingDefaultChange")
   onboardingOpened       OnboardingChecklist[]  @relation("OnboardingOpening")
   onboardingCompleted    OnboardingChecklist[]  @relation("OnboardingCompletion")
@@ -530,11 +537,95 @@ model MeetingConnection {
   lastTestAt      DateTime?   @map("last_test_at") @db.Timestamptz
   lastTestOk      Boolean?    @map("last_test_ok")
   lastTestMessage String?     @map("last_test_message")
+  // a person's own connection shares their busy times with "Find a time" (25 October 2026): Microsoft's always, Google's
+  // once its free/busy scope was allowed (one connected before: "Reconnect to share your busy times")
+  busyTimes       Boolean     @default(false) @map("busy_times")
   interviews      Interview[]
 
   @@unique([provider, userId])
   @@index([userId])
   @@map("meeting_connections")
+}
+
+// Interviewers' availability (owner, 25 October 2026: "is it better for each interviewer to add his available interviews
+// timeslots?"; asked, "Hours + calendar" and "HR only"; packages/shared interview-availability.ts). The company's
+// defaults (one row, id 1), HR's, the CEO's and a Super Admin's on Organization → Interview Hours: the least notice an
+// interview is booked with, in hours, and the buffer between one person's interviews, in minutes; each person may only
+// make theirs stricter.
+model InterviewSettings {
+  id            Int      @id @default(1)
+  noticeHours   Int      @default(24) @map("notice_hours")
+  bufferMinutes Int      @default(15) @map("buffer_minutes")
+  updatedById   String?  @map("updated_by") @db.Uuid
+  updatedBy     User?    @relation("InterviewSettingsChange", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedAt     DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@map("interview_settings")
+}
+
+// Someone's interview hours, set once on their own Interview Hours page (or by HR, the CEO or a Super Admin): the weekly
+// ranges in Cairo ([{ day: 0-6, from: "HH:mm", to: "HH:mm" }]), the one-off changes ([{ date, kind: off | extra, from,
+// to }], only from today on), the day the weekly ranges count from, and their own notice and buffer (null: the
+// company's). Checked by packages/shared interviewHoursProblems.
+model InterviewHours {
+  employeeId    String   @id @map("employee_id") @db.Uuid
+  employee      Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  windows       Json     @default("[]")
+  changes       Json     @default("[]")
+  effectiveFrom DateTime @map("effective_from") @db.Date
+  noticeHours   Int?     @map("notice_hours")
+  bufferMinutes Int?     @map("buffer_minutes")
+  updatedById   String?  @map("updated_by") @db.Uuid
+  updatedBy     User?    @relation("InterviewHoursChange", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("interview_hours")
+}
+
+// A calendar's app (owner, 25 October 2026: "its zoho mails"): Zoho's, one row, a Super Admin's on Organization →
+// Calendars: the client ID and secret of a Server-based Application at api-console.zoho.com (the secret sealed:
+// AES-256-GCM, a key derived from JWT_SECRET with the info "trendlix-calendars-v1"; never returned), and the data centre
+// the company's Zoho account is in. Google's and Microsoft's calendars sign in with the meetings' apps (meeting_apps).
+model CalendarApp {
+  provider          String   @id // 'zoho'
+  clientId          String?  @map("client_id")
+  clientSecretEnc   String?  @map("client_secret_enc") // "v1:iv:tag:ciphertext"; RESTRICTED: never returned
+  clientSecretKeyId String?  @map("client_secret_key_id")
+  dataCentre        String?  @map("data_centre") // ZOHO_DATA_CENTRES' key: com, eu, in, …
+  updatedById       String?  @map("updated_by") @db.Uuid
+  updatedBy         User?    @relation("CalendarAppChange", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedAt         DateTime @default(now()) @map("updated_at") @db.Timestamptz
+
+  @@map("calendar_apps")
+}
+
+// A calendar connection, for busy times only (never an event's title): the company's Zoho (no user: a Super Admin signs
+// in once, and colleagues' free/busy is read by their work email) or a person's own Zoho, Google or Microsoft calendar
+// (any user with an employee profile). Its refresh token sealed (never returned), refreshed automatically; Zoho's sign-in
+// address (its data centre) kept. A refresh refused marks it needs_reconnecting with why.
+model CalendarConnection {
+  id              String    @id @default(uuid()) @db.Uuid
+  provider        String // CALENDAR_PROVIDERS: zoho, google, microsoft
+  userId          String?   @map("user_id") @db.Uuid
+  user            User?     @relation("CalendarConnectionOwner", fields: [userId], references: [id], onDelete: Cascade)
+  accountEmail    String    @map("account_email")
+  refreshTokenEnc String    @map("refresh_token_enc") // RESTRICTED: never returned
+  tokenKeyId      String    @map("token_key_id")
+  accountsServer  String?   @map("accounts_server") // Zoho's: https://accounts.zoho.com, .eu, …
+  status          String    @default("connected") // connected, needs_reconnecting
+  problem         String?
+  connectedById   String?   @map("connected_by") @db.Uuid
+  connectedBy     User?     @relation("CalendarConnectionBy", fields: [connectedById], references: [id], onDelete: SetNull)
+  connectedAt     DateTime  @default(now()) @map("connected_at") @db.Timestamptz
+  lastUsedAt      DateTime? @map("last_used_at") @db.Timestamptz
+  lastTestAt      DateTime? @map("last_test_at") @db.Timestamptz
+  lastTestOk      Boolean?  @map("last_test_ok")
+  lastTestMessage String?   @map("last_test_message")
+
+  @@unique([provider, userId])
+  @@index([userId])
+  @@map("calendar_connections")
 }
 
 // WhatsApp notifications (owner, 24 October 2026: "how to make whatsapp notifications?"; asked, "Employees and
@@ -988,6 +1079,7 @@ model Employee {
   assetsHeld                 Asset[]                 @relation("AssetHolder") // the assets this person holds in custody now (21 October 2026)
   custodyRecords             CustodyRecord[]         @relation("CustodyEmployee") // the assets handed over to this person, record by record
   custodyHandedOver          CustodyRecord[]         @relation("CustodyHandedOverBy") // the custody records this person handed over
+  interviewHours             InterviewHours? // the weekly hours they interview in (owner, 25 October 2026: "Hours + calendar")
   // access follows the contract (owner, 23 October 2026: "Active - Grace - Hold - No Access"; packages/shared
   // employee-access.ts): the standing the sweep recorded last (ACCESS_STANDINGS; none: not recorded yet) and since when,
   // so each change is audited and told once; the request's own standing is always read from the contract

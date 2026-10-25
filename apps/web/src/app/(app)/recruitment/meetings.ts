@@ -9,6 +9,7 @@ import {
   type MeetingChoices,
   type MeetingProvider,
 } from '@trendlix/shared';
+import { withWarnings } from './availability';
 import { emailText } from './hiring';
 
 // Online interviews' meetings on the site (owner, 24 October 2026: "can i link an online meeting service provider to
@@ -41,8 +42,15 @@ export function meetingOptions(choices: MeetingChoices, interview?: Pick<Intervi
 /** Whether a choice brings its own link (made by the system, or kept): the link box is shown only for "Paste a link". */
 export const makesMeeting = (value: string): boolean => value === MEETING_KEEP || parseMeetingChoice(value) !== null;
 
-/** What the page says once an interview is saved, moved, cancelled or its meeting retried: the meeting, then the email. */
-export function interviewSavedText(saved: Pick<InterviewSaved, 'email' | 'meeting' | 'meetingProblem'> & { interview?: Pick<InterviewView, 'meeting'> | null }): string {
+/**
+ * What the page says once an interview is saved, moved, cancelled or its meeting retried: the meeting, then the email;
+ * then the time's warnings, if any (25 October 2026: "hand-typed times get conflict warnings, never blocks").
+ */
+export function interviewSavedText(saved: Pick<InterviewSaved, 'email' | 'meeting' | 'meetingProblem' | 'warnings'> & { interview?: Pick<InterviewView, 'meeting'> | null }): string {
+  return withWarnings(meetingAndEmailText(saved), saved.warnings);
+}
+
+function meetingAndEmailText(saved: Pick<InterviewSaved, 'email' | 'meeting' | 'meetingProblem'> & { interview?: Pick<InterviewView, 'meeting'> | null }): string {
   const name = saved.interview?.meeting ? MEETING_PROVIDER_LABELS[saved.interview.meeting.provider] : null;
   switch (saved.meeting) {
     case 'failed':

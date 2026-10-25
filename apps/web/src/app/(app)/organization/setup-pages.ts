@@ -1,6 +1,8 @@
 import { WHATSAPP_SETTINGS_PATH, type Role } from '@trendlix/shared';
 import { EMAIL_SETTINGS_PATH } from '../../../lib/email-setup';
 import { MEETING_SETTINGS_PATH } from '../../../lib/meetings';
+import { CALENDAR_SETTINGS_PATH } from '../../../lib/calendars';
+import { INTERVIEW_HOURS_SETUP_PATH } from '../../../lib/interview-hours';
 import { hasRole } from '../../../lib/roles';
 
 // Organization, the setup home (owner, 23 October 2026: "lets perform a regorganization of this menu. we can perform
@@ -19,6 +21,7 @@ export const SETUP_PATHS = {
   company: '/organization/company',
   email: EMAIL_SETTINGS_PATH,
   meetings: MEETING_SETTINGS_PATH,
+  calendars: CALENDAR_SETTINGS_PATH,
   whatsapp: WHATSAPP_SETTINGS_PATH,
   templates: '/organization/templates',
   departments: '/organization/departments',
@@ -33,6 +36,7 @@ export const SETUP_PATHS = {
   kpiPillars: '/organization/kpi-pillars',
   kpiDeadlines: '/organization/kpi-deadlines',
   recruitment: '/organization/recruitment',
+  interviewHours: INTERVIEW_HOURS_SETUP_PATH,
   onboardingChecklist: '/organization/onboarding-checklist',
   clearanceChecklist: '/organization/clearance-checklist',
 } as const;
@@ -63,6 +67,7 @@ export type SetupKey =
   | 'company'
   | 'email'
   | 'meetings'
+  | 'calendars'
   | 'whatsapp'
   | 'templates'
   | 'departments'
@@ -77,6 +82,7 @@ export type SetupKey =
   | 'kpi-pillars'
   | 'kpi-deadlines'
   | 'recruitment'
+  | 'interview-hours'
   | 'onboarding-checklist'
   | 'clearance-checklist';
 
@@ -96,6 +102,9 @@ export const SETUP_GROUPS: readonly SetupGroup[] = [
       // automatically generate meeting links?"; "make it both"): the providers' apps and the company's accounts, a Super
       // Admin's only, never a developer's, as lib/meetings.ts seesMeetingSettings
       { key: 'meetings', href: SETUP_PATHS.meetings, label: 'Meetings', roles: ['super_admin'], noDevelopers: true },
+      // the calendars read for interviewers' busy times (owner, 25 October 2026: "its zoho mails"): the company's Zoho
+      // Calendar app and account, a Super Admin's only, never a developer's, as lib/calendars.ts seesCalendarSettings
+      { key: 'calendars', href: SETUP_PATHS.calendars, label: 'Calendars', roles: ['super_admin'], noDevelopers: true },
       // WhatsApp notifications (owner, 24 October 2026: "how to make whatsapp notifications?"; "Directly to Meta"): the
       // WhatsApp Cloud API's number, token and templates, a Super Admin's only, never a developer's, as lib/whatsapp.ts
       // seesWhatsAppSettings
@@ -144,6 +153,9 @@ export const SETUP_GROUPS: readonly SetupGroup[] = [
     pages: [
       // from Recruitment, and from the Onboarding and Offboarding pages' buttons: HR's, the CEO's and a Super Admin's
       { key: 'recruitment', href: SETUP_PATHS.recruitment, label: 'Recruitment Settings', roles: ['hr', 'ceo', 'super_admin'] },
+      // interviewers' weekly hours and the company's notice and buffer (owner, 25 October 2026: "Hours + calendar"), as
+      // Recruitment Settings' roles
+      { key: 'interview-hours', href: SETUP_PATHS.interviewHours, label: 'Interview Hours', roles: ['hr', 'ceo', 'super_admin'] },
       { key: 'onboarding-checklist', href: SETUP_PATHS.onboardingChecklist, label: 'Onboarding Checklist', roles: ['hr', 'ceo', 'super_admin'] },
       { key: 'clearance-checklist', href: SETUP_PATHS.clearanceChecklist, label: 'Clearance Checklist', roles: ['hr', 'ceo', 'super_admin'] },
     ],

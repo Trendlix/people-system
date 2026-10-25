@@ -1,8 +1,9 @@
 'use client';
 
 import { Select } from '@/components/select';
-import { useActionState, useState } from 'react';
+import { useActionState, useRef, useState, useTransition, type RefObject } from 'react';
 import {
+  AVAILABILITY_LENGTHS,
   FEEDBACK_CRITERIA,
   FEEDBACK_CRITERION_LABELS,
   FEEDBACK_NOTES_MAX,
@@ -22,14 +23,36 @@ import {
 } from '@trendlix/shared';
 import { DateInput, TimeInput } from '@/components/date-time-inputs';
 import { FormErrors, useFieldIds } from '@/components/form';
-import { formatDateTime } from '@/lib/format';
+import { formatDate, formatDateTime } from '@/lib/format';
 import type { FormState } from '@/lib/types';
+import {
+  availabilityQuestion,
+  calendarText,
+  checkSummary,
+  defaultRange,
+  findLength,
+  lengthText,
+  panelOf,
+  pickedFields,
+  savedWarnings,
+  slotCountText,
+  slotGroups,
+  timeCheckQuestion,
+  type SlotItem,
+} from './availability';
+import { checkTime, findTimes, type CheckResult, type FindResult } from './availability-actions';
 import { makesMeeting, meetingOptions, NO_MEETING_CHOICES } from './meetings';
 
 // Recruitment's Phase 2 forms (owner, 22 October 2026: "where will we include the ATS?"; "interview invites go by email
 // through the owner's SMTP settings"): scheduling or moving an interview (the day as DD/MM/YYYY, the time on the
 // 12-hour picker in quarter hours, its length, how it is held, where, the interviewers, a note to the candidate), an
 // interviewer's scorecard, and the hiring manager's suggestion. The API checks each again.
+//
+// "Find a time" and "Check this time" (owner, 25 October 2026: "is it better for each interviewer to add his available
+// interviews timeslots?"; asked, "Hours + calendar" and, for booking, "HR only"): HR sees the times every chosen
+// interviewer is free (their interview hours, less their leave, holidays, interviews and busy calendar) and picks one,
+// which fills the day, the time and the length; a time typed by hand is checked, and saved all the same with its
+// warnings, never refused. The form works as before when neither is used.
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -89,27 +112,60 @@ export function InterviewForm({
   // the link box: in person, by phone, or online with "Paste a link"
   const pasted = kind !== 'online' || !makesMeeting(meeting);
   const chosen = new Set(interview ? interview.interviewers.map((i) => i.employeeId) : defaultInterviewerIds);
+  // a time picked from "Find a time" (25 October 2026): the day, the time and the length it was found for, until the
+  // form's next answer (which keeps what was sent); each pick draws the day and length fields again with it
+  const form = useRef<HTMLFormElement>(null);
+  const [picked, setPicked] = useState<{ date: string; time: string; minutes: string; after: FormState; n: number } | null>(null);
+  const shown = picked && picked.after === state ? picked : null;
+  const [finding, setFinding] = useState<number | null>(null);
+  const [said, setSaid] = useState<string | null>(null);
+  const [checked, setChecked] = useState<CheckResult | null>(null);
+  const [checking, startCheck] = useTransition();
+  const interviewId = interview?.id ?? null;
+  const pick = (fields: { date: string; time: string; minutes: string }, words: string) => {
+    setPicked({ ...fields, after: state, n: (picked?.n ?? 0) + 1 });
+    setFinding(null);
+    setChecked(null);
+    setSaid(words);
+  };
+  const check = () => {
+    if (!form.current) return;
+    const { input, errors } = timeCheckQuestion(new FormData(form.current), interviewId);
+    setSaid(null);
+    if (!input) {
+      setChecked({ errors });
+      return;
+    }
+    startCheck(async () => setChecked(await checkTime(input)));
+  };
+  const openFinder = () => {
+    if (finding !== null) {
+      setFinding(null);
+      return;
+    }
+    setFinding(form.current ? (panelOf(new FormData(form.current)).minutes ?? 45) : 45);
+  };
   return (
-    <form action={formAction} className="space-y-4 rounded-lg border border-line p-4">
+    <form ref={form} action={formAction} className="space-y-4 rounded-lg border border-line p-4">
       <FormErrors errors={state.errors} />
       <div className="grid gap-4 sm:grid-cols-3">
         <div>
           <label htmlFor={fid('date')} className="label">
             Day
           </label>
-          <DateInput id={fid('date')} name="date" defaultValue={str(v.date) ?? start.day} required />
+          <DateInput key={`date-${picked?.n ?? 0}`} id={fid('date')} name="date" defaultValue={shown?.date ?? str(v.date) ?? start.day} required />
         </div>
         <div>
           <label htmlFor={fid('time')} className="label">
             Time (Cairo)
           </label>
-          <TimeInput id={fid('time')} name="time" defaultValue={str(v.time) ?? start.time} required />
+          <TimeInput id={fid('time')} name="time" defaultValue={shown?.time ?? str(v.time) ?? start.time} required />
         </div>
         <div>
           <label htmlFor={fid('minutes')} className="label">
             Length
           </label>
-          <Select id={fid('minutes')} name="minutes" defaultValue={str(v.minutes) ?? String(interview?.minutes ?? 45)} className="input">
+          <Select key={`minutes-${picked?.n ?? 0}`} id={fid('minutes')} name="minutes" defaultValue={shown?.minutes ?? str(v.minutes) ?? String(interview?.minutes ?? 45)} className="input">
             {INTERVIEW_LENGTHS.map((m) => (
               <option key={m} value={m}>
                 {m < 60 ? `${m} minutes` : m === 60 ? '1 hour' : `${m / 60} hours`}
@@ -117,6 +173,23 @@ export function InterviewForm({
             ))}
           </Select>
         </div>
+      </div>
+      <div className="space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={check} disabled={checking} className="btn btn-secondary min-h-9 px-3">
+            {checking ? 'Checking…' : 'Check this time'}
+          </button>
+          <button type="button" onClick={openFinder} aria-expanded={finding !== null} className="btn btn-secondary min-h-9 px-3">
+            {finding !== null ? 'Hide free times' : 'Find a time'}
+          </button>
+          {said && (
+            <p role="status" className="text-sm text-ok">
+              {said}
+            </p>
+          )}
+        </div>
+        <TimeCheckAnswer result={checked} />
+        {finding !== null && <FindTime form={form} kind={kind} interviewId={interviewId} startMinutes={finding} onPick={pick} />}
       </div>
       <div className="grid gap-4 sm:grid-cols-3">
         <div>
@@ -192,9 +265,187 @@ export function InterviewForm({
             Cancel
           </button>
         )}
-        <Done state={state} />
       </div>
+      <SavedWithWarnings state={state} />
     </form>
+  );
+}
+
+/** A save's answer: what was done, then the time's warnings apart (25 October 2026: saved all the same, never refused). */
+function SavedWithWarnings({ state }: { state: FormState }) {
+  if (!state.message || state.errors) return null;
+  const { text, warnings } = savedWarnings(state.message);
+  return (
+    <div role="status" className="space-y-2 text-sm">
+      {text && <p className="text-ok">{text}</p>}
+      {warnings.length > 0 && <WarningList title="Saved with these warnings:" warnings={warnings} />}
+    </div>
+  );
+}
+
+function WarningList({ title, warnings }: { title: string; warnings: readonly string[] }) {
+  return (
+    <div className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
+      <p className="font-semibold">{title}</p>
+      <ul className="mt-1 list-disc space-y-0.5 ps-5">
+        {warnings.map((w) => (
+          <li key={w}>{w}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** "Check this time"'s answer: the warnings for the time typed (never a refusal), or that it suits them all. */
+function TimeCheckAnswer({ result }: { result: CheckResult | null }) {
+  if (!result) return null;
+  if (result.errors) return <FormErrors errors={result.errors} />;
+  const { warnings } = result.check;
+  return (
+    <div role="status">
+      {warnings.length ? <WarningList title={checkSummary(warnings)} warnings={warnings} /> : <p className="text-sm text-ok">{checkSummary(warnings)}</p>}
+    </div>
+  );
+}
+
+/**
+ * "Find a time" (25 October 2026: "Hours + calendar"; "HR only"): the length (the form's own when it is 30, 45, 60 or 90
+ * minutes) and the days (the next 14 unless chosen), for the interviewers ticked and how it is held (from the form);
+ * the times all of them are free, grouped by day, each saying who is free and marked where someone is only "maybe".
+ * Its fields are the form's too, but only it reads them; Enter in them looks again instead of sending the form.
+ */
+function FindTime({
+  form,
+  kind,
+  interviewId,
+  startMinutes,
+  onPick,
+}: {
+  form: RefObject<HTMLFormElement | null>;
+  kind: InterviewKind;
+  interviewId: string | null;
+  startMinutes: number;
+  onPick: (fields: { date: string; time: string; minutes: string }, said: string) => void;
+}) {
+  const fid = useFieldIds();
+  const [range] = useState(() => defaultRange());
+  const [minutes, setMinutes] = useState(() => String(findLength(startMinutes)));
+  const [result, setResult] = useState<FindResult | null>(null);
+  const [problems, setProblems] = useState<string[]>([]);
+  const [pending, start] = useTransition();
+  const find = () => {
+    if (!form.current) return;
+    const { input, errors } = availabilityQuestion(new FormData(form.current), interviewId);
+    setProblems(errors);
+    if (!input) {
+      setResult(null);
+      return;
+    }
+    start(async () => setResult(await findTimes(input)));
+  };
+  const view = result?.view ?? null;
+  const groups = view ? slotGroups(view) : [];
+  const calendars = view ? view.people.map((p) => calendarText(p)).filter((t): t is string => !!t) : [];
+  const choose = (date: string, heading: string, slot: SlotItem) => onPick(pickedFields(date, { time: slot.hhmm }, view?.minutes ?? Number(minutes)), `Picked ${heading}, ${slot.time}.`);
+  return (
+    <section
+      aria-labelledby={fid('find')}
+      className="space-y-3 rounded-lg border border-line-soft bg-canvas p-4"
+      onKeyDown={(e) => {
+        // the two days' fields only (the length's search box chooses with Enter)
+        if (e.key !== 'Enter' || !(e.target instanceof HTMLInputElement) || !['findFrom', 'findTo'].includes(e.target.name)) return;
+        e.preventDefault();
+        find();
+      }}
+    >
+      <div>
+        <h3 id={fid('find')} className="font-semibold">
+          Find a Time
+        </h3>
+        <p className="text-xs text-muted">
+          The times all the interviewers ticked below are free: their interview hours, less leave, public holidays, their other interviews and a busy calendar
+          {kind === 'in_person' ? ', and days they work from home' : ''}.
+        </p>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div>
+          <label htmlFor={fid('find-minutes')} className="label">
+            Length
+          </label>
+          <Select id={fid('find-minutes')} name="findMinutes" value={minutes} onChange={(e) => setMinutes(e.target.value)} className="input">
+            {AVAILABILITY_LENGTHS.map((m) => (
+              <option key={m} value={m}>
+                {lengthText(m)}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div>
+          <label htmlFor={fid('find-from')} className="label">
+            From
+          </label>
+          <DateInput id={fid('find-from')} name="findFrom" defaultValue={formatDate(range.from)} />
+        </div>
+        <div>
+          <label htmlFor={fid('find-to')} className="label">
+            To
+          </label>
+          <DateInput id={fid('find-to')} name="findTo" defaultValue={formatDate(range.to)} />
+        </div>
+      </div>
+      <button type="button" onClick={find} disabled={pending} className="btn btn-primary min-h-9 px-3">
+        {pending ? 'Looking…' : 'Show free times'}
+      </button>
+      <FormErrors errors={problems.length ? problems : (result?.errors ?? undefined)} />
+      {view && (
+        <div className="space-y-3">
+          <p role="status" className="text-sm">
+            {slotCountText(view)} for {lengthText(view.minutes)}, {formatDate(view.from)} to {formatDate(view.to)}.
+            {groups.some((g) => g.slots.some((s) => s.marked)) && <span className="text-muted"> Marked times have someone who is only “maybe”.</span>}
+          </p>
+          {[...view.notes, ...calendars].length > 0 && (
+            <ul className="list-disc space-y-0.5 ps-5 text-xs text-muted">
+              {[...new Set([...view.notes, ...calendars])].map((n) => (
+                <li key={n}>{n}</li>
+              ))}
+            </ul>
+          )}
+          {groups.length === 0 ? (
+            <p className="text-sm text-muted">No time suits them all on these days. Try other days or a shorter length, or type a time by hand.</p>
+          ) : (
+            <div className="max-h-96 space-y-4 overflow-y-auto pe-1">
+              {groups.map((g) => (
+                <div key={g.date} role="group" aria-labelledby={fid(`day-${g.date}`)}>
+                  <h4 id={fid(`day-${g.date}`)} className="text-sm font-semibold">
+                    {g.heading}
+                    {g.holiday && <span className="font-normal text-muted"> · Public holiday: {g.holiday}</span>}
+                  </h4>
+                  {g.slots.length ? (
+                    <ul className="mt-2 grid gap-2 sm:grid-cols-3">
+                      {g.slots.map((slot) => (
+                        <li key={slot.start}>
+                          <button
+                            type="button"
+                            onClick={() => choose(g.date, g.heading, slot)}
+                            aria-label={`Pick ${g.heading}, ${slot.label}`}
+                            className={`w-full cursor-pointer rounded-lg border px-3 py-2 text-start text-sm ${slot.marked ? 'border-warn/40 bg-warn-soft hover:border-warn' : 'border-line bg-card hover:border-accent'}`}
+                          >
+                            <span className="block font-semibold tabular-nums">{slot.time}</span>
+                            <span className={`block text-xs ${slot.marked ? 'text-warn' : 'text-muted'}`}>{slot.who}</span>
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-1 text-sm text-muted">No times: nobody added extra hours on the holiday.</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 

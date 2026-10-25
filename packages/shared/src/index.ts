@@ -591,6 +591,13 @@ export * from './maps-settings.js';
 // account a Super Admin connects once, and each HR person's own): the providers, the scopes, the choices, the views
 export * from './meetings.js';
 
+// interviewers' availability (owner, 25 October 2026: "is it better for each interviewer to add his available interviews
+// timeslots?"; asked, "Hours + calendar" and "HR only"; then "its zoho mails"): weekly interview hours with one-off
+// changes, the slots every interviewer is free (leave, holidays, days from home, booked interviews and calendar busy
+// times taken away), the warnings of a time typed by hand, and the calendars read (Zoho first, Google and Microsoft)
+export * from './interview-availability.js';
+export * from './calendars.js';
+
 // screening comments with a verdict (owner, 24 October 2026, on a candidate's profile: "is there a way to add screening
 // comments?", "and i can add genearrl comments"; asked, "Yes: Good fit / Maybe / Not a fit" and "HR + hiring manager &
 // interviewers"): on an application, a general CV or the person in general, @mentions that notify, the latest verdict
