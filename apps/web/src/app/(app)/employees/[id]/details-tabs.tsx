@@ -9,6 +9,7 @@ import { deleteEmployee } from '../actions';
 import { ExpiryChip, FieldGrid, ProfileSection, todayInCairo } from '../ui';
 import { priorServiceText } from '../leave-facts';
 import { bankShown } from './edit/bank/bank-rules';
+import { educationRequired, graduationNote, monthShown, printsAs, studyYearShown } from '../student';
 import { shownCode, withCodeInBrackets } from '@/lib/hidden';
 import { Hidden } from '@/components/hidden';
 
@@ -239,19 +240,54 @@ export async function BasicTab({ profile: p, show, today, education }: { profile
 
 /** Education: what the profile records of the employee's studies, under Basic Data. Changed on the Personal Details page. */
 export function EducationTab({ profile: p }: { profile: EmployeeProfile }) {
-  // university, faculty and major are not asked of a high-school degree
-  const studied = p.degree !== 'high_school';
+  // university, faculty and major are not asked of a high-school degree; a student (owner, 25 October 2026: "Add a Student
+  // option") is asked the year and the expected graduation instead of a degree, major, graduation year and grade
+  const required = educationRequired(p);
+  const student = !!p.stillStudying;
+  // what {{qualification}} prints: for a student with none typed, their wording ("Prints as: …")
+  const printed = printsAs(p);
+  const overdue = graduationNote(p, todayInCairo());
   return (
     <ProfileSection title="Education" editHref={editLink(p, 'education')}>
       <FieldGrid
         fields={[
-          { key: 'university', label: 'University', value: p.university, required: studied },
-          { key: 'faculty', label: 'Faculty', value: p.faculty, required: studied },
-          { key: 'degree', label: 'Degree', value: p.degree && LABELS.degree[p.degree], required: true },
-          { key: 'major', label: 'Major', value: p.major, required: studied },
-          { key: 'graduationYear', label: 'Graduation year', value: p.graduationYear && String(p.graduationYear), required: true },
-          { key: 'educationGrade', label: 'Grade', value: p.educationGrade && LABELS.educationGrade[p.educationGrade], required: true },
-          { key: 'qualificationAr', label: 'Qualification (Arabic)', value: p.qualificationAr, required: true, ar: true },
+          // from an API that has it
+          ...(p.stillStudying !== undefined ? [{ key: 'stillStudying', label: 'Still studying', value: p.stillStudying === null ? null : student ? 'Yes' : 'No' }] : []),
+          ...(student
+            ? [
+                { key: 'studyYear', label: 'Study year', value: studyYearShown(p.studyYear) || null, required: required.studyYear },
+                {
+                  key: 'expectedGraduation',
+                  label: 'Expected graduation',
+                  value: monthShown(p.expectedGraduation) || null,
+                  required: required.expectedGraduation,
+                  note: overdue && <span className="font-medium text-warn">{overdue}</span>,
+                },
+              ]
+            : []),
+          { key: 'university', label: 'University', value: p.university, required: required.university },
+          { key: 'faculty', label: 'Faculty', value: p.faculty, required: required.faculty },
+          { key: 'degree', label: 'Degree', value: p.degree && LABELS.degree[p.degree], required: required.degree },
+          { key: 'major', label: 'Major', value: p.major, required: required.major },
+          { key: 'graduationYear', label: 'Graduation year', value: p.graduationYear && String(p.graduationYear), required: required.graduationYear },
+          { key: 'educationGrade', label: 'Grade', value: p.educationGrade && LABELS.educationGrade[p.educationGrade], required: required.educationGrade },
+          {
+            key: 'qualificationAr',
+            label: 'Qualification (Arabic)',
+            value: p.qualificationAr,
+            // a student's wording counts, as on the API's checklist
+            required: !printed.worded,
+            ar: true,
+            // Edit has "Use this wording", to fill it in and change it
+            note: printed.worded && (
+              <>
+                Prints as:{' '}
+                <span lang="ar" dir="rtl">
+                  {printed.text}
+                </span>
+              </>
+            ),
+          },
         ]}
       />
     </ProfileSection>

@@ -1,4 +1,14 @@
-import { PAPERWORK_LABELS, paperworkType, requiredPaperwork, type EmploymentType, type Gender } from '@trendlix/shared';
+import {
+  graduationOverdueText,
+  graduationPassed,
+  PAPERWORK_LABELS,
+  paperworkType,
+  printedQualificationAr,
+  requiredPaperwork,
+  type EmploymentType,
+  type Gender,
+} from '@trendlix/shared';
+import { fromDateOnly, todayInCairo } from '../common/date-only.js';
 import type { Employee, EmployeeBank, EmployeeIdentity, Prisma } from '../generated/prisma/client.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 
@@ -43,6 +53,8 @@ export interface ProfileOnFile {
   topRank: number | null;
   /** The kinds of paper in the employee file. */
   papers: readonly string[];
+  /** Today in Cairo (YYYY-MM-DD), for a student's expected graduation; none: today. */
+  today?: string;
 }
 
 type Check = [boolean, Missing];
@@ -62,9 +74,17 @@ const check = (value: unknown, key: string, label: string, tab: Missing['tab']):
  * items count only where they apply: the work email and the employment items while employed, the university, faculty and
  * major unless the degree is high school, and the direct manager unless the grade is the top rank (the CEO has no
  * manager). The social insurance number counts for everyone (owner, 15 October 2026).
+ *
+ * A student (owner, 25 October 2026: "Add a Student option"; "Missing Details stops asking for a degree") is asked the
+ * university, the faculty, the year and the expected graduation instead of a degree, a major, a graduation year and a
+ * grade; their qualification is there when typed or when the student's wording can be made (as {{qualification}} prints
+ * it). Once the expected graduation month has passed and they are still marked studying, HR is asked to update the
+ * qualification: "Expected to graduate in June 2026: update the qualification".
  */
-export function completeness({ employee: e, identity, bank, employment, latestType, topRank, papers }: ProfileOnFile): Completeness {
-  const highSchool = e.degree === 'high_school';
+export function completeness({ employee: e, identity, bank, employment, latestType, topRank, papers, today = todayInCairo() }: ProfileOnFile): Completeness {
+  const student = e.stillStudying;
+  const highSchool = e.degree === 'high_school' && !student;
+  const expected = fromDateOnly(e.expectedGraduation);
   const topGrade = !!employment?.grade && topRank !== null && employment.grade.rank >= topRank;
   const checks: Check[] = [
     check(e.fullNameEn, 'fullNameEn', 'Full name (English)', 'basic'),
@@ -94,18 +114,23 @@ export function completeness({ employee: e, identity, bank, employment, latestTy
     check(bank?.iban, 'iban', 'IBAN', 'basic'),
     check(bank?.holderName, 'holderName', 'Account holder', 'basic'),
 
-    check(e.degree, 'degree', 'Degree', 'education'),
-    // a high school diploma has no university, faculty or major
+    ...(student ? [] : [check(e.degree, 'degree', 'Degree', 'education')]),
+    // a high school diploma has no university, faculty or major; a student is at one, their major not asked yet
     ...(highSchool
       ? []
       : [
           check(e.university, 'university', 'University', 'education'),
           check(e.faculty, 'faculty', 'Faculty', 'education'),
-          check(e.major, 'major', 'Major', 'education'),
+          ...(student ? [] : [check(e.major, 'major', 'Major', 'education')]),
         ]),
-    check(e.graduationYear, 'graduationYear', 'Graduation year', 'education'),
-    check(e.educationGrade, 'educationGrade', 'Education grade', 'education'),
-    check(e.qualificationAr, 'qualificationAr', 'Qualification (Arabic)', 'education'),
+    ...(student
+      ? [check(e.studyYear, 'studyYear', 'Study year', 'education'), check(expected, 'expectedGraduation', 'Expected graduation', 'education')]
+      : [check(e.graduationYear, 'graduationYear', 'Graduation year', 'education'), check(e.educationGrade, 'educationGrade', 'Education grade', 'education')]),
+    check(printedQualificationAr(e), 'qualificationAr', 'Qualification (Arabic)', 'education'),
+    // still marked studying after the expected graduation month: the qualification to update, on the expected graduation
+    ...(student && expected && graduationPassed(expected, today)
+      ? [[false, { key: 'expectedGraduation', label: graduationOverdueText(expected), tab: 'education' }] satisfies Check]
+      : []),
 
     ...(employment
       ? [

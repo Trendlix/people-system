@@ -10,6 +10,9 @@ import {
   LABELS,
   MARITAL_STATUSES,
   MILITARY_STATUSES,
+  STUDY_YEAR_LABELS,
+  STUDY_YEARS,
+  studentQualificationAr,
   UNIVERSITIES,
   UNIVERSITY_KIND_LABELS,
   UNIVERSITY_KINDS,
@@ -23,6 +26,7 @@ import { formatDate } from '@/lib/format';
 import type { EmployeeProfile, FormState } from '@/lib/types';
 import { cardMarks, type CardSuggestions } from './id-card';
 import { proposeQualification, type Education } from './qualification';
+import { monthValue } from './student';
 
 // The profile fields (personal, contact and address, emergency contact, education), used by the Add employee page
 // (the profile, then education, as two steps) and the Personal Details and Education edit pages.
@@ -35,8 +39,11 @@ export type Part = 'profile' | 'education';
 type Field = {
   name: keyof EmployeeProfile & string;
   label: string;
-  /** `tel`: a country code and a number (PhoneInput). `list`: a standard list with Other (ListOrOther). */
-  kind?: 'text' | 'email' | 'tel' | 'date' | 'year' | 'select' | 'list';
+  /**
+   * `tel`: a country code and a number (PhoneInput). `list`: a standard list with Other (ListOrOther). `switch`: on or
+   * off, sent as true or false. `month`: a month (YYYY-MM).
+   */
+  kind?: 'text' | 'email' | 'tel' | 'date' | 'year' | 'select' | 'list' | 'switch' | 'month';
   max?: number;
   ar?: boolean;
   multiline?: boolean;
@@ -48,7 +55,12 @@ type Field = {
   list?: { groups: readonly ListGroup[]; aliases: ReadonlyMap<string, string> };
   /** Takes the whole row on wide screens. */
   wide?: boolean;
+  /** Only while Still studying is on (a student: owner, 25 October 2026). */
+  student?: boolean;
 };
+
+const chip =
+  'flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft';
 
 const options = <T extends string>(values: readonly T[], labels: Record<T, string>): Option[] => values.map((v) => ({ value: v, label: labels[v] }));
 
@@ -148,6 +160,35 @@ const GROUPS: { title: string; part: Part; fields: Field[] }[] = [
     title: 'Education',
     part: 'education',
     fields: [
+      // a student (owner, 25 October 2026: "Add a Student option"): the year and the expected graduation instead of a
+      // degree, a major, a graduation year and a grade; contracts print the student's wording while Qualification
+      // (Arabic) is empty
+      {
+        name: 'stillStudying',
+        label: 'Still studying',
+        kind: 'switch',
+        wide: true,
+        hint: 'A student is asked the year and the expected graduation, not a degree, major, graduation year or grade.',
+      },
+      {
+        name: 'studyYear',
+        label: 'Study year',
+        kind: 'select',
+        options: options(STUDY_YEARS, STUDY_YEAR_LABELS),
+        student: true,
+        hint: (
+          <>
+            The <span lang="ar">الفرقة</span>, or the postgraduate study.
+          </>
+        ),
+      },
+      {
+        name: 'expectedGraduation',
+        label: 'Expected graduation',
+        kind: 'month',
+        student: true,
+        hint: 'The month, e.g. 06/2027. Once it has passed, Missing Details asks HR to update the qualification.',
+      },
       { name: 'university', label: 'University', kind: 'list', list: UNIVERSITY_LIST, max: 150, hint: 'Not on the list? Choose Other and type it.' },
       { name: 'faculty', label: 'Faculty', kind: 'list', list: FACULTY_LIST, max: 150, hint: 'The subject, without "Faculty of". Not on the list? Choose Other.' },
       { name: 'degree', label: 'Degree', kind: 'select', options: options(DEGREES, LABELS.degree) },
@@ -179,6 +220,7 @@ const inDomain = (domain: string): Partial<Field> => ({
 function startText(f: Field, employee?: EmployeeProfile, card?: CardSuggestions): string {
   const v = employee ? employee[f.name] : card?.[f.name as keyof CardSuggestions];
   if (f.kind === 'date') return formatDate(typeof v === 'string' ? v : null);
+  if (f.kind === 'month') return monthValue(typeof v === 'string' ? v : null);
   if (typeof v === 'number') return String(v);
   return typeof v === 'string' ? v : '';
 }
@@ -219,10 +261,16 @@ export function PersonalFields({
     major: valueOf(state, 'major', employee?.major),
     university: valueOf(state, 'university', employee?.university),
   }));
+  // a student (owner, 25 October 2026: "Add a Student option"): the switch and the year, for the student's wording
+  const [studying, setStudying] = useState(() => valueOf(state, 'stillStudying', employee?.stillStudying ? 'true' : 'false') === 'true');
+  const [studyYear, setStudyYear] = useState(() => valueOf(state, 'studyYear', employee?.studyYear));
   const noteEducation = (name: string, value: string) => {
     if (EDUCATION_KEYS.includes(name)) setEdu((e) => ({ ...e, [name]: value }));
+    if (name === 'studyYear') setStudyYear(value);
   };
-  const proposal = proposeQualification(edu);
+  // a student's qualification is never proposed from a degree: while it is empty, contracts print the student's wording
+  const proposal = studying ? { text: '', left: [] } : proposeQualification(edu);
+  const wording = studying ? studentQualificationAr({ studyYear, gender, faculty: edu.faculty, university: edu.university }) : '';
   const [qual, setQual] = useState(() => valueOf(state, 'qualificationAr', employee?.qualificationAr));
   const [ownQual, setOwnQual] = useState(() => qual !== '');
   const qualHint = (
@@ -247,13 +295,54 @@ export function PersonalFields({
     </>
   );
 
-  const hintOf = (f: Field) => (noMilitary(f) ? 'Women need no military papers.' : f.name === 'qualificationAr' ? qualHint : f.hint);
+  const typedQual = ownQual ? qual.trim() : '';
+  const useWording = (
+    <button
+      type="button"
+      onClick={() => {
+        setQual(wording);
+        setOwnQual(true);
+      }}
+      className="font-semibold text-accent hover:underline"
+    >
+      Use this wording
+    </button>
+  );
+  const studentHint = !wording ? (
+    'As printed on contracts. For a student, choose the study year to word it, or type it.'
+  ) : !typedQual ? (
+    <>
+      Prints as:{' '}
+      <span lang="ar" dir="rtl">
+        {wording}
+      </span>{' '}
+      {useWording}
+    </>
+  ) : (
+    <>
+      As printed on contracts.
+      {typedQual !== wording && (
+        <>
+          {' '}
+          The student wording:{' '}
+          <span lang="ar" dir="rtl">
+            {wording}
+          </span>{' '}
+          {useWording}
+        </>
+      )}
+    </>
+  );
+
+  const hintOf = (f: Field) =>
+    noMilitary(f) ? 'Women need no military papers.' : f.name === 'qualificationAr' ? (studying ? studentHint : qualHint) : f.hint;
 
   function control(f: Field) {
     const saved = startText(f, employee, suggestions);
     const id = fid(f.name);
     const describedBy = card.describedBy(f.name, hintOf(f) ? fid(`${f.name}-hint`) : undefined);
-    const value = valueOf(state, f.name, saved);
+    // the year as last chosen, so it is still what the wording says when the switch is turned off and on again
+    const value = f.name === 'studyYear' ? studyYear : valueOf(state, f.name, saved);
 
     if (noMilitary(f)) {
       return (
@@ -264,6 +353,20 @@ export function PersonalFields({
       );
     }
     if (f.kind === 'date') return <DateInput id={id} name={f.name} aria-describedby={describedBy} defaultValue={value} />;
+    if (f.kind === 'switch') {
+      return (
+        <>
+          <input type="hidden" name={f.name} value={studying ? 'true' : 'false'} />
+          <label className={`${chip} w-fit`}>
+            <input id={id} type="checkbox" checked={studying} onChange={(e) => setStudying(e.target.checked)} aria-describedby={describedBy} className="size-4 accent-accent" />
+            {f.label}
+          </label>
+        </>
+      );
+    }
+    if (f.kind === 'month') {
+      return <input id={id} name={f.name} type="month" placeholder="e.g. 06/2027" aria-describedby={describedBy} defaultValue={value} className="input" />;
+    }
     if (f.kind === 'list' && f.list) {
       return (
         <ListOrOther
@@ -344,13 +447,17 @@ export function PersonalFields({
       <legend className="font-semibold">{group.title}</legend>
       <div className="grid gap-5 sm:grid-cols-2">
         {group.fields
+          .filter((f) => !f.student || studying)
           .map((f) => (!employee && f.name === 'employeeCode' ? { ...f, ...NEW_CODE } : f))
           .map((f) => (emailDomain && f.name === 'workEmail' ? { ...f, ...inDomain(emailDomain) } : f))
           .map((f) => (
             <div key={f.name} className={f.wide ? 'sm:col-span-2' : undefined}>
-              <label htmlFor={fid(f.name)} className="label">
-                {f.label}
-              </label>
+              {/* a switch is its own label */}
+              {f.kind !== 'switch' && (
+                <label htmlFor={fid(f.name)} className="label">
+                  {f.label}
+                </label>
+              )}
               {control(f)}
               {hintOf(f) && (
                 <p id={fid(`${f.name}-hint`)} className="hint">

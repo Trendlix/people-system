@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import {
   agreementName,
   CASUAL_MAX_MONTHS,
+  graduationPassed,
   INTERN_DEFAULT_MONTHS,
   INTERN_MAX_MONTHS,
   INTERN_NO_WAGE_MESSAGE,
@@ -12,6 +13,7 @@ import {
   noProbationMessage,
   renewedOnceMessage,
   samePay,
+  studentDraftWarning,
   traineeMonths,
   traineeProblems,
   TRAINING_RENEWALS,
@@ -130,7 +132,8 @@ const EMPLOYMENT = {
   jobTitleId: true,
   departmentId: true,
   gradeId: true,
-  employee: { select: { fullNameEn: true, dateOfBirth: true } },
+  // still marked studying past the expected graduation: a renewal's or a conversion's draft is warned (25 October 2026)
+  employee: { select: { fullNameEn: true, dateOfBirth: true, stillStudying: true, expectedGraduation: true } },
   jobTitle: { select: { titleEn: true, titleAr: true } },
   grade: { select: { code: true } },
   department: { select: { nameEn: true, parent: { select: { nameEn: true } } } },
@@ -1278,6 +1281,7 @@ export class ContractsService {
           versions ?? (await this.prisma.contract.findMany({ where: { employmentId: employment.id }, select: { version: true, kind: true, convertsTo: true } })),
         )
       : null;
+    const expected = fromDateOnly(employment.employee.expectedGraduation);
     return {
       seesSalary: seesSalary(user),
       workingDays: employment.shift?.workingDays ?? null,
@@ -1285,6 +1289,7 @@ export class ContractsService {
       employmentEndDate: employment.endDate,
       casualTooLong: employmentCasualTooLong(employment),
       agreements,
+      studentWarning: employment.employee.stillStudying && expected && graduationPassed(expected, todayInCairo()) ? studentDraftWarning(expected) : null,
     };
   }
 

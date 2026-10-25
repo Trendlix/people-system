@@ -10,6 +10,7 @@ import { deleteRefusal } from '@/lib/session';
 import type { EmployeeProfile, FormState, LearnedField } from '@/lib/types';
 import { priorServiceFrom } from './leave-facts';
 import { LEARNED_FIELDS, readKey } from './paperwork';
+import { monthFrom } from './student';
 
 const text = (fd: FormData, key: string) => String(fd.get(key) ?? '');
 
@@ -84,6 +85,15 @@ function personalBody(fd: FormData, errors: string[]): Record<string, string | n
     if (year === '') body.graduationYear = null;
     else if (/^\d{4}$/.test(year)) body.graduationYear = Number(year);
     else errors.push('Enter the graduation year as four digits, e.g. 2016.');
+  }
+  // a student (owner, 25 October 2026: "Add a Student option"): the switch, sent as true or false; the year and the
+  // expected graduation's month while it is on (turned off, the API clears them)
+  if (fd.has('stillStudying')) body.stillStudying = text(fd, 'stillStudying') === 'true';
+  if (fd.has('studyYear')) body.studyYear = text(fd, 'studyYear');
+  if (fd.has('expectedGraduation')) {
+    const month = monthFrom(text(fd, 'expectedGraduation'));
+    if (month === undefined) errors.push('Enter the expected graduation as a month, e.g. 06/2027.');
+    else body.expectedGraduation = month;
   }
   // the annual leave's facts (owner, 18 October 2026; Labour Law Art. 124), sent with their marker: a disability left
   // unticked is saved as none, the prior service typed in years and months as months (both empty: none)

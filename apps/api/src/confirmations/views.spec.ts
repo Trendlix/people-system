@@ -31,4 +31,16 @@ describe('profile confirmation views', () => {
     expect(changedFields(older, snapshotOf(employee({ mobile: '+201012345678' })))).toEqual([]);
     expect(changedFields(older, snapshotOf(employee({ mobile: '+201012345678', city: 'مدينة نصر' })))).toEqual(['city']);
   });
+
+  it('a switch confirmed before it existed counts as off (still studying: 25 October 2026)', () => {
+    const { stillStudying: _s, studyYear: _y, expectedGraduation: _g, ...older } = snapshotOf(employee({ stillStudying: false }));
+    expect(snapshotOf(employee({ stillStudying: false })).stillStudying).toBe(false);
+    expect(changedFields(older, snapshotOf(employee({ stillStudying: false })))).toEqual([]);
+    expect(changedFields(older, snapshotOf(employee({ stillStudying: true, studyYear: 'year_3', expectedGraduation: toDateOnly('2027-06-01') })))).toEqual([
+      'stillStudying',
+      'studyYear',
+      'expectedGraduation',
+    ]);
+    expect(changedFields(snapshotOf(employee({ stillStudying: true })), snapshotOf(employee({ stillStudying: false })))).toEqual(['stillStudying']);
+  });
 });

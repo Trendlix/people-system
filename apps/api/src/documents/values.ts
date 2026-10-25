@@ -10,6 +10,7 @@ import {
   PAY_BASIS_LABELS,
   PAY_BASIS_LABELS_AR,
   payDifference,
+  printedQualificationAr,
   RAISE_REASON_LABELS,
   RAISE_REASON_LABELS_AR,
   TEMPLATE_TAGS,
@@ -86,6 +87,15 @@ export interface ValueSources {
     /** The profile's; on a job offer, the email it is sent to. */
     personalEmail: string | null;
     qualificationAr: string | null;
+    /**
+     * A student (owner, 25 October 2026: "Add a Student option"): still studying, the year (STUDY_YEARS), the faculty and
+     * the university, which {{qualification}} is worded from while Qualification (Arabic) is empty. Missing: not a
+     * student (always on a job offer).
+     */
+    stillStudying?: boolean;
+    studyYear?: string | null;
+    faculty?: string | null;
+    university?: string | null;
     insuranceNo: string | null;
     /** The occupation's code in the social insurance table (null for none set); none on a job offer. */
     occupationCode: string | null;
@@ -360,7 +370,8 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
     phone: () => printedPhone(e.mobile),
     work_email: () => text(e.workEmail),
     personal_email: () => text(e.personalEmail),
-    qualification: () => text(e.qualificationAr),
+    // Qualification (Arabic) as typed; else, still studying, "طالب بالفرقة الثالثة – كلية … – جامعة …" (25 October 2026)
+    qualification: () => printedQualificationAr(e),
     insurance_no: () => text(e.insuranceNo),
     // the employee's occupation in the social insurance table (owner's decision, 16 October 2026: no longer the job
     // title's): the code as stored, the name the table's

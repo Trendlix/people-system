@@ -924,6 +924,13 @@ model Employee {
   graduationYear             Int?                   @map("graduation_year") @db.SmallInt
   educationGrade             String?                @map("education_grade")
   qualificationAr            String?                @map("qualification_ar")
+  // a student (owner, 25 October 2026: "Add a Student option"): still studying, the year (STUDY_YEARS: year_1 …
+  // year_7, postgraduate_diploma, masters, phd) and the expected graduation, a month kept as its first day; the year and
+  // the month only while still studying (checked by the database too). With qualification_ar empty, contracts print the
+  // student's wording (packages/shared student-education.ts)
+  stillStudying              Boolean                @default(false) @map("still_studying")
+  studyYear                  String?                @map("study_year")
+  expectedGraduation         DateTime?              @map("expected_graduation") @db.Date
   createdAt                  DateTime               @default(now()) @map("created_at") @db.Timestamptz
   updatedAt                  DateTime               @updatedAt @map("updated_at") @db.Timestamptz
   identity                   EmployeeIdentity?

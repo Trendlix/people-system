@@ -560,6 +560,11 @@ const PSEUDONYM_EMAIL = /@hidden\.invalid$/i;
  * and kits' codes (PK-CAM-0003, PK-KIT-A), custody records' (CUS-0042), vacancies' (VAC-2026-0001).
  */
 export const PERSON_CODE_IN_TEXT = /(?<![\p{L}\p{N}])(?:EMP-\d{3,}|APP-\d{4}-\d+|CAN-\d{3,}|OFF-\d{4}-\d+|CON-\d{4}-\d+(?:-A\d+)?)(?![\p{L}\p{N}])/giu;
+/**
+ * A student's expected graduation in a text (owner, 25 October 2026: "Add a Student option"): Missing Details' "Expected
+ * to graduate in June 2026: …" and a draft's "(expected to graduate June 2026)", the month hidden as the field is.
+ */
+const GRADUATION_IN_TEXT = /(?<=\bgraduate (?:in )?)(?:January|February|March|April|May|June|July|August|September|October|November|December) \d{4}/g;
 
 /** A text with every real name the API knows, every email, phone number, national ID and person's code in it replaced. */
 export function scrubText(text: string, people: DeveloperPeople = NO_PEOPLE): string {
@@ -568,7 +573,7 @@ export function scrubText(text: string, people: DeveloperPeople = NO_PEOPLE): st
   if (people.names) out = out.replace(people.names, (m) => people.byName.get(m.toLowerCase()) ?? HIDDEN);
   out = out.replace(EMAIL_IN_TEXT, (m) => (PSEUDONYM_EMAIL.test(m) ? m : (people.byEmail.get(m.toLowerCase())?.email ?? unknownEmail(m, people))));
   out = out.replace(PHONE_IN_TEXT, (m) => (m.replace(/\D/g, '').length >= 10 ? HIDDEN : m));
-  return out.replace(NATIONAL_ID_IN_TEXT, HIDDEN).replace(PERSON_CODE_IN_TEXT, HIDDEN);
+  return out.replace(NATIONAL_ID_IN_TEXT, HIDDEN).replace(PERSON_CODE_IN_TEXT, HIDDEN).replace(GRADUATION_IN_TEXT, HIDDEN);
 }
 
 /**
@@ -663,6 +668,10 @@ export const DEVELOPER_HIDDEN_NULL_FIELDS: ReadonlySet<string> = new Set([
   'governorate',
   'educationGrade',
   'degree',
+  // a student's (owner, 25 October 2026: "Add a Student option"): still studying, the year and the expected graduation
+  'stillStudying',
+  'studyYear',
+  'expectedGraduation',
   'photoId',
   'photoCrop',
   // their national ID card's issue and expiry dates (found 23 October 2026, with the contracts' dates): the card's own

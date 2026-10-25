@@ -38,7 +38,8 @@ type Card = { reading: IdCardReading; front: File; back: File };
 const FRESH: FormState = {};
 
 // Which step holds the field a message is about, by the words the API and the form use for it.
-const EDUCATION_WORDS = /university|faculty|degree|major|graduation|grade from the list|qualification/i;
+// (a student's too, 25 October 2026: "still studying", "the study year", "the expected graduation")
+const EDUCATION_WORDS = /university|faculty|degree|major|graduation|grade from the list|qualification|studying|study year/i;
 
 /** The step to show a refused save on: education when every message is about it, else the profile. */
 function stepFor(errors: string[]): Step {

@@ -28,6 +28,7 @@ import {
   occupationName,
   phoneOk,
   phoneTidy,
+  STUDY_YEARS,
 } from '@trendlix/shared';
 import { IsDateOnly } from '../common/date-only.js';
 import { LatinDigits, Trim, TrimOrNull } from '../common/transforms.js';
@@ -44,6 +45,14 @@ const Phone = () =>
     if (typeof value !== 'string') return value;
     const typed = value.trim();
     return typed ? phoneTidy(typed) || typed : null;
+  });
+// a month (the expected graduation: owner, 25 October 2026): "2027-06", or a day of it, kept as the month's first day
+const Month = () =>
+  Transform(({ value }) => {
+    if (typeof value !== 'string') return value;
+    const typed = value.trim();
+    const month = /^(\d{4}-\d{2})(?:-\d{2})?$/.exec(typed);
+    return typed === '' ? null : month ? `${month[1]}-01` : typed;
   });
 /** Present (even as null) means "change it"; for fields that cannot be empty, null is then refused. */
 const Sent = () => ValidateIf((_o, v) => v !== undefined);
@@ -240,6 +249,22 @@ class EmployeeDetailsDto {
 
   @TrimOrNull() @IsOptional() @IsString() @MaxLength(200)
   qualificationAr?: string | null;
+
+  /**
+   * Still studying (owner, 25 October 2026: "Add a Student option"): with Qualification (Arabic) empty, contracts print
+   * the student's wording; Missing Details asks the year and the expected graduation instead of a degree. Turned off, the
+   * year and the expected graduation are cleared (EmployeesService). Can't be emptied, only turned off.
+   */
+  @Sent() @IsBoolean({ message: 'Send whether the employee is still studying as true or false.' })
+  stillStudying?: boolean;
+
+  /** The year of study (الفرقة): STUDY_YEARS, the first to the seventh, or a postgraduate study. */
+  @TrimOrNull() @IsOptional() @IsIn(STUDY_YEARS, { message: 'Choose the study year from the list.' })
+  studyYear?: string | null;
+
+  /** The expected graduation: a month, "2027-06" (a day of it is taken as its month), kept and sent as 2027-06-01. */
+  @Month() @IsOptional() @IsDateOnly('Enter the expected graduation as a month, e.g. 2027-06.')
+  expectedGraduation?: string | null;
 }
 
 /** National ID (restricted): changed on its own, or sent with a new employee. */

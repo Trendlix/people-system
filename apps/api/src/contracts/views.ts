@@ -52,6 +52,11 @@ export interface ContractContext {
    * from its renewal; null or not given for another employment type.
    */
   agreements?: readonly number[] | null;
+  /**
+   * The employee still marked studying after their expected graduation (owner, 25 October 2026: "Add a Student option"):
+   * the warning for a renewal or a conversion to full-time drafted (studentDraftWarning); null or not given otherwise.
+   */
+  studentWarning?: string | null;
 }
 
 /**
@@ -226,6 +231,9 @@ export function contractView(c: ContractRow, ctx: ContractContext) {
     convertsTo: c.convertsTo,
     training: agreement ? { agreement, next: trainingNext(agreement) } : null,
     casualTooLong: ctx.casualTooLong ?? false,
+    // a renewal or a conversion to full-time drafted for someone still marked studying past their expected graduation
+    // (25 October 2026): "check the qualification before printing", never blocking; only on such a draft
+    ...(c.status === 'draft' && c.kind === 'contract' && (c.version > 1 || c.convertsTo !== null) && ctx.studentWarning && { studentWarning: ctx.studentWarning }),
     salaryHidden: !ctx.seesSalary,
     kind: c.kind as ContractKind,
     stage: payStage(c),

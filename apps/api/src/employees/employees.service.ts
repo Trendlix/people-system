@@ -58,7 +58,8 @@ import { INSURED_VERSION, insuredContractPay, insuredVersionOf, insuredWageOfEmp
 import { withOccupation } from './occupation-view.js';
 
 const ENTITY = 'employee';
-const DATE_FIELDS = ['dateOfBirth', 'insuranceStartDate'] as const;
+// and a student's expected graduation (owner, 25 October 2026: "Add a Student option"), a month kept as its first day
+const DATE_FIELDS = ['dateOfBirth', 'insuranceStartDate', 'expectedGraduation'] as const;
 /**
  * The social insurance wages Form 1 prints that are the employee's own (owner, 16 October 2026): salary data, so seen
  * and set only by those who see salaries, and never written to the audit log, only the fact that they changed (as a
@@ -152,6 +153,7 @@ function fields(e: Employee): EmployeeFields {
     ...e,
     dateOfBirth: fromDateOnly(e.dateOfBirth),
     insuranceStartDate: fromDateOnly(e.insuranceStartDate),
+    expectedGraduation: fromDateOnly(e.expectedGraduation),
     insuranceBasicWage: e.insuranceBasicWage?.toNumber() ?? null,
     insuranceComprehensiveWage: e.insuranceComprehensiveWage?.toNumber() ?? null,
   };
@@ -774,8 +776,16 @@ export class EmployeesService {
 
   /** Checks of the profile that span several fields or records, and the values that follow from them. */
   private async checked(before: Employee | null, dto: CreateEmployeeDto | UpdateEmployeeDto) {
-    const derived: { militaryStatus?: string } = {};
+    const derived: { militaryStatus?: string; studyYear?: null; expectedGraduation?: null } = {};
     const current = before ? fields(before) : null;
+
+    // a student's year and expected graduation are kept only while still studying (owner, 25 October 2026: "Add a
+    // Student option"): turned off (or never on), they are cleared
+    const studying = dto.stillStudying !== undefined ? dto.stillStudying : (before?.stillStudying ?? false);
+    if (!studying) {
+      if ((dto.studyYear !== undefined ? dto.studyYear : (before?.studyYear ?? null)) !== null) derived.studyYear = null;
+      if ((dto.expectedGraduation !== undefined ? dto.expectedGraduation : (current?.expectedGraduation ?? null)) !== null) derived.expectedGraduation = null;
+    }
 
     // a woman's military status is always Not applicable, so no military papers are needed (owner's rule)
     const gender = dto.gender !== undefined ? dto.gender : (before?.gender ?? null);

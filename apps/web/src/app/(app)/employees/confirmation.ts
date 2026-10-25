@@ -1,6 +1,7 @@
 import { CONFIRM_FIELDS, LABELS, REQUESTABLE_FIELD_KEYS, type ConfirmField } from '@trendlix/shared';
 import { formatDate, parseDate } from '../../../lib/format';
 import type { ChangeRequest, ChangeRequestChange, EmployeeProfile, ProfileConfirmation } from '../../../lib/types';
+import { monthFrom, monthShown, studyYearShown } from './student';
 
 // The employee's own check of their details, and their requests to change them (owner's decision, 15 October 2026):
 // the words the banner, the profile header and Approvals use, the values as the profile shows them, and which fields
@@ -34,12 +35,16 @@ const LISTS: Partial<Record<string, Record<string, string>>> = {
 
 /**
  * A field's value as the profile shows it: the label of a list's value (Female, Bachelor's…), a date as DD/MM/YYYY,
- * mobiles as kept (+201012345678), a number as text; '' for nothing recorded.
+ * mobiles as kept (+201012345678), a number as text; '' for nothing recorded. A student's (25 October 2026): still
+ * studying Yes or No, the year by its label, the expected graduation as its month ("June 2027").
  */
-export function shownValue(key: string, value: string | number | null | undefined): string {
+export function shownValue(key: string, value: string | number | boolean | null | undefined): string {
+  if (key === 'stillStudying') return value === true ? 'Yes' : value === false ? 'No' : '';
   if (value === null || value === undefined || value === '') return '';
-  if (typeof value === 'number') return String(value);
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   if (key === 'dateOfBirth' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return formatDate(value);
+  if (key === 'studyYear') return studyYearShown(value);
+  if (key === 'expectedGraduation') return monthShown(value) || value;
   return LISTS[key]?.[value] ?? value;
 }
 
@@ -130,10 +135,20 @@ export function changedKeys(start: FieldTexts, now: FieldTexts): ConfirmField[] 
   });
 }
 
-/** A field's text as the API takes it: null when emptied, a date as YYYY-MM-DD, the graduation year as a number. Mistakes go to `errors`. */
-export function apiValue(key: ConfirmField, text: string, errors: string[]): string | number | null {
+/**
+ * A field's text as the API takes it: null when emptied, a date as YYYY-MM-DD, the graduation year as a number; still
+ * studying as true or false, the expected graduation's month as YYYY-MM-01. Mistakes go to `errors`.
+ */
+export function apiValue(key: ConfirmField, text: string, errors: string[]): string | number | boolean | null {
   const v = text.trim();
+  if (key === 'stillStudying') return v === 'true';
   if (v === '') return null;
+  if (key === 'expectedGraduation') {
+    const month = monthFrom(v);
+    if (month) return month;
+    errors.push('Enter the expected graduation as a month, e.g. 06/2027.');
+    return v;
+  }
   if (key === 'dateOfBirth') {
     const date = parseDate(v);
     if (date) return date;
@@ -149,9 +164,9 @@ export function apiValue(key: ConfirmField, text: string, errors: string[]): str
 }
 
 /** What a change request sends: only the fields changed from how the form started, as the API takes them. */
-export function requestedChanges(start: FieldTexts, now: FieldTexts): { changes: Partial<Record<ConfirmField, string | number | null>>; errors: string[] } {
+export function requestedChanges(start: FieldTexts, now: FieldTexts): { changes: Partial<Record<ConfirmField, string | number | boolean | null>>; errors: string[] } {
   const errors: string[] = [];
-  const changes: Partial<Record<ConfirmField, string | number | null>> = {};
+  const changes: Partial<Record<ConfirmField, string | number | boolean | null>> = {};
   for (const key of changedKeys(start, now)) changes[key] = apiValue(key, now[key] ?? '', errors);
   return { changes, errors };
 }

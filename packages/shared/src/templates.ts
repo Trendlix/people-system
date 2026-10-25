@@ -242,7 +242,16 @@ export const TEMPLATE_TAGS: readonly TemplateTag[] = [
   // the grade's level, the work arrangement, the working hours, the probation period, the basic salary's share and the
   // net per hour, each with a value for an employee and for a job offer
   { tag: 'personal_email', group: 'employee', labelEn: 'Personal email', labelAr: 'البريد الإلكتروني الشخصي', source: 'Profile, or the email a job offer is sent to' },
-  { tag: 'qualification', group: 'employee', labelEn: 'Qualification (Arabic)', labelAr: 'المؤهل العلمي', source: 'Profile: education' },
+  // a student (owner, 25 October 2026: "if the intern is a student, how will we deal with it?"; "Add a Student option"):
+  // with Qualification (Arabic) empty, worded from the year, the faculty and the university (printedQualificationAr)
+  {
+    tag: 'qualification',
+    group: 'employee',
+    labelEn: 'Qualification (Arabic)',
+    labelAr: 'المؤهل العلمي',
+    source: 'Profile: education, Qualification (Arabic) as typed; for someone still studying with none typed, their year, faculty and university',
+    note: 'A student: طالب بالفرقة الثالثة – كلية التجارة – جامعة القاهرة (طالبة for a woman)',
+  },
   { tag: 'insurance_no', group: 'employee', labelEn: 'Social insurance number', labelAr: 'الرقم التأميني', source: 'Profile' },
   { tag: 'national_id', group: 'national_id', labelEn: 'National ID number', labelAr: 'رقم قومي', source: 'National ID', note: 'In English digits, e.g. 29001011234567', restricted: true },
   { tag: 'national_id_ar', group: 'national_id', labelEn: 'National ID number (Arabic digits)', labelAr: 'الرقم القومي بالأرقام العربية', source: 'National ID', note: 'In Arabic digits, e.g. ٢٩٠٠١٠١١٢٣٤٥٦٧', restricted: true },

@@ -620,6 +620,15 @@ export interface EmployeeProfile {
   graduationYear: number | null;
   educationGrade: EducationGrade | null;
   qualificationAr: string | null;
+  /**
+   * A student (owner, 25 October 2026: "Add a Student option"): still studying, the year (STUDY_YEARS) and the expected
+   * graduation, a month kept as its first day (YYYY-MM-01); the year and the month only while still studying. With
+   * Qualification (Arabic) empty, contracts print the student's wording. Left out by an older API, and hidden (null) from
+   * a developer.
+   */
+  stillStudying?: boolean | null;
+  studyYear?: string | null;
+  expectedGraduation?: string | null;
   createdAt: string;
   updatedAt: string;
   /** The current employment; null when there is none (not employed yet, or a former employee). */
@@ -728,8 +737,9 @@ export interface ProfileConfirmation {
 export interface ChangeRequestChange {
   field: string;
   label: string;
-  from: string | number | null;
-  to: string | number | null;
+  /** A switch (still studying: 25 October 2026) as true or false. */
+  from: string | number | boolean | null;
+  to: string | number | boolean | null;
 }
 
 /**
@@ -1267,6 +1277,12 @@ export interface Contract extends ContractPay, ContractLaw {
   stage?: PayStage;
   /** A version that changes the pay (a raise, or a renewal with new pay): its CEO step; null otherwise. */
   raise?: ContractRaise | null;
+  /**
+   * A renewal or a conversion to full-time drafted for someone still marked studying past their expected graduation (25
+   * October 2026): "Still marked as a student (expected to graduate June 2026): check the qualification before printing.";
+   * only on such a draft, never blocking.
+   */
+  studentWarning?: string;
 }
 
 /**

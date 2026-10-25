@@ -280,6 +280,8 @@ export * from './phone.js';
 // ---------- education: Egyptian universities and faculties ----------
 
 export * from './education.js';
+// a student (owner, 25 October 2026: "Add a Student option"): the year, the expected graduation, {{qualification}}'s wording
+export * from './student-education.js';
 
 // ---------- banks (EG-ACH list) ----------
 

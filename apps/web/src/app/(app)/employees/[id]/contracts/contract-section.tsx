@@ -521,6 +521,13 @@ export async function ContractSection({
       ) : (
         !draft && <NoContract employeeId={employee.id} canEdit={canEdit && !endingInProgress} />
       )}
+      {/* a renewal or a conversion drafted for someone still marked studying past their expected graduation (25 October
+          2026): the qualification it prints may be out of date; never blocking */}
+      {draft?.studentWarning && (
+        <p role="alert" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
+          {draft.studentWarning} <Link href={`/employees/${employee.id}?tab=education#field-qualificationAr`}>See the qualification</Link>
+        </p>
+      )}
       {draft &&
         (draft.raise ? (
           // a change of pay: the CEO approves it before it is signed

@@ -36,6 +36,11 @@ export const CONFIRM_FIELDS = [
   { key: 'emergencyName', label: 'Name', section: 'emergency' },
   { key: 'emergencyRelation', label: 'Relation', section: 'emergency' },
   { key: 'emergencyMobile', label: 'Mobile', section: 'emergency' },
+  // a student (owner, 25 October 2026: "Add a Student option"): the switch, the year (STUDY_YEARS) and the expected
+  // graduation, a month kept as its first day (YYYY-MM-01)
+  { key: 'stillStudying', label: 'Still studying', section: 'education' },
+  { key: 'studyYear', label: 'Study year', section: 'education' },
+  { key: 'expectedGraduation', label: 'Expected graduation', section: 'education' },
   { key: 'university', label: 'University', section: 'education' },
   { key: 'faculty', label: 'Faculty', section: 'education' },
   { key: 'degree', label: 'Degree', section: 'education' },

@@ -629,6 +629,11 @@ export class DocumentsService {
           workEmail: true,
           personalEmail: true,
           qualificationAr: true,
+          // {{qualification}} for a student, while Qualification (Arabic) is empty (owner, 25 October 2026)
+          stillStudying: true,
+          studyYear: true,
+          faculty: true,
+          university: true,
           insuranceNo: true,
           // what the Social Insurance tab holds (owner, 16 October 2026): the occupation, the subscription start, the
           // basic and comprehensive wages (the insured wage is worked out from the comprehensive one)
