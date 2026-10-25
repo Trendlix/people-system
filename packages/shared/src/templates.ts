@@ -400,6 +400,11 @@ export const TEMPLATE_TAGS: readonly TemplateTag[] = [
   { tag: 'insurance_basic_salary', group: 'pay', labelEn: 'Basic wage (social insurance)', labelAr: 'أجر أساسي (التأمينات)', source: 'Social Insurance tab: the employee’s, else the default in contract settings', restricted: true },
   { tag: 'insurance_insured_salary', group: 'pay', labelEn: 'Insured wage (social insurance)', labelAr: 'أجر الاشتراك (التأمينات)', source: 'Social Insurance tab: the comprehensive wage, within the year’s insurable limits', restricted: true },
   { tag: 'insurance_total_salary', group: 'pay', labelEn: 'Comprehensive wage (social insurance)', labelAr: 'الأجر الشامل (التأمينات)', source: 'Social Insurance tab: the employee’s, else the contract’s gross and allowances', restricted: true },
+  // both in words too (owner, 25 October 2026: "i need arabic wordings for both of these to add them in the contract")
+  { tag: 'insurance_insured_salary_words', group: 'pay', labelEn: 'Insured wage in words (Arabic)', labelAr: 'تفقيط أجر الاشتراك (التأمينات)', source: 'Social Insurance tab: in Arabic words, فقط … لا غير', restricted: true },
+  { tag: 'insurance_insured_salary_words_en', group: 'pay', labelEn: 'Insured wage in words (English)', labelAr: 'تفقيط أجر الاشتراك بالإنجليزية', source: 'Social Insurance tab: in English words', restricted: true },
+  { tag: 'insurance_total_salary_words', group: 'pay', labelEn: 'Comprehensive wage in words (Arabic)', labelAr: 'تفقيط الأجر الشامل (التأمينات)', source: 'Social Insurance tab: in Arabic words, فقط … لا غير', restricted: true },
+  { tag: 'insurance_total_salary_words_en', group: 'pay', labelEn: 'Comprehensive wage in words (English)', labelAr: 'تفقيط الأجر الشامل بالإنجليزية', source: 'Social Insurance tab: in English words', restricted: true },
   // a raise (owner's decisions, 16 October 2026): the salary amendment letter and social insurance Form 2. The new pay is
   // the version's own (the pay tags above); these say what it was before, when it changes, why, and the promotion
   { tag: 'raise_effective_date', group: 'raise', labelEn: 'Effective date (raise)', labelAr: 'تاريخ سريان التعديل', source: 'Raise: the 1st of the month the new pay takes effect', note: 'DD/MM/YYYY' },

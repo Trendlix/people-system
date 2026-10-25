@@ -129,6 +129,10 @@ const OFFER_FIELDS: Record<string, string> = {
   total_salary_words_en: 'grossSalary',
   insurance_insured_salary: 'grossSalary', // the comprehensive wage below, within the year's insurable limits
   insurance_total_salary: 'grossSalary', // an offer has no comprehensive wage of its own: its gross and allowances
+  insurance_insured_salary_words: 'grossSalary',
+  insurance_insured_salary_words_en: 'grossSalary',
+  insurance_total_salary_words: 'grossSalary',
+  insurance_total_salary_words_en: 'grossSalary',
   net_salary: 'netSalary',
   net_salary_words: 'netSalary',
   net_salary_words_en: 'netSalary',

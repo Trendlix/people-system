@@ -253,6 +253,8 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
   // the comprehensive wage Form 1 prints: the employee's own, else the contract's gross and allowances (after a raise,
   // those before it until its insured-wage date)
   const comprehensive = amount(e.insuranceComprehensiveWage) ?? (src.insuredContractTotal !== undefined ? src.insuredContractTotal : totalSalary);
+  // the comprehensive wage within this year's insurable limits: none without one
+  const insuredWage = () => (comprehensive === null ? null : insuredWageFrom(comprehensive, lawRatesFor(Number(todayInCairo().slice(0, 4)), src.lawYears)).amount);
   // by the hour, the net of an hour: the approximate net ÷ the hours of a month (hours a week × 52 ÷ 12), to the piaster
   const netHourly = c?.payBasis === 'hourly' && net !== null && hours ? Math.round((net / (hours * WEEKS_PER_MONTH) + Number.EPSILON) * 100) / 100 : null;
 
@@ -440,9 +442,13 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
     // decision, 16 October 2026: "Apply the insurance wage cap rule from the comprehensive wage"), so none without
     // one; the contract's own insured salary ({{insured_salary}}, the social insurance copy's) is unchanged
     insurance_basic_salary: () => printedMoney(amount(e.insuranceBasicWage) ?? src.insuranceBasicDefault),
-    insurance_insured_salary: () =>
-      printedMoney(comprehensive === null ? null : insuredWageFrom(comprehensive, lawRatesFor(Number(todayInCairo().slice(0, 4)), src.lawYears)).amount),
+    insurance_insured_salary: () => printedMoney(insuredWage()),
     insurance_total_salary: () => printedMoney(comprehensive),
+    // in words too (owner, 25 October 2026: "i need arabic wordings for both of these to add them in the contract")
+    insurance_insured_salary_words: () => words(insuredWage()),
+    insurance_insured_salary_words_en: () => wordsEn(insuredWage()),
+    insurance_total_salary_words: () => words(comprehensive),
+    insurance_total_salary_words_en: () => wordsEn(comprehensive),
     offer_number: () => text(src.offer?.number),
     offer_expiry: () => printedDate(ymd(src.offer?.expiresOn)),
 
@@ -647,6 +653,10 @@ const WHERE: Record<string, Where> = {
   insurance_basic_salary: { tab: 'insurance', key: 'insuranceBasicWage' },
   insurance_insured_salary: { tab: 'insurance', key: 'insuranceComprehensiveWage' },
   insurance_total_salary: { tab: 'insurance', key: 'insuranceComprehensiveWage' },
+  insurance_insured_salary_words: { tab: 'insurance', key: 'insuranceComprehensiveWage' },
+  insurance_insured_salary_words_en: { tab: 'insurance', key: 'insuranceComprehensiveWage' },
+  insurance_total_salary_words: { tab: 'insurance', key: 'insuranceComprehensiveWage' },
+  insurance_total_salary_words_en: { tab: 'insurance', key: 'insuranceComprehensiveWage' },
   offer_number: { tab: 'offer', key: 'number' },
   offer_expiry: { tab: 'offer', key: 'expiresOn' },
   gross_salary: CONTRACTS('grossSalary'),

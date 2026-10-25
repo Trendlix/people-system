@@ -492,6 +492,12 @@ describe('the Social Insurance tab’s dates and wages', () => {
   it('the contract’s gross and allowances above the year’s maximum: capped at it', () => {
     const src = withContract({ grossSalary: d(20000), insuredSalary: d(16700) });
     expect(resolveValues(src, ['insurance_insured_salary', 'insurance_total_salary'])).toEqual({ insurance_insured_salary: '16,700', insurance_total_salary: '21,000' });
+    // in words (owner, 25 October 2026)
+    const inWords = resolveValues(src, ['insurance_insured_salary_words', 'insurance_insured_salary_words_en', 'insurance_total_salary_words', 'insurance_total_salary_words_en']);
+    expect(inWords.insurance_insured_salary_words_en).toBe('Sixteen thousand seven hundred Egyptian pounds only');
+    expect(inWords.insurance_total_salary_words_en).toBe('Twenty-one thousand Egyptian pounds only');
+    expect(inWords.insurance_insured_salary_words).toMatch(/^ستة عشر ألف و سبعمائة جنيه.* فقط لا غير$/);
+    expect(inWords.insurance_total_salary_words).toMatch(/^واحد و عشرون ألف جنيه.* فقط لا غير$/);
   });
 
   it('the employee’s own, whatever the contract says; the insured wage their comprehensive wage capped at the maximum', () => {
