@@ -256,14 +256,17 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
   // the subscription year the contract version starts in, for the social insurance copy's term (owner, 25 October 2026:
   // "take the insurance start date make it for 1 year"; asked, "Anniversary year"): the latest anniversary of the
   // subscription start on or before the version's start plus 3 months, so a renewal on 30/07 of a subscription from
-  // 01/08 takes the year from that 01/08 and a raise in March the year it falls in; never before the subscription began
-  const insuranceYear = (): { start: string; end: string } | null => {
+  // 01/08 takes the year from that 01/08 and a raise in March the year it falls in; never before the subscription began.
+  // It runs for the contract's duration, a year when it has none (owner, 25 October 2026: "add the end date of the social
+  // insurance based on the contract duration, usually 1 year")
+  const insuranceYear = (): { start: string; end: string; months: number } | null => {
     const since = ymd(e.insuranceStartDate ?? job?.joinDate);
     if (!since) return null;
     const until = addMonths(ymd(c?.startDate) ?? since, 3);
     let start = since;
     for (let years = 1; addMonths(since, 12 * years) <= until; years++) start = addMonths(since, 12 * years);
-    return { start, end: addDays(addMonths(start, 12), -1) };
+    const months = c?.durationMonths && c.durationMonths > 0 ? c.durationMonths : 12;
+    return { start, end: addDays(addMonths(start, months), -1), months };
   };
   // the comprehensive wage within this year's insurable limits: none without one
   const insuredWage = () => (comprehensive === null ? null : insuredWageFrom(comprehensive, lawRatesFor(Number(todayInCairo().slice(0, 4)), src.lawYears)).amount);
@@ -391,7 +394,10 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
     insurance_start_date: () => printedDate(ymd(e.insuranceStartDate ?? job?.joinDate)),
     insurance_year_start: () => printedDate(insuranceYear()?.start ?? null),
     insurance_year_end: () => printedDate(insuranceYear()?.end ?? null),
-    insurance_year_duration: () => (insuranceYear() ? arabicDuration(12) : ''),
+    insurance_year_duration: () => {
+      const year = insuranceYear();
+      return year ? arabicDuration(year.months) : '';
+    },
     work_arrangement: () => workArrangement(language),
     work_arrangement_ar: () => workArrangement('ar'),
     work_arrangement_en: () => workArrangement('en'),

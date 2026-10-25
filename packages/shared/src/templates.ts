@@ -285,8 +285,8 @@ export const TEMPLATE_TAGS: readonly TemplateTag[] = [
   // the subscription year a contract version falls in (owner, 25 October 2026: "take the insurance start date make it for
   // 1 year"; "Anniversary year"): the social insurance copy's term
   { tag: 'insurance_year_start', group: 'job_contract', labelEn: 'Subscription year start (social insurance)', labelAr: 'بداية سنة الاشتراك', source: 'The subscription start’s anniversary the contract version starts in (up to 3 months early takes the next one)', note: 'DD/MM/YYYY; the social insurance copy’s start date' },
-  { tag: 'insurance_year_end', group: 'job_contract', labelEn: 'Subscription year end (social insurance)', labelAr: 'نهاية سنة الاشتراك', source: 'A year after the subscription year’s start, less a day', note: 'DD/MM/YYYY; the social insurance copy’s end date' },
-  { tag: 'insurance_year_duration', group: 'job_contract', labelEn: 'Subscription year length (social insurance)', labelAr: 'مدة سنة الاشتراك', source: 'One year', note: 'سنة ميلادية واحدة; the social insurance copy’s duration' },
+  { tag: 'insurance_year_end', group: 'job_contract', labelEn: 'Subscription year end (social insurance)', labelAr: 'نهاية سنة الاشتراك', source: 'The contract’s duration after the subscription year’s start (a year when it has none), less a day', note: 'DD/MM/YYYY; the social insurance copy’s end date' },
+  { tag: 'insurance_year_duration', group: 'job_contract', labelEn: 'Subscription year length (social insurance)', labelAr: 'مدة سنة الاشتراك', source: 'The contract’s duration, a year when it has none', note: 'E.g. سنة ميلادية واحدة; the social insurance copy’s duration' },
   {
     tag: 'work_arrangement',
     group: 'job_contract',

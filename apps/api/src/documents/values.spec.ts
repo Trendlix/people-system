@@ -493,8 +493,8 @@ describe('the Social Insurance tab’s dates and wages', () => {
   // "Anniversary year")
   it('the subscription year a contract version starts in: a renewal days before the anniversary takes the next year', () => {
     const YEAR = ['insurance_year_start', 'insurance_year_end', 'insurance_year_duration'];
-    const at = (contractStart: string, since: string | null) => {
-      const src = withContract({ startDate: new Date(`${contractStart}T00:00:00Z`) });
+    const at = (contractStart: string, since: string | null, durationMonths = 12) => {
+      const src = withContract({ startDate: new Date(`${contractStart}T00:00:00Z`), durationMonths });
       return resolveValues({ ...src, employee: { ...src.employee, insuranceStartDate: since ? new Date(`${since}T00:00:00Z`) : null } }, YEAR);
     };
     // version 1 from 30/07/2025, subscribed from 01/08/2025
@@ -505,6 +505,13 @@ describe('the Social Insurance tab’s dates and wages', () => {
     expect(at('2026-03-01', '2025-08-01')).toMatchObject({ insurance_year_start: '01/08/2025', insurance_year_end: '31/07/2026' });
     // subscribed months after the contract began: from the subscription, never before it
     expect(at('2025-07-30', '2025-11-01')).toMatchObject({ insurance_year_start: '01/11/2025', insurance_year_end: '31/10/2026' });
+    // for the contract's duration (owner, 25 October 2026: "based on the contract duration, usually 1 year")
+    const sixMonths = at('2025-07-30', '2025-08-01', 6);
+    expect(sixMonths).toMatchObject({ insurance_year_start: '01/08/2025', insurance_year_end: '31/01/2026' });
+    expect(sixMonths.insurance_year_duration).not.toBe('سنة ميلادية واحدة');
+    expect(sixMonths.insurance_year_duration).toMatch(/أشهر|شهور/);
+    // no duration on the contract: a year
+    expect(at('2025-07-30', '2025-08-01', 0)).toMatchObject({ insurance_year_end: '31/07/2026', insurance_year_duration: 'سنة ميلادية واحدة' });
     // no subscription date: the join date (15/01/2026)
     expect(at('2026-01-15', null)).toMatchObject({ insurance_year_start: '15/01/2026', insurance_year_end: '14/01/2027' });
   });
