@@ -369,6 +369,6 @@ export class KpiPracticeService {
   }
 
   private assertStarts(user: SessionUser) {
-    if (!startsKpiPractice(user)) throw new ForbiddenException('Only HR and a Super Admin start practice KPI scorecards.');
+    if (!startsKpiPractice(user)) throw new ForbiddenException('Only HR, the CEO and a Super Admin start practice KPI scorecards.');
   }
 }

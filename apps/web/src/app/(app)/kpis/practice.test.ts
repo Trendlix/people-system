@@ -60,7 +60,7 @@ describe('who has the Practice tab', () => {
   it('is HR and a Super Admin', () => {
     expect(seesKpiPractice({ roles: ['hr'] })).toBe(true);
     expect(seesKpiPractice({ roles: ['super_admin'] })).toBe(true);
-    expect(seesKpiPractice({ roles: ['ceo'] })).toBe(false);
+    expect(seesKpiPractice({ roles: ['ceo'] })).toBe(true);
     expect(seesKpiPractice({ roles: ['employee', 'manager'] })).toBe(false);
   });
 });

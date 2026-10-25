@@ -75,7 +75,8 @@ export function seesScorecard(card: KpiParties, caller: KpiCaller): boolean {
  * whoever would see it were it real (the employee, their scorer), so they see the screens those people will see.
  */
 export function seesPractice(card: KpiParties, caller: KpiCaller): boolean {
-  if (caller.user.roles.includes('super_admin')) return true;
+  // the CEO too, who sees every scorecard (owner, 25 October 2026: "Yes, the CEO too")
+  if (caller.user.roles.includes('super_admin') || caller.user.roles.includes('ceo')) return true;
   if (actsAs(caller.user.roles, ['hr']) && !caller.confidential.hidden.has(card.employeeId)) return true;
   return !!caller.user.viewAs && seesScorecard(card, caller);
 }

@@ -87,7 +87,7 @@ function PracticeList({ rows, deletes }: { rows: KpiPracticeRow[]; deletes: bool
 
 async function Practice({ searchParams }: { searchParams: PageProps<'/kpis/all/practice'>['searchParams'] }) {
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
-  if (!seesKpiPractice(user)) return <Empty>Only HR and a Super Admin start and see practice scorecards.</Empty>;
+  if (!seesKpiPractice(user)) return <Empty>Only HR, the CEO and a Super Admin start and see practice scorecards.</Empty>;
   const [rows, choices] = await Promise.all([loadPracticeRows(), loadPracticeChoices()]);
   const deletes = canDelete(user);
   const deleted = deletedText(query);

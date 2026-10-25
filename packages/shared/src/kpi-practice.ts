@@ -19,7 +19,8 @@ import { kpiMonthAdd, kpiMonthName, kpiPast, type KpiPersonRef, type KpiScorer, 
 // ---------- who ----------
 
 /** Who starts practice scorecards: HR and a Super Admin. */
-export const startsKpiPractice = (user: { roles: readonly string[] }): boolean => user.roles.includes('hr') || user.roles.includes('super_admin');
+// the CEO too (owner, 25 October 2026: "Yes, the CEO too")
+export const startsKpiPractice = (user: { roles: readonly string[] }): boolean => ['hr', 'ceo', 'super_admin'].some((r) => user.roles.includes(r));
 
 /**
  * Whether the caller stands in on a scorecard (takes its steps for the people in it): a practice one only, by its

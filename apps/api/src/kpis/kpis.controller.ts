@@ -257,21 +257,21 @@ export class KpiPracticeController {
   ) {}
 
   /** The practice scorecards, newest started first (HR not a C-level person's). */
-  @Roles('hr', 'super_admin')
+  @Roles('hr', 'ceo', 'super_admin')
   @Get()
   list(@CurrentUser() user: SessionUser) {
     return this.practice.list(user);
   }
 
   /** { month, people: [{ employee, jobTitle, department, joinDate, months, templates, confidential }] }. */
-  @Roles('hr', 'super_admin')
+  @Roles('hr', 'ceo', 'super_admin')
   @Get('choices')
   choices(@CurrentUser() user: SessionUser) {
     return this.practice.choices(user);
   }
 
   /** { employeeId, month?, templateId? } → the practice scorecard, as its page reads it. */
-  @Roles('hr', 'super_admin')
+  @Roles('hr', 'ceo', 'super_admin')
   @Post()
   start(@Body() dto: KpiPracticeStartDto, @CurrentUser() user: SessionUser) {
     return this.practice.start(dto, user);

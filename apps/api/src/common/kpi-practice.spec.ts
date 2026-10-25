@@ -27,7 +27,9 @@ describe('practice KPI scorecards', () => {
   it('are started by HR and a Super Admin only', () => {
     expect(startsKpiPractice({ roles: ['hr'] })).toBe(true);
     expect(startsKpiPractice({ roles: ['super_admin'] })).toBe(true);
-    for (const roles of [['employee'], ['manager'], ['ceo'], ['admin'], ['finance']]) expect(startsKpiPractice({ roles })).toBe(false);
+    for (const roles of [['employee'], ['manager'], ['admin'], ['finance']]) expect(startsKpiPractice({ roles })).toBe(false);
+    // the CEO too (owner, 25 October 2026: "Yes, the CEO too")
+    expect(startsKpiPractice({ roles: ['ceo'] })).toBe(true);
   });
 
   it('are stood in on by their starter or any Super Admin, in their own session, and a real one never', () => {
