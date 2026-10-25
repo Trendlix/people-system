@@ -1481,6 +1481,8 @@ export interface DocumentItem {
   contractId?: string | null;
   contractNumber?: string | null;
   contractVersion?: number | null;
+  /** The date Generate starts with (YYYY-MM-DD): a contract version's own documents, its start date (25 October 2026); else today. */
+  defaultDate?: string | null;
   /** No template yet, only drafts, or a published version to generate from. */
   templateStatus: TemplateSlotStatus;
   /** The published version's number; null when none is published. */

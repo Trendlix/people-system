@@ -258,10 +258,13 @@ export class DocumentsService {
         needsInputs: published ? TYPED_TAGS.filter((t) => published.tags.includes(t)) : [],
       } as const;
     };
-    const item = (key: string, docs: DocumentRow[], contract?: ContractRow) => ({
+    // `startsOn`: a contract version's own documents are dated its start date unless HR picks another (owner, 25 October
+    // 2026: "add default date the starting date and to be edited by HR if needed")
+    const item = (key: string, docs: DocumentRow[], contract?: ContractRow, startsOn = false) => ({
       slotKey: key,
       name: SLOTS.get(key)!.name,
       ...(contract && { contractId: contract.id, contractNumber: contract.number, contractVersion: contract.version }),
+      ...(contract && startsOn && { defaultDate: fromDateOnly(contract.startDate) }),
       ...template(key),
       documents: docs.filter((d) => d.slotKey === key).map(documentView),
     });
@@ -275,7 +278,7 @@ export class DocumentsService {
     const ofVersion = (c: ContractRow) => rows.filter((d) => d.contractId === c.id);
     const items: Record<SectionKey, ReturnType<typeof item>[]> = {
       // an amendment's own letter, a contract's copies
-      contract: contracts.flatMap((c) => versionSlots(c.kind, slots.contract).map((key) => item(key, ofVersion(c), c))),
+      contract: contracts.flatMap((c) => versionSlots(c.kind, slots.contract).map((key) => item(key, ofVersion(c), c, true))),
       hiring: slots.hiring.map((key) => item(key, rows)),
       insurance: slots.insurance.flatMap((key) => (key === FORM_2_SLOT ? raises.map((c) => item(key, ofVersion(c), c)) : [item(key, rows)])),
       letters: slots.letters.map((key) => item(key, rows)),

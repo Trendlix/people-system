@@ -649,6 +649,8 @@ const ENUM_VALUE = /^[a-z][a-z0-9_]*$/;
 
 /** A person's data hidden as nothing (null): dates and years of their life, the lists' values about them, their photo. */
 export const DEVELOPER_HIDDEN_NULL_FIELDS: ReadonlySet<string> = new Set([
+  // a contract document's date to start with, its contract's start date (25 October 2026)
+  'defaultDate',
   'dateOfBirth',
   'birthDate',
   'age',

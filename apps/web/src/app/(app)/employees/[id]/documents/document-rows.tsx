@@ -205,7 +205,8 @@ function ItemRow({ item, employee, can, today }: { item: DocumentItem; employee:
             generate={generateDocument.bind(null, employee.id, { slotKey: item.slotKey, contractId: item.contractId ?? null, needsInputs: item.needsInputs ?? [] })}
             name={context ? `${item.name} (${context})` : item.name}
             needsInputs={item.needsInputs ?? []}
-            today={today}
+            today={item.defaultDate ? formatDate(item.defaultDate) : today}
+            dateHint={item.defaultDate ? 'The date written on the document: the contract’s start date, unless it should carry another date.' : undefined}
             again={documents.length > 0}
           />
         )}

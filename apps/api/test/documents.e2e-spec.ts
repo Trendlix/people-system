@@ -75,6 +75,7 @@ interface Item {
   contractId?: string;
   contractNumber?: string;
   contractVersion?: number;
+  defaultDate?: string;
   templateStatus: string;
   templateVersion: number | null;
   needsInputs: string[];
@@ -212,6 +213,8 @@ describe('Documents (e2e)', () => {
   describe('the Employment tab’s documents', () => {
     it('full time: both copies of each contract version, the offer and NDA, Form 1 and the letters; nothing to leave yet', async () => {
       const tab = await tabOf(ft.id);
+      // a contract version's documents start dated its start date (owner, 25 October 2026); the others today
+      const startsOn = (await prisma.contract.findUniqueOrThrow({ where: { id: ft.contractId } })).startDate.toISOString().slice(0, 10);
       expect(tab.sections.map((s) => s.key)).toEqual(['contract', 'hiring', 'insurance', 'letters', 'leaving']);
       expect(section(tab, 'contract')).toEqual([
         {
@@ -220,13 +223,15 @@ describe('Documents (e2e)', () => {
           contractId: ft.contractId,
           contractNumber: ft.contractNumber,
           contractVersion: 1,
+          defaultDate: startsOn,
           templateStatus: 'published',
           templateVersion: 1,
           needsInputs: [],
           documents: [],
         },
-        expect.objectContaining({ slotKey: 'contract_full_time_insurance', contractId: ft.contractId, templateStatus: 'published', documents: [] }),
+        expect.objectContaining({ slotKey: 'contract_full_time_insurance', contractId: ft.contractId, defaultDate: startsOn, templateStatus: 'published', documents: [] }),
       ]);
+      expect(['hiring', 'insurance', 'letters'].flatMap((k) => section(tab, k)).every((i) => i.defaultDate === undefined)).toBe(true);
       expect(section(tab, 'hiring').map((i) => [i.slotKey, i.templateStatus])).toEqual([
         ['offer_full_time', 'published'],
         ['nda', 'published'],

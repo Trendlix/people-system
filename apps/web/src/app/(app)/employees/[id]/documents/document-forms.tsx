@@ -67,14 +67,17 @@ export function GenerateDocument({
   name,
   needsInputs,
   today,
+  dateHint,
   again,
 }: {
   check: () => Promise<CheckResult>;
   generate: (fd: FormData) => Promise<GenerateResult>;
   name: string;
   needsInputs: string[];
-  /** DD/MM/YYYY */
+  /** DD/MM/YYYY: the date to start with (today, or a contract document's start date) */
   today: string;
+  /** What the date field's hint says; today's wording unless sent. */
+  dateHint?: string;
   /** Documents were generated from it before: they stay, and this adds one. */
   again: boolean;
 }) {
@@ -200,7 +203,7 @@ export function GenerateDocument({
         <DateInput id={fid('documentDate')} name="documentDate" defaultValue={today} aria-describedby={fid('documentDate-hint')} />
       </div>
       <p id={fid('documentDate-hint')} className="hint">
-        The date written on the document: today, unless it should carry another date.
+        {dateHint ?? 'The date written on the document: today, unless it should carry another date.'}
       </p>
       {phase.usesRestricted && <p className="text-sm text-muted">The template uses restricted details (the national ID, the salary or the bank account).</p>}
       {again && <p className="text-sm text-muted">The documents generated before stay as they are: this adds a new one.</p>}
