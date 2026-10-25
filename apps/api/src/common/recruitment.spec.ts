@@ -2,7 +2,6 @@ import {
   answerProblems,
   applyProblems,
   canMoveVacancy,
-  careersPath,
   emailHint,
   emailProblem,
   isVacancySlug,
@@ -115,8 +114,6 @@ describe('the channels', () => {
     expect(sourceOf(undefined)).toBe('careers');
     expect(sourceOf('')).toBe('careers');
     expect(sourceOf('tiktok')).toBe('other');
-    expect(careersPath('video-producer-vac-2026-0003')).toBe('/careers/video-producer-vac-2026-0003');
-    expect(careersPath('video-producer-vac-2026-0003', 'job_board')).toBe('/careers/video-producer-vac-2026-0003?src=job_board');
   });
 });
 

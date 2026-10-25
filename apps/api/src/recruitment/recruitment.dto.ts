@@ -35,6 +35,8 @@ import {
   SUGGESTION_STATUSES,
   type SuggestionStatus,
   CV_POSITION_LIMITS,
+  CAREERS_SITE_LIMITS,
+  CAREERS_SITE_STANDARD,
   PORTFOLIO_MODES,
   type PortfolioMode,
   type CvPositionChoiceInput,
@@ -308,6 +310,16 @@ export class RecruitmentSettingsDto {
 
   @IsOptional() @TrimOrNull() @IsString() @MaxLength(INVITE_LIMITS.text, { message: `Keep the invitation’s Arabic text to ${INVITE_LIMITS.text} characters or fewer.` })
   inviteAr?: string | null;
+
+  /**
+   * The careers site's address (owner, 25 October 2026: the careers pages moved to www.trendlix.com/en/careers): every
+   * public careers link is built on it; empty, the standard. The service checks it in words (careersSiteProblem).
+   */
+  @IsOptional()
+  @TrimOrNull()
+  @IsString({ message: `Write the careers site’s address in full, starting with https://, e.g. ${CAREERS_SITE_STANDARD}.` })
+  @MaxLength(CAREERS_SITE_LIMITS.address * 2, { message: `Keep the careers site’s address to ${CAREERS_SITE_LIMITS.address} characters or fewer.` })
+  careersSite?: string | null;
 }
 
 /**

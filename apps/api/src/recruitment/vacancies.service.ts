@@ -29,6 +29,7 @@ import { NotificationsService } from '../notifications/notifications.service.js'
 import { sanitizeJdHtml } from '../organisation/job-titles/jd-html.js';
 import { userNames } from '../payroll/adjustments/people.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { careersSiteIn } from './careers-site.js';
 import { CvReadingsService } from './cv-readings.service.js';
 import { approvesVacancies, isConfidentialVacancy, managesRecruitment, vacancyWhere } from './recruitment-access.js';
 import { emptyCounts, money, questionsOf, userRef, VACANCY_ENTITY, VACANCY_INCLUDE, vacancyListView, type VacancyCounts, type VacancyRow } from './recruitment-views.js';
@@ -197,6 +198,8 @@ export class VacanciesService {
       updatedAt: v.updatedAt.toISOString(),
       can,
       viewer: manages ? 'manages' : 'reads',
+      // the careers site its public links are built on (Recruitment Settings, 25 October 2026)
+      careersSite: await careersSiteIn(this.prisma),
     };
   }
 

@@ -1,6 +1,7 @@
 import { PDFDocument, StandardFonts } from '@cantoo/pdf-lib';
 import type { INestApplication } from '@nestjs/common';
 import {
+  CAREERS_SITE_STANDARD,
   careersIpToken,
   CLIENT_IP_AT_HEADER,
   CLIENT_IP_HEADER,
@@ -262,7 +263,7 @@ describe('Suggested From Earlier CVs (e2e)', () => {
     await prisma.department.deleteMany({ where: { id: { in: [departments.video, departments.motion] } } });
     await prisma.department.deleteMany({ where: { id: { in: [departments.studio, departments.radio, departments.board] } } });
     await prisma.notification.deleteMany({ where: { userId: { in: Object.values(users) } } });
-    await prisma.recruitmentSettings.updateMany({ where: { id: 1 }, data: { suggestMonths: 12, inviteSubject: null, inviteEn: null, inviteAr: null } });
+    await prisma.recruitmentSettings.updateMany({ where: { id: 1 }, data: { suggestMonths: 12, inviteSubject: null, inviteEn: null, inviteAr: null, careersSite: null } });
     await app.close();
   });
 
@@ -411,7 +412,8 @@ describe('Suggested From Earlier CVs (e2e)', () => {
     expect(sent).toHaveLength(1);
     expect(sent[0]).toMatchObject({ to: email('sami'), subject: `An opening for you: Video Editor ${RUN}` });
     expect(sent[0].text).toContain(`Dear ${nameOf('sami')},`);
-    expect(sent[0].text).toContain(`/careers/${V.slug}?src=invite`);
+    // the job's page on the careers site (Recruitment Settings' standard, 25 October 2026), never this server's address
+    expect(sent[0].text).toContain(`please apply here: https://www.trendlix.com/en/careers/${V.slug}?src=invite`);
     expect(sent[0].text).toContain('— — —');
     // not twice
     expect(said(await post('hr', `/recruitment/suggestions/${sami.id}/invite`).expect(409))).toEqual([`They were invited on ${TODAY.split('-').reverse().join('/')} already.`]);
@@ -503,5 +505,28 @@ describe('Suggested From Earlier CVs (e2e)', () => {
     // the applications made from them, with their sources
     const made = await prisma.auditLog.findMany({ where: { entityType: 'job_application', action: 'create', diff: { path: ['vacancy'], equals: V.number } }, select: { diff: true } });
     expect(made.map((m) => (m.diff as { source: string }).source).sort()).toEqual(['earlier_applicant', 'general_suggested']);
+  });
+
+  it('the invitation’s link and the vacancy’s follow Recruitment Settings’ careers site (25 October 2026)', async () => {
+    // the standard until one is set
+    expect((ok(await get('hr', `/recruitment/vacancies/${V.id}`)).body as VacancyView).careersSite).toBe(CAREERS_SITE_STANDARD);
+    const site = 'https://careers.example.test/jobs';
+    ok(await patch('hr', '/recruitment/settings', { careersSite: site }));
+    try {
+      expect((ok(await get('hr', `/recruitment/vacancies/${V.id}`)).body as VacancyView).careersSite).toBe(site);
+      // its hiring manager's page shows the same links
+      expect((ok(await get('manager', `/recruitment/vacancies/${V.id}`)).body as VacancyView).careersSite).toBe(site);
+      const mona = (await rowOf('mona'))!;
+      const before = mail.outbox.length;
+      ok(await post('hr', `/recruitment/suggestions/${mona.id}/invite`));
+      const sent = mail.outbox.slice(before);
+      expect(sent).toHaveLength(1);
+      expect(sent[0].to).toBe(email('mona'));
+      expect(sent[0].text).toContain(`please apply here: ${site}/${V.slug}?src=invite`);
+      expect(sent[0].text).toContain(`يمكنك التقديم من هنا: ${site}/${V.slug}?src=invite`);
+      expect(sent[0].text).not.toContain(CAREERS_SITE_STANDARD);
+    } finally {
+      await prisma.recruitmentSettings.updateMany({ where: { id: 1 }, data: { careersSite: null } });
+    }
   });
 });

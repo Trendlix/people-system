@@ -4,7 +4,7 @@
 // openid profile email):
 // - set up by a Super Admin in Organization → Hiring & Leaving → Recruitment Settings, "LinkedIn Sign-in": the app's
 //   client ID and secret (the secret sealed, never sent back: only "set"), a switch, and the redirect URL to give
-//   LinkedIn (the careers pages' address, careers-base.ts, and /linkedin/callback); audited;
+//   LinkedIn (the careers site's address, careers-base.ts, and /linkedin/callback); audited;
 // - on both forms when it is on: the button goes to LinkedIn with a state bound to the form (a job's or "Send us your
 //   CV") and to the browser, and a nonce; the website's callback has the API trade the code and read /v2/userinfo; the
 //   person comes back to the same form with their name and email filled in where empty (they can change them);
@@ -14,16 +14,16 @@
 // Cancelled, failed or off: back to the form with a plain note; the form works as ever.
 // The API: apps/api/src/recruitment/linkedin-signin.service.ts. The website: app/careers/linkedin/.
 
-import { careersHref } from './careers-base.js';
+import { careersSiteUrl } from './careers-base.js';
 
-/** The callback's path in the website (the redirect URL LinkedIn is given is the careers pages' address and /linkedin/callback). */
+/** The callback's path in the website (the redirect URL LinkedIn is given is the careers site's address and /linkedin/callback). */
 export const LINKEDIN_CALLBACK_PATH = '/careers/linkedin/callback';
 
 /** Where the form's button goes on the website (it asks the API for LinkedIn's address and sends the browser there). */
 export const LINKEDIN_START_PATH = '/careers/linkedin/start';
 
-/** The redirect URL for the careers pages' address (careers-base.ts): "https://www.trendlix.com/careers/linkedin/callback". */
-export const linkedinRedirectUri = (careersBase: string): string => careersHref(careersBase, LINKEDIN_CALLBACK_PATH);
+/** The redirect URL for the careers site's address (careers-base.ts): "https://www.trendlix.com/en/careers/linkedin/callback". */
+export const linkedinRedirectUri = (careersBase: string): string => careersSiteUrl(careersBase, { linkedinCallback: true });
 
 export const LINKEDIN_SCOPES = 'openid profile email';
 export const LINKEDIN_AUTHORIZE_URL = 'https://www.linkedin.com/oauth/v2/authorization';
@@ -83,8 +83,9 @@ export function linkedinFormPath(form: LinkedInForm, src?: string | null): strin
   return `/careers/${form.slug}${source}`;
 }
 
-/** The form's page at the careers pages' address (careers-base.ts), its ?src= kept. */
-export const linkedinFormHref = (careersBase: string, form: LinkedInForm, src?: string | null): string => careersHref(careersBase, linkedinFormPath(form, src));
+/** The form's page at the careers site's address (careers-base.ts), its ?src= kept. */
+export const linkedinFormHref = (careersBase: string, form: LinkedInForm, src?: string | null): string =>
+  form.kind === 'general' ? careersSiteUrl(careersBase, { general: true }) : careersSiteUrl(careersBase, { slug: form.slug, src: src && /^[a-z_]{1,40}$/.test(src) ? src : null });
 
 /** The address's word for how it went: ?linkedin=done, or the problem. */
 export const LINKEDIN_RETURN_PARAM = 'linkedin';

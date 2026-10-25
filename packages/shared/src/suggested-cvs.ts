@@ -13,11 +13,12 @@
 // suggestions (apps/api/src/recruitment/vacancy-suggestions.service.ts), the web shows them. Tested in
 // apps/api/src/common/suggested-cvs.spec.ts.
 
+import { careersSiteUrl } from './careers-base.js';
 import { experienceOf, meetsMinYears, titleLikeness } from './cv-analysis.js';
 import { OPEN_POSITION_RULES, type CvFit, type CvFitPart, type FitJob } from './cv-fit.js';
 import { HIDDEN } from './developer.js';
 import type { RehireEligibility } from './offboarding.js';
-import type { RecruitmentUserRef, VacancyQuestion, VacancyStatus } from './recruitment.js';
+import { INVITE_SOURCE, type RecruitmentUserRef, type VacancyQuestion, type VacancyStatus } from './recruitment.js';
 import type { ScreeningCv, ScreeningVerdict } from './screening.js';
 
 // ---------- statuses ----------
@@ -446,8 +447,11 @@ export function inviteWordsProblems(w: Partial<InviteWords>): string[] {
   return problems;
 }
 
-/** The apply link an invitation carries: the job's page on the careers site with ?src=invite (its applications say so). */
-export const inviteLink = (origin: string, slug: string): string => `${origin.replace(/\/+$/, '')}/careers/${encodeURIComponent(slug)}?src=invite`;
+/**
+ * The apply link an invitation carries: the job's page on the careers site (Recruitment Settings' address, careers-base.ts)
+ * with ?src=invite (its applications say so).
+ */
+export const inviteLink = (careersSite: string, slug: string): string => careersSiteUrl(careersSite, { slug, src: INVITE_SOURCE });
 
 const fill = (text: string, vars: { name: string; job: string; company: string; link: string }) =>
   text.replace(/\{name\}/g, vars.name).replace(/\{job\}/g, vars.job).replace(/\{company\}/g, vars.company).replace(/\{link\}/g, vars.link);

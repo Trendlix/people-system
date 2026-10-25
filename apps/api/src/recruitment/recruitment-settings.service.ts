@@ -1,5 +1,9 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import {
+  CAREERS_SITE_STANDARD,
+  careersSiteOf,
+  careersSiteProblem,
+  careersSiteValue,
   INVITE_STANDARD,
   inviteWordsProblems,
   positionChoiceProblems,
@@ -33,6 +37,10 @@ import type { CvPositionChoicesDto, EarlierOffersDto, RecruitmentSettingsDto } f
 // filter by their teams. Each change audited: the positions hidden, shown again and renamed. And since then too (owner:
 // "allow the HR to add for now job offers with a past duedate to enter the previous data"): the switch "Entering earlier
 // offers", on for now; HR (or a Super Admin) switches it, HR and the CEO read it; audited.
+// Since 25 October 2026 too (the careers pages moved to www.trendlix.com/en/careers; the owner asked that the links stop
+// relying on people.trendlix.com/careers' redirect): "Careers site address", every public careers link built on it
+// (careers-site.ts, packages/shared careers-base.ts): an https address with no query, the standard when unset (typing the
+// standard keeps none). HR (or a Super Admin) changes it, HR and the CEO read it; each change audited, from and to.
 
 export const SETTINGS_ENTITY = 'recruitment_settings';
 
@@ -64,27 +72,36 @@ export class RecruitmentSettingsService {
       suggestions: { recencyMonths: row?.suggestMonths ?? SUGGESTION_LIMITS.recencyMonths },
       invite: { subject: row?.inviteSubject ?? null, en: row?.inviteEn ?? null, ar: row?.inviteAr ?? null },
       inviteStandard: { subject: INVITE_STANDARD.subject, en: INVITE_STANDARD.en, ar: INVITE_STANDARD.ar },
+      careersSite: { set: row?.careersSite ?? null, standard: CAREERS_SITE_STANDARD, address: careersSiteOf(row?.careersSite) },
       updatedAt: row?.updatedAt.toISOString() ?? null,
       updatedBy: userRef(row?.updatedBy ?? null, names),
     };
   }
 
   /**
-   * HR's words for the rejection email and the invitation, and the months back CVs count; a field left out stays, an
-   * empty text goes back to the standard.
+   * HR's words for the rejection email and the invitation, the months back CVs count, and the careers site's address; a
+   * field left out stays, an empty text (or address) goes back to the standard.
    */
   async update(dto: RecruitmentSettingsDto, user: SessionUser): Promise<RecruitmentSettingsView> {
+    // the careers site: trimmed, without a slash at its end; empty (null), the standard
+    const site = dto.careersSite === undefined ? undefined : careersSiteValue(dto.careersSite);
     const problems = [
       ...rejectionWordsProblems({ subject: dto.rejectionSubject, en: dto.rejectionEn, ar: dto.rejectionAr }),
       ...inviteWordsProblems({ subject: dto.inviteSubject, en: dto.inviteEn, ar: dto.inviteAr }),
       ...(dto.suggestMonths !== undefined ? [recencyMonthsProblem(dto.suggestMonths)].filter((p): p is string => !!p) : []),
+      ...(site ? [careersSiteProblem(site)].filter((p): p is string => !!p) : []),
     ];
     if (problems.length) throw new BadRequestException(problems);
     const before = await this.prisma.recruitmentSettings.findUnique({ where: { id: 1 } });
     const texts = Object.fromEntries(TEXT_FIELDS.map((k) => [k, dto[k] === undefined ? (before?.[k] ?? null) : dto[k] || null])) as Texts;
-    const next = { ...texts, suggestMonths: dto.suggestMonths ?? before?.suggestMonths ?? SUGGESTION_LIMITS.recencyMonths };
-    // the subjects and the months as they are; the long texts by whether they changed, never the words
-    const shown = (v: (Partial<Texts> & { suggestMonths?: number }) | null) => ({
+    const next = {
+      ...texts,
+      suggestMonths: dto.suggestMonths ?? before?.suggestMonths ?? SUGGESTION_LIMITS.recencyMonths,
+      // the standard typed in keeps none, so the links follow the standard
+      careersSite: site === undefined ? (before?.careersSite ?? null) : site === CAREERS_SITE_STANDARD ? null : site,
+    };
+    // the subjects, the months and the careers site as they are; the long texts by whether they changed, never the words
+    const shown = (v: (Partial<Texts> & { suggestMonths?: number; careersSite?: string | null }) | null) => ({
       rejectionSubject: v?.rejectionSubject ?? null,
       rejectionEn: v?.rejectionEn ? '(text)' : null,
       rejectionAr: v?.rejectionAr ? '(text)' : null,
@@ -92,6 +109,7 @@ export class RecruitmentSettingsService {
       inviteEn: v?.inviteEn ? '(text)' : null,
       inviteAr: v?.inviteAr ? '(text)' : null,
       suggestMonths: v?.suggestMonths ?? SUGGESTION_LIMITS.recencyMonths,
+      careersSite: v?.careersSite ?? `${CAREERS_SITE_STANDARD} (standard)`,
     });
     const rejectionChanged = (before?.rejectionEn ?? null) !== next.rejectionEn || (before?.rejectionAr ?? null) !== next.rejectionAr;
     const inviteChanged = (before?.inviteEn ?? null) !== next.inviteEn || (before?.inviteAr ?? null) !== next.inviteAr;

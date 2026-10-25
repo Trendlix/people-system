@@ -682,6 +682,12 @@ export interface RecruitmentSettingsView {
   /** The invitation to apply's words as HR set them (null: the standard), and the standard ones. */
   invite: InviteWords;
   inviteStandard: { subject: string; en: string; ar: string };
+  /**
+   * The careers site's address (owner, 25 October 2026: the careers pages moved to www.trendlix.com/en/careers;
+   * careers-base.ts): as HR set it (null: the standard), the standard, and the one every public careers link is built
+   * on. Left out by an API from before it.
+   */
+  careersSite?: { set: string | null; standard: string; address: string };
   updatedAt: string | null;
   updatedBy: RecruitmentUserRef | null;
 }

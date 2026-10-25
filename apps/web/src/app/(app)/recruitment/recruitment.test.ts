@@ -7,6 +7,7 @@ import {
   applicantsHref,
   APPLICANTS_PATH,
   approvesVacancies,
+  careersJobHref,
   channelLinks,
   makeOfferHref,
   managesRecruitment,
@@ -150,10 +151,18 @@ describe('the questions editor', () => {
 });
 
 describe('the channels and Make offer', () => {
-  it('give each channel the same job page with its source', () => {
-    const links = channelLinks('https://people.trendlix.com', 'video-producer-vac-2026-0003');
-    expect(links[0]).toEqual({ source: 'careers', href: 'https://people.trendlix.com/careers/video-producer-vac-2026-0003' });
-    expect(links.find((l) => l.source === 'linkedin')?.href).toBe('https://people.trendlix.com/careers/video-producer-vac-2026-0003?src=linkedin');
+  it('give each channel the same job page on the careers site with its source, never this site’s address', () => {
+    const links = channelLinks('https://www.trendlix.com/en/careers', 'video-producer-vac-2026-0003');
+    expect(links[0]).toEqual({ source: 'careers', href: 'https://www.trendlix.com/en/careers/video-producer-vac-2026-0003' });
+    expect(links.find((l) => l.source === 'linkedin')?.href).toBe('https://www.trendlix.com/en/careers/video-producer-vac-2026-0003?src=linkedin');
+    expect(links.find((l) => l.source === 'job_board')?.href).toBe('https://www.trendlix.com/en/careers/video-producer-vac-2026-0003?src=job_board');
+    expect(links.map((l) => l.source)).toEqual(['careers', 'linkedin', 'facebook', 'job_board', 'referral', 'other']);
+    expect(links.every((l) => !l.href.includes('people.trendlix.com'))).toBe(true);
+    // another address set in Recruitment Settings: the links follow it
+    expect(channelLinks('https://careers.example.test/jobs', 'video-producer-vac-2026-0003').find((l) => l.source === 'facebook')?.href).toBe(
+      'https://careers.example.test/jobs/video-producer-vac-2026-0003?src=facebook',
+    );
+    expect(careersJobHref('https://www.trendlix.com/en/careers', 'video-producer-vac-2026-0003')).toBe('https://www.trendlix.com/en/careers/video-producer-vac-2026-0003');
   });
 
   it('fill a job offer from the applicant and their vacancy, the name in its own language', () => {

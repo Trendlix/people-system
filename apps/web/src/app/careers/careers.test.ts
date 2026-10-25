@@ -10,7 +10,6 @@ import {
   generalFormProblems,
   generalPortfolioAsk,
   generalTypedValues,
-  jobHref,
   noticeFrom,
   OTHER_AREA,
   portfolioLinksOf,
@@ -80,9 +79,7 @@ describe('the application form', () => {
     expect(typedValues(form(good), QUESTIONS)).not.toHaveProperty('whatsapp');
   });
 
-  it('links a job for a channel and lines up its facts', () => {
-    expect(jobHref('video-producer-vac-2026-0003')).toBe('/careers/video-producer-vac-2026-0003');
-    expect(jobHref('video-producer-vac-2026-0003', 'facebook')).toBe('/careers/video-producer-vac-2026-0003?src=facebook');
+  it('lines up a job’s facts', () => {
     expect(factsLine(['Production', null, 'Full-time'])).toBe('Production · Full-time');
   });
 });

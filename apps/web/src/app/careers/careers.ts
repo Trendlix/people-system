@@ -16,7 +16,6 @@ import {
   sourceOf,
   webLinkOf,
   yearsProblem,
-  type ApplicationSource,
   type ApplyInput,
   type GeneralCvInput,
   type PortfolioAsk,
@@ -30,10 +29,9 @@ import {
 // tested in careers.test.ts; the API checks every rule again. Its email, mobile, years and notice period (22 October
 // 2026, on an iPhone: "make the years of experience field only numbers"; the notice period "in Days" … "and a selectoor
 // to make it months"; the mobile "like the one applied in the system, country code and no extra zero"; "validate email
-// field") are checked in the page as well, under each field, before the form is sent (fieldProblems).
-
-export const CAREERS_PATH = '/careers';
-export const jobHref = (slug: string, source?: ApplicationSource) => (source && source !== 'careers' ? `/careers/${slug}?src=${source}` : `/careers/${slug}`);
+// field") are checked in the page as well, under each field, before the form is sent (fieldProblems). Since the pages
+// moved to www.trendlix.com/en/careers (25 October 2026) no link to them is made here: every public careers link is
+// careersSiteUrl's (packages/shared careers-base.ts), at Recruitment Settings' "Careers site address".
 
 /** The form field of a question's answer. */
 export const answerField = (key: string) => `answer-${key}`;
@@ -247,8 +245,6 @@ export function fieldProblems(fd: FormData, { yearsRequired }: { yearsRequired: 
 export const factsLine = (parts: readonly (string | null | undefined)[]) => parts.filter((p): p is string => !!p).join(' · ');
 
 // ---------- "Send us your CV" (22 October 2026: "what came out of the posted jobs and what cam on randomly") ----------
-
-export const GENERAL_PATH = '/careers/general';
 
 /**
  * The general form's position field (owner, 25 October 2026: "should it be the positions?"; asked, "Position, grouped by

@@ -1,16 +1,16 @@
-import { LINKEDIN_CALLBACK_PATH, LINKEDIN_LIMITS, linkedinRedirectUri, type LinkedInSettingsInput, type LinkedInSettingsView } from '@trendlix/shared';
+import { LINKEDIN_LIMITS, linkedinRedirectUri, type LinkedInSettingsInput, type LinkedInSettingsView } from '@trendlix/shared';
 
 // Recruitment Settings' "LinkedIn Sign-in" (owner, 25 October 2026, on "Apply for This Job": "can i use linkedin to
 // complete the data?"; asked, "Sign in with LinkedIn" with "Fill the form from the CV"; packages/shared
-// linkedin-signin.ts): a Super Admin's. Where it stands in words, the redirect URL to give LinkedIn (the careers pages'
-// public address, lib/careers-base.ts, and /linkedin/callback), and the form read into what the API takes: the client secret only when one was pasted (an empty box keeps
+// linkedin-signin.ts): a Super Admin's. Where it stands in words, the redirect URL to give LinkedIn (the careers site's
+// address, Recruitment Settings' "Careers site address", and /linkedin/callback), and the form read into what the API takes: the client secret only when one was pasted (an empty box keeps
 // the one set), never kept to show again. Pure code, tested in linkedin-settings.test.ts; the API checks everything again.
 
 /**
- * The redirect URL LinkedIn is given: the careers pages' address (lib/careers-base.ts: CAREERS_BASE_URL, else this site's
- * own and /careers) and /linkedin/callback; the path alone when neither can be read (never a written-in address).
+ * The redirect URL LinkedIn is given (25 October 2026): the careers site's address (Recruitment Settings, as the API
+ * sends it; lib/careers-base.ts) and /linkedin/callback, the one the API's sign-in sends LinkedIn too.
  */
-export const redirectUrlFor = (careersBase: string | null | undefined): string => (careersBase ? linkedinRedirectUri(careersBase) : LINKEDIN_CALLBACK_PATH);
+export const redirectUrlFor = (careersSite: string): string => linkedinRedirectUri(careersSite);
 
 /** Where the sign-in stands, in words, with its tone. */
 export function linkedinStatus(v: LinkedInSettingsView): { tone: 'ok' | 'warn' | 'neutral'; text: string } {

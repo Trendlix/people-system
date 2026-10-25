@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, ServiceUnavailableException, type OnModuleInit } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import {
+  careersSiteOf,
   cvFactsOf,
   cvFitOf,
   cvSkillsMatcher,
@@ -37,7 +37,6 @@ import {
 import { AuditService } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { fromDateOnly, shownDate, dayInCairo, todayInCairo, toDateOnly } from '../common/date-only.js';
-import { webOriginOf } from '../employee-access/employee-access.service.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { MailService } from '../mail/mail.service.js';
@@ -176,7 +175,6 @@ export class VacancySuggestionsService implements OnModuleInit {
     private readonly fits: CvFitsService,
     private readonly generalCvs: GeneralCvsService,
     private readonly comments: ScreeningCommentsService,
-    private readonly config: ConfigService,
   ) {}
 
   /** A round of the CV readings that read new CVs: matched with the open vacancies, HR told of new matches. */
@@ -793,7 +791,8 @@ export class VacancySuggestionsService implements OnModuleInit {
 
   /**
    * Invite to apply (HR, a Super Admin; only when they press it): the email to the address of the CV it came from, the
-   * job and its apply link (?src=invite), English then Arabic with the words of Recruitment Settings. Refused while the
+   * job and its apply link on the careers site (?src=invite), English then Arabic with the words and the careers site's
+   * address of Recruitment Settings. Refused while the
    * vacancy doesn't take applications (409) or email isn't set up (503); the suggestion stays suggested if sending fails.
    */
   async invite(id: string, user: SessionUser): Promise<VacancySuggestionView> {
@@ -808,12 +807,13 @@ export class VacancySuggestionsService implements OnModuleInit {
     const claimed = await this.prisma.vacancySuggestion.updateMany({ where: { id, status: 'suggested' }, data: { status: 'invited', invitedAt: now, invitedTo: to, decidedById: user.id, decidedAt: now } });
     if (!claimed.count) throw new ConflictException('Someone decided on it meanwhile. Reload the page to see where it stands.');
     const [settings, company] = await Promise.all([
-      this.prisma.recruitmentSettings.findUnique({ where: { id: 1 }, select: { inviteSubject: true, inviteEn: true, inviteAr: true } }),
+      this.prisma.recruitmentSettings.findUnique({ where: { id: 1 }, select: { inviteSubject: true, inviteEn: true, inviteAr: true, careersSite: true } }),
       this.prisma.company.findUnique({ where: { id: 1 }, select: { nameEn: true } }),
     ]);
     const mail = inviteMail(
       { subject: settings?.inviteSubject ?? null, en: settings?.inviteEn ?? null, ar: settings?.inviteAr ?? null },
-      { name: r.generalCv?.fullName ?? r.sourceApplication?.fullName ?? r.candidate.fullName, job: v.title, company: company?.nameEn || 'the company', link: inviteLink(webOriginOf(this.config), v.slug) },
+      // the job's page on the careers site of Recruitment Settings (25 October 2026), never this server's own address
+      { name: r.generalCv?.fullName ?? r.sourceApplication?.fullName ?? r.candidate.fullName, job: v.title, company: company?.nameEn || 'the company', link: inviteLink(careersSiteOf(settings?.careersSite), v.slug) },
     );
     try {
       await this.mail.send({ to, replyTo: user.email, subject: mail.subject, text: mail.text });

@@ -1,7 +1,16 @@
 'use client';
 
 import { useActionState } from 'react';
-import { CV_POSITION_LIMITS, INVITE_LIMITS, REJECTION_LIMITS, SUGGESTION_LIMITS, type CvPosition, type RecruitmentSettingsView } from '@trendlix/shared';
+import {
+  CAREERS_SITE_LIMITS,
+  CAREERS_SITE_STANDARD,
+  CV_POSITION_LIMITS,
+  INVITE_LIMITS,
+  REJECTION_LIMITS,
+  SUGGESTION_LIMITS,
+  type CvPosition,
+  type RecruitmentSettingsView,
+} from '@trendlix/shared';
 import { FormErrors, useFieldIds } from '@/components/form';
 import { titleCase } from '@/lib/format';
 import type { FormState } from '@/lib/types';
@@ -49,6 +58,51 @@ export function RejectionWordsForm({ action, settings }: { action: Action; setti
       <div className="flex flex-wrap items-center gap-3">
         <button type="submit" disabled={pending} className="btn btn-primary">
           {pending ? 'Saving…' : 'Save the words'}
+        </button>
+        {state.message && !state.errors && (
+          <span role="status" className="text-sm text-ok">
+            {state.message}
+          </span>
+        )}
+      </div>
+    </form>
+  );
+}
+
+/**
+ * The careers site's address (owner, 25 October 2026: the careers pages moved to www.trendlix.com/en/careers, and the
+ * links should stop relying on people.trendlix.com/careers' redirect): every public careers link is built on it. Shown
+ * as in use (the standard when unset); left empty, the standard. The API checks it again.
+ */
+export function CareersSiteForm({ action, address }: { action: Action; address: string }) {
+  const [state, formAction, pending] = useActionState(action, {});
+  const fid = useFieldIds();
+  const v = state.values ?? {};
+  return (
+    <form action={formAction} className="space-y-4">
+      <FormErrors errors={state.errors} />
+      <div>
+        <label htmlFor={fid('site')} className="label">
+          Careers site address
+        </label>
+        <input
+          id={fid('site')}
+          name="careersSite"
+          inputMode="url"
+          autoComplete="off"
+          spellCheck={false}
+          maxLength={CAREERS_SITE_LIMITS.address}
+          defaultValue={str(v.careersSite) ?? address}
+          placeholder={CAREERS_SITE_STANDARD}
+          className="input"
+        />
+        <p className="mt-1 text-xs text-muted">
+          The job list’s page, starting with https://, with no ? or #. Leave it empty for the standard, {CAREERS_SITE_STANDARD}.
+        </p>
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="submit" disabled={pending} className="btn btn-primary">
+          {pending ? 'Saving…' : 'Save'}
         </button>
         {state.message && !state.errors && (
           <span role="status" className="text-sm text-ok">

@@ -2,7 +2,7 @@ import {
   APPLICATION_CHANNELS,
   APPLICATION_SOURCES,
   APPLICATION_STAGES,
-  careersPath,
+  careersSiteUrl,
   EMPLOYMENT_TYPES,
   isApplicationStage,
   isDictionarySkill,
@@ -351,10 +351,17 @@ export function moved<T>(list: readonly T[], index: number, by: -1 | 1): T[] {
 
 // ---------- the channels ----------
 
-/** The channels' links of a vacancy, each the careers page's address with its ?src= (never a general CV's: HR's move only). */
-export function channelLinks(origin: string, slug: string): { source: ApplicationChannel; href: string }[] {
-  return APPLICATION_CHANNELS.map((source) => ({ source, href: `${origin}${careersPath(slug, source)}` }));
+/**
+ * The channels' links of a vacancy, each its job page on the careers site (Recruitment Settings' address, 25 October
+ * 2026: www.trendlix.com/en/careers unless changed; lib/careers-base.ts) with its ?src= (never a general CV's: HR's
+ * move only); the careers page's own, reached directly, without one.
+ */
+export function channelLinks(careersSite: string, slug: string): { source: ApplicationChannel; href: string }[] {
+  return APPLICATION_CHANNELS.map((source) => ({ source, href: careersSiteUrl(careersSite, { slug, src: source }) }));
 }
+
+/** "Open on the careers site": the vacancy's job page there, as people reach it directly. */
+export const careersJobHref = (careersSite: string, slug: string): string => careersSiteUrl(careersSite, { slug });
 
 // ---------- Make offer ----------
 

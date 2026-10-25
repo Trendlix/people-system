@@ -2543,7 +2543,8 @@ model InterviewFeedback {
 // (Suggested From Earlier CVs, packages/shared suggested-cvs.ts): how far back CVs count, in months, and the invitation
 // to apply's subject and words (none: INVITE_STANDARD). Since 25 October 2026 (owner: "allow the HR to add for now job
 // offers with a past duedate to enter the previous data"): the switch "Entering earlier offers", on for now (also with no
-// row), HR's and a Super Admin's to change.
+// row), HR's and a Super Admin's to change. And since then too: the careers site's address (none: the standard,
+// https://www.trendlix.com/en/careers).
 model RecruitmentSettings {
   id               Int      @id @default(1)
   rejectionSubject String?  @map("rejection_subject")
@@ -2554,6 +2555,9 @@ model RecruitmentSettings {
   inviteEn         String?  @map("invite_en")
   inviteAr         String?  @map("invite_ar")
   earlierOffers    Boolean  @default(true) @map("earlier_offers")
+  // the careers site's address (owner, 25 October 2026: the careers pages moved to www.trendlix.com/en/careers): every
+  // public careers link is built on it; null, the standard (packages/shared careers-base.ts)
+  careersSite      String?  @map("careers_site")
   updatedById      String?  @map("updated_by") @db.Uuid
   updatedBy        User?    @relation("RecruitmentSettingsChange", fields: [updatedById], references: [id], onDelete: SetNull)
   updatedAt        DateTime @default(now()) @map("updated_at") @db.Timestamptz

@@ -1,15 +1,14 @@
 import type { Metadata } from 'next';
-import { EARLIER_OFFERS_SWITCH } from '@trendlix/shared';
-import { headers } from 'next/headers';
+import { careersSiteUrl, EARLIER_OFFERS_SWITCH } from '@trendlix/shared';
 import { Suspense } from 'react';
-import { careersBaseFrom } from '@/lib/careers-base';
+import { careersSiteFrom } from '@/lib/careers-base';
 import { isSuperAdmin } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import { Empty, Loading } from '../ui';
-import { saveInviteWords, savePositionChoices, saveRecruitmentSettings, saveSuggestionSettings } from '../../recruitment/actions';
+import { saveCareersSite, saveInviteWords, savePositionChoices, saveRecruitmentSettings, saveSuggestionSettings } from '../../recruitment/actions';
 import { loadCvPositions, loadRecruitmentSettings, recruitmentNotLoaded } from '../../recruitment/data';
 import { managesRecruitment, readsRecruitment, WHO_SEES } from '../../recruitment/recruitment';
-import { InviteWordsForm, PositionsForm, PositionsList, RejectionWordsForm, SuggestionSettingsForm } from './settings-form';
+import { CareersSiteForm, InviteWordsForm, PositionsForm, PositionsList, RejectionWordsForm, SuggestionSettingsForm } from './settings-form';
 import { redirectUrlFor } from '../../recruitment/linkedin-settings';
 import { loadEarlierOffersSetting, loadLinkedInSettings, loadPortfolioSettings } from '../../recruitment/portfolio-data';
 import { saveEarlierOffers, saveLinkedInSettings, savePortfolioSettings } from '../../recruitment/settings-actions';
@@ -27,7 +26,10 @@ import { PortfolioSettingsForm, PortfolioSettingsList } from './portfolio-form';
 // forms ("Portfolio on the Forms", HR's to change), and the LinkedIn sign-in's setup ("LinkedIn Sign-in", a Super
 // Admin's only, in their own session; never a developer's). And since then too (owner: "allow the HR to add for now job
 // offers with a past duedate to enter the previous data"): "Earlier Offers", the switch "Entering earlier offers", on for
-// now, HR's and a Super Admin's to change, the CEO's to read.
+// now, HR's and a Super Admin's to change, the CEO's to read. And since the careers pages moved to the main website
+// (25 October 2026: www.trendlix.com/en/careers; the owner asked that the links stop relying on people.trendlix.com/
+// careers' redirect): "Careers Site", the address every public careers link is built on (HR's to change, audited; the
+// CEO reads), the standard when unset; LinkedIn's redirect URL below is at it.
 
 export const metadata: Metadata = { title: 'Recruitment Settings · People System' };
 
@@ -38,8 +40,31 @@ async function Settings() {
   if (loaded.kind !== 'ok') return <Empty>{recruitmentNotLoaded(loaded, 'settings')}</Empty>;
   const s = loaded.value;
   const manages = managesRecruitment(user);
+  // the address in use, as the API sends it (lib/careers-base.ts)
+  const careersSite = careersSiteFrom(s.careersSite?.address);
   return (
     <div className="space-y-6">
+      <section aria-labelledby="careers-site" className="card space-y-4 p-6">
+        <div className="space-y-1">
+          <h2 id="careers-site" className="text-lg font-semibold">
+            Careers Site
+          </h2>
+          <p className="max-w-3xl text-sm text-muted">
+            Where the careers pages are, on the main website. Every careers link the system makes is built on this address: the apply links of each vacancy, the
+            invitation to apply’s link and LinkedIn’s redirect URL. A job’s page is the address and the job’s own name; “Send us your CV” is{' '}
+            <span className="break-all">{careersSiteUrl(careersSite, { general: true })}</span>.
+          </p>
+        </div>
+        {manages ? (
+          <CareersSiteForm action={saveCareersSite} address={careersSite} />
+        ) : (
+          <p className="text-sm break-all">
+            {careersSite}
+            {s.careersSite?.set ? '' : ' (the standard)'}
+          </p>
+        )}
+      </section>
+
       <section aria-labelledby="earlier-offers" className="card space-y-4 p-6">
         <div className="space-y-1">
           <h2 id="earlier-offers" className="text-lg font-semibold">
@@ -172,7 +197,7 @@ async function Settings() {
             <p className="text-sm text-muted">Open this in your own session to set it up: not while viewing as someone.</p>
           ) : (
             <Suspense fallback={<Loading />}>
-              <LinkedInSection />
+              <LinkedInSection careersSite={careersSite} />
             </Suspense>
           )}
         </section>
@@ -202,13 +227,13 @@ async function PortfolioSection({ manages }: { manages: boolean }) {
   return manages ? <PortfolioSettingsForm action={savePortfolioSettings} positions={positions} /> : <PortfolioSettingsList positions={positions} />;
 }
 
-/** The LinkedIn sign-in's setup, with the redirect URL at the careers pages' address (lib/careers-base.ts). */
-async function LinkedInSection() {
-  const [loaded, h] = await Promise.all([loadLinkedInSettings(), headers()]);
+/** The LinkedIn sign-in's setup, with the redirect URL at the careers site's address (Careers Site, above). */
+async function LinkedInSection({ careersSite }: { careersSite: string }) {
+  const loaded = await loadLinkedInSettings();
   if (loaded.kind !== 'ok') {
     return <p className="text-sm text-muted">{loaded.kind === 'forbidden' ? 'Only a Super Admin sets up the LinkedIn sign-in.' : recruitmentNotLoaded(loaded, 'LinkedIn sign-in')}</p>;
   }
-  return <LinkedInSettingsForm action={saveLinkedInSettings} view={loaded.value} redirectUrl={redirectUrlFor(careersBaseFrom(h))} />;
+  return <LinkedInSettingsForm action={saveLinkedInSettings} view={loaded.value} redirectUrl={redirectUrlFor(careersSite)} />;
 }
 
 // Under Organization since 23 October 2026 (owner: "Check-in Setup, KPI Pillars and deadlines, Recruitment and

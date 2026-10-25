@@ -191,6 +191,15 @@ export async function saveInviteWords(_prev: FormState, fd: FormData): Promise<F
   return send('PATCH', '/recruitment/settings', { inviteSubject: field('inviteSubject'), inviteEn: field('inviteEn'), inviteAr: field('inviteAr') }, typed(fd));
 }
 
+// The careers site's address (owner, 25 October 2026: the careers pages moved to www.trendlix.com/en/careers, and the
+// links should stop relying on people.trendlix.com/careers' redirect): every public careers link is built on it; empty,
+// the standard. The API checks it (https, no query) and audits the change.
+
+export async function saveCareersSite(_prev: FormState, fd: FormData): Promise<FormState> {
+  const v = fd.get('careersSite');
+  return send('PATCH', '/recruitment/settings', { careersSite: typeof v === 'string' ? v.trim() : '' }, typed(fd), 'Saved the careers site’s address.');
+}
+
 // The positions on "Send us your CV" (owner, 25 October 2026: "should it be the positions?"; asked, "Position, grouped by
 // team"): HR hides a position from the careers page, or gives it a public name; every row of the form is sent
 

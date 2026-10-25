@@ -1,17 +1,16 @@
 import type { Metadata } from 'next';
-import { headers } from 'next/headers';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { APPLICATION_STAGE_LABELS, GENERAL_KEY, GOOD_MATCH_PERCENT, LABELS, QUESTION_KIND_LABELS, questionMaxPoints, sourceLine, type ScreeningCv, type VacancySuggestionView, type VacancyView } from '@trendlix/shared';
 import { RichText } from '@/components/rich-text';
 import { SetUpEmailLink } from '@/components/set-up-email-link';
+import { careersSiteFrom } from '@/lib/careers-base';
 import { setsUpEmail } from '@/lib/email-setup';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { isHidden, shownCode } from '@/lib/hidden';
 import { canDelete } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import { BackLink, Empty, Loading } from '../../../organization/ui';
-import { originFrom } from '../../../offers/sending';
 import { moveOnBoard, moveVacancy } from '../../actions';
 import { PipelineBoard } from '../../board';
 import { candidateHref } from '../../candidates';
@@ -22,7 +21,7 @@ import { loadApplicants, loadBoard, loadSuggestions, loadVacancy, recruitmentNot
 import { ActionButton, CopyLink, ReasonButton } from '../../forms';
 import { vacancyBulkHref } from '../../general';
 import { boardHref, MY_HIRING_PATH } from '../../hiring';
-import { applicantHref, applicantsHref, channelLinks, GOOD_CV_MATCH_PERCENT, readApplicantsQuery, STAGE_FILTERS, VACANCIES_PATH, vacancyEditHref, vacancyHref } from '../../recruitment';
+import { applicantHref, applicantsHref, careersJobHref, channelLinks, GOOD_CV_MATCH_PERCENT, readApplicantsQuery, STAGE_FILTERS, VACANCIES_PATH, vacancyEditHref, vacancyHref } from '../../recruitment';
 import { addSuggestion, dismissSuggestion, inviteSuggestion } from '../../suggestion-actions';
 import {
   decisionText,
@@ -53,6 +52,9 @@ import { vacancyPortfolioText } from '../../portfolio';
 // opened posts?"; "Suggest; HR adds", "Yes, HR presses 'Invite to apply'"): a third view (?view=suggested) for HR, the CEO
 // and a Super Admin, never the hiring manager: the earlier CVs that match, each with its reasons, its CV in the CV window,
 // and HR's Add to this vacancy, Invite to apply (confirmed first) and Dismiss; a filter by what was decided.
+// The careers site (25 October 2026: the careers pages moved to www.trendlix.com/en/careers; the owner asked that the
+// links stop relying on people.trendlix.com/careers' redirect): the apply links and "Open on the careers site" are built
+// on Recruitment Settings' "Careers site address", as the API sends it with the vacancy (lib/careers-base.ts).
 // Deleting (owner, 25 October 2026, on a closed vacancy with one rejected applicant: "i want to delete this"; asked,
 // "Vacancy alone - applicant alone - superadmin only"): a Super Admin's Delete, also once people applied (its applications
 // go with it, its number typed to confirm), and Delete applicant on each row of the list and each card of the board.
@@ -305,7 +307,7 @@ async function Vacancy({ params, searchParams }: PageProps<'/recruitment/vacanci
   // the hiring manager never sees the suggested CVs (24 October 2026)
   const view = hiringManager || asked === 'board' ? 'board' : asked === SUGGESTED_VIEW ? 'suggested' : 'list';
   const published = v.status === 'open' || v.status === 'on_hold';
-  const origin = published ? originFrom(await headers()) : '';
+  const careersSite = careersSiteFrom(v.careersSite);
   const range = v.salaryMin !== null || v.salaryMax !== null ? [money(v.salaryMin), money(v.salaryMax)].filter(Boolean).join(' – ') : null;
   return (
     <div className="space-y-6">
@@ -358,14 +360,22 @@ async function Vacancy({ params, searchParams }: PageProps<'/recruitment/vacanci
         {!hiringManager && <p className="text-xs text-muted">The salary range is for HR, the CEO and a Super Admin only: never on the careers page.</p>}
       </section>
 
-      {published && origin && (
+      {published && (
         <section aria-labelledby="vacancy-links" className="card space-y-2 p-6">
-          <h2 id="vacancy-links" className="text-lg font-semibold">
-            Apply Links
-          </h2>
-          <p className="text-sm text-muted">The same job page on each channel: applications say which link they came by.</p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <h2 id="vacancy-links" className="text-lg font-semibold">
+              Apply Links
+            </h2>
+            {/* the careers site lists it while it is open (on hold, its page waits) */}
+            {v.status === 'open' && (
+              <a href={careersJobHref(careersSite, v.slug)} target="_blank" rel="noopener noreferrer" className="btn btn-secondary no-underline">
+                Open on the careers site
+              </a>
+            )}
+          </div>
+          <p className="text-sm text-muted">The same job page on the careers site for each channel: applications say which link they came by.</p>
           <ul>
-            {channelLinks(origin, v.slug).map((l) => (
+            {channelLinks(careersSite, v.slug).map((l) => (
               <CopyLink key={l.source} source={l.source} href={l.href} />
             ))}
           </ul>

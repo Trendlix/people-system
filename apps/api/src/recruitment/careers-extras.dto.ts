@@ -23,13 +23,16 @@ export class LinkedInStartDto {
   @IsOptional() @IsString() @MaxLength(60)
   src?: string | null;
 
-  /** The website's own address: without `careersBase`, the redirect URL is its /careers/linkedin/callback. */
+  /**
+   * The website's own address: still taken, no longer used (25 October 2026: without `careersBase`, the redirect URL is
+   * Recruitment Settings' careers site and /linkedin/callback, never the caller's address).
+   */
   @IsOptional() @IsString() @MaxLength(200)
   origin?: string;
 
   /**
-   * The careers pages' public address (packages/shared careers-base.ts: the website's CAREERS_BASE_URL, else its own
-   * address and /careers): the redirect URL is its /linkedin/callback.
+   * The careers pages' public address, when the website names its own (packages/shared careers-base.ts): the redirect
+   * URL is its /linkedin/callback. Without it, Recruitment Settings' "Careers site address".
    */
   @IsOptional() @IsString() @MaxLength(200)
   careersBase?: string;

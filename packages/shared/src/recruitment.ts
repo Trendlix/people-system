@@ -277,10 +277,6 @@ export function sourceLine(bySource: Readonly<Record<string, number>>): { source
   }));
 }
 
-/** The path of a vacancy's page for a channel: the careers page's own has no ?src=. */
-export const careersPath = (slug: string, source: ApplicationChannel = 'careers'): string =>
-  source === 'careers' ? `/careers/${slug}` : `/careers/${slug}?src=${encodeURIComponent(source)}`;
-
 // ---------- screening questions ----------
 
 export const QUESTION_KINDS = ['yes_no', 'choice', 'number', 'text'] as const;
@@ -845,6 +841,11 @@ export interface VacancyView extends VacancyListItem {
   can: VacancyCan;
   /** How the caller sees it (Phase 2): a hiring manager without the salary range, the description or the questions' points. */
   viewer: RecruitmentViewer;
+  /**
+   * The careers site's address its public links are built on (Recruitment Settings, 25 October 2026; careers-base.ts):
+   * the apply links per channel and "Open on the careers site". Left out by an API from before it.
+   */
+  careersSite?: string;
 }
 
 /** An applicant on a list. */

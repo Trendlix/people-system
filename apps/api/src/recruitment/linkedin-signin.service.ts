@@ -1,7 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
-  careersBaseOf,
   DEVELOPER_NO_FILES,
   isCareersBase,
   isEmail,
@@ -27,6 +26,7 @@ import { isSuperAdmin } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { userNames } from '../payroll/adjustments/people.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { careersSiteIn } from './careers-site.js';
 import { HourlyWindow } from './hourly-window.js';
 import { LinkedInHttp } from './linkedin-http.js';
 import { linkedinKeyIdOf, linkedinKeyOf, openLinkedIn, openLinkedInJson, randomToken, sameLinkedInKey, sameText, sealLinkedIn } from './linkedin-secret.js';
@@ -51,8 +51,6 @@ import { userRef } from './recruitment-views.js';
 export const LINKEDIN_SETTINGS_ENTITY = 'linkedin_settings';
 
 const USER = { select: { id: true, email: true } } as const;
-const ORIGIN = /^https?:\/\/[a-z0-9.-]+(:\d{1,5})?$/i;
-const LOCAL = /^http:\/\/(localhost|127\.0\.0\.1)(:\d{1,5})?$/i;
 const SRC = /^[a-z_]{1,40}$/;
 const EXPIRED = 'The details from LinkedIn expired: sign in with LinkedIn again, or fill in the form yourself.';
 
@@ -183,14 +181,14 @@ export class LinkedInSignInService {
 
   /**
    * POST /public/linkedin/start: LinkedIn's sign-in address for a form, returning to the website's callback at the
-   * careers pages' address (`careersBase`, packages/shared careers-base.ts; else `origin`, the website's own, and
-   * /careers), and the browser's half of the state for its cookie.
+   * careers site's address (`careersBase` when the website sends one, packages/shared careers-base.ts; else Recruitment
+   * Settings' "Careers site address", the redirect URL shown there, 25 October 2026: never the request's `origin` any
+   * more), and the browser's half of the state for its cookie.
    */
   async start(dto: { form?: string; src?: string | null; origin?: string; careersBase?: string }, ip: string | null): Promise<LinkedInStart> {
     const form = linkedinFormOf(dto.form);
-    const origin = (dto.origin ?? '').trim().replace(/\/+$/, '');
     const sentBase = dto.careersBase?.trim().replace(/\/+$/, '');
-    const careersBase = sentBase ? (isCareersBase(sentBase) ? sentBase : null) : ORIGIN.test(origin) && (origin.startsWith('https:') || LOCAL.test(origin)) ? careersBaseOf(origin) : null;
+    const careersBase = sentBase ? (isCareersBase(sentBase) ? sentBase : null) : await careersSiteIn(this.prisma);
     if (!form || !careersBase) return { ok: false, problem: 'failed' };
     if (!this.window.allow(ip)) return { ok: false, problem: 'busy' };
     const app = await this.app();

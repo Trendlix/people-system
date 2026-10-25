@@ -83,7 +83,7 @@ export function LinkedInSettingsForm({ action, view, redirectUrl }: { action: Ac
           </code>
           <CopyButton value={redirectUrl} />
         </div>
-        <p className="hint">This site’s own address. Paste it on the app’s Auth tab exactly as shown.</p>
+        <p className="hint">The careers site’s address above and /linkedin/callback. Paste it on the app’s Auth tab exactly as shown.</p>
       </div>
 
       <form action={formAction} className="space-y-4">

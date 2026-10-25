@@ -306,10 +306,10 @@ describe('the statuses, sources and HR’s notice', () => {
 });
 
 describe('the invitation to apply', () => {
-  const vars = { name: 'Mona Example', job: 'Video Editor', company: 'Example Studio', link: 'https://people.example.test/careers/video-editor-vac-2026-0003?src=invite' };
+  const vars = { name: 'Mona Example', job: 'Video Editor', company: 'Example Studio', link: 'https://www.trendlix.com/en/careers/video-editor-vac-2026-0003?src=invite' };
 
-  it('the standard words, English then Arabic, with the job and its link (?src=invite)', () => {
-    expect(inviteLink('https://people.example.test/', 'video-editor-vac-2026-0003')).toBe(vars.link);
+  it('the standard words, English then Arabic, with the job and its link on the careers site (?src=invite)', () => {
+    expect(inviteLink('https://www.trendlix.com/en/careers/', 'video-editor-vac-2026-0003')).toBe(vars.link);
     const m = inviteMail({ subject: null, en: null, ar: null }, vars);
     expect(m.subject).toBe('An opening that may suit you: Video Editor · فرصة قد تناسبك: Video Editor');
     expect(m.text.startsWith('Dear Mona Example,')).toBe(true);

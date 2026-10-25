@@ -1,6 +1,7 @@
 import { PDFDocument, StandardFonts } from '@cantoo/pdf-lib';
 import type { INestApplication } from '@nestjs/common';
 import {
+  CAREERS_SITE_STANDARD,
   careersIpToken,
   CLIENT_IP_AT_HEADER,
   CLIENT_IP_HEADER,
@@ -55,6 +56,8 @@ const TODAY = todayInCairo();
 const CLIENT_ID = `86tl${RUN}`;
 const CLIENT_SECRET = `s3cr3t-${RUN}-do-not-echo`;
 const ORIGIN = 'https://people.example.test';
+/** LinkedIn's redirect URL: the careers site of Recruitment Settings (the standard here) and /linkedin/callback, never ORIGIN's (25 October 2026). */
+const CALLBACK = `${CAREERS_SITE_STANDARD}/linkedin/callback`;
 
 /** Each person's own mobile: +2010 and 8 digits. */
 const mobileOf = (who: string) => {
@@ -397,13 +400,13 @@ describe('Careers forms: filled from the CV, LinkedIn sign-in, portfolio per pos
         if (!s.ok) throw new Error(`start refused: ${s.problem}`);
         const url = new URL(s.url);
         expect(`${url.origin}${url.pathname}`).toBe(LINKEDIN_AUTHORIZE_URL);
-        expect(Object.fromEntries(url.searchParams)).toMatchObject({ response_type: 'code', client_id: CLIENT_ID, redirect_uri: `${ORIGIN}/careers/linkedin/callback`, scope: 'openid profile email' });
+        expect(Object.fromEntries(url.searchParams)).toMatchObject({ response_type: 'code', client_id: CLIENT_ID, redirect_uri: CALLBACK, scope: 'openid profile email' });
         expect(s.url).not.toContain(CLIENT_SECRET);
         return { state: url.searchParams.get('state')!, nonce: url.searchParams.get('nonce')!, binding: s.binding };
       };
       const finish = (body: object) => api().post('/api/public/linkedin/finish').set('x-careers-key', process.env.CAREERS_KEY!).set(signed(nextIp(), LINKEDIN_IP_TOKEN)).send(body).expect(200);
 
-      // the careers pages at an address of their own (CAREERS_BASE_URL, e.g. the main site's /careers): the redirect URL is there
+      // the website naming the careers pages' address itself: the redirect URL is there
       const www = (await api().post('/api/public/linkedin/start').set('x-careers-key', process.env.CAREERS_KEY!).set(signed(nextIp(), LINKEDIN_IP_TOKEN)).send({ form, origin: ORIGIN, careersBase: 'https://www.example.test/careers' }).expect(200))
         .body as LinkedInStart;
       expect(www.ok && new URL(www.url).searchParams.get('redirect_uri')).toBe('https://www.example.test/careers/linkedin/callback');
@@ -411,6 +414,15 @@ describe('Careers forms: filled from the CV, LinkedIn sign-in, portfolio per pos
         ok: false,
         problem: 'failed',
       });
+      // Recruitment Settings' careers site changed (25 October 2026): the redirect URL follows it, as shown there
+      await as('hr').patch('/recruitment/settings', { careersSite: 'https://careers.example.test/jobs' }).expect(200);
+      try {
+        const moved = (await api().post('/api/public/linkedin/start').set('x-careers-key', process.env.CAREERS_KEY!).set(signed(nextIp(), LINKEDIN_IP_TOKEN)).send({ form, origin: ORIGIN }).expect(200))
+          .body as LinkedInStart;
+        expect(moved.ok && new URL(moved.url).searchParams.get('redirect_uri')).toBe('https://careers.example.test/jobs/linkedin/callback');
+      } finally {
+        await as('hr').patch('/recruitment/settings', { careersSite: '' }).expect(200);
+      }
 
       // a state that doesn't open, or another browser's: refused, LinkedIn never called
       const one = await start();
@@ -431,7 +443,7 @@ describe('Careers forms: filled from the CV, LinkedIn sign-in, portfolio per pos
       expect(done).toMatchObject({ form, src: 'linkedin' });
       expect(done.ticket).not.toContain(`linkedin.${RUN}`.toLowerCase());
       expect(calls.map((c) => c.url)).toEqual([LINKEDIN_TOKEN_URL, LINKEDIN_USERINFO_URL]);
-      expect(new URLSearchParams(calls[0].body).get('redirect_uri')).toBe(`${ORIGIN}/careers/linkedin/callback`);
+      expect(new URLSearchParams(calls[0].body).get('redirect_uri')).toBe(CALLBACK);
       // the ID token's nonce must be the sign-in's
       const three = await start();
       nonce = 'another-nonce';
