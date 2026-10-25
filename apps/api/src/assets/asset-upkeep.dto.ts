@@ -1,8 +1,9 @@
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsIn, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsIn, IsNumber, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, ValidateNested } from 'class-validator';
 import {
   ACCESSORY_LIMITS,
   ASSET_MONEY_MAX,
+  ASSETS_BULK_MAX,
   ASSET_QUANTITY_MAX,
   DISPOSAL_METHODS,
   DISPOSAL_TEXT_LIMITS,
@@ -120,6 +121,37 @@ export class DisposeDto {
 export class DisposalAmountDto {
   @IsOptional() @apply(money('amount received'))
   amount?: number | null;
+}
+
+/**
+ * POST /assets/bulk-delete (a Super Admin's) and the codes of POST /assets/bulk-dispose: the assets ticked on All Assets
+ * (owner, 25 October 2026: "can i delete multiple assets at one?"), by their codes, at most 200.
+ */
+export class BulkCodesDto {
+  @IsArray({ message: 'Choose the assets.' })
+  @ArrayMinSize(1, { message: 'Choose the assets.' })
+  @ArrayMaxSize(ASSETS_BULK_MAX, { message: `Choose at most ${ASSETS_BULK_MAX} assets at a time.` })
+  @IsString({ each: true, message: 'Send each asset by its code, e.g. PK-CAM-0003.' })
+  @MaxLength(40, { each: true, message: 'Send each asset by its code, e.g. PK-CAM-0003.' })
+  codes!: string[];
+}
+
+/**
+ * POST /assets/bulk-dispose (an Assets manager's): the assets ticked, how, the day (today when left out), who approved it
+ * (as one disposal on its page asks) and a note. No amount: Finance sets each one's later.
+ */
+export class BulkDisposeDto extends BulkCodesDto {
+  @IsIn(DISPOSAL_METHODS, { message: 'Choose how they were disposed of: sold, scrapped, written off or donated.' })
+  method!: DisposalMethod;
+
+  @IsOptional() @IsDateOnly('Enter the disposal date as YYYY-MM-DD.')
+  date?: string | null;
+
+  @Trim() @IsString({ message: 'Say who approved the disposal.' }) @keep(DISPOSAL_TEXT_LIMITS.approvedBy, 'name of who approved it')
+  approvedBy!: string;
+
+  @IsOptional() @TrimOrNull() @IsString() @keep(DISPOSAL_TEXT_LIMITS.notes, 'note')
+  note?: string | null;
 }
 
 /** PATCH /assets/kits/:id/items: assets put in the kit and taken out of it, by id. */

@@ -43,6 +43,8 @@ export const ASSET_API = {
   create: '/assets',
   /** GET AssetView; PATCH (custodian or manager) → AssetView; DELETE (Super Admin) → 204. */
   asset: (code: string) => `/assets/${at(code)}`,
+  /** POST { codes } (a Super Admin; at most 200) → BulkDeleteResult: Delete selected on All Assets (25 October 2026). */
+  bulkDelete: '/assets/bulk-delete',
   /** PATCH Partial<AssetValuesInput> (the CEO, Finance, a Super Admin) → AssetView. */
   values: (code: string) => `/assets/${at(code)}/values`,
   /** POST → AssetView: labelled now. */
@@ -113,6 +115,8 @@ export const ASSET_STEP4_API = {
   dispose: (code: string) => `/assets/${at(code)}/dispose`,
   /** PATCH { amount } → AssetView (the CEO, Finance, a Super Admin). */
   disposal: (code: string) => `/assets/${at(code)}/disposal`,
+  /** POST { codes, method, date, approvedBy, note } → BulkDisposeResult (an Assets manager): Dispose selected (25 October 2026). */
+  bulkDispose: '/assets/bulk-dispose',
   /** PATCH { add, addCodes, remove } → AssetKitView. */
   kitItems: (id: string) => `/assets/kits/${encodeURIComponent(id)}/items`,
 } as const;

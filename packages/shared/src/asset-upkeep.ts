@@ -209,3 +209,53 @@ export interface DisposalResult {
 /** A disposed asset's line in words: "Disposed: Sold on 22/10/2026". */
 export const disposedText = (d: { method: DisposalMethod; on: string }, formatDate: (day: string) => string): string =>
   `${ASSET_STATUS_LABELS.disposed}: ${DISPOSAL_METHOD_LABELS[d.method]} on ${formatDate(d.on)}`;
+
+// ---------- several at once ----------
+// The owner, 25 October 2026: "cant i delete assets as a super admin?", then "can i delete multiple assets at one?";
+// asked, "Never-in-custody only": on All Assets a Super Admin ticks assets and presses Delete selected; those never in
+// custody are deleted and the others skipped with the reason, Dispose selected offered for them (an Assets manager's,
+// with the disposal rules above). Each asset goes through the same rule as one deleted or disposed of on its page.
+
+/** The most assets one Delete selected or Dispose selected takes. */
+export const ASSETS_BULK_MAX = 200;
+
+/** Why Delete selected or Dispose selected left an asset as it was (a disposal's own reasons are its refusals). */
+export const BULK_SKIP_REASONS = {
+  notFound: 'Not found.',
+  inCustody: 'In custody now.',
+  wasInCustody: 'It was in custody: dispose of it instead.',
+} as const;
+
+/**
+ * Why an asset can't be deleted, from its status and whether it was ever in custody; null when it can (never in custody:
+ * spec §6.10; otherwise it is disposed of). In custody now first: it can't be disposed of either until it is back.
+ */
+export function deleteSkipReason(a: { status: AssetStatus | string; everInCustody: boolean }): string | null {
+  if (a.status === 'custody') return BULK_SKIP_REASONS.inCustody;
+  if (a.everInCustody) return BULK_SKIP_REASONS.wasInCustody;
+  return null;
+}
+
+/**
+ * A single disposal's refusal said beside the code it is about: "PK-CAM-0004 is in custody: receive it back first, then
+ * dispose of it." → "It is in custody: receive it back first, then dispose of it."; anything else as it is.
+ */
+export const reasonBesideCode = (code: string, message: string): string => (message.startsWith(`${code} `) ? `It ${message.slice(code.length + 1)}` : message);
+
+/** An asset Delete selected or Dispose selected left as it was, and why. */
+export interface BulkSkipped {
+  code: string;
+  reason: string;
+}
+
+/** POST /assets/bulk-delete's answer (a Super Admin's): what was deleted, and what was skipped with the reason. */
+export interface BulkDeleteResult {
+  deleted: { code: string; name: string }[];
+  skipped: BulkSkipped[];
+}
+
+/** POST /assets/bulk-dispose's answer (an Assets manager's): what was disposed of, with what else each did, and what was skipped. */
+export interface BulkDisposeResult {
+  disposed: ({ code: string; name: string } & DisposalResult)[];
+  skipped: BulkSkipped[];
+}

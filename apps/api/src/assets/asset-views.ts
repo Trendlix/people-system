@@ -66,6 +66,8 @@ export const ASSET_ROW = {
   photos: { select: PHOTO_REF, orderBy: [{ position: 'asc' }, { uploadedAt: 'asc' }], take: 1 },
   // step 4 (owner, 22 October 2026: accessories, "Both kinds"): the main asset it is attached to
   parent: { select: { id: true, code: true, name: true } },
+  // whether it was ever in custody (25 October 2026: Delete selected on All Assets says beforehand what it will skip)
+  _count: { select: { custodyItems: true } },
 } as const satisfies Prisma.AssetSelect;
 
 /** What an asset's page reads: every field but the photos' files. */
@@ -137,7 +139,7 @@ function common(r: AssetRow) {
 
 /** A row of the register; `values` only for those who see them. */
 export function rowView(r: AssetRow, caller: Pick<AssetsCaller, 'values'>, ctx: ValueContext): AssetRowView {
-  const view: AssetRowView = { ...common(r), photo: r.photos[0] ? photoRef(r.photos[0]) : null };
+  const view: AssetRowView = { ...common(r), photo: r.photos[0] ? photoRef(r.photos[0]) : null, everInCustody: r._count.custodyItems > 0 };
   if (caller.values) {
     const book = bookOf(r, ctx);
     view.values = { purchasePrice: money(r.purchasePrice), marketValue: money(r.marketValue), bookValue: book.amount, expensed: book.expensed };

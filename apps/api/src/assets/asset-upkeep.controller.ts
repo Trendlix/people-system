@@ -1,6 +1,6 @@
 import { Body, Controller, HttpCode, Param, Patch, Post, Put } from '@nestjs/common';
 import { AssetAccessoriesService } from './asset-accessories.service.js';
-import { AccessoriesDto, AttachDto, DisposalAmountDto, DisposeDto, MaintenanceDto, StockMoveDto } from './asset-upkeep.dto.js';
+import { AccessoriesDto, AttachDto, BulkDisposeDto, DisposalAmountDto, DisposeDto, MaintenanceDto, StockMoveDto } from './asset-upkeep.dto.js';
 import { AssetUpkeepService } from './asset-upkeep.service.js';
 import { AssetsLevel, AssetValues, CurrentAssetsCaller, type AssetsCaller } from './assets-access.js';
 
@@ -54,6 +54,17 @@ export class AssetUpkeepController {
   @HttpCode(200)
   dispose(@Param('code') code: string, @Body() dto: DisposeDto, @CurrentAssetsCaller() caller: AssetsCaller) {
     return this.upkeep.dispose(code, dto, caller);
+  }
+
+  /**
+   * Dispose selected on All Assets (an Assets manager; 25 October 2026): { codes (at most 200), method, date, approvedBy,
+   * note } → { disposed, skipped }, each through the rules above.
+   */
+  @AssetsLevel('manager')
+  @Post('bulk-dispose')
+  @HttpCode(200)
+  bulkDispose(@Body() dto: BulkDisposeDto, @CurrentAssetsCaller() caller: AssetsCaller) {
+    return this.upkeep.bulkDispose(dto, caller);
   }
 
   /** The amount a disposal received: the CEO, Finance or a Super Admin. */

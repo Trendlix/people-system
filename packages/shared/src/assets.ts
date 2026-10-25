@@ -668,6 +668,11 @@ export interface AssetRowView {
   values?: { purchasePrice: number | null; marketValue: number | null; bookValue: number | null; expensed: boolean };
   /** The main asset it is attached to (step 4, asset-accessories.ts); null: none. Left out by an API from before. */
   parent?: AssetParentRef | null;
+  /**
+   * Whether it was ever in custody (25 October 2026: Delete selected on All Assets skips those, asset-upkeep.ts
+   * deleteSkipReason). Left out by an API from before.
+   */
+  everInCustody?: boolean;
 }
 
 /** GET /assets: a page of the register, with how many match, and counts for the filter chips (the search alone). */

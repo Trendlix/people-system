@@ -31,7 +31,7 @@ import { AssetPhotosService } from './asset-photos.service.js';
 import { AssetReportsService } from './asset-reports.service.js';
 import { AssetRoomsService } from './asset-rooms.service.js';
 import { AssetSettingsService } from './asset-settings.service.js';
-import { KitItemsDto } from './asset-upkeep.dto.js';
+import { BulkCodesDto, KitItemsDto } from './asset-upkeep.dto.js';
 import { AssetSettingsAccess, AssetsLevel, AssetValues, CurrentAssetsCaller, type AssetsCaller } from './assets-access.js';
 import {
   AssetHoldersQueryDto,
@@ -354,6 +354,18 @@ export class AssetsController {
   @HttpCode(204)
   remove(@Param('code') code: string, @CurrentAssetsCaller() caller: AssetsCaller) {
     return this.assets.remove(code, caller);
+  }
+
+  /**
+   * Delete selected on All Assets (a Super Admin; owner, 25 October 2026: "Never-in-custody only"): { codes } (at most
+   * 200) → { deleted, skipped }, those ever in custody skipped with the reason.
+   */
+  @DeletesRecords()
+  @AssetsLevel('manager')
+  @Post('bulk-delete')
+  @HttpCode(200)
+  bulkDelete(@Body() dto: BulkCodesDto, @CurrentAssetsCaller() caller: AssetsCaller) {
+    return this.assets.bulkDelete(dto.codes, caller);
   }
 
   /** A photo, kept by the browser for ten minutes (a list of assets doesn't load every photo on every visit). */

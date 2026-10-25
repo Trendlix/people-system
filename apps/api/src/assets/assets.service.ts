@@ -13,6 +13,9 @@ import {
   ASSET_VALUE_FIELDS,
   ASSETS_PAGE_SIZE,
   ASSETS_REFUSALS,
+  BULK_SKIP_REASONS,
+  deleteSkipReason,
+  type BulkDeleteResult,
   assetCode,
   assetCodePrefix,
   assetProblems,
@@ -47,13 +50,17 @@ import type { AssetValuesDto, CreateAssetDto, ListAssetsQueryDto, UpdateAssetDto
 // registering an asset (its code given in the same transaction: PREFIX-TYPE-NNNN, from the counters, race-safe), editing
 // it (the code never changes, even when its group or type does; what the new group doesn't have is cleared), its values
 // (the CEO's, Finance's and a Super Admin's only), its label printed, deleting it (a Super Admin only, and only if it was
-// never in custody), the register's list with its search and filters, and an asset's page by its code. Every write is in
-// the audit log ('asset'), the values as the fact that they were set or changed, never the amounts (as the wages are).
+// never in custody; several at once too, 25 October 2026), the register's list with its search and filters, and an
+// asset's page by its code. Every write is in the audit log ('asset'), the values as the fact that they were set or
+// changed, never the amounts (as the wages are).
 
 export const ASSET_ENTITY = 'asset';
 export const ASSET_NOT_FOUND = 'Asset not found.';
 
 const NEVER_IN_CUSTODY = 'It was in custody: it can’t be deleted. Dispose of it instead.';
+
+/** The codes ticked for Delete selected or Dispose selected, as typed or scanned: each once, as the register keeps it. */
+export const bulkCodes = (codes: readonly string[]): string[] => [...new Set(codes.map(normalAssetCode).filter(Boolean))];
 
 type Row = Prisma.AssetGetPayload<{ select: typeof FULL }>;
 
@@ -516,17 +523,47 @@ export class AssetsService {
    */
   async remove(code: string, caller: AssetsCaller): Promise<void> {
     assertDeletes(caller.user);
+    const done = await this.deleteOne(code, caller);
+    if ('skipped' in done) throw done.skipped === BULK_SKIP_REASONS.notFound ? new NotFoundException(ASSET_NOT_FOUND) : new ConflictException(NEVER_IN_CUSTODY);
+  }
+
+  /**
+   * POST /assets/bulk-delete (owner, 25 October 2026: "can i delete multiple assets at one?"; "Never-in-custody only"):
+   * a Super Admin's; each asset ticked goes through remove's rule, those never in custody deleted (each audited as one
+   * deleted on its page, nothing more), the others skipped with the reason (Dispose selected is offered for them). Each
+   * delete is its own statement, not one transaction around them all: one refused by a handover made meanwhile (the
+   * custody item holds it) is skipped while the rest stay deleted, and the answer says exactly what happened to each.
+   */
+  async bulkDelete(codes: readonly string[], caller: AssetsCaller): Promise<BulkDeleteResult> {
+    assertDeletes(caller.user);
+    const out: BulkDeleteResult = { deleted: [], skipped: [] };
+    for (const code of bulkCodes(codes)) {
+      const done = await this.deleteOne(code, caller);
+      if ('skipped' in done) out.skipped.push({ code, reason: done.skipped });
+      else out.deleted.push(done);
+    }
+    return out;
+  }
+
+  /**
+   * remove's rule, for one asset: deleted when it was never in custody (deleteSkipReason), with its audit entry; or why
+   * it was left (not found, in custody now, or it was in custody). The caller is checked by remove and bulkDelete.
+   */
+  private async deleteOne(code: string, caller: AssetsCaller): Promise<{ code: string; name: string } | { skipped: string }> {
     const row = await this.prisma.asset.findFirst({
       where: { code: normalAssetCode(code) },
       select: { id: true, code: true, name: true, group: true, type: true, status: true, _count: { select: { custodyItems: true, photos: true } } },
     });
-    if (!row) throw new NotFoundException(ASSET_NOT_FOUND);
-    if (row._count.custodyItems > 0 || row.status === 'custody') throw new ConflictException(NEVER_IN_CUSTODY);
+    if (!row) return { skipped: BULK_SKIP_REASONS.notFound };
+    const refused = deleteSkipReason({ status: row.status, everInCustody: row._count.custodyItems > 0 });
+    if (refused) return { skipped: refused };
     try {
       // never in custody, also by the time it is deleted: a handover made meanwhile holds it (custody_items restricts)
       await this.prisma.asset.delete({ where: { id: row.id } });
     } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') throw new ConflictException(NEVER_IN_CUSTODY);
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2003') return { skipped: BULK_SKIP_REASONS.inCustody };
+      // deleted by someone else meanwhile
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') return { skipped: BULK_SKIP_REASONS.notFound };
       throw err;
     }
     await this.audit.record({
@@ -536,6 +573,7 @@ export class AssetsService {
       entityId: row.id,
       diff: { code: row.code, name: row.name, group: row.group, type: row.type, photos: row._count.photos },
     });
+    return { code: row.code, name: row.name };
   }
 
   private async full(code: string): Promise<Row> {

@@ -13,6 +13,7 @@ import { assetPhotoSrc } from '@/lib/asset-paths';
 import { assetQrSvg } from '@/lib/asset-qr';
 import { Empty, Loading } from '../organization/ui';
 import { countText, holderText, moneyText, pagesOf, placeText, quantityText, rowBookText, statusTone, type ReadQuery } from './assets';
+import { RowTick, TickAll } from './bulk-ui';
 
 // Small building blocks shared by the Assets pages (owner, 21 October 2026: "i want to add this module with a special
 // permission to the system"): the status badge, the photo thumbnail, the register's table (money only for those who
@@ -60,13 +61,20 @@ export function NoAccess() {
 /**
  * The register as a table: the photo, the code and name (with the group and type), the status, the room and kit, the
  * serial, who holds it, and for those who see the values the market and book value. Each opens the asset's page.
+ * `select`: a tick box a row and "Select all on this page" first (25 October 2026: Delete selected and Dispose selected,
+ * inside bulk-ui.tsx BulkSelection).
  */
-export function AssetTable({ rows, values, href }: { rows: AssetRowView[]; values: boolean; href: (code: string) => string }) {
+export function AssetTable({ rows, values, href, select = false }: { rows: AssetRowView[]; values: boolean; href: (code: string) => string; select?: boolean }) {
   return (
     <div className="card overflow-x-auto">
       <table className="table">
         <thead>
           <tr>
+            {select && (
+              <th scope="col" className="w-11 px-1">
+                <TickAll />
+              </th>
+            )}
             <th scope="col">
               <span className="sr-only">Photo</span>
             </th>
@@ -90,6 +98,11 @@ export function AssetTable({ rows, values, href }: { rows: AssetRowView[]; value
         <tbody>
           {rows.map((a) => (
             <tr key={a.id}>
+              {select && (
+                <td className="w-11 px-1">
+                  <RowTick code={a.code} name={a.name} />
+                </td>
+              )}
               <td className="w-16">
                 <AssetThumb code={a.code} photo={a.photo} />
               </td>

@@ -1,6 +1,7 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   ASSETS_REFUSALS,
+  BULK_SKIP_REASONS,
   bookValue,
   disposalProblems,
   disposeProblem,
@@ -8,7 +9,10 @@ import {
   stockAfter,
   stockDelta,
   stockMoveProblems,
+  reasonBesideCode,
   type AssetView,
+  type BulkDisposeResult,
+  type DisposalInput,
   type DisposalResult,
   type StockMoveKind,
 } from '@trendlix/shared';
@@ -16,9 +20,9 @@ import { AuditService } from '../audit/audit.service.js';
 import { fromDateOnly, todayInCairo, toDateOnly } from '../common/date-only.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AssetSettingsService } from './asset-settings.service.js';
-import type { DisposalAmountDto, DisposeDto, MaintenanceDto, StockMoveDto } from './asset-upkeep.dto.js';
+import type { BulkDisposeDto, DisposalAmountDto, DisposeDto, MaintenanceDto, StockMoveDto } from './asset-upkeep.dto.js';
 import type { AssetsCaller } from './assets-access.js';
-import { ASSET_ENTITY, AssetsService } from './assets.service.js';
+import { ASSET_ENTITY, AssetsService, bulkCodes } from './assets.service.js';
 
 // Assets, step 4 (the owner's build order, 21 October 2026: "kits / stock / repairs / disposal"; the spec §3, §6;
 // packages/shared asset-upkeep.ts), on an asset's page:
@@ -30,9 +34,23 @@ import { ASSET_ENTITY, AssetsService } from './assets.service.js';
 //   value: from the CEO, Finance or a Super Admin, or set by them later); the book value on that day kept; never one in
 //   custody or a consumable; it leaves its kit, its attached assets are detached, and it from its main one. Disposed
 //   assets stay, out of every total and list but the Disposed filter.
-// Every write audited on the asset ('asset'), the money only as the fact that it was set (as the values are).
+// Every write audited on the asset ('asset'), the money only as the fact that it was set (as the values are). Dispose
+// selected on All Assets (25 October 2026) puts several through the same rules, one at a time.
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * Why Dispose selected left an asset as it was: the refusal one disposal on its page would get (not found, in custody, a
+ * consumable, disposed already, a day before its purchase), said beside its code; null for anything else (a fault).
+ */
+function skipReason(err: unknown, code: string): string | null {
+  if (err instanceof NotFoundException) return BULK_SKIP_REASONS.notFound;
+  if (!(err instanceof ConflictException || err instanceof BadRequestException)) return null;
+  const body = (err as HttpException).getResponse();
+  const message = typeof body === 'object' && body !== null && 'message' in body ? (body as { message: unknown }).message : err.message;
+  return reasonBesideCode(code, Array.isArray(message) ? message.join(' ') : String(message));
+}
+
 const num = (d: { toNumber(): number } | null): number | null => (d === null ? null : d.toNumber());
 
 @Injectable()
@@ -102,16 +120,49 @@ export class AssetUpkeepService {
   async dispose(code: string, dto: DisposeDto, caller: AssetsCaller): Promise<{ asset: AssetView; result: DisposalResult }> {
     if (dto.amount !== undefined && dto.amount !== null && !caller.values) throw new ForbiddenException(ASSETS_REFUSALS.values);
     const today = todayInCairo();
-    const { id } = await this.assets.idOf(code);
-    const threshold = await this.settings.threshold();
-    const input = { method: dto.method, on: dto.on ?? today, amount: dto.amount ?? null, approvedBy: dto.approvedBy, notes: dto.notes ?? null };
+    const input: DisposalInput = { method: dto.method, on: dto.on ?? today, amount: dto.amount ?? null, approvedBy: dto.approvedBy, notes: dto.notes ?? null };
+    const done = await this.disposeOne(code, input, caller, { threshold: await this.settings.threshold(), today });
+    return { asset: await this.assets.get(done.code, caller), result: done.result };
+  }
 
+  /**
+   * POST /assets/bulk-dispose (owner, 25 October 2026: Dispose selected on All Assets, for those Delete selected skips),
+   * an Assets manager's: each asset ticked goes through dispose's rules, each in its own transaction with its rows held
+   * and audited as one disposed of on its page; the method, day, approver and note the same for all, checked once (no
+   * amount: Finance sets each one's later). Those it refuses (in custody, a consumable, disposed already, a day before its
+   * purchase, not found) are skipped with the reason; the others stay disposed of whatever happens to the next.
+   */
+  async bulkDispose(dto: BulkDisposeDto, caller: AssetsCaller): Promise<BulkDisposeResult> {
+    const today = todayInCairo();
+    const input: DisposalInput = { method: dto.method, on: dto.date ?? today, amount: null, approvedBy: dto.approvedBy, notes: dto.note ?? null };
+    const problems = disposalProblems(input, today);
+    if (problems.length) throw new BadRequestException(problems);
+    const day = { threshold: await this.settings.threshold(), today };
+    const out: BulkDisposeResult = { disposed: [], skipped: [] };
+    for (const code of bulkCodes(dto.codes)) {
+      try {
+        const done = await this.disposeOne(code, input, caller, day);
+        out.disposed.push({ code: done.code, name: done.name, ...done.result });
+      } catch (err) {
+        const reason = skipReason(err, code);
+        if (reason === null) throw err;
+        out.skipped.push({ code, reason });
+      }
+    }
+    return out;
+  }
+
+  /** dispose's rules for one asset, by its code: disposed of in a transaction with its rows held, and audited. */
+  private async disposeOne(code: string, input: DisposalInput, caller: AssetsCaller, day: { threshold: number; today: string }) {
+    const { threshold, today } = day;
+    const { id } = await this.assets.idOf(code);
     const done = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM assets WHERE id = ${id}::uuid OR parent_asset_id = ${id}::uuid ORDER BY id FOR UPDATE`;
       const a = await tx.asset.findUniqueOrThrow({
         where: { id },
         select: {
           code: true,
+          name: true,
           group: true,
           status: true,
           assetClass: true,
@@ -144,7 +195,7 @@ export class AssetUpkeepService {
         },
       });
       if (a.attached.length) await tx.asset.updateMany({ where: { parentAssetId: id }, data: { parentAssetId: null } });
-      return { code: a.code, from: a.status, book, result: { leftKit: a.kit?.code ?? null, detached: a.attached.map((x) => x.code), detachedFrom: a.parent?.code ?? null } satisfies DisposalResult, attached: a.attached };
+      return { code: a.code, name: a.name, from: a.status, book, result: { leftKit: a.kit?.code ?? null, detached: a.attached.map((x) => x.code), detachedFrom: a.parent?.code ?? null } satisfies DisposalResult, attached: a.attached };
     });
 
     await this.audit.record({
@@ -169,7 +220,7 @@ export class AssetUpkeepService {
     for (const x of done.attached) {
       await this.audit.record({ userId: caller.user.id, action: 'detach', entityType: ASSET_ENTITY, entityId: x.id, diff: { code: x.code, attachedTo: { from: done.code, to: null }, reason: 'disposed' } });
     }
-    return { asset: await this.assets.get(done.code, caller), result: done.result };
+    return { code: done.code, name: done.name, result: done.result };
   }
 
   /** PATCH /assets/:code/disposal: the amount received, set or changed later by the CEO, Finance or a Super Admin. */

@@ -3,7 +3,10 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import { Select } from '@/components/select';
 import { ASSET_PATHS } from '@/lib/asset-paths';
+import { getCurrentUser } from '@/lib/session';
 import { asQuery, groupChips, isFiltered, readAssetQuery, statusChips, type ChipLink } from './assets';
+import { bulkCan, bulkRowOf } from './bulk';
+import { BulkSelection } from './bulk-ui';
 import { assetsCaller, assetsNotLoaded, listOrEmpty, loadAssets, loadKits, loadRooms } from './data';
 import { AssetsFrame } from './frame';
 import { AssetTable, Empty, Loading, NoAccess, Pages } from './ui';
@@ -13,7 +16,9 @@ import { AssetTable, Empty, Loading, NoAccess, Pages } from './ui';
 // status, location, kit, serial, holder, market and book value"): for anyone with Assets access, the search and the
 // chips by group and status with how many each has, the room and kit, a page of 50 by code; the money only for the CEO,
 // Finance and a Super Admin ("CEO and Finance"), whom the API alone answers it to. Disposed assets leave the register
-// (spec §2.4: "Excluded from all totals") unless the Disposed chip is chosen.
+// (spec §2.4: "Excluded from all totals") unless the Disposed chip is chosen. Ticks on each row (owner, 25 October 2026:
+// "can i delete multiple assets at one?"; "Never-in-custody only"): Delete selected for a Super Admin, Dispose selected
+// for an Assets manager (bulk-ui.tsx), the list read again after each with its filters and page kept.
 
 export const metadata: Metadata = { title: 'All Assets · People System' };
 
@@ -34,8 +39,21 @@ function Chips({ label, chips }: { label: string; chips: ChipLink[] }) {
   );
 }
 
+/** What the register says with no rows to show. */
+function NoRows({ filtered, registers }: { filtered: boolean; registers: boolean }) {
+  return (
+    <Empty>
+      {filtered
+        ? 'No asset matches. Try another search, or clear the filters.'
+        : registers
+          ? 'No assets yet. Add the first one with Add asset.'
+          : 'No assets yet. A custodian or a manager registers them.'}
+    </Empty>
+  );
+}
+
 async function Register({ searchParams }: { searchParams: PageProps<'/assets'>['searchParams'] }) {
-  const [{ access, can }, params] = await Promise.all([assetsCaller(), searchParams]);
+  const [{ access, can }, params, user] = await Promise.all([assetsCaller(), searchParams, getCurrentUser()]);
   if (!can.view) return <NoAccess />;
   const query = readAssetQuery(params);
   const [loaded, rooms, kits] = await Promise.all([loadAssets(asQuery(query)), loadRooms(), loadKits()]);
@@ -43,6 +61,7 @@ async function Register({ searchParams }: { searchParams: PageProps<'/assets'>['
   const counts = loaded.kind === 'ok' ? loaded.value.counts : null;
   const roomList = listOrEmpty(rooms);
   const kitList = listOrEmpty(kits);
+  const bulk = bulkCan(user, access);
 
   return (
     <div className="space-y-4">
@@ -104,14 +123,21 @@ async function Register({ searchParams }: { searchParams: PageProps<'/assets'>['
 
       {loaded.kind !== 'ok' ? (
         <Empty>{assetsNotLoaded(loaded, 'assets')}</Empty>
+      ) : bulk.any ? (
+        // the ticks are this page's: another page, filter or search starts with none; the page emptied by a delete
+        // still shows what was done above its "No asset matches"
+        <BulkSelection key={JSON.stringify(query)} rows={loaded.value.items.map(bulkRowOf)} can={bulk}>
+          {loaded.value.items.length === 0 ? (
+            <NoRows filtered={isFiltered(query)} registers={can.register} />
+          ) : (
+            <>
+              <AssetTable rows={loaded.value.items} values={access.values} href={ASSET_PATHS.asset} select />
+              <Pages list={loaded.value} query={query} />
+            </>
+          )}
+        </BulkSelection>
       ) : loaded.value.items.length === 0 ? (
-        <Empty>
-          {isFiltered(query)
-            ? 'No asset matches. Try another search, or clear the filters.'
-            : can.register
-              ? 'No assets yet. Add the first one with Add asset.'
-              : 'No assets yet. A custodian or a manager registers them.'}
-        </Empty>
+        <NoRows filtered={isFiltered(query)} registers={can.register} />
       ) : (
         <>
           <AssetTable rows={loaded.value.items} values={access.values} href={ASSET_PATHS.asset} />
