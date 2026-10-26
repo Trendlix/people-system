@@ -158,6 +158,18 @@ export function runSummaryText(run: Pick<ZohoRunView, 'counts'>): string | null 
 /** The days left as they were or not fetched, by why: "Payroll approved: the day kept as it was: 4 days". */
 export const runSkippedLines = (run: Pick<ZohoRunView, 'skipped'>): string[] => run.skipped.filter((s) => s.days > 0).map((s) => `${ZOHO_SKIP_LABELS[s.reason] ?? s.reason}: ${days(s.days)}`);
 
+/**
+ * A run's badge: its status, but a finished run with days whose answer couldn't be read, or that Zoho refused to share,
+ * "Finished with problems" in the warning colour (owner, 26 October 2026: the first fetch said "Finished" in green with
+ * 1,087 days unread, and nothing could be found on the system).
+ */
+export function runBadge(run: Pick<ZohoRunView, 'status' | 'skipped'>): { label: string; className: string } {
+  const troubled = run.skipped.some((s) => (s.reason === 'unreadable' || s.reason === 'not_permitted') && s.days > 0);
+  if (run.status === 'finished' && troubled) return { label: 'Finished with problems', className: 'bg-warn-soft text-warn' };
+  const className = run.status === 'failed' ? 'bg-danger-soft text-danger' : run.status === 'running' ? 'bg-accent-soft text-accent' : run.status === 'cancelled' ? 'bg-line-soft text-muted' : 'bg-ok-soft text-ok';
+  return { label: ZOHO_RUN_STATUS_LABELS[run.status], className };
+}
+
 /** "Fetching: 1,200 of 14,600 calls (8%), 3 of 40 people". */
 export function runProgressText(run: Pick<ZohoRunView, 'status' | 'counts'>): string {
   const c = run.counts;

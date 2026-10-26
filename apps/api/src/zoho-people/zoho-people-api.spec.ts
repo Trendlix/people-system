@@ -10,6 +10,7 @@ import {
   zohoPeopleAuthorizeUrl,
   zohoPeopleHost,
   zohoProblemOf,
+  zohoSentText,
   zohoTimeOf,
 } from './zoho-people-api.js';
 import { openZohoPeopleSecret, sameZohoPeopleKey, sealZohoPeopleSecret, zohoPeopleKeyIdOf, zohoPeopleKeyOf } from './zoho-people-secret.js';
@@ -159,6 +160,16 @@ describe('Zoho People: a day’s entries as the import’s day', () => {
 
   it('never keeps a day short of a time it couldn’t read', () => {
     expect(read({ status: 'Present', entries: [{ checkIn: '03-Mar-2026 - 9 o’clock', checkOut: '03-Mar-2026 - 01:00 PM' }] }, '2026-03-03').kind).toBe('unreadable');
+  });
+
+  it('says what Zoho sent that couldn’t be read, the first of them, never a place (owner, 26 October 2026)', () => {
+    const r = read({ status: 'Present', entries: [{ checkIn: '03-Mar-2026 - 9 o’clock', checkIn_Location: 'Office', checkOut: 'whenever' }] }, '2026-03-03');
+    expect(r).toEqual({ kind: 'unreadable', message: '2 of Zoho People’s times on 2026-03-03 couldn’t be read: Zoho sent “03-Mar-2026 - 9 o[U+2019]clock”.' });
+    // an unusual space or mark shown by its code, a long text cut, on one line
+    expect(zohoSentText('25-Oct-2026 - 09:05\u202fAM')).toBe('25-Oct-2026 - 09:05[U+202F]AM');
+    expect(zohoSentText('1761375900000')).toBe('1761375900000');
+    expect(zohoSentText('a\nb')).toBe('a b');
+    expect(zohoSentText('x'.repeat(80))).toBe(`${'x'.repeat(59)}…`);
   });
 
   it('counts the pairs’ hours by the shift, the break between them not counted (the import’s rules)', () => {

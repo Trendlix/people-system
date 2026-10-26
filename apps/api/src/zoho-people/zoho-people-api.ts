@@ -309,11 +309,12 @@ export function zohoDayOf(body: unknown, date: string, opts: { pattern?: string 
   if (!rec) return { kind: 'empty' };
   const entries = Array.isArray(rec.entries) ? rec.entries.filter(isObject) : [];
   const presses: (PressMoment & { at: string; location: string | null })[] = [];
-  let unreadable = 0;
+  const unread: string[] = [];
   const add = (kind: 'in' | 'out', value: unknown, location: unknown) => {
-    if (!text(value)) return;
+    const raw = text(value);
+    if (!raw) return;
     const at = zohoTimeOf(value, date, opts);
-    if (!at) unreadable++;
+    if (!at) unread.push(raw);
     else presses.push({ kind, at, location: text(location) });
   };
   for (const e of entries) {
@@ -324,7 +325,9 @@ export function zohoDayOf(body: unknown, date: string, opts: { pattern?: string 
     add('in', rec.firstIn, rec.firstIn_Location);
     add('out', rec.lastOut, rec.lastOut_Location);
   }
-  if (unreadable) return { kind: 'unreadable', message: `${unreadable} of Zoho People’s times on ${date} couldn’t be read.` };
+  // what Zoho sent said with it (owner, 26 October 2026: the first fetch "finished" with 1,087 days unread and the lines
+  // didn't say why): the first time that couldn't be read, as Zoho wrote it (zohoSentText), never a place
+  if (unread.length) return { kind: 'unreadable', message: `${unread.length} of Zoho People’s times on ${date} couldn’t be read: Zoho sent “${zohoSentText(unread[0])}”.` };
   const status = text(rec.status);
   if (!presses.length && !status) return { kind: 'empty' };
   presses.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
@@ -350,6 +353,16 @@ export function zohoDayOf(body: unknown, date: string, opts: { pattern?: string 
       punches: presses.length,
     },
   };
+}
+
+/**
+ * A time Zoho sent, as a run's line and the test say it: on one line, at most 60 characters, and any character that
+ * isn't a plain letter, digit, space or sign shown as its code ([U+202F]), so an unusual space or mark is seen.
+ */
+export function zohoSentText(raw: string): string {
+  const one = raw.replace(/[\r\n\t]+/g, ' ');
+  const cut = one.length > 60 ? `${one.slice(0, 59)}…` : one;
+  return cut.replace(/[^\x20-\x7E\p{L}\p{N}…]/gu, (ch) => `[U+${ch.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0')}]`);
 }
 
 /** Zoho People's organization's time zone and date format (each null when it doesn't say, or says one the system can't use). */

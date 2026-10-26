@@ -7,7 +7,6 @@ import {
   ZOHO_PEOPLE_SCOPES,
   ZOHO_RECORDED_LABEL,
   ZOHO_RUN_KIND_LABELS,
-  ZOHO_RUN_STATUS_LABELS,
   zohoPeopleRedirectUri,
   type ZohoPeopleView,
   type ZohoRunView,
@@ -27,6 +26,7 @@ import {
   hiddenText,
   nightlyText,
   personText,
+  runBadge,
   runDaysText,
   runSkippedLines,
   runSummaryText,
@@ -96,14 +96,14 @@ function setupSteps(redirectUri: string): { text: string; values?: readonly stri
 function RunRow({ run }: { run: ZohoRunView }) {
   const summary = runSummaryText(run);
   const skipped = runSkippedLines(run);
-  const tone = run.status === 'failed' ? 'bg-danger-soft text-danger' : run.status === 'running' ? 'bg-accent-soft text-accent' : run.status === 'cancelled' ? 'bg-line-soft text-muted' : 'bg-ok-soft text-ok';
+  const badge = runBadge(run);
   return (
     <li className="space-y-1.5 py-3 text-sm">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <p className="font-semibold">
           {ZOHO_RUN_KIND_LABELS[run.kind]} · {runDaysText(run)} · {runWhoText(run)}
         </p>
-        <span className={`badge ${tone}`}>{ZOHO_RUN_STATUS_LABELS[run.status]}</span>
+        <span className={`badge ${badge.className}`}>{badge.label}</span>
       </div>
       <p className="text-xs text-muted">
         Started {formatDateTime(run.startedAt)}

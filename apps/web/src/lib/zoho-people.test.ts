@@ -5,6 +5,7 @@ import {
   nightlyText,
   noteOf,
   personText,
+  runBadge,
   runDaysText,
   runPercent,
   runProgressText,
@@ -192,6 +193,14 @@ describe('a run', () => {
         }),
       ),
     ).toEqual(['Payroll approved: the day kept as it was: 4 days', 'Before their join date: 1 day']);
+  });
+
+  it('says a finished run with days unread or refused as finished with problems (owner, 26 October 2026)', () => {
+    expect(runBadge(run({ status: 'finished', skipped: [{ reason: 'unreadable', days: 1087 }] }))).toEqual({ label: 'Finished with problems', className: 'bg-warn-soft text-warn' });
+    expect(runBadge(run({ status: 'finished', skipped: [{ reason: 'not_permitted', days: 3 }] })).label).toBe('Finished with problems');
+    expect(runBadge(run({ status: 'finished', skipped: [{ reason: 'before_join', days: 196 }, { reason: 'unreadable', days: 0 }] }))).toEqual({ label: 'Finished', className: 'bg-ok-soft text-ok' });
+    expect(runBadge(run({ status: 'failed', skipped: [{ reason: 'unreadable', days: 2 }] }))).toEqual({ label: 'Failed', className: 'bg-danger-soft text-danger' });
+    expect(runBadge(run()).label).toBe('Fetching');
   });
 
   it('lists a person, the C-level people hidden from HR as a count', () => {
