@@ -390,12 +390,13 @@ export const LEAVE_STEP_KIND_LABELS: Record<LeaveStepKind, string> = {
 /**
  * A leave request's steps: those it shares with permission, working from home and official duty, and the colleague who
  * covers it changed by its employee (owner, 25 October 2026: "if the cover becomes unavailable, the requester can change
- * the cover"; leave-coverage.ts).
+ * the cover"; leave-coverage.ts), and a Super Admin's edit of it (owner, 26 October 2026: "as a superadmin i need to edit
+ * the leaves"; the step's comment lists what changed).
  */
-export const LEAVE_REQUEST_STEP_KINDS = [...LEAVE_STEP_KINDS, 'cover_changed'] as const;
+export const LEAVE_REQUEST_STEP_KINDS = [...LEAVE_STEP_KINDS, 'cover_changed', 'edited'] as const;
 export type LeaveRequestStepKind = (typeof LEAVE_REQUEST_STEP_KINDS)[number];
 
-export const LEAVE_REQUEST_STEP_KIND_LABELS: Record<LeaveRequestStepKind, string> = { ...LEAVE_STEP_KIND_LABELS, cover_changed: 'Cover changed' };
+export const LEAVE_REQUEST_STEP_KIND_LABELS: Record<LeaveRequestStepKind, string> = { ...LEAVE_STEP_KIND_LABELS, cover_changed: 'Cover changed', edited: 'Edited' };
 
 /** The step a stage's decision is logged as. */
 export const leaveDecisionStepKind = (stage: LeaveStage): LeaveStepKind => `${stage}_decision`;

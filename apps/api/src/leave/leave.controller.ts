@@ -35,6 +35,7 @@ import {
   CreateLeaveRequestDto,
   CreateLeaveTypeDto,
   DecideLeaveDto,
+  EditLeaveRequestDto,
   HrCancelLeaveDto,
   LeaveAdjustmentDto,
   LeaveCalendarQueryDto,
@@ -166,7 +167,7 @@ export class LeaveRequestsController {
     private readonly coverage: LeaveCoverageService,
   ) {}
 
-  /** ?status=<a status, or waiting>&employeeId=&from=&to=: HR and the CEO everyone's; a manager those sent to them and their team's. */
+  /** ?status=<a status, or waiting>&employeeId=&typeId=&from=&to=: HR and the CEO everyone's; a manager those sent to them and their team's. */
   @Get()
   list(@Query() query: ListLeaveRequestsDto, @CurrentUser() user: SessionUser) {
     return this.requests.list(query, user);
@@ -213,6 +214,15 @@ export class LeaveRequestsController {
   @HttpCode(200)
   decide(@Param('id', ParseUUIDPipe) id: string, @Body() dto: DecideLeaveDto, @CurrentUser() user: SessionUser) {
     return this.requests.decide(id, dto, user);
+  }
+
+  /**
+   * A Super Admin edits a leave in any status (owner, 26 October 2026): any of { typeId, startDate, endDate, halfDay,
+   * reason, coverId } and a note. 403 for anyone else, and for a Super Admin viewing as someone.
+   */
+  @Patch(':id')
+  edit(@Param('id', ParseUUIDPipe) id: string, @Body() dto: EditLeaveRequestDto, @CurrentUser() user: SessionUser) {
+    return this.requests.edit(id, dto, user);
   }
 
   /** HR cancels an approved request: { comment }. */

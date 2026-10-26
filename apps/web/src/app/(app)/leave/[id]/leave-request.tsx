@@ -5,18 +5,24 @@ import { DocumentViewer } from '@/components/document-viewer';
 import { StandingInNote } from '@/components/standing-in-note';
 import { formatDateTime, titleCase } from '@/lib/format';
 import { approverLabel } from '@/lib/department-leads';
+import { actionablePeople } from '@/lib/confidential';
+import { withCode } from '@/lib/hidden';
 import { getCurrentUser } from '@/lib/session';
 import { appBack, type Surface } from '@/lib/surface';
-import type { LeaveRequestView } from '@/lib/types';
+import type { EmployeeProfile, EmployeeSummary, LeaveRequestView } from '@/lib/types';
+import { getOrNull } from '../../approvals/data';
+import { todayInCairo } from '../../employees/ui';
 import { sizeText } from '../../reimbursements/claim';
 import { BackLink, Empty, UUID } from '../../organization/ui';
 import { notLoadedText } from '../../payroll/load';
-import { cancelLeaveByHr, cancelMyLeave, changeLeaveCover, decideLeave } from '../actions';
+import { cancelLeaveByHr, cancelMyLeave, changeLeaveCover, decideLeave, editLeave } from '../actions';
 import { standInText } from '../coverage';
 import { RequestCoverage } from '../coverage-fields';
-import { CancelLeaveForm, ChangeCoverForm, HrCancelLeaveForm, LeaveDecisionForm } from '../leave-forms';
-import { loadLeaveCoverage, loadLeaveRequest, loadOwnCoverage } from '../data';
+import { CancelLeaveForm, ChangeCoverForm, EditLeaveForm, HrCancelLeaveForm, LeaveDecisionForm } from '../leave-forms';
+import { loadEmployeeLeave, loadHolidaysOf, loadLeaveCoverage, loadLeaveRequest, loadLeaveTypes, loadOwnCoverage } from '../data';
 import { daysNumber, daysText, decidingAsTitle, hrStageName, leaveBack, leaveDocumentHref, leaveDoneText, periodText, placeOfEmployee, recordsLeave } from '../list';
+import { editTypes } from '../edit';
+import { personFacts } from '../request';
 import { LeaveProgress, LeaveStatusBadge, LeaveTimeline, OverLimitBadge } from '../ui';
 
 // A leave request (owner, 18 October 2026: "can you apply the leaves according to the law?"), for the employee, their
@@ -84,6 +90,35 @@ function Documents({ request: r }: { request: LeaveRequestView }) {
   );
 }
 
+/**
+ * What the Edit the Leave form needs, for a Super Admin (owner, 26 October 2026): the types, the employee's shift days and
+ * gender, their balances and the holidays of the leave's year (the form reads another year's when the first day moves), and
+ * the colleagues who may cover it. Null: the types couldn't be read.
+ */
+async function loadEditData(r: LeaveRequestView) {
+  const year = Number(r.startDate.slice(0, 4));
+  const [types, profile, leave, holidays, people] = await Promise.all([
+    loadLeaveTypes(),
+    getOrNull<EmployeeProfile>(`/employees/${encodeURIComponent(r.employee.id)}`),
+    loadEmployeeLeave(r.employee.id, year),
+    loadHolidaysOf(year),
+    getOrNull<EmployeeSummary[]>('/employees'),
+  ]);
+  if (types.kind !== 'ok') return null;
+  const facts = profile ? personFacts(profile) : null;
+  return {
+    types: editTypes(types.value, r.type.id, facts?.gender ?? null),
+    workingDays: facts?.workingDays ?? null,
+    initial: { year, balances: leave.kind === 'ok' ? leave.value : null, holidays: holidays.kind === 'ok' ? holidays.value : [] },
+    colleagues: people
+      ? actionablePeople(people)
+          .filter((p) => p.employment)
+          .sort((a, b) => a.fullNameEn.localeCompare(b.fullNameEn, 'en'))
+          .map((p) => ({ id: p.id, label: withCode(p.fullNameEn, p.employeeCode) }))
+      : null,
+  };
+}
+
 export async function LeaveRequestDetail({
   params,
   searchParams,
@@ -105,6 +140,8 @@ export async function LeaveRequestDetail({
   // changing the cover (25 October 2026)
   const live = r.status === 'with_manager' || r.status === 'with_hr' || r.status === 'approved';
   const [coverage, own] = await Promise.all([live ? loadLeaveCoverage(r.id) : null, r.canChangeCover ? loadOwnCoverage(r) : null]);
+  // a Super Admin's edit form (26 October 2026)
+  const editing = r.canEdit ? await loadEditData(r) : null;
   const back = surface === 'site' ? leaveBack(user, r) : appBack(surface);
   const done = leaveDoneText(query, r.status, r.manager, r.confidential);
   const place = placeOfEmployee(r.employee);
@@ -237,6 +274,26 @@ export async function LeaveRequestDetail({
                 required={!r.recordedByHr && coverRequired(r.type.key, r.days)}
                 groupName={own?.kind === 'ok' ? (own.value.group?.nameEn ?? null) : null}
               />
+            </Section>
+          )}
+
+          {r.canEdit && (
+            <Section title="Edit the Leave">
+              {editing ? (
+                <EditLeaveForm
+                  // a form again once saved: it opens with the leave as it is then
+                  key={`${r.type.id}|${r.startDate}|${r.endDate}|${r.halfDay}|${r.reason ?? ''}|${r.cover?.id ?? ''}|${r.steps.length}`}
+                  action={editLeave.bind(null, r.id)}
+                  request={r}
+                  types={editing.types}
+                  person={{ workingDays: editing.workingDays }}
+                  initial={editing.initial}
+                  colleagues={editing.colleagues}
+                  today={todayInCairo()}
+                />
+              ) : (
+                <p className="text-sm text-muted">The leave types couldn’t be loaded, so it can’t be edited now. Please try again in a moment.</p>
+              )}
             </Section>
           )}
 

@@ -18,6 +18,7 @@ import { ApiError, apiFetch, apiSend, apiUpload, messagesOf } from '@/lib/api';
 import { afterAction } from '@/lib/surface';
 import type { EmployeeLeave, FormState, Holiday, LeaveBalances, LeaveRequestView } from '@/lib/types';
 import { adjustmentBody } from './balance';
+import { editBody, typedEditValues } from './edit';
 import { hrCancelBody, leaveDecisionBody, leaveDoneHref } from './list';
 import { asShown, leaveForm, typedLeaveValues } from './request';
 
@@ -183,6 +184,27 @@ export async function cancelMyLeave(requestId: string, _prev?: FormState, fd?: F
   }
   refresh();
   redirect(afterAction(fd, leaveDoneHref(requestId, 'cancelled')));
+}
+
+/**
+ * A Super Admin edits a leave (PATCH /leave/requests/:id; owner, 26 October 2026: "as a superadmin i need to edit the
+ * leaves"): the type, the days, the reason and who covers it, with why. The API checks who may, the type's rules, the
+ * balance, a clash with other leave, a month whose payroll is with the CEO, and finds what changed; what it finds wrong
+ * comes back in the form, with what was typed.
+ */
+export async function editLeave(requestId: string, _prev: FormState, fd: FormData): Promise<FormState> {
+  const values = typedEditValues(fd);
+  const { body, errors } = editBody(fd);
+  if (!body) return { errors, values };
+  try {
+    await apiSend('PATCH', `/leave/requests/${encodeURIComponent(requestId)}`, body);
+  } catch (err) {
+    if (err instanceof ApiError) return { errors: shown(err.messages), values };
+    throw err;
+  }
+  // the lists, the balances and the payroll's lines change with it
+  refresh();
+  redirect(afterAction(fd, leaveDoneHref(requestId, 'edited')));
 }
 
 /** HR cancels an approved request (POST /leave/requests/:id/cancel), with a comment; its days are given back. */

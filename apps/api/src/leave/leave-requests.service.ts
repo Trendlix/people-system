@@ -39,6 +39,7 @@ import {
   isHr,
   isRequestManager,
   isRequester,
+  mayEditLeave,
   noLeaveMessage,
   othersWhere,
   scopeWhere,
@@ -50,7 +51,17 @@ import {
 import { checkedDocuments } from './documents.js';
 import { LeaveBalancesService, TAKING, type LeaveBalancesView, type LeaveEmployment } from './leave-balances.service.js';
 import { LeaveCoverageService } from './leave-coverage.service.js';
-import type { ChangeCoverDto, CreateLeaveRequestDto, DecideLeaveDto, HrCancelLeaveDto, LeaveCalendarQueryDto, ListLeaveRequestsDto, RecordLeaveRequestDto } from './leave.dto.js';
+import type { ChangeCoverDto, CreateLeaveRequestDto, DecideLeaveDto, EditLeaveRequestDto, HrCancelLeaveDto, LeaveCalendarQueryDto, ListLeaveRequestsDto, RecordLeaveRequestDto } from './leave.dto.js';
+import {
+  EDIT_SUPER_ADMIN_ONLY,
+  leaveEditChanges,
+  leaveEditComment,
+  leaveEditLockProblem,
+  leaveEditMovesBalance,
+  leaveEditMovesPayroll,
+  NOTHING_TO_EDIT,
+  type LeaveEditFacts,
+} from './leave-edit.js';
 import { LeavePayrollService } from './leave-payroll.service.js';
 import { PermissionRequestsService, type PermissionCalendarItem } from './permissions.service.js';
 import { StandInSchedulerService } from './stand-in-scheduler.service.js';
@@ -59,6 +70,9 @@ import { recordLeaveStep } from './steps.js';
 import { DOCUMENT_ENTITY, partiesOf, placeOf, REQUEST_ENTITY, REQUEST_INCLUDE, requestView, rulesOf, type LeaveRequestView, type RequestRow } from './views.js';
 
 const NOT_FOUND = 'Leave request not found.';
+
+/** The payroll statuses that keep a month's days as they are: with the CEO, approved, paid (locksMonth). */
+const LOCKED_PAYROLL = ['pending_ceo', 'approved', 'paid'];
 
 /** A status as a message says it: "with HR", "approved". */
 const statusWords = (status: string) => {
@@ -262,6 +276,7 @@ export class LeaveRequestsService {
           othersWhere(caller),
           query.status === 'waiting' ? waitingWhere(caller) : query.status ? { status: query.status } : {},
           query.employeeId ? { employeeId: query.employeeId } : {},
+          query.typeId ? { typeId: query.typeId } : {},
           query.from ? { endDate: { gte: toDateOnly(query.from) } } : {},
           query.to ? { startDate: { lte: toDateOnly(query.to) } } : {},
         ],
@@ -385,6 +400,207 @@ export class LeaveRequestsService {
     await this.payroll.syncDrafts(before.employeeId, startDate, fromDateOnly(before.endDate), user);
     await this.notices.leave(id, 'cancelled_by_hr');
     return this.one(id, user);
+  }
+
+  // ---------- a Super Admin edits a leave ----------
+
+  /**
+   * A Super Admin edits any leave, in any status (owner, 26 October 2026: "as a superadmin i need to edit the leaves";
+   * asked: the dates, the type, the reason and who covers it; any status; Super Admin only, in their own session). The
+   * checks are HR's recording's (record): the type and who may take it, the days within an employment, no clash with the
+   * employee's other leave or permission (this leave left out), the year open, the cover, and the days counted again; the
+   * notice an employee's own request needs is not asked, nor a document. Where the edit moves the balance (the type, the
+   * days or the year) the type's limits and the annual balance are checked with this leave left out, so a negative balance
+   * is refused as recording refuses it. Approved leave: its balance moves (the old type and year are given back, the new
+   * charged: the balance is read from the requests), the draft payroll months of the old and new days are filled again,
+   * and a month whose payroll is with the CEO, approved or paid refuses it with nothing changed; the employee is told.
+   * Pending leave stays at its step with its approver. Rejected or cancelled leave changes its fields only. The step
+   * ("Edited") lists what changed, with the note; the audit log keeps before and after; an imported leave keeps its
+   * import. A stand-in told already is told again when the first day moves.
+   */
+  async edit(id: string, dto: EditLeaveRequestDto, user: SessionUser): Promise<LeaveRequestView> {
+    if (!mayEditLeave(user)) throw new ForbiddenException(EDIT_SUPER_ADMIN_ONLY);
+    const caller = await this.caller(user);
+    const before = await this.prisma.leaveRequest.findUnique({ where: { id }, include: REQUEST_INCLUDE });
+    if (!before) throw new NotFoundException(NOT_FOUND);
+    const status = before.status as LeaveStatus;
+    const taking = (TAKING as readonly string[]).includes(status);
+    const name = before.employee.fullNameEn;
+
+    // what it will be
+    const oldStart = fromDateOnly(before.startDate);
+    const oldEnd = fromDateOnly(before.endDate);
+    const startDate = dto.startDate ?? oldStart;
+    const endDate = dto.endDate ?? oldEnd;
+    const halfDay = dto.halfDay ?? before.halfDay;
+    const reason = dto.reason === undefined ? before.reason : dto.reason;
+    const coverId = dto.coverId === undefined ? before.coverId : dto.coverId;
+    const typeChanged = !!dto.typeId && dto.typeId !== before.typeId;
+    const type = typeChanged ? await this.prisma.leaveType.findUnique({ where: { id: dto.typeId } }) : before.type;
+    if (!type) throw new BadRequestException(['Choose a leave type from the list.']);
+    if (typeChanged && !type.active) throw new BadRequestException([`${type.nameEn} is turned off, so it can't be chosen. Choose another type.`]);
+    const datesChanged = startDate !== oldStart || endDate !== oldEnd;
+    const structural = typeChanged || datesChanged || halfDay !== before.halfDay;
+    const coverChanged = coverId !== before.coverId;
+    const factsBefore: LeaveEditFacts = {
+      typeId: before.typeId,
+      typeName: before.type.nameEn,
+      startDate: oldStart,
+      endDate: oldEnd,
+      halfDay: before.halfDay,
+      reason: before.reason,
+      coverId: before.coverId,
+      coverName: before.cover?.fullNameEn ?? null,
+    };
+    // the colleague who covers: the same checks as when it is sent, for the days it will have (this leave left out)
+    let coverName = coverChanged ? null : factsBefore.coverName;
+    const problems: string[] = [];
+    if (coverId && (coverChanged || datesChanged)) {
+      const checked = await this.coverage.coverProblemsFor(before.employeeId, coverId, startDate, endDate, id);
+      problems.push(...checked.problems);
+      if (coverChanged) coverName = checked.name;
+    }
+    const after: LeaveEditFacts = { typeId: type.id, typeName: type.nameEn, startDate, endDate, halfDay, reason, coverId, coverName };
+    const changes = leaveEditChanges(factsBefore, after);
+    if (!changes.length) throw new BadRequestException([NOTHING_TO_EDIT]);
+
+    // never in a month whose payroll is with the CEO, approved or paid: the old days' or the new
+    if (status === 'approved' && leaveEditMovesPayroll(factsBefore, after)) {
+      const runs = await this.prisma.payrollRun.findMany({ where: { status: { in: LOCKED_PAYROLL } }, select: { month: true, status: true } });
+      const locked = runs.map((r) => ({ month: fromDateOnly(r.month).slice(0, 7), status: r.status }));
+      const lock = leaveEditLockProblem([{ startDate: oldStart, endDate: oldEnd }, { startDate, endDate }], locked);
+      if (lock) throw new ConflictException(lock);
+    }
+
+    // the days within one of their employments, as when HR records leave
+    let employment: LeaveEmployment | null = null;
+    let days = before.days.toNumber();
+    let holidays: string[] = [];
+    if (structural) {
+      if (datesChanged) {
+        const covering = await this.prisma.employment.findFirst({
+          where: { employeeId: before.employeeId, joinDate: { lte: toDateOnly(startDate) }, OR: [{ endDate: null }, { endDate: { gte: toDateOnly(endDate) } }] },
+          orderBy: { joinDate: 'desc' },
+          select: { id: true },
+        });
+        employment = covering ? ((await this.balances.employments([covering.id]))[0] ?? null) : null;
+        if (!employment) throw new BadRequestException([`Choose days within one of ${name}'s employments.`, ...problems]);
+      } else {
+        employment = (await this.balances.employments([before.employmentId]))[0] ?? null;
+        if (!employment) throw new NotFoundException(NOT_FOUND);
+      }
+      if (!underLabourLaw(employment.employmentType)) throw new BadRequestException([noLeaveMessage(employment.employmentType, name)]);
+      if (startDate < employment.joinDate) problems.push(`The leave must be within the employment, which started on ${shownDate(employment.joinDate)}.`);
+      if (employment.endDate && endDate > employment.endDate) problems.push(`The leave must be within the employment, which ended on ${shownDate(employment.endDate)}.`);
+      holidays = startDate <= endDate ? (await this.prisma.holiday.findMany({ where: { date: { gte: toDateOnly(startDate), lte: toDateOnly(endDate) } }, select: { date: true } })).map((h) => fromDateOnly(h.date)) : [];
+      days = leaveDaysBetween(startDate, endDate, { workingDays: employment.workingDays ?? DEFAULT_WORKING_DAYS, holidays, calendarDays: type.calendarDays, halfDay });
+    }
+    // the balance moves with the type, the days or the year: a closed year takes no more leave from it, nor gives any back
+    const moves = leaveEditMovesBalance({ typeId: before.typeId, startDate: oldStart, days: before.days.toNumber() }, { typeId: type.id, startDate, days });
+    const checksBalance = taking && moves;
+    if (checksBalance && startDate <= endDate) {
+      await this.assertYearOpen(before.type, oldStart);
+      await this.assertYearOpen(type, startDate);
+    }
+
+    const row = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT 1 FROM employees WHERE id = ${before.employeeId}::uuid FOR UPDATE`;
+      if (structural && employment) {
+        const year = Number(startDate.slice(0, 4));
+        const [annual, ofType] = await Promise.all([
+          this.balances.annual(employment, year, todayInCairo(), tx, id),
+          tx.leaveRequest.findMany({ where: { employeeId: before.employeeId, typeId: type.id, id: { not: id }, status: { in: [...TAKING] } }, select: { startDate: true, days: true } }),
+        ]);
+        problems.push(
+          ...leaveRequestProblems(
+            // byHr: no notice; a document is not asked of an edit (an imported or recorded leave has none)
+            { startDate, endDate, halfDay, days, documents: Math.max(1, before.documents.length), today: todayInCairo(), byHr: true },
+            rulesOf(type),
+            checksBalance ? { available: annual.available, usableFrom: annual.usableFrom } : { available: Infinity, usableFrom: '' },
+            {
+              usedInYear: checksBalance ? ofType.filter((r) => r.startDate.getUTCFullYear() === year).reduce((n, r) => n + r.days.toNumber(), 0) : 0,
+              timesInService: taking ? ofType.length : 0,
+              serviceMonths: serviceMonths(employment.joinDate, startDate),
+              gender: (employment.employee.gender as LeaveGender | null) ?? null,
+            },
+          ),
+        );
+      }
+      if (problems.length) throw new BadRequestException(problems);
+      if (structural && taking) {
+        // never on days another request already takes, nor a day with permission asked for (this leave left out)
+        const overlap = await tx.leaveRequest.findFirst({
+          where: { employeeId: before.employeeId, id: { not: id }, status: { in: [...TAKING] }, startDate: { lte: toDateOnly(endDate) }, endDate: { gte: toDateOnly(startDate) } },
+          orderBy: { startDate: 'asc' },
+          select: { startDate: true, endDate: true, status: true, type: { select: { nameEn: true } } },
+        });
+        if (overlap) {
+          const when = `from ${shownDate(fromDateOnly(overlap.startDate))} to ${shownDate(fromDateOnly(overlap.endDate))}`;
+          throw new ConflictException(`${name} already has ${overlap.type.nameEn} ${when} (${statusWords(overlap.status)}) on some of these days. Choose other days.`);
+        }
+        const permission = await tx.permissionRequest.findFirst({
+          where: { employeeId: before.employeeId, status: { in: [...TAKING] }, date: { gte: toDateOnly(startDate), lte: toDateOnly(endDate) } },
+          orderBy: { date: 'asc' },
+          select: { date: true, hours: true, status: true },
+        });
+        if (permission) {
+          throw new ConflictException(
+            `${name} has permission for ${permissionHoursText(permission.hours.toNumber())} on ${shownDate(fromDateOnly(permission.date))} (${statusWords(permission.status)}): cancel it first, or choose other days.`,
+          );
+        }
+      }
+      const { count } = await tx.leaveRequest.updateMany({
+        where: { id, status: before.status },
+        data: {
+          typeId: type.id,
+          startDate: toDateOnly(startDate),
+          endDate: toDateOnly(endDate),
+          halfDay,
+          days,
+          reason,
+          coverId,
+          // a note to a colleague who no longer covers goes with them
+          ...(coverId === null && before.coverId !== null && { handoverNote: null }),
+          ...(employment && { employmentId: employment.id }),
+          // the stand-in is told again when the first day moves: the leave starts on other days now
+          ...(startDate !== oldStart && { standInToldAt: null }),
+        },
+      });
+      if (!count) throw new ConflictException('This request was decided or cancelled meanwhile. Reload the page to see where it is.');
+      await recordLeaveStep(tx, id, user.id, { kind: 'edited', comment: leaveEditComment(changes, dto.note) });
+      return tx.leaveRequest.findUniqueOrThrow({ where: { id }, include: REQUEST_INCLUDE });
+    });
+
+    await this.audit.record({
+      userId: user.id,
+      action: 'update',
+      entityType: REQUEST_ENTITY,
+      entityId: id,
+      diff: {
+        employeeId: before.employeeId,
+        status,
+        before: { typeId: before.typeId, type: factsBefore.typeName, startDate: oldStart, endDate: oldEnd, halfDay: before.halfDay, days: before.days.toNumber(), reason: before.reason, coverId: before.coverId, employmentId: before.employmentId },
+        after: { typeId: type.id, type: type.nameEn, startDate, endDate, halfDay, days, reason, coverId, employmentId: employment?.id ?? before.employmentId },
+        changes,
+        ...(dto.note && { note: dto.note }),
+      },
+    });
+    if (status === 'approved') {
+      // the draft payroll months of the old and the new days, filled again as cancelling and approving do
+      if (leaveEditMovesPayroll(factsBefore, after)) {
+        await this.payroll.syncDrafts(before.employeeId, oldStart, oldEnd, user);
+        if (startDate !== oldStart || endDate !== oldEnd) await this.payroll.syncDrafts(before.employeeId, startDate, endDate, user);
+      }
+      // an approver's leave moved: a stand-in whose days have started is told now
+      if (before.standInId || before.standInHr) await this.standIns.tick();
+      await this.notices.leaveEdited(id);
+    }
+    // the colleague who covers it now is told, and the one before that they no longer cover it, as when the employee changes it
+    if (taking && coverChanged) {
+      if (coverId) await this.notices.cover(id, coverId);
+      if (before.coverId) await this.notices.cover(id, before.coverId, true);
+    }
+    return (await this.views([row], caller))[0];
   }
 
   // ---------- an employee's leave and the calendar ----------

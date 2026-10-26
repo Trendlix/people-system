@@ -29,9 +29,12 @@ import { permissionsPath, WAITING_PERMISSIONS } from './permissions';
 
 export type { Loaded };
 
-/** GET /leave/requests (HR and the CEO everyone's; a direct manager their reports'), newest first, by the filter. */
-export function loadLeaveRequests(filter: LeaveFilter): Promise<Loaded<LeaveRequestView[]>> {
-  return loadJson<LeaveRequestView[]>(leaveRequestsPath(filter));
+/**
+ * GET /leave/requests (HR and the CEO everyone's; a direct manager their reports'), newest first, by the filter, one
+ * person's (`employeeId`) and one type's (`typeId`).
+ */
+export function loadLeaveRequests(filter: LeaveFilter, employeeId?: string | null, typeId?: string | null): Promise<Loaded<LeaveRequestView[]>> {
+  return loadJson<LeaveRequestView[]>(leaveRequestsPath(filter, employeeId, typeId));
 }
 
 /** GET /leave/requests?status=waiting: the requests waiting for the caller. Read once a request (My Team, the dashboard). */
@@ -94,8 +97,8 @@ export async function loadHolidayYears(years: readonly number[]): Promise<Holida
 // ---------- permission (19 October 2026) ----------
 
 /** GET /leave/permissions (HR and the CEO everyone's; a manager or lead those sent to them and their team's), by the filter. */
-export function loadPermissions(filter: LeaveFilter): Promise<Loaded<PermissionRequestView[]>> {
-  return loadJson<PermissionRequestView[]>(permissionsPath(filter));
+export function loadPermissions(filter: LeaveFilter, employeeId?: string | null): Promise<Loaded<PermissionRequestView[]>> {
+  return loadJson<PermissionRequestView[]>(permissionsPath(filter, employeeId));
 }
 
 /** GET /leave/permissions?status=waiting: the permission requests waiting for the caller. Read once a request (My Team, the dashboard). */

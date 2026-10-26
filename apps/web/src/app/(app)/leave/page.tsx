@@ -6,9 +6,11 @@ import { GroupHeading } from '@/components/group-heading';
 import { LEAVE_PATH } from '@/components/nav';
 import { departmentOptions } from '@/lib/departments';
 import { formatDateTime } from '@/lib/format';
+import { actionablePeople } from '@/lib/confidential';
+import { withCode } from '@/lib/hidden';
 import { groupByPlace, showsDepartment } from '@/lib/place-groups';
 import { getCurrentUser } from '@/lib/session';
-import type { Department } from '@/lib/types';
+import type { Department, EmployeeSummary } from '@/lib/types';
 import { getOrNull } from '../approvals/data';
 import { todayInCairo } from '../employees/ui';
 import { Empty, Loading } from '../organization/ui';
@@ -18,7 +20,7 @@ import { loadOdCalendar } from '../attendance/official-duty/data';
 import { calendarDays, calendarPeople, monthRange, readDepartment, readMonth } from './calendar';
 import { importsLeave, LEAVE_IMPORT_PATH } from './import/import';
 import { LeaveCalendar } from './calendar-view';
-import { loadHolidaysOf, loadLeaveCalendar, loadLeaveRequests, loadPermissions, type Loaded } from './data';
+import { loadHolidaysOf, loadLeaveCalendar, loadLeaveRequests, loadLeaveTypes, loadPermissions, type Loaded } from './data';
 import {
   askerCount,
   canSeeLeaveRequests,
@@ -39,15 +41,14 @@ import {
   isPermission,
   mergeRequests,
   NEW_PERMISSION_PATH,
-  readRequestKind,
   RECORD_PERMISSION_PATH,
   recordsPermission,
-  REQUEST_KIND_FILTERS,
   requestHref,
   requestListHref,
-  type RequestKind,
   type RequestRow,
 } from './permissions';
+import { hasRequestFilters, kindOfFilters, leaveTypeOf, NO_MATCH_TEXT, readRequestFilters, requestFiltersHref, typeChoices, type RequestFilters } from './request-filters';
+import { RequestFiltersForm } from './request-filters-form';
 import { LeaveProgress, LeaveStatusBadge, RequestWhen } from './ui';
 
 // Leave Requests, under Requests in the sidebar (owner, 18 October 2026: "if we will work on the attendance and leaves,
@@ -62,9 +63,11 @@ import { LeaveProgress, LeaveStatusBadge, RequestWhen } from './ui';
 // listed to HR without Super Admin; the CEO decides its HR stage, so it says "With the CEO", is marked C-level for those
 // who see it, and has Decide for the CEO when it waits for them (`waitingForYou`). Permission requests (owner, 19 October
 // 2026: "this is an option given by us .. 4 hours per month with a maximum 2 hours per day", asked "In the system, like
-// leave") are listed with the leave, decided the same way: a second filter, All · Leave · Permissions (?kind=, kept with
-// the status by each link), each permission with its day and hours, opening its own page; Record permission for HR beside
-// Record leave, New permission beside New leave; the calendar shows them as hours. Import leaves (owner, 21 October 2026:
+// leave") are listed with the leave, decided the same way: each permission with its day and hours, opening its own page;
+// Record permission for HR beside Record leave, New permission beside New leave; the calendar shows them as hours. An
+// Employee and a Type filter beside the status (owner, 26 October 2026: "i need to filter either by employee or typ"; ?employee=
+// and ?type=, kept with the status by each link, with Clear filters): the Type holds the leave types and Permission, and
+// replaces the kind row (All · Leave · Permissions). Import leaves (owner, 21 October 2026:
 // "how to import bulk leaves?") opens Import Leave for HR and the CEO: the template or Zoho People's leave export.
 
 export const metadata: Metadata = { title: 'Leave Requests · People System' };
@@ -77,30 +80,34 @@ type Query = Record<string, string | string[] | undefined>;
 
 const chipLook = (active: boolean) => `${chip} ${active ? 'border-ink bg-ink text-white hover:text-white' : 'border-line bg-white text-ink hover:bg-canvas hover:text-ink'}`;
 
-/** The status filter and the kind (leave, permissions or both): one link per choice, each keeping the other, so the address keeps both. */
-function Filters({ filter, kind }: { filter: LeaveFilter; kind: RequestKind }) {
+/**
+ * The status chips, each keeping the Employee and the Type chosen, and the Employee and Type filters, which keep the
+ * status: the address keeps all three.
+ */
+function Filters({
+  filter,
+  filters,
+  people,
+  types,
+}: {
+  filter: LeaveFilter;
+  filters: RequestFilters;
+  people: readonly { id: string; label: string }[] | null;
+  types: readonly { value: string; label: string }[];
+}) {
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <nav aria-label="Filter by status" className="flex flex-wrap gap-2">
         {LEAVE_FILTERS.map((o) => {
           const active = o.value === filter;
           return (
-            <Link key={o.value} href={requestListHref(o.value, kind)} aria-current={active ? 'page' : undefined} className={chipLook(active)}>
+            <Link key={o.value} href={requestFiltersHref(o.value, filters)} aria-current={active ? 'page' : undefined} className={chipLook(active)}>
               {o.label}
             </Link>
           );
         })}
       </nav>
-      <nav aria-label="Filter by kind" className="flex flex-wrap gap-2">
-        {REQUEST_KIND_FILTERS.map((o) => {
-          const active = o.value === kind;
-          return (
-            <Link key={o.value} href={requestListHref(filter, o.value)} aria-current={active ? 'page' : undefined} className={chipLook(active)}>
-              {o.label}
-            </Link>
-          );
-        })}
-      </nav>
+      <RequestFiltersForm status={filter} employeeId={filters.employeeId} type={filters.type} people={people} types={types} filtered={hasRequestFilters(filters)} />
     </div>
   );
 }
@@ -202,15 +209,30 @@ function RequestsTable({ requests }: { requests: RequestRow[] }) {
 const NONE: Loaded<never[]> = { kind: 'ok', value: [] };
 
 /**
- * The leave and the permission requests of the status and kind chosen, read together and merged, newest first. An API
- * from before permission (404) lists the leave alone; a list that couldn't be read is said, the other still shown.
+ * The leave and the permission requests of the status, the employee and the type chosen, read together and merged,
+ * newest first. An API from before permission (404) lists the leave alone; a list that couldn't be read is said, the
+ * other still shown. The people to choose from are those the user sees (the directory without the C-level cards they can't
+ * open), the types the leave types and Permission.
  */
 async function RequestsList({ query, user }: { query: Query; user: Awaited<ReturnType<typeof getCurrentUser>> }) {
   const filter = readLeaveFilter(query, user);
-  const kind = readRequestKind(query);
+  const asked = readRequestFilters(query);
+  const [directory, leaveTypes] = await Promise.all([getOrNull<EmployeeSummary[]>('/employees'), loadLeaveTypes()]);
+  const people = directory
+    ? actionablePeople(directory)
+        .sort((a, b) => a.fullNameEn.localeCompare(b.fullNameEn, 'en'))
+        .map((p) => ({ id: p.id, label: withCode(p.fullNameEn, p.employeeCode) }))
+    : null;
+  // a person or a type that isn't among the choices is no filter (a stale or hand-made address)
+  const types = typeChoices(leaveTypes.kind === 'ok' ? leaveTypes.value : []);
+  const filters: RequestFilters = {
+    employeeId: asked.employeeId && (!people || people.some((p) => p.id === asked.employeeId)) ? asked.employeeId : null,
+    type: asked.type && (leaveTypes.kind !== 'ok' || types.some((t) => t.value === asked.type)) ? asked.type : null,
+  };
+  const kind = kindOfFilters(filters);
   const [leave, permissions] = await Promise.all([
-    kind === 'permission' ? NONE : loadLeaveRequests(filter),
-    kind === 'leave' ? NONE : loadPermissions(filter),
+    kind === 'permission' ? NONE : loadLeaveRequests(filter, filters.employeeId, leaveTypeOf(filters)),
+    kind === 'leave' ? NONE : loadPermissions(filter, filters.employeeId),
   ]);
   const rows = mergeRequests(leave.kind === 'ok' ? leave.value : [], permissions.kind === 'ok' ? permissions.value : []);
   // a list not read: said in the list's place when it is the only one asked for, else above the other
@@ -221,7 +243,7 @@ async function RequestsList({ query, user }: { query: Query; user: Awaited<Retur
   ].filter((p): p is string => typeof p === 'string');
   return (
     <div className="space-y-4">
-      <Filters filter={filter} kind={kind} />
+      <Filters filter={filter} filters={filters} people={people} types={types} />
       {leave.kind === 'unavailable' && kind !== 'permission' ? (
         <Empty>Not available yet: the server does not have leave yet.</Empty>
       ) : leave.kind === 'forbidden' || permissions.kind === 'forbidden' ? (
@@ -232,7 +254,12 @@ async function RequestsList({ query, user }: { query: Query; user: Awaited<Retur
           {rows.length === 0 ? (
             problems.length === 0 && (
               <Empty>
-                {emptyRequestsText(filter, kind)} {filter !== 'all' && <Link href={requestListHref('all', kind)}>Show all</Link>}
+                {hasRequestFilters(filters) ? NO_MATCH_TEXT : emptyRequestsText(filter, kind)}{' '}
+                {hasRequestFilters(filters) ? (
+                  <Link href={requestFiltersHref(filter, { employeeId: null, type: null })}>Clear filters</Link>
+                ) : (
+                  filter !== 'all' && <Link href={requestListHref('all', kind)}>Show all</Link>
+                )}
               </Empty>
             )
           ) : (

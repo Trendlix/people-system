@@ -2311,6 +2311,13 @@ export interface LeaveRequestView {
   standIn?: { employee: StepPerson | null; hr: boolean } | null;
   canChangeCover?: boolean;
   /**
+   * A Super Admin in their own session may edit it, in any status (owner, 26 October 2026: "as a superadmin i need to
+   * edit the leaves"), and whether it came with an import (undoing the import removes it, edits too). Left out by an
+   * API from before them.
+   */
+  canEdit?: boolean;
+  imported?: boolean;
+  /**
    * The employee is C-level (owner, 19 October 2026): HR's stage is the CEO's (or HR with Super Admin); `waitingForYou`
    * says whether it waits for the caller. Left out by an API from before it.
    */

@@ -23,13 +23,14 @@ import { Select } from '@/components/select';
 import { SurfaceField, useAppSection } from '@/components/surface';
 import { CameraButton } from '@/components/camera-button';
 import { formatDate, parseDate, titleCase } from '@/lib/format';
-import type { FormState, Holiday, LeaveBalances, LeaveTypeView } from '@/lib/types';
+import type { FormState, Holiday, LeaveBalances, LeaveRequestView, LeaveTypeView } from '@/lib/types';
 import { choice } from '../employees/[id]/contracts/pay-fields';
 import { shrinkPhoto } from '../employees/shrink-photo';
 import { sizeText } from '../reimbursements/claim';
 import { leaveCoverage, leaveYearData } from './actions';
 import { CoverageFields, type CoverageChoice } from './coverage-fields';
 import { placeText } from './coverage';
+import { EDIT_NOTE_MAX, editChanged, editHint, editPreview, editPreviewText, editStart, type TypedEdit } from './edit';
 import { daysNumber, daysText, hrStageName, LEAVE_COMMENT_READERS, leaveCommentReaders, leaveDecisionButton } from './list';
 import { correctionDecisionButton } from '../attendance/corrections/corrections';
 import { permissionDecisionButton } from './permissions';
@@ -539,6 +540,195 @@ export function NewLeaveForm({
           Cancel
         </Link>
       </div>
+    </form>
+  );
+}
+
+// ---------- a Super Admin edits a leave ----------
+
+/**
+ * A Super Admin edits any leave (PATCH /leave/requests/:id; owner, 26 October 2026: "as a superadmin i need to edit the
+ * leaves"; asked, the type, the dates, the reason and who covers it, in any status): the leave's own values to start
+ * with; the days counted live as the leave form counts them, with the annual balance after it; half a day where the type
+ * allows it; the colleague who covers (anyone employed now but the employee: the API checks the days they are off) and
+ * why it is edited, kept on the leave's step and in the audit log. Only Save is needed: the API finds what changed and
+ * answers what is wrong, shown here with what was typed. A first day in another year reads that year's balance and
+ * holidays.
+ */
+export function EditLeaveForm({
+  action,
+  request,
+  types,
+  person,
+  initial,
+  colleagues,
+  today,
+}: {
+  action: Action;
+  request: LeaveRequestView;
+  /** The types it can become (its own among them). */
+  types: LeaveTypeView[];
+  person: Pick<LeavePerson, 'workingDays'>;
+  initial: YearData;
+  /** The colleagues who may cover it, employed now (null: they couldn't be loaded). */
+  colleagues: readonly { id: string; label: string }[] | null;
+  today: string;
+}) {
+  const [state, formAction, saving] = useActionState(action, {});
+  const fid = useFieldIds();
+  const start = editStart(request);
+  const [typed, setTyped] = useState<TypedEdit>(() => ({
+    typeId: valueOf(state, 'typeId', start.typeId),
+    startDate: valueOf(state, 'startDate', start.startDate),
+    endDate: valueOf(state, 'endDate', start.endDate),
+    halfDay: valueOf(state, 'halfDay', String(start.halfDay)) === 'true',
+    reason: valueOf(state, 'reason', start.reason),
+    coverId: valueOf(state, 'coverId', start.coverId),
+    note: valueOf(state, 'note'),
+  }));
+  const [loaded, setLoaded] = useState<YearData>(initial);
+  const [loadProblem, setLoadProblem] = useState<string | null>(null);
+  const [checking, startChecking] = useTransition();
+  const asked = useRef(initial.year);
+
+  const type = types.find((t) => t.id === typed.typeId) ?? null;
+  const currentType = types.find((t) => t.id === request.type.id) ?? null;
+  const wanted = requestYear(typed, today);
+  const stale = wanted !== loaded.year;
+  const preview = editPreview(typed, type, { workingDays: person.workingDays, holidays: loaded.holidays, balances: stale ? null : loaded.balances }, request, currentType);
+  const changed = editChanged(typed, request);
+  const halfAllowed = !!type?.halfDays;
+  const oneDay = (() => {
+    const s = parseDate(typed.startDate);
+    const end = typed.endDate.trim() === '' ? s : parseDate(typed.endDate);
+    return !!s && s === end;
+  })();
+
+  /** The balances and holidays again, for the year of the first day typed. */
+  function readFor(year: number) {
+    if (year === asked.current) return;
+    asked.current = year;
+    setLoadProblem(null);
+    startChecking(async () => {
+      const answer = await leaveYearData(year, request.employee.id);
+      if (asked.current !== year) return;
+      if ('balances' in answer) setLoaded({ year, balances: answer.balances, holidays: answer.holidays });
+      else setLoadProblem(`The balance of ${year} couldn't be checked: ${answer.errors.join(' ')} It is checked when you save.`);
+    });
+  }
+
+  function set<K extends keyof TypedEdit>(key: K, value: TypedEdit[K]) {
+    setTyped((t) => ({ ...t, [key]: value }));
+    if (key === 'startDate') {
+      const date = parseDate(value as string);
+      if (date) readFor(Number(date.slice(0, 4)));
+    }
+  }
+
+  return (
+    <form
+      action={formAction}
+      onChange={(e) => {
+        // the dates typed, for the count (the fields stay uncontrolled)
+        if (e.target instanceof HTMLInputElement && (e.target.name === 'startDate' || e.target.name === 'endDate')) set(e.target.name as 'startDate' | 'endDate', e.target.value);
+      }}
+      aria-label={`Edit the ${request.type.nameEn.toLowerCase()} of ${request.employee.fullNameEn}`}
+      className="space-y-5"
+    >
+      <FormErrors errors={state.errors} />
+      <SurfaceField />
+      <div className="grid gap-5 sm:grid-cols-2">
+        <div className="sm:col-span-2">
+          <label htmlFor={fid('typeId')} className="label">
+            Type of leave
+          </label>
+          <Select id={fid('typeId')} name="typeId" required value={typed.typeId} onChange={(e) => set('typeId', e.target.value)} className="input">
+            {types.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.nameEn}
+                {t.active ? '' : ' (off)'}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div>
+          <label htmlFor={fid('startDate')} className="label">
+            First day
+          </label>
+          <DateInput id={fid('startDate')} name="startDate" required defaultValue={typed.startDate} />
+        </div>
+        <div>
+          <label htmlFor={fid('endDate')} className="label">
+            Last day {optional}
+          </label>
+          <DateInput id={fid('endDate')} name="endDate" defaultValue={typed.endDate} aria-describedby={fid('endDate-hint')} />
+          <p id={fid('endDate-hint')} className="hint">
+            Empty: one day, the first.
+          </p>
+        </div>
+        {halfAllowed && (
+          <div className="sm:col-span-2">
+            <label className={`${choice} w-fit ${oneDay ? '' : 'opacity-60'}`}>
+              <input
+                type="checkbox"
+                checked={typed.halfDay}
+                onChange={(e) => set('halfDay', e.target.checked)}
+                disabled={!oneDay && !typed.halfDay}
+                aria-describedby={fid('halfDay-hint')}
+                className="size-4 accent-accent"
+              />
+              Half a day
+            </label>
+            <p id={fid('halfDay-hint')} className="hint">
+              For one day only: make the first and last day the same.
+            </p>
+          </div>
+        )}
+        {/* sent as "true" or "false", whatever the type (a type without half days sends false) */}
+        <input type="hidden" name="halfDay" value={String(typed.halfDay && halfAllowed)} />
+        <div className="sm:col-span-2" role="status" aria-live="polite">
+          <p className="rounded-lg bg-canvas px-4 py-3 text-sm font-semibold tabular-nums">{checking ? 'Checking the balance and the holidays…' : editPreviewText(preview)}</p>
+        </div>
+        <div className="sm:col-span-2">
+          <label htmlFor={fid('reason')} className="label">
+            Reason {optional}
+          </label>
+          <textarea id={fid('reason')} name="reason" rows={2} maxLength={REASON_MAX} value={typed.reason} onChange={(e) => set('reason', e.target.value)} className="input" />
+        </div>
+        <div className="sm:col-span-2">
+          <label htmlFor={fid('coverId')} className="label">
+            Covered by {optional}
+          </label>
+          <Select id={fid('coverId')} name="coverId" value={typed.coverId} onChange={(e) => set('coverId', e.target.value)} aria-describedby={fid('coverId-hint')} className="input">
+            <option value="">Nobody</option>
+            {/* the one covering now, even if the list lacks them (no longer employed) */}
+            {request.cover && !colleagues?.some((c) => c.id === request.cover?.id) && <option value={request.cover.id}>{request.cover.fullNameEn}</option>}
+            {colleagues
+              ?.filter((c) => c.id !== request.employee.id)
+              .map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
+                </option>
+              ))}
+          </Select>
+          <p id={fid('coverId-hint')} className="hint">
+            {colleagues ? 'Anyone employed now but the employee, not off on these days. Type to search. The new colleague is told, and the one before.' : 'The colleagues couldn’t be loaded: try again in a moment.'}
+          </p>
+        </div>
+        <div className="sm:col-span-2">
+          <label htmlFor={fid('note')} className="label">
+            Why it’s edited {optional}
+          </label>
+          <input id={fid('note')} name="note" maxLength={EDIT_NOTE_MAX} autoComplete="off" value={typed.note} onChange={(e) => set('note', e.target.value)} aria-describedby={fid('note-hint')} className="input" />
+          <p id={fid('note-hint')} className="hint">
+            {editHint(request)}
+          </p>
+        </div>
+      </div>
+      {loadProblem && <p className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">{loadProblem}</p>}
+      <button type="submit" disabled={saving || checking || !changed} className="btn btn-primary disabled:cursor-not-allowed disabled:opacity-60">
+        {saving ? 'Saving…' : 'Save the edit'}
+      </button>
     </form>
   );
 }

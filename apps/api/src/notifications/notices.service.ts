@@ -17,6 +17,7 @@ import {
   decidedText,
   homeDecidedText,
   homeWaitingText,
+  leaveEditedText,
   payRaiseDecidedText,
   payRaiseWaitingText,
   payslipText,
@@ -117,6 +118,15 @@ export class NoticesService {
       const span = { from: fromDateOnly(r.startDate), to: fromDateOnly(r.endDate), halfDay: r.halfDay };
       const when = daysText(span.from, span.to, r.halfDay);
       await this.leaveLike('leave', { ...r, name: r.employee.fullNameEn, nameAr: r.employee.fullNameAr, when, span, link: REQUEST_LINKS.leave(id) }, event);
+    });
+  }
+
+  /** A Super Admin edited the employee's approved leave (owner, 26 October 2026): the employee is told, with its new days; the bell and push, no WhatsApp. */
+  async leaveEdited(id: string): Promise<void> {
+    await this.safely('leave edit', async () => {
+      const r = await this.prisma.leaveRequest.findUnique({ where: { id }, select: { employeeId: true, status: true, startDate: true, endDate: true, halfDay: true } });
+      if (!r || r.status !== 'approved') return;
+      await this.toEmployee(r.employeeId, leaveEditedText(daysText(fromDateOnly(r.startDate), fromDateOnly(r.endDate), r.halfDay), REQUEST_LINKS.leave(id)));
     });
   }
 

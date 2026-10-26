@@ -65,9 +65,9 @@ export const leaveDocumentHref = (requestId: string, docId: string) => `${leaveH
 /**
  * What was just done on a request, said on its page by `?done=`: sent, recorded by HR, cancelled, a stage's decision
  * ("hr_approve"), a decision refused because the request had moved on meanwhile (`moved`), or its cover changed by its
- * employee (`cover`, 25 October 2026).
+ * employee (`cover`, 25 October 2026), or edited by a Super Admin (`edited`, 26 October 2026).
  */
-export type LeaveDone = 'sent' | 'recorded' | 'cancelled' | 'moved' | 'cover' | `${LeaveStage}_${LeaveDecision}`;
+export type LeaveDone = 'sent' | 'recorded' | 'cancelled' | 'moved' | 'cover' | 'edited' | `${LeaveStage}_${LeaveDecision}`;
 
 /** A request's page after something was done on it: "/leave/<id>?done=sent". */
 export const leaveDoneHref = (id: string, done: LeaveDone) => `${leaveHref(id)}?done=${done}`;
@@ -131,11 +131,15 @@ export function leaveCalendarHref(month: string, departmentId?: string | null, b
   return `${base}?${params.toString()}`;
 }
 
-/** The API's list for a filter: GET /leave/requests?status=waiting|<status>, without one for All; `employeeId` for one person's. */
-export function leaveRequestsPath(filter: LeaveFilter, employeeId?: string | null): string {
+/**
+ * The API's list for a filter: GET /leave/requests?status=waiting|<status>, without one for All; `employeeId` for one
+ * person's and `typeId` for one leave type's (owner, 26 October 2026: "i need to filter either by employee or typ").
+ */
+export function leaveRequestsPath(filter: LeaveFilter, employeeId?: string | null, typeId?: string | null): string {
   const params = new URLSearchParams();
   if (filter !== 'all') params.set('status', filter);
   if (employeeId) params.set('employeeId', employeeId);
+  if (typeId) params.set('typeId', typeId);
   const qs = params.toString();
   return qs ? `/leave/requests?${qs}` : '/leave/requests';
 }
@@ -311,6 +315,8 @@ export function leaveDoneText(
   if (done === 'moved') return { text: LEAVE_MOVED_ON, tone: 'warn' };
   // the colleague who covers changed by the employee (25 October 2026)
   if (done === 'cover') return { text: 'Cover saved. The colleague who covers now is told, and the one before is told they no longer cover it.', tone: 'ok' };
+  // a Super Admin's edit (26 October 2026)
+  if (done === 'edited') return { text: 'Leave edited. The log of every step lists what changed.', tone: 'ok' };
   const [stage, decision] = done.split('_');
   if (!(LEAVE_STAGES as readonly string[]).includes(stage) || !(LEAVE_DECISIONS as readonly string[]).includes(decision)) return null;
   return { text: leaveDecidedText(decision as LeaveDecision, stage as LeaveStage, confidential), tone: 'ok' };
@@ -343,6 +349,9 @@ export function leaveStepText(s: Pick<LeaveRequestStep, 'kind' | 'decision' | 'c
     // the employee changed the colleague who covers it (owner, 25 October 2026: "Required over 2 days")
     case 'cover_changed':
       return 'Cover changed';
+    // a Super Admin edited it (owner, 26 October 2026: "as a superadmin i need to edit the leaves"); the comment lists what
+    case 'edited':
+      return 'Edited by a Super Admin';
     default:
       return String(s.kind);
   }

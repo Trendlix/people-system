@@ -1,5 +1,5 @@
 import { decidesConfidentialStage, isOpenLeave, leaveStage, movesToStandIn, type CoveragePerson, type LeaveStage } from '@trendlix/shared';
-import { actsAs } from '../auth/roles.js';
+import { actsAs, isSuperAdmin } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { shownDate } from '../common/date-only.js';
 import type { ConfidentialView } from '../employees/confidential.service.js';
@@ -60,6 +60,13 @@ export const seesEveryRequest = (user: SessionUser) => actsAs(user.roles, ['hr',
 
 /** Only HR records leave on an employee's behalf, adjusts balances and closes a year. */
 export const isHr = (user: SessionUser) => actsAs(user.roles, ['hr']);
+
+/**
+ * Whether the caller edits any leave (owner, 26 October 2026: "as a superadmin i need to edit the leaves"; "Super Admin
+ * only"): a Super Admin in their own session, as the Zoho People connection is managed (zoho-people.service.ts
+ * `manages`): never HR, the CEO or a developer, nor a Super Admin viewing as someone else.
+ */
+export const mayEditLeave = (user: SessionUser) => !user.developer && isSuperAdmin(user) && !user.viewAs;
 
 /** The employee whose leave it is. */
 export const isRequester = (r: RequestParties, caller: Caller) => caller.employeeId !== null && r.employeeId === caller.employeeId;

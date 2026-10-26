@@ -51,6 +51,11 @@ export function cancelledByHrText(kind: 'leave' | 'permission' | 'wfh' | 'od', w
   return { kind: `${kind}_decided`, title: CANCELLED_BY_HR[kind], body: when, link };
 }
 
+/** A Super Admin edited the employee's approved leave (owner, 26 October 2026): told as HR's cancelling is, with its new days. */
+export function leaveEditedText(when: string, link: string): NotificationInput {
+  return { kind: 'leave_decided', title: 'Leave edited by a Super Admin', body: when, link };
+}
+
 /**
  * A colleague named to cover someone's leave (owner, 25 October 2026: "Required over 2 days"): who and when, never its
  * type ("Omar Khaled named you to cover their leave", "12/11/2026–14/11/2026"); or told they no longer cover it (the

@@ -232,13 +232,17 @@ export class RecordLeaveRequestDto extends CreateLeaveRequestDto {
   employeeId: string;
 }
 
-/** ?status=<a status, or waiting>&employeeId=&from=&to= on Leave Requests: all unless sent. */
+/** ?status=<a status, or waiting>&employeeId=&typeId=&from=&to= on Leave Requests: all unless sent. */
 export class ListLeaveRequestsDto {
   @IsOptional() @IsIn([...LEAVE_STATUSES, 'waiting'], { message: `Choose a status: waiting, ${LEAVE_STATUSES.join(', ')}.` })
   status?: LeaveStatus | 'waiting';
 
   @IsOptional() @IsUUID('all', { message: 'Choose the employee.' })
   employeeId?: string;
+
+  /** One leave type's requests (owner, 26 October 2026: "i need to filter either by employee or typ"). */
+  @IsOptional() @IsUUID('all', { message: 'Choose the leave type.' })
+  typeId?: string;
 
   /** Those that end on or after it. */
   @IsOptional() @IsDateOnly('Enter the first day, e.g. 2026-10-01.')
@@ -262,6 +266,35 @@ export class DecideLeaveDto {
 export class HrCancelLeaveDto {
   @Trim() @IsString({ message: 'Write why the leave is cancelled.' }) @MinLength(1, { message: 'Write why the leave is cancelled.' }) @MaxLength(1000, { message: 'Keep the comment to 1000 characters or fewer.' })
   comment: string;
+}
+
+/**
+ * A Super Admin's edit of a leave (owner, 26 October 2026: "as a superadmin i need to edit the leaves"; "All four"): any of
+ * the type, the days, the half day, the reason and the colleague who covers (null clears the reason or the cover), and
+ * why it is edited. Only what is sent changes.
+ */
+export class EditLeaveRequestDto {
+  @Trim() @IsOptional() @IsUUID('all', { message: 'Choose the leave type.' })
+  typeId?: string;
+
+  @Trim() @IsOptional() @IsDateOnly('Enter the first day of the leave, e.g. 2026-11-01.')
+  startDate?: string;
+
+  @Trim() @IsOptional() @IsDateOnly('Enter the last day of the leave, e.g. 2026-11-02.')
+  endDate?: string;
+
+  @BooleanOf() @IsOptional() @IsBoolean({ message: 'Send whether it is a half day as true or false.' })
+  halfDay?: boolean;
+
+  @TrimOrNull() @IsOptional() @IsString({ message: 'Write the reason.' }) @MaxLength(500, { message: 'Keep the reason to 500 characters or fewer.' })
+  reason?: string | null;
+
+  @TrimOrNull() @IsOptional() @IsUUID('all', { message: 'Choose the colleague who covers from the list.' })
+  coverId?: string | null;
+
+  /** Why it is edited: kept on the step and in the audit log. */
+  @TrimOrNull() @IsOptional() @IsString({ message: 'Write why the leave is edited.' }) @MaxLength(500, { message: 'Keep the note to 500 characters or fewer.' })
+  note?: string | null;
 }
 
 /** ?year=: this year in Cairo unless sent. */

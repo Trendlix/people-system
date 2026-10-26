@@ -16,7 +16,7 @@ import {
 import { fromDateOnly } from '../common/date-only.js';
 import type { LeaveSettings, LeaveType, Prisma } from '../generated/prisma/client.js';
 import type { UserRef } from '../payroll/adjustments/people.js';
-import { hrMayCancel, hiddenRequest, isConfidentialRequest, isRequester, seesEveryRequest, standingInFor, waitsFor, type Caller } from './access.js';
+import { hrMayCancel, hiddenRequest, isConfidentialRequest, isRequester, mayEditLeave, seesEveryRequest, standingInFor, waitsFor, type Caller } from './access.js';
 
 // Leave types, the Leave Setup and requests as the API sends them (owner, 18 October 2026): dates YYYY-MM-DD, moments as
 // ISO strings, days as numbers (half days allowed).
@@ -158,6 +158,10 @@ export function requestView(r: RequestRow, caller: Caller, names: ReadonlyMap<st
     confidential: isConfidentialRequest(parties, caller),
     canCancel: requester && employeeMayCancelLeave({ status, startDate }, today),
     hrCanCancel: hrMayCancel({ ...parties, status }, caller),
+    // a Super Admin edits it, in any status (owner, 26 October 2026)
+    canEdit: mayEditLeave(caller.user),
+    // imported with Zoho People's or the template's leave: undoing its import removes it, edits too (owner, 26 October 2026)
+    imported: r.importId !== null,
     // who decides (or decided) the manager stage, and as what (owner, 19 October 2026: "the person in charge"):
     // APPROVER_ROLES, the direct manager, or for someone without one their team lead, else their department's head
     manager: r.manager && { id: r.manager.id, fullNameEn: r.manager.fullNameEn, role: (r.approverRole as ApproverRole | null) ?? 'direct_manager' },

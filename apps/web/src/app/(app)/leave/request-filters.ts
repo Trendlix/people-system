@@ -1,0 +1,72 @@
+import { LEAVE_PATH } from '../../../components/nav';
+import type { LeaveTypeView } from '../../../lib/types';
+import { type LeaveFilter } from './list';
+import type { RequestKind } from './permissions';
+
+// Leave Requests filtered by employee and type (owner, 26 October 2026: "i need to filter either by employee or typ"): an
+// Employee and a Type beside the status, in the page's address (?employee=<id>&type=<leave type id | permission>, so a
+// link keeps them and a refresh too), with Clear filters. The Type holds the leave types and Permission, and replaces the
+// kind row (All · Leave · Permissions): choosing Permission is what the kind Permissions was. A link from before it
+// (?kind=permission) still opens the permissions. Pure code, tested; relative imports, as vitest doesn't know the @/ paths.
+
+/** The Type filter's choice for permission requests. */
+export const PERMISSION_TYPE = 'permission';
+
+/** The filters in the address: one person, one type (a leave type's id, or "permission"); null: any. */
+export interface RequestFilters {
+  employeeId: string | null;
+  type: string | null;
+}
+
+export const NO_FILTERS: RequestFilters = { employeeId: null, type: null };
+
+type Query = Record<string, string | string[] | undefined>;
+
+const one = (v: string | string[] | undefined) => (typeof v === 'string' ? v.trim() : '');
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The filters in the page's address; what isn't a person's id, a type's id or "permission" is ignored. */
+export function readRequestFilters(query: Query): RequestFilters {
+  const employee = one(query.employee);
+  const type = one(query.type);
+  // a link from before the Type filter: the kind Permissions
+  const legacy = one(query.kind) === 'permission' ? PERMISSION_TYPE : null;
+  return {
+    employeeId: UUID.test(employee) ? employee : null,
+    type: type === PERMISSION_TYPE || UUID.test(type) ? type : legacy,
+  };
+}
+
+/** Whether any filter is on. */
+export const hasRequestFilters = (f: RequestFilters) => f.employeeId !== null || f.type !== null;
+
+/** Which requests the type chooses: both without one, the permissions, or a leave type's leave. */
+export const kindOfFilters = (f: RequestFilters): RequestKind => (f.type === null ? 'all' : f.type === PERMISSION_TYPE ? 'permission' : 'leave');
+
+/** The leave type to ask the API for (typeId); null for any, and for Permission. */
+export const leaveTypeOf = (f: RequestFilters): string | null => (f.type !== null && f.type !== PERMISSION_TYPE ? f.type : null);
+
+/**
+ * The list's address for a status and the filters: "/leave?status=approved&employee=<id>&type=permission"; without a
+ * status (null), the user's default one. Each link of the status row keeps the filters, and the form keeps the status.
+ */
+export function requestFiltersHref(status: LeaveFilter | null, f: RequestFilters): string {
+  const params = new URLSearchParams();
+  if (status) params.set('status', status);
+  if (f.employeeId) params.set('employee', f.employeeId);
+  if (f.type) params.set('type', f.type);
+  const qs = params.toString();
+  return qs ? `${LEAVE_PATH}?${qs}` : LEAVE_PATH;
+}
+
+/** The Type's choices: Any type, the leave types in their order (turned off ones marked), then Permission. */
+export function typeChoices(types: readonly Pick<LeaveTypeView, 'id' | 'nameEn' | 'active' | 'sortOrder'>[]): { value: string; label: string }[] {
+  return [
+    { value: '', label: 'All types' },
+    ...[...types].sort((a, b) => a.sortOrder - b.sortOrder).map((t) => ({ value: t.id, label: t.active ? t.nameEn : `${t.nameEn} (off)` })),
+    { value: PERMISSION_TYPE, label: 'Permission' },
+  ];
+}
+
+/** What the list says when no request has the filters chosen. */
+export const NO_MATCH_TEXT = 'No requests match these filters.';
