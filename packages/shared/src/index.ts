@@ -656,3 +656,7 @@ export * from './portfolio.js';
 // from zoho people through api?"; asked, "Yes, daily + backfill"; then "but can it fetch historical data?"): the scopes,
 // Zoho's limits, the runs' words and views, a range's checks and how long it takes
 export * from './zoho-people.js';
+
+// the Leave report (owner, 26 October 2026: "can i get a report for the monthly leaves with all types?"): a month's or a
+// range's approved leave by employee and type, with permission hours, work from home days and the annual balance left
+export * from './leave-report.js';

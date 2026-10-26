@@ -15,6 +15,7 @@ import { getOrNull } from '../approvals/data';
 import { todayInCairo } from '../employees/ui';
 import { Empty, Loading } from '../organization/ui';
 import { notLoadedText } from '../payroll/load';
+import { canSeeLeaveReport, LEAVE_REPORT_HREF } from '../payroll/reports/leave/leave-report';
 import { loadWfhCalendar } from '../attendance/wfh/data';
 import { loadOdCalendar } from '../attendance/official-duty/data';
 import { calendarDays, calendarPeople, monthRange, readDepartment, readMonth } from './calendar';
@@ -343,6 +344,12 @@ async function LeaveRequests({ searchParams }: { searchParams: PageProps<'/leave
           {importsLeave(user) && (
             <Link href={LEAVE_IMPORT_PATH} className="btn btn-secondary">
               Import leaves
+            </Link>
+          )}
+          {/* the month's leave by employee and type, as an Excel too (owner, 26 October 2026) */}
+          {canSeeLeaveReport(user) && (
+            <Link href={LEAVE_REPORT_HREF} className="btn btn-secondary">
+              Leave report
             </Link>
           )}
           {user.employeeId && (

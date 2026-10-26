@@ -134,6 +134,8 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   salary_raises_report: 'Salary raises report',
   // the Contracts report (25 October 2026): its workbook downloaded
   contracts_report: 'Contracts report',
+  // the Leave report (26 October 2026): its workbook downloaded
+  leave_report: 'Leave report',
   shift: 'Shift',
   template_version: 'Template version',
   user: 'User account',
@@ -347,6 +349,7 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   return: 'Returned',
   salary_raises_file: 'Downloaded the salary raises',
   contracts_report_file: 'Downloaded the contracts report',
+  leave_report_file: 'Downloaded the leave report',
   // a KPI scorecard's scoring sent by its manager, HR or the CEO (21 October 2026)
   score: 'Scored',
   // an employee's KPI self-rating sent (21 October 2026)

@@ -14,6 +14,7 @@ import { monthName, runHref } from '../list';
 import { loadJson, notLoadedText } from '../load';
 import { PayrollStatusBadge } from '../ui';
 import { CostTrendChart } from './cost-chart';
+import { LeaveReportLink } from './leave/leave-link';
 import {
   apiStatisticsPath,
   canSeeReports,
@@ -323,6 +324,9 @@ export default function PayrollReportsPage({ searchParams }: PageProps<'/payroll
         <p className="mt-1 text-muted">
           What the approved payroll paid and cost, by month, department and team, and this year to date. The salary raises and the contracts have reports of
           their own: <Link href={SALARY_RAISES_HREF}>Salary Raises</Link> and <Link href={CONTRACTS_REPORT_HREF}>Contracts</Link>.
+          <Suspense fallback={null}>
+            <LeaveReportLink />
+          </Suspense>
         </p>
         <div className="mt-6">
           <Suspense fallback={<Loading />}>

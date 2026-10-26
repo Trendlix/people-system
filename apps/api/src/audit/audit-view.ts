@@ -371,6 +371,9 @@ function targetOf(row: Pick<AuditRow, 'entityType' | 'entityId' | 'diff'>, refs:
     // HR, Finance and the CEO, as the Contracts page
     case 'contracts_report':
       return { href: '/payroll/reports/contracts', label: 'Open contracts report', roles: PAY };
+    // HR and the CEO, who see everyone's leave (26 October 2026)
+    case 'leave_report':
+      return { href: '/payroll/reports/leave', label: 'Open leave report', roles: LEAVE };
     case 'leave_request':
       return id ? own(`/leave/${id}`, 'Open leave request', LEAVE) : null;
     case 'leave_document':

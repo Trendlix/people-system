@@ -73,6 +73,8 @@ describe('the sidebar', () => {
     expect(current('/payroll/reports/salary-raises')).toBe('Reports');
     // and the Contracts report beside it (25 October 2026)
     expect(current('/payroll/reports/contracts')).toBe('Reports');
+    // and the Leave report (26 October 2026)
+    expect(current('/payroll/reports/leave')).toBe('Reports');
     // Raise Requests is under Requests, not Payroll
     expect(payroll.items?.map((i) => i.label)).not.toContain('Raise Requests');
   });

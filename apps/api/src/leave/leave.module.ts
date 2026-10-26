@@ -14,6 +14,8 @@ import { LeaveImportService } from './leave-import.service.js';
 import { LeaveBalancesService } from './leave-balances.service.js';
 import { LeaveCoverageService } from './leave-coverage.service.js';
 import { LeavePayrollService } from './leave-payroll.service.js';
+import { LeaveReportController } from './leave-report.controller.js';
+import { LeaveReportService } from './leave-report.service.js';
 import { LeaveRequestsService } from './leave-requests.service.js';
 import { LeaveSettlementService } from './leave-settlement.service.js';
 import { LeaveTypesService } from './leave-types.service.js';
@@ -47,6 +49,7 @@ import { YearClosingService } from './year-closing.service.js';
     PermissionRequestsController,
     EmployeePermissionsController,
     LeaveImportController,
+    LeaveReportController,
   ],
   providers: [
     LeaveTypesService,
@@ -59,6 +62,7 @@ import { YearClosingService } from './year-closing.service.js';
     LeaveImportService,
     LeaveCoverageService,
     StandInSchedulerService,
+    LeaveReportService,
   ],
   exports: [LeaveBalancesService, LeaveSettlementService, StandInSchedulerService],
 })
