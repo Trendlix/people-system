@@ -98,7 +98,8 @@ describe('Attendance history (e2e)', () => {
   async function keep(date: string, kind: Kind, source: 'zoho' | 'correction' = 'zoho', employeeId = ids.hana) {
     const times: Partial<Record<Kind, [string, string, number]>> = {
       on_time: ['09:05', '18:05', 9],
-      late: ['09:40', '18:40', 9],
+      // a flexible shift: late past 10:15 AM, the latest check-in that fits its 9 hours (owner, 26 October 2026)
+      late: ['10:55', '19:15', 9],
       wfh: ['09:00', '17:00', 8],
       corrected: ['08:55', '18:00', 9],
     };
@@ -296,7 +297,7 @@ describe('Attendance history (e2e)', () => {
     const lateDay = seeded.find((s) => s.kind === 'late')!.date;
     const row = log.getRows(2, log.rowCount - 1)!.find((r) => r.getCell(1).value === lateDay.split('-').reverse().join('/'))!;
     expect([row.getCell(3).value, row.getCell(7).value, row.getCell(8).value, row.getCell(9).value]).toEqual(['Office', 40, 'No', 'Zoho import']);
-    expect(row.getCell(4).text).toMatch(/^9:40\sAM$/);
+    expect(row.getCell(4).text).toMatch(/^10:55\sAM$/);
     expect(log.rowCount).toBe(seeded.length - 1 + 1);
     const figures = wb.getWorksheet('Figures')!;
     expect(figures.getRow(1).values).toEqual([undefined, 'Figure', 'Value', 'What it means']);

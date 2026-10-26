@@ -24,6 +24,7 @@
 // Pure: the API works the figures out with these and the web shows the same words.
 
 import { shiftWindowOn, zonedMoment, type ShiftWindowTimes } from './attendance.js';
+import { isFlexibleShift, shiftWorkHours } from './payroll.js';
 import { countsDayHours, type AttendanceDayView } from './attendance-days.js';
 import type { AttendanceDayStatus } from './attendance-import.js';
 import type { PressPair } from './attendance.js';
@@ -110,8 +111,8 @@ export type HistoryDayInput = Pick<AttendanceDayView, 'date' | 'status' | 'check
   source: AttendanceSource;
   /** A work from home day approved for them (wfh.ts). */
   wfh: boolean;
-  /** The shift of their employment that day; null: none. */
-  shift: ShiftWindowTimes | null;
+  /** The shift of their employment that day, with its hours to work a day (a flexible shift's: fewer than its window); null: none. */
+  shift: (ShiftWindowTimes & { hoursPerDay?: number | null }) | null;
   /** A working day of that shift (Sunday to Thursday without one) that isn't an official holiday. */
   scheduled: boolean;
 };
@@ -131,7 +132,10 @@ export interface HistoryDay {
   counted: boolean;
   /** Minutes after the shift's start of a late check-in; 0 otherwise. */
   lateMinutes: number;
-  /** Checked in by the shift's start and grace (or on official duty from the start); false: late; null: not measured. */
+  /**
+   * Checked in by the shift's start and grace, or on a flexible shift by the latest check-in that fits its hours (or on
+   * official duty from the start); false: late; null: not measured.
+   */
   onTime: boolean | null;
   /** A working day expected of them: a working day of their shift, not a holiday, not leave. */
   expected: boolean;
@@ -180,8 +184,14 @@ export function historyDay(d: HistoryDayInput): HistoryDay {
       if (window) {
         const at = Date.parse(d.checkIn);
         const grace = Math.max(0, Math.round(d.shift.graceMinutes ?? 0)) * 60_000;
-        onTime = at <= window.start + grace;
-        lateMinutes = onTime ? 0 : Math.floor((at - window.start) / 60_000);
+        // a flexible shift (its hours fewer than its window, worked anywhere in it): late only past the latest check-in
+        // that still fits its hours before the window's end, grace and "Count hours until" included (owner, 26 October
+        // 2026: "After the latest that fits 9 hours": 10:15 AM on the MORNING shift, 9 hours within 9:00 AM–7:15 PM),
+        // late by the minutes past it; a fixed shift: past its start and grace, by the minutes past its start, as before
+        const work = isFlexibleShift(d.shift) ? shiftWorkHours(d.shift) : null;
+        const latest = work !== null ? window.end - Math.round(work * 3_600_000) : null;
+        onTime = at <= (latest ?? window.start + grace);
+        lateMinutes = onTime ? 0 : Math.floor((at - (latest ?? window.start)) / 60_000);
       }
     }
   }

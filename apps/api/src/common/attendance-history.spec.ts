@@ -63,6 +63,28 @@ const DAYS = [
 
 const RANGE = { from: '2026-11-01', to: '2026-11-12' };
 
+describe('a flexible shift’s lateness (owner, 26 October 2026: "After the latest that fits 9 hours")', () => {
+  // 9 hours within 9:00 AM–7:00 PM, 15 minutes' grace: the latest check-in that fits them is 10:15 AM
+  const FLEX = { ...MORNING, hoursPerDay: 9 };
+  const day = (time: string, shift: HistoryDayInput['shift'] = FLEX) => historyDay(worked('2026-11-02', time, '19:15', 9, { shift }));
+
+  it('is on time up to the latest check-in that fits its hours, late by the minutes past it', () => {
+    expect(day('09:40')).toMatchObject({ onTime: true, lateMinutes: 0 });
+    expect(day('10:15')).toMatchObject({ onTime: true, lateMinutes: 0 });
+    expect(day('10:30')).toMatchObject({ onTime: false, lateMinutes: 15 });
+  });
+
+  it('counts "Count hours until" in the window: until 8:00 PM, 11:00 AM still fits 9 hours', () => {
+    expect(day('11:00', { ...FLEX, countUntil: '20:00' })).toMatchObject({ onTime: true });
+    expect(day('11:10', { ...FLEX, countUntil: '20:00' })).toMatchObject({ onTime: false, lateMinutes: 10 });
+  });
+
+  it('leaves a fixed shift (its hours the whole window) late past its start and grace, as before', () => {
+    expect(day('09:20', { ...MORNING, hoursPerDay: 10 })).toMatchObject({ onTime: false, lateMinutes: 20 });
+    expect(day('09:20', MORNING)).toMatchObject({ onTime: false, lateMinutes: 20 });
+  });
+});
+
 describe('a day of the history', () => {
   it('says what it was, whether expected and attended, on time or late, and where it came from', () => {
     const by = Object.fromEntries(DAYS.map((d) => [d.date, d]));

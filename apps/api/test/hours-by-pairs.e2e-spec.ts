@@ -278,7 +278,9 @@ describe('A day’s hours as the sum of its check-in → check-out pairs (e2e)',
         log: { days: { date: string; onTime: boolean | null; lateMinutes: number; pairs: unknown[] | null; openAt: string | null }[] };
       };
       const of = (date: string) => history.log.days.find((d) => d.date === date)!;
-      expect(of(work[DRAFT][2])).toMatchObject({ onTime: false, lateMinutes: 90 });
+      // a flexible shift (9 hours within 9:00 AM–7:15 PM): late past 10:15 AM, the latest check-in that fits its hours
+      // (owner, 26 October 2026: "After the latest that fits 9 hours"), so 10:30 is 15 minutes late
+      expect(of(work[DRAFT][2])).toMatchObject({ onTime: false, lateMinutes: 15 });
       expect(of(work[DRAFT][0])).toMatchObject({ onTime: true, lateMinutes: 0 });
       expect(of(work[DRAFT][0]).pairs).toHaveLength(2);
       expect(of(work[DRAFT][1]).openAt).toBe(at(work[DRAFT][1], '18:30').toISOString());
