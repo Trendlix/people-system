@@ -9,6 +9,7 @@ import {
   seesConfidential,
   type ExemptionPeriod,
   type ExemptionState,
+  type SuggestedExemptionStart,
 } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
 import { actsAs, isSuperAdmin } from '../auth/roles.js';
@@ -19,6 +20,7 @@ import type { Prisma } from '../generated/prisma/client.js';
 import { placeName, userNames } from '../payroll/adjustments/people.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { AddCheckInExemptionsDto } from './check-in-exemptions.dto.js';
+import { START_EMPLOYMENT, startOf } from './exemption-start.js';
 import { HoursByPairsService } from './hours-by-pairs.service.js';
 
 // People exempt from check-in (owner, 25 October 2026: "allow me to select people that are not eligable for attendance
@@ -34,6 +36,11 @@ import { HoursByPairsService } from './hours-by-pairs.service.js';
 // reason too: it is free text, hidden from developers as every reason is), then the months it covers are recounted as
 // the hours by pairs are (HoursByPairsService: the same pass), the person's draft lines refilled with their exempt days
 // full.
+// The first day to start with (owner, 26 October 2026: "when exempting someone from attendance auto fill his contract
+// start date in the exempt from date"): the profile's view and Check-in Setup's people carry each person's
+// (suggestedFrom: their contract's start, else their join date, else today; exemption-start.ts), and adding several at
+// once with no day typed takes each one's own (ownStart). A day in the past is as any other: its months recounted and
+// their drafts refilled; one in a month whose payroll is with the CEO, approved or paid refused, as above.
 
 const ENTITY = 'check_in_exemption';
 const NOT_FOUND = 'Exemption not found.';
@@ -104,31 +111,43 @@ export class CheckInExemptionsService {
    * A person's exemptions on their profile, the newest first, and the current one: for HR, an Admin, the CEO, a Super
    * Admin and the person themself; a C-level person's 404 for those who may not see them.
    */
-  async ofEmployee(employeeId: string, user: SessionUser): Promise<{ periods: CheckInExemptionView[]; current: CheckInExemptionView | null; canManage: boolean }> {
+  async ofEmployee(
+    employeeId: string,
+    user: SessionUser,
+  ): Promise<{ periods: CheckInExemptionView[]; current: CheckInExemptionView | null; canManage: boolean; suggestedFrom: SuggestedExemptionStart | null }> {
     const self = (await this.confidential.selfId(user)) === employeeId;
     if (!self && !actsAs(user.roles, ['hr', 'admin', 'ceo'])) throw new NotFoundException(PERSON_NOT_FOUND);
     await this.confidential.assertVisible(user, employeeId, PERSON_NOT_FOUND);
-    if (!(await this.prisma.employee.findUnique({ where: { id: employeeId }, select: { id: true } }))) throw new NotFoundException(PERSON_NOT_FOUND);
+    const person = await this.prisma.employee.findUnique({ where: { id: employeeId }, select: { id: true, employments: START_EMPLOYMENT } });
+    if (!person) throw new NotFoundException(PERSON_NOT_FOUND);
     const today = todayInCairo();
     const rows = await this.prisma.checkInExemption.findMany({ where: { employeeId, cancelledAt: null }, orderBy: { startDate: 'desc' }, select: SELECT });
     const periods = await this.views(rows, user, today);
     const confidential = await this.confidential.isConfidential(employeeId);
-    return { periods, current: periods.find((p) => p.state === 'current') ?? null, canManage: mayManage(user, { self, confidential }) };
+    const canManage = mayManage(user, { self, confidential });
+    // the form's first day (26 October 2026), for those who add one
+    return { periods, current: periods.find((p) => p.state === 'current') ?? null, canManage, suggestedFrom: canManage ? startOf(person.employments[0], today) : null };
   }
 
-  /** One reason and one period for these people (1 to 100): all are kept, or none. */
+  /**
+   * One reason and one period for these people (1 to 100): all are kept, or none. The first day is the one sent, for
+   * everyone; with none, each person's own when `ownStart` (owner, 26 October 2026: their contract's start, else their
+   * join date), else today.
+   */
   async add(dto: AddCheckInExemptionsDto, user: SessionUser): Promise<{ exemptions: CheckInExemptionView[] }> {
     const today = todayInCairo();
-    const problems = exemptionInputProblems(dto, today);
+    const typed = dto.startDate || null;
+    const own = typed === null && dto.ownStart === true;
+    // each one's own first day is checked against the last day once they are read
+    const problems = exemptionInputProblems(own ? { reason: dto.reason, endDate: null } : dto, today);
     if (problems.length) throw new BadRequestException(problems);
     const reason = dto.reason!.trim();
-    const startDate = dto.startDate || today;
     const endDate = dto.endDate || null;
     const ids = [...new Set(dto.employeeIds)];
     const [people, hidden, all, me] = await Promise.all([
       this.prisma.employee.findMany({
         where: { id: { in: ids } },
-        select: { id: true, fullNameEn: true, employments: { where: { endDate: null }, orderBy: { joinDate: 'desc' }, take: 1, select: { employmentType: true } } },
+        select: { id: true, fullNameEn: true, employments: { ...START_EMPLOYMENT, select: { ...START_EMPLOYMENT.select, employmentType: true } } },
       }),
       this.confidential.hiddenFrom(user),
       this.confidential.ids(),
@@ -141,21 +160,33 @@ export class CheckInExemptionsService {
       if (!job) throw new BadRequestException([`${p.fullNameEn} has no current employment, so there is no check-in to exempt them from.`]);
       if (job.employmentType === 'freelance') throw new BadRequestException([`${p.fullNameEn} works freelance and doesn't check in: freelance work is outside the labour law and its working hours.`]);
     }
-    const lock = exemptionLockProblem(startDate, endDate, await this.lockedMonths(), 'start');
-    if (lock) throw new ConflictException(lock);
+    // each one's first day: the one sent, else their own (their contract's start, else their join date), else today
+    const starts = new Map(people.map((p) => [p.id, typed ?? (own ? startOf(p.employments[0], today).date : today)]));
+    const startOfPerson = (id: string) => starts.get(id)!;
+    if (own && endDate) {
+      const after = people.find((p) => startOfPerson(p.id) > endDate);
+      if (after) throw new BadRequestException([`The last day can't be before ${after.fullNameEn}’s first, ${shown(startOfPerson(after.id))}.`]);
+    }
+    // never in a month whose payroll is with the CEO, approved or paid: whose, when their first days differ
+    const locked = await this.lockedMonths();
+    const differ = new Set(starts.values()).size > 1;
+    for (const p of people) {
+      const lock = exemptionLockProblem(startOfPerson(p.id), endDate, locked, 'start');
+      if (lock) throw new ConflictException(differ ? `${p.fullNameEn}: ${lock}` : lock);
+    }
 
     const made = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT 1 FROM employees WHERE id = ANY(${[...ids].sort()}::uuid[]) ORDER BY id FOR UPDATE`;
       const others = await tx.checkInExemption.findMany({ where: { employeeId: { in: ids }, cancelledAt: null }, select: { employeeId: true, startDate: true, endDate: true } });
-      const period: ExemptionPeriod = { startDate, endDate };
       for (const p of people) {
+        const period: ExemptionPeriod = { startDate: startOfPerson(p.id), endDate };
         const overlap = exemptionOverlapProblem(period, others.filter((o) => o.employeeId === p.id).map(periodOf), p.fullNameEn);
         if (overlap) throw new ConflictException(overlap);
       }
       const out: string[] = [];
       for (const p of people) {
         const row = await tx.checkInExemption.create({
-          data: { employeeId: p.id, reason, startDate: toDateOnly(startDate), endDate: endDate ? toDateOnly(endDate) : null, createdById: user.id },
+          data: { employeeId: p.id, reason, startDate: toDateOnly(startOfPerson(p.id)), endDate: endDate ? toDateOnly(endDate) : null, createdById: user.id },
           select: { id: true },
         });
         out.push(row.id);
@@ -164,10 +195,12 @@ export class CheckInExemptionsService {
     });
     for (const [i, id] of made.entries()) {
       const p = people[i];
-      await this.audit.record({ userId: user.id, action: 'create', entityType: ENTITY, entityId: id, diff: { employeeId: p.id, employee: p.fullNameEn, reason, startDate, endDate } });
+      await this.audit.record({ userId: user.id, action: 'create', entityType: ENTITY, entityId: id, diff: { employeeId: p.id, employee: p.fullNameEn, reason, startDate: startOfPerson(p.id), endDate } });
     }
-    // the months it covers, up to today (the days after it aren't read yet): their drafts refilled
-    await this.recount.recount({ months: exemptionMonths(startDate, monthsUpTo(startDate, endDate, today)), employeeIds: ids, refillAll: true }, user);
+    // the months it covers, from the earliest first day up to today (the days after it aren't read yet): their drafts
+    // refilled
+    const first = [...starts.values()].sort()[0];
+    await this.recount.recount({ months: exemptionMonths(first, monthsUpTo(first, endDate, today)), employeeIds: ids, refillAll: true }, user);
     const rows = await this.prisma.checkInExemption.findMany({ where: { id: { in: made } }, orderBy: [{ employee: { fullNameEn: 'asc' } }], select: SELECT });
     return { exemptions: await this.views(rows, user, today) };
   }

@@ -15,6 +15,7 @@ import type {
   PunchKind,
   PunchPointFrom,
   SignedIpProblem,
+  SuggestedExemptionStart,
 } from '@trendlix/shared';
 import type { OdDayView } from './od-types';
 
@@ -439,9 +440,14 @@ export interface LinkedPersonView {
   employeeCode: string;
 }
 
-/** Someone a sub-location's "Link people" offers (GET /attendance/check-in-setup/people): a current employee the caller may see. */
+/**
+ * Someone a sub-location's "Link people" and "Exempt From Check-in" offer (GET /attendance/check-in-setup/people): a
+ * current employee the caller may see, with the first day an exemption of theirs starts with (owner, 26 October 2026:
+ * "auto fill his contract start date in the exempt from date"); null for a developer, left out by an API from before it.
+ */
 export interface LinkablePersonView extends LinkedPersonView {
   department: string | null;
+  suggestedFrom?: SuggestedExemptionStart | null;
 }
 
 /** GET /employees/:id/check-in-places: the sub-locations a person is linked to, by name (their profile). */

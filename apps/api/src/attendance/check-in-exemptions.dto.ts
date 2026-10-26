@@ -1,4 +1,4 @@
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsString, IsUUID, ValidateIf } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsOptional, IsString, IsUUID, ValidateIf } from 'class-validator';
 import { EXEMPTION_PEOPLE_MAX } from '@trendlix/shared';
 import { IsDateOnly } from '../common/date-only.js';
 
@@ -19,10 +19,18 @@ export class AddCheckInExemptionsDto {
   @IsString({ message: 'Write why they are exempt from check-in.' })
   reason?: string | null;
 
-  /** YYYY-MM-DD; none: today. */
+  /** YYYY-MM-DD, for everyone; none: each their own when `ownStart`, else today. */
   @ValidateIf((_o, v) => v !== undefined && v !== null && v !== '')
   @IsDateOnly('Enter the first day of the exemption, e.g. 2026-11-01.')
   startDate?: string | null;
+
+  /**
+   * With no startDate: each person from their own first day, their contract's start, else their join date (owner, 26
+   * October 2026: "auto fill his contract start date in the exempt from date"; CheckInExemptionsService.add).
+   */
+  @IsOptional()
+  @IsBoolean({ message: 'Send whether each person starts on their own start date as true or false.' })
+  ownStart?: boolean;
 
   /** YYYY-MM-DD; none: no end. */
   @ValidateIf((_o, v) => v !== undefined && v !== null && v !== '')

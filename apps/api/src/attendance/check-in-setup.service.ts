@@ -22,6 +22,7 @@ import {
   type OfficeLocation,
   type OfficeNetwork,
   type SignedIpProblem,
+  type SuggestedExemptionStart,
 } from '@trendlix/shared';
 import type { Request } from 'express';
 import { AuditService, changes } from '../audit/audit.service.js';
@@ -33,6 +34,7 @@ import { ConfidentialService } from '../employees/confidential.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { CreateCheckInLocationDto, LinkPeopleDto, UpdateCheckInLocationDto, UpdateGpsLockDto, UpdateLocationRuleDto, UpdateOfficeNetworksDto } from './check-in-setup.dto.js';
+import { START_EMPLOYMENT, startOf } from './exemption-start.js';
 import { verifySignedIp, type SignedIp } from './signed-ip.js';
 
 const LOCATION = 'check_in_location';
@@ -51,9 +53,14 @@ export interface LinkedPersonView {
   employeeCode: string;
 }
 
-/** Someone HR may link to a sub-location (GET /attendance/check-in-setup/people): a current employee they may see. */
+/**
+ * Someone HR may link to a sub-location or exempt from check-in (GET /attendance/check-in-setup/people): a current
+ * employee they may see, with the first day an exemption of theirs starts with (owner, 26 October 2026: "auto fill his
+ * contract start date in the exempt from date"; exemption-start.ts), null for a developer (an employment's date).
+ */
 export interface LinkablePersonView extends LinkedPersonView {
   department: string | null;
+  suggestedFrom: SuggestedExemptionStart | null;
 }
 
 /** A check-in location as the API sends it: the main office (isMain) or a sub-location with its people. */
@@ -461,15 +468,23 @@ export class CheckInSetupService {
   /**
    * Who HR may link (owner, 20 October 2026: "shown with their name and linked users"): everyone with a current
    * employment who checks in (not a freelancer: packages/shared checkInRefusal) and the caller may see (a C-level person
-   * only for the CEO and the Super Admin), by name.
+   * only for the CEO and the Super Admin), by name. Also whom "Exempt From Check-in" offers, each with the first day their
+   * exemption starts with (26 October 2026: their contract's start, else their join date).
    */
   async linkable(user: SessionUser): Promise<LinkablePersonView[]> {
+    const today = todayInCairo();
     const rows = await this.prisma.employee.findMany({
       where: { AND: [await this.confidential.employeeWhere(user), { employments: { some: { endDate: null, employmentType: { not: 'freelance' } } } }] },
       orderBy: { fullNameEn: 'asc' },
-      select: { ...PERSON, employments: { where: { endDate: null }, orderBy: { joinDate: 'desc' }, take: 1, select: { department: { select: { nameEn: true } } } } },
+      select: { ...PERSON, employments: { ...START_EMPLOYMENT, select: { ...START_EMPLOYMENT.select, department: { select: { nameEn: true } } } } },
     });
-    return rows.map((e) => ({ id: e.id, fullNameEn: e.fullNameEn, employeeCode: e.employeeCode, department: e.employments[0]?.department?.nameEn ?? null }));
+    return rows.map((e) => ({
+      id: e.id,
+      fullNameEn: e.fullNameEn,
+      employeeCode: e.employeeCode,
+      department: e.employments[0]?.department?.nameEn ?? null,
+      suggestedFrom: startOf(e.employments[0], today),
+    }));
   }
 
   /**

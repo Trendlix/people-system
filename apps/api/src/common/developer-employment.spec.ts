@@ -235,6 +235,21 @@ describe('a person’s employment, on a page about people', () => {
     ).toEqual({ values: { job_title: HIDDEN, department_ar: HIDDEN, join_date: HIDDEN, insurance_office: HIDDEN, occupation_code: HIDDEN, manager_name: 'Employee EMP-0007', shift_en: '9:00 AM – 6:00 PM' } });
   });
 
+  // the first day a new exemption from check-in starts with (owner, 26 October 2026: "auto fill his contract start date
+  // in the exempt from date"): a contract's start and number, or a join date
+  it('an exemption’s first day to start with: null, on the profile and in Check-in Setup’s people; the exemptions’ own days stay', () => {
+    const suggestedFrom = { date: '2025-07-30', source: 'contract', contractNumber: 'CON-2025-0012' };
+    const period = { id: 'x', employee: { id: OMAR.id, employeeCode: 'EMP-0182', fullNameEn: OMAR.fullNameEn, department: null }, startDate: '2026-10-01', endDate: null, state: 'current' };
+    expect(maskForDeveloper({ periods: [period], current: period, canManage: true, suggestedFrom }, `/api/employees/${OMAR.id}/check-in-exemptions`, people)).toMatchObject({
+      periods: [{ startDate: '2026-10-01', endDate: null }],
+      suggestedFrom: null,
+    });
+    expect(maskForDeveloper([{ id: OMAR.id, fullNameEn: OMAR.fullNameEn, employeeCode: 'EMP-0182', department: 'Production', suggestedFrom }], '/api/attendance/check-in-setup/people', people)).toEqual([
+      { id: OMAR.id, fullNameEn: omar.en, employeeCode: HIDDEN, department: HIDDEN, suggestedFrom: null },
+    ]);
+    expect(hideJobForDeveloper({ suggestedFrom: { date: '2026-07-13', source: 'join', contractNumber: null } }, '/api/employees/1/check-in-exemptions')).toEqual({ suggestedFrom: null });
+  });
+
   it('a count under a job’s name stays; nothing else is touched', () => {
     expect(hideJobForDeveloper({ self: 2, team: 3, hr: 0, month: '2026-09' }, '/api/kpis/counts')).toEqual({ self: 2, team: 3, hr: 0, month: '2026-09' });
   });
@@ -532,7 +547,7 @@ describe('the lists', () => {
     for (const k of ['jobTitle', 'jobTitleEn', 'jobTitleAr', 'department', 'departmentName', 'team', 'grade', 'gradeCode', 'employmentType', 'workArrangement', 'workNature', 'occupationCode', 'insuranceOffice', 'insuranceSectorCode']) {
       expect(DEVELOPER_JOB_TEXT_FIELDS.has(k), k).toBe(true);
     }
-    for (const k of ['joinDate', 'probationEnd', 'lastWorkingDay', 'insuranceStartDate', 'insuranceFiledOn', 'serviceMonths', 'tenureMonths']) expect(DEVELOPER_JOB_DATE_FIELDS.has(k), k).toBe(true);
+    for (const k of ['joinDate', 'probationEnd', 'lastWorkingDay', 'insuranceStartDate', 'insuranceFiledOn', 'serviceMonths', 'tenureMonths', 'suggestedFrom']) expect(DEVELOPER_JOB_DATE_FIELDS.has(k), k).toBe(true);
     for (const k of ['departmentId', 'teamId', 'jobTitleId', 'gradeId']) {
       expect(DEVELOPER_JOB_ID_FIELDS.has(k), k).toBe(true);
       expect(DEVELOPER_JOB_PARAMS.has(k), k).toBe(true);

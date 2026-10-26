@@ -16,8 +16,10 @@ import { createApp, createUser, signIn } from './helpers.js';
 // absent, short or late, a press kept for reference), the draft line refilled and the KPIs' Attendance full, unpaid leave
 // still cut, the days before and after normal; never refused by the GPS lock, no reminders; who sets it (a C-level
 // person's the CEO or a Super Admin; never one's own), overlaps and a paid month refused, "End now", the audit, a
-// developer's sight. These tests look at their own people (names end with RUN), put the settings back and delete what
-// they made. Every name, point and reason is invented.
+// developer's sight. The first day to start with (owner, 26 October 2026: "auto fill his contract start date in the
+// exempt from date"): their contract's start, else their join date, on the profile and Check-in Setup's people; saved in
+// the past, the draft refilled; several each from their own. These tests look at their own people (names end with RUN),
+// put the settings back and delete what they made. Every name, point and reason is invented.
 
 const RUN = `ex${Date.now().toString(36).toLowerCase()}`;
 const TODAY = todayInCairo();
@@ -57,6 +59,8 @@ interface Line {
 }
 
 const said = (res: { body: { message: string | string[] } }) => ([] as string[]).concat(res.body.message);
+/** A date as messages show it: DD/MM/YYYY. */
+const shown = (ymd: string) => `${ymd.slice(8, 10)}/${ymd.slice(5, 7)}/${ymd.slice(0, 4)}`;
 
 describe('People exempt from check-in (e2e)', () => {
   let app: INestApplication<App>;
@@ -78,13 +82,23 @@ describe('People exempt from check-in (e2e)', () => {
   const users: Record<string, string> = {};
   const sessions: Record<string, string> = {};
   const employments: Record<string, string> = {};
+  const contractNumbers: Record<string, string> = {};
   const runs: Record<string, string> = {};
   const work: string[] = []; // MONTH's Sundays to Thursdays, none a holiday
   let reminderDay: string;
   const api = () => request(app.getHttpServer());
   const at = (date: string, time: string) => new Date(zonedMoment(date, time));
 
-  async function person(key: string, name: string, shiftId: string, employment: Record<string, unknown> = {}, by = () => hr, roles: Parameters<typeof createUser>[1] = ['employee']) {
+  /** A person hired with a signed contract (`contract`: its terms besides the pay; null: hired with none yet). */
+  async function person(
+    key: string,
+    name: string,
+    shiftId: string,
+    employment: Record<string, unknown> = {},
+    by = () => hr,
+    roles: Parameters<typeof createUser>[1] = ['employee'],
+    contract: Record<string, unknown> | null = {},
+  ) {
     const email = await createUser(prisma, roles);
     users[key] = (await prisma.user.findUniqueOrThrow({ where: { email }, select: { id: true } })).id;
     const res = await api().post('/api/employees').set('Cookie', by()).send({ fullNameEn: `${name} ${RUN}`, fullNameAr: 'موظف تجريبي', workEmail: email }).expect(201);
@@ -97,8 +111,15 @@ describe('People exempt from check-in (e2e)', () => {
       .send({ employmentType: 'full_time', joinDate: firstDay(monthsLater(PAID, -2)), departmentId: deptId, shiftId, workArrangement: 'office', ...employment })
       .expect(201);
     employments[key] = hired.body.employment.id;
-    const draft = (await api().post(`/api/employees/${res.body.id}/employments/${hired.body.employment.id}/contracts`).set('Cookie', by()).send({ grossSalary: 15000, durationMonths: 36 }).expect(201))
-      .body as { id: string; startDate: string };
+    if (contract === null) return;
+    const draft = (
+      await api()
+        .post(`/api/employees/${res.body.id}/employments/${hired.body.employment.id}/contracts`)
+        .set('Cookie', by())
+        .send({ grossSalary: 15000, durationMonths: 36, ...contract })
+        .expect(201)
+    ).body as { id: string; number: string; startDate: string };
+    contractNumbers[key] = draft.number;
     await api().post(`/api/contracts/${draft.id}/sign`).set('Cookie', by()).send({ signedOn: draft.startDate }).expect(200);
   }
 
@@ -151,6 +172,11 @@ describe('People exempt from check-in (e2e)', () => {
     for (let d = firstDay(MONTH); d <= lastDay(MONTH); d = addDays(d, 1)) if (weekday(d) <= 4 && !holidays.has(d)) work.push(d);
     reminderDay = TODAY;
     while (holidays.has(reminderDay)) reminderDay = addDays(reminderDay, 1);
+    // the first day to start with (26 October 2026): Kai and Cora joined months ago, their contracts starting in MONTH;
+    // Jade joined in MONTH and has no contract yet
+    await person('kai', 'Kai Contractstart', shifts.M, {}, () => hr, ['employee'], { startDate: work[3] });
+    await person('cora', 'Cora Ownstart', shifts.M, {}, () => hr, ['employee'], { startDate: work[5] });
+    await person('jade', 'Jade Joinonly', shifts.M, { joinDate: work[6] }, () => hr, ['employee'], null);
 
     // Ezra: a late press, flagged, without a check-out; a day of unpaid leave approved
     await prisma.attendancePunch.create({ data: { employeeId: ids.ezra, date: toDateOnly(work[2]), kind: 'in', at: at(work[2], '11:40'), place: 'remote', expected: 'office', flags: ['outside_office'], source: 'system', userId: users.ezra } });
@@ -287,6 +313,78 @@ describe('People exempt from check-in (e2e)', () => {
       expect(((await api().get('/api/attendance/check-in-exemptions').set('Cookie', hr).expect(200)).body.exemptions as Exemption[]).map((e) => e.id)).not.toContain(later.id);
       await end(hr, later.id).expect(404);
       expect(await prisma.auditLog.count({ where: { entityType: 'check_in_exemption', action: 'cancel', entityId: later.id } })).toBe(1);
+    });
+  });
+
+  // The owner, 26 October 2026: "when exempting someone from attendance auto fill his contract start date in the exempt
+  // from date".
+  describe('the first day to start with', () => {
+    type Suggested = { date: string; source: string; contractNumber: string | null };
+    const profileOf = async (key: string, session = hr) =>
+      (await api().get(`/api/employees/${ids[key]}/check-in-exemptions`).set('Cookie', session).expect(200)).body as { canManage: boolean; suggestedFrom: Suggested | null };
+    const picker = async (session = hr) => (await api().get('/api/attendance/check-in-setup/people').set('Cookie', session).expect(200)).body as { id: string; suggestedFrom: Suggested | null }[];
+
+    it('the profile and Check-in Setup’s people carry their contract’s start, else their join date', async () => {
+      expect(contractNumbers.kai).toMatch(/^CON-\d{4}-\d{4}$/);
+      expect((await profileOf('kai')).suggestedFrom).toEqual({ date: work[3], source: 'contract', contractNumber: contractNumbers.kai });
+      expect((await profileOf('jade')).suggestedFrom).toEqual({ date: work[6], source: 'join', contractNumber: null });
+      // the person themself reads their periods but adds none: nothing to start with
+      expect(await profileOf('kai', sessions.kai)).toMatchObject({ canManage: false, suggestedFrom: null });
+      const people = await picker();
+      expect(people.find((p) => p.id === ids.kai)?.suggestedFrom).toEqual({ date: work[3], source: 'contract', contractNumber: contractNumbers.kai });
+      expect(people.find((p) => p.id === ids.cora)?.suggestedFrom).toEqual({ date: work[5], source: 'contract', contractNumber: contractNumbers.cora });
+      expect(people.find((p) => p.id === ids.jade)?.suggestedFrom).toEqual({ date: work[6], source: 'join', contractNumber: null });
+      // a C-level person stays hidden from HR, as today; the Super Admin's list has them, with theirs
+      expect(people.map((p) => p.id)).not.toContain(ids.cleo);
+      expect((await picker(hrSuper)).find((p) => p.id === ids.cleo)?.suggestedFrom).toEqual({ date: firstDay(monthsLater(PAID, -2)), source: 'contract', contractNumber: contractNumbers.cleo });
+    });
+
+    it('a developer never gets it: a contract’s start or a join date is an employment’s', async () => {
+      expect((await profileOf('kai', developer)).suggestedFrom).toBeNull();
+      const seen = await picker(developer);
+      expect(seen.length).toBeGreaterThan(0);
+      expect(seen.every((p) => p.suggestedFrom === null)).toBe(true);
+    });
+
+    it('a contract’s start in a paid month is refused, as before: those days never change, HR types a later one', async () => {
+      const { suggestedFrom } = await profileOf('nora');
+      expect(suggestedFrom).toEqual({ date: firstDay(monthsLater(PAID, -2)), source: 'contract', contractNumber: contractNumbers.nora });
+      expect(said(await add(hr, { employeeIds: [ids.nora], reason: 'Since her contract started', startDate: suggestedFrom!.date }).expect(409))[0]).toMatch(
+        /payroll is (paid|approved|with the CEO), so its days can't change: start the exemption from \d{2}\/\d{2}\/\d{4} or later\.$/,
+      );
+      expect(await prisma.checkInExemption.count({ where: { employeeId: ids.nora } })).toBe(0);
+    });
+
+    it('saved from the contract’s start, in the past: its days full from then, the draft refilled, the days before as they were', async () => {
+      // no day of Kai's in the system yet: nothing worked on the draft line
+      expect((await lineOf('kai')).inputs.workedHours ?? 0).toBe(0);
+      const { suggestedFrom } = await profileOf('kai');
+      const made = (await add(hr, { employeeIds: [ids.kai], reason: `Field work since the contract ${RUN}`, startDate: suggestedFrom!.date, endDate: lastDay(MONTH) }).expect(201)).body
+        .exemptions as Exemption[];
+      expect(made).toEqual([expect.objectContaining({ startDate: work[3], endDate: lastDay(MONTH), state: 'ended' })]);
+      const days = (await monthOf('kai')).person.days;
+      for (const d of work.slice(3)) expect(days.find((x) => x.date === d)).toMatchObject({ status: 'worked', exempt: true, hoursCounted: 9 });
+      expect(days.find((x) => x.date === work[2])?.exempt ?? false).toBe(false);
+      const after = await lineOf('kai');
+      expect(after.inputs).toMatchObject({ noShowDays: 0, workedHours: 9 * (work.length - 3) });
+    });
+
+    it('several at once: each from their own first day unless one is typed, which is everyone’s', async () => {
+      // the last day before someone's own first: refused, naming them
+      expect(said(await add(hr, { employeeIds: [ids.cora, ids.jade], reason: 'Own days', ownStart: true, endDate: work[5] }).expect(400))).toEqual([
+        `The last day can't be before Jade Joinonly ${RUN}’s first, ${shown(work[6])}.`,
+      ]);
+      // a day typed: everyone's
+      const typed = (await add(hr, { employeeIds: [ids.cora, ids.jade], reason: 'A typed day', startDate: work[8], endDate: work[9], ownStart: true }).expect(201)).body.exemptions as Exemption[];
+      expect(typed.map((e) => e.startDate)).toEqual([work[8], work[8]]);
+      // none typed: each their own, Cora's contract's start and Jade's join date
+      const own = (await add(hr, { employeeIds: [ids.cora, ids.jade], reason: `Own days ${RUN}`, ownStart: true, endDate: work[7] }).expect(201)).body.exemptions as Exemption[];
+      expect(Object.fromEntries(own.map((e) => [e.employee.id, [e.startDate, e.endDate]]))).toEqual({ [ids.cora]: [work[5], work[7]], [ids.jade]: [work[6], work[7]] });
+      const audits = await prisma.auditLog.findMany({ where: { entityType: 'check_in_exemption', action: 'create', entityId: { in: own.map((e) => e.id) } }, select: { diff: true } });
+      expect(audits.map((a) => (a.diff as { startDate: string }).startDate).sort()).toEqual([work[5], work[6]].sort());
+      // Cora's days from her own first day full; the profile's periods say each one's
+      expect((await monthOf('cora')).person.days.find((d) => d.date === work[5])).toMatchObject({ status: 'worked', exempt: true });
+      expect(((await api().get(`/api/employees/${ids.jade}/check-in-exemptions`).set('Cookie', hr).expect(200)).body.periods as Exemption[]).map((p) => p.startDate)).toEqual([work[8], work[6]]);
     });
   });
 

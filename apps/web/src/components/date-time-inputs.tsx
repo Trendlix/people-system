@@ -25,6 +25,8 @@ type FieldProps = {
   defaultValue: string;
   required?: boolean;
   'aria-describedby'?: string;
+  /** A date field's: what is typed or chosen from the calendar, as it changes (the field stays uncontrolled). */
+  onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
 };
 
 /** Writes `text` in the field as a person would: the input and change events fire, so React's onChange and onInput run. */

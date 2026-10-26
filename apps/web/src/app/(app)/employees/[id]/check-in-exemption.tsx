@@ -13,16 +13,17 @@ import { ProfileSection } from '../ui';
 // attendance checkins and outs, trat them as if they achived their full working hours"; asked, "Optional check-in" and
 // "Profile + a list in Check-in Setup"), on the Employment tab under their attendance details: the period current or to
 // come (an Exempt badge, from–until, why, who added it) with End now, and the earlier periods; for those who manage it,
-// the switch "Exempt from check-in" (on: the reason, from today unless changed, until a day or no end). HR, Admin (a Super
-// Admin as an Admin), the CEO and the person themself read it; HR, Admin and the Super Admin manage it, a C-level
-// person's only the CEO or a Super Admin (the API says which: canManage, canEnd; it answers 404 to those who may not see
-// a C-level person). Nothing for anyone else, nor for someone never exempt whom the caller can't exempt.
+// the switch "Exempt from check-in" (on: the reason, from their contract's start date unless changed, else their join
+// date, else today, as the API sends it, 26 October 2026; until a day or no end). HR, Admin (a Super Admin as an Admin),
+// the CEO and the person themself read it; HR, Admin and the Super Admin manage it, a C-level person's only the CEO or a
+// Super Admin (the API says which: canManage, canEnd; it answers 404 to those who may not see a C-level person). Nothing
+// for anyone else, nor for someone never exempt whom the caller can't exempt.
 
 export async function CheckInExemptionSection({ employee, user }: { employee: Pick<EmployeeProfile, 'id' | 'fullNameEn'>; user: SessionUser }) {
   if (!seesExemptions(user, employee.id)) return null;
   const loaded = await loadJson<EmployeeExemptionsView>(`/employees/${encodeURIComponent(employee.id)}/check-in-exemptions`);
   if (loaded.kind !== 'ok') return null;
-  const { periods, canManage } = loaded.value;
+  const { periods, canManage, suggestedFrom } = loaded.value;
   if (!periods.length && !canManage) return null;
   const today = todayInCairo();
   const { active, ended } = splitPeriods(periods);
@@ -60,6 +61,7 @@ export async function CheckInExemptionSection({ employee, user }: { employee: Pi
             active={on && { startDate: on.startDate, endDate: on.endDate }}
             employeeId={employee.id}
             name={name}
+            suggested={suggestedFrom ?? null}
             today={today}
           />
         ) : (

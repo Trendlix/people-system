@@ -1,28 +1,32 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { EXEMPTION_LABEL, EXEMPTION_REASON_MAX } from '@trendlix/shared';
+import { EXEMPTION_LABEL, EXEMPTION_REASON_MAX, type SuggestedExemptionStart } from '@trendlix/shared';
 import { DateInput } from '@/components/date-time-inputs';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import { Select } from '@/components/select';
-import { formatDate } from '@/lib/format';
 import type { FormState } from '@/lib/types';
-import { endExemptionConfirm, exemptButtonText, periodText, reasonCount } from './exemptions';
+import { endExemptionConfirm, exemptButtonText, FROM_LOCK_HINT, fromField, ownStartText, periodText, reasonCount, startHint } from './exemptions';
 import { withChosen } from './setup';
 
 // The forms of people exempt from check-in (owner, 25 October 2026: "allow me to select people that are not eligable for
 // attendance checkins and outs, trat them as if they achived their full working hours"; asked, "Optional check-in" and
-// "Profile + a list in Check-in Setup"): one reason (required), from a day (today unless changed) and until a day (none:
-// no end), for one person on their profile (its switch "Exempt from check-in") or for several chosen at once on Check-in
-// Setup ("Add people", the searchable list with chips, as Link people chooses). "End now" asks first: a period started
-// ends today, one not started is removed. The API checks the role and every value again.
+// "Profile + a list in Check-in Setup"): one reason (required), from a day and until a day (none: no end), for one person
+// on their profile (its switch "Exempt from check-in") or for several chosen at once on Check-in Setup ("Add people", the
+// searchable list with chips, as Link people chooses). "End now" asks first: a period started ends today, one not
+// started is removed. The API checks the role and every value again.
+// "From" (owner, 26 October 2026: "when exempting someone from attendance auto fill his contract start date in the
+// exempt from date") starts as the person's contract's start, else their join date, else today, the hint under it
+// saying which; on Check-in Setup it is filled in once one person is chosen, and with several each starts on their own
+// (shown by their names) unless HR types a date for everyone. Left empty, each their own (ownStart).
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
-/** Someone the picker offers: their id, and their name · code · team. */
+/** Someone the picker offers: their id, their name · code · team, and the first day theirs starts with (null: none sent). */
 export interface ExemptionOption {
   value: string;
   label: string;
+  from?: SuggestedExemptionStart | null;
 }
 
 /**
@@ -34,17 +38,20 @@ export function ExemptionForm({
   today,
   employeeId,
   name,
+  suggested,
   options,
   onSaved,
   onCancel,
 }: {
   action: Action;
-  /** YYYY-MM-DD, Cairo: the first day to start with. */
+  /** YYYY-MM-DD, Cairo: the first day without one of theirs. */
   today: string;
   /** One person (their profile), else chosen from `options`. */
   employeeId?: string;
   /** Their name, for the form's label. */
   name?: string;
+  /** Their first day to start with (the profile's): their contract's start, else their join date; null: today. */
+  suggested?: SuggestedExemptionStart | null;
   options?: readonly ExemptionOption[];
   onSaved: (message: string) => void;
   onCancel: () => void;
@@ -52,6 +59,10 @@ export function ExemptionForm({
   const fid = useFieldIds();
   const [chosen, setChosen] = useState<string[]>([]);
   const [reason, setReason] = useState('');
+  // what HR typed in "From" (null until changed), and the field's key from then on: it is drawn again with the default
+  // of whom is chosen only until HR changes it
+  const [typed, setTyped] = useState<string | null>(null);
+  const [typedKey, setTypedKey] = useState<string | null>(null);
   const { state, pending, form } = useKeptForm(async (prev, fd) => {
     const result = await action(prev, fd);
     if (result.message && !result.errors?.length) onSaved(result.message);
@@ -60,6 +71,9 @@ export function ExemptionForm({
   const picking = !employeeId;
   const left = (options ?? []).filter((o) => !chosen.includes(o.value));
   const names = new Map((options ?? []).map((o) => [o.value, o.label]));
+  const starts = new Map((options ?? []).map((o) => [o.value, o.from ?? null]));
+  const from = picking ? fromField(chosen.map((id) => starts.get(id)), typed, today) : fromField([suggested], null, today);
+  const autoKey = picking ? (chosen.length === 1 ? chosen[0] : chosen.length ? 'several' : 'none') : 'one';
   return (
     <form {...form} className="space-y-4 rounded-lg border border-line bg-canvas p-4" aria-label={picking ? 'Exempt people from check-in' : `Exempt ${name ?? 'them'} from check-in`}>
       <FormErrors errors={state.errors} />
@@ -87,28 +101,37 @@ export function ExemptionForm({
               ))}
             </Select>
             <p id={fid('person-hint')} className="hint">
-              Type a name, a code or a team to search. Choose several: they get the same reason and days. Someone exempt already isn&apos;t offered; their
-              profile adds a later period.
+              Type a name, a code or a team to search. Choose several: they get the same reason and last day, each from their own first day unless you type
+              one. Someone exempt already isn&apos;t offered; their profile adds a later period.
             </p>
           </div>
           {chosen.length > 0 && (
             <ul className="flex flex-wrap gap-1.5" aria-label="Chosen to exempt">
-              {chosen.map((id) => (
-                <li key={id} className="inline-flex items-center gap-0.5 rounded-full border border-accent/40 bg-accent-soft py-0.5 ps-2.5 pe-0.5 text-xs font-medium text-accent">
-                  {names.get(id) ?? id}
-                  <input type="hidden" name="employeeId" value={id} />
-                  <button
-                    type="button"
-                    onClick={() => setChosen((c) => c.filter((x) => x !== id))}
-                    aria-label={`Take ${names.get(id) ?? 'this person'} off the list`}
-                    className="inline-flex size-6 items-center justify-center rounded-full hover:bg-white"
-                  >
-                    <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="size-3">
-                      <path d="M5 5l10 10M15 5L5 15" />
-                    </svg>
-                  </button>
-                </li>
-              ))}
+              {chosen.map((id) => {
+                // each one's own first day, while "From" is empty
+                const own = from.own ? ownStartText(starts.get(id)) : null;
+                return (
+                  <li key={id} className="inline-flex items-center gap-0.5 rounded-full border border-accent/40 bg-accent-soft py-0.5 ps-2.5 pe-0.5 text-xs font-medium text-accent">
+                    {names.get(id) ?? id}
+                    {own && (
+                      <span className="font-normal tabular-nums" title={startHint(starts.get(id))}>
+                        &nbsp;· {own}
+                      </span>
+                    )}
+                    <input type="hidden" name="employeeId" value={id} />
+                    <button
+                      type="button"
+                      onClick={() => setChosen((c) => c.filter((x) => x !== id))}
+                      aria-label={`Take ${names.get(id) ?? 'this person'} off the list`}
+                      className="inline-flex size-6 items-center justify-center rounded-full hover:bg-white"
+                    >
+                      <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="size-3">
+                        <path d="M5 5l10 10M15 5L5 15" />
+                      </svg>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
@@ -140,9 +163,26 @@ export function ExemptionForm({
           <label htmlFor={fid('startDate')} className="label">
             From
           </label>
-          <DateInput id={fid('startDate')} name="startDate" defaultValue={valueOf(state, 'startDate', formatDate(today))} aria-describedby={fid('from-hint')} />
+          <DateInput
+            key={`from-${typedKey ?? autoKey}`}
+            id={fid('startDate')}
+            name="startDate"
+            // the picker's: whom is chosen until HR changes it (then the field keeps what they typed)
+            defaultValue={picking ? from.value : valueOf(state, 'startDate', from.value)}
+            onChange={
+              picking
+                ? (e) => {
+                    setTypedKey((k) => k ?? autoKey);
+                    setTyped(e.target.value);
+                  }
+                : undefined
+            }
+            aria-describedby={fid('from-hint')}
+          />
+          {/* empty: each from their own first day (their contract's start, else their join date) */}
+          <input type="hidden" name="ownStart" value="1" />
           <p id={fid('from-hint')} className="hint">
-            Today unless changed. A day in a month whose payroll is with the CEO, approved or paid can&apos;t be chosen.
+            {from.hint} {FROM_LOCK_HINT}
           </p>
         </div>
         <div>
@@ -257,6 +297,7 @@ export function ExemptionSwitch({
   active,
   employeeId,
   name,
+  suggested,
   today,
 }: {
   add: Action;
@@ -265,6 +306,8 @@ export function ExemptionSwitch({
   active: { startDate: string; endDate: string | null } | null;
   employeeId: string;
   name: string;
+  /** The first day a new period starts with: their contract's start, else their join date (null: today). */
+  suggested: SuggestedExemptionStart | null;
   today: string;
 }) {
   const fid = useFieldIds();
@@ -309,6 +352,7 @@ export function ExemptionSwitch({
           today={today}
           employeeId={employeeId}
           name={name}
+          suggested={suggested}
           onSaved={(message) => {
             setFormOpen(false);
             setSaid({ message });

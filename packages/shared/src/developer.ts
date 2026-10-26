@@ -1149,6 +1149,9 @@ export const DEVELOPER_JOB_DATE_FIELDS: ReadonlySet<string> = new Set([
   'employedFrom',
   'employedTo',
   'jdAcknowledgedAt',
+  // the first day a new exemption from check-in starts with (26 October 2026): a contract's start and number, or a join
+  // date, with where it came from; the whole of it null
+  'suggestedFrom',
 ]);
 
 /** The ids pointing at a department, team, job title or grade: null (a list of them empty) on a page about people. */

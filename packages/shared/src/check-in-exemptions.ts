@@ -1,7 +1,8 @@
 // People exempt from check-in (owner, 25 October 2026: "allow me to select people that are not eligable for attendance
 // checkins and outs, trat them as if they achived their full working hours"; asked, "Optional check-in" and "Profile + a
-// list in Check-in Setup"). HR, Admin and the Super Admin mark someone exempt with a reason, from a day (today unless
-// said) and until a day or with no end; a C-level person's only the CEO or a Super Admin, as their other details. Each
+// list in Check-in Setup"). HR, Admin and the Super Admin mark someone exempt with a reason, from a day (their contract's
+// start unless changed, since 26 October 2026: suggestedExemptionStart; the API's own default, with no day sent, stays
+// today) and until a day or with no end; a C-level person's only the CEO or a Super Admin, as their other details. Each
 // exemption is a dated period of its own (CheckInExemption), so a month always reads the periods that applied to it.
 // A working day inside a period (a working day of their shift, not an official holiday, not a day of approved leave,
 // within their employment, up to today):
@@ -97,6 +98,54 @@ export function exemptionMonths(from: string, to: string | null): string[] {
   const last = (to ?? from).slice(0, 7);
   for (let m = from.slice(0, 7); m <= last && out.length < 1200; m = nextMonth(m)) out.push(m);
   return out;
+}
+
+// ---------- the first day a new exemption starts with ----------
+// The owner, 26 October 2026: "when exempting someone from attendance auto fill his contract start date in the exempt
+// from date". A new exemption's "From" starts as the person's current contract's start: the version in force (the newest
+// signed one; a salary amendment's, the contract it amends, as it is part of it); without one, their current employment's
+// join date; without either, today, as before. HR may change it. The API sends it with what the forms load (a person's
+// exemptions on their profile, Check-in Setup's people), and adding several at once with no day typed takes each
+// person's own (ownStart). A developer never gets it: it is an employment's date (developer.ts).
+
+/** Where a new exemption's first day comes from. */
+export type ExemptionStartSource = 'contract' | 'join' | 'today';
+
+/** The first day a new exemption starts with, where it comes from, and the contract's number when it is its start. */
+export interface SuggestedExemptionStart {
+  date: string;
+  source: ExemptionStartSource;
+  /** CON-2026-0012 when it is the contract's start; null otherwise. */
+  contractNumber: string | null;
+}
+
+/** A version of the employment's contract, as the first day is read from it. */
+export interface ExemptionStartContract {
+  number: string;
+  version: number;
+  /** contract, amendment (raises.ts CONTRACT_KINDS). */
+  kind: string;
+  /** CONTRACT_STATUSES: draft, active (signed, in force), ended, superseded. */
+  status: string;
+  startDate: string;
+}
+
+/**
+ * The first day a new exemption starts with (owner, 26 October 2026: "auto fill his contract start date in the exempt
+ * from date"): the start of the contract in force on their current employment (a salary amendment's: the contract it
+ * amends, the newest whole contract before it), else the employment's join date, else (no current employment) today.
+ */
+export function suggestedExemptionStart(employment: { joinDate: string | null; contracts: readonly ExemptionStartContract[] } | null, today: string): SuggestedExemptionStart {
+  if (employment) {
+    const signed = employment.contracts.filter((c) => c.status !== 'draft' && isDate(c.startDate)).sort((a, b) => b.version - a.version);
+    const inForce = signed.find((c) => c.status === 'active');
+    if (inForce) {
+      const contract = inForce.kind === 'amendment' ? (signed.find((c) => c.kind !== 'amendment' && c.version < inForce.version) ?? inForce) : inForce;
+      return { date: contract.startDate, source: 'contract', contractNumber: contract.number };
+    }
+    if (isDate(employment.joinDate)) return { date: employment.joinDate, source: 'join', contractNumber: null };
+  }
+  return { date: today, source: 'today', contractNumber: null };
 }
 
 /** A month whose payroll is with the CEO, approved or paid: its days never change. */

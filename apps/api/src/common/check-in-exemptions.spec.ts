@@ -11,7 +11,9 @@ import {
   exemptionWhenText,
   exemptOn,
   historyDay,
+  suggestedExemptionStart,
   zonedMoment,
+  type ExemptionStartContract,
   type SourcedDay,
 } from '@trendlix/shared';
 import { remindersDue, type ReminderFacts, type ReminderPerson } from '../notifications/reminder-rules.js';
@@ -89,6 +91,47 @@ describe('an exemption period', () => {
       "The October 2026 payroll is with the CEO, so its days can't change: the exemption can't end before 31/10/2026.",
     );
     expect(exemptionMonths('2026-11-15', '2027-01-02')).toEqual(['2026-11', '2026-12', '2027-01']);
+  });
+});
+
+// The owner, 26 October 2026: "when exempting someone from attendance auto fill his contract start date in the exempt
+// from date". Their contract's start, else their join date, else today.
+describe('the first day a new exemption starts with', () => {
+  const TODAY = '2026-10-26';
+  const v = (over: Partial<ExemptionStartContract>): ExemptionStartContract => ({ number: 'CON-2025-0012', version: 1, kind: 'contract', status: 'active', startDate: '2025-07-30', ...over });
+
+  it('is the start of the contract in force, with its number', () => {
+    expect(suggestedExemptionStart({ joinDate: '2025-07-01', contracts: [v({})] }, TODAY)).toEqual({ date: '2025-07-30', source: 'contract', contractNumber: 'CON-2025-0012' });
+    // a renewal in force: its own start, not the first contract's
+    expect(
+      suggestedExemptionStart({ joinDate: '2025-07-01', contracts: [v({ status: 'superseded' }), v({ number: 'CON-2026-0031', version: 2, startDate: '2026-07-30' })] }, TODAY),
+    ).toEqual({ date: '2026-07-30', source: 'contract', contractNumber: 'CON-2026-0031' });
+  });
+
+  it('for a salary amendment in force, is the start of the contract it amends', () => {
+    const contracts = [
+      v({ status: 'superseded' }),
+      v({ number: 'CON-2025-0012-A1', version: 2, kind: 'amendment', status: 'superseded', startDate: '2026-01-01' }),
+      v({ number: 'CON-2025-0012-A2', version: 3, kind: 'amendment', startDate: '2026-07-01' }),
+    ];
+    expect(suggestedExemptionStart({ joinDate: '2025-07-01', contracts }, TODAY)).toEqual({ date: '2025-07-30', source: 'contract', contractNumber: 'CON-2025-0012' });
+    // without the contract before it among those read: the amendment's own
+    expect(suggestedExemptionStart({ joinDate: '2025-07-01', contracts: [contracts[2]] }, TODAY)).toEqual({ date: '2026-07-01', source: 'contract', contractNumber: 'CON-2025-0012-A2' });
+  });
+
+  it('without a contract in force (none signed yet, a draft, one ended), is the join date', () => {
+    expect(suggestedExemptionStart({ joinDate: '2026-09-14', contracts: [] }, TODAY)).toEqual({ date: '2026-09-14', source: 'join', contractNumber: null });
+    expect(suggestedExemptionStart({ joinDate: '2026-09-14', contracts: [v({ status: 'draft', startDate: '2026-09-14' })] }, TODAY)).toMatchObject({ source: 'join' });
+    expect(suggestedExemptionStart({ joinDate: '2024-03-01', contracts: [v({ status: 'ended' }), v({ status: 'superseded', version: 2 })] }, TODAY)).toEqual({
+      date: '2024-03-01',
+      source: 'join',
+      contractNumber: null,
+    });
+  });
+
+  it('without a current employment, is today, as before', () => {
+    expect(suggestedExemptionStart(null, TODAY)).toEqual({ date: TODAY, source: 'today', contractNumber: null });
+    expect(suggestedExemptionStart({ joinDate: null, contracts: [] }, TODAY)).toEqual({ date: TODAY, source: 'today', contractNumber: null });
   });
 });
 
