@@ -6,7 +6,9 @@ import { calendarAgenda, calendarDays, calendarPeople, cellLabel, monthSummaryTe
 import {
   homeOn,
   isWfhDay,
+  hasWfhFilters,
   readWfhQuery,
+  wfhDaysText,
   recordWfhHref,
   wfhAllowanceLine,
   wfhBack,
@@ -87,14 +89,31 @@ describe('the addresses', () => {
     expect(toAppHref(`/attendance/wfh/${ID}`, 'requests')).toBe(`/app/requests/wfh/${ID}`);
   });
 
-  it('read the list’s filters, waiting for you without a status, and send the API a month as its days', () => {
-    expect(readWfhQuery({})).toEqual({ filter: 'waiting', month: null, departmentId: null, employeeId: null, source: null });
+  it('read the list’s filters, waiting for you without a status; a link from before (?month=) is that month’s days', () => {
+    expect(readWfhQuery({})).toEqual({ filter: 'waiting', from: null, to: null, departmentId: null, employeeId: null, source: null });
     const q = readWfhQuery({ status: 'approved', month: '2026-11', department: DEPT, source: 'zoho', employee: 'nope' });
-    expect(q).toEqual({ filter: 'approved', month: '2026-11', departmentId: DEPT, employeeId: null, source: 'zoho' });
-    expect(wfhListHref(q)).toBe(`/attendance/wfh?status=approved&month=2026-11&department=${DEPT}&source=zoho`);
+    expect(q).toEqual({ filter: 'approved', from: '2026-11-01', to: '2026-11-30', departmentId: DEPT, employeeId: null, source: 'zoho' });
+    expect(wfhListHref(q)).toBe(`/attendance/wfh?status=approved&from=2026-11-01&to=2026-11-30&department=${DEPT}&source=zoho`);
     expect(wfhListPath(q)).toBe(`/wfh?status=approved&from=2026-11-01&to=2026-11-30&departmentId=${DEPT}&source=zoho`);
-    expect(wfhListPath({ filter: 'all', month: '2028-02' })).toBe('/wfh?from=2028-02-01&to=2028-02-29');
+    expect(readWfhQuery({ month: '2028-02' })).toMatchObject({ from: '2028-02-01', to: '2028-02-29' });
     expect(wfhListHref({ filter: 'waiting' })).toBe('/attendance/wfh');
+  });
+
+  it('read an employee and From and To, as Leave Requests has them (owner, 26 October 2026: "add the filter here too")', () => {
+    const q = readWfhQuery({ status: 'all', employee: DEPT, from: '01/10/2026', to: '2026-10-31' });
+    expect(q).toMatchObject({ filter: 'all', employeeId: DEPT, from: '2026-10-01', to: '2026-10-31' });
+    expect(wfhListPath(q)).toBe(`/wfh?from=2026-10-01&to=2026-10-31&employeeId=${DEPT}`);
+    // From after To swapped; either alone; not a day ignored; the From and To win over a month
+    expect(readWfhQuery({ from: '31/10/2026', to: '01/10/2026' })).toMatchObject({ from: '2026-10-01', to: '2026-10-31' });
+    expect(readWfhQuery({ to: '31/10/2026' })).toMatchObject({ from: null, to: '2026-10-31' });
+    expect(readWfhQuery({ from: '31/02/2026' })).toMatchObject({ from: null, to: null });
+    expect(readWfhQuery({ month: '2026-11', from: '05/10/2026' })).toMatchObject({ from: '2026-10-05', to: null });
+    expect(hasWfhFilters(readWfhQuery({ status: 'approved' }))).toBe(false);
+    expect(hasWfhFilters(readWfhQuery({ to: '31/10/2026' }))).toBe(true);
+    expect(wfhDaysText({ from: '2026-10-01', to: '2026-10-31' })).toBe('between 01/10/2026 and 31/10/2026');
+    expect(wfhDaysText({ from: '2026-10-05', to: '2026-10-05' })).toBe('on 05/10/2026');
+    expect(wfhDaysText({ from: '2026-10-05', to: null })).toBe('from 05/10/2026');
+    expect(wfhDaysText({ from: null, to: null })).toBeNull();
   });
 
   it('go back to My Requests for the employee, Work From Home for HR and the CEO, else My Team', () => {

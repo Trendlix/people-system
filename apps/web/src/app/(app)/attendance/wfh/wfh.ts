@@ -103,34 +103,63 @@ export const WFH_SOURCE_LABELS: Record<WfhSource, string> = { system: 'On the sy
 /** The list's filters as the address has them. */
 export interface WfhQuery {
   filter: WfhFilter;
-  /** YYYY-MM; null: every month. */
-  month: string | null;
+  /** The first and last day (YYYY-MM-DD) of the days shown; null: any (owner, 26 October 2026: "add the filter here too, like we made on the other page"). */
+  from: string | null;
+  to: string | null;
   departmentId: string | null;
   employeeId: string | null;
   source: WfhSource | null;
 }
 
-/** The filters in the address (?status=&month=&department=&employee=&source=), waiting for you without a status. */
+const lastOf = (month: string) => new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).toISOString().slice(0, 10);
+
+/** A day in the address: YYYY-MM-DD, or as typed in the form (DD/MM/YYYY); null for none or what isn't a day. */
+function dayOf(v: string): string | null {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return parseDate(`${v.slice(8, 10)}/${v.slice(5, 7)}/${v.slice(0, 4)}`) || null;
+  return parseDate(v) || null;
+}
+
+/**
+ * The filters in the address (?status=&from=&to=&department=&employee=&source=), waiting for you without a status. From
+ * after To swapped; a link from before the From and To (?month=YYYY-MM) is that month's days.
+ */
 export function readWfhQuery(query: Query): WfhQuery {
   const status = one(query.status);
   const month = one(query.month);
   const department = one(query.department);
   const employee = one(query.employee);
   const source = one(query.source);
+  let from = dayOf(one(query.from));
+  let to = dayOf(one(query.to));
+  if (!from && !to && MONTH.test(month)) [from, to] = [`${month}-01`, lastOf(month)];
+  if (from && to && from > to) [from, to] = [to, from];
   return {
     filter: WFH_FILTERS.some((f) => f.value === status) ? (status as WfhFilter) : 'waiting',
-    month: MONTH.test(month) ? month : null,
+    from,
+    to,
     departmentId: UUID.test(department) ? department : null,
     employeeId: UUID.test(employee) ? employee : null,
     source: (WFH_SOURCES as readonly string[]).includes(source) ? (source as WfhSource) : null,
   };
 }
 
-/** The list's address: "/attendance/wfh?status=approved&month=2026-11&department=<id>". */
+/** Whether any filter but the status is on. */
+export const hasWfhFilters = (q: Pick<WfhQuery, 'from' | 'to' | 'departmentId' | 'employeeId' | 'source'>) => !!(q.from || q.to || q.departmentId || q.employeeId || q.source);
+
+/** The days chosen in words: "between 01/10/2026 and 31/10/2026", "from 01/10/2026", "up to 31/10/2026"; null for any. */
+export function wfhDaysText(q: Pick<WfhQuery, 'from' | 'to'>): string | null {
+  if (q.from && q.to) return q.from === q.to ? `on ${formatDate(q.from)}` : `between ${formatDate(q.from)} and ${formatDate(q.to)}`;
+  if (q.from) return `from ${formatDate(q.from)}`;
+  if (q.to) return `up to ${formatDate(q.to)}`;
+  return null;
+}
+
+/** The list's address: "/attendance/wfh?status=approved&from=2026-11-01&to=2026-11-30&department=<id>". */
 export function wfhListHref(q: Partial<WfhQuery> = {}): string {
   const params = new URLSearchParams();
   if (q.filter && q.filter !== 'waiting') params.set('status', q.filter);
-  if (q.month) params.set('month', q.month);
+  if (q.from) params.set('from', q.from);
+  if (q.to) params.set('to', q.to);
   if (q.departmentId) params.set('department', q.departmentId);
   if (q.employeeId) params.set('employee', q.employeeId);
   if (q.source) params.set('source', q.source);
@@ -138,17 +167,13 @@ export function wfhListHref(q: Partial<WfhQuery> = {}): string {
   return qs ? `${WFH_PATH}?${qs}` : WFH_PATH;
 }
 
-const lastOf = (month: string) => new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).toISOString().slice(0, 10);
-
 /** The API's requests for the filters: GET /wfh?status=waiting|<status>&from=&to=&departmentId=&employeeId=&source=. */
 export function wfhListPath(q: Partial<WfhQuery> = {}): string {
   const params = new URLSearchParams();
   const filter = q.filter ?? 'waiting';
   if (filter !== 'all') params.set('status', filter);
-  if (q.month) {
-    params.set('from', `${q.month}-01`);
-    params.set('to', lastOf(q.month));
-  }
+  if (q.from) params.set('from', q.from);
+  if (q.to) params.set('to', q.to);
   if (q.departmentId) params.set('departmentId', q.departmentId);
   if (q.employeeId) params.set('employeeId', q.employeeId);
   if (q.source) params.set('source', q.source);
