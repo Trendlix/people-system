@@ -2,6 +2,7 @@
 
 import { useActionState, useEffect } from 'react';
 import { FormErrors, SubmitButton, useFieldIds } from '@/components/form';
+import { PasswordInput } from '@/components/password-input';
 import { clearBiometric } from '@/lib/native';
 import type { FormState } from '@/lib/types';
 import { changePassword } from './actions';
@@ -27,30 +28,20 @@ export function ChangePasswordForm() {
         <label htmlFor={fid('currentPassword')} className="label">
           Current password
         </label>
-        <input
-          id={fid('currentPassword')}
-          name="currentPassword"
-          type="password"
-          required
-          maxLength={200}
-          autoComplete="current-password"
-          className="input"
-        />
+        <PasswordInput id={fid('currentPassword')} name="currentPassword" required maxLength={200} autoComplete="current-password" />
       </div>
       <div>
         <label htmlFor={fid('newPassword')} className="label">
           New password
         </label>
-        <input
+        <PasswordInput
           id={fid('newPassword')}
           name="newPassword"
-          type="password"
           required
           minLength={10}
           maxLength={200}
           autoComplete="new-password"
           aria-describedby={fid('newPassword-hint')}
-          className="input"
         />
         <p id={fid('newPassword-hint')} className="hint">
           At least 10 characters, and different from your current password. A short sentence is easy to remember.
@@ -60,16 +51,7 @@ export function ChangePasswordForm() {
         <label htmlFor={fid('confirmPassword')} className="label">
           Confirm new password
         </label>
-        <input
-          id={fid('confirmPassword')}
-          name="confirmPassword"
-          type="password"
-          required
-          minLength={10}
-          maxLength={200}
-          autoComplete="new-password"
-          className="input"
-        />
+        <PasswordInput id={fid('confirmPassword')} name="confirmPassword" required minLength={10} maxLength={200} autoComplete="new-password" />
       </div>
       <SubmitButton>Change password</SubmitButton>
     </form>

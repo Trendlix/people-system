@@ -4,6 +4,7 @@ import { ACCESS_LINK_STATE_TEXT, ACCESS_PASSWORD_MIN, type AccessLinkCheck } fro
 import Link from 'next/link';
 import { useActionState, useEffect, useState } from 'react';
 import { FormErrors, useFieldIds } from '@/components/form';
+import { PasswordInput } from '@/components/password-input';
 import { formatDate } from '@/lib/format';
 import { tokenFromHash } from '@/lib/access';
 import { checkPasswordLink, setPasswordWithLink, type SetPasswordState } from './actions';
@@ -71,16 +72,14 @@ function PasswordFields({ token, check }: { token: string; check: AccessLinkChec
         <label htmlFor={fid('password')} className="mb-1 block text-sm font-medium">
           New password
         </label>
-        <input
+        <PasswordInput
           id={fid('password')}
           name="password"
-          type="password"
           autoComplete="new-password"
           required
           minLength={ACCESS_PASSWORD_MIN}
           maxLength={200}
           aria-describedby={fid('password-hint')}
-          className="input"
         />
         <p id={fid('password-hint')} className="hint">
           At least {ACCESS_PASSWORD_MIN} characters.
@@ -90,7 +89,7 @@ function PasswordFields({ token, check }: { token: string; check: AccessLinkChec
         <label htmlFor={fid('repeat')} className="mb-1 block text-sm font-medium">
           The same password again
         </label>
-        <input id={fid('repeat')} name="repeat" type="password" autoComplete="new-password" required maxLength={200} className="input" />
+        <PasswordInput id={fid('repeat')} name="repeat" autoComplete="new-password" required maxLength={200} />
       </div>
       <FormErrors errors={state.errors} />
       <button type="submit" disabled={pending} className="btn btn-primary w-full">

@@ -3,6 +3,7 @@
 import { useSearchParams } from 'next/navigation';
 import { useActionState } from 'react';
 import { useFieldIds } from '@/components/form';
+import { PasswordInput } from '@/components/password-input';
 import { login, type LoginState } from './actions';
 
 export function LoginForm() {
@@ -31,7 +32,7 @@ export function LoginForm() {
         <label htmlFor={fid('password')} className="mb-1 block text-sm font-medium">
           Password
         </label>
-        <input id={fid('password')} name="password" type="password" autoComplete="current-password" required className="input" />
+        <PasswordInput id={fid('password')} name="password" autoComplete="current-password" required />
       </div>
       {state.error && (
         <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
