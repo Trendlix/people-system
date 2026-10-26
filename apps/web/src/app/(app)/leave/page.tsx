@@ -47,7 +47,7 @@ import {
   requestListHref,
   type RequestRow,
 } from './permissions';
-import { hasRequestFilters, kindOfFilters, leaveTypeOf, NO_MATCH_TEXT, readRequestFilters, requestFiltersHref, typeChoices, type RequestFilters } from './request-filters';
+import { hasRequestFilters, kindOfFilters, leaveTypeOf, NO_FILTERS, NO_MATCH_TEXT, readRequestFilters, requestFiltersHref, typeChoices, type RequestFilters } from './request-filters';
 import { RequestFiltersForm } from './request-filters-form';
 import { LeaveProgress, LeaveStatusBadge, RequestWhen } from './ui';
 
@@ -107,7 +107,7 @@ function Filters({
           );
         })}
       </nav>
-      <RequestFiltersForm status={filter} employeeId={filters.employeeId} type={filters.type} people={people} types={types} filtered={hasRequestFilters(filters)} />
+      <RequestFiltersForm status={filter} employeeId={filters.employeeId} type={filters.type} from={filters.from} to={filters.to} people={people} types={types} filtered={hasRequestFilters(filters)} />
     </div>
   );
 }
@@ -228,11 +228,13 @@ async function RequestsList({ query, user }: { query: Query; user: Awaited<Retur
   const filters: RequestFilters = {
     employeeId: asked.employeeId && (!people || people.some((p) => p.id === asked.employeeId)) ? asked.employeeId : null,
     type: asked.type && (leaveTypes.kind !== 'ok' || types.some((t) => t.value === asked.type)) ? asked.type : null,
+    from: asked.from,
+    to: asked.to,
   };
   const kind = kindOfFilters(filters);
   const [leave, permissions] = await Promise.all([
-    kind === 'permission' ? NONE : loadLeaveRequests(filter, filters.employeeId, leaveTypeOf(filters)),
-    kind === 'leave' ? NONE : loadPermissions(filter, filters.employeeId),
+    kind === 'permission' ? NONE : loadLeaveRequests(filter, filters.employeeId, leaveTypeOf(filters), filters),
+    kind === 'leave' ? NONE : loadPermissions(filter, filters.employeeId, filters),
   ]);
   const rows = mergeRequests(leave.kind === 'ok' ? leave.value : [], permissions.kind === 'ok' ? permissions.value : []);
   // a list not read: said in the list's place when it is the only one asked for, else above the other
@@ -256,7 +258,7 @@ async function RequestsList({ query, user }: { query: Query; user: Awaited<Retur
               <Empty>
                 {hasRequestFilters(filters) ? NO_MATCH_TEXT : emptyRequestsText(filter, kind)}{' '}
                 {hasRequestFilters(filters) ? (
-                  <Link href={requestFiltersHref(filter, { employeeId: null, type: null })}>Clear filters</Link>
+                  <Link href={requestFiltersHref(filter, NO_FILTERS)}>Clear filters</Link>
                 ) : (
                   filter !== 'all' && <Link href={requestListHref('all', kind)}>Show all</Link>
                 )}

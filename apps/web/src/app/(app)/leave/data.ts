@@ -31,10 +31,10 @@ export type { Loaded };
 
 /**
  * GET /leave/requests (HR and the CEO everyone's; a direct manager their reports'), newest first, by the filter, one
- * person's (`employeeId`) and one type's (`typeId`).
+ * person's (`employeeId`), one type's (`typeId`), and those with a day between `days`' From and To.
  */
-export function loadLeaveRequests(filter: LeaveFilter, employeeId?: string | null, typeId?: string | null): Promise<Loaded<LeaveRequestView[]>> {
-  return loadJson<LeaveRequestView[]>(leaveRequestsPath(filter, employeeId, typeId));
+export function loadLeaveRequests(filter: LeaveFilter, employeeId?: string | null, typeId?: string | null, days?: { from: string | null; to: string | null }): Promise<Loaded<LeaveRequestView[]>> {
+  return loadJson<LeaveRequestView[]>(leaveRequestsPath(filter, employeeId, typeId, days));
 }
 
 /** GET /leave/requests?status=waiting: the requests waiting for the caller. Read once a request (My Team, the dashboard). */
@@ -97,8 +97,8 @@ export async function loadHolidayYears(years: readonly number[]): Promise<Holida
 // ---------- permission (19 October 2026) ----------
 
 /** GET /leave/permissions (HR and the CEO everyone's; a manager or lead those sent to them and their team's), by the filter. */
-export function loadPermissions(filter: LeaveFilter, employeeId?: string | null): Promise<Loaded<PermissionRequestView[]>> {
-  return loadJson<PermissionRequestView[]>(permissionsPath(filter, employeeId));
+export function loadPermissions(filter: LeaveFilter, employeeId?: string | null, days?: { from: string | null; to: string | null }): Promise<Loaded<PermissionRequestView[]>> {
+  return loadJson<PermissionRequestView[]>(permissionsPath(filter, employeeId, days));
 }
 
 /** GET /leave/permissions?status=waiting: the permission requests waiting for the caller. Read once a request (My Team, the dashboard). */

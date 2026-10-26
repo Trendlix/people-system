@@ -10,8 +10,8 @@ const ANNUAL = '5c1d7d28-35a3-4a86-8a43-7fb3f5c2b0a1';
 
 describe('the filters in the address', () => {
   it('reads a person and a type, ignoring what is neither', () => {
-    expect(readRequestFilters({ employee: ANA, type: ANNUAL })).toEqual({ employeeId: ANA, type: ANNUAL });
-    expect(readRequestFilters({ type: 'permission' })).toEqual({ employeeId: null, type: PERMISSION_TYPE });
+    expect(readRequestFilters({ employee: ANA, type: ANNUAL })).toEqual({ employeeId: ANA, type: ANNUAL, from: null, to: null });
+    expect(readRequestFilters({ type: 'permission' })).toEqual({ employeeId: null, type: PERMISSION_TYPE, from: null, to: null });
     expect(readRequestFilters({})).toEqual(NO_FILTERS);
     expect(readRequestFilters({ employee: 'ana', type: 'annual' })).toEqual(NO_FILTERS);
     expect(readRequestFilters({ employee: [ANA], type: ['permission'] })).toEqual(NO_FILTERS);
@@ -26,14 +26,14 @@ describe('the filters in the address', () => {
 
   it('says whether any is on, which requests the type chooses and which leave type to ask for', () => {
     expect(hasRequestFilters(NO_FILTERS)).toBe(false);
-    expect(hasRequestFilters({ employeeId: ANA, type: null })).toBe(true);
-    expect(hasRequestFilters({ employeeId: null, type: ANNUAL })).toBe(true);
+    expect(hasRequestFilters({ ...NO_FILTERS, employeeId: ANA })).toBe(true);
+    expect(hasRequestFilters({ ...NO_FILTERS, type: ANNUAL })).toBe(true);
     expect(kindOfFilters(NO_FILTERS)).toBe('all');
-    expect(kindOfFilters({ employeeId: ANA, type: null })).toBe('all');
-    expect(kindOfFilters({ employeeId: null, type: PERMISSION_TYPE })).toBe('permission');
-    expect(kindOfFilters({ employeeId: null, type: ANNUAL })).toBe('leave');
-    expect(leaveTypeOf({ employeeId: null, type: ANNUAL })).toBe(ANNUAL);
-    expect(leaveTypeOf({ employeeId: null, type: PERMISSION_TYPE })).toBeNull();
+    expect(kindOfFilters({ ...NO_FILTERS, employeeId: ANA, type: null })).toBe('all');
+    expect(kindOfFilters({ ...NO_FILTERS, employeeId: null, type: PERMISSION_TYPE })).toBe('permission');
+    expect(kindOfFilters({ ...NO_FILTERS, employeeId: null, type: ANNUAL })).toBe('leave');
+    expect(leaveTypeOf({ ...NO_FILTERS, employeeId: null, type: ANNUAL })).toBe(ANNUAL);
+    expect(leaveTypeOf({ ...NO_FILTERS, employeeId: null, type: PERMISSION_TYPE })).toBeNull();
     expect(leaveTypeOf(NO_FILTERS)).toBeNull();
   });
 });
@@ -41,10 +41,10 @@ describe('the filters in the address', () => {
 describe('the addresses', () => {
   it('a link keeps the status and the filters; none for the user’s default status', () => {
     expect(requestFiltersHref('approved', NO_FILTERS)).toBe('/leave?status=approved');
-    expect(requestFiltersHref('waiting', { employeeId: ANA, type: ANNUAL })).toBe(`/leave?status=waiting&employee=${ANA}&type=${ANNUAL}`);
-    expect(requestFiltersHref('all', { employeeId: null, type: PERMISSION_TYPE })).toBe('/leave?status=all&type=permission');
+    expect(requestFiltersHref('waiting', { ...NO_FILTERS, employeeId: ANA, type: ANNUAL })).toBe(`/leave?status=waiting&employee=${ANA}&type=${ANNUAL}`);
+    expect(requestFiltersHref('all', { ...NO_FILTERS, type: PERMISSION_TYPE })).toBe('/leave?status=all&type=permission');
     expect(requestFiltersHref(null, NO_FILTERS)).toBe('/leave');
-    expect(requestFiltersHref(null, { employeeId: ANA, type: null })).toBe(`/leave?employee=${ANA}`);
+    expect(requestFiltersHref(null, { ...NO_FILTERS, employeeId: ANA })).toBe(`/leave?employee=${ANA}`);
   });
 
   it('the API’s lists take the person, and the leave also the type', () => {
@@ -52,6 +52,19 @@ describe('the addresses', () => {
     expect(leaveRequestsPath('approved', ANA, ANNUAL)).toBe(`/leave/requests?status=approved&employeeId=${ANA}&typeId=${ANNUAL}`);
     expect(leaveRequestsPath('all', null, ANNUAL)).toBe(`/leave/requests?typeId=${ANNUAL}`);
     expect(permissionsPath('waiting', ANA)).toBe(`/leave/permissions?status=waiting&employeeId=${ANA}`);
+  });
+
+  it('a From and a To, either alone, kept by the links and sent to both lists (owner, 26 October 2026: "add date filter too")', () => {
+    // as the form sends them (DD/MM/YYYY) or as a link keeps them (YYYY-MM-DD); not a day: ignored; From after To: swapped
+    expect(readRequestFilters({ from: '01/10/2026', to: '2026-10-31' })).toEqual({ ...NO_FILTERS, from: '2026-10-01', to: '2026-10-31' });
+    expect(readRequestFilters({ from: '2026-10-31', to: '01/10/2026' })).toEqual({ ...NO_FILTERS, from: '2026-10-01', to: '2026-10-31' });
+    expect(readRequestFilters({ to: '31/10/2026' })).toEqual({ ...NO_FILTERS, to: '2026-10-31' });
+    expect(readRequestFilters({ from: '31/02/2026', to: 'soon' })).toEqual(NO_FILTERS);
+    expect(hasRequestFilters({ ...NO_FILTERS, from: '2026-10-01' })).toBe(true);
+    expect(requestFiltersHref('approved', { ...NO_FILTERS, type: ANNUAL, from: '2026-10-01', to: '2026-10-31' })).toBe(`/leave?status=approved&type=${ANNUAL}&from=2026-10-01&to=2026-10-31`);
+    const days = { from: '2026-10-01', to: null };
+    expect(leaveRequestsPath('all', ANA, null, days)).toBe(`/leave/requests?employeeId=${ANA}&from=2026-10-01`);
+    expect(permissionsPath('all', null, { from: null, to: '2026-10-31' })).toBe('/leave/permissions?to=2026-10-31');
   });
 });
 

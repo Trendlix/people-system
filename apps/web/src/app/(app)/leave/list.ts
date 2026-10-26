@@ -135,11 +135,13 @@ export function leaveCalendarHref(month: string, departmentId?: string | null, b
  * The API's list for a filter: GET /leave/requests?status=waiting|<status>, without one for All; `employeeId` for one
  * person's and `typeId` for one leave type's (owner, 26 October 2026: "i need to filter either by employee or typ").
  */
-export function leaveRequestsPath(filter: LeaveFilter, employeeId?: string | null, typeId?: string | null): string {
+export function leaveRequestsPath(filter: LeaveFilter, employeeId?: string | null, typeId?: string | null, days?: { from: string | null; to: string | null }): string {
   const params = new URLSearchParams();
   if (filter !== 'all') params.set('status', filter);
   if (employeeId) params.set('employeeId', employeeId);
   if (typeId) params.set('typeId', typeId);
+  if (days?.from) params.set('from', days.from);
+  if (days?.to) params.set('to', days.to);
   const qs = params.toString();
   return qs ? `/leave/requests?${qs}` : '/leave/requests';
 }

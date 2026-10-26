@@ -123,10 +123,12 @@ export function requestListHref(filter: LeaveFilter | null, kind: RequestKind = 
 }
 
 /** The API's permissions for a filter: GET /leave/permissions?status=waiting|<status>, without one for All; `employeeId` for one person's. */
-export function permissionsPath(filter: LeaveFilter, employeeId?: string | null): string {
+export function permissionsPath(filter: LeaveFilter, employeeId?: string | null, days?: { from: string | null; to: string | null }): string {
   const params = new URLSearchParams();
   if (filter !== 'all') params.set('status', filter);
   if (employeeId) params.set('employeeId', employeeId);
+  if (days?.from) params.set('from', days.from);
+  if (days?.to) params.set('to', days.to);
   const qs = params.toString();
   return qs ? `/leave/permissions?${qs}` : '/leave/permissions';
 }

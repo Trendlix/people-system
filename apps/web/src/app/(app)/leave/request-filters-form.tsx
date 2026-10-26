@@ -2,19 +2,25 @@
 
 import Link from 'next/link';
 import { useRef } from 'react';
+import { DateInput } from '@/components/date-time-inputs';
 import { Select } from '@/components/select';
 import { LEAVE_PATH } from '@/components/nav';
+import { formatDate, parseDate } from '@/lib/format';
 import type { LeaveFilter } from './list';
 
 // Leave Requests' Employee and Type filters (owner, 26 October 2026: "i need to filter either by employee or typ"): each a
 // drop-down searched by typing; choosing one shows only its requests, beside the status chosen (?employee=<id>&type=<id>,
 // so a link keeps them and a refresh too). A GET form, so it also works with the button alone; Clear filters goes back to
-// the status alone. The people are those the user sees on this page (a C-level person only those who see them).
+// the status alone. The people are those the user sees on this page (a C-level person only those who see them). Then From
+// and To (owner, 26 October 2026: "add date filter too (from - to)"): typed or chosen from the calendar, applied once a
+// whole day is in (or the field emptied), so a half-typed day doesn't reload the page.
 
 export function RequestFiltersForm({
   status,
   employeeId,
   type,
+  from,
+  to,
   people,
   types,
   filtered,
@@ -22,15 +28,22 @@ export function RequestFiltersForm({
   status: LeaveFilter;
   employeeId: string | null;
   type: string | null;
+  /** The first and last day chosen (YYYY-MM-DD), or none. */
+  from: string | null;
+  to: string | null;
   /** Null: the people couldn't be loaded, so the Employee filter is left out. */
   people: readonly { id: string; label: string }[] | null;
   types: readonly { value: string; label: string }[];
   filtered: boolean;
 }) {
   const form = useRef<HTMLFormElement>(null);
+  // a day applied once it is whole (or emptied): never on each key of one being typed
+  const dayChanged = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (parseDate(e.target.value) !== null) form.current?.requestSubmit();
+  };
   return (
     // keyed by what is chosen, so following a link to other filters shows them, not what was picked before
-    <form key={`${employeeId ?? ''}|${type ?? ''}`} ref={form} action={LEAVE_PATH} aria-label="Filter the requests" className="flex flex-wrap items-end gap-3">
+    <form key={`${employeeId ?? ''}|${type ?? ''}|${from ?? ''}|${to ?? ''}`} ref={form} action={LEAVE_PATH} aria-label="Filter the requests" className="flex flex-wrap items-end gap-3">
       <input type="hidden" name="status" value={status} />
       {people && (
         <div className="min-w-56 flex-1 sm:max-w-xs">
@@ -58,6 +71,18 @@ export function RequestFiltersForm({
             </option>
           ))}
         </Select>
+      </div>
+      <div className="w-full min-w-40 sm:w-44">
+        <label htmlFor="leave-filter-from" className="label">
+          From
+        </label>
+        <DateInput id="leave-filter-from" name="from" defaultValue={from ? formatDate(from) : ''} onChange={dayChanged} />
+      </div>
+      <div className="w-full min-w-40 sm:w-44">
+        <label htmlFor="leave-filter-to" className="label">
+          To
+        </label>
+        <DateInput id="leave-filter-to" name="to" defaultValue={to ? formatDate(to) : ''} onChange={dayChanged} />
       </div>
       <noscript>
         <button type="submit" className="btn btn-secondary">
