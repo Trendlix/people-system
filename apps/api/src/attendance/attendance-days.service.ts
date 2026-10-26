@@ -14,6 +14,7 @@ import {
   type DayPlace,
   type ExemptionPeriod,
   type SourcedDay,
+  wfhFullDays,
 } from '@trendlix/shared';
 import { addDays, fromDateOnly, todayInCairo, toDateOnly } from '../common/date-only.js';
 import { fromTimeOfDay } from '../common/time-of-day.js';
@@ -23,6 +24,7 @@ import { firstDay, lastDay } from '../payroll/months.js';
 import { approvedCompensatory } from '../compensatory/compensatory-days.js';
 import { approvedOds, dutyDaysOf } from '../official-duty/od-days.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { approvedWfhDays } from '../wfh/wfh-days.js';
 import { exemptionsOf } from './exemption-days.js';
 
 // A person's month of attendance days from every source (owner, 19 October 2026: "Check-in through the system (phone or
@@ -192,6 +194,8 @@ export class AttendanceDaysService {
       // their compensatory days approved (owner, 26 October 2026: "my compensatory is a compensation with another day in the same month")
       approvedCompensatory(db, ids, first, last),
     ]);
+    // their approved work from home days (owner, 26 October 2026: "Full day, always")
+    const wfh = await approvedWfhDays(db, ids, first, last);
     const employmentOf = new Map<string, EmploymentRow>();
     for (const e of employments) if (!employmentOf.has(e.employeeId)) employmentOf.set(e.employeeId, e);
     const rowsOf = new Map<string, MonthDay[]>();
@@ -217,8 +221,10 @@ export class AttendanceDaysService {
       const withDuty = officialDutyDays(base, duties, { today, checkInFrom, employedFrom, employedTo, shift });
       // the exempt days full, whatever was pressed (25 October 2026), a day gone by with nothing kept too
       const hoursADay = shift ? shiftWorkHours(shift) : null;
+      // an approved work from home day with no check-in worked for the shift's hours (owner, 26 October 2026: "Full day, always")
+      const withWfh = wfhFullDays(withDuty, wfh.get(id) ?? [], { today, checkInFrom, workingDays: shift?.workingDays ?? null, holidays: holidayDays, leaveDays, employedFrom, employedTo, hoursADay });
       const periods = exemptions.get(id) ?? [];
-      const exempt = employment ? exemptDays(withDuty, periods, { month, today, workingDays: shift?.workingDays ?? null, holidays: holidayDays, leaveDays, employedFrom, employedTo, hoursADay }) : withDuty;
+      const exempt = employment ? exemptDays(withWfh, periods, { month, today, workingDays: shift?.workingDays ?? null, holidays: holidayDays, leaveDays, employedFrom, employedTo, hoursADay }) : withWfh;
       // the compensatory days off full and paid, the days worked they compensate left out of the month's hours (26 October 2026:
       // "if the day is compensated with a day, we pay nothing")
       const comp = compensatory.get(id);

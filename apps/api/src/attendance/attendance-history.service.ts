@@ -28,6 +28,7 @@ import {
   shiftWorkHours,
   trendByQuarter,
   WEEKDAY_SHORT,
+  wfhFullDays,
   type HistoryBin,
   type HistoryDay,
   type HistoryFigures,
@@ -224,7 +225,18 @@ export class AttendanceHistoryService {
         const base = monthDays(ofMonth, { month, today, checkInFrom, workingDays, holidays: holidayDays, leaveDays, employedFrom, employedTo });
         const duties = dutyDaysOf(ods, employeeId, shift, holidaySet, first, last);
         const hoursADay = shift ? shiftWorkHours(shift) : null;
-        const exempt = exemptDays(officialDutyDays(base, duties, { today, checkInFrom, employedFrom, employedTo, shift }), exemptions.get(employeeId) ?? [], {
+        // an approved work from home day without a check-in read full (26 October 2026), as monthOf reads it
+        const withWfh = wfhFullDays(officialDutyDays(base, duties, { today, checkInFrom, employedFrom, employedTo, shift }), [...wfhSet].filter((d) => d.startsWith(month)), {
+          today,
+          checkInFrom,
+          workingDays,
+          holidays: holidayDays,
+          leaveDays,
+          employedFrom,
+          employedTo,
+          hoursADay,
+        });
+        const exempt = exemptDays(withWfh, exemptions.get(employeeId) ?? [], {
           month,
           today,
           workingDays,

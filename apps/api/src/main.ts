@@ -12,6 +12,7 @@ import { CandidatesService } from './recruitment/candidates.service.js';
 import { CvReadingsService } from './recruitment/cv-readings.service.js';
 import { RecruitmentSchedulerService } from './recruitment/recruitment-scheduler.service.js';
 import { RemindersService } from './notifications/reminders.service.js';
+import { WfhFullDaysService } from './wfh/wfh-full-days.service.js';
 import { WhatsAppSenderService } from './whatsapp/whatsapp-sender.service.js';
 import { ZohoPeopleSchedulerService } from './zoho-people/zoho-people-scheduler.service.js';
 
@@ -46,6 +47,9 @@ async function bootstrap() {
   // the checkin and out only, not the first and last"; "Months not yet paid"): the days kept before recounted once, under
   // an advisory lock, the drafts refilled; idempotent, so later starts find nothing to change; the tests run it themselves
   app.get(HoursByPairsService).start();
+  // approved work from home days without a check-in counted full (owner, 26 October 2026: "Full day, always"): the draft
+  // payroll lines of the people with one in their month refilled once, under an advisory lock; idempotent; the tests run it themselves
+  app.get(WfhFullDaysService).start();
   // the CVs read in the background, the ones already here first (22 October 2026: "make the OCR egine reads the CV and analyse it")
   app.get(CvReadingsService).start();
   // candidate profiles (22 October 2026: "how to make like a profile for each candidate …"): the applications and general

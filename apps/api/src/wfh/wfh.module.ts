@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { MyWfhController, WfhController } from './wfh.controller.js';
+import { WfhFullDaysService } from './wfh-full-days.service.js';
 import { WfhService } from './wfh.service.js';
 
 // Working from home (owner, 21 October 2026: "think about how should we handle the working from home in out erp"): the
@@ -8,7 +9,8 @@ import { WfhService } from './wfh.service.js';
 @Global()
 @Module({
   controllers: [MyWfhController, WfhController],
-  providers: [WfhService],
-  exports: [WfhService],
+  // the deploy's one-time refill of the drafts for approved days counted full (owner, 26 October 2026)
+  providers: [WfhService, WfhFullDaysService],
+  exports: [WfhService, WfhFullDaysService],
 })
 export class WfhModule {}

@@ -80,6 +80,11 @@ export interface KeptDay {
    */
   exempt?: boolean;
   /**
+   * An approved work from home day without a check-in, counted as the shift's full hours (owner, 26 October 2026: "Full
+   * day, always"; wfh.ts wfhFullDays): worked, never short, no press needed.
+   */
+  wfhDay?: boolean;
+  /**
    * A compensatory day off approved (owner, 26 October 2026: "my compensatory is a compensation with another day in the
    * same month"; compensatory.ts compensatoryDays): read full as an exempt day is (also `exempt`), a paid day, shown
    * "Compensatory day off", never counted as an exempt day.
@@ -146,7 +151,7 @@ export function missingCheckOutOn(day: Pick<KeptDay, 'status' | 'checkIn' | 'che
 export function attendanceDayView(day: KeptDay, hoursADay: number | null): AttendanceDayView {
   const worked = day.status === 'worked';
   // a full day of official duty (23 October 2026) needs no press at all, and an exempt day (25 October 2026) none either
-  const noPress = !!day.od?.fullDay || !!day.exempt;
+  const noPress = !!day.od?.fullDay || !!day.exempt || !!day.wfhDay;
   const missingCheckOut = missingCheckOutOn(day);
   const missingCheckIn = worked && !day.checkIn && !!day.checkOut && !noPress;
   const counted = countsDayHours(day) && !day.exempt;
@@ -177,9 +182,9 @@ export function attendanceDayView(day: KeptDay, hoursADay: number | null): Atten
  * approved hours still count as attended") but for part of a day with one press of two missing, said apart as a missing
  * press.
  */
-export function countsDayHours(day: Pick<KeptDay, 'status' | 'checkIn' | 'checkOut' | 'od'> & Partial<Pick<KeptDay, 'openAt' | 'exempt'>>): boolean {
+export function countsDayHours(day: Pick<KeptDay, 'status' | 'checkIn' | 'checkOut' | 'od'> & Partial<Pick<KeptDay, 'openAt' | 'exempt' | 'wfhDay'>>): boolean {
   if (day.status !== 'worked') return false;
-  if (day.exempt) return true;
+  if (day.exempt || day.wfhDay) return true;
   if (day.checkIn && day.checkOut && !day.openAt) return true;
   return !!day.od && (day.od.fullDay || (!day.checkIn && !day.checkOut));
 }

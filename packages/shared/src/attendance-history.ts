@@ -108,7 +108,7 @@ export const isHistoryFilter = (v: unknown): v is HistoryFilter => (HISTORY_FILT
 
 /** A day as the history reads it: the attendance's day, and what the API knows of it besides. */
 export type HistoryDayInput = Pick<AttendanceDayView, 'date' | 'status' | 'checkIn' | 'checkOut' | 'place' | 'hoursCounted' | 'extraHours' | 'od' | 'correctionId'> &
-  Partial<Pick<AttendanceDayView, 'pairs' | 'openAt' | 'breakMinutes' | 'exempt' | 'compensatory'>> & {
+  Partial<Pick<AttendanceDayView, 'pairs' | 'openAt' | 'breakMinutes' | 'exempt' | 'compensatory' | 'wfhDay'>> & {
   source: AttendanceSource;
   /** A work from home day approved for them (wfh.ts). */
   wfh: boolean;
@@ -170,7 +170,7 @@ export function historyDay(d: HistoryDayInput): HistoryDay {
   const worked = d.status === 'worked';
   const exempt = worked && !!d.exempt;
   let mode: HistoryMode;
-  if (worked) mode = d.od ? 'od' : exempt && d.compensatory ? 'compensatory' : exempt ? 'exempt' : d.wfh || d.place === 'home' ? 'wfh' : d.place === 'remote' ? 'remote' : 'office';
+  if (worked) mode = d.od ? 'od' : exempt && d.compensatory ? 'compensatory' : exempt ? 'exempt' : d.wfh || d.wfhDay || d.place === 'home' ? 'wfh' : d.place === 'remote' ? 'remote' : 'office';
   else mode = d.status as HistoryMode;
   const midnight = zonedMoment(d.date, '00:00');
   // an exempt day's presses are for reference only (25 October 2026): not in the check-in times
@@ -178,8 +178,9 @@ export function historyDay(d: HistoryDayInput): HistoryDay {
   let onTime: boolean | null = null;
   let lateMinutes = 0;
   if (expected && worked) {
-    // never late on an exempt day (25 October 2026), nor on official duty from the start
-    if (exempt || (d.od && odCoversStart(d.date, d.od, d.shift))) onTime = true;
+    // never late on an exempt day (25 October 2026), nor on an approved work from home day without a check-in (26 October
+    // 2026: "Full day, always"), nor on official duty from the start
+    if (exempt || d.wfhDay || (d.od && odCoversStart(d.date, d.od, d.shift))) onTime = true;
     else if (d.checkIn && d.shift) {
       const window = shiftWindowOn(d.date, d.shift);
       if (window) {

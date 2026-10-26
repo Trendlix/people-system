@@ -16,6 +16,7 @@
 // office" flag, and the office network's lock waived for them that day (apps/api/src/attendance/check-in.service.ts).
 // Pure: the API enforces these and the web shows the same checks live. Dates are YYYY-MM-DD.
 
+import type { SourcedDay } from './attendance-days.js';
 import { expectedPlace } from './check-in.js';
 import { LEAVE_STEP_KIND_LABELS, LEAVE_STEP_KINDS } from './leaves.js';
 
@@ -218,6 +219,72 @@ export const OFFICE_DAY_FLAGS: readonly string[] = ['outside_office', 'location_
  * recorded by HR or approved after the check-in was flagged; fake GPS, away from home and a sub-location not theirs stay.
  */
 export const flagsOnWfhDay = <F extends string>(flags: readonly F[]): F[] => flags.filter((f) => !OFFICE_DAY_FLAGS.includes(f));
+
+// ---------- an approved day without a check-in counts full ----------
+// The owner, 26 October 2026, asked how an approved work from home day with no check-in should count (September payroll:
+// Lamiaa's Sunday 27/09/2026, "Recorded by HR", gave 0 hours and an attendance cut; in Zoho People it was a leave type, so
+// no punches): "Full day, always". Any approved work from home day that is an expected working day of the person's shift
+// and has no check-in at all counts the shift's hours to work a day (payroll.ts shiftWorkHours), as a day worked: never a
+// no-show, never short, shown as working from home. A day with a check-in is counted from its presses, short or not, as
+// before; a day of leave, a holiday, a rest day or official duty stays as it is. Read so wherever a month's days are read
+// (apps/api attendance-days.service.ts monthOf), never written, so the pages, the payroll and the KPIs count it alike.
+
+/** What a month's work from home days are read against. */
+export interface WfhFullDayContext {
+  /** Today in Cairo: the days after it aren't read yet. */
+  today: string;
+  /** The first day they checked in on the system (or a device); null: never (only Zoho's kept days are read then). */
+  checkInFrom: string | null;
+  /** Their shift's working days (0 = Sunday); null: Sunday to Thursday. */
+  workingDays: readonly number[] | null;
+  holidays: readonly string[];
+  /** The days they have approved leave in the system. */
+  leaveDays: readonly string[];
+  employedFrom: string | null;
+  employedTo: string | null;
+  /** The shift's hours to work a day (payroll.ts shiftWorkHours); null or 0: nothing to count. */
+  hoursADay: number | null;
+}
+
+/** A day with no check-in at all: no check-in, no check-out, no open press, no pair. */
+const unpressed = (d: SourcedDay): boolean => !d.checkIn && !d.checkOut && !d.openAt && !(d.pairs && d.pairs.length > 0);
+
+/**
+ * A person's days with their approved work from home days (`wfhDates`, YYYY-MM-DD) read full: each such day that is a
+ * working day of their shift, not an official holiday, not a day of approved leave, within their employment and up to
+ * today, and has no check-in at all, is worked for the shift's hours a day (wfhDay), without flags. A day with a press, a
+ * day of leave, a holiday, a rest day and a day of official duty stay as they are. A working day with no day at all is
+ * added (source 'system') once they have checked in on the system, as a day gone by is. In date order.
+ */
+export function wfhFullDays<D extends SourcedDay>(days: readonly D[], wfhDates: Iterable<string>, ctx: WfhFullDayContext): (D | SourcedDay)[] {
+  const wfh = new Set(wfhDates);
+  const hours = typeof ctx.hoursADay === 'number' && ctx.hoursADay > 0 ? ctx.hoursADay : 0;
+  if (!wfh.size || !hours) return [...days];
+  const holidays = new Set(ctx.holidays);
+  const leave = new Set(ctx.leaveDays);
+  const working = new Set(ctx.workingDays ?? [0, 1, 2, 3, 4]);
+  const expected = (date: string) =>
+    wfh.has(date) &&
+    date <= ctx.today &&
+    working.has(new Date(`${date}T00:00:00Z`).getUTCDay()) &&
+    !holidays.has(date) &&
+    !leave.has(date) &&
+    (!ctx.employedFrom || date >= ctx.employedFrom) &&
+    (!ctx.employedTo || date <= ctx.employedTo);
+  const out: (D | SourcedDay)[] = days.map((d) =>
+    expected(d.date) && !d.od && d.status !== 'leave' && d.status !== 'holiday' && d.status !== 'rest' && unpressed(d)
+      ? { ...d, status: 'worked', hoursCounted: hours, flags: [], wfhDay: true }
+      : d,
+  );
+  if (ctx.checkInFrom) {
+    const known = new Set(days.map((d) => d.date));
+    for (const date of wfh) {
+      if (known.has(date) || date < ctx.checkInFrom || !expected(date)) continue;
+      out.push({ date, status: 'worked', checkIn: null, checkOut: null, place: null, zohoStatus: null, permissionHours: 0, hoursCounted: hours, source: 'system', flags: [], wfhDay: true });
+    }
+  }
+  return out.sort((a, b) => a.date.localeCompare(b.date));
+}
 
 // ---------- helpers ----------
 

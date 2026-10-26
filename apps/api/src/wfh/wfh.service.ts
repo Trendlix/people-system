@@ -23,6 +23,7 @@ import {
   type WfhDay,
   type WfhRules,
 } from '@trendlix/shared';
+import { AttendanceFillService } from '../attendance/attendance-fill.service.js';
 import { AuditService, changes } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { addDays, fromDateOnly, isDateOnly, shownDate, todayInCairo, toDateOnly, weekday } from '../common/date-only.js';
@@ -171,6 +172,7 @@ export class WfhService {
     private readonly audit: AuditService,
     private readonly confidential: ConfidentialService,
     private readonly notices: NoticesService,
+    private readonly fill: AttendanceFillService,
   ) {}
 
   // ---------- the employee's own ----------
@@ -321,6 +323,7 @@ export class WfhService {
     const employment = await this.employmentOn(dto.employeeId, dto.date);
     if (!employment) throw new BadRequestException([`Choose a day within one of ${person.fullNameEn}'s employments.`]);
     const id = await this.submit(employment, dto, caller, true);
+    await this.refillDrafts(dto.employeeId, [dto.date], user.id);
     return this.one(id, user);
   }
 
@@ -347,6 +350,8 @@ export class WfhService {
       diff: { employeeId: before.employeeId, date: fromDateOnly(before.date), status: { from: 'approved', to: 'cancelled' }, comment: dto.comment },
     });
     await this.notices.wfh(id, 'cancelled_by_hr');
+    // the day no longer counts full: the month's draft payroll line follows
+    await this.refillDrafts(before.employeeId, [fromDateOnly(before.date)], user.id);
     return this.one(id, user);
   }
 
@@ -434,6 +439,8 @@ export class WfhService {
     });
     // to the next step's decider, or the employee once it is approved or rejected
     await this.notices.wfh(id, 'decided');
+    // approved at its last step: the day counts full (26 October 2026), so the month's draft payroll line follows
+    if (to === 'approved') await this.refillDrafts(before.employeeId, [fromDateOnly(before.date)], user.id);
     return this.one(id, user);
   }
 
@@ -551,6 +558,21 @@ export class WfhService {
     }
     // a pending one, to the one in charge of its first step, as a request sent
     for (const r of result.recorded.filter((x) => x.status !== 'approved')) await this.notices.wfh(r.id, 'sent');
+    // the approved days count full (26 October 2026): the months' draft payroll lines follow
+    const approved = result.recorded.filter((x) => x.status === 'approved');
+    for (const employeeId of new Set(approved.map((r) => r.employeeId))) {
+      await this.refillDrafts(employeeId, approved.filter((r) => r.employeeId === employeeId).map((r) => r.date), by.userId);
+    }
+  }
+
+  /**
+   * The draft payroll lines of the months of these days filled again from the attendance days (owner, 26 October 2026,
+   * "Full day, always": an approved work from home day without a check-in counts the shift's hours, a cancelled one no
+   * longer does), as an approved leave does (LeavePayrollService.syncDrafts). A line the days leave as it is is left, a
+   * run with the CEO, approved or paid never changes, and every line changed is in the audit log (AttendanceFillService).
+   */
+  private async refillDrafts(employeeId: string, dates: readonly string[], userId: string): Promise<void> {
+    for (const month of new Set(dates.map((d) => d.slice(0, 7)))) await this.fill.fillMonth(employeeId, month, { id: userId } as SessionUser);
   }
 
   /**
