@@ -47,7 +47,11 @@ export interface AttendanceFillResult {
 // after each check-in on the system and each correction approved (the month's draft only: a run sent to the CEO never
 // changes). Since 25 October 2026 (owner: "Yes, daily + backfill") someone whose month has Zoho days fetched from Zoho
 // People's API (not an Excel import) is filled from their days too, as someone who checks in on the system: the fetch
-// keeps their days each night, so their line follows. Every line changed is in the audit log. C-level lines too: the
+// keeps their days each night, so their line follows. Since 26 October 2026 a month of Zoho's Excel-imported days is filled
+// from its days too once the system reads one of them over: an approved work from home day with no check-in ("Full day,
+// always"), an approved official duty or a compensatory day (AttendanceDaysService ownDays); before, those days kept the
+// source 'zoho', so the line never got their hours (September's attendance cut for an approved day at home stayed, this
+// fill recounting its no-shows alone). Every line changed is in the audit log. C-level lines too: the
 // figures are the attendance's, nobody types them, and HR's views keep hiding them (owner, 19 October 2026: "make C level Employees details not visible to HR").
 @Injectable()
 export class AttendanceFillService {
@@ -114,8 +118,10 @@ export class AttendanceFillService {
       const was = savedInputs(line.inputs);
       let inputs: PayrollInputs;
       let next: AttendanceImportMark | null;
-      // the system's own days, or Zoho People's fetched each night (owner, 25 October 2026: "Yes, daily + backfill":
-      // "Draft payroll runs for those months are refilled for the people changed"): filled from the month's days
+      // the system's own days (AttendanceDaysService ownDays: since 26 October 2026 a work from home, official duty or
+      // compensatory day over Zoho's Excel-imported rows too), or Zoho People's fetched each night (owner, 25 October
+      // 2026: "Yes, daily + backfill": "Draft payroll runs for those months are refilled for the people changed"): filled
+      // from the month's days
       if (person && (person.own || fromZohoFetch.has(line.employeeId))) {
         const filled = attendanceLineInputs(person.days, {
           systemPermissionHours: permissions.find((p) => p.employeeId === line.employeeId)?._sum.hours?.toNumber() ?? 0,

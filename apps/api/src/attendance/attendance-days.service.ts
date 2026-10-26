@@ -93,8 +93,8 @@ export interface PersonDays {
   hoursADay: number | null;
   days: MonthDay[];
   /**
-   * Whether the month has a day of the system's own (a check-in on the system, a day gone by since their first one, a
-   * device's, a correction): their payroll line is filled from these days, not left to Zoho's import.
+   * Whether the month's days are the system's own (ownDays): their payroll line is filled from these days, not left to
+   * Zoho's import.
    */
   own: boolean;
   /** The sources of the days shown. */
@@ -125,6 +125,21 @@ export function monthDayOf(d: DayRow): MonthDay {
     openAt: d.openAt?.toISOString() ?? null,
   };
 }
+
+/**
+ * Whether a month's days are the system's own, so a draft payroll line is filled from them (attendance-fill.service.ts)
+ * rather than left to Zoho's import: a day of an own source (a check-in on the system or a device, a day gone by since
+ * the first one, a correction), an exempt day (25 October 2026), or a day the system reads over whatever was kept, Zoho's
+ * Excel-imported rows included: an approved work from home day with no check-in (owner, 26 October 2026: "Full day,
+ * always"; wfhFullDays `wfhDay`), an approved official duty (23 October 2026: "OD counted as attended"; officialDutyDays
+ * `od`), a compensatory day off or the day worked it compensates (26 October 2026: "if the day is compensated with a day,
+ * we pay nothing"; compensatoryDays `compensatory`, `compensated`). Those keep the day's source 'zoho', so until 26
+ * October 2026 a month made only of Excel-imported Zoho days never reached the line with them (September's attendance
+ * cut for an approved day at home with no check-in stayed, the fill recounting its no-shows alone). A month of only
+ * Zoho's days with none is still left to its import.
+ */
+export const ownDays = (days: readonly Pick<SourcedDay, 'source' | 'exempt' | 'wfhDay' | 'od' | 'compensatory' | 'compensated'>[]): boolean =>
+  days.some((d) => d.exempt || d.wfhDay || !!d.od || d.compensatory || d.compensated || (OWN_SOURCES as readonly string[]).includes(d.source));
 
 /** The shift's times as the shared rules take them. */
 export const shiftTimesOf = (s: NonNullable<EmploymentRow['shift']>) => ({
@@ -240,9 +255,10 @@ export class AttendanceDaysService {
         employment,
         hoursADay,
         days,
-        // the days gone by without a check-in count too: someone who checks in on the system and didn't all month; and
-        // the exempt days (25 October 2026), so an exempt person's line is filled from them
-        own: days.some((d) => d.exempt || (OWN_SOURCES as readonly string[]).includes(d.source)),
+        // the days gone by without a check-in count too: someone who checks in on the system and didn't all month; the
+        // exempt days (25 October 2026), so an exempt person's line is filled from them; and a work from home, official
+        // duty or compensatory day read over Zoho's Excel-imported rows (26 October 2026), so those reach the line too
+        own: ownDays(days),
         sources: [...new Set(days.map((d) => d.source))],
         exemptions: periods,
       });

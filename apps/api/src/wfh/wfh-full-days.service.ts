@@ -13,7 +13,10 @@ import { PrismaService } from '../prisma/prisma.service.js';
 // any run that is not a draft as it is). Idempotent: a line already as the days make it is left, so run again it changes
 // nothing and writes nothing. Under an advisory lock held for its transaction (another process finding it held does
 // nothing). The pass as one audit entry with its counts, written only when a line changed. Later approvals and
-// cancellations refill the person's drafts themselves (WfhService).
+// cancellations refill the person's drafts themselves (WfhService). The people are those with an approved day in the
+// run's month, whatever kept their days: a month of Zoho's Excel-imported rows (no zohoRunId) is looked at too, and since
+// 26 October 2026 such a month counts as the system's own once it has an approved work from home day (AttendanceDaysService
+// ownDays), so the pass on the next deploy fills the lines the first pass could only recount no-shows on, their hours too.
 
 /** The advisory lock's name: hashtext() of it is the key every process takes. */
 const LOCK_NAME = 'people-system wfh full days';
