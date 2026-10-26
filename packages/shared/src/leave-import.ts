@@ -264,6 +264,24 @@ export function zohoTypeTarget(chosen: string | undefined, byDefault: { typeId: 
   return byDefault.typeId ? { kind: 'leave', typeId: byDefault.typeId } : { kind: 'skip' };
 }
 
+// ---------- The template's Work from home ----------
+
+/**
+ * The choice the template's Leave type list ends with (owner, 26 October 2026: "in the import leaves templete there is no
+ * working from home option"): a row naming it is read as a Zoho Working from home row is, as approved work-from-home days.
+ */
+export const TEMPLATE_WFH_TYPE_NAME = 'Work from home';
+
+/** Whether a template row's leave type is Work from home: that name, "WFH", "Working from home" or "عمل من المنزل", whatever the case. */
+export const isTemplateWfhType = (text: string): boolean => ['workfromhome', 'workingfromhome', 'wfh', 'عملمنالمنزل'].includes(headingKey(text));
+
+/** A leave type of the organization named like Work from home wins over it (decided 26 October 2026, the brief being silent): said once. */
+export const wfhNameIsLeaveTypeText = (typeName: string): string =>
+  `“${typeName}” is a leave type of the system, so rows named so are imported as that leave, not as work-from-home days. To import work-from-home days, rename the leave type.`;
+
+/** A half day on a template's work-from-home row: counted as a whole work-from-home day. */
+export const wfhFileHalfDayText = (date: string): string => `${shown(date)} is a half day in the file: a work-from-home day is a whole day here, so it is counted as one.`;
+
 // ---------- Zoho's Working from home, as work-from-home days ----------
 
 /** Why a day of a work-from-home row isn't one of its days: a holiday or weekend in Zoho, a rest day or official holiday here. */

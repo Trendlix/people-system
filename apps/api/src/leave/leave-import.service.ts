@@ -5,6 +5,7 @@ import {
   alreadyImportedText,
   alreadyInSystemText,
   alreadyWfhText,
+  isTemplateWfhType,
   annualAvailable,
   belowZeroText,
   confidentialPeople,
@@ -42,7 +43,9 @@ import {
   underLabourLaw,
   unpaidInDraftText,
   WFH_IMPORT_MAX_SPAN,
+  wfhFileHalfDayText,
   wfhHalfDaysText,
+  wfhNameIsLeaveTypeText,
   wfhInFileText,
   wfhLeftOutText,
   wfhLinkKey,
@@ -1024,6 +1027,7 @@ export class LeaveImportService {
 
     // ---- the leave rows, each on its own ----
     const offInZohoYears: number[] = [];
+    let wfhNameSaid = false;
     const leaves: ResolvedLeave[] = storedLeaves.map((r) => {
       const person = resolvedPeople.get(r.personKey);
       const view: LeaveImportRowView = {
@@ -1081,6 +1085,7 @@ export class LeaveImportService {
       };
       // the type: the template's by its name, Zoho's as mapped (or by default): a leave type, work-from-home days, or skipped
       let type: LeaveType | null = null;
+      let wfhRow = false;
       if (source === 'zoho') {
         const chosen = typeMap[r.typeText];
         const byDefault = defaultZohoType(r.typeText, types);
@@ -1093,46 +1098,58 @@ export class LeaveImportService {
               : `“${r.typeText}” is skipped: choose ${byDefault.wfh ? ZOHO_WFH_TARGET_LABEL : 'a leave type'} for it above to import these rows.`,
           );
         }
-        if (target.kind === 'wfh') {
-          // Working from home (owner, 21 October 2026: "Yes, as approved WFH days"): a work-from-home day each working
-          // day of the row, not leave (no type, no balance, no pay)
-          out.wfh = true;
-          view.wfh = true;
-          const problems = rowProblems();
-          if (r.from && r.to && r.to >= r.from && leaveDaysBetween(r.from, r.to, { workingDays: [], holidays: [], calendarDays: true, halfDay: false }) > WFH_IMPORT_MAX_SPAN) {
-            problems.push(`A work-from-home row covers at most ${WFH_IMPORT_MAX_SPAN} days: put the rest on a row of its own.`);
-          }
-          if (problems.length) return fail('problem', ...problems);
-          if (!person || person.view.match === 'skipped') return fail('skipped', 'Its person is skipped.');
-          if (!out.employeeId) return fail('waiting', `Say who ${r.name || r.code} is first.`);
-          const eid = out.employeeId;
-          const name = employeeById.get(eid)!.fullNameEn;
-          const holidayList = [...holidaySet];
-          // each day as recorded leave counts it: a working day of the shift of the employment it is in, no official holiday;
-          // Zoho's Holiday/Weekend days left out too
-          const countsDay = (d: string) =>
-            leaveDaysBetween(d, d, { workingDays: covering(eid, d, d)?.workingDays ?? DEFAULT_WORKING_DAYS, holidays: holidayList, calendarDays: false, halfDay: false }) > 0;
-          const found = zohoWfhDays(r.from!, r.to!, r.details, countsDay);
-          const outside = found.days.filter((d) => !covering(eid, d, d));
-          const days = found.days.filter((d) => !outside.includes(d));
-          if (outside.length && !days.length) {
-            const all = employmentsOf(eid);
-            return fail('problem', all.length ? `${name}’s employment${all.length === 1 ? '' : 's'} don’t cover these days (joined ${shownDate(all[all.length - 1].joinDate)}): choose days within one.` : `${name} has no employment.`);
-          }
-          view.days = days.length;
-          view.wfhDays = days;
-          out.wfhDays = days;
-          if (!days.length) return fail('skipped', '0 days: every day of it is a rest day or an official holiday.');
-          const half = wfhHalfDaysText(found.halfDays);
-          if (half) view.warnings.push(half);
-          const leftOut = wfhLeftOutText(found.leftOut);
-          if (leftOut) view.notes.push(leftOut);
-          if (outside.length) view.notes.push(wfhOutsideEmploymentText(outside, name));
-          if (view.pending) view.notes.push(ZOHO_WFH_PENDING_NOTE);
-          return out;
+        if (target.kind === 'wfh') wfhRow = true;
+        else type = typeById.get(target.typeId) ?? null;
+      } else if (isTemplateWfhType(r.typeText)) {
+        // a leave type of the organization named so wins over it, said once
+        type = typeNamed(types, r.typeText);
+        if (type && !wfhNameSaid) {
+          wfhNameSaid = true;
+          view.notes.push(wfhNameIsLeaveTypeText(type.nameEn));
         }
-        type = typeById.get(target.typeId) ?? null;
+        wfhRow = !type;
       } else type = typeNamed(types, r.typeText);
+      if (wfhRow) {
+        // Working from home (owner, 21 October 2026: "Yes, as approved WFH days"): a work-from-home day each working
+        // day of the row, not leave (no type, no balance, no pay). A template row naming Work from home is read the same
+        // way (owner, 26 October 2026: "in the import leaves templete there is no working from home option")
+        out.wfh = true;
+        view.wfh = true;
+        const problems = rowProblems();
+        if (r.from && r.to && r.to >= r.from && leaveDaysBetween(r.from, r.to, { workingDays: [], holidays: [], calendarDays: true, halfDay: false }) > WFH_IMPORT_MAX_SPAN) {
+          problems.push(`A work-from-home row covers at most ${WFH_IMPORT_MAX_SPAN} days: put the rest on a row of its own.`);
+      }
+      if (problems.length) return fail('problem', ...problems);
+      if (!person || person.view.match === 'skipped') return fail('skipped', 'Its person is skipped.');
+      if (!out.employeeId) return fail('waiting', `Say who ${r.name || r.code} is first.`);
+      const eid = out.employeeId;
+      const name = employeeById.get(eid)!.fullNameEn;
+      const holidayList = [...holidaySet];
+      // each day as recorded leave counts it: a working day of the shift of the employment it is in, no official holiday;
+      // Zoho's Holiday/Weekend days left out too
+      const countsDay = (d: string) =>
+        leaveDaysBetween(d, d, { workingDays: covering(eid, d, d)?.workingDays ?? DEFAULT_WORKING_DAYS, holidays: holidayList, calendarDays: false, halfDay: false }) > 0;
+      const found = zohoWfhDays(r.from!, r.to!, r.details, countsDay);
+      // a template row's half day (a single day of 0.5): a whole work-from-home day, said so
+      if (source !== 'zoho' && r.from === r.to && r.fileDays !== null && Math.round(r.fileDays * 10) === 5 && found.days.length) found.halfDays.push(r.from!);
+      const outside = found.days.filter((d) => !covering(eid, d, d));
+      const days = found.days.filter((d) => !outside.includes(d));
+      if (outside.length && !days.length) {
+        const all = employmentsOf(eid);
+        return fail('problem', all.length ? `${name}’s employment${all.length === 1 ? '' : 's'} don’t cover these days (joined ${shownDate(all[all.length - 1].joinDate)}): choose days within one.` : `${name} has no employment.`);
+      }
+      view.days = days.length;
+      view.wfhDays = days;
+      out.wfhDays = days;
+      if (!days.length) return fail('skipped', '0 days: every day of it is a rest day or an official holiday.');
+      const half = source === 'zoho' ? wfhHalfDaysText(found.halfDays) : found.halfDays.length ? wfhFileHalfDayText(found.halfDays[0]) : null;
+      if (half) view.warnings.push(half);
+      const leftOut = wfhLeftOutText(found.leftOut);
+      if (leftOut) view.notes.push(leftOut);
+      if (outside.length) view.notes.push(wfhOutsideEmploymentText(outside, name));
+      if (view.pending) view.notes.push(ZOHO_WFH_PENDING_NOTE);
+      return out;
+      }
       const problems: string[] = [];
       if (!r.typeText) problems.push('Choose the leave type from the list.');
       else if (!type) problems.push(`“${r.typeText}” isn’t a leave type of the system: choose one from the list.`);

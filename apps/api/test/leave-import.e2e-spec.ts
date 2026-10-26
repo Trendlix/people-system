@@ -770,6 +770,73 @@ describe('Leave import (e2e)', () => {
     });
   });
 
+  describe('the template’s Work from home (owner, 26 October 2026: "in the import leaves templete there is no working from home option")', () => {
+    const M_TWFH = `${YEAR}-07`;
+    let pair: [string, string];
+    let leaveDay: string;
+    let importId: string;
+
+    beforeAll(async () => {
+      await person('tess', `Tess Template ${TAG}`, '2024-01-01');
+      const days = workDays(M_TWFH);
+      const first = days.findIndex((d, i) => i > 3 && days[i + 1] === addDays(d, 1));
+      pair = [days[first], days[first + 1]];
+      leaveDay = days[0];
+    });
+
+    it('reads a Work from home row as work-from-home days, as a Zoho row is: a day each working day, not leave', async () => {
+      const file = await templateWorkbook([
+        { code: codes.tess, type: 'Annual leave', from: leaveDay, to: leaveDay }, // 2
+        { code: codes.tess, type: 'Work from home', from: pair[0], to: pair[1] }, // 3: 2 days
+      ]);
+      const v = (await upload(file, `Template WFH ${TAG}.xlsx`)).body as View;
+      importId = v.id;
+      expect(v.source).toBe('template');
+      expect(rowOf(v, 2)).toMatchObject({ status: 'ready', wfh: false, type: { nameEn: 'Annual leave' }, days: 1 });
+      expect(rowOf(v, 3)).toMatchObject({ status: 'ready', wfh: true, type: null, pending: false, days: 2, wfhDays: pair });
+      expect(await prisma.wfhRequest.count({ where: { importId } })).toBe(0);
+    });
+
+    it('takes its other spellings, whatever the case; a half day is a whole work-from-home day, said so; the Zoho path’s checks apply', async () => {
+      const days = workDays(M_TWFH);
+      const later = days.filter((d) => d > addDays(pair[1], 8));
+      const file = await templateWorkbook([
+        { code: codes.tess, type: 'wfh', from: later[0], to: later[0] }, // 2
+        { code: codes.tess, type: 'WORKING FROM HOME', from: later[3], to: later[3], days: 0.5 }, // 3: a half day
+        { code: codes.tess, type: 'عمل من المنزل', from: later[6], to: later[6] }, // 4
+        { code: codes.tess, type: 'Work from home', from: later[6], to: later[6] }, // 5: the same day as row 4
+        { code: codes.tess, type: 'Work from home', from: `${YEAR}-07-01`, to: `${YEAR + 2}-07-01` }, // 6: longer than a row may cover
+        { code: codes.tess, type: 'Work from home', from: `${YEAR - 3}-01-04`, to: `${YEAR - 3}-01-04` }, // 7: before the employment
+      ]);
+      const v = (await upload(file, `Template WFH spellings ${TAG}.xlsx`)).body as View;
+      for (const n of [2, 3, 4]) expect(rowOf(v, n)).toMatchObject({ status: 'ready', wfh: true, type: null, days: 1 });
+      expect(rowOf(v, 3).warnings).toContain(`${shown(later[3])} is a half day in the file: a work-from-home day is a whole day here, so it is counted as one.`);
+      expect(rowOf(v, 5)).toMatchObject({ status: 'duplicate', wfh: true, reasons: [`Already a work-from-home day on ${shown(later[6])} in row 4 of the file.`] });
+      expect(rowOf(v, 6)).toMatchObject({ status: 'problem', wfh: true });
+      expect(rowOf(v, 6).reasons[0]).toMatch(/^A work-from-home row covers at most \d+ days/);
+      expect(rowOf(v, 7)).toMatchObject({ status: 'problem', wfh: true });
+    });
+
+    it('applies: 1 leave and 1 approved work-from-home request each day, no balance used; undoing removes both', async () => {
+      const before = (await balances('tess')).annual;
+      const v = (await apply(importId).expect(200)).body as View;
+      expect(v.kept).toEqual({ leaves: 1, adjustments: 0, wfhDays: 2 });
+      const made = await prisma.wfhRequest.findMany({ where: { importId }, orderBy: { date: 'asc' }, select: { id: true, employeeId: true, status: true, date: true, zohoLinkId: true } });
+      expect(made.map((w) => [w.employeeId, w.status, fromDateOnly(w.date)])).toEqual(pair.map((d) => [ids.tess, 'approved', d]));
+      expect(rowOf(v, 3)).toMatchObject({ status: 'applied', wfh: true, days: 2, wfhDays: pair });
+      expect(await prisma.leaveRequest.count({ where: { importId } })).toBe(1);
+      // the leave takes one day from the annual balance, the work-from-home days nothing
+      const after = (await balances('tess')).annual;
+      expect(before.available - after.available).toBe(1);
+      expect(await prisma.auditLog.count({ where: { entityType: 'wfh_request', action: 'import', entityId: { in: made.map((w) => w.id) } } })).toBe(2);
+      const undone = (await undo(importId).expect(200)).body as View;
+      expect(undone.kept).toEqual({ leaves: 0, adjustments: 0, wfhDays: 0 });
+      expect(await prisma.wfhRequest.count({ where: { importId } })).toBe(0);
+      expect(await prisma.leaveRequest.count({ where: { importId } })).toBe(0);
+      expect((await balances('tess')).annual.available).toBe(before.available);
+    });
+  });
+
   describe('the payroll', () => {
     let approvedRun: string;
     let draftRun: string;

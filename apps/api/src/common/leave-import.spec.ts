@@ -13,6 +13,7 @@ import {
   importPersonKey,
   importsLeaveFor,
   isHalfDays,
+  isTemplateWfhType,
   isZohoLeaveHeadings,
   LAW_LEAVE_TYPES,
   matchImportPerson,
@@ -25,6 +26,9 @@ import {
   openingAdjustment,
   sameFileText,
   signedDays,
+  TEMPLATE_WFH_TYPE_NAME,
+  wfhFileHalfDayText,
+  wfhNameIsLeaveTypeText,
   ZOHO_COMP_OFF_NOTE,
   ZOHO_WFH_NOTE,
   zohoApproval,
@@ -372,5 +376,17 @@ describe('a day of approved leave is never a no-show (21 October 2026)', () => {
   it('says how many no-shows the leave turns into leave', () => {
     expect(noShowsToLeaveText(3, 2)).toBe('These days were no-shows on a draft payroll and will count as leave once applied (a refresh of the payroll does the same): 3 days, 2 people.');
     expect(rowNoShowsText(1, '2026-09')).toBe('1 of its days is a no-show on the September 2026 draft payroll now: it counts as leave once applied, not a no-show.');
+  });
+
+  // owner, 26 October 2026: "in the import leaves templete there is no working from home option"
+  it('reads a template row’s Work from home, in its other spellings, whatever the case', () => {
+    expect(TEMPLATE_WFH_TYPE_NAME).toBe('Work from home');
+    for (const text of ['Work from home', 'work FROM home', ' WFH ', 'Working from home', 'عمل من المنزل']) expect(isTemplateWfhType(text), text).toBe(true);
+    for (const text of ['Annual leave', 'Home leave', '']) expect(isTemplateWfhType(text), text).toBe(false);
+  });
+
+  it('says a half day of a template’s work-from-home row is counted whole, and a leave type of the same name wins', () => {
+    expect(wfhFileHalfDayText('2026-07-05')).toBe('05/07/2026 is a half day in the file: a work-from-home day is a whole day here, so it is counted as one.');
+    expect(wfhNameIsLeaveTypeText('Work from home')).toMatch(/^“Work from home” is a leave type of the system, so rows named so are imported as that leave/);
   });
 });
