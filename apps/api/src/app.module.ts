@@ -25,6 +25,7 @@ import { NotificationsModule } from './notifications/notifications.module.js';
 import { OffersModule } from './offers/offers.module.js';
 import { OffboardingModule } from './offboarding/offboarding.module.js';
 import { OnboardingModule } from './onboarding/onboarding.module.js';
+import { ResignationRequestsModule } from './resignation-requests/resignation-requests.module.js';
 import { RecruitmentModule } from './recruitment/recruitment.module.js';
 import { VersionController } from './health/version.controller.js';
 import { OrganisationModule } from './organisation/organisation.module.js';
@@ -66,6 +67,8 @@ import { ZohoPeopleModule } from './zoho-people/zoho-people.module.js';
     ClientAccountsModule,
     EmployeesModule,
     ContractsModule,
+    // an employee's request to resign (owner, 26 October 2026: "the employee has to request resignation and then the HR generates the document")
+    ResignationRequestsModule,
     ConfirmationsModule,
     PaperworkModule,
     TemplatesModule,

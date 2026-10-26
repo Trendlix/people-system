@@ -272,3 +272,20 @@ export function custodyOverdueText(code: string, dueDate: string, name: string |
 export function custodyUnsignedText(code: string, name: string, outOn: string, link: string): NotificationInput {
   return { kind: 'custody_unsigned', title: `Signed copy not attached: ${code}`, body: `${name}, handed over ${shownDate(outOn)}`, link };
 }
+
+/**
+ * An employee's resignation request (owner, 26 October 2026): HR (the CEO for a C-level person) told it was sent, and the
+ * direct manager told, who only sees it. Names only, never the reason.
+ */
+export function resignationNewText(name: string, link: string, forManager = false): NotificationInput {
+  return forManager
+    ? { kind: 'resignation_new', title: 'A resignation request from your team', body: name, link }
+    : { kind: 'resignation_new', title: 'A resignation request was sent', body: name, link };
+}
+
+/** The employee's own resignation request recorded by HR, or returned to them. */
+export function resignationUpdateText(outcome: 'recorded' | 'returned', link: string): NotificationInput {
+  return outcome === 'recorded'
+    ? { kind: 'resignation_update', title: 'Your resignation request was recorded', body: 'HR recorded it as your ending.', link }
+    : { kind: 'resignation_update', title: 'Your resignation request was returned', body: 'HR returned it. Open it to see why.', link };
+}

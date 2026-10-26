@@ -10,6 +10,9 @@ import { loadEndingRules } from '../../contracts/data';
 import { EndingForm } from '../ending-form';
 import { endingRulesFor } from '../rules';
 import { shownCode } from '@/lib/hidden';
+import { recordResignation } from '../../../../resignations/actions';
+import { loadResignation } from '../../../../resignations/data';
+import { endingDefaults } from '../../../../resignations/resignation';
 
 // Ending the current employment: HR records how and when it ends (which counts as HR's approval), and it goes to the
 // CEO for approval. Once approved, HR completes it on or after the last working day, which ends the employment; the
@@ -55,6 +58,11 @@ async function NewEnding({ params, searchParams }: { params: Promise<{ id: strin
       .filter(Boolean)
       .join(' · ');
     const rule = typeof query.rule === 'string' ? query.rule : undefined;
+    // from the employee's resignation request (26 October 2026): the form starts with its notice day, reason and preferred day, and
+    // saving it records the request too
+    const requestId = typeof query.resignation === 'string' ? query.resignation : null;
+    const request = requestId ? await loadResignation(requestId) : null;
+    const from = request?.kind === 'ok' && request.value.status === 'sent' && request.value.employee.id === employee.id ? request.value : null;
 
     body = (
       <div className="max-w-3xl space-y-4">
@@ -85,9 +93,10 @@ async function NewEnding({ params, searchParams }: { params: Promise<{ id: strin
           <Empty>No ways of ending an employment are offered. HR or Admin turn them on in Organization → Contracts &amp; Endings.</Empty>
         ) : (
           <EndingForm
-            action={startEnding.bind(null, employee.id, e.id)}
+            action={from ? recordResignation.bind(null, from.id, employee.id) : startEnding.bind(null, employee.id, e.id)}
             rules={rules}
-            initialRule={rule}
+            initialRule={from ? 'resignation' : rule}
+            initial={from ? endingDefaults(from, formatDate) : null}
             contract={training ? null : fixed}
             // the agreement's last day, which Training completed ends the employment on
             training={training && e.contract?.endDate ? { endDate: e.contract.endDate } : null}

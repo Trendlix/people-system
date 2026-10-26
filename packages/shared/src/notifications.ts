@@ -101,6 +101,11 @@ export const NOTIFICATION_KINDS = [
   // employee's own decided (or cancelled by HR)
   'compensatory_waiting',
   'compensatory_decided',
+  // an employee's resignation request (owner, 26 October 2026: "the employee has to request resignation and then the HR
+  // generates the document"; resignation-request.ts): sent, for HR (the CEO for a C-level person) and the direct manager,
+  // who only see it; and recorded or returned, for the employee. Never the reason
+  'resignation_new',
+  'resignation_update',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
@@ -180,6 +185,8 @@ export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
   cv_suggestions: 'Suggested CVs',
   leave_cover: 'Covering',
   stand_in: 'Stand-in',
+  resignation_new: 'Resignation',
+  resignation_update: 'Resignation',
 };
 
 // ---------- the reminders and the person's switches ----------

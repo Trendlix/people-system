@@ -390,11 +390,12 @@ describe('the sidebar of HR, Finance, the CEO and Admins', () => {
     it('has each page for the roles that open it, and links to Employees', () => {
       // Offboarding and Former Employees (owner, 22 October 2026: the full module): the cases for those who handle them
       // and those who clear items on most of them; Former Employees for those who handle them
-      expect(pages('hr')).toEqual(['Employees', 'Contracts', 'Missing Details', 'Offboarding', 'Former Employees']);
-      expect(pages('ceo')).toEqual(['Employees', 'Contracts', 'Missing Details', 'Offboarding', 'Former Employees']);
+      // Resignations (owner, 26 October 2026): the requests employees sent, for HR, the CEO and a Super Admin
+      expect(pages('hr')).toEqual(['Employees', 'Contracts', 'Missing Details', 'Offboarding', 'Resignations', 'Former Employees']);
+      expect(pages('ceo')).toEqual(['Employees', 'Contracts', 'Missing Details', 'Offboarding', 'Resignations', 'Former Employees']);
       expect(pages('finance')).toEqual(['Employees', 'Contracts', 'Offboarding']);
       expect(pages('admin')).toEqual(['Employees', 'Offboarding']);
-      expect(pages('super_admin')).toEqual(['Employees', 'Offboarding', 'Former Employees']);
+      expect(pages('super_admin')).toEqual(['Employees', 'Offboarding', 'Resignations', 'Former Employees']);
       expect(peopleFor('hr')?.href).toBe('/employees');
     });
 

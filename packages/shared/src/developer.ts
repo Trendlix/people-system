@@ -611,6 +611,9 @@ export const DEVELOPER_HIDDEN_TEXT_FIELDS: ReadonlySet<string> = new Set([
   // a candidate's CV's file name, often their own name (candidate profiles, 22 October 2026), and why they left; an
   // application's earlier CVs' names too (applying again, 25 October 2026: their files are never a developer's)
   'cvFileName',
+  // the signed letter of a resignation request (26 October 2026): its file name is often the person's own name (its
+  // reason and HR's return reason are free text already); the letter is never a developer's (@NotForDevelopers)
+  'letterFileName',
   'endReasonLabel',
   // more read from a CV (owner, 24 October 2026: "CV years in list + more rules"): the jobs of the person's past (each
   // title and company, the latest's on the lists too), their schools and universities, their certifications (free text);

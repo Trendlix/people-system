@@ -151,6 +151,9 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   onboarding_defaults: 'Onboarding checklist defaults',
   // working from home (owner, 21 October 2026: "think about how should we handle the working from home in out erp")
   wfh_request: 'Work from home request',
+  // an employee's resignation request (owner, 26 October 2026)
+  resignation_request: 'Resignation request',
+  resignation_letter: 'Resignation letter',
   // official duty (owner, 23 October 2026: "Official duty (OD) requests")
   od_request: 'Official duty request',
   // compensatory days (owner, 26 October 2026)

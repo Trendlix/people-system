@@ -34,6 +34,9 @@ import { homeOn } from '../attendance/wfh/wfh';
 import { loadOdCalendar, loadOdOnDay, loadWaitingOd } from '../attendance/official-duty/data';
 import { awayOn } from '../attendance/official-duty/od';
 import { OdTable } from '../attendance/official-duty/ui';
+import { loadTeamResignations } from '../resignations/data';
+import { seesResignations } from '../resignations/resignation';
+import { ResignationsTable } from '../resignations/ui';
 import { loadTeam } from './data';
 import { askedByText, latestRaise, myTeamIntro, probationOf } from './team';
 import { shownCode } from '@/lib/hidden';
@@ -469,6 +472,28 @@ function TeamAttendance() {
   );
 }
 
+/**
+ * Resignation requests of the team (owner, 26 October 2026: the direct manager "told and shown on My Team, but they don't
+ * decide"): those waiting for HR, without the reason or the letter. Left out when there are none.
+ */
+async function TeamResignations() {
+  // HR, the CEO and a Super Admin have all of them under People → Resignations
+  if (seesResignations(await getCurrentUser())) return null;
+  const loaded = await loadTeamResignations();
+  if (loaded.kind !== 'ok' || loaded.value.length === 0) return null;
+  return (
+    <section aria-labelledby="team-resignations-heading" className="space-y-3">
+      <div>
+        <h2 id="team-resignations-heading" className="text-lg font-semibold">
+          Resignation Requests
+        </h2>
+        <p className="text-sm text-muted">Waiting for HR. You are told, not asked: HR records or returns them.</p>
+      </div>
+      <ResignationsTable requests={loaded.value} who note="Newest first." />
+    </section>
+  );
+}
+
 /** The page's line, naming their raise requests only to those who see them (20 October 2026). */
 async function Intro() {
   return myTeamIntro(seesRaiseRequests(await getCurrentUser()));
@@ -484,6 +509,9 @@ export default function MyTeamPage({ searchParams }: PageProps<'/my-team'>) {
         </Suspense>
       </p>
       <div className="mt-6 space-y-8">
+        <Suspense fallback={null}>
+          <TeamResignations />
+        </Suspense>
         <Suspense fallback={null}>
           <LeaveToApprove />
         </Suspense>

@@ -141,6 +141,8 @@ model User {
   permissionSteps    PermissionRequestStep[]    @relation("PermissionStepActor") // steps of permission requests this user took
   wfhRequestsMade    WfhRequest[]               @relation("WfhRequestCreation") // work from home days this user asked for, recorded as HR or imported (21 October 2026)
   wfhSteps           WfhRequestStep[]           @relation("WfhStepActor") // steps of work from home requests this user took
+  resignationsRecorded ResignationRequest[]       @relation("ResignationRecorder") // resignation requests this user recorded as endings (26 October 2026)
+  resignationsReturned ResignationRequest[]       @relation("ResignationReturner") // resignation requests this user returned
   compensatoryMade   CompensatoryRequest[]      @relation("CompensatoryCreation") // compensatory days this user asked for or recorded (26 October 2026)
   compensatorySteps  CompensatoryStep[]         @relation("CompensatoryStepActor")
   odRequestsMade     OdRequest[]                @relation("OdRequestCreation") // official duties this user asked for (23 October 2026)
@@ -1147,6 +1149,7 @@ model Employee {
   leaveStepsStoodIn          LeaveRequestStep[]     @relation("LeaveStepOnBehalf") // the leave steps taken by a stand-in for this person
   permissionStepsStoodIn     PermissionRequestStep[] @relation("PermissionStepOnBehalf")
   wfhStepsStoodIn            WfhRequestStep[]       @relation("WfhStepOnBehalf")
+  resignationRequests        ResignationRequest[]   @relation("ResignationRequester") // the resignations this person asked for (26 October 2026)
   compensatoryDays           CompensatoryRequest[]  @relation("CompensatoryRequester") // the compensatory days this person asked for, or HR recorded for them (26 October 2026)
   compensatoryToDecide       CompensatoryRequest[]  @relation("CompensatoryManager")
   compensatoryStepsStoodIn   CompensatoryStep[]     @relation("CompensatoryStepOnBehalf")
@@ -1239,6 +1242,7 @@ model Employment {
   leaveRequests    LeaveRequest[] // the leave taken under it
   permissions      PermissionRequest[] // the permission hours taken under it
   wfhDays          WfhRequest[] // the work from home days under it (21 October 2026)
+  resignationRequests ResignationRequest[] // the resignation requests asked under it (26 October 2026)
   compensatoryDays CompensatoryRequest[] // the compensatory days under it (26 October 2026)
   odRequests       OdRequest[] // the official duties under it (23 October 2026)
   corrections      AttendanceCorrection[] // the attendance corrections of its days
@@ -1570,11 +1574,54 @@ model EmploymentEnding {
   updatedAt       DateTime            @updatedAt @map("updated_at") @db.Timestamptz
   documents       GeneratedDocument[] // the resignation request, the clearance and Form 6 generated for it
   offboarding     OffboardingCase[] // the offboarding case it opened (22 October 2026)
+  resignationRequest ResignationRequest? // the employee's resignation request it was recorded from (26 October 2026)
 
   @@index([employmentId])
   @@index([status])
   @@index([ruleKey])
   @@map("employment_endings")
+}
+
+// An employee's request to resign (owner, 26 October 2026: "but the employee has to request resignation and then the HR
+// generates the document"; packages/shared resignation-request.ts). Sent from My Requests with a reason, a preferred last
+// working day and a signed letter, both optional; `sentOn` (Cairo) is the notice received day, and `ruleLastDay` the last
+// working day the resignation rule's notice gives from it. HR (the CEO for a C-level person) records it as an ending:
+// `endingId` links the ending made from it and the status becomes recorded. The employee may withdraw it until then; HR
+// may return it with a reason. One open (sent) request an employment, by a partial unique index in the migration.
+model ResignationRequest {
+  id               String            @id @default(uuid()) @db.Uuid
+  employeeId       String            @map("employee_id") @db.Uuid
+  employee         Employee          @relation("ResignationRequester", fields: [employeeId], references: [id], onDelete: Cascade)
+  employmentId     String            @map("employment_id") @db.Uuid
+  employment       Employment        @relation(fields: [employmentId], references: [id], onDelete: Cascade)
+  reason           String // PERSONAL free text: masked for a developer
+  preferredLastDay DateTime?         @map("preferred_last_day") @db.Date
+  sentOn           DateTime          @map("sent_on") @db.Date // the notice received day, in Cairo
+  noticeAmount     Int               @map("notice_amount") // the resignation rule's notice as it was when sent
+  noticeUnit       String            @map("notice_unit")
+  ruleLastDay      DateTime          @map("rule_last_day") @db.Date
+  status           String            @default("sent") // RESIGNATION_REQUEST_STATUSES
+  letterName       String?           @map("letter_name")
+  letterMime       String?           @map("letter_mime")
+  letterSize       Int?              @map("letter_size")
+  letterData       Bytes?            @map("letter_data")
+  withdrawnAt      DateTime?         @map("withdrawn_at") @db.Timestamptz
+  returnedReason   String?           @map("returned_reason")
+  returnedById     String?           @map("returned_by") @db.Uuid
+  returnedBy       User?             @relation("ResignationReturner", fields: [returnedById], references: [id], onDelete: SetNull)
+  returnedAt       DateTime?         @map("returned_at") @db.Timestamptz
+  endingId         String?           @unique @map("ending_id") @db.Uuid
+  ending           EmploymentEnding? @relation(fields: [endingId], references: [id], onDelete: SetNull)
+  recordedById     String?           @map("recorded_by") @db.Uuid
+  recordedBy       User?             @relation("ResignationRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+  recordedAt       DateTime?         @map("recorded_at") @db.Timestamptz
+  createdAt        DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime          @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@index([employeeId])
+  @@index([status])
+  @@index([employmentId])
+  @@map("resignation_requests")
 }
 
 // ---------- the employee's own check of their details ----------

@@ -161,6 +161,7 @@ export function EndingForm({
   art154 = null,
   today,
   cancelHref,
+  initial = null,
 }: {
   action: Action;
   /** The rules that can be chosen now (rules.ts: active; probation only while on probation; non-renewal only with a fixed term). */
@@ -177,6 +178,12 @@ export function EndingForm({
   /** YYYY-MM-DD in Cairo: the notice date to start with. */
   today: string;
   cancelHref: string;
+  /**
+   * From the employee's resignation request (26 October 2026): what the form starts with, dates as typed (DD/MM/YYYY).
+   * The day the employee asked to leave on (`preferredLastDay`, YYYY-MM-DD) starts the agreed last working day, which HR may
+   * change or clear.
+   */
+  initial?: { noticeGivenOn: string; reason: string; note: string; agreedLastWorkingDay: string; preferredLastDay: string | null } | null;
 }) {
   // Kept form: a refused save leaves everything as typed and chosen.
   const { state, pending, form } = useKeptForm(action);
@@ -188,9 +195,9 @@ export function EndingForm({
   // What is typed, for the preview and the fields that depend on it (the fields themselves stay uncontrolled).
   const [typed, setTyped] = useState<Record<string, string>>(() => ({
     initiator: valueOf(state, 'initiator'),
-    noticeGivenOn: valueOf(state, 'noticeGivenOn', formatDate(today)),
+    noticeGivenOn: valueOf(state, 'noticeGivenOn', initial?.noticeGivenOn ?? formatDate(today)),
     payInLieu: valueOf(state, 'payInLieu'),
-    agreedLastWorkingDay: valueOf(state, 'agreedLastWorkingDay'),
+    agreedLastWorkingDay: valueOf(state, 'agreedLastWorkingDay', initial?.agreedLastWorkingDay),
   }));
   function track(e: React.FormEvent<HTMLFormElement>) {
     const t = e.target;
@@ -283,7 +290,7 @@ export function EndingForm({
             name="noticeGivenOn"
             required
             aria-describedby={fid('noticeGivenOn-hint')}
-            defaultValue={valueOf(state, 'noticeGivenOn', formatDate(today))}
+            defaultValue={valueOf(state, 'noticeGivenOn', initial?.noticeGivenOn ?? formatDate(today))}
           />
           <p id={fid('noticeGivenOn-hint')} className="hint">
             {notice.hint}
@@ -321,7 +328,7 @@ export function EndingForm({
             id={fid('agreedLastWorkingDay')}
             name="agreedLastWorkingDay"
             aria-describedby={fid('agreedLastWorkingDay-hint')}
-            defaultValue={valueOf(state, 'agreedLastWorkingDay')}
+            defaultValue={valueOf(state, 'agreedLastWorkingDay', initial?.agreedLastWorkingDay)}
           />
           <p id={fid('agreedLastWorkingDay-hint')} className="hint">
             {agreedLastDayHint(workedOut, approximate, formatDate)}
@@ -385,7 +392,7 @@ export function EndingForm({
           <label htmlFor={fid('reason')} className="label">
             Reason {optional}
           </label>
-          <input id={fid('reason')} name="reason" maxLength={200} autoComplete="off" defaultValue={valueOf(state, 'reason')} className="input" />
+          <input id={fid('reason')} name="reason" maxLength={200} autoComplete="off" defaultValue={valueOf(state, 'reason', initial?.reason)} className="input" />
         </div>
         <div>
           <label htmlFor={fid('note')} className="label">
@@ -397,7 +404,7 @@ export function EndingForm({
             rows={3}
             maxLength={500}
             aria-describedby={fid('note-hint')}
-            defaultValue={valueOf(state, 'note')}
+            defaultValue={valueOf(state, 'note', initial?.note)}
             className="input"
           />
           <p id={fid('note-hint')} className="hint">
@@ -405,6 +412,12 @@ export function EndingForm({
           </p>
         </div>
       </div>
+
+      {initial?.preferredLastDay && (
+        <p role="status" className="rounded-lg bg-canvas px-4 py-3 text-sm">
+          The employee asked to leave on {formatDate(initial.preferredLastDay)}.
+        </p>
+      )}
 
       <Preview rule={rule} given={given} payInLieu={payInLieu} contract={contract} training={training} probationEnd={probationEnd} art154={art154} agreed={agreed} />
 

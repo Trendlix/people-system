@@ -33,5 +33,7 @@ import { ContractSettingsController, EndingRulesController } from './settings.co
   imports: [EmployeesModule, AllowancesModule, PayrollModule],
   controllers: [ContractSettingsController, EndingRulesController, ContractsController, EndingsController, HiringController, RaisesController, SalaryRaisesController, ContractsReportController],
   providers: [ContractSettingsService, EndingRulesService, ContractsService, EndingsService, HiringService, RaisesService, RaiseRequestsService, SalaryHistoryService, SalaryRaisesService, ContractsReportService],
+  // an employee's resignation request is recorded as an ending (26 October 2026: resignation-requests)
+  exports: [EndingsService],
 })
 export class ContractsModule {}

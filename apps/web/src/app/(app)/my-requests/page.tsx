@@ -39,6 +39,9 @@ import { CompensatoryTable } from '../attendance/compensatory/ui';
 import { loadMyWfh, loadWfhAllowance } from '../attendance/wfh/data';
 import { NEW_WFH_PATH, wfhAllowanceLine } from '../attendance/wfh/wfh';
 import { WfhTable } from '../attendance/wfh/ui';
+import { loadMyResignation } from '../resignations/data';
+import { RESIGN_PATH } from '../resignations/resignation';
+import { ResignationsTable } from '../resignations/ui';
 import { loadMyOd, loadOdForm } from '../attendance/official-duty/data';
 import { NEW_OD_PATH } from '../attendance/official-duty/od';
 import { OdTable } from '../attendance/official-duty/ui';
@@ -516,6 +519,43 @@ async function Compensatory() {
 }
 
 /**
+ * Their resignation (owner, 26 October 2026: "but the employee has to request resignation and then the HR generates the
+ * document"): Resign, a quiet button, while they may send one (a current employment under the labour law, none waiting,
+ * no ending recorded), and their requests, newest first, each opening its page (Withdraw while HR hasn't recorded it).
+ * Nothing from an API from before it; a section with no requests and nothing to send is left out.
+ */
+async function Resignation() {
+  const user = await getCurrentUser();
+  if (!user.employeeId) return null;
+  const mine = await loadMyResignation();
+  if (mine.kind !== 'ok') return null;
+  const { requests, form } = mine.value;
+  if (!form.offered && requests.length === 0) return null;
+  return (
+    <section id="my-resignation" aria-labelledby="my-resignation-heading" className="mt-10 scroll-mt-6 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 id="my-resignation-heading" className="text-lg font-semibold">
+            Resignation
+          </h2>
+          <p className="text-sm text-muted">Tell HR you wish to resign. HR records it, and you can withdraw it until then.</p>
+        </div>
+        {form.offered && (
+          <Link href={RESIGN_PATH} className="btn btn-secondary">
+            Resign
+          </Link>
+        )}
+      </div>
+      {requests.length === 0 ? (
+        <div className="card px-6 py-10 text-center text-sm text-muted">You haven&apos;t sent a resignation request.</div>
+      ) : (
+        <ResignationsTable requests={requests} note="Newest first." />
+      )}
+    </section>
+  );
+}
+
+/**
  * Their official duties (owner, 23 October 2026: "Official duty (OD) requests"; GET /me/official-duty): the days and
  * hours, where, and where each stands, the latest first day first, each opening its page (every step, Cancel while it
  * is being decided); Request official duty to ask for one, while its form says nothing refuses them (an employment, not
@@ -707,6 +747,9 @@ export default function MyRequestsPage({ searchParams }: PageProps<'/my-requests
       </Suspense>
       <Suspense fallback={null}>
         <Reimbursements />
+      </Suspense>
+      <Suspense fallback={null}>
+        <Resignation />
       </Suspense>
     </div>
   );

@@ -23,6 +23,8 @@ import {
   payRaiseWaitingText,
   payslipText,
   raiseRequestWaitingText,
+  resignationNewText,
+  resignationUpdateText,
   standInText,
   waitingText,
   type LeaveLikeKind,
@@ -75,6 +77,8 @@ export const REQUEST_LINKS = {
   compensatory: (id: string) => `/attendance/compensatory/${id}`,
   // leave coverage (25 October 2026): what the caller covers, on My Requests; a stand-in's waiting requests, on My Team
   // (a person) or Leave Requests (HR)
+  // an employee's resignation request (26 October 2026): HR's list and page, also the employee's and the manager's
+  resignation: (id: string) => `/resignations/${id}`,
   covering: '/my-requests#covering',
   myTeam: '/my-team',
   leaveWaiting: '/leave?status=waiting',
@@ -262,6 +266,32 @@ export class NoticesService {
         const userId = users.get(c.employeeId);
         if (userId) await this.notifications.notify([userId], claimPaidText(month, REQUEST_LINKS.reimbursement(c.id)));
       }
+    });
+  }
+
+  // ---------- resignation requests (owner, 26 October 2026) ----------
+
+  /** A resignation request sent: HR (the CEO for a C-level person), and the direct manager, who only sees it; never the employee. */
+  async resignationSent(id: string): Promise<void> {
+    await this.safely('resignation request', async () => {
+      const r = await this.prisma.resignationRequest.findUnique({ where: { id }, select: { employeeId: true, status: true, employment: { select: { managerId: true } }, employee: { select: { fullNameEn: true } } } });
+      if (!r || r.status !== 'sent') return;
+      const link = REQUEST_LINKS.resignation(id);
+      const deciders = await this.stageDeciders('hr', r.employeeId);
+      await this.notifications.notify(deciders, resignationNewText(r.employee.fullNameEn, link));
+      const managerId = r.employment.managerId;
+      if (!managerId) return;
+      const manager = (await this.usersOf([managerId])).get(managerId);
+      const own = (await this.usersOf([r.employeeId])).get(r.employeeId);
+      if (manager && manager !== own && !deciders.includes(manager)) await this.notifications.notify([manager], resignationNewText(r.employee.fullNameEn, link, true));
+    });
+  }
+
+  /** HR recorded the employee's resignation request as an ending, or returned it: the employee is told. */
+  async resignationDecided(id: string, outcome: 'recorded' | 'returned'): Promise<void> {
+    await this.safely('resignation request', async () => {
+      const r = await this.prisma.resignationRequest.findUnique({ where: { id }, select: { employeeId: true } });
+      if (r) await this.toEmployee(r.employeeId, resignationUpdateText(outcome, REQUEST_LINKS.resignation(id)));
     });
   }
 

@@ -661,3 +661,7 @@ export * from './zoho-people.js';
 // the Leave report (owner, 26 October 2026: "can i get a report for the monthly leaves with all types?"): a month's or a
 // range's approved leave by employee and type, with permission hours, work from home days and the annual balance left
 export * from './leave-report.js';
+
+// the employee's resignation request (owner, 26 October 2026: "but the employee has to request resignation and then the HR
+// generates the document"): sent from My Requests, recorded by HR as the ending, withdrawn until then
+export * from './resignation-request.js';

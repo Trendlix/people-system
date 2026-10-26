@@ -256,6 +256,8 @@ export const NAV: NavItem[] = [
       // the cases, for those who handle them and those who clear items on most (an Admin, a Super Admin, Finance); a
       // direct manager opens theirs from its notification. Former Employees, for those who handle cases
       { href: '/offboarding', label: 'Offboarding', section: '/offboarding', roles: ['hr', 'ceo', 'super_admin', 'admin', 'finance'] },
+      // the resignation requests employees sent (owner, 26 October 2026), for HR and the CEO, who record them as endings
+      { href: '/resignations', label: 'Resignations', section: '/resignations', roles: ['hr', 'ceo', 'super_admin'] },
       { href: '/employees/former', label: 'Former Employees', section: '/employees/former', roles: ['hr', 'ceo', 'super_admin'] },
     ],
   },
