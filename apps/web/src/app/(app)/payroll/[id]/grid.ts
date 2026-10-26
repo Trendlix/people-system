@@ -1,7 +1,7 @@
 import {
   expectedHoursOf,
   formatHours,
-  leaveDaysOf,
+  leaveDaysOff,
   paidAdjustments,
   parseHours,
   permissionHoursOf,
@@ -231,7 +231,7 @@ export function expectedCell(
   cells: Pick<PayrollInputs, 'expectedHours' | 'noShowDays' | 'leaveDays' | 'unpaidLeaveDays'>,
 ): { hours: number | null; fromShift: boolean } {
   if (cells.expectedHours !== null) return { hours: cells.expectedHours, fromShift: false };
-  // the leave days filled in from the leave count as typed ones (leaveDaysOf, in expectedHoursOf)
+  // the leave days filled in from the leave count as typed ones (leaveDaysOff, in expectedHoursOf)
   const hours = expectedHoursOf({ expectedHours: row.shiftExpectedHours, hoursPerDay: row.hoursPerDay, leave: row.leave ?? null }, cells);
   return { hours, fromShift: hours !== null };
 }
@@ -254,8 +254,9 @@ export function expectedSource(
   if (cells.expectedHours !== null && cells.expectedHours !== undefined) return { kind: 'typed' };
   const shift = row.shiftExpectedHours;
   if (shift === null) return { kind: 'noShift' };
-  // the leave days filled in from the leave count as typed ones (leaveDaysOf), as in expectedHoursOf
-  const leave = leaveDaysOf({ leave: row.leave ?? null }, cells);
+  // the leave days filled in from the leave count as typed ones, those out of the hours on the shift's working days
+  // (leaveDaysOff, 27 October 2026), as in expectedHoursOf
+  const leave = leaveDaysOff({ leave: row.leave ?? null }, cells);
   const off: [number, string][] = [
     [shiftDaysHours(cells.noShowDays, row.hoursPerDay), 'no-show'],
     [shiftDaysHours(leave.leaveDays, row.hoursPerDay), 'leave'],

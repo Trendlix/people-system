@@ -3,7 +3,8 @@ import { annualEntitlement, LEAVE_RULE_DEFAULTS, leavePayoutMonth, reimbursement
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { addDays, fromDateOnly, todayInCairo, toDateOnly, weekday } from '../src/common/date-only.js';
-import { firstDay, monthsLater } from '../src/payroll/months.js';
+import { toTimeOfDay } from '../src/common/time-of-day.js';
+import { firstDay, lastDay, monthsLater } from '../src/payroll/months.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { createApp, createUser, signIn } from './helpers.js';
 
@@ -14,8 +15,9 @@ import { createApp, createUser, signIn } from './helpers.js';
 // straight to HR without one, HR recording on an employee's behalf; casual leave's limits (Art. 128); cancelling and the
 // balance back; days already taken refused; documents; the Year Closing (carry and pay adding up to the unused, the days
 // carried three years paid, the Unused leave paid addition, reopening); the unused leave paid on leaving; and the payroll
-// lines' leave and unpaid leave days. These tests look at their own people (names end with RUN) and delete what they
-// made. Every name and amount is invented.
+// lines' leave and unpaid leave days (a leave counted in calendar days taking only its working days out of the expected
+// hours, 27 October 2026). These tests look at their own people (names end with RUN) and delete what they made. Every
+// name and amount is invented.
 
 const RUN = Date.now().toString(36).toLowerCase();
 const TODAY = todayInCairo();
@@ -76,6 +78,7 @@ describe('Leave (e2e)', () => {
   let sam: string; // no part in anything here
   let emailDomainBefore: string | null;
   let deptId: string;
+  let shiftId: string | null = null; // Mariam's, for her line's expected hours
   const people: string[] = [];
   const ids: Record<string, string> = {};
   const employments: Record<string, string> = {};
@@ -176,6 +179,7 @@ describe('Leave (e2e)', () => {
     await prisma.leaveType.deleteMany({ where: { nameEn: { endsWith: RUN } } });
     await prisma.employment.deleteMany({ where: { employeeId: { in: people } } });
     await prisma.employee.deleteMany({ where: { id: { in: people } } });
+    if (shiftId) await prisma.shift.deleteMany({ where: { id: shiftId } });
     await prisma.department.deleteMany({ where: { id: deptId } });
     await api().patch('/api/company').set('Cookie', hr).send({ emailDomain: emailDomainBefore ?? '' }).expect(200);
     await app.close();
@@ -489,6 +493,8 @@ describe('Leave (e2e)', () => {
   });
 
   describe('payroll: the month’s leave days and unpaid leave days', () => {
+    let nextRunId = '';
+
     it('fills in the line’s leave days from approved paid leave and its unpaid leave days from unpaid leave, cut a day of the gross each; HR’s typed days win', async () => {
       const payee = await person('pay', 'Paula Payroll', null, {}, { joinDate: firstDay(monthsLater(CURRENT, -7)) });
       await sign('pay', 12000, 24);
@@ -502,6 +508,7 @@ describe('Leave (e2e)', () => {
       await prisma.payrollRun.deleteMany({ where: { month: toDateOnly(firstDay(NEXT)) } });
       const run = (await api().post('/api/payroll/runs').set('Cookie', hr).send({ month: NEXT }).expect(201)).body;
       madeRuns.push(run.id);
+      nextRunId = run.id;
       const lineOf = async () =>
         ((await api().get(`/api/payroll/runs/${run.id}`).set('Cookie', hr).expect(200)).body.lines as { id: string; employeeId: string; terms: { leave?: object }; inputs: object; result: { unpaidLeaveCut: number; leaveHours: number } }[]).find(
           (l) => l.employeeId === payee,
@@ -522,6 +529,47 @@ describe('Leave (e2e)', () => {
       line = await lineOf();
       expect(line.result.unpaidLeaveCut).toBe(200);
       expect(line.terms.leave).toEqual({ paidDays: 2, unpaidDays: 2 });
+    });
+
+    it('a leave counted in calendar days takes only its working days out of the expected hours (27 October 2026): maternity, 12 days to the leave, its working days to the hours', async () => {
+      // a shift of 9 hours within 9:00–19:00, Sunday to Thursday, so the line has expected hours
+      shiftId = (
+        await prisma.shift.create({
+          data: { code: `mat${RUN}`.slice(0, 20), startTime: toTimeOfDay('09:00'), endTime: toTimeOfDay('19:00'), hoursPerDay: 9, graceMinutes: 15, workingDays: [0, 1, 2, 3, 4] },
+          select: { id: true },
+        })
+      ).id;
+      const mother = await person('mat', 'Mariam Maternity', null, { gender: 'female' }, { joinDate: firstDay(monthsLater(CURRENT, -7)), shiftId });
+      await sign('mat', 12000, 24);
+      // twelve calendar days from next month's first Sunday to the Thursday after next; the working days among them by
+      // the shift (Sunday to Thursday) less the holidays: 10 without a holiday
+      const holidays = new Set((await prisma.holiday.findMany({ select: { date: true } })).map((h) => fromDateOnly(h.date)));
+      const start = sundayFrom(firstDay(NEXT), 0);
+      const end = addDays(start, 11);
+      expect(end <= lastDay(NEXT)).toBe(true);
+      const dates = Array.from({ length: 12 }, (_, n) => addDays(start, n));
+      const working = dates.filter((d) => weekday(d) <= 4 && !holidays.has(d)).length;
+      const asked = (await record(mother, { type: 'maternity', startDate: start, endDate: end }, [[PNG, 'certificate.png']]).expect(201)).body as View;
+      // the leave's own count stays in calendar days
+      expect(asked.days).toBe(12);
+
+      // on the run (Refresh takes her): her line's leave days are the working days, and only their hours come out
+      type Row = { id: string; employeeId: string; terms: { leave?: object; expectedHours: number | null }; result: { expectedHours: number | null; leaveHours: number; attendanceRatio: number | null; attendanceCut: number } };
+      const lines = (await api().post(`/api/payroll/runs/${nextRunId}/refresh`).set('Cookie', hr).expect(200)).body.lines as Row[];
+      const line = lines.find((l) => l.employeeId === mother)!;
+      expect(line.terms.leave).toEqual({ paidDays: working, unpaidDays: 0 });
+      const shiftHours = line.terms.expectedHours!;
+      expect(shiftHours).toBeGreaterThan(working * 9);
+      const expected = shiftHours - working * 9;
+      expect(line.result).toMatchObject({ leaveHours: working * 9, expectedHours: expected, attendanceRatio: null });
+
+      // the ratio from the real worked hours: two days short of what is left is below the 90% grace, and cut (before 27
+      // October 2026 the 12 calendar days came out, and the ratio was capped at 100%)
+      const worked = expected - 18;
+      const after = (await api().patch(`/api/payroll/runs/${nextRunId}/lines`).set('Cookie', hr).send({ lines: [{ id: line.id, inputs: { workedHours: worked } }] }).expect(200)).body.lines as Row[];
+      const measured = after.find((l) => l.employeeId === mother)!.result;
+      expect(measured.attendanceRatio).toBeCloseTo(worked / expected, 6);
+      expect(measured.attendanceCut).toBeGreaterThan(0);
     });
   });
 });

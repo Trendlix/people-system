@@ -632,13 +632,22 @@ export class PayrollService {
     return this.get(id, user);
   }
 
-  /** HR sends a draft to the CEO. */
+  /**
+   * HR sends a draft to the CEO. Lines with days counted as half a day for an open check-in (owner, 27 October 2026:
+   * "open check ins with half day") never stop it: the web asks HR to confirm first from the run's `openCheckIns`, the
+   * answer lists them again, and the audit log keeps which lines were sent so (the rule is "until corrected", and HR may
+   * decide to pay them so).
+   */
   async submit(id: string, user: SessionUser): Promise<PayrollRunView> {
     const run = await this.row(id);
     this.assertStatus(run, 'draft', 'sent to the CEO');
     if (!run.lines.length) throw new ConflictException(`Nobody is on the ${monthName(monthOf(run))} payroll. Refresh it once the contracts are signed.`);
+    const openCheckIns = run.lines.flatMap((l) => {
+      const dates = (l.attendanceImport as unknown as AttendanceImportMark | null)?.openCheckIns;
+      return dates?.length ? [{ employeeCode: l.employeeCode, dates }] : [];
+    });
     await this.prisma.payrollRun.update({ where: { id }, data: { status: 'pending_ceo', submittedAt: new Date(), returnedReason: null } });
-    await this.statusChanged(run, 'pending_ceo', 'submit', user);
+    await this.statusChanged(run, 'pending_ceo', 'submit', user, openCheckIns.length ? { openCheckIns } : {});
     return this.get(id, user);
   }
 

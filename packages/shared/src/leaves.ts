@@ -802,12 +802,16 @@ export interface PayrollLeave {
  * the days employed (`from`, `to`; null: the month's own), counted as its type counts them (leaveDaysBetween), shared
  * between the paid days (the Leave days: nothing cut) and the unpaid (the Unpaid leave days: a day of the gross cut
  * each); a partly paid leave's days by its percent (sick leave at 75%: three quarters of each day paid, a quarter
- * unpaid). Both to two decimals.
+ * unpaid). Both to two decimals. `onWorkingDays` (27 October 2026): every leave counted on the shift's working days less
+ * the holidays, a type counted in calendar days (maternity, hajj, childcare) too: the days that come out of the payroll
+ * line's expected hours (roster.ts leaveTermsOf), as only a working day has hours to take out; a maternity leave of 8–19
+ * November 2026 is 12 days to the Leave module and 10 to the expected hours of a Sunday–Thursday shift. Without it, each
+ * type's own count.
  */
 export function monthLeaveDays(
   leaves: readonly PayrollLeave[],
   month: string,
-  count: Pick<LeaveDayCount, 'workingDays' | 'holidays'> & { from?: string | null; to?: string | null },
+  count: Pick<LeaveDayCount, 'workingDays' | 'holidays'> & { from?: string | null; to?: string | null; onWorkingDays?: boolean },
 ): { paid: number; unpaid: number } {
   const m = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(month);
   if (!m) return { paid: 0, unpaid: 0 };
@@ -822,7 +826,12 @@ export function monthLeaveDays(
     const to = l.endDate < hi ? l.endDate : hi;
     if (from > to) continue;
     // the half day is the leave's last day: in the month only when its last day is
-    const days = leaveDaysBetween(from, to, { workingDays: count.workingDays, holidays: count.holidays, calendarDays: l.calendarDays, halfDay: l.halfDay && to === l.endDate });
+    const days = leaveDaysBetween(from, to, {
+      workingDays: count.workingDays,
+      holidays: count.holidays,
+      calendarDays: l.calendarDays && !count.onWorkingDays,
+      halfDay: l.halfDay && to === l.endDate,
+    });
     const share = l.paid === 'paid' ? 1 : l.paid === 'unpaid' ? 0 : Math.min(100, Math.max(0, l.payPercent ?? 100)) / 100;
     paid += days * share;
     unpaid += days * (1 - share);

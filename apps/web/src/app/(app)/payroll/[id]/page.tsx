@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
-import { EMPTY_PAYROLL_INPUTS } from '@trendlix/shared';
+import { EMPTY_PAYROLL_INPUTS, openCheckInsConfirm } from '@trendlix/shared';
 import { formatDate } from '@/lib/format';
 import { loadPlaces } from '@/lib/places';
 import { hasRole } from '@/lib/roles';
@@ -95,6 +95,9 @@ function Actions({ run, user, title, payday }: { run: PayrollRunView; user: Sess
   const can = runActions(user, run.status);
   const today = todayInCairo();
   const problems = run.bankCheck.problems;
+  // days counted as half a day for an open check-in (owner, 27 October 2026: "open check ins with half day"): HR confirms
+  // before sending, never blocked (the rule is "until corrected", and HR may decide to pay them so)
+  const openCheckIns = openCheckInsConfirm(run.openCheckIns?.length ?? 0);
   // the register and the payslips leave out the C-level people hidden from the caller (19 October 2026)
   const excluded = filesNote(run);
   return (
@@ -109,7 +112,7 @@ function Actions({ run, user, title, payday }: { run: PayrollRunView; user: Sess
           action={submitRun.bind(null, run.id)}
           pendingText="Sending…"
           variant="primary"
-          confirmText={`Send ${title} to the CEO to approve? It can't be changed while it is with the CEO.${problems ? ` ${problems} ${problems === 1 ? 'employee has' : 'employees have'} bank details to put right first.` : ''}`}
+          confirmText={`Send ${title} to the CEO to approve? It can't be changed while it is with the CEO.${problems ? ` ${problems} ${problems === 1 ? 'employee has' : 'employees have'} bank details to put right first.` : ''}${openCheckIns ? ` ${openCheckIns}` : ''}`}
         >
           Send to the CEO
         </ActionButton>

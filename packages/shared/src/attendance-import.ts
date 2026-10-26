@@ -25,7 +25,7 @@
 // Pure: the API reads the files and applies these, and the web shows the same words.
 
 import { hoursCountedForDay, mostHoursCountedADay, shiftWindowOn, spanHours, spansOfPairs, type PressPair } from './attendance.js';
-import { missingCheckOutOn, type KeptDay } from './attendance-days.js';
+import { openCheckInHours, openHalfDayOn, type KeptDay } from './attendance-days.js';
 import type { ShiftTimes } from './payroll.js';
 
 // ---------- office or remote ----------
@@ -485,6 +485,13 @@ export interface AttendanceImportMark {
   before?: Partial<Record<ImportedInput, number | null>>;
   /** The sources of the days an 'attendance' fill took (check-in.ts ATTENDANCE_SOURCES). */
   sources?: string[];
+  /**
+   * The days an 'attendance' fill counted as half a day for an open check-in (owner, 27 October 2026: "open check ins
+   * with half day"; openCheckInDates), YYYY-MM-DD in date order: the line's warning lists them (payroll.ts
+   * openCheckInWarning) and Send to the CEO asks about them, until they are corrected and the line filled again. Missing
+   * when none.
+   */
+  openCheckIns?: string[];
 }
 
 /**
@@ -537,16 +544,34 @@ export interface LineDay extends Partial<Pick<KeptDay, 'checkIn' | 'checkOut' | 
   source?: string;
 }
 
+/** A day's presses as the half-day rule reads them (attendance-days.ts openHalfDayOn). */
+const pressesOf = (d: LineDay) => ({ status: d.status, checkIn: d.checkIn ?? null, checkOut: d.checkOut ?? null, openAt: d.openAt ?? null, od: d.od ?? null, exempt: d.exempt, source: d.source });
+
 /**
  * The hours a day gives a payroll line: the hours it counts; a day on the system's own attendance (not Zoho's) missing
- * its check-out (owner, 25 October 2026: "Not short until corrected": "nothing is cut" while it is flagged for HR) the
- * shift's hours a day until it is corrected, whatever its closed pairs counted (none without a shift: its hours).
+ * its check-out counts its closed pairs' hours plus half the shift's hours a day (`hoursADay`), never more than the
+ * shift's hours a day, until it is corrected (owner, 27 October 2026: "open check ins with half day"; asked, "Half the
+ * shift (4.5 h) until corrected"; attendance-days.ts openCheckInHours, as the Attendance pages show the day); without
+ * the shift's hours (pay by the hour too), its pairs' hours alone. Until then such a day counted the whole shift (25
+ * October 2026: "Not short until corrected").
  */
 export function lineDayHours(d: LineDay, hoursADay: number | null | undefined): number {
   const hours = d.hoursCounted > 0 ? d.hoursCounted : 0;
-  const own = (d.source ?? 'zoho') !== 'zoho';
-  const pending = own && missingCheckOutOn({ status: d.status, checkIn: d.checkIn ?? null, checkOut: d.checkOut ?? null, openAt: d.openAt ?? null, od: d.od ?? null, exempt: d.exempt });
-  return pending && typeof hoursADay === 'number' && hoursADay > 0 ? Math.max(hours, hoursADay) : hours;
+  return openHalfDayOn(pressesOf(d)) ? openCheckInHours(hours, hoursADay) : hours;
+}
+
+/**
+ * The dates (YYYY-MM-DD, in date order) of the days a monthly-paid line counts as half a day for an open check-in
+ * (lineDayHours; owner, 27 October 2026): what its warning lists and Send to the CEO asks about. None by the hour (only
+ * the pairs' hours are paid), without the shift's hours a day, or for a day whose hours the month leaves out (one
+ * compensated).
+ */
+export function openCheckInDates(days: readonly (LineDay & { date: string })[], opts: { hourly: boolean; hoursADay?: number | null }): string[] {
+  if (opts.hourly || typeof opts.hoursADay !== 'number' || !(opts.hoursADay > 0)) return [];
+  return days
+    .filter((d) => !d.compensated && openHalfDayOn(pressesOf(d)))
+    .map((d) => d.date)
+    .sort();
 }
 
 /**
@@ -555,10 +580,10 @@ export function lineDayHours(d: LineDay, hoursADay: number | null | undefined): 
  * the hours counted (to the minute), the absent days as no-show days, and the permission hours: none when the system's
  * approved permission requests count (`systemPermissionHours` > 0: the line has them from its terms) or there are none,
  * else Zoho's column of its days within the month's allowance, as an import fills them. Pay by the hour: the hours only.
- * A day on the system missing its check-out counts the shift's hours a day (`hoursADay`) until corrected (lineDayHours,
- * owner, 25 October 2026: "Not short until corrected"), on a monthly salary: paid by the hour, only the hours its closed
- * pairs counted are paid (no time is paid that no press shows). An exempt day counts its full hours already
- * (check-in-exemptions.ts).
+ * A day on the system missing its check-out counts its pairs' hours and half the shift's hours a day (`hoursADay`),
+ * within the shift's hours a day, until corrected (lineDayHours; owner, 27 October 2026: "open check ins with half
+ * day"), on a monthly salary: paid by the hour, only the hours its closed pairs counted are paid (no time is paid that no
+ * press shows). An exempt day counts its full hours already (check-in-exemptions.ts).
  */
 export function attendanceLineInputs(
   days: readonly LineDay[],

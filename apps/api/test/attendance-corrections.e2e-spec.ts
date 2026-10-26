@@ -273,10 +273,10 @@ describe('Attendance corrections (e2e)', () => {
       // the draft line refilled
       const line = await lineOf(pastRun, 'rami');
       expect(line.attendanceImport?.source).toBe('attendance');
-      // the day missing its check-out was taken as the shift's 9 hours until corrected (owner, 25 October 2026: "Not short
-      // until corrected": nothing cut meanwhile); corrected, it counts its own 9 hours: the line's hours as they were
-      expect(lineBefore.inputs.workedHours).toBe(18);
-      expect(line.inputs.workedHours).toBe(lineBefore.inputs.workedHours);
+      // the day missing its check-out counted half the shift until corrected (owner, 27 October 2026: "open check ins with
+      // half day": 4:30 of its 9, beside the other day's 9); corrected, it counts its own 9 hours: 4:30 more on the line
+      expect(lineBefore.inputs.workedHours).toBe(13.5);
+      expect(line.inputs.workedHours).toBe(18);
       // in the audit log: the day's change
       const logged = await prisma.auditLog.findFirst({ where: { action: 'correct', entityType: 'attendance_day' }, orderBy: { at: 'desc' } });
       expect(logged?.diff).toMatchObject({ employeeId: ids.rami, date: work[PAST][0], correctionId: id, from: { checkOut: null }, to: { hoursCounted: 9 } });

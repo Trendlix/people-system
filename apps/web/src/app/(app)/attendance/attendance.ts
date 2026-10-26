@@ -54,8 +54,9 @@ import { ATTENDANCE_IMPORT_PATH, ATTENDANCE_IMPORTS_PATH, ATTENDANCE_PATH, ATTEN
 // Map link where it was pressed (for those the API gives the spot: HR, the CEO, the Super Admin, the employee), the
 // flags in a word or two, and every press of the day in a collapsed "All presses (14)". A day as the sum of its pairs
 // (owner, 25 October 2026: "the working hours to be calculated between the checkin and out only, not the first and
-// last"; "Count the closed pairs, flag the open one"; "Not short until corrected"): a day of several check-in → check-out
-// pairs lists them with its break, and an open last check-in says "Checked in 6:30 PM · not checked out" (dayPairs).
+// last"; "Count the closed pairs, flag the open one"; then, 27 October 2026, "open check ins with half day": counted as
+// half a day until corrected): a day of several check-in → check-out pairs lists them with its break, and an open last
+// check-in says "Checked in 6:30 PM · not checked out" (dayPairs).
 // People exempt from check-in (owner, 25 October 2026: "trat them as if they achived their full working hours"): an
 // exempt day, a person's month with exempt days and its periods carry an "Exempt" badge (exemptBadge, exemptionsText).
 
@@ -233,8 +234,8 @@ export function figureTiles(
       note: f.zohoLeaveDays > 0 ? `And ${daysText(f.zohoLeaveDays)} of leave in Zoho only, to record` : 'On leave in the system',
       tone: f.zohoLeaveDays > 0 ? 'warn' : null,
     },
-    // a last check-in without a check-out is never short until corrected (owner, 25 October 2026: "Not short until corrected")
-    { key: 'checkouts', label: 'Missing check-outs', value: String(f.missingCheckOuts), note: 'A check-in without a check-out: not short until corrected', tone: f.missingCheckOuts > 0 ? 'warn' : null },
+    // a check-in without a check-out counts half the shift until corrected (owner, 27 October 2026: "open check ins with half day")
+    { key: 'checkouts', label: 'Missing check-outs', value: String(f.missingCheckOuts), note: 'A check-in without a check-out: counted as half a day until corrected', tone: f.missingCheckOuts > 0 ? 'warn' : null },
     // checking in on the system (19 October 2026); an API from before it has neither
     ...checkInTiles(f, o.checksIn === true),
     // exempt from check-in (25 October 2026): only with exempt days

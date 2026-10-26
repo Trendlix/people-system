@@ -5,6 +5,7 @@ import {
   EMPTY_PAYROLL_INPUTS,
   installmentLimitWarning,
   lawRatesFor,
+  openCheckInWarning,
   RECURRING_TYPE,
   sumAmounts,
   normalLawRates,
@@ -117,6 +118,13 @@ export interface PayrollRunView {
    * without them. Null when nothing is hidden from the caller (the CEO and a Super Admin see the whole run).
    */
   hidden: { count: number; label: string } | null;
+  /**
+   * The lines with days counted as half a day for an open check-in (owner, 27 October 2026: "open check ins with half
+   * day"; asked, "Half the shift (4.5 h) until corrected"), each with those dates (YYYY-MM-DD), from its attendance mark:
+   * what Send to the CEO asks HR to confirm before sending, and what the submit answers with; never a block (the rule is
+   * "until corrected", and HR may decide to pay them so). Without the C-level lines hidden from the caller.
+   */
+  openCheckIns: { lineId: string; employeeId: string; name: string; dates: string[] }[];
 }
 
 export interface PayrollRunSummary {
@@ -233,7 +241,10 @@ export interface LineAccess {
 export function lineView(line: LineRow, bank: LineBank, limits: LineLimits | null = null, access: LineAccess = { confidential: false, editable: false }): PayrollLineView {
   const terms = line.terms as unknown as PayrollTerms;
   const result = line.result as unknown as PayrollResult;
-  const warnings = lawWarnings({ terms, result }, limits);
+  const mark = (line.attendanceImport as unknown as AttendanceImportMark | null) ?? null;
+  // the days counted as half a day for an open check-in (27 October 2026), then the Labour Law's
+  const open = openCheckInWarning(mark?.openCheckIns ?? []);
+  const warnings = [...(open ? [open] : []), ...lawWarnings({ terms, result }, limits)];
   return {
     id: line.id,
     employeeId: line.employeeId,
@@ -248,14 +259,22 @@ export function lineView(line: LineRow, bank: LineBank, limits: LineLimits | nul
     terms,
     // inputs saved before one existed (the leave days, 17 October 2026) read as not given
     inputs: { ...EMPTY_PAYROLL_INPUTS, ...(line.inputs as object) } as PayrollInputs,
-    // with its warnings by the Labour Law, as the line's other warnings
+    // with its open check-in days and its warnings by the Labour Law, as the line's other warnings
     result: warnings.length ? { ...result, warnings: [...result.warnings, ...warnings] } : result,
     bank,
     payslips: { en: line.payslips.some((p) => p.language === 'en'), ar: line.payslips.some((p) => p.language === 'ar') },
     confidential: access.confidential,
     editable: access.editable,
-    attendanceImport: (line.attendanceImport as unknown as AttendanceImportMark | null) ?? null,
+    attendanceImport: mark,
   };
+}
+
+/** The run's lines with days counted as half a day for an open check-in (27 October 2026), with those dates. */
+export function openCheckInsOf(lines: readonly Pick<PayrollLineView, 'id' | 'employeeId' | 'name' | 'attendanceImport'>[]): PayrollRunView['openCheckIns'] {
+  return lines.flatMap((l) => {
+    const dates = l.attendanceImport?.openCheckIns;
+    return dates?.length ? [{ lineId: l.id, employeeId: l.employeeId, name: l.name, dates: [...dates] }] : [];
+  });
 }
 
 /** Whether the bank details were copied: from the CEO's approval on. */
@@ -307,5 +326,6 @@ export function runView(
     payslips: lines.filter((l) => l.payslips.en).length,
     adjustmentsNotOnRun: ctx.adjustmentsNotOnRun.filter((a) => !c?.hidden.has(a.employeeId)),
     hidden: hidden ? { count: hidden, label: hiddenLinesLabel(hidden) } : null,
+    openCheckIns: openCheckInsOf(lines),
   };
 }

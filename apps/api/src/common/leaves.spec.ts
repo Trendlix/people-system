@@ -397,6 +397,16 @@ describe('monthLeaveDays: the payroll’s leave and unpaid leave days', () => {
     // a half day in a leave that runs into the next month is that month's
     expect(monthLeaveDays([leave('2026-10-29', '2026-11-01', 'paid', null, true)], '2026-10', count)).toEqual({ paid: 1, unpaid: 0 });
   });
+
+  it('counts a leave on the shift’s working days for the expected hours (onWorkingDays, 27 October 2026), a calendar-day type’s too', () => {
+    const maternity = { ...leave('2026-11-08', '2026-11-19', 'paid'), calendarDays: true };
+    const november = { workingDays: [0, 1, 2, 3, 4], holidays: ['2026-11-10'] };
+    // 12 calendar days to the leave itself; its 10 working days less the holiday on the 10th to the expected hours
+    expect(monthLeaveDays([maternity], '2026-11', november)).toEqual({ paid: 12, unpaid: 0 });
+    expect(monthLeaveDays([maternity], '2026-11', { ...november, onWorkingDays: true })).toEqual({ paid: 9, unpaid: 0 });
+    // a type counted in working days counts the same either way
+    expect(monthLeaveDays([leave('2026-10-04', '2026-10-08', 'unpaid')], '2026-10', { ...count, onWorkingDays: true })).toEqual({ paid: 0, unpaid: 4 });
+  });
 });
 
 describe('a type’s days a year are a share in the year someone joins or leaves (owner, 26 October 2026: "Yes, a share")', () => {

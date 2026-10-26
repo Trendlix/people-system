@@ -300,9 +300,11 @@ export interface PayrollTerms {
   adjustments?: PayrollAdjustmentItem[];
   /**
    * The month's approved leave (owner, 18 October 2026: "can you apply the leaves according to the law?"), within the
-   * days paid, counted as each type counts them (leaves.ts monthLeaveDays): the paid days, and the unpaid days (unpaid
-   * leave, and a partly paid leave's unpaid share). The Leave days and the Unpaid leave days the grid fills in when HR
-   * hasn't typed others (leaveDaysOf). Missing on lines without leave, for pay by the hour, and on lines made before then.
+   * days paid (leaves.ts monthLeaveDays, roster.ts leaveTermsOf): the paid days, and the unpaid days (unpaid leave, and
+   * a partly paid leave's unpaid share), with the unpaid days' working days when they differ (27 October 2026:
+   * PayrollLeaveDays). The Leave days and the Unpaid leave days the grid fills in when HR hasn't typed others
+   * (leaveDaysOf), and the days out of the expected hours (leaveDaysOff). Missing on lines without leave, for pay by the
+   * hour, and on lines made before then.
    */
   leave?: PayrollLeaveDays | null;
   /**
@@ -326,10 +328,32 @@ export interface PayrollTerms {
   accountsWithoutAllowance?: number;
 }
 
-/** A month's approved leave as a line's terms keep it: the paid days and the unpaid days, whole, half or in shares. */
+/**
+ * A month's approved leave as a line's terms keep it (owner, 18 October 2026): whole, half or in shares, to two decimals.
+ * Since 27 October 2026 the days that come out of the expected hours are the leave's days on the shift's working days
+ * less the official holidays, for a type counted in calendar days (maternity, hajj, childcare) too: a maternity leave of
+ * 8–19 November 2026 (12 calendar days, 10 working days on a Sunday–Thursday shift) takes 10 days of the shift out, not
+ * 12, so the attendance cut on the other days isn't hidden; the leave's own count (its request, its balance, the Leave
+ * report) stays as its type counts it. The unpaid days keep their type's count for the cut (a day of the gross each: a
+ * whole month of unpaid childcare costs the whole gross, as before), their working days kept beside them.
+ */
 export interface PayrollLeaveDays {
+  /**
+   * The paid leave's days that come out of the expected hours, the grid's Leave days: on the shift's working days less
+   * the holidays, within the days paid (before 27 October 2026, as the type counted them).
+   */
   paidDays: number;
+  /**
+   * The unpaid leave's days (a partly paid leave's unpaid share too) as the type counts them, within the days paid: a
+   * day of the gross cut each, the grid's Unpaid leave days.
+   */
   unpaidDays: number;
+  /**
+   * The unpaid days on the shift's working days less the holidays: what comes out of the expected hours (27 October
+   * 2026). Missing when the same as unpaidDays (a type counted in working days), and on lines made before then: then
+   * unpaidDays come out, as they did.
+   */
+  unpaidWorkingDays?: number;
 }
 
 /** An addition or deduction as a line keeps it: what it is, whether it is taxed, the amount (or the days) and why. */
@@ -794,10 +818,11 @@ export const NO_SHIFT_NO_EXPECTED_HOURS =
 /**
  * The expected hours a line is worked out with, as the inputs grid shows them (owner, 17 October 2026: "prefill the
  * expected hours, and dont count abcent days or leave days, as they already have their own deduction and fields"): the
- * shift's hours for the month less a day of the shift for each no-show and leave day, never below 0; null without the
- * shift's hours. Never typed since 20 October 2026 (owner: "expected hours to be locked based on shifts and attendance
- * data"); a line saved before then with HR's figure (with the CEO, approved or paid) is worked out with it as it was,
- * taken as already without the no-show and leave days.
+ * shift's hours for the month less a day of the shift for each no-show and leave day (the leave days on the shift's
+ * working days, leaveDaysOff: 27 October 2026), never below 0; null without the shift's hours. Never typed since 20
+ * October 2026 (owner: "expected hours to be locked based on shifts and attendance data"); a line saved before then with
+ * HR's figure (with the CEO, approved or paid) is worked out with it as it was, taken as already without the no-show and
+ * leave days.
  */
 export function expectedHoursOf(
   terms: Pick<PayrollTerms, 'expectedHours' | 'hoursPerDay' | 'leave'>,
@@ -806,26 +831,48 @@ export function expectedHoursOf(
   if (inputs.expectedHours !== null && inputs.expectedHours !== undefined) return inputs.expectedHours;
   const shift = terms.expectedHours;
   if (shift === null || shift === undefined) return null;
-  const leave = leaveDaysOf(terms, inputs);
+  const leave = leaveDaysOff(terms, inputs);
   const off =
     shiftDaysHours(inputs.noShowDays, terms.hoursPerDay) + shiftDaysHours(leave.leaveDays, terms.hoursPerDay) + shiftDaysHours(leave.unpaidLeaveDays, terms.hoursPerDay);
   return Math.max(0, fraction(shift - off));
 }
 
+/** A figure as typed, or none. */
+const typedDays = (v: number | null | undefined) => (v === null || v === undefined ? null : v);
+
 /**
  * The leave days a line is worked out with (owner, 18 October 2026: the Leave module fills in the leave days): as HR
  * typed them, else the month's approved leave the terms took (paid, and unpaid with a partly paid leave's unpaid
- * share); null when neither. What HR types is never overwritten.
+ * share); null when neither. What HR types is never overwritten. The grid's Leave days and Unpaid leave days, and the
+ * unpaid days the cut charges (a day of the gross each); the days out of the expected hours are leaveDaysOff's.
  */
 export function leaveDaysOf(
   terms: Pick<PayrollTerms, 'leave'>,
   inputs: Pick<PayrollInputs, 'leaveDays' | 'unpaidLeaveDays'>,
 ): { leaveDays: number | null; unpaidLeaveDays: number | null } {
-  const typed = (v: number | null | undefined) => (v === null || v === undefined ? null : v);
   const leave = terms.leave ?? null;
   return {
-    leaveDays: typed(inputs.leaveDays) ?? (leave && leave.paidDays > 0 ? leave.paidDays : null),
-    unpaidLeaveDays: typed(inputs.unpaidLeaveDays) ?? (leave && leave.unpaidDays > 0 ? leave.unpaidDays : null),
+    leaveDays: typedDays(inputs.leaveDays) ?? (leave && leave.paidDays > 0 ? leave.paidDays : null),
+    unpaidLeaveDays: typedDays(inputs.unpaidLeaveDays) ?? (leave && leave.unpaidDays > 0 ? leave.unpaidDays : null),
+  };
+}
+
+/**
+ * The leave days that come out of a line's expected hours, a day of the shift each (27 October 2026): as HR typed them,
+ * else the month's approved leave's days on the shift's working days less the holidays (PayrollLeaveDays: the paid
+ * days, and the unpaid days' working days, or the unpaid days themselves on a line made before then); null when neither.
+ * The same as leaveDaysOf but for unpaid leave of a type counted in calendar days (childcare), whose cut charges every
+ * calendar day while only its working days have hours to take out.
+ */
+export function leaveDaysOff(
+  terms: Pick<PayrollTerms, 'leave'>,
+  inputs: Pick<PayrollInputs, 'leaveDays' | 'unpaidLeaveDays'>,
+): { leaveDays: number | null; unpaidLeaveDays: number | null } {
+  const leave = terms.leave ?? null;
+  const unpaid = leave ? (leave.unpaidWorkingDays ?? leave.unpaidDays) : 0;
+  return {
+    leaveDays: typedDays(inputs.leaveDays) ?? (leave && leave.paidDays > 0 ? leave.paidDays : null),
+    unpaidLeaveDays: typedDays(inputs.unpaidLeaveDays) ?? (unpaid > 0 ? unpaid : null),
   };
 }
 
@@ -962,8 +1009,10 @@ export function payrollLine(
   });
   const sum = (pick: (p: (typeof parts)[number]) => number) => piasters(parts.reduce((total, p) => total + pick(p), 0));
 
-  // the leave days as the grid shows them (owner, 18 October 2026): HR's, else the month's approved leave's
+  // the leave days as the grid shows them (owner, 18 October 2026): HR's, else the month's approved leave's; and those
+  // out of the expected hours (27 October 2026), the same but for unpaid leave counted in calendar days
   const leave = leaveDaysOf(terms, i);
+  const leaveOff = leaveDaysOff(terms, i);
   const salary =
     terms.payBasis === 'hourly'
       ? hourlyPart(terms, i, warnings)
@@ -978,6 +1027,7 @@ export function payrollLine(
             hoursPerDay: terms.hoursPerDay ?? null,
             shiftExpectedHours: terms.expectedHours ?? null,
             expectedDays: terms.expectedDays ?? null,
+            leaveOff,
             // the month's permission hours, counted as worked (owner, 19 October 2026)
             permissionHours: permissionHoursOf(terms, i),
             // a long day fills the month's short hours (owner, 20 October 2026)
@@ -1129,6 +1179,11 @@ function monthlyPart(
     shiftExpectedHours: number | null;
     /** The shift's working days in the days paid, and the holidays on them: null without a shift, or by the hour. */
     expectedDays: ShiftDays | null;
+    /**
+     * The leave days out of the expected hours (leaveDaysOff, 27 October 2026): the inputs' leave days but for unpaid
+     * leave counted in calendar days, whose working days alone come out. Missing: the inputs' leave days.
+     */
+    leaveOff?: { leaveDays: number | null; unpaidLeaveDays: number | null };
     /** The month's permission hours (permissionHoursOf): counted as worked (owner, 19 October 2026). */
     permissionHours?: number | null;
     /** The shift counts hours until a time (PayrollTerms.makeUpHours, 20 October 2026). */
@@ -1146,10 +1201,14 @@ function monthlyPart(
   // the no-show and leave days' hours come out of the shift's hours: the no-show cut alone charges a no-show day, and
   // a leave day is paid; HR's own figure is taken as already without them
   const noShowDays = given(i.noShowDays);
-  const leaveDays = given(i.leaveDays);
-  // unpaid leave and the unpaid share of a partly paid one (owner, 18 October 2026): days off like the paid leave's
+  // unpaid leave and the unpaid share of a partly paid one (owner, 18 October 2026): a day of the gross each, the cut's
   const unpaidLeaveDays = given(i.unpaidLeaveDays ?? null);
-  const daysOff = daysOffName(noShowDays, leaveDays + unpaidLeaveDays);
+  // the leave days out of the hours (27 October 2026): on the shift's working days, so unpaid leave counted in calendar
+  // days takes out its working days alone while every day of it is cut
+  const off = pay.leaveOff ?? { leaveDays: i.leaveDays, unpaidLeaveDays: i.unpaidLeaveDays ?? null };
+  const leaveDays = given(off.leaveDays);
+  const unpaidOff = given(off.unpaidLeaveDays);
+  const daysOff = daysOffName(noShowDays, leaveDays + unpaidOff);
   // the permission hours count as worked (owner, 19 October 2026: "4 hours per month with a maximum 2 hours per day"),
   // so they are never cut as short hours; only once there are worked hours to add them to (attendance tracked)
   const permission = i.workedHours !== null && typeof pay.permissionHours === 'number' && pay.permissionHours > 0 ? pay.permissionHours : 0;
@@ -1157,9 +1216,9 @@ function monthlyPart(
   const shift = pay.shiftExpectedHours;
   const fromShift = i.expectedHours === null && shift !== null && shift > 0;
   const absentHours = fromShift ? shiftDaysHours(i.noShowDays, pay.hoursPerDay) : 0;
-  const leaveHours = fromShift ? fraction(shiftDaysHours(i.leaveDays, pay.hoursPerDay) + shiftDaysHours(i.unpaidLeaveDays, pay.hoursPerDay)) : 0;
+  const leaveHours = fromShift ? fraction(shiftDaysHours(off.leaveDays, pay.hoursPerDay) + shiftDaysHours(off.unpaidLeaveDays, pay.hoursPerDay)) : 0;
   /** The expected hours attendance is measured on, as the grid shows them. */
-  const expected = expectedHoursOf({ expectedHours: shift, hoursPerDay: pay.hoursPerDay }, i);
+  const expected = expectedHoursOf({ expectedHours: shift, hoursPerDay: pay.hoursPerDay }, { ...i, ...off });
   // make-up hours (owner, 20 October 2026: "within the same month"): a long day's hours fill the month's short ones, at
   // most up to the expected hours (without the no-show and leave days) while overtime isn't paid; paid, uncapped
   const capped = pay.makeUpHours === true && !paysOvertime(rules) && workedAll !== null && expected !== null && expected > 0 && workedAll > expected;
@@ -1218,7 +1277,7 @@ function monthlyPart(
   // holidays and the no-show and leave days; the total typed isn't cut, only warned about
   // the worked hours as typed, without the permission hours: what attendance counted
   // (a shift that counts hours until a time counts past them a day, 20 October 2026: no such warning)
-  const most = mostCountedHours(pay.expectedDays, pay.hoursPerDay, noShowDays, leaveDays + unpaidLeaveDays);
+  const most = mostCountedHours(pay.expectedDays, pay.hoursPerDay, noShowDays, leaveDays + unpaidOff);
   if (pay.makeUpHours !== true && i.workedHours !== null && most !== null && pay.hoursPerDay !== null && i.workedHours > most) {
     const perDay = formatHours(pay.hoursPerDay);
     warnings.push(`Worked hours are more than ${perDay} a day on the shift's working days (${formatHours(most)} this month): attendance will count at most ${perDay} a day`);
@@ -1279,6 +1338,31 @@ function hourlyPart(terms: PayrollTerms, i: PayrollInputs, warnings: string[]): 
     unpaidLeaveCut: 0,
     overtime: 0,
   };
+}
+
+/**
+ * A draft line's warning for its days with a check-in and no check-out after it, each counted as half a day until
+ * corrected (owner, 27 October 2026: "open check ins with half day"; asked, "Half the shift (4.5 h) until corrected";
+ * attendance-days.ts openCheckInHours): "2 days with no check-out counted as half a day each until corrected: 05/11,
+ * 12/11." Null without any. `dates` (YYYY-MM-DD) are the line's attendance mark's (attendance-import.ts
+ * AttendanceImportMark.openCheckIns), so the warning stands on a reload until the days are corrected and the line filled
+ * again.
+ */
+export function openCheckInWarning(dates: readonly string[]): string | null {
+  const shown = dates.filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).map((d) => `${d.slice(8, 10)}/${d.slice(5, 7)}`);
+  if (!shown.length) return null;
+  const n = shown.length;
+  return `${n} ${n === 1 ? 'day' : 'days'} with no check-out counted as half a day${n === 1 ? '' : ' each'} until corrected: ${shown.join(', ')}.`;
+}
+
+/**
+ * What Send to the CEO asks HR when lines of the run have such days (27 October 2026), never a block (the owner's rule
+ * is "until corrected", and HR may decide to pay them so): "3 people have days with no check-out, counted as half a day
+ * each until corrected. Send anyway?" Null for none.
+ */
+export function openCheckInsConfirm(people: number): string | null {
+  if (!(people > 0)) return null;
+  return `${people} ${people === 1 ? 'person has' : 'people have'} days with no check-out, counted as half a day each until corrected. Send anyway?`;
 }
 
 /**

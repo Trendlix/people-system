@@ -13,6 +13,11 @@ import {
   hoursCountedForPresses,
   lineDayHours,
   mostHoursCountedADay,
+  openCheckInDates,
+  openCheckInHours,
+  openCheckInsConfirm,
+  openCheckInWarning,
+  openHalfDayOn,
   openPressText,
   pairPresses,
   pairsText,
@@ -26,10 +31,11 @@ import {
 
 // A day's hours as the sum of its check-in → check-out pairs (owner, 25 October 2026: "on checkin and out several
 // ttimes, the working hours to be calculated between the checkin and out only, not the first and last"; asked, "Count
-// the closed pairs, flag the open one"; then "Not short until corrected"): packages/shared attendance.ts (pairPresses,
-// hoursCountedForPresses, breakMinutesOf), check-in.ts (dayFromPunches), attendance-days.ts (the day's view),
-// official-duty.ts (part of a day joins the pairs), attendance-corrections.ts (a correction over the pairs) and
-// attendance-import.ts (the payroll's line: a missing check-out not cut until corrected).
+// the closed pairs, flag the open one"; then, 27 October 2026, "open check ins with half day": "Half the shift (4.5 h)
+// until corrected"): packages/shared attendance.ts (pairPresses, hoursCountedForPresses, breakMinutesOf), check-in.ts
+// (dayFromPunches), attendance-days.ts (the day's view, the half-day rule), official-duty.ts (part of a day joins the
+// pairs), attendance-corrections.ts (a correction over the pairs), attendance-import.ts (the payroll's line: a missing
+// check-out half a day until corrected, the days listed for its warning) and payroll.ts (the warning's words).
 
 const DAY = '2026-10-18';
 // the MORNING shift: 9 hours within 9:00–19:00, 15 minutes' grace
@@ -149,7 +155,7 @@ describe('a day kept from its punches', () => {
   });
 });
 
-describe('a day with an open last check-in, as the pages and the payroll take it (“Not short until corrected”)', () => {
+describe('a day with an open last check-in, as the pages and the payroll take it (27 October 2026: half the shift until corrected)', () => {
   const base: KeptDay = {
     date: DAY,
     status: 'worked',
@@ -166,12 +172,19 @@ describe('a day with an open last check-in, as the pages and the payroll take it
     breakMinutes: 60,
   };
 
-  it('is a missing check-out, its closed pairs’ hours shown, never short nor extra, not among the days counted', () => {
+  it('is a missing check-out counted as half a day until corrected: its pairs’ hours and half the shift, short by the rest, among the days counted', () => {
     const view = attendanceDayView(base, 9);
-    expect(view).toMatchObject({ missingCheckOut: true, missingCheckIn: false, hoursCounted: 4, shortHours: 0, extraHours: 0, openAt: at('14:00'), breakMinutes: 60 });
-    expect(countsDayHours(base)).toBe(false);
+    // 4 hours of pairs and half the 9-hour shift: 8:30, short by 0:30
+    expect(view).toMatchObject({ missingCheckOut: true, openHalfDay: true, missingCheckIn: false, hoursCounted: 8.5, shortHours: 0.5, extraHours: 0, openAt: at('14:00'), breakMinutes: 60 });
+    expect(openHalfDayOn(base)).toBe(true);
+    expect(countsDayHours(base)).toBe(true);
     const f = attendanceFigures([view]);
-    expect(f).toMatchObject({ missingCheckOuts: 1, shortHours: 0, daysCounted: 0, daysWorked: 1 });
+    expect(f).toMatchObject({ missingCheckOuts: 1, hoursCounted: 8.5, shortHours: 0.5, daysCounted: 1, daysWorked: 1 });
+    // Zoho's missing check-out: as its import counted it, not counted, never short
+    const zoho: KeptDay = { ...base, source: 'zoho', checkOut: null, openAt: null, pairs: null, hoursCounted: 0 };
+    expect(openHalfDayOn(zoho)).toBe(false);
+    expect(countsDayHours(zoho)).toBe(false);
+    expect(attendanceDayView(zoho, 9)).toMatchObject({ missingCheckOut: true, openHalfDay: false, hoursCounted: 0, shortHours: 0 });
   });
 
   it('counts normally once closed: short or extra included', () => {
@@ -180,17 +193,27 @@ describe('a day with an open last check-in, as the pages and the payroll take it
     expect(countsDayHours(closed)).toBe(true);
   });
 
-  it('a day with only a check-in: as before, a missing check-out with nothing counted', () => {
+  it('a day with only a check-in: a missing check-out counted as half the shift (4:30 of 9), short by the other half', () => {
     const only = { ...base, checkOut: null, pairs: [], openAt: at('09:00'), hoursCounted: 0 };
-    expect(attendanceDayView(only, 9)).toMatchObject({ missingCheckOut: true, hoursCounted: 0, shortHours: 0 });
+    expect(attendanceDayView(only, 9)).toMatchObject({ missingCheckOut: true, openHalfDay: true, hoursCounted: 4.5, shortHours: 4.5 });
     // one kept before the pairs (none kept): the same
-    expect(attendanceDayView({ ...only, pairs: null, openAt: null }, 9)).toMatchObject({ missingCheckOut: true, shortHours: 0 });
+    expect(attendanceDayView({ ...only, pairs: null, openAt: null }, 9)).toMatchObject({ missingCheckOut: true, openHalfDay: true, hoursCounted: 4.5, shortHours: 4.5 });
+    // without the shift's hours: its pairs' hours alone, nothing to be short of
+    expect(attendanceDayView(only, null)).toMatchObject({ hoursCounted: 0, shortHours: 0 });
   });
 
-  it('gives the payroll the shift’s hours a day until corrected, on a monthly salary; paid by the hour only its closed pairs', () => {
-    expect(lineDayHours(base, 9)).toBe(9);
+  it('gives the payroll the same hours (owner, 27 October 2026: "Half the shift (4.5 h) until corrected"); paid by the hour only its closed pairs', () => {
+    // only an open check-in: 4:30; 3 hours of pairs and one: 7:30; 8 hours and one: 9, the shift's hours a day at most
+    expect(openCheckInHours(0, 9)).toBe(4.5);
+    expect(openCheckInHours(3, 9)).toBe(7.5);
+    expect(openCheckInHours(8, 9)).toBe(9);
+    expect(openCheckInHours(3, null)).toBe(3);
     const onlyIn: KeptDay = { ...base, checkOut: null, pairs: [], openAt: at('09:00'), hoursCounted: 0 };
-    expect(lineDayHours(onlyIn, 9)).toBe(9);
+    expect(lineDayHours(onlyIn, 9)).toBe(4.5);
+    expect(lineDayHours({ ...base, hoursCounted: 3 }, 9)).toBe(7.5);
+    expect(lineDayHours({ ...base, hoursCounted: 8 }, 9)).toBe(9);
+    // 4 hours of pairs and the open check-in: 8:30
+    expect(lineDayHours(base, 9)).toBe(8.5);
     // without a shift: its hours
     expect(lineDayHours(base, null)).toBe(4);
     // Zoho's missing check-out: as Zoho's import counts it, nothing
@@ -198,10 +221,31 @@ describe('a day with an open last check-in, as the pages and the payroll take it
     expect(lineDayHours(zoho, 9)).toBe(0);
     const closed = { ...base, openAt: null, hoursCounted: 7 };
     const days = [base, closed];
-    expect(attendanceLineInputs(days, { systemPermissionHours: 0, permissionHoursPerMonth: 4, hourly: false, hoursADay: 9 }).workedHours).toBe(16);
+    expect(attendanceLineInputs(days, { systemPermissionHours: 0, permissionHoursPerMonth: 4, hourly: false, hoursADay: 9 }).workedHours).toBe(15.5);
     expect(attendanceLineInputs(days, { systemPermissionHours: 0, permissionHoursPerMonth: 4, hourly: true, hoursADay: 9 })).toEqual({ workedHours: 11 });
     // an API caller from before (no hours a day given): the hours counted
     expect(attendanceLineInputs(days, { systemPermissionHours: 0, permissionHoursPerMonth: 4, hourly: false }).workedHours).toBe(11);
+    // the pages agree with the payroll: the month's hours counted are the line's
+    expect(attendanceFigures([attendanceDayView(base, 9), attendanceDayView(closed, 9)]).hoursCounted).toBe(15.5);
+  });
+
+  it('lists the days so counted for the line’s warning and for Send to the CEO; none by the hour or without the shift’s hours', () => {
+    const onlyIn: KeptDay = { ...base, date: '2026-10-19', checkOut: null, pairs: [], openAt: at('09:00', '2026-10-19'), hoursCounted: 0 };
+    const closed = { ...base, date: '2026-10-20', openAt: null, hoursCounted: 7 };
+    const zoho: KeptDay = { ...base, date: '2026-10-21', source: 'zoho', checkOut: null, openAt: null, pairs: null, hoursCounted: 0 };
+    const days = [onlyIn, closed, base, zoho];
+    expect(openCheckInDates(days, { hourly: false, hoursADay: 9 })).toEqual(['2026-10-18', '2026-10-19']);
+    expect(openCheckInDates(days, { hourly: true, hoursADay: 9 })).toEqual([]);
+    expect(openCheckInDates(days, { hourly: false, hoursADay: null })).toEqual([]);
+    // a day worked that a compensatory day off compensates adds no hours, so nothing to warn about
+    expect(openCheckInDates([{ ...base, compensated: true }], { hourly: false, hoursADay: 9 })).toEqual([]);
+    // the warning on the line, and what Send to the CEO asks
+    expect(openCheckInWarning(['2026-11-05', '2026-11-12'])).toBe('2 days with no check-out counted as half a day each until corrected: 05/11, 12/11.');
+    expect(openCheckInWarning(['2026-11-05'])).toBe('1 day with no check-out counted as half a day until corrected: 05/11.');
+    expect(openCheckInWarning([])).toBeNull();
+    expect(openCheckInsConfirm(3)).toBe('3 people have days with no check-out, counted as half a day each until corrected. Send anyway?');
+    expect(openCheckInsConfirm(1)).toBe('1 person has days with no check-out, counted as half a day each until corrected. Send anyway?');
+    expect(openCheckInsConfirm(0)).toBeNull();
   });
 
   it('with part of a day of official duty, the duty joins the pairs', () => {

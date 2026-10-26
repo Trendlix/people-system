@@ -3,6 +3,7 @@ import {
   attendanceLineInputs,
   EMPTY_PAYROLL_INPUTS,
   figuresBefore,
+  openCheckInDates,
   PERMISSION_RULE_DEFAULTS,
   type AttendanceImportMark,
   type ImportedInput,
@@ -51,8 +52,13 @@ export interface AttendanceFillResult {
 // from its days too once the system reads one of them over: an approved work from home day with no check-in ("Full day,
 // always"), an approved official duty or a compensatory day (AttendanceDaysService ownDays); before, those days kept the
 // source 'zoho', so the line never got their hours (September's attendance cut for an approved day at home stayed, this
-// fill recounting its no-shows alone). Every line changed is in the audit log. C-level lines too: the
-// figures are the attendance's, nobody types them, and HR's views keep hiding them (owner, 19 October 2026: "make C level Employees details not visible to HR").
+// fill recounting its no-shows alone). A day with a check-in and no check-out after it counts half the shift until
+// corrected (owner, 27 October 2026: "open check ins with half day"; asked, "Half the shift (4.5 h) until corrected";
+// packages/shared lineDayHours): the fill keeps those days' dates on the line's mark (openCheckIns), so the line warns
+// about them and Send to the CEO asks HR to confirm (payroll/views.ts), until a correction closes them and the line is
+// filled again (a correction approved fills it at once; a past month's draft on Refresh from attendance). Every line
+// changed is in the audit log. C-level lines too: the figures are the attendance's, nobody types them, and HR's views
+// keep hiding them (owner, 19 October 2026: "make C level Employees details not visible to HR").
 @Injectable()
 export class AttendanceFillService {
   constructor(
@@ -123,19 +129,28 @@ export class AttendanceFillService {
       // 2026: "Yes, daily + backfill": "Draft payroll runs for those months are refilled for the people changed"): filled
       // from the month's days
       if (person && (person.own || fromZohoFetch.has(line.employeeId))) {
+        const hourly = line.payBasis === 'hourly';
         const filled = attendanceLineInputs(person.days, {
           systemPermissionHours: permissions.find((p) => p.employeeId === line.employeeId)?._sum.hours?.toNumber() ?? 0,
           permissionHoursPerMonth: allowance,
-          hourly: line.payBasis === 'hourly',
-          // a day missing its check-out taken as the shift's hours a day until corrected (owner, 25 October 2026: "Not short until corrected")
+          hourly,
+          // a day missing its check-out counted as half the shift's hours a day until corrected (owner, 27 October 2026:
+          // "open check ins with half day")
           hoursADay: person.hoursADay,
         });
+        // those days, for the line's warning and Send to the CEO (27 October 2026)
+        const openCheckIns = openCheckInDates(person.days, { hourly, hoursADay: person.hoursADay });
         const fields = Object.keys(filled) as ImportedInput[];
         inputs = { ...EMPTY_PAYROLL_INPUTS, ...was, ...(filled as Partial<PayrollInputs>) };
-        const same = mark?.source === 'attendance' && sameFields(mark.fields, fields) && sameSources(mark.sources, person.sources) && unchanged(was, inputs);
+        const same =
+          mark?.source === 'attendance' &&
+          sameFields(mark.fields, fields) &&
+          sameSources(mark.sources, person.sources) &&
+          sameFields(mark.openCheckIns ?? [], openCheckIns) &&
+          unchanged(was, inputs);
         if (same) continue;
         // what they were before: HR's figures, or what they were before an earlier fill or import
-        next = { source: 'attendance', at, fields, before: figuresBefore(fields, was, mark), sources: person.sources };
+        next = { source: 'attendance', at, fields, before: figuresBefore(fields, was, mark), sources: person.sources, ...(openCheckIns.length > 0 && { openCheckIns }) };
         result.filled++;
       } else if (mark?.source === 'attendance') {
         // no days of the system's own left (e.g. Zoho's import undone): what it had before
@@ -169,7 +184,11 @@ export class AttendanceFillService {
           employeeCode: line.employeeCode,
           ...changes(was as unknown as Record<string, unknown>, inputs as unknown as Record<string, unknown>),
           source: next?.source ?? 'attendance',
-          ...(next?.source === 'zoho' ? { importId: next.importId, leaveCounted: true } : next ? { sources: next.sources } : { cleared: true }),
+          ...(next?.source === 'zoho'
+            ? { importId: next.importId, leaveCounted: true }
+            : next
+              ? { sources: next.sources, ...(next.openCheckIns && { openCheckIns: next.openCheckIns }) }
+              : { cleared: true }),
         },
       });
     }

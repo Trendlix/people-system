@@ -43,9 +43,10 @@ import { firstDay, lastDay } from './months.js';
 // Setup): its working days within the days paid, less the official holidays on them, × those hours a day; none without
 // a shift, nor for pay by the hour. Less the no-show and leave days, the pay counts them unless HR types the expected
 // hours (payroll.ts expectedHoursOf). The month's approved leave (owner, 18 October 2026: "can you apply the leaves
-// according to the law?"): its paid and unpaid days within the days paid, as each type counts them on the shift's
-// working days (Sunday to Thursday without a shift) less the holidays, the grid's Leave days and Unpaid leave days unless
-// HR types others (payroll.ts leaveDaysOf); none for pay by the hour. The month's approved permission hours (owner, 19
+// according to the law?"): its paid and unpaid days within the days paid, on the shift's working days (Sunday to
+// Thursday without a shift) less the holidays (27 October 2026: for a type counted in calendar days too, as only a
+// working day has hours to take out; the unpaid days' own count kept for the cut), the grid's Leave days and Unpaid leave
+// days unless HR types others (payroll.ts leaveDaysOf, leaveTermsOf); none for pay by the hour. The month's approved permission hours (owner, 19
 // October 2026: "4 hours per month with a maximum 2 hours per day", counted as worked): those on days paid, at most the
 // Leave Setup's hours a month, the grid's Permission hours unless HR types others (payroll.ts permissionHoursOf); none
 // for pay by the hour. A shift that counts hours until a time (owner, 20 October 2026: "within the same month with no
@@ -166,7 +167,12 @@ function shiftExpected(
 /**
  * The month's approved leave a line's terms take (owner, 18 October 2026): each leave's paid and unpaid days within the
  * parts of the month paid (leaves.ts monthLeaveDays), the unpaid no more than the days paid and the paid no more than
- * what is left of them; null without any.
+ * what is left of them; null without any. Since 27 October 2026 the days that come out of the expected hours are counted
+ * on the shift's working days less the holidays, a type counted in calendar days (maternity, hajj, childcare) too: a
+ * maternity leave of 8–19 November 2026 took 12 days of a Sunday–Thursday shift out of the expected hours where only 10
+ * of its days had hours, hiding the attendance cut on the other days (payroll.ts PayrollLeaveDays). The paid days are
+ * those working days; the unpaid days keep their type's count for the cut (a day of the gross for each calendar day of
+ * unpaid childcare, as before), their working days beside them when they differ.
  */
 export function leaveTermsOf(
   month: string,
@@ -177,17 +183,24 @@ export function leaveTermsOf(
   paidDays: number,
 ): PayrollLeaveDays | null {
   if (!leaves.length) return null;
-  let paid = 0;
+  const count = { workingDays: workingDays ?? DEFAULT_WORKING_DAYS, holidays };
   let unpaid = 0;
+  let paidWorking = 0;
+  let unpaidWorking = 0;
   for (const p of parts) {
-    const days = monthLeaveDays(leaves, month, { workingDays: workingDays ?? DEFAULT_WORKING_DAYS, holidays, from: p.from, to: p.to });
-    paid += days.paid;
-    unpaid += days.unpaid;
+    // as each type counts them (the cut's), and on the shift's working days (the expected hours')
+    const typed = monthLeaveDays(leaves, month, { ...count, from: p.from, to: p.to });
+    const working = monthLeaveDays(leaves, month, { ...count, from: p.from, to: p.to, onWorkingDays: true });
+    unpaid += typed.unpaid;
+    paidWorking += working.paid;
+    unpaidWorking += working.unpaid;
   }
   const hundredths = (n: number) => Math.round(n * 100) / 100;
   const unpaidDays = Math.min(hundredths(unpaid), paidDays);
-  const paidOnes = Math.min(hundredths(paid), Math.max(0, paidDays - unpaidDays));
-  return paidOnes > 0 || unpaidDays > 0 ? { paidDays: paidOnes, unpaidDays } : null;
+  const unpaidWorkingDays = Math.min(hundredths(unpaidWorking), paidDays);
+  const paidOnes = Math.min(hundredths(paidWorking), Math.max(0, paidDays - unpaidWorkingDays));
+  if (!(paidOnes > 0 || unpaidDays > 0)) return null;
+  return { paidDays: paidOnes, unpaidDays, ...(unpaidWorkingDays !== unpaidDays && { unpaidWorkingDays }) };
 }
 
 /**

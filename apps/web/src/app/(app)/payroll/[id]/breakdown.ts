@@ -17,6 +17,7 @@ import {
   kpiPerformanceOnly,
   lawRatesFor,
   leaveDaysOf,
+  leaveDaysOff,
   measuredExpectedHours,
   paidAdjustments,
   paysOvertime,
@@ -162,8 +163,9 @@ export function shiftHoursNote(
   const scheduled = `Scheduled ${formatHours(t.expectedHours ?? 0)}${from}`;
   const perDay = typeof t.hoursPerDay === 'number' && t.hoursPerDay > 0 ? formatHours(t.hoursPerDay) : null;
   if (!perDay) return scheduled;
-  // the leave days as the line counted them: HR's, else the month's approved leave (owner, 18 October 2026)
-  const leave = leaveDaysOf({ leave: t.leave ?? null }, { leaveDays: i.leaveDays ?? null, unpaidLeaveDays: i.unpaidLeaveDays ?? null });
+  // the leave days as the line took them out of the hours: HR's, else the month's approved leave's on the shift's working
+  // days (owner, 18 October 2026; leaveDaysOff, 27 October 2026)
+  const leave = leaveDaysOff({ leave: t.leave ?? null }, { leaveDays: i.leaveDays ?? null, unpaidLeaveDays: i.unpaidLeaveDays ?? null });
   const dayKinds: [number | null, string][] = [
     [i.noShowDays, 'no-show day'],
     [leave.leaveDays, 'leave day'],

@@ -38,7 +38,8 @@ import { OD_DAY_BADGE, odDayTitle, odHref } from './official-duty/od';
 // duty" by its status in its own colour, opening its request. A day as the sum of its pairs (owner, 25 October 2026: "the
 // working hours to be calculated between the checkin and out only, not the first and last"; "Count the closed pairs,
 // flag the open one"): a day of several pairs lists them and its break under what it was, and an open last check-in
-// says so in amber under the check-out ("Not short until corrected": its short hours stay empty). An exempt day (owner,
+// says so in amber under the check-out (counted as half a day until corrected, owner, 27 October 2026: "open check ins
+// with half day"; short by the rest). An exempt day (owner,
 // 25 October 2026: "trat them as if they achived their full working hours") carries an "Exempt" badge, its presses
 // still shown for reference.
 

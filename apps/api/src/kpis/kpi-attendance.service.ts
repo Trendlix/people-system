@@ -88,7 +88,7 @@ export class KpiAttendanceService {
         systemPermissionHours: permissions.find((p) => p.employeeId === line.employeeId)?._sum.hours?.toNumber() ?? 0,
         permissionHoursPerMonth: allowance,
         hourly: line.payBasis === 'hourly',
-        // as payroll fills it: a day missing its check-out the shift's hours a day until corrected (25 October 2026)
+        // as payroll fills it: a day missing its check-out half the shift's hours a day until corrected (27 October 2026)
         hoursADay: person.hoursADay,
       });
       const result = payrollLine(line.terms, { ...EMPTY_PAYROLL_INPUTS, ...filled }, rules, law);

@@ -1864,6 +1864,12 @@ export interface PayrollRunView {
    */
   adjustmentsNotOnRun?: { employeeId: string; employeeCode: string; name: string; count: number }[];
   /**
+   * The lines with days counted as half a day for an open check-in (owner, 27 October 2026: "open check ins with half
+   * day"; asked, "Half the shift (4.5 h) until corrected"), each with those dates: Send to the CEO asks HR to confirm
+   * them first, never blocking (HR may decide to pay them so). Left out by an API from before it.
+   */
+  openCheckIns?: { lineId: string; employeeId: string; name: string; dates: string[] }[];
+  /**
    * The C-level people's lines kept from the caller (owner, 19 October 2026): how many, and the row that stands for them
    * ("C-level (2 people) — hidden"); null when the caller sees every line or there are none. The totals, the bank check,
    * the payslips, the exclusions and the additions not on the run already leave them out. Left out by an older API.

@@ -12,13 +12,15 @@
 // than the shift's hours a day; what it counts past them is its extra time (AttendanceDayView.extraHours), and a month's
 // extra time fills its short hours (AttendanceFigures.shortHoursFilled), as the payroll counts the month's total. A day
 // as the sum of its pairs (owner, 25 October 2026: "the working hours to be calculated between the checkin and out only,
-// not the first and last"; "Count the closed pairs, flag the open one"; then "Not short until corrected"): a day kept on
-// the system keeps its check-in → check-out pairs, the break between them and an open last check-in; with an open last
-// check-in its check-out is missing, and like any missing check-out the day is said apart until HR corrects it: its
-// closed pairs' hours shown, never short, no extra time, not among the days counted, and the payroll takes it as the
-// shift's hours a day meanwhile (attendance-import.ts attendanceLineInputs), so nothing is cut. People exempt from
-// check-in (owner, 25 October 2026; check-in-exemptions.ts): an exempt day counts as full, never short, absent or missing
-// a press.
+// not the first and last"; "Count the closed pairs, flag the open one"): a day kept on the system keeps its check-in →
+// check-out pairs, the break between them and an open last check-in; with an open last check-in its check-out is
+// missing, and like any missing check-out the day is said apart until HR corrects it. Such a day counts half the shift
+// (owner, 27 October 2026: "open check ins with half day"; asked, "Half the shift (4.5 h) until corrected", replacing 25
+// October's "Not short until corrected", which counted the whole shift): its closed pairs' hours plus half the shift's
+// hours a day, never more than the shift's hours a day (openCheckInHours), short by the rest, among the days counted, and
+// the payroll takes the same hours (attendance-import.ts lineDayHours), so the pages, the payroll and the KPIs agree; a
+// correction setting the check-out counts the day by its real pairs again. People exempt from check-in (owner, 25
+// October 2026; check-in-exemptions.ts): an exempt day counts as full, never short, absent or missing a press.
 
 import type { PressPair } from './attendance.js';
 import type { AttendanceDayStatus } from './attendance-import.js';
@@ -110,10 +112,17 @@ export interface AttendanceDayView extends KeptDay {
    */
   extraHours: number;
   /**
-   * A check-in without a check-out after it: a day with only a check-in (no hours counted), or a last check-in after the
-   * day's pairs (owner, 25 October 2026: "flag the open one"; its closed pairs' hours shown). Never short until corrected.
+   * A check-in without a check-out after it: a day with only a check-in, or a last check-in after the day's pairs (owner,
+   * 25 October 2026: "flag the open one"). On the system's own attendance counted as half a day until corrected
+   * (`openHalfDay`, 27 October 2026); Zoho's as its import counted it.
    */
   missingCheckOut: boolean;
+  /**
+   * Counted as half a day for its open check-in until corrected (owner, 27 October 2026: "open check ins with half day";
+   * asked, "Half the shift (4.5 h) until corrected"): `hoursCounted` is its closed pairs' hours plus half the shift's
+   * hours a day, within the shift's hours a day (openCheckInHours), and it is short by the rest.
+   */
+  openHalfDay: boolean;
   /** A check-out without a check-in (on the system): no hours counted that day. */
   missingCheckIn: boolean;
   /** The day's flags it knows (CHECK_IN_FLAGS). */
@@ -141,12 +150,34 @@ export function missingCheckOutOn(day: Pick<KeptDay, 'status' | 'checkIn' | 'che
 }
 
 /**
+ * Whether a day counts as half a day for its open check-in (owner, 27 October 2026: "open check ins with half day";
+ * asked, "Half the shift (4.5 h) until corrected", replacing 25 October's "Not short until corrected"): a day worked on
+ * the system's own attendance (a check-in on the system or a device, a correction; not Zoho's, whose hours are its
+ * import's) missing its check-out (missingCheckOutOn). Until HR corrects it: a correction setting the check-out closes
+ * the open check-in and the day counts by its real pairs again.
+ */
+export function openHalfDayOn(day: Pick<KeptDay, 'status' | 'checkIn' | 'checkOut' | 'openAt' | 'od' | 'exempt'> & { source?: string | null }): boolean {
+  return (day.source ?? 'zoho') !== 'zoho' && missingCheckOutOn(day);
+}
+
+/**
+ * The hours such a day counts until corrected: its closed pairs' hours (`pairsHours`, as the day keeps them) plus half
+ * the shift's hours a day, never more than the shift's hours a day: on a 9-hour shift, a check-in alone 4:30, 3:00 of
+ * pairs and an open check-in 7:30, 8:00 and one 9:00. Without the shift's hours, its pairs' hours alone.
+ */
+export function openCheckInHours(pairsHours: number, hoursADay: number | null | undefined): number {
+  const hours = pairsHours > 0 ? pairsHours : 0;
+  return typeof hoursADay === 'number' && hoursADay > 0 ? toMinute(Math.min(hoursADay, hours + hoursADay / 2)) : hours;
+}
+
+/**
  * A kept day with what it shows: a day whose hours are counted (countsDayHours) is short by the shift's hours a day
  * less the hours counted and the day's permission (never below 0), and has extra time when it counts more than the
  * shift's hours a day (owner, 20 October 2026: a shift that counts hours until a time); a check-in without a check-out
- * after it is a missing check-out (owner, 25 October 2026: "Not short until corrected": said apart, its closed pairs'
- * hours shown, never short, no extra time); an exempt day (25 October 2026) is neither short nor extra, nothing missing;
- * any other day is neither.
+ * after it is a missing check-out (owner, 25 October 2026: "flag the open one"), on the system's own attendance counted
+ * as half a day until corrected (owner, 27 October 2026: "open check ins with half day"; openCheckInHours: its pairs'
+ * hours and half a day, within the shift's hours, short by the rest, no extra time), on Zoho's as its import counted it;
+ * an exempt day (25 October 2026) is neither short nor extra, nothing missing; any other day is neither.
  */
 export function attendanceDayView(day: KeptDay, hoursADay: number | null): AttendanceDayView {
   const worked = day.status === 'worked';
@@ -154,16 +185,21 @@ export function attendanceDayView(day: KeptDay, hoursADay: number | null): Atten
   const noPress = !!day.od?.fullDay || !!day.exempt || !!day.wfhDay;
   const missingCheckOut = missingCheckOutOn(day);
   const missingCheckIn = worked && !day.checkIn && !!day.checkOut && !noPress;
+  // an open check-in's day counts half the shift (27 October 2026): its pairs' hours and half a day, within the shift's
+  const openHalfDay = openHalfDayOn(day);
+  const hoursCounted = openHalfDay ? openCheckInHours(day.hoursCounted, hoursADay) : day.hoursCounted;
   const counted = countsDayHours(day) && !day.exempt;
   const expectedHours = worked && typeof hoursADay === 'number' && hoursADay > 0 ? hoursADay : null;
-  const shortHours = counted && expectedHours !== null ? Math.max(0, toMinute(expectedHours - day.hoursCounted - Math.max(0, day.permissionHours))) : 0;
-  const extraHours = counted && expectedHours !== null ? Math.max(0, toMinute(day.hoursCounted - expectedHours)) : 0;
+  const shortHours = counted && expectedHours !== null ? Math.max(0, toMinute(expectedHours - hoursCounted - Math.max(0, day.permissionHours))) : 0;
+  const extraHours = counted && expectedHours !== null ? Math.max(0, toMinute(hoursCounted - expectedHours)) : 0;
   return {
     ...day,
+    hoursCounted,
     expectedHours,
     shortHours,
     extraHours,
     missingCheckOut,
+    openHalfDay,
     missingCheckIn,
     flags: day.exempt ? [] : (day.flags ?? []).filter(isCheckInFlag),
     pairs: day.pairs ?? null,
@@ -177,14 +213,16 @@ export function attendanceDayView(day: KeptDay, hoursADay: number | null): Atten
 
 /**
  * Whether a day's hours are counted (its short hours and extra time worked out, the average a day over it): a day worked
- * from check-in to check-out, not missing its last check-out (owner, 25 October 2026: "Not short until corrected"); an
- * exempt day (25 October 2026: full hours); and a day of official duty (owner, 23 October 2026: "If they forget, the
- * approved hours still count as attended") but for part of a day with one press of two missing, said apart as a missing
- * press.
+ * from check-in to check-out; a day on the system's own attendance missing its last check-out, counted as half a day
+ * until corrected (owner, 27 October 2026: "open check ins with half day"; openHalfDayOn; Zoho's isn't, its hours being
+ * its import's); an exempt day (25 October 2026: full hours); and a day of official duty (owner, 23 October 2026: "If
+ * they forget, the approved hours still count as attended") but for part of a day with one press of two missing, said
+ * apart as a missing press.
  */
-export function countsDayHours(day: Pick<KeptDay, 'status' | 'checkIn' | 'checkOut' | 'od'> & Partial<Pick<KeptDay, 'openAt' | 'exempt' | 'wfhDay'>>): boolean {
+export function countsDayHours(day: Pick<KeptDay, 'status' | 'checkIn' | 'checkOut' | 'od'> & Partial<Pick<KeptDay, 'openAt' | 'exempt' | 'wfhDay' | 'source'>>): boolean {
   if (day.status !== 'worked') return false;
   if (day.exempt || day.wfhDay) return true;
+  if (openHalfDayOn(day)) return true;
   if (day.checkIn && day.checkOut && !day.openAt) return true;
   return !!day.od && (day.od.fullDay || (!day.checkIn && !day.checkOut));
 }

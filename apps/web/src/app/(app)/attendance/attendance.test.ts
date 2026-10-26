@@ -270,8 +270,8 @@ describe('a month’s figures in words', () => {
       ['Short hours', '0:30', "Against the shift's 9:00 a day", 'warn'],
       ['Permission hours', '0:00', 'Approved in the system', null],
       ['Leave days', '0', 'And 1 day of leave in Zoho only, to record', 'warn'],
-      // a missing check-out is never short until corrected (owner, 25 October 2026: "Not short until corrected")
-      ['Missing check-outs', '0', 'A check-in without a check-out: not short until corrected', null],
+      // a missing check-out counts half the shift until corrected (owner, 27 October 2026: "open check ins with half day")
+      ['Missing check-outs', '0', 'A check-in without a check-out: counted as half a day until corrected', null],
     ]);
     expect(figureTiles(NO_ATTENDANCE_FIGURES, { averageHours: null }).find((t) => t.key === 'hours')?.note).toBeNull();
     // no one checks in on the system, and none missing or flagged: no tiles for them
@@ -486,9 +486,10 @@ describe('a day as the sum of its pairs (owner, 25 October 2026: "the working ho
     expect(dayPairs(day)).toEqual({ pairs: '9:02 AM–1:10 PM · 2:00 PM–6:05 PM', break: 'Break 50 min', open: null });
   });
 
-  it('says an open last check-in after the pairs, "flag the open one": a missing check-out, never short until corrected', () => {
+  it('says an open last check-in after the pairs, "flag the open one": a missing check-out, counted as half a day until corrected (27 October 2026)', () => {
     const day = viewOf(dayFromPunches(DATE, presses(['in', '09:00'], ['out', '13:00'], ['in', '14:00'], ['out', '18:00'], ['in', '18:30']), MORNING));
-    expect(day).toMatchObject({ hoursCounted: 8, missingCheckOut: true, shortHours: 0, extraHours: 0, openAt: at('18:30') });
+    // its pairs' 8 hours and half the shift's 9, within the 9: a full day, nothing short
+    expect(day).toMatchObject({ hoursCounted: 9, missingCheckOut: true, openHalfDay: true, shortHours: 0, extraHours: 0, openAt: at('18:30') });
     expect(dayPairs(day)).toEqual({ pairs: '9:00 AM–1:00 PM · 2:00 PM–6:00 PM', break: 'Break 1 h 30 min', open: 'Checked in 6:30 PM · not checked out' });
     // one pair, then a check-in not checked out: the pair and the open press
     const one = viewOf(dayFromPunches(DATE, presses(['in', '09:00'], ['out', '13:00'], ['in', '14:00']), MORNING));
@@ -497,9 +498,9 @@ describe('a day as the sum of its pairs (owner, 25 October 2026: "the working ho
 
   it('adds nothing for a day of one pair, a day with only a check-in, or a day not kept by pairs (Zoho’s, an API from before them)', () => {
     expect(dayPairs(viewOf(dayFromPunches(DATE, presses(['in', '09:00'], ['out', '18:00']), MORNING)))).toBeNull();
-    // only a check-in: its check-out shows Missing, as before
+    // only a check-in: its check-out shows Missing, as before; half the shift counted until corrected (27 October 2026)
     const open = viewOf(dayFromPunches(DATE, presses(['in', '09:00']), MORNING));
-    expect(open.missingCheckOut).toBe(true);
+    expect(open).toMatchObject({ missingCheckOut: true, openHalfDay: true, hoursCounted: 4.5, shortHours: 4.5 });
     expect(dayPairs(open)).toBeNull();
     expect(dayPairs({ pairs: null, openAt: null })).toBeNull();
     expect(dayPairs({})).toBeNull();
