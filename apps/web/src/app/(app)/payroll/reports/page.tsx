@@ -15,6 +15,7 @@ import { loadJson, notLoadedText } from '../load';
 import { PayrollStatusBadge } from '../ui';
 import { CostTrendChart } from './cost-chart';
 import { LeaveReportLink } from './leave/leave-link';
+import { VsInsuranceLink } from './vs-insurance/vs-insurance-link';
 import {
   apiStatisticsPath,
   canSeeReports,
@@ -326,6 +327,7 @@ export default function PayrollReportsPage({ searchParams }: PageProps<'/payroll
           their own: <Link href={SALARY_RAISES_HREF}>Salary Raises</Link> and <Link href={CONTRACTS_REPORT_HREF}>Contracts</Link>.
           <Suspense fallback={null}>
             <LeaveReportLink />
+            <VsInsuranceLink />
           </Suspense>
         </p>
         <div className="mt-6">

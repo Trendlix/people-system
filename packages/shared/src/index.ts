@@ -665,3 +665,8 @@ export * from './leave-report.js';
 // the employee's resignation request (owner, 26 October 2026: "but the employee has to request resignation and then the HR
 // generates the document"): sent from My Requests, recorded by HR as the ending, withdrawn until then
 export * from './resignation-request.js';
+
+// the Payroll vs Social Insurance report (owner, 26 October 2026: "a comparison report between the actual payroll run and
+// the social insurance data"): each line's actual cycle beside the same month on the registered insured wage, and the
+// differences in the insurance shares, the tax, the Fund, the net and the company cost
+export * from './payroll-vs-insurance.js';

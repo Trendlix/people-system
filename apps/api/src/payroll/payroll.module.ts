@@ -7,6 +7,8 @@ import { PayrollSettingsService } from './payroll-settings.service.js';
 import { PayrollService } from './payroll.service.js';
 import { MyPayslipsController, PayslipsController } from './payslips.controller.js';
 import { PayslipsService } from './payslips.service.js';
+import { PayrollVsInsuranceController } from './vs-insurance/vs-insurance.controller.js';
+import { PayrollVsInsuranceService } from './vs-insurance/vs-insurance.service.js';
 
 // Payroll, phase 1 (owner's decisions, 16 October 2026): the settings, monthly runs worked out from the contracts and
 // the month's inputs (packages/shared payroll.ts), the CEO's approval, the payroll register and the bank files; and the
@@ -15,10 +17,12 @@ import { PayslipsService } from './payslips.service.js';
 // typed (owner, 20 October 2026: "expected hours to be locked based on shifts and attendance data"): ExpectedHoursService
 // clears any a draft's line had typed. The employee's own payslips (owner, 20 October 2026, the employee app: "My
 // attendance and payslips"): MyPayslipsController. The contracts module takes a person's draft lines again when a
-// signing is undone or a draft deleted (owner's report, 25 October 2026): PayrollService.rebuildDraftLines.
+// signing is undone or a draft deleted (owner's report, 25 October 2026): PayrollService.rebuildDraftLines. The Payroll vs
+// Social Insurance report (owner, 26 October 2026: "a comparison report between the actual payroll run and the social
+// insurance data"): each line's actual cycle beside the same month on the registered insured wage (vs-insurance/).
 @Module({
-  controllers: [PayrollSettingsController, HolidaysController, PayrollController, PayslipsController, MyPayslipsController],
-  providers: [PayrollSettingsService, HolidaysService, PayrollService, PayslipsService, ExpectedHoursService],
+  controllers: [PayrollSettingsController, HolidaysController, PayrollController, PayslipsController, MyPayslipsController, PayrollVsInsuranceController],
+  providers: [PayrollSettingsService, HolidaysService, PayrollService, PayslipsService, ExpectedHoursService, PayrollVsInsuranceService],
   exports: [PayrollService],
 })
 export class PayrollModule {}
