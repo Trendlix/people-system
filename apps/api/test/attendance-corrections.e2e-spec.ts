@@ -405,5 +405,58 @@ describe('Attendance corrections (e2e)', () => {
         expect(punches.map((p) => [fromDateOnly(p.date), p.at.toISOString()])).toEqual([[day, at(day, '00:30')]]);
       });
     });
+
+    // reported 25 October 2026: asked at 00:30 to set that day's check-in to 08:55, it was taken (owner, 26 October 2026:
+    // "yes", refuse a time not yet come): asked, corrected by HR directly, and at each approval again
+    it('refuses a time not yet come today, asked or corrected by HR; takes one that has passed', async () => {
+      const day = addDays(TODAY, -3);
+      const notYet = "Choose a time that has passed: 8:55 AM today hasn't come yet.";
+      await withClockAt(day, '00:30', async () => {
+        expect(said(await ask('rami', { date: day, kind: 'forgot_check_in', checkIn: '08:55', reason: 'Forgot this morning' }).expect(400))).toEqual([notYet]);
+        expect(
+          said(
+            await api()
+              .post('/api/attendance/corrections')
+              .set('Cookie', hr)
+              .send({ employeeId: ids.zed, date: day, kind: 'forgot_check_in', checkIn: '08:55', checkOut: '17:00', reason: 'Seen at the office by HR' })
+              .expect(400),
+          ),
+        ).toEqual([notYet, "Choose a time that has passed: 5:00 PM today hasn't come yet."]);
+        expect(await prisma.attendanceCorrection.count({ where: { employeeId: { in: [ids.rami, ids.zed] }, date: toDateOnly(day) } })).toBe(0);
+        // one that has passed, the same night
+        const passed = (await ask('rami', { date: day, kind: 'forgot_check_in', checkIn: '00:10', reason: 'Came in after midnight' }).expect(201)).body as Correction;
+        await api().post(`/api/me/attendance/corrections/${passed.id}/cancel`).set('Cookie', sessions.rami).expect(200);
+      });
+      await withClockAt(day, '09:00', async () => {
+        const res = (await ask('rami', { date: day, kind: 'forgot_check_in', checkIn: '08:55', reason: 'Forgot this morning' }).expect(201)).body as Correction;
+        expect(res).toMatchObject({ status: 'with_manager', checkIn: at(day, '08:55') });
+        const hrs = (await api().post('/api/attendance/corrections').set('Cookie', hr).send({ employeeId: ids.zed, date: day, kind: 'forgot_check_in', checkIn: '08:55', reason: 'Seen at the office by HR' }).expect(201))
+          .body as Correction;
+        expect(hrs).toMatchObject({ status: 'approved', checkIn: at(day, '08:55') });
+      });
+    });
+
+    it('checks an approval again: one asked for earlier isn’t approved before its time', async () => {
+      const day = addDays(TODAY, -4);
+      const notYet = "Approve it once the time has passed: 8:55 AM today hasn't come yet.";
+      // asked for at 09:00 (by a clock ahead), decided by the manager and HR at 00:30
+      let id = '';
+      await withClockAt(day, '09:00', async () => {
+        id = ((await ask('rami', { date: day, kind: 'forgot_check_in', checkIn: '08:55', reason: 'Forgot this morning' }).expect(201)).body as Correction).id;
+      });
+      await withClockAt(day, '00:30', async () => {
+        expect(said(await decide(id, sessions.mona, 'approve').expect(409))).toEqual([notYet]);
+        // still with the manager
+        expect((await api().get(`/api/attendance/corrections/${id}`).set('Cookie', sessions.mona).expect(200)).body.status).toBe('with_manager');
+      });
+      await withClockAt(day, '09:00', async () => {
+        await decide(id, sessions.mona, 'approve').expect(200);
+      });
+      await withClockAt(day, '00:30', async () => {
+        expect(said(await decide(id, hr, 'approve').expect(409))).toEqual([notYet]);
+        expect((await api().get(`/api/attendance/corrections/${id}`).set('Cookie', hr).expect(200)).body.status).toBe('with_hr');
+        expect((await decide(id, hr, 'reject', 'Not yet: ask again once the day has come').expect(200)).body.status).toBe('rejected');
+      });
+    });
   });
 });

@@ -318,17 +318,19 @@ function read(t: TypedCorrection): { body: CorrectionBody | null; date: string |
 /**
  * Why the correction can't be sent yet, in the order to fix them (none: it can): the day, what was wrong, the times,
  * then the shared checks against the day as on record (`day`, of the day typed; null while it can't be told: the API
- * checks it), whether its month can be corrected and a correction of it already open. `name`: the employee's when HR
- * corrects it.
+ * checks it), whether its month can be corrected and a correction of it already open, and a time not yet come (`now`,
+ * the moment now; owner, 26 October 2026: "yes"; none while it isn't known: the API checks it). `name`: the employee's
+ * when HR corrects it.
  */
 export function correctionFormProblems(
   typed: TypedCorrection,
-  ctx: { today: string; day: CorrectableDay | null; known: boolean; correctable: MonthCorrectable | null; open: boolean; name?: string | null },
+  ctx: { today: string; now?: number | null; day: CorrectableDay | null; known: boolean; correctable: MonthCorrectable | null; open: boolean; name?: string | null },
 ): string[] {
   const { body, date, errors } = read(typed);
   if (!body || !date) return errors;
   const problems = correctionProblems(body, {
     today: ctx.today,
+    now: ctx.now ?? null,
     // what isn't known here (the month's payroll, the day on record) the API checks when it is sent
     runStatus: ctx.correctable && !ctx.correctable.allowed ? 'approved' : null,
     day: ctx.known ? ctx.day : null,

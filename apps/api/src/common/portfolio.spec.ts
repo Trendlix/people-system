@@ -207,6 +207,29 @@ describe('the strictest mode across a position’s job titles', () => {
     expect(strictestAsk([{ ...HIDDEN_PORTFOLIO, title: 'Your models' }, { ...HIDDEN_PORTFOLIO }])).toMatchObject({ mode: 'hidden', title: 'Your models' });
     expect(strictestAsk([]).title).toBe('Your work samples');
   });
+
+  // reported 25 October 2026: a position set to Hidden was read back without its hint and kinds, and the page's next
+  // Save sent them so (owner, 26 October 2026: "yes", keep them)
+  it('none asking: what they keep, read the same way, for a vacancy asking anyway; the forms still take nothing', () => {
+    const kept = ask('hidden', ['website', 'google_drive'], 'Models you built', 2, 'Your spreadsheets');
+    expect(strictestAsk([kept])).toEqual({ ...kept, kinds: ['google_drive', 'website'] });
+    expect(strictestAsk([ask('hidden', ['github'], null, 1, 'Your code'), ask('hidden', ['vimeo'], 'A reel', 2, 'Your reel')])).toEqual({
+      mode: 'hidden',
+      title: 'Your reel',
+      hint: 'A reel',
+      kinds: ['vimeo', 'github'],
+      maxLinks: 2,
+    });
+    // one asking: only those asking count, as before
+    expect(strictestAsk([kept, ask('optional', ['github'], 'GitHub', 1, 'Your code')])).toEqual({ mode: 'optional', title: 'Your code', hint: 'GitHub', kinds: ['github'], maxLinks: 1 });
+    // a vacancy asking anyway takes them; while hidden the forms take nothing
+    expect(withVacancyMode(strictestAsk([kept]), 'optional')).toEqual({ mode: 'optional', title: 'Your spreadsheets', hint: 'Models you built', kinds: ['google_drive', 'website'], maxLinks: 2 });
+    expect(checkPortfolio({ links: ['https://drive.google.com/file/1'], file: false }, strictestAsk([kept]))).toEqual({ links: [], file: false, problems: [] });
+    // kept as a setting, not the rule's Hidden (no row) of a job title asking none
+    const setting = tidyAsk({ mode: 'hidden', title: 'Your spreadsheets', hint: ' Models  you built ', kinds: ['website', 'google_drive'], maxLinks: 2 }, 'Your work samples');
+    expect(setting).toEqual({ ...kept, kinds: ['google_drive', 'website'] });
+    expect(sameAsk(setting, portfolioDefaultFor('Accountant'))).toBe(false);
+  });
 });
 
 describe('a vacancy’s own mode', () => {

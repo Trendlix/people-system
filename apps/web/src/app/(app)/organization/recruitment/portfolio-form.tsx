@@ -148,7 +148,8 @@ export function PortfolioSettingsList({ positions }: { positions: readonly Portf
                 {!p.set && <span className="badge ms-2 bg-canvas text-muted">Default</span>}
                 <span className="block text-xs text-muted">
                   {askWithTitleText(p.ask)}
-                  {p.ask.hint ? ` · “${p.ask.hint}”` : ''}
+                  {/* a hidden one keeps its hint for a vacancy asking anyway (26 October 2026); the forms show none */}
+                  {p.ask.mode !== 'hidden' && p.ask.hint ? ` · “${p.ask.hint}”` : ''}
                 </span>
               </li>
             ))}

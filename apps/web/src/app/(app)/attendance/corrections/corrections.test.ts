@@ -132,6 +132,17 @@ describe('the form', () => {
     expect(correctionFormProblems(typed({ kind: 'forgot_check_in', checkIn: '9:00 AM' }), { ...ctx, known: false })).toEqual([]);
   });
 
+  // owner, 26 October 2026: "yes", a time not yet come refused, live as the other checks
+  it('refuses live a time not yet come, by the clock now; not checked before the clock is read', () => {
+    const today = { ...ctx, today: DAY, day: null };
+    const cameIn = typed({ kind: 'forgot_check_in', checkIn: '8:55 AM', checkOut: '' });
+    expect(correctionFormProblems(cameIn, { ...today, now: zonedMoment(DAY, '00:30') })).toEqual(["Choose a time that has passed: 8:55 AM today hasn't come yet."]);
+    expect(correctionFormProblems(cameIn, { ...today, now: zonedMoment(DAY, '08:55') })).toEqual([]);
+    expect(correctionFormProblems(cameIn, { ...today, now: null })).toEqual([]);
+    // a day gone by, whatever the time now
+    expect(correctionFormProblems(typed(), { ...ctx, now: zonedMoment('2026-10-19', '00:30') })).toEqual([]);
+  });
+
   it('is read into what the API takes: the times as HH:MM, only those the kind asks for', () => {
     expect(correctionForm(form({ date: '12/10/2026', kind: 'forgot_check_out', checkIn: '9:00 AM', checkOut: '6:30 PM', reason: ' Client ' }))).toEqual({
       body: { date: DAY, kind: 'forgot_check_out', checkOut: '18:30', reason: 'Client' },

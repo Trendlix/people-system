@@ -13,11 +13,14 @@
 // between the checkin and out only, not the first and last"): a correction giving both times replaces the day's presses
 // with that one pair, as before; one giving the check-out alone closes the day's open last check-in (its missing
 // check-out, "flag the open one" for HR to correct), else moves its last check-out; one giving the check-in alone moves
-// its first check-in; the day's other pairs stay, so a break stays uncounted (correctedDay).
+// its first check-in; the day's other pairs stay, so a break stays uncounted (correctedDay). A time not yet come is
+// refused (reported 25 October 2026: a correction asked at 00:30 set that day's check-in to 08:55; owner, 26 October
+// 2026: "yes", refuse it): a check-in or check-out after now in Cairo, when asked, when HR corrects directly, and again at
+// each approval, so one asked for earlier still isn't approved before its time (notYetComeProblems).
 
 import { breakMinutesOf, mostHoursCountedADay, shiftWindowOn, spanHours, spansOfPairs, zonedMoment, type PressPair, type ShiftWindowTimes, type TimeSpan } from './attendance.js';
 import type { AttendanceDayStatus } from './attendance-import.js';
-import { cairoClock, isCheckInFlag, type AttendanceSource, type CheckInFlag, type CountingShift, type DayPlace } from './check-in.js';
+import { cairoClock, cairoDay, isCheckInFlag, type AttendanceSource, type CheckInFlag, type CountingShift, type DayPlace } from './check-in.js';
 
 /** What was wrong with the day. */
 export const CORRECTION_KINDS = ['forgot_check_in', 'forgot_check_out', 'wrong_time', 'worked_remotely'] as const;
@@ -85,6 +88,11 @@ export interface CorrectionContext {
   open: boolean;
   /** The employee's name when HR corrects the day directly; null for the employee's own ("you"). */
   name?: string | null;
+  /**
+   * The moment now (ms), for a time not yet come (26 October 2026): a check-in or check-out after it is refused. None:
+   * not checked (the web form before it knows the time; the API always gives it).
+   */
+  now?: number | null;
 }
 
 const DATE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
@@ -95,6 +103,32 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
 const monthName = (ymd: string) => `${MONTHS[Number(ymd.slice(5, 7)) - 1]} ${ymd.slice(0, 4)}`;
 const nextDate = (ymd: string) => new Date(Date.parse(`${ymd}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
 const crossesMidnight = (shift: ShiftWindowTimes | null) => !!shift && shift.endTime.slice(0, 5) <= shift.startTime.slice(0, 5);
+
+/** What the one asking (or HR correcting directly) is told to do about a time not yet come. */
+export const NOT_YET_COME_LEAD = 'Choose a time that has passed';
+/** What the manager or HR approving is told (an approval checks it again). */
+export const NOT_YET_COME_APPROVAL_LEAD = 'Approve it once the time has passed';
+
+/**
+ * The times not yet come, in words (reported 25 October 2026: asked at 00:30 to set that day's check-in to 08:55; owner,
+ * 26 October 2026: "yes", refuse it): each moment after `now` (ms), "Choose a time that has passed: 8:55 AM today hasn't
+ * come yet." ("tomorrow" for a night shift's check-out on the next morning). A moment at `now` or before is fine, so a
+ * day gone by is unaffected, as is a night shift's check-out on the next day once it has passed. The moments are a
+ * correction's check-in and check-out (and any pair's), ISO; none given are skipped. `lead`: what to do about it.
+ */
+export function notYetComeProblems(moments: readonly (string | Date | null | undefined)[], now: number, lead: string = NOT_YET_COME_LEAD): string[] {
+  const today = cairoDay(now);
+  const problems: string[] = [];
+  for (const moment of moments) {
+    const ms = moment ? new Date(moment).getTime() : Number.NaN;
+    if (!Number.isFinite(ms) || ms <= now) continue;
+    const day = cairoDay(ms);
+    const when = day === today ? 'today' : day === nextDate(today) ? 'tomorrow' : `on ${shown(day)}`;
+    const text = `${lead}: ${cairoClock(ms)} ${when} hasn't come yet.`;
+    if (!problems.includes(text)) problems.push(text);
+  }
+  return problems;
+}
 
 /**
  * The right times as moments (ISO): on the day in Cairo; a check-out earlier than the check-in (given or on record) is
@@ -124,8 +158,8 @@ export function correctionMoments(
  * why (required, at most 500 characters), the times (HH:MM); a month whose payroll is approved; a correction of the day
  * already being decided; a day of leave; then what each kind needs: forgot to check in, the time they came in (and no
  * check-in on record); forgot to check out, the time they left (and no check-out on record); a time wrong, a time other
- * than the one on record; worked remotely or at a client, a check-in (typed or on record); and the time they left after
- * the time they came in.
+ * than the one on record; worked remotely or at a client, a check-in (typed or on record); a time typed that hasn't come
+ * yet (with `ctx.now`; 26 October 2026); and the time they left after the time they came in.
  */
 export function correctionProblems(input: CorrectionInput, ctx: CorrectionContext): string[] {
   const you = ctx.name ? `${ctx.name} has` : 'You have';
@@ -165,6 +199,11 @@ export function correctionProblems(input: CorrectionInput, ctx: CorrectionContex
   if (problems.length) return problems;
 
   const moments = correctionMoments(input.date, input, day, ctx.shift);
+  // a time not yet come (owner, 26 October 2026: "yes"), as the moment it is (a night shift's check-out the next morning)
+  if (typeof ctx.now === 'number' && Number.isFinite(ctx.now)) {
+    problems.push(...notYetComeProblems([moments.checkIn, moments.checkOut], ctx.now));
+    if (problems.length) return problems;
+  }
   if (kind === 'wrong_time' && sameMoment(moments.checkIn, day?.checkIn ?? null, !!inTime) && sameMoment(moments.checkOut, day?.checkOut ?? null, !!outTime)) {
     problems.push(`Those are the times on record for ${when} already.`);
   }

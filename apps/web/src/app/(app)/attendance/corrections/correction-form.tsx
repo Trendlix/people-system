@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { startTransition, useActionState, useState } from 'react';
+import { startTransition, useActionState, useState, useSyncExternalStore } from 'react';
 import { ATTENDANCE_SOURCE_LABELS, CORRECTION_REASON_MAX, type AttendanceSource, type CorrectableDay } from '@trendlix/shared';
 import { DateInput, TimeInput } from '@/components/date-time-inputs';
 import { FormErrors, useFieldIds, valueOf } from '@/components/form';
@@ -18,10 +18,22 @@ import { CORRECTION_KIND_OPTIONS, correctionFormProblems, correctionReadyText, d
 // person's month, approved at once. The day (chosen already from the day's row), what is on record for it, what was
 // wrong, the right times in 12-hour time (those the kind asks for), and why (required). The shared checks show live,
 // Send staying off while any is left; a day of another month than the one read is checked by the API when it is sent.
+// A time not yet come is refused live too (owner, 26 October 2026: "yes"), by this device's clock read every few seconds
+// (none on the server and while the page loads: the API checks it again by its own).
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
 const optional = <span className="font-normal text-muted">(optional)</span>;
+
+/** The clock, read again every 15 seconds while a form is shown. */
+function everyFewSeconds(onTick: () => void) {
+  const timer = setInterval(onTick, 15_000);
+  return () => clearInterval(timer);
+}
+/** The time now, to the minute (the times are typed to the minute). */
+const minuteNow = () => Math.floor(Date.now() / 60_000) * 60_000;
+/** On the server and while hydrating: not known. */
+const notKnown = () => 0;
 
 /** The month the form knows: its days as shown, its corrections, and whether its days can be corrected. */
 export interface CorrectionMonth {
@@ -65,7 +77,8 @@ export function CorrectionForm({
   const known = !!day && day.startsWith(month.month);
   const onRecord = known ? (month.days.find((d) => d.date === day) ?? null) : null;
   const open = known && month.corrections.some((c) => c.date === day && (c.status === 'with_manager' || c.status === 'with_hr'));
-  const problems = correctionFormProblems(typed, { today, day: onRecord, known, correctable: known ? month.correctable : null, open, name: byHr ? person.name : null });
+  const now = useSyncExternalStore(everyFewSeconds, minuteNow, notKnown);
+  const problems = correctionFormProblems(typed, { today, now: now || null, day: onRecord, known, correctable: known ? month.correctable : null, open, name: byHr ? person.name : null });
   const blocked = problems.length > 0 || sending;
   const needs = timesNeeded(typed.kind, onRecord);
 

@@ -5,6 +5,8 @@ import {
   correctionMoments,
   correctionProblems,
   correctionTimesText,
+  NOT_YET_COME_APPROVAL_LEAD,
+  notYetComeProblems,
   zonedMoment,
   type CorrectableDay,
   type CorrectionContext,
@@ -14,7 +16,8 @@ import {
 // to check out")"; packages/shared attendance-corrections.ts): what each kind needs, a day still to come, a month whose
 // payroll is approved, a correction already asked for, a day of leave, the times in order; the day a correction makes
 // (the right times over those on record, remote and no longer flagged for work at a client, its hours counted again);
-// and when one can be applied.
+// and when one can be applied. A time not yet come (reported 25 October 2026: asked at 00:30 to set that day's check-in
+// to 08:55; owner, 26 October 2026: "yes", refuse it), at its edges.
 
 const DAY = '2026-10-12';
 const at = (time: string, day = DAY) => new Date(zonedMoment(day, time)).toISOString();
@@ -74,6 +77,58 @@ describe('asking for a correction', () => {
     expect(correctionProblems(ask({ checkOut: '06:00' }), ctx({ shift: night, day: nightDay }))).toEqual([]);
     expect(correctionMoments(DAY, { checkOut: '06:00' }, nightDay, night)).toEqual({ checkIn: null, checkOut: at('06:00', '2026-10-13') });
     expect(correctionMoments(DAY, { checkIn: '09:00', checkOut: '18:30' }, null, MORNING)).toEqual({ checkIn: at('09:00'), checkOut: at('18:30') });
+  });
+});
+
+describe('a time not yet come', () => {
+  const TODAY = '2026-10-19';
+  const now = (time: string, day = TODAY) => zonedMoment(day, time);
+  const today = (more: Partial<CorrectionContext> = {}) => ctx({ today: TODAY, day: null, ...more });
+  const askToday = (more: Record<string, string | null> = {}) => ({ date: TODAY, kind: 'forgot_check_in', checkIn: '08:55', checkOut: null, reason: 'Forgot this morning', ...more });
+
+  it('is refused today: asked at 00:30 for a check-in at 08:55, a minute before it; fine exactly then and after', () => {
+    expect(correctionProblems(askToday(), today({ now: now('00:30') }))).toEqual(["Choose a time that has passed: 8:55 AM today hasn't come yet."]);
+    expect(correctionProblems(askToday(), today({ now: now('08:54') }))).toEqual(["Choose a time that has passed: 8:55 AM today hasn't come yet."]);
+    expect(correctionProblems(askToday(), today({ now: now('08:55') }))).toEqual([]);
+    expect(correctionProblems(askToday(), today({ now: now('08:55') + 30_000 }))).toEqual([]);
+    // HR correcting directly: the same
+    expect(correctionProblems(askToday(), today({ now: now('00:30'), name: 'Nour Adel' }))).toEqual(["Choose a time that has passed: 8:55 AM today hasn't come yet."]);
+  });
+
+  it('says each time not yet come, the check-out too; none when the time isn’t known (the web before it reads its clock)', () => {
+    expect(correctionProblems(askToday({ checkOut: '17:00' }), today({ now: now('12:00') }))).toEqual(["Choose a time that has passed: 5:00 PM today hasn't come yet."]);
+    expect(correctionProblems(askToday({ checkOut: '17:00' }), today({ now: now('00:30') }))).toEqual([
+      "Choose a time that has passed: 8:55 AM today hasn't come yet.",
+      "Choose a time that has passed: 5:00 PM today hasn't come yet.",
+    ]);
+    expect(correctionProblems(askToday(), today({ now: null }))).toEqual([]);
+    expect(correctionProblems(askToday(), today())).toEqual([]);
+  });
+
+  it('leaves a day before today alone, whatever the time now', () => {
+    expect(correctionProblems({ ...askToday({ checkIn: '23:30' }), date: '2026-10-18' }, today({ now: now('00:30') }))).toEqual([]);
+    expect(correctionProblems(ask(), ctx({ now: now('00:00') }))).toEqual([]);
+  });
+
+  it('takes a night shift’s check-out on the next morning once it has passed, not before', () => {
+    const night = { startTime: '22:00', endTime: '06:00', hoursPerDay: 8, graceMinutes: 15 };
+    const nightDay = worked({ checkIn: at('22:05', TODAY) });
+    const out = { ...askToday({ kind: 'forgot_check_out', checkIn: null, checkOut: '06:00' }), reason: 'Forgot on the way out' };
+    // asked during the night, the check-out the next morning: not yet
+    expect(correctionProblems(out, today({ now: now('23:00'), shift: night, day: nightDay }))).toEqual(["Choose a time that has passed: 6:00 AM tomorrow hasn't come yet."]);
+    // the next morning, once 06:00 has passed (the day asked for is yesterday by then)
+    expect(correctionProblems(out, today({ today: '2026-10-20', now: now('06:30', '2026-10-20'), shift: night, day: nightDay }))).toEqual([]);
+    expect(correctionProblems(out, today({ today: '2026-10-20', now: now('05:45', '2026-10-20'), shift: night, day: nightDay }))).toEqual([
+      "Choose a time that has passed: 6:00 AM today hasn't come yet.",
+    ]);
+  });
+
+  it('words an approval’s check again: wait for the time, not choose another', () => {
+    const moments = [at('08:55', TODAY), null];
+    expect(notYetComeProblems(moments, now('00:30'), NOT_YET_COME_APPROVAL_LEAD)).toEqual(["Approve it once the time has passed: 8:55 AM today hasn't come yet."]);
+    expect(notYetComeProblems(moments, now('08:55'), NOT_YET_COME_APPROVAL_LEAD)).toEqual([]);
+    expect(notYetComeProblems([new Date(at('08:55', TODAY)), at('08:55', TODAY)], now('00:30'))).toEqual(["Choose a time that has passed: 8:55 AM today hasn't come yet."]);
+    expect(notYetComeProblems([at('09:00', '2026-10-18'), undefined], now('00:30'))).toEqual([]);
   });
 });
 

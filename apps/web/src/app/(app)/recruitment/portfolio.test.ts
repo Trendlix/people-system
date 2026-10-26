@@ -89,6 +89,20 @@ describe('Portfolio on the Forms: the rows read for the API', () => {
     expect(rowValues(position({ ask: { ...byRule, title: 'Your edits' }, set: true })).title).toBe('Your edits');
   });
 
+  // reported 25 October 2026: a position set to Hidden lost its hint and platforms (owner, 26 October 2026: "yes", keep them)
+  it('shows a hidden position’s hint, kinds and links as kept, and sends them back on Save', () => {
+    const shown = rowValues(position({ ask: { mode: 'hidden', title: 'Your edits', hint: 'A reel on Vimeo', kinds: ['vimeo', 'youtube'], maxLinks: 2 }, set: true }));
+    expect(shown).toEqual({ mode: 'hidden', title: 'Your edits', hint: 'A reel on Vimeo', kinds: ['vimeo', 'youtube'], maxLinks: 2 });
+    const fd = new FormData();
+    fd.append(portfolioField.key, KEY);
+    fd.set(portfolioField.mode(KEY), shown.mode);
+    fd.set(portfolioField.title(KEY), shown.title);
+    fd.set(portfolioField.hint(KEY), shown.hint);
+    for (const k of shown.kinds) fd.append(portfolioField.kinds(KEY), k);
+    fd.set(portfolioField.links(KEY), String(shown.maxLinks));
+    expect(portfolioSettingsOf(fd)).toEqual([{ key: KEY, mode: 'hidden', title: 'Your edits', hint: 'A reel on Vimeo', kinds: ['vimeo', 'youtube'], maxLinks: 2 }]);
+  });
+
   it('groups the positions by team, in their order', () => {
     const groups = portfolioByTeam([position(), position({ key: 'team-1:colorist', name: 'Colorist' }), position({ key: 'team-2:writer', teamId: 'team-2', teamHrName: 'Content · Marketing' })]);
     expect(groups.map((g) => [g.team, g.positions.length])).toEqual([

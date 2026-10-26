@@ -191,20 +191,25 @@ export const orderedKinds = (kinds: readonly PortfolioKind[]): PortfolioKind[] =
 /**
  * One ask from several (a position on "Send us your CV" that merges several job titles): the strictest mode; the kinds
  * of every one that asks, together; the most links; the hint of the first of the strictest that has one, and the
- * section title of that one (else of the first of the strictest). None asking: hidden, with the first one's title.
+ * section title of that one (else of the first of the strictest). None asking: hidden, with what they keep, taken the
+ * same way (the kinds of all, the most links, the first hint and its section title), which a vacancy asking anyway uses
+ * (reported 25 October 2026: a position set to Hidden came back here without its hint and platforms, and the page's
+ * next Save sent them so; owner, 26 October 2026: "yes", keep them). A hidden ask still asks nothing on the forms. None
+ * at all: hidden, the default title.
  */
 export function strictestAsk(asks: readonly PortfolioAsk[]): PortfolioAsk {
+  if (!asks.length) return { ...HIDDEN_PORTFOLIO, kinds: [] };
   const asking = asks.filter((a) => a.mode !== 'hidden');
-  if (!asking.length) return { ...HIDDEN_PORTFOLIO, title: asks[0]?.title ?? DEFAULT_PORTFOLIO_TITLE, kinds: [] };
-  const mode = asking.reduce<PortfolioMode>((m, a) => (STRICTNESS[a.mode] > STRICTNESS[m] ? a.mode : m), 'optional');
-  const strictest = asking.filter((a) => a.mode === mode);
+  const among = asking.length ? asking : asks;
+  const mode = asking.reduce<PortfolioMode>((m, a) => (STRICTNESS[a.mode] > STRICTNESS[m] ? a.mode : m), asking.length ? 'optional' : 'hidden');
+  const strictest = among.filter((a) => a.mode === mode);
   const lead = strictest.find((a) => a.hint) ?? strictest[0];
   return {
     mode,
     title: lead.title,
     hint: lead.hint ?? null,
-    kinds: orderedKinds(asking.flatMap((a) => a.kinds)),
-    maxLinks: Math.max(...asking.map((a) => a.maxLinks)),
+    kinds: orderedKinds(among.flatMap((a) => a.kinds)),
+    maxLinks: Math.max(...among.map((a) => a.maxLinks)),
   };
 }
 
@@ -441,7 +446,8 @@ export function portfolioSettingProblems(s: Partial<PortfolioSettingInput>, name
 
 /**
  * A setting as kept: its kinds in order and each once, the hint trimmed (none when empty), the section title trimmed
- * (blank: `defaultTitle`, the rule's for the job title), hidden with no kinds.
+ * (blank: `defaultTitle`, the rule's for the job title). Hidden may have no kinds; one with kinds and a hint keeps them
+ * (26 October 2026), for a vacancy that asks anyway.
  */
 export function tidyAsk(s: Pick<PortfolioSettingInput, 'mode' | 'title' | 'hint' | 'kinds' | 'maxLinks'>, defaultTitle: string = DEFAULT_PORTFOLIO_TITLE): PortfolioAsk {
   const hint = typeof s.hint === 'string' && s.hint.trim() ? s.hint.trim().replace(/\s+/g, ' ') : null;

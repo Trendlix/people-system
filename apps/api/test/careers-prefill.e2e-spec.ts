@@ -334,6 +334,49 @@ describe('Careers forms: filled from the CV, LinkedIn sign-in, portfolio per pos
     expect(await prisma.portfolioSetting.count({ where: { jobTitleId: accountantTitleId } })).toBe(0);
   });
 
+  // reported 25 October 2026: a position set to Hidden lost its hint and platforms, while the form says "The kinds and
+  // hint stay for a vacancy that asks for one anyway" (owner, 26 October 2026: "yes", keep them)
+  it('a position set to Hidden keeps its hint, platforms, links and title: read back, saved again as shown, Optional again, asked anyway by a vacancy', async () => {
+    const accountantKey = positionKeyOf(teamId, positionNameOf(`Accountant ${RUN}`));
+    const kept = { title: 'Your spreadsheets', hint: 'Models you built, on Drive or your own site', kinds: ['google_drive', 'website'], maxLinks: 2 };
+    const read = async () => ((await as('hr').get('/recruitment/settings/portfolio').expect(200)).body as PortfolioSettingsView).positions.find((x) => x.key === accountantKey)!;
+    const jobPage = async () => ((await api().get(`/api/public/careers/${accountantJob.slug}`).set('x-careers-key', process.env.CAREERS_KEY!).expect(200)).body as PublicVacancyView).portfolio;
+
+    await as('hr').put('/recruitment/settings/portfolio', { positions: [{ key: accountantKey, mode: 'optional', ...kept }] }).expect(200);
+    expect(await read()).toMatchObject({ set: true, ask: { mode: 'optional', ...kept } });
+
+    // Hidden, everything else as it was (the form sends every field of the row)
+    const saved = (await as('hr').put('/recruitment/settings/portfolio', { positions: [{ key: accountantKey, mode: 'hidden', ...kept }] }).expect(200)).body as PortfolioSettingsView;
+    expect(saved.positions.find((x) => x.key === accountantKey)).toMatchObject({ set: true, ask: { mode: 'hidden', ...kept } });
+    expect(await prisma.portfolioSetting.findUniqueOrThrow({ where: { jobTitleId: accountantTitleId } })).toMatchObject({ mode: 'hidden', ...kept });
+    const shown = await read();
+    expect(shown).toMatchObject({ set: true, ask: { mode: 'hidden', ...kept } });
+
+    // the page saved again as it shows the row (every row is sent on Save): still kept
+    const again = { key: accountantKey, mode: shown.ask.mode, title: shown.ask.title, hint: shown.ask.hint, kinds: shown.ask.kinds, maxLinks: shown.ask.maxLinks };
+    await as('hr').put('/recruitment/settings/portfolio', { positions: [again] }).expect(200);
+    expect(await read()).toMatchObject({ set: true, ask: { mode: 'hidden', ...kept } });
+
+    // the careers forms still don't ask: the job's form hidden, "Send us your CV" leaves it out
+    expect((await jobPage())?.mode).toBe('hidden');
+    const form = (await api().get('/api/public/general-cvs/form').set('x-careers-key', process.env.CAREERS_KEY!).expect(200)).body as PublicGeneralForm;
+    expect(form.portfolios?.[accountantKey]).toBeUndefined();
+
+    // a vacancy asking anyway uses them
+    await as('hr').patch(`/recruitment/vacancies/${accountantJob.id}`, { portfolioMode: 'optional' }).expect(200);
+    expect(await jobPage()).toEqual({ mode: 'optional', ...kept });
+    await as('hr').patch(`/recruitment/vacancies/${accountantJob.id}`, { portfolioMode: null }).expect(200);
+
+    // Optional again: they are there
+    await as('hr').put('/recruitment/settings/portfolio', { positions: [{ ...again, mode: 'optional' }] }).expect(200);
+    expect(await read()).toMatchObject({ set: true, ask: { mode: 'optional', ...kept } });
+    expect(await jobPage()).toEqual({ mode: 'optional', ...kept });
+
+    // back to its default: no row
+    await as('hr').put('/recruitment/settings/portfolio', { positions: [{ key: accountantKey, mode: 'hidden', hint: null, kinds: [], maxLinks: 3 }] }).expect(200);
+    expect(await prisma.portfolioSetting.count({ where: { jobTitleId: accountantTitleId } })).toBe(0);
+  });
+
   it('"Send us your CV": a position merging two job titles asks the strictest of theirs', async () => {
     const motionKey = positionKeyOf(teamId, positionNameOf(`Junior Motion Designer ${RUN}`));
     // the junior one set apart (a job title added since the position was set): Optional, GitHub

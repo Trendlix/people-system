@@ -10,6 +10,8 @@ import {
   leaveDecisionStepKind,
   leaveStage,
   leaveStatusAfterApproval,
+  NOT_YET_COME_APPROVAL_LEAD,
+  notYetComeProblems,
   type CorrectableDay,
   type LeaveStatus,
 } from '@trendlix/shared';
@@ -85,7 +87,10 @@ export interface MonthCorrectable {
 // source 'correction' over the day it corrects, which stays as it was, its hours counted again), the month's draft payroll
 // line refilled (AttendanceFillService); never while the month's payroll is with the CEO (it would miss it), approved or
 // paid. HR corrects a day directly, with a reason, approved at once (never their own; a C-level person's only HR with
-// Super Admin). Each step is logged on the correction and in the audit log, the day's change too.
+// Super Admin). Each step is logged on the correction and in the audit log, the day's change too. A time not yet come
+// (reported 25 October 2026: asked at 00:30 to set that day's check-in to 08:55; owner, 26 October 2026: "yes", refuse
+// it) is refused by now in Cairo when asked and when HR corrects directly (correctionProblems), and again at each
+// approval, the manager's and HR's, so one asked for earlier isn't approved before its time.
 @Injectable()
 export class AttendanceCorrectionsService {
   constructor(
@@ -207,6 +212,11 @@ export class AttendanceCorrectionsService {
     // a stand-in's decision keeps the approver they stood in for, on the step and in the audit log
     const onBehalfOf = decidedOnBehalfOf(stage, parties, caller);
     const date = fromDateOnly(before.date);
+    // an approval checks again that its times have come (26 October 2026)
+    if (to !== 'rejected') {
+      const notYet = notYetComeProblems([before.checkIn, before.checkOut], Date.now(), NOT_YET_COME_APPROVAL_LEAD);
+      if (notYet.length) throw new ConflictException(notYet);
+    }
     if (to === 'approved') {
       const refusal = correctionApplyRefusal(date, await this.runStatus(date));
       if (refusal) throw new ConflictException(refusal);
@@ -307,7 +317,7 @@ export class AttendanceCorrectionsService {
       const shown = person?.days.find((d) => d.date === date) ?? null;
       const day: CorrectableDay | null = shown && { ...shown };
       const shift = person?.employment?.shift ? shiftTimesOf(person.employment.shift) : null;
-      const problems = correctionProblems(dto, { today: todayInCairo(), runStatus, day, shift, open: open > 0, name });
+      const problems = correctionProblems(dto, { today: todayInCairo(), now: Date.now(), runStatus, day, shift, open: open > 0, name });
       if (!problems.length && byHr) {
         const refusal = correctionApplyRefusal(date, runStatus);
         if (refusal) problems.push(refusal);
