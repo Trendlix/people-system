@@ -16,11 +16,15 @@
 // its first check-in; the day's other pairs stay, so a break stays uncounted (correctedDay). A time not yet come is
 // refused (reported 25 October 2026: a correction asked at 00:30 set that day's check-in to 08:55; owner, 26 October
 // 2026: "yes", refuse it): a check-in or check-out after now in Cairo, when asked, when HR corrects directly, and again at
-// each approval, so one asked for earlier still isn't approved before its time (notYetComeProblems).
+// each approval, so one asked for earlier still isn't approved before its time (notYetComeProblems). A new employee's
+// first day (owner, 27 October 2026: "a new employee when checked in in his first day move the checkin to 9am
+// automatically to prevent delay in instructions"; "Counted from the shift start"): a correction over it keeps the rule
+// (correctedDay with `firstDay`, as check-in.ts dayFromPunches): its first pair runs from the shift's start, the day's
+// check-in stays the press (or the time HR gave), so the new employee who forgot to check out isn't short once corrected.
 
 import { breakMinutesOf, mostHoursCountedADay, shiftWindowOn, spanHours, spansOfPairs, zonedMoment, type PressPair, type ShiftWindowTimes, type TimeSpan } from './attendance.js';
 import type { AttendanceDayStatus } from './attendance-import.js';
-import { cairoClock, cairoDay, isCheckInFlag, type AttendanceSource, type CheckInFlag, type CountingShift, type DayPlace } from './check-in.js';
+import { cairoClock, cairoDay, fromShiftStart, isCheckInFlag, type AttendanceSource, type CheckInFlag, type CountingShift, type DayCountOptions, type DayPlace } from './check-in.js';
 
 /** What was wrong with the day. */
 export const CORRECTION_KINDS = ['forgot_check_in', 'forgot_check_out', 'wrong_time', 'worked_remotely'] as const;
@@ -252,8 +256,11 @@ export interface CorrectedDay {
  * the open last check-in when after it, else ends the last pair there (a pair starting after it dropped); the check-in
  * alone starts the first pair there (a pair ending before it dropped), the only check-in of a day without pairs, or
  * pairs with a check-out that had none. A day not kept by pairs (Zoho's, one gone by) is its check-in to its check-out.
+ * On the first working day of the person's employment (`firstDay`; owner, 27 October 2026: "Counted from the shift
+ * start") the first pair runs from the shift's start when its check-in is after it (check-in.ts fromShiftStart), as a
+ * press keeps the day; the day's check-in stays as recorded (the press, or the time given).
  */
-export function correctedDay(base: CorrectableDay | CorrectedDay | null, c: AppliedCorrection, date: string, shift: CountingShift | null): CorrectedDay {
+export function correctedDay(base: CorrectableDay | CorrectedDay | null, c: AppliedCorrection, date: string, shift: CountingShift | null, options: DayCountOptions = {}): CorrectedDay {
   const remote = c.kind === 'worked_remotely';
   // each moment as it was given (an ISO string kept as it is)
   const given = new Map<number, string>();
@@ -308,11 +315,16 @@ export function correctedDay(base: CorrectableDay | CorrectedDay | null, c: Appl
     else open = cin;
   }
   const window = shift ? shiftWindowOn(date, shift) : null;
-  const hours = spanHours(pairs, window, shift ? mostHoursCountedADay(shift) : null);
+  // a new employee's first day (27 October 2026): the first pair from the shift's start, as a press keeps the day
+  const counted = options.firstDay ? fromShiftStart(pairs, window) : pairs;
+  const hours = spanHours(counted, window, shift ? mostHoursCountedADay(shift) : null);
   const firstIn = Math.min(pairs[0]?.from ?? Number.POSITIVE_INFINITY, open ?? Number.POSITIVE_INFINITY);
-  const checkIn = Number.isFinite(firstIn) ? iso(firstIn) : null;
+  // the day's check-in: the one given; else the day's as recorded when it lies in its first pair (a first day's press
+  // after the shift's start the pair was moved to, 27 October 2026); else the first pair's start or the open check-in
+  const recorded = cin === null && baseIn !== null && pairs.length > 0 && baseIn >= pairs[0].from && baseIn <= pairs[0].to ? baseIn : null;
+  const checkIn = cin !== null ? iso(cin) : recorded !== null ? iso(recorded) : Number.isFinite(firstIn) ? iso(firstIn) : null;
   // a check-out with no check-in at all (forgot to check in, not yet corrected): as given, or as on record
-  const checkOut = pairs.length ? iso(pairs[pairs.length - 1].to) : checkIn ? null : (c.checkOut ?? base?.checkOut ?? null);
+  const checkOut = counted.length ? iso(counted[counted.length - 1].to) : checkIn ? null : (c.checkOut ?? base?.checkOut ?? null);
   return {
     status: 'worked',
     checkIn,
@@ -320,9 +332,9 @@ export function correctedDay(base: CorrectableDay | CorrectedDay | null, c: Appl
     place: remote ? 'remote' : (base?.place ?? null),
     flags: remote ? [] : (base?.flags ?? []).filter(isCheckInFlag),
     hoursCounted: Math.round(hours * 60) / 60,
-    pairs: pairs.map((p) => ({ in: iso(p.from), out: iso(p.to) })),
+    pairs: counted.map((p) => ({ in: iso(p.from), out: iso(p.to) })),
     openAt: open === null ? null : iso(open),
-    breakMinutes: breakMinutesOf(pairs, open, window),
+    breakMinutes: breakMinutesOf(counted, open, window),
   };
 }
 

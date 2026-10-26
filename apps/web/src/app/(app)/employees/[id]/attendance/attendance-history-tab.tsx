@@ -4,7 +4,7 @@ import { DateInput } from '@/components/date-time-inputs';
 import type { AttendanceHistoryView } from '@/lib/attendance-history-types';
 import { formatDate, formatDateTime } from '@/lib/format';
 import type { EmployeeProfile } from '@/lib/types';
-import { COMPENSATORY_DAY_TITLE, dayPairs, EXEMPT_DAY_TITLE, hoursText } from '../../../attendance/attendance';
+import { COMPENSATORY_DAY_TITLE, dayPairs, EXEMPT_DAY_TITLE, FIRST_DAY_BADGE, firstDayNote, hoursText } from '../../../attendance/attendance';
 import { DayPairsLine, OpenPressLine } from '../../../attendance/ui';
 import { Empty } from '../../../organization/ui';
 import { loadJson } from '../../../payroll/load';
@@ -40,6 +40,9 @@ import {
 // check-in → check-out pairs (owner, 25 October 2026: "the working hours to be calculated between the checkin and out
 // only, not the first and last") lists them and its break under its hours, an open last check-in under its last out;
 // an exempt day (owner, 25 October 2026: "trat them as if they achived their full working hours") is an "Exempt" badge.
+// A new employee's first day (owner, 27 October 2026: "a new employee when checked in in his first day move the checkin
+// to 9am automatically to prevent delay in instructions"): never late, so its Late cell says "First day" instead, with
+// how it was counted on hover.
 
 const chip = 'inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3.5 text-sm font-semibold no-underline';
 const ACTIVE = 'border-ink bg-ink text-white hover:text-white';
@@ -305,7 +308,19 @@ function Log({ v, q }: { v: AttendanceHistoryView; q: HistoryQuery }) {
                     <span className="whitespace-nowrap">{d.status === 'worked' ? hoursText(d.hours) : <span className="text-muted">—</span>}</span>
                     <DayPairsLine pairs={dayPairs(d)} />
                   </td>
-                  <td className="whitespace-nowrap tabular-nums">{d.onTime === false ? <span className="font-semibold text-warn">{lateText(d.lateMinutes)}</span> : <span className="text-muted">—</span>}</td>
+                  <td className="whitespace-nowrap tabular-nums">
+                    {d.onTime === false ? (
+                      <span className="font-semibold text-warn">{lateText(d.lateMinutes)}</span>
+                    ) : d.firstDay ? (
+                      // a first day counted from the shift's start (27 October 2026): never late
+                      <span className="text-muted" title={firstDayNote(d) ?? undefined}>
+                        {FIRST_DAY_BADGE}
+                        {firstDayNote(d) && <span className="sr-only"> ({firstDayNote(d)})</span>}
+                      </span>
+                    ) : (
+                      <span className="text-muted">—</span>
+                    )}
+                  </td>
                   <td className="whitespace-nowrap">
                     <SourceCell d={d} />
                   </td>

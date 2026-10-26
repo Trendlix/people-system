@@ -18,6 +18,7 @@ import {
   dayTimesText,
   exemptToday,
   expectedTextOf,
+  firstDayNote,
   flagLabels,
   latestView,
   locationHelpText,
@@ -134,6 +135,8 @@ export function CheckInPanel({ initial, compact = false, big = false }: { initia
   const warned = !!last && (last.flags.length > 0 || last.place === 'unknown');
   const exempt = exemptToday(view);
   const expectedText = expectedTextOf(view);
+  // their first working day (owner, 27 October 2026): counted from the shift's start whatever time they check in
+  const firstDayText = firstDayNote(view);
   const breakTime = day ? dayBreakText(day) : null;
 
   return (
@@ -151,6 +154,7 @@ export function CheckInPanel({ initial, compact = false, big = false }: { initia
         </p>
       )}
       {expectedText && <p className="text-sm">{expectedText}</p>}
+      {firstDayText && <p className="text-sm font-medium">{firstDayText}</p>}
       {note && <p className="text-sm">{note}</p>}
       {/* on the website, when presses without a location are refused for them (inside the app it is always needed); the
           GPS lock's note says so already */}

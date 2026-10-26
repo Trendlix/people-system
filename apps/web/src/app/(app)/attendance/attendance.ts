@@ -11,6 +11,8 @@ import {
   EXEMPT_BADGE,
   EXEMPTION_LABEL,
   exemptionWhenText,
+  FIRST_DAY_LABEL,
+  firstDayNoteText,
   formatHours,
   isAttendanceFilter,
   isCheckInFlag,
@@ -59,6 +61,9 @@ import { ATTENDANCE_IMPORT_PATH, ATTENDANCE_IMPORTS_PATH, ATTENDANCE_PATH, ATTEN
 // check-in says "Checked in 6:30 PM · not checked out" (dayPairs).
 // People exempt from check-in (owner, 25 October 2026: "trat them as if they achived their full working hours"): an
 // exempt day, a person's month with exempt days and its periods carry an "Exempt" badge (exemptBadge, exemptionsText).
+// A new employee's first day (owner, 27 October 2026: "a new employee when checked in in his first day move the checkin
+// to 9am automatically to prevent delay in instructions"; "Counted from the shift start"): a day counted from the shift's
+// start says so under its check-in, "First day: counted from the shift start (checked in 10:40 AM)" (firstDayNote).
 
 type WithRoles = { roles: readonly Role[] };
 type Query = Record<string, string | string[] | undefined>;
@@ -499,6 +504,18 @@ export function exemptBadge(of: { exempt?: boolean | null; exemptDays?: number |
   const on = !!of.exempt || (typeof of.exemptDays === 'number' && of.exemptDays > 0);
   return on ? { label: EXEMPT_BADGE, title: EXEMPT_DAY_TITLE } : null;
 }
+
+// ---------- a new employee's first day (owner, 27 October 2026: "Counted from the shift start") ----------
+
+/** The label of a first day counted from the shift's start, where a day's lateness would be said. */
+export const FIRST_DAY_BADGE = FIRST_DAY_LABEL;
+
+/**
+ * A day counted from the shift's start (a new employee's first day; packages/shared countedFromShiftStart): "First day:
+ * counted from the shift start (checked in 10:40 AM)", under its check-in; null for any other day, and for a day from an
+ * API from before the pairs.
+ */
+export const firstDayNote = (day: { checkIn: string | null; pairs?: readonly PressPair[] | null }): string | null => firstDayNoteText(day);
 
 /** "3 exempt days", "1 exempt day"; null with none (an API from before them has none). */
 export function exemptDaysText(f: { exemptDays?: number | null }): string | null {

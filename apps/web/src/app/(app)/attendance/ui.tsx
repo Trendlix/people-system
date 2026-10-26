@@ -12,6 +12,7 @@ import {
   exemptBadge,
   exemptionsText,
   extraHoursText,
+  firstDayNote,
   hoursText,
   sourceText,
   type DayPairs,
@@ -41,7 +42,10 @@ import { OD_DAY_BADGE, odDayTitle, odHref } from './official-duty/od';
 // says so in amber under the check-out (counted as half a day until corrected, owner, 27 October 2026: "open check ins
 // with half day"; short by the rest). An exempt day (owner,
 // 25 October 2026: "trat them as if they achived their full working hours") carries an "Exempt" badge, its presses
-// still shown for reference.
+// still shown for reference. A new employee's first day (owner, 27 October 2026: "a new employee when checked in in his
+// first day move the checkin to 9am automatically to prevent delay in instructions"; "Counted from the shift start"):
+// the day is counted from the shift's start whatever time they pressed, so under its check-in (the press itself) a quiet
+// line says "First day: counted from the shift start (checked in 10:40 AM)" (FirstDayLine).
 
 const LINK = 'btn btn-secondary min-h-9 px-3 no-underline';
 const TONE = { danger: 'text-danger', warn: 'text-warn' } as const;
@@ -124,6 +128,16 @@ export function DayPairsLine({ pairs, className = 'mt-1' }: { pairs: DayPairs | 
 export function OpenPressLine({ pairs, exempt = false, className = 'mt-1' }: { pairs: DayPairs | null; exempt?: boolean; className?: string }) {
   if (!pairs?.open) return null;
   return <span className={`block text-xs ${exempt ? 'text-muted' : 'font-medium text-warn'} ${className}`}>{pairs.open}</span>;
+}
+
+/**
+ * A new employee's first day, counted from the shift's start (owner, 27 October 2026), under its check-in: "First day:
+ * counted from the shift start (checked in 10:40 AM)"; nothing for any other day.
+ */
+export function FirstDayLine({ day, className = 'mt-1' }: { day: Parameters<typeof firstDayNote>[0]; className?: string }) {
+  const note = firstDayNote(day);
+  if (!note) return null;
+  return <span className={`block text-xs text-muted ${className}`}>{note}</span>;
 }
 
 /** The badge of a day worked from home (approved for them), a distinct style from leave: a dashed outline. */
@@ -209,6 +223,8 @@ export function DaysTable({
                 </td>
                 <td className="min-w-36">
                   <DayEndView end={row.checkIn} />
+                  {/* a first day counted from the shift's start (27 October 2026): the press itself shown, the note under it */}
+                  <FirstDayLine day={d} />
                 </td>
                 <td className="min-w-36">
                   <DayEndView end={row.checkOut} />

@@ -7,6 +7,7 @@ import { json } from '../payroll/line-work.js';
 import { firstDay, lastDay } from '../payroll/months.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AttendanceDaysService, DAY_SELECT, shiftTimesOf } from './attendance-days.service.js';
+import { firstWorkingDayOn } from './first-day.js';
 
 type Db = PrismaService | Prisma.TransactionClient;
 
@@ -28,7 +29,11 @@ export interface CorrectionDayChange {
 // its presses with that pair, as before; corrections only ever set the day's check-in and check-out, never a single
 // press in between. Made again whenever that day changes (a
 // check-in on the system that day, a Zoho import applied or undone), so a correction of today still takes a later
-// check-out; gone when no correction of the day is approved.
+// check-out; gone when no correction of the day is approved. A new employee's first day (owner, 27 October 2026: "a new
+// employee when checked in in his first day move the checkin to 9am automatically to prevent delay in instructions"): a
+// correction over the first working day of the employment keeps the day counted from the shift's start (packages/shared
+// correctedDay with `firstDay`, as a press keeps it), unless the day it corrects is Zoho People's (no presses: never
+// affected).
 @Injectable()
 export class CorrectionDaysService {
   constructor(
@@ -58,9 +63,11 @@ export class CorrectionDaysService {
     const person = (await this.days.monthOf(month, [employeeId], rows, db)).get(employeeId);
     const base = person?.days.find((d) => d.date === date) ?? null;
     const shift = person?.employment?.shift ? shiftTimesOf(person.employment.shift) : null;
+    // the first working day of their employment (27 October 2026): counted from the shift's start, never over Zoho's day
+    const onFirstDay = !!person?.employment && base?.source !== 'zoho' && (await firstWorkingDayOn(db, person.employment, date));
     let day: CorrectableDay | CorrectedDay | null = base;
     for (const c of corrections) {
-      day = correctedDay(day, { kind: c.kind as CorrectionKind, checkIn: c.checkIn?.toISOString() ?? null, checkOut: c.checkOut?.toISOString() ?? null }, date, shift);
+      day = correctedDay(day, { kind: c.kind as CorrectionKind, checkIn: c.checkIn?.toISOString() ?? null, checkOut: c.checkOut?.toISOString() ?? null }, date, shift, { firstDay: onFirstDay });
     }
     const after = day as CorrectedDay;
     // its pairs and open last check-in too, when it was kept by them (25 October 2026)

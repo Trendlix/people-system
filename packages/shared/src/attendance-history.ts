@@ -20,7 +20,11 @@
 //   the first check-in; a day missing its last check-out isn't counted towards the average until corrected;
 // - a day exempt from check-in (owner, 25 October 2026: "trat them as if they achived their full working hours";
 //   check-in-exemptions.ts) is Exempt: attended and on time, its full hours counted; its presses, kept for reference,
-//   aren't in the average check-in nor its distribution.
+//   aren't in the average check-in nor its distribution;
+// - a new employee's first day (owner, 27 October 2026: "a new employee when checked in in his first day move the checkin
+//   to 9am automatically to prevent delay in instructions"; "Counted from the shift start"; check-in.ts
+//   countedFromShiftStart): never late, whatever time they pressed, and its check-in isn't in the average check-in nor
+//   its distribution (the delay was the onboarding's, not theirs); the log says "First day: counted from the shift start".
 // Pure: the API works the figures out with these and the web shows the same words.
 
 import { shiftWindowOn, zonedMoment, type ShiftWindowTimes } from './attendance.js';
@@ -28,7 +32,7 @@ import { isFlexibleShift, shiftWorkHours } from './payroll.js';
 import { countsDayHours, type AttendanceDayView } from './attendance-days.js';
 import type { AttendanceDayStatus } from './attendance-import.js';
 import type { PressPair } from './attendance.js';
-import type { AttendanceSource } from './check-in.js';
+import { countedFromShiftStart, type AttendanceSource } from './check-in.js';
 import { odCoversStart } from './official-duty.js';
 
 // ---------- the period ----------
@@ -158,6 +162,11 @@ export interface HistoryDay {
   breakMinutes: number | null;
   /** Exempt from check-in that day (owner, 25 October 2026): full hours, on time. */
   exempt: boolean;
+  /**
+   * A new employee's first day, counted from the shift's start whatever time they checked in (owner, 27 October 2026;
+   * check-in.ts countedFromShiftStart): never late, its check-in not among the check-in times.
+   */
+  firstDay: boolean;
 }
 
 const EXPECTED_STATUSES: readonly AttendanceDayStatus[] = ['worked', 'absent', 'no_check_in'];
@@ -169,18 +178,22 @@ export function historyDay(d: HistoryDayInput): HistoryDay {
   const attended = expected && (d.status === 'worked' || d.status === 'no_check_in');
   const worked = d.status === 'worked';
   const exempt = worked && !!d.exempt;
+  // a first day counted from the shift's start (27 October 2026)
+  const firstDay = worked && countedFromShiftStart(d);
   let mode: HistoryMode;
   if (worked) mode = d.od ? 'od' : exempt && d.compensatory ? 'compensatory' : exempt ? 'exempt' : d.wfh || d.wfhDay || d.place === 'home' ? 'wfh' : d.place === 'remote' ? 'remote' : 'office';
   else mode = d.status as HistoryMode;
   const midnight = zonedMoment(d.date, '00:00');
-  // an exempt day's presses are for reference only (25 October 2026): not in the check-in times
-  const checkInMinutes = d.checkIn && !exempt && Number.isFinite(midnight) ? Math.floor((Date.parse(d.checkIn) - midnight) / 60_000) : null;
+  // an exempt day's presses are for reference only (25 October 2026): not in the check-in times; nor a first day's
+  // check-in (27 October 2026), the day counted from the shift's start
+  const checkInMinutes = d.checkIn && !exempt && !firstDay && Number.isFinite(midnight) ? Math.floor((Date.parse(d.checkIn) - midnight) / 60_000) : null;
   let onTime: boolean | null = null;
   let lateMinutes = 0;
   if (expected && worked) {
     // never late on an exempt day (25 October 2026), nor on an approved work from home day without a check-in (26 October
-    // 2026: "Full day, always"), nor on official duty from the start
-    if (exempt || d.wfhDay || (d.od && odCoversStart(d.date, d.od, d.shift))) onTime = true;
+    // 2026: "Full day, always"), nor on official duty from the start, nor on a first day counted from the shift's start
+    // (27 October 2026: "to prevent delay in instructions")
+    if (exempt || firstDay || d.wfhDay || (d.od && odCoversStart(d.date, d.od, d.shift))) onTime = true;
     else if (d.checkIn && d.shift) {
       const window = shiftWindowOn(d.date, d.shift);
       if (window) {
@@ -220,6 +233,7 @@ export function historyDay(d: HistoryDayInput): HistoryDay {
     openAt: d.openAt ?? null,
     breakMinutes: d.breakMinutes ?? null,
     exempt,
+    firstDay,
   };
 }
 
@@ -288,7 +302,7 @@ export const HISTORY_FIGURE_DEFINITIONS = {
   wfhDays: 'Days worked from home: an approved work from home day, or checked in at their approved home.',
   odDays: 'Days on approved official duty, counted as attended for its hours.',
   extraHours: 'Hours counted past the shift’s hours a day, on a shift that counts hours until a time; the payroll doesn’t pay overtime now.',
-  lateDays: 'Days attended with the first check-in after the shift’s start and its grace minutes; late minutes count from the start.',
+  lateDays: 'Days attended with the first check-in after the shift’s start and its grace minutes; late minutes count from the start. A new employee’s first day is never late: it is counted from the shift’s start.',
 } as const;
 
 const NO_FIGURES: HistoryFigures = {

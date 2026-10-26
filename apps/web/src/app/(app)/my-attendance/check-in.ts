@@ -21,6 +21,7 @@ import {
   shiftWindowOn,
   shiftWorkHours,
   SPOT_KEPT_TEXT,
+  timeOfDayText,
   type CheckInLocationError,
   type CheckInPlace,
   type PunchKind,
@@ -41,7 +42,11 @@ import { weekdayOf } from '../organization/holidays/holidays';
 // the location, the press as the API takes it, and the panel's words. Relative imports: the tests run without "@/". A
 // day as the sum of its pairs (owner, 25 October 2026: "the working hours to be calculated between the checkin and out
 // only, not the first and last"): the panel lists today's pairs so far and their hours, and the counter counts them
-// with the time since the last check-in, never the break between them.
+// with the time since the last check-in, never the break between them. A new employee's first day (owner, 27 October
+// 2026: "a new employee when checked in in his first day move the checkin to 9am automatically to prevent delay in
+// instructions"; "Counted from the shift start"): the API says the day is their first (`firstDay`), the panel tells them
+// it counts from the shift's start whatever time they check in (firstDayNote), and the counter counts from it (CountRule
+// `fromStart`), as the day will be counted.
 
 // ---------- the browser's location ----------
 
@@ -325,6 +330,11 @@ export interface CountRule {
   countUntil: number | null;
   hoursToWork: number | null;
   extraCounts: boolean;
+  /**
+   * A new employee's first day (owner, 27 October 2026: "Counted from the shift start"): counting from `windowStart` even
+   * when the check-in came after it (before `countUntil`), as the day is counted. Missing: from the check-in, as any day.
+   */
+  fromStart?: boolean;
 }
 
 /** No shift to count by: the time since the check-in, with no target (never a wrong one). */
@@ -341,13 +351,14 @@ type TodayShift = NonNullable<CheckInTodayView['shift']>;
  * shift's runs into the next day), its end moved by the grace, and its hours to work (set on the shift, else its
  * whole window: a fixed shift's); time past them doesn't count. With "Count hours until" (owner, 20 October 2026:
  * makesUpHours) the window ends then instead (shiftWindowOn) and the time past the hours to work counts. No shift, or
- * one whose window can't be told: PLAIN_COUNT.
+ * one whose window can't be told: PLAIN_COUNT. On the first working day of their employment (`firstDay`, the API's;
+ * owner, 27 October 2026) the count is from the window's start whatever time they checked in (`fromStart`).
  */
-export function countRuleOf(date: string, shift: TodayShift | null | undefined): CountRule {
+export function countRuleOf(date: string, shift: TodayShift | null | undefined, firstDay = false): CountRule {
   if (!shift || typeof shift.startTime !== 'string' || typeof shift.endTime !== 'string') return { ...PLAIN_COUNT };
   const window = shiftWindowOn(date, shift);
   if (!window) return { ...PLAIN_COUNT };
-  return { windowStart: window.start, countUntil: window.end, hoursToWork: shiftWorkHours(shift), extraCounts: makesUpHours(shift) };
+  return { windowStart: window.start, countUntil: window.end, hoursToWork: shiftWorkHours(shift), extraCounts: makesUpHours(shift), ...(firstDay && { fromStart: true }) };
 }
 
 /**
@@ -361,10 +372,12 @@ export interface CheckInCount {
   /** The time counted so far, in whole seconds' milliseconds. */
   countedMs: number;
   phase: CountPhase;
-  /** When counting starts: the check-in, or the window's start when later. */
+  /** When counting starts: the check-in, or the window's start when later (or on a first day, 27 October 2026). */
   countsFrom: number;
-  /** Checked in before the window's start: counting from it. */
+  /** Checked in before the window's start, or on a first day after it: counting from the window's start. */
   fromWindowStart: boolean;
+  /** A first day counted from the window's start though the check-in came after it (owner, 27 October 2026). */
+  firstDay?: boolean;
   /** The hours to work are reached. */
   hoursDone: boolean;
   /** When the hours to work are done; null without them, or when that is after `countUntil`. */
@@ -383,7 +396,10 @@ const moment = (n: number | null | undefined): number | null => (typeof n === 'n
  * now and `countUntil`, at most the hours to work unless extra time counts, never below 0. Null when the check-in or
  * now isn't a moment. `before` (owner, 25 October 2026: "the working hours to be calculated between the checkin and out
  * only, not the first and last"): the time today's closed pairs counted already (ms), the check-in being the one since
- * the last check-out, so the break between them never counts; together at most the hours to work as before.
+ * the last check-out, so the break between them never counts; together at most the hours to work as before. `fromStart`
+ * (a new employee's first day, owner, 27 October 2026: "Counted from the shift start"): a check-in after the window's
+ * start and before `countUntil` counts from the window's start, as the day will (packages/shared dayFromPunches); one
+ * after `countUntil` counts nothing, as any day's.
  */
 export function checkInCount(input: CountRule & { checkIn: number; now: number; before?: number }): CheckInCount | null {
   const checkIn = moment(input.checkIn);
@@ -394,7 +410,9 @@ export function checkInCount(input: CountRule & { checkIn: number; now: number; 
   const hoursToWork = typeof input.hoursToWork === 'number' && input.hoursToWork > 0 && Number.isFinite(input.hoursToWork) ? input.hoursToWork : null;
   const target = hoursToWork === null ? null : Math.round(hoursToWork * 3_600_000);
   const before = Math.max(0, moment(input.before) ?? 0);
-  const countsFrom = windowStart === null ? checkIn : Math.max(checkIn, windowStart);
+  // a first day's check-in after the start, before the limit: from the start (27 October 2026)
+  const firstDay = !!input.fromStart && windowStart !== null && checkIn > windowStart && (countUntil === null || checkIn < countUntil);
+  const countsFrom = windowStart === null ? checkIn : firstDay ? windowStart : Math.max(checkIn, windowStart);
   const end = countUntil === null ? now : Math.min(now, countUntil);
   const span = before + Math.max(0, end - countsFrom);
   const hoursDone = target !== null && span >= target;
@@ -419,12 +437,13 @@ export function checkInCount(input: CountRule & { checkIn: number; now: number; 
     countedMs: Math.floor(counted / 1000) * 1000,
     phase,
     countsFrom,
-    fromWindowStart: windowStart !== null && checkIn < windowStart,
+    fromWindowStart: (windowStart !== null && checkIn < windowStart) || firstDay,
     hoursDone,
     doneAt,
     countUntil,
     hoursToWork,
     before,
+    ...(firstDay && { firstDay }),
   };
 }
 
@@ -464,7 +483,8 @@ export function counterWords(c: CheckInCount): CounterWords {
   const earlier = (c.before ?? 0) > 0 ? `${formatHours(Math.floor((c.before ?? 0) / 60_000) / 60)} from earlier today` : null;
   const note =
     c.fromWindowStart && c.phase !== 'after_limit'
-      ? `Counting from ${cairoClock(c.countsFrom)}, when your shift starts${earlier ? `, with ${earlier}` : ''}`
+      ? // a first day (27 October 2026): counted from the shift's start though they checked in after it
+        `Counting from ${cairoClock(c.countsFrom)}, when your shift starts${c.firstDay ? ' (your first day)' : ''}${earlier ? `, with ${earlier}` : ''}`
       : earlier
         ? `Counting since ${cairoClock(c.countsFrom)}, with ${earlier}; the break isn’t counted`
         : null;
@@ -482,15 +502,28 @@ export type CounterShows = ({ kind: 'live' } & CounterWords) | { kind: 'total'; 
  * check-in, as then. Once checked out, "Worked 8:52 today", the hours the server counted; nothing before a check-in (a
  * day off, a holiday, leave), or for a check-out without one.
  */
-export function counterShows(view: Pick<CheckInTodayView, 'date' | 'next' | 'day' | 'shift'>, now: number): CounterShows {
+export function counterShows(view: Pick<CheckInTodayView, 'date' | 'next' | 'day' | 'shift' | 'firstDay'>, now: number): CounterShows {
   const day = view.day;
   if (!day?.checkIn) return null;
   if (view.next === 'in') return day.checkOut ? { kind: 'total', text: `Worked ${formatHours(day.hoursCounted)} today` } : null;
   const paired = Array.isArray(day.pairs);
   const since = paired && day.openAt ? Date.parse(day.openAt) : Date.parse(day.checkIn);
   const before = paired && day.openAt && day.pairs!.length ? Math.round(day.hoursCounted * 3_600_000) : 0;
-  const count = checkInCount({ ...countRuleOf(view.date, view.shift), checkIn: since, now, before });
+  // a first day (27 October 2026): the first check-in counts from the shift's start; a check-in after a pair doesn't
+  const count = checkInCount({ ...countRuleOf(view.date, view.shift, !!view.firstDay && before === 0), checkIn: since, now, before });
   return count ? { kind: 'live', ...counterWords(count) } : null;
+}
+
+/**
+ * What the panel tells a new employee on their first working day (owner, 27 October 2026: "a new employee when checked in
+ * in his first day move the checkin to 9am automatically to prevent delay in instructions"): "Your first day: it is
+ * counted from your shift’s start, 8:00 AM, whatever time you check in." Null on any other day, and from an API from
+ * before it.
+ */
+export function firstDayNote(view: Pick<CheckInTodayView, 'firstDay' | 'shift'>): string | null {
+  if (!view.firstDay) return null;
+  const start = view.shift?.startTime ? `, ${timeOfDayText(view.shift.startTime)}` : '';
+  return `Your first day: it is counted from your shift’s start${start}, whatever time you check in.`;
 }
 
 /** The server's clock as the counter keeps it: the newest server time seen, and how far it is ahead of this device's. */

@@ -17,9 +17,16 @@
 // source 'device' (ATTENDANCE_SOURCES). Pure: the API decides with these and the web shows the same words. Home
 // locations (owner, 20 October 2026: "allow other users to request to add their home locations when working from home",
 // then "Label Home, flag elsewhere"): within a person's approved home a check-in is Home (remote for every other rule),
-// and a remote one elsewhere is flagged for them; the home's own point is never kept on a punch.
+// and a remote one elsewhere is flagged for them; the home's own point is never kept on a punch. A new employee's first
+// day (owner, 27 October 2026: "a new employee when checked in in his first day move the checkin to 9am automatically to
+// prevent delay in instructions"; asked, "Counted from the shift start"): on the first working day of an employment
+// (firstWorkingDayFrom) the day is counted from the shift's start whatever time they pressed check-in, so onboarding and
+// instructions don't make them short or late; the press itself is kept as it was (the punches, and the day's check-in),
+// the first pair runs from the shift's start to its check-out (dayFromPunches with `firstDay`), and the check-out stays
+// real. A day so counted is told from its own data (countedFromShiftStart): the pages note it, the history never calls
+// it late, the payroll and the KPIs take its hours as any day's.
 
-import { breakMinutesOf, mostHoursCountedADay, pairPresses, pressPairsOf, shiftWindowOn, spanHours, type PressPair, type ShiftWindowTimes } from './attendance.js';
+import { breakMinutesOf, mostHoursCountedADay, pairPresses, pressPairsOf, shiftWindowOn, spanHours, timeOfDayText, type PressPair, type ShiftWindow, type ShiftWindowTimes, type TimeSpan } from './attendance.js';
 import type { WorkPlace } from './attendance-import.js';
 import type { ShiftTimes } from './payroll.js';
 
@@ -372,6 +379,12 @@ export interface PunchedDay {
 /** A shift as a day's hours are counted with it: its window, hours to work and grace minutes. */
 export type CountingShift = ShiftWindowTimes & Pick<ShiftTimes, 'hoursPerDay'>;
 
+/** How a day is counted besides its presses: on a new employee's first day, from the shift's start (owner, 27 October 2026). */
+export interface DayCountOptions {
+  /** The first working day of the person's employment (firstWorkingDayFrom): the first pair runs from the shift's start. */
+  firstDay?: boolean;
+}
+
 /**
  * A day from its punches (owner's brief, 19 October 2026: "the day's check-in is the first in, check-out the last out
  * (the Zoho meaning)"): the first check-in, the last check-out after it (none after it: none; no check-in at all: the
@@ -379,9 +392,14 @@ export type CountingShift = ShiftWindowTimes & Pick<ShiftTimes, 'hoursPerDay'>;
  * hours to be calculated between the checkin and out only, not the first and last"; "Count the closed pairs, flag the
  * open one") are its check-in → check-out pairs' (attendance.ts pairPresses), each within the shift's window on `date`
  * moved by the grace, together at most the shift's hours a day (no shift: not clipped nor capped), to the minute; the
- * pairs, the break between them and an open last check-in are kept with the day.
+ * pairs, the break between them and an open last check-in are kept with the day. On the first working day of an
+ * employment (`firstDay`; owner, 27 October 2026: "a new employee when checked in in his first day move the checkin to
+ * 9am automatically to prevent delay in instructions", asked, "Counted from the shift start") the first pair runs from
+ * the shift window's start when the first check-in was pressed after it (fromShiftStart), so the day counts as if they
+ * had come in at the start; the day's check-in stays the press itself, the check-out stays real, and later pairs are as
+ * they were.
  */
-export function dayFromPunches(date: string, punches: readonly PunchLike[], shift: CountingShift | null): PunchedDay {
+export function dayFromPunches(date: string, punches: readonly PunchLike[], shift: CountingShift | null, options: DayCountOptions = {}): PunchedDay {
   const sorted = [...punches].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
   const ins = sorted.filter((p) => p.kind === 'in');
   const outs = sorted.filter((p) => p.kind === 'out');
@@ -389,8 +407,11 @@ export function dayFromPunches(date: string, punches: readonly PunchLike[], shif
   const lastOut = (firstIn ? outs.filter((p) => Date.parse(p.at) > Date.parse(firstIn.at)) : outs).at(-1) ?? null;
   // the check-ins' flags; of a check-out's, only fake GPS (its place breaks no rule), in the order pressed
   const flags = [...new Set(sorted.flatMap((p) => (p.flags ?? []).filter(isCheckInFlag).filter((f) => p.kind === 'in' || f === 'fake_gps')))];
-  const { pairs, open } = pairPresses(sorted);
+  const paired = pairPresses(sorted);
   const window = shift ? shiftWindowOn(date, shift) : null;
+  // a new employee's first day (27 October 2026): the first pair from the shift's start
+  const pairs = options.firstDay ? fromShiftStart(paired.pairs, window) : paired.pairs;
+  const open = paired.open;
   const hours = spanHours(pairs, window, shift ? mostHoursCountedADay(shift) : null);
   return {
     checkIn: firstIn?.at ?? null,
@@ -403,6 +424,19 @@ export function dayFromPunches(date: string, punches: readonly PunchLike[], shif
     openAt: open === null ? null : (ins.find((p) => Date.parse(p.at) === open)?.at ?? new Date(open).toISOString()),
     breakMinutes: breakMinutesOf(pairs, open, window),
   };
+}
+
+/**
+ * A first day's pairs (owner, 27 October 2026: "Counted from the shift start"): the first pair starts at the shift
+ * window's start when its check-in was pressed after it and before the window's end; a check-in before the start is
+ * left as it is (the window clips it, as any day's), one after the window's end too (the day was over: nothing counts,
+ * as any day's; Claude's choice, the owner can change it), and so are the pairs after the first. No window (no shift):
+ * nothing to count from.
+ */
+export function fromShiftStart(pairs: readonly TimeSpan[], window: ShiftWindow | null): TimeSpan[] {
+  const first = pairs[0];
+  if (!window || !first || first.from <= window.start || first.from >= window.end) return [...pairs];
+  return [{ from: window.start, to: first.to }, ...pairs.slice(1)];
 }
 
 /** What the next press is: Check out while the last punch of the day is a check-in, else Check in. */
@@ -455,6 +489,73 @@ export function shiftDayOf(moment: Date | string | number, shift: ShiftWindowTim
   };
   return gap(before) < gap(day) ? before : day;
 }
+
+// ---------- a new employee's first day (owner, 27 October 2026) ----------
+// The owner, 27 October 2026: "a new employee when checked in in his first day move the checkin to 9am automatically to
+// prevent delay in instructions"; asked, "Counted from the shift start": on the first working day of an employment, the
+// day is counted from the shift's start whatever time they pressed check-in (dayFromPunches with `firstDay`). Which day
+// (Claude's choice): the first working day of the person's shift on or after the employment's join date, official
+// holidays and the shift's rest days skipped (a Sunday joiner's is that Sunday; a Friday joiner's the next Sunday; a
+// joiner on a holiday's the working day after), within two weeks of the join date; every employment has one, so a
+// rehire's new employment has its own first day (new onboarding). The kept day carries the rule in its first pair
+// (from the shift's start), its check-in the press itself: a day counted so is told from that (countedFromShiftStart),
+// so the pages, the history, the payroll and the KPIs read it alike without a column of its own.
+
+/** How many days after the join date the first working day is looked for (a long holiday at most). */
+export const FIRST_DAY_LOOK_AHEAD = 14;
+
+/** The shift's working days when none are known: Sunday to Thursday (leaves.ts DEFAULT_WORKING_DAYS, kept apart from it). */
+const SUN_TO_THU: readonly number[] = [0, 1, 2, 3, 4];
+
+/**
+ * The first working day of an employment: the first day on or after its join date (YYYY-MM-DD) that is a working day of
+ * the shift (`workingDays`, 0 = Sunday; none known: Sunday to Thursday) and not an official holiday (`holidays`,
+ * YYYY-MM-DD), within FIRST_DAY_LOOK_AHEAD days of the join date; null when none is (or the join date isn't a date).
+ */
+export function firstWorkingDayFrom(joinDate: string, workingDays: readonly number[] | null | undefined, holidays: Iterable<string> = []): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(joinDate) || !Number.isFinite(Date.parse(`${joinDate}T00:00:00Z`))) return null;
+  const working = new Set(workingDays?.length ? workingDays : SUN_TO_THU);
+  const off = new Set(holidays);
+  for (let i = 0; i <= FIRST_DAY_LOOK_AHEAD; i++) {
+    const date = nextDate(joinDate, i);
+    if (working.has(new Date(`${date}T00:00:00Z`).getUTCDay()) && !off.has(date)) return date;
+  }
+  return null;
+}
+
+/** Whether `date` is the first working day of an employment (firstWorkingDayFrom). */
+export const isFirstWorkingDay = (date: string, joinDate: string, workingDays: readonly number[] | null | undefined, holidays: Iterable<string> = []): boolean =>
+  firstWorkingDayFrom(joinDate, workingDays, holidays) === date;
+
+/**
+ * Whether a kept day was counted from the shift's start (a first day, 27 October 2026): its first pair starts before its
+ * first check-in, which no other rule makes (a day's first pair otherwise starts at its first check-in; a correction
+ * giving the check-in moves both). A day without pairs or a check-in: no.
+ */
+export function countedFromShiftStart(day: { checkIn: string | null | undefined; pairs?: readonly PressPair[] | null | undefined }): boolean {
+  const first = day.pairs?.[0];
+  if (!first || !day.checkIn) return false;
+  const [from, pressed] = [Date.parse(first.in), Date.parse(day.checkIn)];
+  return Number.isFinite(from) && Number.isFinite(pressed) && from < pressed;
+}
+
+/** The note's first words, as the pages badge it. */
+export const FIRST_DAY_LABEL = 'First day';
+
+/**
+ * What the pages say of a day counted from the shift's start: "First day: counted from the shift start (checked in
+ * 10:40 AM)"; null for any other day.
+ */
+export function firstDayNoteText(day: { checkIn: string | null | undefined; pairs?: readonly PressPair[] | null | undefined }): string | null {
+  return countedFromShiftStart(day) ? `${FIRST_DAY_LABEL}: counted from the shift start (checked in ${cairoClock(day.checkIn!)})` : null;
+}
+
+/**
+ * What the employee is told on their first day's check-in: "Your first day is counted from the shift's start, 8:00 AM,
+ * whatever time you checked in." (the shift's start time, HH:mm, said on the 12-hour clock).
+ */
+export const firstDayMessage = (shift: Pick<ShiftWindowTimes, 'startTime'>): string =>
+  `Your first day is counted from the shift’s start, ${timeOfDayText(shift.startTime)}, whatever time you checked in.`;
 
 /**
  * What the employee is told once a punch is kept (owner's brief, 19 October 2026: "Checking out without checking in, or

@@ -9,6 +9,7 @@ import {
   EXEMPT_CHECK_IN_TEXT,
   expectedPlace,
   expectedPlaceText,
+  firstDayMessage,
   gpsLockVerdict,
   locationRefusal,
   lockedToCheckInLocations,
@@ -49,6 +50,7 @@ import { CheckInSetupService } from './check-in-setup.service.js';
 import type { PunchDto } from './check-in.dto.js';
 import { CorrectionDaysService } from './correction-days.service.js';
 import { exemptionOn } from './exemption-days.js';
+import { firstWorkingDayOn } from './first-day.js';
 import { HomeLocationsService } from './home-locations.service.js';
 import { coordinate, PUNCH_SELECT, punchView, type PunchRow, type PunchView } from './punch-views.js';
 import type { SignedIp } from './signed-ip.js';
@@ -124,6 +126,13 @@ export interface CheckInTodayView {
    * 20 October 2026: "no working hours to be counted after 8 PM even if the check out was 11 PM"; null: none).
    */
   shift: { startTime: string; endTime: string; hoursPerDay: number | null; graceMinutes: number; countUntil: string | null } | null;
+  /**
+   * Whether the day is the first working day of their employment (owner, 27 October 2026: "a new employee when checked in
+   * in his first day move the checkin to 9am automatically to prevent delay in instructions"; packages/shared check-in.ts
+   * firstWorkingDayFrom): the day is counted from the shift's start whatever time they check in, and the counter counts
+   * from it.
+   */
+  firstDay: boolean;
 }
 
 /** POST /me/attendance/punches: the day after the punch, and what to tell them. */
@@ -137,12 +146,14 @@ export interface PunchResultView extends CheckInTodayView {
 const EMPLOYMENT = {
   id: true,
   employmentType: true,
+  // the join date and the shift's working days: the first working day of the employment (27 October 2026)
+  joinDate: true,
   shiftId: true,
   workArrangement: true,
   officeDays: true,
   checkInAnywhere: true,
   checkInWithoutLocation: true,
-  shift: { select: { startTime: true, endTime: true, hoursPerDay: true, graceMinutes: true, countUntil: true } },
+  shift: { select: { startTime: true, endTime: true, hoursPerDay: true, graceMinutes: true, countUntil: true, workingDays: true } },
 } satisfies Prisma.EmploymentSelect;
 
 type CheckInEmploymentRow = Prisma.EmploymentGetPayload<{ select: typeof EMPLOYMENT }>;
@@ -210,6 +221,14 @@ export interface PunchContext {
 // them and an open last check-in, its hours the finished pairs' (packages/shared dayFromPunches). Exempt from check-in
 // (owner, 25 October 2026: "Optional check-in"): on a day of their exemption a press is kept for reference, never
 // refused by the network's lock nor the GPS lock and never flagged; their day counts as full wherever it is read.
+// A new employee's first day (owner, 27 October 2026: "a new employee when checked in in his first day move the checkin
+// to 9am automatically to prevent delay in instructions"; asked, "Counted from the shift start"): on the first working
+// day of their employment (firstWorkingDayOn: the shift's first working day on or after the join date, holidays skipped)
+// the day kept from the punches runs from the shift's start whatever time they pressed (packages/shared dayFromPunches
+// with `firstDay`), the press itself kept as it was and the check-out real; the employee is told so on checking in, and
+// today's view says it is their first day so the counter counts from the start too (which day: first-day.ts). The recount
+// (hours-by-pairs.service.ts) applies the same rule to first days kept before it, and a correction over a first day keeps
+// it (correction-days.service.ts).
 @Injectable()
 export class CheckInService {
   constructor(
@@ -310,6 +329,8 @@ export class CheckInService {
     // said is a mock one (fake GPS); a remote check-in by someone with an approved home, away from it, the office and
     // the sub-locations (not at home or the office); one within a sub-location they aren't linked to (not their location)
     const flags = exempt ? [] : punchFlags(dto.kind, expected, place, mock, home !== null, subLocation);
+    // their first working day (owner, 27 October 2026): the day counted from the shift's start whatever time they press
+    const firstDay = await firstWorkingDayOn(this.prisma, employment, date);
 
     const { kept, earlier } = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT 1 FROM employees WHERE id = ${employeeId}::uuid FOR UPDATE`;
@@ -337,7 +358,7 @@ export class CheckInService {
         },
       });
       const punches = [...before, { kind: dto.kind, at: now, place, flags }];
-      const day = dayFromPunches(date, punches.map(asPunch), shift);
+      const day = dayFromPunches(date, punches.map(asPunch), shift, { firstDay });
       const data = { ...keptDayData(day), importedById: user.id, importedAt: now };
       await tx.attendanceDay.upsert({
         where: { employeeId_date_source: { employeeId, date: toDateOnly(date), source: 'system' } },
@@ -358,6 +379,8 @@ export class CheckInService {
           officeSet: checkInLocationsSet(locations),
         })
       : [`Already ${dto.kind === 'in' ? 'checked in' : 'checked out'} a moment ago: that press is kept once.`];
+    // their first day's first check-in (27 October 2026): told the day counts from the shift's start
+    if (kept && firstDay && shift && dto.kind === 'in' && !earlier.some((p) => p.kind === 'in')) messages.splice(1, 0, firstDayMessage(shift));
     return { ...view, messages, kept };
   }
 
@@ -391,6 +414,8 @@ export class CheckInService {
       : [null, null, null];
     const duty = odNow ?? odToday;
     const anywhere = workingFromHome || odNow !== null || exemption !== null;
+    // their first working day (27 October 2026): the day counted from the shift's start
+    const firstDay = employment ? await firstWorkingDayOn(db, employment, date) : false;
     // held to the check-in locations by GPS (24 October 2026), never on a work from home day or within an official duty
     const gpsLocked = !!employment && lockedToCheckInLocations(gps, places, employment) && !anywhere;
     const expected = employment ? expectedPlace(employment.workArrangement, employment.officeDays, weekday(date), anywhere) : null;
@@ -401,7 +426,7 @@ export class CheckInService {
       next: nextPunch(punches.map(asPunch)),
       // their own: with the spot (owner, 20 October 2026: "Yes, keep the spot")
       punches: punches.map((p) => punchView(p, true, locations)),
-      day: punches.length ? dayFromPunches(date, punches.map(asPunch), shift) : null,
+      day: punches.length ? dayFromPunches(date, punches.map(asPunch), shift, { firstDay }) : null,
       exemption,
       expected,
       expectedText:
@@ -422,6 +447,7 @@ export class CheckInService {
       ownPlaces: places.subLocations.filter((l) => l.linked).map((l) => l.name),
       location: { required: !!employment && (needsLocation(rule, employment) || (gpsLocked && !employment.checkInWithoutLocation)) },
       shift: shift && { startTime: shift.startTime, endTime: shift.endTime, hoursPerDay: shift.hoursPerDay ?? null, graceMinutes: shift.graceMinutes ?? 0, countUntil: shift.countUntil },
+      firstDay,
     };
   }
 }

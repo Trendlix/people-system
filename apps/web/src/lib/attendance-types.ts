@@ -361,6 +361,12 @@ export interface CheckInTodayView {
    */
   location?: { required: boolean };
   /**
+   * Whether today is the first working day of their employment (owner, 27 October 2026: "a new employee when checked in in
+   * his first day move the checkin to 9am automatically to prevent delay in instructions"): the day is counted from the
+   * shift's start whatever time they check in, and the counter counts from it. Left out by an API from before it.
+   */
+  firstDay?: boolean;
+  /**
    * Whether today is a work from home day approved for them (owner, 21 October 2026): expected anywhere, the office
    * network's lock waived. Left out by an API from before it.
    */

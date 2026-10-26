@@ -9,7 +9,7 @@ import { isWfhDay, WFH_DAY_BADGE } from '../../../(app)/attendance/wfh/wfh';
 import { OD_DAY_BADGE } from '../../../(app)/attendance/official-duty/od';
 import { leaveStatusLabel } from '../../../(app)/leave/list';
 import { AllPresses, DayEndView } from '../../../(app)/attendance/punch-ui';
-import { DayPairsLine, ExemptBadge, OpenPressLine } from '../../../(app)/attendance/ui';
+import { DayPairsLine, ExemptBadge, FirstDayLine, OpenPressLine } from '../../../(app)/attendance/ui';
 import { weekdayOf } from '../../../(app)/organization/holidays/holidays';
 import { dayStatusText, dayTone } from '../../../(app)/payroll/[id]/attendance/attendance';
 
@@ -106,6 +106,8 @@ export function DayList({
             <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2">
               <Figure label="Check-in">
                 <DayEndView end={row.checkIn} />
+                {/* a first day counted from the shift's start (27 October 2026) */}
+                <FirstDayLine day={d} />
               </Figure>
               <Figure label="Check-out">
                 <DayEndView end={row.checkOut} />

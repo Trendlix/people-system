@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { breakMinutesOf, dayFromPunches, locksMonth, readPressPairs, shiftWindowOn, spansOfPairs, type CheckInPlace, type ImportedDay, type PunchKind, type PunchLike } from '@trendlix/shared';
+import { breakMinutesOf, dayFromPunches, FIRST_DAY_LOOK_AHEAD, firstWorkingDayFrom, locksMonth, readPressPairs, shiftWindowOn, spansOfPairs, type CheckInPlace, type ImportedDay, type PunchKind, type PunchLike } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
-import { fromDateOnly, toDateOnly } from '../common/date-only.js';
+import { addDays, fromDateOnly, toDateOnly } from '../common/date-only.js';
 import { fromTimeOfDay } from '../common/time-of-day.js';
 import { Prisma } from '../generated/prisma/client.js';
 import { firstDay, lastDay } from '../payroll/months.js';
@@ -39,6 +39,13 @@ import { CorrectionDaysService } from './correction-days.service.js';
 // pairs when Zoho gave them, else from the first check-in to the last check-out), and their break by their pairs as the
 // sync keeps it. Only the hours and the break change; the times, the status and Zoho's permission never. `dryRun` counts
 // what would change and writes nothing (the preview).
+//
+// A new employee's first day (owner, 27 October 2026: "a new employee when checked in in his first day move the checkin to
+// 9am automatically to prevent delay in instructions"; asked, "Counted from the shift start"): the system's day on the
+// first working day of the employment it falls in (packages/shared firstWorkingDayFrom: the shift's first working day on
+// or after the join date, holidays skipped) is made again from its presses with the first pair from the shift's start
+// (dayFromPunches with `firstDay`), as a press keeps it (check-in.service.ts), so the pass on deploy and Recount past days
+// bring first days kept before the rule up to it in the months not yet with the CEO, approved or paid.
 
 /** The advisory lock's name: hashtext() of it is the key every process takes. */
 const LOCK_NAME = 'people-system attendance recount';
@@ -163,6 +170,12 @@ export class HoursByPairsService {
           const key = `${p.employeeId}:${fromDateOnly(p.date)}`;
           pressed.set(key, [...(pressed.get(key) ?? []), { kind: p.kind as PunchKind, at: p.at.toISOString(), place: p.place as CheckInPlace, flags: p.flags }]);
         }
+        // each employment's first working day (27 October 2026), the holidays of every join date's two weeks read once
+        const joins = employments.map((e) => fromDateOnly(e.joinDate)).sort();
+        const holidays = joins.length
+          ? (await tx.holiday.findMany({ where: { date: { gte: toDateOnly(joins[0]), lte: toDateOnly(addDays(joins[joins.length - 1], FIRST_DAY_LOOK_AHEAD)) } }, select: { date: true } })).map((h) => fromDateOnly(h.date))
+          : [];
+        const firstDays = new Map(employments.map((e) => [e.id, firstWorkingDayFrom(fromDateOnly(e.joinDate), e.shift?.workingDays ?? null, holidays)]));
         const out = { daysRecounted: 0, daysWritten: 0, daysChanged: 0, hoursBefore: 0, hoursAfter: 0, zohoDays: 0, zohoDaysChanged: 0 };
         const touched = new Map<string, Set<string>>();
         const read = new Set<string>();
@@ -258,7 +271,8 @@ export class HoursByPairsService {
           const shift = s
             ? { startTime: fromTimeOfDay(s.startTime), endTime: fromTimeOfDay(s.endTime), hoursPerDay: s.hoursPerDay?.toNumber() ?? null, graceMinutes: s.graceMinutes, countUntil: s.countUntil ? fromTimeOfDay(s.countUntil) : null }
             : null;
-          const day = dayFromPunches(date, presses, shift);
+          // the first working day of the employment: counted from the shift's start (27 October 2026)
+          const day = dayFromPunches(date, presses, shift, { firstDay: !!job && firstDays.get(job.id) === date });
           const data = keptDayData(day);
           const before = r.hoursCounted.toNumber();
           out.daysRecounted++;

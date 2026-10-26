@@ -13,6 +13,8 @@ import { counterShows, noteServerTime, type ServerClock } from './check-in';
 // last one goes. The ticking seconds aren't read out (aria-live off); what is next is said politely, as it changes.
 // Checked in again after a check-out (owner, 25 October 2026: "the working hours to be calculated between the checkin
 // and out only, not the first and last"), it counts today's closed pairs and the time since that check-in, never the break.
+// On a new employee's first day (owner, 27 October 2026: "Counted from the shift start") it counts from the shift's start,
+// as the day will be counted, and says so.
 
 let clock: ServerClock = { newest: Number.NEGATIVE_INFINITY, skew: 0 };
 const listeners = new Set<() => void>();
@@ -37,7 +39,7 @@ const serverNow = () => Math.floor((Date.now() + clock.skew) / 1000) * 1000;
 /** On the server and while hydrating: none, so the view's own time is used. */
 const noTime = () => 0;
 
-export function CheckInCounter({ view, big = false }: { view: Pick<CheckInTodayView, 'date' | 'now' | 'next' | 'day' | 'shift'>; big?: boolean }) {
+export function CheckInCounter({ view, big = false }: { view: Pick<CheckInTodayView, 'date' | 'now' | 'next' | 'day' | 'shift' | 'firstDay'>; big?: boolean }) {
   const shows = counterShows(view, Date.parse(view.now));
   if (!shows) return null;
   if (shows.kind === 'total') {
@@ -46,7 +48,7 @@ export function CheckInCounter({ view, big = false }: { view: Pick<CheckInTodayV
   return <LiveCounter view={view} big={big} />;
 }
 
-function LiveCounter({ view, big }: { view: Pick<CheckInTodayView, 'date' | 'now' | 'next' | 'day' | 'shift'>; big: boolean }) {
+function LiveCounter({ view, big }: { view: Pick<CheckInTodayView, 'date' | 'now' | 'next' | 'day' | 'shift' | 'firstDay'>; big: boolean }) {
   const server = Date.parse(view.now);
   // before the clock is read: how far this device's is off, from the view's server time
   useEffect(() => {
