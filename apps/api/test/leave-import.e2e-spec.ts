@@ -68,7 +68,7 @@ interface View {
   noShowsToLeave: { days: number; people: number; text: string } | null;
   canApply: boolean;
   undoable: number;
-  kept: { leaves: number; adjustments: number; wfhDays: number };
+  kept: { leaves: number; adjustments: number; wfhDays: number; od: number };
   appliedAt: string | null;
   undoneAt: string | null;
 }
@@ -358,7 +358,7 @@ describe('Leave import (e2e)', () => {
     it('applies: the leave approved and marked imported, no steps; then the balance set to the figure; one audit entry with the counts', async () => {
       const v = (await apply(importId).expect(200)).body as View;
       expect(v.counts).toMatchObject({ applied: 4, ready: 0 });
-      expect(v.kept).toEqual({ leaves: 3, adjustments: 1, wfhDays: 0 });
+      expect(v.kept).toEqual({ leaves: 3, adjustments: 1, wfhDays: 0, od: 0 });
       const ann = await balances('ann');
       // 21 earned, 5 taken off by the opening balance, 6 imported: 10 left, the figure given
       expect(ann.annual).toMatchObject({ entitlement: 21, adjustments: -5 });
@@ -422,12 +422,12 @@ describe('Leave import (e2e)', () => {
       await api().delete(`/api/leave/import/${importId}`).set('Cookie', hr).expect(403);
       expect(said(await api().delete(`/api/leave/import/${importId}`).set('Cookie', superAdmin).expect(409))[0]).toMatch(/still in the system\. Undo it first, then delete it\.$/);
       const v = (await undo(importId).expect(200)).body as View;
-      expect(v.kept).toEqual({ leaves: 1, adjustments: 1, wfhDays: 0 });
+      expect(v.kept).toEqual({ leaves: 1, adjustments: 1, wfhDays: 0, od: 0 });
       expect(v.undoneAt).toBeNull();
       expect((await balances('ann')).annual).toMatchObject({ adjustments: 0, available: 21 });
       await undo(importId).expect(409);
       const byCeo = (await undo(importId, ceo).expect(200)).body as View;
-      expect(byCeo.kept).toEqual({ leaves: 0, adjustments: 0, wfhDays: 0 });
+      expect(byCeo.kept).toEqual({ leaves: 0, adjustments: 0, wfhDays: 0, od: 0 });
       expect(byCeo.undoneAt).not.toBeNull();
       // its rows are free again: ready to apply once more
       expect(rowOf(await review(importId), 2)).toMatchObject({ status: 'ready' });
@@ -586,7 +586,7 @@ describe('Leave import (e2e)', () => {
       expect(rowOf(v, 2).reasons[0]).toMatch(new RegExp(`^Already imported from Leave View ${TAG}\\.xlsx, `));
       expect(rowOf(v, 3)).toMatchObject({ status: 'ready' });
       const applied = (await apply(second).expect(200)).body as View;
-      expect(applied.kept).toEqual({ leaves: 1, adjustments: 0, wfhDays: 0 });
+      expect(applied.kept).toEqual({ leaves: 1, adjustments: 0, wfhDays: 0, od: 0 });
     });
 
     it('undoing frees its rows: the same file uploaded again is applied again', async () => {
@@ -596,7 +596,7 @@ describe('Leave import (e2e)', () => {
       const v = (await upload(secondFile, `Leave View ${TAG} October.xlsx`)).body as View;
       expect(v.sameFile).toBeNull();
       expect(rowOf(v, 3)).toMatchObject({ status: 'ready' });
-      expect((await apply(v.id).expect(200)).body.kept).toEqual({ leaves: 1, adjustments: 0, wfhDays: 0 });
+      expect((await apply(v.id).expect(200)).body.kept).toEqual({ leaves: 1, adjustments: 0, wfhDays: 0, od: 0 });
       expect(await prisma.leaveRequest.count({ where: { zohoLinkId: `${ZARA_ZOHO}19` } })).toBe(1);
     });
   });
@@ -699,7 +699,7 @@ describe('Leave import (e2e)', () => {
     it('applies with the leave, in one go: approved days, Zoho’s pending as requests at their first step, nobody told of history', async () => {
       const v = (await apply(importId).expect(200)).body as View;
       expect([2, 3, 4, 5, 10, 11].map((n) => rowOf(v, n).status)).toEqual(Array(6).fill('applied'));
-      expect(v.kept).toEqual({ leaves: 1, adjustments: 0, wfhDays: 7 });
+      expect(v.kept).toEqual({ leaves: 1, adjustments: 0, wfhDays: 7, od: 0 });
       expect(rowOf(v, 3)).toMatchObject({ wfh: true, days: 2, wfhDays: [picks.thu, picks.sun] });
       // what bringing them over said comes back with the row
       expect(rowOf(v, 3).warnings).toEqual(expect.arrayContaining([expect.stringMatching(/^Two work from home days must be at least 7 days apart/)]));
@@ -763,7 +763,7 @@ describe('Leave import (e2e)', () => {
       const made = (await wfhOf(importId)).map((w) => w.id);
       const v = (await undo(importId).expect(200)).body as View;
       expect(v.undoneAt).not.toBeNull();
-      expect(v.kept).toEqual({ leaves: 0, adjustments: 0, wfhDays: 0 });
+      expect(v.kept).toEqual({ leaves: 0, adjustments: 0, wfhDays: 0, od: 0 });
       expect(await prisma.wfhRequest.count({ where: { id: { in: made } } })).toBe(0);
       expect(await prisma.leaveRequest.count({ where: { importId } })).toBe(0);
       expect(await prisma.auditLog.count({ where: { entityType: 'wfh_request', action: 'delete', entityId: { in: made } } })).toBe(7);
@@ -824,7 +824,7 @@ describe('Leave import (e2e)', () => {
     it('applies: 1 leave and 1 approved work-from-home request each day, no balance used; undoing removes both', async () => {
       const before = (await balances('tess')).annual;
       const v = (await apply(importId).expect(200)).body as View;
-      expect(v.kept).toEqual({ leaves: 1, adjustments: 0, wfhDays: 2 });
+      expect(v.kept).toEqual({ leaves: 1, adjustments: 0, wfhDays: 2, od: 0 });
       const made = await prisma.wfhRequest.findMany({ where: { importId }, orderBy: { date: 'asc' }, select: { id: true, employeeId: true, status: true, date: true, zohoLinkId: true } });
       expect(made.map((w) => [w.employeeId, w.status, fromDateOnly(w.date)])).toEqual(pair.map((d) => [ids.tess, 'approved', d]));
       expect(rowOf(v, 3)).toMatchObject({ status: 'applied', wfh: true, days: 2, wfhDays: pair });
@@ -834,7 +834,7 @@ describe('Leave import (e2e)', () => {
       expect(before.available - after.available).toBe(1);
       expect(await prisma.auditLog.count({ where: { entityType: 'wfh_request', action: 'import', entityId: { in: made.map((w) => w.id) } } })).toBe(2);
       const undone = (await undo(importId).expect(200)).body as View;
-      expect(undone.kept).toEqual({ leaves: 0, adjustments: 0, wfhDays: 0 });
+      expect(undone.kept).toEqual({ leaves: 0, adjustments: 0, wfhDays: 0, od: 0 });
       expect(await prisma.wfhRequest.count({ where: { importId } })).toBe(0);
       expect(await prisma.leaveRequest.count({ where: { importId } })).toBe(0);
       expect((await balances('tess')).annual.available).toBe(before.available);

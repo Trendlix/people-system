@@ -23,6 +23,7 @@ import {
   payRaiseWaitingText,
   payslipText,
   raiseRequestWaitingText,
+  recordedByHrText,
   resignationNewText,
   resignationUpdateText,
   standInText,
@@ -98,8 +99,11 @@ interface RequestFacts {
   link: string;
 }
 
-/** What happened to a request: sent, a step decided, or (leave and permission) cancelled by HR once approved. */
-export type RequestEvent = 'sent' | 'decided' | 'cancelled_by_hr';
+/**
+ * What happened to a request: sent, a step decided, (leave and permission) cancelled by HR once approved, or (official
+ * duty, 26 October 2026) recorded by HR, approved at once.
+ */
+export type RequestEvent = 'sent' | 'decided' | 'cancelled_by_hr' | 'recorded_by_hr';
 
 const DECIDING_ROLES: Role[] = ['hr', 'finance', 'ceo', 'super_admin'];
 
@@ -201,6 +205,11 @@ export class NoticesService {
   }
 
   private async leaveLike(kind: LeaveLikeKind, r: RequestFacts, event: RequestEvent): Promise<void> {
+    // recorded by HR, approved at once (owner's brief, 26 October 2026: "the employee is told")
+    if (event === 'recorded_by_hr') {
+      if (kind === 'od' && r.status === 'approved') await this.toEmployee(r.employeeId, { ...recordedByHrText(kind, r.when, r.link), whatsapp: updateOf(kind, r.span, 'approved') });
+      return;
+    }
     if (event === 'cancelled_by_hr') {
       if (kind !== 'correction' && r.status === 'cancelled') await this.toEmployee(r.employeeId, { ...cancelledByHrText(kind, r.when, r.link), ...(kind !== 'compensatory' && { whatsapp: updateOf(kind, r.span, 'cancelled') }) });
       return;

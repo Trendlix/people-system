@@ -1,15 +1,17 @@
 import { Body, Controller, Get, Header, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { CurrentUser, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
+import { ConfidentialOf } from '../employees/confidential.guard.js';
 import { DecideLeaveDto } from '../leave/leave.dto.js';
-import { CreateOdDto, HrCancelOdDto, ListOdDto, OdCalendarQueryDto } from './od.dto.js';
+import { CreateOdDto, HrCancelOdDto, ListOdDto, OdCalendarQueryDto, OdCheckQueryDto, RecordOdDto } from './od.dto.js';
 import { OdService } from './od.service.js';
 
 // Official duty (owner, 23 October 2026: "Official duty (OD) requests"; packages/shared official-duty.ts). The
 // employee's own: their requests, what the form reads first, a new request and cancelling one while it is being decided.
 // Deciding and seeing them: the request's approver in charge and HR in turn, the CEO reading them and deciding a C-level
 // person's HR stage (checked by the service, which tells anyone else a request isn't there); the counts, the calendar.
-// HR cancels an approved one, saying why.
+// HR cancels an approved one, saying why. HR records one for someone (owner, 26 October 2026: "HR records it"), approved
+// at once and past the 3-day limit too, a C-level person's the CEO (checked by the service): what it would meet first.
 
 /** The employee's own: anyone signed in with an employee profile. */
 @Controller('me/official-duty')
@@ -68,6 +70,23 @@ export class OdController {
   @Header('Cache-Control', 'private, no-store')
   calendar(@Query() query: OdCalendarQueryDto, @CurrentUser() user: SessionUser) {
     return this.od.calendar(query, user);
+  }
+
+  /** ?employeeId=&startDate=&endDate=&fullDay=&fromTime=&toTime=: what refuses official duty HR would record, and what it would be recorded past. */
+  @Roles('hr', 'ceo')
+  @Get('check')
+  @Header('Cache-Control', 'private, no-store')
+  @ConfidentialOf('employee', { query: 'employeeId' })
+  check(@Query() query: OdCheckQueryDto, @CurrentUser() user: SessionUser) {
+    return this.od.check(query, user);
+  }
+
+  /** HR records an official duty for someone, approved at once: { employeeId, startDate, endDate?, fullDay?, fromTime?, toTime?, place, reason }. */
+  @Roles('hr', 'ceo')
+  @Post()
+  @ConfidentialOf('employee', { body: 'employeeId' })
+  record(@Body() dto: RecordOdDto, @CurrentUser() user: SessionUser) {
+    return this.od.record(dto, user);
   }
 
   @Get(':id')

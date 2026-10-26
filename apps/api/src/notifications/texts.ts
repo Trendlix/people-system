@@ -54,6 +54,11 @@ export function cancelledByHrText(kind: 'leave' | 'permission' | 'wfh' | 'od' | 
   return { kind: `${kind}_decided`, title: CANCELLED_BY_HR[kind], body: when, link };
 }
 
+/** HR recorded an official duty for the employee, approved at once (owner, 26 October 2026: "HR records it"). */
+export function recordedByHrText(kind: 'od', when: string, link: string): NotificationInput {
+  return { kind: `${kind}_decided`, title: 'Official duty recorded by HR', body: when, link };
+}
+
 /** A Super Admin edited the employee's approved leave (owner, 26 October 2026): told as HR's cancelling is, with its new days. */
 export function leaveEditedText(when: string, link: string): NotificationInput {
   return { kind: 'leave_decided', title: 'Leave edited by a Super Admin', body: when, link };

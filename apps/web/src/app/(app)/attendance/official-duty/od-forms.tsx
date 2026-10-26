@@ -1,25 +1,41 @@
 'use client';
 
 import Link from 'next/link';
-import { startTransition, useActionState, useState } from 'react';
+import { startTransition, useActionState, useRef, useState, useTransition } from 'react';
 import { LEAVE_DECISION_LABELS, LEAVE_DECISIONS, leaveDecisionNeedsComment, type LeaveDecision, type LeaveStage } from '@trendlix/shared';
 import { DateInput, TimeInput } from '@/components/date-time-inputs';
 import { FormErrors, useFieldIds, valueOf } from '@/components/form';
 import { SurfaceField } from '@/components/surface';
 import { formatTime } from '@/lib/format';
-import type { OdForm } from '@/lib/od-types';
+import type { OdCheck, OdForm } from '@/lib/od-types';
 import type { FormState } from '@/lib/types';
 import { choice } from '../../employees/[id]/contracts/pay-fields';
 import { leaveCommentReaders } from '../../leave/list';
-import { OD_PLACE_MAX, OD_REASON_MAX, odAfterNote, odDecisionButton, odFormProblems, odReadyText, type TypedOd } from './od';
+import { checkOdDays } from './actions';
+import {
+  OD_PLACE_MAX,
+  OD_REASON_MAX,
+  odAfterNote,
+  odCheckPath,
+  odDecisionButton,
+  odFormProblems,
+  odReadyText,
+  odRecordProblems,
+  odRecordReadyText,
+  odWhenOf,
+  type TypedOd,
+} from './od';
 
 // The forms of official duty (owner, 23 October 2026: "Official duty (OD) requests"; asked, "Manager, then HR", "Ahead
 // or up to 3 days after", "Check in from anywhere"): the employee's request (the first day and, for several days in a
 // row, the last; a full day or part of one with its times, one day only; where and why), with the timing and the hours
 // against their shift checked live and Send staying off while any is left; what only the API knows (a holiday, a rest
 // day, leave, a work from home day or another official duty on the same days) it refuses when sent, shown here with
-// what was typed; a first day gone by is marked "requested after". An approver's decision (Approve, or Reject with a
-// comment); the employee's Cancel while it is being decided; HR's Cancel of an approved one, with a comment.
+// what was typed; a first day gone by is marked "requested after". HR's record for someone (owner, 26 October 2026: "HR
+// records it"): the same fields, the days checked by the API live as they are chosen (what refuses them, and what they
+// would be recorded past: more than 3 days after, asked to confirm), approved at once. An approver's decision (Approve,
+// or Reject with a comment); the employee's Cancel while it is being decided; HR's Cancel of an approved one, with a
+// comment.
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -57,7 +73,6 @@ export function NewOdForm({ action, form, cancelHref }: { action: Action; form: 
     place: valueOf(state, 'place'),
     reason: valueOf(state, 'reason'),
   }));
-  const part = typed.span === 'part';
   const problems = odFormProblems(typed, form);
   const after = odAfterNote(typed, form);
   const blocked = problems.length > 0 || sending;
@@ -87,6 +102,47 @@ export function NewOdForm({ action, form, cancelHref }: { action: Action; form: 
           Your shift is {formatTime(form.shift.startTime)} to {formatTime(form.shift.endTime)}: part of a day is within it. Asked ahead, today or up to 3 days after.
         </p>
       )}
+      <OdFields
+        typed={typed}
+        setTyped={setTyped}
+        fid={fid}
+        dayHint="A working day of your shift: ahead, today, or up to 3 days gone by."
+        timesHint="Within your shift. Within these hours you check in from where you are; outside them, as on any day."
+        reasonHint="What the duty is for. Your direct manager and HR read it."
+      />
+      {after && <p className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">{after}</p>}
+      <Problems problems={problems} verb="send" ready={odReadyText(typed, form.toCeo)} />
+      <div className="flex flex-wrap gap-3">
+        <button type="submit" disabled={blocked} className="btn btn-primary disabled:cursor-not-allowed disabled:opacity-60">
+          {sending ? 'Sending…' : 'Send request'}
+        </button>
+        <Link href={cancelHref} className={`btn btn-secondary ${sending ? 'pointer-events-none opacity-60' : ''}`} aria-disabled={sending || undefined}>
+          Cancel
+        </Link>
+      </div>
+    </form>
+  );
+}
+
+/** The fields both forms share: how long, the days or the day and its times, where and why. */
+function OdFields({
+  typed,
+  setTyped,
+  fid,
+  dayHint,
+  timesHint,
+  reasonHint,
+}: {
+  typed: TypedOd;
+  setTyped: (next: TypedOd) => void;
+  fid: (name: string) => string;
+  dayHint: string;
+  timesHint: string;
+  reasonHint: string;
+}) {
+  const part = typed.span === 'part';
+  return (
+    <>
       <fieldset>
         <legend className="label">How long</legend>
         <div className="flex flex-wrap gap-2">
@@ -95,7 +151,7 @@ export function NewOdForm({ action, form, cancelHref }: { action: Action; form: 
             { value: 'part', label: 'Part of a day' },
           ].map((o) => (
             <label key={o.value} className={choice}>
-              <input type="radio" name="span" value={o.value} checked={typed.span === o.value} onChange={() => setTyped((x) => ({ ...x, span: o.value }))} className="size-4 accent-accent" />
+              <input type="radio" name="span" value={o.value} checked={typed.span === o.value} onChange={() => setTyped({ ...typed, span: o.value })} className="size-4 accent-accent" />
               {o.label}
             </label>
           ))}
@@ -108,7 +164,7 @@ export function NewOdForm({ action, form, cancelHref }: { action: Action; form: 
           </label>
           <DateInput id={fid('startDate')} name="startDate" required defaultValue={typed.startDate} aria-describedby={fid('startDate-hint')} />
           <p id={fid('startDate-hint')} className="hint">
-            A working day of your shift: ahead, today, or up to 3 days gone by.
+            {dayHint}
           </p>
         </div>
         {part ? (
@@ -126,7 +182,7 @@ export function NewOdForm({ action, form, cancelHref }: { action: Action; form: 
               <TimeInput id={fid('toTime')} name="toTime" required defaultValue={typed.toTime} aria-describedby={fid('times-hint')} />
             </div>
             <p id={fid('times-hint')} className="hint -mt-3 sm:col-span-2">
-              Within your shift. Within these hours you check in from where you are; outside them, as on any day.
+              {timesHint}
             </p>
           </>
         ) : (
@@ -150,7 +206,7 @@ export function NewOdForm({ action, form, cancelHref }: { action: Action; form: 
             required
             maxLength={OD_PLACE_MAX}
             value={typed.place}
-            onChange={(e) => setTyped((x) => ({ ...x, place: e.target.value }))}
+            onChange={(e) => setTyped({ ...typed, place: e.target.value })}
             aria-describedby={fid('place-hint')}
             className="input"
           />
@@ -167,18 +223,120 @@ export function NewOdForm({ action, form, cancelHref }: { action: Action; form: 
             required
             maxLength={OD_REASON_MAX}
             value={typed.reason}
-            onChange={(e) => setTyped((x) => ({ ...x, reason: e.target.value }))}
+            onChange={(e) => setTyped({ ...typed, reason: e.target.value })}
             aria-describedby={fid('reason-hint')}
             className="input"
           />
-          <p id={fid('reason-hint')} className="hint">What the duty is for. Your direct manager and HR read it. Up to {OD_REASON_MAX} characters.</p>
+          <p id={fid('reason-hint')} className="hint">
+            {reasonHint} Up to {OD_REASON_MAX} characters.
+          </p>
         </div>
       </div>
-      {after && <p className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">{after}</p>}
-      <Problems problems={problems} verb="send" ready={odReadyText(typed, form.toCeo)} />
+    </>
+  );
+}
+
+const TYPED_FIELDS = ['startDate', 'endDate', 'fromTime', 'toTime'];
+
+/**
+ * HR's record for someone (owner, 26 October 2026: "HR records it"): the days, full or part of a day, where and why, with
+ * what the API says of the days as they are chosen; past the 3-day limit it asks to confirm and records it with the
+ * warning. Approved at once.
+ */
+export function RecordOdForm({ action, employee, cancelHref }: { action: Action; employee: { id: string; name: string }; cancelHref: string }) {
+  const [state, formAction, sending] = useActionState(action, {});
+  const fid = useFieldIds();
+  const [typed, setTypedState] = useState<TypedOd>(() => ({
+    startDate: valueOf(state, 'startDate'),
+    endDate: valueOf(state, 'endDate'),
+    span: valueOf(state, 'span') || 'full',
+    fromTime: valueOf(state, 'fromTime'),
+    toTime: valueOf(state, 'toTime'),
+    place: valueOf(state, 'place'),
+    reason: valueOf(state, 'reason'),
+  }));
+  const [check, setCheck] = useState<OdCheck | null>(null);
+  const [checkProblem, setCheckProblem] = useState<string | null>(null);
+  const [checking, startChecking] = useTransition();
+  const asked = useRef('');
+
+  /** What the days typed would meet, read from the API once they can be read. */
+  function readFor(next: TypedOd) {
+    const when = odWhenOf(next);
+    const path = when ? odCheckPath(employee.id, when) : '';
+    if (path === asked.current) return;
+    asked.current = path;
+    setCheck(null);
+    setCheckProblem(null);
+    if (!when) return;
+    startChecking(async () => {
+      const answer = await checkOdDays(employee.id, when);
+      if (asked.current !== path) return;
+      if ('check' in answer) setCheck(answer.check);
+      else if (answer.errors.length) setCheckProblem(`The days couldn't be checked: ${answer.errors.join(' ')} They are checked again when you record it.`);
+    });
+  }
+
+  function setTyped(next: TypedOd) {
+    setTypedState(next);
+    readFor(next);
+  }
+
+  const problems = odRecordProblems(typed, check);
+  if (checking) problems.push('Checking the days…');
+  const blocked = problems.length > 0 || sending;
+  const warnings = check?.warnings ?? [];
+  const shift = check?.shift ?? null;
+
+  function send(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    if (blocked) return;
+    if (warnings.length && !window.confirm(`Record it anyway? ${warnings.join(' ')}`)) return;
+    const fd = new FormData(e.currentTarget);
+    startTransition(() => formAction(fd));
+  }
+
+  return (
+    <form
+      onSubmit={send}
+      onChange={(e) => {
+        // the days and times typed, for the checks (those fields stay uncontrolled)
+        const t = e.target;
+        if (t instanceof HTMLInputElement && TYPED_FIELDS.includes(t.name)) setTyped({ ...typed, [t.name]: t.value });
+      }}
+      aria-label={`Record official duty for ${employee.name}`}
+      className="card space-y-5 p-5"
+    >
+      <FormErrors errors={state.errors} />
+      <input type="hidden" name="employeeId" value={employee.id} />
+      {shift && (
+        <p className="rounded-lg bg-canvas px-4 py-3 text-sm">
+          {employee.name}&apos;s shift is {formatTime(shift.startTime)} to {formatTime(shift.endTime)}: part of a day is within it.
+        </p>
+      )}
+      <OdFields
+        typed={typed}
+        setTyped={setTyped}
+        fid={fid}
+        dayHint="Any working day of their shift, ahead or gone by: more than 3 days after, it is recorded with a warning."
+        timesHint="Within their shift. Within these hours they check in from where they are; outside them, as on any day."
+        reasonHint="What the duty is for, and why HR records it, e.g. a site visit agreed by phone. The employee sees it; it is kept in the audit log."
+      />
+      {checkProblem && <p className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">{checkProblem}</p>}
+      {warnings.length > 0 && (
+        <div role="alert" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
+          <p className="font-medium">It is recorded with these warnings:</p>
+          <ul className="mt-1 list-disc space-y-0.5 pl-5">
+            {warnings.map((w) => (
+              <li key={w}>{w}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <Problems problems={problems} verb="record" ready={odRecordReadyText(typed, employee.name)} />
       <div className="flex flex-wrap gap-3">
         <button type="submit" disabled={blocked} className="btn btn-primary disabled:cursor-not-allowed disabled:opacity-60">
-          {sending ? 'Sending…' : 'Send request'}
+          {sending ? 'Recording…' : warnings.length ? 'Record with the warnings' : 'Record the official duty'}
         </button>
         <Link href={cancelHref} className={`btn btn-secondary ${sending ? 'pointer-events-none opacity-60' : ''}`} aria-disabled={sending || undefined}>
           Cancel

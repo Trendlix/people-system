@@ -5,13 +5,14 @@ import { joinShown } from '@/lib/hidden';
 import type { OdRequestView } from '@/lib/od-types';
 import { placeOfEmployee } from '../../leave/list';
 import { LeaveStatusBadge } from '../../leave/ui';
-import { odHref, odLabel, odProgressText, odSpanText, odWhenWords } from './od';
+import { odHref, odLabel, odProgressText, odSourceText, odSpanText, odWhenWords } from './od';
 
 // Official duty requests in a list (owner, 23 October 2026: "Official duty (OD) requests"): the employee's own on My
 // Requests, those waiting for a manager on My Team and for HR on Approvals, and everyone's under Attendance → Official
 // Duty. Each row: who (when `who`), the days and hours, where (when `where`), a mark for one asked after its first day
-// ("Ahead or up to 3 days after": requested after), where it stands, opening its page (Decide when it waits for the
-// user). The badge a day of official duty shows on the attendance pages is attendance/ui.tsx's OdDayBadge. No hooks.
+// ("Ahead or up to 3 days after": requested after), or for one recorded by HR or imported (26 October 2026) how it came
+// with its warnings, where it stands, opening its page (Decide when it waits for the user). The badge a day of official
+// duty shows on the attendance pages is attendance/ui.tsx's OdDayBadge. No hooks.
 
 export function OdTable({ requests, who = false, where = false, note }: { requests: readonly OdRequestView[]; who?: boolean; where?: boolean; note: string }) {
   return (
@@ -33,6 +34,7 @@ export function OdTable({ requests, who = false, where = false, note }: { reques
             const place = placeOfEmployee(r.employee);
             const progress = odProgressText(r);
             const when = odWhenWords(r);
+            const warned = r.warnings ?? [];
             return (
               <tr key={r.id} className="align-top">
                 {who && (
@@ -45,10 +47,17 @@ export function OdTable({ requests, who = false, where = false, note }: { reques
                 <td className="whitespace-nowrap tabular-nums">
                   {when}
                   <span className="block text-xs text-muted">{odSpanText(r)}</span>
-                  {r.late && (
-                    <span className="mt-1 block text-xs font-medium text-warn" title="Asked after its first day, within the 3 days allowed.">
-                      Requested after
+                  {r.recordedByHr || r.imported ? (
+                    <span className="mt-1 block text-xs text-muted" title={warned.join(' ') || undefined}>
+                      {odSourceText(r)}
+                      {warned.length > 0 && <span className="block font-medium text-warn">Recorded with {warned.length === 1 ? 'a warning' : `${warned.length} warnings`}</span>}
                     </span>
+                  ) : (
+                    r.late && (
+                      <span className="mt-1 block text-xs font-medium text-warn" title="Asked after its first day, within the 3 days allowed.">
+                        Requested after
+                      </span>
+                    )
                   )}
                 </td>
                 {where && <td className="max-w-64 break-words">{r.dutyPlace}</td>}

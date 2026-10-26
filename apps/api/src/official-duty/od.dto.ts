@@ -8,7 +8,8 @@ import { Trim, TrimOrNull } from '../common/transforms.js';
 // Official duty requests (owner, 23 October 2026: "Official duty (OD) requests"; packages/shared official-duty.ts).
 // JSON: the first and last day (YYYY-MM-DD, the same for one day), a full day or from–to times (HH:MM, one day only),
 // where and why, both required. The timing, the shift, the days and the overlaps are the service's to check (with the
-// shared words); here only the shapes.
+// shared words); here only the shapes. HR records one for someone the same way, with whose it is (owner, 26 October
+// 2026: "HR records it").
 
 const PLACE = 'Write where the official duty is, e.g. the client’s office in New Cairo.';
 const REASON = 'Write what the official duty is for, e.g. a site visit for the client’s launch.';
@@ -40,6 +41,36 @@ export class CreateOdDto {
 
   @Trim() @IsString({ message: REASON }) @MinLength(1, { message: REASON }) @MaxLength(OD_REASON_MAX, { message: `Keep the reason to ${OD_REASON_MAX} characters or fewer.` })
   reason: string = '';
+}
+
+/** HR recording an official duty for someone (past the 3-day limit too): whose, and the request's own fields. */
+export class RecordOdDto extends CreateOdDto {
+  @Trim() @IsUUID('all', { message: 'Choose the employee.' })
+  employeeId: string;
+}
+
+/** ?employeeId=&startDate=&endDate=&fullDay=&fromTime=&toTime=: what refuses official duty HR would record, and what it would be recorded past. */
+export class OdCheckQueryDto {
+  @Trim() @IsUUID('all', { message: 'Choose the employee.' })
+  employeeId: string;
+
+  @Trim() @IsDateOnly('Enter the day of the official duty, e.g. 2026-11-01.')
+  startDate: string;
+
+  @Trim() @IsOptional() @IsDateOnly('Enter the last day of the official duty, e.g. 2026-11-03 (the same day for one day).')
+  endDate?: string;
+
+  /** A full day (true unless sent), or part of one with its times. */
+  @Transform(({ value }) => (value === 'true' ? true : value === 'false' ? false : value))
+  @IsOptional()
+  @IsBoolean({ message: 'Choose a full day or part of a day.' })
+  fullDay?: boolean;
+
+  @TrimOrNull() @IsOptional() @Matches(TIME_OF_DAY, { message: 'Enter the time it starts, e.g. 10:00.' })
+  fromTime?: string | null;
+
+  @TrimOrNull() @IsOptional() @Matches(TIME_OF_DAY, { message: 'Enter the time it ends, e.g. 14:00.' })
+  toTime?: string | null;
 }
 
 /** HR cancelling an approved official duty: why, required. */

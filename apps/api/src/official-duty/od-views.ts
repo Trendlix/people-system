@@ -19,7 +19,8 @@ import type { UserRef } from '../payroll/adjustments/people.js';
 // Official duty requests as the API sends them (owner, 23 October 2026: "Official duty (OD) requests"; packages/shared
 // official-duty.ts): shaped as a work from home request is (its employee, status, stage, who decides it, the steps), with
 // `kind: 'od'`, its first and last day, a full day or its times, where (`dutyPlace`: free text, hidden from a developer),
-// why, and whether it was asked after its first day (`late`).
+// why, and whether it was asked after its first day (`late`); recorded by HR with what it was recorded past, or
+// imported by a leave import (owner, 26 October 2026: "HR records it", "Import (template + Zoho)").
 
 export const OD_ENTITY = 'od_request';
 
@@ -75,6 +76,11 @@ export function odView(r: OdRow, caller: Caller, names: ReadonlyMap<string, User
     reason: r.reason,
     // asked after its first day (owner, 23 October 2026: "Ahead or up to 3 days after"): "requested after"
     late: r.late,
+    // recorded by HR, approved at once (26 October 2026: "HR records it"), with what it was recorded past (the 3-day
+    // limit); or imported by a leave import ("Import (template + Zoho)")
+    recordedByHr: r.recordedByHr,
+    warnings: r.warnings,
+    imported: r.importId !== null,
     status,
     stage: leaveStage(status),
     waitingForYou: waitsFor({ ...parties, status }, caller),

@@ -5,6 +5,7 @@ import {
   alreadyImportedText,
   alreadyInSystemText,
   alreadyWfhText,
+  isTemplateOdType,
   isTemplateWfhType,
   annualAvailable,
   belowZeroText,
@@ -30,6 +31,14 @@ import {
   monthsOf,
   notInPayrollText,
   noShowsToLeaveText,
+  OD_IMPORT_MAX_DAYS,
+  odDates,
+  odFileHalfDayText,
+  odHalfDaysText,
+  odImportReason,
+  odNameIsLeaveTypeText,
+  odOffInZohoInsideText,
+  odRowTooLongText,
   rowNoShowsText,
   type AttendanceImportMark,
   openingAdjustment,
@@ -51,6 +60,9 @@ import {
   wfhLeftOutText,
   wfhLinkKey,
   wfhOutsideEmploymentText,
+  ZOHO_OD_PENDING_NOTE,
+  ZOHO_OD_TARGET,
+  ZOHO_OD_TARGET_LABEL,
   ZOHO_PENDING_NOTE,
   ZOHO_WFH_PENDING_NOTE,
   ZOHO_WFH_TARGET,
@@ -75,6 +87,7 @@ import type { SessionUser } from '../auth/session-user.js';
 import { fromDateOnly, shownDate, todayInCairo, toDateOnly } from '../common/date-only.js';
 import { Prisma, type LeaveType } from '../generated/prisma/client.js';
 import { NoticesService } from '../notifications/notices.service.js';
+import { OdService, type OdHistoryEntry, type OdHistoryResult } from '../official-duty/od.service.js';
 import { approverFor } from '../organisation/departments/leads.js';
 import { userNames } from '../payroll/adjustments/people.js';
 import { json } from '../payroll/line-work.js';
@@ -107,6 +120,9 @@ interface AppliedMark {
    */
   wfhIds?: string[];
   wfhDays?: string[];
+  /** An official duty row (owner, 26 October 2026: "Import (template + Zoho)"): the official duty made, and its duty days. */
+  odId?: string;
+  odDays?: string[];
   warnings?: string[];
 }
 
@@ -126,7 +142,10 @@ interface StoredPerson {
   skipped: boolean;
 }
 
-/** A Zoho file's leave types as HR mapped them: the system's type id, ZOHO_WFH_TARGET (work-from-home days), or "skip". */
+/**
+ * A Zoho file's leave types as HR mapped them: the system's type id, ZOHO_WFH_TARGET (work-from-home days), ZOHO_OD_TARGET
+ * (official duty days), or "skip".
+ */
 type TypeMap = Record<string, string>;
 
 interface EmployeeRef {
@@ -161,10 +180,13 @@ export interface LeaveImportTypeView {
   typeId: string | null;
   /** Its rows are imported as work-from-home days (owner, 21 October 2026: "Yes, as approved WFH days"). */
   wfh: boolean;
+  /** Its rows are imported as official duty (owner, 26 October 2026: "Import (template + Zoho)"). */
+  od: boolean;
   /** HR chose it (else it is the default). */
   chosen: boolean;
   defaultTypeId: string | null;
   defaultWfh: boolean;
+  defaultOd: boolean;
   /** Why the default is what it is (Working from home as work-from-home days; Compensatory Off has no type yet). */
   note: string | null;
 }
@@ -200,6 +222,10 @@ export interface LeaveImportRowView {
   wfh: boolean;
   /** A work-from-home row's days: those it makes (each working day, a holiday or weekend left out), or made. */
   wfhDays: string[] | null;
+  /** Imported as one official duty, not leave (the template's Official duty, or a Zoho type mapped so): its type is null. */
+  od: boolean;
+  /** An official duty row's duty days: those its official duty covers (from the first working day to the last), or covered. */
+  odDays: string[] | null;
   approval: ZohoApproval | null;
   approvalText: string | null;
   balance: number | null;
@@ -249,11 +275,12 @@ export interface LeaveImportView {
   kept: Kept;
 }
 
-/** What an import made that is still in the system: its leave, balance changes and work-from-home days. */
+/** What an import made that is still in the system: its leave, balance changes, work-from-home days and official duties. */
 export interface Kept {
   leaves: number;
   adjustments: number;
   wfhDays: number;
+  od: number;
 }
 
 export interface LeaveImportHistoryRow {
@@ -283,6 +310,9 @@ interface ResolvedLeave {
   /** A work-from-home row, and the days it makes (none: nothing to make). */
   wfh: boolean;
   wfhDays: string[];
+  /** An official duty row, and its duty days: one official duty from the first to the last (none: nothing to make). */
+  od: boolean;
+  odDays: string[];
 }
 
 interface ResolvedBalance {
@@ -326,7 +356,9 @@ const typeNamed = (types: readonly LeaveType[], text: string) => {
 // what it made while no payroll that counts it is past its draft; a Super Admin deletes an import with nothing left of
 // it. A C-level person's rows (owner, 19 October 2026: "make C level Employees details not visible to HR") are hidden
 // from HR, one line on the review, and imported by the CEO. Every upload, choice, apply, undo and delete is in the audit
-// log, each leave and balance change too.
+// log, each leave and balance change too. Official duty (owner, 26 October 2026: "Import (template + Zoho)") comes in as
+// working from home does: the template's Official duty rows and Zoho's types mapped to official duty days, each row one
+// official duty of its working days (OdService.recordHistory), its checks, preview and Undo as a work-from-home row's.
 @Injectable()
 export class LeaveImportService {
   constructor(
@@ -338,6 +370,7 @@ export class LeaveImportService {
     private readonly notices: NoticesService,
     private readonly attendanceDays: AttendanceDaysService,
     private readonly wfh: WfhService,
+    private readonly od: OdService,
   ) {}
 
   // ---------- the template ----------
@@ -426,14 +459,14 @@ export class LeaveImportService {
         createdBy: { select: { id: true, email: true } },
         appliedBy: { select: { id: true, email: true } },
         undoneBy: { select: { id: true, email: true } },
-        _count: { select: { leaves: true, adjustments: true, wfhDays: true } },
+        _count: { select: { leaves: true, adjustments: true, wfhDays: true, odRequests: true } },
       },
     });
     const names = await userNames(this.prisma, rows.flatMap((r) => [r.createdBy, r.appliedBy, r.undoneBy]));
     const nameOf = (u: { id: string; email: string } | null) => (u ? (names.get(u.id)?.name ?? u.email) : null);
     return rows.map((r) => {
       const stored = r.rows as unknown as StoredRow[];
-      const kept = { leaves: r._count.leaves, adjustments: r._count.adjustments, wfhDays: r._count.wfhDays };
+      const kept = { leaves: r._count.leaves, adjustments: r._count.adjustments, wfhDays: r._count.wfhDays, od: r._count.odRequests };
       const source = r.source as LeaveImportSource;
       return {
         id: r.id,
@@ -448,7 +481,7 @@ export class LeaveImportService {
         appliedBy: nameOf(r.appliedBy),
         undoneAt: r.undoneAt?.toISOString() ?? null,
         undoneBy: nameOf(r.undoneBy),
-        state: kept.leaves + kept.adjustments + kept.wfhDays > 0 ? 'applied' : r.undoneAt ? 'undone' : 'not_applied',
+        state: keptTotal(kept) > 0 ? 'applied' : r.undoneAt ? 'undone' : 'not_applied',
       };
     });
   }
@@ -491,7 +524,7 @@ export class LeaveImportService {
 
   /**
    * A Zoho leave type's mapping: the system's type it is imported as, work-from-home days (owner, 21 October 2026: "Yes,
-   * as approved WFH days"), skipped, or back to the default.
+   * as approved WFH days"), official duty days (26 October 2026), skipped, or back to the default.
    */
   async mapType(id: string, dto: LeaveImportTypeDto, user: SessionUser): Promise<LeaveImportView> {
     const imp = await this.row(id);
@@ -502,6 +535,7 @@ export class LeaveImportService {
     const before = map[dto.zohoType] ?? null;
     if (dto.skipped === true) map[dto.zohoType] = 'skip';
     else if (dto.wfh === true) map[dto.zohoType] = ZOHO_WFH_TARGET;
+    else if (dto.od === true) map[dto.zohoType] = ZOHO_OD_TARGET;
     else if (dto.typeId) {
       const type = await this.prisma.leaveType.findUnique({ where: { id: dto.typeId }, select: { id: true, active: true, nameEn: true } });
       if (!type) throw new BadRequestException(['Choose a leave type from the list.']);
@@ -522,16 +556,18 @@ export class LeaveImportService {
    * Applies the rows ready that are the caller's (HR's, a C-level person's the CEO's, never their own), in one
    * transaction: the leave first (approved and marked imported; Zoho's pending as requests at their first step), then the
    * work-from-home days (WfhService.recordHistory in this transaction: owner, 21 October 2026, "Yes, as approved WFH
-   * days"; Zoho's pending as requests), then each balance set to its figure as of its day. Then the draft payrolls of
-   * their months take the leave, and the pending requests are sent to their deciders.
+   * days"; Zoho's pending as requests), then the official duties (OdService.recordHistory in this transaction, 26
+   * October 2026), then each balance set to its figure as of its day. Then the draft payrolls of their months take the
+   * leave and the official duties, and the pending requests are sent to their deciders.
    */
   async apply(id: string, user: SessionUser): Promise<LeaveImportView> {
     const { imp, leaves, balances } = await this.evaluate(id, user);
     const due = leaves.filter((l) => l.view.status === 'ready' && l.view.yours && !l.hidden);
-    const dueLeaves = due.filter((l) => !l.wfh);
+    const dueLeaves = due.filter((l) => !l.wfh && !l.od);
     const dueWfh = due.filter((l) => l.wfh && l.wfhDays.length > 0);
+    const dueOd = due.filter((l) => l.od && l.odDays.length > 0);
     const dueBalances = balances.filter((b) => b.view.status === 'ready' && b.view.yours && !b.hidden);
-    if (!dueLeaves.length && !dueWfh.length && !dueBalances.length) throw new ConflictException('Nothing in this import is ready for you to apply: put right the rows with problems, or say who the people waiting are, first.');
+    if (!dueLeaves.length && !dueWfh.length && !dueOd.length && !dueBalances.length) throw new ConflictException('Nothing in this import is ready for you to apply: put right the rows with problems, or say who the people waiting are, first.');
     const by = (await userNames(this.prisma, [{ id: user.id, email: user.email }])).get(user.id)?.name ?? user.email;
     // the pending ones' deciders, as an employee's request has them (owner, 19 October 2026: the direct manager, else the
     // team lead, else the department's head)
@@ -544,7 +580,9 @@ export class LeaveImportService {
     const made: { leaveId: string; l: ResolvedLeave; status: LeaveStatus }[] = [];
     const set: { adjustmentId: string; b: ResolvedBalance; days: number }[] = [];
     let wfhMade: WfhHistoryResult = { recorded: [], skipped: [] };
-    const marks = (rows: unknown) => (rows as StoredRow[]).map((r) => r.applied?.leaveId ?? r.applied?.adjustmentId ?? r.applied?.wfhIds?.join('+') ?? '').join(',');
+    let odMade: OdHistoryResult = { recorded: [], skipped: [] };
+    const marks = (rows: unknown) =>
+      (rows as StoredRow[]).map((r) => r.applied?.leaveId ?? r.applied?.adjustmentId ?? r.applied?.wfhIds?.join('+') ?? r.applied?.odId ?? '').join(',');
     const rowsBefore = marks(imp.rows);
 
     try {
@@ -621,6 +659,21 @@ export class LeaveImportService {
             stored.applied = { ...stamp, wfhIds: mine.map((x) => x.id), wfhDays: mine.map((x) => x.date), warnings: [...new Set(mine.flatMap((x) => x.warnings))] };
           }
         }
+        // the official duties, in this transaction too, after the leave and the work-from-home days they are checked
+        // against: each approved, Zoho's pending a request at its first step, the import kept on each (Undo removes them)
+        if (dueOd.length) {
+          odMade = await this.od.recordHistory(
+            [...dueOd].sort((a, b) => a.view.row - b.view.row).map((l) => odEntryOf(l, imp.fileName)),
+            { userId: user.id },
+            { tx, importId: id, comment: `Imported from ${imp.fileName}` },
+          );
+          for (const l of dueOd) {
+            const made = odMade.recorded.find((x) => x.row === l.view.row);
+            if (!made) continue;
+            const stored = rows.find((r) => r.sheet === 'leaves' && r.row === l.stored.row)!;
+            stored.applied = { ...stamp, odId: made.id, odDays: l.odDays, warnings: made.warnings };
+          }
+        }
         // each balance after the leave (owner's brief, 21 October 2026), in the order of its day: the figure less what the
         // system has left as of that day
         const ordered = [...dueBalances].sort((a, b) => a.employment!.id.localeCompare(b.employment!.id) || a.view.asOf!.localeCompare(b.view.asOf!));
@@ -663,10 +716,15 @@ export class LeaveImportService {
           wfhDays: wfhMade.recorded.filter((w) => w.status === 'approved').length,
           wfhPending: wfhMade.recorded.filter((w) => w.status !== 'approved').length,
         }),
+        ...(odMade.recorded.length && {
+          officialDuties: odMade.recorded.filter((o) => o.status === 'approved').length,
+          officialDutiesPending: odMade.recorded.filter((o) => o.status !== 'approved').length,
+        }),
       },
     });
-    // each work-from-home day in the audit log, and the pending ones sent to their deciders, once committed
+    // each work-from-home day and official duty in the audit log, and the pending ones sent to their deciders, once committed
     await this.wfh.historyRecorded(wfhMade, { userId: user.id }, { importId: id });
+    await this.od.historyRecorded(odMade, { userId: user.id }, { importId: id });
     for (const m of made) {
       await this.audit.record({
         userId: user.id,
@@ -705,28 +763,32 @@ export class LeaveImportService {
   }
 
   /**
-   * Undo (owner's brief, 21 October 2026): removes the leave, the balance changes and the work-from-home days the import
-   * made that the caller imports (HR, a C-level person's the CEO), while no payroll that counts its leave is past its
-   * draft (409 with the months) and no year of them is closed. Its rows are free again: the same leave and days can be
-   * imported later.
+   * Undo (owner's brief, 21 October 2026): removes the leave, the balance changes, the work-from-home days and the official
+   * duties the import made that the caller imports (HR, a C-level person's the CEO), while no payroll that counts its leave
+   * is past its draft (409 with the months) and no year of them is closed. Its rows are free again: the same leave and
+   * days can be imported later.
    */
   async undo(id: string, user: SessionUser): Promise<LeaveImportView> {
     const imp = await this.row(id);
     const caller = await this.requests.caller(user);
-    const [leaves, adjustments, wfhDays] = await Promise.all([
+    const [leaves, adjustments, wfhDays, ods] = await Promise.all([
       this.prisma.leaveRequest.findMany({
         where: { importId: id },
         select: { id: true, employeeId: true, employmentId: true, startDate: true, endDate: true, status: true, createdAt: true, type: { select: { balance: true, nameEn: true } } },
       }),
       this.prisma.leaveAdjustment.findMany({ where: { importId: id }, select: { id: true, employeeId: true, employmentId: true, year: true, days: true } }),
       this.prisma.wfhRequest.findMany({ where: { importId: id }, select: { id: true, employeeId: true, date: true, status: true, zohoLinkId: true } }),
+      this.prisma.odRequest.findMany({ where: { importId: id }, select: { id: true, employeeId: true, startDate: true, endDate: true, status: true, zohoLinkId: true } }),
     ]);
     const theirs = (employeeId: string) => mayImportFor(caller, employeeId);
     const myLeaves = leaves.filter((l) => theirs(l.employeeId));
     const myAdjustments = adjustments.filter((a) => theirs(a.employeeId));
     // a work-from-home day has no balance nor pay (owner, 21 October 2026): removed whatever the payroll
     const myWfh = wfhDays.filter((w) => theirs(w.employeeId));
-    if (!myLeaves.length && !myAdjustments.length && !myWfh.length) throw new ConflictException('Nothing this import made is left for you to undo.');
+    // an official duty is a working day, not leave: removed whatever the payroll, as a work-from-home day is; the drafts
+    // of its months refilled after
+    const myOd = ods.filter((o) => theirs(o.employeeId));
+    if (!myLeaves.length && !myAdjustments.length && !myWfh.length && !myOd.length) throw new ConflictException('Nothing this import made is left for you to undo.');
 
     // a payroll past its draft that counts a leave: made or sent on after the leave was imported (one already approved
     // then counted it in no payroll)
@@ -764,22 +826,30 @@ export class LeaveImportService {
     const leaveIds = new Set(myLeaves.map((l) => l.id));
     const adjustmentIds = new Set(myAdjustments.map((a) => a.id));
     const wfhIds = new Set(myWfh.map((w) => w.id));
+    const odIds = new Set(myOd.map((o) => o.id));
     let left = 0;
     await this.prisma.$transaction(async (tx) => {
       await tx.leaveRequest.deleteMany({ where: { id: { in: [...leaveIds] }, importId: id } });
       await tx.leaveAdjustment.deleteMany({ where: { id: { in: [...adjustmentIds] }, importId: id } });
       await tx.wfhRequest.deleteMany({ where: { id: { in: [...wfhIds] }, importId: id } });
+      await tx.odRequest.deleteMany({ where: { id: { in: [...odIds] }, importId: id } });
       const rows = imp.rows as unknown as StoredRow[];
       for (const r of rows) {
         if (
           r.applied &&
-          ((r.applied.leaveId && leaveIds.has(r.applied.leaveId)) || (r.applied.adjustmentId && adjustmentIds.has(r.applied.adjustmentId)) || r.applied.wfhIds?.some((w) => wfhIds.has(w)))
+          ((r.applied.leaveId && leaveIds.has(r.applied.leaveId)) ||
+            (r.applied.adjustmentId && adjustmentIds.has(r.applied.adjustmentId)) ||
+            r.applied.wfhIds?.some((w) => wfhIds.has(w)) ||
+            (r.applied.odId && odIds.has(r.applied.odId)))
         ) {
           r.applied = null;
         }
       }
       left =
-        (await tx.leaveRequest.count({ where: { importId: id } })) + (await tx.leaveAdjustment.count({ where: { importId: id } })) + (await tx.wfhRequest.count({ where: { importId: id } }));
+        (await tx.leaveRequest.count({ where: { importId: id } })) +
+        (await tx.leaveAdjustment.count({ where: { importId: id } })) +
+        (await tx.wfhRequest.count({ where: { importId: id } })) +
+        (await tx.odRequest.count({ where: { importId: id } }));
       await tx.leaveImport.update({ where: { id }, data: { rows: json(rows), ...(left === 0 && { undoneAt: at, undoneById: user.id }) } });
     });
     await this.audit.record({
@@ -787,7 +857,14 @@ export class LeaveImportService {
       action: 'undo',
       entityType: IMPORT_ENTITY,
       entityId: id,
-      diff: { fileName: imp.fileName, leaves: myLeaves.length, balances: myAdjustments.length, ...(myWfh.length && { wfhDays: myWfh.length }), ...(left > 0 && { left }) },
+      diff: {
+        fileName: imp.fileName,
+        leaves: myLeaves.length,
+        balances: myAdjustments.length,
+        ...(myWfh.length && { wfhDays: myWfh.length }),
+        ...(myOd.length && { officialDuties: myOd.length }),
+        ...(left > 0 && { left }),
+      },
     });
     for (const l of myLeaves) {
       await this.audit.record({ userId: user.id, action: 'delete', entityType: REQUEST_ENTITY, entityId: l.id, diff: { employeeId: l.employeeId, type: l.type.nameEn, startDate: fromDateOnly(l.startDate), endDate: fromDateOnly(l.endDate), status: l.status, importId: id, undone: true } });
@@ -805,6 +882,8 @@ export class LeaveImportService {
       });
     }
     await this.syncPayroll(myLeaves.filter((l) => l.status === 'approved').map((l) => ({ employeeId: l.employeeId, from: fromDateOnly(l.startDate), to: fromDateOnly(l.endDate) })), user);
+    // each official duty removed in the audit log, and the drafts of its months no longer counting its days as attended
+    await this.od.historyUndone(myOd, { userId: user.id }, id);
     return this.view(id, user);
   }
 
@@ -817,17 +896,18 @@ export class LeaveImportService {
     assertDeletes(user);
     const imp = await this.prisma.leaveImport.findUnique({
       where: { id },
-      select: { id: true, fileName: true, source: true, rows: true, _count: { select: { leaves: true, adjustments: true, wfhDays: true } } },
+      select: { id: true, fileName: true, source: true, rows: true, _count: { select: { leaves: true, adjustments: true, wfhDays: true, odRequests: true } } },
     });
     if (!imp) throw new NotFoundException(NOT_FOUND);
-    const { leaves, adjustments, wfhDays } = imp._count;
-    if (leaves + adjustments + wfhDays > 0) {
+    const { leaves, adjustments, wfhDays, odRequests } = imp._count;
+    if (leaves + adjustments + wfhDays + odRequests > 0) {
       const what = listed([
         leaves ? `${leaves} ${leaves === 1 ? 'leave' : 'leaves'}` : null,
         adjustments ? `${adjustments} balance ${adjustments === 1 ? 'change' : 'changes'}` : null,
         wfhDays ? `${wfhDays} work-from-home ${wfhDays === 1 ? 'day' : 'days'}` : null,
+        odRequests ? `${odRequests} official ${odRequests === 1 ? 'duty' : 'duties'}` : null,
       ]);
-      throw new ConflictException(`${what} from this import ${leaves + adjustments + wfhDays === 1 ? 'is' : 'are'} still in the system. Undo it first, then delete it.`);
+      throw new ConflictException(`${what} from this import ${leaves + adjustments + wfhDays + odRequests === 1 ? 'is' : 'are'} still in the system. Undo it first, then delete it.`);
     }
     await this.prisma.leaveImport.delete({ where: { id } });
     const rows = imp.rows as unknown as StoredRow[];
@@ -961,7 +1041,7 @@ export class LeaveImportService {
           appliedAt: true,
           createdBy: { select: { id: true, email: true } },
           appliedBy: { select: { id: true, email: true } },
-          _count: { select: { leaves: true, adjustments: true, wfhDays: true } },
+          _count: { select: { leaves: true, adjustments: true, wfhDays: true, odRequests: true } },
         },
       }),
     ]);
@@ -973,6 +1053,7 @@ export class LeaveImportService {
     const ownWfh = new Map(
       (await this.prisma.wfhRequest.findMany({ where: { importId: id }, select: { id: true, employeeId: true, date: true } })).map((w) => [w.id, { employeeId: w.employeeId, date: fromDateOnly(w.date) }]),
     );
+    const ownOd = new Map((await this.prisma.odRequest.findMany({ where: { importId: id }, select: { id: true, employeeId: true } })).map((o) => [o.id, o.employeeId]));
     // the imports the system's leave came from, for "Already imported from <file>, <date>"
     const sourceIds = [...new Set([...existing, ...linked].map((l) => l.importId).filter((x): x is string => !!x))];
     const sources = new Map(
@@ -983,7 +1064,7 @@ export class LeaveImportService {
     );
     const userRefs = await userNames(this.prisma, [imp.createdBy, imp.appliedBy, imp.undoneBy, ...sameHash.flatMap((s) => [s.createdBy, s.appliedBy])]);
     const nameOf = (u: { id: string; email: string } | null) => (u ? (userRefs.get(u.id)?.name ?? u.email) : null);
-    const before = sameHash.find((s) => s._count.leaves + s._count.adjustments + s._count.wfhDays > 0) ?? null;
+    const before = sameHash.find((s) => s._count.leaves + s._count.adjustments + s._count.wfhDays + s._count.odRequests > 0) ?? null;
     const sameFile = before ? sameFileText((before.appliedAt ?? before.createdAt).toISOString(), nameOf(before.appliedBy) ?? nameOf(before.createdBy)) : null;
     const uploaded = !before && sameHash.length ? sameHash[sameHash.length - 1] : null;
     const uploadedBefore = uploaded ? `This file was uploaded before, on ${shownDate(fromDateOnly(uploaded.createdAt))}${nameOf(uploaded.createdBy) ? ` by ${nameOf(uploaded.createdBy)}` : ''}, and not applied.` : null;
@@ -1019,6 +1100,8 @@ export class LeaveImportService {
       pending: false,
       wfh: false,
       wfhDays: null,
+      od: false,
+      odDays: null,
       approval: null,
       approvalText: null,
       balance: null,
@@ -1032,6 +1115,7 @@ export class LeaveImportService {
     // ---- the leave rows, each on its own ----
     const offInZohoYears: number[] = [];
     let wfhNameSaid = false;
+    let odNameSaid = false;
     const leaves: ResolvedLeave[] = storedLeaves.map((r) => {
       const person = resolvedPeople.get(r.personKey);
       const view: LeaveImportRowView = {
@@ -1045,7 +1129,7 @@ export class LeaveImportService {
         approvalText: r.approvalText,
         pending: r.approval === 'pending',
       };
-      const out: ResolvedLeave = { stored: r, view, employeeId: person?.employeeId ?? null, employment: null, type: null, hidden: false, wfh: false, wfhDays: [] };
+      const out: ResolvedLeave = { stored: r, view, employeeId: person?.employeeId ?? null, employment: null, type: null, hidden: false, wfh: false, wfhDays: [], od: false, odDays: [] };
       if (out.employeeId && hiddenSet.has(out.employeeId)) out.hidden = true;
       const fail = (status: LeaveImportRowStatus, ...reasons: string[]) => {
         view.status = status;
@@ -1074,6 +1158,17 @@ export class LeaveImportService {
         view.warnings.push(...(r.applied.warnings ?? []));
         return out;
       }
+      // an official duty row applied: the official duty it made, while it is there, and what was said of it
+      if (r.applied?.odId && ownOd.has(r.applied.odId)) {
+        out.od = true;
+        view.od = true;
+        view.status = 'applied';
+        view.applied = { at: r.applied.at };
+        view.odDays = r.applied.odDays ?? null;
+        view.days = r.applied.odDays?.length ?? null;
+        view.warnings.push(...(r.applied.warnings ?? []));
+        return out;
+      }
       // Zoho's rejected and cancelled leave: listed, not imported
       if (r.approval === 'rejected' || r.approval === 'cancelled') return fail('skipped', zohoNotImportedText(r.approval));
       // the problems of any row: its dates, its person, Zoho's status and unit
@@ -1090,6 +1185,7 @@ export class LeaveImportService {
       // the type: the template's by its name, Zoho's as mapped (or by default): a leave type, work-from-home days, or skipped
       let type: LeaveType | null = null;
       let wfhRow = false;
+      let odRow = false;
       if (source === 'zoho') {
         const chosen = typeMap[r.typeText];
         const byDefault = defaultZohoType(r.typeText, types);
@@ -1099,10 +1195,11 @@ export class LeaveImportService {
             'skipped',
             !chosen && byDefault.note
               ? byDefault.note
-              : `“${r.typeText}” is skipped: choose ${byDefault.wfh ? ZOHO_WFH_TARGET_LABEL : 'a leave type'} for it above to import these rows.`,
+              : `“${r.typeText}” is skipped: choose ${byDefault.wfh ? ZOHO_WFH_TARGET_LABEL : byDefault.od ? ZOHO_OD_TARGET_LABEL : 'a leave type'} for it above to import these rows.`,
           );
         }
         if (target.kind === 'wfh') wfhRow = true;
+        else if (target.kind === 'od') odRow = true;
         else type = typeById.get(target.typeId) ?? null;
       } else if (isTemplateWfhType(r.typeText)) {
         // a leave type of the organization named so wins over it, said once
@@ -1112,7 +1209,64 @@ export class LeaveImportService {
           view.notes.push(wfhNameIsLeaveTypeText(type.nameEn));
         }
         wfhRow = !type;
+      } else if (isTemplateOdType(r.typeText)) {
+        // Official duty (owner, 26 October 2026: "Import (template + Zoho)"): a leave type of the organization named so
+        // wins over it, said once, as for Work from home
+        type = typeNamed(types, r.typeText);
+        if (type && !odNameSaid) {
+          odNameSaid = true;
+          view.notes.push(odNameIsLeaveTypeText(type.nameEn));
+        }
+        odRow = !type;
       } else type = typeNamed(types, r.typeText);
+      if (odRow) {
+        // one official duty of the row's working days (owner's brief, 26 October 2026): from its first working day to its
+        // last, full days, not leave (no type, no balance); Zoho's holidays and weekends and the rest days and official
+        // holidays here left out at its ends, those here aren't duty days within it either
+        out.od = true;
+        view.od = true;
+        const problems = rowProblems();
+        if (r.from && r.to && r.to >= r.from && leaveDaysBetween(r.from, r.to, { workingDays: [], holidays: [], calendarDays: true, halfDay: false }) > WFH_IMPORT_MAX_SPAN) {
+          problems.push(odRowTooLongText());
+        }
+        if (problems.length) return fail('problem', ...problems);
+        if (!person || person.view.match === 'skipped') return fail('skipped', 'Its person is skipped.');
+        if (!out.employeeId) return fail('waiting', `Say who ${r.name || r.code} is first.`);
+        const eid = out.employeeId;
+        const name = employeeById.get(eid)!.fullNameEn;
+        const holidayList = [...holidaySet];
+        const countsDay = (d: string) =>
+          leaveDaysBetween(d, d, { workingDays: covering(eid, d, d)?.workingDays ?? DEFAULT_WORKING_DAYS, holidays: holidayList, calendarDays: false, halfDay: false }) > 0;
+        const found = zohoWfhDays(r.from!, r.to!, r.details, countsDay);
+        // a template row's half day (a single day of 0.5): a full day of official duty, said so
+        if (source !== 'zoho' && r.from === r.to && r.fileDays !== null && Math.round(r.fileDays * 10) === 5 && found.days.length) found.halfDays.push(r.from!);
+        const outside = found.days.filter((d) => !covering(eid, d, d));
+        const days = found.days.filter((d) => !outside.includes(d));
+        const all = employmentsOf(eid);
+        const notCovered = () =>
+          all.length ? `${name}’s employment${all.length === 1 ? '' : 's'} don’t cover these days (joined ${shownDate(all[all.length - 1].joinDate)}): choose days within one.` : `${name} has no employment.`;
+        if (outside.length && !days.length) return fail('problem', notCovered());
+        if (!days.length) return fail('skipped', '0 days: every day of it is a rest day or an official holiday.');
+        const first = days[0];
+        const last = days[days.length - 1];
+        if (odDates(first, last).length > OD_IMPORT_MAX_DAYS) return fail('problem', odRowTooLongText());
+        if (!covering(eid, first, last)) return fail('problem', notCovered());
+        view.days = days.length;
+        view.odDays = days;
+        out.odDays = days;
+        const half = source === 'zoho' ? odHalfDaysText(found.halfDays) : found.halfDays.length ? odFileHalfDayText(found.halfDays[0]) : null;
+        if (half) view.warnings.push(half);
+        // a day Zoho calls a holiday or weekend between its first and last day that is a working day here: one official
+        // duty covers its days in a row, so it is a duty day, said so
+        const inside = found.leftOut.filter((x) => x.why === 'off_in_zoho' && x.date > first && x.date < last && countsDay(x.date)).map((x) => x.date);
+        const insideText = odOffInZohoInsideText(inside);
+        if (insideText) view.warnings.push(insideText);
+        const leftOut = wfhLeftOutText(found.leftOut.filter((x) => !inside.includes(x.date)));
+        if (leftOut) view.notes.push(leftOut);
+        if (outside.length) view.notes.push(wfhOutsideEmploymentText(outside, name));
+        if (view.pending) view.notes.push(ZOHO_OD_PENDING_NOTE);
+        return out;
+      }
       if (wfhRow) {
         // Working from home (owner, 21 October 2026: "Yes, as approved WFH days"): a work-from-home day each working
         // day of the row, not leave (no type, no balance, no pay). A template row naming Work from home is read the same
@@ -1335,6 +1489,36 @@ export class LeaveImportService {
       }
     }
 
+    // ---- the official duty rows (owner, 26 October 2026: "Import (template + Zoho)"): as Apply brings them over
+    // (OdService.recordHistory), saving nothing: one already there with the same days (being decided or approved, or its
+    // Zoho row brought over before) or an earlier row's is a duplicate, one meeting their days a problem; what their days
+    // meet (leave, a work from home day, a compensatory day off) warnings only, as history; the file's leave and
+    // work-from-home days read as the people's too ----
+    const odReady = leaves.filter((l) => l.od && l.view.status === 'ready' && !l.hidden).sort((a, b) => a.view.row - b.view.row);
+    if (odReady.length) {
+      const ready = (l: ResolvedLeave) => l.view.status === 'ready' && !l.hidden;
+      const preview = await this.od.previewHistory(
+        odReady.map((l) => odEntryOf(l, imp.fileName)),
+        {
+          leave: leaves
+            .filter((l) => !l.wfh && !l.od && l.type && ready(l))
+            .map((l) => ({ employeeId: l.employeeId!, from: l.view.from!, to: l.view.to!, type: l.type!.nameEn, status: l.view.pending ? 'pending' : 'approved' })),
+          wfh: leaves.filter((l) => l.wfh && ready(l)).flatMap((l) => l.wfhDays.map((date) => ({ employeeId: l.employeeId!, date, status: l.view.pending ? 'pending' : 'approved' }))),
+        },
+      );
+      for (const l of odReady) {
+        const made = preview.recorded.find((x) => x.row === l.view.row);
+        if (made) {
+          l.view.warnings = [...new Set([...l.view.warnings, ...made.warnings])];
+          continue;
+        }
+        const skipped = preview.skipped.find((x) => x.row === l.view.row);
+        if (!skipped) continue;
+        l.view.status = skipped.reason === 'duplicate' ? 'duplicate' : 'problem';
+        l.view.reasons.push(skipped.message);
+      }
+    }
+
     // ---- the balance rows ----
     const leaveYears = [...new Set(storedLeaves.map((r) => r.from).filter((d): d is string => !!d).map((d) => Number(d.slice(0, 4))))];
     const balanceYearClosed = await this.paidOnLeaving(employments.map((e) => e.id));
@@ -1397,7 +1581,7 @@ export class LeaveImportService {
 
     // ---- the balances' figures: what is left now (and as of each balance's day), with the file's leave counted ----
     // the leave (a work-from-home row has no balance, no pay)
-    const readyLeaves = leaves.filter((l) => l.view.status === 'ready' && !l.hidden && !l.wfh);
+    const readyLeaves = leaves.filter((l) => l.view.status === 'ready' && !l.hidden && !l.wfh && !l.od);
     const goesOver = mayEditLeave(user);
     const annualRows = readyLeaves.filter((l) => takesFromAnnual(l.type!.balance));
     const readyBalances = balances.filter((b) => b.view.status === 'ready');
@@ -1523,13 +1707,14 @@ export class LeaveImportService {
     for (const r of [...shownLeaves, ...shownBalances]) counts[r.view.status]++;
     const zohoTypes = source === 'zoho' ? [...new Set(storedLeaves.map((r) => r.typeText).filter(Boolean))] : [];
     const options = employees.filter((e) => !hiddenSet.has(e.id)).map((e) => ({ id: e.id, fullNameEn: e.fullNameEn, employeeCode: e.employeeCode }));
-    const kept: Kept = { leaves: ownLeaves.size, adjustments: ownAdjustments.size, wfhDays: ownWfh.size };
+    const kept: Kept = { leaves: ownLeaves.size, adjustments: ownAdjustments.size, wfhDays: ownWfh.size, od: ownOd.size };
     const undoable =
-      kept.leaves + kept.adjustments + kept.wfhDays === 0
+      keptTotal(kept) === 0
         ? 0
         : (await this.prisma.leaveRequest.findMany({ where: { importId: id }, select: { employeeId: true } })).filter((l) => mayImportFor(caller, l.employeeId)).length +
           (await this.prisma.leaveAdjustment.findMany({ where: { importId: id }, select: { employeeId: true } })).filter((a) => mayImportFor(caller, a.employeeId)).length +
-          [...ownWfh.values()].filter((w) => mayImportFor(caller, w.employeeId)).length;
+          [...ownWfh.values()].filter((w) => mayImportFor(caller, w.employeeId)).length +
+          [...ownOd.values()].filter((employeeId) => mayImportFor(caller, employeeId)).length;
     const view: LeaveImportView = {
       id: imp.id,
       fileName: imp.fileName,
@@ -1553,11 +1738,14 @@ export class LeaveImportService {
           rows: storedLeaves.filter((r) => r.typeText === zohoType).length,
           typeId: target.kind === 'leave' ? target.typeId : null,
           wfh: target.kind === 'wfh',
+          od: target.kind === 'od',
           chosen: chosen !== undefined,
           defaultTypeId: d.typeId,
           defaultWfh: d.wfh,
-          // Working from home's note says it is imported as work-from-home days: not once HR skips it
-          note: d.wfh && target.kind !== 'wfh' ? null : d.note,
+          defaultOd: d.od === true,
+          // Working from home's note says it is imported as work-from-home days, On Duty's as official duty: not once HR
+          // chooses otherwise
+          note: (d.wfh && target.kind !== 'wfh') || (d.od && target.kind !== 'od') ? null : d.note,
         };
       }),
       leaves: shownLeaves.map((l) => l.view),
@@ -1625,6 +1813,25 @@ export class LeaveImportService {
     }
     for (const [employeeId, s] of span) await this.payroll.syncDrafts(employeeId, s.from, s.to, user);
   }
+}
+
+/** All an import made that is still in the system. */
+const keptTotal = (kept: Kept) => kept.leaves + kept.adjustments + kept.wfhDays + kept.od;
+
+/**
+ * An official duty row as OdService.recordHistory brings it over (owner's brief, 26 October 2026): one official duty
+ * from its first duty day to its last, the row's notes as its reason, Zoho's pending carried on, its ZOHO_LINK_ID once.
+ */
+function odEntryOf(l: ResolvedLeave, fileName: string): OdHistoryEntry {
+  return {
+    employeeId: l.employeeId!,
+    startDate: l.odDays[0],
+    endDate: l.odDays[l.odDays.length - 1],
+    reason: odImportReason(l.stored.notes, fileName),
+    pending: l.view.pending,
+    zohoLinkId: l.stored.linkId,
+    row: l.view.row,
+  };
 }
 
 /** What the system has left of a year's annual balance as of the figures' day: earned, carried in and adjusted, less what was taken by then. */

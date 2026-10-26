@@ -10,7 +10,7 @@ import { monthName } from '../../payroll/list';
 import { StaffOnly } from '../../staff-only';
 import { notLoaded } from '../not-loaded';
 import { loadOdRequests } from './data';
-import { emptyOdText, OD_FILTERS, OD_PATH, odListHref, readOdQuery, seesAllOd, type OdQuery } from './od';
+import { emptyOdText, OD_FILTERS, OD_PATH, odListHref, readOdQuery, RECORD_OD_PATH, recordsOd, seesAllOd, type OdQuery } from './od';
 import { OdTable } from './ui';
 
 // Attendance → Official Duty (owner, 23 October 2026: "Official duty (OD) requests. The plan has OD as a third
@@ -19,7 +19,9 @@ import { OdTable } from './ui';
 // person's for the CEO), by status (?status=), month (?month=: those with a day in it), department or team
 // (?department=) and those asked after their first day (?late=1): who, the days and hours, where, a mark for one
 // requested after, where it stands, each opening its page with the decision. A manager decides their team's on My
-// Team; an employee asks from My Requests. Working from home has no Excel, so neither has this list.
+// Team; an employee asks from My Requests. HR records one for someone with Record official duty (owner, 26 October
+// 2026: "HR records it"), the CEO a C-level person's; the leave import brings them over too ("Import (template +
+// Zoho)"). Working from home has no Excel, so neither has this list.
 
 export const metadata: Metadata = { title: 'Official Duty · People System' };
 
@@ -80,13 +82,20 @@ async function List({ searchParams }: { searchParams: PageProps<'/attendance/off
   const [loaded, places] = await Promise.all([loadOdRequests(q), loadPlaces()]);
   return (
     <div className="space-y-4">
-      <nav aria-label="Which requests" className="flex flex-wrap gap-2">
-        {OD_FILTERS.map((f) => (
-          <Link key={f.value} href={odListHref({ ...q, filter: f.value })} aria-current={f.value === q.filter ? 'page' : undefined} className={`${chip} ${f.value === q.filter ? ACTIVE : IDLE}`}>
-            {f.label}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <nav aria-label="Which requests" className="flex flex-wrap gap-2">
+          {OD_FILTERS.map((f) => (
+            <Link key={f.value} href={odListHref({ ...q, filter: f.value })} aria-current={f.value === q.filter ? 'page' : undefined} className={`${chip} ${f.value === q.filter ? ACTIVE : IDLE}`}>
+              {f.label}
+            </Link>
+          ))}
+        </nav>
+        {recordsOd(user) && (
+          <Link href={RECORD_OD_PATH} className="btn btn-primary no-underline">
+            Record official duty
           </Link>
-        ))}
-      </nav>
+        )}
+      </div>
       <Filters q={q} places={places} />
       {loaded.kind !== 'ok' ? (
         <Empty>{notLoaded(loaded, 'official duty requests')}</Empty>
@@ -112,7 +121,8 @@ export default function OdListPage({ searchParams }: PageProps<'/attendance/offi
           <p className="mt-1 max-w-3xl text-muted">
             Work for the company away from the office, a client&apos;s site or a shoot: a working day, not leave. Asked ahead, or up to 3 days after
             (marked requested after); decided by their direct manager (or lead), then HR, a C-level person&apos;s by the CEO. On an approved day they check
-            in from where they are, without the office location or network, and the day counts as attended for its hours.
+            in from where they are, without the office location or network, and the day counts as attended for its hours. HR records one for someone,
+            approved at once and past the 3 days too, with a reason; the leave import brings them over.
           </p>
         </div>
         <Suspense fallback={<Loading />}>

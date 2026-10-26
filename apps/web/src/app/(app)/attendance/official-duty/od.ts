@@ -10,6 +10,7 @@ import {
   odHoursProblems,
   odInputProblems,
   odTimingProblem,
+  odWhenProblems,
   type LeaveDecision,
   type LeaveStage,
   type LeaveStatus,
@@ -18,7 +19,7 @@ import {
 } from '@trendlix/shared';
 import { MY_REQUESTS, MY_TEAM } from '../../../../components/nav';
 import { formatDate, formatTime, parseDate, parseTime } from '../../../../lib/format';
-import type { OdDayView, OdForm, OdRequestStep, OdRequestView } from '../../../../lib/od-types';
+import type { OdCheck, OdDayView, OdForm, OdRequestStep, OdRequestView } from '../../../../lib/od-types';
 import { hasRole } from '../../../../lib/roles';
 import type { LeaveRequestStep, RequestApprover } from '../../../../lib/types';
 import { hrStageName, leaveDecisionButton, leaveProgressText, leaveStepText } from '../../leave/list';
@@ -32,9 +33,11 @@ import { weekdayOf } from '../../organization/holidays/holidays';
 // latter marked requested after; decided by the approver in charge, then HR ("Manager, then HR"), a C-level person's
 // HR stage by the CEO; cancelled while it is being decided, by HR once approved. On an approved day the check-in is
 // taken from anywhere ("Check in from anywhere") and the day counts as attended for its hours. HR and the CEO see every
-// request under Attendance → Official Duty. The rules are @trendlix/shared's (official-duty.ts), which the API
-// enforces; these helpers word what it sent, read the forms and show the same checks live. Pure code, tested; relative
-// imports, as vitest doesn't know the @/ paths.
+// request under Attendance → Official Duty. HR records one for someone there (owner, 26 October 2026: "HR records it"),
+// approved at once, past the 3-day limit too with a warning; the CEO a C-level person's. A leave import brings them over
+// too ("Import (template + Zoho)"). The rules are @trendlix/shared's (official-duty.ts), which the API enforces; these
+// helpers word what it sent, read the forms and show the same checks live. Pure code, tested; relative imports, as
+// vitest doesn't know the @/ paths.
 
 type WithRoles = { roles: readonly Role[] };
 type Query = Record<string, string | string[] | undefined>;
@@ -56,8 +59,15 @@ export const NEW_OD_PATH = `${OD_PATH}/new`;
 /** A request's page, where it is decided and cancelled: "/attendance/official-duty/<id>". */
 export const odHref = (id: string) => `${OD_PATH}/${encodeURIComponent(id)}`;
 
+/** HR's form to record official duty for someone: "/attendance/official-duty/record?employee=<id>". */
+export const RECORD_OD_PATH = `${OD_PATH}/record`;
+export const recordOdHref = (employeeId?: string | null) => (employeeId ? `${RECORD_OD_PATH}?employee=${encodeURIComponent(employeeId)}` : RECORD_OD_PATH);
+
+/** Who records official duty for someone (26 October 2026: "HR records it"): HR, and the CEO a C-level person's (the API checks whose). */
+export const recordsOd = (user: WithRoles) => hasRole(user, 'hr', 'ceo');
+
 /** What was just done on a request, said on its page by `?done=`. */
-export type OdDone = 'sent' | 'cancelled' | 'moved' | `${LeaveStage}_${LeaveDecision}`;
+export type OdDone = 'sent' | 'recorded' | 'cancelled' | 'moved' | `${LeaveStage}_${LeaveDecision}`;
 
 /** A request's page after something was done on it: "/attendance/official-duty/<id>?done=sent". */
 export const odDoneHref = (id: string, done: OdDone) => `${odHref(id)}?done=${done}`;
@@ -192,13 +202,27 @@ export function odSpanText(r: Pick<OdRequestView, 'startDate' | 'endDate' | 'ful
   return `${days} days in a row, full days`;
 }
 
-/** Where a request stands, for its list row and its page, as a leave request's (who has it now, or how it ended). */
-export function odProgressText(r: Pick<OdRequestView, 'status' | 'manager' | 'rejectedStage' | 'rejectReason' | 'confidential' | 'steps'>): { text: string; reason: string | null } {
-  return leaveProgressText({ ...r, recordedByHr: false, steps: r.steps as unknown as LeaveRequestStep[] });
+/** How it came: asked by the employee, recorded by HR (26 October 2026), or imported by a leave import. */
+export function odSourceText(r: Pick<OdRequestView, 'recordedByHr' | 'imported'>): string {
+  if (r.imported) return 'Imported';
+  return r.recordedByHr ? 'Recorded by HR' : 'Asked by the employee';
 }
 
-/** Once sent: where it goes. */
+/**
+ * Where a request stands, for its list row and its page, as a leave request's (who has it now, or how it ended);
+ * recorded by HR and imported said so.
+ */
+export function odProgressText(r: Pick<OdRequestView, 'status' | 'manager' | 'rejectedStage' | 'rejectReason' | 'confidential' | 'steps' | 'recordedByHr' | 'imported'>): {
+  text: string;
+  reason: string | null;
+} {
+  if (r.status === 'approved' && r.imported) return { text: 'Imported', reason: null };
+  return leaveProgressText({ ...r, recordedByHr: r.recordedByHr === true, steps: r.steps.filter((s) => s.kind !== 'imported') as unknown as LeaveRequestStep[] });
+}
+
+/** Once sent: where it goes, or, recorded by HR, that it is approved at once. */
 export function odSentText(status: LeaveStatus, manager?: Pick<RequestApprover, 'role'> | null, confidential?: boolean | null): string {
+  if (status === 'approved') return 'Official duty recorded, approved at once; the employee is told. On its days they check in from where they are, and the days count as attended for its hours.';
   const hr = hrStageName(confidential);
   const first = manager?.role === 'team_lead' ? 'your team lead' : manager?.role === 'department_head' ? 'your head of department' : 'your direct manager';
   return status === 'with_manager' ? `Request sent. It goes to ${first}, then ${hr}; each step shows on the request.` : `Request sent. It goes to ${hr}; each step shows on the request.`;
@@ -218,7 +242,7 @@ export const OD_MOVED_ON = 'This request has moved on since you opened it: someo
 /** What a request's page says after `?done=`, and in which tone; null for anything else. */
 export function odDoneText(query: Query, status: LeaveStatus, manager?: Pick<RequestApprover, 'role'> | null, confidential?: boolean | null): { text: string; tone: 'ok' | 'warn' } | null {
   const done = one(query.done);
-  if (done === 'sent') return { text: odSentText(status, manager, confidential), tone: 'ok' };
+  if (done === 'sent' || done === 'recorded') return { text: odSentText(status, manager, confidential), tone: 'ok' };
   if (done === 'cancelled') return { text: 'Official duty cancelled. It stays on the list, cancelled; its days are free again.', tone: 'ok' };
   if (done === 'moved') return { text: OD_MOVED_ON, tone: 'warn' };
   const [stage, decision] = done.split('_');
@@ -226,8 +250,10 @@ export function odDoneText(query: Query, status: LeaveStatus, manager?: Pick<Req
   return { text: odDecidedText(decision as LeaveDecision, stage as LeaveStage, confidential), tone: 'ok' };
 }
 
-/** A step as its timeline shows it: as a leave request's, a cancelling in its words. */
+/** A step as its timeline shows it: as a leave request's, HR's recording, an import and a cancelling in their words. */
 export function odStepText(s: Pick<OdRequestStep | LeaveRequestStep, 'kind' | 'decision' | 'comment'>, manager?: Pick<RequestApprover, 'role'> | null, confidential?: boolean | null): string {
+  if (s.kind === 'imported') return 'Imported, approved';
+  if (s.kind === 'recorded_by_hr') return 'Recorded by HR, approved at once';
   if (s.kind === 'cancelled') return 'Cancelled';
   return leaveStepText({ ...s, kind: s.kind as LeaveStepKind }, manager, confidential);
 }
@@ -269,8 +295,21 @@ export interface OdBody {
   reason: string;
 }
 
+/** The days and times of a request: what HR's live check reads (GET /official-duty/check). */
+export type OdWhen = Pick<OdBody, 'startDate' | 'endDate' | 'fullDay' | 'fromTime' | 'toTime'>;
+
 /** What was typed, read: the API's values, and why it can't be read here. */
 function read(t: TypedOd): { body: OdBody | null; errors: string[] } {
+  const { when, errors } = readWhen(t);
+  if (!when) return { body: null, errors };
+  const body: OdBody = { ...when, place: t.place.trim(), reason: t.reason.trim() };
+  // the shared checks of what can be read: the order of the days, at most 31, part of a day's times, the place, the reason
+  const shared = odInputProblems({ ...body, fromTime: body.fromTime ?? null, toTime: body.toTime ?? null }).map(shownMessage);
+  return shared.length ? { body: null, errors: shared } : { body, errors: [] };
+}
+
+/** The days and times typed, read: what the API takes of them, and why they can't be read here. */
+function readWhen(t: Pick<TypedOd, 'startDate' | 'endDate' | 'span' | 'fromTime' | 'toTime'>): { when: OdWhen | null; errors: string[] } {
   const errors: string[] = [];
   const startDate = parseDate(t.startDate);
   const endTyped = t.endDate.trim();
@@ -287,15 +326,15 @@ function read(t: TypedOd): { body: OdBody | null; errors: string[] } {
     if (t.toTime.trim() === '' || t.toTime.includes('--')) errors.push('Choose the time it ends, e.g. 2:00 PM.');
     else if (!toTime) errors.push('Choose the time it ends as a 12-hour time, e.g. 2:00 PM.');
   }
-  if (errors.length || !startDate || !endDate) return { body: null, errors };
-  const body: OdBody = { startDate, endDate, fullDay: !part, place: t.place.trim(), reason: t.reason.trim() };
+  if (errors.length || !startDate || !endDate) return { when: null, errors };
+  const when: OdWhen = { startDate, endDate, fullDay: !part };
   if (part && fromTime && toTime) {
-    body.fromTime = fromTime;
-    body.toTime = toTime;
+    when.fromTime = fromTime;
+    when.toTime = toTime;
   }
-  // the shared checks of what can be read: the order of the days, at most 31, part of a day's times, the place, the reason
-  const shared = odInputProblems({ ...body, fromTime: body.fromTime ?? null, toTime: body.toTime ?? null }).map(shownMessage);
-  return shared.length ? { body: null, errors: shared } : { body, errors: [] };
+  // the shared checks of the days and times: their order, at most 31, part of a day's times
+  const shared = odWhenProblems({ ...when, fromTime: when.fromTime ?? null, toTime: when.toTime ?? null }).map(shownMessage);
+  return shared.length ? { when: null, errors: shared } : { when, errors: [] };
 }
 
 /**
@@ -333,6 +372,48 @@ export function odReadyText(typed: TypedOd, toCeo = false): string {
 /** The request sent, or what can't be read: the API checks the rest and answers what is wrong. */
 export function odForm(fd: FormData): { body: OdBody | null; errors: string[] } {
   return read(typedOd(fd));
+}
+
+// ---------- HR records it (owner, 26 October 2026: "HR records it") ----------
+
+/** HR's record (POST /official-duty): the employee (the form's hidden field), then the request's own fields. */
+export function odRecordForm(fd: FormData): { body: (OdBody & { employeeId: string }) | null; errors: string[] } {
+  const employeeId = String(fd.get('employeeId') ?? '');
+  const { body, errors } = read(typedOd(fd));
+  if (!UUID.test(employeeId)) return { body: null, errors: ['Choose the employee first.', ...errors] };
+  return body ? { body: { ...body, employeeId }, errors: [] } : { body: null, errors };
+}
+
+/** The days and times HR's live check reads, once they can be read; null before. */
+export function odWhenOf(typed: Pick<TypedOd, 'startDate' | 'endDate' | 'span' | 'fromTime' | 'toTime'>): OdWhen | null {
+  return readWhen(typed).when;
+}
+
+/** GET /official-duty/check for someone and the days and times: "/official-duty/check?employeeId=…&startDate=…&endDate=…&fullDay=true". */
+export function odCheckPath(employeeId: string, when: OdWhen): string {
+  const params = new URLSearchParams({ employeeId, startDate: when.startDate, endDate: when.endDate, fullDay: String(when.fullDay) });
+  if (!when.fullDay && when.fromTime && when.toTime) {
+    params.set('fromTime', when.fromTime);
+    params.set('toTime', when.toTime);
+  }
+  return `/official-duty/check?${params.toString()}`;
+}
+
+/**
+ * Why HR can't record it yet, in the order to fix them (none: it can): what can't be read here, then what the API's check
+ * of the days said (`check`; null while it is read or couldn't be: the API checks them all again when it is recorded).
+ */
+export function odRecordProblems(typed: TypedOd, check: Pick<OdCheck, 'problems'> | null): string[] {
+  const { errors } = read(typed);
+  if (errors.length) return errors;
+  return check ? check.problems.map(shownMessage) : [];
+}
+
+/** What HR's form says once it can be recorded: the days, approved at once for the person, who is told. */
+export function odRecordReadyText(typed: TypedOd, name: string): string {
+  const { body } = read(typed);
+  const when = body ? ` for ${odWhenWords({ startDate: body.startDate, endDate: body.endDate, fullDay: body.fullDay, fromTime: body.fromTime ?? null, toTime: body.toTime ?? null })}` : '';
+  return `Ready to record: official duty${when}, approved at once for ${name} and logged as recorded by HR. ${name} is told.`;
 }
 
 const FIELDS = ['startDate', 'endDate', 'span', 'fromTime', 'toTime', 'place', 'reason'] as const;

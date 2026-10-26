@@ -24,6 +24,7 @@ import {
   importsLeave,
   LEAVE_IMPORT_PATH,
   MATCH_TEXT,
+  odSpanText,
   orderedRows,
   peopleChosen,
   peopleToConfirm,
@@ -130,12 +131,13 @@ function LeavesTable({ rows }: { rows: LeaveImportRow[] }) {
               </td>
               <td className="min-w-36 text-sm">
                 {rowTypeText(r)}
-                {(r.type || r.wfh) && r.typeText && r.typeText !== rowTypeText(r) && <span className="block text-xs text-muted">In the file: {r.typeText}</span>}
+                {(r.type || r.wfh || r.od) && r.typeText && r.typeText !== rowTypeText(r) && <span className="block text-xs text-muted">In the file: {r.typeText}</span>}
               </td>
               <td className="text-sm whitespace-nowrap tabular-nums">{whenText(r)}</td>
               <td className="text-sm tabular-nums">
                 <span className="whitespace-nowrap">{rowDaysText(r)}</span>
                 {wfhDaysListText(r) && <span className="block max-w-40 text-xs text-muted">{wfhDaysListText(r)}</span>}
+                {odSpanText(r) && <span className="block max-w-40 text-xs text-muted">{odSpanText(r)}</span>}
               </td>
               <td className="min-w-64 max-w-md">
                 <Notes r={r} />
@@ -259,7 +261,7 @@ async function Review({ params }: { params: PageProps<'/leave/import/[id]'>['par
               Leave Types
             </h2>
             <p className="text-sm text-muted">
-              Each of Zoho&apos;s leave types once: the system&apos;s type its rows are imported as, work-from-home days, or Skip.
+              Each of Zoho&apos;s leave types once: the system&apos;s type its rows are imported as, work-from-home days, official duty days, or Skip.
             </p>
           </div>
           <ul className="card divide-y divide-line-soft">
@@ -345,7 +347,8 @@ async function Review({ params }: { params: PageProps<'/leave/import/[id]'>['par
             <p className="text-sm text-muted">
               Counted as recorded leave is: working days by the person&apos;s shift, without rest days and the official holidays; a different figure in the
               file is a warning and the system&apos;s is used. A type&apos;s limits and a missing document are warnings only: this is history. A
-              work-from-home row makes a work-from-home day each working day of it, not leave; its limits are warnings only too.
+              work-from-home row makes a work-from-home day each working day of it, not leave; its limits are warnings only too. An official duty row
+              makes one approved official duty from its first working day to its last, full days, not leave: its days count as attended.
             </p>
           </div>
           <LeavesTable rows={view.leaves} />
@@ -373,8 +376,9 @@ async function Review({ params }: { params: PageProps<'/leave/import/[id]'>['par
         </h2>
         <p className="text-sm text-muted">
           In one go: the leave ready is recorded as approved and marked imported (Zoho&apos;s pending leave as requests, sent to their deciders), with
-          the work-from-home days (approved, or pending ones as requests), then each balance is set. The draft payrolls of their months take the
-          leave; a payroll with the CEO, approved or paid isn&apos;t changed. A C-level person&apos;s rows are the CEO&apos;s to apply.
+          the work-from-home days and the official duties (approved, or pending ones as requests), then each balance is set. The draft payrolls of
+          their months take the leave and the official duties; a payroll with the CEO, approved or paid isn&apos;t changed. A C-level person&apos;s rows
+          are the CEO&apos;s to apply.
         </p>
         {view.canApply ? (
           <ActionButton action={applyLeaveImport.bind(null, id)} pendingText="Applying…" variant="primary" confirmText={applyConfirmText(view)}>

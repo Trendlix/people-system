@@ -1,4 +1,14 @@
-import { LEAVE_IMPORT_MAX_MB, LEAVE_IMPORT_ROW_STATUS_LABELS, signedDays, WFH_IMPORT_ROW_LABEL, ZOHO_WFH_TARGET, type LeaveImportRowStatus, type Role } from '@trendlix/shared';
+import {
+  LEAVE_IMPORT_MAX_MB,
+  LEAVE_IMPORT_ROW_STATUS_LABELS,
+  OD_IMPORT_ROW_LABEL,
+  signedDays,
+  WFH_IMPORT_ROW_LABEL,
+  ZOHO_OD_TARGET,
+  ZOHO_WFH_TARGET,
+  type LeaveImportRowStatus,
+  type Role,
+} from '@trendlix/shared';
 import { LEAVE_PATH } from '../../../../components/nav';
 import { formatDate, formatDateTime } from '../../../../lib/format';
 import type { LeaveImportHistoryRow, LeaveImportKept, LeaveImportPerson, LeaveImportRow, LeaveImportType, LeaveImportView } from '../../../../lib/leave-import-types';
@@ -7,9 +17,9 @@ import { shownCode } from '../../../../lib/hidden';
 
 // Importing leave in bulk, on Leave Requests (owner, 21 October 2026: "how to import bulk leaves?"; he chose "Both", the
 // leave taken and the balances, and "Our Excel template"; Zoho People's leave export too, its Working from home rows as
-// work-from-home days: "Yes, as approved WFH days"): the addresses, who imports, the upload's quick checks, the review's
-// sections, counts and words, and the history's. Pure code, tested; relative imports, as vitest doesn't know the @/
-// paths. The API decides every row.
+// work-from-home days: "Yes, as approved WFH days"; official duty rows one official duty each, 26 October 2026: "Import
+// (template + Zoho)"): the addresses, who imports, the upload's quick checks, the review's sections, counts and words,
+// and the history's. Pure code, tested; relative imports, as vitest doesn't know the @/ paths. The API decides every row.
 
 type WithRoles = { roles: readonly Role[] };
 
@@ -71,15 +81,28 @@ export function whenText(r: Pick<LeaveImportRow, 'from' | 'to' | 'fromText' | 't
 
 export const daysText = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`;
 
-/** A row's type as the review shows it: a work-from-home row as such, else the system's type or the file's words. */
-export const rowTypeText = (r: Pick<LeaveImportRow, 'wfh' | 'type' | 'typeText'>): string => (r.wfh ? WFH_IMPORT_ROW_LABEL : (r.type?.nameEn ?? r.typeText));
+/** A row's type as the review shows it: a work-from-home or official duty row as such, else the system's type or the file's words. */
+export const rowTypeText = (r: Pick<LeaveImportRow, 'wfh' | 'od' | 'type' | 'typeText'>): string =>
+  r.wfh ? WFH_IMPORT_ROW_LABEL : r.od ? OD_IMPORT_ROW_LABEL : (r.type?.nameEn ?? r.typeText);
 
 /** A work-from-home row's days, when it has more than one: "06/08/2026, 09/08/2026"; else null. */
 export const wfhDaysListText = (r: Pick<LeaveImportRow, 'wfh' | 'wfhDays'>): string | null =>
   r.wfh && r.wfhDays && r.wfhDays.length > 1 ? r.wfhDays.map((d) => formatDate(d)).join(', ') : null;
 
-/** What a Zoho type's list has chosen: work-from-home days, the system's type, or Skip. */
-export const typeMapValue = (t: Pick<LeaveImportType, 'wfh' | 'typeId'>): string => (t.wfh ? ZOHO_WFH_TARGET : (t.typeId ?? 'skip'));
+/**
+ * An official duty row's days, when its official duty doesn't run from the row's From to its To (a rest day or holiday at
+ * either end left out): "As one official duty: 06/08/2026 – 09/08/2026"; else null.
+ */
+export function odSpanText(r: Pick<LeaveImportRow, 'od' | 'odDays' | 'from' | 'to'>): string | null {
+  if (!r.od || !r.odDays?.length) return null;
+  const first = r.odDays[0];
+  const last = r.odDays[r.odDays.length - 1];
+  if (first === r.from && last === r.to) return null;
+  return `As one official duty: ${first === last ? formatDate(first) : `${formatDate(first)} – ${formatDate(last)}`}`;
+}
+
+/** What a Zoho type's list has chosen: work-from-home days, official duty days, the system's type, or Skip. */
+export const typeMapValue = (t: Pick<LeaveImportType, 'wfh' | 'od' | 'typeId'>): string => (t.wfh ? ZOHO_WFH_TARGET : t.od ? ZOHO_OD_TARGET : (t.typeId ?? 'skip'));
 
 /** The days a row counts, and the file's own figure when it is another. */
 export function rowDaysText(r: Pick<LeaveImportRow, 'days' | 'fileDays'>): string {
@@ -125,34 +148,42 @@ export const dueRows = (view: Pick<LeaveImportView, 'leaves' | 'balances'>) => [
 /** What Apply asks first. */
 export function applyConfirmText(view: Pick<LeaveImportView, 'leaves' | 'balances'>): string {
   const due = dueRows(view);
-  const leaves = due.filter((r) => r.sheet === 'leaves' && !r.wfh);
+  const leaves = due.filter((r) => r.sheet === 'leaves' && !r.wfh && !r.od);
   const requests = leaves.filter((r) => r.pending).length;
   // a work-from-home row makes a day each working day of it (owner, 21 October 2026: "Yes, as approved WFH days")
   const wfh = due.filter((r) => r.sheet === 'leaves' && r.wfh);
   const wfhDays = wfh.filter((r) => !r.pending).reduce((n, r) => n + (r.days ?? 0), 0);
   const wfhRequests = wfh.filter((r) => r.pending).reduce((n, r) => n + (r.days ?? 0), 0);
+  // an official duty row makes one official duty (26 October 2026: "Import (template + Zoho)")
+  const od = due.filter((r) => r.sheet === 'leaves' && r.od);
+  const odApproved = od.filter((r) => !r.pending).length;
+  const odRequests = od.length - odApproved;
   const balances = due.filter((r) => r.sheet === 'balances').length;
   const parts = [
     leaves.length - requests ? `${leaves.length - requests} ${leaves.length - requests === 1 ? 'leave' : 'leaves'} as approved` : null,
     requests ? `${requests} pending ${requests === 1 ? 'request' : 'requests'} sent for a decision` : null,
     wfhDays ? `${wfhDays} work-from-home ${wfhDays === 1 ? 'day' : 'days'} as approved` : null,
     wfhRequests ? `${wfhRequests} pending work-from-home ${wfhRequests === 1 ? 'request' : 'requests'} sent for a decision` : null,
+    odApproved ? `${odApproved} official ${odApproved === 1 ? 'duty' : 'duties'} as approved` : null,
+    odRequests ? `${odRequests} pending official duty ${odRequests === 1 ? 'request' : 'requests'} sent for a decision` : null,
     balances ? `${balances} ${balances === 1 ? 'balance' : 'balances'} set` : null,
   ].filter(Boolean);
   return `Apply ${parts.join(', ')}? The draft payrolls of their months take the leave; a payroll with the CEO, approved or paid doesn’t change. You can undo it while no payroll counting it is past its draft.`;
 }
 
-/** What an import made that is still there: "4 leaves, 1 balance change and 7 work-from-home days"; none: null. */
+/** What an import made that is still there: "4 leaves, 1 balance change, 7 work-from-home days and 2 official duties"; none: null. */
 export function keptText(kept: LeaveImportKept, balance = 'balance change'): string | null {
+  const od = kept.od ?? 0;
   const parts = [
     kept.leaves ? `${kept.leaves} ${kept.leaves === 1 ? 'leave' : 'leaves'}` : null,
     kept.adjustments ? `${kept.adjustments} ${balance}${kept.adjustments === 1 ? '' : 's'}` : null,
     kept.wfhDays ? `${kept.wfhDays} work-from-home ${kept.wfhDays === 1 ? 'day' : 'days'}` : null,
+    od ? `${od} official ${od === 1 ? 'duty' : 'duties'}` : null,
   ].filter((x): x is string => !!x);
   return parts.length ? listOf(parts) : null;
 }
 
-const keptTotal = (kept: LeaveImportKept) => kept.leaves + kept.adjustments + kept.wfhDays;
+const keptTotal = (kept: LeaveImportKept) => kept.leaves + kept.adjustments + kept.wfhDays + (kept.od ?? 0);
 
 /** What Undo removes: all the import made ("the 1 leave and 7 work-from-home days"), or the user's share of it. */
 export function undoWhatText(view: Pick<LeaveImportView, 'undoable' | 'kept'>): string {
@@ -183,15 +214,16 @@ export function personChoice(fd: FormData): { key: string; employeeId: string | 
   return /^[0-9a-f-]{36}$/i.test(employeeId) ? { key, employeeId } : null;
 }
 
-/** What a Zoho type's form sends, read back: a type, work-from-home days, skip, or back to the default. Null: none. */
+/** What a Zoho type's form sends, read back: a type, work-from-home days, official duty days, skip, or back to the default. Null: none. */
 export function typeChoice(
   fd: FormData,
-): { zohoType: string; typeId: string } | { zohoType: string; wfh: true } | { zohoType: string; skipped: true } | { zohoType: string } | null {
+): { zohoType: string; typeId: string } | { zohoType: string; wfh: true } | { zohoType: string; od: true } | { zohoType: string; skipped: true } | { zohoType: string } | null {
   const zohoType = String(fd.get('zohoType') ?? '');
   if (!zohoType) return null;
   const value = String(fd.get('typeId') ?? '');
   if (value === 'skip') return { zohoType, skipped: true };
   if (value === ZOHO_WFH_TARGET) return { zohoType, wfh: true };
+  if (value === ZOHO_OD_TARGET) return { zohoType, od: true };
   if (value === 'default') return { zohoType };
   return /^[0-9a-f-]{36}$/i.test(value) ? { zohoType, typeId: value } : null;
 }

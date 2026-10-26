@@ -3808,21 +3808,32 @@ model OdRequest {
   approverRole  String?           @map("approver_role") // APPROVER_ROLES, set exactly when managerId is
   rejectedStage String?           @map("rejected_stage") // LEAVE_STAGES: manager, hr
   rejectReason  String?           @map("reject_reason")
+  // recorded by HR (owner, 26 October 2026, asked what to add: "HR records it"): approved at once, past the 3-day limit
+  // too, with what it was recorded past (`warnings`, as said then); or imported, history, from a leave import
+  recordedByHr  Boolean           @default(false) @map("recorded_by_hr")
+  warnings      String[]          @default([])
   createdById   String?           @map("created_by") @db.Uuid
   createdBy     User?             @relation("OdRequestCreation", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz
   updatedAt     DateTime          @updatedAt @map("updated_at") @db.Timestamptz
   steps         OdRequestStep[]
   punches       AttendancePunch[]
+  // brought over by a leave import (owner, 26 October 2026: "Import (template + Zoho)"): the import, which Undo removes it
+  // with; and its Zoho row's ZOHO_LINK_ID, once only
+  importId      String?           @map("import_id") @db.Uuid
+  leaveImport   LeaveImport?      @relation(fields: [importId], references: [id], onDelete: Restrict)
+  zohoLinkId    String?           @unique @map("zoho_link_id")
 
   @@index([employeeId, startDate])
   @@index([status])
   @@index([managerId])
   @@index([startDate, endDate])
+  @@index([importId])
   @@map("od_requests")
 }
 
-// Each step of an official duty request, in the order taken (OD_STEP_KINDS), as a leave request's: each decision with its comment.
+// Each step of an official duty request, in the order taken (OD_STEP_KINDS), as a leave request's: each decision with its comment;
+// recorded by HR, and imported (26 October 2026).
 model OdRequestStep {
   id        BigInt    @id @default(autoincrement())
   requestId String    @map("request_id") @db.Uuid
@@ -4207,6 +4218,7 @@ model LeaveImport {
   leaves      LeaveRequest[]
   adjustments LeaveAdjustment[]
   wfhDays     WfhRequest[]
+  odRequests  OdRequest[] // official duty rows brought over (26 October 2026)
 
   @@index([fileHash])
   @@map("leave_imports")

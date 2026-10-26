@@ -5,7 +5,7 @@ import type { RequestApprover } from './types';
 // beside Office and WFH, needing an approved request"), as the API sends it (apps/api/src/official-duty/od-views.ts,
 // od.service.ts). Dates YYYY-MM-DD, times HH:MM, moments ISO.
 
-/** A step of a request: sent, sent straight to HR, each stage's decision, cancelled. */
+/** A step of a request: sent, sent straight to HR, recorded by HR, each stage's decision, cancelled, imported. */
 export interface OdRequestStep {
   id: string;
   kind: OdStepKind;
@@ -38,6 +38,13 @@ export interface OdRequestView {
   reason: string;
   /** Asked after its first day ("Ahead or up to 3 days after", 23 October 2026): requested after. */
   late: boolean;
+  /**
+   * Recorded by HR, approved at once (owner, 26 October 2026: "HR records it"), with what it was recorded past (the 3-day
+   * limit), or imported by a leave import ("Import (template + Zoho)"). Left out by an API from before them.
+   */
+  recordedByHr?: boolean;
+  warnings?: string[];
+  imported?: boolean;
   status: LeaveStatus;
   stage: LeaveStage | null;
   waitingForYou: boolean;
@@ -71,6 +78,15 @@ export interface OdForm {
   refusal: string | null;
   /** A C-level person's goes to the CEO after their manager, not HR. */
   toCeo: boolean;
+}
+
+/** GET /official-duty/check: what refuses official duty HR would record for someone, and what it would be recorded past. */
+export interface OdCheck {
+  employee: { id: string; fullNameEn: string };
+  problems: string[];
+  warnings: string[];
+  /** Their shift's window, for part of a day; null: none. */
+  shift: { startTime: string; endTime: string; graceMinutes: number } | null;
 }
 
 /** GET /official-duty/counts. */

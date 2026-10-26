@@ -43,8 +43,9 @@ async function Imports({ searchParams }: { searchParams: PageProps<'/leave/impor
           </h2>
           <p className="text-sm text-muted">
             The template has three sheets: Leaves taken (who, the leave type from a list, From, To, the days if you know them, notes), Balances (each
-            person&apos;s annual leave left as of a day) and How to fill (the steps, the leave types and the employees&apos; codes). Zoho People&apos;s
-            leave export can be uploaded as it is: its leave types are matched to the system&apos;s on the review.
+            person&apos;s annual leave left as of a day) and How to fill (the steps, the leave types and the employees&apos; codes). Its Leave type
+            list ends with Work from home and Official duty, which aren&apos;t leave. Zoho People&apos;s leave export can be uploaded as it is: its leave
+            types are matched to the system&apos;s on the review, On Duty to official duty.
           </p>
         </div>
         <a href={LEAVE_IMPORT_TEMPLATE_HREF} className="btn btn-secondary no-underline" download>

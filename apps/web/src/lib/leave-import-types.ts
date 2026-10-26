@@ -2,7 +2,9 @@ import type { LeaveImportRowStatus, LeaveImportSource, ZohoApproval } from '@tre
 
 // A leave import as the API sends it (owner, 21 October 2026: "how to import bulk leaves?"; apps/api/src/leave/
 // leave-import.service.ts): the file, its people, a Zoho file's leave types, each row with its status, and the history.
-// Zoho's Working from home rows are work-from-home days, not leave (owner, 21 October 2026: "Yes, as approved WFH days").
+// Zoho's Working from home rows are work-from-home days, not leave (owner, 21 October 2026: "Yes, as approved WFH days");
+// official duty rows (the template's Official duty, Zoho's types mapped to it) one official duty each (26 October 2026).
+// What came with official duty is left out by an API from before it.
 // Dates YYYY-MM-DD, moments ISO.
 
 export interface LeaveImportEmployee {
@@ -35,9 +37,12 @@ export interface LeaveImportType {
   typeId: string | null;
   /** Its rows are imported as work-from-home days. */
   wfh: boolean;
+  /** Its rows are imported as official duty. */
+  od?: boolean;
   chosen: boolean;
   defaultTypeId: string | null;
   defaultWfh: boolean;
+  defaultOd?: boolean;
   note: string | null;
 }
 
@@ -66,6 +71,9 @@ export interface LeaveImportRow {
   /** A work-from-home row: no type; its days, those it makes or made. */
   wfh: boolean;
   wfhDays: string[] | null;
+  /** An official duty row: no type; its duty days, those its official duty covers (from the first to the last) or covered. */
+  od?: boolean;
+  odDays?: string[] | null;
   approval: ZohoApproval | null;
   approvalText: string | null;
   balance: number | null;
@@ -104,11 +112,12 @@ export interface LeaveImportView {
   kept: LeaveImportKept;
 }
 
-/** What an import made that is still in the system: its leave, balance changes and work-from-home days. */
+/** What an import made that is still in the system: its leave, balance changes, work-from-home days and official duties. */
 export interface LeaveImportKept {
   leaves: number;
   adjustments: number;
   wfhDays: number;
+  od?: number;
 }
 
 export interface LeaveImportHistoryRow {

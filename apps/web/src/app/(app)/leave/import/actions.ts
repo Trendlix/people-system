@@ -59,7 +59,7 @@ export async function chooseImportPerson(id: string, _prev: FormState, fd: FormD
 /** A Zoho leave type's mapping: the system's type, work-from-home days, skip, or back to the default. */
 export async function mapImportType(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
   const choice = typeChoice(fd);
-  if (!choice) return { errors: ['Choose a leave type from the list, work-from-home days, or Skip.'] };
+  if (!choice) return { errors: ['Choose a leave type from the list, work-from-home days, official duty days, or Skip.'] };
   return change(id, 'PATCH', '/types', choice, 'Saved.');
 }
 

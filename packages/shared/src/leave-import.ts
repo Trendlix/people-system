@@ -7,12 +7,16 @@
 // is kept on the leave it makes, a leave already in the system or imported before is a duplicate, the same file uploaded
 // again is said and all its rows are duplicates, and a balance already at its figure changes nothing. Zoho's "Working
 // from home" rows (owner, 21 October 2026: "Yes, as approved WFH days") become work-from-home days, one a working day,
-// not leave. These are the pure rules: reading a cell's text, the Zoho export's own columns, matching people, the checks
-// of a row and the words the review says. The API reads the workbook and applies; the web app shows the review.
+// not leave. Official duty comes in too (owner, 26 October 2026, asked "how to apply or import official duty": "Import
+// (template + Zoho)"): the template's "Official duty" type and Zoho's types mapped to "Official duty days", each row one
+// approved official duty, modelled on the work-from-home rows. These are the pure rules: reading a cell's text, the Zoho
+// export's own columns, matching people, the checks of a row and the words the review says. The API reads the workbook
+// and applies; the web app shows the review.
 
 import { decidesConfidentialStage } from './confidential.js';
 import { matchPerson, nameKey, type MatchCandidate } from './attendance-import.js';
 import { takesFromAnnual, type LeaveGender, type LeaveTypeRules } from './leaves.js';
+import { OD_MAX_DAYS } from './official-duty.js';
 import type { Role } from './index.js';
 
 // ---------- the file ----------
@@ -229,9 +233,10 @@ const LAW_TYPE_WORDS: readonly [RegExp, string][] = [
  * Leave as annual leave, Sick Leave as sick leave, Casual leave (Exceptional) as the law's casual leave, and the law's
  * others by their names; Working from home as work-from-home days (`wfh`; owner, 21 October 2026: "Yes, as approved WFH
  * days"); Compensatory Off skipped unless a type of the system is named for it (HR adds one in Leave Setup); any other
- * the type of the same name, else skipped. Only types on.
+ * the type of the same name; On Duty or Official Duty as official duty days (`od`, 26 October 2026), unless a type of the
+ * system has its name; else skipped. Only types on.
  */
-export function defaultZohoType(zohoType: string, types: readonly ImportLeaveType[]): { typeId: string | null; wfh: boolean; note: string | null } {
+export function defaultZohoType(zohoType: string, types: readonly ImportLeaveType[]): { typeId: string | null; wfh: boolean; od?: boolean; note: string | null } {
   const k = headingKey(zohoType);
   const on = types.filter((t) => t.active);
   if (/workingfromhome|workfromhome|wfh|remotework/.test(k)) return { typeId: null, wfh: true, note: ZOHO_WFH_NOTE };
@@ -241,6 +246,7 @@ export function defaultZohoType(zohoType: string, types: readonly ImportLeaveTyp
   }
   const same = on.find((t) => headingKey(t.nameEn) === k);
   if (same) return { typeId: same.id, wfh: false, note: null };
+  if (isTemplateOdType(zohoType) || /onduty|officialduty/.test(k)) return { typeId: null, wfh: false, od: true, note: ZOHO_OD_NOTE };
   for (const [words, key] of LAW_TYPE_WORDS) {
     if (!words.test(k)) continue;
     const law = on.find((t) => t.key === key);
@@ -249,18 +255,24 @@ export function defaultZohoType(zohoType: string, types: readonly ImportLeaveTyp
   return { typeId: null, wfh: false, note: ZOHO_UNMATCHED_NOTE };
 }
 
-/** What a Zoho type's rows are imported as: a leave type of the system, work-from-home days, or nothing (skipped). */
-export type ZohoTypeTarget = { kind: 'leave'; typeId: string } | { kind: 'wfh' } | { kind: 'skip' };
+/**
+ * What a Zoho type's rows are imported as: a leave type of the system, work-from-home days, official duty days (26
+ * October 2026), or nothing (skipped).
+ */
+export type ZohoTypeTarget = { kind: 'leave'; typeId: string } | { kind: 'wfh' } | { kind: 'od' } | { kind: 'skip' };
 
 /**
- * A Zoho type's target: HR's choice as the type map keeps it ('skip', ZOHO_WFH_TARGET or a type's id), else the default
- * (defaultZohoType). HR may still skip Working from home, or import any other type as work-from-home days.
+ * A Zoho type's target: HR's choice as the type map keeps it ('skip', ZOHO_WFH_TARGET, ZOHO_OD_TARGET or a type's id),
+ * else the default (defaultZohoType). HR may still skip Working from home, or import any other type as work-from-home
+ * days or as official duty days.
  */
-export function zohoTypeTarget(chosen: string | undefined, byDefault: { typeId: string | null; wfh: boolean }): ZohoTypeTarget {
+export function zohoTypeTarget(chosen: string | undefined, byDefault: { typeId: string | null; wfh: boolean; od?: boolean }): ZohoTypeTarget {
   if (chosen === 'skip') return { kind: 'skip' };
   if (chosen === ZOHO_WFH_TARGET) return { kind: 'wfh' };
+  if (chosen === ZOHO_OD_TARGET) return { kind: 'od' };
   if (chosen) return { kind: 'leave', typeId: chosen };
   if (byDefault.wfh) return { kind: 'wfh' };
+  if (byDefault.od) return { kind: 'od' };
   return byDefault.typeId ? { kind: 'leave', typeId: byDefault.typeId } : { kind: 'skip' };
 }
 
@@ -347,6 +359,78 @@ export const ZOHO_WFH_PENDING_NOTE =
 
 /** The key a work-from-home day keeps of its Zoho row, once only: the row's ZOHO_LINK_ID and the day. */
 export const wfhLinkKey = (linkId: string, date: string): string => `${linkId}:${date}`;
+
+// ---------- Official duty, imported (owner, 26 October 2026: "Import (template + Zoho)") ----------
+
+/**
+ * Zoho People's rows of a type mapped to official duty: a target of the type mapping of its own, beside work-from-home
+ * days, kept in the import's type map as this. Each row becomes one official duty (official-duty.ts), never leave.
+ */
+export const ZOHO_OD_TARGET = 'od';
+
+/** The target as the mapping offers it. */
+export const ZOHO_OD_TARGET_LABEL = 'Official duty days';
+
+/** A row imported as official duty, as the review names its type. */
+export const OD_IMPORT_ROW_LABEL = 'Official duty';
+
+/** Why On Duty is imported as official duty days by default. */
+export const ZOHO_OD_NOTE = 'Imported as approved official duty (not leave): its days count as attended, and no balance is used.';
+
+/** The choice the template's Leave type list ends with, after Work from home: a row naming it is one approved official duty. */
+export const TEMPLATE_OD_TYPE_NAME = 'Official duty';
+
+/**
+ * Whether a template row's leave type is Official duty: that name, "OD", "On duty" or "مأمورية" (or "مامورية", typed
+ * without its hamza), whatever the case.
+ */
+export const isTemplateOdType = (text: string): boolean => ['officialduty', 'od', 'onduty', 'مأمورية', 'مامورية'].includes(headingKey(text));
+
+/** A leave type of the organization named like Official duty wins over it, as for Work from home: said once. */
+export const odNameIsLeaveTypeText = (typeName: string): string =>
+  `“${typeName}” is a leave type of the system, so rows named so are imported as that leave, not as official duty. To import official duty, rename the leave type.`;
+
+/** A half day on a template's official duty row: counted as a whole day. */
+export const odFileHalfDayText = (date: string): string => `${shown(date)} is a half day in the file: an official duty imported is a full day here, so it is counted as one.`;
+
+/** Zoho's half days of an official duty row: each a full day here. Null: none. */
+export const odHalfDaysText = (dates: readonly string[]): string | null =>
+  dates.length ? `${listOf(dates.map(shown))} ${dates.length === 1 ? 'is a half day' : 'are half days'} in Zoho People: an official duty imported is a full day here.` : null;
+
+/**
+ * Days Zoho calls a holiday or weekend inside an official duty row that are working days here: one official duty covers
+ * the row's days in a row, so they are duty days. Null: none.
+ */
+export const odOffInZohoInsideText = (dates: readonly string[]): string | null =>
+  dates.length
+    ? `${listOf(dates.map(shown))} ${dates.length === 1 ? 'is a holiday or weekend' : 'are holidays or weekends'} in Zoho People but ${dates.length === 1 ? 'a working day' : 'working days'} here: within the official duty, ${dates.length === 1 ? 'it counts as a duty day' : 'they count as duty days'}.`
+    : null;
+
+/** The longest official duty row, from its first working day to its last: one official duty's most. */
+export const OD_IMPORT_MAX_DAYS = OD_MAX_DAYS;
+
+/** An official duty row longer than one official duty may be. */
+export const odRowTooLongText = (): string => `An official duty row covers at most ${OD_IMPORT_MAX_DAYS} days in a row: put the rest on a row of its own.`;
+
+/** An official duty row pending in Zoho: carried on as a request in the system's own approval, as pending leave is. */
+export const ZOHO_OD_PENDING_NOTE = 'Pending in Zoho People: imported as an official duty request waiting for its decision here, the approver in charge’s, then HR’s.';
+
+/** The reason an imported official duty keeps (owner's brief, 26 October 2026: "the row's notes as the reason"), else where it came from. */
+export const odImportReason = (notes: string | null, fileName: string): string => (notes?.trim() || `Imported from ${fileName}`).slice(0, 1000);
+
+/** An official duty's days in words: "05/03/2026" or "05/03/2026–07/03/2026". */
+const odDaysWords = (from: string, to: string) => (from === to ? shown(from) : `${shown(from)}–${shown(to)}`);
+
+/** A row whose days are an official duty already (the same days): nothing made for it. `how`: its status, or the file it came from. */
+export const alreadyOdText = (from: string, to: string, how: string): string => `Already an official duty on ${odDaysWords(from, to)} (${how}).`;
+
+/** A row whose days meet another official duty's: not imported. */
+export const odOverlapsText = (from: string, to: string, how: string): string =>
+  `Overlaps an official duty on ${odDaysWords(from, to)} (${how}): put the row's days right, or cancel that official duty first.`;
+
+/** A row the same as an earlier row of the file, or meeting its days. */
+export const odSameRowText = (row: number): string => `The same official duty as row ${row} of the file.`;
+export const odOverlapsRowText = (row: number): string => `Overlaps the official duty in row ${row} of the file: put the days right in one of them.`;
 
 // ---------- the people ----------
 

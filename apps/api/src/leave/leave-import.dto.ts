@@ -21,7 +21,7 @@ export class LeaveImportPersonDto {
 
 /**
  * A Zoho leave type's mapping: the system's type it is imported as, work-from-home days (`wfh`; owner, 21 October 2026:
- * "Yes, as approved WFH days"), skipped, or back to the default (none sent).
+ * "Yes, as approved WFH days"), official duty days (`od`; 26 October 2026), skipped, or back to the default (none sent).
  */
 export class LeaveImportTypeDto {
   /** Zoho's leave type as the file writes it. */
@@ -38,4 +38,8 @@ export class LeaveImportTypeDto {
   /** Its rows imported as work-from-home days, not leave. */
   @IsOptional() @IsBoolean({ message: 'Send whether the rows are work-from-home days as true or false.' })
   wfh?: boolean;
+
+  /** Its rows imported as official duty, not leave. */
+  @IsOptional() @IsBoolean({ message: 'Send whether the rows are official duty days as true or false.' })
+  od?: boolean;
 }

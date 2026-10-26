@@ -8,6 +8,8 @@ import {
   LEAVE_IMPORT_SHEETS,
   LEAVE_IMPORT_TEMPLATE_ROWS,
   LEAVE_PAY_LABELS,
+  OD_IMPORT_MAX_DAYS,
+  TEMPLATE_OD_TYPE_NAME,
   TEMPLATE_WFH_TYPE_NAME,
   type LeaveBalanceKind,
   type LeavePay,
@@ -19,7 +21,8 @@ import {
 // where, then the leave types and the employees' codes and names the caller may see: a C-level person isn't listed to HR,
 // as everywhere). Written like the holidays template (payroll/holidays-import-template.ts): bold, filled, frozen headings
 // and set widths; the date columns formatted as dates, so a day typed there is kept as one. Each Employee name looks the
-// typed code up on How to fill, for reading: the import matches by the code.
+// typed code up on How to fill, for reading: the import matches by the code. The Leave type list ends with Work from
+// home, then Official duty (owner, 26 October 2026: "Import (template + Zoho)"), neither of them leave.
 
 /** The name the template is saved under. */
 export const LEAVE_IMPORT_TEMPLATE_NAME = 'Leave import template.xlsx';
@@ -84,6 +87,7 @@ function instructions(year: number): string[] {
     `${LEAVE_IMPORT_SHEETS.leaves}: one row for each leave already taken (or booked), recorded as approved when imported. Employee code (as listed below) finds the person; Employee name shows who it is, for reading. Without a code, the name is matched, for you to confirm.`,
     `Leave type: choose it from the list. From and To: the first and last day, as dates (DD/MM/YYYY), e.g. 05/03/${year} to 07/03/${year}. Days: optional. The system counts the days itself (working days by the person’s shift, without rest days and the official holidays set in Organization → Holidays; calendar days for the types counted so): a different figure is shown as a warning and the system’s used. A single day of 0.5 is a half day, for the types that allow one. Notes: optional.`,
     `Work from home: choose it from the Leave type list for days worked from home. Its working days (without rest days and the official holidays) become approved work-from-home days, not leave: no balance is used, and it is never a half day.`,
+    `Official duty: choose it from the Leave type list for work for the company away from the office (rows pasted from elsewhere may say OD, On duty or مأمورية). A row becomes one approved official duty from its first working day to its last, full days, at most ${OD_IMPORT_MAX_DAYS} days in a row: the days count as attended, no balance is used, and it is never a half day. Its place is “Imported” and its Notes are its reason.`,
     `${LEAVE_IMPORT_SHEETS.balances}: optional, one row for each person whose annual leave balance should start from a figure: the days they have left as of a day (As of, in ${year} or in a year of the leave above). The system works out the year’s annual leave itself (Labour Law Art. 124, a first year pro-rated) and sets the balance to the figure with an adjustment, after the leave above is counted: give what is left of the whole year’s leave as of that day. Casual leave is counted against the annual balance, so it has no row of its own.`,
     `Before anything is saved you see every row: ready, a duplicate (already in the system or imported before), a problem (put it right in the file and upload it again), or a person to confirm. Leave in a month whose payroll is approved already is counted in no payroll. Blank rows are skipped; a file can have up to ${LEAVE_IMPORT_MAX_ROWS.toLocaleString('en-US')} rows and be up to ${LEAVE_IMPORT_MAX_MB} MB.`,
   ];
@@ -132,7 +136,14 @@ export async function leaveImportTemplate(input: { types: readonly TemplateLeave
   wfhRow.getCell(2).value = 'Not leave: work-from-home days';
   wfhRow.getCell(3).value = 'Normal working day';
   wfhRow.getCell(4).value = 'Working days';
-  const typesTo = typesFrom + input.types.length;
+  // Official duty, after it (owner, 26 October 2026: "Import (template + Zoho)"): not a leave type, each row one approved
+  // official duty
+  const odRow = help.getRow(typesFrom + input.types.length + 1);
+  odRow.getCell(1).value = TEMPLATE_OD_TYPE_NAME;
+  odRow.getCell(2).value = 'Not leave: official duty';
+  odRow.getCell(3).value = 'Attended working day';
+  odRow.getCell(4).value = 'Working days';
+  const typesTo = typesFrom + input.types.length + 1;
   r = typesTo + 2;
   title(help, r, 'Leave Types With a Balance');
   tableHeadings(help, r + 1, ['Leave type']);
@@ -181,7 +192,7 @@ export async function leaveImportTemplate(input: { types: readonly TemplateLeave
     showErrorMessage: true,
     errorStyle: 'stop',
     errorTitle: 'Leave type',
-    error: 'Choose a leave type from the list: the types on in Leave Setup, or Work from home.',
+    error: 'Choose a leave type from the list: the types on in Leave Setup, Work from home or Official duty.',
   });
   for (const [col, name] of [
     [4, 'From'],

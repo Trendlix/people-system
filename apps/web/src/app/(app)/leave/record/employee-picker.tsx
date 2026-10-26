@@ -9,7 +9,8 @@ import { RECORD_LEAVE_PATH } from '../list';
 // them (?employee=<id>, so the address can be shared and the page reads their balance and shift). A GET form, so it also
 // works with the button alone. Record permission (owner, 19 October 2026: HR records permission on an employee's behalf,
 // as leave) uses it too, opening its own form (`action`, `what`), and Record a WFH day (owner, 21 October 2026: HR
-// records a work from home day for someone, "with a warning and a reason").
+// records a work from home day for someone, "with a warning and a reason"), and Record Official Duty (26 October 2026:
+// "HR records it").
 
 export function LeaveEmployeePicker({
   options,
@@ -21,7 +22,7 @@ export function LeaveEmployeePicker({
   chosen: string | null;
   /** The form it opens: Record leave's, Record permission's, or Record a WFH day's. */
   action?: string;
-  what?: 'leave' | 'permission' | 'work from home day' | 'compensatory day';
+  what?: 'leave' | 'permission' | 'work from home day' | 'compensatory day' | 'official duty';
 }) {
   const form = useRef<HTMLFormElement>(null);
   return (

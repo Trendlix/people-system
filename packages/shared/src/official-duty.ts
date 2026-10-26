@@ -18,11 +18,18 @@
 // - no overlap with leave, a work from home day or another official duty, approved or being decided (as working from
 //   home blocks its days); a half-day leave doesn't block part of a day;
 // - a press counts as within a part day's hours from 30 minutes before it starts to 30 minutes after it ends (travel).
+// Asked "how to apply or import official duty" (owner, 26 October 2026), he chose "HR records it" and "Import (template +
+// Zoho)": HR records one for someone, approved at once, past the 3-day limit too, marked with what it was recorded past
+// (odRecordCheck), as HR records a work from home day; the CEO records a C-level person's (recordsOdFor). The leave
+// import brings official duty over (leave-import.ts). Since then a compensatory day off blocks its day too, as a
+// compensatory day off is refused on a day of official duty (compensatory.ts).
 // Pure: the API enforces these and the web shows the same checks live. Dates are YYYY-MM-DD, times HH:MM (Cairo).
 
 import { hoursCountedForDay, mostHoursCountedADay, shiftWindowOn, spanHours, spansOfPairs, timeOfDayText, zonedMoment, type ShiftWindowTimes } from './attendance.js';
 import type { KeptDay, SourcedDay } from './attendance-days.js';
 import type { CountingShift } from './check-in.js';
+import { decidesConfidentialStage } from './confidential.js';
+import type { Role } from './index.js';
 import { LEAVE_STEP_KIND_LABELS } from './leaves.js';
 import { shiftWorkHours } from './payroll.js';
 
@@ -48,17 +55,25 @@ export const OD_PRESS_MARGIN_MINUTES = 30;
 /** What the check-in panel says on an approved day (owner's brief, 23 October 2026). */
 export const OD_CHECK_IN_TEXT = 'Official duty today: check in from where you are.';
 
-/** The steps logged on a request: sent, sent straight to HR, each stage's decision, cancelled. */
-export const OD_STEP_KINDS = ['submitted', 'no_manager', 'manager_decision', 'hr_decision', 'cancelled'] as const;
+/**
+ * The steps logged on a request: sent, sent straight to HR, recorded by HR (26 October 2026), each stage's decision,
+ * cancelled, and imported by a leave import (26 October 2026).
+ */
+export const OD_STEP_KINDS = ['submitted', 'no_manager', 'recorded_by_hr', 'manager_decision', 'hr_decision', 'cancelled', 'imported'] as const;
 export type OdStepKind = (typeof OD_STEP_KINDS)[number];
 
 export const OD_STEP_KIND_LABELS: Record<OdStepKind, string> = {
   submitted: LEAVE_STEP_KIND_LABELS.submitted,
   no_manager: LEAVE_STEP_KIND_LABELS.no_manager,
+  recorded_by_hr: LEAVE_STEP_KIND_LABELS.recorded_by_hr,
   manager_decision: LEAVE_STEP_KIND_LABELS.manager_decision,
   hr_decision: LEAVE_STEP_KIND_LABELS.hr_decision,
   cancelled: LEAVE_STEP_KIND_LABELS.cancelled,
+  imported: 'Imported',
 };
+
+/** Where an official duty brought over by the leave import is (owner's brief, 26 October 2026: the place "Imported"). */
+export const OD_IMPORT_PLACE = 'Imported';
 
 // ---------- the request ----------
 
@@ -83,10 +98,25 @@ export function odDates(startDate: string, endDate: string): string[] {
 }
 
 /**
- * Why a request can't be read (none: it can): its days (a first and a last, in order, at most 31), part of a day's times
- * (for one day, the end after the start), the place and the reason (both required, each within its length).
+ * Why a request can't be read (none: it can): its days and times (odWhenProblems), the place and the reason (both
+ * required, each within its length).
  */
 export function odInputProblems(input: OdInput): string[] {
+  const problems = odWhenProblems(input);
+  const place = (input.place ?? '').trim();
+  if (!place) problems.push('Write where the official duty is, e.g. the client’s office in New Cairo.');
+  else if (place.length > OD_PLACE_MAX) problems.push(`Keep the place to ${OD_PLACE_MAX} characters or fewer.`);
+  const reason = (input.reason ?? '').trim();
+  if (!reason) problems.push('Write what the official duty is for, e.g. a site visit for the client’s launch.');
+  else if (reason.length > OD_REASON_MAX) problems.push(`Keep the reason to ${OD_REASON_MAX} characters or fewer.`);
+  return problems;
+}
+
+/**
+ * Why a request's days and times can't be read (none: they can): its days (a first and a last, in order, at most 31)
+ * and part of a day's times (for one day, the end after the start). HR's live check reads these alone.
+ */
+export function odWhenProblems(input: Pick<OdInput, 'startDate' | 'endDate' | 'fullDay' | 'fromTime' | 'toTime'>): string[] {
   const problems: string[] = [];
   const first = isDate(input.startDate);
   const last = isDate(input.endDate);
@@ -107,12 +137,6 @@ export function odInputProblems(input: OdInput): string[] {
     if (from && to && input.toTime! <= input.fromTime!) problems.push('The time it ends must be after the time it starts.');
     if (first && last && input.endDate > input.startDate) problems.push('Part of a day is for one day: ask for full days, or a request for each day.');
   }
-  const place = (input.place ?? '').trim();
-  if (!place) problems.push('Write where the official duty is, e.g. the client’s office in New Cairo.');
-  else if (place.length > OD_PLACE_MAX) problems.push(`Keep the place to ${OD_PLACE_MAX} characters or fewer.`);
-  const reason = (input.reason ?? '').trim();
-  if (!reason) problems.push('Write what the official duty is for, e.g. a site visit for the client’s launch.');
-  else if (reason.length > OD_REASON_MAX) problems.push(`Keep the reason to ${OD_REASON_MAX} characters or fewer.`);
   return problems;
 }
 
@@ -143,6 +167,11 @@ export interface OdDayFacts {
   wfh: { status: string } | null;
   /** Their other official duties that day, approved or being decided (not this one). */
   od: readonly { status: string; fullDay: boolean; fromTime: string | null; toTime: string | null }[];
+  /**
+   * Their compensatory day off on it, approved or being decided (not one paid in cash instead): its status's words.
+   * Left out by a caller from before 26 October 2026: none.
+   */
+  compensatory?: { status: string } | null;
 }
 
 /** The duty days of a request: its days that are working days of their shift and not an official holiday. */
@@ -157,8 +186,8 @@ function timesMeet(a: { fullDay: boolean; fromTime: string | null; toTime: strin
 /**
  * Why a request's days can't be official duty (none: they can): one day on an official holiday or a rest day of their
  * shift; several with none a working day; any duty day with leave (a full day's, or any on a full day of duty), a work
- * from home day, or another official duty on the same hours, approved or being decided. `name`: the employee's when
- * someone else is told, null for "you".
+ * from home day, a compensatory day off, or another official duty on the same hours, approved or being decided. `name`:
+ * the employee's when someone else is told, null for "you".
  */
 export function odDaysProblems(input: Pick<OdInput, 'startDate' | 'endDate' | 'fullDay' | 'fromTime' | 'toTime'>, days: readonly OdDayFacts[], name: string | null = null): string[] {
   if (!days.length) return [];
@@ -178,6 +207,7 @@ export function odDaysProblems(input: Pick<OdInput, 'startDate' | 'endDate' | 'f
     const when = shown(d.date);
     if (d.leave && (input.fullDay || !d.leave.halfDay)) problems.push(`${has} ${d.leave.type} on ${when} (${d.leave.status}): an official duty can't be on a day of leave.`);
     if (d.wfh) problems.push(`${has} a work from home day on ${when} (${d.wfh.status}): ask for one or the other.`);
+    if (d.compensatory) problems.push(`${has} a compensatory day off on ${when} (${d.compensatory.status}): an official duty can't be on a day off.`);
     const other = d.od.find((o) => timesMeet(part, o));
     if (other) {
       const hours = !other.fullDay && other.fromTime && other.toTime ? `, ${timeOfDayText(other.fromTime)}–${timeOfDayText(other.toTime)}` : '';
@@ -221,6 +251,70 @@ export function odRequestProblems(input: OdInput, days: readonly OdDayFacts[], s
   if (read.length) return read;
   const timing = odTimingProblem(input.startDate, today);
   return [...(timing ? [timing] : []), ...odHoursProblems(input, shift), ...odDaysProblems(input, days)];
+}
+
+// ---------- HR records it (owner, 26 October 2026: "HR records it") ----------
+
+/**
+ * Who records an official duty for someone: HR; a C-level person's (`confidential`) the CEO, or HR who sees C-level
+ * people (with Super Admin), as their HR stage is decided (confidential.ts). Never their own: the API checks that apart.
+ */
+export function recordsOdFor(user: { roles: readonly Role[] }, confidential: boolean): boolean {
+  return confidential ? decidesConfidentialStage(user, ['hr']) : user.roles.includes('hr');
+}
+
+/**
+ * What an official duty recorded past the 3-day limit is marked with (owner's brief, 26 October 2026: "allowed past the
+ * 3-day limit, with the reason required, and marked as such"); null within it.
+ */
+export function odPastLimitText(startDate: string, today: string): string | null {
+  if (!odTimingProblem(startDate, today)) return null;
+  const days = daysBetween(startDate, today);
+  return `${shown(startDate)} is ${days} days ago, past the ${OD_AFTER_DAYS} days an employee may ask after: recorded by HR after the limit.`;
+}
+
+/** A month's payroll as the official duty's checks read it: YYYY-MM and its status. */
+export interface OdPayrollMonth {
+  month: string;
+  status: string;
+}
+
+/**
+ * Why HR can't record official duty on these days (null: it can), as a leave's days can't change then: the first month
+ * among them whose payroll is with the CEO, approved or paid, named.
+ */
+export function odLockProblem(startDate: string, endDate: string, runs: readonly OdPayrollMonth[]): string | null {
+  if (!isDate(startDate) || !isDate(endDate) || endDate < startDate) return null;
+  const from = startDate.slice(0, 7);
+  const to = endDate.slice(0, 7);
+  const hit = runs
+    .filter((r) => ['pending_ceo', 'approved', 'paid'].includes(r.status) && r.month >= from && r.month <= to)
+    .sort((a, b) => a.month.localeCompare(b.month))[0];
+  if (!hit) return null;
+  const words = hit.status === 'pending_ceo' ? 'is with the CEO' : hit.status === 'paid' ? 'is paid' : 'is approved';
+  return `The ${monthWords(hit.month)} payroll ${words}, so its days can't change. Ask the CEO to return the payroll to HR first, or record days in another month.`;
+}
+
+/**
+ * HR recording an official duty for someone (owner, 26 October 2026: "HR records it"): what refuses it (`problems`: days
+ * or times that can't be read, part of a day outside the shift, the days themselves as odDaysProblems says them, a month
+ * whose payroll is with the CEO, approved or paid) and what it is recorded past (`warnings`: more than 3 days after its
+ * first day), kept with it and in the audit log. The place and the reason are odInputProblems'. `name`: the employee's.
+ */
+export function odRecordCheck(
+  input: Pick<OdInput, 'startDate' | 'endDate' | 'fullDay' | 'fromTime' | 'toTime'>,
+  days: readonly OdDayFacts[],
+  shift: ShiftWindowTimes | null,
+  today: string,
+  name: string,
+  runs: readonly OdPayrollMonth[] = [],
+): { problems: string[]; warnings: string[] } {
+  const read = odWhenProblems(input);
+  if (read.length) return { problems: read, warnings: [] };
+  const lock = odLockProblem(input.startDate, input.endDate, runs);
+  const problems = [...odHoursProblems(input, shift, name), ...odDaysProblems(input, days, name), ...(lock ? [lock] : [])];
+  const past = odPastLimitText(input.startDate, today);
+  return { problems, warnings: past ? [past] : [] };
 }
 
 /** A request's days and hours in words: "01/11/2026, 10:00 AM–2:00 PM", "01/11/2026 (full day)", "01/11/2026–03/11/2026". */
@@ -358,4 +452,7 @@ const plusDays = (ymd: string, n: number) => new Date(Date.parse(`${ymd}T00:00:0
 const daysBetween = (a: string, b: string) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000);
 /** A date as messages show it: DD/MM/YYYY. */
 const shown = (ymd: string) => `${ymd.slice(8, 10)}/${ymd.slice(5, 7)}/${ymd.slice(0, 4)}`;
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+/** "October 2026" for '2026-10'. */
+const monthWords = (month: string) => `${MONTH_NAMES[Number(month.slice(5, 7)) - 1]} ${month.slice(0, 4)}`;
 const toMinute = (hours: number) => Math.round(hours * 60) / 60 + 0;

@@ -13,7 +13,7 @@ import { BackLink, Empty, UUID } from '../../../organization/ui';
 import { notLoadedText } from '../../../payroll/load';
 import { cancelMyOd, cancelOdByHr, decideOd } from '../actions';
 import { loadOd } from '../data';
-import { MY_OD_HREF, odBack, odDoneText, odProgressText, odSpanText, odStepText, odWhenWords } from '../od';
+import { MY_OD_HREF, odBack, odDoneText, odProgressText, odSourceText, odSpanText, odStepText, odWhenWords } from '../od';
 import { CancelOdForm, HrCancelOdForm, OdDecisionForm } from '../od-forms';
 
 // An official duty request (owner, 23 October 2026: "Official duty (OD) requests"; asked, "Manager, then HR", "Ahead
@@ -22,8 +22,9 @@ import { CancelOdForm, HrCancelOdForm, OdDecisionForm } from '../od-forms';
 // after its first day, where it stands and who decides it, and its log of every step. While it waits for the user,
 // their decision (Approve, or Reject with a comment); the employee's Cancel while it is being decided; HR's Cancel of an
 // approved one, with a comment. What was just done on it shows at the top (?done=). A C-level person's has HR's stage
-// decided by the CEO (or HR with Super Admin). Shown on the site and on the phone pages, where the back link goes to the
-// section's list and what is done on it comes back there.
+// decided by the CEO (or HR with Super Admin). One HR recorded (owner, 26 October 2026: "HR records it") says so, with
+// what it was recorded past (more than 3 days after); one a leave import brought over says it was imported. Shown on the
+// site and on the phone pages, where the back link goes to the section's list and what is done on it comes back there.
 
 type Query = Record<string, string | string[] | undefined>;
 
@@ -69,8 +70,11 @@ export async function OdRequestDetail({
   const when = odWhenWords(r);
   const what = `official duty request for ${when}`;
   const own = user.employeeId === r.employee.id;
-  // the log as the leave timeline draws it, a cancelling worded its own way (odStepText)
-  const timeline = { ...r, recordedByHr: false, steps: r.steps as unknown as LeaveRequestStep[] };
+  // recorded by HR or imported (26 October 2026): no decision was asked for, and "requested after" isn't theirs
+  const byHr = r.recordedByHr === true || r.imported === true;
+  const warnings = r.warnings ?? [];
+  // the log as the leave timeline draws it, HR's recording, an import and a cancelling worded their own way (odStepText)
+  const timeline = { ...r, recordedByHr: r.recordedByHr === true, steps: r.steps as unknown as LeaveRequestStep[] };
 
   return (
     <div className="space-y-5">
@@ -79,16 +83,20 @@ export async function OdRequestDetail({
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold">Official Duty</h1>
           <LeaveStatusBadge status={r.status} confidential={r.confidential} />
-          {r.late && (
-            <span className="badge bg-warn-soft text-warn" title="Asked after its first day, within the 3 days allowed.">
-              Requested after
-            </span>
+          {byHr ? (
+            <span className="badge bg-line-soft text-muted">{odSourceText(r)}</span>
+          ) : (
+            r.late && (
+              <span className="badge bg-warn-soft text-warn" title="Asked after its first day, within the 3 days allowed.">
+                Requested after
+              </span>
+            )
           )}
           {r.confidential && <CLevelBadge title="A C-level person: the CEO decides HR’s stage, and HR doesn’t see the request." />}
         </div>
         <p className="text-muted">
           {r.employee.fullNameEn}
-          {place && ` · ${place}`} · asked {formatDateTime(r.createdAt)}
+          {place && ` · ${place}`} · {byHr ? `${odSourceText(r).toLowerCase()} ${formatDateTime(r.createdAt)}` : `asked ${formatDateTime(r.createdAt)}`}
         </p>
       </div>
       {done && (
@@ -111,9 +119,18 @@ export async function OdRequestDetail({
               <Fact label="Reason" wide>
                 <span className="whitespace-pre-line">{r.reason}</span>
               </Fact>
-              {r.late && (
+              {r.late && !byHr && (
                 <Fact label="Asked" wide>
                   <span className="text-warn">After its first day: requested after, within the 3 days allowed.</span>
+                </Fact>
+              )}
+              {warnings.length > 0 && (
+                <Fact label="Recorded past" wide>
+                  <ul className="list-disc space-y-0.5 pl-5 text-warn">
+                    {warnings.map((w) => (
+                      <li key={w}>{w}</li>
+                    ))}
+                  </ul>
                 </Fact>
               )}
               <Fact label="Where it stands">
@@ -121,7 +138,13 @@ export async function OdRequestDetail({
                 {progress.reason && <span className="mt-0.5 block whitespace-pre-line text-muted">“{progress.reason}”</span>}
               </Fact>
               <Fact label={r.manager ? approverLabel(r.manager) : 'Direct manager'}>
-                {r.manager ? r.manager.fullNameEn : <span className="text-muted">None: sent straight to {hrStageName(r.confidential)}</span>}
+                {byHr && r.status !== 'with_manager' && r.status !== 'with_hr' ? (
+                  <span className="text-muted">{odSourceText(r)}: no decision needed</span>
+                ) : r.manager ? (
+                  r.manager.fullNameEn
+                ) : (
+                  <span className="text-muted">None: sent straight to {hrStageName(r.confidential)}</span>
+                )}
               </Fact>
             </dl>
             {r.status === 'approved' && (
