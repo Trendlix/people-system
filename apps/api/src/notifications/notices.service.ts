@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { cairoDay, decidesConfidentialStage, movesToStandIn, type Role, type WhatsAppRequestWhat, type WhatsAppSpan } from '@trendlix/shared';
+import { cairoDay, decidesConfidentialStage, movesToStandIn, type PayrollStatus, type Role, type WhatsAppRequestWhat, type WhatsAppSpan } from '@trendlix/shared';
 import { actsAs } from '../auth/roles.js';
 import { fromDateOnly } from '../common/date-only.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
@@ -21,6 +21,7 @@ import {
   leaveRestoredText,
   payRaiseDecidedText,
   payRaiseWaitingText,
+  payrollLockedChangeText,
   payslipText,
   raiseRequestWaitingText,
   recordedByHrText,
@@ -83,6 +84,8 @@ export const REQUEST_LINKS = {
   covering: '/my-requests#covering',
   myTeam: '/my-team',
   leaveWaiting: '/leave?status=waiting',
+  // leave and attendance changes made after the month's payroll moved on (27 October 2026): Unsettled lists them
+  unsettledLocked: '/payroll/unsettled#locked',
 } as const;
 
 /** A request as the notices read it: whose it is, who it was sent to, where it stands, its name and its days. */
@@ -275,6 +278,19 @@ export class NoticesService {
         const userId = users.get(c.employeeId);
         if (userId) await this.notifications.notify([userId], claimPaidText(month, REQUEST_LINKS.reimbursement(c.id)));
       }
+    });
+  }
+
+  // ---------- leave and attendance changes after the payroll moved on (owner's brief, 27 October 2026) ----------
+
+  /**
+   * A leave, permission, work from home or official duty change in a month whose payroll has moved on: HR (the CEO for a
+   * C-level person) and Finance told to correct it by hand on a later payroll; never the person themself.
+   */
+  async payrollLockedChange(employeeId: string, what: { name: string; kindLabel: string; action: string; month: string; status: PayrollStatus }): Promise<void> {
+    await this.safely('payroll locked change', async () => {
+      const [hr, finance] = await Promise.all([this.stageDeciders('hr', employeeId), this.stageDeciders('finance', employeeId)]);
+      await this.notifications.notify([...hr, ...finance], payrollLockedChangeText(what, REQUEST_LINKS.unsettledLocked));
     });
   }
 

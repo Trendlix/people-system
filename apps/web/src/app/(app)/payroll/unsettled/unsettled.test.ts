@@ -7,6 +7,7 @@ import {
   counted,
   daysText,
   documentHref,
+  lockedChangeHref,
   paidOutBody,
   settleBody,
   settlesPayroll,
@@ -56,6 +57,19 @@ describe('the summary', () => {
     ]);
     expect(summaryTiles(view({ settlements: { count: 0, rows: [], recentlySettled: [] } }))[2].note).toBe('None open');
     expect(unsettledCount(view())).toBe(6);
+  });
+
+  // owner's brief, 27 October 2026: leave and attendance changes made after a month's payroll moved on, listed until handled
+  it('adds the changes made after the payroll moved on when the API sends them, each linking to its request', () => {
+    const tiles = summaryTiles(view({ lockedChanges: { count: 2, rows: [] } }));
+    expect(tiles).toHaveLength(5);
+    expect(tiles[4]).toEqual({ key: 'locked', href: '#locked', label: 'Changed after the payroll moved on', count: '2', note: 'To correct by hand' });
+    expect(summaryTiles(view({ lockedChanges: { count: 0, rows: [] } }))[4].note).toBe('None to handle');
+    expect(unsettledCount(view({ lockedChanges: { count: 2, rows: [] } }))).toBe(8);
+    expect(lockedChangeHref({ kind: 'leave', requestId: 'a' })).toBe('/leave/a');
+    expect(lockedChangeHref({ kind: 'permission', requestId: 'b' })).toBe('/leave/permissions/b');
+    expect(lockedChangeHref({ kind: 'wfh', requestId: 'c' })).toBe('/attendance/wfh/c');
+    expect(lockedChangeHref({ kind: 'od', requestId: 'd' })).toBe('/attendance/official-duty/d');
   });
 
   it('says how long one is open', () => {

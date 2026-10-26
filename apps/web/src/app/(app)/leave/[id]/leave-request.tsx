@@ -24,7 +24,7 @@ import { daysNumber, daysText, decidingAsTitle, hrStageName, leaveBack, leaveDoc
 import { editTypes } from '../edit';
 import { restoreWarning } from '../restore';
 import { personFacts } from '../request';
-import { LeaveProgress, LeaveStatusBadge, LeaveTimeline, OverLimitBadge } from '../ui';
+import { LeaveProgress, LeaveStatusBadge, LeaveTimeline, OverLimitBadge, PayrollLockedNotice } from '../ui';
 
 // A leave request (owner, 18 October 2026: "can you apply the leaves according to the law?"), for the employee, their
 // direct manager, HR and the CEO (anyone else gets the 404 page: the API says it isn't there): the type and its pay, when
@@ -168,6 +168,8 @@ export async function LeaveRequestDetail({
           {done.text}
         </p>
       )}
+      {/* recorded, approved or cancelled for a month whose payroll had moved on (27 October 2026) */}
+      <PayrollLockedNotice months={r.payrollLocked} />
 
       <div className="grid items-start gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">

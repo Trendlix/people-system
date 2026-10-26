@@ -122,6 +122,27 @@ describe('roster', () => {
     expect(lines.find((l) => l.employeeId === leaver.employee.id)!.terms.paidDays).toBe(10);
   });
 
+  // owner's report, 27 October 2026: a leaver with an approved ending (last working day the 20th), not yet completed, was
+  // paid 30/30 days with expected hours for the whole month and no-shows after they left
+  it('ends the month on an approved ending’s last working day, the line saying so; the end date wins when earlier', () => {
+    const leaving = employment({ leavingOn: '2026-09-20' });
+    const endedFirst = employment({ endDate: '2026-09-10', leavingOn: '2026-09-20' });
+    const leavingLater = employment({ leavingOn: '2026-10-05' });
+    const left = employment({ leavingOn: '2026-08-31' });
+    const { lines, exclusions } = roster('2026-09', [leaving, endedFirst, leavingLater, left], rules);
+    const terms = (e: RosterEmployment) => lines.find((l) => l.employeeId === e.employee.id)!.terms;
+    // 1 to 20 September: 14 Sundays to Thursdays of 9 hours
+    expect(terms(leaving)).toMatchObject({ paidDays: 20, leavingOn: '2026-09-20', expectedHours: 126, expectedDays: { workingDays: 14, holidays: 0 } });
+    expect(terms(leaving).segments!.map((s) => [s.from, s.to, s.days])).toEqual([['2026-09-01', '2026-09-20', 20]]);
+    expect(terms(endedFirst)).toMatchObject({ paidDays: 10 });
+    expect(terms(endedFirst).leavingOn).toBeUndefined();
+    expect(terms(leavingLater)).toMatchObject({ paidDays: 30 });
+    expect(terms(leavingLater).leavingOn).toBeUndefined();
+    // left before the month: not on it
+    expect(lines.some((l) => l.employeeId === left.employee.id)).toBe(false);
+    expect(exclusions).toEqual([]);
+  });
+
   it('leaves out someone with no signed contract in force; with two (a renewal mid-month), the line is the later one’s', () => {
     const none = employment({ contracts: [] });
     const expired = employment({ contracts: [contract({ endDate: '2026-08-31' })] });

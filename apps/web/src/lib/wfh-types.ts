@@ -56,6 +56,11 @@ export interface WfhRequestView {
   /** How many of its month's days its person has taken (approved and being decided); null when not shown to the caller. */
   monthUsed: number | null;
   createdAt: string;
+  /**
+   * The months (YYYY-MM) whose payroll had moved on when this was recorded, approved or cancelled (27 October 2026): not
+   * in that payroll, listed on Unsettled until HR handles it. The API's warning on the action just taken joins `warnings`.
+   */
+  payrollLocked?: string[];
 }
 
 /** GET /me/wfh/allowance?month=: the caller's month as the request form shows it. */

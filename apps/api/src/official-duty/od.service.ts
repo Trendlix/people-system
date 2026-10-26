@@ -55,6 +55,8 @@ import { placeOf } from '../leave/views.js';
 import { NoticesService } from '../notifications/notices.service.js';
 import { approverFor } from '../organisation/departments/leads.js';
 import { userNames } from '../payroll/adjustments/people.js';
+import { withWarnings } from '../payroll/locked-changes/locked-changes.js';
+import { PayrollLockedChangesService } from '../payroll/locked-changes/locked-changes.service.js';
 import { lastDay } from '../payroll/months.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { CreateOdDto, HrCancelOdDto, ListOdDto, OdCalendarQueryDto, OdCheckQueryDto, RecordOdDto } from './od.dto.js';
@@ -203,6 +205,7 @@ export class OdService {
     private readonly confidential: ConfidentialService,
     private readonly notices: NoticesService,
     private readonly fill: AttendanceFillService,
+    private readonly lockedChanges: PayrollLockedChangesService,
   ) {}
 
   // ---------- the employee's own ----------
@@ -338,7 +341,9 @@ export class OdService {
     await this.notices.od(id, 'cancelled_by_hr');
     // its days gone by are no longer attended for its hours
     await this.refill(before, user);
-    return this.one(id, user);
+    // cancelled in a month whose payroll has moved on: flagged, never silent (owner's brief, 27 October 2026)
+    const warnings = await this.lockedChanges.flag({ employeeId: before.employeeId, kind: 'od', requestId: id, change: 'cancelled', from: fromDateOnly(before.startDate), to: fromDateOnly(before.endDate) }, user);
+    return withWarnings(await this.one(id, user), warnings);
   }
 
   // ---------- deciding and seeing them ----------
@@ -435,7 +440,12 @@ export class OdService {
     await this.notices.od(id, 'decided');
     // approved: its days gone by count as attended for its hours on the month's draft payroll run
     if (to === 'approved') await this.refill(before, user);
-    return this.one(id, user);
+    // approved in a month whose payroll has moved on (recording in one is refused, odLockProblem): flagged, never silent (27 October 2026)
+    const warnings =
+      to === 'approved'
+        ? await this.lockedChanges.flag({ employeeId: before.employeeId, kind: 'od', requestId: id, change: 'approved', from: fromDateOnly(before.startDate), to: fromDateOnly(before.endDate) }, user)
+        : [];
+    return withWarnings(await this.one(id, user), warnings);
   }
 
   /**
@@ -958,10 +968,14 @@ export class OdService {
   /** The requests as the caller sees them, with who took each step. */
   private async views(rows: readonly OdRow[], caller: Caller): Promise<OdRequestView[]> {
     if (!rows.length) return [];
-    const names = await userNames(
-      this.prisma,
-      rows.flatMap((r) => r.steps.map((s) => s.actor)),
-    );
-    return rows.map((r) => odView(r, caller, names));
+    const [names, locked] = await Promise.all([
+      userNames(
+        this.prisma,
+        rows.flatMap((r) => r.steps.map((s) => s.actor)),
+      ),
+      // the months whose payroll had moved on when it was approved or cancelled, still to handle (27 October 2026)
+      this.lockedChanges.openMonthsOf('od', rows.map((r) => r.id)),
+    ]);
+    return rows.map((r) => ({ ...odView(r, caller, names), payrollLocked: locked.get(r.id) ?? [] }));
   }
 }

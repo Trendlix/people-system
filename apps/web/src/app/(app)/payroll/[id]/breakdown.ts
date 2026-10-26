@@ -34,6 +34,7 @@ import {
   type PayrollSegment,
   type PayrollTerms,
 } from '@trendlix/shared';
+import { formatDate } from '../../../../lib/format';
 import { KPI_PATHS } from '../../../../lib/kpi-paths';
 import type { PayrollLineView } from '../../../../lib/types';
 import { formatEgp, formatPercent } from '../../employees/[id]/contracts/salary';
@@ -206,8 +207,10 @@ function splitParts(t: PayrollTerms, r: PayrollResult): SplitPart[] | null {
 function grossSteps({ terms: t, result: r }: Line, rules: PayrollRules, split: SplitPart[] | null): BreakdownRow[] {
   if (!split) {
     const part = t.paidDays < rules.dayDivisor ? `, for ${t.paidDays} of ${rules.dayDivisor} days` : '';
+    // leaving in the month on an approved ending's last working day (owner's report, 27 October 2026): why the days stop
+    const leaving = t.leavingOn ? ` · leaving ${formatDate(t.leavingOn)} (ending approved)` : '';
     return [
-      { key: 'fixed', label: 'Fixed', value: formatEgp(r.fixed), kind: 'add', note: `${t.basicPercent}% of the gross${part}` },
+      { key: 'fixed', label: 'Fixed', value: formatEgp(r.fixed), kind: 'add', note: `${t.basicPercent}% of the gross${part}${leaving}` },
       { key: 'variable', label: 'Variable', value: formatEgp(r.variable), kind: 'add', note: `${variablePercent(t.basicPercent)}% of the gross${part}` },
     ];
   }

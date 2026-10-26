@@ -22,7 +22,7 @@ import {
   permissionTimesText,
   recordsPermission,
 } from '../../permissions';
-import { LeaveProgress, LeaveStatusBadge, LeaveTimeline } from '../../ui';
+import { LeaveProgress, LeaveStatusBadge, LeaveTimeline, PayrollLockedNotice } from '../../ui';
 
 // A permission request (owner, 19 October 2026: "this is an option given by us .. 4 hours per month with a maximum 2
 // hours per day", asked "In the system, like leave"), for the employee, the one who decides it first (their direct
@@ -99,6 +99,8 @@ export async function PermissionRequestDetail({
           {done.text}
         </p>
       )}
+      {/* recorded, approved or cancelled for a month whose payroll had moved on (27 October 2026) */}
+      <PayrollLockedNotice months={r.payrollLocked} />
 
       <div className="grid items-start gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">

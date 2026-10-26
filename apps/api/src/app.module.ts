@@ -33,6 +33,7 @@ import { PaperworkModule } from './paperwork/paperwork.module.js';
 import { PayrollModule } from './payroll/payroll.module.js';
 import { PayrollAdjustmentsModule } from './payroll/adjustments/adjustments.module.js';
 import { LawRatesModule } from './payroll/law-rates/law-rates.module.js';
+import { PayrollLockedChangesModule } from './payroll/locked-changes/locked-changes.module.js';
 import { PayrollStatisticsModule } from './payroll/statistics/statistics.module.js';
 import { UnsettledModule } from './payroll/unsettled/unsettled.module.js';
 import { PdfModule } from './pdf/pdf.module.js';
@@ -77,6 +78,7 @@ import { ZohoPeopleModule } from './zoho-people/zoho-people.module.js';
     LawRatesModule,
     PayrollModule,
     PayrollAdjustmentsModule,
+    PayrollLockedChangesModule,
     UnsettledModule,
     PayrollStatisticsModule,
     ReimbursementsModule,

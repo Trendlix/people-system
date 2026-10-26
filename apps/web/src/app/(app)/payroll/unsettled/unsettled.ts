@@ -96,6 +96,45 @@ export interface FinalSettlementOutstanding {
   outstanding: number;
 }
 
+/**
+ * A leave, permission, work from home or official duty change made for a month whose payroll had moved on (owner's brief,
+ * 27 October 2026: allowed, never silent): that payroll keeps its lines, so HR corrects it by hand on a later payroll and
+ * marks it handled; a run returned to HR and refreshed handles its own.
+ */
+export interface LockedChange {
+  id: string;
+  employee: PersonRef;
+  department: string | null;
+  /** YYYY-MM, and the run's status when the change was made. */
+  month: string;
+  runStatus: PayrollStatus;
+  kind: 'leave' | 'permission' | 'wfh' | 'od';
+  kindLabel: string;
+  requestId: string;
+  action: 'recorded' | 'approved' | 'cancelled';
+  actionLabel: string;
+  fromDate: string;
+  toDate: string;
+  /** The request in a few words: "Annual leave, 03/07/2026–04/07/2026". */
+  summary: string;
+  createdAt: string;
+  createdBy: UserRef | null;
+}
+
+/** The request's page, by its kind. */
+export function lockedChangeHref(c: Pick<LockedChange, 'kind' | 'requestId'>): string {
+  switch (c.kind) {
+    case 'leave':
+      return `/leave/${c.requestId}`;
+    case 'permission':
+      return `/leave/permissions/${c.requestId}`;
+    case 'wfh':
+      return `/attendance/wfh/${c.requestId}`;
+    case 'od':
+      return `/attendance/official-duty/${c.requestId}`;
+  }
+}
+
 export interface UnsettledView {
   generatedAt: string;
   today: string;
@@ -103,6 +142,8 @@ export interface UnsettledView {
   held: { count: number; amount: number; rows: HeldLine[] };
   settlements: { count: number; rows: FinalSettlement[]; recentlySettled: FinalSettlement[] };
   advances: { count: number; amount: number; outstanding: number; rows: AdvanceRow[] };
+  /** The changes made after a month's payroll moved on, still to handle (27 October 2026). Left out by an older API. */
+  lockedChanges?: { count: number; rows: LockedChange[] };
   /**
    * How many C-level people it leaves out for the caller (owner, 19 October 2026: "make C level Employees details not
    * visible to HR"): their held pay, final settlements and advances; 0 for the CEO and the Super Admin, left out by an
@@ -127,6 +168,10 @@ export function summaryTiles(u: UnsettledView): { key: string; href: string; lab
     { key: 'held', href: '#held', label: 'Lines on hold', count: String(u.held.count), note: `${formatEgp(u.held.amount)} held` },
     { key: 'settlements', href: '#settlements', label: 'Final settlements', count: String(u.settlements.count), note: oldestText(u.settlements.rows) },
     { key: 'advances', href: '#advances', label: 'Advances and loans', count: String(u.advances.count), note: `${formatEgp(u.advances.outstanding)} outstanding` },
+    // the changes made after a month's payroll moved on (27 October 2026), when the API sends them
+    ...(u.lockedChanges
+      ? [{ key: 'locked', href: '#locked', label: 'Changed after the payroll moved on', count: String(u.lockedChanges.count), note: u.lockedChanges.count ? 'To correct by hand' : 'None to handle' }]
+      : []),
   ];
 }
 
@@ -141,7 +186,8 @@ function oldestText(rows: readonly Pick<FinalSettlement, 'daysOpen'>[]): string 
 export const daysText = (days: number) => (days <= 0 ? 'Since today' : counted(days, 'day', 'days'));
 
 /** The total of everything the page counts, for the Overview: how many things are unsettled. */
-export const unsettledCount = (u: Pick<UnsettledView, 'runs' | 'held' | 'settlements' | 'advances'>) => u.runs.count + u.held.count + u.settlements.count + u.advances.count;
+export const unsettledCount = (u: Pick<UnsettledView, 'runs' | 'held' | 'settlements' | 'advances' | 'lockedChanges'>) =>
+  u.runs.count + u.held.count + u.settlements.count + u.advances.count + (u.lockedChanges?.count ?? 0);
 
 /** The ending's reason as the list shows it: the rule's name or the end reason, else a dash. */
 export const reasonText = (s: Pick<FinalSettlement, 'reasonText'>) => s.reasonText ?? '—';

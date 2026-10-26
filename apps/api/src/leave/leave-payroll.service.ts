@@ -7,6 +7,7 @@ import { fromDateOnly, toDateOnly } from '../common/date-only.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { json, savedInputs, worked } from '../payroll/line-work.js';
+import { PayrollLockedChangesService } from '../payroll/locked-changes/locked-changes.service.js';
 import { firstDay, lastDay } from '../payroll/months.js';
 import { leaveTermsOf, permissionTermsOf } from '../payroll/roster.js';
 import { runLawRates } from '../payroll/views.js';
@@ -29,6 +30,7 @@ export class LeavePayrollService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly fill: AttendanceFillService,
+    private readonly lockedChanges: PayrollLockedChangesService,
   ) {}
 
   /**
@@ -48,6 +50,9 @@ export class LeavePayrollService {
       // then its no-show days as its attendance days are now, the leave read with them (21 October 2026): a day of
       // approved leave is never a no-show
       await this.fill.fillRun(run.id, user, [employeeId]);
+      // a draft again with the person's leave and permission as they are now: the changes flagged while the month's
+      // payroll had moved on are handled by this refill (27 October 2026)
+      await this.lockedChanges.refilled(fromDateOnly(run.month).slice(0, 7), [employeeId], user);
     }
   }
 

@@ -26,6 +26,7 @@ import {
 } from '@trendlix/shared';
 import { addDays } from '../common/date-only.js';
 import { departmentName } from '../contracts/views.js';
+import { employmentEnd } from '../employees/employment-end.js';
 import { insuredWageOfEmployee } from '../employees/insured-wage.js';
 import { firstDay, lastDay } from './months.js';
 
@@ -67,6 +68,12 @@ export interface RosterEmployment {
   employmentType: EmploymentType;
   joinDate: string;
   endDate: string | null;
+  /**
+   * The last working day of an ending the CEO approved, not yet completed (employees/employment-end.ts; owner's report,
+   * 27 October 2026: a leaver paid the whole month, with no-shows after they left): YYYY-MM-DD, the employment's end for
+   * the month when it comes before endDate (or there is none). Null or missing without one.
+   */
+  leavingOn?: string | null;
   department: { nameEn: string; parent: { nameEn: string } | null } | null;
   jobTitle: string | null;
   /**
@@ -255,7 +262,9 @@ export function roster(
   const year = Number(month.slice(0, 4));
   const lines: RosterLine[] = [];
   const exclusions: Exclusion[] = [];
-  const touching = employments.filter((e) => e.joinDate <= to && (e.endDate === null || e.endDate >= from));
+  // an employment ends on its end date, or on an approved ending's last working day when earlier (27 October 2026)
+  const endOf = (e: RosterEmployment) => employmentEnd(e.endDate, e.leavingOn);
+  const touching = employments.filter((e) => e.joinDate <= to && (endOf(e) === null || endOf(e)! >= from));
   // the later employment first, so an earlier one of the same person is the one left out
   const ordered = [...touching].sort((a, b) => b.joinDate.localeCompare(a.joinDate) || a.employee.employeeCode.localeCompare(b.employee.employeeCode));
   const paid = new Set<string>();
@@ -269,7 +278,10 @@ export function roster(
     }
     // the days employed in the month under each signed contract (owner, 17 October 2026); the line is the contract's at
     // the month's end
-    const parts = contractParts(e.joinDate > from ? e.joinDate : from, e.endDate !== null && e.endDate < to ? e.endDate : to, e.contracts);
+    const end = endOf(e);
+    const parts = contractParts(e.joinDate > from ? e.joinDate : from, end !== null && end < to ? end : to, e.contracts);
+    // leaving in the month on an approved ending's last working day: the line says so (27 October 2026)
+    const leavingOn = end !== null && end === e.leavingOn && end <= to ? end : null;
     if (!parts.length) {
       out(NO_CONTRACT);
       continue;
@@ -355,6 +367,7 @@ export function roster(
         ...(insuredOn !== contract && p.insuranceComprehensiveWage === null && { insuredWageAsBefore: contract.insuredWageFrom }),
         hoursPerDay,
         ...shiftExpected(month, e, parts, contract.payBasis, hoursPerDay, holidays),
+        ...(leavingOn && { leavingOn }),
         ...(leave && { leave }),
         ...(permissionHours !== null && { permissionHours }),
         // a long day fills the month's short hours (owner, 20 October 2026: "within the same month"), for the monthly paid

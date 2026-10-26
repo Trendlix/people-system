@@ -26,6 +26,8 @@ import type { Prisma } from '../generated/prisma/client.js';
 import { NoticesService } from '../notifications/notices.service.js';
 import { approverFor } from '../organisation/departments/leads.js';
 import { userNames } from '../payroll/adjustments/people.js';
+import { withWarnings } from '../payroll/locked-changes/locked-changes.js';
+import { PayrollLockedChangesService } from '../payroll/locked-changes/locked-changes.service.js';
 import { firstDay, lastDay } from '../payroll/months.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
@@ -114,6 +116,7 @@ export class PermissionRequestsService {
     private readonly payroll: LeavePayrollService,
     private readonly confidential: ConfidentialService,
     private readonly notices: NoticesService,
+    private readonly lockedChanges: PayrollLockedChangesService,
   ) {}
 
   // ---------- the employee's own ----------
@@ -164,8 +167,11 @@ export class PermissionRequestsService {
       await this.step(tx, id, user.id, { kind: 'cancelled' });
     });
     await this.audit.record({ userId: user.id, action: 'cancel', entityType: PERMISSION_ENTITY, entityId: id, diff: { employeeId: before.employeeId, status: { from: before.status, to: 'cancelled' } } });
-    if (before.status === 'approved') await this.payroll.syncDrafts(before.employeeId, date, date, user);
-    return this.one(id, user);
+    if (before.status !== 'approved') return this.one(id, user);
+    await this.payroll.syncDrafts(before.employeeId, date, date, user);
+    // a month whose payroll has moved on keeps its lines: flagged, never silent (owner's brief, 27 October 2026)
+    const warnings = await this.lockedChanges.flag({ employeeId: before.employeeId, kind: 'permission', requestId: id, change: 'cancelled', from: date, to: date }, user);
+    return withWarnings(await this.one(id, user), warnings);
   }
 
   // ---------- HR on an employee's behalf ----------
@@ -186,7 +192,9 @@ export class PermissionRequestsService {
     if (!employment) throw new BadRequestException([`Choose a day within one of ${person.fullNameEn}'s employments.`]);
     const id = await this.submit(employment, dto, caller, true);
     await this.payroll.syncDrafts(dto.employeeId, dto.date, dto.date, user);
-    return this.one(id, user);
+    // a month whose payroll has moved on keeps its lines: flagged, never silent (owner's brief, 27 October 2026)
+    const warnings = await this.lockedChanges.flag({ employeeId: dto.employeeId, kind: 'permission', requestId: id, change: 'recorded', from: dto.date, to: dto.date }, user);
+    return withWarnings(await this.one(id, user), warnings);
   }
 
   // ---------- deciding and seeing them ----------
@@ -266,9 +274,11 @@ export class PermissionRequestsService {
     });
     const date = fromDateOnly(before.date);
     if (to === 'approved') await this.payroll.syncDrafts(before.employeeId, date, date, user);
+    // approved in a month whose payroll has moved on: flagged, never silent (owner's brief, 27 October 2026)
+    const warnings = to === 'approved' ? await this.lockedChanges.flag({ employeeId: before.employeeId, kind: 'permission', requestId: id, change: 'approved', from: date, to: date }, user) : [];
     // to the next step's decider, or the employee once it is approved or rejected (Phase 4: notifications)
     await this.notices.permission(id, 'decided');
-    return this.one(id, user);
+    return withWarnings(await this.one(id, user), warnings);
   }
 
   /** HR cancels an approved request, saying why. Never HR's own; a C-level person's only HR who sees them. */
@@ -295,8 +305,10 @@ export class PermissionRequestsService {
     });
     const date = fromDateOnly(before.date);
     await this.payroll.syncDrafts(before.employeeId, date, date, user);
+    // cancelled in a month whose payroll has moved on: flagged, never silent (owner's brief, 27 October 2026)
+    const warnings = await this.lockedChanges.flag({ employeeId: before.employeeId, kind: 'permission', requestId: id, change: 'cancelled', from: date, to: date }, user);
     await this.notices.permission(id, 'cancelled_by_hr');
-    return this.one(id, user);
+    return withWarnings(await this.one(id, user), warnings);
   }
 
   // ---------- an employee's month and the calendar ----------
@@ -517,7 +529,7 @@ export class PermissionRequestsService {
     const shown = rows.filter((r) => !hiddenRequest(r, caller));
     const days = shown.map((r) => fromDateOnly(r.date)).sort();
     // every month's hours taken at once: those approved and being decided, by person and month
-    const [names, rules, taken] = await Promise.all([
+    const [names, rules, taken, locked] = await Promise.all([
       userNames(this.prisma, rows.flatMap((r) => r.steps.map((s) => s.actor))),
       this.rules(),
       shown.length
@@ -530,10 +542,15 @@ export class PermissionRequestsService {
             select: { employeeId: true, date: true, hours: true },
           })
         : [],
+      // the months whose payroll had moved on when it was recorded, approved or cancelled, still to handle (27 October 2026)
+      this.lockedChanges.openMonthsOf('permission', rows.map((r) => r.id)),
     ]);
     const used = new Map<string, number>();
     for (const t of taken) used.set(keyOf(t.employeeId, t.date), halfHours((used.get(keyOf(t.employeeId, t.date)) ?? 0) + hoursOf(t.hours)));
-    return rows.map((r) => permissionView(r, caller, names, hiddenRequest(r, caller) ? null : permissionLeft(rules, used.get(keyOf(r.employeeId, r.date)) ?? 0), today));
+    return rows.map((r) => ({
+      ...permissionView(r, caller, names, hiddenRequest(r, caller) ? null : permissionLeft(rules, used.get(keyOf(r.employeeId, r.date)) ?? 0), today),
+      payrollLocked: locked.get(r.id) ?? [],
+    }));
   }
 }
 

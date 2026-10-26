@@ -5,6 +5,7 @@ import { formatDateTime } from '@/lib/format';
 import type { LeaveBalances, LeaveRequestStep, LeaveRequestView, LeaveTypeView, PermissionRequestView, RequestApprover } from '@/lib/types';
 import type { WfhRequestView } from '@/lib/wfh-types';
 import { wfhDayText, wfhProgressText } from '../attendance/wfh/wfh';
+import { monthName } from '../payroll/list';
 import { annualFigures, availableText, typeLeftText } from './balance';
 import { daysText, leaveProgressText, leaveStatusLabel, leaveStepText, leaveStepTone, periodText, standingInText, STATUS_BADGE } from './list';
 import { isPermission, permissionDayText, permissionHoursLine, permissionWhenText, requestHref, type RequestRow } from './permissions';
@@ -91,6 +92,22 @@ export function LeaveTimeline({
         </li>
       ))}
     </ol>
+  );
+}
+
+/**
+ * A request recorded, approved or cancelled for a month whose payroll had moved on (owner's brief, 27 October 2026: allowed,
+ * never silent): "Not in the July 2026 payroll", on the request's page while the change is still to handle on Unsettled.
+ */
+export function PayrollLockedNotice({ months }: { months?: readonly string[] | null }) {
+  if (!months?.length) return null;
+  const names = months.map(monthName);
+  const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+  return (
+    <p role="status" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
+      <span className="font-semibold">Not in the {list} {names.length === 1 ? 'payroll' : 'payrolls'}.</span> That payroll had moved on (with the CEO, approved or paid) when
+      this was recorded, approved or cancelled, so it isn&apos;t changed. HR corrects it by hand on a later payroll; Unsettled lists it until then.
+    </p>
   );
 }
 

@@ -15,7 +15,19 @@ import { loadJson, notLoadedText } from '../load';
 import { ADJUSTMENTS_PATH } from '../sections';
 import { PayrollStatusBadge } from '../ui';
 import { ActionButton } from '../../employees/[id]/contracts/contract-buttons';
-import { changeInstallment, createAdvance, deductFromFinal, payUnusedLeave, postponeInstallment, recordPaidOut, reopenFinal, settleAdvance, settleFinal, updateAdvance } from './actions';
+import {
+  changeInstallment,
+  createAdvance,
+  deductFromFinal,
+  markLockedChangeHandled,
+  payUnusedLeave,
+  postponeInstallment,
+  recordPaidOut,
+  reopenFinal,
+  settleAdvance,
+  settleFinal,
+  updateAdvance,
+} from './actions';
 import { changesInstallment, installmentsOf, installmentStatusText, nextText } from './installments';
 import { canPayUnusedLeave, unusedLeaveText } from './unused-leave';
 import {
@@ -24,6 +36,7 @@ import {
   counted,
   daysText,
   documentHref,
+  lockedChangeHref,
   reasonText,
   settlesPayroll,
   summaryTiles,
@@ -32,6 +45,7 @@ import {
 } from './unsettled';
 import {
   EditAdvanceForm,
+  HandledForm,
   InstallmentActions,
   NewAdvanceForm,
   OutstandingActions,
@@ -182,6 +196,78 @@ function LinesOnHold({ u, hr, today }: { u: UnsettledView; hr: boolean; today: s
                   {hr && (
                     <td className="text-right">
                       <PaidOutForm action={recordPaidOut.bind(null, h.lineId)} name={`for ${h.employee.name}, ${monthName(h.month)}`} today={today} />
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Section>
+  );
+}
+
+/**
+ * Leave, permission, work from home and official duty changes made for a month whose payroll had moved on (owner's brief,
+ * 27 October 2026: allowed, never silent): that payroll keeps its lines, so each is listed here until HR corrects it by
+ * hand on a later payroll and marks it handled; a run returned to HR and refreshed handles its own. Nothing from an
+ * older API that doesn't send them.
+ */
+function ChangedAfterLock({ u, hr }: { u: UnsettledView; hr: boolean }) {
+  if (!u.lockedChanges) return null;
+  const rows = u.lockedChanges.rows;
+  return (
+    <Section
+      id="locked"
+      title="Changed After the Payroll Moved On"
+      count={counted(u.lockedChanges.count, 'change', 'changes')}
+      note="Leave, permission, work from home or official duty recorded, approved or cancelled for a month whose payroll was with the CEO, approved or paid: that payroll keeps its lines. Correct each by hand on a later payroll and mark it handled; a run returned to HR and refreshed handles its own."
+    >
+      {rows.length === 0 ? (
+        <p className={quiet}>Nothing changed after a payroll moved on.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="table">
+            <thead>
+              <tr>
+                <th scope="col">Person</th>
+                <th scope="col">Request</th>
+                <th scope="col">Payroll</th>
+                <th scope="col">Change</th>
+                {hr && (
+                  <th scope="col" className="text-right">
+                    <span className="sr-only">Actions</span>
+                  </th>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((c) => (
+                <tr key={c.id}>
+                  <td>
+                    <Person person={c.employee} />
+                    {c.department && <div className="text-xs text-muted">{c.department}</div>}
+                  </td>
+                  <td className="text-sm">
+                    <Link href={lockedChangeHref(c)} className="font-semibold">
+                      {c.kindLabel}
+                    </Link>
+                    <div className="text-xs text-muted">{c.summary}</div>
+                  </td>
+                  <td className="whitespace-nowrap">
+                    {monthName(c.month)} <PayrollStatusBadge status={c.runStatus} />
+                  </td>
+                  <td className="text-sm">
+                    <span className="capitalize">{c.actionLabel}</span>
+                    <div className="text-xs text-muted">
+                      {formatDateTime(c.createdAt)}
+                      {c.createdBy && ` by ${c.createdBy.name}`}
+                    </div>
+                  </td>
+                  {hr && (
+                    <td className="text-right">
+                      <HandledForm action={markLockedChangeHandled.bind(null, c.id)} name={`the ${c.kindLabel.toLowerCase()} of ${c.employee.name}, ${monthName(c.month)}`} />
                     </td>
                   )}
                 </tr>
@@ -574,7 +660,7 @@ async function Unsettled() {
   return (
     <div className="space-y-8">
       <div className="space-y-2">
-        <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <dl className={`grid gap-3 sm:grid-cols-2 ${summaryTiles(u).length > 4 ? 'lg:grid-cols-5' : 'lg:grid-cols-4'}`}>
           {summaryTiles(u).map((t) => (
             <div key={t.key} className="card px-4 py-3">
               <dt className="text-xs text-muted">
@@ -592,6 +678,7 @@ async function Unsettled() {
       </div>
       <RunsNotPaid u={u} />
       <LinesOnHold u={u} hr={hr} today={today} />
+      <ChangedAfterLock u={u} hr={hr} />
       <FinalSettlements u={u} hr={hr} today={today} />
       <AdvancesAndLoans u={u} hr={hr} today={today} people={people} />
     </div>
@@ -604,8 +691,8 @@ export default function UnsettledPage() {
       <div className="max-w-6xl">
         <h1 className="text-2xl font-semibold">Unsettled</h1>
         <p className="mt-1 text-muted">
-          What the payroll still owes or is owed: runs not yet paid, pay held on a run and not paid out since, the final dues of people who left, and advances
-          and loans still being recovered.
+          What the payroll still owes or is owed: runs not yet paid, pay held on a run and not paid out since, leave or attendance changed after a payroll moved
+          on, the final dues of people who left, and advances and loans still being recovered.
         </p>
         <div className="mt-6">
           <Suspense fallback={<Loading />}>

@@ -162,6 +162,15 @@ export function ReopenFinalForm({ action, name }: { action: Action; name: string
   );
 }
 
+/** Marks a change made after the payroll moved on handled, once corrected by hand on a later payroll (27 October 2026): a note, optional. */
+export function HandledForm({ action, name }: { action: Action; name: string }) {
+  return (
+    <InlineForm label="Mark handled" name={name} action={action} submit="Mark handled" pendingText="Marking…">
+      {(state, fid) => <Note state={state} fid={fid} label="How it was corrected" />}
+    </InlineForm>
+  );
+}
+
 /** Records held pay as paid out: the day (today to start with), how, a note. */
 export function PaidOutForm({ action, name, today }: { action: Action; name: string; today: string }) {
   return (

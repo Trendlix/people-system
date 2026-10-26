@@ -64,6 +64,11 @@ export interface OdRequestView {
   rejectReason: string | null;
   steps: OdRequestStep[];
   createdAt: string;
+  /**
+   * The months (YYYY-MM) whose payroll had moved on when this was approved or cancelled (27 October 2026): not in that
+   * payroll, listed on Unsettled until HR handles it. The API's warning on the action just taken joins `warnings`.
+   */
+  payrollLocked?: string[];
 }
 
 /** GET /me/official-duty/form: what the request form reads first. */

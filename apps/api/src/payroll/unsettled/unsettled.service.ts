@@ -10,6 +10,7 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 import { AdvancesService } from '../adjustments/advances.service.js';
 import { placeName, refOf, userNames, type UserRef } from '../adjustments/people.js';
 import { ADVANCE_INCLUDE, balanceOf, personOf, type AdvanceView, type PersonRef } from '../adjustments/views.js';
+import { PayrollLockedChangesService, type LockedChangeView } from '../locked-changes/locked-changes.service.js';
 import { firstDay, monthName } from '../months.js';
 import { STATUS_TEXT } from '../status.js';
 import { isApproved, monthOf } from '../views.js';
@@ -104,6 +105,12 @@ export interface UnsettledView {
   held: { count: number; amount: number; rows: HeldLine[] };
   settlements: { count: number; rows: FinalSettlementView[]; recentlySettled: FinalSettlementView[] };
   advances: { count: number; amount: number; outstanding: number; rows: AdvanceView[] };
+  /**
+   * Leave, permission, work from home and official duty changes made after the month's payroll moved on (owner's brief,
+   * 27 October 2026: never silent), still to handle: HR corrects each by hand on a later payroll and marks it handled,
+   * or the month's run returns to draft and is refilled, which handles it.
+   */
+  lockedChanges: { count: number; rows: LockedChangeView[] };
   /** The C-level people left out for the caller (owner, 19 October 2026): their lines, settlements and advances, sums too. */
   confidentialExcluded: number;
 }
@@ -149,18 +156,21 @@ export class UnsettledService {
     private readonly advances: AdvancesService,
     private readonly leave: LeaveSettlementService,
     private readonly confidential: ConfidentialService,
+    private readonly lockedChanges: PayrollLockedChangesService,
   ) {}
 
   async unsettled(user: SessionUser): Promise<UnsettledView> {
     const today = todayInCairo();
     const hidden = await this.confidential.hiddenFrom(user);
-    const [runs, held, settlements, recentlySettled, advances, excluded] = await Promise.all([
+    const [runs, held, settlements, recentlySettled, advances, excluded, lockedChanges] = await Promise.all([
       this.runsNotPaid(hidden),
       this.heldLines(hidden),
       this.openSettlements(today, hidden),
       this.recentlySettled(today, hidden),
       this.advances.list({ status: 'open' }, hidden),
       this.excluded(hidden),
+      // leave and attendance changes made after the month's payroll moved on, still to handle (27 October 2026)
+      this.lockedChanges.open(hidden),
     ]);
     return {
       generatedAt: new Date().toISOString(),
@@ -174,6 +184,7 @@ export class UnsettledService {
         outstanding: sumAmounts(advances.map((a) => a.outstanding)),
         rows: advances,
       },
+      lockedChanges: { count: lockedChanges.length, rows: lockedChanges },
       confidentialExcluded: excluded,
     };
   }

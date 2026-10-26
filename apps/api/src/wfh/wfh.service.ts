@@ -51,6 +51,8 @@ import { placeOf, SETTINGS_ENTITY } from '../leave/views.js';
 import { NoticesService } from '../notifications/notices.service.js';
 import { approverFor } from '../organisation/departments/leads.js';
 import { userNames } from '../payroll/adjustments/people.js';
+import { withWarnings } from '../payroll/locked-changes/locked-changes.js';
+import { PayrollLockedChangesService } from '../payroll/locked-changes/locked-changes.service.js';
 import { firstDay, lastDay, monthsLater } from '../payroll/months.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { CreateWfhDto, HrCancelWfhDto, ListWfhDto, RecordWfhDto, UpdateWfhSettingsDto, WfhCalendarQueryDto, WfhCheckQueryDto } from './wfh.dto.js';
@@ -173,6 +175,7 @@ export class WfhService {
     private readonly confidential: ConfidentialService,
     private readonly notices: NoticesService,
     private readonly fill: AttendanceFillService,
+    private readonly lockedChanges: PayrollLockedChangesService,
   ) {}
 
   // ---------- the employee's own ----------
@@ -324,7 +327,9 @@ export class WfhService {
     if (!employment) throw new BadRequestException([`Choose a day within one of ${person.fullNameEn}'s employments.`]);
     const id = await this.submit(employment, dto, caller, true);
     await this.refillDrafts(dto.employeeId, [dto.date], user.id);
-    return this.one(id, user);
+    // a month whose payroll has moved on keeps its lines: flagged, never silent (owner's brief, 27 October 2026)
+    const warnings = await this.lockedChanges.flag({ employeeId: dto.employeeId, kind: 'wfh', requestId: id, change: 'recorded', from: dto.date, to: dto.date }, user);
+    return withWarnings(await this.one(id, user), warnings);
   }
 
   /** HR cancels an approved day, saying why. Never HR's own; a C-level person's only HR who sees them. */
@@ -352,7 +357,9 @@ export class WfhService {
     await this.notices.wfh(id, 'cancelled_by_hr');
     // the day no longer counts full: the month's draft payroll line follows
     await this.refillDrafts(before.employeeId, [fromDateOnly(before.date)], user.id);
-    return this.one(id, user);
+    // cancelled in a month whose payroll has moved on: flagged, never silent (owner's brief, 27 October 2026)
+    const warnings = await this.lockedChanges.flag({ employeeId: before.employeeId, kind: 'wfh', requestId: id, change: 'cancelled', from: fromDateOnly(before.date), to: fromDateOnly(before.date) }, user);
+    return withWarnings(await this.one(id, user), warnings);
   }
 
   // ---------- deciding and seeing them ----------
@@ -441,7 +448,9 @@ export class WfhService {
     await this.notices.wfh(id, 'decided');
     // approved at its last step: the day counts full (26 October 2026), so the month's draft payroll line follows
     if (to === 'approved') await this.refillDrafts(before.employeeId, [fromDateOnly(before.date)], user.id);
-    return this.one(id, user);
+    // approved in a month whose payroll has moved on: flagged, never silent (owner's brief, 27 October 2026)
+    const warnings = to === 'approved' ? await this.lockedChanges.flag({ employeeId: before.employeeId, kind: 'wfh', requestId: id, change: 'approved', from: fromDateOnly(before.date), to: fromDateOnly(before.date) }, user) : [];
+    return withWarnings(await this.one(id, user), warnings);
   }
 
   /**
@@ -875,7 +884,7 @@ export class WfhService {
     const keyOf = (employeeId: string, date: Date) => `${employeeId}:${wfhMonth(fromDateOnly(date))}`;
     const shown = rows.filter((r) => !hiddenRequest(r, caller));
     const days = shown.map((r) => fromDateOnly(r.date)).sort();
-    const [names, taken] = await Promise.all([
+    const [names, taken, locked] = await Promise.all([
       userNames(this.prisma, rows.flatMap((r) => r.steps.map((s) => s.actor))),
       shown.length
         ? this.prisma.wfhRequest.findMany({
@@ -887,9 +896,11 @@ export class WfhService {
             select: { employeeId: true, date: true },
           })
         : [],
+      // the months whose payroll had moved on when it was recorded, approved or cancelled, still to handle (27 October 2026)
+      this.lockedChanges.openMonthsOf('wfh', rows.map((r) => r.id)),
     ]);
     const used = new Map<string, number>();
     for (const t of taken) used.set(keyOf(t.employeeId, t.date), (used.get(keyOf(t.employeeId, t.date)) ?? 0) + 1);
-    return rows.map((r) => wfhView(r, caller, names, hiddenRequest(r, caller) ? null : (used.get(keyOf(r.employeeId, r.date)) ?? 0)));
+    return rows.map((r) => ({ ...wfhView(r, caller, names, hiddenRequest(r, caller) ? null : (used.get(keyOf(r.employeeId, r.date)) ?? 0)), payrollLocked: locked.get(r.id) ?? [] }));
   }
 }

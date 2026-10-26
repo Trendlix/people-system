@@ -28,6 +28,7 @@ import type { SessionUser } from '../auth/session-user.js';
 import { fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../common/date-only.js';
 import { fromTimeOfDay } from '../common/time-of-day.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
+import { APPROVED_ENDINGS_SELECT, leavingDayOf } from '../employees/employment-end.js';
 import { Prisma } from '../generated/prisma/client.js';
 import { NoticesService } from '../notifications/notices.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -41,6 +42,7 @@ import { HolidaysService } from './holidays.service.js';
 import { LawRatesService } from './law-rates/law-rates.service.js';
 import { finalKpis, withKpi } from './kpi-terms.js';
 import { json, savedInputs, withAdjustments, worked } from './line-work.js';
+import { PayrollLockedChangesService } from './locked-changes/locked-changes.service.js';
 import { firstDay, lastDay, monthName, monthShort, monthsLater } from './months.js';
 import type { AttendanceWaiverDto, CibFileQueryDto, CreatePayrollRunDto, PaidPayrollDto, ReturnPayrollDto, UpdatePayrollLinesDto } from './payroll.dto.js';
 import { PayrollSettingsService } from './payroll-settings.service.js';
@@ -97,6 +99,8 @@ export const rosterSelect = (from: Date, to: Date) =>
     employmentType: true,
     joinDate: true,
     endDate: true,
+    // an approved ending's last working day ends the employment for the month (owner's report, 27 October 2026; roster.ts)
+    endings: APPROVED_ENDINGS_SELECT,
     department: { select: { nameEn: true, parent: { select: { nameEn: true } } } },
     jobTitle: { select: { titleEn: true } },
     shift: { select: { startTime: true, endTime: true, hoursPerDay: true, countUntil: true, workingDays: true } },
@@ -151,6 +155,7 @@ export function rosterEmployment(e: EmploymentRow): RosterEmployment {
     employmentType: e.employmentType,
     joinDate: fromDateOnly(e.joinDate),
     endDate: fromDateOnly(e.endDate),
+    leavingOn: leavingDayOf(e),
     department: e.department,
     jobTitle: e.jobTitle?.titleEn ?? null,
     shift: e.shift && {
@@ -275,6 +280,7 @@ export class PayrollService {
     private readonly attendance: AttendanceFillService,
     private readonly expectedHours: ExpectedHoursService,
     private readonly notices: NoticesService,
+    private readonly lockedChanges: PayrollLockedChangesService,
   ) {}
 
   /** Every run, newest month first, with its totals: without the C-level people's lines hidden from the caller. */
@@ -422,6 +428,9 @@ export class PayrollService {
     });
     // and from the month's attendance days as they are now (19 October 2026)
     await this.attendance.fillRun(id, user);
+    // a draft worked out again with the leave and attendance as they are now: the changes flagged while the month's
+    // payroll had moved on are handled by this refill (owner's brief, 27 October 2026)
+    await this.lockedChanges.refilled(month, null, user);
     return this.get(id, user);
   }
 

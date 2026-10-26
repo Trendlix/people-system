@@ -1,6 +1,7 @@
-import { cairoClock, kpiMonthName, kpiMonthOnly, timeOfDayText, type KpiReminder, type NotificationKind } from '@trendlix/shared';
+import { cairoClock, kpiMonthName, kpiMonthOnly, timeOfDayText, type KpiReminder, type NotificationKind, type PayrollStatus } from '@trendlix/shared';
 import { shownDate } from '../common/date-only.js';
 import { monthName } from '../payroll/months.js';
+import { STATUS_TEXT } from '../payroll/status.js';
 import type { NotificationInput } from './notifications.service.js';
 
 // What each notification says (owner, 20 October 2026: "Push notifications: yes (decisions, things waiting for someone,
@@ -105,6 +106,20 @@ export function claimDecidedText(decision: { approved: true; payMonth: string } 
 /** The employee's claim paid with a month's payroll, once it is marked paid. */
 export function claimPaidText(month: string, link: string): NotificationInput {
   return { kind: 'reimbursement_paid', title: 'Reimbursement paid', body: `Paid with the ${monthName(month)} payroll`, link };
+}
+
+/**
+ * A leave, permission, work from home or official duty change in a month whose payroll has moved on (owner's brief, 27
+ * October 2026), for HR and Finance: "Leave recorded by HR for a month whose payroll is locked: correct by hand", the
+ * person and the month; never the reason.
+ */
+export function payrollLockedChangeText(what: { name: string; kindLabel: string; action: string; month: string; status: PayrollStatus }, link: string): NotificationInput {
+  return {
+    kind: 'payroll_locked_change',
+    title: `${what.kindLabel} ${what.action} for a month whose payroll is locked: correct by hand`,
+    body: `${what.name}: the ${monthName(what.month)} payroll ${STATUS_TEXT[what.status]}, so it isn't changed.`,
+    link,
+  };
 }
 
 /** A raise request waits for HR's step (the CEO's for a C-level person). */
@@ -252,6 +267,7 @@ export const TEXT_KINDS: readonly NotificationKind[] = [
   'od_decided',
   'compensatory_waiting',
   'compensatory_decided',
+  'payroll_locked_change',
 ];
 
 // ---------- custody (Assets, step 3, 21 October 2026) ----------

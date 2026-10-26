@@ -14,6 +14,7 @@ import { fromDateOnly } from '../common/date-only.js';
 import { fromTimeOfDay } from '../common/time-of-day.js';
 import type { LeaveSettings, Prisma } from '../generated/prisma/client.js';
 import type { UserRef } from '../payroll/adjustments/people.js';
+import type { PayrollLockedView } from '../payroll/locked-changes/locked-changes.js';
 import { hrMayCancel, isConfidentialRequest, isRequester, standingInFor, waitsFor, type Caller } from './access.js';
 import { placeOf } from './views.js';
 
@@ -124,4 +125,5 @@ export function permissionView(r: PermissionRow, caller: Caller, names: Readonly
   };
 }
 
-export type PermissionRequestView = ReturnType<typeof permissionView>;
+/** With the months whose payroll had moved on when it was recorded, approved or cancelled (payrollLocked, 27 October 2026). */
+export type PermissionRequestView = ReturnType<typeof permissionView> & PayrollLockedView;

@@ -17,6 +17,7 @@ import type { LeaveSettings, Prisma } from '../generated/prisma/client.js';
 import { hrMayCancel, isConfidentialRequest, isRequester, standingInFor, waitsFor, type Caller } from '../leave/access.js';
 import { placeOf } from '../leave/views.js';
 import type { UserRef } from '../payroll/adjustments/people.js';
+import type { PayrollLockedView } from '../payroll/locked-changes/locked-changes.js';
 
 // Work from home requests as the API sends them (owner, 21 October 2026: "think about how should we handle the working
 // from home in out erp"; packages/shared wfh.ts): shaped as a permission request is (its employee, status, stage, who
@@ -126,7 +127,8 @@ export function wfhView(r: WfhRow, caller: Caller, names: ReadonlyMap<string, Us
   };
 }
 
-export type WfhRequestView = ReturnType<typeof wfhView>;
+/** With the months whose payroll had moved on when it was recorded, approved or cancelled (payrollLocked, 27 October 2026). */
+export type WfhRequestView = ReturnType<typeof wfhView> & PayrollLockedView;
 
 /** A work from home day on the leave calendar (GET /wfh/calendar), shaped as its items are, kind 'wfh'. */
 export interface WfhCalendarItem {

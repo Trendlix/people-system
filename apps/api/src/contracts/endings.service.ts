@@ -7,6 +7,8 @@ import { EmploymentsService } from '../employees/employments.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
 import { OffboardingService } from '../offboarding/offboarding.service.js';
+import { firstDay } from '../payroll/months.js';
+import { PayrollService } from '../payroll/payroll.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { agreedLastDayProblem } from './agreed-last-day.js';
 import type { AgreedLastDayDto, CreateEndingDto, EndingNoteDto, RejectEndingDto } from './contracts.dto.js';
@@ -45,6 +47,7 @@ export class EndingsService {
     private readonly rules: EndingRulesService,
     private readonly confidential: ConfidentialService,
     private readonly offboarding: OffboardingService,
+    private readonly payroll: PayrollService,
   ) {}
 
   /** Records an ending of a current employment, approved by HR (the creator), for the CEO to decide. */
@@ -226,6 +229,8 @@ export class EndingsService {
     await this.recordEmploymentStatus(user, before, 'notice_period');
     // the notice period starts: its offboarding case opens (owner, 22 October 2026: the full module)
     await this.offboarding.openForEnding(id, before.employmentId, user);
+    // the last working day ends the employment for the payroll from now (27 October 2026)
+    await this.refreshDrafts(before, user, { endingApproved: id });
     return endingView(row, seesSalary(user));
   }
 
@@ -269,6 +274,8 @@ export class EndingsService {
     if (restored) await this.recordEmploymentStatus(user, before, restored);
     // its offboarding case, if one opened, is cancelled
     await this.offboarding.cancelForEnding(id, before.employmentId, user);
+    // an approved one had ended the employment for the payroll on its last working day: the whole month again (27 October 2026)
+    if (before.status === 'approved') await this.refreshDrafts(before, user, { endingWithdrawn: id });
     return endingView(row, seesSalary(user));
   }
 
@@ -331,7 +338,33 @@ export class EndingsService {
         ...(dto.note && { note: dto.note }),
       },
     });
+    // sent back to the CEO: the day before the change no longer ends the employment for the payroll, until the CEO
+    // approves the ending again with the new one (27 October 2026)
+    if (sendBack) await this.refreshDrafts(before, user, { lastWorkingDayChanged: id });
     return endingView(row, seesSalary(user));
+  }
+
+  /**
+   * The person's lines on the draft payroll runs from the last working day's month on, taken again as a refresh takes
+   * them (owner's report, 27 October 2026: an employee with an approved ending whose last working day was the 20th was
+   * paid 30/30 days, with 8 no-shows after they left). An approved ending's last working day ends the employment for the
+   * payroll and the attendance (employees/employment-end.ts), so the CEO's approval, a withdrawal and a change of the
+   * agreed day (which sends the ending back to the CEO) take the drafts again; `before` is the ending as it was, its last
+   * working day the earliest month touched. A run with the CEO, approved or paid never changes. A later month the leaver
+   * was taken off is not on the run any more, so a withdrawal brings them back with that run's next refresh.
+   */
+  private async refreshDrafts(before: EndingRow, user: SessionUser, why: Record<string, unknown>): Promise<void> {
+    const employeeId = before.employment.employeeId;
+    const runs = await this.prisma.payrollRun.findMany({
+      where: { status: 'draft', month: { gte: toDateOnly(firstDay(fromDateOnly(before.lastWorkingDay).slice(0, 7))) }, lines: { some: { employeeId } } },
+      select: { id: true },
+    });
+    if (!runs.length) return;
+    const rebuilt = await this.payroll.rebuildDraftLines(
+      employeeId,
+      runs.map((r) => r.id),
+    );
+    await this.payroll.recordRebuilt(rebuilt, user, why);
   }
 
   /**

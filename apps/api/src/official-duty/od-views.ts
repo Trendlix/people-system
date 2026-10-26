@@ -15,6 +15,7 @@ import type { Prisma } from '../generated/prisma/client.js';
 import { hrMayCancel, isConfidentialRequest, isRequester, standingInFor, waitsFor, type Caller } from '../leave/access.js';
 import { placeOf } from '../leave/views.js';
 import type { UserRef } from '../payroll/adjustments/people.js';
+import type { PayrollLockedView } from '../payroll/locked-changes/locked-changes.js';
 
 // Official duty requests as the API sends them (owner, 23 October 2026: "Official duty (OD) requests"; packages/shared
 // official-duty.ts): shaped as a work from home request is (its employee, status, stage, who decides it, the steps), with
@@ -107,7 +108,8 @@ export function odView(r: OdRow, caller: Caller, names: ReadonlyMap<string, User
   };
 }
 
-export type OdRequestView = ReturnType<typeof odView>;
+/** With the months whose payroll had moved on when it was approved or cancelled (payrollLocked, 27 October 2026). */
+export type OdRequestView = ReturnType<typeof odView> & PayrollLockedView;
 
 /** An official duty on the leave calendar (GET /official-duty/calendar), shaped as its items are, kind 'od'. */
 export interface OdCalendarItem {

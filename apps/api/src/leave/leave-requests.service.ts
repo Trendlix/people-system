@@ -32,6 +32,8 @@ import type { LeaveType } from '../generated/prisma/client.js';
 import { NoticesService } from '../notifications/notices.service.js';
 import { approverFor } from '../organisation/departments/leads.js';
 import { userNames } from '../payroll/adjustments/people.js';
+import { withWarnings } from '../payroll/locked-changes/locked-changes.js';
+import { PayrollLockedChangesService } from '../payroll/locked-changes/locked-changes.service.js';
 import { lastDay } from '../payroll/months.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import {
@@ -133,6 +135,7 @@ export class LeaveRequestsService {
     private readonly notices: NoticesService,
     private readonly coverage: LeaveCoverageService,
     private readonly standIns: StandInSchedulerService,
+    private readonly lockedChanges: PayrollLockedChangesService,
   ) {}
 
   // ---------- the employee's own ----------
@@ -186,8 +189,11 @@ export class LeaveRequestsService {
       await recordLeaveStep(tx, id, user.id, { kind: 'cancelled' });
     });
     await this.audit.record({ userId: user.id, action: 'cancel', entityType: REQUEST_ENTITY, entityId: id, diff: { employeeId: before.employeeId, status: { from: before.status, to: 'cancelled' } } });
-    if (before.status === 'approved') await this.payroll.syncDrafts(before.employeeId, startDate, fromDateOnly(before.endDate), user);
-    return this.one(id, user);
+    if (before.status !== 'approved') return this.one(id, user);
+    await this.payroll.syncDrafts(before.employeeId, startDate, fromDateOnly(before.endDate), user);
+    // a month whose payroll has moved on keeps its lines: flagged, never silent (owner's brief, 27 October 2026)
+    const warnings = await this.lockedChanges.flag({ employeeId: before.employeeId, kind: 'leave', requestId: id, change: 'cancelled', from: startDate, to: fromDateOnly(before.endDate) }, user);
+    return withWarnings(await this.one(id, user), warnings);
   }
 
   /**
@@ -262,10 +268,12 @@ export class LeaveRequestsService {
     if (!employment) throw new BadRequestException([`Choose days within one of ${person.fullNameEn}'s employments.`]);
     const { id, coverId } = await this.submit(employment, dto, files, caller, true);
     await this.payroll.syncDrafts(dto.employeeId, dto.startDate, dto.endDate, user);
+    // a month whose payroll has moved on keeps its lines: flagged, never silent (owner's brief, 27 October 2026)
+    const warnings = await this.lockedChanges.flag({ employeeId: dto.employeeId, kind: 'leave', requestId: id, change: 'recorded', from: dto.startDate, to: dto.endDate }, user);
     if (coverId) await this.notices.cover(id, coverId);
     // approved at once: a stand-in whose days have started is told now
     await this.standIns.tick();
-    return this.one(id, user);
+    return withWarnings(await this.one(id, user), warnings);
   }
 
   // ---------- deciding and seeing them ----------
@@ -372,11 +380,16 @@ export class LeaveRequestsService {
       diff: { employeeId: before.employeeId, stage, decision: dto.decision, status: { from: before.status, to }, ...(comment && { comment }), ...(onBehalfOf && { standingInFor: onBehalfOf }) },
     });
     if (to === 'approved') await this.payroll.syncDrafts(before.employeeId, fromDateOnly(before.startDate), fromDateOnly(before.endDate), user);
+    // approved in a month whose payroll has moved on: flagged, never silent (owner's brief, 27 October 2026)
+    const warnings =
+      to === 'approved'
+        ? await this.lockedChanges.flag({ employeeId: before.employeeId, kind: 'leave', requestId: id, change: 'approved', from: fromDateOnly(before.startDate), to: fromDateOnly(before.endDate) }, user)
+        : [];
     // an approver's leave approved: a stand-in whose days have started is told now
     if (to === 'approved' && (before.standInId || before.standInHr)) await this.standIns.tick();
     // to the next step's decider, or the employee once it is approved or rejected (Phase 4: notifications)
     await this.notices.leave(id, 'decided');
-    return this.one(id, user);
+    return withWarnings(await this.one(id, user), warnings);
   }
 
   /** HR cancels an approved request, saying why: its days are back in the balance. Never HR's own; not in a closed year. */
@@ -404,8 +417,10 @@ export class LeaveRequestsService {
       diff: { employeeId: before.employeeId, status: { from: 'approved', to: 'cancelled' }, comment: dto.comment },
     });
     await this.payroll.syncDrafts(before.employeeId, startDate, fromDateOnly(before.endDate), user);
+    // cancelled in a month whose payroll has moved on: flagged, never silent (owner's brief, 27 October 2026)
+    const warnings = await this.lockedChanges.flag({ employeeId: before.employeeId, kind: 'leave', requestId: id, change: 'cancelled', from: startDate, to: fromDateOnly(before.endDate) }, user);
     await this.notices.leave(id, 'cancelled_by_hr');
-    return this.one(id, user);
+    return withWarnings(await this.one(id, user), warnings);
   }
 
   // ---------- a Super Admin edits a leave ----------
@@ -1012,9 +1027,11 @@ export class LeaveRequestsService {
     const counted = rows.filter(
       (r) => takesFromAnnual(r.type.balance) && (r.status === 'approved' || (LEAVE_OPEN_STATUSES as readonly string[]).includes(r.status) || (r.status === 'cancelled' && mayEditLeave(caller.user))),
     );
-    const [names, employments] = await Promise.all([
+    const [names, employments, locked] = await Promise.all([
       userNames(this.prisma, rows.flatMap((r) => r.steps.map((s) => s.actor))),
       this.balances.employments([...new Set(counted.map((r) => r.employmentId))]),
+      // the months whose payroll had moved on when it was recorded, approved or cancelled, still to handle (27 October 2026)
+      this.lockedChanges.openMonthsOf('leave', rows.map((r) => r.id)),
     ]);
     const byId = new Map(employments.map((e) => [e.id, e]));
     const pairs = [...new Map(counted.map((r) => [`${r.employmentId}:${r.startDate.getUTCFullYear()}`, { employment: byId.get(r.employmentId)!, year: r.startDate.getUTCFullYear() }])).values()].filter(
@@ -1026,6 +1043,6 @@ export class LeaveRequestsService {
       return f ? annualAvailable(f) : null;
     };
     // never a C-level person's balance to the manager a request was sent to, who sees their card only (19 October 2026)
-    return rows.map((r) => requestView(r, caller, names, counted.includes(r) && !hiddenRequest(r, caller) ? available(r) : null, today));
+    return rows.map((r) => ({ ...requestView(r, caller, names, counted.includes(r) && !hiddenRequest(r, caller) ? available(r) : null, today), payrollLocked: locked.get(r.id) ?? [] }));
   }
 }

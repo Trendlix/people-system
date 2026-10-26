@@ -287,6 +287,12 @@ export interface PayrollTerms {
   /** What the shift's hours were worked out from: its working days in the days paid, and the holidays on them. */
   expectedDays?: ShiftDays | null;
   /**
+   * Leaving in the month: the last working day of an ending the CEO approved, not yet completed (owner's report, 27
+   * October 2026: a leaver was paid the whole month, with no-shows after they left), YYYY-MM-DD. The days paid and the
+   * shift's hours stop on it, so the line says why. Missing when the month runs to its end or to the employment's end date.
+   */
+  leavingOn?: string;
+  /**
    * The shift counts hours until a time (owner, 20 October 2026: "within the same month with no working hours to be
    * counted after 8 PM"; attendance.ts makesUpHours): a day counts past its hours to work, filling short hours on the
    * month's other days, and while overtime isn't paid the hours counted are at most the expected hours. Monthly pay

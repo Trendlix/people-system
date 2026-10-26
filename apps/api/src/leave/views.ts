@@ -16,6 +16,7 @@ import {
 import { fromDateOnly } from '../common/date-only.js';
 import type { LeaveSettings, LeaveType, Prisma } from '../generated/prisma/client.js';
 import type { UserRef } from '../payroll/adjustments/people.js';
+import type { PayrollLockedView } from '../payroll/locked-changes/locked-changes.js';
 import { hrMayCancel, hiddenRequest, isConfidentialRequest, isRequester, mayEditLeave, seesEveryRequest, standingInFor, waitsFor, type Caller } from './access.js';
 
 // Leave types, the Leave Setup and requests as the API sends them (owner, 18 October 2026): dates YYYY-MM-DD, moments as
@@ -199,4 +200,5 @@ export function requestView(r: RequestRow, caller: Caller, names: ReadonlyMap<st
   };
 }
 
-export type LeaveRequestView = ReturnType<typeof requestView>;
+/** With the months whose payroll had moved on when it was recorded, approved or cancelled (payrollLocked, 27 October 2026). */
+export type LeaveRequestView = ReturnType<typeof requestView> & PayrollLockedView;

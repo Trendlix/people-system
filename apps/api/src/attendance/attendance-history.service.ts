@@ -42,6 +42,7 @@ import { actsAs, isSuperAdmin } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { addDays, fromDateOnly, todayInCairo, toDateOnly, weekday } from '../common/date-only.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
+import { employmentEndOf } from '../employees/employment-end.js';
 import { addSheet, type Column } from '../employees/missing-workbook.js';
 import { approvedOds, dutyDaysOf } from '../official-duty/od-days.js';
 import { approvedCompensatory } from '../compensatory/compensatory-days.js';
@@ -217,7 +218,8 @@ export class AttendanceHistoryService {
       const ofMonth = kept.filter((d) => d.date.startsWith(month));
       for (const e of inRange) {
         const employedFrom = fromDateOnly(e.joinDate);
-        const employedTo = fromDateOnly(e.endDate);
+        // to the end date, or an approved ending's last working day when earlier (27 October 2026)
+        const employedTo = employmentEndOf(e);
         if (employedFrom > last || (employedTo !== null && employedTo < first)) continue;
         const shift = e.shift ? shiftTimesOf(e.shift) : null;
         const workingDays = shift?.workingDays ?? DEFAULT_WORKING_DAYS;

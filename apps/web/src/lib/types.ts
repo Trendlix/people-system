@@ -2342,6 +2342,13 @@ export interface LeaveRequestView {
    * says whether it waits for the caller. Left out by an API from before it.
    */
   confidential?: boolean;
+  /**
+   * The months (YYYY-MM) whose payroll had moved on (with the CEO, approved or paid) when this was recorded, approved or
+   * cancelled (27 October 2026): not in that payroll, listed on Unsettled until HR handles it. Left out by an older API.
+   */
+  payrollLocked?: string[];
+  /** The API's warnings on the action just taken (27 October 2026): the months above, in words. */
+  warnings?: string[];
 }
 
 /**
@@ -2477,6 +2484,9 @@ export interface PermissionRequestView {
   createdAt: string;
   /** The employee is C-level: HR's stage is the CEO's (or HR with Super Admin). */
   confidential?: boolean;
+  /** The months (YYYY-MM) whose payroll had moved on when this was recorded, approved or cancelled (27 October 2026), and the API's warnings on the action just taken. */
+  payrollLocked?: string[];
+  warnings?: string[];
 }
 
 /**

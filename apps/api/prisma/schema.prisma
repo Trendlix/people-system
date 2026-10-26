@@ -118,6 +118,8 @@ model User {
   recurringConsents  RecurringDeduction[]       @relation("RecurringDeductionConsent") // recurring deductions whose signed consent this user recorded
   settlementsMade    FinalSettlement[]          @relation("FinalSettlementBy") // final settlements this user marked settled
   holdsReleased      PayrollHoldRelease[]       @relation("HoldReleaseBy") // held pay this user recorded as paid out
+  lockedChangesMade  PayrollLockedChange[]      @relation("LockedChangeBy") // leave or attendance changes this user made after the month's payroll moved on (27 October 2026)
+  lockedChangesHandled PayrollLockedChange[]    @relation("LockedChangeHandledBy") // those this user marked handled
   raisesApproved     Contract[]                 @relation("RaiseApproval") // raises (and renewals with new pay) this user approved as CEO
   raisesRequested    RaiseRequest[]             @relation("RaiseRequester") // raise requests this user made
   raisesDeclined     RaiseRequest[]             @relation("RaiseRequestDecline") // raise requests this user declined (HR or the CEO)
@@ -1151,6 +1153,7 @@ model Employee {
   wfhStepsStoodIn            WfhRequestStep[]       @relation("WfhStepOnBehalf")
   resignationRequests        ResignationRequest[]   @relation("ResignationRequester") // the resignations this person asked for (26 October 2026)
   compensatoryDays           CompensatoryRequest[]  @relation("CompensatoryRequester") // the compensatory days this person asked for, or HR recorded for them (26 October 2026)
+  payrollLockedChanges       PayrollLockedChange[] // their leave and attendance changes made after a month's payroll moved on (27 October 2026)
   compensatoryToDecide       CompensatoryRequest[]  @relation("CompensatoryManager")
   compensatoryStepsStoodIn   CompensatoryStep[]     @relation("CompensatoryStepOnBehalf")
   odStepsStoodIn             OdRequestStep[]        @relation("OdStepOnBehalf")
@@ -3314,6 +3317,39 @@ model PayrollHoldRelease {
   recordedAt   DateTime    @default(now()) @map("recorded_at") @db.Timestamptz
 
   @@map("payroll_hold_releases")
+}
+
+// A leave, permission, work from home or official duty change whose days fall in a month whose payroll had moved on
+// (with the CEO, approved or paid) when it was made (owner's brief, 27 October 2026: allowed, never silent). The run
+// keeps its lines, so HR corrects it by hand on a later payroll: listed on Unsettled until HR marks it handled, or the
+// month's run returns to draft and is refilled, which handles it (handledHow refilled). A table of its own rather than a
+// flag on each request: one query lists every kind, the handling is explicit, and a refill clears a month without
+// touching the requests. Never the request's reason: its kind, id, days and a summary line (type and days).
+model PayrollLockedChange {
+  id          String    @id @default(uuid()) @db.Uuid
+  employeeId  String    @map("employee_id") @db.Uuid
+  employee    Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  month       DateTime  @db.Date // the month's first day
+  runStatus   String    @map("run_status") // the run's status when the change was made: pending_ceo, approved, paid
+  requestKind String    @map("request_kind") // LOCKED_CHANGE_KINDS: leave, permission, wfh, od
+  requestId   String    @map("request_id") @db.Uuid // the request's id in its own table (no relation: four kinds)
+  action      String // LOCKED_CHANGE_ACTIONS: recorded, approved, cancelled
+  fromDate    DateTime  @map("from_date") @db.Date // the request's days
+  toDate      DateTime  @map("to_date") @db.Date
+  summary     String // "Annual leave, 03/07/2026–04/07/2026"
+  createdById String?   @map("created_by") @db.Uuid
+  createdBy   User?     @relation("LockedChangeBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  handledById String?   @map("handled_by") @db.Uuid
+  handledBy   User?     @relation("LockedChangeHandledBy", fields: [handledById], references: [id], onDelete: SetNull)
+  handledAt   DateTime? @map("handled_at") @db.Timestamptz // null while still to handle
+  handledHow  String?   @map("handled_how") // LOCKED_CHANGE_HANDLING: by_hand (HR), refilled (the run returned to draft and refilled)
+  handledNote String?   @map("handled_note")
+
+  @@index([employeeId, month])
+  @@index([requestKind, requestId])
+  @@index([handledAt])
+  @@map("payroll_locked_changes")
 }
 
 // ---------- reimbursements ----------

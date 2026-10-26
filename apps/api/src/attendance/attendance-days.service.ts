@@ -18,6 +18,7 @@ import {
 } from '@trendlix/shared';
 import { addDays, fromDateOnly, todayInCairo, toDateOnly } from '../common/date-only.js';
 import { fromTimeOfDay } from '../common/time-of-day.js';
+import { APPROVED_ENDINGS_SELECT, employmentEndOf } from '../employees/employment-end.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { employedIn } from '../payroll/adjustments/people.js';
 import { firstDay, lastDay } from '../payroll/months.js';
@@ -72,6 +73,8 @@ export const EMPLOYMENT_SELECT = {
   employeeId: true,
   joinDate: true,
   endDate: true,
+  // an approved ending's last working day ends the employment for the month (owner's report, 27 October 2026)
+  endings: APPROVED_ENDINGS_SELECT,
   departmentId: true,
   workArrangement: true,
   officeDays: true,
@@ -229,7 +232,9 @@ export class AttendanceDaysService {
       const shift = employment?.shift ? shiftTimesOf(employment.shift) : null;
       const checkInFrom = firstCheckIn.get(id) ?? null;
       const employedFrom = employment ? fromDateOnly(employment.joinDate) : null;
-      const employedTo = employment ? fromDateOnly(employment.endDate) : null;
+      // to the end date, or an approved ending's last working day when earlier (27 October 2026): the days after it are
+      // neither expected nor no-shows
+      const employedTo = employment ? employmentEndOf(employment) : null;
       const base = monthDays(own, { month, today, checkInFrom, workingDays: shift?.workingDays ?? null, holidays: holidayDays, leaveDays, employedFrom, employedTo });
       // an approved official duty's days attended for its hours, a day gone by without a press too (23 October 2026)
       const duties = dutyDaysOf(ods, id, shift, holidaySet, first, last);

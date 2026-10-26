@@ -106,6 +106,9 @@ export const NOTIFICATION_KINDS = [
   // who only see it; and recorded or returned, for the employee. Never the reason
   'resignation_new',
   'resignation_update',
+  // a leave, permission, work from home or official duty change in a month whose payroll had moved on (owner's brief, 27
+  // October 2026: allowed, never silent): HR and Finance told to correct it by hand; the person and the month, never the reason
+  'payroll_locked_change',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
@@ -187,6 +190,7 @@ export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
   stand_in: 'Stand-in',
   resignation_new: 'Resignation',
   resignation_update: 'Resignation',
+  payroll_locked_change: 'Payroll',
 };
 
 // ---------- the reminders and the person's switches ----------

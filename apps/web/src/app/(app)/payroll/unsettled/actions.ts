@@ -41,6 +41,16 @@ export async function reopenFinal(employmentId: string, _prev: FormState, fd: Fo
   return sendAndRefresh(() => apiSend('POST', `/payroll/final-settlements/${employmentId}/reopen`, { reason }), 'Reopened.', { reason });
 }
 
+/**
+ * HR marks a leave or attendance change made after the month's payroll moved on handled, once corrected by hand on a later
+ * payroll (owner's brief, 27 October 2026): a note, optional.
+ */
+export async function markLockedChangeHandled(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
+  if (!UUID.test(id)) return NOT_FOUND;
+  const note = String(fd.get('note') ?? '').trim();
+  return sendAndRefresh(() => apiSend('POST', `/payroll/locked-changes/${id}/handled`, note ? { note } : {}), 'Marked handled.', { note });
+}
+
 export async function recordPaidOut(lineId: string, _prev: FormState, fd: FormData): Promise<FormState> {
   if (!UUID.test(lineId)) return NOT_FOUND;
   const values = typedValues(fd, ['paidOn', 'method', 'note']);

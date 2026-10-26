@@ -120,6 +120,8 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   payroll_advance: 'Advance or loan',
   payroll_law_rates: 'Rates set by law',
   payroll_line: 'Payroll line',
+  // a leave or attendance change made after the month's payroll moved on (27 October 2026)
+  payroll_locked_change: 'Change after the payroll moved on',
   payroll_run: 'Payroll run',
   payroll_settings: 'Payroll rules',
   payroll_statistics: 'Payroll statistics',
@@ -223,6 +225,8 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   attach_signed: 'Attached the signed copy',
   back_from_repair: 'Back from repair',
   hand_over: 'Handed over',
+  // a leave or attendance change made after the payroll moved on, corrected by hand on a later payroll (27 October 2026)
+  handled: 'Marked handled',
   mark_found: 'Marked found',
   mark_lost: 'Marked lost',
   // Assets step 4 (22 October 2026: accessories, "Both kinds"; kits, stock, repairs, disposal): an asset's accessories'
@@ -309,6 +313,8 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   record: 'Recorded by HR',
   record_consent: 'Recorded the signed consent',
   refresh: 'Refreshed',
+  // a change made after the payroll moved on (27 October 2026): handled by the month's run, returned to draft and refilled
+  refilled: 'Handled by a refill',
   refresh_attendance: 'Refreshed from attendance',
   reject: 'Rejected',
   // the email settings' saved password removed, and a test email sent (23 October 2026); never the password

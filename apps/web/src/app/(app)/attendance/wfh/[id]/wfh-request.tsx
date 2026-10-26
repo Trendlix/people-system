@@ -8,7 +8,7 @@ import { standingInNoteText } from '@/lib/stand-in';
 import { appBack, appRequestsHref, type Surface } from '@/lib/surface';
 import type { LeaveRequestStep } from '@/lib/types';
 import { decidingAsTitle, hrStageName, placeOfEmployee } from '../../../leave/list';
-import { LeaveStatusBadge, LeaveTimeline } from '../../../leave/ui';
+import { LeaveStatusBadge, LeaveTimeline, PayrollLockedNotice } from '../../../leave/ui';
 import { BackLink, Empty, UUID } from '../../../organization/ui';
 import { notLoadedText } from '../../../payroll/load';
 import { cancelMyWfh, cancelWfhByHr, decideWfh } from '../actions';
@@ -91,6 +91,8 @@ export async function WfhRequestDetail({
           {done.text}
         </p>
       )}
+      {/* recorded, approved or cancelled for a month whose payroll had moved on (27 October 2026) */}
+      <PayrollLockedNotice months={r.payrollLocked} />
 
       <div className="grid items-start gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
