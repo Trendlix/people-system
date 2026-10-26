@@ -210,6 +210,16 @@ describe('a line’s breakdown', () => {
     expect(lineOf(terms, inputs, RULES_BEFORE).result).toEqual(result);
   });
 
+  it('says someone not registered is counted as insured while Payroll Setup insures everyone; hidden from a developer', () => {
+    const counted = lineOf({ ...terms, insured: true, notRegistered: true }, EMPTY_PAYROLL_INPUTS);
+    expect(stepOf(counted, 'employeeInsurance')?.note).toBe('11% of the insured wage · not registered yet: counted as insured (Payroll Setup)');
+    // someone registered: the rate alone
+    expect(stepOf(lineOf(terms, EMPTY_PAYROLL_INPUTS), 'employeeInsurance')?.note).toBe('11% of the insured wage');
+    // a developer is not told who is registered: both marks are null
+    const hidden = lineOf({ ...terms, insured: null, notRegistered: null } as unknown as typeof terms, EMPTY_PAYROLL_INPUTS);
+    expect(stepOf(hidden, 'employeeInsurance')?.note).toBe('Whether registered with social insurance is hidden');
+  });
+
   it('says when attendance isn’t tracked or can’t be counted, the part month, and who has no insurance deducted', () => {
     // without a shift and with nothing typed: neither the expected hours nor the hours worked
     const untracked = lineOf({ ...terms, paidDays: 19, insured: false, expectedHours: null, expectedDays: null }, EMPTY_PAYROLL_INPUTS);

@@ -136,7 +136,7 @@ describe('Payroll Setup (e2e)', () => {
     await prisma.employee.deleteMany({ where: { id: { in: hired } } });
     await prisma.holiday.deleteMany();
     await prisma.shift.deleteMany({ where: { code: FLEXIBLE } });
-    await prisma.payrollSettings.update({ where: { id: 1 }, data: { payday: null, payOvertime: false } });
+    await prisma.payrollSettings.update({ where: { id: 1 }, data: { payday: null, payOvertime: false, insureEveryone: true } });
     await prisma.contractSettings.update({ where: { id: 1 }, data: { basicPercentDefault: 80 } });
     await app.close();
   });
@@ -478,6 +478,75 @@ describe('Payroll Setup (e2e)', () => {
     });
   });
 
+  describe('social insurance for everyone, registered or not (owner, 26 October 2026)', () => {
+    let run: Run;
+    let person: Person;
+    const lineOf = (r: Run) => r.lines.find((l) => l.employeeId === person.id)!;
+    const refresh = async () => (run = (await api().post(`/api/payroll/runs/${run.id}/refresh`).set('Cookie', hr).expect(200)).body as Run);
+    const fetchRun = async () => (await api().get(`/api/payroll/runs/${run.id}`).set('Cookie', hr).expect(200)).body as Run;
+
+    beforeAll(async () => {
+      // not registered with social insurance: the profile says nothing of it
+      person = await hire('Unregistered');
+      await signed(person);
+      const runs = (await api().get('/api/payroll/runs').set('Cookie', hr).expect(200)).body as { id: string; month: string }[];
+      const made = runs.find((r) => r.month === MONTH);
+      run = made ? await api().get(`/api/payroll/runs/${made.id}`).set('Cookie', hr).expect(200).then((r) => r.body as Run) : ((await api().post('/api/payroll/runs').set('Cookie', hr).send({ month: MONTH }).expect(201)).body as Run);
+      await refresh();
+    });
+
+    afterAll(async () => {
+      await prisma.payrollSettings.update({ where: { id: 1 }, data: { insureEveryone: true } });
+    });
+
+    it('is on to start with; only a Super Admin changes it (HR, Admin and the rest refused), each change in the audit log', async () => {
+      const since = (await prisma.auditLog.aggregate({ _max: { id: true } }))._max.id ?? BigInt(0);
+      expect((await api().get('/api/payroll/settings').set('Cookie', finance).expect(200)).body.insureEveryone).toBe(true);
+      expect(run.rules).toMatchObject({ insureEveryone: true });
+      for (const session of [hr, admin, finance, ceo, staff, manager]) await settings({ insureEveryone: false }, session).expect(403);
+      for (const bad of ['yes', 1, null]) expect(messagesOf(await settings({ insureEveryone: bad }, superAdmin).expect(400))).toEqual(['Say whether social insurance is counted for everyone: true or false.']);
+      // HR's other changes go on as before, and leave it as it is
+      expect((await settings({ dayDivisor: 30 }).expect(200)).body.insureEveryone).toBe(true);
+      expect((await settings({ insureEveryone: false }, superAdmin).expect(200)).body.insureEveryone).toBe(false);
+      expect((await settings({ insureEveryone: true }, superAdmin).expect(200)).body.insureEveryone).toBe(true);
+      const audit = await prisma.auditLog.findMany({ where: { entityType: 'payroll_settings', id: { gt: since } }, orderBy: { id: 'asc' } });
+      expect(audit.map((a) => a.diff)).toEqual([{ insureEveryone: { from: true, to: false } }, { insureEveryone: { from: false, to: true } }]);
+    });
+
+    it('a refreshed draft follows it: insurance counted for someone not registered while it is on, nothing while it is off', async () => {
+      const on = lineOf(run);
+      expect(on.terms).toMatchObject({ statutory: true, insured: true, notRegistered: true });
+      expect(on.result.employeeInsurance).toBeGreaterThan(0);
+      expect(on.result.employerInsurance).toBeGreaterThan(0);
+
+      await settings({ insureEveryone: false }, superAdmin).expect(200);
+      // not until the draft is refreshed: it keeps the rules it was worked out with
+      expect(lineOf(await fetchRun()).result.employeeInsurance).toBe(on.result.employeeInsurance);
+      await refresh();
+      expect(run.rules).toMatchObject({ insureEveryone: false });
+      expect(lineOf(run).terms).toMatchObject({ insured: false });
+      expect(lineOf(run).terms.notRegistered).toBeUndefined();
+      expect(lineOf(run).result).toMatchObject({ employeeInsurance: 0, employerInsurance: 0, insuredWage: 0 });
+
+      await settings({ insureEveryone: true }, superAdmin).expect(200);
+      await refresh();
+      expect(lineOf(run).result.employeeInsurance).toBe(on.result.employeeInsurance);
+      expect(lineOf(run).result.employerInsurance).toBe(on.result.employerInsurance);
+    });
+
+    it('a run with the CEO, approved or paid never changes with it', async () => {
+      await api().post(`/api/payroll/runs/${run.id}/submit`).set('Cookie', hr).expect(200);
+      const before = (await api().post(`/api/payroll/runs/${run.id}/approve`).set('Cookie', ceo).send({}).expect(200)).body as Run;
+      expect(before.rules).toMatchObject({ insureEveryone: true });
+      await settings({ insureEveryone: false }, superAdmin).expect(200);
+      const after = await fetchRun();
+      expect(after.rules).toMatchObject({ insureEveryone: true });
+      expect(lineOf(after).terms).toMatchObject({ insured: true, notRegistered: true });
+      expect(lineOf(after).result).toEqual(lineOf(before).result);
+      await api().post(`/api/payroll/runs/${run.id}/refresh`).set('Cookie', hr).expect(409);
+    });
+  });
+
   describe('the payroll setup migration', () => {
     const MIGRATIONS = fileURLToPath(new URL('../prisma/migrations/', import.meta.url));
     const SCHEMA = 'payroll_setup_migration_check';
@@ -510,6 +579,16 @@ describe('Payroll Setup (e2e)', () => {
       await db.query("INSERT INTO holidays (id, date, name_en, updated_at) VALUES (gen_random_uuid(), '2031-04-25', 'Sinai Liberation Day', now())");
       await expect(db.query("INSERT INTO holidays (id, date, name_en, updated_at) VALUES (gen_random_uuid(), '2031-04-25', 'Again', now())")).rejects.toThrow(/holidays_date_key/);
       await expect(db.query("INSERT INTO holidays (id, date, name_en, updated_at) VALUES (gen_random_uuid(), '2031-04-26', ' ', now())")).rejects.toThrow(/holidays_name_en_check/);
+    });
+
+    it('social insurance for everyone: the settings row kept from before is on', async () => {
+      const migration = readdirSync(MIGRATIONS).find((m) => m.endsWith('_payroll_insure_everyone'))!;
+      await db.query(`DROP SCHEMA IF EXISTS ${SCHEMA} CASCADE; CREATE SCHEMA ${SCHEMA}; SET search_path TO ${SCHEMA}`);
+      for (const m of readdirSync(MIGRATIONS).filter((x) => /^\d{14}_/.test(x) && x < migration).sort()) {
+        await db.query(readFileSync(`${MIGRATIONS}${m}/migration.sql`, 'utf8'));
+      }
+      await db.query(readFileSync(`${MIGRATIONS}${migration}/migration.sql`, 'utf8'));
+      expect((await db.query('SELECT insure_everyone FROM payroll_settings')).rows).toEqual([{ insure_everyone: true }]);
     });
 
     it('flexible shifts: a shift kept from before has no hours to work set (the whole window), and overtime is off', async () => {

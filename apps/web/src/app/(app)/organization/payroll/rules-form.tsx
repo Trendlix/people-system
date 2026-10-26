@@ -48,11 +48,14 @@ export function YourRulesForm({
   action,
   rules,
   defaults,
+  canInsureEveryone = false,
 }: {
   action: (prev: FormState, fd: FormData) => Promise<FormState>;
   rules: PayrollSettingsView;
   /** The contract settings; null when they couldn't be read, and a default missing from an API from before it. */
   defaults: ContractSettings | null;
+  /** A Super Admin changes Social insurance for everyone (owner, 26 October 2026); for HR and Admin the switch isn't on the form. */
+  canInsureEveryone?: boolean;
 }) {
   const { state, pending, form } = useKeptForm(action);
   const fid = useFieldIds();
@@ -63,6 +66,8 @@ export function YourRulesForm({
   const typedSwitch = state.values?.payOvertime;
   const [paysOvertime, setPaysOvertime] = useState(typedSwitch !== undefined ? typedOn(typedSwitch) : rules.payOvertime !== false);
   const off = hasSwitch && !paysOvertime;
+  const typedInsure = state.values?.insureEveryone;
+  const [insuresAll, setInsuresAll] = useState(typedInsure !== undefined ? typedOn(typedInsure) : rules.insureEveryone === true);
   const reviewMonths = rules.salaryReviewMonths;
   const limitPercent = rules.installmentLimitPercent;
 
@@ -125,6 +130,36 @@ export function YourRulesForm({
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{OVERTIME_FIELDS.map((f) => numberField(f, off))}</div>
         </fieldset>
       </div>
+
+      {canInsureEveryone && rules.insureEveryone !== undefined && (
+        <div className="border-t border-line-soft pt-5">
+          <fieldset className="space-y-4">
+            <legend className="font-semibold">Social Insurance</legend>
+            <div>
+              {/* a hidden "false" so turning it off is sent too */}
+              <input type="hidden" name="insureEveryone" value="false" />
+              <label className="flex min-h-11 w-fit cursor-pointer items-center gap-3 text-sm font-semibold">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  name="insureEveryone"
+                  value="true"
+                  checked={insuresAll}
+                  onChange={(e) => setInsuresAll(e.target.checked)}
+                  aria-describedby={fid('insureEveryone-hint')}
+                  className="size-5 accent-accent"
+                />
+                Social insurance for everyone, registered or not
+              </label>
+              <p id={fid('insureEveryone-hint')} className="hint">
+                On: every employee under the labour law has social insurance deducted on their insured wage, and the company&apos;s share counted,
+                whether or not they&apos;re registered on their Social Insurance tab. Turn it off once registrations are complete, and only those
+                registered are.
+              </p>
+            </div>
+          </fieldset>
+        </div>
+      )}
 
       {reviewMonths !== undefined && (
         <div className="border-t border-line-soft pt-5">

@@ -37,7 +37,7 @@ export async function YourRulesSection({ user }: { user: SessionUser }) {
       {settings.kind !== 'ok' ? (
         <NotLoaded what="the payroll rules" loaded={settings} />
       ) : canEditOrganisation(user) ? (
-        <YourRulesForm action={updateYourRules} rules={settings.value} defaults={d} />
+        <YourRulesForm action={updateYourRules} rules={settings.value} defaults={d} canInsureEveryone={user.roles.includes('super_admin')} />
       ) : (
         <>
           <ul className="list-disc space-y-1 pl-5 text-sm">

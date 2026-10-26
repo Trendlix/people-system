@@ -64,6 +64,10 @@ export class UpdatePayrollSettingsDto {
   @Sent() @IsBoolean({ message: 'Say whether overtime is paid: true or false.' })
   payOvertime?: boolean;
 
+  /** Social insurance for everyone under the labour law, registered or not (owner, 26 October 2026): a Super Admin's alone. */
+  @Sent() @IsBoolean({ message: 'Say whether social insurance is counted for everyone: true or false.' })
+  insureEveryone?: boolean;
+
   @Sent()
   @IsNumber({ maxDecimalPlaces: 2 }, { message: OVERTIME_ABOVE_MESSAGE })
   @Min(100, { message: OVERTIME_ABOVE_MESSAGE })

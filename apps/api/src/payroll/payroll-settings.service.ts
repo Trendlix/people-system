@@ -1,6 +1,7 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { KPI_ATTENDANCE_IN_KPI_DEFAULT, OFFICE_ADDRESS_DEFAULTS, officeAddressesProblems, type PayrollRules } from '@trendlix/shared';
 import { AuditService, changes } from '../audit/audit.service.js';
+import { isSuperAdmin } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import type { PayrollSettings } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -8,6 +9,9 @@ import type { UpdatePayrollSettingsDto } from './payroll.dto.js';
 
 const ENTITY = 'payroll_settings';
 const ID = 1;
+
+/** The answer to Social insurance for everyone sent by anyone but a Super Admin (owner, 26 October 2026). */
+export const INSURE_EVERYONE_SUPER_ADMIN_ONLY = 'Only a Super Admin can change whether social insurance is counted for everyone, registered or not.';
 
 /** The answer to the office's point sent here (20 October 2026: several check-in locations on their own page). */
 export const OFFICE_POINT_MOVED =
@@ -58,6 +62,7 @@ export const rulesOf = (s: PayrollSettings): PayrollSetupRules => ({
   attendanceGracePercent: s.attendanceGracePercent.toNumber(),
   kpiGracePercent: s.kpiGracePercent.toNumber(),
   payOvertime: s.payOvertime,
+  insureEveryone: s.insureEveryone,
   overtimeAbovePercent: s.overtimeAbovePercent.toNumber(),
   overtimeRate: s.overtimeRate.toNumber(),
   noShowDayMultiplier: s.noShowDayMultiplier.toNumber(),
@@ -125,6 +130,8 @@ export class PayrollSettingsService {
     if (dto.officeLatitude !== undefined || dto.officeLongitude !== undefined || dto.officeRadiusMetres !== undefined) {
       throw new BadRequestException([OFFICE_POINT_MOVED]);
     }
+    // Social insurance for everyone, registered or not: a Super Admin's alone (owner, 26 October 2026)
+    if (dto.insureEveryone !== undefined && !isSuperAdmin(user)) throw new ForbiddenException(INSURE_EVERYONE_SUPER_ADMIN_ONLY);
     const before = await this.row();
     // the office's addresses, each trimmed, the empty ones dropped (19 October 2026)
     const officeAddresses = dto.officeAddresses?.map((a) => a.trim()).filter(Boolean);
@@ -137,6 +144,7 @@ export class PayrollSettingsService {
       attendanceGracePercent: dto.attendanceGracePercent,
       kpiGracePercent: dto.kpiGracePercent,
       payOvertime: dto.payOvertime,
+      insureEveryone: dto.insureEveryone,
       overtimeAbovePercent: dto.overtimeAbovePercent,
       overtimeRate: dto.overtimeRate,
       noShowDayMultiplier: dto.noShowDayMultiplier,

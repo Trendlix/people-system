@@ -493,7 +493,8 @@ export function breakdown(given: Line, rules: PayrollRules, law?: LawRates, mont
       ? 'Whether registered with social insurance is hidden'
       : !t.insured
       ? 'Not registered with social insurance: nothing deducted'
-      : `${formatPercent(share)} of the insured wage`;
+      : // counted as insured though not registered yet, while Payroll Setup insures everyone (owner, 26 October 2026)
+        `${formatPercent(share)} of the insured wage${t.notRegistered === true ? ' · not registered yet: counted as insured (Payroll Setup)' : ''}`;
   // a month split between contracts: each one's part (owner, 17 October 2026); never by the hour
   const split = line.payBasis === 'hourly' ? null : splitParts(t, r);
   const allowances: BreakdownRow[] = split

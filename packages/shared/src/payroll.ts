@@ -136,6 +136,14 @@ export interface PayrollRules {
    * figures never change (paysOvertime).
    */
   payOvertime?: boolean;
+  /**
+   * Whether social insurance is deducted, and the company's share counted, for everyone under the labour law, registered
+   * with it or not (owner, 26 October 2026: "when calculating the payroll for now, calculate as if the employee is
+   * insured, no matter he is registered or not"; "till i adjust my system dont connect them togeather"). Off: only those
+   * registered (Employee.socialInsured), as before. Missing on the rules runs copied before then, which deducted for
+   * those registered alone: read as off (insuresEveryone), so their figures never change.
+   */
+  insureEveryone?: boolean;
   /** Overtime is paid for attendance above this percent (the sheet: 110), when it is paid. */
   overtimeAbovePercent: number;
   /** Overtime is paid at this rate (the sheet: 1.5). */
@@ -158,6 +166,8 @@ export const PAYROLL_RULE_DEFAULTS: Required<PayrollRules> = {
   kpiGracePercent: 80,
   // off from 16 October 2026 ("No overtime for now")
   payOvertime: false,
+  // on from 26 October 2026 ("calculate as if the employee is insured, no matter he is registered or not")
+  insureEveryone: true,
   overtimeAbovePercent: 110,
   overtimeRate: 1.5,
   noShowDayMultiplier: 2,
@@ -170,6 +180,9 @@ export const PAYROLL_RULE_DEFAULTS: Required<PayrollRules> = {
  * onto a run before the switch existed (25 October 2026) did, so a missing switch reads as on.
  */
 export const kpiAveragesAttendance = (rules: PayrollRules): boolean => rules.kpiIncludesAttendance !== false;
+
+/** Whether rules insure everyone under the labour law: only as their switch says on; a missing one reads as off. */
+export const insuresEveryone = (rules: Pick<PayrollRules, 'insureEveryone'>): boolean => rules.insureEveryone === true;
 
 /**
  * Whether rules pay overtime: as their switch says; rules copied onto a run before the switch existed (16 October 2026)
@@ -240,8 +253,13 @@ export interface PayrollTerms {
   segments?: PayrollSegment[];
   /** False for freelancers: no social insurance, no tax, no Martyrs' Fund. */
   statutory: boolean;
-  /** Registered with social insurance (Employee.socialInsured). */
+  /**
+   * Insured on the run: registered with social insurance (Employee.socialInsured), or counted as insured while the rules
+   * insure everyone (insureEveryone), the line then saying so with notRegistered.
+   */
   insured: boolean;
+  /** Counted as insured though not registered yet (owner, 26 October 2026): set only when the rules insure everyone. */
+  notRegistered?: boolean;
   /** The insured wage, as the Social Insurance tab and Form 1 show it. */
   insuredWage: number;
   /**

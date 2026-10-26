@@ -123,6 +123,7 @@ describe('the rules in words', () => {
       'Attendance counts in full from 90%; below it, the fixed part follows it.',
       "The KPI (last month's final scorecard) counts in full from 80%; below it, the variable part follows it. With none, it isn't cut.",
       'Overtime is paid for attendance above 110%, at 1.5×.',
+      'Social insurance is deducted for everyone under the labour law, registered or not.',
       "A no-show day costs 2 days' pay; its hours come out of the expected hours, so attendance doesn't count it again.",
     ]);
     // off from 16 October 2026 ("No overtime for now"); a run's rules from before the switch paid it
@@ -130,6 +131,9 @@ describe('the rules in words', () => {
     // as copied before the switch existed: none
     const older = { ...PAYROLL_RULE_DEFAULTS, payOvertime: undefined };
     expect(rulesSummary(older)[3]).toBe('Overtime is paid for attendance above 110%, at 1.5×.');
+    // social insurance for everyone (26 October 2026); rules copied before then: those registered only
+    expect(rulesSummary({ ...PAYROLL_RULE_DEFAULTS, insureEveryone: undefined })[4]).toBe('Social insurance is deducted for those registered with it only.');
+    expect(rulesSummary({ ...PAYROLL_RULE_DEFAULTS, insureEveryone: false })[4]).toBe('Social insurance is deducted for those registered with it only.');
     expect(rulesSummary({ ...PAYROLL_RULE_DEFAULTS, noShowDayMultiplier: 1 }).at(-1)).toBe(
       "A no-show day costs 1 day's pay; its hours come out of the expected hours, so attendance doesn't count it again.",
     );
@@ -146,7 +150,7 @@ describe('the rules in words', () => {
         "The KPI (last month's final scorecard) counts in full from 80%; below it, the variable part follows it. With none, it isn't cut.",
       );
     }
-    expect(rulesSummary(PAYROLL_RULE_DEFAULTS)).toHaveLength(5);
+    expect(rulesSummary(PAYROLL_RULE_DEFAULTS)).toHaveLength(6);
   });
 
   it('counts employees', () => {

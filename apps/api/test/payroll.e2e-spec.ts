@@ -232,6 +232,8 @@ describe('Payroll (e2e)', () => {
           kpiGracePercent: 80,
           // off from 16 October 2026 (owner: "No overtime for now")
           payOvertime: false,
+          // on from 26 October 2026 (owner: "calculate as if the employee is insured, no matter he is registered or not")
+          insureEveryone: true,
           overtimeAbovePercent: 110,
           overtimeRate: 1.5,
           noShowDayMultiplier: 2,
@@ -381,8 +383,9 @@ describe('Payroll (e2e)', () => {
 
       // the joiner is paid for the days from the 12th
       const j = lineOf(run, joiner)!;
-      expect(j.terms).toMatchObject({ paidDays: JOINER_DAYS, gross: 9000, insured: false, hoursPerDay: null }); // no shift
-      expect(j.result.employeeInsurance).toBe(0); // not registered with social insurance
+      expect(j.terms).toMatchObject({ paidDays: JOINER_DAYS, gross: 9000, insured: true, notRegistered: true, hoursPerDay: null }); // no shift
+      // not registered with social insurance, counted as insured while Payroll Setup insures everyone (26 October 2026)
+      expect(j.result.employeeInsurance).toBeGreaterThan(0);
       expect(j.result.warnings.join(' ')).toContain(`${JOINER_DAYS} of 30`);
       expect(j.bank).toEqual({ file: 'ach', bankShort: 'QNB', problem: null });
 
@@ -545,8 +548,9 @@ describe('Payroll (e2e)', () => {
       expect(after.id).toBe(before.id);
       expect(after.inputs).toEqual(before.inputs);
       expect(after.comments).toBe('Invented note');
-      expect(after.terms.insured).toBe(false);
-      expect(after.result.employeeInsurance).toBe(0);
+      // no longer registered, still counted as insured while Payroll Setup insures everyone (26 October 2026)
+      expect(after.terms).toMatchObject({ insured: true, notRegistered: true });
+      expect(after.result.employeeInsurance).toBe(before.result.employeeInsurance);
       expect(lineOf(run, hourly)!.onHold).toBe(true);
       expect(lineOf(run, draftOnly)!.terms.gross).toBe(7000);
       expect(run.exclusions.map((x) => x.employeeId)).not.toContain(draftOnly.id);

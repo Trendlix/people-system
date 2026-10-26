@@ -50,7 +50,7 @@ function numberFrom(raw: string, limits: { min: number; max: number; whole?: boo
  * The rules typed as numbers; Pay overtime is a switch. Whether the KPI average takes attendance in isn't one of them
  * (owner, 25 October 2026: "Fixed cut only"): a run copies it from the KPI setting Attendance in the KPI.
  */
-type RuleField = Exclude<keyof PayrollRules, 'payOvertime' | 'kpiIncludesAttendance'>;
+type RuleField = Exclude<keyof PayrollRules, 'payOvertime' | 'insureEveryone' | 'kpiIncludesAttendance'>;
 
 /** The overtime's percent and rate: left off the form (disabled, so not sent) while overtime isn't paid. */
 const OVERTIME_FIELDS: readonly RuleField[] = ['overtimeAbovePercent', 'overtimeRate'];
@@ -100,6 +100,9 @@ export function rulesBody(fd: FormData): { rules: RulesBody; defaults: ContractD
   const rules = {} as RulesBody;
   const switchSent = fd.has('payOvertime');
   if (switchSent) rules.payOvertime = fd.getAll('payOvertime').includes('true');
+  // social insurance for everyone, registered or not (owner, 26 October 2026): a Super Admin's, so only a form that has it
+  // sends it
+  if (fd.has('insureEveryone')) rules.insureEveryone = fd.getAll('insureEveryone').includes('true');
   for (const field of RULE_FIELDS) {
     if (switchSent && !rules.payOvertime && OVERTIME_FIELDS.includes(field) && !fd.has(field)) continue;
     const value = numberFrom(text(fd, field), RULES[field]);

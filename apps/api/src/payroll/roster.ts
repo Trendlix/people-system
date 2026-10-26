@@ -2,6 +2,7 @@ import {
   accountsAllowance,
   DEFAULT_WORKING_DAYS,
   insuredWageVersion,
+  insuresEveryone,
   lawRatesFor,
   makesUpHours,
   monthLeaveDays,
@@ -231,7 +232,7 @@ export function contractParts(from: string, to: string, contracts: readonly Rost
 export function roster(
   month: string,
   employments: readonly RosterEmployment[],
-  rules: Pick<PayrollRules, 'dayDivisor'>,
+  rules: Pick<PayrollRules, 'dayDivisor' | 'insureEveryone'>,
   holidays: readonly string[] = [],
   law: LawRates = lawRatesFor(Number(month.slice(0, 4))),
   permissionHoursPerMonth: number = PERMISSION_RULE_DEFAULTS.hoursPerMonth,
@@ -331,7 +332,11 @@ export function roster(
         // 19 October 2026: "in case of trainee, we are not paying them salary, its just transportation allowance"), whose
         // internship agreement pays no wage (the gross 0), so the line pays its allowances alone
         statutory: underLabourLaw(e.employmentType),
-        insured: p.socialInsured,
+        // registered with social insurance, or counted as insured while the rules insure everyone under the labour law (owner,
+        // 26 October 2026: "calculate as if the employee is insured, no matter he is registered or not"; "till i adjust my
+        // system dont connect them togeather"): the Social Insurance tab and its forms still say who is registered
+        insured: p.socialInsured || (insuresEveryone(rules) && underLabourLaw(e.employmentType)),
+        ...(!p.socialInsured && insuresEveryone(rules) && underLabourLaw(e.employmentType) && { notRegistered: true }),
         // as the Social Insurance tab shows it, for the run's year (its rates set by law)
         insuredWage: insuredWageOfEmployee(p.insuranceComprehensiveWage, contractTotal, law)!.amount,
         ...(insuredOn !== contract && p.insuranceComprehensiveWage === null && { insuredWageAsBefore: contract.insuredWageFrom }),

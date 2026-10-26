@@ -203,6 +203,12 @@ describe('a person’s employment, on a page about people', () => {
     });
   });
 
+  it('a payroll line counted as insured though not registered (26 October 2026): neither mark tells a developer', () => {
+    const terms = { paidDays: 30, insured: true, notRegistered: true, insuredWage: 16700 };
+    const masked = maskForDeveloper({ id: 'p', employeeId: OMAR.id, terms }, '/api/payroll/runs/1', people) as { terms: typeof terms | Record<string, unknown> };
+    expect(masked.terms).toMatchObject({ paidDays: 30, insured: null, notRegistered: null });
+  });
+
   it('a contract’s law warning: its end date and the dates written in its message hidden', () => {
     const warning = {
       kind: 'became_open_ended',

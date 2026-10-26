@@ -1365,7 +1365,8 @@ function hiddenJobs(value: unknown, employment: boolean, entity: string | null, 
     else if (DEVELOPER_JOB_ID_FIELDS.has(k)) out[k] = Array.isArray(v) ? [] : null;
     else if (DEVELOPER_JOB_FLAG_FIELDS.has(k) && typeof v === 'boolean') out[k] = null;
     // a payroll line's terms: whether the person is registered with social insurance
-    else if (k === 'insured' && typeof v === 'boolean' && 'insuredWage' in obj) out[k] = null;
+    // (and, with everyone counted as insured, whether they are not registered yet: 26 October 2026)
+    else if ((k === 'insured' || k === 'notRegistered') && typeof v === 'boolean' && 'insuredWage' in obj) out[k] = null;
     // a hybrid employment's office days say its work arrangement
     else if (k === 'officeDays' && Array.isArray(v)) out[k] = [];
     else if (inEmployment && DEVELOPER_EMPLOYMENT_DATE_FIELDS.has(k)) out[k] = null;

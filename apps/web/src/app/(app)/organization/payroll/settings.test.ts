@@ -77,6 +77,17 @@ describe('Your Rules', () => {
     expect(rulesBody(form(rules)).rules).not.toHaveProperty('payOvertime');
   });
 
+  it('sends Social insurance for everyone only when the form has the switch, a Super Admin’s (owner, 26 October 2026)', () => {
+    expect(rulesBody(form(rules)).rules).not.toHaveProperty('insureEveryone');
+    const off = form(rules);
+    off.append('insureEveryone', 'false');
+    expect(rulesBody(off).rules.insureEveryone).toBe(false);
+    const on = form(rules);
+    on.append('insureEveryone', 'false');
+    on.append('insureEveryone', 'true');
+    expect(rulesBody(on)).toMatchObject({ rules: { insureEveryone: true }, errors: [] });
+  });
+
   it('never sends whether the KPI average takes attendance in: a run copies it from the KPI setting (owner, 25 October 2026: "Fixed cut only")', () => {
     expect(RULE_FIELDS).not.toContain('kpiIncludesAttendance');
     const sent = form(rules);

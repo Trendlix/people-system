@@ -2837,6 +2837,8 @@ model PayrollSettings {
   attendanceGracePercent  Decimal  @default(90) @map("attendance_grace_percent") @db.Decimal(5, 2) // attendance from here on counts as full
   kpiGracePercent         Decimal  @default(80) @map("kpi_grace_percent") @db.Decimal(5, 2) // a KPI average from here on counts as full
   payOvertime             Boolean  @default(false) @map("pay_overtime") // off from 16 October 2026 (owner: "No overtime for now")
+  // on from 26 October 2026 (owner: "calculate as if the employee is insured, no matter he is registered or not"; "till i adjust my system dont connect them togeather")
+  insureEveryone          Boolean  @default(true) @map("insure_everyone")
   overtimeAbovePercent    Decimal  @default(110) @map("overtime_above_percent") @db.Decimal(5, 2) // overtime is paid for attendance above this
   overtimeRate            Decimal  @default(1.5) @map("overtime_rate") @db.Decimal(4, 2)
   noShowDayMultiplier     Decimal  @default(2) @map("no_show_day_multiplier") @db.Decimal(4, 2) // a no-show day costs this many days' pay

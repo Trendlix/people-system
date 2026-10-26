@@ -1,4 +1,4 @@
-import { confidentialPeople, kpiAveragesAttendance, PAYROLL_STATUS_LABELS, PAYROLL_STATUSES, paysOvertime, type PayrollRules, type PayrollStatus, type Role } from '@trendlix/shared';
+import { confidentialPeople, insuresEveryone, kpiAveragesAttendance, PAYROLL_STATUS_LABELS, PAYROLL_STATUSES, paysOvertime, type PayrollRules, type PayrollStatus, type Role } from '@trendlix/shared';
 import { hasRole, isSuperAdmin } from '../../../lib/roles';
 
 // Plain helpers for the Payroll pages (no server-only, so they are unit tested): who sees payroll and who does what on a
@@ -165,6 +165,10 @@ export function rulesSummary(r: PayrollRules): string[] {
     // 80%+"); a line made before the KPIs module, the KPIs it was given, averaged with the attendance
     `The KPI (last month's final scorecard) counts in full from ${r.kpiGracePercent}%; below it, the variable part follows it. With none, it isn't cut.${kpiAveragesAttendance(r) ? '' : ' It is performance only: attendance is cut on the fixed part alone.'}`,
     paysOvertime(r) ? `Overtime is paid for attendance above ${r.overtimeAbovePercent}%, at ${r.overtimeRate}×.` : 'Overtime: not paid.',
+    // social insurance for everyone, registered or not (owner, 26 October 2026); rules copied before then, registered only
+    insuresEveryone(r)
+      ? 'Social insurance is deducted for everyone under the labour law, registered or not.'
+      : 'Social insurance is deducted for those registered with it only.',
     `A no-show day costs ${r.noShowDayMultiplier} ${r.noShowDayMultiplier === 1 ? "day's" : "days'"} pay; its hours come out of the expected hours, so attendance doesn't count it again.`,
   ];
 }
