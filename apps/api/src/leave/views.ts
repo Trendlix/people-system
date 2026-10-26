@@ -160,6 +160,8 @@ export function requestView(r: RequestRow, caller: Caller, names: ReadonlyMap<st
     hrCanCancel: hrMayCancel({ ...parties, status }, caller),
     // a Super Admin edits it, in any status (owner, 26 October 2026)
     canEdit: mayEditLeave(caller.user),
+    // a Super Admin undoes a cancellation (owner, 26 October 2026)
+    canRestore: mayEditLeave(caller.user) && status === 'cancelled',
     // imported with Zoho People's or the template's leave: undoing its import removes it, edits too (owner, 26 October 2026)
     imported: r.importId !== null,
     // who decides (or decided) the manager stage, and as what (owner, 19 October 2026: "the person in charge"):
@@ -190,7 +192,9 @@ export function requestView(r: RequestRow, caller: Caller, names: ReadonlyMap<st
       onBehalfOf: s.onBehalfOf ? { id: s.onBehalfOf.id, fullNameEn: s.onBehalfOf.fullNameEn } : null,
       at: s.at.toISOString(),
     })),
-    balanceAfter,
+    // a cancelled leave: the annual balance available now, which restoring takes its days from (only a Super Admin gets it)
+    balanceAfter: status === 'cancelled' ? null : balanceAfter,
+    balanceBeforeRestore: status === 'cancelled' ? balanceAfter : null,
     createdAt: r.createdAt.toISOString(),
   };
 }

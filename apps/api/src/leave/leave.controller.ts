@@ -36,6 +36,7 @@ import {
   CreateLeaveTypeDto,
   DecideLeaveDto,
   EditLeaveRequestDto,
+  RestoreLeaveDto,
   HrCancelLeaveDto,
   LeaveAdjustmentDto,
   LeaveCalendarQueryDto,
@@ -223,6 +224,13 @@ export class LeaveRequestsController {
   @Patch(':id')
   edit(@Param('id', ParseUUIDPipe) id: string, @Body() dto: EditLeaveRequestDto, @CurrentUser() user: SessionUser) {
     return this.requests.edit(id, dto, user);
+  }
+
+  /** A Super Admin undoes a cancellation (owner, 26 October 2026): { note? }. 403 for anyone else; 409 unless it is cancelled. */
+  @Post(':id/restore')
+  @HttpCode(200)
+  restore(@Param('id', ParseUUIDPipe) id: string, @Body() dto: RestoreLeaveDto, @CurrentUser() user: SessionUser) {
+    return this.requests.restore(id, dto, user);
   }
 
   /** HR cancels an approved request: { comment }. */

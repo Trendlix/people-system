@@ -891,6 +891,42 @@ export function HrCancelLeaveForm({ action, what, kind = 'leave' }: { action: Ac
 }
 
 /**
+ * A Super Admin undoes a cancellation (owner, 26 October 2026: "allow superadmin to undo cancellation and go through the
+ * edit to prevent this mistake"): an optional why, and the warning before saving when restoring takes the annual balance
+ * below 0 (`warning`, restoreWarning). The API checks it all again.
+ */
+export function RestoreLeaveForm({ action, what, warning }: { action: Action; what: string; warning: string | null }) {
+  const [state, formAction, pending] = useActionState(action, {});
+  const fid = useFieldIds();
+  return (
+    <form
+      action={formAction}
+      onSubmit={(e) => {
+        if (!window.confirm(`Restore the cancelled ${what}? It goes back to where it stood before it was cancelled.${warning ? ` ${warning}` : ''}`)) e.preventDefault();
+      }}
+      className="space-y-3"
+    >
+      <FormErrors errors={state.errors} />
+      <SurfaceField />
+      {warning && (
+        <p role="status" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
+          {warning} Only a Super Admin may.
+        </p>
+      )}
+      <div>
+        <label htmlFor={fid('note')} className="label">
+          Why {optional}
+        </label>
+        <textarea id={fid('note')} name="note" rows={2} maxLength={500} defaultValue={valueOf(state, 'note')} className="input" />
+      </div>
+      <button type="submit" disabled={pending} className="btn btn-primary">
+        {pending ? 'Restoring…' : 'Restore the leave'}
+      </button>
+    </form>
+  );
+}
+
+/**
  * The employee changes the colleague who covers their request, or the handover note (owner's brief, 25 October 2026: "if
  * the cover becomes unavailable, the requester can change the cover, which is audited"): those not off on its days, the
  * team first; none only where the leave doesn't need one. The API checks it again, tells the new colleague and the one

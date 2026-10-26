@@ -10,6 +10,8 @@ import {
   leaveDaysBetween,
   leaveDecisionNeedsComment,
   leaveDecisionStepKind,
+  overBalanceDays,
+  statusBeforeCancel,
   leaveRequestProblems,
   leaveStage,
   leaveStatusAfterApproval,
@@ -51,7 +53,7 @@ import {
 import { checkedDocuments } from './documents.js';
 import { LeaveBalancesService, TAKING, type LeaveBalancesView, type LeaveEmployment } from './leave-balances.service.js';
 import { LeaveCoverageService } from './leave-coverage.service.js';
-import type { ChangeCoverDto, CreateLeaveRequestDto, DecideLeaveDto, EditLeaveRequestDto, HrCancelLeaveDto, LeaveCalendarQueryDto, ListLeaveRequestsDto, RecordLeaveRequestDto } from './leave.dto.js';
+import type { ChangeCoverDto, CreateLeaveRequestDto, DecideLeaveDto, EditLeaveRequestDto, HrCancelLeaveDto, LeaveCalendarQueryDto, ListLeaveRequestsDto, RecordLeaveRequestDto, RestoreLeaveDto } from './leave.dto.js';
 import {
   EDIT_SUPER_ADMIN_ONLY,
   leaveEditChanges,
@@ -59,7 +61,9 @@ import {
   leaveEditLockProblem,
   leaveEditMovesBalance,
   leaveEditMovesPayroll,
+  leaveRestoreComment,
   NOTHING_TO_EDIT,
+  RESTORE_SUPER_ADMIN_ONLY,
   type LeaveEditFacts,
 } from './leave-edit.js';
 import { LeavePayrollService } from './leave-payroll.service.js';
@@ -603,6 +607,129 @@ export class LeaveRequestsService {
     return (await this.views([row], caller))[0];
   }
 
+  // ---------- a Super Admin undoes a cancellation ----------
+
+  /**
+   * A Super Admin restores a cancelled leave (owner, 26 October 2026: "when cancelling or editing or cancelling leaves it
+   * cancells wrong dates ,, allow superadmin to undo cancellation and go through the edit to prevent this mistake"): to
+   * where it stood before it was cancelled, read from its steps (statusBeforeCancel): approved, or the step its employee
+   * withdrew it from, with the same approver. Only a cancelled leave (409 otherwise; a rejected one isn't restorable).
+   * Back to approved it is checked as the edit checks it, with its own days: no clash with other leave or permission, the
+   * year open, the employment, the type's rules, and a month whose payroll is with the CEO, approved or paid refuses it
+   * (409, naming the month; nothing changes). The annual balance may go below 0 (a Super Admin's, as an edit): the step says
+   * by how much, and the page warned before. The balances follow (they are read from the requests); the draft payroll
+   * months are filled again, the employee is told, the colleague who covers is told again and stand-ins are ticked. A
+   * leave back to being decided tells the approver at its step, as when it was sent. The step ("Restored") keeps the note;
+   * the audit log keeps before and after.
+   */
+  async restore(id: string, dto: RestoreLeaveDto, user: SessionUser): Promise<LeaveRequestView> {
+    if (!mayEditLeave(user)) throw new ForbiddenException(RESTORE_SUPER_ADMIN_ONLY);
+    const caller = await this.caller(user);
+    const before = await this.prisma.leaveRequest.findUnique({ where: { id }, include: REQUEST_INCLUDE });
+    if (!before) throw new NotFoundException(NOT_FOUND);
+    if (before.status !== 'cancelled') {
+      throw new ConflictException(`This request is ${statusWords(before.status)}: only a cancelled leave can be restored.${before.status === 'rejected' ? ' A rejected leave stays rejected.' : ''}`);
+    }
+    const to = statusBeforeCancel(before.steps, before.recordedByHr);
+    if (!to) throw new ConflictException("The steps of this leave don't say where it stood before it was cancelled, so it can't be restored. Record it again instead.");
+    const name = before.employee.fullNameEn;
+    const type = before.type;
+    const startDate = fromDateOnly(before.startDate);
+    const endDate = fromDateOnly(before.endDate);
+    const days = before.days.toNumber();
+
+    if (to === 'approved') {
+      const runs = await this.prisma.payrollRun.findMany({ where: { status: { in: LOCKED_PAYROLL } }, select: { month: true, status: true } });
+      const lock = leaveEditLockProblem([{ startDate, endDate }], runs.map((r) => ({ month: fromDateOnly(r.month).slice(0, 7), status: r.status })));
+      if (lock) throw new ConflictException(lock);
+      await this.assertYearOpen(type, startDate);
+    }
+    const employment = (await this.balances.employments([before.employmentId]))[0] ?? null;
+    if (!employment) throw new NotFoundException(NOT_FOUND);
+    if (!underLabourLaw(employment.employmentType)) throw new BadRequestException([noLeaveMessage(employment.employmentType, name)]);
+
+    let over = 0;
+    const row = await this.prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT 1 FROM employees WHERE id = ${before.employeeId}::uuid FOR UPDATE`;
+      const year = Number(startDate.slice(0, 4));
+      const [annual, ofType] = await Promise.all([
+        this.balances.annual(employment, year, todayInCairo(), tx, id),
+        tx.leaveRequest.findMany({ where: { employeeId: before.employeeId, typeId: type.id, id: { not: id }, status: { in: [...TAKING] } }, select: { startDate: true, days: true } }),
+      ]);
+      over = overBalanceDays(type, annual.available, days);
+      if (to === 'approved') {
+        // as the edit checks it, with this leave's own days; the annual balance may go below 0 for a Super Admin
+        const problems: string[] = [];
+        if (startDate < employment.joinDate) problems.push(`The leave must be within the employment, which started on ${shownDate(employment.joinDate)}.`);
+        if (employment.endDate && endDate > employment.endDate) problems.push(`The leave must be within the employment, which ended on ${shownDate(employment.endDate)}.`);
+        problems.push(
+          ...leaveRequestProblems(
+            { startDate, endDate, halfDay: before.halfDay, days, documents: Math.max(1, before.documents.length), today: todayInCairo(), byHr: true },
+            rulesOf(type),
+            { available: annual.available, usableFrom: annual.usableFrom, allowNegative: true },
+            {
+              usedInYear: ofType.filter((r) => r.startDate.getUTCFullYear() === year).reduce((n, r) => n + r.days.toNumber(), 0),
+              timesInService: ofType.length,
+              serviceMonths: serviceMonths(employment.joinDate, startDate),
+              gender: (employment.employee.gender as LeaveGender | null) ?? null,
+            },
+          ),
+        );
+        if (problems.length) throw new BadRequestException(problems);
+      }
+      // never on days another request now takes, nor a day with permission asked for (it takes them again)
+      const overlap = await tx.leaveRequest.findFirst({
+        where: { employeeId: before.employeeId, id: { not: id }, status: { in: [...TAKING] }, startDate: { lte: toDateOnly(endDate) }, endDate: { gte: toDateOnly(startDate) } },
+        orderBy: { startDate: 'asc' },
+        select: { startDate: true, endDate: true, status: true, type: { select: { nameEn: true } } },
+      });
+      if (overlap) {
+        const when = `from ${shownDate(fromDateOnly(overlap.startDate))} to ${shownDate(fromDateOnly(overlap.endDate))}`;
+        throw new ConflictException(`${name} already has ${overlap.type.nameEn} ${when} (${statusWords(overlap.status)}) on some of these days, so this leave can't be restored. Cancel that one or edit its days first.`);
+      }
+      const permission = await tx.permissionRequest.findFirst({
+        where: { employeeId: before.employeeId, status: { in: [...TAKING] }, date: { gte: toDateOnly(startDate), lte: toDateOnly(endDate) } },
+        orderBy: { date: 'asc' },
+        select: { date: true, hours: true, status: true },
+      });
+      if (permission) {
+        throw new ConflictException(
+          `${name} has permission for ${permissionHoursText(permission.hours.toNumber())} on ${shownDate(fromDateOnly(permission.date))} (${statusWords(permission.status)}): cancel it first, then restore this leave.`,
+        );
+      }
+      const { count } = await tx.leaveRequest.updateMany({ where: { id, status: 'cancelled' }, data: { status: to } });
+      if (!count) throw new ConflictException('This request changed meanwhile. Reload the page to see where it is.');
+      await recordLeaveStep(tx, id, user.id, { kind: 'restored', comment: leaveRestoreComment(to, over, dto.note) });
+      return tx.leaveRequest.findUniqueOrThrow({ where: { id }, include: REQUEST_INCLUDE });
+    });
+
+    await this.audit.record({
+      userId: user.id,
+      action: 'update',
+      entityType: REQUEST_ENTITY,
+      entityId: id,
+      diff: {
+        employeeId: before.employeeId,
+        restored: true,
+        before: { status: 'cancelled' },
+        after: { status: to },
+        status: { from: 'cancelled', to },
+        ...(over > 0 && { overBalanceDays: over }),
+        ...(dto.note && { note: dto.note }),
+      },
+    });
+    if (to === 'approved') {
+      await this.payroll.syncDrafts(before.employeeId, startDate, endDate, user);
+      if (before.standInId || before.standInHr) await this.standIns.tick();
+      await this.notices.leaveRestored(id);
+      if (before.coverId) await this.notices.cover(id, before.coverId);
+    } else {
+      // back with its approver: told as when it was sent to them
+      await this.notices.leave(id, 'sent');
+    }
+    return (await this.views([row], caller))[0];
+  }
+
   // ---------- an employee's leave and the calendar ----------
 
   /**
@@ -869,7 +996,10 @@ export class LeaveRequestsService {
   private async views(rows: readonly RequestRow[], caller: Caller): Promise<LeaveRequestView[]> {
     if (!rows.length) return [];
     const today = todayInCairo();
-    const counted = rows.filter((r) => takesFromAnnual(r.type.balance) && (r.status === 'approved' || (LEAVE_OPEN_STATUSES as readonly string[]).includes(r.status)));
+    // a cancelled one too, for a Super Admin: the balance it would be restored into (the page warns when it goes below 0)
+    const counted = rows.filter(
+      (r) => takesFromAnnual(r.type.balance) && (r.status === 'approved' || (LEAVE_OPEN_STATUSES as readonly string[]).includes(r.status) || (r.status === 'cancelled' && mayEditLeave(caller.user))),
+    );
     const [names, employments] = await Promise.all([
       userNames(this.prisma, rows.flatMap((r) => r.steps.map((s) => s.actor))),
       this.balances.employments([...new Set(counted.map((r) => r.employmentId))]),

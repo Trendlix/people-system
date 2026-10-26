@@ -65,9 +65,9 @@ export const leaveDocumentHref = (requestId: string, docId: string) => `${leaveH
 /**
  * What was just done on a request, said on its page by `?done=`: sent, recorded by HR, cancelled, a stage's decision
  * ("hr_approve"), a decision refused because the request had moved on meanwhile (`moved`), or its cover changed by its
- * employee (`cover`, 25 October 2026), or edited by a Super Admin (`edited`, 26 October 2026).
+ * employee (`cover`, 25 October 2026), or edited by a Super Admin (`edited`, 26 October 2026), or its cancellation undone (`restored`).
  */
-export type LeaveDone = 'sent' | 'recorded' | 'cancelled' | 'moved' | 'cover' | 'edited' | `${LeaveStage}_${LeaveDecision}`;
+export type LeaveDone = 'sent' | 'recorded' | 'cancelled' | 'moved' | 'cover' | 'edited' | 'restored' | `${LeaveStage}_${LeaveDecision}`;
 
 /** A request's page after something was done on it: "/leave/<id>?done=sent". */
 export const leaveDoneHref = (id: string, done: LeaveDone) => `${leaveHref(id)}?done=${done}`;
@@ -319,6 +319,8 @@ export function leaveDoneText(
   if (done === 'cover') return { text: 'Cover saved. The colleague who covers now is told, and the one before is told they no longer cover it.', tone: 'ok' };
   // a Super Admin's edit (26 October 2026)
   if (done === 'edited') return { text: 'Leave edited. The log of every step lists what changed.', tone: 'ok' };
+  // a Super Admin undid its cancellation (26 October 2026)
+  if (done === 'restored') return { text: 'Cancellation undone. The leave is back where it stood before; the log of every step says so.', tone: 'ok' };
   const [stage, decision] = done.split('_');
   if (!(LEAVE_STAGES as readonly string[]).includes(stage) || !(LEAVE_DECISIONS as readonly string[]).includes(decision)) return null;
   return { text: leaveDecidedText(decision as LeaveDecision, stage as LeaveStage, confidential), tone: 'ok' };
@@ -354,6 +356,9 @@ export function leaveStepText(s: Pick<LeaveRequestStep, 'kind' | 'decision' | 'c
     // a Super Admin edited it (owner, 26 October 2026: "as a superadmin i need to edit the leaves"); the comment lists what
     case 'edited':
       return 'Edited by a Super Admin';
+    // a Super Admin undid its cancellation (owner, 26 October 2026: "allow superadmin to undo cancellation")
+    case 'restored':
+      return 'Restored by a Super Admin';
     default:
       return String(s.kind);
   }

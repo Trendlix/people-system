@@ -15,13 +15,14 @@ import { todayInCairo } from '../../employees/ui';
 import { sizeText } from '../../reimbursements/claim';
 import { BackLink, Empty, UUID } from '../../organization/ui';
 import { notLoadedText } from '../../payroll/load';
-import { cancelLeaveByHr, cancelMyLeave, changeLeaveCover, decideLeave, editLeave } from '../actions';
+import { cancelLeaveByHr, cancelMyLeave, changeLeaveCover, decideLeave, editLeave, restoreLeave } from '../actions';
 import { standInText } from '../coverage';
 import { RequestCoverage } from '../coverage-fields';
-import { CancelLeaveForm, ChangeCoverForm, EditLeaveForm, HrCancelLeaveForm, LeaveDecisionForm } from '../leave-forms';
+import { CancelLeaveForm, ChangeCoverForm, EditLeaveForm, HrCancelLeaveForm, LeaveDecisionForm, RestoreLeaveForm } from '../leave-forms';
 import { loadEmployeeLeave, loadHolidaysOf, loadLeaveCoverage, loadLeaveRequest, loadLeaveTypes, loadOwnCoverage } from '../data';
 import { daysNumber, daysText, decidingAsTitle, hrStageName, leaveBack, leaveDocumentHref, leaveDoneText, periodText, placeOfEmployee, recordsLeave } from '../list';
 import { editTypes } from '../edit';
+import { restoreWarning } from '../restore';
 import { personFacts } from '../request';
 import { LeaveProgress, LeaveStatusBadge, LeaveTimeline, OverLimitBadge } from '../ui';
 
@@ -294,6 +295,16 @@ export async function LeaveRequestDetail({
               ) : (
                 <p className="text-sm text-muted">The leave types couldn’t be loaded, so it can’t be edited now. Please try again in a moment.</p>
               )}
+            </Section>
+          )}
+
+          {r.canRestore && (
+            <Section title="Undo the Cancellation">
+              <p className="mb-3 text-sm text-muted">
+                Put the leave back where it stood before it was cancelled, then edit its dates if they were wrong. It is checked as an edit is: no clash with other
+                leave, the year open, and no payroll month with the CEO, approved or paid.
+              </p>
+              <RestoreLeaveForm action={restoreLeave.bind(null, r.id)} what={what} warning={restoreWarning(r)} />
             </Section>
           )}
 

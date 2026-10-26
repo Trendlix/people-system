@@ -391,12 +391,46 @@ export const LEAVE_STEP_KIND_LABELS: Record<LeaveStepKind, string> = {
  * A leave request's steps: those it shares with permission, working from home and official duty, and the colleague who
  * covers it changed by its employee (owner, 25 October 2026: "if the cover becomes unavailable, the requester can change
  * the cover"; leave-coverage.ts), and a Super Admin's edit of it (owner, 26 October 2026: "as a superadmin i need to edit
- * the leaves"; the step's comment lists what changed).
+ * the leaves"; the step's comment lists what changed), and a Super Admin's undoing of a cancellation (owner, 26 October
+ * 2026: "allow superadmin to undo cancellation"; the step's comment is the note).
  */
-export const LEAVE_REQUEST_STEP_KINDS = [...LEAVE_STEP_KINDS, 'cover_changed', 'edited'] as const;
+export const LEAVE_REQUEST_STEP_KINDS = [...LEAVE_STEP_KINDS, 'cover_changed', 'edited', 'restored'] as const;
 export type LeaveRequestStepKind = (typeof LEAVE_REQUEST_STEP_KINDS)[number];
 
-export const LEAVE_REQUEST_STEP_KIND_LABELS: Record<LeaveRequestStepKind, string> = { ...LEAVE_STEP_KIND_LABELS, cover_changed: 'Cover changed', edited: 'Edited' };
+export const LEAVE_REQUEST_STEP_KIND_LABELS: Record<LeaveRequestStepKind, string> = { ...LEAVE_STEP_KIND_LABELS, cover_changed: 'Cover changed', edited: 'Edited', restored: 'Restored' };
+
+/** A step as the restore reads it: its kind and, for a decision, which. */
+export interface RestoreStep {
+  kind: string;
+  decision?: string | null;
+}
+
+/**
+ * Where a cancelled leave stood before it was cancelled (owner, 26 October 2026: "allow superadmin to undo cancellation"),
+ * read from its steps in order: approved (recorded by HR, or approved by HR), with the manager or with HR (a request its
+ * employee withdrew). The steps are replayed, so a leave restored and cancelled again goes back to where the restore put
+ * it. Edits and cover changes don't move it. An imported leave has no steps at all and is HR's history, approved. Null:
+ * it isn't cancelled, or the steps don't say.
+ */
+export function statusBeforeCancel(steps: readonly RestoreStep[], recordedByHr: boolean): 'approved' | 'with_manager' | 'with_hr' | null {
+  let state: string | null = null;
+  let before: string | null = null;
+  for (const s of steps) {
+    if (s.kind === 'submitted') state = 'with_manager';
+    else if (s.kind === 'no_manager') state = 'with_hr';
+    else if (s.kind === 'recorded_by_hr') state = 'approved';
+    else if (s.kind === 'manager_decision') state = s.decision === 'approve' ? 'with_hr' : 'rejected';
+    else if (s.kind === 'hr_decision') state = s.decision === 'approve' ? 'approved' : 'rejected';
+    else if (s.kind === 'cancelled') {
+      before = state;
+      state = 'cancelled';
+    } else if (s.kind === 'restored' && state === 'cancelled') state = before;
+  }
+  if (state !== 'cancelled') return null;
+  const found = before ?? (recordedByHr ? 'approved' : null);
+  return found === 'approved' || found === 'with_manager' || found === 'with_hr' ? found : null;
+}
+
 
 /** The step a stage's decision is logged as. */
 export const leaveDecisionStepKind = (stage: LeaveStage): LeaveStepKind => `${stage}_decision`;
@@ -460,6 +494,23 @@ export function leaveTypeLeft(type: Pick<LeaveTypeRules, 'balance' | 'daysPerYea
   return Math.max(0, halfOrTenth(type.daysPerYear - usedInYear));
 }
 
+/**
+ * How many days a leave takes the annual balance below 0 (owner, 26 October 2026: "only allow super admin to add leaves
+ * with a negative balance"): 0 when it fits. Only for a type that takes from the annual balance.
+ */
+export function overBalanceDays(type: { balance: string }, available: number, days: number): number {
+  return takesFromAnnual(type.balance) ? Math.max(0, halfOrTenth(days - available)) : 0;
+}
+
+/** The warning a Super Admin sees before saving leave beyond the balance: "This leaves the annual balance at −2 days". */
+export const overBalanceWarning = (available: number, days: number): string => {
+  const left = halfOrTenth(available - days);
+  return `This leaves the annual balance at ${left < 0 ? '−' : ''}${daysText(Math.abs(left))}.`;
+};
+
+/** What a step says of leave beyond the balance, allowed by a Super Admin. */
+export const overBalanceStepText = (over: number): string => `Over the balance by ${daysText(over)}: allowed by a Super Admin`;
+
 // ---------- a request's problems ----------
 
 /** A new request as typed. */
@@ -483,6 +534,8 @@ export interface LeaveRequestBalance {
   available: number;
   /** The first day the year's annual leave may be used (annualEntitlement.usableFrom). */
   usableFrom: string;
+  /** A Super Admin may take it below 0 (owner, 26 October 2026): the balance isn't checked; the caller says so on the step. */
+  allowNegative?: boolean;
 }
 
 /** The employee and what they have taken of the type. */
@@ -544,7 +597,7 @@ export function leaveRequestProblems(input: LeaveRequestInput, type: LeaveTypeRu
     if (type.balance === 'annual' && input.startDate < balance.usableFrom) {
       problems.push(`Annual leave can be used from ${shown(balance.usableFrom)}, six months after joining.`);
     }
-    if (input.days > balance.available) {
+    if (!balance.allowNegative && input.days > balance.available) {
       problems.push(`Only ${daysText(Math.max(0, balance.available))} left of the annual balance${type.balance === 'from_annual' ? `, which ${type.nameEn.toLowerCase()} is counted against` : ''}.`);
     }
   }

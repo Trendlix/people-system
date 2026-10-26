@@ -18,6 +18,7 @@ import {
   homeDecidedText,
   homeWaitingText,
   leaveEditedText,
+  leaveRestoredText,
   payRaiseDecidedText,
   payRaiseWaitingText,
   payslipText,
@@ -127,6 +128,15 @@ export class NoticesService {
       const r = await this.prisma.leaveRequest.findUnique({ where: { id }, select: { employeeId: true, status: true, startDate: true, endDate: true, halfDay: true } });
       if (!r || r.status !== 'approved') return;
       await this.toEmployee(r.employeeId, leaveEditedText(daysText(fromDateOnly(r.startDate), fromDateOnly(r.endDate), r.halfDay), REQUEST_LINKS.leave(id)));
+    });
+  }
+
+  /** A Super Admin restored the employee's cancelled leave to approved (owner, 26 October 2026): the employee is told, with its days; the bell and push, no WhatsApp. */
+  async leaveRestored(id: string): Promise<void> {
+    await this.safely('leave restore', async () => {
+      const r = await this.prisma.leaveRequest.findUnique({ where: { id }, select: { employeeId: true, status: true, startDate: true, endDate: true, halfDay: true } });
+      if (!r || r.status !== 'approved') return;
+      await this.toEmployee(r.employeeId, leaveRestoredText(daysText(fromDateOnly(r.startDate), fromDateOnly(r.endDate), r.halfDay), REQUEST_LINKS.leave(id)));
     });
   }
 

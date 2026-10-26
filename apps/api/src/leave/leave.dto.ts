@@ -297,6 +297,12 @@ export class EditLeaveRequestDto {
   note?: string | null;
 }
 
+/** A Super Admin undoing a cancellation (owner, 26 October 2026): why, optional; kept on the step and in the audit log. */
+export class RestoreLeaveDto {
+  @TrimOrNull() @IsOptional() @IsString({ message: 'Write why the cancellation is undone.' }) @MaxLength(500, { message: 'Keep the note to 500 characters or fewer.' })
+  note?: string | null;
+}
+
 /** ?year=: this year in Cairo unless sent. */
 export class LeaveYearQueryDto {
   @NumberOf() @IsOptional() @IsInt({ message: YEAR_MESSAGE }) @Min(2000, { message: YEAR_MESSAGE }) @Max(2100, { message: YEAR_MESSAGE })

@@ -19,6 +19,7 @@ import { afterAction } from '@/lib/surface';
 import type { EmployeeLeave, FormState, Holiday, LeaveBalances, LeaveRequestView } from '@/lib/types';
 import { adjustmentBody } from './balance';
 import { editBody, typedEditValues } from './edit';
+import { restoreBody } from './restore';
 import { hrCancelBody, leaveDecisionBody, leaveDoneHref } from './list';
 import { asShown, leaveForm, typedLeaveValues } from './request';
 
@@ -205,6 +206,25 @@ export async function editLeave(requestId: string, _prev: FormState, fd: FormDat
   // the lists, the balances and the payroll's lines change with it
   refresh();
   redirect(afterAction(fd, leaveDoneHref(requestId, 'edited')));
+}
+
+/**
+ * A Super Admin undoes a cancellation (POST /leave/requests/:id/restore; owner, 26 October 2026: "allow superadmin to
+ * undo cancellation"), with an optional why. The API puts the leave back where it stood, checks it as the edit does, and
+ * answers what is wrong (a clash, a closed year, a payroll month with the CEO, approved or paid).
+ */
+export async function restoreLeave(requestId: string, _prev: FormState, fd: FormData): Promise<FormState> {
+  const values = { note: String(fd.get('note') ?? '') };
+  const { body, errors } = restoreBody(fd);
+  if (!body) return { errors, values };
+  try {
+    await apiSend('POST', `/leave/requests/${encodeURIComponent(requestId)}/restore`, body);
+  } catch (err) {
+    if (err instanceof ApiError) return { errors: shown(err.messages), values };
+    throw err;
+  }
+  refresh();
+  redirect(afterAction(fd, leaveDoneHref(requestId, 'restored')));
 }
 
 /** HR cancels an approved request (POST /leave/requests/:id/cancel), with a comment; its days are given back. */

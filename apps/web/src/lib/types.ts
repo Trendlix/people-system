@@ -2316,6 +2316,9 @@ export interface LeaveRequestView {
    * API from before them.
    */
   canEdit?: boolean;
+  /** A Super Admin may undo its cancellation (owner, 26 October 2026), and the annual balance available now it would be restored into. */
+  canRestore?: boolean;
+  balanceBeforeRestore?: number | null;
   imported?: boolean;
   /**
    * The employee is C-level (owner, 19 October 2026): HR's stage is the CEO's (or HR with Super Admin); `waitingForYou`

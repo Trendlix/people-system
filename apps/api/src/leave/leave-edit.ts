@@ -1,3 +1,4 @@
+import { overBalanceStepText } from '@trendlix/shared';
 import { shownDate } from '../common/date-only.js';
 
 // A Super Admin editing a leave (owner, 26 October 2026, on an imported approved annual leave's page: "as a superadmin i
@@ -95,3 +96,15 @@ export const leaveEditMovesPayroll = (before: LeaveEditFacts, after: LeaveEditFa
 export const NOTHING_TO_EDIT = "Nothing was changed: change the type, the days, the reason or who covers it, then save.";
 
 export const EDIT_SUPER_ADMIN_ONLY = 'Only a Super Admin edits a leave, in their own session (not while viewing as someone else, and never a developer).';
+
+export const RESTORE_SUPER_ADMIN_ONLY = 'Only a Super Admin restores a cancelled leave, in their own session (not while viewing as someone else, and never a developer).';
+
+/**
+ * The step's comment of a restore (owner, 26 October 2026: "allow superadmin to undo cancellation"): where the leave is
+ * back to, the balance it takes below 0 when it does (allowed for a Super Admin), then "Why:" and the note when given.
+ */
+export function leaveRestoreComment(to: string, over: number, note: string | null | undefined): string {
+  const where = to === 'approved' ? 'Back to approved' : to === 'with_hr' ? 'Back to waiting for HR' : 'Back to waiting for the direct manager';
+  const text = note?.trim();
+  return `${where}${over > 0 ? `\n${overBalanceStepText(over)}` : ''}${text ? `\nWhy: ${text}` : ''}`;
+}
