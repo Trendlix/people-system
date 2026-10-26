@@ -239,7 +239,8 @@ export interface LeavePerson {
  * is left; the first and last day; a half day where the type allows it; the reason; the documents. The days are counted
  * live and the checks show live; Send stays off while any is left. A first day in another year reads that year's
  * balances and holidays. Once sent, the request's page opens; a refusal shows here, with what was typed (the documents
- * too: they stay in the page).
+ * too: they stay in the page). On HR's Record leave the types end with Work from home (`extraChoice`; owner, 26 October
+ * 2026: "YES move it to leaves"), not a leave type: choosing it shows its own form instead (record/record-leave-form.tsx).
  */
 export function NewLeaveForm({
   action,
@@ -250,6 +251,8 @@ export function NewLeaveForm({
   cancelHref,
   toCeo = false,
   allowNegative = false,
+  extraChoice,
+  startTypeId,
 }: {
   action: Action;
   types: LeaveTypeView[];
@@ -261,12 +264,16 @@ export function NewLeaveForm({
   toCeo?: boolean;
   /** A Super Admin recording it: beyond the annual balance is allowed, after a warning (26 October 2026). */
   allowNegative?: boolean;
+  /** A choice after the types that isn't one (Record leave's Work from home): `onChoose` shows its own form; the label says Type. */
+  extraChoice?: { value: string; label: string; hint: string; onChoose: () => void };
+  /** The type chosen to start with: back from Work from home's form, the type chosen there. */
+  startTypeId?: string;
 }) {
   const [state, formAction, sending] = useActionState(action, {});
   const fid = useFieldIds();
   const byHr = person.employeeId !== null;
   const [typed, setTyped] = useState<TypedLeave>(() => ({
-    typeId: valueOf(state, 'typeId', types.length === 1 ? types[0].id : ''),
+    typeId: valueOf(state, 'typeId', startTypeId || (types.length === 1 ? types[0].id : '')),
     startDate: valueOf(state, 'startDate'),
     endDate: valueOf(state, 'endDate'),
     halfDay: valueOf(state, 'halfDay') === 'true',
@@ -409,14 +416,14 @@ export function NewLeaveForm({
       <div className="grid gap-5 sm:grid-cols-2">
         <div className="sm:col-span-2">
           <label htmlFor={fid('typeId')} className="label">
-            Type of leave
+            {extraChoice ? 'Type' : 'Type of leave'}
           </label>
           <Select
             id={fid('typeId')}
             name="typeId"
             required
             value={typed.typeId}
-            onChange={(e) => set('typeId', e.target.value)}
+            onChange={(e) => (extraChoice && e.target.value === extraChoice.value ? extraChoice.onChoose() : set('typeId', e.target.value))}
             aria-describedby={fid('typeId-hint')}
             className="input"
           >
@@ -426,9 +433,10 @@ export function NewLeaveForm({
                 {t.nameEn}
               </option>
             ))}
+            {extraChoice && <option value={extraChoice.value}>{extraChoice.label}</option>}
           </Select>
           <p id={fid('typeId-hint')} className="hint">
-            The types HR set up, each with its rules from the Labour Law.
+            {extraChoice ? extraChoice.hint : 'The types HR set up, each with its rules from the Labour Law.'}
           </p>
         </div>
         {type && (

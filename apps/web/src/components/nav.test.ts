@@ -90,6 +90,8 @@ describe('the sidebar', () => {
       ['Details Changes', '/requests/details-changes'],
       ['Reimbursements', '/reimbursements'],
       ['Leave Requests', '/leave'],
+      // the work from home days, after Leave Requests (owner, 26 October 2026: "Show it with leave"), at their old address
+      ['Work From Home', '/attendance/wfh'],
     ]);
     expect([RAISE_REQUESTS_PATH, DETAILS_CHANGES_PATH, REIMBURSEMENTS_PATH, LEAVE_PATH]).toEqual(['/raise-requests', '/requests/details-changes', '/reimbursements', '/leave']);
     // each page for its own roles; the heading for whoever sees one of them
@@ -98,6 +100,7 @@ describe('the sidebar', () => {
       ['hr', 'ceo', 'finance'],
       ['hr', 'admin', 'ceo'],
       ['hr', 'finance', 'ceo'],
+      ['hr', 'ceo'],
       ['hr', 'ceo'],
     ]);
     // details changes: HR and Admin decide them, and the CEO a C-level person's (owner, 19 October 2026: "make C level
@@ -145,8 +148,7 @@ describe('the sidebar', () => {
         ['Summary', '/attendance/summary'],
         // the days asked to be corrected (19 October 2026: "Attendance corrections with approval")
         ['Corrections', '/attendance/corrections'],
-        // the work-from-home days (21 October 2026: "Manager, then HR")
-        ['Work From Home', '/attendance/wfh'],
+        // the work-from-home days moved under Requests (26 October 2026: "Show it with leave")
         // the official duties (23 October 2026: "Official duty (OD) requests")
         ['Official Duty', '/attendance/official-duty'],
         // the compensatory days (26 October 2026)
@@ -157,7 +159,6 @@ describe('the sidebar', () => {
         ['Import History', '/attendance/imports'],
         ['Summary', '/attendance/summary'],
         ['Corrections', '/attendance/corrections'],
-        ['Work From Home', '/attendance/wfh'],
         ['Official Duty', '/attendance/official-duty'],
         ['Compensatory Days', '/attendance/compensatory'],
       ]);
@@ -185,6 +186,12 @@ describe('the sidebar', () => {
       expect(isActive(attendance, '/attendance/summary')).toBe(true);
       // an import's review is on its payroll run, under Payroll
       expect(isActive(attendance, '/payroll/0b8f/attendance/1c9e')).toBe(false);
+      // Work From Home's pages are under Requests since 26 October 2026, at their old address: not Attendance's
+      expect(isActive(attendance, '/attendance/wfh')).toBe(false);
+      expect(isActive(attendance, '/attendance/wfh/0b8f2c1e-1111-4222-8333-444455556666')).toBe(false);
+      expect(current('/attendance/wfh/record')).toBeNull();
+      expect(isActive(attendance, '/attendance/official-duty')).toBe(true);
+      expect(current('/attendance/wfhx')).toBe('Daily Attendance');
     });
   });
 
@@ -203,6 +210,13 @@ describe('the sidebar', () => {
     expect(current('/leave/0b8f2c1e-1111-4222-8333-444455556666')).toBe('Leave Requests');
     expect(current('/leave/record')).toBe('Leave Requests');
     expect(current('/leaves')).toBeNull();
+    // the work from home list, a request, the employee's form and HR's record, at their old address (26 October 2026)
+    expect(current('/attendance/wfh')).toBe('Work From Home');
+    expect(current('/attendance/wfh/0b8f2c1e-1111-4222-8333-444455556666')).toBe('Work From Home');
+    expect(current('/attendance/wfh/new')).toBe('Work From Home');
+    expect(current('/attendance/wfh/record')).toBe('Work From Home');
+    expect(current('/attendance/official-duty')).toBeNull();
+    expect(isActive(requests, '/attendance/wfh/record')).toBe(true);
     expect(current('/approvals')).toBeNull();
     expect(current('/raise-requestsx')).toBeNull();
     expect(isActive(requests, '/raise-requests')).toBe(true);
@@ -443,15 +457,15 @@ describe('the sidebar of HR, Finance, the CEO and Admins', () => {
     const requestsFor = (...roles: Role[]) => navFor({ roles, employeeId: 'x' }).find((n) => n.label === 'Requests') ?? null;
     const pages = (...roles: Role[]) => requestsFor(...roles)?.items?.map((i) => i.label) ?? null;
 
-    it('has Raise Requests, Details Changes, Reimbursements and Leave Requests for HR, and links to Raise Requests', () => {
-      expect(pages('hr')).toEqual(['Raise Requests', 'Details Changes', 'Reimbursements', 'Leave Requests']);
-      expect(pages('employee', 'hr', 'manager')).toEqual(['Raise Requests', 'Details Changes', 'Reimbursements', 'Leave Requests']);
+    it('has Raise Requests, Details Changes, Reimbursements, Leave Requests and Work From Home for HR, and links to Raise Requests', () => {
+      expect(pages('hr')).toEqual(['Raise Requests', 'Details Changes', 'Reimbursements', 'Leave Requests', 'Work From Home']);
+      expect(pages('employee', 'hr', 'manager')).toEqual(['Raise Requests', 'Details Changes', 'Reimbursements', 'Leave Requests', 'Work From Home']);
       expect(requestsFor('hr')?.href).toBe('/raise-requests');
     });
 
     it('has Raise Requests and Reimbursements for Finance, who doesn’t decide details changes, and all four for the CEO, who decides C-level people’s (19 October 2026)', () => {
       expect(pages('finance')).toEqual(['Raise Requests', 'Reimbursements']);
-      expect(pages('ceo')).toEqual(['Raise Requests', 'Details Changes', 'Reimbursements', 'Leave Requests']);
+      expect(pages('ceo')).toEqual(['Raise Requests', 'Details Changes', 'Reimbursements', 'Leave Requests', 'Work From Home']);
       expect(requestsFor('finance')?.href).toBe('/raise-requests');
       expect(requestsFor('ceo')?.href).toBe('/raise-requests');
     });
@@ -493,7 +507,8 @@ describe('the sidebar of HR, Finance, the CEO and Admins', () => {
       navFor({ roles: ['admin'], employeeId: 'x' });
       const requests = NAV.find((n) => n.label === 'Requests')!;
       expect(requests.href).toBe('/raise-requests');
-      expect(requests.items).toHaveLength(4);
+      // Work From Home after Leave Requests since 26 October 2026
+      expect(requests.items).toHaveLength(5);
     });
   });
 

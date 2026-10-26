@@ -1,7 +1,7 @@
 // Sidebar items. Kept out of the 'use client' file so server components can read them. Relative imports: the tests run
 // without the "@/" alias.
 import { assetsCan, WHATSAPP_MESSAGES_PATH, type AssetsAccessView, type Role } from '@trendlix/shared';
-import { ATTENDANCE_PATH, ATTENDANCE_SECTIONS } from '../app/(app)/attendance/sections';
+import { ATTENDANCE_PATH, ATTENDANCE_SECTIONS, ATTENDANCE_WFH_PATH } from '../app/(app)/attendance/sections';
 import { PAYROLL_SECTIONS } from '../app/(app)/payroll/sections';
 import { firstSetupPage, SETUP_PATHS } from '../app/(app)/organization/setup-pages';
 import { ASSET_PATHS, CUSTODY_PATHS } from '../lib/asset-paths';
@@ -13,6 +13,11 @@ export interface NavItem {
   label: string;
   /** Highlighted on every page under this path. */
   section?: string;
+  /**
+   * Pages under its section that belong to another heading, where it isn't highlighted: Work From Home, kept at
+   * /attendance/wfh, under Requests beside Leave Requests (owner, 26 October 2026: "Show it with leave").
+   */
+  except?: string[];
   /**
    * Shown only to users with one of these roles (a Super Admin counts as an Admin: `hasRole`). Hiding a link is a
    * convenience: the API checks every request.
@@ -289,6 +294,10 @@ export const NAV: NavItem[] = [
       // law?"), with the month's calendar of who is off; HR decides and records leave, the CEO may view them; a direct
       // manager decides their team's from My Team, an employee asks from My Requests
       { href: LEAVE_PATH, label: 'Leave Requests', section: LEAVE_PATH, roles: ['hr', 'ceo'] },
+      // the work from home days, after Leave Requests (owner, 26 October 2026, on Record leave's types: "YES move it to
+      // leaves", then "Show it with leave"): a working day, not leave, moved here from Attendance; its pages keep their
+      // address (/attendance/wfh, which the notifications and the phone pages link to)
+      { href: ATTENDANCE_WFH_PATH, label: 'Work From Home', section: ATTENDANCE_WFH_PATH, roles: ['hr', 'ceo'] },
     ],
   },
   // attendance (owner, 19 October 2026: "the attendance is not active in the side menu"; it was under Coming Next until
@@ -301,6 +310,8 @@ export const NAV: NavItem[] = [
     href: ATTENDANCE_PATH,
     label: 'Attendance',
     section: ATTENDANCE_PATH,
+    // Work From Home's pages are under Requests now (26 October 2026), at their old address
+    except: [ATTENDANCE_WFH_PATH],
     roles: ['hr', 'ceo', 'finance'],
     items: ATTENDANCE_SECTIONS.map((s) => ({ href: s.href, label: s.label, section: s.href, ...(s.roles && { roles: [...s.roles] }) })),
   },
@@ -481,19 +492,26 @@ export function isUnder(pathname: string, section: string): boolean {
   return pathname === section || pathname.startsWith(`${section}/`);
 }
 
+/** Whether `pathname` is one of the pages an item leaves to another heading (NavItem.except). */
+const excepted = (item: Pick<NavItem, 'except'>, pathname: string) => !!item.except?.some((e) => isUnder(pathname, e));
+
 /**
  * Whether an item is the section this page is in: under its section (its own page alone when it has none), or on a
- * page of one of its sub-items (Requests, whose pages aren't under one path).
+ * page of one of its sub-items (Requests, whose pages aren't under one path); never on a page it leaves to another
+ * heading (`except`).
  */
-export function isActive(item: Pick<NavItem, 'href' | 'section' | 'items'>, pathname: string): boolean {
+export function isActive(item: Pick<NavItem, 'href' | 'section' | 'items' | 'except'>, pathname: string): boolean {
+  if (excepted(item, pathname)) return false;
   return (item.section ? pathname.startsWith(item.section) : pathname === item.href) || activeSubItem(item, pathname) !== null;
 }
 
 /**
  * The sub-item highlighted on this page: the one whose section matches most closely, a sub-item with tabs by its tabs'
- * (24 October 2026: Custody on a holding's page, /assets/holders/…); null when none does.
+ * (24 October 2026: Custody on a holding's page, /assets/holders/…); null when none does, or on a page the item leaves
+ * to another heading (`except`).
  */
-export function activeSubItem(item: Pick<NavItem, 'items'>, pathname: string): NavSubItem | null {
+export function activeSubItem(item: Pick<NavItem, 'items' | 'except'>, pathname: string): NavSubItem | null {
+  if (excepted(item, pathname)) return null;
   let best: NavSubItem | null = null;
   let matched = -1;
   for (const sub of item.items ?? []) {

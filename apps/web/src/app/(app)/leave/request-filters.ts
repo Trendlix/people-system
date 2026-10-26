@@ -1,3 +1,4 @@
+import { WFH_LABEL } from '@trendlix/shared';
 import { LEAVE_PATH } from '../../../components/nav';
 import { parseDate } from '../../../lib/format';
 import type { LeaveTypeView } from '../../../lib/types';
@@ -10,13 +11,21 @@ import type { RequestKind } from './permissions';
 // kind row (All · Leave · Permissions): choosing Permission is what the kind Permissions was. A link from before it
 // (?kind=permission) still opens the permissions. Then a From and a To (owner, 26 October 2026: "add date filter too (from
 // - to)"): the requests with a day between them (a leave ending on or after From and starting on or before To, a
-// permission on a day between), either alone too (?from=YYYY-MM-DD&to=YYYY-MM-DD). Pure code, tested; relative imports, as
-// vitest doesn't know the @/ paths.
+// permission on a day between), either alone too (?from=YYYY-MM-DD&to=YYYY-MM-DD). Work from home with them (owner, 26
+// October 2026: "YES move it to leaves", then "Show it with leave"): a Type of its own after Permission (?type=wfh), the
+// work from home requests listed among the leave and the permissions; a working day, never a leave type (it stays a work
+// from home request: no balance). Pure code, tested; relative imports, as vitest doesn't know the @/ paths.
 
 /** The Type filter's choice for permission requests. */
 export const PERMISSION_TYPE = 'permission';
 
-/** The filters in the address: one person, one type (a leave type's id, or "permission"), the first and last day (YYYY-MM-DD); null: any. */
+/** The Type filter's choice for work from home requests (26 October 2026): not a leave type, a working day. */
+export const WFH_TYPE = 'wfh';
+
+/** Which requests the list shows: the leave's and the permissions' kinds (permissions.ts), or the work from home requests. */
+export type ListKind = RequestKind | 'wfh';
+
+/** The filters in the address: one person, one type (a leave type's id, "permission" or "wfh"), the first and last day (YYYY-MM-DD); null: any. */
 export interface RequestFilters {
   employeeId: string | null;
   type: string | null;
@@ -37,7 +46,7 @@ function dayOf(v: string): string | null {
   return parseDate(v) || null;
 }
 
-/** The filters in the page's address; what isn't a person's id, a type's id or "permission", or a day, is ignored; From after To swapped. */
+/** The filters in the page's address; what isn't a person's id, a type's id, "permission" or "wfh", or a day, is ignored; From after To swapped. */
 export function readRequestFilters(query: Query): RequestFilters {
   const employee = one(query.employee);
   const type = one(query.type);
@@ -48,7 +57,7 @@ export function readRequestFilters(query: Query): RequestFilters {
   if (from && to && from > to) [from, to] = [to, from];
   return {
     employeeId: UUID.test(employee) ? employee : null,
-    type: type === PERMISSION_TYPE || UUID.test(type) ? type : legacy,
+    type: type === PERMISSION_TYPE || type === WFH_TYPE || UUID.test(type) ? type : legacy,
     from,
     to,
   };
@@ -57,11 +66,15 @@ export function readRequestFilters(query: Query): RequestFilters {
 /** Whether any filter is on. */
 export const hasRequestFilters = (f: RequestFilters) => f.employeeId !== null || f.type !== null || f.from !== null || f.to !== null;
 
-/** Which requests the type chooses: both without one, the permissions, or a leave type's leave. */
-export const kindOfFilters = (f: RequestFilters): RequestKind => (f.type === null ? 'all' : f.type === PERMISSION_TYPE ? 'permission' : 'leave');
+/** Which requests the type chooses: all three without one, the permissions, the work from home requests, or a leave type's leave. */
+export function kindOfFilters(f: RequestFilters): ListKind {
+  if (f.type === null) return 'all';
+  if (f.type === PERMISSION_TYPE) return 'permission';
+  return f.type === WFH_TYPE ? 'wfh' : 'leave';
+}
 
-/** The leave type to ask the API for (typeId); null for any, and for Permission. */
-export const leaveTypeOf = (f: RequestFilters): string | null => (f.type !== null && f.type !== PERMISSION_TYPE ? f.type : null);
+/** The leave type to ask the API for (typeId); null for any, and for Permission and Work from home. */
+export const leaveTypeOf = (f: RequestFilters): string | null => (f.type !== null && f.type !== PERMISSION_TYPE && f.type !== WFH_TYPE ? f.type : null);
 
 /**
  * The list's address for a status and the filters: "/leave?status=approved&employee=<id>&type=permission"; without a
@@ -78,12 +91,13 @@ export function requestFiltersHref(status: LeaveFilter | null, f: RequestFilters
   return qs ? `${LEAVE_PATH}?${qs}` : LEAVE_PATH;
 }
 
-/** The Type's choices: Any type, the leave types in their order (turned off ones marked), then Permission. */
+/** The Type's choices: Any type, the leave types in their order (turned off ones marked), then Permission and Work from home. */
 export function typeChoices(types: readonly Pick<LeaveTypeView, 'id' | 'nameEn' | 'active' | 'sortOrder'>[]): { value: string; label: string }[] {
   return [
     { value: '', label: 'All types' },
     ...[...types].sort((a, b) => a.sortOrder - b.sortOrder).map((t) => ({ value: t.id, label: t.active ? t.nameEn : `${t.nameEn} (off)` })),
     { value: PERMISSION_TYPE, label: 'Permission' },
+    { value: WFH_TYPE, label: WFH_LABEL },
   ];
 }
 

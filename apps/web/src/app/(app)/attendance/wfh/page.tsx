@@ -10,13 +10,14 @@ import type { EmployeeSummary } from '@/lib/types';
 import { getOrNull } from '../../approvals/data';
 import { Empty, Loading } from '../../organization/ui';
 import { StaffOnly } from '../../staff-only';
+import { NO_FILTERS, requestFiltersHref, WFH_TYPE } from '../../leave/request-filters';
 import { notLoaded } from '../not-loaded';
 import { loadWfhRequests } from './data';
 import { WfhTable } from './ui';
 import { emptyWfhText, hasWfhFilters, readWfhQuery, RECORD_WFH_PATH, recordsWfh, seesAllWfh, WFH_FILTERS, wfhDaysText, wfhListHref } from './wfh';
 import { WfhFiltersForm } from './wfh-filters-form';
 
-// Attendance → Work From Home (owner, 21 October 2026: "think about how should we handle the working from home in out
+// Requests → Work From Home (owner, 21 October 2026: "think about how should we handle the working from home in out
 // erp"; asked, "Manager, then HR", "its 2 days per month with a gap of 1 week between each record (Biweekly)", "A day
 // before"): for HR and the CEO, every work from home request and day, those waiting for them first (HR's stage; a
 // C-level person's for the CEO), by status (?status=), employee (?employee=), days (?from=&to=, in place of the month since
@@ -24,7 +25,9 @@ import { WfhFiltersForm } from './wfh-filters-form';
 // came from (?source=: on the system, or imported from Zoho People): who, the day, how it came (asked, recorded by HR,
 // imported) with a mark for a day recorded past the notice or the limits, where it stands, each opening its page with
 // the decision. HR records a day for someone with Record a WFH day. A manager decides their team's on My Team; an
-// employee asks from My Requests.
+// employee asks from My Requests. Under Attendance until it moved to the Leave area, after Leave Requests (owner, 26
+// October 2026: "YES move it to leaves", then "Show it with leave"), at the same address: Leave Requests lists these
+// requests too (its Type Work from home), and Record leave records a day.
 
 export const metadata: Metadata = { title: 'Work From Home · People System' };
 
@@ -91,7 +94,8 @@ export default function WfhListPage({ searchParams }: PageProps<'/attendance/wfh
           <p className="mt-1 max-w-3xl text-muted">
             Days employees work from home instead of the office: a working day, not leave. Asked a day before at the latest, at most the days a month
             Leave Setup gives, a week apart; decided by their direct manager (or lead), then HR, a C-level person&apos;s by the CEO. That day they check
-            in from home, without the office network. HR records a day for someone, past the limits too, with a reason.
+            in from home, without the office network. HR records a day for someone, past the limits too, with a reason. They are listed with leave
+            and permission on <Link href={requestFiltersHref('all', { ...NO_FILTERS, type: WFH_TYPE })}>Leave Requests</Link> too.
           </p>
         </div>
         <Suspense fallback={<Loading />}>

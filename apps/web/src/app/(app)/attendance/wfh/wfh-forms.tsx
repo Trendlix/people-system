@@ -135,9 +135,21 @@ export function NewWfhForm({
 
 /**
  * HR's record of a day for someone (owner's brief, 21 October 2026: past, the same day or over the limit, "with a warning
- * and a reason"): the day and the reason; as the day is chosen, what refuses it and what it would be recorded past.
+ * and a reason"): the day and the reason; as the day is chosen, what refuses it and what it would be recorded past. On
+ * Record leave (owner, 26 October 2026: "YES move it to leaves") with its Type first (`typeField`), Work from home chosen.
  */
-export function RecordWfhForm({ action, employee, cancelHref }: { action: Action; employee: { id: string; name: string }; cancelHref: string }) {
+export function RecordWfhForm({
+  action,
+  employee,
+  cancelHref,
+  typeField,
+}: {
+  action: Action;
+  employee: { id: string; name: string };
+  cancelHref: string;
+  /** A field shown first, sent with nothing: Record leave's types, Work from home chosen (26 October 2026). */
+  typeField?: React.ReactNode;
+}) {
   const [state, formAction, sending] = useActionState(action, {});
   const fid = useFieldIds();
   const [typed, setTyped] = useState<TypedWfh>(() => ({ date: valueOf(state, 'date'), reason: valueOf(state, 'reason') }));
@@ -195,6 +207,7 @@ export function RecordWfhForm({ action, employee, cancelHref }: { action: Action
     >
       <FormErrors errors={state.errors} />
       <input type="hidden" name="employeeId" value={employee.id} />
+      {typeField}
       {check && (
         <p className="rounded-lg bg-canvas px-4 py-3 text-sm tabular-nums">
           {employee.name}: {check.used} of {check.daysPerMonth} in that month.

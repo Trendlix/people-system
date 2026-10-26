@@ -31,9 +31,11 @@ import { weekdayOf } from '../../organization/holidays/holidays';
 // apart ("its 2 days per month with a gap of 1 week between each record (Biweekly)"; the limits in Leave Setup), by
 // someone expected at the office that day (Office, or Hybrid on its office days); decided by the approver in charge, then
 // HR ("Manager, then HR"), a C-level person's HR stage by the CEO; cancelled while it is being decided. HR records a day
-// for someone (any day, past the limits, with a reason and warnings), and sees every request under Attendance → Work
-// From Home. The rules are @trendlix/shared's (wfh.ts), which the API enforces; these helpers word what it sent, read the
-// forms and show the same checks live. Pure code, tested; relative imports, as vitest doesn't know the @/ paths.
+// for someone (any day, past the limits, with a reason and warnings), and sees every request under Requests → Work From
+// Home, in the Leave area since 26 October 2026 (owner: "YES move it to leaves", then "Show it with leave"; under
+// Attendance before, its address kept), and on Leave Requests with the leave. The rules are @trendlix/shared's (wfh.ts),
+// which the API enforces; these helpers word what it sent, read the forms and show the same checks live. Pure code,
+// tested; relative imports, as vitest doesn't know the @/ paths.
 
 type WithRoles = { roles: readonly Role[] };
 type Query = Record<string, string | string[] | undefined>;
@@ -47,7 +49,7 @@ export const WFH_REASON_MAX = 500;
 
 // ---------- the addresses ----------
 
-/** HR's and the CEO's list of every request and day, under Attendance. */
+/** HR's and the CEO's list of every request and day: under Requests after Leave Requests (26 October 2026), at its old address. */
 export const WFH_PATH = '/attendance/wfh';
 
 /** The employee's form (from My Requests → Work from home). */
@@ -69,7 +71,7 @@ export const wfhDoneHref = (id: string, done: WfhDone) => `${wfhHref(id)}?done=$
 /** Where the employee's own requests are listed: their part of My Requests. */
 export const MY_WFH_HREF = `${MY_REQUESTS}#my-wfh`;
 
-/** Who sees everyone's requests (Attendance → Work From Home): HR, who decides and records them, and the CEO. */
+/** Who sees everyone's requests (Requests → Work From Home): HR, who decides and records them, and the CEO. */
 export const seesAllWfh = (user: WithRoles) => hasRole(user, 'hr', 'ceo');
 
 /** Who records a day for someone: HR. */

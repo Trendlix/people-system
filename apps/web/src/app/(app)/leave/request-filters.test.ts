@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hasRequestFilters, kindOfFilters, leaveTypeOf, NO_FILTERS, NO_MATCH_TEXT, PERMISSION_TYPE, readRequestFilters, requestFiltersHref, typeChoices } from './request-filters';
+import { hasRequestFilters, kindOfFilters, leaveTypeOf, NO_FILTERS, NO_MATCH_TEXT, PERMISSION_TYPE, readRequestFilters, requestFiltersHref, typeChoices, WFH_TYPE } from './request-filters';
 import { leaveRequestsPath, leaveStepText, leaveDoneText } from './list';
 import { permissionsPath } from './permissions';
 
@@ -82,8 +82,22 @@ describe('the Type’s choices', () => {
       { value: 'b', label: 'Casual leave' },
       { value: 'c', label: 'Childcare leave (off)' },
       { value: 'permission', label: 'Permission' },
+      { value: 'wfh', label: 'Work from home' },
     ]);
-    expect(typeChoices([]).map((c) => c.value)).toEqual(['', 'permission']);
+    expect(typeChoices([]).map((c) => c.value)).toEqual(['', 'permission', 'wfh']);
+  });
+
+  it('end with Work from home beside Permission, read from the address and kept by the links (owner, 26 October 2026: "Show it with leave")', () => {
+    expect(readRequestFilters({ type: 'wfh' })).toEqual({ ...NO_FILTERS, type: WFH_TYPE });
+    expect(readRequestFilters({ type: 'WFH' })).toEqual(NO_FILTERS);
+    expect(readRequestFilters({ employee: ANA, type: 'wfh', from: '01/11/2026' })).toEqual({ employeeId: ANA, type: WFH_TYPE, from: '2026-11-01', to: null });
+    expect(hasRequestFilters({ ...NO_FILTERS, type: WFH_TYPE })).toBe(true);
+    // the work from home requests alone, and no leave type asked for
+    expect(kindOfFilters({ ...NO_FILTERS, type: WFH_TYPE })).toBe('wfh');
+    expect(leaveTypeOf({ ...NO_FILTERS, type: WFH_TYPE })).toBeNull();
+    expect(requestFiltersHref('waiting', { ...NO_FILTERS, employeeId: ANA, type: WFH_TYPE })).toBe(`/leave?status=waiting&employee=${ANA}&type=wfh`);
+    const values = typeChoices([{ id: ANNUAL, nameEn: 'Annual leave', active: true, sortOrder: 1 }]).map((c) => c.value);
+    expect(values.indexOf('wfh')).toBe(values.indexOf('permission') + 1);
   });
 
   it('an empty result says so', () => {

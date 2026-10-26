@@ -17,7 +17,7 @@ import { Empty, Loading } from '../organization/ui';
 import { notLoadedText } from '../payroll/load';
 import { canSeeLeaveReport, LEAVE_REPORT_HREF } from '../payroll/reports/leave/leave-report';
 import { loadCompensatoryCalendar } from '../attendance/compensatory/data';
-import { loadWfhCalendar } from '../attendance/wfh/data';
+import { loadWfhCalendar, loadWfhRequests } from '../attendance/wfh/data';
 import { loadOdCalendar } from '../attendance/official-duty/data';
 import { calendarDays, calendarPeople, monthRange, readDepartment, readMonth } from './calendar';
 import { importsLeave, LEAVE_IMPORT_PATH } from './import/import';
@@ -38,20 +38,11 @@ import {
   type LeaveFilter,
   type LeaveView,
 } from './list';
-import {
-  emptyRequestsText,
-  isPermission,
-  mergeRequests,
-  NEW_PERMISSION_PATH,
-  RECORD_PERMISSION_PATH,
-  recordsPermission,
-  requestHref,
-  requestListHref,
-  type RequestRow,
-} from './permissions';
+import { NEW_PERMISSION_PATH, RECORD_PERMISSION_PATH, recordsPermission } from './permissions';
 import { hasRequestFilters, kindOfFilters, leaveTypeOf, NO_FILTERS, NO_MATCH_TEXT, readRequestFilters, requestFiltersHref, typeChoices, type RequestFilters } from './request-filters';
 import { RequestFiltersForm } from './request-filters-form';
-import { LeaveProgress, LeaveStatusBadge, RequestWhen } from './ui';
+import { LeaveProgress, LeaveStatusBadge, RequestWhen, WfhProgress } from './ui';
+import { isWfh, listEmptyText, mergeLeaveList, rowHref, rowKind, wfhQueryOf, type LeaveListRow } from './wfh-rows';
 
 // Leave Requests, under Requests in the sidebar (owner, 18 October 2026: "if we will work on the attendance and leaves,
 // how will we build it?", leaves first; "can you apply the leaves according to the law?"): every employee's leave,
@@ -70,7 +61,10 @@ import { LeaveProgress, LeaveStatusBadge, RequestWhen } from './ui';
 // Employee and a Type filter beside the status (owner, 26 October 2026: "i need to filter either by employee or typ"; ?employee=
 // and ?type=, kept with the status by each link, with Clear filters): the Type holds the leave types and Permission, and
 // replaces the kind row (All · Leave · Permissions). Import leaves (owner, 21 October 2026:
-// "how to import bulk leaves?") opens Import Leave for HR and the CEO: the template or Zoho People's leave export.
+// "how to import bulk leaves?") opens Import Leave for HR and the CEO: the template or Zoho People's leave export. Work
+// from home shown with leave (owner, 26 October 2026: "YES move it to leaves", then "Show it with leave"): a working day,
+// never a leave type, its requests listed with the leave and the permissions (All types, or the Type Work from home), by
+// the same status, Employee and From–To, each opening its own page; Record leave records one too.
 
 export const metadata: Metadata = { title: 'Leave Requests · People System' };
 
@@ -136,9 +130,12 @@ function Views({ view, month }: { view: LeaveView; month: string }) {
   );
 }
 
-function RequestsTable({ requests }: { requests: RequestRow[] }) {
+/** What a row is, inside a sentence: "leave", "permission", "work from home day". */
+const ROW_WHAT = { leave: 'leave', permission: 'permission', wfh: 'work from home day' } as const;
+
+function RequestsTable({ requests }: { requests: LeaveListRow[] }) {
   const groups = groupByPlace(requests, (r) => placeOfEmployee(r.employee));
-  const heading = (rows: RequestRow[]) => ({ count: askerCount(rows), note: requestsLabel(rows.length) });
+  const heading = (rows: LeaveListRow[]) => ({ count: askerCount(rows), note: requestsLabel(rows.length) });
   return (
     <div className="card overflow-x-auto">
       <table className="table">
@@ -161,18 +158,16 @@ function RequestsTable({ requests }: { requests: RequestRow[] }) {
               <Fragment key={t.team ?? ''}>
                 {t.team !== null && <GroupHeading level="team" name={t.team} span={SPAN} {...heading(t.rows)} />}
                 {t.rows.map((r) => (
-                  <tr key={`${isPermission(r) ? 'permission' : 'leave'}:${r.id}`} className={`align-top ${r.status === 'cancelled' ? 'text-muted' : ''}`}>
+                  <tr key={`${rowKind(r)}:${r.id}`} className={`align-top ${r.status === 'cancelled' ? 'text-muted' : ''}`}>
                     <td className="min-w-44">
                       <span className="font-semibold">{r.employee.fullNameEn}</span>
-                      {r.confidential && (
-                        <CLevelBadge className="ml-1.5" title={`The CEO decides HR’s stage of a C-level person’s ${isPermission(r) ? 'permission' : 'leave'}.`} />
-                      )}
+                      {r.confidential && <CLevelBadge className="ml-1.5" title={`The CEO decides HR’s stage of a C-level person’s ${ROW_WHAT[rowKind(r)]}.`} />}
                       <div className="text-xs text-muted">
-                        {r.recordedByHr ? 'Recorded by HR' : 'Sent'} {formatDateTime(r.createdAt)}
+                        {isWfh(r) && r.source === 'zoho' ? 'Imported' : r.recordedByHr ? 'Recorded by HR' : 'Sent'} {formatDateTime(r.createdAt)}
                       </div>
                     </td>
                     <td className="max-w-64 min-w-40">
-                      <Link href={requestHref(r)} className="font-medium">
+                      <Link href={rowHref(r)} className="font-medium">
                         {r.type.nameEn}
                         <span className="sr-only"> for {r.employee.fullNameEn}</span>
                       </Link>
@@ -185,10 +180,10 @@ function RequestsTable({ requests }: { requests: RequestRow[] }) {
                       <LeaveStatusBadge status={r.status} confidential={r.confidential} />
                     </td>
                     <td className="min-w-56 text-sm">
-                      <LeaveProgress request={r} />
+                      {isWfh(r) ? <WfhProgress request={r} /> : <LeaveProgress request={r} />}
                     </td>
                     <td className="text-right">
-                      <Link href={requestHref(r)} className={r.waitingForYou ? 'btn btn-primary min-h-9 px-3' : 'text-sm font-semibold'}>
+                      <Link href={rowHref(r)} className={r.waitingForYou ? 'btn btn-primary min-h-9 px-3' : 'text-sm font-semibold'}>
                         {r.waitingForYou ? 'Decide' : 'Open'}
                         <span className="sr-only">
                           {' '}
@@ -211,10 +206,10 @@ function RequestsTable({ requests }: { requests: RequestRow[] }) {
 const NONE: Loaded<never[]> = { kind: 'ok', value: [] };
 
 /**
- * The leave and the permission requests of the status, the employee and the type chosen, read together and merged,
- * newest first. An API from before permission (404) lists the leave alone; a list that couldn't be read is said, the
- * other still shown. The people to choose from are those the user sees (the directory without the C-level cards they can't
- * open), the types the leave types and Permission.
+ * The leave, the permission and the work from home requests of the status, the employee and the type chosen, read
+ * together and merged, newest first. An API from before permission or work from home (404) lists the others alone; a list
+ * that couldn't be read is said, the others still shown. The people to choose from are those the user sees (the
+ * directory without the C-level cards they can't open), the types the leave types, Permission and Work from home.
  */
 async function RequestsList({ query, user }: { query: Query; user: Awaited<ReturnType<typeof getCurrentUser>> }) {
   const filter = readLeaveFilter(query, user);
@@ -234,16 +229,20 @@ async function RequestsList({ query, user }: { query: Query; user: Awaited<Retur
     to: asked.to,
   };
   const kind = kindOfFilters(filters);
-  const [leave, permissions] = await Promise.all([
-    kind === 'permission' ? NONE : loadLeaveRequests(filter, filters.employeeId, leaveTypeOf(filters), filters),
-    kind === 'leave' ? NONE : loadPermissions(filter, filters.employeeId, filters),
+  const [leave, permissions, wfh] = await Promise.all([
+    kind === 'all' || kind === 'leave' ? loadLeaveRequests(filter, filters.employeeId, leaveTypeOf(filters), filters) : NONE,
+    kind === 'all' || kind === 'permission' ? loadPermissions(filter, filters.employeeId, filters) : NONE,
+    // the work from home requests (owner, 26 October 2026: "Show it with leave"), by the same status, person and days
+    kind === 'all' || kind === 'wfh' ? loadWfhRequests(wfhQueryOf(filter, filters.employeeId, filters)) : NONE,
   ]);
-  const rows = mergeRequests(leave.kind === 'ok' ? leave.value : [], permissions.kind === 'ok' ? permissions.value : []);
-  // a list not read: said in the list's place when it is the only one asked for, else above the other
+  const rows = mergeLeaveList(leave.kind === 'ok' ? leave.value : [], permissions.kind === 'ok' ? permissions.value : [], wfh.kind === 'ok' ? wfh.value : []);
+  // a list not read: said in the list's place when it is the only one asked for, else above the others
   const problems = [
     leave.kind === 'failed' && notLoadedText(leave, 'leave requests'),
     permissions.kind === 'failed' && notLoadedText(permissions, 'permission requests'),
+    wfh.kind === 'failed' && notLoadedText(wfh, 'work from home requests'),
     kind === 'permission' && permissions.kind === 'unavailable' && 'Not available yet: the server does not have permission requests yet.',
+    kind === 'wfh' && wfh.kind === 'unavailable' && 'Not available yet: the server does not have work from home requests yet.',
   ].filter((p): p is string => typeof p === 'string');
   return (
     <div className="space-y-4">
@@ -258,11 +257,11 @@ async function RequestsList({ query, user }: { query: Query; user: Awaited<Retur
           {rows.length === 0 ? (
             problems.length === 0 && (
               <Empty>
-                {hasRequestFilters(filters) ? NO_MATCH_TEXT : emptyRequestsText(filter, kind)}{' '}
+                {hasRequestFilters(filters) ? NO_MATCH_TEXT : listEmptyText(filter, kind)}{' '}
                 {hasRequestFilters(filters) ? (
                   <Link href={requestFiltersHref(filter, NO_FILTERS)}>Clear filters</Link>
                 ) : (
-                  filter !== 'all' && <Link href={requestListHref('all', kind)}>Show all</Link>
+                  filter !== 'all' && <Link href={requestFiltersHref('all', NO_FILTERS)}>Show all</Link>
                 )}
               </Empty>
             )
@@ -381,7 +380,8 @@ export default function LeaveRequestsPage({ searchParams }: PageProps<'/leave'>)
         hours away from a working day, within the hours a day and a month set there. The direct manager decides a request first (for someone without
         one, their team lead, else their department&apos;s head), then HR: each approves it or rejects it with a comment, and every step is logged
         on the request; a C-level person&apos;s goes to the CEO instead of HR. HR records leave and permission on an employee&apos;s behalf,
-        approved at once. The calendar shows who is off each day of a month, and the hours of permission.
+        approved at once. Work from home days are listed too: a working day from home, not leave, with no balance; HR records one with Record
+        leave. The calendar shows who is off each day of a month, the hours of permission and the work from home days.
       </p>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>

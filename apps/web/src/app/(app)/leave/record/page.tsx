@@ -10,12 +10,13 @@ import { todayInCairo } from '../../employees/ui';
 import { BackLink, Empty, Loading } from '../../organization/ui';
 import { notLoadedText } from '../../payroll/load';
 import { readEmployee } from '../../raise-requests/list';
+import { recordWfh } from '../../attendance/wfh/actions';
 import { recordLeave } from '../actions';
 import { loadEmployeeLeave, loadHolidaysOf, loadLeaveTypes } from '../data';
-import { NewLeaveForm } from '../leave-forms';
 import { recordsLeave } from '../list';
 import { mayGoOverBalance, offeredTypes, personFacts } from '../request';
 import { LeaveEmployeePicker } from './employee-picker';
+import { RecordLeaveForm } from './record-leave-form';
 import { withCode } from '@/lib/hidden';
 
 // Record leave, under Requests → Leave Requests (owner, 18 October 2026: HR records leave on an employee's behalf, e.g.
@@ -23,7 +24,9 @@ import { withCode } from '@/lib/hidden';
 // a profile), then the leave form as the employee has it, with their shift, balance and the holidays; it is recorded
 // approved at once and logged as recorded by HR, with no notice needed. The API checks the type's rules, the balance and
 // an overlap again. A C-level person HR sees only the card of isn't offered (owner, 19 October 2026: "make C level
-// Employees details not visible to HR"): the API refuses their leave to HR; the CEO decides theirs.
+// Employees details not visible to HR"): the API refuses their leave to HR; the CEO decides theirs. The types end with
+// Work from home (owner, 26 October 2026: "YES move it to leaves", then "Show it with leave"): not a leave type, a working
+// day; chosen, the form is HR's record of a work from home day (the day and a reason), one day at a time, opening its page.
 
 export const metadata: Metadata = { title: 'Record Leave · People System' };
 
@@ -34,7 +37,8 @@ function Heading() {
       <h1 className="text-2xl font-semibold">Record Leave</h1>
       <p className="text-muted">
         Leave taken or to be taken by an employee, recorded by HR: approved at once, logged as recorded by HR, with no notice needed. It counts in
-        their balance and in the month&apos;s payroll.
+        their balance and in the month&apos;s payroll. Work from home, last among the types, is recorded here too: a working day, not leave, one day
+        at a time, with a reason.
       </p>
     </div>
   );
@@ -72,17 +76,21 @@ async function Record({ searchParams }: { searchParams: PageProps<'/leave/record
     const facts = personFacts(profile);
     const offered = offeredTypes(types.value, facts.gender);
     form = offered.length ? (
-      <NewLeaveForm
+      <RecordLeaveForm
         // a new form for each employee: nothing typed for one stays for the next
         key={chosen}
-        action={recordLeave}
-        types={offered}
-        today={today}
-        person={{ employeeId: chosen, ...facts }}
-        initial={{ year, balances: leave.kind === 'ok' ? leave.value : null, holidays: holidays.kind === 'ok' ? holidays.value : [] }}
-        cancelHref={LEAVE_PATH}
-        // a Super Admin's record may go beyond the balance, after a warning; HR's is refused (26 October 2026)
-        allowNegative={mayGoOverBalance(user)}
+        leave={{
+          action: recordLeave,
+          types: offered,
+          today,
+          person: { employeeId: chosen, ...facts },
+          initial: { year, balances: leave.kind === 'ok' ? leave.value : null, holidays: holidays.kind === 'ok' ? holidays.value : [] },
+          cancelHref: LEAVE_PATH,
+          // a Super Admin's record may go beyond the balance, after a warning; HR's is refused (26 October 2026)
+          allowNegative: mayGoOverBalance(user),
+        }}
+        // Work from home, last among the types (26 October 2026): HR's record of a work from home day, never their own
+        wfh={{ action: recordWfh, employee: { id: chosen, name: facts.name }, own: chosen === user.employeeId }}
       />
     ) : (
       <Empty>No type of leave is on. Turn one on in Organization → Leave.</Empty>

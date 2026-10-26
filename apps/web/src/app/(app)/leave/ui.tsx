@@ -3,9 +3,12 @@ import type { LeaveStatus, LeaveStepKind } from '@trendlix/shared';
 import { asLeadNote } from '@/lib/department-leads';
 import { formatDateTime } from '@/lib/format';
 import type { LeaveBalances, LeaveRequestStep, LeaveRequestView, LeaveTypeView, PermissionRequestView, RequestApprover } from '@/lib/types';
+import type { WfhRequestView } from '@/lib/wfh-types';
+import { wfhDayText, wfhProgressText } from '../attendance/wfh/wfh';
 import { annualFigures, availableText, typeLeftText } from './balance';
 import { daysText, leaveProgressText, leaveStatusLabel, leaveStepText, leaveStepTone, periodText, standingInText, STATUS_BADGE } from './list';
 import { isPermission, permissionDayText, permissionHoursLine, permissionWhenText, requestHref, type RequestRow } from './permissions';
+import { isWfh, WFH_WHEN_NOTE, type LeaveListRow } from './wfh-rows';
 
 // Parts of a leave request (owner, 18 October 2026: "can you apply the leaves according to the law?") shown on its page,
 // on Requests → Leave Requests, on My Requests, on My Team, on the dashboard and on a profile, worded as the
@@ -14,20 +17,32 @@ import { isPermission, permissionDayText, permissionHoursLine, permissionWhenTex
 // the balance card: the annual balance and what is left of the other types. A permission request (owner, 19 October
 // 2026: "In the system, like leave") is shown with the same parts where they fit: its status, where it stands, its log,
 // and a row of the tables of those waiting for a direct manager, its day and hours in place of the days; the employee's
-// own permissions have a table of their own.
+// own permissions have a table of their own. A work from home request (owner, 26 October 2026: "Show it with leave") is a
+// row of Leave Requests too: its day, a working day, and where it stands.
 
 /** With the manager, With HR, Approved, Rejected or Cancelled; With the CEO for a C-level person's with HR (`confidential`). */
 export function LeaveStatusBadge({ status, confidential }: { status: LeaveStatus; confidential?: boolean }) {
   return <span className={`badge ${STATUS_BADGE[status] ?? 'bg-line-soft text-muted'}`}>{leaveStatusLabel(status, confidential)}</span>;
 }
 
-/** Where it stands, with the comment of a rejection or a cancellation: of a leave or a permission request. */
+/** Where it stands, with the comment of a rejection or a cancellation: of a leave or a permission request (WfhProgress: a work from home one's). */
 export function LeaveProgress({
   request,
 }: {
   request: Pick<LeaveRequestView, 'status' | 'manager' | 'rejectedStage' | 'rejectReason' | 'recordedByHr' | 'confidential' | 'steps'>;
 }) {
   const p = leaveProgressText(request);
+  return (
+    <>
+      {p.text}
+      {p.reason && <span className="mt-0.5 block whitespace-pre-line text-muted">“{p.reason}”</span>}
+    </>
+  );
+}
+
+/** Where a work from home request stands, as a leave request's, a day imported from Zoho People said so (26 October 2026). */
+export function WfhProgress({ request }: { request: WfhRequestView }) {
+  const p = wfhProgressText(request);
   return (
     <>
       {p.text}
@@ -103,9 +118,17 @@ function TypeLink({ request: r, who = false }: { request: RequestRow; who?: bool
 
 /**
  * When, and how long: a leave's days ("05/10/2026 – 08/10/2026", "4 days"); a permission's day and its hours with the
- * times ("Tuesday 03/11/2026", "2 hours (5:00 PM – 7:00 PM)").
+ * times ("Tuesday 03/11/2026", "2 hours (5:00 PM – 7:00 PM)"); a work from home day, a working day (26 October 2026).
  */
-export function RequestWhen({ request: r }: { request: RequestRow }) {
+export function RequestWhen({ request: r }: { request: LeaveListRow }) {
+  if (isWfh(r)) {
+    return (
+      <>
+        <span className="whitespace-nowrap tabular-nums">{wfhDayText(r)}</span>
+        <span className="block text-xs text-muted">{WFH_WHEN_NOTE}</span>
+      </>
+    );
+  }
   return (
     <>
       <span className="whitespace-nowrap tabular-nums">{isPermission(r) ? permissionDayText(r) : periodText(r)}</span>
