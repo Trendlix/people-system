@@ -1,11 +1,12 @@
 import { ENDING_STATUS_LABELS, type EndingStatus } from '@trendlix/shared';
 import { formatDate, formatDateTime } from '@/lib/format';
 import type { Ending } from '@/lib/types';
-import { completeEnding, decideEnding, withdrawEnding } from '../../contract-actions';
+import { completeEnding, decideEnding, setEndingLastDay, withdrawEnding } from '../../contract-actions';
 import { art154Text } from '../../employment-law';
 import { FieldGrid, ProfileSection, type GridField } from '../../ui';
 import { ActionButton } from '../contracts/contract-buttons';
-import { EndingDecision, WithdrawEnding } from './ending-buttons';
+import { ChangeLastDay, EndingDecision, WithdrawEnding } from './ending-buttons';
+import { lastDayText } from './rules';
 
 // An ending on the Employment tab: how and when the employment ends, where its approval stands, and what is left to do.
 // HR recorded it (which counts as HR's approval); the CEO approves or rejects it here; HR may withdraw it until it is
@@ -39,7 +40,11 @@ function endingFields(x: Ending): GridField[] {
       value: x.initiator === 'employee' ? 'The employee' : 'The company',
     },
     { key: 'ending-notice', label: 'Notice given on', value: formatDate(x.noticeGivenOn), note: x.payInLieu && 'Paid instead of worked' },
-    { key: 'ending-last-day', label: 'Last working day', value: formatDate(x.lastWorkingDay) },
+    {
+      key: 'ending-last-day',
+      label: x.lastDayAgreed ? 'Last working day (agreed)' : 'Last working day',
+      value: lastDayText(x, formatDate),
+    },
     !!x.decisionDueOn && {
       key: 'ending-decision-due',
       label: 'Decision due',
@@ -68,6 +73,7 @@ export function EndingPanel({
   ending: x,
   employeeName,
   canEdit,
+  canSetLastDay = false,
   isCeo,
   today,
 }: {
@@ -75,6 +81,8 @@ export function EndingPanel({
   employeeName: string;
   /** HR: withdraws and completes. */
   canEdit: boolean;
+  /** HR or an Admin (never a developer): agrees, changes or clears the last working day until the ending is completed. */
+  canSetLastDay?: boolean;
   /** The CEO: approves or rejects. */
   isCeo: boolean;
   /** YYYY-MM-DD in Cairo. */
@@ -86,11 +94,16 @@ export function EndingPanel({
   const decides = x.status === 'pending_ceo' && isCeo;
   const completes = x.status === 'approved' && canEdit;
   const withdraws = open && canEdit;
+  const setsLastDay = open && canSetLastDay;
 
   return (
     <ProfileSection
       title="Ending"
-      note={x.status === 'completed' ? `Ended ${formatDate(x.lastWorkingDay)}` : `Last working day ${formatDate(x.lastWorkingDay)}`}
+      note={
+        x.status === 'completed'
+          ? `Ended ${formatDate(x.lastWorkingDay)}`
+          : `Last working day ${formatDate(x.lastWorkingDay)}${x.lastDayAgreed ? ' (agreed)' : ''}`
+      }
     >
       <div className="space-y-3">
         <FieldGrid fields={endingFields(x)} />
@@ -100,7 +113,7 @@ export function EndingPanel({
           <p className="text-sm text-muted">Approved. HR completes it on or after the last working day, {formatDate(x.lastWorkingDay)}.</p>
         )}
 
-        {(decides || completes || withdraws) && (
+        {(decides || completes || withdraws || setsLastDay) && (
           <div className="flex flex-wrap items-start gap-3">
             {decides && <EndingDecision approve={decideEnding.bind(null, x.id, 'approve')} reject={decideEnding.bind(null, x.id, 'reject')} name={name} />}
             {completes && (
@@ -114,6 +127,15 @@ export function EndingPanel({
               >
                 Complete<span className="sr-only"> {name}</span>
               </ActionButton>
+            )}
+            {setsLastDay && (
+              <ChangeLastDay
+                action={setEndingLastDay.bind(null, x.id)}
+                name={name}
+                agreed={Boolean(x.lastDayAgreed)}
+                lastWorkingDay={x.lastWorkingDay}
+                approved={x.status === 'approved'}
+              />
             )}
             {withdraws && <WithdrawEnding action={withdrawEnding.bind(null, x.id)} name={name} />}
           </div>

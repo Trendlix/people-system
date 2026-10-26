@@ -1545,7 +1545,11 @@ model EmploymentEnding {
   initiator       String? // employee or company; empty for death and disability
   noticeGivenOn   DateTime            @map("notice_given_on") @db.Date // the day the notice was received, or the event date
   payInLieu       Boolean             @default(false) @map("pay_in_lieu")
-  lastWorkingDay  DateTime            @map("last_working_day") @db.Date // worked out from the rule's notice
+  lastWorkingDay  DateTime            @map("last_working_day") @db.Date // the notice's end, or the agreed day when lastDayAgreed
+  // the last working day worked out from the rule's notice, kept beside an agreed one (owner, 26 October 2026: "let me
+  // add agreed on last working date only by admin and HR")
+  noticeEndsOn    DateTime            @map("notice_ends_on") @db.Date
+  lastDayAgreed   Boolean             @default(false) @map("last_day_agreed") // HR or an Admin agreed lastWorkingDay with the employee
   // resignation only: certified at the labour office (Decree 187/2025); the company decides within 10 days
   certifiedOffice String?             @map("certified_office")
   certifiedSerial String?             @map("certified_serial")

@@ -60,7 +60,7 @@ export function clearanceFormMarkup(c: OffboardingCaseView, brand: ClearanceBran
     `<dt>Job title</dt><dd>${escape(c.jobTitle ?? '—')}</dd>` +
     `<dt>Department</dt><dd>${escape(c.department ?? '—')}</dd>` +
     `<dt>Joined</dt><dd>${escape(formatDate(c.joinDate))}</dd>` +
-    `<dt>Last working day</dt><dd>${escape(c.lastWorkingDay ? formatDate(c.lastWorkingDay) : '—')}</dd>` +
+    `<dt>Last working day</dt><dd>${escape(c.lastWorkingDay ? formatDate(c.lastWorkingDay) : '—')}${c.lastDayAgreed ? ' (agreed)' : ''}</dd>` +
     (reason ? `<dt>Reason</dt><dd>${escape(reason)}</dd>` : '') +
     `</dl>`;
   const rows = c.items

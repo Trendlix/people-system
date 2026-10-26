@@ -14,6 +14,7 @@ import type { HomeLocationView } from '@/lib/home-location-types';
 import type { ChangeRequest, EndingSummary, SessionUser } from '@/lib/types';
 import { ChangeRequestCard } from '../employees/[id]/change-request/request-parts';
 import { art154Text } from '../employees/employment-law';
+import { lastDayText } from '../employees/[id]/ending/rules';
 import { profileHref } from '../employees/ui';
 import { INITIATOR_LABELS } from '../organization/contracts/labels';
 import { Empty, Loading } from '../organization/ui';
@@ -125,8 +126,8 @@ function EndingCard({ ending: e, decides }: { ending: EndingSummary; decides: bo
         {/* no one starts a death or disability ending */}
         <Item label="Started by">{e.initiator ? (INITIATOR_LABELS[e.initiator] ?? e.initiator) : none}</Item>
         <Item label="Notice given on">{e.noticeGivenOn ? formatDate(e.noticeGivenOn) : <span className="text-muted">No notice</span>}</Item>
-        <Item label="Last working day">
-          {e.lastWorkingDay ? <span className="font-medium">{formatDate(e.lastWorkingDay)}</span> : <Hidden />}
+        <Item label={e.lastDayAgreed ? 'Last working day (agreed)' : 'Last working day'}>
+          {e.lastWorkingDay ? <span className="font-medium">{lastDayText({ ...e, lastWorkingDay: e.lastWorkingDay }, formatDate)}</span> : <Hidden />}
         </Item>
         <Item label="Pay in lieu">{e.payInLieu ? 'Yes: the notice is paid, not worked' : 'No'}</Item>
         {e.reason && (
@@ -161,7 +162,7 @@ function EndingCard({ ending: e, decides }: { ending: EndingSummary; decides: bo
       {decides && (
         <DecisionForm
           action={decideEnding.bind(null, e.id)}
-          confirmApprove={`Approve the end of ${e.employee.fullNameEn}'s employment?${e.lastWorkingDay ? ` The last working day is ${formatDate(e.lastWorkingDay)}.` : ''}`}
+          confirmApprove={`Approve the end of ${e.employee.fullNameEn}'s employment?${e.lastWorkingDay ? ` The last working day is ${formatDate(e.lastWorkingDay)}${e.lastDayAgreed ? ' (agreed)' : ''}.` : ''}`}
         />
       )}
     </li>

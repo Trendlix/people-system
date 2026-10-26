@@ -103,6 +103,7 @@ async function Cases({ searchParams }: { searchParams: PageProps<'/offboarding'>
                   </td>
                   <td className="whitespace-nowrap tabular-nums">
                     {c.lastWorkingDay ? formatDate(c.lastWorkingDay) : <span className="text-muted">—</span>}
+                    {c.lastDayAgreed && <div className="text-xs text-muted">Agreed</div>}
                     {c.endReason && <div className="text-xs text-muted">{END_REASON_LABELS[c.endReason as EndReason] ?? c.endReason}</div>}
                   </td>
                   <td className="whitespace-nowrap tabular-nums">{progressText(c.progress)}</td>

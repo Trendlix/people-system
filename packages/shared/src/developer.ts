@@ -1116,6 +1116,7 @@ export const DEVELOPER_JOB_DATE_FIELDS: ReadonlySet<string> = new Set([
   'hiredAt',
   'probationEnd',
   'lastWorkingDay',
+  'noticeEndsOn',
   'endingOn',
   'leftOn',
   'contractStart',

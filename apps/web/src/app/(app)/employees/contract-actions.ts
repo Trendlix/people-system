@@ -159,6 +159,8 @@ export async function startEnding(employeeId: string, employmentId: string, _pre
     ...(initiator && { initiator }),
     noticeGivenOn,
     payInLieu: fd.get('payInLieu') === 'yes',
+    // HR's agreed last working day, empty to use the notice's (26 October 2026)
+    ...(fd.has('agreedLastWorkingDay') && { agreedLastWorkingDay: dateFrom(fd, 'agreedLastWorkingDay', 'agreed last working day', errors) }),
     ...(resignation && {
       certifiedOffice: text(fd, 'certifiedOffice'),
       certifiedSerial: text(fd, 'certifiedSerial'),
@@ -168,6 +170,18 @@ export async function startEnding(employeeId: string, employmentId: string, _pre
     note: text(fd, 'note'),
   };
   return save(employeeId, fd, errors, () => apiSend('POST', `/employees/${employeeId}/employments/${employmentId}/endings`, body));
+}
+
+/**
+ * HR or an Admin sets, changes or clears the agreed last working day of an ending not yet completed (empty clears it).
+ * An approved ending goes back to the CEO, with the note saying why.
+ */
+export async function setEndingLastDay(endingId: string, _prev: FormState, fd: FormData): Promise<FormState> {
+  const errors: string[] = [];
+  const agreedLastWorkingDay = dateFrom(fd, 'agreedLastWorkingDay', 'agreed last working day', errors);
+  if (errors.length) return { errors, values: submitted(fd) };
+  const note = text(fd, 'note');
+  return act(() => apiSend('PATCH', `/endings/${endingId}/last-day`, { agreedLastWorkingDay, ...(note && { note }) }), 'Saved.', fd);
 }
 
 /** The CEO approves an ending (with an optional note) or rejects it (with a note saying why). */

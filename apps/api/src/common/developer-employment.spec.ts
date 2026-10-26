@@ -314,6 +314,8 @@ describe('contracts, employments, endings and raises: no dates, wherever they ar
       status: 'pending_ceo',
       noticeGivenOn: '2026-10-01',
       lastWorkingDay: '2026-12-31',
+      noticeEndsOn: '2027-01-26', // beside an agreed last working day (26 October 2026)
+      lastDayAgreed: true,
       certifiedOn: '2026-10-02',
       decisionDueOn: '2026-10-08',
       hrApprovedAt: '2026-10-03T09:00:00.000Z',
@@ -322,7 +324,7 @@ describe('contracts, employments, endings and raises: no dates, wherever they ar
       employmentId: 'e',
     };
     expect(hideJobForDeveloper([ending], '/api/endings')).toEqual([
-      { ...ending, noticeGivenOn: null, lastWorkingDay: null, certifiedOn: null, decisionDueOn: null, deadlines: { finalDuesBy: null, labourOfficeFilingBy: null } },
+      { ...ending, noticeGivenOn: null, lastWorkingDay: null, noticeEndsOn: null, certifiedOn: null, decisionDueOn: null, deadlines: { finalDuesBy: null, labourOfficeFilingBy: null } },
     ]);
   });
 

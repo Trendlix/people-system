@@ -1089,6 +1089,9 @@ export interface EndingSummary {
   payInLieu: boolean;
   /** Null for a developer (23 October 2026: a person's employment dates are hidden from them). */
   lastWorkingDay: string | null;
+  /** The notice's own end, beside an agreed last working day (as on `Ending`). */
+  noticeEndsOn?: string | null;
+  lastDayAgreed?: boolean;
   reason: string | null;
   note: string | null;
   status: EndingStatus;
@@ -1284,7 +1287,15 @@ export interface Ending {
   noticeGivenOn: string | null;
   /** The notice is paid instead of worked. */
   payInLieu: boolean;
+  /** The day the ending runs to: the agreed one when `lastDayAgreed`, else the notice's end. */
   lastWorkingDay: string;
+  /**
+   * The last working day worked out from the notice, kept beside an agreed one (owner, 26 October 2026: "let me add
+   * agreed on last working date only by admin and HR"); null for a developer. Left out by an API from before it.
+   */
+  noticeEndsOn?: string | null;
+  /** HR or an Admin agreed `lastWorkingDay` with the employee. Left out by an API from before it. */
+  lastDayAgreed?: boolean;
   /** A resignation's certification at the labour office (Decree 187/2025). */
   certifiedOffice: string | null;
   certifiedSerial: string | null;

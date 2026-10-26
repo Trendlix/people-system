@@ -7,7 +7,7 @@ import { DECIDES_NOTE, leadRows } from '@/lib/department-leads';
 import { departmentName } from '@/lib/departments';
 import { formatDate } from '@/lib/format';
 import { employmentHidden, isHidden, joinShown, labelOf } from '@/lib/hidden';
-import { canDelete } from '@/lib/roles';
+import { canDelete, hasRole } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import type { Contract, EmployeeProfile, Employment, Grade, SessionUser } from '@/lib/types';
 import { canSeePayroll } from '../../payroll/list';
@@ -389,6 +389,8 @@ async function DetailsSubTab({
   const rank = e?.grade?.rank;
   const topGrade = rank !== undefined && (await apiGet<Grade[]>('/grades')).every((g) => g.rank <= rank);
   const isCeo = user.roles.includes('ceo');
+  // HR or an Admin (a Super Admin counts as one) agree the last working day; never a developer, and the CEO only sees it
+  const canSetLastDay = hasRole(user, 'hr', 'admin') && !user.developer;
   const today = todayInCairo();
   const ending = e && endingInProgress(e) ? e.ending : null;
   // how the last employment ended through the approvals, with its deadlines
@@ -402,7 +404,7 @@ async function DetailsSubTab({
         </p>
       )}
       {e && <ProbationBanner employee={p} employment={e} today={today} endingInProgress={Boolean(ending)} />}
-      {ending && <EndingPanel ending={ending} employeeName={p.fullNameEn} canEdit={p.access.edit} isCeo={isCeo} today={today} />}
+      {ending && <EndingPanel ending={ending} employeeName={p.fullNameEn} canEdit={p.access.edit} canSetLastDay={canSetLastDay} isCeo={isCeo} today={today} />}
       {e ? (
         <>
           <ProfileSection

@@ -8,7 +8,8 @@ import type { Prisma } from '../generated/prisma/client.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
 import { OffboardingService } from '../offboarding/offboarding.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import type { CreateEndingDto, EndingNoteDto, RejectEndingDto } from './contracts.dto.js';
+import { agreedLastDayProblem } from './agreed-last-day.js';
+import type { AgreedLastDayDto, CreateEndingDto, EndingNoteDto, RejectEndingDto } from './contracts.dto.js';
 import { EndingRulesService } from './ending-rules.service.js';
 import { noticeEnds } from './notice.js';
 import { seesSalary } from '../employees/access.js';
@@ -153,6 +154,16 @@ export class EndingsService {
       lastWorkingDay = givenOn > end ? givenOn : end;
     }
 
+    // the last day HR agreed with the employee replaces the worked-out one; that one is kept as noticeEndsOn (owner, 26
+    // October 2026)
+    const noticeEndsOn = lastWorkingDay;
+    const agreed = dto.agreedLastWorkingDay ?? null;
+    if (agreed) {
+      const problem = agreedLastDayProblem({ agreed, noticeGivenOn: givenOn, employmentEnd: null, payInLieu });
+      if (problem) throw new BadRequestException(problem);
+      lastWorkingDay = agreed;
+    }
+
     const row = await this.prisma.employmentEnding.create({
       data: {
         employmentId,
@@ -161,6 +172,8 @@ export class EndingsService {
         noticeGivenOn: toDateOnly(givenOn),
         payInLieu,
         lastWorkingDay: toDateOnly(lastWorkingDay),
+        noticeEndsOn: toDateOnly(noticeEndsOn),
+        lastDayAgreed: !!agreed,
         ...certification,
         certifiedOn: certification.certifiedOn ? toDateOnly(certification.certifiedOn) : null,
         decisionDueOn: certification.decisionDueOn ? toDateOnly(certification.decisionDueOn) : null,
@@ -177,7 +190,7 @@ export class EndingsService {
       action: 'create',
       entityType: ENTITY,
       entityId: row.id,
-      diff: { employeeId, employmentId, ruleKey: rule.key, initiator, noticeGivenOn: givenOn, payInLieu, lastWorkingDay, status: 'pending_ceo', ...certification },
+      diff: { employeeId, employmentId, ruleKey: rule.key, initiator, noticeGivenOn: givenOn, payInLieu, lastWorkingDay, noticeEndsOn, lastDayAgreed: !!agreed, status: 'pending_ceo', ...certification },
     });
     return endingView(row, seesSalary(user));
   }
@@ -220,12 +233,21 @@ export class EndingsService {
   async reject(id: string, dto: RejectEndingDto, user: SessionUser) {
     const before = await this.row(id);
     this.assertStatus(before, ['pending_ceo'], 'Only an ending waiting for the CEO can be rejected.');
-    const row = await this.prisma.employmentEnding.update({
-      where: { id },
-      data: { status: 'rejected', ceoDecidedById: user.id, ceoDecidedAt: new Date(), ceoNote: dto.note },
-      include: ROW,
+    // one sent back after its last working day was changed (setLastDay) had put the employment in its notice period
+    const restored = this.statusAfterLeavingNotice(before);
+    const row = await this.prisma.$transaction(async (tx) => {
+      if (restored) await tx.employment.update({ where: { id: before.employmentId }, data: { status: restored } });
+      return tx.employmentEnding.update({
+        where: { id },
+        data: { status: 'rejected', ceoDecidedById: user.id, ceoDecidedAt: new Date(), ceoNote: dto.note },
+        include: ROW,
+      });
     });
     await this.record(user, before, 'reject', 'rejected', { ceoNote: dto.note });
+    if (restored) {
+      await this.recordEmploymentStatus(user, before, restored);
+      await this.offboarding.cancelForEnding(id, before.employmentId, user);
+    }
     return endingView(row, seesSalary(user));
   }
 
@@ -237,13 +259,7 @@ export class EndingsService {
   async withdraw(id: string, dto: EndingNoteDto, user: SessionUser) {
     const before = await this.row(id);
     this.assertStatus(before, OPEN, 'Only an ending waiting for the CEO or approved can be withdrawn.');
-    const probationEnd = fromDateOnly(before.employment.probationEnd);
-    const restored =
-      before.status === 'approved' && !before.employment.endDate && before.employment.status === 'notice_period'
-        ? probationEnd && probationEnd >= todayInCairo()
-          ? ('probation' as const)
-          : ('active' as const)
-        : null;
+    const restored = this.statusAfterLeavingNotice(before);
     const note = dto.note ? [before.note, `Withdrawn: ${dto.note}`].filter(Boolean).join('\n') : before.note;
     const row = await this.prisma.$transaction(async (tx) => {
       if (restored) await tx.employment.update({ where: { id: before.employmentId }, data: { status: restored } });
@@ -253,6 +269,68 @@ export class EndingsService {
     if (restored) await this.recordEmploymentStatus(user, before, restored);
     // its offboarding case, if one opened, is cancelled
     await this.offboarding.cancelForEnding(id, before.employmentId, user);
+    return endingView(row, seesSalary(user));
+  }
+
+  /**
+   * HR or an Admin sets, changes or clears the agreed last working day, until the ending is completed (owner, 26 October
+   * 2026). Waiting for the CEO: just updated. Already approved: it goes back to the CEO, with what changed written in the
+   * ending's note (the employment stays in its notice period, its offboarding case open). Everything is audited with
+   * before and after. Clearing it makes the notice's end the last working day again.
+   */
+  async setLastDay(id: string, dto: AgreedLastDayDto, user: SessionUser) {
+    if (dto.agreedLastWorkingDay === undefined) throw new BadRequestException('Send the agreed last working day, or null to clear it.');
+    const before = await this.row(id);
+    this.assertStatus(before, OPEN, 'The last working day can be changed until the ending is completed, but not once it is rejected or withdrawn.');
+    this.assertCurrent(before);
+    const agreed = dto.agreedLastWorkingDay;
+    const noticeEndsOn = fromDateOnly(before.noticeEndsOn);
+    if (agreed) {
+      const problem = agreedLastDayProblem({
+        agreed,
+        noticeGivenOn: fromDateOnly(before.noticeGivenOn),
+        employmentEnd: fromDateOnly(before.employment.endDate),
+        payInLieu: before.payInLieu,
+      });
+      if (problem) throw new BadRequestException(problem);
+    }
+    const from = fromDateOnly(before.lastWorkingDay);
+    const to = agreed ?? noticeEndsOn;
+    if (to === from && !!agreed === before.lastDayAgreed) throw new BadRequestException('That is already the last working day.');
+
+    const sendBack = before.status === 'approved';
+    const changed = `Last working day ${agreed ? 'agreed' : 'back to the notice’s end'}: ${shownDate(from)} → ${shownDate(to)}${dto.note ? `. ${dto.note}` : ''}`;
+    const note = sendBack ? [before.note, changed].filter(Boolean).join('\n').slice(0, 1000) : before.note;
+    const row = await this.prisma.employmentEnding.update({
+      where: { id },
+      data: {
+        lastWorkingDay: toDateOnly(to),
+        lastDayAgreed: !!agreed,
+        ...(sendBack && { status: 'pending_ceo', ceoDecidedById: null, ceoDecidedAt: null, ceoNote: null, note }),
+      },
+      include: ROW,
+    });
+    await this.audit.record({
+      userId: user.id,
+      action: 'update',
+      entityType: ENTITY,
+      entityId: id,
+      diff: {
+        employeeId: before.employment.employeeId,
+        employmentId: before.employmentId,
+        ruleKey: before.ruleKey,
+        lastWorkingDay: { from, to },
+        lastDayAgreed: { from: before.lastDayAgreed, to: !!agreed },
+        noticeEndsOn,
+        ...(sendBack && {
+          status: { from: 'approved', to: 'pending_ceo' },
+          sentBackToCeo: true,
+          // the CEO's earlier approval, which the change withdraws
+          ceoApproval: { by: before.ceoDecidedBy?.email ?? null, at: before.ceoDecidedAt?.toISOString() ?? null, note: before.ceoNote },
+        }),
+        ...(dto.note && { note: dto.note }),
+      },
+    });
     return endingView(row, seesSalary(user));
   }
 
@@ -288,6 +366,16 @@ export class EndingsService {
 
   private assertStatus(e: EndingRow, allowed: EndingStatus[], message: string) {
     if (!allowed.includes(e.status as EndingStatus)) throw new ConflictException(`${message} This one is ${statusText(e.status)}.`);
+  }
+
+  /**
+   * The status an employment goes back to when its ending stops (withdrawn, or rejected after it was sent back): out of
+   * its notice period to Probation while the probation end is still ahead, else Active; null when it isn't in notice.
+   */
+  private statusAfterLeavingNotice(e: EndingRow): 'probation' | 'active' | null {
+    if (e.employment.endDate || e.employment.status !== 'notice_period') return null;
+    const probationEnd = fromDateOnly(e.employment.probationEnd);
+    return probationEnd && probationEnd >= todayInCairo() ? 'probation' : 'active';
   }
 
   private assertCurrent(e: EndingRow) {

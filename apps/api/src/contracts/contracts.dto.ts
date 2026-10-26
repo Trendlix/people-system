@@ -324,6 +324,24 @@ export class CreateEndingDto {
   /** Resignation only: the day it was certified. */
   @TrimOrNull() @IsOptional() @IsDateOnly('Enter a real date for the certification.')
   certifiedOn?: string | null;
+
+  /**
+   * The last working day agreed with the employee, replacing the one worked out from the notice (HR; owner, 26 October
+   * 2026). Empty or left out: the notice's. Refused when the notice is paid instead of worked.
+   */
+  @TrimOrNull() @IsOptional() @IsDateOnly('Enter a real date for the agreed last working day.')
+  agreedLastWorkingDay?: string | null;
+}
+
+/** HR or an Admin setting, changing or clearing the agreed last working day of an ending not yet completed. */
+export class AgreedLastDayDto {
+  /** The agreed day; null or empty clears it, and the notice's end is the last working day again. Send it, even as null: left out, it is refused. */
+  @TrimOrNull() @IsOptional() @IsDateOnly('Enter a real date for the agreed last working day.')
+  agreedLastWorkingDay?: string | null;
+
+  /** Why it changed: shown to the CEO when the change sends the ending back for approval. */
+  @TrimOrNull() @IsOptional() @IsString() @MaxLength(500)
+  note?: string | null;
 }
 
 /** The CEO's approval, or HR withdrawing an ending: an optional note. */

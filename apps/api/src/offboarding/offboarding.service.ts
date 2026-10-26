@@ -86,7 +86,7 @@ const CASE_INCLUDE = {
       finalSettlement: { select: { status: true, settledOn: true } },
     },
   },
-  ending: { select: { id: true, status: true, noticeGivenOn: true, lastWorkingDay: true, reason: true, rule: { select: { label: true } } } },
+  ending: { select: { id: true, status: true, noticeGivenOn: true, lastWorkingDay: true, noticeEndsOn: true, lastDayAgreed: true, reason: true, rule: { select: { label: true } } } },
   items: { orderBy: { position: 'asc' }, include: { doneBy: USER } },
   interview: { include: { recordedBy: USER } },
   rehireSetBy: USER,
@@ -112,6 +112,11 @@ function itemStatus(row: CaseRow, item: CaseRow['items'][number], live: LiveStat
 function lastDayOf(row: Pick<CaseRow, 'ending' | 'employment'>): string | null {
   if (row.employment.endDate) return fromDateOnly(row.employment.endDate);
   return row.ending && row.ending.status !== 'withdrawn' && row.ending.status !== 'rejected' ? fromDateOnly(row.ending.lastWorkingDay) : null;
+}
+
+/** Whether the last working day shown is one HR or an Admin agreed with the employee (owner, 26 October 2026). */
+function lastDayAgreedOf(row: Pick<CaseRow, 'ending'>): boolean {
+  return !!row.ending && row.ending.status !== 'withdrawn' && row.ending.status !== 'rejected' && row.ending.lastDayAgreed;
 }
 
 function interviewView(i: CaseRow['interview'], names: ReadonlyMap<string, { name: string }>): ExitInterviewView {
@@ -453,6 +458,8 @@ export class OffboardingService {
             rule: row.ending.rule.label,
             noticeGivenOn: fromDateOnly(row.ending.noticeGivenOn),
             lastWorkingDay: fromDateOnly(row.ending.lastWorkingDay),
+            noticeEndsOn: fromDateOnly(row.ending.noticeEndsOn),
+            lastDayAgreed: row.ending.lastDayAgreed,
             reason: full ? row.ending.reason : null,
           }
         : null,
@@ -489,6 +496,7 @@ export class OffboardingService {
       jobTitle: r.employment.jobTitle?.titleEn ?? null,
       department: placeName(r.employment.department),
       lastWorkingDay: lastDayOf(r),
+      lastDayAgreed: lastDayAgreedOf(r),
       ended: !!end && end <= today,
       endReason: caller.manages ? r.employment.endReason : null,
       progress: clearanceProgress(statuses),

@@ -420,7 +420,11 @@ export function endingView(e: EndingRow, seesSalary = false) {
     initiator: e.initiator,
     noticeGivenOn: fromDateOnly(e.noticeGivenOn),
     payInLieu: e.payInLieu,
+    // the day the ending runs to: the agreed one when HR or an Admin agreed it (lastDayAgreed), else the notice's end,
+    // which noticeEndsOn keeps beside it (owner, 26 October 2026)
     lastWorkingDay: fromDateOnly(e.lastWorkingDay),
+    noticeEndsOn: fromDateOnly(e.noticeEndsOn),
+    lastDayAgreed: e.lastDayAgreed,
     certifiedOffice: e.certifiedOffice,
     certifiedSerial: e.certifiedSerial,
     certifiedOn: fromDateOnly(e.certifiedOn),

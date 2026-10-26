@@ -205,6 +205,8 @@ async function Case({ params }: { params: PageProps<'/offboarding/[id]'>['params
           <dt className="text-muted">Last working day</dt>
           <dd className="tabular-nums">
             {c.lastWorkingDay ? formatDate(c.lastWorkingDay) : '—'}
+            {c.lastDayAgreed ? ' · agreed' : ''}
+            {c.lastDayAgreed && c.ending?.noticeEndsOn ? ` · notice ends ${formatDate(c.ending.noticeEndsOn)}` : ''}
             {c.ended ? ' · employment ended' : ''}
           </dd>
           {c.endReason && (

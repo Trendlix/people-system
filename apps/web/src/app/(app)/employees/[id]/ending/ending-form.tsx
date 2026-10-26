@@ -9,7 +9,7 @@ import { formatDate, parseDate } from '@/lib/format';
 import type { EndingRule, FormState } from '@/lib/types';
 import { ART_154_NOTE, art154Estimate, art154Text } from '../../employment-law';
 import { addDays, noticeLabel, noticeLastDay } from '../contracts/dates';
-import { trainingLastDay } from './rules';
+import { agreedLastDayHint, agreedLastDayProblem, trainingLastDay } from './rules';
 
 // The End employment form: how the employment ends (one of the ending rules), who started it, when notice was given,
 // pay in lieu, and for a resignation its certification at the labour office. While HR types, it shows the rule's
@@ -58,6 +58,7 @@ function Preview({
   training,
   probationEnd,
   art154,
+  agreed,
 }: {
   rule: EndingRule | undefined;
   /** YYYY-MM-DD, or null while not (properly) typed. */
@@ -67,6 +68,8 @@ function Preview({
   training: { endDate: string } | null;
   probationEnd: string | null;
   art154: Art154Basis | null;
+  /** The agreed last working day typed, YYYY-MM-DD, or null. */
+  agreed: string | null;
 }) {
   if (!rule) return null;
   const source = rule.source ? ` (${rule.source})` : '';
@@ -110,6 +113,10 @@ function Preview({
         <>Last working day: {formatDate(last.date)}.</>
       ),
     );
+  }
+  // HR agreed a different last day with the employee: it replaces the one above (owner, 26 October 2026)
+  if (agreed && !payInLieu && !agreedLastDayProblem(agreed, given, formatDate)) {
+    lines.push(<span className="font-semibold">Agreed last working day: {formatDate(agreed)}. It replaces the one above.</span>);
   }
   if (rule.key === 'probation' && probationEnd && given && given > probationEnd) {
     lines.push(
@@ -183,6 +190,7 @@ export function EndingForm({
     initiator: valueOf(state, 'initiator'),
     noticeGivenOn: valueOf(state, 'noticeGivenOn', formatDate(today)),
     payInLieu: valueOf(state, 'payInLieu'),
+    agreedLastWorkingDay: valueOf(state, 'agreedLastWorkingDay'),
   }));
   function track(e: React.FormEvent<HTMLFormElement>) {
     const t = e.target;
@@ -195,6 +203,22 @@ export function EndingForm({
   const given = parseDate(typed.noticeGivenOn) || null;
   const payInLieu = Boolean(rule?.payInLieu) && typed.payInLieu === 'yes';
   const notice = noticeWording(rule, typed.initiator, contract?.nonRenewalNoticeBy ?? null);
+
+  // The last working day the rule works out, to show beside the agreed one (HR only, as this whole form is): the
+  // agreement's, the contract's, or the notice counted from the day it was given
+  let workedOut: string | null = null;
+  let approximate = false;
+  if (rule && !payInLieu) {
+    if (rule.key === 'training_completed' && training) workedOut = trainingLastDay(training.endDate, given);
+    else if (rule.key === 'non_renewal' && contract) workedOut = contract.endDate;
+    else if (given) {
+      const last = noticeLastDay(given, rule.noticeAmount, rule.noticeUnit);
+      workedOut = last.date;
+      approximate = last.approximate;
+    }
+  }
+  const agreed = parseDate(typed.agreedLastWorkingDay) || null;
+  const agreedProblem = agreedLastDayProblem(agreed, given, formatDate);
 
   return (
     <form {...form} onChange={track} className="card max-w-3xl space-y-6 p-6">
@@ -287,6 +311,29 @@ export function EndingForm({
         )}
       </div>
 
+      {/* not when the notice is paid instead of worked: the employee stops on the notice date */}
+      {rule && !payInLieu && (
+        <div>
+          <label htmlFor={fid('agreedLastWorkingDay')} className="label">
+            Agreed last working day {optional}
+          </label>
+          <DateInput
+            id={fid('agreedLastWorkingDay')}
+            name="agreedLastWorkingDay"
+            aria-describedby={fid('agreedLastWorkingDay-hint')}
+            defaultValue={valueOf(state, 'agreedLastWorkingDay')}
+          />
+          <p id={fid('agreedLastWorkingDay-hint')} className="hint">
+            {agreedLastDayHint(workedOut, approximate, formatDate)}
+          </p>
+          {agreedProblem && (
+            <p role="alert" className="mt-1 text-sm font-semibold text-danger">
+              {agreedProblem}
+            </p>
+          )}
+        </div>
+      )}
+
       {rule?.key === 'resignation' && (
         <fieldset className="space-y-3" aria-describedby={fid('certified-hint')}>
           <legend className="font-semibold">Certified at the Labour Office</legend>
@@ -359,7 +406,7 @@ export function EndingForm({
         </div>
       </div>
 
-      <Preview rule={rule} given={given} payInLieu={payInLieu} contract={contract} training={training} probationEnd={probationEnd} art154={art154} />
+      <Preview rule={rule} given={given} payInLieu={payInLieu} contract={contract} training={training} probationEnd={probationEnd} art154={art154} agreed={agreed} />
 
       <div className="flex flex-wrap items-center gap-3 border-t border-line pt-6">
         <SubmitButton busy={pending} pendingText="Sending…">

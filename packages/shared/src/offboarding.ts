@@ -470,6 +470,8 @@ export interface OffboardingCaseSummary {
   department: string | null;
   /** The last working day (the ending's, else the employment's end date); null when neither is known yet. */
   lastWorkingDay: string | null;
+  /** The last working day is one HR or an Admin agreed with the employee, not the notice's end (owner, 26 October 2026). */
+  lastDayAgreed: boolean;
   /** The employment ended (its end date is set and past or today). */
   ended: boolean;
   endReason: string | null;
@@ -489,7 +491,7 @@ export interface OffboardingCaseView extends OffboardingCaseSummary {
   joinDate: string;
   employmentType: string;
   /** The ending recorded for it, when there is one. */
-  ending: { id: string; status: string; rule: string; noticeGivenOn: string; lastWorkingDay: string; reason: string | null } | null;
+  ending: { id: string; status: string; rule: string; noticeGivenOn: string; lastWorkingDay: string; noticeEndsOn: string; lastDayAgreed: boolean; reason: string | null } | null;
   items: ClearanceItemView[];
   holdings: ClearanceHolding[];
   finalSettlement: { status: 'open' | 'settled' | 'not_yet'; settledOn: string | null } | null;

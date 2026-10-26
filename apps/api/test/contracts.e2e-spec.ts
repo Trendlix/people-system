@@ -885,6 +885,8 @@ describe('Contracts (e2e)', () => {
         noticeGivenOn: today,
         payInLieu: false,
         lastWorkingDay: addDays(today, 14),
+        noticeEndsOn: addDays(today, 14),
+        lastDayAgreed: false,
         certifiedOffice: null,
         certifiedSerial: null,
         certifiedOn: null,
@@ -970,6 +972,135 @@ describe('Contracts (e2e)', () => {
       await act(worked.id, 'withdraw', hr).expect(200);
       const paid = await addEnding(e, { ruleKey: 'company_notice', noticeGivenOn: '2026-10-01', payInLieu: true });
       expect(paid).toMatchObject({ payInLieu: true, lastWorkingDay: '2026-10-01' });
+    });
+
+    // "let me add agreed on last working date only by admin and HR" (owner, 26 October 2026)
+    describe('an agreed last working day', () => {
+      const lastDay = (id: string, body: object, session = hr) => api().patch(`/api/endings/${id}/last-day`).set('Cookie', session).send(body);
+      const auditOf = (id: string) => prisma.auditLog.findMany({ where: { entityType: 'employment_ending', entityId: id }, orderBy: { id: 'asc' } });
+
+      it('set when HR records the ending: it is the last working day, the notice’s end kept beside it, and completing works from it', async () => {
+        const e = await newHire('Agreed At Start');
+        const ending = await addEnding(e, { ruleKey: 'company_notice', noticeGivenOn: '2026-10-01', agreedLastWorkingDay: today });
+        expect(ending).toMatchObject({ lastWorkingDay: today, noticeEndsOn: '2027-01-01', lastDayAgreed: true, status: 'pending_ceo' });
+        const created = (await auditOf(ending.id))[0]!;
+        expect(created.diff).toMatchObject({ lastWorkingDay: today, noticeEndsOn: '2027-01-01', lastDayAgreed: true });
+        // the profile shows it too
+        expect((await profileOf(e.id)).employment!.ending).toMatchObject({ lastWorkingDay: today, noticeEndsOn: '2027-01-01', lastDayAgreed: true });
+
+        await act(ending.id, 'approve', ceo).expect(200);
+        const done = await act(ending.id, 'complete', hr).expect(200);
+        expect(done.body).toMatchObject({ status: 'completed', lastWorkingDay: today, lastDayAgreed: true });
+        expect((await profileOf(e.id)).employments[0]).toMatchObject({ endDate: today });
+      });
+
+      it('left empty, the notice’s end stays the last working day, not agreed', async () => {
+        const e = await newHire('Not Agreed');
+        for (const empty of [undefined, null, '']) {
+          const ending = await addEnding(e, { ruleKey: 'company_notice', noticeGivenOn: '2026-10-01', ...(empty !== undefined && { agreedLastWorkingDay: empty }) });
+          expect(ending).toMatchObject({ lastWorkingDay: '2027-01-01', noticeEndsOn: '2027-01-01', lastDayAgreed: false });
+          await act(ending.id, 'withdraw', hr).expect(200);
+        }
+      });
+
+      it('refused before the notice day, and when the notice is paid instead of worked', async () => {
+        const e = await newHire('Agreed Refused');
+        const before = await postEnding(e, { ruleKey: 'company_notice', noticeGivenOn: '2026-10-01', agreedLastWorkingDay: '2026-09-30' }).expect(400);
+        expect(before.body.message).toBe('The agreed last working day must be on or after the notice date, 01/10/2026.');
+        await postEnding(e, { ruleKey: 'company_notice', noticeGivenOn: '2026-10-01', agreedLastWorkingDay: 'soon' }).expect(400);
+        const paid = await postEnding(e, { ruleKey: 'company_notice', noticeGivenOn: '2026-10-01', payInLieu: true, agreedLastWorkingDay: '2026-10-20' }).expect(400);
+        expect(paid.body.message).toMatch(/paid instead of worked/);
+        // the notice day itself and a day after the notice's end are fine
+        const same = await addEnding(e, { ruleKey: 'company_notice', noticeGivenOn: '2026-10-01', agreedLastWorkingDay: '2026-10-01' });
+        expect(same).toMatchObject({ lastWorkingDay: '2026-10-01', lastDayAgreed: true });
+        const ending = same;
+        await lastDay(ending.id, { agreedLastWorkingDay: '2026-09-30' }).expect(400);
+        const later = await lastDay(ending.id, { agreedLastWorkingDay: '2027-03-01' }).expect(200);
+        expect(later.body).toMatchObject({ lastWorkingDay: '2027-03-01', noticeEndsOn: '2027-01-01', lastDayAgreed: true });
+        await lastDay(ending.id, {}).expect(400);
+        await lastDay(ending.id, { agreedLastWorkingDay: '2027-03-01' }).expect(400); // already so
+      });
+
+      it('HR and an Admin set it; the CEO and an employee are refused', async () => {
+        const e = await newHire('Agreed Roles');
+        const ending = await addEnding(e, { ruleKey: 'company_notice', noticeGivenOn: '2026-10-01' });
+        const staff = await signIn(app, await createUser(prisma, ['employee']));
+        await lastDay(ending.id, { agreedLastWorkingDay: '2026-11-30' }, ceo).expect(403);
+        await lastDay(ending.id, { agreedLastWorkingDay: '2026-11-30' }, staff).expect(403);
+        await lastDay(ending.id, { agreedLastWorkingDay: '2026-11-30' }, finance).expect(403);
+        const byHr = await lastDay(ending.id, { agreedLastWorkingDay: '2026-11-30' }, hr).expect(200);
+        expect(byHr.body).toMatchObject({ lastWorkingDay: '2026-11-30', noticeEndsOn: '2027-01-01', lastDayAgreed: true, status: 'pending_ceo' });
+        const byAdmin = await lastDay(ending.id, { agreedLastWorkingDay: '2026-12-15' }, admin).expect(200);
+        expect(byAdmin.body).toMatchObject({ lastWorkingDay: '2026-12-15', lastDayAgreed: true, status: 'pending_ceo' });
+        const bySuper = await lastDay(ending.id, { agreedLastWorkingDay: '2026-12-20' }, superAdmin).expect(200);
+        expect(bySuper.body).toMatchObject({ lastWorkingDay: '2026-12-20', lastDayAgreed: true });
+        // cleared: the notice's end again
+        const cleared = await lastDay(ending.id, { agreedLastWorkingDay: null }, hr).expect(200);
+        expect(cleared.body).toMatchObject({ lastWorkingDay: '2027-01-01', noticeEndsOn: '2027-01-01', lastDayAgreed: false, status: 'pending_ceo' });
+        await lastDay(ending.id, { agreedLastWorkingDay: null }, hr).expect(400); // nothing to clear
+
+        const audit = (await auditOf(ending.id)).filter((a) => a.action === 'update');
+        expect(audit).toHaveLength(4);
+        expect(audit[0]!.diff).toMatchObject({ lastWorkingDay: { from: '2027-01-01', to: '2026-11-30' }, lastDayAgreed: { from: false, to: true } });
+        expect(audit[3]!.diff).toMatchObject({ lastWorkingDay: { from: '2026-12-20', to: '2027-01-01' }, lastDayAgreed: { from: true, to: false } });
+      });
+
+      it('changed after the CEO approved it, it goes back to the CEO, who is told what changed; the employment stays in its notice', async () => {
+        const e = await newHire('Agreed After Approval');
+        const ending = await addEnding(e, { ruleKey: 'company_notice', noticeGivenOn: '2026-10-01', agreedLastWorkingDay: today });
+        await act(ending.id, 'approve', ceo, { note: 'Fine' }).expect(200);
+        expect((await profileOf(e.id)).employment).toMatchObject({ status: 'notice_period' });
+
+        const back = await lastDay(ending.id, { agreedLastWorkingDay: addDays(today, 10), note: 'The handover needs longer' }, admin).expect(200);
+        expect(back.body).toMatchObject({
+          status: 'pending_ceo',
+          lastWorkingDay: addDays(today, 10),
+          lastDayAgreed: true,
+          ceoDecidedBy: null,
+          ceoDecidedAt: null,
+          ceoNote: null,
+        });
+        expect(back.body.note).toBe(`Last working day agreed: ${shownDate(today)} → ${shownDate(addDays(today, 10))}. The handover needs longer`);
+        expect((await profileOf(e.id)).employment).toMatchObject({ status: 'notice_period' });
+        // it can't be completed until the CEO approves again, and is in the CEO's queue meanwhile
+        await act(ending.id, 'complete', hr).expect(409);
+        const queue = (await api().get('/api/endings?status=pending_ceo').set('Cookie', ceo).expect(200)).body as Ending[];
+        expect(queue.find((x) => x.id === ending.id)).toMatchObject({ lastWorkingDay: addDays(today, 10), lastDayAgreed: true });
+        const audit = (await auditOf(ending.id)).filter((a) => a.action === 'update');
+        expect(audit[0]!.diff).toMatchObject({
+          lastWorkingDay: { from: today, to: addDays(today, 10) },
+          status: { from: 'approved', to: 'pending_ceo' },
+          sentBackToCeo: true,
+          ceoApproval: { by: ceoEmail, note: 'Fine' },
+          note: 'The handover needs longer',
+        });
+
+        // approved again, then cleared: back to the CEO again; the CEO rejecting it ends the notice period
+        await act(ending.id, 'approve', ceo).expect(200);
+        const again = await lastDay(ending.id, { agreedLastWorkingDay: null }, hr).expect(200);
+        expect(again.body).toMatchObject({ status: 'pending_ceo', lastWorkingDay: '2027-01-01', lastDayAgreed: false });
+        await act(ending.id, 'reject', ceo, { note: 'Keep the first date' }).expect(200);
+        expect((await profileOf(e.id)).employment).toMatchObject({ status: 'active' });
+        // a rejected or withdrawn ending is closed to the change
+        const closed = await lastDay(ending.id, { agreedLastWorkingDay: today }, hr).expect(409);
+        expect(closed.body.message).toMatch(/not once it is rejected or withdrawn/);
+      });
+
+      it('withdrawing one sent back to the CEO puts the employment out of its notice period; a completed one can’t be changed', async () => {
+        const e = await newHire('Agreed Withdrawn');
+        const ending = await addEnding(e, { ruleKey: 'company_notice', noticeGivenOn: '2026-10-01', agreedLastWorkingDay: today });
+        await act(ending.id, 'approve', ceo).expect(200);
+        await lastDay(ending.id, { agreedLastWorkingDay: addDays(today, 3) }, hr).expect(200);
+        await act(ending.id, 'withdraw', hr).expect(200);
+        expect((await profileOf(e.id)).employment).toMatchObject({ status: 'active' });
+
+        const done = await newHire('Agreed Completed');
+        const finished = await addEnding(done, { ruleKey: 'company_notice', noticeGivenOn: '2026-10-01', agreedLastWorkingDay: today });
+        await act(finished.id, 'approve', ceo).expect(200);
+        await act(finished.id, 'complete', hr).expect(200);
+        const late = await lastDay(finished.id, { agreedLastWorkingDay: null }, hr).expect(409);
+        expect(late.body.message).toContain('This one is completed.');
+      });
     });
 
     it('counts working days after the notice date by the shift: Sunday to Thursday, the shift’s own week, or Sunday to Thursday without one', async () => {
