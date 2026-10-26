@@ -44,7 +44,9 @@ import {
   ZohoPeopleError,
   zohoPeopleHost,
   zohoProblemOf,
+  ZOHO_TIME_MODES,
   type ZohoDayRead,
+  type ZohoTimeMode,
   type ZohoWho,
 } from './zoho-people-api.js';
 import { ZohoPeopleHttp } from './zoho-people-http.js';
@@ -60,7 +62,9 @@ import { openZohoPeopleSecret, sameZohoPeopleKey, sealZohoPeopleSecret, zohoPeop
 // times are read on its own clock (Cairo's when it doesn't say). The test reads today's attendance for the connected
 // account and a colleague, in counts. Disconnecting revokes the sign-in at Zoho. Every change is audited (never a token).
 // The day's read for the runs: one employee's day, its token refreshed once when refused, the date format and the method
-// found once and kept.
+// found once and kept; and how the date format is named, when Zoho sends colleagues' times without their hour (owner, 26
+// October 2026: "Zoho sent “26-Oct-2026”"), the way that brings them whole found once and kept, else each day's first
+// check-in and last check-out read.
 
 export const ZOHO_PEOPLE_CONNECTION_ENTITY = 'zoho_people_connection';
 
@@ -94,6 +98,10 @@ export class ZohoPeopleService {
   /** The date format and the method Zoho took last (found once, then kept). */
   private pattern: string | null = null;
   private method: 'GET' | 'POST' = 'GET';
+  /** How the date format is named (zoho-people-api.ts ZOHO_TIME_MODES): the way that brought the times whole, kept. */
+  private timeMode: ZohoTimeMode = 'named';
+  /** No way of asking brought the times whole: each day's first check-in and last check-out are read instead. */
+  private timesWithoutHour = false;
 
   constructor(
     config: ConfigService,
@@ -344,26 +352,67 @@ export class ZohoPeopleService {
   // ---------- reading a day ----------
 
   /**
-   * One employee's day from Zoho People, in its turn (ZohoPeopleHttp: one call a second): its answer read (zohoDayOf).
-   * The token refused: refreshed and asked once more, then the connection needs connecting again. The date's format
-   * refused: the next one tried (the organization's first), and the one Zoho takes kept; the method refused: the other.
-   * Throws ZohoPeopleError for anything else Zoho refuses (a lock, someone not found, not permitted …): the run decides.
+   * One employee's day from Zoho People, in its turn (ZohoPeopleHttp: one call a second): its answer read (zohoDayOf),
+   * asked the way kept (timeMode). Its times sent without their hour (owner, 26 October 2026: "Zoho sent “26-Oct-2026”"
+   * for a colleague's check-in, while the connected account's own came whole): asked again the other ways, the first that
+   * brings them whole kept for every day after; when none does (said once, then not asked again), the day's first
+   * check-in and last check-out when Zoho sent those whole, else unreadable. Throws ZohoPeopleError for anything else Zoho
+   * refuses (a lock, someone not found, not permitted …): the run decides.
    */
   async day(who: ZohoWho, date: string, ctx: ZohoReadContext): Promise<ZohoDayRead> {
+    const first = await this.read(who, date, ctx, this.timeMode);
+    if (first.kind !== 'unreadable' || !first.dateOnly) return first;
+    if (!this.timesWithoutHour) {
+      for (const mode of ZOHO_TIME_MODES) {
+        if (mode === this.timeMode) continue;
+        let again: ZohoDayRead;
+        try {
+          again = await this.read(who, date, ctx, mode);
+        } catch (err) {
+          // this way refused (its date or format, or anything the way kept didn't meet): the next one
+          if (err instanceof ZohoPeopleError && (err.kind === 'date_format' || err.kind === 'method' || err.kind === 'refused' || err.kind === 'not_found' || err.kind === 'not_permitted')) continue;
+          throw err;
+        }
+        if (again.kind === 'unreadable' && again.dateOnly) continue;
+        this.logger.log(`Zoho People sends the times whole when the date format is ${mode}: kept for every day after.`);
+        this.timeMode = mode;
+        return again;
+      }
+      this.timesWithoutHour = true;
+      this.logger.warn('Zoho People sends check-in times without their hour however asked: each day’s first check-in and last check-out are read instead.');
+    }
+    return first.firstLast ? { kind: 'day', day: first.firstLast } : first;
+  }
+
+  /**
+   * One employee's day asked one way (`mode`). The token refused: refreshed and asked once more, then the connection
+   * needs connecting again. Named: the date's format refused, the next one tried (the organization's first), and the one
+   * Zoho takes kept; the other ways ask in the one kept (unnamed: the organization's own), a refusal of it thrown. The
+   * method refused: the other.
+   */
+  private async read(who: ZohoWho, date: string, ctx: ZohoReadContext, mode: ZohoTimeMode): Promise<ZohoDayRead> {
     const c = await this.connection();
     if (!c) throw new ZohoPeopleError('token', ZOHO_PEOPLE_NOT_CONNECTED, 'not_connected');
     const people = zohoPeopleHost(c.accountsServer);
-    const patterns = this.pattern ? [this.pattern, ...datePatternsFrom(c.dateFormat).filter((p) => p !== this.pattern)] : datePatternsFrom(c.dateFormat);
+    const own = isZohoDatePattern(c.dateFormat) ? c.dateFormat : null;
+    const patterns =
+      mode === 'unnamed'
+        ? [own ?? this.pattern ?? datePatternsFrom(null)[0]]
+        : mode === 'timed'
+          ? [this.pattern ?? own ?? datePatternsFrom(null)[0]]
+          : this.pattern
+            ? [this.pattern, ...datePatternsFrom(c.dateFormat).filter((p) => p !== this.pattern)]
+            : datePatternsFrom(c.dateFormat);
     let p = 0;
     let refreshedOnce = false;
     let switchedMethod = false;
     for (;;) {
       const pattern = patterns[p];
-      const build = (token: string): HttpRequest => zohoAttendanceRequest(people, token, who, date, pattern, this.method);
+      const build = (token: string): HttpRequest => zohoAttendanceRequest(people, token, who, date, pattern, this.method, mode);
       const answer = await this.http.call(build(await this.token(false)));
       const problem = zohoProblemOf(answer);
       if (!problem) {
-        if (this.pattern !== pattern) {
+        if (mode === 'named' && this.pattern !== pattern) {
           this.pattern = pattern;
           if (c.dateFormat !== pattern) await this.prisma.zohoPeopleConnection.updateMany({ where: { id: 1 }, data: { dateFormat: pattern } });
         }
@@ -387,6 +436,7 @@ export class ZohoPeopleService {
         p++;
         continue;
       }
+      if (problem.kind === 'date_format' && mode !== 'named') throw problem;
       if (problem.kind === 'date_format') throw new ZohoPeopleError('refused', 'Zoho People refused every date format tried: test the connection on Organization → Zoho People.', problem.code);
       if (problem.kind === 'method' && !switchedMethod) {
         switchedMethod = true;

@@ -127,6 +127,9 @@ export function parseZohoDate(value: string, pattern: string): string | null {
 
 const nearDays = (ymd: string) => [0, -1, 1].map((n) => new Date(Date.parse(`${ymd}T00:00:00Z`) + n * DAY_MS).toISOString().slice(0, 10));
 
+/** The date patterns a time's day is read in: the organization's first, then the usual ones. */
+const readPatterns = (pattern?: string | null) => [...new Set([...(pattern && isZohoDatePattern(pattern) ? [pattern] : []), ...ZOHO_DATE_PATTERNS, 'MMM dd, yyyy', 'dd MMM yyyy'])];
+
 /** The time at the end of Zoho's text: "09:00 AM", "09:00:00", "21:05". */
 const TIME_AT_END = /(\d{1,2}):(\d{2})(?::\d{2})?(?:\s*([AaPp])\.?\s*[Mm]\.?)?$/;
 
@@ -157,13 +160,28 @@ export function zohoTimeOf(value: unknown, askedDay: string, opts: { pattern?: s
   const near = nearDays(askedDay);
   if (!datePart) day = askedDay;
   else {
-    const patterns = [...new Set([...(opts.pattern && isZohoDatePattern(opts.pattern) ? [opts.pattern] : []), ...ZOHO_DATE_PATTERNS, 'MMM dd, yyyy', 'dd MMM yyyy'])];
-    const candidates = patterns.map((p) => parseZohoDate(datePart, p)).filter((d): d is string => !!d);
+    const candidates = readPatterns(opts.pattern)
+      .map((p) => parseZohoDate(datePart, p))
+      .filter((d): d is string => !!d);
     day = near.find((n) => candidates[0] === n) ?? near.find((n) => candidates.includes(n)) ?? null;
   }
   if (!day) return null;
   const moment = zonedMoment(day, `${pad(hour)}:${pad(minute)}`, opts.timeZone ?? ZOHO_PEOPLE_DEFAULT_TIME_ZONE);
   return Number.isFinite(moment) ? new Date(moment).toISOString() : null;
+}
+
+/**
+ * Whether what Zoho sent for a time is the day alone, without its hour ("26-Oct-2026" for a colleague's check-in, owner,
+ * 26 October 2026): a date in a format the system reads, the day asked or the one before or after it.
+ */
+export function isZohoDateOnly(value: string, askedDay: string, pattern?: string | null): boolean {
+  const t = value.trim().replace(/[\sT,-]+$/, '');
+  if (!t || TIME_AT_END.test(t)) return false;
+  const near = nearDays(askedDay);
+  return readPatterns(pattern).some((p) => {
+    const d = parseZohoDate(t, p);
+    return !!d && near.includes(d);
+  });
 }
 
 /** Whether a time zone is one the server knows (Zoho's organization's, e.g. Africa/Cairo). */
@@ -184,9 +202,21 @@ const zohoAuth = (token: string) => ({ authorization: `Zoho-oauthtoken ${token}`
 /** Who a day is asked for: their work email, else their Zoho employee ID. */
 export type ZohoWho = { emailId: string } | { empId: string };
 
-/** One employee's day of attendance entries, `date` in Zoho's date format, that format named as `dateFormat` too. */
-export function zohoAttendanceRequest(people: string, token: string, who: ZohoWho, date: string, pattern: string, method: 'GET' | 'POST' = 'GET'): HttpRequest {
-  const params = new URLSearchParams({ date: formatZohoDate(date, pattern), dateFormat: pattern, ...who });
+/**
+ * How a day's request names its date format (owner, 26 October 2026: Zoho sent a colleague's check-in as "26-Oct-2026",
+ * its hour gone, while the connected account's own came whole):
+ * - named: `date` in the format, the format named as `dateFormat`;
+ * - unnamed: `date` in the organization's own format, none named;
+ * - timed: the format named with a time ("dd-MMM-yyyy HH:mm"), `date` with midnight ("26-Oct-2026 00:00").
+ * The one that brings the times whole is found once and kept (ZohoPeopleService.day).
+ */
+export const ZOHO_TIME_MODES = ['named', 'unnamed', 'timed'] as const;
+export type ZohoTimeMode = (typeof ZOHO_TIME_MODES)[number];
+
+/** One employee's day of attendance entries, `date` in Zoho's date format, that format named as the mode says (named: as `dateFormat`). */
+export function zohoAttendanceRequest(people: string, token: string, who: ZohoWho, date: string, pattern: string, method: 'GET' | 'POST' = 'GET', mode: ZohoTimeMode = 'named'): HttpRequest {
+  const day = formatZohoDate(date, pattern);
+  const params = new URLSearchParams(mode === 'unnamed' ? { date: day, ...who } : mode === 'timed' ? { date: `${day} 00:00`, dateFormat: `${pattern} HH:mm`, ...who } : { date: day, dateFormat: pattern, ...who });
   const url = `${people}/people/api/attendance/getAttendanceEntries`;
   if (method === 'POST') return { method: 'POST', url, headers: { ...zohoAuth(token), 'content-type': 'application/x-www-form-urlencoded' }, body: params.toString() };
   return { method: 'GET', url: `${url}?${params.toString()}`, headers: zohoAuth(token) };
@@ -281,8 +311,12 @@ export interface ZohoDay {
   punches: number;
 }
 
-/** What a day's answer was: a day, nothing that day, or an answer the system can't read. */
-export type ZohoDayRead = { kind: 'day'; day: ZohoDay } | { kind: 'empty' } | { kind: 'unreadable'; message: string };
+/**
+ * What a day's answer was: a day, nothing that day, or an answer the system can't read. Unreadable for its times sent
+ * without their hour (`dateOnly`): with the day from Zoho's first check-in and last check-out when those have theirs
+ * (`firstLast`), for when no way of asking brings them whole.
+ */
+export type ZohoDayRead = { kind: 'day'; day: ZohoDay } | { kind: 'empty' } | { kind: 'unreadable'; message: string; dateOnly?: boolean; firstLast?: ZohoDay | null };
 
 /** The day's record in an answer: as the docs show it, or inside { response: { result } } as Zoho's other APIs keep it. */
 function recordOf(body: unknown): Record<string, unknown> | null {
@@ -302,44 +336,36 @@ function recordOf(body: unknown): Record<string, unknown> | null {
  * its check-out its last check-out after it, office or remote by the office addresses (placeOf: the first check-in's
  * location, else the last check-out's; never kept), Zoho's status as it says it. No entries but a first check-in and
  * last check-out: one pair. Nothing at all (no punch, no status): empty. A time that can't be read: unreadable, so the day
- * is never kept short of it.
+ * is never kept short of it; times sent as the day alone, without their hour: unreadable `dateOnly`, with the day from
+ * the first check-in and last check-out when those came whole (`firstLast`).
  */
 export function zohoDayOf(body: unknown, date: string, opts: { pattern?: string | null; timeZone?: string | null; officeAddresses: readonly string[] }): ZohoDayRead {
   const rec = recordOf(body);
   if (!rec) return { kind: 'empty' };
   const entries = Array.isArray(rec.entries) ? rec.entries.filter(isObject) : [];
-  const presses: (PressMoment & { at: string; location: string | null })[] = [];
-  const unread: string[] = [];
-  const add = (kind: 'in' | 'out', value: unknown, location: unknown) => {
-    const raw = text(value);
-    if (!raw) return;
-    const at = zohoTimeOf(value, date, opts);
-    if (!at) unread.push(raw);
-    else presses.push({ kind, at, location: text(location) });
-  };
-  for (const e of entries) {
-    add('in', e.checkIn ?? e.checkin ?? e.check_in, e.checkIn_Location ?? e.checkin_location);
-    add('out', e.checkOut ?? e.checkout ?? e.check_out, e.checkOut_Location ?? e.checkout_location);
-  }
-  if (!entries.length) {
-    add('in', rec.firstIn, rec.firstIn_Location);
-    add('out', rec.lastOut, rec.lastOut_Location);
-  }
-  // what Zoho sent said with it (owner, 26 October 2026: the first fetch "finished" with 1,087 days unread and the lines
-  // didn't say why): the first time that couldn't be read, as Zoho wrote it (zohoSentText), never a place
-  if (unread.length) return { kind: 'unreadable', message: `${unread.length} of Zoho People’s times on ${date} couldn’t be read: Zoho sent “${zohoSentText(unread[0])}”.` };
   const status = text(rec.status);
-  if (!presses.length && !status) return { kind: 'empty' };
-  presses.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
-  const ins = presses.filter((p) => p.kind === 'in');
-  const firstIn = ins[0] ?? null;
-  const outs = presses.filter((p) => p.kind === 'out' && (!firstIn || Date.parse(p.at) > Date.parse(firstIn.at)));
-  const lastOut = (firstIn ? outs : presses.filter((p) => p.kind === 'out')).at(-1) ?? null;
-  const { pairs, open } = pairPresses(presses);
-  const place = placeOf(firstIn?.location ?? text(rec.firstIn_Location), lastOut?.location ?? text(rec.lastOut_Location), opts.officeAddresses);
-  return {
-    kind: 'day',
-    day: {
+  type Raw = { kind: 'in' | 'out'; value: unknown; location: unknown };
+  const read = (raws: Raw[]) => {
+    const presses: (PressMoment & { at: string; location: string | null })[] = [];
+    const unread: string[] = [];
+    for (const r of raws) {
+      const raw = text(r.value);
+      if (!raw) continue;
+      const at = zohoTimeOf(r.value, date, opts);
+      if (!at) unread.push(raw);
+      else presses.push({ kind: r.kind, at, location: text(r.location) });
+    }
+    return { presses, unread };
+  };
+  const dayOfPresses = (presses: (PressMoment & { at: string; location: string | null })[]): ZohoDay => {
+    presses.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+    const ins = presses.filter((p) => p.kind === 'in');
+    const firstIn = ins[0] ?? null;
+    const outs = presses.filter((p) => p.kind === 'out' && (!firstIn || Date.parse(p.at) > Date.parse(firstIn.at)));
+    const lastOut = (firstIn ? outs : presses.filter((p) => p.kind === 'out')).at(-1) ?? null;
+    const { pairs, open } = pairPresses(presses);
+    const place = placeOf(firstIn?.location ?? text(rec.firstIn_Location), lastOut?.location ?? text(rec.lastOut_Location), opts.officeAddresses);
+    return {
       day: {
         date,
         checkIn: firstIn?.at ?? null,
@@ -351,8 +377,32 @@ export function zohoDayOf(body: unknown, date: string, opts: { pattern?: string 
       },
       openAt: open === null ? null : new Date(open).toISOString(),
       punches: presses.length,
-    },
+    };
   };
+  const firstLast: Raw[] = [
+    { kind: 'in', value: rec.firstIn, location: rec.firstIn_Location },
+    { kind: 'out', value: rec.lastOut, location: rec.lastOut_Location },
+  ];
+  const { presses, unread } = read(
+    entries.length
+      ? entries.flatMap((e): Raw[] => [
+          { kind: 'in', value: e.checkIn ?? e.checkin ?? e.check_in, location: e.checkIn_Location ?? e.checkin_location },
+          { kind: 'out', value: e.checkOut ?? e.checkout ?? e.check_out, location: e.checkOut_Location ?? e.checkout_location },
+        ])
+      : firstLast,
+  );
+  if (unread.length) {
+    // what Zoho sent said with it (owner, 26 October 2026: the first fetch "finished" with 1,087 days unread and the lines
+    // didn't say why): the first time that couldn't be read, as Zoho wrote it (zohoSentText), never a place
+    const said = `${unread.length} of Zoho People’s times on ${date} couldn’t be read: Zoho sent “${zohoSentText(unread[0])}”`;
+    if (!unread.every((t) => isZohoDateOnly(t, date, opts.pattern))) return { kind: 'unreadable', message: `${said}.` };
+    // the day alone, its hour gone (26 October 2026: "Zoho sent “26-Oct-2026”"): with the day's first check-in and last
+    // check-out when Zoho sent those whole (its own fields, "2026-10-26 09:55:00"), for when no way of asking brings them
+    const fl = entries.length ? read(firstLast) : null;
+    return { kind: 'unreadable', message: `${said}, a date without its time.`, dateOnly: true, firstLast: fl && !fl.unread.length && fl.presses.length ? dayOfPresses(fl.presses) : null };
+  }
+  if (!presses.length && !status) return { kind: 'empty' };
+  return { kind: 'day', day: dayOfPresses(presses) };
 }
 
 /**

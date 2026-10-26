@@ -410,6 +410,47 @@ describe('Zoho People’s check-ins pulled in (e2e)', () => {
     });
   });
 
+  describe('colleagues’ times sent without their hour (owner, 26 October 2026: Zoho sent “26-Oct-2026”)', () => {
+    const d = (n: number) => addDays(firstDay(monthsLater(CURRENT, -2)), n);
+    const bensCalls = (from: number) => attendanceCalls().slice(from).filter((c) => c.who === emails.ben);
+
+    it('asks again without naming the date format, keeps the way that brings them whole, and reads every day after that way', async () => {
+      zoho.timeless('named');
+      zoho.day(emails.ben, d(9), zohoDay(d(9), [['09:00', '13:00'], ['14:00', '18:00']]));
+      zoho.day(emails.ben, d(10), zohoDay(d(10), [['09:00', '13:00'], ['14:00', '18:00']]));
+      const from = attendanceCalls().length;
+      const run = await fetchRun('hr', d(9), d(10), ['ben']);
+      expect(run).toMatchObject({ status: 'finished', errors: [] });
+      expect(run.counts).toMatchObject({ calls: 2, callsDone: 2, daysAdded: 2, punchesAdded: 8 });
+      expect(run.skipped.find((s) => s.reason === 'unreadable')).toBeUndefined();
+      // the first day asked twice (the format named, then not), the next once, the way kept
+      expect(bensCalls(from).map((c) => c.dateFormat)).toEqual(['dd-MMM-yyyy', null, null]);
+      const day = await zohoDayOf('ben', d(9));
+      expect(day!.checkIn).toEqual(at(d(9), '09:00'));
+      expect(day!.checkOut).toEqual(at(d(9), '18:00'));
+      expect(day!.pairs).toHaveLength(2);
+      expect(day!.hoursCounted.toNumber()).toBe(8);
+    });
+
+    it('reads the day’s first check-in and last check-out when no way brings them whole, and asks once a day after', async () => {
+      zoho.timeless('always');
+      zoho.day(emails.ben, d(11), zohoDay(d(11), [['09:00', '13:00'], ['14:00', '18:00']]));
+      zoho.day(emails.ben, d(12), zohoDay(d(12), [['10:00', '19:00']]));
+      const from = attendanceCalls().length;
+      const run = await fetchRun('hr', d(11), d(12), ['ben']);
+      expect(run).toMatchObject({ status: 'finished', errors: [] });
+      expect(run.counts).toMatchObject({ daysAdded: 2, punchesAdded: 4 });
+      // the way kept, then the two others, then none again: the first check-in and last check-out
+      expect(bensCalls(from).map((c) => c.dateFormat)).toEqual([null, 'dd-MMM-yyyy', 'dd-MMM-yyyy HH:mm', null]);
+      const first = await zohoDayOf('ben', d(11));
+      expect(first!.checkIn).toEqual(at(d(11), '09:00'));
+      expect(first!.checkOut).toEqual(at(d(11), '18:00'));
+      expect(first!.pairs).toEqual([{ in: at(d(11), '09:00').toISOString(), out: at(d(11), '18:00').toISOString() }]);
+      expect((await zohoDayOf('ben', d(12)))!.checkOut).toEqual(at(d(12), '19:00'));
+      zoho.timeless('off');
+    });
+  });
+
   describe('Zoho’s limits, the range, cancelling', () => {
     it('spaces its calls one a second, and waits out Zoho’s lock before trying again', async () => {
       const calls = attendanceCalls();

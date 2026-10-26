@@ -2,6 +2,7 @@ import { attendanceMonth, OFFICE_ADDRESS_DEFAULTS, ZOHO_PEOPLE_SCOPES, zohoEstim
 import {
   datePatternsFrom,
   formatZohoDate,
+  isZohoDateOnly,
   isZohoDatePattern,
   parseZohoDate,
   zohoAttendanceRequest,
@@ -172,6 +173,35 @@ describe('Zoho People: a day’s entries as the import’s day', () => {
     expect(zohoSentText('x'.repeat(80))).toBe(`${'x'.repeat(59)}…`);
   });
 
+  it('tells a colleague’s time sent as the day alone, its hour gone (owner, 26 October 2026: Zoho sent “26-Oct-2026”)', () => {
+    expect(isZohoDateOnly('26-Oct-2026', '2026-10-26', 'dd-MMM-yyyy')).toBe(true);
+    expect(isZohoDateOnly('2026-10-26', '2026-10-26')).toBe(true);
+    expect(isZohoDateOnly('27-Oct-2026 -', '2026-10-26', 'dd-MMM-yyyy')).toBe(true);
+    expect(isZohoDateOnly('26-Oct-2026 - 09:55 AM', '2026-10-26', 'dd-MMM-yyyy')).toBe(false);
+    expect(isZohoDateOnly('26-Oct-2025', '2026-10-26', 'dd-MMM-yyyy')).toBe(false);
+    expect(isZohoDateOnly('whenever', '2026-10-26')).toBe(false);
+  });
+
+  it('reads the day’s first check-in and last check-out when the entries came without their hour, said as such', () => {
+    const body = { firstIn: '2026-10-26 09:55:00', lastOut: '2026-10-26 18:10:00', status: 'Present', entries: [{ checkIn: '26-Oct-2026', checkOut: '26-Oct-2026', checkIn_Location: 'Trendlix' }, { checkIn: '26-Oct-2026', checkOut: '26-Oct-2026' }] };
+    const r = read(body, '2026-10-26', { pattern: 'dd-MMM-yyyy' });
+    if (r.kind !== 'unreadable') throw new Error(r.kind);
+    expect(r.message).toBe('4 of Zoho People’s times on 2026-10-26 couldn’t be read: Zoho sent “26-Oct-2026”, a date without its time.');
+    expect(r.dateOnly).toBe(true);
+    expect(r.firstLast?.day).toMatchObject({ date: '2026-10-26', checkIn: '2026-10-26T06:55:00.000Z', checkOut: '2026-10-26T15:10:00.000Z', zohoStatus: 'Present' });
+    expect(r.firstLast?.day.pairs).toHaveLength(1);
+    expect(r.firstLast?.punches).toBe(2);
+    // still in: the first check-in alone, open
+    const open = read({ firstIn: '2026-10-26 09:55:00', lastOut: '-', status: 'Present', entries: [{ checkIn: '26-Oct-2026', checkOut: '' }] }, '2026-10-26', { pattern: 'dd-MMM-yyyy' });
+    if (open.kind !== 'unreadable') throw new Error(open.kind);
+    expect(open.firstLast).toMatchObject({ openAt: '2026-10-26T06:55:00.000Z', punches: 1, day: { checkIn: '2026-10-26T06:55:00.000Z', checkOut: null } });
+    // its first check-in without its hour too: nothing to fall back on
+    const none = read({ firstIn: '26-Oct-2026', lastOut: '26-Oct-2026', entries: [{ checkIn: '26-Oct-2026', checkOut: '26-Oct-2026' }] }, '2026-10-26', { pattern: 'dd-MMM-yyyy' });
+    expect(none).toMatchObject({ kind: 'unreadable', dateOnly: true, firstLast: null });
+    // a time that isn't a date alone: unreadable, nothing to fall back on
+    expect(read({ firstIn: '2026-10-26 09:55:00', entries: [{ checkIn: 'whenever' }] }, '2026-10-26')).toEqual({ kind: 'unreadable', message: '1 of Zoho People’s times on 2026-10-26 couldn’t be read: Zoho sent “whenever”.' });
+  });
+
   it('counts the pairs’ hours by the shift, the break between them not counted (the import’s rules)', () => {
     const r = read(sample, '2026-03-03');
     if (r.kind !== 'day') throw new Error(r.kind);
@@ -226,6 +256,13 @@ describe('Zoho People: the requests and the sign-in', () => {
     const post = zohoAttendanceRequest('https://people.zoho.com', 'tok-1', { empId: 'TRX-7' }, '2026-10-05', 'yyyy-MM-dd', 'POST');
     expect(post.url).not.toContain('?');
     expect(Object.fromEntries(new URLSearchParams(post.body))).toEqual({ date: '2026-10-05', dateFormat: 'yyyy-MM-dd', empId: 'TRX-7' });
+  });
+
+  it('asks the other ways when the times come without their hour: no format named, or the format with a time', () => {
+    const params = (mode: 'named' | 'unnamed' | 'timed') => Object.fromEntries(new URL(zohoAttendanceRequest('https://people.zoho.com', 't', { emailId: 'sara@trendlix.com' }, '2026-10-26', 'dd-MMM-yyyy', 'GET', mode).url).searchParams);
+    expect(params('named')).toEqual({ date: '26-Oct-2026', dateFormat: 'dd-MMM-yyyy', emailId: 'sara@trendlix.com' });
+    expect(params('unnamed')).toEqual({ date: '26-Oct-2026', emailId: 'sara@trendlix.com' });
+    expect(params('timed')).toEqual({ date: '26-Oct-2026 00:00', dateFormat: 'dd-MMM-yyyy HH:mm', emailId: 'sara@trendlix.com' });
   });
 
   it('calls People at the sign-in’s data centre', () => {

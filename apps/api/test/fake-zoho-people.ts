@@ -18,6 +18,8 @@ export interface FakeZohoCall {
   url: string;
   who: string | null;
   date: string | null;
+  /** The date format the call named, if any. */
+  dateFormat: string | null;
 }
 
 /** A clock whose sleep moves it on at once. */
@@ -51,6 +53,12 @@ export interface FakeZohoPeople {
   down(on: boolean): void;
   /** Every token given stops working (the sign-in revoked at Zoho). */
   revoke(): void;
+  /**
+   * Colleagues' entries sent as the day alone, their hour gone (owner, 26 October 2026: Zoho sent "26-Oct-2026"): 'named'
+   * while the call names a date format without a time, 'always' however asked (the day's firstIn and lastOut stay
+   * whole), 'off' as given.
+   */
+  timeless(mode: 'off' | 'named' | 'always'): void;
   /** The organization's time zone and date format, as its Get Organization Info answers. */
   organization: { TimeZone: string; DateFormat: string };
 }
@@ -61,6 +69,13 @@ const ZOHO_ACCOUNTS = /^accounts\.(zoho\.(com|eu|in|com\.au|jp|sa|uk|ae|sg)|zoho
 const ZOHO_PEOPLE = /^people\.(zoho\.(com|eu|in|com\.au|jp|sa|uk|ae|sg)|zohocloud\.ca)$/;
 const dcOf = (host: string) => host.replace(/^(accounts|people)\./, '');
 const MONTHS: Record<string, string> = { Jan: '01', Feb: '02', Mar: '03', Apr: '04', May: '05', Jun: '06', Jul: '07', Aug: '08', Sep: '09', Oct: '10', Nov: '11', Dec: '12' };
+
+/** A day's entries with each check-in and check-out the day alone ("26-Oct-2026 - 09:00 AM" → "26-Oct-2026"). */
+function withoutHours(body: Record<string, unknown>): Record<string, unknown> {
+  if (!Array.isArray(body.entries)) return body;
+  const cut = (v: unknown) => (typeof v === 'string' ? v.replace(/\s*-\s*\d{1,2}:\d{2}.*$/, '') : v);
+  return { ...body, entries: (body.entries as Record<string, unknown>[]).map((e) => ({ ...e, checkIn: cut(e.checkIn), checkOut: cut(e.checkOut) })) };
+}
 
 /** Zoho's date in its format (the two the fake knows) as YYYY-MM-DD; null when it isn't in it. */
 function dayIn(value: string, format: string): string | null {
@@ -83,6 +98,7 @@ export function fakeZohoPeople(run: string, app: { clientId: string; clientSecre
   let locks = 0;
   let gate: Promise<void> | null = null;
   let isDown = false;
+  let hourless: 'off' | 'named' | 'always' = 'off';
   let n = 0;
   const organization = { TimeZone: 'Africa/Cairo', DateFormat: 'dd-MMM-yyyy' };
 
@@ -100,7 +116,7 @@ export function fakeZohoPeople(run: string, app: { clientId: string; clientSecre
     const form = new URLSearchParams(init.body ?? '');
 
     if (ZOHO_ACCOUNTS.test(u.host)) {
-      calls.push({ at: clock.now(), method, url, who: null, date: null });
+      calls.push({ at: clock.now(), method, url, who: null, date: null, dateFormat: null });
       const dc = dcOf(u.host);
       if (u.pathname === '/oauth/v2/token' && method === 'POST') {
         // Zoho answers its refusals with 200 and an "error"
@@ -142,7 +158,7 @@ export function fakeZohoPeople(run: string, app: { clientId: string; clientSecre
       const token = access.get(bearer(init.headers));
       const params = method === 'POST' ? form : u.searchParams;
       const who = params.get('emailId') ?? (params.get('empId') ? `emp:${params.get('empId')}` : null);
-      const call: FakeZohoCall = { at: clock.now(), method, url: `${u.origin}${u.pathname}`, who, date: params.get('date') };
+      const call: FakeZohoCall = { at: clock.now(), method, url: `${u.origin}${u.pathname}`, who, date: params.get('date'), dateFormat: params.get('dateFormat') };
       calls.push(call);
       // a token works only at its own data centre
       if (!token || token.dc !== dcOf(u.host)) return json(200, { response: { message: 'Error occurred', errors: { code: 7202, message: 'Provided authentication token is invalid.' }, status: 1 } });
@@ -154,12 +170,18 @@ export function fakeZohoPeople(run: string, app: { clientId: string; clientSecre
         locks--;
         return json(200, { response: { errors: { code: 7209, message: 'API access blocked since threshold limit exceeded. Please try after some time' }, status: 1 } });
       }
-      const format = params.get('dateFormat') ?? organization.DateFormat;
-      const date = dayIn(params.get('date') ?? '', format);
+      const named = params.get('dateFormat');
+      const format = named ?? organization.DateFormat;
+      // a format with a time ("dd-MMM-yyyy HH:mm") takes the date with one ("26-Oct-2026 00:00")
+      const timed = / HH:mm$/.test(format);
+      const sent = params.get('date') ?? '';
+      const date = timed ? (/ \d{2}:\d{2}$/.test(sent) ? dayIn(sent.slice(0, -6), format.slice(0, -6)) : null) : dayIn(sent, format);
       if (!date) return json(200, { response: { errors: { code: 7055, message: 'Invalid date format' }, status: 1 } });
       const email = who ? known.get(who.toLowerCase()) : null;
       if (!email) return json(200, { response: { errors: { code: 7048, message: 'Invalid user / No such user found' }, status: 1 } });
-      return json(200, days.get(`${email}|${date}`) ?? {});
+      const body = days.get(`${email}|${date}`) ?? {};
+      const drop = hourless === 'always' || (hourless === 'named' && named !== null && !/[Hh]/.test(named));
+      return json(200, drop ? withoutHours(body) : body);
     }
     return json(599, { error: `The fake has no ${method} ${u.host}${u.pathname}` });
   }
@@ -194,6 +216,9 @@ export function fakeZohoPeople(run: string, app: { clientId: string; clientSecre
     },
     down(on) {
       isDown = on;
+    },
+    timeless(mode) {
+      hourless = mode;
     },
     revoke() {
       access.clear();
