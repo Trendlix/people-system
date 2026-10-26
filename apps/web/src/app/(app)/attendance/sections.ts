@@ -17,6 +17,7 @@ export const ATTENDANCE_SUMMARY_PATH = '/attendance/summary';
 export const ATTENDANCE_CORRECTIONS_PATH = '/attendance/corrections';
 export const ATTENDANCE_WFH_PATH = '/attendance/wfh';
 export const ATTENDANCE_OD_PATH = '/attendance/official-duty';
+export const ATTENDANCE_COMPENSATORY_PATH = '/attendance/compensatory';
 
 /** Who reads the attendance itself: HR, the CEO and Finance. */
 const READERS: Role[] = ['hr', 'ceo', 'finance'];
@@ -35,4 +36,7 @@ export const ATTENDANCE_SECTIONS: readonly { key: string; href: string; label: s
   // the official duties asked for (owner, 23 October 2026: "Official duty (OD) requests", "Manager, then HR"), beside
   // working from home
   { key: 'od', href: ATTENDANCE_OD_PATH, label: 'Official Duty', roles: ['hr', 'ceo'] },
+  // the compensatory days asked for (owner, 26 October 2026: "my compensatory is a compensation with another day in the same
+  // month", "Manager, then HR"), HR deciding a day off or cash instead
+  { key: 'compensatory', href: ATTENDANCE_COMPENSATORY_PATH, label: 'Compensatory Days', roles: ['hr', 'ceo'] },
 ];

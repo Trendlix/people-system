@@ -7,6 +7,7 @@ import {
   CHECK_IN_FLAG_SHORT_LABELS,
   CHECK_IN_PLACE_LABELS,
   correctedFromText,
+  COMPENSATORY_DAY_OFF_LABEL,
   EXEMPT_BADGE,
   EXEMPTION_LABEL,
   exemptionWhenText,
@@ -242,10 +243,14 @@ export function figureTiles(
 }
 
 /** The month's exempt days (owner, 25 October 2026), once there is any (an API from before them has none). */
-function exemptTiles(f: Partial<Pick<AttendanceFigures, 'exemptDays'>>): FigureTile[] {
+function exemptTiles(f: Partial<Pick<AttendanceFigures, 'exemptDays' | 'compensatoryDays'>>): FigureTile[] {
   const n = typeof f.exemptDays === 'number' ? f.exemptDays : 0;
-  if (!(n > 0)) return [];
-  return [{ key: 'exempt', label: 'Exempt days', value: String(n), note: `${EXEMPTION_LABEL}: counted as full hours`, tone: null }];
+  const c = typeof f.compensatoryDays === 'number' ? f.compensatoryDays : 0;
+  return [
+    ...(n > 0 ? [{ key: 'exempt', label: 'Exempt days', value: String(n), note: `${EXEMPTION_LABEL}: counted as full hours`, tone: null }] : []),
+    // compensatory days off (owner, 26 October 2026): full paid days
+    ...(c > 0 ? [{ key: 'compensatory', label: 'Compensatory days off', value: String(c), note: 'Counted as full paid days: never absent or short', tone: null }] : []),
+  ];
 }
 
 /** The month's extra time and the short hours it filled, once there is any (an API from before 20 October 2026 has none). */
@@ -477,8 +482,19 @@ export function dayPairs(day: { pairs?: readonly PressPair[] | null; openAt?: st
 /** The badge, and what it says on hover and to a screen reader. */
 export const EXEMPT_DAY_TITLE = `${EXEMPTION_LABEL}: counted as full hours; any presses are kept for reference only`;
 
+/** What the Compensatory day off badge says on hover and to a screen reader. */
+export const COMPENSATORY_DAY_TITLE = `${COMPENSATORY_DAY_OFF_LABEL}: a full paid day in exchange for a rest day or an official holiday worked; never absent or short`;
+
+/** "2 compensatory days off", "1 compensatory day off"; null with none (an API from before them has none). */
+export function compensatoryDaysText(f: { compensatoryDays?: number | null }): string | null {
+  const n = typeof f.compensatoryDays === 'number' ? f.compensatoryDays : 0;
+  return n > 0 ? `${n} compensatory ${n === 1 ? 'day' : 'days'} off` : null;
+}
+
 /** The "Exempt" badge of a day, or of a person's month with exempt days; null for anything else. */
-export function exemptBadge(of: { exempt?: boolean | null; exemptDays?: number | null }): { label: string; title: string } | null {
+export function exemptBadge(of: { exempt?: boolean | null; exemptDays?: number | null; compensatory?: boolean | null }): { label: string; title: string } | null {
+  // a compensatory day off (owner, 26 October 2026) is read full as an exempt day is, said apart
+  if (of.compensatory) return { label: COMPENSATORY_DAY_OFF_LABEL, title: COMPENSATORY_DAY_TITLE };
   const on = !!of.exempt || (typeof of.exemptDays === 'number' && of.exemptDays > 0);
   return on ? { label: EXEMPT_BADGE, title: EXEMPT_DAY_TITLE } : null;
 }

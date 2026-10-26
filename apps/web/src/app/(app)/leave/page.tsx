@@ -16,6 +16,7 @@ import { todayInCairo } from '../employees/ui';
 import { Empty, Loading } from '../organization/ui';
 import { notLoadedText } from '../payroll/load';
 import { canSeeLeaveReport, LEAVE_REPORT_HREF } from '../payroll/reports/leave/leave-report';
+import { loadCompensatoryCalendar } from '../attendance/compensatory/data';
 import { loadWfhCalendar } from '../attendance/wfh/data';
 import { loadOdCalendar } from '../attendance/official-duty/data';
 import { calendarDays, calendarPeople, monthRange, readDepartment, readMonth } from './calendar';
@@ -284,18 +285,20 @@ async function Calendar({ query, hr }: { query: Query; hr: boolean }) {
   const month = readMonth(query, today);
   const departmentId = readDepartment(query);
   const { from, to } = monthRange(month);
-  const [entries, holidays, departments, wfh, od] = await Promise.all([
+  const [entries, holidays, departments, wfh, od, compensatory] = await Promise.all([
     loadLeaveCalendar(month, departmentId),
     loadHolidaysOf(Number(month.slice(0, 4))),
     getOrNull<Department[]>('/departments'),
     loadWfhCalendar(from, to, departmentId),
     loadOdCalendar(from, to, departmentId),
+    // the compensatory days off (owner, 26 October 2026), as days off
+    loadCompensatoryCalendar(from, to, departmentId),
   ]);
   if (entries.kind !== 'ok') {
     return <Empty>{entries.kind === 'unavailable' ? 'Not available yet: the server does not have the leave calendar yet.' : notLoadedText(entries, 'calendar')}</Empty>;
   }
   const days = calendarDays(month, holidays.kind === 'ok' ? holidays.value : [], today);
-  const people = calendarPeople([...entries.value, ...(wfh.kind === 'ok' ? wfh.value : []), ...(od.kind === 'ok' ? od.value : [])], days);
+  const people = calendarPeople([...entries.value, ...(wfh.kind === 'ok' ? wfh.value : []), ...(od.kind === 'ok' ? od.value : []), ...(compensatory.kind === 'ok' ? compensatory.value : [])], days);
   return (
     <LeaveCalendar
       month={month}

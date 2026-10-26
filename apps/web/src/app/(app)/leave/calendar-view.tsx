@@ -28,6 +28,7 @@ import {
 import { CalendarDepartmentFilter, type DepartmentChoice } from './calendar-filter';
 import { daysNumber, leaveHref } from './list';
 import { permissionHref } from './permissions';
+import { compensatoryHref } from '../attendance/compensatory/compensatory';
 import { wfhHref } from '../attendance/wfh/wfh';
 import { odHref } from '../attendance/official-duty/od';
 
@@ -47,8 +48,8 @@ import { odHref } from '../attendance/official-duty/od';
 const LINK = 'btn btn-secondary min-h-9 px-3 no-underline';
 
 /** Where a day's mark opens: its leave request's page, its permission request's, or its work from home request's. */
-const cellHref = (cell: { requestId: string | null; permission: unknown; wfh?: boolean; od?: unknown }) =>
-  cell.requestId ? (cell.od ? odHref(cell.requestId) : cell.wfh ? wfhHref(cell.requestId) : cell.permission ? permissionHref(cell.requestId) : leaveHref(cell.requestId)) : null;
+const cellHref = (cell: { requestId: string | null; permission: unknown; wfh?: boolean; od?: unknown; compensatory?: boolean }) =>
+  cell.requestId ? (cell.compensatory ? compensatoryHref(cell.requestId) : cell.od ? odHref(cell.requestId) : cell.wfh ? wfhHref(cell.requestId) : cell.permission ? permissionHref(cell.requestId) : leaveHref(cell.requestId)) : null;
 
 /**
  * A day's leave in the grid: its type's letter, filled when approved, outlined while it is being decided; a permission

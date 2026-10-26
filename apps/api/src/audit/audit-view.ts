@@ -384,6 +384,8 @@ function targetOf(row: Pick<AuditRow, 'entityType' | 'entityId' | 'diff'>, refs:
       return id ? own(`/attendance/wfh/${id}`, 'Open work from home request', LEAVE) : null;
     case 'od_request':
       return id ? own(`/attendance/official-duty/${id}`, 'Open official duty request', LEAVE) : null;
+    case 'compensatory_request':
+      return id ? own(`/attendance/compensatory/${id}`, 'Open compensatory day request', LEAVE) : null;
     case 'attendance_correction':
       return id ? own(`/attendance/corrections/${id}`, 'Open attendance correction', LEAVE) : null;
     case 'attendance_day':

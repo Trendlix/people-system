@@ -1,5 +1,6 @@
 import { isOpenLeave, permissionClock, permissionHoursText } from '@trendlix/shared';
 import { formatDate, formatTime } from '../../../lib/format';
+import type { CompensatoryCalendarItem } from '../../../lib/compensatory-types';
 import type { OdCalendarItem } from '../../../lib/od-types';
 import type { Holiday, LeaveCalendarEntry } from '../../../lib/types';
 import type { WfhCalendarItem } from '../../../lib/wfh-types';
@@ -125,6 +126,8 @@ export interface CalendarCell {
   permission: CalendarPermission | null;
   /** A work from home day (21 October 2026): a working day elsewhere, not a day off. */
   wfh?: boolean;
+  /** A compensatory day off (26 October 2026): a day off like leave, opening its own request. */
+  compensatory?: boolean;
   /**
    * A day of official duty (23 October 2026): a working day away from the office, not a day off; part of a day's times
    * in words ("10:00 AM–2:00 PM"), null for a full day.
@@ -183,7 +186,7 @@ function keeps(had: CalendarCell, waiting: boolean, permission: boolean): boolea
  * approved one is shown (an approved one replaces one being decided), leave over a permission; two permissions of a
  * day, both approved or both being decided, show their hours together.
  */
-export function calendarPeople(entries: readonly (LeaveCalendarEntry | WfhCalendarItem | OdCalendarItem)[], days: readonly Pick<CalendarDay, 'date'>[]): CalendarPerson[] {
+export function calendarPeople(entries: readonly (LeaveCalendarEntry | WfhCalendarItem | OdCalendarItem | CompensatoryCalendarItem)[], days: readonly Pick<CalendarDay, 'date'>[]): CalendarPerson[] {
   const people = new Map<string, CalendarPerson>();
   for (const e of entries.filter(shown)) {
     let person = people.get(e.employee.id);
@@ -216,6 +219,8 @@ export function calendarPeople(entries: readonly (LeaveCalendarEntry | WfhCalend
         permission,
         ...(wfh && { wfh: true }),
         ...(od && { od }),
+        // a compensatory day off (26 October 2026): a day off like leave, its own request
+        ...(e.kind === 'compensatory' && { compensatory: true }),
         // who covers the leave (25 October 2026)
         ...(!permission && !wfh && !od && 'cover' in e && e.cover && { cover: e.cover.fullNameEn }),
       };
@@ -281,6 +286,7 @@ export interface AgendaPerson {
   requestId: string | null;
   permission: CalendarPermission | null;
   wfh?: boolean;
+  compensatory?: boolean;
   od?: { times: string | null };
   /** A leave's colleague who covers it, by name (25 October 2026). */
   cover?: string | null;
@@ -311,6 +317,7 @@ export function calendarAgenda(people: readonly CalendarPerson[], days: readonly
                 requestId: c.requestId,
                 permission: c.permission,
                 ...(c.wfh && { wfh: true }),
+                ...(c.compensatory && { compensatory: true }),
                 ...(c.od && { od: c.od }),
                 ...(c.cover && { cover: c.cover }),
               },

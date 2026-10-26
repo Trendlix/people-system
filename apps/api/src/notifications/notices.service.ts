@@ -71,6 +71,8 @@ export const REQUEST_LINKS = {
   wfh: (id: string) => `/attendance/wfh/${id}`,
   // official duty (owner, 23 October 2026): under Attendance, beside working from home
   od: (id: string) => `/attendance/official-duty/${id}`,
+  // compensatory days (owner, 26 October 2026): under Attendance, beside working from home
+  compensatory: (id: string) => `/attendance/compensatory/${id}`,
   // leave coverage (25 October 2026): what the caller covers, on My Requests; a stand-in's waiting requests, on My Team
   // (a person) or Leave Requests (HR)
   covering: '/my-requests#covering',
@@ -159,6 +161,19 @@ export class NoticesService {
     });
   }
 
+  /** A compensatory day request (owner, 26 October 2026: "Manager, then HR"): told as a work from home request is; on the bell and push only. */
+  async compensatory(id: string, event: RequestEvent): Promise<void> {
+    await this.safely('compensatory day', async () => {
+      const r = await this.prisma.compensatoryRequest.findUnique({
+        where: { id },
+        select: { employeeId: true, managerId: true, status: true, dayWorked: true, dayOff: true, employee: { select: { fullNameEn: true, fullNameAr: true } } },
+      });
+      if (!r) return;
+      const day = fromDateOnly(r.dayWorked);
+      await this.leaveLike('compensatory', { ...r, name: r.employee.fullNameEn, nameAr: r.employee.fullNameAr, when: daysText(day, day), span: { from: day, to: day }, link: REQUEST_LINKS.compensatory(id) }, event);
+    });
+  }
+
   /** An official duty request (owner, 23 October 2026: "Manager, then HR"): told as a work from home request is, with its days. */
   async od(id: string, event: RequestEvent): Promise<void> {
     await this.safely('official duty', async () => {
@@ -183,16 +198,16 @@ export class NoticesService {
 
   private async leaveLike(kind: LeaveLikeKind, r: RequestFacts, event: RequestEvent): Promise<void> {
     if (event === 'cancelled_by_hr') {
-      if (kind !== 'correction' && r.status === 'cancelled') await this.toEmployee(r.employeeId, { ...cancelledByHrText(kind, r.when, r.link), whatsapp: updateOf(kind, r.span, 'cancelled') });
+      if (kind !== 'correction' && r.status === 'cancelled') await this.toEmployee(r.employeeId, { ...cancelledByHrText(kind, r.when, r.link), ...(kind !== 'compensatory' && { whatsapp: updateOf(kind, r.span, 'cancelled') }) });
       return;
     }
     const stage = stageOf(r.status);
     if (stage) {
-      await this.notifications.notify(await this.deciders(stage, r), { ...waitingText(kind, r.name, r.when, r.link), whatsapp: waitingOf(kind, r) });
+      await this.notifications.notify(await this.deciders(stage, r), { ...waitingText(kind, r.name, r.when, r.link), ...(kind !== 'compensatory' && { whatsapp: waitingOf(kind, r) }) });
       return;
     }
     if (event === 'decided' && (r.status === 'approved' || r.status === 'rejected')) {
-      await this.toEmployee(r.employeeId, { ...decidedText(kind, r.status, r.when, r.link), whatsapp: updateOf(kind, r.span, r.status) });
+      await this.toEmployee(r.employeeId, { ...decidedText(kind, r.status, r.when, r.link), ...(kind !== 'compensatory' && { whatsapp: updateOf(kind, r.span, r.status) }) });
     }
   }
 
@@ -419,6 +434,7 @@ export class NoticesService {
         this.prisma.permissionRequest.count({ where: moved }),
         this.prisma.wfhRequest.count({ where: moved }),
         this.prisma.odRequest.count({ where: moved }),
+        this.prisma.compensatoryRequest.count({ where: moved }),
         this.prisma.attendanceCorrection.count({ where: moved }),
         this.prisma.reimbursementClaim.count({ where: moved }),
       ]);

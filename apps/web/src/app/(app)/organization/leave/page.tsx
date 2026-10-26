@@ -36,6 +36,9 @@ import { closingYear } from './year-closing';
 import { limitNowText, peopleNowText, STAFFING_ID, staffingGroups, takesLimit, unitLimitText } from './staffing';
 import { loadStaffing } from './staffing-data';
 import { StaffingLimitForm } from './staffing-form';
+import { saveCompensatorySettings } from '../../attendance/compensatory/actions';
+import { loadCompensatorySettings } from '../../attendance/compensatory/data';
+import { CompensatorySettingsForm } from '../../attendance/compensatory/compensatory-forms';
 import { saveWfhSettings } from '../../attendance/wfh/actions';
 import { loadWfhSettings } from '../../attendance/wfh/data';
 import { WfhSettingsForm } from '../../attendance/wfh/wfh-forms';
@@ -291,6 +294,29 @@ async function WorkFromHome({ user }: { user: SessionUser }) {
   );
 }
 
+/**
+ * Compensatory days (owner, 26 October 2026: "if paid in cash make it 1.5"): the days' pay a compensatory day paid in cash
+ * instead of a day off adds to the payroll, HR's to change (GET and PATCH /compensatory/settings). Nothing from an API from
+ * before it.
+ */
+async function CompensatoryDays({ user }: { user: SessionUser }) {
+  const loaded = await loadCompensatorySettings();
+  if (loaded.kind === 'unavailable') return null;
+  return (
+    <SetupSection
+      id="compensatory-days"
+      title="Compensatory Days"
+      intro="A day off in the same month in exchange for a rest day or an official holiday worked, decided by the manager, then HR. HR approves it as a day off, which adds no pay, or, rarely, as cash instead: the days' pay below, added to the month's payroll as Compensation for working that day."
+    >
+      {loaded.kind === 'ok' ? (
+        <CompensatorySettingsForm action={saveCompensatorySettings} settings={loaded.value} canEdit={editsLeaveSetup(user)} />
+      ) : (
+        <NotLoaded what="the compensatory day cash rate" loaded={{ kind: 'failed', message: loaded.kind === 'failed' ? loaded.messages.join(' ') : 'Only staff can see it.' }} />
+      )}
+    </SetupSection>
+  );
+}
+
 function YearClosingSection({ user }: { user: SessionUser }) {
   const year = closingYear({}, todayInCairo());
   return (
@@ -327,6 +353,9 @@ async function LeaveSetup() {
       </Section>
       <Section>
         <WorkFromHome user={user} />
+      </Section>
+      <Section>
+        <CompensatoryDays user={user} />
       </Section>
       <Section>
         <LeaveTypes user={user} />

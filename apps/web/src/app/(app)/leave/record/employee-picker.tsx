@@ -21,7 +21,7 @@ export function LeaveEmployeePicker({
   chosen: string | null;
   /** The form it opens: Record leave's, Record permission's, or Record a WFH day's. */
   action?: string;
-  what?: 'leave' | 'permission' | 'work from home day';
+  what?: 'leave' | 'permission' | 'work from home day' | 'compensatory day';
 }) {
   const form = useRef<HTMLFormElement>(null);
   return (

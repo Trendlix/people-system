@@ -4,7 +4,7 @@ import { DateInput } from '@/components/date-time-inputs';
 import type { AttendanceHistoryView } from '@/lib/attendance-history-types';
 import { formatDate, formatDateTime } from '@/lib/format';
 import type { EmployeeProfile } from '@/lib/types';
-import { dayPairs, EXEMPT_DAY_TITLE, hoursText } from '../../../attendance/attendance';
+import { COMPENSATORY_DAY_TITLE, dayPairs, EXEMPT_DAY_TITLE, hoursText } from '../../../attendance/attendance';
 import { DayPairsLine, OpenPressLine } from '../../../attendance/ui';
 import { Empty } from '../../../organization/ui';
 import { loadJson } from '../../../payroll/load';
@@ -215,11 +215,11 @@ function ModeCell({ d }: { d: HistoryDay }) {
         {label}
       </Link>
     ) : (
-      d.mode === 'exempt' ? (
-        // exempt from check-in (25 October 2026): a badge, its full hours counted
-        <span className="badge border border-line bg-card text-ink" title={EXEMPT_DAY_TITLE}>
+      d.mode === 'exempt' || d.mode === 'compensatory' ? (
+        // exempt from check-in (25 October 2026), or a compensatory day off (26 October 2026): a badge, its full hours counted
+        <span className="badge border border-line bg-card text-ink" title={d.mode === 'exempt' ? EXEMPT_DAY_TITLE : COMPENSATORY_DAY_TITLE}>
           {label}
-          <span className="sr-only"> ({EXEMPT_DAY_TITLE})</span>
+          <span className="sr-only"> ({d.mode === 'exempt' ? EXEMPT_DAY_TITLE : COMPENSATORY_DAY_TITLE})</span>
         </span>
       ) : (
         <span className={d.mode === 'absent' ? 'font-semibold text-danger' : undefined}>{label}</span>

@@ -33,6 +33,9 @@ import { asksHome, homeProgressText, MY_HOME_ID, NEW_HOME_PATH, placesInForce } 
 import { HomeMap, MyHomesTable } from '../home-locations/ui';
 import { loadMyExitInterview } from '../offboarding/data';
 import { MY_EXIT_INTERVIEW_PATH } from '../offboarding/offboarding';
+import { loadCompensatoryForm, loadMyCompensatory } from '../attendance/compensatory/data';
+import { NEW_COMPENSATORY_PATH } from '../attendance/compensatory/compensatory';
+import { CompensatoryTable } from '../attendance/compensatory/ui';
 import { loadMyWfh, loadWfhAllowance } from '../attendance/wfh/data';
 import { NEW_WFH_PATH, wfhAllowanceLine } from '../attendance/wfh/wfh';
 import { WfhTable } from '../attendance/wfh/ui';
@@ -468,6 +471,51 @@ async function WorkFromHome() {
 }
 
 /**
+ * Their compensatory days (owner, 26 October 2026: "my compensatory is a compensation with another day in the same
+ * month. and rarely to be compensated in cash"; GET /me/compensatory): the day worked, the day off and where each stands,
+ * the latest first, each opening its page (every step, Cancel while it is being decided); Compensatory day to ask for one,
+ * while its form says nothing refuses them (an employment, not a freelancer: GET /me/compensatory/form). Nothing from an
+ * API from before it, nor without a profile of their own; a section with no requests and nothing to ask for is left out.
+ */
+async function Compensatory() {
+  const user = await getCurrentUser();
+  const profile = await loadOwnProfile(user);
+  if (!profile) return null;
+  const [requests, form] = await Promise.all([loadMyCompensatory(), loadCompensatoryForm()]);
+  if (requests.kind === 'unavailable') return null;
+  const asks = form.kind === 'ok' && form.value.offered && !form.value.refusal;
+  const list = requests.kind === 'ok' ? requests.value : [];
+  if (!asks && requests.kind === 'ok' && list.length === 0) return null;
+  return (
+    <section id="my-compensatory" aria-labelledby="my-compensatory-heading" className="mt-10 scroll-mt-6 space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 id="my-compensatory-heading" className="text-lg font-semibold">
+            Compensatory Days
+          </h2>
+          <p className="text-sm text-muted">
+            A day off in the same month in exchange for a rest day or an official holiday you worked, asked a day before at the latest. Your direct
+            manager decides it first, then HR, who approves it as a day off or, rarely, pays it in cash instead.
+          </p>
+        </div>
+        {asks && (
+          <Link href={NEW_COMPENSATORY_PATH} className="btn btn-secondary">
+            Compensatory day
+          </Link>
+        )}
+      </div>
+      {requests.kind !== 'ok' ? (
+        <div className="card px-6 py-6 text-sm text-muted">Your compensatory day requests couldn&apos;t be loaded. Please try again in a moment.</div>
+      ) : list.length === 0 ? (
+        <div className="card px-6 py-10 text-center text-sm text-muted">You haven&apos;t asked for a compensatory day. Ask with Compensatory day.</div>
+      ) : (
+        <CompensatoryTable requests={list} note="the latest day worked first." />
+      )}
+    </section>
+  );
+}
+
+/**
  * Their official duties (owner, 23 October 2026: "Official duty (OD) requests"; GET /me/official-duty): the days and
  * hours, where, and where each stands, the latest first day first, each opening its page (every step, Cancel while it
  * is being decided); Request official duty to ask for one, while its form says nothing refuses them (an employment, not
@@ -650,6 +698,9 @@ export default function MyRequestsPage({ searchParams }: PageProps<'/my-requests
       </Suspense>
       <Suspense fallback={null}>
         <OfficialDuty />
+      </Suspense>
+      <Suspense fallback={null}>
+        <Compensatory />
       </Suspense>
       <Suspense fallback={null}>
         <HomeLocation />

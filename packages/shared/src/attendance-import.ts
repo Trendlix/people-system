@@ -530,7 +530,7 @@ export function importedInputRefusal(field: ImportedInput, name: string, at: str
  * A day as a line's figures are taken from it: what it was, the hours it counts, its permission and source; and (since
  * 25 October 2026) its presses as far as a missing check-out is told from them.
  */
-export interface LineDay extends Partial<Pick<KeptDay, 'checkIn' | 'checkOut' | 'openAt' | 'od' | 'exempt'>> {
+export interface LineDay extends Partial<Pick<KeptDay, 'checkIn' | 'checkOut' | 'openAt' | 'od' | 'exempt' | 'compensated'>> {
   status: AttendanceDayStatus;
   hoursCounted: number;
   permissionHours: number;
@@ -564,7 +564,8 @@ export function attendanceLineInputs(
   days: readonly LineDay[],
   opts: { systemPermissionHours: number; permissionHoursPerMonth: number; hourly: boolean; hoursADay?: number | null },
 ): Partial<Record<ImportedInput, number | null>> {
-  const worked = days.filter((d) => d.status === 'worked');
+  // the day worked of a compensatory request adds no hours (owner, 26 October 2026: "if the day is compensated with a day, we pay nothing")
+  const worked = days.filter((d) => d.status === 'worked' && !d.compensated);
   const workedHours = minutes(worked.reduce((sum, d) => sum + lineDayHours(d, opts.hourly ? null : opts.hoursADay), 0));
   if (opts.hourly) return { workedHours };
   // Zoho's column: its days', and a corrected day's over one of Zoho's (which carries it)

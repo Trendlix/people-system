@@ -97,6 +97,10 @@ export const NOTIFICATION_KINDS = [
   // that their step's requests come to them and how many wait
   'leave_cover',
   'stand_in',
+  // compensatory days (owner, 26 October 2026; compensatory.ts): a request waiting for its approver's step, and the
+  // employee's own decided (or cancelled by HR)
+  'compensatory_waiting',
+  'compensatory_decided',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
@@ -115,6 +119,7 @@ export const WAITING_KINDS = [
   'kpi_waiting',
   'wfh_waiting',
   'od_waiting',
+  'compensatory_waiting',
   // a stand-in's requests waiting (25 October 2026)
   'stand_in',
 ] as const satisfies readonly NotificationKind[];
@@ -166,6 +171,8 @@ export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
   access_held: 'Access',
   od_waiting: 'Official duty',
   od_decided: 'Official duty',
+  compensatory_waiting: 'Compensatory day',
+  compensatory_decided: 'Compensatory day',
   access_no_contract: 'Access',
   meeting_connection: 'Meetings',
   screening_mention: 'Screening comment',

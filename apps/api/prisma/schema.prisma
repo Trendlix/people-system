@@ -141,6 +141,8 @@ model User {
   permissionSteps    PermissionRequestStep[]    @relation("PermissionStepActor") // steps of permission requests this user took
   wfhRequestsMade    WfhRequest[]               @relation("WfhRequestCreation") // work from home days this user asked for, recorded as HR or imported (21 October 2026)
   wfhSteps           WfhRequestStep[]           @relation("WfhStepActor") // steps of work from home requests this user took
+  compensatoryMade   CompensatoryRequest[]      @relation("CompensatoryCreation") // compensatory days this user asked for or recorded (26 October 2026)
+  compensatorySteps  CompensatoryStep[]         @relation("CompensatoryStepActor")
   odRequestsMade     OdRequest[]                @relation("OdRequestCreation") // official duties this user asked for (23 October 2026)
   odSteps            OdRequestStep[]            @relation("OdStepActor") // steps of official duty requests this user took
   attendancePunches  AttendancePunch[]          @relation("AttendancePunchBy") // the presses of Check in and Check out this user made
@@ -1145,6 +1147,9 @@ model Employee {
   leaveStepsStoodIn          LeaveRequestStep[]     @relation("LeaveStepOnBehalf") // the leave steps taken by a stand-in for this person
   permissionStepsStoodIn     PermissionRequestStep[] @relation("PermissionStepOnBehalf")
   wfhStepsStoodIn            WfhRequestStep[]       @relation("WfhStepOnBehalf")
+  compensatoryDays           CompensatoryRequest[]  @relation("CompensatoryRequester") // the compensatory days this person asked for, or HR recorded for them (26 October 2026)
+  compensatoryToDecide       CompensatoryRequest[]  @relation("CompensatoryManager")
+  compensatoryStepsStoodIn   CompensatoryStep[]     @relation("CompensatoryStepOnBehalf")
   odStepsStoodIn             OdRequestStep[]        @relation("OdStepOnBehalf")
   correctionStepsStoodIn     AttendanceCorrectionStep[] @relation("CorrectionStepOnBehalf")
   claimStepsStoodIn          ReimbursementClaimStep[] @relation("ClaimStepOnBehalf")
@@ -1234,6 +1239,7 @@ model Employment {
   leaveRequests    LeaveRequest[] // the leave taken under it
   permissions      PermissionRequest[] // the permission hours taken under it
   wfhDays          WfhRequest[] // the work from home days under it (21 October 2026)
+  compensatoryDays CompensatoryRequest[] // the compensatory days under it (26 October 2026)
   odRequests       OdRequest[] // the official duties under it (23 October 2026)
   corrections      AttendanceCorrection[] // the attendance corrections of its days
   leaveBalances    LeaveBalanceYear[] // each year's annual leave under it
@@ -3139,6 +3145,7 @@ model PayrollAdjustment {
   updatedAt     DateTime            @updatedAt @map("updated_at") @db.Timestamptz
   reimbursement ReimbursementClaim? // a reimbursement addition: the claim whose approval by Finance added it
   leavePayout   LeaveBalanceYear? // an Unused leave paid addition: the balance whose closing (or leaving) paid it
+  compensatory  CompensatoryRequest? // a Compensation for working addition: the compensatory request HR approved as cash instead (26 October 2026)
 
   @@unique([recurringId, month]) // a recurring deduction's month once, whatever became of it
   @@index([month])
@@ -3435,6 +3442,9 @@ model LeaveSettings {
   // (Biweekly)"): the days a calendar month someone may work from home (0: none), and the fewest days between two
   wfhDaysPerMonth          Int      @default(2) @map("wfh_days_per_month")
   wfhMinGapDays            Int      @default(7) @map("wfh_min_gap_days")
+  // compensatory days (owner, 26 October 2026: "if paid in cash make it 1.5"): the days' pay a day worked is paid in cash
+  // instead of a day off, in whole or half days
+  compensatoryCashRate     Decimal  @default(1.5) @map("compensatory_cash_rate") @db.Decimal(3, 1)
   updatedAt                DateTime @updatedAt @map("updated_at") @db.Timestamptz
   updatedById              String?  @map("updated_by") @db.Uuid
   updatedBy                User?    @relation("LeaveSettingsBy", fields: [updatedById], references: [id], onDelete: SetNull)
@@ -3660,6 +3670,64 @@ model WfhRequestStep {
 
   @@index([requestId])
   @@map("wfh_request_steps")
+}
+
+// A compensatory day (owner, 26 October 2026: "my compensatory is a compensation with another day in the same month. and
+// rarely to be compensated in cash"; packages/shared compensatory.ts): the day worked (a rest day of the shift or an
+// official holiday) and the day off asked for in the same month, decided as a leave request is ("Manager, then HR": the
+// same statuses, stages and steps), a C-level person's HR stage by the CEO. HR approves it as a day off (the default) or
+// as cash instead, which adds "Compensation for working <day>" in days to the draft payroll of the month (adjustmentId)
+// and needs no day off. A cash one recorded by HR has no day off.
+model CompensatoryRequest {
+  id            String              @id @default(uuid()) @db.Uuid
+  employeeId    String              @map("employee_id") @db.Uuid
+  employee      Employee            @relation("CompensatoryRequester", fields: [employeeId], references: [id], onDelete: Cascade)
+  employmentId  String              @map("employment_id") @db.Uuid
+  employment    Employment          @relation(fields: [employmentId], references: [id], onDelete: Cascade)
+  dayWorked     DateTime            @map("day_worked") @db.Date
+  dayOff        DateTime?           @map("day_off") @db.Date
+  reason        String?
+  status        String // LEAVE_STATUSES: with_manager, with_hr, approved, rejected, cancelled
+  outcome       String? // COMPENSATORY_OUTCOMES: day_off, cash; set when approved (kept once cancelled)
+  managerId     String?             @map("manager_id") @db.Uuid
+  manager       Employee?           @relation("CompensatoryManager", fields: [managerId], references: [id], onDelete: Restrict)
+  approverRole  String?             @map("approver_role") // APPROVER_ROLES, set exactly when managerId is
+  rejectedStage String?             @map("rejected_stage") // LEAVE_STAGES: manager, hr
+  rejectReason  String?             @map("reject_reason")
+  recordedByHr  Boolean             @default(false) @map("recorded_by_hr")
+  warnings      String[]            @default([]) // what HR recorded it past (a past day off, no check-in kept), as said then
+  adjustmentId  String?             @unique @map("adjustment_id") @db.Uuid // cash instead: the addition on the month's payroll
+  adjustment    PayrollAdjustment?  @relation(fields: [adjustmentId], references: [id], onDelete: SetNull)
+  createdById   String?             @map("created_by") @db.Uuid
+  createdBy     User?               @relation("CompensatoryCreation", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime            @updatedAt @map("updated_at") @db.Timestamptz
+  steps         CompensatoryStep[]
+
+  @@index([employeeId, dayWorked])
+  @@index([status])
+  @@index([managerId])
+  @@index([dayWorked])
+  @@index([dayOff])
+  @@map("compensatory_requests")
+}
+
+// Each step of a compensatory request, in the order taken: leave's (COMPENSATORY_STEP_KINDS).
+model CompensatoryStep {
+  id           BigInt              @id @default(autoincrement())
+  requestId    String              @map("request_id") @db.Uuid
+  request      CompensatoryRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  kind         String
+  decision     String? // LEAVE_DECISIONS, on the stages' decisions only
+  comment      String?
+  actorId      String?             @map("actor_id") @db.Uuid
+  actor        User?               @relation("CompensatoryStepActor", fields: [actorId], references: [id], onDelete: SetNull)
+  onBehalfOfId String?             @map("on_behalf_of") @db.Uuid
+  onBehalfOf   Employee?           @relation("CompensatoryStepOnBehalf", fields: [onBehalfOfId], references: [id], onDelete: SetNull)
+  at           DateTime            @default(now()) @db.Timestamptz
+
+  @@index([requestId])
+  @@map("compensatory_steps")
 }
 
 // An official duty, OD (owner, 23 October 2026: "Official duty (OD) requests. The plan has OD as a third attendance mode

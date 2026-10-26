@@ -6,6 +6,7 @@ import {
   checkInBins,
   clockText,
   DEFAULT_WORKING_DAYS,
+  compensatoryDays,
   exemptDays,
   HISTORY_FIGURE_DEFINITIONS,
   HISTORY_MODE_LABELS,
@@ -42,6 +43,7 @@ import { addDays, fromDateOnly, todayInCairo, toDateOnly, weekday } from '../com
 import { ConfidentialService } from '../employees/confidential.service.js';
 import { addSheet, type Column } from '../employees/missing-workbook.js';
 import { approvedOds, dutyDaysOf } from '../official-duty/od-days.js';
+import { approvedCompensatory } from '../compensatory/compensatory-days.js';
 import { exemptionsOf } from './exemption-days.js';
 import { firstDay, lastDay } from '../payroll/months.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -183,7 +185,7 @@ export class AttendanceHistoryService {
     const within = { gte: toDateOnly(range.from), lte: toDateOnly(range.to) };
 
     // the period's days in one query, and what they are read with
-    const [rows, holidays, leave, wfh, ods, checkIns, exemptions] = await Promise.all([
+    const [rows, holidays, leave, wfh, ods, checkIns, exemptions, compensatory] = await Promise.all([
       this.prisma.attendanceDay.findMany({ where: { employeeId, date: within }, orderBy: { date: 'asc' }, select: DAY_SELECT }),
       this.prisma.holiday.findMany({ where: { date: within }, select: { date: true } }),
       this.prisma.leaveRequest.findMany({
@@ -195,6 +197,8 @@ export class AttendanceHistoryService {
       this.prisma.attendanceDay.aggregate({ where: { employeeId, source: { in: [...CHECK_IN_SOURCES] }, date: { lte: within.lte } }, _min: { date: true } }),
       // their periods exempt from check-in (owner, 25 October 2026): those days Exempt, full and on time
       exemptionsOf(this.prisma, [employeeId], range.from, range.to),
+      // their compensatory days (owner, 26 October 2026): the day off Compensatory day off, full and on time
+      approvedCompensatory(this.prisma, [employeeId], range.from, range.to),
     ]);
     const kept = rows.map(monthDayOf);
     const holidayDays = holidays.map((h) => fromDateOnly(h.date));
@@ -220,7 +224,7 @@ export class AttendanceHistoryService {
         const base = monthDays(ofMonth, { month, today, checkInFrom, workingDays, holidays: holidayDays, leaveDays, employedFrom, employedTo });
         const duties = dutyDaysOf(ods, employeeId, shift, holidaySet, first, last);
         const hoursADay = shift ? shiftWorkHours(shift) : null;
-        const days = exemptDays(officialDutyDays(base, duties, { today, checkInFrom, employedFrom, employedTo, shift }), exemptions.get(employeeId) ?? [], {
+        const exempt = exemptDays(officialDutyDays(base, duties, { today, checkInFrom, employedFrom, employedTo, shift }), exemptions.get(employeeId) ?? [], {
           month,
           today,
           workingDays,
@@ -230,6 +234,10 @@ export class AttendanceHistoryService {
           employedTo,
           hoursADay,
         });
+        const comp = compensatory.get(employeeId);
+        const days = comp
+          ? compensatoryDays(exempt, { month, today, workingDays, holidays: holidayDays, leaveDays, employedFrom, employedTo, hoursADay, daysOff: comp.daysOff, daysWorked: comp.daysWorked })
+          : exempt;
         for (const d of days) {
           // within this employment and the period: a rehire's gap is left out
           if (d.date < range.from || d.date > range.to || d.date < employedFrom || (employedTo !== null && d.date > employedTo)) continue;
@@ -301,6 +309,8 @@ function figureRows(b: Built, f: HistoryFigures): FigureRow[] {
     { figure: 'Official duty days', value: f.odDays, meaning: D.odDays },
     // exempt from check-in (owner, 25 October 2026)
     { figure: 'Exempt days', value: f.exemptDays, meaning: 'Working days exempt from check-in: counted as full hours and on time, whatever was pressed.' },
+    // compensatory days (owner, 26 October 2026)
+    { figure: 'Compensatory days off', value: f.compensatoryDays, meaning: 'Working days off in exchange for a rest day or an official holiday worked: full paid days, never absent or short.' },
     { figure: 'Overtime (extra time)', value: hoursText(f.extraHours), meaning: D.extraHours },
     { figure: 'Days worked off', value: f.offDaysWorked, meaning: 'Days checked in on a rest day or an official holiday.' },
   ];

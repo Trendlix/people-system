@@ -12,7 +12,9 @@ import {
   attendanceMonthChoices,
   attendancePeriodTitle,
   canSeeAttendance,
+  COMPENSATORY_DAY_TITLE,
   EXEMPT_DAY_TITLE,
+  compensatoryDaysText,
   exemptDaysText,
   filledText,
   hoursText,
@@ -92,6 +94,13 @@ function Cells({ r, strong = false }: { r: AttendanceSummaryRow; strong?: boolea
           <div className="mt-0.5">
             <span className="badge border border-line bg-card text-xs font-normal text-ink" title={EXEMPT_DAY_TITLE}>
               {exemptDaysText(f)}
+            </span>
+          </div>
+        )}
+        {compensatoryDaysText(f) && (
+          <div className="mt-0.5">
+            <span className="badge border border-line bg-card text-xs font-normal text-ink" title={COMPENSATORY_DAY_TITLE}>
+              {compensatoryDaysText(f)}
             </span>
           </div>
         )}

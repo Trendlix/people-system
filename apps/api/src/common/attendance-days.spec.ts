@@ -75,6 +75,7 @@ describe('a month’s figures', () => {
       holidays: 1,
       restDays: 1,
       exemptDays: 0,
+      compensatoryDays: 0,
     });
     // the system's approved requests counted instead: the month's, days without a row too
     expect(attendanceFigures(days, { permissionHours: 2.5 }).permissionHours).toBe(2.5);

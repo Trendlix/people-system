@@ -41,6 +41,9 @@ import { DecisionForm } from './decision-form';
 import { kpiApprovalRows, kpiScorecardsLabel, seesKpiApprovals } from './kpis';
 import { PayRaiseCard } from './pay-raise-card';
 import { decidesRaises, followsRaises, PENDING_RAISES, raisesLabel } from './raises';
+import { loadWaitingCompensatory } from '../attendance/compensatory/data';
+import { seesAllCompensatory, COMPENSATORY_PATH } from '../attendance/compensatory/compensatory';
+import { CompensatoryTable } from '../attendance/compensatory/ui';
 import { loadWaitingWfh } from '../attendance/wfh/data';
 import { WfhTable } from '../attendance/wfh/ui';
 import { seesAllWfh, WFH_PATH } from '../attendance/wfh/wfh';
@@ -410,6 +413,24 @@ async function PendingWfh({ all }: { all: boolean }) {
   );
 }
 
+// ---------- compensatory days ----------
+
+/** The compensatory day requests waiting for the caller (owner, 26 October 2026: "Manager, then HR"): HR's stage, a C-level person's for the CEO. */
+async function PendingCompensatory({ all }: { all: boolean }) {
+  // read quietly, like working from home: an API from before compensatory days must not take the endings down with it
+  const waiting = await loadWaitingCompensatory();
+  if (waiting.kind === 'unavailable') return <Empty>Compensatory day requests aren&apos;t available yet.</Empty>;
+  if (waiting.kind !== 'ok') return <Empty>Compensatory day requests couldn&apos;t load.</Empty>;
+  const every = all && <Link href={COMPENSATORY_PATH}>See every request</Link>;
+  if (waiting.value.length === 0) return <Empty>No compensatory day requests are waiting for you. {every}</Empty>;
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted">Waiting for your decision: approve each as a day off or, rarely, as cash instead, or reject it with a comment the employee sees. {every}</p>
+      <CompensatoryTable requests={waiting.value} who note="waiting for you, the latest day worked first." />
+    </div>
+  );
+}
+
 // ---------- official duty ----------
 
 /** The official duty requests waiting for the caller (owner, 23 October 2026: "Manager, then HR"): HR's stage, a C-level person's for the CEO. */
@@ -454,7 +475,9 @@ async function Approvals({ searchParams }: { searchParams: PageProps<'/approvals
   const wfh = seesAllWfh(user) || hasRole(user, 'admin');
   // official duty the same way (23 October 2026: "Manager, then HR")
   const od = seesAllOd(user) || hasRole(user, 'admin');
-  if (!endings && !raises && !changes && !homes && !kpis && !wfh && !od) return <Empty>Only HR, the CEO and Admin can see approvals.</Empty>;
+  // compensatory days the same way (26 October 2026)
+  const compensatory = seesAllCompensatory(user) || hasRole(user, 'admin');
+  if (!endings && !raises && !changes && !homes && !kpis && !wfh && !od && !compensatory) return <Empty>Only HR, the CEO and Admin can see approvals.</Empty>;
   const done = typeof query.done === 'string' ? DONE[query.done] : undefined;
 
   return (
@@ -493,6 +516,11 @@ async function Approvals({ searchParams }: { searchParams: PageProps<'/approvals
       {wfh && (
         <Section title="Work From Home" id="work-from-home">
           <PendingWfh all={seesAllWfh(user)} />
+        </Section>
+      )}
+      {compensatory && (
+        <Section title="Compensatory Days" id="compensatory-days">
+          <PendingCompensatory all={seesAllCompensatory(user)} />
         </Section>
       )}
       {od && (

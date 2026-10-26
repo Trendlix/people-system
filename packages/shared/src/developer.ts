@@ -1050,7 +1050,7 @@ export const DEVELOPER_COMPANY_PATHS: readonly RegExp[] = [
   /^\/api\/kpis\/(templates|framework|settings)(\/|$)/,
   /^\/api\/payroll\/(settings|law-rates|holidays)(\/|$)/,
   /^\/api\/leave\/(types|settings)(\/|$)/,
-  /^\/api\/wfh\/settings$/,
+  /^\/api\/(wfh|compensatory)\/settings$/,
   /^\/api\/attendance\/check-in-setup\/(locations|networks|location-rule)(\/|$)/,
   /^\/api\/(onboarding|offboarding)\/checklist$/,
   // the positions on "Send us your CV" (25 October 2026): the job titles with their levels merged, the company's

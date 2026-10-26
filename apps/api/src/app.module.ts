@@ -41,6 +41,7 @@ import { TemplatesModule } from './templates/templates.module.js';
 import { UsersModule } from './users/users.module.js';
 import { EmployeeAccessModule } from './employee-access/employee-access.module.js';
 import { WfhModule } from './wfh/wfh.module.js';
+import { CompensatoryModule } from './compensatory/compensatory.module.js';
 import { OdModule } from './official-duty/od.module.js';
 import { WhatsAppModule } from './whatsapp/whatsapp.module.js';
 import { ZohoPeopleModule } from './zoho-people/zoho-people.module.js';
@@ -80,6 +81,7 @@ import { ZohoPeopleModule } from './zoho-people/zoho-people.module.js';
     AttendanceModule,
     // working from home (owner, 21 October 2026: "think about how should we handle the working from home in out erp")
     WfhModule,
+    CompensatoryModule,
     // official duty (owner, 23 October 2026: "Official duty (OD) requests"): manager, then HR; counted as attended
     OdModule,
     OffboardingModule,

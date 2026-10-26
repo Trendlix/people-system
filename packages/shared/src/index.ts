@@ -477,6 +477,7 @@ export * from './leave-import.js';
 // working day in another place, not leave; "Manager, then HR", "its 2 days per month with a gap of 1 week between each
 // record (Biweekly)" and "A day before"; who needs it by work arrangement, the limits in Leave Setup, HR recording one
 export * from './wfh.js';
+export * from './compensatory.js';
 
 // the Claude connector (owner, 21 October 2026: "the connection method" / "option a"): a remote MCP server on the website
 // with its OAuth sign-in, scoped to Assets: the addresses, the scope, the lifetimes, Claude's return addresses, the

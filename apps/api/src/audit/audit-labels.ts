@@ -153,6 +153,8 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   wfh_request: 'Work from home request',
   // official duty (owner, 23 October 2026: "Official duty (OD) requests")
   od_request: 'Official duty request',
+  // compensatory days (owner, 26 October 2026)
+  compensatory_request: 'Compensatory day request',
 };
 
 /** Each action, in the past tense and sentence case ("Updated", "Sent for approval"). */

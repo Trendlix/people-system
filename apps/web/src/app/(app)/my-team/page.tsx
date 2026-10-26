@@ -27,6 +27,8 @@ import { TEAM_ATTENDANCE_PATH } from '../attendance/attendance';
 import { loadWaitingCorrections } from '../attendance/corrections/data';
 import { CorrectionsTable } from '../attendance/corrections/ui';
 import { loadWaitingWfh, loadWfhCalendar, loadWfhOnDay } from '../attendance/wfh/data';
+import { loadCompensatoryCalendar, loadWaitingCompensatory } from '../attendance/compensatory/data';
+import { CompensatoryTable } from '../attendance/compensatory/ui';
 import { WfhTable } from '../attendance/wfh/ui';
 import { homeOn } from '../attendance/wfh/wfh';
 import { loadOdCalendar, loadOdOnDay, loadWaitingOd } from '../attendance/official-duty/data';
@@ -284,6 +286,35 @@ async function WfhToApprove() {
 }
 
 /**
+ * The compensatory day requests waiting for the manager (owner, 26 October 2026: "Manager, then HR"; GET
+ * /compensatory?status=waiting): who, the day worked and the day off, each with Decide. Nothing from an API from before them.
+ */
+async function CompensatoryToApprove() {
+  const waiting = await loadWaitingCompensatory();
+  if (waiting.kind === 'unavailable' || waiting.kind === 'forbidden') return null;
+  return (
+    <section aria-labelledby="compensatory-to-approve" className="space-y-3">
+      <div>
+        <h2 id="compensatory-to-approve" className="text-lg font-semibold">
+          Compensatory Days to Approve
+        </h2>
+        <p className="text-sm text-muted">
+          Days off your direct reports asked for in exchange for a rest day or an official holiday they worked, and those of people without a direct
+          manager in a team you lead or a department you head. Approve one, or reject it with a comment; HR decides it after you.
+        </p>
+      </div>
+      {waiting.kind === 'failed' ? (
+        <div className="card px-6 py-6 text-sm text-muted">The compensatory day requests waiting for you couldn&apos;t be loaded. Please try again in a moment.</div>
+      ) : waiting.value.length === 0 ? (
+        <div className="card px-6 py-6 text-sm text-muted">No compensatory day requests are waiting for you.</div>
+      ) : (
+        <CompensatoryTable requests={waiting.value} who note="waiting for you" />
+      )}
+    </section>
+  );
+}
+
+/**
  * The official duty requests waiting for the manager (owner, 23 October 2026: "Manager, then HR"; GET
  * /official-duty?status=waiting): who, the days and where, each with Decide. Nothing from an API from before them.
  */
@@ -385,7 +416,7 @@ async function TeamCalendar({ searchParams }: { searchParams: PageProps<'/my-tea
   const { from, to } = monthRange(month);
   // the team's work from home days too, a distinct style from leave (owner, 21 October 2026), and their official duties
   // in their own colour (owner, 23 October 2026; the spec: "Team calendar shows leave and OD")
-  const [entries, holidays, wfh, od] = await Promise.all([loadLeaveCalendar(month), loadHolidaysOf(Number(month.slice(0, 4))), loadWfhCalendar(from, to), loadOdCalendar(from, to)]);
+  const [entries, holidays, wfh, od, compensatory] = await Promise.all([loadLeaveCalendar(month), loadHolidaysOf(Number(month.slice(0, 4))), loadWfhCalendar(from, to), loadOdCalendar(from, to), loadCompensatoryCalendar(from, to)]);
   if (entries.kind === 'unavailable' || entries.kind === 'forbidden') return null;
   const days = calendarDays(month, holidays.kind === 'ok' ? holidays.value : [], today);
   return (
@@ -405,7 +436,7 @@ async function TeamCalendar({ searchParams }: { searchParams: PageProps<'/my-tea
         <LeaveCalendar
           month={month}
           days={days}
-          people={calendarPeople([...entries.value, ...(wfh.kind === 'ok' ? wfh.value : []), ...(od.kind === 'ok' ? od.value : [])], days)}
+          people={calendarPeople([...entries.value, ...(wfh.kind === 'ok' ? wfh.value : []), ...(od.kind === 'ok' ? od.value : []), ...(compensatory.kind === 'ok' ? compensatory.value : [])], days)}
           hrefFor={(m) => `${leaveCalendarHref(m, null, MY_TEAM)}#team-calendar`}
           departments={null}
           departmentId={null}
@@ -464,6 +495,9 @@ export default function MyTeamPage({ searchParams }: PageProps<'/my-team'>) {
         </Suspense>
         <Suspense fallback={null}>
           <OdToApprove />
+        </Suspense>
+        <Suspense fallback={null}>
+          <CompensatoryToApprove />
         </Suspense>
         <Suspense fallback={null}>
           <ToApprove />

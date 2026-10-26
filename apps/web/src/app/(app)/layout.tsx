@@ -32,7 +32,9 @@ import { canSeeReimbursements, CLAIM_COUNTS } from './reimbursements/list';
 import { CORRECTION_COUNTS, CORRECTIONS_PATH, seesCorrections } from './attendance/corrections/corrections';
 import { HOME_COUNTS, seesHomes } from './home-locations/home-locations';
 import { readsChangeRequests, waitingForYou } from './requests/details-changes/list';
+import { COMPENSATORY_COUNTS } from './attendance/compensatory/compensatory';
 import { WFH_COUNTS } from './attendance/wfh/wfh';
+import type { CompensatoryCounts } from '@/lib/compensatory-types';
 import type { WfhCounts } from '@/lib/wfh-types';
 import { OD_COUNTS } from './attendance/official-duty/od';
 import type { OdCounts } from '@/lib/od-types';
@@ -83,10 +85,12 @@ async function MainNav() {
   const wfhCounted = hasRole({ roles }, 'hr', 'ceo', 'admin') || manager;
   // the official duty requests waiting for the user the same way (owner, 23 October 2026: "Manager, then HR")
   const odCounted = wfhCounted;
+  // the compensatory day requests waiting for the user the same way (owner, 26 October 2026: "Manager, then HR")
+  const compensatoryCounted = wfhCounted;
   // beside Employees, for HR and Admin (a Super Admin too), the people whose access is on hold (owner, 23 October 2026:
   // "Access should be on hold with a 7 days grace period one time granted by the hr"): HR gives grace or renews them
   const accessCounted = hasRole({ roles }, 'hr', 'admin');
-  const [endings, pendingChanges, raises, requests, claims, leave, corrections, homes, kpis, wfh, access, od] = await Promise.all([
+  const [endings, pendingChanges, raises, requests, claims, leave, corrections, homes, kpis, wfh, access, od, compensatory] = await Promise.all([
     followsEndings({ roles }) ? getOrNull<EndingSummary[]>(PENDING_ENDINGS, bg) : null,
     readsChangeRequests({ roles }) ? getOrNull<ChangeRequest[]>(PENDING_CHANGE_REQUESTS, bg) : null,
     followsRaises({ roles }) ? getOrNull<PendingRaise[]>(PENDING_RAISES, bg) : null,
@@ -99,13 +103,15 @@ async function MainNav() {
     user && wfhCounted ? getOrNull<WfhCounts>(WFH_COUNTS, bg) : null,
     user && accessCounted ? getOrNull<AccessCounts>('/employees/access/counts', bg) : null,
     user && odCounted ? getOrNull<OdCounts>(OD_COUNTS, bg) : null,
+    user && compensatoryCounted ? getOrNull<CompensatoryCounts>(COMPENSATORY_COUNTS, bg) : null,
   ]);
   const changes = pendingChanges && waitingForYou({ roles }, pendingChanges);
   const raiseRequests = requests ? waitingForYouCount({ roles }, requests) : 0;
   const kpiApprovals = hasRole({ roles }, 'hr', 'ceo', 'admin') ? (kpis?.team ?? 0) + (kpis?.hr ?? 0) : 0;
   const wfhApprovals = hasRole({ roles }, 'hr', 'ceo', 'admin') ? (wfh?.waiting ?? 0) : 0;
   const odApprovals = hasRole({ roles }, 'hr', 'ceo', 'admin') ? (od?.waiting ?? 0) : 0;
-  const waiting = (endings?.length ?? 0) + (changes?.length ?? 0) + (raises?.length ?? 0) + (homes?.waiting ?? 0) + kpiApprovals + wfhApprovals + odApprovals;
+  const compensatoryApprovals = hasRole({ roles }, 'hr', 'ceo', 'admin') ? (compensatory?.waiting ?? 0) : 0;
+  const waiting = (endings?.length ?? 0) + (changes?.length ?? 0) + (raises?.length ?? 0) + (homes?.waiting ?? 0) + kpiApprovals + wfhApprovals + odApprovals + compensatoryApprovals;
   const counts: Record<string, number> = {};
   if (waiting) counts['/approvals'] = waiting;
   if (kpis?.self) counts[KPI_PATHS.mine] = kpis.self;
@@ -115,7 +121,7 @@ async function MainNav() {
   if (access?.hold) counts['/employees'] = access.hold;
   if (changes?.length) counts[DETAILS_CHANGES_PATH] = changes.length;
   if (self) {
-    const team = (claims?.waiting ?? 0) + (leave?.waiting ?? 0) + (corrections?.waiting ?? 0) + (manager ? (wfh?.waiting ?? 0) + (od?.waiting ?? 0) : 0);
+    const team = (claims?.waiting ?? 0) + (leave?.waiting ?? 0) + (corrections?.waiting ?? 0) + (manager ? (wfh?.waiting ?? 0) + (od?.waiting ?? 0) + (compensatory?.waiting ?? 0) : 0);
     if (team) counts[MY_TEAM] = team;
   } else {
     if (claims?.waiting) counts[REIMBURSEMENTS_PATH] = claims.waiting;

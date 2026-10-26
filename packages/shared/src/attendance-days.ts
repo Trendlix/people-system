@@ -79,6 +79,17 @@ export interface KeptDay {
    * hours"; check-in-exemptions.ts exemptDays): counted as full, its presses for reference only.
    */
   exempt?: boolean;
+  /**
+   * A compensatory day off approved (owner, 26 October 2026: "my compensatory is a compensation with another day in the
+   * same month"; compensatory.ts compensatoryDays): read full as an exempt day is (also `exempt`), a paid day, shown
+   * "Compensatory day off", never counted as an exempt day.
+   */
+  compensatory?: boolean;
+  /**
+   * A day worked that a compensatory request compensates (a rest day or an official holiday; "if the day is compensated
+   * with a day, we pay nothing"): its check-ins kept, its hours left out of the month's worked hours.
+   */
+  compensated?: boolean;
 }
 
 /** A kept day as the Attendance pages show it. */
@@ -108,6 +119,10 @@ export interface AttendanceDayView extends KeptDay {
   breakMinutes: number | null;
   /** Exempt from check-in that day (owner, 25 October 2026): full hours, nothing missing, never short. */
   exempt: boolean;
+  /** A compensatory day off (26 October 2026): full hours as an exempt day, said apart. */
+  compensatory: boolean;
+  /** The day worked of a compensatory request (26 October 2026): its hours are not counted in the month. */
+  compensated: boolean;
 }
 
 /**
@@ -150,6 +165,8 @@ export function attendanceDayView(day: KeptDay, hoursADay: number | null): Atten
     openAt: day.openAt ?? null,
     breakMinutes: day.breakMinutes ?? null,
     exempt: !!day.exempt,
+    compensatory: !!day.compensatory,
+    compensated: !!day.compensated,
   };
 }
 
@@ -207,6 +224,8 @@ export interface AttendanceFigures {
   restDays: number;
   /** Days exempt from check-in (owner, 25 October 2026): counted as full. */
   exemptDays: number;
+  /** Compensatory days off (owner, 26 October 2026): counted as full paid days. */
+  compensatoryDays: number;
 }
 
 export const NO_ATTENDANCE_FIGURES: Readonly<AttendanceFigures> = Object.freeze({
@@ -230,6 +249,7 @@ export const NO_ATTENDANCE_FIGURES: Readonly<AttendanceFigures> = Object.freeze(
   holidays: 0,
   restDays: 0,
   exemptDays: 0,
+  compensatoryDays: 0,
 });
 
 const FIGURE_KEYS = Object.keys(NO_ATTENDANCE_FIGURES) as (keyof AttendanceFigures)[];
@@ -259,7 +279,8 @@ export function attendanceFigures(days: readonly AttendanceDayView[], options: {
       if (d.missingCheckIn) f.missingCheckIns++;
       if (d.flags.length) f.flaggedDays++;
       // an API from before exemptions (25 October 2026) has none
-      if (d.exempt) f.exemptDays++;
+      if (d.compensatory) f.compensatoryDays++;
+      else if (d.exempt) f.exemptDays++;
       f.hoursCounted += d.hoursCounted;
       f.shortHours += d.shortHours;
       // an API from before make-up hours (20 October 2026) has no extra time

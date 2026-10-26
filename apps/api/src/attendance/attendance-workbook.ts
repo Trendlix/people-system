@@ -55,6 +55,7 @@ function figureColumns<T>(f: (row: T) => AttendanceFigures, average: (row: T) =>
     { header: 'Flagged days', width: 12, value: (r) => f(r).flaggedDays, numFmt: '0' },
     // people exempt from check-in (owner, 25 October 2026): their days counted as full
     { header: 'Exempt days', width: 11, value: (r) => f(r).exemptDays ?? 0, numFmt: '0' },
+    { header: 'Compensatory days off', width: 14, value: (r) => f(r).compensatoryDays ?? 0, numFmt: '0' },
   ];
 }
 
@@ -116,7 +117,7 @@ const DAY_COLUMNS: readonly Column<DayRow>[] = [
   { header: 'Pairs', width: 44, value: (r) => dayPairsCell(r.day) },
   { header: 'Break', width: 9, value: (r) => (r.day.breakMinutes ? asTime(r.day.breakMinutes / 60) : null), numFmt: HOURS },
   // exempt from check-in (25 October 2026): counted as full
-  { header: 'Exempt', width: 9, value: (r) => (r.day.exempt ? EXEMPT_BADGE : null) },
+  { header: 'Exempt', width: 9, value: (r) => (r.day.compensatory ? 'Compensatory' : r.day.exempt ? EXEMPT_BADGE : null) },
 ];
 
 /** A day's pairs and its open last check-in in a cell: "9:02 AM–1:10 PM · Checked in 2:00 PM · not checked out"; none with one pair or less. */

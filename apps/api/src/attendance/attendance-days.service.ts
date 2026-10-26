@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
   CHECK_IN_SOURCES,
+  compensatoryDays,
   exemptDays,
   monthDays,
   officialDutyDays,
@@ -19,6 +20,7 @@ import { fromTimeOfDay } from '../common/time-of-day.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { employedIn } from '../payroll/adjustments/people.js';
 import { firstDay, lastDay } from '../payroll/months.js';
+import { approvedCompensatory } from '../compensatory/compensatory-days.js';
 import { approvedOds, dutyDaysOf } from '../official-duty/od-days.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { exemptionsOf } from './exemption-days.js';
@@ -150,6 +152,8 @@ export class AttendanceDaysService {
         OR: [
           { attendanceDays: { some: { source: { in: [...CHECK_IN_SOURCES] }, date: { lte: last } } } },
           { checkInExemptions: { some: { cancelledAt: null, startDate: { lte: last }, OR: [{ endDate: null }, { endDate: { gte: first } }] } } },
+          // a compensatory day off approved in the month (owner, 26 October 2026)
+          { compensatoryDays: { some: { status: 'approved', OR: [{ dayOff: { gte: first, lte: last } }, { dayWorked: { gte: first, lte: last } }] } } },
         ],
       },
       select: { id: true },
@@ -167,7 +171,7 @@ export class AttendanceDaysService {
     if (!ids.length) return out;
     const [first, last] = [firstDay(month), lastDay(month)];
     const range = { gte: toDateOnly(first), lte: toDateOnly(last) };
-    const [kept, employments, holidays, leave, checkIns, ods, exemptions] = await Promise.all([
+    const [kept, employments, holidays, leave, checkIns, ods, exemptions, compensatory] = await Promise.all([
       rows ?? db.attendanceDay.findMany({ where: { employeeId: { in: [...ids] }, date: range }, orderBy: { date: 'asc' }, select: DAY_SELECT }),
       db.employment.findMany({ where: { employeeId: { in: [...ids] }, ...employedIn(month) }, orderBy: { joinDate: 'desc' }, select: EMPLOYMENT_SELECT }),
       db.holiday.findMany({ where: { date: range }, select: { date: true } }),
@@ -185,6 +189,8 @@ export class AttendanceDaysService {
       approvedOds(db, ids, first, last),
       // their periods exempt from check-in (owner, 25 October 2026)
       exemptionsOf(db, ids, first, last),
+      // their compensatory days approved (owner, 26 October 2026: "my compensatory is a compensation with another day in the same month")
+      approvedCompensatory(db, ids, first, last),
     ]);
     const employmentOf = new Map<string, EmploymentRow>();
     for (const e of employments) if (!employmentOf.has(e.employeeId)) employmentOf.set(e.employeeId, e);
@@ -213,7 +219,11 @@ export class AttendanceDaysService {
       const hoursADay = shift ? shiftWorkHours(shift) : null;
       const periods = exemptions.get(id) ?? [];
       const exempt = employment ? exemptDays(withDuty, periods, { month, today, workingDays: shift?.workingDays ?? null, holidays: holidayDays, leaveDays, employedFrom, employedTo, hoursADay }) : withDuty;
-      const days = exempt.map((d) => ({
+      // the compensatory days off full and paid, the days worked they compensate left out of the month's hours (26 October 2026:
+      // "if the day is compensated with a day, we pay nothing")
+      const comp = compensatory.get(id);
+      const compensated = employment && comp ? compensatoryDays(exempt, { month, today, workingDays: shift?.workingDays ?? null, holidays: holidayDays, leaveDays, employedFrom, employedTo, hoursADay, daysOff: comp.daysOff, daysWorked: comp.daysWorked }) : exempt;
+      const days = compensated.map((d) => ({
         ...d,
         importId: 'importId' in d ? (d.importId as string | null) : null,
         flags: [...(d.flags ?? [])],

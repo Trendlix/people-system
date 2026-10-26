@@ -48,6 +48,7 @@ const FIGURES: HistoryFigures = {
   wfhDays: 4,
   odDays: 2,
   exemptDays: 0,
+  compensatoryDays: 0,
   extraHours: 1.5,
   offDaysWorked: 1,
   lateMinutes: 95,

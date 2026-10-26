@@ -147,6 +147,7 @@ describe('the history’s figures', () => {
       wfhDays: 1,
       odDays: 1,
       exemptDays: 0,
+      compensatoryDays: 0,
       extraHours: 0.5,
       offDaysWorked: 1,
       lateMinutes: 80,
