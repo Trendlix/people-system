@@ -11,6 +11,8 @@ import {
   leaveDecisionNeedsComment,
   leaveDecisionStepKind,
   overBalanceDays,
+  overBalanceStepText,
+  rulesForYear,
   statusBeforeCancel,
   leaveRequestProblems,
   leaveStage,
@@ -414,8 +416,9 @@ export class LeaveRequestsService {
    * checks are HR's recording's (record): the type and who may take it, the days within an employment, no clash with the
    * employee's other leave or permission (this leave left out), the year open, the cover, and the days counted again; the
    * notice an employee's own request needs is not asked, nor a document. Where the edit moves the balance (the type, the
-   * days or the year) the type's limits and the annual balance are checked with this leave left out, so a negative balance
-   * is refused as recording refuses it. Approved leave: its balance moves (the old type and year are given back, the new
+   * days or the year) the type's limits and the annual balance are checked with this leave left out; a leave that takes the
+   * annual balance below 0 is allowed, as only a Super Admin edits (owner, 26 October 2026: "only allow super admin to add
+   * leaves with a negative balance"), and the step says by how much. Approved leave: its balance moves (the old type and year are given back, the new
    * charged: the balance is read from the requests), the draft payroll months of the old and new days are filled again,
    * and a month whose payroll is with the CEO, approved or paid refuses it with nothing changed; the employee is told.
    * Pending leave stays at its step with its approver. Rejected or cancelled leave changes its fields only. The step
@@ -507,6 +510,7 @@ export class LeaveRequestsService {
       await this.assertYearOpen(type, startDate);
     }
 
+    let over = 0;
     const row = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT 1 FROM employees WHERE id = ${before.employeeId}::uuid FOR UPDATE`;
       if (structural && employment) {
@@ -515,12 +519,13 @@ export class LeaveRequestsService {
           this.balances.annual(employment, year, todayInCairo(), tx, id),
           tx.leaveRequest.findMany({ where: { employeeId: before.employeeId, typeId: type.id, id: { not: id }, status: { in: [...TAKING] } }, select: { startDate: true, days: true } }),
         ]);
+        if (checksBalance) over = overBalanceDays(type, annual.available, days);
         problems.push(
           ...leaveRequestProblems(
             // byHr: no notice; a document is not asked of an edit (an imported or recorded leave has none)
             { startDate, endDate, halfDay, days, documents: Math.max(1, before.documents.length), today: todayInCairo(), byHr: true },
-            rulesOf(type),
-            checksBalance ? { available: annual.available, usableFrom: annual.usableFrom } : { available: Infinity, usableFrom: '' },
+            rulesForYear(rulesOf(type), employment, year),
+            checksBalance ? { available: annual.available, usableFrom: annual.usableFrom, allowNegative: true } : { available: Infinity, usableFrom: '' },
             {
               usedInYear: checksBalance ? ofType.filter((r) => r.startDate.getUTCFullYear() === year).reduce((n, r) => n + r.days.toNumber(), 0) : 0,
               timesInService: taking ? ofType.length : 0,
@@ -571,7 +576,7 @@ export class LeaveRequestsService {
         },
       });
       if (!count) throw new ConflictException('This request was decided or cancelled meanwhile. Reload the page to see where it is.');
-      await recordLeaveStep(tx, id, user.id, { kind: 'edited', comment: leaveEditComment(changes, dto.note) });
+      await recordLeaveStep(tx, id, user.id, { kind: 'edited', comment: `${leaveEditComment(changes, dto.note)}${over > 0 ? `\n${overBalanceStepText(over)}` : ''}` });
       return tx.leaveRequest.findUniqueOrThrow({ where: { id }, include: REQUEST_INCLUDE });
     });
 
@@ -586,6 +591,7 @@ export class LeaveRequestsService {
         before: { typeId: before.typeId, type: factsBefore.typeName, startDate: oldStart, endDate: oldEnd, halfDay: before.halfDay, days: before.days.toNumber(), reason: before.reason, coverId: before.coverId, employmentId: before.employmentId },
         after: { typeId: type.id, type: type.nameEn, startDate, endDate, halfDay, days, reason, coverId, employmentId: employment?.id ?? before.employmentId },
         changes,
+        ...(over > 0 && { overBalanceDays: over }),
         ...(dto.note && { note: dto.note }),
       },
     });
@@ -665,7 +671,7 @@ export class LeaveRequestsService {
         problems.push(
           ...leaveRequestProblems(
             { startDate, endDate, halfDay: before.halfDay, days, documents: Math.max(1, before.documents.length), today: todayInCairo(), byHr: true },
-            rulesOf(type),
+            rulesForYear(rulesOf(type), employment, year),
             { available: annual.available, usableFrom: annual.usableFrom, allowNegative: true },
             {
               usedInYear: ofType.filter((r) => r.startDate.getUTCFullYear() === year).reduce((n, r) => n + r.days.toNumber(), 0),
@@ -825,6 +831,9 @@ export class LeaveRequestsService {
     byHr: boolean,
   ): Promise<{ id: string; coverId: string | null }> {
     const user = caller.user;
+    // a Super Admin who records may take the annual balance below 0; HR and an employee's own request may not (owner, 26
+    // October 2026: "only allow super admin to add leaves with a negative balance")
+    const allowNegative = byHr && mayEditLeave(user);
     const employeeId = employment.employeeId;
     const name = byHr ? employment.employee.fullNameEn : null;
     // leave is the labour law's (Arts. 124–133); a freelancer works outside it (owner, 18 October 2026; Art. 1(1)), and so
@@ -867,6 +876,7 @@ export class LeaveRequestsService {
       byHr,
     });
 
+    let over = 0;
     const id = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT 1 FROM employees WHERE id = ${employeeId}::uuid FOR UPDATE`;
       const year = Number(dto.startDate.slice(0, 4));
@@ -874,13 +884,14 @@ export class LeaveRequestsService {
         this.balances.annual(employment, year, today, tx),
         tx.leaveRequest.findMany({ where: { employeeId, typeId: type.id, status: { in: [...TAKING] } }, select: { startDate: true, days: true } }),
       ]);
+      if (allowNegative) over = overBalanceDays(type, annual.available, days);
       const problems = [
         ...inEmployment,
         ...documentProblems,
         ...leaveRequestProblems(
           { startDate: dto.startDate, endDate: dto.endDate, halfDay, days, documents: files?.length ?? 0, today, byHr },
-          rulesOf(type),
-          { available: annual.available, usableFrom: annual.usableFrom },
+          rulesForYear(rulesOf(type), employment, year),
+          { available: annual.available, usableFrom: annual.usableFrom, allowNegative },
           {
             usedInYear: ofType.filter((r) => r.startDate.getUTCFullYear() === year).reduce((n, r) => n + r.days.toNumber(), 0),
             timesInService: ofType.length,
@@ -938,7 +949,7 @@ export class LeaveRequestsService {
         },
         select: { id: true },
       });
-      if (byHr) await recordLeaveStep(tx, made.id, user.id, { kind: 'recorded_by_hr' });
+      if (byHr) await recordLeaveStep(tx, made.id, user.id, { kind: 'recorded_by_hr', comment: over > 0 ? overBalanceStepText(over) : null });
       else {
         await recordLeaveStep(tx, made.id, user.id, { kind: 'submitted' });
         if (!managerId) await recordLeaveStep(tx, made.id, null, { kind: 'no_manager' });
@@ -968,6 +979,7 @@ export class LeaveRequestsService {
         overStaffingLimit: coverage.overStaffingLimit,
         standInId: coverage.standInId,
         standInHr: coverage.standInHr,
+        ...(over > 0 && { overBalanceDays: over }),
       },
     });
     return { id, coverId: coverage.coverId };

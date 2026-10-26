@@ -6,6 +6,7 @@ import {
   LEAVE_RULE_DEFAULTS,
   leaveDayRate,
   leaveTypeLeft,
+  yearlyDaysFor,
   takesFromAnnual,
   underLabourLaw,
   type LeaveBalanceKind,
@@ -62,6 +63,8 @@ export interface TypeBalanceView {
   nameAr: string;
   used: number;
   timesInService: number;
+  /** Its days a year in this year: a share in the year the employment starts or ends (owner, 26 October 2026: "Yes, a share"). */
+  daysPerYear: number | null;
   left: number | null;
 }
 
@@ -280,14 +283,18 @@ export class LeaveBalancesService {
           return { type: t, used, timesInService: all.length };
         })
         .filter((x) => x.type.active || x.used > 0 || x.timesInService > 0)
-        .map(({ type: t, used, timesInService }) => ({
-          typeId: t.id,
-          nameEn: t.nameEn,
-          nameAr: t.nameAr,
-          used,
-          timesInService,
-          left: leaveTypeLeft({ balance: t.balance as LeaveBalanceKind, daysPerYear: t.daysPerYear }, used),
-        })),
+        .map(({ type: t, used, timesInService }) => {
+          const daysPerYear = yearlyDaysFor(t.daysPerYear, employment.joinDate, employment.endDate, year);
+          return {
+            typeId: t.id,
+            nameEn: t.nameEn,
+            nameAr: t.nameAr,
+            used,
+            timesInService,
+            daysPerYear,
+            left: leaveTypeLeft({ balance: t.balance as LeaveBalanceKind, daysPerYear }, used),
+          };
+        }),
     };
   }
 

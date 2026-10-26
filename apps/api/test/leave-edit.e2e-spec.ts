@@ -212,16 +212,23 @@ describe('Leave edits and filters (e2e)', () => {
       await edit('0b6f2f5e-8d0e-4c9a-9a39-6f0f5a1d2c3e', { reason: 'x' }).expect(404);
     });
 
-    it('a negative balance is refused as recording refuses it, with nothing changed; a leave over it already can still change its reason', async () => {
+    it('a negative balance is allowed to a Super Admin, who is told by how much on the step and in the audit log (owner, 26 October 2026)', async () => {
       const available = (await balances('ana')).annual.available;
       // down to 1 day left with the leave counted, so 3 are free to it
       await api().post(`/api/employees/${ids.ana}/leave/adjustments`).set('Cookie', hr).send({ year: Number(NEXT.slice(0, 4)), days: -(available - 1), reason: 'Test' }).expect(201);
       const days = working(NEXT);
       const longEnd = days[days.indexOf(b1) + 3];
-      const res = await edit(first.id, { endDate: longEnd }).expect(400);
-      expect(said(res)[0]).toMatch(/^Only 3 days left of the annual balance\.$/);
-      expect(await one(first.id)).toMatchObject({ startDate: b1, endDate: b2, days: 2 });
-      expect(await audits(first.id)).toHaveLength(3);
+      // 4 days against 3 free: one over, allowed
+      const longer = (await edit(first.id, { endDate: longEnd }).expect(200)).body as View;
+      expect(longer).toMatchObject({ startDate: b1, endDate: longEnd, days: 4 });
+      expect(longer.steps.at(-1)?.comment).toBe(`Dates ${shownDate(b1)}–${shownDate(b2)} → ${shownDate(b1)}–${shownDate(longEnd)}\nOver the balance by 1 day: allowed by a Super Admin`);
+      expect((await audits(first.id)).at(-1)?.diff).toMatchObject({ overBalanceDays: 1 });
+      expect((await balances('ana')).annual.available).toBe(-1);
+      // and back within it: nothing is said of the balance
+      const back = (await edit(first.id, { endDate: b2 }).expect(200)).body as View;
+      expect(back).toMatchObject({ endDate: b2, days: 2 });
+      expect(back.steps.at(-1)?.comment).not.toContain('Over the balance');
+      expect(await audits(first.id)).toHaveLength(5);
       await edit(first.id, { reason: 'Family visit, again' }).expect(200);
       await api().post(`/api/employees/${ids.ana}/leave/adjustments`).set('Cookie', hr).send({ year: Number(NEXT.slice(0, 4)), days: available - 1, reason: 'Test back' }).expect(201);
     });

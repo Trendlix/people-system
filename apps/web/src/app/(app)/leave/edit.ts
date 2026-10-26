@@ -24,8 +24,8 @@ export function editStart(r: Pick<LeaveRequestView, 'type' | 'startDate' | 'endD
   return {
     typeId: r.type.id,
     startDate: formatDate(r.startDate),
-    // one day: the last day left empty, as the leave form has it
-    endDate: r.endDate === r.startDate ? '' : formatDate(r.endDate),
+    // always filled (26 October 2026): the last day follows the first as it moves, and what will be saved is plain
+    endDate: formatDate(r.endDate),
     halfDay: r.halfDay,
     reason: r.reason ?? '',
     coverId: r.cover?.id ?? '',

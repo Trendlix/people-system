@@ -495,6 +495,33 @@ export function leaveTypeLeft(type: Pick<LeaveTypeRules, 'balance' | 'daysPerYea
 }
 
 /**
+ * A type's days a year in a year (owner, 26 October 2026, asked "Yes, a share"): in the year someone joins, or leaves,
+ * the share of the year they are employed, worked out as annualEntitlement shares the annual days (each month by days),
+ * to the nearest half day: joined on 1 July, 3.5 of casual leave's 7. Every other year is the full number. Null: the
+ * type has no days a year.
+ */
+export function yearlyDaysFor(daysPerYear: number | null, joinDate: string, endDate: string | null, year: number): number | null {
+  if (daysPerYear === null) return null;
+  if (!isDate(joinDate) || (endDate !== null && !isDate(endDate))) return daysPerYear;
+  let employed = 0;
+  for (let m = 1; m <= 12; m++) {
+    const first = `${year}-${pad(m)}-01`;
+    const last = `${year}-${pad(m)}-${pad(daysInMonth(year, m))}`;
+    const from = joinDate > first ? joinDate : first;
+    const to = endDate !== null && endDate < last ? endDate : last;
+    if (from > to) continue;
+    employed += (dayNumber(to) - dayNumber(from) + 1) / daysInMonth(year, m) / 12;
+  }
+  return employed >= 1 - 1e-9 ? daysPerYear : toHalfDays(daysPerYear * employed);
+}
+
+/** A type's rules with its days a year as they are in `year` for the employment (yearlyDaysFor). */
+export function rulesForYear<T extends Pick<LeaveTypeRules, 'daysPerYear'>>(type: T, employment: { joinDate: string; endDate: string | null }, year: number): T {
+  if (type.daysPerYear === null) return type;
+  return { ...type, daysPerYear: yearlyDaysFor(type.daysPerYear, employment.joinDate, employment.endDate, year) };
+}
+
+/**
  * How many days a leave takes the annual balance below 0 (owner, 26 October 2026: "only allow super admin to add leaves
  * with a negative balance"): 0 when it fits. Only for a type that takes from the annual balance.
  */

@@ -96,6 +96,7 @@ describe('Leave import (e2e)', () => {
   let manager: string;
   let employee: string;
   let superAdmin: string;
+  let owner: string; // HR and a Super Admin, as the owner is
   let emailDomainBefore: string | null;
   let g9Before: boolean;
   let g9Id: string;
@@ -173,6 +174,7 @@ describe('Leave import (e2e)', () => {
     manager = await signIn(app, await createUser(prisma, ['manager']));
     employee = await signIn(app, await createUser(prisma, ['employee']));
     superAdmin = await signIn(app, await createUser(prisma, ['super_admin']));
+    owner = await signIn(app, await createUser(prisma, ['hr', 'super_admin']));
     emailDomainBefore = (await api().get('/api/company').set('Cookie', hr).expect(200)).body.emailDomain;
     await api().patch('/api/company').set('Cookie', hr).send({ emailDomain: '' }).expect(200);
     deptId = (await api().post('/api/departments').set('Cookie', hr).send({ nameEn: `Leave import ${TAG}` }).expect(201)).body.id;
@@ -189,6 +191,7 @@ describe('Leave import (e2e)', () => {
     await person('ben', `Ben Template ${TAG}`, '2024-01-01', { gender: 'male' });
     await person('nina', `Nina Newcomer ${TAG}`, `${YEAR}-01-01`);
     const ceeEmployment = await person('cee', `Cleo Chief ${TAG}`, '2024-01-01');
+    await person('olga', `Olga Over ${TAG}`, `${YEAR}-01-01`);
     await person('mia', `Mia Manager ${TAG}`, '2024-01-01');
     await person('zara', `Zara Zoho ${TAG}`, `${YEAR}-01-01`, {}, true);
     await person('yara', `Yara Zoho ${TAG}`, '2024-01-01', { gender: 'female' });
@@ -315,9 +318,10 @@ describe('Leave import (e2e)', () => {
       // casual leave's limits don't block history (21 October 2026)
       expect(rowOf(v, 8)).toMatchObject({ status: 'ready', days: 3 });
       expect(rowOf(v, 8).warnings).toContain('Casual leave is at most 2 days at a time; this is 3 days.');
-      // below 0, as history: warned, not blocked
-      expect(rowOf(v, 9)).toMatchObject({ status: 'ready', days: 16 });
-      expect(rowOf(v, 9).warnings).toEqual(expect.arrayContaining(['Brings annual leave to −1 day (entitlement 15).', `Annual leave can be used from 01/07/${YEAR}, six months after joining; this was before.`]));
+      // below 0: before 26 October 2026 every import took it as history with a warning; now only a Super Admin's does
+      // (owner: "only allow super admin to add leaves with a negative balance"), HR's is left out as a problem
+      expect(rowOf(v, 9)).toMatchObject({ status: 'problem', days: 16, reasons: ['Brings annual leave to −1 day (entitlement 15). Only a Super Admin imports leave beyond the balance.'] });
+      expect(rowOf(v, 9).warnings).toEqual(expect.arrayContaining([`Annual leave can be used from 01/07/${YEAR}, six months after joining; this was before.`]));
       expect(rowOf(v, 3, 'balances')).toMatchObject({ status: 'duplicate', reasons: ['In the file twice: the same as row 2.'] });
       expect(rowOf(v, 4, 'balances').reasons).toEqual(['Casual leave is counted against the annual balance: give the balance of Annual leave instead.']);
       expect(rowOf(v, 5, 'balances').reasons).toEqual(['A balance can’t be below 0: enter 0 or more days.']);
@@ -348,13 +352,13 @@ describe('Leave import (e2e)', () => {
         'Sick leave needs a document: imported as history without one.',
       ]);
       expect(rowOf(v, 7)).toMatchObject({ status: 'skipped', reasons: ['Its person is skipped.'] });
-      expect(v.counts).toMatchObject({ ready: 5, problem: 5, duplicate: 2, skipped: 1, waiting: 0, hidden: 2 });
+      expect(v.counts).toMatchObject({ ready: 4, problem: 6, duplicate: 2, skipped: 1, waiting: 0, hidden: 2 });
     });
 
     it('applies: the leave approved and marked imported, no steps; then the balance set to the figure; one audit entry with the counts', async () => {
       const v = (await apply(importId).expect(200)).body as View;
-      expect(v.counts).toMatchObject({ applied: 5, ready: 0 });
-      expect(v.kept).toEqual({ leaves: 4, adjustments: 1, wfhDays: 0 });
+      expect(v.counts).toMatchObject({ applied: 4, ready: 0 });
+      expect(v.kept).toEqual({ leaves: 3, adjustments: 1, wfhDays: 0 });
       const ann = await balances('ann');
       // 21 earned, 5 taken off by the opening balance, 6 imported: 10 left, the figure given
       expect(ann.annual).toMatchObject({ entitlement: 21, adjustments: -5 });
@@ -365,13 +369,13 @@ describe('Leave import (e2e)', () => {
       expect(imported.every((r) => r.recordedByHr && r.steps.length === 0)).toBe(true);
       expect(imported.find((r) => r.type.key === 'annual')!.reason).toBe(`Imported from Leave history ${TAG}.xlsx by ${hrName}: Family trip`);
       const rows = await prisma.leaveRequest.findMany({ where: { importId }, select: { importId: true } });
-      expect(rows).toHaveLength(4);
+      expect(rows).toHaveLength(3);
       const adjustment = await prisma.leaveAdjustment.findFirst({ where: { importId }, select: { days: true, reason: true } });
       expect(adjustment).toMatchObject({ reason: `Opening balance from Leave history ${TAG}.xlsx` });
       expect(adjustment!.days.toNumber()).toBe(-5);
       const entry = await prisma.auditLog.findFirst({ where: { entityType: 'leave_import', entityId: importId, action: 'import' }, select: { diff: true } });
-      expect(entry?.diff).toMatchObject({ leaves: 4, pending: 0, balances: 1 });
-      expect(await prisma.auditLog.count({ where: { entityType: 'leave_request', action: 'import', entityId: { in: (await prisma.leaveRequest.findMany({ where: { importId }, select: { id: true } })).map((r) => r.id) } } })).toBe(4);
+      expect(entry?.diff).toMatchObject({ leaves: 3, pending: 0, balances: 1 });
+      expect(await prisma.auditLog.count({ where: { entityType: 'leave_request', action: 'import', entityId: { in: (await prisma.leaveRequest.findMany({ where: { importId }, select: { id: true } })).map((r) => r.id) } } })).toBe(3);
       // nothing left for HR to apply
       expect(v.canApply).toBe(false);
       await apply(importId).expect(409);
@@ -917,6 +921,25 @@ describe('Leave import (e2e)', () => {
       expect(zara.inputs.noShowDays).toBe(1);
       expect(zara.terms.leave).toBeUndefined();
       expect(await lineOf(approvedRun, 'zara')).toEqual(approvedLineBefore);
+    });
+  });
+
+  describe('a row beyond the balance (owner, 26 October 2026: "only allow super admin to add leaves with a negative balance")', () => {
+    it('is a problem in HR’s import, left out; a Super Admin’s imports it with the warning, and it takes the balance below 0', async () => {
+      const days = workDays(M_FREE2).slice(0, 16);
+      const file = await templateWorkbook([{ code: codes.olga, type: 'Annual leave', from: days[0], to: days[15] }]); // 16 days of a first year's 15
+      const refused = await upload(file, `Beyond the balance HR ${TAG}.xlsx`);
+      const hrRow = rowOf(refused.body as View, 2);
+      expect(hrRow).toMatchObject({ status: 'problem', days: 16, reasons: ['Brings annual leave to −1 day (entitlement 15). Only a Super Admin imports leave beyond the balance.'] });
+      expect(hrRow.warnings).not.toContain('Brings annual leave to −1 day (entitlement 15).');
+      expect(said(await apply(refused.body.id).expect(409))[0]).toMatch(/Nothing in this import is ready for you to apply/);
+
+      const taken = await upload(file, `Beyond the balance owner ${TAG}.xlsx`, 201, owner);
+      const row = rowOf(taken.body as View, 2);
+      expect(row).toMatchObject({ status: 'ready', days: 16, reasons: [] });
+      expect(row.warnings).toContain('Brings annual leave to −1 day (entitlement 15).');
+      await apply(taken.body.id, owner).expect(200);
+      expect((await balances('olga')).annual.available).toBe(-1);
     });
   });
 });

@@ -31,6 +31,8 @@ describe('the annual balance (owner, 18 October 2026: "can you apply the leaves 
   it('says what is left of the other types', () => {
     const b = { typeId: 'c', nameEn: 'Casual leave', nameAr: 'إجازة عارضة', used: 2, timesInService: 1, left: 5 };
     expect(typeLeftText(b, { daysPerYear: 7, maxTimesInService: null, balance: 'from_annual' })).toBe('5 days left of 7 this year');
+    // a share in the year someone joins: the year's own number, not the type's
+    expect(typeLeftText({ ...b, daysPerYear: 3.5, left: 2.5 }, { daysPerYear: 7, maxTimesInService: null, balance: 'from_annual' })).toBe('2.5 days left of 3.5 this year');
     expect(typeLeftText(b)).toBe('5 days left this year');
     const birth = { ...b, left: null, used: 0, timesInService: 1 };
     expect(typeLeftText(birth, { daysPerYear: null, maxTimesInService: 3, balance: 'per_request' })).toBe('2 of 3 times left in service');

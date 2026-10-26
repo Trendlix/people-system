@@ -58,9 +58,9 @@ const form = (values: Record<string, string>) => {
 const typed = (t: Partial<TypedEdit> = {}): TypedEdit => ({ ...editStart(leave), ...t });
 
 describe('the form as it opens', () => {
-  it('has the leave’s own values, its dates as DD/MM/YYYY, and one day with no last day', () => {
+  it('has the leave’s own values, its dates as DD/MM/YYYY, and a one-day leave’s last day filled in (it follows the first)', () => {
     expect(editStart(leave)).toEqual({ typeId: 'annual', startDate: '05/11/2026', endDate: '08/11/2026', halfDay: false, reason: 'Family visit', coverId: 'mona', note: '' });
-    expect(editStart({ ...leave, endDate: '2026-11-05', reason: null, cover: null })).toMatchObject({ endDate: '', reason: '', coverId: '' });
+    expect(editStart({ ...leave, endDate: '2026-11-05', reason: null, cover: null })).toMatchObject({ endDate: '05/11/2026', reason: '', coverId: '' });
   });
 
   it('is changed by a type, a day, the half day, the reason or the cover; not by the note alone nor the same values', () => {

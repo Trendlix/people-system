@@ -7,12 +7,16 @@ import {
   LEAVE_DOCUMENTS_MAX,
   leaveDaysBetween,
   leaveRequestProblems,
+  overBalanceWarning,
+  rulesForYear,
   takesFromAnnual,
   type LeaveGender,
   type LeaveHistory,
   type LeaveTypeRules,
 } from '@trendlix/shared';
-import { parseDate } from '../../../lib/format';
+import { addDays } from '../../../lib/date-picker';
+import { formatDate, parseDate } from '../../../lib/format';
+import { isSuperAdmin } from '../../../lib/roles';
 import type { EmployeeProfile, Holiday, LeaveBalances, LeaveTypeView } from '../../../lib/types';
 import { daysNumber, daysText } from './list';
 
@@ -115,6 +119,8 @@ export interface LeaveContext {
   today: string;
   /** HR recording it on their behalf: no notice is needed. */
   byHr: boolean;
+  /** A Super Admin may take the annual balance below 0 (owner, 26 October 2026): the form warns and saves. */
+  allowNegative?: boolean;
 }
 
 /** The working days a leave is counted in: the shift's, else Sunday to Thursday. */
@@ -175,10 +181,13 @@ export function leaveFormProblems(typed: TypedLeave, type: LeaveTypeView | null,
   if (type && startDate && endDate) {
     const days = countLeaveDays(typed, type, ctx);
     // without the balances (they couldn't be read) the annual balance isn't checked here: the API checks it
-    const balance = ctx.balances ? { available: ctx.balances.annual.available, usableFrom: ctx.balances.annual.usableFrom } : { available: Infinity, usableFrom: '' };
+    const balance = ctx.balances
+      ? { available: ctx.balances.annual.available, usableFrom: ctx.balances.annual.usableFrom, allowNegative: ctx.allowNegative === true }
+      : { available: Infinity, usableFrom: '' };
     const found = leaveRequestProblems(
       { startDate, endDate, halfDay: typed.halfDay, days, documents: documents.length, today: ctx.today, byHr: ctx.byHr },
-      rulesOf(type),
+      // a type's days a year are a share in the year someone joins (owner, 26 October 2026: "Yes, a share")
+      ctx.joinDate ? rulesForYear(rulesOf(type), { joinDate: ctx.joinDate, endDate: null }, Number(startDate.slice(0, 4))) : rulesOf(type),
       balance,
       historyOf(type, ctx, startDate),
     );
@@ -202,6 +211,21 @@ export function balanceAfter(type: Pick<LeaveTypeView, 'balance'> | null, balanc
   return Math.round((balances.annual.available - days) * 10) / 10 + 0;
 }
 
+/**
+ * Whether the caller may take the annual balance below 0 when they record leave: a Super Admin in their own session, as
+ * the API says (owner, 26 October 2026: "only allow super admin to add leaves with a negative balance"); HR may not.
+ */
+export const mayGoOverBalance = (user: Parameters<typeof isSuperAdmin>[0] & { developer?: boolean; viewAs?: unknown }): boolean => isSuperAdmin(user) && !user.developer && !user.viewAs;
+
+/**
+ * The warning a Super Admin sees before saving leave that takes the annual balance below 0 ("This leaves the annual
+ * balance at −2 days."); null when it fits, or the type isn't from the annual balance.
+ */
+export function overBalanceNote(type: Pick<LeaveTypeView, 'balance'> | null, balances: LeaveBalances | null, days: number): string | null {
+  if (!type || !balances || !takesFromAnnual(type.balance) || days <= 0) return null;
+  return balances.annual.available - days < 0 ? overBalanceWarning(balances.annual.available, days) : null;
+}
+
 /** "3 days, from your annual balance: 18 left after it." and the like, for the line under the dates. */
 export function countText(days: number, after: number | null, byHr: boolean): string {
   if (days <= 0) return 'No days yet: choose the first and last day.';
@@ -212,6 +236,37 @@ export function countText(days: number, after: number | null, byHr: boolean): st
 
 /** The year the request's balances are read for: its first day's, else this year. */
 export const requestYear = (typed: Pick<TypedLeave, 'startDate'>, today: string) => Number((parseDate(typed.startDate) || today).slice(0, 4));
+
+// ---------- the last day follows the first ----------
+
+/**
+ * The last day as it reads once the first day is changed (owner, 26 October 2026, after leave "cancells wrong dates"): it
+ * moves by the same number of days, so the leave keeps its length, unless it was changed by hand in this form or is empty
+ * (one day, the first). `oldStart`: the first day before, YYYY-MM-DD ("" while it wasn't a date); `newStart`: as typed.
+ * Unchanged while either first day or the last isn't a date yet (it is being typed).
+ */
+export function endFollowingStart(oldStart: string, newStart: string, end: string, endByHand: boolean): string {
+  if (endByHand || end.trim() === '' || !oldStart) return end;
+  const [from, to, last] = [oldStart, parseDate(newStart), parseDate(end)];
+  if (!to || !last) return end;
+  const shift = Math.round((Date.UTC(+to.slice(0, 4), +to.slice(5, 7) - 1, +to.slice(8, 10)) - Date.UTC(+from.slice(0, 4), +from.slice(5, 7) - 1, +from.slice(8, 10))) / 86_400_000);
+  return shift === 0 ? end : formatDate(addDays(last, shift));
+}
+
+/** The weekday and date of a day as the preview says it: "Thursday 05/11/2026". */
+export const weekdayDate = (date: string): string => `${new Intl.DateTimeFormat('en-GB', { weekday: 'long', timeZone: 'UTC' }).format(new Date(`${date}T00:00:00Z`))} ${formatDate(date)}`;
+
+/**
+ * The line above Save in the edit: what will be saved, plain ("Thursday 05/11/2026 to Friday 06/11/2026 · 2 days", one
+ * day: "Thursday 05/11/2026 · 1 day"); null while the first day isn't a date.
+ */
+export function datesLine(typed: Pick<TypedLeave, 'startDate' | 'endDate'>, days: number): string | null {
+  const { startDate, endDate } = readDates(typed);
+  if (!startDate || !endDate) return null;
+  if (endDate < startDate) return "The last day can't be before the first.";
+  const when = startDate === endDate ? weekdayDate(startDate) : `${weekdayDate(startDate)} to ${weekdayDate(endDate)}`;
+  return days > 0 ? `${when} · ${daysText(days)}` : when;
+}
 
 // ---------- the form as the server action reads it ----------
 

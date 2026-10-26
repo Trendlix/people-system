@@ -60,7 +60,11 @@ const timesText = (n: number) => (n === 1 ? 'once' : n === 2 ? 'twice' : `${n} t
  * for one without a limit ("3 days used"; "None used").
  */
 export function typeLeftText(b: LeaveTypeBalance, type?: Pick<LeaveTypeView, 'daysPerYear' | 'maxTimesInService' | 'balance'> | null): string {
-  if (b.left !== null) return type?.daysPerYear != null ? `${daysText(b.left)} left of ${daysNumber(type.daysPerYear)} this year` : `${daysText(b.left)} left this year`;
+  if (b.left !== null) {
+    // the year's own number, a share in the year someone joins or leaves (26 October 2026)
+    const yearly = b.daysPerYear !== undefined ? b.daysPerYear : (type?.daysPerYear ?? null);
+    return yearly !== null ? `${daysText(b.left)} left of ${daysNumber(yearly)} this year` : `${daysText(b.left)} left this year`;
+  }
   if (type?.maxTimesInService != null) {
     const left = Math.max(0, type.maxTimesInService - b.timesInService);
     return left === 0 ? `Taken ${timesText(type.maxTimesInService)}: none left in service` : `${left} of ${type.maxTimesInService} ${type.maxTimesInService === 1 ? 'time' : 'times'} left in service`;

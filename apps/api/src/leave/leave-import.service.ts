@@ -8,6 +8,7 @@ import {
   isTemplateWfhType,
   annualAvailable,
   belowZeroText,
+  rulesForYear,
   confidentialPeople,
   daysMismatchText,
   DEFAULT_WORKING_DAYS,
@@ -80,7 +81,7 @@ import { json } from '../payroll/line-work.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { WFH_ENTITY } from '../wfh/wfh-views.js';
 import { WfhService, type WfhHistoryResult } from '../wfh/wfh.service.js';
-import { noLeaveMessage, type Caller } from './access.js';
+import { mayEditLeave, noLeaveMessage, type Caller } from './access.js';
 import { readLeaveFile, LeaveImportFileError, CHOOSE_LEAVE_FILE, type ReadBalanceRow, type ReadLeaveRow } from './leave-import-file.js';
 import { LEAVE_IMPORT_TEMPLATE_NAME, leaveImportTemplate } from './leave-import-template.js';
 import type { LeaveImportPersonDto, LeaveImportTypeDto } from './leave-import.dto.js';
@@ -292,6 +293,9 @@ interface ResolvedBalance {
   year: number | null;
   hidden: boolean;
 }
+
+/** Why a row beyond the balance is left out of anyone else's import (owner, 26 October 2026: "only allow super admin to add leaves with a negative balance"). */
+const OVER_BALANCE_ONLY = 'Only a Super Admin imports leave beyond the balance.';
 
 const tenth = (n: number) => Math.round(n * 10) / 10 + 0;
 const statusWords = (status: string) => {
@@ -1198,7 +1202,7 @@ export class LeaveImportService {
       if (days <= 0 && source === 'zoho') return fail('skipped', '0 days: every day of it is a rest day or an official holiday.');
       const findings = importedLeaveFindings(
         { startDate: r.from!, endDate: r.to!, halfDay, days, fileDays: null, halfDayRefused: null },
-        rulesOf(t),
+        rulesForYear(rulesOf(t), employment, Number(r.from!.slice(0, 4))),
         { usedInYear: 0, timesInService: 0, serviceMonths: 0, gender: (employee.gender as LeaveGender | null) ?? null, usableFrom: '0000-01-01' },
       );
       if (findings.problems.length) return fail('problem', ...findings.problems);
@@ -1394,6 +1398,7 @@ export class LeaveImportService {
     // ---- the balances' figures: what is left now (and as of each balance's day), with the file's leave counted ----
     // the leave (a work-from-home row has no balance, no pay)
     const readyLeaves = leaves.filter((l) => l.view.status === 'ready' && !l.hidden && !l.wfh);
+    const goesOver = mayEditLeave(user);
     const annualRows = readyLeaves.filter((l) => takesFromAnnual(l.type!.balance));
     const readyBalances = balances.filter((b) => b.view.status === 'ready');
     const pairKey = (e: LeaveEmployment, y: number) => `${e.id}:${y}`;
@@ -1450,7 +1455,7 @@ export class LeaveImportService {
       const f = nowFigures.get(pk);
       const findings = importedLeaveFindings(
         { startDate: l.view.from!, endDate: l.view.to!, halfDay: l.view.halfDay, days: l.view.days!, fileDays: null, halfDayRefused: null },
-        rulesOf(t),
+        rulesForYear(rulesOf(t), l.employment!, year),
         {
           usedInYear: h.year.get(year) ?? 0,
           timesInService: h.times,
@@ -1464,19 +1469,32 @@ export class LeaveImportService {
       h.year.set(year, (h.year.get(year) ?? 0) + l.view.days!);
       h.times++;
       if (takesFromAnnual(t.balance) && f && !balanceSet.has(pk)) {
-        const now = tenth((left.has(pk) ? left.get(pk)! : annualAvailable(f)) - l.view.days!);
-        left.set(pk, now);
-        if (now < 0) l.view.warnings.push(belowZeroText(annualType?.nameEn ?? 'Annual leave', now, f.entitlement));
+        const was = left.has(pk) ? left.get(pk)! : annualAvailable(f);
+        const now = tenth(was - l.view.days!);
+        const text = belowZeroText(annualType?.nameEn ?? 'Annual leave', now, f.entitlement);
+        if (now >= 0) left.set(pk, now);
+        else if (goesOver) {
+          // before 26 October 2026 every row beyond the balance was imported with this warning; now only a Super Admin's import
+          // takes it (owner: "only allow super admin to add leaves with a negative balance")
+          left.set(pk, now);
+          l.view.warnings.push(text);
+        } else {
+          // left out, like a row with another problem; the balance isn't taken down by it for the rows after it
+          l.view.status = 'problem';
+          l.view.reasons.push(`${text} ${OVER_BALANCE_ONLY}`);
+        }
       }
     }
     // the half day and the days counted otherwise first, before the type's own limits
     for (const l of leaves) l.view.warnings = [...new Set(l.view.warnings)];
 
     // ---- the payroll of each month: past its draft, it isn't changed ----
-    const months = [...new Set(readyLeaves.filter((l) => !l.view.pending).flatMap((l) => monthsOf(l.view.from!, l.view.to!)))];
+    // the rows beyond the balance that were left out as problems just now take no payroll month
+    const stillReady = readyLeaves.filter((l) => l.view.status === 'ready');
+    const months = [...new Set(stillReady.filter((l) => !l.view.pending).flatMap((l) => monthsOf(l.view.from!, l.view.to!)))];
     const runs = months.length ? await this.prisma.payrollRun.findMany({ where: { month: { in: months.map((m) => toDateOnly(`${m}-01`)) } }, select: { month: true, status: true } }) : [];
     const runOf = new Map(runs.map((r) => [fromDateOnly(r.month).slice(0, 7), r.status]));
-    for (const l of readyLeaves.filter((x) => !x.view.pending)) {
+    for (const l of stillReady.filter((x) => !x.view.pending)) {
       for (const m of monthsOf(l.view.from!, l.view.to!)) {
         const status = runOf.get(m);
         if (status && status !== 'draft') l.view.notes.push(notInPayrollText(m, status));
@@ -1484,7 +1502,7 @@ export class LeaveImportService {
       }
     }
     const noShowsToLeave = await this.noShowsToLeave(
-      readyLeaves.filter((l) => !l.view.pending),
+      stillReady.filter((l) => !l.view.pending),
       [...runOf].filter(([, status]) => status === 'draft').map(([m]) => m),
     );
 

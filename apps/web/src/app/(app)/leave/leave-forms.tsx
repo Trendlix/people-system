@@ -34,7 +34,7 @@ import { EDIT_NOTE_MAX, editChanged, editHint, editPreview, editPreviewText, edi
 import { daysNumber, daysText, hrStageName, LEAVE_COMMENT_READERS, leaveCommentReaders, leaveDecisionButton } from './list';
 import { correctionDecisionButton } from '../attendance/corrections/corrections';
 import { permissionDecisionButton } from './permissions';
-import { balanceAfter, countLeaveDays, countText, coverProblems, DOCUMENT_ACCEPT, leaveFormProblems, readDates, REASON_MAX, requestYear, rulesOf, type TypedLeave } from './request';
+import { balanceAfter, countLeaveDays, countText, coverProblems, datesLine, DOCUMENT_ACCEPT, endFollowingStart, leaveFormProblems, overBalanceNote, readDates, REASON_MAX, requestYear, rulesOf, type TypedLeave } from './request';
 
 // The forms of a leave request (owner, 18 October 2026: "can you apply the leaves according to the law?"): the new
 // request, for an employee themself or recorded by HR on their behalf, with the type's rules in words beside it, its days
@@ -249,6 +249,7 @@ export function NewLeaveForm({
   initial,
   cancelHref,
   toCeo = false,
+  allowNegative = false,
 }: {
   action: Action;
   types: LeaveTypeView[];
@@ -258,6 +259,8 @@ export function NewLeaveForm({
   cancelHref: string;
   /** The employee is C-level (19 October 2026): after their manager it goes to the CEO, not HR. */
   toCeo?: boolean;
+  /** A Super Admin recording it: beyond the annual balance is allowed, after a warning (26 October 2026). */
+  allowNegative?: boolean;
 }) {
   const [state, formAction, sending] = useActionState(action, {});
   const fid = useFieldIds();
@@ -273,6 +276,10 @@ export function NewLeaveForm({
   const [loadProblem, setLoadProblem] = useState<string | null>(null);
   const [checking, startChecking] = useTransition();
   const asked = useRef(initial.year);
+  // the last day follows the first, unless it was changed by hand in this form (26 October 2026)
+  const lastStart = useRef(parseDate(valueOf(state, 'startDate')) || '');
+  const endByHand = useRef(false);
+  const [endKey, setEndKey] = useState(0);
   const [documents, setDocuments] = useState<Chosen[]>([]);
   const [shrinking, setShrinking] = useState(false);
   // who else is off, the cover and the stand-in (25 October 2026): the employee's own request only
@@ -289,9 +296,11 @@ export function NewLeaveForm({
   const type = types.find((t) => t.id === typed.typeId) ?? null;
   const year = requestYear(typed, today);
   const stale = year !== loaded.year;
-  const ctx = { workingDays: person.workingDays, holidays: loaded.holidays, balances: stale ? null : loaded.balances, joinDate: person.joinDate, gender: person.gender, today, byHr };
+  const ctx = { workingDays: person.workingDays, holidays: loaded.holidays, balances: stale ? null : loaded.balances, joinDate: person.joinDate, gender: person.gender, today, byHr, allowNegative: allowNegative && byHr };
   const days = countLeaveDays(typed, type, ctx);
   const after = balanceAfter(type, ctx.balances, days);
+  // a Super Admin's record saves beyond the balance, after this warning (owner, 26 October 2026)
+  const overNote = ctx.allowNegative ? overBalanceNote(type, ctx.balances, days) : null;
   const problems = leaveFormProblems(
     typed,
     type,
@@ -350,12 +359,22 @@ export function NewLeaveForm({
   }
 
   function set<K extends keyof TypedLeave>(key: K, value: TypedLeave[K]) {
-    setTyped((t) => ({ ...t, [key]: value }));
+    let next: TypedLeave = { ...typed, [key]: value };
+    if (key === 'endDate') endByHand.current = true;
     if (key === 'startDate') {
+      const moved = endFollowingStart(lastStart.current, value as string, typed.endDate, endByHand.current);
+      if (moved !== typed.endDate) {
+        next = { ...next, endDate: moved };
+        setEndKey((k) => k + 1);
+      }
       const date = parseDate(value as string);
-      if (date) readFor(Number(date.slice(0, 4)));
+      if (date) {
+        lastStart.current = date;
+        readFor(Number(date.slice(0, 4)));
+      }
     }
-    if (key === 'startDate' || key === 'endDate' || key === 'typeId' || key === 'halfDay') readCoverage({ ...typed, [key]: value });
+    setTyped(next);
+    if (key === 'startDate' || key === 'endDate' || key === 'typeId' || key === 'halfDay') readCoverage(next);
   }
 
   function send(e: React.FormEvent<HTMLFormElement>) {
@@ -430,9 +449,9 @@ export function NewLeaveForm({
           <label htmlFor={fid('endDate')} className="label">
             Last day {optional}
           </label>
-          <DateInput id={fid('endDate')} name="endDate" defaultValue={typed.endDate} aria-describedby={fid('endDate-hint')} />
+          <DateInput key={endKey} id={fid('endDate')} name="endDate" defaultValue={typed.endDate} aria-describedby={fid('endDate-hint')} />
           <p id={fid('endDate-hint')} className="hint">
-            Empty: one day, the first.
+            Empty: one day, the first. It moves with the first day unless you set it.
           </p>
         </div>
         {halfAllowed && (
@@ -456,6 +475,9 @@ export function NewLeaveForm({
         {/* sent as "true" or "false", whatever the type (a type without half days sends false) */}
         <input type="hidden" name="halfDay" value={String(typed.halfDay && halfAllowed)} />
         <div className="sm:col-span-2" role="status" aria-live="polite">
+          {overNote && (
+            <p className="mb-2 rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">{overNote} Only a Super Admin may record leave beyond the balance.</p>
+          )}
           <p className="rounded-lg bg-canvas px-4 py-3 text-sm">
             <span className="font-semibold tabular-nums">{countText(days, after, byHr)}</span>
             {type && days > 0 && (
@@ -590,6 +612,10 @@ export function EditLeaveForm({
   const [loadProblem, setLoadProblem] = useState<string | null>(null);
   const [checking, startChecking] = useTransition();
   const asked = useRef(initial.year);
+  // the last day follows the first, unless it was changed by hand in this form (26 October 2026)
+  const lastStart = useRef(parseDate(valueOf(state, 'startDate', start.startDate)) || '');
+  const endByHand = useRef(false);
+  const [endKey, setEndKey] = useState(0);
 
   const type = types.find((t) => t.id === typed.typeId) ?? null;
   const currentType = types.find((t) => t.id === request.type.id) ?? null;
@@ -597,6 +623,9 @@ export function EditLeaveForm({
   const stale = wanted !== loaded.year;
   const preview = editPreview(typed, type, { workingDays: person.workingDays, holidays: loaded.holidays, balances: stale ? null : loaded.balances }, request, currentType);
   const changed = editChanged(typed, request);
+  const saved = datesLine(typed, preview.days);
+  // the balance this leaves, below 0 for a Super Admin's edit: allowed, after this warning (owner, 26 October 2026)
+  const overNote = preview.after !== null && preview.after < 0 ? `This leaves the annual balance at −${daysNumber(-preview.after)}.` : null;
   const halfAllowed = !!type?.halfDays;
   const oneDay = (() => {
     const s = parseDate(typed.startDate);
@@ -618,11 +647,19 @@ export function EditLeaveForm({
   }
 
   function set<K extends keyof TypedEdit>(key: K, value: TypedEdit[K]) {
-    setTyped((t) => ({ ...t, [key]: value }));
+    if (key === 'endDate') endByHand.current = true;
     if (key === 'startDate') {
+      const moved = endFollowingStart(lastStart.current, value as string, typed.endDate, endByHand.current);
+      setTyped((t) => ({ ...t, startDate: value as string, endDate: moved }));
+      if (moved !== typed.endDate) setEndKey((k) => k + 1);
       const date = parseDate(value as string);
-      if (date) readFor(Number(date.slice(0, 4)));
+      if (date) {
+        lastStart.current = date;
+        readFor(Number(date.slice(0, 4)));
+      }
+      return;
     }
+    setTyped((t) => ({ ...t, [key]: value }));
   }
 
   return (
@@ -661,9 +698,9 @@ export function EditLeaveForm({
           <label htmlFor={fid('endDate')} className="label">
             Last day {optional}
           </label>
-          <DateInput id={fid('endDate')} name="endDate" defaultValue={typed.endDate} aria-describedby={fid('endDate-hint')} />
+          <DateInput key={endKey} id={fid('endDate')} name="endDate" defaultValue={typed.endDate} aria-describedby={fid('endDate-hint')} />
           <p id={fid('endDate-hint')} className="hint">
-            Empty: one day, the first.
+            Empty: one day, the first. It moves with the first day unless you set it.
           </p>
         </div>
         {halfAllowed && (
@@ -726,6 +763,12 @@ export function EditLeaveForm({
         </div>
       </div>
       {loadProblem && <p className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">{loadProblem}</p>}
+      {overNote && <p role="status" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">{overNote} Only a Super Admin may.</p>}
+      {saved && (
+        <p role="status" aria-live="polite" className="text-sm font-semibold tabular-nums">
+          Will be saved: {saved}
+        </p>
+      )}
       <button type="submit" disabled={saving || checking || !changed} className="btn btn-primary disabled:cursor-not-allowed disabled:opacity-60">
         {saving ? 'Saving…' : 'Save the edit'}
       </button>

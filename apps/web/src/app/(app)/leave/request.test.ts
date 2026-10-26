@@ -5,11 +5,15 @@ import {
   countLeaveDays,
   countText,
   coverProblems,
+  datesLine,
   documentProblems,
+  endFollowingStart,
   fullMonths,
   leaveForm,
   leaveFormProblems,
+  mayGoOverBalance,
   offeredTypes,
+  overBalanceNote,
   personFacts,
   readDates,
   requestYear,
@@ -223,5 +227,70 @@ describe('the form as the server action reads it', () => {
   it('says what is wrong before the upload', () => {
     expect(leaveForm(form({ typeId: '', startDate: 'x', endDate: '' })).errors).toEqual(['Choose the type of leave.', 'Enter the first day as DD/MM/YYYY, e.g. 25/10/2026.']);
     expect(leaveForm(form({ typeId: 'a', startDate: '27/10/2026', endDate: '25/10/2026' })).errors).toEqual(["The last day can't be before the first."]);
+  });
+});
+
+describe('the last day follows the first (owner, 26 October 2026)', () => {
+  it('moves by the same number of days, so the leave keeps its length', () => {
+    // a one-day leave moved from 05/11 to 04/11 stays one day
+    expect(endFollowingStart('2026-11-05', '04/11/2026', '05/11/2026', false)).toBe('04/11/2026');
+    // two days later, the last day two days later (over a month's end)
+    expect(endFollowingStart('2026-11-05', '07/11/2026', '28/11/2026', false)).toBe('30/11/2026');
+    expect(endFollowingStart('2026-11-29', '01/12/2026', '30/11/2026', false)).toBe('02/12/2026');
+  });
+
+  it('stays where it is when it was set by hand, is empty, or a date is still being typed', () => {
+    expect(endFollowingStart('2026-11-05', '04/11/2026', '05/11/2026', true)).toBe('05/11/2026');
+    expect(endFollowingStart('2026-11-05', '04/11/2026', '', false)).toBe('');
+    expect(endFollowingStart('2026-11-05', '04/11/202', '05/11/2026', false)).toBe('05/11/2026');
+    expect(endFollowingStart('', '04/11/2026', '05/11/2026', false)).toBe('05/11/2026');
+    expect(endFollowingStart('2026-11-05', '05/11/2026', '06/11/2026', false)).toBe('06/11/2026');
+  });
+});
+
+describe('the line above Save', () => {
+  it('says the weekdays, the dates and the days', () => {
+    expect(datesLine({ startDate: '05/11/2026', endDate: '06/11/2026' }, 2)).toBe('Thursday 05/11/2026 to Friday 06/11/2026 · 2 days');
+    expect(datesLine({ startDate: '05/11/2026', endDate: '' }, 1)).toBe('Thursday 05/11/2026 · 1 day');
+    expect(datesLine({ startDate: '06/11/2026', endDate: '05/11/2026' }, 0)).toBe("The last day can't be before the first.");
+    expect(datesLine({ startDate: '', endDate: '' }, 0)).toBeNull();
+  });
+});
+
+describe('leave beyond the balance is a Super Admin’s (owner, 26 October 2026)', () => {
+  const dates = typed({ startDate: '25/10/2026', endDate: '29/10/2026' });
+
+  it('HR is refused as before; a Super Admin’s record is let through', () => {
+    expect(leaveFormProblems(dates, ANNUAL, [], ctx({ byHr: true }))).toEqual(['Only 4 days left of the annual balance.']);
+    expect(leaveFormProblems(dates, ANNUAL, [], ctx({ byHr: true, allowNegative: true }))).toEqual([]);
+  });
+
+  it('warns a Super Admin of the balance it leaves', () => {
+    expect(overBalanceNote(ANNUAL, balances, 5)).toBe('This leaves the annual balance at −1 day.');
+    expect(overBalanceNote(ANNUAL, balances, 6)).toBe('This leaves the annual balance at −2 days.');
+    expect(overBalanceNote(ANNUAL, balances, 4)).toBeNull();
+    expect(overBalanceNote(type({ id: 'unpaid', balance: 'none' }), balances, 9)).toBeNull();
+    expect(overBalanceNote(ANNUAL, null, 9)).toBeNull();
+  });
+
+  it('only a Super Admin in their own session may', () => {
+    expect(mayGoOverBalance({ roles: ['super_admin'] })).toBe(true);
+    expect(mayGoOverBalance({ roles: ['hr', 'ceo'] })).toBe(false);
+    expect(mayGoOverBalance({ roles: ['super_admin'], developer: true })).toBe(false);
+    expect(mayGoOverBalance({ roles: ['super_admin'], viewAs: { act: true } })).toBe(false);
+  });
+});
+
+describe('casual leave’s days a year are a share in the year someone joins (owner, 26 October 2026: "Yes, a share")', () => {
+  it('a joiner on 1 July has 3.5 of 7', () => {
+    const joiner = ctx({ joinDate: '2026-07-01', balances: { ...balances, annual: { ...balances.annual, available: 10, usableFrom: '2026-01-01' }, types: [] } });
+    const found = leaveFormProblems(typed({ typeId: 'casual', startDate: '25/10/2026' }), CASUAL, [], joiner);
+    expect(found).toEqual([]);
+    const withUsed = ctx({ joinDate: '2026-07-01', balances: { ...balances, annual: { ...balances.annual, available: 10 }, types: [{ typeId: 'casual', nameEn: 'Casual leave', nameAr: '', used: 3, timesInService: 2, left: 0.5 }] } });
+    expect(leaveFormProblems(typed({ typeId: 'casual', startDate: '25/10/2026', endDate: '26/10/2026' }), CASUAL, [], withUsed)).toContain("Only 0.5 days left of casual leave's 3.5 days a year.");
+  });
+
+  it('a full year is 7', () => {
+    expect(leaveFormProblems(typed({ typeId: 'casual', startDate: '25/10/2026' }), CASUAL, [], ctx())).toEqual([]);
   });
 });

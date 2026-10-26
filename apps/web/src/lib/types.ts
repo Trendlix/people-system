@@ -2351,6 +2351,8 @@ export interface LeaveTypeBalance {
   nameAr: string;
   used: number;
   timesInService: number;
+  /** Its days a year in this year: a share in the year the employment starts or ends (owner, 26 October 2026: "Yes, a share"). Left out by an API from before it. */
+  daysPerYear?: number | null;
   left: number | null;
 }
 

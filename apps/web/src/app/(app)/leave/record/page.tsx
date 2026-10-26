@@ -14,7 +14,7 @@ import { recordLeave } from '../actions';
 import { loadEmployeeLeave, loadHolidaysOf, loadLeaveTypes } from '../data';
 import { NewLeaveForm } from '../leave-forms';
 import { recordsLeave } from '../list';
-import { offeredTypes, personFacts } from '../request';
+import { mayGoOverBalance, offeredTypes, personFacts } from '../request';
 import { LeaveEmployeePicker } from './employee-picker';
 import { withCode } from '@/lib/hidden';
 
@@ -81,6 +81,8 @@ async function Record({ searchParams }: { searchParams: PageProps<'/leave/record
         person={{ employeeId: chosen, ...facts }}
         initial={{ year, balances: leave.kind === 'ok' ? leave.value : null, holidays: holidays.kind === 'ok' ? holidays.value : [] }}
         cancelHref={LEAVE_PATH}
+        // a Super Admin's record may go beyond the balance, after a warning; HR's is refused (26 October 2026)
+        allowNegative={mayGoOverBalance(user)}
       />
     ) : (
       <Empty>No type of leave is on. Turn one on in Organization → Leave.</Empty>

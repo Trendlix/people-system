@@ -24,9 +24,14 @@ import {
   leaveTypeLeft,
   leaveTypeRulesText,
   monthLeaveDays,
+  overBalanceDays,
+  overBalanceStepText,
+  overBalanceWarning,
+  rulesForYear,
   settleByAge,
   unusedByYear,
   yearClosingProblems,
+  yearlyDaysFor,
   type AnnualEntitlementInput,
   type LeaveHistory,
   type LeaveRequestInput,
@@ -391,5 +396,71 @@ describe('monthLeaveDays: the payroll’s leave and unpaid leave days', () => {
     expect(monthLeaveDays([leave('2026-10-25', '2026-11-03', 'unpaid')], '2026-10', { ...count, to: '2026-10-27' })).toEqual({ paid: 0, unpaid: 3 });
     // a half day in a leave that runs into the next month is that month's
     expect(monthLeaveDays([leave('2026-10-29', '2026-11-01', 'paid', null, true)], '2026-10', count)).toEqual({ paid: 1, unpaid: 0 });
+  });
+});
+
+describe('a type’s days a year are a share in the year someone joins or leaves (owner, 26 October 2026: "Yes, a share")', () => {
+  it('a joiner on 1 July has 3.5 of casual leave’s 7; a full year has 7', () => {
+    expect(yearlyDaysFor(7, '2026-07-01', null, 2026)).toBe(3.5);
+    expect(yearlyDaysFor(7, '2026-01-01', null, 2026)).toBe(7);
+    expect(yearlyDaysFor(7, '2020-03-01', null, 2026)).toBe(7);
+    // the year after joining is a full one
+    expect(yearlyDaysFor(7, '2026-07-01', null, 2027)).toBe(7);
+  });
+
+  it('a joiner part-way through a month has that month by days, to the nearest half day', () => {
+    // 16 March: 16 of 31 days of March and nine full months
+    expect(yearlyDaysFor(7, '2026-03-16', null, 2026)).toBe(5.5);
+    expect(yearlyDaysFor(7, '2026-12-31', null, 2026)).toBe(0);
+  });
+
+  it('a leaver has the share of the year until the last day', () => {
+    expect(yearlyDaysFor(7, '2020-01-01', '2026-06-30', 2026)).toBe(3.5);
+    expect(yearlyDaysFor(7, '2026-03-01', '2026-08-31', 2026)).toBe(3.5);
+    expect(yearlyDaysFor(7, '2020-01-01', '2026-06-30', 2027)).toBe(0);
+  });
+
+  it('a type without days a year has none; the rules carry the year’s number', () => {
+    expect(yearlyDaysFor(null, '2026-07-01', null, 2026)).toBeNull();
+    expect(rulesForYear(law('casual'), { joinDate: '2026-07-01', endDate: null }, 2026).daysPerYear).toBe(3.5);
+    expect(rulesForYear(law('annual'), { joinDate: '2026-07-01', endDate: null }, 2026)).toBe(law('annual'));
+  });
+
+  it('shows in what is left of it, and in the request’s check', () => {
+    const casual = rulesForYear(law('casual'), { joinDate: '2026-07-01', endDate: null }, 2026);
+    expect(leaveTypeLeft(casual, 2)).toBe(1.5);
+    const input = { startDate: '2026-11-01', endDate: '2026-11-02', halfDay: false, days: 2, documents: 0, today: '2026-10-18', byHr: false };
+    const history = { usedInYear: 2, timesInService: 1, serviceMonths: 4, gender: 'male' as const };
+    expect(leaveRequestProblems(input, casual, { available: 10, usableFrom: '2026-01-01' }, history)).toEqual(["Only 1.5 days left of casual leave's 3.5 days a year."]);
+    expect(leaveRequestProblems(input, law('casual'), { available: 10, usableFrom: '2026-01-01' }, history)).toEqual([]);
+  });
+});
+
+describe('leave beyond the balance (owner, 26 October 2026: "only allow super admin to add leaves with a negative balance")', () => {
+  const input = { startDate: '2026-11-01', endDate: '2026-11-05', halfDay: false, days: 5, documents: 0, today: '2026-10-18', byHr: true };
+  const history = { usedInYear: 0, timesInService: 0, serviceMonths: 80, gender: 'male' as const };
+
+  it('is a problem unless allowed, and then it is not', () => {
+    expect(leaveRequestProblems(input, law('annual'), { available: 3, usableFrom: '2026-01-01' }, history)).toEqual(['Only 3 days left of the annual balance.']);
+    expect(leaveRequestProblems(input, law('annual'), { available: 3, usableFrom: '2026-01-01', allowNegative: false }, history)).toEqual(['Only 3 days left of the annual balance.']);
+    expect(leaveRequestProblems(input, law('annual'), { available: 3, usableFrom: '2026-01-01', allowNegative: true }, history)).toEqual([]);
+  });
+
+  it('counts the days over, only for a type from the annual balance', () => {
+    expect(overBalanceDays(law('annual'), 3, 5)).toBe(2);
+    expect(overBalanceDays(law('casual'), 1, 1.5)).toBe(0.5);
+    expect(overBalanceDays(law('annual'), 5, 5)).toBe(0);
+    expect(overBalanceDays(law('unpaid'), 0, 5)).toBe(0);
+    expect(overBalanceStepText(2)).toBe('Over the balance by 2 days: allowed by a Super Admin');
+    expect(overBalanceStepText(0.5)).toBe('Over the balance by 0.5 days: allowed by a Super Admin');
+    expect(overBalanceWarning(3, 5)).toBe('This leaves the annual balance at −2 days.');
+    expect(overBalanceWarning(4, 5)).toBe('This leaves the annual balance at −1 day.');
+  });
+
+  it('a Super Admin’s own type days a year are still kept', () => {
+    const casual = law('casual');
+    expect(leaveRequestProblems({ ...input, endDate: '2026-11-02', days: 2 }, casual, { available: 0, usableFrom: '2026-01-01', allowNegative: true }, { ...history, usedInYear: 6.5 })).toEqual([
+      "Only 0.5 days left of casual leave's 7 days a year.",
+    ]);
   });
 });
