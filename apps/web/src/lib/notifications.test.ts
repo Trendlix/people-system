@@ -99,6 +99,12 @@ describe('where a notification opens', () => {
     expect(notificationHref(`/attendance/official-duty/${ID}`, 'od_waiting', 'app')).toBe(`/app/approve/od/${ID}`);
     expect(notificationHref(`/attendance/official-duty/${ID}`, 'od_decided', 'app')).toBe(`/app/requests/od/${ID}`);
     expect(notificationHref(`/attendance/official-duty/${ID}`, 'od_waiting', 'site')).toBe(`/attendance/official-duty/${ID}`);
+    // compensatory days (owner, 26 October 2026: "WFH and compensatory pages in the phone app"): the same way, cancelled by
+    // HR (compensatory_decided) on their own request too
+    expect(notificationHref(`/attendance/compensatory/${ID}`, 'compensatory_waiting', 'app')).toBe(`/app/approve/compensatory/${ID}`);
+    expect(notificationHref(`/attendance/compensatory/${ID}`, 'compensatory_decided', 'app')).toBe(`/app/requests/compensatory/${ID}`);
+    expect(notificationHref(`/attendance/compensatory/${ID}`, 'compensatory_waiting', 'site')).toBe(`/attendance/compensatory/${ID}`);
+    expect(pushHref({ link: `/attendance/compensatory/${ID}`, kind: 'compensatory_waiting', id: 'n2' })).toBe(`/app/approve/compensatory/${ID}`);
     expect(notificationHref('/raise-requests?status=with_hr', 'raise_request_waiting', 'app')).toBe('/app/approve');
     expect(notificationHref('/approvals', 'pay_raise_waiting', 'app')).toBe('/app/approve');
     // a kind from a newer API: the person's own requests

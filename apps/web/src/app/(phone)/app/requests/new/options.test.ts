@@ -1,6 +1,6 @@
 import { seesRaiseRequests } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
-import { askOptions, offersOd, offersRaise, offersWfh } from './options';
+import { askOptions, offersCompensatory, offersOd, offersRaise, offersWfh } from './options';
 
 const keys = (p: Parameters<typeof askOptions>[0]) => askOptions(p).map((o) => o.key);
 const hours = { hoursPerMonth: 4 };
@@ -43,11 +43,12 @@ describe('what the phone pages offer to ask for', () => {
 describe('working from home on New Request (owner, 21 October 2026: "think about how should we handle the working from home in out erp")', () => {
   const allowance = { offered: true, refusal: null, daysPerMonth: 2 };
 
-  it('is offered after permission when their month says their arrangement needs it', () => {
+  // beside leave since 26 October 2026 (of work from home: "move it to leaves")
+  it('is offered right after leave when their month says their arrangement needs it', () => {
     expect(keys({ employment: { employmentType: 'full_time' }, permissionMonth: hours, asksRaise: false, asksWfh: offersWfh(allowance) })).toEqual([
       'leave',
-      'permission',
       'wfh',
+      'permission',
       'reimbursement',
       'correction',
       'home',
@@ -89,12 +90,12 @@ describe('a raise on New Request (owner, 20 October 2026: "raises not to be visi
 });
 
 describe('official duty on New Request (owner, 23 October 2026: "Official duty (OD) requests")', () => {
-  it('is offered after working from home when its form says nothing refuses them', () => {
+  it('is offered after permission when its form says nothing refuses them', () => {
     expect(offersOd({ refusal: null })).toBe(true);
     expect(keys({ employment: { employmentType: 'full_time' }, permissionMonth: hours, asksRaise: false, asksWfh: true, asksOd: offersOd({ refusal: null }) })).toEqual([
       'leave',
-      'permission',
       'wfh',
+      'permission',
       'od',
       'reimbursement',
       'correction',
@@ -110,5 +111,39 @@ describe('official duty on New Request (owner, 23 October 2026: "Official duty (
     expect(offersOd({ refusal: 'You work freelance, outside the labour law and its working hours: no official duty is needed.' })).toBe(false);
     expect(offersOd(null)).toBe(false);
     expect(keys({ employment: null, permissionMonth: null, asksRaise: false, asksOd: true })).toEqual(['reimbursement', 'home']);
+  });
+});
+
+describe('a compensatory day on New Request (owner, 26 October 2026: "WFH and compensatory pages in the phone app")', () => {
+  const form = { offered: true, refusal: null };
+
+  it('is offered with working from home right after leave, grouped with it, when its form says nothing refuses them', () => {
+    expect(offersCompensatory(form)).toBe(true);
+    expect(
+      keys({ employment: { employmentType: 'full_time' }, permissionMonth: hours, asksRaise: true, asksWfh: true, asksOd: true, asksCompensatory: offersCompensatory(form) }),
+    ).toEqual(['leave', 'wfh', 'compensatory', 'permission', 'od', 'reimbursement', 'correction', 'raise', 'home']);
+    // without working from home, still right after leave
+    expect(keys({ employment: { employmentType: 'full_time' }, permissionMonth: hours, asksRaise: false, asksCompensatory: true })).toEqual([
+      'leave',
+      'compensatory',
+      'permission',
+      'reimbursement',
+      'correction',
+      'home',
+    ]);
+    expect(askOptions({ employment: { employmentType: 'full_time' }, permissionMonth: hours, asksRaise: false, asksCompensatory: true }).find((o) => o.key === 'compensatory')).toMatchObject({
+      label: 'Compensatory day',
+      href: '/app/requests/new/compensatory',
+    });
+  });
+
+  it('is hidden when refused (a freelancer), not offered, unread, or without an employment', () => {
+    expect(offersCompensatory({ offered: false, refusal: 'You work freelance, outside the labour law and its working hours: there are no compensatory days.' })).toBe(false);
+    expect(offersCompensatory({ offered: true, refusal: 'You have no current employment.' })).toBe(false);
+    expect(offersCompensatory({ offered: false, refusal: null })).toBe(false);
+    expect(offersCompensatory(null)).toBe(false);
+    expect(offersCompensatory(undefined)).toBe(false);
+    expect(keys({ employment: null, permissionMonth: null, asksRaise: false, asksCompensatory: true })).toEqual(['reimbursement', 'home']);
+    expect(keys({ employment: { employmentType: 'full_time' }, permissionMonth: hours, asksRaise: false })).not.toContain('compensatory');
   });
 });

@@ -27,6 +27,9 @@ import { dayStatusText, dayTone } from '../../../(app)/payroll/[id]/attendance/a
 // working hours to be calculated between the checkin and out only, not the first and last") lists them with its break,
 // and an open last check-in says "Checked in 6:30 PM · not checked out" under the check-out ("Count the closed pairs,
 // flag the open one"); an exempt day (owner, 25 October 2026) carries an "Exempt" badge, its presses kept for reference.
+// A compensatory day off approved (owner, 26 October 2026: "WFH and compensatory pages in the phone app") carries the
+// site's "Compensatory day off" badge in its place (ExemptBadge, attendance.ts exemptBadge): a full paid day, its hours
+// counted, never absent or short.
 
 const TONE = { danger: 'text-danger', warn: 'text-warn' } as const;
 
@@ -89,6 +92,7 @@ export function DayList({
               </h3>
               <span className="flex flex-wrap items-baseline justify-end gap-2">
                 {isWfhDay({ wfhDays }, d.date) && <span className="badge bg-accent-soft text-accent">{WFH_DAY_BADGE}</span>}
+                {/* "Exempt", or "Compensatory day off" (26 October 2026) */}
                 <ExemptBadge of={d} />
                 {/* a day of official duty (23 October 2026), opening its request */}
                 {d.od && (

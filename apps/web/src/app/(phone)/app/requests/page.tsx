@@ -12,6 +12,7 @@ import { CoveringList } from '../../../(app)/my-requests/covering-list';
 import { loadMyCorrections } from '../../../(app)/attendance/corrections/data';
 import { loadMyWfh } from '../../../(app)/attendance/wfh/data';
 import { loadMyOd } from '../../../(app)/attendance/official-duty/data';
+import { loadMyCompensatory } from '../../../(app)/attendance/compensatory/data';
 import { loadMyHomes } from '../../../(app)/home-locations/data';
 import { HomeStatusBadge } from '../../../(app)/home-locations/ui';
 import { loadMyLeave, loadMyPermissions } from '../../../(app)/leave/data';
@@ -51,7 +52,8 @@ import {
 // Requests for the employee's self-rating and sign-off"), above the list. Their work from home days (owner, 21 October
 // 2026: "think about how should we handle the working from home in out erp"): asked, recorded by HR or imported. The
 // colleagues' leave they cover (owner, 25 October 2026: "Required over 2 days"), above the list when there is some: a
-// cover's notification opens here on the phone.
+// cover's notification opens here on the phone. Their compensatory days (owner, 26 October 2026: "WFH and compensatory
+// pages in the phone app"): asked, or recorded by HR.
 
 export const metadata: Metadata = { title: 'My Requests · Trendlix People' };
 
@@ -85,7 +87,7 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/app/reques
   const profile = await loadOwnProfile(user);
   if (!profile) return <NoProfile user={user} />;
   const seesRaises = seesRaiseRequests(user);
-  const [leave, permissions, claims, corrections, raises, homes, wfh, od] = await Promise.all([
+  const [leave, permissions, claims, corrections, raises, homes, wfh, od, compensatory] = await Promise.all([
     loadMyLeave(),
     loadMyPermissions(),
     loadMyClaims(),
@@ -95,6 +97,8 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/app/reques
     loadMyWfh(),
     // official duty (23 October 2026)
     loadMyOd(),
+    // compensatory days (26 October 2026)
+    loadMyCompensatory(),
   ]);
   const rows = appRequestRows({
     leave: leave.kind === 'ok' ? leave.value : undefined,
@@ -105,8 +109,9 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/app/reques
     homes: homes.kind === 'ok' ? homes.value : undefined,
     wfh: wfh.kind === 'ok' ? wfh.value : undefined,
     od: od.kind === 'ok' ? od.value : undefined,
+    compensatory: compensatory.kind === 'ok' ? compensatory.value : undefined,
   });
-  const failed = [leave, permissions, claims, corrections, raises, homes, wfh, od].some((l) => l?.kind === 'failed');
+  const failed = [leave, permissions, claims, corrections, raises, homes, wfh, od, compensatory].some((l) => l?.kind === 'failed');
   const kinds = appRequestKindsFor(seesRaises);
   const f = readAppRequestFilters(query, kinds);
   const shown = filterAppRequests(rows, f);

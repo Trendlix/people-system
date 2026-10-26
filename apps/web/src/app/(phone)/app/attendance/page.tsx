@@ -20,7 +20,9 @@ import { DayList } from './day-list';
 // Attendance's month (GET /attendance/me, the API's for the caller alone), its figures as tiles and its days as a list,
 // with the month before and after; each day's Ask for a correction, or the correction being decided. A C-level person
 // sees their own as everyone does. A work from home day approved for them shows "Working from home" (owner, 21 October
-// 2026: "think about how should we handle the working from home in out erp").
+// 2026: "think about how should we handle the working from home in out erp"). A compensatory day off (owner, 26 October
+// 2026: "WFH and compensatory pages in the phone app") shows as on the site: "Compensatory day off" on the day, and the
+// month's "Compensatory days off" among the tiles (figureTiles).
 
 export const metadata: Metadata = { title: 'Attendance · Trendlix People' };
 

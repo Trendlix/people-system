@@ -14,9 +14,12 @@ import { asksPermission } from '../../../../(app)/leave/permissions';
 // office, offered when their allowance says so (an Office or Hybrid arrangement, asking not turned off in Leave Setup);
 // Work from home, Outdoor and Indoor and outdoor never see it. Official duty (owner, 23 October 2026: "Official duty
 // (OD) requests"): work away from the office, offered when its form says nothing refuses them (an employment, not a
-// freelancer).
+// freelancer). A compensatory day (owner, 26 October 2026: "WFH and compensatory pages in the phone app"): a day off in
+// the same month for a rest day or an official holiday worked, offered when its form says nothing refuses them (an
+// employment, not a freelancer). Work from home and the compensatory day are offered right after leave, grouped with it
+// (owner, 26 October 2026, of work from home: "move it to leaves").
 
-export type AskKind = 'leave' | 'permission' | 'wfh' | 'od' | 'reimbursement' | 'correction' | 'raise' | 'home';
+export type AskKind = 'leave' | 'wfh' | 'compensatory' | 'permission' | 'od' | 'reimbursement' | 'correction' | 'raise' | 'home';
 
 export interface AskOption {
   key: AskKind;
@@ -30,6 +33,12 @@ const OPTIONS: Record<AskKind, AskOption> = {
   leave: { key: 'leave', href: APP_PATHS.newLeave, label: 'Leave', text: 'Days off: annual, sick, casual and the other types HR set up.' },
   permission: { key: 'permission', href: APP_PATHS.newPermission, label: 'Permission', text: 'A few hours away from a working day, to come late or leave early.' },
   wfh: { key: 'wfh', href: APP_PATHS.newWfh, label: 'Work from home', text: 'A working day from home instead of the office, asked a day before.' },
+  compensatory: {
+    key: 'compensatory',
+    href: APP_PATHS.newCompensatory,
+    label: 'Compensatory day',
+    text: 'A day off in the same month for a rest day or an official holiday you worked, asked a day before.',
+  },
   od: { key: 'od', href: APP_PATHS.newOd, label: 'Official duty', text: 'Work away from the office, e.g. at a client’s: asked ahead or up to 3 days after.' },
   reimbursement: { key: 'reimbursement', href: APP_PATHS.newReimbursement, label: 'Reimbursement', text: 'An expense you paid for the company, with a photo of the receipt.' },
   correction: { key: 'correction', href: APP_PATHS.newCorrection, label: 'Correction', text: 'A day of your attendance that isn’t right: a check-in or check-out forgotten.' },
@@ -52,6 +61,12 @@ export const offersWfh = (allowance: { offered: boolean; refusal: string | null;
 export const offersOd = (form: { refusal: string | null } | null | undefined): boolean => !!form && !form.refusal;
 
 /**
+ * Whether a compensatory day is offered (owner, 26 October 2026), as the site's My Requests offers it: its form as read
+ * says it is offered and nothing refuses them (an employment, not a freelancer); not read (null), not offered.
+ */
+export const offersCompensatory = (form: { offered: boolean; refusal: string | null } | null | undefined): boolean => !!form && form.offered && !form.refusal;
+
+/**
  * Whether a raise is offered: to someone who sees raise requests (owner, 20 October 2026: "raises not to be visible to
  * employee level for now", then "Hide from managers too"; seesRaiseRequests), when they may ask for themself now (the
  * API's canRequest), or to a manager, for a direct report (the form's picker offers whom they may).
@@ -69,12 +84,16 @@ export function askOptions(p: {
   asksWfh?: boolean;
   /** Whether official duty may be asked for (offersOd, 23 October 2026); left out: not offered. */
   asksOd?: boolean;
+  /** Whether a compensatory day may be asked for (offersCompensatory, 26 October 2026); left out: not offered. */
+  asksCompensatory?: boolean;
 }): AskOption[] {
   const e = p.employment;
   const keys: AskKind[] = [];
   if (e && underLabourLaw(e.employmentType)) keys.push('leave');
-  if (asksPermission(e, p.permissionMonth)) keys.push('permission');
+  // beside leave (26 October 2026): working from home and a compensatory day
   if (e && p.asksWfh) keys.push('wfh');
+  if (e && p.asksCompensatory) keys.push('compensatory');
+  if (asksPermission(e, p.permissionMonth)) keys.push('permission');
   if (e && p.asksOd) keys.push('od');
   keys.push('reimbursement');
   if (e) keys.push('correction');

@@ -85,6 +85,14 @@ describe('where an action sends someone on to from the phone pages', () => {
     expect(toAppHref(`/kpis/scorecards/${ID}?done=self_sent`, 'requests')).toBe(`/app/requests/kpi/${ID}?done=self_sent`);
     expect(toAppHref(`/kpis/scorecards/${ID}?done=calibrated`, 'approve')).toBe(`/app/approve/kpi/${ID}?done=calibrated`);
     expect(toAppHref(`/kpis/scorecards/${ID}`, 'approve')).toBe(`/app/approve/kpi/${ID}`);
+    // a compensatory day request (26 October 2026): sent, decided or moved on, in the section; its other pages the list
+    expect(toAppHref(`/attendance/compensatory/${ID}?done=sent`, 'requests')).toBe(`/app/requests/compensatory/${ID}?done=sent`);
+    expect(toAppHref(`/attendance/compensatory/${ID}?done=hr_approve`, 'approve')).toBe(`/app/approve/compensatory/${ID}?done=hr_approve`);
+    expect(toAppHref(`/attendance/compensatory/${ID}?done=moved`, 'approve')).toBe(`/app/approve/compensatory/${ID}?done=moved`);
+    expect(toAppHref('/my-requests#my-compensatory', 'requests')).toBe('/app/requests');
+    expect(toAppHref('/attendance/compensatory/new', 'requests')).toBe('/app/requests');
+    expect(toAppHref('/attendance/compensatory/record', 'approve')).toBe('/app/approve');
+    expect(appItemHref('approve', 'compensatory', ID)).toBe(`/app/approve/compensatory/${ID}`);
     // the KPI lists aren't phone pages: the section's list
     expect(toAppHref('/kpis/team', 'approve')).toBe('/app/approve');
     expect(toAppHref('/kpis/scorecards/not-an-id', 'requests')).toBe('/app/requests');

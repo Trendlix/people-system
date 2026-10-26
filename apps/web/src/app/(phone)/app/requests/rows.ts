@@ -1,4 +1,4 @@
-import { isOpenReimbursement } from '@trendlix/shared';
+import { COMPENSATORY_LABEL, isOpenReimbursement } from '@trendlix/shared';
 import type { AttendanceCorrectionView } from '../../../../lib/correction-types';
 import { formatDate } from '../../../../lib/format';
 import type { HomeLocationView } from '../../../../lib/home-location-types';
@@ -13,6 +13,8 @@ import { wfhDayText, wfhProgressText } from '../../../(app)/attendance/wfh/wfh';
 import type { WfhRequestView } from '../../../../lib/wfh-types';
 import { odProgressText, odWhenWords } from '../../../(app)/attendance/official-duty/od';
 import type { OdRequestView } from '../../../../lib/od-types';
+import { compensatoryDaysLine, compensatoryProgressText } from '../../../(app)/attendance/compensatory/compensatory';
+import type { CompensatoryRequestView } from '../../../../lib/compensatory-types';
 import { isOpenRaise } from '../../../(app)/my-requests/requests';
 import { effectiveFromText, progressText as raiseProgressText } from '../../../(app)/raise-requests/list';
 import { formatEgp } from '../../../(app)/employees/[id]/contracts/salary';
@@ -27,7 +29,8 @@ import { progressText as claimProgressText } from '../../../(app)/reimbursements
 // then "Hide from managers too") only for someone who sees them (seesRaiseRequests, packages/shared raises.ts): no
 // Raises chip otherwise, and ?kind=raise read as All. Home locations (owner, 20 October 2026: "allow other users to
 // request to add their home locations when working from home"): their requests, each its label (or the point on the
-// map) and radius, where it stands.
+// map) and radius, where it stands. Compensatory days (owner, 26 October 2026: "WFH and compensatory pages in the phone
+// app"): each "Compensatory day", its day worked and day off (or paid in cash instead), where it stands.
 
 export type AppRequestRow =
   | { kind: 'leave'; id: string; at: string; open: boolean; request: LeaveRequestView }
@@ -37,19 +40,22 @@ export type AppRequestRow =
   | { kind: 'raise'; id: string; at: string; open: boolean; request: RaiseRequest }
   | { kind: 'home'; id: string; at: string; open: boolean; request: HomeLocationView }
   | { kind: 'wfh'; id: string; at: string; open: boolean; request: WfhRequestView }
-  | { kind: 'od'; id: string; at: string; open: boolean; request: OdRequestView };
+  | { kind: 'od'; id: string; at: string; open: boolean; request: OdRequestView }
+  | { kind: 'compensatory'; id: string; at: string; open: boolean; request: CompensatoryRequestView };
 
-/** The filter chips' words, the kinds in the order the New buttons are. */
+/** The filter chips' words, the kinds in the order the New buttons are (APP_REQUEST_KINDS). */
 export const APP_REQUEST_KIND_LABELS: Record<AppRequestKind, string> = {
   leave: 'Leave',
+  wfh: 'Work from home',
+  // compensatory days (26 October 2026), beside leave and working from home
+  compensatory: 'Compensatory days',
   permission: 'Permission',
+  od: 'Official duty',
   reimbursement: 'Reimbursements',
   correction: 'Corrections',
   raise: 'Raises',
   // every requested check-in location since 24 October 2026 ("Home Location - Remote Site - Client Location")
   home: 'Check-in locations',
-  wfh: 'Work from home',
-  od: 'Official duty',
 };
 
 /** Still being decided: with the manager or HR (leave, permission, a correction); a claim or a raise being decided. */
@@ -66,6 +72,8 @@ export function appRequestRows(from: {
   wfh?: readonly WfhRequestView[];
   /** Official duty (23 October 2026). */
   od?: readonly OdRequestView[];
+  /** Compensatory days (26 October 2026). */
+  compensatory?: readonly CompensatoryRequestView[];
 }): AppRequestRow[] {
   const rows: AppRequestRow[] = [
     ...(from.leave ?? []).map((r) => ({ kind: 'leave' as const, id: r.id, at: r.createdAt, open: deciding(r.status), request: r })),
@@ -78,6 +86,8 @@ export function appRequestRows(from: {
     ...(from.wfh ?? []).map((r) => ({ kind: 'wfh' as const, id: r.id, at: r.createdAt, open: deciding(r.status), request: r })),
     // official duty (23 October 2026: "Manager, then HR")
     ...(from.od ?? []).map((r) => ({ kind: 'od' as const, id: r.id, at: r.createdAt, open: deciding(r.status), request: r })),
+    // compensatory days (26 October 2026: "Manager, then HR")
+    ...(from.compensatory ?? []).map((r) => ({ kind: 'compensatory' as const, id: r.id, at: r.createdAt, open: deciding(r.status), request: r })),
   ];
   const seen = new Set<string>();
   return rows
@@ -120,7 +130,7 @@ export const filterAppRequests = (rows: readonly AppRequestRow[], f: AppRequestF
 /** How many each kind's chip lists, within the status chosen ('' for All). */
 export function appRequestCounts(rows: readonly AppRequestRow[], f: Pick<AppRequestFilters, 'status'>): Record<AppRequestKind | '', number> {
   const shown = rows.filter((r) => !f.status || r.open);
-  const counts: Record<AppRequestKind | '', number> = { '': shown.length, leave: 0, permission: 0, reimbursement: 0, correction: 0, raise: 0, home: 0, wfh: 0, od: 0 };
+  const counts: Record<AppRequestKind | '', number> = { '': shown.length, leave: 0, wfh: 0, compensatory: 0, permission: 0, od: 0, reimbursement: 0, correction: 0, raise: 0, home: 0 };
   for (const r of shown) counts[r.kind] += 1;
   return counts;
 }
@@ -147,6 +157,8 @@ export function appRequestTitle(row: AppRequestRow): string {
       return 'Work from home';
     case 'od':
       return 'Official duty';
+    case 'compensatory':
+      return COMPENSATORY_LABEL;
   }
 }
 
@@ -169,6 +181,9 @@ export function appRequestWhen(row: AppRequestRow): string {
       return wfhDayText(row.request);
     case 'od':
       return odWhenWords(row.request);
+    case 'compensatory':
+      // "Worked Friday 06/11/2026 · day off Tuesday 10/11/2026", or "· paid in cash instead"
+      return compensatoryDaysLine(row.request);
   }
 }
 
@@ -185,6 +200,8 @@ export function appRequestProgress(row: AppRequestRow): string {
       return wfhProgressText(row.request).text;
     case 'od':
       return odProgressText(row.request).text;
+    case 'compensatory':
+      return compensatoryProgressText(row.request).text;
     default:
       return leaveProgressText(row.request).text;
   }

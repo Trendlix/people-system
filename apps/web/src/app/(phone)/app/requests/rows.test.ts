@@ -5,6 +5,7 @@ import type { HomeLocationView } from '../../../../lib/home-location-types';
 import type { RaiseRequest } from '../../../../lib/raise-types';
 import type { LeaveRequestView, PermissionRequestView, ReimbursementClaimView } from '../../../../lib/types';
 import type { OdRequestView } from '../../../../lib/od-types';
+import type { CompensatoryRequestView } from '../../../../lib/compensatory-types';
 import {
   appRequestCounts,
   appRequestHref,
@@ -122,8 +123,8 @@ describe('the filters', () => {
   });
 
   it('counts each chip within the status chosen', () => {
-    expect(appRequestCounts(all, { status: '' })).toEqual({ '': 5, leave: 1, permission: 1, reimbursement: 1, correction: 1, raise: 1, home: 0, wfh: 0, od: 0 });
-    expect(appRequestCounts(all, { status: 'open' })).toEqual({ '': 3, leave: 1, permission: 0, reimbursement: 1, correction: 0, raise: 1, home: 0, wfh: 0, od: 0 });
+    expect(appRequestCounts(all, { status: '' })).toEqual({ '': 5, leave: 1, permission: 1, reimbursement: 1, correction: 1, raise: 1, home: 0, wfh: 0, od: 0, compensatory: 0 });
+    expect(appRequestCounts(all, { status: 'open' })).toEqual({ '': 3, leave: 1, permission: 0, reimbursement: 1, correction: 0, raise: 1, home: 0, wfh: 0, od: 0, compensatory: 0 });
   });
 });
 
@@ -158,9 +159,10 @@ describe('a row', () => {
 
 describe('raise requests kept from the employee level (owner, 20 October 2026: "raises not to be visible to employee level for now", then "Hide from managers too")', () => {
   it('offers the Raises chip only to someone who sees raise requests, by the shared helper', () => {
-    // working from home among them (21 October 2026)
-    expect(appRequestKindsFor(true)).toEqual(['leave', 'permission', 'reimbursement', 'correction', 'raise', 'home', 'wfh', 'od']);
-    expect(appRequestKindsFor(false)).toEqual(['leave', 'permission', 'reimbursement', 'correction', 'home', 'wfh', 'od']);
+    // working from home among them (21 October 2026); since 26 October 2026 in New Request's order, working from home and
+    // compensatory days beside leave
+    expect(appRequestKindsFor(true)).toEqual(['leave', 'wfh', 'compensatory', 'permission', 'od', 'reimbursement', 'correction', 'raise', 'home']);
+    expect(appRequestKindsFor(false)).toEqual(['leave', 'wfh', 'compensatory', 'permission', 'od', 'reimbursement', 'correction', 'home']);
     expect(appRequestKindsFor(seesRaiseRequests({ roles: ['employee'] }))).not.toContain('raise');
     expect(appRequestKindsFor(seesRaiseRequests({ roles: ['manager'] }))).not.toContain('raise');
     expect(appRequestKindsFor(seesRaiseRequests({ roles: ['ceo'] }))).toContain('raise');
@@ -257,5 +259,63 @@ describe('official duty on the phone pages’ My Requests (owner, 23 October 202
     expect(appRequestHref(rows[0])).toBe(`/app/requests/od/${ID(9)}`);
     expect(filterAppRequests(rows, readAppRequestFilters({ kind: 'od' }))).toHaveLength(1);
     expect(appRequestCounts(rows, { status: '' })).toMatchObject({ '': 1, od: 1 });
+  });
+});
+
+describe('compensatory days on the phone pages’ My Requests (owner, 26 October 2026: "WFH and compensatory pages in the phone app")', () => {
+  const asked = {
+    id: ID(1),
+    kind: 'compensatory',
+    employee: { id: 'e', employeeCode: 'EMP-0001', fullNameEn: 'Nour Adel', fullNameAr: null, department: null, team: null },
+    type: { id: 'compensatory', key: 'compensatory', nameEn: 'Compensatory day off', nameAr: 'يوم تعويضي' },
+    dayWorked: '2026-11-06',
+    dayOff: '2026-11-10',
+    startDate: '2026-11-10',
+    endDate: '2026-11-10',
+    reason: 'The Friday shoot',
+    status: 'with_manager',
+    stage: 'manager',
+    outcome: null,
+    cashDays: 1.5,
+    noCheckIn: false,
+    waitingForYou: false,
+    confidential: false,
+    canCancel: true,
+    hrCanCancel: false,
+    manager: { id: 'm', fullNameEn: 'Sara Ali', role: 'direct_manager' },
+    rejectedStage: null,
+    rejectReason: null,
+    recordedByHr: false,
+    warnings: [],
+    steps: [],
+    createdAt: '2026-11-07T09:00:00.000Z',
+  } as unknown as CompensatoryRequestView;
+  // recorded by HR as cash instead (rarely): no day off
+  const cash = { ...asked, id: ID(2), dayOff: null, status: 'approved', stage: null, outcome: 'cash', recordedByHr: true, canCancel: false, createdAt: '2026-11-01T09:00:00.000Z' } as CompensatoryRequestView;
+
+  it('lists each as "Compensatory day" with its days, open while being decided, under its own chip, opening its phone page', () => {
+    const rows = appRequestRows({ leave: [leave], compensatory: [asked, cash] });
+    expect(rows.map((r) => [r.kind, r.id, r.open])).toEqual([
+      ['compensatory', ID(1), true],
+      ['compensatory', ID(2), false],
+      ['leave', ID(1), true],
+    ]);
+    const [open, paid] = rows;
+    expect(appRequestTitle(open)).toBe('Compensatory day');
+    expect(appRequestWhen(open)).toBe('Worked Friday 06/11/2026 · day off Tuesday 10/11/2026');
+    expect(appRequestProgress(open)).toContain('Sara Ali');
+    expect(appRequestHref(open)).toBe(`/app/requests/compensatory/${ID(1)}`);
+    expect(appRequestHref(open, 'approve')).toBe(`/app/approve/compensatory/${ID(1)}`);
+    expect(appRequestWhen(paid)).toBe('Worked Friday 06/11/2026 · paid in cash instead');
+    expect(appRequestProgress(paid)).toBe('Recorded by HR');
+    expect(filterAppRequests(rows, readAppRequestFilters({ kind: 'compensatory' })).map((r) => r.id)).toEqual([ID(1), ID(2)]);
+    expect(filterAppRequests(rows, readAppRequestFilters({ kind: 'compensatory', status: 'open' })).map((r) => r.id)).toEqual([ID(1)]);
+    expect(appRequestCounts(rows, { status: '' })).toMatchObject({ '': 3, compensatory: 2, leave: 1 });
+    expect(appRequestCounts(rows, { status: 'open' })).toMatchObject({ '': 2, compensatory: 1 });
+  });
+
+  it('is a chip for everyone, right after leave and working from home', () => {
+    expect(appRequestKindsFor(false).slice(0, 3)).toEqual(['leave', 'wfh', 'compensatory']);
+    expect(readAppRequestFilters({ kind: 'compensatory' }, appRequestKindsFor(false))).toEqual({ kind: 'compensatory', status: '' });
   });
 });

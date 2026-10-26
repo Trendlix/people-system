@@ -6,6 +6,7 @@ import type { PendingRaise, RaiseRequest } from '../../../../lib/raise-types';
 import type { LeaveRequestView, PermissionRequestView, ReimbursementClaimView } from '../../../../lib/types';
 import type { WfhRequestView } from '../../../../lib/wfh-types';
 import type { OdRequestView } from '../../../../lib/od-types';
+import type { CompensatoryRequestView } from '../../../../lib/compensatory-types';
 import { waitingSections, waitingTotal } from './waiting';
 
 // The phone pages' To Approve (owner, 20 October 2026: the employee app, "managers and team leads approve from the
@@ -139,6 +140,22 @@ describe('what waits for the caller', () => {
     expect(sections[2].rows.map((r) => [r.href, r.name, r.line])).toEqual([[`/app/approve/od/${ID(12)}`, 'Nour Adel', 'Official duty · Monday 02/11/2026 – Wednesday 04/11/2026']]);
     expect(waitingSections({ od: null })).toMatchObject([{ key: 'od', failed: true }]);
     expect(waitingSections({ od: [] })).toEqual([]);
+  });
+
+  // owner, 26 October 2026: "WFH and compensatory pages in the phone app"; "Manager, then HR"
+  it('lists the compensatory day requests waiting for the caller right after working from home, opening each under To Approve', () => {
+    const wfh = { id: ID(11), kind: 'wfh', employee: nour, date: '2026-11-02', status: 'with_manager' } as unknown as WfhRequestView;
+    const od = { id: ID(12), kind: 'od', employee: nour, startDate: '2026-11-02', endDate: '2026-11-04', fullDay: true, fromTime: null, toTime: null, status: 'with_hr' } as unknown as OdRequestView;
+    const compensatory = { id: ID(13), kind: 'compensatory', employee: nour, dayWorked: '2026-11-06', dayOff: '2026-11-10', outcome: null, status: 'with_hr', stage: 'hr' } as unknown as CompensatoryRequestView;
+    const sections = waitingSections({ leave: [leave], permissions: [], wfh: [wfh], compensatory: [compensatory], od: [od], claims: [claim] });
+    expect(sections.map((s) => s.key)).toEqual(['leave', 'wfh', 'compensatory', 'od', 'reimbursement']);
+    expect(sections[2]).toMatchObject({ title: 'Compensatory Days', failed: false });
+    expect(sections[2].rows.map((r) => [r.href, r.name, r.line, r.action])).toEqual([
+      [`/app/approve/compensatory/${ID(13)}`, 'Nour Adel', 'Worked Friday 06/11/2026 · day off Tuesday 10/11/2026', undefined],
+    ]);
+    expect(waitingTotal(sections)).toBe(5);
+    expect(waitingSections({ compensatory: null })).toMatchObject([{ key: 'compensatory', failed: true }]);
+    expect(waitingSections({ compensatory: [] })).toEqual([]);
   });
 
   it('leaves out what is empty or not the caller’s, and says what couldn’t be read', () => {

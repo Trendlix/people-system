@@ -17,6 +17,8 @@ import { wfhDayText } from '../../../(app)/attendance/wfh/wfh';
 import type { WfhRequestView } from '../../../../lib/wfh-types';
 import { odWhenWords } from '../../../(app)/attendance/official-duty/od';
 import type { OdRequestView } from '../../../../lib/od-types';
+import { compensatoryDaysLine } from '../../../(app)/attendance/compensatory/compensatory';
+import type { CompensatoryRequestView } from '../../../../lib/compensatory-types';
 
 // The phone pages' To Approve (owner, 20 October 2026: the employee app, "managers and team leads approve from the
 // phone"): what waits for the caller, in sections as My Team and Approvals have them: leave and permission, the claims,
@@ -27,7 +29,8 @@ import type { OdRequestView } from '../../../../lib/od-types';
 // them. KPI scorecards (owner, 21 October 2026: "Self, manager, HR, sign-off") waiting for the caller's step on someone
 // else's: the manager's scoring and sign-off, HR's calibration. Work from home requests (owner, 21 October 2026:
 // "Manager, then HR") at the approver's step or HR's (a C-level person's HR step the CEO's). Official duty requests
-// (owner, 23 October 2026: "Manager, then HR") the same way.
+// (owner, 23 October 2026: "Manager, then HR") the same way. Compensatory day requests (owner, 26 October 2026: "WFH and
+// compensatory pages in the phone app") the same way, right after working from home.
 
 export interface WaitingRow {
   key: string;
@@ -41,7 +44,7 @@ export interface WaitingRow {
 }
 
 export interface WaitingSection {
-  key: 'leave' | 'wfh' | 'od' | 'reimbursement' | 'correction' | 'raise' | 'pay-raise' | 'home' | 'kpi';
+  key: 'leave' | 'wfh' | 'compensatory' | 'od' | 'reimbursement' | 'correction' | 'raise' | 'pay-raise' | 'home' | 'kpi';
   /** Title Case. */
   title: string;
   rows: WaitingRow[];
@@ -60,6 +63,8 @@ export function waitingSections(from: {
   permissions?: List<PermissionRequestView>;
   /** Work from home requests waiting for the caller (21 October 2026). */
   wfh?: List<WfhRequestView>;
+  /** Compensatory day requests waiting for the caller (26 October 2026). */
+  compensatory?: List<CompensatoryRequestView>;
   /** Official duty requests waiting for the caller (23 October 2026). */
   od?: List<OdRequestView>;
   claims?: List<ReimbursementClaimView>;
@@ -97,6 +102,20 @@ export function waitingSections(from: {
         href: appItemHref('approve', 'wfh', r.id),
         name: r.employee.fullNameEn,
         line: `Work from home · ${wfhDayText(r)}`,
+      })),
+    );
+  }
+  if (from.compensatory !== undefined) {
+    add(
+      'compensatory',
+      'Compensatory Days',
+      from.compensatory === null,
+      (from.compensatory ?? []).map((r) => ({
+        key: `compensatory:${r.id}`,
+        href: appItemHref('approve', 'compensatory', r.id),
+        name: r.employee.fullNameEn,
+        // "Worked Friday 06/11/2026 · day off Tuesday 10/11/2026"
+        line: compensatoryDaysLine(r),
       })),
     );
   }

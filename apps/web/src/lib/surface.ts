@@ -42,6 +42,8 @@ export const APP_PATHS = {
   newWfh: '/app/requests/new/wfh',
   // official duty (owner, 23 October 2026: "Official duty (OD) requests")
   newOd: '/app/requests/new/od',
+  // a compensatory day (owner, 26 October 2026: "WFH and compensatory pages in the phone app")
+  newCompensatory: '/app/requests/new/compensatory',
   attendance: '/app/attendance',
   payslips: '/app/payslips',
   approve: '/app/approve',
@@ -50,16 +52,20 @@ export const APP_PATHS = {
 /**
  * The kinds of item a section opens: a request of the employee's, or one waiting for the caller (a pay raise: the CEO's).
  * A KPI scorecard (owner, 21 October 2026: "Self, manager, HR, sign-off"): the employee's to rate and sign under My
- * Requests, the manager's and HR's steps under To Approve.
+ * Requests, the manager's and HR's steps under To Approve. A compensatory day (owner, 26 October 2026: "WFH and
+ * compensatory pages in the phone app").
  */
-export const APP_ITEM_KINDS = ['leave', 'permission', 'reimbursement', 'correction', 'raise', 'pay-raise', 'home', 'kpi', 'wfh', 'od'] as const;
+export const APP_ITEM_KINDS = ['leave', 'permission', 'reimbursement', 'correction', 'raise', 'pay-raise', 'home', 'kpi', 'wfh', 'od', 'compensatory'] as const;
 export type AppItemKind = (typeof APP_ITEM_KINDS)[number];
 
 /** An item's page in a section: "/app/requests/leave/<id>", "/app/approve/reimbursement/<id>". */
 export const appItemHref = (section: AppSection, kind: AppItemKind, id: string) => `/app/${section}/${kind}/${encodeURIComponent(id)}`;
 
-/** The kinds of request the phone pages' My Requests lists, each a filter of it. */
-export const APP_REQUEST_KINDS = ['leave', 'permission', 'reimbursement', 'correction', 'raise', 'home', 'wfh', 'od'] as const;
+/**
+ * The kinds of request the phone pages' My Requests lists, each a filter of it, in the order New Request offers them:
+ * work from home and compensatory days beside leave (owner, 26 October 2026: WFH "move it to leaves").
+ */
+export const APP_REQUEST_KINDS = ['leave', 'wfh', 'compensatory', 'permission', 'od', 'reimbursement', 'correction', 'raise', 'home'] as const;
 export type AppRequestKind = (typeof APP_REQUEST_KINDS)[number];
 
 /** My Requests on the phone pages, of one kind and/or open ones only: "/app/requests?kind=leave&status=open". */
@@ -114,6 +120,8 @@ const ITEM_PAGES: readonly [RegExp, AppItemKind][] = [
   [new RegExp(`^/attendance/wfh/${ID}$`), 'wfh'],
   // an official duty request (23 October 2026), also as its notifications link it
   [new RegExp(`^/attendance/official-duty/${ID}$`), 'od'],
+  // a compensatory day request (26 October 2026), also as its notifications link it
+  [new RegExp(`^/attendance/compensatory/${ID}$`), 'compensatory'],
 ];
 
 /** What an address says of what was just done, kept on the way: ?done= (decided, cancelled, moved on) and ?sent=. */
