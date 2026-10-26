@@ -4,9 +4,11 @@ import { isFlexibleShift } from '@trendlix/shared';
 import { apiGet } from '@/lib/api';
 import { formatTime } from '@/lib/format';
 import { hoursADayText } from '@/lib/shifts';
+import { todayInCairo } from '@/lib/date-picker';
 import { canEditOrganisation, getCurrentUser } from '@/lib/session';
 import type { Shift } from '@/lib/types';
 import { DAY_NAMES, Empty, Loading } from '../ui';
+import { RecountDays } from './recount-days';
 
 async function ShiftsList() {
   const [user, shifts] = await Promise.all([getCurrentUser(), apiGet<Shift[]>('/shifts')]);
@@ -65,6 +67,12 @@ async function ShiftsList() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+      {/* after a shift is changed (owner, 26 October 2026): HR and a Super Admin recount past days on it */}
+      {canEdit && shifts.length > 0 && (
+        <div className="mt-6">
+          <RecountDays shifts={shifts} thisMonth={todayInCairo().slice(0, 7)} />
         </div>
       )}
     </>

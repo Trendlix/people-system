@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { dayFromPunches, locksMonth, readPressPairs, type CheckInPlace, type PunchKind, type PunchLike } from '@trendlix/shared';
+import { breakMinutesOf, dayFromPunches, locksMonth, readPressPairs, shiftWindowOn, spansOfPairs, type CheckInPlace, type ImportedDay, type PunchKind, type PunchLike } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { fromDateOnly, toDateOnly } from '../common/date-only.js';
@@ -7,7 +7,9 @@ import { fromTimeOfDay } from '../common/time-of-day.js';
 import { Prisma } from '../generated/prisma/client.js';
 import { firstDay, lastDay } from '../payroll/months.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { shiftTimesOf } from './attendance-days.service.js';
 import { AttendanceFillService } from './attendance-fill.service.js';
+import { AttendanceImportsService } from './attendance-imports.service.js';
 import { keptDayData } from './check-in.service.js';
 import { CorrectionDaysService } from './correction-days.service.js';
 
@@ -28,15 +30,31 @@ import { CorrectionDaysService } from './correction-days.service.js';
 // locked as a press locks them, so no press is lost meanwhile. People exempt from check-in (owner, 25 October 2026):
 // adding or ending an exemption runs the same pass for its person and months (CheckInExemptionsService), every draft line
 // of theirs refilled; their exempt days are read full wherever a month is read, never written.
+//
+// Recount past days (owner, 26 October 2026, on the MORNING shift changed to 8:00 AM–8:00 PM, 9 hours, grace 0, counting
+// until 8:00 PM: "i want to recount previous payrolls on the new shift run"; asked before, "Months not yet paid"): the
+// same pass on request for From–To months and optionally one shift (RecountDaysService, Organization → Shifts), with
+// `zoho: true` also over Zoho People's days (source 'zoho') that have a check-in: their hours made again under the
+// shift of the employment each falls in by the Zoho import's own rules (AttendanceImportsService.months: from their
+// pairs when Zoho gave them, else from the first check-in to the last check-out), and their break by their pairs as the
+// sync keeps it. Only the hours and the break change; the times, the status and Zoho's permission never. `dryRun` counts
+// what would change and writes nothing (the preview).
 
 /** The advisory lock's name: hashtext() of it is the key every process takes. */
 const LOCK_NAME = 'people-system attendance recount';
 
 /** What a pass did. */
 export interface RecountResult {
-  /** The months recounted, and those left as they are (with the CEO, approved or paid). */
+  /** The months recounted, and those left as they are (with the CEO, approved or paid), with the status of each. */
   months: string[];
   monthsLocked: string[];
+  lockedStatus: Record<string, string>;
+  /** The people whose days were read, and those of them with a day changed (hours or any field). */
+  people: number;
+  peopleChanged: number;
+  /** Of the days above, Zoho People's (a scope with `zoho`), and those of them whose hours or break changed. */
+  zohoDays: number;
+  zohoDaysChanged: number;
   /** The system's days read with presses, and of them those written again: any field, and those whose hours changed. */
   daysRecounted: number;
   daysWritten: number;
@@ -59,6 +77,12 @@ export interface RecountScope {
   refillAll?: boolean;
   /** Write the pass's own audit entry (the deploy's); an exemption's change is audited by its own entry. */
   audit?: boolean;
+  /** Also Zoho People's days with a check-in (Recount past days), not only the system's. */
+  zoho?: boolean;
+  /** Only the days whose employment is on this shift (Recount past days, one shift). */
+  shiftId?: string | null;
+  /** Count what would change, write nothing and refill nothing (the preview). */
+  dryRun?: boolean;
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -72,6 +96,7 @@ export class HoursByPairsService {
     private readonly audit: AuditService,
     private readonly fill: AttendanceFillService,
     private readonly corrections: CorrectionDaysService,
+    private readonly imports: AttendanceImportsService,
   ) {}
 
   /** The pass once, on deploy (main.ts, once the API listens; the tests run it themselves). Never throws. */
@@ -97,24 +122,29 @@ export class HoursByPairsService {
 
     const pass = await this.prisma.$transaction(
       async (tx) => {
-        const [lock] = await tx.$queryRaw<{ locked: boolean }[]>`SELECT pg_try_advisory_xact_lock(hashtext(${LOCK_NAME})) AS locked`;
-        if (!lock?.locked) return null;
+        if (!scope.dryRun) {
+          const [lock] = await tx.$queryRaw<{ locked: boolean }[]>`SELECT pg_try_advisory_xact_lock(hashtext(${LOCK_NAME})) AS locked`;
+          if (!lock?.locked) return null;
+        }
         const runs = await tx.payrollRun.findMany({ select: { month: true, status: true } });
-        const locked = new Set(runs.filter((r) => locksMonth(r.status)).map((r) => fromDateOnly(r.month).slice(0, 7)));
+        const lockedStatus: Record<string, string> = {};
+        for (const r of runs) if (locksMonth(r.status)) lockedStatus[fromDateOnly(r.month).slice(0, 7)] = r.status;
+        const locked = new Set(Object.keys(lockedStatus));
         const dateWhere = asked ? { OR: asked.map((m) => ({ date: { gte: toDateOnly(firstDay(m)), lte: toDateOnly(lastDay(m)) } })) } : {};
         const rows = await tx.attendanceDay.findMany({
-          where: { source: 'system', ...(ids && { employeeId: { in: ids } }), ...dateWhere },
+          where: { source: scope.zoho ? { in: ['system', 'zoho'] } : 'system', ...(ids && { employeeId: { in: ids } }), ...dateWhere },
           orderBy: [{ employeeId: 'asc' }, { date: 'asc' }],
-          select: { id: true, employeeId: true, date: true, checkIn: true, checkOut: true, place: true, flags: true, hoursCounted: true, pairs: true, breakMinutes: true, openAt: true },
+          select: { id: true, employeeId: true, date: true, source: true, checkIn: true, checkOut: true, place: true, flags: true, hoursCounted: true, pairs: true, breakMinutes: true, openAt: true, zohoStatus: true, permissionHours: true },
         });
-        const open = rows.filter((r) => !locked.has(fromDateOnly(r.date).slice(0, 7)));
+        const monthRows = rows.filter((r) => !locked.has(fromDateOnly(r.date).slice(0, 7)));
         const monthsSeen = new Set([...(asked ?? []), ...rows.map((r) => fromDateOnly(r.date).slice(0, 7))]);
         const months = [...monthsSeen].filter((m) => !locked.has(m)).sort();
         const monthsLocked = [...monthsSeen].filter((m) => locked.has(m)).sort();
-        const people = [...new Set(open.map((r) => r.employeeId))].sort();
+        const everyone = [...new Set(monthRows.map((r) => r.employeeId))].sort();
         // their rows locked as a press locks them (check-in.service.ts), one order for all
-        if (people.length) await tx.$queryRaw`SELECT 1 FROM employees WHERE id = ANY(${people}::uuid[]) ORDER BY id FOR UPDATE`;
-        const dates = open.map((r) => r.date);
+        if (everyone.length && !scope.dryRun) await tx.$queryRaw`SELECT 1 FROM employees WHERE id = ANY(${everyone}::uuid[]) ORDER BY id FOR UPDATE`;
+        const people = everyone;
+        const dates = monthRows.filter((r) => r.source === 'system').map((r) => r.date);
         const [punches, employments] = people.length
           ? await Promise.all([
               tx.attendancePunch.findMany({
@@ -124,7 +154,7 @@ export class HoursByPairsService {
               }),
               tx.employment.findMany({
                 where: { employeeId: { in: people } },
-                select: { employeeId: true, joinDate: true, endDate: true, shift: { select: { startTime: true, endTime: true, hoursPerDay: true, graceMinutes: true, countUntil: true } } },
+                select: { id: true, employeeId: true, joinDate: true, endDate: true, shiftId: true, shift: { select: { startTime: true, endTime: true, hoursPerDay: true, graceMinutes: true, countUntil: true, workingDays: true } } },
               }),
             ])
           : [[], []];
@@ -133,14 +163,97 @@ export class HoursByPairsService {
           const key = `${p.employeeId}:${fromDateOnly(p.date)}`;
           pressed.set(key, [...(pressed.get(key) ?? []), { kind: p.kind as PunchKind, at: p.at.toISOString(), place: p.place as CheckInPlace, flags: p.flags }]);
         }
-        const out = { daysRecounted: 0, daysWritten: 0, daysChanged: 0, hoursBefore: 0, hoursAfter: 0 };
+        const out = { daysRecounted: 0, daysWritten: 0, daysChanged: 0, hoursBefore: 0, hoursAfter: 0, zohoDays: 0, zohoDaysChanged: 0 };
         const touched = new Map<string, Set<string>>();
-        for (const r of open) {
+        const read = new Set<string>();
+        const jobOn = (employeeId: string, date: string) =>
+          employments.find((e) => e.employeeId === employeeId && fromDateOnly(e.joinDate) <= date && (e.endDate === null || fromDateOnly(e.endDate) >= date));
+        const touch = (employeeId: string, date: string) => {
+          const month = date.slice(0, 7);
+          touched.set(month, (touched.get(month) ?? new Set()).add(employeeId));
+        };
+        const changedPeople = new Set<string>();
+        // Zoho People's days: by month, per employment, made again by the import's rules under the shift of that employment
+        const zohoRows: Map<string, typeof monthRows> = new Map();
+        for (const r of monthRows) {
+          if (r.source !== 'zoho' || !r.checkIn) continue;
+          const date = fromDateOnly(r.date);
+          const job = jobOn(r.employeeId, date);
+          if (scope.shiftId && job?.shiftId !== scope.shiftId) continue;
+          zohoRows.set(date.slice(0, 7), [...(zohoRows.get(date.slice(0, 7)) ?? []), r]);
+        }
+        for (const [month, list] of zohoRows) {
+          // one call of the import's rules a round: each person's first employment of the month, then the next
+          const byJob = new Map<string, { employeeId: string; rows: typeof list }>();
+          for (const r of list) {
+            const job = jobOn(r.employeeId, fromDateOnly(r.date));
+            if (!job) continue;
+            const g = byJob.get(job.id) ?? { employeeId: r.employeeId, rows: [] };
+            g.rows.push(r);
+            byJob.set(job.id, g);
+          }
+          const rounds: { employmentId: string; employeeId: string; rows: typeof list }[][] = [];
+          const seen = new Map<string, number>();
+          for (const [employmentId, g] of byJob) {
+            const n = seen.get(g.employeeId) ?? 0;
+            seen.set(g.employeeId, n + 1);
+            (rounds[n] ??= []).push({ employmentId, ...g });
+          }
+          for (const round of rounds) {
+            const worked = await this.imports.months(
+              month,
+              round.map((g) => ({
+                employeeId: g.employeeId,
+                employmentId: g.employmentId,
+                days: g.rows.map((r): ImportedDay => ({
+                  date: fromDateOnly(r.date),
+                  checkIn: r.checkIn!.toISOString(),
+                  checkOut: r.checkOut?.toISOString() ?? null,
+                  place: r.place === 'office' || r.place === 'remote' ? r.place : null,
+                  zohoStatus: r.zohoStatus,
+                  permissionHours: r.permissionHours?.toNumber() ?? 0,
+                  // none (Excel's first and last): from check-in to check-out; the pairs when Zoho gave them
+                  pairs: readPressPairs(r.pairs),
+                })),
+              })),
+            );
+            for (const g of round) {
+              const result = worked.get(g.employeeId);
+              const shift = employments.find((e) => e.id === g.employmentId)?.shift;
+              const times = shift ? shiftTimesOf(shift) : null;
+              for (const r of g.rows) {
+                const date = fromDateOnly(r.date);
+                const d = result?.days.find((x) => x.date === date);
+                // outside the employment's dates, or no longer a worked day: left as it is
+                if (!d || d.status !== 'worked') continue;
+                const pairs = readPressPairs(r.pairs);
+                const hoursCounted = round2(d.hoursCounted);
+                const breakMinutes = pairs?.length ? breakMinutesOf(spansOfPairs(pairs), r.openAt ? r.openAt.getTime() : null, times ? shiftWindowOn(date, times) : null) : null;
+                const before = r.hoursCounted.toNumber();
+                out.daysRecounted++;
+                out.zohoDays++;
+                read.add(r.employeeId);
+                out.hoursBefore += before;
+                out.hoursAfter += hoursCounted;
+                if (round2(before) === hoursCounted && r.breakMinutes === breakMinutes) continue;
+                if (!scope.dryRun) await tx.attendanceDay.update({ where: { id: r.id }, data: { hoursCounted, breakMinutes } });
+                out.daysWritten++;
+                out.zohoDaysChanged++;
+                if (round2(before) !== hoursCounted) out.daysChanged++;
+                changedPeople.add(r.employeeId);
+                touch(r.employeeId, date);
+              }
+            }
+          }
+        }
+        for (const r of monthRows) {
+          if (r.source !== 'system') continue;
           const date = fromDateOnly(r.date);
           const presses = pressed.get(`${r.employeeId}:${date}`);
           // a day kept without presses is left as it is
           if (!presses?.length) continue;
-          const job = employments.find((e) => e.employeeId === r.employeeId && fromDateOnly(e.joinDate) <= date && (e.endDate === null || fromDateOnly(e.endDate) >= date));
+          const job = jobOn(r.employeeId, date);
+          if (scope.shiftId && job?.shiftId !== scope.shiftId) continue;
           const s = job?.shift;
           const shift = s
             ? { startTime: fromTimeOfDay(s.startTime), endTime: fromTimeOfDay(s.endTime), hoursPerDay: s.hoursPerDay?.toNumber() ?? null, graceMinutes: s.graceMinutes, countUntil: s.countUntil ? fromTimeOfDay(s.countUntil) : null }
@@ -149,16 +262,17 @@ export class HoursByPairsService {
           const data = keptDayData(day);
           const before = r.hoursCounted.toNumber();
           out.daysRecounted++;
+          read.add(r.employeeId);
           out.hoursBefore += before;
           out.hoursAfter += data.hoursCounted;
           if (sameDay(r, data)) continue;
-          await tx.attendanceDay.update({ where: { id: r.id }, data });
+          if (!scope.dryRun) await tx.attendanceDay.update({ where: { id: r.id }, data });
           out.daysWritten++;
           if (round2(before) !== data.hoursCounted) out.daysChanged++;
-          const month = date.slice(0, 7);
-          touched.set(month, (touched.get(month) ?? new Set()).add(r.employeeId));
+          changedPeople.add(r.employeeId);
+          touch(r.employeeId, date);
         }
-        return { months, monthsLocked, touched, ...out, hoursBefore: round2(out.hoursBefore), hoursAfter: round2(out.hoursAfter) };
+        return { months, monthsLocked, lockedStatus, touched, people: read.size, peopleChanged: changedPeople.size, ...out, hoursBefore: round2(out.hoursBefore), hoursAfter: round2(out.hoursAfter) };
       },
       { timeout: 120_000, maxWait: 10_000 },
     );
@@ -167,6 +281,11 @@ export class HoursByPairsService {
       // read with it whenever a month is read)
       if (scope.refillAll && ids && asked) await this.refill(asked, () => ids, user);
       return null;
+    }
+
+    if (scope.dryRun) {
+      const { touched: _touched, ...counts } = pass;
+      return { ...counts, correctedDays: 0, correctedDaysChanged: 0, linesRefilled: 0 };
     }
 
     // the corrected days of those months over the days they correct: those whose day changed, and those not kept by
@@ -179,7 +298,8 @@ export class HoursByPairsService {
         select: { employeeId: true, date: true, hoursCounted: true, pairs: true },
       });
       for (const c of corrected) {
-        if (c.pairs !== null && !pass.touched.get(month)?.has(c.employeeId)) continue;
+        // (one shift's recount makes again only the corrected days of the people it changed)
+        if ((c.pairs !== null || scope.shiftId) && !pass.touched.get(month)?.has(c.employeeId)) continue;
         const change = await this.corrections.rebuild(c.employeeId, fromDateOnly(c.date), user);
         correctedDays++;
         if (round2(c.hoursCounted.toNumber()) !== round2(change.after?.hoursCounted ?? 0)) correctedDaysChanged++;
@@ -193,6 +313,11 @@ export class HoursByPairsService {
     const result: RecountResult = {
       months: pass.months,
       monthsLocked: pass.monthsLocked,
+      lockedStatus: pass.lockedStatus,
+      people: pass.people,
+      peopleChanged: pass.peopleChanged,
+      zohoDays: pass.zohoDays,
+      zohoDaysChanged: pass.zohoDaysChanged,
       daysRecounted: pass.daysRecounted,
       daysWritten: pass.daysWritten,
       daysChanged: pass.daysChanged,

@@ -420,6 +420,8 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   // a day as the sum of its pairs (owner, 25 October 2026: "the working hours to be calculated between the checkin and
   // out only, not the first and last"): the days of the months not yet paid recounted once
   recount_hours: 'Recounted the hours by check-in → check-out pairs',
+  // Recount past days on the current shifts (owner, 26 October 2026)
+  recount_past_days: 'Recounted past days on the current shifts',
   // HR's notes of before moved into first screening comments (24 October 2026)
   move_notes: 'Moved the earlier notes into comments',
   mark_onboarding_item: 'Changed an onboarding item',

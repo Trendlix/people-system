@@ -19,6 +19,8 @@ import { AttendanceCorrectionsService } from './corrections.service.js';
 import { HomeLocationsController, MyHomeLocationsController } from './home-locations.controller.js';
 import { HomeLocationsService } from './home-locations.service.js';
 import { HoursByPairsService } from './hours-by-pairs.service.js';
+import { RecountDaysController } from './recount-days.controller.js';
+import { RecountDaysService } from './recount-days.service.js';
 import { MapsKeyController, MapsSettingsController } from './maps-settings.controller.js';
 import { MapsSettingsService } from './maps-settings.service.js';
 
@@ -58,6 +60,7 @@ import { MapsSettingsService } from './maps-settings.service.js';
     MapsKeyController,
     // people exempt from check-in (25 October 2026): Check-in Setup's list, and a person's on their profile
     CheckInExemptionsController,
+    RecountDaysController,
     EmployeeCheckInExemptionsController,
   ],
   providers: [
@@ -77,6 +80,7 @@ import { MapsSettingsService } from './maps-settings.service.js';
     MapsSettingsService,
     // a day as the sum of its pairs (25 October 2026): the recount on deploy, and an exemption's change
     HoursByPairsService,
+    RecountDaysService,
     CheckInExemptionsService,
   ],
   // Zoho People's fetch (25 October 2026) keeps its days the import's way: its month worked out by the import, the
