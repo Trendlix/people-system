@@ -1,10 +1,13 @@
 import type { INestApplication } from '@nestjs/common';
 import { payrollLine, type LawRates, type PayrollInputs, type PayrollResult, type PayrollRules, type PayrollTerms } from '@trendlix/shared';
 import ExcelJS from 'exceljs';
+import JSZip from 'jszip';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { todayInCairo } from '../src/common/date-only.js';
 import { firstDay, monthsLater } from '../src/payroll/months.js';
+import { ETA, NO_DATE } from '../src/payroll/eta/eta-file.js';
+import { etaTax } from '../src/payroll/eta/eta-tax.js';
 import { REGISTER_COLUMNS } from '../src/payroll/register.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { createApp, createUser, signIn } from './helpers.js';
@@ -277,6 +280,8 @@ describe('Deductions before tax (e2e)', () => {
     expect(rowOf(after).getCell(col('Additions and deductions')).value).toBe(`Recurring deduction: −1,000.00 (${MEDICAL})`);
 
     const approvedBefore = lineOf(await getRun(), before);
+    // the ETA file is made once the CEO approves the run, as the bank files are
+    expect((await api().get(`/api/payroll/runs/${runId}/files/eta`).set('Cookie', ceo).expect(409)).body.message).toContain('once the CEO approves it');
     await api().post(`/api/payroll/runs/${runId}/submit`).set('Cookie', hr).send({}).expect(200);
     await api().post(`/api/payroll/runs/${runId}/approve`).set('Cookie', ceo).send({}).expect(200);
     expect((await rowsOf(before)).filter((r) => r.status !== 'cancelled').map((r) => [r.status, r.beforeTax, r.amount?.toNumber()])).toEqual([['applied', true, 1200]]);
@@ -286,5 +291,58 @@ describe('Deductions before tax (e2e)', () => {
     expect(kept.result).toEqual(approvedBefore.result);
     expect(kept.terms).toEqual(approvedBefore.terms);
     expect((await rowsOf(before)).filter((r) => r.status !== 'cancelled').map((r) => r.beforeTax)).toEqual([true]);
+  });
+  it("the ETA file: ETA's template with the approved run's rows, the medical share before tax in its column", async () => {
+    const res = await api().get(`/api/payroll/runs/${runId}/files/eta`).set('Cookie', ceo).buffer(true).parse(bytes).expect(200);
+    expect(res.headers['content-type']).toContain('spreadsheetml');
+    expect(res.headers['content-disposition']).toMatch(/ETA Salary Tax [A-Z]{3} \d{4}\.xlsx/);
+    // read the cells from the XML (ExcelJS can't open ETA's template: its input checks span whole columns)
+    const zip = await JSZip.loadAsync(res.body as Buffer);
+    const sheet = await zip.file('xl/worksheets/sheet1.xml')!.async('string');
+    const sst = await zip.file('xl/sharedStrings.xml')!.async('string');
+    const strings = [...sst.matchAll(/<si>([\s\S]*?)<\/si>/g)].map((m) => [...m[1].matchAll(/<t[^>]*>([\s\S]*?)<\/t>/g)].map((x) => x[1]).join(''));
+    const cellIn = (row: string, col: string): string | number | null => {
+      const m = new RegExp(`<c r="${col}\\d+"([^>]*)>(?:<v>([^<]*)</v>)?</c>`).exec(row);
+      if (!m?.[2]) return null;
+      return /t="s"/.test(m[1]) ? strings[Number(m[2])] : Number(m[2]);
+    };
+    const rows = [...sheet.matchAll(/<row r="(\d+)"[\s\S]*?<\/row>/g)].map((m) => m[0]);
+    const rowOf = (p: Person) => rows.find((r) => cellIn(r, ETA.code) === p.employeeCode)!;
+    expect(cellIn(rows[0], 'C')).toBe('اسم الموظف'); // ETA's header rows, as they are
+    expect(cellIn(rows[1], 'AZ')).toBe('DTE295');
+
+    const run = await getRun();
+    for (const p of [before, after]) {
+      const line = lineOf(run, p);
+      const row = rowOf(p);
+      expect(row, p.employeeCode).toBeDefined();
+      expect(cellIn(row, ETA.name)).toBe('موظف تجريبي');
+      expect(cellIn(row, ETA.daysWorked)).toBe(30); // a full month, whatever the days paid
+      expect(cellIn(row, ETA.endOfService)).toBe(NO_DATE);
+      expect(cellIn(row, ETA.totalEarnings)).toBe(round(line.result.earned + line.result.taxableAllowances));
+      // the tax ETA's way: its cumulative method on the period's base, this run the year's first for these people
+      const base = cellIn(row, ETA.periodBase) as number;
+      expect(base).toBe(round(round(line.result.earned + line.result.taxableAllowances) - (cellIn(row, ETA.totalDeductions) as number)));
+      const figures = etaTax([], { base }, run.lawRates);
+      expect(cellIn(row, ETA.earlierTax)).toBe(0);
+      expect(cellIn(row, ETA.annualBase)).toBe(figures.annualBase);
+      expect(cellIn(row, ETA.cumulativeTax)).toBe(figures.cumulativeTax);
+      expect(cellIn(row, ETA.periodTax)).toBe(figures.periodTax);
+      expect(Math.abs(figures.periodTax - line.result.monthlyTax)).toBeLessThan(1); // within piasters of the payroll's
+      expect(cellIn(row, ETA.netPay)).toBe(round(line.result.net + line.result.monthlyTax - figures.periodTax));
+      expect(cellIn(row, ETA.transferred)).toBe(line.result.transfer);
+      expect(cellIn(row, ETA.martyrsContribution)).toBe(line.result.martyrsFund);
+    }
+    // the medical share: before tax, in أقساط التأمين الصحي (BL); after tax, in the other deductions (CO)
+    expect(cellIn(rowOf(before), ETA.healthPremiums)).toBe(1200);
+    expect(cellIn(rowOf(before), ETA.otherDeductions)).toBe(0);
+    expect(cellIn(rowOf(after), ETA.healthPremiums)).toBe(0);
+    expect(cellIn(rowOf(after), ETA.otherDeductions)).toBe(1000);
+    // the check the page shows: both in, no earlier month this year, nobody's tax a pound off the payroll's
+    const check = (await api().get(`/api/payroll/runs/${runId}/files/eta/check`).set('Cookie', ceo).expect(200)).body;
+    expect(check).toMatchObject({ earlierMonths: 0, differences: [] });
+    expect(check.employees).toBeGreaterThanOrEqual(2);
+    const made = await prisma.auditLog.findMany({ where: { entityType: 'payroll_run', entityId: runId, action: 'payroll_eta_file' } });
+    expect(made).toHaveLength(1);
   });
 });

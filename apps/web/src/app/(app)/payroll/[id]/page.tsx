@@ -15,7 +15,8 @@ import { BackLink, Empty, Loading } from '../../organization/ui';
 import { adjustmentsHref } from '../adjustments/adjustments';
 import { approveRun, deleteRun, markRunPaid, refreshFromAttendance, refreshRun, returnRun, saveRunLines, setAttendanceWaiver, submitRun } from '../actions';
 import { loadRun } from '../data';
-import { bankFilesReady, bankLeftOut, fileHref } from '../files';
+import { bankFilesReady, bankLeftOut, etaCheckPath, fileHref, type EtaCheck } from '../files';
+import { loadJson, notLoadedText } from '../load';
 import { canSeePayroll, employeesLabel, preparesPayroll, rulesSummary, runActions, runTitle } from '../list';
 import { payslipsIssued, payslipsIssuedLabel, payslipsZipHref } from '../payslips';
 import { PayrollStatusBadge, PayrollStepper } from '../ui';
@@ -282,6 +283,76 @@ function BankFiles({ run, user }: { run: PayrollRunView; user: SessionUser }) {
 }
 
 /**
+ * The Tax Authority's monthly salary-tax upload (owner, 27 October 2026: "the upload template of the ETA Payroll
+ * System ... exported with the same format to be readable with the system"): ETA's own template with one row per
+ * employee on salary tax, made once the CEO approves the run, as the bank files are. Its tax is ETA's own, cumulative
+ * over the year (the API's eta-tax.ts), so the check says where it differs from what the payroll deducted. It reports
+ * everyone's pay, so someone the C-level people's lines are hidden from is told who downloads it (the API refuses them
+ * too).
+ */
+async function EtaFile({ run }: { run: PayrollRunView }) {
+  const ready = bankFilesReady(run.status);
+  const hidden = hiddenCount(run) > 0;
+  const check = ready && !hidden ? await loadJson<EtaCheck>(etaCheckPath(run.id)) : null;
+  return (
+    <section className="space-y-3">
+      <h2 className="text-lg font-semibold">ETA Salary Tax File</h2>
+      <div className="card space-y-4 p-6">
+        <p className="text-sm text-muted">
+          The Tax Authority&rsquo;s monthly upload (<span lang="ar">نموذج القطاع الخاص</span>), filled from this run: one row per employee on salary tax,
+          freelancers left out, every row a full month. The file is ETA&rsquo;s own template, so its payroll system reads it as it is.
+        </p>
+        {!ready ? (
+          <p className="text-sm text-muted">It is made once the CEO approves the run.</p>
+        ) : hidden ? (
+          <p className="text-sm text-muted">It reports everyone&rsquo;s pay, the C-level&rsquo;s included, so it is downloaded by the CEO or a Super Admin.</p>
+        ) : check?.kind !== 'ok' ? (
+          <p className="text-sm text-danger">{check ? notLoadedText(check, 'ETA check') : 'The ETA check could not be loaded.'}</p>
+        ) : (
+          <>
+            <dl className="flex flex-wrap gap-x-10 gap-y-3">
+              <div>
+                <dt className="text-sm text-muted">Employees in the file</dt>
+                <dd className="text-lg font-semibold tabular-nums">{check.value.employees}</dd>
+              </div>
+              <div>
+                <dt className="text-sm text-muted">Earlier months of the year it builds on</dt>
+                <dd className="text-lg font-semibold tabular-nums">{check.value.earlierMonths}</dd>
+              </div>
+            </dl>
+            {check.value.differences.length > 0 && (
+              <div className="space-y-2">
+                <h3 className="font-semibold">ETA&rsquo;s Tax Differs From the Payroll&rsquo;s</h3>
+                <p className="text-sm text-muted">
+                  ETA spreads a commission or bonus over the year&rsquo;s months so far; the payroll taxes the month on its own. The file carries ETA&rsquo;s
+                  figures; the payslips carry the payroll&rsquo;s.
+                </p>
+                <ul className="divide-y divide-line-soft rounded-lg border border-line">
+                  {check.value.differences.map((d) => (
+                    <li key={d.employeeId} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 py-2 text-sm">
+                      <Person id={d.employeeId} name={d.name} code={d.employeeCode} />
+                      <span className="tabular-nums">
+                        payroll {formatEgp(d.payrollTax)} · ETA {formatEgp(d.etaTax)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="border-t border-line-soft pt-4">
+              <a href={fileHref(run.id, 'eta')} className="btn btn-secondary">
+                Download ETA file
+              </a>
+              <p className="hint">Upload it on ETA&rsquo;s payroll system as it is.</p>
+            </div>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/**
  * Attendance (owner, 19 October 2026: attendance runs in Zoho People today, "Import Zoho now, replace it later"; then
  * "Check-in through the system (phone or web with the office location check, or a device) to replace Zoho"): the
  * month's attendance fills the lines' worked hours, no-show days and permission hours: the attendance days of those who
@@ -449,6 +520,7 @@ async function PayrollRun({ params }: { params: Promise<{ id: string }> }) {
       )}
 
       <BankFiles run={run} user={user} />
+      <EtaFile run={run} />
       <Exclusions run={run} />
 
       <section className="space-y-2">

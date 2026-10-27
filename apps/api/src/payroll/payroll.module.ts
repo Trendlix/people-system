@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { PayrollEtaController } from './eta/eta.controller.js';
+import { EtaFileService } from './eta/eta.service.js';
 import { ExpectedHoursService } from './expected-hours.service.js';
 import { HolidaysController } from './holidays.controller.js';
 import { HolidaysService } from './holidays.service.js';
@@ -20,9 +22,10 @@ import { PayrollVsInsuranceService } from './vs-insurance/vs-insurance.service.j
 // signing is undone or a draft deleted (owner's report, 25 October 2026): PayrollService.rebuildDraftLines. The Payroll vs
 // Social Insurance report (owner, 26 October 2026: "a comparison report between the actual payroll run and the social
 // insurance data"): each line's actual cycle beside the same month on the registered insured wage (vs-insurance/).
+// The ETA salary-tax file (owner, 27 October 2026): ETA's own upload template with an approved run's rows written in (eta/).
 @Module({
-  controllers: [PayrollSettingsController, HolidaysController, PayrollController, PayslipsController, MyPayslipsController, PayrollVsInsuranceController],
-  providers: [PayrollSettingsService, HolidaysService, PayrollService, PayslipsService, ExpectedHoursService, PayrollVsInsuranceService],
+  controllers: [PayrollSettingsController, HolidaysController, PayrollController, PayslipsController, MyPayslipsController, PayrollVsInsuranceController, PayrollEtaController],
+  providers: [PayrollSettingsService, HolidaysService, PayrollService, PayslipsService, ExpectedHoursService, PayrollVsInsuranceService, EtaFileService],
   exports: [PayrollService],
 })
 export class PayrollModule {}

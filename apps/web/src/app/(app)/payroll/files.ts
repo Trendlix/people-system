@@ -4,11 +4,12 @@ import type { PayrollLineView } from '../../../lib/types';
 
 // A run's files (owner's decisions, 16 October 2026): the payroll register, any time, and once the CEO approved the run
 // the two bank files: CIB's Payroll System file for the CIB accounts (with the day the bank is to pay, the value date)
-// and the ACH file for every other bank. They are Excel files the API makes; the browser gets them under the web domain,
+// and the ACH file for every other bank; and the Tax Authority's salary-tax upload (owner, 27 October 2026: "the upload
+// template of the ETA Payroll System"), ETA's own template with the run's rows written in, once approved too. They are Excel files the API makes; the browser gets them under the web domain,
 // with the caller's session (files/[kind]/route.ts). Pure code, tested; relative imports, as vitest doesn't know the @/
 // paths.
 
-export const FILE_KINDS = ['register', 'cib', 'ach'] as const;
+export const FILE_KINDS = ['register', 'cib', 'ach', 'eta'] as const;
 export type PayrollFileKind = (typeof FILE_KINDS)[number];
 
 export const isFileKind = (value: string): value is PayrollFileKind => (FILE_KINDS as readonly string[]).includes(value);
@@ -41,6 +42,7 @@ export const FALLBACK_NAMES: Record<PayrollFileKind, string> = {
   register: 'Payroll register.xlsx',
   cib: 'CIB salaries.xlsx',
   ach: 'ACH salaries.xlsx',
+  eta: 'ETA salary tax.xlsx',
 };
 
 export const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -83,3 +85,24 @@ export function bankLeftOut<L extends BankLine>(lines: readonly L[]): { problems
     nothingToPay: lines.filter((l) => !l.onHold && l.result.transfer <= 0),
   };
 }
+
+/** Where ETA's tax for the month differs from what the payroll deducted, by a pound or more. */
+export interface EtaDifference {
+  employeeId: string;
+  employeeCode: string;
+  name: string;
+  payrollTax: number;
+  etaTax: number;
+}
+
+/** The ETA file's check, shown before the download (GET /payroll/runs/:id/files/eta/check). */
+export interface EtaCheck {
+  /** The people in the file: on salary tax, freelancers left out. */
+  employees: number;
+  /** The earlier months of the year the file's cumulative figures are built on. */
+  earlierMonths: number;
+  differences: EtaDifference[];
+}
+
+/** The check's address on the API. */
+export const etaCheckPath = (runId: string) => `/payroll/runs/${encodeURIComponent(runId)}/files/eta/check`;

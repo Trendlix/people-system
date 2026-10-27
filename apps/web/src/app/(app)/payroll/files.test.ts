@@ -10,10 +10,12 @@ describe('a run’s files', () => {
     expect(apiFilePath(RUN, 'cib', '2026-10-16')).toBe(`/payroll/runs/${RUN}/files/cib?valueDate=2026-10-16`);
     // only the CIB file has a value date
     expect(apiFilePath(RUN, 'ach', '2026-10-16')).toBe(`/payroll/runs/${RUN}/files/ach`);
+    expect(apiFilePath(RUN, 'eta', '2026-10-16')).toBe(`/payroll/runs/${RUN}/files/eta`);
+    expect(fileHref(RUN, 'eta')).toBe(`/payroll/${RUN}/files/eta`);
   });
 
   it('knows the files there are', () => {
-    expect(['register', 'cib', 'ach'].every(isFileKind)).toBe(true);
+    expect(['register', 'cib', 'ach', 'eta'].every(isFileKind)).toBe(true);
     expect(isFileKind('payslips')).toBe(false);
   });
 

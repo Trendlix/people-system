@@ -27,7 +27,10 @@ export async function GET(req: Request, ctx: RouteContext<'/payroll/[id]/files/[
     throw err;
   }
   if (res.status === 401) redirect('/login');
-  if (res.status === 403) return text('Only HR, Finance and the CEO can download payroll files.', 403);
+  // the ETA file is refused, with the API's reason, to someone who doesn't see everyone's pay: it reports all of it
+  if (res.status === 403) {
+    return text(kind === 'eta' ? await apiReason(res, 'Only HR, Finance and the CEO can download payroll files.') : 'Only HR, Finance and the CEO can download payroll files.', 403);
+  }
   if (res.status === 404) return text('Not found.', 404);
   if (res.status === 400 || res.status === 409 || res.status === 422 || res.status === 503) {
     return text(await apiReason(res, 'This file could not be made.'), res.status);
