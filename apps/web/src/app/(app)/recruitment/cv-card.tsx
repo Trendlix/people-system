@@ -1,9 +1,15 @@
+import Link from 'next/link';
 import type { CvReadingView } from '@trendlix/shared';
+import { getCurrentUser } from '@/lib/session';
 import { CV_CARD_NOTE, cvTextMissing, latestRoleText, linksFound, moreFromCv, periodText, readingFacts, readingStatusText, shortLink, workHistoryHeading } from './cv-reading';
 import { CvFitSection, FitPercent } from './cv-fit-ui';
 import { NO_KEY_SKILLS_NOTE } from './cv-fit';
 import { CvTextViewer } from './cv-text-viewer';
-import { loadApplicantCvText, loadGeneralCvText } from './data';
+import { loadAgencyMarks, loadApplicantCvText, loadGeneralCvText } from './data';
+import { AGENCY_MARKS_HREF, agencyFlag, agencyJobBadge, agencyJobCount, agencyJobsFor, hasMarkableCompany, markActionsFor, markIdOf, type AgencyMarkView, type MarkAction } from './agency';
+import { removeAgencyMark, setAgencyMark } from './agency-actions';
+import { AgencyMarkButtons } from './agency-ui';
+import { managesRecruitment } from './recruitment';
 
 // "From the CV" on the applicant page and the general CV page (owner, 22 October 2026: "make the OCR egine reads the CV
 // and analyse it. is that applicable?"; "Built-in rules only"): the reading's status, the years (estimated from the
@@ -17,12 +23,34 @@ import { loadApplicantCvText, loadGeneralCvText } from './data';
 // The CV match became the CV fit (owner, 25 October 2026: "aren't you supposed to match the candidate to the job based on
 // the CV and ATS?"; "Full CV fit score"): its percent with the breakdown on hover or tap, and a CV Fit section with each
 // part (key skills, title, experience, requirements, education), what it found and its share of the fit.
+// Marketing agency background (owner, 27 October 2026: "when opening a job, can the OCR detect if his previous works are
+// in agency?", then "i need a flag if the candidate is ex marketing agencies or not AND reflectin the scoring"; asked,
+// "Show agency years" and "Name words + your list"): the flag "Ex-agency · 3 y 4 m" (or "Not ex-agency"; nothing when no
+// work history was read), each job of the work history marked "Agency" (its name) or HR's mark, and for HR and a Super
+// Admin, Mark as agency / Not an agency / Remove mark on each job with a company (never a developer's: hidden companies).
+
+/** A mark's button: its server action bound to the company, or to the mark. */
+function markButton(a: MarkAction) {
+  return a.kind === 'set'
+    ? { key: `set-${a.agency}`, action: setAgencyMark.bind(null, a.company, a.agency), label: a.label, pendingLabel: a.pendingLabel, confirm: a.confirm }
+    : { key: 'remove', action: removeAgencyMark.bind(null, a.id), label: a.label, pendingLabel: a.pendingLabel, confirm: a.confirm };
+}
 
 export async function FromTheCv({ reading, subject }: { reading: CvReadingView; subject: { applicationId: string } | { generalCvId: string } }) {
   const forApplicant = 'applicationId' in subject;
-  const text = reading.status === 'read' ? await ('applicationId' in subject ? loadApplicantCvText(subject.applicationId) : loadGeneralCvText(subject.generalCvId)) : null;
-  const links = text?.kind === 'ok' ? linksFound(text.value) : [];
+  const read = reading.status === 'read';
   const more = moreFromCv(reading);
+  const agencyJobs = read ? agencyJobsFor(more.workHistory, reading.agency) : [];
+  const [text, user] = await Promise.all([
+    read ? ('applicationId' in subject ? loadApplicantCvText(subject.applicationId) : loadGeneralCvText(subject.generalCvId)) : null,
+    getCurrentUser(),
+  ]);
+  const links = text?.kind === 'ok' ? linksFound(text.value) : [];
+  // HR's mark buttons (HR, a Super Admin): Remove mark needs the marks' ids, loaded only when a job has one
+  const marksCompanies = managesRecruitment(user) && hasMarkableCompany(agencyJobs);
+  const loadedMarks = marksCompanies && agencyJobs.some((j) => j?.by === 'mark') ? await loadAgencyMarks() : null;
+  const marks: AgencyMarkView[] = loadedMarks?.kind === 'ok' ? loadedMarks.value : [];
+  const flag = read ? agencyFlag(reading.agency) : null;
   return (
     <section aria-labelledby="from-the-cv" className="card space-y-4 p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -37,6 +65,14 @@ export async function FromTheCv({ reading, subject }: { reading: CvReadingView; 
         )}
       </div>
       <p className={`text-sm ${reading.status === 'failed' ? 'text-warn' : 'text-muted'}`}>{readingStatusText(reading)}</p>
+      {/* "Ex-agency · 3 y 4 m" (owner, 27 October 2026: "i need a flag if the candidate is ex marketing agencies or not") */}
+      {flag && (
+        <p className="text-sm">
+          <span className={`badge ${flag.exAgency ? 'bg-accent-soft text-accent' : 'bg-canvas text-muted'}`} title={flag.title}>
+            {flag.text}
+          </span>
+        </p>
+      )}
 
       {reading.status === 'read' && (
         <dl className="grid gap-4 sm:grid-cols-3">
@@ -76,20 +112,38 @@ export async function FromTheCv({ reading, subject }: { reading: CvReadingView; 
         </div>
       )}
 
-      {reading.status === 'read' && more.workHistory.length > 0 && (
+      {read && more.workHistory.length > 0 && (
         <details className="rounded-lg border border-line">
-          <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">{workHistoryHeading(more.workHistory.length)}</summary>
-          <ol className="space-y-2 border-t border-line px-4 py-3 text-sm">
+          <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">{workHistoryHeading(more.workHistory.length, agencyJobCount(agencyJobs))}</summary>
+          <ol className="space-y-3 border-t border-line px-4 py-3 text-sm">
             {more.workHistory.map((w, i) => {
               const period = periodText(w);
+              // each job marked agency or not (27 October 2026: "Show agency years"), HR's mark winning over its name
+              const badge = agencyJobBadge(agencyJobs[i]);
+              const actions = marksCompanies ? markActionsFor(w.pastCompany, agencyJobs[i] ?? null, markIdOf(marks, w.pastCompany)) : [];
               return (
-                <li key={`${i}-${w.from ?? ''}`} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5">
-                  <span dir="auto">{latestRoleText(w.pastTitle, w.pastCompany)}</span>
-                  {period && <span className="text-muted tabular-nums">{period}</span>}
+                <li key={`${i}-${w.from ?? ''}`} className="space-y-1.5">
+                  <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5">
+                    <span className="inline-flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+                      <span dir="auto">{latestRoleText(w.pastTitle, w.pastCompany)}</span>
+                      {badge && (
+                        <span className={`badge ${badge.agency ? 'bg-accent-soft text-accent' : 'bg-canvas text-muted'}`} title={badge.title}>
+                          {badge.text}
+                        </span>
+                      )}
+                    </span>
+                    {period && <span className="text-muted tabular-nums">{period}</span>}
+                  </div>
+                  {actions.length > 0 && <AgencyMarkButtons company={w.pastCompany ?? ''} actions={actions.map(markButton)} />}
                 </li>
               );
             })}
           </ol>
+          {marksCompanies && (
+            <p className="border-t border-line px-4 py-3 text-xs text-muted">
+              A mark counts for every CV that names the company. <Link href={AGENCY_MARKS_HREF}>See all marketing agency marks</Link>
+            </p>
+          )}
         </details>
       )}
 

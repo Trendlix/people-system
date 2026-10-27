@@ -108,8 +108,14 @@ export function educationText(e: CvEducationEntry): string | null {
   return parts.length ? parts.join(' · ') : null;
 }
 
-/** The work history's fold: "Work History (3 roles)". */
-export const workHistoryHeading = (count: number) => `Work History (${count} ${count === 1 ? 'role' : 'roles'})`;
+/**
+ * The work history's fold: "Work History (3 roles)"; with those at marketing agencies (27 October 2026: "Show agency
+ * years"), "Work History (3 roles, 2 at agencies)".
+ */
+export function workHistoryHeading(count: number, atAgencies = 0): string {
+  const agencies = atAgencies > 0 ? `, ${atAgencies} at ${atAgencies === 1 ? 'an agency' : 'agencies'}` : '';
+  return `Work History (${count} ${count === 1 ? 'role' : 'roles'}${agencies})`;
+}
 
 /** What else the card shows, each list empty when none was found (or the API is from before 24 October 2026). */
 export function moreFromCv(r: Partial<Pick<CvReadingView, 'workHistory' | 'educationDetails' | 'cvSkills' | 'certifications'>>): {

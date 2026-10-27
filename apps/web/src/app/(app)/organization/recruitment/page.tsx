@@ -15,6 +15,12 @@ import { saveEarlierOffers, saveLinkedInSettings, savePortfolioSettings } from '
 import { EarlierOffersForm } from './earlier-offers-form';
 import { LinkedInSettingsForm } from './linkedin-form';
 import { PortfolioSettingsForm, PortfolioSettingsList } from './portfolio-form';
+import { formatDate } from '@/lib/format';
+import { loadAgencyMarks } from '../../recruitment/data';
+import { AGENCY_MARKS_NOTE, markNote, markText, removeMarkConfirmText } from '../../recruitment/agency';
+import { removeAgencyMark, saveAgencyMark } from '../../recruitment/agency-actions';
+import { SmallActionButton } from '../../recruitment/agency-ui';
+import { AgencyMarkForm } from './agency-marks-form';
 
 // Recruitment Settings (Phase 2, owner, 22 October 2026): the rejection email's words, sent when HR ticks "Email the
 // candidate" on Reject, English then Arabic; empty, the standard ones. HR and a Super Admin change them; the CEO reads.
@@ -30,6 +36,10 @@ import { PortfolioSettingsForm, PortfolioSettingsList } from './portfolio-form';
 // (25 October 2026: www.trendlix.com/en/careers; the owner asked that the links stop relying on people.trendlix.com/
 // careers' redirect): "Careers Site", the address every public careers link is built on (HR's to change, audited; the
 // CEO reads), the standard when unset; LinkedIn's redirect URL below is at it.
+// And "Marketing Agencies" (owner, 27 October 2026: "i need a flag if the candidate is ex marketing agencies or not AND
+// reflectin the scoring"; asked, "Name words + your list"): HR's marks, each company a marketing agency or not one, which
+// win over the words of its name in every CV's work history; HR and a Super Admin add, change and remove them, the CEO
+// reads them.
 
 export const metadata: Metadata = { title: 'Recruitment Settings · People System' };
 
@@ -181,6 +191,18 @@ async function Settings() {
         </Suspense>
       </section>
 
+      <section aria-labelledby="marketing-agencies" className="card space-y-4 p-6">
+        <div className="space-y-1">
+          <h2 id="marketing-agencies" className="text-lg font-semibold">
+            Marketing Agencies
+          </h2>
+          <p className="max-w-3xl text-sm text-muted">{AGENCY_MARKS_NOTE}</p>
+        </div>
+        <Suspense fallback={<Loading />}>
+          <AgencyMarksSection manages={manages} />
+        </Suspense>
+      </section>
+
       {/* a Super Admin's only (never a developer's): the app's secret is set here */}
       {isSuperAdmin(user) && !user.developer && (
         <section aria-labelledby="linkedin-signin" className="card space-y-4 p-6">
@@ -225,6 +247,63 @@ async function PortfolioSection({ manages }: { manages: boolean }) {
   const { positions } = loaded.value;
   if (!positions.length) return <p className="text-sm text-muted">No positions yet: they come from the job titles.</p>;
   return manages ? <PortfolioSettingsForm action={savePortfolioSettings} positions={positions} /> : <PortfolioSettingsList positions={positions} />;
+}
+
+/**
+ * HR's marks of marketing agencies (27 October 2026: "Name words + your list"): the add form and Remove for HR and a Super
+ * Admin, the list for the CEO; each mark with a note where its name's words alone would say otherwise.
+ */
+async function AgencyMarksSection({ manages }: { manages: boolean }) {
+  const loaded = await loadAgencyMarks();
+  if (loaded.kind !== 'ok') return <p className="text-sm text-muted">{recruitmentNotLoaded(loaded, 'marketing agencies list')}</p>;
+  const marks = loaded.value;
+  return (
+    <div className="space-y-4">
+      {manages && <AgencyMarkForm action={saveAgencyMark} />}
+      {marks.length === 0 ? (
+        <p className="text-sm text-muted">No company marked yet: each past employer is told by its name.</p>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-line">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Company</th>
+                <th>Marked</th>
+                <th>Changed</th>
+                {manages && (
+                  <th>
+                    <span className="sr-only">Actions</span>
+                  </th>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {marks.map((m) => {
+                const note = markNote(m);
+                return (
+                  <tr key={m.id}>
+                    <td className="text-sm" dir="auto">
+                      {m.name}
+                    </td>
+                    <td className="text-sm">
+                      <span className={`badge ${m.agency ? 'bg-accent-soft text-accent' : 'bg-canvas text-muted'}`}>{markText(m.agency)}</span>
+                      {note && <span className="mt-1 block text-xs text-muted">{note}</span>}
+                    </td>
+                    <td className="text-sm whitespace-nowrap">{formatDate(m.updatedAt)}</td>
+                    {manages && (
+                      <td className="text-right">
+                        <SmallActionButton action={removeAgencyMark.bind(null, m.id)} label="Remove" pendingLabel="Removing…" confirm={removeMarkConfirmText(m.name)} srLabel={`the mark on ${m.name}`} />
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
 }
 
 /** The LinkedIn sign-in's setup, with the redirect URL at the careers site's address (Careers Site, above). */

@@ -41,6 +41,7 @@ import {
 } from '../../suggestions';
 import { ApplicantsTable, VacancyStatusBadge, VerdictBadge } from '../../ui';
 import { vacancyPortfolioText } from '../../portfolio';
+import { agencyBackgroundText } from '../../agency';
 
 // A vacancy (owner, 22 October 2026: "where will we include the ATS?"): where it stands and what can be done (HR sends it
 // to the CEO, holds, reopens, closes it; the CEO approves it or sends it back with a reason), its position and internal
@@ -352,6 +353,8 @@ async function Vacancy({ params, searchParams }: PageProps<'/recruitment/vacanci
           <Fact label="Closing date">{v.closingDate ? formatDate(v.closingDate) : '—'}</Fact>
           {/* the portfolio its form asks for (owner, 25 October 2026: "Portfolio per position") */}
           <Fact label="Portfolio">{vacancyPortfolioText(v.portfolioMode, v.jobTitlePortfolio) ?? '—'}</Fact>
+          {/* marketing agency background in the CV match (owner, 27 October 2026: "Set per job") */}
+          <Fact label="Agency background">{agencyBackgroundText(v.agencyBackground) ?? '—'}</Fact>
           {!hiringManager && <Fact label="Salary range, EGP a month">{range ?? '—'}</Fact>}
           <Fact label="Published">{v.publishedAt ? formatDate(v.publishedAt) : 'Not yet'}</Fact>
           <Fact label="Drafted by">{v.createdBy?.name ?? v.createdBy?.email ?? '—'}</Fact>
@@ -444,7 +447,7 @@ async function Vacancy({ params, searchParams }: PageProps<'/recruitment/vacanci
                 </li>
               ))}
             </ul>
-            <p className="text-xs text-muted">Looked for in each applicant&apos;s CV: one part of the CV match %, with the title, years, requirements and education. It never filters anyone out.</p>
+            <p className="text-xs text-muted">Looked for in each applicant&apos;s CV: one part of the CV match %, with the title, years, requirements, education and agency background. It never filters anyone out.</p>
           </>
         )}
       </section>

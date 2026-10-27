@@ -28,6 +28,7 @@ import {
 import { parseDate } from '../../../lib/format';
 import { shownCode } from '../../../lib/hidden';
 import { PORTFOLIO_MODE_FIELD, vacancyPortfolioModeOf } from './portfolio';
+import { AGENCY_BACKGROUND_FIELD, vacancyAgencyBackgroundOf } from './agency';
 
 // Recruitment on the site (owner, 22 October 2026: "where will we include the ATS?"; Phase 1): the addresses, who sees
 // what, the lists' filters, the vacancy's form, the screening questions' editor, the channels' links and Make offer.
@@ -227,6 +228,11 @@ export interface VacancyBody {
   keySkills: string[];
   /** The portfolio on its form (owner, 25 October 2026: "Portfolio per position"): a mode, or null as the job title. */
   portfolioMode: 'hidden' | 'optional' | 'required' | null;
+  /**
+   * Marketing agency background in its CV match (owner, 27 October 2026: "i need a flag if the candidate is ex marketing
+   * agencies or not AND reflectin the scoring"; "Set per job"): left out when the form had no choice (the API keeps it).
+   */
+  agencyBackground?: 'required' | 'preferred' | 'not_needed';
 }
 
 const field = (fd: FormData, name: string): string => {
@@ -278,6 +284,7 @@ export function vacancyForm(fd: FormData, { withQuestions }: { withQuestions: bo
     }
   }
   if (errors.length) return { body: null, errors };
+  const agencyBackground = vacancyAgencyBackgroundOf(field(fd, AGENCY_BACKGROUND_FIELD));
   const html = (name: string) => {
     const v = fd.get(name);
     return typeof v === 'string' && v.trim() ? v : null;
@@ -302,6 +309,7 @@ export function vacancyForm(fd: FormData, { withQuestions }: { withQuestions: bo
       ...(questions !== undefined && { questions }),
       keySkills,
       portfolioMode: vacancyPortfolioModeOf(field(fd, PORTFOLIO_MODE_FIELD)),
+      ...(agencyBackground && { agencyBackground }),
     },
     errors: [],
   };

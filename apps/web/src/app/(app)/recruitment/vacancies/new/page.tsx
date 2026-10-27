@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
+import { AGENCY_BACKGROUND_DEFAULT } from '@trendlix/shared';
 import { getCurrentUser } from '@/lib/session';
 import type { JobTitle } from '@/lib/types';
 import { BackLink, Empty, Loading } from '../../../organization/ui';
@@ -76,6 +77,7 @@ async function NewVacancy({ searchParams }: { searchParams: PageProps<'/recruitm
         questions: [],
         keySkills: [],
         portfolioMode: '',
+        agencyBackground: AGENCY_BACKGROUND_DEFAULT,
       }}
       options={options}
       published={false}

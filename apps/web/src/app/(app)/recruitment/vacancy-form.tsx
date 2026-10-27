@@ -12,6 +12,7 @@ import { jobTitleAskText, PORTFOLIO_MODE_FIELD } from './portfolio';
 import { QuestionsEditor } from './questions-editor';
 import { jobTitleName, openingKeySkills } from './cv-fit';
 import { KeySkillsField } from './key-skills-field';
+import { AGENCY_BACKGROUND_FIELD, AGENCY_BACKGROUND_HINT, agencyBackgroundChoices } from './agency';
 
 // A vacancy's form (owner, 22 October 2026: "where will we include the ATS?"): its job title and title on the careers
 // page, the position (grade, hiring manager, headcount, employment type, where the work is done, shift, contract length,
@@ -44,6 +45,8 @@ export interface VacancyDefaults {
   portfolioMode: string;
   /** What the job title asks (its setting, else the rule's), when known: said under the choice. */
   jobTitlePortfolio?: PortfolioAsk | null;
+  /** Marketing agency background in its CV match (owner, 27 October 2026: "Set per job"): required, preferred or not_needed. */
+  agencyBackground: string;
 }
 
 const L = RECRUITMENT_LIMITS;
@@ -287,11 +290,34 @@ export function VacancyForm({
             Key Skills
           </h2>
           <p className="mt-1 text-sm text-muted">
-            Up to {KEY_SKILLS_LIMITS.max}, looked for in each applicant&apos;s CV: with its title, years, requirements and education they make the CV match %.
-            It never filters anyone out. Not shown on the careers page.
+            Up to {KEY_SKILLS_LIMITS.max}, looked for in each applicant&apos;s CV: with its title, years, requirements, education and agency background they make
+            the CV match %. It never filters anyone out. Not shown on the careers page.
           </p>
         </div>
         <KeySkillsField initial={opening.skills} initialNote={opening.note} jobTitles={options.jobTitles} inputId={fid('keySkillsInput')} hintId={fid('keySkillsHint')} />
+        {/* marketing agency background in the CV match (owner, 27 October 2026: "i need a flag if the candidate is ex
+            marketing agencies or not AND reflectin the scoring"; asked, "Set per job"): Preferred unless chosen */}
+        <div className="max-w-md pt-2">
+          <label htmlFor={fid('agencyBackground')} className="label">
+            Agency background
+          </label>
+          <Select
+            id={fid('agencyBackground')}
+            name={AGENCY_BACKGROUND_FIELD}
+            defaultValue={valueOf(state, AGENCY_BACKGROUND_FIELD, defaults.agencyBackground)}
+            aria-describedby={fid('agencyBackgroundHint')}
+            className="input"
+          >
+            {agencyBackgroundChoices().map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
+              </option>
+            ))}
+          </Select>
+          <p id={fid('agencyBackgroundHint')} className="hint">
+            {AGENCY_BACKGROUND_HINT}
+          </p>
+        </div>
       </section>
 
       <section aria-labelledby={fid('questions')} className="space-y-3 border-t border-line pt-6">

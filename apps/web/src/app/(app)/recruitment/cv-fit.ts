@@ -1,5 +1,6 @@
 import {
   addedWithoutAnswers,
+  CV_FIT_PARTS,
   cvFitLine,
   cvFitPartDetail,
   KEY_SKILLS_LIMITS,
@@ -46,10 +47,16 @@ export function fitRows(fit: CvFit): { key: string; label: string; score: string
   }));
 }
 
-/** The CV Fit section's summary under its heading: why the parts left out are, in a line. */
+/** The parts every fit tries to score; agency background (27 October 2026) only when its vacancy wants it, so apart. */
+const SCORED_ALWAYS = CV_FIT_PARTS.filter((k) => k !== 'agency').length;
+
+/**
+ * The CV Fit section's summary under its heading: why the parts left out are, in a line. Agency background (owner, 27
+ * October 2026: "Set per job") left out by its vacancy ("Not needed") isn't one that couldn't be scored.
+ */
 export function fitSummary(fit: CvFit): string {
   if (fit.percent === null) return cvFitLine(fit);
-  const left = fit.parts.length < 5 ? ' The parts that couldn’t be scored are left out, the others re-weighted to 100.' : '';
+  const left = fit.parts.filter((p) => p.key !== 'agency').length < SCORED_ALWAYS ? ' The parts that couldn’t be scored are left out, the others re-weighted to 100.' : '';
   return `${fit.percent}% from the parts below.${left}`;
 }
 

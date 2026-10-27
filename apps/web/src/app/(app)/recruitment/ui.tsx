@@ -20,6 +20,7 @@ import { formatDate } from '@/lib/format';
 import { candidateBadges } from './candidates';
 import { DeleteApplicantButton } from './delete-ui';
 import { experienceCell, latestRoleOf } from './cv-reading';
+import { exAgencyChip } from './agency';
 import { BetterFitLink, FitPercent, MatchValue } from './cv-fit-ui';
 import { applicantHref, earlierCvHref, minYearsOptions, skillGroups, STAGE_STYLE, VACANCY_STATUS_STYLE } from './recruitment';
 import { kb, verdictBadge } from './screening';
@@ -126,10 +127,12 @@ export function CandidateBadges({ candidate }: { candidate: CandidateBadge | nul
 
 /**
  * An Experience cell (24 October 2026): the years typed, else the CV's estimate muted with "From the dates in the CV"
- * on it ("≈ 4 y · CV"), else "—" or "Reading…".
+ * on it ("≈ 4 y · CV"), else "—" or "Reading…". Under it, "Ex-agency" with its months on hover (owner, 27 October 2026:
+ * "i need a flag if the candidate is ex marketing agencies or not").
  */
 export function ExperienceCell({ typed, fromCv }: { typed: number | null | undefined; fromCv: CvListFacts | null | undefined }) {
   const cell = experienceCell(typed, fromCv);
+  const agency = exAgencyChip(fromCv);
   return (
     <td className="text-right whitespace-nowrap tabular-nums">
       {cell.fromCv ? (
@@ -139,7 +142,22 @@ export function ExperienceCell({ typed, fromCv }: { typed: number | null | undef
       ) : (
         cell.text
       )}
+      {agency && (
+        <span className="mt-1 block">
+          <ExAgencyBadge chip={agency} />
+        </span>
+      )}
     </td>
+  );
+}
+
+/** "Ex-agency", its months at marketing agencies on hover (and read out). */
+export function ExAgencyBadge({ chip }: { chip: { text: string; title: string } }) {
+  return (
+    <span className="badge bg-accent-soft text-accent" title={chip.title}>
+      {chip.text}
+      <span className="sr-only">: {chip.title}</span>
+    </span>
   );
 }
 

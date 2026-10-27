@@ -30,6 +30,7 @@ import { analyticsSearch, type AnalyticsQuery } from './hiring';
 import { applicantsApiPath, vacanciesApiPath, type ApplicantsQuery, type VacancyFilter } from './recruitment';
 import { candidatesApiPath, type CandidatesQuery } from './candidates';
 import { suggestionsApiPath } from './suggestions';
+import { AGENCY_MARKS_API, type AgencyMarkView } from './agency';
 
 // Reading recruitment (owner, 22 October 2026: "where will we include the ATS?"): the vacancies, a vacancy, the
 // applicants (a vacancy's or all) and an applicant, as the API allows the caller. An API from before them answers 404:
@@ -110,6 +111,11 @@ export const loadGeneralCvComments = (id: string): Promise<Loaded<ScreeningComme
 // Super Admin (a hiring manager is refused: 403).
 
 export const loadSuggestions = (vacancyId: string, status: SuggestionStatus): Promise<Loaded<VacancySuggestions>> => loadJson(suggestionsApiPath(vacancyId, status));
+
+// HR's marks of marketing agencies (owner, 27 October 2026: "Name words + your list"): every one, by name; HR, the CEO and
+// a Super Admin read them (Recruitment Settings' Marketing Agencies, and the CV card's Remove mark).
+
+export const loadAgencyMarks = (): Promise<Loaded<AgencyMarkView[]>> => loadJson(AGENCY_MARKS_API);
 
 /** What a page says in place of what it couldn't load. */
 export function recruitmentNotLoaded(loaded: Exclude<Loaded<unknown>, { kind: 'ok' }>, what: string): string {
