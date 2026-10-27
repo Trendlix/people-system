@@ -18,6 +18,9 @@ import {
   type VacancyQuestion,
   type VacancyStatus,
   type VacancyView,
+  AGENCY_BACKGROUND_DEFAULT,
+  AGENCY_BACKGROUNDS,
+  type AgencyBackgroundWanted,
 } from '@trendlix/shared';
 import { isSuperAdmin } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
@@ -49,7 +52,10 @@ import { VacancySuggestionsService } from './vacancy-suggestions.service.js';
 const NOT_FOUND = 'Vacancy not found.';
 const LIST_CAP = 500;
 /** What a vacancy's CV fits read (25 October 2026; cv-fit-inputs.ts): a change scores its applications again. */
-const FIT_FIELDS = ['title', 'keySkills', 'requirements', 'responsibilities', 'about', 'questions', 'gradeId', 'jobTitleId'] as const;
+/** A vacancy's agency background as kept (the column's check keeps it one of these). */
+const isAgencyBackground = (v: string): v is AgencyBackgroundWanted => (AGENCY_BACKGROUNDS as readonly string[]).includes(v);
+
+const FIT_FIELDS = ['title', 'keySkills', 'requirements', 'responsibilities', 'about', 'questions', 'gradeId', 'jobTitleId', 'agencyBackground'] as const;
 const ACTIVE: VacancyStatus[] = ['draft', 'pending', 'open', 'on_hold'];
 
 /** The public description's fields, cleaned as job descriptions are. */
@@ -184,6 +190,8 @@ export class VacanciesService {
       // its form's portfolio (25 October 2026): its own mode (none: as the job title), and the job title's
       portfolioMode: v.portfolioMode === 'hidden' || v.portfolioMode === 'optional' || v.portfolioMode === 'required' ? v.portfolioMode : null,
       jobTitlePortfolio: await titleAsk(this.prisma, v.jobTitle),
+      // marketing agency background in its CV fit (27 October 2026: "Set per job")
+      agencyBackground: (isAgencyBackground(v.agencyBackground) ? v.agencyBackground : AGENCY_BACKGROUND_DEFAULT) as AgencyBackgroundWanted,
       stageCounts: counts.byStage,
       filteredOut: counts.filteredOut,
       sourceCounts: Object.fromEntries(bySource.map((g) => [g.source, g._count._all])),
@@ -241,6 +249,7 @@ export class VacanciesService {
       questions: (questions ?? []) as unknown as Prisma.InputJsonValue,
       keySkills: keySkills ?? [],
       portfolioMode: dto.portfolioMode ?? null,
+      agencyBackground: dto.agencyBackground ?? AGENCY_BACKGROUND_DEFAULT,
     };
     const made = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext('people-system:vacancy-number'))`;
@@ -322,6 +331,7 @@ export class VacanciesService {
       ...(questions !== undefined && { questions: questions as unknown as Prisma.InputJsonValue }),
       ...(keySkills !== undefined && { keySkills }),
       ...(dto.portfolioMode !== undefined && { portfolioMode: dto.portfolioMode }),
+      ...(dto.agencyBackground !== undefined && { agencyBackground: dto.agencyBackground }),
     };
     const before = {
       title: v.title,
@@ -342,6 +352,7 @@ export class VacanciesService {
       questions: questionsOf(v.questions),
       keySkills: v.keySkills,
       portfolioMode: v.portfolioMode,
+      agencyBackground: v.agencyBackground,
     };
     const after = { ...before };
     for (const key of Object.keys(before) as (keyof typeof before)[]) {

@@ -19,8 +19,13 @@
 // - Education, 5: the degree level the requirements name (the lowest when several: "Bachelor's or Master's" asks a
 //   bachelor's), the CV's level at or above it in full, one below half; and a field when they name one ("a degree in
 //   Marketing or Business"), found in the CV's education.
+// - Agency background (owner, 27 October 2026: "i need a flag if the candidate is ex marketing agencies or not AND
+//   reflectin the scoring"; he chose "Set per job" and "Yes or no"): as the vacancy says, required 20 or preferred 10 on
+//   top of the 100 (the others then shrink to fit), not needed left out; 6 months or more at marketing agencies in all
+//   (marketing-agencies.ts, HR's marks included) in full, less half, none 0.
 // A part that can't be scored is left out and the others re-weighted to 100: no key skills listed, no job title found in
-// the CV, no years asked or none known, fewer than 3 requirements terms, no education asked. The result is null only for
+// the CV, no years asked or none known, fewer than 3 requirements terms, no education asked, agency background not
+// needed or no work history read in the CV. The result is null only for
 // a CV not read or without text; its percent null when nothing could be scored. Kept with its version (CV_FIT_VERSION):
 // a fit of an earlier version is worked out again (CvReadingsService.refreshFits).
 // Also here: the key skills suggested from a vacancy's texts (owner: "when a vacancy has no key skills, suggest them from
@@ -30,18 +35,22 @@
 
 import { cvSkillsIn, EDUCATION_LEVEL_LABELS, EDUCATION_LEVELS, KEY_SKILLS_LIMITS, normalForMatch, textAmount, titleLikeness, type CvFacts, type EducationLevel } from './cv-analysis.js';
 import { HIDDEN } from './developer.js';
+import { AGENCY_BACKGROUND_DEFAULT, AGENCY_BACKGROUND_LABELS, AGENCY_FIT_WEIGHTS, agencyMonthsText, agencyScore, type AgencyBackground, type AgencyBackgroundWanted } from './marketing-agencies.js';
 import { SKILLS_DICTIONARY, type DictionarySkill } from './skills-dictionary.js';
 
 // ---------- the parts ----------
 
-/** The fit's version, kept with it: one of an earlier version is worked out again. */
-export const CV_FIT_VERSION = 1;
+/** The fit's version, kept with it: one of an earlier version is worked out again (2: agency background, 27 October 2026). */
+export const CV_FIT_VERSION = 2;
 
-export const CV_FIT_PARTS = ['skills', 'title', 'experience', 'requirements', 'education'] as const;
+export const CV_FIT_PARTS = ['skills', 'title', 'experience', 'requirements', 'education', 'agency'] as const;
 export type CvFitPartKey = (typeof CV_FIT_PARTS)[number];
 
-/** Each part's weight, 100 in all before those that can't be scored are left out. */
-export const CV_FIT_WEIGHTS: Readonly<Record<CvFitPartKey, number>> = { skills: 35, title: 25, experience: 20, requirements: 15, education: 5 };
+/**
+ * Each part's weight, 100 in all before those that can't be scored are left out; agency background's on top, as the
+ * vacancy asks it (AGENCY_FIT_WEIGHTS: required 20, preferred 10, the weight here).
+ */
+export const CV_FIT_WEIGHTS: Readonly<Record<CvFitPartKey, number>> = { skills: 35, title: 25, experience: 20, requirements: 15, education: 5, agency: AGENCY_FIT_WEIGHTS.preferred };
 
 export const CV_FIT_LABELS: Readonly<Record<CvFitPartKey, string>> = {
   skills: 'Key skills',
@@ -49,6 +58,7 @@ export const CV_FIT_LABELS: Readonly<Record<CvFitPartKey, string>> = {
   experience: 'Experience',
   requirements: 'Requirements',
   education: 'Education',
+  agency: 'Agency background',
 };
 
 export const CV_FIT_LIMITS = {
@@ -110,6 +120,10 @@ export interface CvFitPart {
   wantedLevel?: EducationLevel | null;
   fields?: string[];
   fieldMet?: boolean | null;
+  /** Agency background: whether ex-agency, its months at marketing agencies, and what the vacancy asks. */
+  exAgency?: boolean;
+  agencyMonths?: number;
+  agencyWanted?: AgencyBackgroundWanted;
 }
 
 /** A CV's fit for a job: the percent (null when nothing could be scored), the version, the parts scored. */
@@ -135,6 +149,8 @@ export interface FitVacancyInput {
   minYears?: number | null;
   /** Its grade's description, read for years when it states them (no grade does today: G1 … G9 carry none). */
   gradeText?: string | null;
+  /** What it asks of marketing agency background (27 October 2026); missing: preferred, the default. */
+  agencyBackground?: AgencyBackgroundWanted | null;
 }
 
 /** A CV as its fit is worked out: its reading's text and facts, the years typed with it, a general CV's position. */
@@ -145,6 +161,8 @@ export interface FitCvInput {
   yearsTyped?: number | null;
   /** A general CV's position (chosen, or written for Other), or that of the general CV an application came from. */
   position?: string | null;
+  /** Its marketing agency background (marketing-agencies.ts agencyBackgroundOf, HR's marks included); null: not told. */
+  agency?: AgencyBackground | null;
 }
 
 // ---------- normalising ----------
@@ -500,6 +518,7 @@ export interface FitJob {
   years: YearsWanted | null;
   terms: FitTerm[];
   education: { level: EducationLevel | null; fields: string[] } | null;
+  agencyWanted: AgencyBackgroundWanted;
 }
 
 export function prepareFitJob(v: FitVacancyInput): FitJob {
@@ -509,6 +528,7 @@ export function prepareFitJob(v: FitVacancyInput): FitJob {
     years: yearsWantedOf(v),
     terms: requirementTerms(v),
     education: educationWantedIn(htmlText(v.requirements)),
+    agencyWanted: v.agencyBackground ?? AGENCY_BACKGROUND_DEFAULT,
   };
 }
 
@@ -521,6 +541,8 @@ export interface FitCv {
   level: EducationLevel | null;
   /** The stems of the words of its education's degrees and schools ("Bachelor of Commerce, Faculty of Commerce"). */
   educationStems: ReadonlySet<string>;
+  /** Its marketing agency background; null: not told (no work history read). */
+  agency: AgencyBackground | null;
 }
 
 /** A CV ready to be scored; null when it isn't read or has no text. */
@@ -545,6 +567,7 @@ export function prepareFitCv(cv: FitCvInput): FitCv | null {
     titles,
     level: f?.education ?? null,
     educationStems: new Set(normalForMatch(education).split(' ').filter(Boolean).map(termStem)),
+    agency: cv.agency ?? null,
   };
 }
 
@@ -665,14 +688,35 @@ function educationPart(job: FitJob, cv: FitCv): Scored | null {
   return { key: 'education', label: CV_FIT_LABELS.education, score, detail: detail.charAt(0).toUpperCase() + detail.slice(1), level: cv.level, wantedLevel: e.level, fields: e.fields, fieldMet };
 }
 
+const WANTS: Record<AgencyBackgroundWanted, string> = { required: 'requires it', preferred: 'prefers it', not_needed: 'doesn’t need it' };
+
+/** Agency background (27 October 2026): as the vacancy asks it, the CV's months at marketing agencies, yes or no. */
+function agencyPart(job: FitJob, cv: FitCv): Scored | null {
+  if (job.agencyWanted === 'not_needed' || !cv.agency) return null;
+  const a = cv.agency;
+  const said = !a.exAgency ? 'No marketing agency in the work history' : a.months > 0 ? `Ex-agency: ${agencyMonthsText(a.months)} at marketing agencies` : 'Ex-agency: its months not read';
+  return {
+    key: 'agency',
+    label: CV_FIT_LABELS.agency,
+    score: agencyScore(a),
+    detail: `${said}; the job ${WANTS[job.agencyWanted]} (${AGENCY_BACKGROUND_LABELS[job.agencyWanted].toLowerCase()})`,
+    exAgency: a.exAgency,
+    agencyMonths: a.months,
+    agencyWanted: job.agencyWanted,
+  };
+}
+
+/** A part's weight for a job: agency background's as the vacancy asks it, the others' their own. */
+const weightOf = (key: CvFitPartKey, job: FitJob) => (key === 'agency' ? AGENCY_FIT_WEIGHTS[job.agencyWanted] : CV_FIT_WEIGHTS[key]);
+
 /** A prepared CV's fit for a prepared job (null: the CV not read, or without text). */
 export function cvFitOf(job: FitJob, cv: FitCv | null): CvFit | null {
   if (!cv) return null;
-  const scored = [skillsPart(job, cv), titlePart(job, cv), experiencePart(job, cv), requirementsPart(job, cv), educationPart(job, cv)].filter((p): p is Scored => !!p);
-  const total = scored.reduce((n, p) => n + CV_FIT_WEIGHTS[p.key], 0);
+  const scored = [skillsPart(job, cv), titlePart(job, cv), experiencePart(job, cv), requirementsPart(job, cv), educationPart(job, cv), agencyPart(job, cv)].filter((p): p is Scored => !!p);
+  const total = scored.reduce((n, p) => n + weightOf(p.key, job), 0);
   if (!total) return { percent: null, version: CV_FIT_VERSION, parts: [] };
-  const percent = Math.round(scored.reduce((n, p) => n + p.score * CV_FIT_WEIGHTS[p.key], 0) / total);
-  return { percent, version: CV_FIT_VERSION, parts: scored.map((p) => ({ ...p, weight: Math.round((1000 * CV_FIT_WEIGHTS[p.key]) / total) / 10 })) };
+  const percent = Math.round(scored.reduce((n, p) => n + p.score * weightOf(p.key, job), 0) / total);
+  return { percent, version: CV_FIT_VERSION, parts: scored.map((p) => ({ ...p, weight: Math.round((1000 * weightOf(p.key, job)) / total) / 10 })) };
 }
 
 /** A CV's fit for a vacancy, prepared on the spot (prepare each once when scoring many). */
@@ -871,6 +915,8 @@ export function cvFitPartShort(p: CvFitPart): string {
     return p.wanted ? `${years} vs ${wantedShort(p.wanted)}` : years;
   }
   if (p.key === 'requirements') return `Requirements ${p.found?.length ?? 0} of ${p.listed ?? 0} terms`;
+  // agency background (27 October 2026): "Ex-agency 3 y 4 m", "Not ex-agency"
+  if (p.key === 'agency') return p.exAgency ? `Ex-agency${p.agencyMonths ? ` ${agencyMonthsText(p.agencyMonths)}` : ''}` : 'Not ex-agency';
   return `Education ${p.score >= 100 ? '✓' : p.score <= 0 ? '✗' : 'partly'}`;
 }
 

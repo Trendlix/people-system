@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, ServiceUnavailableException, type OnModuleInit } from '@nestjs/common';
+import { agencyMarksOf } from './agency-marks.js';
 import {
   careersSiteOf,
   cvFactsOf,
@@ -97,13 +98,15 @@ const VACANCY_SELECT = {
   requirements: true,
   responsibilities: true,
   about: true,
+  // marketing agency background (27 October 2026: "Set per job")
+  agencyBackground: true,
   grade: { select: { confidential: true, description: true } },
   jobTitle: { select: { titleEn: true, minGrade: { select: { confidential: true } } } },
 } satisfies Prisma.VacancySelect;
 
 type VacancyRow = Prisma.VacancyGetPayload<{ select: typeof VACANCY_SELECT }>;
 
-const READING = { select: { status: true, text: true, facts: true } } as const;
+const READING = { select: { status: true, text: true, facts: true, readAt: true } } as const;
 const CV_FILE = { select: { fileName: true, mimeType: true, sizeBytes: true } } as const;
 
 /** What a suggestion is read with for its row. */
@@ -260,6 +263,8 @@ export class VacancySuggestionsService implements OnModuleInit {
    */
   private async pool(now = new Date()): Promise<Pool> {
     const recencyMonths = await this.recencyMonths();
+    // HR's marks of marketing agencies, as the CV fits read a CV's agency background (27 October 2026)
+    const marks = await agencyMarksOf(this.prisma);
     const since = new Date(now.getTime());
     since.setUTCMonth(since.getUTCMonth() - recencyMonths);
     const [departments, generalCvs, applications] = await Promise.all([
@@ -341,7 +346,7 @@ export class VacancySuggestionsService implements OnModuleInit {
         inProcess: busy.has(c.id),
       });
     }
-    const cv = (reading: { status: string; text: string | null; facts: Prisma.JsonValue | null } | null, yearsTyped: Prisma.Decimal | null, position: string | null) => {
+    const cv = (reading: { status: string; text: string | null; facts: Prisma.JsonValue | null; readAt?: Date | null } | null, yearsTyped: Prisma.Decimal | null, position: string | null) => {
       const read = reading?.status === 'read';
       const facts = read ? cvFactsOf(reading.facts) : null;
       const text = read ? reading.text : null;
@@ -351,7 +356,7 @@ export class VacancySuggestionsService implements OnModuleInit {
       const fitted = new WeakMap<FitJob, CvFit | null>();
       const fitFor = (job: FitJob): CvFit | null => {
         if (!fitted.has(job)) {
-          if (prepared === undefined) prepared = fitCvOf(reading, yearsTyped, position);
+          if (prepared === undefined) prepared = fitCvOf(reading, yearsTyped, position, marks);
           fitted.set(job, cvFitOf(job, prepared));
         }
         return fitted.get(job) ?? null;

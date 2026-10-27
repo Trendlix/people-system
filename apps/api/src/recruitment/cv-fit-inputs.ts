@@ -1,4 +1,4 @@
-import { cvFactsOf, minYearsWanted, prepareFitCv, prepareFitJob, type FitCv, type FitJob } from '@trendlix/shared';
+import { agencyBackgroundOf, cvFactsOf, minYearsWanted, prepareFitCv, prepareFitJob, type AgencyBackground, type AgencyBackgroundWanted, type AgencyMarks, type CvFacts, type FitCv, type FitJob } from '@trendlix/shared';
 import type { Prisma } from '../generated/prisma/client.js';
 import { money, questionsOf } from './recruitment-views.js';
 
@@ -16,6 +16,8 @@ export const FIT_VACANCY_SELECT = {
   questions: true,
   jobTitle: { select: { titleEn: true } },
   grade: { select: { description: true } },
+  // marketing agency background (27 October 2026: "Set per job")
+  agencyBackground: true,
 } satisfies Prisma.VacancySelect;
 
 export type FitVacancyRow = Prisma.VacancyGetPayload<{ select: typeof FIT_VACANCY_SELECT }>;
@@ -31,22 +33,33 @@ export const fitJobOf = (v: FitVacancyRow): FitJob =>
     about: v.about,
     minYears: minYearsWanted(questionsOf(v.questions)),
     gradeText: v.grade?.description ?? null,
+    agencyBackground: v.agencyBackground as AgencyBackgroundWanted,
   });
 
-/** A CV's reading as its fit reads it. */
-export const FIT_READING = { select: { status: true, text: true, facts: true } } as const;
+/** A CV's reading as its fit reads it; when it was read, as "present" in its work history means that month. */
+export const FIT_READING = { select: { status: true, text: true, facts: true, readAt: true } } as const;
+
+/**
+ * A CV's marketing agency background (owner, 27 October 2026: "i need a flag if the candidate is ex marketing agencies or
+ * not"): its work history as of the month it was read, HR's marks winning over the names' words; null without one read.
+ */
+export function agencyOf(facts: CvFacts | null, readAt: Date | null | undefined, marks: AgencyMarks): AgencyBackground | null {
+  return agencyBackgroundOf(facts?.workHistory, (readAt ?? new Date()).toISOString().slice(0, 7), marks);
+}
 
 /** A general CV's position (chosen, or written for Other) as a fit counts it: a title. */
 export const positionOf = (g: { positionName: string | null; positionOther: string | null } | null | undefined): string | null => (g ? (g.positionName ?? g.positionOther) : null);
 
-/** A CV ready to be scored: read with text, its years typed, a general CV's position; null otherwise. */
+/** A CV ready to be scored: read with text, its years typed, a general CV's position, its agency background by `marks`; null otherwise. */
 export function fitCvOf(
-  reading: { status: string; text: string | null; facts: Prisma.JsonValue | null } | null | undefined,
+  reading: { status: string; text: string | null; facts: Prisma.JsonValue | null; readAt?: Date | null } | null | undefined,
   yearsTyped: Prisma.Decimal | number | null,
   position: string | null,
+  marks: AgencyMarks = new Map(),
 ): FitCv | null {
   if (!reading || reading.status !== 'read' || !reading.text) return null;
-  return prepareFitCv({ text: reading.text, facts: cvFactsOf(reading.facts), yearsTyped: typeof yearsTyped === 'number' ? yearsTyped : money(yearsTyped), position });
+  const facts = cvFactsOf(reading.facts);
+  return prepareFitCv({ text: reading.text, facts, yearsTyped: typeof yearsTyped === 'number' ? yearsTyped : money(yearsTyped), position, agency: agencyOf(facts, reading.readAt, marks) });
 }
 
 /** A JSON value with its keys in order (Postgres's jsonb keeps its own order), to tell whether a kept fit changed. */

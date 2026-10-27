@@ -1,3 +1,5 @@
+import { AgencyMarksController } from './agency-marks.controller.js';
+import { AgencyMarksService } from './agency-marks.service.js';
 import { Global, Module } from '@nestjs/common';
 import { ApplicationsService } from './applications.service.js';
 import { CandidatesController } from './candidates.controller.js';
@@ -44,6 +46,8 @@ import { PortfolioSettingsService } from './portfolio-settings.service.js';
 @Global()
 @Module({
   controllers: [
+    // HR's list of marketing agencies (27 October 2026: "Name words + your list")
+    AgencyMarksController,
     VacanciesController,
     BoardController,
     ApplicationsController,
@@ -72,6 +76,7 @@ import { PortfolioSettingsService } from './portfolio-settings.service.js';
     PortfolioFilesController,
   ],
   providers: [
+    AgencyMarksService,
     VacanciesService,
     ApplicationsService,
     PublicCareersService,

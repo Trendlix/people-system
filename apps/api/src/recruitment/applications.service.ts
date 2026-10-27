@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, GoneException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { agencyMarksOf } from './agency-marks.js';
 import {
   APPLICATION_STAGE_LABELS,
   BOARD_STAGES,
@@ -204,8 +205,10 @@ export class ApplicationsService {
     ]);
     // "Better fit: Media Buyer 82%" (owner, 25 October 2026: "and if it recomended to another position based on the CV")
     const better = await this.fits.badges(rows, user);
+    // HR's marks of marketing agencies, for each CV's Ex-agency flag (27 October 2026)
+    const marks = await agencyMarksOf(this.prisma);
     const items = rows.map((r) => ({
-      ...applicationListView(r),
+      ...applicationListView(r, marks),
       candidate: r.candidateId ? (badges.get(r.candidateId) ?? null) : null,
       verdict: verdicts.get(r.id) ?? null,
       betterFit: this.fits.sees(user) ? (better.get(r.id) ?? null) : undefined,
@@ -274,7 +277,7 @@ export class ApplicationsService {
         : null;
     const verdict = (await this.comments.applicationVerdicts([a.id])).get(a.id) ?? null;
     return {
-      ...applicationListView({ ...a, vacancy: { id: a.vacancy.id, number: a.vacancy.number, title: a.vacancy.title, status: a.vacancy.status } }),
+      ...applicationListView({ ...a, vacancy: { id: a.vacancy.id, number: a.vacancy.number, title: a.vacancy.title, status: a.vacancy.status } }, await agencyMarksOf(this.prisma)),
       // its latest screening verdict (24 October 2026), from its own comments
       verdict,
       linkedin: a.linkedin,
@@ -299,7 +302,7 @@ export class ApplicationsService {
       cv: a.cv,
       earlierCvs: a.earlierCvs.map(earlierCvView),
       // the CV fit as kept (25 October 2026: "Full CV fit score")
-      cvReading: a.cv ? this.readings.view(a.cvReading, a.vacancy.keySkills, cvFitFrom(a.cvFit)) : null,
+      cvReading: a.cv ? this.readings.view(a.cvReading, a.vacancy.keySkills, cvFitFrom(a.cvFit), await agencyMarksOf(this.prisma)) : null,
       // Other Open Positions (25 October 2026): HR, the CEO and a Super Admin only
       openPositions: c.reads ? ((await this.fits.shownFor([{ kind: 'application', id: a.id, candidateId: a.candidateId }], c.user)).get(a.id) ?? []) : null,
       history: a.steps.map(

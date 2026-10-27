@@ -674,3 +674,4 @@ export * from './payroll-vs-insurance.js';
 // the Social Insurance report (owner, 27 October 2026: "is there a report for the social insurance? to be filled from the
 // social insurance tab"; he chose all three): the insured staff register, a month's contributions, the missing data
 export * from './social-insurance-report.js';
+export * from './marketing-agencies.js';

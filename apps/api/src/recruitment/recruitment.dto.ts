@@ -44,6 +44,8 @@ import {
   type GeneralCvSource,
   type GeneralCvStatus,
   type MoveStage,
+  AGENCY_BACKGROUNDS,
+  type AgencyBackgroundWanted,
 } from '@trendlix/shared';
 import { IsDateOnly } from '../common/date-only.js';
 import { Trim, TrimOrNull } from '../common/transforms.js';
@@ -109,6 +111,13 @@ class VacancyFieldsDto {
   /** Its form's portfolio (25 October 2026: "Portfolio: as the job title / Hidden / Optional / Required"): null as the job title. */
   @IsOptional() @IsIn(PORTFOLIO_MODES, { message: 'Choose the portfolio: as the job title, Hidden, Optional or Required.' })
   portfolioMode?: PortfolioMode | null;
+
+  /**
+   * Marketing agency background in its CV fit (owner, 27 October 2026: "i need a flag if the candidate is ex marketing
+   * agencies or not AND reflectin the scoring"; "Set per job"): required, preferred (the default) or not needed.
+   */
+  @IsOptional() @IsIn(AGENCY_BACKGROUNDS, { message: 'Choose the agency background: required, preferred or not_needed.' })
+  agencyBackground?: AgencyBackgroundWanted;
 }
 
 export class CreateVacancyDto extends VacancyFieldsDto {

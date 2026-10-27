@@ -23,6 +23,8 @@ import {
   type VacancyStatus,
   type WorkArrangement,
 } from '@trendlix/shared';
+import type { AgencyMarks } from '@trendlix/shared';
+import { agencyOf } from './cv-fit-inputs.js';
 import { fromDateOnly } from '../common/date-only.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { isConfidentialVacancy } from './recruitment-access.js';
@@ -123,14 +125,14 @@ export const APPLICATION_LIST_SELECT = {
   candidateId: true,
   // the CV's reading, for the Experience and Latest role columns (24 October 2026)
   cv: { select: { sizeBytes: true } },
-  cvReading: { select: { status: true, facts: true } },
+  cvReading: { select: { status: true, facts: true, readAt: true } },
   // a new CV sent by applying again (25 October 2026): the "CV updated" mark for 7 days
   cvUpdatedAt: true,
 } satisfies Prisma.JobApplicationSelect;
 
 export type ApplicationListRow = Prisma.JobApplicationGetPayload<{ select: typeof APPLICATION_LIST_SELECT }>;
 
-export const applicationListView = (a: ApplicationListRow): ApplicationListItem => ({
+export const applicationListView = (a: ApplicationListRow, marks: AgencyMarks = new Map()): ApplicationListItem => ({
   id: a.id,
   number: a.number,
   vacancy: { id: a.vacancy.id, number: a.vacancy.number, title: a.vacancy.title, status: a.vacancy.status as VacancyStatus },
@@ -148,7 +150,7 @@ export const applicationListView = (a: ApplicationListRow): ApplicationListItem 
   source: applicationSourceOf(a.source),
   generalSource: a.generalCv && isGeneralCvSource(a.generalCv.source) ? a.generalCv.source : null,
   appliedAt: a.createdAt.toISOString(),
-  fromCv: cvListFactsOf(!!a.cv, a.cvReading),
+  fromCv: cvListFactsOf(!!a.cv, a.cvReading, marks),
   cvUpdatedAt: a.cvUpdatedAt?.toISOString() ?? null,
   cvUpdated: cvUpdatedMark(a.cvUpdatedAt),
 });
@@ -177,11 +179,24 @@ export const earlierCvView = (c: Prisma.JobApplicationEarlierCvGetPayload<{ sele
  * What a list shows of a CV's reading: its status ("Reading…"), its months of experience and its latest job; a CV
  * without a reading yet (come in a moment ago) as being read. Null without a CV.
  */
-export function cvListFactsOf(hasCv: boolean, reading: { status: string; facts: Prisma.JsonValue | null } | null): CvListFacts | null {
+export function cvListFactsOf(
+  hasCv: boolean,
+  reading: { status: string; facts: Prisma.JsonValue | null; readAt?: Date | null } | null,
+  marks: AgencyMarks = new Map(),
+): CvListFacts | null {
   if (!hasCv) return null;
-  if (!reading) return { status: 'pending', experienceMonths: null, latestTitle: null, latestCompany: null };
+  if (!reading) return { status: 'pending', experienceMonths: null, latestTitle: null, latestCompany: null, exAgency: null, agencyMonths: null };
   const facts = reading.status === 'read' ? cvFactsOf(reading.facts) : null;
-  return { status: reading.status as CvReadingStatus, experienceMonths: facts?.experienceMonths ?? null, latestTitle: facts?.latestTitle ?? null, latestCompany: facts?.latestCompany ?? null };
+  // marketing agency background (owner, 27 October 2026: "i need a flag if the candidate is ex marketing agencies or not")
+  const agency = facts ? agencyOf(facts, reading.readAt, marks) : null;
+  return {
+    status: reading.status as CvReadingStatus,
+    experienceMonths: facts?.experienceMonths ?? null,
+    latestTitle: facts?.latestTitle ?? null,
+    latestCompany: facts?.latestCompany ?? null,
+    exAgency: agency?.exAgency ?? null,
+    agencyMonths: agency ? agency.months : null,
+  };
 }
 
 /**

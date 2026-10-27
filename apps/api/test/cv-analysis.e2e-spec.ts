@@ -181,6 +181,8 @@ describe('CV reading and analysis (e2e)', () => {
         employmentType: 'full_time',
         closingDate: addDays(TODAY, 30),
         keySkills: 'Premiere Pro, after effects, Final Cut Pro, Color Grading, premiere pro',
+        // agency background left out (27 October 2026): the fits here are about the reading
+        agencyBackground: 'not_needed',
       }).expect(201)
     ).body as VacancyView;
     expect(made.keySkills).toEqual(['Premiere Pro', 'after effects', 'Final Cut Pro', 'Color Grading']);

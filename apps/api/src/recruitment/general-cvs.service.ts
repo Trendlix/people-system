@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, GoneException, HttpException, HttpStatus, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { agencyMarksOf } from './agency-marks.js';
 import {
   APPLICATION_STAGES,
   GENERAL_CV_IP_TOKEN,
@@ -33,6 +34,7 @@ import {
   type PublicGeneralForm,
   type VacancyApplicantsGroup,
   type VacancyStatus,
+  type AgencyMarks,
 } from '@trendlix/shared';
 import { verifySignedIp } from '../attendance/signed-ip.js';
 import { AuditService } from '../audit/audit.service.js';
@@ -107,7 +109,7 @@ const LIST_SELECT = {
   application: { select: { id: true, number: true, vacancy: { select: { id: true, title: true } } } },
   // the CV's reading, for the Experience and Latest role columns (24 October 2026)
   file: { select: { sizeBytes: true } },
-  cvReading: { select: { status: true, facts: true } },
+  cvReading: { select: { status: true, facts: true, readAt: true } },
   // the Best open position column (25 October 2026)
   candidateId: true,
 } satisfies Prisma.GeneralCvSelect;
@@ -369,7 +371,9 @@ export class GeneralCvsService {
       // the open vacancy each CV fits best (owner, 25 October 2026: "and if it recomended to another position based on the CV")
       this.fits.bestFor(rows, user),
     ]);
-    const items = rows.map((r) => ({ ...this.listItem(r, names), verdict: verdicts.get(r.id) ?? null, bestPosition: best.get(r.id) ?? null }));
+    // HR's marks of marketing agencies, for each CV's Ex-agency flag (27 October 2026)
+    const marks = await agencyMarksOf(this.prisma);
+    const items = rows.map((r) => ({ ...this.listItem(r, names, marks), verdict: verdicts.get(r.id) ?? null, bestPosition: best.get(r.id) ?? null }));
     // ?sort=fit: the best fit first, those without one last (as they came, the newest first)
     if (query.sort !== 'fit') return items;
     return items
@@ -386,7 +390,7 @@ export class GeneralCvsService {
     const status = r.status as GeneralCvStatus;
     const manages = managesRecruitment(user);
     return {
-      ...this.listItem(r, names),
+      ...this.listItem(r, names, await agencyMarksOf(this.prisma)),
       // its latest screening verdict (24 October 2026), from its own comments
       verdict: verdicts.get(r.id) ?? null,
       linkedin: r.linkedin,
@@ -406,7 +410,7 @@ export class GeneralCvsService {
       consentBy: userRef(r.consentBy, names),
       consentNote: r.consentNote,
       cv: r.file,
-      cvReading: r.file ? this.readings.view(r.cvReading, null) : null,
+      cvReading: r.file ? this.readings.view(r.cvReading, null, null, await agencyMarksOf(this.prisma)) : null,
       // Other Open Positions (25 October 2026): moved to a vacancy, its application's
       openPositions: await this.openPositionsOf(r, user),
       history: r.events.map((e) => ({ event: e.event, note: e.note, by: userRef(e.by, names), at: e.at.toISOString() })),
@@ -746,7 +750,7 @@ export class GeneralCvsService {
     }).finally(() => this.readings.kick());
   }
 
-  private listItem(r: ListRow, names: ReadonlyMap<string, { name: string }>): GeneralCvListItem {
+  private listItem(r: ListRow, names: ReadonlyMap<string, { name: string }>, marks: AgencyMarks = new Map()): GeneralCvListItem {
     return {
       id: r.id,
       number: r.number,
@@ -767,7 +771,7 @@ export class GeneralCvsService {
       receivedAt: r.createdAt.toISOString(),
       addedBy: userRef(r.createdBy, names),
       movedTo: r.application ? { applicationId: r.application.id, reference: r.application.number, vacancyId: r.application.vacancy.id, vacancyTitle: r.application.vacancy.title } : null,
-      fromCv: cvListFactsOf(!!r.file, r.cvReading),
+      fromCv: cvListFactsOf(!!r.file, r.cvReading, marks),
     };
   }
 

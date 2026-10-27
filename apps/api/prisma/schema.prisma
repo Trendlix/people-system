@@ -212,6 +212,7 @@ model User {
   // people exempt from check-in (owner, 25 October 2026): the exemptions this user added, and those they ended
   checkInExemptionsAdded    CheckInExemption[]         @relation("CheckInExemptionAddedBy")
   checkInExemptionsEnded    CheckInExemption[]         @relation("CheckInExemptionEndedBy")
+  agencyMarks               AgencyMark[]               @relation("AgencyMarkBy")
 
   @@map("users")
 }
@@ -2073,6 +2074,9 @@ model Vacancy {
   questions        Json                @default("[]")
   keySkills        String[]            @default([]) @map("key_skills") // the skills a CV is checked for (CV match %), at most 20 (22 October 2026)
   portfolioMode    String?             @map("portfolio_mode") // its form's portfolio: hidden, optional, required; none: as the job title (25 October 2026)
+  // marketing agency background in its CV fit (owner, 27 October 2026: "i need a flag if the candidate is ex marketing
+  // agencies or not AND reflectin the scoring"; "Set per job"): AGENCY_BACKGROUNDS required, preferred, not_needed
+  agencyBackground String              @default("preferred") @map("agency_background")
   submittedAt      DateTime?           @map("submitted_at") @db.Timestamptz
   submittedById    String?             @map("submitted_by") @db.Uuid
   submittedBy      User?               @relation("VacancySubmission", fields: [submittedById], references: [id], onDelete: SetNull)
@@ -5116,4 +5120,20 @@ model AccessGrace {
   @@unique([employeeId, employmentId])
   @@index([until])
   @@map("access_graces")
+}
+
+// A company HR marked a marketing agency, or not one (owner, 27 October 2026: "Name words + your list"; packages/shared
+// marketing-agencies.ts): by its name as compared (companyKey), winning over the name's words wherever a CV's work
+// history names it.
+model AgencyMark {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @unique // companyKey(name)
+  name        String // as HR wrote it, or as the CV did
+  agency      Boolean
+  updatedById String?  @map("updated_by") @db.Uuid
+  updatedBy   User?    @relation("AgencyMarkBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@map("agency_marks")
 }

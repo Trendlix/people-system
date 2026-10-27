@@ -18,13 +18,15 @@ import {
   type CvReadingStatus,
   type CvReadingView,
   type CvTextView,
+  type AgencyMarks,
 } from '@trendlix/shared';
 import { Prisma } from '../generated/prisma/client.js';
 import { OcrClient } from '../paperwork/ocr.client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CandidatesService } from './candidates.service.js';
 import { DOCX, PDF } from './cv-file.js';
-import { canonical, FIT_READING, FIT_VACANCY_SELECT, fitCvOf, fitJobOf, positionOf } from './cv-fit-inputs.js';
+import { agencyMarksOf } from './agency-marks.js';
+import { agencyOf, canonical, FIT_READING, FIT_VACANCY_SELECT, fitCvOf, fitJobOf, positionOf } from './cv-fit-inputs.js';
 import { cvText } from './cv-text.js';
 
 // Every CV read and analysed (owner, 22 October 2026: "make the OCR egine reads the CV and analyse it. is that
@@ -313,7 +315,7 @@ export class CvReadingsService implements OnModuleDestroy {
   /** An application's CV fit for its vacancy, kept on it with its percent as the CV match % (the lists sort and filter by it). */
   async rescoreApplication(applicationId: string, db: Db = this.prisma): Promise<boolean> {
     const a = await db.jobApplication.findUnique({ where: { id: applicationId }, select: { ...APP_FIT_SELECT, vacancy: { select: FIT_VACANCY_SELECT } } });
-    return a ? this.keepFit(a, fitJobOf(a.vacancy), db) : false;
+    return a ? this.keepFit(a, fitJobOf(a.vacancy), await agencyMarksOf(db), db) : false;
   }
 
   /** Every application of a vacancy scored again (what it is scored by changed: its title, key skills, texts, grade or job title); how many changed. */
@@ -322,14 +324,15 @@ export class CvReadingsService implements OnModuleDestroy {
     if (!v) return 0;
     const job = fitJobOf(v);
     const apps = await this.prisma.jobApplication.findMany({ where: { vacancyId }, select: APP_FIT_SELECT });
+    const marks = await agencyMarksOf(this.prisma);
     let changed = 0;
-    for (const a of apps) if (await this.keepFit(a, job)) changed++;
+    for (const a of apps) if (await this.keepFit(a, job, marks)) changed++;
     return changed;
   }
 
   /** An application's fit worked out for its vacancy and kept when it changed; whether it did. */
-  private async keepFit(a: AppFitRow, job: FitJob, db: Db = this.prisma): Promise<boolean> {
-    const fit = cvFitOf(job, fitCvOf(a.cvReading, a.yearsExperience, positionOf(a.generalCv)));
+  private async keepFit(a: AppFitRow, job: FitJob, marks: AgencyMarks, db: Db = this.prisma): Promise<boolean> {
+    const fit = cvFitOf(job, fitCvOf(a.cvReading, a.yearsExperience, positionOf(a.generalCv), marks));
     const percent = fit?.percent ?? null;
     if (percent === a.cvMatchPercent && canonical(fit) === canonical(a.cvFit)) return false;
     await db.jobApplication.update({ where: { id: a.id }, data: { cvMatchPercent: percent, cvFit: fit ? (fit as unknown as Prisma.InputJsonValue) : Prisma.DbNull } });
@@ -384,6 +387,7 @@ export class CvReadingsService implements OnModuleDestroy {
     r: { status: string; method: string | null; readAt: Date | null; facts: Prisma.JsonValue | null; text: string | null } | null,
     keySkills: readonly string[] | null,
     fit: CvFit | null = null,
+    marks: AgencyMarks = new Map(),
   ): CvReadingView {
     const none = { latestTitle: null, latestCompany: null, workHistory: [], educationDetails: [], cvSkills: [], certifications: [], city: null };
     // a CV come in a moment ago, before the round gave it a reading: being read
@@ -415,6 +419,8 @@ export class CvReadingsService implements OnModuleDestroy {
             city: facts.city,
           }
         : none),
+      // marketing agency background (owner, 27 October 2026: "i need a flag if the candidate is ex marketing agencies or not")
+      agency: read ? agencyOf(facts, r.readAt, marks) : null,
     };
   }
 

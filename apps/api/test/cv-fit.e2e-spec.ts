@@ -123,8 +123,9 @@ describe('CV fit and other open positions (e2e)', () => {
     return e;
   }
 
+  // agency background left out unless a test asks for it (27 October 2026): the fits here are about the other parts
   async function vacancy(key: string, as: 'hr' | 'superAdmin', body: object) {
-    const made = ok(await post(as, '/recruitment/vacancies', { employmentType: 'full_time', headcount: 2, closingDate: addDays(TODAY, 30), about: '<p>Made-up work.</p>', ...body }), 201).body as VacancyView;
+    const made = ok(await post(as, '/recruitment/vacancies', { employmentType: 'full_time', headcount: 2, closingDate: addDays(TODAY, 30), about: '<p>Made-up work.</p>', agencyBackground: 'not_needed', ...body }), 201).body as VacancyView;
     ok(await post(as, `/recruitment/vacancies/${made.id}/submit`));
     v[key] = ok(await post('ceo', `/recruitment/vacancies/${made.id}/approve`)).body as VacancyView;
     return v[key];
@@ -431,5 +432,55 @@ describe('CV fit and other open positions (e2e)', () => {
     // and the suggestions' fits worked out by the same round
     await app.get(VacancySuggestionsService).refreshAll({ notify: false });
     expect(await prisma.cvOpenFit.count({ where: { vacancyId: v.buyer.id } })).toBeGreaterThan(0);
+  });
+
+  // Marketing agency background (owner, 27 October 2026: "i need a flag if the candidate is ex marketing agencies or not
+  // AND reflectin the scoring"; "Name words + your list", "Show agency years", "Set per job", "Yes or no")
+  it('agency background: the flag on the page and the list, its part when the job asks it, and HR’s marks scoring again at once', async () => {
+    const put = (as: string, body: object) => api().put('/api/recruitment/agency-marks').set('Cookie', sessions[as]).send(body);
+    ok(await patch('hr', `/recruitment/vacancies/${v.buyer.id}`, { agencyBackground: 'required' }));
+    expect((ok(await get('hr', `/recruitment/vacancies/${v.buyer.id}`)).body as VacancyView).agencyBackground).toBe('required');
+    // Nour: Media Buyer at Orbit Agency, Paid Social Specialist at Nile Studio: ex-agency by the names
+    const nour = await appOf('hr', apps.nourBuyer);
+    const agency = nour.cvReading!.agency!;
+    expect(agency.exAgency).toBe(true);
+    expect(agency.months).toBeGreaterThanOrEqual(6);
+    expect(agency.jobs.map((j) => [j.pastCompany, j.agency, j.by])).toEqual([
+      ['Orbit Agency', true, 'name'],
+      ['Nile Studio', true, 'name'],
+    ]);
+    // required: 20 on top of the other parts scored (here 95: no education asked), which shrink to fit
+    const parts = nour.cvReading!.fit!.parts;
+    const others = parts.filter((p) => p.key !== 'agency').length;
+    expect(others).toBeGreaterThan(0);
+    expect(parts.find((p) => p.key === 'agency')).toMatchObject({ score: 100, exAgency: true, agencyWanted: 'required', weight: Math.round((1000 * 20) / 115) / 10 });
+    const row = (ok(await get('hr', `/recruitment/applications?vacancyId=${v.buyer.id}&filtered=all`)).body as ApplicationListItem[]).find((a) => a.id === apps.nourBuyer)!;
+    expect(row.fromCv).toMatchObject({ exAgency: true, agencyMonths: agency.months });
+    const before = nour.cvReading!.cvMatchPercent!;
+    // HR marks both not agencies, whatever their names say: not ex-agency, the part 0, the match lower at once
+    await put('manager', { company: 'Orbit Agency', agency: false }).expect(403);
+    expect(said(await put('hr', { company: ' ', agency: false }).expect(400))).toEqual(['Write the company’s name, e.g. Publicis Egypt.']);
+    ok(await put('hr', { company: 'Orbit Agency', agency: false }));
+    ok(await put('hr', { company: 'nile  STUDIO', agency: false }));
+    const after = await appOf('hr', apps.nourBuyer);
+    expect(after.cvReading!.agency).toMatchObject({ exAgency: false, months: 0 });
+    expect(after.cvReading!.agency!.jobs.map((j) => j.by)).toEqual(['mark', 'mark']);
+    expect(after.cvReading!.fit!.parts.find((p) => p.key === 'agency')).toMatchObject({ score: 0 });
+    expect(after.cvReading!.cvMatchPercent!).toBeLessThan(before);
+    const marks = ok(await get('hr', '/recruitment/agency-marks')).body as { id: string; name: string; agency: boolean; byName: boolean }[];
+    const mine = marks.filter((m) => ['Orbit Agency', 'nile  STUDIO'].includes(m.name));
+    expect(mine.map((m) => [m.agency, m.byName])).toEqual([
+      [false, true],
+      [false, true],
+    ]);
+    expect((await prisma.auditLog.findFirstOrThrow({ where: { entityType: 'agency_mark', entityId: mine[0].id } })).action).toBe('create');
+    // the marks removed: told by the names again, scored again
+    for (const m of mine) await api().delete(`/api/recruitment/agency-marks/${m.id}`).set('Cookie', sessions.hr).expect(204);
+    expect((await appOf('hr', apps.nourBuyer)).cvReading!.cvMatchPercent).toBe(before);
+    // not needed: left out of the fit, the flag still shown
+    ok(await patch('hr', `/recruitment/vacancies/${v.buyer.id}`, { agencyBackground: 'not_needed' }));
+    const plain = await appOf('hr', apps.nourBuyer);
+    expect(keys(plain.cvReading!.fit)).not.toContain('agency');
+    expect(plain.cvReading!.agency!.exAgency).toBe(true);
   });
 });

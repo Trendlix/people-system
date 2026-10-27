@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, type OnModuleDestroy } from '@nestjs/common';
+import { agencyMarksOf } from './agency-marks.js';
 import {
   APPLICATION_EVENT_LABELS,
   applicationSourceOf,
@@ -412,7 +413,9 @@ export class CandidatesService implements OnModuleDestroy {
           }
         : {};
     // the years and the CV's reading of each, for the Experience column (24 October 2026)
-    const cvFacts = { yearsExperience: true, cvReading: { select: { status: true, facts: true } } } as const;
+    const cvFacts = { yearsExperience: true, cvReading: { select: { status: true, facts: true, readAt: true } } } as const;
+    // HR's marks of marketing agencies, for each CV's Ex-agency flag (27 October 2026)
+    const marks = await agencyMarksOf(this.prisma);
     const rows = await this.prisma.candidate.findMany({
       where: { AND: [this.visibleWhere(user), search, years, verdictWhere] },
       orderBy: [{ lastAppliedAt: { sort: 'desc', nulls: 'last' } }, { createdAt: 'desc' }],
@@ -480,8 +483,8 @@ export class CandidatesService implements OnModuleDestroy {
       // the Experience column: of their applications and general CVs, the one with the most years (as the column shows
       // them: typed, else the CV's), else the latest
       const records = [
-        ...r.applications.map((x) => ({ at: x.createdAt, typed: money(x.yearsExperience), fromCv: cvListFactsOf(!!x.cv, x.cvReading) })),
-        ...r.generalCvs.map((x) => ({ at: x.createdAt, typed: money(x.yearsExperience), fromCv: cvListFactsOf(!!x.file, x.cvReading) })),
+        ...r.applications.map((x) => ({ at: x.createdAt, typed: money(x.yearsExperience), fromCv: cvListFactsOf(!!x.cv, x.cvReading, marks) })),
+        ...r.generalCvs.map((x) => ({ at: x.createdAt, typed: money(x.yearsExperience), fromCv: cvListFactsOf(!!x.file, x.cvReading, marks) })),
       ].sort((x, y) => y.at.getTime() - x.at.getTime());
       const best = byExperience(records, (x) => ({ typed: x.typed, cvMonths: x.fromCv?.experienceMonths ?? null }))[0];
       return {

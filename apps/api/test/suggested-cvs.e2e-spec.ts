@@ -140,8 +140,9 @@ describe('Suggested From Earlier CVs (e2e)', () => {
   };
   const notices = () => prisma.notification.findMany({ where: { userId: users.hr, kind: 'cv_suggestions', link: `/recruitment/vacancies/${V.id}?view=suggested` }, select: { title: true, body: true } });
 
+  // agency background left out unless a test asks for it (27 October 2026): the fits here are about the other parts
   async function vacancy(key: string, as: 'hr' | 'superAdmin', body: object) {
-    const made = ok(await post(as, '/recruitment/vacancies', { employmentType: 'full_time', headcount: 2, closingDate: addDays(TODAY, 30), about: '<p>Made-up work.</p>', ...body }), 201).body as VacancyView;
+    const made = ok(await post(as, '/recruitment/vacancies', { employmentType: 'full_time', headcount: 2, closingDate: addDays(TODAY, 30), about: '<p>Made-up work.</p>', agencyBackground: 'not_needed', ...body }), 201).body as VacancyView;
     ok(await post(as, `/recruitment/vacancies/${made.id}/submit`));
     vacancies[key] = ok(await post('ceo', `/recruitment/vacancies/${made.id}/approve`)).body as VacancyView;
     return vacancies[key];

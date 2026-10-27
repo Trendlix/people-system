@@ -16,6 +16,7 @@
 
 import type { CvFit } from './cv-fit.js';
 import { SKILLS_DICTIONARY, type DictionarySkill } from './skills-dictionary.js';
+import type { AgencyBackground } from './marketing-agencies.js';
 
 // ---------- the reading ----------
 
@@ -1361,6 +1362,12 @@ export interface CvReadingView {
   cvSkills: string[];
   certifications: string[];
   city: string | null;
+  /**
+   * Its marketing agency background (owner, 27 October 2026: "i need a flag if the candidate is ex marketing agencies or
+   * not"): ex-agency or not, the months at agencies, each job of the work history marked; null: not told (no work
+   * history read). Missing from an API before it.
+   */
+  agency?: AgencyBackground | null;
 }
 
 /**
@@ -1372,6 +1379,12 @@ export interface CvListFacts {
   experienceMonths: number | null;
   latestTitle: string | null;
   latestCompany: string | null;
+  /**
+   * Marketing agency background (27 October 2026, marketing-agencies.ts): ex-agency or not and its months there; null:
+   * not told (no work history read). Missing from an API before it.
+   */
+  exAgency?: boolean | null;
+  agencyMonths?: number | null;
 }
 
 /** GET …/cv-text: the CV's text and the contacts found in it (never for a developer: phones and emails). */
