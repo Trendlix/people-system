@@ -123,6 +123,19 @@ describe('a pending raise', () => {
     expect(v.reason).toBe('Annual raise');
   });
 
+  // owner, 27 October 2026: "can i add rate per hour with a minimum monthly payment?"
+  it('shows the minimum a month by the hour, and its change', () => {
+    const hourly = (minimum: number | null, before: number | null) =>
+      pendingRaiseView(
+        pending({ payBasis: 'hourly', hourlyRate: 250, hourlyMinimum: minimum, previous: { ...pending().previous!, payBasis: 'hourly', hourlyRate: 250, hourlyMinimum: before } }),
+      ).hourly;
+    expect(hourly(14000, 12000)).toBe('EGP 250.00 an hour; the gross is the monthly estimate · minimum EGP 12,000.00 → EGP 14,000.00 a month');
+    expect(hourly(12000, 12000)).toBe('EGP 250.00 an hour; the gross is the monthly estimate · minimum EGP 12,000.00 a month');
+    expect(hourly(12000, null)).toBe('EGP 250.00 an hour; the gross is the monthly estimate · minimum EGP 12,000.00 a month');
+    expect(hourly(null, 12000)).toBe('EGP 250.00 an hour; the gross is the monthly estimate · no minimum a month (was EGP 12,000.00)');
+    expect(hourly(null, null)).toBe('EGP 250.00 an hour; the gross is the monthly estimate');
+  });
+
   it('shows the pay alone without the version before it', () => {
     const v = pendingRaiseView(pending({ previous: null }));
     expect(v.gross).toBe('EGP 12,500.00');

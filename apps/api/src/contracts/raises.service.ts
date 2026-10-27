@@ -82,6 +82,8 @@ interface RaiseInput {
   grossSalary: number | null;
   hourlyRate: number | null;
   hoursPerWeek: number | null;
+  /** By the hour: the least paid a month (27 October 2026), pay like the rate; null: none. */
+  hourlyMinimum: number | null;
   daysPerWeek: number | null;
   allowances: readonly AllowanceSnapshot[];
 }
@@ -168,6 +170,8 @@ export class RaisesService {
       grossSalary: dto.grossSalary ?? (hourly ? null : current.grossSalary.toNumber()),
       hourlyRate: dto.hourlyRate !== undefined ? dto.hourlyRate : hourly ? (current.hourlyRate?.toNumber() ?? null) : null,
       hoursPerWeek: dto.hoursPerWeek !== undefined ? dto.hoursPerWeek : hourly ? (current.hoursPerWeek?.toNumber() ?? null) : null,
+      // the minimum a month by the hour (27 October 2026) as it is unless another is sent
+      hourlyMinimum: dto.hourlyMinimum !== undefined ? dto.hourlyMinimum : hourly ? (current.hourlyMinimum?.toNumber() ?? null) : null,
       daysPerWeek: dto.daysPerWeek !== undefined ? dto.daysPerWeek : current.daysPerWeek,
       allowances,
     });
@@ -229,6 +233,8 @@ export class RaisesService {
       grossSalary: pay.grossSalary,
       hourlyRate: pay.hourlyRate,
       hoursPerWeek: pay.hoursPerWeek,
+      // the minimum a month by the hour (27 October 2026) as it is: the raise is on the rate
+      hourlyMinimum: current.payBasis === 'hourly' ? (current.hourlyMinimum?.toNumber() ?? null) : null,
       daysPerWeek: current.daysPerWeek,
       allowances,
     });
@@ -274,6 +280,7 @@ export class RaisesService {
       grossSalary: dto.grossSalary ?? was.grossSalary,
       hourlyRate: dto.hourlyRate !== undefined ? dto.hourlyRate : hourly ? was.hourlyRate : null,
       hoursPerWeek: dto.hoursPerWeek !== undefined ? dto.hoursPerWeek : hourly ? was.hoursPerWeek : null,
+      hourlyMinimum: dto.hourlyMinimum !== undefined ? dto.hourlyMinimum : hourly ? was.hourlyMinimum : null,
       daysPerWeek: dto.daysPerWeek !== undefined ? dto.daysPerWeek : was.daysPerWeek,
       allowances: allowances ?? before.allowances.map(allowanceView),
     });
@@ -496,6 +503,7 @@ export class RaisesService {
           grossSalary: sees ? before.grossSalary.toNumber() : null,
           hourlyRate: sees ? (before.hourlyRate?.toNumber() ?? null) : null,
           hoursPerWeek: before.hoursPerWeek?.toNumber() ?? null,
+          hourlyMinimum: sees ? (before.hourlyMinimum?.toNumber() ?? null) : null,
           allowancesTotal: sees ? beforeAllowances : null,
           // how each was taxed and insured, for the net before and after the CEO's other raise (17 October 2026)
           allowances: sees ? before.allowances.map((a) => ({ amount: a.amount.toNumber(), taxable: a.taxable, insured: a.insured })) : null,
@@ -533,6 +541,7 @@ export class RaisesService {
         grossSalary: input.grossSalary,
         hourlyRate: input.hourlyRate,
         hoursPerWeek: input.hoursPerWeek,
+        hourlyMinimum: input.hourlyMinimum,
         daysPerWeek: input.daysPerWeek,
         allowances,
       });

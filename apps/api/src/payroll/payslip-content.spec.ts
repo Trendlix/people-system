@@ -526,6 +526,24 @@ describe('payslipContent: by the hour', () => {
     expect(c.yearToDate!.period).toBe('February to October 2026');
   });
 
+  // owner, 27 October 2026: "can i add rate per hour with a minimum monthly payment?" (he chose "Prorated by days")
+  it('topped up to the minimum a month: the hours as worked, and the top-up on its own row', () => {
+    const topped = payslipContent(payslipSource('hourly', { terms: { hourlyMinimum: 16_000, adjustments: [] } }), 'en');
+    // 92:30 × 150 = 13,875, topped up to 16,000
+    expect(topped.earnings!.rows).toEqual([
+      { label: 'Hours worked', note: '92:30 × 150.00 an hour', amount: '13,875.00', value: 13875 },
+      { label: 'Topped up to the minimum', note: 'Minimum 16,000.00 a month', amount: '2,125.00', value: 2125 },
+    ]);
+    expect(topped.earnings!.total.amount).toBe('16,000.00');
+    // joined on the 16th: the minimum for 15 of 30 days, 8,000
+    const part = payslipContent(payslipSource('hourly', { terms: { hourlyMinimum: 16_000, adjustments: [], paidDays: 15 }, inputs: { workedHours: 40 } }), 'en');
+    expect(part.earnings!.rows[1]).toEqual({ label: 'Topped up to the minimum', note: 'Minimum 16,000.00 a month, for 15 of 30 days', amount: '2,000.00', value: 2000 });
+    const ar = payslipContent(payslipSource('hourly', { terms: { hourlyMinimum: 16_000, adjustments: [] } }), 'ar');
+    expect(ar.earnings!.rows[1]).toMatchObject({ label: 'تكملة الحد الأدنى الشهري', note: 'الحد الأدنى ١٦٬٠٠٠٫٠٠ شهريًا' });
+    // the hours above the minimum: no top-up row
+    expect(labels(payslipContent(payslipSource('hourly', { terms: { hourlyMinimum: 10_000 } }), 'en').earnings?.rows)).toEqual(['Hours worked', 'Correction']);
+  });
+
   it('no bank details: "Paid", and no Paid to', () => {
     const source = payslipSource('hourly');
     const content = payslipContent({ ...source, line: { ...source.line, bankShort: null, accountNo: null, iban: null } }, 'en');

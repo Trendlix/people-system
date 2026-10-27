@@ -97,6 +97,7 @@ async function EditContract({ params }: { params: Promise<{ id: string; contract
             grossSalary: contract.grossSalary,
             hourlyRate: contract.hourlyRate ?? null,
             hoursPerWeek: contract.hoursPerWeek ?? null,
+            hourlyMinimum: contract.hourlyMinimum ?? null,
             daysPerWeek: contract.daysPerWeek ?? null,
             basicPercent: contract.basicPercent ?? 80,
             netSalary: contract.netSalary,

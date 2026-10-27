@@ -387,10 +387,18 @@ function monthlySteps(line: Line, rules: PayrollRules, split: SplitPart[] | null
   ];
 }
 
-/** The steps of a line paid by the hour: the hours at the rate (no split, no attendance or KPI cuts). */
-function hourlySteps({ terms: t, inputs: i, result: r }: Line): BreakdownRow[] {
-  const forHours = Math.round((r.earned - r.bonus - (r.commission ?? 0) - (r.settlements ?? 0) - resultAdjustments(r).taxed) * 100) / 100;
+/**
+ * The steps of a line paid by the hour: the hours at the rate (no split, no attendance or KPI cuts), and what topped them
+ * up to the contract's minimum a month for the days paid (owner, 27 October 2026: "can i add rate per hour with a minimum
+ * monthly payment?"; he chose "Prorated by days").
+ */
+function hourlySteps({ terms: t, inputs: i, result: r }: Line, rules: PayrollRules): BreakdownRow[] {
+  // a line worked out before the minimum has no top-up
+  const topUp = Number.isFinite(r.hourlyTopUp) && (r.hourlyTopUp ?? 0) > 0 ? r.hourlyTopUp! : 0;
+  const forHours = Math.round((r.earned - r.bonus - (r.commission ?? 0) - (r.settlements ?? 0) - resultAdjustments(r).taxed - topUp) * 100) / 100;
   const rate = t.hourlyRate === null ? null : formatEgp(t.hourlyRate);
+  const minimum = t.hourlyMinimum ?? null;
+  const days = rules.dayDivisor;
   return [
     {
       key: 'hours',
@@ -399,6 +407,17 @@ function hourlySteps({ terms: t, inputs: i, result: r }: Line): BreakdownRow[] {
       kind: 'add',
       note: i.workedHours === null ? 'No hours typed' : `${formatHours(i.workedHours)} hours${rate ? ` at ${rate} an hour` : ''}`,
     },
+    ...(topUp > 0
+      ? [
+          {
+            key: 'hourlyTopUp',
+            label: 'Topped up to the minimum',
+            value: formatEgp(topUp),
+            kind: 'add' as const,
+            note: minimum ? `Minimum ${formatEgp(minimum)} a month${t.paidDays < days ? `, for ${t.paidDays} of ${days} days` : ''}` : undefined,
+          },
+        ]
+      : []),
   ];
 }
 
@@ -512,7 +531,7 @@ export function breakdown(given: Line, rules: PayrollRules, law?: LawRates, mont
       }))
     : [{ key: 'allowances', label: 'Allowances', value: formatEgp(r.allowances), kind: 'add', note: allowanceNames(t.allowances) }];
   return [
-    ...(line.payBasis === 'hourly' ? hourlySteps(line) : monthlySteps(line, rules, split, month)),
+    ...(line.payBasis === 'hourly' ? hourlySteps(line, rules) : monthlySteps(line, rules, split, month)),
     ...typed.additions,
     ...adjustmentRows(line, 'addition', true),
     { key: 'earned', label: 'Earned', value: formatEgp(r.earned), kind: 'total' },

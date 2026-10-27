@@ -54,6 +54,7 @@ const GROSS_MESSAGE = 'Enter the gross salary as an amount, e.g. 12000 or 12000.
 const RATE_MESSAGE = 'Enter the hourly rate as an amount of more than 0, e.g. 150 or 150.50.';
 // as on a contract, which is made from the offer: up to the legal 48 hours, over at most 6 days
 const HOURS_MESSAGE = 'Enter the hours a week as a number of more than 0 and up to 48, e.g. 24 or 22.5.';
+const MINIMUM_MESSAGE = 'Enter the minimum a month as an amount of more than 0, e.g. 12000 or 12000.50, or leave it empty for none.';
 const DAYS_MESSAGE = 'Enter the working days a week as a whole number, 1 to 6.';
 const NAME_EN_MESSAGE = 'Enter the full name in English.';
 const NAME_AR_MESSAGE = 'Enter the full name in Arabic.';
@@ -131,6 +132,13 @@ class OfferFieldsDto {
   /** By the hour only: the contracted hours. */
   @IsOptional() @IsNumber({ maxDecimalPlaces: 1 }, { message: HOURS_MESSAGE }) @Min(0.1, { message: HOURS_MESSAGE }) @Max(48, { message: HOURS_MESSAGE })
   hoursPerWeek?: number | null;
+
+  /**
+   * By the hour only, optional: the least paid a month (owner, 27 October 2026: "can i add rate per hour with a minimum
+   * monthly payment?"), carried to the contract when the offer is accepted. Empty: no minimum.
+   */
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }, { message: MINIMUM_MESSAGE }) @Min(0.01, { message: MINIMUM_MESSAGE }) @Max(MAX_MONEY, { message: MINIMUM_MESSAGE })
+  hourlyMinimum?: number | null;
 
   /** Working days a week (part-time: 2, 3 …); empty: the shift's week. */
   @IsOptional() @IsInt({ message: DAYS_MESSAGE }) @Min(1, { message: DAYS_MESSAGE }) @Max(6, { message: DAYS_MESSAGE })

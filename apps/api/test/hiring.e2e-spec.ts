@@ -261,7 +261,8 @@ describe('Hiring in one form (e2e)', () => {
     expect(await prisma.employment.count({ where: { employeeId: e.id } })).toBe(1);
     expect(await prisma.contract.count({ where: { employment: { employeeId: e.id } } })).toBe(1);
 
-    const hourly = { payBasis: 'hourly', hourlyRate: 150, hoursPerWeek: 16, daysPerWeek: 2 };
+    // with a minimum a month (owner, 27 October 2026: "can i add rate per hour with a minimum monthly payment?")
+    const hourly = { payBasis: 'hourly', hourlyRate: 150, hoursPerWeek: 16, daysPerWeek: 2, hourlyMinimum: 8000 };
     const again = (await postHire(e.id, { employment: job({ joinDate: '2026-03-01', employmentType: 'part_time' }), contract: hourly }).expect(201)).body as Profile;
     expect(again.employment).toMatchObject({ joinDate: '2026-03-01', employmentType: 'part_time', status: 'active', probationEnd: null });
     expect(again.employments.map((x) => x.joinDate)).toEqual(['2026-03-01', '2025-01-01']);
@@ -274,6 +275,7 @@ describe('Hiring in one form (e2e)', () => {
       payBasis: 'hourly',
       hourlyRate: 150,
       hoursPerWeek: 16,
+      hourlyMinimum: 8000,
       daysPerWeek: 2,
     });
     // the first employment keeps its own contract

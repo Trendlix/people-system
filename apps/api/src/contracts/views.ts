@@ -139,8 +139,8 @@ export function lawFieldsOf(e: { workArrangement: string; paidByCommission: bool
 /**
  * A contract version. The basic salary is `basic_percent` of the gross, the variable salary the rest; the allowances
  * are paid on top of the gross, and the total salary is the two together. By the hour, the gross is the monthly
- * estimate (rate × hours a week × 52 ÷ 12). Salary fields (the hourly rate and the allowances too) are null for anyone
- * but HR, Finance and the CEO, with `salaryHidden: true`.
+ * estimate (rate × hours a week × 52 ÷ 12). Salary fields (the hourly rate, its minimum a month and the allowances too)
+ * are null for anyone but HR, Finance and the CEO, with `salaryHidden: true`.
  */
 export function contractView(c: ContractRow, ctx: ContractContext) {
   const grossCents = Math.round(c.grossSalary.toNumber() * 100);
@@ -156,6 +156,8 @@ export function contractView(c: ContractRow, ctx: ContractContext) {
         netSalary: money(c.netSalary),
         insuredSalary: money(c.insuredSalary),
         hourlyRate: money(c.hourlyRate),
+        // by the hour, the least paid a month (owner, 27 October 2026: "can i add rate per hour with a minimum monthly payment?")
+        hourlyMinimum: money(c.hourlyMinimum),
         allowances,
         allowancesTotal: allowancesCents / 100,
         totalSalary: (grossCents + allowancesCents) / 100,
@@ -168,6 +170,7 @@ export function contractView(c: ContractRow, ctx: ContractContext) {
         netSalary: null,
         insuredSalary: null,
         hourlyRate: null,
+        hourlyMinimum: null,
         allowances: null,
         allowancesTotal: null,
         totalSalary: null,
@@ -315,6 +318,7 @@ export function contractListView(c: ContractListRow, ctx: ContractContext) {
     daysPerWeek: v.daysPerWeek,
     grossSalary: v.grossSalary,
     hourlyRate: v.hourlyRate,
+    hourlyMinimum: v.hourlyMinimum,
     allowances: v.allowances,
     allowancesTotal: v.allowancesTotal,
     totalSalary: v.totalSalary,

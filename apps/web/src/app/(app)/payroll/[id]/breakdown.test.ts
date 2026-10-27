@@ -253,6 +253,20 @@ describe('a line’s breakdown', () => {
     expect(hourly[0]).toMatchObject({ value: 'EGP 12,050.00', note: '120:30 hours at EGP 100.00 an hour' });
     expect(hourly.find((r) => r.key === 'expected' || r.key === 'leave')).toBeUndefined();
   });
+
+  // owner, 27 October 2026: "can i add rate per hour with a minimum monthly payment?" (he chose "Prorated by days")
+  it('by the hour, shows the top-up to the minimum a month apart from the hours', () => {
+    const hourly: PayrollTerms = { ...terms, payBasis: 'hourly', hourlyRate: 250, hourlyMinimum: 12_000, expectedHours: null, expectedDays: null, adjustments: [] };
+    const october = lineOf(hourly, { ...EMPTY_PAYROLL_INPUTS, workedHours: 32 });
+    expect(stepOf(october, 'hours')).toMatchObject({ value: 'EGP 8,000.00', note: '32:00 hours at EGP 250.00 an hour' });
+    expect(stepOf(october, 'hourlyTopUp')).toEqual({ key: 'hourlyTopUp', label: 'Topped up to the minimum', value: 'EGP 4,000.00', kind: 'add', note: 'Minimum EGP 12,000.00 a month' });
+    expect(stepOf(october, 'earned')?.value).toBe('EGP 12,000.00');
+    // a part month: the minimum for the days paid
+    const part = lineOf({ ...hourly, paidDays: 16 }, { ...EMPTY_PAYROLL_INPUTS, workedHours: 10 });
+    expect(stepOf(part, 'hourlyTopUp')).toMatchObject({ value: 'EGP 3,900.00', note: 'Minimum EGP 12,000.00 a month, for 16 of 30 days' });
+    // the hours above the minimum: no top-up row
+    expect(stepOf(lineOf(hourly, { ...EMPTY_PAYROLL_INPUTS, workedHours: 60 }), 'hourlyTopUp')).toBeUndefined();
+  });
 });
 
 describe('breakdown: the expected hours (owner, 17 October 2026: "prefill the expected hours, and dont count abcent days or leave days")', () => {

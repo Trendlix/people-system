@@ -3,6 +3,7 @@ import {
   bankNamed,
   CONTRACT_FORM_LABELS,
   CONTRACT_FORM_LABELS_AR,
+  hourlyMinimumLine,
   insuredWageFrom,
   isPerAccount,
   LABELS,
@@ -151,6 +152,8 @@ export interface ValueSources {
     payBasis: string;
     hourlyRate: Decimal | null;
     hoursPerWeek: Decimal | null;
+    /** By the hour: the least paid a month (27 October 2026). Missing or null: none. */
+    hourlyMinimum?: Decimal | null;
     daysPerWeek: number | null;
     /** A month each, as on the contract or offer; one paid per client account (25 October 2026) with no amount (0). */
     allowances: readonly { nameEn: string; nameAr: string; amount: Decimal; basis?: string | null; perAccountAmount?: Decimal | null }[];
@@ -282,6 +285,9 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
   const insuredWage = () => (comprehensive === null ? null : insuredWageFrom(comprehensive, lawRatesFor(Number(todayInCairo().slice(0, 4)), src.lawYears)).amount);
   // by the hour, the net of an hour: the approximate net ÷ the hours of a month (hours a week × 52 ÷ 12), to the piaster
   const netHourly = c?.payBasis === 'hourly' && net !== null && hours ? Math.round((net / (hours * WEEKS_PER_MONTH) + Number.EPSILON) * 100) / 100 : null;
+  // by the hour, the least paid a month (owner, 27 October 2026: "can i add rate per hour with a minimum monthly
+  // payment?"): the amount and its line, blank without one
+  const hourlyMinimum = c?.payBasis === 'hourly' ? amount(c.hourlyMinimum) : null;
 
   // the values that depend on the language, in either
   const jobTitle = (lang: Lang) =>
@@ -461,6 +467,10 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
     insured_salary_words_en: () => wordsEn(amount(c?.insuredSalary)),
     hourly_rate: () => printedMoney(amount(c?.hourlyRate)),
     net_hourly_rate: () => printedMoney(netHourly),
+    hourly_minimum: () => printedMoney(hourlyMinimum),
+    hourly_minimum_line: () => hourlyMinimumLine(hourlyMinimum, printedMoney, language),
+    hourly_minimum_line_ar: () => hourlyMinimumLine(hourlyMinimum, printedMoney, 'ar'),
+    hourly_minimum_line_en: () => hourlyMinimumLine(hourlyMinimum, printedMoney, 'en'),
     allowances: () => allowances(language),
     allowances_ar: () => allowances('ar'),
     allowances_en: () => allowances('en'),
@@ -676,6 +686,11 @@ const WHERE: Record<string, Where> = {
   paid_by_commission_en: EMPLOYMENT('paidByCommission'),
   hourly_rate: CONTRACTS('hourlyRate'),
   net_hourly_rate: CONTRACTS('netSalary'), // by the hour; a monthly salary has none
+  // printed blank without one (MAY_BE_BLANK), so only ever pointed to
+  hourly_minimum: CONTRACTS('hourlyMinimum'),
+  hourly_minimum_line: CONTRACTS('hourlyMinimum'),
+  hourly_minimum_line_ar: CONTRACTS('hourlyMinimum'),
+  hourly_minimum_line_en: CONTRACTS('hourlyMinimum'),
   allowances: CONTRACTS('allowances'),
   allowances_ar: CONTRACTS('allowances'),
   allowances_en: CONTRACTS('allowances'),
@@ -779,8 +794,18 @@ const TAGS = new Map(TEMPLATE_TAGS.map((t) => [t.tag, t]));
  * Tags printed blank when they have no value, never stopping a document: {{title_ar}} without a gender (owner, 22
  * October 2026: "if no gender leave blank").
  */
-// and the accounts allowance's line without a per-account allowance (25 October 2026): the line is for those who have one
-const MAY_BE_BLANK: ReadonlySet<string> = new Set(['title_ar', 'accounts_allowance', 'accounts_allowance_ar', 'accounts_allowance_en']);
+// and the accounts allowance's line without a per-account allowance (25 October 2026): the line is for those who have one;
+// the same for the minimum a month by the hour (27 October 2026)
+const MAY_BE_BLANK: ReadonlySet<string> = new Set([
+  'title_ar',
+  'accounts_allowance',
+  'accounts_allowance_ar',
+  'accounts_allowance_en',
+  'hourly_minimum',
+  'hourly_minimum_line',
+  'hourly_minimum_line_ar',
+  'hourly_minimum_line_en',
+]);
 
 /** How an Arabic document addresses the person by their gender: السيد, السيدة, or nothing without one. */
 export const arabicTitle = (gender: string | null | undefined): string => (gender === 'male' ? 'السيد' : gender === 'female' ? 'السيدة' : '');

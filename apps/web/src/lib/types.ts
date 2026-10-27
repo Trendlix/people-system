@@ -1190,6 +1190,11 @@ export interface ContractPay {
   hourlyRate: number | null;
   /** By the hour: the contracted hours a week. Null for a monthly salary. */
   hoursPerWeek: number | null;
+  /**
+   * By the hour: the least paid a month (owner, 27 October 2026: "can i add rate per hour with a minimum monthly
+   * payment?"); null without one, for a monthly salary, and hidden like the salary.
+   */
+  hourlyMinimum?: number | null;
   /** Working days a week, e.g. 2 or 3 part-time (1 to 6); null: the shift's week. */
   daysPerWeek: number | null;
   /** Each allowance a month, with its kind's name and treatment as drafted. */
@@ -1669,6 +1674,8 @@ export interface OfferView {
   grossSalary: number | null;
   hourlyRate: number | null;
   hoursPerWeek: number | null;
+  /** By the hour: the least paid a month (27 October 2026); null without one, and hidden like the salary. */
+  hourlyMinimum?: number | null;
   daysPerWeek: number | null;
   basicPercent: number | null;
   netSalary: number | null;

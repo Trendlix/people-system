@@ -76,6 +76,9 @@ describe('Payroll by the contracts’ dates (e2e)', () => {
   let ending: Person;
   let lateStart: Person;
   let toMonthly: Person;
+  // by the hour with a minimum a month (owner, 27 October 2026): the whole month, and joined on the 16th
+  let withMinimum: Person;
+  let minimumLate: Person;
   const contracts: Record<string, Contract[]> = {};
 
   async function hire(name: string, joinDate: string): Promise<Person> {
@@ -148,7 +151,14 @@ describe('Payroll by the contracts’ dates (e2e)', () => {
     await signed(toMonthly, { payBasis: 'hourly', hourlyRate: 100, hoursPerWeek: 20, durationMonths: 2, probationMonths: 0 });
     await signed(toMonthly, { payBasis: 'monthly', grossSalary: 12000, durationMonths: 12, raiseReason: 'annual' });
 
-    run = (await api().post('/api/payroll/runs').set('Cookie', hr).send({ month: MONTH }).expect(201)).body as Run;
+    // 250 an hour for 20 hours a week, with a minimum of 12,000 a month (owner, 27 October 2026: "can i add rate per
+    // hour with a minimum monthly payment?"): all month, and joined on the 16th
+    withMinimum = await hire('Minimum', twoMonthsBefore(1));
+    await signed(withMinimum, { payBasis: 'hourly', hourlyRate: 250, hoursPerWeek: 20, hourlyMinimum: 12000, durationMonths: 12, probationMonths: 0 });
+    minimumLate = await hire('Minimum Late', day(16));
+    await signed(minimumLate, { payBasis: 'hourly', hourlyRate: 250, hoursPerWeek: 20, hourlyMinimum: 12000, probationMonths: 0 });
+
+    run =(await api().post('/api/payroll/runs').set('Cookie', hr).send({ month: MONTH }).expect(201)).body as Run;
   });
 
   afterAll(async () => {
@@ -230,6 +240,30 @@ describe('Payroll by the contracts’ dates (e2e)', () => {
     expect(line.result.warnings).toEqual([
       `2 contracts this month, one paid by the hour: the whole month is paid on the latest, ${v2.number} v2, as hours can't be split between contracts without attendance`,
     ]);
+  });
+
+  // owner, 27 October 2026: "can i add rate per hour with a minimum monthly payment?"; he chose "On each contract" and
+  // "Prorated by days"
+  it('by the hour with a minimum a month: the hours topped up to it, for the days paid in a part month', async () => {
+    expect(lineOf(withMinimum)).toMatchObject({ payBasis: 'hourly', terms: { payBasis: 'hourly', hourlyRate: 250, hourlyMinimum: 12000, paidDays: 30 } });
+    expect(lineOf(withMinimum).terms.segments).toMatchObject([{ payBasis: 'hourly', hourlyRate: 250, hourlyMinimum: 12000 }]);
+    // no hours yet: the minimum, said so
+    expect(lineOf(withMinimum).result).toMatchObject({ fixed: 12000, hourlyTopUp: 12000, earned: 12000 });
+    expect(lineOf(withMinimum).result.warnings).toContain('Paid by the hour, but no worked hours are given: only the minimum a month is paid');
+    // the owner's October: 32 h × 250 = 8,000, paid 12,000
+    await patchLine(withMinimum, { workedHours: 32 });
+    expect(lineOf(withMinimum).result).toMatchObject({ fixed: 12000, hourlyTopUp: 4000, earned: 12000, parts: [{ fixed: 12000, variable: 0 }] });
+    // more hours than the minimum: the hours, no top-up
+    await patchLine(withMinimum, { workedHours: 60 });
+    expect(lineOf(withMinimum).result).toMatchObject({ fixed: 15000, earned: 15000 });
+    expect(lineOf(withMinimum).result).not.toHaveProperty('hourlyTopUp');
+
+    // joined on the 16th: the minimum × the days paid ÷ 30, as a monthly salary's part month
+    const paidDays = LAST - 15;
+    expect(lineOf(minimumLate).terms).toMatchObject({ paidDays, hourlyMinimum: 12000 });
+    await patchLine(minimumLate, { workedHours: 10 });
+    const minimum = Math.round((12000 * paidDays * 100) / 30) / 100;
+    expect(lineOf(minimumLate).result).toMatchObject({ fixed: minimum, hourlyTopUp: Math.round((minimum - 2500) * 100) / 100, earned: minimum });
   });
 
   it('the expected hours are the shift’s less the no-show and leave days, never typed (20 October 2026)', async () => {

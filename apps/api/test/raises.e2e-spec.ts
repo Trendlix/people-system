@@ -621,4 +621,39 @@ describe('Pay raises (e2e)', () => {
       ]);
     });
   });
+
+  // owner, 27 October 2026: "can i add rate per hour with a minimum monthly payment?"; he chose "On each contract": "Each
+  // person can have a different minimum, and raises and contract history keep it"
+  describe('by the hour with a minimum a month', () => {
+    it('a raise keeps the minimum unless another is sent; a new minimum alone is a raise; the CEO sees it', async () => {
+      const hana = await hire('Hana Hourly', { employmentType: 'part_time' });
+      await signedContract(hana, { payBasis: 'hourly', hourlyRate: 250, hoursPerWeek: 20, hourlyMinimum: 12000 });
+      const amendment = { way: 'amendment', effectiveDate: EFFECTIVE, reason: 'annual' };
+      // the rate raised: the minimum as it is
+      const rate = (await postRaise(hana, { ...amendment, hourlyRate: 275 }).expect(201)).body as Contract;
+      expect(rate).toMatchObject({ kind: 'amendment', payBasis: 'hourly', hourlyRate: 275, hoursPerWeek: 20, hourlyMinimum: 12000 });
+      await api().delete(`/api/contracts/${rate.id}`).set('Cookie', superAdmin).expect(204);
+      // the same rate and minimum: no raise
+      expect((await postRaise(hana, { ...amendment, hourlyMinimum: 12000 }).expect(400)).body.message).toBe(
+        'The new pay is the same as now: a raise changes the pay. A promotion alone is changed on the employment.',
+      );
+      // a new minimum alone is new pay, for the CEO, who sees it beside the one before
+      const minimum = (await postRaise(hana, { ...amendment, hourlyMinimum: 14000 }).expect(201)).body as Contract;
+      expect(minimum).toMatchObject({ hourlyRate: 250, hourlyMinimum: 14000, raise: { approval: 'draft' } });
+      expect(((await patchRaise(minimum.id, { hourlyMinimum: 15000 }).expect(200)).body as Contract).hourlyMinimum).toBe(15000);
+      await step(minimum.id, 'send', hr).expect(200);
+      const pending = (await api().get('/api/raises/pending').set('Cookie', ceo).expect(200)).body as (Contract & { previous: { hourlyMinimum: number | null } })[];
+      expect(pending.find((r) => r.id === minimum.id)).toMatchObject({ hourlyMinimum: 15000, previous: { hourlyRate: 250, hourlyMinimum: 12000 } });
+      await step(minimum.id, 'approve', ceo, { comment: 'Invented approval' }).expect(200);
+      await sign(minimum.id).expect(200);
+      // the salary history keeps each minimum, and counts the new one as new pay
+      const history = (await api().get(`/api/employees/${hana.id}/salary-history`).set('Cookie', hr).expect(200)).body as {
+        employments: { events: { change: string; samePay: boolean; hourlyMinimum?: number }[] }[];
+      };
+      expect(history.employments[0].events.map((e) => [e.change, e.samePay, e.hourlyMinimum])).toEqual([
+        ['hired', false, 12000],
+        ['amendment', false, 15000],
+      ]);
+    });
+  });
 });

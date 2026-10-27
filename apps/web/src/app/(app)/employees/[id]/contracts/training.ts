@@ -128,6 +128,7 @@ export function conversionDefaults(settings: ContractSettings, agreement: Contra
     grossSalary: null,
     hourlyRate: null,
     hoursPerWeek: null,
+    hourlyMinimum: null,
     daysPerWeek: agreement.daysPerWeek ?? null,
     basicPercent: settings.basicPercentDefault ?? agreement.basicPercent ?? 80,
     netSalary: null,

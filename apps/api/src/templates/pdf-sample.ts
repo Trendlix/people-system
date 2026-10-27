@@ -43,8 +43,9 @@ function boxesSample(tag: string): string {
   const t = TAGS.get(tag);
   if (t?.note?.startsWith('DD/MM/YYYY')) return DATE;
   // an amount of money: the pay tags but the words, the lists of allowances and the accounts allowance's line (25 October
-  // 2026), and the final settlement's total deducted (20 October 2026: its deductions are lines of words now)
-  if ((t?.group === 'pay' && !/_words|^allowances(_ar|_en)?$|^accounts_allowance/.test(tag)) || tag === 'deductions_total') return MONEY;
+  // 2026) and the minimum a month's (27 October 2026), and the final settlement's total deducted (20 October 2026: its
+  // deductions are lines of words now)
+  if ((t?.group === 'pay' && !/_words|^allowances(_ar|_en)?$|^accounts_allowance|^hourly_minimum_line/.test(tag)) || tag === 'deductions_total') return MONEY;
   return DIGITS;
 }
 

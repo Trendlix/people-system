@@ -99,6 +99,7 @@ async function NewRaise({ params, searchParams }: { params: Promise<{ id: string
         grossSalary: (active.payBasis !== 'hourly' && (preparable?.suggestion?.gross ?? preparable?.suggestedGross)) || active.grossSalary,
         hourlyRate: active.hourlyRate ?? null,
         hoursPerWeek: active.hoursPerWeek ?? null,
+        hourlyMinimum: active.hourlyMinimum ?? null,
         daysPerWeek: active.daysPerWeek ?? null,
         basicPercent: active.basicPercent ?? 80,
         netSalary: active.netSalary,

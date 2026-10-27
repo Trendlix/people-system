@@ -213,6 +213,19 @@ describe('pay by the hour', () => {
     offerBody(form({ ...hourly, daysPerWeek: '7' }), errors, { draft: false, allowances: [] });
     expect(errors).toEqual(['Enter the working days a week as a whole number from 1 to 6, e.g. 3.']);
   });
+
+  // owner, 27 October 2026: "can i add rate per hour with a minimum monthly payment?"
+  it('sends the minimum a month when typed; empty, none (cleared on a draft); never for a monthly salary', () => {
+    const errors: string[] = [];
+    expect(offerBody(form({ ...hourly, hourlyMinimum: '12,000' }), errors, { draft: false, allowances: [] })).toMatchObject({ hourlyMinimum: 12000 });
+    expect(offerBody(form(hourly), errors, { draft: false, allowances: [] }).hourlyMinimum).toBeUndefined();
+    expect(offerBody(form(hourly), errors, { draft: true, allowances: [] }).hourlyMinimum).toBeNull();
+    expect(offerBody(form({ ...filled, hourlyMinimum: '12,000' }), errors, { draft: true, allowances: [] }).hourlyMinimum).toBeNull();
+    expect(errors).toEqual([]);
+    offerBody(form({ ...hourly, hourlyMinimum: '0' }), errors, { draft: false, allowances: [] });
+    expect(errors).toEqual(['Enter the minimum a month as an amount in EGP above 0, e.g. 12,000, or leave it empty for none.']);
+    expect(offerDefaults({ hourlyMinimum: 12000, allowances: [] } as unknown as OfferView).hourlyMinimum).toBe(12000);
+  });
 });
 
 describe('changing a draft', () => {

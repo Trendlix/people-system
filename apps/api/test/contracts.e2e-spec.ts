@@ -290,6 +290,7 @@ describe('Contracts (e2e)', () => {
         netSalary: null,
         insuredSalary: 12000,
         hourlyRate: null,
+        hourlyMinimum: null,
         allowances: [],
         allowancesTotal: 0,
         totalSalary: 12000,
@@ -362,6 +363,7 @@ describe('Contracts (e2e)', () => {
         netSalary: null,
         insuredSalary: null,
         hourlyRate: null,
+        hourlyMinimum: null,
         allowances: null,
         allowancesTotal: null,
         totalSalary: null,
@@ -647,6 +649,44 @@ describe('Contracts (e2e)', () => {
       await postContract(e, { payBasis: 'hourly', hourlyRate: 0, hoursPerWeek: 20 }).expect(400);
       await postContract(e, { payBasis: 'weekly', grossSalary: 9000 }).expect(400);
       expect(await addContract(e, { payBasis: 'hourly', hourlyRate: 120.5, hoursPerWeek: 48 })).toMatchObject({ grossSalary: 25064 }); // 120.5 × 48 × 52 ÷ 12
+    });
+
+    // owner, 27 October 2026: "can i add rate per hour with a minimum monthly payment?" (he chose "On each contract")
+    it('by the hour, a minimum a month: optional, more than 0, none on a monthly salary; a new one is new pay', async () => {
+      const MINIMUM = 'Enter the minimum a month as an amount of more than 0, e.g. 12000 or 12000.50, or leave it empty for none.';
+      const MONTHLY_NO_MINIMUM = 'A monthly salary has no minimum a month: that is for pay by the hour. Clear it, or choose pay by the hour.';
+      const hourly = { payBasis: 'hourly', hourlyRate: 250, hoursPerWeek: 20 };
+      const e = await newHire('Hourly Minimum', { employmentType: 'part_time' });
+      for (const hourlyMinimum of [0, -1, 12000.555]) expect((await postContract(e, { ...hourly, hourlyMinimum }).expect(400)).body.message).toEqual([MINIMUM]);
+      expect((await postContract(e, { grossSalary: 9000, hourlyMinimum: 5000 }).expect(400)).body.message).toBe(MONTHLY_NO_MINIMUM);
+
+      const c = await addContract(e, { ...hourly, hourlyMinimum: 12000 });
+      expect(c).toMatchObject({ payBasis: 'hourly', hourlyRate: 250, hoursPerWeek: 20, hourlyMinimum: 12000, grossSalary: 21666.67 });
+      // a draft keeps it while other terms change, and changes or clears it when sent
+      expect((await patchContract(c.id, { hourlyRate: 260 }).expect(200)).body.hourlyMinimum).toBe(12000);
+      expect((await patchContract(c.id, { hourlyMinimum: 14000 }).expect(200)).body.hourlyMinimum).toBe(14000);
+      expect((await patchContract(c.id, { hourlyMinimum: null }).expect(200)).body.hourlyMinimum).toBeNull();
+      // switched to a monthly salary, it goes with the rate; sent with one, refused
+      await patchContract(c.id, { hourlyMinimum: 12000 }).expect(200);
+      expect((await patchContract(c.id, { payBasis: 'monthly', hourlyMinimum: 12000 }).expect(400)).body.message).toBe(MONTHLY_NO_MINIMUM);
+      expect((await patchContract(c.id, { payBasis: 'monthly' }).expect(200)).body).toMatchObject({ payBasis: 'monthly', hourlyRate: null, hourlyMinimum: null });
+      // the salary audit masks it like the rate
+      const audit = await prisma.auditLog.findMany({ where: { entityType: 'contract', entityId: c.id }, orderBy: { id: 'asc' } });
+      expect(audit[0].diff).toMatchObject({ hourlyMinimum: 'changed' });
+      for (const { diff } of audit) expect((diff as Record<string, unknown>).hourlyMinimum ?? 'changed').toBe('changed');
+      await api().delete(`/api/contracts/${c.id}`).set('Cookie', superAdmin).expect(204);
+
+      // signed with a minimum, a renewal with the same pay needs no CEO step; a new minimum alone is new pay
+      const v1 = await signedContract(e, { ...hourly, hourlyMinimum: 12000 });
+      expect(v1).toMatchObject({ status: 'active', hourlyMinimum: 12000 });
+      expect((await patchContract(v1.id, { hourlyMinimum: 13000 }).expect(400)).body.message).toMatch(/^This contract is signed/);
+      expect((await postContract(e, { ...hourly, hourlyMinimum: 14000 }).expect(400)).body.message).toMatch(/^The pay changes from version 1: choose why/);
+      const same = await addContract(e, { ...hourly, hourlyMinimum: 12000 });
+      expect(same).toMatchObject({ version: 2, hourlyMinimum: 12000, raise: null });
+      await api().delete(`/api/contracts/${same.id}`).set('Cookie', superAdmin).expect(204);
+      const raised = await addContract(e, { ...hourly, hourlyMinimum: 14000, raiseReason: 'annual' });
+      expect(raised).toMatchObject({ version: 2, hourlyMinimum: 14000, raise: { reason: 'annual', approval: 'draft' } });
+      await api().delete(`/api/contracts/${raised.id}`).set('Cookie', superAdmin).expect(204);
     });
 
     it('days a week: any employment type, optional, 1 to 6; cleared with null', async () => {

@@ -62,6 +62,8 @@ export interface PendingRaise extends Contract {
     hourlyRate: number | null;
     /** By the hour: its hours a week (17 October 2026; an API from before doesn't send them). */
     hoursPerWeek?: number | null;
+    /** By the hour: its minimum a month (27 October 2026; null without one or hidden, left out by an API from before). */
+    hourlyMinimum?: number | null;
     allowancesTotal: number | null;
     /** Its allowances as the net is worked out from them, for the figures of the CEO's other raise (17 October 2026). */
     allowances?: PayAllowance[] | null;

@@ -42,7 +42,7 @@ export interface PendingRaiseView {
   change: string | null;
   allowances: string;
   total: string;
-  /** By the hour: the rate from → to. */
+  /** By the hour: the rate from → to, and the minimum a month from → to (27 October 2026). */
   hourly: string | null;
   reason: string | null;
   promotion: string | null;
@@ -58,10 +58,21 @@ export function pendingRaiseView(r: PendingRaise): PendingRaiseView {
   const grossBefore = before?.grossSalary ?? null;
   const rateBefore = before?.hourlyRate ?? null;
   const promotion = r.raise && [r.raise.newJobTitle?.titleEn, r.raise.newGrade && `grade ${r.raise.newGrade.code}`].filter(Boolean).join(', ');
-  const hourly =
+  const rate =
     r.payBasis === 'hourly' && r.hourlyRate !== null
       ? `${rateBefore !== null && rateBefore !== r.hourlyRate ? `${formatEgp(rateBefore)} → ` : ''}${formatEgp(r.hourlyRate)} an hour; the gross is the monthly estimate`
       : null;
+  // the minimum a month by the hour (owner, 27 October 2026: "can i add rate per hour with a minimum monthly payment?"):
+  // a new one is new pay, so the CEO sees it change
+  const minimum = r.hourlyMinimum ?? null;
+  const minimumBefore = before?.payBasis === 'hourly' ? (before.hourlyMinimum ?? null) : null;
+  const minimumText =
+    r.payBasis !== 'hourly' || (minimum === null && minimumBefore === null)
+      ? null
+      : minimum === null
+        ? `no minimum a month (was ${formatEgp(minimumBefore!)})`
+        : `minimum ${minimumBefore !== null && minimumBefore !== minimum ? `${formatEgp(minimumBefore)} → ` : ''}${formatEgp(minimum)} a month`;
+  const hourly = [rate, minimumText].filter(Boolean).join(' · ') || null;
   const name = r.employee.fullNameEn;
   return {
     kind: PAY_CHANGE_LABELS[r.change] ?? r.change,

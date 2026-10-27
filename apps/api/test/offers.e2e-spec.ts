@@ -330,6 +330,22 @@ describe('Job offers (e2e)', () => {
       expect(monthly).toMatchObject({ payBasis: 'monthly', grossSalary: 9000, hourlyRate: null, hoursPerWeek: null });
     });
 
+    // owner, 27 October 2026: "can i add rate per hour with a minimum monthly payment?"
+    it('by the hour, a minimum a month: optional, more than 0, cleared with the rate for a monthly salary', async () => {
+      const hourly = { employmentType: 'part_time', payBasis: 'hourly', hourlyRate: 250, hoursPerWeek: 20, daysPerWeek: 3, grossSalary: undefined };
+      const o = await draft('Mina Minimum', { ...hourly, hourlyMinimum: 12000 });
+      expect(o).toMatchObject({ payBasis: 'hourly', hourlyRate: 250, hourlyMinimum: 12000, grossSalary: monthlyFromHourly(250, 20) });
+      expect((await patch(o.id, { hourlyMinimum: 0 }).expect(400)).body.message).toEqual([
+        'Enter the minimum a month as an amount of more than 0, e.g. 12000 or 12000.50, or leave it empty for none.',
+      ]);
+      expect(((await patch(o.id, { hourlyRate: 260 }).expect(200)).body as Offer).hourlyMinimum).toBe(12000);
+      expect(((await patch(o.id, { hourlyMinimum: null }).expect(200)).body as Offer).hourlyMinimum).toBeNull();
+      await patch(o.id, { hourlyMinimum: 12000 }).expect(200);
+      expect((await patch(o.id, { payBasis: 'monthly', grossSalary: 9000 }).expect(200)).body).toMatchObject({ payBasis: 'monthly', hourlyRate: null, hourlyMinimum: null });
+      const audit = await prisma.auditLog.findMany({ where: { entityType: 'job_offer', entityId: o.id } });
+      for (const { diff } of audit) expect((diff as Record<string, unknown>).hourlyMinimum ?? 'changed').toBe('changed');
+    });
+
     it('allowances are kept as their kinds are now, and count in the total and the insured wage', async () => {
       const o = await draft('Ali Allowance', { grossSalary: 10000, allowances: [{ allowanceTypeId: housingId, amount: 2000 }] });
       // paid a fixed amount a month (an allowance per client account has none: 25 October 2026)
@@ -953,6 +969,19 @@ describe('Job offers (e2e)', () => {
       expect(doc.note).toBe(`Accepted, recorded by HR (${o.number})`);
       const audit = await prisma.auditLog.findFirst({ where: { entityType: 'employee', entityId: res.body.employeeId, action: 'create' } });
       expect(audit?.userId).not.toBeNull();
+    });
+
+    // owner, 27 October 2026: "can i add rate per hour with a minimum monthly payment?" (he chose "On each contract")
+    it('by the hour with a minimum a month: the draft contract made from it has the same minimum', async () => {
+      const o = await draft('Hana Hourly Minimum', { payBasis: 'hourly', hourlyRate: 250, hoursPerWeek: 20, hourlyMinimum: 12000, grossSalary: undefined });
+      const res = await answer(o.id, { answer: 'accepted' }).expect(200);
+      expect(res.body).toMatchObject({ status: 'accepted', hiredAt: expect.any(String), hireError: null });
+      const contract = await prisma.contract.findFirstOrThrow({ where: { employment: { employeeId: res.body.employeeId } } });
+      expect(contract).toMatchObject({ version: 1, status: 'draft', payBasis: 'hourly' });
+      expect([contract.hourlyRate?.toNumber(), contract.hourlyMinimum?.toNumber()]).toEqual([250, 12000]);
+      // masked in the audit like the rate
+      const made = await prisma.auditLog.findFirst({ where: { entityType: 'contract', entityId: contract.id } });
+      expect(made?.diff).toMatchObject({ hourlyRate: 'changed', hourlyMinimum: 'changed' });
     });
   });
 

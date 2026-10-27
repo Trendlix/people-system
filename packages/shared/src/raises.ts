@@ -201,12 +201,20 @@ export function insuredWageVersion<V extends { version?: number; insuredWageFrom
 
 // ---------- the pay ----------
 
-/** A version's pay, to compare: how it is set, the gross, the rate and hours by the hour, the basic share, the allowances. */
+/**
+ * A version's pay, to compare: how it is set, the gross, the rate, hours and minimum a month by the hour, the basic
+ * share, the allowances.
+ */
 export interface PayTerms {
   payBasis: string;
   grossSalary: number;
   hourlyRate: number | null;
   hoursPerWeek: number | null;
+  /**
+   * By the hour: the least paid a month (owner, 27 October 2026: "can i add rate per hour with a minimum monthly
+   * payment?"; he chose "On each contract"), pay like the rate, so a new minimum is a change of pay. Left out or null: none.
+   */
+  hourlyMinimum?: number | null;
   basicPercent: number;
   /** A per-account one's amount per account (27 October 2026), when the contract sets one; left out or null: none. */
   allowances: readonly { allowanceTypeId: string; amount: number; perAccountAmount?: number | null }[];
@@ -215,12 +223,13 @@ export interface PayTerms {
 const cents = (n: number | null) => (n === null ? null : Math.round(n * 100));
 
 /**
- * Whether two versions pay the same: the same basis, gross, rate, hours, basic share and allowances (kind and amount, and
- * a per-account one's amount per account).
+ * Whether two versions pay the same: the same basis, gross, rate, hours, minimum a month (27 October 2026), basic share
+ * and allowances (kind and amount, and a per-account one's amount per account).
  */
 export function samePay(a: PayTerms, b: PayTerms): boolean {
   if (a.payBasis !== b.payBasis || cents(a.grossSalary) !== cents(b.grossSalary) || a.basicPercent !== b.basicPercent) return false;
   if (cents(a.hourlyRate) !== cents(b.hourlyRate) || a.hoursPerWeek !== b.hoursPerWeek) return false;
+  if (cents(a.hourlyMinimum ?? null) !== cents(b.hourlyMinimum ?? null)) return false;
   const sorted = (rows: PayTerms['allowances']) => [...rows].map((r) => `${r.allowanceTypeId}:${cents(r.amount)}:${cents(r.perAccountAmount ?? null)}`).sort().join('|');
   return sorted(a.allowances) === sorted(b.allowances);
 }

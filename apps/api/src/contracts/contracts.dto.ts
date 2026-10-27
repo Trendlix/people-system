@@ -59,6 +59,7 @@ export const MAX_MONEY = 9_999_999_999.99;
 const MAX_HOURLY_RATE = 99_999_999.99;
 const HOURLY_RATE_MESSAGE = 'Enter the hourly rate as an amount of more than 0, e.g. 150 or 162.50.';
 const HOURS_MESSAGE = 'Enter the hours a week as a number of more than 0 and up to 48, e.g. 24 or 22.5.';
+const HOURLY_MINIMUM_MESSAGE = 'Enter the minimum a month as an amount of more than 0, e.g. 12000 or 12000.50, or leave it empty for none.';
 const DAYS_MESSAGE = 'Enter the working days a week as a whole number, 1 to 6.';
 export const RAISE_REASON_MESSAGE =
   'Choose why the pay changes: annual, performance, counter_offer, promotion, market_adjustment, cost_of_living or other.';
@@ -145,6 +146,14 @@ export class PayTermsDto {
   /** By the hour only (required then): the contracted hours a week, up to the legal 48, to one decimal. */
   @IsOptional() @IsNumber({ maxDecimalPlaces: 1 }, { message: HOURS_MESSAGE }) @Min(0.1, { message: HOURS_MESSAGE }) @Max(48, { message: HOURS_MESSAGE })
   hoursPerWeek?: number | null;
+
+  /**
+   * By the hour only, optional: the least paid a month (owner, 27 October 2026: "can i add rate per hour with a minimum
+   * monthly payment?"; he chose "On each contract"). Payroll pays the hours × the rate, or this for the days paid if more.
+   * Empty: no minimum.
+   */
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 2 }, { message: HOURLY_MINIMUM_MESSAGE }) @Min(0.01, { message: HOURLY_MINIMUM_MESSAGE }) @Max(MAX_MONEY, { message: HOURLY_MINIMUM_MESSAGE })
+  hourlyMinimum?: number | null;
 
   /** The working days a week (part-time: 2, 3 …), any employment type; empty: the shift's week. */
   @IsOptional() @IsInt({ message: DAYS_MESSAGE }) @Min(1, { message: DAYS_MESSAGE }) @Max(6, { message: DAYS_MESSAGE })

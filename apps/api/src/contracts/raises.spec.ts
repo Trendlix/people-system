@@ -19,6 +19,7 @@ describe('the CEO’s step a new version takes', () => {
     grossSalary: new Prisma.Decimal(12000),
     hourlyRate: null,
     hoursPerWeek: null,
+    hourlyMinimum: null,
     basicPercent: 80,
     allowances: [{ allowanceTypeId: 'transport', amount: new Prisma.Decimal(500) }],
   };
@@ -35,5 +36,16 @@ describe('the CEO’s step a new version takes', () => {
     expect(() => payChangeStep(previous, { ...same, grossSalary: 13000 }, undefined)).toThrow(
       'The pay changes from version 2: choose why (annual raise, performance raise, counter-offer raise, promotion, market adjustment, cost of living or other). The CEO approves a change of pay before it is signed.',
     );
+  });
+
+  // owner, 27 October 2026: "can i add rate per hour with a minimum monthly payment?" (he chose "On each contract")
+  it('by the hour, a new minimum a month is new pay: the CEO approves it', () => {
+    const hourly = { ...previous, payBasis: 'hourly', grossSalary: new Prisma.Decimal(21666.67), hourlyRate: new Prisma.Decimal(250), hoursPerWeek: new Prisma.Decimal(20), hourlyMinimum: new Prisma.Decimal(12000) };
+    const kept = payTermsOf({ ...hourly, hourlyMinimum: 12000 });
+    expect(kept.hourlyMinimum).toBe(12000);
+    expect(payChangeStep(hourly, kept, undefined)).toBe(NO_PAY_CHANGE);
+    expect(payChangeStep(hourly, { ...kept, hourlyMinimum: 14000 }, 'annual')).toEqual({ raiseReason: 'annual', approval: 'draft' });
+    expect(payChangeStep(hourly, { ...kept, hourlyMinimum: null }, 'other')).toEqual({ raiseReason: 'other', approval: 'draft' });
+    expect(() => payChangeStep(hourly, { ...kept, hourlyMinimum: 14000 }, undefined)).toThrow('The pay changes from version 2');
   });
 });

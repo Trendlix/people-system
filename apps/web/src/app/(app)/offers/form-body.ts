@@ -2,7 +2,7 @@ import { INTERN_DEFAULT_MONTHS, INTERN_MAX_MONTHS, INTERN_TERM_MESSAGE, isTraini
 import { dateFrom } from '../../../lib/form-data';
 import type { ContractSettings, FormState, OfferView } from '../../../lib/types';
 import { addDays } from '../employees/[id]/contracts/dates';
-import { MAX_HOURS_PER_WEEK, parseAmount } from '../employees/[id]/contracts/salary';
+import { MAX_HOURS_PER_WEEK, parseAmount, typedHourlyMinimum } from '../employees/[id]/contracts/salary';
 import { HOURS_INVALID, parseHours, payBasisFrom } from './terms';
 
 // The offer forms as the API takes them, and what they start with (pure code, tested; relative imports for the
@@ -125,6 +125,7 @@ export function offerBody(fd: FormData, errors: string[], { draft, allowances }:
   const netRate = text(fd, 'rateBasis') === 'net';
   let hourlyRate: number | null | undefined = cleared;
   let hoursPerWeek: number | null | undefined = cleared;
+  let hourlyMinimum: number | null | undefined = cleared;
   let grossSalary: number | null;
   if (intern) {
     // no wage: nothing sent, not even 0
@@ -138,6 +139,10 @@ export function offerBody(fd: FormData, errors: string[], { draft, allowances }:
     const hoursOk = hours !== null && !Number.isNaN(hours) && hours > 0 && hours <= MAX_HOURS_PER_WEEK;
     if (hours !== null && !hoursOk) errors.push(HOURS_INVALID);
     hoursPerWeek = hoursOk ? hours : null;
+    // the minimum a month, optional (owner, 27 October 2026: "can i add rate per hour with a minimum monthly payment?")
+    const minimum = typedHourlyMinimum(text(fd, 'hourlyMinimum'));
+    if (minimum !== null && Number.isNaN(minimum)) errors.push('Enter the minimum a month as an amount in EGP above 0, e.g. 12,000, or leave it empty for none.');
+    if (minimum !== null && !Number.isNaN(minimum)) hourlyMinimum = minimum;
     // the monthly estimate, worked out by the form; left out when the rate or the hours are wrong
     grossSalary = hourlyRate !== null && hoursPerWeek !== null ? amountFrom(fd, 'grossSalary', 'monthly estimate', errors) : null;
   } else {
@@ -178,6 +183,7 @@ export function offerBody(fd: FormData, errors: string[], { draft, allowances }:
     ...(grossSalary !== null && { grossSalary }),
     hourlyRate,
     hoursPerWeek,
+    hourlyMinimum,
     daysPerWeek: daysPerWeek ?? cleared,
     ...(basicPercent !== undefined && { basicPercent }),
     netSalary: netSalary ?? cleared,
@@ -254,6 +260,8 @@ export interface OfferDefaults {
   grossSalary: number | null;
   hourlyRate: number | null;
   hoursPerWeek: number | null;
+  /** By the hour: the least paid a month (27 October 2026); null: none. */
+  hourlyMinimum: number | null;
   daysPerWeek: number | null;
   basicPercent: number;
   netSalary: number | null;
@@ -294,6 +302,7 @@ export function newOfferDefaults(settings: ContractSettings | null, today: strin
     grossSalary: null,
     hourlyRate: null,
     hoursPerWeek: null,
+    hourlyMinimum: null,
     daysPerWeek: null,
     // the company's default share (Payroll Setup, 16 October 2026)
     basicPercent: settings?.basicPercentDefault ?? DEFAULT_BASIC_PERCENT,
@@ -338,6 +347,7 @@ export function offerDefaults(o: OfferView): OfferDefaults {
     grossSalary: o.grossSalary,
     hourlyRate: o.hourlyRate,
     hoursPerWeek: o.hoursPerWeek,
+    hourlyMinimum: o.hourlyMinimum ?? null,
     daysPerWeek: o.daysPerWeek,
     basicPercent: o.basicPercent ?? DEFAULT_BASIC_PERCENT,
     netSalary: o.netSalary,

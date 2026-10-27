@@ -213,6 +213,24 @@ export function OfferTerms({
                 {perHour ? estimateText(perHour.rate, perHour.hours, perHour.breakdown.gross) : 'E.g. 20, or 22.5: at most 48, the legal working week.'}
               </p>
             </div>
+            {/* the least paid a month (owner, 27 October 2026: "can i add rate per hour with a minimum monthly payment?") */}
+            <div id="field-hourlyMinimum" className="scroll-mt-6">
+              <label htmlFor={fid('hourlyMinimum')} className="label">
+                Minimum a month (EGP) {optional}
+              </label>
+              <input
+                id={fid('hourlyMinimum')}
+                name="hourlyMinimum"
+                inputMode="decimal"
+                autoComplete="off"
+                aria-describedby={fid('hourlyMinimum-hint')}
+                defaultValue={valueOf(state, 'hourlyMinimum', defaults.hourlyMinimum === null ? '' : String(defaults.hourlyMinimum))}
+                className="input tabular-nums"
+              />
+              <p id={fid('hourlyMinimum-hint')} className="hint">
+                Paid when the hours worked come to less, for the days of a part month. Leave empty for none.
+              </p>
+            </div>
             {/* what is saved as the gross: the monthly estimate */}
             <input type="hidden" name="grossSalary" value={calc ? plainAmount(calc.gross) : ''} />
           </div>

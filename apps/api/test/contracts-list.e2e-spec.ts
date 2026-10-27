@@ -306,6 +306,7 @@ describe('Contracts list (e2e)', () => {
       daysPerWeek: null,
       grossSalary: 15000,
       hourlyRate: null,
+      hourlyMinimum: null,
       allowances: [],
       allowancesTotal: 0,
       totalSalary: 15000,

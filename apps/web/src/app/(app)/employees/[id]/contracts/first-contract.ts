@@ -29,6 +29,7 @@ export function firstContractDefaults(settings: ContractSettings, startDate: str
     grossSalary: null,
     hourlyRate: null,
     hoursPerWeek: null,
+    hourlyMinimum: null,
     daysPerWeek: null,
     basicPercent: settings.basicPercentDefault ?? BASIC_PERCENT,
     netSalary: null,

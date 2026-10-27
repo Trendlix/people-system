@@ -334,6 +334,23 @@ describe('the added fields', () => {
     ]);
   });
 
+  // owner, 27 October 2026: "can i add rate per hour with a minimum monthly payment?"
+  it('{{hourly_minimum}} and its line: by the hour with a minimum a month, in the template’s language; blank without one, never missing', () => {
+    const hourly = (minimum: number | null) =>
+      contract({ payBasis: 'hourly', hourlyRate: new Prisma.Decimal(250), hoursPerWeek: new Prisma.Decimal(20), hourlyMinimum: minimum === null ? null : new Prisma.Decimal(minimum) });
+    const tags = ['hourly_minimum', 'hourly_minimum_line', 'hourly_minimum_line_ar', 'hourly_minimum_line_en'];
+    const en = 'A minimum of 12,000 a month: paid when the hours worked come to less, prorated by days for a part month';
+    const ar = 'حد أدنى شهري قدره 12,000، يُصرف إذا قلّ أجر ساعات العمل الفعلية عنه، ويُحتسب بنسبة الأيام عن الشهر غير الكامل';
+    expect(resolveValues({ ...full('en'), contract: hourly(12000) }, tags)).toEqual({ hourly_minimum: '12,000', hourly_minimum_line: en, hourly_minimum_line_ar: ar, hourly_minimum_line_en: en });
+    expect(value({ ...full('ar'), contract: hourly(12000) }, 'hourly_minimum_line')).toBe(ar);
+    for (const source of [{ ...full(), contract: hourly(null) }, full(), { ...full(), contract: contract({ hourlyMinimum: new Prisma.Decimal(5000) }) }]) {
+      const values = resolveValues(source, tags);
+      for (const tag of tags) expect(values[tag], tag).toBe('');
+      expect(missingTags(values, tags)).toEqual([]);
+    }
+    for (const tag of tags) expect(rightFor(tag), tag).toBe('salary');
+  });
+
   it('{{basic_percent}}: the basic salary’s share of the gross', () => {
     for (const language of LANGUAGES) expect(value(full(language), 'basic_percent')).toBe('80%');
     expect(value({ ...full(), contract: contract({ basicPercent: 75 }) }, 'basic_percent')).toBe('75%');

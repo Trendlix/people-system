@@ -131,6 +131,7 @@ async function NewContract({ params, searchParams }: { params: Promise<{ id: str
           grossSalary: previous.grossSalary,
           hourlyRate: previous.hourlyRate ?? null,
           hoursPerWeek: previous.hoursPerWeek ?? null,
+          hourlyMinimum: previous.hourlyMinimum ?? null,
           daysPerWeek: previous.daysPerWeek ?? null,
           basicPercent: previous.basicPercent ?? 80,
           netSalary: previous.netSalary,

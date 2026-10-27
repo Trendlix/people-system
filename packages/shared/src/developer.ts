@@ -90,6 +90,9 @@ export const DEVELOPER_MONEY_FIELDS: ReadonlySet<string> = new Set([
   'hourlyRate',
   'netHourly',
   'netHourlyRate',
+  // by the hour, the minimum a month and a line's top-up to it (27 October 2026)
+  'hourlyMinimum',
+  'hourlyTopUp',
   'ratingPay',
   'pay',
   'allowances',

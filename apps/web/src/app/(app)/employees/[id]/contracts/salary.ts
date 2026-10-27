@@ -404,14 +404,35 @@ export interface PayTerms {
   payBasis: PayBasis;
   hourlyRate: number | null;
   hoursPerWeek: number | null;
+  /** By the hour: the least paid a month (27 October 2026); null or left out: none (or hidden). */
+  hourlyMinimum?: number | null;
   daysPerWeek: number | null;
   salaryHidden?: boolean;
 }
 
-/** By the hour: "EGP 150.00 an hour × 20 hours a week", or "20 hours a week" when the salary is hidden. Null for a monthly salary. */
+/**
+ * By the hour, the minimum a month as typed (owner, 27 October 2026: "can i add rate per hour with a minimum monthly
+ * payment?"): an amount above 0, null when left empty (none), NaN when it isn't one.
+ */
+export function typedHourlyMinimum(typed: string): number | null {
+  const n = parseAmount(typed);
+  return n === null ? null : !Number.isNaN(n) && n > 0 ? n : NaN;
+}
+
+/** By the hour with a minimum a month: "minimum EGP 12,000.00 a month"; null without one, when hidden, or for a monthly salary. */
+export function hourlyMinimumText(c: Pick<PayTerms, 'payBasis' | 'hourlyMinimum' | 'salaryHidden'>): string | null {
+  if (c.payBasis !== 'hourly' || c.salaryHidden || typeof c.hourlyMinimum !== 'number' || !(c.hourlyMinimum > 0)) return null;
+  return `minimum ${formatEgp(c.hourlyMinimum)} a month`;
+}
+
+/**
+ * By the hour: "EGP 150.00 an hour × 20 hours a week", with its minimum a month if any ("… · minimum EGP 12,000.00 a
+ * month", 27 October 2026), or "20 hours a week" when the salary is hidden. Null for a monthly salary.
+ */
 export function hourlyTerms(c: PayTerms): string | null {
   if (c.payBasis !== 'hourly' || c.hoursPerWeek === null || c.hoursPerWeek === undefined) return null;
-  return !c.salaryHidden && c.hourlyRate !== null && c.hourlyRate !== undefined ? hourlyLabel(c.hourlyRate, c.hoursPerWeek) : hoursLabel(c.hoursPerWeek);
+  if (c.salaryHidden || c.hourlyRate === null || c.hourlyRate === undefined) return hoursLabel(c.hoursPerWeek);
+  return [hourlyLabel(c.hourlyRate, c.hoursPerWeek), hourlyMinimumText(c)].filter(Boolean).join(' · ');
 }
 
 /** How the pay is set, in a few words: "Monthly salary", "By the hour: EGP 150.00 an hour × 20 hours a week · 3 days a week". */

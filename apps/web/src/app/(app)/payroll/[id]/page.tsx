@@ -174,6 +174,8 @@ function gridRows(lines: PayrollLineView[], month: string, today: string, runLev
     payBasis: l.payBasis,
     gross: l.terms.gross,
     hourlyRate: l.terms.hourlyRate,
+    // by the hour, the minimum a month (27 October 2026); missing on lines made before then
+    hourlyMinimum: l.terms.hourlyMinimum ?? null,
     // missing on lines worked out before 16 October 2026
     hoursPerDay: l.terms.hoursPerDay ?? null,
     // the shift's hours less the holidays (16 October 2026): less the no-show and leave days, the expected hours the

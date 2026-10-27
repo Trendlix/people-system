@@ -50,6 +50,27 @@ export function monthlyFromHourly(hourlyRate: number, hoursPerWeek: number): num
   return Math.round((hourlyRate * hoursPerWeek * WEEKS_PER_MONTH + Number.EPSILON) * 100) / 100;
 }
 
+/**
+ * A minimum a month by the hour (owner, 27 October 2026: "can i add rate per hour with a minimum monthly payment?"; he
+ * chose "On each contract" and "Prorated by days"): a contract or an offer paid by the hour may set the least paid a
+ * month. Payroll pays the hours worked × the rate, or the minimum for the days paid if that is more (payroll.ts
+ * hourlyMinimumFor), so a rate of 250 with a minimum of 12,000 pays 12,000 for 32 hours (8,000) in a whole month. A
+ * monthly salary has none: sent with one, it is refused.
+ */
+export const HOURLY_MINIMUM_MESSAGE = 'A monthly salary has no minimum a month: that is for pay by the hour. Clear it, or choose pay by the hour.';
+
+/**
+ * The contract and offer templates' line for a minimum a month by the hour (the hourly_minimum_line tags): "A minimum of
+ * 12,000.00 a month: paid when the hours worked come to less, prorated by days for a part month"; blank without one.
+ * `money` writes an amount.
+ */
+export function hourlyMinimumLine(minimum: number | null | undefined, money: (n: number) => string, lang: 'en' | 'ar' = 'en'): string {
+  if (!(typeof minimum === 'number' && minimum > 0)) return '';
+  return lang === 'ar'
+    ? `حد أدنى شهري قدره ${money(minimum)}، يُصرف إذا قلّ أجر ساعات العمل الفعلية عنه، ويُحتسب بنسبة الأيام عن الشهر غير الكامل`
+    : `A minimum of ${money(minimum)} a month: paid when the hours worked come to less, prorated by days for a part month`;
+}
+
 /** A contract version's progress. Signed versions are never edited; a renewal or a change is a new version. */
 export const CONTRACT_STATUSES = ['draft', 'active', 'ended', 'superseded'] as const;
 export type ContractStatus = (typeof CONTRACT_STATUSES)[number];

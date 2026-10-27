@@ -109,6 +109,7 @@ export function offerSources(
       payBasis: o.payBasis,
       hourlyRate: o.hourlyRate,
       hoursPerWeek: o.hoursPerWeek,
+      hourlyMinimum: o.hourlyMinimum,
       daysPerWeek: o.daysPerWeek,
       allowances: o.allowances,
     },

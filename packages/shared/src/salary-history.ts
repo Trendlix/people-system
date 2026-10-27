@@ -21,6 +21,8 @@ export interface PayVersion {
   payBasis: string;
   grossSalary: number;
   hourlyRate: number | null;
+  /** By the hour: the least paid a month (27 October 2026); left out or null: none. */
+  hourlyMinimum?: number | null;
   /**
    * One paid per client account (25 October 2026) has basis per_account and no amount (0); its amount per account when
    * the contract sets one (27 October 2026).
@@ -56,6 +58,8 @@ export interface PayEvent {
   endDate: string | null;
   payBasis: string;
   hourlyRate: number | null;
+  /** By the hour: the least paid a month (27 October 2026), when the version has one. */
+  hourlyMinimum?: number;
   /** The version before it's pay; null for the hire. */
   from: PayAmounts | null;
   to: PayAmounts;
@@ -95,7 +99,14 @@ export function payEvents(versions: readonly PayVersion[]): PayEvent[] {
     const previous = ordered.find((p) => p.version === v.version - 1) ?? null;
     const to = amountsOf(v);
     const from = previous ? amountsOf(previous) : null;
-    const same = previous !== null && from!.gross === to.gross && v.payBasis === previous.payBasis && v.hourlyRate === previous.hourlyRate && sameAllowances(v, previous);
+    // a new minimum a month by the hour (27 October 2026) is new pay too
+    const same =
+      previous !== null &&
+      from!.gross === to.gross &&
+      v.payBasis === previous.payBasis &&
+      v.hourlyRate === previous.hourlyRate &&
+      money(v.hourlyMinimum ?? 0) === money(previous.hourlyMinimum ?? 0) &&
+      sameAllowances(v, previous);
     return {
       contractId: v.id,
       number: v.number,
@@ -106,6 +117,7 @@ export function payEvents(versions: readonly PayVersion[]): PayEvent[] {
       endDate: v.endDate,
       payBasis: v.payBasis,
       hourlyRate: v.hourlyRate,
+      ...(v.payBasis === 'hourly' && v.hourlyMinimum && { hourlyMinimum: money(v.hourlyMinimum) }),
       from,
       to,
       allowances: v.allowances.map((a) => ({

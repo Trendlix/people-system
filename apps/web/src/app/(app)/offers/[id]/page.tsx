@@ -177,6 +177,16 @@ function termsFields(o: OfferView): GridField[] {
         protected: true,
         note: [o.hoursPerWeek !== null && `${o.hoursPerWeek} hours a week`, hourlyNetTerms(o)].filter(Boolean).join(' · ') || null,
       });
+      // the least paid a month (owner, 27 October 2026: "can i add rate per hour with a minimum monthly payment?")
+      if (o.hourlyMinimum) {
+        fields.push({
+          key: 'offer-hourly-minimum',
+          label: 'Minimum a month',
+          value: formatEgp(o.hourlyMinimum),
+          protected: true,
+          note: 'Paid when the hours worked come to less, for the days of a part month',
+        });
+      }
     }
     fields.push(
       {

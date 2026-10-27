@@ -157,12 +157,14 @@ export function fromToText(from: number | null, to: number | null): string | nul
 }
 
 /** A version's pay, to compare it with another's (samePay). */
-export function versionPay(c: Pick<Contract, 'payBasis' | 'grossSalary' | 'hourlyRate' | 'hoursPerWeek' | 'basicPercent' | 'allowances'>): VersionPay {
+export function versionPay(c: Pick<Contract, 'payBasis' | 'grossSalary' | 'hourlyRate' | 'hoursPerWeek' | 'hourlyMinimum' | 'basicPercent' | 'allowances'>): VersionPay {
   return {
     payBasis: c.payBasis ?? 'monthly',
     grossSalary: c.grossSalary ?? 0,
     hourlyRate: c.hourlyRate ?? null,
     hoursPerWeek: c.hoursPerWeek ?? null,
+    // by the hour, the least paid a month (27 October 2026): pay too
+    hourlyMinimum: c.hourlyMinimum ?? null,
     basicPercent: c.basicPercent ?? 80,
     allowances: (c.allowances ?? []).map((a) => ({ allowanceTypeId: a.allowanceTypeId, amount: a.amount, perAccountAmount: a.perAccountAmount ?? null })),
   };

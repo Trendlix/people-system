@@ -100,6 +100,8 @@ export interface GridRow extends GridLine {
   payBasis: PayBasis;
   gross: number;
   hourlyRate: number | null;
+  /** By the hour: the contract's minimum a month (27 October 2026); null or missing: none. */
+  hourlyMinimum?: number | null;
   /**
    * A day of the employee's shift, in hours: its hours to work a day, else its window (owner, 16 October 2026: flexible
    * shifts). What a no-show or leave day takes out of the shift's hours (17 October 2026); null without a shift.
@@ -298,6 +300,8 @@ const Row = memo(function Row({
           <>
             {formatEgp(row.hourlyRate)}
             <div className="text-xs text-muted">an hour</div>
+            {/* the least paid a month (owner, 27 October 2026: "can i add rate per hour with a minimum monthly payment?") */}
+            {row.hourlyMinimum ? <div className="text-xs text-muted">min. {formatEgp(row.hourlyMinimum)} a month</div> : null}
           </>
         ) : (
           formatEgp(row.gross)

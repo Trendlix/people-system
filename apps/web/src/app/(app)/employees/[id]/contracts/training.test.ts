@@ -136,6 +136,7 @@ describe('converting an agreement to full-time', () => {
       grossSalary: null,
       hourlyRate: null,
       hoursPerWeek: null,
+      hourlyMinimum: null,
       daysPerWeek: 5,
       basicPercent: 75,
       netSalary: null,

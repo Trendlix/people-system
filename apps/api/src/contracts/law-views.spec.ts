@@ -40,6 +40,7 @@ function contract(over: Partial<ContractRow> = {}): ContractRow {
     payBasis: 'monthly',
     hourlyRate: null,
     hoursPerWeek: null,
+    hourlyMinimum: null,
     daysPerWeek: null,
     allowances: [],
     jobTitleEn: null,

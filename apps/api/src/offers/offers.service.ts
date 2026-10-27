@@ -94,6 +94,7 @@ function fields(o: OfferRow) {
     grossSalary: o.grossSalary.toNumber() as number | undefined,
     hourlyRate: o.hourlyRate?.toNumber() ?? null,
     hoursPerWeek: o.hoursPerWeek?.toNumber() ?? null,
+    hourlyMinimum: o.hourlyMinimum?.toNumber() ?? null,
     daysPerWeek: o.daysPerWeek,
     basicPercent: o.basicPercent,
     netSalary: o.netSalary?.toNumber() ?? null,
@@ -681,6 +682,7 @@ export class OffersService {
             grossSalary: undefined,
             hourlyRate: null,
             hoursPerWeek: null,
+            hourlyMinimum: null,
             daysPerWeek: null,
             basicPercent: settings.basicPercentDefault, // the company's default share (Payroll Setup, 16 October 2026)
             netSalary: null,
@@ -789,7 +791,7 @@ export class OffersService {
     const intern = v.employmentType === 'intern';
     const becameIntern = intern && (creating || before.employmentType !== 'intern');
     if (intern) {
-      if (dto.payBasis === 'hourly' || dto.hourlyRate != null || dto.hoursPerWeek != null) {
+      if (dto.payBasis === 'hourly' || dto.hourlyRate != null || dto.hoursPerWeek != null || dto.hourlyMinimum != null) {
         throw new BadRequestException('An intern is paid no wage, so not by the hour: leave the pay monthly, the gross at 0.');
       }
       if (dto.grossSalary !== undefined) throw new BadRequestException(INTERN_NO_WAGE_MESSAGE);
@@ -800,10 +802,12 @@ export class OffersService {
     }
 
     // the pay: by the hour, the gross is the monthly estimate worked out from the rate and the hours
+    // (the minimum a month, 27 October 2026, is by the hour's alone, kept or cleared with the rate)
     if (intern) {
       v.grossSalary = 0;
       v.hourlyRate = null;
       v.hoursPerWeek = null;
+      v.hourlyMinimum = null;
     } else if (v.payBasis === 'hourly') {
       if (v.hourlyRate === null || v.hoursPerWeek === null) {
         throw new BadRequestException('Enter the hourly rate and the hours a week: by the hour, the gross salary is worked out from them.');
@@ -815,6 +819,7 @@ export class OffersService {
       if (v.grossSalary === undefined || v.grossSalary < 0) throw new BadRequestException('Enter the gross salary.');
       v.hourlyRate = null;
       v.hoursPerWeek = null;
+      v.hourlyMinimum = null;
     }
 
     // probation once per employer (Art. 90): none for someone who already had an employment with the company; none for

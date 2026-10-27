@@ -12,6 +12,7 @@ import {
   formatPercent,
   hourlyFor,
   hourlyLabel,
+  hourlyMinimumText,
   hourlyNetTerms,
   hourlyPayFor,
   hourlyTerms,
@@ -32,6 +33,7 @@ import {
   splitSalary,
   switchBasis,
   switchRateBasis,
+  typedHourlyMinimum,
   workedOutGross,
   workedOutRate,
 } from './salary';
@@ -284,6 +286,23 @@ describe('pay by the hour and working days', () => {
     expect(payLabel({ payBasis: 'monthly', hourlyRate: null, hoursPerWeek: null, daysPerWeek: 5 })).toBe('Monthly salary · 5 days a week');
     expect(hourlyTerms({ payBasis: 'monthly', hourlyRate: 150, hoursPerWeek: 20, daysPerWeek: null })).toBeNull();
     expect(hourlyTerms(hourly)).toBe('EGP 150.00 an hour × 20 hours a week');
+  });
+
+  // owner, 27 October 2026: "can i add rate per hour with a minimum monthly payment?" (he chose "On each contract")
+  it('words the minimum a month by the hour with the rate, only when the salary is shown', () => {
+    const hourly = { payBasis: 'hourly' as const, hourlyRate: 250, hoursPerWeek: 20, hourlyMinimum: 12000, daysPerWeek: null };
+    expect(hourlyTerms(hourly)).toBe('EGP 250.00 an hour × 20 hours a week · minimum EGP 12,000.00 a month');
+    expect(payLabel(hourly)).toBe('By the hour: EGP 250.00 an hour × 20 hours a week · minimum EGP 12,000.00 a month');
+    expect(hourlyTerms({ ...hourly, salaryHidden: true })).toBe('20 hours a week');
+    expect(hourlyTerms({ ...hourly, hourlyMinimum: null })).toBe('EGP 250.00 an hour × 20 hours a week');
+    expect(hourlyMinimumText({ ...hourly, payBasis: 'monthly' })).toBeNull();
+  });
+
+  it('reads the minimum a month as typed: above 0, empty for none', () => {
+    expect(typedHourlyMinimum('12,000')).toBe(12000);
+    expect(typedHourlyMinimum(' 12000.5 ')).toBe(12000.5);
+    expect(typedHourlyMinimum('')).toBeNull();
+    for (const wrong of ['0', 'abc', '-1', '1.234']) expect(typedHourlyMinimum(wrong), wrong).toBeNaN();
   });
 });
 

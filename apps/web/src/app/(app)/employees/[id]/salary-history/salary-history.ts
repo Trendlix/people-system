@@ -185,7 +185,11 @@ export function eventView(e: PayEvent, raise: VersionRaise | null = null): Event
     change: e.from === null ? null : e.samePay ? 'Same pay' : changeText(e.difference),
     allowances: fromToText(e.from?.allowances ?? null, e.to.allowances),
     total: fromToText(e.from?.total ?? null, e.to.total),
-    hourly: e.payBasis === 'hourly' && e.hourlyRate !== null ? `${formatEgp(e.hourlyRate)} an hour; the gross is the monthly estimate` : null,
+    // with its minimum a month, if any (owner, 27 October 2026: "can i add rate per hour with a minimum monthly payment?")
+    hourly:
+      e.payBasis === 'hourly' && e.hourlyRate !== null
+        ? `${formatEgp(e.hourlyRate)} an hour; the gross is the monthly estimate${e.hourlyMinimum ? ` · minimum ${formatEgp(e.hourlyMinimum)} a month` : ''}`
+        : null,
     reason: e.reason ? (RAISE_REASON_LABELS[e.reason] ?? e.reason) : null,
     promotion: promotion || null,
     decision: decisionOf(e, raise),

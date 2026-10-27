@@ -110,6 +110,8 @@ export interface RosterContract {
   grossSalary: number;
   basicPercent: number;
   hourlyRate: number | null;
+  /** By the hour: the least paid a month (27 October 2026). Missing or null: none. */
+  hourlyMinimum?: number | null;
   /**
    * Each with its kind's basis as drafted (25 October 2026): a per-account one (amount 0) pays the client accounts, at
    * its amount per account when the contract sets one (27 October 2026).
@@ -245,6 +247,15 @@ export function contractParts(from: string, to: string, contracts: readonly Rost
 }
 
 /**
+ * A contract's minimum a month by the hour as a line's terms (or a segment) keep it (owner, 27 October 2026: "can i add
+ * rate per hour with a minimum monthly payment?"): only by the hour and when set, so every other line's terms read as
+ * they did.
+ */
+export function hourlyMinimumOf(c: Pick<RosterContract, 'payBasis' | 'hourlyMinimum'>): { hourlyMinimum?: number } {
+  return c.payBasis === 'hourly' && typeof c.hourlyMinimum === 'number' && c.hourlyMinimum > 0 ? { hourlyMinimum: c.hourlyMinimum } : {};
+}
+
+/**
  * The run's people and those left out, from the employments that touch the month. A person with two employments in
  * the month (left and hired again) is paid on the later one; the earlier is listed as left out. `holidays` are the
  * official holidays' days (YYYY-MM-DD) in the month. `law`: the rates set by law the run is worked out with (its
@@ -320,6 +331,7 @@ export function roster(
       gross: part.contract.grossSalary,
       basicPercent: part.contract.basicPercent,
       hourlyRate: part.contract.payBasis === 'hourly' ? part.contract.hourlyRate : null,
+      ...hourlyMinimumOf(part.contract),
       // the accounts allowance with the last part, paid as it is whichever part it is in
       allowances: [...allowancesOf(part.contract), ...(accounts && i === parts.length - 1 ? [accounts] : [])],
     }));
@@ -354,6 +366,9 @@ export function roster(
         gross: contract.grossSalary,
         basicPercent: contract.basicPercent,
         hourlyRate: contract.payBasis === 'hourly' ? contract.hourlyRate : null,
+        // the least paid a month by the hour (owner, 27 October 2026: "can i add rate per hour with a minimum monthly
+        // payment?"; he chose "On each contract" and "Prorated by days"): the month-end contract's, whose rate is paid
+        ...hourlyMinimumOf(contract),
         allowances,
         // the days employed under a contract: the divisor for a whole month (paidDaysOf)
         paidDays: paidDays.reduce((sum, n) => sum + n, 0),

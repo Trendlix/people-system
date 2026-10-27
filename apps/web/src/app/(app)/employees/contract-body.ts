@@ -1,7 +1,7 @@
 import { CONTRACT_FORMS, RAISE_REASONS, type ContractForm, type PayBasis, type RaiseReason } from '@trendlix/shared';
 import { allowancesFrom } from '../../../lib/allowances';
 import { dateFrom } from '../../../lib/form-data';
-import { MAX_HOURS_PER_WEEK, parseAmount, parseHours } from './[id]/contracts/salary';
+import { MAX_HOURS_PER_WEEK, parseAmount, parseHours, typedHourlyMinimum } from './[id]/contracts/salary';
 
 // The contract form's fields as the API takes them (pure code, tested; relative imports for the tests), for the
 // drafting actions in contract-actions.ts; its pay fields (payBody) also for the raise form (contracts/raise.ts). Dates
@@ -49,6 +49,19 @@ function hoursFrom(fd: FormData, errors: string[]): number | null {
   return n;
 }
 
+/**
+ * By the hour: the minimum a month (owner, 27 October 2026: "can i add rate per hour with a minimum monthly payment?";
+ * he chose "On each contract"), optional, above 0; "" → null, no minimum, sent as such so a raise or a draft clears one.
+ */
+export function hourlyMinimumFrom(fd: FormData, errors: string[]): number | null {
+  const n = typedHourlyMinimum(text(fd, 'hourlyMinimum'));
+  if (n !== null && Number.isNaN(n)) {
+    errors.push('Enter the minimum a month as an amount in EGP above 0, e.g. 12,000, or leave it empty for none.');
+    return null;
+  }
+  return n;
+}
+
 /** The working days a week, 1 to 6; "" → null (the shift's week). */
 function daysFrom(fd: FormData, errors: string[]): number | null {
   const raw = text(fd, 'daysPerWeek');
@@ -64,7 +77,8 @@ function daysFrom(fd: FormData, errors: string[]): number | null {
 /**
  * The pay fields (contracts/pay-fields.tsx), of a contract or a raise. The pay (owner's requests of 15 October 2026) is
  * a monthly salary, its gross, or by the hour, the rate and the hours a week, from which the API works out the gross
- * (the monthly estimate); then the working days a week, and the allowances, which replace the version's set. Starting
+ * (the monthly estimate), and the minimum a month if any (27 October 2026); then the working days a week, and the
+ * allowances, which replace the version's set. Starting
  * from the net per hour (rateBasis 'net'), the rate is the gross rate the form worked out from it, so a missing one
  * asks for the net per hour. `draft`: changing a draft, where an emptied net or number of working days is cleared
  * (null); a new one just leaves them out.
@@ -90,6 +104,8 @@ export function payBody(fd: FormData, errors: string[], draft: boolean) {
       ? {
           hourlyRate: amountFrom(fd, 'hourlyRate', netRate ? 'net per hour' : 'hourly rate', errors, true, netRate ? '120' : '150'),
           hoursPerWeek: hoursFrom(fd, errors),
+          // always sent by the hour, null for none: a raise would otherwise keep the minimum in force
+          hourlyMinimum: hourlyMinimumFrom(fd, errors),
         }
       : { grossSalary: amountFrom(fd, 'grossSalary', 'gross salary', errors, true, '15,000', true) };
   const daysPerWeek = daysFrom(fd, errors);

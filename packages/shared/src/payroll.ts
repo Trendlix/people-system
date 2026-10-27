@@ -220,6 +220,8 @@ export interface PayrollSegment {
   basicPercent: number;
   /** Pay by the hour only. */
   hourlyRate: number | null;
+  /** Pay by the hour only: the contract's minimum a month (27 October 2026; PayrollTerms.hourlyMinimum). Missing: none. */
+  hourlyMinimum?: number | null;
   allowances: PayrollAllowance[];
 }
 
@@ -238,6 +240,13 @@ export interface PayrollTerms {
   basicPercent: number;
   /** Pay by the hour only. */
   hourlyRate: number | null;
+  /**
+   * Pay by the hour only: the least paid a month (owner, 27 October 2026: "can i add rate per hour with a minimum monthly
+   * payment?"; he chose "On each contract" and "Prorated by days"), the contract's at the month's end, whose rate the
+   * line pays. The hours worked × the rate are paid, or this for the days paid (× the days paid ÷ the day divisor) if
+   * that is more. Missing or null: no minimum, and on lines made before then.
+   */
+  hourlyMinimum?: number | null;
   allowances: PayrollAllowance[];
   /**
    * The days paid in the month: the divisor for a whole month, fewer for someone who joined or left in it or was under
@@ -501,10 +510,16 @@ export interface PayrollPart {
 export interface PayrollResult {
   /**
    * The fixed and variable parts of the gross for the days paid, each contract's for its days added up. By the hour:
-   * the hours' pay, and no variable part.
+   * the hours' pay (topped up to the minimum a month, hourlyTopUp), and no variable part.
    */
   fixed: number;
   variable: number;
+  /**
+   * By the hour with a minimum a month (owner, 27 October 2026: "can i add rate per hour with a minimum monthly
+   * payment?"): what was added to the hours worked × the rate to reach the minimum for the days paid, in `fixed`. Missing
+   * when the hours pay as much or more, without a minimum, for a monthly salary, and on lines worked out before then.
+   */
+  hourlyTopUp?: number;
   /**
    * The month's parts as paid, in the order of paidSegments (owner, 17 October 2026): one for a month on one contract,
    * two for a renewal mid-month; their fixed, variable and allowances add up to the line's. Missing on lines worked out
@@ -752,7 +767,7 @@ type SalaryPart = Pick<
   | 'kpiCut'
   | 'noShowCut'
   | 'overtime'
-> & { attendanceWaived: number; unpaidLeaveCut: number; permissionHours?: number; hoursOverExpected?: number };
+> & { attendanceWaived: number; unpaidLeaveCut: number; permissionHours?: number; hoursOverExpected?: number; hourlyTopUp?: number };
 
 /**
  * A shift's window in hours, from its start and end ("HH:mm"): an end before the start runs past midnight. Null when
@@ -954,9 +969,10 @@ function daysOffName(noShowDays: number, leaveDays: number): string | null {
  * the shift's less the no-show and leave days: expectedHoursOf) below the grace percent and, while the rules pay it,
  * paid overtime above the overtime percent; the variable part is cut for a KPI average below its grace percent, and
  * not at all with no KPI given; the attendance cut is 0 when the CEO waived it (17 October 2026). By the hour: the hours
- * worked at the contract's rate. Then for both: the month's additions and deductions (17 October 2026), a Bonus (days)
- * at a day of the fixed part and the other taxed additions in the pay earned; the allowances for the days paid; social
- * insurance on the insured wage, whole for a part month; the salary tax and the Martyrs' Fund on the actual pay; a
+ * worked at the contract's rate, or its minimum a month for the days paid if more (27 October 2026). Then for both: the
+ * month's additions and deductions (17 October 2026), a Bonus (days) at a day of the fixed part and the other taxed
+ * additions in the pay earned; the allowances for the days paid; social insurance on the insured wage, whole for a part
+ * month; the salary tax and the Martyrs' Fund on the actual pay; a
  * Penalty (days) at a day of the contract's net and the other deductions after the tax, the untaxed additions after
  * them; a Recurring deduction ticked before tax (20 October 2026) lowers the taxable pay first, within the year's
  * limit, and is taken with them. The insurance shares, the tax and the Fund follow `law`, the rates set by law the run
@@ -1021,7 +1037,7 @@ export function payrollLine(
   const leaveOff = leaveDaysOff(terms, i);
   const salary =
     terms.payBasis === 'hourly'
-      ? hourlyPart(terms, i, warnings)
+      ? hourlyPart(terms, i, days, warnings)
       : // terms saved before the hours a day (or the expected hours) existed read as without a shift
         monthlyPart(
           { ...i, ...leave },
@@ -1314,12 +1330,36 @@ function monthlyPart(
 }
 
 /**
- * Pay by the hour: the hours worked at the contract's rate, as one amount (in `fixed`). There is no split of the gross,
- * so no attendance or KPI cuts, no overtime on the attendance ratio and no no-show cut (nor absent hours); leave days
- * don't apply either (owner, 17 October 2026): only the hours worked are paid.
+ * The minimum a month by the hour for a line's days paid (owner, 27 October 2026: "can i add rate per hour with a
+ * minimum monthly payment?"; he chose "Prorated by days": "Joined on the 16th of a 31-day month: the minimum is 16/31 of
+ * it. This matches how monthly salaries are paid for a part month"): the contract's minimum × the days paid ÷ the day
+ * divisor, to the piaster, exactly as a monthly salary is paid for a part month, so a whole month pays all of it. The
+ * days paid and the divisor are the run's (paidDaysOf; 30 by default), so joining on the 16th of a 31-day month pays
+ * 16/30 of the minimum, as it pays 16/30 of a monthly salary. 0 without a minimum, and for a monthly salary.
  */
-function hourlyPart(terms: PayrollTerms, i: PayrollInputs, warnings: string[]): SalaryPart {
-  if (i.workedHours === null) warnings.push('Paid by the hour, but no worked hours are given: nothing is paid for hours');
+export function hourlyMinimumFor(terms: Pick<PayrollTerms, 'payBasis' | 'hourlyMinimum' | 'paidDays'>, dayDivisor: number): number {
+  const minimum = terms.hourlyMinimum;
+  if (terms.payBasis !== 'hourly' || typeof minimum !== 'number' || !(minimum > 0) || !(dayDivisor > 0)) return 0;
+  return piasters((piasters(minimum) * Math.max(0, terms.paidDays)) / dayDivisor);
+}
+
+/**
+ * Pay by the hour: the hours worked at the contract's rate, as one amount (in `fixed`), or the contract's minimum a month
+ * for the days paid when that is more (owner, 27 October 2026: "can i add rate per hour with a minimum monthly
+ * payment?"; he chose "On each contract" and "Prorated by days": hourlyMinimumFor), what it adds kept as hourlyTopUp. So
+ * a rate of 250 with a minimum of 12,000: 32 hours in a whole month come to 8,000, and 12,000 is paid, 4,000 of it the
+ * top-up. There is no split of the gross, so no attendance or KPI cuts, no overtime on the attendance ratio and no
+ * no-show cut (nor absent hours); leave days don't apply either (owner, 17 October 2026): only the hours worked are paid.
+ */
+function hourlyPart(terms: PayrollTerms, i: PayrollInputs, dayDivisor: number, warnings: string[]): SalaryPart {
+  const minimum = hourlyMinimumFor(terms, dayDivisor);
+  if (i.workedHours === null) {
+    warnings.push(
+      minimum > 0
+        ? 'Paid by the hour, but no worked hours are given: only the minimum a month is paid'
+        : 'Paid by the hour, but no worked hours are given: nothing is paid for hours',
+    );
+  }
   if (!(given(terms.hourlyRate) > 0)) warnings.push('Paid by the hour, but the contract has no hourly rate');
   if ([i.expectedHours, i.softSkills, i.performance, i.clientSatisfaction, i.noShowDays, i.leaveDays, i.unpaidLeaveDays ?? null].some((v) => v !== null)) {
     warnings.push("Paid by the hour: the expected hours, KPIs, no-show days and leave days don't change the pay");
@@ -1328,9 +1368,14 @@ function hourlyPart(terms: PayrollTerms, i: PayrollInputs, warnings: string[]): 
   if (i.permissionHours !== null && i.permissionHours !== undefined && i.permissionHours > 0) {
     warnings.push("Paid by the hour: the permission hours aren't paid, only the hours worked");
   }
+  const hours = piasters(given(i.workedHours) * given(terms.hourlyRate));
+  // topped up to the minimum for the days paid, when the hours come to less (27 October 2026)
+  const hourlyTopUp = minimum > hours ? piasters(minimum - hours) : 0;
   return {
-    fixed: piasters(given(i.workedHours) * given(terms.hourlyRate)),
+    fixed: piasters(hours + hourlyTopUp),
     variable: 0,
+    // only on a line topped up, so every other line reads as it did
+    ...(hourlyTopUp > 0 && { hourlyTopUp }),
     absentHours: 0,
     leaveHours: 0,
     expectedHours: null,

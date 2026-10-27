@@ -1418,6 +1418,10 @@ model Contract {
   payBasis            String              @default("monthly") @map("pay_basis") // PAY_BASES: monthly, hourly
   hourlyRate          Decimal?            @map("hourly_rate") @db.Decimal(10, 2) // hourly only
   hoursPerWeek        Decimal?            @map("hours_per_week") @db.Decimal(4, 1) // hourly only: the contracted hours
+  // the least paid a month by the hour (owner, 27 October 2026: "can i add rate per hour with a minimum monthly
+  // payment?"; he chose "On each contract" and "Prorated by days"): payroll pays the hours worked × the rate, or this
+  // for the days paid if that is more; hourly only, null: no minimum
+  hourlyMinimum       Decimal?            @map("hourly_minimum") @db.Decimal(12, 2)
   daysPerWeek         Int?                @map("days_per_week") // working days a week (part-time: 2, 3 …); empty: the shift's week
   allowances          ContractAllowance[] // RESTRICTED like the salary
   // copied from the employment when signed
@@ -1971,6 +1975,7 @@ model JobOffer {
   grossSalary       Decimal          @map("gross_salary") @db.Decimal(12, 2) // a month; hourly: the monthly estimate
   hourlyRate        Decimal?         @map("hourly_rate") @db.Decimal(10, 2)
   hoursPerWeek      Decimal?         @map("hours_per_week") @db.Decimal(4, 1)
+  hourlyMinimum     Decimal?         @map("hourly_minimum") @db.Decimal(12, 2) // by the hour: the least paid a month (27 October 2026); null: none
   daysPerWeek       Int?             @map("days_per_week")
   basicPercent      Int              @default(80) @map("basic_percent")
   netSalary         Decimal?         @map("net_salary") @db.Decimal(12, 2)

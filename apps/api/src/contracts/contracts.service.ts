@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import {
   CASUAL_MAX_MONTHS,
   graduationPassed,
+  HOURLY_MINIMUM_MESSAGE,
   INTERN_DEFAULT_MONTHS,
   INTERN_MAX_MONTHS,
   INTERN_NO_WAGE_MESSAGE,
@@ -87,7 +88,7 @@ export const deleteRefusal = (number: string, payroll: string, status: PayrollSt
   }`;
 const DATE_FIELDS = ['startDate', 'endDate', 'probationEnd', 'signedOn', 'insuranceFiledOn', 'labourOfficeFiledOn', 'form2From'] as const;
 /** Restricted (HR, Finance, CEO): the audit log only says they changed, as for bank details. */
-export const SALARY_FIELDS = ['grossSalary', 'netSalary', 'insuredSalary', 'hourlyRate', 'allowances'];
+export const SALARY_FIELDS = ['grossSalary', 'netSalary', 'insuredSalary', 'hourlyRate', 'hourlyMinimum', 'allowances'];
 /** A contract's terms: a draft takes them, a signed contract never changes them. */
 const TERMS = [
   'form',
@@ -102,6 +103,7 @@ const TERMS = [
   'payBasis',
   'hourlyRate',
   'hoursPerWeek',
+  'hourlyMinimum',
   'daysPerWeek',
   'allowances',
   'raiseReason',
@@ -173,6 +175,8 @@ export interface TermsInput {
   grossSalary?: number | null;
   hourlyRate?: number | null;
   hoursPerWeek?: number | null;
+  /** By the hour, optional: the least paid a month (27 October 2026); a monthly salary has none. */
+  hourlyMinimum?: number | null;
   daysPerWeek?: number | null;
   /** With their kinds' names and treatment (see AllowancesService.snapshot). */
   allowances: readonly AllowanceSnapshot[];
@@ -200,6 +204,7 @@ export function fields(c: ContractRow) {
     grossSalary: c.grossSalary.toNumber(),
     hourlyRate: c.hourlyRate?.toNumber() ?? null,
     hoursPerWeek: c.hoursPerWeek?.toNumber() ?? null,
+    hourlyMinimum: c.hourlyMinimum?.toNumber() ?? null,
     daysPerWeek: c.daysPerWeek,
     basicPercent: c.basicPercent,
     netSalary: c.netSalary?.toNumber() ?? null,
@@ -240,6 +245,7 @@ export function payTermsOf(c: {
   grossSalary: number | Prisma.Decimal;
   hourlyRate: number | Prisma.Decimal | null;
   hoursPerWeek: number | Prisma.Decimal | null;
+  hourlyMinimum: number | Prisma.Decimal | null;
   basicPercent: number;
   allowances: readonly { allowanceTypeId: string; amount: number | Prisma.Decimal; perAccountAmount?: number | Prisma.Decimal | null }[];
 }): PayTerms {
@@ -249,6 +255,8 @@ export function payTermsOf(c: {
     grossSalary: n(c.grossSalary),
     hourlyRate: c.hourlyRate === null ? null : n(c.hourlyRate),
     hoursPerWeek: c.hoursPerWeek === null ? null : n(c.hoursPerWeek),
+    // the minimum a month by the hour (27 October 2026) is pay too: a new one goes to the CEO as a raise
+    hourlyMinimum: c.hourlyMinimum === null ? null : n(c.hourlyMinimum),
     basicPercent: c.basicPercent,
     // a per-account one's amount per account (27 October 2026) is pay too
     allowances: c.allowances.map((a) => ({ allowanceTypeId: a.allowanceTypeId, amount: n(a.amount), perAccountAmount: a.perAccountAmount == null ? null : n(a.perAccountAmount) })),
@@ -452,6 +460,7 @@ export class ContractsService {
       grossSalary: dto.grossSalary,
       hourlyRate: dto.hourlyRate,
       hoursPerWeek: dto.hoursPerWeek,
+      hourlyMinimum: dto.hourlyMinimum,
       daysPerWeek: dto.daysPerWeek,
       allowances,
     });
@@ -538,6 +547,7 @@ export class ContractsService {
         grossSalary: dto.grossSalary ?? was.grossSalary,
         hourlyRate: dto.hourlyRate !== undefined ? dto.hourlyRate : hourly ? was.hourlyRate : null,
         hoursPerWeek: dto.hoursPerWeek !== undefined ? dto.hoursPerWeek : hourly ? was.hoursPerWeek : null,
+        hourlyMinimum: dto.hourlyMinimum !== undefined ? dto.hourlyMinimum : hourly ? was.hourlyMinimum : null,
         daysPerWeek: dto.daysPerWeek !== undefined ? dto.daysPerWeek : was.daysPerWeek,
         allowances: allowances ?? before.allowances.map(allowanceView),
       });
@@ -1063,7 +1073,7 @@ export class ContractsService {
     if (type === 'intern') {
       // no wage (owner, 19 October 2026: "we are not paying them salary, its just transportation allowance"): the gross
       // is 0, the allowances paid on top
-      if (input.payBasis === 'hourly' || input.hourlyRate != null || input.hoursPerWeek != null) {
+      if (input.payBasis === 'hourly' || input.hourlyRate != null || input.hoursPerWeek != null || input.hourlyMinimum != null) {
         throw new BadRequestException('An intern is paid no wage, so not by the hour: leave the pay monthly, the gross at 0.');
       }
       if (input.grossSalary) throw new BadRequestException(INTERN_NO_WAGE_MESSAGE);
@@ -1153,7 +1163,8 @@ export class ContractsService {
   /**
    * How the pay is set (owner's request, 15 October 2026). A monthly salary: the gross as sent, with no hourly terms. By
    * the hour: the rate and the hours a week, and the gross is the monthly estimate, rate × hours × 52 ÷ 12 (whatever
-   * gross was sent). The working days a week go with either.
+   * gross was sent), with the minimum a month if one is sent (owner, 27 October 2026: "can i add rate per hour with a
+   * minimum monthly payment?"; he chose "On each contract"). The working days a week go with either.
    */
   pay(input: TermsInput) {
     const daysPerWeek = input.daysPerWeek ?? null;
@@ -1164,13 +1175,14 @@ export class ContractsService {
       const grossSalary = monthlyFromHourly(input.hourlyRate, input.hoursPerWeek);
       if (grossSalary < 0.01) throw new BadRequestException('The hourly rate and the hours a week come to less than 0.01 a month. Check them.');
       if (grossSalary > MAX_MONEY) throw new BadRequestException('The hourly rate and the hours a week come to more than a monthly salary can be. Check them.');
-      return { payBasis: 'hourly' as PayBasis, grossSalary, hourlyRate: input.hourlyRate, hoursPerWeek: input.hoursPerWeek, daysPerWeek };
+      return { payBasis: 'hourly' as PayBasis, grossSalary, hourlyRate: input.hourlyRate, hoursPerWeek: input.hoursPerWeek, hourlyMinimum: input.hourlyMinimum ?? null, daysPerWeek };
     }
     if (input.hourlyRate != null || input.hoursPerWeek != null) {
       throw new BadRequestException('A monthly salary has no hourly rate or hours a week. Clear them, or choose pay by the hour.');
     }
+    if (input.hourlyMinimum != null) throw new BadRequestException(HOURLY_MINIMUM_MESSAGE);
     if (input.grossSalary == null) throw new BadRequestException(GROSS_MESSAGE);
-    return { payBasis: 'monthly' as PayBasis, grossSalary: input.grossSalary, hourlyRate: null, hoursPerWeek: null, daysPerWeek };
+    return { payBasis: 'monthly' as PayBasis, grossSalary: input.grossSalary, hourlyRate: null, hoursPerWeek: null, hourlyMinimum: null, daysPerWeek };
   }
 
   /**

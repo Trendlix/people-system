@@ -15,7 +15,7 @@ import { cairoDate, offerSlot, termDates } from './rules.js';
 import { offerPay } from './views.js';
 
 /** The restricted terms never go to the audit log: only the fact that they were set (as contracts do). */
-const SALARY_FIELDS = ['grossSalary', 'netSalary', 'insuredSalary', 'hourlyRate'];
+const SALARY_FIELDS = ['grossSalary', 'netSalary', 'insuredSalary', 'hourlyRate', 'hourlyMinimum'];
 export function salaryMasked<T extends Record<string, unknown>>(diff: T): T {
   const out: Record<string, unknown> = { ...diff };
   for (const key of SALARY_FIELDS) if (key in out) out[key] = 'changed';
@@ -157,6 +157,8 @@ export class OfferHiringService {
           payBasis: o.payBasis,
           hourlyRate: o.hourlyRate?.toNumber() ?? null,
           hoursPerWeek: o.hoursPerWeek?.toNumber() ?? null,
+          // the minimum a month by the hour (27 October 2026), as offered
+          hourlyMinimum: o.payBasis === 'hourly' ? (o.hourlyMinimum?.toNumber() ?? null) : null,
           daysPerWeek: o.daysPerWeek,
           status: 'draft',
           note: `Made from job offer ${o.number}.`,

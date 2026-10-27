@@ -29,6 +29,7 @@ import {
   splitSalary,
   switchBasis,
   switchRateBasis,
+  typedHourlyMinimum,
   workedOutGross,
   workedOutRate,
   type SalaryResult,
@@ -56,6 +57,10 @@ import { SalaryBreakdownList } from './salary-breakdown';
 // day): the gross rate is worked out to the piaster and sent as hourlyRate, with the net worked out; the typed net rate
 // (netRate) and the switch (rateBasis) go along only to be kept if the save is refused.
 //
+// By the hour, a minimum a month too, optional (owner, 27 October 2026: "can i add rate per hour with a minimum monthly
+// payment?"; he chose "On each contract" and "Prorated by days"): payroll pays the hours × the rate, or the minimum for
+// the days paid if that is more. It is pay like the rate, so a new one on a renewal or a raise is a change of pay.
+//
 // An intern's internship agreement pays no wage (owner, 19 October 2026: "in case of trainee, we are not paying them
 // salary, its just transportation allowance. can i add the gross with 0?"; the owner chose the unpaid internship, outside
 // the labour law): `noWage` shows the gross as No wage (unpaid internship), sent as nothing (the API keeps it at 0), with
@@ -68,6 +73,8 @@ export type PayDefaults = {
   grossSalary: number | null;
   hourlyRate: number | null;
   hoursPerWeek: number | null;
+  /** By the hour: the least paid a month, if set (27 October 2026). */
+  hourlyMinimum: number | null;
   daysPerWeek: number | null;
   basicPercent: number;
   netSalary: number | null;
@@ -76,7 +83,7 @@ export type PayDefaults = {
 };
 
 /** The fields `usePay` keeps track of; the form tracks the others itself. */
-const PAY_KEYS = ['payBasis', 'salaryBasis', 'grossSalary', 'wantedNet', 'rateBasis', 'hourlyRate', 'netRate', 'hoursPerWeek', 'basicPercent'] as const;
+const PAY_KEYS = ['payBasis', 'salaryBasis', 'grossSalary', 'wantedNet', 'rateBasis', 'hourlyRate', 'netRate', 'hoursPerWeek', 'hourlyMinimum', 'basicPercent'] as const;
 type PayKey = (typeof PAY_KEYS)[number];
 const isPayKey = (name: string): name is PayKey => (PAY_KEYS as readonly string[]).includes(name);
 
@@ -86,6 +93,7 @@ const NET_INVALID = 'Enter the net salary as an amount in EGP, e.g. 13,000.';
 const RATE_INVALID = 'Enter the hourly rate as an amount in EGP, e.g. 150.';
 const NET_RATE_INVALID = 'Enter the net per hour as an amount in EGP, e.g. 120.';
 const HOURS_INVALID = `Enter the hours a week as a number above 0, up to ${MAX_HOURS_PER_WEEK}, e.g. 20 or 22.5.`;
+const MINIMUM_INVALID = 'Enter the minimum a month as an amount in EGP above 0, e.g. 12,000, or leave it empty for none.';
 export const choice =
   'flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft';
 
@@ -103,6 +111,7 @@ export function usePay(state: FormState, defaults: PayDefaults, allowanceTypes: 
     hourlyRate: valueOf(state, 'hourlyRate', amountText(defaults.hourlyRate)),
     netRate: valueOf(state, 'netRate', ''),
     hoursPerWeek: valueOf(state, 'hoursPerWeek', amountText(defaults.hoursPerWeek)),
+    hourlyMinimum: valueOf(state, 'hourlyMinimum', amountText(defaults.hourlyMinimum)),
     basicPercent: valueOf(state, 'basicPercent', String(defaults.basicPercent)),
   }));
   // the allowance rows report their own changes
@@ -164,11 +173,14 @@ export function typedPayOf(pay: Pay): VersionPay | null {
   const basicPercent = Number(pay.typed.basicPercent);
   if (!pay.calc || !Number.isInteger(basicPercent) || basicPercent < 1 || basicPercent > 100) return null;
   const rate = pay.hourly && pay.pay.kind === 'ok' ? pay.pay : null;
+  // the minimum a month by the hour (27 October 2026) is pay too: a new one is a change of pay
+  const minimum = pay.hourly ? typedHourlyMinimum(pay.typed.hourlyMinimum) : null;
   return {
     payBasis: pay.hourly ? 'hourly' : 'monthly',
     grossSalary: pay.calc.gross,
     hourlyRate: rate?.rate ?? null,
     hoursPerWeek: rate?.hours ?? null,
+    hourlyMinimum: minimum !== null && !Number.isNaN(minimum) ? minimum : null,
     basicPercent,
     allowances: pay.rows.flatMap((r) => {
       // one paid per client account (25 October 2026) has no amount: 0, as a version keeps it, and its amount per account
@@ -347,6 +359,25 @@ export function PayFields({
                 {hourlyPay.kind === 'ok'
                   ? `Gross: ${monthlyEstimateText(hourlyPay)}.${insuredText ? ` ${insuredText}` : ''}`
                   : 'The contracted hours each week, e.g. 16 for two 8-hour days.'}
+              </p>
+            </div>
+            {/* the least paid a month (owner, 27 October 2026: "can i add rate per hour with a minimum monthly payment?") */}
+            <div key="hourlyMinimum">
+              <label htmlFor={fid('hourlyMinimum')} className="label">
+                Minimum a month (EGP) {optional}
+              </label>
+              <input
+                id={fid('hourlyMinimum')}
+                name="hourlyMinimum"
+                inputMode="decimal"
+                autoComplete="off"
+                aria-describedby={fid('hourlyMinimum-hint')}
+                defaultValue={typed.hourlyMinimum}
+                ref={(el) => el?.setCustomValidity(Number.isNaN(typedHourlyMinimum(typed.hourlyMinimum)) ? MINIMUM_INVALID : '')}
+                className="input tabular-nums"
+              />
+              <p id={fid('hourlyMinimum-hint')} className="hint">
+                Paid when the hours worked come to less, for the days of a part month. Leave empty for none.
               </p>
             </div>
           </>

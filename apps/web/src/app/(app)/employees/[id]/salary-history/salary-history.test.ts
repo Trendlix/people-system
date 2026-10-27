@@ -205,6 +205,10 @@ describe('an event on the timeline', () => {
     expect(promoted.signed).toBe(false);
     expect(promoted.promotion).toBe('Senior Designer, grade G4');
     expect(promoted.hourly).toBe('EGP 150.00 an hour; the gross is the monthly estimate');
+    // with a minimum a month (27 October 2026)
+    expect(eventView(event({ version: 2, payBasis: 'hourly', hourlyRate: 250, hourlyMinimum: 12000 })).hourly).toBe(
+      'EGP 250.00 an hour; the gross is the monthly estimate · minimum EGP 12,000.00 a month',
+    );
     expect(eventView(event({ version: 2, promotion: { jobTitle: null, grade: 'G4' } })).promotion).toBe('grade G4');
   });
 });

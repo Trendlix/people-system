@@ -165,6 +165,11 @@ const OFFER_FIELDS: Record<string, string> = {
   hours_per_week: 'hoursPerWeek',
   hourly_rate: 'hourlyRate',
   net_hourly_rate: 'netSalary', // by the hour; a monthly salary has none
+  // the minimum a month by the hour (27 October 2026): printed blank without one, so only ever pointed to
+  hourly_minimum: 'hourlyMinimum',
+  hourly_minimum_line: 'hourlyMinimum',
+  hourly_minimum_line_ar: 'hourlyMinimum',
+  hourly_minimum_line_en: 'hourlyMinimum',
   gross_salary: 'grossSalary',
   gross_salary_words: 'grossSalary',
   gross_salary_words_en: 'grossSalary',

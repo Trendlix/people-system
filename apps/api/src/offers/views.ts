@@ -114,6 +114,8 @@ export function offerView(o: OfferRow, ctx: OfferContext) {
     grossSalary: sees ? o.grossSalary.toNumber() : null,
     hourlyRate: sees ? (o.hourlyRate?.toNumber() ?? null) : null,
     hoursPerWeek: o.hoursPerWeek?.toNumber() ?? null,
+    // by the hour, the least paid a month (owner, 27 October 2026: "can i add rate per hour with a minimum monthly payment?")
+    hourlyMinimum: sees ? (o.hourlyMinimum?.toNumber() ?? null) : null,
     daysPerWeek: o.daysPerWeek,
     basicPercent: o.basicPercent,
     netSalary: sees ? (o.netSalary?.toNumber() ?? null) : null,

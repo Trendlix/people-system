@@ -17,6 +17,7 @@ describe('the first contract, as hiring in one form starts it', () => {
       grossSalary: null,
       hourlyRate: null,
       hoursPerWeek: null,
+      hourlyMinimum: null,
       daysPerWeek: null,
       basicPercent: 75,
       netSalary: null,

@@ -201,6 +201,7 @@ const L = {
   fixed: { en: 'Fixed salary', ar: 'الراتب الثابت' },
   variable: { en: 'Variable salary', ar: 'الراتب المتغير' },
   hours: { en: 'Hours worked', ar: 'أجر الساعات' },
+  hourlyTopUp: { en: 'Topped up to the minimum', ar: 'تكملة الحد الأدنى الشهري' },
   attendanceCut: { en: 'Attendance adjustment', ar: 'تسوية الحضور' },
   kpiCut: { en: 'Performance adjustment', ar: 'تسوية المتغير' },
   noShowCut: { en: 'No-show', ar: 'الغياب دون إذن' },
@@ -587,7 +588,13 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
   if (hourly) {
     const rate = terms.hourlyRate ?? 0;
     const worked = inputs.workedHours ?? 0;
-    earn(L.hours, result.fixed, num(ar ? `${formatHours(worked)} × ${formatAmount(rate)} للساعة` : `${formatHours(worked)} × ${formatAmount(rate)} an hour`));
+    // topped up to the minimum a month for the days paid (owner, 27 October 2026: "can i add rate per hour with a minimum
+    // monthly payment?"): the hours as worked, and the top-up on its own row; none on a line worked out before then
+    const topUp = Number.isFinite(result.hourlyTopUp) && (result.hourlyTopUp ?? 0) > 0 ? result.hourlyTopUp! : 0;
+    earn(L.hours, Math.round((result.fixed - topUp) * 100) / 100, num(ar ? `${formatHours(worked)} × ${formatAmount(rate)} للساعة` : `${formatHours(worked)} × ${formatAmount(rate)} an hour`));
+    const minimum = terms.hourlyMinimum ?? 0;
+    const minimumNote = ar ? `الحد الأدنى ${money(minimum)} شهريًا` : `Minimum ${money(minimum)} a month`;
+    earn(L.hourlyTopUp, topUp, minimum > 0 ? (partMonth ? `${minimumNote}${ar ? '، ' : ', '}${forDaysOf(terms.paidDays)}` : minimumNote) : null);
   } else {
     const fixedNote = (basic: number, gross: number) => (ar ? `${basic}% من الراتب الشامل ${formatAmount(gross)}` : `${basic}% of the ${formatAmount(gross)} gross`);
     const variableNote = (basic: number) => (ar ? `${plainNumber(100 - basic)}% من الراتب الشامل` : `${plainNumber(100 - basic)}% of the gross`);

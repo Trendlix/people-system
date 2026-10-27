@@ -60,6 +60,20 @@ describe('a contract as the API takes it', () => {
     expect(body).not.toHaveProperty('rateBasis');
   });
 
+  // owner, 27 October 2026: "can i add rate per hour with a minimum monthly payment?" (he chose "On each contract")
+  it('sends the minimum a month by the hour, null when left empty, and never for a monthly salary', () => {
+    const errors: string[] = [];
+    expect(contractBody(form({ ...hourly, hourlyMinimum: '12,000' }), errors, false, false)).toMatchObject({ payBasis: 'hourly', hourlyRate: 150, hourlyMinimum: 12000 });
+    // empty: none, sent as such so a raise or a draft clears the one before
+    expect(contractBody(form({ ...hourly, hourlyMinimum: '' }), errors, false, false)).toMatchObject({ hourlyMinimum: null });
+    expect(payBody(form(hourly), errors, true)).toMatchObject({ hourlyMinimum: null });
+    expect(errors).toEqual([]);
+    expect(contractBody(form({ ...monthly, hourlyMinimum: '12,000' }), errors, false, false)).not.toHaveProperty('hourlyMinimum');
+    const wrong: string[] = [];
+    for (const typed of ['0', 'abc', '-5']) contractBody(form({ ...hourly, hourlyMinimum: typed }), wrong, false, false);
+    expect(wrong).toEqual(Array(3).fill('Enter the minimum a month as an amount in EGP above 0, e.g. 12,000, or leave it empty for none.'));
+  });
+
   it('asks for the net per hour when no gross rate could be worked out from it', () => {
     const errors: string[] = [];
     contractBody(form({ ...hourly, rateBasis: 'net', netRate: 'abc', hourlyRate: '', netSalary: '' }), errors, false, false);
