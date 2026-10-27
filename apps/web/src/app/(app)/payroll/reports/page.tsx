@@ -15,6 +15,7 @@ import { loadJson, notLoadedText } from '../load';
 import { PayrollStatusBadge } from '../ui';
 import { CostTrendChart } from './cost-chart';
 import { LeaveReportLink } from './leave/leave-link';
+import { SocialInsuranceLink } from './social-insurance/social-insurance-link';
 import { VsInsuranceLink } from './vs-insurance/vs-insurance-link';
 import {
   apiStatisticsPath,
@@ -328,6 +329,8 @@ export default function PayrollReportsPage({ searchParams }: PageProps<'/payroll
           <Suspense fallback={null}>
             <LeaveReportLink />
             <VsInsuranceLink />
+            {/* the Social Insurance report (owner, 27 October 2026: "to be filled from the social insurance tab") */}
+            <SocialInsuranceLink />
           </Suspense>
         </p>
         <div className="mt-6">

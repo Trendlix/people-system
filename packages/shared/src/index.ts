@@ -670,3 +670,7 @@ export * from './resignation-request.js';
 // the social insurance data"): each line's actual cycle beside the same month on the registered insured wage, and the
 // differences in the insurance shares, the tax, the Fund, the net and the company cost
 export * from './payroll-vs-insurance.js';
+
+// the Social Insurance report (owner, 27 October 2026: "is there a report for the social insurance? to be filled from the
+// social insurance tab"; he chose all three): the insured staff register, a month's contributions, the missing data
+export * from './social-insurance-report.js';

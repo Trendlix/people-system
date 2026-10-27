@@ -35,6 +35,7 @@ import { PayrollAdjustmentsModule } from './payroll/adjustments/adjustments.modu
 import { LawRatesModule } from './payroll/law-rates/law-rates.module.js';
 import { PayrollLockedChangesModule } from './payroll/locked-changes/locked-changes.module.js';
 import { PayrollStatisticsModule } from './payroll/statistics/statistics.module.js';
+import { SocialInsuranceReportModule } from './payroll/social-insurance/social-insurance.module.js';
 import { UnsettledModule } from './payroll/unsettled/unsettled.module.js';
 import { PdfModule } from './pdf/pdf.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
@@ -81,6 +82,9 @@ import { ZohoPeopleModule } from './zoho-people/zoho-people.module.js';
     PayrollLockedChangesModule,
     UnsettledModule,
     PayrollStatisticsModule,
+    // the Social Insurance report (owner, 27 October 2026: "is there a report for the social insurance? to be filled from
+    // the social insurance tab"): the register, a month's contributions and the missing data, from each profile's tab
+    SocialInsuranceReportModule,
     ReimbursementsModule,
     LeaveModule,
     AttendanceModule,
