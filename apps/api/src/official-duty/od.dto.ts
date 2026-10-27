@@ -1,6 +1,6 @@
 import { Transform } from 'class-transformer';
 import { IsBoolean, IsIn, IsOptional, IsString, IsUUID, Matches, MaxLength, MinLength, ValidateIf } from 'class-validator';
-import { LEAVE_STATUSES, OD_PLACE_MAX, OD_REASON_MAX, type LeaveStatus } from '@trendlix/shared';
+import { COMPENSATORY_OUTCOMES, LEAVE_STATUSES, OD_PLACE_MAX, OD_REASON_MAX, type CompensatoryOutcome, type LeaveStatus } from '@trendlix/shared';
 import { IsDateOnly } from '../common/date-only.js';
 import { TIME_OF_DAY } from '../common/time-of-day.js';
 import { Trim, TrimOrNull } from '../common/transforms.js';
@@ -12,6 +12,8 @@ import { Trim, TrimOrNull } from '../common/transforms.js';
 // 2026: "HR records it").
 
 const PLACE = 'Write where the official duty is, e.g. the client’s office in New Cairo.';
+const COMPENSATION = `Choose the compensation: ${COMPENSATORY_OUTCOMES.join(' or ')}.`;
+const DAY_OFF = 'Enter the day off, e.g. 2026-11-10.';
 const REASON = 'Write what the official duty is for, e.g. a site visit for the client’s launch.';
 
 /** An employee's own request. */
@@ -41,6 +43,17 @@ export class CreateOdDto {
 
   @Trim() @IsString({ message: REASON }) @MinLength(1, { message: REASON }) @MaxLength(OD_REASON_MAX, { message: `Keep the reason to ${OD_REASON_MAX} characters or fewer.` })
   reason: string = '';
+
+  /**
+   * One day on a rest day or an official holiday (owner, 27 October 2026: "it should count in the compensatories"; "One
+   * step"): its compensation, a day off (whole, or hours off for part of the day) or cash instead; the day off's date.
+   * Whether one is needed, and what it earns, is the service's to say.
+   */
+  @IsOptional() @IsIn(COMPENSATORY_OUTCOMES, { message: COMPENSATION })
+  compensation?: CompensatoryOutcome;
+
+  @Trim() @IsOptional() @IsDateOnly(DAY_OFF)
+  dayOff?: string;
 }
 
 /** HR recording an official duty for someone (past the 3-day limit too): whose, and the request's own fields. */
@@ -71,6 +84,13 @@ export class OdCheckQueryDto {
 
   @TrimOrNull() @IsOptional() @Matches(TIME_OF_DAY, { message: 'Enter the time it ends, e.g. 14:00.' })
   toTime?: string | null;
+
+  /** On a rest day or an official holiday: the compensation and the day off chosen so far (27 October 2026). */
+  @IsOptional() @IsIn(COMPENSATORY_OUTCOMES, { message: COMPENSATION })
+  compensation?: CompensatoryOutcome;
+
+  @Trim() @IsOptional() @IsDateOnly(DAY_OFF)
+  dayOff?: string;
 }
 
 /** HR cancelling an approved official duty: why, required. */

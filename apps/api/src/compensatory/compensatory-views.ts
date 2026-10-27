@@ -6,6 +6,7 @@ import {
   leaveStage,
   type ApproverRole,
   type CompensatoryOutcome,
+  type CompensatoryRules,
   type LeaveDecision,
   type LeaveStage,
   type LeaveStatus,
@@ -38,6 +39,8 @@ export const COMPENSATORY_INCLUDE = {
   employment: { select: { department: { select: { id: true, nameEn: true, parent: { select: { id: true, nameEn: true } } } } } },
   manager: { select: { id: true, fullNameEn: true } },
   steps: { orderBy: { id: 'asc' }, include: { actor: { select: { id: true, email: true } }, onBehalfOf: { select: { id: true, fullNameEn: true } } } },
+  // the official duty it goes with (27 October 2026)
+  odRequest: { select: { id: true, startDate: true, status: true } },
 } satisfies Prisma.CompensatoryRequestInclude;
 
 export type CompensatoryRow = Prisma.CompensatoryRequestGetPayload<{ include: typeof COMPENSATORY_INCLUDE }>;
@@ -59,6 +62,8 @@ export function compensatoryView(r: CompensatoryRow, caller: Caller, names: Read
   const parties = compensatoryParties(r);
   const dayWorked = fromDateOnly(r.dayWorked);
   const dayOff = fromDateOnly(r.dayOff);
+  // one an official duty carries is decided and cancelled with it, never by itself (27 October 2026)
+  const withOd = r.odRequest !== null;
   return {
     id: r.id,
     kind: 'compensatory' as const,
@@ -73,12 +78,17 @@ export function compensatoryView(r: CompensatoryRow, caller: Caller, names: Read
     stage: leaveStage(status),
     outcome: (r.outcome as CompensatoryOutcome | null) ?? null,
     cashDays: extra.cashDays,
+    // part of a day worked (27 October 2026): its hours, and the hours off they earned (null: a whole day)
+    hoursWorked: r.hoursWorked?.toNumber() ?? null,
+    hoursOff: r.hoursOff?.toNumber() ?? null,
+    // the official duty it goes with
+    od: r.odRequest ? { id: r.odRequest.id, startDate: fromDateOnly(r.odRequest.startDate)!, status: r.odRequest.status as LeaveStatus } : null,
     noCheckIn: extra.noCheckIn,
-    waitingForYou: waitsFor({ ...parties, status }, caller),
+    waitingForYou: !withOd && waitsFor({ ...parties, status }, caller),
     standingInFor: standingInFor(parties, caller),
     confidential: isConfidentialRequest(parties, caller),
-    canCancel: isRequester(parties, caller) && isOpenLeave(status),
-    hrCanCancel: hrMayCancel({ ...parties, status }, caller),
+    canCancel: !withOd && isRequester(parties, caller) && isOpenLeave(status),
+    hrCanCancel: !withOd && hrMayCancel({ ...parties, status }, caller),
     manager: r.manager && { id: r.manager.id, fullNameEn: r.manager.fullNameEn, role: (r.approverRole as ApproverRole | null) ?? 'direct_manager' },
     rejectedStage: r.rejectedStage as LeaveStage | null,
     rejectReason: r.rejectReason,
@@ -119,6 +129,9 @@ export interface CompensatoryFormView {
   hasShift: boolean;
   today: string;
   cashDays: number;
+  /** The Compensatory Setup (27 October 2026), and the shift's hours a day (null: none), for what part of a day earns. */
+  rules: CompensatoryRules;
+  hoursADay: number | null;
   /** Their shift's working days (0 = Sunday); Sunday to Thursday without one. */
   workingDays: number[];
   /** The official holidays from the month before to the month after: date and name. */

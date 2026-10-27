@@ -1,4 +1,13 @@
 import {
+  COMPENSATORY_RULE_DEFAULTS,
+  compensationEarned,
+  compensationEarnedText,
+  compensationText,
+  compensatoryCashDays,
+  compensatoryForOdCheck,
+  compensatoryRulesProblems,
+  compensatoryWindowProblem,
+  hoursWorkedProblems,
   attendanceDayView,
   attendanceLineInputs,
   attendanceFigures,
@@ -214,5 +223,115 @@ describe('the attendance', () => {
   it('leaves the days as they are with none', () => {
     const base = month();
     expect(compensatoryDays(base, ctx({ daysOff: [], daysWorked: [] }))).toEqual(base);
+  });
+});
+
+// The Compensatory Setup (owner, 27 October 2026: "i need a setup dashboard for the compensatory leaves", "minimum working
+// hours"; "Hours off for hours worked"; "up to 4 hours to be compensated by hours - minimum 6 hours can be compensated by a
+// day"; "Capped at 4 hours").
+describe('the Compensatory Setup', () => {
+  const rules = COMPENSATORY_RULE_DEFAULTS;
+
+  it('starts with the owner’s numbers: 1.5 days’ pay, 2 hours to qualify, 4 hours off at most, a whole day from 6, the same month', () => {
+    expect(rules).toEqual({ cashRate: 1.5, minHours: 2, hoursCap: 4, fullDayHours: 6, offWithinDays: null });
+    expect(compensatoryRulesProblems(rules)).toEqual([]);
+  });
+
+  it('refuses hours that don’t fit together, and a window outside 1 to 60 days', () => {
+    expect(compensatoryRulesProblems({ ...rules, minHours: 5 })).toEqual(['The most hours off can’t be fewer than the minimum hours to qualify.']);
+    expect(compensatoryRulesProblems({ ...rules, fullDayHours: 3 })).toEqual(['The hours for a whole day can’t be fewer than the most hours off.']);
+    expect(compensatoryRulesProblems({ ...rules, minHours: 0.3 })).toEqual(['Enter the minimum hours to qualify in whole or half hours from 0.5 to 24, e.g. 2.']);
+    expect(compensatoryRulesProblems({ ...rules, offWithinDays: 0 })).toEqual(['Enter the days after the day worked as a whole number from 1 to 60, or choose the same month.']);
+    expect(compensatoryRulesProblems({ ...rules, offWithinDays: 14 })).toEqual([]);
+  });
+
+  it('what the hours worked earn: below 2 nothing, up to 4 those hours, 4 to 6 capped at 4, from 6 a whole day', () => {
+    expect(compensationEarned(null)).toEqual({ kind: 'day' });
+    expect(compensationEarned(1.5)).toEqual({ kind: 'none', hours: 1.5 });
+    expect(compensationEarned(2)).toEqual({ kind: 'hours', hours: 2 });
+    expect(compensationEarned(3.5)).toEqual({ kind: 'hours', hours: 3.5 });
+    expect(compensationEarned(5)).toEqual({ kind: 'hours', hours: 4 });
+    expect(compensationEarned(6)).toEqual({ kind: 'day' });
+    expect(compensationEarned(8)).toEqual({ kind: 'day' });
+    expect([compensationEarnedText({ kind: 'day' }), compensationEarnedText({ kind: 'hours', hours: 4 }), compensationEarnedText({ kind: 'none', hours: 1 })]).toEqual([
+      'a whole day off',
+      '4 hours off',
+      'nothing: fewer than 2 hours worked',
+    ]);
+    expect(hoursWorkedProblems(1, rules, 'Ben')).toEqual(['Ben worked 1 hour: fewer than the 2 hours that earn a compensation (Compensatory Setup).']);
+    expect(hoursWorkedProblems(null)).toEqual([]);
+    expect(hoursWorkedProblems(30)).toEqual(['Enter the hours worked, e.g. 4 or 3.5.']);
+  });
+
+  it('cash instead: a whole day the rate, hours their share of the shift’s day at the rate', () => {
+    expect(compensatoryCashDays({ kind: 'day' }, rules, 8)).toBe(1.5);
+    // 4 hours of an 8-hour day at 1.5: 0.75 days' pay
+    expect(compensatoryCashDays({ kind: 'hours', hours: 4 }, rules, 8)).toBe(0.75);
+    expect(compensatoryCashDays({ kind: 'hours', hours: 3 }, rules, 9)).toBe(0.5);
+    // without a shift, an 8-hour day
+    expect(compensatoryCashDays({ kind: 'hours', hours: 2 }, rules, null)).toBe(0.38);
+    expect(compensatoryCashDays({ kind: 'none', hours: 1 }, rules, 8)).toBe(0);
+    expect(compensationText({ outcome: 'cash', dayOff: null, hoursOff: 4 }, 1.5)).toBe("cash instead (4 hours' pay at 1.5×)");
+    expect(compensationText({ outcome: 'day_off', dayOff: '2026-11-10', hoursOff: 4 }, 1.5)).toBe('4 hours off on 10/11/2026');
+    expect(compensationText({ outcome: 'day_off', dayOff: '2026-11-10' }, 1.5)).toBe('a day off on 10/11/2026');
+  });
+
+  it('when the day off is taken: the same month, or within the days after the day worked', () => {
+    expect(compensatoryWindowProblem('2026-11-06', '2026-11-02')).toBeNull();
+    expect(compensatoryWindowProblem('2026-11-27', '2026-12-02')).toBe(compensatorySameMonthProblem('2026-11-27', '2026-12-02'));
+    expect(compensatoryWindowProblem('2026-11-27', '2026-12-02', 7)).toBeNull();
+    expect(compensatoryWindowProblem('2026-11-27', '2026-11-20', 7)).toBe('The day off must be within 7 days after the day worked: from 28/11/2026 to 04/12/2026.');
+    expect(compensatoryWindowProblem('2026-11-27', '2026-12-05', 7)).not.toBeNull();
+    expect(compensatoryRequestProblems('2026-11-06', '2026-11-20', worked(), off(), TODAY, { offWithinDays: 7 })).toEqual([
+      'The day off must be within 7 days after the day worked: from 07/11/2026 to 13/11/2026.',
+    ]);
+  });
+
+  it('with an official duty: the day worked not compensated already, the day off free, a day ahead for an employee', () => {
+    const asked = { outcome: 'day_off' as const, dayOff: '2026-11-16' };
+    expect(compensatoryForOdCheck('2026-11-06', asked, { claimed: false }, off(), TODAY)).toEqual({ problems: [], warnings: [] });
+    expect(compensatoryForOdCheck('2026-11-06', asked, { claimed: true }, off(), TODAY, 'Ben').problems).toEqual(['Ben has asked to compensate 06/11/2026 already.']);
+    expect(compensatoryForOdCheck('2026-11-06', { outcome: 'day_off', dayOff: null }, { claimed: false }, null, TODAY).problems).toEqual(['Enter the day off, e.g. 2026-11-10.']);
+    // an employee's day off a day ahead at the latest; HR's past one a warning
+    expect(compensatoryForOdCheck('2026-11-06', { outcome: 'day_off', dayOff: '2026-11-10' }, { claimed: false }, off(), TODAY).problems).toEqual([
+      '10/11/2026 has gone by: only HR records a day off that is past.',
+    ]);
+    expect(compensatoryForOdCheck('2026-11-06', { outcome: 'day_off', dayOff: '2026-11-10' }, { claimed: false }, off(), TODAY, 'Ben')).toEqual({
+      problems: [],
+      warnings: ["10/11/2026 has gone by: it is recorded without a day's notice."],
+    });
+    // cash instead has no day off
+    expect(compensatoryForOdCheck('2026-11-06', { outcome: 'cash', dayOff: null }, { claimed: false }, null, TODAY)).toEqual({ problems: [], warnings: [] });
+    // the Setup's window
+    expect(compensatoryForOdCheck('2026-11-06', { outcome: 'day_off', dayOff: '2026-11-30' }, { claimed: false }, off(), TODAY, null, { offWithinDays: 7 }).problems).toEqual([
+      'The day off must be within 7 days after the day worked: from 07/11/2026 to 13/11/2026.',
+    ]);
+  });
+});
+
+describe('hours off in the attendance (27 October 2026: "Hours off for hours worked")', () => {
+  const base = { month: '2026-11', today: TODAY, workingDays: [0, 1, 2, 3, 4], holidays: [] as string[], leaveDays: [] as string[], employedFrom: '2024-01-01', employedTo: null, hoursADay: 9, daysOff: [] as string[] };
+  const day = (date: string, status: SourcedDay['status'], hoursCounted = 0): SourcedDay => ({ date, status, checkIn: null, checkOut: null, place: null, zohoStatus: null, permissionHours: 0, hoursCounted, source: 'system', flags: [] });
+
+  it('adds the hours off to the day worked, at most the shift’s hours, the rest of the day short as usual', () => {
+    const days = compensatoryDays([day('2026-11-10', 'worked', 5), day('2026-11-11', 'worked', 7)], { ...base, daysWorked: ['2026-11-06'], hoursOff: [{ date: '2026-11-10', hours: 4 }, { date: '2026-11-11', hours: 4 }] });
+    expect(days.find((d) => d.date === '2026-11-10')).toMatchObject({ status: 'worked', hoursCounted: 9, compensatoryHours: 4 });
+    expect(days.find((d) => d.date === '2026-11-11')).toMatchObject({ hoursCounted: 9, compensatoryHours: 4 });
+  });
+
+  it('a day with no check-in is worked for the hours off alone: short hours, not a no-show', () => {
+    const days = compensatoryDays([day('2026-11-10', 'absent')], { ...base, daysWorked: [], hoursOff: [{ date: '2026-11-10', hours: 4 }] });
+    expect(days[0]).toMatchObject({ status: 'worked', hoursCounted: 4, compensatoryHours: 4, flags: [] });
+    const options = { systemPermissionHours: 0, permissionHoursPerMonth: 4, hourly: false, hoursADay: 9 };
+    expect(attendanceLineInputs(days, options)).toMatchObject({ noShowDays: 0, workedHours: 4 });
+    // a day gone by with nothing kept gets a day for them
+    expect(compensatoryDays([], { ...base, daysWorked: [], hoursOff: [{ date: '2026-11-10', hours: 3 }] })).toEqual([
+      expect.objectContaining({ date: '2026-11-10', status: 'worked', hoursCounted: 3, source: 'system', compensatoryHours: 3 }),
+    ]);
+  });
+
+  it('never on leave, a holiday, a rest day or a day to come', () => {
+    const days = compensatoryDays([day('2026-11-10', 'leave')], { ...base, daysWorked: [], hoursOff: [{ date: '2026-11-10', hours: 4 }, { date: '2026-11-06', hours: 4 }, { date: '2026-11-20', hours: 4 }] });
+    expect(days.map((d) => [d.date, d.status, d.hoursCounted])).toEqual([['2026-11-10', 'leave', 0]]);
   });
 });

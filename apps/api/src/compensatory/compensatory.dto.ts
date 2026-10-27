@@ -1,15 +1,24 @@
-import { IsBoolean, IsIn, IsNumber, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
-import { COMPENSATORY_OUTCOMES, LEAVE_DECISIONS, LEAVE_STATUSES, type CompensatoryOutcome, type LeaveDecision, type LeaveStatus } from '@trendlix/shared';
+import { Transform } from 'class-transformer';
+import { IsBoolean, IsIn, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, MaxLength, Min, MinLength, ValidateIf } from 'class-validator';
+import { COMPENSATORY_OFF_WITHIN_MAX, COMPENSATORY_OUTCOMES, LEAVE_DECISIONS, LEAVE_STATUSES, type CompensatoryOutcome, type LeaveDecision, type LeaveStatus } from '@trendlix/shared';
 import { IsDateOnly } from '../common/date-only.js';
 import { Trim, TrimOrNull } from '../common/transforms.js';
 
 // Compensatory day requests (owner, 26 October 2026: "my compensatory is a compensation with another day in the same
-// month"; packages/shared compensatory.ts). JSON: the day worked, the day off (YYYY-MM-DD) and why. Which days are
-// allowed, the same month, the notice and the locked months are the service's to check; here only the shapes.
+// month"; packages/shared compensatory.ts). JSON: the day worked, the day off (YYYY-MM-DD), the hours worked of part of
+// the day (27 October 2026) and why. Which days are allowed, the window, the notice, the hours and the locked months are
+// the service's to check; here only the shapes.
 
 const WORKED = 'Enter the day worked, e.g. 2026-11-06.';
 const OFF = 'Enter the day off, e.g. 2026-11-10.';
 const OUTCOME = `Choose the decision: ${COMPENSATORY_OUTCOMES.join(' or ')}.`;
+// the hours worked of part of a rest day (owner, 27 October 2026: "Hours off for hours worked"); left out or null: the
+// whole day; what they earn is the Compensatory Setup's to say (the service)
+const HOURS = 'Enter the hours worked as a number above 0, up to 24, e.g. 4 or 3.5; leave it out for the whole day.';
+const sentHours = (_o: unknown, v: unknown) => v !== undefined && v !== null;
+
+/** A number sent in a query string. */
+const numberOf = ({ value }: { value: unknown }) => (typeof value === 'string' && value.trim() !== '' && !Number.isNaN(Number(value)) ? Number(value) : value);
 
 /** An employee's own request: the day worked, the day off, and why (optional). */
 export class CreateCompensatoryDto {
@@ -18,6 +27,9 @@ export class CreateCompensatoryDto {
 
   @Trim() @IsDateOnly(OFF)
   dayOff: string;
+
+  @ValidateIf(sentHours) @IsNumber({ maxDecimalPlaces: 2 }, { message: HOURS }) @Min(0.25, { message: HOURS }) @Max(24, { message: HOURS })
+  hoursWorked?: number | null;
 
   @TrimOrNull() @IsOptional() @IsString({ message: 'Write the reason.' }) @MaxLength(500, { message: 'Keep the reason to 500 characters or fewer.' })
   reason?: string | null;
@@ -40,6 +52,9 @@ export class RecordCompensatoryDto {
   @IsOptional() @IsIn(COMPENSATORY_OUTCOMES, { message: OUTCOME })
   outcome?: CompensatoryOutcome;
 
+  @ValidateIf(sentHours) @IsNumber({ maxDecimalPlaces: 2 }, { message: HOURS }) @Min(0.25, { message: HOURS }) @Max(24, { message: HOURS })
+  hoursWorked?: number | null;
+
   // empty unless sent: a missing reason is refused once, as an empty one is
   @Trim() @IsString({ message: 'Write why HR records this compensatory day.' }) @MinLength(1, { message: 'Write why HR records this compensatory day.' }) @MaxLength(500, { message: 'Keep the reason to 500 characters or fewer.' })
   reason: string = '';
@@ -55,6 +70,10 @@ export class CompensatoryCheckQueryDto {
 
   @Trim() @IsOptional() @IsDateOnly(OFF)
   dayOff?: string;
+
+  @Transform(numberOf)
+  @ValidateIf(sentHours) @IsNumber({ maxDecimalPlaces: 2 }, { message: HOURS }) @Min(0.25, { message: HOURS }) @Max(24, { message: HOURS })
+  hoursWorked?: number | null;
 }
 
 /** A decision on a request: approve (HR: a day off or cash instead) or reject with a comment. */
@@ -121,8 +140,27 @@ export class CompensatoryCalendarQueryDto {
 
 const RATE = "Enter the days' pay for cash instead in whole or half days from 0.5 to 5, e.g. 1.5.";
 
-/** The Leave Setup's cash rate. */
+const SETUP_HOURS = 'Enter the hours in whole or half hours from 0.5 to 24.';
+const WITHIN = `Enter the days after the day worked as a whole number from 1 to ${COMPENSATORY_OFF_WITHIN_MAX}, or null for the same month.`;
+
+/**
+ * The Compensatory Setup (owner, 27 October 2026: "i need a setup dashboard for the compensatory leaves"): the cash rate,
+ * the minimum hours to qualify, the most hours off, the hours for a whole day, and when the day off is taken (null: the
+ * same calendar month). Each left out stays as it is; how they fit together is the service's to check.
+ */
 export class UpdateCompensatorySettingsDto {
-  @IsNumber({ maxDecimalPlaces: 1 }, { message: RATE })
-  cashRate: number;
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 1 }, { message: RATE })
+  cashRate?: number;
+
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 1 }, { message: SETUP_HOURS })
+  minHours?: number;
+
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 1 }, { message: SETUP_HOURS })
+  hoursCap?: number;
+
+  @IsOptional() @IsNumber({ maxDecimalPlaces: 1 }, { message: SETUP_HOURS })
+  fullDayHours?: number;
+
+  @ValidateIf((_o: unknown, v: unknown) => v !== undefined && v !== null) @IsInt({ message: WITHIN }) @Min(1, { message: WITHIN }) @Max(COMPENSATORY_OFF_WITHIN_MAX, { message: WITHIN })
+  offWithinDays?: number | null;
 }

@@ -181,6 +181,11 @@ describe('Official duty (e2e)', () => {
         shift: { startTime: '09:00', endTime: '19:00', graceMinutes: 15 },
         refusal: null,
         toCeo: false,
+        // for one on a rest day or an official holiday (27 October 2026)
+        workingDays: expect.any(Array),
+        holidays: expect.any(Array),
+        rules: { cashRate: 1.5, minHours: 2, hoursCap: 4, fullDayHours: 6, offWithinDays: null },
+        hoursADay: expect.any(Number),
       });
     });
 

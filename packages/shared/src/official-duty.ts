@@ -12,9 +12,14 @@
 //   with no press counts as attended for the approved hours ("If they forget, the approved hours still count").
 // Claude's defaults where the owner was silent, which the owner can change:
 // - one day, or several days in a row (at most 31); part of a day (from–to times) for one day only, inside their shift;
-// - a single day on an official holiday or a rest day of their shift is refused, HR included (no "HR adds it"): there is
-//   no work to be away for, and the attendance doesn't expect hours then; several days skip their holidays and rest days,
-//   which aren't duty days, and are refused when none is a working day;
+// - a single day on an official holiday or a rest day of their shift is worked on a day off (owner, 27 October 2026, on
+//   an official duty refused on a rest day: "it should count in the compensatories"; he chose "One step"): asked or
+//   recorded with its compensation, a day off (or, for part of the day, hours off: the Compensatory Setup's hours, the
+//   same day) in the window the Setup allows, or cash instead (compensatory.ts), saved with it as its compensatory day and
+//   decided with it; the day adds no hours or overtime (the attendance doesn't expect hours then, and the compensatory day
+//   leaves its hours out). Part of a day below the Setup's minimum earns nothing, and is recorded without one; a day
+//   compensated already needs no new one. Several days skip their holidays and rest days, which aren't duty days, and are
+//   refused when none is a working day;
 // - no overlap with leave, a work from home day or another official duty, approved or being decided (as working from
 //   home blocks its days); a half-day leave doesn't block part of a day;
 // - a press counts as within a part day's hours from 30 minutes before it starts to 30 minutes after it ends (travel).
@@ -28,6 +33,7 @@
 import { hoursCountedForDay, mostHoursCountedADay, shiftWindowOn, spanHours, spansOfPairs, timeOfDayText, zonedMoment, type ShiftWindowTimes } from './attendance.js';
 import type { KeptDay, SourcedDay } from './attendance-days.js';
 import type { CountingShift } from './check-in.js';
+import { COMPENSATORY_RULE_DEFAULTS, compensationEarned, compensationEarnedText, hoursText, type CompensationAsked, type CompensationEarned, type CompensatoryRules } from './compensatory.js';
 import { decidesConfidentialStage } from './confidential.js';
 import type { Role } from './index.js';
 import { LEAVE_STEP_KIND_LABELS } from './leaves.js';
@@ -172,10 +178,52 @@ export interface OdDayFacts {
    * Left out by a caller from before 26 October 2026: none.
    */
   compensatory?: { status: string } | null;
+  /**
+   * A compensatory day that compensates working this day already, approved or being decided: its status's words
+   * (27 October 2026). Left out by a caller from before it: none.
+   */
+  compensated?: { status: string } | null;
 }
 
 /** The duty days of a request: its days that are working days of their shift and not an official holiday. */
 export const odDutyDays = (days: readonly OdDayFacts[]): string[] => days.filter((d) => d.workingDay && !d.holiday).map((d) => d.date);
+
+/**
+ * Whether a request is one day on a rest day of their shift or an official holiday (owner, 27 October 2026: "it should
+ * count in the compensatories"): worked on a day off, so it comes with its compensation.
+ */
+export const odOnDayOff = (input: Pick<OdInput, 'startDate' | 'endDate'>, days: readonly OdDayFacts[]): boolean =>
+  input.startDate === input.endDate && days.length === 1 && (!days[0].workingDay || !!days[0].holiday);
+
+/** Part of a day's hours, from its start to its end (0 when they can't be read). */
+export function odPartHours(input: Pick<OdInput, 'fromTime' | 'toTime'>): number {
+  if (!isTime(input.fromTime) || !isTime(input.toTime)) return 0;
+  const m = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+  return Math.max(0, Math.round(((m(input.toTime) - m(input.fromTime)) / 60) * 100) / 100);
+}
+
+/**
+ * What an official duty on a day off earns (null: not one day on a rest day or an official holiday): a full day a whole
+ * day; part of a day by its hours (the Compensatory Setup's rules).
+ */
+export function odEarned(
+  input: Pick<OdInput, 'startDate' | 'endDate' | 'fullDay' | 'fromTime' | 'toTime'>,
+  days: readonly OdDayFacts[],
+  rules: Pick<CompensatoryRules, 'minHours' | 'hoursCap' | 'fullDayHours'> = COMPENSATORY_RULE_DEFAULTS,
+): CompensationEarned | null {
+  if (!odOnDayOff(input, days)) return null;
+  return compensationEarned(input.fullDay ? null : odPartHours(input), rules);
+}
+
+/**
+ * Whether a request on a day off needs its compensation asked with it: one day on a rest day or an official holiday that
+ * earns one, and that no compensatory day compensates already.
+ */
+export const odNeedsCompensation = (
+  input: Pick<OdInput, 'startDate' | 'endDate' | 'fullDay' | 'fromTime' | 'toTime'>,
+  days: readonly OdDayFacts[],
+  rules: Pick<CompensatoryRules, 'minHours' | 'hoursCap' | 'fullDayHours'> = COMPENSATORY_RULE_DEFAULTS,
+): boolean => !days[0]?.compensated && (odEarned(input, days, rules)?.kind ?? 'none') !== 'none';
 
 /** Whether two parts of a day meet: either a full day, or their times overlap. */
 function timesMeet(a: { fullDay: boolean; fromTime: string | null; toTime: string | null }, b: { fullDay: boolean; fromTime: string | null; toTime: string | null }): boolean {
@@ -185,25 +233,48 @@ function timesMeet(a: { fullDay: boolean; fromTime: string | null; toTime: strin
 
 /**
  * Why a request's days can't be official duty (none: they can): one day on an official holiday or a rest day of their
- * shift; several with none a working day; any duty day with leave (a full day's, or any on a full day of duty), a work
- * from home day, a compensatory day off, or another official duty on the same hours, approved or being decided. `name`:
- * the employee's when someone else is told, null for "you".
+ * shift that earns a compensation (the Compensatory Setup's `rules`) without one (`compensation`: a day off, hours off or
+ * cash instead; none needed for a day compensated already), or with one it doesn't earn; a compensation with anything
+ * else; several days with none a working day; any duty day with leave (a full day's, or any on a full day of duty), a
+ * work from home day, a compensatory day off, or another official duty on the same hours, approved or being decided.
+ * `name`: the employee's when someone else is told, null for "you".
  */
-export function odDaysProblems(input: Pick<OdInput, 'startDate' | 'endDate' | 'fullDay' | 'fromTime' | 'toTime'>, days: readonly OdDayFacts[], name: string | null = null): string[] {
+export function odDaysProblems(
+  input: Pick<OdInput, 'startDate' | 'endDate' | 'fullDay' | 'fromTime' | 'toTime'>,
+  days: readonly OdDayFacts[],
+  name: string | null = null,
+  compensation: CompensationAsked | null = null,
+  rules: Pick<CompensatoryRules, 'minHours' | 'hoursCap' | 'fullDayHours'> = COMPENSATORY_RULE_DEFAULTS,
+): string[] {
   if (!days.length) return [];
   const your = name ? `${name}'s` : 'your';
   const has = name ? `${name} has` : 'You have';
   const problems: string[] = [];
-  if (input.startDate === input.endDate) {
+  const onDayOff = odOnDayOff(input, days);
+  if (onDayOff) {
     const d = days[0];
-    if (d.holiday) return [`${shown(d.date)} is an official holiday (${d.holiday}): there is no work that day, so no official duty.`];
-    if (!d.workingDay) return [`${shown(d.date)} is a rest day of ${your} shift: there is no work that day, so no official duty.`];
-  } else if (!odDutyDays(days).length) {
+    const what = `${shown(d.date)} is ${d.holiday ? `an official holiday (${d.holiday})` : `a rest day of ${your} shift`}`;
+    const earned = odEarned(input, days, rules)!;
+    if (d.compensated && compensation) return [`${what}, compensated already by a compensatory day (${d.compensated.status}): leave the compensation out.`];
+    if (earned.kind === 'none' && compensation) {
+      return [`${what}: ${hoursText(earned.hours)} of official duty is fewer than the ${hoursText(rules.minHours)} that earn a compensation, so leave the compensation out.`];
+    }
+    if (earned.kind !== 'none' && !d.compensated && !compensation) {
+      return [`${what}: official duty on it earns ${compensationEarnedText(earned, rules)}, so choose ${earned.kind === 'day' ? 'the day off' : 'the day for the hours off'} or cash instead.`];
+    }
+  } else if (compensation) {
+    return [
+      input.startDate === input.endDate
+        ? `${shown(input.startDate)} is a working day of ${your} shift: there is nothing to compensate, so leave the compensation out.`
+        : 'A compensation is for one day of official duty on a rest day or an official holiday: ask for that day on its own.',
+    ];
+  }
+  if (input.startDate !== input.endDate && !odDutyDays(days).length) {
     return [`None of the days from ${shown(input.startDate)} to ${shown(input.endDate)} is a working day of ${your} shift: there is no work to be away for.`];
   }
   const part = { fullDay: input.fullDay, fromTime: input.fullDay ? null : input.fromTime, toTime: input.fullDay ? null : input.toTime };
   for (const d of days) {
-    if (!d.workingDay || d.holiday) continue;
+    if ((!d.workingDay || d.holiday) && !onDayOff) continue;
     const when = shown(d.date);
     if (d.leave && (input.fullDay || !d.leave.halfDay)) problems.push(`${has} ${d.leave.type} on ${when} (${d.leave.status}): an official duty can't be on a day of leave.`);
     if (d.wfh) problems.push(`${has} a work from home day on ${when} (${d.wfh.status}): ask for one or the other.`);
@@ -246,11 +317,18 @@ export function odHoursProblems(input: Pick<OdInput, 'fullDay' | 'fromTime' | 't
  * (odInputProblems), the timing (odTimingProblem), the hours against the shift (odHoursProblems), then the days
  * (odDaysProblems).
  */
-export function odRequestProblems(input: OdInput, days: readonly OdDayFacts[], shift: ShiftWindowTimes | null, today: string): string[] {
+export function odRequestProblems(
+  input: OdInput,
+  days: readonly OdDayFacts[],
+  shift: ShiftWindowTimes | null,
+  today: string,
+  compensation: CompensationAsked | null = null,
+  rules: Pick<CompensatoryRules, 'minHours' | 'hoursCap' | 'fullDayHours'> = COMPENSATORY_RULE_DEFAULTS,
+): string[] {
   const read = odInputProblems(input);
   if (read.length) return read;
   const timing = odTimingProblem(input.startDate, today);
-  return [...(timing ? [timing] : []), ...odHoursProblems(input, shift), ...odDaysProblems(input, days)];
+  return [...(timing ? [timing] : []), ...odHoursProblems(input, shift), ...odDaysProblems(input, days, null, compensation, rules)];
 }
 
 // ---------- HR records it (owner, 26 October 2026: "HR records it") ----------
@@ -308,11 +386,13 @@ export function odRecordCheck(
   today: string,
   name: string,
   runs: readonly OdPayrollMonth[] = [],
+  compensation: CompensationAsked | null = null,
+  rules: Pick<CompensatoryRules, 'minHours' | 'hoursCap' | 'fullDayHours'> = COMPENSATORY_RULE_DEFAULTS,
 ): { problems: string[]; warnings: string[] } {
   const read = odWhenProblems(input);
   if (read.length) return { problems: read, warnings: [] };
   const lock = odLockProblem(input.startDate, input.endDate, runs);
-  const problems = [...odHoursProblems(input, shift, name), ...odDaysProblems(input, days, name), ...(lock ? [lock] : [])];
+  const problems = [...odHoursProblems(input, shift, name), ...odDaysProblems(input, days, name, compensation, rules), ...(lock ? [lock] : [])];
   const past = odPastLimitText(input.startDate, today);
   return { problems, warnings: past ? [past] : [] };
 }

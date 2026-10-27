@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   alreadyOdText,
+  compensatoryCashDays,
   DEFAULT_WORKING_DAYS,
   firstLeaveStatus,
   isOpenLeave,
@@ -14,7 +15,10 @@ import {
   OD_MAX_DAYS,
   odDates,
   odDaysProblems,
+  odEarned,
   odInputProblems,
+  odNeedsCompensation,
+  odPartHours,
   odOverlapsRowText,
   odOverlapsText,
   odRecordCheck,
@@ -22,6 +26,11 @@ import {
   odRequestProblems,
   odSameRowText,
   recordsOdFor,
+  shiftWorkHours,
+  type CompensationAsked,
+  type CompensationEarned,
+  type CompensatoryOutcome,
+  type CompensatoryRules,
   type LeaveStatus,
   type OdDayFacts,
   type OdInput,
@@ -30,6 +39,7 @@ import {
 import { AuditService } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { AttendanceFillService } from '../attendance/attendance-fill.service.js';
+import { CompensatoryService, type OdCompensatoryFollowed, type OdCompensatoryMade } from '../compensatory/compensatory.service.js';
 import { addDays, fromDateOnly, isDateOnly, shownDate, todayInCairo, toDateOnly, weekday } from '../common/date-only.js';
 import { fromTimeOfDay, toTimeOfDay } from '../common/time-of-day.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
@@ -90,7 +100,7 @@ const EMPLOYMENT = {
   endDate: true,
   managerId: true,
   departmentId: true,
-  shift: { select: { startTime: true, endTime: true, graceMinutes: true, workingDays: true } },
+  shift: { select: { startTime: true, endTime: true, graceMinutes: true, workingDays: true, hoursPerDay: true } },
   employee: { select: { fullNameEn: true } },
 } satisfies Prisma.EmploymentSelect;
 
@@ -100,12 +110,36 @@ type EmploymentRow = Prisma.EmploymentGetPayload<{ select: typeof EMPLOYMENT }>;
 const shiftOf = (e: EmploymentRow | null) =>
   e?.shift ? { startTime: fromTimeOfDay(e.shift.startTime), endTime: fromTimeOfDay(e.shift.endTime), graceMinutes: e.shift.graceMinutes } : null;
 
+/** The shift's hours to work a day (null without a shift). */
+const hoursADayOf = (e: EmploymentRow | null) =>
+  e?.shift ? shiftWorkHours({ startTime: fromTimeOfDay(e.shift.startTime), endTime: fromTimeOfDay(e.shift.endTime), hoursPerDay: e.shift.hoursPerDay?.toNumber() ?? null }) : null;
+
+/** The compensation sent with a request on a rest day or an official holiday (27 October 2026); null: none. */
+const compensationOf = (dto: { compensation?: CompensatoryOutcome; dayOff?: string }): CompensationAsked | null =>
+  dto.compensation ? { outcome: dto.compensation, dayOff: dto.compensation === 'cash' ? null : (dto.dayOff ?? null) } : null;
+
+/** What HR's check and the request form say of a day off's compensation: needed, what it earns, cash instead, done already. */
+export interface OdCompensationView {
+  /** One day on a rest day or an official holiday. */
+  onDayOff: boolean;
+  /** A compensation is to be chosen with it: it earns one and no compensatory day compensates the day already. */
+  needed: boolean;
+  /** What its hours earn (null: not on a day off). */
+  earned: CompensationEarned | null;
+  /** Cash instead, in days' pay. */
+  cashDays: number;
+  /** A compensatory day compensates the day already: its status's words. */
+  already: string | null;
+}
+
 /** What a person's days are read against: their holidays, leave, work from home days, compensatory days off and other official duties. */
 interface DayRecords {
   holidays: ReadonlyMap<string, string>;
   leave: readonly { startDate: string; endDate: string; halfDay: boolean; status: string; type: string }[];
   wfh: readonly { date: string; status: string }[];
   compensatory: readonly { date: string; status: string }[];
+  /** Days worked a compensatory day compensates already (27 October 2026); left out: none. */
+  compensated?: readonly { date: string; status: string }[];
   od: readonly { startDate: string; endDate: string; status: string; fullDay: boolean; fromTime: string | null; toTime: string | null }[];
 }
 
@@ -115,6 +149,7 @@ function dayFacts(working: readonly number[], dates: readonly string[], found: D
     const l = found.leave.find((x) => x.startDate <= date && date <= x.endDate);
     const w = found.wfh.find((x) => x.date === date);
     const c = found.compensatory.find((x) => x.date === date);
+    const done = found.compensated?.find((x) => x.date === date);
     return {
       date,
       workingDay: working.includes(weekday(date)),
@@ -123,6 +158,7 @@ function dayFacts(working: readonly number[], dates: readonly string[], found: D
       wfh: w ? { status: w.status } : null,
       od: found.od.filter((o) => o.startDate <= date && date <= o.endDate).map((o) => ({ status: o.status, fullDay: o.fullDay, fromTime: o.fromTime, toTime: o.toTime })),
       compensatory: c ? { status: c.status } : null,
+      compensated: done ? { status: done.status } : null,
     };
   });
 }
@@ -206,6 +242,7 @@ export class OdService {
     private readonly notices: NoticesService,
     private readonly fill: AttendanceFillService,
     private readonly lockedChanges: PayrollLockedChangesService,
+    private readonly compensatory: CompensatoryService,
   ) {}
 
   // ---------- the employee's own ----------
@@ -218,17 +255,30 @@ export class OdService {
     return this.views(rows, caller);
   }
 
-  /** What the request form reads first: today, the earliest first day, their shift, and why they can't ask. */
+  /**
+   * What the request form reads first: today, the earliest first day, their shift, why they can't ask; and, for one on a
+   * rest day or an official holiday (27 October 2026), their working days, the official holidays of the year ahead, the
+   * Compensatory Setup and the shift's hours a day, to show its compensation as the day is chosen.
+   */
   async form(user: SessionUser): Promise<OdFormView> {
     const caller = await this.caller(user);
     const today = todayInCairo();
     const employment = caller.employeeId ? await this.employmentOn(caller.employeeId, today) : null;
+    const earliest = addDays(today, -OD_AFTER_DAYS);
+    const [holidays, rules] = await Promise.all([
+      this.prisma.holiday.findMany({ where: { date: { gte: toDateOnly(earliest), lte: toDateOnly(addDays(today, 366)) } }, select: { date: true, nameEn: true }, orderBy: { date: 'asc' } }),
+      this.compensatory.rules(),
+    ]);
     return {
       today,
-      earliest: addDays(today, -OD_AFTER_DAYS),
+      earliest,
       shift: shiftOf(employment),
       refusal: caller.employeeId ? this.refusalOf(employment) : 'Only someone with an employee profile can ask for an official duty: your sign-in has no employee profile.',
       toCeo: !!caller.employeeId && (caller.confidential?.all.has(caller.employeeId) ?? false),
+      workingDays: [...(employment?.shift?.workingDays ?? DEFAULT_WORKING_DAYS)],
+      holidays: holidays.map((h) => ({ date: fromDateOnly(h.date)!, nameEn: h.nameEn })),
+      rules,
+      hoursADay: hoursADayOf(employment),
     };
   }
 
@@ -257,10 +307,13 @@ export class OdService {
           : `This request is ${statusWords(before.status)}, so it can't be cancelled.`,
       );
     }
-    await this.prisma.$transaction(async (tx) => {
+    // its compensatory day (27 October 2026) is cancelled with it
+    const linked = await this.compensatory.ofOd(this.prisma, id);
+    const followed = await this.prisma.$transaction(async (tx) => {
       const { count } = await tx.odRequest.updateMany({ where: { id, status: before.status }, data: { status: 'cancelled' } });
       if (!count) throw new ConflictException("This request was decided meanwhile, so it can't be cancelled. Reload the page to see where it is.");
       await this.step(tx, id, user.id, { kind: 'cancelled' });
+      return linked ? await this.compensatory.followOd(tx, linked, { to: 'cancelled', stage: null, comment: null }, user.id) : null;
     });
     await this.audit.record({
       userId: user.id,
@@ -269,6 +322,7 @@ export class OdService {
       entityId: id,
       diff: { employeeId: before.employeeId, startDate: fromDateOnly(before.startDate), endDate: fromDateOnly(before.endDate), status: { from: before.status, to: 'cancelled' } },
     });
+    if (linked && followed) await this.compensatory.followedOd(linked, followed, id, user);
     return this.one(id, user);
   }
 
@@ -282,17 +336,30 @@ export class OdService {
   async check(
     query: OdCheckQueryDto,
     user: SessionUser,
-  ): Promise<{ employee: { id: string; fullNameEn: string }; problems: string[]; warnings: string[]; shift: ReturnType<typeof shiftOf> }> {
+  ): Promise<{ employee: { id: string; fullNameEn: string }; problems: string[]; warnings: string[]; shift: ReturnType<typeof shiftOf>; compensation: OdCompensationView }> {
     const caller = await this.caller(user);
     const person = await this.recordable(query.employeeId, caller);
     const input = this.inputOf(query);
+    const none: OdCompensationView = { onDayOff: false, needed: false, earned: null, cashDays: 0, already: null };
     const employment = await this.employmentOn(query.employeeId, query.startDate);
-    if (!employment) return { employee: person, problems: [`Choose days within one of ${person.fullNameEn}'s employments.`], warnings: [], shift: null };
+    if (!employment) return { employee: person, problems: [`Choose days within one of ${person.fullNameEn}'s employments.`], warnings: [], shift: null, compensation: none };
     const refusal = this.refusalOf(employment, person.fullNameEn);
-    if (refusal) return { employee: person, problems: [refusal], warnings: [], shift: shiftOf(employment) };
+    if (refusal) return { employee: person, problems: [refusal], warnings: [], shift: shiftOf(employment), compensation: none };
+    const today = todayInCairo();
+    const rules = await this.compensatory.rules();
+    const asked = compensationOf(query);
     const days = await this.daysOf(this.prisma, employment, odDates(input.startDate, input.endDate));
-    const checked = odRecordCheck(input, days, shiftOf(employment), todayInCairo(), person.fullNameEn, await this.payrollMonths(this.prisma, input));
-    return { employee: person, problems: [...this.inEmployment(employment, input), ...checked.problems], warnings: checked.warnings, shift: shiftOf(employment) };
+    const checked = odRecordCheck(input, days, shiftOf(employment), today, person.fullNameEn, await this.payrollMonths(this.prisma, input), asked, rules);
+    // on a rest day or an official holiday (27 October 2026): what it earns, and what its compensation meets
+    const compensation = this.compensationView(input, days, rules, employment);
+    const comp = asked && compensation.needed ? await this.compensatory.odCheck(this.prisma, employment, input.startDate, asked, today, person.fullNameEn) : { problems: [], warnings: [] };
+    return {
+      employee: person,
+      problems: [...this.inEmployment(employment, input), ...checked.problems, ...comp.problems],
+      warnings: [...checked.warnings, ...comp.warnings],
+      shift: shiftOf(employment),
+      compensation,
+    };
   }
 
   /**
@@ -326,10 +393,13 @@ export class OdService {
     if (!hrMayCancel({ ...parties, status: before.status }, caller)) {
       throw new ConflictException(`This request is ${statusWords(before.status)}: HR cancels approved official duties only. ${isOpenLeave(before.status) ? 'Reject it instead.' : ''}`.trim());
     }
-    await this.prisma.$transaction(async (tx) => {
+    // its compensatory day (27 October 2026) is cancelled with it, a pending cash addition too
+    const linked = await this.compensatory.ofOd(this.prisma, id);
+    const followed = await this.prisma.$transaction(async (tx) => {
       const { count } = await tx.odRequest.updateMany({ where: { id, status: 'approved' }, data: { status: 'cancelled' } });
       if (!count) throw new ConflictException('This request was cancelled meanwhile. Reload the page to see where it is.');
       await this.step(tx, id, user.id, { kind: 'cancelled', comment: dto.comment });
+      return linked ? await this.compensatory.followOd(tx, linked, { to: 'cancelled', stage: null, comment: dto.comment }, user.id) : null;
     });
     await this.audit.record({
       userId: user.id,
@@ -338,6 +408,7 @@ export class OdService {
       entityId: id,
       diff: { employeeId: before.employeeId, startDate: fromDateOnly(before.startDate), endDate: fromDateOnly(before.endDate), status: { from: 'approved', to: 'cancelled' }, comment: dto.comment },
     });
+    if (linked && followed) await this.compensatory.followedOd(linked, followed, id, user);
     await this.notices.od(id, 'cancelled_by_hr');
     // its days gone by are no longer attended for its hours
     await this.refill(before, user);
@@ -413,13 +484,17 @@ export class OdService {
     const to: LeaveStatus = dto.decision === 'reject' ? 'rejected' : leaveStatusAfterApproval(stage);
     // a stand-in's decision keeps the approver they stood in for, on the step and in the audit log
     const onBehalfOf = decidedOnBehalfOf(stage, parties, caller);
-    await this.prisma.$transaction(async (tx) => {
+    // its compensatory day (27 October 2026) takes the same step; approving it, its months open and its day off still free
+    const linked = await this.compensatory.ofOd(this.prisma, id);
+    if (linked && to === 'approved') await this.compensatory.assertOdApprovable(linked, before.employee.fullNameEn);
+    const followed: OdCompensatoryFollowed | null = await this.prisma.$transaction(async (tx) => {
       const { count } = await tx.odRequest.updateMany({
         where: { id, status: before.status },
         data: to === 'rejected' ? { status: to, rejectedStage: stage, rejectReason: comment } : { status: to },
       });
       if (!count) throw new ConflictException('This request was decided or cancelled meanwhile. Reload the page to see where it is.');
       await this.step(tx, id, user.id, { kind: leaveDecisionStepKind(stage), decision: dto.decision, comment, onBehalfOf });
+      return linked ? await this.compensatory.followOd(tx, linked, { to, stage, decision: dto.decision, comment, onBehalfOf }, user.id) : null;
     });
     await this.audit.record({
       userId: user.id,
@@ -436,6 +511,7 @@ export class OdService {
         ...(comment && { comment }), ...(onBehalfOf && { standingInFor: onBehalfOf }),
       },
     });
+    if (linked && followed) await this.compensatory.followedOd(linked, followed, id, user);
     // to the next step's decider, or the employee once it is approved or rejected
     await this.notices.od(id, 'decided');
     // approved: its days gone by count as attended for its hours on the month's draft payroll run
@@ -843,6 +919,8 @@ export class OdService {
     const wfh = await db.wfhRequest.findMany({ where: { employeeId, status: { in: [...TAKING] }, date: range }, select: { date: true, status: true } });
     // a compensatory day off (26 October 2026), as a compensatory day off is refused on a day of official duty
     const comp = await db.compensatoryRequest.findMany({ where: { employeeId, status: { in: [...TAKING] }, dayOff: range, AND: [TAKES_DAY_OFF] }, select: { dayOff: true, status: true } });
+    // a day worked compensated already (27 October 2026): an official duty on it needs no compensation of its own
+    const done = await db.compensatoryRequest.findMany({ where: { employeeId, status: { in: [...TAKING] }, dayWorked: range }, select: { dayWorked: true, status: true } });
     const ods = await db.odRequest.findMany({
       where: { employeeId, status: { in: [...TAKING] }, startDate: { lte: range.lte }, endDate: { gte: range.gte }, ...(except && { id: { not: except } }) },
       select: { startDate: true, endDate: true, status: true, fullDay: true, fromTime: true, toTime: true },
@@ -852,8 +930,21 @@ export class OdService {
       leave: leave.map((l) => ({ startDate: fromDateOnly(l.startDate), endDate: fromDateOnly(l.endDate), halfDay: l.halfDay, status: statusWords(l.status), type: l.type.nameEn })),
       wfh: wfh.map((w) => ({ date: fromDateOnly(w.date), status: statusWords(w.status) })),
       compensatory: comp.flatMap((c) => (c.dayOff ? [{ date: fromDateOnly(c.dayOff), status: statusWords(c.status) }] : [])),
+      compensated: done.map((c) => ({ date: fromDateOnly(c.dayWorked)!, status: statusWords(c.status) })),
       od: ods.map((o) => ({ startDate: fromDateOnly(o.startDate), endDate: fromDateOnly(o.endDate), status: statusWords(o.status), fullDay: o.fullDay, fromTime: timeOf(o.fromTime), toTime: timeOf(o.toTime) })),
     });
+  }
+
+  /** What a request's compensation is on a rest day or an official holiday (27 October 2026): HR's check and the forms show it. */
+  private compensationView(input: OdInput, days: readonly OdDayFacts[], rules: CompensatoryRules, employment: EmploymentRow): OdCompensationView {
+    const earned = odEarned(input, days, rules);
+    return {
+      onDayOff: earned !== null,
+      needed: odNeedsCompensation(input, days, rules),
+      earned,
+      cashDays: earned ? compensatoryCashDays(earned, rules, hoursADayOf(employment)) : 0,
+      already: earned ? (days[0]?.compensated?.status ?? null) : null,
+    };
   }
 
   /**
@@ -865,6 +956,9 @@ export class OdService {
     const user = caller.user;
     const employeeId = employment.employeeId;
     const input = this.inputOf(dto);
+    // on a rest day or an official holiday (27 October 2026): the compensation sent, by the Compensatory Setup's rules
+    const asked = compensationOf(dto);
+    const rules = await this.compensatory.rules();
     const inEmployment = this.inEmployment(employment, input);
     // the approver in charge (19 October 2026): the direct manager, else the team lead, else the department's head
     const approver = await approverFor(this.prisma, { employeeId, managerId: employment.managerId, departmentId: employment.departmentId });
@@ -877,15 +971,20 @@ export class OdService {
     const made = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT 1 FROM employees WHERE id = ${employeeId}::uuid FOR UPDATE`;
       const days = await this.daysOf(tx, employment, odDates(input.startDate, input.endDate));
+      const name = employment.employee.fullNameEn;
+      // its compensatory day, when it earns one and none compensates the day already
+      const earned = odEarned(input, days, rules);
+      const compensated = !!asked && !!earned && odNeedsCompensation(input, days, rules);
+      const comp = compensated ? await this.compensatory.odCheck(tx, employment, input.startDate, asked, today, byHr ? name : null) : { problems: [], warnings: [] };
       let warnings: string[] = [];
       if (byHr) {
         const read = odInputProblems(input);
         if (read.length) throw new BadRequestException(read);
-        const checked = odRecordCheck(input, days, shiftOf(employment), today, employment.employee.fullNameEn, await this.payrollMonths(tx, input));
-        if (inEmployment.length || checked.problems.length) throw new BadRequestException([...inEmployment, ...checked.problems]);
+        const checked = odRecordCheck(input, days, shiftOf(employment), today, name, await this.payrollMonths(tx, input), asked, rules);
+        if (inEmployment.length || checked.problems.length || comp.problems.length) throw new BadRequestException([...inEmployment, ...checked.problems, ...comp.problems]);
         warnings = checked.warnings;
       } else {
-        const problems = [...inEmployment, ...odRequestProblems(input, days, shiftOf(employment), today)];
+        const problems = [...inEmployment, ...odRequestProblems(input, days, shiftOf(employment), today, asked, rules), ...comp.problems];
         if (problems.length) throw new BadRequestException(problems);
       }
       const row = await tx.odRequest.create({
@@ -914,7 +1013,24 @@ export class OdService {
         await this.step(tx, row.id, user.id, { kind: 'submitted' });
         if (!managerId) await this.step(tx, row.id, null, { kind: 'no_manager' });
       }
-      return { id: row.id, warnings };
+      const linked: OdCompensatoryMade | null = compensated
+        ? await this.compensatory.createForOd(tx, {
+            odId: row.id,
+            employment,
+            dayWorked: input.startDate,
+            asked: asked!,
+            earned: earned!,
+            hoursWorked: input.fullDay ? null : odPartHours(input),
+            status,
+            managerId,
+            approverRole,
+            byHr,
+            reason: input.reason,
+            warnings: comp.warnings,
+            userId: user.id,
+          })
+        : null;
+      return { id: row.id, warnings: [...warnings, ...comp.warnings], linked };
     });
     const id = made.id;
     await this.audit.record({
@@ -936,8 +1052,10 @@ export class OdService {
         status,
         ...(byHr && { recordedByHr: true }),
         ...(made.warnings.length && { warnings: made.warnings }),
+        ...(made.linked && { compensatoryId: made.linked.id }),
       },
     });
+    if (made.linked) await this.compensatory.createdForOd(made.linked, id, user);
     return id;
   }
 

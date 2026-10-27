@@ -170,6 +170,8 @@ describe('HR records official duty (e2e)', () => {
       problems: [],
       warnings: [`${shown(a)} is ${Math.round((Date.parse(TODAY) - Date.parse(a)) / 86_400_000)} days ago, past the 3 days an employee may ask after: recorded by HR after the limit.`],
       shift: { startTime: '09:00', endTime: '19:00', graceMinutes: 15 },
+      // working days: no day off to compensate (27 October 2026)
+      compensation: { onDayOff: false, needed: false, earned: null, cashDays: 0, already: null },
     });
     const ahead = free(addDays(TODAY, 3));
     expect((await check({ employeeId: ids.ben, startDate: ahead }).expect(200)).body).toMatchObject({ problems: [], warnings: [] });

@@ -248,7 +248,7 @@ export class AttendanceDaysService {
       // the compensatory days off full and paid, the days worked they compensate left out of the month's hours (26 October 2026:
       // "if the day is compensated with a day, we pay nothing")
       const comp = compensatory.get(id);
-      const compensated = employment && comp ? compensatoryDays(exempt, { month, today, workingDays: shift?.workingDays ?? null, holidays: holidayDays, leaveDays, employedFrom, employedTo, hoursADay, daysOff: comp.daysOff, daysWorked: comp.daysWorked }) : exempt;
+      const compensated = employment && comp ? compensatoryDays(exempt, { month, today, workingDays: shift?.workingDays ?? null, holidays: holidayDays, leaveDays, employedFrom, employedTo, hoursADay, daysOff: comp.daysOff, hoursOff: comp.hoursOff, daysWorked: comp.daysWorked }) : exempt;
       const days = compensated.map((d) => ({
         ...d,
         importId: 'importId' in d ? (d.importId as string | null) : null,

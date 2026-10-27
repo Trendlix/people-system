@@ -1,14 +1,19 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   adjustmentTaxed,
+  COMPENSATORY_RULE_DEFAULTS,
+  compensationEarned,
+  compensatoryCashDays,
   compensatoryCashReason,
+  compensatoryForOdCheck,
   compensatoryMonth,
   compensatoryOffProblems,
-  compensatoryRateProblems,
   compensatoryRecordCheck,
   compensatoryRequestProblems,
-  compensatoryWorkedProblems,
+  compensatoryRulesProblems,
   DEFAULT_WORKING_DAYS,
+  hoursWorkedProblems,
+  shiftWorkHours,
   firstLeaveStatus,
   isOpenLeave,
   LEAVE_STATUS_LABELS,
@@ -18,9 +23,14 @@ import {
   leaveStatusAfterApproval,
   locksMonth,
   NO_CHECK_IN_WARNING,
+  type CompensationAsked,
+  type CompensationEarned,
   type CompensatoryOffDay,
   type CompensatoryOutcome,
+  type CompensatoryRules,
   type CompensatoryWorkedDay,
+  type LeaveDecision,
+  type LeaveStage,
   type LeaveStatus,
   type PayrollStatus,
 } from '@trendlix/shared';
@@ -28,6 +38,7 @@ import { AttendanceFillService } from '../attendance/attendance-fill.service.js'
 import { AuditService, changes } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { addDays, fromDateOnly, shownDate, todayInCairo, toDateOnly, weekday } from '../common/date-only.js';
+import { fromTimeOfDay } from '../common/time-of-day.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import {
@@ -85,6 +96,9 @@ type Where = Prisma.CompensatoryRequestWhereInput;
 
 const NOT_FOUND = 'Compensatory day request not found.';
 
+/** Said when a compensatory day an official duty carries (27 October 2026) is acted on by itself. */
+const WITH_OD = (dayWorked: Date, what: string) => `This compensatory day goes with the official duty on ${shownDate(fromDateOnly(dayWorked)!)}: ${what}`;
+
 /** Approved and being decided: the days that block the same day for another request. */
 const TAKING = ['with_manager', 'with_hr', 'approved'] as const;
 
@@ -109,11 +123,64 @@ const EMPLOYMENT = {
   endDate: true,
   managerId: true,
   departmentId: true,
-  shift: { select: { workingDays: true } },
+  shift: { select: { workingDays: true, startTime: true, endTime: true, hoursPerDay: true } },
   employee: { select: { fullNameEn: true } },
 } satisfies Prisma.EmploymentSelect;
 
 type EmploymentRow = Prisma.EmploymentGetPayload<{ select: typeof EMPLOYMENT }>;
+
+/** The employment as the compensatory days read it from elsewhere (an official duty's): its dates, approver, shift. */
+export type CompensatoryEmployment = Pick<EmploymentRow, 'id' | 'employeeId' | 'employmentType' | 'joinDate' | 'endDate' | 'managerId' | 'departmentId' | 'employee'> & {
+  shift: { workingDays: number[]; startTime?: Date; endTime?: Date; hoursPerDay?: Prisma.Decimal | null } | null;
+};
+
+/** The shift's hours to work a day (null without a shift, or without its times). */
+const hoursADayOf = (e: CompensatoryEmployment | null): number | null =>
+  e?.shift?.startTime && e.shift.endTime
+    ? shiftWorkHours({ startTime: fromTimeOfDay(e.shift.startTime), endTime: fromTimeOfDay(e.shift.endTime), hoursPerDay: e.shift.hoursPerDay?.toNumber() ?? null })
+    : null;
+
+/** Cash instead made: its addition, for its audit entry and the draft payroll. */
+type CashMade = { adjustmentId: string; employeeCode: string; month: string; days: number; reason: string; employeeId: string };
+
+/** The compensatory day an official duty carries, as the duty's steps read it (OdService). */
+export type OdCompensatoryRow = {
+  id: string;
+  status: string;
+  employeeId: string;
+  employmentId: string;
+  dayWorked: Date;
+  dayOff: Date | null;
+  outcome: string | null;
+  hoursOff: Prisma.Decimal | null;
+  adjustmentId: string | null;
+};
+
+/** What saving one with its official duty made, for what follows once it is committed. */
+export interface OdCompensatoryMade {
+  id: string;
+  employeeId: string;
+  dayWorked: string;
+  dayOff: string | null;
+  outcome: CompensatoryOutcome;
+  hoursWorked: number | null;
+  hoursOff: number | null;
+  status: LeaveStatus;
+  byHr: boolean;
+  cash: CashMade | null;
+}
+
+/** What following its official duty's step did. */
+export interface OdCompensatoryFollowed {
+  from: LeaveStatus;
+  to: LeaveStatus;
+  outcome: CompensatoryOutcome;
+  cash: CashMade | null;
+  cancelledAdjustment: string | null;
+}
+
+/** What a request's hours earn, as kept on it (its hours off; null: a whole day). */
+const earnedOf = (r: { hoursOff: Prisma.Decimal | null }): CompensationEarned => (r.hoursOff ? { kind: 'hours', hours: r.hoursOff.toNumber() } : { kind: 'day' });
 
 // Compensatory days (owner, 26 October 2026: "is there compensatory leaves in the system?"; then "my compensatory is a
 // compensation with another day in the same month. and rarely to be compensated in cash"; packages/shared
@@ -131,6 +198,10 @@ type EmploymentRow = Prisma.EmploymentGetPayload<{ select: typeof EMPLOYMENT }>;
 // it is being decided; HR cancels an approved one with a reason (the day off is a working day again, or the pending
 // addition is cancelled); HR records one for someone, past days too. Each step is logged on the request and in the audit
 // log; the approver is told of a request waiting for them, the employee of their own decided (NoticesService).
+// Since 27 October 2026 (owner: "Hours off for hours worked", the Compensatory Setup): part of a rest day worked (its
+// hours sent) earns hours off on the day off, or their pay in cash, by the Setup's rules; fewer than its minimum nothing;
+// and an official duty on a rest day or an official holiday carries its own compensatory day, asked and recorded with it
+// (OdService), decided, rejected and cancelled with it, never on its own (forOd, followOd).
 @Injectable()
 export class CompensatoryService {
   constructor(
@@ -172,7 +243,7 @@ export class CompensatoryService {
       }),
       this.prisma.wfhRequest.findMany({ where: { employeeId, status: { in: [...TAKING] }, date: range }, select: { date: true } }),
       this.prisma.odRequest.findMany({ where: { employeeId, status: { in: [...TAKING] }, startDate: { lte: range.lte }, endDate: { gte: range.gte } }, select: { startDate: true, endDate: true } }),
-      this.prisma.compensatoryRequest.findMany({ where: { employeeId, status: { in: [...TAKING] }, OR: [{ dayWorked: range }, { dayOff: range }] }, select: { dayWorked: true, dayOff: true, outcome: true } }),
+      this.prisma.compensatoryRequest.findMany({ where: { employeeId, status: { in: [...TAKING] }, OR: [{ dayWorked: range }, { dayOff: range }] }, select: { dayWorked: true, dayOff: true, outcome: true, hoursOff: true } }),
       this.prisma.attendanceDay.findMany({ where: { employeeId, date: range, checkIn: { not: null } }, select: { date: true } }),
       this.prisma.attendancePunch.findMany({ where: { employeeId, date: range, kind: 'in' }, select: { date: true } }),
     ]);
@@ -184,17 +255,21 @@ export class CompensatoryService {
     }
     const other: CompensatoryFormView['other'] = [
       ...wfh.map((w) => ({ date: fromDateOnly(w.date), what: 'a work from home day' })),
-      ...own.flatMap((c) => (c.dayOff && c.outcome !== 'cash' ? [{ date: fromDateOnly(c.dayOff), what: 'a compensatory day off' }] : [])),
+      ...own.flatMap((c) => (c.dayOff && c.outcome !== 'cash' ? [{ date: fromDateOnly(c.dayOff), what: c.hoursOff ? 'compensatory hours off' : 'a compensatory day off' }] : [])),
     ];
     for (const o of od) {
       for (let d = fromDateOnly(o.startDate); d <= fromDateOnly(o.endDate); d = addDays(d, 1)) if (d >= from && d <= to) other.push({ date: d, what: 'an official duty' });
     }
+    const rules = await this.rules();
     return {
       refusal,
       offered: !refusal,
       hasShift: !!employment?.shift,
       today,
-      cashDays: cashRateOf(await this.prisma.leaveSettings.findUnique({ where: { id: 1 }, select: { compensatoryCashRate: true } })),
+      cashDays: rules.cashRate,
+      // the Compensatory Setup and the shift's hours a day, for what part of a day earns (27 October 2026)
+      rules,
+      hoursADay: hoursADayOf(employment),
       workingDays: [...(employment?.shift?.workingDays ?? DEFAULT_WORKING_DAYS)],
       holidays: holidays.map((h) => ({ date: fromDateOnly(h.date), nameEn: h.nameEn })),
       leave: leaveRows,
@@ -212,7 +287,7 @@ export class CompensatoryService {
     if (!caller.employeeId) throw new ForbiddenException('Only an employee can ask for a compensatory day: your sign-in has no employee profile.');
     const employment = await this.currentEmployment(caller.employeeId);
     if (!employment) throw new ConflictException("You have no current employment, so you can't ask for a compensatory day.");
-    const id = await this.submit(employment, { dayWorked: dto.dayWorked, dayOff: dto.dayOff, reason: dto.reason ?? null, outcome: null }, caller, false);
+    const id = await this.submit(employment, { dayWorked: dto.dayWorked, dayOff: dto.dayOff, reason: dto.reason ?? null, outcome: null, hoursWorked: dto.hoursWorked ?? null }, caller, false);
     // to the one in charge of its first step, once it is saved
     await this.notices.compensatory(id, 'sent');
     return this.one(id, user);
@@ -223,6 +298,7 @@ export class CompensatoryService {
     const caller = await this.caller(user);
     const before = await this.prisma.compensatoryRequest.findUnique({ where: { id } });
     if (!before || !isRequester(before, caller)) throw new NotFoundException(NOT_FOUND);
+    if (before.odRequestId) throw new ConflictException(WITH_OD(before.dayWorked, 'cancel the official duty, and it is cancelled with it.'));
     if (!isOpenLeave(before.status)) {
       throw new ConflictException(
         before.status === 'approved'
@@ -248,18 +324,26 @@ export class CompensatoryService {
   // ---------- HR on someone's behalf ----------
 
   /** What HR recording one for someone would meet (GET /compensatory/check): what refuses it and what it is recorded past. */
-  async check(query: CompensatoryCheckQueryDto, user: SessionUser): Promise<{ employee: { id: string; fullNameEn: string }; problems: string[]; warnings: string[]; cashDays: number }> {
+  async check(
+    query: CompensatoryCheckQueryDto,
+    user: SessionUser,
+  ): Promise<{ employee: { id: string; fullNameEn: string }; problems: string[]; warnings: string[]; cashDays: number; earned: CompensationEarned; rules: CompensatoryRules }> {
     const caller = await this.caller(user);
     const person = await this.prisma.employee.findUnique({ where: { id: query.employeeId }, select: { id: true, fullNameEn: true } });
     if (!person || caller.confidential?.hidden.has(query.employeeId)) throw new NotFoundException('Employee not found.');
-    const cashDays = await this.cashRate();
+    const rules = await this.rules();
+    const hoursWorked = query.hoursWorked ?? null;
+    // part of the day (27 October 2026): what its hours earn, and cash instead in days' pay for it
+    const earned = compensationEarned(hoursWorked, rules);
     const employment = await this.employmentOn(query.employeeId, query.dayWorked);
-    if (!employment) return { employee: person, problems: [`Choose a day within one of ${person.fullNameEn}'s employments.`], warnings: [], cashDays };
+    const cashDays = compensatoryCashDays(earned, rules, hoursADayOf(employment));
+    const answer = { employee: person, cashDays, earned, rules };
+    if (!employment) return { ...answer, problems: [`Choose a day within one of ${person.fullNameEn}'s employments.`], warnings: [] };
     const refusal = this.refusalOf(employment, person.fullNameEn);
-    if (refusal) return { employee: person, problems: [refusal], warnings: [], cashDays };
+    if (refusal) return { ...answer, problems: [refusal], warnings: [] };
     const states = await this.dayStates(this.prisma, employment, query.dayWorked, query.dayOff ?? null);
-    const checked = compensatoryRecordCheck(query.dayWorked, query.dayOff ?? null, states.worked, states.off, todayInCairo(), person.fullNameEn);
-    return { employee: person, ...checked, cashDays };
+    const checked = compensatoryRecordCheck(query.dayWorked, query.dayOff ?? null, states.worked, states.off, todayInCairo(), person.fullNameEn, rules);
+    return { ...answer, problems: [...hoursWorkedProblems(hoursWorked, rules, person.fullNameEn), ...checked.problems], warnings: checked.warnings };
   }
 
   /**
@@ -276,7 +360,7 @@ export class CompensatoryService {
     if (!employment) throw new BadRequestException([`Choose a day within one of ${person.fullNameEn}'s employments.`]);
     const outcome: CompensatoryOutcome = dto.outcome ?? 'day_off';
     if (outcome === 'day_off' && !dto.dayOff) throw new BadRequestException(['Enter the day off, e.g. 2026-11-10.']);
-    const id = await this.submit(employment, { dayWorked: dto.dayWorked, dayOff: outcome === 'cash' ? null : dto.dayOff!, reason: dto.reason, outcome }, caller, true);
+    const id = await this.submit(employment, { dayWorked: dto.dayWorked, dayOff: outcome === 'cash' ? null : dto.dayOff!, reason: dto.reason, outcome, hoursWorked: dto.hoursWorked ?? null }, caller, true);
     return this.one(id, user);
   }
 
@@ -287,6 +371,7 @@ export class CompensatoryService {
     const parties = compensatoryParties(before);
     if (!isHr(user)) throw new ForbiddenException('Only HR cancels an approved compensatory day.');
     if (isRequester(parties, caller)) throw new ForbiddenException('Someone else in HR has to cancel your own compensatory day.');
+    if (before.odRequestId) throw new ConflictException(WITH_OD(before.dayWorked, 'cancel the official duty, and it is cancelled with it.'));
     if (!hrMayCancel({ ...parties, status: before.status }, caller)) {
       throw new ConflictException(`This request is ${statusWords(before.status)}: HR cancels approved compensatory days only. ${isOpenLeave(before.status) ? 'Reject it instead.' : ''}`.trim());
     }
@@ -318,7 +403,7 @@ export class CompensatoryService {
       });
       await this.runs.syncDrafts([compensatoryMonth(dayWorked)], [before.employeeId], user);
     }
-    await this.refill(before.employeeId, dayWorked, user);
+    await this.refill(before.employeeId, dayWorked, user, fromDateOnly(before.dayOff));
     await this.notices.compensatory(id, 'cancelled_by_hr');
     return this.one(id, user);
   }
@@ -336,7 +421,8 @@ export class CompensatoryService {
       where: {
         AND: [
           othersWhere(caller) as Where,
-          query.status === 'waiting' ? (waitingWhere(caller) as Where) : query.status ? { status: query.status } : {},
+          // one an official duty carries waits as the official duty, not by itself (27 October 2026)
+          query.status === 'waiting' ? { AND: [waitingWhere(caller) as Where, { odRequestId: null }] } : query.status ? { status: query.status } : {},
           query.employeeId ? { employeeId: query.employeeId } : {},
           query.departmentId ? { employment: { OR: [{ departmentId: query.departmentId }, { department: { parentId: query.departmentId } }] } } : {},
           query.from ? { dayWorked: { gte: toDateOnly(query.from) } } : {},
@@ -352,7 +438,7 @@ export class CompensatoryService {
   /** { waiting }: how many wait for the caller's decision (the sidebar, Approvals and To Approve count them). */
   async counts(user: SessionUser): Promise<{ waiting: number }> {
     const caller = await this.caller(user);
-    return { waiting: await this.prisma.compensatoryRequest.count({ where: waitingWhere(caller) as Where }) };
+    return { waiting: await this.prisma.compensatoryRequest.count({ where: { AND: [waitingWhere(caller) as Where, { odRequestId: null }] } }) };
   }
 
   async one(id: string, user: SessionUser): Promise<CompensatoryRequestView> {
@@ -372,6 +458,7 @@ export class CompensatoryService {
     const stage = leaveStage(before.status);
     if (!stage) throw new ConflictException(`This request is ${statusWords(before.status)}, so there is nothing left to decide. Reload the page to see it.`);
     if (isRequester(parties, caller)) throw new ForbiddenException('Someone else has to decide your own compensatory day request.');
+    if (before.odRequestId) throw new ConflictException(WITH_OD(before.dayWorked, 'it is decided with the official duty.'));
     const away = standInRefusal({ ...parties, status: before.status }, caller);
     if (away) throw new ConflictException(away);
     if (!decidesStage(stage, parties, caller)) {
@@ -392,8 +479,11 @@ export class CompensatoryService {
     const approvesNow = to === 'approved';
     const outcome: CompensatoryOutcome | null = approvesNow ? (dto.outcome ?? 'day_off') : null;
     if (dto.outcome && !approvesNow) throw new BadRequestException(["Only HR's approval chooses a day off or cash instead."]);
+    let cashDays = 0;
     if (approvesNow) {
       const employment = await this.prisma.employment.findUnique({ where: { id: before.employmentId }, select: EMPLOYMENT });
+      // cash instead: a whole day's rate, or the hours' share of it (27 October 2026)
+      cashDays = compensatoryCashDays(earnedOf(before), await this.rules(), hoursADayOf(employment));
       await this.assertMonthOpen(compensatoryMonth(dayWorked));
       const states = await this.dayStates(this.prisma, employment!, dayWorked, outcome === 'day_off' ? dayOff : null, id);
       if (!states.worked.checkedIn && dto.confirmNoCheckIn !== true) {
@@ -405,7 +495,6 @@ export class CompensatoryService {
       }
     }
     const onBehalfOf = decidedOnBehalfOf(stage, parties, caller);
-    const rate = await this.cashRate();
     const made = await this.prisma.$transaction(async (tx) => {
       const { count } = await tx.compensatoryRequest.updateMany({
         where: { id, status: before.status },
@@ -413,7 +502,7 @@ export class CompensatoryService {
       });
       if (!count) throw new ConflictException('This request was decided or cancelled meanwhile. Reload the page to see where it is.');
       await this.step(tx, id, user.id, { kind: leaveDecisionStepKind(stage), decision: dto.decision, comment, onBehalfOf });
-      return outcome === 'cash' ? await this.makeCash(tx, { id, employeeId: before.employeeId, dayWorked }, rate, user.id) : null;
+      return outcome === 'cash' ? await this.makeCash(tx, { id, employeeId: before.employeeId, dayWorked }, cashDays, user.id) : null;
     });
     await this.audit.record({
       userId: user.id,
@@ -435,7 +524,7 @@ export class CompensatoryService {
     });
     if (approvesNow) {
       if (made) await this.auditCash(made, id, user);
-      await this.refill(before.employeeId, dayWorked, user);
+      await this.refill(before.employeeId, dayWorked, user, dayOff);
     }
     // to the next step's decider, or the employee once it is approved or rejected
     await this.notices.compensatory(id, 'decided');
@@ -485,33 +574,267 @@ export class CompensatoryService {
     }));
   }
 
-  // ---------- the Leave Setup's cash rate ----------
+  // ---------- with an official duty (owner, 27 October 2026: "it should count in the compensatories"; "One step") ----------
 
-  /** The cash rate as Leave Setup shows it (anyone signed in reads it, as the Leave Setup's other numbers). */
-  async settings(): Promise<{ cashRate: number }> {
-    return { cashRate: await this.cashRate() };
+  /**
+   * What the compensatory day an official duty on a rest day or an official holiday comes with meets, in the duty's
+   * transaction (the employee's row held): the day not compensated already; a day off (or the day for hours off) free and
+   * within the Setup's window, a day ahead for an employee, a warning for HR when past; the months' payroll open. `name`:
+   * the employee's when HR records it.
+   */
+  async odCheck(db: Db, employment: CompensatoryEmployment, dayWorked: string, asked: CompensationAsked, today: string, name: string | null): Promise<{ problems: string[]; warnings: string[] }> {
+    const rules = await this.rules(db);
+    const dayOff = asked.outcome === 'cash' ? null : asked.dayOff;
+    const states = await this.dayStates(db, employment, dayWorked, dayOff);
+    const checked = compensatoryForOdCheck(dayWorked, asked, states.worked, states.off, today, name, rules);
+    const months = [...new Set([dayWorked, ...(dayOff ? [dayOff] : [])].map(compensatoryMonth))];
+    const locks: string[] = [];
+    for (const month of months) {
+      const lock = await this.monthLockProblem(month, db);
+      if (lock) locks.push(lock);
+    }
+    return { problems: [...checked.problems, ...locks], warnings: checked.warnings };
   }
 
-  /** HR changes the cash rate (Leave Setup), in the audit log as the Leave Setup's change. */
-  async updateSettings(dto: UpdateCompensatorySettingsDto, user: SessionUser): Promise<{ cashRate: number }> {
-    const problems = compensatoryRateProblems(dto.cashRate);
-    if (problems.length) throw new BadRequestException(problems);
-    const before = await this.cashRate();
-    await this.prisma.leaveSettings.upsert({
-      where: { id: 1 },
-      create: { id: 1, compensatoryCashRate: dto.cashRate, updatedById: user.id },
-      update: { compensatoryCashRate: dto.cashRate, updatedById: user.id },
+  /**
+   * The compensatory day an official duty carries, saved in the duty's transaction with its status, approver and reason
+   * (the duty's): an employee's at the duty's first step, decided with it; HR's approved at once (cash instead made then).
+   * `earned`: what the duty's hours earn (never nothing); `hoursWorked`: part of the day's hours (null: a full day).
+   */
+  async createForOd(
+    tx: Prisma.TransactionClient,
+    input: {
+      odId: string;
+      employment: CompensatoryEmployment;
+      dayWorked: string;
+      asked: CompensationAsked;
+      earned: CompensationEarned;
+      hoursWorked: number | null;
+      status: LeaveStatus;
+      managerId: string | null;
+      approverRole: string | null;
+      byHr: boolean;
+      reason: string;
+      warnings: string[];
+      userId: string;
+    },
+  ): Promise<OdCompensatoryMade> {
+    const { employment, asked, earned, byHr } = input;
+    const row = await tx.compensatoryRequest.create({
+      data: {
+        employeeId: employment.employeeId,
+        employmentId: employment.id,
+        dayWorked: toDateOnly(input.dayWorked),
+        dayOff: asked.outcome === 'cash' || !asked.dayOff ? null : toDateOnly(asked.dayOff),
+        reason: input.reason,
+        status: input.status,
+        // the compensation chosen with the duty, kept from the start (approved as it is)
+        outcome: asked.outcome,
+        managerId: input.managerId,
+        approverRole: input.approverRole,
+        recordedByHr: byHr,
+        warnings: input.warnings,
+        createdById: input.userId,
+        hoursWorked: input.hoursWorked,
+        hoursOff: earned.kind === 'hours' ? earned.hours : null,
+        odRequestId: input.odId,
+      },
+      select: { id: true },
     });
-    const diff = changes({ compensatoryCashRate: before }, { compensatoryCashRate: dto.cashRate });
+    const comment = 'With the official duty';
+    if (byHr) await this.step(tx, row.id, input.userId, { kind: 'recorded_by_hr', comment });
+    else {
+      await this.step(tx, row.id, input.userId, { kind: 'submitted', comment });
+      if (!input.managerId) await this.step(tx, row.id, null, { kind: 'no_manager' });
+    }
+    const cash =
+      byHr && asked.outcome === 'cash'
+        ? await this.makeCash(tx, { id: row.id, employeeId: employment.employeeId, dayWorked: input.dayWorked }, compensatoryCashDays(earned, await this.rules(tx), hoursADayOf(employment)), input.userId)
+        : null;
+    return {
+      id: row.id,
+      employeeId: employment.employeeId,
+      dayWorked: input.dayWorked,
+      dayOff: asked.outcome === 'cash' ? null : asked.dayOff,
+      outcome: asked.outcome,
+      hoursWorked: input.hoursWorked,
+      hoursOff: earned.kind === 'hours' ? earned.hours : null,
+      status: input.status,
+      byHr,
+      cash,
+    };
+  }
+
+  /** Once the duty carrying one is committed: its audit entry (and its cash addition's), and, approved, the months filled. */
+  async createdForOd(made: OdCompensatoryMade, odId: string, user: SessionUser): Promise<void> {
+    await this.audit.record({
+      userId: user.id,
+      action: made.byHr ? 'record' : 'create',
+      entityType: COMPENSATORY_ENTITY,
+      entityId: made.id,
+      diff: {
+        employeeId: made.employeeId,
+        dayWorked: made.dayWorked,
+        dayOff: made.dayOff,
+        outcome: made.outcome,
+        ...(made.hoursWorked !== null && { hoursWorked: made.hoursWorked, hoursOff: made.hoursOff }),
+        status: made.status,
+        odRequestId: odId,
+      },
+    });
+    if (made.cash) await this.auditCash(made.cash, made.id, user);
+    if (made.status === 'approved') await this.refill(made.employeeId, made.dayWorked, user, made.dayOff);
+  }
+
+  /** The compensatory day an official duty carries, while it is being decided or approved; null for none. */
+  async ofOd(db: Db, odId: string): Promise<OdCompensatoryRow | null> {
+    return db.compensatoryRequest.findFirst({
+      where: { odRequestId: odId, status: { in: [...TAKING] } },
+      select: { id: true, status: true, employeeId: true, employmentId: true, dayWorked: true, dayOff: true, outcome: true, hoursOff: true, adjustmentId: true },
+    });
+  }
+
+  /**
+   * Before the duty carrying one is approved: its months' payroll open, and its day off still free (refused, 409, with
+   * why), as a compensatory day's own approval checks.
+   */
+  async assertOdApprovable(linked: OdCompensatoryRow, name: string): Promise<void> {
+    const dayWorked = fromDateOnly(linked.dayWorked)!;
+    const dayOff = fromDateOnly(linked.dayOff);
+    await this.assertMonthOpen(compensatoryMonth(dayWorked));
+    if (dayOff && compensatoryMonth(dayOff) !== compensatoryMonth(dayWorked)) await this.assertMonthOpen(compensatoryMonth(dayOff));
+    if (linked.outcome === 'cash' || !dayOff) return;
+    const employment = await this.prisma.employment.findUnique({ where: { id: linked.employmentId }, select: EMPLOYMENT });
+    const states = await this.dayStates(this.prisma, employment!, dayWorked, dayOff, linked.id);
+    const problems = compensatoryOffProblems(dayOff, states.off!, name);
+    if (problems.length) throw new ConflictException(problems);
+  }
+
+  /**
+   * The compensatory day follows its official duty's step, in the duty's transaction: on to HR, approved (cash instead
+   * made), rejected with the duty's comment, or cancelled (a pending cash addition cancelled with it).
+   */
+  async followOd(
+    tx: Prisma.TransactionClient,
+    linked: OdCompensatoryRow,
+    change: { to: LeaveStatus; stage: LeaveStage | null; decision?: LeaveDecision; comment: string | null; onBehalfOf?: string | null },
+    userId: string,
+  ): Promise<OdCompensatoryFollowed> {
+    const { to, stage } = change;
+    const outcome = (linked.outcome as CompensatoryOutcome | null) ?? 'day_off';
+    const { count } = await tx.compensatoryRequest.updateMany({
+      where: { id: linked.id, status: linked.status },
+      data: to === 'rejected' ? { status: to, rejectedStage: stage, rejectReason: change.comment } : to === 'approved' ? { status: to, outcome } : { status: to },
+    });
+    if (!count) throw new ConflictException('The compensatory day with this official duty was changed meanwhile. Reload the page to see where it is.');
+    if (to === 'cancelled') await this.step(tx, linked.id, userId, { kind: 'cancelled', comment: change.comment });
+    else await this.step(tx, linked.id, userId, { kind: leaveDecisionStepKind(stage!), decision: change.decision, comment: change.comment, onBehalfOf: change.onBehalfOf ?? null });
+    let cash: CashMade | null = null;
+    let cancelledAdjustment: string | null = null;
+    if (to === 'approved' && outcome === 'cash') {
+      const employment = await tx.employment.findUnique({ where: { id: linked.employmentId }, select: EMPLOYMENT });
+      const days = compensatoryCashDays(earnedOf(linked), await this.rules(tx), hoursADayOf(employment));
+      cash = await this.makeCash(tx, { id: linked.id, employeeId: linked.employeeId, dayWorked: fromDateOnly(linked.dayWorked)! }, days, userId);
+    }
+    if (to === 'cancelled' && linked.status === 'approved' && linked.outcome === 'cash' && linked.adjustmentId) {
+      const { count: gone } = await tx.payrollAdjustment.updateMany({ where: { id: linked.adjustmentId, status: 'pending' }, data: { status: 'cancelled', cancelledById: userId, cancelledAt: new Date() } });
+      if (gone) cancelledAdjustment = linked.adjustmentId;
+    }
+    return { from: linked.status as LeaveStatus, to, outcome, cash, cancelledAdjustment };
+  }
+
+  /** Once the duty's step is committed: the compensatory day's audit entry, its addition's, and the months filled again. */
+  async followedOd(linked: OdCompensatoryRow, followed: OdCompensatoryFollowed, odId: string, user: SessionUser): Promise<void> {
+    const dayWorked = fromDateOnly(linked.dayWorked)!;
+    const dayOff = fromDateOnly(linked.dayOff);
+    const action = followed.to === 'cancelled' ? 'cancel' : followed.to === 'rejected' ? 'reject' : 'approve';
+    await this.audit.record({
+      userId: user.id,
+      action,
+      entityType: COMPENSATORY_ENTITY,
+      entityId: linked.id,
+      diff: { employeeId: linked.employeeId, dayWorked, dayOff, outcome: followed.outcome, status: { from: followed.from, to: followed.to }, odRequestId: odId },
+    });
+    if (followed.cash) await this.auditCash(followed.cash, linked.id, user);
+    if (followed.cancelledAdjustment) {
+      await this.audit.record({
+        userId: user.id,
+        action: 'cancel',
+        entityType: ADJUSTMENT,
+        entityId: followed.cancelledAdjustment,
+        diff: { month: compensatoryMonth(dayWorked), kind: 'addition', type: 'bonus_days', status: { from: 'pending', to: 'cancelled' }, compensatoryId: linked.id },
+      });
+      await this.runs.syncDrafts([compensatoryMonth(dayWorked)], [linked.employeeId], user);
+    }
+    // approved, or an approved one cancelled: the day off and the day worked count differently
+    if (followed.to === 'approved' || followed.from === 'approved') await this.refill(linked.employeeId, dayWorked, user, dayOff);
+  }
+
+  // ---------- the Compensatory Setup (owner, 27 October 2026: "i need a setup dashboard for the compensatory leaves") ----------
+
+  /** The Compensatory Setup's rules (anyone signed in reads them, as the Leave Setup's numbers). */
+  async settings(): Promise<CompensatoryRules> {
+    return this.rules();
+  }
+
+  /**
+   * HR changes the Compensatory Setup: the cash rate, the minimum hours to qualify, the most hours off, the hours for a
+   * whole day and when the day off is taken (each left out as it is), refused with every reason; in the audit log as the
+   * Leave Setup's change. Requests already made keep the hours off they earned.
+   */
+  async updateSettings(dto: UpdateCompensatorySettingsDto, user: SessionUser): Promise<CompensatoryRules> {
+    const before = await this.rules();
+    const after: CompensatoryRules = {
+      cashRate: dto.cashRate ?? before.cashRate,
+      minHours: dto.minHours ?? before.minHours,
+      hoursCap: dto.hoursCap ?? before.hoursCap,
+      fullDayHours: dto.fullDayHours ?? before.fullDayHours,
+      offWithinDays: dto.offWithinDays === undefined ? before.offWithinDays : dto.offWithinDays,
+    };
+    const problems = compensatoryRulesProblems(after);
+    if (problems.length) throw new BadRequestException(problems);
+    const data = {
+      compensatoryCashRate: after.cashRate,
+      compensatoryMinHours: after.minHours,
+      compensatoryHoursCap: after.hoursCap,
+      compensatoryFullDayHours: after.fullDayHours,
+      compensatoryOffWithinDays: after.offWithinDays,
+      updatedById: user.id,
+    };
+    await this.prisma.leaveSettings.upsert({ where: { id: 1 }, create: { id: 1, ...data }, update: data });
+    const named = (r: CompensatoryRules) => ({
+      compensatoryCashRate: r.cashRate,
+      compensatoryMinHours: r.minHours,
+      compensatoryHoursCap: r.hoursCap,
+      compensatoryFullDayHours: r.fullDayHours,
+      compensatoryOffWithinDays: r.offWithinDays,
+    });
+    const diff = changes(named(before), named(after));
     if (Object.keys(diff).length) await this.audit.record({ userId: user.id, action: 'update', entityType: SETTINGS_ENTITY, diff });
-    return { cashRate: dto.cashRate };
+    return after;
   }
 
   // ---------- helpers ----------
 
-  /** The Leave Setup's cash rate (the migration's row; the owner's 1.5 should it be missing). */
+  /** The Compensatory Setup's rules (the migration's row; the owner's numbers should it be missing). */
+  async rules(db: Db = this.prisma): Promise<CompensatoryRules> {
+    const s = await db.leaveSettings.findUnique({
+      where: { id: 1 },
+      select: { compensatoryCashRate: true, compensatoryMinHours: true, compensatoryHoursCap: true, compensatoryFullDayHours: true, compensatoryOffWithinDays: true },
+    });
+    if (!s) return { ...COMPENSATORY_RULE_DEFAULTS };
+    return {
+      cashRate: cashRateOf(s),
+      minHours: s.compensatoryMinHours.toNumber(),
+      hoursCap: s.compensatoryHoursCap.toNumber(),
+      fullDayHours: s.compensatoryFullDayHours.toNumber(),
+      offWithinDays: s.compensatoryOffWithinDays,
+    };
+  }
+
+  /** The Setup's cash rate. */
   async cashRate(db: Db = this.prisma): Promise<number> {
-    return cashRateOf(await db.leaveSettings.findUnique({ where: { id: 1 }, select: { compensatoryCashRate: true } }));
+    return (await this.rules(db)).cashRate;
   }
 
   /** The caller, with their own employee profile and the C-level people. */
@@ -546,14 +869,19 @@ export class CompensatoryService {
 
   /** The month's payroll must not be with the CEO, approved or paid: its days and additions can't change then. */
   private async assertMonthOpen(month: string, db: Db = this.prisma): Promise<void> {
+    const problem = await this.monthLockProblem(month, db);
+    if (problem) throw new ConflictException(problem);
+  }
+
+  /** Why a month's days can't change (null: they can): its payroll with the CEO, approved or paid. */
+  private async monthLockProblem(month: string, db: Db = this.prisma): Promise<string | null> {
     const run = await db.payrollRun.findUnique({ where: { month: toDateOnly(firstDay(month)) }, select: { status: true } });
-    if (run && locksMonth(run.status)) {
-      throw new ConflictException(`The ${monthName(month)} payroll ${STATUS_TEXT[run.status as PayrollStatus]}, so its days can't change. Choose days in another month.`);
-    }
+    if (run && locksMonth(run.status)) return `The ${monthName(month)} payroll ${STATUS_TEXT[run.status as PayrollStatus]}, so its days can't change. Choose days in another month.`;
+    return null;
   }
 
   /** The two days as the shared rules read them, for the person under `employment`; `except`: a request left out. */
-  private async dayStates(db: Db, employment: EmploymentRow, dayWorked: string, dayOff: string | null, except?: string): Promise<{ worked: CompensatoryWorkedDay; off: CompensatoryOffDay | null }> {
+  private async dayStates(db: Db, employment: CompensatoryEmployment, dayWorked: string, dayOff: string | null, except?: string): Promise<{ worked: CompensatoryWorkedDay; off: CompensatoryOffDay | null }> {
     const employeeId = employment.employeeId;
     const working = employment.shift?.workingDays ?? DEFAULT_WORKING_DAYS;
     const not = except ? { id: { not: except } } : {};
@@ -590,7 +918,7 @@ export class CompensatoryService {
    */
   private async submit(
     employment: EmploymentRow,
-    input: { dayWorked: string; dayOff: string | null; reason: string | null; outcome: CompensatoryOutcome | null },
+    input: { dayWorked: string; dayOff: string | null; reason: string | null; outcome: CompensatoryOutcome | null; hoursWorked: number | null },
     caller: Caller,
     byHr: boolean,
   ): Promise<string> {
@@ -607,25 +935,31 @@ export class CompensatoryService {
       if (day < joinDate) inEmployment.push(`The ${label} must be within the employment, which started on ${shownDate(joinDate)}.`);
       if (endDate && day > endDate) inEmployment.push(`The ${label} must be within the employment, which ended on ${shownDate(endDate)}.`);
     }
-    // a month with the CEO, approved or paid keeps its days and additions as they are
+    // a month with the CEO, approved or paid keeps its days and additions as they are (the day off's too, in another
+    // month by the Setup's window)
     await this.assertMonthOpen(compensatoryMonth(input.dayWorked));
+    if (input.dayOff && compensatoryMonth(input.dayOff) !== compensatoryMonth(input.dayWorked)) await this.assertMonthOpen(compensatoryMonth(input.dayOff));
     const approver = await approverFor(this.prisma, { employeeId, managerId: employment.managerId, departmentId: employment.departmentId });
     const managerId = approver?.employeeId ?? null;
     const approverRole = approver?.role ?? null;
     const status: LeaveStatus = byHr ? 'approved' : firstLeaveStatus(managerId !== null);
     const today = todayInCairo();
-    const rate = await this.cashRate();
+    // part of the day (27 October 2026): what its hours earn by the Setup, and cash instead for it
+    const rules = await this.rules();
+    const earned = compensationEarned(input.hoursWorked, rules);
+    const hoursProblems = hoursWorkedProblems(input.hoursWorked, rules, name);
+    const cashDays = compensatoryCashDays(earned, rules, hoursADayOf(employment));
 
     const made = await this.prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT 1 FROM employees WHERE id = ${employeeId}::uuid FOR UPDATE`;
       const states = await this.dayStates(tx, employment, input.dayWorked, input.dayOff);
       let warnings: string[] = [];
       if (byHr) {
-        const checked = compensatoryRecordCheck(input.dayWorked, input.dayOff, states.worked, states.off, today, employment.employee.fullNameEn);
-        if (inEmployment.length || checked.problems.length) throw new BadRequestException([...inEmployment, ...checked.problems]);
+        const checked = compensatoryRecordCheck(input.dayWorked, input.dayOff, states.worked, states.off, today, employment.employee.fullNameEn, rules);
+        if (inEmployment.length || hoursProblems.length || checked.problems.length) throw new BadRequestException([...inEmployment, ...hoursProblems, ...checked.problems]);
         warnings = checked.warnings;
       } else {
-        const problems = [...inEmployment, ...compensatoryRequestProblems(input.dayWorked, input.dayOff!, states.worked, states.off!, today)];
+        const problems = [...inEmployment, ...hoursProblems, ...compensatoryRequestProblems(input.dayWorked, input.dayOff!, states.worked, states.off!, today, rules)];
         if (problems.length) throw new BadRequestException(problems);
       }
       const row = await tx.compensatoryRequest.create({
@@ -642,6 +976,8 @@ export class CompensatoryService {
           recordedByHr: byHr,
           warnings,
           createdById: user.id,
+          hoursWorked: input.hoursWorked,
+          hoursOff: earned.kind === 'hours' ? earned.hours : null,
         },
         select: { id: true },
       });
@@ -650,7 +986,7 @@ export class CompensatoryService {
         await this.step(tx, row.id, user.id, { kind: 'submitted' });
         if (!managerId) await this.step(tx, row.id, null, { kind: 'no_manager' });
       }
-      const cash = byHr && input.outcome === 'cash' ? await this.makeCash(tx, { id: row.id, employeeId, dayWorked: input.dayWorked }, rate, user.id) : null;
+      const cash = byHr && input.outcome === 'cash' ? await this.makeCash(tx, { id: row.id, employeeId, dayWorked: input.dayWorked }, cashDays, user.id) : null;
       return { id: row.id, warnings, cash };
     });
     await this.audit.record({
@@ -662,6 +998,7 @@ export class CompensatoryService {
         employeeId,
         dayWorked: input.dayWorked,
         dayOff: input.dayOff,
+        ...(input.hoursWorked !== null && { hoursWorked: input.hoursWorked, hoursOff: earned.kind === 'hours' ? earned.hours : null }),
         reason: input.reason,
         managerId,
         approverRole,
@@ -672,15 +1009,16 @@ export class CompensatoryService {
     });
     if (byHr) {
       if (made.cash) await this.auditCash(made.cash, made.id, user);
-      await this.refill(employeeId, input.dayWorked, user);
+      await this.refill(employeeId, input.dayWorked, user, input.dayOff);
     }
     return made.id;
   }
 
   /**
    * Cash instead: the addition "Compensation for working <day>" on the draft payroll of the day worked's month, in days
-   * (a Bonus (days), a day of the fixed part of the gross ÷ the run's day divisor: the payroll's own day-pay rule), the
-   * Leave Setup's rate; linked to the request. Within the decision's transaction.
+   * (a Bonus (days), a day of the fixed part of the gross ÷ the run's day divisor: the payroll's own day-pay rule): the
+   * Setup's rate for a whole day, its share for hours (compensatoryCashDays); linked to the request. Within the
+   * decision's transaction.
    */
   private async makeCash(
     tx: Prisma.TransactionClient,
@@ -721,9 +1059,13 @@ export class CompensatoryService {
     await this.runs.syncDrafts([made.month], [made.employeeId], user);
   }
 
-  /** The day worked's month filled again on its draft payroll: the day off counts as attended, the day worked adds nothing. */
-  private async refill(employeeId: string, dayWorked: string, user: SessionUser): Promise<void> {
+  /**
+   * The day worked's month filled again on its draft payroll, and the day off's when it is another (the Setup's window):
+   * the day off counts as attended, the day worked adds nothing.
+   */
+  private async refill(employeeId: string, dayWorked: string, user: SessionUser, dayOff: string | null = null): Promise<void> {
     await this.fill.fillMonth(employeeId, compensatoryMonth(dayWorked), user);
+    if (dayOff && compensatoryMonth(dayOff) !== compensatoryMonth(dayWorked)) await this.fill.fillMonth(employeeId, compensatoryMonth(dayOff), user);
   }
 
   /** Logs a step on a request, in the transaction the step is taken in. */

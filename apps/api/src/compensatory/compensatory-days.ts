@@ -8,9 +8,13 @@ import type { PrismaService } from '../prisma/prisma.service.js';
 
 type Db = PrismaService | Prisma.TransactionClient;
 
-/** The compensatory days of one person: the days off (approved as a day off) and the days worked they compensate (either way). */
+/**
+ * The compensatory days of one person: the days off (approved as a day off), the hours off (approved for part of a day
+ * worked, 27 October 2026), and the days worked they compensate (either way).
+ */
 export interface PersonCompensatory {
   daysOff: string[];
+  hoursOff: { date: string; hours: number }[];
   daysWorked: string[];
 }
 
@@ -21,12 +25,15 @@ export async function approvedCompensatory(db: Db, employeeIds: readonly string[
   const range = { gte: toDateOnly(from), lte: toDateOnly(to) };
   const rows = await db.compensatoryRequest.findMany({
     where: { employeeId: { in: [...employeeIds] }, status: 'approved', OR: [{ dayWorked: range }, { dayOff: range }] },
-    select: { employeeId: true, dayWorked: true, dayOff: true, outcome: true },
+    select: { employeeId: true, dayWorked: true, dayOff: true, outcome: true, hoursOff: true },
   });
   for (const r of rows) {
-    const mine = out.get(r.employeeId) ?? { daysOff: [], daysWorked: [] };
+    const mine = out.get(r.employeeId) ?? { daysOff: [], hoursOff: [], daysWorked: [] };
     mine.daysWorked.push(fromDateOnly(r.dayWorked));
-    if (r.outcome !== 'cash' && r.dayOff) mine.daysOff.push(fromDateOnly(r.dayOff));
+    if (r.outcome !== 'cash' && r.dayOff) {
+      if (r.hoursOff) mine.hoursOff.push({ date: fromDateOnly(r.dayOff), hours: r.hoursOff.toNumber() });
+      else mine.daysOff.push(fromDateOnly(r.dayOff));
+    }
     out.set(r.employeeId, mine);
   }
   return out;

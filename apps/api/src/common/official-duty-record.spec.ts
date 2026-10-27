@@ -114,7 +114,7 @@ describe('HR records an official duty (owner, 26 October 2026: "HR records it")'
       "Choose times within Ben Away's shift, 9:00 AM to 7:00 PM.",
     ]);
     expect(odRecordCheck(input(), [fact('2026-11-15', { workingDay: false })], MORNING, TODAY, 'Ben Away').problems).toEqual([
-      "15/11/2026 is a rest day of Ben Away's shift: there is no work that day, so no official duty.",
+      "15/11/2026 is a rest day of Ben Away's shift: official duty on it earns a whole day off, so choose the day off or cash instead.",
     ]);
     // an employee's own request meets a compensatory day off too
     expect(odDaysProblems(input(), [fact('2026-11-15', { compensatory: { status: 'with the manager' } })])).toEqual([

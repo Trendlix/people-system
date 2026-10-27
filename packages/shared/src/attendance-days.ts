@@ -97,6 +97,11 @@ export interface KeptDay {
    * with a day, we pay nothing"): its check-ins kept, its hours left out of the month's worked hours.
    */
   compensated?: boolean;
+  /**
+   * Hours off approved on this working day for part of a rest day worked (owner, 27 October 2026: "Hours off for hours
+   * worked"; compensatory.ts compensatoryDays): counted as worked, with no deduction for them.
+   */
+  compensatoryHours?: number;
 }
 
 /** A kept day as the Attendance pages show it. */

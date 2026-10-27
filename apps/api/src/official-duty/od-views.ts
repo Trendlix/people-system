@@ -4,6 +4,8 @@ import {
   OD_LABEL,
   OD_LABEL_AR,
   type ApproverRole,
+  type CompensatoryOutcome,
+  type CompensatoryRules,
   type LeaveDecision,
   type LeaveStage,
   type LeaveStatus,
@@ -40,6 +42,8 @@ export const OD_INCLUDE = {
   manager: { select: { id: true, fullNameEn: true } },
   // a stand-in's decision: the approver they stood in for (25 October 2026)
   steps: { orderBy: { id: 'asc' }, include: { actor: { select: { id: true, email: true } }, onBehalfOf: { select: { id: true, fullNameEn: true } } } },
+  // on a rest day or an official holiday: its compensatory day (27 October 2026)
+  compensatory: { select: { id: true, status: true, dayOff: true, outcome: true, hoursWorked: true, hoursOff: true } },
 } satisfies Prisma.OdRequestInclude;
 
 export type OdRow = Prisma.OdRequestGetPayload<{ include: typeof OD_INCLUDE }>;
@@ -82,6 +86,18 @@ export function odView(r: OdRow, caller: Caller, names: ReadonlyMap<string, User
     recordedByHr: r.recordedByHr,
     warnings: r.warnings,
     imported: r.importId !== null,
+    // on a rest day or an official holiday (owner, 27 October 2026: "it should count in the compensatories"): its
+    // compensatory day, decided and cancelled with it
+    compensation: r.compensatory
+      ? {
+          id: r.compensatory.id,
+          status: r.compensatory.status as LeaveStatus,
+          outcome: (r.compensatory.outcome as CompensatoryOutcome | null) ?? 'day_off',
+          dayOff: fromDateOnly(r.compensatory.dayOff),
+          hoursWorked: r.compensatory.hoursWorked?.toNumber() ?? null,
+          hoursOff: r.compensatory.hoursOff?.toNumber() ?? null,
+        }
+      : null,
     status,
     stage: leaveStage(status),
     waitingForYou: waitsFor({ ...parties, status }, caller),
@@ -138,4 +154,12 @@ export interface OdFormView {
   refusal: string | null;
   /** A C-level person's goes to the CEO after their manager, not HR. */
   toCeo: boolean;
+  /**
+   * For one on a rest day or an official holiday (27 October 2026): their shift's working days (0 = Sunday), the official
+   * holidays from the earliest day to a year ahead, the Compensatory Setup, and the shift's hours a day (null: none).
+   */
+  workingDays: number[];
+  holidays: { date: string; nameEn: string }[];
+  rules: CompensatoryRules;
+  hoursADay: number | null;
 }

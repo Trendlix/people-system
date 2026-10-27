@@ -3187,7 +3187,7 @@ model PayrollAdjustment {
   // think"): it lowers the taxable pay before the income tax; false for every other, which is after tax
   beforeTax     Boolean              @default(false) @map("before_tax")
   amount        Decimal?             @db.Decimal(12, 2) // RESTRICTED: EGP, more than 0; in days, none until applied (what the line paid)
-  days          Decimal?             @db.Decimal(3, 1) // a Bonus (days) or a Penalty (days): whole or half days, up to 31; none for the others
+  days          Decimal?             @db.Decimal(5, 2) // a Bonus (days) or a Penalty (days): whole or half days, up to 31 (a compensatory day's hours' pay to the hundredth, 27 October 2026); none for the others
   reason        String
   advanceId     String?              @map("advance_id") @db.Uuid // an advance's recovery or a loan's installment: which one
   advance       PayrollAdvance?      @relation(fields: [advanceId], references: [id], onDelete: Restrict)
@@ -3522,30 +3522,37 @@ model LeaveType {
 // months served before the first year's leave may be used, and the years days may be carried before they are settled
 // (Art. 125). The migration seeds the law's numbers; HR changes them.
 model LeaveSettings {
-  id                       Int      @id @default(1) // always 1
-  firstYearDays            Int      @default(15) @map("first_year_days")
-  standardDays             Int      @default(21) @map("standard_days")
-  longServiceDays          Int      @default(30) @map("long_service_days")
-  longServiceYears         Int      @default(10) @map("long_service_years")
-  longServiceAge           Int      @default(50) @map("long_service_age")
-  disabilityDays           Int      @default(45) @map("disability_days")
-  hazardousExtraDays       Int      @default(7) @map("hazardous_extra_days")
-  firstYearMinMonths       Int      @default(6) @map("first_year_min_months")
-  settleWithinYears        Int      @default(3) @map("settle_within_years")
+  id                        Int      @id @default(1) // always 1
+  firstYearDays             Int      @default(15) @map("first_year_days")
+  standardDays              Int      @default(21) @map("standard_days")
+  longServiceDays           Int      @default(30) @map("long_service_days")
+  longServiceYears          Int      @default(10) @map("long_service_years")
+  longServiceAge            Int      @default(50) @map("long_service_age")
+  disabilityDays            Int      @default(45) @map("disability_days")
+  hazardousExtraDays        Int      @default(7) @map("hazardous_extra_days")
+  firstYearMinMonths        Int      @default(6) @map("first_year_min_months")
+  settleWithinYears         Int      @default(3) @map("settle_within_years")
   // permission (owner, 19 October 2026: "4 hours per month with a maximum 2 hours per day", "Yes, in Leave Setup"): the
   // hours a month someone may be away for (0: none) and the most of one day, in half hours
-  permissionHoursPerMonth  Decimal  @default(4) @map("permission_hours_per_month") @db.Decimal(4, 1)
-  permissionMaxHoursPerDay Decimal  @default(2) @map("permission_max_hours_per_day") @db.Decimal(3, 1)
+  permissionHoursPerMonth   Decimal  @default(4) @map("permission_hours_per_month") @db.Decimal(4, 1)
+  permissionMaxHoursPerDay  Decimal  @default(2) @map("permission_max_hours_per_day") @db.Decimal(3, 1)
   // working from home (owner, 21 October 2026: "its 2 days per month with a gap of 1 week between each record
   // (Biweekly)"): the days a calendar month someone may work from home (0: none), and the fewest days between two
-  wfhDaysPerMonth          Int      @default(2) @map("wfh_days_per_month")
-  wfhMinGapDays            Int      @default(7) @map("wfh_min_gap_days")
+  wfhDaysPerMonth           Int      @default(2) @map("wfh_days_per_month")
+  wfhMinGapDays             Int      @default(7) @map("wfh_min_gap_days")
   // compensatory days (owner, 26 October 2026: "if paid in cash make it 1.5"): the days' pay a day worked is paid in cash
   // instead of a day off, in whole or half days
-  compensatoryCashRate     Decimal  @default(1.5) @map("compensatory_cash_rate") @db.Decimal(3, 1)
-  updatedAt                DateTime @updatedAt @map("updated_at") @db.Timestamptz
-  updatedById              String?  @map("updated_by") @db.Uuid
-  updatedBy                User?    @relation("LeaveSettingsBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  compensatoryCashRate      Decimal  @default(1.5) @map("compensatory_cash_rate") @db.Decimal(3, 1)
+  // the Compensatory Setup (owner, 27 October 2026: "minimum working hours"; "up to 4 hours to be compensated by hours -
+  // minimum 6 hours can be compensated by a day"): fewer hours worked earn nothing, hours off at most so many, from so many
+  // a whole day; and when the day off is taken (null: the same calendar month; else within so many days after)
+  compensatoryMinHours      Decimal  @default(2) @map("compensatory_min_hours") @db.Decimal(4, 1)
+  compensatoryHoursCap      Decimal  @default(4) @map("compensatory_hours_cap") @db.Decimal(4, 1)
+  compensatoryFullDayHours  Decimal  @default(6) @map("compensatory_full_day_hours") @db.Decimal(4, 1)
+  compensatoryOffWithinDays Int?     @map("compensatory_off_within_days")
+  updatedAt                 DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  updatedById               String?  @map("updated_by") @db.Uuid
+  updatedBy                 User?    @relation("LeaveSettingsBy", fields: [updatedById], references: [id], onDelete: SetNull)
 
   @@map("leave_settings")
 }
@@ -3796,6 +3803,14 @@ model CompensatoryRequest {
   warnings      String[]           @default([]) // what HR recorded it past (a past day off, no check-in kept), as said then
   adjustmentId  String?            @unique @map("adjustment_id") @db.Uuid // cash instead: the addition on the month's payroll
   adjustment    PayrollAdjustment? @relation(fields: [adjustmentId], references: [id], onDelete: SetNull)
+  // part of a rest day worked (owner, 27 October 2026: "Hours off for hours worked"): the hours worked (null: the whole
+  // day), and the hours off they earn on the day off (null: a whole day off), by the Compensatory Setup's rules then
+  hoursWorked   Decimal?           @map("hours_worked") @db.Decimal(4, 2)
+  hoursOff      Decimal?           @map("hours_off") @db.Decimal(4, 2)
+  // the official duty on a rest day or an official holiday it compensates (owner, 27 October 2026: "it should count in
+  // the compensatories"; "One step"): asked, decided and cancelled with it
+  odRequestId   String?            @unique @map("od_request_id") @db.Uuid
+  odRequest     OdRequest?         @relation(fields: [odRequestId], references: [id], onDelete: Cascade)
   createdById   String?            @map("created_by") @db.Uuid
   createdBy     User?              @relation("CompensatoryCreation", fields: [createdById], references: [id], onDelete: SetNull)
   createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamptz
@@ -3836,40 +3851,42 @@ model CompensatoryStep {
 // HR stage by the CEO. Approved, its days count as attended for its hours, and a press within it is taken from anywhere
 // ("Check in from anywhere"), marked with it (AttendancePunch.odRequestId).
 model OdRequest {
-  id            String            @id @default(uuid()) @db.Uuid
-  employeeId    String            @map("employee_id") @db.Uuid
-  employee      Employee          @relation("OdRequester", fields: [employeeId], references: [id], onDelete: Cascade)
-  employmentId  String            @map("employment_id") @db.Uuid
-  employment    Employment        @relation(fields: [employmentId], references: [id], onDelete: Cascade)
-  startDate     DateTime          @map("start_date") @db.Date
-  endDate       DateTime          @map("end_date") @db.Date
-  fullDay       Boolean           @default(true) @map("full_day")
-  fromTime      DateTime?         @map("from_time") @db.Time(0) // part of a day only
-  toTime        DateTime?         @map("to_time") @db.Time(0)
+  id            String               @id @default(uuid()) @db.Uuid
+  employeeId    String               @map("employee_id") @db.Uuid
+  employee      Employee             @relation("OdRequester", fields: [employeeId], references: [id], onDelete: Cascade)
+  employmentId  String               @map("employment_id") @db.Uuid
+  employment    Employment           @relation(fields: [employmentId], references: [id], onDelete: Cascade)
+  startDate     DateTime             @map("start_date") @db.Date
+  endDate       DateTime             @map("end_date") @db.Date
+  fullDay       Boolean              @default(true) @map("full_day")
+  fromTime      DateTime?            @map("from_time") @db.Time(0) // part of a day only
+  toTime        DateTime?            @map("to_time") @db.Time(0)
   place         String // where it is: free text
   reason        String
-  late          Boolean           @default(false) // asked after its first day (Cairo)
+  late          Boolean              @default(false) // asked after its first day (Cairo)
   status        String // LEAVE_STATUSES: with_manager, with_hr, approved, rejected, cancelled
-  managerId     String?           @map("manager_id") @db.Uuid
-  manager       Employee?         @relation("OdManager", fields: [managerId], references: [id], onDelete: Restrict)
-  approverRole  String?           @map("approver_role") // APPROVER_ROLES, set exactly when managerId is
-  rejectedStage String?           @map("rejected_stage") // LEAVE_STAGES: manager, hr
-  rejectReason  String?           @map("reject_reason")
+  managerId     String?              @map("manager_id") @db.Uuid
+  manager       Employee?            @relation("OdManager", fields: [managerId], references: [id], onDelete: Restrict)
+  approverRole  String?              @map("approver_role") // APPROVER_ROLES, set exactly when managerId is
+  rejectedStage String?              @map("rejected_stage") // LEAVE_STAGES: manager, hr
+  rejectReason  String?              @map("reject_reason")
   // recorded by HR (owner, 26 October 2026, asked what to add: "HR records it"): approved at once, past the 3-day limit
   // too, with what it was recorded past (`warnings`, as said then); or imported, history, from a leave import
-  recordedByHr  Boolean           @default(false) @map("recorded_by_hr")
-  warnings      String[]          @default([])
-  createdById   String?           @map("created_by") @db.Uuid
-  createdBy     User?             @relation("OdRequestCreation", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt     DateTime          @updatedAt @map("updated_at") @db.Timestamptz
+  recordedByHr  Boolean              @default(false) @map("recorded_by_hr")
+  warnings      String[]             @default([])
+  createdById   String?              @map("created_by") @db.Uuid
+  createdBy     User?                @relation("OdRequestCreation", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime             @updatedAt @map("updated_at") @db.Timestamptz
   steps         OdRequestStep[]
   punches       AttendancePunch[]
+  // on a rest day or an official holiday: its compensatory day (27 October 2026)
+  compensatory  CompensatoryRequest?
   // brought over by a leave import (owner, 26 October 2026: "Import (template + Zoho)"): the import, which Undo removes it
   // with; and its Zoho row's ZOHO_LINK_ID, once only
-  importId      String?           @map("import_id") @db.Uuid
-  leaveImport   LeaveImport?      @relation(fields: [importId], references: [id], onDelete: Restrict)
-  zohoLinkId    String?           @unique @map("zoho_link_id")
+  importId      String?              @map("import_id") @db.Uuid
+  leaveImport   LeaveImport?         @relation(fields: [importId], references: [id], onDelete: Restrict)
+  zohoLinkId    String?              @unique @map("zoho_link_id")
 
   @@index([employeeId, startDate])
   @@index([status])

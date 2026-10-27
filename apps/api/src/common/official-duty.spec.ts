@@ -21,6 +21,9 @@ import {
   type OdDayFacts,
   type OdInput,
   type SourcedDay,
+  odEarned,
+  odNeedsCompensation,
+  odPartHours,
 } from '@trendlix/shared';
 
 // Official duty (owner, 23 October 2026: "Official duty (OD) requests"; asked, "Manager, then HR", "Ahead or up to 3 days
@@ -73,10 +76,12 @@ describe('an official duty request', () => {
     expect([odRequestedAfter('2026-11-02', TODAY), odRequestedAfter(TODAY, TODAY), odRequestedAfter('2026-11-05', TODAY)]).toEqual([true, false, false]);
   });
 
-  it('is never one day on a holiday or a rest day; several days skip them, and need one working day', () => {
-    expect(odDaysProblems(input(), [fact('2026-11-05', { holiday: 'Test Day' })])).toEqual(['05/11/2026 is an official holiday (Test Day): there is no work that day, so no official duty.']);
+  it('one day on a holiday or a rest day asks for its compensation (27 October 2026); several days skip them, and need one working day', () => {
+    expect(odDaysProblems(input(), [fact('2026-11-05', { holiday: 'Test Day' })])).toEqual([
+      '05/11/2026 is an official holiday (Test Day): official duty on it earns a whole day off, so choose the day off or cash instead.',
+    ]);
     expect(odDaysProblems(input({ startDate: '2026-11-06', endDate: '2026-11-06' }), [fact('2026-11-06', { workingDay: false })])).toEqual([
-      '06/11/2026 is a rest day of your shift: there is no work that day, so no official duty.',
+      '06/11/2026 is a rest day of your shift: official duty on it earns a whole day off, so choose the day off or cash instead.',
     ]);
     // Thursday to Sunday: Friday and Saturday aren't duty days, the rest are
     const days = [fact('2026-11-05'), fact('2026-11-06', { workingDay: false }), fact('2026-11-07', { workingDay: false }), fact('2026-11-08')];
@@ -119,7 +124,10 @@ describe('an official duty request', () => {
     expect(odRequestProblems(input({ startDate: '2026-10-30', endDate: '2026-10-30', fullDay: false, fromTime: '07:00', toTime: '08:00' }), [fact('2026-10-30', { workingDay: false })], MORNING, TODAY)).toEqual([
       `${shown('2026-10-30')} is more than 3 days ago: ask for an official duty ahead, or within 3 days after the day (from 01/11/2026).`,
       'Choose times within your shift, 9:00 AM to 7:00 PM.',
-      '30/10/2026 is a rest day of your shift: there is no work that day, so no official duty.',
+    ]);
+    // an hour on a rest day earns nothing (27 October 2026), so nothing is asked for it
+    expect(odRequestProblems(input({ startDate: '2026-11-06', endDate: '2026-11-06' }), [fact('2026-11-06', { workingDay: false })], MORNING, TODAY)).toEqual([
+      '06/11/2026 is a rest day of your shift: official duty on it earns a whole day off, so choose the day off or cash instead.',
     ]);
     expect(odWhenText({ startDate: '2026-11-05', endDate: '2026-11-05', fullDay: false, fromTime: '10:00', toTime: '14:00' })).toBe('05/11/2026, 10:00 AM–2:00 PM');
     expect(odWhenText({ startDate: '2026-11-05', endDate: '2026-11-08', fullDay: true })).toBe('05/11/2026–08/11/2026');
@@ -203,5 +211,60 @@ describe('an approved official duty in the attendance', () => {
     // the figures count them as days worked and counted, never absent
     const f = attendanceFigures(days.map((d) => attendanceDayView(d, 9)));
     expect(f).toMatchObject({ daysWorked: 2, daysCounted: 2, hoursCounted: 18, absentDays: 0, missingCheckIns: 0, missingCheckOuts: 0 });
+  });
+});
+
+// Official duty on a rest day or an official holiday (owner, 27 October 2026: "why cant i record this for an employee? it
+// should count in the compensatories"; "One step"; then "Hours off for hours worked", "up to 4 hours to be compensated by
+// hours - minimum 6 hours can be compensated by a day", "Capped at 4 hours").
+describe('official duty on a day off, compensated', () => {
+  const friday = (over: Partial<OdDayFacts> = {}) => [fact('2026-11-06', { workingDay: false, ...over })];
+  const one = (over: Partial<Parameters<typeof input>[0]> = {}) => input({ startDate: '2026-11-06', endDate: '2026-11-06', ...over });
+  const part = (fromTime: string, toTime: string) => one({ fullDay: false, fromTime, toTime });
+  const dayOff = { outcome: 'day_off' as const, dayOff: '2026-11-10' };
+
+  it('with its compensation it can be asked, as a full day or part of one', () => {
+    expect(odDaysProblems(one(), friday(), null, dayOff)).toEqual([]);
+    expect(odDaysProblems(one(), friday(), null, { outcome: 'cash', dayOff: null })).toEqual([]);
+    expect(odDaysProblems(part('10:00', '14:00'), friday(), null, dayOff)).toEqual([]);
+  });
+
+  it('part of the day earns hours off by the Setup: up to 4, capped at 4 below 6 hours, a whole day from 6', () => {
+    expect(odPartHours({ fromTime: '10:00', toTime: '13:30' })).toBe(3.5);
+    expect(odEarned(part('10:00', '14:00'), friday())).toEqual({ kind: 'hours', hours: 4 });
+    expect(odEarned(part('10:00', '15:00'), friday())).toEqual({ kind: 'hours', hours: 4 });
+    expect(odEarned(part('09:00', '15:00'), friday())).toEqual({ kind: 'day' });
+    expect(odEarned(one(), friday())).toEqual({ kind: 'day' });
+    expect(odEarned(part('10:00', '11:00'), friday())).toEqual({ kind: 'none', hours: 1 });
+    // a working day is no day off: nothing to earn
+    expect(odEarned(one(), [fact('2026-11-06')])).toBeNull();
+    expect(odDaysProblems(part('10:00', '13:00'), friday())).toEqual(['06/11/2026 is a rest day of your shift: official duty on it earns 3 hours off, so choose the day for the hours off or cash instead.']);
+  });
+
+  it('an hour earns nothing: asked without one, and refused with one', () => {
+    expect(odNeedsCompensation(part('10:00', '11:00'), friday())).toBe(false);
+    expect(odDaysProblems(part('10:00', '11:00'), friday())).toEqual([]);
+    expect(odDaysProblems(part('10:00', '11:00'), friday(), 'Ben', dayOff)).toEqual([
+      "06/11/2026 is a rest day of Ben's shift: 1 hour of official duty is fewer than the 2 hours that earn a compensation, so leave the compensation out.",
+    ]);
+  });
+
+  it('a day compensated already needs none, and refuses another', () => {
+    const done = friday({ compensated: { status: 'approved' } });
+    expect(odNeedsCompensation(one(), done)).toBe(false);
+    expect(odDaysProblems(one(), done)).toEqual([]);
+    expect(odDaysProblems(one(), done, null, dayOff)).toEqual(['06/11/2026 is a rest day of your shift, compensated already by a compensatory day (approved): leave the compensation out.']);
+  });
+
+  it('a compensation with a working day or several days is refused', () => {
+    expect(odDaysProblems(one(), [fact('2026-11-06')], null, dayOff)).toEqual(['06/11/2026 is a working day of your shift: there is nothing to compensate, so leave the compensation out.']);
+    expect(odDaysProblems(input({ endDate: '2026-11-08' }), [fact('2026-11-05'), fact('2026-11-06', { workingDay: false }), fact('2026-11-07', { workingDay: false }), fact('2026-11-08')], null, dayOff)).toEqual([
+      'A compensation is for one day of official duty on a rest day or an official holiday: ask for that day on its own.',
+    ]);
+  });
+
+  it('keeps the day’s other checks: another official duty on that rest day', () => {
+    const busy = friday({ od: [{ status: 'approved', fullDay: true, fromTime: null, toTime: null }] });
+    expect(odDaysProblems(one(), busy, null, dayOff)).toEqual(['You have an official duty on 06/11/2026 already (approved).']);
   });
 });

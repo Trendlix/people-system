@@ -231,12 +231,13 @@ describe('Compensatory days (e2e)', () => {
 
   describe('Leave Setup', () => {
     it('has the owner’s 1.5 days’ pay for cash instead; HR changes it, audited; an employee can read it only', async () => {
-      expect((await api().get('/api/compensatory/settings').set('Cookie', sessions.ben).expect(200)).body).toEqual({ cashRate: 1.5 });
+      // with the Compensatory Setup's hours and window (27 October 2026)
+      expect((await api().get('/api/compensatory/settings').set('Cookie', sessions.ben).expect(200)).body).toEqual({ cashRate: 1.5, minHours: 2, hoursCap: 4, fullDayHours: 6, offWithinDays: null });
       await api().patch('/api/compensatory/settings').set('Cookie', sessions.ben).send({ cashRate: 2 }).expect(403);
       expect(said(await api().patch('/api/compensatory/settings').set('Cookie', hr).send({ cashRate: 1.25 }).expect(400))).toEqual([
         "Enter the days' pay for cash instead in whole or half days from 0.5 to 5, e.g. 1.5.",
       ]);
-      expect((await api().patch('/api/compensatory/settings').set('Cookie', hr).send({ cashRate: 2 }).expect(200)).body).toEqual({ cashRate: 2 });
+      expect((await api().patch('/api/compensatory/settings').set('Cookie', hr).send({ cashRate: 2 }).expect(200)).body).toMatchObject({ cashRate: 2, minHours: 2 });
       const log = await prisma.auditLog.findFirst({ where: { entityType: 'leave_settings', userId: hrUserId }, orderBy: { id: 'desc' } });
       expect(log?.diff).toEqual({ compensatoryCashRate: { from: 1.5, to: 2 } });
       await api().patch('/api/compensatory/settings').set('Cookie', hr).send({ cashRate: 1.5 }).expect(200);
@@ -522,7 +523,7 @@ describe('Compensatory days (e2e)', () => {
       const text = JSON.stringify((await api().get(`/api/compensatory?employeeId=${ids.cash}`).set('Cookie', developer).expect(200)).body);
       expect(text).not.toMatch(/amount/i);
       expect(text).not.toContain(RUN);
-      expect((await api().get('/api/compensatory/settings').set('Cookie', developer).expect(200)).body).toEqual({ cashRate: 1.5 });
+      expect((await api().get('/api/compensatory/settings').set('Cookie', developer).expect(200)).body).toEqual({ cashRate: 1.5, minHours: 2, hoursCap: 4, fullDayHours: 6, offWithinDays: null });
       await api().post(`/api/compensatory/${first.id}/decide`).set('Cookie', developer).send({ decision: 'approve' }).expect(403);
       await api().post('/api/compensatory').set('Cookie', developer).send({ employeeId: ids.pam, dayWorked: rest, dayOff: work[4], reason: 'x' }).expect(403);
     });

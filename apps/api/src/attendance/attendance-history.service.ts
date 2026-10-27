@@ -250,7 +250,7 @@ export class AttendanceHistoryService {
         });
         const comp = compensatory.get(employeeId);
         const days = comp
-          ? compensatoryDays(exempt, { month, today, workingDays, holidays: holidayDays, leaveDays, employedFrom, employedTo, hoursADay, daysOff: comp.daysOff, daysWorked: comp.daysWorked })
+          ? compensatoryDays(exempt, { month, today, workingDays, holidays: holidayDays, leaveDays, employedFrom, employedTo, hoursADay, daysOff: comp.daysOff, hoursOff: comp.hoursOff, daysWorked: comp.daysWorked })
           : exempt;
         for (const d of days) {
           // within this employment and the period: a rehire's gap is left out
