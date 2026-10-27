@@ -421,3 +421,12 @@ describe('the rates set by law of the year', () => {
     );
   });
 });
+
+describe('a salary of 0 (owner, 27 October 2026: "this case for example is paid per account only")', () => {
+  it('is a gross of 0 only with a per-account allowance on the contract', () => {
+    expect(salaryFor('gross', '0', 2026)).toEqual({ kind: 'invalid' });
+    const zero = salaryFor('gross', '0', 2026, [], true);
+    expect(zero).toMatchObject({ kind: 'ok', typed: 0, breakdown: { gross: 0, net: 0 } });
+    expect(salaryFor('net', '0', 2026, [], true)).toMatchObject({ kind: 'ok', breakdown: { gross: 0 } });
+  });
+});

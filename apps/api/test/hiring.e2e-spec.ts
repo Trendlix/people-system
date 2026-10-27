@@ -229,7 +229,7 @@ describe('Hiring in one form (e2e)', () => {
       expect.arrayContaining([
         'Choose an employment type: full_time, part_time, intern (an unpaid internship, outside the labour law; a trainee is an intern now) or freelance (outside the labour law).',
         'Enter the join date.',
-        'Enter a gross salary of more than 0.',
+        "The gross salary can't be negative.",
         'A fixed term runs for 1 to 60 months.',
       ]),
     );

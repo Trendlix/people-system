@@ -198,14 +198,18 @@ export class ClientAccountsService {
 
   // ---------- assignments ----------
 
-  /** A person on an account: under their current employment, at the account's default unless another amount is sent. */
+  /**
+   * A person on an account: under their current employment, at the amount sent, else their contract's amount per account
+   * (27 October 2026), else the account's default.
+   */
   async addAssignment(accountId: string, dto: CreateAssignmentDto, user: SessionUser) {
     const account = await this.accountRow(accountId);
     if (account.status === 'ended') throw new ConflictException(`${account.nameEn} ended on ${shownDay(fromDateOnly(account.endedOn)!)}, so nobody can be assigned to it.`);
     await this.confidential.assertVisible(user, dto.employeeId);
     const person = await this.person(dto.employeeId);
     const employment = await this.currentEmployment(person);
-    const after: Held = { from: dto.fromDate, to: dto.toDate ?? null, amount: dto.amount ?? account.defaultAmount.toNumber() };
+    const amount = dto.amount ?? (await this.contractAmount(employment.id)) ?? account.defaultAmount.toNumber();
+    const after: Held = { from: dto.fromDate, to: dto.toDate ?? null, amount };
     this.assertDates(after, person.fullNameEn, employment, account);
     await this.assertEligible(person.fullNameEn, employment.id);
     await this.assertNoOverlap(person, account, after);
@@ -323,6 +327,7 @@ export class ClientAccountsService {
         fromDate: view.fromDate,
         toDate: view.toDate,
         amount: view.amount,
+        contractAmount: view.contractAmount,
         // names and dates only for the person and their manager
         note: full ? view.note : null,
         standing: view.standing,
@@ -451,6 +456,16 @@ export class ClientAccountsService {
     const kind = await this.prisma.allowanceType.findFirst({ where: { basis: 'per_account', active: true }, orderBy: [{ sortOrder: 'asc' }], select: { nameEn: true } });
     const named = kind?.nameEn ?? ACCOUNTS_ALLOWANCE.nameEn;
     throw new BadRequestException(`${name}'s contract has no ${named}: add it to their contract (or the renewal or raise that adds it), then assign the account.`);
+  }
+
+  /** The amount per account the employment's signed contract sets (27 October 2026), if any. */
+  private async contractAmount(employmentId: string): Promise<number | null> {
+    const row = await this.prisma.contractAllowance.findFirst({
+      where: { basis: 'per_account', perAccountAmount: { not: null }, contract: { employmentId, status: 'active' } },
+      orderBy: { contract: { version: 'desc' } },
+      select: { perAccountAmount: true },
+    });
+    return row?.perAccountAmount?.toNumber() ?? null;
   }
 
   /** Never the same person twice on one account on the same day. */

@@ -70,7 +70,7 @@ export const NET_INVALID = 'Enter the net salary as an amount in EGP, e.g. 13,00
  * the gross rate typed before while it gives that net rate); else of the gross typed, or of the lowest whole-pound
  * gross whose net reaches the net typed.
  */
-export function offerSalary(t: TermsTyped, rates: LawRatesOrYear, allowances: readonly AllowanceTerms[] = []): TermsResult {
+export function offerSalary(t: TermsTyped, rates: LawRatesOrYear, allowances: readonly AllowanceTerms[] = [], zeroAllowed = false): TermsResult {
   if (payBasisFrom(t.payBasis) === 'hourly') {
     const net = salaryStartFrom(t.rateBasis) === 'net';
     const pay = hourlyPayFor(net ? 'net' : 'gross', net ? t.netRate : t.hourlyRate, t.hoursPerWeek, rates, allowances, t.hourlyRate);
@@ -85,6 +85,8 @@ export function offerSalary(t: TermsTyped, rates: LawRatesOrYear, allowances: re
   const start = salaryStartFrom(t.salaryBasis);
   const n = parseAmount(start === 'net' ? t.wantedNet : t.grossSalary);
   if (n === null) return { kind: 'empty', reason: `Enter the ${start} salary to see the breakdown.` };
+  // a salary of 0 for someone paid per client account only (owner, 27 October 2026)
+  if (n === 0 && zeroAllowed) return { kind: 'ok', breakdown: grossToNet(0, rates, allowances), estimate: null };
   if (Number.isNaN(n) || n <= 0) {
     return start === 'net' ? { kind: 'invalid', field: 'wantedNet', reason: NET_INVALID } : { kind: 'invalid', field: 'grossSalary', reason: GROSS_INVALID };
   }

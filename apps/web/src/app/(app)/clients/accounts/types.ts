@@ -16,6 +16,11 @@ export interface AssignmentView {
   fromDate: string;
   toDate: string | null;
   amount: number | null;
+  /**
+   * The amount per account their signed contract sets (owner, 27 October 2026), which payroll pays in place of `amount`;
+   * null: none (each assignment's amount is paid), or not seen. Missing from an API before it: none.
+   */
+  contractAmount?: number | null;
   note: string | null;
   standing: AssignmentStanding;
 }

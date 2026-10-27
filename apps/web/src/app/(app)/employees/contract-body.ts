@@ -21,13 +21,17 @@ export function monthsFrom(fd: FormData, key: string, label: string, max: number
   return n;
 }
 
-/** An amount in EGP; "" → null (a mistake when `required`). */
-function amountFrom(fd: FormData, key: string, label: string, errors: string[], required = false, example = '15,000'): number | null {
+/**
+ * An amount in EGP; "" → null (a mistake when `required`). 0 only with `zero` (a monthly salary: 0 for someone paid per
+ * client account only, 27 October 2026, which the API checks against the allowances).
+ */
+function amountFrom(fd: FormData, key: string, label: string, errors: string[], required = false, example = '15,000', zero = false): number | null {
   const n = parseAmount(text(fd, key));
   if (n === null) {
     if (required) errors.push(`Enter the ${label}, e.g. ${example}.`);
     return null;
   }
+  if (zero && n === 0) return 0;
   if (Number.isNaN(n) || (required && n <= 0)) {
     errors.push(`Enter the ${label} as an amount in EGP${required ? ' above 0' : ''}, e.g. ${example}.`);
     return null;
@@ -87,7 +91,7 @@ export function payBody(fd: FormData, errors: string[], draft: boolean) {
           hourlyRate: amountFrom(fd, 'hourlyRate', netRate ? 'net per hour' : 'hourly rate', errors, true, netRate ? '120' : '150'),
           hoursPerWeek: hoursFrom(fd, errors),
         }
-      : { grossSalary: amountFrom(fd, 'grossSalary', 'gross salary', errors, true) };
+      : { grossSalary: amountFrom(fd, 'grossSalary', 'gross salary', errors, true, '15,000', true) };
   const daysPerWeek = daysFrom(fd, errors);
   const basicRaw = text(fd, 'basicPercent');
   const basicPercent = basicRaw === '' ? undefined : Number(basicRaw);

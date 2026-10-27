@@ -93,7 +93,19 @@ function AssignmentRow({
         {a.note && <p className={`text-xs ${isHidden(a.note) ? 'text-muted' : ''}`}>{a.note}</p>}
       </td>
       <td className="py-3 pe-3 whitespace-nowrap tabular-nums">{periodText(a)}</td>
-      {seesAmounts && <td className="py-3 pe-3 text-right whitespace-nowrap tabular-nums">{amount ?? dash}</td>}
+      {seesAmounts && (
+        <td className="py-3 pe-3 text-right whitespace-nowrap tabular-nums">
+          {/* their contract's amount per account is what payroll pays, in place of the assignment's (27 October 2026) */}
+          {a.contractAmount ? (
+            <>
+              {amountText(a.contractAmount)}
+              <span className="block text-xs text-muted">Their contract&apos;s rate</span>
+            </>
+          ) : (
+            (amount ?? dash)
+          )}
+        </td>
+      )}
       <td className="py-3 pe-3">
         <span className={`badge ${badge.tone}`}>{badge.label}</span>
       </td>

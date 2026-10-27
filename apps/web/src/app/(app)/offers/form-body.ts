@@ -40,13 +40,17 @@ function requiredDate(fd: FormData, key: string, label: string, errors: string[]
   return dateFrom(fd, key, label, errors);
 }
 
-/** An amount in EGP; "" → null (a mistake with `missing`). */
-function amountFrom(fd: FormData, key: string, label: string, errors: string[], missing?: string): number | null {
+/**
+ * An amount in EGP; "" → null (a mistake with `missing`). 0 only with `zero` (a monthly salary: 0 for someone paid per
+ * client account only, 27 October 2026, which the API checks against the allowances).
+ */
+function amountFrom(fd: FormData, key: string, label: string, errors: string[], missing?: string, zero = false): number | null {
   const n = parseAmount(text(fd, key));
   if (n === null) {
     if (missing) errors.push(missing);
     return null;
   }
+  if (zero && n === 0) return 0;
   if (Number.isNaN(n) || n <= 0) {
     errors.push(`Enter the ${label} as an amount in EGP, e.g. 15,000.`);
     return null;
@@ -138,14 +142,14 @@ export function offerBody(fd: FormData, errors: string[], { draft, allowances }:
     grossSalary = hourlyRate !== null && hoursPerWeek !== null ? amountFrom(fd, 'grossSalary', 'monthly estimate', errors) : null;
   } else {
     grossSalary = net
-      ? amountFrom(fd, 'grossSalary', 'gross salary', errors, 'Enter the net salary wanted as an amount in EGP, e.g. 13,000.')
-      : amountFrom(fd, 'grossSalary', 'gross salary', errors, 'Enter the gross salary, e.g. 15,000.');
+      ? amountFrom(fd, 'grossSalary', 'gross salary', errors, 'Enter the net salary wanted as an amount in EGP, e.g. 13,000.', true)
+      : amountFrom(fd, 'grossSalary', 'gross salary', errors, 'Enter the gross salary, e.g. 15,000.', true);
   }
   const daysPerWeek = wholeFrom(fd, 'daysPerWeek', 1, 6, 'Enter the working days a week as a whole number from 1 to 6, e.g. 3.', errors);
   const basicPercent = intern
     ? undefined
     : wholeFrom(fd, 'basicPercent', 1, 100, 'Enter the basic part as a whole percent of the gross, from 1 to 100, e.g. 80.', errors);
-  const netSalary = intern ? null : amountFrom(fd, 'netSalary', 'net salary', errors);
+  const netSalary = intern ? null : amountFrom(fd, 'netSalary', 'net salary', errors, undefined, !hourly);
   const probationMonths = intern ? 0 : wholeFrom(fd, 'probationMonths', 0, 3, 'Enter the probation as a whole number of months, from 0 to 3.', errors);
   const durationMonths = intern
     ? wholeFrom(fd, 'durationMonths', 1, INTERN_MAX_MONTHS, INTERN_TERM_MESSAGE, errors)

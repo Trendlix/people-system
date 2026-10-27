@@ -24,194 +24,194 @@ model Role {
 }
 
 model User {
-  id                 String                     @id @default(uuid()) @db.Uuid
-  email              String                     @unique
-  passwordHash       String?                    @map("password_hash")
-  mfaEnabled         Boolean                    @default(false) @map("mfa_enabled")
-  isActive           Boolean                    @default(true) @map("is_active")
+  id                        String                     @id @default(uuid()) @db.Uuid
+  email                     String                     @unique
+  passwordHash              String?                    @map("password_hash")
+  mfaEnabled                Boolean                    @default(false) @map("mfa_enabled")
+  isActive                  Boolean                    @default(true) @map("is_active")
   // the employee whose account this is (owner, 22 October 2026: "any active employee with active contract should have
   // access"): the link, never the email (the migration filled it for the accounts whose email was an employee's work
   // email); none for an account that isn't an employee's (the Users page's)
-  employeeId         String?                    @unique @map("employee_id") @db.Uuid
-  employee           Employee?                  @relation("UserEmployee", fields: [employeeId], references: [id], onDelete: SetNull)
+  employeeId                String?                    @unique @map("employee_id") @db.Uuid
+  employee                  Employee?                  @relation("UserEmployee", fields: [employeeId], references: [id], onDelete: SetNull)
   // the Assets access (owner, 21 October 2026: "3 levels per user"): none, viewer, custodian, manager (ASSETS_ACCESS_LEVELS),
   // set on the Users page by an Admin or a Super Admin; a Super Admin is always a manager, the CEO and Finance always
   // at least viewers (assetsAccessOf, packages/shared assets.ts)
-  assetsAccess          String                     @default("none") @map("assets_access")
-  createdAt          DateTime                   @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt          DateTime                   @updatedAt @map("updated_at") @db.Timestamptz
-  roles              UserRole[]
-  auditEntries       AuditLog[]                 @relation("AuditUser") // what was done as this user
-  auditOnBehalf      AuditLog[]                 @relation("AuditOnBehalf") // what this Super Admin did while viewing as someone, in their name
-  uploads            PaperworkItem[]
-  corrections        OcrCorrection[]
-  endingsHrApproved  EmploymentEnding[]         @relation("EndingHrApproval") // endings this user recorded (and so approved) for HR
-  endingsCeoDecided  EmploymentEnding[]         @relation("EndingCeoDecision") // endings this user approved or rejected as CEO
-  confirmations      ProfileConfirmation[] // the times this user confirmed their own details
-  changesRequested   ProfileChangeRequest[]     @relation("ChangeRequester") // changes this user asked for to their own details
-  changesDecided     ProfileChangeRequest[]     @relation("ChangeDecision") // change requests this user approved, rejected or cancelled
-  uploadedVersions   TemplateVersion[]          @relation("TemplateUpload") // template versions this user uploaded
-  publishedVersions  TemplateVersion[]          @relation("TemplatePublication") // template versions this user published
-  documentsMade      GeneratedDocument[]        @relation("DocumentGeneration") // documents this user generated from templates
-  documentsPrinted   GeneratedDocument[]        @relation("DocumentPrinting") // documents this user marked printed
-  documentsSigned    GeneratedDocument[]        @relation("DocumentSignedUpload") // documents whose signed scan this user uploaded
-  documentsVerified  GeneratedDocument[]        @relation("DocumentVerification") // documents this user verified
-  offersCreated      JobOffer[]                 @relation("OfferCreation") // job offers this user drafted
-  offersSent         JobOffer[]                 @relation("OfferSending") // job offers this user sent last
-  offersAnswered     JobOffer[]                 @relation("OfferAnswer") // job offers whose answer this user recorded
+  assetsAccess              String                     @default("none") @map("assets_access")
+  createdAt                 DateTime                   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt                 DateTime                   @updatedAt @map("updated_at") @db.Timestamptz
+  roles                     UserRole[]
+  auditEntries              AuditLog[]                 @relation("AuditUser") // what was done as this user
+  auditOnBehalf             AuditLog[]                 @relation("AuditOnBehalf") // what this Super Admin did while viewing as someone, in their name
+  uploads                   PaperworkItem[]
+  corrections               OcrCorrection[]
+  endingsHrApproved         EmploymentEnding[]         @relation("EndingHrApproval") // endings this user recorded (and so approved) for HR
+  endingsCeoDecided         EmploymentEnding[]         @relation("EndingCeoDecision") // endings this user approved or rejected as CEO
+  confirmations             ProfileConfirmation[] // the times this user confirmed their own details
+  changesRequested          ProfileChangeRequest[]     @relation("ChangeRequester") // changes this user asked for to their own details
+  changesDecided            ProfileChangeRequest[]     @relation("ChangeDecision") // change requests this user approved, rejected or cancelled
+  uploadedVersions          TemplateVersion[]          @relation("TemplateUpload") // template versions this user uploaded
+  publishedVersions         TemplateVersion[]          @relation("TemplatePublication") // template versions this user published
+  documentsMade             GeneratedDocument[]        @relation("DocumentGeneration") // documents this user generated from templates
+  documentsPrinted          GeneratedDocument[]        @relation("DocumentPrinting") // documents this user marked printed
+  documentsSigned           GeneratedDocument[]        @relation("DocumentSignedUpload") // documents whose signed scan this user uploaded
+  documentsVerified         GeneratedDocument[]        @relation("DocumentVerification") // documents this user verified
+  offersCreated             JobOffer[]                 @relation("OfferCreation") // job offers this user drafted
+  offersSent                JobOffer[]                 @relation("OfferSending") // job offers this user sent last
+  offersAnswered            JobOffer[]                 @relation("OfferAnswer") // job offers whose answer this user recorded
   // recruitment (22 October 2026): the vacancies this user drafted, sent for approval, decided (the CEO) or closed, and
   // the applicants' steps they took
-  vacanciesCreated   Vacancy[]                  @relation("VacancyCreation")
-  vacanciesSubmitted Vacancy[]                  @relation("VacancySubmission")
-  vacanciesDecided   Vacancy[]                  @relation("VacancyDecision")
-  vacanciesClosed    Vacancy[]                  @relation("VacancyClosing")
-  applicationSteps   JobApplicationStep[]
+  vacanciesCreated          Vacancy[]                  @relation("VacancyCreation")
+  vacanciesSubmitted        Vacancy[]                  @relation("VacancySubmission")
+  vacanciesDecided          Vacancy[]                  @relation("VacancyDecision")
+  vacanciesClosed           Vacancy[]                  @relation("VacancyClosing")
+  applicationSteps          JobApplicationStep[]
   // recruitment, Phase 2 (22 October 2026): interviews this user scheduled, changed or marked; suggestions as a hiring
   // manager; the rejection email's words; onboarding checklists and items
-  interviewsMade     Interview[]                @relation("InterviewCreation")
-  interviewsChanged  Interview[]                @relation("InterviewChange")
-  interviewsMarked   Interview[]                @relation("InterviewOutcome")
-  suggestionsMade    JobApplication[]           @relation("ApplicationSuggestion")
-  recruitmentSettingsSet RecruitmentSettings[]  @relation("RecruitmentSettingsChange")
-  cvPositionChoicesSet   CvPositionChoice[]     @relation("CvPositionChoiceChange")
-  portfolioSettingsSet   PortfolioSetting[]     @relation("PortfolioSettingChange") // a job title's portfolio on the careers forms (25 October 2026)
-  linkedinSettingsSet    LinkedInSettings[]     @relation("LinkedInSettingsChange") // "Fill in with LinkedIn" (25 October 2026)
-  mailSettingsSet        MailSettings[]         @relation("MailSettingsChange") // the email settings, when this user saved them last
-  mapsSettingsSet        MapsSettings[]         @relation("MapsSettingsChange") // the Google Maps settings, when this user saved them last
+  interviewsMade            Interview[]                @relation("InterviewCreation")
+  interviewsChanged         Interview[]                @relation("InterviewChange")
+  interviewsMarked          Interview[]                @relation("InterviewOutcome")
+  suggestionsMade           JobApplication[]           @relation("ApplicationSuggestion")
+  recruitmentSettingsSet    RecruitmentSettings[]      @relation("RecruitmentSettingsChange")
+  cvPositionChoicesSet      CvPositionChoice[]         @relation("CvPositionChoiceChange")
+  portfolioSettingsSet      PortfolioSetting[]         @relation("PortfolioSettingChange") // a job title's portfolio on the careers forms (25 October 2026)
+  linkedinSettingsSet       LinkedInSettings[]         @relation("LinkedInSettingsChange") // "Fill in with LinkedIn" (25 October 2026)
+  mailSettingsSet           MailSettings[]             @relation("MailSettingsChange") // the email settings, when this user saved them last
+  mapsSettingsSet           MapsSettings[]             @relation("MapsSettingsChange") // the Google Maps settings, when this user saved them last
   // online interview meetings (owner, 24 October 2026: "make it both"): the meeting apps this user saved last, their own
   // meetings connections (an HR person's Google, Microsoft or Zoom account), and the connections this user made
-  meetingAppsSet         MeetingApp[]           @relation("MeetingAppChange")
-  meetingConnections     MeetingConnection[]    @relation("MeetingConnectionOwner")
-  meetingConnectionsMade MeetingConnection[]    @relation("MeetingConnectionBy")
+  meetingAppsSet            MeetingApp[]               @relation("MeetingAppChange")
+  meetingConnections        MeetingConnection[]        @relation("MeetingConnectionOwner")
+  meetingConnectionsMade    MeetingConnection[]        @relation("MeetingConnectionBy")
   // interviewers' availability (owner, 25 October 2026: "Hours + calendar"): the company's interview defaults and anyone's
   // interview hours this user saved last, the Zoho app they saved, their own calendar connections and those they made
-  interviewSettingsSet   InterviewSettings[]    @relation("InterviewSettingsChange")
-  interviewHoursSet      InterviewHours[]       @relation("InterviewHoursChange")
-  calendarAppsSet        CalendarApp[]          @relation("CalendarAppChange")
-  calendarConnections    CalendarConnection[]   @relation("CalendarConnectionOwner")
-  calendarConnectionsMade CalendarConnection[]  @relation("CalendarConnectionBy")
+  interviewSettingsSet      InterviewSettings[]        @relation("InterviewSettingsChange")
+  interviewHoursSet         InterviewHours[]           @relation("InterviewHoursChange")
+  calendarAppsSet           CalendarApp[]              @relation("CalendarAppChange")
+  calendarConnections       CalendarConnection[]       @relation("CalendarConnectionOwner")
+  calendarConnectionsMade   CalendarConnection[]       @relation("CalendarConnectionBy")
   // Zoho People's attendance pulled in (owner, 25 October 2026: "Yes, daily + backfill"): the connection this user made,
   // and the fetches they started or cancelled
-  zohoPeopleConnectionsMade ZohoPeopleConnection[] @relation("ZohoPeopleConnectionBy")
-  zohoPeopleRunsStarted   ZohoPeopleRun[]        @relation("ZohoPeopleRunStartedBy")
-  zohoPeopleRunsCancelled ZohoPeopleRun[]        @relation("ZohoPeopleRunCancelledBy")
-  onboardingDefaultsSet  OnboardingDefault[]    @relation("OnboardingDefaultChange")
-  onboardingOpened       OnboardingChecklist[]  @relation("OnboardingOpening")
-  onboardingCompleted    OnboardingChecklist[]  @relation("OnboardingCompletion")
-  onboardingItemsDone    OnboardingItem[]       @relation("OnboardingItemDone")
+  zohoPeopleConnectionsMade ZohoPeopleConnection[]     @relation("ZohoPeopleConnectionBy")
+  zohoPeopleRunsStarted     ZohoPeopleRun[]            @relation("ZohoPeopleRunStartedBy")
+  zohoPeopleRunsCancelled   ZohoPeopleRun[]            @relation("ZohoPeopleRunCancelledBy")
+  onboardingDefaultsSet     OnboardingDefault[]        @relation("OnboardingDefaultChange")
+  onboardingOpened          OnboardingChecklist[]      @relation("OnboardingOpening")
+  onboardingCompleted       OnboardingChecklist[]      @relation("OnboardingCompletion")
+  onboardingItemsDone       OnboardingItem[]           @relation("OnboardingItemDone")
   // general CVs and the bulk upload (22 October 2026): the consents this user recorded, the CVs they added, what they did
   // to them, and the CVs waiting in their batch
-  applicationConsents    JobApplication[]       @relation("ApplicationConsent")
-  generalCvConsents      GeneralCv[]            @relation("GeneralCvConsent")
-  generalCvsAdded        GeneralCv[]            @relation("GeneralCvCreation")
-  generalCvEvents        GeneralCvEvent[]
-  cvUploads              CvUpload[]
-  payrollsCreated    PayrollRun[]               @relation("PayrollCreation") // payroll runs this user started
-  payrollsApproved   PayrollRun[]               @relation("PayrollApproval") // payroll runs this user approved as CEO
-  payslipsDrawn      Payslip[]                  @relation("PayslipGeneration") // payslips drawn when this user marked a run paid or downloaded one
-  lawRatesChanged    PayrollLawYear[]           @relation("LawRatesChange") // years of the rates set by law this user changed last
-  adjustmentsMade    PayrollAdjustment[]        @relation("AdjustmentEntry") // additions and deductions this user entered
-  adjustmentsCut     PayrollAdjustment[]        @relation("AdjustmentCancel") // additions and deductions this user cancelled
-  advancesGiven      PayrollAdvance[]           @relation("AdvanceEntry") // advances and loans this user entered
-  advancesSettled    PayrollAdvance[]           @relation("AdvanceSettlement") // advances and loans this user marked settled
-  recurringMade      RecurringDeduction[]       @relation("RecurringDeductionEntry") // recurring deductions this user set up
-  recurringConsents  RecurringDeduction[]       @relation("RecurringDeductionConsent") // recurring deductions whose signed consent this user recorded
-  settlementsMade    FinalSettlement[]          @relation("FinalSettlementBy") // final settlements this user marked settled
-  holdsReleased      PayrollHoldRelease[]       @relation("HoldReleaseBy") // held pay this user recorded as paid out
-  lockedChangesMade  PayrollLockedChange[]      @relation("LockedChangeBy") // leave or attendance changes this user made after the month's payroll moved on (27 October 2026)
-  lockedChangesHandled PayrollLockedChange[]    @relation("LockedChangeHandledBy") // those this user marked handled
-  raisesApproved     Contract[]                 @relation("RaiseApproval") // raises (and renewals with new pay) this user approved as CEO
-  raisesRequested    RaiseRequest[]             @relation("RaiseRequester") // raise requests this user made
-  raisesDeclined     RaiseRequest[]             @relation("RaiseRequestDecline") // raise requests this user declined (HR or the CEO)
-  raiseRequestSteps  RaiseRequestStep[]         @relation("RaiseRequestStepActor") // steps of raise requests this user took
-  reimbursementsSent ReimbursementClaim[]       @relation("ReimbursementCreation") // reimbursement claims this user sent
-  reimbursementSteps ReimbursementClaimStep[]   @relation("ReimbursementStepActor") // steps of reimbursement claims this user took
-  leaveRequestsMade  LeaveRequest[]             @relation("LeaveRequestCreation") // leave requests this user sent, or recorded for an employee as HR
-  leaveSteps         LeaveRequestStep[]         @relation("LeaveStepActor") // steps of leave requests this user took
-  leaveAdjustments   LeaveAdjustment[]          @relation("LeaveAdjustmentBy") // changes to annual leave balances this user made as HR
-  leaveClosings      LeaveYearClosing[]         @relation("LeaveYearClosingBy") // the years this user closed the leave balances of
-  leaveYearsClosed   LeaveBalanceYear[]         @relation("LeaveBalanceClosedBy") // the balances this user closed: at a Year Closing, or paid on leaving
-  leaveSetupChanged  LeaveSettings[]            @relation("LeaveSettingsBy") // the Leave Setup, when this user changed it last
-  staffingLimitsSet  LeaveStaffingLimit[]       @relation("StaffingLimitBy") // the staffing limits this user set last (25 October 2026)
-  leaveImports       LeaveImport[]              @relation("LeaveImportBy") // leave files this user uploaded (21 October 2026)
-  leaveImportApplied LeaveImport[]              @relation("LeaveImportAppliedBy") // leave imports this user applied last
-  leaveImportsUndone LeaveImport[]              @relation("LeaveImportUndoneBy") // leave imports this user undid last
-  permissionsMade    PermissionRequest[]        @relation("PermissionRequestCreation") // permission requests this user sent, or recorded for an employee as HR
-  attendanceImports  AttendanceImport[]         @relation("AttendanceImportBy") // attendance files this user uploaded on a payroll run
-  attendanceApplied  AttendanceImport[]         @relation("AttendanceImportAppliedBy") // attendance imports this user applied to a run's lines last
-  attendanceDays     AttendanceDay[]            @relation("AttendanceDayImportedBy") // days of attendance this user's apply kept
-  permissionSteps    PermissionRequestStep[]    @relation("PermissionStepActor") // steps of permission requests this user took
-  wfhRequestsMade    WfhRequest[]               @relation("WfhRequestCreation") // work from home days this user asked for, recorded as HR or imported (21 October 2026)
-  wfhSteps           WfhRequestStep[]           @relation("WfhStepActor") // steps of work from home requests this user took
-  resignationsRecorded ResignationRequest[]       @relation("ResignationRecorder") // resignation requests this user recorded as endings (26 October 2026)
-  resignationsReturned ResignationRequest[]       @relation("ResignationReturner") // resignation requests this user returned
-  compensatoryMade   CompensatoryRequest[]      @relation("CompensatoryCreation") // compensatory days this user asked for or recorded (26 October 2026)
-  compensatorySteps  CompensatoryStep[]         @relation("CompensatoryStepActor")
-  odRequestsMade     OdRequest[]                @relation("OdRequestCreation") // official duties this user asked for (23 October 2026)
-  odSteps            OdRequestStep[]            @relation("OdStepActor") // steps of official duty requests this user took
-  attendancePunches  AttendancePunch[]          @relation("AttendancePunchBy") // the presses of Check in and Check out this user made
-  correctionsMade    AttendanceCorrection[]     @relation("AttendanceCorrectionCreation") // attendance corrections this user asked for, or made directly as HR
-  correctionSteps    AttendanceCorrectionStep[] @relation("AttendanceCorrectionStepActor") // steps of attendance corrections this user took
-  sessions           Session[] // this user's sign-ins, active and ended
-  accessLinks        AccessLink[]               @relation("AccessLinkUser") // their set-password links (22 October 2026)
-  accessLinksMade    AccessLink[]               @relation("AccessLinkCreatedBy") // the set-password links this user made for others
-  deviceCredentials  DeviceCredential[] // the phones this user signs in on with a fingerprint, active and revoked
-  homeLocationsMade  HomeLocationRequest[]      @relation("HomeLocationCreation") // home location requests this user sent (their own)
-  homeLocationSteps  HomeLocationStep[]         @relation("HomeLocationStepActor") // steps of home location requests this user took
-  notifications        Notification[] // this user's inbox (the bell), newest first
-  pushDevices          PushDevice[] // the phones this user's notifications are pushed to
-  notificationSettings NotificationSettings? // this user's reminder switches; none: both on
-  remindersSent        ReminderSent[] // the reminders sent to this user, one a day of each kind
-  kpiSettingsChanged    KpiSettings[]      @relation("KpiSettingsBy") // the KPI deadlines, when this user changed them last
-  kpiTemplatesMade      KpiTemplate[]      @relation("KpiTemplateCreation") // KPI template versions this user started as drafts
-  kpiTemplatesPublished KpiTemplate[]      @relation("KpiTemplatePublication") // KPI template versions this user published
-  kpiScored             KpiScorecard[]     @relation("KpiScorecardScoredBy") // KPI scorecards this user scored (as the manager, HR or the CEO)
-  kpiCalibrated         KpiScorecard[]     @relation("KpiScorecardCalibratedBy") // KPI scorecards this user calibrated as HR
-  kpiManagerSigned      KpiScorecard[]     @relation("KpiScorecardManagerSignedBy") // KPI scorecards this user signed as the manager
-  kpiSteps              KpiScorecardStep[] @relation("KpiScorecardStepActor") // steps of KPI scorecards this user took
-  kpiPracticeStarted    KpiScorecard[]     @relation("KpiScorecardPracticeBy") // practice KPI scorecards this user started (22 October 2026)
-  kpiFrameworksMade     KpiFramework[]     @relation("KpiFrameworkCreation") // KPI framework versions (the pillars) this user made
-  kpiFrameworksChanged  KpiFramework[]     @relation("KpiFrameworkChange") // KPI framework versions this user changed last
-  assetSettingsChanged  AssetSettings[]            @relation("AssetSettingsBy") // the asset settings, when this user changed them last (21 October 2026)
-  assetsCreated         Asset[]                    @relation("AssetCreation") // the assets this user registered
-  assetsDisposed        Asset[]                    @relation("AssetDisposal") // the assets this user recorded the disposal of
-  assetPhotosUploaded   AssetPhoto[]               @relation("AssetPhotoUpload") // the asset photos this user added
-  assetKitsCreated      AssetKit[]                 @relation("AssetKitCreation") // the production kits this user made
-  custodyIssued         CustodyRecord[]            @relation("CustodyIssuedBy") // the custody records this user recorded
-  custodyReceived       CustodyItem[]              @relation("CustodyReceivedBy") // the custody items this user received back
-  custodyFilesUploaded  CustodyFile[]              @relation("CustodyFileUpload") // the signed custody forms this user attached
-  assetMaintenanceMade  AssetMaintenance[]         @relation("AssetMaintenanceBy") // the maintenance entries this user made
-  assetStockMoves       AssetStockMove[]           @relation("AssetStockMoveBy") // the stock moves this user made
-  assetCounts           AssetCount[]               @relation("AssetCountBy") // the asset counts this user made
-  assetsMarkedLost      AssetCountLine[]           @relation("AssetCountLostBy") // the missing assets this user marked lost after a count
-  connectorCodes        ConnectorCode[] // the Claude connector's sign-in codes this user allowed (21 October 2026)
-  assetDraftsMade       AssetDraft[]               @relation("AssetDraftCreation") // the asset drafts made in this user's name, through the Claude connector
-  assetDraftsConfirmed  AssetDraft[]               @relation("AssetDraftConfirmation") // the asset drafts this user confirmed into assets
-  assetDraftsDiscarded  AssetDraft[]               @relation("AssetDraftDiscard") // the asset drafts this user discarded
-  assetDraftImagesAdded AssetDraftImage[]          @relation("AssetDraftImageAdd") // the product images Claude added to drafts in this user's name
-  clearanceDefaultsSet  ClearanceDefault[]         @relation("ClearanceDefaultChange") // the default clearance items this user changed last (22 October 2026)
-  offboardingOpened     OffboardingCase[]          @relation("OffboardingOpening") // the offboarding cases this user opened
-  offboardingCompleted  OffboardingCase[]          @relation("OffboardingCompletion") // the offboarding cases this user completed
-  offboardingRehireSet  OffboardingCase[]          @relation("OffboardingRehire") // the rehire decisions this user made
-  offboardingItemsDone  OffboardingItem[]          @relation("OffboardingItemDone") // the clearance items this user cleared
-  exitInterviewsMade    ExitInterview[]            @relation("ExitInterviewRecording") // the exit interviews this user sent or recorded
+  applicationConsents       JobApplication[]           @relation("ApplicationConsent")
+  generalCvConsents         GeneralCv[]                @relation("GeneralCvConsent")
+  generalCvsAdded           GeneralCv[]                @relation("GeneralCvCreation")
+  generalCvEvents           GeneralCvEvent[]
+  cvUploads                 CvUpload[]
+  payrollsCreated           PayrollRun[]               @relation("PayrollCreation") // payroll runs this user started
+  payrollsApproved          PayrollRun[]               @relation("PayrollApproval") // payroll runs this user approved as CEO
+  payslipsDrawn             Payslip[]                  @relation("PayslipGeneration") // payslips drawn when this user marked a run paid or downloaded one
+  lawRatesChanged           PayrollLawYear[]           @relation("LawRatesChange") // years of the rates set by law this user changed last
+  adjustmentsMade           PayrollAdjustment[]        @relation("AdjustmentEntry") // additions and deductions this user entered
+  adjustmentsCut            PayrollAdjustment[]        @relation("AdjustmentCancel") // additions and deductions this user cancelled
+  advancesGiven             PayrollAdvance[]           @relation("AdvanceEntry") // advances and loans this user entered
+  advancesSettled           PayrollAdvance[]           @relation("AdvanceSettlement") // advances and loans this user marked settled
+  recurringMade             RecurringDeduction[]       @relation("RecurringDeductionEntry") // recurring deductions this user set up
+  recurringConsents         RecurringDeduction[]       @relation("RecurringDeductionConsent") // recurring deductions whose signed consent this user recorded
+  settlementsMade           FinalSettlement[]          @relation("FinalSettlementBy") // final settlements this user marked settled
+  holdsReleased             PayrollHoldRelease[]       @relation("HoldReleaseBy") // held pay this user recorded as paid out
+  lockedChangesMade         PayrollLockedChange[]      @relation("LockedChangeBy") // leave or attendance changes this user made after the month's payroll moved on (27 October 2026)
+  lockedChangesHandled      PayrollLockedChange[]      @relation("LockedChangeHandledBy") // those this user marked handled
+  raisesApproved            Contract[]                 @relation("RaiseApproval") // raises (and renewals with new pay) this user approved as CEO
+  raisesRequested           RaiseRequest[]             @relation("RaiseRequester") // raise requests this user made
+  raisesDeclined            RaiseRequest[]             @relation("RaiseRequestDecline") // raise requests this user declined (HR or the CEO)
+  raiseRequestSteps         RaiseRequestStep[]         @relation("RaiseRequestStepActor") // steps of raise requests this user took
+  reimbursementsSent        ReimbursementClaim[]       @relation("ReimbursementCreation") // reimbursement claims this user sent
+  reimbursementSteps        ReimbursementClaimStep[]   @relation("ReimbursementStepActor") // steps of reimbursement claims this user took
+  leaveRequestsMade         LeaveRequest[]             @relation("LeaveRequestCreation") // leave requests this user sent, or recorded for an employee as HR
+  leaveSteps                LeaveRequestStep[]         @relation("LeaveStepActor") // steps of leave requests this user took
+  leaveAdjustments          LeaveAdjustment[]          @relation("LeaveAdjustmentBy") // changes to annual leave balances this user made as HR
+  leaveClosings             LeaveYearClosing[]         @relation("LeaveYearClosingBy") // the years this user closed the leave balances of
+  leaveYearsClosed          LeaveBalanceYear[]         @relation("LeaveBalanceClosedBy") // the balances this user closed: at a Year Closing, or paid on leaving
+  leaveSetupChanged         LeaveSettings[]            @relation("LeaveSettingsBy") // the Leave Setup, when this user changed it last
+  staffingLimitsSet         LeaveStaffingLimit[]       @relation("StaffingLimitBy") // the staffing limits this user set last (25 October 2026)
+  leaveImports              LeaveImport[]              @relation("LeaveImportBy") // leave files this user uploaded (21 October 2026)
+  leaveImportApplied        LeaveImport[]              @relation("LeaveImportAppliedBy") // leave imports this user applied last
+  leaveImportsUndone        LeaveImport[]              @relation("LeaveImportUndoneBy") // leave imports this user undid last
+  permissionsMade           PermissionRequest[]        @relation("PermissionRequestCreation") // permission requests this user sent, or recorded for an employee as HR
+  attendanceImports         AttendanceImport[]         @relation("AttendanceImportBy") // attendance files this user uploaded on a payroll run
+  attendanceApplied         AttendanceImport[]         @relation("AttendanceImportAppliedBy") // attendance imports this user applied to a run's lines last
+  attendanceDays            AttendanceDay[]            @relation("AttendanceDayImportedBy") // days of attendance this user's apply kept
+  permissionSteps           PermissionRequestStep[]    @relation("PermissionStepActor") // steps of permission requests this user took
+  wfhRequestsMade           WfhRequest[]               @relation("WfhRequestCreation") // work from home days this user asked for, recorded as HR or imported (21 October 2026)
+  wfhSteps                  WfhRequestStep[]           @relation("WfhStepActor") // steps of work from home requests this user took
+  resignationsRecorded      ResignationRequest[]       @relation("ResignationRecorder") // resignation requests this user recorded as endings (26 October 2026)
+  resignationsReturned      ResignationRequest[]       @relation("ResignationReturner") // resignation requests this user returned
+  compensatoryMade          CompensatoryRequest[]      @relation("CompensatoryCreation") // compensatory days this user asked for or recorded (26 October 2026)
+  compensatorySteps         CompensatoryStep[]         @relation("CompensatoryStepActor")
+  odRequestsMade            OdRequest[]                @relation("OdRequestCreation") // official duties this user asked for (23 October 2026)
+  odSteps                   OdRequestStep[]            @relation("OdStepActor") // steps of official duty requests this user took
+  attendancePunches         AttendancePunch[]          @relation("AttendancePunchBy") // the presses of Check in and Check out this user made
+  correctionsMade           AttendanceCorrection[]     @relation("AttendanceCorrectionCreation") // attendance corrections this user asked for, or made directly as HR
+  correctionSteps           AttendanceCorrectionStep[] @relation("AttendanceCorrectionStepActor") // steps of attendance corrections this user took
+  sessions                  Session[] // this user's sign-ins, active and ended
+  accessLinks               AccessLink[]               @relation("AccessLinkUser") // their set-password links (22 October 2026)
+  accessLinksMade           AccessLink[]               @relation("AccessLinkCreatedBy") // the set-password links this user made for others
+  deviceCredentials         DeviceCredential[] // the phones this user signs in on with a fingerprint, active and revoked
+  homeLocationsMade         HomeLocationRequest[]      @relation("HomeLocationCreation") // home location requests this user sent (their own)
+  homeLocationSteps         HomeLocationStep[]         @relation("HomeLocationStepActor") // steps of home location requests this user took
+  notifications             Notification[] // this user's inbox (the bell), newest first
+  pushDevices               PushDevice[] // the phones this user's notifications are pushed to
+  notificationSettings      NotificationSettings? // this user's reminder switches; none: both on
+  remindersSent             ReminderSent[] // the reminders sent to this user, one a day of each kind
+  kpiSettingsChanged        KpiSettings[]              @relation("KpiSettingsBy") // the KPI deadlines, when this user changed them last
+  kpiTemplatesMade          KpiTemplate[]              @relation("KpiTemplateCreation") // KPI template versions this user started as drafts
+  kpiTemplatesPublished     KpiTemplate[]              @relation("KpiTemplatePublication") // KPI template versions this user published
+  kpiScored                 KpiScorecard[]             @relation("KpiScorecardScoredBy") // KPI scorecards this user scored (as the manager, HR or the CEO)
+  kpiCalibrated             KpiScorecard[]             @relation("KpiScorecardCalibratedBy") // KPI scorecards this user calibrated as HR
+  kpiManagerSigned          KpiScorecard[]             @relation("KpiScorecardManagerSignedBy") // KPI scorecards this user signed as the manager
+  kpiSteps                  KpiScorecardStep[]         @relation("KpiScorecardStepActor") // steps of KPI scorecards this user took
+  kpiPracticeStarted        KpiScorecard[]             @relation("KpiScorecardPracticeBy") // practice KPI scorecards this user started (22 October 2026)
+  kpiFrameworksMade         KpiFramework[]             @relation("KpiFrameworkCreation") // KPI framework versions (the pillars) this user made
+  kpiFrameworksChanged      KpiFramework[]             @relation("KpiFrameworkChange") // KPI framework versions this user changed last
+  assetSettingsChanged      AssetSettings[]            @relation("AssetSettingsBy") // the asset settings, when this user changed them last (21 October 2026)
+  assetsCreated             Asset[]                    @relation("AssetCreation") // the assets this user registered
+  assetsDisposed            Asset[]                    @relation("AssetDisposal") // the assets this user recorded the disposal of
+  assetPhotosUploaded       AssetPhoto[]               @relation("AssetPhotoUpload") // the asset photos this user added
+  assetKitsCreated          AssetKit[]                 @relation("AssetKitCreation") // the production kits this user made
+  custodyIssued             CustodyRecord[]            @relation("CustodyIssuedBy") // the custody records this user recorded
+  custodyReceived           CustodyItem[]              @relation("CustodyReceivedBy") // the custody items this user received back
+  custodyFilesUploaded      CustodyFile[]              @relation("CustodyFileUpload") // the signed custody forms this user attached
+  assetMaintenanceMade      AssetMaintenance[]         @relation("AssetMaintenanceBy") // the maintenance entries this user made
+  assetStockMoves           AssetStockMove[]           @relation("AssetStockMoveBy") // the stock moves this user made
+  assetCounts               AssetCount[]               @relation("AssetCountBy") // the asset counts this user made
+  assetsMarkedLost          AssetCountLine[]           @relation("AssetCountLostBy") // the missing assets this user marked lost after a count
+  connectorCodes            ConnectorCode[] // the Claude connector's sign-in codes this user allowed (21 October 2026)
+  assetDraftsMade           AssetDraft[]               @relation("AssetDraftCreation") // the asset drafts made in this user's name, through the Claude connector
+  assetDraftsConfirmed      AssetDraft[]               @relation("AssetDraftConfirmation") // the asset drafts this user confirmed into assets
+  assetDraftsDiscarded      AssetDraft[]               @relation("AssetDraftDiscard") // the asset drafts this user discarded
+  assetDraftImagesAdded     AssetDraftImage[]          @relation("AssetDraftImageAdd") // the product images Claude added to drafts in this user's name
+  clearanceDefaultsSet      ClearanceDefault[]         @relation("ClearanceDefaultChange") // the default clearance items this user changed last (22 October 2026)
+  offboardingOpened         OffboardingCase[]          @relation("OffboardingOpening") // the offboarding cases this user opened
+  offboardingCompleted      OffboardingCase[]          @relation("OffboardingCompletion") // the offboarding cases this user completed
+  offboardingRehireSet      OffboardingCase[]          @relation("OffboardingRehire") // the rehire decisions this user made
+  offboardingItemsDone      OffboardingItem[]          @relation("OffboardingItemDone") // the clearance items this user cleared
+  exitInterviewsMade        ExitInterview[]            @relation("ExitInterviewRecording") // the exit interviews this user sent or recorded
   // candidate profiles (22 October 2026): the possible matches this user decided, the merges they made and undid
-  candidateMatchesDecided CandidateMatch[]         @relation("CandidateMatchDecision")
-  candidateMergesMade     CandidateMerge[]         @relation("CandidateMergeBy")
-  candidateMergesUndone   CandidateMerge[]         @relation("CandidateMergeUndo")
-  screeningComments       ScreeningComment[]       @relation("ScreeningCommentAuthor")
+  candidateMatchesDecided   CandidateMatch[]           @relation("CandidateMatchDecision")
+  candidateMergesMade       CandidateMerge[]           @relation("CandidateMergeBy")
+  candidateMergesUndone     CandidateMerge[]           @relation("CandidateMergeUndo")
+  screeningComments         ScreeningComment[]         @relation("ScreeningCommentAuthor")
   // Suggested From Earlier CVs (24 October 2026): the suggestions this user added, invited or dismissed
-  vacancySuggestionsDecided VacancySuggestion[]    @relation("VacancySuggestionDecision")
+  vacancySuggestionsDecided VacancySuggestion[]        @relation("VacancySuggestionDecision")
   // access follows the contract (owner, 23 October 2026): the 7 days' grace this user gave
-  accessGracesGiven       AccessGrace[]            @relation("AccessGraceGrantedBy")
+  accessGracesGiven         AccessGrace[]              @relation("AccessGraceGrantedBy")
   // WhatsApp notifications (owner, 24 October 2026: "how to make whatsapp notifications?"): the settings this user saved
   // last, their own opt-in, and the WhatsApp messages sent to them
-  whatsAppSettingsSet     WhatsAppSettings[]       @relation("WhatsAppSettingsChange")
-  whatsAppOptIn           WhatsAppOptIn?
-  whatsAppMessages        WhatsAppMessage[]
+  whatsAppSettingsSet       WhatsAppSettings[]         @relation("WhatsAppSettingsChange")
+  whatsAppOptIn             WhatsAppOptIn?
+  whatsAppMessages          WhatsAppMessage[]
   // people exempt from check-in (owner, 25 October 2026): the exemptions this user added, and those they ended
-  checkInExemptionsAdded  CheckInExemption[]       @relation("CheckInExemptionAddedBy")
-  checkInExemptionsEnded  CheckInExemption[]       @relation("CheckInExemptionEndedBy")
+  checkInExemptionsAdded    CheckInExemption[]         @relation("CheckInExemptionAddedBy")
+  checkInExemptionsEnded    CheckInExemption[]         @relation("CheckInExemptionEndedBy")
 
   @@map("users")
 }
@@ -221,15 +221,15 @@ model User {
 // is set up. Short and general (names and dates, never a salary, an amount, a reason or a comment). `link`: where it
 // opens on the site. The rules: packages/shared notifications.ts; the emitter: apps/api/src/notifications.
 model Notification {
-  id        String    @id @default(uuid()) @db.Uuid
-  userId    String    @map("user_id") @db.Uuid
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id        String         @id @default(uuid()) @db.Uuid
+  userId    String         @map("user_id") @db.Uuid
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   kind      String // NOTIFICATION_KINDS
   title     String
   body      String
   link      String? // an address on the site, e.g. /leave/<id>
-  readAt    DateTime? @map("read_at") @db.Timestamptz
-  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  readAt    DateTime?      @map("read_at") @db.Timestamptz
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz
   reminders ReminderSent[] // the check-in reminder's day this row stands for (one row a day, refreshed at each step)
 
   @@index([userId, createdAt(sort: Desc)])
@@ -312,17 +312,17 @@ model DeviceCredential {
 // HR, Admin and Super Admin are signed out after 15 minutes without activity ('idle'), on both. The rules: packages/shared
 // sessions.ts and apps/api/src/auth/session-rules.ts.
 model Session {
-  id           String    @id @default(uuid()) @db.Uuid
-  userId       String    @map("user_id") @db.Uuid
-  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id           String           @id @default(uuid()) @db.Uuid
+  userId       String           @map("user_id") @db.Uuid
+  user         User             @relation(fields: [userId], references: [id], onDelete: Cascade)
   kind         String // SESSION_KINDS: web, app
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  createdAt    DateTime         @default(now()) @map("created_at") @db.Timestamptz
   // the last request that counted as activity (the web's own background requests don't), kept at most every 30 seconds
-  lastActiveAt DateTime  @default(now()) @map("last_active_at") @db.Timestamptz
-  expiresAt    DateTime  @map("expires_at") @db.Timestamptz // 8 hours after signing in, as the token's expiry
-  endedAt      DateTime? @map("ended_at") @db.Timestamptz
-  endReason    String?   @map("end_reason") // SESSION_END_REASONS: signed_out, replaced, idle, expired, revoked
-  userAgent    String?   @map("user_agent") // the browser's or the app's, up to 300 characters
+  lastActiveAt DateTime         @default(now()) @map("last_active_at") @db.Timestamptz
+  expiresAt    DateTime         @map("expires_at") @db.Timestamptz // 8 hours after signing in, as the token's expiry
+  endedAt      DateTime?        @map("ended_at") @db.Timestamptz
+  endReason    String?          @map("end_reason") // SESSION_END_REASONS: signed_out, replaced, idle, expired, revoked
+  userAgent    String?          @map("user_agent") // the browser's or the app's, up to 300 characters
   ip           String?
   // how a developer who holds another role uses it (owner, 22 October 2026: "give hin a switched to use the account as
   // the main role assigned to him or as a developer"; packages/shared session-modes.ts): SESSION_MODES 'self' or
@@ -508,18 +508,18 @@ model MapsSettings {
 // each HR person's own. The secrets sealed (AES-256-GCM, a key derived from JWT_SECRET with its own info,
 // apps/api/src/meetings/meeting-secret.ts), never returned; *_key_id says which key sealed each.
 model MeetingApp {
-  provider              String    @id // MEETING_PROVIDERS: google, microsoft, zoom
-  clientId              String?   @map("client_id")
-  clientSecretEnc       String?   @map("client_secret_enc") // "v1:iv:tag:ciphertext"; RESTRICTED: never returned
-  clientSecretKeyId     String?   @map("client_secret_key_id")
-  tenantId              String?   @map("tenant_id") // Microsoft only
-  accountId             String?   @map("account_id") // Zoom only: the Server-to-Server OAuth app's account
-  userClientId          String?   @map("user_client_id") // Zoom only: the General app, for each HR person's own
-  userClientSecretEnc   String?   @map("user_client_secret_enc") // RESTRICTED: never returned
-  userClientSecretKeyId String?   @map("user_client_secret_key_id")
-  updatedById           String?   @map("updated_by") @db.Uuid
-  updatedBy             User?     @relation("MeetingAppChange", fields: [updatedById], references: [id], onDelete: SetNull)
-  updatedAt             DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+  provider              String   @id // MEETING_PROVIDERS: google, microsoft, zoom
+  clientId              String?  @map("client_id")
+  clientSecretEnc       String?  @map("client_secret_enc") // "v1:iv:tag:ciphertext"; RESTRICTED: never returned
+  clientSecretKeyId     String?  @map("client_secret_key_id")
+  tenantId              String?  @map("tenant_id") // Microsoft only
+  accountId             String?  @map("account_id") // Zoom only: the Server-to-Server OAuth app's account
+  userClientId          String?  @map("user_client_id") // Zoom only: the General app, for each HR person's own
+  userClientSecretEnc   String?  @map("user_client_secret_enc") // RESTRICTED: never returned
+  userClientSecretKeyId String?  @map("user_client_secret_key_id")
+  updatedById           String?  @map("updated_by") @db.Uuid
+  updatedBy             User?    @relation("MeetingAppChange", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedAt             DateTime @default(now()) @map("updated_at") @db.Timestamptz
 
   @@map("meeting_apps")
 }
@@ -724,27 +724,27 @@ model ZohoPeopleRun {
 // token is (never returned), the WhatsApp sender (whatsapp:+20…, or a Messaging Service SID MG…), its templates' last
 // sync and its last signed call.
 model WhatsAppSettings {
-  id                Int       @id @default(1)
-  phoneNumberId     String?   @map("phone_number_id")
-  businessAccountId String?   @map("business_account_id")
-  displayPhone      String?   @map("display_phone")
-  accessTokenEnc    String?   @map("access_token_enc") // "v1:iv:tag:ciphertext"; RESTRICTED: never returned
-  accessTokenKeyId  String?   @map("access_token_key_id")
-  appSecretEnc      String?   @map("app_secret_enc") // RESTRICTED: never returned
-  appSecretKeyId    String?   @map("app_secret_key_id")
-  verifyToken       String    @map("verify_token")
-  enabled           Boolean   @default(false)
-  quietFrom         String?   @default("22:00") @map("quiet_from")
-  quietTo           String?   @default("08:00") @map("quiet_to")
-  updatedById       String?   @map("updated_by") @db.Uuid
-  updatedBy         User?     @relation("WhatsAppSettingsChange", fields: [updatedById], references: [id], onDelete: SetNull)
-  updatedAt         DateTime  @default(now()) @map("updated_at") @db.Timestamptz
-  lastTestAt        DateTime? @map("last_test_at") @db.Timestamptz
-  lastTestOk        Boolean?  @map("last_test_ok")
-  lastTestMessage   String?   @map("last_test_message")
-  templatesSyncedAt DateTime? @map("templates_synced_at") @db.Timestamptz
-  webhookVerifiedAt DateTime? @map("webhook_verified_at") @db.Timestamptz
-  webhookEventAt    DateTime? @map("webhook_event_at") @db.Timestamptz
+  id                      Int       @id @default(1)
+  phoneNumberId           String?   @map("phone_number_id")
+  businessAccountId       String?   @map("business_account_id")
+  displayPhone            String?   @map("display_phone")
+  accessTokenEnc          String?   @map("access_token_enc") // "v1:iv:tag:ciphertext"; RESTRICTED: never returned
+  accessTokenKeyId        String?   @map("access_token_key_id")
+  appSecretEnc            String?   @map("app_secret_enc") // RESTRICTED: never returned
+  appSecretKeyId          String?   @map("app_secret_key_id")
+  verifyToken             String    @map("verify_token")
+  enabled                 Boolean   @default(false)
+  quietFrom               String?   @default("22:00") @map("quiet_from")
+  quietTo                 String?   @default("08:00") @map("quiet_to")
+  updatedById             String?   @map("updated_by") @db.Uuid
+  updatedBy               User?     @relation("WhatsAppSettingsChange", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedAt               DateTime  @default(now()) @map("updated_at") @db.Timestamptz
+  lastTestAt              DateTime? @map("last_test_at") @db.Timestamptz
+  lastTestOk              Boolean?  @map("last_test_ok")
+  lastTestMessage         String?   @map("last_test_message")
+  templatesSyncedAt       DateTime? @map("templates_synced_at") @db.Timestamptz
+  webhookVerifiedAt       DateTime? @map("webhook_verified_at") @db.Timestamptz
+  webhookEventAt          DateTime? @map("webhook_event_at") @db.Timestamptz
   provider                String    @default("meta") // WHATSAPP_PROVIDERS: meta, twilio
   twilioAccountSid        String?   @map("twilio_account_sid")
   twilioAuthTokenEnc      String?   @map("twilio_auth_token_enc") // RESTRICTED: never returned
@@ -875,29 +875,29 @@ model WhatsAppMessage {
 // One level only: a team has no teams of its own. Job titles and employees can belong to either (job titles directly
 // in a department, e.g. Head of Marketing: owner's decision, 15 October 2026).
 model Department {
-  id          String       @id @default(uuid()) @db.Uuid
-  nameEn      String       @map("name_en") // unique among a department's teams; among departments, checked by the API
-  nameAr      String?      @map("name_ar")
-  parentId    String?      @map("parent_id") @db.Uuid
-  sortOrder   Int          @default(0) @map("sort_order") // the order set by an Admin, among departments or among one department's teams
+  id             String              @id @default(uuid()) @db.Uuid
+  nameEn         String              @map("name_en") // unique among a department's teams; among departments, checked by the API
+  nameAr         String?             @map("name_ar")
+  parentId       String?             @map("parent_id") @db.Uuid
+  sortOrder      Int                 @default(0) @map("sort_order") // the order set by an Admin, among departments or among one department's teams
   // the person in charge (owner, 19 October 2026: "i want to add department lead person, the person in charge"): a
   // department's Head of department, a team's Team lead. Any current employee (checked by the API; cleared when their
   // employment ends), one person may lead several. The default direct manager when hiring into it, and the approver of
   // leave and reimbursements for someone in it with no direct manager (packages/shared department-leads.ts)
-  headId      String?      @map("head_id") @db.Uuid
-  head        Employee?    @relation("DepartmentHead", fields: [headId], references: [id], onDelete: SetNull)
-  parent      Department?  @relation("SubDepartments", fields: [parentId], references: [id], onDelete: Restrict)
-  children    Department[] @relation("SubDepartments")
-  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt   DateTime     @updatedAt @map("updated_at") @db.Timestamptz
-  jobTitles   JobTitle[]
-  employments Employment[]
-  offers      JobOffer[]
-  vacancies   Vacancy[] // the vacancies of its job titles (22 October 2026)
-  kpiScorecards KpiScorecard[] // the KPI scorecards of people who worked here when they opened (21 October 2026)
-  kpiFrameworks KpiFramework[] // its own KPI pillars' versions (22 October 2026)
-  generalCvs  GeneralCv[] // the general CVs of people who would like to work in it (22 October 2026)
-  staffingLimit LeaveStaffingLimit? // its staffing limit for annual leave: a team's, or a department's without teams (25 October 2026)
+  headId         String?             @map("head_id") @db.Uuid
+  head           Employee?           @relation("DepartmentHead", fields: [headId], references: [id], onDelete: SetNull)
+  parent         Department?         @relation("SubDepartments", fields: [parentId], references: [id], onDelete: Restrict)
+  children       Department[]        @relation("SubDepartments")
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime            @updatedAt @map("updated_at") @db.Timestamptz
+  jobTitles      JobTitle[]
+  employments    Employment[]
+  offers         JobOffer[]
+  vacancies      Vacancy[] // the vacancies of its job titles (22 October 2026)
+  kpiScorecards  KpiScorecard[] // the KPI scorecards of people who worked here when they opened (21 October 2026)
+  kpiFrameworks  KpiFramework[] // its own KPI pillars' versions (22 October 2026)
+  generalCvs     GeneralCv[] // the general CVs of people who would like to work in it (22 October 2026)
+  staffingLimit  LeaveStaffingLimit? // its staffing limit for annual leave: a team's, or a department's without teams (25 October 2026)
   clientAccounts ClientAccount[] // the client accounts it serves (25 October 2026)
 
   @@unique([parentId, nameEn])
@@ -939,25 +939,25 @@ model Shift {
 // The job description (purpose, duties, requirements) is simple rich text, saved as cleaned HTML (owner's request, 15
 // October 2026); the duty rows, which KPIs will be linked to, are read from the duties' HTML.
 model JobTitle {
-  id             String         @id @default(uuid()) @db.Uuid
-  departmentId   String         @map("department_id") @db.Uuid
-  department     Department     @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  titleEn        String         @map("title_en")
-  titleAr        String?        @map("title_ar")
-  minGradeId     String?        @map("min_grade_id") @db.Uuid // the lowest grade it takes; empty: no lower limit
-  minGrade       Grade?         @relation("JobTitleMinGrade", fields: [minGradeId], references: [id], onDelete: Restrict)
-  maxGradeId     String?        @map("max_grade_id") @db.Uuid // the highest grade it takes; empty: no upper limit
-  maxGrade       Grade?         @relation("JobTitleMaxGrade", fields: [maxGradeId], references: [id], onDelete: Restrict)
-  jdPurpose      String?        @map("jd_purpose") // HTML
-  jdDuties       String?        @map("jd_duties") // HTML; the duty rows are its list items and paragraphs
-  jdRequirements String?        @map("jd_requirements") // HTML
-  jdVersion      Int            @default(1) @map("jd_version")
-  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt      DateTime       @updatedAt @map("updated_at") @db.Timestamptz
+  id             String            @id @default(uuid()) @db.Uuid
+  departmentId   String            @map("department_id") @db.Uuid
+  department     Department        @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  titleEn        String            @map("title_en")
+  titleAr        String?           @map("title_ar")
+  minGradeId     String?           @map("min_grade_id") @db.Uuid // the lowest grade it takes; empty: no lower limit
+  minGrade       Grade?            @relation("JobTitleMinGrade", fields: [minGradeId], references: [id], onDelete: Restrict)
+  maxGradeId     String?           @map("max_grade_id") @db.Uuid // the highest grade it takes; empty: no upper limit
+  maxGrade       Grade?            @relation("JobTitleMaxGrade", fields: [maxGradeId], references: [id], onDelete: Restrict)
+  jdPurpose      String?           @map("jd_purpose") // HTML
+  jdDuties       String?           @map("jd_duties") // HTML; the duty rows are its list items and paragraphs
+  jdRequirements String?           @map("jd_requirements") // HTML
+  jdVersion      Int               @default(1) @map("jd_version")
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime          @updatedAt @map("updated_at") @db.Timestamptz
   duties         JobTitleDuty[]
   employments    Employment[]
   offers         JobOffer[]
-  promotions     Contract[]     @relation("RaiseJobTitle") // raises that promote to this job title
+  promotions     Contract[]        @relation("RaiseJobTitle") // raises that promote to this job title
   kpiTemplates   KpiTemplate[] // its KPI template's versions (21 October 2026): a draft and the published ones
   vacancies      Vacancy[] // the vacancies for it (recruitment, 22 October 2026)
   portfolio      PortfolioSetting? // what its careers forms ask for as a portfolio (25 October 2026); none: the rule's default
@@ -1041,86 +1041,86 @@ enum WorkArrangement {
 
 // Lists stored as text (gender, marital status, degree …) take their values from packages/shared.
 model Employee {
-  id                         String                 @id @default(uuid()) @db.Uuid
-  employeeCode               String                 @unique @map("employee_code") // EMP-0142: shown everywhere, different from the national ID
+  id                         String                     @id @default(uuid()) @db.Uuid
+  employeeCode               String                     @unique @map("employee_code") // EMP-0142: shown everywhere, different from the national ID
   // the email they sign in with, as HR chose it (owner, 22 October 2026: "let the HR Choose which mail to use"): work or
   // personal; none: the work email, else the personal one (packages/shared signInEmailOf)
-  signInEmail                String?                @map("sign_in_email")
-  account                    User?                  @relation("UserEmployee") // their sign-in account (users.employee_id)
+  signInEmail                String?                    @map("sign_in_email")
+  account                    User?                      @relation("UserEmployee") // their sign-in account (users.employee_id)
   // their Employee Id in Zoho People (owner, 19 October 2026: attendance imported from Zoho, people matched by name and
   // the links HR confirms remembered), e.g. "103" or "10001 - HYB": the next import matches them by it
-  zohoPeopleId               String?                @unique @map("zoho_people_id")
-  insuranceNo                String?                @unique @map("insurance_no") // الرقم التأميني, the social insurance number: digits only
+  zohoPeopleId               String?                    @unique @map("zoho_people_id")
+  insuranceNo                String?                    @unique @map("insurance_no") // الرقم التأميني, the social insurance number: digits only
   // the occupation in the social insurance table (packages/shared occupations.ts), printed on Form 1 as كود المهنة: six
   // digits, checked by the database too; the name is the table's, never stored. HR sets it on the profile's Social
   // Insurance tab (owner's decision, 16 October 2026: the employee's, no longer their job title's)
-  occupationCode             String?                @map("occupation_code") @db.Char(6)
+  occupationCode             String?                    @map("occupation_code") @db.Char(6)
   // what Form 1 prints that is the employee's own, set by HR on the Social Insurance tab (owner, 16 October 2026): the
   // subscription start (تاريخ بدء الاشتراك; none: the current employment's join date), and the wages, salary data, each
   // more than 0: the basic wage (أجر أساسي; none: the default in the contract settings) and the comprehensive wage
   // (الأجر الشامل; none: the contract's gross and allowances). The insured wage (أجر الاشتراك) is not kept: it is the
   // comprehensive wage within the year's insurable limits (owner's decision, 16 October 2026)
-  insuranceStartDate         DateTime?              @map("insurance_start_date") @db.Date
-  insuranceBasicWage         Decimal?               @map("insurance_basic_wage") @db.Decimal(12, 2)
-  insuranceComprehensiveWage Decimal?               @map("insurance_comprehensive_wage") @db.Decimal(12, 2)
+  insuranceStartDate         DateTime?                  @map("insurance_start_date") @db.Date
+  insuranceBasicWage         Decimal?                   @map("insurance_basic_wage") @db.Decimal(12, 2)
+  insuranceComprehensiveWage Decimal?                   @map("insurance_comprehensive_wage") @db.Decimal(12, 2)
   // registered with social insurance (owner's decision, 16 October 2026): payroll deducts the employee's share and
   // counts the company's only for those registered. HR sets it on the Social Insurance tab; the payroll migration set
   // it for everyone with a social insurance number
-  socialInsured              Boolean                @default(false) @map("social_insured")
+  socialInsured              Boolean                    @default(false) @map("social_insured")
   // for the annual leave's days (Labour Law 14/2025 Art. 124; owner, 18 October 2026: "can you apply the leaves
   // according to the law?"): the months of service with earlier employers, as 30 days are due after "عشر سنوات كاملة
   // لدى صاحب عمل أو أكثر" (none: none), and a disability, which brings 45 days ("للأشخاص ذوى الإعاقة والأقزام"). HR
   // sets them on the profile; HR, the CEO and the employee see them
-  priorServiceMonths         Int?                   @map("prior_service_months")
-  disability                 Boolean                @default(false)
-  fullNameEn                 String                 @map("full_name_en")
-  fullNameAr                 String                 @map("full_name_ar") // as printed on contracts
-  displayName                String?                @map("display_name") // the short name the person goes by (e.g. Hazem Magdy), for the email signature
-  dateOfBirth                DateTime?              @map("date_of_birth") @db.Date
+  priorServiceMonths         Int?                       @map("prior_service_months")
+  disability                 Boolean                    @default(false)
+  fullNameEn                 String                     @map("full_name_en")
+  fullNameAr                 String                     @map("full_name_ar") // as printed on contracts
+  displayName                String?                    @map("display_name") // the short name the person goes by (e.g. Hazem Magdy), for the email signature
+  dateOfBirth                DateTime?                  @map("date_of_birth") @db.Date
   gender                     String?
   nationality                String?
-  maritalStatus              String?                @map("marital_status")
-  militaryStatus             String?                @map("military_status")
+  maritalStatus              String?                    @map("marital_status")
+  militaryStatus             String?                    @map("military_status")
   // contact: phones are text, so the leading 0 is kept
-  workEmail                  String?                @unique @map("work_email") // lower case; a sign-in account with this email is this employee
-  personalEmail              String?                @map("personal_email")
+  workEmail                  String?                    @unique @map("work_email") // lower case; a sign-in account with this email is this employee
+  personalEmail              String?                    @map("personal_email")
   mobile                     String?
   mobile2                    String? // a second mobile number
-  addressAr                  String?                @map("address_ar")
+  addressAr                  String?                    @map("address_ar")
   city                       String? // the city or district, in Arabic as on the ID card (e.g. مدينة نصر)
   governorate                String?
-  buildingNo                 String?                @map("building_no") // the address's building number (عقار رقم) on social insurance Forms 1 and 6, up to 10 characters (owner, 15 October 2026)
-  emergencyName              String?                @map("emergency_name")
-  emergencyRelation          String?                @map("emergency_relation")
-  emergencyMobile            String?                @map("emergency_mobile")
+  buildingNo                 String?                    @map("building_no") // the address's building number (عقار رقم) on social insurance Forms 1 and 6, up to 10 characters (owner, 15 October 2026)
+  emergencyName              String?                    @map("emergency_name")
+  emergencyRelation          String?                    @map("emergency_relation")
+  emergencyMobile            String?                    @map("emergency_mobile")
   // education (the main qualification; qualification_ar is printed on contracts)
   university                 String?
   faculty                    String?
   degree                     String?
   major                      String?
-  graduationYear             Int?                   @map("graduation_year") @db.SmallInt
-  educationGrade             String?                @map("education_grade")
-  qualificationAr            String?                @map("qualification_ar")
+  graduationYear             Int?                       @map("graduation_year") @db.SmallInt
+  educationGrade             String?                    @map("education_grade")
+  qualificationAr            String?                    @map("qualification_ar")
   // a student (owner, 25 October 2026: "Add a Student option"): still studying, the year (STUDY_YEARS: year_1 …
   // year_7, postgraduate_diploma, masters, phd) and the expected graduation, a month kept as its first day; the year and
   // the month only while still studying (checked by the database too). With qualification_ar empty, contracts print the
   // student's wording (packages/shared student-education.ts)
-  stillStudying              Boolean                @default(false) @map("still_studying")
-  studyYear                  String?                @map("study_year")
-  expectedGraduation         DateTime?              @map("expected_graduation") @db.Date
-  createdAt                  DateTime               @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt                  DateTime               @updatedAt @map("updated_at") @db.Timestamptz
+  stillStudying              Boolean                    @default(false) @map("still_studying")
+  studyYear                  String?                    @map("study_year")
+  expectedGraduation         DateTime?                  @map("expected_graduation") @db.Date
+  createdAt                  DateTime                   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt                  DateTime                   @updatedAt @map("updated_at") @db.Timestamptz
   identity                   EmployeeIdentity?
   bank                       EmployeeBank?
   paperwork                  PaperworkItem[]
-  employments                Employment[]           @relation("Employments")
-  managing                   Employment[]           @relation("Manager") // the employments this person is the manager of
+  employments                Employment[]               @relation("Employments")
+  managing                   Employment[]               @relation("Manager") // the employments this person is the manager of
   confirmations              ProfileConfirmation[]
   changeRequests             ProfileChangeRequest[]
   documents                  GeneratedDocument[]
-  offers                     JobOffer[]             @relation("OfferPerson") // offers made to this person: as a former employee, or the offer they were hired from
-  offersManaging             JobOffer[]             @relation("OfferManager") // offers whose position reports to this person
-  vacanciesManaging          Vacancy[]              @relation("VacancyHiringManager") // the vacancies they hire for (22 October 2026)
+  offers                     JobOffer[]                 @relation("OfferPerson") // offers made to this person: as a former employee, or the offer they were hired from
+  offersManaging             JobOffer[]                 @relation("OfferManager") // offers whose position reports to this person
+  vacanciesManaging          Vacancy[]                  @relation("VacancyHiringManager") // the vacancies they hire for (22 October 2026)
   interviewing               InterviewInterviewer[] // the interviews they sit on (22 October 2026)
   interviewFeedback          InterviewFeedback[] // their scorecards
   applications               JobApplication[] // the applications they were hired from
@@ -1130,57 +1130,57 @@ model Employee {
   payrollAdvances            PayrollAdvance[] // advances and loans given, recovered from the pay
   recurringDeductions        RecurringDeduction[] // monthly shares taken from the pay, e.g. a medical subscription
   raiseRequests              RaiseRequest[] // the raises asked for this person
-  reimbursements             ReimbursementClaim[]   @relation("ReimbursementClaimant") // the reimbursements this person claimed
-  reimbursementsToDecide     ReimbursementClaim[]   @relation("ReimbursementManager") // the claims this person decided, or decides, as the claimant's direct manager
-  leaveRequests              LeaveRequest[]         @relation("LeaveRequester") // the leave this person asked for, or HR recorded for them
-  leaveToDecide              LeaveRequest[]         @relation("LeaveManager") // the leave requests this person decided, or decides, as the requester's direct manager
-  permissions                PermissionRequest[]    @relation("PermissionRequester") // the permission hours this person asked for, or HR recorded for them
+  reimbursements             ReimbursementClaim[]       @relation("ReimbursementClaimant") // the reimbursements this person claimed
+  reimbursementsToDecide     ReimbursementClaim[]       @relation("ReimbursementManager") // the claims this person decided, or decides, as the claimant's direct manager
+  leaveRequests              LeaveRequest[]             @relation("LeaveRequester") // the leave this person asked for, or HR recorded for them
+  leaveToDecide              LeaveRequest[]             @relation("LeaveManager") // the leave requests this person decided, or decides, as the requester's direct manager
+  permissions                PermissionRequest[]        @relation("PermissionRequester") // the permission hours this person asked for, or HR recorded for them
   attendanceDays             AttendanceDay[] // each day of attendance kept: imported from Zoho People, or from their check-ins on the system
   attendancePunches          AttendancePunch[] // each press of Check in and Check out on the system (19 October 2026)
-  attendanceCorrections      AttendanceCorrection[] @relation("AttendanceCorrectionRequester") // the days this person asked to correct, or HR corrected
-  correctionsToDecide        AttendanceCorrection[] @relation("AttendanceCorrectionManager") // the corrections this person decided, or decides, as the requester's direct manager
-  permissionsToDecide        PermissionRequest[]    @relation("PermissionManager") // the permission requests this person decided, or decides, as the requester's direct manager
-  wfhDays                    WfhRequest[]           @relation("WfhRequester") // the work from home days this person asked for, or HR recorded for them (21 October 2026)
-  wfhToDecide                WfhRequest[]           @relation("WfhManager") // the work from home requests this person decided, or decides, as the approver in charge
-  odRequests                 OdRequest[]            @relation("OdRequester") // the official duties this person asked for (23 October 2026)
-  odToDecide                 OdRequest[]            @relation("OdManager") // the official duty requests this person decided, or decides, as the approver in charge
+  attendanceCorrections      AttendanceCorrection[]     @relation("AttendanceCorrectionRequester") // the days this person asked to correct, or HR corrected
+  correctionsToDecide        AttendanceCorrection[]     @relation("AttendanceCorrectionManager") // the corrections this person decided, or decides, as the requester's direct manager
+  permissionsToDecide        PermissionRequest[]        @relation("PermissionManager") // the permission requests this person decided, or decides, as the requester's direct manager
+  wfhDays                    WfhRequest[]               @relation("WfhRequester") // the work from home days this person asked for, or HR recorded for them (21 October 2026)
+  wfhToDecide                WfhRequest[]               @relation("WfhManager") // the work from home requests this person decided, or decides, as the approver in charge
+  odRequests                 OdRequest[]                @relation("OdRequester") // the official duties this person asked for (23 October 2026)
+  odToDecide                 OdRequest[]                @relation("OdManager") // the official duty requests this person decided, or decides, as the approver in charge
   // leave coverage (owner, 25 October 2026: "Required over 2 days", "To a stand-in"): the leave this person covers for a
   // colleague, the leave they stand in for an approver during, and the steps they took standing in for someone else
-  leaveCovering              LeaveRequest[]         @relation("LeaveCover")
-  leaveStandingIn            LeaveRequest[]         @relation("LeaveStandIn")
-  leaveStepsStoodIn          LeaveRequestStep[]     @relation("LeaveStepOnBehalf") // the leave steps taken by a stand-in for this person
-  permissionStepsStoodIn     PermissionRequestStep[] @relation("PermissionStepOnBehalf")
-  wfhStepsStoodIn            WfhRequestStep[]       @relation("WfhStepOnBehalf")
-  resignationRequests        ResignationRequest[]   @relation("ResignationRequester") // the resignations this person asked for (26 October 2026)
-  compensatoryDays           CompensatoryRequest[]  @relation("CompensatoryRequester") // the compensatory days this person asked for, or HR recorded for them (26 October 2026)
+  leaveCovering              LeaveRequest[]             @relation("LeaveCover")
+  leaveStandingIn            LeaveRequest[]             @relation("LeaveStandIn")
+  leaveStepsStoodIn          LeaveRequestStep[]         @relation("LeaveStepOnBehalf") // the leave steps taken by a stand-in for this person
+  permissionStepsStoodIn     PermissionRequestStep[]    @relation("PermissionStepOnBehalf")
+  wfhStepsStoodIn            WfhRequestStep[]           @relation("WfhStepOnBehalf")
+  resignationRequests        ResignationRequest[]       @relation("ResignationRequester") // the resignations this person asked for (26 October 2026)
+  compensatoryDays           CompensatoryRequest[]      @relation("CompensatoryRequester") // the compensatory days this person asked for, or HR recorded for them (26 October 2026)
   payrollLockedChanges       PayrollLockedChange[] // their leave and attendance changes made after a month's payroll moved on (27 October 2026)
-  compensatoryToDecide       CompensatoryRequest[]  @relation("CompensatoryManager")
-  compensatoryStepsStoodIn   CompensatoryStep[]     @relation("CompensatoryStepOnBehalf")
-  odStepsStoodIn             OdRequestStep[]        @relation("OdStepOnBehalf")
+  compensatoryToDecide       CompensatoryRequest[]      @relation("CompensatoryManager")
+  compensatoryStepsStoodIn   CompensatoryStep[]         @relation("CompensatoryStepOnBehalf")
+  odStepsStoodIn             OdRequestStep[]            @relation("OdStepOnBehalf")
   correctionStepsStoodIn     AttendanceCorrectionStep[] @relation("CorrectionStepOnBehalf")
-  claimStepsStoodIn          ReimbursementClaimStep[] @relation("ClaimStepOnBehalf")
+  claimStepsStoodIn          ReimbursementClaimStep[]   @relation("ClaimStepOnBehalf")
   leaveBalances              LeaveBalanceYear[] // each year's annual leave: carried in, closed
   leaveAdjustments           LeaveAdjustment[] // HR's changes to the annual leave balance
-  leading                    Department[]           @relation("DepartmentHead") // the departments this person heads and the teams they lead
+  leading                    Department[]               @relation("DepartmentHead") // the departments this person heads and the teams they lead
   homeLocations              HomeLocationRequest[] // the home locations this person asked for (20 October 2026): one approved at most, its point only while decided or in force
   checkInPlaces              CheckInLocationPerson[] // the sub-locations this person is linked to (20 October 2026): their own check-in places
-  kpiScorecards              KpiScorecard[]         @relation("KpiScorecardOf") // this person's KPI scorecards, one a month (21 October 2026)
-  kpiToScore                 KpiScorecard[]         @relation("KpiScorecardManager") // the KPI scorecards this person scores, or scored, as the manager in charge
-  assetsHeld                 Asset[]                 @relation("AssetHolder") // the assets this person holds in custody now (21 October 2026)
-  custodyRecords             CustodyRecord[]         @relation("CustodyEmployee") // the assets handed over to this person, record by record
-  custodyHandedOver          CustodyRecord[]         @relation("CustodyHandedOverBy") // the custody records this person handed over
+  kpiScorecards              KpiScorecard[]             @relation("KpiScorecardOf") // this person's KPI scorecards, one a month (21 October 2026)
+  kpiToScore                 KpiScorecard[]             @relation("KpiScorecardManager") // the KPI scorecards this person scores, or scored, as the manager in charge
+  assetsHeld                 Asset[]                    @relation("AssetHolder") // the assets this person holds in custody now (21 October 2026)
+  custodyRecords             CustodyRecord[]            @relation("CustodyEmployee") // the assets handed over to this person, record by record
+  custodyHandedOver          CustodyRecord[]            @relation("CustodyHandedOverBy") // the custody records this person handed over
   interviewHours             InterviewHours? // the weekly hours they interview in (owner, 25 October 2026: "Hours + calendar")
   // access follows the contract (owner, 23 October 2026: "Active - Grace - Hold - No Access"; packages/shared
   // employee-access.ts): the standing the sweep recorded last (ACCESS_STANDINGS; none: not recorded yet) and since when,
   // so each change is audited and told once; the request's own standing is always read from the contract
-  accessStanding             String?                 @map("access_standing")
-  accessStandingAt           DateTime?               @map("access_standing_at") @db.Timestamptz
+  accessStanding             String?                    @map("access_standing")
+  accessStandingAt           DateTime?                  @map("access_standing_at") @db.Timestamptz
   accessGraces               AccessGrace[] // the 7 days' grace HR gave them, one a contract gap
   // no contract entered (owner, 23 October 2026: "Hold them after 7 days"): the day the sweep first recorded their
   // account switched on without a signed contract ever in force (Cairo); on Hold from the 8th day after unless one is
   // entered. Cleared once a signed contract starts (or they leave); kept while their account is off, so turning it off
   // and on never starts the 7 days again
-  noContractSince            DateTime?               @map("no_contract_since") @db.Date
+  noContractSince            DateTime?                  @map("no_contract_since") @db.Date
   checkInExemptions          CheckInExemption[] // their periods exempt from check-in (owner, 25 October 2026)
   clientAccounts             ClientAccountAssignment[] // the client accounts they were assigned to (25 October 2026)
 
@@ -1193,65 +1193,65 @@ model Employee {
 // The person's grade is the employment's own, within the range of grades its job title takes (owner's decision,
 // 15 October 2026; checked by the API).
 model Employment {
-  id               String                 @id @default(uuid()) @db.Uuid
-  employeeId       String                 @map("employee_id") @db.Uuid
-  employee         Employee               @relation("Employments", fields: [employeeId], references: [id], onDelete: Cascade)
-  employmentType   EmploymentType         @map("employment_type")
-  status           EmployeeStatus         @default(probation) // resigned or terminated once ended
-  departmentId     String?                @map("department_id") @db.Uuid // a team, or a department
-  department       Department?            @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  jobTitleId       String?                @map("job_title_id") @db.Uuid
-  jobTitle         JobTitle?              @relation(fields: [jobTitleId], references: [id], onDelete: Restrict)
-  gradeId          String?                @map("grade_id") @db.Uuid // the person's own grade, within the job title's range
-  grade            Grade?                 @relation(fields: [gradeId], references: [id], onDelete: Restrict)
-  managerId        String?                @map("manager_id") @db.Uuid
-  manager          Employee?              @relation("Manager", fields: [managerId], references: [id], onDelete: Restrict)
-  joinDate         DateTime               @map("join_date") @db.Date
-  probationEnd     DateTime?              @map("probation_end") @db.Date
-  workArrangement  WorkArrangement        @default(office) @map("work_arrangement")
-  officeDays       Int[]                  @default([]) @map("office_days") @db.SmallInt // Hybrid only; 0 = Sun … 6 = Sat
-  shiftId          String?                @map("shift_id") @db.Uuid
+  id                     String                    @id @default(uuid()) @db.Uuid
+  employeeId             String                    @map("employee_id") @db.Uuid
+  employee               Employee                  @relation("Employments", fields: [employeeId], references: [id], onDelete: Cascade)
+  employmentType         EmploymentType            @map("employment_type")
+  status                 EmployeeStatus            @default(probation) // resigned or terminated once ended
+  departmentId           String?                   @map("department_id") @db.Uuid // a team, or a department
+  department             Department?               @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  jobTitleId             String?                   @map("job_title_id") @db.Uuid
+  jobTitle               JobTitle?                 @relation(fields: [jobTitleId], references: [id], onDelete: Restrict)
+  gradeId                String?                   @map("grade_id") @db.Uuid // the person's own grade, within the job title's range
+  grade                  Grade?                    @relation(fields: [gradeId], references: [id], onDelete: Restrict)
+  managerId              String?                   @map("manager_id") @db.Uuid
+  manager                Employee?                 @relation("Manager", fields: [managerId], references: [id], onDelete: Restrict)
+  joinDate               DateTime                  @map("join_date") @db.Date
+  probationEnd           DateTime?                 @map("probation_end") @db.Date
+  workArrangement        WorkArrangement           @default(office) @map("work_arrangement")
+  officeDays             Int[]                     @default([]) @map("office_days") @db.SmallInt // Hybrid only; 0 = Sun … 6 = Sat
+  shiftId                String?                   @map("shift_id") @db.Uuid
   // hazardous or unhealthy work, or work in a remote area: 7 more days of annual leave (Labour Law 14/2025 Art. 124:
   // "تزاد مدة الإجازة السنوية بمقدار سبعة أيام للعمال الذين يعملون فى الأعمال الخطرة، أو المضرة بالصحة، أو فى المناطق النائية")
-  hazardousWork    Boolean                @default(false) @map("hazardous_work")
+  hazardousWork          Boolean                   @default(false) @map("hazardous_work")
   // employment types by the labour law (owner, 18 October 2026): paid by commission (full-time only; the law's wage
   // includes "العمولة أو النسبة المئوية", Art. 1(4)(أ)), what Sales was; and the nature of the work (Art. 1(6–8))
-  paidByCommission Boolean                @default(false) @map("paid_by_commission")
-  workNature       String                 @default("regular") @map("work_nature") // WORK_NATURES: regular, temporary, casual, seasonal
+  paidByCommission       Boolean                   @default(false) @map("paid_by_commission")
+  workNature             String                    @default("regular") @map("work_nature") // WORK_NATURES: regular, temporary, casual, seasonal
   // "Can check in from anywhere" (owner, 20 October 2026: check-ins locked to the office network, "Office staff, plus
   // exceptions"): HR lets an Office employee check in off the office network; the others aren't locked anyway
-  checkInAnywhere  Boolean                @default(false) @map("check_in_anywhere")
+  checkInAnywhere        Boolean                   @default(false) @map("check_in_anywhere")
   // "Can check in without a location" (owner, 20 October 2026: "Company switch + exceptions"): with Check-in Setup's
   // "Refuse check-ins and check-outs without a location" on, HR lets this person press on the website without one (the
   // app always needs it)
-  checkInWithoutLocation Boolean          @default(false) @map("check_in_without_location")
-  shift            Shift?                 @relation(fields: [shiftId], references: [id], onDelete: Restrict)
-  jdAcknowledgedAt DateTime?              @map("jd_acknowledged_at") @db.Date
-  endDate          DateTime?              @map("end_date") @db.Date // empty while current
-  endReason        String?                @map("end_reason") // packages/shared END_REASONS: resigned, terminated, contract_ended …
-  endNote          String?                @map("end_note")
+  checkInWithoutLocation Boolean                   @default(false) @map("check_in_without_location")
+  shift                  Shift?                    @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  jdAcknowledgedAt       DateTime?                 @map("jd_acknowledged_at") @db.Date
+  endDate                DateTime?                 @map("end_date") @db.Date // empty while current
+  endReason              String?                   @map("end_reason") // packages/shared END_REASONS: resigned, terminated, contract_ended …
+  endNote                String?                   @map("end_note")
   // when the system closed the leaver's sign-in for this ending (offboarding, 22 October 2026: their account disabled
   // once the last working day has passed, unless they work here again), so it's done once: an Admin may turn it back on
-  signInClosedAt         DateTime?              @map("sign_in_closed_at") @db.Timestamptz
-  createdAt        DateTime               @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt        DateTime               @updatedAt @map("updated_at") @db.Timestamptz
-  contracts        Contract[]
-  endings          EmploymentEnding[]
-  documents        GeneratedDocument[]
-  payrollLines     PayrollLine[]
-  raiseRequests    RaiseRequest[]
-  reimbursements   ReimbursementClaim[] // the reimbursements claimed under it
-  finalSettlement  FinalSettlement? // its final dues, once settled (open until then)
-  leaveRequests    LeaveRequest[] // the leave taken under it
-  permissions      PermissionRequest[] // the permission hours taken under it
-  wfhDays          WfhRequest[] // the work from home days under it (21 October 2026)
-  resignationRequests ResignationRequest[] // the resignation requests asked under it (26 October 2026)
-  compensatoryDays CompensatoryRequest[] // the compensatory days under it (26 October 2026)
-  odRequests       OdRequest[] // the official duties under it (23 October 2026)
-  corrections      AttendanceCorrection[] // the attendance corrections of its days
-  leaveBalances    LeaveBalanceYear[] // each year's annual leave under it
-  leaveAdjustments LeaveAdjustment[]
-  kpiScorecards    KpiScorecard[] // the KPI scorecards opened under it (21 October 2026)
+  signInClosedAt         DateTime?                 @map("sign_in_closed_at") @db.Timestamptz
+  createdAt              DateTime                  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt              DateTime                  @updatedAt @map("updated_at") @db.Timestamptz
+  contracts              Contract[]
+  endings                EmploymentEnding[]
+  documents              GeneratedDocument[]
+  payrollLines           PayrollLine[]
+  raiseRequests          RaiseRequest[]
+  reimbursements         ReimbursementClaim[] // the reimbursements claimed under it
+  finalSettlement        FinalSettlement? // its final dues, once settled (open until then)
+  leaveRequests          LeaveRequest[] // the leave taken under it
+  permissions            PermissionRequest[] // the permission hours taken under it
+  wfhDays                WfhRequest[] // the work from home days under it (21 October 2026)
+  resignationRequests    ResignationRequest[] // the resignation requests asked under it (26 October 2026)
+  compensatoryDays       CompensatoryRequest[] // the compensatory days under it (26 October 2026)
+  odRequests             OdRequest[] // the official duties under it (23 October 2026)
+  corrections            AttendanceCorrection[] // the attendance corrections of its days
+  leaveBalances          LeaveBalanceYear[] // each year's annual leave under it
+  leaveAdjustments       LeaveAdjustment[]
+  kpiScorecards          KpiScorecard[] // the KPI scorecards opened under it (21 October 2026)
   offboarding            OffboardingCase? // its offboarding case, once it is ending (22 October 2026)
   onboarding             OnboardingChecklist? // its onboarding checklist (22 October 2026)
   accessGraces           AccessGrace[] // the grace given while no contract was entered in it (23 October 2026)
@@ -1544,39 +1544,39 @@ model RaiseRequestStep {
 // records it, which counts as HR's approval; the CEO approves or rejects it; HR completes it on or after the last
 // working day, which ends the employment.
 model EmploymentEnding {
-  id              String              @id @default(uuid()) @db.Uuid
-  employmentId    String              @map("employment_id") @db.Uuid
-  employment      Employment          @relation(fields: [employmentId], references: [id], onDelete: Cascade)
-  ruleKey         String              @map("rule_key")
-  rule            EndingRule          @relation(fields: [ruleKey], references: [key], onDelete: Restrict)
-  initiator       String? // employee or company; empty for death and disability
-  noticeGivenOn   DateTime            @map("notice_given_on") @db.Date // the day the notice was received, or the event date
-  payInLieu       Boolean             @default(false) @map("pay_in_lieu")
-  lastWorkingDay  DateTime            @map("last_working_day") @db.Date // the notice's end, or the agreed day when lastDayAgreed
+  id                 String              @id @default(uuid()) @db.Uuid
+  employmentId       String              @map("employment_id") @db.Uuid
+  employment         Employment          @relation(fields: [employmentId], references: [id], onDelete: Cascade)
+  ruleKey            String              @map("rule_key")
+  rule               EndingRule          @relation(fields: [ruleKey], references: [key], onDelete: Restrict)
+  initiator          String? // employee or company; empty for death and disability
+  noticeGivenOn      DateTime            @map("notice_given_on") @db.Date // the day the notice was received, or the event date
+  payInLieu          Boolean             @default(false) @map("pay_in_lieu")
+  lastWorkingDay     DateTime            @map("last_working_day") @db.Date // the notice's end, or the agreed day when lastDayAgreed
   // the last working day worked out from the rule's notice, kept beside an agreed one (owner, 26 October 2026: "let me
   // add agreed on last working date only by admin and HR")
-  noticeEndsOn    DateTime            @map("notice_ends_on") @db.Date
-  lastDayAgreed   Boolean             @default(false) @map("last_day_agreed") // HR or an Admin agreed lastWorkingDay with the employee
+  noticeEndsOn       DateTime            @map("notice_ends_on") @db.Date
+  lastDayAgreed      Boolean             @default(false) @map("last_day_agreed") // HR or an Admin agreed lastWorkingDay with the employee
   // resignation only: certified at the labour office (Decree 187/2025); the company decides within 10 days
-  certifiedOffice String?             @map("certified_office")
-  certifiedSerial String?             @map("certified_serial")
-  certifiedOn     DateTime?           @map("certified_on") @db.Date
-  decisionDueOn   DateTime?           @map("decision_due_on") @db.Date
-  reason          String?
-  note            String?
-  status          String              @default("pending_ceo") // ENDING_STATUSES
-  hrApprovedById  String?             @map("hr_approved_by") @db.Uuid // who recorded it
-  hrApprovedBy    User?               @relation("EndingHrApproval", fields: [hrApprovedById], references: [id], onDelete: SetNull)
-  hrApprovedAt    DateTime?           @map("hr_approved_at") @db.Timestamptz
-  ceoDecidedById  String?             @map("ceo_decided_by") @db.Uuid
-  ceoDecidedBy    User?               @relation("EndingCeoDecision", fields: [ceoDecidedById], references: [id], onDelete: SetNull)
-  ceoDecidedAt    DateTime?           @map("ceo_decided_at") @db.Timestamptz
-  ceoNote         String?             @map("ceo_note")
-  completedAt     DateTime?           @map("completed_at") @db.Timestamptz
-  createdAt       DateTime            @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt       DateTime            @updatedAt @map("updated_at") @db.Timestamptz
-  documents       GeneratedDocument[] // the resignation request, the clearance and Form 6 generated for it
-  offboarding     OffboardingCase[] // the offboarding case it opened (22 October 2026)
+  certifiedOffice    String?             @map("certified_office")
+  certifiedSerial    String?             @map("certified_serial")
+  certifiedOn        DateTime?           @map("certified_on") @db.Date
+  decisionDueOn      DateTime?           @map("decision_due_on") @db.Date
+  reason             String?
+  note               String?
+  status             String              @default("pending_ceo") // ENDING_STATUSES
+  hrApprovedById     String?             @map("hr_approved_by") @db.Uuid // who recorded it
+  hrApprovedBy       User?               @relation("EndingHrApproval", fields: [hrApprovedById], references: [id], onDelete: SetNull)
+  hrApprovedAt       DateTime?           @map("hr_approved_at") @db.Timestamptz
+  ceoDecidedById     String?             @map("ceo_decided_by") @db.Uuid
+  ceoDecidedBy       User?               @relation("EndingCeoDecision", fields: [ceoDecidedById], references: [id], onDelete: SetNull)
+  ceoDecidedAt       DateTime?           @map("ceo_decided_at") @db.Timestamptz
+  ceoNote            String?             @map("ceo_note")
+  completedAt        DateTime?           @map("completed_at") @db.Timestamptz
+  createdAt          DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime            @updatedAt @map("updated_at") @db.Timestamptz
+  documents          GeneratedDocument[] // the resignation request, the clearance and Form 6 generated for it
+  offboarding        OffboardingCase[] // the offboarding case it opened (22 October 2026)
   resignationRequest ResignationRequest? // the employee's resignation request it was recorded from (26 October 2026)
 
   @@index([employmentId])
@@ -1818,17 +1818,20 @@ model AllowanceType {
 
 // An allowance of a contract version, a month. RESTRICTED (HR, Finance, CEO), like the salary.
 model ContractAllowance {
-  id              String        @id @default(uuid()) @db.Uuid
-  contractId      String        @map("contract_id") @db.Uuid
-  contract        Contract      @relation(fields: [contractId], references: [id], onDelete: Cascade)
-  allowanceTypeId String        @map("allowance_type_id") @db.Uuid
-  allowanceType   AllowanceType @relation(fields: [allowanceTypeId], references: [id], onDelete: Restrict)
-  nameEn          String        @map("name_en") // as the kind was when the contract was drafted or last changed
-  nameAr          String        @map("name_ar")
-  taxable         Boolean
-  insured         Boolean
-  amount          Decimal       @db.Decimal(12, 2) // 0 for a per-account one: eligibility only
-  basis           String        @default("fixed") // the kind's, as drafted (25 October 2026): fixed, or per_account
+  id               String        @id @default(uuid()) @db.Uuid
+  contractId       String        @map("contract_id") @db.Uuid
+  contract         Contract      @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  allowanceTypeId  String        @map("allowance_type_id") @db.Uuid
+  allowanceType    AllowanceType @relation(fields: [allowanceTypeId], references: [id], onDelete: Restrict)
+  nameEn           String        @map("name_en") // as the kind was when the contract was drafted or last changed
+  nameAr           String        @map("name_ar")
+  taxable          Boolean
+  insured          Boolean
+  amount           Decimal       @db.Decimal(12, 2) // 0 for a per-account one: eligibility only
+  basis            String        @default("fixed") // the kind's, as drafted (25 October 2026): fixed, or per_account
+  // a per-account one's amount per account, when the contract or the offer sets one (owner, 27 October 2026: "why cant i
+  // add rate per account?"): paid for every account held in place of each assignment's amount; null: each assignment's
+  perAccountAmount Decimal?      @map("per_account_amount") @db.Decimal(12, 2)
 
   @@unique([contractId, allowanceTypeId])
   @@map("contract_allowances")
@@ -1836,17 +1839,20 @@ model ContractAllowance {
 
 // An allowance of a job offer, a month. RESTRICTED like the salary.
 model OfferAllowance {
-  id              String        @id @default(uuid()) @db.Uuid
-  offerId         String        @map("offer_id") @db.Uuid
-  offer           JobOffer      @relation(fields: [offerId], references: [id], onDelete: Cascade)
-  allowanceTypeId String        @map("allowance_type_id") @db.Uuid
-  allowanceType   AllowanceType @relation(fields: [allowanceTypeId], references: [id], onDelete: Restrict)
-  nameEn          String        @map("name_en")
-  nameAr          String        @map("name_ar")
-  taxable         Boolean
-  insured         Boolean
-  amount          Decimal       @db.Decimal(12, 2) // 0 for a per-account one: eligibility only
-  basis           String        @default("fixed") // the kind's, as drafted (25 October 2026): fixed, or per_account
+  id               String        @id @default(uuid()) @db.Uuid
+  offerId          String        @map("offer_id") @db.Uuid
+  offer            JobOffer      @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  allowanceTypeId  String        @map("allowance_type_id") @db.Uuid
+  allowanceType    AllowanceType @relation(fields: [allowanceTypeId], references: [id], onDelete: Restrict)
+  nameEn           String        @map("name_en")
+  nameAr           String        @map("name_ar")
+  taxable          Boolean
+  insured          Boolean
+  amount           Decimal       @db.Decimal(12, 2) // 0 for a per-account one: eligibility only
+  basis            String        @default("fixed") // the kind's, as drafted (25 October 2026): fixed, or per_account
+  // a per-account one's amount per account, when the contract or the offer sets one (owner, 27 October 2026: "why cant i
+  // add rate per account?"): paid for every account held in place of each assignment's amount; null: each assignment's
+  perAccountAmount Decimal?      @map("per_account_amount") @db.Decimal(12, 2)
 
   @@unique([offerId, allowanceTypeId])
   @@map("offer_allowances")
@@ -2034,50 +2040,50 @@ model JobOffer {
 // deletes one; since 25 October 2026 also with applicants, their applications deleted with it first (its number typed;
 // apps/api/src/recruitment/recruitment-deletes.service.ts), so applications stay Restrict here.
 model Vacancy {
-  id               String           @id @default(uuid()) @db.Uuid
-  number           String           @unique
-  slug             String           @unique
-  status           String           @default("draft") // VACANCY_STATUSES
+  id               String              @id @default(uuid()) @db.Uuid
+  number           String              @unique
+  slug             String              @unique
+  status           String              @default("draft") // VACANCY_STATUSES
   title            String
-  jobTitleId       String           @map("job_title_id") @db.Uuid
-  jobTitle         JobTitle         @relation(fields: [jobTitleId], references: [id], onDelete: Restrict)
-  departmentId     String?          @map("department_id") @db.Uuid // the job title's department or team
-  department       Department?      @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  gradeId          String?          @map("grade_id") @db.Uuid
-  grade            Grade?           @relation(fields: [gradeId], references: [id], onDelete: Restrict)
-  hiringManagerId  String?          @map("hiring_manager_id") @db.Uuid
-  hiringManager    Employee?        @relation("VacancyHiringManager", fields: [hiringManagerId], references: [id], onDelete: SetNull)
-  headcount        Int              @default(1)
-  employmentType   EmploymentType   @map("employment_type")
-  workArrangement  WorkArrangement  @default(office) @map("work_arrangement")
-  shiftId          String?          @map("shift_id") @db.Uuid
-  shift            Shift?           @relation(fields: [shiftId], references: [id], onDelete: Restrict)
-  durationMonths   Int?             @map("duration_months")
-  closingDate      DateTime?        @map("closing_date") @db.Date
-  salaryMin        Decimal?         @map("salary_min") @db.Decimal(12, 2) // RESTRICTED: HR, the CEO, a Super Admin
-  salaryMax        Decimal?         @map("salary_max") @db.Decimal(12, 2)
+  jobTitleId       String              @map("job_title_id") @db.Uuid
+  jobTitle         JobTitle            @relation(fields: [jobTitleId], references: [id], onDelete: Restrict)
+  departmentId     String?             @map("department_id") @db.Uuid // the job title's department or team
+  department       Department?         @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  gradeId          String?             @map("grade_id") @db.Uuid
+  grade            Grade?              @relation(fields: [gradeId], references: [id], onDelete: Restrict)
+  hiringManagerId  String?             @map("hiring_manager_id") @db.Uuid
+  hiringManager    Employee?           @relation("VacancyHiringManager", fields: [hiringManagerId], references: [id], onDelete: SetNull)
+  headcount        Int                 @default(1)
+  employmentType   EmploymentType      @map("employment_type")
+  workArrangement  WorkArrangement     @default(office) @map("work_arrangement")
+  shiftId          String?             @map("shift_id") @db.Uuid
+  shift            Shift?              @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  durationMonths   Int?                @map("duration_months")
+  closingDate      DateTime?           @map("closing_date") @db.Date
+  salaryMin        Decimal?            @map("salary_min") @db.Decimal(12, 2) // RESTRICTED: HR, the CEO, a Super Admin
+  salaryMax        Decimal?            @map("salary_max") @db.Decimal(12, 2)
   about            String? // HTML: the purpose of the role
   responsibilities String? // HTML: the duties
   requirements     String? // HTML
-  questions        Json             @default("[]")
-  keySkills        String[]         @default([]) @map("key_skills") // the skills a CV is checked for (CV match %), at most 20 (22 October 2026)
-  portfolioMode    String?          @map("portfolio_mode") // its form's portfolio: hidden, optional, required; none: as the job title (25 October 2026)
-  submittedAt      DateTime?        @map("submitted_at") @db.Timestamptz
-  submittedById    String?          @map("submitted_by") @db.Uuid
-  submittedBy      User?            @relation("VacancySubmission", fields: [submittedById], references: [id], onDelete: SetNull)
-  decidedAt        DateTime?        @map("decided_at") @db.Timestamptz
-  decidedById      String?          @map("decided_by") @db.Uuid
-  decidedBy        User?            @relation("VacancyDecision", fields: [decidedById], references: [id], onDelete: SetNull)
-  sentBackReason   String?          @map("sent_back_reason") // why the CEO sent it back, while it is a draft again
-  publishedAt      DateTime?        @map("published_at") @db.Timestamptz // first approved
-  closedAt         DateTime?        @map("closed_at") @db.Timestamptz
-  closedById       String?          @map("closed_by") @db.Uuid
-  closedBy         User?            @relation("VacancyClosing", fields: [closedById], references: [id], onDelete: SetNull)
-  closeReason      String?          @map("close_reason")
-  createdById      String?          @map("created_by") @db.Uuid
-  createdBy        User?            @relation("VacancyCreation", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt        DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+  questions        Json                @default("[]")
+  keySkills        String[]            @default([]) @map("key_skills") // the skills a CV is checked for (CV match %), at most 20 (22 October 2026)
+  portfolioMode    String?             @map("portfolio_mode") // its form's portfolio: hidden, optional, required; none: as the job title (25 October 2026)
+  submittedAt      DateTime?           @map("submitted_at") @db.Timestamptz
+  submittedById    String?             @map("submitted_by") @db.Uuid
+  submittedBy      User?               @relation("VacancySubmission", fields: [submittedById], references: [id], onDelete: SetNull)
+  decidedAt        DateTime?           @map("decided_at") @db.Timestamptz
+  decidedById      String?             @map("decided_by") @db.Uuid
+  decidedBy        User?               @relation("VacancyDecision", fields: [decidedById], references: [id], onDelete: SetNull)
+  sentBackReason   String?             @map("sent_back_reason") // why the CEO sent it back, while it is a draft again
+  publishedAt      DateTime?           @map("published_at") @db.Timestamptz // first approved
+  closedAt         DateTime?           @map("closed_at") @db.Timestamptz
+  closedById       String?             @map("closed_by") @db.Uuid
+  closedBy         User?               @relation("VacancyClosing", fields: [closedById], references: [id], onDelete: SetNull)
+  closeReason      String?             @map("close_reason")
+  createdById      String?             @map("created_by") @db.Uuid
+  createdBy        User?               @relation("VacancyCreation", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime            @updatedAt @map("updated_at") @db.Timestamptz
   applications     JobApplication[]
   cvUploads        CvUpload[] // the bulk upload's CVs waiting for it (22 October 2026)
   suggestions      VacancySuggestion[] // Suggested From Earlier CVs (24 October 2026)
@@ -2094,82 +2100,82 @@ model Vacancy {
 // possible, the % and whether a must-have filtered them out (kept, restorable). Its stage, HR's notes, the rejection's
 // reason, and the profile made when they were hired.
 model JobApplication {
-  id              String               @id @default(uuid()) @db.Uuid
-  number          String               @unique
-  vacancyId       String               @map("vacancy_id") @db.Uuid
-  vacancy         Vacancy              @relation(fields: [vacancyId], references: [id], onDelete: Restrict)
-  stage           String               @default("applied") // APPLICATION_STAGES
-  rejectedFrom    String?              @map("rejected_from") // the stage it was rejected at: restoring goes back to it
-  filteredOut     Boolean              @default(false) @map("filtered_out")
-  fullName        String               @map("full_name")
-  email           String // trimmed, in lower case
-  mobile          String
-  linkedin        String?
-  portfolio       String? // the first of portfolioLinks, for older code and pages
+  id                String                    @id @default(uuid()) @db.Uuid
+  number            String                    @unique
+  vacancyId         String                    @map("vacancy_id") @db.Uuid
+  vacancy           Vacancy                   @relation(fields: [vacancyId], references: [id], onDelete: Restrict)
+  stage             String                    @default("applied") // APPLICATION_STAGES
+  rejectedFrom      String?                   @map("rejected_from") // the stage it was rejected at: restoring goes back to it
+  filteredOut       Boolean                   @default(false) @map("filtered_out")
+  fullName          String                    @map("full_name")
+  email             String // trimmed, in lower case
+  mobile            String
+  linkedin          String?
+  portfolio         String? // the first of portfolioLinks, for older code and pages
   // every portfolio link sent, at most 3 (owner, 25 October 2026: "Portfolio per position"; packages/shared portfolio.ts),
   // and "Confirmed by LinkedIn": 'linkedin' when LinkedIn gave this email, verified (linkedin-signin.ts); none otherwise
-  portfolioLinks   String[]            @default([]) @map("portfolio_links")
-  emailConfirmedBy String?             @map("email_confirmed_by")
-  yearsExperience Decimal?             @map("years_experience") @db.Decimal(4, 1)
-  noticePeriod    String?              @map("notice_period")
-  expectedSalary  Decimal?             @map("expected_salary") @db.Decimal(12, 2)
-  answers         Json                 @default("{}")
-  points          Int                  @default(0)
-  maxPoints       Int                  @default(0) @map("max_points")
-  matchPercent    Int?                 @map("match_percent")
-  cvMatchPercent  Int?                 @map("cv_match_percent") // the CV fit's % since 25 October 2026 (once the key skills found, 22 October 2026); none: the CV not read
-  cvFit           Json?                @map("cv_fit") // the CV fit with its parts and version (owner, 25 October 2026: "Full CV fit score"; packages/shared cv-fit.ts)
-  knockedOut      String[]             @default([]) @map("knocked_out") // the must-have questions not passed, by key
-  source          String               @default("careers") // APPLICATION_SOURCES
-  consentAt       DateTime             @map("consent_at") @db.Timestamptz
-  ip              String?
-  userAgent       String?              @map("user_agent")
-  notes           String? // HR's
-  rejectReason    String?              @map("reject_reason")
-  employeeId      String?              @map("employee_id") @db.Uuid // the profile made from the accepted offer
-  employee        Employee?            @relation(fields: [employeeId], references: [id], onDelete: SetNull)
-  createdAt       DateTime             @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt       DateTime             @updatedAt @map("updated_at") @db.Timestamptz
+  portfolioLinks    String[]                  @default([]) @map("portfolio_links")
+  emailConfirmedBy  String?                   @map("email_confirmed_by")
+  yearsExperience   Decimal?                  @map("years_experience") @db.Decimal(4, 1)
+  noticePeriod      String?                   @map("notice_period")
+  expectedSalary    Decimal?                  @map("expected_salary") @db.Decimal(12, 2)
+  answers           Json                      @default("{}")
+  points            Int                       @default(0)
+  maxPoints         Int                       @default(0) @map("max_points")
+  matchPercent      Int?                      @map("match_percent")
+  cvMatchPercent    Int?                      @map("cv_match_percent") // the CV fit's % since 25 October 2026 (once the key skills found, 22 October 2026); none: the CV not read
+  cvFit             Json?                     @map("cv_fit") // the CV fit with its parts and version (owner, 25 October 2026: "Full CV fit score"; packages/shared cv-fit.ts)
+  knockedOut        String[]                  @default([]) @map("knocked_out") // the must-have questions not passed, by key
+  source            String                    @default("careers") // APPLICATION_SOURCES
+  consentAt         DateTime                  @map("consent_at") @db.Timestamptz
+  ip                String?
+  userAgent         String?                   @map("user_agent")
+  notes             String? // HR's
+  rejectReason      String?                   @map("reject_reason")
+  employeeId        String?                   @map("employee_id") @db.Uuid // the profile made from the accepted offer
+  employee          Employee?                 @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  createdAt         DateTime                  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime                  @updatedAt @map("updated_at") @db.Timestamptz
   // the hiring manager's suggestion (Phase 2, 22 October 2026): the next step or a rejection, until HR acts on it
-  suggestion      String? // HIRING_SUGGESTIONS: next, reject
-  suggestionNote  String?              @map("suggestion_note")
-  suggestedById   String?              @map("suggested_by") @db.Uuid
-  suggestedBy     User?                @relation("ApplicationSuggestion", fields: [suggestedById], references: [id], onDelete: SetNull)
-  suggestedAt     DateTime?            @map("suggested_at") @db.Timestamptz
+  suggestion        String? // HIRING_SUGGESTIONS: next, reject
+  suggestionNote    String?                   @map("suggestion_note")
+  suggestedById     String?                   @map("suggested_by") @db.Uuid
+  suggestedBy       User?                     @relation("ApplicationSuggestion", fields: [suggestedById], references: [id], onDelete: SetNull)
+  suggestedAt       DateTime?                 @map("suggested_at") @db.Timestamptz
   // the consent HR recorded (22 October 2026: a bulk upload's CV, a general CV moved here): who, and why ("LinkedIn
   // Easy Apply"); none: the applicant's own on the careers page
-  consentById     String?              @map("consent_by") @db.Uuid
-  consentBy       User?                @relation("ApplicationConsent", fields: [consentById], references: [id], onDelete: SetNull)
-  consentNote     String?              @map("consent_note")
+  consentById       String?                   @map("consent_by") @db.Uuid
+  consentBy         User?                     @relation("ApplicationConsent", fields: [consentById], references: [id], onDelete: SetNull)
+  consentNote       String?                   @map("consent_note")
   // the candidate's profile (owner, 22 October 2026: "how to make like a profile for each candidate to store history and
   // prevent duplication?"; packages/shared candidates.ts): set by every path that makes an application, those from
   // before by the backfill (candidates.service.ts), so kept nullable; one candidate an application a vacancy (checked
   // by the API under the candidates' lock, the email's unique below kept)
-  candidateId     String?              @map("candidate_id") @db.Uuid
-  candidate       Candidate?           @relation(fields: [candidateId], references: [id], onDelete: Restrict)
-  generalCv       GeneralCv? // the general CV it was moved from
-  cv              JobApplicationCv?
+  candidateId       String?                   @map("candidate_id") @db.Uuid
+  candidate         Candidate?                @relation(fields: [candidateId], references: [id], onDelete: Restrict)
+  generalCv         GeneralCv? // the general CV it was moved from
+  cv                JobApplicationCv?
   // applying again for the job while it is open (owner, 25 October 2026: "Update their application"; packages/shared
   // reapply.ts): the CVs it held before the current one, and when the last new one came (the "CV updated" mark)
-  earlierCvs      JobApplicationEarlierCv[]
-  cvUpdatedAt     DateTime?            @map("cv_updated_at") @db.Timestamptz
-  portfolioFile   JobApplicationPortfolio? // the PDF case study sent as a portfolio (25 October 2026)
-  cvReading       CvReading? // its CV read and analysed (22 October 2026)
-  steps           JobApplicationStep[]
-  offers          JobOffer[]
-  interviews      Interview[]
-  onboarding      OnboardingChecklist[]
-  comments        ScreeningComment[] // the screening comments on it (24 October 2026)
+  earlierCvs        JobApplicationEarlierCv[]
+  cvUpdatedAt       DateTime?                 @map("cv_updated_at") @db.Timestamptz
+  portfolioFile     JobApplicationPortfolio? // the PDF case study sent as a portfolio (25 October 2026)
+  cvReading         CvReading? // its CV read and analysed (22 October 2026)
+  steps             JobApplicationStep[]
+  offers            JobOffer[]
+  interviews        Interview[]
+  onboarding        OnboardingChecklist[]
+  comments          ScreeningComment[] // the screening comments on it (24 October 2026)
   // Suggested From Earlier CVs (24 October 2026): the suggestions it was the earlier CV of, and those it closed (added, applied)
-  suggestedFrom   VacancySuggestion[]  @relation("VacancySuggestionSource")
-  suggestionsMet  VacancySuggestion[]  @relation("VacancySuggestionApplication")
-  openFits        CvOpenFit[] // its CV's fits for the other open vacancies (25 October 2026)
+  suggestedFrom     VacancySuggestion[]       @relation("VacancySuggestionSource")
+  suggestionsMet    VacancySuggestion[]       @relation("VacancySuggestionApplication")
+  openFits          CvOpenFit[] // its CV's fits for the other open vacancies (25 October 2026)
   // WhatsApp (owner, 24 October 2026: candidates "who tick it on the careers form"): when they ticked "Send me updates
   // about my application on WhatsApp" (none: no opt-in; HR's own Add a CV never asks), the language of the page, and
   // when they replied STOP; the messages sent about it
-  whatsappOptInAt   DateTime?          @map("whatsapp_opt_in_at") @db.Timestamptz
-  whatsappLanguage  String?            @map("whatsapp_language") // WHATSAPP_LANGUAGES
-  whatsappStoppedAt DateTime?          @map("whatsapp_stopped_at") @db.Timestamptz
+  whatsappOptInAt   DateTime?                 @map("whatsapp_opt_in_at") @db.Timestamptz
+  whatsappLanguage  String?                   @map("whatsapp_language") // WHATSAPP_LANGUAGES
+  whatsappStoppedAt DateTime?                 @map("whatsapp_stopped_at") @db.Timestamptz
   whatsAppMessages  WhatsAppMessage[]
 
   @@unique([vacancyId, email])
@@ -2260,58 +2266,58 @@ model JobApplicationStep {
 // and why), a reference in the applications' series. New, reviewed, moved to a vacancy (the application made from it),
 // archived. HR, the CEO and a Super Admin read them; HR and a Super Admin change them.
 model GeneralCv {
-  id              String           @id @default(uuid()) @db.Uuid
-  number          String           @unique // APP-2026-0007: the applications' series
-  status          String           @default("new") // GENERAL_CV_STATUSES
-  fullName        String           @map("full_name")
-  email           String // trimmed, in lower case
-  mobile          String
-  linkedin        String?
-  portfolio       String? // the first of portfolioLinks, for older code and pages
+  id                String              @id @default(uuid()) @db.Uuid
+  number            String              @unique // APP-2026-0007: the applications' series
+  status            String              @default("new") // GENERAL_CV_STATUSES
+  fullName          String              @map("full_name")
+  email             String // trimmed, in lower case
+  mobile            String
+  linkedin          String?
+  portfolio         String? // the first of portfolioLinks, for older code and pages
   // every portfolio link and "Confirmed by LinkedIn", as an application's (25 October 2026)
-  portfolioLinks   String[]        @default([]) @map("portfolio_links")
-  emailConfirmedBy String?         @map("email_confirmed_by")
-  yearsExperience Decimal?         @map("years_experience") @db.Decimal(4, 1)
-  noticePeriod    String?          @map("notice_period")
-  expectedSalary  Decimal?         @map("expected_salary") @db.Decimal(12, 2)
-  departmentId    String?          @map("department_id") @db.Uuid // its team: the position's, or the area of interest of before; none: Other
-  department      Department?      @relation(fields: [departmentId], references: [id], onDelete: SetNull)
-  areaOther       String?          @map("area_other") // an older CV's area in words (Other)
+  portfolioLinks    String[]            @default([]) @map("portfolio_links")
+  emailConfirmedBy  String?             @map("email_confirmed_by")
+  yearsExperience   Decimal?            @map("years_experience") @db.Decimal(4, 1)
+  noticePeriod      String?             @map("notice_period")
+  expectedSalary    Decimal?            @map("expected_salary") @db.Decimal(12, 2)
+  departmentId      String?             @map("department_id") @db.Uuid // its team: the position's, or the area of interest of before; none: Other
+  department        Department?         @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  areaOther         String?             @map("area_other") // an older CV's area in words (Other)
   // the position they would like (owner, 25 October 2026: "Position, grouped by team"; packages/shared cv-positions.ts):
   // its key and its name as shown when chosen, or what they wrote for Other; none on an older CV, sent for an area
-  positionKey     String?          @map("position_key")
-  positionName    String?          @map("position_name")
-  positionOther   String?          @map("position_other")
-  source          String // GENERAL_CV_SOURCES
-  referrer        String?
-  notes           String? // HR's
-  consentAt       DateTime         @map("consent_at") @db.Timestamptz
-  consentById     String?          @map("consent_by") @db.Uuid // HR who recorded the person's agreement; none: theirs on the careers page
-  consentBy       User?            @relation("GeneralCvConsent", fields: [consentById], references: [id], onDelete: SetNull)
-  consentNote     String?          @map("consent_note")
-  ip              String?
-  userAgent       String?          @map("user_agent")
-  createdById     String?          @map("created_by") @db.Uuid // HR who added it; none: sent on the careers page
-  createdBy       User?            @relation("GeneralCvCreation", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt       DateTime         @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt       DateTime         @updatedAt @map("updated_at") @db.Timestamptz
-  applicationId   String?          @unique @map("application_id") @db.Uuid // moved: the application made from it
-  application     JobApplication?  @relation(fields: [applicationId], references: [id], onDelete: SetNull)
-  movedAt         DateTime?        @map("moved_at") @db.Timestamptz
+  positionKey       String?             @map("position_key")
+  positionName      String?             @map("position_name")
+  positionOther     String?             @map("position_other")
+  source            String // GENERAL_CV_SOURCES
+  referrer          String?
+  notes             String? // HR's
+  consentAt         DateTime            @map("consent_at") @db.Timestamptz
+  consentById       String?             @map("consent_by") @db.Uuid // HR who recorded the person's agreement; none: theirs on the careers page
+  consentBy         User?               @relation("GeneralCvConsent", fields: [consentById], references: [id], onDelete: SetNull)
+  consentNote       String?             @map("consent_note")
+  ip                String?
+  userAgent         String?             @map("user_agent")
+  createdById       String?             @map("created_by") @db.Uuid // HR who added it; none: sent on the careers page
+  createdBy         User?               @relation("GeneralCvCreation", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime            @updatedAt @map("updated_at") @db.Timestamptz
+  applicationId     String?             @unique @map("application_id") @db.Uuid // moved: the application made from it
+  application       JobApplication?     @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  movedAt           DateTime?           @map("moved_at") @db.Timestamptz
   // the candidate's profile (22 October 2026), as an application's: the 30 days between CVs count by it
-  candidateId     String?          @map("candidate_id") @db.Uuid
-  candidate       Candidate?       @relation(fields: [candidateId], references: [id], onDelete: Restrict)
-  file            GeneralCvFile?
-  portfolioFile   GeneralCvPortfolio? // the PDF case study sent as a portfolio (25 October 2026)
-  cvReading       CvReading? // its CV read and analysed (22 October 2026)
-  events          GeneralCvEvent[]
-  comments        ScreeningComment[] // the screening comments on it (24 October 2026)
-  suggestions     VacancySuggestion[] // the vacancies it was suggested for (24 October 2026)
-  openFits        CvOpenFit[] // its CV's fits for the open vacancies (25 October 2026)
+  candidateId       String?             @map("candidate_id") @db.Uuid
+  candidate         Candidate?          @relation(fields: [candidateId], references: [id], onDelete: Restrict)
+  file              GeneralCvFile?
+  portfolioFile     GeneralCvPortfolio? // the PDF case study sent as a portfolio (25 October 2026)
+  cvReading         CvReading? // its CV read and analysed (22 October 2026)
+  events            GeneralCvEvent[]
+  comments          ScreeningComment[] // the screening comments on it (24 October 2026)
+  suggestions       VacancySuggestion[] // the vacancies it was suggested for (24 October 2026)
+  openFits          CvOpenFit[] // its CV's fits for the open vacancies (25 October 2026)
   // WhatsApp (24 October 2026), as an application's: the tick on "Send us your CV", its page's language, a STOP reply
-  whatsappOptInAt   DateTime?        @map("whatsapp_opt_in_at") @db.Timestamptz
-  whatsappLanguage  String?          @map("whatsapp_language")
-  whatsappStoppedAt DateTime?        @map("whatsapp_stopped_at") @db.Timestamptz
+  whatsappOptInAt   DateTime?           @map("whatsapp_opt_in_at") @db.Timestamptz
+  whatsappLanguage  String?             @map("whatsapp_language")
+  whatsappStoppedAt DateTime?           @map("whatsapp_stopped_at") @db.Timestamptz
   whatsAppMessages  WhatsAppMessage[]
 
   @@index([email, createdAt])
@@ -2324,15 +2330,15 @@ model GeneralCv {
 
 // A general CV's file, apart so the lists never read it: a PDF or a Word file, at most 5 MB, as an application's.
 model GeneralCvFile {
-  generalCvId String    @id @map("general_cv_id") @db.Uuid
-  generalCv   GeneralCv @relation(fields: [generalCvId], references: [id], onDelete: Cascade)
-  fileName    String    @map("file_name")
-  mimeType    String    @map("mime_type")
-  sizeBytes   Int       @map("size_bytes")
+  generalCvId String     @id @map("general_cv_id") @db.Uuid
+  generalCv   GeneralCv  @relation(fields: [generalCvId], references: [id], onDelete: Cascade)
+  fileName    String     @map("file_name")
+  mimeType    String     @map("mime_type")
+  sizeBytes   Int        @map("size_bytes")
   data        Bytes
   // the file's SHA-256 (22 October 2026), as an application's CV's: a generated column, never written
   sha256      String?
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz
   preview     CvPreview? // a Word CV as a PDF for the CV window, kept (24 October 2026)
 
   @@map("general_cv_files")
@@ -2371,19 +2377,19 @@ model GeneralCvEvent {
 // HR to check its row: for a vacancy (none: the general CVs), its file, whether its text could be read and what it told
 // (the name, email and mobile). The uploader's own; gone once saved or discarded, or after a day.
 model CvUpload {
-  id          String   @id @default(uuid()) @db.Uuid
-  createdById String   @map("created_by") @db.Uuid
-  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
-  vacancyId   String?  @map("vacancy_id") @db.Uuid
-  vacancy     Vacancy? @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
-  fileName    String   @map("file_name")
-  mimeType    String   @map("mime_type")
-  sizeBytes   Int      @map("size_bytes")
+  id          String     @id @default(uuid()) @db.Uuid
+  createdById String     @map("created_by") @db.Uuid
+  createdBy   User       @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  vacancyId   String?    @map("vacancy_id") @db.Uuid
+  vacancy     Vacancy?   @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
+  fileName    String     @map("file_name")
+  mimeType    String     @map("mime_type")
+  sizeBytes   Int        @map("size_bytes")
   data        Bytes
-  textFound   Boolean  @default(false) @map("text_found")
-  guess       Json     @default("{}")
+  textFound   Boolean    @default(false) @map("text_found")
+  guess       Json       @default("{}")
   cvReading   CvReading? // a scanned CV read by OCR, its row filled in from it (22 October 2026)
-  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz
 
   @@index([createdById, createdAt])
   @@map("cv_uploads")
@@ -2430,33 +2436,33 @@ model CvReading {
 // (matched by email or mobile, or hired from an accepted offer), when they last applied, and the profile it was merged
 // into (kept, never deleted, so a merge can be undone).
 model Candidate {
-  id            String             @id @default(uuid()) @db.Uuid
-  code          String             @unique // CAN-0001
-  fullName      String             @map("full_name") // the latest they sent
-  linkedin      String?
-  portfolio     String?
-  employeeId    String?            @map("employee_id") @db.Uuid
-  employee      Employee?          @relation(fields: [employeeId], references: [id], onDelete: SetNull)
-  mergedIntoId  String?            @map("merged_into_id") @db.Uuid
-  mergedInto    Candidate?         @relation("CandidateMerged", fields: [mergedIntoId], references: [id], onDelete: SetNull)
-  mergedFrom    Candidate[]        @relation("CandidateMerged")
-  mergedAt      DateTime?          @map("merged_at") @db.Timestamptz
-  lastAppliedAt DateTime?          @map("last_applied_at") @db.Timestamptz // their newest application or general CV
-  createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt     DateTime           @updatedAt @map("updated_at") @db.Timestamptz
-  contacts      CandidateContact[]
-  keys          CandidateKey[]
-  applications  JobApplication[]
-  generalCvs    GeneralCv[]
-  matchesA      CandidateMatch[]   @relation("CandidateMatchA")
-  matchesB      CandidateMatch[]   @relation("CandidateMatchB")
-  mergesKept    CandidateMerge[]   @relation("CandidateMergeKept")
-  mergesMerged  CandidateMerge[]   @relation("CandidateMergeMerged")
-  comments      ScreeningComment[] // the screening comments about them (24 October 2026)
-  suggestions   VacancySuggestion[] // the vacancies they were suggested for (24 October 2026)
+  id                String              @id @default(uuid()) @db.Uuid
+  code              String              @unique // CAN-0001
+  fullName          String              @map("full_name") // the latest they sent
+  linkedin          String?
+  portfolio         String?
+  employeeId        String?             @map("employee_id") @db.Uuid
+  employee          Employee?           @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  mergedIntoId      String?             @map("merged_into_id") @db.Uuid
+  mergedInto        Candidate?          @relation("CandidateMerged", fields: [mergedIntoId], references: [id], onDelete: SetNull)
+  mergedFrom        Candidate[]         @relation("CandidateMerged")
+  mergedAt          DateTime?           @map("merged_at") @db.Timestamptz
+  lastAppliedAt     DateTime?           @map("last_applied_at") @db.Timestamptz // their newest application or general CV
+  createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime            @updatedAt @map("updated_at") @db.Timestamptz
+  contacts          CandidateContact[]
+  keys              CandidateKey[]
+  applications      JobApplication[]
+  generalCvs        GeneralCv[]
+  matchesA          CandidateMatch[]    @relation("CandidateMatchA")
+  matchesB          CandidateMatch[]    @relation("CandidateMatchB")
+  mergesKept        CandidateMerge[]    @relation("CandidateMergeKept")
+  mergesMerged      CandidateMerge[]    @relation("CandidateMergeMerged")
+  comments          ScreeningComment[] // the screening comments about them (24 October 2026)
+  suggestions       VacancySuggestion[] // the vacancies they were suggested for (24 October 2026)
   // WhatsApp (24 October 2026): when they last ticked it on a careers form, and when they replied STOP; the messages
-  whatsappOptInAt   DateTime?         @map("whatsapp_opt_in_at") @db.Timestamptz
-  whatsappStoppedAt DateTime?         @map("whatsapp_stopped_at") @db.Timestamptz
+  whatsappOptInAt   DateTime?           @map("whatsapp_opt_in_at") @db.Timestamptz
+  whatsappStoppedAt DateTime?           @map("whatsapp_stopped_at") @db.Timestamptz
   whatsAppMessages  WhatsAppMessage[]
 
   @@index([mergedIntoId])
@@ -2597,43 +2603,43 @@ model CvPreview {
 // calendar invitation's SEQUENCE, so a calendar moves or removes the same event). Scheduled, then done or a no-show, or
 // cancelled. The candidate's latest email about it, or why none went.
 model Interview {
-  id            String                 @id @default(uuid()) @db.Uuid
-  applicationId String                 @map("application_id") @db.Uuid
-  application   JobApplication         @relation(fields: [applicationId], references: [id], onDelete: Cascade)
-  startsAt      DateTime               @map("starts_at") @db.Timestamptz
-  minutes       Int
-  kind          String // INTERVIEW_KINDS: in_person, online, phone
-  location      String?
-  note          String?
-  status        String                 @default("scheduled") // INTERVIEW_STATUSES
-  sequence      Int                    @default(0)
-  emailedAt     DateTime?              @map("emailed_at") @db.Timestamptz
-  emailProblem  String?                @map("email_problem")
-  cancelReason  String?                @map("cancel_reason")
-  cancelledAt   DateTime?              @map("cancelled_at") @db.Timestamptz
-  outcomeAt     DateTime?              @map("outcome_at") @db.Timestamptz
-  outcomeById   String?                @map("outcome_by") @db.Uuid
-  outcomeBy     User?                  @relation("InterviewOutcome", fields: [outcomeById], references: [id], onDelete: SetNull)
-  createdById   String?                @map("created_by") @db.Uuid
-  createdBy     User?                  @relation("InterviewCreation", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt     DateTime               @default(now()) @map("created_at") @db.Timestamptz
-  updatedById   String?                @map("updated_by") @db.Uuid
-  updatedBy     User?                  @relation("InterviewChange", fields: [updatedById], references: [id], onDelete: SetNull)
-  updatedAt     DateTime               @updatedAt @map("updated_at") @db.Timestamptz
+  id                  String                 @id @default(uuid()) @db.Uuid
+  applicationId       String                 @map("application_id") @db.Uuid
+  application         JobApplication         @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  startsAt            DateTime               @map("starts_at") @db.Timestamptz
+  minutes             Int
+  kind                String // INTERVIEW_KINDS: in_person, online, phone
+  location            String?
+  note                String?
+  status              String                 @default("scheduled") // INTERVIEW_STATUSES
+  sequence            Int                    @default(0)
+  emailedAt           DateTime?              @map("emailed_at") @db.Timestamptz
+  emailProblem        String?                @map("email_problem")
+  cancelReason        String?                @map("cancel_reason")
+  cancelledAt         DateTime?              @map("cancelled_at") @db.Timestamptz
+  outcomeAt           DateTime?              @map("outcome_at") @db.Timestamptz
+  outcomeById         String?                @map("outcome_by") @db.Uuid
+  outcomeBy           User?                  @relation("InterviewOutcome", fields: [outcomeById], references: [id], onDelete: SetNull)
+  createdById         String?                @map("created_by") @db.Uuid
+  createdBy           User?                  @relation("InterviewCreation", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt           DateTime               @default(now()) @map("created_at") @db.Timestamptz
+  updatedById         String?                @map("updated_by") @db.Uuid
+  updatedBy           User?                  @relation("InterviewChange", fields: [updatedById], references: [id], onDelete: SetNull)
+  updatedAt           DateTime               @updatedAt @map("updated_at") @db.Timestamptz
   // the meeting the system made for an online one (24 October 2026: Google Meet, Microsoft Teams or Zoom), its link the
   // location: its provider, the connection it was made with (kept to move and delete it), its id there and the mailbox or
   // user it lives in; what the provider refused, in words
-  meetingProvider     String?            @map("meeting_provider") // MEETING_PROVIDERS
-  meetingConnectionId String?            @map("meeting_connection_id") @db.Uuid
-  meetingConnection   MeetingConnection? @relation(fields: [meetingConnectionId], references: [id], onDelete: SetNull)
-  meetingId           String?            @map("meeting_id")
-  meetingHost         String?            @map("meeting_host")
-  meetingProblem      String?            @map("meeting_problem")
+  meetingProvider     String?                @map("meeting_provider") // MEETING_PROVIDERS
+  meetingConnectionId String?                @map("meeting_connection_id") @db.Uuid
+  meetingConnection   MeetingConnection?     @relation(fields: [meetingConnectionId], references: [id], onDelete: SetNull)
+  meetingId           String?                @map("meeting_id")
+  meetingHost         String?                @map("meeting_host")
+  meetingProblem      String?                @map("meeting_problem")
   // WhatsApp (24 October 2026): the candidate's reminder the day before, once (cleared when it moves)
-  whatsappRemindedAt  DateTime?          @map("whatsapp_reminded_at") @db.Timestamptz
+  whatsappRemindedAt  DateTime?              @map("whatsapp_reminded_at") @db.Timestamptz
   whatsAppMessages    WhatsAppMessage[]
-  interviewers  InterviewInterviewer[]
-  feedback      InterviewFeedback[]
+  interviewers        InterviewInterviewer[]
+  feedback            InterviewFeedback[]
 
   @@index([applicationId])
   @@index([status, startsAt])
@@ -2952,23 +2958,23 @@ model PayrollSettings {
 // not linked to it (packages/shared sub-locations.ts). At most one main, by a partial unique index (the migration's
 // "check_in_locations_one_main"); the API keeps one while there are any.
 model CheckInLocation {
-  id           String                  @id @default(uuid()) @db.Uuid
-  name         String
-  latitude     Decimal                 @db.Decimal(9, 6)
-  longitude    Decimal                 @db.Decimal(9, 6)
-  radiusMetres Int                     @default(150) @map("radius_metres") // 20 to 5,000
-  isMain       Boolean                 @default(false) @map("is_main") // the main office; the oldest when sub-locations came (20 October 2026)
-  people       CheckInLocationPerson[] // the people linked to it, while it is a sub-location
+  id             String                  @id @default(uuid()) @db.Uuid
+  name           String
+  latitude       Decimal                 @db.Decimal(9, 6)
+  longitude      Decimal                 @db.Decimal(9, 6)
+  radiusMetres   Int                     @default(150) @map("radius_metres") // 20 to 5,000
+  isMain         Boolean                 @default(false) @map("is_main") // the main office; the oldest when sub-locations came (20 October 2026)
+  people         CheckInLocationPerson[] // the people linked to it, while it is a sub-location
   // a client location (owner, 24 October 2026: "all employees if a customer location"): made by the CEO's approval of a
   // request (home_location_requests.location_id), everyone's, never the main office nor linked to people; it lasts until
   // valid_until (none: no end) unless HR ends it (ended_at); the notice 7 days before its end told on ending_notice_on
-  kind           String                @default("office") // office (the main office and the sub-locations), client
-  validUntil     DateTime?             @map("valid_until") @db.Date
-  endedAt        DateTime?             @map("ended_at") @db.Timestamptz
-  endingNoticeOn DateTime?             @map("ending_notice_on") @db.Date
-  requests       HomeLocationRequest[] @relation("HomeLocationCompanyPlace")
-  createdAt    DateTime                @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt    DateTime                @updatedAt @map("updated_at") @db.Timestamptz
+  kind           String                  @default("office") // office (the main office and the sub-locations), client
+  validUntil     DateTime?               @map("valid_until") @db.Date
+  endedAt        DateTime?               @map("ended_at") @db.Timestamptz
+  endingNoticeOn DateTime?               @map("ending_notice_on") @db.Date
+  requests       HomeLocationRequest[]   @relation("HomeLocationCompanyPlace")
+  createdAt      DateTime                @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime                @updatedAt @map("updated_at") @db.Timestamptz
 
   @@map("check_in_locations")
 }
@@ -3165,38 +3171,38 @@ model PayrollLawYear {
 // advance's or a loan's installments are made at once from its plan, each linked to it; a Recurring deduction is added
 // to each month's payroll for a recurring deduction (recurringId), one a month at most.
 model PayrollAdjustment {
-  id            String              @id @default(uuid()) @db.Uuid
-  employeeId    String              @map("employee_id") @db.Uuid
-  employee      Employee            @relation(fields: [employeeId], references: [id], onDelete: Restrict)
-  month         DateTime            @db.Date // the month's first day: the run it goes on
+  id            String               @id @default(uuid()) @db.Uuid
+  employeeId    String               @map("employee_id") @db.Uuid
+  employee      Employee             @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  month         DateTime             @db.Date // the month's first day: the run it goes on
   kind          String // ADJUSTMENT_KINDS: addition, deduction
   type          String // ADDITION_TYPES or DEDUCTION_TYPES, by kind
   taxed         Boolean // an addition taxed with the pay; never a deduction (taken after tax, or before it: beforeTax)
   // a Recurring deduction of a recurring deduction ticked "Deducted before tax" (owner, 20 October 2026: "Before Tax i
   // think"): it lowers the taxable pay before the income tax; false for every other, which is after tax
-  beforeTax     Boolean             @default(false) @map("before_tax")
-  amount        Decimal?            @db.Decimal(12, 2) // RESTRICTED: EGP, more than 0; in days, none until applied (what the line paid)
-  days          Decimal?            @db.Decimal(3, 1) // a Bonus (days) or a Penalty (days): whole or half days, up to 31; none for the others
+  beforeTax     Boolean              @default(false) @map("before_tax")
+  amount        Decimal?             @db.Decimal(12, 2) // RESTRICTED: EGP, more than 0; in days, none until applied (what the line paid)
+  days          Decimal?             @db.Decimal(3, 1) // a Bonus (days) or a Penalty (days): whole or half days, up to 31; none for the others
   reason        String
-  advanceId     String?             @map("advance_id") @db.Uuid // an advance's recovery or a loan's installment: which one
-  advance       PayrollAdvance?     @relation(fields: [advanceId], references: [id], onDelete: Restrict)
-  recurringId   String?             @map("recurring_id") @db.Uuid // a Recurring deduction: the recurring deduction it is that month's of
-  recurring     RecurringDeduction? @relation(fields: [recurringId], references: [id], onDelete: SetNull)
+  advanceId     String?              @map("advance_id") @db.Uuid // an advance's recovery or a loan's installment: which one
+  advance       PayrollAdvance?      @relation(fields: [advanceId], references: [id], onDelete: Restrict)
+  recurringId   String?              @map("recurring_id") @db.Uuid // a Recurring deduction: the recurring deduction it is that month's of
+  recurring     RecurringDeduction?  @relation(fields: [recurringId], references: [id], onDelete: SetNull)
   // a Damage or loss deduction HR made from an asset returned damaged or missing (Assets step 3, owner, 21 October
   // 2026: "Record it; HR decides a deduction"): the custody item, for tracing it
-  custodyItemId String?             @map("custody_item_id") @db.Uuid
-  custodyItem   CustodyItem?        @relation(fields: [custodyItemId], references: [id], onDelete: SetNull)
-  status        String              @default("pending") // ADJUSTMENT_STATUSES: pending, applied, cancelled
-  lineId        String?             @map("line_id") @db.Uuid // applied: the run line it was paid on
-  line          PayrollLine?        @relation(fields: [lineId], references: [id], onDelete: SetNull)
-  appliedAt     DateTime?           @map("applied_at") @db.Timestamptz
-  cancelledById String?             @map("cancelled_by") @db.Uuid
-  cancelledBy   User?               @relation("AdjustmentCancel", fields: [cancelledById], references: [id], onDelete: SetNull)
-  cancelledAt   DateTime?           @map("cancelled_at") @db.Timestamptz
-  createdById   String?             @map("created_by") @db.Uuid
-  createdBy     User?               @relation("AdjustmentEntry", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt     DateTime            @updatedAt @map("updated_at") @db.Timestamptz
+  custodyItemId String?              @map("custody_item_id") @db.Uuid
+  custodyItem   CustodyItem?         @relation(fields: [custodyItemId], references: [id], onDelete: SetNull)
+  status        String               @default("pending") // ADJUSTMENT_STATUSES: pending, applied, cancelled
+  lineId        String?              @map("line_id") @db.Uuid // applied: the run line it was paid on
+  line          PayrollLine?         @relation(fields: [lineId], references: [id], onDelete: SetNull)
+  appliedAt     DateTime?            @map("applied_at") @db.Timestamptz
+  cancelledById String?              @map("cancelled_by") @db.Uuid
+  cancelledBy   User?                @relation("AdjustmentCancel", fields: [cancelledById], references: [id], onDelete: SetNull)
+  cancelledAt   DateTime?            @map("cancelled_at") @db.Timestamptz
+  createdById   String?              @map("created_by") @db.Uuid
+  createdBy     User?                @relation("AdjustmentEntry", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime             @updatedAt @map("updated_at") @db.Timestamptz
   reimbursement ReimbursementClaim? // a reimbursement addition: the claim whose approval by Finance added it
   leavePayout   LeaveBalanceYear? // an Unused leave paid addition: the balance whose closing (or leaving) paid it
   compensatory  CompensatoryRequest? // a Compensation for working addition: the compensatory request HR approved as cash instead (26 October 2026)
@@ -3431,19 +3437,19 @@ model ReimbursementClaim {
 // REIMBURSEMENT_STEP_KINDS. Sent with the amount claimed; each stage's decision with its decision, the amount approved
 // at that step (none on a rejection) and the comment; added to payroll with the month. Ordered by id.
 model ReimbursementClaimStep {
-  id       BigInt             @id @default(autoincrement())
-  claimId  String             @map("claim_id") @db.Uuid
-  claim    ReimbursementClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
-  kind     String // REIMBURSEMENT_STEP_KINDS
-  decision String? // REIMBURSEMENT_DECISIONS, on the stages' decisions only
-  amount   Decimal?           @db.Decimal(12, 2) // EGP: claimed (submitted), approved at that step, or added to payroll
-  comment  String?
-  payMonth DateTime?          @map("pay_month") @db.Date // added_to_payroll: the first day of the month
-  actorId  String?            @map("actor_id") @db.Uuid
-  actor    User?              @relation("ReimbursementStepActor", fields: [actorId], references: [id], onDelete: SetNull)
-  onBehalfOfId String?        @map("on_behalf_of") @db.Uuid // the manager step decided by a stand-in: the approver they stood in for (25 October 2026)
-  onBehalfOf   Employee?      @relation("ClaimStepOnBehalf", fields: [onBehalfOfId], references: [id], onDelete: SetNull)
-  at       DateTime           @default(now()) @db.Timestamptz
+  id           BigInt             @id @default(autoincrement())
+  claimId      String             @map("claim_id") @db.Uuid
+  claim        ReimbursementClaim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  kind         String // REIMBURSEMENT_STEP_KINDS
+  decision     String? // REIMBURSEMENT_DECISIONS, on the stages' decisions only
+  amount       Decimal?           @db.Decimal(12, 2) // EGP: claimed (submitted), approved at that step, or added to payroll
+  comment      String?
+  payMonth     DateTime?          @map("pay_month") @db.Date // added_to_payroll: the first day of the month
+  actorId      String?            @map("actor_id") @db.Uuid
+  actor        User?              @relation("ReimbursementStepActor", fields: [actorId], references: [id], onDelete: SetNull)
+  onBehalfOfId String?            @map("on_behalf_of") @db.Uuid // the manager step decided by a stand-in: the approver they stood in for (25 October 2026)
+  onBehalfOf   Employee?          @relation("ClaimStepOnBehalf", fields: [onBehalfOfId], references: [id], onDelete: SetNull)
+  at           DateTime           @default(now()) @db.Timestamptz
 
   @@index([claimId])
   @@map("reimbursement_claim_steps")
@@ -3563,54 +3569,54 @@ model LeaveStaffingLimit {
 // after): approved at once. Cancelled by its employee (while being decided, or approved and not started) or by HR (an
 // approved one, with a comment): its days are back in the balance.
 model LeaveRequest {
-  id            String             @id @default(uuid()) @db.Uuid
-  employeeId    String             @map("employee_id") @db.Uuid
-  employee      Employee           @relation("LeaveRequester", fields: [employeeId], references: [id], onDelete: Cascade)
-  employmentId  String             @map("employment_id") @db.Uuid
-  employment    Employment         @relation(fields: [employmentId], references: [id], onDelete: Cascade)
-  typeId        String             @map("type_id") @db.Uuid
-  type          LeaveType          @relation(fields: [typeId], references: [id], onDelete: Restrict)
-  startDate     DateTime           @map("start_date") @db.Date
-  endDate       DateTime           @map("end_date") @db.Date
-  halfDay       Boolean            @default(false) @map("half_day")
-  days          Decimal            @db.Decimal(5, 1)
-  reason        String?
-  status        String // LEAVE_STATUSES: with_manager, with_hr, approved, rejected, cancelled
-  managerId     String?            @map("manager_id") @db.Uuid
-  manager       Employee?          @relation("LeaveManager", fields: [managerId], references: [id], onDelete: Restrict)
+  id                String             @id @default(uuid()) @db.Uuid
+  employeeId        String             @map("employee_id") @db.Uuid
+  employee          Employee           @relation("LeaveRequester", fields: [employeeId], references: [id], onDelete: Cascade)
+  employmentId      String             @map("employment_id") @db.Uuid
+  employment        Employment         @relation(fields: [employmentId], references: [id], onDelete: Cascade)
+  typeId            String             @map("type_id") @db.Uuid
+  type              LeaveType          @relation(fields: [typeId], references: [id], onDelete: Restrict)
+  startDate         DateTime           @map("start_date") @db.Date
+  endDate           DateTime           @map("end_date") @db.Date
+  halfDay           Boolean            @default(false) @map("half_day")
+  days              Decimal            @db.Decimal(5, 1)
+  reason            String?
+  status            String // LEAVE_STATUSES: with_manager, with_hr, approved, rejected, cancelled
+  managerId         String?            @map("manager_id") @db.Uuid
+  manager           Employee?          @relation("LeaveManager", fields: [managerId], references: [id], onDelete: Restrict)
   // who the manager stage's decider is (owner, 19 October 2026: "the person in charge"): APPROVER_ROLES, direct_manager,
   // or for someone without one their team_lead, else their department_head; set exactly when managerId is
-  approverRole  String?            @map("approver_role")
-  rejectedStage String?            @map("rejected_stage") // LEAVE_STAGES: manager, hr
-  rejectReason  String?            @map("reject_reason")
-  recordedByHr  Boolean            @default(false) @map("recorded_by_hr")
-  createdById   String?            @map("created_by") @db.Uuid
-  createdBy     User?              @relation("LeaveRequestCreation", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt     DateTime           @updatedAt @map("updated_at") @db.Timestamptz
-  steps         LeaveRequestStep[]
-  documents     LeaveDocument[]
+  approverRole      String?            @map("approver_role")
+  rejectedStage     String?            @map("rejected_stage") // LEAVE_STAGES: manager, hr
+  rejectReason      String?            @map("reject_reason")
+  recordedByHr      Boolean            @default(false) @map("recorded_by_hr")
+  createdById       String?            @map("created_by") @db.Uuid
+  createdBy         User?              @relation("LeaveRequestCreation", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime           @updatedAt @map("updated_at") @db.Timestamptz
+  steps             LeaveRequestStep[]
+  documents         LeaveDocument[]
   // imported from a file (owner, 21 October 2026: "how to import bulk leaves?"): the import that made it, which Undo
   // removes it with; and a Zoho People row's ZOHO_LINK_ID, once only ("make sure there will be no duplicates from the
   // previous imported files": undoing deletes the leave, so the row can be imported again)
-  importId      String?            @map("import_id") @db.Uuid
-  leaveImport   LeaveImport?       @relation(fields: [importId], references: [id], onDelete: Restrict)
-  zohoLinkId    String?            @unique @map("zoho_link_id")
+  importId          String?            @map("import_id") @db.Uuid
+  leaveImport       LeaveImport?       @relation(fields: [importId], references: [id], onDelete: Restrict)
+  zohoLinkId        String?            @unique @map("zoho_link_id")
   // leave coverage (owner, 25 October 2026; packages/shared leave-coverage.ts). The colleague who covers the work, required
   // for annual (and unpaid) leave of more than 2 working days ("Required over 2 days"), never the employee, and the
   // employee's handover note to them (free text)
-  coverId           String?          @map("cover_id") @db.Uuid
-  cover             Employee?        @relation("LeaveCover", fields: [coverId], references: [id], onDelete: SetNull)
-  handoverNote      String?          @map("handover_note")
+  coverId           String?            @map("cover_id") @db.Uuid
+  cover             Employee?          @relation("LeaveCover", fields: [coverId], references: [id], onDelete: SetNull)
+  handoverNote      String?            @map("handover_note")
   // it broke the team's staffing limit on some day when sent ("Warn and need HR"): HR approves it too, marked so
-  overStaffingLimit Boolean          @default(false) @map("over_staffing_limit")
+  overStaffingLimit Boolean            @default(false) @map("over_staffing_limit")
   // an approver's leave ("To a stand-in"): who decides what waits at their step during its days once it is approved, a
   // person (never the employee) or HR (standInHr; never both); none for someone who approves for nobody. When the stand-in
   // was told it started (once)
-  standInId         String?          @map("stand_in_id") @db.Uuid
-  standIn           Employee?        @relation("LeaveStandIn", fields: [standInId], references: [id], onDelete: SetNull)
-  standInHr         Boolean          @default(false) @map("stand_in_hr")
-  standInToldAt     DateTime?        @map("stand_in_told_at") @db.Timestamptz
+  standInId         String?            @map("stand_in_id") @db.Uuid
+  standIn           Employee?          @relation("LeaveStandIn", fields: [standInId], references: [id], onDelete: SetNull)
+  standInHr         Boolean            @default(false) @map("stand_in_hr")
+  standInToldAt     DateTime?          @map("stand_in_told_at") @db.Timestamptz
 
   @@index([employeeId, startDate])
   @@index([status])
@@ -3625,18 +3631,18 @@ model LeaveRequest {
 // Each step of a request, in the order taken (LEAVE_STEP_KINDS): sent, sent straight to HR, recorded by HR, each
 // stage's decision (approve or reject, with the comment), cancelled (with HR's comment).
 model LeaveRequestStep {
-  id        BigInt       @id @default(autoincrement())
-  requestId String       @map("request_id") @db.Uuid
-  request   LeaveRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  kind      String
-  decision  String? // LEAVE_DECISIONS, on the stages' decisions only
-  comment   String?
-  actorId   String?      @map("actor_id") @db.Uuid
-  actor     User?        @relation("LeaveStepActor", fields: [actorId], references: [id], onDelete: SetNull)
+  id           BigInt       @id @default(autoincrement())
+  requestId    String       @map("request_id") @db.Uuid
+  request      LeaveRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  kind         String
+  decision     String? // LEAVE_DECISIONS, on the stages' decisions only
+  comment      String?
+  actorId      String?      @map("actor_id") @db.Uuid
+  actor        User?        @relation("LeaveStepActor", fields: [actorId], references: [id], onDelete: SetNull)
   // a decision by a stand-in (25 October 2026): the approver they stood in for
-  onBehalfOfId String?   @map("on_behalf_of") @db.Uuid
-  onBehalfOf   Employee? @relation("LeaveStepOnBehalf", fields: [onBehalfOfId], references: [id], onDelete: SetNull)
-  at        DateTime     @default(now()) @db.Timestamptz
+  onBehalfOfId String?      @map("on_behalf_of") @db.Uuid
+  onBehalfOf   Employee?    @relation("LeaveStepOnBehalf", fields: [onBehalfOfId], references: [id], onDelete: SetNull)
+  at           DateTime     @default(now()) @db.Timestamptz
 
   @@index([requestId])
   @@map("leave_request_steps")
@@ -3681,17 +3687,17 @@ model PermissionRequest {
 
 // Each step of a permission request, in the order taken (LEAVE_STEP_KINDS), as a leave request's.
 model PermissionRequestStep {
-  id        BigInt            @id @default(autoincrement())
-  requestId String            @map("request_id") @db.Uuid
-  request   PermissionRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  kind      String
-  decision  String? // LEAVE_DECISIONS, on the stages' decisions only
-  comment   String?
-  actorId   String?           @map("actor_id") @db.Uuid
-  actor     User?             @relation("PermissionStepActor", fields: [actorId], references: [id], onDelete: SetNull)
-  onBehalfOfId String?        @map("on_behalf_of") @db.Uuid // a decision by a stand-in: the approver they stood in for (25 October 2026)
-  onBehalfOf   Employee?      @relation("PermissionStepOnBehalf", fields: [onBehalfOfId], references: [id], onDelete: SetNull)
-  at        DateTime          @default(now()) @db.Timestamptz
+  id           BigInt            @id @default(autoincrement())
+  requestId    String            @map("request_id") @db.Uuid
+  request      PermissionRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  kind         String
+  decision     String? // LEAVE_DECISIONS, on the stages' decisions only
+  comment      String?
+  actorId      String?           @map("actor_id") @db.Uuid
+  actor        User?             @relation("PermissionStepActor", fields: [actorId], references: [id], onDelete: SetNull)
+  onBehalfOfId String?           @map("on_behalf_of") @db.Uuid // a decision by a stand-in: the approver they stood in for (25 October 2026)
+  onBehalfOf   Employee?         @relation("PermissionStepOnBehalf", fields: [onBehalfOfId], references: [id], onDelete: SetNull)
+  at           DateTime          @default(now()) @db.Timestamptz
 
   @@index([requestId])
   @@map("permission_request_steps")
@@ -3743,17 +3749,17 @@ model WfhRequest {
 
 // Each step of a work from home request, in the order taken (WFH_STEP_KINDS): leave's, and imported from Zoho People.
 model WfhRequestStep {
-  id        BigInt     @id @default(autoincrement())
-  requestId String     @map("request_id") @db.Uuid
-  request   WfhRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  kind      String
-  decision  String? // LEAVE_DECISIONS, on the stages' decisions only
-  comment   String?
-  actorId   String?    @map("actor_id") @db.Uuid
-  actor     User?      @relation("WfhStepActor", fields: [actorId], references: [id], onDelete: SetNull)
-  onBehalfOfId String?   @map("on_behalf_of") @db.Uuid // a decision by a stand-in: the approver they stood in for (25 October 2026)
-  onBehalfOf   Employee? @relation("WfhStepOnBehalf", fields: [onBehalfOfId], references: [id], onDelete: SetNull)
-  at        DateTime   @default(now()) @db.Timestamptz
+  id           BigInt     @id @default(autoincrement())
+  requestId    String     @map("request_id") @db.Uuid
+  request      WfhRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  kind         String
+  decision     String? // LEAVE_DECISIONS, on the stages' decisions only
+  comment      String?
+  actorId      String?    @map("actor_id") @db.Uuid
+  actor        User?      @relation("WfhStepActor", fields: [actorId], references: [id], onDelete: SetNull)
+  onBehalfOfId String?    @map("on_behalf_of") @db.Uuid // a decision by a stand-in: the approver they stood in for (25 October 2026)
+  onBehalfOf   Employee?  @relation("WfhStepOnBehalf", fields: [onBehalfOfId], references: [id], onDelete: SetNull)
+  at           DateTime   @default(now()) @db.Timestamptz
 
   @@index([requestId])
   @@map("wfh_request_steps")
@@ -3766,29 +3772,29 @@ model WfhRequestStep {
 // as cash instead, which adds "Compensation for working <day>" in days to the draft payroll of the month (adjustmentId)
 // and needs no day off. A cash one recorded by HR has no day off.
 model CompensatoryRequest {
-  id            String              @id @default(uuid()) @db.Uuid
-  employeeId    String              @map("employee_id") @db.Uuid
-  employee      Employee            @relation("CompensatoryRequester", fields: [employeeId], references: [id], onDelete: Cascade)
-  employmentId  String              @map("employment_id") @db.Uuid
-  employment    Employment          @relation(fields: [employmentId], references: [id], onDelete: Cascade)
-  dayWorked     DateTime            @map("day_worked") @db.Date
-  dayOff        DateTime?           @map("day_off") @db.Date
+  id            String             @id @default(uuid()) @db.Uuid
+  employeeId    String             @map("employee_id") @db.Uuid
+  employee      Employee           @relation("CompensatoryRequester", fields: [employeeId], references: [id], onDelete: Cascade)
+  employmentId  String             @map("employment_id") @db.Uuid
+  employment    Employment         @relation(fields: [employmentId], references: [id], onDelete: Cascade)
+  dayWorked     DateTime           @map("day_worked") @db.Date
+  dayOff        DateTime?          @map("day_off") @db.Date
   reason        String?
   status        String // LEAVE_STATUSES: with_manager, with_hr, approved, rejected, cancelled
   outcome       String? // COMPENSATORY_OUTCOMES: day_off, cash; set when approved (kept once cancelled)
-  managerId     String?             @map("manager_id") @db.Uuid
-  manager       Employee?           @relation("CompensatoryManager", fields: [managerId], references: [id], onDelete: Restrict)
-  approverRole  String?             @map("approver_role") // APPROVER_ROLES, set exactly when managerId is
-  rejectedStage String?             @map("rejected_stage") // LEAVE_STAGES: manager, hr
-  rejectReason  String?             @map("reject_reason")
-  recordedByHr  Boolean             @default(false) @map("recorded_by_hr")
-  warnings      String[]            @default([]) // what HR recorded it past (a past day off, no check-in kept), as said then
-  adjustmentId  String?             @unique @map("adjustment_id") @db.Uuid // cash instead: the addition on the month's payroll
-  adjustment    PayrollAdjustment?  @relation(fields: [adjustmentId], references: [id], onDelete: SetNull)
-  createdById   String?             @map("created_by") @db.Uuid
-  createdBy     User?               @relation("CompensatoryCreation", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt     DateTime            @updatedAt @map("updated_at") @db.Timestamptz
+  managerId     String?            @map("manager_id") @db.Uuid
+  manager       Employee?          @relation("CompensatoryManager", fields: [managerId], references: [id], onDelete: Restrict)
+  approverRole  String?            @map("approver_role") // APPROVER_ROLES, set exactly when managerId is
+  rejectedStage String?            @map("rejected_stage") // LEAVE_STAGES: manager, hr
+  rejectReason  String?            @map("reject_reason")
+  recordedByHr  Boolean            @default(false) @map("recorded_by_hr")
+  warnings      String[]           @default([]) // what HR recorded it past (a past day off, no check-in kept), as said then
+  adjustmentId  String?            @unique @map("adjustment_id") @db.Uuid // cash instead: the addition on the month's payroll
+  adjustment    PayrollAdjustment? @relation(fields: [adjustmentId], references: [id], onDelete: SetNull)
+  createdById   String?            @map("created_by") @db.Uuid
+  createdBy     User?              @relation("CompensatoryCreation", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime           @updatedAt @map("updated_at") @db.Timestamptz
   steps         CompensatoryStep[]
 
   @@index([employeeId, dayWorked])
@@ -3871,17 +3877,17 @@ model OdRequest {
 // Each step of an official duty request, in the order taken (OD_STEP_KINDS), as a leave request's: each decision with its comment;
 // recorded by HR, and imported (26 October 2026).
 model OdRequestStep {
-  id        BigInt    @id @default(autoincrement())
-  requestId String    @map("request_id") @db.Uuid
-  request   OdRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  kind      String
-  decision  String? // LEAVE_DECISIONS, on the stages' decisions only
-  comment   String?
-  actorId   String?   @map("actor_id") @db.Uuid
-  actor     User?     @relation("OdStepActor", fields: [actorId], references: [id], onDelete: SetNull)
-  onBehalfOfId String?  @map("on_behalf_of") @db.Uuid // a decision by a stand-in: the approver they stood in for (25 October 2026)
+  id           BigInt    @id @default(autoincrement())
+  requestId    String    @map("request_id") @db.Uuid
+  request      OdRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  kind         String
+  decision     String? // LEAVE_DECISIONS, on the stages' decisions only
+  comment      String?
+  actorId      String?   @map("actor_id") @db.Uuid
+  actor        User?     @relation("OdStepActor", fields: [actorId], references: [id], onDelete: SetNull)
+  onBehalfOfId String?   @map("on_behalf_of") @db.Uuid // a decision by a stand-in: the approver they stood in for (25 October 2026)
   onBehalfOf   Employee? @relation("OdStepOnBehalf", fields: [onBehalfOfId], references: [id], onDelete: SetNull)
-  at        DateTime  @default(now()) @db.Timestamptz
+  at           DateTime  @default(now()) @db.Timestamptz
 
   @@index([requestId])
   @@map("od_request_steps")
@@ -4055,36 +4061,36 @@ model AttendanceCorrectionStep {
 // anywhere) and the flags of a check-in that broke it. Several a day: the day's check-in is the first in, its check-out
 // the last out (AttendanceDay, source 'system'). Who pressed (the employee, or a Super Admin acting as them).
 model AttendancePunch {
-  id             String   @id @default(uuid()) @db.Uuid
-  employeeId     String   @map("employee_id") @db.Uuid
-  employee       Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  date           DateTime @db.Date
+  id             String     @id @default(uuid()) @db.Uuid
+  employeeId     String     @map("employee_id") @db.Uuid
+  employee       Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date           DateTime   @db.Date
   kind           String // PUNCH_KINDS: in, out
-  at             DateTime @default(now()) @db.Timestamptz
+  at             DateTime   @default(now()) @db.Timestamptz
   place          String // CHECK_IN_PLACES
-  accuracyMetres Int?     @map("accuracy_metres")
+  accuracyMetres Int?       @map("accuracy_metres")
   // where it was pressed (owner, 20 October 2026: "Yes, keep the spot"), read only then, never tracked: 6 decimals, both
   // or neither; none from before, nor without a reading. Seen by HR, the CEO, the Super Admin and the employee only
   // (packages/shared punch-location.ts); never in the audit log
-  latitude       Decimal? @db.Decimal(9, 6)
-  longitude      Decimal? @db.Decimal(9, 6)
+  latitude       Decimal?   @db.Decimal(9, 6)
+  longitude      Decimal?   @db.Decimal(9, 6)
   expected       String // office, anywhere
-  flags          String[] @default([])
+  flags          String[]   @default([])
   // the check-in location it was within (owner, 20 October 2026: "Own page, several locations"), by its name then, and the
   // office network it came from, by its name (check-ins locked to the office network, 20 October 2026); never the
   // address
-  locationName   String?  @map("location_name")
+  locationName   String?    @map("location_name")
   // within a client location or the person's remote site (24 October 2026: "Client · Acme", "Remote site · Flat"); null
   // otherwise (a sub-location, the main office, none)
-  locationKind   String?  @map("location_kind")
-  officeNetwork  String?  @map("office_network")
+  locationKind   String?    @map("location_kind")
+  officeNetwork  String?    @map("office_network")
   // pressed within an approved official duty (owner, 23 October 2026: "Check in from anywhere"): its request; the office's
   // location rule and network lock didn't apply to it
   odRequestId    String?    @map("od_request_id") @db.Uuid
   odRequest      OdRequest? @relation(fields: [odRequestId], references: [id], onDelete: SetNull)
-  source         String   @default("system") // system; device for a fingerprint or face device, later
-  userId         String?  @map("user_id") @db.Uuid
-  user           User?    @relation("AttendancePunchBy", fields: [userId], references: [id], onDelete: SetNull)
+  source         String     @default("system") // system; device for a fingerprint or face device, later
+  userId         String?    @map("user_id") @db.Uuid
+  user           User?      @relation("AttendancePunchBy", fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([employeeId, date])
   @@map("attendance_punches")
@@ -4205,17 +4211,17 @@ model LeaveBalanceYear {
 
 // HR's change to an employment's annual leave balance for a year: days more or fewer (whole or half), and why.
 model LeaveAdjustment {
-  id           String     @id @default(uuid()) @db.Uuid
-  employeeId   String     @map("employee_id") @db.Uuid
-  employee     Employee   @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  employmentId String     @map("employment_id") @db.Uuid
-  employment   Employment @relation(fields: [employmentId], references: [id], onDelete: Cascade)
+  id           String       @id @default(uuid()) @db.Uuid
+  employeeId   String       @map("employee_id") @db.Uuid
+  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  employmentId String       @map("employment_id") @db.Uuid
+  employment   Employment   @relation(fields: [employmentId], references: [id], onDelete: Cascade)
   year         Int
-  days         Decimal    @db.Decimal(5, 1)
+  days         Decimal      @db.Decimal(5, 1)
   reason       String
-  createdById  String?    @map("created_by") @db.Uuid
-  createdBy    User?      @relation("LeaveAdjustmentBy", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  createdById  String?      @map("created_by") @db.Uuid
+  createdBy    User?        @relation("LeaveAdjustmentBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz
   // an opening balance from a leave import (owner, 21 October 2026): the import, which Undo removes it with
   importId     String?      @map("import_id") @db.Uuid
   leaveImport  LeaveImport? @relation(fields: [importId], references: [id], onDelete: Restrict)
@@ -4702,34 +4708,34 @@ model AssetPhoto {
 // as a long-term assignment (back at clearance); its purpose, who recorded it and who handed it over, the notes, the
 // terms printed on its form (a snapshot), open, partly returned or closed. Its signed form is attached (CustodyFile).
 model CustodyRecord {
-  id             String        @id @default(uuid()) @db.Uuid
-  code           String        @unique // CUS-0042
-  kind           String // shoot, assignment
-  employeeId     String        @map("employee_id") @db.Uuid
-  employee       Employee      @relation("CustodyEmployee", fields: [employeeId], references: [id], onDelete: Restrict)
-  purpose        String?
-  dueDate        DateTime?     @map("due_date") @db.Date // a shoot's only
-  issuedById     String?       @map("issued_by") @db.Uuid // who recorded it
-  issuedBy       User?         @relation("CustodyIssuedBy", fields: [issuedById], references: [id], onDelete: SetNull)
-  handedOverById String?       @map("handed_over_by") @db.Uuid // the employee who handed it over
-  handedOverBy   Employee?     @relation("CustodyHandedOverBy", fields: [handedOverById], references: [id], onDelete: SetNull)
+  id               String        @id @default(uuid()) @db.Uuid
+  code             String        @unique // CUS-0042
+  kind             String // shoot, assignment
+  employeeId       String        @map("employee_id") @db.Uuid
+  employee         Employee      @relation("CustodyEmployee", fields: [employeeId], references: [id], onDelete: Restrict)
+  purpose          String?
+  dueDate          DateTime?     @map("due_date") @db.Date // a shoot's only
+  issuedById       String?       @map("issued_by") @db.Uuid // who recorded it
+  issuedBy         User?         @relation("CustodyIssuedBy", fields: [issuedById], references: [id], onDelete: SetNull)
+  handedOverById   String?       @map("handed_over_by") @db.Uuid // the employee who handed it over
+  handedOverBy     Employee?     @relation("CustodyHandedOverBy", fields: [handedOverById], references: [id], onDelete: SetNull)
   // who handed it over, as written on the form (step 3: the signed-in person unless changed)
-  handedOverByName String?     @map("handed_over_by_name")
-  outNotes       String?       @map("out_notes")
-  terms          String[] // the terms printed on its form, as they were
-  termsAr        String[]      @default([]) @map("terms_ar") // the Arabic terms beside them, as they were (24 October 2026); empty: none
-  status         String        @default("open") // open, partial, closed
-  outAt          DateTime      @default(now()) @map("out_at") @db.Timestamptz
-  closedAt       DateTime?     @map("closed_at") @db.Timestamptz
+  handedOverByName String?       @map("handed_over_by_name")
+  outNotes         String?       @map("out_notes")
+  terms            String[] // the terms printed on its form, as they were
+  termsAr          String[]      @default([]) @map("terms_ar") // the Arabic terms beside them, as they were (24 October 2026); empty: none
+  status           String        @default("open") // open, partial, closed
+  outAt            DateTime      @default(now()) @map("out_at") @db.Timestamptz
+  closedAt         DateTime?     @map("closed_at") @db.Timestamptz
   // the daily check (step 3): the last day the employee and the custodians were told it is overdue (once a day), and
   // when the custodians were told its signed copy is still not attached 3 days on (once)
-  overdueNoticeOn  DateTime?   @map("overdue_notice_on") @db.Date
-  unsignedNoticeAt DateTime?   @map("unsigned_notice_at") @db.Timestamptz
-  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz
-  items          CustodyItem[]
-  files          CustodyFile[]
-  assetsNow      Asset[]       @relation("AssetCustodyNow")
+  overdueNoticeOn  DateTime?     @map("overdue_notice_on") @db.Date
+  unsignedNoticeAt DateTime?     @map("unsigned_notice_at") @db.Timestamptz
+  createdAt        DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  items            CustodyItem[]
+  files            CustodyFile[]
+  assetsNow        Asset[]       @relation("AssetCustodyNow")
 
   @@index([employeeId, status])
   @@index([status])
@@ -4740,26 +4746,26 @@ model CustodyRecord {
 // only), its condition and accessories then; when it came back, in what state (good, damaged, missing), received by
 // whom, with notes. An asset is out on one record at a time.
 model CustodyItem {
-  id              String             @id @default(uuid()) @db.Uuid
-  custodyId       String             @map("custody_id") @db.Uuid
-  custody         CustodyRecord      @relation(fields: [custodyId], references: [id], onDelete: Restrict)
-  assetId         String             @map("asset_id") @db.Uuid
-  asset           Asset              @relation(fields: [assetId], references: [id], onDelete: Restrict)
-  valueAtOut      Decimal?           @map("value_at_out") @db.Decimal(14, 2)
-  conditionOut    String?            @map("condition_out")
-  accessories     String?
+  id                 String              @id @default(uuid()) @db.Uuid
+  custodyId          String              @map("custody_id") @db.Uuid
+  custody            CustodyRecord       @relation(fields: [custodyId], references: [id], onDelete: Restrict)
+  assetId            String              @map("asset_id") @db.Uuid
+  asset              Asset               @relation(fields: [assetId], references: [id], onDelete: Restrict)
+  valueAtOut         Decimal?            @map("value_at_out") @db.Decimal(14, 2)
+  conditionOut       String?             @map("condition_out")
+  accessories        String?
   // step 4 (owner, 22 October 2026: accessories): the checklist's lines that went out with it ([{ name, quantity,
   // serial }], a snapshot) and, once back, those that didn't come back (empty: all did)
   accessoriesOut     Json?               @map("accessories_out")
   accessoriesMissing Json?               @map("accessories_missing")
-  returnedAt      DateTime?          @map("returned_at") @db.Timestamptz
-  returnCondition String?            @map("return_condition") // good, damaged, missing
-  receivedById    String?            @map("received_by") @db.Uuid
-  receivedBy      User?              @relation("CustodyReceivedBy", fields: [receivedById], references: [id], onDelete: SetNull)
-  returnNotes     String?            @map("return_notes")
-  maintenance     AssetMaintenance[]
+  returnedAt         DateTime?           @map("returned_at") @db.Timestamptz
+  returnCondition    String?             @map("return_condition") // good, damaged, missing
+  receivedById       String?             @map("received_by") @db.Uuid
+  receivedBy         User?               @relation("CustodyReceivedBy", fields: [receivedById], references: [id], onDelete: SetNull)
+  returnNotes        String?             @map("return_notes")
+  maintenance        AssetMaintenance[]
   // the deductions HR made from it, damaged or missing (owner, 21 October 2026: "Record it; HR decides a deduction")
-  deductions      PayrollAdjustment[]
+  deductions         PayrollAdjustment[]
 
   @@unique([custodyId, assetId])
   @@index([assetId])
@@ -4870,23 +4876,23 @@ model AssetCountLine {
 // (AssetValuesInput, shown only to them). A custodian or manager confirms it in the system (its code given then, the
 // asset it became kept) or discards it; both kept, for the audit log.
 model AssetDraft {
-  id            String    @id @default(uuid()) @db.Uuid
-  status        String    @default("open") // ASSET_DRAFT_STATUSES: open, confirmed, discarded
-  source        String    @default("claude") // ASSET_DRAFT_SOURCES
+  id            String            @id @default(uuid()) @db.Uuid
+  status        String            @default("open") // ASSET_DRAFT_STATUSES: open, confirmed, discarded
+  source        String            @default("claude") // ASSET_DRAFT_SOURCES
   fields        Json
   values        Json?
-  createdById   String?   @map("created_by") @db.Uuid
-  createdBy     User?     @relation("AssetDraftCreation", fields: [createdById], references: [id], onDelete: SetNull)
-  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt     DateTime  @updatedAt @map("updated_at") @db.Timestamptz
-  confirmedAt   DateTime? @map("confirmed_at") @db.Timestamptz
-  confirmedById String?   @map("confirmed_by") @db.Uuid
-  confirmedBy   User?     @relation("AssetDraftConfirmation", fields: [confirmedById], references: [id], onDelete: SetNull)
-  assetId       String?   @map("asset_id") @db.Uuid
-  asset         Asset?    @relation(fields: [assetId], references: [id], onDelete: SetNull)
-  discardedAt   DateTime? @map("discarded_at") @db.Timestamptz
-  discardedById String?   @map("discarded_by") @db.Uuid
-  discardedBy   User?     @relation("AssetDraftDiscard", fields: [discardedById], references: [id], onDelete: SetNull)
+  createdById   String?           @map("created_by") @db.Uuid
+  createdBy     User?             @relation("AssetDraftCreation", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime          @updatedAt @map("updated_at") @db.Timestamptz
+  confirmedAt   DateTime?         @map("confirmed_at") @db.Timestamptz
+  confirmedById String?           @map("confirmed_by") @db.Uuid
+  confirmedBy   User?             @relation("AssetDraftConfirmation", fields: [confirmedById], references: [id], onDelete: SetNull)
+  assetId       String?           @map("asset_id") @db.Uuid
+  asset         Asset?            @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  discardedAt   DateTime?         @map("discarded_at") @db.Timestamptz
+  discardedById String?           @map("discarded_by") @db.Uuid
+  discardedBy   User?             @relation("AssetDraftDiscard", fields: [discardedById], references: [id], onDelete: SetNull)
   images        AssetDraftImage[] // the maker's product images Claude added, up to 3 (moved to the asset on confirm)
 
   @@index([status, createdAt(sort: Desc)])
@@ -5077,12 +5083,12 @@ model AccessGrace {
   contract     Contract?   @relation(fields: [contractId], references: [id], onDelete: Cascade)
   employmentId String?     @map("employment_id") @db.Uuid
   employment   Employment? @relation(fields: [employmentId], references: [id], onDelete: Cascade)
-  until       DateTime  @db.Date
-  grantedById String?   @map("granted_by") @db.Uuid
-  grantedBy   User?     @relation("AccessGraceGrantedBy", fields: [grantedById], references: [id], onDelete: SetNull)
-  grantedAt   DateTime  @default(now()) @map("granted_at") @db.Timestamptz
+  until        DateTime    @db.Date
+  grantedById  String?     @map("granted_by") @db.Uuid
+  grantedBy    User?       @relation("AccessGraceGrantedBy", fields: [grantedById], references: [id], onDelete: SetNull)
+  grantedAt    DateTime    @default(now()) @map("granted_at") @db.Timestamptz
   // "Your grace ends tomorrow" sent, once
-  remindedAt  DateTime? @map("reminded_at") @db.Timestamptz
+  remindedAt   DateTime?   @map("reminded_at") @db.Timestamptz
 
   @@unique([employeeId, contractId])
   @@unique([employeeId, employmentId])

@@ -3,6 +3,8 @@
 // and specific-job ones allowed too: CONTRACT_FORMS), the first three months are probation (once per employer, Art.
 // 90), resignation needs three months' notice (Art. 156), and an ending is approved by HR, then the CEO.
 
+import { isPerAccount } from './client-accounts.js';
+
 /**
  * A contract's length (Labour Law 14/2025 Art. 87: "يبرم عقد العمل الفردى لمدة غير محددة، أو لمدة محددة إذا كانت طبيعة
  * العمل تقتضى ذلك"; Art. 155: "إذا أبرم عقد العمل لإنجاز عمل معين، انتهى العقد بإنجاز هذا العمل"). On 15 October 2026 the
@@ -26,6 +28,19 @@ export const PAY_BASES = ['monthly', 'hourly'] as const;
 export type PayBasis = (typeof PAY_BASES)[number];
 export const PAY_BASIS_LABELS: Record<PayBasis, string> = { monthly: 'Monthly salary', hourly: 'By the hour' };
 export const PAY_BASIS_LABELS_AR: Record<PayBasis, string> = { monthly: 'راتب شهري', hourly: 'بالساعة' };
+
+/**
+ * A salary of 0 (owner, 27 October 2026: "why isn't accepting a zero salary? this case for example is paid per account
+ * only"): for someone paid per client account alone, a monthly salary of 0 with the per-account allowance, their pay the
+ * accounts they hold (client-accounts.ts). Any other salary is more than 0; an unpaid intern's 0 is its own rule
+ * (employment-types.ts INTERN_NO_WAGE_TEXT).
+ */
+export const ZERO_SALARY_MESSAGE = 'A salary of 0 is for someone paid per client account only: add a per-account allowance (e.g. Accounts allowance), or enter the salary.';
+
+/** Why a gross can't be 0 (null: it isn't 0, or the allowances include one paid per client account). */
+export function zeroSalaryProblem(grossSalary: number, allowances: readonly { basis?: string | null }[]): string | null {
+  return Math.round(grossSalary * 100) === 0 && !allowances.some((a) => isPerAccount(a)) ? ZERO_SALARY_MESSAGE : null;
+}
 
 /** Weeks in a month on average: 52 ÷ 12. */
 export const WEEKS_PER_MONTH = 52 / 12;

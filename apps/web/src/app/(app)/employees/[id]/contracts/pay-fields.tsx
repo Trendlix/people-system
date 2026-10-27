@@ -71,7 +71,8 @@ export type PayDefaults = {
   daysPerWeek: number | null;
   basicPercent: number;
   netSalary: number | null;
-  allowances: readonly { allowanceTypeId: string; amount: number }[];
+  /** A per-account one with its amount per account, if set (27 October 2026). */
+  allowances: readonly { allowanceTypeId: string; amount: number; perAccountAmount?: number | null }[];
 };
 
 /** The fields `usePay` keeps track of; the form tracks the others itself. */
@@ -109,13 +110,15 @@ export function usePay(state: FormState, defaults: PayDefaults, allowanceTypes: 
 
   const hourly = typed.payBasis === 'hourly';
   const terms = allowanceTerms(rows, allowanceTypes);
+  // paid per client account: a salary of 0 is allowed (owner, 27 October 2026: "this case for example is paid per account only")
+  const perAccount = rows.some((r) => allowanceTypes.some((t) => t.id === r.allowanceTypeId && isPerAccount(t)));
   // by the hour, the gross is the monthly estimate of the gross rate, typed or worked out from the net rate
   const basis = hourly ? 'gross' : basisFrom(typed.salaryBasis);
   const rateBasis = basisFrom(typed.rateBasis);
   const fromNetRate = rateBasis === 'net';
   const pay = hourlyPayFor(rateBasis, fromNetRate ? typed.netRate : typed.hourlyRate, typed.hoursPerWeek, rates, terms, typed.hourlyRate);
   const salary: SalaryResult = !hourly
-    ? salaryFor(basis, basis === 'net' ? typed.wantedNet : typed.grossSalary, rates, terms)
+    ? salaryFor(basis, basis === 'net' ? typed.wantedNet : typed.grossSalary, rates, terms, perAccount)
     : pay.kind === 'ok'
       ? { kind: 'ok', typed: pay.gross, breakdown: pay.breakdown }
       : pay;
@@ -148,7 +151,7 @@ export function usePay(state: FormState, defaults: PayDefaults, allowanceTypes: 
     return true;
   }
 
-  return { typed, rows, setRows, terms, hourly, basis, rateBasis, fromNetRate, pay, salary, calc, split, insured, savedNet, rates, defaults, track, allowanceTypes };
+  return { typed, rows, setRows, terms, hourly, basis, rateBasis, fromNetRate, pay, salary, calc, split, insured, savedNet, rates, defaults, track, allowanceTypes, perAccount };
 }
 
 export type Pay = ReturnType<typeof usePay>;
@@ -168,8 +171,11 @@ export function typedPayOf(pay: Pay): VersionPay | null {
     hoursPerWeek: rate?.hours ?? null,
     basicPercent,
     allowances: pay.rows.flatMap((r) => {
-      // one paid per client account (25 October 2026) has no amount: 0, as a version keeps it
-      if (r.allowanceTypeId && pay.allowanceTypes.some((t) => t.id === r.allowanceTypeId && isPerAccount(t))) return [{ allowanceTypeId: r.allowanceTypeId, amount: 0 }];
+      // one paid per client account (25 October 2026) has no amount: 0, as a version keeps it, and its amount per account
+      if (r.allowanceTypeId && pay.allowanceTypes.some((t) => t.id === r.allowanceTypeId && isPerAccount(t))) {
+        const each = parseAmount(r.amount);
+        return [{ allowanceTypeId: r.allowanceTypeId, amount: 0, perAccountAmount: each !== null && !Number.isNaN(each) && each > 0 ? each : null }];
+      }
       const amount = parseAmount(r.amount);
       return r.allowanceTypeId && amount !== null && !Number.isNaN(amount) && amount > 0 ? [{ allowanceTypeId: r.allowanceTypeId, amount }] : [];
     }),
@@ -460,6 +466,12 @@ export function PayFields({
               : salary.kind === 'invalid'
                 ? `Enter the ${what} as ${hourly ? 'numbers' : 'an amount in EGP'} to see the breakdown, e.g. ${hourly ? `${fromNetRate ? '120' : '150'} an hour for 20 hours` : '15,000'}.`
                 : `Enter the ${what} to see the breakdown.`}
+          </p>
+        )}
+        {pay.perAccount && calc?.gross === 0 && (
+          <p className="mt-2 rounded-lg bg-canvas px-3 py-2 text-sm">
+            Salary 0: paid per client account only. Payroll pays the accounts they hold each month, by the days held, and works out the tax and social
+            insurance on that pay.
           </p>
         )}
         {/* what is saved, and goes into the contract as {{net_salary}}: the net worked out */}

@@ -19,6 +19,7 @@ import {
   NO_PROBATION_MESSAGE,
   OFFER_VALID_DAYS,
   type OfferShownStatus,
+  zeroSalaryProblem,
 } from '@trendlix/shared';
 import { AllowancesService } from '../allowances/allowances.service.js';
 import { allowanceData, allowancesTotal, allowanceView, type AllowanceSnapshot } from '../allowances/rows.js';
@@ -230,7 +231,8 @@ export class OffersService {
       diff = salaryMasked(changes(was, values));
       if (recordedEarlier !== undefined && recordedEarlier !== before.recordedEarlier) diff.recordedEarlier = { from: before.recordedEarlier, to: recordedEarlier };
       const wereAllowances = before.allowances.map(allowanceView);
-      if (allowances && JSON.stringify(allowances.map((a) => [a.allowanceTypeId, a.amount])) !== JSON.stringify(wereAllowances.map((a) => [a.allowanceTypeId, a.amount]))) {
+      const rowsOf = (rows: readonly AllowanceSnapshot[]) => JSON.stringify(rows.map((a) => [a.allowanceTypeId, a.amount, a.perAccountAmount]));
+      if (allowances && rowsOf(allowances) !== rowsOf(wereAllowances)) {
         diff.allowances = { from: allowanceNames(wereAllowances), to: allowanceNames(allowances) };
       }
     } else if (before.status === 'sent') {
@@ -808,8 +810,9 @@ export class OffersService {
       }
       v.grossSalary = monthlyFromHourly(v.hourlyRate, v.hoursPerWeek);
     } else {
-      // (an offer that was an intern's has 0: a salary is entered for any other type)
-      if (v.grossSalary === undefined || v.grossSalary <= 0) throw new BadRequestException('Enter the gross salary.');
+      // (an offer that was an intern's has 0: a salary is entered for any other type; 0 only with a per-account
+      // allowance, checked with the allowances below: 27 October 2026)
+      if (v.grossSalary === undefined || v.grossSalary < 0) throw new BadRequestException('Enter the gross salary.');
       v.hourlyRate = null;
       v.hoursPerWeek = null;
     }
@@ -840,7 +843,12 @@ export class OffersService {
     if (creating || dto.allowances !== undefined) {
       allowances = await this.allowances.snapshot(dto.allowances ?? [], { allowInactive: before?.allowances.map((a) => a.allowanceTypeId) ?? [] });
     }
-    const total = allowancesTotal(allowances ?? before!.allowances.map(allowanceView));
+    const kept = allowances ?? before!.allowances.map(allowanceView);
+    // a salary of 0 only for someone paid per client account (owner, 27 October 2026); an intern's is 0 by itself
+    const zero = intern ? null : zeroSalaryProblem(v.grossSalary, kept);
+    // an intern's offer made another type keeps the intern's 0 until a salary is typed: asked for it plainly
+    if (zero) throw new BadRequestException(before && before.employmentType === 'intern' && dto.grossSalary === undefined ? 'Enter the gross salary.' : zero);
+    const total = allowancesTotal(kept);
     if (v.netSalary !== null && v.netSalary > Math.round((v.grossSalary + total) * 100) / 100) {
       throw new BadRequestException("The net salary can't be more than the gross salary and allowances together.");
     }

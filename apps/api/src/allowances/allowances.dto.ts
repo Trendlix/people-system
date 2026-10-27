@@ -67,8 +67,9 @@ export class UpdateAllowanceTypeDto {
 }
 
 /**
- * One allowance of a contract or an offer: its kind and its amount a month; none (left out, or null) for a kind paid per
- * client account (25 October 2026), which the service checks, as only it knows the kind.
+ * One allowance of a contract or an offer: its kind and its amount a month; for a kind paid per client account (25
+ * October 2026) the amount per account the record sets, or none (left out, or null) to pay each assignment's (27 October
+ * 2026), which the service tells apart, as only it knows the kind.
  */
 export class AllowanceAmountDto {
   @IsUUID('all', { message: 'Choose the allowance.' })

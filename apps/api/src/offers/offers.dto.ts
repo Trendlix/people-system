@@ -121,7 +121,7 @@ class OfferFieldsDto {
   payBasis?: PayBasis;
 
   /** A month: needed for a monthly salary; worked out for pay by the hour. */
-  @Sent() @IsNumber({ maxDecimalPlaces: 2 }, { message: GROSS_MESSAGE }) @Min(0.01, { message: 'Enter a gross salary of more than 0.' }) @Max(MAX_MONEY)
+  @Sent() @IsNumber({ maxDecimalPlaces: 2 }, { message: GROSS_MESSAGE }) @Min(0, { message: "The gross salary can't be negative." }) @Max(MAX_MONEY)
   grossSalary?: number;
 
   /** By the hour only. */

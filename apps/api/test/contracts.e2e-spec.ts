@@ -337,7 +337,10 @@ describe('Contracts (e2e)', () => {
 
       const more = await postContract(e, { grossSalary: 10000, netSalary: 10001 }).expect(400);
       expect(more.body.message).toBe("The net salary can't be more than the gross salary.");
-      await postContract(e, { grossSalary: 0 }).expect(400);
+      // 0 only for someone paid per client account (27 October 2026)
+      expect((await postContract(e, { grossSalary: 0 }).expect(400)).body.message).toBe(
+        'A salary of 0 is for someone paid per client account only: add a per-account allowance (e.g. Accounts allowance), or enter the salary.',
+      );
       await postContract(e, {}).expect(400);
       await postContract(e, { grossSalary: 1000.555 }).expect(400);
     });

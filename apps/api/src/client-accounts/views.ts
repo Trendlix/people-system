@@ -16,6 +16,17 @@ export const standingOf = (fromDate: string, toDate: string | null, today: strin
 
 export const ASSIGNMENT_INCLUDE = {
   employee: { select: { id: true, employeeCode: true, fullNameEn: true } },
+  // the signed contract's amount per account, when it sets one (owner, 27 October 2026): paid in place of the assignment's
+  employment: {
+    select: {
+      contracts: {
+        where: { status: 'active' },
+        orderBy: { version: 'desc' },
+        take: 1,
+        select: { allowances: { where: { basis: 'per_account' }, select: { perAccountAmount: true } } },
+      },
+    },
+  },
 } satisfies Prisma.ClientAccountAssignmentInclude;
 
 export const ACCOUNT_INCLUDE = {
@@ -36,6 +47,11 @@ export interface AssignmentView {
   toDate: string | null;
   /** EGP a month; null for anyone who doesn't see salaries. */
   amount: number | null;
+  /**
+   * The amount per account their signed contract sets (27 October 2026), which payroll pays in place of `amount`; null:
+   * none set (or not seen).
+   */
+  contractAmount: number | null;
   note: string | null;
   standing: AssignmentStanding;
 }
@@ -71,6 +87,7 @@ export function assignmentView(a: AssignmentRow, seesAmounts: boolean, today: st
     fromDate,
     toDate,
     amount: seesAmounts ? a.amount.toNumber() : null,
+    contractAmount: seesAmounts ? (a.employment.contracts[0]?.allowances[0]?.perAccountAmount?.toNumber() ?? null) : null,
     note: a.note,
     standing: standingOf(fromDate, toDate, today),
   };

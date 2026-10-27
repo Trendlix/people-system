@@ -15,6 +15,7 @@ import {
   type RaiseFigure,
   type RaiseReason,
   type RaiseWay,
+  zeroSalaryProblem,
 } from '@trendlix/shared';
 import { AllowancesService } from '../allowances/allowances.service.js';
 import { allowanceData, allowancesTotal, allowanceView, type AllowanceSnapshot } from '../allowances/rows.js';
@@ -538,6 +539,9 @@ export class RaisesService {
       terms = { ...t, kind: 'contract' as const };
     } else {
       const pay = this.contracts.pay({ ...input, allowances });
+      // a salary of 0 only for someone paid per client account (owner, 27 October 2026)
+      const zero = zeroSalaryProblem(pay.grossSalary, allowances);
+      if (zero) throw new BadRequestException(zero);
       const total = allowancesTotal(allowances);
       if (input.netSalary !== null && Math.round(input.netSalary * 100) > Math.round((pay.grossSalary + total) * 100)) {
         throw new BadRequestException(allowances.length ? "The net salary can't be more than the gross salary and the allowances together." : "The net salary can't be more than the gross salary.");

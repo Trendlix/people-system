@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { allowanceAmountText, allowanceRows, allowancesFrom, allowanceTerms, PER_ACCOUNT_MARK, sameAllowances, treatmentText } from './allowances';
+import { allowanceAmountText, allowanceRows, allowancesFrom, allowanceTerms, PER_ACCOUNT_MARK, perAccountValue, sameAllowances, treatmentText } from './allowances';
 import type { AllowanceType } from './types';
 
 const kind = (id: string, taxable: boolean, insured: boolean): AllowanceType => ({
@@ -156,5 +156,32 @@ describe('an allowance paid per client account (owner, 25 October 2026: "if an e
     expect(allowanceAmountText({ amount: 0, basis: 'per_account' }, money)).toBe('Per client account assigned');
     expect(allowanceAmountText({ amount: 500, basis: 'fixed' }, money)).toBe('EGP 500');
     expect(allowanceAmountText({ amount: 500 }, money)).toBe('EGP 500');
+  });
+});
+
+describe('the contract’s own amount per account (owner, 27 October 2026: "why cant i add rate per account?")', () => {
+  it('sends it with the kind, refuses one that isn’t an amount, and empty is none', () => {
+    expect(perAccountValue(' 3,000 ')).toBe('per_account:3,000');
+    expect(perAccountValue('')).toBe(PER_ACCOUNT_MARK);
+    const errors: string[] = [];
+    expect(allowancesFrom(form([['acc', perAccountValue('3,000')]]), errors)).toEqual([{ allowanceTypeId: 'acc', amount: 3000 }]);
+    expect(allowancesFrom(form([['acc', perAccountValue('')]]), errors)).toEqual([{ allowanceTypeId: 'acc' }]);
+    expect(errors).toEqual([]);
+    const wrong: string[] = [];
+    expect(allowancesFrom(form([['acc', perAccountValue('abc')]]), wrong)).toEqual([]);
+    expect(wrong).toEqual(['Enter the amount per client account in EGP, more than 0, e.g. 3,000, or leave it empty to pay each assignment’s amount.']);
+  });
+
+  it('refills it, as sent or as saved, and it matches the saved one', () => {
+    expect(allowanceRows({ values: { allowanceTypeId: ['acc'], allowanceAmount: ['per_account:3000'] } })).toEqual([{ allowanceTypeId: 'acc', amount: '3000' }]);
+    expect(allowanceRows({}, [{ allowanceTypeId: 'acc', amount: 0, perAccountAmount: 3000 }])).toEqual([{ allowanceTypeId: 'acc', amount: '3000' }]);
+    expect(sameAllowances([{ allowanceTypeId: 'acc', amount: '3000' }], [{ allowanceTypeId: 'acc', amount: 0, perAccountAmount: 3000 }])).toBe(true);
+    expect(sameAllowances([{ allowanceTypeId: 'acc', amount: '3500' }], [{ allowanceTypeId: 'acc', amount: 0, perAccountAmount: 3000 }])).toBe(false);
+  });
+
+  it('reads with its amount per account', () => {
+    const money = (n: number) => `EGP ${n}`;
+    expect(allowanceAmountText({ amount: 0, basis: 'per_account', perAccountAmount: 3000 }, money)).toBe('EGP 3000 per client account assigned');
+    expect(allowanceAmountText({ amount: 0, basis: 'per_account', perAccountAmount: null }, money)).toBe('Per client account assigned');
   });
 });

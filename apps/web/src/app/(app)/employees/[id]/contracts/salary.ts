@@ -134,11 +134,14 @@ export type SalaryResult =
 /**
  * The breakdown for an amount as typed (see `parseAmount`): a gross's net, or for a net the lowest whole-pound gross
  * whose net reaches it, with the allowances on top (their net included), with the year's rates set by law (`rates`, or
- * a year for the built-in ones). Left empty → empty; not an amount, or 0 → invalid.
+ * a year for the built-in ones). Left empty → empty; not an amount, or 0 → invalid, unless `zeroAllowed` (a per-account
+ * allowance on the contract: 27 October 2026), when 0 is a gross of 0.
  */
-export function salaryFor(basis: SalaryBasis, input: string, rates: LawRatesOrYear, allowances: readonly AllowanceTerms[] = []): SalaryResult {
+export function salaryFor(basis: SalaryBasis, input: string, rates: LawRatesOrYear, allowances: readonly AllowanceTerms[] = [], zeroAllowed = false): SalaryResult {
   const n = parseAmount(input);
   if (n === null) return { kind: 'empty' };
+  // a salary of 0 for someone paid per client account only (owner, 27 October 2026): the gross and the net are 0
+  if (n === 0 && zeroAllowed) return { kind: 'ok', typed: 0, breakdown: grossToNet(0, rates, allowances) };
   if (Number.isNaN(n) || n <= 0) return { kind: 'invalid' };
   if (basis === 'gross') return { kind: 'ok', typed: n, breakdown: grossToNet(n, rates, allowances) };
   // asked first: just above 0 the insured wage jumps to the year's minimum, so a tiny gross could seem to reach it

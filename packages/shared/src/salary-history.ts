@@ -21,8 +21,11 @@ export interface PayVersion {
   payBasis: string;
   grossSalary: number;
   hourlyRate: number | null;
-  /** One paid per client account (25 October 2026) has basis per_account and no amount (0). */
-  allowances: readonly { nameEn: string; amount: number; basis?: string }[];
+  /**
+   * One paid per client account (25 October 2026) has basis per_account and no amount (0); its amount per account when
+   * the contract sets one (27 October 2026).
+   */
+  allowances: readonly { nameEn: string; amount: number; basis?: string; perAccountAmount?: number | null }[];
   raiseReason: string | null;
   /** The promotion that comes with it, if any. */
   newJobTitle: string | null;
@@ -56,7 +59,7 @@ export interface PayEvent {
   /** The version before it's pay; null for the hire. */
   from: PayAmounts | null;
   to: PayAmounts;
-  allowances: { nameEn: string; amount: number; basis?: string }[];
+  allowances: { nameEn: string; amount: number; basis?: string; perAccountAmount?: number }[];
   /** The gross's change from the version before (null for the hire). */
   difference: { amount: number; percent: number | null } | null;
   /** The same pay as the version before (a renewal as it was); false for the hire. */
@@ -79,7 +82,8 @@ function amountsOf(v: PayVersion): PayAmounts {
 }
 
 const sameAllowances = (a: PayVersion, b: PayVersion) =>
-  JSON.stringify(a.allowances.map((x) => [x.nameEn, money(x.amount)]).sort()) === JSON.stringify(b.allowances.map((x) => [x.nameEn, money(x.amount)]).sort());
+  JSON.stringify(a.allowances.map((x) => [x.nameEn, money(x.amount), money(x.perAccountAmount ?? 0)]).sort()) ===
+  JSON.stringify(b.allowances.map((x) => [x.nameEn, money(x.amount), money(x.perAccountAmount ?? 0)]).sort());
 
 /** Signed, or signed and since replaced or ended: what was paid. */
 export const isSignedStage = (stage: PayStage) => stage === 'signed' || stage === 'replaced' || stage === 'ended';
@@ -104,7 +108,12 @@ export function payEvents(versions: readonly PayVersion[]): PayEvent[] {
       hourlyRate: v.hourlyRate,
       from,
       to,
-      allowances: v.allowances.map((a) => ({ nameEn: a.nameEn, amount: money(a.amount), ...(a.basis === 'per_account' && { basis: a.basis }) })),
+      allowances: v.allowances.map((a) => ({
+        nameEn: a.nameEn,
+        amount: money(a.amount),
+        ...(a.basis === 'per_account' && { basis: a.basis }),
+        ...(a.basis === 'per_account' && a.perAccountAmount && { perAccountAmount: money(a.perAccountAmount) }),
+      })),
       difference: from ? payDifference(from.gross, to.gross) : null,
       samePay: same,
       raise: v.approval !== null,

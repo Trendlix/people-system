@@ -110,8 +110,11 @@ export interface RosterContract {
   grossSalary: number;
   basicPercent: number;
   hourlyRate: number | null;
-  /** Each with its kind's basis as drafted (25 October 2026): a per-account one (amount 0) pays the client accounts. */
-  allowances: { nameEn: string; amount: number; taxable: boolean; insured: boolean; basis?: string }[];
+  /**
+   * Each with its kind's basis as drafted (25 October 2026): a per-account one (amount 0) pays the client accounts, at
+   * its amount per account when the contract sets one (27 October 2026).
+   */
+  allowances: { nameEn: string; amount: number; taxable: boolean; insured: boolean; basis?: string; perAccountAmount?: number | null }[];
   /** Its number within the employment, and, for a raise, from when the insured wage follows its pay (raises.ts). */
   version: number;
   insuredWageFrom?: string | null;
@@ -293,10 +296,12 @@ export function roster(
     const allowancesOf = (c: RosterContract): PayrollAllowance[] =>
       c.allowances.filter((a) => a.basis !== 'per_account').map((a) => ({ name: a.nameEn, amount: a.amount, taxable: a.taxable, insured: a.insured }));
     const perAccountOf = (c: RosterContract) => c.allowances.find((a) => a.basis === 'per_account') ?? null;
-    // the accounts allowance (25 October 2026): the accounts held on the days under a contract with it, by days held
+    // the accounts allowance (25 October 2026): the accounts held on the days under a contract with it, by days held, at
+    // the contract's amount per account on its days when it sets one, else each assignment's (27 October 2026)
     const eligible = parts.filter((part) => perAccountOf(part.contract));
     const held = e.accounts ?? [];
-    const accountsShare = held.length && eligible.length ? accountsAllowance(month, held, eligible) : null;
+    const spans = eligible.map((part) => ({ from: part.from, to: part.to, rate: perAccountOf(part.contract)!.perAccountAmount ?? null }));
+    const accountsShare = held.length && eligible.length ? accountsAllowance(month, held, spans) : null;
     const kind = eligible.length ? (perAccountOf(contract) ?? perAccountOf(eligible[eligible.length - 1].contract)!) : null;
     const accounts: PayrollAllowance | null =
       kind && accountsShare?.accounts.length

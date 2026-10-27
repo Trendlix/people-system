@@ -1,6 +1,7 @@
 import {
   accountsAllowance,
   accountsAllowanceLabel,
+  accountsAllowanceLine,
   accountsAllowanceLabelAr,
   accountShareText,
   calendarDaysInMonth,
@@ -11,6 +12,9 @@ import {
   lockedMonthRefusal,
   OVERLAP_REFUSAL,
   periodsOverlap,
+  perAccountText,
+  ZERO_SALARY_MESSAGE,
+  zeroSalaryProblem,
 } from '@trendlix/shared';
 
 // Client accounts and the accounts allowance (owner, 25 October 2026: "if an employee has an allowance per account, how
@@ -140,5 +144,56 @@ describe('in words', () => {
     expect(accountShareText({ name: 'Acme Foods', days: 31, monthDays: 31 }, '1,500.00')).toBe('Acme Foods 1,500.00');
     expect(accountShareText({ name: 'Beta Labs', days: 8, monthDays: 31 }, '232.26')).toBe('Beta Labs 232.26 (8 of 31 days)');
     expect([isPerAccount({ basis: 'per_account' }), isPerAccount({ basis: 'fixed' }), isPerAccount({})]).toEqual([true, false, false]);
+  });
+});
+
+// The contract's own amount per account (owner, 27 October 2026, of someone "paid per account only" at 3,000 an account:
+// "why cant i add rate per account?"; he chose "On the contract"), and a salary of 0 with it.
+describe('the contract’s amount per account', () => {
+  const month = { from: '2026-10-01', to: '2026-10-31' };
+
+  it('stands for each assignment’s amount on the days under that contract', () => {
+    const r = accountsAllowance('2026-10', [acme(), beta()], [{ ...month, rate: 3000 }]);
+    expect(r.amount).toBe(6000);
+    expect(r.accounts.map((a) => [a.name, a.monthly, a.amount])).toEqual([
+      ['Acme Foods', 3000, 3000],
+      ['Beta Labs', 3000, 3000],
+    ]);
+  });
+
+  it('none set: each assignment’s amount, as before', () => {
+    expect(accountsAllowance('2026-10', [acme()], [{ ...month, rate: null }]).amount).toBe(1500);
+    expect(accountsAllowance('2026-10', [acme()], [month]).amount).toBe(1500);
+  });
+
+  it('a raise mid-month: each part at its own amount, by the days held in it', () => {
+    // 14 days at the assignment's 1,500, then 17 at the contract's 3,000: 677.42 + 1,645.16
+    const r = accountsAllowance('2026-10', [acme()], [
+      { from: '2026-10-01', to: '2026-10-14', rate: null },
+      { from: '2026-10-15', to: '2026-10-31', rate: 3000 },
+    ]);
+    expect(r.accounts[0]).toMatchObject({ days: 31, monthly: 3000, amount: 2322.58 });
+  });
+
+  it('a part held: by the days held, at the contract’s amount', () => {
+    // 8 of 31 days of 3,000
+    expect(accountsAllowance('2026-10', [beta({ from: '2026-10-24' })], [{ ...month, rate: 3000 }]).amount).toBe(774.19);
+  });
+
+  it('in words: the contract and its line', () => {
+    const money = (n: number) => `EGP ${n.toFixed(2)}`;
+    expect(perAccountText(3000, money)).toBe('EGP 3000.00 per client account assigned');
+    expect(perAccountText(null, money)).toBe('Per client account assigned');
+    expect(perAccountText(3000, money, 'ar')).toBe('EGP 3000.00 عن كل حساب عميل يُسند إليه');
+    expect(accountsAllowanceLine(3000, money)).toBe('An accounts allowance of EGP 3000.00 for each client account assigned');
+    expect(accountsAllowanceLine(undefined, money)).toBe('An accounts allowance for each client account assigned, at the amount set for that account');
+  });
+
+  it('a salary of 0 only with a per-account allowance', () => {
+    expect(zeroSalaryProblem(0, [{ basis: 'per_account' }])).toBeNull();
+    expect(zeroSalaryProblem(0, [{ basis: 'fixed' }])).toBe(ZERO_SALARY_MESSAGE);
+    expect(zeroSalaryProblem(0, [])).toBe(ZERO_SALARY_MESSAGE);
+    expect(zeroSalaryProblem(0.001, [])).toBe(ZERO_SALARY_MESSAGE);
+    expect(zeroSalaryProblem(5000, [])).toBeNull();
   });
 });

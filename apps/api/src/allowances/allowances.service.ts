@@ -12,6 +12,7 @@ const ENTITY = 'allowance_type';
 /** decimal(12, 2) holds up to 9,999,999,999.99 */
 const MAX_MONEY = 9_999_999_999.99;
 const AMOUNT_MESSAGE = 'Enter each allowance as an amount of more than 0, e.g. 500 or 750.50.';
+const PER_ACCOUNT_AMOUNT_MESSAGE = 'Enter the amount per client account as more than 0, e.g. 3000, or leave it empty to pay each assignment’s amount.';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** The kinds in the order the lists show them. */
@@ -99,8 +100,10 @@ export class AllowancesService {
    * A contract's or an offer's allowances with each kind's name and treatment as they are now, to store with the
    * record: in the kinds' order. Refuses a kind that doesn't exist, the same kind twice, an amount that isn't more than
    * 0, and an inactive kind unless the record already has it (`allowInactive`: the kind ids on the record, or on the
-   * version it renews). A kind paid per client account (25 October 2026) takes no amount (stored as 0: the person is
-   * eligible, and payroll pays their accounts), and a record has one such kind at most.
+   * version it renews). A kind paid per client account (25 October 2026) has no amount a month (stored as 0: the person
+   * is eligible, and payroll pays their accounts); an amount sent with it is the amount per account the record sets
+   * (owner, 27 October 2026: "why cant i add rate per account?"), more than 0, kept apart (perAccountAmount); and a record
+   * has one such kind at most.
    */
   async snapshot(rows: readonly AllowanceInput[], options: { allowInactive?: readonly string[] } = {}): Promise<AllowanceSnapshot[]> {
     if (!rows.length) return [];
@@ -112,10 +115,15 @@ export class AllowancesService {
     for (const r of rows) {
       const kind = byId.get(r.allowanceTypeId);
       if (!kind) throw new BadRequestException('One of the allowances is no longer on the list. Reload the page and choose it again.');
-      // per client account: no amount to check, nothing but eligibility
-      if (isPerAccount(kind)) continue;
       // the DTO checks these first; here for callers that don't use it (to the piaster: 0.29 × 100 isn't exactly 29)
       const amount = r.amount;
+      // per client account: eligibility, and the amount per account if one is set
+      if (isPerAccount(kind)) {
+        if (amount != null && (typeof amount !== 'number' || !(amount > 0) || amount > MAX_MONEY || Math.abs(Math.round(amount * 100) - amount * 100) > 1e-6)) {
+          throw new BadRequestException(PER_ACCOUNT_AMOUNT_MESSAGE);
+        }
+        continue;
+      }
       if (typeof amount !== 'number' || !(amount > 0) || amount > MAX_MONEY || Math.abs(Math.round(amount * 100) - amount * 100) > 1e-6) {
         throw new BadRequestException(AMOUNT_MESSAGE);
       }
@@ -138,6 +146,7 @@ export class AllowancesService {
       insured: k.insured,
       basis: k.basis as AllowanceBasis,
       amount: isPerAccount(k) ? 0 : amounts.get(k.id)!,
+      perAccountAmount: isPerAccount(k) ? (amounts.get(k.id) ?? null) : null,
     }));
   }
 

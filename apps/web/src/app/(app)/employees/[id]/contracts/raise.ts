@@ -164,7 +164,7 @@ export function versionPay(c: Pick<Contract, 'payBasis' | 'grossSalary' | 'hourl
     hourlyRate: c.hourlyRate ?? null,
     hoursPerWeek: c.hoursPerWeek ?? null,
     basicPercent: c.basicPercent ?? 80,
-    allowances: (c.allowances ?? []).map((a) => ({ allowanceTypeId: a.allowanceTypeId, amount: a.amount })),
+    allowances: (c.allowances ?? []).map((a) => ({ allowanceTypeId: a.allowanceTypeId, amount: a.amount, perAccountAmount: a.perAccountAmount ?? null })),
   };
 }
 

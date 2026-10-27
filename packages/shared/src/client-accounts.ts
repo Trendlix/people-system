@@ -11,6 +11,12 @@
 // person is eligible for it, "Per client account assigned", and payroll pays the month's sum of their assignments as that
 // allowance, with its taxed and insured flags. Pure code: the API keeps the accounts and pays them (apps/api
 // client-accounts, payroll roster.ts), the web shows them.
+// A contract may set the person's own amount per account (owner, 27 October 2026, of someone "paid per account only" at
+// 3,000 EGP an account: "why cant i add rate per account?"; he chose "On the contract"): its per-account row's
+// `perAccountAmount`, paid for every account they hold on the days under that contract, whatever each assignment's
+// amount (still each assignment's when the contract leaves it empty); a raise or a renewal changes it as any pay term.
+// Such a contract may have a salary of 0 ("why isn't accepting a zero salary? this case for example is paid per account
+// only": contracts.ts zeroSalaryProblem).
 
 /** An account's status: one ended takes no new assignments; its assignments ended with it. */
 export const CLIENT_ACCOUNT_STATUSES = ['active', 'ended'] as const;
@@ -29,6 +35,15 @@ export const ALLOWANCE_BASIS_LABELS: Record<AllowanceBasis, string> = {
 export const PER_ACCOUNT_TEXT = 'Per client account assigned';
 export const PER_ACCOUNT_TEXT_AR = 'عن كل حساب عميل يُسند إليه';
 
+/**
+ * A per-account allowance's amount as a contract or an offer shows it: "3,000.00 per client account assigned" with the
+ * contract's amount per account (27 October 2026), else "Per client account assigned". `money` writes an amount.
+ */
+export function perAccountText(perAccountAmount: number | null | undefined, money: (n: number) => string, lang: 'en' | 'ar' = 'en'): string {
+  if (!(typeof perAccountAmount === 'number' && perAccountAmount > 0)) return lang === 'ar' ? PER_ACCOUNT_TEXT_AR : PER_ACCOUNT_TEXT;
+  return lang === 'ar' ? `${money(perAccountAmount)} عن كل حساب عميل يُسند إليه` : `${money(perAccountAmount)} per client account assigned`;
+}
+
 /** Whether an allowance (a kind, or a contract's or an offer's row) is paid per client account; missing: fixed. */
 export const isPerAccount = (a: { basis?: string | null }): boolean => a.basis === 'per_account';
 
@@ -38,6 +53,14 @@ export const ACCOUNTS_ALLOWANCE = { nameEn: 'Accounts allowance', nameAr: 'بد�
 /** The contract and offer templates' line for a per-account allowance (the accounts_allowance tags). */
 export const ACCOUNTS_ALLOWANCE_LINE_EN = 'An accounts allowance for each client account assigned, at the amount set for that account';
 export const ACCOUNTS_ALLOWANCE_LINE_AR = 'بدل حسابات عن كل حساب عميل يُسند إليه، بالقيمة المحددة لهذا الحساب';
+
+/** The same line with the contract's amount per account (27 October 2026); the line above without one. */
+export function accountsAllowanceLine(perAccountAmount: number | null | undefined, money: (n: number) => string, lang: 'en' | 'ar' = 'en'): string {
+  if (!(typeof perAccountAmount === 'number' && perAccountAmount > 0)) return lang === 'ar' ? ACCOUNTS_ALLOWANCE_LINE_AR : ACCOUNTS_ALLOWANCE_LINE_EN;
+  return lang === 'ar'
+    ? `بدل حسابات قدره ${money(perAccountAmount)} عن كل حساب عميل يُسند إليه`
+    : `An accounts allowance of ${money(perAccountAmount)} for each client account assigned`;
+}
 
 /** The most a contract or an offer has of per-account kinds: one, so the month's accounts are paid once. */
 export const ONE_PER_ACCOUNT_ALLOWANCE = 'Add one per-account allowance at most: the client accounts are paid once, as that allowance.';
@@ -126,19 +149,41 @@ export interface PayrollAccountShare {
 /** An amount to the piaster. */
 const piasters = (n: number) => Math.round(n * 100) / 100;
 
+/** A part of the month under a contract with the per-account allowance, and its amount per account (null: none set). */
+export interface PerAccountSpan {
+  from: string;
+  to: string;
+  /** The contract's amount per account (27 October 2026), paid in place of each assignment's on these days. */
+  rate?: number | null;
+}
+
 /**
  * A month's ('YYYY-MM') accounts allowance (owner, 25 October 2026: "By days"): for each assignment held in it, its
  * amount a month × its calendar days held ÷ the month's calendar days, to the piaster; and their sum. Only the days within
- * `within` count when given (the parts of the month under a contract with the per-account allowance). Assignments not
- * held in the month are left out; the others in the order of their accounts' names, then their first day.
+ * `within` count when given (the parts of the month under a contract with the per-account allowance); on a part whose
+ * contract sets an amount per account (27 October 2026), that amount stands for the assignment's. Assignments not held in
+ * the month are left out; the others in the order of their accounts' names, then their first day. A share's `monthly` is
+ * the amount of its last days held.
  */
-export function accountsAllowance(month: string, held: readonly HeldAccount[], within?: readonly { from: string; to: string }[]): { amount: number; accounts: PayrollAccountShare[] } {
+export function accountsAllowance(month: string, held: readonly HeldAccount[], within?: readonly PerAccountSpan[]): { amount: number; accounts: PayrollAccountShare[] } {
   const monthDays = calendarDaysInMonth(month);
   const accounts: PayrollAccountShare[] = [];
+  const rateOf = (span: PerAccountSpan | undefined, h: HeldAccount) => (span && typeof span.rate === 'number' && span.rate > 0 ? span.rate : h.amount);
   for (const h of held) {
     const d = daysHeldIn(month, h, within);
-    if (d.days <= 0 || !(h.amount > 0)) continue;
-    accounts.push({ accountId: h.accountId, name: h.name, from: d.from!, to: d.to!, days: d.days, monthDays, monthly: h.amount, amount: piasters((h.amount * d.days) / monthDays) });
+    if (d.days <= 0) continue;
+    // each part of the month at its own amount: the contract's per account, else the assignment's
+    let raw = 0;
+    let monthly = 0;
+    for (const span of within ?? [undefined]) {
+      const days = span ? daysHeldIn(month, h, [span]).days : d.days;
+      if (days <= 0) continue;
+      const rate = rateOf(span, h);
+      raw += (rate * days) / monthDays;
+      monthly = rate;
+    }
+    if (!(monthly > 0)) continue;
+    accounts.push({ accountId: h.accountId, name: h.name, from: d.from!, to: d.to!, days: d.days, monthDays, monthly, amount: piasters(raw) });
   }
   accounts.sort((a, b) => a.name.localeCompare(b.name) || a.from.localeCompare(b.from));
   return { amount: piasters(accounts.reduce((sum, a) => sum + Math.round(a.amount * 100), 0) / 100), accounts };

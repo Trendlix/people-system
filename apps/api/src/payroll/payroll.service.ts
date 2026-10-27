@@ -141,8 +141,9 @@ export const rosterSelect = (from: Date, to: Date) =>
         grossSalary: true,
         basicPercent: true,
         hourlyRate: true,
-        // with each one's basis (25 October 2026): a per-account one pays the client accounts
-        allowances: { orderBy: ALLOWANCE_ORDER, select: { nameEn: true, amount: true, taxable: true, insured: true, basis: true } },
+        // with each one's basis (25 October 2026): a per-account one pays the client accounts, at its amount per account
+        // when the contract sets one (27 October 2026)
+        allowances: { orderBy: ALLOWANCE_ORDER, select: { nameEn: true, amount: true, taxable: true, insured: true, basis: true, perAccountAmount: true } },
       },
     },
   }) satisfies Prisma.EmploymentSelect;
@@ -179,7 +180,7 @@ export function rosterEmployment(e: EmploymentRow): RosterEmployment {
       grossSalary: c.grossSalary.toNumber(),
       basicPercent: c.basicPercent,
       hourlyRate: c.hourlyRate?.toNumber() ?? null,
-      allowances: c.allowances.map((a) => ({ ...a, amount: a.amount.toNumber() })),
+      allowances: c.allowances.map((a) => ({ ...a, amount: a.amount.toNumber(), perAccountAmount: a.perAccountAmount?.toNumber() ?? null })),
     })),
     leaves: e.leaveRequests.map((l) => ({
       startDate: fromDateOnly(l.startDate),

@@ -3,9 +3,14 @@ import type { Prisma } from '../generated/prisma/client.js';
 
 // A contract's or an offer's allowances as the API sends them and as the salary is worked out from them: each with the
 // name and treatment its kind had when the record was drafted or last changed (the snapshot), and an amount a month;
-// one paid per client account (25 October 2026) with no amount (0): eligibility only, payroll paying the accounts.
+// one paid per client account (25 October 2026) with no amount (0): eligibility only, payroll paying the accounts; and,
+// when the contract or the offer sets one, its amount per account (owner, 27 October 2026: "why cant i add rate per
+// account?"), paid for every account held in place of each assignment's.
 
-/** An allowance as sent: its kind and its amount a month (none for a kind paid per client account). */
+/**
+ * An allowance as sent: its kind and its amount a month; for a kind paid per client account, the amount per account the
+ * contract or the offer sets (none: each assignment's amount).
+ */
 export interface AllowanceInput {
   allowanceTypeId: string;
   amount?: number | null;
@@ -21,6 +26,8 @@ export interface AllowanceSnapshot {
   /** Fixed, or per client account (its amount 0). */
   basis: AllowanceBasis;
   amount: number;
+  /** Per client account: the amount per account set (27 October 2026); null: each assignment's. Null for a fixed one. */
+  perAccountAmount: number | null;
 }
 
 /** A stored allowance row (contract_allowances, offer_allowances). */
@@ -32,6 +39,7 @@ export interface AllowanceRow {
   insured: boolean;
   basis: string;
   amount: Prisma.Decimal;
+  perAccountAmount: Prisma.Decimal | null;
 }
 
 /** How a record's allowances are read: in the kinds' order, then by name. */
@@ -39,7 +47,16 @@ export const ALLOWANCE_ORDER = [{ allowanceType: { sortOrder: 'asc' } }, { nameE
 
 /** A stored row as the API sends it, the amount as a number. */
 export function allowanceView(a: AllowanceRow): AllowanceSnapshot {
-  return { allowanceTypeId: a.allowanceTypeId, nameEn: a.nameEn, nameAr: a.nameAr, taxable: a.taxable, insured: a.insured, basis: a.basis as AllowanceBasis, amount: a.amount.toNumber() };
+  return {
+    allowanceTypeId: a.allowanceTypeId,
+    nameEn: a.nameEn,
+    nameAr: a.nameAr,
+    taxable: a.taxable,
+    insured: a.insured,
+    basis: a.basis as AllowanceBasis,
+    amount: a.amount.toNumber(),
+    perAccountAmount: a.perAccountAmount?.toNumber() ?? null,
+  };
 }
 
 /** The total a month of some allowances, to the piaster. */
@@ -49,5 +66,5 @@ export function allowancesTotal(rows: readonly { amount: number }[]): number {
 
 /** What Prisma writes for a record's allowances. */
 export function allowanceData(rows: readonly AllowanceSnapshot[]) {
-  return rows.map(({ allowanceTypeId, nameEn, nameAr, taxable, insured, basis, amount }) => ({ allowanceTypeId, nameEn, nameAr, taxable, insured, basis, amount }));
+  return rows.map(({ allowanceTypeId, nameEn, nameAr, taxable, insured, basis, amount, perAccountAmount }) => ({ allowanceTypeId, nameEn, nameAr, taxable, insured, basis, amount, perAccountAmount }));
 }

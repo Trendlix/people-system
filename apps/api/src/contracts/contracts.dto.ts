@@ -130,7 +130,7 @@ export class PayTermsDto {
    */
   @Sent()
   @IsNumber({ maxDecimalPlaces: 2 }, { message: 'Enter the gross salary as an amount, e.g. 12000 or 12000.50.' })
-  @Min(0.01, { message: 'Enter a gross salary of more than 0.' })
+  @Min(0, { message: "The gross salary can't be negative." })
   @Max(MAX_MONEY)
   grossSalary?: number;
 

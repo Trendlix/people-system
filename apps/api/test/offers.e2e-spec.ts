@@ -333,7 +333,8 @@ describe('Job offers (e2e)', () => {
     it('allowances are kept as their kinds are now, and count in the total and the insured wage', async () => {
       const o = await draft('Ali Allowance', { grossSalary: 10000, allowances: [{ allowanceTypeId: housingId, amount: 2000 }] });
       // paid a fixed amount a month (an allowance per client account has none: 25 October 2026)
-      expect(o.allowances).toEqual([{ allowanceTypeId: housingId, nameEn: `Housing ${RUN}`, nameAr: 'بدل سكن', taxable: true, insured: true, basis: 'fixed', amount: 2000 }]);
+      // a fixed one has no amount per account (27 October 2026)
+      expect(o.allowances).toEqual([{ allowanceTypeId: housingId, nameEn: `Housing ${RUN}`, nameAr: 'بدل سكن', taxable: true, insured: true, basis: 'fixed', amount: 2000, perAccountAmount: null }]);
       expect(o).toMatchObject({ allowancesTotal: 2000, totalSalary: 12000, insuredSalary: 12000 });
       // the kind renamed later: the offer keeps the name it was drafted with
       await prisma.allowanceType.update({ where: { id: housingId }, data: { nameEn: `Housing renamed ${RUN}` } });

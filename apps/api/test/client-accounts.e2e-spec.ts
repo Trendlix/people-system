@@ -33,6 +33,7 @@ interface Assignment {
   fromDate: string;
   toDate: string | null;
   amount: number | null;
+  contractAmount?: number | null;
   note: string | null;
   standing: string;
 }
@@ -95,6 +96,8 @@ describe('Client accounts (e2e)', () => {
   let bassem: Person; // no per-account allowance on his contract
   let carim: { id: string }; // no employment
   let dalia: Person; // C-level (G9), eligible
+  let rania: Person; // paid per account only: a salary of 0, 3,000 an account on her contract (27 October 2026)
+  let studio: Account;
   let acme: Account;
   let beta: Account;
   let acmeAmal: Assignment;
@@ -152,6 +155,8 @@ describe('Client accounts (e2e)', () => {
     people.push(carim.id);
     // HR alone can't give the C-level grade: HR with Super Admin hires Dalia
     dalia = await hire('Dalia Chief', hrSuper, { gradeId: grades.get('G9') }, { grossSalary: 90000, allowances: [{ allowanceTypeId: accountsKind }] });
+    // the owner's case (27 October 2026): "paid per account only", 3,000 EGP an account
+    rania = await hire('Rania PerAccount', hr, {}, { grossSalary: 0, netSalary: 0, allowances: [{ allowanceTypeId: accountsKind, amount: 3000 }] });
 
     // Amal's own sign-in, linked to her profile
     const amalEmail = await createUser(prisma, ['employee']);
@@ -226,6 +231,21 @@ describe('Client accounts (e2e)', () => {
       expect((await assign(acme.id, { employeeId: amal.id, fromDate: firstDay(monthsLater(CURRENT, -5)), toDate: firstDay(monthsLater(CURRENT, -4)) }).expect(400)).body.message).toContain('date the assignment from then on');
       expect((await change(betaAmal.id, { toDate: `${MONTH}-10` }).expect(400)).body.message).toBe('The end date must be on or after the start date.');
       for (const session of [finance, superAdmin, staff, manager, developer]) await assign(beta.id, { employeeId: amal.id, fromDate: firstDay(CURRENT) }, session).expect(403);
+    });
+
+    it('paid per account only: a salary of 0, the contract’s amount per account filled in and shown', async () => {
+      const contract = await prisma.contract.findFirstOrThrow({ where: { employmentId: rania.employmentId }, include: { allowances: true } });
+      expect(contract.grossSalary.toNumber()).toBe(0);
+      expect(contract.allowances.map((a) => [a.basis, a.amount.toNumber(), a.perAccountAmount?.toNumber()])).toEqual([['per_account', 0, 3000]]);
+      studio = (await addAccount({ nameEn: `Delta Studio ${RUN}`, defaultAmount: 1000 }).expect(201)).body;
+      // no amount typed: her contract's 3,000, not the account's 1,000
+      const own = (await assign(studio.id, { employeeId: rania.id, fromDate: JOINED }).expect(201)).body;
+      expect(own).toMatchObject({ amount: 3000, contractAmount: 3000 });
+      // another amount typed is kept, but her contract's is what is paid, and said so
+      await change(own.id, { amount: 1000 }).expect(200);
+      expect((await accountOf(studio.id)).assignments.find((a) => a.id === own.id)).toMatchObject({ amount: 1000, contractAmount: 3000 });
+      // the amount a month never shows to someone who doesn't see salaries
+      expect((await accountOf(studio.id, developer)).assignments.find((a) => a.id === own.id)).toMatchObject({ amount: null, contractAmount: null });
     });
 
     it('a C-level person’s are the CEO’s: hidden from HR, the account saying how many', async () => {
@@ -308,6 +328,14 @@ describe('Client accounts (e2e)', () => {
       expect(run.status).toBe('draft');
       // never the insured wage: the gross and the Transport
       expect(line.terms.insuredWage).toBe(15500);
+    });
+
+    it('paid per account only: every account at the contract’s amount, the salary 0', async () => {
+      const line = await lineOf(rania);
+      expect(accountsOf(line)!.accounts!.map((a) => [a.monthly, a.amount])).toEqual([[3000, 3000]]);
+      expect(line.result.earned).toBe(0);
+      expect(line.result.allowances).toBe(3000);
+      expect(line.result.net).toBeGreaterThan(0);
     });
 
     it('nothing for accounts held without the per-account allowance: a warning on the draft', async () => {

@@ -77,7 +77,7 @@ const EMPLOYMENT = {
   contracts: {
     orderBy: { version: 'desc' },
     include: {
-      allowances: { select: { nameEn: true, nameAr: true, amount: true, basis: true }, orderBy: ALLOWANCE_ORDER },
+      allowances: { select: { nameEn: true, nameAr: true, amount: true, basis: true, perAccountAmount: true }, orderBy: ALLOWANCE_ORDER },
       // a raise's promotion, for its letter (owner's decisions, 16 October 2026)
       newJobTitle: { select: { titleEn: true, titleAr: true } },
       newGrade: { select: { code: true } },

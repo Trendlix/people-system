@@ -1578,6 +1578,11 @@ export interface AllowanceLine {
   /** Missing from an API before 25 October 2026: fixed. */
   basis?: AllowanceBasis;
   amount: number;
+  /**
+   * Per client account: the amount per account the contract or offer sets (owner, 27 October 2026), paid for every
+   * account held in place of each assignment's; null, or missing from an API before it: none.
+   */
+  perAccountAmount?: number | null;
 }
 
 // ---------- job offers (owner's request, 15 October 2026; packages/shared/src/offers.ts) ----------

@@ -111,4 +111,23 @@ describe('the accounts allowance on the roster', () => {
     expect(line.terms.segments!.map((s) => s.allowances.map((a) => [a.name, a.amount]))).toEqual([[['Transport', 1000]], [['Transport', 1000], ['Accounts allowance', 822.58]]]);
     expect(line.terms.accountsWithoutAllowance).toBeUndefined();
   });
+  it('paid per account only (27 October 2026): a salary of 0, every account at the contract’s amount per account', () => {
+    const only = contract({ grossSalary: 0, allowances: [{ ...PER_ACCOUNT, perAccountAmount: 3000 }] });
+    const e = employment({ contracts: [only], accounts: [acme, beta] });
+    const [line] = roster('2026-10', [e], rules).lines;
+    const accounts = line.terms.allowances.find((a) => a.accounts)!;
+    // acme the whole month, beta 8 of 31 days, both at 3,000 whatever their assignments say
+    expect(accounts.amount).toBe(3774.19);
+    expect(accounts.accounts!.map((a) => [a.name, a.monthly, a.amount])).toEqual([
+      ['Acme Foods', 3000, 3000],
+      ['Beta Labs', 3000, 774.19],
+    ]);
+    // no salary: the accounts are the pay, taxed as the kind is
+    const result = payrollLine(line.terms, EMPTY_PAYROLL_INPUTS);
+    expect(result.earned).toBe(0);
+    expect(result.allowances).toBe(3774.19);
+    expect(result.taxableAllowances).toBe(3774.19);
+    expect(result.net).toBeGreaterThan(0);
+    expect(result.net).toBeLessThanOrEqual(3774.19);
+  });
 });

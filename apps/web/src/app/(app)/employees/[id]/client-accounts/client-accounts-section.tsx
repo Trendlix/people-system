@@ -35,13 +35,17 @@ export async function ClientAccountsSection({ employee }: { employee: Pick<Emplo
                   <p className="tabular-nums text-muted">{periodText(a)}</p>
                   {a.note && <p className="break-words text-muted">{a.note}</p>}
                 </div>
-                {seesAmounts && a.amount !== null && <p className="tabular-nums">{formatEgp(a.amount)} a month</p>}
+                {seesAmounts && (a.contractAmount ?? a.amount) !== null && (
+                  <p className="tabular-nums">
+                    {formatEgp((a.contractAmount ?? a.amount)!)} a month{a.contractAmount ? ', their contract’s rate' : ''}
+                  </p>
+                )}
               </li>
             ))}
           </ul>
           <p className="text-xs text-muted">
             {full
-              ? 'Paid as the accounts allowance when the contract has it: each account’s amount for the days held in the month.'
+              ? 'Paid as the accounts allowance when the contract has it: each account’s amount (or the contract’s rate per account) for the days held in the month.'
               : 'The accounts allowance for these accounts shows on the payslip.'}
           </p>
         </div>

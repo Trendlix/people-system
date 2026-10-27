@@ -1,6 +1,5 @@
 import {
-  ACCOUNTS_ALLOWANCE_LINE_AR,
-  ACCOUNTS_ALLOWANCE_LINE_EN,
+  accountsAllowanceLine,
   bankNamed,
   CONTRACT_FORM_LABELS,
   CONTRACT_FORM_LABELS_AR,
@@ -13,8 +12,7 @@ import {
   PAY_BASIS_LABELS,
   PAY_BASIS_LABELS_AR,
   payDifference,
-  PER_ACCOUNT_TEXT,
-  PER_ACCOUNT_TEXT_AR,
+  perAccountText,
   printedQualificationAr,
   RAISE_REASON_LABELS,
   RAISE_REASON_LABELS_AR,
@@ -155,7 +153,7 @@ export interface ValueSources {
     hoursPerWeek: Decimal | null;
     daysPerWeek: number | null;
     /** A month each, as on the contract or offer; one paid per client account (25 October 2026) with no amount (0). */
-    allowances: readonly { nameEn: string; nameAr: string; amount: Decimal; basis?: string | null }[];
+    allowances: readonly { nameEn: string; nameAr: string; amount: Decimal; basis?: string | null; perAccountAmount?: Decimal | null }[];
     /** A specific job's contract: the job (Art. 155). Missing: none. */
     jobToDo?: string | null;
   } | null;
@@ -326,8 +324,9 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
     return isBlankValue({ html }) ? '' : { html };
   };
   // none is a value too: "لا يوجد" / "None"; one paid per client account (owner, 25 October 2026) has no amount: "Accounts
-  // allowance: Per client account assigned"
-  const allowancesOf = (rows: readonly { nameEn: string; nameAr: string; amount: Decimal; basis?: string | null }[] | undefined, lang: Lang) =>
+  // allowance: Per client account assigned", or with the amount per account set (27 October 2026) "Accounts allowance:
+  // 3,000.00 per client account assigned"
+  const allowancesOf = (rows: readonly { nameEn: string; nameAr: string; amount: Decimal; basis?: string | null; perAccountAmount?: Decimal | null }[] | undefined, lang: Lang) =>
     !rows
       ? ''
       : rows.length === 0
@@ -335,11 +334,12 @@ function resolvers(src: ValueSources): Record<string, () => TagValue> {
           ? 'لا يوجد'
           : 'None'
         : rows
-            .map((a) => `${inLanguage(lang, a.nameEn, a.nameAr)}: ${isPerAccount(a) ? (lang === 'ar' ? PER_ACCOUNT_TEXT_AR : PER_ACCOUNT_TEXT) : printedMoney(a.amount.toNumber())}`)
+            .map((a) => `${inLanguage(lang, a.nameEn, a.nameAr)}: ${isPerAccount(a) ? perAccountText(a.perAccountAmount?.toNumber() ?? null, printedMoney, lang) : printedMoney(a.amount.toNumber())}`)
             .join(lang === 'ar' ? '، ' : ', ');
   const allowances = (lang: Lang) => allowancesOf(c?.allowances, lang);
   // the accounts allowance's line (25 October 2026), with a per-account allowance on the contract or offer; blank without
-  const accountsLine = (lang: Lang) => (c?.allowances.some((a) => isPerAccount(a)) ? (lang === 'ar' ? ACCOUNTS_ALLOWANCE_LINE_AR : ACCOUNTS_ALLOWANCE_LINE_EN) : '');
+  const perAccountRow = c?.allowances.find((a) => isPerAccount(a));
+  const accountsLine = (lang: Lang) => (perAccountRow ? accountsAllowanceLine(perAccountRow.perAccountAmount?.toNumber() ?? null, printedMoney, lang) : '');
 
   // a raise (owner's decisions, 16 October 2026): the pay before it, why, the promotion and the wage change for Form 2
   const raise = c ? (src.raise ?? null) : null;

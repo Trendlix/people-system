@@ -1,6 +1,6 @@
 'use client';
 
-import { INTERN_DEFAULT_MONTHS, INTERN_MAX_MONTHS, INTERN_NO_WAGE_TEXT, isTrainingType, PAY_BASES, PAY_BASIS_LABELS, type LawRates } from '@trendlix/shared';
+import { INTERN_DEFAULT_MONTHS, INTERN_MAX_MONTHS, INTERN_NO_WAGE_TEXT, isPerAccount, isTrainingType, PAY_BASES, PAY_BASIS_LABELS, type LawRates } from '@trendlix/shared';
 import { AllowanceRows } from '@/components/allowance-rows';
 import { valueOf } from '@/components/form';
 import { allowanceTerms, type AllowanceRow } from '@/lib/allowances';
@@ -77,7 +77,9 @@ export function OfferTerms({
   const start = salaryStartFrom(typed.salaryBasis);
   const rateStart = salaryStartFrom(typed.rateBasis);
   const terms = allowanceTerms(rows, allowanceTypes);
-  const salary = offerSalary(typed, rates, terms);
+  // paid per client account: a salary of 0 is allowed (owner, 27 October 2026)
+  const perAccount = rows.some((r) => allowanceTypes.some((t) => t.id === r.allowanceTypeId && isPerAccount(t)));
+  const salary = offerSalary(typed, rates, terms, perAccount);
   const calc = salary.kind === 'ok' ? salary.breakdown : null;
   const basicPercent = Number(basicTyped);
   const split = calc && Number.isInteger(basicPercent) && basicPercent >= 1 && basicPercent <= 100 ? splitSalary(calc.gross, basicPercent) : null;

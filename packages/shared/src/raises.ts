@@ -208,16 +208,20 @@ export interface PayTerms {
   hourlyRate: number | null;
   hoursPerWeek: number | null;
   basicPercent: number;
-  allowances: readonly { allowanceTypeId: string; amount: number }[];
+  /** A per-account one's amount per account (27 October 2026), when the contract sets one; left out or null: none. */
+  allowances: readonly { allowanceTypeId: string; amount: number; perAccountAmount?: number | null }[];
 }
 
 const cents = (n: number | null) => (n === null ? null : Math.round(n * 100));
 
-/** Whether two versions pay the same: the same basis, gross, rate, hours, basic share and allowances (kind and amount). */
+/**
+ * Whether two versions pay the same: the same basis, gross, rate, hours, basic share and allowances (kind and amount, and
+ * a per-account one's amount per account).
+ */
 export function samePay(a: PayTerms, b: PayTerms): boolean {
   if (a.payBasis !== b.payBasis || cents(a.grossSalary) !== cents(b.grossSalary) || a.basicPercent !== b.basicPercent) return false;
   if (cents(a.hourlyRate) !== cents(b.hourlyRate) || a.hoursPerWeek !== b.hoursPerWeek) return false;
-  const sorted = (rows: PayTerms['allowances']) => [...rows].map((r) => `${r.allowanceTypeId}:${cents(r.amount)}`).sort().join('|');
+  const sorted = (rows: PayTerms['allowances']) => [...rows].map((r) => `${r.allowanceTypeId}:${cents(r.amount)}:${cents(r.perAccountAmount ?? null)}`).sort().join('|');
   return sorted(a.allowances) === sorted(b.allowances);
 }
 

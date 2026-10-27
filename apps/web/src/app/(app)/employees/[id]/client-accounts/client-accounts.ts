@@ -18,6 +18,8 @@ export interface EmployeeClientAccount {
   toDate: string | null;
   /** EGP a month; null for anyone who doesn't see salaries. */
   amount: number | null;
+  /** Their contract's amount per account, paid in place of `amount` (27 October 2026); null or missing: none, or not seen. */
+  contractAmount?: number | null;
   /** HR's note; null for the person and their manager. */
   note: string | null;
   standing: AssignmentStanding;

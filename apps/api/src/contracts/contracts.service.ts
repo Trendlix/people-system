@@ -24,6 +24,7 @@ import {
   type PayTerms,
   type RaiseReason,
   type EmploymentType,
+  zeroSalaryProblem,
 } from '@trendlix/shared';
 import { AllowancesService } from '../allowances/allowances.service.js';
 import { allowanceData, allowancesTotal, allowanceView, type AllowanceSnapshot } from '../allowances/rows.js';
@@ -181,7 +182,7 @@ export interface TermsInput {
 export function comparable(rows: readonly AllowanceSnapshot[]) {
   return [...rows]
     .sort((a, b) => a.allowanceTypeId.localeCompare(b.allowanceTypeId))
-    .map(({ allowanceTypeId, nameEn, nameAr, taxable, insured, amount }) => ({ allowanceTypeId, nameEn, nameAr, taxable, insured, amount }));
+    .map(({ allowanceTypeId, nameEn, nameAr, taxable, insured, amount, perAccountAmount }) => ({ allowanceTypeId, nameEn, nameAr, taxable, insured, amount, perAccountAmount }));
 }
 
 /** A contract's own columns as the API sends them (dates as YYYY-MM-DD, money as numbers), for comparing and the audit log. */
@@ -234,7 +235,14 @@ function approvalAfterChange(before: ContractRow, step: { raiseReason: RaiseReas
 }
 
 /** A version's pay, to compare with another's (samePay). */
-export function payTermsOf(c: { payBasis: string; grossSalary: number | Prisma.Decimal; hourlyRate: number | Prisma.Decimal | null; hoursPerWeek: number | Prisma.Decimal | null; basicPercent: number; allowances: readonly { allowanceTypeId: string; amount: number | Prisma.Decimal }[] }): PayTerms {
+export function payTermsOf(c: {
+  payBasis: string;
+  grossSalary: number | Prisma.Decimal;
+  hourlyRate: number | Prisma.Decimal | null;
+  hoursPerWeek: number | Prisma.Decimal | null;
+  basicPercent: number;
+  allowances: readonly { allowanceTypeId: string; amount: number | Prisma.Decimal; perAccountAmount?: number | Prisma.Decimal | null }[];
+}): PayTerms {
   const n = (v: number | Prisma.Decimal) => (typeof v === 'number' ? v : v.toNumber());
   return {
     payBasis: c.payBasis,
@@ -242,7 +250,8 @@ export function payTermsOf(c: { payBasis: string; grossSalary: number | Prisma.D
     hourlyRate: c.hourlyRate === null ? null : n(c.hourlyRate),
     hoursPerWeek: c.hoursPerWeek === null ? null : n(c.hoursPerWeek),
     basicPercent: c.basicPercent,
-    allowances: c.allowances.map((a) => ({ allowanceTypeId: a.allowanceTypeId, amount: n(a.amount) })),
+    // a per-account one's amount per account (27 October 2026) is pay too
+    allowances: c.allowances.map((a) => ({ allowanceTypeId: a.allowanceTypeId, amount: n(a.amount), perAccountAmount: a.perAccountAmount == null ? null : n(a.perAccountAmount) })),
   };
 }
 
@@ -1066,6 +1075,9 @@ export class ContractsService {
     }
     const pay = this.pay(input);
     const allowances = [...input.allowances];
+    // a salary of 0 only for someone paid per client account (owner, 27 October 2026); an intern's is 0 by itself
+    const zero = type === 'intern' ? null : zeroSalaryProblem(pay.grossSalary, allowances);
+    if (zero) throw new BadRequestException(zero);
     const total = allowancesTotal(allowances);
     const netSalary = input.netSalary ?? null;
     if (netSalary !== null && Math.round(netSalary * 100) > Math.round((pay.grossSalary + total) * 100)) {

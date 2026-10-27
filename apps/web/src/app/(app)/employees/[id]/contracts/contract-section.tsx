@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { CONTRACT_STATUS_LABELS, INTERNSHIP_AGREEMENT, INTERN_NO_WAGE_TEXT, isPerAccount, PAY_BASIS_LABELS, PER_ACCOUNT_TEXT, type ContractStatus } from '@trendlix/shared';
+import { CONTRACT_STATUS_LABELS, INTERNSHIP_AGREEMENT, INTERN_NO_WAGE_TEXT, isPerAccount, PAY_BASIS_LABELS, perAccountText, type ContractStatus } from '@trendlix/shared';
 import { treatmentText } from '@/lib/allowances';
 import { ApiError } from '@/lib/api';
 import { formatDate } from '@/lib/format';
@@ -69,7 +69,8 @@ export { termLabel };
 
 /**
  * Each allowance with its amount a month and how it is treated; one paid per client account (25 October 2026) with no
- * amount: "Accounts allowance: Per client account assigned" (payroll pays the month's client accounts).
+ * amount: "Accounts allowance: Per client account assigned" (payroll pays the month's client accounts), or with the
+ * contract's amount per account "EGP 3,000.00 per client account assigned" (27 October 2026).
  */
 function AllowanceList({ lines }: { lines: AllowanceLine[] }) {
   return (
@@ -78,7 +79,7 @@ function AllowanceList({ lines }: { lines: AllowanceLine[] }) {
         <li key={a.allowanceTypeId}>
           {isPerAccount(a) ? (
             <>
-              {a.nameEn}: {PER_ACCOUNT_TEXT}
+              {a.nameEn}: {perAccountText(a.perAccountAmount, formatEgp)}
             </>
           ) : (
             <>
