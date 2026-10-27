@@ -22,3 +22,6 @@ storage/
 
 # database saves on the server
 deploy/backups/
+
+# editor settings are local
+.vscode/
