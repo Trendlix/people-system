@@ -20,6 +20,8 @@ export const ATTENDANCE_CORRECTIONS_PATH = '/attendance/corrections';
 export const ATTENDANCE_WFH_PATH = '/attendance/wfh';
 export const ATTENDANCE_OD_PATH = '/attendance/official-duty';
 export const ATTENDANCE_COMPENSATORY_PATH = '/attendance/compensatory';
+/** The Compensatory Setup (27 October 2026), under Compensatory Days. */
+export const ATTENDANCE_COMPENSATORY_SETUP_PATH = '/attendance/compensatory/setup';
 
 /** Who reads the attendance itself: HR, the CEO and Finance. */
 const READERS: Role[] = ['hr', 'ceo', 'finance'];
@@ -39,4 +41,7 @@ export const ATTENDANCE_SECTIONS: readonly { key: string; href: string; label: s
   // the compensatory days asked for (owner, 26 October 2026: "my compensatory is a compensation with another day in the same
   // month", "Manager, then HR"), HR deciding a day off or cash instead
   { key: 'compensatory', href: ATTENDANCE_COMPENSATORY_PATH, label: 'Compensatory Days', roles: ['hr', 'ceo'] },
+  // their rules (owner, 27 October 2026: "i need a setup dashboard for the compensatory leaves"): HR changes them, the CEO
+  // reads them; the Leave Setup and Compensatory Days link to it too
+  { key: 'compensatory-setup', href: ATTENDANCE_COMPENSATORY_SETUP_PATH, label: 'Compensatory Setup', roles: ['hr', 'ceo'] },
 ];

@@ -36,9 +36,7 @@ import { closingYear } from './year-closing';
 import { limitNowText, peopleNowText, STAFFING_ID, staffingGroups, takesLimit, unitLimitText } from './staffing';
 import { loadStaffing } from './staffing-data';
 import { StaffingLimitForm } from './staffing-form';
-import { saveCompensatorySettings } from '../../attendance/compensatory/actions';
-import { loadCompensatorySettings } from '../../attendance/compensatory/data';
-import { CompensatorySettingsForm } from '../../attendance/compensatory/compensatory-forms';
+import { COMPENSATORY_SETUP_PATH } from '../../attendance/compensatory/compensatory';
 import { saveWfhSettings } from '../../attendance/wfh/actions';
 import { loadWfhSettings } from '../../attendance/wfh/data';
 import { WfhSettingsForm } from '../../attendance/wfh/wfh-forms';
@@ -61,6 +59,8 @@ import { WfhSettingsForm } from '../../attendance/wfh/wfh-forms';
 // asked, "Warn and need HR"), after the types: each team's limit for annual leave (a department's without teams), "At
 // most N people on annual leave at once" and/or "At least P% at work", set by HR and a Super Admin, read by the other
 // staff; a request over it is still sent, with a warning, and HR approves it too; never sick or casual leave.
+// Compensatory days' cash rate, after Work From Home since 26 October 2026, moved to the Compensatory Setup (owner, 27
+// October 2026: "i need a setup dashboard for the compensatory leaves"): a pointer to it stays here.
 
 export const metadata: Metadata = { title: 'Leave Setup · People System' };
 
@@ -295,24 +295,21 @@ async function WorkFromHome({ user }: { user: SessionUser }) {
 }
 
 /**
- * Compensatory days (owner, 26 October 2026: "if paid in cash make it 1.5"): the days' pay a compensatory day paid in cash
- * instead of a day off adds to the payroll, HR's to change (GET and PATCH /compensatory/settings). Nothing from an API from
- * before it.
+ * Compensatory days (owner, 26 October 2026: "if paid in cash make it 1.5"): their cash rate was here until their rules
+ * moved to a page of their own, the Compensatory Setup, with the hours that earn hours off or a whole day and when the day
+ * off is taken (owner, 27 October 2026: "i need a setup dashboard for the compensatory leaves"; the cash rate "moves here
+ * from Leave Setup"); a pointer to it in its place.
  */
-async function CompensatoryDays({ user }: { user: SessionUser }) {
-  const loaded = await loadCompensatorySettings();
-  if (loaded.kind === 'unavailable') return null;
+function CompensatoryDays() {
   return (
     <SetupSection
       id="compensatory-days"
       title="Compensatory Days"
-      intro="A day off in the same month in exchange for a rest day or an official holiday worked, decided by the manager, then HR. HR approves it as a day off, which adds no pay, or, rarely, as cash instead: the days' pay below, added to the month's payroll as Compensation for working that day."
+      intro="A day off in exchange for a rest day or an official holiday worked, or hours off for part of one, decided by the manager, then HR, who approves it as time off, which adds no pay, or, rarely, as cash instead. The cash rate, the hours that earn hours off or a whole day, and when the day off is taken are on the Compensatory Setup."
     >
-      {loaded.kind === 'ok' ? (
-        <CompensatorySettingsForm action={saveCompensatorySettings} settings={loaded.value} canEdit={editsLeaveSetup(user)} />
-      ) : (
-        <NotLoaded what="the compensatory day cash rate" loaded={{ kind: 'failed', message: loaded.kind === 'failed' ? loaded.messages.join(' ') : 'Only staff can see it.' }} />
-      )}
+      <Link href={COMPENSATORY_SETUP_PATH} className="btn btn-secondary no-underline">
+        Compensatory Setup
+      </Link>
     </SetupSection>
   );
 }
@@ -354,9 +351,7 @@ async function LeaveSetup() {
       <Section>
         <WorkFromHome user={user} />
       </Section>
-      <Section>
-        <CompensatoryDays user={user} />
-      </Section>
+      <CompensatoryDays />
       <Section>
         <LeaveTypes user={user} />
       </Section>

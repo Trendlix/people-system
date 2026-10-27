@@ -5,6 +5,8 @@ import { weekdayOf } from '../organization/holidays/holidays';
 import { addMonths, monthName } from '../payroll/list';
 import { attendanceReviewHref, dayStatusText, dayTone } from '../payroll/[id]/attendance/attendance';
 import {
+  COMPENSATORY_HOURS_TITLE,
+  compensatoryHoursText,
   correctedNote,
   dayPairs,
   dayRow,
@@ -95,6 +97,21 @@ export function ExemptBadge({ of, className = '' }: { of: Parameters<typeof exem
     <span className={`badge border border-line bg-card text-ink ${className}`} title={badge.title}>
       {badge.label}
       <span className="sr-only"> ({badge.title})</span>
+    </span>
+  );
+}
+
+/**
+ * "Compensatory hours off: 4 h" (owner, 27 October 2026: "Hours off for hours worked"): on a working day with hours off
+ * approved for part of a rest day worked, counted as worked; nothing on any other day.
+ */
+export function CompensatoryHoursBadge({ day, className = '' }: { day: Parameters<typeof compensatoryHoursText>[0]; className?: string }) {
+  const text = compensatoryHoursText(day);
+  if (!text) return null;
+  return (
+    <span className={`badge border border-line bg-card text-ink ${className}`} title={COMPENSATORY_HOURS_TITLE}>
+      {text}
+      <span className="sr-only"> ({COMPENSATORY_HOURS_TITLE})</span>
     </span>
   );
 }
@@ -216,6 +233,8 @@ export function DaysTable({
                   {wfhDays.includes(d.date) && <WfhDayBadge className="mt-1 block w-fit" />}
                   {d.od && <OdDayBadge od={d.od} className="mt-1 block w-fit" />}
                   <ExemptBadge of={d} className="mt-1 block w-fit" />
+                  {/* hours off for part of a rest day worked (27 October 2026) */}
+                  <CompensatoryHoursBadge day={d} className="mt-1 block w-fit" />
                   {/* its pairs and break (25 October 2026: "the working hours to be calculated between the checkin and out only") */}
                   <DayPairsLine pairs={pairs} />
                   {corrected && <span className="mt-0.5 block text-xs text-muted">{corrected}</span>}

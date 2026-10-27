@@ -151,8 +151,10 @@ describe('the sidebar', () => {
         // the work-from-home days moved under Requests (26 October 2026: "Show it with leave")
         // the official duties (23 October 2026: "Official duty (OD) requests")
         ['Official Duty', '/attendance/official-duty'],
-        // the compensatory days (26 October 2026)
+        // the compensatory days (26 October 2026), and their rules (27 October 2026: "i need a setup dashboard for the
+        // compensatory leaves")
         ['Compensatory Days', '/attendance/compensatory'],
+        ['Compensatory Setup', '/attendance/compensatory/setup'],
       ]);
       expect(pagesFor('ceo')).toEqual([
         ['Daily Attendance', '/attendance'],
@@ -161,6 +163,7 @@ describe('the sidebar', () => {
         ['Corrections', '/attendance/corrections'],
         ['Official Duty', '/attendance/official-duty'],
         ['Compensatory Days', '/attendance/compensatory'],
+        ['Compensatory Setup', '/attendance/compensatory/setup'],
       ]);
       expect(pagesFor('finance')).toEqual([
         ['Daily Attendance', '/attendance'],

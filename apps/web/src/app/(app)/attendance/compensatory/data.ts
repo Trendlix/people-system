@@ -7,7 +7,7 @@ import { COMPENSATORY_COUNTS, compensatoryListPath, WAITING_COMPENSATORY, type C
 // Reading compensatory days (owner, 26 October 2026: "my compensatory is a compensation with another day in the same
 // month"): everyone's for Attendance → Compensatory Days (HR and the CEO), those waiting for the caller (Approvals, My
 // Team, the sidebar), the employee's own (My Requests), the form's live checks, one for its page, the calendar's days and
-// the Leave Setup's cash rate. An API from before them answers 404: "not available yet".
+// the Compensatory Setup. An API from before them answers 404: "not available yet".
 
 export type { Loaded };
 
@@ -36,5 +36,5 @@ export function loadCompensatoryCalendar(from: string, to: string, departmentId?
   return loadJson(`/compensatory/calendar?${params.toString()}`);
 }
 
-/** GET /compensatory/settings: the Leave Setup's cash rate. */
+/** GET /compensatory/settings: the Compensatory Setup (27 October 2026): the cash rate, the hours rules, the day off's window. */
 export const loadCompensatorySettings = cache(() => loadJson<CompensatorySettings>('/compensatory/settings'));

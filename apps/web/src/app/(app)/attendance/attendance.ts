@@ -497,6 +497,19 @@ export function compensatoryDaysText(f: { compensatoryDays?: number | null }): s
   return n > 0 ? `${n} compensatory ${n === 1 ? 'day' : 'days'} off` : null;
 }
 
+/** What the compensatory hours off badge says on hover and to a screen reader. */
+export const COMPENSATORY_HOURS_TITLE = 'Hours off for part of a rest day or an official holiday worked: counted as worked hours that day, with no deduction';
+
+/**
+ * Hours off approved on a working day for part of a rest day worked (owner, 27 October 2026: "Hours off for hours
+ * worked"; the day's `compensatoryHours`): "Compensatory hours off: 4 h"; null for any other day, and from an API from
+ * before them.
+ */
+export function compensatoryHoursText(day: { compensatoryHours?: number | null }): string | null {
+  const n = day.compensatoryHours;
+  return typeof n === 'number' && n > 0 ? `Compensatory hours off: ${Math.round(n * 100) / 100} h` : null;
+}
+
 /** The "Exempt" badge of a day, or of a person's month with exempt days; null for anything else. */
 export function exemptBadge(of: { exempt?: boolean | null; exemptDays?: number | null; compensatory?: boolean | null }): { label: string; title: string } | null {
   // a compensatory day off (owner, 26 October 2026) is read full as an exempt day is, said apart

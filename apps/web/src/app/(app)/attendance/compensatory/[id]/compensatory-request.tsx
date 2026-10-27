@@ -12,8 +12,22 @@ import { LeaveStatusBadge, LeaveTimeline } from '../../../leave/ui';
 import { BackLink, Empty, UUID } from '../../../organization/ui';
 import { notLoadedText } from '../../../payroll/load';
 import { cancelCompensatoryByHr, cancelMyCompensatory, decideCompensatory } from '../actions';
-import { COMPENSATORY_OUTCOME_LABELS } from '@trendlix/shared';
-import { compensatoryBack, compensatoryDateText, compensatoryDaysLine, compensatoryDoneText, compensatoryProgressText, compensatorySourceText, compensatoryStepText, MY_COMPENSATORY_HREF } from '../compensatory';
+import { COMPENSATORY_OUTCOME_LABELS, hoursText } from '@trendlix/shared';
+import {
+  COMPENSATORY_WITH_OD_NOTE,
+  compensatoryBack,
+  compensatoryCashAddedText,
+  compensatoryDateText,
+  compensatoryDaysLine,
+  compensatoryDoneText,
+  compensatoryHoursFact,
+  compensatoryOdHref,
+  compensatoryOdText,
+  compensatoryProgressText,
+  compensatorySourceText,
+  compensatoryStepText,
+  MY_COMPENSATORY_HREF,
+} from '../compensatory';
 import { CancelCompensatoryForm, CompensatoryDecisionForm, HrCancelCompensatoryForm } from '../compensatory-forms';
 import { loadCompensatory } from '../data';
 
@@ -24,7 +38,9 @@ import { loadCompensatory } from '../data';
 // (Approve, or Reject with a comment); the employee's Cancel while it is being decided; HR's Cancel of an approved day,
 // with a comment. What was just done on it shows at the top (?done=). A C-level person's has HR's stage decided by the
 // CEO (or HR with Super Admin). Shown on the site and on the phone pages, where the back link goes to the section's list
-// and what is done on it comes back there.
+// and what is done on it comes back there. Part of a day worked (owner, 27 October 2026: "Hours off for hours worked")
+// shows its hours and the hours off they earned; one an official duty on a rest day or an official holiday carries says
+// so, linking to the duty, and is decided and cancelled with it (the API sends it without a decision or Cancel here).
 
 type Query = Record<string, string | string[] | undefined>;
 
@@ -64,7 +80,9 @@ export async function CompensatoryRequestDetail({
   if (loaded.kind === 'failed') return <Empty>{notLoadedText(loaded, 'compensatory day request')}</Empty>;
   const r = loaded.value;
   const back = surface === 'site' ? compensatoryBack(user, r) : appBack(surface);
-  const done = compensatoryDoneText(query, r.status, r.manager, r.confidential, r.outcome);
+  const hoursOff = r.hoursOff ?? null;
+  const hoursFact = compensatoryHoursFact(r);
+  const done = compensatoryDoneText(query, r.status, r.manager, r.confidential, r.outcome, hoursOff);
   const place = placeOfEmployee(r.employee);
   const progress = compensatoryProgressText(r);
   const what = `compensatory day request for ${compensatoryDaysLine(r)}`;
@@ -86,6 +104,15 @@ export async function CompensatoryRequestDetail({
           {place && ` · ${place}`} · {compensatorySourceText(r).toLowerCase()} {formatDateTime(r.createdAt)}
         </p>
       </div>
+      {/* the official duty it goes with (27 October 2026), decided and cancelled with it */}
+      {r.od && (
+        <p className="rounded-lg bg-accent-soft px-4 py-3 text-sm">
+          <Link href={compensatoryOdHref(r.od, surface)} className="font-semibold">
+            {compensatoryOdText(r.od)}
+          </Link>
+          . {COMPENSATORY_WITH_OD_NOTE}
+        </p>
+      )}
       {done && (
         <p role="status" className={`rounded-lg px-4 py-3 text-sm ${done.tone === 'warn' ? 'bg-warn-soft text-warn' : 'bg-ok-soft text-ok'}`}>
           {done.text}
@@ -101,13 +128,27 @@ export async function CompensatoryRequestDetail({
                 <span className="block text-xs text-muted">A rest day of the shift or an official holiday. Nothing is paid for it when it is compensated with a day.</span>
                 {r.noCheckIn && <span className="mt-1 block text-xs font-medium text-warn">No check-in is kept on this day: HR confirms it was worked when deciding.</span>}
               </Fact>
-              <Fact label={r.outcome === 'cash' ? 'Day off' : 'Day off asked for'}>
+              {/* part of the day worked (27 October 2026: "Hours off for hours worked") */}
+              {hoursFact && (
+                <Fact label="Hours worked">
+                  <span className="font-semibold tabular-nums">{hoursFact}</span>
+                  <span className="block text-xs text-muted">Part of the day, by the Compensatory Setup.</span>
+                </Fact>
+              )}
+              <Fact label={r.outcome === 'cash' ? (hoursOff !== null ? 'Hours off' : 'Day off') : hoursOff !== null ? 'Day for the hours off' : 'Day off asked for'}>
                 {r.outcome === 'cash' ? (
                   <span className="text-muted">None: paid in cash instead</span>
                 ) : r.dayOff ? (
                   <>
-                    <span className="text-base font-semibold tabular-nums">{compensatoryDateText(r.dayOff)}</span>
-                    <span className="block text-xs text-muted">In the same month; once approved it counts as a full paid day, not leave: nothing comes off any balance.</span>
+                    <span className="text-base font-semibold tabular-nums">
+                      {hoursOff !== null && `${hoursText(hoursOff)} off on `}
+                      {compensatoryDateText(r.dayOff)}
+                    </span>
+                    <span className="block text-xs text-muted">
+                      {hoursOff !== null
+                        ? 'Once approved, those hours count as worked that day, with no deduction: not leave, nothing comes off any balance.'
+                        : 'Once approved it counts as a full paid day, not leave: nothing comes off any balance.'}
+                    </span>
                   </>
                 ) : (
                   <span className="text-muted">None</span>
@@ -116,9 +157,7 @@ export async function CompensatoryRequestDetail({
               {r.outcome && (
                 <Fact label="HR's decision">
                   <span className="font-semibold">{COMPENSATORY_OUTCOME_LABELS[r.outcome]}</span>
-                  {r.outcome === 'cash' && r.status === 'approved' && (
-                    <span className="block text-xs text-muted">An addition of {r.cashDays} {r.cashDays === 1 ? 'day' : 'days'}&apos; pay on the month&apos;s payroll.</span>
-                  )}
+                  {r.outcome === 'cash' && r.status === 'approved' && <span className="block text-xs text-muted">{compensatoryCashAddedText(r)}</span>}
                 </Fact>
               )}
               {r.reason && (
@@ -160,7 +199,16 @@ export async function CompensatoryRequestDetail({
             <Section title={`Your Decision as ${decidingAsTitle(user, r.stage, r.manager, r.confidential)}`}>
               {/* deciding it standing in for the approver on leave (owner, 25 October 2026: "To a stand-in") */}
               {standingInNoteText(r.standingInFor) && <p className="mb-4 rounded-lg bg-accent-soft px-4 py-3 text-sm">{standingInNoteText(r.standingInFor)}</p>}
-              <CompensatoryDecisionForm action={decideCompensatory.bind(null, r.id, r.stage)} stage={r.stage} name={r.employee.fullNameEn} confidential={r.confidential} noCheckIn={r.noCheckIn === true} cashDays={r.cashDays} />
+              <CompensatoryDecisionForm
+                action={decideCompensatory.bind(null, r.id, r.stage)}
+                stage={r.stage}
+                name={r.employee.fullNameEn}
+                confidential={r.confidential}
+                noCheckIn={r.noCheckIn === true}
+                cashDays={r.cashDays}
+                dayOff={r.dayOff}
+                hoursOff={hoursOff}
+              />
             </Section>
           )}
 

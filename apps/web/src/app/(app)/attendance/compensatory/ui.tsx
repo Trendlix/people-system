@@ -4,14 +4,16 @@ import { formatDateTime } from '@/lib/format';
 import type { CompensatoryRequestView } from '@/lib/compensatory-types';
 import { placeOfEmployee } from '../../leave/list';
 import { LeaveStatusBadge } from '../../leave/ui';
-import { compensatoryDaysLine, compensatoryHref, compensatoryLabel, compensatoryOutcomeText, compensatoryProgressText, compensatorySourceText } from './compensatory';
+import { compensatoryDaysLine, compensatoryHref, compensatoryLabel, compensatoryOdText, compensatoryOutcomeText, compensatoryProgressText, compensatorySourceText } from './compensatory';
 import { joinShown } from '@/lib/hidden';
 
 // Compensatory day requests in a list (owner, 26 October 2026: "my compensatory is a compensation with another day in the
 // same month"): the employee's own on My Requests, those waiting for a manager on My Team and for HR on Approvals, and
 // everyone's under Attendance → Compensatory Days. Each row: who (when `who`), the day worked and the day off, how it came
 // and HR's decision (a day off, or cash instead), where it stands with a status chip, a warning mark for one HR recorded
-// past the notice or with no check-in kept, opening its page (Decide when it waits for the user). No hooks.
+// past the notice or with no check-in kept, opening its page (Decide when it waits for the user). No hooks. Since 27
+// October 2026: part of a day with its hours ("Worked Friday 06/11/2026 (4 hours) · 4 hours off Tuesday 10/11/2026"), and
+// the official duty one goes with.
 
 export function CompensatoryTable({ requests, who = false, how = false, note }: { requests: readonly CompensatoryRequestView[]; who?: boolean; how?: boolean; note: string }) {
   return (
@@ -42,7 +44,11 @@ export function CompensatoryTable({ requests, who = false, how = false, note }: 
                     <div className="text-xs text-muted">{joinShown([r.employee.employeeCode, place])}</div>
                   </td>
                 )}
-                <td className="min-w-56 tabular-nums">{compensatoryDaysLine(r)}</td>
+                <td className="min-w-56 tabular-nums">
+                  {compensatoryDaysLine(r)}
+                  {/* one an official duty carries (27 October 2026), decided with it */}
+                  {r.od && <span className="mt-1 block text-xs text-muted">{compensatoryOdText(r.od)}</span>}
+                </td>
                 {how && (
                   <td>
                     {compensatorySourceText(r)}

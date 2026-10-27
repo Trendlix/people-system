@@ -9,7 +9,7 @@ import { isWfhDay, WFH_DAY_BADGE } from '../../../(app)/attendance/wfh/wfh';
 import { OD_DAY_BADGE } from '../../../(app)/attendance/official-duty/od';
 import { leaveStatusLabel } from '../../../(app)/leave/list';
 import { AllPresses, DayEndView } from '../../../(app)/attendance/punch-ui';
-import { DayPairsLine, ExemptBadge, FirstDayLine, OpenPressLine } from '../../../(app)/attendance/ui';
+import { CompensatoryHoursBadge, DayPairsLine, ExemptBadge, FirstDayLine, OpenPressLine } from '../../../(app)/attendance/ui';
 import { weekdayOf } from '../../../(app)/organization/holidays/holidays';
 import { dayStatusText, dayTone } from '../../../(app)/payroll/[id]/attendance/attendance';
 
@@ -29,7 +29,8 @@ import { dayStatusText, dayTone } from '../../../(app)/payroll/[id]/attendance/a
 // flag the open one"); an exempt day (owner, 25 October 2026) carries an "Exempt" badge, its presses kept for reference.
 // A compensatory day off approved (owner, 26 October 2026: "WFH and compensatory pages in the phone app") carries the
 // site's "Compensatory day off" badge in its place (ExemptBadge, attendance.ts exemptBadge): a full paid day, its hours
-// counted, never absent or short.
+// counted, never absent or short. Hours off for part of a rest day worked (owner, 27 October 2026: "Hours off for hours
+// worked") say "Compensatory hours off: 4 h" on the working day they are taken, counted as worked.
 
 const TONE = { danger: 'text-danger', warn: 'text-warn' } as const;
 
@@ -94,6 +95,8 @@ export function DayList({
                 {isWfhDay({ wfhDays }, d.date) && <span className="badge bg-accent-soft text-accent">{WFH_DAY_BADGE}</span>}
                 {/* "Exempt", or "Compensatory day off" (26 October 2026) */}
                 <ExemptBadge of={d} />
+                {/* hours off for part of a rest day worked (27 October 2026: "Hours off for hours worked") */}
+                <CompensatoryHoursBadge day={d} />
                 {/* a day of official duty (23 October 2026), opening its request */}
                 {d.od && (
                   <Link href={appItemHref('requests', 'od', d.od.requestId)} className="badge bg-ok-soft text-ok no-underline">

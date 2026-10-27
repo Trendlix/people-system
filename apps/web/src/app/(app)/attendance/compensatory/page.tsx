@@ -13,7 +13,18 @@ import { StaffOnly } from '../../staff-only';
 import { notLoaded } from '../not-loaded';
 import { loadCompensatoryRequests } from './data';
 import { CompensatoryTable } from './ui';
-import { COMPENSATORY_FILTERS, compensatoryDaysText, compensatoryListHref, emptyCompensatoryText, hasCompensatoryFilters, readCompensatoryQuery, RECORD_COMPENSATORY_PATH, recordsCompensatory, seesAllCompensatory } from './compensatory';
+import {
+  COMPENSATORY_FILTERS,
+  COMPENSATORY_SETUP_PATH,
+  compensatoryDaysText,
+  compensatoryListHref,
+  emptyCompensatoryText,
+  hasCompensatoryFilters,
+  readCompensatoryQuery,
+  RECORD_COMPENSATORY_PATH,
+  recordsCompensatory,
+  seesAllCompensatory,
+} from './compensatory';
 import { CompensatoryFiltersForm } from './compensatory-filters-form';
 
 // Attendance → Compensatory Days (owner, 26 October 2026: "my compensatory is a compensation with another day in the same
@@ -22,7 +33,8 @@ import { CompensatoryFiltersForm } from './compensatory-filters-form';
 // (?from=&to=, the day worked's: "add the filter here too, like we made on the other page") and department or team
 // (?department=): who, the days, how it came and HR's decision (a day off, or cash instead), where it stands, each
 // opening its page with the decision. HR records one for someone with Record a compensatory day. A manager decides their
-// team's on My Team; an employee asks from My Requests.
+// team's on My Team; an employee asks from My Requests. The Compensatory Setup (owner, 27 October 2026: "i need a setup
+// dashboard for the compensatory leaves") opens from here, beside Record.
 
 export const metadata: Metadata = { title: 'Compensatory Days · People System' };
 
@@ -59,11 +71,17 @@ async function List({ searchParams }: { searchParams: PageProps<'/attendance/com
             </Link>
           ))}
         </nav>
-        {recordsCompensatory(user) && (
-          <Link href={RECORD_COMPENSATORY_PATH} className="btn btn-primary no-underline">
-            Record a compensatory day
+        <div className="flex flex-wrap gap-2">
+          {/* the rules: HR changes them, the CEO reads them (27 October 2026) */}
+          <Link href={COMPENSATORY_SETUP_PATH} className="btn btn-secondary no-underline">
+            Compensatory Setup
           </Link>
-        )}
+          {recordsCompensatory(user) && (
+            <Link href={RECORD_COMPENSATORY_PATH} className="btn btn-primary no-underline">
+              Record a compensatory day
+            </Link>
+          )}
+        </div>
       </div>
       <CompensatoryFiltersForm q={q} people={people} places={placeChoices(places)} filtered={hasCompensatoryFilters(q)} />
       {loaded.kind !== 'ok' ? (
@@ -87,9 +105,10 @@ export default function CompensatoryListPage({ searchParams }: PageProps<'/atten
         <div>
           <h1 className="text-2xl font-semibold">Compensatory Days</h1>
           <p className="mt-1 max-w-3xl text-muted">
-            Days off in exchange for a rest day or an official holiday worked, in the same month: asked a day before the day off at the latest,
-            decided by the direct manager (or lead), then HR, a C-level person&apos;s by the CEO. HR approves it as a day off, a full paid day, or,
-            rarely, as cash instead. HR records one for someone, with a reason.
+            Days off in exchange for a rest day or an official holiday worked, or hours off for part of one, by the Compensatory Setup&apos;s rules:
+            asked a day before the day off at the latest, decided by the direct manager (or lead), then HR, a C-level person&apos;s by the CEO. HR
+            approves it as time off, which adds no pay, or, rarely, as cash instead. HR records one for someone, with a reason. One that goes with an
+            official duty on a rest day is decided with the duty.
           </p>
         </div>
         <Suspense fallback={<Loading />}>

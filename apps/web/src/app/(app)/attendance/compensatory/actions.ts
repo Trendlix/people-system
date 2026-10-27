@@ -4,11 +4,13 @@
 // rarely to be compensated in cash"): asking (the employee's own), HR recording one for someone (approved at once, a day
 // off or cash, with a reason), what such a request would meet (for HR's form, live), the employee cancelling theirs while
 // it is being decided, HR cancelling an approved one with a comment, each approver's decision (HR's: a day off or cash
-// instead), and the Leave Setup's cash rate. Each forwards to the API, which checks the days, the notice, the locked
-// months, who decides each stage and that nobody decides their own, so calling these directly can't bypass that.
+// instead), and the Compensatory Setup (owner, 27 October 2026: "i need a setup dashboard for the compensatory leaves":
+// the cash rate, the hours that earn hours off or a whole day, when the day off is taken). Each forwards to the API,
+// which checks the days, the hours, the notice, the locked months, who decides each stage and that nobody decides their
+// own, so calling these directly can't bypass that.
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
-import { compensatoryRateProblems, type LeaveStage } from '@trendlix/shared';
+import type { LeaveStage } from '@trendlix/shared';
 import { ApiError, apiFetch, apiSend, messagesOf } from '@/lib/api';
 import type { CompensatoryCheck, CompensatoryRequestView, CompensatorySettings } from '@/lib/compensatory-types';
 import { afterAction } from '@/lib/surface';
@@ -22,6 +24,8 @@ import {
   compensatoryForm,
   compensatoryRecordForm,
   MY_COMPENSATORY_HREF,
+  readCompensatorySetup,
+  typedCompensatorySetup,
   typedCompensatoryValues,
 } from './compensatory';
 
@@ -59,11 +63,15 @@ export async function recordCompensatory(_prev: FormState, fd: FormData): Promis
   redirect(made?.id ? compensatoryDoneHref(made.id, 'recorded') : COMPENSATORY_PATH);
 }
 
-/** What recording one for someone would meet (GET /compensatory/check): what refuses it and what it is recorded past. */
-export async function checkCompensatory(employeeId: string, dayWorked: string, dayOff: string | null): Promise<{ check: CompensatoryCheck } | { errors: string[] }> {
+/**
+ * What recording one for someone would meet (GET /compensatory/check): what refuses it and what it is recorded past; with
+ * the hours of part of a day (27 October 2026), what they earn and cash instead in days' pay for them.
+ */
+export async function checkCompensatory(employeeId: string, dayWorked: string, dayOff: string | null, hoursWorked: number | null = null): Promise<{ check: CompensatoryCheck } | { errors: string[] }> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dayWorked) || !employeeId) return { errors: [] };
   const params = new URLSearchParams({ employeeId, dayWorked });
   if (dayOff && /^\d{4}-\d{2}-\d{2}$/.test(dayOff)) params.set('dayOff', dayOff);
+  if (typeof hoursWorked === 'number' && Number.isFinite(hoursWorked)) params.set('hoursWorked', String(hoursWorked));
   let res: Response;
   try {
     res = await apiFetch(`/compensatory/check?${params.toString()}`);
@@ -86,7 +94,8 @@ export async function cancelMyCompensatory(id: string, _prev?: FormState, fd?: F
   try {
     await apiSend('POST', `/me/compensatory/${encodeURIComponent(id)}/cancel`);
   } catch (err) {
-    if (err instanceof ApiError && err.status === 409) redirect(afterAction(fd, compensatoryDoneHref(id, 'moved')));
+    // one that goes with an official duty is cancelled with it (27 October 2026): its message stays
+    if (err instanceof ApiError && err.status === 409 && !err.messages.some((m) => /official duty/i.test(m))) redirect(afterAction(fd, compensatoryDoneHref(id, 'moved')));
     if (err instanceof ApiError) return { errors: shown(err.messages) };
     throw err;
   }
@@ -102,7 +111,7 @@ export async function cancelCompensatoryByHr(id: string, _prev: FormState, fd: F
   try {
     await apiSend('POST', `/compensatory/${encodeURIComponent(id)}/cancel`, body);
   } catch (err) {
-    if (err instanceof ApiError && err.status === 409 && !err.messages.some((m) => /payroll/i.test(m))) redirect(afterAction(fd, compensatoryDoneHref(id, 'moved')));
+    if (err instanceof ApiError && err.status === 409 && !err.messages.some((m) => /payroll|official duty/i.test(m))) redirect(afterAction(fd, compensatoryDoneHref(id, 'moved')));
     if (err instanceof ApiError) return { errors: shown(err.messages), values };
     throw err;
   }
@@ -123,7 +132,7 @@ export async function decideCompensatory(id: string, stage: LeaveStage, _prev: F
   try {
     await apiSend('POST', `/compensatory/${encodeURIComponent(id)}/decide`, body);
   } catch (err) {
-    if (err instanceof ApiError && err.status === 409 && !err.messages.some((m) => /payroll|check-in|day off|already|Confirm/i.test(m))) redirect(afterAction(fd, compensatoryDoneHref(id, 'moved')));
+    if (err instanceof ApiError && err.status === 409 && !err.messages.some((m) => /payroll|check-in|day off|already|Confirm|official duty/i.test(m))) redirect(afterAction(fd, compensatoryDoneHref(id, 'moved')));
     if (err instanceof ApiError) return { errors: shown(err.messages), values };
     throw err;
   }
@@ -131,18 +140,23 @@ export async function decideCompensatory(id: string, stage: LeaveStage, _prev: F
   redirect(afterAction(fd, compensatoryDoneHref(id, `${stage}_${body.decision}`)));
 }
 
-/** The Leave Setup's cash rate (PATCH /compensatory/settings): the days' pay for cash instead, in whole or half days. */
+/**
+ * The Compensatory Setup (PATCH /compensatory/settings; owner, 27 October 2026: "i need a setup dashboard for the
+ * compensatory leaves"): the cash rate, the minimum hours to qualify, the most hours off, the hours for a whole day and
+ * when the day off is taken (null: the same calendar month), all five, refused with every reason (the shared checks the
+ * API makes, in its words), kept with what was typed. HR's alone: the API refuses anyone else.
+ */
 export async function saveCompensatorySettings(_prev: FormState, fd: FormData): Promise<FormState> {
-  const values = { cashRate: String(fd.get('cashRate') ?? '') };
-  const rate = Number(values.cashRate.trim().replace(',', '.'));
-  const problems = values.cashRate.trim() === '' ? compensatoryRateProblems(Number.NaN) : compensatoryRateProblems(rate);
-  if (problems.length) return { errors: problems, values };
+  const typed = typedCompensatorySetup(fd);
+  const values: Record<string, string> = { ...typed };
+  const { rules, errors } = readCompensatorySetup(typed);
+  if (!rules) return { errors, values };
   try {
-    await apiSend<CompensatorySettings>('PATCH', '/compensatory/settings', { cashRate: rate });
+    await apiSend<CompensatorySettings>('PATCH', '/compensatory/settings', rules);
   } catch (err) {
     if (err instanceof ApiError) return { errors: shown(err.messages), values };
     throw err;
   }
   refresh();
-  return { message: 'Compensatory day cash rate saved.', values };
+  return { message: 'Compensatory Setup saved. Requests already made keep what they earned.', values };
 }
