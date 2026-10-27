@@ -162,4 +162,6 @@ export interface OdFormView {
   holidays: { date: string; nameEn: string }[];
   rules: CompensatoryRules;
   hoursADay: number | null;
+  /** The days worked a compensatory day compensates already (approved or being decided), with its status's words. */
+  compensated: { date: string; status: string }[];
 }

@@ -186,6 +186,7 @@ describe('Official duty (e2e)', () => {
         holidays: expect.any(Array),
         rules: { cashRate: 1.5, minHours: 2, hoursCap: 4, fullDayHours: 6, offWithinDays: null },
         hoursADay: expect.any(Number),
+        compensated: [],
       });
     });
 

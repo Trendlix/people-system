@@ -15,7 +15,7 @@ import { effectiveFromText, reasonText } from '../../../(app)/raise-requests/lis
 import { currentAmount } from '../../../(app)/reimbursements/list';
 import { wfhDayText } from '../../../(app)/attendance/wfh/wfh';
 import type { WfhRequestView } from '../../../../lib/wfh-types';
-import { odWhenWords } from '../../../(app)/attendance/official-duty/od';
+import { odWhenLine } from '../../../(app)/attendance/official-duty/od';
 import type { OdRequestView } from '../../../../lib/od-types';
 import { compensatoryDaysLine } from '../../../(app)/attendance/compensatory/compensatory';
 import type { CompensatoryRequestView } from '../../../../lib/compensatory-types';
@@ -128,7 +128,8 @@ export function waitingSections(from: {
         key: `od:${r.id}`,
         href: appItemHref('approve', 'od', r.id),
         name: r.employee.fullNameEn,
-        line: `Official duty · ${odWhenWords(r)}`,
+        // with its compensation on a rest day or an official holiday (27 October 2026): "… + day off 27/10", "… + cash"
+        line: `Official duty · ${odWhenLine(r)}`,
       })),
     );
   }

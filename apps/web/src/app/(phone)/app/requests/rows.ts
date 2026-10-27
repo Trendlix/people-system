@@ -11,7 +11,7 @@ import { daysText, leaveProgressText, periodText } from '../../../(app)/leave/li
 import { permissionWhenText } from '../../../(app)/leave/permissions';
 import { wfhDayText, wfhProgressText } from '../../../(app)/attendance/wfh/wfh';
 import type { WfhRequestView } from '../../../../lib/wfh-types';
-import { odProgressText, odWhenWords } from '../../../(app)/attendance/official-duty/od';
+import { odProgressText, odWhenLine } from '../../../(app)/attendance/official-duty/od';
 import type { OdRequestView } from '../../../../lib/od-types';
 import { compensatoryDaysLine, compensatoryProgressText } from '../../../(app)/attendance/compensatory/compensatory';
 import type { CompensatoryRequestView } from '../../../../lib/compensatory-types';
@@ -180,7 +180,8 @@ export function appRequestWhen(row: AppRequestRow): string {
     case 'wfh':
       return wfhDayText(row.request);
     case 'od':
-      return odWhenWords(row.request);
+      // with its compensation on a rest day or an official holiday (27 October 2026): "… + day off 27/10", "… + cash"
+      return odWhenLine(row.request);
     case 'compensatory':
       // "Worked Friday 06/11/2026 · day off Tuesday 10/11/2026", or "· paid in cash instead"
       return compensatoryDaysLine(row.request);

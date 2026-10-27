@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
-import { recordsOdFor } from '@trendlix/shared';
+import { recordsOdFor, type CompensatoryRules } from '@trendlix/shared';
 import { actionablePeople } from '@/lib/confidential';
 import { withCode } from '@/lib/hidden';
 import { getCurrentUser } from '@/lib/session';
@@ -16,11 +16,14 @@ import { RecordOdForm } from '../od-forms';
 // Record Official Duty, under Attendance → Official Duty (owner, 26 October 2026, asked "how to apply or import official
 // duty": "HR records it"), modelled on Record a WFH Day: HR, and the CEO for a C-level person. First who it is for, among
 // everyone employed now the user may record for (?employee=<id>), then the days (from–to), a full day or part of one,
-// where and why; as the days are chosen, what refuses them (a rest day or holiday on its own, leave, a work from home
+// where and why; as the days are chosen, what refuses them (several days with none a working day, leave, a work from home
 // day, another official duty or a compensatory day off on them, hours outside the shift, a month whose payroll is with
 // the CEO, approved or paid) and what they would be recorded past (more than 3 days after the first day), asked to
 // confirm. It is recorded approved at once and logged as recorded by HR, the employee told, its warnings kept with it and
-// in the audit log. A C-level person HR sees only the card of isn't offered: the API refuses theirs to HR.
+// in the audit log. A C-level person HR sees only the card of isn't offered: the API refuses theirs to HR. A single rest
+// day or official holiday (owner, 27 October 2026: "it should count in the compensatories"; "One step") is recorded with
+// its compensation, a day off or cash instead, its compensatory day approved with it; the Compensatory Setup is read for
+// its words (the hours' cash at its rate, the day off's window).
 
 export const metadata: Metadata = { title: 'Record Official Duty · People System' };
 
@@ -32,7 +35,7 @@ function Heading() {
       <p className="text-muted">
         Official duty an employee is on or was on, recorded by HR: approved at once and logged as recorded by HR, with your reason, and the employee is
         told. More than 3 days after its first day it is recorded with a warning, kept with it. On its days they check in from where they are, and the
-        days count as attended for its hours.
+        days count as attended for its hours. A single rest day or official holiday is recorded with its compensation: a day off, or cash instead.
       </p>
     </div>
   );
@@ -41,7 +44,7 @@ function Heading() {
 async function Record({ searchParams }: { searchParams: PageProps<'/attendance/official-duty/record'>['searchParams'] }) {
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
   if (!recordsOd(user)) return <Empty>Only HR records official duty for someone, and the CEO a C-level person&apos;s.</Empty>;
-  const people = await getOrNull<EmployeeSummary[]>('/employees');
+  const [people, rules] = await Promise.all([getOrNull<EmployeeSummary[]>('/employees'), getOrNull<CompensatoryRules>('/compensatory/settings')]);
   if (!people) return <Empty>The employees couldn&apos;t be loaded. Please try again in a moment.</Empty>;
   const employed = actionablePeople(people)
     .filter((p) => p.employment && p.id !== user.employeeId && recordsOdFor(user, p.confidential === true))
@@ -60,6 +63,7 @@ async function Record({ searchParams }: { searchParams: PageProps<'/attendance/o
           action={recordOd}
           employee={{ id: chosen.id, name: chosen.fullNameEn }}
           cancelHref={OD_PATH}
+          rules={rules}
         />
       )}
     </>

@@ -1,12 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { OdRequestView } from '../../../../lib/od-types';
 import {
+  odAskedOf,
   odCheckPath,
   odDoneText,
   odProgressText,
   odRecordForm,
   odRecordProblems,
   odRecordReadyText,
+  odSent,
   odSentText,
   odSourceText,
   odStepText,
@@ -123,5 +125,60 @@ describe('how an official duty came', () => {
   it('words HR’s recording and an import in the steps', () => {
     expect(odStepText({ kind: 'recorded_by_hr', decision: null, comment: null })).toBe('Recorded by HR, approved at once');
     expect(odStepText({ kind: 'imported', decision: null, comment: 'Imported from Leave.xlsx' })).toBe('Imported, approved');
+  });
+});
+
+// HR records official duty on a single rest day or official holiday with its compensation (owner, 27 October 2026: "it
+// should count in the compensatories"; "One step"): the form shows the compensation while the API's check says one is
+// needed, and checks again with it as it is chosen. 23/10/2026 is a Friday, 27/10/2026 a Tuesday.
+
+describe('Record official duty on a rest day or an official holiday', () => {
+  const restDay = (t: Partial<TypedOd> = {}) => typed({ startDate: '23/10/2026', endDate: '', compensation: 'day_off', dayOff: '27/10/2026', ...t });
+  const day = { onDayOff: true, needed: true, earned: { kind: 'day' as const }, cashDays: 1.5, already: null };
+  const hours = { onDayOff: true, needed: true, earned: { kind: 'hours' as const, hours: 4 }, cashDays: 0.75, already: null };
+
+  it('checks the compensation chosen with the days, so the check runs again as it changes', () => {
+    const when = { startDate: '2026-10-23', endDate: '2026-10-23', fullDay: true };
+    expect(odCheckPath(EMPLOYEE, when, odAskedOf(restDay()))).toBe(
+      `/official-duty/check?employeeId=${EMPLOYEE}&startDate=2026-10-23&endDate=2026-10-23&fullDay=true&compensation=day_off&dayOff=2026-10-27`,
+    );
+    expect(odCheckPath(EMPLOYEE, when, odAskedOf(restDay({ compensation: 'cash' })))).toBe(
+      `/official-duty/check?employeeId=${EMPLOYEE}&startDate=2026-10-23&endDate=2026-10-23&fullDay=true&compensation=cash`,
+    );
+    // a day off still being typed: a day off without its date (the check asks for it)
+    expect(odAskedOf(restDay({ dayOff: '27/1' }))).toEqual({ compensation: 'day_off' });
+    expect(odAskedOf(restDay({ compensation: '' }))).toBeNull();
+    // none while none is asked for
+    expect(odCheckPath(EMPLOYEE, when, null)).toBe(`/official-duty/check?employeeId=${EMPLOYEE}&startDate=2026-10-23&endDate=2026-10-23&fullDay=true`);
+  });
+
+  it('records the compensation with the duty, only while the form shows it', () => {
+    const values = { employeeId: EMPLOYEE, startDate: '23/10/2026', span: 'full', place: 'Site', reason: 'Shoot' };
+    const body = { employeeId: EMPLOYEE, startDate: '2026-10-23', endDate: '2026-10-23', fullDay: true, place: 'Site', reason: 'Shoot' };
+    expect(odRecordForm(fd({ ...values, compensation: 'day_off', dayOff: '27/10/2026' })).body).toEqual({ ...body, compensation: 'day_off', dayOff: '2026-10-27' });
+    expect(odRecordForm(fd({ ...values, compensation: 'cash', dayOff: '27/10/2026' })).body).toEqual({ ...body, compensation: 'cash' });
+    expect(odRecordForm(fd(values)).body).toEqual(body);
+  });
+
+  it('says what refuses it, and the compensation in the ready text', () => {
+    const choose = "23/10/2026 is a rest day of Nour Adel's shift: official duty on it earns a whole day off, so choose the day off or cash instead.";
+    expect(odRecordProblems(odSent(restDay({ compensation: '' }), true), { problems: [choose] })).toEqual([choose]);
+    expect(odRecordProblems(odSent(restDay({ dayOff: '31/13/2026' }), true), null)).toEqual(['Enter the day off as DD/MM/YYYY, e.g. 10/11/2026.']);
+    // a working day: the day off left in the form isn't read
+    expect(odRecordProblems(odSent(restDay({ startDate: '26/10/2026', dayOff: '31/13/2026' }), false), { problems: [] })).toEqual([]);
+    expect(odRecordReadyText(restDay(), 'Nour Adel', day)).toBe(
+      'Ready to record: official duty for Friday 23/10/2026, with a day off on Tuesday 27/10/2026, approved at once for Nour Adel and logged as recorded by HR. Nour Adel is told.',
+    );
+    expect(odRecordReadyText(restDay({ compensation: 'cash' }), 'Nour Adel', day, 1.5)).toContain("for Friday 23/10/2026, paid 1.5 days' pay instead, approved at once");
+    // hours, without the Setup's rate known: the days' pay
+    expect(odRecordReadyText(restDay({ span: 'part', fromTime: '10:00 AM', toTime: '2:00 PM', compensation: 'cash' }), 'Nour Adel', hours)).toContain(
+      "for Friday 23/10/2026, 10:00 AM–2:00 PM, paid 0.75 days' pay instead,",
+    );
+    expect(odRecordReadyText(restDay({ span: 'part', fromTime: '10:00 AM', toTime: '2:00 PM' }), 'Nour Adel', hours, 1.5)).toContain(', with 4 hours off on Tuesday 27/10/2026,');
+    // compensated already: none said
+    const done = { ...day, needed: false, already: 'approved' };
+    expect(odRecordReadyText(restDay(), 'Nour Adel', done)).toBe(
+      'Ready to record: official duty for Friday 23/10/2026, approved at once for Nour Adel and logged as recorded by HR. Nour Adel is told.',
+    );
   });
 });

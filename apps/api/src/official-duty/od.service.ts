@@ -265,9 +265,14 @@ export class OdService {
     const today = todayInCairo();
     const employment = caller.employeeId ? await this.employmentOn(caller.employeeId, today) : null;
     const earliest = addDays(today, -OD_AFTER_DAYS);
-    const [holidays, rules] = await Promise.all([
-      this.prisma.holiday.findMany({ where: { date: { gte: toDateOnly(earliest), lte: toDateOnly(addDays(today, 366)) } }, select: { date: true, nameEn: true }, orderBy: { date: 'asc' } }),
+    const range = { gte: toDateOnly(earliest), lte: toDateOnly(addDays(today, 366)) };
+    const [holidays, rules, compensated] = await Promise.all([
+      this.prisma.holiday.findMany({ where: { date: range }, select: { date: true, nameEn: true }, orderBy: { date: 'asc' } }),
       this.compensatory.rules(),
+      // the days worked a compensatory day compensates already: an official duty on one needs no compensation of its own
+      caller.employeeId
+        ? this.prisma.compensatoryRequest.findMany({ where: { employeeId: caller.employeeId, status: { in: [...TAKING] }, dayWorked: range }, select: { dayWorked: true, status: true } })
+        : [],
     ]);
     return {
       today,
@@ -279,6 +284,7 @@ export class OdService {
       holidays: holidays.map((h) => ({ date: fromDateOnly(h.date)!, nameEn: h.nameEn })),
       rules,
       hoursADay: hoursADayOf(employment),
+      compensated: compensated.map((c) => ({ date: fromDateOnly(c.dayWorked)!, status: statusWords(c.status) })),
     };
   }
 

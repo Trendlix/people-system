@@ -17,7 +17,7 @@ import { afterAction } from '@/lib/surface';
 import type { FormState } from '@/lib/types';
 import { leaveDecisionBody } from '../../leave/list';
 import { shownMessage } from '../../leave/permissions';
-import { MY_OD_HREF, OD_PATH, odCancelBody, odCheckPath, odDoneHref, odForm, odRecordForm, typedOdValues, type OdWhen } from './od';
+import { MY_OD_HREF, OD_PATH, odCancelBody, odCheckPath, odDoneHref, odForm, odRecordForm, typedOdValues, type OdCompensationBody, type OdWhen } from './od';
 
 const shown = (messages: string[]) => messages.map(shownMessage);
 
@@ -60,14 +60,17 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * What HR recording official duty for someone would meet (GET /official-duty/check): what refuses it and what it would
- * be recorded past, for the form to show as the days are chosen.
+ * be recorded past, for the form to show as the days are chosen; on a single rest day or official holiday (owner, 27
+ * October 2026: "it should count in the compensatories"), what it earns and what the compensation chosen (`asked`)
+ * meets.
  */
-export async function checkOdDays(employeeId: string, when: OdWhen): Promise<{ check: OdCheck } | { errors: string[] }> {
+export async function checkOdDays(employeeId: string, when: OdWhen, asked: OdCompensationBody | null = null): Promise<{ check: OdCheck } | { errors: string[] }> {
   const times = when.fullDay || (TIME.test(when.fromTime ?? '') && TIME.test(when.toTime ?? ''));
   if (!UUID.test(employeeId) || !DAY.test(when.startDate) || !DAY.test(when.endDate) || !times) return { errors: [] };
+  const compensation = (asked?.compensation === 'day_off' || asked?.compensation === 'cash') && (!asked.dayOff || DAY.test(asked.dayOff)) ? asked : null;
   let res: Response;
   try {
-    res = await apiFetch(odCheckPath(employeeId, when));
+    res = await apiFetch(odCheckPath(employeeId, when, compensation));
   } catch (err) {
     if (err instanceof ApiError) return { errors: shown(err.messages) };
     throw err;

@@ -1,4 +1,4 @@
-import type { LeaveDecision, LeaveStage, LeaveStatus, OdStepKind } from '@trendlix/shared';
+import type { CompensationEarned, CompensatoryOutcome, CompensatoryRules, LeaveDecision, LeaveStage, LeaveStatus, OdStepKind } from '@trendlix/shared';
 import type { RequestApprover } from './types';
 
 // Official duty, OD (owner, 23 October 2026: "Official duty (OD) requests. The plan has OD as a third attendance mode
@@ -69,6 +69,42 @@ export interface OdRequestView {
    * payroll, listed on Unsettled until HR handles it. The API's warning on the action just taken joins `warnings`.
    */
   payrollLocked?: string[];
+  /**
+   * One day on a rest day or an official holiday (owner, 27 October 2026: "it should count in the compensatories"; "One
+   * step"): its compensatory day, saved with it and decided and cancelled with it. Left out by an API from before it.
+   */
+  compensation?: OdCompensation | null;
+}
+
+/** The compensatory day an official duty on a rest day or an official holiday carries (its own page: /attendance/compensatory/<id>). */
+export interface OdCompensation {
+  id: string;
+  /** The duty's: decided and cancelled with it. */
+  status: LeaveStatus;
+  /** A day off (whole, or hours off for part of the day), or cash instead. */
+  outcome: CompensatoryOutcome;
+  /** YYYY-MM-DD of the day off (or the day for the hours off); null for cash instead. */
+  dayOff: string | null;
+  /** Part of the day's hours (null: a full day), and the hours off they earned (null: a whole day). */
+  hoursWorked: number | null;
+  hoursOff: number | null;
+}
+
+/**
+ * What a request on a day off earns (27 October 2026), as HR's check (GET /official-duty/check) says it and the
+ * employee's form works it out.
+ */
+export interface OdCompensationView {
+  /** One day on a rest day or an official holiday. */
+  onDayOff: boolean;
+  /** A compensation is to be chosen with it: it earns one and no compensatory day compensates the day already. */
+  needed: boolean;
+  /** What its hours earn (null: not on a day off). */
+  earned: CompensationEarned | null;
+  /** Cash instead, in days' pay. */
+  cashDays: number;
+  /** A compensatory day compensates the day already: its status's words; null: none. */
+  already: string | null;
 }
 
 /** GET /me/official-duty/form: what the request form reads first. */
@@ -83,6 +119,17 @@ export interface OdForm {
   refusal: string | null;
   /** A C-level person's goes to the CEO after their manager, not HR. */
   toCeo: boolean;
+  /**
+   * For one on a rest day or an official holiday (27 October 2026): their shift's working days (0 = Sunday), the official
+   * holidays from 3 days ago to a year ahead, the Compensatory Setup, and the shift's hours a day (null: no shift). Left
+   * out by an API from before it: the form then leaves rest days and holidays to the API.
+   */
+  workingDays?: number[];
+  holidays?: { date: string; nameEn: string }[];
+  rules?: CompensatoryRules;
+  hoursADay?: number | null;
+  /** The days worked a compensatory day compensates already, with its status's words (27 October 2026). */
+  compensated?: { date: string; status: string }[];
 }
 
 /** GET /official-duty/check: what refuses official duty HR would record for someone, and what it would be recorded past. */
@@ -92,6 +139,8 @@ export interface OdCheck {
   warnings: string[];
   /** Their shift's window, for part of a day; null: none. */
   shift: { startTime: string; endTime: string; graceMinutes: number } | null;
+  /** On a rest day or an official holiday (27 October 2026): what it earns. Left out by an API from before it. */
+  compensation?: OdCompensationView;
 }
 
 /** GET /official-duty/counts. */

@@ -1,4 +1,7 @@
 import {
+  compensatoryCashDays,
+  compensatoryForOdCheck,
+  hoursText,
   LEAVE_DECISIONS,
   LEAVE_STAGES,
   LEAVE_STATUS_LABELS,
@@ -7,19 +10,27 @@ import {
   OD_DAY_LABEL,
   OD_PLACE_MAX,
   OD_REASON_MAX,
+  odDates,
+  odDaysProblems,
+  odEarned,
   odHoursProblems,
   odInputProblems,
+  odNeedsCompensation,
   odTimingProblem,
   odWhenProblems,
+  type CompensationAsked,
+  type CompensatoryOutcome,
+  type CompensatoryRules,
   type LeaveDecision,
   type LeaveStage,
   type LeaveStatus,
   type LeaveStepKind,
+  type OdDayFacts,
   type Role,
 } from '@trendlix/shared';
 import { MY_REQUESTS, MY_TEAM } from '../../../../components/nav';
 import { formatDate, formatTime, parseDate, parseTime } from '../../../../lib/format';
-import type { OdCheck, OdDayView, OdForm, OdRequestStep, OdRequestView } from '../../../../lib/od-types';
+import type { OdCheck, OdCompensation, OdCompensationView, OdDayView, OdForm, OdRequestStep, OdRequestView } from '../../../../lib/od-types';
 import { hasRole } from '../../../../lib/roles';
 import type { LeaveRequestStep, RequestApprover } from '../../../../lib/types';
 import { hrStageName, leaveDecisionButton, leaveProgressText, leaveStepText } from '../../leave/list';
@@ -35,9 +46,11 @@ import { weekdayOf } from '../../organization/holidays/holidays';
 // taken from anywhere ("Check in from anywhere") and the day counts as attended for its hours. HR and the CEO see every
 // request under Attendance → Official Duty. HR records one for someone there (owner, 26 October 2026: "HR records it"),
 // approved at once, past the 3-day limit too with a warning; the CEO a C-level person's. A leave import brings them over
-// too ("Import (template + Zoho)"). The rules are @trendlix/shared's (official-duty.ts), which the API enforces; these
-// helpers word what it sent, read the forms and show the same checks live. Pure code, tested; relative imports, as
-// vitest doesn't know the @/ paths.
+// too ("Import (template + Zoho)"). A single rest day or official holiday is asked or recorded with its compensation
+// (owner, 27 October 2026: "it should count in the compensatories"; "One step"): see "On a day off" below. The rules
+// are @trendlix/shared's (official-duty.ts, compensatory.ts), which the API enforces; these helpers word what it sent,
+// read the forms and show the same checks live. Pure code, tested; relative imports, as vitest doesn't know the @/
+// paths.
 
 type WithRoles = { roles: readonly Role[] };
 type Query = Record<string, string | string[] | undefined>;
@@ -202,6 +215,33 @@ export function odSpanText(r: Pick<OdRequestView, 'startDate' | 'endDate' | 'ful
   return `${days} days in a row, full days`;
 }
 
+/**
+ * Its compensation in words, on a rest day or an official holiday (owner, 27 October 2026: "it should count in the
+ * compensatories"): "A day off on Tuesday 27/10/2026", "4 hours off on Tuesday 27/10/2026", "Cash instead of a day
+ * off", "Cash instead of 4 hours off".
+ */
+export function odCompensationText(c: Pick<OdCompensation, 'outcome' | 'dayOff' | 'hoursOff'>): string {
+  const off = c.hoursOff ? `${hoursText(c.hoursOff)} off` : 'a day off';
+  if (c.outcome === 'cash') return `Cash instead of ${off}`;
+  const what = off.charAt(0).toUpperCase() + off.slice(1);
+  return c.dayOff ? `${what} on ${dayWords(c.dayOff)}` : what;
+}
+
+/** The short note of its compensation where its days show in a list: "+ day off 27/10", "+ 4 hours off 27/10", "+ cash"; null without one. */
+export function odCompensationNote(r: Pick<OdRequestView, 'compensation'>): string | null {
+  const c = r.compensation;
+  if (!c) return null;
+  if (c.outcome === 'cash') return '+ cash';
+  const off = c.hoursOff ? `${hoursText(c.hoursOff)} off` : 'day off';
+  return c.dayOff ? `+ ${off} ${formatDate(c.dayOff).slice(0, 5)}` : `+ ${off}`;
+}
+
+/** Its days with its compensation's note, in a line (the phone pages' lists): "Friday 23/10/2026 + day off 27/10". */
+export function odWhenLine(r: Pick<OdRequestView, 'startDate' | 'endDate' | 'fullDay' | 'fromTime' | 'toTime' | 'compensation'>): string {
+  const note = odCompensationNote(r);
+  return note ? `${odWhenWords(r)} ${note}` : odWhenWords(r);
+}
+
 /** How it came: asked by the employee, recorded by HR (26 October 2026), or imported by a leave import. */
 export function odSourceText(r: Pick<OdRequestView, 'recordedByHr' | 'imported'>): string {
   if (r.imported) return 'Imported';
@@ -282,6 +322,12 @@ export interface TypedOd {
   toTime: string;
   place: string;
   reason: string;
+  /**
+   * On a single rest day or official holiday (27 October 2026): the compensation chosen, "day_off", "cash" or "" (none),
+   * and the day off typed (DD/MM/YYYY). Left out: none. Sent only while the form asks for one (odSent).
+   */
+  compensation?: string;
+  dayOff?: string;
 }
 
 /** What POST /me/official-duty takes. */
@@ -293,18 +339,26 @@ export interface OdBody {
   toTime?: string;
   place: string;
   reason: string;
+  /** One day on a rest day or an official holiday (27 October 2026): its compensation, and the day off for a day off. */
+  compensation?: CompensatoryOutcome;
+  dayOff?: string;
 }
 
 /** The days and times of a request: what HR's live check reads (GET /official-duty/check). */
 export type OdWhen = Pick<OdBody, 'startDate' | 'endDate' | 'fullDay' | 'fromTime' | 'toTime'>;
 
+/** The compensation as the form sends it, and HR's live check reads it: a day off with its date, or cash instead. */
+export type OdCompensationBody = Pick<OdBody, 'compensation' | 'dayOff'>;
+
 /** What was typed, read: the API's values, and why it can't be read here. */
 function read(t: TypedOd): { body: OdBody | null; errors: string[] } {
   const { when, errors } = readWhen(t);
   if (!when) return { body: null, errors };
-  const body: OdBody = { ...when, place: t.place.trim(), reason: t.reason.trim() };
-  // the shared checks of what can be read: the order of the days, at most 31, part of a day's times, the place, the reason
-  const shared = odInputProblems({ ...body, fromTime: body.fromTime ?? null, toTime: body.toTime ?? null }).map(shownMessage);
+  const compensation = readCompensation(t);
+  const body: OdBody = { ...when, place: t.place.trim(), reason: t.reason.trim(), ...compensation.asked };
+  // the shared checks of what can be read: the order of the days, at most 31, part of a day's times, the place, the
+  // reason; then the day off typed
+  const shared = [...odInputProblems({ ...body, fromTime: body.fromTime ?? null, toTime: body.toTime ?? null }).map(shownMessage), ...compensation.errors];
   return shared.length ? { body: null, errors: shared } : { body, errors: [] };
 }
 
@@ -338,18 +392,227 @@ function readWhen(t: Pick<TypedOd, 'startDate' | 'endDate' | 'span' | 'fromTime'
 }
 
 /**
+ * The compensation typed, read: a day off with its date (left out while none is typed: the shared check asks for it),
+ * or cash instead (no day off); none when neither is chosen.
+ */
+function readCompensation(t: Pick<TypedOd, 'compensation' | 'dayOff'>): { asked: OdCompensationBody | null; errors: string[] } {
+  if (t.compensation === 'cash') return { asked: { compensation: 'cash' }, errors: [] };
+  if (t.compensation !== 'day_off') return { asked: null, errors: [] };
+  const typed = (t.dayOff ?? '').trim();
+  const dayOff = parseDate(typed);
+  if (typed !== '' && !dayOff) return { asked: null, errors: ['Enter the day off as DD/MM/YYYY, e.g. 10/11/2026.'] };
+  return { asked: dayOff ? { compensation: 'day_off', dayOff } : { compensation: 'day_off' }, errors: [] };
+}
+
+/** The compensation chosen as the shared checks take it; null for none. */
+const askedOf = (b: OdCompensationBody): CompensationAsked | null =>
+  b.compensation ? { outcome: b.compensation, dayOff: b.compensation === 'cash' ? null : (b.dayOff ?? null) } : null;
+
+// ---------- on a day off (owner, 27 October 2026) ----------
+// A screenshot showed HR's form refusing official duty on a rest day of the employee's shift: "why cant i record this
+// for an employee? it should count in the compensatories". He chose "One step": "The duty form allows a rest
+// day/holiday and, right there, asks for the compensation: a day off in the same month, or cash instead (1.5 days).
+// Saving records the duty and the compensatory day together, approved the same way. The rest day itself adds no hours
+// or overtime." Then by the hour: part of a rest day earns hours off on a working day by the Compensatory Setup (fewer
+// than its minimum nothing, up to its cap, from its hours for a whole day a day), or cash for those hours at its rate.
+// HR's form reads what the day earns from the API's check; the employee's works it out from what its form read first
+// (their working days, the holidays, the Setup) and the API checks the rest.
+
+/** The form as it is sent: its compensation only while one is asked for (`needed`), else none. */
+export const odSent = (typed: TypedOd, needed: boolean): TypedOd => (needed ? typed : { ...typed, compensation: '', dayOff: '' });
+
+/** The compensation chosen so far, for HR's live check (odCheckPath): a day off without its date while it can't be read; null for none. */
+export const odAskedOf = (typed: Pick<TypedOd, 'compensation' | 'dayOff'>): OdCompensationBody | null =>
+  readCompensation(typed).asked ?? (typed.compensation === 'day_off' ? { compensation: 'day_off' } : null);
+
+/** A day a compensatory day compensates already, as the API's refusal of the employee's request named it. */
+export interface OdCompensated {
+  date: string;
+  /** Its status's words: "approved", "with HR". */
+  status: string;
+}
+
+const COMPENSATED_ALREADY = /^(\d{2})\/(\d{2})\/(\d{4}) is .*, compensated already by a compensatory day \(([^()]+)\)/;
+
+/**
+ * The day the API said is compensated already (by a compensatory day asked apart, before the duty), from the refusal
+ * shown on the employee's form: their form can't know it beforehand, so once refused it stops asking for a compensation
+ * for that day; null for none.
+ */
+export function odCompensatedAlready(errors: readonly string[] | undefined): OdCompensated | null {
+  for (const e of errors ?? []) {
+    const m = COMPENSATED_ALREADY.exec(e);
+    if (m) return { date: `${m[3]}-${m[2]}-${m[1]}`, status: m[4] };
+  }
+  return null;
+}
+
+/** What the employee's form read first that tells a rest day and a holiday apart (an API from before it: nothing). */
+type OdFormDays = Pick<OdForm, 'workingDays' | 'holidays' | 'compensated'>;
+
+/**
+ * The days asked, as far as the employee's form knows them: a working day of their shift or not, the official holiday on
+ * it, and the day compensated already (the form's `compensated`; else `done`, as the API's refusal named it); their
+ * leave, work from home days and other official duties aren't known here (the API checks them). Null without the working
+ * days (an API from before 27 October 2026).
+ */
+export function odFormDays(when: Pick<OdWhen, 'startDate' | 'endDate'>, form: OdFormDays, done: OdCompensated | null = null): OdDayFacts[] | null {
+  if (!form.workingDays) return null;
+  const working = new Set(form.workingDays);
+  const holidays = new Map((form.holidays ?? []).map((h) => [h.date, h.nameEn]));
+  const compensated = new Map((form.compensated ?? []).map((c) => [c.date, c.status]));
+  if (done) compensated.set(done.date, compensated.get(done.date) ?? done.status);
+  return odDates(when.startDate, when.endDate).map((date) => ({
+    date,
+    workingDay: working.has(new Date(`${date}T00:00:00Z`).getUTCDay()),
+    holiday: holidays.get(date) ?? null,
+    leave: null,
+    wfh: null,
+    od: [],
+    compensatory: null,
+    compensated: compensated.has(date) ? { status: compensated.get(date)! } : null,
+  }));
+}
+
+/** What the employee's form works out of a single day off: what HR's check says (OdCompensationView), and what the day is. */
+export type OdFormCompensation = OdCompensationView & {
+  /** "Friday 23/10/2026 is a rest day of your shift", "… is an official holiday (Revolution Day)". */
+  what: string;
+};
+
+/**
+ * What the single day typed earns on the employee's form, as HR's check says it (odEarned, odNeedsCompensation and
+ * compensatoryCashDays by the Compensatory Setup the form read); null for a working day, several days, days that can't
+ * be read yet, or an API from before it.
+ */
+export function odFormCompensation(
+  typed: Pick<TypedOd, 'startDate' | 'endDate' | 'span' | 'fromTime' | 'toTime'>,
+  form: (OdFormDays & Pick<OdForm, 'rules' | 'hoursADay'>) | null,
+  done: OdCompensated | null = null,
+): OdFormCompensation | null {
+  if (!form?.rules) return null;
+  const { when } = readWhen(typed);
+  if (!when || when.startDate !== when.endDate) return null;
+  const days = odFormDays(when, form, done);
+  if (!days?.length) return null;
+  const input = { ...when, fromTime: when.fromTime ?? null, toTime: when.toTime ?? null };
+  const earned = odEarned(input, days, form.rules);
+  if (!earned) return null;
+  const d = days[0];
+  return {
+    onDayOff: true,
+    needed: odNeedsCompensation(input, days, form.rules),
+    earned,
+    cashDays: compensatoryCashDays(earned, form.rules, form.hoursADay ?? null),
+    already: d.compensated?.status ?? null,
+    what: `${dayWords(d.date)} is ${d.holiday ? `an official holiday (${d.holiday})` : 'a rest day of your shift'}`,
+  };
+}
+
+/** "1.5 days' pay", "1 day's pay". */
+const daysPay = (n: number) => `${n} ${n === 1 ? "day's" : "days'"} pay`;
+
+/**
+ * Cash instead, in words: a whole day's "1.5 days' pay" (owner: "cash instead (1.5 days)"); hours' "4 hours' pay at
+ * 1.5×", the hours' share of a day at the rate; without the rate known, the days' pay ("0.75 days' pay").
+ */
+export function odCashText(comp: Pick<OdCompensationView, 'earned' | 'cashDays'>, rate: number | null = null): string {
+  const e = comp.earned;
+  if (e?.kind === 'hours' && rate !== null) return `${hoursText(e.hours)}${e.hours === 1 ? "'s" : "'"} pay at ${rate}×`;
+  if (e?.kind === 'day' && rate !== null) return daysPay(rate);
+  return daysPay(comp.cashDays);
+}
+
+/**
+ * What the compensation part of a form says first: what the day earns ("…: official duty on it earns a whole day off,
+ * or 1.5 days' pay instead"), that it is compensated already, or that part of it below the Setup's minimum earns nothing.
+ * `what`: the day (the employee's form knows it; HR's check doesn't say). `rules`: the Setup, when known.
+ */
+export function odCompensationLead(
+  comp: Pick<OdCompensationView, 'earned' | 'cashDays' | 'already'>,
+  what: string | null,
+  rules: Pick<CompensatoryRules, 'minHours' | 'cashRate'> | null,
+): string {
+  const day = what ?? 'A rest day or an official holiday';
+  if (comp.already) return `${day}, compensated already by a compensatory day (${comp.already}): there is nothing more to choose.`;
+  const e = comp.earned;
+  if (!e) return '';
+  if (e.kind === 'none') {
+    const least = rules ? `the ${hoursText(rules.minHours)} that earn a compensation (Compensatory Setup)` : 'the hours that earn a compensation (Compensatory Setup)';
+    return `${day}: ${hoursText(e.hours)} of official duty on it earns nothing, fewer than ${least}, so there is no compensation to choose.`;
+  }
+  const earns = e.kind === 'day' ? 'a whole day off' : `${hoursText(e.hours)} off`;
+  return `${day}: official duty on it earns ${earns}, or ${odCashText(comp, rules?.cashRate ?? null)} instead. The day itself adds no hours or overtime.`;
+}
+
+/**
+ * The day off's hint: a working day in the window the Setup allows (the same month, or within so many days after), from
+ * tomorrow for the employee (a day's notice), a day gone by recorded with a warning by HR (`hr`); the hours off taken
+ * that day with no deduction.
+ */
+export function odDayOffHint(comp: Pick<OdCompensationView, 'earned'>, rules: Pick<CompensatoryRules, 'offWithinDays'> | null, hr: boolean): string {
+  const window =
+    rules === null ? 'in the window the Compensatory Setup allows' : rules.offWithinDays === null ? 'in the same month' : `within ${rules.offWithinDays} ${rules.offWithinDays === 1 ? 'day' : 'days'} after it`;
+  const when = hr ? `A working day of their shift ${window}; a day gone by is recorded with a warning.` : `A working day of your shift ${window}, from tomorrow on.`;
+  return comp.earned?.kind === 'hours' ? `${when} The ${hoursText(comp.earned.hours)} off are taken that day, with no deduction.` : when;
+}
+
+/** Cash instead's hint: what is added to the payroll, and no day off. */
+export const odCashHint = (comp: Pick<OdCompensationView, 'earned' | 'cashDays'>, rate: number | null = null): string =>
+  `Cash instead: ${odCashText(comp, rate)} added to the month's payroll once approved, and no day off.`;
+
+/**
+ * The compensation chosen, for the ready texts: ", with a day off on Tuesday 27/10/2026", ", with 4 hours off on …",
+ * ", paid 1.5 days' pay instead", ", paid 4 hours' pay at 1.5× instead"; empty while none is asked for.
+ */
+export function odCompensationWords(
+  typed: Pick<TypedOd, 'compensation' | 'dayOff'>,
+  comp: Pick<OdCompensationView, 'needed' | 'earned' | 'cashDays'> | null,
+  rate: number | null = null,
+): string {
+  if (!comp?.needed || !comp.earned || comp.earned.kind === 'none') return '';
+  const asked = readCompensation(typed).asked;
+  if (!asked?.compensation) return '';
+  if (asked.compensation === 'cash') return `, paid ${odCashText(comp, rate)} instead`;
+  const off = comp.earned.kind === 'hours' ? `${hoursText(comp.earned.hours)} off` : 'a day off';
+  return asked.dayOff ? `, with ${off} on ${dayWords(asked.dayOff)}` : `, with ${off}`;
+}
+
+// ---------- the employee's form ----------
+
+/** What the employee's form read first, as its checks use it (the day off's facts: an API from before 27 October 2026 left them out). */
+type OdFormRead = Pick<OdForm, 'today' | 'shift' | 'refusal' | 'workingDays' | 'holidays' | 'rules' | 'hoursADay'>;
+
+/**
  * Why the request can't be sent yet, in the order to fix them (none: it can): what can't be read, then the shared checks
  * against what the form read first (`form`; null while it couldn't be read: the API checks them): the timing (up to 3
- * days after) and part of a day inside their shift. A holiday, a rest day, leave, a work from home day or another
- * official duty on the same days aren't known here: the API refuses those when it is sent.
+ * days after), part of a day inside their shift, and the days as far as the form knows them (27 October 2026): a single
+ * rest day or official holiday that earns a compensation without one, its day off not a working day, outside the
+ * Setup's window or without a day's notice, several days with none a working day. Leave, a work from home day or
+ * another official duty on the same days, and a day compensated already (`done`: once the API said so), aren't known
+ * here: the API refuses those when it is sent.
  */
-export function odFormProblems(typed: TypedOd, form: Pick<OdForm, 'today' | 'shift' | 'refusal'> | null): string[] {
-  const { body, errors } = read(typed);
+export function odFormProblems(typed: TypedOd, form: OdFormRead | null, done: OdCompensated | null = null): string[] {
+  const comp = odFormCompensation(typed, form, done);
+  const { body, errors } = read(odSent(typed, comp?.needed === true));
   if (errors.length || !body) return errors;
   if (!form) return [];
   if (form.refusal) return [form.refusal];
+  const input = { ...body, fromTime: body.fromTime ?? null, toTime: body.toTime ?? null };
   const timing = odTimingProblem(body.startDate, form.today);
-  return [...(timing ? [timing] : []), ...odHoursProblems({ fullDay: body.fullDay, fromTime: body.fromTime ?? null, toTime: body.toTime ?? null }, form.shift)].map(shownMessage);
+  const problems = [...(timing ? [timing] : []), ...odHoursProblems(input, form.shift)];
+  const days = form.rules ? odFormDays(body, form, done) : null;
+  if (days && form.rules) {
+    const asked = askedOf(body);
+    problems.push(...odDaysProblems(input, days, null, asked, form.rules));
+    if (asked && comp?.needed) {
+      // the day off as far as the form knows it: a working day of their shift, not an official holiday
+      const off = asked.dayOff ? odFormDays({ startDate: asked.dayOff, endDate: asked.dayOff }, form)?.[0] : null;
+      const offDay = off ? { workingDay: off.workingDay, holiday: off.holiday, leave: null, other: null } : null;
+      problems.push(...compensatoryForOdCheck(body.startDate, asked, { claimed: false }, offDay, form.today, null, form.rules).problems);
+    }
+  }
+  return problems.map(shownMessage);
 }
 
 /**
@@ -362,14 +625,17 @@ export function odAfterNote(typed: Pick<TypedOd, 'startDate'>, form: Pick<OdForm
   return `Asked after the day: it is marked “requested after”. That’s fine up to ${OD_AFTER_DAYS} days after; the reason tells your manager and HR why it wasn’t asked ahead.`;
 }
 
-/** What the form says once it can be sent: the days and where it goes (`toCeo`: a C-level person's goes to the CEO, not HR). */
-export function odReadyText(typed: TypedOd, toCeo = false): string {
-  const { body } = read(typed);
+/**
+ * What the form says once it can be sent: the days, the compensation chosen on a day off (`comp`; `rate`: the Setup's
+ * cash rate) and where it goes (`toCeo`: a C-level person's goes to the CEO, not HR).
+ */
+export function odReadyText(typed: TypedOd, toCeo = false, comp: Pick<OdCompensationView, 'needed' | 'earned' | 'cashDays'> | null = null, rate: number | null = null): string {
+  const { body } = read(odSent(typed, comp?.needed === true));
   const when = body ? ` for ${odWhenWords({ startDate: body.startDate, endDate: body.endDate, fullDay: body.fullDay, fromTime: body.fromTime ?? null, toTime: body.toTime ?? null })}` : '';
-  return `Ready to send: official duty${when}, to your direct manager (without one, your lead), then ${hrStageName(toCeo)}.`;
+  return `Ready to send: official duty${when}${odCompensationWords(typed, comp, rate)}, to your direct manager (without one, your lead), then ${hrStageName(toCeo)}.`;
 }
 
-/** The request sent, or what can't be read: the API checks the rest and answers what is wrong. */
+/** The request sent, or what can't be read: the API checks the rest and answers what is wrong. Its compensation goes only while the form shows it. */
 export function odForm(fd: FormData): { body: OdBody | null; errors: string[] } {
   return read(typedOd(fd));
 }
@@ -389,12 +655,20 @@ export function odWhenOf(typed: Pick<TypedOd, 'startDate' | 'endDate' | 'span' |
   return readWhen(typed).when;
 }
 
-/** GET /official-duty/check for someone and the days and times: "/official-duty/check?employeeId=…&startDate=…&endDate=…&fullDay=true". */
-export function odCheckPath(employeeId: string, when: OdWhen): string {
+/**
+ * GET /official-duty/check for someone, the days and times, and on a day off the compensation chosen (`asked`: sent
+ * while the form asks for one, so the check runs again as it changes): "/official-duty/check?employeeId=…&startDate=…
+ * &endDate=…&fullDay=true&compensation=day_off&dayOff=…".
+ */
+export function odCheckPath(employeeId: string, when: OdWhen, asked: OdCompensationBody | null = null): string {
   const params = new URLSearchParams({ employeeId, startDate: when.startDate, endDate: when.endDate, fullDay: String(when.fullDay) });
   if (!when.fullDay && when.fromTime && when.toTime) {
     params.set('fromTime', when.fromTime);
     params.set('toTime', when.toTime);
+  }
+  if (asked?.compensation === 'day_off' || asked?.compensation === 'cash') {
+    params.set('compensation', asked.compensation);
+    if (asked.compensation === 'day_off' && asked.dayOff) params.set('dayOff', asked.dayOff);
   }
   return `/official-duty/check?${params.toString()}`;
 }
@@ -409,16 +683,16 @@ export function odRecordProblems(typed: TypedOd, check: Pick<OdCheck, 'problems'
   return check ? check.problems.map(shownMessage) : [];
 }
 
-/** What HR's form says once it can be recorded: the days, approved at once for the person, who is told. */
-export function odRecordReadyText(typed: TypedOd, name: string): string {
-  const { body } = read(typed);
+/** What HR's form says once it can be recorded: the days, the compensation chosen on a day off, approved at once for the person, who is told. */
+export function odRecordReadyText(typed: TypedOd, name: string, comp: Pick<OdCompensationView, 'needed' | 'earned' | 'cashDays'> | null = null, rate: number | null = null): string {
+  const { body } = read(odSent(typed, comp?.needed === true));
   const when = body ? ` for ${odWhenWords({ startDate: body.startDate, endDate: body.endDate, fullDay: body.fullDay, fromTime: body.fromTime ?? null, toTime: body.toTime ?? null })}` : '';
-  return `Ready to record: official duty${when}, approved at once for ${name} and logged as recorded by HR. ${name} is told.`;
+  return `Ready to record: official duty${when}${odCompensationWords(typed, comp, rate)}, approved at once for ${name} and logged as recorded by HR. ${name} is told.`;
 }
 
-const FIELDS = ['startDate', 'endDate', 'span', 'fromTime', 'toTime', 'place', 'reason'] as const;
+const FIELDS = ['startDate', 'endDate', 'span', 'fromTime', 'toTime', 'place', 'reason', 'compensation', 'dayOff'] as const;
 
-/** The fields as typed, from the form. */
+/** The fields as typed, from the form (the compensation's only while the form shows them). */
 export const typedOd = (fd: FormData): TypedOd => Object.fromEntries(FIELDS.map((k) => [k, String(fd.get(k) ?? (k === 'span' ? 'full' : ''))])) as unknown as TypedOd;
 
 /** The fields as the form shows them again after a refusal. */
