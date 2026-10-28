@@ -23,6 +23,9 @@ import {
   vacanciesHref,
   vacancyForm,
   withKind,
+  columnSortText,
+  nextSort,
+  sortApplicants,
 } from './recruitment';
 
 // Recruitment on the site (owner, 22 October 2026: "where will we include the ATS?"; "HR creates a vacancy and the CEO
@@ -62,6 +65,7 @@ describe('the lists', () => {
       q: '',
       minCvMatch: null,
       sort: '',
+      dir: '',
       skill: '',
       verdict: '',
     });
@@ -75,6 +79,7 @@ describe('the lists', () => {
       q: '',
       minCvMatch: null,
       sort: '',
+      dir: '',
       skill: '',
       verdict: '',
     });
@@ -203,5 +208,64 @@ describe('the channels and Make offer', () => {
       note: 'From applicant APP-2026-0004',
     });
     expect(offerFromApplication(base, { ...a, fullName: 'منى عادل' })).toMatchObject({ fullNameEn: '', fullNameAr: 'منى عادل' });
+  });
+});
+
+// Sorting by the table's titles (owner, 28 October 2026: "i want to activate sorting by from the titles").
+describe('sorting the applicants by a column', () => {
+  const row = (fullName: string, over: Record<string, unknown> = {}) =>
+    ({
+      fullName,
+      vacancy: { id: ID, number: 'VAC-2026-0001', title: 'Media Buyer', status: 'open' },
+      matchPercent: null,
+      cvMatchPercent: null,
+      stage: 'applied',
+      filteredOut: false,
+      yearsExperience: null,
+      source: 'careers_page',
+      appliedAt: '2026-10-25T10:00:00.000Z',
+      fromCv: null,
+      ...over,
+    }) as unknown as Parameters<typeof sortApplicants>[0][number];
+  const names = (rows: readonly { fullName: string }[]) => rows.map((r) => r.fullName);
+
+  it('reads the column and its order from the address, and keeps them in its links, never in the API’s', () => {
+    expect(readApplicantsQuery({ sort: 'name', dir: 'asc' })).toMatchObject({ sort: 'name', dir: 'asc' });
+    expect(readApplicantsQuery({ sort: 'salary', dir: 'up' })).toMatchObject({ sort: '', dir: '' });
+    expect(applicantsHref(APPLICANTS_PATH, { sort: 'applied', dir: 'asc' })).toBe('/recruitment/applicants?sort=applied&dir=asc');
+    // the API orders by its own two sorts only
+    expect(applicantsApiPath({ sort: 'name', dir: 'asc' })).toBe('/recruitment/applications');
+    expect(applicantsApiPath({ sort: 'cv', dir: 'asc' })).toBe('/recruitment/applications?sort=cv');
+  });
+
+  it('a click sorts by the column in its first order, a second click the other way round', () => {
+    expect(nextSort({ sort: '', dir: '' }, 'name')).toEqual({ sort: 'name', dir: '' });
+    expect(nextSort({ sort: 'name', dir: '' }, 'name')).toEqual({ sort: 'name', dir: 'desc' });
+    expect(nextSort({ sort: 'name', dir: 'desc' }, 'name')).toEqual({ sort: 'name', dir: 'asc' });
+    // none chosen is best match first: a click on Match turns it round
+    expect(nextSort({ sort: '', dir: '' }, 'match')).toEqual({ sort: 'match', dir: 'asc' });
+    expect(columnSortText({ sort: 'applied', dir: '' })).toBe('By applied, newest first');
+    expect(columnSortText({ sort: 'name', dir: 'desc' })).toBe('By applicant, Z to A');
+  });
+
+  it('orders the rows by the column, nothing in it last either way, those alike as the API sent them', () => {
+    const rows = [
+      row('Nour', { cvMatchPercent: 70, stage: 'interview', yearsExperience: 3, appliedAt: '2026-10-20T10:00:00.000Z' }),
+      row('amal', { matchPercent: 90, cvMatchPercent: 40, stage: 'applied', fromCv: { status: 'read', experienceMonths: 60, latestTitle: 'Designer', latestCompany: null } }),
+      row('Karim', { stage: 'shortlisted', filteredOut: true, fromCv: { status: 'read', experienceMonths: null, latestTitle: 'Account Manager', latestCompany: null } }),
+      row('Bassem'),
+    ];
+    expect(names(sortApplicants(rows, { sort: '', dir: '' }))).toEqual(['Nour', 'amal', 'Karim', 'Bassem']);
+    expect(names(sortApplicants(rows, { sort: 'name', dir: '' }))).toEqual(['amal', 'Bassem', 'Karim', 'Nour']);
+    expect(names(sortApplicants(rows, { sort: 'name', dir: 'desc' }))).toEqual(['Nour', 'Karim', 'Bassem', 'amal']);
+    // the Match cell's: the screening match, else the CV fit; none last
+    expect(names(sortApplicants(rows, { sort: 'match', dir: '' }))).toEqual(['amal', 'Nour', 'Karim', 'Bassem']);
+    expect(names(sortApplicants(rows, { sort: 'match', dir: 'asc' }))).toEqual(['Nour', 'amal', 'Karim', 'Bassem']);
+    // the pipeline's order, filtered out after it
+    expect(names(sortApplicants(rows, { sort: 'stage', dir: '' }))).toEqual(['amal', 'Bassem', 'Nour', 'Karim']);
+    // the years typed, else the CV's dates (60 months: 5 years)
+    expect(names(sortApplicants(rows, { sort: 'years', dir: '' }))).toEqual(['amal', 'Nour', 'Karim', 'Bassem']);
+    expect(names(sortApplicants(rows, { sort: 'role', dir: '' }))).toEqual(['Karim', 'amal', 'Nour', 'Bassem']);
+    expect(names(sortApplicants(rows, { sort: 'applied', dir: '' }))).toEqual(['amal', 'Karim', 'Bassem', 'Nour']);
   });
 });

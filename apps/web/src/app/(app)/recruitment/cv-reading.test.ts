@@ -129,7 +129,7 @@ describe('the From the CV card', () => {
 describe('the CV match on the lists', () => {
   it('reads and sends the CV match filter and the sort', () => {
     expect(readApplicantsQuery({ minCvMatch: '50', sort: 'cv' })).toMatchObject({ minCvMatch: 50, sort: 'cv' });
-    expect(readApplicantsQuery({ minCvMatch: '150', sort: 'name' })).toMatchObject({ minCvMatch: null, sort: '' });
+    expect(readApplicantsQuery({ minCvMatch: '150', sort: 'salary' })).toMatchObject({ minCvMatch: null, sort: '' });
     expect(applicantsApiPath({ minCvMatch: 50, sort: 'cv' })).toBe('/recruitment/applications?minCvMatch=50&sort=cv');
     expect(applicantsHref(`/recruitment/vacancies/${ID}`, { vacancyId: ID, minCvMatch: 50 })).toBe(`/recruitment/vacancies/${ID}?minCvMatch=50`);
   });

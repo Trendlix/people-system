@@ -22,7 +22,20 @@ import { DeleteApplicantButton } from './delete-ui';
 import { experienceCell, latestRoleOf } from './cv-reading';
 import { exAgencyChip } from './agency';
 import { BetterFitLink, FitPercent, MatchValue } from './cv-fit-ui';
-import { applicantHref, earlierCvHref, minYearsOptions, skillGroups, STAGE_STYLE, VACANCY_STATUS_STYLE } from './recruitment';
+import {
+  applicantHref,
+  earlierCvHref,
+  minYearsOptions,
+  nextSort,
+  skillGroups,
+  sortApplicants,
+  sortDirOf,
+  sortedColumn,
+  STAGE_STYLE,
+  VACANCY_STATUS_STYLE,
+  type ApplicantSort,
+  type ApplicantsQuery,
+} from './recruitment';
 import { kb, verdictBadge } from './screening';
 import { joinShown } from '@/lib/hidden';
 
@@ -219,26 +232,73 @@ export function SkillSelect({ id, value }: { id: string; value: string }) {
   );
 }
 
+/** How a table is sorted by its titles: the list's sort and order, and the address a title's click goes to. */
+export interface TableSorting {
+  q: Pick<ApplicantsQuery, 'sort' | 'dir'>;
+  href: (next: Pick<ApplicantsQuery, 'sort' | 'dir'>) => string;
+}
+
+/**
+ * A column's title, a link sorting by it when the table is sortable (owner, 28 October 2026: "i want to activate sorting
+ * by from the titles"): the column sorted by shows its order (▲ ascending, ▼ descending), and a click on it turns the
+ * order round; another column starts in its own order (FIRST_DIR).
+ */
+function SortTitle({ column, label, right = false, sorting }: { column: ApplicantSort; label: string; right?: boolean; sorting?: TableSorting }) {
+  if (!sorting) return <th className={right ? 'text-right' : undefined}>{label}</th>;
+  const active = sortedColumn(sorting.q) === column;
+  const dir = sortDirOf(sorting.q);
+  const next = nextSort(sorting.q, column);
+  return (
+    <th aria-sort={active ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'} className={right ? 'text-right' : undefined}>
+      <Link
+        href={sorting.href(next)}
+        scroll={false}
+        title={`Sort by ${label.toLowerCase()}${active ? `, ${dir === 'asc' ? 'descending' : 'ascending'}` : ''}`}
+        className={`group inline-flex items-center gap-1 no-underline hover:text-ink ${active ? 'text-ink' : 'text-inherit'}`}
+      >
+        {label}
+        <span aria-hidden="true" className={active ? '' : 'opacity-0 group-hover:opacity-50'}>
+          {active ? (dir === 'asc' ? '▲' : '▼') : '▼'}
+        </span>
+      </Link>
+    </th>
+  );
+}
+
 /**
  * Applicants in a table: who, their match, stage, experience, source and when they applied; `withVacancy` on All
  * Applicants. `bare`: inside a card already (the Applicants page's vacancy groups). The Latest role column (24 October
  * 2026) where the Vacancy column isn't: a vacancy's own applicants (its group, its page), so the table is no wider.
  * `deletes`: a Super Admin's Delete applicant on each row (owner, 25 October 2026: "applicant alone - superadmin only").
+ * `sorting`: each title sorts the list by its column (28 October 2026), the rows here put in that order.
  */
-export function ApplicantsTable({ rows, withVacancy, bare = false, deletes = false }: { rows: ApplicationListItem[]; withVacancy: boolean; bare?: boolean; deletes?: boolean }) {
+export function ApplicantsTable({
+  rows,
+  withVacancy,
+  bare = false,
+  deletes = false,
+  sorting,
+}: {
+  rows: ApplicationListItem[];
+  withVacancy: boolean;
+  bare?: boolean;
+  deletes?: boolean;
+  sorting?: TableSorting;
+}) {
+  const shown = sorting ? sortApplicants(rows, sorting.q) : rows;
   return (
     <div className={bare ? 'overflow-x-auto' : 'card overflow-x-auto'}>
       <table className="table">
         <thead>
           <tr>
-            <th>Applicant</th>
-            {withVacancy ? <th>Vacancy</th> : <th>Latest role</th>}
-            <th className="text-right">Match</th>
-            <th className="text-right">CV match</th>
-            <th>Stage</th>
-            <th className="text-right">Experience</th>
-            <th>Source</th>
-            <th>Applied</th>
+            <SortTitle column="name" label="Applicant" sorting={sorting} />
+            {withVacancy ? <SortTitle column="vacancy" label="Vacancy" sorting={sorting} /> : <SortTitle column="role" label="Latest role" sorting={sorting} />}
+            <SortTitle column="match" label="Match" right sorting={sorting} />
+            <SortTitle column="cv" label="CV match" right sorting={sorting} />
+            <SortTitle column="stage" label="Stage" sorting={sorting} />
+            <SortTitle column="years" label="Experience" right sorting={sorting} />
+            <SortTitle column="source" label="Source" sorting={sorting} />
+            <SortTitle column="applied" label="Applied" sorting={sorting} />
             {deletes && (
               <th>
                 <span className="sr-only">Actions</span>
@@ -247,7 +307,7 @@ export function ApplicantsTable({ rows, withVacancy, bare = false, deletes = fal
           </tr>
         </thead>
         <tbody>
-          {rows.map((a) => (
+          {shown.map((a) => (
             <tr key={a.id}>
               <td>
                 <Link href={applicantHref(a.id)} className="font-semibold">

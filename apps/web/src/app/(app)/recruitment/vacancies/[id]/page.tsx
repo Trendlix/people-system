@@ -21,7 +21,7 @@ import { loadApplicants, loadBoard, loadSuggestions, loadVacancy, recruitmentNot
 import { ActionButton, CopyLink, ReasonButton } from '../../forms';
 import { vacancyBulkHref } from '../../general';
 import { boardHref, MY_HIRING_PATH } from '../../hiring';
-import { applicantHref, applicantsHref, careersJobHref, channelLinks, GOOD_CV_MATCH_PERCENT, readApplicantsQuery, STAGE_FILTERS, VACANCIES_PATH, vacancyEditHref, vacancyHref } from '../../recruitment';
+import { applicantHref, applicantsHref, careersJobHref, channelLinks, GOOD_CV_MATCH_PERCENT, readApplicantsQuery, STAGE_FILTERS, VACANCIES_PATH, vacancyEditHref, vacancyHref, sortDirOf } from '../../recruitment';
 import { addSuggestion, dismissSuggestion, inviteSuggestion } from '../../suggestion-actions';
 import {
   decisionText,
@@ -102,6 +102,8 @@ async function Applicants({ v, searchParams }: { v: VacancyView; searchParams: P
   const q = readApplicantsQuery(await searchParams);
   const [loaded, user] = await Promise.all([loadApplicants({ ...q, vacancyId: v.id }), getCurrentUser()]);
   const base = vacancyHref(v.id);
+  const cvFirst = q.sort === 'cv' && sortDirOf(q) === 'desc';
+  const yearsFirst = q.sort === 'years' && sortDirOf(q) === 'desc';
   const total = Object.values(v.stageCounts).reduce((a, b) => a + b, 0);
   return (
     <section aria-labelledby="vacancy-applicants" className="space-y-3">
@@ -142,11 +144,12 @@ async function Applicants({ v, searchParams }: { v: VacancyView; searchParams: P
         >
           CV match ≥ {GOOD_CV_MATCH_PERCENT}%
         </Link>
-        <Link href={applicantsHref(base, { ...q, sort: q.sort === 'cv' ? '' : 'cv' })} className={`${chip} ${q.sort === 'cv' ? ACTIVE : IDLE}`} aria-pressed={q.sort === 'cv'}>
+        {/* the same order as the CV match title's first click, so the chip and the title agree (28 October 2026) */}
+        <Link href={applicantsHref(base, { ...q, sort: cvFirst ? '' : 'cv', dir: '' })} className={`${chip} ${cvFirst ? ACTIVE : IDLE}`} aria-pressed={cvFirst}>
           Best CV match first
         </Link>
         {/* the years typed, else the CV's estimate (owner, 24 October 2026: "CV years in list + more rules") */}
-        <Link href={applicantsHref(base, { ...q, sort: q.sort === 'years' ? '' : 'years' })} className={`${chip} ${q.sort === 'years' ? ACTIVE : IDLE}`} aria-pressed={q.sort === 'years'}>
+        <Link href={applicantsHref(base, { ...q, sort: yearsFirst ? '' : 'years', dir: '' })} className={`${chip} ${yearsFirst ? ACTIVE : IDLE}`} aria-pressed={yearsFirst}>
           Most experience first
         </Link>
       </nav>
@@ -169,8 +172,9 @@ async function Applicants({ v, searchParams }: { v: VacancyView; searchParams: P
       ) : loaded.value.length === 0 ? (
         <div className="card px-6 py-8 text-center text-sm text-muted">{total ? 'Nobody here.' : 'Nobody has applied yet.'}</div>
       ) : (
-        // Delete applicant on each row, a Super Admin's only (owner, 25 October 2026: "applicant alone - superadmin only")
-        <ApplicantsTable rows={loaded.value} withVacancy={false} deletes={canDelete(user)} />
+        // Delete applicant on each row, a Super Admin's only (owner, 25 October 2026: "applicant alone - superadmin only"); each
+        // title sorts by its column (owner, 28 October 2026: "i want to activate sorting by from the titles")
+        <ApplicantsTable rows={loaded.value} withVacancy={false} deletes={canDelete(user)} sorting={{ q, href: (next) => applicantsHref(base, { ...q, ...next }) }} />
       )}
     </section>
   );
@@ -472,9 +476,11 @@ async function Vacancy({ params, searchParams }: PageProps<'/recruitment/vacanci
   );
 }
 
+// the whole width of the screen (owner, 28 October 2026: "expand the view, instead of leaving the rest of the screen
+// empty"): the applicants' table needs it; the long texts keep their own measure
 export default function VacancyPage(props: PageProps<'/recruitment/vacancies/[id]'>) {
   return (
-    <div className="max-w-5xl">
+    <div className="w-full">
       <Suspense fallback={<Loading />}>
         <Vacancy {...props} />
       </Suspense>

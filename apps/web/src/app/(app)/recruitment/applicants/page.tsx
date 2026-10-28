@@ -42,7 +42,7 @@ import {
   type ApplicantsTab,
   type GeneralQuery,
 } from '../general';
-import { APPLICANTS_PATH, applicantsHref, GOOD_CV_MATCH_PERCENT, managesRecruitment, readApplicantsQuery, readsRecruitment, STAGE_FILTERS, vacancyHref, WHO_SEES } from '../recruitment';
+import { APPLICANTS_PATH, applicantsHref, columnSortText, GOOD_CV_MATCH_PERCENT, managesRecruitment, readApplicantsQuery, readsRecruitment, STAGE_FILTERS, vacancyHref, WHO_SEES } from '../recruitment';
 import { ApplicantsTable, ExperienceCell, LatestRoleCell, MinYearsSelect, SkillSelect, VacancyStatusBadge, VerdictBadge, VerdictSelect } from '../ui';
 import { joinShown, shownCode } from '@/lib/hidden';
 
@@ -162,7 +162,10 @@ async function Posted({ query, summary }: { query: Query; summary: Loaded<Applic
             <option value="">Best match first</option>
             <option value="cv">Best CV match first</option>
             <option value="years">Most experience first</option>
+            {/* a column's title clicked (28 October 2026): kept while the filters are applied */}
+            {q.sort && q.sort !== 'cv' && q.sort !== 'years' && <option value={q.sort}>{columnSortText(q)}</option>}
           </Select>
+          {q.sort && q.dir && <input type="hidden" name="dir" value={q.dir} />}
         </div>
         <MinYearsSelect id="applicant-years" value={q.minYears} />
         <SkillSelect id="applicant-skill" value={q.skill} />
@@ -183,7 +186,7 @@ async function Posted({ query, summary }: { query: Query; summary: Loaded<Applic
         loaded.value.length === 0 ? (
           <div className="card px-6 py-8 text-center text-sm text-muted">Nobody here.</div>
         ) : (
-          <ApplicantsTable rows={loaded.value} withVacancy />
+          <ApplicantsTable rows={loaded.value} withVacancy sorting={{ q, href: (next) => applicantsHref(APPLICANTS_PATH, { ...q, ...next }) }} />
         )
       ) : groups.length === 0 ? (
         <div className="card px-6 py-8 text-center text-sm text-muted">{filtering(q) ? 'Nobody here.' : 'Nobody has applied for a posted job yet.'}</div>
@@ -220,7 +223,7 @@ async function Posted({ query, summary }: { query: Query; summary: Loaded<Applic
                 )}
               </div>
               {rows.length > 0 ? (
-                <ApplicantsTable rows={rows} withVacancy={false} bare />
+                <ApplicantsTable rows={rows} withVacancy={false} bare sorting={{ q, href: (next) => applicantsHref(APPLICANTS_PATH, { ...q, ...next }) }} />
               ) : (
                 <p className="px-6 py-4 text-sm text-muted">
                   All of them are filtered out by a must-have.{' '}

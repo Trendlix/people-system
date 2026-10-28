@@ -2,6 +2,7 @@ import {
   APPLICATION_CHANNELS,
   APPLICATION_SOURCES,
   APPLICATION_STAGES,
+  applicationSourceText,
   careersSiteUrl,
   EMPLOYMENT_TYPES,
   isApplicationStage,
@@ -17,6 +18,7 @@ import {
   VACANCY_STATUSES,
   WORK_ARRANGEMENTS,
   type ApplicationChannel,
+  type ApplicationListItem,
   type ApplicationSource,
   type ApplicationStage,
   type ApplicationView,
@@ -102,8 +104,13 @@ export interface ApplicantsQuery {
   q: string;
   /** The CV match % at least (the key skills found in the CV; 22 October 2026). */
   minCvMatch: number | null;
-  /** '': best match first (the screening questions); 'cv': best CV match first; 'years': most experience first (24 October 2026). */
-  sort: '' | 'cv' | 'years';
+  /**
+   * '': best match first (the screening questions); 'cv': best CV match first; 'years': most experience first (24 October
+   * 2026); since 28 October 2026 any of the table's columns (APPLICANT_SORTS), clicked on its title.
+   */
+  sort: '' | ApplicantSort;
+  /** The order of a column's sort: '' its first (FIRST_DIR), else ascending or descending (28 October 2026). */
+  dir: SortDir | '';
   /** A skill of the dictionary their CV names (24 October 2026); '' for any. */
   skill: string;
   /** The latest screening verdict (owner, 24 October 2026: "Yes: Good fit / Maybe / Not a fit"), `none` for none yet; '' for any. */
@@ -134,12 +141,114 @@ export function readApplicantsQuery(query: Record<string, string | string[] | un
     q: one(query.q).slice(0, 100),
     minCvMatch: num(one(query.minCvMatch), 100),
     sort: sortOf(one(query.sort)),
+    dir: one(query.dir) === 'asc' || one(query.dir) === 'desc' ? (one(query.dir) as SortDir) : '',
     skill: skillOf(query.skill),
     verdict: verdictOf(query.verdict),
   };
 }
 
-const sortOf = (v: string): ApplicantsQuery['sort'] => (v === 'cv' || v === 'years' ? v : '');
+const sortOf = (v: string): ApplicantsQuery['sort'] => ((APPLICANT_SORTS as readonly string[]).includes(v) ? (v as ApplicantSort) : '');
+
+// ---------- sorting by the table's titles (owner, 28 October 2026: "i want to activate sorting by from the titles") ----------
+
+/** The applicants table's columns it can be sorted by: each title but the actions'. */
+export const APPLICANT_SORTS = ['name', 'role', 'vacancy', 'match', 'cv', 'stage', 'years', 'source', 'applied'] as const;
+export type ApplicantSort = (typeof APPLICANT_SORTS)[number];
+export type SortDir = 'asc' | 'desc';
+
+/** The order a column takes when first clicked: words A to Z and the stages in the pipeline's order; numbers and dates highest or newest first. */
+export const FIRST_DIR: Readonly<Record<ApplicantSort, SortDir>> = {
+  name: 'asc',
+  role: 'asc',
+  vacancy: 'asc',
+  match: 'desc',
+  cv: 'desc',
+  stage: 'asc',
+  years: 'desc',
+  source: 'asc',
+  applied: 'desc',
+};
+
+/** The column the list is sorted by: none chosen is best match first (the API's order). */
+export const sortedColumn = (q: Pick<ApplicantsQuery, 'sort'>): ApplicantSort => q.sort || 'match';
+
+/** The order it is sorted in. */
+export const sortDirOf = (q: Pick<ApplicantsQuery, 'sort' | 'dir'>): SortDir => q.dir || FIRST_DIR[sortedColumn(q)];
+
+/** The titles' names, for a sort in words. */
+export const APPLICANT_SORT_LABELS: Readonly<Record<ApplicantSort, string>> = {
+  name: 'Applicant',
+  role: 'Latest role',
+  vacancy: 'Vacancy',
+  match: 'Match',
+  cv: 'CV match',
+  stage: 'Stage',
+  years: 'Experience',
+  source: 'Source',
+  applied: 'Applied',
+};
+
+/** A column's sort in words: "By applicant, A to Z", "By applied, newest first", "By match, lowest first". */
+export function columnSortText(q: Pick<ApplicantsQuery, 'sort' | 'dir'>): string {
+  const column = sortedColumn(q);
+  const asc = sortDirOf(q) === 'asc';
+  const words = column === 'applied' ? (asc ? 'oldest first' : 'newest first') : ['match', 'cv', 'years'].includes(column) ? (asc ? 'lowest first' : 'highest first') : column === 'stage' ? (asc ? 'pipeline order' : 'pipeline order reversed') : asc ? 'A to Z' : 'Z to A';
+  return `By ${APPLICANT_SORT_LABELS[column].toLowerCase()}, ${words}`;
+}
+
+/** What a click on a column's title sorts by: the same column the other way round, another column in its first order. */
+export function nextSort(q: Pick<ApplicantsQuery, 'sort' | 'dir'>, column: ApplicantSort): Pick<ApplicantsQuery, 'sort' | 'dir'> {
+  if (sortedColumn(q) !== column) return { sort: column, dir: '' };
+  return { sort: column, dir: sortDirOf(q) === 'asc' ? 'desc' : 'asc' };
+}
+
+/** An applicant's value in a column, as the table shows it (null: none, always last). */
+type SortableApplicant = Pick<ApplicationListItem, 'fullName' | 'vacancy' | 'matchPercent' | 'cvMatchPercent' | 'stage' | 'filteredOut' | 'yearsExperience' | 'source' | 'appliedAt' | 'fromCv'> &
+  Partial<Pick<ApplicationListItem, 'generalSource'>>;
+
+function sortValue(a: SortableApplicant, column: ApplicantSort): string | number | null {
+  switch (column) {
+    case 'name':
+      return a.fullName || null;
+    case 'role':
+      return a.fromCv?.latestTitle ?? null;
+    case 'vacancy':
+      return a.vacancy.title || null;
+    // as the Match cell shows it: the screening match, else the CV fit
+    case 'match':
+      return a.matchPercent ?? a.cvMatchPercent;
+    case 'cv':
+      return a.cvMatchPercent;
+    // the pipeline's order, those filtered out by a must-have after it
+    case 'stage':
+      return a.filteredOut ? APPLICATION_STAGES.length : APPLICATION_STAGES.indexOf(a.stage);
+    // as the Experience cell shows it: the years typed, else the CV's dates
+    case 'years':
+      return a.yearsExperience ?? (typeof a.fromCv?.experienceMonths === 'number' ? a.fromCv.experienceMonths / 12 : null);
+    case 'source':
+      return applicationSourceText(a);
+    case 'applied':
+      return Date.parse(a.appliedAt);
+  }
+}
+
+/**
+ * The applicants in the order chosen on the table's titles: none chosen, as the API sent them (best match first, or
+ * the chips' best CV match or most experience first); else by the column, the other way round when asked, those with
+ * nothing in it last either way, and those alike in the API's order.
+ */
+export function sortApplicants<T extends SortableApplicant>(rows: readonly T[], q: Pick<ApplicantsQuery, 'sort' | 'dir'>): T[] {
+  if (!q.sort) return [...rows];
+  const column = q.sort;
+  const sign = sortDirOf(q) === 'asc' ? 1 : -1;
+  const keyed = rows.map((row, i) => ({ row, i, v: sortValue(row, column) }));
+  keyed.sort((a, b) => {
+    if (a.v === null || b.v === null) return a.v === null ? (b.v === null ? a.i - b.i : 1) : -1;
+    const by = typeof a.v === 'number' && typeof b.v === 'number' ? a.v - b.v : String(a.v).localeCompare(String(b.v), 'en', { sensitivity: 'base', numeric: true });
+    return by * sign || a.i - b.i;
+  });
+  return keyed.map((k) => k.row);
+}
 
 /** A skill filter as the address carries it: one of the dictionary's (skills-dictionary.ts), else none (''). */
 export const skillOf = (v: string | string[] | undefined): string => {
@@ -187,13 +296,15 @@ function applicantParams(q: Partial<ApplicantsQuery>): URLSearchParams {
   if (q.q) params.set('q', q.q);
   if (q.minCvMatch !== null && q.minCvMatch !== undefined) params.set('minCvMatch', String(q.minCvMatch));
   if (q.sort) params.set('sort', q.sort);
+  if (q.sort && q.dir) params.set('dir', q.dir);
   if (q.skill) params.set('skill', q.skill);
   if (q.verdict) params.set('verdict', q.verdict);
   return params;
 }
 
 export const applicantsApiPath = (q: Partial<ApplicantsQuery>) => {
-  const s = applicantParams(q).toString();
+  // the API orders by its own sorts only (best CV match, most experience: the cap keeps the best); the titles' others are the page's
+  const s = applicantParams({ ...q, sort: q.sort === 'cv' || q.sort === 'years' ? q.sort : '', dir: '' }).toString();
   return s ? `/recruitment/applications?${s}` : '/recruitment/applications';
 };
 
