@@ -12,12 +12,16 @@ import { BetterFitLink, FitPercent, MatchValue } from './cv-fit-ui';
 import { DeleteApplicantButton } from './delete-ui';
 import { daysText, dropOn } from './hiring';
 import { applicantHref, makeOfferHref, STAGE_STYLE } from './recruitment';
-import { CvUpdatedBadge, VerdictBadge } from './ui';
+import { boardInterviewProblem } from './screening-call';
+import { CvUpdatedBadge, HiringStepBadge, VerdictBadge } from './ui';
 
 // A vacancy's pipeline board (Phase 2, owner, 22 October 2026; the brief: "a board with a column per stage, and cards with
 // name, match %, source and days in stage"; "drag between columns (keyboard-accessible too), with the same rules as the
 // stage actions: Reject asks for a reason; Offer goes through Make offer; Hired only by an accepted offer"). HR drags a
 // card, or picks its column in the card's "Move to"; the hiring manager and the CEO read it.
+// The hiring steps (owner, 29 October 2026: "Manager view the shortlisted and accept or reject them - HR Screening and
+// scheduling"): each shortlisted card says where it stands, and one the hiring manager hasn't accepted, or without a
+// passed screening call, isn't moved to Interview: the reason is said instead.
 
 type Move = (id: string, to: 'shortlisted' | 'interview' | 'rejected', reason: string | null, email: boolean) => Promise<FormState>;
 
@@ -66,6 +70,9 @@ export function PipelineBoard({ board, move, deletes = false }: { board: Vacancy
     if (what.kind === 'refused') return setState({ errors: [what.reason] });
     if (what.kind === 'offer') return router.push(makeOfferHref(card.id));
     if (what.needsReason) return setRejecting(card);
+    // to Interview only once the hiring manager accepted them and they passed the screening call (29 October 2026)
+    const gate = what.to === 'interview' ? boardInterviewProblem(card) : null;
+    if (gate) return setState({ errors: [`${card.fullName}: ${gate}`] });
     start(async () => setState(await move(card.id, what.to as 'shortlisted' | 'interview', null, false)));
   }
 
@@ -141,6 +148,8 @@ export function PipelineBoard({ board, move, deletes = false }: { board: Vacancy
                     </div>
                   )}
                   <div className="flex flex-wrap gap-1">
+                    {/* where a shortlisted applicant stands in the hiring steps (29 October 2026: "HR Screening and scheduling") */}
+                    <HiringStepBadge step={card.hiringStep} />
                     {/* another open vacancy the CV fits better (25 October 2026: "and if it recomended to another position based on the CV") */}
                     {card.betterFit && <BetterFitLink badge={card.betterFit} />}
                     {card.upcomingInterviews > 0 && <span className={`badge ${STAGE_STYLE.interview}`}>Interview booked</span>}

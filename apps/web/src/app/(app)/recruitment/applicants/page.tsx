@@ -43,7 +43,7 @@ import {
   type GeneralQuery,
 } from '../general';
 import { APPLICANTS_PATH, applicantsHref, columnSortText, GOOD_CV_MATCH_PERCENT, managesRecruitment, readApplicantsQuery, readsRecruitment, STAGE_FILTERS, vacancyHref, WHO_SEES } from '../recruitment';
-import { ApplicantsTable, ExperienceCell, LatestRoleCell, MinYearsSelect, SkillSelect, VacancyStatusBadge, VerdictBadge, VerdictSelect } from '../ui';
+import { ApplicantsTable, ExperienceCell, HiringStepSelect, LatestRoleCell, MinYearsSelect, SkillSelect, VacancyStatusBadge, VerdictBadge, VerdictSelect } from '../ui';
 import { joinShown, shownCode } from '@/lib/hidden';
 
 // All applicants (owner, 22 October 2026: "where will we include the ATS?"): across the vacancies, best match first, by
@@ -170,6 +170,8 @@ async function Posted({ query, summary }: { query: Query; summary: Loaded<Applic
         <MinYearsSelect id="applicant-years" value={q.minYears} />
         <SkillSelect id="applicant-skill" value={q.skill} />
         <VerdictSelect id="applicant-verdict" value={q.verdict} />
+        {/* where a shortlisted applicant stands (owner, 29 October 2026: "Manager view the shortlisted and accept or reject them - HR Screening and scheduling") */}
+        <HiringStepSelect id="applicant-step" value={q.step} />
         <button type="submit" className="btn btn-secondary">
           Apply filters
         </button>

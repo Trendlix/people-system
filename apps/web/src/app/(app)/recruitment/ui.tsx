@@ -2,6 +2,8 @@ import {
   APPLICATION_STAGE_LABELS,
   applicationSourceText,
   CV_UPDATED_LABEL,
+  HIRING_STEP_LABELS,
+  HIRING_STEPS,
   VACANCY_STATUS_LABELS,
   VERDICT_FILTER_LABELS,
   VERDICT_FILTERS,
@@ -10,6 +12,7 @@ import {
   type CandidateBadge,
   type CvListFacts,
   type EarlierCvView,
+  type HiringStep,
   type ScreeningVerdict,
   type VacancyStatus,
   type VerdictFilter,
@@ -26,6 +29,7 @@ import { BetterFitLink, FitPercent, MatchValue } from './cv-fit-ui';
 import {
   applicantHref,
   earlierCvHref,
+  hiringStepBadge,
   minYearsOptions,
   nextSort,
   skillGroups,
@@ -118,6 +122,40 @@ export function VerdictSelect({ id, value }: { id: string; value: VerdictFilter 
         {VERDICT_FILTERS.map((v) => (
           <option key={v} value={v}>
             {VERDICT_FILTER_LABELS[v]}
+          </option>
+        ))}
+      </Select>
+    </div>
+  );
+}
+
+/**
+ * Where a shortlisted applicant stands in the hiring steps (owner, 29 October 2026: "Manager view the shortlisted and
+ * accept or reject them - HR Screening and scheduling"): "Waiting for the manager", "Screening call due", "Ready to
+ * interview"…; nothing at another stage.
+ */
+export function HiringStepBadge({ step, className = '' }: { step: HiringStep | null | undefined; className?: string }) {
+  const badge = hiringStepBadge(step);
+  if (!badge) return null;
+  return (
+    <span className={`badge ${badge.className} ${className}`} title="Where they stand in the hiring steps">
+      {badge.label}
+    </span>
+  );
+}
+
+/** The Hiring step filter (29 October 2026): any, or one of the steps of a shortlisted applicant. */
+export function HiringStepSelect({ id, value }: { id: string; value: HiringStep | '' }) {
+  return (
+    <div>
+      <label htmlFor={id} className="label">
+        Hiring step
+      </label>
+      <Select id={id} name="step" defaultValue={value} className="input min-w-48">
+        <option value="">Any</option>
+        {HIRING_STEPS.map((s) => (
+          <option key={s} value={s}>
+            {HIRING_STEP_LABELS[s]}
           </option>
         ))}
       </Select>
@@ -367,6 +405,12 @@ export function ApplicantsTable({
               </td>
               <td>
                 <StageBadge stage={a.stage} filteredOut={a.filteredOut} />
+                {/* where a shortlisted applicant stands in the hiring steps (29 October 2026: "HR Screening and scheduling") */}
+                {a.hiringStep && (
+                  <span className="mt-1 block">
+                    <HiringStepBadge step={a.hiringStep} />
+                  </span>
+                )}
                 {/* the latest screening verdict (24 October 2026) */}
                 {a.verdict && (
                   <span className="mt-1 block">

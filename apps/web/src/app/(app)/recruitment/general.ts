@@ -55,7 +55,7 @@ export const tabHref = (tab: ApplicantsTab) => (tab === 'general' ? `${APPLICANT
 
 /** Whether a filter narrows the posted jobs' list (then a vacancy without a match is left out). */
 export const filtering = (q: ApplicantsQuery): boolean =>
-  !!(q.vacancyId || q.stage || q.source || q.q || q.skill || q.verdict || q.minMatch !== null || q.minYears !== null || q.minCvMatch !== null || q.filtered !== 'hide');
+  !!(q.vacancyId || q.stage || q.source || q.q || q.skill || q.verdict || q.step || q.minMatch !== null || q.minYears !== null || q.minCvMatch !== null || q.filtered !== 'hide');
 
 /**
  * The posted jobs' applicants grouped by vacancy, in the summary's order (open first, then on hold, closed, filled):

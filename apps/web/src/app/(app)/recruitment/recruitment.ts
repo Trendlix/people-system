@@ -5,6 +5,9 @@ import {
   applicationSourceText,
   careersSiteUrl,
   EMPLOYMENT_TYPES,
+  HIRING_STEP_LABELS,
+  HIRING_STEP_TONES,
+  HIRING_STEPS,
   isApplicationStage,
   isDictionarySkill,
   isVerdictFilter,
@@ -22,6 +25,7 @@ import {
   type ApplicationSource,
   type ApplicationStage,
   type ApplicationView,
+  type HiringStep,
   type QuestionKind,
   type Role,
   type VacancyQuestion,
@@ -116,6 +120,11 @@ export interface ApplicantsQuery {
   skill: string;
   /** The latest screening verdict (owner, 24 October 2026: "Yes: Good fit / Maybe / Not a fit"), `none` for none yet; '' for any. */
   verdict: VerdictFilter | '';
+  /**
+   * Where a shortlisted applicant stands in the hiring steps (owner, 29 October 2026: "Manager view the shortlisted and
+   * accept or reject them - HR Screening and scheduling"; hiring-steps.ts); '' for any.
+   */
+  step: HiringStep | '';
 }
 
 /** The "CV match ≥ 50%" filter's threshold. */
@@ -145,6 +154,7 @@ export function readApplicantsQuery(query: Record<string, string | string[] | un
     dir: one(query.dir) === 'asc' || one(query.dir) === 'desc' ? (one(query.dir) as SortDir) : '',
     skill: skillOf(query.skill),
     verdict: verdictOf(query.verdict),
+    step: stepFilterOf(query.step),
   };
 }
 
@@ -263,6 +273,12 @@ export const verdictOf = (v: string | string[] | undefined): VerdictFilter | '' 
   return isVerdictFilter(s) ? s : '';
 };
 
+/** The Hiring step filter as the address carries it (29 October 2026): one of HIRING_STEPS, else '' (any). */
+export const stepFilterOf = (v: string | string[] | undefined): HiringStep | '' => {
+  const s = one(v);
+  return (HIRING_STEPS as readonly string[]).includes(s) ? (s as HiringStep) : '';
+};
+
 /** A years filter as the address carries it: 0 to 60 years, else none (null). */
 export const minYearsOf = (v: string | string[] | undefined): number | null => {
   const t = one(v);
@@ -300,6 +316,7 @@ function applicantParams(q: Partial<ApplicantsQuery>): URLSearchParams {
   if (q.sort && q.dir) params.set('dir', q.dir);
   if (q.skill) params.set('skill', q.skill);
   if (q.verdict) params.set('verdict', q.verdict);
+  if (q.step) params.set('step', q.step);
   return params;
 }
 
@@ -552,6 +569,24 @@ export const STAGE_STYLE: Record<ApplicationStage, string> = {
   hired: 'bg-ok-soft text-ok',
   rejected: 'bg-danger-soft text-danger',
 };
+
+/**
+ * A hiring step's badge (owner, 29 October 2026: "HR Screening and scheduling"; hiring-steps.ts HIRING_STEP_TONES): the
+ * warning's colours where HR acts on a no, the accent's where HR acts, the success's when ready to interview, muted while
+ * waiting for the hiring manager.
+ */
+const TONE_STYLE: Record<(typeof HIRING_STEP_TONES)[HiringStep], string> = {
+  warn: 'bg-warn-soft text-warn',
+  accent: 'bg-accent-soft text-accent',
+  ok: 'bg-ok-soft text-ok',
+  muted: 'bg-canvas text-muted',
+};
+
+/** "Screening call due" with its colours; null at another stage (or from an API before the hiring steps). */
+export function hiringStepBadge(step: HiringStep | null | undefined): { label: string; className: string } | null {
+  if (!step) return null;
+  return { label: HIRING_STEP_LABELS[step], className: TONE_STYLE[HIRING_STEP_TONES[step]] };
+}
 
 /** "90%", or "—" without scored questions. */
 export const matchText = (percent: number | null) => (percent === null ? '—' : `${percent}%`);

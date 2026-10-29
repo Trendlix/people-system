@@ -26,6 +26,7 @@ import {
   columnSortText,
   nextSort,
   sortApplicants,
+  hiringStepBadge,
 } from './recruitment';
 
 // Recruitment on the site (owner, 22 October 2026: "where will we include the ATS?"; "HR creates a vacancy and the CEO
@@ -68,6 +69,7 @@ describe('the lists', () => {
       dir: '',
       skill: '',
       verdict: '',
+      step: '',
     });
     expect(readApplicantsQuery({ stage: 'boss', minMatch: '170', source: 'x', filtered: 'x', vacancyId: '../x' })).toEqual({
       vacancyId: '',
@@ -82,6 +84,7 @@ describe('the lists', () => {
       dir: '',
       skill: '',
       verdict: '',
+      step: '',
     });
     expect(applicantsApiPath({ vacancyId: ID, stage: 'offer', minMatch: 70, filtered: 'hide' })).toBe(`/recruitment/applications?vacancyId=${ID}&stage=offer&minMatch=70`);
     expect(applicantsHref(APPLICANTS_PATH, { stage: 'hired', filtered: 'all' })).toBe('/recruitment/applicants?stage=hired&filtered=all');
@@ -267,5 +270,26 @@ describe('sorting the applicants by a column', () => {
     expect(names(sortApplicants(rows, { sort: 'years', dir: '' }))).toEqual(['amal', 'Nour', 'Karim', 'Bassem']);
     expect(names(sortApplicants(rows, { sort: 'role', dir: '' }))).toEqual(['Karim', 'amal', 'Nour', 'Bassem']);
     expect(names(sortApplicants(rows, { sort: 'applied', dir: '' }))).toEqual(['amal', 'Karim', 'Bassem', 'Nour']);
+  });
+});
+
+describe('the hiring steps on the lists', () => {
+  // owner, 29 October 2026: "HR Filteration and shortlisting - Manager view the shortlisted and accept or reject them - HR
+  // Screening and scheduling"
+  it('reads the Hiring step filter, sending it to the API and keeping it in the links', () => {
+    expect(readApplicantsQuery({ step: 'call_due' }).step).toBe('call_due');
+    expect(readApplicantsQuery({ step: 'maybe' }).step).toBe('');
+    expect(applicantsApiPath({ vacancyId: ID, step: 'ready' })).toBe(`/recruitment/applications?vacancyId=${ID}&step=ready`);
+    expect(applicantsHref(APPLICANTS_PATH, { stage: 'shortlisted', step: 'to_review' })).toBe('/recruitment/applicants?stage=shortlisted&step=to_review');
+  });
+
+  it('badges each step in its tone, nothing at another stage', () => {
+    expect(hiringStepBadge('to_review')).toEqual({ label: 'Waiting for the manager', className: 'bg-canvas text-muted' });
+    expect(hiringStepBadge('manager_rejected')).toEqual({ label: 'Rejected by the manager', className: 'bg-warn-soft text-warn' });
+    expect(hiringStepBadge('call_due')).toEqual({ label: 'Screening call due', className: 'bg-accent-soft text-accent' });
+    expect(hiringStepBadge('call_failed')).toEqual({ label: 'Failed the screening call', className: 'bg-warn-soft text-warn' });
+    expect(hiringStepBadge('ready')).toEqual({ label: 'Ready to interview', className: 'bg-ok-soft text-ok' });
+    expect(hiringStepBadge(null)).toBeNull();
+    expect(hiringStepBadge(undefined)).toBeNull();
   });
 });

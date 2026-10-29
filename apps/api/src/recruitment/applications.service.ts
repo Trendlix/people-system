@@ -5,6 +5,11 @@ import {
   BOARD_STAGES,
   daysSince,
   feedbackSeen,
+  hiringStepOf,
+  interviewGateProblem,
+  isScreeningCallResult,
+  screeningCallProblem,
+  SCREENING_CALL_LABELS,
   mobileSearchForms,
   offerable,
   rejectionMail,
@@ -28,6 +33,8 @@ import {
   type ApplicationView,
   type EmploymentType,
   type HandStage,
+  type ScreeningCallResult,
+  type ScreeningCallView,
   type WorkArrangement,
 } from '@trendlix/shared';
 import { isSuperAdmin } from '../auth/roles.js';
@@ -47,7 +54,22 @@ import { InterviewsService } from './interviews.service.js';
 import { portfolioTitlesOf } from './portfolio-asks.js';
 import { isConfidentialVacancy, vacancyWhere } from './recruitment-access.js';
 import { recruitmentCaller, viewerOf, visibleApplications, type RecruitmentCaller } from './recruitment-scope.js';
-import { APPLICATION_ENTITY, APPLICATION_LIST_SELECT, answersOf, applicationListView, byExperience, EARLIER_CV_SELECT, earlierCvView, minYearsWhere, money, questionsOf, skillWhere, userRef } from './recruitment-views.js';
+import {
+  APPLICATION_ENTITY,
+  APPLICATION_LIST_SELECT,
+  answersOf,
+  applicationListView,
+  byExperience,
+  EARLIER_CV_SELECT,
+  earlierCvView,
+  hiringStepInput,
+  hiringStepWhere,
+  minYearsWhere,
+  money,
+  questionsOf,
+  skillWhere,
+  userRef,
+} from './recruitment-views.js';
 import type { ListApplicationsDto } from './recruitment.dto.js';
 import { ScreeningCommentsService } from './screening-comments.service.js';
 import { NOTES_GONE } from './screening-notes.js';
@@ -67,6 +89,11 @@ import { BATCH_NOT_FOUND, batchIds, reviewSkip, shortlistSkip, skippedOf } from 
 // HR's notes; the interviews and the scorecards (an interviewer sees the others' once they gave theirs); the hiring
 // manager's suggestion (the next step or a rejection) for HR, cleared once HR moves the applicant; the rejection email
 // (an "Email the candidate" tick, off unless ticked); and the pipeline board.
+// The hiring steps (owner, 29 October 2026: "HR Filteration and shortlisting - Manager view the shortlisted and accept or
+// reject them - HR Screening and scheduling"; packages/shared hiring-steps.ts): HR's screening call on a shortlisted
+// applicant the hiring manager accepted ("Screening call + result": passed or failed, with a comment), and the interview
+// only for one who passed it (moving them to Interview by hand too); where each shortlisted applicant stands on the
+// lists and the board, and the lists' ?step= filter.
 
 const NOT_FOUND = 'Applicant not found.';
 const LIST_CAP = 1000;
@@ -119,6 +146,8 @@ const DETAIL_INCLUDE = {
   // an earlier one marked (25 October 2026)
   offers: { orderBy: { createdAt: 'asc' }, select: { id: true, number: true, status: true, recordedEarlier: true } },
   suggestedBy: { select: { id: true, email: true } },
+  // who made HR's screening call (29 October 2026: "Screening call + result")
+  screeningCallBy: { select: { id: true, email: true } },
   // moved from a general CV (22 October 2026): where that CV came from
   generalCv: { select: { source: true } },
 } satisfies Prisma.JobApplicationInclude;
@@ -193,6 +222,8 @@ export class ApplicationsService {
           query.source ? { source: query.source } : {},
           filtered === 'hide' ? { filteredOut: false } : filtered === 'only' ? { filteredOut: true } : {},
           query.minCvMatch !== undefined ? { cvMatchPercent: { gte: query.minCvMatch } } : {},
+          // where a shortlisted applicant stands (29 October 2026: "Manager view the shortlisted and accept or reject them")
+          query.step ? hiringStepWhere(query.step) : {},
           // the search also looks in the CVs' text (22 October 2026: "search by CV content"), and a mobile as typed in
           // any form (kept as +201012345678 since the careers form's mobile field, 22 October 2026)
           text
@@ -274,9 +305,11 @@ export class ApplicationsService {
     const participant = viewer === 'hiring_manager' || viewer === 'interviewer';
     const openOffer = a.offers.some((o) => o.status === 'draft' || o.status === 'sent');
     const settled = stage === 'hired' || stage === 'rejected';
+    // the interview only once the hiring manager accepted them and they passed HR's screening call (29 October 2026)
+    const gate = interviewGateProblem(hiringStepInput(a));
     const can: ApplicationCan = {
       shortlist: manages && stageMoveProblem(stage, 'shortlisted', { filteredOut: a.filteredOut, openOffer }) === null,
-      interview: manages && stageMoveProblem(stage, 'interview', { filteredOut: a.filteredOut, openOffer }) === null,
+      interview: manages && stageMoveProblem(stage, 'interview', { filteredOut: a.filteredOut, openOffer }) === null && gate === null,
       reject: manages && stageMoveProblem(stage, 'rejected', { filteredOut: a.filteredOut, openOffer }) === null,
       restore: manages && restorable({ stage, filteredOut: a.filteredOut }),
       makeOffer: manages && offerable({ stage, filteredOut: a.filteredOut }) && !openOffer,
@@ -297,8 +330,21 @@ export class ApplicationsService {
         ? { kind: a.suggestion as HiringSuggestion, note: a.suggestionNote, by: userRef(a.suggestedBy, await userNames(this.prisma, [a.suggestedBy])), at: (a.suggestedAt ?? a.updatedAt).toISOString() }
         : null;
     const verdict = (await this.comments.applicationVerdicts([a.id])).get(a.id) ?? null;
+    // HR's screening call (29 October 2026: "Screening call + result"): its comment is HR's, kept from the hiring manager
+    // and the interviewers as HR's notes are
+    const screeningCall: ScreeningCallView | null = isScreeningCallResult(a.screeningCall)
+      ? {
+          result: a.screeningCall,
+          note: participant ? null : a.screeningCallNote,
+          by: userRef(a.screeningCallBy, await userNames(this.prisma, [a.screeningCallBy])),
+          at: (a.screeningCallAt ?? a.updatedAt).toISOString(),
+        }
+      : null;
     return {
-      ...applicationListView({ ...a, vacancy: { id: a.vacancy.id, number: a.vacancy.number, title: a.vacancy.title, status: a.vacancy.status } }, await agencyMarksOf(this.prisma)),
+      ...applicationListView(
+        { ...a, vacancy: { id: a.vacancy.id, number: a.vacancy.number, title: a.vacancy.title, status: a.vacancy.status, hiringManagerId: a.vacancy.hiringManagerId } },
+        await agencyMarksOf(this.prisma),
+      ),
       // its latest screening verdict (24 October 2026), from its own comments
       verdict,
       linkedin: a.linkedin,
@@ -336,6 +382,11 @@ export class ApplicationsService {
       feedback,
       feedbackHidden: allFeedback.length - feedback.length,
       suggestion,
+      // the hiring steps (29 October 2026): the screening call, whether a hiring manager reviews the shortlist, and why an
+      // interview can't be scheduled yet (said to HR, who schedules)
+      screeningCall,
+      hasHiringManager: !!a.vacancy.hiringManagerId,
+      interviewBlocked: manages ? gate : null,
       // their candidate profile (22 October 2026): HR, the CEO and a Super Admin only, never a hiring manager or an interviewer
       candidateProfile: c.reads ? await this.candidates.ofApplication({ id: a.id, candidateId: a.candidateId }, c.user) : null,
       position: {
@@ -415,6 +466,9 @@ export class ApplicationsService {
     const openOffer = a.offers.some((o) => o.status === 'draft' || o.status === 'sent');
     const problem = stageMoveProblem(stage, to, { filteredOut: a.filteredOut, openOffer });
     if (problem) throw new ConflictException(problem);
+    // to Interview only once the hiring manager accepted them and they passed the screening call (29 October 2026)
+    const gate = to === 'interview' ? interviewGateProblem(hiringStepInput(a)) : null;
+    if (gate) throw new ConflictException(gate);
     if (to === 'rejected' && !reason) throw new BadRequestException(['Say why they are rejected.']);
     const data: Prisma.JobApplicationUpdateManyMutationInput =
       to === 'rejected' ? { stage: 'rejected', rejectedFrom: stage, rejectReason: reason ?? null } : { stage: to, rejectedFrom: null, rejectReason: null };
@@ -591,6 +645,37 @@ export class ApplicationsService {
     }
   }
 
+  /**
+   * HR's screening call (owner, 29 October 2026: "HR Screening and scheduling"; "Screening call + result"): on a
+   * shortlisted applicant the hiring manager accepted (a vacancy without one asks no acceptance), passed or failed with a
+   * comment; made again, it changes. Refused in words otherwise (409). Kept on the application and in the audit log (its
+   * comment never in words, as a screening comment's); the history's events stay the stages'.
+   */
+  async screeningCall(id: string, result: ScreeningCallResult, note: string | null | undefined, user: SessionUser): Promise<ApplicationView> {
+    const { a, c } = await this.managedRow(id, user);
+    const problem = screeningCallProblem(hiringStepInput(a));
+    if (problem) throw new ConflictException(problem);
+    const { count } = await this.prisma.jobApplication.updateMany({
+      where: { id, stage: 'shortlisted', filteredOut: false, suggestion: a.suggestion },
+      data: { screeningCall: result, screeningCallNote: note ?? null, screeningCallById: user.id, screeningCallAt: new Date() },
+    });
+    if (!count) throw new ConflictException('The applicant changed meanwhile. Reload the page to see where they stand.');
+    const before = isScreeningCallResult(a.screeningCall) ? a.screeningCall : null;
+    await this.audit.record({
+      userId: user.id,
+      action: 'screening_call',
+      entityType: APPLICATION_ENTITY,
+      entityId: id,
+      diff: {
+        number: a.number,
+        vacancy: a.vacancy.number,
+        result: before ? { from: SCREENING_CALL_LABELS[before], to: SCREENING_CALL_LABELS[result] } : SCREENING_CALL_LABELS[result],
+        ...(note && { note: '(comment)' }),
+      },
+    });
+    return this.view(await this.row(id, c), c);
+  }
+
   // ---------- the pipeline board ----------
 
   /**
@@ -619,6 +704,8 @@ export class ApplicationsService {
         stage: true,
         filteredOut: true,
         suggestion: true,
+        // HR's screening call, for where a shortlisted applicant stands (29 October 2026)
+        screeningCall: true,
         createdAt: true,
         steps: { select: { stage: true, at: true }, orderBy: { at: 'asc' } },
         offers: { where: OPEN_OFFER, select: { id: true } },
@@ -658,6 +745,8 @@ export class ApplicationsService {
         openOffer: r.offers.length > 0,
         upcomingInterviews: r.interviews.length,
         suggestion: (r.suggestion as HiringSuggestion | null) ?? null,
+        // waiting for the manager, the screening call due, ready to interview… (29 October 2026, hiring-steps.ts)
+        hiringStep: hiringStepOf(hiringStepInput({ ...r, vacancy: v })),
         candidate: r.candidateId ? (badges.get(r.candidateId) ?? null) : null,
         verdict: verdicts.get(r.id) ?? null,
         // a new CV sent by applying again in the last 7 days (25 October 2026)

@@ -489,6 +489,10 @@ describe('WhatsApp notifications (e2e)', () => {
     });
 
     it('the interview’s invitation (and the interviewer’s), its change, and the reminder the day before', async () => {
+      // the hiring steps first (owner, 29 October 2026: "HR Screening and scheduling"; hiring-steps.ts): shortlisted, and
+      // HR's screening call passed (the vacancy has no hiring manager to accept them)
+      await as('hr').post(`/recruitment/applications/${applicationId}/stage`, { to: 'shortlisted' }).expect(200);
+      await as('hr').post(`/recruitment/applications/${applicationId}/screening-call`, { result: 'passed' }).expect(200);
       const saved = await as('hr').post(`/recruitment/applications/${applicationId}/interviews`, { date: addDays(TODAY, 7), time: '10:30', minutes: 45, kind: 'in_person', interviewerIds: [ids.ivy], note: 'Bring your reel.' }).expect(201);
       interviewId = saved.body.interview.id;
       await round();

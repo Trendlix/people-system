@@ -11,6 +11,7 @@ import {
   interviewProblems,
   INTERVIEW_KIND_LABELS,
   INTERVIEW_LIMITS,
+  interviewGateProblem,
   MEETING_KEEP,
   MEETING_PROVIDER_LABELS,
   parseMeetingChoice,
@@ -46,7 +47,7 @@ import { WhatsAppService } from '../whatsapp/whatsapp.service.js';
 import { AvailabilityService } from '../interview-hours/availability.service.js';
 import { isConfidentialVacancy, vacancyWhere } from './recruitment-access.js';
 import { hiringManagerApplications, HIRING_MANAGER_SEES, recruitmentCaller, visibleApplications, type RecruitmentCaller } from './recruitment-scope.js';
-import { APPLICATION_ENTITY } from './recruitment-views.js';
+import { APPLICATION_ENTITY, hiringStepInput } from './recruitment-views.js';
 import { shortlistsToReview } from './shortlist-review.js';
 import type { FeedbackDto, InterviewDto, InterviewMeetingDto } from './recruitment.dto.js';
 import { givenScorecardRole, NO_PROFILE_FOR_SCORECARD, NOT_A_SCORER, scorecardRole, scoresAsHr, type InterviewAnswer, type ScorecardRole } from './scorecard-givers.js';
@@ -84,6 +85,11 @@ import { givenScorecardRole, NO_PROFILE_FOR_SCORECARD, NOT_A_SCORER, scorecardRo
 // way the time is checked on scheduling and moving (their leave as "unavailable", holidays, days from home for an
 // in-person one, their other interviews with the buffer, their interview hours and calendars) and saved all the same,
 // the warnings in the answer and the audit entry.
+//
+// The hiring steps (owner, 29 October 2026: "HR Filteration and shortlisting - Manager view the shortlisted and accept or
+// reject them - HR Screening and scheduling"; packages/shared hiring-steps.ts): a first interview only for a shortlisted
+// applicant the hiring manager accepted (a vacancy without one asks no acceptance) who passed HR's screening call; a later
+// round asks nothing. Scheduling it acts on the hiring manager's acceptance, so it is cleared as any move of HR's clears it.
 
 export const INTERVIEW_ENTITY = 'interview';
 
@@ -329,12 +335,15 @@ export class InterviewsService {
     this.assertManages(c);
     const a = await this.prisma.jobApplication.findFirst({
       where: { id: applicationId, vacancy: vacancyWhere(user) },
-      select: { id: true, number: true, stage: true, filteredOut: true, vacancy: { select: { number: true } } },
+      select: { id: true, number: true, stage: true, filteredOut: true, suggestion: true, screeningCall: true, vacancy: { select: { number: true, hiringManagerId: true } } },
     });
     if (!a) throw new NotFoundException('Applicant not found.');
     const stage = a.stage as ApplicationStage;
     if (a.filteredOut) throw new ConflictException('They failed a must-have question and were filtered out: restore them first.');
     if (!SCHEDULABLE.includes(stage)) throw new ConflictException(`They are ${APPLICATION_STAGE_LABELS[stage].toLowerCase()}: no interview can be scheduled.`);
+    // the hiring manager's acceptance, then a passed screening call (29 October 2026), before anything is saved
+    const gate = interviewGateProblem(hiringStepInput(a));
+    if (gate) throw new ConflictException(gate);
     if (dto.meeting === MEETING_KEEP) throw new BadRequestException(['Choose what creates the meeting, or paste its link.']);
     const d = await this.checked(dto, now.getTime());
     // the interviewers' availability (owner, 25 October 2026: "hand-typed times get conflict warnings, never blocks"):
@@ -358,8 +367,14 @@ export class InterviewsService {
         select: { id: true },
       });
       if (stage === 'applied' || stage === 'shortlisted') {
-        const { count } = await tx.jobApplication.updateMany({ where: { id: applicationId, stage }, data: { stage: 'interview', rejectedFrom: null, rejectReason: null } });
-        if (count) await tx.jobApplicationStep.create({ data: { applicationId, event: 'interview', stage: 'interview', note: `Interview on ${cairoDay(d.startsAt)}`, byId: user.id } });
+        // still as the gate read them (the hiring manager's acceptance, the screening call): else nothing is saved; HR acted,
+        // so the hiring manager's acceptance is done with (29 October 2026)
+        const { count } = await tx.jobApplication.updateMany({
+          where: { id: applicationId, stage, filteredOut: false, suggestion: a.suggestion, screeningCall: a.screeningCall },
+          data: { stage: 'interview', rejectedFrom: null, rejectReason: null, suggestion: null, suggestionNote: null, suggestedById: null, suggestedAt: null },
+        });
+        if (!count) throw new ConflictException('The applicant changed meanwhile. Reload the page to see where they stand.');
+        await tx.jobApplicationStep.create({ data: { applicationId, event: 'interview', stage: 'interview', note: `Interview on ${cairoDay(d.startsAt)}`, byId: user.id } });
       }
       return made.id;
     });

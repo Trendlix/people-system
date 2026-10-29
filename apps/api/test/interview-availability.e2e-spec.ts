@@ -109,6 +109,16 @@ describe('Interviewers’ availability (e2e)', () => {
     sessions[key] = await signIn(app, emails[key]);
   }
 
+  /**
+   * The hiring steps before a first interview (owner, 29 October 2026: "Manager view the shortlisted and accept or reject
+   * them - HR Screening and scheduling"; hiring-steps.ts): shortlisted (as made here), accepted by Ahmed (the vacancy's
+   * hiring manager), and HR's screening call passed.
+   */
+  async function readyToInterview(id: string) {
+    await as('ahmed').post(`/recruitment/applications/${id}/suggest`, { suggestion: 'next' }).expect(200);
+    await as('hr').post(`/recruitment/applications/${id}/screening-call`, { result: 'passed' }).expect(200);
+  }
+
   /** A leave of theirs on a date, approved or waiting. */
   async function leave(key: string, date: string, status: 'approved' | 'with_hr') {
     const employment = await prisma.employment.findFirstOrThrow({ where: { employeeId: people[key] }, select: { id: true } });
@@ -304,6 +314,7 @@ describe('Interviewers’ availability (e2e)', () => {
     }, 30_000);
 
     it('books a time picked as any interview, and the time is then taken', async () => {
+      await readyToInterview(applicationId);
       const saved = (
         await as('hr').post(`/recruitment/applications/${applicationId}/interviews`, { date: SUN, time: '13:30', minutes: 30, kind: 'in_person', interviewerIds: [people.ahmed, people.sara] }).expect(201)
       ).body as InterviewSaved;
@@ -320,6 +331,7 @@ describe('Interviewers’ availability (e2e)', () => {
 
     it('saves a time typed by hand that conflicts, with the warnings; and checks a move the same way', async () => {
       await leave('omar', SUN, 'approved');
+      await readyToInterview(otherApplicationId);
       const saved = (
         await as('hr')
           .post(`/recruitment/applications/${otherApplicationId}/interviews`, { date: SUN, time: '14:30', minutes: 30, kind: 'online', location: 'https://meet.example.test/y', interviewerIds: [people.ahmed, people.omar] })

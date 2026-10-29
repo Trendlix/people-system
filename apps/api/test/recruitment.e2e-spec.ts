@@ -114,6 +114,18 @@ describe('Recruitment (e2e)', () => {
     return (await post('ceo', `/recruitment/vacancies/${v.id}/approve`).expect(200)).body as VacancyView;
   }
 
+  /**
+   * The hiring steps before a first interview (owner, 29 October 2026: "HR Screening and scheduling"; hiring-steps.ts):
+   * shortlisted, accepted by the vacancy's hiring manager when it has one, and HR's screening call passed. The vacancies
+   * interviewed for here have no hiring manager, so the call is all that is left once shortlisted.
+   */
+  async function readyToInterview(id: string) {
+    const a = (await get('hr', `/recruitment/applications/${id}`).expect(200)).body as ApplicationView;
+    if (a.stage === 'applied') await post('hr', `/recruitment/applications/${id}/stage`, { to: 'shortlisted' }).expect(200);
+    expect(a.hasHiringManager).toBe(false);
+    await post('hr', `/recruitment/applications/${id}/screening-call`, { result: 'passed' }).expect(200);
+  }
+
   const appByEmail = (email: string) => prisma.jobApplication.findFirstOrThrow({ where: { email }, select: { id: true, number: true, stage: true, filteredOut: true, matchPercent: true } });
 
   beforeAll(async () => {
@@ -431,6 +443,7 @@ describe('Recruitment (e2e)', () => {
       await post('hr', `/recruitment/applications/${fady}/stage`, { to: 'shortlisted' }).expect(200);
       await post('ceo', `/recruitment/applications/${sara}/stage`, { to: 'shortlisted' }).expect(403);
       await post('hr', `/recruitment/applications/${sara}/stage`, { to: 'shortlisted' }).expect(200);
+      await readyToInterview(sara);
       await post('hr', `/recruitment/applications/${sara}/stage`, { to: 'interview' }).expect(200);
       expect(said(await post('hr', `/recruitment/applications/${sara}/stage`, { to: 'rejected' }).expect(400))).toEqual(['Say why they are rejected.']);
       await post('hr', `/recruitment/applications/${sara}/stage`, { to: 'rejected', reason: 'Portfolio too thin' }).expect(200);
@@ -489,8 +502,9 @@ describe('Recruitment (e2e)', () => {
 
     it('leave their steps in the audit log', async () => {
       const rows = await prisma.auditLog.findMany({ where: { entityType: 'job_application', entityId: sara }, orderBy: { at: 'asc' }, select: { action: true } });
-      // no notes since they became screening comments (24 October 2026: the old address answers 410)
-      expect(rows.map((r) => r.action)).toEqual(['apply', 'stage', 'stage', 'stage', 'restore', 'stage', 'stage', 'stage', 'stage']);
+      // no notes since they became screening comments (24 October 2026: the old address answers 410); HR's screening call
+      // before the interview (29 October 2026: "Screening call + result")
+      expect(rows.map((r) => r.action)).toEqual(['apply', 'stage', 'screening_call', 'stage', 'stage', 'restore', 'stage', 'stage', 'stage', 'stage']);
       const vacancyRows = await prisma.auditLog.findMany({ where: { entityType: 'vacancy', entityId: v.id }, orderBy: { at: 'asc' }, select: { action: true } });
       expect(vacancyRows.map((r) => r.action)).toEqual(['create', 'submit', 'approve', 'fill']);
     });

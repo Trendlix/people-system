@@ -119,6 +119,17 @@ describe('Online interview meetings (e2e)', () => {
     return (await as(who).post('/meetings/oauth/finish', { provider, code, state: url.searchParams.get('state') }).expect(200)).body as MeetingConnectResult;
   }
 
+  /**
+   * The hiring steps before a first interview (owner, 29 October 2026: "HR Screening and scheduling"; hiring-steps.ts):
+   * shortlisted (as made here), accepted by the vacancy's hiring manager when it has one (this one has none), and HR's
+   * screening call passed.
+   */
+  async function readyToInterview(id: string) {
+    const a = (await as('hr').get(`/recruitment/applications/${id}`).expect(200)).body as { stage: string; hasHiringManager?: boolean };
+    expect(a).toMatchObject({ stage: 'shortlisted', hasHiringManager: false });
+    await as('hr').post(`/recruitment/applications/${id}/screening-call`, { result: 'passed' }).expect(200);
+  }
+
   const interviewOf = async (id: string) => (await as('hr').get(`/recruitment/applications/${applicationId}`).expect(200)).body.interviews.find((i: InterviewView) => i.id === id) as InterviewView;
 
   beforeAll(async () => {
@@ -349,6 +360,7 @@ describe('Online interview meetings (e2e)', () => {
     let interviewId: string;
 
     it('scheduling an online interview creates the meeting, and its link is in every invitation', async () => {
+      await readyToInterview(applicationId);
       const before = mail.outbox.length;
       const saved = (await as('hr').post(`/recruitment/applications/${applicationId}/interviews`, interviewBody({ meeting: 'personal:google', location: null })).expect(201)).body as InterviewSaved;
       interviewId = saved.interview.id;
