@@ -27,6 +27,7 @@ import {
   InterviewMeetingDto,
   InterviewOutcomeDto,
   RecruitmentSettingsDto,
+  ScreeningCallDto,
   CvPositionChoicesDto,
   EarlierOffersDto,
   SuggestionDto,
@@ -162,7 +163,7 @@ export class ApplicationsController {
     private readonly deletes: RecruitmentDeletesService,
   ) {}
 
-  /** ?vacancyId=, ?stage=, ?minMatch=, ?minYears=, ?source=, ?filtered= (hide: the default, only, all), ?q=. */
+  /** ?vacancyId=, ?stage=, ?minMatch=, ?minYears=, ?source=, ?filtered= (hide: the default, only, all), ?q=, ?step= (a hiring step). */
   @Roles(...READS)
   @Get()
   list(@Query() query: ListApplicationsDto, @CurrentUser() user: SessionUser) {
@@ -247,6 +248,17 @@ export class ApplicationsController {
   @HttpCode(200)
   suggest(@Param('id', ParseUUIDPipe) id: string, @Body() dto: SuggestionDto, @CurrentUser() user: SessionUser) {
     return this.applications.suggest(id, dto.suggestion, dto.note, user);
+  }
+
+  /**
+   * HR's screening call (owner, 29 October 2026: "HR Screening and scheduling"; "Screening call + result"): { result:
+   * passed | failed, note }, on a shortlisted applicant the hiring manager accepted; HR and a Super Admin only.
+   */
+  @Roles(...MANAGES)
+  @Post(':id/screening-call')
+  @HttpCode(200)
+  screeningCall(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ScreeningCallDto, @CurrentUser() user: SessionUser) {
+    return this.applications.screeningCall(id, dto.result, dto.note, user);
   }
 
   /** Schedules an interview (HR, a Super Admin): the candidate invited by email with the calendar invitation. */

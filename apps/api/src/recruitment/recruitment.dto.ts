@@ -48,6 +48,11 @@ import {
   type AgencyBackgroundWanted,
   EXPERIENCE_BASES,
   type ExperienceBasis,
+  HIRING_STEPS,
+  SCREENING_CALL_NOTE_MAX,
+  SCREENING_CALL_RESULTS,
+  type HiringStep,
+  type ScreeningCallResult,
 } from '@trendlix/shared';
 import { IsDateOnly } from '../common/date-only.js';
 import { Trim, TrimOrNull } from '../common/transforms.js';
@@ -207,6 +212,10 @@ export class ListApplicationsDto {
   /** Only those whose latest screening verdict is this; `none`: those without one yet (24 October 2026). */
   @IsOptional() @IsIn(VERDICT_FILTERS, { message: 'Choose a verdict.' })
   verdict?: VerdictFilter;
+
+  /** Only the shortlisted at this hiring step (29 October 2026, hiring-steps.ts): waiting for the manager, the screening call due… */
+  @IsOptional() @IsIn(HIRING_STEPS, { message: 'Choose a hiring step.' })
+  step?: HiringStep;
 }
 
 export class MoveApplicationDto {
@@ -611,4 +620,16 @@ export class CvDiscardDto extends CvUploadTargetDto {
 export class CvMoveDto extends CvUploadTargetDto {
   @IsOptional() @IsUUID('all', { message: 'Choose the vacancy.' })
   toVacancyId?: string;
+}
+
+/**
+ * HR's screening call on a shortlisted applicant (owner, 29 October 2026: "HR Screening and scheduling"; "Screening call
+ * + result"): passed or failed, with a comment.
+ */
+export class ScreeningCallDto {
+  @IsIn(SCREENING_CALL_RESULTS, { message: 'Choose whether they passed or failed the screening call.' })
+  result!: ScreeningCallResult;
+
+  @IsOptional() @TrimOrNull() @IsString() @MaxLength(SCREENING_CALL_NOTE_MAX, { message: `Keep the comment to ${SCREENING_CALL_NOTE_MAX} characters or fewer.` })
+  note?: string | null;
 }
