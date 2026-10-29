@@ -82,6 +82,8 @@ describe('the Applicants page’s tabs', () => {
     expect(filtering(readApplicantsQuery({}))).toBe(false);
     expect(filtering(readApplicantsQuery({ source: 'linkedin' }))).toBe(true);
     expect(filtering(readApplicantsQuery({ filtered: 'only' }))).toBe(true);
+    // the Hiring step filter (29 October 2026)
+    expect(filtering(readApplicantsQuery({ step: 'ready' }))).toBe(true);
   });
 
   it('links a source’s count to its applicants, those filtered out too', () => {

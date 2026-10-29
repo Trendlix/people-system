@@ -39,7 +39,10 @@ import { vacancyOptions } from '../../pickers';
 import { APPLICANTS_PATH, applicantCvHref, makeOfferHref, matchText, vacancyHref } from '../../recruitment';
 import { commentsOfRecord, kb, ownCv } from '../../screening';
 import { ScreeningCommentsCard } from '../../screening-ui';
-import { CvUpdatedBadge, EarlierCvList, StageBadge, VerdictBadge } from '../../ui';
+import { CvUpdatedBadge, EarlierCvList, HiringStepBadge, StageBadge, VerdictBadge } from '../../ui';
+import { screeningCallCard } from '../../screening-call';
+import { saveScreeningCall } from '../../screening-call-actions';
+import { ScreeningCallCard } from '../../screening-call-ui';
 import { applicantPortfolioHref, portfolioLinksOf } from '../../portfolio';
 import { LinkedInMark, PortfolioSent } from '../../portfolio-chips';
 import { shownCode } from '@/lib/hidden';
@@ -70,6 +73,10 @@ import { NO_MEETING_CHOICES } from '../../meetings';
 // Applying again (owner, 25 October 2026: "if an employee updated the cv and reapplied, how will he be treated in the
 // system?"; asked, "Update their application"): the current CV with when it came, Earlier CVs (date, name, Open), the
 // "CV updated" mark for 7 days, and the step "Updated by the candidate" in the history.
+// The hiring steps (owner, 29 October 2026: "Manager view the shortlisted and accept or reject them - HR Screening and
+// scheduling"; asked, "Screening call + result"): where a shortlisted applicant stands beside the stage, HR's Screening
+// Call card (Passed or Failed with a comment, once the hiring manager accepted them), and the interview scheduled (or
+// Move to interview) only for one who passed it: why not yet is said in its place.
 
 export const metadata: Metadata = { title: 'Applicant · People System' };
 
@@ -98,7 +105,7 @@ function Actions({ a }: { a: ApplicationView }) {
         </Link>
       )}
       {c.shortlist && <ActionButton action={moveApplicant.bind(null, a.id, 'shortlisted')} label={a.stage === 'interview' ? 'Back to shortlisted' : 'Shortlist'} pendingLabel="Saving…" kind={a.stage === 'applied' ? 'primary' : 'secondary'} />}
-      {c.interview && <ActionButton action={moveApplicant.bind(null, a.id, 'interview')} label="Move to interview" pendingLabel="Saving…" />}
+      {c.interview && !a.interviewBlocked && <ActionButton action={moveApplicant.bind(null, a.id, 'interview')} label="Move to interview" pendingLabel="Saving…" />}
       {c.restore && <ActionButton action={restoreApplicant.bind(null, a.id)} label="Restore" pendingLabel="Restoring…" kind="primary" />}
       {c.reject && (
         <ReasonButton
@@ -287,9 +294,15 @@ async function Interviews({ a }: { a: ApplicationView }) {
           ))}
         </ul>
       )}
-      {a.can.scheduleInterview && (
-        <ScheduleInterview action={scheduleInterview.bind(null, a.id)} people={people} defaultInterviewerIds={a.position.hiringManagerId ? [a.position.hiringManagerId] : []} meetings={meetings} />
-      )}
+      {a.can.scheduleInterview &&
+        // the hiring manager's acceptance, then a passed screening call (29 October 2026): why not yet, in its place
+        (a.interviewBlocked ? (
+          <p role="note" className="rounded-lg bg-canvas px-4 py-3 text-sm text-muted">
+            {a.interviewBlocked}
+          </p>
+        ) : (
+          <ScheduleInterview action={scheduleInterview.bind(null, a.id)} people={people} defaultInterviewerIds={a.position.hiringManagerId ? [a.position.hiringManagerId] : []} meetings={meetings} />
+        ))}
     </section>
   );
 }
@@ -309,6 +322,8 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
   if (loaded.kind !== 'ok') return <Empty>{recruitmentNotLoaded(loaded, 'applicant')}</Empty>;
   const a = loaded.value;
   const participant = a.viewer === 'hiring_manager' || a.viewer === 'interviewer';
+  // HR's screening call (29 October 2026: "Screening call + result"): the call made, and HR's form at Shortlisted
+  const screening = screeningCallCard(a);
   // the screening comments and the CVs the window opens (24 October 2026); the page shows without them if they fail
   const comments = commentsLoaded.kind === 'ok' ? commentsLoaded.value : null;
   const commentsNotLoaded = commentsLoaded.kind === 'ok' ? '' : recruitmentNotLoaded(commentsLoaded, 'screening comments');
@@ -321,6 +336,8 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold">{a.fullName}</h1>
           <StageBadge stage={a.stage} filteredOut={a.filteredOut} />
+          {/* where a shortlisted applicant stands in the hiring steps (29 October 2026) */}
+          <HiringStepBadge step={a.hiringStep} />
           {/* the latest screening verdict of this application's comments (24 October 2026) */}
           <VerdictBadge verdict={a.verdict} />
           {/* they applied again with a new CV in the last 7 days (25 October 2026) */}
@@ -480,6 +497,9 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
           </table>
         </section>
       )}
+
+      {/* HR's screening call before the interview (owner, 29 October 2026: "HR Screening and scheduling"; "Screening call + result") */}
+      {screening && <ScreeningCallCard card={screening} action={saveScreeningCall.bind(null, a.id)} />}
 
       <Suspense fallback={<Loading />}>
         <Interviews a={a} />
