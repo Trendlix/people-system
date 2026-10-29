@@ -490,14 +490,15 @@ describe('Careers forms: filled from the CV, LinkedIn sign-in, portfolio per pos
     const calls: { url: string; body?: string; auth?: string }[] = [];
     const http = app.get(LinkedInHttp);
     const real = http.fetch;
-    let nonce = '';
+    let nonce: string | undefined = '';
+    let iss = LINKEDIN_ISSUER;
     const fake: LinkedInFetch = (url, init) => {
       calls.push({ url, body: init.body, auth: init.headers.authorization });
       if (url === LINKEDIN_TOKEN_URL) {
         const sent = new URLSearchParams(init.body ?? '');
         if (sent.get('code') !== 'good-code' || sent.get('client_secret') !== CLIENT_SECRET) return Promise.resolve(new Response('{"error":"invalid_grant"}', { status: 400 }));
         return Promise.resolve(
-          Response.json({ access_token: 'at-fake', expires_in: 3600, id_token: idToken({ iss: LINKEDIN_ISSUER, aud: CLIENT_ID, sub: 'sub-1', nonce, exp: Math.floor(Date.now() / 1000) + 600 }) }),
+          Response.json({ access_token: 'at-fake', expires_in: 3600, id_token: idToken({ iss, aud: CLIENT_ID, sub: 'sub-1', nonce, exp: Math.floor(Date.now() / 1000) + 600 }) }),
         );
       }
       if (url === LINKEDIN_USERINFO_URL) {
@@ -547,8 +548,8 @@ describe('Careers forms: filled from the CV, LinkedIn sign-in, portfolio per pos
       expect(calls).toHaveLength(0);
       // cancelled at LinkedIn
       expect((await finish({ state: one.state, binding: one.binding, error: 'user_cancelled_login' })).body).toMatchObject({ ok: false, form, problem: 'cancelled' });
-      // the code refused by LinkedIn
-      expect((await finish({ state: one.state, binding: one.binding, code: 'bad-code' })).body).toMatchObject({ ok: false, form, problem: 'failed' });
+      // the code refused by LinkedIn: which step said (29 October 2026), never the code
+      expect((await finish({ state: one.state, binding: one.binding, code: 'bad-code' })).body).toEqual({ ok: false, form, src: 'linkedin', problem: 'failed', reason: 'token:400' });
 
       // signed in
       const two = await start();
@@ -563,7 +564,17 @@ describe('Careers forms: filled from the CV, LinkedIn sign-in, portfolio per pos
       // the ID token's nonce must be the sign-in's
       const three = await start();
       nonce = 'another-nonce';
-      expect((await finish({ state: three.state, binding: three.binding, code: 'good-code' })).body).toMatchObject({ ok: false, problem: 'failed' });
+      expect((await finish({ state: three.state, binding: three.binding, code: 'good-code' })).body).toMatchObject({ ok: false, problem: 'failed', reason: 'id_token:nonce' });
+      // owner, 29 October 2026: "the button is live but not filling anything": LinkedIn leaving the nonce out, or naming
+      // itself https://www.linkedin.com, still signs in (the state and the browser's half checked); another issuer doesn't
+      const four = await start();
+      nonce = undefined;
+      iss = 'https://www.linkedin.com';
+      expect(((await finish({ state: four.state, binding: four.binding, code: 'good-code' })).body as LinkedInFinish).ok).toBe(true);
+      const five = await start();
+      iss = 'https://accounts.example.test';
+      expect((await finish({ state: five.state, binding: five.binding, code: 'good-code' })).body).toMatchObject({ ok: false, problem: 'failed', reason: 'id_token:issuer' });
+      iss = LINKEDIN_ISSUER;
 
       // the form opens it (its own form only), no photo in it
       const details = (await api().post('/api/public/linkedin/open').set('x-careers-key', process.env.CAREERS_KEY!).send({ ticket: done.ticket, form }).expect(200)).body;

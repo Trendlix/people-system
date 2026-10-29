@@ -6,6 +6,7 @@ import {
   isEmail,
   LINKEDIN_AUTHORIZE_URL,
   LINKEDIN_ISSUER,
+  LINKEDIN_ISSUERS,
   LINKEDIN_LIMITS,
   LINKEDIN_SCOPES,
   LINKEDIN_TOKEN_URL,
@@ -226,7 +227,7 @@ export class LinkedInSignInService {
         : null;
     if (!state) return { ok: false, form: null, src: null, problem: 'expired' };
     const back = { form: state.f, src: typeof state.s === 'string' ? state.s : null };
-    const refused = (problem: LinkedInProblem): LinkedInFinish => ({ ok: false, ...back, problem });
+    const refused = (problem: LinkedInProblem, reason?: string): LinkedInFinish => ({ ok: false, ...back, problem, ...(reason && { reason }) });
     if (state.e < Date.now() || typeof dto.binding !== 'string' || !sameText(dto.binding, state.b)) return refused('expired');
     if (!this.window.allow(ip)) return refused('busy');
     if (typeof dto.error === 'string' && dto.error) return refused(/^(user_cancelled_login|user_cancelled_authorize|access_denied)$/.test(dto.error) ? 'cancelled' : 'failed');
@@ -245,23 +246,37 @@ export class LinkedInSignInService {
     if (!accessToken) {
       // the status only: never the answer, which may name the code or the app
       this.logger.warn(`LinkedIn refused the code (${token ? token.status : 'unreachable'}).`);
-      return refused('failed');
+      return refused('failed', `token:${token ? token.status : 'unreachable'}`);
     }
     const claims = claimsOf(grant!.id_token);
     const audience = claims ? (Array.isArray(claims.aud) ? claims.aud : [claims.aud]) : [];
-    if (!claims || claims.nonce !== state.n || !audience.includes(app.clientId) || claims.iss !== LINKEDIN_ISSUER || (typeof claims.exp === 'number' && claims.exp * 1000 < Date.now() - 5 * 60_000)) {
-      this.logger.warn('LinkedIn’s ID token didn’t match the sign-in (its nonce, audience, issuer or time).');
-      return refused('failed');
+    // the ID token comes straight from LinkedIn's token endpoint for this code (the state and the browser's half checked
+    // above): its nonce checked when LinkedIn sends one (it may leave it out), its issuer either of those it is seen with
+    // (owner, 29 October 2026: "the button is live but not filling anything")
+    const bad = !claims
+      ? 'missing'
+      : claims.nonce !== undefined && claims.nonce !== state.n
+        ? 'nonce'
+        : !audience.includes(app.clientId)
+          ? 'audience'
+          : typeof claims.iss !== 'string' || !LINKEDIN_ISSUERS.includes(claims.iss)
+            ? 'issuer'
+            : typeof claims.exp === 'number' && claims.exp * 1000 < Date.now() - 5 * 60_000
+              ? 'expired'
+              : null;
+    if (bad || !claims) {
+      this.logger.warn(`LinkedIn’s ID token didn’t match the sign-in (${bad ?? 'missing'}).`);
+      return refused('failed', `id_token:${bad ?? 'missing'}`);
     }
     const info = await this.http.send({ url: LINKEDIN_USERINFO_URL, method: 'GET', headers: { authorization: `Bearer ${accessToken}`, accept: 'application/json' } });
     const person = info?.status === 200 && info.body && typeof info.body === 'object' ? (info.body as Record<string, unknown>) : null;
     if (!person || (typeof claims.sub === 'string' && typeof person.sub === 'string' && claims.sub !== person.sub)) {
       this.logger.warn(`LinkedIn’s userinfo couldn’t be read (${info ? info.status : 'unreachable'}).`);
-      return refused('failed');
+      return refused('failed', `userinfo:${info ? info.status : 'unreachable'}`);
     }
     const fullName = str(person.name, 120) ?? str([str(person.given_name), str(person.family_name)].filter(Boolean).join(' '), 120);
     const email = typeof person.email === 'string' && isEmail(normalEmail(person.email)) ? normalEmail(person.email) : null;
-    if (!fullName && !email) return refused('failed');
+    if (!fullName && !email) return refused('failed', 'no_details');
     const result: SignInResult = { f: state.f, n: fullName, m: email, v: !!email && (person.email_verified === true || person.email_verified === 'true'), e: Date.now() + LINKEDIN_LIMITS.resultMinutes * 60_000 };
     return { ok: true, ...back, ticket: sealLinkedIn(JSON.stringify(result), this.key, 'result') };
   }

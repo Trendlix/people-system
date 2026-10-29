@@ -31,6 +31,8 @@ export const LINKEDIN_TOKEN_URL = 'https://www.linkedin.com/oauth/v2/accessToken
 export const LINKEDIN_USERINFO_URL = 'https://api.linkedin.com/v2/userinfo';
 /** The issuer of LinkedIn's ID tokens. */
 export const LINKEDIN_ISSUER = 'https://www.linkedin.com/oauth';
+/** The issuers LinkedIn's ID tokens have been seen with: its discovery's, and the bare site (29 October 2026). */
+export const LINKEDIN_ISSUERS: readonly string[] = [LINKEDIN_ISSUER, 'https://www.linkedin.com'];
 
 export const LINKEDIN_LIMITS = {
   clientId: 100,
@@ -115,7 +117,17 @@ export type LinkedInStart = { ok: true; url: string; binding: string } | { ok: f
  */
 export type LinkedInFinish =
   | { ok: true; form: string; src: string | null; ticket: string }
-  | { ok: false; form: string | null; src: string | null; problem: LinkedInProblem };
+  | {
+      ok: false;
+      form: string | null;
+      src: string | null;
+      problem: LinkedInProblem;
+      /**
+       * Which step refused, for the website's log (29 October 2026: "the button is live but not filling anything"):
+       * "token:401", "id_token:audience", "userinfo:403", "no_details"; never a name, an email, a code or a token.
+       */
+      reason?: string;
+    };
 
 /** POST /public/linkedin/open { ticket, form }: what the form fills in; null fields when LinkedIn didn't give them. */
 export interface LinkedInDetails {
