@@ -38,6 +38,7 @@ import {
   type ApplicantsQuery,
 } from './recruitment';
 import { kb, verdictBadge } from './screening';
+import { BatchTick, BatchTickAll } from './shortlist-ui';
 import { joinShown } from '@/lib/hidden';
 
 // Recruitment's pieces (owner, 22 October 2026: "where will we include the ATS?"): the badges of a vacancy's status and an
@@ -282,6 +283,8 @@ function SortTitle({ column, label, right = false, sorting }: { column: Applican
  * 2026) where the Vacancy column isn't: a vacancy's own applicants (its group, its page), so the table is no wider.
  * `deletes`: a Super Admin's Delete applicant on each row (owner, 25 October 2026: "applicant alone - superadmin only").
  * `sorting`: each title sorts the list by its column (28 October 2026), the rows here put in that order.
+ * `ticks`: a tick box first on the rows ShortlistSelection may tick, and "Select all" on its title (owner, 29 October 2026:
+ * "Tick several at once"; shortlist-ui.tsx).
  */
 export function ApplicantsTable({
   rows,
@@ -289,12 +292,14 @@ export function ApplicantsTable({
   bare = false,
   deletes = false,
   sorting,
+  ticks = false,
 }: {
   rows: ApplicationListItem[];
   withVacancy: boolean;
   bare?: boolean;
   deletes?: boolean;
   sorting?: TableSorting;
+  ticks?: boolean;
 }) {
   const shown = sorting ? sortApplicants(rows, sorting.q) : rows;
   return (
@@ -302,6 +307,11 @@ export function ApplicantsTable({
       <table className="table">
         <thead>
           <tr>
+            {ticks && (
+              <th scope="col" className="w-11 px-1">
+                <BatchTickAll label="Select all at Applied" />
+              </th>
+            )}
             <SortTitle column="name" label="Applicant" sorting={sorting} />
             {withVacancy ? <SortTitle column="vacancy" label="Vacancy" sorting={sorting} /> : <SortTitle column="role" label="Latest role" sorting={sorting} />}
             <SortTitle column="match" label="Match" right sorting={sorting} />
@@ -320,6 +330,11 @@ export function ApplicantsTable({
         <tbody>
           {shown.map((a) => (
             <tr key={a.id}>
+              {ticks && (
+                <td className="w-11 px-1">
+                  <BatchTick id={a.id} label={a.fullName} />
+                </td>
+              )}
               <td>
                 <Link href={applicantHref(a.id)} className="font-semibold">
                   {a.fullName}
