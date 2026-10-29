@@ -232,9 +232,36 @@ export const EDUCATION_LEVEL_LABELS: Record<EducationLevel, string> = {
  * The facts' version, kept with them (24 October 2026: the work history, education details, skills, certifications and
  * city added; 3, 29 October 2026: a job's line naming two roles before its company, "Role | Role — Company"): facts of
  * an earlier version are worked out again from the CV's kept text (CvReadingsService.refreshFacts), their applications
- * scored again.
+ * scored again; 4, 29 October 2026: a "Links" heading its own section, and the links behind a PDF's or a Word file's
+ * words kept under CV_LINKS_HEADING).
  */
-export const CV_FACTS_VERSION = 3;
+export const CV_FACTS_VERSION = 4;
+
+/**
+ * The heading the links behind a CV's words are kept under, after its text (owner, 29 October 2026: "the OCR is not
+ * filling the linkedin link like in the candidate profile": a "LinkedIn" word or icon linking to the profile, its address
+ * not in the text). A section none of the rules reads but the contacts' (its LinkedIn link, its emails, its other links).
+ */
+export const CV_LINKS_HEADING = 'Links in the file';
+
+/** The links behind a CV's words, kept after its text: http(s) and mailto, those not in the text already, at most 10. */
+export function withFileLinks(text: string, links: readonly string[], maxChars = Infinity): string {
+  const seen = text.toLowerCase();
+  const kept: string[] = [];
+  for (const raw of links) {
+    const link = raw.trim();
+    if (link.length > 300 || /\s/.test(link)) continue;
+    const shown = /^mailto:/i.test(link) ? link.replace(/^mailto:/i, '').split('?')[0] : /^https?:\/\//i.test(link) ? link : null;
+    if (!shown) continue;
+    const bare = shown.toLowerCase().replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
+    if (!bare || seen.includes(bare) || kept.some((k) => k.toLowerCase().includes(bare))) continue;
+    kept.push(shown);
+    if (kept.length >= 10) break;
+  }
+  if (!kept.length) return text.slice(0, maxChars);
+  const block = `\n\n${CV_LINKS_HEADING}\n${kept.join('\n')}`;
+  return `${text.slice(0, Math.max(0, maxChars - block.length))}${block}`;
+}
 
 /**
  * A job of the CV's work history (24 October 2026). Its title and company as written, each null when the rules weren't
@@ -651,7 +678,7 @@ const SECTION_PHRASES: [Exclude<CvSection, 'top'>, string][] = [
   ],
   [
     'other',
-    'summary|professional summary|profile|professional profile|personal profile|about|about me|objective|career objective|projects|selected projects|portfolio|references|interests|hobbies|achievements|awards|honors|honours|volunteering|volunteer experience|volunteer work|activities|extracurricular activities|publications|نبذه|نبذه عني|الملخص|الهدف|الهدف الوظيفي|المشاريع|الهوايات|المراجع|الانجازات|الجوائز|الانشطه|العمل التطوعي',
+    'links|links in the file|summary|professional summary|profile|professional profile|personal profile|about|about me|objective|career objective|projects|selected projects|portfolio|references|interests|hobbies|achievements|awards|honors|honours|volunteering|volunteer experience|volunteer work|activities|extracurricular activities|publications|نبذه|نبذه عني|الملخص|الهدف|الهدف الوظيفي|المشاريع|الهوايات|المراجع|الانجازات|الجوائز|الانشطه|العمل التطوعي',
   ],
 ];
 

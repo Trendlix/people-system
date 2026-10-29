@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { LinkedInProfileLink } from '../../linkedin-link-ui';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { GENERAL_CV_EVENT_LABELS, GENERAL_CV_SOURCE_LABELS, GENERAL_CV_STATUS_LABELS, generalCvKey, type GeneralCvView } from '@trendlix/shared';
@@ -126,13 +127,8 @@ async function GeneralCv({ params }: { params: PageProps<'/recruitment/general-c
           <Fact label="Team">{positionFacts(c).team}</Fact>
           <Fact label="Experience">{c.yearsExperience === null ? '—' : `${c.yearsExperience} years`}</Fact>
           <Fact label="LinkedIn">
-            {c.linkedin ? (
-              <a href={c.linkedin} target="_blank" rel="noopener noreferrer nofollow">
-                Open profile
-              </a>
-            ) : (
-              '—'
-            )}
+            {/* the one typed, else the CV's (owner, 29 October 2026: "the OCR is not filling the linkedin link") */}
+            <LinkedInProfileLink typed={c.linkedin} fromCv={c.cvLinkedin} />
           </Fact>
           <Fact label="Notice period">{c.noticePeriod ?? '—'}</Fact>
           <Fact label="Expected salary, EGP a month">{c.expectedSalary === null ? '—' : c.expectedSalary.toLocaleString('en-US')}</Fact>

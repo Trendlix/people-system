@@ -1,4 +1,4 @@
-import { PDFDocument, StandardFonts } from '@cantoo/pdf-lib';
+import { PDFDocument, PDFString, StandardFonts } from '@cantoo/pdf-lib';
 import type { INestApplication } from '@nestjs/common';
 import { CLIENT_IP_AT_HEADER, CLIENT_IP_HEADER, CLIENT_IP_SIGNATURE_HEADER, CV_FACTS_VERSION, careersIpToken, HIDDEN } from '@trendlix/shared';
 import type { ApplicationListItem, ApplicationView, CandidateListItem, CvSaveResult, CvTextView, CvUploadView, GeneralCvListItem, GeneralCvView, Role, VacancyView } from '@trendlix/shared';
@@ -538,6 +538,32 @@ describe('CV reading and analysis (e2e)', () => {
     await post('ceo', `/recruitment/general-cvs/${sara}/read-again`).expect(403);
     await drain();
     expect(((await get('hr', `/recruitment/general-cvs/${sara}`).expect(200)).body as GeneralCvView).cvReading).toMatchObject({ status: 'read', method: 'pdf', education: 'master' });
+  });
+
+
+  // owner, 29 October 2026: "the OCR is not filling the linkedin link like in the candidate profile"
+  it('finds the LinkedIn link behind a CV’s "LinkedIn" word: on the applicant and the candidate when none was typed, never a developer’s', async () => {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage();
+    const font = await doc.embedFont(StandardFonts.Helvetica);
+    ['Linked Person', `linked.person.${RUN}@mail.test`, 'Experience', 'Video Editor, Nile Media, Jan 2019 - Dec 2021', 'LinkedIn | Behance'].forEach((line, i) =>
+      page.drawText(line, { x: 50, y: 760 - i * 18, size: 11, font }),
+    );
+    const profile = `https://www.linkedin.com/in/linked-person-${RUN}`;
+    page.node.addAnnot(doc.context.register(doc.context.obj({ Type: 'Annot', Subtype: 'Link', Rect: [50, 680, 100, 694], Border: [0, 0, 0], A: { Type: 'Action', S: 'URI', URI: PDFString.of(profile) } })));
+    const id = await apply('linked', '10.4.9.9', Buffer.from(await doc.save()));
+    await drain();
+    const a = (await get('hr', `/recruitment/applications/${id}`).expect(200)).body as ApplicationView;
+    expect(a.linkedin).toBeNull();
+    expect(a.cvLinkedin).toMatch(new RegExp(`linkedin\\.com/in/linked-person-${RUN}`));
+    const { candidateId } = await prisma.jobApplication.findUniqueOrThrow({ where: { id }, select: { candidateId: true } });
+    expect(((await get('hr', `/recruitment/candidates/${candidateId}`).expect(200)).body as { cvLinkedin: string | null }).cvLinkedin).toBe(a.cvLinkedin);
+    // a developer: masked, as the typed one is
+    const dev = await get('developer', `/recruitment/applications/${id}`);
+    if (dev.status === 200) expect((dev.body as ApplicationView).cvLinkedin).toBe(HIDDEN);
+    // one typed wins: none from the CV then
+    await prisma.jobApplication.update({ where: { id }, data: { linkedin: 'https://www.linkedin.com/in/typed-by-them' } });
+    expect(((await get('hr', `/recruitment/applications/${id}`).expect(200)).body as ApplicationView).cvLinkedin).toBeNull();
   });
 
   const said = (res: request.Response) => (Array.isArray(res.body.message) ? res.body.message : [res.body.message]) as string[];

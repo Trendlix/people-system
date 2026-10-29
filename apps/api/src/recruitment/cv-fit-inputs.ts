@@ -58,6 +58,15 @@ export function careerFor(facts: CvFacts | null, readAt: Date | null | undefined
   return careerOf(facts?.workHistory, (readAt ?? new Date()).toISOString().slice(0, 7));
 }
 
+/**
+ * The LinkedIn profile link a CV gave (owner, 29 October 2026: "the OCR is not filling the linkedin link like in the
+ * candidate profile"): its text's, or a link behind its words (cv-text.ts); null without a reading or one.
+ */
+export function cvLinkedinOf(reading: { status: string; facts: Prisma.JsonValue | null } | null | undefined): string | null {
+  if (!reading || reading.status !== 'read') return null;
+  return cvFactsOf(reading.facts)?.linkedin ?? null;
+}
+
 /** A general CV's position (chosen, or written for Other) as a fit counts it: a title. */
 export const positionOf = (g: { positionName: string | null; positionOther: string | null } | null | undefined): string | null => (g ? (g.positionName ?? g.positionOther) : null);
 

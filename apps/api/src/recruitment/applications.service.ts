@@ -77,6 +77,7 @@ import { ConfigService } from '@nestjs/config';
 import { reviewNotice, shortlistEmail, shortlistNotice, suggestionShown, type HiringBatchResult } from '@trendlix/shared';
 import { webOriginOf } from '../employee-access/employee-access.service.js';
 import { BATCH_NOT_FOUND, batchIds, reviewSkip, shortlistSkip, skippedOf } from './hiring-batches.js';
+import { cvLinkedinOf } from './cv-fit-inputs.js';
 
 // The applicants (owner, 22 October 2026: "where will we include the ATS?"; packages/shared recruitment.ts): listed by
 // vacancy or all together, with their match and stage; an applicant's page with their answers (how each did), their CV,
@@ -348,6 +349,8 @@ export class ApplicationsService {
       // its latest screening verdict (24 October 2026), from its own comments
       verdict,
       linkedin: a.linkedin,
+      // the LinkedIn link in the CV when none was typed (owner, 29 October 2026: "the OCR is not filling the linkedin link like in the candidate profile")
+      cvLinkedin: a.linkedin ? null : cvLinkedinOf(a.cvReading),
       portfolio: a.portfolio,
       // every portfolio link, the PDF case study and "Confirmed by LinkedIn" (25 October 2026)
       portfolioLinks: a.portfolioLinks.length ? a.portfolioLinks : a.portfolio ? [a.portfolio] : [],

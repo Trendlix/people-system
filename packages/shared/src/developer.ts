@@ -607,6 +607,8 @@ export const DEVELOPER_HIDDEN_TEXT_FIELDS: ReadonlySet<string> = new Set([
   'previousEmployer',
   'previousEmployers',
   'linkedin',
+  // the LinkedIn profile link found in a CV (29 October 2026)
+  'cvLinkedin',
   'portfolio',
   // every portfolio link sent on the careers forms (owner, 25 October 2026: "Portfolio per position"), each "••••"
   'portfolioLinks',

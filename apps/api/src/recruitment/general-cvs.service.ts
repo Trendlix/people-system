@@ -64,6 +64,7 @@ import { LinkedInSignInService } from './linkedin-signin.service.js';
 import { portfolioTitlesOf } from './portfolio-asks.js';
 import { PortfolioSettingsService } from './portfolio-settings.service.js';
 import { portfolioFileProblem, portfolioFileRow, portfolioSent } from './portfolio-file.js';
+import { cvLinkedinOf } from './cv-fit-inputs.js';
 
 // General CVs (owner, 22 October 2026: "i want a proper viweing, what came out of the posted jobs and what cam on
 // randomly"; "Both"; packages/shared general-cvs.ts): "Send us your CV" on the careers page, with the same protections as
@@ -394,6 +395,8 @@ export class GeneralCvsService {
       // its latest screening verdict (24 October 2026), from its own comments
       verdict: verdicts.get(r.id) ?? null,
       linkedin: r.linkedin,
+      // the LinkedIn link in the CV when none was typed (owner, 29 October 2026: "the OCR is not filling the linkedin link like in the candidate profile")
+      cvLinkedin: r.linkedin ? null : cvLinkedinOf(r.cvReading),
       portfolio: r.portfolio,
       // every portfolio link, the PDF case study and "Confirmed by LinkedIn" (25 October 2026)
       portfolioLinks: r.portfolioLinks.length ? r.portfolioLinks : r.portfolio ? [r.portfolio] : [],

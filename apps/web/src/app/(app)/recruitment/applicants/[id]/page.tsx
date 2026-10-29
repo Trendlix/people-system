@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { LinkedInProfileLink } from '../../linkedin-link-ui';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import {
@@ -431,13 +432,8 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
           </Fact>
           <Fact label="Experience">{a.yearsExperience === null ? '—' : `${a.yearsExperience} years`}</Fact>
           <Fact label="LinkedIn">
-            {a.linkedin ? (
-              <a href={a.linkedin} target="_blank" rel="noopener noreferrer nofollow">
-                Open profile
-              </a>
-            ) : (
-              '—'
-            )}
+            {/* the one typed, else the CV's (owner, 29 October 2026: "the OCR is not filling the linkedin link") */}
+            <LinkedInProfileLink typed={a.linkedin} fromCv={a.cvLinkedin} />
           </Fact>
           <Fact label="Notice period">{a.noticePeriod ?? '—'}</Fact>
           {!participant && <Fact label="Expected salary, EGP a month">{a.expectedSalary === null ? '—' : a.expectedSalary.toLocaleString('en-US')}</Fact>}

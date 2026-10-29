@@ -64,6 +64,7 @@ import { byExperience, cvListFactsOf, minYearsWhere, money } from './recruitment
 import { recruitmentCaller } from './recruitment-scope.js';
 import { ScreeningCommentsService } from './screening-comments.service.js';
 import { moveEarlierNotes } from './screening-notes.js';
+import { cvLinkedinOf } from './cv-fit-inputs.js';
 
 // Candidate profiles (owner, 22 October 2026: "how to make like a profile for each candidate to store history and prevent
 // duplication? even if the same candidate applied for 2 jobs"; "Email or mobile"; "Link and show rehire"; "HR decides
@@ -600,11 +601,11 @@ export class CandidatesService implements OnModuleDestroy {
         applications: {
           where: { vacancy: vacancyWhere(user) },
           orderBy: { createdAt: 'desc' },
-          select: { ...APP_SELECT, portfolioLinks: true, cvUpdatedAt: true, cv: { select: { fileName: true, mimeType: true, sizeBytes: true, createdAt: true } }, steps: { orderBy: { at: 'asc' }, select: { event: true, at: true } } },
+          select: { ...APP_SELECT, portfolioLinks: true, cvUpdatedAt: true, cvReading: { select: { status: true, facts: true } }, cv: { select: { fileName: true, mimeType: true, sizeBytes: true, createdAt: true } }, steps: { orderBy: { at: 'asc' }, select: { event: true, at: true } } },
         },
         generalCvs: {
           orderBy: { createdAt: 'desc' },
-          select: { ...GCV_SELECT, portfolioLinks: true, file: { select: { fileName: true, mimeType: true, sizeBytes: true } }, events: { orderBy: { at: 'asc' }, select: { event: true, at: true } } },
+          select: { ...GCV_SELECT, portfolioLinks: true, cvReading: { select: { status: true, facts: true } }, file: { select: { fileName: true, mimeType: true, sizeBytes: true } }, events: { orderBy: { at: 'asc' }, select: { event: true, at: true } } },
         },
         mergesKept: { orderBy: { at: 'desc' }, select: { id: true, at: true, undoneAt: true, moved: true, by: { select: { id: true, email: true } }, merged: { select: { id: true, code: true, fullName: true } } } },
       },
@@ -719,6 +720,10 @@ export class CandidatesService implements OnModuleDestroy {
       code: row.code,
       fullName: row.fullName,
       linkedin: row.linkedin,
+      // the LinkedIn link in the CV when none was typed (owner, 29 October 2026: "the OCR is not filling the linkedin link like in the candidate profile"): their newest CV's that has one
+      cvLinkedin: row.linkedin
+        ? null
+        : ([...row.applications, ...row.generalCvs].sort((x, y) => y.createdAt.getTime() - x.createdAt.getTime()).map((r) => cvLinkedinOf(r.cvReading)).find(Boolean) ?? null),
       portfolio: row.portfolio,
       // every portfolio link they sent, the newest first, each once (25 October 2026: "Portfolio per position")
       portfolioLinks: [...new Set([...row.applications, ...row.generalCvs].sort((x, y) => y.createdAt.getTime() - x.createdAt.getTime()).flatMap((r) => r.portfolioLinks))].slice(0, 10),

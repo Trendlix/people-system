@@ -585,6 +585,12 @@ export interface CandidateTimelineItem {
 /** GET /recruitment/candidates/:id: the profile. */
 export interface CandidateView extends CandidateRef {
   linkedin: string | null;
+  /**
+   * The LinkedIn profile link found in the CV, when none was typed (owner, 29 October 2026: "the OCR is not filling the
+   * linkedin link like in the candidate profile"): its visible text or a link behind a word ("LinkedIn"); null otherwise.
+   * Never a developer's (developer.ts). Missing from an API before it.
+   */
+  cvLinkedin?: string | null;
   portfolio: string | null;
   /** Every portfolio link of their applications and general CVs, the newest first, each once (25 October 2026). */
   portfolioLinks?: string[];

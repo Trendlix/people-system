@@ -388,6 +388,12 @@ export interface GeneralCvView extends GeneralCvListItem {
   /** Other Open Positions (25 October 2026): the top 3 open vacancies its CV fits at 50% or more. */
   openPositions?: OpenPositionFit[];
   linkedin: string | null;
+  /**
+   * The LinkedIn profile link found in the CV, when none was typed (owner, 29 October 2026: "the OCR is not filling the
+   * linkedin link like in the candidate profile"): its visible text or a link behind a word ("LinkedIn"); null otherwise.
+   * Never a developer's (developer.ts). Missing from an API before it.
+   */
+  cvLinkedin?: string | null;
   /** Every portfolio link, the PDF case study and "Confirmed by LinkedIn", as an application's (25 October 2026). */
   portfolioLinks?: string[];
   portfolioFile?: { fileName: string; sizeBytes: number } | null;

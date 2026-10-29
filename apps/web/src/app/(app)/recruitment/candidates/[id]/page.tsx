@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { LinkedInProfileLink } from '../../linkedin-link-ui';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
@@ -89,11 +90,12 @@ function Contacts({ c }: { c: CandidateView }) {
           </ul>
         </div>
       </div>
-      {c.linkedin && (
+      {/* the one typed, else their newest CV's (owner, 29 October 2026: "the OCR is not filling the linkedin link") */}
+      {(c.linkedin || c.cvLinkedin) && (
         <p className="flex flex-wrap gap-4 text-sm">
-          <a href={c.linkedin} target="_blank" rel="noopener noreferrer nofollow">
-            LinkedIn profile
-          </a>
+          <span>
+            <LinkedInProfileLink typed={c.linkedin} fromCv={c.cvLinkedin} label="LinkedIn profile" empty={null} />
+          </span>
         </p>
       )}
       {/* every portfolio link of theirs, each with its platform (owner, 25 October 2026: "Portfolio per position") */}

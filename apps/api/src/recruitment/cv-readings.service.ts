@@ -19,6 +19,7 @@ import {
   type CvReadingView,
   type CvTextView,
   type AgencyMarks,
+  withFileLinks,
 } from '@trendlix/shared';
 import { Prisma } from '../generated/prisma/client.js';
 import { OcrClient } from '../paperwork/ocr.client.js';
@@ -27,7 +28,7 @@ import { CandidatesService } from './candidates.service.js';
 import { DOCX, PDF } from './cv-file.js';
 import { agencyMarksOf } from './agency-marks.js';
 import { agencyOf, careerFor, canonical, FIT_READING, FIT_VACANCY_SELECT, fitCvOf, fitJobOf, positionOf } from './cv-fit-inputs.js';
-import { cvText } from './cv-text.js';
+import { cvText, cvTextParts } from './cv-text.js';
 
 // Every CV read and analysed (owner, 22 October 2026: "make the OCR egine reads the CV and analyse it. is that
 // applicable?"; asked, "Built-in rules only"; packages/shared cv-analysis.ts): an application's, a general CV's, and a
@@ -241,9 +242,11 @@ export class CvReadingsService implements OnModuleDestroy {
       text = await cvText(file.data, DOCX, { pages: CV_READING_LIMITS.pdfPages, chars: CV_READING_LIMITS.chars });
       method = 'docx';
     } else if (file.mimeType === PDF) {
-      text = await cvText(file.data, PDF, { pages: CV_READING_LIMITS.pdfPages, chars: CV_READING_LIMITS.chars });
+      // its own text, and the links behind its words apart: a scan with links is still a scan (29 October 2026)
+      const parts = await cvTextParts(file.data, PDF, { pages: CV_READING_LIMITS.pdfPages, chars: CV_READING_LIMITS.chars });
+      text = parts.text ? withFileLinks(parts.text, parts.links, CV_READING_LIMITS.chars) : '';
       method = 'pdf';
-      if (textAmount(text) < CV_READING_LIMITS.minTextChars || row.forceOcr) {
+      if (textAmount(parts.text) < CV_READING_LIMITS.minTextChars || row.forceOcr) {
         // a scan (or HR's "Read as a scan"): the OCR service reads it, in English, then in Arabic when that came out mostly Arabic
         const en = await this.ocr.read(file.data, PDF, 'en');
         if (en.status !== 'done') {
@@ -259,6 +262,8 @@ export class CvReadingsService implements OnModuleDestroy {
             method = 'ocr_ar';
           }
         }
+        // the links behind its words kept after what the OCR service read
+        if (textAmount(text) > 0) text = withFileLinks(text, parts.links, CV_READING_LIMITS.chars);
       }
     } else {
       await this.fail(row.id, 'The CV is neither a PDF nor a Word file.');
