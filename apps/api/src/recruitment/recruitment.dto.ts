@@ -597,3 +597,9 @@ export class CvDiscardDto extends CvUploadTargetDto {
   @IsOptional() @IsUUID('all')
   id?: string;
 }
+
+/** A batch sent elsewhere: from where it is (`vacancyId`, none: the general CVs) to `toVacancyId` (none: the general CVs). */
+export class CvMoveDto extends CvUploadTargetDto {
+  @IsOptional() @IsUUID('all', { message: 'Choose the vacancy.' })
+  toVacancyId?: string;
+}

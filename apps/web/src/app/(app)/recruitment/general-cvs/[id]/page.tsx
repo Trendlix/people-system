@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
-import { GENERAL_CV_EVENT_LABELS, GENERAL_CV_SOURCE_LABELS, GENERAL_CV_STATUS_LABELS, generalCvKey, VACANCY_STATUS_LABELS, type GeneralCvView } from '@trendlix/shared';
+import { GENERAL_CV_EVENT_LABELS, GENERAL_CV_SOURCE_LABELS, GENERAL_CV_STATUS_LABELS, generalCvKey, type GeneralCvView } from '@trendlix/shared';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { BackLink, Empty, Loading } from '../../../organization/ui';
 import { RehireWarning } from '../../../offboarding/rehire-warning';
@@ -11,7 +11,7 @@ import { OpenPositions } from '../../cv-fit-ui';
 import { loadGeneralCv, loadGeneralCvComments, loadVacancies, recruitmentNotLoaded } from '../../data';
 import { ActionButton } from '../../forms';
 import { moveGeneralCv, setGeneralCvStatus } from '../../general-actions';
-import { generalCvFileHref, GENERAL_STATUS_STYLE, movableVacancies, positionFacts, tabHref } from '../../general';
+import { generalCvFileHref, GENERAL_STATUS_STYLE, positionFacts, tabHref, vacancyChoices } from '../../general';
 import { MoveForm } from '../../general-forms';
 import { applicantHref } from '../../recruitment';
 import { commentsOfRecord, kb, ownCv } from '../../screening';
@@ -47,11 +47,7 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
 async function AddToVacancy({ c }: { c: GeneralCvView }) {
   const loaded = await loadVacancies({ status: 'active', q: '' });
   if (loaded.kind !== 'ok') return <Empty>{recruitmentNotLoaded(loaded, 'vacancies')}</Empty>;
-  const vacancies = movableVacancies(loaded.value).map((v) => ({
-    id: v.id,
-    label: `${v.title} (${v.number})${v.status === 'on_hold' ? ` · ${VACANCY_STATUS_LABELS.on_hold}` : ''}`,
-  }));
-  return <MoveForm action={moveGeneralCv.bind(null, c.id)} vacancies={vacancies} />;
+  return <MoveForm action={moveGeneralCv.bind(null, c.id)} vacancies={vacancyChoices(loaded.value)} />;
 }
 
 async function GeneralCv({ params }: { params: PageProps<'/recruitment/general-cvs/[id]'>['params'] }) {

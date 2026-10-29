@@ -381,6 +381,39 @@ describe('General CVs and the bulk upload (e2e)', () => {
       expect(nour.events.map((e) => e.note)).toEqual(['Added by HR (LinkedIn), in a bulk upload']);
     });
 
+    // owner, 29 October 2026: "when uploading bulk CVs, allow me to add them to an open vacancy directly as a bulk"
+    it('sends the batch to an open vacancy (joined to the CVs waiting there) and back; saved there as applications', async () => {
+      const waiting = (await upload('hr', await pdfOf(['Hana Waiting Person', email('hana')]), 'hana.pdf', vacancy.id).expect(201)).body as CvUploadView;
+      const yara = (await upload('hr', await pdfOf(['Yara Moved Person', email('yara')]), 'yara.pdf').expect(201)).body as CvUploadView;
+      const lina = (await upload('hr', await pdfOf(['Lina Moved Again', email('lina')]), 'lina-moved.pdf').expect(201)).body as CvUploadView;
+      // only HR and a Super Admin; only an open vacancy (or one on hold) the caller sees
+      await post('ceo', '/recruitment/cv-uploads/move', { toVacancyId: vacancy.id }).expect(403);
+      await post('outsider', '/recruitment/cv-uploads/move', { toVacancyId: vacancy.id }).expect(403);
+      const draft = (await post('hr', '/recruitment/vacancies', { jobTitleId, employmentType: 'full_time', headcount: 1, closingDate: addDays(TODAY, 30) }).expect(201)).body as VacancyView;
+      expect(said(await post('hr', '/recruitment/cv-uploads/move', { toVacancyId: draft.id }).expect(400))).toEqual(['CVs are added to an open vacancy (or one on hold).']);
+      await post('hr', '/recruitment/cv-uploads/move', { toVacancyId: '00000000-0000-4000-8000-000000000000' }).expect(404);
+      expect(((await get('hr', '/recruitment/cv-uploads').expect(200)).body as CvUploadView[]).map((r) => r.fileName)).toEqual(['yara.pdf', 'lina-moved.pdf']);
+      // another HR's move moves only their own (none)
+      expect((await post('hr2', '/recruitment/cv-uploads/move', { toVacancyId: vacancy.id }).expect(200)).body).toEqual([]);
+
+      // to the vacancy: the whole batch, after the CV waiting there; its duplicates as the vacancy's (Lina applied already)
+      const there = (await post('hr', '/recruitment/cv-uploads/move', { toVacancyId: vacancy.id }).expect(200)).body as CvUploadView[];
+      expect(there.map((r) => r.fileName)).toEqual(['hana.pdf', 'yara.pdf', 'lina-moved.pdf']);
+      expect(there[2].duplicate).toMatchObject({ inBatch: false, reference: expect.stringMatching(/^APP-/) });
+      expect((await get('hr', '/recruitment/cv-uploads').expect(200)).body).toEqual([]);
+      // and back to the general CVs, then to the vacancy again
+      expect(((await post('hr', '/recruitment/cv-uploads/move', { vacancyId: vacancy.id }).expect(200)).body as CvUploadView[]).map((r) => r.id)).toEqual([waiting.id, yara.id, lina.id]);
+      expect((await get('hr', `/recruitment/cv-uploads?vacancyId=${vacancy.id}`).expect(200)).body).toEqual([]);
+      await post('hr', '/recruitment/cv-uploads/move', { toVacancyId: vacancy.id }).expect(200);
+
+      const row = (r: CvUploadView) => ({ id: r.id, fullName: r.guess.fullName ?? '', email: r.guess.email ?? '', mobile: mobileOf(r.guess.fullName ?? 'x'), source: 'linkedin' });
+      const result = (await post('hr', '/recruitment/cv-uploads/save', { vacancyId: vacancy.id, rows: [row(waiting), row(yara), row(lina)] }).expect(200)).body as CvSaveResult;
+      expect(result.saved.map((s) => s.fullName)).toEqual(['Hana Waiting Person', 'Yara Moved Person']);
+      expect(result.skipped.map((s) => s.fileName)).toEqual(['lina-moved.pdf']);
+      expect(await prisma.jobApplication.findFirstOrThrow({ where: { vacancyId: vacancy.id, email: email('yara') }, select: { stage: true, source: true } })).toEqual({ stage: 'applied', source: 'linkedin' });
+      expect((await post('hr', '/recruitment/cv-uploads/discard', { vacancyId: vacancy.id }).expect(200)).body).toEqual({ discarded: 1 });
+    });
+
     it('takes at most 50 waiting CVs a person', async () => {
       await prisma.cvUpload.createMany({
         data: Array.from({ length: 50 }, (_, i) => ({ createdById: users.hr2, fileName: `cv${i}.pdf`, mimeType: 'application/pdf', sizeBytes: cv.length, data: new Uint8Array(cv) })),

@@ -4,11 +4,14 @@ import { APPLICATION_STAGE_LABELS, OTHER_POSITION } from '@trendlix/shared';
 import {
   addCvApiForm,
   addCvProblems,
+  batchDoneHref,
   batchSources,
+  batchTargetOf,
   DEFAULT_BATCH_SOURCE,
   duplicateText,
   filtering,
   generalApiPath,
+  generalBulkHref,
   generalFiltering,
   generalHref,
   groupApplicants,
@@ -20,14 +23,17 @@ import {
   positionFacts,
   positionField,
   positionsByTeam,
+  readBulkTarget,
   readGeneralQuery,
   readTab,
+  retargetRows,
   rowOf,
   saveRows,
   sourceFilterHref,
   stageCountsText,
   tabHref,
   uploadsApiPath,
+  vacancyChoices,
 } from './general';
 import { readApplicantsQuery } from './recruitment';
 
@@ -226,6 +232,52 @@ describe('the bulk upload', () => {
     expect(duplicateText({ reference: 'APP-2026-0007', inBatch: false, date: '2026-10-01' }, vacancy)).toBe('Applied for this job already (APP-2026-0007): it will be skipped.');
     expect(duplicateText({ reference: 'APP-2026-0007', inBatch: false, date: '2026-10-01' }, general)).toBe('Sent a CV in the last 30 days (APP-2026-0007): tick Keep to save it anyway.');
     expect(duplicateText({ reference: null, inBatch: true, date: null }, general)).toBe('The same email is earlier in this batch.');
+  });
+
+  // owner, 29 October 2026: "when uploading bulk CVs, allow me to add them to an open vacancy directly as a bulk"
+  describe('Save to: the whole batch to an open vacancy, or the general CVs', () => {
+    const list = [
+      { id: V1, number: 'VAC-2026-0004', title: 'Video Editor', status: 'open' },
+      { id: 'd', number: 'VAC-2026-0005', title: 'Draft Job', status: 'draft' },
+      { id: V2, number: 'VAC-2026-0006', title: 'Sound Engineer', status: 'on_hold' },
+    ] as unknown as Parameters<typeof vacancyChoices>[0];
+
+    it('offers the open vacancies and those on hold, as a list shows them', () => {
+      expect(vacancyChoices(list)).toEqual([
+        { id: V1, label: 'Video Editor (VAC-2026-0004)' },
+        { id: V2, label: 'Sound Engineer (VAC-2026-0006) · On hold' },
+      ]);
+    });
+
+    it('keeps the place in the address: a vacancy among the choices, else the general CVs', () => {
+      const choices = vacancyChoices(list);
+      expect(batchTargetOf(V1)).toEqual(vacancy);
+      expect(batchTargetOf(null)).toEqual(general);
+      expect(generalBulkHref(vacancy)).toBe(`/recruitment/general-cvs/bulk?vacancy=${V1}`);
+      expect(generalBulkHref(general)).toBe('/recruitment/general-cvs/bulk');
+      expect(readBulkTarget({ vacancy: V1 }, choices)).toEqual(vacancy);
+      expect(readBulkTarget({ vacancy: [V2, V1] }, choices)).toEqual({ kind: 'vacancy', vacancyId: V2 });
+      // closed meanwhile, not one, or none: the general CVs
+      expect(readBulkTarget({ vacancy: '33333333-3333-4333-8333-333333333333' }, choices)).toEqual(general);
+      expect(readBulkTarget({ vacancy: 'd' }, choices)).toEqual(general);
+      expect(readBulkTarget({}, choices)).toEqual(general);
+      expect(batchDoneHref(vacancy)).toBe(`/recruitment/vacancies/${V1}`);
+      expect(batchDoneHref(general)).toBe(tabHref('general'));
+    });
+
+    it('keeps HR’s typing when the batch moves; the duplicates the new place’s; a source it doesn’t take LinkedIn; CVs waiting there joined', () => {
+      const typed = { ...rowOf(upload()), fullName: 'Mona Adel Hassan', source: 'whatsapp', position: 'video-editor' };
+      const referred = { ...rowOf(upload({ id: 'u2', guess: { fullName: 'Karim', email: null, mobile: null } })), source: 'referral', skip: true };
+      const there = { reference: 'APP-2026-0009', inBatch: false, date: '2026-10-20' };
+      const moved = retargetRows([typed, referred], [upload({ id: 'w', fileName: 'waiting.pdf' }), upload({ duplicate: there }), upload({ id: 'u2' })], vacancy);
+      expect(moved.map((r) => r.id)).toEqual(['w', 'u1', 'u2']);
+      expect(moved[0]).toEqual(rowOf(upload({ id: 'w', fileName: 'waiting.pdf' })));
+      // WhatsApp is no vacancy channel: LinkedIn; Referral is both
+      expect(moved[1]).toMatchObject({ fullName: 'Mona Adel Hassan', source: DEFAULT_BATCH_SOURCE, duplicate: there, position: 'video-editor' });
+      expect(moved[2]).toMatchObject({ fullName: 'Karim', source: 'referral', skip: true, duplicate: null });
+      // back to the general CVs: Facebook is no general CV source
+      expect(retargetRows([{ ...typed, source: 'facebook' }], [upload()], general)[0].source).toBe(DEFAULT_BATCH_SOURCE);
+    });
   });
 });
 

@@ -18,6 +18,7 @@ import {
   type VacancyApplicantsGroup,
   type VacancyListItem,
   type VerdictFilter,
+  VACANCY_STATUS_LABELS,
 } from '@trendlix/shared';
 import { generalApiForm, generalInputOf, generalTypedValues } from '../../careers/careers';
 import { APPLICANTS_PATH, applicantsHref, minYearsOf, skillOf, vacancyHref, verdictOf, type ApplicantsQuery } from './recruitment';
@@ -247,6 +248,45 @@ export function inBatchRepeats(rows: readonly BatchRow[]): Set<string> {
     else seen.add(email);
   }
   return repeats;
+}
+
+// The batch's place chosen on the page (owner, 29 October 2026: "when uploading bulk CVs, allow me to add them to an open
+// vacancy directly as a bulk"): the bulk upload from the Applicants page saves to the general CVs, or to an open vacancy
+// (or one on hold) picked in Save to; the whole batch goes there (the API's move), HR's typing on each row kept. The
+// page's address names the vacancy, so a refresh finds the batch where it went.
+
+/** A batch's place from a vacancy's id (none: the general CVs). */
+export const batchTargetOf = (vacancyId: string | null | undefined): CvBatchTarget => (vacancyId ? { kind: 'vacancy', vacancyId } : { kind: 'general' });
+
+/** Where a saved batch is seen: the vacancy's page, or the general CVs' tab. */
+export const batchDoneHref = (target: CvBatchTarget) => (target.kind === 'vacancy' ? vacancyHref(target.vacancyId) : tabHref('general'));
+
+/** The bulk upload's address with its place: `?vacancy=` for a vacancy. */
+export const generalBulkHref = (target: CvBatchTarget) => (target.kind === 'vacancy' ? `${GENERAL_BULK_PATH}?vacancy=${encodeURIComponent(target.vacancyId)}` : GENERAL_BULK_PATH);
+
+/** The place the address names: a vacancy among the choices (open, or on hold), else the general CVs. */
+export function readBulkTarget(query: Record<string, string | string[] | undefined>, choices: readonly { id: string }[]): CvBatchTarget {
+  const id = one(query.vacancy);
+  return batchTargetOf(UUID.test(id) && choices.some((c) => c.id === id) ? id : null);
+}
+
+/** The vacancies a CV may go to, as a list shows them: "Video Editor (VAC-2026-0004)", "· On hold" for one on hold. */
+export const vacancyChoices = (rows: readonly VacancyListItem[]): { id: string; label: string }[] =>
+  movableVacancies(rows).map((v) => ({ id: v.id, label: `${v.title} (${v.number})${v.status === 'on_hold' ? ` · ${VACANCY_STATUS_LABELS.on_hold}` : ''}` }));
+
+/**
+ * The rows after the batch went to `target` (`uploads`: the batch there, as the API's move gives it): HR's typing on each
+ * row kept, its duplicate as the new place's; its source kept when the place takes it (LinkedIn, Referral, Other), else
+ * LinkedIn; CVs that were waiting there joined as new rows, in the batch's order.
+ */
+export function retargetRows(rows: readonly BatchRow[], uploads: readonly CvUploadView[], target: CvBatchTarget): BatchRow[] {
+  const byId = new Map(rows.map((r) => [r.id, r]));
+  const sources = batchSources(target);
+  return uploads.map((u) => {
+    const r = byId.get(u.id);
+    if (!r) return rowOf(u);
+    return { ...r, duplicate: u.duplicate, source: sources.includes(r.source) ? r.source : DEFAULT_BATCH_SOURCE };
+  });
 }
 
 /** What a row's duplicate says: there already (its reference and day), or earlier in the batch. */

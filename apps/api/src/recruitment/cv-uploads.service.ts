@@ -152,6 +152,19 @@ export class CvUploadsService {
   }
 
   /**
+   * The caller's batch sent elsewhere (owner, 29 October 2026: "when uploading bulk CVs, allow me to add them to an open
+   * vacancy directly as a bulk"): every CV of it from `from` to `to`, an open vacancy (or one on hold) the caller sees,
+   * or the general CVs; joined there to any the caller left waiting before. Nothing is saved yet: the rows are checked
+   * and saved there as that batch's. The whole batch there, as `list` gives it (its duplicates as that place's).
+   */
+  async move(from: Target, to: Target, user: SessionUser): Promise<CvUploadView[]> {
+    this.assertManages(user);
+    await this.assertTarget(to, user);
+    if (from.vacancyId !== to.vacancyId) await this.prisma.cvUpload.updateMany({ where: { createdById: user.id, vacancyId: from.vacancyId }, data: { vacancyId: to.vacancyId } });
+    return this.list(to, user);
+  }
+
+  /**
    * The rows saved, in the batch's order: each checked (the name, email and mobile; the source; a general CV's position),
    * then an application at Applied on the vacancy, or a general CV; those skipped said with why. Saved rows leave the
    * batch; skipped ones stay to fix or discard.

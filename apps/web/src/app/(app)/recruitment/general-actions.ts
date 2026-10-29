@@ -107,6 +107,23 @@ export async function saveBatch(target: CvBatchTarget, rows: CvSaveRow[]): Promi
   }
 }
 
+/**
+ * Sends the whole batch from `from` to `to` (29 October 2026: Save to on the bulk upload): an open vacancy (or one on
+ * hold), or the general CVs. The batch there as it is now, joined to any CVs left waiting there before.
+ */
+export async function moveBatch(from: CvBatchTarget, to: CvBatchTarget): Promise<{ uploads: CvUploadView[] } | { error: string }> {
+  try {
+    const uploads = await apiSend<CvUploadView[]>('POST', '/recruitment/cv-uploads/move', {
+      ...(from.kind === 'vacancy' && { vacancyId: from.vacancyId }),
+      ...(to.kind === 'vacancy' && { toVacancyId: to.vacancyId }),
+    });
+    return { uploads: uploads ?? [] };
+  } catch (err) {
+    if (err instanceof ApiError) return { error: err.messages.join(' ') };
+    throw err;
+  }
+}
+
 /** Discards the batch, or one CV of it. */
 export async function discardBatch(target: CvBatchTarget, id?: string): Promise<{ errors?: string[] }> {
   try {

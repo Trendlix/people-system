@@ -39,7 +39,7 @@ async function Bulk({ params }: { params: PageProps<'/recruitment/vacancies/[id]
   return (
     <div className="space-y-4">
       {head}
-      {uploads.kind !== 'ok' ? <Empty>{recruitmentNotLoaded(uploads, 'bulk upload')}</Empty> : <BulkUpload target={target} initial={uploads.value} positions={[]} doneHref={vacancyHref(v.id)} />}
+      {uploads.kind !== 'ok' ? <Empty>{recruitmentNotLoaded(uploads, 'bulk upload')}</Empty> : <BulkUpload target={target} initial={uploads.value} positions={[]} />}
     </div>
   );
 }

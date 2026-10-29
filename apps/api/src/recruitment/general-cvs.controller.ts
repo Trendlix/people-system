@@ -16,6 +16,7 @@ import { MANAGES, READS } from './recruitment-access.js';
 import {
   AddGeneralCvDto,
   CvDiscardDto,
+  CvMoveDto,
   CvSaveDto,
   CvUploadTargetDto,
   GeneralCvFormDto,
@@ -175,6 +176,14 @@ export class CvUploadsController {
   @HttpCode(200)
   discard(@Body() dto: CvDiscardDto, @CurrentUser() user: SessionUser) {
     return this.uploads.discard({ vacancyId: dto.vacancyId ?? null }, dto.id, user);
+  }
+
+  /** The batch sent to an open vacancy (or one on hold), or to the general CVs: the whole batch there, as it is now. */
+  @Roles(...MANAGES)
+  @Post('move')
+  @HttpCode(200)
+  move(@Body() dto: CvMoveDto, @CurrentUser() user: SessionUser) {
+    return this.uploads.move({ vacancyId: dto.vacancyId ?? null }, { vacancyId: dto.toVacancyId ?? null }, user);
   }
 }
 

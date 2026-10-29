@@ -26,8 +26,8 @@ import { PositionOptions } from '@/components/position-options';
 import { Select } from '@/components/select';
 import type { FormState } from '@/lib/types';
 import { POSITION_FIELD } from '../../careers/careers';
-import { discardBatch, readBatch, saveBatch, uploadBatchCv } from './general-actions';
-import { batchSources, duplicateText, inBatchRepeats, mergeReadings, rowOf, saveRows, type BatchRow } from './general';
+import { discardBatch, moveBatch, readBatch, saveBatch, uploadBatchCv } from './general-actions';
+import { batchDoneHref, batchSources, batchTargetOf, duplicateText, generalBulkHref, inBatchRepeats, mergeReadings, retargetRows, rowOf, saveRows, type BatchRow } from './general';
 
 // General CVs' forms (owner, 22 October 2026: "i want a proper viweing, what came out of the posted jobs and what cam on
 // randomly", "Both"; "is there a way to easy apply from linkedin?" … "why not"): HR's Add a CV, adding one to a vacancy,
@@ -243,14 +243,28 @@ const sourceLabel = (target: CvBatchTarget, s: string) => (target.kind === 'vaca
  * each read for the person's name, email and mobile. HR checks the rows (a scanned PDF's are theirs to fill in), picks
  * the source (LinkedIn to start with), then saves them: applications at Applied on a vacancy, or general CVs. A row whose
  * email applied already is skipped; a general CV's sent in the last 30 days is kept only when ticked.
+ * With `destinations` (the Applicants page's bulk upload, 29 October 2026: "when uploading bulk CVs, allow me to add them
+ * to an open vacancy directly as a bulk"), Save to picks where the whole batch goes: the general CVs, or one of these
+ * open vacancies (or on hold); switching sends the CVs uploaded so far there, HR's typing kept.
  */
-export function BulkUpload({ target, initial, positions, doneHref }: { target: CvBatchTarget; initial: CvUploadView[]; positions: readonly CvPositionGroup[]; doneHref: string }) {
+export function BulkUpload({
+  target: startTarget,
+  initial,
+  positions,
+  destinations,
+}: {
+  target: CvBatchTarget;
+  initial: CvUploadView[];
+  positions: readonly CvPositionGroup[];
+  destinations?: readonly { id: string; label: string }[];
+}) {
+  const [target, setTarget] = useState<CvBatchTarget>(startTarget);
   const [rows, setRows] = useState<BatchRow[]>(() => initial.map(rowOf));
   const [progress, setProgress] = useState<{ done: number; of: number } | null>(null);
   const [problems, setProblems] = useState<string[]>([]);
   const [result, setResult] = useState<CvSaveResult | null>(null);
   const [reasons, setReasons] = useState<Record<string, string>>({});
-  const [busy, setBusy] = useState<'save' | 'discard' | null>(null);
+  const [busy, setBusy] = useState<'save' | 'discard' | 'move' | null>(null);
   const [over, setOver] = useState(false);
   const [polls, setPolls] = useState(0);
   const box = useRef<HTMLInputElement>(null);
@@ -308,6 +322,26 @@ export function BulkUpload({ target, initial, positions, doneHref }: { target: C
     setResult(r.result);
   }
 
+  /** The whole batch sent to the place chosen in Save to; the address names it, so a refresh finds the batch there. */
+  async function moveTo(vacancyId: string) {
+    const next = batchTargetOf(vacancyId || null);
+    if (next.kind === target.kind && (next.kind === 'general' || (target.kind === 'vacancy' && next.vacancyId === target.vacancyId))) return;
+    setBusy('move');
+    setProblems([]);
+    const r = await moveBatch(target, next).catch(() => ({ error: 'Could not move the batch. Please try again.' }));
+    setBusy(null);
+    if ('error' in r) {
+      setProblems([r.error]);
+      return;
+    }
+    setRows((all) => retargetRows(all, r.uploads, next));
+    setTarget(next);
+    setResult(null);
+    setReasons({});
+    setPolls(0);
+    window.history.replaceState(null, '', generalBulkHref(next));
+  }
+
   async function discard(id?: string) {
     if (!id && !window.confirm(`Discard the ${rows.length} CVs of this batch? Nothing of them is saved.`)) return;
     setBusy('discard');
@@ -338,8 +372,44 @@ export function BulkUpload({ target, initial, positions, doneHref }: { target: C
     return () => window.clearTimeout(timer);
   }, [anyReading, polls, target]);
 
+  const placeHint =
+    target.kind === 'vacancy'
+      ? 'Saved as applications at Applied on this vacancy. Anyone who applied for it already is skipped.'
+      : destinations?.length
+        ? 'Saved as general CVs. Choose a vacancy to add them all to it as applications instead.'
+        : 'Saved as general CVs. No vacancy is open (or on hold) now.';
+
   return (
     <div className="space-y-4">
+      {destinations && (
+        <div className="card space-y-1 p-4">
+          <label htmlFor={fid('save-to')} className="label">
+            Save to
+          </label>
+          <Select
+            id={fid('save-to')}
+            value={target.kind === 'vacancy' ? target.vacancyId : ''}
+            onChange={(e) => void moveTo(e.target.value)}
+            disabled={!!busy || !!progress}
+            aria-describedby={fid('save-to-hint')}
+            className="input max-w-xl"
+          >
+            <option value="">General CVs</option>
+            {destinations.length > 0 && (
+              <optgroup label="Open vacancies">
+                {destinations.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.label}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+          </Select>
+          <p id={fid('save-to-hint')} className="hint">
+            {busy === 'move' ? 'Moving the batch…' : placeHint}
+          </p>
+        </div>
+      )}
       <div
         onDragOver={(e) => {
           if (Array.from(e.dataTransfer.types).includes('Files')) {
@@ -364,7 +434,7 @@ export function BulkUpload({ target, initial, positions, doneHref }: { target: C
           type="file"
           multiple
           accept={CV_ACCEPT}
-          disabled={!!progress || rows.length >= CV_BATCH_LIMIT}
+          disabled={!!progress || busy === 'move' || rows.length >= CV_BATCH_LIMIT}
           onChange={(e) => void take(Array.from(e.currentTarget.files ?? []))}
           aria-describedby={fid('files-hint')}
           className="input"
@@ -389,7 +459,7 @@ export function BulkUpload({ target, initial, positions, doneHref }: { target: C
             {result.skipped.length > 0 && ` ${result.skipped.length} left in the batch: see each row.`}
           </p>
           {result.saved.length > 0 && rows.length === 0 && (
-            <a href={doneHref} className="font-semibold">
+            <a href={batchDoneHref(target)} className="font-semibold">
               Open them
             </a>
           )}
