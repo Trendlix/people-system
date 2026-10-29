@@ -154,7 +154,8 @@ export function PipelineBoard({ board, move, deletes = false }: { board: Vacancy
                     {card.betterFit && <BetterFitLink badge={card.betterFit} />}
                     {card.upcomingInterviews > 0 && <span className={`badge ${STAGE_STYLE.interview}`}>Interview booked</span>}
                     {card.openOffer && <span className={`badge ${STAGE_STYLE.offer}`}>Offer open</span>}
-                    {card.suggestion && <span className="badge bg-warn-soft text-warn">Suggested: {HIRING_SUGGESTION_LABELS[card.suggestion]}</span>}
+                    {/* at Shortlisted the hiring step's badge says it ("Waiting for the manager", "Rejected by the manager" …; 29 October 2026) */}
+                    {card.suggestion && card.stage !== 'shortlisted' && <span className="badge bg-warn-soft text-warn">Suggested: {HIRING_SUGGESTION_LABELS[card.suggestion]}</span>}
                     {/* the latest screening verdict (24 October 2026: "Yes: Good fit / Maybe / Not a fit") */}
                     <VerdictBadge verdict={card.verdict} />
                     {/* they applied again with a new CV in the last 7 days (25 October 2026: "Update their application") */}
