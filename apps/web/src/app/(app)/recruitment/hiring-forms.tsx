@@ -462,17 +462,20 @@ export function ScheduleInterview({ action, people, defaultInterviewerIds, meeti
   return <InterviewForm action={action} people={people} defaultInterviewerIds={defaultInterviewerIds} submitLabel="Schedule and invite" onCancel={() => setOpen(false)} meetings={meetings} />;
 }
 
-/** "Move", opening the form with the interview's details. */
+/**
+ * "Reschedule" (owner, 29 October 2026: "can we add a reschedule button?": it was this one, called Move), opening the
+ * form with the interview's details; the candidate and the interviewers are told the new time.
+ */
 export function MoveInterview({ action, people, interview, meetings }: { action: Action; people: PersonOption[]; interview: InterviewView; meetings?: MeetingChoices }) {
   const [open, setOpen] = useState(false);
   if (!open) {
     return (
       <button type="button" onClick={() => setOpen(true)} className="btn btn-secondary">
-        Move
+        Reschedule
       </button>
     );
   }
-  return <InterviewForm action={action} people={people} defaultInterviewerIds={[]} interview={interview} submitLabel="Move and tell them" onCancel={() => setOpen(false)} meetings={meetings} />;
+  return <InterviewForm action={action} people={people} defaultInterviewerIds={[]} interview={interview} submitLabel="Reschedule and tell them" onCancel={() => setOpen(false)} meetings={meetings} />;
 }
 
 /** An interviewer's scorecard: each criterion from 1 to 5, the recommendation, notes; their own to change afterwards. */
