@@ -38,7 +38,7 @@ describe('the interview, only after the hiring manager’s acceptance and a pass
     expect(screeningCallProblem(a({ suggestion: 'next' }))).toBeNull();
     expect(screeningCallProblem(a({ hasHiringManager: false }))).toBeNull();
     expect(screeningCallProblem(a({ stage: 'applied' }))).toMatch(/^Shortlist them first/);
-    expect(screeningCallProblem(a({ stage: 'interview' }))).toBe('They are interview: the screening call is made at Shortlisted.');
+    expect(screeningCallProblem(a({ stage: 'interview' }))).toBe('They are at Interview: the screening call is made at Shortlisted.');
     expect(screeningCallProblem(a({ suggestion: 'next', filteredOut: true }))).toMatch(/filtered out/);
   });
 

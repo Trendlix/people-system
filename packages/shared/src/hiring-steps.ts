@@ -82,7 +82,7 @@ export interface HiringStepInput {
 export function screeningCallProblem(a: HiringStepInput): string | null {
   if (a.filteredOut) return 'They failed a must-have question and were filtered out: restore them first.';
   if (a.stage === 'applied') return 'Shortlist them first: the screening call comes once the hiring manager accepts them.';
-  if (a.stage !== 'shortlisted') return `They are ${APPLICATION_STAGE_LABELS[a.stage].toLowerCase()}: the screening call is made at Shortlisted.`;
+  if (a.stage !== 'shortlisted') return `They are at ${APPLICATION_STAGE_LABELS[a.stage]}: the screening call is made at Shortlisted.`;
   if (a.hasHiringManager && a.suggestion === 'reject') return 'The hiring manager rejected them: reject them, or ask the hiring manager to accept them.';
   if (a.hasHiringManager && a.suggestion !== 'next') return 'Waiting for the hiring manager to accept them.';
   return null;

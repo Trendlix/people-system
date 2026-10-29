@@ -332,7 +332,7 @@ export function interviewMail(kind: InterviewMailKind, f: InterviewMailFacts): {
   }
   const moved = kind === 'moved';
   return {
-    subject: moved ? `Interview moved: ${f.job} at ${f.company} · تغيير موعد المقابلة` : `Interview invitation: ${f.job} at ${f.company} · دعوة لمقابلة`,
+    subject: moved ? `Interview rescheduled: ${f.job} at ${f.company} · تغيير موعد المقابلة` : `Interview invitation: ${f.job} at ${f.company} · دعوة لمقابلة`,
     text: [
       `Dear ${f.candidate},`,
       '',

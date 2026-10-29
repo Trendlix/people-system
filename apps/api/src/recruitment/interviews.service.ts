@@ -863,7 +863,7 @@ export class InterviewsService {
         // the meeting's service beside it (24 October 2026); its link is on the applicant's page and in the email, never in
         // a notification (they show on a locked phone)
         if (!silent) {
-          await notifyEmployees(told, kind === 'moved' ? 'Interview moved' : 'Interview scheduled', `${r.application.fullName} on ${when}, ${r.minutes} minutes${meetingName ? `, on ${meetingName}` : ''}`, 'REQUEST', kind === 'moved' ? 'moved' : 'scheduled');
+          await notifyEmployees(told, kind === 'moved' ? 'Interview rescheduled' : 'Interview scheduled', `${r.application.fullName} on ${when}, ${r.minutes} minutes${meetingName ? `, on ${meetingName}` : ''}`, 'REQUEST', kind === 'moved' ? 'moved' : 'scheduled');
         }
         if (dropped.length) await notifyEmployees(dropped, 'Interview cancelled for you', `${r.application.fullName}: you are no longer on the panel`, 'CANCEL', 'dropped');
       }

@@ -214,7 +214,7 @@ describe('the candidate’s emails', () => {
   });
 
   it('says when it moved or was cancelled', () => {
-    expect(interviewMail('moved', facts).subject).toBe('Interview moved: Video Editor at TrendLIX · تغيير موعد المقابلة');
+    expect(interviewMail('moved', facts).subject).toBe('Interview rescheduled: Video Editor at TrendLIX · تغيير موعد المقابلة');
     expect(interviewMail('cancelled', facts).subject).toBe('Interview cancelled: Video Editor · إلغاء المقابلة');
     expect(interviewMail('invite', { ...facts, kind: 'phone', location: null }).text).toContain('By phone: we will call you on +20 100 123 4567');
     expect(interviewMail('invite', { ...facts, kind: 'in_person', location: null }).text).toContain('In person: TrendLIX');

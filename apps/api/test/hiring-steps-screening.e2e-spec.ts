@@ -180,7 +180,7 @@ describe('The hiring steps: the screening call and the interview’s gate (e2e)'
       expect(said(await call('hr', 'Sara', { result: 'maybe' }).expect(400))).toEqual(['Choose whether they passed or failed the screening call.']);
       expect(said(await call('hr', 'Sara', { result: 'passed', note: 'x'.repeat(1001) }).expect(400))).toEqual(['Keep the comment to 1000 characters or fewer.']);
       // at another stage
-      expect(said(await call('hr', 'Ivy', { result: 'passed' }).expect(409))).toEqual(['They are interview: the screening call is made at Shortlisted.']);
+      expect(said(await call('hr', 'Ivy', { result: 'passed' }).expect(409))).toEqual(['They are at Interview: the screening call is made at Shortlisted.']);
       // nothing was kept
       expect((await view('hr', 'Sara')).screeningCall).toBeNull();
     });

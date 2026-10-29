@@ -299,7 +299,7 @@ describe('Recruitment, Phase 2 (e2e)', () => {
       const saved = (await put('hr', `/recruitment/interviews/${interview.id}`, interviewBody({ time: '13:00', interviewerIds: [people.iv1] })).expect(200)).body as InterviewSaved;
       expect(saved.interview.interviewers.map((i) => i.employeeId)).toEqual([people.iv1]);
       const toCandidate = mail.outbox.slice(before).find((m) => m.to === `sara.${RUN}@mail.test`)!;
-      expect(toCandidate.subject).toContain('Interview moved');
+      expect(toCandidate.subject).toContain('Interview rescheduled');
       expect(icsOf(toCandidate)).toContain(`UID:interview-${interview.id}@people.trendlix.com`);
       expect(icsOf(toCandidate)).toContain('SEQUENCE:1');
       expect((await notices('iv2', 'interview_scheduled')).at(-1)).toMatchObject({ title: 'Interview cancelled for you' });
