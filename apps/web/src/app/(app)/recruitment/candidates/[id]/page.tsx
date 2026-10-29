@@ -31,6 +31,7 @@ import { interviewWhen } from '../../hiring';
 import { applicantHref, readsRecruitment, WHO_SEES } from '../../recruitment';
 import { asScreeningCvs, cvFileHref, kb } from '../../screening';
 import { ScreeningCommentsCard } from '../../screening-ui';
+import { ScorecardRoleBadge } from '../../scorecard-ui';
 import { VerdictBadge } from '../../ui';
 import { portfolioLinksOf } from '../../portfolio';
 import { PortfolioChips } from '../../portfolio-chips';
@@ -165,7 +166,9 @@ function Interviews({ c }: { c: CandidateView }) {
             {i.feedback.map((f) => (
               <div key={f.id} className="text-sm">
                 <p>
-                  <span className="font-semibold">{f.interviewer.name}</span> · {RECOMMENDATION_LABELS[f.recommendation]}
+                  <span className="font-semibold">{f.interviewer.name}</span>
+                  {/* whose it is (29 October 2026: HR and the hiring manager give one too) */}
+                  <ScorecardRoleBadge f={f} /> · {RECOMMENDATION_LABELS[f.recommendation]}
                 </p>
                 <p className="text-xs text-muted">{FEEDBACK_CRITERIA.map((k) => `${FEEDBACK_CRITERION_LABELS[k]} ${f.ratings[k]}/5`).join(' · ')}</p>
                 {f.notes && <p className="whitespace-pre-line">{f.notes}</p>}

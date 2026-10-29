@@ -10,7 +10,9 @@ import { boardHref } from '../hiring';
 
 // My Hiring (Phase 2, owner, 22 October 2026; the brief: "Show it only to people who are a hiring manager or interviewer
 // on something open"): the open vacancies the person hires for, with their applicants from Shortlisted on, and the
-// interviews they sit on (to come, and those of the last 60 days, a scorecard due marked).
+// interviews they sit on (to come, and those of the last 60 days, a scorecard due marked). Since 29 October 2026 (owner:
+// "Score Card for each of them"), a hiring manager's list holds their vacancies' interviews too, though not on the panel:
+// they give their scorecard on each, "Scorecard due" linking to it.
 
 export const metadata: Metadata = { title: 'My Hiring · People System' };
 
@@ -64,7 +66,7 @@ export default function MyHiringPage() {
       <div className="space-y-1">
         <h1 className="text-2xl font-semibold">My Hiring</h1>
         <p className="max-w-3xl text-sm text-muted">
-          The vacancies you hire for, from Shortlisted on, and the interviews you sit on. Give your scorecard on the applicant’s page after each interview.
+          The vacancies you hire for, from Shortlisted on, and the interviews you sit on or hire for. Give your scorecard on the applicant’s page after each interview.
         </p>
       </div>
       <Suspense fallback={<Loading />}>

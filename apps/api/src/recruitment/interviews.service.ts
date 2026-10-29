@@ -39,15 +39,16 @@ import type { Prisma } from '../generated/prisma/client.js';
 import { MailService } from '../mail/mail.service.js';
 import type { MeetingDetails } from '../meetings/meeting-providers.js';
 import { MeetingsService, type MadeMeeting, type MeetingRef } from '../meetings/meetings.service.js';
-import { NotificationsService } from '../notifications/notifications.service.js';
+import { keptNotification, NotificationsService } from '../notifications/notifications.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { accountOfEmployee } from '../users/employee-accounts.js';
 import { WhatsAppService } from '../whatsapp/whatsapp.service.js';
 import { AvailabilityService } from '../interview-hours/availability.service.js';
-import { vacancyWhere } from './recruitment-access.js';
-import { hiringManagerApplications, recruitmentCaller, visibleApplications, type RecruitmentCaller } from './recruitment-scope.js';
+import { isConfidentialVacancy, vacancyWhere } from './recruitment-access.js';
+import { hiringManagerApplications, HIRING_MANAGER_SEES, recruitmentCaller, visibleApplications, type RecruitmentCaller } from './recruitment-scope.js';
 import { APPLICATION_ENTITY } from './recruitment-views.js';
 import type { FeedbackDto, InterviewDto, InterviewMeetingDto } from './recruitment.dto.js';
+import { givenScorecardRole, NO_PROFILE_FOR_SCORECARD, NOT_A_SCORER, scorecardRole, scoresAsHr, type InterviewAnswer, type ScorecardRole } from './scorecard-givers.js';
 
 // Interviews (Phase 2, owner, 22 October 2026: "where will we include the ATS?"; accepted: "interview invites go by email
 // through the owner's SMTP settings"; packages/shared recruitment-hiring.ts):
@@ -60,6 +61,11 @@ import type { FeedbackDto, InterviewDto, InterviewMeetingDto } from './recruitme
 //   sends the new time, cancelling a cancellation (METHOD:CANCEL).
 // - Done or a no-show, once it has started. Each interviewer gives a scorecard after it; reminded the day after when
 //   they haven't (remindFeedback, the round).
+// - The hiring manager and HR give one too (owner, 29 October 2026: "then there should be interview comment and status
+//   for HR and hiring manager"; asked, "Score Card for each of them"; scorecard-givers.ts), even when not among its
+//   interviewers, each with their own employee profile; each scorecard says whose it is. The hiring manager finds the
+//   interviews of their vacancy's applicants on My Hiring and is reminded the day after as the interviewers are; HR
+//   is not reminded.
 // Every change is audited; the emails and notifications go after it is saved, never failing it.
 //
 // Online meetings made by the system (owner, 24 October 2026: "can i link an online meeting service provider to
@@ -169,6 +175,8 @@ export class InterviewsService {
   /**
    * What the caller hires for or interviews (My Hiring): the open vacancies they are the hiring manager of, with their
    * applicants by stage from Shortlisted on, and the interviews they sit on (to come, and those past in the last 60 days).
+   * Since 29 October 2026 ("Score Card for each of them"), the interviews of the applicants they see as a hiring manager
+   * too, so they give their scorecard on them; `feedbackDue` counts those past without theirs.
    */
   async myHiring(user: SessionUser, now = new Date()): Promise<MyHiring> {
     const c = await this.caller(user);
@@ -177,7 +185,7 @@ export class InterviewsService {
     const [vacancies, rows] = await Promise.all([
       this.prisma.vacancy.findMany({ where: { hiringManagerId: c.selfId, status: { in: ['open', 'on_hold'] } }, select: { id: true, number: true, title: true, status: true }, orderBy: { createdAt: 'desc' } }),
       this.prisma.interview.findMany({
-        where: { interviewers: { some: { employeeId: c.selfId } }, startsAt: { gte: since } },
+        where: { startsAt: { gte: since }, OR: [{ interviewers: { some: { employeeId: c.selfId } } }, { application: hiringManagerApplications(c.selfId) }] },
         include: INCLUDE,
         orderBy: { startsAt: 'asc' },
         take: 200,
@@ -196,15 +204,21 @@ export class InterviewsService {
       return out;
     };
     const interviews = this.views(rows, c, now.getTime());
-    const feedbackDue = interviews.filter((i) => i.can.feedback && !i.interviewers.find((x) => x.employeeId === c.selfId)?.feedbackGiven).length;
+    const feedbackDue = interviews.filter((i) => i.can.feedback && !i.myFeedbackGiven).length;
     return { vacancies: vacancies.map((v) => ({ ...v, counts: counts(v.id) })), interviews, feedbackDue };
   }
 
-  /** The scorecards on an application, all of them (the caller's visibility is the applicants' service's). */
+  /**
+   * The scorecards on an application, all of them (the caller's visibility is the applicants' service's), each with
+   * whose it is (29 October 2026): an interviewer's, the hiring manager's, or HR's.
+   */
   async feedbackOf(applicationId: string, selfId: string | null): Promise<FeedbackView[]> {
     const rows = await this.prisma.interviewFeedback.findMany({
       where: { interview: { applicationId } },
-      include: { employee: { select: { id: true, fullNameEn: true } } },
+      include: {
+        employee: { select: { id: true, fullNameEn: true } },
+        interview: { select: { interviewers: { select: { employeeId: true } }, application: { select: { vacancy: { select: { hiringManagerId: true } } } } } },
+      },
       orderBy: { submittedAt: 'asc' },
     });
     return rows.map(
@@ -218,18 +232,27 @@ export class InterviewsService {
         submittedAt: f.submittedAt.toISOString(),
         updatedAt: f.updatedAt.toISOString(),
         mine: !!selfId && f.employeeId === selfId,
+        role: givenScorecardRole(f.employeeId, { interviewerIds: f.interview.interviewers.map((i) => i.employeeId), hiringManagerId: f.interview.application.vacancy.hiringManagerId }),
       }),
     );
   }
 
-  private views(rows: Row[], c: RecruitmentCaller, now: number): InterviewView[] {
+  private views(rows: Row[], c: RecruitmentCaller, now: number): InterviewAnswer[] {
     return rows.map((r) => this.view(r, c, now));
   }
 
-  private view(r: Row, c: RecruitmentCaller, now: number): InterviewView {
+  /**
+   * Whose scorecard the caller gives on the interview (29 October 2026): as one of its interviewers, the vacancy's
+   * hiring manager or HR; null: none.
+   */
+  private scorerOf(r: Row, c: RecruitmentCaller): ScorecardRole | null {
+    const asHr = scoresAsHr(c, isConfidentialVacancy(r.application.vacancy));
+    return scorecardRole(c.selfId, { interviewerIds: r.interviewers.map((i) => i.employeeId), hiringManagerId: r.application.vacancy.hiringManagerId }, asHr);
+  }
+
+  private view(r: Row, c: RecruitmentCaller, now: number): InterviewAnswer {
     const status = r.status as InterviewStatus;
     const given = new Set(r.feedback.map((f) => f.employeeId));
-    const sits = !!c.selfId && r.interviewers.some((i) => i.employeeId === c.selfId);
     return {
       id: r.id,
       startsAt: r.startsAt.toISOString(),
@@ -252,9 +275,12 @@ export class InterviewsService {
         reschedule: c.manages && interviewChangeable(status),
         cancel: c.manages && interviewChangeable(status),
         mark: c.manages && status === 'scheduled' && r.startsAt.getTime() <= now,
-        feedback: sits && feedbackOpen({ status, startsAt: r.startsAt }, now),
+        // its interviewers, the hiring manager and HR (29 October 2026), once it has started
+        feedback: !!this.scorerOf(r, c) && feedbackOpen({ status, startsAt: r.startsAt }, now),
         meeting: c.manages && status === 'scheduled' && linkless(r),
       },
+      // theirs given (29 October 2026): "Scorecard due" for those not on its interviewers' list too
+      myFeedbackGiven: !!c.selfId && given.has(c.selfId),
     };
   }
 
@@ -564,13 +590,20 @@ export class InterviewsService {
   // ---------- feedback ----------
 
   /**
-   * An interviewer's scorecard, saved (or changed) once the interview has started, while it isn't cancelled nor a
-   * no-show; only by an interviewer on it.
+   * A scorecard, saved (or changed) once the interview has started, while it isn't cancelled nor a no-show; by an
+   * interviewer on it, and since 29 October 2026 ("Score Card for each of them") by the vacancy's hiring manager and HR
+   * too, through their own employee profile: one each.
    */
   async feedback(id: string, dto: FeedbackDto, user: SessionUser, now = new Date()): Promise<InterviewView> {
     const c = await this.caller(user);
     const r = await this.row(id, c);
-    if (!c.selfId || !r.interviewers.some((i) => i.employeeId === c.selfId)) throw new ForbiddenException('Only the interviewers give a scorecard on an interview.');
+    const role = this.scorerOf(r, c);
+    const selfId = c.selfId;
+    if (!role || !selfId) {
+      // HR (or the CEO on a C-level vacancy) whose user has no employee profile: a scorecard is a person's
+      if (!selfId && scoresAsHr(c, isConfidentialVacancy(r.application.vacancy))) throw new ConflictException(NO_PROFILE_FOR_SCORECARD);
+      throw new ForbiddenException(NOT_A_SCORER);
+    }
     if (!feedbackOpen({ status: r.status as InterviewStatus, startsAt: r.startsAt }, now.getTime())) {
       throw new ConflictException(r.status === 'cancelled' || r.status === 'no_show' ? 'The interview didn’t take place: there is nothing to score.' : 'Give your scorecard once the interview has started.');
     }
@@ -586,17 +619,17 @@ export class InterviewsService {
       recommendation: dto.recommendation,
       notes: dto.notes?.trim() || null,
     };
-    const existing = await this.prisma.interviewFeedback.findUnique({ where: { interviewId_employeeId: { interviewId: id, employeeId: c.selfId } }, select: { id: true } });
+    const existing = await this.prisma.interviewFeedback.findUnique({ where: { interviewId_employeeId: { interviewId: id, employeeId: selfId } }, select: { id: true } });
     const saved = existing
       ? await this.prisma.interviewFeedback.update({ where: { id: existing.id }, data, select: { id: true } })
-      : await this.prisma.interviewFeedback.create({ data: { ...data, interviewId: id, employeeId: c.selfId }, select: { id: true } });
-    // the scores and the recommendation, never the notes
+      : await this.prisma.interviewFeedback.create({ data: { ...data, interviewId: id, employeeId: selfId }, select: { id: true } });
+    // the scores and the recommendation, never the notes; whose it is (29 October 2026)
     await this.audit.record({
       userId: user.id,
       action: existing ? 'feedback_change' : 'feedback',
       entityType: INTERVIEW_ENTITY,
       entityId: id,
-      diff: { application: r.application.number, feedbackId: saved.id, recommendation: dto.recommendation, ratings },
+      diff: { application: r.application.number, feedbackId: saved.id, givenAs: role, recommendation: dto.recommendation, ratings },
     });
     return this.view(await this.row(id, c), c, now.getTime());
   }
@@ -604,14 +637,16 @@ export class InterviewsService {
   /**
    * The scorecard reminder (the brief: "a reminder notification the day after an interview without feedback"): each
    * interviewer of an interview that took place before today (in Cairo), in the last two weeks, not cancelled nor a
-   * no-show, without their scorecard, told once. Answers how many were told.
+   * no-show, without their scorecard, told once; and its vacancy's hiring manager the same way (29 October 2026: "Score
+   * Card for each of them"; remindHiringManagers), never all of HR. Answers how many were told.
    */
   async remindFeedback(now = new Date()): Promise<number> {
     const today = toDateOnly(cairoDay(now));
+    const window = { status: { in: ['scheduled', 'done'] }, startsAt: { lt: today, gte: new Date(now.getTime() - 14 * 86_400_000) } } satisfies Prisma.InterviewWhereInput;
     const rows = await this.prisma.interviewInterviewer.findMany({
       where: {
         remindedAt: null,
-        interview: { status: { in: ['scheduled', 'done'] }, startsAt: { lt: today, gte: new Date(now.getTime() - 14 * 86_400_000) } },
+        interview: window,
       },
       select: {
         interviewId: true,
@@ -635,6 +670,50 @@ export class InterviewsService {
         link: `/recruitment/applicants/${r.interview.application.id}`,
       });
       told++;
+    }
+    return told + (await this.remindHiringManagers(window));
+  }
+
+  /**
+   * The hiring manager's scorecard reminder (29 October 2026): of an interview of their vacancy's (in `window`) that they
+   * don't sit on (an interviewer is reminded as one), on an applicant they see, without their scorecard. Told once: with
+   * no row of theirs on the interview to claim, the notification itself is the record (it says the day and time, so
+   * each interview has its own), looked for and made under a lock, so two rounds never tell twice.
+   */
+  private async remindHiringManagers(window: Prisma.InterviewWhereInput): Promise<number> {
+    const rows = await this.prisma.interview.findMany({
+      where: { ...window, application: { ...HIRING_MANAGER_SEES, vacancy: { hiringManagerId: { not: null } } } },
+      select: {
+        id: true,
+        startsAt: true,
+        interviewers: { select: { employeeId: true } },
+        feedback: { select: { employeeId: true } },
+        application: { select: { id: true, fullName: true, vacancy: { select: { hiringManagerId: true } } } },
+      },
+    });
+    let told = 0;
+    for (const r of rows) {
+      const hm = r.application.vacancy.hiringManagerId;
+      if (!hm || r.interviewers.some((i) => i.employeeId === hm) || r.feedback.some((f) => f.employeeId === hm)) continue;
+      const user = await this.userOf(hm);
+      if (!user) continue;
+      const notice = {
+        kind: 'interview_feedback' as const,
+        title: 'Your interview scorecard',
+        body: `${r.application.fullName}: interviewed ${cairoDay(r.startsAt)} at ${cairoClock(r.startsAt)}`,
+        link: `/recruitment/applicants/${r.application.id}`,
+      };
+      // looked for as it is kept (its body cut to the inbox's length)
+      const kept = keptNotification(notice);
+      if (!kept) continue;
+      const sent = await this.prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`people-system:scorecard-reminder:${r.id}:${hm}`}))`;
+        if (await tx.notification.count({ where: { userId: user, kind: kept.kind, link: kept.link, body: kept.body } })) return false;
+        // kept (committed) before the lock is let go, so the next round finds it
+        await this.notifications.notify([user], notice);
+        return true;
+      });
+      if (sent) told++;
     }
     return told;
   }

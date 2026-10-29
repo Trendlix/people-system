@@ -27,11 +27,16 @@ export const recruitmentCaller = (user: SessionUser, selfId: string | null): Rec
 /** Nothing: for a caller with no employee profile who doesn't read recruitment. */
 const NONE: Prisma.JobApplicationWhereInput = { id: { in: [] } };
 
+/** The applications a vacancy's hiring manager sees on it: from Shortlisted on (or rejected from there), never one filtered out. */
+export const HIRING_MANAGER_SEES: Prisma.JobApplicationWhereInput = {
+  filteredOut: false,
+  OR: [{ stage: { in: [...HIRING_MANAGER_STAGES] } }, { stage: 'rejected', rejectedFrom: { in: [...HIRING_MANAGER_STAGES] } }],
+};
+
 /** The applications a hiring manager sees on their vacancies: from Shortlisted on (or rejected from there), never one filtered out. */
 export const hiringManagerApplications = (selfId: string): Prisma.JobApplicationWhereInput => ({
   vacancy: { hiringManagerId: selfId },
-  filteredOut: false,
-  OR: [{ stage: { in: [...HIRING_MANAGER_STAGES] } }, { stage: 'rejected', rejectedFrom: { in: [...HIRING_MANAGER_STAGES] } }],
+  ...HIRING_MANAGER_SEES,
 });
 
 /** The applications an interviewer sees: those with an interview they sit on. */

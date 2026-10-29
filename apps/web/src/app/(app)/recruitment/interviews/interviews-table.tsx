@@ -1,15 +1,18 @@
 import Link from 'next/link';
-import { INTERVIEW_KIND_LABELS, INTERVIEW_STATUS_LABELS, type InterviewView } from '@trendlix/shared';
+import { INTERVIEW_KIND_LABELS, INTERVIEW_STATUS_LABELS } from '@trendlix/shared';
 import { formatDateTime } from '@/lib/format';
 import { applicantHref } from '../recruitment';
 import { joinShown } from '@/lib/hidden';
 import { MeetingJoin } from '../meeting-ui';
+import { scorecardDue, scorecardHref, type InterviewWithMine } from '../scorecards';
 
 // Interviews in a table (Phase 2, 22 October 2026): when, the applicant and their vacancy, how, the interviewers (and
 // whether each gave their scorecard), where it stands. On Interviews and My Hiring. An online one's meeting service and
-// Join beside How (owner, 24 October 2026: "automatically generate meeting links").
+// Join beside How (owner, 24 October 2026: "automatically generate meeting links"). "Scorecard due" for the person whose
+// scorecard is still to give, an interviewer's or, since 29 October 2026 ("Score Card for each of them"), the hiring
+// manager's on their vacancy's interviews, linking to where it's given.
 
-export function InterviewsTable({ rows, showFeedbackFor }: { rows: InterviewView[]; showFeedbackFor?: string | null }) {
+export function InterviewsTable({ rows, showFeedbackFor }: { rows: InterviewWithMine[]; showFeedbackFor?: string | null }) {
   return (
     <div className="card overflow-x-auto">
       <table className="table">
@@ -24,7 +27,7 @@ export function InterviewsTable({ rows, showFeedbackFor }: { rows: InterviewView
         </thead>
         <tbody>
           {rows.map((i) => {
-            const mine = showFeedbackFor ? i.interviewers.find((x) => x.employeeId === showFeedbackFor) : undefined;
+            const due = !!showFeedbackFor && scorecardDue(i, showFeedbackFor);
             return (
               <tr key={i.id}>
                 <td className="text-sm whitespace-nowrap">
@@ -51,7 +54,11 @@ export function InterviewsTable({ rows, showFeedbackFor }: { rows: InterviewView
                 <td className="text-sm">{i.interviewers.map((x) => x.name).join(', ')}</td>
                 <td className="text-sm">
                   {INTERVIEW_STATUS_LABELS[i.status]}
-                  {mine && i.can.feedback && !mine.feedbackGiven && <span className="block text-xs font-semibold text-warn">Your scorecard is due</span>}
+                  {due && (
+                    <Link href={scorecardHref(i.application.id)} className="block text-xs font-semibold text-warn">
+                      Scorecard due
+                    </Link>
+                  )}
                   {i.emailProblem && <span className="block text-xs text-warn">Candidate not emailed</span>}
                   {i.meetingProblem && i.status === 'scheduled' && <span className="block text-xs text-warn">Meeting needs attention</span>}
                 </td>

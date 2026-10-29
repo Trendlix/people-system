@@ -39,6 +39,8 @@ import { vacancyOptions } from '../../pickers';
 import { APPLICANTS_PATH, applicantCvHref, makeOfferHref, matchText, vacancyHref } from '../../recruitment';
 import { commentsOfRecord, kb, ownCv } from '../../screening';
 import { ScreeningCommentsCard } from '../../screening-ui';
+import { ScorecardRoleBadge, ScorecardSummary } from '../../scorecard-ui';
+import { ownScorecardRole, scorecardHeading } from '../../scorecards';
 import { CvUpdatedBadge, EarlierCvList, StageBadge, VerdictBadge } from '../../ui';
 import { applicantPortfolioHref, portfolioLinksOf } from '../../portfolio';
 import { LinkedInMark, PortfolioSent } from '../../portfolio-chips';
@@ -70,6 +72,10 @@ import { NO_MEETING_CHOICES } from '../../meetings';
 // Applying again (owner, 25 October 2026: "if an employee updated the cv and reapplied, how will he be treated in the
 // system?"; asked, "Update their application"): the current CV with when it came, Earlier CVs (date, name, Open), the
 // "CV updated" mark for 7 days, and the step "Updated by the candidate" in the history.
+// Scorecards from HR and the hiring manager (owner, 29 October 2026: "then there should be interview comment and status
+// for HR and hiring manager"; asked, "Score Card for each of them"): they give theirs on an interview as its interviewers
+// do, even when not among them ("Give your scorecard as HR"); each scorecard shows whose it is, and a line above them sums
+// them up for choosing the candidate (then Make offer).
 
 export const metadata: Metadata = { title: 'Applicant · People System' };
 
@@ -165,6 +171,8 @@ function InterviewItem({
   feedbackOf,
   setUpEmail,
   meetings = NO_MEETING_CHOICES,
+  selfId = null,
+  hiringManagerId = null,
 }: {
   i: InterviewView;
   people: PersonOption[];
@@ -172,6 +180,9 @@ function InterviewItem({
   setUpEmail: boolean;
   /** "Create the meeting with" (24 October 2026: "automatically generate meeting links"), for Move and Try again. */
   meetings?: MeetingChoices;
+  /** The caller's employee profile and the vacancy's hiring manager: whose scorecard theirs is, for its heading (29 October 2026). */
+  selfId?: string | null;
+  hiringManagerId?: string | null;
 }) {
   const mine = feedbackOf.find((f) => f.interviewId === i.id && f.mine) ?? null;
   return (
@@ -230,7 +241,7 @@ function InterviewItem({
       </div>
       {i.can.feedback && (
         <div className="space-y-2">
-          <p className="text-sm font-semibold">{mine ? 'Your scorecard is in' : 'Your scorecard'}</p>
+          <p className="text-sm font-semibold">{scorecardHeading(!!mine, mine?.role ?? ownScorecardRole(i, selfId, hiringManagerId))}</p>
           <FeedbackForm action={giveFeedback.bind(null, i.id)} mine={mine} />
         </div>
       )}
@@ -250,12 +261,16 @@ function Scorecards({ a }: { a: ApplicationView }) {
           {a.feedbackHidden} {a.feedbackHidden === 1 ? 'scorecard is' : 'scorecards are'} hidden until you give yours, so you score them on your own.
         </p>
       )}
+      {/* HR's, the hiring manager's and the interviewers' recommendations in a line (29 October 2026) */}
+      <ScorecardSummary feedback={a.feedback} />
       <ul className="space-y-4">
         {a.feedback.map((f) => (
           <li key={f.id} className="space-y-1 border-b border-line-soft pb-3 last:border-b-0">
             <p className="font-semibold">
               {f.interviewer.name}
-              {f.mine ? ' (you)' : ''} · {RECOMMENDATION_LABELS[f.recommendation]}
+              {f.mine ? ' (you)' : ''}
+              {/* whose it is (29 October 2026): Interviewer, Hiring manager or HR */}
+              <ScorecardRoleBadge f={f} /> · {RECOMMENDATION_LABELS[f.recommendation]}
             </p>
             <p className="text-sm text-muted">{FEEDBACK_CRITERIA.map((c) => `${FEEDBACK_CRITERION_LABELS[c]} ${f.ratings[c]}/5`).join(' · ')}</p>
             {f.notes && <p className="text-sm whitespace-pre-line">{f.notes}</p>}
@@ -275,6 +290,8 @@ async function Interviews({ a }: { a: ApplicationView }) {
   const setUpEmail = a.interviews.some((i) => isEmailNotSetUp(i.emailProblem)) && setsUpEmail(await getCurrentUser());
   // what an online interview's meeting can be made with (24 October 2026), for the forms HR sees
   const meetings = manages && (a.can.scheduleInterview || a.interviews.some((i) => i.can.reschedule || i.can.meeting)) ? await loadMeetingChoices() : NO_MEETING_CHOICES;
+  // whose scorecard the caller gives (29 October 2026: HR and the hiring manager too), for its heading
+  const selfId = a.interviews.some((i) => i.can.feedback) ? ((await getCurrentUser()).employeeId ?? null) : null;
   return (
     <section aria-labelledby="applicant-interviews" className="card space-y-3 p-6">
       <h2 id="applicant-interviews" className="text-lg font-semibold">
@@ -283,7 +300,7 @@ async function Interviews({ a }: { a: ApplicationView }) {
       {a.interviews.length > 0 && (
         <ul>
           {a.interviews.map((i) => (
-            <InterviewItem key={i.id} i={i} people={people} feedbackOf={a.feedback} setUpEmail={setUpEmail} meetings={meetings} />
+            <InterviewItem key={i.id} i={i} people={people} feedbackOf={a.feedback} setUpEmail={setUpEmail} meetings={meetings} selfId={selfId} hiringManagerId={a.position.hiringManagerId} />
           ))}
         </ul>
       )}

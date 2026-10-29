@@ -313,7 +313,10 @@ describe('Recruitment, Phase 2 (e2e)', () => {
         'Rate communication from 1 to 5.',
         'Rate culture fit from 1 to 5.',
       ]);
-      await put('hm', `/recruitment/interviews/${nour.id}/feedback`, card).expect(403);
+      // the hiring manager and HR give one too since 29 October 2026 (hiring-steps-scorecards.e2e-spec.ts); the CEO
+      // reading a vacancy that isn't C-level doesn't, and someone else can't open it
+      await put('ceo', `/recruitment/interviews/${nour.id}/feedback`, card).expect(403);
+      await put('outsider', `/recruitment/interviews/${nour.id}/feedback`, card).expect(404);
       await put('iv1', `/recruitment/interviews/${nour.id}/feedback`, card).expect(200);
       // Iris hasn't given hers: she sees none of the others'
       let a = (await get('iv2', `/recruitment/applications/${apps.Nour}`).expect(200)).body as ApplicationView;

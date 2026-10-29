@@ -150,11 +150,14 @@ export class AuthService {
     const leading = own ? await this.prisma.department.count({ where: { headId: own.id, head: { employments: { some: { endDate: null } } } } }) : 0;
     const standIn = own ? await standInViewOf(this.prisma, own.id, { roles: [] }) : null;
     const standingInFor = [...(standIn?.for ?? new Map())].map(([id, e]) => ({ id, fullNameEn: e.fullNameEn, until: e.until }));
-    // hiring for an open vacancy, or on an interview to come or of the last 60 days (recruitment, Phase 2, 22 October 2026)
+    // hiring for an open vacancy, or on an interview to come or of the last 60 days (recruitment, Phase 2, 22 October 2026);
+    // or the hiring manager of one of those, who gives a scorecard on it too (29 October 2026: "Score Card for each of them")
+    const since = new Date(Date.now() - 60 * 86_400_000);
     const hiring = own
       ? (await this.prisma.vacancy.count({ where: { hiringManagerId: own.id, status: { in: ['open', 'on_hold'] } } })) +
-          (await this.prisma.interviewInterviewer.count({ where: { employeeId: own.id, interview: { startsAt: { gte: new Date(Date.now() - 60 * 86_400_000) } } } })) >
-        0
+          (await this.prisma.interviewInterviewer.count({ where: { employeeId: own.id, interview: { startsAt: { gte: since } } } })) >
+          0 ||
+        (await this.prisma.interview.count({ where: { startsAt: { gte: since }, application: { vacancy: { hiringManagerId: own.id } } } })) > 0
       : false;
     return {
       ...user,
