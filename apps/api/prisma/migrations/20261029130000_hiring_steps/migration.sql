@@ -50,7 +50,6 @@ ALTER TABLE "notifications" ADD CONSTRAINT "notifications_kind_check" CHECK ("ki
     'interview_scheduled',
     'interview_feedback',
     'hiring_suggestion',
-    'shortlist_review',
     'onboarding_items',
     'access_hold',
     'access_grace',
@@ -69,5 +68,6 @@ ALTER TABLE "notifications" ADD CONSTRAINT "notifications_kind_check" CHECK ("ki
     'compensatory_decided',
     'resignation_new',
     'resignation_update',
-    'payroll_locked_change'
+    'payroll_locked_change',
+    'shortlist_review'
 ));
