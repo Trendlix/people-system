@@ -100,6 +100,7 @@ const VACANCY_SELECT = {
   about: true,
   // marketing agency background (27 October 2026: "Set per job")
   agencyBackground: true,
+  experienceBasis: true,
   grade: { select: { confidential: true, description: true } },
   jobTitle: { select: { titleEn: true, minGrade: { select: { confidential: true } } } },
 } satisfies Prisma.VacancySelect;

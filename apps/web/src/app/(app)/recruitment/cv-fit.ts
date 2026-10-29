@@ -3,6 +3,7 @@ import {
   CV_FIT_PARTS,
   cvFitLine,
   cvFitPartDetail,
+  cvFitSkipperText,
   KEY_SKILLS_LIMITS,
   keySkillsOf,
   suggestKeySkills,
@@ -57,7 +58,9 @@ const SCORED_ALWAYS = CV_FIT_PARTS.filter((k) => k !== 'agency').length;
 export function fitSummary(fit: CvFit): string {
   if (fit.percent === null) return cvFitLine(fit);
   const left = fit.parts.filter((p) => p.key !== 'agency').length < SCORED_ALWAYS ? ' The parts that couldn’t be scored are left out, the others re-weighted to 100.' : '';
-  return `${fit.percent}% from the parts below.${left}`;
+  // a skipper's points off (owner, 29 October 2026: "Flag + lower the score")
+  const skipper = cvFitSkipperText(fit);
+  return skipper ? `${fit.percent}% from the parts below, less a skipper’s points. ${skipper}.${left}` : `${fit.percent}% from the parts below.${left}`;
 }
 
 /** An open position's hover: its breakdown, else its percent. */

@@ -17,6 +17,7 @@
 import type { CvFit } from './cv-fit.js';
 import { SKILLS_DICTIONARY, type DictionarySkill } from './skills-dictionary.js';
 import type { AgencyBackground } from './marketing-agencies.js';
+import type { CareerFacts } from './career.js';
 
 // ---------- the reading ----------
 
@@ -1368,6 +1369,11 @@ export interface CvReadingView {
    * history read). Missing from an API before it.
    */
   agency?: AgencyBackground | null;
+  /**
+   * Its career from the work history (owner, 29 October 2026: "and if the candidate is a skipper or no"; career.ts): its
+   * span, the companies, the average stay a company, a skipper or not; null: not told. Missing from an API before it.
+   */
+  career?: CareerFacts | null;
 }
 
 /**
@@ -1385,6 +1391,12 @@ export interface CvListFacts {
    */
   exAgency?: boolean | null;
   agencyMonths?: number | null;
+  /**
+   * A skipper (29 October 2026, career.ts: under a year a company on average) and that average in months; null: not told
+   * (fewer than 3 companies read with their dates, or no work history). Missing from an API before it.
+   */
+  skipper?: boolean | null;
+  averageStayMonths?: number | null;
 }
 
 /** GET …/cv-text: the CV's text and the contacts found in it (never for a developer: phones and emails). */

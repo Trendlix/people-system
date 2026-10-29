@@ -483,4 +483,42 @@ describe('CV fit and other open positions (e2e)', () => {
     expect(keys(plain.cvReading!.fit)).not.toContain('agency');
     expect(plain.cvReading!.agency!.exAgency).toBe(true);
   });
+
+  // Experience career or company based, and the skipper (owner, 29 October 2026: "when calculating expirence in the
+  // scoring, make it career based or company based. and if the candidate is a skipper or no"; "Span vs time employed",
+  // "Set per job", "Short average stay", "Flag + lower the score")
+  it('experience company or career based as the job says; a skipper flagged on the page and the list, 10 points off', async () => {
+    // Hana: three short jobs, a year off between the first two: under 2 years worked over a 3-year career
+    const hana = await apply(v.buyer, 'hana', [
+      nameOf('hana'),
+      'Experience',
+      'Media Buyer, Alpha Foods, Jan 2021 - Aug 2021',
+      'Media Buyer, Beta Retail, Sep 2022 - Apr 2023',
+      'Paid Social Specialist, Gamma Telecom, May 2023 - Jan 2024',
+      'Skills',
+      'Facebook Ads, Google Ads, TikTok Ads, bidding, pixels',
+    ]);
+    await drain();
+    expect((ok(await get('hr', `/recruitment/vacancies/${v.buyer.id}`)).body as VacancyView).experienceBasis).toBe('company');
+    const company = await appOf('hr', hana);
+    expect(company.cvReading!.career).toEqual({ spanMonths: 36, companies: 3, averageStayMonths: 8, skipper: true });
+    // company based (the default): the 22 months worked (7, 7 and 8), under the 3–5 asked
+    expect(company.cvReading!.fit!.parts.find((p) => p.key === 'experience')).toMatchObject({ basis: 'company', years: 1.8, fromCv: true });
+    expect(company.cvReading!.fit!.skipper).toEqual({ penalty: 10, averageStayMonths: 8 });
+    const row = (ok(await get('hr', `/recruitment/applications?vacancyId=${v.buyer.id}&filtered=all`)).body as ApplicationListItem[]).find((a) => a.id === hana)!;
+    expect(row.fromCv).toMatchObject({ skipper: true, averageStayMonths: 8 });
+    // Nour (2 companies): not told, never "not a skipper"
+    const nourRow = (ok(await get('hr', `/recruitment/applications?vacancyId=${v.buyer.id}&filtered=all`)).body as ApplicationListItem[]).find((a) => a.id === apps.nourBuyer)!;
+    expect(nourRow.fromCv).toMatchObject({ skipper: null, averageStayMonths: null });
+
+    // career based: the 3 years of the career, in the range asked; scored again at once, higher
+    expect(said(await patch('hr', `/recruitment/vacancies/${v.buyer.id}`, { experienceBasis: 'tenure' }).expect(400))).toEqual(['Choose how experience is counted: company or career.']);
+    ok(await patch('hr', `/recruitment/vacancies/${v.buyer.id}`, { experienceBasis: 'career' }));
+    expect((ok(await get('hr', `/recruitment/vacancies/${v.buyer.id}`)).body as VacancyView).experienceBasis).toBe('career');
+    const career = await appOf('hr', hana);
+    expect(career.cvReading!.fit!.parts.find((p) => p.key === 'experience')).toMatchObject({ basis: 'career', years: 3, score: 100 });
+    expect(career.cvReading!.cvMatchPercent!).toBeGreaterThan(company.cvReading!.cvMatchPercent!);
+    ok(await patch('hr', `/recruitment/vacancies/${v.buyer.id}`, { experienceBasis: 'company' }));
+    expect((await appOf('hr', hana)).cvReading!.cvMatchPercent).toBe(company.cvReading!.cvMatchPercent);
+  });
 });

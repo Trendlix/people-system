@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
-import { AGENCY_BACKGROUND_DEFAULT, vacancyEditable } from '@trendlix/shared';
+import { AGENCY_BACKGROUND_DEFAULT, EXPERIENCE_BASIS_DEFAULT, vacancyEditable } from '@trendlix/shared';
 import { getCurrentUser } from '@/lib/session';
 import { BackLink, Empty, Loading } from '../../../../organization/ui';
 import { updateVacancy } from '../../../actions';
@@ -62,6 +62,7 @@ async function EditVacancy({ params, searchParams }: PageProps<'/recruitment/vac
           portfolioMode: v.portfolioMode ?? '',
           jobTitlePortfolio: v.jobTitlePortfolio ?? null,
           agencyBackground: v.agencyBackground ?? AGENCY_BACKGROUND_DEFAULT,
+          experienceBasis: v.experienceBasis ?? EXPERIENCE_BASIS_DEFAULT,
         }}
         options={options}
         published={vacancyEditable(v.status) === 'published'}

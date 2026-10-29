@@ -24,7 +24,7 @@ import {
   type WorkArrangement,
 } from '@trendlix/shared';
 import type { AgencyMarks } from '@trendlix/shared';
-import { agencyOf } from './cv-fit-inputs.js';
+import { agencyOf, careerFor } from './cv-fit-inputs.js';
 import { fromDateOnly } from '../common/date-only.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { isConfidentialVacancy } from './recruitment-access.js';
@@ -185,10 +185,13 @@ export function cvListFactsOf(
   marks: AgencyMarks = new Map(),
 ): CvListFacts | null {
   if (!hasCv) return null;
-  if (!reading) return { status: 'pending', experienceMonths: null, latestTitle: null, latestCompany: null, exAgency: null, agencyMonths: null };
+  if (!reading) return { status: 'pending', experienceMonths: null, latestTitle: null, latestCompany: null, exAgency: null, agencyMonths: null, skipper: null, averageStayMonths: null };
   const facts = reading.status === 'read' ? cvFactsOf(reading.facts) : null;
   // marketing agency background (owner, 27 October 2026: "i need a flag if the candidate is ex marketing agencies or not")
   const agency = facts ? agencyOf(facts, reading.readAt, marks) : null;
+  // a skipper (29 October 2026: "and if the candidate is a skipper or no"): told from 3 companies read with their dates
+  const career = facts ? careerFor(facts, reading.readAt) : null;
+  const told = career?.averageStayMonths != null;
   return {
     status: reading.status as CvReadingStatus,
     experienceMonths: facts?.experienceMonths ?? null,
@@ -196,6 +199,8 @@ export function cvListFactsOf(
     latestCompany: facts?.latestCompany ?? null,
     exAgency: agency?.exAgency ?? null,
     agencyMonths: agency ? agency.months : null,
+    skipper: told ? career.skipper : null,
+    averageStayMonths: told ? career.averageStayMonths : null,
   };
 }
 

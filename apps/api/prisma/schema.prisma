@@ -2077,6 +2077,9 @@ model Vacancy {
   // marketing agency background in its CV fit (owner, 27 October 2026: "i need a flag if the candidate is ex marketing
   // agencies or not AND reflectin the scoring"; "Set per job"): AGENCY_BACKGROUNDS required, preferred, not_needed
   agencyBackground String              @default("preferred") @map("agency_background")
+  // how its CV fit counts a CV's years (owner, 29 October 2026: "make it career based or company based"; "Set per job"):
+  // EXPERIENCE_BASES company (the months worked, the default), career (first job to latest, gaps included)
+  experienceBasis  String              @default("company") @map("experience_basis")
   submittedAt      DateTime?           @map("submitted_at") @db.Timestamptz
   submittedById    String?             @map("submitted_by") @db.Uuid
   submittedBy      User?               @relation("VacancySubmission", fields: [submittedById], references: [id], onDelete: SetNull)

@@ -13,6 +13,7 @@ import { QuestionsEditor } from './questions-editor';
 import { jobTitleName, openingKeySkills } from './cv-fit';
 import { KeySkillsField } from './key-skills-field';
 import { AGENCY_BACKGROUND_FIELD, AGENCY_BACKGROUND_HINT, agencyBackgroundChoices } from './agency';
+import { EXPERIENCE_BASIS_FIELD, EXPERIENCE_BASIS_HINT, experienceBasisChoices } from './career';
 
 // A vacancy's form (owner, 22 October 2026: "where will we include the ATS?"): its job title and title on the careers
 // page, the position (grade, hiring manager, headcount, employment type, where the work is done, shift, contract length,
@@ -47,6 +48,8 @@ export interface VacancyDefaults {
   jobTitlePortfolio?: PortfolioAsk | null;
   /** Marketing agency background in its CV match (owner, 27 October 2026: "Set per job"): required, preferred or not_needed. */
   agencyBackground: string;
+  /** How its CV match counts a CV's years (owner, 29 October 2026: "Set per job"): company or career. */
+  experienceBasis: string;
 }
 
 const L = RECRUITMENT_LIMITS;
@@ -316,6 +319,29 @@ export function VacancyForm({
           </Select>
           <p id={fid('agencyBackgroundHint')} className="hint">
             {AGENCY_BACKGROUND_HINT}
+          </p>
+        </div>
+        {/* how the CV match counts a CV's years (owner, 29 October 2026: "make it career based or company based"; asked,
+            "Set per job"): Company based unless chosen */}
+        <div className="max-w-md pt-2">
+          <label htmlFor={fid('experienceBasis')} className="label">
+            Experience counted
+          </label>
+          <Select
+            id={fid('experienceBasis')}
+            name={EXPERIENCE_BASIS_FIELD}
+            defaultValue={valueOf(state, EXPERIENCE_BASIS_FIELD, defaults.experienceBasis)}
+            aria-describedby={fid('experienceBasisHint')}
+            className="input"
+          >
+            {experienceBasisChoices().map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
+              </option>
+            ))}
+          </Select>
+          <p id={fid('experienceBasisHint')} className="hint">
+            {EXPERIENCE_BASIS_HINT}
           </p>
         </div>
       </section>

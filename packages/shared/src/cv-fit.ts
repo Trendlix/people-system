@@ -12,7 +12,9 @@
 //   years", "3–5 years", "at least 4 years", "خبرة ٥ سنوات"), else its other texts, else its screening questions' least,
 //   else its grade's text (no grade states years today). Full inside the range; below it, the share of the least
 //   (4 of 5 years: 80); above it, 4 less a year past the most, never below 70; "5+" has no most: twice the least, at
-//   least 3 more (5+ is full up to 10).
+//   least 3 more (5+ is full up to 10). The CV's dates count as the vacancy says (owner, 29 October 2026: "make it
+//   career based or company based"; career.ts): company based, the months worked (the default, as before), or career
+//   based, from the first job's start to the latest's end, gaps included (the months worked when no job's dates read).
 // - Requirements, 15: the meaningful terms of the requirements and responsibilities (HTML stripped, English and Arabic
 //   stop words and job-ad fillers left out, the dictionary's skills as one term with their other names, the key skills
 //   left to their own part), the most named first, at most 20, found in the CV ÷ those listed.
@@ -25,7 +27,9 @@
 //   (marketing-agencies.ts, HR's marks included) in full, less half, none 0.
 // A part that can't be scored is left out and the others re-weighted to 100: no key skills listed, no job title found in
 // the CV, no years asked or none known, fewer than 3 requirements terms, no education asked, agency background not
-// needed or no work history read in the CV. The result is null only for
+// needed or no work history read in the CV. A skipper (career.ts: under a year a company on average, at least 3
+// companies; owner, 29 October 2026: "and if the candidate is a skipper or no", "Flag + lower the score") loses
+// SKIPPER_PENALTY points of the percent, never below 0. The result is null only for
 // a CV not read or without text; its percent null when nothing could be scored. Kept with its version (CV_FIT_VERSION):
 // a fit of an earlier version is worked out again (CvReadingsService.refreshFits).
 // Also here: the key skills suggested from a vacancy's texts (owner: "when a vacancy has no key skills, suggest them from
@@ -34,14 +38,18 @@
 // breakdown in words. Pure code, tested in apps/api/src/common/cv-fit.spec.ts.
 
 import { cvSkillsIn, EDUCATION_LEVEL_LABELS, EDUCATION_LEVELS, KEY_SKILLS_LIMITS, normalForMatch, textAmount, titleLikeness, type CvFacts, type EducationLevel } from './cv-analysis.js';
+import { averageStayText, EXPERIENCE_BASIS_DEFAULT, SKIPPER_LABEL, SKIPPER_PENALTY, type CareerFacts, type ExperienceBasis } from './career.js';
 import { HIDDEN } from './developer.js';
 import { AGENCY_BACKGROUND_DEFAULT, AGENCY_BACKGROUND_LABELS, AGENCY_FIT_WEIGHTS, agencyMonthsText, agencyScore, type AgencyBackground, type AgencyBackgroundWanted } from './marketing-agencies.js';
 import { SKILLS_DICTIONARY, type DictionarySkill } from './skills-dictionary.js';
 
 // ---------- the parts ----------
 
-/** The fit's version, kept with it: one of an earlier version is worked out again (2: agency background, 27 October 2026). */
-export const CV_FIT_VERSION = 2;
+/**
+ * The fit's version, kept with it: one of an earlier version is worked out again (2: agency background, 27 October 2026;
+ * 3: experience career or company based, and the skipper's points off, 29 October 2026).
+ */
+export const CV_FIT_VERSION = 3;
 
 export const CV_FIT_PARTS = ['skills', 'title', 'experience', 'requirements', 'education', 'agency'] as const;
 export type CvFitPartKey = (typeof CV_FIT_PARTS)[number];
@@ -115,6 +123,8 @@ export interface CvFitPart {
   years?: number;
   fromCv?: boolean;
   wanted?: YearsWanted;
+  /** Experience (29 October 2026): how the vacancy counts the CV's dates, company or career based. */
+  basis?: ExperienceBasis;
   /** Education: the CV's level and the one asked, the fields asked, and whether the CV's education names one. */
   level?: EducationLevel | null;
   wantedLevel?: EducationLevel | null;
@@ -126,11 +136,15 @@ export interface CvFitPart {
   agencyWanted?: AgencyBackgroundWanted;
 }
 
-/** A CV's fit for a job: the percent (null when nothing could be scored), the version, the parts scored. */
+/**
+ * A CV's fit for a job: the percent (null when nothing could be scored), the version, the parts scored; for a skipper
+ * (29 October 2026), the points taken off the parts' percent and their average stay a company.
+ */
 export interface CvFit {
   percent: number | null;
   version: number;
   parts: CvFitPart[];
+  skipper?: { penalty: number; averageStayMonths: number | null } | null;
 }
 
 // ---------- the inputs ----------
@@ -151,6 +165,8 @@ export interface FitVacancyInput {
   gradeText?: string | null;
   /** What it asks of marketing agency background (27 October 2026); missing: preferred, the default. */
   agencyBackground?: AgencyBackgroundWanted | null;
+  /** How it counts a CV's years (29 October 2026, career.ts); missing: company based, the default. */
+  experienceBasis?: ExperienceBasis | null;
 }
 
 /** A CV as its fit is worked out: its reading's text and facts, the years typed with it, a general CV's position. */
@@ -163,6 +179,8 @@ export interface FitCvInput {
   position?: string | null;
   /** Its marketing agency background (marketing-agencies.ts agencyBackgroundOf, HR's marks included); null: not told. */
   agency?: AgencyBackground | null;
+  /** Its career from its work history (career.ts careerOf: its span, a skipper or not); null: not told. */
+  career?: CareerFacts | null;
 }
 
 // ---------- normalising ----------
@@ -519,6 +537,7 @@ export interface FitJob {
   terms: FitTerm[];
   education: { level: EducationLevel | null; fields: string[] } | null;
   agencyWanted: AgencyBackgroundWanted;
+  experienceBasis: ExperienceBasis;
 }
 
 export function prepareFitJob(v: FitVacancyInput): FitJob {
@@ -529,20 +548,33 @@ export function prepareFitJob(v: FitVacancyInput): FitJob {
     terms: requirementTerms(v),
     education: educationWantedIn(htmlText(v.requirements)),
     agencyWanted: v.agencyBackground ?? AGENCY_BACKGROUND_DEFAULT,
+    experienceBasis: v.experienceBasis ?? EXPERIENCE_BASIS_DEFAULT,
   };
 }
 
 /** A CV ready to be scored: its words (" … "), their stems, its facts, its years, its titles and its education's words. */
+/** A CV's years as counted: typed (`fromCv` false), else from its dates, by `basis` (career: its span; company: the months worked). */
+export interface FitYears {
+  years: number;
+  fromCv: boolean;
+  basis: ExperienceBasis | null;
+}
+
 export interface FitCv {
   hay: string;
   stems: ReadonlySet<string>;
-  years: { years: number; fromCv: boolean } | null;
+  /** Company based: typed, else the months worked (the CV's date ranges, overlaps merged). */
+  years: FitYears | null;
+  /** Career based (29 October 2026): typed, else the span of its work history, else the months worked. */
+  careerYears: FitYears | null;
   titles: { title: string; from: FitTitleFrom; factor: number }[];
   level: EducationLevel | null;
   /** The stems of the words of its education's degrees and schools ("Bachelor of Commerce, Faculty of Commerce"). */
   educationStems: ReadonlySet<string>;
   /** Its marketing agency background; null: not told (no work history read). */
   agency: AgencyBackground | null;
+  /** Its career (career.ts): a skipper loses points; null: not told (no work history read). */
+  career: CareerFacts | null;
 }
 
 /** A CV ready to be scored; null when it isn't read or has no text. */
@@ -552,6 +584,7 @@ export function prepareFitCv(cv: FitCvInput): FitCv | null {
   const f = cv.facts;
   const typed = typeof cv.yearsTyped === 'number' && Number.isFinite(cv.yearsTyped) ? cv.yearsTyped : null;
   const months = f?.experienceMonths ?? null;
+  const span = cv.career?.spanMonths ?? null;
   const titles: FitCv['titles'] = [];
   const history = (f?.workHistory ?? []).map((w) => w.pastTitle);
   if (f?.latestTitle && !history.includes(f.latestTitle)) history.unshift(f.latestTitle);
@@ -563,11 +596,20 @@ export function prepareFitCv(cv: FitCvInput): FitCv | null {
   return {
     hay: ` ${words} `,
     stems: new Set(words.split(' ').filter(Boolean).map(termStem)),
-    years: typed !== null ? { years: typed, fromCv: false } : months !== null ? { years: months / 12, fromCv: true } : null,
+    years: typed !== null ? { years: typed, fromCv: false, basis: null } : months !== null ? { years: months / 12, fromCv: true, basis: 'company' } : null,
+    careerYears:
+      typed !== null
+        ? { years: typed, fromCv: false, basis: null }
+        : span !== null
+          ? { years: span / 12, fromCv: true, basis: 'career' }
+          : months !== null
+            ? { years: months / 12, fromCv: true, basis: 'company' }
+            : null,
     titles,
     level: f?.education ?? null,
     educationStems: new Set(normalForMatch(education).split(' ').filter(Boolean).map(termStem)),
     agency: cv.agency ?? null,
+    career: cv.career ?? null,
   };
 }
 
@@ -628,24 +670,27 @@ function titlePart(job: FitJob, cv: FitCv): Scored | null {
 }
 
 /** The years in words: "8 years", "≈ 8 years (the CV's dates)", "less than a year". */
-function yearsText(y: { years: number; fromCv: boolean }): string {
+function yearsText(y: FitYears): string {
   if (y.fromCv) {
     const shown = y.years < 1 ? 'less than a year' : `≈ ${Math.round(y.years)} ${Math.round(y.years) === 1 ? 'year' : 'years'}`;
-    return `${shown} (from the CV’s dates)`;
+    return `${shown} (from the CV’s dates${y.basis === 'career' ? ', first job to latest, gaps included' : ''})`;
   }
   return `${num(y.years)} ${y.years === 1 ? 'year' : 'years'}`;
 }
 
+/** Experience: the CV's years as the vacancy counts them (29 October 2026: company or career based) against those asked. */
 function experiencePart(job: FitJob, cv: FitCv): Scored | null {
-  if (!job.years || !cv.years) return null;
+  const years = job.experienceBasis === 'career' ? cv.careerYears : cv.years;
+  if (!job.years || !years) return null;
   return {
     key: 'experience',
     label: CV_FIT_LABELS.experience,
-    score: yearsScore(cv.years.years, job.years),
-    detail: `${yearsText(cv.years)}; the job asks ${yearsWantedText(job.years)}`,
-    years: Math.round(cv.years.years * 10) / 10,
-    fromCv: cv.years.fromCv,
+    score: yearsScore(years.years, job.years),
+    detail: `${yearsText(years)}; the job asks ${yearsWantedText(job.years)}`,
+    years: Math.round(years.years * 10) / 10,
+    fromCv: years.fromCv,
     wanted: job.years,
+    basis: job.experienceBasis,
   };
 }
 
@@ -715,8 +760,23 @@ export function cvFitOf(job: FitJob, cv: FitCv | null): CvFit | null {
   const scored = [skillsPart(job, cv), titlePart(job, cv), experiencePart(job, cv), requirementsPart(job, cv), educationPart(job, cv), agencyPart(job, cv)].filter((p): p is Scored => !!p);
   const total = scored.reduce((n, p) => n + weightOf(p.key, job), 0);
   if (!total) return { percent: null, version: CV_FIT_VERSION, parts: [] };
-  const percent = Math.round(scored.reduce((n, p) => n + p.score * weightOf(p.key, job), 0) / total);
-  return { percent, version: CV_FIT_VERSION, parts: scored.map((p) => ({ ...p, weight: Math.round((1000 * weightOf(p.key, job)) / total) / 10 })) };
+  const raw = Math.round(scored.reduce((n, p) => n + p.score * weightOf(p.key, job), 0) / total);
+  // a skipper (29 October 2026: "Flag + lower the score"): SKIPPER_PENALTY points off, never below 0
+  const penalty = cv.career?.skipper ? Math.min(SKIPPER_PENALTY, raw) : 0;
+  return {
+    percent: raw - penalty,
+    version: CV_FIT_VERSION,
+    parts: scored.map((p) => ({ ...p, weight: Math.round((1000 * weightOf(p.key, job)) / total) / 10 })),
+    ...(cv.career?.skipper && { skipper: { penalty, averageStayMonths: cv.career.averageStayMonths } }),
+  };
+}
+
+/** A skipper's points off in words: "Skipper (8 m a company on average): 10 points off"; null for anyone else. */
+export function cvFitSkipperText(fit: Pick<CvFit, 'skipper'> | null | undefined): string | null {
+  const s = fit?.skipper;
+  if (!s) return null;
+  const stay = s.averageStayMonths !== null ? ` (${averageStayText(s.averageStayMonths)})` : '';
+  return `${SKIPPER_LABEL}${stay}: ${s.penalty} ${s.penalty === 1 ? 'point' : 'points'} off`;
 }
 
 /** A CV's fit for a vacancy, prepared on the spot (prepare each once when scoring many). */
@@ -728,7 +788,10 @@ export function cvFitFrom(value: unknown): CvFit | null {
   const v = value as Record<string, unknown>;
   if (!Array.isArray(v.parts)) return null;
   const parts = v.parts.filter((p): p is CvFitPart => !!p && typeof p === 'object' && (CV_FIT_PARTS as readonly unknown[]).includes((p as CvFitPart).key) && typeof (p as CvFitPart).score === 'number');
-  return { percent: typeof v.percent === 'number' ? v.percent : null, version: typeof v.version === 'number' ? v.version : 0, parts };
+  // a skipper's points off (29 October 2026), kept with the fit
+  const s = v.skipper && typeof v.skipper === 'object' ? (v.skipper as Record<string, unknown>) : null;
+  const skipper = s && typeof s.penalty === 'number' ? { penalty: s.penalty, averageStayMonths: typeof s.averageStayMonths === 'number' ? s.averageStayMonths : null } : null;
+  return { percent: typeof v.percent === 'number' ? v.percent : null, version: typeof v.version === 'number' ? v.version : 0, parts, ...(skipper && { skipper }) };
 }
 
 // ---------- the key skills suggested ----------
@@ -924,7 +987,7 @@ export function cvFitPartShort(p: CvFitPart): string {
 export function cvFitLine(fit: CvFit | null | undefined): string {
   if (!fit) return 'The CV isn’t read yet';
   if (!fit.parts.length) return 'Nothing to score: no key skills, years or requirements listed, and no job title found in the CV';
-  return fit.parts.map(cvFitPartShort).join(' · ');
+  return [...fit.parts.map(cvFitPartShort), ...(fit.skipper ? [`${SKIPPER_LABEL} −${fit.skipper.penalty}`] : [])].join(' · ');
 }
 
 /** A part as the CV Fit section shows it: its detail, with the CV's title named first when shown. */

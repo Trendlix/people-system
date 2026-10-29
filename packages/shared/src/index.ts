@@ -675,3 +675,4 @@ export * from './payroll-vs-insurance.js';
 // social insurance tab"; he chose all three): the insured staff register, a month's contributions, the missing data
 export * from './social-insurance-report.js';
 export * from './marketing-agencies.js';
+export * from './career.js';

@@ -26,7 +26,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { CandidatesService } from './candidates.service.js';
 import { DOCX, PDF } from './cv-file.js';
 import { agencyMarksOf } from './agency-marks.js';
-import { agencyOf, canonical, FIT_READING, FIT_VACANCY_SELECT, fitCvOf, fitJobOf, positionOf } from './cv-fit-inputs.js';
+import { agencyOf, careerFor, canonical, FIT_READING, FIT_VACANCY_SELECT, fitCvOf, fitJobOf, positionOf } from './cv-fit-inputs.js';
 import { cvText } from './cv-text.js';
 
 // Every CV read and analysed (owner, 22 October 2026: "make the OCR egine reads the CV and analyse it. is that
@@ -421,6 +421,8 @@ export class CvReadingsService implements OnModuleDestroy {
         : none),
       // marketing agency background (owner, 27 October 2026: "i need a flag if the candidate is ex marketing agencies or not")
       agency: read ? agencyOf(facts, r.readAt, marks) : null,
+      // its career (owner, 29 October 2026: "and if the candidate is a skipper or no"): span, average stay, a skipper or not
+      career: read ? careerFor(facts, r.readAt) : null,
     };
   }
 

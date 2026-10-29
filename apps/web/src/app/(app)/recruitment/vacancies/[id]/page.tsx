@@ -42,6 +42,7 @@ import {
 import { ApplicantsTable, VacancyStatusBadge, VerdictBadge } from '../../ui';
 import { vacancyPortfolioText } from '../../portfolio';
 import { agencyBackgroundText } from '../../agency';
+import { experienceBasisText } from '../../career';
 
 // A vacancy (owner, 22 October 2026: "where will we include the ATS?"): where it stands and what can be done (HR sends it
 // to the CEO, holds, reopens, closes it; the CEO approves it or sends it back with a reason), its position and internal
@@ -359,6 +360,8 @@ async function Vacancy({ params, searchParams }: PageProps<'/recruitment/vacanci
           <Fact label="Portfolio">{vacancyPortfolioText(v.portfolioMode, v.jobTitlePortfolio) ?? '—'}</Fact>
           {/* marketing agency background in the CV match (owner, 27 October 2026: "Set per job") */}
           <Fact label="Agency background">{agencyBackgroundText(v.agencyBackground) ?? '—'}</Fact>
+          {/* how the CV match counts a CV's years (owner, 29 October 2026: "career based or company based") */}
+          <Fact label="Experience counted">{experienceBasisText(v.experienceBasis) ?? '—'}</Fact>
           {!hiringManager && <Fact label="Salary range, EGP a month">{range ?? '—'}</Fact>}
           <Fact label="Published">{v.publishedAt ? formatDate(v.publishedAt) : 'Not yet'}</Fact>
           <Fact label="Drafted by">{v.createdBy?.name ?? v.createdBy?.email ?? '—'}</Fact>

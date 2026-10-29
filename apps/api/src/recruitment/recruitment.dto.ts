@@ -46,6 +46,8 @@ import {
   type MoveStage,
   AGENCY_BACKGROUNDS,
   type AgencyBackgroundWanted,
+  EXPERIENCE_BASES,
+  type ExperienceBasis,
 } from '@trendlix/shared';
 import { IsDateOnly } from '../common/date-only.js';
 import { Trim, TrimOrNull } from '../common/transforms.js';
@@ -118,6 +120,13 @@ class VacancyFieldsDto {
    */
   @IsOptional() @IsIn(AGENCY_BACKGROUNDS, { message: 'Choose the agency background: required, preferred or not_needed.' })
   agencyBackground?: AgencyBackgroundWanted;
+
+  /**
+   * How its CV fit counts a CV's years (owner, 29 October 2026: "make it career based or company based"; "Set per job"):
+   * company based (the default) or career based.
+   */
+  @IsOptional() @IsIn(EXPERIENCE_BASES, { message: 'Choose how experience is counted: company or career.' })
+  experienceBasis?: ExperienceBasis;
 }
 
 export class CreateVacancyDto extends VacancyFieldsDto {

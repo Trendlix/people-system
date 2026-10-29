@@ -6,6 +6,7 @@ import { CvFitSection, FitPercent } from './cv-fit-ui';
 import { NO_KEY_SKILLS_NOTE } from './cv-fit';
 import { CvTextViewer } from './cv-text-viewer';
 import { loadAgencyMarks, loadApplicantCvText, loadGeneralCvText } from './data';
+import { careerFlag } from './career';
 import { AGENCY_MARKS_HREF, agencyFlag, agencyJobBadge, agencyJobCount, agencyJobsFor, hasMarkableCompany, markActionsFor, markIdOf, type AgencyMarkView, type MarkAction } from './agency';
 import { removeAgencyMark, setAgencyMark } from './agency-actions';
 import { AgencyMarkButtons } from './agency-ui';
@@ -51,6 +52,8 @@ export async function FromTheCv({ reading, subject }: { reading: CvReadingView; 
   const loadedMarks = marksCompanies && agencyJobs.some((j) => j?.by === 'mark') ? await loadAgencyMarks() : null;
   const marks: AgencyMarkView[] = loadedMarks?.kind === 'ok' ? loadedMarks.value : [];
   const flag = read ? agencyFlag(reading.agency) : null;
+  // "Skipper · 8 m a company on average" (owner, 29 October 2026: "and if the candidate is a skipper or no")
+  const career = read ? careerFlag(reading.career) : null;
   return (
     <section aria-labelledby="from-the-cv" className="card space-y-4 p-6">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -66,11 +69,19 @@ export async function FromTheCv({ reading, subject }: { reading: CvReadingView; 
       </div>
       <p className={`text-sm ${reading.status === 'failed' ? 'text-warn' : 'text-muted'}`}>{readingStatusText(reading)}</p>
       {/* "Ex-agency · 3 y 4 m" (owner, 27 October 2026: "i need a flag if the candidate is ex marketing agencies or not") */}
-      {flag && (
-        <p className="text-sm">
-          <span className={`badge ${flag.exAgency ? 'bg-accent-soft text-accent' : 'bg-canvas text-muted'}`} title={flag.title}>
-            {flag.text}
-          </span>
+      {(flag || career) && (
+        <p className="flex flex-wrap gap-2 text-sm">
+          {flag && (
+            <span className={`badge ${flag.exAgency ? 'bg-accent-soft text-accent' : 'bg-canvas text-muted'}`} title={flag.title}>
+              {flag.text}
+            </span>
+          )}
+          {career && (
+            <span className={`badge ${career.skipper ? 'bg-warn-soft text-warn' : 'bg-canvas text-muted'}`} title={career.title}>
+              {career.text}
+              <span className="sr-only">: {career.title}</span>
+            </span>
+          )}
         </p>
       )}
 

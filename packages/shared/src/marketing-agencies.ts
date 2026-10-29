@@ -167,8 +167,11 @@ export interface AgencyBackground {
   jobs: AgencyJob[];
 }
 
-/** A month as a number (year × 12 + month − 1) from "2019-03", or "2019" (its January as a start, its December as an end). */
-function monthNumber(value: string | null, end: boolean): number | null {
+/**
+ * A work history's month as a number (year × 12 + month − 1) from "2019-03", or "2019" (its January as a start, its
+ * December as an end). Also career.ts's.
+ */
+export function monthNumber(value: string | null, end: boolean): number | null {
   if (!value) return null;
   const m = /^(\d{4})(?:-(\d{2}))?$/.exec(value);
   if (!m) return null;

@@ -21,6 +21,7 @@ import { candidateBadges } from './candidates';
 import { DeleteApplicantButton } from './delete-ui';
 import { experienceCell, latestRoleOf } from './cv-reading';
 import { exAgencyChip } from './agency';
+import { skipperChip } from './career';
 import { BetterFitLink, FitPercent, MatchValue } from './cv-fit-ui';
 import {
   applicantHref,
@@ -141,11 +142,13 @@ export function CandidateBadges({ candidate }: { candidate: CandidateBadge | nul
 /**
  * An Experience cell (24 October 2026): the years typed, else the CV's estimate muted with "From the dates in the CV"
  * on it ("≈ 4 y · CV"), else "—" or "Reading…". Under it, "Ex-agency" with its months on hover (owner, 27 October 2026:
- * "i need a flag if the candidate is ex marketing agencies or not").
+ * "i need a flag if the candidate is ex marketing agencies or not"), and "Skipper" with their average stay a company
+ * (29 October 2026: "and if the candidate is a skipper or no").
  */
 export function ExperienceCell({ typed, fromCv }: { typed: number | null | undefined; fromCv: CvListFacts | null | undefined }) {
   const cell = experienceCell(typed, fromCv);
   const agency = exAgencyChip(fromCv);
+  const skipper = skipperChip(fromCv);
   return (
     <td className="text-right whitespace-nowrap tabular-nums">
       {cell.fromCv ? (
@@ -158,6 +161,14 @@ export function ExperienceCell({ typed, fromCv }: { typed: number | null | undef
       {agency && (
         <span className="mt-1 block">
           <ExAgencyBadge chip={agency} />
+        </span>
+      )}
+      {skipper && (
+        <span className="mt-1 block">
+          <span className="badge bg-warn-soft text-warn" title={skipper.title}>
+            {skipper.text}
+            <span className="sr-only">: {skipper.title}</span>
+          </span>
         </span>
       )}
     </td>

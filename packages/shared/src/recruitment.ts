@@ -21,6 +21,7 @@
 // Pure code: the API enforces these rules, the web shows them. Tested in apps/api/src/common/recruitment.spec.ts.
 
 import type { AgencyBackgroundWanted } from './marketing-agencies.js';
+import type { ExperienceBasis } from './career.js';
 import type { EmploymentType, WorkArrangement } from './index.js';
 import type { CvListFacts, CvReadingView } from './cv-analysis.js';
 import type { BetterFitBadge, CvFit, OpenPositionFit } from './cv-fit.js';
@@ -830,6 +831,11 @@ export interface VacancyView extends VacancyListItem {
    * Missing from an API before it.
    */
   agencyBackground?: AgencyBackgroundWanted;
+  /**
+   * How its CV fit counts a CV's years (owner, 29 October 2026: "make it career based or company based"; "Set per job"):
+   * company or career based. Missing from an API before it.
+   */
+  experienceBasis?: ExperienceBasis;
   stageCounts: Record<ApplicationStage, number>;
   filteredOut: number;
   /** Its applicants by source (22 October 2026: the posted links apart from the careers page reached directly). */
