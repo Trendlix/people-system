@@ -5,7 +5,6 @@ import {
   BOARD_STAGES,
   daysSince,
   feedbackSeen,
-  HIRING_SUGGESTION_LABELS,
   mobileSearchForms,
   offerable,
   rejectionMail,
@@ -52,6 +51,10 @@ import { APPLICATION_ENTITY, APPLICATION_LIST_SELECT, answersOf, applicationList
 import type { ListApplicationsDto } from './recruitment.dto.js';
 import { ScreeningCommentsService } from './screening-comments.service.js';
 import { NOTES_GONE } from './screening-notes.js';
+import { ConfigService } from '@nestjs/config';
+import { reviewNotice, shortlistEmail, shortlistNotice, suggestionShown, type HiringBatchResult } from '@trendlix/shared';
+import { webOriginOf } from '../employee-access/employee-access.service.js';
+import { BATCH_NOT_FOUND, batchIds, reviewSkip, shortlistSkip, skippedOf } from './hiring-batches.js';
 
 // The applicants (owner, 22 October 2026: "where will we include the ATS?"; packages/shared recruitment.ts): listed by
 // vacancy or all together, with their match and stage; an applicant's page with their answers (how each did), their CV,
@@ -122,6 +125,23 @@ const DETAIL_INCLUDE = {
 
 type DetailRow = Prisma.JobApplicationGetPayload<{ include: typeof DETAIL_INCLUDE }>;
 
+/** What a step reads of an application (an applicant's page's row, or a batch's). */
+type StepRow = Pick<DetailRow, 'id' | 'number' | 'filteredOut'> & { vacancy: Pick<DetailRow['vacancy'], 'number'> };
+
+/** A vacancy as the hiring steps' batches read it (29 October 2026): who hires for it, and whether it is C-level. */
+const BATCH_VACANCY = {
+  id: true,
+  number: true,
+  title: true,
+  hiringManagerId: true,
+  grade: { select: { confidential: true } },
+  jobTitle: { select: { minGrade: { select: { confidential: true } } } },
+} satisfies Prisma.VacancySelect;
+
+/** Where the hiring manager accepts or rejects a shortlist (the site's My Hiring). */
+const MY_HIRING_LINK = '/recruitment/my-hiring';
+const CHANGED_MEANWHILE = 'The applicant changed meanwhile. Reload the page to see where they stand.';
+
 /** What a rejection's email did: sent, not asked for, email not set up on the server, or the provider refused it. */
 export type RejectionEmail = 'sent' | 'not_sent' | 'not_set_up' | 'failed';
 
@@ -141,6 +161,7 @@ export class ApplicationsService {
     private readonly comments: ScreeningCommentsService,
     private readonly previews: CvPreviewsService,
     private readonly fits: CvFitsService,
+    private readonly config: ConfigService,
   ) {}
 
   /** The applications the caller may see on the lists: those of the vacancies they see (HR, the CEO, a Super Admin). */
@@ -399,6 +420,8 @@ export class ApplicationsService {
       to === 'rejected' ? { stage: 'rejected', rejectedFrom: stage, rejectReason: reason ?? null } : { stage: to, rejectedFrom: null, rejectReason: null };
     await this.step(a, stage, data, { event: to, stage: to, note: to === 'rejected' ? (reason ?? null) : null }, user);
     const emailed = to === 'rejected' && email ? await this.emailRejection(a, user) : 'not_sent';
+    // the hiring manager told, a batch of one (owner, 29 October 2026: "Manager view the shortlisted and accept or reject them")
+    if (to === 'shortlisted') await this.tellHiringManager(a.vacancy, [a.fullName], user);
     return { ...(await this.get(id, user)), emailed };
   }
 
@@ -437,15 +460,135 @@ export class ApplicationsService {
     if (viewerOf(c, a) !== 'hiring_manager') throw new ForbiddenException('Only the vacancy’s hiring manager suggests what happens next.');
     const stage = a.stage as ApplicationStage;
     if (stage === 'hired' || stage === 'rejected') throw new ConflictException(`They are ${APPLICATION_STAGE_LABELS[stage].toLowerCase()}: there is nothing to suggest.`);
-    await this.prisma.jobApplication.update({ where: { id }, data: { suggestion, suggestionNote: note ?? null, suggestedById: user.id, suggestedAt: new Date() } });
-    await this.audit.record({ userId: user.id, action: 'suggest', entityType: APPLICATION_ENTITY, entityId: id, diff: { number: a.number, suggestion, ...(note && { note }) } });
-    const roles = isConfidentialVacancy(a.vacancy) ? ['ceo', 'super_admin'] : ['hr'];
+    await this.recordSuggestion(a, suggestion, note, user);
+    // at Shortlisted, their review (29 October 2026: "Accepted by the hiring manager"); else "Hiring manager suggests: Reject"
+    await this.tellHr(a.vacancy, { title: suggestionShown(suggestion, stage), body: `${a.fullName} · ${a.vacancy.title}` }, `/recruitment/applicants/${id}`);
+    return this.view(await this.row(id, c), c);
+  }
+
+  /** The hiring manager's suggestion kept on an applicant still at their stage (at Shortlisted, their review), audited; 409 if they moved meanwhile. */
+  private async recordSuggestion(a: { id: string; number: string; stage: string }, suggestion: HiringSuggestion, note: string | null | undefined, user: SessionUser): Promise<void> {
+    const { count } = await this.prisma.jobApplication.updateMany({
+      where: { id: a.id, stage: a.stage },
+      data: { suggestion, suggestionNote: note ?? null, suggestedById: user.id, suggestedAt: new Date() },
+    });
+    if (!count) throw new ConflictException(CHANGED_MEANWHILE);
+    await this.audit.record({ userId: user.id, action: 'suggest', entityType: APPLICATION_ENTITY, entityId: a.id, diff: { number: a.number, suggestion, ...(note && { note }) } });
+  }
+
+  /** HR told of the hiring manager's word: the CEO and the Super Admins for a C-level vacancy (only they see it). */
+  private async tellHr(v: Parameters<typeof isConfidentialVacancy>[0], notice: { title: string; body: string }, link: string): Promise<void> {
+    const roles = isConfidentialVacancy(v) ? ['ceo', 'super_admin'] : ['hr'];
     const hr = await this.prisma.user.findMany({ where: { isActive: true, roles: { some: { role: { key: { in: roles } } } } }, select: { id: true } });
     await this.notifications.notify(
       hr.map((u) => u.id),
-      { kind: 'hiring_suggestion', title: `Hiring manager suggests: ${HIRING_SUGGESTION_LABELS[suggestion]}`, body: `${a.fullName} · ${a.vacancy.title}`, link: `/recruitment/applicants/${id}` },
+      { kind: 'hiring_suggestion', ...notice, link },
     );
-    return this.view(await this.row(id, c), c);
+  }
+
+  // ---------- the hiring steps: HR's shortlist, the hiring manager's review (29 October 2026) ----------
+  // The owner: "HR Filteration and shortlisting - Manager view the shortlisted and accept or reject them"; asked, "Tick
+  // several at once" and "One message per batch" (packages/shared hiring-steps.ts; hiring-batches.ts). A batch does each
+  // applicant as their page would, skips the others with why, and tells the other side once.
+
+  /**
+   * HR (or a Super Admin) shortlists several of a vacancy's applicants at once: those at Applied, never one filtered out,
+   * each as Shortlist on their page (the stage rules, its history step, the audit log); the others skipped with why. The
+   * hiring manager told once for the batch.
+   */
+  async shortlistMany(vacancyId: string, ids: readonly string[], user: SessionUser): Promise<HiringBatchResult> {
+    const c = await this.caller(user);
+    if (!c.manages) throw new ForbiddenException('Only HR (or a Super Admin) shortlists applicants.');
+    const v = await this.prisma.vacancy.findFirst({ where: { AND: [{ id: vacancyId }, vacancyWhere(user)] }, select: BATCH_VACANCY });
+    if (!v) throw new NotFoundException('Vacancy not found.');
+    const wanted = batchIds(ids);
+    const rows = await this.prisma.jobApplication.findMany({
+      where: { AND: [{ id: { in: wanted } }, visibleApplications(c)] },
+      select: { id: true, number: true, fullName: true, vacancyId: true, stage: true, filteredOut: true, vacancy: { select: { number: true } }, offers: { where: OPEN_OFFER, select: { id: true } } },
+    });
+    const found = new Map(rows.map((r) => [r.id, r]));
+    const result: HiringBatchResult = { done: [], skipped: [] };
+    for (const id of wanted) {
+      const a = found.get(id);
+      const reason = a ? shortlistSkip({ ...a, openOffer: a.offers.length > 0 }, v.id) : BATCH_NOT_FOUND;
+      if (!a || reason) {
+        result.skipped.push(skippedOf(id, a, reason ?? BATCH_NOT_FOUND));
+        continue;
+      }
+      try {
+        await this.step(a, 'applied', { stage: 'shortlisted', rejectedFrom: null, rejectReason: null }, { event: 'shortlisted', stage: 'shortlisted', note: null }, user);
+      } catch (err) {
+        if (!(err instanceof ConflictException)) throw err;
+        result.skipped.push(skippedOf(id, a, err.message));
+        continue;
+      }
+      result.done.push({ id, number: a.number, fullName: a.fullName });
+    }
+    await this.tellHiringManager(
+      v,
+      result.done.map((d) => d.fullName),
+      user,
+    );
+    return result;
+  }
+
+  /**
+   * The vacancy's hiring manager accepts (`next`) or rejects several of its shortlisted applicants at once, with a note:
+   * kept as their suggestion on each (recordSuggestion, audited); a rejection is HR's to confirm. The others skipped with
+   * why. HR told once for the batch. Only the hiring manager (403 for anyone else; 404 for a vacancy HR may not see).
+   */
+  async reviewMany(vacancyId: string, ids: readonly string[], decision: HiringSuggestion, note: string | null | undefined, user: SessionUser): Promise<HiringBatchResult> {
+    const c = await this.caller(user);
+    const v = await this.prisma.vacancy.findFirst({ where: { AND: [{ id: vacancyId }, c.reads ? vacancyWhere(user) : {}] }, select: BATCH_VACANCY });
+    if (!v) throw new NotFoundException('Vacancy not found.');
+    if (viewerOf(c, { vacancy: v }) !== 'hiring_manager') throw new ForbiddenException('Only the vacancy’s hiring manager accepts or rejects its shortlist.');
+    const wanted = batchIds(ids);
+    const rows = await this.prisma.jobApplication.findMany({
+      where: { AND: [{ id: { in: wanted } }, visibleApplications(c)] },
+      select: { id: true, number: true, fullName: true, vacancyId: true, stage: true, filteredOut: true },
+    });
+    const found = new Map(rows.map((r) => [r.id, r]));
+    const result: HiringBatchResult = { done: [], skipped: [] };
+    for (const id of wanted) {
+      const a = found.get(id);
+      const reason = a ? reviewSkip(a, v.id) : BATCH_NOT_FOUND;
+      if (!a || reason) {
+        result.skipped.push(skippedOf(id, a, reason ?? BATCH_NOT_FOUND));
+        continue;
+      }
+      try {
+        await this.recordSuggestion(a, decision, note, user);
+      } catch (err) {
+        if (!(err instanceof ConflictException)) throw err;
+        result.skipped.push(skippedOf(id, a, err.message));
+        continue;
+      }
+      result.done.push({ id, number: a.number, fullName: a.fullName });
+    }
+    const n = result.done.length;
+    if (n) await this.tellHr(v, reviewNotice(v.title, decision === 'next' ? n : 0, decision === 'reject' ? n : 0), `/recruitment/vacancies/${v.id}?stage=shortlisted`);
+    return result;
+  }
+
+  /**
+   * The vacancy's hiring manager told once a batch is shortlisted (owner, 29 October 2026: "One message per batch"), in the
+   * app and by email when it is set up, to accept or reject them on My Hiring. Nobody when the vacancy has no hiring
+   * manager (or they have no active account), when they shortlisted them themselves, or when nobody was shortlisted. An
+   * email refused never fails the shortlist: it is logged.
+   */
+  private async tellHiringManager(v: { number: string; title: string; hiringManagerId: string | null }, names: readonly string[], user: SessionUser): Promise<void> {
+    if (!v.hiringManagerId || !names.length || user.employeeId === v.hiringManagerId) return;
+    const hm = await this.prisma.user.findFirst({ where: { employeeId: v.hiringManagerId, isActive: true }, select: { id: true, email: true, employee: { select: { workEmail: true } } } });
+    if (!hm) return;
+    await this.notifications.notify([hm.id], { kind: 'shortlist_review', ...shortlistNotice(v.title, names), link: MY_HIRING_LINK });
+    try {
+      if (!(await this.mail.ready())) return;
+      const mail = shortlistEmail(v.title, names, `${webOriginOf(this.config)}${MY_HIRING_LINK}`);
+      // their work email, else the one they sign in with
+      await this.mail.send({ to: hm.employee?.workEmail || hm.email, replyTo: user.email, subject: mail.subject, text: mail.text });
+    } catch (err) {
+      this.logger.warn(`The shortlist email of ${v.number} could not be sent: ${(err as Error).message}`);
+    }
   }
 
   // ---------- the pipeline board ----------
@@ -556,7 +699,7 @@ export class ApplicationsService {
 
   /** One step: the application changed if it is still at `stage`, its history and the audit log. */
   private async step(
-    a: DetailRow,
+    a: StepRow,
     stage: ApplicationStage,
     data: Prisma.JobApplicationUpdateManyMutationInput,
     step: { event: ApplicationEvent; stage: ApplicationStage; note: string | null },

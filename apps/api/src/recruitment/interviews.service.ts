@@ -47,6 +47,7 @@ import { AvailabilityService } from '../interview-hours/availability.service.js'
 import { vacancyWhere } from './recruitment-access.js';
 import { hiringManagerApplications, recruitmentCaller, visibleApplications, type RecruitmentCaller } from './recruitment-scope.js';
 import { APPLICATION_ENTITY } from './recruitment-views.js';
+import { shortlistsToReview } from './shortlist-review.js';
 import type { FeedbackDto, InterviewDto, InterviewMeetingDto } from './recruitment.dto.js';
 
 // Interviews (Phase 2, owner, 22 October 2026: "where will we include the ATS?"; accepted: "interview invites go by email
@@ -197,7 +198,9 @@ export class InterviewsService {
     };
     const interviews = this.views(rows, c, now.getTime());
     const feedbackDue = interviews.filter((i) => i.can.feedback && !i.interviewers.find((x) => x.employeeId === c.selfId)?.feedbackGiven).length;
-    return { vacancies: vacancies.map((v) => ({ ...v, counts: counts(v.id) })), interviews, feedbackDue };
+    // the shortlists waiting for their review (29 October 2026: "Manager view the shortlisted and accept or reject them")
+    const toReview = await shortlistsToReview(this.prisma, vacancies, c.selfId);
+    return { vacancies: vacancies.map((v) => ({ ...v, counts: counts(v.id) })), interviews, feedbackDue, toReview };
   }
 
   /** The scorecards on an application, all of them (the caller's visibility is the applicants' service's). */
