@@ -532,6 +532,11 @@ describe('Notifications (e2e)', () => {
     const at = (time: string, day = reminderDay) => new Date(zonedMoment(day, time));
     const none = { due: false, shiftStart: null, checkInPath: '/my-attendance' };
     const cairoTime = (d: Date) => new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Cairo', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(d);
+    /** "HH:MM" `hours` later on the clock, past midnight from the start again. */
+    const clockPlusHours = (hhmm: string, hours: number) => {
+      const [h, m] = hhmm.split(':').map(Number);
+      return `${String((h + hours) % 24).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    };
     /** Pia's shift started 30 minutes ago, every day: her popup is due now, unless that day is an official holiday. */
     let piaStart: string;
     let piaDay: string;
@@ -544,7 +549,9 @@ describe('Notifications (e2e)', () => {
       piaDue = !(await prisma.holiday.count({ where: { date: toDateOnly(piaDay) } }));
       liveShiftId = (
         await prisma.shift.create({
-          data: { code: `P${RUN}`.slice(0, 20), startTime: toTimeOfDay(piaStart), endTime: toTimeOfDay(cairoTime(new Date(started.getTime() + 8 * 3600_000))), hoursPerDay: 8, graceMinutes: 15, workingDays: [0, 1, 2, 3, 4, 5, 6] },
+          // its end 8 hours after its start on the clock, never "the clock 8 hours from now": across the night Cairo's
+          // clocks go back (29 October 2026) that was 7, and the shift's hours check refused it
+          data: { code: `P${RUN}`.slice(0, 20), startTime: toTimeOfDay(piaStart), endTime: toTimeOfDay(clockPlusHours(piaStart, 8)), hoursPerDay: 8, graceMinutes: 15, workingDays: [0, 1, 2, 3, 4, 5, 6] },
           select: { id: true },
         })
       ).id;
