@@ -244,8 +244,10 @@ export class LinkedInSignInService {
     const accessToken = token?.status === 200 && grant && typeof grant.access_token === 'string' ? grant.access_token : null;
     if (!accessToken) {
       // the status only: never the answer, which may name the code or the app
-      this.logger.warn(`LinkedIn refused the code (${token ? token.status : 'unreachable'}).`);
-      return refused('failed', `token:${token ? token.status : 'unreachable'}`);
+      // LinkedIn's error code too ("invalid_client", "invalid_grant" …: a word, never the code or the secret)
+      const code = grant && typeof grant.error === 'string' && /^[a-z_]{1,40}$/.test(grant.error) ? `:${grant.error}` : '';
+      this.logger.warn(`LinkedIn refused the code (${token ? token.status : 'unreachable'}${code}).`);
+      return refused('failed', `token:${token ? token.status : 'unreachable'}${code}`);
     }
     const claims = claimsOf(grant!.id_token);
     const audience = claims ? (Array.isArray(claims.aud) ? claims.aud : [claims.aud]) : [];

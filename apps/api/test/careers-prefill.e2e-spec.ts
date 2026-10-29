@@ -549,7 +549,7 @@ describe('Careers forms: filled from the CV, LinkedIn sign-in, portfolio per pos
       // cancelled at LinkedIn
       expect((await finish({ state: one.state, binding: one.binding, error: 'user_cancelled_login' })).body).toMatchObject({ ok: false, form, problem: 'cancelled' });
       // the code refused by LinkedIn: which step said (29 October 2026), never the code
-      expect((await finish({ state: one.state, binding: one.binding, code: 'bad-code' })).body).toEqual({ ok: false, form, src: 'linkedin', problem: 'failed', reason: 'token:400' });
+      expect((await finish({ state: one.state, binding: one.binding, code: 'bad-code' })).body).toEqual({ ok: false, form, src: 'linkedin', problem: 'failed', reason: 'token:400:invalid_grant' });
 
       // signed in
       const two = await start();
