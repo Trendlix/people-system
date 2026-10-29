@@ -65,6 +65,9 @@ export const NOTIFICATION_KINDS = [
   'interview_scheduled',
   'interview_feedback',
   'hiring_suggestion',
+  // the hiring steps (owner, 29 October 2026: "Manager view the shortlisted and accept or reject them"): the hiring
+  // manager told once a batch of applicants is shortlisted for them to review
+  'shortlist_review',
   'onboarding_items',
   // access follows the contract (owner, 23 October 2026: "Active - Grace - Hold - No Access"; employee-access.ts): the
   // employee told their access is on hold (check-in and check-out only), that HR gave them 7 days' grace, and the day
@@ -172,6 +175,7 @@ export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
   interview_scheduled: 'Interview',
   interview_feedback: 'Interview',
   hiring_suggestion: 'Applicants',
+  shortlist_review: 'Applicants',
   onboarding_items: 'Onboarding',
   access_hold: 'Access',
   access_grace: 'Access',

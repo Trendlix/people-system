@@ -21,6 +21,7 @@ import type { BetterFitBadge, CvFit } from './cv-fit.js';
 import type { ScreeningVerdict } from './screening.js';
 import { isMeetingChoiceValue, MEETING_KEEP, parseMeetingChoice, type InterviewMeetingView, type MeetingOutcome } from './meetings.js';
 import type { InviteWords } from './suggested-cvs.js';
+import type { HiringStep, ReviewGroup } from './hiring-steps.js';
 
 // ---------- who looks ----------
 
@@ -596,6 +597,11 @@ export interface FeedbackView {
   updatedAt: string;
   /** The caller's own. */
   mine: boolean;
+  /**
+   * Whose it is (29 October 2026: "Score Card for each of them", hiring-steps.ts): one of the interview's interviewers,
+   * the vacancy's hiring manager, or HR. Missing from an API before it.
+   */
+  role?: 'interviewer' | 'hiring_manager' | 'hr';
 }
 
 /** The hiring manager's suggestion on an applicant, for HR to act on. */
@@ -646,6 +652,8 @@ export interface BoardCard {
   /** Interviews still to come. */
   upcomingInterviews: number;
   suggestion: HiringSuggestion | null;
+  /** Where a shortlisted applicant stands in the hiring steps (29 October 2026, hiring-steps.ts); null at another stage. */
+  hiringStep?: HiringStep | null;
   /** Their candidate profile, for the badges (22 October 2026): HR, the CEO and a Super Admin only; null for a hiring manager. */
   candidate?: CandidateBadge | null;
   /** The application's latest screening verdict (24 October 2026; screening.ts); null: none yet. */
@@ -671,6 +679,11 @@ export interface MyHiring {
   interviews: InterviewView[];
   /** Interviews of theirs past, without their scorecard yet. */
   feedbackDue: number;
+  /**
+   * The shortlists waiting for their review (29 October 2026: "Manager view the shortlisted and accept or reject them";
+   * hiring-steps.ts), a vacancy each, those not reviewed yet first. Missing from an API before it.
+   */
+  toReview?: ReviewGroup[];
 }
 
 /** GET /recruitment/settings. */

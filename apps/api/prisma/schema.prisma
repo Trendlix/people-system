@@ -72,6 +72,7 @@ model User {
   interviewsChanged         Interview[]                @relation("InterviewChange")
   interviewsMarked          Interview[]                @relation("InterviewOutcome")
   suggestionsMade           JobApplication[]           @relation("ApplicationSuggestion")
+  screeningCallsMade        JobApplication[]           @relation("ApplicationScreeningCall")
   recruitmentSettingsSet    RecruitmentSettings[]      @relation("RecruitmentSettingsChange")
   cvPositionChoicesSet      CvPositionChoice[]         @relation("CvPositionChoiceChange")
   portfolioSettingsSet      PortfolioSetting[]         @relation("PortfolioSettingChange") // a job title's portfolio on the careers forms (25 October 2026)
@@ -2154,6 +2155,13 @@ model JobApplication {
   suggestedById     String?                   @map("suggested_by") @db.Uuid
   suggestedBy       User?                     @relation("ApplicationSuggestion", fields: [suggestedById], references: [id], onDelete: SetNull)
   suggestedAt       DateTime?                 @map("suggested_at") @db.Timestamptz
+  // HR's screening call (29 October 2026: "HR Screening and scheduling"; "Screening call + result"): on a shortlisted
+  // applicant (the hiring manager's accepted one), passed or failed with a note; only one who passed is interviewed
+  screeningCall     String?                   @map("screening_call") // SCREENING_CALL_RESULTS: passed, failed
+  screeningCallNote String?                   @map("screening_call_note")
+  screeningCallById String?                   @map("screening_call_by") @db.Uuid
+  screeningCallBy   User?                     @relation("ApplicationScreeningCall", fields: [screeningCallById], references: [id], onDelete: SetNull)
+  screeningCallAt   DateTime?                 @map("screening_call_at") @db.Timestamptz
   // the consent HR recorded (22 October 2026: a bulk upload's CV, a general CV moved here): who, and why ("LinkedIn
   // Easy Apply"); none: the applicant's own on the careers page
   consentById       String?                   @map("consent_by") @db.Uuid

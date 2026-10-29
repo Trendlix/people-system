@@ -27,6 +27,7 @@ import type { CvListFacts, CvReadingView } from './cv-analysis.js';
 import type { BetterFitBadge, CvFit, OpenPositionFit } from './cv-fit.js';
 import type { GeneralCvSource } from './general-cvs.js';
 import type { FeedbackView, InterviewView, RecruitmentViewer, SuggestionView } from './recruitment-hiring.js';
+import type { HiringStep, ScreeningCallView } from './hiring-steps.js';
 import { phoneOk, phoneTidy } from './phone.js';
 import type { ApplicationCandidate, CandidateBadge } from './candidates.js';
 import type { ScreeningVerdict } from './screening.js';
@@ -914,6 +915,8 @@ export interface ApplicationListItem {
    */
   cvUpdatedAt?: string | null;
   cvUpdated?: boolean;
+  /** Where a shortlisted applicant stands in the hiring steps (29 October 2026, hiring-steps.ts); null at another stage. */
+  hiringStep?: HiringStep | null;
 }
 
 /** An answer as the applicant's page shows it, with how it did. */
@@ -1000,8 +1003,17 @@ export interface ApplicationView extends ApplicationListItem {
   feedback: FeedbackView[];
   /** Scorecards given that the caller can't see yet (an interviewer, until they give theirs). */
   feedbackHidden: number;
-  /** The hiring manager's suggestion, while HR hasn't acted on it. */
+  /** The hiring manager's suggestion, while HR hasn't acted on it (at Shortlisted, their review: hiring-steps.ts). */
   suggestion: SuggestionView | null;
+  /** HR's screening call (29 October 2026, hiring-steps.ts); null: not made. Missing from an API before it. */
+  screeningCall?: ScreeningCallView | null;
+  /**
+   * Why an interview can't be scheduled yet (hiring-steps.ts interviewGateProblem: the hiring manager's acceptance, then
+   * the screening call); null when it can. Missing from an API before it.
+   */
+  interviewBlocked?: string | null;
+  /** Whether their vacancy has a hiring manager (who reviews the shortlist). Missing from an API before it. */
+  hasHiringManager?: boolean;
   /** What a job offer is filled in with (Make offer). */
   position: {
     jobTitleId: string;
