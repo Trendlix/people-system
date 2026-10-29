@@ -125,7 +125,7 @@ const DETAIL_INCLUDE = {
   // the PDF case study sent as a portfolio (25 October 2026)
   portfolioFile: { select: { fileName: true, sizeBytes: true } },
   // the CV read and analysed (22 October 2026)
-  cvReading: { select: { status: true, method: true, readAt: true, facts: true, text: true } },
+  cvReading: { select: { status: true, method: true, readAt: true, facts: true, text: true, error: true } },
   events: { orderBy: { at: 'asc' }, include: { by: { select: { id: true, email: true } } } },
 } satisfies Prisma.GeneralCvInclude;
 
@@ -472,6 +472,16 @@ export class GeneralCvsService {
    * HR's notes on a general CV: gone (410) since they became screening comments (24 October 2026); nothing else called it
    * but the general CV page's notes box, retired with it. The notes kept stay read only.
    */
+  /** Its CV read again (29 October 2026: "can i perform a rerun for example?"): as before, or as a scan; HR only. */
+  async readAgain(id: string, asScan: boolean, user: SessionUser): Promise<GeneralCvView> {
+    this.assertManages(user);
+    const r = await this.prisma.generalCv.findUnique({ where: { id }, select: { number: true } });
+    if (!r) throw new NotFoundException(NOT_FOUND);
+    await this.readings.readAgain({ generalCvId: id }, asScan);
+    await this.audit.record({ userId: user.id, action: 'read_again', entityType: GENERAL_CV_ENTITY, entityId: id, diff: { number: r.number, ...(asScan && { asScan: true }) } });
+    return this.get(id, user);
+  }
+
   async notes(id: string, user: SessionUser): Promise<never> {
     this.assertManages(user);
     if (!(await this.prisma.generalCv.count({ where: { id } }))) throw new NotFoundException(NOT_FOUND);

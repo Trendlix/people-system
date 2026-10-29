@@ -165,6 +165,8 @@ describe('CV reading and analysis (e2e)', () => {
       AR: ARABIC_SCAN,
       BULK: `Karim Scanned Ocr\nkarim.ocr.${RUN}@mail.test\n+20 112 345 6789\nExperience\nEditor 2018 - 2020`,
       EMPTY: '',
+      // a designed PDF's text as the OCR service reads it, for Read as a scan (29 October 2026)
+      JUMBLED: 'Jumbled Person\nExperience\nSenior Video Editor, Bright Studio, Jan 2020 - Present\nPremiere Pro, After Effects',
     });
     process.env.OCR_URL = ocr.url;
     ({ app, prisma } = await createApp());
@@ -471,6 +473,71 @@ describe('CV reading and analysis (e2e)', () => {
     const general = JSON.stringify([(await get('developer', `/recruitment/general-cvs/${sara}`).expect(200)).body, (await get('developer', '/recruitment/candidates').expect(200)).body]);
     expect(general).not.toContain('"Designer"');
     expect(general).not.toContain('Senior Video Editor');
+  });
+
+
+  // owner, 29 October 2026: "what can we do if the OCR missed pulling data? can i perform a rerun for example?"
+  it('reads a CV again, as before or as a scan (HR only), the earlier reading kept when the new one fails or finds nothing', async () => {
+    /** A PDF with its own text, and a mark telling the stand-in OCR service what it reads as a scan. */
+    // enough text of its own not to be taken for a scan
+    const FILLER = ['Profile: a careful person who enjoys planning, reporting and working with a team every day.', 'Interests: reading, travel, photography and football with friends.'];
+    const withMark = async (lines: string[], mark: string) => Buffer.concat([await pdfOf([...lines, ...FILLER]), Buffer.from(`\n% MARK:${mark}\n`)]);
+    const again = (as: string, id: string, body: object = {}) => post(as, `/recruitment/applications/${id}/read-again`, body);
+    const id = await apply('jumbled', '10.4.9.1', await withMark(['Jumbled Person', 'Experience', 'Editor 2018 - 2020', 'zq xv kw'], 'JUMBLED'));
+    await drain();
+    expect(await readingOf({ applicationId: id })).toMatchObject({ status: 'read', method: 'pdf' });
+    // HR and a Super Admin only
+    for (const who of ['ceo', 'developer', 'outsider']) await again(who, id).expect(403);
+    // as before: being read until the round reads it; asked twice meanwhile, refused
+    const pending = (await again('hr', id).expect(200)).body as ApplicationView;
+    expect(pending.cvReading).toMatchObject({ status: 'pending' });
+    expect(said(await again('hr', id).expect(409))).toEqual(['It is being read already: give it a minute.']);
+    await drain();
+    expect(await readingOf({ applicationId: id })).toMatchObject({ status: 'read', method: 'pdf', attempts: 1, error: null });
+    // as a scan: the OCR service's text, whatever the PDF's own
+    await again('hr', id, { asScan: true }).expect(200);
+    await drain();
+    expect(ocr.calls.filter((c) => c.mark === 'JUMBLED').map((c) => c.lang)).toEqual(['en']);
+    const read = (await get('hr', `/recruitment/applications/${id}`).expect(200)).body as ApplicationView;
+    expect(read.cvReading).toMatchObject({ status: 'read', method: 'ocr_en', latestTitle: 'Senior Video Editor', latestCompany: 'Bright Studio', rereadProblem: null });
+    // (the key skills as an earlier test left them: any case)
+    expect(read.cvReading!.skills!.found.map((k) => k.toLowerCase())).toEqual(['premiere pro', 'after effects']);
+    expect(await prisma.cvReading.findFirstOrThrow({ where: { applicationId: id }, select: { forceOcr: true } })).toEqual({ forceOcr: false });
+    const audits = await prisma.auditLog.findMany({ where: { entityId: id, action: 'read_again' }, orderBy: { id: 'asc' }, select: { diff: true } });
+    expect(audits.map((a) => (a.diff as { asScan?: boolean }).asScan ?? false)).toEqual([false, true]);
+
+    // the OCR service failing three times: the earlier reading kept, the reason beside it
+    const keeper = await apply('keeper', '10.4.9.2', await withMark(['Keeper Person', 'Experience', 'Video Editor, Nile Media, Jan 2019 - Dec 2021'], 'FAIL'));
+    await drain();
+    const before = (await get('hr', `/recruitment/applications/${keeper}`).expect(200)).body as ApplicationView;
+    expect(before.cvReading).toMatchObject({ status: 'read', method: 'pdf', latestCompany: 'Nile Media' });
+    await again('hr', keeper, { asScan: true }).expect(200);
+    const now = Date.now();
+    await drain(new Date(now));
+    await drain(new Date(now + 3 * MINUTE));
+    await drain(new Date(now + 15 * MINUTE));
+    const kept = (await get('hr', `/recruitment/applications/${keeper}`).expect(200)).body as ApplicationView;
+    expect(kept.cvReading).toMatchObject({ status: 'read', method: 'pdf', latestCompany: 'Nile Media', rereadProblem: 'The OCR service could not read it.' });
+    expect(kept.cvMatchPercent).toBe(before.cvMatchPercent);
+
+    // the OCR service finding nothing: the earlier reading kept too
+    const blank = await apply('blank', '10.4.9.3', await withMark(['Blank Person', 'Experience', 'Video Editor, Nile Media, Jan 2019 - Dec 2021'], 'EMPTY'));
+    await drain();
+    await again('hr', blank, { asScan: true }).expect(200);
+    await drain();
+    expect(((await get('hr', `/recruitment/applications/${blank}`).expect(200)).body as ApplicationView).cvReading).toMatchObject({
+      status: 'read',
+      method: 'pdf',
+      latestCompany: 'Nile Media',
+      rereadProblem: 'Reading it again found no text.',
+    });
+
+    // a general CV's too; a bad form refused
+    await post('hr', `/recruitment/general-cvs/${sara}/read-again`, { asScan: 'yes' }).expect(400);
+    expect(((await post('hr', `/recruitment/general-cvs/${sara}/read-again`).expect(200)).body as GeneralCvView).cvReading).toMatchObject({ status: 'pending' });
+    await post('ceo', `/recruitment/general-cvs/${sara}/read-again`).expect(403);
+    await drain();
+    expect(((await get('hr', `/recruitment/general-cvs/${sara}`).expect(200)).body as GeneralCvView).cvReading).toMatchObject({ status: 'read', method: 'pdf', education: 'master' });
   });
 
   const said = (res: request.Response) => (Array.isArray(res.body.message) ? res.body.message : [res.body.message]) as string[];

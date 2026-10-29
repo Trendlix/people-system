@@ -633,3 +633,9 @@ export class ScreeningCallDto {
   @IsOptional() @TrimOrNull() @IsString() @MaxLength(SCREENING_CALL_NOTE_MAX, { message: `Keep the comment to ${SCREENING_CALL_NOTE_MAX} characters or fewer.` })
   note?: string | null;
 }
+
+/** A CV read again (29 October 2026: "can i perform a rerun for example?"): `asScan` reads it by the OCR service whatever its own text. */
+export class ReadAgainDto {
+  @IsOptional() @IsBoolean({ message: 'Say whether to read it as a scan: true or false.' })
+  asScan?: boolean;
+}

@@ -37,6 +37,7 @@ import {
   MoveApplicationDto,
   UpdateVacancyDto,
   VacancyReasonDto,
+  ReadAgainDto,
 } from './recruitment.dto.js';
 import { VacanciesService } from './vacancies.service.js';
 
@@ -259,6 +260,14 @@ export class ApplicationsController {
   @HttpCode(200)
   screeningCall(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ScreeningCallDto, @CurrentUser() user: SessionUser) {
     return this.applications.screeningCall(id, dto.result, dto.note, user);
+  }
+
+  /** Its CV read again (HR, a Super Admin; 29 October 2026): { asScan } reads it by the OCR service whatever its own text. */
+  @Roles(...MANAGES)
+  @Post(':id/read-again')
+  @HttpCode(200)
+  readAgain(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ReadAgainDto, @CurrentUser() user: SessionUser) {
+    return this.applications.readAgain(id, dto.asScan === true, user);
   }
 
   /** Schedules an interview (HR, a Super Admin): the candidate invited by email with the calendar invitation. */

@@ -9,7 +9,9 @@ import { loadAgencyMarks, loadApplicantCvText, loadGeneralCvText } from './data'
 import { careerFlag } from './career';
 import { AGENCY_MARKS_HREF, agencyFlag, agencyJobBadge, agencyJobCount, agencyJobsFor, hasMarkableCompany, markActionsFor, markIdOf, type AgencyMarkView, type MarkAction } from './agency';
 import { removeAgencyMark, setAgencyMark } from './agency-actions';
-import { AgencyMarkButtons } from './agency-ui';
+import { AgencyMarkButtons, SmallActionButton } from './agency-ui';
+import { readAgainChoices, rereadProblemText } from './read-again';
+import { readCvAgain } from './read-again-actions';
 import { managesRecruitment } from './recruitment';
 
 // "From the CV" on the applicant page and the general CV page (owner, 22 October 2026: "make the OCR egine reads the CV
@@ -68,6 +70,15 @@ export async function FromTheCv({ reading, subject }: { reading: CvReadingView; 
         )}
       </div>
       <p className={`text-sm ${reading.status === 'failed' ? 'text-warn' : 'text-muted'}`}>{readingStatusText(reading)}</p>
+      {/* HR's Read again and Read as a scan (owner, 29 October 2026: "can i perform a rerun for example?") */}
+      {rereadProblemText(reading.rereadProblem) && <p className="text-sm text-warn">{rereadProblemText(reading.rereadProblem)}</p>}
+      {managesRecruitment(user) && readAgainChoices(reading).length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {readAgainChoices(reading).map((c) => (
+            <SmallActionButton key={String(c.asScan)} action={readCvAgain.bind(null, subject, c.asScan)} label={c.label} pendingLabel={c.pendingLabel} confirm={c.confirm} />
+          ))}
+        </div>
+      )}
       {/* "Ex-agency · 3 y 4 m" (owner, 27 October 2026: "i need a flag if the candidate is ex marketing agencies or not") */}
       {(flag || career) && (
         <p className="flex flex-wrap gap-2 text-sm">

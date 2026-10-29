@@ -23,6 +23,7 @@ import {
   GeneralCvNotesDto,
   ListGeneralCvsDto,
   MoveGeneralCvDto,
+  ReadAgainDto,
 } from './recruitment.dto.js';
 
 // General CVs and the bulk upload (owner, 22 October 2026: "i want a proper viweing, what came out of the posted jobs and
@@ -121,6 +122,14 @@ export class GeneralCvsController {
   @Patch(':id/notes')
   notes(@Param('id', ParseUUIDPipe) id: string, @Body() _dto: GeneralCvNotesDto, @CurrentUser() user: SessionUser) {
     return this.cvs.notes(id, user);
+  }
+
+  /** Its CV read again (HR, a Super Admin; 29 October 2026): { asScan } reads it by the OCR service whatever its own text. */
+  @Roles(...MANAGES)
+  @Post(':id/read-again')
+  @HttpCode(200)
+  readAgain(@Param('id', ParseUUIDPipe) id: string, @Body() dto: ReadAgainDto, @CurrentUser() user: SessionUser) {
+    return this.cvs.readAgain(id, dto.asScan === true, user);
   }
 
   /** Add to a vacancy: { vacancyId, stage: applied | shortlisted }. */

@@ -436,6 +436,7 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   // the hiring steps (owner, 29 October 2026: "HR Screening and scheduling"; "Screening call + result"): HR's screening
   // call on a shortlisted applicant, passed or failed (its comment never in words)
   screening_call: 'Recorded the screening call',
+  read_again: 'Read the CV again',
   // a day as the sum of its pairs (owner, 25 October 2026: "the working hours to be calculated between the checkin and
   // out only, not the first and last"): the days of the months not yet paid recounted once
   recount_hours: 'Recounted the hours by check-in → check-out pairs',

@@ -1386,6 +1386,11 @@ export interface CvReadingView {
    * span, the companies, the average stay a company, a skipper or not; null: not told. Missing from an API before it.
    */
   career?: CareerFacts | null;
+  /**
+   * HR's Read again failed or found nothing (owner, 29 October 2026: "can i perform a rerun for example?"): why, the
+   * earlier reading shown as it was; null otherwise. Missing from an API before it.
+   */
+  rereadProblem?: string | null;
 }
 
 /**

@@ -1,4 +1,4 @@
-import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, type OnModuleDestroy } from '@nestjs/common';
 import {
   CV_FACTS_VERSION,
   CV_FIT_VERSION,
@@ -65,6 +65,8 @@ interface Claimed {
   generalCvId: string | null;
   uploadId: string | null;
   attempts: number;
+  /** HR's "Read as a scan" (29 October 2026): the OCR service whatever the PDF's own text. */
+  forceOcr: boolean;
 }
 
 /** Which CV a reading is for. */
@@ -155,10 +157,10 @@ export class CvReadingsService implements OnModuleDestroy {
   private async readDue(now: Date, read: () => void): Promise<number> {
     await this.enqueueMissing();
     // a reading whose last try was cut short (the API stopped while reading it): failed once that try's time is up
-    await this.prisma.cvReading.updateMany({
-      where: { status: 'pending', attempts: { gte: CV_READING_LIMITS.attempts }, nextTryAt: { lte: now } },
-      data: { status: 'failed', error: 'The CV could not be read.' },
-    });
+    // (one read again keeps its earlier reading: see fail())
+    const cut = { status: 'pending', attempts: { gte: CV_READING_LIMITS.attempts }, nextTryAt: { lte: now } } as const;
+    await this.prisma.cvReading.updateMany({ where: { ...cut, text: { not: null } }, data: { status: 'read', forceOcr: false, error: 'The CV could not be read again.' } });
+    await this.prisma.cvReading.updateMany({ where: cut, data: { status: 'failed', forceOcr: false, error: 'The CV could not be read.' } });
     let done = 0;
     for (; done < PER_ROUND; done++) {
       const row = await this.claim(now);
@@ -196,7 +198,7 @@ export class CvReadingsService implements OnModuleDestroy {
     // the round's time as text with its zone: a Date passed as is reaches Postgres without one, read in the server's
     const at = now.toISOString();
     const rows = await this.prisma.$queryRaw<
-      { id: string; application_id: string | null; general_cv_id: string | null; upload_id: string | null; attempts: number }[]
+      { id: string; application_id: string | null; general_cv_id: string | null; upload_id: string | null; attempts: number; force_ocr: boolean }[]
     >`UPDATE cv_readings SET attempts = attempts + 1,
         next_try_at = ${at}::timestamptz + make_interval(mins => (ARRAY[${BACKOFF_MINUTES[0]}, ${BACKOFF_MINUTES[1]}, ${BACKOFF_MINUTES[2]}]::int[])[LEAST(attempts + 1, 3)]),
         updated_at = now()
@@ -208,9 +210,9 @@ export class CvReadingsService implements OnModuleDestroy {
         LIMIT 1
         FOR UPDATE SKIP LOCKED
       )
-      RETURNING id, application_id, general_cv_id, upload_id, attempts`;
+      RETURNING id, application_id, general_cv_id, upload_id, attempts, force_ocr`;
     const r = rows[0];
-    return r ? { id: r.id, applicationId: r.application_id, generalCvId: r.general_cv_id, uploadId: r.upload_id, attempts: r.attempts } : null;
+    return r ? { id: r.id, applicationId: r.application_id, generalCvId: r.general_cv_id, uploadId: r.upload_id, attempts: r.attempts, forceOcr: r.force_ocr } : null;
   }
 
   /** The CV's file: its bytes, its type and its name; null when it is gone. */
@@ -241,8 +243,8 @@ export class CvReadingsService implements OnModuleDestroy {
     } else if (file.mimeType === PDF) {
       text = await cvText(file.data, PDF, { pages: CV_READING_LIMITS.pdfPages, chars: CV_READING_LIMITS.chars });
       method = 'pdf';
-      if (textAmount(text) < CV_READING_LIMITS.minTextChars) {
-        // a scan: the OCR service reads it, in English, then in Arabic when that came out mostly Arabic
+      if (textAmount(text) < CV_READING_LIMITS.minTextChars || row.forceOcr) {
+        // a scan (or HR's "Read as a scan"): the OCR service reads it, in English, then in Arabic when that came out mostly Arabic
         const en = await this.ocr.read(file.data, PDF, 'en');
         if (en.status !== 'done') {
           await this.retryLater(row, en.status === 'unavailable' ? 'The OCR service is not set up or not answering.' : 'The OCR service could not read it.');
@@ -264,6 +266,14 @@ export class CvReadingsService implements OnModuleDestroy {
     }
     const kept = text.slice(0, CV_READING_LIMITS.chars);
     const status: CvReadingStatus = textAmount(kept) > 0 ? 'read' : 'no_text';
+    // read again and nothing found this time (29 October 2026): the earlier reading kept, said beside it
+    if (status === 'no_text') {
+      const { count: keptEarlier } = await this.prisma.cvReading.updateMany({
+        where: { id: row.id, status: 'pending', text: { not: null } },
+        data: { status: 'read', forceOcr: false, error: 'Reading it again found no text.' },
+      });
+      if (keptEarlier) return true;
+    }
     const facts = status === 'read' ? cvFacts(kept, now) : null;
     const { count } = await this.prisma.cvReading.updateMany({
       where: { id: row.id, status: 'pending' },
@@ -274,6 +284,7 @@ export class CvReadingsService implements OnModuleDestroy {
         facts: facts ? (facts as unknown as Prisma.InputJsonValue) : Prisma.DbNull,
         readAt: now,
         error: null,
+        forceOcr: false,
       },
     });
     if (!count) return false;
@@ -285,14 +296,46 @@ export class CvReadingsService implements OnModuleDestroy {
     return true;
   }
 
+  /**
+   * Read a CV again (owner, 29 October 2026: "what can we do if the OCR missed pulling data? can i perform a rerun for
+   * example?"): an application's or a general CV's, as before (its own text, else the OCR service) or `asScan` (the OCR
+   * service whatever its own text: a designed PDF whose text comes out jumbled; a PDF only). Read by the round in a
+   * moment; its earlier reading stays should the new one fail or find nothing (fail(), read()).
+   */
+  async readAgain(of: { applicationId: string } | { generalCvId: string }, asScan: boolean): Promise<void> {
+    await this.enqueueMissing();
+    const r = await this.prisma.cvReading.findFirst({ where: of, select: { id: true, status: true } });
+    if (!r) throw new NotFoundException('This CV has no file to read.');
+    const busy = 'It is being read already: give it a minute.';
+    if (r.status === 'pending') throw new ConflictException(busy);
+    if (asScan) {
+      const file =
+        'applicationId' in of
+          ? await this.prisma.jobApplicationCv.findUnique({ where: { applicationId: of.applicationId }, select: { mimeType: true } })
+          : await this.prisma.generalCvFile.findUnique({ where: { generalCvId: of.generalCvId }, select: { mimeType: true } });
+      if (file?.mimeType !== PDF) throw new BadRequestException(['Only a PDF can be read as a scan: a Word file is read from its own text.']);
+    }
+    const { count } = await this.prisma.cvReading.updateMany({
+      where: { id: r.id, status: { not: 'pending' } },
+      data: { status: 'pending', attempts: 0, nextTryAt: new Date(), error: null, forceOcr: asScan },
+    });
+    if (!count) throw new ConflictException(busy);
+    this.kick();
+  }
+
   /** The OCR service down or failing: tried again at its next try, or failed for good after the last. */
   private async retryLater(row: Claimed, error: string): Promise<void> {
     if (row.attempts >= CV_READING_LIMITS.attempts) return this.fail(row.id, error);
     await this.prisma.cvReading.updateMany({ where: { id: row.id, status: 'pending' }, data: { error } });
   }
 
+  /**
+   * Failed for good. One read again (HR's "Read again", 29 October 2026) keeps its earlier reading: read, its text and
+   * facts as they were, the error said beside them; one never read before is failed.
+   */
   private async fail(id: string, error: string): Promise<void> {
-    await this.prisma.cvReading.updateMany({ where: { id, status: 'pending' }, data: { status: 'failed', error } });
+    const { count } = await this.prisma.cvReading.updateMany({ where: { id, status: 'pending', text: { not: null } }, data: { status: 'read', forceOcr: false, error } });
+    if (!count) await this.prisma.cvReading.updateMany({ where: { id, status: 'pending' }, data: { status: 'failed', forceOcr: false, error } });
   }
 
   /** A bulk upload's scanned CV read: its row's name, email and mobile, where still empty (or only the file's name). */
@@ -384,7 +427,7 @@ export class CvReadingsService implements OnModuleDestroy {
    * application's CV fit as kept (25 October 2026), its percent the CV match %.
    */
   view(
-    r: { status: string; method: string | null; readAt: Date | null; facts: Prisma.JsonValue | null; text: string | null } | null,
+    r: { status: string; method: string | null; readAt: Date | null; facts: Prisma.JsonValue | null; text: string | null; error?: string | null } | null,
     keySkills: readonly string[] | null,
     fit: CvFit | null = null,
     marks: AgencyMarks = new Map(),
@@ -423,6 +466,8 @@ export class CvReadingsService implements OnModuleDestroy {
       agency: read ? agencyOf(facts, r.readAt, marks) : null,
       // its career (owner, 29 October 2026: "and if the candidate is a skipper or no"): span, average stay, a skipper or not
       career: read ? careerFor(facts, r.readAt) : null,
+      // HR's Read again that failed or found nothing (29 October 2026): the earlier reading shown, and why
+      rereadProblem: read && r.error ? r.error : null,
     };
   }
 

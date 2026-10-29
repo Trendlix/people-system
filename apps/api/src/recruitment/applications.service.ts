@@ -141,7 +141,7 @@ const DETAIL_INCLUDE = {
   // the PDF case study sent as a portfolio (25 October 2026: "Portfolio per position")
   portfolioFile: { select: { fileName: true, sizeBytes: true } },
   // the CV read and analysed (22 October 2026)
-  cvReading: { select: { status: true, method: true, readAt: true, facts: true, text: true } },
+  cvReading: { select: { status: true, method: true, readAt: true, facts: true, text: true, error: true } },
   steps: { orderBy: { at: 'asc' }, include: { by: { select: { id: true, email: true } } } },
   // an earlier one marked (25 October 2026)
   offers: { orderBy: { createdAt: 'asc' }, select: { id: true, number: true, status: true, recordedEarlier: true } },
@@ -781,6 +781,17 @@ export class ApplicationsService {
    * HR's notes on an applicant: gone (410) since they became screening comments (24 October 2026: the notes "moved into
    * comments"); nothing else called it but the applicant page's notes box, retired with it. The notes kept stay read only.
    */
+  /**
+   * Its CV read again (owner, 29 October 2026: "what can we do if the OCR missed pulling data? can i perform a rerun for
+   * example?"): as before, or as a scan (`asScan`); HR (or a Super Admin) only. Shown as being read until done.
+   */
+  async readAgain(id: string, asScan: boolean, user: SessionUser): Promise<ApplicationView> {
+    const { a } = await this.managedRow(id, user);
+    await this.readings.readAgain({ applicationId: id }, asScan);
+    await this.audit.record({ userId: user.id, action: 'read_again', entityType: APPLICATION_ENTITY, entityId: id, diff: { number: a.number, ...(asScan && { asScan: true }) } });
+    return this.get(id, user);
+  }
+
   async notes(id: string, user: SessionUser): Promise<never> {
     await this.managedRow(id, user);
     throw new GoneException(NOTES_GONE);

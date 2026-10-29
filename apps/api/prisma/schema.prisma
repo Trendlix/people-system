@@ -2436,6 +2436,8 @@ model CvReading {
   attempts      Int             @default(0)
   nextTryAt     DateTime        @default(now()) @map("next_try_at") @db.Timestamptz
   error         String?
+  // read as a scan by the OCR service whatever its own text (29 October 2026: HR's "Read as a scan"); cleared once read
+  forceOcr      Boolean         @default(false) @map("force_ocr")
   readAt        DateTime?       @map("read_at") @db.Timestamptz
   createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz
   updatedAt     DateTime        @updatedAt @map("updated_at") @db.Timestamptz
