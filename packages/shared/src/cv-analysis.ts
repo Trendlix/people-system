@@ -230,9 +230,11 @@ export const EDUCATION_LEVEL_LABELS: Record<EducationLevel, string> = {
 
 /**
  * The facts' version, kept with them (24 October 2026: the work history, education details, skills, certifications and
- * city added): facts of an earlier version are worked out again from the CV's kept text (CvReadingsService.refreshFacts).
+ * city added; 3, 29 October 2026: a job's line naming two roles before its company, "Role | Role — Company"): facts of
+ * an earlier version are worked out again from the CV's kept text (CvReadingsService.refreshFacts), their applications
+ * scored again.
  */
-export const CV_FACTS_VERSION = 2;
+export const CV_FACTS_VERSION = 3;
 
 /**
  * A job of the CV's work history (24 October 2026). Its title and company as written, each null when the rules weren't
@@ -890,15 +892,25 @@ function keptPart(part: CvLine): CvLine | null {
   return t;
 }
 
-/** A job's line in parts: its title and company apart, or one part (`decisive`: "at" says which is which). */
+/** Two parts that both name a role ("Media Buyer | Content Creator"): one title of two roles, not a title and a company. */
+const twoRoles = (parts: readonly CvLine[]): boolean => parts.length === 2 && kindOf(parts[0]) === 'title' && kindOf(parts[1]) === 'title';
+
+/**
+ * A job's line in parts: its title and company apart, or one part (`decisive`: "at" says which is which). A separator
+ * whose two parts both name a role ("Media Buyer | Content Creator — GWM Agency" split at the pipe) gives way to a later
+ * one that finds the company (the dash: "Media Buyer | Content Creator" and "GWM Agency"; owner, 29 October 2026, on a
+ * CV whose first job lost its company: "there is missing data for example in the work history"). Only two roles found
+ * (no company on the line): the whole line is one part, the title, its company looked for on the lines next to it.
+ */
 function roleParts(line: CvLine): { parts: CvLine[]; titleFirst: boolean; decisive: boolean } {
   let current = tidyLine(line);
   for (const sep of ROLE_SEPARATORS) {
     if (!current.shown) break;
     const pieces = splitLine(current, sep.re, sep.once).map(keptPart).filter((p): p is CvLine => !!p);
     if (pieces.length >= 2) {
-      // "Title at Company in Cairo": the company's own separators may follow
+      // "Title at Company in Cairo": the company's own separators may follow ("Role | Role" stays whole: one part)
       const parts = pieces.slice(0, 2).map((p) => roleParts(p).parts[0] ?? p);
+      if (!sep.decisive && twoRoles(parts)) continue;
       return { parts, titleFirst: sep.titleFirst, decisive: sep.decisive };
     }
     if (pieces.length === 1) current = pieces[0];

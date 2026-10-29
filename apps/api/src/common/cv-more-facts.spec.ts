@@ -168,6 +168,27 @@ describe('the work history and the latest role', () => {
     ]);
   });
 
+  // owner, 29 October 2026, on a CV whose first job lost its company: "there is missing data for example in the work history"
+  it('reads two roles before the company, "Role | Role — Company (dates)", and two roles with the company on the next line', () => {
+    const f = cvFacts(
+      [
+        'Experience',
+        'Media Buyer | Content Creator — Orbit Agency (Mar 2026 – Present)',
+        '• Ran paid campaigns on Meta Ads and TikTok Ads.',
+        'Media Buyer — Nile Holdings (Aug 2025 – Jan 2026)',
+        'Senior Designer | Art Director',
+        'Bright Studio',
+        'Jan 2020 – Dec 2022',
+      ].join('\n'),
+      NOW,
+    );
+    expect(f.workHistory.map((w) => [w.pastTitle, w.pastCompany, w.from, w.to, w.current])).toEqual([
+      ['Media Buyer | Content Creator', 'Orbit Agency', '2026-03', null, true],
+      ['Media Buyer', 'Nile Holdings', '2025-08', '2026-01', false],
+      ['Senior Designer | Art Director', 'Bright Studio', '2020-01', '2022-12', false],
+    ]);
+  });
+
   it('reads "Company | Title", a place or "(Remote)" left out', () => {
     const f = cvFacts(MIXED, NOW);
     expect(f.workHistory.map((w) => [w.pastTitle, w.pastCompany])).toEqual([
