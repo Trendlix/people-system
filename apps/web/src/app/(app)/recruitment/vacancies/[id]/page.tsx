@@ -43,6 +43,8 @@ import { ApplicantsTable, VacancyStatusBadge, VerdictBadge } from '../../ui';
 import { vacancyPortfolioText } from '../../portfolio';
 import { agencyBackgroundText } from '../../agency';
 import { experienceBasisText } from '../../career';
+import { shortlistable } from '../../shortlist';
+import { ShortlistSelection } from '../../shortlist-ui';
 
 // A vacancy (owner, 22 October 2026: "where will we include the ATS?"): where it stands and what can be done (HR sends it
 // to the CEO, holds, reopens, closes it; the CEO approves it or sends it back with a reason), its position and internal
@@ -106,6 +108,8 @@ async function Applicants({ v, searchParams }: { v: VacancyView; searchParams: P
   const cvFirst = q.sort === 'cv' && sortDirOf(q) === 'desc';
   const yearsFirst = q.sort === 'years' && sortDirOf(q) === 'desc';
   const total = Object.values(v.stageCounts).reduce((a, b) => a + b, 0);
+  // HR's ticks (owner, 29 October 2026: "HR Filteration and shortlisting"): those at Applied, never one filtered out
+  const shortlistIds = v.viewer === 'manages' && loaded.kind === 'ok' ? loaded.value.filter(shortlistable).map((a) => a.id) : [];
   return (
     <section aria-labelledby="vacancy-applicants" className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -168,15 +172,19 @@ async function Applicants({ v, searchParams }: { v: VacancyView; searchParams: P
           ))}
         </p>
       )}
-      {loaded.kind !== 'ok' ? (
-        <Empty>{recruitmentNotLoaded(loaded, 'applicants')}</Empty>
-      ) : loaded.value.length === 0 ? (
-        <div className="card px-6 py-8 text-center text-sm text-muted">{total ? 'Nobody here.' : 'Nobody has applied yet.'}</div>
-      ) : (
-        // Delete applicant on each row, a Super Admin's only (owner, 25 October 2026: "applicant alone - superadmin only"); each
-        // title sorts by its column (owner, 28 October 2026: "i want to activate sorting by from the titles")
-        <ApplicantsTable rows={loaded.value} withVacancy={false} deletes={canDelete(user)} sorting={{ q, href: (next) => applicantsHref(base, { ...q, ...next }) }} />
-      )}
+      {/* HR ticks those at Applied and shortlists them together (owner, 29 October 2026: "Tick several at once"); what was
+          done stays said above the list once it is read again, even when nobody is left in it */}
+      <ShortlistSelection vacancyId={v.id} ids={shortlistIds}>
+        {loaded.kind !== 'ok' ? (
+          <Empty>{recruitmentNotLoaded(loaded, 'applicants')}</Empty>
+        ) : loaded.value.length === 0 ? (
+          <div className="card px-6 py-8 text-center text-sm text-muted">{total ? 'Nobody here.' : 'Nobody has applied yet.'}</div>
+        ) : (
+          // Delete applicant on each row, a Super Admin's only (owner, 25 October 2026: "applicant alone - superadmin only"); each
+          // title sorts by its column (owner, 28 October 2026: "i want to activate sorting by from the titles")
+          <ApplicantsTable rows={loaded.value} withVacancy={false} deletes={canDelete(user)} ticks={shortlistIds.length > 0} sorting={{ q, href: (next) => applicantsHref(base, { ...q, ...next }) }} />
+        )}
+      </ShortlistSelection>
     </section>
   );
 }

@@ -364,7 +364,8 @@ describe('Recruitment, Phase 2 (e2e)', () => {
       expect(iv1.vacancies).toEqual([]);
       const hm = (await get('hm', '/recruitment/my-hiring').expect(200)).body as MyHiring;
       expect(hm.vacancies).toEqual([expect.objectContaining({ id: v.id, counts: expect.objectContaining({ applied: 0 }) })]);
-      expect((await get('outsider', '/recruitment/my-hiring').expect(200)).body).toEqual({ vacancies: [], interviews: [], feedbackDue: 0 });
+      // no shortlist to review either (29 October 2026: hiring-steps-review.e2e-spec.ts)
+      expect((await get('outsider', '/recruitment/my-hiring').expect(200)).body).toEqual({ vacancies: [], interviews: [], feedbackDue: 0, toReview: [] });
       expect((await get('hm', '/auth/me').expect(200)).body.hiring).toBe(true);
       expect((await get('iv1', '/auth/me').expect(200)).body.hiring).toBe(true);
       expect((await get('outsider', '/auth/me').expect(200)).body.hiring).toBe(false);

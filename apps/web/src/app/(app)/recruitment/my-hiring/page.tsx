@@ -7,6 +7,7 @@ import { Empty, Loading } from '../../organization/ui';
 import { loadMyHiring, recruitmentNotLoaded } from '../data';
 import { InterviewsTable } from '../interviews/interviews-table';
 import { boardHref } from '../hiring';
+import { ShortlistToReview } from '../shortlist-review';
 
 // My Hiring (Phase 2, owner, 22 October 2026; the brief: "Show it only to people who are a hiring manager or interviewer
 // on something open"): the open vacancies the person hires for, with their applicants from Shortlisted on, and the
@@ -28,6 +29,8 @@ async function Mine() {
           {feedbackDue} {feedbackDue === 1 ? 'scorecard is' : 'scorecards are'} waiting for you: open the applicant to give it.
         </p>
       )}
+      {/* the shortlists HR sent them, to accept or reject (owner, 29 October 2026: "Manager view the shortlisted and accept or reject them") */}
+      <ShortlistToReview groups={loaded.value.toReview ?? []} hires={vacancies.length > 0} />
       {vacancies.length > 0 && (
         <section aria-labelledby="my-vacancies" className="space-y-3">
           <h2 id="my-vacancies" className="text-lg font-semibold">

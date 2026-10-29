@@ -38,6 +38,7 @@ import { CvPrefillService } from './cv-prefill.service.js';
 import { LinkedInHttp } from './linkedin-http.js';
 import { LinkedInSignInService } from './linkedin-signin.service.js';
 import { PortfolioSettingsService } from './portfolio-settings.service.js';
+import { HiringStepsController } from './hiring-steps.controller.js';
 
 // Recruitment, the ATS (owner, 22 October 2026: "where will we include the ATS?"): Phase 1, vacancies, the careers page
 // and the applicants; Phase 2, the pipeline board, interviews, scorecards, the hiring manager's suggestions, the
@@ -74,6 +75,9 @@ import { PortfolioSettingsService } from './portfolio-settings.service.js';
     CareersExtrasController,
     CareersSettingsController,
     PortfolioFilesController,
+    // HR shortlists several at once, the hiring manager accepts or rejects several at once (owner, 29 October 2026: "Tick
+    // several at once")
+    HiringStepsController,
   ],
   providers: [
     AgencyMarksService,

@@ -6,7 +6,6 @@ import {
   applicationSourceText,
   FEEDBACK_CRITERIA,
   FEEDBACK_CRITERION_LABELS,
-  HIRING_SUGGESTION_LABELS,
   INTERVIEW_KIND_LABELS,
   INTERVIEW_STATUS_LABELS,
   RECOMMENDATION_LABELS,
@@ -16,6 +15,7 @@ import {
   type ApplicationView,
   type InterviewView,
 } from '@trendlix/shared';
+import { suggestionShown } from '@trendlix/shared';
 import { SetUpEmailLink } from '@/components/set-up-email-link';
 import { isEmailNotSetUp, setsUpEmail } from '@/lib/email-setup';
 import { formatDate, formatDateTime } from '@/lib/format';
@@ -360,10 +360,11 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
 
       {a.candidateProfile?.employee && <EmployeeCard link={a.candidateProfile.employee} />}
 
+      {/* at Shortlisted, their review (owner, 29 October 2026: "Manager view the shortlisted and accept or reject them"): "Accepted by the hiring manager" */}
       {a.suggestion && (
-        <div role="note" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
+        <div role="note" className={`rounded-lg px-4 py-3 text-sm ${a.stage === 'shortlisted' && a.suggestion.kind === 'next' ? 'bg-ok-soft text-ok' : 'bg-warn-soft text-warn'}`}>
           <p className="font-semibold">
-            The hiring manager suggests: {HIRING_SUGGESTION_LABELS[a.suggestion.kind]}
+            {suggestionShown(a.suggestion.kind, a.stage)}
             {a.suggestion.by ? ` (${a.suggestion.by.name ?? a.suggestion.by.email}, ${formatDateTime(a.suggestion.at)})` : ''}
           </p>
           {a.suggestion.note && <p>{a.suggestion.note}</p>}
@@ -510,7 +511,7 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
             Your Suggestion
           </h2>
           <p className="text-sm text-muted">As the hiring manager, tell HR what you think should happen next. HR acts on it.</p>
-          <SuggestForm action={suggestNext.bind(null, a.id)} />
+          <SuggestForm action={suggestNext.bind(null, a.id)} stage={a.stage} />
         </section>
       )}
 

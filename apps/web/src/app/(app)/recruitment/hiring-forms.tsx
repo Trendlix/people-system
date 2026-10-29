@@ -7,7 +7,6 @@ import {
   FEEDBACK_CRITERIA,
   FEEDBACK_CRITERION_LABELS,
   FEEDBACK_NOTES_MAX,
-  HIRING_SUGGESTION_LABELS,
   HIRING_SUGGESTIONS,
   INTERVIEW_KIND_LABELS,
   INTERVIEW_KINDS,
@@ -21,6 +20,7 @@ import {
   type InterviewView,
   type MeetingChoices,
 } from '@trendlix/shared';
+import { suggestionLabel, type ApplicationStage } from '@trendlix/shared';
 import { DateInput, TimeInput } from '@/components/date-time-inputs';
 import { FormErrors, useFieldIds } from '@/components/form';
 import { formatDate, formatDateTime } from '@/lib/format';
@@ -548,8 +548,11 @@ export function FeedbackForm({ action, mine }: { action: Action; mine: FeedbackV
   );
 }
 
-/** The hiring manager's suggestion to HR: the next step or a rejection, with a note. */
-export function SuggestForm({ action }: { action: Action }) {
+/**
+ * The hiring manager's suggestion to HR: the next step or a rejection, with a note; at Shortlisted, their review: Accept
+ * or Reject (owner, 29 October 2026: "Manager view the shortlisted and accept or reject them").
+ */
+export function SuggestForm({ action, stage }: { action: Action; stage: ApplicationStage }) {
   const [state, formAction, pending] = useActionState(action, {});
   const fid = useFieldIds();
   return (
@@ -560,7 +563,7 @@ export function SuggestForm({ action }: { action: Action }) {
         {HIRING_SUGGESTIONS.map((s) => (
           <label key={s} className="flex items-center gap-2 text-sm">
             <input type="radio" name="suggestion" value={s} required />
-            {HIRING_SUGGESTION_LABELS[s]}
+            {suggestionLabel(s, stage)}
           </label>
         ))}
       </fieldset>
