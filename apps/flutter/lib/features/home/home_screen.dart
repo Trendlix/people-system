@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,18 +10,27 @@ import '../../models/me.dart';
 import '../../models/today.dart';
 import '../../platform/locator.dart';
 import '../../providers.dart';
+import '../../theme/look.dart';
+import '../../theme/parts.dart';
 import '../../theme/tokens.dart';
 import 'today_controller.dart';
+import 'work_ring.dart';
 
 /// Home's words, in one place (ready for Arabic).
 abstract final class HomeWords {
   static const checkIn = 'Check in';
   static const checkOut = 'Check out';
   static const findingYou = 'Finding your location…';
-  static const notYet = 'Not checked in yet';
+  static const notYet = 'Not checked in';
+  static const attention = 'Here’s what needs your attention today.';
+  static const today = 'Today';
+  static const record = 'Today’s record';
+  static const recordTitle = 'Check-ins';
+  static const privacy = 'Your location is only captured when you check in or out.';
+  static String statusIn(String at) => 'Checked in · $at';
+  static String statusOut(String at) => 'Checked out · $at';
   static String checkedIn(String at, String place) => 'Checked in at $at · $place';
   static String checkedOut(String at, String place) => 'Checked out at $at · $place';
-  static String counted(String hours) => '$hours counted today';
   static String shift(String from, String to) => 'Shift $from – $to';
   static const sameAgain = 'Already done: kept once.';
   static const hold = 'Your access is on hold: you can still check in and out.';
@@ -29,6 +39,9 @@ abstract final class HomeWords {
   static const duty = 'Official duty';
   static const optional = 'Check-in optional today';
   static const signOut = 'Sign out';
+  static const account = 'Your account';
+  static const toDark = 'Dark look';
+  static const toLight = 'Light look';
   static const tryAgain = 'Try again';
   static const loadFailed = 'Couldn’t load today.';
   static const offerTitle = 'Sign in with your fingerprint?';
@@ -36,6 +49,8 @@ abstract final class HomeWords {
   static const offerYes = 'Use fingerprint';
   static const offerNo = 'Not now';
   static const fingerprintOn = 'Fingerprint sign-in is on.';
+  static const kindIn = 'Checked in';
+  static const kindOut = 'Checked out';
 
   static const places = {'office': 'Office', 'home': 'Home', 'remote': 'Remote', 'unknown': 'Location unknown'};
 
@@ -60,7 +75,7 @@ abstract final class HomeWords {
 }
 
 /// What Home says under the button after a press: good news, or why not and what to do.
-typedef _Notice = ({String text, bool ok, String? action, VoidCallback? onAction});
+typedef _Said = ({String text, bool ok, String? action, VoidCallback? onAction});
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key, required this.me});
@@ -73,7 +88,8 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   bool _busy = false;
-  _Notice? _notice;
+  _Said? _said;
+  final _saidKey = GlobalKey();
   late final AppLifecycleListener _lifecycle;
 
   @override
@@ -122,9 +138,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (_busy) return;
     setState(() {
       _busy = true;
-      _notice = null;
+      _said = null;
     });
-    _Notice? notice;
+    _Said? said;
     try {
       final outcome = await ref.read(todayProvider.notifier).press();
       switch (outcome) {
@@ -133,7 +149,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           final done = punch == null
               ? null
               : (punch.kind == PunchKind.checkIn ? HomeWords.checkedIn : HomeWords.checkedOut)(clockOf(punch.at), HomeWords.placeOf(punch));
-          notice = (text: [if (!kept) HomeWords.sameAgain, ?done, ...messages].join('\n'), ok: true, action: null, onAction: null);
+          said = (text: [if (!kept) HomeWords.sameAgain, ?done, ...messages].join('\n'), ok: true, action: null, onAction: null);
         case NoLocation(:final problem):
           final locator = ref.read(locatorProvider);
           final VoidCallback onAction = switch (problem) {
@@ -141,15 +157,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             LocationProblem.deniedForever => () => locator.openAppSettings(),
             _ => _press,
           };
-          notice = (text: HomeWords.noLocation(problem), ok: false, action: HomeWords.locationAction(problem), onAction: onAction);
+          said = (text: HomeWords.noLocation(problem), ok: false, action: HomeWords.locationAction(problem), onAction: onAction);
       }
     } on ApiException catch (e) {
-      notice = (text: e.message, ok: false, action: e.unreachable ? HomeWords.tryAgain : null, onAction: e.unreachable ? _press : null);
+      said = (text: e.message, ok: false, action: e.unreachable ? HomeWords.tryAgain : null, onAction: e.unreachable ? _press : null);
     } finally {
       if (mounted) {
         setState(() {
           _busy = false;
-          _notice = notice;
+          _said = said;
+        });
+        // what the press came to, in view (on a short phone it can fall under the screen's edge)
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final shown = _saidKey.currentContext;
+          if (shown != null && shown.mounted) {
+            Scrollable.ensureVisible(
+              shown,
+              duration: const Duration(milliseconds: 250),
+              alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+            );
+          }
         });
       }
     }
@@ -167,32 +194,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           child: ListView(
             padding: Tokens.pagePadding,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('${greetingAt(now)}, ${widget.me.firstName}', style: text.headlineSmall?.copyWith(fontWeight: FontWeight.w700, color: Tokens.ink)),
-                        const SizedBox(height: 2),
-                        Text(dayLineOf(now), style: text.bodyLarge?.copyWith(color: Tokens.muted)),
-                      ],
-                    ),
-                  ),
-                  PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_vert_rounded),
-                    onSelected: (_) => ref.read(authProvider.notifier).signOut(),
-                    itemBuilder: (context) => const [PopupMenuItem(value: 'sign-out', child: Text(HomeWords.signOut))],
-                  ),
-                ],
-              ),
-              if (widget.me.hold) ...[const SizedBox(height: Tokens.gap), _Banner(text: HomeWords.hold, ok: false)],
-              const SizedBox(height: Tokens.gap * 1.5),
+              _Header(me: widget.me),
+              const SizedBox(height: 28),
+              Eyebrow(eyebrowDayOf(now)),
+              const SizedBox(height: 8),
+              Text('${greetingAt(now)}, ${widget.me.firstName}.', style: text.displaySmall),
+              const SizedBox(height: 8),
+              Text(HomeWords.attention, style: text.bodyMedium?.copyWith(color: context.palette.muted)),
+              if (widget.me.hold) ...[const SizedBox(height: Tokens.gap), const Notice(text: HomeWords.hold, ok: false)],
+              const SizedBox(height: 24),
               today.when(
                 skipLoadingOnRefresh: true,
-                loading: () => const Padding(padding: EdgeInsets.all(48), child: Center(child: CircularProgressIndicator())),
-                error: (e, _) => _LoadFailed(message: e is ApiException ? e.message : HomeWords.loadFailed, onRetry: () => ref.invalidate(todayProvider)),
-                data: (t) => _TodayView(today: t, busy: _busy, notice: _notice, onPress: _press),
+                loading: () => const Padding(
+                  padding: EdgeInsets.all(48),
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+                error: (e, _) => Notice(
+                  text: e is ApiException ? e.message : HomeWords.loadFailed,
+                  ok: false,
+                  action: HomeWords.tryAgain,
+                  onAction: () => ref.invalidate(todayProvider),
+                ),
+                data: (t) => _TodayView(today: t, now: now, busy: _busy, said: _said, saidKey: _saidKey, onPress: _press),
               ),
             ],
           ),
@@ -202,68 +225,145 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 }
 
-class _TodayView extends StatelessWidget {
-  const _TodayView({required this.today, required this.busy, required this.notice, required this.onPress});
+/// The design's header, for a phone: the app's name; the light/dark switch; the avatar, with the account's menu.
+class _Header extends ConsumerWidget {
+  const _Header({required this.me});
 
-  final Today today;
-  final bool busy;
-  final _Notice? notice;
-  final VoidCallback onPress;
+  final Me me;
 
   @override
-  Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
-    final last = today.last;
-    final status = last == null
-        ? HomeWords.notYet
-        : (last.kind == PunchKind.checkIn ? HomeWords.checkedIn : HomeWords.checkedOut)(clockOf(last.at), HomeWords.placeOf(last));
-    final chips = [
-      if (today.networkLocked) HomeWords.networkNeeded,
-      if (today.workingFromHome) HomeWords.wfh,
-      if (today.officialDutyNow) HomeWords.duty,
-      if (today.exempt) HomeWords.optional,
-    ];
-    final refusal = today.refusal;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+  Widget build(BuildContext context, WidgetRef ref) {
+    final p = context.palette;
+    final dark = p.isDark;
+    return Row(
       children: [
-        Container(
-          padding: const EdgeInsets.all(Tokens.gap + 4),
-          decoration: BoxDecoration(color: Tokens.card, borderRadius: BorderRadius.circular(Tokens.radiusCard)),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (today.shiftStart != null && today.shiftEnd != null)
-                Text(HomeWords.shift(today.shiftStart!, today.shiftEnd!), style: text.labelLarge?.copyWith(color: Tokens.muted)),
-              const SizedBox(height: 6),
-              Text(refusal ?? status, style: text.titleMedium?.copyWith(color: Tokens.ink, fontWeight: FontWeight.w600)),
-              if (refusal == null && today.hoursCounted > 0) ...[
-                const SizedBox(height: 4),
-                Text(HomeWords.counted(hoursOf(today.hoursCounted)), style: text.bodyMedium?.copyWith(color: Tokens.muted)),
-              ],
-              if (refusal == null && today.expectedText != null) ...[
-                const SizedBox(height: 4),
-                Text(today.expectedText!, style: text.bodyMedium?.copyWith(color: Tokens.muted)),
-              ],
-              if (refusal == null && chips.isNotEmpty) ...[
-                const SizedBox(height: Tokens.gapSmall + 4),
-                Wrap(spacing: Tokens.gapSmall, runSpacing: Tokens.gapSmall, children: [for (final c in chips) _Chip(c)]),
-              ],
-            ],
+        const Expanded(
+          child: Align(alignment: AlignmentDirectional.centerStart, child: BrandLine()),
+        ),
+        IconTile(
+          dark ? CupertinoIcons.sun_max : CupertinoIcons.moon,
+          onCard: false,
+          tooltip: dark ? HomeWords.toLight : HomeWords.toDark,
+          onTap: () => ref.read(lookProvider.notifier).toggle(p.brightness),
+        ),
+        PopupMenuButton<String>(
+          tooltip: HomeWords.account,
+          position: PopupMenuPosition.under,
+          onSelected: (_) => ref.read(authProvider.notifier).signOut(),
+          itemBuilder: (context) => [
+            PopupMenuItem(
+              value: 'sign-out',
+              child: Row(
+                children: [
+                  Icon(CupertinoIcons.square_arrow_left, size: 18, color: p.ink),
+                  const SizedBox(width: 10),
+                  const Text(HomeWords.signOut),
+                ],
+              ),
+            ),
+          ],
+          child: SizedBox.square(
+            dimension: Tokens.tapTarget,
+            child: Center(
+              child: Container(
+                width: 40,
+                height: 40,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: p.primary,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: p.line),
+                ),
+                child: Text(
+                  initialsOf(me.name ?? me.firstName),
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(color: p.onPrimary, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
           ),
         ),
-        if (refusal == null) ...[
-          const SizedBox(height: Tokens.gap * 2.5),
-          Center(child: _PressButton(next: today.next, busy: busy, onPress: onPress)),
-          const SizedBox(height: Tokens.gap * 2),
-        ],
-        if (notice != null) _Banner(text: notice!.text, ok: notice!.ok, action: notice!.action, onAction: notice!.onAction),
       ],
     );
   }
 }
 
-/// The one big button: Check in (accent) or Check out (ink), whichever is next.
+class _TodayView extends StatelessWidget {
+  const _TodayView({required this.today, required this.now, required this.busy, required this.said, required this.saidKey, required this.onPress});
+
+  final Today today;
+  final DateTime now;
+  final bool busy;
+  final _Said? said;
+  final GlobalKey saidKey;
+  final VoidCallback onPress;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final text = Theme.of(context).textTheme;
+    final last = today.last;
+    final refusal = today.refusal;
+    final status = last == null ? HomeWords.notYet : (last.kind == PunchKind.checkIn ? HomeWords.statusIn : HomeWords.statusOut)(clockOf(last.at));
+    final chips = [
+      if (today.networkLocked) (HomeWords.networkNeeded, CupertinoIcons.wifi),
+      if (today.workingFromHome) (HomeWords.wfh, CupertinoIcons.house),
+      if (today.officialDutyNow) (HomeWords.duty, CupertinoIcons.briefcase),
+      if (today.exempt) (HomeWords.optional, CupertinoIcons.checkmark_alt),
+    ];
+    final said = this.said;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        SurfaceCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              CardHead(
+                eyebrow: HomeWords.today,
+                title: dayLineOf(now),
+                trailing: refusal == null ? Pill(status, strong: last?.kind == PunchKind.checkIn) : null,
+              ),
+              if (refusal != null) ...[
+                const SizedBox(height: Tokens.gap),
+                Text(refusal, style: text.bodyLarge),
+              ] else ...[
+                const SizedBox(height: 24),
+                Center(child: WorkRing(today: today)),
+                const SizedBox(height: 24),
+                if (today.shiftStart != null && today.shiftEnd != null)
+                  Text(HomeWords.shift(today.shiftStart!, today.shiftEnd!), style: text.titleMedium),
+                if (today.expectedText != null) ...[
+                  const SizedBox(height: 4),
+                  Text(today.expectedText!, style: text.bodyMedium?.copyWith(color: p.muted)),
+                ],
+                if (chips.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: Tokens.gapSmall,
+                    runSpacing: Tokens.gapSmall,
+                    children: [for (final (label, icon) in chips) Pill(label, icon: icon)],
+                  ),
+                ],
+                const SizedBox(height: 20),
+                _PressButton(next: today.next, busy: busy, onPress: onPress),
+                // what the press came to, right under it
+                if (said != null) ...[
+                  const SizedBox(height: 12),
+                  Notice(key: saidKey, text: said.text, ok: said.ok, action: said.action, onAction: said.onAction),
+                ],
+                const SizedBox(height: 12),
+                Text(HomeWords.privacy, textAlign: TextAlign.center, style: text.bodySmall),
+              ],
+            ],
+          ),
+        ),
+        if (refusal == null && today.punches.isNotEmpty) ...[const SizedBox(height: 12), _Record(punches: today.punches)],
+      ],
+    );
+  }
+}
+
+/// The one big button: Check in or Check out, whichever is next.
 class _PressButton extends StatelessWidget {
   const _PressButton({required this.next, required this.busy, required this.onPress});
 
@@ -271,106 +371,97 @@ class _PressButton extends StatelessWidget {
   final bool busy;
   final VoidCallback onPress;
 
-  static const size = 196.0;
-
   @override
   Widget build(BuildContext context) {
+    final p = context.palette;
     final checkIn = next == PunchKind.checkIn;
-    final colour = checkIn ? Tokens.accent : Tokens.ink;
-    final label = checkIn ? HomeWords.checkIn : HomeWords.checkOut;
-    return Semantics(
-      button: true,
-      label: busy ? HomeWords.findingYou : label,
-      child: Material(
-        color: colour,
-        shape: const CircleBorder(),
-        elevation: 6,
-        shadowColor: colour.withValues(alpha: 0.45),
-        child: InkWell(
-          customBorder: const CircleBorder(),
-          onTap: busy ? null : onPress,
-          child: SizedBox.square(
-            dimension: size,
-            child: Center(
-              child: busy
-                  ? Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const SizedBox.square(dimension: 32, child: CircularProgressIndicator(strokeWidth: 3, color: Colors.white)),
-                        const SizedBox(height: 12),
-                        Text(HomeWords.findingYou, style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.white)),
-                      ],
-                    )
-                  : Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(checkIn ? Icons.login_rounded : Icons.logout_rounded, color: Colors.white, size: 44),
-                        const SizedBox(height: 10),
-                        Text(label, style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.w700)),
-                      ],
-                    ),
-            ),
-          ),
-        ),
+    return SizedBox(
+      height: 58,
+      child: FilledButton(
+        onPressed: busy ? null : onPress,
+        style: FilledButton.styleFrom(textStyle: Theme.of(context).textTheme.titleMedium),
+        child: busy
+            ? Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox.square(dimension: 18, child: CircularProgressIndicator(strokeWidth: 2, color: p.onPrimary)),
+                  const SizedBox(width: 12),
+                  const Text(HomeWords.findingYou),
+                ],
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(checkIn ? CupertinoIcons.clock : CupertinoIcons.square_arrow_left, size: 20, color: p.onPrimary),
+                  const SizedBox(width: 10),
+                  Text(checkIn ? HomeWords.checkIn : HomeWords.checkOut),
+                ],
+              ),
       ),
     );
   }
 }
 
-class _Chip extends StatelessWidget {
-  const _Chip(this.text);
+/// Today's check-ins and check-outs, as the design's schedule lists times: the time, a dot on a line, what and where.
+class _Record extends StatelessWidget {
+  const _Record({required this.punches});
 
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-      decoration: BoxDecoration(color: Tokens.accentSoft, borderRadius: BorderRadius.circular(Tokens.radiusPill)),
-      child: Text(text, style: Theme.of(context).textTheme.labelMedium?.copyWith(color: Tokens.accent, fontWeight: FontWeight.w600)),
-    );
-  }
-}
-
-class _Banner extends StatelessWidget {
-  const _Banner({required this.text, required this.ok, this.action, this.onAction});
-
-  final String text;
-  final bool ok;
-  final String? action;
-  final VoidCallback? onAction;
+  final List<Punch> punches;
 
   @override
   Widget build(BuildContext context) {
-    final fg = ok ? Tokens.ok : Tokens.danger;
-    return Container(
-      padding: const EdgeInsets.all(Tokens.gap),
-      decoration: BoxDecoration(color: ok ? Tokens.okSoft : Tokens.dangerSoft, borderRadius: BorderRadius.circular(Tokens.radiusControl)),
+    final p = context.palette;
+    final text = Theme.of(context).textTheme;
+    return SurfaceCard(
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(ok ? Icons.check_circle_rounded : Icons.info_rounded, color: fg),
-              const SizedBox(width: Tokens.gapSmall + 2),
-              Expanded(child: Text(text, style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: fg))),
-            ],
-          ),
-          if (action != null && onAction != null)
-            Align(alignment: Alignment.centerRight, child: TextButton(onPressed: onAction, child: Text(action!))),
+          const CardHead(eyebrow: HomeWords.record, title: HomeWords.recordTitle),
+          const SizedBox(height: 12),
+          for (final (i, punch) in punches.indexed)
+            IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(
+                    width: 48,
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 12),
+                      child: Text(clockOf(punch.at), style: text.bodySmall),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 24,
+                    child: Column(
+                      children: [
+                        Container(width: 1, height: 14, color: i == 0 ? Colors.transparent : p.line),
+                        Icon(
+                          punch.kind == PunchKind.checkIn ? CupertinoIcons.largecircle_fill_circle : CupertinoIcons.circle,
+                          size: 14,
+                          color: p.ink,
+                        ),
+                        Expanded(child: Container(width: 1, color: i == punches.length - 1 ? Colors.transparent : p.line)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 9),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(punch.kind == PunchKind.checkIn ? HomeWords.kindIn : HomeWords.kindOut, style: text.bodyLarge),
+                          Text(HomeWords.placeOf(punch), style: text.bodySmall),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );
   }
-}
-
-class _LoadFailed extends StatelessWidget {
-  const _LoadFailed({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) => _Banner(text: message, ok: false, action: HomeWords.tryAgain, onAction: onRetry);
 }

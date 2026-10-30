@@ -14,6 +14,7 @@ import 'fakes.dart';
 // it, asked for at once.
 
 Future<void> open(WidgetTester tester, FakePeople people, MemorySessionStore store, {FakeBiometrics? biometrics}) async {
+  phoneScreen(tester);
   await tester.pumpWidget(
     ProviderScope(
       retry: noRetry,
@@ -71,7 +72,7 @@ void main() {
     expect(store.device?.id, 'd1');
     expect(find.text(HomeWords.fingerprintOn), findsOneWidget);
 
-    await tester.tap(find.byIcon(Icons.more_vert_rounded));
+    await tester.tap(find.byTooltip(HomeWords.account));
     await tester.pumpAndSettle();
     await tester.tap(find.text(HomeWords.signOut));
     await tester.pumpAndSettle();

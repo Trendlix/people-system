@@ -38,6 +38,12 @@ void main() {
     expect(r.messages, ['Checked in.']);
     expect(r.kept, isFalse);
     expect(Today.fromJson({}).punches, isEmpty);
+
+    // the ring: the shift's hours (8 when it doesn't say), the finished hours and the open check-in's until now
+    expect(r.today.hoursPerDay, 8);
+    expect(Today.fromJson({'shift': {'hoursPerDay': 7.5}}).hoursPerDay, 7.5);
+    expect(r.today.workedAt(DateTime.utc(2026, 10, 30, 8, 28)), const Duration(hours: 8, minutes: 45));
+    expect(r.today.workedAt(DateTime.utc(2026, 10, 30, 6)), const Duration(hours: 7, minutes: 15));
   });
 
   test('reads the kept credential only whole', () {
@@ -54,5 +60,9 @@ void main() {
     expect(dayLineOf(DateTime(2026, 10, 30)), 'Friday, 30 October');
     expect(greetingAt(DateTime(2026, 10, 30, 16, 59)), 'Good afternoon');
     expect((hoursOf(7.25), hoursOf(8)), ('7.3 h', '8 h'));
+    expect(eyebrowDayOf(DateTime(2026, 10, 30)), 'Friday · 30 October');
+    expect((workClockOf(const Duration(hours: 2, minutes: 35, seconds: 59)), workClockOf(Duration.zero)), ('02:35', '00:00'));
+    expect((hoursWordsOf(8), hoursWordsOf(7.5), hoursWordsOf(1)), ('8 hours', '7.5 hours', '1 hour'));
+    expect((initialsOf('Hazem  Magdy Soliman'), initialsOf('hazem'), initialsOf(' ')), ('HS', 'H', '?'));
   });
 }

@@ -19,9 +19,14 @@ phase, and record every decision the owner makes here (with the date and their w
     built by GitHub Actions, as before.
   - **"The 3 easy wins first"**: sign-in (password, then fingerprint), **one-tap check-in**, **faster requests** and
     **approve in one move** first; then attendance, payslips, notifications and the rest of what the old app did.
-- The look: the owner will send a **Figma** design. Until then the screens use a plain theme; every colour, font,
-  radius and spacing lives in one place (`lib/theme/`), so the design is applied there without reworking the screens.
-  The owner chose "Propose one for me" before deciding to send their own: the design wait does not hold up the build.
+- The look: the owner's **Figma** design. Every colour, font, radius and spacing lives in one place (`lib/theme/`), so
+  the design is applied there without reworking the screens. The owner chose "Propose one for me" before deciding to
+  send their own: the design wait does not hold up the build.
+  - 30 October 2026, the owner: "this is the desktop version figma link" — the file "PeopleTrendlix" (seven desktop
+    screens: Dashboard with a side or top menu, light and dark; My Requests light and dark; My KPIs; My Attendance).
+    Read through Figma's API with the owner's read-only token (kept in `~/.figma-token` on the Mac, never in the repo).
+    Its look is applied to the phone app now, laid out for a phone; the phone version of the design, when it comes,
+    adjusts the layouts.
 - Earlier decisions that still hold (apps/mobile/README.md, 20 October 2026): no store submission in the first
   version, an APK from GitHub Actions to install by hand; iPhone after the owner has an Apple Developer account;
   English interface, every string ready for Arabic later.
@@ -74,7 +79,8 @@ phase, and record every decision the owner makes here (with the date and their w
 - **Phase 3 — Approve in one move**: To Approve, one tap (or swipe) to approve or decline, Approve all, undo.
 - **Phase 4 — The rest**: my attendance, payslips (PDF), notifications (push, the existing Firebase project and
   `GOOGLE_SERVICES_JSON`), custody and assets as the old app had them.
-- **Phase 5 — The owner's design** (Figma), applied in `lib/theme/` and the screens' layout.
+- **Phase 5 — The owner's design** (Figma), applied in `lib/theme/` and the screens' layout: the desktop version's look
+  first (30 October 2026), the phone version's layouts when it comes.
 - **Phase 6 — iPhone** (after the owner has an Apple Developer account).
 
 ## 4. Rules for the work
@@ -105,5 +111,18 @@ phase, and record every decision the owner makes here (with the date and their w
     app's settings, try again). People's refusals in its words.
   - The API (`signed-ip.ts checkInIp`, deployed 30 October 2026): for an app session the website signed nothing for,
     the office network's lock reads the connection's address as Caddy wrote it (the last X-Forwarded-For entry).
-  - No backup of the app's data; the old app's look until the Figma design (`lib/theme/`).
+  - No backup of the app's data.
+- [~] Phase 5, first part — the desktop design's look (30 October 2026, version 0.3), to try on a phone:
+  - The design's system in `lib/theme/`: Instrument Sans (cut from Google Fonts' variable font to 400/500/600/700,
+    SIL Open Font License in `assets/fonts/OFL.txt`, shown in the app's licences); its light and dark colours
+    (`Palette`: #EDEDEB page, white cards, #DEDED9 lines, #111110 ink; #0D0D0C page, #1C1C1A cards, #30302D lines,
+    #F4F4EF ink); cards of radius 18 with a thin line and a soft shadow, controls of 12, pill badges; tight headings,
+    small spaced capitals over a card's title; thin line icons (Flutter's `cupertino_icons`).
+  - The TrendLIX wordmark from the file (`assets/brand`), with "Trend" in off-white for the dark look.
+  - Light or dark as the phone is set, until the person taps the sun/moon in Home's header; their pick is kept.
+  - Sign-in: the wordmark, "Welcome back.", the form in a card. Home: the design's header (the app's name, the switch,
+    the avatar with Sign out), the date and greeting, the Today card with its badge, the work-time ring (the hours
+    worked of the shift's, moving while checked in), the one big button, what a press came to right under it (scrolled
+    into view), and today's check-ins listed as the design lists a schedule.
+  - Pending the phone version of the design; the website (`apps/web`) keeps its look until the owner says otherwise.
 - [ ] Phase 2 — Faster requests — next.

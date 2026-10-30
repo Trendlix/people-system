@@ -2,7 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
-import 'package:flutter_test/flutter_test.dart' show addTearDown;
+import 'package:flutter/widgets.dart' show Size;
+import 'package:flutter_test/flutter_test.dart' show WidgetTester, addTearDown;
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:people/api/people_client.dart';
@@ -12,6 +13,7 @@ import 'package:people/platform/biometrics.dart';
 import 'package:people/platform/device_name.dart';
 import 'package:people/platform/locator.dart';
 import 'package:people/providers.dart';
+import 'package:people/theme/look.dart';
 
 // Stand-ins for People and the phone in the tests: People answers by route; the fingerprint, the location and the
 // phone's name say what each test needs.
@@ -87,8 +89,9 @@ class FakeLocator implements Locator {
 }
 
 /// The app's providers over the fakes. The client is built as the app builds it, a 401 signing out.
-List<Override> overridesFor(FakePeople people, {required MemorySessionStore store, FakeBiometrics? biometrics, FakeLocator? locator}) => [
+List<Override> overridesFor(FakePeople people, {required MemorySessionStore store, FakeBiometrics? biometrics, FakeLocator? locator, MemoryLookStore? look}) => [
   sessionStoreProvider.overrideWithValue(store),
+  lookStoreProvider.overrideWithValue(look ?? MemoryLookStore()),
   biometricsProvider.overrideWithValue(biometrics ?? FakeBiometrics(has: false)),
   deviceIdentityProvider.overrideWithValue(FakeIdentity()),
   locatorProvider.overrideWithValue(locator ?? FakeLocator()),
@@ -108,4 +111,12 @@ ProviderContainer containerFor(FakePeople people, {required MemorySessionStore s
   final c = ProviderContainer(retry: noRetry, overrides: overridesFor(people, store: store, biometrics: biometrics, locator: locator));
   addTearDown(c.dispose);
   return c;
+}
+
+/// The screen of a common Android phone (412 × 915), for the widget tests.
+void phoneScreen(WidgetTester tester) {
+  tester.view
+    ..physicalSize = const Size(1080, 2400)
+    ..devicePixelRatio = 1080 / 412;
+  addTearDown(tester.view.reset);
 }

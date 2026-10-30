@@ -1,4 +1,6 @@
+import 'package:flutter/cupertino.dart' show CupertinoIcons;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -7,18 +9,46 @@ import 'auth/auth_controller.dart';
 import 'features/home/home_screen.dart';
 import 'features/sign_in/sign_in_screen.dart';
 import 'theme/app_theme.dart';
+import 'theme/look.dart';
+import 'theme/parts.dart';
 import 'theme/tokens.dart';
 
-/// The app's screens and their addresses. Phase 1: one, which shows sign-in or Home as the session stands; the
-/// request and approval screens (Phases 2 and 3) get their own.
-final router = GoRouter(routes: [GoRoute(path: '/', builder: (context, state) => const AuthGate())]);
-
-class PeopleApp extends StatelessWidget {
+class PeopleApp extends ConsumerStatefulWidget {
   const PeopleApp({super.key});
 
   @override
+  ConsumerState<PeopleApp> createState() => _PeopleAppState();
+}
+
+class _PeopleAppState extends ConsumerState<PeopleApp> {
+  /// The app's screens and their addresses. Phase 1: one, which shows sign-in or Home as the session stands; the
+  /// request and approval screens (Phases 2 and 3) get their own.
+  final _router = GoRouter(
+    routes: [GoRoute(path: '/', builder: (context, state) => const AuthGate())],
+  );
+
+  @override
+  void dispose() {
+    _router.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return MaterialApp.router(title: 'Trendlix People', theme: appTheme(), routerConfig: router, debugShowCheckedModeBanner: false);
+    return MaterialApp.router(
+      title: 'Trendlix People',
+      theme: appTheme(Brightness.light),
+      darkTheme: appTheme(Brightness.dark),
+      themeMode: ref.watch(lookProvider),
+      routerConfig: _router,
+      debugShowCheckedModeBanner: false,
+      // the phone's status bar in the look's colours
+      builder: (context, child) {
+        final dark = Theme.of(context).brightness == Brightness.dark;
+        final bars = (dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark).copyWith(statusBarColor: Colors.transparent);
+        return AnnotatedRegion<SystemUiOverlayStyle>(value: bars, child: child!);
+      },
+    );
   }
 }
 
@@ -47,6 +77,7 @@ class _Unreachable extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final text = Theme.of(context).textTheme;
     return Scaffold(
       body: SafeArea(
         child: Padding(
@@ -55,9 +86,9 @@ class _Unreachable extends ConsumerWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Icon(Icons.cloud_off_rounded, size: 48, color: Tokens.muted),
+              const Center(child: IconTile(CupertinoIcons.wifi_slash, onCard: false)),
               const SizedBox(height: Tokens.gap),
-              Text(message, textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium?.copyWith(color: Tokens.ink)),
+              Text(message, textAlign: TextAlign.center, style: text.titleMedium),
               const SizedBox(height: Tokens.gap * 1.5),
               FilledButton(onPressed: () => ref.invalidate(authProvider), child: const Text(AuthGate.tryAgain)),
             ],

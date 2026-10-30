@@ -42,6 +42,7 @@ class Today {
     required this.expectedText,
     required this.shiftStart,
     required this.shiftEnd,
+    this.hoursPerDay = 8,
     required this.networkLocked,
     required this.gpsLocked,
     required this.workingFromHome,
@@ -64,6 +65,7 @@ class Today {
       expectedText: _text(json['expectedText']),
       shiftStart: shift is Map ? _text(shift['startTime']) : null,
       shiftEnd: shift is Map ? _text(shift['endTime']) : null,
+      hoursPerDay: shift is Map && shift['hoursPerDay'] is num && (shift['hoursPerDay'] as num) > 0 ? (shift['hoursPerDay'] as num).toDouble() : 8,
       networkLocked: json['network'] is Map && (json['network'] as Map)['locked'] == true,
       gpsLocked: json['gps'] is Map && (json['gps'] as Map)['locked'] == true,
       workingFromHome: json['workingFromHome'] == true,
@@ -87,6 +89,9 @@ class Today {
   /// The shift's window, HH:MM.
   final String? shiftStart;
   final String? shiftEnd;
+
+  /// The day's hours the shift asks for (the work-time ring's full circle).
+  final double hoursPerDay;
   final bool networkLocked;
   final bool gpsLocked;
   final bool workingFromHome;
@@ -94,6 +99,14 @@ class Today {
   final bool officialDutyNow;
 
   Punch? get last => punches.isEmpty ? null : punches.last;
+
+  /// The time worked so far at [now]: the finished pairs, and the open check-in's time until now.
+  Duration workedAt(DateTime now) {
+    final counted = Duration(seconds: (hoursCounted * 3600).round());
+    final open = openSince;
+    if (open == null || now.isBefore(open)) return counted;
+    return counted + now.difference(open);
+  }
 }
 
 /// A press's answer: the day after it, what People says, and whether it was kept (false: the same press twice).
