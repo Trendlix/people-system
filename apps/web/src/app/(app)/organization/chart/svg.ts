@@ -14,15 +14,15 @@ import { ARABIC_FAMILY, FONTS, LATIN_FAMILY } from './text';
  * svg.test.ts checks them against globals.css.
  */
 export const PALETTE = {
-  ink: '#12161f',
-  muted: '#5b6472',
-  line: '#e3e6eb',
-  canvas: '#f4f5f7',
+  ink: '#111110',
+  muted: '#777773',
+  line: '#deded9',
+  canvas: '#ededeb',
   card: '#ffffff',
-  accent: '#2b59f0',
-  accentSoft: '#e8eeff',
-  sidebar: '#0e1726',
-  sidebarText: '#c9d1de',
+  accent: '#151514',
+  accentSoft: '#f2f2ed',
+  sidebar: '#111110',
+  sidebarText: '#92928c',
 } as const;
 
 const TONES: Record<Tone, string> = {

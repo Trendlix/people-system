@@ -74,7 +74,7 @@ const SPAN = 6;
 
 type Query = Record<string, string | string[] | undefined>;
 
-const chipLook = (active: boolean) => `${chip} ${active ? 'border-ink bg-ink text-white hover:text-white' : 'border-line bg-white text-ink hover:bg-canvas hover:text-ink'}`;
+const chipLook = (active: boolean) => `${chip} ${active ? 'border-ink bg-ink text-on-accent hover:text-on-accent' : 'border-line bg-card text-ink hover:bg-canvas hover:text-ink'}`;
 
 /**
  * The status chips, each keeping the Employee and the Type chosen, and the Employee and Type filters, which keep the
@@ -374,7 +374,7 @@ async function LeaveRequests({ searchParams }: { searchParams: PageProps<'/leave
 export default function LeaveRequestsPage({ searchParams }: PageProps<'/leave'>) {
   return (
     <div className="max-w-7xl">
-      <h1 className="text-2xl font-semibold">Leave Requests</h1>
+      <h1 className="page-title">Leave Requests</h1>
       <p className="mt-1 text-muted">
         Leave as the Labour Law gives it, of the types set up on <Link href="/organization/leave">Organization → Leave</Link>, and permission: a few
         hours away from a working day, within the hours a day and a month set there. The direct manager decides a request first (for someone without

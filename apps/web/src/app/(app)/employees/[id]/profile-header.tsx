@@ -180,7 +180,7 @@ export function ProfileHeader({
         )}
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <h1 className="text-2xl font-semibold">{p.fullNameEn}</h1>
+            <h1 className="page-title">{p.fullNameEn}</h1>
             <span lang="ar" dir="rtl" className="text-lg text-muted">
               {p.fullNameAr}
             </span>
@@ -207,7 +207,7 @@ export function ProfileHeader({
           </p>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted">
             {/* hidden from a developer (23 October 2026): left out, the name is their tag */}
-            {shownCode(p.employeeCode) && <span className="rounded-md bg-ink px-2.5 py-1 font-semibold text-white tabular-nums">{p.employeeCode}</span>}
+            {shownCode(p.employeeCode) && <span className="rounded-md bg-ink px-2.5 py-1 font-semibold text-on-accent tabular-nums">{p.employeeCode}</span>}
             {e?.manager && (
               <span>
                 Reports to {linkPeople ? <Link href={`/employees/${e.manager.id}`}>{e.manager.fullNameEn}</Link> : e.manager.fullNameEn}

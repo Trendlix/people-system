@@ -7,7 +7,7 @@ import { Select } from '@/components/select';
 import type { EndingRule, FormState } from '@/lib/types';
 
 const choice =
-  'flex min-h-11 w-fit cursor-pointer items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft';
+  'flex min-h-11 w-fit cursor-pointer items-center gap-2 rounded-lg border border-line bg-card px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft';
 
 /**
  * An ending rule's label, notice, pay in lieu and whether it is offered (HR and Admin). The API refuses resignation or

@@ -219,7 +219,7 @@ async function All({ searchParams }: { searchParams: PageProps<'/kpis/all'>['sea
         </div>
       </div>
       {o.hidden > 0 && (
-        <p className="rounded-lg bg-white px-4 py-3 text-sm text-muted">
+        <p className="rounded-lg bg-card px-4 py-3 text-sm text-muted">
           C-level people are left out: {o.hidden === 1 ? 'one scorecard' : `${o.hidden} scorecards`}, which the CEO scores.
         </p>
       )}
@@ -301,7 +301,7 @@ async function All({ searchParams }: { searchParams: PageProps<'/kpis/all'>['sea
 export default function AllKpisPage({ searchParams }: PageProps<'/kpis/all'>) {
   return (
     <div className="max-w-7xl">
-      <h1 className="text-2xl font-semibold">All KPIs</h1>
+      <h1 className="page-title">All KPIs</h1>
       <p className="mt-1 text-muted">
         Every KPI scorecard of a month: where each stands, HR&apos;s calibrations, the levels and each department&apos;s pillar averages. A
         month&apos;s scorecards open on the 1st of the next month and count in that month&apos;s payroll.

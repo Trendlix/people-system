@@ -142,7 +142,7 @@ async function Practice({ searchParams }: { searchParams: PageProps<'/kpis/all/p
 export default function PracticeScorecardsPage({ searchParams }: PageProps<'/kpis/all/practice'>) {
   return (
     <div className="max-w-7xl">
-      <h1 className="text-2xl font-semibold">Practice Scorecards</h1>
+      <h1 className="page-title">Practice Scorecards</h1>
       <p className="mt-1 text-muted">
         Try the whole KPI flow today: start a practice scorecard for anyone and any month, from a draft or a published template, then take every step
         yourself (the self-rating, the manager&apos;s scoring, HR&apos;s calibration and the sign-off), or view as the person and act as them.

@@ -22,7 +22,7 @@ export function NewWfhHeading({ back }: { back: { href: string; label: string } 
   return (
     <div className="space-y-2">
       {back && <BackLink href={back.href}>{back.label}</BackLink>}
-      <h1 className="text-2xl font-semibold">Work From Home</h1>
+      <h1 className="page-title">Work From Home</h1>
       <p className="text-muted">
         Ask to work from home on a day you would be at the office: a working day, asked a day before at the latest. Your direct manager decides it
         first (without one, your team lead, else the head of your department), then HR; each step shows on the request. It is a working day, not

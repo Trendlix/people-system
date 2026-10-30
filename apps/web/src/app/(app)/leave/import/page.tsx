@@ -132,7 +132,7 @@ export default function LeaveImportPage({ searchParams }: PageProps<'/leave/impo
     <div className="max-w-6xl space-y-6">
       <div className="space-y-2">
         <BackLink href={LEAVE_PATH}>Leave Requests</BackLink>
-        <h1 className="text-2xl font-semibold">Import Leave</h1>
+        <h1 className="page-title">Import Leave</h1>
         <p className="max-w-3xl text-muted">
           Leave already taken, recorded as approved, and each person&apos;s balance, so the system starts from the right numbers. Upload the template
           filled in, or Zoho People&apos;s leave export, then review every row before it is applied: ready, a duplicate, a problem to put right, or a

@@ -66,8 +66,8 @@ import { ShortlistSelection } from '../../shortlist-ui';
 export const metadata: Metadata = { title: 'Vacancy · People System' };
 
 const chip = 'inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3.5 text-sm font-semibold no-underline';
-const ACTIVE = 'border-ink bg-ink text-white hover:text-white';
-const IDLE = 'border-line bg-white text-ink hover:bg-canvas hover:text-ink';
+const ACTIVE = 'border-ink bg-ink text-on-accent hover:text-on-accent';
+const IDLE = 'border-line bg-card text-ink hover:bg-canvas hover:text-ink';
 
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -328,7 +328,7 @@ async function Vacancy({ params, searchParams }: PageProps<'/recruitment/vacanci
       <div className="space-y-2">
         <BackLink href={hiringManager ? MY_HIRING_PATH : VACANCIES_PATH}>{hiringManager ? 'My Hiring' : 'Vacancies'}</BackLink>
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold">{v.title}</h1>
+          <h1 className="page-title">{v.title}</h1>
           <VacancyStatusBadge status={v.status} />
           {v.confidential && <span className="badge bg-canvas text-muted">C-level</span>}
         </div>

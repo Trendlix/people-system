@@ -23,9 +23,9 @@ export const STATUS_STYLE: Record<EmployeeStatus, string> = {
  */
 export const STANDING_STYLE: Record<Standing, string> = {
   ...STATUS_STYLE,
-  intern: 'border border-accent/40 bg-white text-accent',
+  intern: 'border border-accent/40 bg-card text-accent',
   former: 'bg-line-soft text-muted',
-  not_employed: 'border border-dashed border-line bg-white text-muted',
+  not_employed: 'border border-dashed border-line bg-card text-muted',
 };
 
 /**

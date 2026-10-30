@@ -73,7 +73,7 @@ export default function MyExitInterviewPage({ searchParams }: PageProps<'/my-req
   return (
     <div className="max-w-4xl space-y-6">
       <BackLink href={MY_REQUESTS}>My Requests</BackLink>
-      <h1 className="text-2xl font-semibold">Exit Interview</h1>
+      <h1 className="page-title">Exit Interview</h1>
       <Suspense fallback={<Loading />}>
         <Interview searchParams={searchParams} />
       </Suspense>

@@ -20,7 +20,7 @@ export async function OffboardingBanner({ profile: p }: { profile: EmployeeProfi
   const found = loaded.kind === 'ok' ? loaded.value.case : null;
   if (found && found.status !== 'cancelled') {
     return (
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-white px-4 py-3 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-card px-4 py-3 text-sm">
         <p>
           <span className="font-semibold">Offboarding</span> <span className={`badge ml-1 ${STATUS_STYLE[found.status]}`}>{OFFBOARDING_STATUS_LABELS[found.status]}</span>
           <span className="ml-2 text-muted">{progressText(found.progress)}</span>
@@ -35,7 +35,7 @@ export async function OffboardingBanner({ profile: p }: { profile: EmployeeProfi
   const employmentId = p.employment?.id ?? p.employments.find((e) => e.endDate)?.id;
   if (!employmentId) return null;
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-white px-4 py-3 text-sm">
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-card px-4 py-3 text-sm">
       <p className="text-muted">{leaving ? 'In their notice period, with no offboarding case.' : 'Left, with no offboarding case.'}</p>
       <OpenCaseButton action={openCase.bind(null, employmentId)} />
     </div>

@@ -37,7 +37,7 @@ export default function ResignPage() {
     <div className="max-w-3xl space-y-5">
       <div className="space-y-2">
         <BackLink href={MY_RESIGNATION_HREF}>My Requests</BackLink>
-        <h1 className="text-2xl font-semibold">Resign</h1>
+        <h1 className="page-title">Resign</h1>
         <p className="text-muted">
           Tell HR you wish to resign. The day you send this is the day the notice is received. HR records it, the labour office certifies it, and the CEO
           approves it. You can withdraw the request until HR records it.

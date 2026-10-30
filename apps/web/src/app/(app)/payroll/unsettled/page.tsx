@@ -689,7 +689,7 @@ export default function UnsettledPage() {
   return (
     <StaffOnly>
       <div className="max-w-6xl">
-        <h1 className="text-2xl font-semibold">Unsettled</h1>
+        <h1 className="page-title">Unsettled</h1>
         <p className="mt-1 text-muted">
           What the payroll still owes or is owed: runs not yet paid, pay held on a run and not paid out since, leave or attendance changed after a payroll moved
           on, the final dues of people who left, and advances and loans still being recovered.

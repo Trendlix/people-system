@@ -86,7 +86,7 @@ async function Dashboard() {
                   <span className="tabular-nums">{c.count}</span>
                 </Link>
               ) : (
-                <span className="inline-flex min-h-10 items-center gap-2 rounded-full border border-line bg-white px-4 text-sm text-muted">
+                <span className="inline-flex min-h-10 items-center gap-2 rounded-full border border-line bg-card px-4 text-sm text-muted">
                   {c.label}
                   <span className="tabular-nums">0</span>
                 </span>
@@ -145,7 +145,7 @@ async function Dashboard() {
 export default function AssetsDashboardPage() {
   return (
     <div className="max-w-5xl">
-      <h1 className="text-2xl font-semibold">Assets Dashboard</h1>
+      <h1 className="page-title">Assets Dashboard</h1>
       <p className="mt-1 text-muted">What is out, what needs attention, and the exports. Disposed assets are left out.</p>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>

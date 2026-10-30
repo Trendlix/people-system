@@ -121,7 +121,7 @@ export function ShiftForm({ action, shift }: { action: (prev: FormState, fd: For
         <legend className="label">Working days</legend>
         <div className="flex flex-wrap gap-2">
           {DAYS.map((day, i) => (
-            <label key={day} className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft">
+            <label key={day} className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-card px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft">
               <input type="checkbox" name="workingDays" value={i} defaultChecked={days.has(i)} className="size-4 accent-accent" />
               {day.slice(0, 3)}
             </label>

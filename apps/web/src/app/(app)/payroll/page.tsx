@@ -111,7 +111,7 @@ async function Runs() {
 export default function PayrollPage() {
   return (
     <div className="max-w-6xl">
-      <h1 className="text-2xl font-semibold">Payroll Overview</h1>
+      <h1 className="page-title">Payroll Overview</h1>
       <p className="mt-1 text-muted">
         Each month&apos;s pay: HR prepares the run, the CEO approves it, then the bank files are made and HR marks it paid. The rules, rates
         and payday it is worked out with are under <Link href="/organization/payroll">Organization → Payroll Setup</Link>, the holidays under{' '}

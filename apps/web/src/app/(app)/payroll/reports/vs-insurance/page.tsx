@@ -103,7 +103,7 @@ function PeriodPicker({ period, shown, today }: { period: ReportPeriod | null; s
               <Link
                 href={reportHref(q.period)}
                 aria-current={active ? 'page' : undefined}
-                className={`${chip} ${active ? 'border-ink bg-ink text-white hover:text-white' : 'border-line bg-white text-ink hover:bg-canvas hover:text-ink'}`}
+                className={`${chip} ${active ? 'border-ink bg-ink text-on-accent hover:text-on-accent' : 'border-line bg-card text-ink hover:bg-canvas hover:text-ink'}`}
               >
                 {q.label}
               </Link>
@@ -362,7 +362,7 @@ export default function VsInsurancePage({ searchParams }: PageProps<'/payroll/re
       <div className="space-y-4">
         <BackLink href="/payroll/reports">Payroll Reports</BackLink>
         <div>
-          <h1 className="text-2xl font-semibold">Payroll vs Social Insurance</h1>
+          <h1 className="page-title">Payroll vs Social Insurance</h1>
           <p className="mt-1 text-muted">
             Per employee and month, the actual payroll run&rsquo;s whole cycle beside the same month on the registered social insurance wage, and the differences in
             the insurance shares, the tax, the Martyrs&rsquo; Fund, the net and the company cost. The registered wage is on each profile&rsquo;s Social Insurance tab;

@@ -31,8 +31,8 @@ import { joinShown, shownCode } from '@/lib/hidden';
 export const metadata: Metadata = { title: 'Offboarding · People System' };
 
 const chip = 'inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3.5 text-sm font-semibold no-underline';
-const ACTIVE = 'border-ink bg-ink text-white hover:text-white';
-const IDLE = 'border-line bg-white text-ink hover:bg-canvas hover:text-ink';
+const ACTIVE = 'border-ink bg-ink text-on-accent hover:text-on-accent';
+const IDLE = 'border-line bg-card text-ink hover:bg-canvas hover:text-ink';
 
 async function Cases({ searchParams }: { searchParams: PageProps<'/offboarding'>['searchParams'] }) {
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
@@ -133,7 +133,7 @@ export default function OffboardingPage({ searchParams }: PageProps<'/offboardin
   return (
     <div className="max-w-6xl space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">Offboarding</h1>
+        <h1 className="page-title">Offboarding</h1>
         <p className="mt-1 max-w-3xl text-muted">
           Everyone leaving, from the CEO&apos;s approval of their ending (or the day their employment is ended) until their clearance is done: what they hold
           is received back, each item is cleared by the person in charge of it, the final settlement is paid, and the exit interview and rehire eligibility

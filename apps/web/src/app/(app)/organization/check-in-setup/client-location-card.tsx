@@ -89,7 +89,7 @@ export function ClientLocationCard({
 
   if (editing === 'place') {
     return (
-      <li aria-labelledby={nameId} className="col-span-full space-y-4 rounded-xl border border-line bg-white p-5 shadow-sm">
+      <li aria-labelledby={nameId} className="col-span-full space-y-4 rounded-xl border border-line bg-card p-5 shadow-sm">
         <h4 id={nameId} className="font-semibold">
           Edit {titleCase(l.name)}
         </h4>
@@ -110,7 +110,7 @@ export function ClientLocationCard({
   }
 
   return (
-    <li aria-labelledby={nameId} aria-busy={pending || undefined} className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-line bg-white shadow-sm">
+    <li aria-labelledby={nameId} aria-busy={pending || undefined} className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-line bg-card shadow-sm">
       <div className={`p-2 pb-0 ${counts ? '' : 'opacity-60'}`}>
         <LocationsMap
           circles={[{ latitude: l.latitude, longitude: l.longitude, radiusMetres: l.radiusMetres }]}

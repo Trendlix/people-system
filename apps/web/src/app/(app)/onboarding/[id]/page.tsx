@@ -64,7 +64,7 @@ async function Onboarding({ params }: { params: PageProps<'/onboarding/[id]'>['p
       <div className="space-y-2">
         {c.can.manage && <BackLink href={ONBOARDING_PATH}>Onboarding</BackLink>}
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold">{c.employee.fullNameEn}</h1>
+          <h1 className="page-title">{c.employee.fullNameEn}</h1>
           <span className={`badge ${STATUS_STYLE[c.status]}`}>{ONBOARDING_STATUS_LABELS[c.status]}</span>
         </div>
         <p className="text-sm text-muted">

@@ -75,7 +75,7 @@ export function TabList({ tabs, active, counts }: { tabs: readonly AppTab[]; act
                 <span className="relative">
                   {ICONS[t.key]}
                   {count && (
-                    <span aria-hidden="true" className="absolute -top-1.5 -right-3 min-w-5 rounded-full bg-accent px-1 text-center text-[11px] leading-5 font-semibold text-white tabular-nums ring-2 ring-card">
+                    <span aria-hidden="true" className="absolute -top-1.5 -right-3 min-w-5 rounded-full bg-accent px-1 text-center text-[11px] leading-5 font-semibold text-on-accent tabular-nums ring-2 ring-card">
                       {count}
                     </span>
                   )}

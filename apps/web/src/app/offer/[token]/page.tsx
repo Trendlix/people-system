@@ -30,7 +30,7 @@ function CompanyHeader({ brand }: { brand: Brand }) {
           <Image src={mark} alt="" fill unoptimized className="object-contain p-1" />
         </span>
       ) : (
-        <span aria-hidden="true" className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-sidebar text-xl font-bold text-white">
+        <span aria-hidden="true" className="flex size-12 shrink-0 items-center justify-center rounded-lg bg-sidebar text-xl font-bold text-sidebar-ink">
           {brand.nameEn.trim().charAt(0).toUpperCase() || '·'}
         </span>
       )}

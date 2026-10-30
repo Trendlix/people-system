@@ -309,7 +309,7 @@ function Calendar({ input, focusDay, onClose }: { input: HTMLInputElement; focus
                         aria-label={spokenDate(d.date)}
                         aria-current={isToday ? 'date' : undefined}
                         onClick={() => choose(d.date)}
-                        className={`${cell} size-9 w-full ${isChosen ? 'bg-accent font-semibold text-white hover:bg-accent' : ''} ${
+                        className={`${cell} size-9 w-full ${isChosen ? 'bg-accent font-semibold text-on-accent hover:bg-accent' : ''} ${
                           !isChosen && isToday ? 'font-semibold text-accent ring-1 ring-accent ring-inset' : ''
                         } ${!d.inMonth && !isChosen ? 'text-muted opacity-60' : ''} ${d.date === active && !isChosen ? 'bg-accent-soft' : ''}`}
                       >

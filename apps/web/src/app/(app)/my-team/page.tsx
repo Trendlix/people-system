@@ -502,7 +502,7 @@ async function Intro() {
 export default function MyTeamPage({ searchParams }: PageProps<'/my-team'>) {
   return (
     <div className="max-w-5xl">
-      <h1 className="text-2xl font-semibold">My Team</h1>
+      <h1 className="page-title">My Team</h1>
       <p className="mt-1 text-muted">
         <Suspense fallback={myTeamIntro(false)}>
           <Intro />

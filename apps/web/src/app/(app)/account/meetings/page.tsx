@@ -105,7 +105,7 @@ export default function YourMeetingsPage({ searchParams }: PageProps<'/account/m
   return (
     <div className="max-w-2xl space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold">Your Meetings</h1>
+        <h1 className="page-title">Your Meetings</h1>
         <p className="mt-1 text-muted">
           Connect your own Google, Microsoft or Zoom account, and the interviews you schedule online can have their meeting made with it, hosted by you. The
           system keeps only what it needs to make, move and delete those meetings, encrypted; you can disconnect at any time.

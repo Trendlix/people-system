@@ -139,7 +139,7 @@ function DraftCheck({ version: v, slotKey, inUse, manages }: { version: Template
           <ul className="mt-3 flex flex-wrap gap-2">
             {check.broken.map((fragment) => (
               <li key={fragment}>
-                <code dir="auto" className="rounded-md border border-danger/30 bg-white px-1.5 py-0.5 font-mono text-xs break-all text-danger">
+                <code dir="auto" className="rounded-md border border-danger/30 bg-card px-1.5 py-0.5 font-mono text-xs break-all text-danger">
                   {fragment}
                 </code>
               </li>

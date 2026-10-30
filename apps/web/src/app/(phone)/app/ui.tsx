@@ -112,7 +112,7 @@ const chip = 'inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full bo
 /** A filter chip: a link, the one chosen dark, with how many it lists. */
 export function Chip({ href, label, count, active }: { href: string; label: string; count?: number; active: boolean }) {
   return (
-    <Link href={href} aria-current={active ? 'page' : undefined} className={`${chip} ${active ? 'border-ink bg-ink text-white hover:text-white' : 'border-line bg-white text-ink hover:bg-canvas hover:text-ink'}`}>
+    <Link href={href} aria-current={active ? 'page' : undefined} className={`${chip} ${active ? 'border-ink bg-ink text-on-accent hover:text-on-accent' : 'border-line bg-card text-ink hover:bg-canvas hover:text-ink'}`}>
       {label}
       {count !== undefined && <span className={`tabular-nums ${active ? 'opacity-75' : 'text-muted'}`}>{count}</span>}
     </Link>

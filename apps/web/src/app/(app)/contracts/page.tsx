@@ -38,7 +38,7 @@ async function Contracts({ searchParams }: { searchParams: PageProps<'/contracts
 export default function ContractsPage({ searchParams }: PageProps<'/contracts'>) {
   return (
     <div className="max-w-6xl">
-      <h1 className="text-2xl font-semibold">Contracts</h1>
+      <h1 className="page-title">Contracts</h1>
       <p className="mt-1 text-muted">
         Every employee&apos;s contracts in one place; each is drafted, signed and renewed on the employee&apos;s Employment tab. Their{' '}
         <Link href="/organization/contracts">defaults and ending rules</Link> are under Organization → Contracts &amp; Endings.

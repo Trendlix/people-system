@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { IBM_Plex_Sans_Arabic, Instrument_Sans } from 'next/font/google';
 import { AppBackButton } from '@/components/app-back-button';
 import { FAVICON } from '@/lib/brand';
+import { THEME_SCRIPT } from '@/lib/theme';
 import './globals.css';
 
 const instrument = Instrument_Sans({
@@ -26,7 +27,12 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<'/'>) {
   return (
-    <html lang="en" className={`${instrument.variable} ${plexArabic.variable} h-full antialiased`}>
+    // suppressHydrationWarning: the script below may set data-theme before React takes over
+    <html lang="en" className={`${instrument.variable} ${plexArabic.variable} h-full antialiased`} suppressHydrationWarning>
+      <head>
+        {/* the look picked in this browser, before the first paint (lib/theme.ts) */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
       <body className="min-h-full font-sans">
         {children}
         {/* Android's back button inside the employee app, on every page it can show (Phase 5, 20 October 2026) */}

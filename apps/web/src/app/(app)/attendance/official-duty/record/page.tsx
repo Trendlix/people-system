@@ -31,7 +31,7 @@ function Heading() {
   return (
     <div className="space-y-2">
       <BackLink href={OD_PATH}>Official Duty</BackLink>
-      <h1 className="text-2xl font-semibold">Record Official Duty</h1>
+      <h1 className="page-title">Record Official Duty</h1>
       <p className="text-muted">
         Official duty an employee is on or was on, recorded by HR: approved at once and logged as recorded by HR, with your reason, and the employee is
         told. More than 3 days after its first day it is recorded with a warning, kept with it. On its days they check in from where they are, and the

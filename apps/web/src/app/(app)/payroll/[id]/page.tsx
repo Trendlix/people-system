@@ -452,7 +452,7 @@ async function PayrollRun({ params }: { params: Promise<{ id: string }> }) {
     <div className="space-y-8">
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-          <h1 className="text-2xl font-semibold">{title}</h1>
+          <h1 className="page-title">{title}</h1>
           <PayrollStatusBadge status={run.status} />
         </div>
         <p className="text-sm text-muted">{history(run)}</p>

@@ -352,7 +352,7 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
       <div className="space-y-2">
         {a.viewer === 'interviewer' ? <BackLink href={MY_HIRING_PATH}>My Hiring</BackLink> : <BackLink href={vacancyHref(a.vacancy.id)}>{a.vacancy.title}</BackLink>}
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold">{a.fullName}</h1>
+          <h1 className="page-title">{a.fullName}</h1>
           <StageBadge stage={a.stage} filteredOut={a.filteredOut} />
           {/* where a shortlisted applicant stands in the hiring steps (29 October 2026) */}
           <HiringStepBadge step={a.hiringStep} />

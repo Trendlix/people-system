@@ -28,7 +28,7 @@ export function RoleBadges({ roles }: { roles: Role[] }) {
   return (
     <span className="flex flex-wrap gap-1">
       {roleBadgeLabels(roles).map((r) => (
-        <span key={r.key} className={r.key === 'super_admin' ? 'badge bg-accent text-white' : 'badge'}>
+        <span key={r.key} className={r.key === 'super_admin' ? 'badge bg-accent text-on-accent' : 'badge'}>
           {r.label}
         </span>
       ))}

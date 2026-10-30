@@ -52,7 +52,7 @@ async function Person({ params }: { params: PageProps<'/assets/holders/[employee
   return (
     <>
       <div className="space-y-1">
-        <h1 className="text-2xl font-semibold">{titleCase(h.employee.fullNameEn)}</h1>
+        <h1 className="page-title">{titleCase(h.employee.fullNameEn)}</h1>
         <p className="text-sm text-muted">{joinShown([h.employee.employeeCode, h.employee.jobTitle, h.employee.department])}</p>
       </div>
       <div className="flex flex-wrap gap-2">

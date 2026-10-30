@@ -222,7 +222,7 @@ function SearchList({ select, query: typed, onClose }: { select: HTMLSelectEleme
             setActive(nextChoosable(shownOptions(options, next), -1, 1));
           }}
           onKeyDown={onKey}
-          className="block min-h-9 w-full rounded-md border border-line bg-white px-2.5 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+          className="block min-h-9 w-full rounded-md border border-line bg-card px-2.5 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
         />
       </div>
       <ul ref={list} id={listId} role="listbox" className="min-h-0 flex-1 overflow-y-auto py-1">

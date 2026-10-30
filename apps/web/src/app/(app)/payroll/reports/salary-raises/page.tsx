@@ -99,7 +99,7 @@ function PeriodPicker({ period, today }: { period: ReportPeriod; today: string }
               <Link
                 href={raisesHref(q.period, today)}
                 aria-current={active ? 'page' : undefined}
-                className={`${chip} ${active ? 'border-ink bg-ink text-white hover:text-white' : 'border-line bg-white text-ink hover:bg-canvas hover:text-ink'}`}
+                className={`${chip} ${active ? 'border-ink bg-ink text-on-accent hover:text-on-accent' : 'border-line bg-card text-ink hover:bg-canvas hover:text-ink'}`}
               >
                 {q.label}
               </Link>
@@ -407,7 +407,7 @@ export default function SalaryRaisesPage({ searchParams }: PageProps<'/payroll/r
       <div className="space-y-4">
         <BackLink href="/payroll/reports">Payroll Reports</BackLink>
         <div>
-          <h1 className="text-2xl font-semibold">Salary Raises</h1>
+          <h1 className="page-title">Salary Raises</h1>
           <p className="mt-1 text-muted">Every signed raise of a period and what it costs, by department, and who is due for a salary review.</p>
         </div>
         <Suspense fallback={<Loading />}>

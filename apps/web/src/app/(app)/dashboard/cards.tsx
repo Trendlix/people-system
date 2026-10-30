@@ -685,7 +685,7 @@ export async function Dashboard({ user }: { user: Session }) {
   return (
     <div className="max-w-6xl space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">{profile ? `Welcome, ${greetingName(profile)}` : 'Welcome'}</h1>
+        <h1 className="page-title">{profile ? `Welcome, ${greetingName(profile)}` : 'Welcome'}</h1>
         <p className="mt-1 text-muted">Checking in today, your job, the official holidays coming up, your leave, your requests and what is left to do.</p>
       </div>
       {standingIn && (

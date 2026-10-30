@@ -21,7 +21,7 @@ export function NewOdHeading({ back }: { back: { href: string; label: string } |
   return (
     <div className="space-y-2">
       {back && <BackLink href={back.href}>{back.label}</BackLink>}
-      <h1 className="text-2xl font-semibold">Official Duty</h1>
+      <h1 className="page-title">Official Duty</h1>
       <p className="text-muted">
         Ask for an official duty: work for the company away from the office, e.g. at a client&apos;s site or a shoot. Ask ahead, or up to 3 days after.
         Your direct manager decides it first (without one, your team lead, else the head of your department), then HR; each step shows on the request.

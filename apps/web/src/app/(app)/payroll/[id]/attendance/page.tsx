@@ -29,7 +29,7 @@ async function ImportAttendance({ params }: { params: PageProps<'/payroll/[id]/a
     <div className="space-y-6">
       <div className="space-y-2">
         <BackLink href={runHref(run.id)}>{title}</BackLink>
-        <h1 className="text-2xl font-semibold">Import Attendance from Zoho People</h1>
+        <h1 className="page-title">Import Attendance from Zoho People</h1>
         <p className="max-w-3xl text-muted">
           The month&apos;s check-ins and check-outs from Zoho People, for {title}. Each day is counted by the system&apos;s rules, not Zoho&apos;s: the
           hours within the employee&apos;s shift, at most its hours a day; a working day without a check-in is an absent day (the run&apos;s no-show

@@ -69,7 +69,7 @@ function PeriodPicker({ period, today }: { period: { from: string; to: string };
               <Link
                 href={summaryHref(q.period)}
                 aria-current={active ? 'page' : undefined}
-                className={`${chip} ${active ? 'border-ink bg-ink text-white hover:text-white' : 'border-line bg-white text-ink hover:bg-canvas hover:text-ink'}`}
+                className={`${chip} ${active ? 'border-ink bg-ink text-on-accent hover:text-on-accent' : 'border-line bg-card text-ink hover:bg-canvas hover:text-ink'}`}
               >
                 {q.label}
               </Link>
@@ -234,7 +234,7 @@ export default function AttendanceSummaryPage({ searchParams }: PageProps<'/atte
     <StaffOnly>
       <div className="max-w-7xl space-y-6">
         <div>
-          <h1 className="text-2xl font-semibold">Attendance Summary</h1>
+          <h1 className="page-title">Attendance Summary</h1>
           <p className="mt-1 max-w-3xl text-muted">
             The attendance, from check-ins on the system and Zoho People&apos;s imports, by department and team: absent days, short hours against
             each shift, permission hours, remote days and the hours worked a day on average.

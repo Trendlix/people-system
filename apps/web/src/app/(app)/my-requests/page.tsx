@@ -101,7 +101,7 @@ function Chip({ href, label, count, active }: { href: string; label: string; cou
     <Link
       href={href}
       aria-current={active ? 'page' : undefined}
-      className={`${chip} ${active ? 'border-ink bg-ink text-white hover:text-white' : 'border-line bg-white text-ink hover:bg-canvas hover:text-ink'}`}
+      className={`${chip} ${active ? 'border-ink bg-ink text-on-accent hover:text-on-accent' : 'border-line bg-card text-ink hover:bg-canvas hover:text-ink'}`}
     >
       {label}
       <span className={`tabular-nums ${active ? 'opacity-75' : 'text-muted'}`}>{count}</span>
@@ -714,7 +714,7 @@ async function ExitInterview() {
 export default function MyRequestsPage({ searchParams }: PageProps<'/my-requests'>) {
   return (
     <div className="max-w-4xl">
-      <h1 className="text-2xl font-semibold">My Requests</h1>
+      <h1 className="page-title">My Requests</h1>
       <p className="mt-1 text-muted">What you have asked for, newest first, with each decision as it is made.</p>
       <Suspense fallback={null}>
         <ExitInterview />

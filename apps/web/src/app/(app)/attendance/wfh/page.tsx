@@ -32,8 +32,8 @@ import { WfhFiltersForm } from './wfh-filters-form';
 export const metadata: Metadata = { title: 'Work From Home · People System' };
 
 const chip = 'inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3.5 text-sm font-semibold no-underline';
-const ACTIVE = 'border-ink bg-ink text-white hover:text-white';
-const IDLE = 'border-line bg-white text-ink hover:bg-canvas hover:text-ink';
+const ACTIVE = 'border-ink bg-ink text-on-accent hover:text-on-accent';
+const IDLE = 'border-line bg-card text-ink hover:bg-canvas hover:text-ink';
 
 /** The department filter's choices: each department in Organization's order, then its teams as "Department › Team". */
 function placeChoices(places: readonly PlaceRef[]): { id: string; label: string }[] {
@@ -90,7 +90,7 @@ export default function WfhListPage({ searchParams }: PageProps<'/attendance/wfh
     <StaffOnly>
       <div className="max-w-6xl space-y-6">
         <div>
-          <h1 className="text-2xl font-semibold">Work From Home</h1>
+          <h1 className="page-title">Work From Home</h1>
           <p className="mt-1 max-w-3xl text-muted">
             Days employees work from home instead of the office: a working day, not leave. Asked a day before at the latest, at most the days a month
             Leave Setup gives, a week apart; decided by their direct manager (or lead), then HR, a C-level person&apos;s by the CEO. That day they check

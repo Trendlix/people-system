@@ -67,8 +67,8 @@ import { joinShown, shownCode } from '@/lib/hidden';
 export const metadata: Metadata = { title: 'Applicants · People System' };
 
 const chip = 'inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3.5 text-sm font-semibold no-underline';
-const ACTIVE = 'border-ink bg-ink text-white hover:text-white';
-const IDLE = 'border-line bg-white text-ink hover:bg-canvas hover:text-ink';
+const ACTIVE = 'border-ink bg-ink text-on-accent hover:text-on-accent';
+const IDLE = 'border-line bg-card text-ink hover:bg-canvas hover:text-ink';
 const tabClass = (on: boolean) =>
   `inline-flex min-h-10 items-center gap-2 border-b-2 px-1 text-sm font-semibold no-underline ${on ? 'border-ink text-ink hover:text-ink' : 'border-transparent text-muted hover:text-ink'}`;
 
@@ -451,7 +451,7 @@ export default function ApplicantsPage({ searchParams }: PageProps<'/recruitment
   return (
     <div className="space-y-4">
       <div className="space-y-1">
-        <h1 className="text-2xl font-semibold">Applicants</h1>
+        <h1 className="page-title">Applicants</h1>
         <p className="max-w-3xl text-sm text-muted">Those who applied for a posted job, by vacancy, and the general CVs sent without one.</p>
       </div>
       <Suspense fallback={<Loading />}>

@@ -24,7 +24,7 @@ function Heading({ back }: { back: { href: string; label: string } | null }) {
   return (
     <div className="space-y-2">
       {back && <BackLink href={back.href}>{back.label}</BackLink>}
-      <h1 className="text-2xl font-semibold">Compensatory Setup</h1>
+      <h1 className="page-title">Compensatory Setup</h1>
       <p className="max-w-3xl text-muted">
         What working a rest day or an official holiday earns: a whole day off, or for part of the day the same hours off on a working day, with no
         deduction; or, rarely, cash instead. The day off is taken in the window below.

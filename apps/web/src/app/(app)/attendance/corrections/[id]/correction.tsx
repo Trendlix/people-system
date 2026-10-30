@@ -83,7 +83,7 @@ export async function CorrectionDetail({
       <div className="space-y-2">
         <BackLink href={back.href}>{back.label}</BackLink>
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold">Attendance Correction</h1>
+          <h1 className="page-title">Attendance Correction</h1>
           <LeaveStatusBadge status={r.status} confidential={r.confidential} />
           {r.confidential && <CLevelBadge title="A C-level person: the CEO decides HR’s stage, and HR doesn’t see the correction." />}
         </div>

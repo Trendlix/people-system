@@ -312,7 +312,7 @@ function Timeline({ events, waiting }: { events: TimelineEvent[]; waiting: strin
       ))}
       {waiting && (
         <li className="flex gap-3">
-          <span aria-hidden="true" className="mt-1.5 size-2.5 shrink-0 rounded-full border-2 border-line bg-white" />
+          <span aria-hidden="true" className="mt-1.5 size-2.5 shrink-0 rounded-full border-2 border-line bg-card" />
           <p className="text-sm text-muted">{waiting}</p>
         </li>
       )}
@@ -374,7 +374,7 @@ async function Offer({ params, searchParams }: { params: Promise<{ id: string }>
       <div className="space-y-2">
         <BackLink href="/offers">Job offers</BackLink>
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold">{o.fullNameEn}</h1>
+          <h1 className="page-title">{o.fullNameEn}</h1>
           <OfferStatusBadge status={status} />
           {o.recordedEarlier && <RecordedEarlierMark />}
         </div>

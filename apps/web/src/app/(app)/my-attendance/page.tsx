@@ -103,7 +103,7 @@ export default function MyAttendancePage({ searchParams }: PageProps<'/my-attend
   return (
     <div className="max-w-6xl space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">My Attendance</h1>
+        <h1 className="page-title">My Attendance</h1>
         <p className="mt-1 max-w-3xl text-muted">
           Your check-ins and check-outs, on the system and from Zoho People&apos;s imports, counted by the company&apos;s rules: the hours within your
           shift, at most its hours a day; a working day without a check-in is an absent day; leave from your approved requests.

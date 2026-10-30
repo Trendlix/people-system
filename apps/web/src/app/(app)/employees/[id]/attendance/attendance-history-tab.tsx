@@ -45,8 +45,8 @@ import {
 // how it was counted on hover.
 
 const chip = 'inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3.5 text-sm font-semibold no-underline';
-const ACTIVE = 'border-ink bg-ink text-white hover:text-white';
-const IDLE = 'border-line bg-white text-ink hover:bg-canvas hover:text-ink';
+const ACTIVE = 'border-ink bg-ink text-on-accent hover:text-on-accent';
+const IDLE = 'border-line bg-card text-ink hover:bg-canvas hover:text-ink';
 const TONE = { danger: 'text-danger', warn: 'text-warn' } as const;
 
 /** The period's choices in one row: the presets as links, the custom range a small form of its own (GET). */
@@ -271,7 +271,7 @@ function Log({ v, q }: { v: AttendanceHistoryView; q: HistoryQuery }) {
               className={`${chip} ${active ? ACTIVE : IDLE}`}
             >
               {f.label}
-              {f.count !== null && <span className={`tabular-nums ${active ? 'text-white/80' : 'text-muted'}`}>{f.count}</span>}
+              {f.count !== null && <span className={`tabular-nums ${active ? 'text-on-accent/80' : 'text-muted'}`}>{f.count}</span>}
             </Link>
           );
         })}

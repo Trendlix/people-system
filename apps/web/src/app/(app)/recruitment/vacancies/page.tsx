@@ -18,8 +18,8 @@ import { VacancyStatusBadge } from '../ui';
 export const metadata: Metadata = { title: 'Vacancies · People System' };
 
 const chip = 'inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3.5 text-sm font-semibold no-underline';
-const ACTIVE = 'border-ink bg-ink text-white hover:text-white';
-const IDLE = 'border-line bg-white text-ink hover:bg-canvas hover:text-ink';
+const ACTIVE = 'border-ink bg-ink text-on-accent hover:text-on-accent';
+const IDLE = 'border-line bg-card text-ink hover:bg-canvas hover:text-ink';
 
 async function Vacancies({ searchParams }: { searchParams: PageProps<'/recruitment/vacancies'>['searchParams'] }) {
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
@@ -112,7 +112,7 @@ export default function VacanciesPage({ searchParams }: PageProps<'/recruitment/
   return (
     <div className="space-y-4">
       <div className="space-y-1">
-        <h1 className="text-2xl font-semibold">Vacancies</h1>
+        <h1 className="page-title">Vacancies</h1>
         <p className="max-w-3xl text-sm text-muted">
           HR drafts a vacancy from a job title and sends it to the CEO; once approved, it is on the careers page until it closes or its hires reach the
           headcount.

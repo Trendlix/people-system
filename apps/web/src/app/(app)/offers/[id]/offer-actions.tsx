@@ -383,7 +383,7 @@ export function RecordAnswer({ action, withDay = false }: { action: Action; with
           {(['accepted', 'declined'] as const).map((a) => (
             <label
               key={a}
-              className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft"
+              className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-card px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft"
             >
               <input
                 type="radio"

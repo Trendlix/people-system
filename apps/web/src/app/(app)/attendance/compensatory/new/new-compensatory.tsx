@@ -20,7 +20,7 @@ export function NewCompensatoryHeading({ back }: { back: { href: string; label: 
   return (
     <div className="space-y-2">
       {back && <BackLink href={back.href}>{back.label}</BackLink>}
-      <h1 className="text-2xl font-semibold">Compensatory Day</h1>
+      <h1 className="page-title">Compensatory Day</h1>
       <p className="text-muted">
         Ask for a day off in exchange for a rest day or an official holiday you worked, or hours off for part of one, a day before at the latest. Your
         direct manager decides it first (without one, your team lead, else the head of your department), then HR, who approves it as time off or,

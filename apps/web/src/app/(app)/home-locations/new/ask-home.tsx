@@ -27,7 +27,7 @@ export function AskHomeHeading({ back }: { back: { href: string; label: string }
   return (
     <div className="space-y-2">
       <BackLink href={back.href}>{back.label}</BackLink>
-      <h1 className="text-2xl font-semibold">Request a Check-in Location</h1>
+      <h1 className="page-title">Request a Check-in Location</h1>
       <p className="text-muted">
         A place you check in from besides the office: your home, a remote site you work from, or a client’s place. HR approves it, then the CEO; once
         approved, a check-in there shows with its name, and while check-ins are locked to the check-in locations it lets yours through.

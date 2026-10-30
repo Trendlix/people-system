@@ -28,7 +28,7 @@ function WaitingForYou({ scorecards }: { scorecards: KpiScorecardSummary[] }) {
       </h2>
       <ul className="mt-3 space-y-2">
         {scorecards.map((s) => (
-          <li key={s.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-white px-4 py-3">
+          <li key={s.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-card px-4 py-3">
             <span>
               <span className="block font-medium">{ownCardText(s)}</span>
               <span className="block text-xs text-muted">
@@ -152,7 +152,7 @@ async function Mine() {
 export default function MyKpisPage() {
   return (
     <div className="max-w-5xl">
-      <h1 className="text-2xl font-semibold">My KPIs</h1>
+      <h1 className="page-title">My KPIs</h1>
       <p className="mt-1 text-muted">
         Your monthly scorecard, built from your job description: its pillars, each with its weight and its metrics. You rate yourself first, then your manager
         scores the month, HR calibrates it, and you both sign that you have read it. A month&apos;s scorecard opens on the 1st of the next month,

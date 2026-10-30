@@ -161,7 +161,7 @@ export default function FormerEmployeesPage({ searchParams }: PageProps<'/employ
     <div className="max-w-6xl space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Former Employees</h1>
+          <h1 className="page-title">Former Employees</h1>
           <p className="mt-1 max-w-3xl text-muted">
             Everyone who left and doesn&apos;t work here now, the latest first. Their profiles keep every record: employment, contracts, payslips, leave and
             documents. Open a case to see their clearance, exit interview and rehire eligibility.

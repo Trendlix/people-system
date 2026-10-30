@@ -53,7 +53,7 @@ export function CompanyImageForm({ image, name, src, canRemove }: { image: Compa
       <p className="mt-1 text-sm text-muted">{hint} Drag it here, paste it, or choose it.</p>
 
       <div className="mt-4 flex flex-wrap items-start gap-5">
-        <span className="relative flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-line bg-white">
+        <span className="relative flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-line bg-card">
           {src ? (
             <Image src={src} alt={`${name} ${image}`} fill unoptimized className="object-contain p-2" />
           ) : (

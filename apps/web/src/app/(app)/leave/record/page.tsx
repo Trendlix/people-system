@@ -34,7 +34,7 @@ function Heading() {
   return (
     <div className="space-y-2">
       <BackLink href={LEAVE_PATH}>Leave Requests</BackLink>
-      <h1 className="text-2xl font-semibold">Record Leave</h1>
+      <h1 className="page-title">Record Leave</h1>
       <p className="text-muted">
         Leave taken or to be taken by an employee, recorded by HR: approved at once, logged as recorded by HR, with no notice needed. It counts in
         their balance and in the month&apos;s payroll. Work from home, last among the types, is recorded here too: a working day, not leave, one day

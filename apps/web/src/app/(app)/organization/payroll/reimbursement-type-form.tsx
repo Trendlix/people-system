@@ -18,7 +18,7 @@ type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
 const optional = <span className="font-normal text-muted">(optional)</span>;
 const chip =
-  'flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft';
+  'flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-card px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft';
 
 export interface DepartmentChoice {
   id: string;

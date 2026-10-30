@@ -49,7 +49,7 @@ export function AddLocation({ action, around, first }: { action: (prev: FormStat
   }
 
   return (
-    <section aria-label={title} className="w-full space-y-4 rounded-xl border border-accent/30 bg-white p-5 shadow-sm">
+    <section aria-label={title} className="w-full space-y-4 rounded-xl border border-accent/30 bg-card p-5 shadow-sm">
       <div>
         <h4 className="font-semibold">{title}</h4>
         <p className="mt-0.5 text-sm text-muted">

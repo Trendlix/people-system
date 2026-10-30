@@ -25,7 +25,7 @@ async function EditVacancy({ params, searchParams }: PageProps<'/recruitment/vac
   const header = (
     <div className="space-y-2">
       <BackLink href={vacancyHref(v.id)}>{v.title}</BackLink>
-      <h1 className="text-2xl font-semibold">Edit Vacancy</h1>
+      <h1 className="page-title">Edit Vacancy</h1>
     </div>
   );
   if (!v.can.edit) {

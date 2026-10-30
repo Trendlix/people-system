@@ -42,7 +42,7 @@ const ROW: Record<CalculatorRow['kind'], string> = {
 };
 
 const choice =
-  'flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft';
+  'flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-card px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft';
 
 function Rows({ rows }: { rows: CalculatorRow[] }) {
   return rows.map((r) => (

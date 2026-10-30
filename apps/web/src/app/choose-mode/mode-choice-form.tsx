@@ -18,7 +18,7 @@ export function ModeChoiceForm({ cards, selected }: { cards: ModeCard[]; selecte
           <label
             key={card.mode}
             htmlFor={fid(card.mode)}
-            className="flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-white p-4 has-checked:border-accent has-checked:bg-accent-soft"
+            className="flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-card p-4 has-checked:border-accent has-checked:bg-accent-soft"
           >
             <input
               id={fid(card.mode)}

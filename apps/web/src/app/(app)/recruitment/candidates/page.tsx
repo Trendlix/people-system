@@ -123,7 +123,7 @@ export default function CandidatesPage({ searchParams }: PageProps<'/recruitment
   return (
     <div className="space-y-4">
       <div className="space-y-1">
-        <h1 className="text-2xl font-semibold">Candidates</h1>
+        <h1 className="page-title">Candidates</h1>
         <p className="max-w-3xl text-sm text-muted">One profile per person, with every application, CV, interview and offer. The same email or mobile joins a profile by itself; other signs are suggested to HR.</p>
       </div>
       <Suspense fallback={<Loading />}>

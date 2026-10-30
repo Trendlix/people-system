@@ -99,7 +99,7 @@ export function CountSheet({ sheet, action, phone = false }: { sheet: AssetCount
         </div>
       </div>
 
-      <ul aria-label={`What ${sheet.scope.label} has`} className={`divide-y divide-line-soft ${phone ? 'rounded-lg border border-line bg-white' : 'card'}`}>
+      <ul aria-label={`What ${sheet.scope.label} has`} className={`divide-y divide-line-soft ${phone ? 'rounded-lg border border-line bg-card' : 'card'}`}>
         {items.map((i) => {
           const isOut = i.status === 'custody';
           const id = `${ids}-${i.code}`;

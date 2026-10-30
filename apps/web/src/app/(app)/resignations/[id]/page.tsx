@@ -50,7 +50,7 @@ async function Request({ params, searchParams }: { params: PageProps<'/resignati
       <BackLink href={back.href}>{back.label}</BackLink>
       <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Resignation Request</h1>
+          <h1 className="page-title">Resignation Request</h1>
           <p className="text-muted">{r.mine ? 'Your request' : r.employee.fullNameEn}</p>
         </div>
         <ResignationStatusBadge r={r} />

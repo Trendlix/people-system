@@ -59,7 +59,7 @@ type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 const optional = <span className="font-normal text-muted">(optional)</span>;
 
 const CHOICE =
-  'flex min-h-11 w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-line bg-white px-3 py-2 text-left text-sm has-checked:border-accent has-checked:bg-accent-soft has-focus-visible:ring-2 has-focus-visible:ring-accent/30';
+  'flex min-h-11 w-full cursor-pointer items-center justify-between gap-3 rounded-lg border border-line bg-card px-3 py-2 text-left text-sm has-checked:border-accent has-checked:bg-accent-soft has-focus-visible:ring-2 has-focus-visible:ring-accent/30';
 const SHOWN = 'flex min-h-11 w-full items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm';
 
 /** A small tag on a criterion: the target, or whose pick it was. */
@@ -224,7 +224,7 @@ function MetricRow({
               {m.criteria.map((c, i) => {
                 const chosen = pick === i;
                 return (
-                  <li key={i} className={`${SHOWN} ${chosen ? 'border-accent bg-accent-soft font-semibold' : 'border-line bg-white'}`}>
+                  <li key={i} className={`${SHOWN} ${chosen ? 'border-accent bg-accent-soft font-semibold' : 'border-line bg-card'}`}>
                     <span className="min-w-0 break-words">
                       {chosen && <span className="sr-only">Counted: </span>}
                       {c.label}

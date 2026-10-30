@@ -23,7 +23,7 @@ async function EditOffer({ params }: { params: Promise<{ id: string }> }) {
   const heading = (
     <div className="space-y-2">
       <BackLink href={back}>{shownCode(offer.number) ? `Offer ${offer.number}` : 'The offer'}</BackLink>
-      <h1 className="text-2xl font-semibold">{offer.status === 'draft' ? 'Edit the Draft' : 'Edit the Offer'}</h1>
+      <h1 className="page-title">{offer.status === 'draft' ? 'Edit the Draft' : 'Edit the Offer'}</h1>
       <p className="text-sm text-muted">
         {joinShown([offer.number, offer.fullNameEn])}
       </p>

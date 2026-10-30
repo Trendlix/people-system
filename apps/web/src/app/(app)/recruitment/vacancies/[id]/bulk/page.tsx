@@ -20,7 +20,7 @@ async function Bulk({ params }: { params: PageProps<'/recruitment/vacancies/[id]
   const head = (
     <div className="space-y-2">
       <BackLink href={vacancyHref(v.id)}>{v.title}</BackLink>
-      <h1 className="text-2xl font-semibold">Bulk Upload CVs</h1>
+      <h1 className="page-title">Bulk Upload CVs</h1>
       <p className="max-w-3xl text-sm text-muted">
         {v.number} · each CV is saved as an application at Applied, after you check the name, email and mobile read from it.
       </p>

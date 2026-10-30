@@ -361,7 +361,7 @@ export default function ClientAccountsPage({ searchParams }: PageProps<'/clients
   return (
     <StaffOnly>
       <div className="max-w-6xl">
-        <h1 className="text-2xl font-semibold">Client Accounts</h1>
+        <h1 className="page-title">Client Accounts</h1>
         <p className="mt-1 text-muted">
           The company&apos;s client accounts and the people on each, from a day to a day, each at an amount a month: the account&apos;s default unless theirs
           differs.

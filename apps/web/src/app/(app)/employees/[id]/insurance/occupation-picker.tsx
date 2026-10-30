@@ -155,7 +155,7 @@ export function OccupationPicker({
       <input type="hidden" name={name} value={code} />
 
       {/* a press anywhere in the list, its scroll bar too, leaves the keyboard in the text box */}
-      <div hidden={!open} onMouseDown={(e) => e.preventDefault()} className="mt-1 overflow-hidden rounded-lg border border-line bg-white shadow-sm">
+      <div hidden={!open} onMouseDown={(e) => e.preventDefault()} className="mt-1 overflow-hidden rounded-lg border border-line bg-card shadow-sm">
         <ul id={listId} role="listbox" aria-label="Occupations" className={`max-h-72 overflow-y-auto ${options.length ? 'border-b border-line-soft py-1' : ''}`}>
           {options.map((o, i) => (
             <li

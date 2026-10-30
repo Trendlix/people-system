@@ -61,7 +61,7 @@ export async function CountResults({ id, phone = false }: { id: string; phone?: 
           </p>
         )}
       </div>
-      <ul aria-label="Each asset’s result" className={`divide-y divide-line-soft ${phone ? 'rounded-lg border border-line bg-white' : 'card'}`}>
+      <ul aria-label="Each asset’s result" className={`divide-y divide-line-soft ${phone ? 'rounded-lg border border-line bg-card' : 'card'}`}>
         {c.lines.map((l) => (
           <li key={l.asset.code} className="flex flex-wrap items-center gap-3 px-4 py-3">
             <span className="min-w-0 flex-1">

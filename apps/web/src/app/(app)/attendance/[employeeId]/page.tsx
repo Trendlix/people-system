@@ -51,7 +51,7 @@ async function PersonMonth({ params, searchParams }: { params: PageProps<'/atten
     <div className="space-y-6">
       <div className="space-y-2">
         <BackLink href={dailyHref(month)}>Daily Attendance</BackLink>
-        <h1 className="text-2xl font-semibold">
+        <h1 className="page-title">
           {p.employee.fullNameEn}
           {p.employee.confidential && <CLevelBadge title={cLevelTitle(false)} className="ml-2 align-middle" />}
         </h1>

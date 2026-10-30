@@ -62,7 +62,7 @@ import { shownCode, withCode } from '@/lib/hidden';
 
 export const metadata: Metadata = { title: 'Attendance Review · People System' };
 
-const chip = 'inline-flex min-h-9 items-center gap-1.5 rounded-full border border-line bg-white px-3.5 text-sm font-semibold';
+const chip = 'inline-flex min-h-9 items-center gap-1.5 rounded-full border border-line bg-card px-3.5 text-sm font-semibold';
 
 function Section({ title, intro, children, count }: { title: string; intro: string; children: React.ReactNode; count: number }) {
   if (!count) return null;
@@ -165,7 +165,7 @@ async function Review({ params }: { params: PageProps<'/payroll/[id]/attendance/
     <div className="space-y-8">
       <div className="space-y-2">
         <BackLink href={runHref(run.id)}>{title}</BackLink>
-        <h1 className="text-2xl font-semibold">Attendance from Zoho People</h1>
+        <h1 className="page-title">Attendance from Zoho People</h1>
         <p className="text-muted">
           {monthName(view.month)} · read {formatDateTime(view.createdAt)}
           {view.createdBy && ` by ${view.createdBy}`}

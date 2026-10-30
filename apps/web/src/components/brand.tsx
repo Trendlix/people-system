@@ -24,7 +24,7 @@ export async function brandMetadata(): Promise<Pick<Metadata, 'icons'>> {
 /** `display`: the Tailwind display classes, e.g. `hidden md:block` for a computer only. */
 function Picture({ src, display = 'block' }: { src: string; display?: string }) {
   return (
-    <span className={`relative size-10 shrink-0 overflow-hidden rounded-lg bg-white ${display}`}>
+    <span className={`relative size-[38px] shrink-0 overflow-hidden rounded-[11px] bg-white ${display}`}>
       <Image src={src} alt="" fill unoptimized className="object-contain p-1" />
     </span>
   );
@@ -48,7 +48,7 @@ function Mark({ brand, dark }: { brand: CompanyBrand; dark: boolean }) {
   if (full) return <Picture src={full} />;
   return (
     <span
-      className={`flex size-10 shrink-0 items-center justify-center rounded-lg text-lg font-bold text-white ${dark ? 'bg-accent' : 'bg-sidebar'}`}
+      className={`flex size-[38px] shrink-0 items-center justify-center rounded-[11px] text-lg font-semibold ${dark ? 'bg-sidebar-active text-sidebar-on-active' : 'bg-sidebar text-sidebar-ink'}`}
     >
       {brand.nameEn.trim().charAt(0).toUpperCase() || 'P'}
     </span>
@@ -62,8 +62,8 @@ export async function Brand({ dark = false }: { dark?: boolean }) {
     <div className="flex min-w-0 items-center gap-3">
       <Mark brand={brand} dark={dark} />
       <div className="min-w-0 leading-tight">
-        <p className={`truncate font-semibold ${dark ? 'text-white' : ''}`}>{brand.nameEn}</p>
-        <p className={`text-xs ${dark ? 'text-sidebar-text' : 'text-muted'}`}>People System</p>
+        <p className={`truncate text-[15px] font-semibold ${dark ? 'text-sidebar-ink' : ''}`}>{brand.nameEn}</p>
+        <p className={`text-[11px] ${dark ? 'text-sidebar-text' : 'text-muted'}`}>People System</p>
       </div>
     </div>
   );
@@ -73,7 +73,7 @@ export async function Brand({ dark = false }: { dark?: boolean }) {
 export function BrandFallback({ dark = false }: { dark?: boolean }) {
   return (
     <div className="flex items-center gap-3">
-      <span className={`size-10 shrink-0 rounded-lg ${dark ? 'bg-white/10' : 'bg-line'}`} />
+      <span className={`size-[38px] shrink-0 rounded-[11px] ${dark ? 'bg-white/10' : 'bg-line'}`} />
       <p className={`text-xs ${dark ? 'text-sidebar-text' : 'text-muted'}`}>People System</p>
     </div>
   );

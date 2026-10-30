@@ -23,7 +23,7 @@ export function NewPermissionHeading({ back }: { back: { href: string; label: st
   return (
     <div className="space-y-2">
       {back && <BackLink href={back.href}>{back.label}</BackLink>}
-      <h1 className="text-2xl font-semibold">New Permission</h1>
+      <h1 className="page-title">New Permission</h1>
       <p className="text-muted">
         Ask to be away for a few hours of a working day, e.g. to leave early or come late: the day, the hours in half hours, the times if you know them,
         and a reason. Your direct manager decides it first (without one, your team lead, else the head of your department), then HR; each step shows

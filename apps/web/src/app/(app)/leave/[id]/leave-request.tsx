@@ -153,7 +153,7 @@ export async function LeaveRequestDetail({
       <div className="space-y-2">
         <BackLink href={back.href}>{back.label}</BackLink>
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold">{titleCase(r.type.nameEn)}</h1>
+          <h1 className="page-title">{titleCase(r.type.nameEn)}</h1>
           <LeaveStatusBadge status={r.status} confidential={r.confidential} />
           {r.overStaffingLimit && <OverLimitBadge />}
           {r.confidential && <CLevelBadge title="A C-level person: the CEO decides HR’s stage, and HR doesn’t see the request." />}

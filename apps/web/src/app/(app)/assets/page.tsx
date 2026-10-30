@@ -23,8 +23,8 @@ import { AssetTable, Empty, Loading, NoAccess, Pages } from './ui';
 export const metadata: Metadata = { title: 'All Assets · People System' };
 
 const chip = 'inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-sm font-semibold whitespace-nowrap no-underline';
-const ACTIVE = 'border-ink bg-ink text-white hover:text-white';
-const IDLE = 'border-line bg-white text-ink hover:bg-canvas hover:text-ink';
+const ACTIVE = 'border-ink bg-ink text-on-accent hover:text-on-accent';
+const IDLE = 'border-line bg-card text-ink hover:bg-canvas hover:text-ink';
 
 function Chips({ label, chips }: { label: string; chips: ChipLink[] }) {
   return (

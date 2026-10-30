@@ -34,7 +34,7 @@ async function Sheets({ searchParams }: { searchParams: PageProps<'/assets/label
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold">Print Label Sheets</h1>
+        <h1 className="page-title">Print Label Sheets</h1>
         <p className="mt-1 text-sm text-muted">
           {sheetsText(labels.length, start)}
           {start > 1 ? `, starting at label ${start}` : ''}. Print on A4 label paper at 100% (&ldquo;Actual size&rdquo;), with no scaling or margins added by the printer.

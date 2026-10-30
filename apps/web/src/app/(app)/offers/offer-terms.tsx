@@ -39,7 +39,7 @@ import { estimateText, insuredAllowancesOf, offerBreakdownRows, offerSalary, pay
 
 const optional = <span className="font-normal text-muted">(optional)</span>;
 const radio =
-  'flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft';
+  'flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-card px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft';
 
 export function OfferTerms({
   state,

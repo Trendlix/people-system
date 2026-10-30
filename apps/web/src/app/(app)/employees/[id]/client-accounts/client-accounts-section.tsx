@@ -23,7 +23,7 @@ export async function ClientAccountsSection({ employee }: { employee: Pick<Emplo
         </p>
       ) : (
         <div className="space-y-2">
-          <ul className="divide-y divide-line rounded-lg border border-line bg-white" aria-label={`${employee.fullNameEn}’s client accounts`}>
+          <ul className="divide-y divide-line rounded-lg border border-line bg-card" aria-label={`${employee.fullNameEn}’s client accounts`}>
             {assignments.map((a) => (
               <li key={a.id} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3 text-sm">
                 <div className="min-w-0 space-y-1">

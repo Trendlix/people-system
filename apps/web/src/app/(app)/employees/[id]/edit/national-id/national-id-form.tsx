@@ -140,7 +140,7 @@ export function NationalIdForm({
                 <p id={fid(`card_${key}-hint`)} className="hint">
                   <span className="text-warn">{noteText(key)}</span> In the profile now: {shown(key, profile?.[key] ?? null)}
                 </p>
-                <label className="mt-3 flex min-h-11 w-fit cursor-pointer items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft">
+                <label className="mt-3 flex min-h-11 w-fit cursor-pointer items-center gap-2 rounded-lg border border-line bg-card px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft">
                   <input type="checkbox" name="apply" value={key} defaultChecked={ticked(key)} className="size-4 accent-accent" />
                   Save to the profile<span className="sr-only"> as the {label}</span>
                 </label>

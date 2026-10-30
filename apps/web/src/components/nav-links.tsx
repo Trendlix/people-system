@@ -1,5 +1,26 @@
 'use client';
 
+import {
+  BriefcaseBusiness,
+  Building,
+  CalendarDays,
+  CircleCheck,
+  Clock,
+  FileText,
+  Handshake,
+  Inbox,
+  LayoutGrid,
+  MessageCircle,
+  Network,
+  Package,
+  ScrollText,
+  TrendingUp,
+  User,
+  UserCog,
+  Users,
+  Wallet,
+  type LucideIcon,
+} from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useSyncExternalStore } from 'react';
@@ -18,23 +39,54 @@ import {
   type Remembered,
 } from './nav-groups';
 
-// a clear ring on what a keyboard is on, white on the dark sidebar, inside the link or button: the lists that open and
-// close clip what is outside them
-const focus = 'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-white';
-const base = `flex min-h-11 items-center gap-2 rounded-lg px-3 text-sm font-medium no-underline ${focus}`;
-// a sub-item: smaller, and indented under its item in the sidebar; in the row of links on a phone, after it, as tall as
-// the others there (44px, for a finger)
-const subBase = `flex min-h-11 shrink-0 items-center gap-2 rounded-lg px-3 text-[13px] font-medium whitespace-nowrap no-underline md:min-h-9 md:pl-7 ${focus}`;
-const on = 'bg-sidebar-active text-white';
-const off = 'text-sidebar-text hover:bg-white/5 hover:text-white';
-// a heading holding the page: white, as the section it is in, its page highlighted under it
-const holds = 'text-white hover:bg-white/5';
+// The owner's design (Figma, 30 October 2026): the near-black side menu, its items in grey with a line icon, the page's
+// item a light pill; the same on the light and the dark look.
+
+// a clear ring on what a keyboard is on, grey, which shows on the dark menu and on the light pill, inside the link or
+// button: the lists that open and close clip what is outside them
+const focus = 'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-sidebar-text';
+const base = `flex min-h-11 items-center gap-3 rounded-[11px] px-3 text-[13px] font-normal no-underline transition-colors ${focus}`;
+// a sub-item: indented under its item's words in the sidebar; in the row of links on a phone, after it, as tall as the
+// others there (44px, for a finger)
+const subBase = `flex min-h-11 shrink-0 items-center gap-2 rounded-[11px] px-3 text-[13px] font-normal whitespace-nowrap no-underline transition-colors md:min-h-9 md:pl-[2.6rem] ${focus}`;
+const on = 'bg-sidebar-active text-sidebar-on-active';
+const off = 'text-sidebar-text hover:bg-white/5 hover:text-sidebar-ink';
+// a heading holding the page: bright, as the section it is in, its page highlighted under it
+const holds = 'text-sidebar-ink hover:bg-white/5';
+
+/** Each top item's line icon (the design's: a grid for the Dashboard, a person for My Profile, …), by its words. */
+const ICONS: Record<string, LucideIcon> = {
+  Home: LayoutGrid,
+  Dashboard: LayoutGrid,
+  'My Profile': User,
+  'My Requests': FileText,
+  'My Attendance': CalendarDays,
+  'My Team': Users,
+  KPIs: TrendingUp,
+  Assets: Package,
+  Recruitment: BriefcaseBusiness,
+  Clients: Handshake,
+  Organization: Building,
+  People: Users,
+  Payroll: Wallet,
+  Requests: Inbox,
+  Attendance: Clock,
+  Approvals: CircleCheck,
+  Users: UserCog,
+  'Audit Log': ScrollText,
+  'WhatsApp Messages': MessageCircle,
+};
+
+function ItemIcon({ label }: { label: string }) {
+  const Icon = ICONS[label] ?? Network;
+  return <Icon aria-hidden="true" className="hidden size-[17px] shrink-0 md:block" strokeWidth={1.6} />;
+}
 
 /** How many things wait behind a link, when there are any; at the end of the row in the sidebar unless said otherwise. */
 function Count({ count, className = 'md:ml-auto' }: { count: number | undefined; className?: string }) {
   if (!count) return null;
   return (
-    <span className={`rounded-full bg-accent px-2 py-0.5 text-xs font-semibold text-white tabular-nums ${className}`}>
+    <span className={`min-w-5 rounded-full bg-sidebar-count px-1.5 py-0.5 text-center text-[11px] leading-4 font-medium text-sidebar-on-active tabular-nums ${className}`}>
       {count}
       <span className="sr-only"> waiting</span>
     </span>
@@ -83,6 +135,7 @@ function NavLink({ item, pathname, counts }: { item: NavItem; pathname: string; 
   const active = isActive(item, pathname);
   return (
     <Link href={item.href} aria-current={active ? 'page' : undefined} className={`${base} ${active ? on : off}`}>
+      <ItemIcon label={item.label} />
       {item.label}
       <Count count={counts?.[item.href]} />
     </Link>
@@ -126,6 +179,7 @@ function NavGroupLinks({
         onClick={onToggle}
         className={`group peer ${base} shrink-0 cursor-pointer text-left whitespace-nowrap md:w-full ${active ? (current ? holds : on) : off}`}
       >
+        <ItemIcon label={item.label} />
         <span className="md:mr-auto">{item.label}</span>
         <Count count={groupCount(item, counts)} className="group-aria-expanded:hidden" />
         <svg

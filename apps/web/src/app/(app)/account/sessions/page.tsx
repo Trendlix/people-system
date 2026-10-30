@@ -79,7 +79,7 @@ export default function YourSessionsPage() {
   return (
     <div className="max-w-2xl space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold">Your Sessions</h1>
+        <h1 className="page-title">Your Sessions</h1>
         <p className="mt-1 text-muted">
           You can be signed in once on the website and once in the app. Signing in again on another device signs the older
           one out. Sign out of any you don’t recognise, then change your password: that signs out your other sessions and

@@ -28,7 +28,7 @@ export function NewLeaveHeading({ back }: { back: { href: string; label: string 
   return (
     <div className="space-y-2">
       {back && <BackLink href={back.href}>{back.label}</BackLink>}
-      <h1 className="text-2xl font-semibold">New Leave</h1>
+      <h1 className="page-title">New Leave</h1>
       <p className="text-muted">
         Ask for leave: the type, the first and last day, and a reason, with a document when the type needs one. Your direct manager decides it first
         (without one, your team lead, else the head of your department), then HR; each step shows on the request. As you choose the days you

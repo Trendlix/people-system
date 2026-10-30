@@ -8,6 +8,7 @@ import { NavLinks, NavLinksFallback } from '@/components/nav-links';
 import { BellLink, NotificationBell } from '@/components/notification-bell';
 import { CheckInReminder } from '@/components/check-in-reminder';
 import { SessionWatch } from '@/components/session-watch';
+import { ThemeSwitch } from '@/components/theme-switch';
 import { UserMenu } from '@/components/user-menu';
 import { DeveloperBanner } from '@/components/developer-banner';
 import { ModeGate } from '@/components/mode-gate';
@@ -184,13 +185,16 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
         <CheckInReminder surface="site" />
       </Suspense>
       <div className="flex flex-1 flex-col md:flex-row">
-        <aside className="bg-sidebar px-4 py-4 md:w-60 md:shrink-0 md:py-6">
-          <div className="mb-4 md:mb-8">
+        {/* the owner's design (30 October 2026): the near-black side menu, its own scroll on a computer so the page's
+            stays the page's */}
+        <aside className="bg-sidebar px-4 py-4 md:sticky md:top-0 md:flex md:h-screen md:w-[252px] md:shrink-0 md:flex-col md:border-r md:border-sidebar-line md:py-6">
+          <div className="mb-4 px-2 md:mb-8">
             <Suspense fallback={<BrandFallback dark />}>
               <Brand dark />
             </Suspense>
           </div>
-          <nav aria-label="Main" className="relative flex gap-1 overflow-x-auto md:flex-col">
+          <p className="eyebrow mb-2 hidden px-3 text-sidebar-quiet md:block">Workspace</p>
+          <nav aria-label="Main" className="relative flex gap-1 overflow-x-auto md:-mx-1 md:flex-col md:overflow-x-visible md:overflow-y-auto md:px-1 md:pb-4">
             <Suspense fallback={<NavLinksFallback />}>
               <MainNav />
             </Suspense>
@@ -199,12 +203,14 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
               attendance is not active in the side menu") */}
         </aside>
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="flex min-h-16 items-center justify-end gap-3 border-b border-line bg-card px-4 sm:px-8">
+          <header className="flex min-h-[72px] items-center justify-end gap-2 border-b border-line px-4 sm:px-8">
             {/* on a phone-width screen, the way to the phone pages (owner, 20 October 2026: "what if we tried to build a
                 mobile app for the employees? to enable them to check in and out, and apply for their requests") */}
             <Link href="/app" className="mr-auto shrink-0 text-sm font-semibold sm:hidden">
               Open the app view
             </Link>
+            {/* light or dark (the owner's design, 30 October 2026) */}
+            <ThemeSwitch />
             {/* the bell, with how many notifications are unread (owner, 20 October 2026: "Push notifications: yes") */}
             <Suspense fallback={<BellLink surface="site" unread={null} />}>
               <NotificationBell surface="site" />
@@ -216,7 +222,8 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
           <Suspense fallback={null}>
             <ConfirmBanner />
           </Suspense>
-          <main className="flex-1 px-4 py-6 sm:px-8">{children}</main>
+          {/* the design's page: a wide column with room around it */}
+          <main className="w-full max-w-[1500px] flex-1 self-center px-4 py-6 sm:px-8 lg:px-[34px] lg:py-[34px]">{children}</main>
         </div>
       </div>
     </div>

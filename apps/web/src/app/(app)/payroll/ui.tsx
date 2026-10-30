@@ -8,9 +8,9 @@ export function PayrollStatusBadge({ status }: { status: PayrollStatus }) {
 }
 
 const DOT = {
-  done: 'border-ok bg-ok text-white',
-  current: 'border-accent bg-accent text-white',
-  upcoming: 'border-line bg-white text-muted',
+  done: 'border-ok bg-ok text-on-accent',
+  current: 'border-accent bg-accent text-on-accent',
+  upcoming: 'border-line bg-card text-muted',
 } as const;
 
 /** Where a run stands: Draft → With the CEO → Approved → Paid. */

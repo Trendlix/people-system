@@ -70,7 +70,7 @@ export function ResignForm({ action, today, notice, lastDayIfToday, toCeo, cance
             type="file"
             accept={LETTER_ACCEPT}
             aria-describedby={fid('letter-hint')}
-            className="block w-full text-sm file:mr-3 file:min-h-11 file:cursor-pointer file:rounded-lg file:border file:border-line file:bg-white file:px-4 file:text-sm file:font-semibold"
+            className="block w-full text-sm file:mr-3 file:min-h-11 file:cursor-pointer file:rounded-lg file:border file:border-line file:bg-card file:px-4 file:text-sm file:font-semibold"
           />
           <p id={fid('letter-hint')} className="hint">
             A PDF or a photo, up to {RESIGNATION_LETTER_MAX_MB} MB.

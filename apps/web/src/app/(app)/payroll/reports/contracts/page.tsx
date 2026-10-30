@@ -123,7 +123,7 @@ function Filters({ filters: f, today, departments }: { filters: ReportFilters; t
               <Link
                 href={reportHref({ ...f, period: q.period }, today)}
                 aria-current={active ? 'page' : undefined}
-                className={`${chip} ${active ? 'border-ink bg-ink text-white hover:text-white' : 'border-line bg-white text-ink hover:bg-canvas hover:text-ink'}`}
+                className={`${chip} ${active ? 'border-ink bg-ink text-on-accent hover:text-on-accent' : 'border-line bg-card text-ink hover:bg-canvas hover:text-ink'}`}
               >
                 {q.label}
               </Link>
@@ -345,7 +345,7 @@ export default function ContractsReportPage({ searchParams }: PageProps<'/payrol
       <div className="space-y-4">
         <BackLink href="/payroll/reports">Payroll Reports</BackLink>
         <div>
-          <h1 className="text-2xl font-semibold">Contracts Report</h1>
+          <h1 className="page-title">Contracts Report</h1>
           <p className="mt-1 text-muted">
             Every contract of a period with its status, start and end dates, and what ends soon or wasn’t renewed. Each is drafted and signed on the employee’s Employment
             tab; all of them are on <Link href="/contracts">Contracts</Link>.

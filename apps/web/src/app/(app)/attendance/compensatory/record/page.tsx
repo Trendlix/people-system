@@ -28,7 +28,7 @@ function Heading() {
   return (
     <div className="space-y-2">
       <BackLink href={COMPENSATORY_PATH}>Compensatory Days</BackLink>
-      <h1 className="text-2xl font-semibold">Record a Compensatory Day</h1>
+      <h1 className="page-title">Record a Compensatory Day</h1>
       <p className="text-muted">
         A compensatory day an employee earned, or hours off for part of a day, recorded by HR: approved at once and logged as recorded by HR, with your
         reason. A day off that is past is recorded with a warning; cash instead has no day off.

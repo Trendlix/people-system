@@ -114,7 +114,7 @@ export default function NewAssetPage({ searchParams }: PageProps<'/assets/new'>)
     <div className="max-w-3xl space-y-4">
       <BackLink href={ASSET_PATHS.list}>Assets</BackLink>
       <div>
-        <h1 className="text-2xl font-semibold">Add Asset</h1>
+        <h1 className="page-title">Add Asset</h1>
         <p className="mt-1 text-muted">Its group decides its code, its fields and how it is kept. The code is given when you save it, and never changes.</p>
       </div>
       <Suspense fallback={<Loading />}>

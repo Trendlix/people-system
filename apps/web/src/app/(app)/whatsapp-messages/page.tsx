@@ -290,7 +290,7 @@ export default function WhatsAppMessagesPage({ searchParams }: PageProps<'/whats
     <StaffOnly>
       <div className="max-w-7xl space-y-4">
         <div>
-          <h1 className="text-2xl font-semibold">WhatsApp Messages</h1>
+          <h1 className="page-title">WhatsApp Messages</h1>
           <p className="mt-1 max-w-3xl text-muted">
             Every WhatsApp message the system made, newest first: to whom, which template, and whether it was delivered. What a message said is never kept
             here, only its template and the record it is about.

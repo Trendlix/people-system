@@ -16,7 +16,7 @@ export default function NewEmployeePage() {
   return (
     <div className="space-y-4">
       <BackLink href="/employees">Employees</BackLink>
-      <h1 className="text-2xl font-semibold">Add Employee</h1>
+      <h1 className="page-title">Add Employee</h1>
       <Suspense fallback={<Loading />}>
         <NewEmployee />
       </Suspense>

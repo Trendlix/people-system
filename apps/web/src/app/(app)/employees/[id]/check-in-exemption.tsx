@@ -37,7 +37,7 @@ export async function CheckInExemptionSection({ employee, user }: { employee: Pi
             {active.map((p) => {
               const badge = stateBadge(p.state);
               return (
-                <li key={p.id} className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-line bg-white p-4">
+                <li key={p.id} className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-line bg-card p-4">
                   <div className="min-w-0 space-y-1 text-sm">
                     <p className="flex flex-wrap items-center gap-2">
                       <span className="badge bg-ok-soft text-ok">{EXEMPT_BADGE}</span>

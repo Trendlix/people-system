@@ -240,7 +240,7 @@ export function EditHeading({
   return (
     <div className="space-y-2">
       <BackLink href={backHref ?? `/employees/${profile.id}`}>{profile.fullNameEn}</BackLink>
-      <h1 className="text-2xl font-semibold">{title}</h1>
+      <h1 className="page-title">{title}</h1>
       <p className="text-sm text-muted">
         {withCode(profile.fullNameEn, profile.employeeCode)}
       </p>

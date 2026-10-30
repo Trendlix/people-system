@@ -54,7 +54,7 @@ async function OnTheSite() {
   if (!ending && !change) return null;
   const parts = [ending && `${ending} ${ending === 1 ? 'ending' : 'endings'} of employment`, change && `${change} ${change === 1 ? 'change' : 'changes'} of details`].filter(Boolean);
   return (
-    <p className="rounded-lg bg-white px-4 py-3 text-sm text-muted">
+    <p className="rounded-lg bg-card px-4 py-3 text-sm text-muted">
       Also waiting for you on the full site: {parts.join(' and ')}.{' '}
       <Link href="/approvals" className="font-semibold">
         Open Approvals

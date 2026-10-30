@@ -46,7 +46,7 @@ async function Request({ params }: { params: PageProps<'/app/approve/raise/[id]'
           <HrRequestActions request={r} user={user} rates={rates} />
         </section>
       ) : (
-        <p className="rounded-lg bg-white px-4 py-3 text-sm text-muted">It isn&apos;t waiting for your decision now: it shows where it stands.</p>
+        <p className="rounded-lg bg-card px-4 py-3 text-sm text-muted">It isn&apos;t waiting for your decision now: it shows where it stands.</p>
       )}
     </div>
   );

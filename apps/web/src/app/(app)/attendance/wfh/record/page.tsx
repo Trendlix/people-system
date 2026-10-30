@@ -27,7 +27,7 @@ function Heading() {
   return (
     <div className="space-y-2">
       <BackLink href={WFH_PATH}>Work From Home</BackLink>
-      <h1 className="text-2xl font-semibold">Record a WFH Day</h1>
+      <h1 className="page-title">Record a WFH Day</h1>
       <p className="text-muted">
         A day an employee works or worked from home, recorded by HR: approved at once and logged as recorded by HR, with your reason. Past the day&apos;s
         notice or the limits it is recorded with a warning, kept with it.

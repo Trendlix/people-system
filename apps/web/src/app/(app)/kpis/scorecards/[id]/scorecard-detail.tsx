@@ -225,7 +225,7 @@ export async function ScorecardDetail({
       <div className="space-y-2">
         <BackLink href={back.href}>{back.label}</BackLink>
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold">{titleCase(`${kpiMonthName(v.month)} KPI scorecard`)}</h1>
+          <h1 className="page-title">{titleCase(`${kpiMonthName(v.month)} KPI scorecard`)}</h1>
           <StatusBadge status={v.status} scorer={v.scorer.kind} />
           {v.practice && <PracticeBadge />}
           {v.practice?.draft && <span className="badge">Draft version {v.templateVersion}</span>}

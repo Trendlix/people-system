@@ -14,7 +14,7 @@ import type { Employment, FormState } from '@/lib/types';
 // check-in locations' by GPS.
 
 const chip =
-  'flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft';
+  'flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-card px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft';
 
 /** After a refused save, ticked if it was sent; otherwise as saved. */
 const tickedOf = (state: FormState, key: string, saved: boolean) => (state.values ? key in state.values : saved);

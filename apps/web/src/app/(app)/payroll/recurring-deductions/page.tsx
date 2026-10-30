@@ -251,7 +251,7 @@ export default function RecurringDeductionsPage() {
   return (
     <StaffOnly>
       <div className="max-w-6xl">
-        <h1 className="text-2xl font-semibold">Recurring Deductions</h1>
+        <h1 className="page-title">Recurring Deductions</h1>
         <p className="mt-1 text-muted">
           A fixed amount taken from an employee&apos;s pay every month, such as their share of a medical subscription: from its first month to its last, or
           until it is stopped. Each month&apos;s payroll run takes it after tax, or before tax when ticked so (it then lowers the taxable pay), named on

@@ -45,7 +45,7 @@ const NOT_ALLOWED = 'Only HR and the CEO can see which details are missing from 
 const dash = <span className="text-muted">—</span>;
 const quiet = 'border-t border-line px-4 py-10 text-center text-sm text-muted';
 const choice =
-  'flex min-h-11 w-fit cursor-pointer items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft';
+  'flex min-h-11 w-fit cursor-pointer items-center gap-2 rounded-lg border border-line bg-card px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft';
 const gapChip = 'inline-block rounded-full bg-warn-soft px-2 py-0.5 text-xs font-medium text-warn no-underline hover:text-warn hover:underline';
 
 function Filters({ filters: f, departments, byJob }: { filters: MissingFilters; departments: Department[]; byJob: boolean }) {
@@ -257,7 +257,7 @@ export default function MissingDetailsPage({ searchParams }: PageProps<'/employe
       <div className="space-y-4">
         <BackLink href="/employees">Employees</BackLink>
         <div>
-          <h1 className="text-2xl font-semibold">Missing Details</h1>
+          <h1 className="page-title">Missing Details</h1>
           <p className="mt-1 text-muted">The personal details and documents each profile still lacks, by the same checklist as the profile.</p>
         </div>
         <Suspense fallback={<Loading />}>

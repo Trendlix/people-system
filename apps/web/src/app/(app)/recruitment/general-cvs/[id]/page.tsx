@@ -67,7 +67,7 @@ async function GeneralCv({ params }: { params: PageProps<'/recruitment/general-c
       <div className="space-y-2">
         <BackLink href={tabHref('general')}>General CVs</BackLink>
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold">{c.fullName}</h1>
+          <h1 className="page-title">{c.fullName}</h1>
           <span className={`badge ${GENERAL_STATUS_STYLE[c.status]}`}>{GENERAL_CV_STATUS_LABELS[c.status]}</span>
           {/* the latest screening verdict of this CV's comments (24 October 2026) */}
           <VerdictBadge verdict={c.verdict} />

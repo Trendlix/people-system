@@ -22,7 +22,7 @@ export function ViewAsButton() {
 
   return (
     <>
-      <button ref={opener} type="button" aria-haspopup="dialog" onClick={() => setOpen(true)} className="cursor-pointer text-sm whitespace-nowrap">
+      <button ref={opener} type="button" aria-haspopup="dialog" onClick={() => setOpen(true)} className="inline-flex h-10 cursor-pointer items-center rounded-xl border border-line bg-card px-3 text-sm whitespace-nowrap hover:bg-raised">
         View as…
       </button>
       {open && <ViewAsWindow onClosed={closed} />}

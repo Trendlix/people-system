@@ -27,7 +27,7 @@ async function Form({ params }: { params: PageProps<'/offboarding/[id]/print'>['
       <BackLink href={caseHref(c.id)}>{c.employee.fullNameEn}</BackLink>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">Clearance Form</h1>
+          <h1 className="page-title">Clearance Form</h1>
           <p className="mt-1 text-sm text-muted">Print it on A4 and have {c.employee.fullNameEn} and each person in charge of an item sign it.</p>
         </div>
         <PrintDocumentButton document={clearanceFormDocument(c, brand)} title={`Clearance Form ${c.employee.fullNameEn}`} label="Print form" what="form" />

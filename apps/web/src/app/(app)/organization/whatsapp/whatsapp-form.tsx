@@ -257,7 +257,7 @@ export function WhatsAppSettingsForm({ action, view, testTo }: { action: Action;
           <legend className="sr-only">Send WhatsApp messages through</legend>
           <div className="grid gap-3 sm:grid-cols-2">
             {WHATSAPP_PROVIDERS.map((p) => (
-              <label key={p} className="flex cursor-pointer gap-3 rounded-lg border border-line bg-white p-4 has-checked:border-accent has-checked:bg-accent-soft">
+              <label key={p} className="flex cursor-pointer gap-3 rounded-lg border border-line bg-card p-4 has-checked:border-accent has-checked:bg-accent-soft">
                 <input
                   type="radio"
                   name="provider"

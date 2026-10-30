@@ -217,7 +217,7 @@ async function StaffCheckIn() {
 function StaffHome() {
   return (
     <div className="max-w-4xl">
-      <h1 className="text-2xl font-semibold">Welcome</h1>
+      <h1 className="page-title">Welcome</h1>
       <p className="mt-1 text-muted">TrendLIX People System. Modules go live one at a time.</p>
 
       {/* last night's fetch from Zoho People failed, or its connection needs connecting again (25 October 2026): HR's and

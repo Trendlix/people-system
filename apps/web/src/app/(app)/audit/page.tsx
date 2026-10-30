@@ -377,7 +377,7 @@ export default function AuditLogPage({ searchParams }: PageProps<'/audit'>) {
     <StaffOnly>
       <div className="space-y-4">
         <div>
-          <h1 className="text-2xl font-semibold">Audit Log</h1>
+          <h1 className="page-title">Audit Log</h1>
           <p className="mt-1 text-muted">
             Who changed what and when, in every part of the system, newest first. Restricted values, such as national IDs, bank accounts and pay, show only that
             they changed.

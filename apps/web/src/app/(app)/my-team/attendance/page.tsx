@@ -50,7 +50,7 @@ export default function TeamAttendancePage({ searchParams }: PageProps<'/my-team
     <div className="max-w-7xl space-y-6">
       <div className="space-y-2">
         <BackLink href={MY_TEAM}>My Team</BackLink>
-        <h1 className="text-2xl font-semibold">Team Attendance</h1>
+        <h1 className="page-title">Team Attendance</h1>
         <p className="max-w-3xl text-muted">
           Your team&apos;s days, from their check-ins on the system and Zoho People&apos;s imports: the hours within each person&apos;s shift, absent
           days, short hours, permission and leave; a check-in outside the work arrangement&apos;s rule is flagged. Open a row for its days.

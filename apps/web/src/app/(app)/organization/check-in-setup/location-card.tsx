@@ -67,7 +67,7 @@ export function MainOfficeCard({
   const [saved, setSaved] = useState<string | null>(null);
   const hint = radiusHint(l.radiusMetres);
   return (
-    <article aria-labelledby={`main-office-${l.id}`} className="overflow-hidden rounded-xl border border-line bg-white shadow-sm">
+    <article aria-labelledby={`main-office-${l.id}`} className="overflow-hidden rounded-xl border border-line bg-card shadow-sm">
       {editing ? (
         <div className="space-y-4 p-5 sm:p-6">
           <h3 id={`main-office-${l.id}`} className="font-semibold">
@@ -215,7 +215,7 @@ export function SubLocationCard({
 
   if (editing) {
     return (
-      <li aria-labelledby={nameId} className="col-span-full space-y-4 rounded-xl border border-line bg-white p-5 shadow-sm">
+      <li aria-labelledby={nameId} className="col-span-full space-y-4 rounded-xl border border-line bg-card p-5 shadow-sm">
         <h4 id={nameId} className="font-semibold">
           Edit {titleCase(l.name)}
         </h4>
@@ -236,7 +236,7 @@ export function SubLocationCard({
   }
 
   return (
-    <li aria-labelledby={nameId} aria-busy={pending || undefined} className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-line bg-white shadow-sm">
+    <li aria-labelledby={nameId} aria-busy={pending || undefined} className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-line bg-card shadow-sm">
       <div className="p-2 pb-0">
         <LocationsMap
           circles={[{ latitude: l.latitude, longitude: l.longitude, radiusMetres: l.radiusMetres }]}

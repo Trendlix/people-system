@@ -80,7 +80,7 @@ function PhoneHold({ user }: { user: Session }) {
         <Suspense fallback={null}>
           <ViewAsBanner />
         </Suspense>
-        <header className={`on-dark bg-sidebar pt-[env(safe-area-inset-top)] text-white ${SIDES}`}>
+        <header className={`on-dark bg-sidebar pt-[env(safe-area-inset-top)] text-sidebar-ink ${SIDES}`}>
           <div className="mx-auto flex min-h-14 max-w-xl items-center">
             <Suspense fallback={<BrandFallback dark />}>
               <Brand dark />

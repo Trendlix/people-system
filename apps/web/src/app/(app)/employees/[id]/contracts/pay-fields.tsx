@@ -95,7 +95,7 @@ const NET_RATE_INVALID = 'Enter the net per hour as an amount in EGP, e.g. 120.'
 const HOURS_INVALID = `Enter the hours a week as a number above 0, up to ${MAX_HOURS_PER_WEEK}, e.g. 20 or 22.5.`;
 const MINIMUM_INVALID = 'Enter the minimum a month as an amount in EGP above 0, e.g. 12,000, or leave it empty for none.';
 export const choice =
-  'flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft';
+  'flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-card px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft';
 
 /**
  * What the pay fields hold while HR types (the fields themselves stay uncontrolled), and the salary worked out from it

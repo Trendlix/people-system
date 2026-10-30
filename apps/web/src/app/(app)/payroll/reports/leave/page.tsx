@@ -132,7 +132,7 @@ function Filters({
               <Link
                 href={reportHref({ ...f, period: q.period }, today)}
                 aria-current={active ? 'page' : undefined}
-                className={`${chip} ${active ? 'border-ink bg-ink text-white hover:text-white' : 'border-line bg-white text-ink hover:bg-canvas hover:text-ink'}`}
+                className={`${chip} ${active ? 'border-ink bg-ink text-on-accent hover:text-on-accent' : 'border-line bg-card text-ink hover:bg-canvas hover:text-ink'}`}
               >
                 {q.label}
               </Link>
@@ -380,7 +380,7 @@ export default function LeaveReportPage({ searchParams }: PageProps<'/payroll/re
       <div className="space-y-4">
         <BackLink href="/payroll/reports">Payroll Reports</BackLink>
         <div>
-          <h1 className="text-2xl font-semibold">Leave Report</h1>
+          <h1 className="page-title">Leave Report</h1>
           <p className="mt-1 text-muted">
             The approved leave of a month or of a range of months, by employee and leave type, with the permission hours, the work from home days and the annual
             balance left. Leave is recorded and decided on <Link href="/leave">Leave Requests</Link>.

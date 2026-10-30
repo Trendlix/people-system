@@ -200,7 +200,7 @@ async function Builder({ params, searchParams }: { params: PageProps<'/kpis/temp
       {readsKpiTemplates(user) && <BackLink href={KPI_PATHS.templates}>KPI Templates</BackLink>}
       <div>
         <p className="text-sm text-muted">KPI template</p>
-        <h1 className="text-2xl font-semibold">{titleCase(jobTitle.titleEn)}</h1>
+        <h1 className="page-title">{titleCase(jobTitle.titleEn)}</h1>
         {jobTitle.titleAr && (
           <p lang="ar" dir="rtl" className="w-fit">
             {jobTitle.titleAr}

@@ -45,7 +45,7 @@ function StatusChips({ filters: f }: { filters: OfferFilters }) {
             key={s.value}
             href={offersHref({ ...f, status: s.value })}
             aria-current={active ? 'page' : undefined}
-            className={`${chip} ${active ? 'border-ink bg-ink text-white hover:text-white' : 'border-line bg-white text-ink hover:bg-canvas hover:text-ink'}`}
+            className={`${chip} ${active ? 'border-ink bg-ink text-on-accent hover:text-on-accent' : 'border-line bg-card text-ink hover:bg-canvas hover:text-ink'}`}
           >
             {s.label}
           </Link>
@@ -202,7 +202,7 @@ async function OfferList({ searchParams }: { searchParams: Promise<Query> }) {
 export default function OffersPage({ searchParams }: { searchParams: Promise<Query> }) {
   return (
     <div className="max-w-6xl">
-      <h1 className="text-2xl font-semibold">Job Offers</h1>
+      <h1 className="page-title">Job Offers</h1>
       <p className="mt-1 text-muted">
         Candidates aren&apos;t employees yet: draft an offer, send it by email or as a link, and the candidate accepts or declines it online. Accepting makes
         their profile, the employment and a draft contract.

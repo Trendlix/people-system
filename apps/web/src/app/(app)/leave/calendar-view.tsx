@@ -65,7 +65,7 @@ function Cell({ cell, letter, name, day }: { cell: NonNullable<CalendarPerson['c
       ? 'border border-dashed border-accent bg-card text-accent'
       : cell.permission
         ? 'border border-accent bg-accent-soft text-accent'
-        : 'bg-accent text-white';
+        : 'bg-accent text-on-accent';
   const shape = `${cell.first ? 'rounded-l-md' : ''} ${cell.last ? 'rounded-r-md' : ''}`;
   const body = (
     <span
@@ -306,7 +306,7 @@ export function LeaveCalendar({
         <ul aria-label="What the marks mean" className="hidden flex-wrap gap-x-5 gap-y-2 text-xs text-muted md:flex">
           {[...letters.entries()].map(([name, letter]) => (
             <li key={name} className="flex items-center gap-1.5">
-              <span className="flex size-5 items-center justify-center rounded bg-accent text-[11px] font-semibold text-white">{letter}</span>
+              <span className="flex size-5 items-center justify-center rounded bg-accent text-[11px] font-semibold text-on-accent">{letter}</span>
               {name}
             </li>
           ))}

@@ -374,7 +374,7 @@ export default function AdjustmentsPage({ searchParams }: PageProps<'/payroll/ad
   return (
     <StaffOnly>
       <div className="max-w-6xl">
-        <h1 className="text-2xl font-semibold">Additions / Deductions</h1>
+        <h1 className="page-title">Additions / Deductions</h1>
         <p className="mt-1 text-muted">
           One-off amounts on an employee&apos;s pay for a month: a bonus (in EGP or in days), commission, incentive, correction or reimbursement added;
           a penalty (in EGP or in days), correction, damage or loss, an advance&apos;s recovery or a loan&apos;s installment taken. {RUN_NOTE}

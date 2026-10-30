@@ -264,7 +264,7 @@ export function PlaceSearch({
         {status}
       </p>
       {choices.length > 0 && (
-        <ul aria-label="Places found" className="divide-y divide-line-soft overflow-hidden rounded-lg border border-line bg-white">
+        <ul aria-label="Places found" className="divide-y divide-line-soft overflow-hidden rounded-lg border border-line bg-card">
           {choices.map((c) => (
             <li key={c.key}>
               <button

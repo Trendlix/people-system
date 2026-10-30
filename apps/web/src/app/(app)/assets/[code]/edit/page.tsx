@@ -32,7 +32,7 @@ async function EditAsset({ params }: { params: PageProps<'/assets/[code]/edit'>[
   return (
     <>
       <div>
-        <h1 className="text-2xl font-semibold">Edit {titleCase(asset.name)}</h1>
+        <h1 className="page-title">Edit {titleCase(asset.name)}</h1>
         <p className="mt-1 font-mono text-sm text-muted">{asset.code}</p>
       </div>
       <AssetForm

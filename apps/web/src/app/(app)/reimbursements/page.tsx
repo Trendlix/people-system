@@ -51,7 +51,7 @@ function Filters({ filter }: { filter: ClaimFilter }) {
             key={o.value}
             href={reimbursementsHref(o.value)}
             aria-current={active ? 'page' : undefined}
-            className={`${chip} ${active ? 'border-ink bg-ink text-white hover:text-white' : 'border-line bg-white text-ink hover:bg-canvas hover:text-ink'}`}
+            className={`${chip} ${active ? 'border-ink bg-ink text-on-accent hover:text-on-accent' : 'border-line bg-card text-ink hover:bg-canvas hover:text-ink'}`}
           >
             {o.label}
           </Link>
@@ -176,7 +176,7 @@ async function Claims({ searchParams }: { searchParams: PageProps<'/reimbursemen
 export default function ReimbursementsPage({ searchParams }: PageProps<'/reimbursements'>) {
   return (
     <div className="max-w-7xl">
-      <h1 className="text-2xl font-semibold">Reimbursements</h1>
+      <h1 className="page-title">Reimbursements</h1>
       <p className="mt-1 text-muted">
         Expenses employees claim back, each of a type set up in{' '}
         <Link href="/organization/payroll#reimbursement-types">Payroll Setup</Link> with its caps and conditions. The direct manager decides a claim

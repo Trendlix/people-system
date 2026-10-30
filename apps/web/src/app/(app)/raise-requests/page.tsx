@@ -244,7 +244,7 @@ async function Asking({ searchParams }: { searchParams: PageProps<'/raise-reques
 export default function RaiseRequestsPage({ searchParams }: PageProps<'/raise-requests'>) {
   return (
     <div className="max-w-7xl">
-      <h1 className="text-2xl font-semibold">Raise Requests</h1>
+      <h1 className="page-title">Raise Requests</h1>
       <p className="mt-1 text-muted">
         Every raise, at every stage: those asked for by employees for themselves, by their direct managers or by HR, each with a reason, a
         comment and the raise suggested, and those HR prepares directly on a contract or a renewal. HR approves a request, as suggested or

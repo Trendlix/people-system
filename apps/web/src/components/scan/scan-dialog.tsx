@@ -107,7 +107,7 @@ function DownloadIcon() {
 /** A choice among a few (glass or feeder, colour…), as a radio button in a box that shows when it is chosen. */
 function Choice({ name, checked, onChoose, children }: { name: string; checked: boolean; onChoose: () => void; children: React.ReactNode }) {
   return (
-    <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft">
+    <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-card px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft">
       <input type="radio" name={name} checked={checked} onChange={onChoose} className="size-4 accent-accent" />
       {children}
     </label>
@@ -544,7 +544,7 @@ function ScanWindow({ title, hint, purpose, maxBytes, onScanned, onClosed }: Sca
               {scanners.map((s) => (
                 <label
                   key={s.id}
-                  className="flex cursor-pointer items-start gap-3 rounded-lg border border-line bg-white p-3 has-checked:border-accent has-checked:bg-accent-soft"
+                  className="flex cursor-pointer items-start gap-3 rounded-lg border border-line bg-card p-3 has-checked:border-accent has-checked:bg-accent-soft"
                 >
                   <input type="radio" name={`${fid}scanner`} checked={s.id === scannerId} onChange={() => pick(s, true)} className="mt-0.5 size-4 shrink-0 accent-accent" />
                   <span className="min-w-0">

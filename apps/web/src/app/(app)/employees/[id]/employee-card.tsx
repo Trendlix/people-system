@@ -32,7 +32,7 @@ export function EmployeeCardView({ card: c }: { card: EmployeeCard }) {
           </div>
           <p className="text-muted">{e ? role || 'No job title yet' : c.standing === 'former' ? 'Former employee' : 'Not employed yet'}</p>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted">
-            {shownCode(c.employeeCode) && <span className="rounded-md bg-ink px-2.5 py-1 font-semibold text-white tabular-nums">{c.employeeCode}</span>}
+            {shownCode(c.employeeCode) && <span className="rounded-md bg-ink px-2.5 py-1 font-semibold text-on-accent tabular-nums">{c.employeeCode}</span>}
             {c.workEmail && (
               <a href={`mailto:${c.workEmail}`} className="break-all">
                 {c.workEmail}

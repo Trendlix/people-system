@@ -29,7 +29,7 @@ function RoleFields({ choices, checked, hint }: { choices: readonly Role[]; chec
         {choices.map((role) => (
           <label
             key={role}
-            className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft"
+            className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-card px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft"
           >
             <input type="checkbox" name="roles" value={role} defaultChecked={checked.has(role)} className="size-4 accent-accent" />
             {ROLE_LABELS[role]}
@@ -298,7 +298,7 @@ export function AssetsAccessForm({ action, saved, inEffectNote }: { action: Acti
           {ASSETS_ACCESS_LEVELS.map((level) => (
             <label
               key={level}
-              className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border border-line bg-white px-3 py-2.5 text-sm has-checked:border-accent has-checked:bg-accent-soft"
+              className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border border-line bg-card px-3 py-2.5 text-sm has-checked:border-accent has-checked:bg-accent-soft"
             >
               <input type="radio" name="assetsAccess" value={level} defaultChecked={checked === level} className="mt-0.5 size-4 accent-accent" />
               <span>

@@ -104,7 +104,7 @@ function StandingChip({ href, label, count, active }: { href: string; label: str
     <Link
       href={href}
       aria-current={active ? 'page' : undefined}
-      className={`${chip} ${active ? 'border-ink bg-ink text-white hover:text-white' : 'border-line bg-white text-ink hover:bg-canvas hover:text-ink'}`}
+      className={`${chip} ${active ? 'border-ink bg-ink text-on-accent hover:text-on-accent' : 'border-line bg-card text-ink hover:bg-canvas hover:text-ink'}`}
     >
       {label}
       <span className={`tabular-nums ${active ? 'opacity-75' : 'text-muted'}`}>{count}</span>
@@ -435,7 +435,7 @@ export default function EmployeesPage({ searchParams }: PageProps<'/employees'>)
     <StaffOnly>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">Employees</h1>
+          <h1 className="page-title">Employees</h1>
           <p className="mt-1 text-muted">Directory and employee profiles.</p>
         </div>
         <Suspense fallback={null}>

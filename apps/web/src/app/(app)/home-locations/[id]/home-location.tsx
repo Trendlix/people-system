@@ -91,7 +91,7 @@ export async function HomeLocationDetail({
       <div className="space-y-2">
         <BackLink href={back.href}>{back.label}</BackLink>
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold">{HOME_TYPE_LABELS[type]}</h1>
+          <h1 className="page-title">{HOME_TYPE_LABELS[type]}</h1>
           <HomeStatusBadge status={r.status} confidential={r.confidential} inForce={r.inForce} />
           {r.confidential && <CLevelBadge title="A C-level person: the CEO takes both steps, and HR doesn’t see the request." />}
         </div>

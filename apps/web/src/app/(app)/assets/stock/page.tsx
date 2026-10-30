@@ -18,8 +18,8 @@ export const metadata: Metadata = { title: 'Stock · People System' };
 
 // the register's chips' look (assets/page.tsx)
 const chip = 'inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-sm font-semibold whitespace-nowrap no-underline';
-const ACTIVE = 'border-ink bg-ink text-white hover:text-white';
-const IDLE = 'border-line bg-white text-ink hover:bg-canvas hover:text-ink';
+const ACTIVE = 'border-ink bg-ink text-on-accent hover:text-on-accent';
+const IDLE = 'border-line bg-card text-ink hover:bg-canvas hover:text-ink';
 
 async function Stock({ searchParams }: { searchParams: PageProps<'/assets/stock'>['searchParams'] }) {
   const [{ can }, params] = await Promise.all([assetsCaller(), searchParams]);
@@ -79,7 +79,7 @@ async function Stock({ searchParams }: { searchParams: PageProps<'/assets/stock'
 export default function StockPage({ searchParams }: PageProps<'/assets/stock'>) {
   return (
     <div className="max-w-4xl">
-      <h1 className="text-2xl font-semibold">Stock</h1>
+      <h1 className="page-title">Stock</h1>
       <p className="mt-1 text-muted">Consumables by quantity: use them, restock them, and see what needs reordering.</p>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>

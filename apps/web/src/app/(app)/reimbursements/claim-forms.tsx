@@ -113,7 +113,7 @@ function ReceiptsField({
           e.preventDefault();
           void add(Array.from(files));
         }}
-        className={`space-y-2 rounded-lg border border-dashed p-3 outline-none focus:border-accent ${over ? 'border-accent bg-accent-soft' : 'border-line bg-white'}`}
+        className={`space-y-2 rounded-lg border border-dashed p-3 outline-none focus:border-accent ${over ? 'border-accent bg-accent-soft' : 'border-line bg-card'}`}
       >
         <label htmlFor={fid('receipts')} className="sr-only">
           Add receipts
@@ -125,7 +125,7 @@ function ReceiptsField({
           multiple
           accept={RECEIPT_ACCEPT}
           onChange={(e) => void add(Array.from(e.currentTarget.files ?? []))}
-          className="block w-full text-sm file:mr-3 file:min-h-11 file:cursor-pointer file:rounded-lg file:border file:border-line file:bg-white file:px-4 file:text-sm file:font-semibold"
+          className="block w-full text-sm file:mr-3 file:min-h-11 file:cursor-pointer file:rounded-lg file:border file:border-line file:bg-card file:px-4 file:text-sm file:font-semibold"
         />
         {onPhonePages && <CameraButton onFiles={(files) => void add(files)} disabled={left <= 0} label="Take a photo of the receipt" />}
         <p aria-live="polite" className={`text-xs ${refused.length ? 'text-danger' : 'text-muted'}`}>
@@ -142,7 +142,7 @@ function ReceiptsField({
         A clear photo of each receipt or invoice, or a PDF. On a phone you can take the photo here. Photos are made smaller before they are sent.
       </p>
       {receipts.length > 0 && (
-        <ul className="mt-2 divide-y divide-line-soft rounded-lg border border-line bg-white" aria-label="Receipts added">
+        <ul className="mt-2 divide-y divide-line-soft rounded-lg border border-line bg-card" aria-label="Receipts added">
           {receipts.map(({ key, file }, i) => (
             <li key={key} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 px-3 py-2 text-sm">
               <span className="min-w-0 break-all">

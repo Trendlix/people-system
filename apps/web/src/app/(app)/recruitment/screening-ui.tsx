@@ -404,7 +404,7 @@ export function ScreeningCommentsCard({
                   type="button"
                   aria-pressed={filter === f.key}
                   onClick={() => setFilter(f.key)}
-                  className={`inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-full border px-3.5 text-sm font-semibold ${filter === f.key ? 'border-ink bg-ink text-white' : 'border-line bg-white text-ink hover:bg-canvas'}`}
+                  className={`inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-full border px-3.5 text-sm font-semibold ${filter === f.key ? 'border-ink bg-ink text-on-accent' : 'border-line bg-card text-ink hover:bg-canvas'}`}
                 >
                   {f.label}
                   <span className="tabular-nums">{f.count}</span>

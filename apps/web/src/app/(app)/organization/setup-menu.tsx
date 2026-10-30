@@ -79,7 +79,7 @@ async function UserMenus({ active }: { active: SetupKey }) {
 export function SetupFrame({ active, children }: { active: SetupKey; children: React.ReactNode }) {
   return (
     <div className="max-w-7xl">
-      <h1 className="text-2xl font-semibold">Organization</h1>
+      <h1 className="page-title">Organization</h1>
       <p className="mt-1 max-w-3xl text-muted">{INTRO}</p>
       <div className="mt-6 lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-start lg:gap-8">
         {/* who it is was read for the page already (StaffOnly), so this waits for nothing; meanwhile, the pages everyone has */}

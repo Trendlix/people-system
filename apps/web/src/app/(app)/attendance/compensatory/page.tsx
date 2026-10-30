@@ -39,8 +39,8 @@ import { CompensatoryFiltersForm } from './compensatory-filters-form';
 export const metadata: Metadata = { title: 'Compensatory Days · People System' };
 
 const chip = 'inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3.5 text-sm font-semibold no-underline';
-const ACTIVE = 'border-ink bg-ink text-white hover:text-white';
-const IDLE = 'border-line bg-white text-ink hover:bg-canvas hover:text-ink';
+const ACTIVE = 'border-ink bg-ink text-on-accent hover:text-on-accent';
+const IDLE = 'border-line bg-card text-ink hover:bg-canvas hover:text-ink';
 
 /** The department filter's choices: each department in Organization's order, then its teams as "Department › Team". */
 function placeChoices(places: readonly PlaceRef[]): { id: string; label: string }[] {
@@ -103,7 +103,7 @@ export default function CompensatoryListPage({ searchParams }: PageProps<'/atten
     <StaffOnly>
       <div className="max-w-6xl space-y-6">
         <div>
-          <h1 className="text-2xl font-semibold">Compensatory Days</h1>
+          <h1 className="page-title">Compensatory Days</h1>
           <p className="mt-1 max-w-3xl text-muted">
             Days off in exchange for a rest day or an official holiday worked, or hours off for part of one, by the Compensatory Setup&apos;s rules:
             asked a day before the day off at the latest, decided by the direct manager (or lead), then HR, a C-level person&apos;s by the CEO. HR

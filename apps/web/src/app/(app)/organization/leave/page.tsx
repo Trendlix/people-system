@@ -115,7 +115,7 @@ async function AnnualLeave({ user }: { user: SessionUser }) {
 
 function TypeCard({ type: t, edits, deletes }: { type: LeaveTypeView; edits: boolean; deletes: boolean }) {
   return (
-    <li className={`space-y-3 rounded-lg border border-line p-4 ${t.active ? 'bg-white' : 'bg-canvas'}`}>
+    <li className={`space-y-3 rounded-lg border border-line p-4 ${t.active ? 'bg-card' : 'bg-canvas'}`}>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <h3 className="font-semibold">

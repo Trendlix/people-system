@@ -73,7 +73,7 @@ export default function NewOfferPage({ searchParams }: PageProps<'/offers/new'>)
     <div className="space-y-4">
       <div className="space-y-2">
         <BackLink href="/offers">Job offers</BackLink>
-        <h1 className="text-2xl font-semibold">New Job Offer</h1>
+        <h1 className="page-title">New Job Offer</h1>
         <p className="max-w-3xl text-sm text-muted">
           Saved as a draft: nothing reaches the candidate until you send it from the offer&apos;s page, after checking its PDF.
         </p>

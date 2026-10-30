@@ -36,7 +36,7 @@ async function Label({ params }: { params: PageProps<'/assets/[code]/label'>['pa
     <>
       <BackLink href={ASSET_PATHS.asset(asset.code)}>{asset.code}</BackLink>
       <div>
-        <h1 className="text-2xl font-semibold">Print Label</h1>
+        <h1 className="page-title">Print Label</h1>
         <p className="mt-1 text-sm text-muted">
           One label of {LABEL_SIZE.widthMm} × {LABEL_SIZE.heightMm} mm. Set the printer to that paper size, or print it on a label sheet. Its QR code opens
           this asset&apos;s page.

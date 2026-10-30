@@ -40,7 +40,7 @@ async function Detail({ params, searchParams }: { params: PageProps<'/assets/[co
       <div className="space-y-1">
         <p className="font-mono text-sm font-semibold text-muted">{asset.code}</p>
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold">{titleCase(asset.name)}</h1>
+          <h1 className="page-title">{titleCase(asset.name)}</h1>
           <StatusBadge status={asset.status} />
         </div>
         <p className="text-sm text-muted">

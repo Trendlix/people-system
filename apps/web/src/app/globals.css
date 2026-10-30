@@ -1,19 +1,48 @@
 @import "tailwindcss";
 
-/* Colours and fonts from the approved prototype (trendlix-hrms-handoff/screens). */
+/* dark: the dark look, picked (data-theme="dark") or the computer's when none is picked */
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme="light"]), :root:not([data-theme="light"]) *) {
+      @slot;
+    }
+  }
+}
+
+/*
+ * The owner's design (Figma "PeopleTrendlix", the desktop version, 30 October 2026): its colours, light and dark, and
+ * its font, Instrument Sans (already the site's). Every page takes its colours from these names, so the dark look is
+ * these names given their dark values (below), as the phone sets it until the person picks one (the sun/moon in the
+ * header, components/theme-switch.tsx).
+ *
+ * The old names are kept so every page follows: accent is now the design's black (off-white on dark), its "soft" the
+ * light grey of a badge; ok, warn and danger stay coloured, quieter on dark. `on-accent` is the text on any solid fill
+ * (accent, ink, ok, warn, danger); `raised`, the grey inside a card (icon tiles, a table's head). The side menu is the
+ * design's near-black on both looks.
+ */
 @theme {
-  --color-ink: #12161f;
-  --color-muted: #5b6472;
-  --color-line: #e3e6eb;
-  --color-line-soft: #eef0f3;
-  --color-canvas: #f4f5f7;
+  --color-ink: #111110;
+  --color-muted: #777773;
+  --color-line: #deded9;
+  --color-line-soft: #e7e7e3;
+  --color-canvas: #ededeb;
   --color-card: #ffffff;
-  --color-accent: #2b59f0;
-  --color-accent-hover: #1f47d1;
-  --color-accent-soft: #e8eeff;
-  --color-sidebar: #0e1726;
-  --color-sidebar-active: #1f2e4a;
-  --color-sidebar-text: #c9d1de;
+  --color-raised: #f8f8f6;
+  --color-accent: #151514;
+  --color-accent-hover: #2b2b29;
+  --color-accent-soft: #f2f2ed;
+  --color-on-accent: #ffffff;
+  --color-sidebar: #111110;
+  --color-sidebar-line: #292927;
+  --color-sidebar-active: #f2f2ed;
+  --color-sidebar-on-active: #111110;
+  --color-sidebar-text: #92928c;
+  --color-sidebar-ink: #f7f7f3;
+  --color-sidebar-quiet: #696965;
+  --color-sidebar-count: #d6d6d0;
   --color-danger: #b42318;
   --color-danger-soft: #fdecea;
   --color-ok: #0b5f58;
@@ -21,8 +50,57 @@
   --color-warn: #9a4108;
   --color-warn-soft: #ffefe2;
 
+  --shadow-card: 0 18px 50px rgb(20 20 18 / 0.07);
+
   --font-sans: var(--font-instrument), system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-arabic: var(--font-plex-arabic), "Segoe UI", Tahoma, sans-serif;
+}
+
+/* the dark look: chosen (data-theme="dark"), or the computer's when nothing is chosen */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-ink: #f4f4ef;
+  --color-muted: #92928c;
+  --color-line: #30302d;
+  --color-line-soft: #272725;
+  --color-canvas: #0d0d0c;
+  --color-card: #1c1c1a;
+  --color-raised: #151514;
+  --color-accent: #f3f3ee;
+  --color-accent-hover: #ffffff;
+  --color-accent-soft: #272725;
+  --color-on-accent: #111110;
+  --color-danger: #f97066;
+  --color-danger-soft: #3a1d1a;
+  --color-ok: #5cc8b5;
+  --color-ok-soft: #15302b;
+  --color-warn: #f5a35c;
+  --color-warn-soft: #3a2814;
+  --shadow-card: 0 18px 50px rgb(0 0 0 / 0.22);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --color-ink: #f4f4ef;
+    --color-muted: #92928c;
+    --color-line: #30302d;
+    --color-line-soft: #272725;
+    --color-canvas: #0d0d0c;
+    --color-card: #1c1c1a;
+    --color-raised: #151514;
+    --color-accent: #f3f3ee;
+    --color-accent-hover: #ffffff;
+    --color-accent-soft: #272725;
+    --color-on-accent: #111110;
+    --color-danger: #f97066;
+    --color-danger-soft: #3a1d1a;
+    --color-ok: #5cc8b5;
+    --color-ok-soft: #15302b;
+    --color-warn: #f5a35c;
+    --color-warn-soft: #3a2814;
+    --shadow-card: 0 18px 50px rgb(0 0 0 / 0.22);
+  }
 }
 
 body {
@@ -42,13 +120,23 @@ html:has(dialog:modal) {
 
 @layer components {
   .card {
-    /* relative: keeps visually hidden (sr-only) children inside scrolling tables */
-    @apply relative rounded-xl border border-line bg-card;
+    /* relative: keeps visually hidden (sr-only) children inside scrolling tables; the design's 18px corners, thin
+       line and soft shadow */
+    @apply relative rounded-[18px] border border-line bg-card shadow-card;
+  }
+
+  /* a page's title (Figma: 43px, medium, tight) and the small spaced capitals over a title ("TODAY", "SCHEDULE") */
+  .page-title {
+    @apply text-[2.25rem] leading-[1.05] font-medium tracking-[-0.045em] sm:text-[2.6rem];
+  }
+
+  .eyebrow {
+    @apply text-[11px] font-normal tracking-[0.12em] text-muted uppercase;
   }
 
   .input {
-    @apply block min-h-11 w-full rounded-lg border border-line bg-white px-3 py-2 text-sm text-ink outline-none;
-    @apply focus:border-accent focus:ring-2 focus:ring-accent/20;
+    @apply block min-h-11 w-full rounded-xl border border-line bg-card px-3 py-2 text-sm text-ink outline-none;
+    @apply focus:border-accent focus:ring-2 focus:ring-accent/15;
   }
 
   .label {
@@ -60,20 +148,20 @@ html:has(dialog:modal) {
   }
 
   .btn {
-    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-transparent px-4 text-sm font-semibold no-underline transition-colors;
+    @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-transparent px-4 text-sm font-medium no-underline transition-colors;
     @apply disabled:cursor-not-allowed disabled:opacity-60;
   }
 
   .btn-primary {
-    @apply bg-accent text-white hover:bg-accent-hover;
+    @apply bg-accent text-on-accent hover:bg-accent-hover;
   }
 
   .btn-secondary {
-    @apply border-line bg-white text-ink hover:bg-canvas;
+    @apply border-line bg-card text-ink hover:bg-raised;
   }
 
   .btn-danger {
-    @apply border-danger/30 bg-white text-danger hover:bg-danger-soft;
+    @apply border-danger/30 bg-card text-danger hover:bg-danger-soft;
   }
 
   .table {
@@ -81,7 +169,7 @@ html:has(dialog:modal) {
   }
 
   .table th {
-    @apply border-b border-line px-4 py-3 text-left text-xs font-semibold tracking-wide whitespace-nowrap text-muted uppercase;
+    @apply border-b border-line bg-raised px-4 py-3 text-left text-[11px] font-normal tracking-[0.1em] whitespace-nowrap text-muted uppercase;
   }
 
   .table td {
@@ -89,7 +177,7 @@ html:has(dialog:modal) {
   }
 
   .badge {
-    @apply inline-block rounded-full bg-accent-soft px-2.5 py-0.5 text-xs font-semibold whitespace-nowrap text-accent;
+    @apply inline-block rounded-full border border-line bg-raised px-2.5 py-0.5 text-xs font-medium whitespace-nowrap text-ink;
   }
 
   /*
@@ -171,7 +259,7 @@ html:has(dialog:modal) {
 
   /* The rich text editor: looks like an input, with an email composer's toolbar along its top. */
   .rte {
-    @apply w-full rounded-lg border border-line bg-white text-sm text-ink;
+    @apply w-full rounded-xl border border-line bg-card text-sm text-ink;
     @apply focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20;
   }
 
@@ -216,6 +304,6 @@ html:has(dialog:modal) {
   }
 
   .phone-pages .on-dark :is(a, button, summary):focus-visible {
-    outline-color: #ffffff;
+    outline-color: var(--color-sidebar-ink);
   }
 }

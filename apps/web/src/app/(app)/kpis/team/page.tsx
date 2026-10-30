@@ -127,7 +127,7 @@ async function Team({ searchParams }: { searchParams: PageProps<'/kpis/team'>['s
 export default function TeamKpisPage({ searchParams }: PageProps<'/kpis/team'>) {
   return (
     <div className="max-w-7xl">
-      <h1 className="text-2xl font-semibold">Team KPIs</h1>
+      <h1 className="page-title">Team KPIs</h1>
       <p className="mt-1 text-muted">
         The monthly KPI scorecards of the people you are in charge of. Each person rates themself first; you score the month, seeing their
         self-rating; HR calibrates it; then you both sign that you have read it. A missed self-rating doesn&apos;t hold up your scoring.

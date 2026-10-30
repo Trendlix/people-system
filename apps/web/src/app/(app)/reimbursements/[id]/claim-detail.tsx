@@ -105,7 +105,7 @@ export async function ClaimDetail({
       <div className="space-y-2">
         <BackLink href={back.href}>{back.label}</BackLink>
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold">{titleCase(`${c.type.nameEn} claim`)}</h1>
+          <h1 className="page-title">{titleCase(`${c.type.nameEn} claim`)}</h1>
           <ClaimStatusBadge status={c.status} confidential={c.confidential} />
           {c.confidential && <CLevelBadge title="A C-level person: the CEO decides HR’s and Finance’s stages, and neither sees the claim." />}
         </div>

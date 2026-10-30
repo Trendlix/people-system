@@ -90,7 +90,7 @@ export async function OdRequestDetail({
       <div className="space-y-2">
         <BackLink href={back.href}>{back.label}</BackLink>
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold">Official Duty</h1>
+          <h1 className="page-title">Official Duty</h1>
           <LeaveStatusBadge status={r.status} confidential={r.confidential} />
           {byHr ? (
             <span className="badge bg-line-soft text-muted">{odSourceText(r)}</span>

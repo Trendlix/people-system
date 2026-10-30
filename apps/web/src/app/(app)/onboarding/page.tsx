@@ -17,8 +17,8 @@ import { joinShown } from '@/lib/hidden';
 export const metadata: Metadata = { title: 'Onboarding · People System' };
 
 const chip = 'inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3.5 text-sm font-semibold no-underline';
-const ACTIVE = 'border-ink bg-ink text-white hover:text-white';
-const IDLE = 'border-line bg-white text-ink hover:bg-canvas hover:text-ink';
+const ACTIVE = 'border-ink bg-ink text-on-accent hover:text-on-accent';
+const IDLE = 'border-line bg-card text-ink hover:bg-canvas hover:text-ink';
 
 async function List({ searchParams }: { searchParams: PageProps<'/onboarding'>['searchParams'] }) {
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
@@ -82,7 +82,7 @@ export default function OnboardingPage({ searchParams }: PageProps<'/onboarding'
   return (
     <div className="max-w-5xl space-y-4">
       <div className="space-y-1">
-        <h1 className="text-2xl font-semibold">Onboarding</h1>
+        <h1 className="page-title">Onboarding</h1>
         <p className="max-w-3xl text-sm text-muted">
           A checklist for each new employee: opened when an applicant is hired through an accepted job offer, or from a new employee’s profile. The contract,
           the KPI template and their equipment are ticked by the system.

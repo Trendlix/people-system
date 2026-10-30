@@ -81,7 +81,7 @@ export function CommissionField({ state, fid, saved }: { state: FormState; fid: 
   const ticked = state.values ? 'paidByCommission' in state.values : saved;
   return (
     <div className="mt-3">
-      <label className="flex min-h-11 w-fit cursor-pointer items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft">
+      <label className="flex min-h-11 w-fit cursor-pointer items-center gap-2 rounded-lg border border-line bg-card px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft">
         <input
           type="checkbox"
           name="paidByCommission"
@@ -481,7 +481,7 @@ export function EmploymentFields({
             {OFFICE_DAYS.map(([day, name]) => (
               <label
                 key={day}
-                className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft"
+                className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-card px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft"
               >
                 <input type="checkbox" name="officeDays" value={day} defaultChecked={officeDays.has(day)} className="size-4 accent-accent" />
                 {name}

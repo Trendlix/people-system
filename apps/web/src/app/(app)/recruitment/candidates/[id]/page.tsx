@@ -279,7 +279,7 @@ async function Candidate({ params }: { params: PageProps<'/recruitment/candidate
       <div className="space-y-2">
         <BackLink href={CANDIDATES_PATH}>Candidates</BackLink>
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold">{c.fullName}</h1>
+          <h1 className="page-title">{c.fullName}</h1>
           {shownCode(c.code) && <span className="badge bg-canvas text-ink">{c.code}</span>}
           {c.employee && <span className="badge bg-warn-soft text-warn">{c.employee.restricted ? 'Employee record' : c.employee.state === 'former' ? 'Former employee' : 'Employee'}</span>}
           {/* the latest screening verdict across what the caller sees of them (24 October 2026) */}

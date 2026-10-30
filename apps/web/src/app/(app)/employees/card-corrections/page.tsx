@@ -92,7 +92,7 @@ export default function CardCorrectionsPage() {
       <div className="space-y-4">
         <BackLink href="/employees">Employees</BackLink>
         <div>
-          <h1 className="text-2xl font-semibold">Card Reading Fixes</h1>
+          <h1 className="page-title">Card Reading Fixes</h1>
           <p className="mt-1 max-w-3xl text-muted">
             Words the ID card reader got wrong and HR corrected before saving: in the Arabic name and the address, never in numbers or dates. Each
             fix is applied to the next card readings, and the fields it changes are marked for checking. Only a Super Admin can delete a fix, e.g. one

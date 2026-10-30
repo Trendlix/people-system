@@ -67,7 +67,7 @@ export default function MyHiringPage() {
   return (
     <div className="max-w-5xl space-y-4">
       <div className="space-y-1">
-        <h1 className="text-2xl font-semibold">My Hiring</h1>
+        <h1 className="page-title">My Hiring</h1>
         <p className="max-w-3xl text-sm text-muted">
           The vacancies you hire for, from Shortlisted on, and the interviews you sit on or hire for. Give your scorecard on the applicant’s page after each interview.
         </p>

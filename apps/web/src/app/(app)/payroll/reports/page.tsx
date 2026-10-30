@@ -79,7 +79,7 @@ function PeriodPicker({ period, today }: { period: ReportPeriod; today: string }
               <Link
                 href={reportsHref(q.period, today)}
                 aria-current={active ? 'page' : undefined}
-                className={`${chip} ${active ? 'border-ink bg-ink text-white hover:text-white' : 'border-line bg-white text-ink hover:bg-canvas hover:text-ink'}`}
+                className={`${chip} ${active ? 'border-ink bg-ink text-on-accent hover:text-on-accent' : 'border-line bg-card text-ink hover:bg-canvas hover:text-ink'}`}
               >
                 {q.label}
               </Link>
@@ -322,7 +322,7 @@ export default function PayrollReportsPage({ searchParams }: PageProps<'/payroll
   return (
     <StaffOnly>
       <div className="max-w-6xl">
-        <h1 className="text-2xl font-semibold">Payroll Reports</h1>
+        <h1 className="page-title">Payroll Reports</h1>
         <p className="mt-1 text-muted">
           What the approved payroll paid and cost, by month, department and team, and this year to date. The salary raises and the contracts have reports of
           their own: <Link href={SALARY_RAISES_HREF}>Salary Raises</Link> and <Link href={CONTRACTS_REPORT_HREF}>Contracts</Link>.

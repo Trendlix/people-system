@@ -65,7 +65,7 @@ export default function PossibleMatchesPage() {
   return (
     <div className="space-y-4">
       <div className="space-y-1">
-        <h1 className="text-2xl font-semibold">Possible Matches</h1>
+        <h1 className="page-title">Possible Matches</h1>
         <p className="max-w-3xl text-sm text-muted">Candidates who may be one person, for HR to decide.</p>
       </div>
       <Suspense fallback={<Loading />}>

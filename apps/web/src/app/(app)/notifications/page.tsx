@@ -18,7 +18,7 @@ export default function NotificationsPage({ searchParams }: PageProps<'/notifica
   return (
     <div className="max-w-2xl space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold">Notifications</h1>
+        <h1 className="page-title">Notifications</h1>
         <p className="mt-1 text-muted">Requests waiting for you, decisions on yours, your payslips and the check-in reminders, newest first.</p>
       </div>
       <Suspense fallback={<p className="text-sm text-muted">Loading…</p>}>

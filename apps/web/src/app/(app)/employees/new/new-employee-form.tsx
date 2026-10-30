@@ -128,7 +128,7 @@ export function NewEmployeeForm({ emailDomain }: { emailDomain: string | null })
             <span
               aria-hidden="true"
               className={`flex size-7 items-center justify-center rounded-full text-xs font-bold ${
-                n === step ? 'bg-accent text-white' : n < step ? 'bg-accent-soft text-accent' : 'bg-line-soft text-muted'
+                n === step ? 'bg-accent text-on-accent' : n < step ? 'bg-accent-soft text-accent' : 'bg-line-soft text-muted'
               }`}
             >
               {n}

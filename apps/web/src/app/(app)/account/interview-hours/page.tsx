@@ -188,7 +188,7 @@ export default function YourInterviewHoursPage({ searchParams }: PageProps<'/acc
   return (
     <div className="max-w-3xl space-y-4">
       <div>
-        <h1 className="text-2xl font-semibold">Your Interview Hours</h1>
+        <h1 className="page-title">Your Interview Hours</h1>
         <p className="mt-1 text-muted">
           Set the weekly hours you can interview in, once. HR then sees the times you and the rest of a panel are free, with your leave, public holidays, your other
           interviews and your calendar’s busy times already taken away, and books one; the candidate is invited by the system.

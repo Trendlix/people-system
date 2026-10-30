@@ -53,7 +53,7 @@ async function Month({ searchParams }: { searchParams: PageProps<'/app/attendanc
         </div>
       )}
       {view.corrections && view.correctable && !view.correctable.allowed && view.correctable.reason && (
-        <p className="rounded-lg bg-white px-4 py-3 text-sm text-muted">{view.correctable.reason}</p>
+        <p className="rounded-lg bg-card px-4 py-3 text-sm text-muted">{view.correctable.reason}</p>
       )}
       {/* exempt from check-in (25 October 2026): the month's periods */}
       <ExemptionNote periods={p.exemptions} self />

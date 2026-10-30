@@ -598,7 +598,7 @@ export default function SocialInsurancePage({ searchParams }: PageProps<'/payrol
       <div className="space-y-4">
         <BackLink href="/payroll/reports">Payroll Reports</BackLink>
         <div>
-          <h1 className="text-2xl font-semibold">Social Insurance</h1>
+          <h1 className="page-title">Social Insurance</h1>
           <p className="mt-1 text-muted">
             From each employee&rsquo;s Social Insurance tab: who is registered and on what wage, a month&rsquo;s contributions to pay the insurance office, and what
             is still missing. It shows what the tab says, not a payroll run: <Link href={VS_INSURANCE_PATH}>Payroll vs Social Insurance</Link> compares the two.

@@ -211,7 +211,7 @@ export default function DailyAttendancePage({ searchParams }: PageProps<'/attend
     <StaffOnly>
       <div className="max-w-7xl space-y-6">
         <div>
-          <h1 className="text-2xl font-semibold">Daily Attendance</h1>
+          <h1 className="page-title">Daily Attendance</h1>
           <p className="mt-1 max-w-3xl text-muted">
             Everyone&apos;s days, from their check-ins on the system and Zoho People&apos;s imports, counted by the system&apos;s rules: the hours
             within each person&apos;s shift, at most its hours a day; a working day without a check-in is absent; leave from the Leave module. A

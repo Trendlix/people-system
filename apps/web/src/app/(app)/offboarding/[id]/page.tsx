@@ -194,7 +194,7 @@ async function Case({ params }: { params: PageProps<'/offboarding/[id]'>['params
       <BackLink href={OFFBOARDING_PATH}>Offboarding</BackLink>
       <section className="card space-y-3 p-6">
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold">{c.employee.fullNameEn}</h1>
+          <h1 className="page-title">{c.employee.fullNameEn}</h1>
           <span className={`badge ${STATUS_STYLE[c.status]}`}>{OFFBOARDING_STATUS_LABELS[c.status]}</span>
           {c.rehire && <span className={`badge ${REHIRE_STYLE[c.rehire]}`}>Rehire: {REHIRE_LABELS[c.rehire]}</span>}
         </div>

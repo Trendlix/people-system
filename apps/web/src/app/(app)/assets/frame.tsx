@@ -42,7 +42,7 @@ function sectionOf(tab: AssetsTabHref): Tabbed {
 function Heading({ section, action }: { section: Tabbed; action?: NavAction | null }) {
   return (
     <div className={`flex flex-wrap items-center justify-between gap-3 ${section.action ? 'min-h-11' : ''}`}>
-      <h1 className="text-2xl font-semibold">{section.label}</h1>
+      <h1 className="page-title">{section.label}</h1>
       {action && (
         <Link href={action.href} className="btn btn-primary">
           {action.label}

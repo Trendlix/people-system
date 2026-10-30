@@ -55,7 +55,7 @@ export function SignInEmailForm({
           {(['work', 'personal'] as const).map((c) => (
             <label
               key={c}
-              className={`flex min-h-11 items-start gap-2 rounded-lg border border-line bg-white px-3 py-2 text-sm has-checked:border-accent has-checked:bg-accent-soft ${address[c] ? 'cursor-pointer' : 'opacity-60'}`}
+              className={`flex min-h-11 items-start gap-2 rounded-lg border border-line bg-card px-3 py-2 text-sm has-checked:border-accent has-checked:bg-accent-soft ${address[c] ? 'cursor-pointer' : 'opacity-60'}`}
             >
               <input
                 type="radio"

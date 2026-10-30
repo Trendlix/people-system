@@ -25,7 +25,7 @@ export function AskCorrectionHeading({ back }: { back: { href: string; label: st
   return (
     <div className="space-y-2">
       <BackLink href={back.href}>{back.label}</BackLink>
-      <h1 className="text-2xl font-semibold">Ask for a Correction</h1>
+      <h1 className="page-title">Ask for a Correction</h1>
       <p className="text-muted">
         A day that isn&apos;t right: you forgot to check in or out, a time is wrong, or you worked remotely or at a client. Your direct manager (or
         lead) decides it, then HR; approved, the day is corrected and keeps what it was.

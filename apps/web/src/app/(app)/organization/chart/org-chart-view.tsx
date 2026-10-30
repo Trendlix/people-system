@@ -39,7 +39,7 @@ const PAPERS: { value: ChartPaper; label: string }[] = [
 ];
 
 const choice =
-  'flex min-h-11 w-fit cursor-pointer items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft';
+  'flex min-h-11 w-fit cursor-pointer items-center gap-2 rounded-lg border border-line bg-card px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft';
 
 /**
  * Printing gives only the chart (the print copy below, with its title), on a landscape page: everything else on the

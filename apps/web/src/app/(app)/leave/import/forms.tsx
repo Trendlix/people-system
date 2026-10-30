@@ -44,7 +44,7 @@ export function UploadLeaveForm({ action }: { action: Action }) {
           accept={UPLOAD_ACCEPT}
           aria-describedby={fid('file-hint')}
           onChange={() => setProblem(null)}
-          className="block w-full text-sm file:mr-3 file:min-h-11 file:cursor-pointer file:rounded-lg file:border file:border-line file:bg-white file:px-4 file:text-sm file:font-semibold"
+          className="block w-full text-sm file:mr-3 file:min-h-11 file:cursor-pointer file:rounded-lg file:border file:border-line file:bg-card file:px-4 file:text-sm file:font-semibold"
         />
         <p id={fid('file-hint')} className="hint">
           The template filled in, or Zoho People&apos;s leave export as it is (Excel, .xlsx, up to 5 MB). Nothing is saved to anyone&apos;s leave until

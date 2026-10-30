@@ -34,7 +34,7 @@ function Heading() {
   return (
     <div className="space-y-2">
       <BackLink href={BACK}>Leave Requests</BackLink>
-      <h1 className="text-2xl font-semibold">Record Permission</h1>
+      <h1 className="page-title">Record Permission</h1>
       <p className="text-muted">
         Permission taken or to be taken by an employee, recorded by HR: approved at once and logged as recorded by HR. Its hours count as worked in the
         month&apos;s payroll, within the hours a month Leave Setup gives.

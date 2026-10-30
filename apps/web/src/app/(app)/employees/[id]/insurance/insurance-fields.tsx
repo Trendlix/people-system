@@ -257,7 +257,7 @@ function Switch({ action, registered }: { action: Action; registered: boolean })
           onClick={turn}
           className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${shown ? 'bg-accent' : 'bg-line'}`}
         >
-          <span aria-hidden="true" className={`inline-block size-5 rounded-full bg-white shadow transition-transform ${shown ? 'translate-x-5.5' : 'translate-x-0.5'}`} />
+          <span aria-hidden="true" className={`inline-block size-5 rounded-full bg-card shadow transition-transform ${shown ? 'translate-x-5.5' : 'translate-x-0.5'}`} />
         </button>
         <span aria-hidden="true">{shown ? 'Yes' : 'No'}</span>
         {pending && <span className="text-xs text-muted">Saving…</span>}

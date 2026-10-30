@@ -9,7 +9,7 @@ import type { AllowanceType, FormState } from '@/lib/types';
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
 const choice =
-  'flex min-h-11 w-fit cursor-pointer items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft';
+  'flex min-h-11 w-fit cursor-pointer items-center gap-2 rounded-lg border border-line bg-card px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft';
 
 /**
  * A kind of allowance paid a month on top of the gross, e.g. Transport (owner's request, 15 October 2026): its names and

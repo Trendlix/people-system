@@ -99,7 +99,7 @@ export default function NewVacancyPage({ searchParams }: PageProps<'/recruitment
     <div className="space-y-4">
       <div className="space-y-2">
         <BackLink href={VACANCIES_PATH}>Vacancies</BackLink>
-        <h1 className="text-2xl font-semibold">New Vacancy</h1>
+        <h1 className="page-title">New Vacancy</h1>
         <p className="max-w-3xl text-sm text-muted">Saved as a draft. Send it to the CEO from its page: once approved, it shows on the careers page.</p>
       </div>
       <Suspense fallback={<Loading />}>

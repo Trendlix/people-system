@@ -55,7 +55,7 @@ export default function ImportAttendancePage({ searchParams }: PageProps<'/atten
     <StaffOnly>
       <div className="max-w-4xl space-y-6">
         <div>
-          <h1 className="text-2xl font-semibold">Import Attendance from Zoho People</h1>
+          <h1 className="page-title">Import Attendance from Zoho People</h1>
           <p className="mt-1 max-w-3xl text-muted">
             The month&apos;s check-ins and check-outs from Zoho People, counted by the system&apos;s rules, not Zoho&apos;s: the hours within each
             person&apos;s shift (until its end plus the grace minutes), at most its hours a day; a working day without a check-in is an absent day;

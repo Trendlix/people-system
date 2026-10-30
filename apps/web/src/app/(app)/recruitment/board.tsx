@@ -31,7 +31,7 @@ function RejectPrompt({ card, onSend, onCancel, pending }: { card: BoardCard; on
   const [reason, setReason] = useState('');
   const [email, setEmail] = useState(false);
   return (
-    <div role="dialog" aria-labelledby={fid('title')} className="space-y-2 rounded-lg border border-danger/40 bg-white p-4">
+    <div role="dialog" aria-labelledby={fid('title')} className="space-y-2 rounded-lg border border-danger/40 bg-card p-4">
       <p id={fid('title')} className="font-semibold">
         Reject {card.fullName}
       </p>
@@ -133,7 +133,7 @@ export function PipelineBoard({ board, move, deletes = false }: { board: Vacancy
                     e.dataTransfer.effectAllowed = 'move';
                   }}
                   onDragEnd={() => setDragging(null)}
-                  className={`space-y-1 rounded-md border border-line bg-white p-2 text-sm shadow-sm ${board.canMove ? 'cursor-grab' : ''}`}
+                  className={`space-y-1 rounded-md border border-line bg-card p-2 text-sm shadow-sm ${board.canMove ? 'cursor-grab' : ''}`}
                 >
                   <Link href={applicantHref(card.id)} className="block font-semibold">
                     {card.fullName}

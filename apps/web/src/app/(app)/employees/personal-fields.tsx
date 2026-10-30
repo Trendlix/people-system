@@ -60,7 +60,7 @@ type Field = {
 };
 
 const chip =
-  'flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft';
+  'flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-card px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft';
 
 const options = <T extends string>(values: readonly T[], labels: Record<T, string>): Option[] => values.map((v) => ({ value: v, label: labels[v] }));
 

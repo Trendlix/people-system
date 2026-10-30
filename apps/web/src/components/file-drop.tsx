@@ -77,7 +77,7 @@ function sizeOf(bytes: number): string {
 }
 
 const INPUT =
-  'block w-full text-sm file:mr-3 file:min-h-11 file:cursor-pointer file:rounded-lg file:border file:border-line file:bg-white file:px-4 file:text-sm file:font-semibold';
+  'block w-full text-sm file:mr-3 file:min-h-11 file:cursor-pointer file:rounded-lg file:border file:border-line file:bg-card file:px-4 file:text-sm file:font-semibold';
 
 /**
  * A file box inside an area a file can be dragged onto, or pasted into (⌘V or Ctrl+V) while the area or its box is
@@ -201,7 +201,7 @@ export function FileDrop({
         take(all[0], all);
       }}
       className={`flex min-w-0 flex-col gap-1.5 rounded-lg border border-dashed p-3 outline-none focus:border-accent ${
-        over ? 'border-accent bg-accent-soft' : 'border-line bg-white'
+        over ? 'border-accent bg-accent-soft' : 'border-line bg-card'
       }`}
     >
       {children ? (

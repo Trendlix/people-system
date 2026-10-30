@@ -42,7 +42,7 @@ export function UploadAttendanceForm({ action }: { action: (prev: FormState, fd:
             setProblems([]);
             setChosen(e.target.files?.length ?? 0);
           }}
-          className="block w-full text-sm file:mr-3 file:min-h-11 file:cursor-pointer file:rounded-lg file:border file:border-line file:bg-white file:px-4 file:text-sm file:font-semibold"
+          className="block w-full text-sm file:mr-3 file:min-h-11 file:cursor-pointer file:rounded-lg file:border file:border-line file:bg-card file:px-4 file:text-sm file:font-semibold"
         />
         <p id={fid('files-hint')} className="hint">
           In Zoho People, export the month&apos;s attendance entries as Excel (XLSX): one file with everyone, or a file per person, up to {ZOHO_MAX_FILES}{' '}

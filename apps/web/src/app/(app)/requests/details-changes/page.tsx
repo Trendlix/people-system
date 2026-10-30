@@ -50,7 +50,7 @@ function Filters({ status }: { status: StatusFilter }) {
             key={o.value || 'all'}
             href={detailsChangesHref(o.value)}
             aria-current={active ? 'page' : undefined}
-            className={`${chip} ${active ? 'border-ink bg-ink text-white hover:text-white' : 'border-line bg-white text-ink hover:bg-canvas hover:text-ink'}`}
+            className={`${chip} ${active ? 'border-ink bg-ink text-on-accent hover:text-on-accent' : 'border-line bg-card text-ink hover:bg-canvas hover:text-ink'}`}
           >
             {o.label}
           </Link>
@@ -147,7 +147,7 @@ export default function DetailsChangesPage({ searchParams }: PageProps<'/request
   return (
     <StaffOnly>
       <div className="max-w-5xl">
-        <h1 className="text-2xl font-semibold">Details Changes</h1>
+        <h1 className="page-title">Details Changes</h1>
         <p className="mt-1 text-muted">
           Employees&apos; requests to change their details, asked for when they check them on their profile. HR or an Admin approves a request,
           which makes the change, or rejects it with a note the employee sees; a C-level person&apos;s, the CEO or a Super Admin. The ones

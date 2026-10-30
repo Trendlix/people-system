@@ -34,7 +34,7 @@ export default function GeneralBulkPage({ searchParams }: PageProps<'/recruitmen
     <div className="space-y-4">
       <div className="space-y-2">
         <BackLink href={tabHref('general')}>General CVs</BackLink>
-        <h1 className="text-2xl font-semibold">Bulk Upload CVs</h1>
+        <h1 className="page-title">Bulk Upload CVs</h1>
         <p className="max-w-3xl text-sm text-muted">
           Many CVs at once, saved as general CVs or added to an open vacancy as applications: each is read for the name, email and mobile for you to check.
         </p>

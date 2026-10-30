@@ -53,7 +53,7 @@ export default function CorrectDayPage({ params, searchParams }: PageProps<'/att
       <div className="max-w-3xl space-y-6">
         <div className="space-y-2">
           <BackLink href="/attendance">Daily Attendance</BackLink>
-          <h1 className="text-2xl font-semibold">Correct a Day</h1>
+          <h1 className="page-title">Correct a Day</h1>
           <p className="text-muted">HR&apos;s correction, approved at once and in the audit log: the day keeps what it was, shown as corrected from it.</p>
         </div>
         <Suspense fallback={<Loading />}>

@@ -84,7 +84,7 @@ function Choice<T extends string>({ legend, value, options, onValue }: { legend:
   return (
     <fieldset>
       <legend className="label">{legend}</legend>
-      <div className="flex rounded-lg border border-line bg-white p-0.5">
+      <div className="flex rounded-lg border border-line bg-card p-0.5">
         {options.map(([v, label]) => (
           <label key={v} className={`flex min-h-8 flex-1 cursor-pointer items-center justify-center rounded-md px-2 text-sm has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent ${v === value ? 'bg-accent-soft font-semibold text-accent' : 'text-ink hover:bg-canvas'}`}>
             <input type="radio" name={name} className="sr-only" checked={v === value} onChange={() => onValue(v)} />

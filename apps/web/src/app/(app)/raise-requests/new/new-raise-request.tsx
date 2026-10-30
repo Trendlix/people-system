@@ -54,7 +54,7 @@ export function NewRaiseRequestHeading({ back }: { back: string | null }) {
   return (
     <div className="space-y-2">
       {back && <BackLink href={back}>{BACK_LABELS[back] ?? 'Back'}</BackLink>}
-      <h1 className="text-2xl font-semibold">New Raise Request</h1>
+      <h1 className="page-title">New Raise Request</h1>
       <p className="text-muted">
         Ask for a raise for yourself, for a direct report, or, from HR, for anyone employed now: a reason, the month it is to take effect from, a
         comment and the raise you suggest. HR approves or rejects it, then the CEO decides; every step is logged on the request.

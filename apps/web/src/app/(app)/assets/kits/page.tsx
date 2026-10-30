@@ -126,7 +126,7 @@ async function Kits() {
 export default function KitsPage() {
   return (
     <div className="max-w-4xl">
-      <h1 className="text-2xl font-semibold">Kits</h1>
+      <h1 className="page-title">Kits</h1>
       <p className="mt-1 text-muted">Production kit assets packed together for shoots: each kit with its assets and how it stands. Hand a kit over at once; only its available assets go.</p>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>

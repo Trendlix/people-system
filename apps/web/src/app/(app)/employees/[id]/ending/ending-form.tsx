@@ -270,7 +270,7 @@ export function EndingForm({
             ).map(([value, text]) => (
               <label
                 key={value}
-                className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft"
+                className="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-card px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft"
               >
                 <input type="radio" name="initiator" value={value} required defaultChecked={typed.initiator === value} className="size-4 accent-accent" />
                 {text}

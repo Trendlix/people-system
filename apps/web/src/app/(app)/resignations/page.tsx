@@ -30,7 +30,7 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/resignatio
             key={f.value}
             href={resignationsHref(f.value)}
             aria-current={f.value === filter ? 'page' : undefined}
-            className={`${chip} ${f.value === filter ? 'border-ink bg-ink text-white hover:text-white' : 'border-line bg-white text-ink hover:bg-canvas hover:text-ink'}`}
+            className={`${chip} ${f.value === filter ? 'border-ink bg-ink text-on-accent hover:text-on-accent' : 'border-line bg-card text-ink hover:bg-canvas hover:text-ink'}`}
           >
             {f.label}
           </Link>
@@ -50,7 +50,7 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/resignatio
 export default function ResignationsPage({ searchParams }: PageProps<'/resignations'>) {
   return (
     <div className="max-w-5xl">
-      <h1 className="text-2xl font-semibold">Resignations</h1>
+      <h1 className="page-title">Resignations</h1>
       <p className="mt-1 text-muted">
         What employees asked for with Resign on My Requests. Record the resignation to open the End employment form with it filled in; the ending, its
         document, the labour office certification and the CEO&apos;s approval carry on as always.

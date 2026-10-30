@@ -55,7 +55,7 @@ import { shownCode, withCode } from '@/lib/hidden';
 
 export const metadata: Metadata = { title: 'Leave Import Review · People System' };
 
-const chip = 'inline-flex min-h-9 items-center gap-1.5 rounded-full border border-line bg-white px-3.5 text-sm font-semibold';
+const chip = 'inline-flex min-h-9 items-center gap-1.5 rounded-full border border-line bg-card px-3.5 text-sm font-semibold';
 
 function Notes({ r }: { r: LeaveImportRow }) {
   return (
@@ -234,7 +234,7 @@ async function Review({ params }: { params: PageProps<'/leave/import/[id]'>['par
     <div className="space-y-8">
       <div className="space-y-2">
         <BackLink href={LEAVE_IMPORT_PATH}>Import Leave</BackLink>
-        <h1 className="text-2xl font-semibold">Leave Import Review</h1>
+        <h1 className="page-title">Leave Import Review</h1>
         <p className="text-muted">
           <span className="font-medium break-all text-ink">{view.fileName}</span> · {view.sourceLabel} · read {formatDateTime(view.createdAt)}
           {view.createdBy && ` by ${view.createdBy}`}

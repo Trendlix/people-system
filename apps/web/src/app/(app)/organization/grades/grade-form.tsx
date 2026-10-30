@@ -6,7 +6,7 @@ import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/c
 import type { FormState, Grade } from '@/lib/types';
 
 const choice =
-  'flex min-h-11 w-fit cursor-pointer items-center gap-2 rounded-lg border border-line bg-white px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft';
+  'flex min-h-11 w-fit cursor-pointer items-center gap-2 rounded-lg border border-line bg-card px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft';
 
 /**
  * A step of the grading system, e.g. G4 Senior with rank 4 (1 is the lowest level). Code and rank are each unique.

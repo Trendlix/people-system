@@ -47,7 +47,7 @@ function ImportPreview({ preview }: { preview: HolidayImportPreview }) {
             </h4>
             <p className="hint">{g.intro}</p>
           </div>
-          <div className="overflow-x-auto rounded-lg border border-line bg-white">
+          <div className="overflow-x-auto rounded-lg border border-line bg-card">
             <table className="table">
               <thead>
                 <tr>

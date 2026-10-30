@@ -484,7 +484,7 @@ export function FieldEditor({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <p className="text-xs font-semibold tracking-wide text-muted uppercase">{slotName}</p>
-            <h1 className="mt-1 text-2xl font-semibold">Place Fields</h1>
+            <h1 className="page-title mt-1">Place Fields</h1>
             <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted">
               <span className="font-semibold text-ink tabular-nums">v{version.version}</span>
               <span className="break-all">{version.fileName}</span>
@@ -559,7 +559,7 @@ export function FieldEditor({
 
         <section aria-label="The form" className="card flex h-[75vh] min-h-0 flex-col overflow-hidden lg:h-auto">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-line px-3 py-2">
-            <div role="group" aria-label="Zoom" className="flex rounded-lg border border-line bg-white p-0.5">
+            <div role="group" aria-label="Zoom" className="flex rounded-lg border border-line bg-card p-0.5">
               {ZOOMS.map(([z, label]) => (
                 <button
                   key={label}
