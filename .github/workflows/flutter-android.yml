@@ -1,0 +1,153 @@
+name: Flutter app (Android)
+
+# Builds Trendlix People, the employee app in Flutter (apps/flutter, README Phase 0; owner, 30 October 2026: "lets start
+# in the flutter one"), as an Android APK the owner downloads and installs to try each phase. It takes the old app's
+# place (apps/mobile, "Replace it now"): the same Android identity (com.trendlix.people) and the same signing key, and a
+# higher version code, so it installs over the old app.
+#
+# Runs on a push to main that touches apps/flutter or this file, and by hand ("Run workflow" on the Actions page). It
+# does not watch the API, the web app or apps/mobile, and backend.yml does not watch apps/flutter.
+#
+# Where the APK is: Actions -> the run -> Artifacts -> trendlix-people-<version> (a .zip with the .apk inside), kept
+# 30 days. The version: versionCode = 1000 + the run number (the old app's builds stopped at 11, so every Flutter build
+# is newer), versionName = <major.minor of apps/flutter/pubspec.yaml>.<run> (e.g. 0.2.3).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/flutter/**'
+      - '.github/workflows/flutter-android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# a newer push replaces a build still running for the same branch
+concurrency:
+  group: flutter-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Check and build the APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      HAS_DEBUG_KEYSTORE: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 != '' }}
+    defaults:
+      run:
+        working-directory: apps/flutter
+    steps:
+      - uses: actions/checkout@v7
+
+      # the SDK pinned to the version on the owner's Mac (README §1), its download kept between runs
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.7
+          cache: true
+
+      # Gradle's downloads (the wrapper, the Android plugin, AndroidX) are kept between runs
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+          cache-dependency-path: |
+            apps/flutter/android/*.gradle*
+            apps/flutter/android/app/*.gradle*
+            apps/flutter/android/gradle/wrapper/gradle-wrapper.properties
+            apps/flutter/pubspec.lock
+
+      # the runner's Android SDK, with its licences accepted; Gradle fetches any platform, build tools or NDK still missing
+      - uses: android-actions/setup-android@v4
+        with:
+          log-accepted-android-sdk-licenses: false
+
+      - name: Packages (as the lock file pins them)
+        run: flutter pub get --enforce-lockfile
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+      # The old app's signing key (mobile-android.yml), so this APK installs over it and each new one over the last (a
+      # phone refuses an update signed with another key). From the secret ANDROID_DEBUG_KEYSTORE_BASE64 when it is set;
+      # until then the key kept in the Actions cache under the old workflow's name, which GitHub drops after 7 days
+      # without a build (the next APK then needs the app uninstalled once).
+      - name: Signing key from the cache
+        if: env.HAS_DEBUG_KEYSTORE != 'true'
+        uses: actions/cache@v6
+        with:
+          path: ~/.android/debug.keystore
+          key: android-debug-keystore-v1
+
+      - name: Signing key from the secret
+        if: env.HAS_DEBUG_KEYSTORE == 'true'
+        env:
+          KEYSTORE: ${{ secrets.ANDROID_DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          mkdir -p ~/.android
+          printf '%s' "$KEYSTORE" | base64 -d > ~/.android/debug.keystore
+
+      - name: Version
+        id: version
+        run: |
+          code=$((1000 + GITHUB_RUN_NUMBER))
+          base="$(sed -n 's/^version: *\([0-9]*\.[0-9]*\).*/\1/p' pubspec.yaml)"
+          if [ -z "$base" ]; then
+            echo "::error::apps/flutter/pubspec.yaml has no version like 0.2.0+1."
+            exit 1
+          fi
+          name="$base.$GITHUB_RUN_NUMBER"
+          echo "APP_VERSION_CODE=$code" >> "$GITHUB_ENV"
+          echo "APP_VERSION_NAME=$name" >> "$GITHUB_ENV"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "Version $name (code $code)"
+
+      # Where the app finds People (lib/config.dart): the live address, and the root of the server's private authority
+      # (deploy/ca-cert.sh) from the repository variable API_CA_CERT (the one backend.yml checks). Without it the app can't
+      # reach People, so the build stops. A release build (fast and small), signed with the key above.
+      - name: Build
+        env:
+          API_CA_CERT: ${{ vars.API_CA_CERT }}
+        run: |
+          if [ -z "$API_CA_CERT" ]; then
+            echo "::error::The repository variable API_CA_CERT is not set (deploy/ca-cert.sh prints it): without it the app can't reach People."
+            exit 1
+          fi
+          flutter build apk --release \
+            --build-name="$APP_VERSION_NAME" \
+            --build-number="$APP_VERSION_CODE" \
+            --dart-define=PEOPLE_API_URL=https://srv2055591.hstgr.cloud:8443 \
+            --dart-define=PEOPLE_API_CA="$API_CA_CERT" \
+            --dart-define=PEOPLE_APP_VERSION="$APP_VERSION_NAME"
+
+      - name: Name the APK
+        id: apk
+        run: |
+          src=build/app/outputs/flutter-apk/app-release.apk
+          dest="$RUNNER_TEMP/trendlix-people-$APP_VERSION_NAME.apk"
+          cp "$src" "$dest"
+          echo "path=$dest" >> "$GITHUB_OUTPUT"
+          # the signing certificate's fingerprint: the same as the old app's builds means it installs over them
+          tools="$(ls -d "$ANDROID_HOME"/build-tools/* 2>/dev/null | sort -V | tail -1)"
+          cert="$("$tools/apksigner" verify --print-certs "$dest" 2>/dev/null | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)"
+          {
+            echo "### Trendlix People $APP_VERSION_NAME (Flutter)"
+            echo ""
+            echo "- APK, version code $APP_VERSION_CODE, $(du -h "$dest" | cut -f1)"
+            echo "- APK SHA-256 \`$(sha256sum "$dest" | cut -d' ' -f1)\`"
+            echo "- Signing certificate SHA-256 \`${cert:-unknown}\`"
+            echo "- Install: Artifacts below -> trendlix-people-$APP_VERSION_NAME -> unzip -> open the .apk on the phone"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: trendlix-people-${{ steps.version.outputs.name }}
+          path: ${{ steps.apk.outputs.path }}
+          if-no-files-found: error
+          retention-days: 30

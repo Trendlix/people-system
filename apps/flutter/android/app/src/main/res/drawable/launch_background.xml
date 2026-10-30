@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The launch screen before Android 12 (values/styles.xml): the white T and the red dot in the middle of black, as
+     the old app showed it (copied from apps/mobile, 20 October 2026) and as Android 12's own splash draws it
+     (values-v31/styles.xml), never stretched to the screen's shape. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/splash_background" />
+    <item
+        android:width="288dp"
+        android:height="288dp"
+        android:gravity="center"
+        android:drawable="@drawable/splash_icon" />
+</layer-list>

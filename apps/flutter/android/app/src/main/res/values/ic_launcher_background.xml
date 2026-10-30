@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The adaptive icon's background layer: the black of the owner's icon, copied from the old app (apps/mobile; README
+         Phase 5, 20 October 2026). The foreground layer is the white T and the red dot, mipmap-*/ic_launcher_foreground. -->
+    <color name="ic_launcher_background">#000000</color>
+</resources>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The launch screen's background, the icon's black (drawable/launch_background.xml, values-v31/styles.xml). -->
+    <color name="splash_background">#000000</color>
+</resources>
