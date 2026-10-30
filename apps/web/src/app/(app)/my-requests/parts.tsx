@@ -244,7 +244,7 @@ export function HistoryPanel({ rows, show, all, query, failed }: { rows: readonl
         </div>
       ) : (
         <>
-          <div className="mt-5 overflow-x-auto rounded-[13px] border border-line">
+          <div className="relative mt-5 overflow-x-auto rounded-[13px] border border-line">
             <table className="table [&_tbody_tr:last-child_td]:border-b-0">
               <thead>
                 <tr>

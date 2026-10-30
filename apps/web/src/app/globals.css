@@ -176,6 +176,15 @@ html:has(dialog:modal) {
     @apply border-b border-line-soft px-4 py-3 align-middle;
   }
 
+  /*
+   * A table's sideways-scrolling box holds what is visually hidden in it (screen-reader words, sr-only, are placed
+   * against the nearest positioned box): without this, on a phone they sit past its edge and widen the whole page
+   * (owner, 30 October 2026: the mobile popups). Weightless, so a box's own position class still wins.
+   */
+  :where(.overflow-x-auto):has(> table) {
+    position: relative;
+  }
+
   .badge {
     @apply inline-block rounded-full border border-line bg-raised px-2.5 py-0.5 text-xs font-medium whitespace-nowrap text-ink;
   }

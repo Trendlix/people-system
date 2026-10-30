@@ -160,7 +160,7 @@ export function MyDaysTable({
   action?: (day: AttendanceDay) => React.ReactNode;
 }) {
   return (
-    <div className="overflow-x-auto rounded-[13px] border border-line">
+    <div className="relative overflow-x-auto rounded-[13px] border border-line">
       <table className="table [&_tr:last-child_td]:border-b-0">
         <caption className="sr-only">Your days</caption>
         <thead>

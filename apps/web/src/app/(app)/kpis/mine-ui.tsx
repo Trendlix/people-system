@@ -170,7 +170,7 @@ export function History({ scorecards }: { scorecards: KpiScorecardSummary[] }) {
       <div className="p-[22px] pb-5">
         <PanelHead eyebrow="Your scorecards" title="History" />
       </div>
-      <div className="overflow-x-auto border-t border-line">
+      <div className="relative overflow-x-auto border-t border-line">
         {/* the first and last columns in line with the panel's head (22px) */}
         <table className="table [&_:is(th,td):first-child]:pl-[22px] [&_:is(th,td):last-child]:pr-[22px]">
           <thead>
