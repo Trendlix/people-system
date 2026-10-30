@@ -3,10 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:people/app.dart';
 import 'package:people/auth/session_store.dart';
-import 'package:people/features/home/home_screen.dart';
+import 'package:people/features/today/check_in_words.dart';
+import 'package:people/shell/shell_words.dart';
 import 'package:people/features/sign_in/sign_in_screen.dart';
 import 'package:people/providers.dart';
-import 'package:people/theme/app_theme.dart';
 
 import 'fakes.dart';
 
@@ -19,7 +19,7 @@ Future<void> open(WidgetTester tester, FakePeople people, MemorySessionStore sto
     ProviderScope(
       retry: noRetry,
       overrides: overridesFor(people, store: store, biometrics: biometrics),
-      child: MaterialApp(theme: appTheme(), home: const AuthGate()),
+      child: const PeopleApp(),
     ),
   );
   await tester.pumpAndSettle();
@@ -50,7 +50,7 @@ void main() {
     people.on('POST /api/auth/login', (req) => signedIn('fresh', {'id': 'u1'}));
     await tester.tap(find.text(SignInWords.signIn));
     await tester.pumpAndSettle();
-    expect(find.text(HomeWords.checkIn), findsOneWidget);
+    expect(find.text(CheckInWords.checkInForWork), findsOneWidget);
   });
 
   testWidgets('offers the fingerprint after the password, and asks for it at once next time', (tester) async {
@@ -66,18 +66,18 @@ void main() {
     await tester.enterText(find.widgetWithText(TextField, SignInWords.password), 'secret');
     await tester.tap(find.text(SignInWords.signIn));
     await tester.pumpAndSettle();
-    expect(find.text(HomeWords.offerTitle), findsOneWidget);
-    await tester.tap(find.text(HomeWords.offerYes));
+    expect(find.text(ShellWords.offerTitle), findsOneWidget);
+    await tester.tap(find.text(ShellWords.offerYes));
     await tester.pumpAndSettle();
     expect(store.device?.id, 'd1');
-    expect(find.text(HomeWords.fingerprintOn), findsOneWidget);
+    expect(find.text(ShellWords.fingerprintOn), findsOneWidget);
 
-    await tester.tap(find.byTooltip(HomeWords.account));
+    await tester.tap(find.text(ShellWords.more));
     await tester.pumpAndSettle();
-    await tester.tap(find.text(HomeWords.signOut));
+    await tester.tap(find.text(ShellWords.signOut));
     await tester.pumpAndSettle();
     // the sign-in screen asks for the fingerprint by itself, and it signs in
     expect(people.calls, contains('POST /api/auth/devices/sign-in'));
-    expect(find.text(HomeWords.checkIn), findsOneWidget);
+    expect(find.text(CheckInWords.checkInForWork), findsOneWidget);
   });
 }

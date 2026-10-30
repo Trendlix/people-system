@@ -1,7 +1,7 @@
 name: people
 description: "Trendlix People, the employee app"
 publish_to: 'none'
-version: 0.3.0+1
+version: 0.4.0+1
 
 environment:
   sdk: ^3.13.5
@@ -16,7 +16,9 @@ dependencies:
   geolocator: 14.1.1
   go_router: 18.1.0
   http: 1.6.0
+  image_picker: 1.2.4
   local_auth: 3.0.2
+  url_launcher: 6.3.3
 
 dev_dependencies:
   flutter_test:

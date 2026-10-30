@@ -27,6 +27,14 @@ phase, and record every decision the owner makes here (with the date and their w
     Read through Figma's API with the owner's read-only token (kept in `~/.figma-token` on the Mac, never in the repo).
     Its look is applied to the phone app now, laid out for a phone; the phone version of the design, when it comes,
     adjusts the layouts.
+  - 30 October 2026, the owner: "in the same figma link, i added a mobile flutter app folder, go through it and through
+    its instructions for the building" — the page "Mobile Flutter App": ten screens, light and dark (Dashboard, Requests,
+    Attendance, Profile, More, Change Password, Profile Image, Your Sessions, Your Interview Hours, New leave). It has
+    no written notes (no comments, annotations or prototype links): the screens are the instructions. They set the
+    app's shape: a header (the wordmark's tile, the sun/moon, the bell, the avatar), a floating frosted tab bar
+    (Dashboard, Requests, Attendance, Profile, More, which opens the account's menu), the requests' forms as bottom
+    sheets. The bar's two looks in the file (a dark glass bar on three light screens, a frosted one on the other
+    seventeen) are made one: the frosted bar everywhere.
 - Earlier decisions that still hold (apps/mobile/README.md, 20 October 2026): no store submission in the first
   version, an APK from GitHub Actions to install by hand; iPhone after the owner has an Apple Developer account;
   English interface, every string ready for Arabic later.
@@ -80,7 +88,8 @@ phase, and record every decision the owner makes here (with the date and their w
 - **Phase 4 — The rest**: my attendance, payslips (PDF), notifications (push, the existing Firebase project and
   `GOOGLE_SERVICES_JSON`), custody and assets as the old app had them.
 - **Phase 5 — The owner's design** (Figma), applied in `lib/theme/` and the screens' layout: the desktop version's look
-  first (30 October 2026), the phone version's layouts when it comes.
+  first (30 October 2026), then the phone version's screens (the same day), which also carry Phase 2's requests and
+  more of Phase 4 (attendance, the profile, the account's screens).
 - **Phase 6 — iPhone** (after the owner has an Apple Developer account).
 
 ## 4. Rules for the work
@@ -125,4 +134,16 @@ phase, and record every decision the owner makes here (with the date and their w
     worked of the shift's, moving while checked in), the one big button, what a press came to right under it (scrolled
     into view), and today's check-ins listed as the design lists a schedule.
   - Pending the phone version of the design; the website (`apps/web`) keeps its look until the owner says otherwise.
-- [ ] Phase 2 — Faster requests — next.
+- [~] Phase 5, second part — the phone design's screens (30 October 2026), version 0.4:
+  - The frame: header, frosted tab bar, More menu (View profile, Change profile image, Password & security, Devices &
+    sign-ins, Hiring availability, Sign out), the bell with the unread count and the inbox in a sheet; messages show
+    above the tab bar. The type and colours of the phone design in `lib/theme/` (titles of 40, cards of 20 corners,
+    the dark card that turns light on the dark look).
+  - The Dashboard: the greeting, Today's shift (the clock, then the time worked; Check in for work in one tap), quick
+    actions (Request leave, Fix attendance, View requests, My performance), at a glance (leave balance, hours this week,
+    open requests, next holiday), coming up (the official holidays: People has no meetings calendar for employees),
+    leave balance, weekly hours, documents needed. My performance lists one's KPI scorecards (rating and signing stay on
+    the website for now).
+  - Next in this part: Requests (with every request's sheet), Attendance, Profile with the account's screens.
+- [ ] Phase 2 — Faster requests — with the Requests tab above.
+- [ ] Phase 3 — Approve in one move — not in the phone design; to be placed in the Requests tab in its style.

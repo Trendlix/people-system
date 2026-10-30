@@ -121,28 +121,32 @@ ThemeData appTheme([Brightness brightness = Brightness.light]) {
   );
 }
 
-/// The design's type, sized for a phone: tight headings (Figma letter-spacing −4.5% to −7%), plain body, small
-/// spaced-out capitals for the labels over a card's title.
+/// The phone design's type (Figma "Mobile Flutter App"): tight titles (letter-spacing about −5%), plain body text of 15,
+/// labels of 13, and small spaced-out capitals (13, +12%) over a title.
 TextTheme textThemeOf(Palette p) {
   TextStyle s(double size, FontWeight weight, {double spacing = 0, double height = 1.4, Color? colour}) =>
       TextStyle(fontFamily: Tokens.font, fontSize: size, fontWeight: weight, letterSpacing: spacing, height: height, color: colour ?? p.ink);
   return TextTheme(
-    // the greeting and a screen's title (Figma 43/500, −4.5%)
-    displaySmall: s(34, FontWeight.w500, spacing: -1.5, height: 1.08),
-    // the work-time ring's figure (Figma 28/400, −5%)
-    headlineMedium: s(34, FontWeight.w400, spacing: -1.7, height: 1.1),
-    // a stat's figure (Figma 22/400, −4%)
-    headlineSmall: s(24, FontWeight.w400, spacing: -0.9, height: 1.15),
-    // a card's title (Figma 20/500, −3.5%)
-    titleLarge: s(20, FontWeight.w500, spacing: -0.7, height: 1.25),
-    titleMedium: s(16, FontWeight.w500, spacing: -0.2, height: 1.35),
-    titleSmall: s(14, FontWeight.w500, height: 1.35),
-    bodyLarge: s(16, FontWeight.w400, height: 1.45),
-    bodyMedium: s(14, FontWeight.w400, height: 1.45),
-    bodySmall: s(12.5, FontWeight.w400, height: 1.4, colour: p.muted),
-    labelLarge: s(15, FontWeight.w500, height: 1.2),
-    labelMedium: s(12.5, FontWeight.w400, height: 1.2),
-    // the label over a card's title, in capitals (Figma 10/400, +12%)
-    labelSmall: s(11.5, FontWeight.w400, spacing: 1.4, height: 1.3, colour: p.muted),
+    // a large figure: the leave days available (Figma 60/400, −8%)
+    displayMedium: s(60, FontWeight.w400, spacing: -4.8, height: 0.85),
+    // a page's title: "Good morning, Mohamed", "My Requests" (Figma 40/500, −5.5%)
+    displaySmall: s(40, FontWeight.w500, spacing: -2.2, height: 0.98),
+    // a figure in a card (Figma 34/400, −4%)
+    headlineLarge: s(34, FontWeight.w400, spacing: -1.4, height: 1.05),
+    // a stat's figure (Figma 30/400, −4%)
+    headlineMedium: s(30, FontWeight.w400, spacing: -1.2, height: 1.1),
+    // a section's title outside a card: "Quick actions" (Figma 28/400, −4%)
+    headlineSmall: s(28, FontWeight.w400, spacing: -1.12, height: 1.25),
+    // a card's title: "Coming up" (Figma 23/500, −3.5%)
+    titleLarge: s(23, FontWeight.w500, spacing: -0.81, height: 1.3),
+    titleMedium: s(17, FontWeight.w400, spacing: -0.2, height: 1.4),
+    titleSmall: s(15, FontWeight.w500, height: 1.35),
+    bodyLarge: s(15, FontWeight.w400, height: 1.5),
+    bodyMedium: s(14, FontWeight.w400, height: 1.5),
+    bodySmall: s(13, FontWeight.w400, height: 1.45, colour: p.muted),
+    labelLarge: s(15, FontWeight.w400, height: 1.2),
+    labelMedium: s(13, FontWeight.w400, height: 1.2),
+    // the label over a title, in capitals (Figma 13/400, +12%)
+    labelSmall: s(13, FontWeight.w400, spacing: 1.56, height: 1.5, colour: p.muted),
   );
 }

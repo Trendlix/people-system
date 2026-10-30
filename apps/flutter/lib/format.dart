@@ -55,3 +55,64 @@ String initialsOf(String name) {
   final first = words.first.characters.first;
   return words.length == 1 ? first.toUpperCase() : (first + words.last.characters.first).toUpperCase();
 }
+
+const _monthsShort = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const _weekdaysShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/// Tuesday · 27 October 2026 (the phone design's line over the greeting).
+String eyebrowDateOf(DateTime at) {
+  final t = at.toLocal();
+  return '${_weekdays[t.weekday - 1]} · ${t.day} ${_months[t.month - 1]} ${t.year}';
+}
+
+/// 2026-10-30, the day as People writes it, on the phone's clock.
+String isoDayOf(DateTime at) {
+  final t = at.toLocal();
+  return '${t.year}-${t.month.toString().padLeft(2, '0')}-${t.day.toString().padLeft(2, '0')}';
+}
+
+DateTime _day(String iso) => DateTime.parse('${iso}T00:00:00Z');
+String _iso(DateTime d) => d.toIso8601String().substring(0, 10);
+
+/// The week `today` is in, Sunday to Saturday (the working week here starts on Sunday); `back` weeks before.
+List<String> weekOf(String today, {int back = 0}) {
+  final d = _day(today);
+  final sunday = d.subtract(Duration(days: d.weekday % 7 + 7 * back));
+  return [for (var i = 0; i < 7; i++) _iso(sunday.add(Duration(days: i)))];
+}
+
+/// The months ("2026-10") some days fall in, in order.
+List<String> monthsOf(Iterable<String> days) => ({for (final d in days) d.substring(0, 7)}.toList()..sort());
+
+/// Sun, Mon … for a day; 0 = Sunday.
+String shortWeekday(String iso) => _weekdaysShort[_day(iso).weekday % 7];
+int weekdayOf(String iso) => _day(iso).weekday % 7;
+
+/// 14 Feb 2024.
+String shortDateOf(String iso) {
+  final d = _day(iso);
+  return '${d.day} ${_monthsShort[d.month - 1]} ${d.year}';
+}
+
+/// The change from last week's hours to this week's, in tenths of a percent; null without last week's.
+double? weeklyChange(double thisWeek, double lastWeek) => lastWeek <= 0 ? null : ((thisWeek - lastWeek) / lastWeek * 1000).round() / 10;
+
+/// 7h 07m.
+String hoursAndMinutesOf(double hours) {
+  final minutes = (hours * 60).round();
+  return '${minutes ~/ 60}h ${(minutes % 60).toString().padLeft(2, '0')}m';
+}
+
+/// 35.6.
+String oneDecimal(double v) {
+  final r = (v * 10).round() / 10;
+  return r == r.roundToDouble() ? r.toInt().toString() : r.toString();
+}
+
+/// October 2026, from "2026-10".
+String monthNameOf(String month) {
+  final parts = month.split('-');
+  if (parts.length < 2) return month;
+  final m = int.tryParse(parts[1]);
+  return m == null || m < 1 || m > 12 ? month : '${_months[m - 1]} ${parts[0]}';
+}

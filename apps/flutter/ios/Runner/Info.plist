@@ -66,6 +66,10 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Trendlix People uses the camera for a receipt you claim or your profile photo, only when you choose to take one.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Trendlix People opens your photos to attach a receipt or set your profile photo, only the one you choose.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Face ID signs you in to Trendlix People without your password.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

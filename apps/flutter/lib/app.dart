@@ -6,7 +6,14 @@ import 'package:go_router/go_router.dart';
 
 import 'api/people_client.dart';
 import 'auth/auth_controller.dart';
-import 'features/home/home_screen.dart';
+import 'features/attendance/attendance_tab.dart';
+import 'features/dashboard/dashboard_screen.dart';
+import 'features/performance/performance_screen.dart';
+import 'features/profile/account_screens.dart';
+import 'features/profile/profile_tab.dart';
+import 'features/requests/requests_tab.dart';
+import 'models/me.dart';
+import 'shell/app_shell.dart';
 import 'features/sign_in/sign_in_screen.dart';
 import 'theme/app_theme.dart';
 import 'theme/look.dart';
@@ -21,15 +28,86 @@ class PeopleApp extends ConsumerStatefulWidget {
 }
 
 class _PeopleAppState extends ConsumerState<PeopleApp> {
-  /// The app's screens and their addresses. Phase 1: one, which shows sign-in or Home as the session stands; the
-  /// request and approval screens (Phases 2 and 3) get their own.
-  final _router = GoRouter(
-    routes: [GoRoute(path: '/', builder: (context, state) => const AuthGate())],
+  /// Changes whenever the sign-in state does, so the router looks again where to be.
+  final _signedIn = ValueNotifier<int>(0);
+
+  /// The app's screens and their addresses: the sign-in, and once signed in the phone design's frame with its four
+  /// tabs (Dashboard, Requests, Attendance, Profile), each keeping its place; the account's screens under Profile.
+  late final _router = GoRouter(
+    initialLocation: '/dashboard',
+    refreshListenable: _signedIn,
+    redirect: (context, state) {
+      final auth = ref.read(authProvider);
+      final at = state.matchedLocation;
+      if (auth.hasError || !auth.hasValue) return at == '/start' ? null : '/start';
+      if (auth.value is! SignedIn) return at == '/sign-in' ? null : '/sign-in';
+      if (at == '/start' || at == '/sign-in') return '/dashboard';
+      return null;
+    },
+    routes: [
+      GoRoute(path: '/start', builder: (context, state) => const AuthGate()),
+      GoRoute(path: '/sign-in', builder: (context, state) => const AuthGate()),
+      StatefulShellRoute.indexedStack(
+        builder: (context, state, shell) => _SignedIn(
+          builder: (me) => AppShell(shell: shell, me: me),
+        ),
+        branches: [
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/dashboard',
+                builder: (context, state) => _SignedIn(builder: (me) => DashboardScreen(me: me)),
+                routes: [GoRoute(path: 'performance', builder: (context, state) => const PerformanceScreen())],
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [GoRoute(path: '/requests', builder: (context, state) => const RequestsTab())],
+          ),
+          StatefulShellBranch(
+            routes: [GoRoute(path: '/attendance', builder: (context, state) => const AttendanceTab())],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/profile',
+                builder: (context, state) => const ProfileTab(),
+                routes: [
+                  GoRoute(
+                    path: 'password',
+                    builder: (context, state) => const AccountScreen(eyebrow: 'Account · Security', title: 'Change Password'),
+                  ),
+                  GoRoute(
+                    path: 'photo',
+                    builder: (context, state) => const AccountScreen(eyebrow: 'Account · Profile', title: 'Profile Image'),
+                  ),
+                  GoRoute(
+                    path: 'sessions',
+                    builder: (context, state) => const AccountScreen(eyebrow: 'Account · Security', title: 'Your Sessions'),
+                  ),
+                  GoRoute(
+                    path: 'interview-hours',
+                    builder: (context, state) => const AccountScreen(eyebrow: 'Account · Availability', title: 'Your Interview Hours'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ],
+      ),
+    ],
   );
+
+  @override
+  void initState() {
+    super.initState();
+    ref.listenManual(authProvider, (_, _) => _signedIn.value++);
+  }
 
   @override
   void dispose() {
     _router.dispose();
+    _signedIn.dispose();
     super.dispose();
   }
 
@@ -52,7 +130,20 @@ class _PeopleAppState extends ConsumerState<PeopleApp> {
   }
 }
 
-/// Sign-in or Home, as the session stands; while the kept session is checked, a wait; People unreachable, Try again.
+/// A signed-in screen, given who it is; nothing while the router moves away after a sign-out.
+class _SignedIn extends ConsumerWidget {
+  const _SignedIn({required this.builder});
+
+  final Widget Function(Me me) builder;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final auth = ref.watch(authProvider).value;
+    return auth is SignedIn ? builder(auth.me) : const SizedBox.shrink();
+  }
+}
+
+/// Before the frame: while the kept session is checked, a wait; People unreachable, Try again; signed out, sign-in.
 class AuthGate extends ConsumerWidget {
   const AuthGate({super.key});
 
@@ -62,7 +153,6 @@ class AuthGate extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final auth = ref.watch(authProvider);
     return switch (auth) {
-      AsyncData(value: SignedIn(:final me)) => HomeScreen(key: ValueKey(me.id), me: me),
       AsyncData(value: final SignedOut s) => SignInScreen(key: ValueKey(s), state: s),
       AsyncError(:final error) => _Unreachable(message: error is ApiException ? error.message : PeopleClient.unreachableText),
       _ => const Scaffold(body: Center(child: CircularProgressIndicator())),

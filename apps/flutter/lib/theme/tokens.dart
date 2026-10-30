@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
 
 // The owner's design, in one place (README §1 and Phase 5). From the Figma file "PeopleTrendlix" (30 October 2026: the
-// desktop version, light and dark): its font, colours, radii and shadows, sized for a phone. The screens take every
-// look from here, so the phone version of the design can be applied without reworking them.
+// desktop version, then its page "Mobile Flutter App", light and dark): its font, colours, radii and shadows. The
+// screens take every look from here.
 
 abstract final class Tokens {
   /// The design's one font (assets/fonts, SIL Open Font License).
   static const font = 'Instrument Sans';
 
   // ---------- shapes ----------
-  /// Cards (Figma 18).
-  static const radiusCard = 18.0;
+  /// Cards (the phone design's 20).
+  static const radiusCard = 20.0;
+
+  /// Tiles inside a page: the quick actions, the figures, the tab bar's buttons (Figma 16).
+  static const radiusTile = 16.0;
 
   /// Buttons, fields, icon tiles (Figma 12).
   static const radiusControl = 12.0;
@@ -21,7 +24,10 @@ abstract final class Tokens {
   // ---------- spacing ----------
   static const gap = 16.0;
   static const gapSmall = 8.0;
-  static const pagePadding = EdgeInsets.fromLTRB(20, 12, 20, 32);
+  static const pagePadding = EdgeInsets.fromLTRB(18, 16, 18, 32);
+
+  /// Room under a tab's page for the floating tab bar (72 high, 12 from the bottom).
+  static const underTabBar = 112.0;
   static const cardPadding = EdgeInsets.all(20);
 
   /// The smallest a thing to tap may be (accessibility: 48 on Android).
@@ -53,6 +59,13 @@ class Palette extends ThemeExtension<Palette> {
     required this.onPrimary,
     required this.danger,
     required this.shadow,
+    required this.inverse,
+    required this.onInverse,
+    required this.inverseMuted,
+    required this.tabTint,
+    required this.tabStroke,
+    required this.tabActive,
+    required this.tabInactive,
   });
 
   final Brightness brightness;
@@ -88,6 +101,18 @@ class Palette extends ThemeExtension<Palette> {
   /// A card's soft shadow.
   final List<BoxShadow> shadow;
 
+  /// The one card that stands out (the Dashboard's "Today's shift", the Profile's head): near-black on the light look,
+  /// off-white on the dark one, with its own text colours.
+  final Color inverse;
+  final Color onInverse;
+  final Color inverseMuted;
+
+  /// The floating tab bar: frosted (its tint over the blur), its line, the current tab's pill and the others' words.
+  final Color tabTint;
+  final Color tabStroke;
+  final Color tabActive;
+  final Color tabInactive;
+
   static const light = Palette(
     brightness: Brightness.light,
     canvas: Color(0xFFEDEDEB),
@@ -101,6 +126,13 @@ class Palette extends ThemeExtension<Palette> {
     onPrimary: Color(0xFFFFFFFF),
     danger: Color(0xFFB42318),
     shadow: [BoxShadow(color: Color(0x12141412), offset: Offset(0, 18), blurRadius: 50)],
+    inverse: Color(0xFF111110),
+    onInverse: Color(0xFFF8F8F4),
+    inverseMuted: Color(0xFFA5A59F),
+    tabTint: Color(0xB8EDEDEB),
+    tabStroke: Color(0xFF343431),
+    tabActive: Color(0xFFF7F7F2),
+    tabInactive: Color(0xFF8A8A84),
   );
 
   static const dark = Palette(
@@ -116,6 +148,13 @@ class Palette extends ThemeExtension<Palette> {
     onPrimary: Color(0xFF1C1C1A),
     danger: Color(0xFFF97066),
     shadow: [BoxShadow(color: Color(0x38000000), offset: Offset(0, 18), blurRadius: 50)],
+    inverse: Color(0xFFF3F3EE),
+    onInverse: Color(0xFF111110),
+    inverseMuted: Color(0xFF6B6B66),
+    tabTint: Color(0x991C1C1A),
+    tabStroke: Color(0xFF343431),
+    tabActive: Color(0xFFF7F7F2),
+    tabInactive: Color(0xFF9D9D97),
   );
 
   bool get isDark => brightness == Brightness.dark;
@@ -134,6 +173,13 @@ class Palette extends ThemeExtension<Palette> {
     Color? onPrimary,
     Color? danger,
     List<BoxShadow>? shadow,
+    Color? inverse,
+    Color? onInverse,
+    Color? inverseMuted,
+    Color? tabTint,
+    Color? tabStroke,
+    Color? tabActive,
+    Color? tabInactive,
   }) => Palette(
     brightness: brightness ?? this.brightness,
     canvas: canvas ?? this.canvas,
@@ -147,6 +193,13 @@ class Palette extends ThemeExtension<Palette> {
     onPrimary: onPrimary ?? this.onPrimary,
     danger: danger ?? this.danger,
     shadow: shadow ?? this.shadow,
+    inverse: inverse ?? this.inverse,
+    onInverse: onInverse ?? this.onInverse,
+    inverseMuted: inverseMuted ?? this.inverseMuted,
+    tabTint: tabTint ?? this.tabTint,
+    tabStroke: tabStroke ?? this.tabStroke,
+    tabActive: tabActive ?? this.tabActive,
+    tabInactive: tabInactive ?? this.tabInactive,
   );
 
   @override
@@ -166,6 +219,13 @@ class Palette extends ThemeExtension<Palette> {
       onPrimary: mix(onPrimary, other.onPrimary),
       danger: mix(danger, other.danger),
       shadow: BoxShadow.lerpList(shadow, other.shadow, t) ?? other.shadow,
+      inverse: mix(inverse, other.inverse),
+      onInverse: mix(onInverse, other.onInverse),
+      inverseMuted: mix(inverseMuted, other.inverseMuted),
+      tabTint: mix(tabTint, other.tabTint),
+      tabStroke: mix(tabStroke, other.tabStroke),
+      tabActive: mix(tabActive, other.tabActive),
+      tabInactive: mix(tabInactive, other.tabInactive),
     );
   }
 }

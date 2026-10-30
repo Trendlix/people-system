@@ -3,7 +3,14 @@
 
 /// A check-in or check-out: when, and where People placed it.
 class Punch {
-  const Punch({required this.kind, required this.at, required this.place, required this.locationName, required this.officeNetwork, required this.flags});
+  const Punch({
+    required this.kind,
+    required this.at,
+    required this.place,
+    required this.locationName,
+    required this.officeNetwork,
+    required this.flags,
+  });
 
   factory Punch.fromJson(Object? json) {
     if (json is! Map) throw const FormatException('Punch: not an object');
