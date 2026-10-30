@@ -11,8 +11,9 @@ import { CheckInService } from './check-in.service.js';
 // check, or a device) to replace Zoho"): the caller's own today, and a press of Check in or Check out. Anyone signed in
 // with an employee profile and a current employment under a shift, not a freelancer (the service says why not to the
 // others). A press carries the session's kind (inside the app a location is needed: owner, 20 October 2026, "App only")
-// and the visitor's address as the website signed it (check-ins locked to the office network, the same day), which is
-// read for the decision and never kept. Open to an account on Hold (owner, 23 October 2026: "Check-in/out only"), so its
+// and the visitor's address as the website signed it (check-ins locked to the office network, the same day), or inside
+// the Flutter app, which talks to the API itself, the connection's own (signed-ip.ts checkInIp), read for the decision
+// and never kept. Open to an account on Hold (owner, 23 October 2026: "Check-in/out only"), so its
 // attendance and pay stay right: today's state and the presses, on the website and in the app.
 @OpenOnHold()
 @Controller('me/attendance')
@@ -33,6 +34,6 @@ export class CheckInController {
   @Post('punches')
   @HttpCode(200)
   punch(@Body() dto: PunchDto, @CurrentUser() user: SessionUser, @CurrentActiveSession() session: ActiveSession, @Req() req: Request) {
-    return this.checkIn.punch(dto, user, { session: session.kind, signedIp: this.setup.signedIp(req) });
+    return this.checkIn.punch(dto, user, { session: session.kind, signedIp: this.setup.checkInIp(req, session.kind) });
   }
 }

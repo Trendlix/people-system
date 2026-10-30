@@ -1,5 +1,5 @@
 import { CLIENT_IP_AT_HEADER, CLIENT_IP_HEADER, CLIENT_IP_SIGNATURE_HEADER } from '@trendlix/shared';
-import { signatureOf, tokenHash, verifySignedIp } from './signed-ip.js';
+import { checkInIp, signatureOf, tokenHash, verifySignedIp } from './signed-ip.js';
 
 // The address the website signs for a check-in (owner, 20 October 2026: check-ins locked to the office network): trusted
 // only with WEB_KEY's signature, within a minute either way, for the same session token; never a plain header.
@@ -44,5 +44,30 @@ describe('the signed address', () => {
     expect(verifySignedIp(signed('41.33.10.2', NOW - 61_000), TOKEN, KEY, NOW)).toEqual({ problem: 'stale' });
     expect(verifySignedIp(signed('41.33.10.2', NOW + 61_000), TOKEN, KEY, NOW)).toEqual({ problem: 'stale' });
     expect(verifySignedIp({ ...signed('41.33.10.2'), [CLIENT_IP_AT_HEADER]: 'yesterday' }, TOKEN, KEY, NOW)).toEqual({ problem: 'malformed' });
+  });
+});
+
+// The Flutter app talks to the API itself (apps/flutter, 30 October 2026): for an app session the website signed
+// nothing for, the connection's address as Caddy wrote it, the last X-Forwarded-For entry.
+describe('a check-in’s address', () => {
+  it('is the website’s signed one whenever it sent one, in the app too', () => {
+    expect(checkInIp({ ...signed('41.33.10.2'), 'x-forwarded-for': '197.45.1.9' }, TOKEN, KEY, NOW, 'app')).toEqual({ ip: '41.33.10.2' });
+    expect(checkInIp({ ...signed('41.33.10.2'), 'x-forwarded-for': '197.45.1.9' }, TOKEN, KEY, NOW, 'web')).toEqual({ ip: '41.33.10.2' });
+    // a bad signature is never made good by the connection's address
+    expect(checkInIp({ ...signed('41.33.10.2', NOW - 61_000), 'x-forwarded-for': '41.33.10.2' }, TOKEN, KEY, NOW, 'app')).toEqual({ problem: 'stale' });
+  });
+
+  it('is the connection’s in the app: the last entry, the one Caddy wrote, normalised', () => {
+    expect(checkInIp({ 'x-forwarded-for': '41.33.10.2' }, TOKEN, KEY, NOW, 'app')).toEqual({ ip: '41.33.10.2' });
+    expect(checkInIp({ 'x-forwarded-for': '41.33.10.2, ::ffff:197.45.1.9' }, TOKEN, KEY, NOW, 'app')).toEqual({ ip: '197.45.1.9' });
+    expect(checkInIp({ 'x-forwarded-for': ['2001:DB8::1'] }, TOKEN, KEY, NOW, 'app')).toEqual({ ip: '2001:db8::1' });
+    expect(checkInIp({}, TOKEN, KEY, NOW, 'app')).toEqual({ problem: 'unsigned' });
+    expect(checkInIp({ 'x-forwarded-for': 'not an address' }, TOKEN, KEY, NOW, 'app')).toEqual({ problem: 'unsigned' });
+  });
+
+  it('is never a plain header for a website or connector session, and nothing without the key here', () => {
+    expect(checkInIp({ 'x-forwarded-for': '41.33.10.2' }, TOKEN, KEY, NOW, 'web')).toEqual({ problem: 'unsigned' });
+    expect(checkInIp({ 'x-forwarded-for': '41.33.10.2' }, TOKEN, KEY, NOW, 'connector')).toEqual({ problem: 'unsigned' });
+    expect(checkInIp({ 'x-forwarded-for': '41.33.10.2' }, TOKEN, undefined, NOW, 'app')).toEqual({ problem: 'no_server_key' });
   });
 });

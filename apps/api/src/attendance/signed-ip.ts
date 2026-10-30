@@ -7,6 +7,7 @@ import {
   clientIpPayload,
   normalizedIp,
   webKeyUsable,
+  type SessionKind,
   type SignedIpProblem,
 } from '@trendlix/shared';
 
@@ -52,4 +53,19 @@ export function verifySignedIp(headers: Headers, token: string | undefined, key:
   const sent = Buffer.from(signature);
   if (expected.length !== sent.length || !timingSafeEqual(expected, sent)) return { problem: 'bad_signature' };
   return { ip: shown };
+}
+
+/**
+ * A check-in's address. The website's signed one (above) whenever it sent one. The employee app in Flutter (apps/flutter,
+ * 30 October 2026) talks to the API itself, so for an app session the website signed nothing for, the address is the
+ * connection's own, as Caddy wrote it in X-Forwarded-For: Caddy is the only way in (deploy/Caddyfile; the API publishes
+ * no port), it replaces what a client sends there (it trusts no proxy before it), and at most it adds its own entry
+ * last, so the last entry is read. A website session is never read this way (a plain header still counts for nothing),
+ * and without the key here the lock isn't in force for anyone.
+ */
+export function checkInIp(headers: Headers, token: string | undefined, key: string | undefined, now: number, session: SessionKind): SignedIp {
+  const signed = verifySignedIp(headers, token, key, now);
+  if (signed.problem !== 'unsigned' || session !== 'app') return signed;
+  const ip = normalizedIp(one(headers, 'x-forwarded-for')?.split(',').pop()?.trim());
+  return ip ? { ip } : signed;
 }

@@ -21,6 +21,7 @@ import {
   type NetworkLockSetting,
   type OfficeLocation,
   type OfficeNetwork,
+  type SessionKind,
   type SignedIpProblem,
   type SuggestedExemptionStart,
 } from '@trendlix/shared';
@@ -35,7 +36,7 @@ import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { CreateCheckInLocationDto, LinkPeopleDto, UpdateCheckInLocationDto, UpdateGpsLockDto, UpdateLocationRuleDto, UpdateOfficeNetworksDto } from './check-in-setup.dto.js';
 import { START_EMPLOYMENT, startOf } from './exemption-start.js';
-import { verifySignedIp, type SignedIp } from './signed-ip.js';
+import { checkInIp, verifySignedIp, type SignedIp } from './signed-ip.js';
 
 const LOCATION = 'check_in_location';
 const NETWORKS = 'office_networks';
@@ -199,6 +200,11 @@ export class CheckInSetupService {
   /** The address the website signed for this request, or why it can't be trusted (a plain header never is). */
   signedIp(req: Request): SignedIp {
     return verifySignedIp(req.headers, readToken(req), process.env.WEB_KEY, Date.now());
+  }
+
+  /** A press's address: the website's signed one, or inside the Flutter app its connection's (signed-ip.ts checkInIp). */
+  checkInIp(req: Request, session: SessionKind): SignedIp {
+    return checkInIp(req.headers, readToken(req), process.env.WEB_KEY, Date.now(), session);
   }
 
   /** The lock as set, with whether the server has the key (packages/shared lockedToOfficeNetwork reads it). */

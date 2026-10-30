@@ -124,6 +124,7 @@ describe('Check-in Setup and the office network (e2e)', () => {
     await person('hana', 'Hana Hybrid', { workArrangement: 'hybrid', officeDays: [0, 1, 2, 3, 4, 5, 6] });
     await person('walid', 'Walid Wfh', { workArrangement: 'wfh' });
     await person('aya', 'Aya App', { workArrangement: 'wfh' });
+    await person('otto', 'Otto Officeapp', { workArrangement: 'office' });
   });
 
   afterAll(async () => {
@@ -261,6 +262,26 @@ describe('Check-in Setup and the office network (e2e)', () => {
       await punch(sessions.olga, { kind: 'in', ...FAR }, signed(sessions.olga, ON_NETWORK, { at: Date.now() - 120_000 })).expect(409);
       await punch(sessions.olga, { kind: 'in', ...FAR }, signed(sessions.olga, ON_NETWORK, { at: Date.now() + 120_000 })).expect(409);
       expect(await prisma.attendancePunch.count({ where: { employeeId: ids.olga } })).toBe(0);
+    });
+
+    // The Flutter app talks to the API itself (apps/flutter, 30 October 2026): the connection's address, as Caddy
+    // writes it in X-Forwarded-For (the last entry), for an app session only; the website's signature still first.
+    it('reads the connection’s address inside the app, which talks to People itself; never for a website session', async () => {
+      const lastRefusal = async () =>
+        (await prisma.auditLog.findFirst({ where: { entityType: 'employee', entityId: ids.otto, action: 'check_in_refused' }, orderBy: { id: 'desc' } }))?.diff;
+      expect(said(await punch(sessions.ottoApp, { kind: 'in', ...FAR }, { 'x-forwarded-for': OFF_NETWORK }).expect(409))).toEqual([OFF_NETWORK_MESSAGE]);
+      expect(await lastRefusal()).toMatchObject({ reason: 'off_network' });
+      // an address the phone named before Caddy's own counts for nothing
+      await punch(sessions.ottoApp, { kind: 'in', ...FAR }, { 'x-forwarded-for': `${ON_NETWORK}, ${OFF_NETWORK}` }).expect(409);
+      // the website's session: only what the website signed
+      await punch(sessions.otto, { kind: 'in', ...FAR }, { 'x-forwarded-for': ON_NETWORK }).expect(409);
+      expect(await lastRefusal()).toMatchObject({ reason: 'not_signed' });
+      expect(await prisma.attendancePunch.count({ where: { employeeId: ids.otto } })).toBe(0);
+      const inside = (await punch(sessions.ottoApp, { kind: 'in', ...FAR }, { 'x-forwarded-for': `${OFF_NETWORK}, ::ffff:${ON_NETWORK}` }).expect(200)).body;
+      expect(inside.punches.at(-1)).toMatchObject({ kind: 'in', place: 'office', officeNetwork: 'Main office line' });
+      // the website's signature first: on the network, whatever the connection
+      const out = (await punch(sessions.ottoApp, { kind: 'out', ...FAR }, { ...signed(sessions.ottoApp, ON_NETWORK), 'x-forwarded-for': OFF_NETWORK }).expect(200)).body;
+      expect(out.punches.at(-1)).toMatchObject({ kind: 'out', place: 'office', officeNetwork: 'Main office line' });
     });
 
     it('is kept at the office on the network, whatever the location says, in and out', async () => {
