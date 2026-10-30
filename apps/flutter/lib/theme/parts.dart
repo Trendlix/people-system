@@ -478,6 +478,8 @@ class StatTile extends StatelessWidget {
 Future<T?> showDesignSheet<T>(BuildContext context, {String? eyebrow, required String title, IconData? icon, String? intro, required WidgetBuilder builder}) {
   return showModalBottomSheet<T>(
     context: context,
+    // over the whole app, so the floating tab bar never covers the sheet's buttons
+    useRootNavigator: true,
     isScrollControlled: true,
     useSafeArea: true,
     showDragHandle: false,

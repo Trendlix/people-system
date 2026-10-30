@@ -55,6 +55,7 @@ class Today {
     required this.workingFromHome,
     required this.exempt,
     required this.officialDutyNow,
+    this.raw = const {},
   });
 
   factory Today.fromJson(Object? json) {
@@ -78,6 +79,7 @@ class Today {
       workingFromHome: json['workingFromHome'] == true,
       exempt: json['exemption'] != null,
       officialDutyNow: duty is Map && duty['now'] == true,
+      raw: json,
     );
   }
 
@@ -104,6 +106,9 @@ class Today {
   final bool workingFromHome;
   final bool exempt;
   final bool officialDutyNow;
+
+  /// Today as People sent it, for what a screen needs beyond these (the Attendance tab's Today panel).
+  final Map raw;
 
   Punch? get last => punches.isEmpty ? null : punches.last;
 

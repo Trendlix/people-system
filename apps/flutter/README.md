@@ -134,7 +134,7 @@ phase, and record every decision the owner makes here (with the date and their w
     worked of the shift's, moving while checked in), the one big button, what a press came to right under it (scrolled
     into view), and today's check-ins listed as the design lists a schedule.
   - Pending the phone version of the design; the website (`apps/web`) keeps its look until the owner says otherwise.
-- [~] Phase 5, second part — the phone design's screens (30 October 2026), version 0.4:
+- [x] Phase 5, second part — the phone design's frame and Dashboard (30 October 2026), version 0.4:
   - The frame: header, frosted tab bar, More menu (View profile, Change profile image, Password & security, Devices &
     sign-ins, Hiring availability, Sign out), the bell with the unread count and the inbox in a sheet; messages show
     above the tab bar. The type and colours of the phone design in `lib/theme/` (titles of 40, cards of 20 corners,
@@ -144,6 +144,21 @@ phase, and record every decision the owner makes here (with the date and their w
     open requests, next holiday), coming up (the official holidays: People has no meetings calendar for employees),
     leave balance, weekly hours, documents needed. My performance lists one's KPI scorecards (rating and signing stay on
     the website for now).
-  - Next in this part: Requests (with every request's sheet), Attendance, Profile with the account's screens.
-- [ ] Phase 2 — Faster requests — with the Requests tab above.
-- [ ] Phase 3 — Approve in one move — not in the phone design; to be placed in the Requests tab in its style.
+- [x] The phone design's tabs (30 October 2026), version 0.5, to try on a phone:
+  - Requests (Phase 2, faster requests): My Requests as designed (annual leave with its ring, requests this year,
+    permission left, every request in one list with All / Approved / Waiting, other leave, a card for each request one
+    may start), and a bottom sheet for each of the nine kinds with smart defaults and every rule shown before sending:
+    leave (the covering colleague, the stand-in, documents by camera or gallery), permission, work from home,
+    attendance correction, official duty, compensatory day, reimbursement (receipt photos), check-in location,
+    resignation. Each request has its page (its facts, who decides, every step, Cancel where People allows). Files are
+    listed by name (opening them stays on the website for now); photos only, no PDF picking yet.
+  - Attendance: the month switcher, Today's panel (the shared press), the week/month calendar, the figures (no
+    attendance rate: the owner's 23 October decision), Your days, a day's details, Ask for a correction, My corrections.
+  - Profile: the head card, the four facts, Personal / Contact / Employment / Payroll (payslips paid and held, never a
+    salary), Ask to change my details (the change request HR decides), Documents; the account's screens: Change
+    Password, Profile Image (HR sets the photo: the screen says so, no pretend upload), Your Sessions (with the
+    fingerprint's phones), Your Interview Hours.
+  - Sheets open over the tab bar. Follow-ups: one correction flow instead of two (Requests' and Attendance's), PUT and
+    multipart in `PeopleClient` (now in the features), opening files and payslip PDFs in the app.
+- [ ] Phase 3 — Approve in one move — not in the phone design; to be placed in the Requests tab in its style — next.
+- [ ] Phase 4 — push notifications (Firebase), custody and assets.

@@ -75,19 +75,19 @@ class _PeopleAppState extends ConsumerState<PeopleApp> {
                 routes: [
                   GoRoute(
                     path: 'password',
-                    builder: (context, state) => const AccountScreen(eyebrow: 'Account · Security', title: 'Change Password'),
+                    builder: (context, state) => const ChangePasswordScreen(),
                   ),
                   GoRoute(
                     path: 'photo',
-                    builder: (context, state) => const AccountScreen(eyebrow: 'Account · Profile', title: 'Profile Image'),
+                    builder: (context, state) => const ProfilePhotoScreen(),
                   ),
                   GoRoute(
                     path: 'sessions',
-                    builder: (context, state) => const AccountScreen(eyebrow: 'Account · Security', title: 'Your Sessions'),
+                    builder: (context, state) => const SessionsScreen(),
                   ),
                   GoRoute(
                     path: 'interview-hours',
-                    builder: (context, state) => const AccountScreen(eyebrow: 'Account · Availability', title: 'Your Interview Hours'),
+                    builder: (context, state) => const InterviewHoursScreen(),
                   ),
                 ],
               ),
