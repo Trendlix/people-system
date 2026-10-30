@@ -46,9 +46,9 @@ import {
 // button: the lists that open and close clip what is outside them
 const focus = 'focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-sidebar-text';
 const base = `flex min-h-11 items-center gap-3 rounded-[11px] px-3 text-[13px] font-normal no-underline transition-colors ${focus}`;
-// a sub-item: indented under its item's words in the sidebar; in the row of links on a phone, after it, as tall as the
-// others there (44px, for a finger)
-const subBase = `flex min-h-11 shrink-0 items-center gap-2 rounded-[11px] px-3 text-[13px] font-normal whitespace-nowrap no-underline transition-colors md:min-h-9 md:pl-[2.6rem] ${focus}`;
+// a sub-item: indented under its item's words; on a phone as tall as the others (44px, for a finger). The menu is the
+// same list top to bottom on a phone, opened by its button (components/phone-menu.tsx, 30 October 2026)
+const subBase = `flex min-h-11 shrink-0 items-center gap-2 rounded-[11px] py-1 pr-3 pl-[2.6rem] text-[13px] font-normal no-underline transition-colors md:min-h-9 ${focus}`;
 const on = 'bg-sidebar-active text-sidebar-on-active';
 const off = 'text-sidebar-text hover:bg-white/5 hover:text-sidebar-ink';
 // a heading holding the page: bright, as the section it is in, its page highlighted under it
@@ -79,11 +79,11 @@ const ICONS: Record<string, LucideIcon> = {
 
 function ItemIcon({ label }: { label: string }) {
   const Icon = ICONS[label] ?? Network;
-  return <Icon aria-hidden="true" className="hidden size-[17px] shrink-0 md:block" strokeWidth={1.6} />;
+  return <Icon aria-hidden="true" className="size-[17px] shrink-0" strokeWidth={1.6} />;
 }
 
 /** How many things wait behind a link, when there are any; at the end of the row in the sidebar unless said otherwise. */
-function Count({ count, className = 'md:ml-auto' }: { count: number | undefined; className?: string }) {
+function Count({ count, className = 'ml-auto' }: { count: number | undefined; className?: string }) {
   if (!count) return null;
   return (
     <span className={`min-w-5 rounded-full bg-sidebar-count px-1.5 py-0.5 text-center text-[11px] leading-4 font-medium text-sidebar-on-active tabular-nums ${className}`}>
@@ -170,17 +170,17 @@ function NavGroupLinks({
   // on a page of a sub-item, the sub-item is the one highlighted; its heading stays white, as the section it is in
   const current = active ? (activeSubItem(item, pathname)?.href ?? null) : null;
   return (
-    <div className="flex shrink-0 gap-1 md:flex-col md:gap-0">
+    <div className="flex flex-col">
       <button
         type="button"
         aria-expanded={open}
         aria-controls={listId}
         data-nav-group={key}
         onClick={onToggle}
-        className={`group peer ${base} shrink-0 cursor-pointer text-left whitespace-nowrap md:w-full ${active ? (current ? holds : on) : off}`}
+        className={`group peer ${base} w-full cursor-pointer text-left ${active ? (current ? holds : on) : off}`}
       >
         <ItemIcon label={item.label} />
-        <span className="md:mr-auto">{item.label}</span>
+        <span className="mr-auto">{item.label}</span>
         <Count count={groupCount(item, counts)} className="group-aria-expanded:hidden" />
         <svg
           aria-hidden="true"
@@ -195,11 +195,10 @@ function NavGroupLinks({
           <path d="M6 3.5 10.5 8 6 12.5" />
         </svg>
       </button>
-      {/* in the sidebar its height slides between none and all of the list's; in the row of links on a phone it is
-          left out until it opens */}
-      <div className="invisible grid grid-rows-[0fr] transition-[grid-template-rows,visibility] duration-200 ease-out peer-aria-expanded:visible peer-aria-expanded:grid-rows-[1fr] motion-reduce:transition-none max-md:hidden max-md:peer-aria-expanded:grid">
+      {/* its height slides between none and all of the list's */}
+      <div className="invisible grid grid-rows-[0fr] transition-[grid-template-rows,visibility] duration-200 ease-out peer-aria-expanded:visible peer-aria-expanded:grid-rows-[1fr] motion-reduce:transition-none">
         <div className="min-h-0 overflow-hidden">
-          <ul id={listId} aria-label={item.label} className="flex gap-1 md:flex-col md:pt-1">
+          <ul id={listId} aria-label={item.label} className="flex flex-col gap-1 pt-1">
             {item.items.map((sub) => {
               const here = sub.href === current;
               return (

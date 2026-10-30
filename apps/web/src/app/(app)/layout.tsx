@@ -9,6 +9,7 @@ import { NavLinks, NavLinksFallback } from '@/components/nav-links';
 import { BellLink, NotificationBell } from '@/components/notification-bell';
 import { CheckInReminder } from '@/components/check-in-reminder';
 import { SessionWatch } from '@/components/session-watch';
+import { PhoneMenu } from '@/components/phone-menu';
 import { ThemeSwitch } from '@/components/theme-switch';
 import { UserMenu } from '@/components/user-menu';
 import { DeveloperBanner } from '@/components/developer-banner';
@@ -176,7 +177,7 @@ async function ProfileCompleteness() {
   if (!own || percent === undefined || percent >= 100) return null;
   const missing = own.completeness.missing.length;
   return (
-    <div className="mt-auto hidden rounded-[15px] border border-sidebar-line bg-white/[0.03] p-4 md:block">
+    <div className="mt-4 rounded-[15px] border border-sidebar-line bg-white/[0.03] p-4 md:mt-auto">
       <p className="flex items-center justify-between text-[11px] text-sidebar-ink">
         <span>Profile completeness</span>
         <span className="tabular-nums">{percent}%</span>
@@ -226,25 +227,28 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
         {/* the owner's design (30 October 2026): the near-black side menu, its own scroll on a computer so the page's
             stays the page's */}
         <aside className="bg-sidebar px-4 py-4 md:sticky md:top-0 md:flex md:h-screen md:w-[252px] md:shrink-0 md:flex-col md:border-r md:border-sidebar-line md:py-6">
-          <div className="mb-4 px-2 md:mb-8">
-            <Suspense fallback={<BrandFallback dark />}>
-              <Brand dark />
+          <PhoneMenu
+            brand={
+              <Suspense fallback={<BrandFallback dark />}>
+                <Brand dark />
+              </Suspense>
+            }
+          >
+            <p className="eyebrow mb-2 px-3 text-sidebar-quiet">Workspace</p>
+            <nav aria-label="Main" className="relative -mx-1 flex min-h-0 flex-col gap-1 overflow-y-auto px-1 pb-4">
+              <Suspense fallback={<NavLinksFallback />}>
+                <MainNav />
+              </Suspense>
+            </nav>
+            {/* no Coming Next any more: Attendance, its last item, is a heading of its own (owner, 19 October 2026: "the
+                attendance is not active in the side menu") */}
+            <Suspense fallback={null}>
+              <ProfileCompleteness />
             </Suspense>
-          </div>
-          <p className="eyebrow mb-2 hidden px-3 text-sidebar-quiet md:block">Workspace</p>
-          <nav aria-label="Main" className="relative flex gap-1 overflow-x-auto md:-mx-1 md:min-h-0 md:flex-col md:overflow-x-visible md:overflow-y-auto md:px-1 md:pb-4">
-            <Suspense fallback={<NavLinksFallback />}>
-              <MainNav />
-            </Suspense>
-          </nav>
-          {/* no Coming Next any more: Attendance, its last item, is a heading of its own (owner, 19 October 2026: "the
-              attendance is not active in the side menu") */}
-          <Suspense fallback={null}>
-            <ProfileCompleteness />
-          </Suspense>
+          </PhoneMenu>
         </aside>
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="flex min-h-[72px] items-center justify-end gap-2 border-b border-line px-4 sm:px-8">
+          <header className="flex min-h-[72px] flex-wrap items-center justify-end gap-2 border-b border-line px-4 py-3 sm:px-8">
             {/* on a phone-width screen, the way to the phone pages (owner, 20 October 2026: "what if we tried to build a
                 mobile app for the employees? to enable them to check in and out, and apply for their requests") */}
             <Link href="/app" className="mr-auto shrink-0 text-sm font-semibold sm:hidden">
