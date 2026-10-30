@@ -506,12 +506,19 @@ export function counterShows(view: Pick<CheckInTodayView, 'date' | 'next' | 'day
   const day = view.day;
   if (!day?.checkIn) return null;
   if (view.next === 'in') return day.checkOut ? { kind: 'total', text: `Worked ${formatHours(day.hoursCounted)} today` } : null;
+  const count = liveCount(view, now);
+  return count ? { kind: 'live', ...counterWords(count) } : null;
+}
+
+/** While checked in, the count at `now` (counterShows' "live"); null otherwise. */
+function liveCount(view: Pick<CheckInTodayView, 'date' | 'next' | 'day' | 'shift' | 'firstDay'>, now: number): CheckInCount | null {
+  const day = view.day;
+  if (!day?.checkIn || view.next !== 'out') return null;
   const paired = Array.isArray(day.pairs);
   const since = paired && day.openAt ? Date.parse(day.openAt) : Date.parse(day.checkIn);
   const before = paired && day.openAt && day.pairs!.length ? Math.round(day.hoursCounted * 3_600_000) : 0;
   // a first day (27 October 2026): the first check-in counts from the shift's start; a check-in after a pair doesn't
-  const count = checkInCount({ ...countRuleOf(view.date, view.shift, !!view.firstDay && before === 0), checkIn: since, now, before });
-  return count ? { kind: 'live', ...counterWords(count) } : null;
+  return checkInCount({ ...countRuleOf(view.date, view.shift, !!view.firstDay && before === 0), checkIn: since, now, before });
 }
 
 /**
@@ -580,4 +587,100 @@ export function locationHelpText(error: CheckInLocationError, inApp: boolean): s
 export function punchErrors(status: number, messages: readonly string[]): string[] {
   if (status === 404 && messages.some((m) => /^Cannot (GET|POST) /.test(m))) return ['Checking in isn’t available yet: the server doesn’t have it yet. Please try again after its next update.'];
   return messages.length ? [...messages] : ['The check-in couldn’t be sent. Please try again.'];
+}
+
+// ---------- the design's Today card (owner, 30 October 2026: the Figma "PeopleTrendlix", desktop) ----------
+// The Dashboard's Today card: "TODAY" over the day, a badge ("Not checked in", "In office"), the work time in a ring "of
+// 8 hours", the work location, the privacy line and Check in now / Check out. My Attendance's: "TODAY · TUESDAY
+// 27/10/2026" over "Ready to start?", the time now (or the time worked) and the location, the Check in button. Words from
+// the view only: the place of today's check-in, else where the work arrangement expects them.
+
+/** The day as the Dashboard's card titles it: "Tuesday, 27 October". */
+export function longDayTitle(date: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!m) return dayTitle(date);
+  return `${weekdayOf(date)}, ${Number(m[3])} ${MONTH_NAMES[Number(m[2]) - 1] ?? ''}`.trim();
+}
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+/** Today's punches in the order pressed. */
+const inOrder = <P extends Pick<PunchView, 'at'>>(punches: readonly P[]): P[] => [...punches].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+
+/** The check-in they are checked in on now (the day's last punch, a check-in); none when checked out or not checked in. */
+const openCheckIn = (view: Pick<CheckInTodayView, 'next' | 'punches'>): PunchView | null => {
+  const last = inOrder(view.punches).at(-1);
+  return view.next === 'out' && last?.kind === 'in' ? last : null;
+};
+
+/** The badge by the card's title: checked in (strong: "In office", "At home", "Remote"), "Checked out", "Not checked in". */
+export function todayBadge(view: Pick<CheckInTodayView, 'next' | 'punches' | 'day'>): { label: string; strong: boolean } {
+  const open = openCheckIn(view);
+  if (view.next === 'out') {
+    const place = open?.place ?? view.day?.place ?? null;
+    const label = place === 'office' ? 'In office' : place === 'home' ? 'At home' : place === 'remote' ? 'Remote' : 'Checked in';
+    return { label, strong: true };
+  }
+  return view.day?.checkOut ? { label: 'Checked out', strong: false } : { label: 'Not checked in', strong: false };
+}
+
+/** My Attendance's title over today: "Ready to start?", "Checked in at 9:05 AM", "Checked out at 5:10 PM". */
+export function todayHeadline(view: Pick<CheckInTodayView, 'next' | 'punches' | 'day'>): string {
+  const open = openCheckIn(view);
+  const since = open?.at ?? view.day?.openAt ?? view.day?.checkIn ?? null;
+  if (view.next === 'out' && since) return `Checked in at ${cairoClock(since)}`;
+  if (view.day?.checkOut) return `Checked out at ${cairoClock(view.day.checkOut)}`;
+  return 'Ready to start?';
+}
+
+/**
+ * Where they work today, under "Work location": once checked in, where the check-in was (the office by its check-in
+ * location's name when it has one, "Office · Head office"; "Remote - Studio"; "Home"); before, where their arrangement
+ * expects them: on official duty now, "Official duty"; on an approved work from home day, "Home"; else "Office" or
+ * "Anywhere". Null: nothing known (an API from before it).
+ */
+export function workLocationText(view: Pick<CheckInTodayView, 'next' | 'punches' | 'day' | 'expected' | 'workingFromHome' | 'officialDuty'>): string | null {
+  const ins = inOrder(view.punches).filter((p) => p.kind === 'in');
+  const shown = openCheckIn(view) ?? ins[0] ?? null;
+  if (shown) return shown.place === 'office' && shown.locationName?.trim() ? `Office · ${shown.locationName.trim()}` : placeLabel(shown.place, shown.locationName, shown.locationKind);
+  if (view.day?.checkIn && view.day.place) return placeLabel(view.day.place);
+  if (view.officialDuty?.now) return 'Official duty';
+  if (view.workingFromHome) return CHECK_IN_PLACE_LABELS.home;
+  if (view.expected === 'office') return CHECK_IN_PLACE_LABELS.office;
+  if (view.expected === 'anywhere') return 'Anywhere';
+  return null;
+}
+
+/** The work time in the Dashboard card's ring: "2:35" and its seconds (":12") while checked in, the share of the hours to work, "of 8 hours". */
+export interface WorkTime {
+  value: string;
+  /** The ticking seconds while checked in (":12"); null otherwise. */
+  seconds: string | null;
+  /** The share of the hours to work, 0 to 1 (0 with none to work by). */
+  share: number;
+  /** "of 8 hours"; null without a shift to count by. */
+  of: string | null;
+  /** All of it in words, for a screen reader: "Work time 2:35:12 of 8 hours". */
+  label: string;
+}
+
+/**
+ * The work time at `now` (the server's clock, ms), counted as the counter counts it (counterShows): while checked in, the
+ * time so far, ticking; once checked out, the hours the server counted; before a check-in, none ("0:00"). Against the
+ * hours today's shift asks (countRuleOf), never past a full ring.
+ */
+export function workTime(view: Pick<CheckInTodayView, 'date' | 'next' | 'day' | 'shift' | 'firstDay'>, now: number): WorkTime {
+  const hoursToWork = countRuleOf(view.date, view.shift).hoursToWork;
+  const of = hoursToWork ? `of ${hoursToWorkText(hoursToWork)}` : null;
+  const share = (ms: number) => (hoursToWork ? Math.max(0, Math.min(1, ms / (hoursToWork * 3_600_000))) : 0);
+  const done = (value: string, seconds: string | null, ms: number): WorkTime => ({ value, seconds, share: share(ms), of, label: ['Work time', `${value}${seconds ?? ''}`, of].filter(Boolean).join(' ') });
+  const count = liveCount(view, now);
+  if (count) {
+    const clock = durationClock(count.countedMs);
+    const cut = clock.lastIndexOf(':');
+    return done(clock.slice(0, cut), clock.slice(cut), count.countedMs);
+  }
+  const day = view.day;
+  if (view.next === 'in' && day?.checkIn && day.checkOut) return done(formatHours(day.hoursCounted), null, day.hoursCounted * 3_600_000);
+  return done(formatHours(0), null, 0);
 }

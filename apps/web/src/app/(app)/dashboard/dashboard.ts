@@ -154,3 +154,67 @@ export function toDoItems(p: Pick<EmployeeProfile, 'confirmation' | 'completenes
 export function greetingName(p: Pick<EmployeeProfile, 'displayName' | 'fullNameEn'>): string {
   return p.displayName?.trim() || p.fullNameEn.trim().split(/\s+/)[0] || p.fullNameEn;
 }
+
+// ---------- the owner's design (Figma, 30 October 2026): the greeting, the week's hours ----------
+
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+const dayOf = (iso: string) => new Date(`${iso}T00:00:00Z`);
+const isoOf = (d: Date) => d.toISOString().slice(0, 10);
+
+/** The small capitals over the greeting: "Friday · 30 October". */
+export function dayEyebrow(today: string): string {
+  const d = dayOf(today);
+  return `${WEEKDAYS[d.getUTCDay()]} · ${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]}`;
+}
+
+/** The hour in Cairo now, 0–23. */
+export function cairoHour(now: Date = new Date()): number {
+  return Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Cairo', hour: 'numeric', hourCycle: 'h23' }).format(now));
+}
+
+/** Good morning (before noon), Good afternoon (before 5 PM), Good evening. */
+export function greetingAt(hour: number): string {
+  return hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
+}
+
+/** The week `today` is in, Sunday to Saturday (the working week here starts on Sunday), as dates; `back` weeks before. */
+export function weekOf(today: string, back = 0): string[] {
+  const d = dayOf(today);
+  const sunday = new Date(d.getTime() - (d.getUTCDay() + 7 * back) * 86_400_000);
+  return Array.from({ length: 7 }, (_, i) => isoOf(new Date(sunday.getTime() + i * 86_400_000)));
+}
+
+/** The months ("2026-10") some dates fall in, in order. */
+export function monthsOf(dates: readonly string[]): string[] {
+  return [...new Set(dates.map((d) => d.slice(0, 7)))].sort();
+}
+
+/** A day's short name and number: "Sun 25". */
+export function shortDay(iso: string): string {
+  const d = dayOf(iso);
+  return `${WEEKDAYS[d.getUTCDay()].slice(0, 3)} ${d.getUTCDate()}`;
+}
+
+/** The hours counted on some dates, up to and with `upTo`, from the month's days (the API's hoursCounted). */
+export function hoursOn(days: readonly { date: string; hoursCounted: number }[], dates: readonly string[], upTo: string): Map<string, number> {
+  const wanted = new Set(dates.filter((d) => d <= upTo));
+  const out = new Map<string, number>();
+  for (const day of days) if (wanted.has(day.date)) out.set(day.date, (out.get(day.date) ?? 0) + day.hoursCounted);
+  return out;
+}
+
+/** The change from last week's hours to this week's so far, in whole tenths of a percent; null without last week's. */
+export function weeklyChange(thisWeek: number, lastWeek: number): number | null {
+  if (lastWeek <= 0) return null;
+  return Math.round(((thisWeek - lastWeek) / lastWeek) * 1000) / 10;
+}
+
+/** 35.6 (hours to one decimal); 7h 07m for a day's average. */
+export const hoursFigure = (hours: number) => (Math.round(hours * 10) / 10).toString();
+
+export function hoursAndMinutes(hours: number): string {
+  const minutes = Math.round(hours * 60);
+  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`;
+}

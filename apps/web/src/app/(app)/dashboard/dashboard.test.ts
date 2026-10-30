@@ -1,6 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import type { EmployeeProfile, Holiday, ProfileConfirmation } from '../../../lib/types';
-import { greetingName, holidayWhen, holidayYears, inDaysText, serviceLength, toDoItems, upcomingHolidays, workingDaysText } from './dashboard';
+import {
+  cairoHour,
+  dayEyebrow,
+  greetingAt,
+  greetingName,
+  holidayWhen,
+  holidayYears,
+  hoursAndMinutes,
+  hoursFigure,
+  hoursOn,
+  inDaysText,
+  monthsOf,
+  serviceLength,
+  shortDay,
+  toDoItems,
+  upcomingHolidays,
+  weekOf,
+  weeklyChange,
+  workingDaysText,
+} from './dashboard';
 
 describe('serviceLength', () => {
   it('says the years and months worked, leaving out a part that is none', () => {
@@ -195,5 +214,35 @@ describe('greetingName', () => {
     expect(greetingName({ displayName: 'Hazem Magdy', fullNameEn: 'Hazem Magdy Soliman' })).toBe('Hazem Magdy');
     expect(greetingName({ displayName: null, fullNameEn: 'Nour Adel Hassan' })).toBe('Nour');
     expect(greetingName({ displayName: '  ', fullNameEn: ' Nour Adel ' })).toBe('Nour');
+  });
+});
+
+describe('the design’s greeting and week (30 October 2026)', () => {
+  it('says the day over the greeting, and greets by the hour in Cairo', () => {
+    expect(dayEyebrow('2026-10-30')).toBe('Friday · 30 October');
+    expect([greetingAt(9), greetingAt(12), greetingAt(16), greetingAt(17)]).toEqual(['Good morning', 'Good afternoon', 'Good afternoon', 'Good evening']);
+    // 07:30 UTC is 09:30 in Cairo on 30 October 2026 (UTC+2 after the summer time ended on the 29th)
+    expect(cairoHour(new Date('2026-10-30T07:30:00Z'))).toBe(9);
+  });
+
+  it('takes the week from Sunday, the months it is in, and the hours counted on its days so far', () => {
+    expect(weekOf('2026-10-30')).toEqual(['2026-10-25', '2026-10-26', '2026-10-27', '2026-10-28', '2026-10-29', '2026-10-30', '2026-10-31']);
+    expect(weekOf('2026-11-03', 1)[0]).toBe('2026-10-25');
+    expect(monthsOf(weekOf('2026-11-03', 1).concat(weekOf('2026-11-03')))).toEqual(['2026-10', '2026-11']);
+    expect(shortDay('2026-10-25')).toBe('Sun 25');
+    const days = [
+      { date: '2026-10-25', hoursCounted: 8.5 },
+      { date: '2026-10-26', hoursCounted: 9 },
+      { date: '2026-10-29', hoursCounted: 7 },
+      { date: '2026-10-24', hoursCounted: 4 },
+    ];
+    const hours = hoursOn(days, weekOf('2026-10-30'), '2026-10-28');
+    expect([...hours.entries()]).toEqual([
+      ['2026-10-25', 8.5],
+      ['2026-10-26', 9],
+    ]);
+    expect(weeklyChange(35.6, 33.45)).toBe(6.4);
+    expect(weeklyChange(10, 0)).toBeNull();
+    expect([hoursFigure(35.64), hoursAndMinutes(7.12)]).toEqual(['35.6', '7h 07m']);
   });
 });

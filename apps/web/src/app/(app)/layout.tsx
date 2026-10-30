@@ -1,5 +1,6 @@
 import type { KpiCounts, Role } from '@trendlix/shared';
 import type { Metadata } from 'next';
+import { ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { Brand, BrandFallback, brandMetadata } from '@/components/brand';
@@ -157,6 +158,43 @@ async function ConfirmBanner() {
   );
 }
 
+/**
+ * At the foot of the side menu, the design's "Profile completeness" (30 October 2026): how complete one's own employee
+ * profile is, with a bar and the way to it, while something is still missing; nothing for an account without a profile
+ * or a complete one. The same read as the banner above (loadOwnProfile is read once per page).
+ */
+async function ProfileCompleteness() {
+  let user: SessionUser;
+  try {
+    user = await getCurrentUser();
+  } catch (err) {
+    if (err instanceof ApiError) return null;
+    throw err;
+  }
+  const own = await loadOwnProfile(user);
+  const percent = own?.completeness.percent;
+  if (!own || percent === undefined || percent >= 100) return null;
+  const missing = own.completeness.missing.length;
+  return (
+    <div className="mt-auto hidden rounded-[15px] border border-sidebar-line bg-white/[0.03] p-4 md:block">
+      <p className="flex items-center justify-between text-[11px] text-sidebar-ink">
+        <span>Profile completeness</span>
+        <span className="tabular-nums">{percent}%</span>
+      </p>
+      <div aria-hidden="true" className="mt-2.5 h-1 rounded-full bg-white/15">
+        <div className="h-full rounded-full bg-sidebar-ink" style={{ width: `${percent}%` }} />
+      </div>
+      <p className="mt-3 text-[11px] leading-snug text-sidebar-text">
+        {missing === 1 ? '1 detail is' : `${missing} details are`} still missing from your profile.
+      </p>
+      <Link href={`/employees/${own.id}`} className="mt-3 inline-flex items-center gap-1.5 text-[11px] text-sidebar-ink no-underline hover:underline">
+        Review profile
+        <ArrowRight aria-hidden="true" className="size-3.5" strokeWidth={1.6} />
+      </Link>
+    </div>
+  );
+}
+
 /** The browser tab icon: the company's thumbnail when there is one. */
 export function generateMetadata(): Promise<Metadata> {
   return brandMetadata();
@@ -194,13 +232,16 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
             </Suspense>
           </div>
           <p className="eyebrow mb-2 hidden px-3 text-sidebar-quiet md:block">Workspace</p>
-          <nav aria-label="Main" className="relative flex gap-1 overflow-x-auto md:-mx-1 md:flex-col md:overflow-x-visible md:overflow-y-auto md:px-1 md:pb-4">
+          <nav aria-label="Main" className="relative flex gap-1 overflow-x-auto md:-mx-1 md:min-h-0 md:flex-col md:overflow-x-visible md:overflow-y-auto md:px-1 md:pb-4">
             <Suspense fallback={<NavLinksFallback />}>
               <MainNav />
             </Suspense>
           </nav>
           {/* no Coming Next any more: Attendance, its last item, is a heading of its own (owner, 19 October 2026: "the
               attendance is not active in the side menu") */}
+          <Suspense fallback={null}>
+            <ProfileCompleteness />
+          </Suspense>
         </aside>
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="flex min-h-[72px] items-center justify-end gap-2 border-b border-line px-4 sm:px-8">

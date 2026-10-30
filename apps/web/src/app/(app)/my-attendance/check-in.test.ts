@@ -35,9 +35,14 @@ import {
   punchRows,
   LOCATION_NOTE,
   LOCATION_NOTE_IN_APP,
+  longDayTitle,
   readingOf,
   readLocation,
+  todayBadge,
+  todayHeadline,
   withoutMock,
+  workLocationText,
+  workTime,
 } from './check-in';
 
 // Checking in on the system (owner, 19 October 2026: "Check-in through the system (phone or web with the office location
@@ -526,5 +531,60 @@ describe('exempt from check-in today (owner, 25 October 2026: "Optional check-in
     expect([exemptToday(TODAY), exemptToday({ ...TODAY, exemption: null })]).toEqual([null, null]);
     expect(expectedTextOf(TODAY)).toBe(TODAY.expectedText);
     expect(lockNote({ ...exempt, exemption: null })).not.toBeNull();
+  });
+});
+
+// The design's Today card (owner, 30 October 2026: the Figma "PeopleTrendlix", desktop): the Dashboard's ring and badge,
+// My Attendance's "Ready to start?", from the view only. On the MORNING shift as above.
+describe('the Today card’s words (30 October 2026)', () => {
+  const DATE = '2026-10-27';
+  const at = (time: string) => Date.parse(`${DATE}T${time}+03:00`);
+  const iso = (time: string) => new Date(at(time)).toISOString();
+  const MORNING = { startTime: '09:00', endTime: '19:00', hoursPerDay: 9, graceMinutes: 15 };
+  const before: CheckInTodayView = { ...TODAY, date: DATE, shift: MORNING };
+  const checkedIn: CheckInTodayView = {
+    ...before,
+    next: 'out',
+    punches: [{ kind: 'in', at: iso('08:57:00'), place: 'office', accuracyMetres: 12, flags: [], locationName: 'Head office' }],
+    day: { checkIn: iso('08:57:00'), checkOut: null, place: 'office', flags: [], hoursCounted: 0 },
+  };
+  const checkedOut: CheckInTodayView = {
+    ...checkedIn,
+    next: 'in',
+    punches: [...checkedIn.punches, { kind: 'out', at: iso('18:05:00'), place: 'office', accuracyMetres: 15, flags: [] }],
+    day: { checkIn: iso('08:57:00'), checkOut: iso('18:05:00'), place: 'office', flags: [], hoursCounted: 9 },
+  };
+
+  it('titles the day as the Dashboard does', () => {
+    expect([longDayTitle('2026-10-27'), longDayTitle('2026-01-01')]).toEqual(['Tuesday, 27 October', 'Thursday, 1 January']);
+  });
+
+  it('badges and heads the day: not checked in, checked in where, checked out', () => {
+    expect([todayBadge(before), todayHeadline(before)]).toEqual([{ label: 'Not checked in', strong: false }, 'Ready to start?']);
+    expect([todayBadge(checkedIn), todayHeadline(checkedIn)]).toEqual([{ label: 'In office', strong: true }, 'Checked in at 8:57 AM']);
+    expect([todayBadge(checkedOut), todayHeadline(checkedOut)]).toEqual([{ label: 'Checked out', strong: false }, 'Checked out at 6:05 PM']);
+    const remote = { ...checkedIn, punches: [{ ...checkedIn.punches[0], place: 'remote' as const, locationName: null }] };
+    expect(todayBadge(remote).label).toBe('Remote');
+    expect(todayBadge({ ...checkedIn, punches: [{ ...checkedIn.punches[0], place: 'unknown' as const }] }).label).toBe('Checked in');
+  });
+
+  it('says the work location: where the check-in was, else where they are expected', () => {
+    expect(workLocationText(checkedIn)).toBe('Office · Head office');
+    expect(workLocationText(checkedOut)).toBe('Office · Head office');
+    expect(workLocationText({ ...checkedIn, punches: [{ ...checkedIn.punches[0], place: 'remote', locationName: 'Studio' }] })).toBe('Remote - Studio');
+    expect(workLocationText(before)).toBe('Office');
+    expect(workLocationText({ ...before, expected: 'anywhere' })).toBe('Anywhere');
+    expect(workLocationText({ ...before, expected: 'anywhere', workingFromHome: true })).toBe('Home');
+    expect(workLocationText({ ...before, officialDuty: { requestId: 'r1', fullDay: true, fromTime: null, toTime: null, now: true } })).toBe('Official duty');
+    expect(workLocationText({ ...before, expected: null })).toBeNull();
+  });
+
+  it('fills the ring with the work time, as the counter counts it', () => {
+    expect(workTime(before, at('08:00:00'))).toEqual({ value: '0:00', seconds: null, share: 0, of: 'of 9 hours', label: 'Work time 0:00 of 9 hours' });
+    // checked in at 8:57: counted from the shift's start at 9:00
+    expect(workTime(checkedIn, at('11:35:12'))).toEqual({ value: '2:35', seconds: ':12', share: (2 * 3600 + 35 * 60 + 12) / (9 * 3600), of: 'of 9 hours', label: 'Work time 2:35:12 of 9 hours' });
+    expect(workTime(checkedOut, at('18:30:00'))).toMatchObject({ value: '9:00', seconds: null, share: 1 });
+    // no shift: the time, no target
+    expect(workTime({ ...checkedIn, shift: null }, at('09:57:00'))).toMatchObject({ value: '1:00', seconds: ':00', share: 0, of: null, label: 'Work time 1:00:00' });
   });
 });
