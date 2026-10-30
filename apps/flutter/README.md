@@ -94,4 +94,16 @@ phase, and record every decision the owner makes here (with the date and their w
   `flutter analyze` clean, 9 tests; `.github/workflows/flutter-android.yml` builds a release APK signed with the old
   app's key, version code 1000 + the run (the old app stopped at 11), version name 0.2.<run>.
   - Installing it over the old app replaces it: until Phase 1–2 land, keep it on the owner's phone only, not the team's.
-- [ ] Phase 1 — Sign-in and one-tap check-in — next.
+- [x] Phase 1 — Sign-in and one-tap check-in (30 October 2026), to try on a phone:
+  - Sign-in with the work email and password (People's session from its cookie, kept in secure storage, sent as a
+    bearer); then once "Sign in with your fingerprint?" (`POST /api/auth/devices`, the credential kept with whose it
+    is); next time the fingerprint is asked for at once (`POST /api/auth/devices/sign-in`), the fingerprint or face
+    only, never the phone's PIN. A credential People no longer knows is dropped with its reason; a session People
+    refuses signs the app out ("Your session ended").
+  - Home: the greeting, the shift, the day so far, and one big Check in / Check out button. The spot is read at the
+    press (never tracked) with Android's mock flag; no location, no press, with what to do (turn location on, open the
+    app's settings, try again). People's refusals in its words.
+  - The API (`signed-ip.ts checkInIp`, deployed 30 October 2026): for an app session the website signed nothing for,
+    the office network's lock reads the connection's address as Caddy wrote it (the last X-Forwarded-For entry).
+  - No backup of the app's data; the old app's look until the Figma design (`lib/theme/`).
+- [ ] Phase 2 — Faster requests — next.

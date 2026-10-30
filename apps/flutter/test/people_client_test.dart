@@ -69,4 +69,39 @@ void main() {
       throwsA(isA<ApiException>().having((e) => e.unreachable, 'unreachable', isTrue).having((e) => e.message, 'message', PeopleClient.unreachableText)),
     );
   });
+
+  test('reads the session from the sign-in’s cookie, even among others, and refuses a sign-in without one', () async {
+    expect(PeopleClient.sessionTokenOf('ps_session=abc.def; Max-Age=28800; Path=/; Expires=Thu, 30 Oct 2026 18:00:00 GMT; HttpOnly'), 'abc.def');
+    expect(PeopleClient.sessionTokenOf('other=1; Path=/, ps_session=a%2Bb; Path=/'), 'a+b');
+    expect(PeopleClient.sessionTokenOf('xps_session=nope; Path=/'), isNull);
+    expect(PeopleClient.sessionTokenOf(null), isNull);
+    late http.Request sent;
+    final answer = await clientOf((req) async {
+      sent = req;
+      return http.Response('{"id":"u1"}', 200, headers: {'set-cookie': 'ps_session=tok; Path=/'});
+    }, token: 'old-session').signIn('/api/auth/login', {'email': 'a@b.test'});
+    expect(answer.token, 'tok');
+    expect(answer.body, {'id': 'u1'});
+    expect(sent.headers.containsKey('authorization'), isFalse);
+    await expectLater(
+      clientOf((_) async => http.Response('{"id":"u1"}', 200)).signIn('/api/auth/login', {}),
+      throwsA(isA<ApiException>()),
+    );
+  });
+
+  test('says a session ended only when a request that carried one is refused', () async {
+    var ended = 0;
+    PeopleClient client(String? token) => PeopleClient(
+      baseUrl: 'https://people.example.test:8443',
+      httpClient: MockClient((_) async => http.Response('', 401)),
+      userAgent: userAgentOf('0.2.1', 'android'),
+      token: () async => token,
+      onSessionEnded: () => ended++,
+    );
+    await expectLater(client('session').get('/api/me/attendance/today'), throwsA(isA<ApiException>()));
+    expect(ended, 1);
+    await expectLater(client(null).get('/api/me/attendance/today'), throwsA(isA<ApiException>()));
+    await expectLater(client('session').signIn('/api/auth/login', {}), throwsA(isA<ApiException>()));
+    expect(ended, 1);
+  });
 }

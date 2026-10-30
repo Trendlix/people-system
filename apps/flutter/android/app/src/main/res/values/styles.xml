@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- While the app starts: the T on black (drawable/launch_background.xml), in light and dark mode alike. Android 12
-         and later draw their own splash instead (values-v31/styles.xml). Gone when Flutter draws its first frame. -->
-    <style name="LaunchTheme" parent="@android:style/Theme.Black.NoTitleBar">
+         and later draw their own splash instead (values-v31/styles.xml). Gone when Flutter draws its first frame. An
+         AppCompat theme: the fingerprint prompt (local_auth) crashes on Android 8 and older without one. -->
+    <style name="LaunchTheme" parent="Theme.AppCompat.NoActionBar">
         <item name="android:windowBackground">@drawable/launch_background</item>
     </style>
     <!-- Behind the Flutter UI once it runs. -->
-    <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
+    <style name="NormalTheme" parent="Theme.AppCompat.NoActionBar">
         <item name="android:windowBackground">@color/splash_background</item>
     </style>
 </resources>

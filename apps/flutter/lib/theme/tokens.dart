@@ -18,6 +18,9 @@ abstract final class Tokens {
   static const danger = Color(0xFFB42318);
   static const dangerSoft = Color(0xFFFDECEA);
 
+  /// The red dot of the owner's icon (apps/mobile colors.xml `trendlix_red`).
+  static const brandRed = Color(0xFFE21D3B);
+
   // ---------- shapes and spacing ----------
   static const radiusCard = 20.0;
   static const radiusControl = 14.0;

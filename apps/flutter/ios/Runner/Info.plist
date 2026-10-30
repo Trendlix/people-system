@@ -66,5 +66,9 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Face ID signs you in to Trendlix People without your password.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Your location is read when you check in or out, to tell the office from elsewhere. It is never tracked.</string>
 </dict>
 </plist>

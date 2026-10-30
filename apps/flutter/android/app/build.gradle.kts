@@ -15,7 +15,7 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
+        // the old app's identity (apps/mobile), so this one installs over it
         applicationId = "com.trendlix.people"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
@@ -31,8 +31,8 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
+            // the old app's test key (the Actions cache or ANDROID_DEBUG_KEYSTORE_BASE64, flutter-android.yml), so each
+            // APK installs over the last; a store key comes with the Play Store
             signingConfig = signingConfigs.getByName("debug")
         }
     }
@@ -46,4 +46,9 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // the AppCompat theme the fingerprint prompt needs (values/styles.xml)
+    implementation("androidx.appcompat:appcompat:1.7.1")
 }

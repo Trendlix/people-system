@@ -1,11 +1,20 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- No backup of the app's data (allowBackup, and xml/data_extraction_rules for Android 12 and later): the session and
+         the fingerprint credential stay on this phone, never in a cloud backup or copied to another phone. -->
     <!-- People's API (README §2): release builds need it too, not only debug ones -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- The phone's location, read at a press of Check in or Check out and never tracked (README Phase 1): precise for
+         the check-in locations, approximate when that is all the person allows. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <application
         android:label="Trendlix People"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher_round">
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules">
         <activity
             android:name=".MainActivity"
             android:exported="true"
