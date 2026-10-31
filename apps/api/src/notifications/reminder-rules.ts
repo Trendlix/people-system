@@ -1,5 +1,6 @@
 import {
   cairoDay,
+  isFlexibleDays,
   CHECK_IN_REMINDER_EVERY_MINUTES,
   CHECK_IN_REMINDER_FOR_MINUTES,
   CHECK_IN_REMINDER_MAX,
@@ -26,7 +27,10 @@ import { addDays, weekday } from '../common/date-only.js';
 // Only for someone with an active user account and a current employment under a shift (not a freelancer: they don't
 // check in); never on a day kept from Zoho People's import, nor on a day they are exempt from check-in (owner, 25 October
 // 2026: "Optional check-in": no check-in or check-out reminder, on the bell, the phone or WhatsApp). A night shift's day
-// is the day it starts, so the day before today is looked at too. Pure, tested with a fake clock.
+// is the day it starts, so the day before today is looked at too. On a flexible days shift (owner, 31 October 2026: any N
+// of its days a week) the person chooses their days, so "You haven't checked in" isn't sent: a day only counts as absent
+// once their week can no longer have its days (packages/shared flexibleWeeks); "Still checked in?" still is. Pure,
+// tested with a fake clock.
 
 /** "Still checked in?" isn't sent once this long has passed since hours stopped counting (the API was down meanwhile). */
 export const CHECK_OUT_REMINDER_FOR_MS = 4 * 60 * 60_000;
@@ -34,8 +38,11 @@ export const CHECK_OUT_REMINDER_FOR_MS = 4 * 60 * 60_000;
 const STEP_MS = CHECK_IN_REMINDER_EVERY_MINUTES * 60_000;
 const CHECK_IN_FOR_MS = CHECK_IN_REMINDER_FOR_MINUTES * 60_000;
 
-/** A shift as the reminders read it: its times ("HH:mm") and working days (0 = Sunday … 6 = Saturday). */
-export type ReminderShift = ShiftWindowTimes & { workingDays: readonly number[] };
+/**
+ * A shift as the reminders read it: its times ("HH:mm"), working days (0 = Sunday … 6 = Saturday) and, on a flexible
+ * days shift, how many of them a week (31 October 2026).
+ */
+export type ReminderShift = ShiftWindowTimes & { workingDays: readonly number[]; daysPerWeek?: number | null };
 
 /** An employment as the reminders read it: its days and its shift. */
 export interface ReminderEmployment {
@@ -155,7 +162,8 @@ function workingDay(person: ReminderPerson, facts: ReminderFacts, day: string) {
  */
 function checkInDue(person: ReminderPerson, facts: ReminderFacts, day: string, at: number): { step: number; stepAt: number; shiftStart: string } | null {
   const d = workingDay(person, facts, day);
-  if (!d) return null;
+  // they choose their days on a flexible days shift (31 October 2026)
+  if (!d || isFlexibleDays(d.shift)) return null;
   const shiftStart = d.shift.startTime.slice(0, 5);
   if ((facts.punches.get(d.key) ?? []).some((p) => p.kind === 'in')) return null;
   if (permissionCoversStart(facts.permission.get(d.key), shiftStart)) return null;

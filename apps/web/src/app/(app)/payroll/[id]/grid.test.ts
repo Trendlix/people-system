@@ -54,8 +54,9 @@ describe('the grid’s columns', () => {
     expect(GRID_COLUMNS.map((c) => c.label)).toEqual(['Worked hours', 'Permission hours', 'Expected hours', 'No-show days', 'Leave days', 'Unpaid leave days', 'Released']);
     expect(GRID_COLUMNS.find((c) => c.field === 'permissionHours')?.kind).toBe('hours');
     expect(ITEMS_AFTER).toBe('unpaidLeaveDays');
-    // nor the CEO's attendance waiver, ticked on the results table (17 October 2026)
-    const notTyped = ['softSkills', 'performance', 'clientSatisfaction', 'attendanceWaived'];
+    // nor the CEO's attendance waiver, ticked on the results table (17 October 2026), nor a flexible days shift's days
+    // off, filled from the attendance and listed with the expected hours (31 October 2026)
+    const notTyped = ['softSkills', 'performance', 'clientSatisfaction', 'attendanceWaived', 'flexDaysOff'];
     expect(new Set(GRID_COLUMNS.map((c) => c.field))).toEqual(new Set(Object.keys(EMPTY_PAYROLL_INPUTS).filter((k) => !notTyped.includes(k))));
   });
 

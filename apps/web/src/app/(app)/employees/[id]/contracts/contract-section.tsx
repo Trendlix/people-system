@@ -342,6 +342,19 @@ function DraftCard({
 }
 
 /**
+ * A contract whose days a week differ from the employment's shift (owner, 31 October 2026, on a part-timer's "3 days a
+ * week" and an intern's "1 day a week" counted absent on the shift's other days): the API's words, never blocking.
+ */
+function DaysMismatchNote({ text, draft = false }: { text: string; draft?: boolean }) {
+  return (
+    <p role="alert" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
+      {draft && <span className="font-semibold">The draft: </span>}
+      {text} <Link href="/organization/shifts">Shifts</Link>
+    </p>
+  );
+}
+
+/**
  * Undo signing, for a Super Admin: a contract marked signed by mistake becomes a draft again, to correct and sign
  * again, or delete. Not while the next version is drafted or an ending is open; the API also refuses it once a signed
  * copy of its documents is uploaded.
@@ -493,6 +506,9 @@ export async function ContractSection({
       {/* by the labour law (18 October 2026): a fixed term that became open-ended (Art. 88); casual work past its 6 months
           is the employment's, warned with it */}
       {active && <LawWarningNotes of={{ becameOpenEnded: active.becameOpenEnded }} />}
+      {/* the contract's days a week against the shift's (owner, 31 October 2026): attendance and payroll follow the shift */}
+      {active?.daysMismatch && <DaysMismatchNote text={active.daysMismatch} />}
+      {draft?.daysMismatch && draft.daysMismatch !== active?.daysMismatch && <DaysMismatchNote text={draft.daysMismatch} draft />}
       {active ? (
         <div className="space-y-3">
           <FieldGrid fields={contractFields(active, unpaid)} />

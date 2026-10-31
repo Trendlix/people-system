@@ -10,6 +10,8 @@ import {
   DEFAULT_WORKING_DAYS,
   compensatoryDays,
   exemptDays,
+  flexibleWeeks,
+  flexWeekStart,
   HISTORY_FIGURE_DEFINITIONS,
   HISTORY_MODE_LABELS,
   HISTORY_PERIOD_LABELS,
@@ -19,6 +21,7 @@ import {
   historyFileName,
   historyRange,
   historyTrend,
+  isFlexibleDays,
   lateByWeekday,
   matchesHistoryFilter,
   monthDays,
@@ -39,6 +42,7 @@ import {
   type HistoryTrendPoint,
   type HistoryWeekday,
   type AttendanceRates,
+  type SourcedDay,
 } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
 import { actsAs, isSuperAdmin } from '../auth/roles.js';
@@ -216,7 +220,11 @@ export class AttendanceHistoryService {
     const period = query.period ?? 'this_month';
     const range = historyRange(period, today, joinedOn, { from: query.from, to: query.to });
     if ('problem' in range) throw new BadRequestException([range.problem]);
-    const within = { gte: toDateOnly(range.from), lte: toDateOnly(range.to) };
+    // flexible days (owner, 31 October 2026: any N of a shift's days a week): the weeks at the period's edges read whole,
+    // for their days off (packages/shared flexibleWeeks); only the period's days are shown
+    const flexible = employments.some((e) => e.shift && isFlexibleDays(shiftTimesOf(e.shift)));
+    const load = flexible ? { from: flexWeekStart(range.from), to: addDays(flexWeekStart(range.to), 6) } : { from: range.from, to: range.to };
+    const within = { gte: toDateOnly(load.from), lte: toDateOnly(load.to) };
 
     // the period's days in one query, and what they are read with
     const [rows, holidays, leave, wfh, ods, checkIns, exemptions, compensatory, choices] = await Promise.all([
@@ -226,15 +234,15 @@ export class AttendanceHistoryService {
         where: { employeeId, status: 'approved', startDate: { lte: within.lte }, endDate: { gte: within.gte } },
         select: { startDate: true, endDate: true },
       }),
-      approvedWfhDays(this.prisma, [employeeId], range.from, range.to),
-      approvedOds(this.prisma, [employeeId], range.from, range.to),
+      approvedWfhDays(this.prisma, [employeeId], load.from, load.to),
+      approvedOds(this.prisma, [employeeId], load.from, load.to),
       this.prisma.attendanceDay.aggregate({ where: { employeeId, source: { in: [...CHECK_IN_SOURCES] }, date: { lte: within.lte } }, _min: { date: true } }),
       // their periods exempt from check-in (owner, 25 October 2026): those days Exempt, full and on time
-      exemptionsOf(this.prisma, [employeeId], range.from, range.to),
+      exemptionsOf(this.prisma, [employeeId], load.from, load.to),
       // their compensatory days (owner, 26 October 2026): the day off Compensatory day off, full and on time
-      approvedCompensatory(this.prisma, [employeeId], range.from, range.to),
+      approvedCompensatory(this.prisma, [employeeId], load.from, load.to),
       // the days a Super Admin chose the source of (owner, 31 October 2026: "zoho or system")
-      dayChoicesOf(this.prisma, [employeeId], range.from, range.to),
+      dayChoicesOf(this.prisma, [employeeId], load.from, load.to),
     ]);
     const kept = rows.map(monthDayOf);
     const holidayDays = holidays.map((h) => fromDateOnly(h.date));
@@ -242,12 +250,17 @@ export class AttendanceHistoryService {
     const wfhSet = new Set(wfh.get(employeeId) ?? []);
     const checkInFrom = checkIns._min.date ? fromDateOnly(checkIns._min.date) : null;
     const leaveDays: string[] = [];
-    for (const l of leave) for (let d = fromDateOnly(l.startDate); d <= fromDateOnly(l.endDate); d = addDays(d, 1)) if (d >= range.from && d <= range.to) leaveDays.push(d);
+    for (const l of leave) for (let d = fromDateOnly(l.startDate); d <= fromDateOnly(l.endDate); d = addDays(d, 1)) if (d >= load.from && d <= load.to) leaveDays.push(d);
 
     const inRange = employments.filter((e) => fromDateOnly(e.joinDate) <= range.to && (e.endDate === null || fromDateOnly(e.endDate) >= range.from));
     const byDate = new Map<string, HistoryDay>();
     const working = new Set<number>();
-    for (const month of monthRange(range.from.slice(0, 7), range.to.slice(0, 7))) {
+    // each employment's days, month by month, then read as a whole (a flexible days shift's weeks cross months)
+    const made = new Map<
+      string,
+      { shift: ReturnType<typeof shiftTimesOf> | null; workingDays: readonly number[]; hoursADay: number | null; employedFrom: string; employedTo: string | null; days: SourcedDay[] }
+    >();
+    for (const month of monthRange(load.from.slice(0, 7), load.to.slice(0, 7))) {
       const [first, last] = [firstDay(month), lastDay(month)];
       const ofMonth = kept.filter((d) => d.date.startsWith(month));
       for (const e of inRange) {
@@ -286,21 +299,28 @@ export class AttendanceHistoryService {
         const days = comp
           ? compensatoryDays(exempt, { month, today, workingDays, holidays: holidayDays, leaveDays, employedFrom, employedTo, hoursADay, daysOff: comp.daysOff, hoursOff: comp.hoursOff, daysWorked: comp.daysWorked })
           : exempt;
-        for (const d of days) {
-          // within this employment and the period: a rehire's gap is left out
-          if (d.date < range.from || d.date > range.to || d.date < employedFrom || (employedTo !== null && d.date > employedTo)) continue;
-          const view = attendanceDayView(d, hoursADay);
-          byDate.set(
-            d.date,
-            historyDay({
-              ...view,
-              source: d.source,
-              wfh: wfhSet.has(d.date),
-              shift,
-              scheduled: workingDays.includes(weekday(d.date)) && !holidaySet.has(d.date),
-            }),
-          );
-        }
+        const part = made.get(e.id) ?? { shift, workingDays, hoursADay, employedFrom, employedTo, days: [] };
+        part.days.push(...days);
+        made.set(e.id, part);
+      }
+    }
+    for (const m of made.values()) {
+      // a flexible days shift's absent days its weeks didn't need are days off (31 October 2026)
+      const days = m.shift && isFlexibleDays(m.shift) ? flexibleWeeks(m.days, { shift: m.shift, holidays: holidayDays, employedFrom: m.employedFrom, employedTo: m.employedTo, today }) : m.days;
+      for (const d of days) {
+        // within this employment and the period: a rehire's gap is left out
+        if (d.date < range.from || d.date > range.to || d.date < m.employedFrom || (m.employedTo !== null && d.date > m.employedTo)) continue;
+        const view = attendanceDayView(d, m.hoursADay);
+        byDate.set(
+          d.date,
+          historyDay({
+            ...view,
+            source: d.source,
+            wfh: wfhSet.has(d.date),
+            shift: m.shift,
+            scheduled: m.workingDays.includes(weekday(d.date)) && !holidaySet.has(d.date),
+          }),
+        );
       }
     }
     return {

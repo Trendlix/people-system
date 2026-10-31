@@ -163,7 +163,7 @@ export class RemindersService implements OnModuleDestroy {
 
   /** Every shift, as the reminders read it (a handful of rows). */
   private async shifts(db: Db): Promise<(ReminderShift & { id: string })[]> {
-    const rows = await db.shift.findMany({ select: { id: true, startTime: true, endTime: true, graceMinutes: true, countUntil: true, workingDays: true } });
+    const rows = await db.shift.findMany({ select: { id: true, startTime: true, endTime: true, graceMinutes: true, countUntil: true, workingDays: true, daysPerWeek: true } });
     return rows.map((s) => ({ id: s.id, ...shiftOf(s) }));
   }
 
@@ -191,7 +191,7 @@ export class RemindersService implements OnModuleDestroy {
             joinDate: true,
             endDate: true,
             employmentType: true,
-            shift: { select: { startTime: true, endTime: true, graceMinutes: true, countUntil: true, workingDays: true } },
+            shift: { select: { startTime: true, endTime: true, graceMinutes: true, countUntil: true, workingDays: true, daysPerWeek: true } },
           },
         },
       },
@@ -259,12 +259,14 @@ export class RemindersService implements OnModuleDestroy {
 }
 
 /** A shift's row as the reminders read it: its times "HH:mm". */
-function shiftOf(s: { startTime: Date; endTime: Date; graceMinutes: number | null; countUntil: Date | null; workingDays: number[] }): ReminderShift {
+function shiftOf(s: { startTime: Date; endTime: Date; graceMinutes: number | null; countUntil: Date | null; workingDays: number[]; daysPerWeek?: number | null }): ReminderShift {
   return {
     startTime: fromTimeOfDay(s.startTime),
     endTime: fromTimeOfDay(s.endTime),
     graceMinutes: s.graceMinutes,
     countUntil: s.countUntil ? fromTimeOfDay(s.countUntil) : null,
     workingDays: s.workingDays,
+    // flexible days (31 October 2026): no "You haven't checked in" on such a shift
+    daysPerWeek: s.daysPerWeek ?? null,
   };
 }

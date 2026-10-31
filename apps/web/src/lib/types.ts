@@ -245,6 +245,8 @@ export interface Shift {
   countUntil?: string | null;
   graceMinutes: number;
   workingDays: number[];
+  /** Flexible days (owner, 31 October 2026): any this many of the working days a week; null or missing: every one. */
+  daysPerWeek?: number | null;
 }
 
 export interface Company {
@@ -416,7 +418,7 @@ export interface Employment {
    * Its hours to work a day: null for the whole window (owner, 16 October 2026: flexible shifts); its working days, 0 =
    * Sunday … 6 = Saturday (the employee's dashboard shows them). Each missing from an older API.
    */
-  shift: { id: string; code: string; startTime: string; endTime: string; hoursPerDay?: number | null; workingDays?: number[] } | null;
+  shift: { id: string; code: string; startTime: string; endTime: string; hoursPerDay?: number | null; workingDays?: number[]; daysPerWeek?: number | null } | null;
   /**
    * The newest signed contract (salary restricted), or null. Left out by an API from before contracts (October 2026),
    * hence optional: the screens then say contracts are not available yet.
@@ -1210,6 +1212,11 @@ export interface ContractLaw {
   /** A specific-job contract's job; null otherwise. */
   jobToDo?: string | null;
   becameOpenEnded?: boolean;
+  /**
+   * A draft's or the signed contract's days a week differ from the employment's shift now (owner, 31 October 2026):
+   * the warning to show, attendance and payroll following the shift; null or left out: none.
+   */
+  daysMismatch?: string | null;
 }
 
 /**

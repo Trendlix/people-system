@@ -737,6 +737,27 @@ describe('Organisation (e2e)', () => {
       await prisma.shift.delete({ where: { id: created.id } });
     });
 
+    it('takes any N of its working days a week, fewer than them; none is every one (owner, 31 October 2026)', async () => {
+      // flexible days: a part-timer's or an intern's days a week, a day absent only once the week can't have them
+      const code = `W${RUN.slice(-6)}`;
+      const post = (body: object) => api().post('/api/shifts').set('Cookie', session).send({ code, startTime: '09:00', endTime: '17:00', workingDays: [0, 1, 2, 3, 4], ...body });
+      expect((await post({ daysPerWeek: 5 }).expect(400)).body.message).toBe('Days a week: a whole number from 1 to 4, fewer than the 5 working days ticked, or every working day.');
+      await post({ daysPerWeek: 7 }).expect(400);
+      await post({ daysPerWeek: 2.5 }).expect(400);
+      const created = (await post({ daysPerWeek: 3 }).expect(201)).body as { id: string };
+      expect(created).toMatchObject({ code, workingDays: [0, 1, 2, 3, 4], daysPerWeek: 3 });
+      const patch = (body: object) => api().patch(`/api/shifts/${created.id}`).set('Cookie', session).send(body);
+      // the working days can't drop to as few as its days a week, unless they change with them
+      expect((await patch({ workingDays: [0, 2, 4] }).expect(400)).body.message).toBe('Days a week: a whole number from 1 to 2, fewer than the 3 working days ticked, or every working day.');
+      expect((await patch({ workingDays: [0, 2, 4], daysPerWeek: 2 }).expect(200)).body).toMatchObject({ workingDays: [0, 2, 4], daysPerWeek: 2 });
+      expect((await patch({ daysPerWeek: null }).expect(200)).body.daysPerWeek).toBeNull();
+      const audit = await prisma.auditLog.findMany({ where: { entityType: 'shift', entityId: created.id }, orderBy: { id: 'asc' } });
+      expect(audit.slice(1).map((a) => a.diff)).toEqual([{ workingDays: { from: [0, 1, 2, 3, 4], to: [0, 2, 4] }, daysPerWeek: { from: 3, to: 2 } }, { daysPerWeek: { from: 2, to: null } }]);
+      // the database keeps them fewer than the working days too
+      await expect(prisma.$executeRaw`UPDATE shifts SET days_per_week = 3 WHERE id = ${created.id}::uuid`).rejects.toThrow(/shifts_days_per_week_check/);
+      await prisma.shift.delete({ where: { id: created.id } });
+    });
+
     it('rejects bad times, an end before the start and bad working days', async () => {
       await api().post('/api/shifts').set('Cookie', session).send({ code: 'D', startTime: '9:00', endTime: '18:00' }).expect(400);
       await api().post('/api/shifts').set('Cookie', session).send({ code: 'D', startTime: '18:00', endTime: '09:00' }).expect(400);

@@ -397,6 +397,10 @@ export * from './attendance-import.js';
 // and team
 export * from './attendance-days.js';
 
+// flexible days (owner, 31 October 2026): a shift worked on any N of its days a week, a day absent only once the week can
+// no longer have them; and the warning on a contract whose days a week differ from its shift's
+export * from './flexible-days.js';
+
 // checking in on the system (owner, 19 October 2026: "Check-in through the system (phone or web with the office location
 // check, or a device) to replace Zoho"): the office's point and radius, office, remote or unknown, the rules by work
 // arrangement and their flags, punches made a day, who checks in, and where a day came from (a device's later)

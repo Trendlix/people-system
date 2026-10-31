@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
-import { isFlexibleShift } from '@trendlix/shared';
+import { isFlexibleDays, isFlexibleShift } from '@trendlix/shared';
 import { apiGet } from '@/lib/api';
 import { formatTime } from '@/lib/format';
 import { hoursADayText } from '@/lib/shifts';
@@ -57,7 +57,11 @@ async function ShiftsList() {
                   {/* a long day fills the month's short hours (owner, 20 October 2026); none: the end and the grace */}
                   <td className="whitespace-nowrap tabular-nums">{s.countUntil ? formatTime(s.countUntil) : <span className="text-muted">End and grace</span>}</td>
                   <td className="whitespace-nowrap">{s.graceMinutes} min</td>
-                  <td>{s.workingDays.map((d) => DAY_NAMES[d]).join(', ')}</td>
+                  <td>
+                    {s.workingDays.map((d) => DAY_NAMES[d]).join(', ')}
+                    {/* any N of them a week (owner, 31 October 2026) */}
+                    {isFlexibleDays(s) && <span className="badge ml-2 whitespace-nowrap">Any {s.daysPerWeek} a week</span>}
+                  </td>
                   {canEdit && (
                     <td className="text-right">
                       <Link href={`/organization/shifts/${s.id}`}>Edit</Link>

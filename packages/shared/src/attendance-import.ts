@@ -454,8 +454,11 @@ function clock(hours: number): string {
 
 // ---------- the run's lines ----------
 
-/** The inputs an import fills on a payroll line (owner's brief, 19 October 2026): worked hours, no-show days, permission hours. */
-export const IMPORTED_INPUTS = ['workedHours', 'noShowDays', 'permissionHours'] as const;
+/**
+ * The inputs an import fills on a payroll line (owner's brief, 19 October 2026): worked hours, no-show days, permission
+ * hours; and a flexible days shift's days off (owner, 31 October 2026), filled from the attendance days alone.
+ */
+export const IMPORTED_INPUTS = ['workedHours', 'noShowDays', 'permissionHours', 'flexDaysOff'] as const;
 export type ImportedInput = (typeof IMPORTED_INPUTS)[number];
 
 /** The inputs as the screens and messages name them. */
@@ -463,6 +466,7 @@ export const IMPORTED_INPUT_LABELS: Record<ImportedInput, string> = {
   workedHours: 'Worked hours',
   noShowDays: 'No-show days',
   permissionHours: 'Permission hours',
+  flexDaysOff: 'Flexible days off',
 };
 
 /**
@@ -538,7 +542,7 @@ export function importedInputRefusal(field: ImportedInput, name: string, at: str
  * A day as a line's figures are taken from it: what it was, the hours it counts, its permission and source; and (since
  * 25 October 2026) its presses as far as a missing check-out is told from them.
  */
-export interface LineDay extends Partial<Pick<KeptDay, 'checkIn' | 'checkOut' | 'openAt' | 'od' | 'exempt' | 'compensated'>> {
+export interface LineDay extends Partial<Pick<KeptDay, 'checkIn' | 'checkOut' | 'openAt' | 'od' | 'exempt' | 'compensated' | 'flexOff'>> {
   status: AttendanceDayStatus;
   hoursCounted: number;
   permissionHours: number;
@@ -584,11 +588,12 @@ export function openCheckInDates(days: readonly (LineDay & { date: string })[], 
  * A day on the system missing its check-out counts its pairs' hours and half the shift's hours a day (`hoursADay`),
  * within the shift's hours a day, until corrected (lineDayHours; owner, 27 October 2026: "open check ins with half
  * day"), on a monthly salary: paid by the hour, only the hours its closed pairs counted are paid (no time is paid that no
- * press shows). An exempt day counts its full hours already (check-in-exemptions.ts).
+ * press shows). An exempt day counts its full hours already (check-in-exemptions.ts). On a flexible days shift (`flexible`;
+ * owner, 31 October 2026) the days its weeks didn't need are its days off (flexDaysOff), on a monthly salary.
  */
 export function attendanceLineInputs(
   days: readonly LineDay[],
-  opts: { systemPermissionHours: number; permissionHoursPerMonth: number; hourly: boolean; hoursADay?: number | null },
+  opts: { systemPermissionHours: number; permissionHoursPerMonth: number; hourly: boolean; hoursADay?: number | null; flexible?: boolean },
 ): Partial<Record<ImportedInput, number | null>> {
   // the day worked of a compensatory request adds no hours (owner, 26 October 2026: "if the day is compensated with a day, we pay nothing")
   const worked = days.filter((d) => d.status === 'worked' && !d.compensated);
@@ -597,5 +602,10 @@ export function attendanceLineInputs(
   // Zoho's column: its days', and a corrected day's over one of Zoho's (which carries it)
   const zoho = halfHoursOrMinutes(days.filter((d) => ['zoho', 'correction'].includes(d.source ?? 'zoho')).reduce((sum, d) => sum + (d.permissionHours > 0 ? d.permissionHours : 0), 0));
   const permission = opts.systemPermissionHours > 0 || zoho <= 0 ? null : Math.min(zoho, Math.max(0, opts.permissionHoursPerMonth));
-  return { workedHours, noShowDays: days.filter((d) => d.status === 'absent').length, permissionHours: permission !== null && permission > 0 ? permission : null };
+  return {
+    workedHours,
+    noShowDays: days.filter((d) => d.status === 'absent').length,
+    permissionHours: permission !== null && permission > 0 ? permission : null,
+    ...(opts.flexible && { flexDaysOff: days.filter((d) => d.flexOff).length }),
+  };
 }

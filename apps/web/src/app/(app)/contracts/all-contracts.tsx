@@ -178,6 +178,12 @@ function ContractRow({ contract: c, salary }: { contract: ContractListItem; sala
         <div className="flex flex-wrap gap-1.5">
           <ContractStatusBadge status={c.status} />
           <LawWarningBadges of={c} />
+          {/* its days a week differ from the shift's (owner, 31 October 2026): what to do on hover */}
+          {c.daysMismatch && (
+            <span title={c.daysMismatch} className="badge bg-warn-soft whitespace-nowrap text-warn">
+              Days a week ≠ shift
+            </span>
+          )}
         </div>
       </td>
       <td className="whitespace-nowrap tabular-nums">{c.signedOn ? formatDate(c.signedOn) : dash}</td>

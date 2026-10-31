@@ -28,6 +28,7 @@ interface Contract {
   probationEnd: string | null;
   grossSalary: number | null;
   nonRenewalNoticeBy: string | null;
+  daysMismatch?: string | null;
   [key: string]: unknown;
 }
 
@@ -311,6 +312,8 @@ describe('Contracts (e2e)', () => {
         convertsTo: null,
         training: null,
         casualTooLong: false,
+        // its days a week left to the shift: nothing to warn about (31 October 2026)
+        daysMismatch: null,
         salaryHidden: false,
         // a whole contract, not a raise (owner's decisions, 16 October 2026)
         kind: 'contract',
@@ -586,6 +589,18 @@ describe('Contracts (e2e)', () => {
       const e = await newHire('Unknown Length Refused');
       expect((await postContract(e, { grossSalary: 9000, form: 'forever' }).expect(400)).body.message).toEqual([FORM_REFUSED]);
       expect(await addContract(e, { form: 'fixed' })).toMatchObject({ form: 'fixed', durationMonths: 12, endDate: '2027-01-14' });
+    });
+
+    it('warns on a contract whose days a week differ from the shift’s, which attendance and payroll follow (owner, 31 October 2026)', async () => {
+      // shift A works Sunday to Thursday: a part-timer's 3 days a week on it have 2 days a week counted absent
+      const e = await newHire('Three Day Part Timer', { employmentType: 'part_time', shiftId: shiftA });
+      const c = await addContract(e, { daysPerWeek: 3 });
+      expect(c.daysMismatch).toBe(
+        "The contract says 3 days a week; shift A asks 5 days (Sun, Mon, Tue, Wed, Thu). Attendance and payroll follow the shift: change the shift, or the contract's days a week.",
+      );
+      // the same days as the shift, or left to it: nothing to warn about
+      expect((await patchContract(c.id, { daysPerWeek: 5 }).expect(200)).body.daysMismatch).toBeNull();
+      expect((await patchContract(c.id, { daysPerWeek: null }).expect(200)).body.daysMismatch).toBeNull();
     });
 
     it('by the hour: the gross is rate × hours a week × 52 ÷ 12, worked out by the server', async () => {

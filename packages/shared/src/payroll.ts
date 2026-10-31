@@ -457,6 +457,13 @@ export interface PayrollInputs {
    * Setup's hours a month (the API refuses more). Not for pay by the hour. Missing on inputs saved before then: none.
    */
   permissionHours?: number | null;
+  /**
+   * The working days of a flexible days shift the month's weeks didn't need (owner, 31 October 2026: "any 3 days a week";
+   * flexible-days.ts flexibleWeeks): days off, filled from the attendance days like the no-show days, never typed; their
+   * hours (a day of the shift each) come out of the shift's expected hours as a no-show day's do, without a cut. Not for
+   * pay by the hour. Missing on inputs saved before then, and for a shift that isn't flexible: none.
+   */
+  flexDaysOff?: number | null;
   /** Already paid out this month: not in the bank transfer. */
   released: number | null;
   /**
@@ -477,6 +484,7 @@ export const EMPTY_PAYROLL_INPUTS: PayrollInputs = {
   leaveDays: null,
   unpaidLeaveDays: null,
   permissionHours: null,
+  flexDaysOff: null,
   released: null,
   attendanceWaived: false,
 };
@@ -847,14 +855,18 @@ export const NO_SHIFT_NO_EXPECTED_HOURS =
  */
 export function expectedHoursOf(
   terms: Pick<PayrollTerms, 'expectedHours' | 'hoursPerDay' | 'leave'>,
-  inputs: Pick<PayrollInputs, 'expectedHours' | 'noShowDays' | 'leaveDays' | 'unpaidLeaveDays'>,
+  inputs: Pick<PayrollInputs, 'expectedHours' | 'noShowDays' | 'leaveDays' | 'unpaidLeaveDays' | 'flexDaysOff'>,
 ): number | null {
   if (inputs.expectedHours !== null && inputs.expectedHours !== undefined) return inputs.expectedHours;
   const shift = terms.expectedHours;
   if (shift === null || shift === undefined) return null;
   const leave = leaveDaysOff(terms, inputs);
+  // and a flexible days shift's days off (31 October 2026), not worked and not asked
   const off =
-    shiftDaysHours(inputs.noShowDays, terms.hoursPerDay) + shiftDaysHours(leave.leaveDays, terms.hoursPerDay) + shiftDaysHours(leave.unpaidLeaveDays, terms.hoursPerDay);
+    shiftDaysHours(inputs.noShowDays, terms.hoursPerDay) +
+    shiftDaysHours(leave.leaveDays, terms.hoursPerDay) +
+    shiftDaysHours(leave.unpaidLeaveDays, terms.hoursPerDay) +
+    shiftDaysHours(inputs.flexDaysOff ?? null, terms.hoursPerDay);
   return Math.max(0, fraction(shift - off));
 }
 
@@ -1299,7 +1311,8 @@ function monthlyPart(
   // holidays and the no-show and leave days; the total typed isn't cut, only warned about
   // the worked hours as typed, without the permission hours: what attendance counted
   // (a shift that counts hours until a time counts past them a day, 20 October 2026: no such warning)
-  const most = mostCountedHours(pay.expectedDays, pay.hoursPerDay, noShowDays, leaveDays + unpaidOff);
+  // a flexible days shift's days off aren't worked either (31 October 2026)
+  const most = mostCountedHours(pay.expectedDays, pay.hoursPerDay, noShowDays, leaveDays + unpaidOff + given(i.flexDaysOff ?? null));
   if (pay.makeUpHours !== true && i.workedHours !== null && most !== null && pay.hoursPerDay !== null && i.workedHours > most) {
     const perDay = formatHours(pay.hoursPerDay);
     warnings.push(`Worked hours are more than ${perDay} a day on the shift's working days (${formatHours(most)} this month): attendance will count at most ${perDay} a day`);

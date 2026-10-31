@@ -132,7 +132,7 @@ const EMPLOYMENT = {
   jobTitle: { select: { titleEn: true, titleAr: true } },
   grade: { select: { code: true } },
   department: { select: { nameEn: true, parent: { select: { nameEn: true } } } },
-  shift: { select: { code: true, workingDays: true } },
+  shift: { select: { code: true, workingDays: true, daysPerWeek: true } },
 } satisfies Prisma.EmploymentSelect;
 
 export type EmploymentRow = Prisma.EmploymentGetPayload<{ select: typeof EMPLOYMENT }>;
@@ -394,7 +394,7 @@ export class ContractsService {
     return groups
       .flat()
       .slice(0, LIST_CAP)
-      .map((c) => contractListView(c, { seesSalary: sees, workingDays: c.employment.shift?.workingDays ?? null, nonRenewal }));
+      .map((c) => contractListView(c, { seesSalary: sees, workingDays: c.employment.shift?.workingDays ?? null, shift: c.employment.shift, nonRenewal }));
   }
 
   /**
@@ -1261,6 +1261,8 @@ export class ContractsService {
     return {
       seesSalary: seesSalary(user),
       workingDays: employment.shift?.workingDays ?? null,
+      // for the warning on days a week that differ from the shift's (31 October 2026)
+      shift: employment.shift,
       nonRenewal: await this.nonRenewal(),
       employmentEndDate: employment.endDate,
       casualTooLong: employmentCasualTooLong(employment),

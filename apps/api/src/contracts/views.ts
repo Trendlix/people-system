@@ -1,6 +1,7 @@
 import {
   becameOpenEnded,
   casualTooLong,
+  contractDaysMismatch,
   EMPLOYEE_LEVEL_SEES_RAISES,
   ENDING_RULE_DEFAULTS,
   insuredWageDate,
@@ -38,6 +39,11 @@ export interface ContractContext {
   seesSalary: boolean;
   /** The employment's shift's working days; Sunday to Thursday without a shift. */
   workingDays: readonly number[] | null;
+  /**
+   * The employment's shift now (owner, 31 October 2026): its code, working days and any N of them, for the warning on a
+   * contract whose days a week differ (contractDaysMismatch); null or not given: none.
+   */
+  shift?: { code: string; workingDays: readonly number[]; daysPerWeek?: number | null } | null;
   /** The non-renewal rule's notice (seeded: 45 working days, contract clause 2). */
   nonRenewal: NonRenewalNotice | null;
   /** The employment's end, for the Art. 88 warning (becameOpenEnded); a current one's when not given. */
@@ -214,6 +220,9 @@ export function contractView(c: ContractRow, ctx: ContractContext) {
     convertsTo: c.convertsTo,
     training: agreement ? { agreement, next: trainingNext(agreement) } : null,
     casualTooLong: ctx.casualTooLong ?? false,
+    // its days a week differ from the employment's shift now (owner, 31 October 2026): attendance and payroll follow the
+    // shift; on a draft or the signed contract in force, never blocking
+    daysMismatch: c.status === 'draft' || c.status === 'active' ? contractDaysMismatch(c.daysPerWeek, ctx.shift) : null,
     // a renewal or a conversion to full-time drafted for someone still marked studying past their expected graduation
     // (25 October 2026): "check the qualification before printing", never blocking; only on such a draft
     ...(c.status === 'draft' && c.kind === 'contract' && (c.version > 1 || c.convertsTo !== null) && ctx.studentWarning && { studentWarning: ctx.studentWarning }),
@@ -279,7 +288,7 @@ export const CONTRACT_LIST_INCLUDE = {
       employee: { select: { id: true, employeeCode: true, fullNameEn: true, fullNameAr: true } },
       jobTitle: { select: { titleEn: true } },
       department: { select: { nameEn: true, parent: { select: { nameEn: true } } } },
-      shift: { select: { workingDays: true } },
+      shift: { select: { code: true, workingDays: true, daysPerWeek: true } },
       // its versions, to tell an intern's agreements apart (agreementVersions)
       contracts: { select: { version: true, kind: true, convertsTo: true } },
     },
@@ -313,6 +322,7 @@ export function contractListView(c: ContractListRow, ctx: ContractContext) {
     insuranceFiledOn: v.insuranceFiledOn,
     labourOfficeFiledOn: v.labourOfficeFiledOn,
     nonRenewalNoticeBy: v.nonRenewalNoticeBy,
+    daysMismatch: v.daysMismatch,
     payBasis: v.payBasis,
     hoursPerWeek: v.hoursPerWeek,
     daysPerWeek: v.daysPerWeek,

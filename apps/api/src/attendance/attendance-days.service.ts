@@ -3,6 +3,10 @@ import {
   CHECK_IN_SOURCES,
   compensatoryDays,
   exemptDays,
+  flexibleWeeks,
+  flexNeighbourMonths,
+  flexWeekStart,
+  isFlexibleDays,
   monthDays,
   officialDutyDays,
   OWN_SOURCES,
@@ -38,7 +42,9 @@ import { dayChoicesOf } from './record-removals.js';
 // check-ins carries its pairs, break and open last check-in (owner, 25 October 2026: "the working hours to be calculated
 // between the checkin and out only, not the first and last"). People exempt from check-in (owner, 25 October 2026: "trat
 // them as if they achived their full working hours"): their exempt days are read full here (packages/shared exemptDays),
-// never written, so the pages, the payroll and the KPIs read them alike.
+// never written, so the pages, the payroll and the KPIs read them alike. Flexible days (owner, 31 October 2026: a shift
+// worked on any N of its days a week; packages/shared flexibleWeeks): last, a week's absent days it doesn't need are days
+// off, its weeks at the month's edges read with the days of the months next to it.
 
 type Db = PrismaService | Prisma.TransactionClient;
 
@@ -81,7 +87,7 @@ export const EMPLOYMENT_SELECT = {
   officeDays: true,
   department: { select: { id: true, nameEn: true, parent: { select: { id: true, nameEn: true } } } },
   jobTitle: { select: { titleEn: true } },
-  shift: { select: { startTime: true, endTime: true, hoursPerDay: true, graceMinutes: true, countUntil: true, workingDays: true } },
+  shift: { select: { startTime: true, endTime: true, hoursPerDay: true, graceMinutes: true, countUntil: true, workingDays: true, daysPerWeek: true } },
 } satisfies Prisma.EmploymentSelect;
 
 export type EmploymentRow = Prisma.EmploymentGetPayload<{ select: typeof EMPLOYMENT_SELECT }>;
@@ -146,7 +152,7 @@ export const ownDays = (days: readonly Pick<SourcedDay, 'source' | 'exempt' | 'w
   days.some((d) => d.exempt || d.wfhDay || !!d.od || d.compensatory || d.compensated || (OWN_SOURCES as readonly string[]).includes(d.source));
 
 /** The shift's times as the shared rules take them. */
-export const shiftTimesOf = (s: NonNullable<EmploymentRow['shift']>) => ({
+export const shiftTimesOf = (s: Omit<NonNullable<EmploymentRow['shift']>, 'daysPerWeek'> & { daysPerWeek?: number | null }) => ({
   startTime: fromTimeOfDay(s.startTime),
   endTime: fromTimeOfDay(s.endTime),
   hoursPerDay: s.hoursPerDay?.toNumber() ?? null,
@@ -154,6 +160,8 @@ export const shiftTimesOf = (s: NonNullable<EmploymentRow['shift']>) => ({
   // a long day making up short ones (owner, 20 October 2026: "within the same month"): hours count until it
   countUntil: s.countUntil ? fromTimeOfDay(s.countUntil) : null,
   workingDays: s.workingDays,
+  // flexible days (31 October 2026): any this many of the working days a week; null: every one
+  daysPerWeek: s.daysPerWeek ?? null,
 });
 
 @Injectable()
@@ -185,9 +193,18 @@ export class AttendanceDaysService {
   /**
    * Each person's month (YYYY-MM): their kept days of every source, one a date, with the days gone by since their first
    * check-in on the system (monthDays). `rows`: their kept days of the month when already read (else read here). People
-   * with no employment in the month and no days are left out.
+   * with no employment in the month and no days are left out. On a flexible days shift (31 October 2026) a week's absent
+   * days it doesn't need are days off (flexibleWeeksOf); `flexible` false leaves them absent, as the months next to one
+   * are read for its weeks at the edges.
    */
-  async monthOf(month: string, ids: readonly string[], rows?: readonly DayRow[], db: Db = this.prisma, today = todayInCairo()): Promise<Map<string, PersonDays>> {
+  async monthOf(
+    month: string,
+    ids: readonly string[],
+    rows?: readonly DayRow[],
+    db: Db = this.prisma,
+    today = todayInCairo(),
+    flexible = true,
+  ): Promise<Map<string, PersonDays>> {
     const out = new Map<string, PersonDays>();
     if (!ids.length) return out;
     const [first, last] = [firstDay(month), lastDay(month)];
@@ -271,6 +288,37 @@ export class AttendanceDaysService {
         exemptions: periods,
       });
     }
+    if (flexible) await this.flexibleWeeksOf(month, out, db, today);
     return out;
+  }
+
+  /**
+   * Flexible days (owner, 31 October 2026: any N of a shift's days a week; packages/shared flexibleWeeks): each such
+   * person's absent days their weeks didn't need made days off, a week at the month's edges read with the days of the
+   * month before or after (as kept, without this rule; the month after once it has begun). The days off come out of
+   * their payroll line's expected hours (attendance-fill.service.ts flexDaysOff).
+   */
+  private async flexibleWeeksOf(month: string, out: Map<string, PersonDays>, db: Db, today: string): Promise<void> {
+    const flex = [...out.values()].filter((p) => p.employment?.shift && isFlexibleDays(shiftTimesOf(p.employment.shift)));
+    if (!flex.length) return;
+    const ids = flex.map((p) => p.employeeId);
+    const { before, after } = flexNeighbourMonths(month);
+    const from = flexWeekStart(firstDay(month));
+    const to = addDays(flexWeekStart(lastDay(month)), 6);
+    const [prev, next, holidays] = await Promise.all([
+      before ? this.monthOf(before, ids, undefined, db, today, false) : null,
+      after && firstDay(after) <= today ? this.monthOf(after, ids, undefined, db, today, false) : null,
+      db.holiday.findMany({ where: { date: { gte: toDateOnly(from), lte: toDateOnly(to) } }, select: { date: true } }),
+    ]);
+    const holidayDays = holidays.map((h) => fromDateOnly(h.date));
+    for (const p of flex) {
+      const employment = p.employment!;
+      const around = [...(prev?.get(p.employeeId)?.days ?? []), ...(next?.get(p.employeeId)?.days ?? [])];
+      p.days = flexibleWeeks(
+        p.days,
+        { shift: shiftTimesOf(employment.shift!), holidays: holidayDays, employedFrom: fromDateOnly(employment.joinDate), employedTo: employmentEndOf(employment), today },
+        around,
+      );
+    }
   }
 }

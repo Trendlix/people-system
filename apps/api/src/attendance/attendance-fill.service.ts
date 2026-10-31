@@ -3,6 +3,7 @@ import {
   attendanceLineInputs,
   EMPTY_PAYROLL_INPUTS,
   figuresBefore,
+  isFlexibleDays,
   openCheckInDates,
   PERMISSION_RULE_DEFAULTS,
   type AttendanceImportMark,
@@ -19,7 +20,7 @@ import { json, savedInputs, worked } from '../payroll/line-work.js';
 import { firstDay, lastDay } from '../payroll/months.js';
 import { runLawRates } from '../payroll/views.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { AttendanceDaysService } from './attendance-days.service.js';
+import { AttendanceDaysService, shiftTimesOf, type PersonDays } from './attendance-days.service.js';
 
 const LINE = 'payroll_line';
 
@@ -58,7 +59,9 @@ export interface AttendanceFillResult {
 // about them and Send to the CEO asks HR to confirm (payroll/views.ts), until a correction closes them and the line is
 // filled again (a correction approved fills it at once; a past month's draft on Refresh from attendance). Every line
 // changed is in the audit log. C-level lines too: the figures are the attendance's, nobody types them, and HR's views
-// keep hiding them (owner, 19 October 2026: "make C level Employees details not visible to HR").
+// keep hiding them (owner, 19 October 2026: "make C level Employees details not visible to HR"). On a flexible days
+// shift (owner, 31 October 2026: any N of its days a week) the days its weeks didn't need are filled as the line's
+// flexible days off (flexDaysOff), out of its expected hours as the no-show days are.
 @Injectable()
 export class AttendanceFillService {
   constructor(
@@ -137,6 +140,8 @@ export class AttendanceFillService {
           // a day missing its check-out counted as half the shift's hours a day until corrected (owner, 27 October 2026:
           // "open check ins with half day")
           hoursADay: person.hoursADay,
+          // the days off of a flexible days shift (31 October 2026)
+          flexible: flexibleDaysOf(person),
         });
         // those days, for the line's warning and Send to the CEO (27 October 2026)
         const openCheckIns = openCheckInDates(person.days, { hourly, hoursADay: person.hoursADay });
@@ -163,8 +168,10 @@ export class AttendanceFillService {
         // … is never a no-show, whatever the source, Zoho attendance included"): its no-show days are its kept days absent
         // as they are now, a day of approved leave read as leave (withLeaveNow), the leave on the line's terms
         const noShowDays = person.days.filter((d) => d.status === 'absent').length;
-        if ((was.noShowDays ?? 0) === noShowDays) continue;
-        inputs = { ...EMPTY_PAYROLL_INPUTS, ...was, noShowDays };
+        // and a flexible days shift's days off (31 October 2026), out of the expected hours
+        const flexDaysOff = flexibleDaysOf(person) && line.payBasis !== 'hourly' ? person.days.filter((d) => d.flexOff).length : (was.flexDaysOff ?? null);
+        if ((was.noShowDays ?? 0) === noShowDays && (was.flexDaysOff ?? null) === flexDaysOff) continue;
+        inputs = { ...EMPTY_PAYROLL_INPUTS, ...was, noShowDays, flexDaysOff };
         next = mark;
         result.leaveCounted++;
       } else continue;
@@ -195,6 +202,9 @@ export class AttendanceFillService {
     return result;
   }
 }
+
+/** Whether the person's month is read on a flexible days shift (31 October 2026). */
+const flexibleDaysOf = (person: PersonDays): boolean => !!person.employment?.shift && isFlexibleDays(shiftTimesOf(person.employment.shift));
 
 const sameFields = (a: readonly string[], b: readonly string[]) => a.length === b.length && a.every((f) => b.includes(f));
 const sameSources = (a: readonly string[] | undefined, b: readonly string[]) => !!a && a.length === b.length && a.every((s) => b.includes(s));

@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { countUntilProblems, formatHours, shiftHours } from '@trendlix/shared';
+import { countUntilProblems, flexibleDaysProblem, formatHours, shiftHours } from '@trendlix/shared';
 import { AuditService, changes } from '../../audit/audit.service.js';
 import { assertDeletes } from '../../auth/roles.js';
 import type { SessionUser } from '../../auth/session-user.js';
@@ -19,7 +19,10 @@ const ENTITY = 'shift';
 // October 2026: "within the same month with no working hours to be counted after 8 PM even if the check out was 11 PM /
 // record the checkout time but count till the checkout window limit"): set, a day counts until that time and past the
 // hours to work, so a long day fills the month's short hours; at or after the end and the same day (packages/shared
-// countUntilProblems), checked here with the times as they will be, and by the database. Every change is audited.
+// countUntilProblems), checked here with the times as they will be, and by the database. Days a week (owner, 31 October
+// 2026: flexible days): set, the shift is worked on any that many of its working days a week, fewer than them (packages/
+// shared flexibleDaysProblem), checked here with the working days as they will be, and by the database. Every change is
+// audited.
 
 export interface ShiftView {
   id: string;
@@ -32,6 +35,8 @@ export interface ShiftView {
   countUntil: string | null;
   graceMinutes: number;
   workingDays: number[];
+  /** Any this many of the working days a week (flexible days, 31 October 2026); null: every working day. */
+  daysPerWeek: number | null;
 }
 
 function view(s: Shift): ShiftView {
@@ -44,7 +49,14 @@ function view(s: Shift): ShiftView {
     countUntil: s.countUntil ? fromTimeOfDay(s.countUntil) : null,
     graceMinutes: s.graceMinutes,
     workingDays: [...s.workingDays].sort((a, b) => a - b),
+    daysPerWeek: s.daysPerWeek ?? null,
   };
+}
+
+/** The days a week fewer than the working days (flexibleDaysProblem): `days` null or missing, nothing to check. */
+function assertDaysAWeek(days: number | null | undefined, workingDays: readonly number[]) {
+  const problem = flexibleDaysProblem(days, workingDays);
+  if (problem) throw new BadRequestException(problem);
 }
 
 function assertOrder(start: string, end: string) {
@@ -86,6 +98,7 @@ export class ShiftsService {
     assertOrder(dto.startTime, dto.endTime);
     assertHoursFit(dto.startTime, dto.endTime, dto.hoursPerDay);
     assertCountUntil(dto.startTime, dto.endTime, dto.countUntil);
+    assertDaysAWeek(dto.daysPerWeek, dto.workingDays ?? [0, 1, 2, 3, 4]);
     const shift = await this.prisma.shift.create({
       data: {
         code: dto.code,
@@ -95,6 +108,7 @@ export class ShiftsService {
         countUntil: dto.countUntil ? toTimeOfDay(dto.countUntil) : null,
         graceMinutes: dto.graceMinutes,
         workingDays: dto.workingDays,
+        daysPerWeek: dto.daysPerWeek ?? null,
       },
     });
     const result = view(shift);
@@ -110,6 +124,8 @@ export class ShiftsService {
     assertHoursFit(start, end, dto.hoursPerDay === undefined ? before.hoursPerDay : dto.hoursPerDay);
     // the time hours count until as it will be (sent, or kept) after the end as it will be
     assertCountUntil(start, end, dto.countUntil === undefined ? before.countUntil : dto.countUntil);
+    // the days a week as they will be (sent, or kept) fewer than the working days as they will be
+    assertDaysAWeek(dto.daysPerWeek === undefined ? before.daysPerWeek : dto.daysPerWeek, dto.workingDays ?? before.workingDays);
     const shift = await this.prisma.shift.update({
       where: { id },
       data: {
@@ -120,11 +136,12 @@ export class ShiftsService {
         countUntil: dto.countUntil === undefined ? undefined : dto.countUntil ? toTimeOfDay(dto.countUntil) : null,
         graceMinutes: dto.graceMinutes,
         workingDays: dto.workingDays,
+        daysPerWeek: dto.daysPerWeek,
       },
     });
     const result = view(shift);
-    const { code, startTime, endTime, hoursPerDay, countUntil, graceMinutes } = dto;
-    const diff = changes({ ...before }, { code, startTime, endTime, hoursPerDay, countUntil, graceMinutes, workingDays: dto.workingDays && result.workingDays });
+    const { code, startTime, endTime, hoursPerDay, countUntil, graceMinutes, daysPerWeek } = dto;
+    const diff = changes({ ...before }, { code, startTime, endTime, hoursPerDay, countUntil, graceMinutes, workingDays: dto.workingDays && result.workingDays, daysPerWeek });
     if (Object.keys(diff).length) await this.audit.record({ userId, action: 'update', entityType: ENTITY, entityId: id, diff });
     return result;
   }

@@ -329,6 +329,8 @@ describe('Contracts list (e2e)', () => {
       workPattern: 'on_site',
       casualTooLong: false,
       becameOpenEnded: false,
+      // its days a week left to the shift (31 October 2026)
+      daysMismatch: null,
       employmentCurrent: true,
       jobTitleEn: 'Desk Officer',
       departmentName: `${deptName} › Desk`,

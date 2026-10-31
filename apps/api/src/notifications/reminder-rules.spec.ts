@@ -246,3 +246,21 @@ describe('reminder rules', () => {
     expect(due([night], checkedIn, at('2026-10-21', '06:15'))).toEqual([`check_out_reminder:u-night:${DAY}`]);
   });
 });
+
+// flexible days (owner, 31 October 2026: any N of a shift's days a week): they choose their days, so no "You haven't
+// checked in"; "Still checked in?" as for anyone
+describe('a flexible days shift', () => {
+  const flexible = (key: string) => person(key, { shift: { ...MORNING.shift!, daysPerWeek: 3 } });
+
+  it('isn’t reminded to check in, on the bell or as the popup', () => {
+    expect(due([flexible('f')], facts(), at(DAY, '09:00'))).toEqual([]);
+    expect(checkInReminderNow(flexible('f'), facts(), at(DAY, '09:30'))).toBeNull();
+    // the same shift without days a week is
+    expect(due([person('p')], facts(), at(DAY, '09:00'))).toEqual([`check_in_reminder:u-p:${DAY}`]);
+  });
+
+  it('is still asked "Still checked in?"', () => {
+    const punches = { [dayKey('e-f', DAY)]: [{ kind: 'in' as const, at: at(DAY, '10:00') }] };
+    expect(due([flexible('f')], facts({ punches }), at(DAY, '17:20'))).toEqual([`check_out_reminder:u-f:${DAY}`]);
+  });
+});

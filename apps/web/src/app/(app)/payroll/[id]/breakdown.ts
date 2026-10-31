@@ -157,7 +157,7 @@ export function expectedHoursNote(t: PayrollTerms, i: PayrollInputs, absent: num
  */
 export function shiftHoursNote(
   t: Pick<PayrollTerms, 'expectedHours' | 'expectedDays' | 'hoursPerDay'> & Partial<Pick<PayrollTerms, 'leave'>>,
-  i: Pick<PayrollInputs, 'noShowDays' | 'leaveDays'> & Partial<Pick<PayrollInputs, 'unpaidLeaveDays'>>,
+  i: Pick<PayrollInputs, 'noShowDays' | 'leaveDays'> & Partial<Pick<PayrollInputs, 'unpaidLeaveDays' | 'flexDaysOff'>>,
 ): string {
   const d = t.expectedDays;
   const from = d ? ` (${plural(d.workingDays, 'working day')} of the shift${d.holidays ? ` less ${plural(d.holidays, 'holiday')}` : ''})` : '';
@@ -171,6 +171,8 @@ export function shiftHoursNote(
     [i.noShowDays, 'no-show day'],
     [leave.leaveDays, 'leave day'],
     [leave.unpaidLeaveDays, 'unpaid leave day'],
+    // a flexible days shift's days its weeks didn't need (owner, 31 October 2026)
+    [i.flexDaysOff ?? null, 'flexible day off'],
   ];
   const off = dayKinds.filter((k): k is [number, string] => k[0] !== null && k[0] > 0).map(([n, name]) => plural(n, name));
   return off.length ? `${scheduled}, less ${listed(off)}, ${perDay} a day` : `${scheduled}, at ${perDay} a day`;

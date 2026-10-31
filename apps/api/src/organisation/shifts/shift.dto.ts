@@ -15,6 +15,14 @@ const COUNT_UNTIL_MESSAGE = 'Use 24-hour time for the time hours count until, e.
  */
 const CountUntil = () => applyDecorators(IsOptional(), Matches(TIME_OF_DAY, { message: COUNT_UNTIL_MESSAGE }));
 
+const DAYS_A_WEEK_MESSAGE = 'Days a week: a whole number from 1 to 6, or leave it empty for every working day.';
+
+/**
+ * Flexible days (owner, 31 October 2026): any this many of the working days a week; null (or not sent on a new shift):
+ * every working day. That they are fewer than the working days is checked with them (ShiftsService).
+ */
+const DaysAWeek = () => applyDecorators(IsOptional(), IsInt({ message: DAYS_A_WEEK_MESSAGE }), Min(1, { message: DAYS_A_WEEK_MESSAGE }), Max(6, { message: DAYS_A_WEEK_MESSAGE }));
+
 /**
  * A shift's hours to work a day (owner, 16 October 2026: "my company shift is to maintain 9 hours within the shift
  * window, its like flexible shift"): in half hours from 0.5 up to 24; null clears them (the whole window). That they
@@ -63,6 +71,10 @@ export class CreateShiftDto {
   @Min(0, { each: true })
   @Max(6, { each: true })
   workingDays?: number[];
+
+  /** Any this many of the working days a week (31 October 2026); null or not sent: every working day. */
+  @DaysAWeek()
+  daysPerWeek?: number | null;
 }
 
 export class UpdateShiftDto {
@@ -101,4 +113,8 @@ export class UpdateShiftDto {
   @Min(0, { each: true })
   @Max(6, { each: true })
   workingDays?: number[];
+
+  /** Any this many of the working days a week (31 October 2026); null or not sent: every working day. */
+  @DaysAWeek()
+  daysPerWeek?: number | null;
 }

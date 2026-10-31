@@ -150,7 +150,9 @@ export async function deleteGrade(id: string, _prev: FormState, fd: FormData): P
 /**
  * The shift for the API. Times are chosen on the 12-hour clock ("9:00 AM") and sent as HH:mm; the hours to work a day
  * as hours (9, 9:00, 8:30), empty for the whole window (null; owner, 16 October 2026: flexible shifts); "Count hours
- * until" as a time, empty for none (null; owner, 20 October 2026: make-up hours); problems go in `errors`.
+ * until" as a time, empty for none (null; owner, 20 October 2026: make-up hours); the days a week, empty for every working
+ * day (null; owner, 31 October 2026: flexible days, the API checking they are fewer than the working days); problems go
+ * in `errors`.
  */
 const shiftBody = (fd: FormData, errors: string[]) => {
   const time = (key: string, label: string) => {
@@ -171,6 +173,7 @@ const shiftBody = (fd: FormData, errors: string[]) => {
     countUntil: countUntil === '' ? null : countUntil,
     graceMinutes: grace === '' ? undefined : Number(grace),
     workingDays: fd.getAll('workingDays').map(Number),
+    daysPerWeek: text(fd, 'daysPerWeek') === '' ? null : Number(text(fd, 'daysPerWeek')),
   };
 };
 

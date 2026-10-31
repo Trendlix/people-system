@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useActionState, useState } from 'react';
 import { TimeInput } from '@/components/date-time-inputs';
 import { FormErrors, SubmitButton, useFieldIds, valueOf } from '@/components/form';
+import { Select } from '@/components/select';
 import { formatTime } from '@/lib/format';
 import { hoursToWorkShown, typedShiftHint, type TypedShift } from '@/lib/shifts';
 import type { FormState, Shift } from '@/lib/types';
@@ -16,7 +17,9 @@ import type { FormState, Shift } from '@/lib/types';
 // is typed: when check-in counts as late, or for a flexible shift the latest check-in that leaves its hours. "Count hours
 // until" (owner, 20 October 2026: "within the same month with no working hours to be counted after 8 PM even if the
 // check out was 11 PM / record the checkout time but count till the checkout window limit"): set, a day's hours count
-// until then, past the hours to work, so a long day fills short hours on the month's other days; empty, as before.
+// until then, past the hours to work, so a long day fills short hours on the month's other days; empty, as before. Days a
+// week (owner, 31 October 2026: flexible days): any that many of the working days ticked, for part-timers and interns
+// who choose their days; a day then counts as absent only once their week can no longer have them.
 
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -128,6 +131,29 @@ export function ShiftForm({ action, shift }: { action: (prev: FormState, fd: For
           ))}
         </div>
       </fieldset>
+      <div className="max-w-xs">
+        <label htmlFor={fid('daysPerWeek')} className="label">
+          Days a week
+        </label>
+        <Select
+          id={fid('daysPerWeek')}
+          name="daysPerWeek"
+          defaultValue={valueOf(state, 'daysPerWeek', shift?.daysPerWeek ? String(shift.daysPerWeek) : '')}
+          aria-describedby={fid('daysPerWeek-hint')}
+          className="input"
+        >
+          <option value="">Every working day</option>
+          {[1, 2, 3, 4, 5, 6].map((n) => (
+            <option key={n} value={n}>
+              Any {n} of them
+            </option>
+          ))}
+        </Select>
+        <p id={fid('daysPerWeek-hint')} className="hint">
+          For part-timers and interns who choose their days, fewer than the working days ticked. A day without a check-in counts as absent only once the week can
+          no longer have its days.
+        </p>
+      </div>
       <div className="flex flex-wrap gap-3">
         <SubmitButton>{shift ? 'Save changes' : 'Create shift'}</SubmitButton>
         <Link href="/organization/shifts" className="btn btn-secondary">

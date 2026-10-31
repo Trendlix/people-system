@@ -941,6 +941,7 @@ model Department {
 // if the check out was 11 PM / record the checkout time but count till the checkout window limit"): set, a day counts
 // until that time and past the hours to work, a long day filling the month's short hours (packages/shared attendance.ts
 // and payroll.ts); at or after the end, the same day (checked by the API and the database). Null: as before.
+// Days a week (owner, 31 October 2026): set, the shift is worked on any that many of its working days a week.
 model Shift {
   id           String       @id @default(uuid()) @db.Uuid
   code         String       @unique // A, B
@@ -950,6 +951,10 @@ model Shift {
   countUntil   DateTime?    @map("count_until") @db.Time(0) // hours count until it, making up short days; null: the end and grace
   graceMinutes Int          @default(15) @map("grace_minutes")
   workingDays  Int[]        @default([0, 1, 2, 3, 4]) @map("working_days") @db.SmallInt // 0 = Sun … 6 = Sat
+  // flexible days (owner, 31 October 2026): any this many of the working days a week, fewer than them (checked by the API
+  // and the database); null: every working day. A day counts as absent only once the week can no longer have them
+  // (packages/shared flexible-days.ts)
+  daysPerWeek  Int?         @map("days_per_week") @db.SmallInt
   createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz
   updatedAt    DateTime     @updatedAt @map("updated_at") @db.Timestamptz
   employments  Employment[]

@@ -103,6 +103,11 @@ export interface KeptDay {
    * worked"; compensatory.ts compensatoryDays): counted as worked, with no deduction for them.
    */
   compensatoryHours?: number;
+  /**
+   * A working day of a flexible days shift the week didn't need (owner, 31 October 2026; flexible-days.ts flexibleWeeks):
+   * gone by without a check-in while the week still had its days, so a day off (status rest), not absent.
+   */
+  flexOff?: boolean;
 }
 
 /** A kept day as the Attendance pages show it. */
