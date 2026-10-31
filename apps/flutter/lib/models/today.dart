@@ -112,13 +112,36 @@ class Today {
 
   Punch? get last => punches.isEmpty ? null : punches.last;
 
-  /// The time worked so far at [now]: the finished pairs, and the open check-in's time until now.
+  /// The time worked so far at [now], breaks included (owner, 31 October 2026: "dont calculate breaks, they are included
+  /// in the working hours"): People's hours so far (the first check-in to the last check-out), and while checked in
+  /// again, the time since that last check-out (the break with it), else since the open check-in.
   Duration workedAt(DateTime now) {
     final counted = Duration(seconds: (hoursCounted * 3600).round());
     final open = openSince;
     if (open == null || now.isBefore(open)) return counted;
-    return counted + now.difference(open);
+    final lastOut = lastCheckOutBefore(open);
+    return counted + now.difference(lastOut ?? open);
   }
+
+  /// The day's last check-out before [at] (its last finished pair's end, else the last press out); null: none.
+  DateTime? lastCheckOutBefore(DateTime at) {
+    final day = raw['day'];
+    final pairs = day is Map ? day['pairs'] : null;
+    if (pairs is List) {
+      final outs = <DateTime>[];
+      for (final p in pairs) {
+        final out = p is Map ? DateTime.tryParse('${p['out']}') : null;
+        if (out != null && !out.isAfter(at)) outs.add(out);
+      }
+      outs.sort();
+      if (outs.isNotEmpty) return outs.last;
+    }
+    final presses = punches.where((p) => p.kind == PunchKind.checkOut && !p.at.isAfter(at)).toList();
+    return presses.isEmpty ? null : presses.last.at;
+  }
+
+  /// The share of the shift's hours a day worked at [now] (1.0: all of them); for the timer's colour.
+  double shareAt(DateTime now) => hoursPerDay <= 0 ? 0 : workedAt(now).inMinutes / 60 / hoursPerDay;
 }
 
 /// A press's answer: the day after it, what People says, and whether it was kept (false: the same press twice).

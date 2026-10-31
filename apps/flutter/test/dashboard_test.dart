@@ -4,12 +4,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:people/app.dart';
 import 'package:people/auth/session_store.dart';
 import 'package:people/features/dashboard/dashboard_screen.dart';
+import 'package:people/features/requests/kinds/od.dart' show OdWords;
 import 'package:people/features/today/check_in_words.dart';
 import 'package:people/features/sign_in/sign_in_screen.dart';
 import 'package:people/platform/locator.dart';
 import 'package:people/providers.dart';
 import 'package:people/shell/shell_words.dart';
 import 'package:people/theme/look.dart';
+import 'package:people/theme/tokens.dart';
 
 import 'fakes.dart';
 
@@ -100,6 +102,21 @@ void main() {
     expect(find.textContaining('Checked in · '), findsOneWidget);
     expect(find.textContaining('Checked in at '), findsOneWidget);
     expect(find.text(CheckInWords.workedToday), findsOneWidget);
+    // the time worked in the owner's colours (31 October 2026): just checked in, under 80% of the day's hours, red on
+    // the dark card
+    final timer = tester.widget<Text>(find.byWidgetPredicate((w) => w is Text && (w.semanticsLabel ?? '').contains('of the day’s hours')));
+    expect(timer.style?.color, Palette.light.bandColour(RateBand.low, onInverse: true));
+  });
+
+  testWidgets('offers official duty among the quick actions, in place of a correction', (tester) async {
+    await open(tester, people);
+    // owner, 31 October 2026: "replace correction with OD in the homepage for the requests section"
+    await tester.scrollUntilVisible(find.text(DashboardWords.officialDuty), 300, scrollable: find.byType(Scrollable).first);
+    expect(find.text(DashboardWords.awayFromOffice), findsOneWidget);
+    expect(find.text('Fix attendance'), findsNothing);
+    await tester.tap(find.text(DashboardWords.officialDuty));
+    await tester.pumpAndSettle();
+    expect(find.text(OdWords.title), findsWidgets);
   });
 
   testWidgets('says People’s refusal in its words, the button still there', (tester) async {

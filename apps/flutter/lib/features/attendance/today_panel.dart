@@ -113,6 +113,9 @@ class _Card extends StatelessWidget {
     // checked in or out today: the time worked; else the time now
     final counted = hasIn && (t.next == PunchKind.checkOut || checkedOut != null);
     final big = counted ? workClockOf(t.workedAt(now)) : clockOf(now);
+    // the time worked in the owner's colours (31 October 2026: "below 80% color it red, from 80 to 90 color it yellow,
+    // above 90% green"), as a share of the shift's hours a day
+    final band = counted ? rateBandOf(t.shareAt(now)) : null;
 
     // where: today's check-in, else where the arrangement expects them
     final shown = open ?? ins.firstOrNull;
@@ -185,7 +188,14 @@ class _Card extends StatelessWidget {
             const SizedBox(height: 9),
             Text(
               big,
-              style: text.displayMedium?.copyWith(fontSize: 64, letterSpacing: -4.18, height: 1, fontFeatures: const [FontFeature.tabularFigures()]),
+              semanticsLabel: band == null ? null : '$big, ${CheckInWords.ofTheDay(t.shareAt(now))}',
+              style: text.displayMedium?.copyWith(
+                fontSize: 64,
+                letterSpacing: -4.18,
+                height: 1,
+                color: band == null ? null : p.bandColour(band),
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
             ),
             if (where != null) ...[const SizedBox(height: 8), Text(where, style: muted)],
             const SizedBox(height: 22),

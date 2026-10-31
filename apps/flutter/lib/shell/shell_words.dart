@@ -11,6 +11,7 @@ abstract final class ShellWords {
   static const account = 'Your account';
   static const viewProfile = 'View profile';
   static const changePhoto = 'Change profile image';
+  static const assets = 'My assets';
   static const password = 'Password & security';
   static const devices = 'Devices & sign-ins';
   static const hiring = 'Hiring availability';

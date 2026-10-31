@@ -103,6 +103,23 @@ abstract final class AttendanceWords {
   static const missingCheckInsNote = 'A check-out without a check-in: no hours';
   static const flaggedDays = 'Flagged days';
   static const flaggedDaysNote = 'A check-in outside the work arrangement’s rule, or on a fake GPS';
+  // the attendance rate through the month (owner, 31 October 2026: "show the weekly attendance percentage and monthly
+  // percentage ongoing through the month"), People's: days attended ÷ working days expected
+  static const attendanceRate = 'Attendance rate';
+  static const thisMonth = 'This month';
+  static const thisWeek = 'This week';
+  static const weekByWeek = 'Week by week';
+  static String percent(double? rate) => rate == null ? '—' : '${(rate * 100).round()}%';
+  static String daysOf(int attended, int expected, {bool soFar = false}) =>
+      expected == 0 ? 'No working day yet' : '$attended of $expected working ${expected == 1 ? 'day' : 'days'}${soFar ? ' so far' : ''}';
+  static String weekRange(String from, String to) {
+    final a = int.parse(from.substring(8, 10));
+    final b = int.parse(to.substring(8, 10));
+    final month = monthsShort[int.parse(to.substring(5, 7)) - 1];
+    return a == b ? '$a $month' : '$a–$b $month';
+  }
+
+  static const monthsShort = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   static const exemptDays = 'Exempt days';
   static const exemptDaysNote = 'Exempt from check-in: counted as full hours';
   static const compensatoryDays = 'Compensatory days off';
@@ -233,7 +250,6 @@ abstract final class AttendanceWords {
   };
   static String kindName(String k) => kindNames[k] ?? k;
   static const cameInAt = 'Came in at';
-  static const startedAt = 'Started work at';
   static const leftAt = 'Left at';
   static const optional = '(optional)';
   static const chooseTime = 'Choose a time';
@@ -260,7 +276,15 @@ abstract final class AttendanceWords {
   static String checkedOutAlready(String at, String day) => 'You checked out at $at on $day already: choose “${kinds['wrong_time']}” to change it.';
   static const needATime = 'Enter the right time of the check-in, of the check-out, or both.';
   static String nothingToCorrect(String day) => 'There is no check-in or check-out on $day to correct: choose “${kinds['forgot_check_in']}”.';
-  static String needStart(String day) => 'Enter the time you started work on $day.';
+  static String tooLate(String day, int workingDays) =>
+      'It’s too late to ask to correct $day: ask within $workingDays working days of the day. HR can still correct it for you.';
+
+  /// Under what was wrong (owner, 31 October 2026: "Remove it, point to OD"): work away from the office is official duty.
+  static const awayIsOd = 'Working away from the office (at a client, a shoot, an errand) is official duty: ask for official duty instead, or work from home for a day at home.';
+  static const askOd = 'Ask for official duty';
+
+  /// When asking stays open (owner, 31 October 2026: "locked after 2 working days").
+  static String askWithin(int workingDays) => 'Ask on the day or within $workingDays working days of it.';
   static String notYetCome(String at) => 'Choose a time that has passed: $at today hasn’t come yet.';
 
   /// Once it can be sent: what and where it goes.

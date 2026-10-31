@@ -4,9 +4,9 @@ import '../../models/my_attendance.dart';
 import '../../theme/tokens.dart';
 import 'attendance_logic.dart';
 
-/// The month's figures in two columns (the phone design, 30 October 2026): each card what it counts, the figure, and a
-/// note at its foot; an absent day's figure in red. The figures are People's (no attendance rate: the owner kept it for
-/// HR, the CEO and Finance, 23 October 2026).
+/// The month's figures in two columns (the phone design, 30 October 2026): each card what it counts and the figure; an
+/// absent day's figure in red. No note under the figure (owner, 31 October 2026: "remove the description below the
+/// numbers to save more space"): a screen reader still hears it. The attendance rate is its own card (rate_card.dart).
 class FiguresGrid extends StatelessWidget {
   const FiguresGrid({super.key, required this.month});
 
@@ -45,7 +45,6 @@ class _Figure extends StatelessWidget {
     final p = context.palette;
     final text = Theme.of(context).textTheme;
     return Container(
-      constraints: const BoxConstraints(minHeight: 150),
       padding: const EdgeInsets.all(17),
       decoration: BoxDecoration(
         color: p.card,
@@ -53,23 +52,20 @@ class _Figure extends StatelessWidget {
         border: Border.all(color: p.line),
         boxShadow: p.shadow,
       ),
-      child: MergeSemantics(
+      child: Semantics(
+        container: true,
+        label: [tile.label, tile.value, ?tile.note].join(', '),
+        excludeSemantics: true,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(tile.label, style: text.bodyMedium?.copyWith(color: p.muted, height: 1.3)),
-                const SizedBox(height: 12),
-                Text(
-                  tile.value,
-                  style: text.headlineMedium?.copyWith(height: 1.5, color: tile.alert ? p.danger : null, fontFeatures: const [FontFeature.tabularFigures()]),
-                ),
-              ],
+            Text(tile.label, style: text.bodyMedium?.copyWith(color: p.muted, height: 1.3)),
+            const SizedBox(height: 8),
+            Text(
+              tile.value,
+              style: text.headlineMedium?.copyWith(height: 1.3, color: tile.alert ? p.danger : null, fontFeatures: const [FontFeature.tabularFigures()]),
             ),
-            if (tile.note != null) ...[const SizedBox(height: 8), Text(tile.note!, style: text.bodySmall?.copyWith(height: 1.4))],
           ],
         ),
       ),

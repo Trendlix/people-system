@@ -100,8 +100,10 @@ void main() {
     expect(suggestedCorrectionKind(m.days[2], '$y-10-30'), 'wrong_time');
     expect(suggestedCorrectionKind(null, '$y-10-30'), 'forgot_check_in');
     expect(timesNeeded('forgot_check_out', null), (checkIn: TimeNeed.none, checkOut: TimeNeed.required));
-    expect(timesNeeded('worked_remotely', m.days[0]).checkIn, TimeNeed.optional);
-    expect(timesNeeded('worked_remotely', m.days[1]).checkIn, TimeNeed.required);
+    // work away from the office is official duty now (owner, 31 October 2026): not a kind to choose
+    expect(CorrectionWords.kindLabels.keys, ['forgot_check_in', 'forgot_check_out', 'wrong_time']);
+    // the day suggested is one still open to ask about (owner, 31 October 2026: "locked after 2 working days")
+    expect(suggestedCorrectionDay(m, '$y-10-30', askFrom: '$y-10-28'), '$y-10-30');
   });
 
   test('checks the day, the reason and the times as People does', () {
@@ -126,10 +128,14 @@ void main() {
     expect(check('forgot_check_in'), [CorrectionWords.enterCameIn]);
     expect(check('forgot_check_out'), [CorrectionWords.enterLeft]);
     expect(check('wrong_time', d: day('$y-10-21')), [CorrectionWords.enterEither, 'There is no check-in or check-out on $when to correct: choose “I forgot to check in”.']);
-    expect(check('worked_remotely'), ['Enter the time you started work on $when.']);
     expect(check('wrong_time', checkIn: '18:00', checkOut: '09:00'), ['The check-out (9:00 AM) must be after the check-in (6:00 PM) on the same day.']);
     expect(check('forgot_check_out', date: '$y-10-30', checkOut: '18:00', now: '12:00'), ['Choose a time that has passed: 6:00 PM today hasn’t come yet.']);
     expect(check('forgot_check_out', checkOut: '18:00', d: day('$y-10-21', checkIn: '$y-10-21T06:00:00.000Z', openAt: '$y-10-21T06:00:00.000Z')), isEmpty);
+    // too long after the day (owner, 31 October 2026: "locked after 2 working days")
+    expect(
+      correctionProblems(date: '$y-10-21', today: '$y-10-30', kind: 'forgot_check_out', day: null, dayKnown: false, checkIn: null, checkOut: '18:00', reason: 'Why', askFrom: '$y-10-28'),
+      [CorrectionWords.tooLate(dmy('$y-10-21'))],
+    );
   });
 
   testWidgets('asks to correct the day with no check-out in a few taps: the shift’s end offered', (tester) async {

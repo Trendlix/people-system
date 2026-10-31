@@ -18,6 +18,7 @@ import 'calendar_card.dart';
 import 'correction_sheet.dart';
 import 'day_sheet.dart';
 import 'figures_grid.dart';
+import 'rate_card.dart';
 import 'my_corrections_screen.dart';
 import 'today_panel.dart';
 import 'your_days.dart';
@@ -166,6 +167,8 @@ class _Month extends ConsumerWidget {
         ],
         CalendarCard(month: month, data: m, today: today, onOpenDay: (date) => onOpenDay(m!, date, today)),
         if (m != null) ...[
+          // the attendance rate through the month (owner, 31 October 2026), above the month's figures
+          if (m.rates case final r? when m.days.isNotEmpty) ...[const SizedBox(height: 12), RateCard(rates: r)],
           if (m.days.isNotEmpty) ...[const SizedBox(height: 12), FiguresGrid(month: m)],
           const SizedBox(height: 14),
           YourDaysCard(

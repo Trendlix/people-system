@@ -310,6 +310,55 @@ class MonthCorrection {
   bool get open => status == 'with_manager' || status == 'with_hr';
 }
 
+/// Days attended of the working days expected over some days (People's attendance rate; owner, 31 October 2026).
+class RatePart {
+  const RatePart({required this.from, required this.to, required this.attendedDays, required this.expectedDays, this.rate, this.current = false});
+
+  static RatePart? of(Object? json) {
+    if (json is! Map) return null;
+    final from = _text(json['from']);
+    final to = _text(json['to']);
+    if (from == null || to == null) return null;
+    return RatePart(
+      from: from,
+      to: to,
+      attendedDays: _number(json['attendedDays'])?.toInt() ?? 0,
+      expectedDays: _number(json['expectedDays'])?.toInt() ?? 0,
+      rate: _number(json['rate']),
+      current: json['current'] == true,
+    );
+  }
+
+  final String from;
+  final String to;
+  final int attendedDays;
+  final int expectedDays;
+
+  /// Attended ÷ expected (0.95); null with no working day expected yet.
+  final double? rate;
+
+  /// The week today is in.
+  final bool current;
+}
+
+/// The attendance rate through the month (owner, 31 October 2026: "show the weekly attendance percentage and monthly
+/// percentage ongoing through the month"): the month so far and each of its weeks begun, Sunday to Saturday.
+class MonthRates {
+  const MonthRates({required this.monthToDate, this.weeks = const []});
+
+  static MonthRates? of(Object? json) {
+    if (json is! Map) return null;
+    final month = RatePart.of(json['monthToDate']);
+    if (month == null) return null;
+    return MonthRates(monthToDate: month, weeks: [for (final w in _list(json['weeks'])) ?RatePart.of(w)]);
+  }
+
+  final RatePart monthToDate;
+  final List<RatePart> weeks;
+
+  RatePart? get thisWeek => weeks.where((w) => w.current).firstOrNull;
+}
+
 /// The employee's month.
 class MyMonth {
   const MyMonth({
@@ -327,6 +376,9 @@ class MyMonth {
     this.corrections,
     this.correctable,
     this.correctableReason,
+    this.askFrom,
+    this.askWorkingDays,
+    this.rates,
     this.importedAt,
   });
 
@@ -336,6 +388,7 @@ class MyMonth {
     final p = person is Map ? person : const {};
     final corrections = json['corrections'];
     final correctable = json['correctable'];
+    final ask = json['ask'];
     final sources = json['sources'];
     final imported = sources is List
         ? (sources.whereType<Map>().map((s) => _text(s['appliedAt']) ?? _text(s['createdAt'])).whereType<String>().toList()..sort()).lastOrNull
@@ -356,6 +409,9 @@ class MyMonth {
       corrections: corrections is List ? [for (final c in corrections) ?MonthCorrection.of(c)] : null,
       correctable: correctable is Map ? correctable['allowed'] == true : null,
       correctableReason: correctable is Map ? _text(correctable['reason']) : null,
+      askFrom: ask is Map ? _text(ask['from']) : null,
+      askWorkingDays: ask is Map ? _number(ask['workingDays'])?.toInt() : null,
+      rates: MonthRates.of(json['rates']),
       importedAt: imported == null ? null : DateTime.tryParse(imported),
     );
   }
@@ -387,6 +443,14 @@ class MyMonth {
   /// Whether its days can be corrected now (not once its payroll is approved or paid), and why not.
   final bool? correctable;
   final String? correctableReason;
+
+  /// The earliest day they can still ask to correct today (owner, 31 October 2026: "locked after 2 working days"), and
+  /// within how many working days of a day; null from an API from before it.
+  final String? askFrom;
+  final int? askWorkingDays;
+
+  /// Their attendance rate through the month; null from an API from before it.
+  final MonthRates? rates;
 
   /// When HR last imported Zoho People's days of the month (applied, else read).
   final DateTime? importedAt;

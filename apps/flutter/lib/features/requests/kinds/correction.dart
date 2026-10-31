@@ -13,6 +13,7 @@ import '../request_text.dart';
 import '../requests_data.dart';
 import '../requests_words.dart';
 import '../sheet_parts.dart';
+import 'od.dart' show showOdSheet;
 
 // An attendance correction (owner, 19 October 2026): a day that isn't right, a check-in or check-out forgotten, a time
 // wrong, or work away from the office. The sheet starts on the latest day of the month with a check-in and no
@@ -24,16 +25,15 @@ import '../sheet_parts.dart';
 /// The correction's words (packages/shared attendance-corrections.ts; apps/web attendance/corrections).
 abstract final class CorrectionWords {
   static const title = 'Attendance correction';
-  static const intro = 'A day that isn’t right: you forgot to check in or out, a time is wrong, or you worked remotely or at a client.';
+  static const intro = 'A day that isn’t right: you forgot to check in or out, or a time is wrong. Ask on the day or within 2 working days of it.';
   static String whoDecides(bool ceo) => 'Your direct manager (or lead) decides first, then ${ceo ? 'the CEO' : 'HR'}; approved, the day is corrected.';
 
-  /// What was wrong, as the employee chooses it.
-  static const kindLabels = {
-    'forgot_check_in': 'I forgot to check in',
-    'forgot_check_out': 'I forgot to check out',
-    'wrong_time': 'A time is wrong',
-    'worked_remotely': 'I worked remotely or at a client',
-  };
+  /// What was wrong, as the employee chooses it (owner, 31 October 2026: work away from the office is official duty now,
+  /// "Remove it, point to OD").
+  static const kindLabels = {'forgot_check_in': 'I forgot to check in', 'forgot_check_out': 'I forgot to check out', 'wrong_time': 'A time is wrong'};
+  static const awayIsOd = 'Working away from the office (at a client, a shoot, an errand) is official duty: ask for official duty instead, or work from home for a day at home.';
+  static const askOd = 'Ask for official duty';
+  static String tooLate(String day) => 'It’s too late to ask to correct $day: ask within 2 working days of the day. HR can still correct it for you.';
 
   /// What was wrong, as the lists, HR and the manager say it.
   static const kindNames = {
@@ -53,10 +53,9 @@ abstract final class CorrectionWords {
   static const checkedWhenSent = 'The day on record is checked when it is sent.';
   static const checkingDay = 'Checking what is on record…';
   static const day = 'Day';
-  static const dayHint = 'A day gone by, or today, in a month whose payroll isn’t approved yet.';
+  static const dayHint = 'Today, or a day up to 2 working days ago, in a month whose payroll isn’t approved yet.';
   static const whatWasWrong = 'What was wrong';
   static const cameIn = 'Came in at';
-  static const startedWork = 'Started work at';
   static const leftAt = 'Left at';
   static const timesHint = 'Times on the day, e.g. 9:15 AM and 6:30 PM. A time left empty stays as on record.';
   static const why = 'Why';
@@ -74,7 +73,6 @@ abstract final class CorrectionWords {
   static String checkedOutAlready(String time, String day) => 'You checked out at $time on $day already: choose “A time is wrong” to change it.';
   static const enterEither = 'Enter the right time of the check-in, of the check-out, or both.';
   static String nothingToCorrect(String day) => 'There is no check-in or check-out on $day to correct: choose “I forgot to check in”.';
-  static String enterStarted(String day) => 'Enter the time you started work on $day.';
   static String notYet(String time) => 'Choose a time that has passed: $time today hasn’t come yet.';
   static String outAfterIn(String out, String inAt) => 'The check-out ($out) must be after the check-in ($inAt) on the same day.';
   static String ready(String what, String day, String hr) =>
@@ -107,7 +105,6 @@ enum TimeNeed { required, optional, none }
 ({TimeNeed checkIn, TimeNeed checkOut}) timesNeeded(String kind, AttendanceDay? day) => switch (kind) {
   'forgot_check_in' => (checkIn: TimeNeed.required, checkOut: TimeNeed.optional),
   'forgot_check_out' => (checkIn: TimeNeed.none, checkOut: TimeNeed.required),
-  'worked_remotely' => (checkIn: day?.checkIn == null ? TimeNeed.required : TimeNeed.optional, checkOut: TimeNeed.optional),
   _ => (checkIn: TimeNeed.optional, checkOut: TimeNeed.optional),
 };
 
@@ -127,16 +124,27 @@ Set<String> openCorrectionDays(AttendanceMonth m) {
   };
 }
 
-/// The day to suggest: the latest day gone by this month with a check-in and no check-out, or no check-in, and no
-/// correction asked yet; none, today.
-String suggestedCorrectionDay(AttendanceMonth? m, String today) {
+/// The day to suggest: the latest day gone by this month with a check-in and no check-out, or no check-in, no
+/// correction asked yet, and still open to ask about (from [askFrom]); none, today.
+String suggestedCorrectionDay(AttendanceMonth? m, String today, {String? askFrom}) {
   if (m == null) return today;
   final open = openCorrectionDays(m);
   final past = [
     for (final d in m.days)
-      if (d.date.compareTo(today) < 0 && !open.contains(d.date) && (_missingOut(d) || _missingIn(d))) d,
+      if (d.date.compareTo(today) < 0 &&
+          (askFrom == null || d.date.compareTo(askFrom) >= 0) &&
+          !open.contains(d.date) &&
+          (_missingOut(d) || _missingIn(d)))
+        d,
   ]..sort((a, b) => b.date.compareTo(a.date));
   return past.isEmpty ? today : past.first.date;
+}
+
+/// The earliest day they can still ask to correct (owner, 31 October 2026: "locked after 2 working days"), as their
+/// month says it; null from an API from before it.
+String? askFromOf(AttendanceMonth? m) {
+  final ask = m?.raw['ask'];
+  return ask is Map && ask['from'] is String ? ask['from'] as String : null;
 }
 
 /// What was likely wrong on a day, from what is on record.
@@ -172,9 +180,12 @@ List<String> correctionProblems({
   Set<String> openDays = const {},
   String? now,
   bool nightShift = false,
+  String? askFrom,
 }) {
   final when = dayWords(date);
   if (date.compareTo(today) > 0) return [CorrectionWords.toCome(dmy(date))];
+  // asked too long after the day (owner, 31 October 2026: "locked after 2 working days")
+  if (askFrom != null && date.compareTo(askFrom) < 0) return [CorrectionWords.tooLate(dmy(date))];
   final out = <String>[];
   if (reason.trim().isEmpty) out.add(CorrectionWords.reasonMissing);
   if (locked != null) out.add(locked);
@@ -187,8 +198,6 @@ List<String> correctionProblems({
     case 'forgot_check_out':
       if (checkOut == null) out.add(CorrectionWords.enterLeft);
       if (dayKnown && day?.checkOut != null && !_openAt(day!)) out.add(CorrectionWords.checkedOutAlready(timeOfMoment(day.checkOut!), when));
-    case 'worked_remotely':
-      if (checkIn == null && (day?.checkIn == null)) out.add(CorrectionWords.enterStarted(when));
     default:
       if (checkIn == null && checkOut == null) out.add(CorrectionWords.enterEither);
       if (dayKnown && day != null && day.checkIn == null && day.checkOut == null) out.add(CorrectionWords.nothingToCorrect(when));
@@ -293,7 +302,8 @@ class _CorrectionFormState extends ConsumerState<_CorrectionForm> {
     final firstMonth = current.value;
     if (firstMonth == null) return const SheetState.loading();
 
-    final date = _date ?? suggestedCorrectionDay(firstMonth, _today);
+    final askFrom = askFromOf(firstMonth);
+    final date = _date ?? suggestedCorrectionDay(firstMonth, _today, askFrom: askFrom);
     final monthOf = ref.watch(attendanceMonthProvider(date.substring(0, 7)));
     final m = monthOf.value;
     final dayKnown = m != null;
@@ -323,6 +333,7 @@ class _CorrectionFormState extends ConsumerState<_CorrectionForm> {
       openDays: m == null ? const {} : openCorrectionDays(m),
       now: clockOf(DateTime.now()),
       nightShift: night,
+      askFrom: askFrom,
     );
     final record = switch ((monthOf.isLoading, dayKnown)) {
       (true, false) => CorrectionWords.checkingDay,
@@ -340,6 +351,7 @@ class _CorrectionFormState extends ConsumerState<_CorrectionForm> {
           child: PickDayField(
             label: CorrectionWords.day,
             value: date,
+            first: askFrom,
             last: _today,
             onChanged: (d) => setState(() {
               _date = d;
@@ -361,12 +373,26 @@ class _CorrectionFormState extends ConsumerState<_CorrectionForm> {
             }),
           ),
         ),
+        // work away from the office is official duty (owner, 31 October 2026: "Remove it, point to OD")
+        Text(CorrectionWords.awayIsOd, style: Theme.of(context).textTheme.bodySmall),
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: TextButton(
+            onPressed: () {
+              final host = Navigator.of(context, rootNavigator: true).context;
+              Navigator.of(context).pop();
+              showOdSheet(host);
+            },
+            child: const Text(CorrectionWords.askOd),
+          ),
+        ),
+        const SizedBox(height: 8),
         if (needs.checkIn != TimeNeed.none)
           SheetField(
-            label: kind == 'worked_remotely' ? CorrectionWords.startedWork : CorrectionWords.cameIn,
+            label: CorrectionWords.cameIn,
             optional: needs.checkIn == TimeNeed.optional,
             child: PickTimeField(
-              label: kind == 'worked_remotely' ? CorrectionWords.startedWork : CorrectionWords.cameIn,
+              label: CorrectionWords.cameIn,
               value: checkIn,
               onChanged: (t) => setState(() => _set(inTime: true, value: t)),
               onClear: () => setState(() => _set(inTime: true, value: null)),

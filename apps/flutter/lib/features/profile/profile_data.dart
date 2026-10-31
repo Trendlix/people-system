@@ -8,15 +8,11 @@ import '../../api/people_client.dart';
 import '../../auth/auth_controller.dart';
 import '../../models/account.dart';
 import '../../models/interview_hours.dart';
-import '../../models/payslip.dart';
 import '../../providers.dart';
 
 // What the Profile tab and the account's screens read from People, one provider a card, so each loads, fails and
 // refreshes on its own. Only the person's own, as the API answers them. The profile itself is the Dashboard's
 // `ownProfileProvider`.
-
-/// One's months paid (GET /api/me/payslips), for the Profile's Payroll.
-final myPayslipsProvider = FutureProvider.autoDispose<List<MyPayslip>>((ref) async => payslipsOf(await ref.read(peopleClientProvider).get('/api/me/payslips')));
 
 /// One's sessions still open (GET /api/auth/sessions).
 final mySessionsProvider = FutureProvider.autoDispose<List<OpenSession>>(

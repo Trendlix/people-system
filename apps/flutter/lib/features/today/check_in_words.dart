@@ -10,6 +10,9 @@ abstract final class CheckInWords {
   static const notYet = 'Not checked in';
   static const readyToStart = 'Ready to start';
   static const workedToday = 'Worked today';
+
+  /// The timer's share of the shift's hours, for a screen reader: "85% of the day's hours".
+  static String ofTheDay(double share) => '${(share * 100).round()}% of the day’s hours';
   static String statusIn(String at) => 'Checked in · $at';
   static String statusOut(String at) => 'Checked out · $at';
   static String checkedIn(String at, String place) => 'Checked in at $at · $place';

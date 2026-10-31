@@ -6,6 +6,7 @@ import 'package:people/models/attendance_correction.dart';
 import 'package:people/models/attendance_today.dart';
 import 'package:people/models/my_attendance.dart';
 import 'package:people/models/today.dart';
+import 'package:people/theme/tokens.dart';
 
 // The Attendance tab's models from People's JSON as GET /api/attendance/me, GET /api/me/attendance/corrections and GET
 // /api/me/attendance/today send it, and its rules as the website shows them. The fixtures here are the other attendance
@@ -379,7 +380,7 @@ void main() {
       expect(problems('2026-10-26', 'wrong_time', checkIn: '09:00'), [AttendanceWords.alreadyAsked('26/10/2026')]);
       expect(problems('2026-10-27', 'forgot_check_out'), [AttendanceWords.needLeft]);
       expect(problems('2026-10-27', 'forgot_check_in', checkIn: '08:30'), [AttendanceWords.checkedInAlready(clockOf(DateTime.parse('2026-10-27T08:57:00.000+03:00')), '27/10/2026')]);
-      expect(problems('2026-10-30', 'worked_remotely', checkIn: '09:00', checkOut: '18:00'), [AttendanceWords.notYetCome('18:00')]);
+      expect(problems('2026-10-30', 'forgot_check_in', checkIn: '09:00', checkOut: '18:00'), [AttendanceWords.notYetCome('18:00')]);
       expect(problems('2026-10-27', 'wrong_time', checkIn: '08:45'), isEmpty);
 
       expect(correctionBody((date: '2026-10-27', kind: 'forgot_check_out', checkIn: '09:00', checkOut: '18:30', reason: ' Left for a meeting. ')), {
@@ -409,6 +410,88 @@ void main() {
       expect(AttendanceWords.lockText(network: false, gps: false), isNull);
       expect(AttendanceWords.lockText(network: true, gps: false, ownPlaces: ['Studio']), endsWith('At your own check-in place (Studio) you can check in off it.'));
       expect(AttendanceWords.lockText(network: true, gps: true), AttendanceWords.bothNeeded);
+    });
+  });
+
+  // owner, 31 October 2026: "locked after 2 working days"; the weekly and monthly attendance rate; the timer's colours;
+  // breaks counted in the hours
+  group('31 October 2026', () {
+    test('a day before the first still open offers no correction, and is refused with People’s words', () {
+      final m = MyMonth.fromJson({
+        ...octoberJson(),
+        'ask': {'from': '2026-10-28', 'workingDays': 2},
+      });
+      expect(m.askFrom, '2026-10-28');
+      expect(offerFor(m, '2026-10-27', '2026-10-30'), isA<NoOffer>());
+      expect(offerFor(m, '2026-10-29', '2026-10-30'), isA<CanAsk>());
+      expect(
+        correctionProblems((date: '2026-10-27', kind: 'wrong_time', checkIn: '09:00', checkOut: null, reason: 'Why'), m, today: '2026-10-30', now: DateTime(2026, 10, 30, 14)),
+        [AttendanceWords.tooLate('27/10/2026', 2)],
+      );
+      expect(monthAsks(m, '2026-10-30'), isTrue);
+      // a month all of whose days are closed offers no "Ask for a correction"
+      expect(monthAsks(MyMonth.fromJson({...octoberJson(), 'ask': {'from': '2026-11-02', 'workingDays': 2}}), '2026-11-03'), isFalse);
+      expect(correctionKinds, ['forgot_check_in', 'forgot_check_out', 'wrong_time']);
+    });
+
+    test('reads the rates through the month', () {
+      final m = MyMonth.fromJson({
+        ...octoberJson(),
+        'rates': {
+          'month': '2026-10',
+          'monthToDate': {'from': '2026-10-01', 'to': '2026-10-30', 'attendedDays': 19, 'expectedDays': 20, 'rate': 0.95},
+          'weeks': [
+            {'from': '2026-10-01', 'to': '2026-10-03', 'attendedDays': 1, 'expectedDays': 1, 'rate': 1, 'current': false},
+            {'from': '2026-10-25', 'to': '2026-10-31', 'attendedDays': 2, 'expectedDays': 3, 'rate': 2 / 3, 'current': true},
+          ],
+        },
+      });
+      expect(m.rates!.monthToDate.rate, 0.95);
+      expect(m.rates!.weeks, hasLength(2));
+      expect(m.rates!.thisWeek!.from, '2026-10-25');
+      expect(MyMonth.fromJson(octoberJson()).rates, isNull);
+      expect(AttendanceWords.weekRange('2026-10-25', '2026-10-31'), '25–31 Oct');
+      expect(AttendanceWords.weekRange('2026-10-31', '2026-10-31'), '31 Oct');
+      expect(AttendanceWords.percent(2 / 3), '67%');
+      expect(AttendanceWords.daysOf(0, 0), 'No working day yet');
+    });
+
+    test('colours a share by the whole percent shown: under 80 red, 80 to 90 yellow, over 90 green', () {
+      expect(rateBandOf(0.794), RateBand.low);
+      expect(rateBandOf(0.795), RateBand.mid);
+      expect(rateBandOf(0.9), RateBand.mid);
+      expect(rateBandOf(0.904), RateBand.mid);
+      expect(rateBandOf(0.905), RateBand.high);
+      expect(rateBandOf(null), isNull);
+      // on the one dark card (light look), the dark look's colours; on a card, the look's own
+      expect(Palette.light.bandColour(RateBand.high, onInverse: true), Palette.dark.ok);
+      expect(Palette.dark.bandColour(RateBand.low, onInverse: true), Palette.light.danger);
+      expect(Palette.light.bandColour(RateBand.mid), Palette.light.warn);
+    });
+
+    test('the time worked counts the break: checked in again, from the last check-out', () {
+      // in 9:00, out 13:00, in 14:00 (UTC here): People counts 4:00 so far; at 15:00 it is 6:00, the break included
+      final t = Today.fromJson({
+        'next': 'out',
+        'punches': [
+          {'kind': 'in', 'at': '2026-10-30T09:00:00.000Z', 'place': 'office', 'flags': []},
+          {'kind': 'out', 'at': '2026-10-30T13:00:00.000Z', 'place': 'office', 'flags': []},
+          {'kind': 'in', 'at': '2026-10-30T14:00:00.000Z', 'place': 'office', 'flags': []},
+        ],
+        'day': {
+          'hoursCounted': 4,
+          'openAt': '2026-10-30T14:00:00.000Z',
+          'pairs': [
+            {'in': '2026-10-30T09:00:00.000Z', 'out': '2026-10-30T13:00:00.000Z'},
+          ],
+        },
+        'shift': {'startTime': '09:00', 'endTime': '18:00', 'hoursPerDay': 9},
+      });
+      expect(t.workedAt(DateTime.utc(2026, 10, 30, 15)), const Duration(hours: 6));
+      expect(rateBandOf(t.shareAt(DateTime.utc(2026, 10, 30, 15))), RateBand.low);
+      // 7:30 of 9 hours (83%) yellow; 8:15 (92%) green
+      expect(rateBandOf(t.shareAt(DateTime.utc(2026, 10, 30, 16, 30))), RateBand.mid);
+      expect(rateBandOf(t.shareAt(DateTime.utc(2026, 10, 30, 17, 15))), RateBand.high);
     });
   });
 }

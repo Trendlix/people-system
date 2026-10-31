@@ -58,6 +58,8 @@ class Palette extends ThemeExtension<Palette> {
     required this.primary,
     required this.onPrimary,
     required this.danger,
+    required this.warn,
+    required this.ok,
     required this.shadow,
     required this.inverse,
     required this.onInverse,
@@ -98,6 +100,11 @@ class Palette extends ThemeExtension<Palette> {
   /// A refusal or a problem: the design has no colour for it, so a quiet red.
   final Color danger;
 
+  /// The owner's colours for a share achieved (31 October 2026: "below 80% color it red, from 80 to 90 color it yellow,
+  /// above 90% green"): red is [danger], then yellow and green, each readable on this look's cards.
+  final Color warn;
+  final Color ok;
+
   /// A card's soft shadow.
   final List<BoxShadow> shadow;
 
@@ -125,6 +132,8 @@ class Palette extends ThemeExtension<Palette> {
     primary: Color(0xFF151514),
     onPrimary: Color(0xFFFFFFFF),
     danger: Color(0xFFB42318),
+    warn: Color(0xFFA15C07),
+    ok: Color(0xFF067647),
     shadow: [BoxShadow(color: Color(0x12141412), offset: Offset(0, 18), blurRadius: 50)],
     inverse: Color(0xFF111110),
     onInverse: Color(0xFFF8F8F4),
@@ -147,6 +156,8 @@ class Palette extends ThemeExtension<Palette> {
     primary: Color(0xFFF3F3EE),
     onPrimary: Color(0xFF1C1C1A),
     danger: Color(0xFFF97066),
+    warn: Color(0xFFFAC515),
+    ok: Color(0xFF47CD89),
     shadow: [BoxShadow(color: Color(0x38000000), offset: Offset(0, 18), blurRadius: 50)],
     inverse: Color(0xFFF3F3EE),
     onInverse: Color(0xFF111110),
@@ -172,6 +183,8 @@ class Palette extends ThemeExtension<Palette> {
     Color? primary,
     Color? onPrimary,
     Color? danger,
+    Color? warn,
+    Color? ok,
     List<BoxShadow>? shadow,
     Color? inverse,
     Color? onInverse,
@@ -192,6 +205,8 @@ class Palette extends ThemeExtension<Palette> {
     primary: primary ?? this.primary,
     onPrimary: onPrimary ?? this.onPrimary,
     danger: danger ?? this.danger,
+    warn: warn ?? this.warn,
+    ok: ok ?? this.ok,
     shadow: shadow ?? this.shadow,
     inverse: inverse ?? this.inverse,
     onInverse: onInverse ?? this.onInverse,
@@ -218,6 +233,8 @@ class Palette extends ThemeExtension<Palette> {
       primary: mix(primary, other.primary),
       onPrimary: mix(onPrimary, other.onPrimary),
       danger: mix(danger, other.danger),
+      warn: mix(warn, other.warn),
+      ok: mix(ok, other.ok),
       shadow: BoxShadow.lerpList(shadow, other.shadow, t) ?? other.shadow,
       inverse: mix(inverse, other.inverse),
       onInverse: mix(onInverse, other.onInverse),
@@ -227,6 +244,29 @@ class Palette extends ThemeExtension<Palette> {
       tabActive: mix(tabActive, other.tabActive),
       tabInactive: mix(tabInactive, other.tabInactive),
     );
+  }
+}
+
+/// A share achieved, in the owner's three bands (31 October 2026), by the whole percent shown: under 80 low (red), 80 to 90
+/// mid (yellow), over 90 high (green). The website's (packages/shared attendance-history.ts rateBand).
+enum RateBand { low, mid, high }
+
+RateBand? rateBandOf(double? share) {
+  if (share == null || !share.isFinite) return null;
+  final percent = (share * 100).round();
+  return percent < 80 ? RateBand.low : (percent <= 90 ? RateBand.mid : RateBand.high);
+}
+
+extension BandColours on Palette {
+  /// A band's colour on this look's cards; `onInverse`: on the one card that stands out, which is the other look's
+  /// background, so the other look's colour.
+  Color bandColour(RateBand band, {bool onInverse = false}) {
+    final from = onInverse ? (isDark ? Palette.light : Palette.dark) : this;
+    return switch (band) {
+      RateBand.low => from.danger,
+      RateBand.mid => from.warn,
+      RateBand.high => from.ok,
+    };
   }
 }
 

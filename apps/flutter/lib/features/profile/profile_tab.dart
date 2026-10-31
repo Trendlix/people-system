@@ -6,33 +6,35 @@ import 'package:go_router/go_router.dart';
 import '../../auth/auth_controller.dart';
 import '../../format.dart';
 import '../../models/employee_details.dart';
-import '../../models/payslip.dart';
+import '../../models/kpi.dart';
 import '../../models/profile.dart';
 import '../../providers.dart';
 import '../../shell/app_shell.dart';
 import '../../theme/parts.dart';
 import '../../theme/tokens.dart';
+import '../assets/assets_data.dart';
+import '../assets/my_assets_screen.dart';
 import '../dashboard/dashboard_data.dart';
 import 'change_request_sheet.dart';
-import 'profile_data.dart';
 import 'profile_parts.dart';
 import 'profile_words.dart';
 
 // The Profile tab (the phone design, Figma "Mobile Flutter App", 30 October 2026): who they are on the dark card (the
 // initials, their code, name, job and how complete the profile is), four tiles (manager, work location, joined,
-// employment), the Personal · Contact · Employment · Payroll switch and its card, their HR records and the account's
-// settings. Only what People sends the employee: the file is HR's, so "Edit details" asks HR for a change (the website's
+// employment), the Personal · Contact · Employment · KPIs switch and its card (the KPIs in place of the design's
+// Payroll: owner, 31 October 2026, "replace payslips with the KPI's"), their HR records with the company's assets they
+// hold (31 October 2026: "every employee sees his assets") and the account's settings. Only what People sends the employee: the file is HR's, so "Edit details" asks HR for a change (the website's
 // Request a Change); no national ID, bank or salary (HR's, Finance's and the CEO's); the employee file's papers are HR's
 // to see, so Documents says which ones HR still needs.
 
 /// The four parts the switch shows.
-enum ProfileSection { personal, contact, employment, payroll }
+enum ProfileSection { personal, contact, employment, kpis }
 
 String _labelOf(ProfileSection s) => switch (s) {
   ProfileSection.personal => ProfileWords.personal,
   ProfileSection.contact => ProfileWords.contact,
   ProfileSection.employment => ProfileWords.employment,
-  ProfileSection.payroll => ProfileWords.payroll,
+  ProfileSection.kpis => ProfileWords.kpis,
 };
 
 class ProfileTab extends ConsumerStatefulWidget {
@@ -67,7 +69,8 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
       onRefresh: () async {
         ref
           ..invalidate(ownProfileProvider)
-          ..invalidate(myPayslipsProvider);
+          ..invalidate(myKpisProvider)
+          ..invalidate(myCustodyProvider);
         await ref.read(ownProfileProvider.future).catchError((_) => null);
       },
       child: ListView(
@@ -99,7 +102,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
         ProfileSection.personal => _DetailsCard.personal(profile: p, details: details),
         ProfileSection.contact => _DetailsCard.contact(profile: p, details: details),
         ProfileSection.employment => _EmploymentCard(job: details.job),
-        ProfileSection.payroll => const _PayrollCard(),
+        ProfileSection.kpis => const _KpisCard(),
       },
       const SizedBox(height: 12),
       _DocumentsCard(profile: p, job: details.job),
@@ -376,7 +379,7 @@ class _SectionSwitch extends StatelessWidget {
           children: [
             Row(children: [item(ProfileSection.personal), const SizedBox(width: 4), item(ProfileSection.contact)]),
             const SizedBox(height: 4),
-            Row(children: [item(ProfileSection.employment), const SizedBox(width: 4), item(ProfileSection.payroll)]),
+            Row(children: [item(ProfileSection.employment), const SizedBox(width: 4), item(ProfileSection.kpis)]),
           ],
         ),
       ),
@@ -614,50 +617,52 @@ class _EmploymentCard extends StatelessWidget {
   }
 }
 
-// ---------- payroll ----------
+// ---------- KPIs ----------
 
-class _PayrollCard extends ConsumerWidget {
-  const _PayrollCard();
+/// Their monthly scorecards (owner, 31 October 2026: "replace payslips with the KPI's"): the latest three, each with its
+/// step and, once signed off, its final % and level; all of them on My performance.
+class _KpisCard extends ConsumerWidget {
+  const _KpisCard();
+
+  static const _shown = 3;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final text = Theme.of(context).textTheme;
-    final slips = ref.watch(myPayslipsProvider);
+    final cards = ref.watch(myKpisProvider);
     return SurfaceCard(
       padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const ProfileCardHead(eyebrow: ProfileWords.payroll, title: ProfileWords.payslips, intro: ProfileWords.payrollIntro),
+          const ProfileCardHead(eyebrow: ProfileWords.performance, title: ProfileWords.kpisTitle, intro: ProfileWords.kpisIntro),
           const SizedBox(height: 17),
-          switch (slips) {
-            AsyncValue(value: final List<MyPayslip> list) when list.isEmpty => Text(ProfileWords.noPayslips, style: text.bodyMedium),
-            AsyncValue(value: final List<MyPayslip> list) => Column(
+          switch (cards) {
+            AsyncValue(value: final List<KpiScorecard> list) when list.isEmpty => Text(ProfileWords.noKpis, style: text.bodyMedium),
+            AsyncValue(value: final List<KpiScorecard> list) => Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                for (final s in list)
+                for (final k in list.take(_shown))
                   RecordRow(
-                    icon: CupertinoIcons.doc_text,
-                    title: monthNameOf(s.month),
-                    subtitle: s.onHold ? ProfileWords.onHold : (s.paidOn == null ? ProfileWords.paid : ProfileWords.paidOn(shortDateOf(s.paidOn!))),
-                    trailing: s.onHold || s.net == null
-                        ? null
-                        : Padding(
-                            padding: const EdgeInsets.only(left: 12),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Text(egpOf(s.net!), style: text.bodyMedium),
-                                Text(ProfileWords.net, style: text.bodySmall),
-                              ],
-                            ),
-                          ),
+                    icon: CupertinoIcons.graph_square,
+                    title: monthNameOf(k.month),
+                    subtitle: k.levelLabel ?? k.statusLabel,
+                    trailing: Padding(
+                      padding: const EdgeInsets.only(left: 12),
+                      child: k.finalPercent == null ? Pill(k.statusLabel) : Text('${oneDecimal(k.finalPercent!)}%', style: text.titleLarge),
+                    ),
                   ),
-                const SizedBox(height: 8),
-                Text(ProfileWords.openOnWebsite, style: text.bodySmall),
+                const SizedBox(height: 4),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: ArrowLink(
+                    list.length > _shown ? ProfileWords.allScorecards(list.length) : ProfileWords.openPerformance,
+                    onTap: () => context.go('/profile/performance'),
+                  ),
+                ),
               ],
             ),
-            AsyncError(:final error) => LoadFailed(error: error, onRetry: () => ref.invalidate(myPayslipsProvider)),
+            AsyncError(:final error) => LoadFailed(error: error, onRetry: () => ref.invalidate(myKpisProvider)),
             _ => const SizedBox(height: 60, child: Center(child: CircularProgressIndicator(strokeWidth: 2))),
           },
         ],
@@ -694,6 +699,8 @@ class _DocumentsCard extends StatelessWidget {
           ),
           for (final paper in papers) RecordRow(icon: CupertinoIcons.doc, title: paper, subtitle: ProfileWords.neededByHr),
           if (papers.isEmpty) const RecordRow(icon: CupertinoIcons.folder, title: ProfileWords.employeeFile, subtitle: ProfileWords.fileComplete),
+          // what the company handed them (owner, 31 October 2026: "every employee sees his assets")
+          AssetsRow(onTap: () => context.go('/profile/assets')),
         ],
       ),
     );

@@ -3,16 +3,20 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:people/app.dart';
 import 'package:people/auth/session_store.dart';
+import 'package:people/features/assets/assets_words.dart';
+import 'package:people/features/performance/performance_screen.dart';
 import 'package:people/features/profile/profile_tab.dart';
 import 'package:people/features/profile/profile_words.dart';
 import 'package:people/providers.dart';
 import 'package:people/shell/shell_words.dart';
 
 import 'fakes.dart';
-import 'profile_models_test.dart' show ownProfileJson, payslipsJson, pendingRequestJson;
+import 'assets_test.dart' show custodyJson;
+import 'profile_models_test.dart' show kpisJson, ownProfileJson, pendingRequestJson;
 
 // The Profile tab (the phone design, 30 October 2026): who they are, the four tiles, Personal · Contact · Employment ·
-// Payroll, their HR records and the account's rows; "Edit details" asks HR for a change (only what changed is sent);
+// KPIs (the KPIs in place of Payroll: owner, 31 October 2026), their HR records with the company's assets they hold,
+// and the account's rows; "Edit details" asks HR for a change (only what changed is sent);
 // a request waiting can be cancelled; nothing People keeps from the employee is shown.
 
 Future<void> openProfile(WidgetTester tester, FakePeople people) async {
@@ -57,7 +61,8 @@ void main() {
     people = FakePeople()
       ..on('GET /api/auth/me', (req) => json(meJson(name: 'Mohamed Abdelrahman')))
       ..on('GET /api/employees/e1', (req) => json(ownProfileJson()))
-      ..on('GET /api/me/payslips', (req) => json(payslipsJson()));
+      ..on('GET /api/kpis/scorecards/mine', (req) => json(kpisJson()))
+      ..on('GET /api/me/custody', (req) => json(custodyJson()));
   });
 
   testWidgets('shows who they are, the four tiles and their personal details, nothing People keeps from them', (tester) async {
@@ -90,7 +95,7 @@ void main() {
     expect(find.text('Manage'), findsNothing);
   });
 
-  testWidgets('switches to Contact, Employment and Payroll', (tester) async {
+  testWidgets('switches to Contact, Employment and KPIs', (tester) async {
     await openProfile(tester, people);
     await scrollTo(tester, section(ProfileWords.contact));
     await tester.tap(section(ProfileWords.contact));
@@ -111,15 +116,49 @@ void main() {
     expect(find.text('In the office on Sun, Tue'), findsOneWidget);
     expect(find.text('A · 09:00 – 18:00'), findsOneWidget);
     expect(find.text(ProfileWords.askToChange), findsNothing);
+
+    await scrollTo(tester, section(ProfileWords.kpis), up: true);
+    await tester.tap(section(ProfileWords.kpis));
+    await tester.pumpAndSettle();
+    await scrollTo(tester, find.text('August 2026'));
+    // the latest three: October's with the manager, then the final % and level of those signed off
+    expect(find.text('October 2026'), findsOneWidget);
+    expect(find.text('With the manager'), findsWidgets);
+    expect(find.text('September 2026'), findsOneWidget);
+    expect(find.text('104.5%'), findsOneWidget);
+    expect(find.text('Above expectations'), findsOneWidget);
+    expect(find.text('95%'), findsOneWidget);
+    expect(find.text('July 2026'), findsNothing);
+    // no payslips any more
+    expect(find.textContaining('Payslip'), findsNothing);
     expect(people.calls, isNot(contains('GET /api/me/payslips')));
 
-    await scrollTo(tester, section(ProfileWords.payroll), up: true);
-    await tester.tap(section(ProfileWords.payroll));
+    // all of them on My performance, under the Profile
+    await scrollTo(tester, find.text(ProfileWords.allScorecards(4)));
+    await tester.tap(find.text(ProfileWords.allScorecards(4)));
     await tester.pumpAndSettle();
-    await scrollTo(tester, find.text('September 2026'));
-    expect(find.text('EGP 18,250.00'), findsOneWidget);
-    expect(find.text('Paid on 28 Sep 2026'), findsOneWidget);
-    expect(find.text(ProfileWords.onHold), findsOneWidget);
+    expect(find.text(PerformanceScreen.title), findsOneWidget);
+    expect(find.text('July 2026'), findsOneWidget);
+  });
+
+  testWidgets('says when there are no scorecards yet', (tester) async {
+    people.on('GET /api/kpis/scorecards/mine', (req) => json([]));
+    await openProfile(tester, people);
+    await scrollTo(tester, section(ProfileWords.kpis));
+    await tester.tap(section(ProfileWords.kpis));
+    await tester.pumpAndSettle();
+    await scrollTo(tester, find.text(ProfileWords.noKpis));
+    expect(find.text(ProfileWords.openPerformance), findsNothing);
+  });
+
+  testWidgets('HR records show the company assets they hold, and open My Assets', (tester) async {
+    await openProfile(tester, people);
+    await scrollTo(tester, find.text(AssetsWords.companyAssets));
+    expect(find.text(AssetsWords.withYou(2)), findsOneWidget);
+    await tester.tap(find.text(AssetsWords.companyAssets));
+    await tester.pumpAndSettle();
+    expect(find.text(AssetsWords.title), findsOneWidget);
+    expect(find.text('MacBook Pro 14'), findsOneWidget);
   });
 
   testWidgets('asks HR to change a detail: only what changed is sent, then the profile is read again', (tester) async {

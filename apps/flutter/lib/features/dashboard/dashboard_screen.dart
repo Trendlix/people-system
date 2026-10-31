@@ -13,6 +13,7 @@ import '../../theme/parts.dart';
 import '../../theme/tokens.dart';
 import '../today/today_controller.dart';
 import 'dashboard_data.dart';
+import '../requests/kinds/od.dart' show showOdSheet;
 import 'shift_card.dart';
 
 /// The Dashboard's words, in one place (ready for Arabic).
@@ -22,8 +23,8 @@ abstract final class DashboardWords {
   static const selfService = 'Self service';
   static const quickActions = 'Quick actions';
   static const requestLeave = 'Request leave';
-  static const fixAttendance = 'Fix attendance';
-  static const correctAWorkday = 'Correct a workday';
+  static const officialDuty = 'Official duty';
+  static const awayFromOffice = 'Work away from the office';
   static const viewRequests = 'View requests';
   static const myPerformance = 'My performance';
   static const overview = 'Overview';
@@ -128,7 +129,9 @@ class _QuickActions extends ConsumerWidget {
         available == null ? null : DashboardWords.daysAvailableOf(daysFigure(available)),
         '/requests',
       ),
-      (CupertinoIcons.clock, DashboardWords.fixAttendance, DashboardWords.correctAWorkday, '/attendance'),
+      // official duty in place of a correction (owner, 31 October 2026: "replace correction with OD in the homepage for the
+      // requests section"): its sheet, as the Requests tab opens it
+      (CupertinoIcons.briefcase, DashboardWords.officialDuty, DashboardWords.awayFromOffice, null),
       (CupertinoIcons.doc_text, DashboardWords.viewRequests, open == null ? null : DashboardWords.openOf(open), '/requests'),
       (
         CupertinoIcons.graph_square,
@@ -144,7 +147,10 @@ class _QuickActions extends ConsumerWidget {
       mainAxisSpacing: 12,
       crossAxisSpacing: 12,
       childAspectRatio: 1.02,
-      children: [for (final (icon, title, sub, path) in tiles) _QuickTile(icon: icon, title: title, subtitle: sub, onTap: () => context.go(path))],
+      children: [
+        for (final (icon, title, sub, path) in tiles)
+          _QuickTile(icon: icon, title: title, subtitle: sub, onTap: () => path == null ? showOdSheet(context) : context.go(path)),
+      ],
     );
   }
 }

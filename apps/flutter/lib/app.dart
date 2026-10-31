@@ -6,8 +6,11 @@ import 'package:go_router/go_router.dart';
 
 import 'api/people_client.dart';
 import 'auth/auth_controller.dart';
+import 'features/assets/my_assets_screen.dart';
 import 'features/attendance/attendance_tab.dart';
 import 'features/dashboard/dashboard_screen.dart';
+import 'features/kpis/kpi_words.dart';
+import 'features/kpis/team_kpis_screen.dart';
 import 'features/performance/performance_screen.dart';
 import 'features/profile/account_screens.dart';
 import 'features/profile/profile_tab.dart';
@@ -32,7 +35,8 @@ class _PeopleAppState extends ConsumerState<PeopleApp> {
   final _signedIn = ValueNotifier<int>(0);
 
   /// The app's screens and their addresses: the sign-in, and once signed in the phone design's frame with its four
-  /// tabs (Dashboard, Requests, Attendance, Profile), each keeping its place; the account's screens under Profile.
+  /// tabs (Dashboard, Requests, Attendance, Profile), each keeping its place; the account's screens, My Assets and the
+  /// scorecards under Profile.
   late final _router = GoRouter(
     initialLocation: '/dashboard',
     refreshListenable: _signedIn,
@@ -57,7 +61,15 @@ class _PeopleAppState extends ConsumerState<PeopleApp> {
               GoRoute(
                 path: '/dashboard',
                 builder: (context, state) => _SignedIn(builder: (me) => DashboardScreen(me: me)),
-                routes: [GoRoute(path: 'performance', builder: (context, state) => const PerformanceScreen())],
+                routes: [
+                  GoRoute(
+                    path: 'performance',
+                    builder: (context, state) => const PerformanceScreen(),
+                    // the scorecards of the people they score (owner, 31 October 2026: "employees and managers can
+                    // perform the KPI's from the mobile app"), from the More menu
+                    routes: [GoRoute(path: 'team', builder: (context, state) => const TeamKpisScreen(back: KpiWords.myTitle))],
+                  ),
+                ],
               ),
             ],
           ),
@@ -88,6 +100,16 @@ class _PeopleAppState extends ConsumerState<PeopleApp> {
                   GoRoute(
                     path: 'interview-hours',
                     builder: (context, state) => const InterviewHoursScreen(),
+                  ),
+                  // the company's assets they hold (owner, 31 October 2026: "every employee sees his assets")
+                  GoRoute(
+                    path: 'assets',
+                    builder: (context, state) => const MyAssetsScreen(),
+                  ),
+                  // their scorecards from the Profile's KPIs (owner, 31 October 2026: "replace payslips with the KPI's")
+                  GoRoute(
+                    path: 'performance',
+                    builder: (context, state) => const PerformanceScreen(),
                   ),
                 ],
               ),

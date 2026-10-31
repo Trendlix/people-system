@@ -228,17 +228,27 @@ class NoOffer extends DayOffer {
 }
 
 /// A day of the month (the website's dayCorrection): its correction being decided, else a way to ask on a day gone by or
-/// today, not of leave, in a month whose payroll isn't approved; nothing from an API from before corrections.
+/// today, not of leave, in a month whose payroll isn't approved, within 2 working days of the day (owner, 31 October 2026:
+/// "locked after 2 working days": from `askFrom` on); nothing from an API from before corrections.
 DayOffer offerFor(MyMonth m, String date, String today) {
   if (m.corrections == null) return const NoOffer();
   final open = m.openCorrectionOn(date);
   if (open != null) return OpenCorrection(open);
   if (m.correctable != true || date.compareTo(today) > 0 || m.dayOn(date)?.status == 'leave') return const NoOffer();
+  if (tooLateToAsk(m, date)) return const NoOffer();
   return const CanAsk();
 }
 
-/// Whether the month offers "Ask for a correction" at all: its days can be corrected and one of them has come.
-bool monthAsks(MyMonth m, String today) => m.corrections != null && m.correctable == true && monthBounds(m.month).first.compareTo(today) <= 0;
+/// Asked too long after the day (owner, 31 October 2026: "locked after 2 working days").
+bool tooLateToAsk(MyMonth m, String date) => m.askFrom != null && date.compareTo(m.askFrom!) < 0;
+
+/// Whether the month offers "Ask for a correction" at all: its days can be corrected, one of them has come, and one of
+/// them is still open to ask about (the month's last day not before `askFrom`).
+bool monthAsks(MyMonth m, String today) =>
+    m.corrections != null &&
+    m.correctable == true &&
+    monthBounds(m.month).first.compareTo(today) <= 0 &&
+    (m.askFrom == null || monthBounds(m.month).last.compareTo(m.askFrom!) >= 0);
 
 /// A day as it is on record (or was, when a correction was asked): "09:05 – no check-out", "Absent", "Rest day", "No
 /// day on record".
@@ -259,18 +269,17 @@ String rightTimesText(DateTime? checkIn, DateTime? checkOut) {
 /// A moment as the lists say it: "27/10/2026, 09:05".
 String momentText(DateTime at) => '${AttendanceWords.dmy(isoDayOf(at))}, ${clockOf(at)}';
 
-/// The correction kinds, in the form's order.
-const correctionKinds = ['forgot_check_in', 'forgot_check_out', 'wrong_time', 'worked_remotely'];
+/// The correction kinds, in the form's order (owner, 31 October 2026: work away from the office is official duty now,
+/// "Remove it, point to OD"; the corrections of that kind made before still show as they were).
+const correctionKinds = ['forgot_check_in', 'forgot_check_out', 'wrong_time'];
 
 enum TimeNeed { required, optional, none }
 
 /// The times each kind asks for: forgot to check in, the time they came in (and when they left, if they know it);
-/// forgot to check out, the time they left; a time wrong, either or both; worked remotely or at a client, both, the
-/// check-in needed when none is on record.
+/// forgot to check out, the time they left; a time wrong, either or both.
 ({TimeNeed checkIn, TimeNeed checkOut}) timesNeeded(String? kind, DayRecord? day) => switch (kind) {
   'forgot_check_in' => (checkIn: TimeNeed.required, checkOut: TimeNeed.optional),
   'forgot_check_out' => (checkIn: TimeNeed.none, checkOut: TimeNeed.required),
-  'worked_remotely' => (checkIn: day?.checkIn != null ? TimeNeed.optional : TimeNeed.required, checkOut: TimeNeed.optional),
   _ => (checkIn: TimeNeed.optional, checkOut: TimeNeed.optional),
 };
 
@@ -298,6 +307,8 @@ List<String> correctionProblems(TypedCorrection t, MyMonth m, {required String t
   final date = t.date!;
   final shown = AttendanceWords.dmy(date);
   if (date.compareTo(today) > 0) return [AttendanceWords.stillToCome(shown)];
+  // asked too long after the day (owner, 31 October 2026: "locked after 2 working days")
+  if (tooLateToAsk(m, date)) return [AttendanceWords.tooLate(shown, m.askWorkingDays ?? 2)];
   final problems = <String>[];
   if (t.kind == null || !correctionKinds.contains(t.kind)) problems.add(AttendanceWords.needKind);
   final reason = t.reason.trim();
@@ -333,8 +344,6 @@ List<String> correctionProblems(TypedCorrection t, MyMonth m, {required String t
     } else if (day?.checkIn == null && day?.checkOut == null) {
       problems.add(AttendanceWords.nothingToCorrect(shown));
     }
-  } else if (inTime == null && day?.checkIn == null) {
-    problems.add(AttendanceWords.needStart(shown));
   }
   if (problems.isNotEmpty) return problems;
   // a time not yet come today (owner, 26 October 2026: refuse it), by the phone's clock; People checks it by its own

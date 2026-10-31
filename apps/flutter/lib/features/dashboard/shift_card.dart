@@ -101,8 +101,12 @@ class _Card extends StatelessWidget {
     final status = last == null
         ? CheckInWords.readyToStart
         : (last.kind == PunchKind.checkIn ? CheckInWords.statusIn : CheckInWords.statusOut)(clockOf(last.at));
-    final worked = today.workedAt(DateTime.now());
-    final big = last == null ? clockOf(DateTime.now()) : workClockOf(worked);
+    final now = DateTime.now();
+    final worked = today.workedAt(now);
+    final big = last == null ? clockOf(now) : workClockOf(worked);
+    // the time worked in the owner's colours (31 October 2026: "below 80% color it red, from 80 to 90 color it yellow,
+    // above 90% green"), as a share of the shift's hours a day; the clock before checking in stays plain
+    final band = last == null ? null : rateBandOf(today.shareAt(now));
     final where = last != null ? CheckInWords.placeOf(last) : today.expectedText;
     final notes = CheckInWords.notes(today);
     final muted = text.bodyMedium?.copyWith(color: p.inverseMuted);
@@ -145,8 +149,9 @@ class _Card extends StatelessWidget {
             if (last != null) Text(CheckInWords.workedToday, style: muted),
             Text(
               big,
+              semanticsLabel: band == null ? null : '$big, ${CheckInWords.ofTheDay(today.shareAt(now))}',
               style: text.displayMedium?.copyWith(
-                color: p.onInverse,
+                color: band == null ? p.onInverse : p.bandColour(band, onInverse: true),
                 fontSize: 64,
                 letterSpacing: -4.2,
                 fontFeatures: const [FontFeature.tabularFigures()],

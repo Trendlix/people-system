@@ -152,13 +152,29 @@ phase, and record every decision the owner makes here (with the date and their w
     attendance correction, official duty, compensatory day, reimbursement (receipt photos), check-in location,
     resignation. Each request has its page (its facts, who decides, every step, Cancel where People allows). Files are
     listed by name (opening them stays on the website for now); photos only, no PDF picking yet.
-  - Attendance: the month switcher, Today's panel (the shared press), the week/month calendar, the figures (no
-    attendance rate: the owner's 23 October decision), Your days, a day's details, Ask for a correction, My corrections.
+  - Attendance: the month switcher, Today's panel (the shared press), the week/month calendar, the figures, Your days, a
+    day's details, Ask for a correction, My corrections.
   - Profile: the head card, the four facts, Personal / Contact / Employment / Payroll (payslips paid and held, never a
     salary), Ask to change my details (the change request HR decides), Documents; the account's screens: Change
     Password, Profile Image (HR sets the photo: the screen says so, no pretend upload), Your Sessions (with the
     fingerprint's phones), Your Interview Hours.
   - Sheets open over the tab bar. Follow-ups: one correction flow instead of two (Requests' and Attendance's), PUT and
     multipart in `PeopleClient` (now in the features), opening files and payslip PDFs in the app.
+- [x] The owner's notes after trying 0.5.5 on a phone (31 October 2026), version 0.6:
+  - Corrections: asked on the day or within 2 working days of it ("asking for correction is to be locked after 2 working
+    days": People's rule, by the shift's working days without official holidays and their leave; HR still corrects any
+    day); "I worked remotely or at a client" is gone ("Remove it, point to OD"): both forms point to official duty.
+  - Attendance: the attendance rate through the month ("show the weekly attendance percentage and monthly percentage
+    ongoing through the month"): People's own figure (days attended ÷ working days expected), the month so far, this
+    week and each week, in the owner's colours; the figures without the notes under them ("to save more space").
+  - Dashboard: Official duty in place of Fix attendance; the time worked in the owner's colours ("below 80% color it red,
+    from 80 to 90 color it yellow, above 90% green", of the shift's hours a day), breaks counted in it ("dont calculate
+    breaks, they are included in the working hours": People counts the first check-in to the last check-out).
+  - Never told one is exempt from check-in ("dont show for the employee that he is exempted": People leaves it out).
+  - My assets ("every employee sees his assets"): More → My assets, and the Profile's HR records; what they hold now and
+    their custody records, read only.
+  - Profile: KPIs in place of Payroll ("replace payslips with the KPI's"; payslips stay on the website).
+  - KPIs ("employees and managers can perform the KPI's from the mobile app"): My KPIs (rate yourself, sign) and Team
+    KPIs for whoever scores a team's (score, send, sign); HR's calibration stays on the website.
 - [ ] Phase 3 — Approve in one move — not in the phone design; to be placed in the Requests tab in its style — next.
-- [ ] Phase 4 — push notifications (Firebase), custody and assets.
+- [ ] Phase 4 — push notifications (Firebase); opening files and payslip PDFs in the app.

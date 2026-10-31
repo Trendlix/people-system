@@ -78,7 +78,24 @@ void main() {
       ..on('GET /api/me/attendance/corrections', (req) => json([correctionJson()]));
   });
 
-  testWidgets('shows today, this month’s week, its figures and every day, with no attendance rate', (tester) async {
+  testWidgets('shows today, this month’s week, its attendance rate, its figures (no notes under them) and every day', (tester) async {
+    // the attendance rate through the month (owner, 31 October 2026)
+    people.on('GET /api/attendance/me', (req) {
+      final month = req.url.queryParameters['month']!;
+      monthsAsked.add(month);
+      return json({
+        ...octoberJson(),
+        'rates': {
+          'month': '2026-10',
+          'monthToDate': {'from': '2026-10-01', 'to': '2026-10-30', 'attendedDays': 19, 'expectedDays': 20, 'rate': 0.95},
+          'weeks': [
+            {'from': '2026-10-01', 'to': '2026-10-03', 'attendedDays': 1, 'expectedDays': 1, 'rate': 1, 'current': false},
+            {'from': '2026-10-18', 'to': '2026-10-24', 'attendedDays': 4, 'expectedDays': 5, 'rate': 0.8, 'current': false},
+            {'from': '2026-10-25', 'to': '2026-10-31', 'attendedDays': 2, 'expectedDays': 3, 'rate': 2 / 3, 'current': true},
+          ],
+        },
+      });
+    });
     await openAttendance(tester, people);
     expect(find.text(AttendanceWords.title), findsOneWidget);
     expect(find.text(AttendanceWords.readyToStart), findsOneWidget);
@@ -93,9 +110,17 @@ void main() {
     expect(find.bySemanticsLabel('Tue 27 October 2026, Worked'), findsOneWidget);
     expect(find.bySemanticsLabel('Sun 25 October 2026, On leave'), findsOneWidget);
 
+    await reach(tester, find.text('95%'));
+    expect(find.text(AttendanceWords.attendanceRate.toUpperCase()), findsOneWidget);
+    expect(find.text('19 of 20 working days so far'), findsOneWidget);
+    expect(find.text('67%'), findsOneWidget);
+    expect(find.bySemanticsLabel('This week, 25–31 Oct: 67%'), findsOneWidget);
+    expect(find.bySemanticsLabel('18–24 Oct: 80%'), findsOneWidget);
+
     await reach(tester, find.text('141:56'));
-    expect(find.text('8:52 daily average'), findsOneWidget);
-    expect(find.textContaining(RegExp('rate', caseSensitive: false)), findsNothing);
+    // the notes under the figures are gone (owner, 31 October 2026: "to save more space"); a screen reader hears them
+    expect(find.text('8:52 daily average'), findsNothing);
+    expect(find.bySemanticsLabel(RegExp('8:52 daily average')), findsOneWidget);
 
     await reach(tester, find.text('Thu 01'));
     expect(find.text(AttendanceWords.yourDays), findsOneWidget);
@@ -154,7 +179,7 @@ void main() {
   });
 
   testWidgets('asks for a correction from a day, sending the body People takes', (tester) async {
-    people.on('POST /api/me/attendance/corrections', (req) => json({...correctionJson(id: 'c9'), 'date': '2026-10-27', 'correctionKind': 'worked_remotely'}, 201));
+    people.on('POST /api/me/attendance/corrections', (req) => json({...correctionJson(id: 'c9'), 'date': '2026-10-27', 'correctionKind': 'wrong_time'}, 201));
     await openAttendance(tester, people);
     await reach(tester, find.text('Tue 27'));
     await tester.tap(find.text('Tue 27'));
@@ -167,17 +192,25 @@ void main() {
     expect(find.textContaining(AttendanceWords.needKind), findsOneWidget);
     expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, AttendanceWords.send)).onPressed, isNull);
 
-    await tester.tap(find.text(AttendanceWords.kinds['worked_remotely']!));
+    // work away from the office is official duty now (owner, 31 October 2026: "Remove it, point to OD")
+    expect(find.text(AttendanceWords.kinds['worked_remotely']!), findsNothing);
+    expect(find.text(AttendanceWords.awayIsOd), findsOneWidget);
+    await tester.tap(find.text(AttendanceWords.kinds['wrong_time']!));
     await tester.pumpAndSettle();
     expect(find.textContaining(AttendanceWords.optional), findsWidgets);
-    await tester.enterText(find.byType(TextField), 'At the client’s studio all day.');
+    await centre(tester, find.text(AttendanceWords.chooseTime).first);
+    await tester.tap(find.text(AttendanceWords.chooseTime).first);
     await tester.pumpAndSettle();
-    expect(find.text(AttendanceWords.ready('worked_remotely', 'Tuesday 27/10/2026')), findsOneWidget);
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'The door reader missed me.');
+    await tester.pumpAndSettle();
+    expect(find.text(AttendanceWords.ready('wrong_time', 'Tuesday 27/10/2026')), findsOneWidget);
 
     await centre(tester, find.text(AttendanceWords.send));
     await tester.tap(find.text(AttendanceWords.send));
     await tester.pumpAndSettle();
-    expect(people.bodyOf('POST /api/me/attendance/corrections'), {'date': '2026-10-27', 'kind': 'worked_remotely', 'reason': 'At the client’s studio all day.'});
+    expect(people.bodyOf('POST /api/me/attendance/corrections'), {'date': '2026-10-27', 'kind': 'wrong_time', 'checkIn': isA<String>(), 'reason': 'The door reader missed me.'});
     expect(find.text(AttendanceWords.sent('with_manager', managerRole: 'team_lead')), findsOneWidget);
     // the month read again with it
     expect(monthsAsked.where((m) => m == '2026-10').length, greaterThan(1));
@@ -197,7 +230,13 @@ void main() {
     await tester.tap(find.text('OK'));
     await tester.pumpAndSettle();
     expect(find.text('Thursday 22/10/2026'), findsOneWidget);
-    await tester.tap(find.text(AttendanceWords.kinds['worked_remotely']!));
+    await tester.tap(find.text(AttendanceWords.kinds['wrong_time']!));
+    await tester.pumpAndSettle();
+    await centre(tester, find.text(AttendanceWords.chooseTime).first);
+    await tester.tap(find.text(AttendanceWords.chooseTime).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'Client visit.');
     await tester.pumpAndSettle();
     await centre(tester, find.text(AttendanceWords.send));

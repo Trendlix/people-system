@@ -28,7 +28,7 @@ abstract final class ProfileWords {
   // the switch
   static const personal = 'Personal';
   static const contact = 'Contact';
-  static const payroll = 'Payroll';
+  static const kpis = 'KPIs';
   static const sections = 'Profile sections';
 
   // the details
@@ -69,15 +69,14 @@ abstract final class ProfileWords {
   static String officeDays(String days) => 'In the office on $days';
   static String contractLine(String form, String? until) => until == null ? form : '$form, until $until';
 
-  // payroll
-  static const payslips = 'Payslips';
-  static const payrollIntro = 'Each month HR marks paid, newest first, with what you were paid.';
-  static const noPayslips = 'No payslips yet: each month’s is issued once HR marks that payroll paid.';
-  static const onHold = 'On hold this month: not paid, so there is no payslip.';
-  static String paidOn(String day) => 'Paid on $day';
-  static const paid = 'Paid';
-  static const net = 'net';
-  static const openOnWebsite = 'To open or print a payslip, use the People website.';
+  // KPIs (owner, 31 October 2026: "replace payslips with the KPI's")
+  static const performance = 'Performance';
+  static const kpisTitle = 'Your KPIs';
+  static const kpisIntro = 'Your monthly scorecards, newest first. You rate and sign them on the People website.';
+  static const noKpis =
+      'No scorecards yet. A month’s scorecard opens on the 1st of the next month once HR has published the template for your job title.';
+  static const openPerformance = 'Open My performance';
+  static String allScorecards(int n) => 'See all $n scorecards';
 
   // documents
   static const hrRecords = 'HR records';

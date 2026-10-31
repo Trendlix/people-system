@@ -8,6 +8,7 @@ import '../../models/attendance_correction.dart';
 import '../../models/my_attendance.dart';
 import '../../theme/parts.dart';
 import '../../theme/tokens.dart';
+import '../requests/kinds/od.dart' show showOdSheet;
 import 'attendance_data.dart';
 import 'attendance_logic.dart';
 import 'attendance_words.dart';
@@ -51,18 +52,22 @@ class _CorrectionFormState extends ConsumerState<CorrectionForm> {
   var _sending = false;
   List<String>? _refused;
 
-  /// The days that can be chosen: the month's, up to today.
+  /// The days that can be chosen: the month's, up to today, from the first still open to ask about (owner, 31 October
+  /// 2026: "locked after 2 working days").
   ({DateTime first, DateTime last}) get _range {
     final b = monthBounds(widget.month.month);
     final last = b.last.compareTo(widget.today) > 0 ? widget.today : b.last;
-    return (first: DateTime.parse(b.first), last: DateTime.parse(last));
+    final from = widget.month.askFrom;
+    var first = from != null && from.compareTo(b.first) > 0 ? from : b.first;
+    if (first.compareTo(last) > 0) first = last;
+    return (first: DateTime.parse(first), last: DateTime.parse(last));
   }
 
   @override
   void initState() {
     super.initState();
     final d = widget.date;
-    if (d != null && d.startsWith(widget.month.month) && d.compareTo(widget.today) <= 0) _date = d;
+    if (d != null && d.startsWith(widget.month.month) && d.compareTo(widget.today) <= 0 && !tooLateToAsk(widget.month, d)) _date = d;
     _reason.addListener(() => setState(() {}));
   }
 
@@ -181,9 +186,23 @@ class _CorrectionFormState extends ConsumerState<CorrectionForm> {
         const SizedBox(height: 22),
         label(AttendanceWords.whatWasWrong),
         for (final k in correctionKinds) _Choice(label: AttendanceWords.kinds[k]!, selected: _kind == k, onTap: () => setState(() => _kind = k)),
+        // work away from the office is official duty (owner, 31 October 2026: "Remove it, point to OD")
+        const SizedBox(height: 6),
+        Text(AttendanceWords.awayIsOd, style: Theme.of(context).textTheme.bodySmall),
+        Align(
+          alignment: AlignmentDirectional.centerStart,
+          child: TextButton(
+            onPressed: () {
+              final host = Navigator.of(context, rootNavigator: true).context;
+              Navigator.of(context).pop();
+              showOdSheet(host);
+            },
+            child: const Text(AttendanceWords.askOd),
+          ),
+        ),
         if (needs.checkIn != TimeNeed.none) ...[
           const SizedBox(height: 18),
-          label(_kind == 'worked_remotely' ? AttendanceWords.startedAt : AttendanceWords.cameInAt, optional: needs.checkIn == TimeNeed.optional),
+          label(AttendanceWords.cameInAt, optional: needs.checkIn == TimeNeed.optional),
           _TimeField(value: _in, what: AttendanceWords.cameInAt, onTap: () => _pickTime(true), onClear: () => setState(() => _in = null)),
         ],
         if (needs.checkOut != TimeNeed.none) ...[

@@ -2,11 +2,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:people/models/account.dart';
 import 'package:people/models/employee_details.dart';
 import 'package:people/models/interview_hours.dart';
-import 'package:people/models/payslip.dart';
+import 'package:people/models/kpi.dart';
 import 'package:people/models/profile.dart';
 
 // The Profile's and the account screens' answers from People read by hand (README §2): one's own employee profile as
-// People sends it to the employee (no national ID, bank or salary), the payslips, the sessions and phones, the
+// People sends it to the employee (no national ID, bank or salary), the KPI scorecards, the sessions and phones, the
 // interview hours and the calendar. The fixtures are the other Profile tests' too.
 
 /// GET /api/employees/e1 as People answers the employee themself (apps/api employees.service.ts `get`).
@@ -125,28 +125,13 @@ Map<String, Object?> pendingRequestJson() => {
   'decisionNote': null,
 };
 
-/// GET /api/me/payslips.
-List<Map<String, Object?>> payslipsJson() => [
-  {
-    'lineId': 'l2',
-    'runId': 'p2',
-    'month': '2026-09',
-    'paidOn': '2026-09-28',
-    'net': 18250,
-    'transfer': 18250,
-    'onHold': false,
-    'issued': {'en': '2026-09-28T10:00:00.000Z', 'ar': null},
-  },
-  {
-    'lineId': 'l1',
-    'runId': 'p1',
-    'month': '2026-08',
-    'paidOn': null,
-    'net': 0,
-    'transfer': 0,
-    'onHold': true,
-    'issued': {'en': null, 'ar': null},
-  },
+/// GET /api/kpis/scorecards/mine (packages/shared kpis.ts KpiScorecardSummary, the fields the app reads): newest first,
+/// September's signed off, October's with the manager.
+List<Map<String, Object?>> kpisJson() => [
+  {'id': 'k3', 'month': '2026-10', 'status': 'manager', 'finalPercent': null, 'level': null, 'deadline': '2026-11-07'},
+  {'id': 'k2', 'month': '2026-09', 'status': 'final', 'finalPercent': 104.5, 'level': 'above', 'deadline': null},
+  {'id': 'k1', 'month': '2026-08', 'status': 'final', 'finalPercent': 95, 'level': 'meets', 'deadline': null},
+  {'id': 'k0', 'month': '2026-07', 'status': 'final', 'finalPercent': 82, 'level': 'needs_improvement', 'deadline': null},
 ];
 
 /// GET /api/auth/sessions: this phone's app session and a website one.
@@ -263,12 +248,15 @@ void main() {
     expect(EmployeeLabels.of(EmployeeLabels.workArrangement, 'wfh'), 'Work from home');
   });
 
-  test('reads the payslips, a month on hold without a payslip, and writes money as the website does', () {
-    final slips = payslipsOf(payslipsJson());
-    expect(slips.map((s) => (s.month, s.paidOn, s.net, s.onHold)), [('2026-09', '2026-09-28', 18250.0, false), ('2026-08', null, 0.0, true)]);
-    expect(payslipsOf({'not': 'a list'}), isEmpty);
-    expect(egpOf(18250), 'EGP 18,250.00');
-    expect(egpOf(1234567.5), 'EGP 1,234,567.50');
+  test('reads the KPI scorecards: the step until signed off, then the final % and level', () {
+    final cards = kpiScorecardsOf(kpisJson());
+    expect(cards.map((k) => (k.month, k.statusLabel, k.finalPercent, k.levelLabel)), [
+      ('2026-10', 'With the manager', null, null),
+      ('2026-09', 'Final', 104.5, 'Above expectations'),
+      ('2026-08', 'Final', 95.0, 'Meets expectations'),
+      ('2026-07', 'Final', 82.0, 'Needs improvement'),
+    ]);
+    expect(kpiScorecardsOf({'not': 'a list'}), isEmpty);
   });
 
   test('reads the sessions and phones, and says where each was signed in', () {
