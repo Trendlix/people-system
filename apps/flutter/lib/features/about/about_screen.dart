@@ -14,9 +14,11 @@ import '../profile/profile_parts.dart';
 import 'diagnostics.dart';
 
 /// About this app (owner, 31 October 2026: "display the running app version in the more menu. displaying the details that
-/// might help in any problem diognostic"), from the More menu: the app's version and build, whether People answers and
-/// how fast, how far the phone's clock is from People's (a check-in reads People's time), the phone, its location and
-/// fingerprint, and who is signed in; gathered on opening and on a pull, and copied as text for a message.
+/// might help in any problem diognostic"), from the More menu: the app's version and build, how far the phone's clock is
+/// from People's (a check-in reads People's time), the phone, its location and fingerprint, and who is signed in; and for
+/// a Super Admin or a developer only, People's server: its address, how fast it answered and its version ("for the users
+/// dont show the people part in about this app. hide the server link"). Gathered on opening and on a pull, and copied as
+/// text for a message.
 class AboutScreen extends ConsumerStatefulWidget {
   const AboutScreen({super.key});
 
@@ -102,6 +104,7 @@ class _AboutScreenState extends ConsumerState<AboutScreen> {
         email: me?.email,
         userId: me?.id,
         roles: me?.roles ?? const [],
+        showServer: me?.seesServer ?? false,
         at: DateTime.now(),
       );
     });

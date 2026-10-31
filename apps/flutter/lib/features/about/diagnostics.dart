@@ -84,6 +84,7 @@ class Diagnostics {
     this.email,
     this.userId,
     this.roles = const [],
+    this.showServer = false,
     required this.at,
   });
 
@@ -105,6 +106,10 @@ class Diagnostics {
   final String? location, lastPosition, fingerprint;
   final String? email, userId;
   final List<String> roles;
+
+  /// The People part (its address, how fast it answered, its version): a Super Admin's or a developer's only (owner, 31
+  /// October 2026: "for the users dont show the people part in about this app. hide the server link").
+  final bool showServer;
 
   /// When these were gathered (the phone's clock).
   final DateTime at;
@@ -145,20 +150,22 @@ List<DiagnosticSection> diagnosticSections(Diagnostics d) {
         (AboutWords.newest, newest == null ? AboutWords.notKnown : (newest == d.appVersion ? AboutWords.upToDate : AboutWords.newer(newest))),
       ],
     ),
-    (
-      title: AboutWords.server,
-      rows: [
-        (AboutWords.address, d.serverAddress),
-        (AboutWords.reached, d.reachedIn == null ? AboutWords.unreachable : 'Yes, in ${d.reachedIn!.inMilliseconds} ms'),
-        if (d.reachedIn != null) (AboutWords.serverVersion, [d.serverCommit, d.serverCommitted].whereType<String>().join(' · ').ifEmpty(AboutWords.notKnown)),
-        (AboutWords.clock, d.clockAhead == null ? AboutWords.notKnown : clockText(d.clockAhead!)),
-      ],
-    ),
+    if (d.showServer)
+      (
+        title: AboutWords.server,
+        rows: [
+          (AboutWords.address, d.serverAddress),
+          (AboutWords.reached, d.reachedIn == null ? AboutWords.unreachable : 'Yes, in ${d.reachedIn!.inMilliseconds} ms'),
+          if (d.reachedIn != null) (AboutWords.serverVersion, [d.serverCommit, d.serverCommitted].whereType<String>().join(' · ').ifEmpty(AboutWords.notKnown)),
+        ],
+      ),
     (
       title: AboutWords.phone,
       rows: [
         (AboutWords.model, known(d.phoneModel)),
         (AboutWords.system, known(d.phoneSystem)),
+        // the phone's clock against People's, for everyone: a check-in reads People's time
+        (AboutWords.clock, d.clockAhead == null ? AboutWords.notKnown : clockText(d.clockAhead!)),
         if (d.screen.isNotEmpty) (AboutWords.screen, d.screen),
         if (d.look.isNotEmpty) (AboutWords.look, d.look),
         (AboutWords.location, known(d.location)),

@@ -72,6 +72,7 @@ void main() {
           phoneModel: 'Google Pixel 8',
           email: 'h.test@example.test',
           roles: const ['employee'],
+          showServer: true,
           at: DateTime.utc(2026, 10, 31, 17),
         ),
       );
@@ -93,7 +94,28 @@ void main() {
     expect(find.byType(AboutScreen), findsOneWidget);
   });
 
-  testWidgets('About this app: the app, People, the phone and the account, and Copy details', (tester) async {
+  test('an employee’s: no People part, no server address, the phone’s clock still there', () {
+    final d = Diagnostics(appVersion: '0.6.20', serverAddress: 'srv.example.test', reachedIn: const Duration(milliseconds: 80), clockAhead: Duration.zero, at: DateTime.utc(2026, 10, 31));
+    expect(diagnosticSections(d).map((s) => s.title), isNot(contains(AboutWords.server)));
+    final text = diagnosticsText(d);
+    expect(text, isNot(contains('srv.example.test')));
+    expect(text, contains('\nThis phone\nModel: ${AboutWords.notKnown}\nSystem: ${AboutWords.notKnown}\nPhone clock: In step with People\n'));
+  });
+
+  testWidgets('an employee’s About: the app, the phone and the account, no server', (tester) async {
+    people.on('GET /api/version', (req) => json({'commit': 'd349027', 'committed': null, 'now': DateTime.now().toUtc().toIso8601String()}));
+    await openMenu(tester);
+    await tester.tap(find.text(AboutWords.menu));
+    await tester.pumpAndSettle();
+    expect(find.text(AboutWords.server), findsNothing);
+    expect(find.text(AboutWords.address), findsNothing);
+    expect(find.textContaining('people.example.test'), findsNothing);
+    expect(find.textContaining('srv2055591'), findsNothing);
+    expect(find.text('In step with People'), findsOneWidget);
+  });
+
+  testWidgets('a Super Admin’s About: the app, People, the phone and the account, and Copy details', (tester) async {
+    people.on('GET /api/auth/me', (req) => json({...meJson(), 'roles': ['super_admin']}));
     final serverNow = DateTime.now().toUtc().subtract(const Duration(minutes: 2, seconds: 30));
     people.on('GET /api/version', (req) => json({'commit': 'd349027', 'committed': '2026-10-31T18:36:03+02:00', 'now': serverNow.toIso8601String()}));
     String? copied;
@@ -126,11 +148,11 @@ void main() {
     expect(copied, contains('Model: Google Pixel 8\nSystem: Android 15 (SDK 35)\n'));
   });
 
-  testWidgets('People not answering is said, the rest still shown', (tester) async {
+  testWidgets('People not answering: what isn’t known says so, the rest still shown', (tester) async {
     await openMenu(tester);
     await tester.tap(find.text(AboutWords.menu));
     await tester.pumpAndSettle();
-    expect(find.text(AboutWords.unreachable), findsOneWidget);
+    expect(find.text(AboutWords.unreachable), findsNothing);
     expect(find.text(AboutWords.notKnown), findsWidgets);
     await tester.scrollUntilVisible(find.text('Google Pixel 8'), 200, scrollable: page());
   });

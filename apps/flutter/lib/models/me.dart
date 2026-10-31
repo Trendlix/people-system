@@ -39,6 +39,10 @@ class Me {
   /// CEO, who scores the C-level people's).
   bool get scoresTeam => roles.contains('manager') || roles.contains('ceo') || leads;
 
+  /// A Super Admin or a developer: sees People's server details in About this app (owner, 31 October 2026: "for the users
+  /// dont show the people part in about this app. hide the server link").
+  bool get seesServer => roles.contains('super_admin') || roles.contains('developer');
+
   /// What Home greets them by: the first word of their name, else their email's.
   String get firstName {
     final n = name;
