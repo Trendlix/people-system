@@ -268,7 +268,8 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
             <ConfirmBanner />
           </Suspense>
           {/* the design's page: a wide column with room around it */}
-          <main className="w-full max-w-[1500px] flex-1 self-center px-4 py-6 sm:px-8 lg:px-[34px] lg:py-[34px]">{children}</main>
+          {/* the whole width beside the side menu (owner, 31 October 2026: "fill the page"); a page keeps its own narrower measure */}
+          <main className="w-full min-w-0 flex-1 px-4 py-6 sm:px-8 lg:px-[34px] lg:py-[34px]">{children}</main>
         </div>
       </div>
     </div>

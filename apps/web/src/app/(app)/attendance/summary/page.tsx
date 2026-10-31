@@ -232,7 +232,7 @@ async function Summary({ searchParams }: { searchParams: PageProps<'/attendance/
 export default function AttendanceSummaryPage({ searchParams }: PageProps<'/attendance/summary'>) {
   return (
     <StaffOnly>
-      <div className="max-w-7xl space-y-6">
+      <div className="space-y-6">
         <div>
           <h1 className="page-title">Attendance Summary</h1>
           <p className="mt-1 max-w-3xl text-muted">

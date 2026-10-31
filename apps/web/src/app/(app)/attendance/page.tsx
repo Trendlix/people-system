@@ -21,6 +21,9 @@ import {
   noAttendanceText,
   readAttendanceMonth,
   readFilters,
+  issueCount,
+  issueDays,
+  issueOfTile,
   reviewsImports,
   runWay,
   searchedMonth,
@@ -30,7 +33,7 @@ import { loadMonth } from './data';
 import { notLoaded } from './not-loaded';
 import { PeopleTable } from './people-table';
 import { ATTENDANCE_PATH } from './sections';
-import { FigureTiles, MonthNav, SourcesNote } from './ui';
+import { FigureTiles, IssueList, MonthNav, SourcesNote } from './ui';
 import { seesAllWfh, WFH_PATH } from './wfh/wfh';
 import { OD_PATH, seesAllOd } from './official-duty/od';
 import { shownCode, withCode } from '@/lib/hidden';
@@ -185,8 +188,14 @@ async function Daily({ searchParams }: { searchParams: PageProps<'/attendance'>[
           <Filters month={month} places={places} people={all.value.people} chosen={chosen} />
           <FigureTiles
             label={`Everyone listed in ${monthName(month)}`}
-            tiles={figureTiles(view.totals, { averageHours: averageHoursADay(view.totals), checksIn: view.people.some((p) => p.checksIn) })}
+            // a figure stating an issue opens the list of its days (owner, 31 October 2026: "when i click on flagged days
+            // list me the employee and the days, and this for all cards that states issues")
+            tiles={figureTiles(view.totals, { averageHours: averageHoursADay(view.totals), checksIn: view.people.some((p) => p.checksIn) }).map((t) => {
+              const issue = issueOfTile(t.key, view.totals);
+              return issue && issueCount(view.totals, issue) > 0 ? { ...t, href: `${dailyHref(month, { ...chosen, issue: chosen.issue === issue ? undefined : issue })}#issue`, current: chosen.issue === issue } : t;
+            })}
           />
+          {chosen.issue && <IssueList kind={chosen.issue} rows={issueDays(view.people, chosen.issue)} month={month} closeHref={dailyHref(month, { ...chosen, issue: undefined })} />}
           {view.people.length === 0 && !view.hidden ? (
             <div className="card px-6 py-8 text-center text-sm text-muted">Nobody matches these filters in {monthName(month)}.</div>
           ) : (
@@ -221,7 +230,8 @@ async function Daily({ searchParams }: { searchParams: PageProps<'/attendance'>[
 export default function DailyAttendancePage({ searchParams }: PageProps<'/attendance'>) {
   return (
     <StaffOnly>
-      <div className="max-w-7xl space-y-6">
+      {/* the page's whole width (owner, 31 October 2026: "fill the page") */}
+      <div className="space-y-6">
         <div>
           <h1 className="page-title">Daily Attendance</h1>
           <p className="mt-1 max-w-3xl text-muted">

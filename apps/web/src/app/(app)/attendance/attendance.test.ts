@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { attendanceDayView, attendanceFigures, dayFromPunches, EXEMPT_BADGE, EXEMPTION_LABEL, NO_ATTENDANCE_FIGURES } from '@trendlix/shared';
 import { undoConfirmText } from '../payroll/[id]/attendance/attendance';
 import { addMonths } from '../payroll/list';
-import { dailyHref as dailyHrefOf, readFilters as readFiltersOf, searchedMonth } from './attendance';
+import { dailyHref as dailyHrefOf, issueDays, issueOfTile, readFilters as readFiltersOf, searchedMonth } from './attendance';
 import {
   apiMonthPath,
   apiSummaryExcelPath,
@@ -571,5 +571,61 @@ describe('searching Daily Attendance by name', () => {
     expect(readFiltersOf({ q: '  Lamiaa  ' }).q).toBe('Lamiaa');
     expect(readFiltersOf({}).q).toBeUndefined();
     expect(dailyHrefOf('2026-10', { q: 'Lamiaa' })).toBe('/attendance?month=2026-10&q=Lamiaa');
+  });
+});
+
+// owner, 31 October 2026: "when i click on flagged days list me the employee and the days, and this for all cards that
+// states issues"
+describe('the days behind an issue’s figure', () => {
+  const day = (date: string, more: Record<string, unknown> = {}) => ({
+    date,
+    status: 'worked' as const,
+    checkIn: '2026-10-12T06:05:00.000Z',
+    checkOut: '2026-10-12T15:00:00.000Z',
+    flags: [] as never[],
+    shortHours: 0,
+    hoursCounted: 8.92,
+    expectedHours: 9,
+    missingCheckIn: false,
+    missingCheckOut: false,
+    openAt: null,
+    zohoStatus: null,
+    ...more,
+  });
+  const people = [
+    {
+      employee: { id: 'e2', fullNameEn: 'Mona Ali', employeeCode: 'EMP-0002' },
+      days: [day('2026-10-13', { flags: ['outside_office'] }), day('2026-10-14', { status: 'absent', checkIn: null, checkOut: null }), day('2026-10-15', { shortHours: 1.5, hoursCounted: 7.5 })],
+    },
+    {
+      employee: { id: 'e1', fullNameEn: 'Hazem Magdy', employeeCode: 'EMP-0001' },
+      days: [day('2026-10-13', { flags: ['fake_gps', 'outside_office'] }), day('2026-10-16', { missingCheckOut: true, checkOut: null, openAt: '2026-10-16T06:10:00.000Z' })],
+    },
+  ];
+
+  it('lists whose and which days, by day then name, as the figure counts them', () => {
+    const flagged = issueDays(people as never, 'flagged');
+    expect(flagged.map((r) => [r.date, r.code])).toEqual([
+      ['2026-10-13', 'EMP-0001'],
+      ['2026-10-13', 'EMP-0002'],
+    ]);
+    expect(flagged[0].detail).toMatch(/^.+ · .+ · in 9:05 AM$/);
+    expect(issueDays(people as never, 'absent').map((r) => r.code)).toEqual(['EMP-0002']);
+    expect(issueDays(people as never, 'short')[0].detail).toBe('Short 1:30 (7:30 of 9:00)');
+    expect(issueDays(people as never, 'checkouts')[0].detail).toBe('In 9:10 AM, no check-out');
+    expect(issueDays(people as never, 'checkins')).toEqual([]);
+  });
+
+  it('opens from the figures that state an issue only, the leave card with leave in Zoho to record', () => {
+    expect(['absent', 'short', 'checkouts', 'checkins', 'flagged'].map((k) => issueOfTile(k, { zohoLeaveDays: 0 }))).toEqual(['absent', 'short', 'checkouts', 'checkins', 'flagged']);
+    expect(issueOfTile('worked', { zohoLeaveDays: 0 })).toBeNull();
+    expect(issueOfTile('leave', { zohoLeaveDays: 0 })).toBeNull();
+    expect(issueOfTile('leave', { zohoLeaveDays: 4 })).toBe('zohoLeave');
+  });
+
+  it('keeps the list in the address with the other filters', () => {
+    expect(readFiltersOf({ issue: 'flagged' }).issue).toBe('flagged');
+    expect(readFiltersOf({ issue: 'everything' }).issue).toBeUndefined();
+    expect(dailyHrefOf('2026-10', { q: 'mona', issue: 'absent' })).toBe('/attendance?month=2026-10&q=mona&issue=absent');
   });
 });

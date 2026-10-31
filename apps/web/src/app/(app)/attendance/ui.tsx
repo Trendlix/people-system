@@ -16,11 +16,16 @@ import {
   extraHoursText,
   firstDayNote,
   hoursText,
+  ISSUE_TITLES,
+  personHref,
   sourceText,
   type DayPairs,
   type FigureTile,
+  type IssueDay,
+  type IssueKind,
   type PunchRow,
 } from './attendance';
+import { recordsHref } from '@/lib/attendance-records';
 import { AllPresses, DayEndView } from './punch-ui';
 import { WFH_DAY_BADGE } from './wfh/wfh';
 import { OD_DAY_BADGE, odDayTitle, odHref } from './official-duty/od';
@@ -77,17 +82,96 @@ export function MonthNav({ month, hrefFor }: { month: string; hrefFor: (month: s
  * The figures: what each counts and the number, no description under it (owner, 31 October 2026: "remove the
  * description below the number"): it shows on hover, and a screen reader says it.
  */
-export function FigureTiles({ tiles, label }: { tiles: (Omit<FigureTile, 'tone'> & { tone: 'danger' | 'warn' | 'ok' | null })[]; label: string }) {
+export function FigureTiles({
+  tiles,
+  label,
+}: {
+  tiles: (Omit<FigureTile, 'tone'> & { tone: 'danger' | 'warn' | 'ok' | null; href?: string; current?: boolean })[];
+  label: string;
+}) {
   return (
     <dl aria-label={label} className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
-      {tiles.map((t) => (
-        <div key={t.key} className="card px-4 py-3" title={t.note ?? undefined}>
-          <dt className="text-xs text-muted">{t.label}</dt>
-          <dd className={`mt-1 text-lg font-semibold tabular-nums ${t.tone ? FIGURE_TONE[t.tone] : ''}`}>{t.value}</dd>
-          {t.note && <dd className="sr-only">{t.note}</dd>}
-        </div>
-      ))}
+      {tiles.map((t) => {
+        const body = (
+          <>
+            <dt className="text-xs text-muted">{t.label}</dt>
+            <dd className={`mt-1 text-lg font-semibold tabular-nums ${t.tone ? FIGURE_TONE[t.tone] : ''}`}>{t.value}</dd>
+            {t.note && <dd className="sr-only">{t.note}</dd>}
+          </>
+        );
+        // a figure stating an issue opens its days (owner, 31 October 2026: "when i click on flagged days list me the
+        // employee and the days")
+        return t.href ? (
+          <Link
+            key={t.key}
+            href={t.href}
+            scroll={false}
+            aria-current={t.current ? 'true' : undefined}
+            title={t.current ? 'Hide the days' : `${t.note ? `${t.note}. ` : ''}Click to list the days`}
+            className={`card block px-4 py-3 no-underline transition-colors hover:border-ink ${t.current ? 'border-ink' : ''}`}
+          >
+            <div>{body}</div>
+          </Link>
+        ) : (
+          <div key={t.key} className="card px-4 py-3" title={t.note ?? undefined}>
+            {body}
+          </div>
+        );
+      })}
     </dl>
+  );
+}
+
+/** The days behind an issue's figure (owner, 31 October 2026): whose, when, what happened, each day's records a click away. */
+export function IssueList({ kind, rows, month, closeHref }: { kind: IssueKind; rows: readonly IssueDay[]; month: string; closeHref: string }) {
+  return (
+    <section id="issue" aria-labelledby="issue-heading" className="card scroll-mt-6 overflow-x-auto">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 pt-4">
+        <h2 id="issue-heading" className="font-semibold">
+          {ISSUE_TITLES[kind]} · {rows.length} {rows.length === 1 ? 'day' : 'days'}
+        </h2>
+        <Link href={closeHref} scroll={false} className="text-sm font-semibold">
+          Close
+        </Link>
+      </div>
+      {rows.length === 0 ? (
+        <p className="px-4 py-6 text-sm text-muted">No days of this kind among those listed.</p>
+      ) : (
+        <table className="table mt-3">
+          <thead>
+            <tr>
+              <th scope="col">Employee</th>
+              <th scope="col">Day</th>
+              <th scope="col">What happened</th>
+              <th scope="col">
+                <span className="sr-only">Records</span>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={`${r.employeeId}:${r.date}`}>
+                <td>
+                  <Link href={personHref(r.employeeId, month)} className="font-semibold">
+                    {r.name}
+                  </Link>
+                  <div className="text-xs text-muted">{r.code}</div>
+                </td>
+                <td className="whitespace-nowrap tabular-nums">
+                  {weekdayOf(r.date).slice(0, 3)} {formatDate(r.date)}
+                </td>
+                <td className="text-sm">{r.detail}</td>
+                <td className="text-right">
+                  <Link href={recordsHref(r.employeeId, r.date)} className="text-sm whitespace-nowrap">
+                    Records<span className="sr-only"> of {r.name} on {r.date}</span>
+                  </Link>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
   );
 }
 

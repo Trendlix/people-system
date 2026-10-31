@@ -22,6 +22,7 @@ import {
   pairsText,
   PAYROLL_STATUS_LABELS,
   pressPlaceLabel,
+  type AttendanceDayView,
   type AttendanceFigures,
   type AttendanceFilter,
   type AttendanceSource as DaySource,
@@ -109,6 +110,8 @@ export interface AttendanceFilters {
   only: AttendanceFilter | null;
   /** A name or a code searched (owner, 31 October 2026: "allow me to search by name"); none: everyone listed. */
   q?: string;
+  /** The issue whose days are listed (a figure card clicked); none: no list. */
+  issue?: IssueKind;
 }
 
 /** The filters in the address (?department=&employee=&only=); one it can't read is left out. */
@@ -117,7 +120,14 @@ export function readFilters(query: Query): AttendanceFilters {
   const employee = one(query.employee);
   const only = one(query.only);
   const q = searchOf(query.q);
-  return { departmentId: UUID.test(department) ? department : null, employeeId: UUID.test(employee) ? employee : null, only: isAttendanceFilter(only) ? only : null, ...(q && { q }) };
+  const issue = one(query.issue);
+  return {
+    departmentId: UUID.test(department) ? department : null,
+    employeeId: UUID.test(employee) ? employee : null,
+    only: isAttendanceFilter(only) ? only : null,
+    ...(q && { q }),
+    ...(isIssueKind(issue) && { issue }),
+  };
 }
 
 /**
@@ -133,6 +143,99 @@ export function searchedMonth<V extends { people: { employee: { fullNameEn: stri
   return { ...view, people, withoutDays: view.withoutDays.filter((e) => matchesSearch(e, q)), totals: people.reduce((t, p) => addFigures(t, p.figures), { ...NO_ATTENDANCE_FIGURES }) };
 }
 
+// ---------- the days behind a figure (owner, 31 October 2026: "when i click on flagged days list me the employee and the
+// days, and this for all cards that states issues") ----------
+
+/** The figures that state an issue, each opening the list of its days: by the figure card's key. */
+export const ISSUE_KINDS = ['absent', 'short', 'checkouts', 'checkins', 'flagged', 'zohoLeave'] as const;
+export type IssueKind = (typeof ISSUE_KINDS)[number];
+
+export const ISSUE_TITLES: Record<IssueKind, string> = {
+  absent: 'Absent days',
+  short: 'Short hours',
+  checkouts: 'Missing check-outs',
+  checkins: 'Missing check-ins',
+  flagged: 'Flagged days',
+  zohoLeave: 'Leave in Zoho only',
+};
+
+const isIssueKind = (v: string): v is IssueKind => (ISSUE_KINDS as readonly string[]).includes(v);
+
+/** The issue a figure card opens, by its key (the leave card only with leave in Zoho to record); none for the others. */
+export function issueOfTile(key: string, f: Pick<AttendanceFigures, 'zohoLeaveDays'>): IssueKind | null {
+  if (key === 'leave') return f.zohoLeaveDays > 0 ? 'zohoLeave' : null;
+  return isIssueKind(key) && key !== 'zohoLeave' ? key : null;
+}
+
+/** How many days (or hours, for short hours) a figure counts of the issue: none, nothing to list. */
+export function issueCount(f: AttendanceFigures, kind: IssueKind): number {
+  const counts: Record<IssueKind, number> = {
+    absent: f.absentDays,
+    short: f.shortHours,
+    checkouts: f.missingCheckOuts,
+    checkins: f.missingCheckIns,
+    flagged: f.flaggedDays,
+    zohoLeave: f.zohoLeaveDays,
+  };
+  return counts[kind] ?? 0;
+}
+
+/** A day with the issue: whose, when, and what happened, in words. */
+export interface IssueDay {
+  employeeId: string;
+  name: string;
+  code: string;
+  date: string;
+  detail: string;
+}
+
+type IssueDayIn = Pick<AttendanceDayView, 'date' | 'status' | 'checkIn' | 'checkOut' | 'flags' | 'shortHours' | 'hoursCounted' | 'expectedHours' | 'missingCheckIn' | 'missingCheckOut' | 'openAt' | 'zohoStatus'>;
+
+/** Whether a day has the issue, by the figures' own rules (packages/shared attendanceFigures). */
+export function hasIssue(d: IssueDayIn, kind: IssueKind): boolean {
+  const worked = d.status === 'worked';
+  switch (kind) {
+    case 'absent':
+      return d.status === 'absent';
+    case 'short':
+      return worked && d.shortHours > 0;
+    case 'checkouts':
+      return worked && d.missingCheckOut;
+    case 'checkins':
+      return worked && d.missingCheckIn;
+    case 'flagged':
+      return worked && d.flags.length > 0;
+    case 'zohoLeave':
+      return d.status === 'zoho_leave';
+  }
+}
+
+/** What happened that day, in words: "Short 1:20 (7:40 of 9:00)", "In 9:05 AM, no check-out", the flags. */
+export function issueDetail(d: IssueDayIn, kind: IssueKind): string {
+  const at = (iso: string | null) => (iso ? cairoClock(iso) : '—');
+  switch (kind) {
+    case 'absent':
+      return 'Absent: no check-in on a working day';
+    case 'short':
+      return `Short ${formatHours(d.shortHours)} (${formatHours(d.hoursCounted)}${d.expectedHours ? ` of ${formatHours(d.expectedHours)}` : ''})`;
+    case 'checkouts':
+      return `In ${at(d.openAt ?? d.checkIn)}, no check-out`;
+    case 'checkins':
+      return `Out ${at(d.checkOut)}, no check-in`;
+    case 'flagged':
+      return `${[...new Set(d.flags.filter(isCheckInFlag))].map((f) => CHECK_IN_FLAG_LABELS[f]).join(' · ')}${d.checkIn ? ` · in ${at(d.checkIn)}` : ''}`;
+    case 'zohoLeave':
+      return `Leave in Zoho People only${d.zohoStatus ? ` (${d.zohoStatus})` : ''}: to record`;
+  }
+}
+
+/** Every day with the issue across the people listed, by day then name. */
+export function issueDays(people: readonly { employee: { id: string; fullNameEn: string; employeeCode: string }; days: readonly IssueDayIn[] }[], kind: IssueKind): IssueDay[] {
+  return people
+    .flatMap((p) => p.days.filter((d) => hasIssue(d, kind)).map((d) => ({ employeeId: p.employee.id, name: p.employee.fullNameEn, code: p.employee.employeeCode, date: d.date, detail: issueDetail(d, kind) })))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.name.localeCompare(b.name));
+}
+
 /** Whether any filter is chosen. */
 export const filtered = (f: AttendanceFilters) => !!(f.departmentId || f.employeeId || f.only || f.q);
 
@@ -145,7 +248,7 @@ function withParams(path: string, params: Record<string, string | null | undefin
 
 /** Daily Attendance for a month and filters. */
 export const dailyHref = (month: string, f: Partial<AttendanceFilters> = {}) =>
-  withParams(ATTENDANCE_PATH, { month, department: f.departmentId, employee: f.employeeId, only: f.only, q: f.q });
+  withParams(ATTENDANCE_PATH, { month, department: f.departmentId, employee: f.employeeId, only: f.only, q: f.q, issue: f.issue });
 
 /** A person's month (HR, the CEO, Finance). */
 export const personHref = (employeeId: string, month: string) => withParams(`${ATTENDANCE_PATH}/${encodeURIComponent(employeeId)}`, { month });
