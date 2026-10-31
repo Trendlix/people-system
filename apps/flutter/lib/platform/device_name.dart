@@ -7,6 +7,9 @@ abstract interface class DeviceIdentity {
 
   /// 'android' or 'ios' (packages/shared device-credentials.ts `DEVICE_PLATFORMS`).
   String get platform;
+
+  /// The phone's system, for About this app: "Android 14 (SDK 34)", "iOS 18.1"; empty when it can't be read.
+  Future<String> system();
 }
 
 class PhoneIdentity implements DeviceIdentity {
@@ -25,6 +28,20 @@ class PhoneIdentity implements DeviceIdentity {
       return phoneName(a.manufacturer, a.model);
     } on Exception {
       // People names it by the platform when the name is empty
+      return '';
+    }
+  }
+
+  @override
+  Future<String> system() async {
+    try {
+      if (platform == 'ios') {
+        final i = await _info.iosInfo;
+        return '${i.systemName} ${i.systemVersion}';
+      }
+      final v = (await _info.androidInfo).version;
+      return 'Android ${v.release} (SDK ${v.sdkInt})';
+    } on Exception {
       return '';
     }
   }

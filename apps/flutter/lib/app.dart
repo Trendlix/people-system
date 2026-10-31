@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import 'api/people_client.dart';
 import 'auth/auth_controller.dart';
+import 'features/about/about_screen.dart';
 import 'features/assets/my_assets_screen.dart';
 import 'features/attendance/attendance_tab.dart';
 import 'features/dashboard/dashboard_screen.dart';
@@ -113,6 +114,11 @@ class _PeopleAppState extends ConsumerState<PeopleApp> {
                   GoRoute(
                     path: 'performance',
                     builder: (context, state) => const PerformanceScreen(),
+                  ),
+                  // the app's version and what helps find a problem, from the More menu (owner, 31 October 2026)
+                  GoRoute(
+                    path: 'about',
+                    builder: (context, state) => const AboutScreen(),
                   ),
                 ],
               ),

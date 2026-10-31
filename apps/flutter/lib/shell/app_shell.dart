@@ -7,10 +7,12 @@ import 'package:go_router/go_router.dart';
 
 import '../api/people_client.dart';
 import '../auth/auth_controller.dart';
+import '../features/about/diagnostics.dart' show AboutWords, versionLineOf;
 import '../features/kpis/kpi_words.dart' show KpiWords;
 import '../features/review/review_gate.dart';
 import '../format.dart';
 import '../models/me.dart';
+import '../providers.dart';
 import '../theme/look.dart';
 import '../theme/parts.dart';
 import '../theme/tokens.dart';
@@ -340,6 +342,8 @@ Future<void> showMoreMenu(BuildContext context, Me me) {
                     if (me.employeeId != null) _MenuRow(icon: CupertinoIcons.clock, label: ShellWords.hiring, onTap: () => go('/profile/interview-hours')),
                     // their people's KPI scorecards to score and sign (owner, 31 October 2026), as the website offers Team KPIs
                     if (me.scoresTeam) _MenuRow(icon: CupertinoIcons.person_2, label: KpiWords.teamTitle, onTap: () => go('/dashboard/performance/team')),
+                    // the app's version and what helps find a problem (owner, 31 October 2026)
+                    _MenuRow(icon: CupertinoIcons.info, label: AboutWords.menu, onTap: () => go('/profile/about')),
                     ],
                   ),
                 ),
@@ -351,6 +355,21 @@ Future<void> showMoreMenu(BuildContext context, Me me) {
                 onTap: () {
                   Navigator.of(context).pop();
                   ref.read(authProvider.notifier).signOut();
+                },
+              ),
+              // the running version, always in sight (owner, 31 October 2026: "display the running app version in the more
+              // menu"); a tap opens About this app
+              Builder(
+                builder: (context) {
+                  final config = ref.read(configProvider);
+                  return InkWell(
+                    onTap: () => go('/profile/about'),
+                    borderRadius: BorderRadius.circular(Tokens.radiusControl),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text(versionLineOf(config.version, config.build), textAlign: TextAlign.center, style: text.bodySmall?.copyWith(color: p.muted)),
+                    ),
+                  );
                 },
               ),
             ],

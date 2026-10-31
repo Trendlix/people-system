@@ -18,6 +18,12 @@ class LocationCache {
   DateTime? _at;
   bool _reading = false;
 
+  /// The last reading and when it was taken, whatever its age (About this app); null: none yet.
+  ({Spot spot, DateTime at})? get last {
+    final spot = _spot, at = _at;
+    return spot == null || at == null ? null : (spot: spot, at: at);
+  }
+
   /// The header's value from the last reading, if recent enough; null: none to send.
   String? header() {
     final spot = _spot;

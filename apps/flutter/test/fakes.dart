@@ -69,6 +69,9 @@ class FakeIdentity implements DeviceIdentity {
 
   @override
   Future<String> name() async => 'Google Pixel 8';
+
+  @override
+  Future<String> system() async => 'Android 15 (SDK 35)';
 }
 
 class FakeLocator implements Locator {

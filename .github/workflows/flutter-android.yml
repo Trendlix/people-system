@@ -112,6 +112,7 @@ jobs:
           echo "Version $name (code $code)"
 
       # Where the app finds People (lib/config.dart): the live address, and the root of the server's private authority
+      # (and its build stamp: version, code, commit and time, shown in the app's About this app)
       # (deploy/ca-cert.sh) from the repository variable API_CA_CERT (the one backend.yml checks). Without it the app can't
       # reach People, so the build stops. A release build (fast and small), signed with the key above.
       - name: Build
@@ -127,7 +128,10 @@ jobs:
             --build-number="$APP_VERSION_CODE" \
             --dart-define=PEOPLE_API_URL=https://srv2055591.hstgr.cloud:8443 \
             --dart-define=PEOPLE_API_CA="$API_CA_CERT" \
-            --dart-define=PEOPLE_APP_VERSION="$APP_VERSION_NAME"
+            --dart-define=PEOPLE_APP_VERSION="$APP_VERSION_NAME" \
+            --dart-define=PEOPLE_APP_BUILD="$APP_VERSION_CODE" \
+            --dart-define=PEOPLE_APP_COMMIT="${GITHUB_SHA:0:7}" \
+            --dart-define=PEOPLE_APP_BUILT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
       - name: Name the APK
         id: apk
