@@ -14,6 +14,7 @@ import '../dashboard/dashboard_data.dart';
 import '../today/check_in_words.dart';
 import '../today/press_flow.dart';
 import '../today/today_controller.dart';
+import '../today/work_clock.dart';
 import 'attendance_data.dart';
 import 'attendance_words.dart';
 
@@ -35,7 +36,7 @@ class _TodayPanelState extends ConsumerState<TodayPanel> with CheckInPress {
   void initState() {
     super.initState();
     // the time moves on with the minute
-    _tick = Timer.periodic(const Duration(seconds: 5), (_) => mounted ? setState(() {}) : null);
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) => mounted ? setState(() {}) : null);
   }
 
   @override
@@ -112,7 +113,8 @@ class _Card extends StatelessWidget {
 
     // checked in or out today: the time worked; else the time now
     final counted = hasIn && (t.next == PunchKind.checkOut || checkedOut != null);
-    final big = counted ? workClockOf(t.workedAt(now)) : clockOf(now);
+    final worked = t.workedAt(now);
+    final big = counted ? workClockOf(worked) : clockOf(now);
     // the time worked in the owner's colours (31 October 2026: "below 80% color it red, from 80 to 90 color it yellow,
     // above 90% green"), as a share of the shift's hours a day
     final band = counted ? rateBandOf(t.shareAt(now)) : null;
@@ -186,8 +188,9 @@ class _Card extends StatelessWidget {
           else ...[
             Text(counted ? AttendanceWords.timeWorked : AttendanceWords.currentTime, style: muted),
             const SizedBox(height: 9),
-            Text(
-              big,
+            WorkClock(
+              main: big,
+              seconds: counted ? secondsOf(worked) : null,
               semanticsLabel: band == null ? null : '$big, ${CheckInWords.ofTheDay(t.shareAt(now))}',
               style: text.displayMedium?.copyWith(
                 fontSize: 64,

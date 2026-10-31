@@ -12,6 +12,7 @@ import '../../theme/tokens.dart';
 import '../today/check_in_words.dart';
 import '../today/press_flow.dart';
 import '../today/today_controller.dart';
+import '../today/work_clock.dart';
 
 /// The Dashboard's "Today's shift" (the phone design, 30 October 2026): the one dark card (light on the dark look) with
 /// where the day stands, the shift, the time large (the clock before checking in, the time worked after), where, and the
@@ -29,8 +30,8 @@ class _ShiftCardState extends ConsumerState<ShiftCard> with CheckInPress {
   @override
   void initState() {
     super.initState();
-    // the large time moves on with the minute, within 5 seconds of it (31 October 2026)
-    _tick = Timer.periodic(const Duration(seconds: 5), (_) => mounted ? setState(() {}) : null);
+    // the large time ticks every second (owner, 31 October 2026: "make it realtime count")
+    _tick = Timer.periodic(const Duration(seconds: 1), (_) => mounted ? setState(() {}) : null);
   }
 
   @override
@@ -147,8 +148,9 @@ class _Card extends StatelessWidget {
             if (today.shiftStart != null && today.shiftEnd != null) Text(CheckInWords.shift(today.shiftStart!, today.shiftEnd!), style: muted),
             const SizedBox(height: 4),
             if (last != null) Text(CheckInWords.workedToday, style: muted),
-            Text(
-              big,
+            WorkClock(
+              main: big,
+              seconds: last == null ? null : secondsOf(worked),
               semanticsLabel: band == null ? null : '$big, ${CheckInWords.ofTheDay(today.shareAt(now))}',
               style: text.displayMedium?.copyWith(
                 color: band == null ? p.onInverse : p.bandColour(band, onInverse: true),

@@ -36,6 +36,9 @@ String eyebrowDayOf(DateTime at) {
 }
 
 /// 02:35: hours and minutes worked, as the work-time ring shows them.
+/// The seconds of a time worked, as the counter shows them beside its minutes: ":07".
+String secondsOf(Duration worked) => ':${(worked.isNegative ? 0 : worked.inSeconds % 60).toString().padLeft(2, '0')}';
+
 String workClockOf(Duration worked) {
   final minutes = worked.isNegative ? 0 : worked.inMinutes;
   return '${(minutes ~/ 60).toString().padLeft(2, '0')}:${(minutes % 60).toString().padLeft(2, '0')}';

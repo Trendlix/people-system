@@ -489,7 +489,7 @@ void main() {
       });
       expect(t.workedAt(DateTime.utc(2026, 10, 30, 15)), const Duration(hours: 6));
       expect(rateBandOf(t.shareAt(DateTime.utc(2026, 10, 30, 15))), RateBand.low);
-      // by the clock's minutes (31 October 2026: checked in at 14:52, 00:06 at 14:58 whatever the seconds)
+      // to the second, as it ticks (31 October 2026: "make it realtime count")
       final t2 = Today.fromJson({
         'next': 'out',
         'punches': [
@@ -497,8 +497,11 @@ void main() {
         ],
         'day': {'hoursCounted': 0, 'openAt': '2026-10-31T11:52:40.000Z'},
       });
-      expect(t2.workedAt(DateTime.utc(2026, 10, 31, 11, 58, 5)), const Duration(minutes: 6));
-      expect(t2.workedAt(DateTime.utc(2026, 10, 31, 11, 52, 50)), Duration.zero);
+      expect(t2.workedAt(DateTime.utc(2026, 10, 31, 11, 58, 5)), const Duration(minutes: 5, seconds: 25));
+      expect(t2.workedAt(DateTime.utc(2026, 10, 31, 11, 52, 50)), const Duration(seconds: 10));
+      expect(workClockOf(const Duration(minutes: 5, seconds: 25)), '00:05');
+      expect(secondsOf(const Duration(minutes: 5, seconds: 25)), ':25');
+      expect(secondsOf(const Duration(seconds: -3)), ':00');
       // the phone's clock a minute behind People's: People's time counts
       expect(Today.skewOf('2026-10-31T12:00:00.000Z', DateTime.utc(2026, 10, 31, 11, 59)), const Duration(minutes: 1));
       expect(Today.skewOf(null, DateTime.utc(2026, 10, 31)), Duration.zero);

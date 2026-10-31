@@ -128,20 +128,18 @@ class Today {
 
   /// The time worked so far at [now], breaks included (owner, 31 October 2026: "dont calculate breaks, they are included
   /// in the working hours"): People's hours so far (the first check-in to the last check-out), and while checked in
-  /// again, the time since that last check-out (the break with it), else since the open check-in. By the clock's minutes
-  /// (owner, 31 October 2026, checked in at 14:52 and shown 00:05 at 14:58: "the counter i think is not working
-  /// correctly … from the checkin time"): from the minute the check-in shows to the minute it is now, by People's clock.
+  /// again, the time since that last check-out (the break with it), else since the open check-in. To the second, by
+  /// People's clock (owner, 31 October 2026, checked in at 14:52 and shown 00:05 at 14:58: "the counter i think is not
+  /// working correctly … from the checkin time"; then "make it realtime count"): the phone's drift corrected.
   Duration workedAt(DateTime now) {
     final counted = Duration(seconds: (hoursCounted * 3600).round());
     final open = openSince;
     final at = now.add(skew);
     if (open == null || at.isBefore(open)) return counted;
     final from = lastCheckOutBefore(open) ?? open;
-    final live = _minuteOf(at).difference(_minuteOf(from));
+    final live = at.difference(from);
     return counted + (live.isNegative ? Duration.zero : live);
   }
-
-  static DateTime _minuteOf(DateTime t) => t.subtract(Duration(seconds: t.second, milliseconds: t.millisecond, microseconds: t.microsecond));
 
   /// The day's last check-out before [at] (its last finished pair's end, else the last press out); null: none.
   DateTime? lastCheckOutBefore(DateTime at) {
