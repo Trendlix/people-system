@@ -84,8 +84,15 @@ class AuthController extends AsyncNotifier<AuthState> {
   Future<bool> _fingerprintReady() async => await _store.readDevice() != null && await _biometrics.available();
 
   /// The work email and password. People's refusal comes as an ApiException, in its words.
-  Future<void> signInWithPassword(String email, String password) async {
-    final signed = await _client.signIn('/api/auth/login', {'email': email.trim(), 'password': password});
+  Future<void> signInWithPassword(String email, String password) =>
+      _signedInWith('/api/auth/login', {'email': email.trim(), 'password': password});
+
+  /// The work email and the code People emailed to it (owner, 31 October 2026: "and i can add OTP via Mail for app login
+  /// if the user didn't remember his password"): signed in as with the password, the fingerprint offered the same.
+  Future<void> signInWithCode(String email, String code) => _signedInWith('/api/auth/email-code/sign-in', {'email': email.trim(), 'code': code});
+
+  Future<void> _signedInWith(String path, Map<String, String> body) async {
+    final signed = await _client.signIn(path, body);
     await _store.write(signed.token);
     final me = await _me();
     // someone else's credential on this phone is never theirs to use

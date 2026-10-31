@@ -176,5 +176,9 @@ phase, and record every decision the owner makes here (with the date and their w
   - Profile: KPIs in place of Payroll ("replace payslips with the KPI's"; payslips stay on the website).
   - KPIs ("employees and managers can perform the KPI's from the mobile app"): My KPIs (rate yourself, sign) and Team
     KPIs for whoever scores a team's (score, send, sign); HR's calibration stays on the website.
+  - Signing in without the password (0.6.3–0.6.4): Forgot password ("add forget password to the app": People emails a
+    link to set a new one), and a code by email ("and i can add OTP via Mail for app login if the user didn't remember
+    his password", "via app and web": 6 digits, once, 10 minutes, 5 tries, a new one a minute on; signed in as with the
+    password, the fingerprint offered after it). The website has the same at /login/code.
 - [ ] Phase 3 — Approve in one move — not in the phone design; to be placed in the Requests tab in its style — next.
 - [ ] Phase 4 — push notifications (Firebase); opening files and payslip PDFs in the app.

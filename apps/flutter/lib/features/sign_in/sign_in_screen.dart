@@ -6,6 +6,7 @@ import '../../api/people_client.dart';
 import '../../auth/auth_controller.dart';
 import '../../theme/parts.dart';
 import '../../theme/tokens.dart';
+import 'email_code.dart';
 import 'forgot_password.dart';
 
 /// Sign-in's words, in one place (ready for Arabic).
@@ -175,13 +176,21 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                               ),
                             ),
                           ),
-                          // forgot password (owner, 31 October 2026: "add forget password to the app")
-                          Align(
-                            alignment: AlignmentDirectional.centerEnd,
-                            child: TextButton(
-                              onPressed: _busy ? null : () => showForgotPassword(context, email: _email.text),
-                              child: const Text(ForgotWords.link),
-                            ),
+                          // a code by email instead of the password, and forgot password (owner, 31 October 2026: "and i can
+                          // add OTP via Mail for app login if the user didn't remember his password"; "add forget password
+                          // to the app")
+                          Wrap(
+                            alignment: WrapAlignment.spaceBetween,
+                            children: [
+                              TextButton(
+                                onPressed: _busy ? null : () => showEmailCode(context, email: _email.text),
+                                child: const Text(EmailCodeWords.link),
+                              ),
+                              TextButton(
+                                onPressed: _busy ? null : () => showForgotPassword(context, email: _email.text),
+                                child: const Text(ForgotWords.link),
+                              ),
+                            ],
                           ),
                           if (_error != null) ...[const SizedBox(height: 4), Notice(text: _error!, ok: false)],
                           const SizedBox(height: 12),

@@ -5,6 +5,7 @@ import 'package:people/app.dart';
 import 'package:people/auth/session_store.dart';
 import 'package:people/features/today/check_in_words.dart';
 import 'package:people/shell/shell_words.dart';
+import 'package:people/features/sign_in/email_code.dart';
 import 'package:people/features/sign_in/forgot_password.dart';
 import 'package:people/features/sign_in/sign_in_screen.dart';
 import 'package:people/providers.dart';
@@ -88,6 +89,79 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Too many tries. Please try again in an hour.'), findsOneWidget);
     expect(find.text(ForgotWords.send), findsOneWidget);
+  });
+
+  // owner, 31 October 2026: "and i can add OTP via Mail for app login if the user didn't remember his password"
+  testWidgets('signs in with a code by email, as with the password, and offers the fingerprint after it', (tester) async {
+    const answer = 'If that email has an account, we sent it a 6-digit code. It works for 10 minutes.';
+    people
+      ..on('POST /api/auth/email-code', (req) => json({'message': answer}))
+      ..on('POST /api/auth/email-code/sign-in', (req) => signedIn('by-code', {'id': 'u1'}));
+    await open(tester, people, MemorySessionStore(), biometrics: FakeBiometrics());
+    await tester.enterText(find.widgetWithText(TextField, SignInWords.email), 'h.test@example.test');
+    await tester.tap(find.text(EmailCodeWords.link));
+    await tester.pumpAndSettle();
+    expect(find.text(EmailCodeWords.intro), findsOneWidget);
+    await tester.tap(find.text(EmailCodeWords.send));
+    await tester.pumpAndSettle();
+    expect(people.bodyOf('POST /api/auth/email-code'), {'email': 'h.test@example.test'});
+    expect(find.text(answer), findsOneWidget);
+    expect(find.text(EmailCodeWords.sentTo('h.test@example.test')), findsOneWidget);
+    // a new code only a minute on
+    expect(tester.widget<OutlinedButton>(find.widgetWithText(OutlinedButton, EmailCodeWords.resend(60))).onPressed, isNull);
+    // Arabic digits and a space, as a phone may type them
+    await tester.enterText(find.descendant(of: find.byType(EmailCodeForm), matching: find.byType(TextField)), '٤٨٢ ٩١٣');
+    await tester.tap(find.descendant(of: find.byType(EmailCodeForm), matching: find.text(EmailCodeWords.signIn)));
+    await tester.pumpAndSettle();
+    expect(people.bodyOf('POST /api/auth/email-code/sign-in'), {'email': 'h.test@example.test', 'code': '482913'});
+    expect(find.byType(EmailCodeForm), findsNothing);
+    expect(find.text(ShellWords.offerTitle), findsOneWidget);
+  });
+
+  testWidgets('says People’s refusal of a code in its words, and asks for 6 digits', (tester) async {
+    const refused = 'That code isn’t right, or it has expired. Check the email, or ask for a new code.';
+    people
+      ..on('POST /api/auth/email-code', (req) => json({'message': 'sent'}))
+      ..on('POST /api/auth/email-code/sign-in', (req) => json({'message': refused}, 401));
+    await open(tester, people, MemorySessionStore());
+    await tester.tap(find.text(EmailCodeWords.link));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(EmailCodeWords.send));
+    await tester.pump();
+    expect(find.text(EmailCodeWords.needEmail), findsOneWidget);
+    await tester.enterText(find.descendant(of: find.byType(EmailCodeForm), matching: find.byType(TextField)), 'h.test@example.test');
+    await tester.tap(find.text(EmailCodeWords.send));
+    await tester.pumpAndSettle();
+    final codeField = find.descendant(of: find.byType(EmailCodeForm), matching: find.byType(TextField));
+    await tester.enterText(codeField, '48291');
+    await tester.tap(find.descendant(of: find.byType(EmailCodeForm), matching: find.text(EmailCodeWords.signIn)));
+    await tester.pump();
+    expect(find.text(EmailCodeWords.needCode), findsOneWidget);
+    await tester.enterText(codeField, '482913');
+    await tester.tap(find.descendant(of: find.byType(EmailCodeForm), matching: find.text(EmailCodeWords.signIn)));
+    await tester.pumpAndSettle();
+    expect(find.text(refused), findsOneWidget);
+    expect(find.byType(EmailCodeForm), findsOneWidget);
+    // another email: back to the first step
+    await tester.tap(find.text(EmailCodeWords.otherEmail));
+    await tester.pumpAndSettle();
+    expect(find.text(EmailCodeWords.send), findsOneWidget);
+  });
+
+  test('reads a code as typed, and counts a minute to a new one', () {
+    expect(codeOf('482913'), '482913');
+    expect(codeOf(' 482 913'), '482913');
+    expect(codeOf('٤٨٢٩١٣'), '482913');
+    expect(codeOf('۴۸۲-۹۱۳'), '482913');
+    expect(codeOf('48291'), isNull);
+    expect(codeOf('48a913'), isNull);
+    final sent = DateTime(2026, 10, 31, 16);
+    expect(resendIn(sent, sent), 60);
+    expect(resendIn(sent, sent.add(const Duration(milliseconds: 18200))), 42);
+    expect(resendIn(sent, sent.add(const Duration(minutes: 1))), 0);
+    expect(resendIn(null, sent), 0);
+    expect(EmailCodeWords.resend(42), 'Send a new code in 0:42');
+    expect(EmailCodeWords.resend(0), 'Send a new code');
   });
 
   testWidgets('offers the fingerprint after the password, and asks for it at once next time', (tester) async {
