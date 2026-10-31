@@ -22,6 +22,7 @@ import 'theme/app_theme.dart';
 import 'theme/look.dart';
 import 'theme/parts.dart';
 import 'theme/tokens.dart';
+import 'auth/app_lock.dart';
 
 class PeopleApp extends ConsumerStatefulWidget {
   const PeopleApp({super.key});
@@ -146,7 +147,8 @@ class _PeopleAppState extends ConsumerState<PeopleApp> {
       builder: (context, child) {
         final dark = Theme.of(context).brightness == Brightness.dark;
         final bars = (dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark).copyWith(statusBarColor: Colors.transparent);
-        return AnnotatedRegion<SystemUiOverlayStyle>(value: bars, child: child!);
+        // behind the fingerprint or face whenever it opens or comes back (owner, 31 October 2026: app_lock.dart)
+        return AnnotatedRegion<SystemUiOverlayStyle>(value: bars, child: AppLockGate(child: child!));
       },
     );
   }

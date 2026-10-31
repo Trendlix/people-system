@@ -5,6 +5,7 @@ import '../models/me.dart';
 import '../platform/biometrics.dart';
 import '../providers.dart';
 import 'session_store.dart';
+import 'app_lock.dart';
 
 // Signing in (README Phase 1; owner, 30 October 2026: "The 3 easy wins first"): the password once, then the fingerprint
 // (People's device credentials, apps/api auth.controller.ts). The session is an app session (the user agent's mark) of
@@ -99,6 +100,8 @@ class AuthController extends AsyncNotifier<AuthState> {
     final device = await _store.readDevice();
     if (device != null && device.userId != me.id) await _store.clearDevice();
     final offer = (device == null || device.userId != me.id) && await _biometrics.available();
+    // just proved it's them: the app opens unlocked (app_lock.dart)
+    ref.read(appLockProvider.notifier).unlock();
     state = AsyncData(SignedIn(me, offerFingerprint: offer));
   }
 
@@ -134,6 +137,7 @@ class AuthController extends AsyncNotifier<AuthState> {
     try {
       final signed = await _client.signIn('/api/auth/devices/sign-in', {'id': device.id, 'secret': device.secret});
       await _store.write(signed.token);
+      ref.read(appLockProvider.notifier).unlock();
       state = AsyncData(SignedIn(await _me()));
     } on ApiException catch (e) {
       if (e.status != 401) rethrow;

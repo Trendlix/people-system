@@ -180,5 +180,10 @@ phase, and record every decision the owner makes here (with the date and their w
     link to set a new one), and a code by email ("and i can add OTP via Mail for app login if the user didn't remember
     his password", "via app and web": 6 digits, once, 10 minutes, 5 tries, a new one a minute on; signed in as with the
     password, the fingerprint offered after it). The website has the same at /login/code.
+- [x] Later on 31 October 2026: the counter ticks every second by People's clock (0.6.2); the attendance rate and Hours
+  this week by the hours, as the payroll measures attendance, and Forgot password (0.6.3); sign in with a code by email
+  (0.6.4); Sign out always in reach in the menu (0.6.5); the app locked behind the fingerprint or face whenever it
+  opens with a session kept or comes back after a minute away ("ask for the fingerprint or the faceid again, as a
+  security step"; `lib/auth/app_lock.dart`; 0.6.6).
 - [ ] Phase 3 — Approve in one move — not in the phone design; to be placed in the Requests tab in its style — next.
 - [ ] Phase 4 — push notifications (Firebase); opening files and payslip PDFs in the app.
