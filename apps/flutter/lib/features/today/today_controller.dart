@@ -43,6 +43,8 @@ class TodayController extends AsyncNotifier<Today> {
     final read = await ref.read(locatorProvider).read();
     final spot = read.spot;
     if (spot == null) return NoLocation(read.problem ?? LocationProblem.unavailable);
+    // the latest position for the activity log too (31 October 2026)
+    ref.read(locationCacheProvider).remember(spot);
     final body = <String, Object>{
       'kind': today.next == PunchKind.checkOut ? 'out' : 'in',
       'latitude': spot.latitude,

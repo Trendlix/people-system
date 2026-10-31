@@ -78,8 +78,25 @@ class FakeLocator implements Locator {
   var openedApp = 0;
   var openedLocation = 0;
 
+  /// What readiness() says (the gate's check, 31 October 2026); null: ready.
+  LocationProblem? ready;
+
+  /// What ask() leaves missing once asked; null: allowed.
+  LocationProblem? afterAsking;
+  var asked = 0;
+
   @override
   Future<LocationRead> read() async => answer;
+
+  @override
+  Future<LocationProblem?> readiness() async => ready;
+
+  @override
+  Future<LocationProblem?> ask() async {
+    asked++;
+    ready = afterAsking;
+    return ready;
+  }
 
   @override
   Future<void> openAppSettings() async => openedApp++;
@@ -102,6 +119,7 @@ List<Override> overridesFor(FakePeople people, {required MemorySessionStore stor
       userAgent: userAgentOf('0.2.0', 'android'),
       token: store.read,
       onSessionEnded: () => ref.read(authProvider.notifier).sessionEnded(),
+      location: () => ref.read(locationCacheProvider).header(),
     ),
   ),
 ];

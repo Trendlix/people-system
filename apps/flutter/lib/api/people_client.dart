@@ -41,8 +41,17 @@ class PeopleClient {
     required this.userAgent,
     this.token,
     this.onSessionEnded,
+    this.location,
+    this.onRequest,
     this.timeout = const Duration(seconds: 20),
   });
+
+  /// The phone's last position for People's activity log (LocationCache.header), sent as `x-people-location`; none: not
+  /// sent.
+  final String? Function()? location;
+
+  /// Told of each request (LocationCache.refreshIfStale: the position read again at most once a minute).
+  final void Function()? onRequest;
 
   /// `https://host:port`, no trailing slash.
   final String baseUrl;
@@ -57,6 +66,9 @@ class PeopleClient {
   final Duration timeout;
 
   static const unreachableText = 'Can’t reach People. Check your connection and try again.';
+
+  /// The header the phone's position goes in (People's activity log).
+  static const locationHeader = 'x-people-location';
 
   Future<Object?> get(String path) async => _bodyOf(await _send('GET', path));
 
@@ -82,6 +94,10 @@ class PeopleClient {
 
   Future<http.Response> _send(String method, String path, {Object? body, bool withSession = true}) async {
     final headers = <String, String>{'accept': 'application/json', 'user-agent': userAgent};
+    // where the phone is, for People's activity log (owner, 31 October 2026: "with location and ip capture")
+    final where = location?.call();
+    if (where != null) headers[locationHeader] = where;
+    onRequest?.call();
     final t = !withSession || token == null ? null : await token!();
     final sentSession = t != null && t.isNotEmpty;
     if (sentSession) headers['authorization'] = 'Bearer $t';

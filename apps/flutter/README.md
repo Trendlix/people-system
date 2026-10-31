@@ -184,6 +184,9 @@ phase, and record every decision the owner makes here (with the date and their w
   this week by the hours, as the payroll measures attendance, and Forgot password (0.6.3); sign in with a code by email
   (0.6.4); Sign out always in reach in the menu (0.6.5); the app locked behind the fingerprint or face whenever it
   opens with a session kept or comes back after a minute away ("ask for the fingerprint or the faceid again, as a
-  security step"; `lib/auth/app_lock.dart`; 0.6.6).
+  security step"; `lib/auth/app_lock.dart`; 0.6.6); Profile → Documents with each paper's state and no contract (0.6.7);
+  the whole app only with the location on ("app has to be location enabled to work": `lib/platform/location_gate.dart`)
+  and the phone's last position sent with each request (`x-people-location`, read at most once a minute in use) for
+  People's activity log (0.6.8).
 - [ ] Phase 3 — Approve in one move — not in the phone design; to be placed in the Requests tab in its style — next.
 - [ ] Phase 4 — push notifications (Firebase); opening files and payslip PDFs in the app.

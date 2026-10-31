@@ -16,6 +16,14 @@ typedef LocationRead = ({Spot? spot, LocationProblem? problem});
 abstract interface class Locator {
   Future<LocationRead> read();
 
+  /// Whether the app can read the location now, without asking anything: null when it can, else why not (the phone's
+  /// switch off, not allowed, refused for good). For the app's gate (owner, 31 October 2026: "app has to be location
+  /// enabled to work").
+  Future<LocationProblem?> readiness();
+
+  /// Asks the phone to allow the app's location (the permission prompt), then says what is still missing; null: ready.
+  Future<LocationProblem?> ask();
+
   /// The app's own settings page (to allow location after "Don't ask again").
   Future<void> openAppSettings();
 
@@ -53,6 +61,34 @@ class DeviceLocator implements Locator {
       return (spot: null, problem: LocationProblem.unavailable);
     }
   }
+
+  @override
+  Future<LocationProblem?> readiness() async {
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) return LocationProblem.serviceOff;
+      return _problemOf(await Geolocator.checkPermission());
+    } on Exception {
+      return LocationProblem.unavailable;
+    }
+  }
+
+  @override
+  Future<LocationProblem?> ask() async {
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) return LocationProblem.serviceOff;
+      var permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) permission = await Geolocator.requestPermission();
+      return _problemOf(permission);
+    } on Exception {
+      return LocationProblem.unavailable;
+    }
+  }
+
+  static LocationProblem? _problemOf(LocationPermission permission) => switch (permission) {
+    LocationPermission.deniedForever => LocationProblem.deniedForever,
+    LocationPermission.denied || LocationPermission.unableToDetermine => LocationProblem.denied,
+    _ => null,
+  };
 
   @override
   Future<void> openAppSettings() => Geolocator.openAppSettings();
