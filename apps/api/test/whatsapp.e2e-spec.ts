@@ -391,7 +391,9 @@ describe('WhatsApp notifications (e2e)', () => {
       const [waiting] = await messagesTo('mona');
       const span = `${start.slice(8, 10)}/${start.slice(5, 7)}/${start.slice(0, 4)}–${addDays(start, 1).slice(8, 10)}/${addDays(start, 1).slice(5, 7)}/${addDays(start, 1).slice(0, 4)}`;
       expect(waiting).toMatchObject({ template: 'approval_waiting', language: 'en', groupKey: 'approvals', status: 'queued', mobile: mobileOf('mona'), kind: 'leave_waiting', reference: 'Leave', confidential: false });
-      expect(waiting.variables).toEqual({ body: ['Mona', 'a leave request', `Rami Report ${RUN}, ${span}`], button: `leave/${leaveId}` });
+      // Mona, an employee, gets Rami by his display name, the first two names (owner, 31 October 2026: "make mails and
+      // whatsapp use display names too")
+      expect(waiting.variables).toEqual({ body: ['Mona', 'a leave request', `Rami Report, ${span}`], button: `leave/${leaveId}` });
 
       await as('mona').post(`/leave/requests/${leaveId}/decide`, { decision: 'approve' }).expect(200);
       // HR's step: HR didn't opt in, so nothing on WhatsApp; the bell as ever
@@ -416,7 +418,7 @@ describe('WhatsApp notifications (e2e)', () => {
       // the round sends them, each with its button into the system
       const r = await round();
       expect(r).toMatchObject({ sent: 2, failed: 0 });
-      expect(sentTo(mobileOf('mona'))).toEqual([{ to: digits(mobileOf('mona')), type: 'template', template: 'people_approval_waiting', language: 'en', body: ['Mona', 'a leave request', `Rami Report ${RUN}, ${span}`], button: `leave/${leaveId}`, text: null, wamid: expect.any(String) }]);
+      expect(sentTo(mobileOf('mona'))).toEqual([{ to: digits(mobileOf('mona')), type: 'template', template: 'people_approval_waiting', language: 'en', body: ['Mona', 'a leave request', `Rami Report, ${span}`], button: `leave/${leaveId}`, text: null, wamid: expect.any(String) }]);
       expect(sentTo(mobileOf('rami'))).toEqual([expect.objectContaining({ template: 'people_request_update', language: 'ar' })]);
       expect((await messagesTo('rami'))[0]).toMatchObject({ status: 'sent', wamid: expect.stringMatching(/^wamid\./), attempts: 1, sentAt: expect.any(Date) });
     });

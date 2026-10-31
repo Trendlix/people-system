@@ -7,7 +7,6 @@ import { AuthController } from './auth.controller.js';
 import { AuthGuard } from './auth.guard.js';
 import { AuthService } from './auth.service.js';
 import { ColleagueNamesInterceptor } from './colleague-names.interceptor.js';
-import { ColleagueNamesService } from './colleague-names.service.js';
 import { DeveloperInterceptor } from './developer.interceptor.js';
 import { DeviceCredentialsService } from './device-credentials.service.js';
 import { LoginCodesService } from './login-codes.service.js';
@@ -36,10 +35,8 @@ import { ViewAsService } from './view-as.service.js';
     ConnectorTokensService,
     { provide: APP_GUARD, useClass: AuthGuard },
     { provide: APP_INTERCEPTOR, useClass: DeveloperInterceptor },
-    // an employee's answers name colleagues by their display names (31 October 2026)
-    ColleagueNamesService,
+    // an employee's answers name colleagues by their display names (31 October 2026; ColleagueNamesModule)
     { provide: APP_INTERCEPTOR, useClass: ColleagueNamesInterceptor },
   ],
-  exports: [ColleagueNamesService],
 })
 export class AuthModule {}

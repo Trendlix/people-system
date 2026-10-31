@@ -6,6 +6,7 @@ import type { MailSettings } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { keyIdOf, mailKeyOf, openSecret, sameKey, sealSecret } from './mail-secret.js';
 import { smtpProblem, transportOptions, type SmtpSettings } from './smtp-problems.js';
+import { ColleagueNamesService } from '../auth/colleague-names.service.js';
 
 // Sends email through the company's own email provider, by SMTP (job offers, owner's request, 15 October 2026; the
 // invitations, interviews and the rest since). Where from, in this order:
@@ -90,6 +91,7 @@ export class MailService {
   constructor(
     config: ConfigService,
     private readonly prisma: PrismaService,
+    private readonly names: ColleagueNamesService,
   ) {
     this.memory = config.get<string>('MAIL_TRANSPORT') === 'memory';
     this.key = mailKeyOf(config.getOrThrow<string>('JWT_SECRET'));
@@ -172,10 +174,27 @@ export class MailService {
     return this.sendingWith(await this.readRow()).source !== 'none';
   }
 
-  /** Sends one message; refused (503) when email isn't set up or the provider refuses it. */
-  async send(mail: Mail): Promise<void> {
+  /**
+   * Sends one message; refused (503) when email isn't set up or the provider refuses it. Colleagues are named by their
+   * display names for anyone but HR, Finance, the CEO, Admin and the Super Admin (owner, 31 October 2026: "make mails and
+   * whatsapp use display names too"; ColleagueNamesService.forAddress): in its subject, text and HTML, and in a calendar
+   * invitation with it; other attachments (an offer's PDF) as they are.
+   */
+  async send(given: Mail): Promise<void> {
     const sender = await this.sender();
     if (!sender) throw new ServiceUnavailableException("Email isn't set up on the server yet. Send the offer's link yourself instead.");
+    const swap = await this.names.forAddress(given.to);
+    const mail: Mail = swap
+      ? {
+          ...given,
+          subject: swap(given.subject),
+          text: swap(given.text),
+          ...(given.html !== undefined && { html: swap(given.html) }),
+          ...(given.attachments && {
+            attachments: given.attachments.map((a) => (a.contentType.startsWith('text/calendar') ? { ...a, content: Buffer.from(swap(a.content.toString('utf8')), 'utf8') } : a)),
+          }),
+        }
+      : given;
     const replyTo = mail.replyTo ?? sender.replyTo ?? undefined;
     try {
       await sender.transport.sendMail({ ...mail, from: sender.from, replyTo });

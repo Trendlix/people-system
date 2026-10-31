@@ -19,6 +19,7 @@ import { AppReleasesModule } from './app-version/app-releases.module.js';
 import { KpisModule } from './kpis/kpis.module.js';
 import { LeaveModule } from './leave/leave.module.js';
 import { MailModule } from './mail/mail.module.js';
+import { ColleagueNamesModule } from './auth/colleague-names.module.js';
 import { MeetingsModule } from './meetings/meetings.module.js';
 import { CalendarsModule } from './calendars/calendars.module.js';
 import { InterviewHoursModule } from './interview-hours/interview-hours.module.js';
@@ -55,6 +56,8 @@ import { ZohoPeopleModule } from './zoho-people/zoho-people.module.js';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
+    // colleagues by their display names for anyone but HR, Finance, the CEO, Admin and the Super Admin (31 October 2026)
+    ColleagueNamesModule,
     AuditModule,
     // the app's newest build, for its force update (owner, 31 October 2026)
     AppReleasesModule,

@@ -18,7 +18,8 @@ import { createApp, createUser, signIn } from './helpers.js';
 
 const RUN = Date.now().toString(36).toLowerCase();
 const TODAY = todayInCairo();
-const M1 = monthsLater(TODAY.slice(0, 7), 1);
+// next month, or January in November: a leave counted by the year can't run from December into January
+const M1 = monthsLater(TODAY.slice(0, 7), TODAY.slice(5, 7) === '11' ? 2 : 1);
 const M2 = monthsLater(M1, 1);
 const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 

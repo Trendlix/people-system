@@ -51,6 +51,7 @@ import {
   type WhatsAppTemplateKey,
 } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
+import { ColleagueNamesService } from '../auth/colleague-names.service.js';
 import { actsAs } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { addDays, dayInCairo } from '../common/date-only.js';
@@ -189,6 +190,7 @@ export class WhatsAppService {
     private readonly prisma: PrismaService,
     private readonly confidential: ConfidentialService,
     private readonly audit: AuditService,
+    private readonly names: ColleagueNamesService,
   ) {
     this.key = whatsappKeyOf(config.getOrThrow<string>('JWT_SECRET'));
   }
@@ -279,7 +281,12 @@ export class WhatsAppService {
       if (reminder && inQuietHours(now, config.quiet)) return 0;
       const optIns = await this.prisma.whatsAppOptIn.findMany({
         where: { userId: { in: [...new Set(userIds)] }, stoppedAt: null, [GROUP_COLUMN[group]]: true, user: { isActive: true } },
-        select: { userId: true, mobile: true, language: true, user: { select: { employee: { select: { id: true, mobile: true, fullNameEn: true, fullNameAr: true } } } } },
+        select: {
+          userId: true,
+          mobile: true,
+          language: true,
+          user: { select: { roles: { select: { role: { select: { key: true } } } }, employee: { select: { id: true, mobile: true, fullNameEn: true, fullNameAr: true } } } },
+        },
       });
       if (!optIns.length) return 0;
       const cLevel = await this.confidential.ids();
@@ -292,6 +299,9 @@ export class WhatsAppService {
         if (!config.approved.has(`${template}:${language}`)) continue;
         const firstName = firstNameOf(language === 'ar' && employee.fullNameAr?.trim() ? employee.fullNameAr : employee.fullNameEn);
         const content = whatsappContent(notice.facts, language, { firstName, link: n.link });
+        // colleagues by their display names for anyone but HR, Finance, the CEO, Admin and the Super Admin (owner, 31
+        // October 2026: "make mails and whatsapp use display names too")
+        const swap = await this.names.forRoles(o.user.roles.map((r) => r.role.key), employee.id);
         const confidential = !!notice.confidential || cLevel.has(employee.id) || (!!notice.about && cLevel.has(notice.about));
         const base: Queued = {
           userId: o.userId,
@@ -300,7 +310,7 @@ export class WhatsAppService {
           language,
           kind: n.kind,
           group,
-          body: content.body,
+          body: swap ? content.body.map(swap) : content.body,
           button: content.button,
           reference: NOTIFICATION_KIND_LABELS[n.kind] ?? null,
           link: n.link,
@@ -523,7 +533,11 @@ export class WhatsAppService {
       const c = await this.prisma.candidate.findUnique({ where: { id: who.candidateId }, select: { whatsappStoppedAt: true } });
       if (c?.whatsappStoppedAt && c.whatsappStoppedAt > who.whatsappOptInAt) return false;
     }
-    const content = whatsappContent(facts, language);
+    // the company's people by their display names: a candidate isn't staff (owner, 31 October 2026: "make mails and
+    // whatsapp use display names too")
+    const swap = await this.names.swapFor(null);
+    const shown = whatsappContent(facts, language);
+    const content = { ...shown, body: shown.body.map(swap) };
     const sendBefore = on.sendBefore ?? new Date(now.getTime() + WHATSAPP_SEND_WITHIN_HOURS * 3_600_000);
     const { count } = await this.prisma.whatsAppMessage.createMany({
       data: [

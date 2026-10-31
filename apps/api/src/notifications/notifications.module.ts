@@ -1,5 +1,4 @@
 import { Global, Module } from '@nestjs/common';
-import { ColleagueNamesService } from '../auth/colleague-names.service.js';
 import { FcmSender } from './fcm-sender.service.js';
 import { NoticesService } from './notices.service.js';
 import { NotificationsController } from './notifications.controller.js';
@@ -14,8 +13,7 @@ import { RemindersService } from './reminders.service.js';
 @Global()
 @Module({
   controllers: [NotificationsController],
-  // the pushes name colleagues by their display names for an employee (31 October 2026)
-  providers: [NotificationsService, NoticesService, FcmSender, RemindersService, ColleagueNamesService],
+  providers: [NotificationsService, NoticesService, FcmSender, RemindersService],
   exports: [NotificationsService, NoticesService, RemindersService],
 })
 export class NotificationsModule {}
