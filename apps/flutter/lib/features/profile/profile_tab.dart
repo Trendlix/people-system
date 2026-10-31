@@ -105,7 +105,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
         ProfileSection.kpis => const _KpisCard(),
       },
       const SizedBox(height: 12),
-      _DocumentsCard(profile: p, job: details.job),
+      _DocumentsCard(profile: p),
       const SizedBox(height: 12),
       const _AccountCard(employee: true),
     ];
@@ -572,7 +572,6 @@ class _EmploymentCard extends StatelessWidget {
     if (j != null) {
       arrangement = EmployeeLabels.of(EmployeeLabels.workArrangement, j.workArrangement);
     }
-    final contract = j?.contract;
     return SurfaceCard(
       padding: const EdgeInsets.all(18),
       child: Column(
@@ -601,15 +600,8 @@ class _EmploymentCard extends StatelessWidget {
                   : null,
             ),
             ReadOnlyField(label: ProfileWords.shift, value: j.shift),
-            ReadOnlyField(
-              label: ProfileWords.contract,
-              value: contract == null
-                  ? null
-                  : ProfileWords.contractLine(
-                      EmployeeLabels.of(EmployeeLabels.contractForm, contract.form) ?? ProfileWords.signed,
-                      contract.endDate == null ? null : shortDateOf(contract.endDate!),
-                    ),
-            ),
+            // no contract details on the employee's profile (owner, 31 October 2026: "show no contract details anywhere in
+            // an employee profile")
           ],
         ],
       ),
@@ -673,16 +665,20 @@ class _KpisCard extends ConsumerWidget {
 
 // ---------- documents ----------
 
+/// HR's records (owner, 31 October 2026, on the app's Documents: "hide employee contract", "and for the files allow the
+/// employee to see the files with a red or green icon if submitted or missing"): each paper the employee file needs, a
+/// green mark when HR has it on file, a red one when it's missing (its name only: never the scan); then the company's
+/// assets with them.
 class _DocumentsCard extends StatelessWidget {
-  const _DocumentsCard({required this.profile, required this.job});
+  const _DocumentsCard({required this.profile});
 
   final OwnProfile profile;
-  final CurrentJob? job;
 
   @override
   Widget build(BuildContext context) {
-    final contract = job?.contract;
-    final papers = profile.papersMissing;
+    final p = context.palette;
+    final papers = profile.papers;
+    final missing = profile.papersMissing;
     return SurfaceCard(
       padding: const EdgeInsets.all(18),
       child: Column(
@@ -690,15 +686,25 @@ class _DocumentsCard extends StatelessWidget {
         children: [
           const ProfileCardHead(eyebrow: ProfileWords.hrRecords, title: ProfileWords.documents),
           const SizedBox(height: 17),
-          RecordRow(
-            icon: CupertinoIcons.doc_text,
-            title: ProfileWords.employmentContract,
-            subtitle: contract == null
-                ? ProfileWords.noContract
-                : (contract.signedOn == null ? ProfileWords.signed : ProfileWords.signedOn(shortDateOf(contract.signedOn!))),
-          ),
-          for (final paper in papers) RecordRow(icon: CupertinoIcons.doc, title: paper, subtitle: ProfileWords.neededByHr),
-          if (papers.isEmpty) const RecordRow(icon: CupertinoIcons.folder, title: ProfileWords.employeeFile, subtitle: ProfileWords.fileComplete),
+          for (final paper in papers)
+            RecordRow(
+              icon: CupertinoIcons.doc,
+              title: paper.label,
+              subtitle: paper.onFile ? ProfileWords.onFile : ProfileWords.missingPaper,
+              // the words beside it say it already
+              trailing: ExcludeSemantics(
+                child: Icon(
+                  paper.onFile ? CupertinoIcons.checkmark_circle_fill : CupertinoIcons.xmark_circle_fill,
+                  size: 24,
+                  color: paper.onFile ? p.ok : p.danger,
+                ),
+              ),
+            ),
+          // an API from before the list: the missing ones, or all on file
+          if (papers.isEmpty) ...[
+            for (final paper in missing) RecordRow(icon: CupertinoIcons.doc, title: paper, subtitle: ProfileWords.neededByHr),
+            if (missing.isEmpty) const RecordRow(icon: CupertinoIcons.folder, title: ProfileWords.employeeFile, subtitle: ProfileWords.fileComplete),
+          ],
           // what the company handed them (owner, 31 October 2026: "every employee sees his assets")
           AssetsRow(onTap: () => context.go('/profile/assets')),
         ],

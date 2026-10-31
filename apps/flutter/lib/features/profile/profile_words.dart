@@ -86,6 +86,8 @@ abstract final class ProfileWords {
   static const signed = 'Signed';
   static const noContract = 'No signed contract on file yet';
   static const neededByHr = 'Needed by HR: bring it to HR, who add it to your file';
+  static const onFile = 'On file';
+  static const missingPaper = 'Missing: bring it to HR';
   static const employeeFile = 'Employee file';
   static const fileComplete = 'Every paper HR needs is on file';
 

@@ -88,10 +88,13 @@ void main() {
     expect(find.text('Blood type'), findsNothing);
     expect(find.text('National ID'), findsNothing);
 
-    await scrollTo(tester, find.text(ProfileWords.employmentContract));
-    expect(find.text('Signed · 12 Feb 2024'), findsOneWidget);
-    expect(find.text('Military status certificate'), findsOneWidget);
-    expect(find.text(ProfileWords.neededByHr), findsOneWidget);
+    // each paper with whether HR has it, no contract (owner, 31 October 2026: "hide employee contract"; "a red or green
+    // icon if submitted or missing")
+    await scrollTo(tester, find.text('Military status certificate'));
+    expect(find.text(ProfileWords.employmentContract), findsNothing);
+    expect(find.text('National ID scan (front and back)'), findsOneWidget);
+    expect(find.text(ProfileWords.onFile), findsOneWidget);
+    expect(find.text(ProfileWords.missingPaper), findsOneWidget);
     expect(find.text('Manage'), findsNothing);
   });
 
@@ -111,7 +114,11 @@ void main() {
     await tester.pumpAndSettle();
     await scrollTo(tester, find.text('Product › Design'));
     expect(find.text(ProfileWords.team), findsOneWidget);
-    await scrollTo(tester, find.text('Fixed-term, until 13 Feb 2027'));
+    await scrollTo(tester, find.text('A · 09:00 – 18:00'));
+    // no contract details on their profile (owner, 31 October 2026: "show no contract details anywhere in an employee
+    // profile")
+    expect(find.text('Fixed-term, until 13 Feb 2027'), findsNothing);
+    expect(find.text(ProfileWords.contract), findsNothing);
     expect(find.text('G5 · Senior'), findsOneWidget);
     expect(find.text('In the office on Sun, Tue'), findsOneWidget);
     expect(find.text('A · 09:00 – 18:00'), findsOneWidget);

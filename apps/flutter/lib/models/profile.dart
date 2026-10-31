@@ -80,6 +80,18 @@ class OwnProfile {
   final List<int> workingDays;
   final Map raw;
 
+  /// Every paper the employee file needs and whether HR has it on file (owner, 31 October 2026: "allow the employee to
+  /// see the files with a red or green icon if submitted or missing"); empty from an API from before it.
+  List<({String label, bool onFile})> get papers {
+    final c = raw['completeness'];
+    final list = c is Map ? c['papers'] : null;
+    return [
+      if (list is List)
+        for (final x in list)
+          if (x is Map && x['label'] is String) (label: x['label'] as String, onFile: x['onFile'] == true),
+    ];
+  }
+
   /// The papers HR still needs from them (the Documents part's gaps).
   List<String> get papersMissing => [
     for (final g in missing)

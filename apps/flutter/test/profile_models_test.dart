@@ -100,6 +100,11 @@ Map<String, Object?> ownProfileJson({List<Map<String, Object?>> requests = const
         [
           {'key': 'military_certificate', 'label': 'Military status certificate', 'tab': 'documents'},
         ],
+    // every paper with whether it is on file (31 October 2026)
+    'papers': [
+      {'key': 'national_id', 'label': 'National ID scan (front and back)', 'onFile': true},
+      {'key': 'military_certificate', 'label': 'Military status certificate', 'onFile': false},
+    ],
   },
   'access': {'edit': false, 'delete': false, 'identity': false, 'bank': false},
   'confirmation': {'confirmedAt': '2026-10-01T09:00:00.000Z', 'confirmedBy': null, 'upToDate': true, 'changedFields': <String>[], 'disclaimerVersion': 1},
