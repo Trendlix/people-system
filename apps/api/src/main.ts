@@ -1,6 +1,9 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
 import { configureApp } from './app.setup.js';
+import { AuthService } from './auth/auth.service.js';
+import { docsAccess } from './docs/docs-access.js';
+import { setupDocs } from './docs/docs.js';
 import { CustodySchedulerService } from './assets/custody-scheduler.service.js';
 import { CheckInLocationEndingsService } from './attendance/check-in-location-endings.service.js';
 import { HoursByPairsService } from './attendance/hours-by-pairs.service.js';
@@ -19,6 +22,10 @@ import { ZohoPeopleSchedulerService } from './zoho-people/zoho-people-scheduler.
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   configureApp(app);
+  // the API documentation (owner, 31 October 2026: "Use Swagger to make apis documentation"): /api/docs/app, /web and
+  // /admin, behind a People sign-in of a Super Admin or a developer
+  app.use('/api/docs', docsAccess(app.get(AuthService)));
+  setupDocs(app, process.env.PEOPLE_COMMIT?.slice(0, 7) || 'development');
   // No CORS: browsers never call this API directly; the Next.js server does.
   await app.listen(process.env.PORT ?? 3001);
   // the check-in reminders, looked for every minute (apps/mobile/README.md, Phase 4); the tests' apps don't start them

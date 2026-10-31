@@ -1,6 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
 import { PrismaExceptionFilter } from './common/prisma-exception.filter.js';
+import { ExampleRecorder, recordExamplesTo } from './docs/example-recorder.js';
 import { FORM_VALIDATION, FormValidationPipe } from './common/validation.js';
 import { twilioWebhookBody, WHATSAPP_TWILIO_ROUTE, WHATSAPP_WEBHOOK_ROUTE, whatsappWebhookBody } from './whatsapp/webhook-body.js';
 
@@ -14,4 +15,11 @@ export function configureApp(app: INestApplication): void {
   app.use(cookieParser());
   app.useGlobalPipes(new FormValidationPipe(FORM_VALIDATION));
   app.useGlobalFilters(new PrismaExceptionFilter());
+  // the API documentation's examples (31 October 2026), recorded only while the end-to-end tests run with DOCS_RECORD
+  // set (npm run docs:examples); never on the server
+  const recordTo = process.env.DOCS_RECORD;
+  if (recordTo && process.env.NODE_ENV !== 'production') {
+    app.useGlobalInterceptors(new ExampleRecorder());
+    recordExamplesTo(recordTo);
+  }
 }

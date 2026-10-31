@@ -273,6 +273,7 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   // an asset's label printed (21 October 2026)
   label: 'Marked the label printed',
   login_failed: 'Sign-in failed',
+  api_docs_open: 'Opened the API documentation',
   logout: 'Signed out',
   // an asset's photo made the one its lists show (21 October 2026)
   make_first: 'Made it the main photo',

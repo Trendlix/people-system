@@ -30,6 +30,7 @@ import {
 import { IsDateOnly } from '../common/date-only.js';
 import { LatinDigits, Trim, TrimOrNull } from '../common/transforms.js';
 import { MONTH } from './months.js';
+import { ApiProperty } from '@nestjs/swagger';
 
 // Payroll (owner's decisions, 16 October 2026): its settings, a month's run and the inputs HR types on it. Money: a
 // number, to the piaster; percents as 95 for 95%; dates YYYY-MM-DD; a month YYYY-MM. Text: an empty string clears it.
@@ -216,7 +217,9 @@ const Amount = (min: number, message: string) => (target: object, key: string) =
 export class PayrollInputsDto {
   @Hours() workedHours?: number | null;
   /** Refused whenever sent with a value (20 October 2026): the run works them out (expectedHoursOf). */
-  @WorkedOut(EXPECTED_HOURS_NOT_TYPED) expectedHours?: null;
+  @ApiProperty({ required: false, nullable: true, type: Number, description: 'Never typed: the run works the expected hours out. Only null is accepted.' })
+  @WorkedOut(EXPECTED_HOURS_NOT_TYPED)
+  expectedHours?: null;
   @Percent() softSkills?: number | null;
   @Percent() performance?: number | null;
   @Percent() clientSatisfaction?: number | null;

@@ -236,6 +236,27 @@ export class AuthService {
     await this.audit.record({ userId, action: 'password_change', entityType: 'user', entityId: userId, diff: { sessionsEnded, devicesRevoked } });
   }
 
+  /**
+   * The API documentation's sign-in (owner, 31 October 2026: "Password-protected"): a People email and password, of an
+   * active Super Admin or developer, checked as signing in checks it (the same lockout, a refusal logged as a failed
+   * sign-in) but opening no session. Null when refused (the lockout still throws).
+   */
+  async docsSignIn(email: string, password: string): Promise<SessionUser | null> {
+    const normalized = email.trim().toLowerCase();
+    await this.ensureNotLockedOut(normalized);
+    const user = await this.prisma.user.findUnique({ where: { email: normalized }, include: WITH_ROLES });
+    let ok = false;
+    if (user?.passwordHash) ok = await verifyPassword(password, user.passwordHash);
+    else await verifyPassword(password, await this.dummyHash);
+    const own = user && ok && user.isActive ? sessionUserOf(user) : null;
+    if (!own || !own.roles.some((r) => r === 'super_admin' || r === 'developer')) {
+      await this.audit.record({ userId: null, action: 'login_failed', entityType: 'user', entityId: user?.id ?? null, diff: { email: normalized, to: 'api_docs' } });
+      return null;
+    }
+    await this.audit.record({ userId: own.id, action: 'api_docs_open', entityType: 'user', entityId: own.id, diff: {} });
+    return own;
+  }
+
   private async ensureNotLockedOut(email: string): Promise<void> {
     const since = new Date(Date.now() - LOCKOUT_MINUTES * 60 * 1000);
     const failures = await this.prisma.auditLog.count({
