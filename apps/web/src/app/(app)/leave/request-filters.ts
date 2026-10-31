@@ -25,12 +25,33 @@ export const WFH_TYPE = 'wfh';
 /** Which requests the list shows: the leave's and the permissions' kinds (permissions.ts), or the work from home requests. */
 export type ListKind = RequestKind | 'wfh';
 
-/** The filters in the address: one person, one type (a leave type's id, "permission" or "wfh"), the first and last day (YYYY-MM-DD); null: any. */
+/**
+ * How the list is ordered (owner, 31 October 2026: "allow me to sort by date without grouping"): by department and team,
+ * newest first in each (as before, the default), or one list by the request's day, newest or oldest first.
+ */
+export const REQUEST_ORDERS = ['department', 'newest', 'oldest'] as const;
+export type RequestOrder = (typeof REQUEST_ORDERS)[number];
+
+export const ORDER_CHOICES: readonly { value: RequestOrder; label: string }[] = [
+  { value: 'department', label: 'By department' },
+  { value: 'newest', label: 'By date, newest first' },
+  { value: 'oldest', label: 'By date, oldest first' },
+];
+
+/** The filters in the address: one person, one type (a leave type's id, "permission" or "wfh"), the first and last day (YYYY-MM-DD); null: any. And the order (none: by department). */
 export interface RequestFilters {
   employeeId: string | null;
   type: string | null;
   from: string | null;
   to: string | null;
+  order?: RequestOrder;
+}
+
+/** The rows in the order chosen: by date, one list by the request's first day (then when it was sent); by department, as they came. */
+export function orderedRows<R extends { startDate: string; createdAt: string }>(rows: readonly R[], order: RequestOrder | undefined): R[] {
+  if (order !== 'newest' && order !== 'oldest') return [...rows];
+  const sign = order === 'newest' ? -1 : 1;
+  return [...rows].sort((a, b) => sign * (a.startDate.localeCompare(b.startDate) || a.createdAt.localeCompare(b.createdAt)));
 }
 
 export const NO_FILTERS: RequestFilters = { employeeId: null, type: null, from: null, to: null };
@@ -55,11 +76,14 @@ export function readRequestFilters(query: Query): RequestFilters {
   let from = dayOf(one(query.from));
   let to = dayOf(one(query.to));
   if (from && to && from > to) [from, to] = [to, from];
+  const order = one(query.order);
   return {
     employeeId: UUID.test(employee) ? employee : null,
     type: type === PERMISSION_TYPE || type === WFH_TYPE || UUID.test(type) ? type : legacy,
     from,
     to,
+    // by department unless another order is chosen
+    ...(order !== 'department' && (REQUEST_ORDERS as readonly string[]).includes(order) && { order: order as RequestOrder }),
   };
 }
 
@@ -87,6 +111,7 @@ export function requestFiltersHref(status: LeaveFilter | null, f: RequestFilters
   if (f.type) params.set('type', f.type);
   if (f.from) params.set('from', f.from);
   if (f.to) params.set('to', f.to);
+  if (f.order && f.order !== 'department') params.set('order', f.order);
   const qs = params.toString();
   return qs ? `${LEAVE_PATH}?${qs}` : LEAVE_PATH;
 }

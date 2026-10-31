@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hasRequestFilters, kindOfFilters, leaveTypeOf, NO_FILTERS, NO_MATCH_TEXT, PERMISSION_TYPE, readRequestFilters, requestFiltersHref, typeChoices, WFH_TYPE } from './request-filters';
+import { hasRequestFilters, kindOfFilters, leaveTypeOf, NO_FILTERS, NO_MATCH_TEXT, orderedRows, PERMISSION_TYPE, readRequestFilters, requestFiltersHref, typeChoices, WFH_TYPE } from './request-filters';
 import { leaveRequestsPath, leaveStepText, leaveDoneText } from './list';
 import { permissionsPath } from './permissions';
 
@@ -109,5 +109,32 @@ describe('a Super Admin’s edit in the log', () => {
   it('the step says who edited it, the comment what changed', () => {
     expect(leaveStepText({ kind: 'edited', decision: null, comment: 'Type A → B' })).toBe('Edited by a Super Admin');
     expect(leaveDoneText({ done: 'edited' }, 'approved')).toEqual({ text: 'Leave edited. The log of every step lists what changed.', tone: 'ok' });
+  });
+});
+
+// owner, 31 October 2026: "allow me to sort by date without grouping"
+describe('the order of the requests', () => {
+  const rows = [
+    { id: 'a', startDate: '2026-10-12', createdAt: '2026-10-01T08:00:00Z' },
+    { id: 'b', startDate: '2026-10-20', createdAt: '2026-10-02T08:00:00Z' },
+    { id: 'c', startDate: '2026-10-12', createdAt: '2026-10-03T08:00:00Z' },
+  ];
+
+  it('reads the order from the address, by department unless chosen', () => {
+    expect(readRequestFilters({}).order).toBeUndefined();
+    expect(readRequestFilters({ order: 'oldest' }).order).toBe('oldest');
+    expect(readRequestFilters({ order: 'sideways' }).order).toBeUndefined();
+  });
+
+  it('keeps it in the links, and an order alone isn’t a filter to clear', () => {
+    expect(requestFiltersHref('all', { ...NO_FILTERS, order: 'newest' })).toBe('/leave?status=all&order=newest');
+    expect(requestFiltersHref('all', { ...NO_FILTERS, order: 'department' })).toBe('/leave?status=all');
+    expect(hasRequestFilters({ ...NO_FILTERS, order: 'oldest' })).toBe(false);
+  });
+
+  it('lists by the first day, then when sent: newest or oldest first; by department as they came', () => {
+    expect(orderedRows(rows, 'newest').map((r) => r.id)).toEqual(['b', 'c', 'a']);
+    expect(orderedRows(rows, 'oldest').map((r) => r.id)).toEqual(['a', 'c', 'b']);
+    expect(orderedRows(rows, 'department').map((r) => r.id)).toEqual(['a', 'b', 'c']);
   });
 });

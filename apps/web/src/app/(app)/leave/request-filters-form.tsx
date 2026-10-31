@@ -7,6 +7,7 @@ import { Select } from '@/components/select';
 import { LEAVE_PATH } from '@/components/nav';
 import { formatDate, parseDate } from '@/lib/format';
 import type { LeaveFilter } from './list';
+import { ORDER_CHOICES, type RequestOrder } from './request-filters';
 
 // Leave Requests' Employee and Type filters (owner, 26 October 2026: "i need to filter either by employee or typ"): each a
 // drop-down searched by typing; choosing one shows only its requests, beside the status chosen (?employee=<id>&type=<id>,
@@ -21,6 +22,7 @@ export function RequestFiltersForm({
   type,
   from,
   to,
+  order = 'department',
   people,
   types,
   filtered,
@@ -31,6 +33,8 @@ export function RequestFiltersForm({
   /** The first and last day chosen (YYYY-MM-DD), or none. */
   from: string | null;
   to: string | null;
+  /** By department (grouped), or one list by date (owner, 31 October 2026: "allow me to sort by date without grouping"). */
+  order?: RequestOrder;
   /** Null: the people couldn't be loaded, so the Employee filter is left out. */
   people: readonly { id: string; label: string }[] | null;
   types: readonly { value: string; label: string }[];
@@ -43,7 +47,7 @@ export function RequestFiltersForm({
   };
   return (
     // keyed by what is chosen, so following a link to other filters shows them, not what was picked before
-    <form key={`${employeeId ?? ''}|${type ?? ''}|${from ?? ''}|${to ?? ''}`} ref={form} action={LEAVE_PATH} aria-label="Filter the requests" className="flex flex-wrap items-end gap-3">
+    <form key={`${employeeId ?? ''}|${type ?? ''}|${from ?? ''}|${to ?? ''}|${order}`} ref={form} action={LEAVE_PATH} aria-label="Filter the requests" className="flex flex-wrap items-end gap-3">
       <input type="hidden" name="status" value={status} />
       {people && (
         <div className="min-w-56 flex-1 sm:max-w-xs">
@@ -84,13 +88,25 @@ export function RequestFiltersForm({
         </label>
         <DateInput id="leave-filter-to" name="to" defaultValue={to ? formatDate(to) : ''} onChange={dayChanged} />
       </div>
+      <div className="w-full min-w-48 sm:w-56">
+        <label htmlFor="leave-filter-order" className="label">
+          Order
+        </label>
+        <Select id="leave-filter-order" name="order" defaultValue={order} onChange={() => form.current?.requestSubmit()} className="input">
+          {ORDER_CHOICES.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </Select>
+      </div>
       <noscript>
         <button type="submit" className="btn btn-secondary">
           Filter
         </button>
       </noscript>
       {filtered && (
-        <Link href={`${LEAVE_PATH}?status=${status}`} className="inline-flex min-h-11 items-center text-sm font-semibold">
+        <Link href={`${LEAVE_PATH}?status=${status}${order !== 'department' ? `&order=${order}` : ''}`} className="inline-flex min-h-11 items-center text-sm font-semibold">
           Clear filters
         </Link>
       )}

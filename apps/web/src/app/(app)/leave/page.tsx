@@ -8,7 +8,7 @@ import { departmentOptions } from '@/lib/departments';
 import { formatDateTime } from '@/lib/format';
 import { actionablePeople } from '@/lib/confidential';
 import { withCode } from '@/lib/hidden';
-import { groupByPlace, showsDepartment } from '@/lib/place-groups';
+import { groupByPlace, showsDepartment, type DepartmentGroup } from '@/lib/place-groups';
 import { getCurrentUser } from '@/lib/session';
 import type { Department, EmployeeSummary } from '@/lib/types';
 import { getOrNull } from '../approvals/data';
@@ -39,7 +39,7 @@ import {
   type LeaveView,
 } from './list';
 import { NEW_PERMISSION_PATH, RECORD_PERMISSION_PATH, recordsPermission } from './permissions';
-import { hasRequestFilters, kindOfFilters, leaveTypeOf, NO_FILTERS, NO_MATCH_TEXT, readRequestFilters, requestFiltersHref, typeChoices, type RequestFilters } from './request-filters';
+import { hasRequestFilters, kindOfFilters, leaveTypeOf, NO_FILTERS, NO_MATCH_TEXT, orderedRows, readRequestFilters, requestFiltersHref, typeChoices, type RequestFilters, type RequestOrder } from './request-filters';
 import { RequestFiltersForm } from './request-filters-form';
 import { LeaveProgress, LeaveStatusBadge, RequestWhen, WfhProgress } from './ui';
 import { isWfh, listEmptyText, mergeLeaveList, rowHref, rowKind, wfhQueryOf, type LeaveListRow } from './wfh-rows';
@@ -103,7 +103,7 @@ function Filters({
           );
         })}
       </nav>
-      <RequestFiltersForm status={filter} employeeId={filters.employeeId} type={filters.type} from={filters.from} to={filters.to} people={people} types={types} filtered={hasRequestFilters(filters)} />
+      <RequestFiltersForm status={filter} employeeId={filters.employeeId} type={filters.type} from={filters.from} to={filters.to} order={filters.order} people={people} types={types} filtered={hasRequestFilters(filters)} />
     </div>
   );
 }
@@ -133,8 +133,13 @@ function Views({ view, month }: { view: LeaveView; month: string }) {
 /** What a row is, inside a sentence: "leave", "permission", "work from home day". */
 const ROW_WHAT = { leave: 'leave', permission: 'permission', wfh: 'work from home day' } as const;
 
-function RequestsTable({ requests }: { requests: LeaveListRow[] }) {
-  const groups = groupByPlace(requests, (r) => placeOfEmployee(r.employee));
+function RequestsTable({ requests, order = 'department' }: { requests: LeaveListRow[]; order?: RequestOrder }) {
+  // one list by date, without the department and team headings (owner, 31 October 2026: "allow me to sort by date
+  // without grouping"); else grouped, newest first in each group, as before
+  const byDate = order !== 'department';
+  const groups: DepartmentGroup<LeaveListRow>[] = byDate
+    ? [{ department: null, teams: [{ team: null, rows: orderedRows(requests, order) }], count: askerCount(requests) }]
+    : groupByPlace(requests, (r) => placeOfEmployee(r.employee));
   const heading = (rows: LeaveListRow[]) => ({ count: askerCount(rows), note: requestsLabel(rows.length) });
   return (
     <div className="card overflow-x-auto">
@@ -153,7 +158,7 @@ function RequestsTable({ requests }: { requests: LeaveListRow[] }) {
         </thead>
         {groups.map((g) => (
           <tbody key={g.department ?? ''}>
-            {showsDepartment(groups, g) && <GroupHeading level="department" name={g.department} span={SPAN} {...heading(g.teams.flatMap((t) => t.rows))} />}
+            {!byDate && showsDepartment(groups, g) && <GroupHeading level="department" name={g.department} span={SPAN} {...heading(g.teams.flatMap((t) => t.rows))} />}
             {g.teams.map((t) => (
               <Fragment key={t.team ?? ''}>
                 {t.team !== null && <GroupHeading level="team" name={t.team} span={SPAN} {...heading(t.rows)} />}
@@ -198,7 +203,9 @@ function RequestsTable({ requests }: { requests: LeaveListRow[] }) {
           </tbody>
         ))}
       </table>
-      <p className="border-t border-line px-4 py-3 text-sm text-muted">{requestsLabel(requests.length)}, newest first in each group.</p>
+      <p className="border-t border-line px-4 py-3 text-sm text-muted">
+        {requestsLabel(requests.length)}, {byDate ? (order === 'oldest' ? 'by date, oldest first' : 'by date, newest first') : 'newest first in each group'}.
+      </p>
     </div>
   );
 }
@@ -227,6 +234,7 @@ async function RequestsList({ query, user }: { query: Query; user: Awaited<Retur
     type: asked.type && (leaveTypes.kind !== 'ok' || types.some((t) => t.value === asked.type)) ? asked.type : null,
     from: asked.from,
     to: asked.to,
+    order: asked.order,
   };
   const kind = kindOfFilters(filters);
   const [leave, permissions, wfh] = await Promise.all([
@@ -266,7 +274,7 @@ async function RequestsList({ query, user }: { query: Query; user: Awaited<Retur
               </Empty>
             )
           ) : (
-            <RequestsTable requests={rows} />
+            <RequestsTable requests={rows} order={filters.order} />
           )}
         </>
       )}
