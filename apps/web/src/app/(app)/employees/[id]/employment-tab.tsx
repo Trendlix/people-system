@@ -403,7 +403,7 @@ async function DetailsSubTab({
           The profile of {p.fullNameEn} is saved, with the ID card in the employee file. Next, add the employment and its contract.
         </p>
       )}
-      {e && <ProbationBanner employee={p} employment={e} today={today} endingInProgress={Boolean(ending)} />}
+      {e && e.contract !== undefined && <ProbationBanner employee={p} employment={e} today={today} endingInProgress={Boolean(ending)} />}
       {ending && <EndingPanel ending={ending} employeeName={p.fullNameEn} canEdit={p.access.edit} canSetLastDay={canSetLastDay} isCeo={isCeo} today={today} />}
       {e ? (
         <>
@@ -447,13 +447,17 @@ async function DetailsSubTab({
               <CheckInExemptionSection employee={p} user={user} />
             </Suspense>
           </div>
-          {/* the employment's contract, right with it; where a missing contract detail links to (#contract) */}
-          <div id="contract" className="scroll-mt-6">
-            {/* loads on its own, so a slow contract list doesn't hold up the tab */}
-            <Suspense fallback={<ContractSectionLoading />}>
-              <ContractSection employee={p} employment={e} endingInProgress={Boolean(ending)} />
-            </Suspense>
-          </div>
+          {/* the employment's contract, right with it; where a missing contract detail links to (#contract). Only for those
+              the API gives contracts to: never the employee themself or their manager (owner, 31 October 2026: "show no
+              contract details anywhere in an employee profile") */}
+          {e.contract !== undefined && (
+            <div id="contract" className="scroll-mt-6">
+              {/* loads on its own, so a slow contract list doesn't hold up the tab */}
+              <Suspense fallback={<ContractSectionLoading />}>
+                <ContractSection employee={p} employment={e} endingInProgress={Boolean(ending)} />
+              </Suspense>
+            </div>
+          )}
         </>
       ) : (
         // #contract here too: with no current employment, hiring (the job and its contract) is where a contract starts

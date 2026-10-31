@@ -44,6 +44,7 @@ import {
   seesBank,
   seesChangeRequests,
   seesEmployeeFile,
+  seesContracts,
   seesEndings,
   seesEveryone,
   seesIdentity,
@@ -474,9 +475,10 @@ export class EmployeesService {
       }),
       photoId: photos?.get(id)?.id ?? null,
       photoCrop: photos?.get(id)?.crop ?? null,
-      // `leads` on the current employment; an ended one's is null
-      employment: current && { ...current, leads },
-      employments: history.map((x) => ({ ...x, leads: x === current ? leads : null })),
+      // `leads` on the current employment; an ended one's is null. No contract for anyone but HR, the CEO, Finance and a
+      // Super Admin (owner, 31 October 2026: "show no contract details anywhere in an employee profile")
+      employment: current && withoutContract({ ...current, leads }, user),
+      employments: history.map((x) => withoutContract({ ...x, leads: x === current ? leads : null }, user)),
       // with where each stands, an intern as such (19 October 2026)
       reports: managing.map((m) => ({ ...m.employee, status: m.status, standing: employmentStanding(m), jobTitle: m.jobTitle })),
       ...(identity && { identity: maskedIdentity(idRow) }),
@@ -839,4 +841,11 @@ export class EmployeesService {
     }
     return dateOfBirth;
   }
+}
+
+/** An employment as one who doesn't see contracts gets it (seesContracts): no contract at all, nothing said of it. */
+function withoutContract<E extends { contract: unknown; becameOpenEnded: boolean }>(e: E, user: SessionUser): E | Omit<E, 'contract'> {
+  if (seesContracts(user)) return e;
+  const { contract: _contract, ...rest } = e;
+  return { ...rest, becameOpenEnded: false };
 }

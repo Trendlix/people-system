@@ -55,3 +55,17 @@ describe('completeness for a student', () => {
     expect(keys(profile({ degree: 'high_school', studyYear: 'year_3', expectedGraduation: toDateOnly('2026-06-01') }))).toEqual(['graduationYear', 'educationGrade', 'qualificationAr']);
   });
 });
+
+// owner, 31 October 2026, on the app's Documents: "allow the employee to see the files with a red or green icon if
+// submitted or missing": every paper the file needs, on file or not, the national ID's two sides as one
+describe('the employee file’s papers', () => {
+  it('lists each paper the file needs with whether it is on file', () => {
+    const p = { ...profile({}), latestType: 'full_time' as const, papers: ['national_id_front', 'national_id_back'] };
+    const papers = completeness(p).papers;
+    expect(papers.length).toBeGreaterThan(1);
+    expect(papers.find((x) => x.key === 'national_id')).toEqual({ key: 'national_id', label: 'National ID scan (front and back)', onFile: true });
+    expect(papers.filter((x) => !x.onFile).map((x) => x.key)).toEqual(completeness(p).missing.filter((m) => m.tab === 'documents').map((m) => m.key));
+    // one side only: not on file
+    expect(completeness({ ...profile({}), latestType: 'full_time' as const, papers: ['national_id_front'] }).papers.find((x) => x.key === 'national_id')?.onFile).toBe(false);
+  });
+});

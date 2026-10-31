@@ -153,12 +153,7 @@ export default function MyAttendancePage({ searchParams }: PageProps<'/my-attend
       <PageHead
         eyebrow="People System · Attendance"
         title="My Attendance"
-        intro={
-          <>
-            Your check-ins and check-outs, on the system and from Zoho People&apos;s imports, counted by the company&apos;s rules: the hours within your
-            shift, at most its hours a day; a working day without a check-in is an absent day; leave from your approved requests.
-          </>
-        }
+        // no description under the title (owner, 31 October 2026, on the phone: "remove the decription")
         actions={
           <Suspense fallback={null}>
             <HeadMonth searchParams={searchParams} />

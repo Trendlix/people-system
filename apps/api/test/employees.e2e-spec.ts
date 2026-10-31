@@ -1399,7 +1399,9 @@ describe('Employees (e2e)', () => {
       }
 
       const complete = await profileOf(e.id);
-      expect(complete.completeness).toEqual({ percent: 100, missing: [] }); // 42 of 42
+      expect(complete.completeness).toMatchObject({ percent: 100, missing: [] }); // 42 of 42
+      // every paper listed with whether it is on file (owner, 31 October 2026): all of them now
+      expect((complete.completeness as unknown as { papers: { onFile: boolean }[] }).papers.every((x) => x.onFile)).toBe(true);
       // never asked for: the emergency contact, the second mobile, the job description acknowledgement
       expect(complete).toMatchObject({ emergencyName: null, emergencyMobile: null, mobile2: null, employment: { jdAcknowledgedAt: null } });
     });

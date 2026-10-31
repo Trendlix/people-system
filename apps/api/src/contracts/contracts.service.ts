@@ -33,7 +33,7 @@ import { AuditService, changes, type AuditEntry } from '../audit/audit.service.j
 import { assertDeletes, isSuperAdmin } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { addDays, addMonths, fromDateOnly, shownDate, toDateOnly, todayInCairo } from '../common/date-only.js';
-import { seesSalary } from '../employees/access.js';
+import { seesContracts, seesSalary } from '../employees/access.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
 import { EmployeeAccessService } from '../employee-access/employee-access.service.js';
 import { EmployeesService } from '../employees/employees.service.js';
@@ -350,6 +350,9 @@ export class ContractsService {
   /** An employment's contract versions, newest first. */
   async list(employeeId: string, employmentId: string, user: SessionUser) {
     const employment = await this.employment(employeeId, employmentId, user);
+    // none for the employee themself or their manager (owner, 31 October 2026: "show no contract details anywhere in an
+    // employee profile")
+    if (!seesContracts(user)) return [];
     const rows = await this.prisma.contract.findMany({ where: { employmentId }, orderBy: { version: 'desc' }, include: CONTRACT_INCLUDE });
     const ctx = await this.context(user, employment, rows);
     // a change of pay not signed yet stays with those who see salaries until it is (as an ending waiting for the CEO

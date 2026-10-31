@@ -346,7 +346,7 @@ describe('Contracts (e2e)', () => {
       await postContract(e, { grossSalary: 1000.555 }).expect(400);
     });
 
-    it('hides the salary from a manager and from the employee themself; HR, Finance and the CEO see it', async () => {
+    it('shows a manager and the employee themself no contract; HR, Finance and the CEO see it with its salary', async () => {
       const managerEmail = await createUser(prisma, ['manager', 'employee']);
       const staffEmail = await createUser(prisma, ['employee']);
       const manager = await newHire('Contract Manager', {}, { workEmail: managerEmail });
@@ -354,25 +354,14 @@ describe('Contracts (e2e)', () => {
       const outsider = await newHire('Contract Outsider');
       const managerSession = await signIn(app, managerEmail);
       const staffSession = await signIn(app, staffEmail);
-      const c = await signedContract(report, { grossSalary: 15000, netSalary: 12000 });
+      // a signed contract there, still not shown to them
+      await signedContract(report, { grossSalary: 15000, netSalary: 12000 });
 
-      const hidden = {
-        grossSalary: null,
-        basicSalary: null,
-        variableSalary: null,
-        netSalary: null,
-        insuredSalary: null,
-        hourlyRate: null,
-        hourlyMinimum: null,
-        allowances: null,
-        allowancesTotal: null,
-        totalSalary: null,
-        salaryHidden: true,
-      };
+      // no contract at all for the manager or the employee themself (owner, 31 October 2026: "show no contract details
+      // anywhere in an employee profile")
       for (const session of [managerSession, staffSession]) {
-        const [seen] = (await contractsOf(report, session).expect(200)).body as Contract[];
-        expect(seen).toMatchObject({ id: c.id, number: c.number, basicPercent: 80, startDate: '2026-01-15', ...hidden });
-        expect((await profileOf(report.id, session)).employment!.contract).toMatchObject({ id: c.id, ...hidden });
+        expect((await contractsOf(report, session).expect(200)).body).toEqual([]);
+        expect((await profileOf(report.id, session)).employment!.contract).toBeUndefined();
       }
       for (const session of [hr, finance, ceo]) {
         const [seen] = (await contractsOf(report, session).expect(200)).body as Contract[];

@@ -24,9 +24,21 @@ export interface Missing {
   tab: 'basic' | 'education' | 'employment' | 'documents';
 }
 
+/** A paper of the employee file, and whether HR has it on file (its name only: never the scan). */
+export interface PaperOnFile {
+  key: string;
+  label: string;
+  onFile: boolean;
+}
+
 export interface Completeness {
   percent: number;
   missing: Missing[];
+  /**
+   * Every paper the employee file needs, on file or not (owner, 31 October 2026, on the app's Documents: "allow the
+   * employee to see the files with a red or green icon if submitted or missing").
+   */
+  papers: PaperOnFile[];
 }
 
 /** The current employment as completeness checks it: which of its links are set, and its grade's rank. */
@@ -153,7 +165,11 @@ export function completeness({ employee: e, identity, bank, employment, latestTy
       ),
   ];
   const done = checks.filter(([ok]) => ok).length;
-  return { percent: Math.round((done / checks.length) * 100), missing: checks.filter(([ok]) => !ok).map(([, m]) => m) };
+  return {
+    percent: Math.round((done / checks.length) * 100),
+    missing: checks.filter(([ok]) => !ok).map(([, m]) => m),
+    papers: checks.filter(([, m]) => m.tab === 'documents').map(([ok, m]) => ({ key: m.key, label: m.label, onFile: ok })),
+  };
 }
 
 /** What an employment is read with for the checklist (with Prisma's `select`): the links it checks and the grade's rank. */

@@ -26,6 +26,12 @@ export const seesBank = (user: SessionUser) => !user.developer && has(user, ['hr
 /** Salaries (contracts): HR, Finance and CEO, like bank details (owner's decisions, 15 October 2026). */
 export const seesSalary = seesBank;
 
+/**
+ * Who sees a person's contracts on their profile (owner, 31 October 2026: "show no contract details anywhere in an
+ * employee profile"): HR, the CEO, Finance and a Super Admin; never the employee themself or their manager.
+ */
+export const seesContracts = (user: SessionUser) => has(user, ['hr', 'ceo', 'finance']) || user.roles.includes('super_admin');
+
 /** Only HR adds and changes employees. */
 export const editsEmployees = (user: SessionUser) => has(user, ['hr']);
 
