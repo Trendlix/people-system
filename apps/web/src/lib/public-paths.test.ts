@@ -4,6 +4,8 @@ import { careersRewrite, isPublicPath } from './public-paths';
 describe('pages open without signing in', () => {
   it('are the sign-in page and the company logo and thumbnail', () => {
     expect(isPublicPath('/login')).toBe(true);
+    // the app's newest APK (31 October 2026)
+    expect(isPublicPath('/download')).toBe(true);
     // signing in with a code by email (31 October 2026)
     expect(isPublicPath('/login/code')).toBe(true);
     expect(isPublicPath('/company-logo')).toBe(true);

@@ -14,6 +14,9 @@ const PUBLIC_PATHS = new Set([
   '/company-thumbnail',
   // the careers page's list of open jobs (recruitment, 22 October 2026)
   '/careers',
+  // the app's newest APK (its force update, 31 October 2026: app/download/route.ts), opened from the app or a phone's
+  // browser without a session
+  '/download',
   // the Claude connector (owner, 21 October 2026: "the connection method"): Claude calls these from its servers, without
   // the session cookie. The MCP endpoint answers 401 itself (which starts Claude's sign-in), the metadata is public by
   // design, and the token, registration and revocation endpoints authenticate the client themselves. The sign-in and

@@ -15,6 +15,7 @@ import { DocumentsModule } from './documents/documents.module.js';
 import { ConfidentialModule } from './employees/confidential.module.js';
 import { EmployeesModule } from './employees/employees.module.js';
 import { HealthController } from './health/health.controller.js';
+import { AppReleasesModule } from './app-version/app-releases.module.js';
 import { KpisModule } from './kpis/kpis.module.js';
 import { LeaveModule } from './leave/leave.module.js';
 import { MailModule } from './mail/mail.module.js';
@@ -54,6 +55,8 @@ import { ZohoPeopleModule } from './zoho-people/zoho-people.module.js';
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
     AuditModule,
+    // the app's newest build, for its force update (owner, 31 October 2026)
+    AppReleasesModule,
     ConfidentialModule,
     MailModule,
     // WhatsApp notifications (owner, 24 October 2026: "how to make whatsapp notifications?"; "Directly to Meta"): a

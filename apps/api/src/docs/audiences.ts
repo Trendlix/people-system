@@ -54,6 +54,8 @@ export const APP_ENDPOINTS: readonly string[] = [
   'POST /api/auth/devices/sign-in',
   'POST /api/auth/devices/{x}/revoke',
   'GET /api/auth/sessions',
+  // whether the app is the newest build (its force update, 31 October 2026)
+  'GET /api/app/latest',
   'POST /api/auth/sessions/{x}/end',
   // checking in and attendance
   'GET /api/me/attendance/today',

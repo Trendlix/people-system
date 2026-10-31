@@ -9,7 +9,9 @@ name: Flutter app (Android)
 # does not watch the API, the web app or apps/mobile, and backend.yml does not watch apps/flutter.
 #
 # Where the APK is: Actions -> the run -> Artifacts -> trendlix-people-<version> (a .zip with the .apk inside), kept
-# 30 days. The version: versionCode = 1000 + the run number (the old app's builds stopped at 11, so every Flutter build
+# 30 days. A push to main also publishes it as a GitHub release (tag app-<version>, the file trendlix-people.apk): the
+# app's force update (owner, 31 October 2026: "Always the latest build", "A fixed People link") asks People for the newest
+# one (GET /api/app/latest), and people.trendlix.com/download sends everyone to it. The version: versionCode = 1000 + the run number (the old app's builds stopped at 11, so every Flutter build
 # is newer), versionName = <major.minor of apps/flutter/pubspec.yaml>.<run> (e.g. 0.2.3).
 
 on:
@@ -20,8 +22,9 @@ on:
       - '.github/workflows/flutter-android.yml'
   workflow_dispatch:
 
+# write: the release each build is published as
 permissions:
-  contents: read
+  contents: write
 
 # a newer push replaces a build still running for the same branch
 concurrency:
@@ -151,3 +154,27 @@ jobs:
           path: ${{ steps.apk.outputs.path }}
           if-no-files-found: error
           retention-days: 30
+
+      # The newest build for everyone (the app's force update, update_gate.dart): a release tagged app-<version> on this
+      # commit, its file always named trendlix-people.apk, so the website's /download (releases/latest/download/…)
+      # always finds it. Only from main; a build by hand of another branch stays in the run's artifacts.
+      - name: Publish the release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APK: ${{ steps.apk.outputs.path }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/release"
+          cp "$APK" "$RUNNER_TEMP/release/trendlix-people.apk"
+          # a run tried again has the same version: its release gets the new file
+          if gh release view "app-$APP_VERSION_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "app-$APP_VERSION_NAME" "$RUNNER_TEMP/release/trendlix-people.apk" --repo "$GITHUB_REPOSITORY" --clobber
+            exit 0
+          fi
+          gh release create "app-$APP_VERSION_NAME" "$RUNNER_TEMP/release/trendlix-people.apk" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Trendlix People $APP_VERSION_NAME" \
+            --notes "The employee app, version $APP_VERSION_NAME (code $APP_VERSION_CODE). Install: open the .apk on the phone." \
+            --latest
+          echo "- Released: https://github.com/$GITHUB_REPOSITORY/releases/tag/app-$APP_VERSION_NAME" >> "$GITHUB_STEP_SUMMARY"
