@@ -3,9 +3,9 @@ import { RESIGNATION_LETTER_TYPES } from '@trendlix/shared';
 import { ApiError, apiFetch } from '@/lib/api';
 import { textResponse as text } from '../../../organization/templates/file-response';
 
-// Serves the signed letter of a resignation request from the API under the web domain, with the caller's session (as a
-// reimbursement's receipts). The API lets the employee, HR and the CEO open it and writes each opening to the audit log, so
-// the link is never prefetched.
+// Serves the signed letter of a resignation request (uploaded by HR since 31 October 2026; attached by the employee
+// before) from the API under the web domain, with the caller's session (as a reimbursement's receipts). The API lets the
+// employee, HR and the CEO open it and writes each opening to the audit log, so the link is never prefetched.
 
 const UUID = /^[0-9a-f-]{36}$/i;
 const FILE_TYPES = new Set<string>(RESIGNATION_LETTER_TYPES);

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- What the app lets a viewer read (MainActivity.kt, owner, 31 October 2026): the one file in the cache's shared/ folder
+     it is opening (a resignation request's letter), nothing else of the app's. -->
+<paths>
+    <cache-path name="shared" path="shared/" />
+</paths>

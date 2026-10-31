@@ -1,13 +1,19 @@
 // An employee asks to resign (owner, 26 October 2026: "but the employee has to request resignation and then the HR
 // generates the document"). Before this only HR recorded a resignation, on the profile (Employment → End employment →
-// Resignation). Now the employee sends "Resign" from My Requests: a short reason, a preferred last working day if they
-// have one, and a signed letter if they have one. HR (the CEO for a C-level person) is told and the direct manager is
+// Resignation). Now the employee sends "Resign" from My Requests: a short reason and a preferred last working day if they
+// have one (the letter: below). HR (the CEO for a C-level person) is told and the direct manager is
 // told and sees it, but decides nothing. HR presses "Record the resignation", which opens the End employment form with
 // the resignation, the day it was sent as the notice received on and the reason filled in; saving it is the ending as
 // before (its resignation document generated from it, the labour office certification, the CEO's approval, HR
 // completing it), and the request is then Recorded. The employee may withdraw it until it is recorded; HR may return it
 // with a reason (a mistaken request), and the employee may send it again. Pure: the API enforces these and the web shows
 // the same checks live. Dates are YYYY-MM-DD.
+//
+// The letter (owner, 31 October 2026: "on the resignation, the letter is auto generated, viewed by the employee but
+// uploaded by the HR"): the employee no longer attaches one. People fills the published Resignation request template in
+// from the request (its day, the preferred last day, the reason) for the employee to view, print and sign; HR (the CEO
+// for a C-level person) uploads the signed copy, which the employee and HR then open. A letter an employee attached
+// before is that signed copy.
 
 import { underLabourLaw } from './index.js';
 import { isTrainingType } from './employment-types.js';
@@ -29,9 +35,25 @@ export const RESIGNATION_REQUEST_LABEL = 'Resignation request';
 /** The longest reason the API takes: a short one. */
 export const RESIGNATION_REASON_MAX = 300;
 
-/** The signed letter: a PDF or a photo, at most this many MB (it passes through the web app, which Vercel limits to 4.5 MB). */
+/** The signed letter HR uploads: a PDF or a photo, at most this many MB (it passes through the web app, which Vercel limits to 4.5 MB). */
 export const RESIGNATION_LETTER_TYPES = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'] as const;
 export const RESIGNATION_LETTER_MAX_MB = 4;
+
+/**
+ * Said on the form (owner, 31 October 2026): People prepares the letter, the employee prints and signs it, HR keeps the
+ * signed copy (the CEO, `toCeo`, for a C-level person).
+ */
+export const resignationLetterNote = (toCeo: boolean): string =>
+  `People prepares your resignation letter from this request. Once it is sent, you can view and print the letter from the request to sign it; ${toCeo ? 'the CEO keeps' : 'HR keeps'} the signed copy.`;
+
+/** Why the letter can't be viewed: no published Resignation request template (Templates). */
+export const RESIGNATION_LETTER_NO_TEMPLATE = 'HR hasn’t set up the resignation letter template yet.';
+
+/** The employee sent a file with the request (an app from before 31 October 2026): People prepares the letter now. */
+export const RESIGNATION_LETTER_NOT_SENT = 'People prepares your resignation letter now: send the request without a file, then view and print the letter from it. HR keeps the signed copy.';
+
+/** The letter People prepares: ready to view, or not until HR publishes the template. */
+export type ResignationLetterState = 'ready' | 'no_template';
 
 /** The checkbox on the form (owner's wording, 26 October 2026). */
 export const RESIGNATION_CONFIRMATION = 'I understand a resignation counts once certified at the labour office (Decree 187/2025).';

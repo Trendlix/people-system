@@ -201,3 +201,29 @@ Future<Object?> sendForm(WidgetRef ref, String path, Map<String, String> fields,
   if (res.statusCode == 401 && sentSession) client.onSessionEnded?.call();
   throw ApiException(res.statusCode, PeopleClient.messagesOf(res.statusCode, res.body));
 }
+
+/// A file People gives for a request (a resignation's letter, owner, 31 October 2026): its bytes, read with the session
+/// as the client's own calls, never put in a link. People's refusal as an ApiException in its words (a letter whose
+/// template HR hasn't set up yet, say).
+Future<Uint8List> fetchFile(WidgetRef ref, String path) async {
+  final client = ref.read(peopleClientProvider);
+  final request = http.Request('GET', Uri.parse('${client.baseUrl}$path'))..headers.addAll({'accept': '*/*', 'user-agent': client.userAgent});
+  // where the phone is, for People's activity log, as the client's own calls: each opening is in it
+  final where = client.location?.call();
+  if (where != null) request.headers[PeopleClient.locationHeader] = where;
+  client.onRequest?.call();
+  final token = client.token == null ? null : await client.token!();
+  final sentSession = token != null && token.isNotEmpty;
+  if (sentSession) request.headers['authorization'] = 'Bearer $token';
+  http.Response res;
+  try {
+    res = await http.Response.fromStream(await client.httpClient.send(request).timeout(client.timeout));
+  } on TimeoutException {
+    throw ApiException(0, const [PeopleClient.unreachableText]);
+  } on Exception {
+    throw ApiException(0, const [PeopleClient.unreachableText]);
+  }
+  if (res.statusCode >= 200 && res.statusCode < 300) return res.bodyBytes;
+  if (res.statusCode == 401 && sentSession) client.onSessionEnded?.call();
+  throw ApiException(res.statusCode, PeopleClient.messagesOf(res.statusCode, res.body));
+}

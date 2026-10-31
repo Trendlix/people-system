@@ -2,12 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
   endingDefaults,
   formProblems,
+  generatedLetterHref,
   noticeHint,
   readResignationFilter,
   recordResignationHref,
   resignationHref,
   resignationsApiPath,
   resignationsHref,
+  signedLetterHref,
 } from './resignation';
 
 const TODAY = '2026-10-26';
@@ -15,24 +17,17 @@ const shown = (ymd: string) => `${ymd.slice(8, 10)}/${ymd.slice(5, 7)}/${ymd.sli
 
 describe('the resignation request form', () => {
   it('needs a reason and the box ticked', () => {
-    expect(formProblems({ reason: '', preferredLastDay: '', confirmed: false }, null, TODAY)).toEqual([
+    expect(formProblems({ reason: '', preferredLastDay: '', confirmed: false }, TODAY)).toEqual([
       'Enter your reason for resigning.',
       'Tick the box to say you understand a resignation counts once certified at the labour office.',
     ]);
-    expect(formProblems({ reason: 'A move', preferredLastDay: '', confirmed: true }, null, TODAY)).toEqual([]);
+    expect(formProblems({ reason: 'A move', preferredLastDay: '', confirmed: true }, TODAY)).toEqual([]);
   });
 
   it('takes a preferred day of today or later, typed as DD/MM/YYYY', () => {
-    expect(formProblems({ reason: 'x', preferredLastDay: '26/10/2026', confirmed: true }, null, TODAY)).toEqual([]);
-    expect(formProblems({ reason: 'x', preferredLastDay: '25/10/2026', confirmed: true }, null, TODAY)).toEqual(['Your preferred last working day must be today or later.']);
-    expect(formProblems({ reason: 'x', preferredLastDay: '31/02/2027', confirmed: true }, null, TODAY)).toHaveLength(1);
-  });
-
-  it('checks the letter’s kind and size', () => {
-    const typed = { reason: 'x', preferredLastDay: '', confirmed: true };
-    expect(formProblems(typed, { name: 'a.pdf', size: 1000, type: 'application/pdf' }, TODAY)).toEqual([]);
-    expect(formProblems(typed, { name: 'a.doc', size: 1000, type: 'application/msword' }, TODAY)).toEqual(['The letter must be a PDF or a JPG, PNG or WebP photo.']);
-    expect(formProblems(typed, { name: 'a.pdf', size: 5 * 1024 * 1024, type: 'application/pdf' }, TODAY)).toEqual(['The letter must be 4 MB or smaller.']);
+    expect(formProblems({ reason: 'x', preferredLastDay: '26/10/2026', confirmed: true }, TODAY)).toEqual([]);
+    expect(formProblems({ reason: 'x', preferredLastDay: '25/10/2026', confirmed: true }, TODAY)).toEqual(['Your preferred last working day must be today or later.']);
+    expect(formProblems({ reason: 'x', preferredLastDay: '31/02/2027', confirmed: true }, TODAY)).toHaveLength(1);
   });
 
   it('hints the notice and the day it would end', () => {
@@ -56,6 +51,13 @@ describe('the lists and the links', () => {
   it('opens the ending form for the resignation, with the request', () => {
     expect(recordResignationHref('e1', 'r1')).toBe('/employees/e1/ending/new?rule=resignation&resignation=r1');
     expect(resignationHref('r1', 'sent')).toBe('/resignations/r1?done=sent');
+  });
+
+  // the letter (owner, 31 October 2026): People's, to view or save, and the signed copy HR uploads
+  it('opens the letters under the request', () => {
+    expect(generatedLetterHref('r1')).toBe('/resignations/r1/generated-letter');
+    expect(generatedLetterHref('r1', true)).toBe('/resignations/r1/generated-letter?download=1');
+    expect(signedLetterHref('r1')).toBe('/resignations/r1/letter');
   });
 });
 

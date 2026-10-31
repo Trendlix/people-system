@@ -14,5 +14,7 @@ import { TemplatePreviewService } from './template-preview.service.js';
   imports: [OffersModule],
   controllers: [EmployeeDocumentsController, DocumentsController, TemplatePreviewController],
   providers: [DocumentsService, TemplatePreviewService],
+  // a resignation request's letter, filled in by DocumentsService (owner, 31 October 2026)
+  exports: [DocumentsService],
 })
 export class DocumentsModule {}

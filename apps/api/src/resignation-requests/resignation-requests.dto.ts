@@ -5,9 +5,9 @@ import { IsDateOnly } from '../common/date-only.js';
 import { Trim } from '../common/transforms.js';
 
 // The employee's resignation request (owner, 26 October 2026: "but the employee has to request resignation and then the
-// HR generates the document"; packages/shared resignation-request.ts). Sent as a form (a signed letter may come with it):
-// every field arrives as text. The rules about the dates and the confirmation are the shared checks', said in words by the
-// service; here only the shapes.
+// HR generates the document"; packages/shared resignation-request.ts). Sent as JSON, or as a form (the app's before 31
+// October 2026, when People began preparing the letter): a field may arrive as text. The rules about the dates and the
+// confirmation are the shared checks', said in words by the service; here only the shapes.
 
 /** "true" / "yes" / "on" / true as true; anything else false. */
 const Ticked = () => Transform(({ value }) => value === true || (typeof value === 'string' && ['true', 'yes', 'on', '1'].includes(value.trim().toLowerCase())));

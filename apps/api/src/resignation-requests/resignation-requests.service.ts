@@ -4,6 +4,7 @@ import {
   noticeSentence,
   resignationOffered,
   resignationProblems,
+  RESIGNATION_LETTER_NO_TEMPLATE,
   RESIGNATION_NOT_UNDER_LAW,
   RESIGNATION_REQUEST_STATUS_LABELS,
   type NoticeUnit,
@@ -16,6 +17,7 @@ import { toDateOnly, todayInCairo } from '../common/date-only.js';
 import { noticeEnds } from '../contracts/notice.js';
 import type { CreateEndingDto } from '../contracts/contracts.dto.js';
 import { EndingsService } from '../contracts/endings.service.js';
+import { DocumentsService } from '../documents/documents.service.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
 import { NoticesService } from '../notifications/notices.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -26,17 +28,25 @@ import { LETTER_ENTITY, REQUEST_INCLUDE, REQUEST_OMIT, requestView, RESIGNATION_
 /** The endings still going for an employment: a resignation can't be asked while one is recorded. */
 const OPEN_ENDINGS = ['pending_ceo', 'approved'];
 
+/** A request whose signed letter HR keeps: waiting for HR, or recorded (owner, 31 October 2026); not one withdrawn or returned. */
+const KEEPS_LETTER: string[] = ['sent', 'recorded'];
+
 const statusText = (status: string) => (RESIGNATION_REQUEST_STATUS_LABELS[status as ResignationRequestStatus] ?? status).toLowerCase();
 
 // An employee's request to resign (owner, 26 October 2026: "but the employee has to request resignation and then the HR
 // generates the document"; packages/shared resignation-request.ts). The employee sends it from My Requests: a short
-// reason, a preferred last working day and a signed letter if they have them; the day it is sent (Cairo) is the notice
-// received day. HR is told (the CEO for a C-level person, whose request HR never sees: ConfidentialService), the direct
-// manager is told and sees it without the reason or the letter, and neither decides: HR presses "Record the resignation",
-// which makes the ending of the End employment form's kind (EndingsService.create, so its rules, certification, CEO
-// approval and completion carry on as before) and links it here; the request is then Recorded. The employee may withdraw
-// it until then; HR may return it with a reason (a mistaken request) and the employee may send it again. Every step is in
-// the audit log, the letter's every opening too.
+// reason and a preferred last working day if they have one; the day it is sent (Cairo) is the notice received day. HR is
+// told (the CEO for a C-level person, whose request HR never sees: ConfidentialService), the direct manager is told and
+// sees it without the reason or the letters, and neither decides: HR presses "Record the resignation", which makes the
+// ending of the End employment form's kind (EndingsService.create, so its rules, certification, CEO approval and
+// completion carry on as before) and links it here; the request is then Recorded. The employee may withdraw it until
+// then; HR may return it with a reason (a mistaken request) and the employee may send it again.
+//
+// The letter (owner, 31 October 2026: "on the resignation, the letter is auto generated, viewed by the employee but
+// uploaded by the HR"): People fills the published Resignation request template in from the request whenever it is
+// opened (DocumentsService.resignationLetter), for the employee to print and sign, and HR (the CEO for a C-level person)
+// uploads the signed copy, replaceable. Both are for the employee, HR and the CEO, never the manager. Every step is in
+// the audit log, each letter's every opening and the signed copy's every upload too.
 @Injectable()
 export class ResignationRequestsService {
   constructor(
@@ -45,6 +55,7 @@ export class ResignationRequestsService {
     private readonly confidential: ConfidentialService,
     private readonly notices: NoticesService,
     private readonly endings: EndingsService,
+    private readonly documents: DocumentsService,
   ) {}
 
   // ---------- the employee's own ----------
@@ -59,7 +70,8 @@ export class ResignationRequestsService {
       ? await this.prisma.resignationRequest.findMany({ where: { employeeId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: REQUEST_INCLUDE, omit: REQUEST_OMIT })
       : [];
     const confidential = employeeId ? await this.confidential.isConfidential(employeeId) : false;
-    return { requests: rows.map((r) => requestView(r, 'self', confidential)), form: await this.form(employeeId) };
+    const ready = await this.documents.resignationLetterReady();
+    return { requests: rows.map((r) => requestView(r, 'self', confidential, ready)), form: await this.form(employeeId) };
   }
 
   /** What the form says before it is sent. */
@@ -80,8 +92,11 @@ export class ResignationRequestsService {
     return { ...base, ...notice, offered: true, refusal: null };
   }
 
-  /** Sends a request: refused with every reason; one open (sent) at a time, even when two are sent together. */
-  async create(dto: CreateResignationRequestDto, file: Express.Multer.File | undefined, user: SessionUser) {
+  /**
+   * Sends a request: refused with every reason; one open (sent) at a time, even when two are sent together. No letter
+   * comes with it (owner, 31 October 2026): People prepares it from the request (generatedLetter).
+   */
+  async create(dto: CreateResignationRequestDto, user: SessionUser) {
     const employeeId = user.employeeId ?? null;
     if (!employeeId) throw new ForbiddenException('Only someone with an employee profile can send a resignation request.');
     const employment = await this.currentEmployment(employeeId);
@@ -91,8 +106,7 @@ export class ResignationRequestsService {
     if (!rule || !rule.active) throw new ConflictException('Resignation is turned off in the ending rules. Ask HR.');
 
     const today = todayInCairo();
-    const { letter, problems: letterProblems } = checkedLetter(file);
-    const problems = [...resignationProblems({ reason: dto.reason ?? '', preferredLastDay: dto.preferredLastDay ?? null, confirmed: dto.confirmed === true }, today), ...letterProblems];
+    const problems = resignationProblems({ reason: dto.reason ?? '', preferredLastDay: dto.preferredLastDay ?? null, confirmed: dto.confirmed === true }, today);
     if (problems.length) throw new BadRequestException(problems);
 
     const ending = await this.prisma.employmentEnding.findFirst({ where: { employmentId: employment.id, status: { in: OPEN_ENDINGS } }, select: { id: true } });
@@ -114,7 +128,6 @@ export class ResignationRequestsService {
           noticeAmount: rule.noticeAmount,
           noticeUnit: rule.noticeUnit,
           ruleLastDay: toDateOnly(ruleLastDay),
-          ...(letter && { letterName: letter.fileName, letterMime: letter.mimeType, letterSize: letter.sizeBytes, letterData: new Uint8Array(letter.data) }),
         },
         include: REQUEST_INCLUDE,
         omit: REQUEST_OMIT,
@@ -125,10 +138,10 @@ export class ResignationRequestsService {
       action: 'create',
       entityType: RESIGNATION_ENTITY,
       entityId: made.id,
-      diff: { employeeId, employmentId: employment.id, status: 'sent', sentOn: today, preferredLastDay: dto.preferredLastDay ?? null, ruleLastDay, reason: dto.reason ?? '', letter: letter ? letter.fileName : null },
+      diff: { employeeId, employmentId: employment.id, status: 'sent', sentOn: today, preferredLastDay: dto.preferredLastDay ?? null, ruleLastDay, reason: dto.reason ?? '' },
     });
     await this.notices.resignationSent(made.id);
-    return requestView(made, 'self', await this.confidential.isConfidential(employeeId));
+    return requestView(made, 'self', await this.confidential.isConfidential(employeeId), await this.documents.resignationLetterReady());
   }
 
   /** The employee withdraws their request while it is still waiting for HR; it is kept, marked withdrawn. */
@@ -146,7 +159,7 @@ export class ResignationRequestsService {
       entityId: id,
       diff: { employeeId: before.employeeId, employmentId: before.employmentId, status: { from: 'sent', to: 'withdrawn' } },
     });
-    return requestView(await this.row(id), 'self', await this.confidential.isConfidential(before.employeeId));
+    return requestView(await this.row(id), 'self', await this.confidential.isConfidential(before.employeeId), await this.documents.resignationLetterReady());
   }
 
   // ---------- HR, the CEO and the direct manager ----------
@@ -168,25 +181,87 @@ export class ResignationRequestsService {
       include: REQUEST_INCLUDE,
       omit: REQUEST_OMIT,
     });
-    return rows.map((r) => requestView(r, full ? 'full' : 'manager', view.all.has(r.employeeId)));
+    const ready = await this.documents.resignationLetterReady();
+    return rows.map((r) => requestView(r, full ? 'full' : 'manager', view.all.has(r.employeeId), ready));
   }
 
-  /** One request, as the caller may see it: 404 for anyone else, and for a C-level person's hidden from them. */
+  /**
+   * One request, as the caller may see it: 404 for anyone else, and for a C-level person's hidden from them. With
+   * whether the caller records or returns it, and uploads its signed letter.
+   */
   async one(id: string, user: SessionUser) {
     const r = await this.row(id);
     const viewer = await this.viewerOf(r, user);
-    return { ...requestView(r, viewer, await this.confidential.isConfidential(r.employeeId)), canRecord: await this.mayRecord(r, user) };
+    const decides = await this.mayRecord(r, user);
+    return {
+      ...requestView(r, viewer, await this.confidential.isConfidential(r.employeeId), await this.documents.resignationLetterReady()),
+      canRecord: decides,
+      canUploadLetter: decides && KEEPS_LETTER.includes(r.status),
+    };
   }
 
-  /** The letter, for the employee, HR and the CEO who see the request's details; each opening is audited. */
+  /** The signed letter, for the employee, HR and the CEO who see the request's details; each opening is audited. */
   async letter(id: string, user: SessionUser) {
     const r = await this.row(id);
     const viewer = await this.viewerOf(r, user);
     if (viewer === 'manager') throw new ForbiddenException('The letter is for the employee, HR and the CEO.');
     const file = await this.prisma.resignationRequest.findUnique({ where: { id }, select: { letterName: true, letterMime: true, letterData: true } });
-    if (!file?.letterData || !file.letterName || !file.letterMime) throw new NotFoundException('This request has no letter.');
+    if (!file?.letterData || !file.letterName || !file.letterMime) throw new NotFoundException('The signed letter hasn’t been uploaded yet.');
     await this.audit.record({ userId: user.id, action: 'view_restricted', entityType: LETTER_ENTITY, entityId: id, diff: { requestId: id, employeeId: r.employeeId, fields: ['file'] } });
     return { data: Buffer.from(file.letterData.buffer, file.letterData.byteOffset, file.letterData.byteLength), type: file.letterMime, fileName: file.letterName };
+  }
+
+  /**
+   * The letter People prepares from the request (owner, 31 October 2026: "on the resignation, the letter is auto
+   * generated, viewed by the employee but uploaded by the HR"), as a filled document, for the employee, HR and the CEO;
+   * the controller gives it out as a protected PDF. 409 while no Resignation request template is published. Each opening
+   * is audited, as the signed letter's.
+   */
+  async generatedLetter(id: string, user: SessionUser): Promise<{ data: Buffer; fileName: string }> {
+    const r = await this.row(id);
+    const viewer = await this.viewerOf(r, user);
+    if (viewer === 'manager') throw new ForbiddenException('The letter is for the employee, HR and the CEO.');
+    const file = await this.documents.resignationLetter(r.employeeId, { id, sentOn: r.sentOn, lastWorkingDay: r.preferredLastDay ?? r.ruleLastDay, reason: r.reason });
+    if (!file) throw new ConflictException(RESIGNATION_LETTER_NO_TEMPLATE);
+    await this.audit.record({
+      userId: user.id,
+      action: 'view_restricted',
+      entityType: LETTER_ENTITY,
+      entityId: id,
+      diff: { requestId: id, employeeId: r.employeeId, letter: 'generated', templateVersion: file.templateVersion, fields: ['file', ...file.restricted] },
+    });
+    return { data: file.data, fileName: file.fileName };
+  }
+
+  /**
+   * HR uploads the signed letter (owner, 31 October 2026), a PDF or a photo checked by its content: HR; a C-level
+   * person's the CEO (or HR with Super Admin), never for themself. While the request waits or once it is recorded; one
+   * uploaded again replaces the one before (a page missed, a blurred photo), as does one the employee attached before.
+   */
+  async uploadLetter(id: string, file: Express.Multer.File | undefined, user: SessionUser) {
+    const before = await this.row(id);
+    const viewer = await this.viewerOf(before, user);
+    if (viewer === 'self') throw new ForbiddenException('HR keeps the signed copy of your letter: hand it to HR.');
+    const confidential = await this.confidential.isConfidential(before.employeeId);
+    if (!(await this.mayRecord(before, user))) {
+      throw new ForbiddenException(confidential ? "A C-level person's signed letter is kept by the CEO, not HR." : 'Only HR uploads the signed letter.');
+    }
+    if (!KEEPS_LETTER.includes(before.status)) throw new ConflictException(`This request is ${statusText(before.status)}, so its signed letter isn't kept.`);
+    const { letter, problems } = checkedLetter(file);
+    if (!letter) throw new BadRequestException(problems);
+    const kept = await this.prisma.resignationRequest.updateMany({
+      where: { id, status: { in: KEEPS_LETTER } },
+      data: { letterName: letter.fileName, letterMime: letter.mimeType, letterSize: letter.sizeBytes, letterData: new Uint8Array(letter.data) },
+    });
+    if (!kept.count) throw new ConflictException('This request was just withdrawn or returned. Reload the page to see where it stands.');
+    await this.audit.record({
+      userId: user.id,
+      action: 'attach_signed',
+      entityType: LETTER_ENTITY,
+      entityId: id,
+      diff: { requestId: id, employeeId: before.employeeId, letterFileName: letter.fileName, sizeBytes: letter.sizeBytes, ...(before.letterName && { replaced: before.letterName }) },
+    });
+    return requestView(await this.row(id), 'full', confidential, await this.documents.resignationLetterReady());
   }
 
   /**
@@ -221,7 +296,7 @@ export class ResignationRequestsService {
     });
     await this.notices.resignationDecided(id, 'recorded');
     const after = await this.row(id);
-    return { request: requestView(after, 'full', await this.confidential.isConfidential(before.employeeId)), ending };
+    return { request: requestView(after, 'full', await this.confidential.isConfidential(before.employeeId), await this.documents.resignationLetterReady()), ending };
   }
 
   /** HR returns a mistaken request with a reason: the employee is told and may send it again. */
@@ -241,7 +316,7 @@ export class ResignationRequestsService {
       diff: { employeeId: before.employeeId, employmentId: before.employmentId, status: { from: 'sent', to: 'returned' }, reason: dto.reason },
     });
     await this.notices.resignationDecided(id, 'returned');
-    return requestView(await this.row(id), 'full', await this.confidential.isConfidential(before.employeeId));
+    return requestView(await this.row(id), 'full', await this.confidential.isConfidential(before.employeeId), await this.documents.resignationLetterReady());
   }
 
   // ---------- helpers ----------

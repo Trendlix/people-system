@@ -2,37 +2,35 @@
 
 import Link from 'next/link';
 import { useActionState, useState } from 'react';
-import { RESIGNATION_CONFIRMATION, RESIGNATION_LETTER_MAX_MB, RESIGNATION_REASON_MAX } from '@trendlix/shared';
+import { RESIGNATION_CONFIRMATION, RESIGNATION_REASON_MAX, resignationLetterNote } from '@trendlix/shared';
 import { DateInput } from '@/components/date-time-inputs';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import { formatDate } from '@/lib/format';
 import type { FormState } from '@/lib/types';
-import { formProblems, LETTER_ACCEPT, noticeHint } from './resignation';
+import { formProblems, noticeHint } from './resignation';
 
 // The forms of a resignation request (owner, 26 October 2026): the employee's, with the notice and the checks live; their
-// Withdraw; and HR's Return with a reason. Each checks again on the API.
+// Withdraw; and HR's Return with a reason. Each checks again on the API. No letter is attached (owner, 31 October 2026:
+// "on the resignation, the letter is auto generated, viewed by the employee but uploaded by the HR"): the form says
+// People prepares it.
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
 const optional = <span className="font-normal text-muted">(optional)</span>;
 
-/** The employee's request: the reason, a preferred last working day, a signed letter, and the confirmation. */
+/** The employee's request: the reason, a preferred last working day, and the confirmation; what becomes of the letter. */
 export function ResignForm({ action, today, notice, lastDayIfToday, toCeo, cancelHref }: { action: Action; today: string; notice: string | null; lastDayIfToday: string | null; toCeo: boolean; cancelHref: string }) {
   const { state, pending, form } = useKeptForm(action);
   const fid = useFieldIds();
   const [typed, setTyped] = useState(() => ({ reason: valueOf(state, 'reason'), preferredLastDay: valueOf(state, 'preferredLastDay'), confirmed: valueOf(state, 'confirmed') === 'yes' }));
-  const [letter, setLetter] = useState<{ name: string; size: number; type: string } | null>(null);
-  const problems = formProblems(typed, letter, today);
+  const problems = formProblems(typed, today);
 
   return (
     <form
       {...form}
       onChange={(e) => {
         const t = e.target;
-        if (t instanceof HTMLInputElement && t.type === 'file') {
-          const f = t.files?.[0];
-          setLetter(f ? { name: f.name, size: f.size, type: f.type } : null);
-        } else if (t instanceof HTMLInputElement && t.type === 'checkbox') setTyped((x) => ({ ...x, confirmed: t.checked }));
+        if (t instanceof HTMLInputElement && t.type === 'checkbox') setTyped((x) => ({ ...x, confirmed: t.checked }));
         else if ((t instanceof HTMLInputElement || t instanceof HTMLTextAreaElement) && (t.name === 'reason' || t.name === 'preferredLastDay')) {
           setTyped((x) => ({ ...x, [t.name]: t.value }));
         }
@@ -60,23 +58,8 @@ export function ResignForm({ action, today, notice, lastDayIfToday, toCeo, cance
             {noticeHint(notice, lastDayIfToday, formatDate)}
           </p>
         </div>
-        <div>
-          <label htmlFor={fid('letter')} className="label">
-            Signed letter {optional}
-          </label>
-          <input
-            id={fid('letter')}
-            name="letter"
-            type="file"
-            accept={LETTER_ACCEPT}
-            aria-describedby={fid('letter-hint')}
-            className="block w-full text-sm file:mr-3 file:min-h-11 file:cursor-pointer file:rounded-lg file:border file:border-line file:bg-card file:px-4 file:text-sm file:font-semibold"
-          />
-          <p id={fid('letter-hint')} className="hint">
-            A PDF or a photo, up to {RESIGNATION_LETTER_MAX_MB} MB.
-          </p>
-        </div>
       </div>
+      <p className="rounded-lg border border-line bg-canvas px-4 py-3 text-sm">{resignationLetterNote(toCeo)}</p>
       <label className="flex min-h-11 cursor-pointer items-start gap-3 text-sm">
         <input type="checkbox" name="confirmed" value="yes" defaultChecked={typed.confirmed} className="mt-0.5 size-4 accent-accent" />
         <span>{RESIGNATION_CONFIRMATION}</span>

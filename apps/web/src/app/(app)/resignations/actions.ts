@@ -1,8 +1,9 @@
 'use server';
 
 // An employee's resignation request (owner, 26 October 2026: "but the employee has to request resignation and then the HR
-// generates the document"): sending it with its signed letter (multipart), withdrawing it, HR returning it with a reason,
-// and HR recording it as the ending the End employment form makes. Each forwards to the API, which checks who may, so
+// generates the document"): sending it, withdrawing it, HR returning it with a reason, HR recording it as the ending the
+// End employment form makes, and HR uploading its signed letter (owner, 31 October 2026: "on the resignation, the letter
+// is auto generated, viewed by the employee but uploaded by the HR"). Each forwards to the API, which checks who may, so
 // calling these directly can't bypass that.
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
@@ -11,6 +12,7 @@ import { dateFrom } from '@/lib/form-data';
 import type { FormState } from '@/lib/types';
 import type { ResignationRequestView } from '@/lib/resignation-types';
 import { profileHref } from '../employees/ui';
+import { PAPERWORK_MAX_BYTES, TOO_LARGE } from '../employees/paperwork';
 import { MY_RESIGNATION_HREF, resignationHref } from './resignation';
 
 const text = (fd: FormData, key: string) => String(fd.get(key) ?? '').trim();
@@ -19,7 +21,7 @@ const text = (fd: FormData, key: string) => String(fd.get(key) ?? '').trim();
 function submitted(fd: FormData): Record<string, string | string[]> {
   const out: Record<string, string | string[]> = {};
   for (const key of new Set(fd.keys())) {
-    if (key.startsWith('$ACTION') || key === 'letter') continue;
+    if (key.startsWith('$ACTION') || key === 'file') continue;
     const all = fd.getAll(key).filter((v) => typeof v === 'string');
     if (all.length > 0) out[key] = all.length > 1 ? all : all[0];
   }
@@ -29,20 +31,15 @@ function submitted(fd: FormData): Record<string, string | string[]> {
 /** The API's messages, with its dates (YYYY-MM-DD) as the screens show them (DD/MM/YYYY). */
 const asShown = (messages: string[]) => messages.map((m) => m.replace(/\b(\d{4})-(\d{2})-(\d{2})\b/g, '$3/$2/$1'));
 
-/** The employee sends the request (POST /me/resignation, multipart): refused with every reason, kept with what was typed. */
+/** The employee sends the request (POST /me/resignation): refused with every reason, kept with what was typed. No letter: People prepares it. */
 export async function sendResignation(_prev: FormState, fd: FormData): Promise<FormState> {
   const errors: string[] = [];
   const preferred = text(fd, 'preferredLastDay') === '' ? '' : dateFrom(fd, 'preferredLastDay', 'preferred last working day', errors);
   if (errors.length) return { errors, values: submitted(fd) };
-  const form = new FormData();
-  form.append('reason', text(fd, 'reason'));
-  form.append('preferredLastDay', preferred);
-  form.append('confirmed', fd.get('confirmed') === 'yes' ? 'true' : 'false');
-  const letter = fd.get('letter');
-  if (letter instanceof File && letter.size > 0) form.append('letter', letter, letter.name);
+  const body = { reason: text(fd, 'reason'), preferredLastDay: preferred, confirmed: fd.get('confirmed') === 'yes' };
   let made: ResignationRequestView | undefined;
   try {
-    made = await apiUpload<ResignationRequestView>('POST', '/me/resignation', form);
+    made = await apiSend<ResignationRequestView>('POST', '/me/resignation', body);
   } catch (err) {
     if (err instanceof ApiError) return { errors: asShown(err.messages), values: submitted(fd) };
     throw err;
@@ -111,4 +108,25 @@ export async function recordResignation(requestId: string, employeeId: string, _
   }
   refresh();
   redirect(profileHref(employeeId, 'employment'));
+}
+
+/**
+ * HR uploads the signed letter the employee handed in, or replaces it (POST /resignation-requests/:id/letter): a photo
+ * (made smaller in the browser first) or a PDF, checked again by the API by its content.
+ */
+export async function uploadResignationLetter(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
+  const value = fd.get('file');
+  const file = value instanceof File && value.size > 0 ? value : null;
+  if (!file) return { errors: ['Choose the signed letter: a photo or a PDF scan.'] };
+  if (file.size > PAPERWORK_MAX_BYTES) return { errors: [TOO_LARGE] };
+  const form = new FormData();
+  form.append('letter', file, file.name);
+  try {
+    await apiUpload('POST', `/resignation-requests/${encodeURIComponent(id)}/letter`, form);
+  } catch (err) {
+    if (err instanceof ApiError) return { errors: asShown(err.messages) };
+    throw err;
+  }
+  refresh();
+  return { message: 'Signed letter uploaded.' };
 }

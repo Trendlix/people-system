@@ -37,6 +37,17 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- A file People gives the app (a resignation request's letter, 31 October 2026), read by the phone's viewer
+             through this content link (MainActivity.kt, xml/shared_files): the one file it is opening, read only. -->
+        <provider
+            android:name=".SharedFiles"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/shared_files" />
+        </provider>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

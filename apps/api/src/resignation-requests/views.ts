@@ -1,4 +1,4 @@
-import { noticeSentence, RESIGNATION_REQUEST_STATUS_LABELS, type ResignationRequestStatus } from '@trendlix/shared';
+import { noticeSentence, RESIGNATION_REQUEST_STATUS_LABELS, type ResignationLetterState, type ResignationRequestStatus } from '@trendlix/shared';
 import { fromDateOnly } from '../common/date-only.js';
 import type { Prisma } from '../generated/prisma/client.js';
 
@@ -26,10 +26,13 @@ export type Viewer = 'self' | 'full' | 'manager';
 
 /**
  * A resignation request as `viewer` may see it. `confidential`: a C-level person's (their request is the CEO's, not HR's).
- * The reason, HR's return reason and the letter are personal: the reason is free text for the developer masking.
+ * The reason, HR's return reason and the letters are personal: the reason is free text for the developer masking.
+ * `letterReady`: whether the Resignation request template is published, so the letter People prepares can be opened
+ * (owner, 31 October 2026: "on the resignation, the letter is auto generated, viewed by the employee but uploaded by the HR").
  */
-export function requestView(r: RequestRow, viewer: Viewer, confidential: boolean) {
+export function requestView(r: RequestRow, viewer: Viewer, confidential: boolean, letterReady: boolean) {
   const sees = viewer !== 'manager';
+  const preparedLetter: ResignationLetterState | null = sees ? (letterReady ? 'ready' : 'no_template') : null;
   return {
     id: r.id,
     employee: r.employee,
@@ -42,6 +45,9 @@ export function requestView(r: RequestRow, viewer: Viewer, confidential: boolean
     sentOn: fromDateOnly(r.sentOn),
     notice: noticeSentence(r.noticeAmount, r.noticeUnit),
     ruleLastDay: fromDateOnly(r.ruleLastDay),
+    // the letter People prepares from the request, to view and print (GET :id/generated-letter); none for the manager
+    preparedLetter,
+    // the signed copy HR uploads (GET :id/letter), or the one the employee attached before 31 October 2026
     letter: sees && r.letterName ? { letterFileName: r.letterName, mimeType: r.letterMime!, sizeBytes: r.letterSize! } : null,
     withdrawnAt: r.withdrawnAt,
     returned: r.status === 'returned' ? { reason: sees ? r.returnedReason : null, at: r.returnedAt, by: r.returnedBy && { email: r.returnedBy.email } } : null,

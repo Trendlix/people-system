@@ -1,11 +1,4 @@
-import {
-  RESIGNATION_LETTER_MAX_MB,
-  RESIGNATION_LETTER_TYPES,
-  RESIGNATION_REQUEST_STATUSES,
-  resignationProblems,
-  type ResignationRequestStatus,
-  type Role,
-} from '@trendlix/shared';
+import { RESIGNATION_REQUEST_STATUSES, resignationProblems, type ResignationRequestStatus, type Role } from '@trendlix/shared';
 import { MY_REQUESTS } from '../../../components/nav';
 import { parseDate } from '../../../lib/format';
 import { hasRole } from '../../../lib/roles';
@@ -15,7 +8,9 @@ import type { ResignationRequestView } from '../../../lib/resignation-types';
 // generates the document"): the employee sends Resign from My Requests; HR (the CEO for a C-level person) finds it under
 // People → Resignations, beside Offboarding, and presses "Record the resignation", which opens the End employment form
 // with the resignation, the day it was sent, the reason and the preferred day filled in. The direct manager sees it on My
-// Team. Pure code, tested; relative imports, as vitest doesn't know the @/ paths.
+// Team. Pure code, tested; relative imports, as vitest doesn't know the @/ paths. The letter (owner, 31 October 2026: "on the
+// resignation, the letter is auto generated, viewed by the employee but uploaded by the HR"): People's, opened from the
+// request's page, and the signed copy HR uploads there.
 
 type WithRoles = { roles: readonly Role[] };
 type Query = Record<string, string | string[] | undefined>;
@@ -27,6 +22,12 @@ export const RESIGNATIONS_PATH = '/resignations';
 
 /** A request's page, for its employee, HR, the CEO and the direct manager: "/resignations/<id>". */
 export const resignationHref = (id: string, done?: ResignationDone) => `${RESIGNATIONS_PATH}/${encodeURIComponent(id)}${done ? `?done=${done}` : ''}`;
+
+/** The letter People prepares from the request, as a protected PDF: opened in the browser, or saved with `download`. */
+export const generatedLetterHref = (id: string, download = false) => `${RESIGNATIONS_PATH}/${encodeURIComponent(id)}/generated-letter${download ? '?download=1' : ''}`;
+
+/** The signed letter HR uploaded, shown in the browser. */
+export const signedLetterHref = (id: string) => `${RESIGNATIONS_PATH}/${encodeURIComponent(id)}/letter`;
 
 /** The employee's form, from My Requests. */
 export const RESIGN_PATH = `${MY_REQUESTS}/resign`;
@@ -77,10 +78,6 @@ export const RESIGNATION_STATUS_STYLE: Record<ResignationRequestStatus, string> 
 
 // ---------- the form ----------
 
-/** The signed letter box takes these. */
-export const LETTER_ACCEPT = RESIGNATION_LETTER_TYPES.join(',');
-export const LETTER_MAX_BYTES = RESIGNATION_LETTER_MAX_MB * 1024 * 1024;
-
 /** The form as typed: the reason, the preferred day (DD/MM/YYYY), the box ticked. */
 export interface TypedResignation {
   reason: string;
@@ -91,15 +88,10 @@ export interface TypedResignation {
 /** The preferred day as YYYY-MM-DD, "" while empty, null while not a date. */
 export const preferredDayOf = (typed: Pick<TypedResignation, 'preferredLastDay'>): string | null => parseDate(typed.preferredLastDay);
 
-/** Why the request can't be sent yet, in the order to fix them (none: it can), and the letter's limits. `today`: YYYY-MM-DD, Cairo. */
-export function formProblems(typed: TypedResignation, letter: { name: string; size: number; type: string } | null, today: string): string[] {
+/** Why the request can't be sent yet, in the order to fix them (none: it can). `today`: YYYY-MM-DD, Cairo. */
+export function formProblems(typed: TypedResignation, today: string): string[] {
   const day = preferredDayOf(typed);
-  const problems = resignationProblems({ reason: typed.reason, preferredLastDay: day === null ? 'not-a-date' : day, confirmed: typed.confirmed }, today);
-  if (letter) {
-    if (!(RESIGNATION_LETTER_TYPES as readonly string[]).includes(letter.type)) problems.push('The letter must be a PDF or a JPG, PNG or WebP photo.');
-    else if (letter.size > LETTER_MAX_BYTES) problems.push(`The letter must be ${RESIGNATION_LETTER_MAX_MB} MB or smaller.`);
-  }
-  return problems;
+  return resignationProblems({ reason: typed.reason, preferredLastDay: day === null ? 'not-a-date' : day, confirmed: typed.confirmed }, today);
 }
 
 /** The form's hint under the preferred day: the notice, and the day it would end if sent today. */

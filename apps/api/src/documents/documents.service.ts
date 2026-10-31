@@ -97,6 +97,9 @@ type ContractRow = EmploymentRow['contracts'][number];
 /** The published version a document is filled in from; a PDF form's fields say which tags may be left blank. */
 const PUBLISHED = { id: true, version: true, language: true, tags: true, format: true, pdfFields: true } satisfies Prisma.TemplateVersionSelect;
 
+/** The slot of the letter a resignation request is given (owner, 31 October 2026). */
+const RESIGNATION_SLOT = 'resignation_request';
+
 /** Whose versions a slot stands on: its own, or its source's for a copy (as the template library). */
 const fileSlot = (slot: TemplateSlot) => slot.copyOf ?? slot.key;
 
@@ -555,6 +558,40 @@ export class DocumentsService {
     return { employee: ctx.employee, filled: preview.filled, total: preview.total, shown: data ? preview.shown : [], data };
   }
 
+  /** Whether the Resignation request template has a published version: the letter a request is given can be made. */
+  async resignationLetterReady(): Promise<boolean> {
+    return (await this.published(SLOTS.get(RESIGNATION_SLOT)!)) !== null;
+  }
+
+  /**
+   * A resignation request's letter (owner, 31 October 2026: "on the resignation, the letter is auto generated, viewed by
+   * the employee but uploaded by the HR"): the published Resignation request template filled in with the employee's data
+   * and the request's, made each time it is opened, so a template published after the request was sent, or a detail HR
+   * filled in since, is in it. The request stands for the ending not recorded yet: the day it was sent is the
+   * resignation date, the request date and {{date}} (so the letter reads the same whenever it is opened), the preferred
+   * last day (else the one the notice gives) the last working day, and its reason the reason (an English one prints the
+   * owner's default, as on an ending's). A tag with no value prints blank, for the employee to write in before signing:
+   * nothing stops it. Null when no version is published. `restricted`: the restricted tags it prints, for the audit log.
+   */
+  async resignationLetter(
+    employeeId: string,
+    request: { id: string; sentOn: Date; lastWorkingDay: Date; reason: string },
+  ): Promise<{ data: Buffer; fileName: string; templateVersion: number; restricted: string[] } | null> {
+    const slot = SLOTS.get(RESIGNATION_SLOT)!;
+    const template = await this.published(slot, true);
+    if (!template) return null;
+    const ending = { id: request.id, initiator: 'employee', noticeGivenOn: request.sentOn, lastWorkingDay: request.lastWorkingDay, reason: request.reason };
+    const ctx = await this.context(employeeId, slot.key, undefined, { ending });
+    const { values } = this.fill(ctx, template, fromDateOnly(request.sentOn), {});
+    const data = await fillVersion(template, values);
+    return {
+      data,
+      fileName: filledFileName(documentStem(slot.name, ctx.employee.employeeCode, ctx.employee.fullNameEn), template.format),
+      templateVersion: template.version,
+      restricted: restrictedTags(template.tags, slot.overrides),
+    };
+  }
+
   // ---------- helpers ----------
 
   private async employee(id: string) {
@@ -578,15 +615,20 @@ export class DocumentsService {
     return this.prisma.employment.findFirst({ where: { employeeId }, select: EMPLOYMENT, orderBy: NEWEST_FIRST });
   }
 
-  /** Everything a document of this slot is generated from, refused when the tab doesn't offer it. */
-  private async context(employeeId: string, slotKey: string, contractId: string | undefined): Promise<Context> {
+  /**
+   * Everything a document of this slot is generated from, refused when the tab doesn't offer it. `asIf`: an ending that
+   * isn't recorded yet, read in place of the employment's (a resignation request's letter, resignationLetter), and the
+   * document is then made whatever the tab offers.
+   */
+  private async context(employeeId: string, slotKey: string, contractId: string | undefined, asIf?: { ending: EmploymentRow['endings'][number] }): Promise<Context> {
     const employee = await this.employee(employeeId);
     const slot = SLOTS.get(slotKey);
     if (!slot) throw new BadRequestException('Choose a document the Employment tab offers.');
-    const employment = await this.employmentOf(employeeId);
-    if (!employment) throw new BadRequestException(`${employee.fullNameEn} has no employment yet. Add it on the Employment tab before generating documents.`);
+    const read = await this.employmentOf(employeeId);
+    if (!read) throw new BadRequestException(`${employee.fullNameEn} has no employment yet. Add it on the Employment tab before generating documents.`);
+    const employment: EmploymentRow = asIf ? { ...read, endings: [asIf.ending] } : read;
     const s = situation(employment, await this.commissionSlots());
-    if (!offered(slot.key, s)) throw new BadRequestException(notOffered(slot, s, employee.fullNameEn));
+    if (!asIf && !offered(slot.key, s)) throw new BadRequestException(notOffered(slot, s, employee.fullNameEn));
 
     let contract: ContractRow | null;
     if (contractId) {

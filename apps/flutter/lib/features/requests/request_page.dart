@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../api/people_client.dart';
 import '../../models/requests.dart';
+import '../../platform/file_opener.dart';
 import '../../providers.dart';
 import '../../shell/app_shell.dart';
 import '../../theme/parts.dart';
@@ -49,6 +50,14 @@ typedef StepLine = ({String text, String? comment, String who, RequestState? ton
 /// the page says once done.
 typedef RequestAction = ({String title, String explain, String button, String confirm, String path, String done});
 
+/// A file its employee opens on the phone (owner, 31 October 2026: a resignation's letter): the button's words, where
+/// People gives it, and the name and type it opens under.
+typedef OpenableFile = ({String button, String path, String fileName, String mimeType});
+
+/// A card of files to open in the phone's viewer: its words, the files, lines for what isn't there yet, and what to say
+/// when no app on the phone opens them.
+typedef FilesToOpen = ({String title, String explain, List<OpenableFile> files, List<String> notes, String noViewer});
+
 /// What a request's page shows, as its kind says it.
 class RequestDetail {
   const RequestDetail({
@@ -64,6 +73,7 @@ class RequestDetail {
     this.notes = const [],
     this.actions = const [],
     this.banner,
+    this.opens,
   });
 
   final String title;
@@ -86,6 +96,9 @@ class RequestDetail {
 
   /// A line over everything (it goes with an official duty).
   final String? banner;
+
+  /// Files its employee opens on the phone (a resignation's letter); null: none.
+  final FilesToOpen? opens;
 }
 
 /// The parts every leave-like request shows alike: where it stands (with the reason given), who decides first, what HR
@@ -183,6 +196,9 @@ class _RequestPageState extends ConsumerState<RequestPage> {
   String? _failed;
   bool _busy = false;
 
+  /// The file being read from People to open, if one is.
+  String? _opening;
+
   @override
   void initState() {
     super.initState();
@@ -238,6 +254,28 @@ class _RequestPageState extends ConsumerState<RequestPage> {
       if (e.status == 409) await _load();
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// Reads the file from People with the session and opens it in the phone's viewer; People's refusal said at the top.
+  Future<void> _open(OpenableFile f, String noViewer) async {
+    setState(() => _opening = f.path);
+    try {
+      final bytes = await fetchFile(ref, f.path);
+      final opened = await ref.read(fileOpenerProvider)(bytes, f.fileName, f.mimeType);
+      if (!mounted || opened) return;
+      setState(() {
+        _notice = noViewer;
+        _noticeOk = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _notice = refusalOf(e).join(' ');
+        _noticeOk = false;
+      });
+    } finally {
+      if (mounted) setState(() => _opening = null);
     }
   }
 
@@ -320,6 +358,30 @@ class _RequestPageState extends ConsumerState<RequestPage> {
                   ],
                 ),
               ),
+              if (d.opens case final o?) ...[
+                const SizedBox(height: 16),
+                SurfaceCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(o.title, style: text.titleLarge),
+                      const SizedBox(height: 8),
+                      Text(o.explain, style: text.bodyMedium?.copyWith(color: p.muted)),
+                      for (final n in o.notes) ...[const SizedBox(height: 10), Text(n, style: text.bodyMedium)],
+                      for (final f in o.files) ...[
+                        const SizedBox(height: 14),
+                        OutlinedButton.icon(
+                          onPressed: _opening != null ? null : () => _open(f, o.noViewer),
+                          icon: _opening == f.path
+                              ? const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                              : Icon(CupertinoIcons.doc_text, size: 18, color: p.ink),
+                          label: Text(f.button),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
               if (d.files != null) ...[
                 const SizedBox(height: 16),
                 SurfaceCard(

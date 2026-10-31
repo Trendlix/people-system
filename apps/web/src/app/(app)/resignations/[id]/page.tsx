@@ -2,26 +2,31 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { notFound } from 'next/navigation';
-import { canWithdrawResignation, RESIGNATION_CONFIRMATION } from '@trendlix/shared';
+import { canWithdrawResignation, RESIGNATION_CONFIRMATION, RESIGNATION_LETTER_NO_TEMPLATE } from '@trendlix/shared';
 import { formatDate, formatDateTime } from '@/lib/format';
+import { PROTECTED_PDF_HINT } from '@/lib/protected-pdf';
+import type { ResignationRequestView } from '@/lib/resignation-types';
+import { UploadSignedCopy } from '../../employees/[id]/documents/document-forms';
 import { BackLink, Empty, Loading } from '../../organization/ui';
 import { notLoadedText } from '../../payroll/load';
-import { returnResignation, withdrawResignation } from '../actions';
+import { returnResignation, uploadResignationLetter, withdrawResignation } from '../actions';
 import { loadResignation } from '../data';
 import { ReturnForm, WithdrawButton } from '../forms';
-import { MY_RESIGNATION_HREF, recordResignationHref, RESIGNATIONS_PATH, type ResignationDone } from '../resignation';
+import { generatedLetterHref, MY_RESIGNATION_HREF, recordResignationHref, RESIGNATIONS_PATH, signedLetterHref, type ResignationDone } from '../resignation';
 import { ResignationStatusBadge } from '../ui';
 import { profileHref } from '../../employees/ui';
 
 // A resignation request (owner, 26 October 2026: "but the employee has to request resignation and then the HR generates
-// the document"): its reason, the preferred day, the letter, the notice day and the rule's last day. For its employee, with
-// Withdraw while it waits; for HR (the CEO for a C-level person), with "Record the resignation" and Return; for the direct
-// manager, what was sent and where it stands, without the reason and the letter. Nothing here decides for the manager.
+// the document"): its reason, the preferred day, the notice day and the rule's last day. For its employee, with Withdraw
+// while it waits; for HR (the CEO for a C-level person), with "Record the resignation" and Return; for the direct
+// manager, what was sent and where it stands, without the reason and the letters. Nothing here decides for the manager.
+// The letter (owner, 31 October 2026: "on the resignation, the letter is auto generated, viewed by the employee but
+// uploaded by the HR"): People's, to view and print, and the signed copy HR (the CEO for a C-level person) uploads.
 
 export const metadata: Metadata = { title: 'Resignation Request · People System' };
 
 const DONE: Record<ResignationDone, string> = {
-  sent: 'Your resignation request was sent. HR has been told; you can withdraw it until it is recorded.',
+  sent: 'Your resignation request was sent. HR has been told; you can withdraw it until it is recorded. Your resignation letter is below.',
   withdrawn: 'The request was withdrawn. It is kept, marked withdrawn.',
   returned: 'The request was returned. The employee has been told and may send it again.',
   moved: 'This request moved on meanwhile. It is shown as it stands now.',
@@ -32,6 +37,52 @@ function Item({ label, wide = false, children }: { label: string; wide?: boolean
     <div className={wide ? 'sm:col-span-2' : undefined}>
       <dt className="text-xs text-muted">{label}</dt>
       <dd className="mt-0.5">{children}</dd>
+    </div>
+  );
+}
+
+/** The letter People prepares, to view or save, and the signed copy: for the employee, HR and the CEO; HR uploads it. */
+function Letter({ r }: { r: ResignationRequestView }) {
+  const keeper = r.confidential ? 'the CEO' : 'HR';
+  return (
+    <div className="card mt-4 space-y-4 p-5">
+      <div>
+        <h2 className="text-lg font-semibold">Resignation Letter</h2>
+        <p className="text-sm text-muted">
+          {r.mine
+            ? `People prepares your letter from this request. Print it, sign it and hand it to ${keeper}, who keeps the signed copy here.`
+            : 'People prepares the letter from the request, for the employee to print and sign. The signed copy they hand in is kept here.'}
+        </p>
+      </div>
+      <dl className="grid gap-4 text-sm sm:grid-cols-2">
+        <Item label="Letter">
+          {r.preparedLetter === 'ready' ? (
+            <>
+              <span className="flex flex-wrap gap-x-4 gap-y-1">
+                <a href={generatedLetterHref(r.id)} target="_blank" rel="noreferrer" className="font-semibold">
+                  View letter
+                </a>
+                <a href={generatedLetterHref(r.id, true)} className="font-semibold">
+                  Download PDF
+                </a>
+              </span>
+              <span className="mt-1 block text-xs text-muted">{PROTECTED_PDF_HINT}</span>
+            </>
+          ) : (
+            <span className="text-muted">{RESIGNATION_LETTER_NO_TEMPLATE}</span>
+          )}
+        </Item>
+        <Item label="Signed Copy">
+          {r.letter ? (
+            <a href={signedLetterHref(r.id)} target="_blank" rel="noreferrer" className="font-semibold">
+              {r.letter.letterFileName}
+            </a>
+          ) : (
+            <span className="text-muted">Not uploaded yet</span>
+          )}
+        </Item>
+      </dl>
+      {r.canUploadLetter && <UploadSignedCopy action={uploadResignationLetter.bind(null, r.id)} name="the resignation letter" again={r.letter !== null} />}
     </div>
   );
 }
@@ -73,17 +124,6 @@ async function Request({ params, searchParams }: { params: PageProps<'/resignati
               <span className="whitespace-pre-line">{r.reason}</span>
             </Item>
           )}
-          {r.reason !== null && (
-            <Item label="Signed Letter" wide>
-              {r.letter ? (
-                <a href={`/resignations/${r.id}/letter`} target="_blank" rel="noreferrer" className="font-semibold">
-                  {r.letter.letterFileName}
-                </a>
-              ) : (
-                <span className="text-muted">None attached</span>
-              )}
-            </Item>
-          )}
           {r.reason === null && <p className="text-muted sm:col-span-2">The reason and the letter are for HR. You are shown this because the employee reports to you.</p>}
           {r.returned && (
             <Item label="Returned" wide>
@@ -106,6 +146,7 @@ async function Request({ params, searchParams }: { params: PageProps<'/resignati
         </dl>
         <p className="text-xs text-muted">{RESIGNATION_CONFIRMATION}</p>
       </div>
+      {r.preparedLetter !== null && <Letter r={r} />}
       {r.mine && canWithdrawResignation(r.status) && (
         <div className="mt-4">
           <WithdrawButton action={withdrawResignation.bind(null, r.id)} />

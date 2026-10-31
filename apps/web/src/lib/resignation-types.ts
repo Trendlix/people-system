@@ -1,7 +1,7 @@
-import type { ResignationRequestStatus } from '@trendlix/shared';
+import type { ResignationLetterState, ResignationRequestStatus } from '@trendlix/shared';
 
 // An employee's resignation request as the API sends it (owner, 26 October 2026; apps/api resignation-requests/views.ts).
-// Dates are "YYYY-MM-DD"; moments are ISO. A direct manager gets no reason and no letter (null).
+// Dates are "YYYY-MM-DD"; moments are ISO. A direct manager gets no reason and no letters (null).
 
 export interface ResignationRequestView {
   id: string;
@@ -17,6 +17,12 @@ export interface ResignationRequestView {
   notice: string;
   /** The last working day that notice gives from the day it was sent. */
   ruleLastDay: string;
+  /**
+   * The letter People prepares from the request (owner, 31 October 2026: "on the resignation, the letter is auto
+   * generated, viewed by the employee but uploaded by the HR"): ready to view, or not until HR publishes its template.
+   */
+  preparedLetter: ResignationLetterState | null;
+  /** The signed copy HR uploaded (or the employee attached before 31 October 2026). */
   letter: { letterFileName: string; mimeType: string; sizeBytes: number } | null;
   withdrawnAt: string | null;
   returned: { reason: string | null; at: string | null; by: { email: string } | null } | null;
@@ -27,6 +33,8 @@ export interface ResignationRequestView {
   confidential: boolean;
   /** On one request only: whether the caller records or returns it. */
   canRecord?: boolean;
+  /** On one request only: whether the caller uploads its signed letter (HR; the CEO for a C-level person). */
+  canUploadLetter?: boolean;
 }
 
 /** GET /me/resignation. */

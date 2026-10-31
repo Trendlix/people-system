@@ -1,0 +1,45 @@
+import { redirect } from 'next/navigation';
+import { ApiError, apiFetch } from '@/lib/api';
+import { passPdfOn, wantsDownload } from '@/lib/protected-pdf';
+
+// Serves the letter People prepares from a resignation request (owner, 31 October 2026: "on the resignation, the letter
+// is auto generated, viewed by the employee but uploaded by the HR") from the API under the web domain, with the caller's
+// session: a protected PDF, opened in the browser to print, or saved with ?download=1. The API lets the employee, HR and
+// the CEO open it and writes each opening to the audit log, so links here are never prefetched. Without a published
+// template, or the server's PDF converter, the API's reason is shown as plain text.
+
+const UUID = /^[0-9a-f-]{36}$/i;
+
+/** The API's reason, as text. */
+async function messageOf(res: Response): Promise<string> {
+  try {
+    const body = (await res.json()) as { message?: string | string[] };
+    return (Array.isArray(body.message) ? body.message.join(' ') : body.message) || 'This letter could not be loaded. Please try again.';
+  } catch {
+    return 'This letter could not be loaded. Please try again.';
+  }
+}
+
+const text = (body: string, status: number) =>
+  new Response(body, { status, headers: { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'private, no-store' } });
+
+export async function GET(req: Request, ctx: RouteContext<'/resignations/[id]/generated-letter'>) {
+  const { id } = await ctx.params;
+  if (!UUID.test(id)) return text('Not found.', 404);
+  const download = wantsDownload(new URL(req.url).searchParams);
+
+  let res: Response;
+  try {
+    res = await apiFetch(`/resignation-requests/${id}/generated-letter${download ? '?download=1' : ''}`);
+  } catch (err) {
+    if (err instanceof ApiError) return text(err.message, err.status);
+    throw err;
+  }
+  if (res.status === 401) redirect('/login');
+  if (res.status === 403) return text('Only the employee, HR and the CEO can open the letter.', 403);
+  if (res.status === 404) return text('Not found.', 404);
+  // no published template (409), no PDF converter (409), or it failed (503): the API says so
+  if (res.status === 409 || res.status === 503) return text(await messageOf(res), res.status);
+  if (!res.ok) return text('This letter could not be loaded. Please try again.', 502);
+  return passPdfOn(res, { download, fallbackName: 'resignation-letter.pdf' }) ?? text('This letter could not be loaded. Please try again.', 502);
+}

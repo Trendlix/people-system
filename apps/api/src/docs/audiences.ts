@@ -100,6 +100,9 @@ export const APP_ENDPOINTS: readonly string[] = [
   '* /api/me/resignation',
   'POST /api/me/resignation/{x}/withdraw',
   'GET /api/resignation-requests/{x}',
+  // the letter People prepares and its signed copy, opened in the phone's viewer (owner, 31 October 2026)
+  'GET /api/resignation-requests/{x}/generated-letter',
+  'GET /api/resignation-requests/{x}/letter',
   // the profile
   'GET /api/employees/{x}',
   'POST /api/employees/{x}/change-requests',
