@@ -12,7 +12,7 @@ import {
 } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 import { formatEgp } from '../../employees/[id]/contracts/salary';
-import { accountsRow, breakdown, cutText, expectedHoursNote, kpiStep, percentText, shiftHoursNote, waivedByCeo, waiverOf } from './breakdown';
+import { accountsRow, breakdown, cutsMark, cutText, expectedHoursNote, kpiStep, payCuts, percentText, shiftHoursNote, waivedByCeo, waiverOf } from './breakdown';
 
 // An invented employee's month, worked out by hand. The shift: 22 working days in the month less 1 holiday, at 8:00 to
 // work a day, 168:00 scheduled; a no-show day and a leave day come out of them, a day of the shift each (owner,
@@ -823,5 +823,33 @@ describe('a line’s accounts allowance (owner, 25 October 2026: an allowance pe
     expect(accountsRow({ allowances: [], segments: [segment(terms.allowances), segment([accounts])] })?.label).toBe('Accounts allowance (2 accounts)');
     expect(accountsRow(terms)).toBeNull();
     expect(breakdown(line, PAYROLL_RULE_DEFAULTS).some((r) => r.key === 'accountsAllowance')).toBe(false);
+  });
+});
+
+// the names' colours (owner, 31 October 2026: "if the employee has no deductions make his name in green, if there is
+// deductions (attendance - absence, etcc.. ) mark orange")
+describe('payCuts and cutsMark', () => {
+  const none = { attendanceCut: 0, noShowCut: 0, unpaidLeaveCut: 0, kpiCut: 0, penaltyCut: 0, adjustmentDeductions: 0 };
+
+  it('green with nothing taken off but insurance, tax and the Martyrs’ Fund, a line from before the newer cuts too', () => {
+    expect(payCuts(none)).toEqual([]);
+    expect(payCuts({ attendanceCut: 0, noShowCut: 0, kpiCut: 0, penaltyCut: 0 })).toEqual([]);
+    expect(cutsMark([])).toEqual({ tone: 'ok', text: 'No deductions' });
+  });
+
+  it('orange with each cut named', () => {
+    expect(payCuts({ ...none, attendanceCut: 1000, noShowCut: 666.67 })).toEqual(['attendance', 'absence']);
+    expect(payCuts({ ...none, unpaidLeaveCut: 333.33, kpiCut: 475, penaltyCut: 100, adjustmentDeductions: 50 })).toEqual([
+      'unpaid leave',
+      'KPI',
+      'penalties',
+      'the month’s deductions',
+    ]);
+    expect(cutsMark(['attendance', 'absence'])).toEqual({ tone: 'warn', text: 'Deductions: attendance, absence' });
+  });
+
+  it('the worked example: attendance, absence, KPI and the correction', () => {
+    const r = payrollLine(terms, inputs, PAYROLL_RULE_DEFAULTS, lawRatesFor(2026));
+    expect(payCuts(r)).toEqual(['attendance', 'absence', 'KPI', 'the month’s deductions']);
   });
 });

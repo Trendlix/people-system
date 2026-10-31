@@ -478,6 +478,29 @@ export function waiverOf(line: Pick<Line, 'inputs' | 'result'>): { amount: numbe
   return { amount, waived };
 }
 
+/**
+ * What was taken off a line besides the insurance, tax and Martyrs' Fund everyone pays (owner, 31 October 2026: "if the
+ * employee has no deductions make his name in green, if there is deductions (attendance - absence, etcc.. ) mark
+ * orange"): the attendance, the no-show days, unpaid leave, the KPI, penalties and the month's deductions (a correction,
+ * a recurring deduction), each named when more than 0; none, green. An attendance cut the CEO waived is 0, so not one.
+ */
+export function payCuts(r: Pick<PayrollResult, 'attendanceCut' | 'noShowCut' | 'unpaidLeaveCut' | 'kpiCut' | 'penaltyCut' | 'adjustmentDeductions'>): string[] {
+  const cuts: [string, number | undefined][] = [
+    ['attendance', r.attendanceCut],
+    ['absence', r.noShowCut],
+    ['unpaid leave', r.unpaidLeaveCut],
+    ['KPI', r.kpiCut],
+    ['penalties', r.penaltyCut],
+    ['the month’s deductions', r.adjustmentDeductions],
+  ];
+  return cuts.filter(([, amount]) => (amount ?? 0) > 0).map(([name]) => name);
+}
+
+/** The name's colour and its words: "No deductions", or "Deductions: attendance, absence". */
+export function cutsMark(cuts: readonly string[]): { tone: 'ok' | 'warn'; text: string } {
+  return cuts.length === 0 ? { tone: 'ok', text: 'No deductions' } : { tone: 'warn', text: `Deductions: ${cuts.join(', ')}` };
+}
+
 /** A line whose attendance deduction the CEO waived: "Waived by the CEO" on it for HR and Finance. */
 export const waivedByCeo = (line: Pick<Line, 'inputs' | 'result'>) => line.inputs.attendanceWaived === true && (line.result.attendanceWaived ?? 0) > 0;
 

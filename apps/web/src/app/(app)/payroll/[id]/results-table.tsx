@@ -11,7 +11,7 @@ import { formatEgp } from '../../employees/[id]/contracts/salary';
 import { contractHref } from '../../employees/tab-list';
 import { payslipHref } from '../payslips';
 import { CONFIDENTIAL_LINE_TITLE, HIDDEN_PAY_NOTE } from './access';
-import { breakdown, cutText, waivedByCeo, waiverOf, type BreakdownRow } from './breakdown';
+import { breakdown, cutsMark, cutText, payCuts, waivedByCeo, waiverOf, type BreakdownRow } from './breakdown';
 import { shownCode } from '@/lib/hidden';
 
 // The run's results (owner's decisions, 16 October 2026): what each employee earned, what is deducted, the net and what
@@ -177,7 +177,18 @@ export function ResultsTable({
     <div className="space-y-2">
       {/* none to open when every line is hidden from the caller (19 October 2026) */}
       {lines.length > 0 && (
-        <div className="flex justify-end">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+          {/* what the names' colours mean (31 October 2026) */}
+          <p className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
+            <span className="inline-flex items-center gap-1.5">
+              <span aria-hidden="true" className="size-2 rounded-full bg-ok" />
+              No deductions
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span aria-hidden="true" className="size-2 rounded-full bg-warn" />
+              Deductions: attendance, absence, unpaid leave, KPI, penalties or the month&apos;s deductions
+            </span>
+          </p>
           <button type="button" onClick={() => setOpen(allOpen ? new Set() : new Set(lines.map((l) => l.id)))} className="text-sm font-semibold text-accent hover:underline">
             {allOpen ? 'Close every breakdown' : 'Open every breakdown'}
           </button>
@@ -205,6 +216,8 @@ export function ResultsTable({
                   {t.rows.map((l) => {
                     const expanded = open.has(l.id);
                     const panel = `payroll-breakdown-${l.id}`;
+                    // green with nothing taken off but insurance, tax and the Martyrs' Fund, orange with a cut (31 October 2026)
+                    const mark = cutsMark(payCuts(l.result));
                     return (
                       <Fragment key={l.id}>
                         <tr>
@@ -220,8 +233,13 @@ export function ResultsTable({
                                 ▶
                               </span>
                               <span>
-                                <span className="font-semibold text-ink">{l.name}</span>
-                                <span className="sr-only">: {expanded ? 'close' : 'open'} the breakdown</span>
+                                <span title={mark.text} className={`font-semibold ${mark.tone === 'ok' ? 'text-ok' : 'text-warn'}`}>
+                                  {l.name}
+                                </span>
+                                <span className="sr-only">
+                                  {' '}
+                                  ({mark.text}): {expanded ? 'close' : 'open'} the breakdown
+                                </span>
                                 {shownCode(l.employeeCode) && (
                                   <span className="block text-xs text-muted">
                                     <span className="tabular-nums">{l.employeeCode}</span>
