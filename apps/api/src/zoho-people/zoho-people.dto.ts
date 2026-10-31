@@ -1,5 +1,5 @@
-import { CALENDAR_LIMITS } from '@trendlix/shared';
-import { ArrayMaxSize, IsArray, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { CALENDAR_LIMITS, ZOHO_EXCLUSION_REASON_MAX } from '@trendlix/shared';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 import { IsDateOnly } from '../common/date-only.js';
 import { TrimOrNull } from '../common/transforms.js';
 
@@ -47,4 +47,19 @@ export class ZohoPeopleFinishDto {
 export class ZohoPeopleTestDto {
   @IsOptional() @TrimOrNull() @IsString() @MaxLength(CALENDAR_LIMITS.email, { message: 'Write the colleague’s work email in full, e.g. sara@trendlix.com.' })
   email?: string | null;
+}
+
+/**
+ * POST /zoho-people/exclusions: people to leave out of the Zoho fetch (owner, 31 October 2026: "can i exclude users from
+ * the zoho api?"), with why (optional).
+ */
+export class ZohoExclusionsDto {
+  @IsArray({ message: 'Choose the people to leave out of the Zoho fetch.' })
+  @ArrayMinSize(1, { message: 'Choose the people to leave out of the Zoho fetch.' })
+  @ArrayMaxSize(1000, { message: 'Choose at most 1,000 people at a time.' })
+  @IsUUID('all', { each: true, message: 'Choose the people from the list.' })
+  employeeIds!: string[];
+
+  @IsOptional() @TrimOrNull() @IsString() @MaxLength(ZOHO_EXCLUSION_REASON_MAX, { message: `Keep the reason to ${ZOHO_EXCLUSION_REASON_MAX} characters.` })
+  reason?: string | null;
 }

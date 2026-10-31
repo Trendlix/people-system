@@ -15,6 +15,8 @@ import {
   typedDay,
   typedRangeDays,
   zohoConnectionText,
+  ZOHO_EXCLUSION_REASON_LIMIT,
+  zohoExclusionOptions,
   zohoPersonOptions,
   zohoTestText,
   zohoWithChosen,
@@ -26,7 +28,9 @@ import type { ZohoTestState } from './actions';
 // through api?"; asked, "Yes, daily + backfill"; then "but can it fetch historical data?"): the connection with its
 // buttons (Connect Zoho People, Test, Disconnect: a Super Admin's), Fetch from Zoho (HR's and a Super Admin's: the days,
 // everyone or the people chosen, and how long it takes at the rate Zoho is called), and the run going now, its progress
-// read again every few seconds until it is done, with Cancel. Never a token: the API answers the status only.
+// read again every few seconds until it is done, with Cancel; and the people left out of the fetch (owner, 31 October
+// 2026: "can i exclude users from the zoho api?"; "Add an exclusion list"): Leave out, and Take off the list. Never a
+// token: the API answers the status only.
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 type TestAction = (prev: ZohoTestState, fd: FormData) => Promise<ZohoTestState>;
@@ -52,6 +56,31 @@ function ActionForm({ action, label, pendingLabel, kind = 'secondary', confirm, 
         </p>
       )}
     </form>
+  );
+}
+
+/** The people chosen, each a chip with × to take them off, sent as `employeeId`. */
+function ChosenChips({ chosen, names, label, onRemove }: { chosen: readonly string[]; names: ReadonlyMap<string, string>; label: string; onRemove: (id: string) => void }) {
+  if (!chosen.length) return null;
+  return (
+    <ul className="flex flex-wrap gap-1.5" aria-label={label}>
+      {chosen.map((id) => (
+        <li key={id} className="inline-flex items-center gap-0.5 rounded-full border border-accent/40 bg-accent-soft py-0.5 ps-2.5 pe-0.5 text-xs font-medium text-accent">
+          {names.get(id) ?? id}
+          <input type="hidden" name="employeeId" value={id} />
+          <button
+            type="button"
+            onClick={() => onRemove(id)}
+            aria-label={`Take ${names.get(id) ?? 'this person'} off the list`}
+            className="inline-flex size-6 items-center justify-center rounded-full hover:bg-card"
+          >
+            <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="size-3">
+              <path d="M5 5l10 10M15 5L5 15" />
+            </svg>
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -206,36 +235,17 @@ export function FetchForm({
               <Select id={fid('person')} value="" onChange={(e) => setChosen((c) => zohoWithChosen(c, e.target.value))} aria-describedby={fid('person-hint')} className="input">
                 <option value="">{options.length ? 'Choose a person…' : 'No one else to choose'}</option>
                 {options.map((o) => (
-                  <option key={o.value} value={o.value}>
+                  <option key={o.value} value={o.value} disabled={o.disabled}>
                     {o.label}
                   </option>
                 ))}
               </Select>
               <p id={fid('person-hint')} className="hint">
-                Type a name or a code to search. Choose several; former employees are marked.
+                Type a name or a code to search. Choose several; former employees are marked, and those left out of the Zoho fetch can’t be chosen.
               </p>
             </div>
           )}
-          {chosen.length > 0 && (
-            <ul className="flex flex-wrap gap-1.5" aria-label="Chosen to fetch">
-              {chosen.map((id) => (
-                <li key={id} className="inline-flex items-center gap-0.5 rounded-full border border-accent/40 bg-accent-soft py-0.5 ps-2.5 pe-0.5 text-xs font-medium text-accent">
-                  {names.get(id) ?? id}
-                  <input type="hidden" name="employeeId" value={id} />
-                  <button
-                    type="button"
-                    onClick={() => setChosen((c) => c.filter((x) => x !== id))}
-                    aria-label={`Take ${names.get(id) ?? 'this person'} off the list`}
-                    className="inline-flex size-6 items-center justify-center rounded-full hover:bg-card"
-                  >
-                    <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="size-3">
-                      <path d="M5 5l10 10M15 5L5 15" />
-                    </svg>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
+          <ChosenChips chosen={chosen} names={names} label="Chosen to fetch" onRemove={(id) => setChosen((c) => c.filter((x) => x !== id))} />
         </div>
       )}
       <p aria-live="polite" className="text-sm text-muted">
@@ -313,3 +323,63 @@ export function RunProgress({ run, cancel }: { run: ZohoRunView; cancel: Action 
 }
 
 const titleFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/**
+ * Leave out of the Zoho fetch (owner, 31 October 2026: "can i exclude users from the zoho api?"; he chose "Add an
+ * exclusion list"): the people (each a chip, × to take them off) and why (optional). From the next run on, the nightly
+ * one and Fetch from Zoho skip them; their days fetched before stay.
+ */
+export function ExclusionForm({ action, people }: { action: Action; people: readonly ZohoChoosable[] | null }) {
+  const fid = useFieldIds();
+  const { state, pending, form } = useKeptForm(action);
+  const [picked, setPicked] = useState<string[]>([]);
+  // once the page is read again, those left out are no longer offered nor chosen
+  const leftOut = new Set((people ?? []).filter((p) => p.excluded).map((p) => p.id));
+  const chosen = picked.filter((id) => !leftOut.has(id));
+  const names = new Map((people ?? []).map((p) => [p.id, p.name]));
+  const options = zohoExclusionOptions(people ?? [], chosen);
+  if (people === null) return <p className="text-sm text-muted">The people couldn’t be loaded. Reload the page.</p>;
+  return (
+    <form {...form} className="space-y-4">
+      <FormErrors errors={state.errors} />
+      <div className="sm:max-w-xl">
+        <label htmlFor={fid('person')} className="label">
+          Person
+        </label>
+        <Select id={fid('person')} value="" onChange={(e) => setPicked((c) => zohoWithChosen(c, e.target.value))} aria-describedby={fid('person-hint')} className="input">
+          <option value="">{options.length ? 'Choose a person…' : 'No one else to choose'}</option>
+          {options.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </Select>
+        <p id={fid('person-hint')} className="hint">
+          Type a name or a code to search. Choose several.
+        </p>
+      </div>
+      <ChosenChips chosen={chosen} names={names} label="Chosen to leave out" onRemove={(id) => setPicked((c) => c.filter((x) => x !== id))} />
+      <div className="sm:max-w-xl">
+        <label htmlFor={fid('reason')} className="label">
+          Why <span className="font-normal text-muted">(optional)</span>
+        </label>
+        <textarea id={fid('reason')} name="reason" rows={2} maxLength={ZOHO_EXCLUSION_REASON_LIMIT} defaultValue={valueOf(state, 'reason', '')} placeholder="E.g. Checks in on the system now" className="input" />
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <SubmitButton busy={pending} disabled={!chosen.length} pendingText="Leaving out…">
+          Leave out
+        </SubmitButton>
+        {state.message && !state.errors && !pending && (
+          <p role="status" className="text-sm text-ok">
+            {state.message}
+          </p>
+        )}
+      </div>
+    </form>
+  );
+}
+
+/** Take someone off the list: back in the Zoho fetch from the next run on. */
+export function RemoveExclusion({ action, name }: { action: Action; name: string }) {
+  return <ActionForm action={action} label="Take off the list" pendingLabel="Taking off…" confirm={`Take ${name} off the list? From the next run on, the Zoho fetch includes them again.`} />;
+}

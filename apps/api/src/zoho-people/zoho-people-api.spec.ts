@@ -1,4 +1,15 @@
-import { attendanceMonth, OFFICE_ADDRESS_DEFAULTS, ZOHO_PEOPLE_SCOPES, zohoEstimateText, zohoFetchProblems, zohoRangeEnd, type ImportedDay } from '@trendlix/shared';
+import {
+  attendanceMonth,
+  OFFICE_ADDRESS_DEFAULTS,
+  ZOHO_PEOPLE_SCOPES,
+  ZOHO_SKIP_LABELS,
+  ZOHO_SKIP_REASONS,
+  zohoEstimateText,
+  zohoExclusionReasonProblem,
+  zohoFetchProblems,
+  zohoRangeEnd,
+  type ImportedDay,
+} from '@trendlix/shared';
 import {
   datePatternsFrom,
   formatZohoDate,
@@ -320,5 +331,16 @@ describe('Zoho People: its sealed token', () => {
     expect(openZohoPeopleSecret(sealed, zohoPeopleKeyOf('another-secret'), 'refresh_token')).toBeNull();
     expect(sameZohoPeopleKey(zohoPeopleKeyIdOf(key), key)).toBe(true);
     expect(sameZohoPeopleKey(zohoPeopleKeyIdOf(zohoPeopleKeyOf('another-secret')), key)).toBe(false);
+  });
+});
+
+// People left out of the fetch (owner, 31 October 2026: "can i exclude users from the zoho api?"; "Add an exclusion list").
+describe('left out of the Zoho fetch', () => {
+  it('has its own reason in a run’s summary, and keeps a reason to 500 characters', () => {
+    expect(ZOHO_SKIP_REASONS).toContain('excluded');
+    expect(ZOHO_SKIP_LABELS.excluded).toBe('Left out of the Zoho fetch');
+    expect(zohoExclusionReasonProblem(null)).toBeNull();
+    expect(zohoExclusionReasonProblem(`  ${'x'.repeat(500)}  `)).toBeNull();
+    expect(zohoExclusionReasonProblem('x'.repeat(501))).toBe('Keep the reason to 500 characters; it has 501.');
   });
 });

@@ -23,11 +23,13 @@ import { formatDateTime } from '@/lib/format';
 import { loadJson } from '@/lib/interview-hours-data';
 import { getCurrentUser } from '@/lib/session';
 import {
+  exclusionText,
   hiddenText,
   nightlyText,
   personText,
   runBadge,
   runDaysText,
+  runExcludedText,
   runSkippedLines,
   runSummaryText,
   runWhoText,
@@ -43,8 +45,8 @@ import { ZohoAppForm } from '../calendars/calendars-forms';
 import { CopyUri } from '../meetings/meetings-forms';
 import { SetupSection } from '../payroll/section';
 import { Empty, Loading } from '../ui';
-import { cancelZohoRun, disconnectZohoPeople, fetchFromZoho, startZohoPeopleConnect, testZohoPeople } from './actions';
-import { FetchForm, RunProgress, ZohoConnection } from './zoho-people-forms';
+import { cancelZohoRun, disconnectZohoPeople, excludeFromZoho, fetchFromZoho, includeInZoho, startZohoPeopleConnect, testZohoPeople } from './actions';
+import { ExclusionForm, FetchForm, RemoveExclusion, RunProgress, ZohoConnection } from './zoho-people-forms';
 
 // Organization → Zoho People (owner, 25 October 2026: "can i fetch checkin and out transactions from zoho people through
 // api?"; asked, "Yes, daily + backfill": every night yesterday's check-ins and check-outs for everyone, a "Fetch from
@@ -53,8 +55,9 @@ import { FetchForm, RunProgress, ZohoConnection } from './zoho-people-forms';
 // HR and a Super Admin, never a developer: the connection (a Super Admin's, in their own session: the Zoho app shared
 // with Organization → Calendars, its redirect URI to add, the account signed in as, a test, disconnecting; HR sees only
 // whether it is connected), the nightly run, Fetch from Zoho with how long it takes, the run going now with its
-// progress and Cancel, the people Zoho People doesn't know by their work email, and the last runs. The API refuses
-// everyone else and checks every request again.
+// progress and Cancel, the people left out of the fetch (owner, 31 October 2026: "can i exclude users from the zoho
+// api?"; he chose "Add an exclusion list"), the people Zoho People doesn't know by their work email, and the last runs.
+// The API refuses everyone else and checks every request again.
 
 export const metadata: Metadata = { title: 'Zoho People · People System' };
 
@@ -125,6 +128,7 @@ function RunRow({ run }: { run: ZohoRunView }) {
         </ul>
       )}
       {run.noWorkEmail.length > 0 && <p className="text-xs text-muted">No work email, so not fetched: {run.noWorkEmail.map(personText).join('; ')}.</p>}
+      {runExcludedText(run) && <p className="text-xs text-muted">{runExcludedText(run)}</p>}
       {run.problem && (
         <p role="alert" className="text-sm text-danger">
           {run.problem}
@@ -164,6 +168,9 @@ async function Gate({ searchParams }: { searchParams: PageProps<'/organization/z
   const blocked = view.current ? ZOHO_PEOPLE_RUN_GOING : !connected ? ZOHO_PEOPLE_NOT_CONNECTED : null;
   const superAdminViewingAs = user.roles.includes('super_admin') && !!user.viewAs;
   const hidden = hiddenText(view.hiddenNotFound);
+  // left out of the fetch (31 October 2026); an API from before it has none
+  const exclusions = view.exclusions ?? { exclusions: [], hidden: 0 };
+  const hiddenLeftOut = hiddenText(exclusions.hidden);
 
   return (
     <div className="space-y-6">
@@ -242,6 +249,40 @@ async function Gate({ searchParams }: { searchParams: PageProps<'/organization/z
           intro="Earlier days from Zoho People: up to 12 months at a time, everyone employed in them (former employees too, by the work email they had) or the people you choose. Days Zoho’s Excel import or an earlier fetch kept aren’t added twice; a day Zoho changed since is replaced."
         >
           <FetchForm action={fetchFromZoho} people={people} everyone={view.people} yesterday={yesterday} blocked={blocked} />
+        </SetupSection>
+      )}
+
+      {view.canFetch && (
+        <SetupSection
+          id="zoho-left-out"
+          title="Left Out of the Zoho Fetch"
+          intro="People the nightly run and Fetch from Zoho skip, even when chosen by hand: e.g. someone who checks in on the system now. Their days fetched before stay as they are; taken off the list, they are fetched again from the next run."
+        >
+          <div className="space-y-5">
+            {exclusions.exclusions.length === 0 && !hiddenLeftOut ? (
+              <p className="text-sm text-muted">No one is left out: every run fetches everyone it covers.</p>
+            ) : (
+              <ul className="divide-y divide-line-soft" aria-label="Left out of the Zoho fetch">
+                {exclusions.exclusions.map((x) => {
+                  const t = exclusionText(x, formatDateTime);
+                  return (
+                    <li key={x.employeeId} className="flex flex-wrap items-start justify-between gap-3 py-3 text-sm">
+                      <div className="min-w-0 space-y-0.5">
+                        <p className="font-semibold break-words">{t.who}</p>
+                        <p className="text-xs break-words text-muted">{t.note}</p>
+                      </div>
+                      <RemoveExclusion action={includeInZoho.bind(null, x.employeeId)} name={x.name} />
+                    </li>
+                  );
+                })}
+                {hiddenLeftOut && <li className="py-3 text-sm text-muted">{hiddenLeftOut}</li>}
+              </ul>
+            )}
+            <div className="space-y-3">
+              <h3 className="font-semibold">Leave Someone Out</h3>
+              <ExclusionForm action={excludeFromZoho} people={people} />
+            </div>
+          </div>
         </SetupSection>
       )}
 

@@ -96,6 +96,7 @@ model User {
   zohoPeopleConnectionsMade ZohoPeopleConnection[]     @relation("ZohoPeopleConnectionBy")
   zohoPeopleRunsStarted     ZohoPeopleRun[]            @relation("ZohoPeopleRunStartedBy")
   zohoPeopleRunsCancelled   ZohoPeopleRun[]            @relation("ZohoPeopleRunCancelledBy")
+  zohoPeopleExclusionsAdded ZohoPeopleExclusion[]      @relation("ZohoPeopleExclusionBy")
   onboardingDefaultsSet     OnboardingDefault[]        @relation("OnboardingDefaultChange")
   onboardingOpened          OnboardingChecklist[]      @relation("OnboardingOpening")
   onboardingCompleted       OnboardingChecklist[]      @relation("OnboardingCompletion")
@@ -706,12 +707,29 @@ model ZohoPeopleRun {
   linesRefilled     Int             @default(0) @map("lines_refilled")
   skipped           Json            @default("{}") // { reason: days }
   notFound          String[]        @default([]) @map("not_found") @db.Uuid // employees Zoho People doesn't know
+  excludedIds       String[]        @default([]) @map("excluded_ids") @db.Uuid // left out of the fetch (31 October 2026)
   errors            Json            @default("[]") // at most 50 short lines
   problem           String?
   days              AttendanceDay[]
 
   @@index([startedAt])
   @@map("zoho_people_runs")
+}
+
+// People left out of Zoho People's fetch (owner, 31 October 2026: "can i exclude users from the zoho api?"; he chose "Add
+// an exclusion list": "On Organization → Zoho People, HR or a Super Admin picks people to leave out. The nightly and
+// manual fetches skip them, and each run says how many were left out. Zoho days already fetched stay as history."). One
+// a person; taken off the list, they are fetched again from the next run.
+model ZohoPeopleExclusion {
+  id         String   @id @default(uuid()) @db.Uuid
+  employeeId String   @unique @map("employee_id") @db.Uuid
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  reason     String? // why, at most 500 characters
+  addedById  String?  @map("added_by") @db.Uuid
+  addedBy    User?    @relation("ZohoPeopleExclusionBy", fields: [addedById], references: [id], onDelete: SetNull)
+  addedAt    DateTime @default(now()) @map("added_at") @db.Timestamptz
+
+  @@map("zoho_people_exclusions")
 }
 
 // WhatsApp notifications (owner, 24 October 2026: "how to make whatsapp notifications?"; asked, "Employees and
@@ -1184,6 +1202,7 @@ model Employee {
   // and on never starts the 7 days again
   noContractSince            DateTime?                  @map("no_contract_since") @db.Date
   checkInExemptions          CheckInExemption[] // their periods exempt from check-in (owner, 25 October 2026)
+  zohoPeopleExclusion        ZohoPeopleExclusion? // left out of Zoho People's fetch (owner, 31 October 2026)
   clientAccounts             ClientAccountAssignment[] // the client accounts they were assigned to (25 October 2026)
 
   @@map("employees")

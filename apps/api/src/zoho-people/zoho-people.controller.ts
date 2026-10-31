@@ -1,16 +1,17 @@
-import { Body, Controller, Get, Header, HttpCode, Param, ParseUUIDPipe, Post, SetMetadata } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, HttpCode, Param, ParseUUIDPipe, Post, SetMetadata } from '@nestjs/common';
 import { ZOHO_PEOPLE_HR_ONLY } from '@trendlix/shared';
 import { CurrentUser, FORBIDDEN_MESSAGE, NotForDevelopers, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { ZohoPeopleSyncService } from './zoho-people-sync.service.js';
-import { ZohoFetchDto, ZohoPeopleFinishDto, ZohoPeopleStartDto, ZohoPeopleTestDto } from './zoho-people.dto.js';
+import { ZohoExclusionsDto, ZohoFetchDto, ZohoPeopleFinishDto, ZohoPeopleStartDto, ZohoPeopleTestDto } from './zoho-people.dto.js';
 import { ZohoPeopleService } from './zoho-people.service.js';
 
 // Organization → Zoho People (owner, 25 October 2026: "can i fetch checkin and out transactions from zoho people through
 // api?"; asked, "Yes, daily + backfill"): HR's and a Super Admin's, never a developer's, not even to read
 // (@NotForDevelopers: the routes name the connected account and the people not found); a developer's writes are refused
 // by the guard as every write is. The connection (signing in, the test, disconnecting) is a Super Admin's in their own
-// session (the service checks); "Fetch from Zoho", its progress and cancelling are HR's and a Super Admin's.
+// session (the service checks); "Fetch from Zoho", its progress and cancelling are HR's and a Super Admin's, as is the
+// list of people left out of the fetch (owner, 31 October 2026: "can i exclude users from the zoho api?").
 
 @Controller('zoho-people')
 @Roles('hr', 'super_admin')
@@ -44,6 +45,28 @@ export class ZohoPeopleController {
   @Header('Cache-Control', 'private, no-store')
   people(@CurrentUser() user: SessionUser) {
     return this.sync.people(user);
+  }
+
+  /** Those left out of the fetch (31 October 2026), by name. */
+  @NotForDevelopers()
+  @Get('exclusions')
+  @Header('Cache-Control', 'private, no-store')
+  exclusions(@CurrentUser() user: SessionUser) {
+    return this.sync.exclusions(user);
+  }
+
+  /** { employeeIds, reason? }: left out of the fetch from the next run on; answered with the list. */
+  @NotForDevelopers()
+  @Post('exclusions')
+  exclude(@Body() dto: ZohoExclusionsDto, @CurrentUser() user: SessionUser) {
+    return this.sync.exclude(dto, user);
+  }
+
+  /** Back in the fetch from the next run on; answered with the list. */
+  @NotForDevelopers()
+  @Delete('exclusions/:employeeId')
+  include(@Param('employeeId', ParseUUIDPipe) employeeId: string, @CurrentUser() user: SessionUser) {
+    return this.sync.include(employeeId, user);
   }
 
   /** A run, for its progress. */

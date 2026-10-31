@@ -1,11 +1,13 @@
 import type { INestApplication } from '@nestjs/common';
 import {
   DEVELOPER_NO_FILES,
+  ZOHO_ONLY_EXCLUDED,
   ZOHO_PEOPLE_HR_ONLY,
   ZOHO_PEOPLE_RUN_GOING,
   ZOHO_PEOPLE_SCOPES,
   ZOHO_PEOPLE_SUPER_ADMIN_ONLY,
   zonedMoment,
+  type ZohoExclusionsView,
   type ZohoPeopleConnectResult,
   type ZohoPeopleNote,
   type ZohoPeopleTestView,
@@ -92,6 +94,7 @@ describe('Zoho People’s check-ins pulled in (e2e)', () => {
     get: (path: string) => kept(api().get(`/api${path}`).set('Cookie', sessions[who])),
     put: (path: string, body: object) => kept(api().put(`/api${path}`).set('Cookie', sessions[who]).send(body)),
     post: (path: string, body: object = {}) => kept(api().post(`/api${path}`).set('Cookie', sessions[who]).send(body)),
+    del: (path: string) => kept(api().delete(`/api${path}`).set('Cookie', sessions[who])),
   });
   const said = (res: request.Response) => ([] as string[]).concat(res.body.message);
 
@@ -198,6 +201,7 @@ describe('Zoho People’s check-ins pulled in (e2e)', () => {
     await prisma.attendanceDay.updateMany({ where: { zohoRunId: { not: null } }, data: { zohoRunId: null } });
     await prisma.attendancePunch.deleteMany({ where: { employeeId: { in: people } } });
     await prisma.zohoPeopleRun.deleteMany({});
+    await prisma.zohoPeopleExclusion.deleteMany({ where: { employeeId: { in: people } } });
     await prisma.zohoPeopleConnection.deleteMany({});
     await prisma.calendarApp.deleteMany({});
     await prisma.contract.deleteMany({ where: { employment: { employeeId: { in: people } } } });
@@ -409,6 +413,57 @@ describe('Zoho People’s check-ins pulled in (e2e)', () => {
       expect(everyone.counts.people).toBeGreaterThanOrEqual(4);
       const plan = (await prisma.zohoPeopleRun.findUniqueOrThrow({ where: { id: everyone.id } })).plan as { employeeId: string }[];
       expect(plan.map((p) => p.employeeId)).toContain(ids.fay);
+    });
+  });
+
+  describe('left out of the fetch (owner, 31 October 2026: "can i exclude users from the zoho api?")', () => {
+    it('keeps a list HR and a Super Admin change, audited; never an employee’s or a developer’s', async () => {
+      expect(said(await as('employee').get('/zoho-people/exclusions').expect(403))).toEqual([ZOHO_PEOPLE_HR_ONLY]);
+      await as('developer').post('/zoho-people/exclusions', { employeeIds: [ids.ben] }).expect(403);
+      expect(said(await as('hr').post('/zoho-people/exclusions', { employeeIds: [] }).expect(400))).toEqual(['Choose the people to leave out of the Zoho fetch.']);
+      expect(said(await as('hr').post('/zoho-people/exclusions', { employeeIds: ['00000000-0000-4000-8000-000000000000'] }).expect(400))).toEqual(['Employee not found. Choose the people from the list.']);
+      expect(said(await as('hr').post('/zoho-people/exclusions', { employeeIds: [ids.ben], reason: 'x'.repeat(501) }).expect(400))).toEqual(['Keep the reason to 500 characters.']);
+
+      const added = (await as('hr').post('/zoho-people/exclusions', { employeeIds: [ids.ben], reason: ' Checks in on the system now ' }).expect(201)).body as ZohoExclusionsView;
+      expect(added).toMatchObject({ hidden: 0, exclusions: [{ employeeId: ids.ben, name: `Ben Both ${RUN}`, reason: 'Checks in on the system now', former: false }] });
+      expect(added.exclusions[0].addedBy).not.toBeNull();
+      // added again, by a Super Admin: stays as it was
+      await as('superAdmin').post('/zoho-people/exclusions', { employeeIds: [ids.ben] }).expect(201);
+      expect(await prisma.zohoPeopleExclusion.findUniqueOrThrow({ where: { employeeId: ids.ben } })).toMatchObject({ reason: 'Checks in on the system now' });
+      expect(await prisma.auditLog.count({ where: { entityType: 'zoho_people_exclusion', action: 'create', diff: { path: ['employeeId'], equals: ids.ben } } })).toBe(1);
+
+      const view = (await as('hr').get('/zoho-people').expect(200)).body as ZohoPeopleView;
+      expect(view.exclusions.exclusions.map((x) => x.employeeId)).toEqual([ids.ben]);
+      const people = (await as('hr').get('/zoho-people/people').expect(200)).body as { id: string; excluded: boolean }[];
+      expect(people.find((p) => p.id === ids.ben)?.excluded).toBe(true);
+      expect(people.find((p) => p.id === ids.ana)?.excluded).toBe(false);
+    });
+
+    it('skips them in every run, even chosen by hand, and names them; their days fetched before stay', async () => {
+      const keptBefore = await prisma.attendanceDay.count({ where: { employeeId: ids.ben, source: 'zoho' } });
+      const run = await fetchRun('hr', Y, Y, ['ana', 'ben']);
+      expect(run.counts).toMatchObject({ people: 1, calls: 1, callsDone: 1 });
+      expect(run.skipped).toContainEqual({ reason: 'excluded', days: 1 });
+      expect(run.excluded.map((p) => p.employeeId)).toEqual([ids.ben]);
+      // only them chosen: nothing to fetch
+      expect(said(await as('hr').post('/zoho-people/runs', { from: Y, to: Y, employeeIds: [ids.ben] }).expect(400))).toEqual([ZOHO_ONLY_EXCLUDED]);
+      // everyone: all but them
+      const everyone = await fetchRun('hr', Y, Y, null);
+      expect(everyone.excluded.map((p) => p.employeeId)).toContain(ids.ben);
+      const plan = (await prisma.zohoPeopleRun.findUniqueOrThrow({ where: { id: everyone.id } })).plan as { employeeId: string }[];
+      expect(plan.map((p) => p.employeeId)).not.toContain(ids.ben);
+      expect(plan.map((p) => p.employeeId)).toContain(ids.ana);
+      expect(await prisma.attendanceDay.count({ where: { employeeId: ids.ben, source: 'zoho' } })).toBe(keptBefore);
+    });
+
+    it('takes them off the list: fetched again from the next run, audited', async () => {
+      expect(said(await as('hr').del(`/zoho-people/exclusions/${ids.ana}`).expect(404))).toEqual(['This person isn’t left out of the Zoho fetch. Reload the page.']);
+      const left = (await as('hr').del(`/zoho-people/exclusions/${ids.ben}`).expect(200)).body as ZohoExclusionsView;
+      expect(left).toEqual({ exclusions: [], hidden: 0 });
+      expect(await prisma.auditLog.count({ where: { entityType: 'zoho_people_exclusion', action: 'delete', diff: { path: ['employeeId'], equals: ids.ben } } })).toBe(1);
+      const run = await fetchRun('hr', Y, Y, ['ben']);
+      expect(run.excluded).toEqual([]);
+      expect(run.counts).toMatchObject({ people: 1, calls: 1 });
     });
   });
 

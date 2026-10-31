@@ -105,6 +105,7 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   // makes once, and each fetch (the nightly one, or HR's "Fetch from Zoho")
   zoho_people_connection: 'Zoho People connection',
   zoho_people_run: 'Fetch from Zoho People',
+  zoho_people_exclusion: 'Left out of the Zoho People fetch',
   // WhatsApp notifications (owner, 24 October 2026: "how to make whatsapp notifications?"; "Directly to Meta"): the
   // settings (Organization → Company → WhatsApp), and a person's own choice to get them
   whatsapp_settings: 'WhatsApp settings',

@@ -3,16 +3,17 @@
 // Organization → Zoho People (owner, 25 October 2026: "can i fetch checkin and out transactions from zoho people through
 // api?"; asked, "Yes, daily + backfill"; then "but can it fetch historical data?"): the page's forms, each forwarded to
 // the API, which checks the session, who may (a Super Admin in their own session connects, tests and disconnects; HR and
-// a Super Admin fetch and cancel) and every value again, so calling these directly bypasses nothing. The Zoho app's
+// a Super Admin fetch, cancel and keep the list of people left out of the fetch) and every value again, so calling these
+// directly bypasses nothing. The Zoho app's
 // credentials are the calendars' (Organization → Calendars' saveZohoApp, shared). No token or secret ever comes back.
-import type { ZohoPeopleTestView, ZohoPeopleView, ZohoRunView } from '@trendlix/shared';
+import type { ZohoExclusionsView, ZohoPeopleTestView, ZohoPeopleView, ZohoRunView } from '@trendlix/shared';
 import { headers } from 'next/headers';
 import { refresh } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { ApiError, apiSend } from '@/lib/api';
 import { originFromHeaders } from '@/lib/connector/site';
 import type { FormState } from '@/lib/types';
-import { zohoFetchBody, zohoTestBody } from '@/lib/zoho-people';
+import { zohoExclusionBody, zohoFetchBody, zohoTestBody } from '@/lib/zoho-people';
 import { todayInCairo } from '@/lib/date-picker';
 
 /** What the test form's action answers: its result, or why it couldn't run. */
@@ -88,5 +89,29 @@ export async function cancelZohoRun(id: string, prev: FormState): Promise<FormSt
     await apiSend<ZohoRunView>('POST', `/zoho-people/runs/${id}/cancel`);
     refresh();
     return { message: 'Cancelling: it stops after the call it is making.' };
+  });
+}
+
+/**
+ * POST /zoho-people/exclusions: the people chosen left out of the Zoho fetch from the next run on, with why (owner, 31
+ * October 2026: "can i exclude users from the zoho api?"; "Add an exclusion list").
+ */
+export async function excludeFromZoho(prev: FormState, fd: FormData): Promise<FormState> {
+  const { body, errors } = zohoExclusionBody(fd);
+  if (!body) return { errors };
+  return refused(prev, async () => {
+    await apiSend<ZohoExclusionsView>('POST', '/zoho-people/exclusions', body);
+    refresh();
+    return { message: `Left out of the Zoho fetch from the next run on: ${body.employeeIds.length === 1 ? '1 person' : `${body.employeeIds.length} people`}.` };
+  });
+}
+
+/** DELETE /zoho-people/exclusions/:employeeId: back in the Zoho fetch from the next run on. */
+export async function includeInZoho(employeeId: string, prev: FormState): Promise<FormState> {
+  if (!/^[0-9a-f-]{36}$/i.test(employeeId)) return { errors: ['This person can’t be found. Reload the page.'] };
+  return refused(prev, async () => {
+    await apiSend<ZohoExclusionsView>('DELETE', `/zoho-people/exclusions/${employeeId}`);
+    refresh();
+    return { message: 'Back in the Zoho fetch from the next run on.' };
   });
 }

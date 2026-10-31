@@ -21,6 +21,11 @@ import {
   zohoPeopleBanner,
   zohoPeopleCallbackTarget,
   zohoPersonOptions,
+  zohoExclusionOptions,
+  zohoExclusionBody,
+  exclusionText,
+  runExcludedText,
+  LEFT_OUT_MARK,
   zohoTestBody,
   zohoWithChosen,
   zohoZoneDiffers,
@@ -53,6 +58,7 @@ function run(over: Partial<ZohoRunView> = {}): ZohoRunView {
     skipped: [],
     notFound: [],
     noWorkEmail: [],
+    excluded: [],
     hidden: 0,
     errors: [],
     problem: null,
@@ -145,13 +151,41 @@ describe('Fetch from Zoho', () => {
       { id: UUID2, name: 'Adam Former', employeeCode: 'EMP-2', former: true },
     ];
     expect(zohoPersonOptions(people, [])).toEqual([
-      { value: UUID2, label: 'Adam Former · EMP-2 · former' },
-      { value: UUID, label: 'Sara Planner · EMP-7' },
+      { value: UUID2, label: 'Adam Former · EMP-2 · former', disabled: false },
+      { value: UUID, label: 'Sara Planner · EMP-7', disabled: false },
     ]);
     expect(zohoPersonOptions(people, [UUID2]).map((o) => o.value)).toEqual([UUID]);
     expect(zohoWithChosen([UUID], UUID)).toEqual([UUID]);
     expect(zohoWithChosen([UUID], '')).toEqual([UUID]);
     expect(zohoWithChosen([UUID], UUID2)).toEqual([UUID, UUID2]);
+  });
+
+  // owner, 31 October 2026: "can i exclude users from the zoho api?"; "Add an exclusion list"
+  it('lists someone left out of the fetch but doesn’t let them be chosen; offers the others to leave out', () => {
+    const people = [
+      { id: UUID, name: 'Sara Planner', employeeCode: 'EMP-7', former: false, excluded: true },
+      { id: UUID2, name: 'Adam Former', employeeCode: 'EMP-2', former: true, excluded: false },
+    ];
+    expect(zohoPersonOptions(people, [])).toContainEqual({ value: UUID, label: `Sara Planner · EMP-7 · ${LEFT_OUT_MARK}`, disabled: true });
+    expect(zohoExclusionOptions(people, [])).toEqual([{ value: UUID2, label: 'Adam Former · EMP-2 · former' }]);
+    expect(zohoExclusionOptions(people, [UUID2])).toEqual([]);
+
+    const fd = new FormData();
+    expect(zohoExclusionBody(fd)).toEqual({ body: null, errors: ['Choose the people to leave out of the Zoho fetch.'] });
+    fd.append('employeeId', UUID2);
+    fd.append('employeeId', UUID2);
+    fd.append('employeeId', 'nonsense');
+    fd.set('reason', '  Checks in on the system now  ');
+    expect(zohoExclusionBody(fd)).toEqual({ body: { employeeIds: [UUID2], reason: 'Checks in on the system now' }, errors: [] });
+    fd.set('reason', 'x'.repeat(501));
+    expect(zohoExclusionBody(fd).errors).toEqual(['Keep the reason to 500 characters; it has 501.']);
+
+    const x = { employeeId: UUID2, name: 'Adam Former', employeeCode: 'EMP-2', former: true, reason: 'Left for a client', addedAt: '2026-10-31T10:00:00.000Z', addedBy: { id: 'u1', name: 'Hana HR' } };
+    expect(exclusionText(x, () => '31/10/2026')).toEqual({ who: 'Adam Former (EMP-2) · former employee', note: 'Left out by Hana HR on 31/10/2026: Left for a client' });
+    expect(exclusionText({ ...x, reason: null, addedBy: null }, () => '31/10/2026').note).toBe('Left out on 31/10/2026.');
+    expect(runExcludedText(run({ excluded: [{ employeeId: UUID2, name: 'Adam Former', employeeCode: 'EMP-2', email: null, former: true }] }))).toBe('Left out of the Zoho fetch: Adam Former (EMP-2).');
+    expect(runExcludedText(run())).toBeNull();
+    expect(runSkippedLines(run({ skipped: [{ reason: 'excluded', days: 3 }] }))).toEqual(['Left out of the Zoho fetch: 3 days']);
   });
 
   it('counts the days of a range typed, none while it isn’t one', () => {

@@ -78,6 +78,7 @@ export const ZOHO_RUN_STATUS_LABELS: Record<ZohoRunStatus, string> = { running: 
 
 /** Why days of a run were left as they were, or not fetched. */
 export const ZOHO_SKIP_REASONS = [
+  'excluded',
   'payroll_approved',
   'before_join',
   'after_end',
@@ -91,6 +92,8 @@ export const ZOHO_SKIP_REASONS = [
 export type ZohoSkipReason = (typeof ZOHO_SKIP_REASONS)[number];
 
 export const ZOHO_SKIP_LABELS: Record<ZohoSkipReason, string> = {
+  // owner, 31 October 2026: "can i exclude users from the zoho api?"; "Add an exclusion list"
+  excluded: 'Left out of the Zoho fetch',
   // the brief: 'skip it with the reason "payroll approved"'; since 25 October 2026 only the days Zoho changed there
   payroll_approved: 'Payroll approved: the day kept as it was',
   before_join: 'Before their join date',
@@ -105,6 +108,44 @@ export const ZOHO_SKIP_LABELS: Record<ZohoSkipReason, string> = {
 
 /** The days added to a month whose payroll is with the CEO, approved or paid (25 October 2026). */
 export const ZOHO_RECORDED_LABEL = 'Added for the record, payroll unchanged';
+
+// ---------- left out of the fetch (owner, 31 October 2026) ----------
+
+/**
+ * People left out of Zoho People's fetch (owner, 31 October 2026: "can i exclude users from the zoho api?"; he chose "Add
+ * an exclusion list": "On Organization → Zoho People, HR or a Super Admin picks people to leave out. The nightly and
+ * manual fetches skip them, and each run says how many were left out. Zoho days already fetched stay as history."):
+ * every run skips them (the nightly one and Fetch from Zoho, even when chosen by hand), their days counted under
+ * "Left out of the Zoho fetch".
+ */
+export const ZOHO_EXCLUSION_REASON_MAX = 500;
+export const ZOHO_EXCLUSION_ENTITY = 'zoho_people_exclusion';
+
+/** What a fetch of only people left out is refused with. */
+export const ZOHO_ONLY_EXCLUDED = 'Everyone chosen is left out of the Zoho fetch: take them off that list first, or choose others.';
+
+/** Someone left out of the fetch, as the page lists them. */
+export interface ZohoExclusionView {
+  employeeId: string;
+  name: string;
+  employeeCode: string;
+  former: boolean;
+  reason: string | null;
+  addedAt: string;
+  addedBy: { id: string; name: string } | null;
+}
+
+/** GET /zoho-people/exclusions (and the page's): the list, the C-level people hidden from the caller counted apart. */
+export interface ZohoExclusionsView {
+  exclusions: ZohoExclusionView[];
+  hidden: number;
+}
+
+/** Why an exclusion's reason can't be kept, or null: at most 500 characters. */
+export function zohoExclusionReasonProblem(reason: string | null | undefined): string | null {
+  const r = (reason ?? '').trim();
+  return r.length > ZOHO_EXCLUSION_REASON_MAX ? `Keep the reason to ${ZOHO_EXCLUSION_REASON_MAX} characters; it has ${r.length}.` : null;
+}
 
 /** Someone of a run, as the page lists them (former: no employment now). */
 export interface ZohoPersonRef {
@@ -160,6 +201,8 @@ export interface ZohoRunView {
   /** The people Zoho People doesn't know by their work email (the C-level people HR may not see counted apart). */
   notFound: ZohoPersonRef[];
   noWorkEmail: ZohoPersonRef[];
+  /** Left out of the fetch (owner, 31 October 2026), as they were when it started. */
+  excluded: ZohoPersonRef[];
   hidden: number;
   /** What went wrong on the way, short (at most 20). */
   errors: string[];
@@ -204,6 +247,8 @@ export interface ZohoPeopleView {
   /** Not found in Zoho People by the latest run that fetched them. */
   notFound: ZohoPersonRef[];
   hiddenNotFound: number;
+  /** Left out of the fetch (owner, 31 October 2026). */
+  exclusions: ZohoExclusionsView;
   /** The nightly run: its time, and the last one. */
   nightly: { time: string; last: { day: string; status: ZohoRunStatus; finishedAt: string | null; problem: string | null } | null };
   /** Those with a current employment, for the estimate. */

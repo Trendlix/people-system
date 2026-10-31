@@ -6,7 +6,9 @@ import {
   ZOHO_PEOPLE_PAGE,
   ZOHO_RECORDED_LABEL,
   ZOHO_RUN_STATUS_LABELS,
+  ZOHO_EXCLUSION_REASON_MAX,
   ZOHO_SKIP_LABELS,
+  zohoExclusionReasonProblem,
   zohoFetchProblems,
   zohoPeopleConnectProblemText,
   type Role,
@@ -14,6 +16,7 @@ import {
   type ZohoPeopleConnectResult,
   type ZohoPeopleNote,
   type ZohoPeopleTestView,
+  type ZohoExclusionView,
   type ZohoPeopleView,
   type ZohoPersonRef,
   type ZohoRunView,
@@ -206,16 +209,59 @@ export interface ZohoChoosable {
   name: string;
   employeeCode: string;
   former: boolean;
+  /** Left out of the Zoho fetch (owner, 31 October 2026); missing from an API from before it. */
+  excluded?: boolean;
 }
 
-/** The people still to choose, by name: "Sara Planner · EMP-7 · former". */
-export function zohoPersonOptions(people: readonly ZohoChoosable[], taken: readonly string[]): { value: string; label: string }[] {
+/** What the fetch's list says of someone left out of the fetch (31 October 2026): shown, not choosable. */
+export const LEFT_OUT_MARK = 'left out of the Zoho fetch';
+
+const choosableLabel = (p: ZohoChoosable, leftOut: boolean) => [p.name, p.employeeCode, p.former ? 'former' : null, leftOut ? LEFT_OUT_MARK : null].filter(Boolean).join(' · ');
+
+/**
+ * The people still to choose for a fetch, by name: "Sara Planner · EMP-7 · former"; someone left out of the fetch (owner,
+ * 31 October 2026) listed but not choosable, "… · left out of the Zoho fetch", as every run skips them.
+ */
+export function zohoPersonOptions(people: readonly ZohoChoosable[], taken: readonly string[]): { value: string; label: string; disabled: boolean }[] {
   const out = new Set(taken);
   return people
     .filter((p) => !out.has(p.id))
-    .map((p) => ({ value: p.id, label: [p.name, p.employeeCode, p.former ? 'former' : null].filter(Boolean).join(' · ') }))
+    .map((p) => ({ value: p.id, label: choosableLabel(p, !!p.excluded), disabled: !!p.excluded }))
     .sort((a, b) => a.label.localeCompare(b.label, 'en'));
 }
+
+// ---------- left out of the fetch (owner, 31 October 2026: "can i exclude users from the zoho api?") ----------
+
+/** The people who can be left out: those not on the list yet nor chosen already, by name. */
+export function zohoExclusionOptions(people: readonly ZohoChoosable[], taken: readonly string[]): { value: string; label: string }[] {
+  const out = new Set(taken);
+  return people
+    .filter((p) => !p.excluded && !out.has(p.id))
+    .map((p) => ({ value: p.id, label: choosableLabel(p, false) }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'en'));
+}
+
+/** What "Leave out" sends: the people chosen (each once) and why (optional); or why it can't be sent. */
+export function zohoExclusionBody(fd: FormData): { body: { employeeIds: string[]; reason: string | null } | null; errors: string[] } {
+  const employeeIds = [...new Set(fd.getAll('employeeId').filter((v): v is string => typeof v === 'string' && /^[0-9a-f-]{36}$/i.test(v)))];
+  const reason = String(fd.get('reason') ?? '').trim() || null;
+  const errors = [...(employeeIds.length ? [] : ['Choose the people to leave out of the Zoho fetch.']), ...[zohoExclusionReasonProblem(reason)].filter((p): p is string => !!p)];
+  return errors.length ? { body: null, errors } : { body: { employeeIds, reason }, errors: [] };
+}
+
+/** The reason's limit, for the field. */
+export const ZOHO_EXCLUSION_REASON_LIMIT = ZOHO_EXCLUSION_REASON_MAX;
+
+/** Someone left out, as listed: "Ben Both (EMP-7) · former employee"; and who added them when, and why, under it. */
+export function exclusionText(x: ZohoExclusionView, when: (iso: string) => string): { who: string; note: string } {
+  const who = [`${x.name} (${x.employeeCode})`, x.former ? 'former employee' : null].filter(Boolean).join(' · ');
+  const by = x.addedBy ? ` by ${x.addedBy.name}` : '';
+  return { who, note: `Left out${by} on ${when(x.addedAt)}${x.reason ? `: ${x.reason}` : '.'}` };
+}
+
+/** A run's people left out of it, as its row says: "Left out of the Zoho fetch: Ben Both (EMP-7)."; null for none. */
+export const runExcludedText = (run: Pick<ZohoRunView, 'excluded'>): string | null =>
+  run.excluded?.length ? `Left out of the Zoho fetch: ${run.excluded.map((p) => `${p.name} (${p.employeeCode})`).join('; ')}.` : null;
 
 /** The people chosen, in the order chosen, each once. */
 export const zohoWithChosen = (chosen: readonly string[], id: string): string[] => (id && !chosen.includes(id) ? [...chosen, id] : [...chosen]);

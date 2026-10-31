@@ -8,12 +8,16 @@ import {
   ZOHO_PEOPLE_LOCK_MINUTES,
   ZOHO_PEOPLE_NIGHTLY_TIME,
   ZOHO_PEOPLE_NOT_CONNECTED,
+  ZOHO_EXCLUSION_ENTITY,
+  ZOHO_ONLY_EXCLUDED,
   ZOHO_PEOPLE_RUN_GOING,
   ZOHO_SKIP_REASONS,
+  zohoExclusionReasonProblem,
   zohoFetchProblems,
   zohoMinutesFor,
   zohoStatusKind,
   type AttendanceDayResult,
+  type ZohoExclusionsView,
   type ZohoPeopleNote,
   type ZohoPeopleView,
   type ZohoPersonRef,
@@ -65,6 +69,10 @@ import { ZohoPeopleService, type ZohoReadContext } from './zoho-people.service.j
 //   and goes on, a day at most; Zoho busy or unreachable: tried again after 30 seconds, 2 and 5 minutes, then the run
 //   fails; the sign-in refused: the connection needs connecting again and the run fails. A failure says why on the page,
 //   and the dashboard tells HR and the Super Admin of a nightly one (note).
+// - people left out (owner, 31 October 2026: "can i exclude users from the zoho api?"; he chose "Add an exclusion list"):
+//   HR or a Super Admin keeps a list on the page; every run skips them, the nightly one and Fetch from Zoho (even when
+//   chosen by hand), their days counted "Left out of the Zoho fetch" and the run naming them; their days fetched before
+//   stay as they are.
 // - its plan and where it got to are kept with it, so after the API restarts it goes on (the scheduler finds it); it can
 //   be cancelled. Each run in the audit log (started, cancelled, how it ended with its counts) and each person's month it
 //   kept days in (its counts).
@@ -164,6 +172,9 @@ export class ZohoPeopleSyncService implements OnModuleDestroy {
    * person with neither a work email nor a Zoho employee ID is planned (and listed) without calls.
    */
   private async plan(from: string, to: string, ids: readonly string[] | null) {
+    // left out of the fetch (owner, 31 October 2026): skipped, by whom it was asked for too
+    const excluded = new Set((await this.prisma.zohoPeopleExclusion.findMany({ select: { employeeId: true } })).map((x) => x.employeeId));
+    const excludedIds: string[] = [];
     const employees = await this.prisma.employee.findMany({
       where: ids ? { id: { in: [...ids] } } : { employments: { some: { joinDate: { lte: toDateOnly(to) }, OR: [{ endDate: null }, { endDate: { gte: toDateOnly(from) } }] } } },
       orderBy: [{ employeeCode: 'asc' }],
@@ -192,6 +203,11 @@ export class ZohoPeopleSyncService implements OnModuleDestroy {
       const email = e.workEmail?.trim().toLowerCase() || null;
       const zohoId = e.zohoPeopleId?.trim() || null;
       if (!covered.size) continue;
+      if (excluded.has(e.id)) {
+        skip('excluded', covered.size);
+        excludedIds.push(e.id);
+        continue;
+      }
       items.push({ employeeId: e.id, code: e.employeeCode, email, zohoId, ranges });
       if (!email && !zohoId) skip('no_work_email', covered.size);
       else {
@@ -199,7 +215,7 @@ export class ZohoPeopleSyncService implements OnModuleDestroy {
         people++;
       }
     }
-    return { items, skipped, calls, people };
+    return { items, skipped, calls, people, excludedIds };
   }
 
   /** A run made, under the run lock: refused (409) while another is going; the nightly one once a day. */
@@ -222,6 +238,7 @@ export class ZohoPeopleSyncService implements OnModuleDestroy {
           peopleTotal: plan.people,
           callsTotal: plan.calls,
           skipped: json(plan.skipped),
+          excludedIds: plan.excludedIds,
         },
       });
     });
@@ -231,7 +248,16 @@ export class ZohoPeopleSyncService implements OnModuleDestroy {
       action: 'create',
       entityType: ZOHO_PEOPLE_RUN_ENTITY,
       entityId: made.id,
-      diff: { kind: data.kind, from: data.from, to: data.to, everyone: !data.employeeIds.length, ...(data.employeeIds.length && { chosen: data.employeeIds.length }), people: plan.people, calls: plan.calls },
+      diff: {
+        kind: data.kind,
+        from: data.from,
+        to: data.to,
+        everyone: !data.employeeIds.length,
+        ...(data.employeeIds.length && { chosen: data.employeeIds.length }),
+        people: plan.people,
+        calls: plan.calls,
+        ...(plan.excludedIds.length && { leftOut: plan.excludedIds.length }),
+      },
     });
     this.launch(made.id);
     return made;
@@ -253,6 +279,8 @@ export class ZohoPeopleSyncService implements OnModuleDestroy {
       const confidential = await this.confidential.view(user);
       const found = await this.prisma.employee.count({ where: { id: { in: ids } } });
       if (found !== ids.length || ids.some((id) => confidential.hidden.has(id))) throw new BadRequestException(['Employee not found. Choose the people from the list.']);
+      // all of them left out of the fetch (31 October 2026): nothing to fetch
+      if ((await this.prisma.zohoPeopleExclusion.count({ where: { employeeId: { in: ids } } })) === ids.length) throw new BadRequestException([ZOHO_ONLY_EXCLUDED]);
     }
     const run = await this.create({ kind: 'fetch', from: dto.from, to: dto.to, employeeIds: ids, startedById: user.id, nightlyFor: null });
     return this.runView(run.id, user);
@@ -635,7 +663,7 @@ export class ZohoPeopleSyncService implements OnModuleDestroy {
   }
 
   private async runViews(runs: ZohoPeopleRun[], confidential: ConfidentialView): Promise<ZohoRunView[]> {
-    const ids = runs.flatMap((r) => [...r.notFound, ...(r.plan as unknown as PlanItem[]).filter((p) => !p.email && !p.zohoId).map((p) => p.employeeId)]);
+    const ids = runs.flatMap((r) => [...r.notFound, ...r.excludedIds, ...(r.plan as unknown as PlanItem[]).filter((p) => !p.email && !p.zohoId).map((p) => p.employeeId)]);
     const refs = await this.refs(ids, runs.flatMap((r) => r.plan as unknown as PlanItem[]));
     const names = await userNames(this.prisma, await this.prisma.user.findMany({ where: { id: { in: runs.map((r) => r.startedById).filter((x): x is string => !!x) } }, select: { id: true, email: true } }));
     return runs.map((r) => {
@@ -652,6 +680,7 @@ export class ZohoPeopleSyncService implements OnModuleDestroy {
         });
       const notFound = shown(r.notFound);
       const noWorkEmail = shown(plan.filter((p) => !p.email && !p.zohoId).map((p) => p.employeeId));
+      const excluded = shown(r.excludedIds);
       const skipped = r.skipped as Partial<Record<ZohoSkipReason, number>>;
       const left = Math.max(0, r.callsTotal - r.callsDone);
       const waitLeft = r.waitingUntil ? Math.max(0, Math.ceil((r.waitingUntil.getTime() - Date.now()) / 60_000)) : 0;
@@ -684,6 +713,7 @@ export class ZohoPeopleSyncService implements OnModuleDestroy {
         skipped: ZOHO_SKIP_REASONS.filter((k) => (skipped[k] ?? 0) > 0).map((reason) => ({ reason, days: skipped[reason]! })),
         notFound,
         noWorkEmail,
+        excluded,
         hidden,
         errors: (r.errors as string[]).slice(-20),
         problem: r.problem,
@@ -708,13 +738,15 @@ export class ZohoPeopleSyncService implements OnModuleDestroy {
     this.zoho.assertFetcher(user);
     const manages = this.zoho.manages(user);
     const today = toDateOnly(todayInCairo());
-    const [c, runs, app, people, confidential, lastNightly] = await Promise.all([
+    const [c, runs, app, people, confidential, lastNightly, exclusions] = await Promise.all([
       this.zoho.connection(),
       this.prisma.zohoPeopleRun.findMany({ orderBy: { startedAt: 'desc' }, take: 30 }),
       manages ? this.calendars.sharedZohoApp() : Promise.resolve(null),
-      this.prisma.employee.count({ where: { workEmail: { not: null }, employments: { some: { joinDate: { lte: today }, OR: [{ endDate: null }, { endDate: { gte: today } }] } } } }),
+      // the estimate's everyone: those left out of the fetch aren't (31 October 2026)
+      this.prisma.employee.count({ where: { workEmail: { not: null }, zohoPeopleExclusion: null, employments: { some: { joinDate: { lte: today }, OR: [{ endDate: null }, { endDate: { gte: today } }] } } } }),
       this.confidential.view(user),
       this.prisma.zohoPeopleRun.findFirst({ where: { kind: 'nightly' }, orderBy: { nightlyFor: 'desc' } }),
+      this.exclusionsOf(user),
     ]);
     const views = await this.runViews(runs.slice(0, RUNS_SHOWN), confidential);
     // not found by the latest run that asked for them: a later one that found them clears them
@@ -746,22 +778,119 @@ export class ZohoPeopleSyncService implements OnModuleDestroy {
           ? { day: fromDateOnly(lastNightly.nightlyFor), status: lastNightly.status as ZohoRunStatus, finishedAt: lastNightly.finishedAt?.toISOString() ?? null, problem: lastNightly.problem }
           : null,
       },
+      exclusions,
       people,
       timeZone: this.zoho.timeZoneOf(c),
     };
   }
 
   /** GET /zoho-people/people: everyone with an employment, for choosing whom to fetch (former employees marked). */
-  async people(user: SessionUser): Promise<{ id: string; name: string; employeeCode: string; former: boolean }[]> {
+  async people(user: SessionUser): Promise<{ id: string; name: string; employeeCode: string; former: boolean; excluded: boolean }[]> {
     this.zoho.assertFetcher(user);
     const today = toDateOnly(todayInCairo());
     const confidential = await this.confidential.view(user);
     const rows = await this.prisma.employee.findMany({
       where: { employments: { some: {} }, ...(confidential.hidden.size && { id: { notIn: [...confidential.hidden] } }) },
       orderBy: [{ fullNameEn: 'asc' }, { employeeCode: 'asc' }],
-      select: { id: true, fullNameEn: true, employeeCode: true, employments: { where: { joinDate: { lte: today }, OR: [{ endDate: null }, { endDate: { gte: today } }] }, select: { id: true } } },
+      select: {
+        id: true,
+        fullNameEn: true,
+        employeeCode: true,
+        employments: { where: { joinDate: { lte: today }, OR: [{ endDate: null }, { endDate: { gte: today } }] }, select: { id: true } },
+        zohoPeopleExclusion: { select: { id: true } },
+      },
     });
-    return rows.map((r) => ({ id: r.id, name: r.fullNameEn, employeeCode: r.employeeCode, former: !r.employments.length }));
+    // left out of the fetch (31 October 2026): marked, for the page to show them so
+    return rows.map((r) => ({ id: r.id, name: r.fullNameEn, employeeCode: r.employeeCode, former: !r.employments.length, excluded: !!r.zohoPeopleExclusion }));
+  }
+
+  // ---------- left out of the fetch (owner, 31 October 2026: "can i exclude users from the zoho api?") ----------
+
+  /** GET /zoho-people/exclusions: those left out, by name; the C-level people hidden from the caller counted apart. */
+  async exclusions(user: SessionUser): Promise<ZohoExclusionsView> {
+    this.zoho.assertFetcher(user);
+    return this.exclusionsOf(user);
+  }
+
+  private async exclusionsOf(user: SessionUser): Promise<ZohoExclusionsView> {
+    const today = toDateOnly(todayInCairo());
+    const [rows, confidential] = await Promise.all([
+      this.prisma.zohoPeopleExclusion.findMany({
+        select: {
+          employeeId: true,
+          reason: true,
+          addedAt: true,
+          addedBy: { select: { id: true, email: true } },
+          employee: {
+            select: { fullNameEn: true, employeeCode: true, employments: { where: { joinDate: { lte: today }, OR: [{ endDate: null }, { endDate: { gte: today } }] }, select: { id: true } } },
+          },
+        },
+      }),
+      this.confidential.view(user),
+    ]);
+    const shown = rows.filter((r) => !confidential.hidden.has(r.employeeId));
+    const names = await userNames(this.prisma, shown.map((r) => r.addedBy));
+    return {
+      exclusions: shown
+        .map((r) => ({
+          employeeId: r.employeeId,
+          name: r.employee.fullNameEn,
+          employeeCode: r.employee.employeeCode,
+          former: !r.employee.employments.length,
+          reason: r.reason,
+          addedAt: r.addedAt.toISOString(),
+          addedBy: r.addedBy ? (names.get(r.addedBy.id) ?? null) : null,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'en') || a.employeeCode.localeCompare(b.employeeCode)),
+      hidden: rows.length - shown.length,
+    };
+  }
+
+  /**
+   * POST /zoho-people/exclusions: people left out of the fetch from the next run on, with why (optional, at most 500
+   * characters); someone on the list already stays as they were. A C-level person only by those who see them.
+   */
+  async exclude(dto: { employeeIds: string[]; reason?: string | null }, user: SessionUser): Promise<ZohoExclusionsView> {
+    this.zoho.assertFetcher(user);
+    const reason = dto.reason?.trim() || null;
+    const problem = zohoExclusionReasonProblem(reason);
+    if (problem) throw new BadRequestException([problem]);
+    const ids = [...new Set(dto.employeeIds)];
+    if (!ids.length) throw new BadRequestException(['Choose the people to leave out of the Zoho fetch.']);
+    const confidential = await this.confidential.view(user);
+    const people = await this.prisma.employee.findMany({ where: { id: { in: ids } }, select: { id: true, employeeCode: true } });
+    if (people.length !== ids.length || ids.some((id) => confidential.hidden.has(id))) throw new BadRequestException(['Employee not found. Choose the people from the list.']);
+    const already = new Set((await this.prisma.zohoPeopleExclusion.findMany({ where: { employeeId: { in: ids } }, select: { employeeId: true } })).map((x) => x.employeeId));
+    for (const p of people) {
+      if (already.has(p.id)) continue;
+      const made = await this.prisma.zohoPeopleExclusion.upsert({
+        where: { employeeId: p.id },
+        create: { employeeId: p.id, reason, addedById: user.id },
+        update: {},
+        select: { id: true },
+      });
+      await this.audit.record({ userId: user.id, action: 'create', entityType: ZOHO_EXCLUSION_ENTITY, entityId: made.id, diff: { employeeId: p.id, employeeCode: p.employeeCode, ...(reason && { reason }) } });
+    }
+    return this.exclusionsOf(user);
+  }
+
+  /** DELETE /zoho-people/exclusions/:employeeId: back in the fetch from the next run on. */
+  async include(employeeId: string, user: SessionUser): Promise<ZohoExclusionsView> {
+    this.zoho.assertFetcher(user);
+    const confidential = await this.confidential.view(user);
+    const row = await this.prisma.zohoPeopleExclusion.findUnique({ where: { employeeId }, select: { id: true, reason: true, employee: { select: { employeeCode: true } } } });
+    if (!row || confidential.hidden.has(employeeId)) throw new NotFoundException('This person isn’t left out of the Zoho fetch. Reload the page.');
+    const { count } = await this.prisma.zohoPeopleExclusion.deleteMany({ where: { id: row.id } });
+    if (count) {
+      await this.audit.record({
+        userId: user.id,
+        action: 'delete',
+        entityType: ZOHO_EXCLUSION_ENTITY,
+        entityId: row.id,
+        diff: { employeeId, employeeCode: row.employee.employeeCode, ...(row.reason && { reason: row.reason }) },
+      });
+    }
+    return this.exclusionsOf(user);
   }
 
   /**
