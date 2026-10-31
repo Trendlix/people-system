@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { DAY_SOURCE_CHOICE_LABELS, cairoClock, removedText } from '@trendlix/shared';
 import { PageHead, Panel, PanelHead, Pill } from '@/components/design';
 import { countsWords, hoursWords, recordWhere, recordWords, SOURCE_HEADS, type DayRecord, type DayRecordsView } from '@/lib/attendance-records';
@@ -61,6 +62,17 @@ export function RecordsView({ view, back }: { view: DayRecordsView; back: { href
             </Panel>
           ))}
         </div>
+      )}
+      {/* Zoho's record of the day not in People yet (owner, 31 October 2026: "how to override the system checkin and
+          take zoho record?" — "if available"): fetched first, then chosen here */}
+      {view.canChange && view.system.kept && !view.zoho.kept && !view.locked && (
+        <p className="rounded-lg bg-raised px-4 py-3 text-sm">
+          People has no Zoho record of this day, so only the system’s can count. To use Zoho’s, fetch this person’s day first in{' '}
+          <Link href="/organization/zoho-people" className="font-semibold">
+            Organization → Zoho People → Fetch from Zoho
+          </Link>
+          , then come back here and choose Zoho’s records.
+        </p>
       )}
       {view.removed.length > 0 && (
         <Panel>
