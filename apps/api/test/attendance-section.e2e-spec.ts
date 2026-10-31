@@ -367,6 +367,12 @@ describe('The Attendance section (e2e)', () => {
       await api().get(`/api/attendance/employees/${ids.cleo}?month=${MONTH}`).set('Cookie', finance).expect(404);
       expect(((await api().get(`/api/attendance/employees/${ids.cleo}?month=${MONTH}`).set('Cookie', ceo).expect(200)).body as PersonView).person.employee.confidential).toBe(true);
       await api().get(`/api/attendance/employees/00000000-0000-4000-8000-000000000000?month=${MONTH}`).set('Cookie', hr).expect(404);
+      // a Super Admin without HR, the CEO or Finance (owner, 31 October 2026: the day's records "as a super admin"):
+      // anyone's month, Daily Attendance too; the Summary stays HR's, the CEO's and Finance's
+      const superAdmin = await signIn(app, await createUser(prisma, ['super_admin']));
+      await api().get(`/api/attendance/employees/${ids.rami}?month=${MONTH}`).set('Cookie', superAdmin).expect(200);
+      await api().get(`/api/attendance?month=${MONTH}`).set('Cookie', superAdmin).expect(200);
+      await api().get(`/api/attendance/summary?month=${MONTH}`).set('Cookie', superAdmin).expect(403);
     });
   });
 

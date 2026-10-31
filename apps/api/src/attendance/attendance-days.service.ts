@@ -27,6 +27,7 @@ import { approvedOds, dutyDaysOf } from '../official-duty/od-days.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { approvedWfhDays } from '../wfh/wfh-days.js';
 import { exemptionsOf } from './exemption-days.js';
+import { dayChoicesOf } from './record-removals.js';
 
 // A person's month of attendance days from every source (owner, 19 October 2026: "Check-in through the system (phone or
 // web with the office location check, or a device) to replace Zoho"): the days kept from Zoho People's imports, from
@@ -191,7 +192,7 @@ export class AttendanceDaysService {
     if (!ids.length) return out;
     const [first, last] = [firstDay(month), lastDay(month)];
     const range = { gte: toDateOnly(first), lte: toDateOnly(last) };
-    const [kept, employments, holidays, leave, checkIns, ods, exemptions, compensatory] = await Promise.all([
+    const [kept, employments, holidays, leave, checkIns, ods, exemptions, compensatory, choices] = await Promise.all([
       rows ?? db.attendanceDay.findMany({ where: { employeeId: { in: [...ids] }, date: range }, orderBy: { date: 'asc' }, select: DAY_SELECT }),
       db.employment.findMany({ where: { employeeId: { in: [...ids] }, ...employedIn(month) }, orderBy: { joinDate: 'desc' }, select: EMPLOYMENT_SELECT }),
       db.holiday.findMany({ where: { date: range }, select: { date: true } }),
@@ -211,6 +212,8 @@ export class AttendanceDaysService {
       exemptionsOf(db, ids, first, last),
       // their compensatory days approved (owner, 26 October 2026: "my compensatory is a compensation with another day in the same month")
       approvedCompensatory(db, ids, first, last),
+      // the days a Super Admin chose the source of (owner, 31 October 2026: "zoho or system")
+      dayChoicesOf(db, ids, first, last),
     ]);
     // their approved work from home days (owner, 26 October 2026: "Full day, always")
     const wfh = await approvedWfhDays(db, ids, first, last);
@@ -235,7 +238,7 @@ export class AttendanceDaysService {
       // to the end date, or an approved ending's last working day when earlier (27 October 2026): the days after it are
       // neither expected nor no-shows
       const employedTo = employment ? employmentEndOf(employment) : null;
-      const base = monthDays(own, { month, today, checkInFrom, workingDays: shift?.workingDays ?? null, holidays: holidayDays, leaveDays, employedFrom, employedTo });
+      const base = monthDays(own, { month, today, checkInFrom, workingDays: shift?.workingDays ?? null, holidays: holidayDays, leaveDays, employedFrom, employedTo, chosen: choices.get(id) ?? null });
       // an approved official duty's days attended for its hours, a day gone by without a press too (23 October 2026)
       const duties = dutyDaysOf(ods, id, shift, holidaySet, first, last);
       const withDuty = officialDutyDays(base, duties, { today, checkInFrom, employedFrom, employedTo, shift });

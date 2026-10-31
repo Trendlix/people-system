@@ -56,6 +56,7 @@ import { approvedWfhDays } from '../wfh/wfh-days.js';
 import { DAY_SELECT, EMPLOYMENT_SELECT, monthDayOf, shiftTimesOf } from './attendance-days.service.js';
 import type { AttendanceHistoryQueryDto } from './attendance-history.dto.js';
 import { cairoTime } from './attendance-workbook.js';
+import { dayChoicesOf } from './record-removals.js';
 
 // A person's attendance history on their profile (owner, 23 October 2026: "Attendance history on the profile. Since
 // joining: on-time %, average check-in time, late days by weekday and trends; an Excel export"; asked who sees it, "HR,
@@ -211,7 +212,7 @@ export class AttendanceHistoryService {
     const within = { gte: toDateOnly(range.from), lte: toDateOnly(range.to) };
 
     // the period's days in one query, and what they are read with
-    const [rows, holidays, leave, wfh, ods, checkIns, exemptions, compensatory] = await Promise.all([
+    const [rows, holidays, leave, wfh, ods, checkIns, exemptions, compensatory, choices] = await Promise.all([
       this.prisma.attendanceDay.findMany({ where: { employeeId, date: within }, orderBy: { date: 'asc' }, select: DAY_SELECT }),
       this.prisma.holiday.findMany({ where: { date: within }, select: { date: true } }),
       this.prisma.leaveRequest.findMany({
@@ -225,6 +226,8 @@ export class AttendanceHistoryService {
       exemptionsOf(this.prisma, [employeeId], range.from, range.to),
       // their compensatory days (owner, 26 October 2026): the day off Compensatory day off, full and on time
       approvedCompensatory(this.prisma, [employeeId], range.from, range.to),
+      // the days a Super Admin chose the source of (owner, 31 October 2026: "zoho or system")
+      dayChoicesOf(this.prisma, [employeeId], range.from, range.to),
     ]);
     const kept = rows.map(monthDayOf);
     const holidayDays = holidays.map((h) => fromDateOnly(h.date));
@@ -248,7 +251,7 @@ export class AttendanceHistoryService {
         const shift = e.shift ? shiftTimesOf(e.shift) : null;
         const workingDays = shift?.workingDays ?? DEFAULT_WORKING_DAYS;
         for (const w of workingDays) working.add(w);
-        const base = monthDays(ofMonth, { month, today, checkInFrom, workingDays, holidays: holidayDays, leaveDays, employedFrom, employedTo });
+        const base = monthDays(ofMonth, { month, today, checkInFrom, workingDays, holidays: holidayDays, leaveDays, employedFrom, employedTo, chosen: choices.get(employeeId) ?? null });
         const duties = dutyDaysOf(ods, employeeId, shift, holidaySet, first, last);
         const hoursADay = shift ? shiftWorkHours(shift) : null;
         // an approved work from home day without a check-in read full (26 October 2026), as monthOf reads it

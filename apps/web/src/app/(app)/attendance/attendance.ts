@@ -71,6 +71,13 @@ type Query = Record<string, string | string[] | undefined>;
 /** Who sees the Attendance section: HR, the CEO and Finance (Finance read only). */
 export const canSeeAttendance = (user: WithRoles) => hasRole(user, 'hr', 'ceo', 'finance');
 
+/**
+ * Who sees everyone's days (Daily Attendance and a person's month): HR, the CEO and Finance, and a Super Admin, who
+ * removes a day's records and picks its source (owner, 31 October 2026: "as a super admin"). The imports and the Summary
+ * stay HR's, the CEO's and Finance's (canSeeAttendance).
+ */
+export const seesPeoplesAttendance = (user: WithRoles) => canSeeAttendance(user) || hasRole(user, 'super_admin');
+
 /** Who imports attendance from Zoho People: HR (the API's upload is HR's). */
 export const importsAttendance = (user: WithRoles) => hasRole(user, 'hr');
 

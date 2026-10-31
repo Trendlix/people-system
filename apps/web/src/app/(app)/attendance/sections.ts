@@ -27,7 +27,8 @@ export const ATTENDANCE_COMPENSATORY_SETUP_PATH = '/attendance/compensatory/setu
 const READERS: Role[] = ['hr', 'ceo', 'finance'];
 
 export const ATTENDANCE_SECTIONS: readonly { key: string; href: string; label: string; roles?: Role[] }[] = [
-  { key: 'daily', href: ATTENDANCE_PATH, label: 'Daily Attendance', roles: READERS },
+  // a Super Admin too (31 October 2026), who removes a day's records and picks its source
+  { key: 'daily', href: ATTENDANCE_PATH, label: 'Daily Attendance', roles: [...READERS, 'super_admin'] },
   // HR uploads; the CEO and Finance read what was imported
   { key: 'import', href: ATTENDANCE_IMPORT_PATH, label: 'Import', roles: ['hr'] },
   { key: 'imports', href: ATTENDANCE_IMPORTS_PATH, label: 'Import History', roles: READERS },

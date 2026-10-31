@@ -37,6 +37,7 @@ import { AttendanceFillService } from './attendance-fill.service.js';
 import type { AttendancePersonDto } from './attendance-imports.dto.js';
 import { CorrectionDaysService } from './correction-days.service.js';
 import { personKey, readZohoWorkbook, ZOHO_MAX_FILES, ZohoFileError, type ZohoRow } from './zoho-file.js';
+import { withoutZohoRemovals, zohoRemovalsOf } from './record-removals.js';
 
 const IMPORT = 'attendance_import';
 const LINE = 'payroll_line';
@@ -694,9 +695,17 @@ export class AttendanceImportsService {
     // those who check in on the system this month (19 October 2026): their line is filled from their attendance days
     const matchedIds = [...new Set(resolved.filter((r) => r.employeeId && isMatched(r.match)).map((r) => r.employeeId!))];
     const own = await this.attendanceDays.monthOf(month, matchedIds);
+    // the Zoho records a Super Admin removed stay removed (owner, 31 October 2026: "Stays removed")
+    const removals = await zohoRemovalsOf(this.prisma, matchedIds, firstDay(month), lastDay(month));
     const months = await this.months(
       month,
-      resolved.filter((r) => r.employeeId && isMatched(r.match) && !confidential.hidden.has(r.employeeId)).map((r) => ({ employeeId: r.employeeId!, employmentId: lineOf.get(r.employeeId!)?.employmentId ?? null, days: r.p.days })),
+      resolved
+        .filter((r) => r.employeeId && isMatched(r.match) && !confidential.hidden.has(r.employeeId))
+        .map((r) => ({
+          employeeId: r.employeeId!,
+          employmentId: lineOf.get(r.employeeId!)?.employmentId ?? null,
+          days: withoutZohoRemovals(r.employeeId!, r.p.days.map((day) => ({ day, openAt: null })), removals).map((d) => d.day),
+        })),
     );
     const appliedBy = await userNames(
       this.prisma,

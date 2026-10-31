@@ -1,5 +1,5 @@
 import { approverInCharge } from '@trendlix/shared';
-import { actsAs } from '../auth/roles.js';
+import { actsAs, isSuperAdmin } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import type { PrismaService } from '../prisma/prisma.service.js';
 
@@ -8,8 +8,11 @@ import type { PrismaService } from '../prisma/prisma.service.js';
 // and the person themself (ConfidentialService); a manager or a lead their team's, as My Team decides it; everyone their
 // own. Hiding a page is the web's convenience: these decide every request.
 
-/** HR, the CEO and Finance see everyone's attendance. */
-export const seesEveryonesAttendance = (user: SessionUser) => actsAs(user.roles, ['hr', 'ceo', 'finance']);
+/**
+ * HR, the CEO and Finance see everyone's attendance; a Super Admin too, who removes a day's records and picks its source
+ * (owner, 31 October 2026: "is there a way to check the checkin records? … delete one of them" — "as a super admin").
+ */
+export const seesEveryonesAttendance = (user: SessionUser) => actsAs(user.roles, ['hr', 'ceo', 'finance']) || isSuperAdmin(user);
 
 /** A current employment: one that hasn't ended. */
 const CURRENT = { endDate: null } as const;

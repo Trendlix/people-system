@@ -10,7 +10,7 @@ import { todayInCairo } from '../../employees/ui';
 import { BackLink, Empty, Loading, UUID } from '../../organization/ui';
 import { StaffOnly } from '../../staff-only';
 import { monthName } from '../../payroll/list';
-import { canSeeAttendance, dailyHref, figureTiles, importWay, personHref, readAttendanceMonth, reviewsImports, type PunchRow } from '../attendance';
+import { dailyHref, seesPeoplesAttendance, figureTiles, importWay, personHref, readAttendanceMonth, reviewsImports, type PunchRow } from '../attendance';
 import { hrCorrectionHref } from '../corrections/corrections';
 import { DayCorrectionCell } from '../corrections/day-cell';
 import { loadPerson } from '../data';
@@ -18,6 +18,7 @@ import { notLoaded } from '../not-loaded';
 import { DaysTable, ExemptionNote, FigureTiles, MonthNav, SourcesNote } from '../ui';
 import { joinShown } from '@/lib/hidden';
 import { historyHref } from '../../employees/[id]/attendance/history';
+import { recordsHref } from '@/lib/attendance-records';
 
 // A person's month (owner's brief, 19 October 2026: Daily Attendance, "A person's month also as a page"): their figures
 // and every day kept, from their check-ins on the system (owner, 19 October 2026: "Check-in through the system (phone or
@@ -34,7 +35,7 @@ async function PersonMonth({ params, searchParams }: { params: PageProps<'/atten
   const { employeeId } = await params;
   if (!UUID.test(employeeId)) notFound();
   const user = await getCurrentUser();
-  if (!canSeeAttendance(user)) return <Empty>Only HR, Finance and the CEO see everyone&apos;s attendance.</Empty>;
+  if (!seesPeoplesAttendance(user)) return <Empty>Only HR, Finance, the CEO and Super Admins see everyone&apos;s attendance.</Empty>;
   const month = readAttendanceMonth(await searchParams, todayInCairo());
   const loaded = await loadPerson(employeeId, month);
   if (loaded.kind === 'unavailable') notFound();
@@ -93,20 +94,25 @@ async function PersonMonth({ params, searchParams }: { params: PageProps<'/atten
                 punches={view.punches ?? []}
                 // working from home (21 October 2026): those days say so
                 wfhDays={p.wfhDays ?? []}
-                action={
-                  corrections
-                    ? (d) => (
-                        <DayCorrectionCell
-                          day={d}
-                          corrections={corrections}
-                          correctable={view.canCorrect ? view.correctable : null}
-                          today={today}
-                          href={(date) => hrCorrectionHref(p.employee.id, date)}
-                          label="Correct"
-                        />
-                      )
-                    : undefined
-                }
+                // the day's records, the system's and Zoho's (owner, 31 October 2026: "is there a way to check the checkin
+                // records?"), beside a correction
+                action={(d) => (
+                  <span className="flex flex-col items-end gap-1">
+                    {corrections && (
+                      <DayCorrectionCell
+                        day={d}
+                        corrections={corrections}
+                        correctable={view.canCorrect ? view.correctable : null}
+                        today={today}
+                        href={(date) => hrCorrectionHref(p.employee.id, date)}
+                        label="Correct"
+                      />
+                    )}
+                    <Link href={recordsHref(p.employee.id, d.date)} className="text-sm whitespace-nowrap">
+                      Records<span className="sr-only"> of {d.date}</span>
+                    </Link>
+                  </span>
+                )}
               />
             </div>
           </section>

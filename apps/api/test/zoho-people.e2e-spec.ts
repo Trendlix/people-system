@@ -52,6 +52,8 @@ const DRAFT = monthsLater(CURRENT, -3);
 const APPROVED = monthsLater(CURRENT, -4);
 const FORMER = monthsLater(CURRENT, -6);
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const monthLabel = (m: string) => `${MONTH_NAMES[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`;
 
 /** A moment of a Cairo day: "2026-10-24", "09:00" → its Date. */
 const at = (date: string, time: string) => new Date(zonedMoment(date, time));
@@ -413,6 +415,120 @@ describe('Zoho People’s check-ins pulled in (e2e)', () => {
       expect(everyone.counts.people).toBeGreaterThanOrEqual(4);
       const plan = (await prisma.zohoPeopleRun.findUniqueOrThrow({ where: { id: everyone.id } })).plan as { employeeId: string }[];
       expect(plan.map((p) => p.employeeId)).toContain(ids.fay);
+    });
+  });
+
+  describe('a record removed, and the source a day uses (owner, 31 October 2026: "delete one of them" — "as a super admin"; "zoho or system")', () => {
+    const d = (n: number) => addDays(firstDay(DRAFT), n);
+    const recordsOf = async (who: string, key: string, date: string) => (await as(who).get(`/attendance/employees/${ids[key]}/records?date=${date}`).expect(200)).body as {
+      system: { records: { id: string; kind: string; at: string }[] };
+      zoho: { records: { id: string; kind: string; at: string }[] };
+      removed: { id: string; source: string; reason: string; removedBy: string | null }[];
+      counts: string | null;
+      usual: string | null;
+      chosen: { source: string } | null;
+      canChange: boolean;
+    };
+    const workedOf = async (key: string) => ((await lineOf(DRAFT, key)).inputs as { workedHours?: number | null }).workedHours ?? 0;
+
+    it('removes a Zoho record for a Super Admin only: the day worked out again, kept out by the next fetch, put back by Restore', async () => {
+      const day = d(10);
+      zoho.day(emails.ana, day, zohoDay(day, [['09:00', '13:00'], ['14:00', '18:00']]));
+      await fetchRun('hr', day, day, ['ana']);
+      expect((await zohoDayOf('ana', day))!.hoursCounted.toNumber()).toBe(9);
+      const before = await workedOf('ana');
+      const seen = await recordsOf('hr', 'ana', day);
+      expect(seen.zoho.records.map((r) => r.kind)).toEqual(['in', 'out', 'in', 'out']);
+      // HR sees them, but neither HR nor an employee removes one
+      expect(seen.canChange).toBe(false);
+      const lastOut = seen.zoho.records[3];
+      const body = { date: day, source: 'zoho', recordId: lastOut.id, reason: 'Pressed by mistake' };
+      await as('hr').post(`/attendance/employees/${ids.ana}/records/remove`, body).expect(403);
+      expect(said(await as('superAdmin').post(`/attendance/employees/${ids.ana}/records/remove`, { ...body, reason: ' ' }).expect(400))[0]).toBe('Write why, e.g. A double press at the door.');
+      const after = (await as('superAdmin').post(`/attendance/employees/${ids.ana}/records/remove`, body).expect(200)).body as Awaited<ReturnType<typeof recordsOf>>;
+      expect(after.zoho.records.map((r) => r.kind)).toEqual(['in', 'out', 'in']);
+      expect(after.removed).toMatchObject([{ source: 'zoho', reason: 'Pressed by mistake' }]);
+      // the 2:00 PM check-in left open: the day to 1:00 PM
+      const kept = await zohoDayOf('ana', day);
+      expect(kept).toMatchObject({ checkOut: at(day, '13:00'), openAt: at(day, '14:00') });
+      expect(await workedOf('ana')).toBeLessThan(before);
+      // the next fetch leaves it out: the day as kept, unchanged
+      const again = await fetchRun('hr', day, day, ['ana']);
+      expect(again.counts).toMatchObject({ daysUnchanged: 1, daysReplaced: 0 });
+      expect(await zohoDayOf('ana', day)).toMatchObject({ checkOut: at(day, '13:00'), openAt: at(day, '14:00') });
+      // HR never sees the removed ones
+      expect((await recordsOf('hr', 'ana', day)).removed).toEqual([]);
+      // put back
+      const back = (await as('superAdmin').post(`/attendance/records/removals/${after.removed[0].id}/restore`).expect(200)).body as Awaited<ReturnType<typeof recordsOf>>;
+      expect(back.zoho.records.map((r) => r.kind)).toEqual(['in', 'out', 'in', 'out']);
+      expect((await zohoDayOf('ana', day))!.hoursCounted.toNumber()).toBe(9);
+      expect(await workedOf('ana')).toBe(before);
+      await as('superAdmin').post(`/attendance/records/removals/${after.removed[0].id}/restore`).expect(409);
+      expect(await prisma.auditLog.count({ where: { action: { in: ['attendance_record_remove', 'attendance_record_restore'] }, diff: { path: ['employeeId'], equals: ids.ana } } })).toBe(2);
+    });
+
+    it('removes a system press as it was pressed, the day made again from the presses left, and puts it back the same', async () => {
+      const day = d(11);
+      const presses = [
+        { kind: 'in', at: at(day, '09:00') },
+        { kind: 'out', at: at(day, '17:00') },
+        { kind: 'in', at: at(day, '17:05') },
+      ];
+      await prisma.attendancePunch.createMany({ data: presses.map((p) => ({ employeeId: ids.ana, date: toDateOnly(day), kind: p.kind, at: p.at, place: 'office', expected: 'office', flags: [], source: 'system', locationName: 'Studio' })) });
+      const stray = (await recordsOf('superAdmin', 'ana', day)).system.records.find((r) => r.kind === 'in' && r.at === at(day, '17:05').toISOString())!;
+      await as('superAdmin').post(`/attendance/employees/${ids.ana}/records/remove`, { date: day, source: 'system', recordId: stray.id, reason: 'A double press at the door' }).expect(200);
+      const system = await prisma.attendanceDay.findUniqueOrThrow({ where: { employeeId_date_source: { employeeId: ids.ana, date: toDateOnly(day), source: 'system' } } });
+      expect(system).toMatchObject({ checkIn: at(day, '09:00'), checkOut: at(day, '17:00'), openAt: null });
+      expect(system.hoursCounted.toNumber()).toBe(8);
+      expect(await prisma.attendancePunch.count({ where: { employeeId: ids.ana, date: toDateOnly(day) } })).toBe(2);
+      const removal = await prisma.attendanceRecordRemoval.findFirstOrThrow({ where: { employeeId: ids.ana, date: toDateOnly(day), source: 'system' } });
+      await as('superAdmin').post(`/attendance/records/removals/${removal.id}/restore`).expect(200);
+      const back = await prisma.attendancePunch.findUniqueOrThrow({ where: { id: stray.id } });
+      expect(back).toMatchObject({ kind: 'in', at: at(day, '17:05'), locationName: 'Studio' });
+      expect((await prisma.attendanceDay.findUniqueOrThrow({ where: { id: system.id } })).openAt).toEqual(at(day, '17:05'));
+    });
+
+    it('chooses which source a day with both uses, kept through the next fetch; back to the usual; never for HR', async () => {
+      const day = d(12);
+      // the system's: a short day; Zoho's: the full one
+      await prisma.attendancePunch.createMany({
+        data: [
+          { employeeId: ids.ana, date: toDateOnly(day), kind: 'in', at: at(day, '09:00'), place: 'office', expected: 'office', flags: [], source: 'system' },
+          { employeeId: ids.ana, date: toDateOnly(day), kind: 'out', at: at(day, '10:00'), place: 'office', expected: 'office', flags: [], source: 'system' },
+        ],
+      });
+      await prisma.attendanceDay.create({ data: { employeeId: ids.ana, date: toDateOnly(day), status: 'worked', checkIn: at(day, '09:00'), checkOut: at(day, '10:00'), place: 'office', hoursCounted: 1, source: 'system', pairs: [{ in: at(day, '09:00').toISOString(), out: at(day, '10:00').toISOString() }] } });
+      zoho.day(emails.ana, day, zohoDay(day, [['09:00', '18:00']]));
+      await fetchRun('hr', day, day, ['ana']);
+      const usual = await recordsOf('superAdmin', 'ana', day);
+      expect(usual).toMatchObject({ counts: 'system', usual: 'system', chosen: null, canChange: true });
+      const before = await workedOf('ana');
+      await as('hr').put(`/attendance/employees/${ids.ana}/day-source`, { date: day, source: 'zoho', reason: 'The reader missed the day' }).expect(403);
+      const chosen = (await as('superAdmin').put(`/attendance/employees/${ids.ana}/day-source`, { date: day, source: 'zoho', reason: 'The reader missed the day' }).expect(200)).body as Awaited<ReturnType<typeof recordsOf>>;
+      expect(chosen).toMatchObject({ counts: 'zoho', chosen: { source: 'zoho' } });
+      // the month's days and the payroll take Zoho's 9 hours for it, not the system's 1
+      expect(await workedOf('ana')).toBe(before + 8);
+      const month = (await as('hr').get(`/attendance/employees/${ids.ana}?month=${DRAFT}`).expect(200)).body as { person: { days: { date: string; source: string; hoursCounted: number }[] } };
+      expect(month.person.days.find((x) => x.date === day)).toMatchObject({ source: 'zoho', hoursCounted: 9 });
+      // the next fetch keeps the choice
+      await fetchRun('hr', day, day, ['ana']);
+      expect((await recordsOf('superAdmin', 'ana', day)).counts).toBe('zoho');
+      // back to the usual order
+      await as('superAdmin').del(`/attendance/employees/${ids.ana}/day-source?date=${day}`).expect(200);
+      expect((await recordsOf('superAdmin', 'ana', day)).counts).toBe('system');
+      expect(await workedOf('ana')).toBe(before);
+      // a day with one source has nothing to choose
+      expect(said(await as('superAdmin').put(`/attendance/employees/${ids.ana}/day-source`, { date: d(13), source: 'zoho', reason: 'x' }).expect(409))[0]).toContain('nothing to choose');
+    });
+
+    it('changes nothing in a month whose payroll is approved', async () => {
+      const day = addDays(firstDay(APPROVED), 3);
+      const view = await recordsOf('superAdmin', 'ana', day);
+      expect(view.canChange).toBe(false);
+      const one = view.zoho.records[0];
+      expect(said(await as('superAdmin').post(`/attendance/employees/${ids.ana}/records/remove`, { date: day, source: 'zoho', recordId: one.id, reason: 'Wrong' }).expect(409))[0]).toBe(
+        `The ${monthLabel(APPROVED)} payroll is approved, so its days can't change any more.`,
+      );
     });
   });
 

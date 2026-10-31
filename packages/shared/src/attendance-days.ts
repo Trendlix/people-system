@@ -27,6 +27,7 @@ import type { AttendanceDayStatus } from './attendance-import.js';
 import type { CorrectedFrom } from './attendance-corrections.js';
 import { CHECK_IN_SOURCES, countsAsRemote, daysByPrecedence, isCheckInFlag, type AttendanceSource, type CheckInFlag, type DayPlace } from './check-in.js';
 import type { DayOfficialDuty } from './official-duty.js';
+import { dropsForChoice, type DaySourceChoice } from './attendance-records.js';
 
 /** To the minute, as the import counts hours. */
 const toMinute = (hours: number) => Math.round(hours * 60) / 60 + 0;
@@ -428,6 +429,11 @@ export interface MonthDaysContext {
   /** Their employment's first and last day (null: current, or none). */
   employedFrom: string | null;
   employedTo: string | null;
+  /**
+   * The days a Super Admin chose the source of (owner, 31 October 2026: "zoho or system"; attendance-records.ts): date →
+   * the source the day uses, over the usual order for that day. None: the usual order.
+   */
+  chosen?: ReadonlyMap<string, DaySourceChoice> | null;
 }
 
 const SUN_TO_THU: readonly number[] = [0, 1, 2, 3, 4];
@@ -444,7 +450,10 @@ const nextDay = (ymd: string) => new Date(Date.parse(`${ymd}T00:00:00Z`) + 86_40
  */
 export function monthDays<D extends SourcedDay>(rows: readonly D[], ctx: MonthDaysContext): (D | SourcedDay)[] {
   const onLeave = new Set(ctx.leaveDays);
-  const days: (D | SourcedDay)[] = daysByPrecedence(rows.filter((r) => r.date.startsWith(ctx.month))).map((d) => withLeaveNow(d, onLeave.has(d.date)));
+  // a day whose source a Super Admin chose (31 October 2026): the other source's day left out for it
+  const chosen = ctx.chosen;
+  const rowsChosen = chosen?.size ? rows.filter((r) => !dropsForChoice(r.source, chosen.get(r.date))) : rows;
+  const days: (D | SourcedDay)[] = daysByPrecedence(rowsChosen.filter((r) => r.date.startsWith(ctx.month))).map((d) => withLeaveNow(d, onLeave.has(d.date)));
   if (!ctx.checkInFrom) return days;
   const first = `${ctx.month}-01`;
   const last = new Date(Date.UTC(Number(ctx.month.slice(0, 4)), Number(ctx.month.slice(5, 7)), 0)).toISOString().slice(0, 10);

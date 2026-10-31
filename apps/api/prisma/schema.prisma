@@ -157,6 +157,9 @@ model User {
   sessions                  Session[] // this user's sign-ins, active and ended
   accessLinks               AccessLink[]               @relation("AccessLinkUser") // their set-password links (22 October 2026)
   loginCodes                LoginCode[] // their sign-in codes by email (31 October 2026)
+  attendanceRecordsRemoved  AttendanceRecordRemoval[]  @relation("AttendanceRecordRemovedBy") // attendance records this Super Admin removed (31 October 2026)
+  attendanceRecordsRestored AttendanceRecordRemoval[]  @relation("AttendanceRecordRestoredBy")
+  attendanceDaySources      AttendanceDaySource[]      @relation("AttendanceDaySourceChosenBy") // the days whose source this Super Admin chose
   accessLinksMade           AccessLink[]               @relation("AccessLinkCreatedBy") // the set-password links this user made for others
   deviceCredentials         DeviceCredential[] // the phones this user signs in on with a fingerprint, active and revoked
   homeLocationsMade         HomeLocationRequest[]      @relation("HomeLocationCreation") // home location requests this user sent (their own)
@@ -1158,6 +1161,8 @@ model Employee {
   permissions                PermissionRequest[]        @relation("PermissionRequester") // the permission hours this person asked for, or HR recorded for them
   attendanceDays             AttendanceDay[] // each day of attendance kept: imported from Zoho People, or from their check-ins on the system
   attendancePunches          AttendancePunch[] // each press of Check in and Check out on the system (19 October 2026)
+  attendanceRecordRemovals   AttendanceRecordRemoval[] // their attendance records a Super Admin removed (31 October 2026)
+  attendanceDaySources       AttendanceDaySource[] // their days whose source a Super Admin chose (31 October 2026)
   attendanceCorrections      AttendanceCorrection[]     @relation("AttendanceCorrectionRequester") // the days this person asked to correct, or HR corrected
   correctionsToDecide        AttendanceCorrection[]     @relation("AttendanceCorrectionManager") // the corrections this person decided, or decides, as the requester's direct manager
   permissionsToDecide        PermissionRequest[]        @relation("PermissionManager") // the permission requests this person decided, or decides, as the requester's direct manager
@@ -4153,6 +4158,50 @@ model AttendancePunch {
 
   @@index([employeeId, date])
   @@map("attendance_punches")
+}
+
+// An attendance record removed by a Super Admin (owner, 31 October 2026: "is there a way to check the checkin records?
+// even if imported from zoho and delete one of them?" — "as a super admin"; chose "Stays removed"): a check-in or a
+// check-out, of the system's presses (the press moved here whole, `punch`, so Restore puts it back as it was) or of a
+// Zoho day (its moment and kind: the nightly fetch and an import leave it out while removed). The reason, who and when;
+// restored: when and by whom (the row kept). Never in a month whose payroll is with the CEO, approved or paid.
+model AttendanceRecordRemoval {
+  id           String    @id @default(uuid()) @db.Uuid
+  employeeId   String    @map("employee_id") @db.Uuid
+  employee     Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date         DateTime  @db.Date
+  source       String // system, zoho
+  kind         String // in, out
+  at           DateTime  @db.Timestamptz
+  punch        Json? // the system's press as it was (every column), put back on Restore; null for Zoho's
+  reason       String
+  removedById  String?   @map("removed_by") @db.Uuid
+  removedBy    User?     @relation("AttendanceRecordRemovedBy", fields: [removedById], references: [id], onDelete: SetNull)
+  removedAt    DateTime  @default(now()) @map("removed_at") @db.Timestamptz
+  restoredById String?   @map("restored_by") @db.Uuid
+  restoredBy   User?     @relation("AttendanceRecordRestoredBy", fields: [restoredById], references: [id], onDelete: SetNull)
+  restoredAt   DateTime? @map("restored_at") @db.Timestamptz
+
+  @@index([employeeId, date])
+  @@map("attendance_record_removals")
+}
+
+// Which source a day uses when it has both Zoho's and the system's (owner, 31 October 2026: "Pick which source counts",
+// "zoho or system"), chosen by a Super Admin with a reason, over the usual order (a correction, the system's, a device's,
+// Zoho's: packages/shared check-in.ts SOURCE_PRECEDENCE) for that one day; a correction still applies over the day
+// chosen. Back to the usual order: the row removed (the audit log keeps every choice).
+model AttendanceDaySource {
+  employeeId String   @map("employee_id") @db.Uuid
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date       DateTime @db.Date
+  source     String // DAY_SOURCE_CHOICES: zoho, system
+  reason     String
+  chosenById String?  @map("chosen_by") @db.Uuid
+  chosenBy   User?    @relation("AttendanceDaySourceChosenBy", fields: [chosenById], references: [id], onDelete: SetNull)
+  chosenAt   DateTime @default(now()) @map("chosen_at") @db.Timestamptz
+
+  @@id([employeeId, date])
+  @@map("attendance_day_sources")
 }
 
 // A home location asked for (owner, 20 October 2026: "allow other users to request to add their home locations when

@@ -12,7 +12,7 @@ import { Empty, Loading } from '../organization/ui';
 import { StaffOnly } from '../staff-only';
 import { monthName } from '../payroll/list';
 import {
-  canSeeAttendance,
+  seesPeoplesAttendance,
   dailyHref,
   figureTiles,
   filtered,
@@ -116,7 +116,7 @@ function Filters({ month, places, people, chosen }: { month: string; places: rea
 
 async function Daily({ searchParams }: { searchParams: PageProps<'/attendance'>['searchParams'] }) {
   const user = await getCurrentUser();
-  if (!canSeeAttendance(user)) return <Empty>Only HR, Finance and the CEO see everyone&apos;s attendance.</Empty>;
+  if (!seesPeoplesAttendance(user)) return <Empty>Only HR, Finance, the CEO and Super Admins see everyone&apos;s attendance.</Empty>;
   const query = await searchParams;
   const month = readAttendanceMonth(query, todayInCairo());
   const chosen = readFilters(query);

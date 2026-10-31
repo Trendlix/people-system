@@ -43,6 +43,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { ZohoPeopleError, type ZohoDay, type ZohoDayRead, type ZohoWho } from './zoho-people-api.js';
 import { ZohoPeopleHttp } from './zoho-people-http.js';
 import { ZohoPeopleService, type ZohoReadContext } from './zoho-people.service.js';
+import { withoutZohoRemovals, zohoRemovalsOf } from '../attendance/record-removals.js';
 
 // Zoho People's check-ins and check-outs fetched (owner, 25 October 2026: "can i fetch checkin and out transactions from
 // zoho people through api?"; asked, "Yes, daily + backfill"; then "but can it fetch historical data?"). A run fetches
@@ -563,6 +564,10 @@ export class ZohoPeopleSyncService implements OnModuleDestroy {
   private async keep(run: ZohoPeopleRun, item: PlanItem, month: string, employmentId: string, fetched: ZohoDay[], state: RunState) {
     const out = { added: 0, punches: 0, replaced: 0, unchanged: 0, recorded: 0, lines: 0 };
     if (!fetched.length) return out;
+    // the records a Super Admin removed stay removed (owner, 31 October 2026: "Stays removed"): left out before the day is
+    // worked out and compared with the one kept
+    const dates = fetched.map((f) => f.day.date).sort();
+    fetched = withoutZohoRemovals(item.employeeId, fetched, await zohoRemovalsOf(this.prisma, [item.employeeId], dates[0], dates.at(-1)!));
     const worked = (await this.imports.months(month, [{ employeeId: item.employeeId, employmentId, days: fetched.map((f) => f.day) }])).get(item.employeeId);
     if (!worked?.days.length) return out;
     const employment = await this.prisma.employment.findUnique({ where: { id: employmentId }, select: { shift: { select: { startTime: true, endTime: true, hoursPerDay: true, graceMinutes: true, countUntil: true, workingDays: true } } } });

@@ -18,6 +18,7 @@ import { notLoaded } from '../attendance/not-loaded';
 import { TodayCheckIn } from './check-in-card';
 import { rateTiles, usualSource } from './my-days';
 import { FigureCards, MonthGlance, MonthSwitch, MyDaysTable } from './ui';
+import { myRecordsHref } from '@/lib/attendance-records';
 
 // My Attendance (owner, 19 October 2026: "the attendance is not active in the side menu"): the employee's own month, in
 // their sidebar after My Requests: their figures (days worked, hours counted, absent days, short hours, permission and
@@ -115,11 +116,18 @@ async function Mine({ searchParams }: { searchParams: Query }) {
                 // working from home (21 October 2026): those days say so
                 wfhDays={p.wfhDays ?? []}
                 usual={usual}
-                action={
-                  corrections
-                    ? (d) => <DayCorrectionCell day={d} corrections={corrections} correctable={view.correctable} today={today} href={askCorrectionHref} label="Ask for a correction" askFrom={view.ask?.from ?? null} />
-                    : undefined
-                }
+                // the day's records, the system's and Zoho's (owner, 31 October 2026: "is there a way to check the checkin
+                // records?"), beside asking for a correction
+                action={(d) => (
+                  <span className="flex flex-col items-end gap-1">
+                    {corrections && (
+                      <DayCorrectionCell day={d} corrections={corrections} correctable={view.correctable} today={today} href={askCorrectionHref} label="Ask for a correction" askFrom={view.ask?.from ?? null} />
+                    )}
+                    <Link href={myRecordsHref(d.date)} className="text-sm whitespace-nowrap">
+                      Records<span className="sr-only"> of {d.date}</span>
+                    </Link>
+                  </span>
+                )}
               />
             </div>
             <div className="mt-4 space-y-1 text-xs text-muted">

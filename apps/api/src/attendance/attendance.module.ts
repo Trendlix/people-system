@@ -23,6 +23,8 @@ import { RecountDaysController } from './recount-days.controller.js';
 import { RecountDaysService } from './recount-days.service.js';
 import { MapsKeyController, MapsSettingsController } from './maps-settings.controller.js';
 import { MapsSettingsService } from './maps-settings.service.js';
+import { AttendanceRecordsController } from './attendance-records.controller.js';
+import { AttendanceRecordsService } from './attendance-records.service.js';
 
 // Attendance (owner, 19 October 2026: attendance runs in Zoho People today, "Import Zoho now, replace it later"): Zoho
 // People's attendance entries imported on a draft payroll run, each day kept (AttendanceDay) for the system's own
@@ -46,6 +48,8 @@ import { MapsSettingsService } from './maps-settings.service.js';
 @Module({
   controllers: [
     AttendanceController,
+    // a person's attendance records, removed and put back, and which source a day uses (owner, 31 October 2026)
+    AttendanceRecordsController,
     AttendanceImportsController,
     CheckInController,
     CheckInSetupController,
@@ -65,6 +69,7 @@ import { MapsSettingsService } from './maps-settings.service.js';
   ],
   providers: [
     AttendanceService,
+    AttendanceRecordsService,
     // a person's attendance history on their profile (owner, 23 October 2026)
     AttendanceHistoryService,
     AttendanceImportsService,

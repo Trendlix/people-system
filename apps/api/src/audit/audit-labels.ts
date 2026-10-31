@@ -22,6 +22,8 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   asset_settings: 'Asset settings',
   attendance_correction: 'Attendance correction',
   attendance_day: 'Attendance day',
+  // a record a Super Admin removed (owner, 31 October 2026)
+  attendance_record_removal: 'Attendance record removed',
   attendance_import: 'Attendance import',
   attendance_summary: 'Attendance summary',
   audit_log: 'Audit log',
@@ -273,6 +275,11 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   // an asset's label printed (21 October 2026)
   label: 'Marked the label printed',
   login_failed: 'Sign-in failed',
+  // a person's attendance records put right by a Super Admin (owner, 31 October 2026: "delete one of them"; "zoho or system")
+  attendance_record_remove: 'Removed an attendance record',
+  attendance_record_restore: 'Put an attendance record back',
+  attendance_day_source: 'Chose which source a day uses',
+  attendance_day_source_clear: 'Set a day back to its usual source',
   api_docs_open: 'Opened the API documentation',
   login_code_sent: 'Sign-in code emailed',
   logout: 'Signed out',
