@@ -6,6 +6,8 @@ import { AuthService } from './auth.service.js';
 import { CurrentActiveSession, CurrentUser, DeveloperMayCall, DeveloperMaySee, OpenOnHold, Public } from './decorators.js';
 import { DeviceCredentialsService, type DeviceView, type NewDevice } from './device-credentials.service.js';
 import { CreateDeviceDto, DeviceSignInDto } from './device.dto.js';
+import { EmailCodeDto, EmailCodeSignInDto } from './login-code.dto.js';
+import { LoginCodesService } from './login-codes.service.js';
 import { LoginDto } from './login.dto.js';
 import { ChangePasswordDto } from './password.dto.js';
 import { SessionModeDto } from './session-mode.dto.js';
@@ -20,6 +22,7 @@ export class AuthController {
     private readonly auth: AuthService,
     private readonly sessions: SessionsService,
     private readonly devices: DeviceCredentialsService,
+    private readonly codes: LoginCodesService,
   ) {}
 
   /** The website signs in for the person and passes on their browser's user agent and IP address (else the request's). */
@@ -29,6 +32,28 @@ export class AuthController {
   async login(@Body() dto: LoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<SessionUser> {
     const origin = { userAgent: dto.userAgent ?? req.headers['user-agent'] ?? null, ip: dto.ip ?? req.ip ?? null };
     const { token, user } = await this.auth.login(dto.email, dto.password, origin);
+    setSessionCookie(res, token, SESSION_HOURS * 60 * 60 * 1000);
+    return user;
+  }
+
+  // Signing in with a code by email (owner, 31 October 2026: "and i can add OTP via Mail for app login if the user didn't
+  // remember his password", "via app and web"; login-codes.service.ts): asking, then trading the code for a session.
+
+  /** { email }: a 6-digit code emailed to an active account with it; the same answer whether or not there is one. */
+  @Public()
+  @Post('email-code')
+  @HttpCode(200)
+  requestCode(@Body() dto: EmailCodeDto, @Req() req: Request): Promise<{ message: string }> {
+    return this.codes.request(dto.email, { ip: req.ip ?? null, headers: req.headers });
+  }
+
+  /** { email, code }: signed in as with a password (the session's cookie; the app reads it); refused with a 401 saying so. */
+  @Public()
+  @Post('email-code/sign-in')
+  @HttpCode(200)
+  async codeSignIn(@Body() dto: EmailCodeSignInDto, @Req() req: Request, @Res({ passthrough: true }) res: Response): Promise<SessionUser> {
+    const origin = { userAgent: dto.userAgent ?? req.headers['user-agent'] ?? null, ip: dto.ip ?? req.ip ?? null };
+    const { token, user } = await this.codes.signIn(dto.email, dto.code, origin);
     setSessionCookie(res, token, SESSION_HOURS * 60 * 60 * 1000);
     return user;
   }

@@ -257,7 +257,25 @@ export class AuthService {
     return own;
   }
 
-  private async ensureNotLockedOut(email: string): Promise<void> {
+  /**
+   * A session for someone already proven otherwise than by the password (a code by email, 31 October 2026), as login
+   * opens one: the website's or the app's by the user agent, the open one of that kind ended, audited 'login' with how.
+   */
+  async signInProven(
+    user: Parameters<typeof sessionUserOf>[0],
+    origin: { userAgent?: string | null; ip?: string | null },
+    method: 'email_code',
+  ): Promise<{ token: string; user: SessionUser }> {
+    const kind = sessionKindOf(origin.userAgent);
+    const own = sessionUserOf(user);
+    const mode = startingMode(own.roles, kind);
+    const { sid, token } = await this.openSession(user.id, kind, origin, mode);
+    await this.audit.record({ userId: user.id, action: 'login', entityType: 'user', entityId: user.id, diff: { kind, sessionId: sid, method } });
+    return { token, user: choosesMode(own.roles) ? { ...own, mode } : own };
+  }
+
+  /** Too many failed sign-ins for the email lately (its lockout): 429. Signing in with a code checks it too. */
+  async ensureNotLockedOut(email: string): Promise<void> {
     const since = new Date(Date.now() - LOCKOUT_MINUTES * 60 * 1000);
     const failures = await this.prisma.auditLog.count({
       where: { action: 'login_failed', at: { gte: since }, diff: { path: ['email'], equals: email } },

@@ -3,13 +3,10 @@
 import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { sessionKindOf } from '@trendlix/shared';
-import { API_URL, apiFetch, messagesOf } from '@/lib/api';
-import { clientIp } from '@/lib/client-ip';
+import { apiFetch } from '@/lib/api';
 import { SESSION_COOKIE } from '@/lib/constants';
 import { pushTokenOf } from '@/lib/notifications';
-import { safeNext } from '@/lib/safe-next';
-import { keepSession } from '@/lib/session-cookie';
-import { CHOOSE_MODE_PATH } from '@/lib/session-mode';
+import { signInThrough } from '@/lib/sign-in';
 import { signInPath } from '@/lib/signed-out';
 
 export interface LoginState {
@@ -21,33 +18,8 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
   const email = String(formData.get('email') ?? '').trim();
   const password = String(formData.get('password') ?? '');
   if (!email || !password) return { error: 'Enter your email and password.', email };
-
-  // the browser's (or the app's) user agent and IP address, as this server sees them: the API starts a website or an app
-  // session by the user agent (the app's ends with "TrendLIXPeople"), and ends the older one of the same kind (owner,
-  // 20 October 2026: "only 1 active session per user online and 1 active mobile session")
-  const h = await headers();
-  const userAgent = h.get('user-agent')?.trim().slice(0, 2000); // whole: the app's mark is at its end
-  const ip = clientIp(h);
-  let res: Response;
-  try {
-    res = await fetch(`${API_URL}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email, password, ...(userAgent && { userAgent }), ...(ip && { ip }) }),
-    });
-  } catch {
-    return { error: 'Cannot reach the server. Please try again in a moment.', email };
-  }
-  if (!res.ok) return { error: (await messagesOf(res)).join(' '), email };
-
-  if (!(await keepSession(res))) return { error: 'Sign-in failed. Please try again.', email };
-  // a developer who is also an employee chooses how to use the system first (owner, 22 October 2026: "when a developer
-  // signin, give hin a switched to use the account as the main role assigned to him or as a developer"): the API says
-  // so with `mode: null` (in the app it is always 'self': no choice there)
-  const signedIn = (await res.json().catch(() => null)) as { mode?: string | null } | null;
-  if (signedIn?.mode === null) redirect(CHOOSE_MODE_PATH);
-  // with nowhere to go back to (signed out, or after the 15 minutes), the app opens at its own Home, not the site's
-  redirect(safeNext(formData.get('next'), sessionKindOf(userAgent) === 'app' ? '/app' : '/'));
+  // signed in, it moves on (lib/sign-in.ts); refused, why
+  return { error: await signInThrough('/auth/login', { email, password }, formData.get('next')), email };
 }
 
 /**

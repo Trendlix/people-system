@@ -156,6 +156,7 @@ model User {
   correctionSteps           AttendanceCorrectionStep[] @relation("AttendanceCorrectionStepActor") // steps of attendance corrections this user took
   sessions                  Session[] // this user's sign-ins, active and ended
   accessLinks               AccessLink[]               @relation("AccessLinkUser") // their set-password links (22 October 2026)
+  loginCodes                LoginCode[] // their sign-in codes by email (31 October 2026)
   accessLinksMade           AccessLink[]               @relation("AccessLinkCreatedBy") // the set-password links this user made for others
   deviceCredentials         DeviceCredential[] // the phones this user signs in on with a fingerprint, active and revoked
   homeLocationsMade         HomeLocationRequest[]      @relation("HomeLocationCreation") // home location requests this user sent (their own)
@@ -5114,9 +5115,28 @@ model AccessLink {
 
 // Forgot password's and the set-password page's requests, counted for their limits (22 October 2026): by email, by
 // address. Kept a day.
+// A sign-in code by email (owner, 31 October 2026: "and i can add OTP via Mail for app login if the user didn't remember
+// his password", "via app and web"; packages/shared login-codes.ts): 6 digits, kept only as an HMAC with the server's
+// secret, working once for 10 minutes and 5 tries; a new one ends the one before (ended_at). Never shown again.
+model LoginCode {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  codeHash  String    @map("code_hash")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz
+  attempts  Int       @default(0)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz
+  endedAt   DateTime? @map("ended_at") @db.Timestamptz
+  ip        String?
+
+  @@index([userId, createdAt])
+  @@map("login_codes")
+}
+
 model AccessLinkRequest {
   id    String   @id @default(uuid()) @db.Uuid
-  kind  String // forgot, set_failed
+  kind  String // forgot, set_failed, login_code (31 October 2026)
   email String?
   ip    String?
   at    DateTime @default(now()) @db.Timestamptz

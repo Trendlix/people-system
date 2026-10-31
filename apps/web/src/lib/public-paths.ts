@@ -8,6 +8,8 @@ const PUBLIC_PATHS = new Set([
   // link's token (after its #) the proof
   '/set-password',
   '/forgot-password',
+  // signing in with a code by email (owner, 31 October 2026: "and i can add OTP via Mail for app login", "via app and web")
+  '/login/code',
   '/company-logo',
   '/company-thumbnail',
   // the careers page's list of open jobs (recruitment, 22 October 2026)

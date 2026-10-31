@@ -11,7 +11,7 @@ import { signedIpHeaders } from './signed-ip';
 
 export type AccessCall<T> = { ok: true; data: T } | { ok: false; status: number; messages: string[] };
 
-export async function accessPost<T>(path: '/auth/password-link/check' | '/auth/password-link' | '/auth/forgot-password', body: unknown): Promise<AccessCall<T>> {
+export async function accessPost<T>(path: '/auth/password-link/check' | '/auth/password-link' | '/auth/forgot-password' | '/auth/email-code', body: unknown): Promise<AccessCall<T>> {
   const signed = signedIpHeaders(process.env.WEB_KEY, ACCESS_IP_TOKEN, clientIp(await headers()));
   let res: Response;
   try {

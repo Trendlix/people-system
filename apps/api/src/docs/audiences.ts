@@ -47,6 +47,8 @@ export const APP_ENDPOINTS: readonly string[] = [
   'GET /api/auth/me',
   'POST /api/auth/change-password',
   'POST /api/auth/forgot-password',
+  'POST /api/auth/email-code',
+  'POST /api/auth/email-code/sign-in',
   'GET /api/auth/devices',
   'POST /api/auth/devices',
   'POST /api/auth/devices/sign-in',

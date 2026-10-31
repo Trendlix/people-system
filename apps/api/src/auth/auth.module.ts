@@ -8,6 +8,7 @@ import { AuthGuard } from './auth.guard.js';
 import { AuthService } from './auth.service.js';
 import { DeveloperInterceptor } from './developer.interceptor.js';
 import { DeviceCredentialsService } from './device-credentials.service.js';
+import { LoginCodesService } from './login-codes.service.js';
 import { SessionsService } from './sessions.service.js';
 import { UserDevicesController } from './user-devices.controller.js';
 import { UserSessionsController } from './user-sessions.controller.js';
@@ -28,6 +29,7 @@ import { ViewAsService } from './view-as.service.js';
     AuthService,
     SessionsService,
     DeviceCredentialsService,
+    LoginCodesService,
     ViewAsService,
     ConnectorTokensService,
     { provide: APP_GUARD, useClass: AuthGuard },
