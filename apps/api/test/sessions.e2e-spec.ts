@@ -62,7 +62,8 @@ describe('Sessions (e2e)', () => {
     expect(session.expiresAt.getTime() - session.createdAt.getTime()).toBeGreaterThan(8 * 60 * MIN - 5000);
 
     const login = await prisma.auditLog.findFirstOrThrow({ where: { action: 'login', entityId: await idOf(email) }, orderBy: { id: 'desc' } });
-    expect(login.diff).toEqual({ kind: 'web', sessionId: session.id });
+    // with how they signed in (31 October 2026, the Sign-ins tab: a password or an emailed code)
+    expect(login.diff).toEqual({ kind: 'web', method: 'password', sessionId: session.id });
   });
 
   it('a second website sign-in ends the first at once: the new one wins', async () => {

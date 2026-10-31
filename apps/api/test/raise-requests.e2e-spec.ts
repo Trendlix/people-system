@@ -331,11 +331,11 @@ describe('Raise requests (e2e)', () => {
       expect((await requestsOf(dana, hr)).pay).toMatchObject({ grossSalary: 9000, allowances: [{ amount: 500, taxable: true, insured: false }] });
       // the request as HR, Finance and the CEO see it: the pay in force with what the net needs, for the figures when deciding
       expect((await requestOf(benP, q.id, hr)).inForce).toMatchObject(benPay);
-      // the employee and his manager: nothing of it; his contracts keep the salary from him, as before
+      // the employee and his manager: nothing of it; nor his contracts at all since 31 October 2026 (owner: "hide employee
+      // contract")
       for (const session of [ben, manager]) await refused(benP, session);
       const benContracts = (await api().get(`/api/employees/${benP.id}/employments/${benP.employmentId}/contracts`).set('Cookie', ben).expect(200)).body as { grossSalary: number | null }[];
-      expect(benContracts.length).toBeGreaterThan(0);
-      expect(benContracts.every((c) => c.grossSalary === null)).toBe(true);
+      expect(benContracts).toEqual([]);
       const all = (await api().get('/api/raise-requests?status=with_hr').set('Cookie', finance).expect(200)).body as Request[];
       expect(all.find((x) => x.id === q.id)).toMatchObject({ suggestedGross: 11500 });
       for (const session of [manager, ben]) await api().get('/api/raise-requests').set('Cookie', session).expect(403);
@@ -440,11 +440,10 @@ describe('Raise requests (e2e)', () => {
       expect(kinds(forHr)).toEqual(['submitted', 'hr_decision:approve_other', 'prepared', 'sent', 'returned', 'sent', 'ceo_decision:approve_other', 'signed']);
       expect(forHr.steps.at(-1)).toMatchObject({ gross: 11200, effectiveDate: EFFECTIVE, by: { email: hrEmail } });
 
-      // the amendment stays where it was (he signs it anyway), its salary kept from him as before; the request it came
-      // from is HR's, Finance's and the CEO's alone now
+      // the amendment stays where it was (he signs it anyway), never shown to him since 31 October 2026 (owner: "hide
+      // employee contract"); the request it came from is HR's, Finance's and the CEO's alone
       type Version = { id: string; grossSalary: number | null; raise: { reason: string; requestId: string | null; requestOrigin: string | null } | null };
-      const benContracts = (await api().get(`/api/employees/${benP.id}/employments/${benP.employmentId}/contracts`).set('Cookie', ben).expect(200)).body as Version[];
-      expect(benContracts.find((c) => c.id === raiseId)).toMatchObject({ grossSalary: null, raise: { reason: 'performance', requestId: null, requestOrigin: null } });
+      expect((await api().get(`/api/employees/${benP.id}/employments/${benP.employmentId}/contracts`).set('Cookie', ben).expect(200)).body).toEqual([]);
       expect((await contractOf<Version>(benP, raiseId)).raise).toMatchObject({ requestId: q.id, requestOrigin: 'request' });
       for (const session of [ben, manager]) await refused(benP, session);
       expect((await auditOf(q.id)).map((a) => a.action)).toEqual(['create', 'prepare', 'submit', 'return', 'submit', 'approve', 'done']);

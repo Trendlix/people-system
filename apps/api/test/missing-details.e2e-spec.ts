@@ -167,7 +167,9 @@ describe('Missing details (e2e)', () => {
     for (const person of [bare, hired, complete]) {
       const row = rowOf(r, person.id);
       expect(row).toBeDefined();
-      expect({ percent: row!.percent, missing: row!.missing }).toEqual((await profileOf(person.id)).completeness);
+      // the papers listed beside them on the profile (31 October 2026: the file's papers with their state) aren't the report's
+      const { percent, missing } = (await profileOf(person.id)).completeness;
+      expect({ percent: row!.percent, missing: row!.missing }).toEqual({ percent, missing });
       expect(row!.employeeCode).toBe(person.employeeCode);
     }
     expect(rowOf(r, bare.id)).toMatchObject({ fullNameEn: `Bare ${RUN}`, fullNameAr: 'موظف تجريبي', standing: 'not_employed', department: null, jobTitle: null, percent: 6 });
