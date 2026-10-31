@@ -13,6 +13,8 @@ export interface CorrectionMonthData {
   days: (CorrectableDay & { date: string })[];
   corrections: MonthCorrection[];
   correctable: { allowed: boolean; reason: string | null };
+  /** Their own month: the earliest day they can still ask about (owner, 31 October 2026); null: not held to it. */
+  askFrom: string | null;
 }
 
 /** The form's month from a person's view; null from an API from before corrections. */
@@ -23,6 +25,7 @@ export function correctionMonthOf(month: string, view: MonthCorrectionsPart & { 
     days: view.person.days.map((d) => ({ date: d.date, status: d.status, checkIn: d.checkIn, checkOut: d.checkOut, place: d.place, source: d.source ?? 'zoho', flags: d.flags ?? [] })),
     corrections: view.corrections,
     correctable: view.correctable,
+    askFrom: view.ask?.from ?? null,
   };
 }
 

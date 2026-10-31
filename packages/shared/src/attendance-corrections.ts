@@ -2,18 +2,21 @@
 // corrections with approval ("I forgot to check out")"). An employee asks to correct a day from My Attendance → the
 // day → Ask for a correction: what was wrong (they forgot to check in, forgot to check out, a time is wrong, they worked
 // remotely or at a client), the right times and why (required); only a day gone by or today, never one still to come,
-// and only in a month whose payroll isn't approved yet. It is decided as leave is (leaves.ts: LEAVE_STATUSES,
+// asked by the end of the 2nd working day after it (owner, 31 October 2026: "asking for correction is to be locked after
+// 2 working days": correctionAskFrom; HR still corrects any day directly), and only in a month whose payroll isn't
+// approved yet. It is decided as leave is (leaves.ts: LEAVE_STATUSES,
 // LEAVE_STAGES, LEAVE_STEP_KINDS): the direct manager, else the team lead, else the department's head
 // (department-leads.ts approverInCharge), then HR, a C-level person's HR stage by the CEO (confidential.ts); every step
 // logged, cancelled by its employee while it is being decided. Approved, the day is changed: kept as source
 // 'correction' over the day it corrects, which stays as it was (shown "corrected from …"), its hours counted again by
 // the shift's rule, and the month's draft payroll line refilled. HR may also correct a day directly, with a reason,
 // approved at once. Pure: the API enforces these and the web shows the same checks. Dates YYYY-MM-DD, times HH:MM
-// (Cairo), moments ISO. A day as the sum of its pairs (owner, 25 October 2026: "the working hours to be calculated
-// between the checkin and out only, not the first and last"): a correction giving both times replaces the day's presses
-// with that one pair, as before; one giving the check-out alone closes the day's open last check-in (its missing
-// check-out, "flag the open one" for HR to correct), else moves its last check-out; one giving the check-in alone moves
-// its first check-in; the day's other pairs stay, so a break stays uncounted (correctedDay). A time not yet come is
+// (Cairo), moments ISO. A day kept as its pairs (owner, 25 October 2026: "Count the closed pairs, flag the open one"): a
+// correction giving both times replaces the day's presses with that one pair, as before; one giving the check-out alone
+// closes the day's open last check-in (its missing check-out, "flag the open one" for HR to correct), else moves its
+// last check-out; one giving the check-in alone moves its first check-in; the day's other pairs stay. Its hours from its
+// first check-in to its last finished check-out, breaks counted (owner, 31 October 2026: "9:00, break included";
+// correctedDay). A time not yet come is
 // refused (reported 25 October 2026: a correction asked at 00:30 set that day's check-in to 08:55; owner, 26 October
 // 2026: "yes", refuse it): a check-in or check-out after now in Cairo, when asked, when HR corrects directly, and again at
 // each approval, so one asked for earlier still isn't approved before its time (notYetComeProblems). A new employee's
@@ -22,15 +25,27 @@
 // (correctedDay with `firstDay`, as check-in.ts dayFromPunches): its first pair runs from the shift's start, the day's
 // check-in stays the press (or the time HR gave), so the new employee who forgot to check out isn't short once corrected.
 
-import { breakMinutesOf, mostHoursCountedADay, shiftWindowOn, spanHours, spansOfPairs, zonedMoment, type PressPair, type ShiftWindowTimes, type TimeSpan } from './attendance.js';
+import { breakMinutesOf, mostHoursCountedADay, shiftWindowOn, spanHours, spansOfPairs, workSpanOf, zonedMoment, type PressPair, type ShiftWindowTimes, type TimeSpan } from './attendance.js';
 import type { AttendanceDayStatus } from './attendance-import.js';
 import { cairoClock, cairoDay, fromShiftStart, isCheckInFlag, type AttendanceSource, type CheckInFlag, type CountingShift, type DayCountOptions, type DayPlace } from './check-in.js';
+import { DEFAULT_WORKING_DAYS } from './leaves.js';
 
 /** What was wrong with the day. */
 export const CORRECTION_KINDS = ['forgot_check_in', 'forgot_check_out', 'wrong_time', 'worked_remotely'] as const;
 export type CorrectionKind = (typeof CORRECTION_KINDS)[number];
 
 export const isCorrectionKind = (v: unknown): v is CorrectionKind => (CORRECTION_KINDS as readonly unknown[]).includes(v);
+
+/**
+ * The kinds a new correction can be (owner, 31 October 2026, asked whether "I worked remotely or at a client" isn't the
+ * same as official duty: "Remove it, point to OD"): work away from the office is asked for as official duty (or work from
+ * home), so a new correction is a check-in or check-out forgotten or a time wrong. The corrections of that kind made
+ * before stay as they were, and still apply as they did.
+ */
+export const CORRECTION_KINDS_ASKED = ['forgot_check_in', 'forgot_check_out', 'wrong_time'] as const satisfies readonly CorrectionKind[];
+
+/** What someone choosing to correct a day of work away from the office is told instead. */
+export const CORRECTION_AWAY_TEXT = 'Working away from the office (at a client, a shoot, an errand) is official duty: ask for official duty instead, or work from home for a day at home.';
 
 /** As the employee chooses it (owner's brief, 19 October 2026: "I forgot to check out"). */
 export const CORRECTION_KIND_LABELS: Record<CorrectionKind, string> = {
@@ -97,7 +112,54 @@ export interface CorrectionContext {
    * not checked (the web form before it knows the time; the API always gives it).
    */
   now?: number | null;
+  /**
+   * The earliest day the employee can still ask to correct (correctionAskFrom; owner, 31 October 2026: "locked after 2
+   * working days"): a day before it is refused. None: not checked (HR correcting a day directly).
+   */
+  askFrom?: string | null;
 }
+
+/**
+ * How long a day can be asked to be corrected (owner, 31 October 2026: "asking for correction is to be locked after 2
+ * working days, i cant ask for correction after a week for example"): on the day itself and until the end of the 2nd
+ * working day after it. HR still corrects any day directly (while its month's payroll allows it).
+ */
+export const CORRECTION_ASK_WORKING_DAYS = 2;
+
+/** How far back correctionAskFrom looks: a day longer ago is never open (a long leave in between included). */
+export const CORRECTION_ASK_LOOK_BACK = 60;
+
+/** "2026-10-31" → "2026-10-30". */
+const dayBefore = (ymd: string, n = 1) => new Date(Date.parse(`${ymd}T00:00:00Z`) - n * 86_400_000).toISOString().slice(0, 10);
+
+/**
+ * The earliest day (YYYY-MM-DD) someone can still ask to correct on `today` (owner, 31 October 2026: "locked after 2
+ * working days"): a day is open while fewer than CORRECTION_ASK_WORKING_DAYS of their working days have gone by after it,
+ * counting the days strictly between it and today. A working day is one of their shift's weekdays (`workingDays`, 0 =
+ * Sunday; none known: Sunday to Thursday) that is neither an official holiday nor a day of their approved leave
+ * (`offDays`, YYYY-MM-DD), so a day off doesn't eat into the time to ask. On a Sunday-to-Thursday shift: Tuesday's day is
+ * open until Thursday, Thursday's until the Monday after. Never further back than CORRECTION_ASK_LOOK_BACK days.
+ */
+export function correctionAskFrom(today: string, workingDays: readonly number[] | null | undefined, offDays: Iterable<string> = []): string {
+  const working = new Set(workingDays?.length ? workingDays : DEFAULT_WORKING_DAYS);
+  const off = new Set(offDays);
+  let passed = 0;
+  let earliest = today;
+  for (let i = 1; i <= CORRECTION_ASK_LOOK_BACK; i++) {
+    // the day `i` days back has the days after it up to yesterday between it and today: one more than the day before had
+    if (i >= 2) {
+      const between = dayBefore(today, i - 1);
+      if (working.has(new Date(`${between}T00:00:00Z`).getUTCDay()) && !off.has(between)) passed++;
+    }
+    if (passed >= CORRECTION_ASK_WORKING_DAYS) break;
+    earliest = dayBefore(today, i);
+  }
+  return earliest;
+}
+
+/** Why a day before `askFrom` can't be asked about any more, in words. */
+export const correctionTooLateText = (date: string) =>
+  `It’s too late to ask to correct ${shown(date)}: ask within ${CORRECTION_ASK_WORKING_DAYS} working days of the day. HR can still correct it for you.`;
 
 const DATE = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
 const TIME = /^([01]\d|2[0-3]):([0-5]\d)$/;
@@ -158,7 +220,8 @@ export function correctionMoments(
 }
 
 /**
- * Why a correction can't be sent (none: it can), in the order to fix them: the day (gone by or today), what was wrong,
+ * Why a correction can't be sent (none: it can), in the order to fix them: the day (gone by or today, and an employee's
+ * own within CORRECTION_ASK_WORKING_DAYS working days of it, with `ctx.askFrom`; 31 October 2026), what was wrong,
  * why (required, at most 500 characters), the times (HH:MM); a month whose payroll is approved; a correction of the day
  * already being decided; a day of leave; then what each kind needs: forgot to check in, the time they came in (and no
  * check-in on record); forgot to check out, the time they left (and no check-out on record); a time wrong, a time other
@@ -170,8 +233,11 @@ export function correctionProblems(input: CorrectionInput, ctx: CorrectionContex
   if (!DATE.test(input.date)) return ['Enter the day to correct, e.g. 2026-10-12.'];
   const when = shown(input.date);
   if (input.date > ctx.today) return [`${when} is still to come: only a day gone by, or today, can be corrected.`];
+  // asked too long after the day (owner, 31 October 2026: "locked after 2 working days")
+  if (ctx.askFrom && input.date < ctx.askFrom) return [correctionTooLateText(input.date)];
   const problems: string[] = [];
-  if (!(CORRECTION_KINDS as readonly string[]).includes(input.kind)) problems.push(`Choose what was wrong: ${Object.values(CORRECTION_KIND_LABELS).join(', ').toLowerCase()}.`);
+  if (input.kind === 'worked_remotely') problems.push(CORRECTION_AWAY_TEXT);
+  else if (!(CORRECTION_KINDS_ASKED as readonly string[]).includes(input.kind)) problems.push(`Choose what was wrong: ${CORRECTION_KINDS_ASKED.map((k) => CORRECTION_KIND_LABELS[k]).join(', ').toLowerCase()}.`);
   const reason = blank(input.reason);
   if (!reason) problems.push('Write why the day needs correcting, e.g. I left for a client meeting and forgot to check out.');
   else if (reason.length > CORRECTION_REASON_MAX) problems.push(`Keep the reason to ${CORRECTION_REASON_MAX} characters; it has ${reason.length}.`);
@@ -256,6 +322,8 @@ export interface CorrectedDay {
  * the open last check-in when after it, else ends the last pair there (a pair starting after it dropped); the check-in
  * alone starts the first pair there (a pair ending before it dropped), the only check-in of a day without pairs, or
  * pairs with a check-out that had none. A day not kept by pairs (Zoho's, one gone by) is its check-in to its check-out.
+ * Its hours (owner, 31 October 2026: "9:00, break included") from the first check-in of its pairs to the last finished
+ * check-out, breaks counted (attendance.ts workSpanOf), within the window, at most the shift's hours a day.
  * On the first working day of the person's employment (`firstDay`; owner, 27 October 2026: "Counted from the shift
  * start") the first pair runs from the shift's start when its check-in is after it (check-in.ts fromShiftStart), as a
  * press keeps the day; the day's check-in stays as recorded (the press, or the time given).
@@ -317,7 +385,8 @@ export function correctedDay(base: CorrectableDay | CorrectedDay | null, c: Appl
   const window = shift ? shiftWindowOn(date, shift) : null;
   // a new employee's first day (27 October 2026): the first pair from the shift's start, as a press keeps the day
   const counted = options.firstDay ? fromShiftStart(pairs, window) : pairs;
-  const hours = spanHours(counted, window, shift ? mostHoursCountedADay(shift) : null);
+  // from the first check-in to the last finished check-out, breaks included (owner, 31 October 2026: "9:00, break included")
+  const hours = spanHours(workSpanOf(counted), window, shift ? mostHoursCountedADay(shift) : null);
   const firstIn = Math.min(pairs[0]?.from ?? Number.POSITIVE_INFINITY, open ?? Number.POSITIVE_INFINITY);
   // the day's check-in: the one given; else the day's as recorded when it lies in its first pair (a first day's press
   // after the shift's start the pair was moved to, 27 October 2026); else the first pair's start or the open check-in

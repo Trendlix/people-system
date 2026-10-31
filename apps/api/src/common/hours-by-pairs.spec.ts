@@ -29,10 +29,11 @@ import {
   type PunchLike,
 } from '@trendlix/shared';
 
-// A day's hours as the sum of its check-in → check-out pairs (owner, 25 October 2026: "on checkin and out several
-// ttimes, the working hours to be calculated between the checkin and out only, not the first and last"; asked, "Count
-// the closed pairs, flag the open one"; then, 27 October 2026, "open check ins with half day": "Half the shift (4.5 h)
-// until corrected"): packages/shared attendance.ts (pairPresses, hoursCountedForPresses, breakMinutesOf), check-in.ts
+// A day kept as its check-in → check-out pairs (owner, 25 October 2026: "on checkin and out several ttimes …"; asked,
+// "Count the closed pairs, flag the open one"; then, 27 October 2026, "open check ins with half day": "Half the shift
+// (4.5 h) until corrected"), its hours since 31 October 2026 from its first check-in to its last finished check-out,
+// breaks included (owner, asked about in 9:00, out 13:00, in 14:00, out 18:00: "9:00, break included"; "the shift is
+// flexible, the employee has to achive 9 hours in the applicable checkin window"): packages/shared attendance.ts (pairPresses, hoursCountedForPresses, breakMinutesOf), check-in.ts
 // (dayFromPunches), attendance-days.ts (the day's view, the half-day rule), official-duty.ts (part of a day joins the
 // pairs), attendance-corrections.ts (a correction over the pairs), attendance-import.ts (the payroll's line: a missing
 // check-out half a day until corrected, the days listed for its warning) and payroll.ts (the warning's words).
@@ -52,22 +53,28 @@ describe('a day’s presses paired', () => {
     expect(hoursCountedForDay(at('09:00'), at('17:30'), most, window)).toBe(8.5);
   });
 
-  it('several pairs: each counted, the breaks between them not', () => {
-    // the owner's example: in 9:00, out 13:00, in 14:00, out 18:00: 8 hours, not 9
+  it('several pairs: from the first check-in to the last check-out, the breaks between them counted', () => {
+    // the owner's example (31 October 2026): in 9:00, out 13:00, in 14:00, out 18:00: 9 hours, break included
     const presses = [press('in', '09:00'), press('out', '13:00'), press('in', '14:00'), press('out', '18:00')];
-    expect(hoursCountedForPresses(presses, most, window)).toBe(8);
+    expect(hoursCountedForPresses(presses, most, window)).toBe(9);
     expect(pairPresses(presses).pairs).toHaveLength(2);
+    // the break still shown: an hour
     expect(breakMinutesOf(pairPresses(presses).pairs, null, window)).toBe(60);
     // in any order given: by time
-    expect(hoursCountedForPresses([...presses].reverse(), most, window)).toBe(8);
+    expect(hoursCountedForPresses([...presses].reverse(), most, window)).toBe(9);
+    // a shorter day: in 10:00, out 12:00, in 13:00, out 15:00: 5 hours, not 4
+    expect(hoursCountedForPresses([press('in', '10:00'), press('out', '12:00'), press('in', '13:00'), press('out', '15:00')], most, window)).toBe(5);
   });
 
-  it('an open last check-in: not counted, the day’s open press', () => {
-    const presses = [press('in', '09:00'), press('out', '13:00'), press('in', '14:00'), press('out', '18:00'), press('in', '18:30')];
+  it('an open last check-in: nothing past the last finished check-out, the day’s open press', () => {
+    const presses = [press('in', '10:00'), press('out', '13:00'), press('in', '14:00'), press('out', '17:00'), press('in', '17:30')];
     const paired = pairPresses(presses);
     expect(paired.pairs).toHaveLength(2);
-    expect(paired.open).toBe(Date.parse(at('18:30')));
-    expect(hoursCountedForPresses(presses, most, window)).toBe(8);
+    expect(paired.open).toBe(Date.parse(at('17:30')));
+    // 10:00 to 17:00: 7 hours, the time since 17:30 not yet
+    expect(hoursCountedForPresses(presses, most, window)).toBe(7);
+    // in 9:00, out 13:00, in 14:00 and no check-out: 4 hours until corrected
+    expect(hoursCountedForPresses([press('in', '09:00'), press('out', '13:00'), press('in', '14:00')], most, window)).toBe(4);
     // only a check-in: nothing counted, open
     expect(pairPresses([press('in', '09:05')])).toEqual({ pairs: [], open: Date.parse(at('09:05')) });
   });
@@ -83,46 +90,50 @@ describe('a day’s presses paired', () => {
     expect(pairPresses([press('out', '18:00')])).toEqual({ pairs: [], open: null });
   });
 
-  it('each pair within the shift’s window: one partly outside it counts its part inside', () => {
-    // 7:00–10:00 counts 9:00–10:00; 18:00–21:00 counts 18:00–19:15 (the end with the grace)
-    expect(hoursCountedForPresses([press('in', '07:00'), press('out', '10:00'), press('in', '18:00'), press('out', '21:00')], most, window)).toBe(1 + 1.25);
+  it('the day within the shift’s window: the time outside it isn’t counted', () => {
+    // 7:00–10:00 and 12:00–13:00: the day 7:00–13:00 counts 9:00–13:00
+    expect(hoursCountedForPresses([press('in', '07:00'), press('out', '10:00'), press('in', '12:00'), press('out', '13:00')], most, window)).toBe(4);
+    // 15:00–16:00 and 18:00–21:00: the day 15:00–21:00 counts 15:00–19:15 (the end with the grace)
+    expect(hoursCountedForPresses([press('in', '15:00'), press('out', '16:00'), press('in', '18:00'), press('out', '21:00')], most, window)).toBe(4.25);
     // a pair wholly outside: nothing
     expect(hoursCountedForPresses([press('in', '19:30'), press('out', '21:00')], most, window)).toBe(0);
     // a break outside the window isn't a break inside it
     expect(breakMinutesOf(pairPresses([press('in', '07:00'), press('out', '08:00'), press('in', '08:30'), press('out', '17:00')]).pairs, null, window)).toBe(0);
   });
 
-  it('the sum at most the shift’s hours a day; not capped on a shift that counts hours until a time', () => {
+  it('at most the shift’s hours a day; not capped on a shift that counts hours until a time', () => {
     const long = [press('in', '09:00'), press('out', '13:00'), press('in', '13:30'), press('out', '19:15')];
     expect(hoursCountedForPresses(long, most, window)).toBe(9);
     const untilEight = { ...MORNING, countUntil: '20:00' };
-    expect(hoursCountedForPresses([...long.slice(0, 3), press('out', '20:30')], mostHoursCountedADay(untilEight), shiftWindowOn(DAY, untilEight))).toBe(4 + 6.5);
+    // 9:00 to 20:00 (the window's end), the break included: 11 hours
+    expect(hoursCountedForPresses([...long.slice(0, 3), press('out', '20:30')], mostHoursCountedADay(untilEight), shiftWindowOn(DAY, untilEight))).toBe(11);
   });
 
   it('a check-out past midnight on a night shift counts on the night before', () => {
     const night = { startTime: '22:00', endTime: '06:00', hoursPerDay: 8, graceMinutes: 0 };
-    const presses = [press('in', '22:00'), press('out', '01:00', '2026-10-19'), press('in', '01:30', '2026-10-19'), press('out', '06:00', '2026-10-19')];
-    expect(hoursCountedForPresses(presses, mostHoursCountedADay(night), shiftWindowOn(DAY, night))).toBe(7.5);
+    const presses = [press('in', '22:00'), press('out', '01:00', '2026-10-19'), press('in', '01:30', '2026-10-19'), press('out', '05:00', '2026-10-19')];
+    // 22:00 to 5:00 the next morning, the half-hour break included: 7 hours
+    expect(hoursCountedForPresses(presses, mostHoursCountedADay(night), shiftWindowOn(DAY, night))).toBe(7);
     expect(breakMinutesOf(pairPresses(presses).pairs, null, shiftWindowOn(DAY, night))).toBe(30);
   });
 
-  it('part of a day of official duty joins the pairs, the time they share counted once', () => {
-    // pairs 9:00–12:00 and 15:00–18:00, the duty 11:00–16:00: 9:00–18:00 together, 9 hours
-    const presses = [press('in', '09:00'), press('out', '12:00'), press('in', '15:00'), press('out', '18:00')];
-    const od = { from: Date.parse(at('11:00')), to: Date.parse(at('16:00')) };
-    expect(hoursCountedForPresses(presses, most, window, [od])).toBe(9);
-    expect(hoursCountedForPresses(presses, most, window)).toBe(6);
+  it('part of a day of official duty joins the day, the time they share counted once', () => {
+    // the day 10:00–15:00 (a break 12:00–13:00 in it), the duty 14:00–18:00: 10:00–18:00 together, 8 hours
+    const presses = [press('in', '10:00'), press('out', '12:00'), press('in', '13:00'), press('out', '15:00')];
+    const od = { from: Date.parse(at('14:00')), to: Date.parse(at('18:00')) };
+    expect(hoursCountedForPresses(presses, most, window, [od])).toBe(8);
+    expect(hoursCountedForPresses(presses, most, window)).toBe(5);
   });
 
   it('counts whole minutes of the total: a part minute isn’t counted', () => {
-    // 3:59:30 and 4:00:40 together are 8:00:10: 8 hours
+    // 9:00:30 to 14:00:40, the break included, is 5:00:10: 5 hours
     const presses = [
       { kind: 'in', at: '2026-10-18T09:00:30+03:00' },
-      { kind: 'out', at: '2026-10-18T13:00:00+03:00' },
-      { kind: 'in', at: '2026-10-18T14:00:00+03:00' },
-      { kind: 'out', at: '2026-10-18T18:00:40+03:00' },
+      { kind: 'out', at: '2026-10-18T12:00:00+03:00' },
+      { kind: 'in', at: '2026-10-18T13:00:00+03:00' },
+      { kind: 'out', at: '2026-10-18T14:00:40+03:00' },
     ];
-    expect(hoursCountedForPresses(presses, most, window)).toBe(8);
+    expect(hoursCountedForPresses(presses, most, window)).toBe(5);
     // 4:59:59 alone: 4:59
     expect(hoursCountedForPresses([{ kind: 'in', at: '2026-10-18T09:00:01+03:00' }, { kind: 'out', at: '2026-10-18T14:00:00+03:00' }], most, window)).toBe(4 + 59 / 60);
   });
@@ -139,8 +150,9 @@ describe('a day kept from its punches', () => {
         { in: at('09:02'), out: at('13:10') },
         { in: at('14:00'), out: at('18:05') },
       ],
-      // 4:08 and 4:05; the break 50 minutes, and 25 more before the open check-in
-      hoursCounted: 8 + 13 / 60,
+      // 9:02 AM to 6:05 PM, the break included: 9:03, at most the shift's 9 hours; the break 50 minutes, and 25 more
+      // before the open check-in, shown
+      hoursCounted: 9,
       breakMinutes: 75,
     });
     expect(pairsText(d.pairs)).toBe('9:02 AM–1:10 PM · 2:00 PM–6:05 PM');
@@ -269,10 +281,12 @@ describe('a correction over the pairs', () => {
   };
   const ctx = { today: '2026-10-20', runStatus: null, day, shift: MORNING, open: false };
 
-  it('the check-out forgotten closes the open last check-in, the break not counted', () => {
+  it('the check-out forgotten closes the open last check-in, the break counted (31 October 2026)', () => {
     expect(correctionProblems({ date: DAY, kind: 'forgot_check_out', checkOut: '18:00', reason: 'Left for a client' }, ctx)).toEqual([]);
     const made = correctedDay(day, { kind: 'forgot_check_out', checkIn: null, checkOut: at('18:00') }, DAY, MORNING);
-    expect(made).toMatchObject({ checkIn: at('09:00'), checkOut: at('18:00'), openAt: null, hoursCounted: 8, breakMinutes: 60 });
+    expect(made).toMatchObject({ checkIn: at('09:00'), checkOut: at('18:00'), openAt: null, hoursCounted: 9, breakMinutes: 60 });
+    // closed at 17:00: 9:00 to 17:00, 8 hours with the break
+    expect(correctedDay(day, { kind: 'forgot_check_out', checkIn: null, checkOut: at('17:00') }, DAY, MORNING)).toMatchObject({ hoursCounted: 8 });
     expect(made.pairs).toHaveLength(2);
     // before the open check-in: refused, said plainly
     expect(correctionProblems({ date: DAY, kind: 'forgot_check_out', checkOut: '13:30', reason: 'Left' }, ctx)).toEqual([
@@ -283,13 +297,14 @@ describe('a correction over the pairs', () => {
   it('both times given: that one pair, the presses replaced, as before; one as on record changes only the other', () => {
     expect(correctedDay(day, { kind: 'wrong_time', checkIn: at('08:30'), checkOut: at('17:00') }, DAY, MORNING)).toMatchObject({ pairs: [{ in: at('08:30'), out: at('17:00') }], hoursCounted: 8, openAt: null });
     // the check-in typed as on record: the check-out alone, closing the open check-in
-    expect(correctedDay(day, { kind: 'forgot_check_out', checkIn: at('09:00'), checkOut: at('18:00') }, DAY, MORNING)).toMatchObject({ hoursCounted: 8, openAt: null });
+    expect(correctedDay(day, { kind: 'forgot_check_out', checkIn: at('09:00'), checkOut: at('18:00') }, DAY, MORNING)).toMatchObject({ hoursCounted: 9, openAt: null });
   });
 
   it('the check-in alone moves the first pair’s start; the check-out alone of a closed day its last pair’s end', () => {
     const closed = { ...day, checkOut: at('18:00'), openAt: null, pairs: [{ in: at('09:00'), out: at('13:00') }, { in: at('14:00'), out: at('18:00') }] };
-    expect(correctedDay(closed, { kind: 'wrong_time', checkIn: at('10:00'), checkOut: null }, DAY, MORNING)).toMatchObject({ checkIn: at('10:00'), hoursCounted: 7 });
-    expect(correctedDay(closed, { kind: 'wrong_time', checkIn: null, checkOut: at('17:00') }, DAY, MORNING)).toMatchObject({ checkOut: at('17:00'), hoursCounted: 7 });
+    // 10:00 to 18:00 and 9:00 to 17:00, the break included: 8 hours each
+    expect(correctedDay(closed, { kind: 'wrong_time', checkIn: at('10:00'), checkOut: null }, DAY, MORNING)).toMatchObject({ checkIn: at('10:00'), hoursCounted: 8 });
+    expect(correctedDay(closed, { kind: 'wrong_time', checkIn: null, checkOut: at('17:00') }, DAY, MORNING)).toMatchObject({ checkOut: at('17:00'), hoursCounted: 8 });
   });
 
   it('says what it was corrected from, each pair and the open check-in', () => {

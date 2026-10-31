@@ -30,11 +30,15 @@ export class AttendanceController {
     return this.attendance.month(query, user);
   }
 
-  /** The caller's own month (?month=). */
+  /**
+   * The caller's own month (?month=), with their attendance rate through it (owner, 31 October 2026: "show the weekly
+   * attendance percentage and monthly percentage ongoing through the month"): the month so far and each of its weeks.
+   */
   @Get('me')
   @Header('Cache-Control', 'private, no-store')
-  mine(@Query() query: AttendanceMonthQueryDto, @CurrentUser() user: SessionUser) {
-    return this.attendance.mine(query.month, user);
+  async mine(@Query() query: AttendanceMonthQueryDto, @CurrentUser() user: SessionUser) {
+    const view = await this.attendance.mine(query.month, user);
+    return { ...view, rates: await this.historyOf.myRates(user, view.month) };
   }
 
   /** ?month= or ?from=&to=: by department and team. */

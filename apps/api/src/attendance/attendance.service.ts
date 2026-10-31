@@ -40,6 +40,7 @@ import { approvedWfhDays } from '../wfh/wfh-days.js';
 import { AttendanceDaysService, DAY_SELECT, shiftTimesOf, type DayRow } from './attendance-days.service.js';
 import { CheckInSetupService } from './check-in-setup.service.js';
 import { AttendanceCorrectionsService, type MonthCorrectable, type MonthCorrection } from './corrections.service.js';
+import { correctionAskWindowOf, type CorrectionAskWindow } from './correction-window.js';
 import { seesEveryonesAttendance, teamOf } from './attendance-scope.js';
 import type { AttendanceListQueryDto, AttendanceSummaryQueryDto } from './attendance.dto.js';
 import { attendanceSummaryFileName, attendanceWorkbook } from './attendance-workbook.js';
@@ -176,6 +177,11 @@ export interface AttendancePersonView {
   corrections: MonthCorrection[];
   correctable: MonthCorrectable;
   canCorrect: boolean;
+  /**
+   * On their own month: the days they can still ask to correct today (owner, 31 October 2026: "locked after 2 working
+   * days"; correction-window.ts), from `from` to today. Null on someone else's.
+   */
+  ask: CorrectionAskWindow | null;
   /**
    * Every press of Check in and Check out on the system of the month (owner, 19 October 2026: "Check-in through the
    * system …"), in order: the day each counts on, in or out, the server's moment, office, home, remote or unknown, the
@@ -322,7 +328,7 @@ export class AttendanceService {
   async mine(monthAsked: string | null | undefined, user: SessionUser): Promise<AttendancePersonView> {
     const me = await this.confidential.selfId(user);
     if (!me) throw new NotFoundException(NO_PROFILE);
-    return this.personView(me, monthAsked ?? todayInCairo().slice(0, 7), true, user);
+    return withoutExemption(await this.personView(me, monthAsked ?? todayInCairo().slice(0, 7), true, user));
   }
 
   /** The Summary (HR, the CEO, Finance): a period's figures by department and team, without the C-level people hidden from the caller. */
@@ -429,11 +435,12 @@ export class AttendanceService {
       };
     }
     const payroll = seesEveryonesAttendance(user);
-    const [sources, run, corrections, correctable, punches, locations] = await Promise.all([
+    const [sources, run, corrections, correctable, ask, punches, locations] = await Promise.all([
       this.sources(person.days.map((d) => d.importId), user),
       payroll ? this.runOf(month) : null,
       this.corrections.ofMonth(employeeId, month),
       this.corrections.monthCorrectable(month),
+      self ? correctionAskWindowOf(this.prisma, employeeId, todayInCairo()) : null,
       this.prisma.attendancePunch.findMany({ where: { employeeId, date: monthDays(month) }, orderBy: { at: 'asc' }, select: PUNCH_SELECT }),
       this.setup.officeLocations(),
     ]);
@@ -450,6 +457,7 @@ export class AttendanceService {
       corrections,
       correctable,
       canCorrect,
+      ask,
       punches: punches.map((p) => onOdDay(onWfhDay(punchView(p, sees, locations), person.wfhDays), person.odDays, months.shifts.get(employeeId) ?? null)),
     };
   }
@@ -605,3 +613,22 @@ const onWfhDay = (p: PunchView, wfhDays: readonly string[]): PunchView => (wfhDa
 const monthDays = (month: string) => ({ gte: toDateOnly(firstDay(month)), lte: toDateOnly(lastDay(month)) });
 
 const byName = (a: AttendancePersonMonth, b: AttendancePersonMonth) => a.employee.fullNameEn.localeCompare(b.employee.fullNameEn);
+
+/**
+ * Their own month as the employee sees it (owner, 31 October 2026: "dont show for the employee that he is exempted from
+ * checking in and out"): no periods of exemption, no exempt days counted, no day marked exempt (a compensatory day off,
+ * read full the same way, keeps its mark: it is theirs, asked for). The days still count as full hours; HR sees it all on
+ * the person's month.
+ */
+export function withoutExemption(view: AttendancePersonView): AttendancePersonView {
+  const person = view.person;
+  return {
+    ...view,
+    person: {
+      ...person,
+      exemptions: [],
+      figures: { ...person.figures, exemptDays: 0 },
+      days: person.days.map((d) => (d.exempt && !d.compensatory ? { ...d, exempt: false } : d)),
+    },
+  };
+}

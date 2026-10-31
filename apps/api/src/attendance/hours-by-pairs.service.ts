@@ -1,5 +1,21 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { breakMinutesOf, dayFromPunches, FIRST_DAY_LOOK_AHEAD, firstWorkingDayFrom, locksMonth, readPressPairs, shiftWindowOn, spansOfPairs, type CheckInPlace, type ImportedDay, type PunchKind, type PunchLike } from '@trendlix/shared';
+import {
+  breakMinutesOf,
+  dayFromPunches,
+  FIRST_DAY_LOOK_AHEAD,
+  firstWorkingDayFrom,
+  locksMonth,
+  mostHoursCountedADay,
+  readPressPairs,
+  shiftWindowOn,
+  spanHours,
+  spansOfPairs,
+  workSpanOf,
+  type CheckInPlace,
+  type ImportedDay,
+  type PunchKind,
+  type PunchLike,
+} from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { addDays, fromDateOnly, toDateOnly } from '../common/date-only.js';
@@ -46,6 +62,16 @@ import { CorrectionDaysService } from './correction-days.service.js';
 // or after the join date, holidays skipped) is made again from its presses with the first pair from the shift's start
 // (dayFromPunches with `firstDay`), as a press keeps it (check-in.service.ts), so the pass on deploy and Recount past days
 // bring first days kept before the rule up to it in the months not yet with the CEO, approved or paid.
+//
+// Breaks counted (owner, 31 October 2026, asked about a day in at 9:00, out at 13:00, in at 14:00, out at 18:00: "9:00,
+// break included"; "dont calculate breaks, they are included in the working hours"; "the shift is flexible, the employee
+// has to achive 9 hours in the applicable checkin window"): a day kept by its pairs counts from its first check-in to its
+// last finished check-out within the shift's window, at most its hours a day (packages/shared workSpanOf), so the pass on
+// deploy brings the days kept by the 25 October rule (the pairs' sum) up to it, in the same months: the system's days
+// from their presses as before; Zoho People's days kept with two pairs or more (its API's), whose hours change with the
+// rule, made again by the import's rules as Recount past days makes them (one pair or none: as imported, never touched on
+// deploy); and the corrected days of two pairs or more whose hours aren't the new rule's, made again over the days they
+// correct. Each written only when its hours change, so the pass stays idempotent.
 
 /** The advisory lock's name: hashtext() of it is the key every process takes. */
 const LOCK_NAME = 'people-system attendance recount';
@@ -138,12 +164,15 @@ export class HoursByPairsService {
         for (const r of runs) if (locksMonth(r.status)) lockedStatus[fromDateOnly(r.month).slice(0, 7)] = r.status;
         const locked = new Set(Object.keys(lockedStatus));
         const dateWhere = asked ? { OR: asked.map((m) => ({ date: { gte: toDateOnly(firstDay(m)), lte: toDateOnly(lastDay(m)) } })) } : {};
+        // Zoho's days too with `zoho`; else those kept with their pairs (the breaks counted since 31 October 2026)
+        const sourceWhere: Prisma.AttendanceDayWhereInput = scope.zoho ? { source: { in: ['system', 'zoho'] } } : { OR: [{ source: 'system' }, { source: 'zoho', pairs: { not: Prisma.DbNull } }] };
         const rows = await tx.attendanceDay.findMany({
-          where: { source: scope.zoho ? { in: ['system', 'zoho'] } : 'system', ...(ids && { employeeId: { in: ids } }), ...dateWhere },
+          where: { AND: [sourceWhere, dateWhere], ...(ids && { employeeId: { in: ids } }) },
           orderBy: [{ employeeId: 'asc' }, { date: 'asc' }],
           select: { id: true, employeeId: true, date: true, source: true, checkIn: true, checkOut: true, place: true, flags: true, hoursCounted: true, pairs: true, breakMinutes: true, openAt: true, zohoStatus: true, permissionHours: true },
         });
-        const monthRows = rows.filter((r) => !locked.has(fromDateOnly(r.date).slice(0, 7)));
+        // without `zoho`, a Zoho day only when kept with two pairs or more: its hours change with the breaks counted
+        const monthRows = rows.filter((r) => !locked.has(fromDateOnly(r.date).slice(0, 7)) && (r.source === 'system' || scope.zoho || (readPressPairs(r.pairs)?.length ?? 0) >= 2));
         const monthsSeen = new Set([...(asked ?? []), ...rows.map((r) => fromDateOnly(r.date).slice(0, 7))]);
         const months = [...monthsSeen].filter((m) => !locked.has(m)).sort();
         const monthsLocked = [...monthsSeen].filter((m) => locked.has(m)).sort();
@@ -312,8 +341,10 @@ export class HoursByPairsService {
         select: { employeeId: true, date: true, hoursCounted: true, pairs: true },
       });
       for (const c of corrected) {
-        // (one shift's recount makes again only the corrected days of the people it changed)
-        if ((c.pairs !== null || scope.shiftId) && !pass.touched.get(month)?.has(c.employeeId)) continue;
+        // (one shift's recount makes again only the corrected days of the people it changed); one of two pairs or more
+        // whose hours aren't from its first check-in to its last yet (31 October 2026: "9:00, break included") too
+        const stale = !scope.shiftId && (await this.breaksNotCounted(c));
+        if ((c.pairs !== null || scope.shiftId) && !stale && !pass.touched.get(month)?.has(c.employeeId)) continue;
         const change = await this.corrections.rebuild(c.employeeId, fromDateOnly(c.date), user);
         correctedDays++;
         if (round2(c.hoursCounted.toNumber()) !== round2(change.after?.hoursCounted ?? 0)) correctedDaysChanged++;
@@ -342,9 +373,28 @@ export class HoursByPairsService {
       linesRefilled,
     };
     if (scope.audit && (result.daysWritten || correctedDays)) {
-      await this.audit.record({ userId: user?.id ?? null, action: 'recount_hours', entityType: 'attendance_day', diff: { rule: 'hours_by_pairs', ...result } });
+      await this.audit.record({ userId: user?.id ?? null, action: 'recount_hours', entityType: 'attendance_day', diff: { rule: 'hours_first_in_to_last_out', ...result } });
     }
     return result;
+  }
+
+  /**
+   * Whether a corrected day of two pairs or more counts other hours than from its first check-in to its last finished
+   * check-out (owner, 31 October 2026: "9:00, break included"), under the shift of the employment its date is in: its
+   * kept pairs (a first day's already from the shift's start) through workSpanOf, the window and the cap, as
+   * correctedDay counts them. One pair or none: as it is.
+   */
+  private async breaksNotCounted(c: { employeeId: string; date: Date; hoursCounted: Prisma.Decimal; pairs: Prisma.JsonValue }): Promise<boolean> {
+    const pairs = readPressPairs(c.pairs);
+    if (!pairs || pairs.length < 2) return false;
+    const job = await this.prisma.employment.findFirst({
+      where: { employeeId: c.employeeId, joinDate: { lte: c.date }, OR: [{ endDate: null }, { endDate: { gte: c.date } }] },
+      orderBy: { joinDate: 'desc' },
+      select: { shift: { select: { startTime: true, endTime: true, hoursPerDay: true, graceMinutes: true, countUntil: true, workingDays: true } } },
+    });
+    const times = job?.shift ? shiftTimesOf(job.shift) : null;
+    const hours = spanHours(workSpanOf(spansOfPairs(pairs)), times ? shiftWindowOn(fromDateOnly(c.date), times) : null, times ? mostHoursCountedADay(times) : null);
+    return round2(Math.round(hours * 60) / 60) !== round2(c.hoursCounted.toNumber());
   }
 
   /** The draft runs of these months refilled for `people` of each (AttendanceFillService, each line audited): the lines refilled. */

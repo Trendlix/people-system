@@ -1,7 +1,7 @@
 import {
   CORRECTION_KIND_LABELS,
   CORRECTION_KIND_NAMES,
-  CORRECTION_KINDS,
+  CORRECTION_KINDS_ASKED,
   CORRECTION_REASON_MAX,
   correctionProblems,
   correctionTimesText,
@@ -230,10 +230,13 @@ export function dayCorrection(
   correctable: MonthCorrectable | null | undefined,
   today: string,
   href: (date: string) => string,
+  askFrom: string | null = null,
 ): DayCorrection {
   const open = corrections.find((c) => c.date === day.date && (c.status === 'with_manager' || c.status === 'with_hr'));
   if (open) return { kind: 'open', id: open.id, status: open.status };
   if (!correctable?.allowed || day.date > today || day.status === 'leave') return null;
+  // their own, only within 2 working days of the day (owner, 31 October 2026: "locked after 2 working days")
+  if (askFrom && day.date < askFrom) return null;
   return { kind: 'ask', href: href(day.date) };
 }
 
@@ -262,8 +265,11 @@ export function timesNeeded(kind: string, day: Pick<CorrectableDay, 'checkIn'> |
   }
 }
 
-/** The kinds, as the form's choices. */
-export const CORRECTION_KIND_OPTIONS: readonly { value: CorrectionKind; label: string }[] = CORRECTION_KINDS.map((k) => ({ value: k, label: CORRECTION_KIND_LABELS[k] }));
+/**
+ * The kinds, as the form's choices: those a new correction can be (owner, 31 October 2026: work away from the office is
+ * official duty now, "Remove it, point to OD").
+ */
+export const CORRECTION_KIND_OPTIONS: readonly { value: CorrectionKind; label: string }[] = CORRECTION_KINDS_ASKED.map((k) => ({ value: k, label: CORRECTION_KIND_LABELS[k] }));
 
 /** The form as typed: the day (DD/MM/YYYY), what was wrong, the times (12-hour, optional by kind), why. */
 export interface TypedCorrection {
@@ -324,7 +330,7 @@ function read(t: TypedCorrection): { body: CorrectionBody | null; date: string |
  */
 export function correctionFormProblems(
   typed: TypedCorrection,
-  ctx: { today: string; now?: number | null; day: CorrectableDay | null; known: boolean; correctable: MonthCorrectable | null; open: boolean; name?: string | null },
+  ctx: { today: string; now?: number | null; day: CorrectableDay | null; known: boolean; correctable: MonthCorrectable | null; open: boolean; name?: string | null; askFrom?: string | null },
 ): string[] {
   const { body, date, errors } = read(typed);
   if (!body || !date) return errors;
@@ -337,6 +343,7 @@ export function correctionFormProblems(
     shift: null,
     open: ctx.open,
     name: ctx.name ?? null,
+    askFrom: ctx.askFrom ?? null,
   }).filter((p) => ctx.known || !/ already| on record|There is no check-in/.test(p));
   if (ctx.correctable && !ctx.correctable.allowed && ctx.correctable.reason) {
     const i = problems.findIndex((p) => p.includes('payroll is'));

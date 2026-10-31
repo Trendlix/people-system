@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { AttendanceCorrectionView } from '../../../../lib/correction-types';
 import {
   askCorrectionHref,
+  CORRECTION_KIND_OPTIONS,
   correctionBack,
   correctionDecisionButton,
   correctionDoneText,
@@ -98,6 +99,14 @@ describe('a day on the attendance pages', () => {
     expect(dayCorrection({ date: DAY, status: 'absent' }, [], { allowed: false, reason: 'Approved' }, '2026-10-19', href)).toBeNull();
   });
 
+  // owner, 31 October 2026: "asking for correction is to be locked after 2 working days"
+  it('offers to ask only from the first day still open, on their own month', () => {
+    expect(dayCorrection({ date: DAY, status: 'worked' }, [], ok, '2026-10-19', href, '2026-10-13')).toBeNull();
+    expect(dayCorrection({ date: '2026-10-13', status: 'worked' }, [], ok, '2026-10-19', href, '2026-10-13')?.kind).toBe('ask');
+    // HR on someone's month: not held to it
+    expect(dayCorrection({ date: DAY, status: 'worked' }, [], ok, '2026-10-19', href, null)?.kind).toBe('ask');
+  });
+
   it('shows a correction of the day being decided instead', () => {
     const open = [{ id: 'c1', date: DAY, correctionKind: 'forgot_check_out' as const, status: 'with_hr' as const, checkIn: null, checkOut: null }];
     expect(dayCorrection({ date: DAY, status: 'worked' }, open, ok, '2026-10-19', href)).toEqual({ kind: 'open', id: 'c1', status: 'with_hr' });
@@ -130,6 +139,14 @@ describe('the form', () => {
     expect(correctionFormProblems(typed({ kind: 'forgot_check_in', checkIn: '9:00 AM' }), ctx)[0]).toContain('You checked in at 9:05 AM on 12/10/2026 already');
     // a day of another month than the one read: the API checks what is on record
     expect(correctionFormProblems(typed({ kind: 'forgot_check_in', checkIn: '9:00 AM' }), { ...ctx, known: false })).toEqual([]);
+  });
+
+  it('refuses live a day asked too late, and offers no "worked remotely" any more (official duty instead)', () => {
+    expect(correctionFormProblems(typed(), { ...ctx, askFrom: '2026-10-14' })).toEqual([
+      'It’s too late to ask to correct 12/10/2026: ask within 2 working days of the day. HR can still correct it for you.',
+    ]);
+    expect(correctionFormProblems(typed(), { ...ctx, askFrom: '2026-10-12' })).toEqual([]);
+    expect(CORRECTION_KIND_OPTIONS.map((o) => o.value)).toEqual(['forgot_check_in', 'forgot_check_out', 'wrong_time']);
   });
 
   // owner, 26 October 2026: "yes", a time not yet come refused, live as the other checks

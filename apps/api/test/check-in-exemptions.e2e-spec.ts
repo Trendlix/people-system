@@ -398,7 +398,11 @@ describe('People exempt from check-in (e2e)', () => {
     it('stays optional: the GPS lock refuses someone else off the check-in locations, never them, and nothing is flagged', async () => {
       await punch('ola', { kind: 'in', ...FAR }).expect(409);
       const today = (await api().get('/api/me/attendance/today').set('Cookie', sessions.tara).expect(200)).body;
-      expect(today).toMatchObject({ exemption: { startDate: TODAY, endDate: null }, gps: { locked: false }, network: { locked: false }, expectedText: EXEMPT_CHECK_IN_TEXT });
+      // never told they are exempt (owner, 31 October 2026: "dont show for the employee that he is exempted from checking
+      // in and out"): no lock refuses them, and the screen reads as anyone's
+      expect(today).toMatchObject({ exemption: null, gps: { locked: false }, network: { locked: false } });
+      expect(today.expectedText ?? '').not.toContain(EXEMPT_CHECK_IN_TEXT);
+      expect(today.expectedText ?? '').not.toMatch(/exempt/i);
       const kept = (await punch('tara', { kind: 'in', ...FAR }).expect(200)).body;
       expect(kept.punches.at(-1)).toMatchObject({ kind: 'in', flags: [] });
       expect(kept.day.flags).toEqual([]);
@@ -421,8 +425,14 @@ describe('People exempt from check-in (e2e)', () => {
     });
 
     it('ends now: today still exempt, ended once, audited', async () => {
-      const mine = (await api().get(`/api/employees/${ids.tara}/check-in-exemptions`).set('Cookie', sessions.tara).expect(200)).body;
-      expect(mine).toMatchObject({ canManage: false, current: { state: 'current', reason: `On the field team ${RUN}` } });
+      // the person themself sees none of it on their profile (owner, 31 October 2026), nor in their month
+      expect((await api().get(`/api/employees/${ids.tara}/check-in-exemptions`).set('Cookie', sessions.tara).expect(200)).body).toEqual({ periods: [], current: null, canManage: false, suggestedFrom: null });
+      const month = (await api().get('/api/attendance/me').set('Cookie', sessions.tara).expect(200)).body;
+      expect(month.person.exemptions).toEqual([]);
+      expect(month.person.figures.exemptDays).toBe(0);
+      expect(month.person.days.filter((d: { exempt?: boolean; compensatory?: boolean }) => d.exempt && !d.compensatory)).toEqual([]);
+      const mine = (await api().get(`/api/employees/${ids.tara}/check-in-exemptions`).set('Cookie', hr).expect(200)).body;
+      expect(mine).toMatchObject({ canManage: true, current: { state: 'current', reason: `On the field team ${RUN}` } });
       const ended = (await end(hr, mine.current.id).expect(200)).body;
       expect(ended).toMatchObject({ removed: false, exemption: { endDate: TODAY, state: 'current' } });
       expect(said(await end(hr, mine.current.id).expect(409))[0]).toContain('ended meanwhile');

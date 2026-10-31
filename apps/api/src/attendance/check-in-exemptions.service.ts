@@ -108,15 +108,19 @@ export class CheckInExemptionsService {
   }
 
   /**
-   * A person's exemptions on their profile, the newest first, and the current one: for HR, an Admin, the CEO, a Super
-   * Admin and the person themself; a C-level person's 404 for those who may not see them.
+   * A person's exemptions on their profile, the newest first, and the current one: for HR, an Admin, the CEO and a Super
+   * Admin; a C-level person's 404 for those who may not see them. The person themself (owner, 31 October 2026: "dont
+   * show for the employee that he is exempted from checking in and out"): none, so their profile shows nothing of it.
    */
   async ofEmployee(
     employeeId: string,
     user: SessionUser,
   ): Promise<{ periods: CheckInExemptionView[]; current: CheckInExemptionView | null; canManage: boolean; suggestedFrom: SuggestedExemptionStart | null }> {
     const self = (await this.confidential.selfId(user)) === employeeId;
-    if (!self && !actsAs(user.roles, ['hr', 'admin', 'ceo'])) throw new NotFoundException(PERSON_NOT_FOUND);
+    if (!actsAs(user.roles, ['hr', 'admin', 'ceo'])) {
+      if (!self) throw new NotFoundException(PERSON_NOT_FOUND);
+      return { periods: [], current: null, canManage: false, suggestedFrom: null };
+    }
     await this.confidential.assertVisible(user, employeeId, PERSON_NOT_FOUND);
     const person = await this.prisma.employee.findUnique({ where: { id: employeeId }, select: { id: true, employments: START_EMPLOYMENT } });
     if (!person) throw new NotFoundException(PERSON_NOT_FOUND);

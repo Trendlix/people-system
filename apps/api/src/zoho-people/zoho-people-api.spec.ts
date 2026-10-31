@@ -202,13 +202,14 @@ describe('Zoho People: a day’s entries as the import’s day', () => {
     expect(read({ firstIn: '2026-10-26 09:55:00', entries: [{ checkIn: 'whenever' }] }, '2026-10-26')).toEqual({ kind: 'unreadable', message: '1 of Zoho People’s times on 2026-10-26 couldn’t be read: Zoho sent “whenever”.' });
   });
 
-  it('counts the pairs’ hours by the shift, the break between them not counted (the import’s rules)', () => {
+  it('counts its pairs by the shift from the first check-in to the last check-out, the break included (the import’s rules)', () => {
     const r = read(sample, '2026-03-03');
     if (r.kind !== 'day') throw new Error(r.kind);
     const shift = { startTime: '09:00', endTime: '19:00', hoursPerDay: 9, graceMinutes: 15, workingDays: [0, 1, 2, 3, 4] };
     const base = { month: '2026-03', shift, holidays: [], leaveDays: [], employedFrom: '2026-01-01', employedTo: null, systemPermissionHours: 0, permissionHoursPerMonth: 4 };
     const byPairs = attendanceMonth({ ...base, days: [r.day.day] });
-    expect(byPairs.days[0]).toMatchObject({ status: 'worked', hoursCounted: 8 });
+    // 9:00 to 1:00 PM and 2:00 to 6:00 PM: 9 hours, the break included (owner, 31 October 2026: "9:00, break included")
+    expect(byPairs.days[0]).toMatchObject({ status: 'worked', hoursCounted: 9 });
     // the Excel export's day (no pairs): first to last, at most the shift's 9 hours, as before
     const { pairs: _pairs, ...firstLast } = r.day.day;
     expect(attendanceMonth({ ...base, days: [firstLast as ImportedDay] }).days[0]).toMatchObject({ hoursCounted: 9 });

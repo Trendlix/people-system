@@ -45,6 +45,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { AttendanceDaysService, shiftTimesOf } from './attendance-days.service.js';
 import { AttendanceFillService } from './attendance-fill.service.js';
 import { CorrectionDaysService } from './correction-days.service.js';
+import { correctionAskFromFor } from './correction-window.js';
 import { CORRECTION_ENTITY, CORRECTION_INCLUDE, correctionParties, correctionView, type AttendanceCorrectionView, type CorrectionRow, type DayBefore } from './correction-views.js';
 import type { CreateCorrectionDto, ListCorrectionsDto, RecordCorrectionDto } from './corrections.dto.js';
 
@@ -79,7 +80,8 @@ export interface MonthCorrectable {
 // Attendance corrections (owner, 19 October 2026, "Proceed with those": "Attendance corrections with approval ("I forgot
 // to check out")"). An employee asks to correct a day of theirs from My Attendance → the day → Ask for a correction: what
 // was wrong, the right times and why (packages/shared correctionProblems: a day gone by or today, a month whose payroll
-// isn't approved, no correction of the day already being decided, not a day of leave, what each kind needs), under the
+// isn't approved, asked within 2 working days of the day (owner, 31 October 2026: "locked after 2 working days";
+// correction-window.ts), no correction of the day already being decided, not a day of leave, what each kind needs), under the
 // employment the day is in (not a freelancer's). Decided exactly as leave is (leave/access.ts): their direct manager, else
 // their team lead, else their department's head, never themself, then HR; nobody in charge: straight to HR; a C-level
 // person's HR stage by the CEO (owner, 19 October 2026: "make C level Employees details not visible to HR"). The employee
@@ -293,7 +295,7 @@ export class AttendanceCorrectionsService {
     const employment = await this.prisma.employment.findFirst({
       where: { employeeId, joinDate: { lte: toDateOnly(dto.date) }, OR: [{ endDate: null }, { endDate: { gte: toDateOnly(dto.date) } }] },
       orderBy: { joinDate: 'desc' },
-      select: { id: true, employmentType: true, managerId: true, departmentId: true, employee: { select: { fullNameEn: true } } },
+      select: { id: true, employmentType: true, managerId: true, departmentId: true, employee: { select: { fullNameEn: true } }, shift: { select: { workingDays: true } } },
     });
     const name = byHr ? (employment?.employee.fullNameEn ?? null) : null;
     if (!employment) {
@@ -303,6 +305,8 @@ export class AttendanceCorrectionsService {
       throw new BadRequestException([`${name ? `${name} works` : 'You work'} freelance: freelance work is outside the labour law and its working hours, so there is no attendance to correct.`]);
     }
     const approver = byHr ? null : await approverFor(this.prisma, { employeeId, managerId: employment.managerId, departmentId: employment.departmentId });
+    // an employee's own only within 2 working days of the day (owner, 31 October 2026); HR's directly, any day
+    const askFrom = byHr ? null : await correctionAskFromFor(this.prisma, employeeId, employment.shift?.workingDays ?? null, todayInCairo());
     const status: LeaveStatus = byHr ? 'approved' : firstLeaveStatus(!!approver);
     const date = dto.date;
     const month = date.slice(0, 7);
@@ -317,7 +321,7 @@ export class AttendanceCorrectionsService {
       const shown = person?.days.find((d) => d.date === date) ?? null;
       const day: CorrectableDay | null = shown && { ...shown };
       const shift = person?.employment?.shift ? shiftTimesOf(person.employment.shift) : null;
-      const problems = correctionProblems(dto, { today: todayInCairo(), now: Date.now(), runStatus, day, shift, open: open > 0, name });
+      const problems = correctionProblems(dto, { today: todayInCairo(), now: Date.now(), runStatus, day, shift, open: open > 0, name, askFrom });
       if (!problems.length && byHr) {
         const refusal = correctionApplyRefusal(date, runStatus);
         if (refusal) problems.push(refusal);

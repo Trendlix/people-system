@@ -169,7 +169,7 @@ async function Gate({ searchParams }: { searchParams: PageProps<'/organization/z
     <div className="space-y-6">
       <p className="max-w-3xl text-sm text-muted">
         Zoho People’s check-ins and check-outs come into the system’s attendance as Zoho People’s days, the way its Excel import brings them: every night for
-        yesterday, and for earlier days with Fetch from Zoho. Each day counts its check-in → check-out pairs by the person’s shift; what was checked in on the system,
+        yesterday, and for earlier days with Fetch from Zoho. Each day counts from its first check-in to its last check-out by the person’s shift, breaks included; what was checked in on the system,
         HR’s corrections and the payroll already with the CEO, approved or paid are never changed.
       </p>
       {banner && (

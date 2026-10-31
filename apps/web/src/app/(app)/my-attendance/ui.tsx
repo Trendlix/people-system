@@ -14,7 +14,7 @@ import { dayBalance, dayLabel, figureColumns, glanceOf, type GlanceKind } from '
 // month switch in a pill, the month at a glance, the month's figures as cards, and the days as the design's table. No
 // hooks, nothing server-only.
 
-const TONE = { danger: 'text-danger', warn: 'text-warn' } as const;
+const TONE = { danger: 'text-danger', warn: 'text-warn', ok: 'text-ok' } as const;
 const NONE = <span className="text-muted">—</span>;
 
 /** The month, with the month before and after a click away, in the design's pill (real links; the month is said in full). */
@@ -90,7 +90,7 @@ export function MonthGlance({ month, daysWorked, days, className = '' }: { month
 }
 
 /** The month's figures as the design's cards: what it is, the figure, a note at the foot (in its colour when it needs a look). */
-export function FigureCards({ tiles, label }: { tiles: FigureTile[]; label: string }) {
+export function FigureCards({ tiles, label }: { tiles: (Omit<FigureTile, 'tone'> & { tone: keyof typeof TONE | null })[]; label: string }) {
   return (
     <dl
       aria-label={label}

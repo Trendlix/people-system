@@ -2,6 +2,7 @@ import {
   correctedDay,
   correctedFromText,
   correctionApplyRefusal,
+  correctionAskFrom,
   correctionMoments,
   correctionProblems,
   correctionTimesText,
@@ -66,8 +67,10 @@ describe('asking for a correction', () => {
     ]);
     expect(correctionProblems(ask({ kind: 'wrong_time', checkIn: '09:05', checkOut: null }), ctx())).toEqual(['Those are the times on record for 12/10/2026 already.']);
     expect(correctionProblems(ask({ kind: 'wrong_time', checkIn: '08:55', checkOut: null }), ctx())).toEqual([]);
-    expect(correctionProblems(ask({ kind: 'worked_remotely', checkOut: null }), ctx({ day: null }))).toEqual(['Enter the time you started work on 12/10/2026.']);
-    expect(correctionProblems(ask({ kind: 'worked_remotely', checkIn: null, checkOut: null }), ctx())).toEqual([]);
+    // work away from the office is official duty now (owner, 31 October 2026: "Remove it, point to OD")
+    const away = 'Working away from the office (at a client, a shoot, an errand) is official duty: ask for official duty instead, or work from home for a day at home.';
+    expect(correctionProblems(ask({ kind: 'worked_remotely', checkOut: null }), ctx({ day: null }))).toEqual([away]);
+    expect(correctionProblems(ask({ kind: 'worked_remotely', checkIn: null, checkOut: null }), ctx())).toEqual([away]);
   });
 
   it('needs the check-out after the check-in, a night shift’s on the next morning', () => {
@@ -172,5 +175,45 @@ describe('the day a correction makes', () => {
     expect(correctionApplyRefusal(DAY, 'draft')).toBeNull();
     expect(correctionApplyRefusal(DAY, 'pending_ceo')).toBe('The October 2026 payroll is with the CEO, so the correction would miss it: ask the CEO to return it to HR, then approve the correction.');
     expect(correctionApplyRefusal(DAY, 'approved')).toBe("The October 2026 payroll is approved, so its days can't be corrected any more.");
+  });
+});
+
+// Asking within 2 working days of the day (owner, 31 October 2026: "asking for correction is to be locked after 2 working
+// days, i cant ask for correction after a week for example"). October 2026: the 1st is a Thursday; Sunday to Thursday.
+describe('the time to ask for a correction', () => {
+  const SUN_TO_THU = [0, 1, 2, 3, 4];
+
+  it('is the day itself and until the end of the 2nd working day after it', () => {
+    // Thursday 29th: Tuesday 27th has Wednesday between them (1), Monday 26th has Tuesday and Wednesday (2): closed
+    expect(correctionAskFrom('2026-10-29', SUN_TO_THU)).toBe('2026-10-27');
+    // Sunday 1 November: Wednesday 28th has only Thursday between (the weekend isn't worked): open; Tuesday 27th closed
+    expect(correctionAskFrom('2026-11-01', SUN_TO_THU)).toBe('2026-10-28');
+    // Monday 2 November: Thursday 29th (Sunday between) open, Wednesday 28th (Thursday and Sunday between) closed
+    expect(correctionAskFrom('2026-11-02', SUN_TO_THU)).toBe('2026-10-29');
+    // Tuesday 3 November: Thursday 29th (and the weekend after it) has Sunday and Monday between: closed; Sunday open
+    expect(correctionAskFrom('2026-11-03', SUN_TO_THU)).toBe('2026-11-01');
+  });
+
+  it('skips the official holidays and their own leave, and reads Sunday to Thursday when no shift is known', () => {
+    // Monday 2 November with Sunday a holiday: Wednesday 28th has only Thursday between it and today
+    expect(correctionAskFrom('2026-11-02', SUN_TO_THU, ['2026-11-01'])).toBe('2026-10-28');
+    // a week of leave after a Thursday: back on Sunday 8 November, that Thursday is still open
+    const leave = ['2026-11-01', '2026-11-02', '2026-11-03', '2026-11-04', '2026-11-05'];
+    expect(correctionAskFrom('2026-11-08', SUN_TO_THU, leave)).toBe('2026-10-28');
+    expect(correctionAskFrom('2026-11-03', null)).toBe('2026-11-01');
+  });
+
+  it('follows the shift: a Saturday-to-Wednesday week', () => {
+    // Thursday 29th: Tuesday 27th has Wednesday between (1) and is open; Monday 26th is closed
+    expect(correctionAskFrom('2026-10-29', [6, 0, 1, 2, 3])).toBe('2026-10-27');
+    // Sunday 1 November: Wednesday 28th has Saturday between (1), Tuesday 27th has Wednesday and Saturday (2)
+    expect(correctionAskFrom('2026-11-01', [6, 0, 1, 2, 3])).toBe('2026-10-28');
+  });
+
+  it('refuses an employee’s day asked too late, and HR’s direct correction has no such check', () => {
+    const late = correctionProblems({ date: '2026-10-12', kind: 'forgot_check_out', checkOut: '18:30', reason: 'Client meeting' }, ctx({ askFrom: '2026-10-15' }));
+    expect(late).toEqual(['It’s too late to ask to correct 12/10/2026: ask within 2 working days of the day. HR can still correct it for you.']);
+    expect(correctionProblems({ date: '2026-10-15', kind: 'forgot_check_out', checkOut: '18:30', reason: 'Client meeting' }, ctx({ askFrom: '2026-10-15', day: worked({ checkIn: at('09:05', '2026-10-15') }) }))).toEqual([]);
+    expect(correctionProblems({ date: '2026-10-12', kind: 'forgot_check_out', checkOut: '18:30', reason: 'Client meeting' }, ctx({ askFrom: null }))).toEqual([]);
   });
 });

@@ -457,8 +457,9 @@ describe('the check-in counter', () => {
   });
 });
 
-// A day as the sum of its pairs (owner, 25 October 2026: "the working hours to be calculated between the checkin and out
-// only, not the first and last"; "Count the closed pairs, flag the open one"), on the MORNING shift as above.
+// A day kept as its pairs (owner, 25 October 2026: "Count the closed pairs, flag the open one"), counted from its first
+// check-in to its last check-out, the breaks included (owner, 31 October 2026: "9:00, break included"), on the MORNING
+// shift as above.
 describe('today’s pairs on the panel and the counter', () => {
   const DATE = '2026-10-20';
   const at = (time: string) => Date.parse(`${DATE}T${time}+03:00`);
@@ -474,7 +475,8 @@ describe('today’s pairs on the panel and the counter', () => {
   it('says today so far as its pairs, the break and a check-in since', () => {
     const day = viewAfter(['in', '09:02'], ['out', '13:10'], ['in', '14:00'], ['out', '18:05']).day!;
     expect(dayTimesText(day)).toBe('9:02 AM–1:10 PM · 2:00 PM–6:05 PM');
-    expect(dayHoursText(day)).toBe('8:13 counted');
+    // 9:02 AM to 6:05 PM with the break: 9:03, at most the shift's 9
+    expect(dayHoursText(day)).toBe('9:00 counted');
     expect(dayBreakText(day)).toBe('Break 50 min');
     const open = viewAfter(['in', '09:00'], ['out', '13:00'], ['in', '14:00']).day!;
     expect(dayTimesText(open)).toBe('9:00 AM–1:00 PM · 2:00 PM → not checked out yet');
@@ -486,30 +488,30 @@ describe('today’s pairs on the panel and the counter', () => {
     expect(dayBreakText(viewAfter(['in', '09:05'], ['out', '17:10']).day!)).toBeNull();
   });
 
-  it('counts the closed pairs and the time since the last check-in, never the break', () => {
+  it('counts from the first check-in, the break included (31 October 2026)', () => {
     const view = viewAfter(['in', '09:00'], ['out', '13:00'], ['in', '14:00']);
     expect(counterShows(view, at('16:30:00'))).toEqual({
       kind: 'live',
-      value: '6:30:00',
-      note: 'Counting since 2:00 PM, with 4:00 from earlier today; the break isn’t counted',
-      status: 'Your 9 hours are done at 7:00 PM',
+      value: '7:30:00',
+      note: 'Counting from your first check-in at 9:00 AM, your break included',
+      status: 'Your 9 hours are done at 6:00 PM',
     });
     // as the API counts the day once they check out at that moment
     const out = dayFromPunches(DATE, pressesOf(['in', '09:00'], ['out', '13:00'], ['in', '14:00'], ['out', '16:30']), MORNING);
-    expect(out.hoursCounted).toBe(6.5);
+    expect(out.hoursCounted).toBe(7.5);
   });
 
-  it('stops at the hours to work and at the window’s end, with the pairs before', () => {
-    const view = viewAfter(['in', '09:00'], ['out', '13:00'], ['in', '14:00'], ['out', '18:00'], ['in', '18:30']);
-    // 8 hours counted already, the 9th can't be done by 7:15 PM
+  it('stops at the hours to work and at the window’s end, the breaks included', () => {
+    // in late at 10:30: the 9 hours can't be done by 7:15 PM
+    const view = viewAfter(['in', '10:30'], ['out', '13:00'], ['in', '14:00'], ['out', '18:00'], ['in', '18:30']);
     expect(counterShows(view, at('19:00:00'))).toMatchObject({ kind: 'live', value: '8:30:00', status: 'Hours count until 7:15 PM' });
     expect(counterShows(view, at('19:40:00'))).toMatchObject({ kind: 'live', value: '8:45:00', status: 'Hours counted until 7:15 PM' });
     // done before the break was over: the hours to work, no more
     const long = viewAfter(['in', '08:00'], ['out', '17:30'], ['in', '18:00']);
     expect(long.day!.hoursCounted).toBe(8.5);
     expect(counterShows(long, at('18:45:00'))).toMatchObject({ kind: 'live', value: '9:00:00', status: 'Your 9 hours are done' });
-    // once checked out: the day's total, its pairs together
-    expect(counterShows(viewAfter(['in', '09:00'], ['out', '13:00'], ['in', '14:00'], ['out', '18:00']), at('18:30:00'))).toEqual({ kind: 'total', text: 'Worked 8:00 today' });
+    // once checked out: the day's total, its break included
+    expect(counterShows(viewAfter(['in', '09:00'], ['out', '13:00'], ['in', '14:00'], ['out', '18:00']), at('18:30:00'))).toEqual({ kind: 'total', text: 'Worked 9:00 today' });
   });
 
   it('counts a closed pair from the time before, as checkInCount’s `before`', () => {

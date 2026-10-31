@@ -119,17 +119,16 @@ describe('the rules by work arrangement', () => {
 describe('a day from its punches', () => {
   const day = '2026-10-18';
 
-  it('is the sum of its check-in → check-out pairs, the first check-in and the last check-out kept, by the shift’s rule with the grace', () => {
-    // in at 10:15, out for lunch at 13:00, back at 14:00, out at 19:20 (owner, 25 October 2026: "the working hours to be
-    // calculated between the checkin and out only, not the first and last"): 10:15–13:00 and 14:00–19:15 (the window's
-    // end with the grace), 8 hours, the hour's break not counted
+  it('is from its first check-in to its last check-out, the break included, its pairs kept, by the shift’s rule with the grace', () => {
+    // in at 10:15, out for lunch at 13:00, back at 14:00, out at 19:20 (owner, 31 October 2026: "9:00, break included"):
+    // 10:15 to 19:15 (the window's end with the grace), 9 hours, the hour's break counted; its pairs kept (25 October)
     const d = dayFromPunches(day, [punch('in', day, '10:15'), punch('out', day, '13:00'), punch('in', day, '14:00', { place: 'remote' }), punch('out', day, '19:20')], MORNING);
     expect(d).toEqual({
       checkIn: at(day, '10:15'),
       checkOut: at(day, '19:20'),
       place: 'office',
       flags: [],
-      hoursCounted: 8,
+      hoursCounted: 9,
       pairs: [
         { in: at(day, '10:15'), out: at(day, '13:00') },
         { in: at(day, '14:00'), out: at(day, '19:20') },
@@ -183,7 +182,7 @@ describe('a day from its punches', () => {
       'You were checked in already since 9:05 AM: this check-in is kept too, and your day still starts at 9:05 AM.',
     );
     expect(punchMessages({ ...punch('in', day, '14:00'), flags: [] }, [punch('in', day, '09:05'), punch('out', day, '13:00')])[1]).toBe(
-      'Checked in again: your day still starts at 9:05 AM; the time since your last check-out is a break, not counted.',
+      'Checked in again: your day still starts at 9:05 AM; the time since your last check-out is a break, counted in your hours.',
     );
     // still in since the last check-in after a pair (25 October 2026): since then, the day still starting at the first
     expect(punchMessages({ ...punch('in', day, '14:30'), flags: [] }, [punch('in', day, '09:05'), punch('out', day, '13:00'), punch('in', day, '14:00')])[1]).toBe(

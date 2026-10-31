@@ -164,8 +164,9 @@ export function shiftWindowOn(day: string, shift: ShiftWindowTimes, timeZone = '
  * October 2026: "i have a window the employee have to fill 9 hours within the window": coming early or staying late
  * adds nothing; shiftWindowOn; none given: not clipped), in whole minutes, never more than `mostHours` (the shift's:
  * mostHoursCountedADay; null: no shift, or a shift that counts hours until a time, owner, 20 October 2026: not capped,
- * the window's end its limit), never below 0. 0 when either isn't a moment. One pair of hoursCountedForPresses (owner,
- * 25 October 2026: a day is the sum of its check-in → check-out pairs), which every day's hours are counted with.
+ * the window's end its limit), never below 0. 0 when either isn't a moment. One pair of hoursCountedForPresses (a day
+ * from its first check-in to its last check-out, its breaks counted: owner, 31 October 2026), which every day's hours
+ * are counted with.
  */
 export function hoursCountedForDay(
   checkIn: Date | string,
@@ -183,13 +184,17 @@ export function hoursCountedForDay(
   );
 }
 
-// ---------- a day's check-in → check-out pairs (owner, 25 October 2026) ----------
+// ---------- a day's check-in → check-out pairs (owner, 25 October 2026; its hours, 31 October 2026) ----------
 // The owner, 25 October 2026: "on checkin and out several ttimes, the working hours to be calculated between the checkin
-// and out only, not the first and last"; asked, "Count the closed pairs, flag the open one": a day's hours are the sum
-// of its finished check-in → check-out pairs, each within the shift's window, the sum at most the shift's hours a day;
-// the time between the pairs (a break) isn't counted; a last check-in without a check-out pairs with nothing yet and is
-// the day's open press, its check-out missing for HR to correct (attendance-days.ts). The day's check-in stays its first
-// check-in (lateness by it, as before) and its check-out its last check-out.
+// and out only, not the first and last"; asked, "Count the closed pairs, flag the open one": a day is kept as its
+// finished check-in → check-out pairs; a last check-in without a check-out pairs with nothing yet and is the day's open
+// press, its check-out missing for HR to correct (attendance-days.ts). The day's check-in stays its first check-in
+// (lateness by it, as before) and its check-out its last check-out. Its hours since 31 October 2026 (owner, asked about
+// a day in at 9:00, out at 13:00, in at 14:00, out at 18:00: "9:00, break included"; "dont calculate breaks, they are
+// included in the working hours"): from its first check-in to its last finished check-out (workSpanOf), the breaks
+// between the pairs counted as work, within the shift's window (owner: "the shift is flexible, the employee has to achive
+// 9 hours in the applicable checkin window"), at most the shift's hours a day. An open last check-in still adds nothing
+// past the last finished check-out. The break (breakMinutesOf) is kept to show, no longer taken off.
 
 /** A press as the pairing reads it: a check-in or a check-out, and its moment (a Date, an ISO string, milliseconds). */
 export interface PressMoment {
@@ -266,11 +271,24 @@ export function spanHours(spans: readonly TimeSpan[], window: ShiftWindow | null
 }
 
 /**
- * The hours a day counts from its presses (owner, 25 October 2026: "the working hours to be calculated between the
- * checkin and out only, not the first and last"): its finished check-in → check-out pairs (pairPresses), each within the
- * shift's window that day (shiftWindowOn; none given: not clipped), summed in whole minutes, never more than `mostHours`
- * (the shift's: mostHoursCountedADay; null: not capped). An open last check-in counts nothing. `alsoSpans`: other time
- * that counts as worked that day (part of a day of official duty, official-duty.ts), its overlap with the pairs once.
+ * The time a day of pairs counts as worked (owner, 31 October 2026: "9:00, break included"; "dont calculate breaks, they
+ * are included in the working hours"): one span from its first check-in to its last finished check-out, the breaks
+ * between the pairs inside it; none without a finished pair. What it counts is then clipped to the shift's window and
+ * capped (spanHours), as any day's.
+ */
+export function workSpanOf(pairs: readonly TimeSpan[]): TimeSpan[] {
+  const finished = pairs.filter((p) => Number.isFinite(p.from) && Number.isFinite(p.to) && p.to >= p.from);
+  if (!finished.length) return [];
+  return [{ from: Math.min(...finished.map((p) => p.from)), to: Math.max(...finished.map((p) => p.to)) }];
+}
+
+/**
+ * The hours a day counts from its presses (owner, 31 October 2026: "9:00, break included"): from the first check-in of
+ * its finished check-in → check-out pairs (pairPresses) to the last finished check-out (workSpanOf), the breaks counted,
+ * within the shift's window that day (shiftWindowOn; none given: not clipped), in whole minutes, never more than
+ * `mostHours` (the shift's: mostHoursCountedADay; null: not capped). An open last check-in adds nothing past the last
+ * finished check-out. `alsoSpans`: other time that counts as worked that day (part of a day of official duty,
+ * official-duty.ts), its overlap with the day's span once.
  */
 export function hoursCountedForPresses(
   presses: readonly PressMoment[],
@@ -278,12 +296,13 @@ export function hoursCountedForPresses(
   window: ShiftWindow | null = null,
   alsoSpans: readonly TimeSpan[] = [],
 ): number {
-  return spanHours([...pairPresses(presses).pairs, ...alsoSpans], window, mostHours);
+  return spanHours([...workSpanOf(pairPresses(presses).pairs), ...alsoSpans], window, mostHours);
 }
 
 /**
  * The break of a day (owner, 25 October 2026): the time between its pairs (and between its last pair and an open last
- * check-in), within the shift's window (none: not clipped), to the nearest minute; 0 with one pair or none.
+ * check-in), within the shift's window (none: not clipped), to the nearest minute; 0 with one pair or none. Shown only:
+ * since 31 October 2026 it counts in the day's hours (owner: "they are included in the working hours").
  */
 export function breakMinutesOf(pairs: readonly TimeSpan[], open: number | null, window: ShiftWindow | null = null): number {
   const sorted = [...pairs].sort((a, b) => a.from - b.from);

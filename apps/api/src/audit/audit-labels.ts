@@ -437,9 +437,9 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   // call on a shortlisted applicant, passed or failed (its comment never in words)
   screening_call: 'Recorded the screening call',
   read_again: 'Read the CV again',
-  // a day as the sum of its pairs (owner, 25 October 2026: "the working hours to be calculated between the checkin and
-  // out only, not the first and last"): the days of the months not yet paid recounted once
-  recount_hours: 'Recounted the hours by check-in → check-out pairs',
+  // the days of the months not yet paid recounted on deploy: by their pairs (owner, 25 October 2026), from the first
+  // check-in to the last check-out with the breaks counted since 31 October 2026 (owner: "9:00, break included")
+  recount_hours: 'Recounted the hours from check-ins and check-outs',
   // approved work from home days counted full (owner, 26 October 2026: "Full day, always"): the draft lines refilled once
   refill_wfh_days: 'Refilled the draft payroll lines for approved work from home days',
   // Recount past days on the current shifts (owner, 26 October 2026)

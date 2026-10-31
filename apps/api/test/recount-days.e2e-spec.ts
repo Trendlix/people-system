@@ -141,7 +141,7 @@ describe('Recount past days (e2e)', () => {
 
   it('previews what would change and lists the month skipped, writing nothing', async () => {
     const res = await previewOf({ ...range, shiftId }).expect(200);
-    expect(res.body).toMatchObject({ months: [DRAFT], skipped: [{ month: APPROVED, status: 'approved' }], days: 4, people: 3, zohoDays: 2, daysChanged: 4, hoursChanged: 3, hoursBefore: 31, hoursAfter: 35 });
+    expect(res.body).toMatchObject({ months: [DRAFT], skipped: [{ month: APPROVED, status: 'approved' }], days: 4, people: 3, zohoDays: 2, daysChanged: 4, hoursChanged: 3, hoursBefore: 31, hoursAfter: 37 });
     expect((await rowOf('sys', day(DRAFT, 3), 'system')).hoursCounted.toNumber()).toBe(9);
     expect((await rowOf('zx', day(DRAFT, 3), 'zoho')).hoursCounted.toNumber()).toBe(9);
     expect(await prisma.auditLog.count({ where: { action: 'recount_past_days', diff: { path: ['from'], equals: APPROVED } } })).toBe(0);
@@ -152,10 +152,10 @@ describe('Recount past days (e2e)', () => {
     const res = await recount({ ...range, shiftId }).expect(200);
     expect(res.body).toMatchObject({ months: [DRAFT], skipped: [{ month: APPROVED, status: 'approved' }], days: 4, daysChanged: 4, hoursChanged: 3, correctedDays: 1 });
     const a = day(DRAFT, 3);
-    // 9:00–13:00 and 14:00–21:00 until 8:00 PM: 4 + 6
-    expect((await rowOf('sys', a, 'system')).hoursCounted.toNumber()).toBe(10);
+    // 9:00–13:00 and 14:00–21:00: 9:00 to 8:00 PM, the break included (owner, 31 October 2026: "9:00, break included")
+    expect((await rowOf('sys', a, 'system')).hoursCounted.toNumber()).toBe(11);
     const zp = await rowOf('zp', a, 'zoho');
-    expect(zp.hoursCounted.toNumber()).toBe(10);
+    expect(zp.hoursCounted.toNumber()).toBe(11);
     expect(zp.breakMinutes).toBe(60);
     expect(zp.checkIn).toEqual(at(a, '09:00'));
     expect(zp.checkOut).toEqual(at(a, '21:00'));
@@ -163,12 +163,12 @@ describe('Recount past days (e2e)', () => {
     expect((await rowOf('zx', a, 'zoho')).hoursCounted.toNumber()).toBe(11);
     // the other shift untouched
     expect((await rowOf('oth', a, 'system')).hoursCounted.toNumber()).toBe(9);
-    // the corrected day made again over it: 4 + 6
-    expect((await rowOf('sys', day(DRAFT, 4), 'correction')).hoursCounted.toNumber()).toBe(10);
-    // the line of someone who checks in on the system is filled from their days: 10 + the corrected day's 10 (a person with
+    // the corrected day made again over it: 9:00 to 8:00 PM, the break included
+    expect((await rowOf('sys', day(DRAFT, 4), 'correction')).hoursCounted.toNumber()).toBe(11);
+    // the line of someone who checks in on the system is filled from their days: 11 + the corrected day's 11 (a person with
     // only Zoho's days has their line filled from an import, as before)
-    expect((await lineOf(DRAFT, 'sys')).inputs.workedHours).toBe(20);
-    expect(before.inputs.workedHours).not.toBe(20);
+    expect((await lineOf(DRAFT, 'sys')).inputs.workedHours).toBe(22);
+    expect(before.inputs.workedHours).not.toBe(22);
     // the approved month as it was
     expect((await rowOf('zp', day(APPROVED, 3), 'zoho')).hoursCounted.toNumber()).toBe(9);
   });
@@ -176,12 +176,12 @@ describe('Recount past days (e2e)', () => {
   it('is audited once with its scope and counts', async () => {
     const logged = await prisma.auditLog.findMany({ where: { action: 'recount_past_days', userId: hrUserId } });
     expect(logged).toHaveLength(1);
-    expect(logged[0].diff).toMatchObject({ from: APPROVED, to: DRAFT, shiftId, months: [DRAFT], monthsSkipped: [{ month: APPROVED, status: 'approved' }], daysRecounted: 4, daysWritten: 4, daysChanged: 3, hoursBefore: 31, hoursAfter: 35 });
+    expect(logged[0].diff).toMatchObject({ from: APPROVED, to: DRAFT, shiftId, months: [DRAFT], monthsSkipped: [{ month: APPROVED, status: 'approved' }], daysRecounted: 4, daysWritten: 4, daysChanged: 3, hoursBefore: 31, hoursAfter: 37 });
   });
 
   it('run again changes nothing', async () => {
     const res = await recount({ ...range, shiftId }).expect(200);
-    expect(res.body).toMatchObject({ days: 4, daysChanged: 0, hoursChanged: 0, linesRefilled: 0, hoursBefore: 35, hoursAfter: 35 });
+    expect(res.body).toMatchObject({ days: 4, daysChanged: 0, hoursChanged: 0, linesRefilled: 0, hoursBefore: 37, hoursAfter: 37 });
     expect((await rowOf('zx', day(DRAFT, 3), 'zoho')).hoursCounted.toNumber()).toBe(11);
   });
 

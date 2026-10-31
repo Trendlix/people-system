@@ -348,6 +348,12 @@ export const MY_TEAM = '/my-team';
 export const MY_ATTENDANCE = '/my-attendance';
 
 /**
+ * The company's assets the employee holds and their custody records (app/(app)/my-custody; owner, 31 October 2026:
+ * "every employee sees his assets").
+ */
+export const MY_ASSETS = CUSTODY_PATHS.mine;
+
+/**
  * Who the sidebar is for: their roles, their own employee profile (none: null; an API from before it: left out),
  * whether they lead a department or a team (`leads`; left out by an API from before it), and their Assets access
  * (`assets`, 21 October 2026; left out by an API from before it: none).
@@ -369,10 +375,18 @@ export const decidesForTeam = (user: Pick<NavUser, 'roles' | 'leads'>) => hasRol
 export const myAttendanceInMenu = (user: NavUser): boolean => !!user.employeeId && !isSelfService(user);
 
 /**
+ * Whether the user menu links to My Assets (owner, 31 October 2026: "every employee sees his assets"): HR, Finance, the
+ * CEO and Admins with an employee profile hold the company's assets too, and their sidebar doesn't list it; an
+ * employee's or a manager's sidebar has it.
+ */
+export const myAssetsInMenu = (user: NavUser): boolean => !!user.employeeId && !isSelfService(user);
+
+/**
  * The sidebar of someone who is only an employee and/or a direct manager (isSelfService), as the owner suggested it (17
  * October 2026: "my suggestion for the employee side bar is 1- Dashboard 2- My Profile 3- My Requests"): their
  * dashboard (the home page), their own profile (when they have one) and their requests; their own attendance with
- * their profile (owner, 19 October 2026: "the attendance is not active in the side menu"); their KPIs (21 October 2026:
+ * their profile (owner, 19 October 2026: "the attendance is not active in the side menu"); the company's assets they hold
+ * (31 October 2026: "every employee sees his assets"); their KPIs (21 October 2026:
  * My KPIs, and Team KPIs for whoever scores a team's); a manager also My Team, their
  * direct reports, so they can reach their profiles (and their month's attendance). Nothing else: not Organization (the
  * owner: "dont show him the organization tab"), nor the Employees list or any HR page.
@@ -384,6 +398,8 @@ function selfServiceNav(user: NavUser): NavItem[] {
     ...(profile ? [{ href: profile, label: 'My Profile', section: profile }] : []),
     { href: MY_REQUESTS, label: 'My Requests', section: MY_REQUESTS },
     ...(profile ? [{ href: MY_ATTENDANCE, label: 'My Attendance', section: MY_ATTENDANCE }] : []),
+    // the company's assets they hold (owner, 31 October 2026: "every employee sees his assets")
+    ...(profile ? [{ href: MY_ASSETS, label: 'My Assets', section: MY_ASSETS }] : []),
     // their KPIs (owner, 21 October 2026): My KPIs with their profile, Team KPIs for whoever scores a team's
     ...shownWithItems(user, KPIS_NAV),
     // Assets, with an Assets access given on the Users page (owner, 21 October 2026: "3 levels per user")

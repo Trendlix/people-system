@@ -1,3 +1,4 @@
+import { CORRECTION_ASK_WORKING_DAYS, type AttendanceRates } from '@trendlix/shared';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { cache, Suspense } from 'react';
@@ -14,9 +15,8 @@ import { askCorrectionHref, MY_CORRECTIONS_HREF } from '../attendance/correction
 import { DayCorrectionCell } from '../attendance/corrections/day-cell';
 import { loadMine } from '../attendance/data';
 import { notLoaded } from '../attendance/not-loaded';
-import { ExemptionNote } from '../attendance/ui';
 import { TodayCheckIn } from './check-in-card';
-import { usualSource } from './my-days';
+import { rateTiles, usualSource } from './my-days';
 import { FigureCards, MonthGlance, MonthSwitch, MyDaysTable } from './ui';
 
 // My Attendance (owner, 19 October 2026: "the attendance is not active in the side menu"): the employee's own month, in
@@ -69,7 +69,7 @@ async function Mine({ searchParams }: { searchParams: Query }) {
   const loaded = await loadMonth(month);
   if (loaded.kind === 'unavailable') return <NoProfile user={user} />;
   if (loaded.kind !== 'ok') return <Empty>{notLoaded(loaded, 'attendance')}</Empty>;
-  const view = loaded.value as typeof loaded.value & MonthCorrectionsPart & { punches?: PunchRow[] };
+  const view = loaded.value as typeof loaded.value & MonthCorrectionsPart & { punches?: PunchRow[]; rates?: AttendanceRates | null };
   const p = view.person;
   const imported = view.sources.map((s) => s.appliedAt ?? s.createdAt).sort().at(-1);
   const today = todayInCairo();
@@ -79,9 +79,9 @@ async function Mine({ searchParams }: { searchParams: Query }) {
   const usual = usualSource(p.days.map(daySourceText));
   return (
     <div className="space-y-3">
-      {/* exempt from check-in (25 October 2026): the month's periods */}
-      <ExemptionNote periods={p.exemptions} self className="px-1" />
-      {p.days.length > 0 && <FigureCards label={`Your attendance in ${monthName(month)}`} tiles={figureTiles(p.figures, p)} />}
+      {/* the attendance rate through the month first (owner, 31 October 2026); never told they are exempt from check-in
+          (31 October 2026: the API leaves it out of their own month) */}
+      {p.days.length > 0 && <FigureCards label={`Your attendance in ${monthName(month)}`} tiles={[...rateTiles(view.rates), ...figureTiles(p.figures, p)]} />}
       <section aria-labelledby="my-days-heading" className="card p-[22px]">
         <PanelHead
           eyebrow={monthName(month)}
@@ -117,7 +117,7 @@ async function Mine({ searchParams }: { searchParams: Query }) {
                 usual={usual}
                 action={
                   corrections
-                    ? (d) => <DayCorrectionCell day={d} corrections={corrections} correctable={view.correctable} today={today} href={askCorrectionHref} label="Ask for a correction" />
+                    ? (d) => <DayCorrectionCell day={d} corrections={corrections} correctable={view.correctable} today={today} href={askCorrectionHref} label="Ask for a correction" askFrom={view.ask?.from ?? null} />
                     : undefined
                 }
               />
@@ -125,7 +125,7 @@ async function Mine({ searchParams }: { searchParams: Query }) {
             <div className="mt-4 space-y-1 text-xs text-muted">
               <p>
                 {corrections
-                  ? 'A day that isn’t right (a check-in or check-out forgotten, a time wrong, work away from the office)? Ask for a correction on its row: your manager, then HR, decide it.'
+                  ? `A day that isn’t right (a check-in or check-out forgotten, a time wrong)? Ask for a correction on its row, on the day or within ${CORRECTION_ASK_WORKING_DAYS} working days of it: your manager, then HR, decide it. Work away from the office is official duty.`
                   : 'Something wrong? Ask HR to check it.'}
               </p>
               {usual && <p>Where the days came from: {usual}, unless a day says otherwise.</p>}

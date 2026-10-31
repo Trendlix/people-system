@@ -1,7 +1,8 @@
 import type { INestApplication } from '@nestjs/common';
-import { zonedMoment } from '@trendlix/shared';
+import { correctionAskFrom, zonedMoment } from '@trendlix/shared';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
+import { vi } from 'vitest';
 import { addDays, fromDateOnly, todayInCairo, toDateOnly, weekday } from '../src/common/date-only.js';
 import { toTimeOfDay } from '../src/common/time-of-day.js';
 import { firstDay, lastDay, monthsLater } from '../src/payroll/months.js';
@@ -16,6 +17,14 @@ import { createApp, createUser, signIn } from './helpers.js';
 // from it, its hours counted again, the month's draft payroll line refilled, in the audit log; never while the month's
 // payroll is with the CEO. HR corrects a day directly. A correction of today takes a later check-out. These tests look
 // at their own people (names end with RUN) and delete what they made. Every name is invented.
+
+// These tests ask about days months gone by (each month's payroll in its own state), so the time to ask (owner, 31
+// October 2026: "locked after 2 working days"; correction-window.ts) is held open for them; 'the time to ask' tests it.
+const window = vi.hoisted(() => ({ open: true }));
+vi.mock('../src/attendance/correction-window.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('../src/attendance/correction-window.js')>();
+  return { ...real, correctionAskFromFor: (...args: Parameters<typeof real.correctionAskFromFor>) => (window.open ? Promise.resolve('2000-01-01') : real.correctionAskFromFor(...args)) };
+});
 
 const RUN = Date.now().toString(36).toLowerCase();
 const TODAY = todayInCairo();
@@ -301,9 +310,31 @@ describe('Attendance corrections (e2e)', () => {
     });
   });
 
+  describe('the time to ask', () => {
+    it('refuses a day after its 2nd working day, not one still open; work away from the office is official duty', async () => {
+      window.open = false;
+      try {
+        const holidays = (await prisma.holiday.findMany({ select: { date: true } })).map((h) => fromDateOnly(h.date));
+        const from = correctionAskFrom(TODAY, [0, 1, 2, 3, 4], holidays);
+        const late = said(await ask('rami', { date: addDays(from, -1), kind: 'forgot_check_in', checkIn: '09:00', reason: 'Forgot' }).expect(400));
+        expect(late).toEqual([`It’s too late to ask to correct ${addDays(from, -1).split('-').reverse().join('/')}: ask within 2 working days of the day. HR can still correct it for you.`]);
+        // the earliest day still open: refused for something else (no reason), never for the time
+        const open = said(await ask('rami', { date: from, kind: 'forgot_check_in', checkIn: '09:00' }).expect(400));
+        expect(open.join(' ')).not.toContain('too late');
+        // their month says from when they can ask
+        const mine = (await api().get(`/api/attendance/me?month=${CURRENT}`).set('Cookie', sessions.rami).expect(200)).body as { ask: { from: string; workingDays: number } | null };
+        expect(mine.ask).toEqual({ from, workingDays: 2 });
+      } finally {
+        window.open = true;
+      }
+      const away = said(await ask('rami', { date: work[PAST][4], kind: 'worked_remotely', checkIn: '10:00', reason: 'At the client' }).expect(400));
+      expect(away).toEqual(['Working away from the office (at a client, a shoot, an errand) is official duty: ask for official duty instead, or work from home for a day at home.']);
+    });
+  });
+
   describe('a C-level person’s', () => {
     it('is decided by the manager, then the CEO: HR doesn’t see it', async () => {
-      const res = (await ask('cleo', { date: work[PAST][3], kind: 'worked_remotely', checkIn: '10:00', checkOut: '19:00', reason: 'Board meeting at the client' }).expect(201)).body as Correction;
+      const res = (await ask('cleo', { date: work[PAST][3], kind: 'forgot_check_in', checkIn: '10:00', checkOut: '19:00', reason: 'Board meeting at the client' }).expect(201)).body as Correction;
       expect(res.confidential).toBe(true);
       await decide(res.id, sessions.mona, 'approve').expect(200);
       await api().get(`/api/attendance/corrections/${res.id}`).set('Cookie', hr).expect(404);

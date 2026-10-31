@@ -78,4 +78,15 @@ export interface MonthCorrectionsPart {
   corrections?: MonthCorrection[];
   correctable?: MonthCorrectable;
   canCorrect?: boolean;
+  /**
+   * On their own month (owner, 31 October 2026: "locked after 2 working days"): the days they can still ask to correct
+   * today, from `from` to today; null on someone else's, missing from an API from before it.
+   */
+  ask?: CorrectionAskWindow | null;
+}
+
+/** From when someone can still ask to correct a day: within `workingDays` working days of it. */
+export interface CorrectionAskWindow {
+  from: string;
+  workingDays: number;
 }

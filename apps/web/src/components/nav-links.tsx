@@ -13,6 +13,7 @@ import {
   MessageCircle,
   Network,
   Package,
+  PackageCheck,
   ScrollText,
   TrendingUp,
   User,
@@ -61,6 +62,8 @@ const ICONS: Record<string, LucideIcon> = {
   'My Profile': User,
   'My Requests': FileText,
   'My Attendance': CalendarDays,
+  // the company's assets they hold (31 October 2026), apart from the custodians' Assets
+  'My Assets': PackageCheck,
   'My Team': Users,
   KPIs: TrendingUp,
   Assets: Package,

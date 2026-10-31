@@ -69,9 +69,9 @@ import { appLocationRefusal, correctionLinkFor, requestPlaceHref } from './netwo
 // outside them says how far they are and links to ask for a correction; refused for where it was (outside them, or off
 // the office network) with a reading, "Request this place" (the same day: "allow the employee to request adding this
 // location to his profile") opens the request form with that reading handed over in the tab (lib/requested-place.ts).
-// A day as the sum of its pairs (owner, 25 October 2026: "the working hours to be calculated between the checkin and out
-// only, not the first and last"): today so far lists its pairs and its break, the counter counts the pairs' hours and the
-// time since the last check-in. Exempt from check-in today (owner, 25 October 2026: "Optional check-in"): an "Exempt"
+// A day kept as its pairs (owner, 25 October 2026: "Count the closed pairs, flag the open one"): today so far lists its
+// pairs and its break; the counter counts from the first check-in, the break included (owner, 31 October 2026: "9:00,
+// break included"; "dont calculate breaks, they are included in the working hours"). Exempt from check-in today (owner, 25 October 2026: "Optional check-in"): an "Exempt"
 // badge with the period, and that checking in is optional; the button stays, no lock is said.
 
 /** One card's press and what came of it: the view to show (the page's or the press's, the newer), the phase, the words. */
@@ -295,8 +295,8 @@ function DaySoFar({ view }: { view: CheckInTodayView }) {
       <div>
         <dt className="text-xs text-muted">Today so far</dt>
         <dd className="font-semibold tabular-nums">{dayTimesText(day)}</dd>
-        {/* the break between today's pairs (25 October 2026), not counted */}
-        {breakTime && <dd className="text-xs text-muted">{breakTime}, not counted</dd>}
+        {/* the break between today's pairs (25 October 2026), counted in the hours since 31 October 2026 */}
+        {breakTime && <dd className="text-xs text-muted">{breakTime}, counted in your hours</dd>}
         {day.place && <dd className="text-xs text-muted">{dayPlaceLabel(day, view.punches)}</dd>}
       </div>
       {/* with a check-in, the counter says the hours */}

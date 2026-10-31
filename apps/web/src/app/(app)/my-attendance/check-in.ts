@@ -40,9 +40,10 @@ import { weekdayOf } from '../organization/holidays/holidays';
 // against the office's, and keeps it with the press (owner, 20 October 2026: "Yes, keep the spot"), read only then and
 // never tracked; the panel says so, and today's list opens each press's own spot on a map. Pure code, tested: reading
 // the location, the press as the API takes it, and the panel's words. Relative imports: the tests run without "@/". A
-// day as the sum of its pairs (owner, 25 October 2026: "the working hours to be calculated between the checkin and out
-// only, not the first and last"): the panel lists today's pairs so far and their hours, and the counter counts them
-// with the time since the last check-in, never the break between them. A new employee's first day (owner, 27 October
+// day kept as its pairs (owner, 25 October 2026: "Count the closed pairs, flag the open one"): the panel lists today's
+// pairs so far, the break and their hours; the counter counts from the day's first check-in, the break included (owner,
+// 31 October 2026: "9:00, break included"; "dont calculate breaks, they are included in the working hours"), as the day
+// is counted. A new employee's first day (owner, 27 October
 // 2026: "a new employee when checked in in his first day move the checkin to 9am automatically to prevent delay in
 // instructions"; "Counted from the shift start"): the API says the day is their first (`firstDay`), the panel tells them
 // it counts from the shift's start whatever time they check in (firstDayNote), and the counter counts from it (CountRule
@@ -293,8 +294,8 @@ export function dayTimesText(day: Pick<PunchedDayView, 'checkIn' | 'checkOut'> &
 }
 
 /**
- * The day's hours: counted once they check out by the shift's rule, none without a check-in; checked in again after
- * their pairs (25 October 2026), the pairs' hours so far.
+ * The day's hours: counted once they check out by the shift's rule, none without a check-in; checked in again after a
+ * check-out, those to the last check-out so far (from the first check-in, the breaks included: 31 October 2026).
  */
 export function dayHoursText(day: Pick<PunchedDayView, 'checkIn' | 'checkOut' | 'hoursCounted'> & Partial<Pick<PunchedDayView, 'pairs' | 'openAt'>>): string {
   if (day.checkIn && day.checkOut && day.openAt) return `${formatHours(day.hoursCounted)} counted so far`;
@@ -384,8 +385,10 @@ export interface CheckInCount {
   doneAt: number | null;
   countUntil: number | null;
   hoursToWork: number | null;
-  /** The time today's closed pairs counted before this check-in (25 October 2026), ms; 0 with none. */
+  /** The time counted before this check-in (`before`), ms; 0 with none. The panel gives none since 31 October 2026. */
   before?: number;
+  /** Checked in again after a check-out today: counting from the first check-in, the break included (31 October 2026). */
+  again?: boolean;
 }
 
 const moment = (n: number | null | undefined): number | null => (typeof n === 'number' && Number.isFinite(n) ? n : null);
@@ -401,7 +404,7 @@ const moment = (n: number | null | undefined): number | null => (typeof n === 'n
  * start and before `countUntil` counts from the window's start, as the day will (packages/shared dayFromPunches); one
  * after `countUntil` counts nothing, as any day's.
  */
-export function checkInCount(input: CountRule & { checkIn: number; now: number; before?: number }): CheckInCount | null {
+export function checkInCount(input: CountRule & { checkIn: number; now: number; before?: number; again?: boolean }): CheckInCount | null {
   const checkIn = moment(input.checkIn);
   const now = moment(input.now);
   if (checkIn === null || now === null) return null;
@@ -444,6 +447,7 @@ export function checkInCount(input: CountRule & { checkIn: number; now: number; 
     hoursToWork,
     before,
     ...(firstDay && { firstDay }),
+    ...(input.again && { again: true }),
   };
 }
 
@@ -479,15 +483,17 @@ export function counterWords(c: CheckInCount): CounterWords {
   else if (c.phase === 'stopped') status = `Hours counted until ${until}`;
   else if (c.doneAt !== null && yours) status = `${yours} at ${cairoClock(c.doneAt)}`;
   else if (until) status = `Hours count until ${until}`;
-  // checked in again after a check-out (25 October 2026): counting since then, with the pairs before it
   const earlier = (c.before ?? 0) > 0 ? `${formatHours(Math.floor((c.before ?? 0) / 60_000) / 60)} from earlier today` : null;
   const note =
     c.fromWindowStart && c.phase !== 'after_limit'
       ? // a first day (27 October 2026): counted from the shift's start though they checked in after it
-        `Counting from ${cairoClock(c.countsFrom)}, when your shift starts${c.firstDay ? ' (your first day)' : ''}${earlier ? `, with ${earlier}` : ''}`
-      : earlier
-        ? `Counting since ${cairoClock(c.countsFrom)}, with ${earlier}; the break isn’t counted`
-        : null;
+        `Counting from ${cairoClock(c.countsFrom)}, when your shift starts${c.firstDay ? ' (your first day)' : ''}${earlier ? `, with ${earlier}` : ''}${c.again ? ', your break included' : ''}`
+      : c.again
+        ? // checked in again after a check-out (owner, 31 October 2026: "9:00, break included")
+          `Counting from your first check-in at ${cairoClock(c.countsFrom)}, your break included`
+        : earlier
+          ? `Counting since ${cairoClock(c.countsFrom)}, with ${earlier}`
+          : null;
   return { value: durationClock(c.countedMs), note, status };
 }
 
@@ -496,10 +502,9 @@ export type CounterShows = ({ kind: 'live' } & CounterWords) | { kind: 'total'; 
 
 /**
  * The counter for today's view at `now` (the server's clock, ms): while the day's last punch is a check-in, the time
- * counted by today's shift (countRuleOf): since 25 October 2026 (owner: "the working hours to be calculated between the
- * checkin and out only, not the first and last") the closed pairs' hours the server counted and the time since the open
- * check-in (`openAt`), the break between them not counted; from an API from before the pairs, from the day's first
- * check-in, as then. Once checked out, "Worked 8:52 today", the hours the server counted; nothing before a check-in (a
+ * counted by today's shift (countRuleOf) from the day's first check-in, a break after a check-out included (owner, 31
+ * October 2026: "9:00, break included"; "dont calculate breaks, they are included in the working hours"), as the server
+ * counts the day once they check out. Once checked out, "Worked 8:52 today", the hours the server counted; nothing before a check-in (a
  * day off, a holiday, leave), or for a check-out without one.
  */
 export function counterShows(view: Pick<CheckInTodayView, 'date' | 'next' | 'day' | 'shift' | 'firstDay'>, now: number): CounterShows {
@@ -514,11 +519,10 @@ export function counterShows(view: Pick<CheckInTodayView, 'date' | 'next' | 'day
 function liveCount(view: Pick<CheckInTodayView, 'date' | 'next' | 'day' | 'shift' | 'firstDay'>, now: number): CheckInCount | null {
   const day = view.day;
   if (!day?.checkIn || view.next !== 'out') return null;
-  const paired = Array.isArray(day.pairs);
-  const since = paired && day.openAt ? Date.parse(day.openAt) : Date.parse(day.checkIn);
-  const before = paired && day.openAt && day.pairs!.length ? Math.round(day.hoursCounted * 3_600_000) : 0;
-  // a first day (27 October 2026): the first check-in counts from the shift's start; a check-in after a pair doesn't
-  return checkInCount({ ...countRuleOf(view.date, view.shift, !!view.firstDay && before === 0), checkIn: since, now, before });
+  // from the first check-in, the break since a check-out included (31 October 2026); a first day (27 October 2026) from
+  // the shift's start
+  const again = !!day.openAt && (day.pairs?.length ?? 0) > 0;
+  return checkInCount({ ...countRuleOf(view.date, view.shift, !!view.firstDay), checkIn: Date.parse(day.checkIn), now, again });
 }
 
 /**

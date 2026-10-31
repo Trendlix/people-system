@@ -35,7 +35,8 @@ import { ProfileTabs } from './profile-tabs';
 // Employees details not visible to HR") is their directory card alone for those who may not see them, with no tabs and
 // no actions; the CEO, the Super Admin and the person themself get the profile, marked C-level, and the CEO or a Super
 // Admin (not HR) decides their change requests. Custody (Assets step 3; owner, 21 October 2026: "Yes, My custody"): on
-// the person's own profile only, once they have a custody record, what they hold and their records, read only. Access
+// the person's own profile only, what they hold and their records, read only; shown to every employee, nothing held
+// said so (31 October 2026: "every employee sees his assets"), as their sidebar's My Assets. Access
 // (owner, 22 October 2026: "any active employee with active contract should have access", managed "On the employee
 // profile"): their sign-in, for HR, an Admin and a Super Admin; the person sees their own. Attendance (owner, 23 October
 // 2026: "Attendance history on the profile. Since joining: on-time %, average check-in time, late days by weekday and
@@ -62,7 +63,7 @@ async function Profile({ params, searchParams }: { params: Promise<{ id: string 
   // what is restricted on it (the wages) is still left out for those who don't see salaries.
   // their own custody (GET /me/custody), on their own profile only
   const mine = user.employeeId === p.id ? await loadMyCustody() : null;
-  const custody = mine?.kind === 'ok' && mine.value.records.length > 0 ? mine.value : null;
+  const custody = mine?.kind === 'ok' ? mine.value : null;
   // Access (owner, 22 October 2026: "On the employee profile"): HR, an Admin and a Super Admin (a C-level person's, whose
   // profile HR doesn't open, the CEO's), and the person's own sign-in
   const seesAccess = hasRole(user, 'hr', 'admin') || (hasRole(user, 'ceo') && !!p.confidential) || user.employeeId === p.id;

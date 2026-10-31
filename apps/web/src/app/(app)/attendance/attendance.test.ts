@@ -471,7 +471,7 @@ describe('make-up hours on the Attendance pages (owner, 20 October 2026: "within
   });
 });
 
-describe('a day as the sum of its pairs (owner, 25 October 2026: "the working hours to be calculated between the checkin and out only, not the first and last")', () => {
+describe('a day kept as its pairs (owner, 25 October 2026), counted from its first check-in to its last, breaks included (31 October 2026: "9:00, break included")', () => {
   const DATE = '2026-10-20';
   const at = (time: string) => `${DATE}T${time}:00+03:00`;
   const MORNING = { startTime: '09:00', endTime: '19:00', hoursPerDay: 9, graceMinutes: 15 };
@@ -480,15 +480,16 @@ describe('a day as the sum of its pairs (owner, 25 October 2026: "the working ho
   const viewOf = (punched: ReturnType<typeof dayFromPunches>) =>
     attendanceDayView({ ...punched, date: DATE, status: 'worked', zohoStatus: null, permissionHours: 0, source: 'system' }, 9);
 
-  it('lists several pairs with the break between them, the hours their sum', () => {
+  it('lists several pairs with the break between them, the hours from the first check-in to the last, the break included', () => {
     const day = viewOf(dayFromPunches(DATE, presses(['in', '09:02'], ['out', '13:10'], ['in', '14:00'], ['out', '18:05']), MORNING));
-    expect(day).toMatchObject({ hoursCounted: 8 + 13 / 60, breakMinutes: 50, openAt: null, missingCheckOut: false, shortHours: 47 / 60 });
+    // 9:02 AM to 6:05 PM: 9:03, at most the shift's 9, nothing short
+    expect(day).toMatchObject({ hoursCounted: 9, breakMinutes: 50, openAt: null, missingCheckOut: false, shortHours: 0 });
     expect(dayPairs(day)).toEqual({ pairs: '9:02 AM–1:10 PM · 2:00 PM–6:05 PM', break: 'Break 50 min', open: null });
   });
 
   it('says an open last check-in after the pairs, "flag the open one": a missing check-out, counted as half a day until corrected (27 October 2026)', () => {
     const day = viewOf(dayFromPunches(DATE, presses(['in', '09:00'], ['out', '13:00'], ['in', '14:00'], ['out', '18:00'], ['in', '18:30']), MORNING));
-    // its pairs' 8 hours and half the shift's 9, within the 9: a full day, nothing short
+    // its 9 hours to the last check-out and half the shift's 9, within the 9: a full day, nothing short
     expect(day).toMatchObject({ hoursCounted: 9, missingCheckOut: true, openHalfDay: true, shortHours: 0, extraHours: 0, openAt: at('18:30') });
     expect(dayPairs(day)).toEqual({ pairs: '9:00 AM–1:00 PM · 2:00 PM–6:00 PM', break: 'Break 1 h 30 min', open: 'Checked in 6:30 PM · not checked out' });
     // one pair, then a check-in not checked out: the pair and the open press

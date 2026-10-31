@@ -15,9 +15,11 @@ import {
   isUnder,
   KPIS_NAV,
   LEAVE_PATH,
+  MY_ASSETS,
   MY_ATTENDANCE,
   MY_REQUESTS,
   MY_TEAM,
+  myAssetsInMenu,
   myAttendanceInMenu,
   NAV,
   navFor,
@@ -261,16 +263,18 @@ describe('the sidebar of an employee or a manager', () => {
   const ME = '3f1c2a9e-5b7d-4e1f-9a2b-6c8d0e4f1a2b';
   const links = (user: Parameters<typeof navFor>[0]) => navFor(user).map((n) => [n.label, n.href]);
 
-  it('is Dashboard, My Profile, My Requests and My Attendance for an employee, in that order (My Attendance since 19 October 2026: "the attendance is not active in the side menu")', () => {
+  it('is Dashboard, My Profile, My Requests, My Attendance and My Assets for an employee, in that order (My Attendance since 19 October 2026: "the attendance is not active in the side menu"; My Assets since 31 October 2026: "every employee sees his assets")', () => {
     expect(links({ roles: ['employee'], employeeId: ME })).toEqual([
       ['Dashboard', '/'],
       ['My Profile', `/employees/${ME}`],
       ['My Requests', MY_REQUESTS],
       ['My Attendance', MY_ATTENDANCE],
+      ['My Assets', MY_ASSETS],
       // the KPIs heading, with My KPIs (owner, 21 October 2026)
       ['KPIs', '/kpis'],
     ]);
     expect(MY_ATTENDANCE).toBe('/my-attendance');
+    expect(MY_ASSETS).toBe('/my-custody');
   });
 
   it('adds My Team for a direct manager', () => {
@@ -279,6 +283,7 @@ describe('the sidebar of an employee or a manager', () => {
       ['My Profile', `/employees/${ME}`],
       ['My Requests', MY_REQUESTS],
       ['My Attendance', MY_ATTENDANCE],
+      ['My Assets', MY_ASSETS],
       ['KPIs', '/kpis'],
       ['My Team', MY_TEAM],
     ]);
@@ -291,6 +296,7 @@ describe('the sidebar of an employee or a manager', () => {
       ['My Profile', `/employees/${ME}`],
       ['My Requests', MY_REQUESTS],
       ['My Attendance', MY_ATTENDANCE],
+      ['My Assets', MY_ASSETS],
       ['KPIs', '/kpis'],
       ['My Team', MY_TEAM],
     ]);
@@ -317,7 +323,27 @@ describe('the sidebar of an employee or a manager', () => {
     expect(myAttendanceInMenu({ roles: ['employee', 'manager'], employeeId: ME })).toBe(false);
   });
 
-  it('leaves out My Profile and My Attendance without a profile of their own', () => {
+  it('links My Assets from the user menu for HR, Finance, the CEO and Admins with a profile, who hold assets too (31 October 2026)', () => {
+    for (const role of ['hr', 'finance', 'ceo', 'admin', 'super_admin'] as const) {
+      expect(myAssetsInMenu({ roles: [role], employeeId: ME })).toBe(true);
+      expect(myAssetsInMenu({ roles: [role], employeeId: null })).toBe(false);
+      expect(myAssetsInMenu({ roles: [role] })).toBe(false);
+      // their sidebar doesn't list it
+      expect(navFor({ roles: [role], employeeId: ME }).map((n) => n.href)).not.toContain(MY_ASSETS);
+    }
+    // an employee or a manager has it in the sidebar already
+    expect(myAssetsInMenu({ roles: ['employee'], employeeId: ME })).toBe(false);
+    expect(myAssetsInMenu({ roles: ['employee', 'manager'], employeeId: ME })).toBe(false);
+  });
+
+  it('highlights My Assets on its page and a signed form under it, not on the custodians’ custody pages', () => {
+    const mine = navFor({ roles: ['employee'], employeeId: ME }).find((n) => n.label === 'My Assets')!;
+    expect(isUnder('/my-custody', mine.section!)).toBe(true);
+    expect(isUnder('/my-custody/CUS-0042/files/f1', mine.section!)).toBe(true);
+    expect(isUnder('/assets/custody', mine.section!)).toBe(false);
+  });
+
+  it('leaves out My Profile, My Attendance and My Assets without a profile of their own', () => {
     expect(links({ roles: ['employee'], employeeId: null })).toEqual([
       ['Dashboard', '/'],
       ['My Requests', MY_REQUESTS],
@@ -590,9 +616,10 @@ describe('the KPIs (owner, 21 October 2026: "lets start with the KPI’s First")
     expect(kpis({ roles: ['employee'], employeeId: null })).toBeNull();
   });
 
-  it('is after My Attendance in an employee’s or a manager’s sidebar, before My Team', () => {
+  it('is after My Attendance (and My Assets, 31 October 2026) in an employee’s or a manager’s sidebar, before My Team', () => {
     const labels = navFor({ roles: ['employee', 'manager'], employeeId: ME }).map((n) => n.label);
-    expect(labels.indexOf('KPIs')).toBe(labels.indexOf('My Attendance') + 1);
+    expect(labels.indexOf('KPIs')).toBe(labels.indexOf('My Assets') + 1);
+    expect(labels.indexOf('My Assets')).toBe(labels.indexOf('My Attendance') + 1);
     expect(labels.indexOf('My Team')).toBe(labels.indexOf('KPIs') + 1);
   });
 

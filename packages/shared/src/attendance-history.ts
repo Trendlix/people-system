@@ -433,6 +433,72 @@ export function historyTrend(days: readonly HistoryDay[], range: { from: string;
   return [...points.values()];
 }
 
+// ---------- the rates through the month (owner, 31 October 2026) ----------
+
+/** Days attended of the working days expected (the attendance rate: HISTORY_FIGURE_DEFINITIONS), over some days. */
+export interface AttendanceRatePart {
+  from: string;
+  to: string;
+  expectedDays: number;
+  attendedDays: number;
+  /** Attended ÷ expected, a fraction (0.95); null with no day expected yet. */
+  rate: number | null;
+}
+
+/**
+ * A person's attendance rate through a month (owner, 31 October 2026: "show the weekly attendance percentage and monthly
+ * percentage ongoing through the month"), by the history's own rule so it is the figure HR sees there: the month so far,
+ * and each of its weeks (Sunday to Saturday, cut at the month's edges) begun by today, in order, the one today is in
+ * `current`. Only days gone by and today once on record count (attendance-days.ts monthDays), so the rate doesn't drop in
+ * the morning before the check-in.
+ */
+export interface AttendanceRates {
+  month: string;
+  monthToDate: AttendanceRatePart;
+  weeks: (AttendanceRatePart & { current: boolean })[];
+}
+
+/** The month's rates (AttendanceRates) from its days as the history reads them (historyDay), to `today`. */
+export function attendanceRates(days: readonly HistoryDay[], month: string, today: string): AttendanceRates {
+  const first = `${month}-01`;
+  const last = lastOfMonth(month);
+  const upTo = today < last ? today : last;
+  const part = (from: string, to: string): AttendanceRatePart => {
+    let expectedDays = 0;
+    let attendedDays = 0;
+    for (const d of days) {
+      if (d.date < from || d.date > to || d.date > upTo) continue;
+      if (d.expected) expectedDays++;
+      if (d.attended) attendedDays++;
+    }
+    return { from, to, expectedDays, attendedDays, rate: expectedDays ? attendedDays / expectedDays : null };
+  };
+  const weeks: AttendanceRates['weeks'] = [];
+  for (let from = first; from <= upTo; ) {
+    // to the week's Saturday, or the month's last day
+    const saturday = shiftDate(from, 6 - new Date(`${from}T00:00:00Z`).getUTCDay());
+    const to = saturday < last ? saturday : last;
+    weeks.push({ ...part(from, to), current: from <= today && today <= to });
+    from = shiftDate(to, 1);
+  }
+  return { month, monthToDate: { ...part(first, last), to: upTo < first ? first : upTo }, weeks };
+}
+
+/**
+ * The owner's colours for a share achieved (31 October 2026, on the day's timer: "below 80% color it red, from 80 to 90
+ * color it yellow, above 90% green"), by the whole percent shown, so the colour always matches the number: under 80 low
+ * (red), 80 to 90 mid (yellow), over 90 high (green); null for none.
+ */
+export type RateBand = 'low' | 'mid' | 'high';
+export function rateBand(rate: number | null | undefined): RateBand | null {
+  if (rate === null || rate === undefined || !Number.isFinite(rate)) return null;
+  const percent = Math.round(rate * 100);
+  return percent < 80 ? 'low' : percent <= 90 ? 'mid' : 'high';
+}
+
+/** "2026-10-31" moved by `n` days. */
+const shiftDate =(ymd: string, n: number) => new Date(Date.parse(`${ymd}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+
 /** A bin of the check-in time distribution: from a time (minutes after midnight), how many check-ins. */
 export interface HistoryBin {
   from: number;

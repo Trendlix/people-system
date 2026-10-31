@@ -13,8 +13,8 @@ import { counterShows, noteServerTime, workTime, type ServerClock } from './chec
 // from the server sets how far this device's clock is off (the newest view's only, so a page Next.js shows again from
 // before doesn't set it back), and one timer for every counter on the page ticks while any is shown, cleared when the
 // last one goes. The ticking seconds aren't read out (aria-live off); what is next is said politely, as it changes.
-// Checked in again after a check-out (owner, 25 October 2026: "the working hours to be calculated between the checkin
-// and out only, not the first and last"), it counts today's closed pairs and the time since that check-in, never the break.
+// Checked in again after a check-out, it counts from the day's first check-in, the break included (owner, 31 October
+// 2026: "9:00, break included"; "dont calculate breaks, they are included in the working hours"), as the day is counted.
 // On a new employee's first day (owner, 27 October 2026: "Counted from the shift start") it counts from the shift's start,
 // as the day will be counted, and says so. The owner's design (30 October 2026, Figma "PeopleTrendlix", desktop): on the
 // Dashboard the time worked fills a ring, "Work time 2:35 of 8 hours" (WorkRing, with its note and what is next beside it,

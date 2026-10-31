@@ -43,8 +43,20 @@ function Figure({ label, children, tone }: { label: string; children: React.Reac
   );
 }
 
-function DayAction({ day, corrections, correctable, today }: { day: AttendanceDay; corrections: readonly MonthCorrection[]; correctable: MonthCorrectable | null | undefined; today: string }) {
-  const c = dayCorrection(day, corrections, correctable, today, appCorrectionHref);
+function DayAction({
+  day,
+  corrections,
+  correctable,
+  today,
+  askFrom,
+}: {
+  day: AttendanceDay;
+  corrections: readonly MonthCorrection[];
+  correctable: MonthCorrectable | null | undefined;
+  today: string;
+  askFrom: string | null;
+}) {
+  const c = dayCorrection(day, corrections, correctable, today, appCorrectionHref, askFrom);
   if (!c) return null;
   if (c.kind === 'open') {
     return (
@@ -68,6 +80,7 @@ export function DayList({
   correctable,
   today,
   wfhDays,
+  askFrom = null,
 }: {
   days: readonly AttendanceDay[];
   punches: readonly PunchRow[];
@@ -77,6 +90,8 @@ export function DayList({
   today: string;
   /** The month's work from home days approved for them; none (an API from before them): none shown. */
   wfhDays?: readonly string[];
+  /** The earliest day they can still ask to correct (owner, 31 October 2026: "locked after 2 working days"). */
+  askFrom?: string | null;
 }) {
   return (
     <ol aria-label="Your days" className="space-y-2">
@@ -131,7 +146,7 @@ export function DayList({
             {row.more && <AllPresses presses={row.presses} className="mt-2" />}
             {corrections && (
               <div className="mt-3 empty:hidden">
-                <DayAction day={d} corrections={corrections} correctable={correctable} today={today} />
+                <DayAction day={d} corrections={corrections} correctable={correctable} today={today} askFrom={askFrom} />
               </div>
             )}
           </li>

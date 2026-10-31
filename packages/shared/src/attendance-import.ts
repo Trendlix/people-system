@@ -24,7 +24,7 @@
 //   Permission column counts, within the month's allowance, never both.
 // Pure: the API reads the files and applies these, and the web shows the same words.
 
-import { hoursCountedForDay, mostHoursCountedADay, shiftWindowOn, spanHours, spansOfPairs, type PressPair } from './attendance.js';
+import { hoursCountedForDay, mostHoursCountedADay, shiftWindowOn, spanHours, spansOfPairs, workSpanOf, type PressPair } from './attendance.js';
 import { openCheckInHours, openHalfDayOn, type KeptDay } from './attendance-days.js';
 import type { ShiftTimes } from './payroll.js';
 
@@ -394,8 +394,9 @@ export function attendanceMonth(input: AttendanceMonthInput): AttendanceMonthRes
     if (d.checkIn) {
       status = 'worked';
       const window = shift ? shiftWindowOn(d.date, shift) : null;
-      // by its pairs when Zoho gave them (its API), each within the window, together at most the hours to work
-      if (d.pairs?.length) hours = spanHours(spansOfPairs(d.pairs), window, most);
+      // by its pairs when Zoho gave them (its API): from the first check-in to the last finished check-out, breaks
+      // included (owner, 31 October 2026: "9:00, break included"), within the window, at most the hours to work
+      if (d.pairs?.length) hours = spanHours(workSpanOf(spansOfPairs(d.pairs)), window, most);
       else if (d.checkOut && !d.pairs) hours = hoursCountedForDay(d.checkIn, d.checkOut, most, window);
       else noCheckOut++;
     } else if (holidays.has(d.date)) status = 'holiday';

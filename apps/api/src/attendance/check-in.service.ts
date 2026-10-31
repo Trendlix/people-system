@@ -6,7 +6,6 @@ import {
   checkInPlaceAt,
   checkInRefusal,
   dayFromPunches,
-  EXEMPT_CHECK_IN_TEXT,
   expectedPlace,
   expectedPlaceText,
   firstDayMessage,
@@ -80,7 +79,8 @@ export interface CheckInTodayView {
   /**
    * Their period exempt from check-in today (owner, 25 October 2026: "Optional check-in"; packages/shared
    * check-in-exemptions.ts): their day counts as full, a press is kept for reference only, never refused by a lock nor
-   * flagged. Null: not exempt today.
+   * flagged. Always null since 31 October 2026 (owner: "dont show for the employee that he is exempted from checking in
+   * and out"): kept for the apps that read it.
    */
   exemption: ExemptionPeriod | null;
   /** Where their work arrangement expects them today, and in words. */
@@ -427,13 +427,13 @@ export class CheckInService {
       // their own: with the spot (owner, 20 October 2026: "Yes, keep the spot")
       punches: punches.map((p) => punchView(p, true, locations)),
       day: punches.length ? dayFromPunches(date, punches.map(asPunch), shift, { firstDay }) : null,
-      exemption,
+      // never told to the employee (owner, 31 October 2026: "dont show for the employee that he is exempted from checking
+      // in and out"): their day still counts as full and no lock refuses them, but this screen reads as anyone's
+      exemption: null,
       expected,
       expectedText:
         employment && expected
-          ? exemption
-            ? EXEMPT_CHECK_IN_TEXT
-            : odNow
+          ? odNow
               ? OD_CHECK_IN_TEXT
               : odToday
                 ? `Official duty today, ${odWhenText(odToday).split(', ')[1] ?? 'part of the day'}: check in from where you are then. ${expectedPlaceText(employment.workArrangement, expected, workingFromHome)}`

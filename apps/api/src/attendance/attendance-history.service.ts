@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import ExcelJS from 'exceljs';
 import {
   attendanceDayView,
+  attendanceRates,
   CHECK_IN_SOURCES,
   checkInBins,
   clockText,
@@ -36,6 +37,7 @@ import {
   type HistoryPeriod,
   type HistoryTrendPoint,
   type HistoryWeekday,
+  type AttendanceRates,
 } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
 import { actsAs, isSuperAdmin } from '../auth/roles.js';
@@ -173,9 +175,29 @@ export class AttendanceHistoryService {
     return { confidential: await this.confidential.isConfidential(employeeId) };
   }
 
+  /**
+   * The caller's own attendance rate through a month (owner, 31 October 2026: "show the weekly attendance percentage and
+   * monthly percentage ongoing through the month"): the month so far and each of its weeks, by the history's rule, for My
+   * Attendance and the app. Their own, so not the history's audience check. Null without an employee profile.
+   */
+  async myRates(user: SessionUser, month: string): Promise<AttendanceRates | null> {
+    const me = await this.confidential.selfId(user);
+    if (!me) return null;
+    const today = todayInCairo();
+    // a month still to come has no day yet
+    if (`${month}-01` > today) return attendanceRates([], month, today);
+    const built = await this.collect(me, { period: 'custom', from: firstDay(month), to: lastDay(month) }, false);
+    return attendanceRates(built.days, month, today);
+  }
+
   /** The period's days, as the attendance makes them under each employment, one a date, in date order. */
   private async build(employeeId: string, query: AttendanceHistoryQueryDto, user: SessionUser): Promise<Built> {
     const { confidential } = await this.assertSees(employeeId, user);
+    return this.collect(employeeId, query, confidential);
+  }
+
+  /** As build, once whoever asks may see them (or for the caller's own). */
+  private async collect(employeeId: string, query: AttendanceHistoryQueryDto, confidential: boolean): Promise<Built> {
     const person = await this.prisma.employee.findUnique({ where: { id: employeeId }, select: { id: true, employeeCode: true, fullNameEn: true } });
     if (!person) throw new NotFoundException(NOT_FOUND);
     const employments = await this.prisma.employment.findMany({ where: { employeeId }, orderBy: { joinDate: 'asc' }, select: EMPLOYMENT_SELECT });

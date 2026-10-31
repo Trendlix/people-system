@@ -1,4 +1,4 @@
-import { CORRECTION_KINDS, LEAVE_STATUSES, type CorrectionKind, type LeaveStatus } from '@trendlix/shared';
+import { CORRECTION_KINDS, CORRECTION_KINDS_ASKED, LEAVE_STATUSES, type CorrectionKind, type LeaveStatus } from '@trendlix/shared';
 import { IsIn, IsOptional, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
 import { IsDateOnly } from '../common/date-only.js';
 import { TIME_OF_DAY } from '../common/time-of-day.js';
@@ -15,7 +15,7 @@ export class CreateCorrectionDto {
   @Trim() @IsDateOnly('Enter the day to correct, e.g. 2026-10-12.')
   date: string;
 
-  @IsIn(CORRECTION_KINDS, { message: `Choose what was wrong: ${CORRECTION_KINDS.join(', ')}.` })
+  @IsIn(CORRECTION_KINDS, { message: `Choose what was wrong: ${CORRECTION_KINDS_ASKED.join(', ')}.` })
   kind: CorrectionKind;
 
   @LatinDigits() @TrimOrNull() @IsOptional() @Matches(TIME_OF_DAY, { message: 'Enter the time of the check-in as HH:MM, e.g. 09:05.' })

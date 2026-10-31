@@ -67,16 +67,16 @@ describe('the employee’s own first day on the panel', () => {
     expect(checkInCount({ ...rule, checkIn: at('20:30:00'), now: at('21:00:00') })).toMatchObject({ phase: 'after_limit', countedMs: 0 });
   });
 
-  it('shows the counter from the shift’s start on the first day; a check-in after a pair counts from itself', () => {
+  it('shows the counter from the shift’s start on the first day, after a break too (31 October 2026: breaks included)', () => {
     const open: CheckInTodayView = { ...TODAY, firstDay: true, day: { checkIn: iso('10:40:00'), checkOut: null, place: 'office', flags: [], hoursCounted: 0, pairs: [], openAt: iso('10:40:00'), breakMinutes: 0 } };
     expect(counterShows(open, at('12:40:00'))).toEqual({ kind: 'live', value: '4:40:00', note: 'Counting from 8:00 AM, when your shift starts (your first day)', status: 'Your 9 hours are done at 5:00 PM' });
     // an API from before it: from the check-in
     expect(counterShows({ ...open, firstDay: undefined }, at('12:40:00'))).toMatchObject({ kind: 'live', value: '2:00:00', note: null });
-    // out for lunch and back: the first pair counted from the start by the server (5 hours), the time since 14:00 from itself
+    // out for lunch and back: still from the shift's start, the break included, 8:00 AM to 3:00 PM
     const again: CheckInTodayView = {
       ...open,
       day: { checkIn: iso('10:40:00'), checkOut: iso('13:00:00'), place: 'office', flags: [], hoursCounted: 5, pairs: [{ in: iso('08:00:00'), out: iso('13:00:00') }], openAt: iso('14:00:00'), breakMinutes: 60 },
     };
-    expect(counterShows(again, at('15:00:00'))).toMatchObject({ kind: 'live', value: '6:00:00', note: 'Counting since 2:00 PM, with 5:00 from earlier today; the break isn’t counted' });
+    expect(counterShows(again, at('15:00:00'))).toMatchObject({ kind: 'live', value: '7:00:00', note: 'Counting from 8:00 AM, when your shift starts (your first day), your break included' });
   });
 });

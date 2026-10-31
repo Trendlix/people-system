@@ -1,20 +1,23 @@
 import type { INestApplication } from '@nestjs/common';
-import { zonedMoment } from '@trendlix/shared';
+import { breakMinutesOf, pairPresses, pressPairsOf, zonedMoment } from '@trendlix/shared';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { HoursByPairsService } from '../src/attendance/hours-by-pairs.service.js';
 import { addDays, fromDateOnly, todayInCairo, toDateOnly, weekday } from '../src/common/date-only.js';
 import { toTimeOfDay } from '../src/common/time-of-day.js';
 import { KpiAttendanceService } from '../src/kpis/kpi-attendance.service.js';
+import { json } from '../src/payroll/line-work.js';
 import { firstDay, lastDay, monthsLater } from '../src/payroll/months.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { createApp, createUser, signIn } from './helpers.js';
 
-// A day's hours as the sum of its check-in → check-out pairs (owner, 25 October 2026: "on checkin and out several
-// ttimes, the working hours to be calculated between the checkin and out only, not the first and last"; asked, "Count
-// the closed pairs, flag the open one" and "Months not yet paid"; then "Not short until corrected"). The days kept before
-// (first check-in to last check-out) recounted by the pass on deploy in a draft month, its line refilled; an approved
-// month and Zoho People's days left alone; an open last check-in a missing check-out counted as half the shift until
+// A day kept as its check-in → check-out pairs (owner, 25 October 2026: "Count the closed pairs, flag the open one" and
+// "Months not yet paid"; then "Not short until corrected"), its hours since 31 October 2026 from its first check-in to its
+// last finished check-out, the breaks counted (owner: "9:00, break included"; "dont calculate breaks, they are included
+// in the working hours"), within the shift's window. The days kept before (first check-in to last check-out, or by the
+// 25 October rule: the pairs' sum) recounted by the pass on deploy in a draft month, its line refilled, Zoho People's
+// days kept with two pairs or more and the corrected days of several pairs too; an approved month and Zoho People's
+// other days left alone; an open last check-in a missing check-out counted as half the shift until
 // corrected (owner, 27 October 2026: "open check ins with half day"; asked, "Half the shift (4.5 h) until corrected"),
 // the line warning about such days and Send to the CEO answering with them, never blocked; short and extra time by the
 // pairs; part of a day of official duty joined to the pairs once; lateness still by the first check-in; a correction
@@ -89,8 +92,11 @@ describe('A day’s hours as the sum of its check-in → check-out pairs (e2e)',
     await api().post(`/api/contracts/${draft.id}/sign`).set('Cookie', hr).send({ signedOn: draft.startDate }).expect(200);
   }
 
-  /** Presses kept as a press keeps them, and the day as it was kept before 25 October 2026: its first check-in to its last check-out. */
-  async function pressed(key: string, date: string, presses: [kind: 'in' | 'out', time: string][], old?: { hours: number }) {
+  /**
+   * Presses kept as a press keeps them, and the day as it was kept before: before 25 October 2026 its first check-in to
+   * its last check-out; with `byPairs`, as the 25 October rule kept it (its pairs, the break, the pairs' hours summed).
+   */
+  async function pressed(key: string, date: string, presses: [kind: 'in' | 'out', time: string][], old?: { hours: number; byPairs?: boolean }) {
     await prisma.attendancePunch.createMany({
       data: presses.map(([kind, time]) => ({ employeeId: ids[key], date: toDateOnly(date), kind, at: at(date, time), place: 'office', expected: 'office', flags: [], source: 'system', userId: hrUserId })),
     });
@@ -108,8 +114,15 @@ describe('A day’s hours as the sum of its check-in → check-out pairs (e2e)',
         hoursCounted: old.hours,
         source: 'system',
         importedById: hrUserId,
+        ...(old.byPairs && pairsKept(date, presses)),
       },
     });
+  }
+
+  /** A day's pairs, break and open check-in as the 25 October rule kept them. */
+  function pairsKept(date: string, presses: [kind: 'in' | 'out', time: string][]) {
+    const { pairs, open } = pairPresses(presses.map(([kind, time]) => ({ kind, at: at(date, time) })));
+    return { pairs: json(pressPairsOf(pairs)), breakMinutes: breakMinutesOf(pairs, open), openAt: open === null ? null : new Date(open) };
   }
 
   const monthOf = async (key: string, month: string) => (await api().get(`/api/attendance/employees/${ids[key]}?month=${month}`).set('Cookie', hr).expect(200)).body as { person: { days: DayView[]; figures: { missingCheckOuts: number; shortHours: number; extraHours: number } } };
@@ -153,20 +166,43 @@ describe('A day’s hours as the sum of its check-in → check-out pairs (e2e)',
     const holidays = new Set((await prisma.holiday.findMany({ select: { date: true } })).map((h) => fromDateOnly(h.date)));
     for (const month of [DRAFT, APPROVED]) for (let d = firstDay(month); d <= lastDay(month); d = addDays(d, 1)) if (weekday(d) <= 4 && !holidays.has(d)) work[month].push(d);
 
-    const [d0, d1, d2, d3] = work[DRAFT];
-    // the owner's example, kept before as 9 hours
-    await pressed('pia', d0, [['in', '09:00'], ['out', '13:00'], ['in', '14:00'], ['out', '18:00']], { hours: 9 });
+    const [d0, d1, d2, d3, d4, d5] = work[DRAFT];
+    // the owner's example (31 October 2026: "9:00, break included"), kept by the 25 October rule as 8 hours
+    await pressed('pia', d0, [['in', '09:00'], ['out', '13:00'], ['in', '14:00'], ['out', '18:00']], { hours: 8, byPairs: true });
     // a third check-in with no check-out after it: kept before as 9 hours
     await pressed('pia', d1, [['in', '09:00'], ['out', '13:00'], ['in', '14:00'], ['out', '18:00'], ['in', '18:30']], { hours: 9 });
-    // in late at 10:30: 2:30 and 5:00, 7:30, short by 1:30 (kept before as 8:30)
-    await pressed('pia', d2, [['in', '10:30'], ['out', '13:00'], ['in', '14:00'], ['out', '19:00']], { hours: 8.5 });
+    // in late at 10:30: 10:30 to 7:00 PM, 8:30, short by 0:30 (kept by the 25 October rule as 7:30)
+    await pressed('pia', d2, [['in', '10:30'], ['out', '13:00'], ['in', '14:00'], ['out', '19:00']], { hours: 7.5, byPairs: true });
     // Zoho's day, its presses beside it: never touched
     await pressed('pia', d3, [['in', '09:00'], ['out', '13:00'], ['in', '14:00'], ['out', '18:00']]);
     await prisma.attendanceDay.create({
       data: { employeeId: ids.pia, date: toDateOnly(d3), status: 'worked', checkIn: at(d3, '09:00'), checkOut: at(d3, '18:00'), place: 'office', hoursCounted: 9, source: 'zoho', importedById: hrUserId },
     });
-    // counting until 8:00 PM: 3:00 and 7:30 (12:30 to 8:00 PM), 10:30, 1:30 of extra time
-    await pressed('mako', d0, [['in', '09:00'], ['out', '12:00'], ['in', '12:30'], ['out', '20:30']], { hours: 11 });
+    // Zoho's day from its API, kept with its two pairs by the 25 October rule as 8 hours: 9 now
+    await prisma.attendanceDay.create({
+      data: {
+        employeeId: ids.pia,
+        date: toDateOnly(d4),
+        status: 'worked',
+        checkIn: at(d4, '09:00'),
+        checkOut: at(d4, '18:00'),
+        place: 'office',
+        hoursCounted: 8,
+        zohoStatus: 'Present',
+        source: 'zoho',
+        importedById: hrUserId,
+        ...pairsKept(d4, [['in', '09:00'], ['out', '13:00'], ['in', '14:00'], ['out', '18:00']]),
+      },
+    });
+    // a day kept by its pairs with no presses (9:00–1:00 PM, back at 2:00 PM, never out), its check-out forgotten
+    // corrected by HR to 6:00 PM: the corrected day kept by the 25 October rule as 8 hours, its day under it unchanged
+    await prisma.attendanceDay.create({
+      data: { employeeId: ids.pia, date: toDateOnly(d5), status: 'worked', checkIn: at(d5, '09:00'), checkOut: at(d5, '13:00'), place: 'office', hoursCounted: 4, source: 'system', importedById: hrUserId, ...pairsKept(d5, [['in', '09:00'], ['out', '13:00'], ['in', '14:00']]) },
+    });
+    await api().post('/api/attendance/corrections').set('Cookie', hr).send({ employeeId: ids.pia, date: d5, kind: 'forgot_check_out', checkOut: '18:00', reason: 'Left with the crew, seen by HR' }).expect(201);
+    await prisma.attendanceDay.update({ where: { employeeId_date_source: { employeeId: ids.pia, date: toDateOnly(d5), source: 'correction' } }, data: { hoursCounted: 8 } });
+    // counting until 8:00 PM: 9:00 to 8:00 PM, 11 hours, 2 of extra time (kept by the 25 October rule as 3:00 + 7:30)
+    await pressed('mako', d0, [['in', '09:00'], ['out', '12:00'], ['in', '12:30'], ['out', '20:30']], { hours: 10.5, byPairs: true });
     // part of a day of official duty, 10:00–15:00, between pairs 9:00–11:00 and 14:00–16:00: 9:00–16:00, 7 hours once
     await pressed('odin', d0, [['in', '09:00'], ['out', '11:00'], ['in', '14:00'], ['out', '16:00']], { hours: 7 });
     await prisma.odRequest.create({
@@ -213,10 +249,10 @@ describe('A day’s hours as the sum of its check-in → check-out pairs (e2e)',
   describe('the pass on deploy', () => {
     let before: Line;
 
-    it('recounts a draft month’s days by their pairs, audited once with its counts, the line refilled', async () => {
+    it('recounts a draft month’s days, the breaks counted, audited once with its counts, the line refilled', async () => {
       before = await lineOf(DRAFT, 'pia');
-      // first check-in to last check-out, as kept before: 9 + 9 + 8:30, and Zoho's 9
-      expect(before.inputs.workedHours).toBe(35.5);
+      // as kept before: 8 + 9 + 7:30, Zoho's 9 and 8, the corrected day's 8
+      expect(before.inputs.workedHours).toBe(49.5);
       const audits = await prisma.auditLog.count({ where: { action: 'recount_hours' } });
       const result = await app.get(HoursByPairsService).recount({ audit: true });
       expect(result).not.toBeNull();
@@ -226,20 +262,21 @@ describe('A day’s hours as the sum of its check-in → check-out pairs (e2e)',
       const logged = await prisma.auditLog.findMany({ where: { action: 'recount_hours' }, orderBy: { at: 'desc' } });
       expect(logged).toHaveLength(audits + 1);
       expect(logged[0]).toMatchObject({ entityType: 'attendance_day', userId: null });
-      expect(logged[0].diff).toMatchObject({ rule: 'hours_by_pairs', daysChanged: result!.daysChanged, hoursBefore: result!.hoursBefore, hoursAfter: result!.hoursAfter });
-      expect(result!.hoursAfter).toBeLessThan(result!.hoursBefore);
+      expect(logged[0].diff).toMatchObject({ rule: 'hours_first_in_to_last_out', daysChanged: result!.daysChanged, hoursBefore: result!.hoursBefore, hoursAfter: result!.hoursAfter });
+      expect(result!.zohoDaysChanged).toBeGreaterThanOrEqual(1);
+      expect(result!.correctedDaysChanged).toBeGreaterThanOrEqual(1);
     });
 
-    it('in 9:00, out 13:00, in 14:00, out 18:00 counts 8 hours, not 9, with its pairs and the break', async () => {
+    it('in 9:00, out 13:00, in 14:00, out 18:00 counts 9 hours, the break included, its pairs and the break kept', async () => {
       const d = await dayOf('pia', DRAFT, work[DRAFT][0]);
-      expect(d).toMatchObject({ source: 'system', hoursCounted: 8, shortHours: 1, missingCheckOut: false, breakMinutes: 60, openAt: null, checkIn: at(work[DRAFT][0], '09:00').toISOString(), checkOut: at(work[DRAFT][0], '18:00').toISOString() });
+      expect(d).toMatchObject({ source: 'system', hoursCounted: 9, shortHours: 0, missingCheckOut: false, breakMinutes: 60, openAt: null, checkIn: at(work[DRAFT][0], '09:00').toISOString(), checkOut: at(work[DRAFT][0], '18:00').toISOString() });
       expect(d.pairs).toEqual([
         { in: at(work[DRAFT][0], '09:00').toISOString(), out: at(work[DRAFT][0], '13:00').toISOString() },
         { in: at(work[DRAFT][0], '14:00').toISOString(), out: at(work[DRAFT][0], '18:00').toISOString() },
       ]);
     });
 
-    it('an open third check-in: a missing check-out counted as half a day until corrected, its pairs’ 8 hours and the half within the shift’s 9', async () => {
+    it('an open third check-in: a missing check-out counted as half a day until corrected, its 9 hours and the half within the shift’s 9', async () => {
       const d = await dayOf('pia', DRAFT, work[DRAFT][1]);
       expect(d).toMatchObject({ hoursCounted: 9, missingCheckOut: true, openHalfDay: true, shortHours: 0, extraHours: 0, openAt: at(work[DRAFT][1], '18:30').toISOString() });
       expect(d.pairs).toHaveLength(2);
@@ -247,19 +284,28 @@ describe('A day’s hours as the sum of its check-in → check-out pairs (e2e)',
       expect(listed.map((p) => p.employee.id)).toContain(ids.pia);
     });
 
-    it('short and extra time follow the pairs', async () => {
-      expect(await dayOf('pia', DRAFT, work[DRAFT][2])).toMatchObject({ hoursCounted: 7.5, shortHours: 1.5 });
-      expect(await dayOf('mako', DRAFT, work[DRAFT][0])).toMatchObject({ hoursCounted: 10.5, extraHours: 1.5, shortHours: 0 });
+    it('short and extra time follow the day, its breaks counted', async () => {
+      expect(await dayOf('pia', DRAFT, work[DRAFT][2])).toMatchObject({ hoursCounted: 8.5, shortHours: 0.5 });
+      expect(await dayOf('mako', DRAFT, work[DRAFT][0])).toMatchObject({ hoursCounted: 11, extraHours: 2, shortHours: 0 });
+    });
+
+    it('recounts Zoho’s day kept with its pairs and the corrected day of several pairs, the breaks counted', async () => {
+      const [, , , , d4, d5] = work[DRAFT];
+      expect(await dayOf('pia', DRAFT, d4)).toMatchObject({ source: 'zoho', hoursCounted: 9, breakMinutes: 60 });
+      const corrected = await dayOf('pia', DRAFT, d5);
+      expect(corrected).toMatchObject({ source: 'correction', hoursCounted: 9, openAt: null });
+      expect(corrected.pairs).toHaveLength(2);
     });
 
     it('counts part of a day of official duty with the pairs once', async () => {
       expect(await dayOf('odin', DRAFT, work[DRAFT][0])).toMatchObject({ hoursCounted: 7, od: { fullDay: false } });
     });
 
-    it('refills the draft line: the open day its pairs’ hours and half the shift, within the shift’s hours', async () => {
+    it('refills the draft line: the open day its hours and half the shift, within the shift’s hours', async () => {
       const after = await lineOf(DRAFT, 'pia');
-      // 8 + 9 (the open day: 8 of pairs and half of 9, at most 9) + 7:30, and Zoho's 9; the other working days absent as before
-      expect(after.inputs.workedHours).toBe(33.5);
+      // 9 + 9 (the open day: 9 and half of 9, at most 9) + 8:30, Zoho's 9 and 9, the corrected day's 9; the other working
+      // days absent as before
+      expect(after.inputs.workedHours).toBe(53.5);
       expect(after.inputs.noShowDays).toBe(before.inputs.noShowDays);
       // the KPIs' Attendance metric reads the payroll's
       const read = (await app.get(KpiAttendanceService).readMonth(DRAFT, [ids.pia])).get(ids.pia)!;
@@ -283,7 +329,7 @@ describe('A day’s hours as the sum of its check-in → check-out pairs (e2e)',
       expect(run.openCheckIns).toContainEqual({ lineId: line.id, employeeId: ids.ola, name: `Ola Open ${RUN}`, dates: [d0, d1] });
     });
 
-    it('leaves the approved month and Zoho People’s days as they were', async () => {
+    it('leaves the approved month and Zoho People’s days without pairs as they were', async () => {
       const approvedDay = await prisma.attendanceDay.findUniqueOrThrow({ where: { employeeId_date_source: { employeeId: ids.pia, date: toDateOnly(work[APPROVED][0]), source: 'system' } } });
       expect(approvedDay).toMatchObject({ pairs: null, openAt: null });
       expect(approvedDay.hoursCounted.toNumber()).toBe(9);
@@ -315,19 +361,19 @@ describe('A day’s hours as the sum of its check-in → check-out pairs (e2e)',
   });
 
   describe('a correction of the open check-in', () => {
-    it('is the check-out forgotten: it closes the open check-in, the day counted by all its pairs', async () => {
+    it('is the check-out forgotten: it closes the open check-in, the day counted from its first check-in to the last', async () => {
       const day = work[DRAFT][1];
       const body = { employeeId: ids.pia, date: day, kind: 'forgot_check_out', reason: 'Left for the client, seen by HR' };
       expect(said(await api().post('/api/attendance/corrections').set('Cookie', hr).send({ ...body, checkOut: '18:15' }).expect(400))).toEqual([
         'The check-out (6:15 PM) must be after the last check-in (6:30 PM), the one without a check-out.',
       ]);
       await api().post('/api/attendance/corrections').set('Cookie', hr).send({ ...body, checkOut: '19:00' }).expect(201);
-      // 9:00–13:00, 14:00–18:00 and 18:30–19:00: 8:30, short by 0:30 now
+      // 9:00–13:00, 14:00–18:00 and 18:30–19:00: 9:00 to 7:00 PM with its breaks, at most the shift's 9
       const d = await dayOf('pia', DRAFT, day);
-      expect(d).toMatchObject({ source: 'correction', hoursCounted: 8.5, shortHours: 0.5, missingCheckOut: false, openAt: null, checkOut: at(day, '19:00').toISOString() });
+      expect(d).toMatchObject({ source: 'correction', hoursCounted: 9, shortHours: 0, missingCheckOut: false, openAt: null, checkOut: at(day, '19:00').toISOString() });
       expect(d.pairs).toHaveLength(3);
-      // the line refilled: the day's 8:30 now, not the shift's 9
-      expect((await lineOf(DRAFT, 'pia')).inputs.workedHours).toBe(33);
+      // the line refilled: the day's 9, no longer half a day open
+      expect((await lineOf(DRAFT, 'pia')).inputs.workedHours).toBe(53.5);
     });
   });
 
@@ -359,7 +405,7 @@ describe('A day’s hours as the sum of its check-in → check-out pairs (e2e)',
   });
 
   describe('a press today', () => {
-    it('keeps the day’s pairs so far, its hours the finished pairs’, and an open last check-in', async () => {
+    it('keeps the day’s pairs so far, its hours to the last finished check-out, and an open last check-in', async () => {
       const date = (await api().get('/api/me/attendance/today').set('Cookie', sessions.liv).expect(200)).body.date as string;
       const now = Date.now();
       await prisma.attendancePunch.createMany({

@@ -265,7 +265,7 @@ describe('Zoho People’s check-ins pulled in (e2e)', () => {
   });
 
   describe('the nightly run and fetching again', () => {
-    it('keeps yesterday for everyone at 02:00 Cairo, the import’s way: the pairs, the hours by them', async () => {
+    it('keeps yesterday for everyone at 02:00 Cairo, the import’s way: the pairs, the hours from the first check-in to the last', async () => {
       zoho.day(emails.ana, Y, zohoDay(Y, [['09:00', '13:00'], ['14:00', '18:00']]));
       zoho.day(`dee.zoho.${RUN}@trendlix.test`, Y, zohoDay(Y, [['10:00', '19:00']]));
       expect(await sync.nightlyIfDue(at(TODAY, '01:30'))).toBeNull();
@@ -279,7 +279,8 @@ describe('Zoho People’s check-ins pulled in (e2e)', () => {
       expect(ana).toMatchObject({ source: 'zoho', status: 'worked', place: 'office', zohoStatus: 'Present', zohoRunId: id, importId: null, breakMinutes: 60, openAt: null });
       expect(ana!.checkIn).toEqual(at(Y, '09:00'));
       expect(ana!.checkOut).toEqual(at(Y, '18:00'));
-      expect(ana!.hoursCounted.toNumber()).toBe(8);
+      // 9:00 to 6:00 PM, the break included (owner, 31 October 2026: "9:00, break included")
+      expect(ana!.hoursCounted.toNumber()).toBe(9);
       expect(ana!.pairs).toEqual([
         { in: at(Y, '09:00').toISOString(), out: at(Y, '13:00').toISOString() },
         { in: at(Y, '14:00').toISOString(), out: at(Y, '18:00').toISOString() },
@@ -361,13 +362,14 @@ describe('Zoho People’s check-ins pulled in (e2e)', () => {
     });
 
     it('fills a draft month’s line from the Zoho days fetched', async () => {
-      expect((await lineOf(DRAFT, 'ana')).inputs as { workedHours?: number | null }).not.toHaveProperty('workedHours', 17);
+      expect((await lineOf(DRAFT, 'ana')).inputs as { workedHours?: number | null }).not.toHaveProperty('workedHours', 18);
       zoho.day(emails.ana, d(0), zohoDay(d(0), [['09:00', '13:00'], ['14:00', '18:00']]));
       zoho.day(emails.ana, d(1), zohoDay(d(1), [['09:00', '18:00']]));
       const run = await fetchRun('hr', d(0), d(1), ['ana']);
       expect(run.counts).toMatchObject({ daysAdded: 2, linesRefilled: 1 });
       const line = await lineOf(DRAFT, 'ana');
-      expect(line.inputs).toMatchObject({ workedHours: 17 });
+      // 9 (9:00 to 6:00 PM, the break included) and 9
+      expect(line.inputs).toMatchObject({ workedHours: 18 });
       expect(line.attendanceImport).toMatchObject({ source: 'attendance', sources: ['zoho'] });
       expect(await prisma.auditLog.count({ where: { entityType: 'payroll_line', action: 'update', diff: { path: ['runId'], equals: runs[DRAFT] } } })).toBeGreaterThan(0);
     });
@@ -429,7 +431,7 @@ describe('Zoho People’s check-ins pulled in (e2e)', () => {
       expect(day!.checkIn).toEqual(at(d(9), '09:00'));
       expect(day!.checkOut).toEqual(at(d(9), '18:00'));
       expect(day!.pairs).toHaveLength(2);
-      expect(day!.hoursCounted.toNumber()).toBe(8);
+      expect(day!.hoursCounted.toNumber()).toBe(9);
     });
 
     it('reads the day’s first check-in and last check-out when no way brings them whole, and asks once a day after', async () => {

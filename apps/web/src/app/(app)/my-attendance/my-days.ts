@@ -1,4 +1,4 @@
-import { ATTENDANCE_DAY_STATUS_LABELS, formatHours, type AttendanceDayStatus } from '@trendlix/shared';
+import { ATTENDANCE_DAY_STATUS_LABELS, formatHours, percentText, rateBand, type AttendanceDayStatus, type AttendanceRatePart, type AttendanceRates } from '@trendlix/shared';
 import { formatDate } from '../../../lib/format';
 import { weekdayOf } from '../organization/holidays/holidays';
 
@@ -80,3 +80,60 @@ export function usualSource(sources: readonly string[]): string | null {
 
 /** How many columns the month's figures take on a wide screen: all in a row up to 7 (the design's), else two rows. */
 export const figureColumns = (count: number): number => (count <= 7 ? Math.max(1, count) : Math.ceil(count / 2));
+
+// ---------- the attendance rate (owner, 31 October 2026) ----------
+
+/** A figure card of the rate: its words, its percent and the owner's colour (31 October 2026: red, yellow, green). */
+export interface RateTile {
+  key: string;
+  label: string;
+  value: string;
+  note: string | null;
+  tone: 'danger' | 'warn' | 'ok' | null;
+}
+
+const RATE_TONE = { low: 'danger', mid: 'warn', high: 'ok' } as const;
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** A week's days in words: "25–31 Oct", "1–3 Oct". */
+export function weekRangeText(w: Pick<AttendanceRatePart, 'from' | 'to'>): string {
+  const [from, to] = [Number(w.from.slice(8, 10)), Number(w.to.slice(8, 10))];
+  const month = SHORT_MONTHS[Number(w.to.slice(5, 7)) - 1];
+  return from === to ? `${from} ${month}` : `${from}–${to} ${month}`;
+}
+
+/** "11 of 12 working days so far"; "No working day yet". */
+const daysNote = (p: AttendanceRatePart, sofar: boolean) =>
+  p.expectedDays === 0 ? 'No working day yet' : `${p.attendedDays} of ${p.expectedDays} working day${p.expectedDays === 1 ? '' : 's'}${sofar ? ' so far' : ''}`;
+
+/**
+ * The rate's cards for My Attendance (owner, 31 October 2026: "show the weekly attendance percentage and monthly
+ * percentage ongoing through the month"): the month so far, and this week with the weeks before it in its note; a month
+ * gone by, its rate with each week's in the note. None from an API from before it.
+ */
+export function rateTiles(rates: AttendanceRates | null | undefined): RateTile[] {
+  if (!rates) return [];
+  const current = rates.weeks.find((w) => w.current) ?? null;
+  const tone = (rate: number | null) => {
+    const band = rateBand(rate);
+    return band ? RATE_TONE[band] : null;
+  };
+  const weekText = (w: AttendanceRatePart) => `${weekRangeText(w)} ${percentText(w.rate)}`;
+  const month: RateTile = {
+    key: 'rate-month',
+    label: current ? 'Attendance this month' : 'Attendance rate',
+    value: percentText(rates.monthToDate.rate),
+    note: current ? daysNote(rates.monthToDate, true) : [daysNote(rates.monthToDate, false), ...rates.weeks.filter((w) => w.expectedDays > 0).map(weekText)].join(' · '),
+    tone: tone(rates.monthToDate.rate),
+  };
+  if (!current) return [month];
+  const earlier = rates.weeks.filter((w) => !w.current && w.expectedDays > 0);
+  const week: RateTile = {
+    key: 'rate-week',
+    label: 'Attendance this week',
+    value: percentText(current.rate),
+    note: [`${daysNote(current, true)}, ${weekRangeText(current)}`, ...(earlier.length ? [`Before: ${earlier.map(weekText).join(' · ')}`] : [])].join('. '),
+    tone: tone(current.rate),
+  };
+  return [month, week];
+}

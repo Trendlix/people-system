@@ -1,4 +1,5 @@
 import {
+  attendanceRates,
   checkInBins,
   clockText,
   HISTORY_SOURCE_LABELS,
@@ -204,5 +205,48 @@ describe('the history’s period', () => {
     expect(historyRange('custom', TODAY, '2024-03-10', { from: '2023-01-01', to: '2027-01-01' })).toEqual({ from: '2024-03-10', to: TODAY });
     expect(historyRange('custom', TODAY, null, { from: '2026-06-30', to: '2026-01-01' })).toEqual({ problem: "The last day can't be before the first." });
     expect(historyRange('custom', TODAY, null, {})).toEqual({ problem: 'Choose the first and the last day of the range, e.g. 2026-01-01 and 2026-06-30.' });
+  });
+});
+
+// The rate through the month (owner, 31 October 2026: "show the weekly attendance percentage and monthly percentage
+// ongoing through the month"): the month so far and each week begun, Sunday to Saturday, cut at the month's edges.
+describe('the attendance rate through the month', () => {
+  // November 2026: Sunday 1st to Thursday 5th, one absence and a day of leave; Sunday 8th worked; today Tuesday 10th
+  const days = [
+    worked('2026-11-01', '09:05', '18:10', 9),
+    worked('2026-11-02', '09:00', '18:00', 9),
+    input('2026-11-03', { status: 'absent', place: null }),
+    input('2026-11-04', { status: 'leave', place: null }),
+    worked('2026-11-05', '09:00', '18:00', 9),
+    input('2026-11-06', { status: 'rest', place: null, scheduled: false }),
+    worked('2026-11-08', '09:00', '18:00', 9),
+    input('2026-11-09', { status: 'absent', place: null }),
+  ].map(historyDay);
+
+  it('counts the month so far and each week, today’s marked', () => {
+    const rates = attendanceRates(days, '2026-11', '2026-11-10');
+    expect(rates.monthToDate).toEqual({ from: '2026-11-01', to: '2026-11-10', expectedDays: 6, attendedDays: 4, rate: 4 / 6 });
+    expect(rates.weeks).toEqual([
+      { from: '2026-11-01', to: '2026-11-07', expectedDays: 4, attendedDays: 3, rate: 0.75, current: false },
+      { from: '2026-11-08', to: '2026-11-14', expectedDays: 2, attendedDays: 1, rate: 0.5, current: true },
+    ]);
+  });
+
+  it('cuts the first week at the month’s first day, and has no rate before a day is expected', () => {
+    // October 2026 starts on a Thursday: its first week is the 1st to the 3rd
+    const october = attendanceRates([], '2026-10', '2026-10-02');
+    expect(october.weeks).toEqual([{ from: '2026-10-01', to: '2026-10-03', expectedDays: 0, attendedDays: 0, rate: null, current: true }]);
+    expect(october.monthToDate.rate).toBeNull();
+    // a month gone by: every week to its last day, none current
+    const past = attendanceRates(days, '2026-11', '2026-12-15');
+    expect(past.weeks.map((w) => [w.from, w.to])).toEqual([
+      ['2026-11-01', '2026-11-07'],
+      ['2026-11-08', '2026-11-14'],
+      ['2026-11-15', '2026-11-21'],
+      ['2026-11-22', '2026-11-28'],
+      ['2026-11-29', '2026-11-30'],
+    ]);
+    expect(past.weeks.some((w) => w.current)).toBe(false);
+    expect(past.monthToDate.to).toBe('2026-11-30');
   });
 });

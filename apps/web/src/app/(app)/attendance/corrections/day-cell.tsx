@@ -15,6 +15,7 @@ export function DayCorrectionCell({
   today,
   href,
   label,
+  askFrom = null,
 }: {
   day: { date: string; status: string };
   corrections: readonly MonthCorrection[];
@@ -24,8 +25,10 @@ export function DayCorrectionCell({
   href: (date: string) => string;
   /** "Ask for a correction", or HR's "Correct". */
   label: string;
+  /** The employee's own: the earliest day they can still ask about (owner, 31 October 2026: "locked after 2 working days"). */
+  askFrom?: string | null;
 }) {
-  const c = dayCorrection(day, corrections, correctable, today, href);
+  const c = dayCorrection(day, corrections, correctable, today, href, askFrom);
   if (!c) return null;
   if (c.kind === 'open') {
     return (

@@ -30,8 +30,8 @@ const firstAndLast: ImportedDay = { ...withPairs, pairs: null };
 
 describe('a Zoho day recounted under a changed shift', () => {
   it('from its pairs: the window, grace and count-until follow the shift', () => {
-    expect(hoursOf(withPairs, OLD)).toBe(9); // 4 + 5:15 within 9:00–19:15, at most 9
-    expect(hoursOf(withPairs, NEW)).toBe(10); // 4 + 6 until 8:00 PM
+    expect(hoursOf(withPairs, OLD)).toBe(9); // 9:00 to 7:15 PM, the break included, at most 9
+    expect(hoursOf(withPairs, NEW)).toBe(11); // 9:00 to 8:00 PM, the break included (owner, 31 October 2026)
   });
 
   it('from the first and last only (an Excel import): check-in to check-out within the window', () => {

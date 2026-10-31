@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { startTransition, useActionState, useState, useSyncExternalStore } from 'react';
-import { ATTENDANCE_SOURCE_LABELS, CORRECTION_REASON_MAX, type AttendanceSource, type CorrectableDay } from '@trendlix/shared';
+import { ATTENDANCE_SOURCE_LABELS, CORRECTION_ASK_WORKING_DAYS, CORRECTION_AWAY_TEXT, CORRECTION_REASON_MAX, type AttendanceSource, type CorrectableDay } from '@trendlix/shared';
 import { DateInput, TimeInput } from '@/components/date-time-inputs';
 import { FormErrors, useFieldIds, valueOf } from '@/components/form';
 import { Select } from '@/components/select';
@@ -41,7 +41,12 @@ export interface CorrectionMonth {
   days: (CorrectableDay & { date: string })[];
   corrections: MonthCorrection[];
   correctable: MonthCorrectable;
+  /** The employee's own: the earliest day they can still ask about (owner, 31 October 2026); none: not held to it. */
+  askFrom?: string | null;
 }
+
+/** Where the employee asks for official duty instead (owner, 31 October 2026: "Remove it, point to OD"). */
+export const NEW_OD_HREF = '/attendance/official-duty/new';
 
 export function CorrectionForm({
   action,
@@ -51,6 +56,7 @@ export function CorrectionForm({
   today,
   cancelHref,
   toCeo = false,
+  odHref = NEW_OD_HREF,
 }: {
   action: Action;
   /** For HR correcting directly: whose day; null for the employee's own. */
@@ -62,6 +68,8 @@ export function CorrectionForm({
   cancelHref: string;
   /** The employee is C-level (19 October 2026): after their manager it goes to the CEO, not HR. */
   toCeo?: boolean;
+  /** Where the employee asks for official duty (the phone pages have their own). */
+  odHref?: string;
 }) {
   const [state, formAction, sending] = useActionState(action, {});
   const fid = useFieldIds();
@@ -78,7 +86,7 @@ export function CorrectionForm({
   const onRecord = known ? (month.days.find((d) => d.date === day) ?? null) : null;
   const open = known && month.corrections.some((c) => c.date === day && (c.status === 'with_manager' || c.status === 'with_hr'));
   const now = useSyncExternalStore(everyFewSeconds, minuteNow, notKnown);
-  const problems = correctionFormProblems(typed, { today, now: now || null, day: onRecord, known, correctable: known ? month.correctable : null, open, name: byHr ? person.name : null });
+  const problems = correctionFormProblems(typed, { today, now: now || null, day: onRecord, known, correctable: known ? month.correctable : null, open, name: byHr ? person.name : null, askFrom: byHr ? null : (month.askFrom ?? null) });
   const blocked = problems.length > 0 || sending;
   const needs = timesNeeded(typed.kind, onRecord);
 
@@ -121,7 +129,9 @@ export function CorrectionForm({
           </label>
           <DateInput id={fid('date')} name="date" required defaultValue={typed.date} aria-describedby={fid('date-hint')} />
           <p id={fid('date-hint')} className="hint">
-            A day gone by, or today, in a month whose payroll isn&apos;t approved yet.
+            {byHr
+              ? 'A day gone by, or today, in a month whose payroll isn’t approved yet.'
+              : `Today, or a day up to ${CORRECTION_ASK_WORKING_DAYS} working days ago, in a month whose payroll isn’t approved yet.`}
           </p>
         </div>
         <div role="status" aria-live="polite" className="rounded-lg bg-canvas px-4 py-3 text-sm sm:self-start">
@@ -149,11 +159,22 @@ export function CorrectionForm({
               </option>
             ))}
           </Select>
+          <p className="hint">
+            {CORRECTION_AWAY_TEXT}
+            {!byHr && (
+              <>
+                {' '}
+                <Link href={odHref} className="font-semibold">
+                  Ask for official duty
+                </Link>
+              </>
+            )}
+          </p>
         </div>
         {needs.checkIn !== 'none' && (
           <div>
             <label htmlFor={fid('checkIn')} className="label">
-              {label(needs.checkIn, typed.kind === 'worked_remotely' ? 'Started work at' : 'Came in at')}
+              {label(needs.checkIn, 'Came in at')}
             </label>
             <TimeInput id={fid('checkIn')} name="checkIn" defaultValue={typed.checkIn} aria-describedby={fid('times-hint')} />
           </div>

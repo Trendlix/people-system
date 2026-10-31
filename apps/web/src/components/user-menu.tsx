@@ -1,4 +1,4 @@
-import { CalendarClock, CalendarDays, ChevronDown, KeyRound, LogOut, MonitorSmartphone, Video } from 'lucide-react';
+import { CalendarClock, CalendarDays, ChevronDown, KeyRound, LogOut, MonitorSmartphone, PackageCheck, Video } from 'lucide-react';
 import Link from 'next/link';
 import { logout } from '@/app/login/actions';
 import { ApiError } from '@/lib/api';
@@ -10,7 +10,7 @@ import { modeSwitch } from '@/lib/session-mode';
 import { canViewAs, type Session } from '@/lib/view-as';
 import { MenuPopover } from './menu-popover';
 import { ModeSwitch } from './mode-switch';
-import { MY_ATTENDANCE, myAttendanceInMenu } from './nav';
+import { MY_ASSETS, MY_ATTENDANCE, myAssetsInMenu, myAttendanceInMenu } from './nav';
 import { PushTokenField } from './push-token-field';
 import { ViewAsButton } from './view-as';
 
@@ -28,7 +28,7 @@ export async function UserMenu() {
   // without Change password: theirs is not the Super Admin's to change. View as… is for a Super Admin in their own
   // session only (owner's decision, 17 October 2026). My attendance for HR, Finance, the CEO and Admins with an employee
   // profile, who check in on the system too (owner, 19 October 2026: "Check-in through the system … to replace Zoho") and
-  // whose sidebar doesn't list it. A developer who is also an employee has the switch between using the system as
+  // whose sidebar doesn't list it; My assets for them too (31 October 2026: "every employee sees his assets"). A developer who is also an employee has the switch between using the system as
   // themselves and as a developer (owner, 22 October 2026: "give hin a switched to use the account as the main role
   // assigned to him or as a developer, to not confuse him"); in the developer view their roles read "Developer".
   const mode = user && modeSwitch(user);
@@ -66,6 +66,14 @@ export async function UserMenu() {
               <Link href={MY_ATTENDANCE} className={item}>
                 <CalendarDays aria-hidden="true" className="size-4 text-muted" strokeWidth={1.6} />
                 My attendance
+              </Link>
+            )}
+            {/* the company's assets they hold (owner, 31 October 2026: "every employee sees his assets"), for those whose
+                sidebar doesn't list it */}
+            {myAssetsInMenu(user) && (
+              <Link href={MY_ASSETS} className={item}>
+                <PackageCheck aria-hidden="true" className="size-4 text-muted" strokeWidth={1.6} />
+                My assets
               </Link>
             )}
             {/* not while viewing as someone: theirs is not the Super Admin's to change */}
