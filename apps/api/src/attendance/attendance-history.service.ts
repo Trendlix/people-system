@@ -3,6 +3,7 @@ import ExcelJS from 'exceljs';
 import {
   attendanceDayView,
   attendanceRates,
+  weekStartOf,
   CHECK_IN_SOURCES,
   checkInBins,
   clockText,
@@ -186,7 +187,8 @@ export class AttendanceHistoryService {
     const today = todayInCairo();
     // a month still to come has no day yet
     if (`${month}-01` > today) return attendanceRates([], month, today);
-    const built = await this.collect(me, { period: 'custom', from: firstDay(month), to: lastDay(month) }, false);
+    // from the Sunday its first week starts on, the month before's days of that week with it
+    const built = await this.collect(me, { period: 'custom', from: weekStartOf(firstDay(month)), to: lastDay(month) }, false);
     return attendanceRates(built.days, month, today);
   }
 

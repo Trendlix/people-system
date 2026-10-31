@@ -1,5 +1,6 @@
 import {
   attendanceRates,
+  weekStartOf,
   checkInBins,
   clockText,
   HISTORY_SOURCE_LABELS,
@@ -209,42 +210,48 @@ describe('the history’s period', () => {
 });
 
 // The rate through the month (owner, 31 October 2026: "show the weekly attendance percentage and monthly percentage
-// ongoing through the month"): the month so far and each week begun, Sunday to Saturday, cut at the month's edges.
+// ongoing through the month"; then, beside "Hours this week": "there is a missmatch in the work percentage"): the hours
+// worked (and permission) ÷ the hours due, as the payroll measures attendance; the month so far and each whole week.
 describe('the attendance rate through the month', () => {
-  // November 2026: Sunday 1st to Thursday 5th, one absence and a day of leave; Sunday 8th worked; today Tuesday 10th
+  const NINE = { ...MORNING, hoursPerDay: 9 };
+  // November 2026: Sunday 1st to Thursday 5th (an absence, a day of leave, 7:30 and 1:30 of permission), Saturday 7th
+  // worked on a rest day; Sunday 8th worked, Monday 9th absent; today Tuesday 10th, nothing on record yet
   const days = [
-    worked('2026-11-01', '09:05', '18:10', 9),
-    worked('2026-11-02', '09:00', '18:00', 9),
-    input('2026-11-03', { status: 'absent', place: null }),
-    input('2026-11-04', { status: 'leave', place: null }),
-    worked('2026-11-05', '09:00', '18:00', 9),
-    input('2026-11-06', { status: 'rest', place: null, scheduled: false }),
-    worked('2026-11-08', '09:00', '18:00', 9),
-    input('2026-11-09', { status: 'absent', place: null }),
+    worked('2026-11-01', '09:00', '18:00', 9, { shift: NINE }),
+    worked('2026-11-02', '09:00', '18:00', 9, { shift: NINE }),
+    input('2026-11-03', { status: 'absent', place: null, shift: NINE }),
+    input('2026-11-04', { status: 'leave', place: null, shift: NINE }),
+    worked('2026-11-05', '09:00', '16:30', 7.5, { shift: NINE, permissionHours: 1.5 }),
+    input('2026-11-06', { status: 'rest', place: null, scheduled: false, shift: NINE }),
+    worked('2026-11-07', '10:00', '14:00', 4, { shift: NINE, scheduled: false }),
+    worked('2026-11-08', '09:00', '18:00', 9, { shift: NINE }),
+    input('2026-11-09', { status: 'absent', place: null, shift: NINE }),
   ].map(historyDay);
 
-  it('counts the month so far and each week, today’s marked', () => {
+  it('measures the hours worked against the hours due, the month so far and each week, today’s marked', () => {
     const rates = attendanceRates(days, '2026-11', '2026-11-10');
-    expect(rates.monthToDate).toEqual({ from: '2026-11-01', to: '2026-11-10', expectedDays: 6, attendedDays: 4, rate: 4 / 6 });
+    // due: four working days expected (the leave out) and two, 9 hours each; worked: every hour counted and permission
+    expect(rates.monthToDate).toEqual({ from: '2026-11-01', to: '2026-11-10', expectedDays: 6, attendedDays: 4, dueHours: 54, workedHours: 40, rate: 40 / 54 });
     expect(rates.weeks).toEqual([
-      { from: '2026-11-01', to: '2026-11-07', expectedDays: 4, attendedDays: 3, rate: 0.75, current: false },
-      { from: '2026-11-08', to: '2026-11-14', expectedDays: 2, attendedDays: 1, rate: 0.5, current: true },
+      { from: '2026-11-01', to: '2026-11-07', expectedDays: 4, attendedDays: 3, dueHours: 36, workedHours: 31, rate: 31 / 36, current: false },
+      { from: '2026-11-08', to: '2026-11-14', expectedDays: 2, attendedDays: 1, dueHours: 18, workedHours: 9, rate: 0.5, current: true },
     ]);
   });
 
-  it('cuts the first week at the month’s first day, and has no rate before a day is expected', () => {
-    // October 2026 starts on a Thursday: its first week is the 1st to the 3rd
+  it('takes whole weeks, the first from its Sunday in the month before; no rate before an hour is due', () => {
+    // October 2026 starts on a Thursday: its first week is Sunday 27 September to Saturday 3 October
     const october = attendanceRates([], '2026-10', '2026-10-02');
-    expect(october.weeks).toEqual([{ from: '2026-10-01', to: '2026-10-03', expectedDays: 0, attendedDays: 0, rate: null, current: true }]);
+    expect(october.weeks).toEqual([{ from: '2026-09-27', to: '2026-10-03', expectedDays: 0, attendedDays: 0, dueHours: 0, workedHours: 0, rate: null, current: true }]);
     expect(october.monthToDate.rate).toBeNull();
-    // a month gone by: every week to its last day, none current
+    expect(weekStartOf('2026-10-01')).toBe('2026-09-27');
+    // a month gone by: every week to its last, the last into the month after, none current
     const past = attendanceRates(days, '2026-11', '2026-12-15');
     expect(past.weeks.map((w) => [w.from, w.to])).toEqual([
       ['2026-11-01', '2026-11-07'],
       ['2026-11-08', '2026-11-14'],
       ['2026-11-15', '2026-11-21'],
       ['2026-11-22', '2026-11-28'],
-      ['2026-11-29', '2026-11-30'],
+      ['2026-11-29', '2026-12-05'],
     ]);
     expect(past.weeks.some((w) => w.current)).toBe(false);
     expect(past.monthToDate.to).toBe('2026-11-30');

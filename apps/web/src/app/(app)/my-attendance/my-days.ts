@@ -95,21 +95,23 @@ export interface RateTile {
 const RATE_TONE = { low: 'danger', mid: 'warn', high: 'ok' } as const;
 const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-/** A week's days in words: "25–31 Oct", "1–3 Oct". */
+/** A week's days in words: "25–31 Oct", "27 Sep–3 Oct" across two months. */
 export function weekRangeText(w: Pick<AttendanceRatePart, 'from' | 'to'>): string {
   const [from, to] = [Number(w.from.slice(8, 10)), Number(w.to.slice(8, 10))];
-  const month = SHORT_MONTHS[Number(w.to.slice(5, 7)) - 1];
-  return from === to ? `${from} ${month}` : `${from}–${to} ${month}`;
+  const [fromMonth, toMonth] = [SHORT_MONTHS[Number(w.from.slice(5, 7)) - 1], SHORT_MONTHS[Number(w.to.slice(5, 7)) - 1]];
+  if (fromMonth !== toMonth) return `${from} ${fromMonth}–${to} ${toMonth}`;
+  return from === to ? `${from} ${toMonth}` : `${from}–${to} ${toMonth}`;
 }
 
-/** "11 of 12 working days so far"; "No working day yet". */
-const daysNote = (p: AttendanceRatePart, sofar: boolean) =>
-  p.expectedDays === 0 ? 'No working day yet' : `${p.attendedDays} of ${p.expectedDays} working day${p.expectedDays === 1 ? '' : 's'}${sofar ? ' so far' : ''}`;
+/** "34:48 of 45:00 hours so far" (owner, 31 October 2026: by the hours, as "Hours this week" and the payroll); "No hours due yet". */
+const hoursNote = (p: AttendanceRatePart, sofar: boolean) =>
+  p.dueHours > 0 ? `${formatHours(p.workedHours)} of ${formatHours(p.dueHours)} hours${sofar ? ' so far' : ''}` : 'No hours due yet';
 
 /**
  * The rate's cards for My Attendance (owner, 31 October 2026: "show the weekly attendance percentage and monthly
  * percentage ongoing through the month"): the month so far, and this week with the weeks before it in its note; a month
- * gone by, its rate with each week's in the note. None from an API from before it.
+ * gone by, its rate with each week's in the note; by the hours worked against the hours due ("there is a missmatch in
+ * the work percentage", beside "Hours this week"). None from an API from before it.
  */
 export function rateTiles(rates: AttendanceRates | null | undefined): RateTile[] {
   if (!rates) return [];
@@ -123,16 +125,16 @@ export function rateTiles(rates: AttendanceRates | null | undefined): RateTile[]
     key: 'rate-month',
     label: current ? 'Attendance this month' : 'Attendance rate',
     value: percentText(rates.monthToDate.rate),
-    note: current ? daysNote(rates.monthToDate, true) : [daysNote(rates.monthToDate, false), ...rates.weeks.filter((w) => w.expectedDays > 0).map(weekText)].join(' · '),
+    note: current ? hoursNote(rates.monthToDate, true) : [hoursNote(rates.monthToDate, false), ...rates.weeks.filter((w) => w.dueHours > 0).map(weekText)].join(' · '),
     tone: tone(rates.monthToDate.rate),
   };
   if (!current) return [month];
-  const earlier = rates.weeks.filter((w) => !w.current && w.expectedDays > 0);
+  const earlier = rates.weeks.filter((w) => !w.current && w.dueHours > 0);
   const week: RateTile = {
     key: 'rate-week',
     label: 'Attendance this week',
     value: percentText(current.rate),
-    note: [`${daysNote(current, true)}, ${weekRangeText(current)}`, ...(earlier.length ? [`Before: ${earlier.map(weekText).join(' · ')}`] : [])].join('. '),
+    note: [`${hoursNote(current, true)}, ${weekRangeText(current)}`, ...(earlier.length ? [`Before: ${earlier.map(weekText).join(' · ')}`] : [])].join('. '),
     tone: tone(current.rate),
   };
   return [month, week];

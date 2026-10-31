@@ -112,7 +112,7 @@ export const isHistoryFilter = (v: unknown): v is HistoryFilter => (HISTORY_FILT
 
 /** A day as the history reads it: the attendance's day, and what the API knows of it besides. */
 export type HistoryDayInput = Pick<AttendanceDayView, 'date' | 'status' | 'checkIn' | 'checkOut' | 'place' | 'hoursCounted' | 'extraHours' | 'od' | 'correctionId'> &
-  Partial<Pick<AttendanceDayView, 'pairs' | 'openAt' | 'breakMinutes' | 'exempt' | 'compensatory' | 'wfhDay'>> & {
+  Partial<Pick<AttendanceDayView, 'pairs' | 'openAt' | 'breakMinutes' | 'exempt' | 'compensatory' | 'wfhDay' | 'permissionHours'>> & {
   source: AttendanceSource;
   /** A work from home day approved for them (wfh.ts). */
   wfh: boolean;
@@ -125,6 +125,13 @@ export type HistoryDayInput = Pick<AttendanceDayView, 'date' | 'status' | 'check
 /** A day of the log. */
 export interface HistoryDay {
   date: string;
+  /**
+   * The hours due that day (owner, 31 October 2026, the attendance rate beside "Hours this week": "there is a missmatch
+   * in the work percentage"): its shift's hours to work on a day expected of them, else 0.
+   */
+  dueHours: number;
+  /** Its approved permission hours, counted as worked (as the payroll counts them). */
+  permissionHours: number;
   /** 0 = Sunday … 6 = Saturday. */
   weekday: number;
   mode: HistoryMode;
@@ -210,8 +217,11 @@ export function historyDay(d: HistoryDayInput): HistoryDay {
       }
     }
   }
+  const hoursADay = d.shift ? shiftWorkHours(d.shift) : null;
   return {
     date: d.date,
+    dueHours: expected && hoursADay !== null && hoursADay > 0 ? hoursADay : 0,
+    permissionHours: Math.max(0, d.permissionHours ?? 0),
     weekday,
     mode,
     status: d.status,
@@ -435,22 +445,29 @@ export function historyTrend(days: readonly HistoryDay[], range: { from: string;
 
 // ---------- the rates through the month (owner, 31 October 2026) ----------
 
-/** Days attended of the working days expected (the attendance rate: HISTORY_FIGURE_DEFINITIONS), over some days. */
+/**
+ * The attendance rate over some days, as the payroll measures attendance (payroll.ts attendanceRatio; owner, 31 October
+ * 2026, beside "Hours this week": "there is a missmatch in the work percentage"): the hours worked (counted, and the
+ * approved permission hours) ÷ the hours due (the shift's hours to work on each working day expected of them: not a
+ * holiday, a rest day or leave). Also the days expected and attended.
+ */
 export interface AttendanceRatePart {
   from: string;
   to: string;
   expectedDays: number;
   attendedDays: number;
-  /** Attended ÷ expected, a fraction (0.95); null with no day expected yet. */
+  dueHours: number;
+  workedHours: number;
+  /** Worked ÷ due, a fraction (0.95; above 1 with extra time); null with no hours due yet. */
   rate: number | null;
 }
 
 /**
  * A person's attendance rate through a month (owner, 31 October 2026: "show the weekly attendance percentage and monthly
- * percentage ongoing through the month"), by the history's own rule so it is the figure HR sees there: the month so far,
- * and each of its weeks (Sunday to Saturday, cut at the month's edges) begun by today, in order, the one today is in
- * `current`. Only days gone by and today once on record count (attendance-days.ts monthDays), so the rate doesn't drop in
- * the morning before the check-in.
+ * percentage ongoing through the month"): the month so far, and each week of it (Sunday to Saturday, whole, the first
+ * and last reaching into the months beside it, as "Hours this week" counts it) begun by today, in order, the one today
+ * is in `current`. Only days gone by and today once on record count (attendance-days.ts monthDays), so the rate doesn't
+ * drop in the morning before the check-in.
  */
 export interface AttendanceRates {
   month: string;
@@ -458,29 +475,35 @@ export interface AttendanceRates {
   weeks: (AttendanceRatePart & { current: boolean })[];
 }
 
-/** The month's rates (AttendanceRates) from its days as the history reads them (historyDay), to `today`. */
+/** The first day of the week (a Sunday) a day is in. */
+export const weekStartOf = (ymd: string) => shiftDate(ymd, -new Date(`${ymd}T00:00:00Z`).getUTCDay());
+
+/** The month's rates (AttendanceRates) from its days as the history reads them (historyDay), its weeks' too, to `today`. */
 export function attendanceRates(days: readonly HistoryDay[], month: string, today: string): AttendanceRates {
   const first = `${month}-01`;
   const last = lastOfMonth(month);
-  const upTo = today < last ? today : last;
   const part = (from: string, to: string): AttendanceRatePart => {
     let expectedDays = 0;
     let attendedDays = 0;
+    let due = 0;
+    let worked = 0;
     for (const d of days) {
-      if (d.date < from || d.date > to || d.date > upTo) continue;
+      if (d.date < from || d.date > to || d.date > today) continue;
       if (d.expected) expectedDays++;
       if (d.attended) attendedDays++;
+      due += d.dueHours;
+      worked += d.hours + d.permissionHours;
     }
-    return { from, to, expectedDays, attendedDays, rate: expectedDays ? attendedDays / expectedDays : null };
+    const dueHours = Math.round(due * 100) / 100;
+    const workedHours = Math.round(worked * 100) / 100;
+    return { from, to, expectedDays, attendedDays, dueHours, workedHours, rate: dueHours > 0 ? workedHours / dueHours : null };
   };
   const weeks: AttendanceRates['weeks'] = [];
-  for (let from = first; from <= upTo; ) {
-    // to the week's Saturday, or the month's last day
-    const saturday = shiftDate(from, 6 - new Date(`${from}T00:00:00Z`).getUTCDay());
-    const to = saturday < last ? saturday : last;
+  for (let from = weekStartOf(first); from <= last && from <= today; from = shiftDate(from, 7)) {
+    const to = shiftDate(from, 6);
     weeks.push({ ...part(from, to), current: from <= today && today <= to });
-    from = shiftDate(to, 1);
   }
+  const upTo = today < last ? today : last;
   return { month, monthToDate: { ...part(first, last), to: upTo < first ? first : upTo }, weeks };
 }
 
@@ -497,7 +520,7 @@ export function rateBand(rate: number | null | undefined): RateBand | null {
 }
 
 /** "2026-10-31" moved by `n` days. */
-const shiftDate =(ymd: string, n: number) => new Date(Date.parse(`${ymd}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+const shiftDate = (ymd: string, n: number) => new Date(Date.parse(`${ymd}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 
 /** A bin of the check-in time distribution: from a time (minutes after midnight), how many check-ins. */
 export interface HistoryBin {
