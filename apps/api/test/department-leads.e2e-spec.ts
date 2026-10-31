@@ -92,7 +92,8 @@ describe('Department heads and team leads (e2e)', () => {
     const res = await api()
       .post('/api/employees')
       .set('Cookie', hr)
-      .send({ fullNameEn: name(who), fullNameAr: 'موظف تجريبي', ...(email && { workEmail: email }) })
+      // a Display name the same as the full name (31 October 2026: an employee sees colleagues by it): the names read here stay the same whoever asks
+      .send({ fullNameEn: name(who), displayName: name(who), fullNameAr: 'موظف تجريبي', ...(email && { workEmail: email }) })
       .expect(201);
     people.push(res.body.id);
     ids[key] = res.body.id;

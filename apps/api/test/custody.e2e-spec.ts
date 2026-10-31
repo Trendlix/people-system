@@ -68,6 +68,8 @@ describe('Custody (e2e)', () => {
       data: {
         employeeCode: `${key.toUpperCase()}-${RUN}`,
         fullNameEn: `${name} ${RUN}`,
+        // a Display name the same as the full name (31 October 2026: an employee sees colleagues by it): the names read here stay the same whoever asks
+        displayName: `${name} ${RUN}`,
         fullNameAr: 'موظف تجريبي',
         workEmail: options.email?.toLowerCase() ?? null,
         employments: { create: { employmentType: 'full_time', joinDate: new Date('2024-01-01'), gradeId: options.gradeId ?? null, ...(options.ended && { endDate: new Date(options.ended), endReason: 'resigned' }) } },

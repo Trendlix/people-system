@@ -7,12 +7,14 @@ import {
   NOTIFICATION_TITLE_MAX,
   NOTIFICATIONS_PAGE_SIZE,
   safeNotificationLink,
+  seesFullNames,
   type NotificationKind,
   type NotificationPage,
   type NotificationSettings,
   type NotificationView,
   type PushPlatform,
 } from '@trendlix/shared';
+import { ColleagueNamesService } from '../auth/colleague-names.service.js';
 import type { SessionUser } from '../auth/session-user.js';
 import type { ActiveSession } from '../auth/sessions.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -73,6 +75,7 @@ export class NotificationsService {
     private readonly prisma: PrismaService,
     private readonly fcm: FcmSender,
     private readonly whatsapp: WhatsAppService,
+    private readonly names: ColleagueNamesService,
   ) {}
 
   // ---------- the emitter ----------
@@ -143,12 +146,23 @@ export class NotificationsService {
     this.sending.add(done);
   }
 
-  /** Pushes each user's row to their phones (with a tag: in place of the one shown with it). */
+  /**
+   * Pushes each user's row to their phones (with a tag: in place of the one shown with it). An employee's push names
+   * colleagues by their display names, as their inbox does (owner, 31 October 2026; packages/shared colleague-names.ts).
+   */
   private async push(rows: readonly { id: string; userId: string }[], n: { kind: string; title: string; body: string; link: string | null; tag?: string | null }): Promise<void> {
-    const devices = await this.prisma.pushDevice.findMany({ where: { userId: { in: rows.map((r) => r.userId) } }, select: { id: true, userId: true, token: true } });
+    const ids = rows.map((r) => r.userId);
+    const [devices, users] = await Promise.all([
+      this.prisma.pushDevice.findMany({ where: { userId: { in: ids } }, select: { id: true, userId: true, token: true } }),
+      this.prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, employeeId: true, roles: { select: { role: { select: { key: true } } } } } }),
+    ]);
     for (const row of rows) {
       const theirs = devices.filter((d) => d.userId === row.userId);
-      if (theirs.length) await this.fcm.send(theirs, { id: row.id, ...n });
+      if (!theirs.length) continue;
+      const user = users.find((u) => u.id === row.userId);
+      const full = !user || seesFullNames(user.roles.map((r) => r.role.key));
+      const swap = full ? null : await this.names.swapFor(user.employeeId);
+      await this.fcm.send(theirs, { id: row.id, ...n, ...(swap && { title: swap(n.title), body: swap(n.body) }) });
     }
   }
 

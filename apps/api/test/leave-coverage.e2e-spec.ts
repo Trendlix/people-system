@@ -64,7 +64,8 @@ describe('Leave coverage (e2e)', () => {
   /** An employee hired into a team or department, with a sign-in account of their own (roles) when given. */
   async function person(key: string, name: string, departmentId: string, managerId: string | null, roles: Parameters<typeof createUser>[1] | null) {
     names[key] = `${name} ${RUN}`;
-    const made = await api().post('/api/employees').set('Cookie', sessions.hr).send({ fullNameEn: names[key], fullNameAr: 'موظف تجريبي', gender: 'female' }).expect(201);
+    // a Display name the same as the full name (31 October 2026: an employee sees colleagues by it): the names read here stay the same whoever asks
+    const made = await api().post('/api/employees').set('Cookie', sessions.hr).send({ fullNameEn: names[key], displayName: names[key], fullNameAr: 'موظف تجريبي', gender: 'female' }).expect(201);
     ids[key] = made.body.id;
     people.push(made.body.id);
     await api()

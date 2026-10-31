@@ -96,7 +96,8 @@ describe('Reimbursements (e2e)', () => {
     const res = await api()
       .post('/api/employees')
       .set('Cookie', hr)
-      .send({ fullNameEn: `${name} ${RUN}`, fullNameAr: 'موظف تجريبي', ...(email && { workEmail: email }) })
+      // a Display name the same as the full name (31 October 2026: an employee sees colleagues by it): the names read here stay the same whoever asks
+      .send({ fullNameEn: `${name} ${RUN}`, displayName: `${name} ${RUN}`, fullNameAr: 'موظف تجريبي', ...(email && { workEmail: email }) })
       .expect(201);
     people.push(res.body.id);
     if (employment) await api().post(`/api/employees/${res.body.id}/employments`).set('Cookie', hr).send({ employmentType: 'full_time', joinDate: JOINED, ...employment }).expect(201);
