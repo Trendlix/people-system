@@ -205,3 +205,22 @@ describe('names', () => {
     expect(long).toBe(`Organization chart - ${'A'.repeat(80)} - 15-10-2026.pdf`);
   });
 });
+
+// the classic tree (owner, 31 October 2026: "Classic department tree")
+describe('the classic tree as SVG', () => {
+  const tree = layoutChart(chart, { ...OPTIONS, arrangement: 'tree' }, measure);
+  const svg = chartSvg(tree);
+
+  it('fills a department’s head with its colour, a team’s with a tint of it, the card bordered with it', () => {
+    expect(svg).toContain('fill="#2563eb"/>');
+    expect(svg).toContain('fill="#2563eb" fill-opacity="0.12"');
+    expect(svg).toContain('stroke="#2563eb" stroke-opacity="0.45"');
+    // a head with rows under it rounded at the top only
+    expect(svg).toMatch(/<path d="M[\d.]+ [\d.]+V[\d.]+A10 10 0 0 1/);
+  });
+
+  it('draws the lines under a department in its colour, the company’s grey', () => {
+    expect(svg).toContain('stroke="#2563eb" stroke-opacity="0.6" stroke-width="1.5"');
+    expect(svg).toContain(`stroke="${PALETTE.muted}" stroke-opacity="0.55"`);
+  });
+});

@@ -14,9 +14,14 @@ import { shownCode } from '../../../../lib/hidden';
 // under it in one column (narrow and tall), or side by side under it (wide and short). "Fit a landscape page" puts the
 // tallest department's teams side by side, then the next tallest, while that brings the chart nearer the page's shape.
 //
+// The classic tree (owner, 31 October 2026: "i didnt like the look of the org chart, how can we adjust it?"; chose
+// "Classic department tree"), the arrangement shown first: a card for each department, in its own colour, centred over
+// its teams' cards side by side, the lines joining the middle of one to the middle of the next; each card lists its job
+// titles with their headcount (classicLayout below).
+//
 // Pure: sizes in pixels (SVG user units), text widths from the `measure` given. Drawn by svg.ts; tested in tree.test.ts.
 
-export type Arrangement = 'balanced' | 'stacked' | 'spread';
+export type Arrangement = 'tree' | 'balanced' | 'stacked' | 'spread';
 
 export interface ChartOptions {
   /** The people under each job title (when the API sent them: HR, the CEO and Finance). */
@@ -62,9 +67,15 @@ export interface Segment {
   y1: number;
   x2: number;
   y2: number;
+  /** The classic tree's lines under a department, in its colour; none: grey. */
+  colour?: string;
 }
 
-export type BoxKind = 'company' | 'department' | 'team' | 'title';
+/**
+ * A box's kind: the company; a department or team (in the classic tree, a card's head); a job title; and in the classic
+ * tree the card around a department's or team's head and rows, and a job title's row in it.
+ */
+export type BoxKind = 'company' | 'department' | 'team' | 'title' | 'card' | 'row';
 
 export interface ChartBox {
   kind: BoxKind;
@@ -81,6 +92,10 @@ export interface ChartBox {
   rule: Segment | null;
   /** The square the company's logo goes in. */
   logo: { x: number; y: number; size: number } | null;
+  /** The classic tree: the department's colour the box is drawn in; none: the other arrangements' look. */
+  colour?: string;
+  /** The classic tree: a card's head with rows under it is rounded at the top only. */
+  round?: 'top' | 'all';
 }
 
 export interface ChartLayout {
@@ -144,8 +159,8 @@ export interface ChartCounts {
   vacant: number;
 }
 
-const titlesIn = (unit: OrgChartTeam, teams: OrgChartTeam[] = []) => [unit, ...teams].flatMap((u) => u.jobTitles);
-const peopleIn = (titles: OrgChartJobTitle[]) => titles.reduce((n, t) => n + t.headcount, 0);
+export const titlesIn = (unit: OrgChartTeam, teams: OrgChartTeam[] = []) => [unit, ...teams].flatMap((u) => u.jobTitles);
+export const peopleIn = (titles: OrgChartJobTitle[]) => titles.reduce((n, t) => n + t.headcount, 0);
 
 export function countChart(chart: OrgChart): ChartCounts {
   const titles = chart.departments.flatMap((d) => titlesIn(d, d.teams));
@@ -178,7 +193,7 @@ function link(c: Ctx, x1: number, y1: number, x2: number, y2: number) {
 }
 
 /** Adds the lines one under another from `top`; answers where they end. */
-function addLines(into: TextLine[], texts: string[], font: FontName, x: number, top: number, align: TextLine['align'], tone: Tone): number {
+export function addLines(into: TextLine[], texts: string[], font: FontName, x: number, top: number, align: TextLine['align'], tone: Tone): number {
   let at = top;
   for (const text of texts) {
     into.push({ text, x, y: baseline(at, font), font, align, tone });
@@ -188,7 +203,7 @@ function addLines(into: TextLine[], texts: string[], font: FontName, x: number, 
 }
 
 /** A headcount tag whose right edge is at `right`. */
-function pillAt(count: number, look: Pill['look'], right: number, top: number, measure: Measure): Pill {
+export function pillAt(count: number, look: Pill['look'], right: number, top: number, measure: Measure): Pill {
   const text = String(count);
   const w = Math.max(PILL_MIN, Math.ceil(measure(text, 'count')) + 12);
   return { x: right - w, y: top, w, h: PILL_H, text, look };
@@ -421,6 +436,7 @@ function remembered(measure: Measure): Measure {
 /** The org chart laid out as `options` say. */
 export function layoutChart(chart: OrgChart, options: ChartOptions, measure: Measure): ChartLayout {
   const m = remembered(measure);
+  if (options.arrangement === 'tree') return classicLayout(chart, options, m);
   if (options.arrangement === 'stacked') return build(chart, options, m, new Set());
   if (options.arrangement === 'spread') return build(chart, options, m, new Set(chart.departments.map((d) => d.id)));
 
@@ -439,4 +455,151 @@ export function layoutChart(chart: OrgChart, options: ChartOptions, measure: Mea
     best = tried;
   }
   return best;
+}
+
+// ---------- the classic tree ----------
+
+/**
+ * The departments' colours in their order, from the first again after the last (owner, 31 October 2026: "Classic
+ * department tree"): each dark enough for white text on it, and apart enough to tell one department from the next.
+ */
+export const DEPARTMENT_COLOURS = ['#2563eb', '#0f766e', '#c2410c', '#7c3aed', '#be185d', '#4d7c0f', '#0369a1', '#b45309', '#4338ca', '#475569'] as const;
+
+/** A card's width, a department's or a team's. */
+export const CARD = 200;
+/** Between two teams' cards under a department. */
+export const CARD_GAP = 16;
+/** Inside a card's head and rows. */
+const CARD_PAD = 10;
+/** A department's card above the line across to its teams, and that line above them. */
+export const TREE_GAP = 20;
+
+/** The key at the foot of the classic tree. */
+export const CLASSIC_NOTE =
+  'The number on a job title is how many people hold it now; under a department or team, the people in all its job titles. A grey 0 is a job title no one holds.';
+
+/** The head of a card: the name, the Arabic name, the head or team lead and "4 people", centred. */
+function cardHead(c: Ctx, kind: 'department' | 'team', unit: OrgChartTeam, people: number, x: number, y: number, colour: string, rows: boolean): ChartBox {
+  const { options, measure } = c;
+  const dept = kind === 'department';
+  const mid = x + CARD / 2;
+  const room = (CARD - 2 * CARD_PAD) * FIT;
+  const [main, quiet]: Tone[] = dept ? ['white', 'paleOnDark'] : ['ink', 'muted'];
+  const lines: TextLine[] = [];
+  const font = dept ? 'department' : 'team';
+  let at = addLines(lines, wrapText(unit.nameEn, room, font, measure, 2), font, mid, y + CARD_PAD, 'middle', main);
+  if (options.arabic && unit.nameAr) {
+    const ar = dept ? 'departmentAr' : 'teamAr';
+    at = addLines(lines, wrapText(unit.nameAr, room, ar, measure, 2), ar, mid, at, 'middle', quiet);
+  }
+  const lead = options.leads !== false ? leadLine(!dept, unit.head) : null;
+  if (lead && unit.head) {
+    at = addLines(lines, [truncate(lead, room, 'lead', measure)], 'lead', mid, at + LEAD_GAP, 'middle', quiet);
+    if (options.arabic && unit.head.fullNameAr && !leadHidden(unit.head)) {
+      at = addLines(lines, [truncate(unit.head.fullNameAr, room, 'leadAr', measure)], 'leadAr', mid, at, 'middle', quiet);
+    }
+  }
+  at = addLines(lines, [plural(people, 'person', 'people')], 'lead', mid, at + LEAD_GAP, 'middle', quiet);
+  return { kind, id: unit.id, x, y, w: CARD, h: at + CARD_PAD - y, vacant: false, lines, pill: null, rule: null, logo: null, colour, round: rows ? 'top' : 'all' };
+}
+
+/** A job title's row in a card: the title and its headcount, the people holding it under it, a line over it but the first. */
+function cardRow(c: Ctx, t: OrgChartJobTitle, x: number, y: number, first: boolean, colour: string): ChartBox {
+  const { options, measure } = c;
+  const vacant = t.headcount === 0;
+  const pill = pillAt(t.headcount, vacant ? 'vacant' : 'onLight', x + CARD - CARD_PAD, y + CARD_PAD - 2, measure);
+  const textW = CARD - 2 * CARD_PAD - pill.w - PILL_GAP;
+  const lines: TextLine[] = [];
+  let at = addLines(lines, wrapText(t.titleEn, textW * FIT, 'title', measure, 2), 'title', x + CARD_PAD, y + CARD_PAD - 2, 'start', vacant ? 'muted' : 'ink');
+  if (options.arabic && t.titleAr) at = addLines(lines, wrapText(t.titleAr, textW * FIT, 'titleAr', measure, 2), 'titleAr', x + CARD_PAD + textW, at, 'end', 'muted');
+  at = Math.max(at, pill.y + pill.h);
+  const full = (CARD - 2 * CARD_PAD) * FIT;
+  for (const p of options.people ? (t.people ?? []) : []) {
+    const code = options.codes ? (shownCode(p.employeeCode) ?? '') : '';
+    const codeW = code ? measure(code, 'code') + 6 : 0;
+    const line = baseline(at, 'person');
+    lines.push({ text: truncate(p.fullNameEn, full - codeW, 'person', measure), x: x + CARD_PAD, y: line, font: 'person', align: 'start', tone: 'muted' });
+    if (code) lines.push({ text: code, x: x + CARD - CARD_PAD, y: line, font: 'code', align: 'end', tone: 'muted' });
+    at += FONTS.person.lineHeight;
+    if (options.arabic && p.fullNameAr) at = addLines(lines, [truncate(p.fullNameAr, full, 'personAr', measure)], 'personAr', x + CARD - CARD_PAD, at, 'end', 'muted');
+  }
+  const rule = first ? null : { x1: x + CARD_PAD, y1: y, x2: x + CARD - CARD_PAD, y2: y };
+  return { kind: 'row', id: t.id, x, y, w: CARD, h: at + CARD_PAD - 2 - y, vacant, lines, pill, rule, logo: null, colour };
+}
+
+/** A department's or team's card at (x, y): its head, then a row for each of its own job titles. Answers its bottom. */
+function card(c: Ctx, kind: 'department' | 'team', unit: OrgChartTeam, teams: OrgChartTeam[], x: number, y: number, colour: string): number {
+  const head = cardHead(c, kind, unit, peopleIn(titlesIn(unit, teams)), x, y, colour, unit.jobTitles.length > 0);
+  let at = head.y + head.h;
+  const rows = unit.jobTitles.map((t, i) => {
+    const row = cardRow(c, t, x, at, i === 0, colour);
+    at = row.y + row.h;
+    return row;
+  });
+  c.boxes.push({ kind: 'card', id: `${unit.id}:card`, x, y, w: CARD, h: at - y, vacant: false, lines: [], pill: null, rule: null, logo: null, colour }, head, ...rows);
+  return at;
+}
+
+/** How wide a department is in the classic tree: its card, or its teams' cards side by side. */
+export const classicWidth = (teams: number) => Math.max(CARD, teams * CARD + (teams - 1) * CARD_GAP);
+
+/** A department at (x, y), `w` wide: its card over the middle, a line down to the line across to its teams' cards. */
+function classicDepartment(c: Ctx, d: OrgChartDepartment, x: number, y: number, w: number, colour: string): number {
+  const dx = x + (w - CARD) / 2;
+  const below = card(c, 'department', d, d.teams, dx, y, colour);
+  if (!d.teams.length) return below;
+  const bus = below + TREE_GAP;
+  const top = bus + TREE_GAP;
+  const span = classicWidth(d.teams.length);
+  let bottom = top;
+  const centres = d.teams.map((team, i) => {
+    const tx = x + (w - span) / 2 + i * (CARD + CARD_GAP);
+    bottom = Math.max(bottom, card(c, 'team', team, [], tx, top, colour));
+    c.links.push({ x1: tx + CARD / 2, y1: bus, x2: tx + CARD / 2, y2: top, colour });
+    return tx + CARD / 2;
+  });
+  const trunk = dx + CARD / 2;
+  c.links.push({ x1: trunk, y1: below, x2: trunk, y2: bus, colour });
+  const [left, right] = [Math.min(trunk, ...centres), Math.max(trunk, ...centres)];
+  if (left !== right) c.links.push({ x1: left, y1: bus, x2: right, y2: bus, colour });
+  return bottom;
+}
+
+/** The classic tree: the company over its departments side by side, each over its teams (see the top of this file). */
+export function classicLayout(chart: OrgChart, options: ChartOptions, measure: Measure): ChartLayout {
+  const c: Ctx = { chart, options, measure, boxes: [], links: [] };
+  const company = companyBox(c);
+  const blocks = chart.departments.map((d, i) => ({ d, w: classicWidth(d.teams.length), colour: DEPARTMENT_COLOURS[i % DEPARTMENT_COLOURS.length] }));
+  const contentW = blocks.reduce((n, b) => n + b.w, 0) + DEPT_GAP * Math.max(0, blocks.length - 1);
+  const innerW = Math.max(contentW, company.w);
+  const bus = company.y + company.h + LEVEL_GAP;
+  const top = bus + LEVEL_GAP;
+  let x = MARGIN + (innerW - contentW) / 2;
+  const columns: ChartLayout['columns'] = [];
+  for (const { d, w, colour } of blocks) {
+    const bottom = classicDepartment(c, d, x, top, w, colour);
+    link(c, x + w / 2, bus, x + w / 2, top);
+    columns.push({ id: d.id, x, w, bottom });
+    x += w + DEPT_GAP;
+  }
+  const centres = columns.map((col) => col.x + col.w / 2);
+  const middle = centres.length ? (centres[0] + centres[centres.length - 1]) / 2 : MARGIN + innerW / 2;
+  const placed = moved(company, Math.min(Math.max(middle - company.w / 2, MARGIN), MARGIN + innerW - company.w));
+  if (centres.length) {
+    const trunk = placed.x + placed.w / 2;
+    link(c, trunk, placed.y + placed.h, trunk, bus);
+    link(c, Math.min(trunk, ...centres), bus, Math.max(trunk, ...centres), bus);
+  }
+  const bottom = Math.max(placed.y + placed.h, ...columns.map((col) => col.bottom));
+  const note: TextLine[] = [];
+  const end = addLines(note, wrapText(CLASSIC_NOTE, innerW * FIT, 'note', measure, 3), 'note', MARGIN, bottom + NOTE_GAP, 'start', 'muted');
+  return {
+    width: innerW + 2 * MARGIN,
+    height: Math.ceil(end + MARGIN),
+    boxes: [placed, ...c.boxes],
+    links: c.links,
+    note,
+    spread: blocks.filter((b) => b.d.teams.length > 0).map((b) => b.d.id),
+    columns,
+  };
 }

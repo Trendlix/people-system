@@ -20,6 +20,8 @@ type Format = 'pdf' | 'png' | 'svg';
 const FORMAT_NAMES: Record<Format, string> = { pdf: 'PDF', png: 'PNG', svg: 'SVG' };
 
 const ARRANGEMENTS: { value: Arrangement; label: string }[] = [
+  // the owner's choice of look (31 October 2026: "Classic department tree"), shown first
+  { value: 'tree', label: 'Classic tree' },
   { value: 'balanced', label: 'Fit a landscape page' },
   { value: 'stacked', label: 'Teams under their department' },
   { value: 'spread', label: 'Teams side by side' },
@@ -83,7 +85,7 @@ export function OrgChartView({ chart }: { chart: OrgChart }) {
   const [codes, setCodes] = useState(false);
   const [arabic, setArabic] = useState(false);
   const [leads, setLeads] = useState(true);
-  const [arrangement, setArrangement] = useState<Arrangement>('balanced');
+  const [arrangement, setArrangement] = useState<Arrangement>('tree');
   const [zoom, setZoom] = useState('fit');
   const [paper, setPaper] = useState<ChartPaper>('a4');
   const [busy, setBusy] = useState<Format | null>(null);
@@ -214,11 +216,13 @@ export function OrgChartView({ chart }: { chart: OrgChart }) {
           </div>
         </div>
         <p id={`${id}-arrangement-hint`} className="hint">
-          {arrangement === 'balanced'
-            ? 'Puts the teams of the longest departments side by side, so the chart takes the shape of a landscape page.'
-            : arrangement === 'stacked'
-              ? 'Each department is one column, with its teams one under another.'
-              : 'Each department’s teams are side by side under it: wider, and shorter.'}
+          {arrangement === 'tree'
+            ? 'A card for each department in its own colour, over its teams side by side, each listing its job titles.'
+            : arrangement === 'balanced'
+              ? 'Puts the teams of the longest departments side by side, so the chart takes the shape of a landscape page.'
+              : arrangement === 'stacked'
+                ? 'Each department is one column, with its teams one under another.'
+                : 'Each department’s teams are side by side under it: wider, and shorter.'}
         </p>
 
         <div className="flex flex-wrap items-end gap-2 border-t border-line pt-4">

@@ -44,7 +44,28 @@ const BOXES: Record<ChartBox['kind'], string> = {
   department: `rx="10" fill="${PALETTE.accent}"`,
   team: `rx="8" fill="${PALETTE.accentSoft}" stroke="${PALETTE.accent}" stroke-opacity="0.35"`,
   title: `rx="8" fill="${PALETTE.card}" stroke="${PALETTE.muted}" stroke-opacity="0.4"`,
+  card: `rx="10" fill="${PALETTE.card}" stroke="${PALETTE.line}"`,
+  row: 'fill="none"',
 };
+
+/** The classic tree's corners. */
+const CARD_RADIUS = 10;
+
+/** A rectangle rounded at its top corners only: a card's head with rows under it. */
+const topRounded = (x: number, y: number, w: number, h: number, r: number) =>
+  `M${n(x)} ${n(y + h)}V${n(y + r)}A${r} ${r} 0 0 1 ${n(x + r)} ${n(y)}H${n(x + w - r)}A${r} ${r} 0 0 1 ${n(x + w)} ${n(y + r)}V${n(y + h)}Z`;
+
+/**
+ * A box of the classic tree (owner, 31 October 2026: "Classic department tree") in its department's colour: the card
+ * white with a border of the colour, a department's head filled with it, a team's head with a tint of it; a row has none.
+ */
+function classicShape(b: ChartBox, colour: string): string {
+  const at = `x="${n(b.x)}" y="${n(b.y)}" width="${n(b.w)}" height="${n(b.h)}"`;
+  if (b.kind === 'card') return `<rect ${at} rx="${CARD_RADIUS}" fill="${PALETTE.card}" stroke="${colour}" stroke-opacity="0.45" stroke-width="1.25"/>`;
+  if (b.kind === 'row') return '';
+  const fill = b.kind === 'department' ? `fill="${colour}"` : `fill="${colour}" fill-opacity="0.12"`;
+  return b.round === 'top' ? `<path d="${topRounded(b.x, b.y, b.w, b.h, CARD_RADIUS)}" ${fill}/>` : `<rect ${at} rx="${CARD_RADIUS}" ${fill}/>`;
+}
 
 /** A number as written in the SVG: at most one decimal. */
 export const n = (v: number) => String(Math.round(v * 10) / 10);
@@ -94,7 +115,11 @@ function pill(p: Pill): string {
 export const LOGO_INSET = 5;
 
 function box(b: ChartBox, logo: string | null): string {
-  const parts = [`<rect x="${n(b.x)}" y="${n(b.y)}" width="${n(b.w)}" height="${n(b.h)}" ${BOXES[b.kind]}${b.vacant ? ' stroke-dasharray="4 3"' : ''}/>`];
+  const parts = [
+    b.colour
+      ? classicShape(b, b.colour)
+      : `<rect x="${n(b.x)}" y="${n(b.y)}" width="${n(b.w)}" height="${n(b.h)}" ${BOXES[b.kind]}${b.vacant ? ' stroke-dasharray="4 3"' : ''}/>`,
+  ];
   if (b.logo) {
     const { x, y, size } = b.logo;
     parts.push(`<rect x="${n(x)}" y="${n(y)}" width="${size}" height="${size}" rx="8" fill="#ffffff"/>`);
@@ -112,9 +137,13 @@ function box(b: ChartBox, logo: string | null): string {
 
 /** What the chart is drawn with, in its own units (0, 0 to width, height), without the <svg> around it. */
 export function chartBody(layout: ChartLayout, logo: string | null = null): string {
+  const grey = layout.links.filter((l) => !l.colour);
+  // the classic tree's lines under each department, in its colour (31 October 2026)
+  const colours = [...new Set(layout.links.flatMap((l) => (l.colour ? [l.colour] : [])))];
   return [
     `<rect width="${n(layout.width)}" height="${n(layout.height)}" fill="#ffffff"/>`,
-    layout.links.length ? `<path d="${path(layout.links)}" fill="none" stroke="${PALETTE.muted}" stroke-opacity="0.55" stroke-width="1.25"/>` : '',
+    grey.length ? `<path d="${path(grey)}" fill="none" stroke="${PALETTE.muted}" stroke-opacity="0.55" stroke-width="1.25"/>` : '',
+    ...colours.map((colour) => `<path d="${path(layout.links.filter((l) => l.colour === colour))}" fill="none" stroke="${colour}" stroke-opacity="0.6" stroke-width="1.5"/>`),
     ...layout.boxes.map((b) => box(b, logo)),
     ...layout.note.map(text),
   ].join('');

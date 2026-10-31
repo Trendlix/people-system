@@ -4,8 +4,13 @@ import { describe, expect, it } from 'vitest';
 import type { OrgChart, OrgChartDepartment, OrgChartJobTitle, OrgChartPerson, OrgChartTeam } from '@/lib/types';
 import { FONTS, type Measure } from './text';
 import {
+  CARD,
+  CARD_GAP,
+  classicWidth,
+  CLASSIC_NOTE,
   COLUMN,
   countChart,
+  DEPARTMENT_COLOURS,
   DEPT_GAP,
   INDENT,
   JOIN,
@@ -351,5 +356,65 @@ describe('the org chart’s layout', () => {
     expect(layout.boxes.map((b) => b.kind)).toEqual(['company']);
     expect(layout.links).toEqual([]);
     expect(layout.width).toBe(layout.boxes[0].w + 2 * MARGIN);
+  });
+});
+
+// the classic tree (owner, 31 October 2026: "i didnt like the look of the org chart"; chose "Classic department tree")
+describe('the classic tree', () => {
+  const tree = (chart: OrgChart, options: Partial<ChartOptions> = {}) => lay(chart, { arrangement: 'tree', ...options });
+  const of = (l: ChartLayout, kind: ChartBox['kind']) => l.boxes.filter((b) => b.kind === kind);
+  const text = (b: ChartBox) => b.lines.map((l) => l.text);
+
+  it('puts each department’s card in its own colour over its teams’ cards side by side, joined middle to middle', () => {
+    const { marketing, finance } = sample();
+    const l = tree(chartOf([marketing, finance]));
+    const [mkt, fin] = of(l, 'department');
+    expect([mkt.colour, fin.colour]).toEqual([DEPARTMENT_COLOURS[0], DEPARTMENT_COLOURS[1]]);
+    expect(l.columns.map((c) => c.w)).toEqual([classicWidth(2), CARD]);
+    // Marketing over the middle of its two teams
+    const teams = of(l, 'team');
+    expect(teams.map((t) => t.colour)).toEqual([DEPARTMENT_COLOURS[0], DEPARTMENT_COLOURS[0]]);
+    expect(teams[1].x - teams[0].x).toBe(CARD + CARD_GAP);
+    expect(mkt.x + CARD / 2).toBe((teams[0].x + teams[1].x + CARD) / 2);
+    // a line down from the card's middle to the line across, and down to each team's middle, in the department's colour
+    const coloured = l.links.filter((s) => s.colour === DEPARTMENT_COLOURS[0]);
+    for (const t of teams) expect(coloured.some((s) => s.x1 === t.x + CARD / 2 && s.x2 === t.x + CARD / 2 && s.y2 === t.y)).toBe(true);
+    expect(coloured.some((s) => s.x1 === mkt.x + CARD / 2 && s.x1 === s.x2)).toBe(true);
+    // the company's lines down to the departments grey
+    expect(l.links.filter((s) => !s.colour).some((s) => s.y2 === mkt.y && s.x2 === l.columns[0].x + l.columns[0].w / 2)).toBe(true);
+    expect(l.note.map((n) => n.text).join(' ')).toBe(CLASSIC_NOTE);
+  });
+
+  it('names the head or lead and the people in each card’s head, centred, and lists its job titles as rows', () => {
+    const { marketing } = sample();
+    marketing.head = person('Nour Saleh', 'EMP-0009');
+    const l = tree(chartOf([marketing]));
+    const [mkt] = of(l, 'department');
+    expect(text(mkt)).toEqual(['Marketing', 'Head: Nour Saleh', '3 people']);
+    expect(mkt.lines.every((line) => line.align === 'middle' && line.x === mkt.x + CARD / 2)).toBe(true);
+    // rows under it: its own title, then each team's; a title no one holds greyed, with a grey 0
+    const rows = of(l, 'row');
+    expect(rows.map((r) => r.lines[0].text)).toEqual(['Head of Marketing', 'Senior Writer', 'Writer']);
+    const senior = rows[1];
+    expect(senior).toMatchObject({ vacant: true, pill: { text: '0', look: 'vacant' } });
+    expect(senior.lines[0].tone).toBe('muted');
+    // the first row of a card has no line over it, the next ones do
+    expect([rows[1].rule, rows[2].rule === null]).toEqual([null, false]);
+    // a head with rows under it rounded at the top; a team without job titles all round
+    const [content, media] = of(l, 'team');
+    expect([mkt.round, content.round, media.round]).toEqual(['top', 'top', 'all']);
+    expect(text(media)).toEqual(['Media Team', '0 people']);
+    // each card round its head and rows
+    const cards = of(l, 'card');
+    expect(cards.map((c) => c.id)).toEqual([`${marketing.id}:card`, `${marketing.teams[0].id}:card`, `${marketing.teams[1].id}:card`]);
+    expect(cards[1].h).toBe(rows[2].y + rows[2].h - cards[1].y);
+  });
+
+  it('lists the people under a row when they are shown, and takes its colours round again after the last', () => {
+    const { marketing } = sample();
+    const rows = of(tree(chartOf([marketing]), { people: true, codes: true }), 'row');
+    expect(text(rows[2])).toEqual(['Writer', 'Adel Hassan', 'EMP-0001', 'Zeinab Ali', 'EMP-0002']);
+    const many = Array.from({ length: DEPARTMENT_COLOURS.length + 1 }, (_, i) => department(`Dept ${i}`));
+    expect(of(tree(chartOf(many)), 'department').at(-1)!.colour).toBe(DEPARTMENT_COLOURS[0]);
   });
 });
