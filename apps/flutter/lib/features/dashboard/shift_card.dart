@@ -29,8 +29,8 @@ class _ShiftCardState extends ConsumerState<ShiftCard> with CheckInPress {
   @override
   void initState() {
     super.initState();
-    // the large time moves on with the minute
-    _tick = Timer.periodic(const Duration(seconds: 20), (_) => mounted ? setState(() {}) : null);
+    // the large time moves on with the minute, within 5 seconds of it (31 October 2026)
+    _tick = Timer.periodic(const Duration(seconds: 5), (_) => mounted ? setState(() {}) : null);
   }
 
   @override

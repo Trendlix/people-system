@@ -35,7 +35,7 @@ class _TodayPanelState extends ConsumerState<TodayPanel> with CheckInPress {
   void initState() {
     super.initState();
     // the time moves on with the minute
-    _tick = Timer.periodic(const Duration(seconds: 20), (_) => mounted ? setState(() {}) : null);
+    _tick = Timer.periodic(const Duration(seconds: 5), (_) => mounted ? setState(() {}) : null);
   }
 
   @override

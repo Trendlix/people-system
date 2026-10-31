@@ -489,6 +489,20 @@ void main() {
       });
       expect(t.workedAt(DateTime.utc(2026, 10, 30, 15)), const Duration(hours: 6));
       expect(rateBandOf(t.shareAt(DateTime.utc(2026, 10, 30, 15))), RateBand.low);
+      // by the clock's minutes (31 October 2026: checked in at 14:52, 00:06 at 14:58 whatever the seconds)
+      final t2 = Today.fromJson({
+        'next': 'out',
+        'punches': [
+          {'kind': 'in', 'at': '2026-10-31T11:52:40.000Z', 'place': 'remote', 'flags': []},
+        ],
+        'day': {'hoursCounted': 0, 'openAt': '2026-10-31T11:52:40.000Z'},
+      });
+      expect(t2.workedAt(DateTime.utc(2026, 10, 31, 11, 58, 5)), const Duration(minutes: 6));
+      expect(t2.workedAt(DateTime.utc(2026, 10, 31, 11, 52, 50)), Duration.zero);
+      // the phone's clock a minute behind People's: People's time counts
+      expect(Today.skewOf('2026-10-31T12:00:00.000Z', DateTime.utc(2026, 10, 31, 11, 59)), const Duration(minutes: 1));
+      expect(Today.skewOf(null, DateTime.utc(2026, 10, 31)), Duration.zero);
+      expect(Today.skewOf('2026-11-05T12:00:00.000Z', DateTime.utc(2026, 10, 31)), Duration.zero);
       // 7:30 of 9 hours (83%) yellow; 8:15 (92%) green
       expect(rateBandOf(t.shareAt(DateTime.utc(2026, 10, 30, 16, 30))), RateBand.mid);
       expect(rateBandOf(t.shareAt(DateTime.utc(2026, 10, 30, 17, 15))), RateBand.high);

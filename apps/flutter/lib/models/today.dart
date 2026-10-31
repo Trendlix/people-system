@@ -56,6 +56,7 @@ class Today {
     required this.exempt,
     required this.officialDutyNow,
     this.raw = const {},
+    this.skew = Duration.zero,
   });
 
   factory Today.fromJson(Object? json) {
@@ -80,8 +81,21 @@ class Today {
       exempt: json['exemption'] != null,
       officialDutyNow: duty is Map && duty['now'] == true,
       raw: json,
+      skew: skewOf(json['now'], DateTime.now()),
     );
   }
+
+  /// How far the phone's clock is from People's (People's `now` when it answered, less the phone's then); none when
+  /// People didn't say, or when it is too far off to be a clock's drift (more than a day).
+  static Duration skewOf(Object? serverNow, DateTime phoneNow) {
+    final server = DateTime.tryParse('$serverNow');
+    if (server == null) return Duration.zero;
+    final skew = server.difference(phoneNow);
+    return skew.abs() > const Duration(days: 1) ? Duration.zero : skew;
+  }
+
+  /// The phone's clock less People's (Today.skewOf): the counter reads People's time.
+  final Duration skew;
 
   /// Null: they check in on the system; else why not, in People's words.
   final String? refusal;
@@ -114,14 +128,20 @@ class Today {
 
   /// The time worked so far at [now], breaks included (owner, 31 October 2026: "dont calculate breaks, they are included
   /// in the working hours"): People's hours so far (the first check-in to the last check-out), and while checked in
-  /// again, the time since that last check-out (the break with it), else since the open check-in.
+  /// again, the time since that last check-out (the break with it), else since the open check-in. By the clock's minutes
+  /// (owner, 31 October 2026, checked in at 14:52 and shown 00:05 at 14:58: "the counter i think is not working
+  /// correctly … from the checkin time"): from the minute the check-in shows to the minute it is now, by People's clock.
   Duration workedAt(DateTime now) {
     final counted = Duration(seconds: (hoursCounted * 3600).round());
     final open = openSince;
-    if (open == null || now.isBefore(open)) return counted;
-    final lastOut = lastCheckOutBefore(open);
-    return counted + now.difference(lastOut ?? open);
+    final at = now.add(skew);
+    if (open == null || at.isBefore(open)) return counted;
+    final from = lastCheckOutBefore(open) ?? open;
+    final live = _minuteOf(at).difference(_minuteOf(from));
+    return counted + (live.isNegative ? Duration.zero : live);
   }
+
+  static DateTime _minuteOf(DateTime t) => t.subtract(Duration(seconds: t.second, milliseconds: t.millisecond, microseconds: t.microsecond));
 
   /// The day's last check-out before [at] (its last finished pair's end, else the last press out); null: none.
   DateTime? lastCheckOutBefore(DateTime at) {
