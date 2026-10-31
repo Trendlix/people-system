@@ -6,7 +6,7 @@ const release = (tag: string, more: Record<string, unknown> = {}) => ({ tag_name
 
 describe('the newest build from a release', () => {
   it('reads the version from the tag', () => {
-    expect(latestFromRelease(release('app-0.6.15'))).toEqual({ version: '0.6.15', publishedAt: '2026-10-31T18:00:00Z', downloadUrl: APP_DOWNLOAD_URL });
+    expect(latestFromRelease(release('app-0.6.15'))).toEqual({ version: '0.6.15', publishedAt: '2026-10-31T18:00:00Z', downloadUrl: APP_DOWNLOAD_URL, removeOldFirst: true });
   });
 
   it('takes no other tag, a draft or a pre-release', () => {

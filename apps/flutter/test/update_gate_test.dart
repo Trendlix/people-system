@@ -20,10 +20,12 @@ void main() {
   late FakePeople people;
   late List<Uri> opened;
   late bool opens;
+  late FakeLocator locator;
 
   setUp(() {
     opened = [];
     opens = true;
+    locator = FakeLocator();
     people = FakePeople()
       ..on('GET /api/auth/me', (req) => json(meJson()))
       ..on('GET /api/me/attendance/today', (req) => json({'next': 'in', 'punches': <Object>[]}));
@@ -35,7 +37,7 @@ void main() {
       ProviderScope(
         retry: noRetry,
         overrides: [
-          ...overridesFor(people, store: MemorySessionStore(token: token)),
+          ...overridesFor(people, store: MemorySessionStore(token: token), locator: locator),
           configProvider.overrideWithValue(AppConfig.parse(apiUrl: '', caBase64: '', version: version)),
           linkOpenerProvider.overrideWithValue((uri) async {
             opened.add(uri);
@@ -48,7 +50,8 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  void latest(String version) => people.on('GET /api/app/latest', (req) => json({'version': version, 'publishedAt': null, 'downloadUrl': download}));
+  void latest(String version, {bool removeOldFirst = true}) =>
+      people.on('GET /api/app/latest', (req) => json({'version': version, 'publishedAt': null, 'downloadUrl': download, 'removeOldFirst': removeOldFirst}));
 
   test('compares versions part by part', () {
     expect(isOlderVersion('0.6.14', '0.6.15'), isTrue);
@@ -60,15 +63,37 @@ void main() {
     expect(isOlderVersion('0.6.x', '0.6.15'), isFalse);
   });
 
-  testWidgets('an older build: only Update required, and the button opens People’s download link', (tester) async {
+  testWidgets('an older build: only Update required, the download opened by itself once, and again from the button', (tester) async {
     latest('0.6.15');
     await open(tester);
     expect(find.text(UpdateWords.title), findsOneWidget);
     expect(find.text(UpdateWords.intro('0.6.15', '0.6.14')), findsOneWidget);
     expect(find.text(CheckInWords.checkInForWork), findsNothing);
+    expect(opened, [Uri.parse(download)]);
     await tester.tap(find.text(UpdateWords.download));
     await tester.pumpAndSettle();
-    expect(opened, [Uri.parse(download)]);
+    expect(opened, [Uri.parse(download), Uri.parse(download)]);
+  });
+
+  testWidgets('until the stores: remove this version first, its App info a tap away', (tester) async {
+    latest('0.6.15');
+    await open(tester);
+    expect(find.text(UpdateWords.stepRemove), findsOneWidget);
+    expect(find.text(UpdateWords.stepInstallAfterRemoving), findsOneWidget);
+    expect(find.text(UpdateWords.untilStores), findsOneWidget);
+    await tester.ensureVisible(find.text(UpdateWords.remove));
+    await tester.tap(find.text(UpdateWords.remove));
+    await tester.pumpAndSettle();
+    expect(locator.openedApp, 1);
+  });
+
+  testWidgets('once in the stores (removeOldFirst off): download and install, nothing to remove', (tester) async {
+    latest('0.6.15', removeOldFirst: false);
+    await open(tester);
+    expect(find.text(UpdateWords.stepInstall), findsOneWidget);
+    expect(find.text(UpdateWords.stepRemove), findsNothing);
+    expect(find.text(UpdateWords.remove), findsNothing);
+    expect(find.text(UpdateWords.untilStores), findsNothing);
   });
 
   testWidgets('signed out too', (tester) async {
@@ -82,8 +107,6 @@ void main() {
     latest('0.6.15');
     opens = false;
     await open(tester);
-    await tester.tap(find.text(UpdateWords.download));
-    await tester.pumpAndSettle();
     expect(find.text(UpdateWords.cantOpen(download)), findsOneWidget);
   });
 
@@ -121,5 +144,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text(UpdateWords.title), findsOneWidget);
     expect(people.calls.where((c) => c == 'GET /api/app/latest'), hasLength(2));
+    expect(opened, [Uri.parse(download)]);
   });
 }

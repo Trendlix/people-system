@@ -9,11 +9,20 @@ export const APP_RELEASES_URL = 'https://api.github.com/repos/Trendlix/people-sy
 /** The fixed link the app sends people to: the website's /download, which goes to the newest APK. */
 export const APP_DOWNLOAD_URL = 'https://people.trendlix.com/download';
 
+/**
+ * Whether the app tells people to remove the old version before installing the new one (owner, 31 October 2026: "remind
+ * him to remove the old version till posted to the app store or google playstore"). Set it to false once the app is
+ * installed from Google Play and the App Store (and point APP_DOWNLOAD_URL at the store).
+ */
+export const APP_REMOVE_OLD_FIRST = true;
+
 /** What GET /api/app/latest answers: the newest build's version (null when it can't be told) and where to get it. */
 export interface LatestApp {
   version: string | null;
   publishedAt: string | null;
   downloadUrl: string;
+  /** Remove the old version before installing the new one (APP_REMOVE_OLD_FIRST). */
+  removeOldFirst: boolean;
 }
 
 const VERSION = /^\d+(\.\d+){1,3}$/;
@@ -25,8 +34,8 @@ export function latestFromRelease(release: unknown): LatestApp | null {
   if (draft === true || prerelease === true || typeof tag !== 'string') return null;
   const version = tag.replace(/^app-/, '');
   if (!tag.startsWith('app-') || !VERSION.test(version)) return null;
-  return { version, publishedAt: typeof at === 'string' ? at : null, downloadUrl: APP_DOWNLOAD_URL };
+  return { version, publishedAt: typeof at === 'string' ? at : null, downloadUrl: APP_DOWNLOAD_URL, removeOldFirst: APP_REMOVE_OLD_FIRST };
 }
 
 /** Nothing known: the app then never blocks (it can't tell it's old). */
-export const UNKNOWN_APP: LatestApp = { version: null, publishedAt: null, downloadUrl: APP_DOWNLOAD_URL };
+export const UNKNOWN_APP: LatestApp = { version: null, publishedAt: null, downloadUrl: APP_DOWNLOAD_URL, removeOldFirst: APP_REMOVE_OLD_FIRST };

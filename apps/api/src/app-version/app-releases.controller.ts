@@ -8,7 +8,10 @@ import { AppReleasesService } from './app-releases.service.js';
 export class AppReleasesController {
   constructor(private readonly releases: AppReleasesService) {}
 
-  /** The app's newest build: { version: "0.6.15", publishedAt, downloadUrl }; version null when it can't be told. */
+  /**
+   * The app's newest build: { version: "0.6.15", publishedAt, downloadUrl, removeOldFirst }; version null when it can't
+   * be told. removeOldFirst: the app says to remove the old version before installing (until it's in the stores).
+   */
   @Public()
   @Get('latest')
   latest() {

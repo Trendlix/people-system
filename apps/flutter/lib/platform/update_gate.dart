@@ -14,13 +14,20 @@ abstract final class UpdateWords {
   static const title = 'Update required';
   static String intro(String latest, String mine) =>
       'A newer version of Trendlix People is out ($latest). Install it to keep using the app; this phone has $mine.';
-  static const steps = 'Download it, then open the downloaded file and tap Install. It installs over this one.';
+  static const stepDownload =
+      'Download the new version. It opens in your browser and saves trendlix-people.apk to Downloads.';
+  static const stepRemove = 'Remove this version: on its App info page, tap Uninstall.';
+  static const stepInstallAfterRemoving = 'Open trendlix-people.apk from Downloads, tap Install, then sign in again.';
+  static const stepInstall = 'Open trendlix-people.apk from Downloads and tap Install.';
+  static const untilStores =
+      'Until Trendlix People is on Google Play and the App Store, remove the old version before installing each new one.';
   static const download = 'Download the update';
+  static const remove = 'Remove this version';
   static String cantOpen(String url) => 'The browser couldn’t be opened. Go to $url to download the update.';
 }
 
 /// The app's newest build, as People tells it (GET /api/app/latest).
-typedef LatestApp = ({String version, String downloadUrl});
+typedef LatestApp = ({String version, String downloadUrl, bool removeOldFirst});
 
 /// Whether [mine] is older than [latest]: versions as the app's builds name them (0.6.14), compared part by part.
 bool isOlderVersion(String mine, String latest) {
@@ -39,14 +46,20 @@ bool isOlderVersion(String mine, String latest) {
 }
 
 /// Opens a link outside the app (the phone's browser, which downloads the APK). Replaced in the tests.
-final linkOpenerProvider = Provider<Future<bool> Function(Uri)>((ref) => (uri) => launchUrl(uri, mode: LaunchMode.externalApplication));
+final linkOpenerProvider = Provider<Future<bool> Function(Uri)>(
+  (ref) =>
+      (uri) => launchUrl(uri, mode: LaunchMode.externalApplication),
+);
 
 /// Always the newest build (owner, 31 October 2026: "in the next build i would prefare to apply the force update rule";
 /// asked, "Always the latest build" and "A fixed People link"): on opening and coming back, the app asks People for the
 /// newest build (GitHub's latest release, flutter-android.yml); when this one is older, only "Update required" shows,
-/// signed in or not, with the link that downloads the newest APK. Never in the way when it can't tell: a build without a
-/// version (a developer's, 0.0.0), not on Android (only an APK is built), or People unreachable. Once known old, it
-/// stays held until the new build is installed.
+/// signed in or not, and the download opens by itself once ("redirect the user to install the new version"). Until the
+/// app is in the stores, the steps say to remove this version before installing the new one ("remind him to remove the
+/// old version till posted to the app store or google playstore"; People's removeOldFirst), with a button to the app's
+/// App info page, where Uninstall is. Never in the way when it can't tell: a build without a version (a developer's,
+/// 0.0.0), not on Android (only an APK is built), or People unreachable. Once known old, it stays held until the new
+/// build is installed.
 class UpdateGate extends ConsumerStatefulWidget {
   const UpdateGate({super.key, required this.child, this.askEvery = const Duration(minutes: 2)});
 
@@ -64,6 +77,9 @@ class _UpdateGateState extends ConsumerState<UpdateGate> with WidgetsBindingObse
   LatestApp? _newer;
   DateTime? _askedAt;
   bool _asking = false;
+
+  /// The download was opened by itself already (once while the app runs, not on every return to it).
+  bool _openedOnce = false;
   String? _problem;
 
   @override
@@ -95,7 +111,12 @@ class _UpdateGateState extends ConsumerState<UpdateGate> with WidgetsBindingObse
       if (!mounted || body is! Map) return;
       final latest = body['version'], url = body['downloadUrl'];
       if (latest is String && url is String && isOlderVersion(mine, latest)) {
-        setState(() => _newer = (version: latest, downloadUrl: url));
+        final newer = (version: latest, downloadUrl: url, removeOldFirst: body['removeOldFirst'] != false);
+        setState(() => _newer = newer);
+        if (!_openedOnce) {
+          _openedOnce = true;
+          await _download(newer);
+        }
       }
     } on Exception {
       // People unreachable or an older People without the endpoint: never a reason to hold the app
@@ -123,6 +144,11 @@ class _UpdateGateState extends ConsumerState<UpdateGate> with WidgetsBindingObse
     final text = Theme.of(context).textTheme;
     final mine = ref.watch(configProvider).version;
     final problem = _problem;
+    final steps = [
+      UpdateWords.stepDownload,
+      if (newer.removeOldFirst) UpdateWords.stepRemove,
+      newer.removeOldFirst ? UpdateWords.stepInstallAfterRemoving : UpdateWords.stepInstall,
+    ];
     return Stack(
       children: [
         Offstage(child: widget.child),
@@ -130,24 +156,35 @@ class _UpdateGateState extends ConsumerState<UpdateGate> with WidgetsBindingObse
           child: Scaffold(
             backgroundColor: p.canvas,
             body: SafeArea(
-              child: Padding(
+              child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Align(alignment: AlignmentDirectional.centerStart, child: Wordmark(height: 28, forDark: p.isDark)),
-                    const Spacer(),
+                    Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: Wordmark(height: 28, forDark: p.isDark),
+                    ),
+                    const SizedBox(height: 36),
                     Center(child: Icon(CupertinoIcons.arrow_down_circle, size: 56, color: p.ink)),
                     const SizedBox(height: 20),
                     const Center(child: Eyebrow(UpdateWords.eyebrow)),
                     const SizedBox(height: 8),
                     Text(UpdateWords.title, textAlign: TextAlign.center, style: text.displaySmall),
                     const SizedBox(height: 10),
-                    Text(UpdateWords.intro(newer.version, mine), textAlign: TextAlign.center, style: text.bodyMedium?.copyWith(color: p.muted)),
-                    const SizedBox(height: 18),
-                    Text(UpdateWords.steps, textAlign: TextAlign.center, style: text.bodyMedium),
-                    if (problem != null) ...[const SizedBox(height: 18), Notice(text: problem, ok: false)],
-                    const Spacer(),
+                    Text(
+                      UpdateWords.intro(newer.version, mine),
+                      textAlign: TextAlign.center,
+                      style: text.bodyMedium?.copyWith(color: p.muted),
+                    ),
+                    const SizedBox(height: 22),
+                    for (final (i, step) in steps.indexed) _Step(number: i + 1, text: step),
+                    if (newer.removeOldFirst) ...[
+                      const SizedBox(height: 4),
+                      Notice(text: UpdateWords.untilStores, ok: false),
+                    ],
+                    if (problem != null) ...[const SizedBox(height: 12), Notice(text: problem, ok: false)],
+                    const SizedBox(height: 24),
                     SizedBox(
                       height: Tokens.buttonHeight,
                       child: FilledButton.icon(
@@ -156,6 +193,18 @@ class _UpdateGateState extends ConsumerState<UpdateGate> with WidgetsBindingObse
                         label: const Text(UpdateWords.download),
                       ),
                     ),
+                    if (newer.removeOldFirst) ...[
+                      const SizedBox(height: 10),
+                      SizedBox(
+                        height: Tokens.buttonHeight,
+                        // the app's App info page (Settings → Apps → Trendlix People), where Uninstall is
+                        child: OutlinedButton.icon(
+                          onPressed: () => ref.read(locatorProvider).openAppSettings(),
+                          icon: const Icon(CupertinoIcons.trash, size: 20),
+                          label: const Text(UpdateWords.remove),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -163,6 +212,40 @@ class _UpdateGateState extends ConsumerState<UpdateGate> with WidgetsBindingObse
           ),
         ),
       ],
+    );
+  }
+}
+
+/// One numbered step of installing the update.
+class _Step extends StatelessWidget {
+  const _Step({required this.number, required this.text});
+
+  final int number;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final style = Theme.of(context).textTheme.bodyMedium;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 26,
+            height: 26,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(color: p.ink, shape: BoxShape.circle),
+            child: Text(
+              '$number',
+              style: style?.copyWith(color: p.canvas, fontWeight: FontWeight.w600),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(child: Text(text, style: style)),
+        ],
+      ),
     );
   }
 }
