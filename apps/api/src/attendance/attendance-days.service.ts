@@ -5,6 +5,7 @@ import {
   exemptDays,
   flexibleWeeks,
   flexNeighbourMonths,
+  freelanceDays,
   flexWeekStart,
   isFlexibleDays,
   monthDays,
@@ -78,6 +79,8 @@ export type DayRow = Prisma.AttendanceDayGetPayload<{ select: typeof DAY_SELECT 
 export const EMPLOYMENT_SELECT = {
   id: true,
   employeeId: true,
+  // a freelancer's days are never absent (31 October 2026: freelanceDays)
+  employmentType: true,
   joinDate: true,
   endDate: true,
   // an approved ending's last working day ends the employment for the month (owner's report, 27 October 2026)
@@ -269,11 +272,14 @@ export class AttendanceDaysService {
       // "if the day is compensated with a day, we pay nothing")
       const comp = compensatory.get(id);
       const compensated = employment && comp ? compensatoryDays(exempt, { month, today, workingDays: shift?.workingDays ?? null, holidays: holidayDays, leaveDays, employedFrom, employedTo, hoursADay, daysOff: comp.daysOff, hoursOff: comp.hoursOff, daysWorked: comp.daysWorked }) : exempt;
-      const days = compensated.map((d) => ({
+      const read = compensated.map((d) => ({
         ...d,
         importId: 'importId' in d ? (d.importId as string | null) : null,
         flags: [...(d.flags ?? [])],
       }));
+      // a freelancer has no working hours to be absent from (owner, 31 October 2026: "if no checkin required, why is it
+      // showing him absent?"): the days Zoho kept as absent aren't counted
+      const days = employment?.employmentType === 'freelance' ? freelanceDays(read) : read;
       if (!employment && !days.length) continue;
       out.set(id, {
         employeeId: id,

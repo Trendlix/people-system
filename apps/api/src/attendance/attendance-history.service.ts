@@ -12,6 +12,7 @@ import {
   exemptDays,
   flexibleWeeks,
   flexWeekStart,
+  freelanceDays,
   HISTORY_FIGURE_DEFINITIONS,
   HISTORY_MODE_LABELS,
   HISTORY_PERIOD_LABELS,
@@ -258,7 +259,15 @@ export class AttendanceHistoryService {
     // each employment's days, month by month, then read as a whole (a flexible days shift's weeks cross months)
     const made = new Map<
       string,
-      { shift: ReturnType<typeof shiftTimesOf> | null; workingDays: readonly number[]; hoursADay: number | null; employedFrom: string; employedTo: string | null; days: SourcedDay[] }
+      {
+        shift: ReturnType<typeof shiftTimesOf> | null;
+        workingDays: readonly number[];
+        hoursADay: number | null;
+        employedFrom: string;
+        employedTo: string | null;
+        freelance: boolean;
+        days: SourcedDay[];
+      }
     >();
     for (const month of monthRange(load.from.slice(0, 7), load.to.slice(0, 7))) {
       const [first, last] = [firstDay(month), lastDay(month)];
@@ -299,14 +308,19 @@ export class AttendanceHistoryService {
         const days = comp
           ? compensatoryDays(exempt, { month, today, workingDays, holidays: holidayDays, leaveDays, employedFrom, employedTo, hoursADay, daysOff: comp.daysOff, hoursOff: comp.hoursOff, daysWorked: comp.daysWorked })
           : exempt;
-        const part = made.get(e.id) ?? { shift, workingDays, hoursADay, employedFrom, employedTo, days: [] };
+        const part = made.get(e.id) ?? { shift, workingDays, hoursADay, employedFrom, employedTo, freelance: e.employmentType === 'freelance', days: [] };
         part.days.push(...days);
         made.set(e.id, part);
       }
     }
     for (const m of made.values()) {
       // a flexible days shift's absent days its weeks didn't need are days off (31 October 2026)
-      const days = m.shift && isFlexibleDays(m.shift) ? flexibleWeeks(m.days, { shift: m.shift, holidays: holidayDays, employedFrom: m.employedFrom, employedTo: m.employedTo, today }) : m.days;
+      // and a freelancer's are never absent (31 October 2026)
+      const days = m.freelance
+        ? freelanceDays(m.days)
+        : m.shift && isFlexibleDays(m.shift)
+          ? flexibleWeeks(m.days, { shift: m.shift, holidays: holidayDays, employedFrom: m.employedFrom, employedTo: m.employedTo, today })
+          : m.days;
       for (const d of days) {
         // within this employment and the period: a rehire's gap is left out
         if (d.date < range.from || d.date > range.to || d.date < m.employedFrom || (m.employedTo !== null && d.date > m.employedTo)) continue;

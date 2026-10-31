@@ -6,6 +6,7 @@ import {
   flexibleDaysProblem,
   flexibleWeeks,
   flexNeighbourMonths,
+  freelanceDays,
   isFlexibleDays,
   payrollLine,
   shiftDaysAWeek,
@@ -184,5 +185,21 @@ describe('a flexible days shift on payroll', () => {
     // 12 worked, 1 absent, 9 off: 108 expected for the 12 days, the no-show day cut on its own
     const line = payrollLine(terms, inputs({ workedHours: 108, noShowDays: 1, flexDaysOff: 9 }));
     expect(line).toMatchObject({ expectedHours: 108, attendanceRatio: 1, attendanceCut: 0, noShowCut: 600 });
+  });
+});
+
+// a freelancer's days (owner, 31 October 2026, of a freelancer whose October showed 16 absent days kept from Zoho People:
+// "if no checkin required, why is it showing him absent?")
+describe('a freelancer’s days', () => {
+  it('are never absent: a day kept as absent isn’t counted, a day worked stays', () => {
+    const days = week('absent', 'worked', 'rest', 'holiday', 'absent');
+    expect(read(freelanceDays(days))).toEqual(['rest', 'worked', 'rest', 'holiday', 'rest']);
+    expect(freelanceDays(days).filter((d) => (d as { notCounted?: boolean }).notCounted).map((d) => d.date)).toEqual(['2026-10-18', '2026-10-22']);
+    // nothing for payroll to charge
+    const line = attendanceLineInputs(
+      freelanceDays([{ status: 'absent' as const, hoursCounted: 0, permissionHours: 0 }]),
+      { systemPermissionHours: 0, permissionHoursPerMonth: 4, hourly: false },
+    );
+    expect(line.noShowDays).toBe(0);
   });
 });

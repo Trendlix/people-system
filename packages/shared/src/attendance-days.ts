@@ -108,6 +108,11 @@ export interface KeptDay {
    * gone by without a check-in while the week still had its days, so a day off (status rest), not absent.
    */
   flexOff?: boolean;
+  /**
+   * A freelancer's day kept as absent (owner, 31 October 2026; freelanceDays): freelance work has no working hours to be
+   * absent from, so not counted (status rest).
+   */
+  notCounted?: boolean;
 }
 
 /** A kept day as the Attendance pages show it. */
@@ -477,6 +482,16 @@ export function monthDays<D extends SourcedDay>(rows: readonly D[], ctx: MonthDa
     days.push({ date, status, checkIn: null, checkOut: null, place: null, zohoStatus: null, permissionHours: 0, hoursCounted: 0, source: 'system', flags: [] });
   }
   return days.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/**
+ * A freelancer's days (owner, 31 October 2026, of a freelancer whose October showed 16 absent days kept from Zoho People:
+ * "if no checkin required, why is it showing him absent?"): freelance work is outside the labour law and its working
+ * hours, and a freelancer doesn't check in (check-in.ts checkInRefusal), so no day of theirs is an absence: a day kept as
+ * absent is not counted (status rest, notCounted), never a no-show on the payroll. Their days worked stay as kept.
+ */
+export function freelanceDays<D extends Pick<KeptDay, 'status' | 'notCounted'>>(days: readonly D[]): D[] {
+  return days.map((d) => (d.status === 'absent' ? { ...d, status: 'rest' as const, notCounted: true } : d));
 }
 
 /**

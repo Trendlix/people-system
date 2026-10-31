@@ -33,6 +33,9 @@ import { OD_DAY_BADGE, odDayTitle, odHref } from './official-duty/od';
 /** A working day of a flexible days shift its week didn't need (owner, 31 October 2026): a day off, not absent. */
 export const FLEX_DAY_OFF = 'Day off (any days a week)';
 
+/** A freelancer's day kept as absent (owner, 31 October 2026): freelance work has no working hours to be absent from. */
+export const FREELANCE_NOT_COUNTED = 'Not counted (freelance)';
+
 // The Attendance pages' parts (owner, 19 October 2026: "the attendance is not active in the side menu"): the month with
 // the one before and after, a month's figures as tiles, a person's days, and where the days came from. No hooks and
 // nothing server-only, so the client table (people-table.tsx) shows the days with the same. Checking in on the system
@@ -323,7 +326,7 @@ export function DaysTable({
                 </td>
                 <td className="min-w-32">
                   {/* a working day of a flexible days shift the week didn't need (owner, 31 October 2026) */}
-                  <span className={tone ? `font-medium ${TONE[tone]}` : undefined}>{d.flexOff ? FLEX_DAY_OFF : dayStatusText(d.status)}</span>
+                  <span className={tone ? `font-medium ${TONE[tone]}` : undefined}>{d.flexOff ? FLEX_DAY_OFF : d.notCounted ? FREELANCE_NOT_COUNTED : dayStatusText(d.status)}</span>
                   {wfhDays.includes(d.date) && <WfhDayBadge className="mt-1 block w-fit" />}
                   {d.od && <OdDayBadge od={d.od} className="mt-1 block w-fit" />}
                   <ExemptBadge of={d} className="mt-1 block w-fit" />
