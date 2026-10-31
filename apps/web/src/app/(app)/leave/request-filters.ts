@@ -45,6 +45,22 @@ export interface RequestFilters {
   from: string | null;
   to: string | null;
   order?: RequestOrder;
+  /** Words of a name or an employee code (owner, 31 October 2026: "allow me to search by name too"); none: everyone. */
+  q?: string;
+}
+
+/** The longest search kept. */
+export const SEARCH_MAX = 100;
+
+/**
+ * Whether a row's employee has every word searched in their name (English or Arabic) or code, whatever the case ("ahmed
+ * ali", "محمد", "EMP-0033").
+ */
+export function matchesSearch(employee: { fullNameEn: string; fullNameAr?: string | null; employeeCode?: string | null }, q: string | undefined): boolean {
+  const words = (q ?? '').toLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return true;
+  const haystack = [employee.fullNameEn, employee.fullNameAr, employee.employeeCode].filter(Boolean).join(' ').toLowerCase();
+  return words.every((w) => haystack.includes(w));
 }
 
 /** The rows in the order chosen: by date, one list by the request's first day (then when it was sent); by department, as they came. */
@@ -77,6 +93,7 @@ export function readRequestFilters(query: Query): RequestFilters {
   let to = dayOf(one(query.to));
   if (from && to && from > to) [from, to] = [to, from];
   const order = one(query.order);
+  const q = one(query.q).replace(/\s+/g, ' ').slice(0, SEARCH_MAX).trim();
   return {
     employeeId: UUID.test(employee) ? employee : null,
     type: type === PERMISSION_TYPE || type === WFH_TYPE || UUID.test(type) ? type : legacy,
@@ -84,11 +101,12 @@ export function readRequestFilters(query: Query): RequestFilters {
     to,
     // by department unless another order is chosen
     ...(order !== 'department' && (REQUEST_ORDERS as readonly string[]).includes(order) && { order: order as RequestOrder }),
+    ...(q && { q }),
   };
 }
 
 /** Whether any filter is on. */
-export const hasRequestFilters = (f: RequestFilters) => f.employeeId !== null || f.type !== null || f.from !== null || f.to !== null;
+export const hasRequestFilters = (f: RequestFilters) => f.employeeId !== null || f.type !== null || f.from !== null || f.to !== null || !!f.q;
 
 /** Which requests the type chooses: all three without one, the permissions, the work from home requests, or a leave type's leave. */
 export function kindOfFilters(f: RequestFilters): ListKind {
@@ -112,6 +130,7 @@ export function requestFiltersHref(status: LeaveFilter | null, f: RequestFilters
   if (f.from) params.set('from', f.from);
   if (f.to) params.set('to', f.to);
   if (f.order && f.order !== 'department') params.set('order', f.order);
+  if (f.q) params.set('q', f.q);
   const qs = params.toString();
   return qs ? `${LEAVE_PATH}?${qs}` : LEAVE_PATH;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { hasRequestFilters, kindOfFilters, leaveTypeOf, NO_FILTERS, NO_MATCH_TEXT, orderedRows, PERMISSION_TYPE, readRequestFilters, requestFiltersHref, typeChoices, WFH_TYPE } from './request-filters';
+import { hasRequestFilters, kindOfFilters, leaveTypeOf, NO_FILTERS, NO_MATCH_TEXT, matchesSearch, orderedRows, PERMISSION_TYPE, readRequestFilters, requestFiltersHref, typeChoices, WFH_TYPE } from './request-filters';
 import { leaveRequestsPath, leaveStepText, leaveDoneText } from './list';
 import { permissionsPath } from './permissions';
 
@@ -136,5 +136,25 @@ describe('the order of the requests', () => {
     expect(orderedRows(rows, 'newest').map((r) => r.id)).toEqual(['b', 'c', 'a']);
     expect(orderedRows(rows, 'oldest').map((r) => r.id)).toEqual(['a', 'c', 'b']);
     expect(orderedRows(rows, 'department').map((r) => r.id)).toEqual(['a', 'b', 'c']);
+  });
+});
+
+// owner, 31 October 2026: "allow me to search by name too"
+describe('searching by name', () => {
+  it('matches every word in the English or Arabic name, or the code, whatever the case', () => {
+    const p = { fullNameEn: 'Hazem Magdy Abdel Hay', fullNameAr: 'حازم مجدي', employeeCode: 'EMP-0033' };
+    expect(matchesSearch(p, 'hazem')).toBe(true);
+    expect(matchesSearch(p, 'magdy HAZEM')).toBe(true);
+    expect(matchesSearch(p, 'مجدي')).toBe(true);
+    expect(matchesSearch(p, 'emp-0033')).toBe(true);
+    expect(matchesSearch(p, 'hazem ali')).toBe(false);
+    expect(matchesSearch({ fullNameEn: 'Mona Ali' }, '')).toBe(true);
+  });
+
+  it('reads it from the address, keeps it in the links, and it is a filter to clear', () => {
+    expect(readRequestFilters({ q: '  Hazem   Magdy ' }).q).toBe('Hazem Magdy');
+    expect(readRequestFilters({ q: '' }).q).toBeUndefined();
+    expect(requestFiltersHref('all', { ...NO_FILTERS, q: 'Hazem' })).toBe('/leave?status=all&q=Hazem');
+    expect(hasRequestFilters({ ...NO_FILTERS, q: 'Hazem' })).toBe(true);
   });
 });

@@ -39,7 +39,7 @@ import {
   type LeaveView,
 } from './list';
 import { NEW_PERMISSION_PATH, RECORD_PERMISSION_PATH, recordsPermission } from './permissions';
-import { hasRequestFilters, kindOfFilters, leaveTypeOf, NO_FILTERS, NO_MATCH_TEXT, orderedRows, readRequestFilters, requestFiltersHref, typeChoices, type RequestFilters, type RequestOrder } from './request-filters';
+import { hasRequestFilters, kindOfFilters, leaveTypeOf, NO_FILTERS, NO_MATCH_TEXT, matchesSearch, orderedRows, readRequestFilters, requestFiltersHref, typeChoices, type RequestFilters, type RequestOrder } from './request-filters';
 import { RequestFiltersForm } from './request-filters-form';
 import { LeaveProgress, LeaveStatusBadge, RequestWhen, WfhProgress } from './ui';
 import { isWfh, listEmptyText, mergeLeaveList, rowHref, rowKind, wfhQueryOf, type LeaveListRow } from './wfh-rows';
@@ -103,7 +103,7 @@ function Filters({
           );
         })}
       </nav>
-      <RequestFiltersForm status={filter} employeeId={filters.employeeId} type={filters.type} from={filters.from} to={filters.to} order={filters.order} people={people} types={types} filtered={hasRequestFilters(filters)} />
+      <RequestFiltersForm status={filter} employeeId={filters.employeeId} type={filters.type} from={filters.from} to={filters.to} order={filters.order} q={filters.q} people={people} types={types} filtered={hasRequestFilters(filters)} />
     </div>
   );
 }
@@ -235,6 +235,7 @@ async function RequestsList({ query, user }: { query: Query; user: Awaited<Retur
     from: asked.from,
     to: asked.to,
     order: asked.order,
+    q: asked.q,
   };
   const kind = kindOfFilters(filters);
   const [leave, permissions, wfh] = await Promise.all([
@@ -243,7 +244,10 @@ async function RequestsList({ query, user }: { query: Query; user: Awaited<Retur
     // the work from home requests (owner, 26 October 2026: "Show it with leave"), by the same status, person and days
     kind === 'all' || kind === 'wfh' ? loadWfhRequests(wfhQueryOf(filter, filters.employeeId, filters)) : NONE,
   ]);
-  const rows = mergeLeaveList(leave.kind === 'ok' ? leave.value : [], permissions.kind === 'ok' ? permissions.value : [], wfh.kind === 'ok' ? wfh.value : []);
+  // a name or a code searched (owner, 31 October 2026: "allow me to search by name too"): the rows of those it matches
+  const rows = mergeLeaveList(leave.kind === 'ok' ? leave.value : [], permissions.kind === 'ok' ? permissions.value : [], wfh.kind === 'ok' ? wfh.value : []).filter((r) =>
+    matchesSearch(r.employee, filters.q),
+  );
   // a list not read: said in the list's place when it is the only one asked for, else above the others
   const problems = [
     leave.kind === 'failed' && notLoadedText(leave, 'leave requests'),

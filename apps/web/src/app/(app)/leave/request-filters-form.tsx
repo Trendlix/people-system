@@ -7,7 +7,7 @@ import { Select } from '@/components/select';
 import { LEAVE_PATH } from '@/components/nav';
 import { formatDate, parseDate } from '@/lib/format';
 import type { LeaveFilter } from './list';
-import { ORDER_CHOICES, type RequestOrder } from './request-filters';
+import { ORDER_CHOICES, SEARCH_MAX, type RequestOrder } from './request-filters';
 
 // Leave Requests' Employee and Type filters (owner, 26 October 2026: "i need to filter either by employee or typ"): each a
 // drop-down searched by typing; choosing one shows only its requests, beside the status chosen (?employee=<id>&type=<id>,
@@ -23,6 +23,7 @@ export function RequestFiltersForm({
   from,
   to,
   order = 'department',
+  q = '',
   people,
   types,
   filtered,
@@ -35,6 +36,8 @@ export function RequestFiltersForm({
   to: string | null;
   /** By department (grouped), or one list by date (owner, 31 October 2026: "allow me to sort by date without grouping"). */
   order?: RequestOrder;
+  /** Words of a name or a code searched (owner, 31 October 2026: "allow me to search by name too"). */
+  q?: string;
   /** Null: the people couldn't be loaded, so the Employee filter is left out. */
   people: readonly { id: string; label: string }[] | null;
   types: readonly { value: string; label: string }[];
@@ -47,8 +50,33 @@ export function RequestFiltersForm({
   };
   return (
     // keyed by what is chosen, so following a link to other filters shows them, not what was picked before
-    <form key={`${employeeId ?? ''}|${type ?? ''}|${from ?? ''}|${to ?? ''}|${order}`} ref={form} action={LEAVE_PATH} aria-label="Filter the requests" className="flex flex-wrap items-end gap-3">
+    <form key={`${employeeId ?? ''}|${type ?? ''}|${from ?? ''}|${to ?? ''}|${order}|${q}`} ref={form} action={LEAVE_PATH} aria-label="Filter the requests" className="flex flex-wrap items-end gap-3">
       <input type="hidden" name="status" value={status} />
+      {/* a name or a code, searched on Enter or on leaving the field (owner, 31 October 2026: "search by name too") */}
+      <div className="min-w-56 flex-1 sm:max-w-xs">
+        <label htmlFor="leave-filter-q" className="label">
+          Search
+        </label>
+        <input
+          id="leave-filter-q"
+          name="q"
+          type="search"
+          defaultValue={q}
+          maxLength={SEARCH_MAX}
+          placeholder="A name, then Enter"
+          autoComplete="off"
+          className="input"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              form.current?.requestSubmit();
+            }
+          }}
+          onBlur={(e) => {
+            if (e.currentTarget.value.trim() !== q) form.current?.requestSubmit();
+          }}
+        />
+      </div>
       {people && (
         <div className="min-w-56 flex-1 sm:max-w-xs">
           <label htmlFor="leave-filter-employee" className="label">
