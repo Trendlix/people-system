@@ -23,7 +23,9 @@ import {
   readFilters,
   reviewsImports,
   runWay,
+  searchedMonth,
 } from './attendance';
+import { SEARCH_MAX } from '@/lib/name-search';
 import { loadMonth } from './data';
 import { notLoaded } from './not-loaded';
 import { PeopleTable } from './people-table';
@@ -61,8 +63,15 @@ function placeChoices(places: readonly PlaceRef[]): { id: string; label: string 
 function Filters({ month, places, people, chosen }: { month: string; places: readonly PlaceRef[]; people: readonly AttendancePersonMonth[]; chosen: ReturnType<typeof readFilters> }) {
   const choices = [...people].sort((a, b) => a.employee.fullNameEn.localeCompare(b.employee.fullNameEn));
   return (
-    <form key={`${month}-${chosen.departmentId}-${chosen.employeeId}-${chosen.only}`} action={ATTENDANCE_PATH} className="flex flex-wrap items-end gap-3">
+    <form key={`${month}-${chosen.departmentId}-${chosen.employeeId}-${chosen.only}-${chosen.q ?? ''}`} action={ATTENDANCE_PATH} className="flex flex-wrap items-end gap-3">
       <input type="hidden" name="month" value={month} />
+      {/* a name or a code (owner, 31 October 2026: "allow me to search by name"), searched on Enter or Show */}
+      <div className="min-w-56">
+        <label htmlFor="attendance-q" className="label">
+          Search
+        </label>
+        <input id="attendance-q" name="q" type="search" defaultValue={chosen.q ?? ''} maxLength={SEARCH_MAX} placeholder="A name or code" autoComplete="off" className="input" />
+      </div>
       <div className="min-w-56">
         <label htmlFor="attendance-department" className="label">
           Department or team
@@ -122,9 +131,12 @@ async function Daily({ searchParams }: { searchParams: PageProps<'/attendance'>[
   const chosen = readFilters(query);
   const [all, places] = await Promise.all([loadMonth(month), loadPlaces()]);
   if (all.kind !== 'ok') return <Empty>{notLoaded(all, 'attendance')}</Empty>;
-  const loaded = filtered(chosen) ? await loadMonth(month, chosen) : all;
+  // the API's filters (the search is the page's own, below)
+  const asked = { departmentId: chosen.departmentId, employeeId: chosen.employeeId, only: chosen.only };
+  const loaded = asked.departmentId || asked.employeeId || asked.only ? await loadMonth(month, asked) : all;
   if (loaded.kind !== 'ok') return <Empty>{notLoaded(loaded, 'attendance')}</Empty>;
-  const view = loaded.value;
+  // a name searched: only the people it matches, their figures together
+  const view = searchedMonth(loaded.value, chosen.q);
   const none = all.value.people.length === 0 && !all.value.hidden;
   const way = importWay(user, month, view.run);
   const groups = groupByPlace(view.people, (p) => p.employee.department, placeOrder(places));

@@ -1,4 +1,5 @@
 import {
+  addFigures,
   ATTENDANCE_SOURCE_LABELS,
   attendancePeriod,
   breakText,
@@ -16,6 +17,7 @@ import {
   formatHours,
   isAttendanceFilter,
   isCheckInFlag,
+  NO_ATTENDANCE_FIGURES,
   openPressText,
   pairsText,
   PAYROLL_STATUS_LABELS,
@@ -34,6 +36,7 @@ import {
 import type { AttendanceImportRow, AttendancePunchRow, AttendanceRunRef, AttendanceSource } from '../../../lib/attendance-types';
 import { formatDateTime } from '../../../lib/format';
 import { googleMapsHref } from '../../../lib/map-point';
+import { matchesSearch, searchOf } from '../../../lib/name-search';
 import { hasRole } from '../../../lib/roles';
 import { cairoTime } from '../payroll/[id]/attendance/attendance';
 import { addMonths, monthName, monthOf, runHref } from '../payroll/list';
@@ -104,6 +107,8 @@ export interface AttendanceFilters {
   departmentId: string | null;
   employeeId: string | null;
   only: AttendanceFilter | null;
+  /** A name or a code searched (owner, 31 October 2026: "allow me to search by name"); none: everyone listed. */
+  q?: string;
 }
 
 /** The filters in the address (?department=&employee=&only=); one it can't read is left out. */
@@ -111,11 +116,25 @@ export function readFilters(query: Query): AttendanceFilters {
   const department = one(query.department);
   const employee = one(query.employee);
   const only = one(query.only);
-  return { departmentId: UUID.test(department) ? department : null, employeeId: UUID.test(employee) ? employee : null, only: isAttendanceFilter(only) ? only : null };
+  const q = searchOf(query.q);
+  return { departmentId: UUID.test(department) ? department : null, employeeId: UUID.test(employee) ? employee : null, only: isAttendanceFilter(only) ? only : null, ...(q && { q }) };
+}
+
+/**
+ * The month as the list shows it with a name searched (owner, 31 October 2026: "allow me to search by name"): only the
+ * people it matches (those with days and those without), their figures together. Nothing searched: as it came.
+ */
+export function searchedMonth<V extends { people: { employee: { fullNameEn: string; employeeCode: string }; figures: AttendanceFigures }[]; withoutDays: { fullNameEn: string; employeeCode: string }[]; totals: AttendanceFigures }>(
+  view: V,
+  q: string | undefined,
+): V {
+  if (!q) return view;
+  const people = view.people.filter((p) => matchesSearch(p.employee, q));
+  return { ...view, people, withoutDays: view.withoutDays.filter((e) => matchesSearch(e, q)), totals: people.reduce((t, p) => addFigures(t, p.figures), { ...NO_ATTENDANCE_FIGURES }) };
 }
 
 /** Whether any filter is chosen. */
-export const filtered = (f: AttendanceFilters) => !!(f.departmentId || f.employeeId || f.only);
+export const filtered = (f: AttendanceFilters) => !!(f.departmentId || f.employeeId || f.only || f.q);
 
 function withParams(path: string, params: Record<string, string | null | undefined>): string {
   const q = new URLSearchParams();
@@ -126,7 +145,7 @@ function withParams(path: string, params: Record<string, string | null | undefin
 
 /** Daily Attendance for a month and filters. */
 export const dailyHref = (month: string, f: Partial<AttendanceFilters> = {}) =>
-  withParams(ATTENDANCE_PATH, { month, department: f.departmentId, employee: f.employeeId, only: f.only });
+  withParams(ATTENDANCE_PATH, { month, department: f.departmentId, employee: f.employeeId, only: f.only, q: f.q });
 
 /** A person's month (HR, the CEO, Finance). */
 export const personHref = (employeeId: string, month: string) => withParams(`${ATTENDANCE_PATH}/${encodeURIComponent(employeeId)}`, { month });

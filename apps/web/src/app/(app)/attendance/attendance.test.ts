@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { attendanceDayView, attendanceFigures, dayFromPunches, EXEMPT_BADGE, EXEMPTION_LABEL, NO_ATTENDANCE_FIGURES } from '@trendlix/shared';
 import { undoConfirmText } from '../payroll/[id]/attendance/attendance';
 import { addMonths } from '../payroll/list';
+import { dailyHref as dailyHrefOf, readFilters as readFiltersOf, searchedMonth } from './attendance';
 import {
   apiMonthPath,
   apiSummaryExcelPath,
@@ -541,5 +542,34 @@ describe('exempt from check-in (owner, 25 October 2026: "trat them as if they ac
     expect(f).toMatchObject({ exemptDays: 1, absentDays: 0, missingCheckOuts: 0, hoursCounted: 9 });
     expect(figureTiles(f, { averageHours: 9 }).find((t) => t.key === 'exempt')).toEqual({ key: 'exempt', label: 'Exempt days', value: '1', note: 'Exempt from check-in: counted as full hours', tone: null });
     expect(figureTiles(NO_ATTENDANCE_FIGURES, { averageHours: null }).map((t) => t.key)).not.toContain('exempt');
+  });
+});
+
+// owner, 31 October 2026, on Daily Attendance: "allow me to search by name"
+describe('searching Daily Attendance by name', () => {
+  const fig = (daysWorked: number) => ({ ...NO_ATTENDANCE_FIGURES, daysWorked });
+  const view = {
+    people: [
+      { employee: { fullNameEn: 'Lamiaa Essam Mohamed', employeeCode: 'EMP-0006' }, figures: fig(19) },
+      { employee: { fullNameEn: 'Hazem Magdy', employeeCode: 'EMP-0033' }, figures: fig(20) },
+      { employee: { fullNameEn: 'Mona Essam', employeeCode: 'EMP-0040' }, figures: fig(5) },
+    ],
+    withoutDays: [{ fullNameEn: 'Essam Ali', employeeCode: 'EMP-0050' }],
+    totals: fig(44),
+  };
+
+  it('lists only those it matches, their figures together; nothing searched, as it came', () => {
+    const found = searchedMonth(view, 'essam');
+    expect(found.people.map((p) => p.employee.employeeCode)).toEqual(['EMP-0006', 'EMP-0040']);
+    expect(found.withoutDays.map((e) => e.employeeCode)).toEqual(['EMP-0050']);
+    expect(found.totals.daysWorked).toBe(24);
+    expect(searchedMonth(view, 'emp-0033').people).toHaveLength(1);
+    expect(searchedMonth(view, undefined)).toBe(view);
+  });
+
+  it('reads it from the address and keeps it in the links', () => {
+    expect(readFiltersOf({ q: '  Lamiaa  ' }).q).toBe('Lamiaa');
+    expect(readFiltersOf({}).q).toBeUndefined();
+    expect(dailyHrefOf('2026-10', { q: 'Lamiaa' })).toBe('/attendance?month=2026-10&q=Lamiaa');
   });
 });

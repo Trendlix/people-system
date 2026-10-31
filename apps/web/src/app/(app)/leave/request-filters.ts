@@ -4,6 +4,7 @@ import { parseDate } from '../../../lib/format';
 import type { LeaveTypeView } from '../../../lib/types';
 import { type LeaveFilter } from './list';
 import type { RequestKind } from './permissions';
+import { searchOf } from '../../../lib/name-search';
 
 // Leave Requests filtered by employee and type (owner, 26 October 2026: "i need to filter either by employee or typ"): an
 // Employee and a Type beside the status, in the page's address (?employee=<id>&type=<leave type id | permission>, so a
@@ -49,19 +50,8 @@ export interface RequestFilters {
   q?: string;
 }
 
-/** The longest search kept. */
-export const SEARCH_MAX = 100;
-
-/**
- * Whether a row's employee has every word searched in their name (English or Arabic) or code, whatever the case ("ahmed
- * ali", "محمد", "EMP-0033").
- */
-export function matchesSearch(employee: { fullNameEn: string; fullNameAr?: string | null; employeeCode?: string | null }, q: string | undefined): boolean {
-  const words = (q ?? '').toLowerCase().split(/\s+/).filter(Boolean);
-  if (!words.length) return true;
-  const haystack = [employee.fullNameEn, employee.fullNameAr, employee.employeeCode].filter(Boolean).join(' ').toLowerCase();
-  return words.every((w) => haystack.includes(w));
-}
+// the search's rules are the lists' own (lib/name-search.ts)
+export { matchesSearch, SEARCH_MAX } from '../../../lib/name-search';
 
 /** The rows in the order chosen: by date, one list by the request's first day (then when it was sent); by department, as they came. */
 export function orderedRows<R extends { startDate: string; createdAt: string }>(rows: readonly R[], order: RequestOrder | undefined): R[] {
@@ -93,7 +83,7 @@ export function readRequestFilters(query: Query): RequestFilters {
   let to = dayOf(one(query.to));
   if (from && to && from > to) [from, to] = [to, from];
   const order = one(query.order);
-  const q = one(query.q).replace(/\s+/g, ' ').slice(0, SEARCH_MAX).trim();
+  const q = searchOf(query.q);
   return {
     employeeId: UUID.test(employee) ? employee : null,
     type: type === PERMISSION_TYPE || type === WFH_TYPE || UUID.test(type) ? type : legacy,
