@@ -34,6 +34,7 @@ import {
 import type { Employee, EmployeeBank, EmployeeIdentity, Prisma } from '../generated/prisma/client.js';
 import { leadsOf, NO_LEADS } from '../organisation/departments/leads.js';
 import { storedCrop } from '../paperwork/photo-crop.js';
+import { PHOTO_REQUEST_SELECT, photoRequestView } from '../photo-requests/views.js';
 import { LawRatesService } from '../payroll/law-rates/law-rates.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { accessStates } from '../employee-access/access-state.js';
@@ -446,15 +447,18 @@ export class EmployeesService {
     // until the raise's insured-wage date, as payroll (owner's decision, 16 October 2026)
     // the people in charge of where the current employment places them (owner, 19 October 2026: "i want to add department
     // lead person, the person in charge"): its team's lead and its department's head, for the Employment details
-    const [papers, topRank, changeRequests, settings, photos, law, insuredPay, leads] = await Promise.all([
+    // their own picture to the employee themself too, and the new photos they sent HR (owner, 31 October 2026: "allow
+    // them to upload a new photo as a request and approved from the HR"), to them and to those who decide them
+    const [papers, topRank, changeRequests, settings, photos, law, insuredPay, leads, photoRequests] = await Promise.all([
       papersOf(this.prisma, [id]),
       current?.grade ? topGradeRank(this.prisma) : null,
       self || seesChangeRequests(user) ? this.changeRequestsOf(id) : [],
       salary ? this.prisma.contractSettings.findUnique({ where: { id: 1 }, select: { insuranceBasicDefault: true } }) : null,
-      seesEmployeeFile(user) ? this.photos([id]) : null,
+      seesEmployeeFile(user) || self ? this.photos([id]) : null,
       this.lawRates.forYear(Number(todayInCairo().slice(0, 4))),
       salary ? this.insuredPay(current ?? history[0] ?? null) : null,
       current ? leadsOf(this.prisma, current.departmentId) : NO_LEADS,
+      self || seesChangeRequests(user) ? this.photoRequestsOf(id) : [],
     ]);
     const { insuranceBasicWage, insuranceComprehensiveWage, priorServiceMonths, disability, ...open } = withOccupation(fields(own));
     return {
@@ -494,6 +498,7 @@ export class EmployeesService {
       }),
       confirmation: confirmationView(confirmed ?? null, own),
       changeRequests,
+      photoRequests,
       // the end of the person's last internship agreement and the first day a new one may start (owner, 19
       // October 2026: "a new trainee contract can be issued after 6 months of the expiration of the last trainee
       // contract"); null when they never had one
@@ -555,7 +560,8 @@ export class EmployeesService {
   }
 
   /**
-   * Each employee's picture, for those who see the employee file it is kept in (HR, CEO): the personal photo uploaded
+   * Each employee's picture, for those who see the employee file it is kept in (HR, CEO), and one's own on one's profile
+   * (31 October 2026): the personal photo uploaded
    * last as an image, as its paper's id by employee, with the square of it HR chose to show in the circle (owner's
    * request, 16 October 2026), or null for the whole photo. The others see initials.
    */
@@ -725,6 +731,20 @@ export class EmployeesService {
       }),
     ]);
     return [...waiting, ...closed].map(changeRequestView);
+  }
+
+  /** A profile's new photos sent to HR (31 October 2026): the one waiting first, then the 5 closed most recently. */
+  private async photoRequestsOf(employeeId: string) {
+    const [waiting, closed] = await Promise.all([
+      this.prisma.profilePhotoRequest.findMany({ where: { employeeId, status: 'pending' }, orderBy: { requestedAt: 'desc' }, select: PHOTO_REQUEST_SELECT }),
+      this.prisma.profilePhotoRequest.findMany({
+        where: { employeeId, status: { not: 'pending' } },
+        orderBy: [{ decidedAt: { sort: 'desc', nulls: 'last' } }, { requestedAt: 'desc' }],
+        take: 5,
+        select: PHOTO_REQUEST_SELECT,
+      }),
+    ]);
+    return [...waiting, ...closed].map(photoRequestView);
   }
 
   /** Which employees this user may see (spec §1: row-level access). Also used for their contracts. */

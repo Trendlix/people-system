@@ -50,6 +50,8 @@ model User {
   confirmations             ProfileConfirmation[] // the times this user confirmed their own details
   changesRequested          ProfileChangeRequest[]     @relation("ChangeRequester") // changes this user asked for to their own details
   changesDecided            ProfileChangeRequest[]     @relation("ChangeDecision") // change requests this user approved, rejected or cancelled
+  photosRequested           ProfilePhotoRequest[]      @relation("PhotoRequester") // new photos of themself this user sent HR
+  photosDecided             ProfilePhotoRequest[]      @relation("PhotoDecision") // photo requests this user approved, rejected or cancelled
   uploadedVersions          TemplateVersion[]          @relation("TemplateUpload") // template versions this user uploaded
   publishedVersions         TemplateVersion[]          @relation("TemplatePublication") // template versions this user published
   documentsMade             GeneratedDocument[]        @relation("DocumentGeneration") // documents this user generated from templates
@@ -1141,6 +1143,7 @@ model Employee {
   managing                   Employment[]               @relation("Manager") // the employments this person is the manager of
   confirmations              ProfileConfirmation[]
   changeRequests             ProfileChangeRequest[]
+  photoRequests              ProfilePhotoRequest[]
   documents                  GeneratedDocument[]
   offers                     JobOffer[]                 @relation("OfferPerson") // offers made to this person: as a former employee, or the offer they were hired from
   offersManaging             JobOffer[]                 @relation("OfferManager") // offers whose position reports to this person
@@ -1347,6 +1350,7 @@ model PaperworkItem {
   uploadedBy   User?                @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
   uploadedAt   DateTime             @default(now()) @map("uploaded_at") @db.Timestamptz
   consentFor   RecurringDeduction[] // a signed deduction consent: the recurring deductions it is the consent of
+  fromRequests ProfilePhotoRequest[] // a personal photo the employee sent, approved by HR (31 October 2026)
 
   @@index([employeeId, kind])
   @@map("paperwork_items")
@@ -1700,6 +1704,35 @@ model ProfileChangeRequest {
   @@index([status])
   @@index([employeeId])
   @@map("profile_change_requests")
+}
+
+// A new photo of themself the employee sends HR (owner, 31 October 2026: "allow them to upload a new photo as a request
+// and approved from the HR"). The file is kept in the database, as the employee file's papers are. HR or an Admin (a
+// C-level person's: the CEO or a Super Admin) approves it, and it becomes the employee file's personal photo, or rejects
+// it; the employee may cancel it while it waits. One waits per employee at a time (checked by the API).
+model ProfilePhotoRequest {
+  id            String         @id @default(uuid()) @db.Uuid
+  employeeId    String         @map("employee_id") @db.Uuid
+  employee      Employee       @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  requestedById String         @map("requested_by") @db.Uuid // the employee's own sign-in account
+  requestedBy   User           @relation("PhotoRequester", fields: [requestedById], references: [id], onDelete: Restrict)
+  requestedAt   DateTime       @default(now()) @map("requested_at") @db.Timestamptz
+  fileName      String         @map("file_name")
+  mimeType      String         @map("mime_type") // a JPEG, PNG or WebP image, checked by its content
+  sizeBytes     Int            @map("size_bytes")
+  data          Bytes
+  note          String?
+  status        String         @default("pending") // CHANGE_REQUEST_STATUSES: pending, approved, rejected, cancelled
+  decidedById   String?        @map("decided_by") @db.Uuid // who approved or rejected it, or the employee who cancelled it
+  decidedBy     User?          @relation("PhotoDecision", fields: [decidedById], references: [id], onDelete: SetNull)
+  decidedAt     DateTime?      @map("decided_at") @db.Timestamptz
+  decisionNote  String?        @map("decision_note")
+  photoId       String?        @map("photo_id") @db.Uuid // once approved: the personal photo it became in the employee file
+  photo         PaperworkItem? @relation(fields: [photoId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+  @@index([employeeId])
+  @@map("profile_photo_requests")
 }
 
 // ---------- document templates ----------

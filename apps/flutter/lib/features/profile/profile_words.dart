@@ -7,7 +7,8 @@ abstract final class ProfileWords {
   static const employeeProfile = 'Employee profile';
   static const profileComplete = 'Profile complete';
   static const allUpToDate = 'All required HR information is up to date.';
-  static const confirmOnWebsite = 'Please review and confirm your details on the People website.';
+  static const confirmNow = 'Please review and confirm your details.';
+  static const reviewDetails = 'Review my details';
   static const changePhoto = 'Profile photo';
   static String missingOf(List<String> labels) {
     if (labels.isEmpty) return allUpToDate;
@@ -153,11 +154,36 @@ abstract final class AccountWords {
     'Changing it signs out your other sessions and turns off fingerprint sign-in on your phones.',
   ];
 
-  // profile image
+  // profile image (owner, 31 October 2026: "allow them to upload a new photo as a request and approved from the HR")
   static const photoTitle = 'Profile Image';
   static const photoIntro = 'A clear photo helps teammates recognise you across the People System.';
-  static const photoSetByHr = 'Your photo is set by HR';
-  static const photoHow = 'Your picture comes from the personal photo in your employee file, which only HR adds and crops. To change it, give HR a new photo.';
+  static const photoNow = 'Your picture now';
+  static const photoFromFile = 'The personal photo in your employee file, shown beside your name. HR may crop it to show your face.';
+  static const noPhotoYet = 'There’s no photo in your employee file yet, so your initials are shown.';
+  static const newPhoto = 'Send HR a new photo';
+  static const newPhotoLine = 'Take one or choose one from your photos. It becomes your picture once HR approves it.';
+  static const takePhoto = 'Take a photo';
+  static const choosePhoto = 'Choose from photos';
+  static const chosenPhoto = 'The photo you chose';
+  static const noteForHr = 'Note for HR (optional)';
+  static const sendPhoto = 'Send to HR';
+  static const sendingPhoto = 'Sending…';
+  static const chooseAnother = 'Choose another';
+  static const photoSent = 'Your new photo was sent to HR. It becomes your picture once HR approves it.';
+  static const photoWaiting = 'Waiting for HR';
+  static String photoWaitingSince(String day) => 'You sent it on $day. HR decides whether it becomes your picture; cancel it to send a different one.';
+  static const sentPhoto = 'The new photo you sent';
+  static const yourNote = 'Your note';
+  static const cancelPhoto = 'Cancel the new photo';
+  static const cancelPhotoAsk = 'Cancel this photo? HR will no longer be asked to decide on it.';
+  static const keepPhoto = 'Keep it';
+  static const photoCancelled = 'Your new photo was cancelled.';
+  static String photoOutcome(String status, String day) => switch (status) {
+    'approved' => 'Your photo of $day was approved: it’s your picture now.',
+    'rejected' => 'Your photo of $day was rejected: your picture stayed as it was.',
+    _ => 'Your photo of $day was cancelled.',
+  };
+  static const hrNote = 'HR’s note';
   static const goodPhoto = 'A good profile photo';
   static const photoTips = [
     'Use a recent photo with your face clearly visible.',

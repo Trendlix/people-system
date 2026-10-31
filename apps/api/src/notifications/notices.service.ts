@@ -23,6 +23,8 @@ import {
   payRaiseWaitingText,
   payrollLockedChangeText,
   payslipText,
+  photoRequestDecidedText,
+  photoRequestWaitingText,
   raiseRequestWaitingText,
   recordedByHrText,
   resignationNewText,
@@ -86,6 +88,8 @@ export const REQUEST_LINKS = {
   leaveWaiting: '/leave?status=waiting',
   // leave and attendance changes made after the month's payroll moved on (27 October 2026): Unsettled lists them
   unsettledLocked: '/payroll/unsettled#locked',
+  // a new photo the employee sent (31 October 2026): their own photo page; those who decide it, Approvals
+  ownPhoto: (employeeId: string) => `/employees/${employeeId}/photo`,
 } as const;
 
 /** A request as the notices read it: whose it is, who it was sent to, where it stands, its name and its days. */
@@ -317,6 +321,29 @@ export class NoticesService {
     await this.safely('resignation request', async () => {
       const r = await this.prisma.resignationRequest.findUnique({ where: { id }, select: { employeeId: true } });
       if (r) await this.toEmployee(r.employeeId, resignationUpdateText(outcome, REQUEST_LINKS.resignation(id)));
+    });
+  }
+
+  // ---------- a new photo the employee sends HR (owner, 31 October 2026) ----------
+
+  /**
+   * A new photo sent: HR's step (the CEO's for a C-level person, or HR with Super Admin), never the employee themself;
+   * their name only.
+   */
+  async photoRequestSent(id: string): Promise<void> {
+    await this.safely('photo request', async () => {
+      const r = await this.prisma.profilePhotoRequest.findUnique({ where: { id }, select: { employeeId: true, status: true, employee: { select: { fullNameEn: true } } } });
+      if (!r || r.status !== 'pending') return;
+      await this.notifications.notify(await this.stageDeciders('hr', r.employeeId), photoRequestWaitingText(r.employee.fullNameEn, REQUEST_LINKS.approvals));
+    });
+  }
+
+  /** The employee's new photo approved or rejected: the employee is told. */
+  async photoRequestDecided(id: string): Promise<void> {
+    await this.safely('photo request', async () => {
+      const r = await this.prisma.profilePhotoRequest.findUnique({ where: { id }, select: { employeeId: true, status: true } });
+      if (!r || (r.status !== 'approved' && r.status !== 'rejected')) return;
+      await this.toEmployee(r.employeeId, photoRequestDecidedText(r.status, REQUEST_LINKS.ownPhoto(r.employeeId)));
     });
   }
 

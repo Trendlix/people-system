@@ -15,7 +15,9 @@ import '../../theme/tokens.dart';
 import '../assets/assets_data.dart';
 import '../assets/my_assets_screen.dart';
 import '../dashboard/dashboard_data.dart';
+import '../review/review_screen.dart' show openReview;
 import 'change_request_sheet.dart';
+import 'photo_data.dart';
 import 'profile_parts.dart';
 import 'profile_words.dart';
 
@@ -156,7 +158,16 @@ class _HeadCard extends StatelessWidget {
                 height: 92,
                 child: Stack(
                   children: [
-                    InitialsCircle(name: name, size: 86, fill: p.onInverse, ink: p.inverse, fontSize: 24),
+                    // their own photo since they send HR new ones (31 October 2026), else the initials
+                    RoundPicture(
+                      path: profile.photoId == null ? null : ownPhotoPath(profile.photoId!),
+                      crop: profile.photoCrop,
+                      name: name,
+                      size: 86,
+                      fill: p.onInverse,
+                      ink: p.inverse,
+                      fontSize: 24,
+                    ),
                     Positioned(
                       right: 0,
                       bottom: 0,
@@ -238,9 +249,19 @@ class _HeadCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 Text(ProfileWords.missingOf(gaps), style: text.bodyMedium?.copyWith(color: muted)),
+                // a change they asked for waits for HR (else the review comes first): they may confirm meanwhile
                 if (profile.needsConfirming) ...[
                   const SizedBox(height: 6),
-                  Text(ProfileWords.confirmOnWebsite, style: text.bodyMedium?.copyWith(color: p.onInverse)),
+                  Text(ProfileWords.confirmNow, style: text.bodyMedium?.copyWith(color: p.onInverse)),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: OutlinedButton(
+                      onPressed: () => openReview(context),
+                      style: OutlinedButton.styleFrom(foregroundColor: p.onInverse, side: BorderSide(color: muted)),
+                      child: const Text(ProfileWords.reviewDetails),
+                    ),
+                  ),
                 ],
               ],
             ),

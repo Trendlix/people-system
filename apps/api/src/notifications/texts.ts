@@ -268,6 +268,8 @@ export const TEXT_KINDS: readonly NotificationKind[] = [
   'compensatory_waiting',
   'compensatory_decided',
   'payroll_locked_change',
+  'photo_request_waiting',
+  'photo_request_decided',
 ];
 
 // ---------- custody (Assets, step 3, 21 October 2026) ----------
@@ -302,6 +304,21 @@ export function resignationNewText(name: string, link: string, forManager = fals
   return forManager
     ? { kind: 'resignation_new', title: 'A resignation request from your team', body: name, link }
     : { kind: 'resignation_new', title: 'A resignation request was sent', body: name, link };
+}
+
+/**
+ * A new photo the employee sent of themself (owner, 31 October 2026: "allow them to upload a new photo as a request and
+ * approved from the HR"), for those who decide it: their name only, never the photo.
+ */
+export function photoRequestWaitingText(name: string, link: string): NotificationInput {
+  return { kind: 'photo_request_waiting', title: 'A new photo is waiting for you', body: name, link };
+}
+
+/** The employee's new photo approved (now their picture beside their name) or rejected (their photo stays). */
+export function photoRequestDecidedText(decision: 'approved' | 'rejected', link: string): NotificationInput {
+  return decision === 'approved'
+    ? { kind: 'photo_request_decided', title: 'Your new photo was approved', body: 'It is now your picture in People.', link }
+    : { kind: 'photo_request_decided', title: 'Your new photo was rejected', body: 'HR kept your current photo. Open it to see why.', link };
 }
 
 /** The employee's own resignation request recorded by HR, or returned to them. */

@@ -1,6 +1,9 @@
 // One's own employee profile (GET /api/employees/:id, apps/web lib/types.ts `EmployeeProfile`): what the Dashboard and
 // the Profile tab show, read by hand; the rest kept as People sent it (`raw`) for the screens that need more.
 
+import 'photo_request.dart';
+import 'review.dart';
+
 /// Something missing from the profile (the completeness' gaps): its words, and the part of the profile it is in.
 typedef ProfileGap = ({String key, String label, String tab});
 
@@ -46,7 +49,7 @@ class OwnProfile {
         for (final m in missing)
           if (m is Map) (key: '${m['key'] ?? ''}', label: '${m['label'] ?? ''}', tab: '${m['tab'] ?? ''}'),
       ],
-      // the website's banner (apps/web employees/confirmation.ts bannerMessage): not up to date
+      // not up to date (apps/web employees/confirmation.ts bannerMessage)
       needsConfirming: confirmation is Map && confirmation['upToDate'] == false,
       jobTitle: nested(e?['jobTitle'], 'titleEn'),
       department: nested(e?['department'], 'nameEn'),
@@ -68,7 +71,7 @@ class OwnProfile {
   final int percent;
   final List<ProfileGap> missing;
 
-  /// Their details wait for them to confirm (the website's banner).
+  /// Their details wait for them to confirm: never confirmed, or changed since.
   final bool needsConfirming;
   final String? jobTitle;
   final String? department;
@@ -91,6 +94,38 @@ class OwnProfile {
           if (x is Map && x['label'] is String) (label: x['label'] as String, onFile: x['onFile'] == true),
     ];
   }
+
+  /// Where their confirmation stands; none from an API from before confirmations.
+  Confirmation? get confirmation => Confirmation.fromJson(raw['confirmation']);
+
+  /// A change they asked HR for still waits.
+  bool get changeWaiting {
+    final list = raw['changeRequests'];
+    return list is List && list.any((r) => r is Map && r['status'] == 'pending');
+  }
+
+  /// The review comes first (owner, 31 October 2026: "make the data review obligatory upon the signin for employees"):
+  /// their details aren't confirmed as they are now, and no change they asked for waits for HR. Asking for a change is
+  /// their part done, so it lets them through while HR decides; once HR decides, the review comes back unless their
+  /// details are as they confirmed them. The website's rule (apps/web employees/confirmation.ts mustReview).
+  bool get mustReview {
+    final c = confirmation;
+    return c != null && !c.upToDate && !changeWaiting;
+  }
+
+  /// Their picture beside their name: the personal photo's id in their employee file, and the square of it HR chose
+  /// (fractions of the photo: x, y, w, h); none without one, or from an API that doesn't send it to them.
+  String? get photoId => raw['photoId'] is String ? raw['photoId'] as String : null;
+
+  ({double x, double y, double w, double h})? get photoCrop {
+    final c = raw['photoCrop'];
+    if (c is! Map) return null;
+    final [x, y, w, h] = [for (final k in ['x', 'y', 'w', 'h']) c[k] is num ? (c[k] as num).toDouble() : -1.0];
+    return [x, y, w, h].every((v) => v >= 0 && v <= 1) && w > 0 && h > 0 ? (x: x, y: y, w: w, h: h) : null;
+  }
+
+  /// The new photos they sent HR (owner, 31 October 2026): the one waiting first, then the latest ones.
+  List<PhotoRequest> get photoRequests => photoRequestsOf(raw['photoRequests']);
 
   /// The papers HR still needs from them (the Documents part's gaps).
   List<String> get papersMissing => [

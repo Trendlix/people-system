@@ -6,6 +6,7 @@ import { SessionWatch } from '@/components/session-watch';
 import { DeveloperBanner } from '@/components/developer-banner';
 import { ModeGate } from '@/components/mode-gate';
 import { HoldGate } from '@/components/hold-gate';
+import { ReviewGate } from '@/components/review-gate';
 import { ViewAsBanner } from '@/components/view-as-banner';
 import { ApiError } from '@/lib/api';
 import { getCurrentUser } from '@/lib/session';
@@ -64,6 +65,9 @@ export default function PhoneLayout({ children }: LayoutProps<'/app'>) {
           {/* someone whose access is on hold: the Hold page, its one tab Check-In (owner, 23 October 2026: "Check-in/out
               only") */}
           <HoldGate />
+          {/* an employee whose details wait for their review: the review first, as on the site (owner, 31 October 2026:
+              "make the data review obligatory upon the signin for employees") */}
+          <ReviewGate />
           <ViewAsBanner />
           <DeveloperBanner />
         </Suspense>

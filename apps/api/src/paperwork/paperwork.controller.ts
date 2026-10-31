@@ -130,19 +130,19 @@ export class PaperworkController {
   }
 
   /**
-   * The picture beside the employee's name (HR and the CEO, who see the employee file). Kept by the browser for ten
+   * The picture beside the employee's name (HR and the CEO, who see the employee file; and the employee themself, their
+   * own: owner, 31 October 2026, as they send HR a new one; checked by the service). Kept by the browser for ten
    * minutes, so a list of people doesn't load every photo on every visit; a photo adjusted since shows within that.
    */
   // never a developer's: a face is personal data (owner, 22 October 2026: "make all real employees data encrypted for
   // developer role"); their pages show the initials of the pseudonym instead
-  @Roles('hr', 'ceo')
   @NotForDevelopers()
   @Get(':itemId/photo')
   @Header('Cache-Control', 'private, max-age=600')
   @Header('X-Content-Type-Options', 'nosniff')
   @Header('Content-Security-Policy', "default-src 'none'")
-  async photo(@Param('itemId', ParseUUIDPipe) itemId: string): Promise<StreamableFile> {
-    const { data, type } = await this.paperwork.photo(itemId);
+  async photo(@Param('itemId', ParseUUIDPipe) itemId: string, @CurrentUser() user: SessionUser): Promise<StreamableFile> {
+    const { data, type } = await this.paperwork.photo(itemId, user);
     return new StreamableFile(data, { type, length: data.length });
   }
 

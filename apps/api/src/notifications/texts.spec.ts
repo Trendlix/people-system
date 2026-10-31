@@ -18,6 +18,8 @@ import {
   payRaiseDecidedText,
   payRaiseWaitingText,
   payslipText,
+  photoRequestDecidedText,
+  photoRequestWaitingText,
   raiseRequestWaitingText,
   TEXT_KINDS,
   waitingText,
@@ -115,6 +117,12 @@ describe('notification texts', () => {
     });
   });
 
+  it('tells those who decide a new photo whose it is, and the employee what was decided (31 October 2026)', () => {
+    expect(photoRequestWaitingText('Mona Adel', '/approvals')).toEqual({ kind: 'photo_request_waiting', title: 'A new photo is waiting for you', body: 'Mona Adel', link: '/approvals' });
+    expect(photoRequestDecidedText('approved', '/employees/e1/photo')).toMatchObject({ kind: 'photo_request_decided', title: 'Your new photo was approved' });
+    expect(photoRequestDecidedText('rejected', '/employees/e1/photo')).toMatchObject({ title: 'Your new photo was rejected', body: 'HR kept your current photo. Open it to see why.' });
+  });
+
   it('every text fits what the inbox keeps, its kind is one the database takes, and it carries no figure', () => {
     const all = [
       waitingText('leave', 'A Very Long Name '.repeat(20), daysText('2026-10-22', '2026-10-23'), '/leave/1'),
@@ -132,6 +140,10 @@ describe('notification texts', () => {
       kpiManagerSignText('Mona Adel', '2026-10', '/kpis/scorecards/k1'),
       kpiReminderText('manager', { own: false, count: 3 }, '2026-11-06', '/kpis/team'),
       kpiReminderText('sign_off', { own: true, month: '2026-10' }, '2026-11-10', '/kpis/scorecards/k1'),
+      // a new photo the employee sends HR (31 October 2026): a name, never the photo or HR's note
+      photoRequestWaitingText('A Very Long Name '.repeat(20), '/approvals'),
+      photoRequestDecidedText('approved', '/employees/e1/photo'),
+      photoRequestDecidedText('rejected', '/employees/e1/photo'),
     ];
     for (const n of all) {
       const kept = keptNotification(n)!;

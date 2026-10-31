@@ -11,8 +11,11 @@ import type { PendingRaise, RaiseRequest } from '@/lib/raise-types';
 import { hasRole } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import type { HomeLocationView } from '@/lib/home-location-types';
-import type { ChangeRequest, EndingSummary, SessionUser } from '@/lib/types';
+import type { ChangeRequest, EndingSummary, PhotoRequest, SessionUser } from '@/lib/types';
 import { ChangeRequestCard } from '../employees/[id]/change-request/request-parts';
+import { decidePhotoRequest } from '../employees/photo-request-actions';
+import { PhotoRequestCard } from '../employees/photo-request-card';
+import { photosLabel } from '../employees/photo-requests';
 import { art154Text } from '../employees/employment-law';
 import { lastDayText } from '../employees/[id]/ending/rules';
 import { profileHref } from '../employees/ui';
@@ -37,7 +40,7 @@ import {
 import { HomeMap, HomeOverlaps, HomeStatusBadge } from '../home-locations/ui';
 import { PracticeBadge } from '../kpis/ui';
 import { decideChangeRequest, decideEnding } from './actions';
-import { decidesEndings, followsEndings, getOrNull, PENDING_CHANGE_REQUESTS, PENDING_ENDINGS } from './data';
+import { decidesEndings, followsEndings, getOrNull, PENDING_CHANGE_REQUESTS, PENDING_ENDINGS, PENDING_PHOTO_REQUESTS } from './data';
 import { DecisionForm } from './decision-form';
 import { kpiApprovalRows, kpiScorecardsLabel, seesKpiApprovals } from './kpis';
 import { PayRaiseCard } from './pay-raise-card';
@@ -89,6 +92,9 @@ const DONE: Record<string, string> = {
   rejected: 'Ending rejected.',
   'change-approved': 'Change request approved: the profile is updated.',
   'change-rejected': 'Change request rejected. The employee sees your note.',
+  // a new photo the employee sent (31 October 2026)
+  'photo-approved': 'New photo approved: it is now the picture beside their name. You can crop it on their profile.',
+  'photo-rejected': 'New photo rejected: they keep their current one.',
   'raise-approved': 'Pay raise approved. HR now has it signed; it is paid from its effective date.',
   'raise-approved-other': 'Pay raise approved with your raise: its pay is changed to it. HR now has it signed; it is paid from its effective date.',
   'raise-returned': 'Pay raise returned to HR with your comment.',
@@ -266,6 +272,40 @@ async function PendingChangeRequests({ user }: { user: SessionUser }) {
       <ul className="space-y-4">
         {requests.map((r) => (
           <PendingChangeRequestCard key={r.id} request={r} decides={decidesChangeOfDetails(user, r.confidential)} />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// ---------- new photos (owner, 31 October 2026: "allow them to upload a new photo as a request and approved from the HR") ----------
+
+/** The new photos waiting, each with the decide buttons for who decides it (a C-level person's: the CEO or a Super Admin). */
+async function PendingPhotoRequests({ user }: { user: SessionUser }) {
+  // read quietly, like the change requests: an API from before photo requests must not take the endings down with it
+  const requests = await getOrNull<PhotoRequest[]>(PENDING_PHOTO_REQUESTS);
+  if (requests === null) return <Empty>New photos couldn&apos;t load.</Empty>;
+  if (requests.length === 0) return <Empty>No new photos are waiting.</Empty>;
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-muted">
+        {photosLabel(requests.length)} waiting. Approving puts the photo in the employee file as their personal photo, the picture beside their
+        name (you can crop it on their profile); rejecting keeps the one they have.
+      </p>
+      <ul className="space-y-4">
+        {requests.map((r) => (
+          <PhotoRequestCard key={r.id} request={r}>
+            {decidesChangeOfDetails(user, r.confidential) ? (
+              <DecisionForm
+                action={decidePhotoRequest.bind(null, r.id)}
+                confirmApprove={`Use this photo for ${r.employee.fullNameEn}? It becomes the personal photo in their employee file.`}
+                noteMax={1000}
+                noteHint="optional"
+              />
+            ) : (
+              <p className="mt-4 border-t border-line-soft pt-4 text-sm text-muted">Waiting for {changeDeciders(r.confidential)} to decide it.</p>
+            )}
+          </PhotoRequestCard>
         ))}
       </ul>
     </div>
@@ -502,6 +542,12 @@ async function Approvals({ searchParams }: { searchParams: PageProps<'/approvals
       {changes && (
         <Section title="Profile Change Requests">
           <PendingChangeRequests user={user} />
+        </Section>
+      )}
+      {/* decided by those who decide the change requests (31 October 2026) */}
+      {changes && (
+        <Section title="New Photos" id="new-photos">
+          <PendingPhotoRequests user={user} />
         </Section>
       )}
       {homes && (

@@ -65,6 +65,9 @@ describe('the status filter of Details Changes', () => {
   it('says what was done after a decision, and nothing for anything else', () => {
     expect(readDone({ done: 'change-approved' })).toBe('Change request approved: the profile is updated.');
     expect(readDone({ done: 'change-rejected' })).toBe('Change request rejected. The employee sees your note.');
+    // a new photo the employee sent (31 October 2026)
+    expect(readDone({ done: 'photo-approved' })).toContain('New photo approved');
+    expect(readDone({ done: 'photo-rejected' })).toBe('New photo rejected: they keep their current one.');
     expect(readDone({ done: 'approved' })).toBeNull();
     expect(readDone({ done: 'toString' })).toBeNull();
     expect(readDone({})).toBeNull();

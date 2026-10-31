@@ -15,6 +15,7 @@ import '../../theme/tokens.dart';
 import '../today/today_controller.dart';
 import 'dashboard_data.dart';
 import '../requests/kinds/od.dart' show showOdSheet;
+import '../review/review_screen.dart' show openReview;
 import 'shift_card.dart';
 
 /// The Dashboard's words, in one place (ready for Arabic).
@@ -48,7 +49,8 @@ abstract final class DashboardWords {
   static const allSet = 'Nothing to do. You’re all set.';
   static const requiredByHr = 'Required by HR';
   static const bringToHr = 'Bring them to HR, who add them to your file.';
-  static const confirmDetails = 'Please review and confirm your details on the People website.';
+  static const confirmDetails = 'Please review and confirm your details.';
+  static const reviewDetails = 'Review my details';
   static const noHolidays = 'No more official holidays on file yet.';
   static const notLoaded = 'Couldn’t load this. Pull down to try again.';
   static String daysAvailableOf(String n) => '$n days available';
@@ -617,7 +619,12 @@ class _Documents extends ConsumerWidget {
           ),
           const SizedBox(height: 16),
           if (papers.isEmpty && !profile.needsConfirming) Text(DashboardWords.allSet, style: text.bodyMedium),
-          if (profile.needsConfirming) ...[Text(DashboardWords.confirmDetails, style: text.bodyMedium), const SizedBox(height: 12)],
+          // a change they asked for waits for HR (else the review comes first): they may confirm meanwhile
+          if (profile.needsConfirming) ...[
+            Text(DashboardWords.confirmDetails, style: text.bodyMedium),
+            ArrowLink(DashboardWords.reviewDetails, onTap: () => openReview(context)),
+            const SizedBox(height: 12),
+          ],
           for (final paper in papers)
             Container(
               margin: const EdgeInsets.only(bottom: 10),

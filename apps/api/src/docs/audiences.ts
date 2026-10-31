@@ -107,6 +107,12 @@ export const APP_ENDPOINTS: readonly string[] = [
   'GET /api/employees/{x}',
   'POST /api/employees/{x}/change-requests',
   'POST /api/change-requests/{x}/cancel',
+  // the review at sign-in, and a new photo sent to HR (owner, 31 October 2026)
+  'POST /api/employees/{x}/confirm',
+  'GET /api/paperwork/{x}/photo',
+  'POST /api/employees/{x}/photo-requests',
+  'GET /api/photo-requests/{x}/photo',
+  'POST /api/photo-requests/{x}/cancel',
   'GET /api/calendars/mine',
   '* /api/me/interview-hours',
   'GET /api/me/custody',

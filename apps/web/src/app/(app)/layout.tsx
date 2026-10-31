@@ -15,6 +15,7 @@ import { UserMenu } from '@/components/user-menu';
 import { DeveloperBanner } from '@/components/developer-banner';
 import { ModeGate } from '@/components/mode-gate';
 import { HoldGate } from '@/components/hold-gate';
+import { ReviewGate } from '@/components/review-gate';
 import { ViewAsBanner } from '@/components/view-as-banner';
 import { ApiError } from '@/lib/api';
 import { KPI_API, KPI_PATHS } from '@/lib/kpi-paths';
@@ -23,12 +24,11 @@ import { getCurrentUser } from '@/lib/session';
 import type { PendingRaise, RaiseRequest } from '@/lib/raise-types';
 import type { CorrectionCounts } from '@/lib/correction-types';
 import type { HomeLocationCounts } from '@/lib/home-location-types';
-import type { ChangeRequest, EndingSummary, LeaveCounts, ReimbursementCounts, SessionUser } from '@/lib/types';
-import { followsEndings, getOrNull, PENDING_CHANGE_REQUESTS, PENDING_ENDINGS } from './approvals/data';
+import type { ChangeRequest, EndingSummary, LeaveCounts, PhotoRequest, ReimbursementCounts, SessionUser } from '@/lib/types';
+import { followsEndings, getOrNull, PENDING_CHANGE_REQUESTS, PENDING_ENDINGS, PENDING_PHOTO_REQUESTS } from './approvals/data';
 import { followsRaises, PENDING_RAISES } from './approvals/raises';
-import { ReviewNowLink } from './employees/[id]/confirm/confirm-notices';
-import { bannerMessage } from './employees/confirmation';
-import { loadOwnProfile } from './own-profile';
+import { reviewHref } from './employees/confirmation';
+import { loadOwnProfile, reviewDueFor } from './own-profile';
 import { countsRaiseRequests, waitingForYouCount, WITH_HR_REQUESTS } from './raise-requests/list';
 import { canSeeLeaveRequests, LEAVE_COUNTS } from './leave/list';
 import { canSeeReimbursements, CLAIM_COUNTS } from './reimbursements/list';
@@ -54,6 +54,20 @@ async function MainNav() {
     user = await getCurrentUser();
   } catch (err) {
     if (!(err instanceof ApiError)) throw err;
+  }
+  // while the employee's review waits (owner, 31 October 2026: "make the data review obligatory upon the signin for
+  // employees"), only the way to it: every other page sends them there
+  const due = user && (await reviewDueFor(user));
+  if (due) {
+    return (
+      <div className="space-y-3 px-3 py-2">
+        <p className="text-sm text-sidebar-text">Review your details to open the rest of People.</p>
+        <Link href={reviewHref(due)} className="inline-flex items-center gap-1.5 text-sm text-sidebar-ink no-underline hover:underline">
+          Review your details
+          <ArrowRight aria-hidden="true" className="size-3.5" strokeWidth={1.6} />
+        </Link>
+      </div>
+    );
   }
   const roles: Role[] = user?.roles ?? [];
   // Beside Approvals: for HR and the CEO, the endings and the pay raises waiting for the CEO; for HR and Admin (a Super
@@ -93,7 +107,8 @@ async function MainNav() {
   // beside Employees, for HR and Admin (a Super Admin too), the people whose access is on hold (owner, 23 October 2026:
   // "Access should be on hold with a 7 days grace period one time granted by the hr"): HR gives grace or renews them
   const accessCounted = hasRole({ roles }, 'hr', 'admin');
-  const [endings, pendingChanges, raises, requests, claims, leave, corrections, homes, kpis, wfh, access, od, compensatory] = await Promise.all([
+  // the new photos employees sent (31 October 2026), counted with the change requests: the same people decide them
+  const [endings, pendingChanges, raises, requests, claims, leave, corrections, homes, kpis, wfh, access, od, compensatory, pendingPhotos] = await Promise.all([
     followsEndings({ roles }) ? getOrNull<EndingSummary[]>(PENDING_ENDINGS, bg) : null,
     readsChangeRequests({ roles }) ? getOrNull<ChangeRequest[]>(PENDING_CHANGE_REQUESTS, bg) : null,
     followsRaises({ roles }) ? getOrNull<PendingRaise[]>(PENDING_RAISES, bg) : null,
@@ -107,14 +122,16 @@ async function MainNav() {
     user && accessCounted ? getOrNull<AccessCounts>('/employees/access/counts', bg) : null,
     user && odCounted ? getOrNull<OdCounts>(OD_COUNTS, bg) : null,
     user && compensatoryCounted ? getOrNull<CompensatoryCounts>(COMPENSATORY_COUNTS, bg) : null,
+    readsChangeRequests({ roles }) ? getOrNull<PhotoRequest[]>(PENDING_PHOTO_REQUESTS, bg) : null,
   ]);
   const changes = pendingChanges && waitingForYou({ roles }, pendingChanges);
+  const photos = pendingPhotos ? waitingForYou({ roles }, pendingPhotos).length : 0;
   const raiseRequests = requests ? waitingForYouCount({ roles }, requests) : 0;
   const kpiApprovals = hasRole({ roles }, 'hr', 'ceo', 'admin') ? (kpis?.team ?? 0) + (kpis?.hr ?? 0) : 0;
   const wfhApprovals = hasRole({ roles }, 'hr', 'ceo', 'admin') ? (wfh?.waiting ?? 0) : 0;
   const odApprovals = hasRole({ roles }, 'hr', 'ceo', 'admin') ? (od?.waiting ?? 0) : 0;
   const compensatoryApprovals = hasRole({ roles }, 'hr', 'ceo', 'admin') ? (compensatory?.waiting ?? 0) : 0;
-  const waiting = (endings?.length ?? 0) + (changes?.length ?? 0) + (raises?.length ?? 0) + (homes?.waiting ?? 0) + kpiApprovals + wfhApprovals + odApprovals + compensatoryApprovals;
+  const waiting = (endings?.length ?? 0) + (changes?.length ?? 0) + photos + (raises?.length ?? 0) + (homes?.waiting ?? 0) + kpiApprovals + wfhApprovals + odApprovals + compensatoryApprovals;
   const counts: Record<string, number> = {};
   if (waiting) counts['/approvals'] = waiting;
   if (kpis?.self) counts[KPI_PATHS.mine] = kpis.self;
@@ -122,7 +139,7 @@ async function MainNav() {
   if (kpis?.hr) counts[KPI_PATHS.all] = kpis.hr;
   if (raiseRequests) counts[RAISE_REQUESTS_PATH] = raiseRequests;
   if (access?.hold) counts['/employees'] = access.hold;
-  if (changes?.length) counts[DETAILS_CHANGES_PATH] = changes.length;
+  if ((changes?.length ?? 0) + photos) counts[DETAILS_CHANGES_PATH] = (changes?.length ?? 0) + photos;
   if (self) {
     const team = (claims?.waiting ?? 0) + (leave?.waiting ?? 0) + (corrections?.waiting ?? 0) + (manager ? (wfh?.waiting ?? 0) + (od?.waiting ?? 0) + (compensatory?.waiting ?? 0) : 0);
     if (team) counts[MY_TEAM] = team;
@@ -135,34 +152,9 @@ async function MainNav() {
 }
 
 /**
- * On every page, for an employee whose details aren't confirmed, or changed since they confirmed them (owner's decision,
- * 15 October 2026): what to do, and Review now. It can't be dismissed; it goes once they confirm.
- */
-async function ConfirmBanner() {
-  let user: SessionUser;
-  try {
-    user = await getCurrentUser();
-  } catch (err) {
-    if (err instanceof ApiError) return null;
-    throw err;
-  }
-  const own = await loadOwnProfile(user);
-  const message = own && bannerMessage(own.confirmation);
-  if (!own || !message) return null;
-  return (
-    <section aria-label="Confirm your details" className="border-b border-warn/20 bg-warn-soft px-4 py-3 sm:px-8">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <p className="text-sm font-medium text-warn">{message}</p>
-        <ReviewNowLink href={`/employees/${own.id}/confirm`} />
-      </div>
-    </section>
-  );
-}
-
-/**
  * At the foot of the side menu, the design's "Profile completeness" (30 October 2026): how complete one's own employee
  * profile is, with a bar and the way to it, while something is still missing; nothing for an account without a profile
- * or a complete one. The same read as the banner above (loadOwnProfile is read once per page).
+ * or a complete one. The same read as the review's (loadOwnProfile is read once per page).
  */
 async function ProfileCompleteness() {
   let user: SessionUser;
@@ -174,7 +166,8 @@ async function ProfileCompleteness() {
   }
   const own = await loadOwnProfile(user);
   const percent = own?.completeness.percent;
-  if (!own || percent === undefined || percent >= 100) return null;
+  // nothing while the review waits: the side menu leads only to it
+  if (!own || percent === undefined || percent >= 100 || (await reviewDueFor(user))) return null;
   const missing = own.completeness.missing.length;
   return (
     <div className="mt-4 rounded-[15px] border border-sidebar-line bg-white/[0.03] p-4 md:mt-auto">
@@ -214,6 +207,11 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
         <HoldGate />
         <ViewAsBanner />
         <DeveloperBanner />
+      </Suspense>
+      {/* an employee whose details wait for their review: the review first (owner, 31 October 2026: "make the data review
+          obligatory upon the signin for employees"), in place of the banner that said so on every page */}
+      <Suspense fallback={null}>
+        <ReviewGate />
       </Suspense>
       <Suspense fallback={null}>
         <SessionWatch />
@@ -264,9 +262,6 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
               <UserMenu />
             </Suspense>
           </header>
-          <Suspense fallback={null}>
-            <ConfirmBanner />
-          </Suspense>
           {/* the design's page: a wide column with room around it */}
           {/* the whole width beside the side menu (owner, 31 October 2026: "fill the page"); a page keeps its own narrower measure */}
           <main className="w-full min-w-0 flex-1 px-4 py-6 sm:px-8 lg:px-[34px] lg:py-[34px]">{children}</main>

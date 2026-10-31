@@ -12,8 +12,8 @@ import 'fakes.dart';
 import 'profile_models_test.dart' show calendarsJson, devicesJson, interviewHoursJson, ownProfileJson, sessionsJson;
 
 // The account's screens (the phone design, 30 October 2026), opened from the More menu: Change Password (People's rule
-// and refusals, this phone's fingerprint credential dropped once it changed), Profile Image (set by HR: no upload
-// pretended), Your Sessions (sign out of one, the phones' fingerprint sign-in, turning it on for this phone) and Your
+// and refusals, this phone's fingerprint credential dropped once it changed), Profile Image (a new photo sent to HR:
+// profile_photo_test.dart), Your Sessions (sign out of one, the phones' fingerprint sign-in, turning it on for this phone) and Your
 // Interview Hours (read and saved as the website does).
 
 Future<void> openAccount(WidgetTester tester, FakePeople people, String menuItem, {MemorySessionStore? store, FakeBiometrics? biometrics}) async {
@@ -110,15 +110,17 @@ void main() {
     });
   });
 
-  testWidgets('Profile Image says HR sets the photo, and offers no upload People would refuse', (tester) async {
+  // the employee sends HR a new photo (owner, 31 October 2026): profile_photo_test.dart
+  testWidgets('Profile Image shows their initials without a photo on file, and the way to send HR one', (tester) async {
     await openAccount(tester, people, ShellWords.changePhoto);
     expect(find.text(AccountWords.photoTitle), findsOneWidget);
-    expect(find.text(AccountWords.photoSetByHr), findsOneWidget);
-    expect(find.text(AccountWords.photoHow), findsOneWidget);
+    expect(find.text(AccountWords.noPhotoYet), findsOneWidget);
     expect(find.text('MA'), findsWidgets);
-    expect(find.text('Choose image'), findsNothing);
-    expect(find.text('Save photo'), findsNothing);
+    expect(find.text(AccountWords.newPhoto), findsOneWidget);
+    expect(find.text(AccountWords.takePhoto), findsOneWidget);
+    expect(find.text(AccountWords.choosePhoto), findsOneWidget);
     for (final tip in AccountWords.photoTips) {
+      await tester.scrollUntilVisible(find.text(tip), 200, scrollable: find.byType(Scrollable).last);
       expect(find.text(tip), findsOneWidget);
     }
   });

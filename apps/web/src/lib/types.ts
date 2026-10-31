@@ -676,6 +676,12 @@ export interface EmployeeProfile {
    * HR, Admin and the CEO get them; anyone else gets []. Optional for the same reason as `confirmation`.
    */
   changeRequests?: ChangeRequest[];
+  /**
+   * The new photos the employee sent HR (owner, 31 October 2026: "allow them to upload a new photo as a request and
+   * approved from the HR"): the one waiting first, then up to 5 recent ones. The employee themself, HR, Admin and the CEO
+   * get them; anyone else gets []. Left out by an API from before it.
+   */
+  photoRequests?: PhotoRequest[];
   /** Whether the signed-in user is this employee (their sign-in email is the work email). Optional like `confirmation`. */
   isSelf?: boolean;
   /**
@@ -763,6 +769,34 @@ export interface ChangeRequest {
    * The employee is C-level (owner, 19 October 2026): the CEO decides it, or a Super Admin (as Admin), not HR. Left out
    * by an API from before it.
    */
+  confidential?: boolean;
+}
+
+/**
+ * A new photo of themself the employee sent HR (owner, 31 October 2026), on their profile and GET /photo-requests. HR or
+ * an Admin (a C-level person's: the CEO or a Super Admin) approves it, and it becomes the employee file's personal photo,
+ * or rejects it, with a note or none; the employee may cancel it while it waits. The photo itself: /photo-request/<id>.
+ */
+export interface PhotoRequest {
+  id: string;
+  employee: { id: string; employeeCode: string; fullNameEn: string };
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  /** The employee's note for HR, if any. */
+  note: string | null;
+  status: ChangeRequestStatus;
+  requestedBy: { email: string } | null;
+  requestedAt: string;
+  decidedBy: { email: string } | null;
+  decidedAt: string | null;
+  /** HR's note, optional either way. */
+  decisionNote: string | null;
+  /** Once approved: the personal photo it became. */
+  photoId: string | null;
+  /** On GET /photo-requests, for HR and the CEO: the picture beside the name now, to compare. */
+  currentPhotoId?: string | null;
+  /** The employee is C-level: the CEO or a Super Admin decides it. */
   confidential?: boolean;
 }
 

@@ -9,6 +9,7 @@ import { formatDate } from '@/lib/format';
 import { employmentHidden, shownCode } from '@/lib/hidden';
 import type { EmployeeProfile, ProfileGap } from '@/lib/types';
 import { confirmationStatus, pendingRequest } from '../confirmation';
+import { ownPhotoHref, pendingPhoto } from '../photo-requests';
 import { Avatar, gradeLabel, photoHref, PROFILE_TABS, profileHref, standingOf, StandingBadge, tabShowing, type ProfileTabKey } from '../ui';
 import { ConfirmedNotice } from './confirm/confirm-notices';
 import { PhotoCropButton } from './photo-crop';
@@ -91,6 +92,7 @@ function Confirmation({ profile: p, decidesRequests }: { profile: EmployeeProfil
   if (!status) return null;
   const upToDate = p.confirmation?.upToDate;
   const pending = pendingRequest(p.changeRequests);
+  const photoPending = pendingPhoto(p.photoRequests);
   // a C-level person's change requests are the CEO's (or a Super Admin's) to decide, not HR's (19 October 2026)
   const decider = p.confidential ? 'the CEO' : 'HR';
   // HR (who edit the profile) see a profile never confirmed in the warning colour: it is theirs to follow up
@@ -116,18 +118,36 @@ function Confirmation({ profile: p, decidesRequests }: { profile: EmployeeProfil
             ) : (
               upToDate && <Link href={`/employees/${p.id}/change-request`}>Request a change</Link>
             )}
+            {/* a new photo of themself, sent to HR to approve (owner, 31 October 2026) */}
+            {photoPending ? (
+              <Link href={ownPhotoHref(p.id)} className={waiting}>
+                Your new photo is waiting for {decider}
+              </Link>
+            ) : (
+              <Link href={ownPhotoHref(p.id)}>Send a new photo</Link>
+            )}
           </>
         ) : (
-          pending &&
-          // HR and Admin decide on Approvals, a C-level person's the CEO or a Super Admin (19 October 2026); anyone else
-          // sees it waiting
-          (decidesRequests ? (
-            <Link href="/approvals" className={waiting}>
-              Change request waiting
-            </Link>
-          ) : (
-            <span className={waiting}>Change request waiting for {decider}</span>
-          ))
+          <>
+            {pending &&
+              // HR and Admin decide on Approvals, a C-level person's the CEO or a Super Admin (19 October 2026); anyone else
+              // sees it waiting
+              (decidesRequests ? (
+                <Link href="/approvals" className={waiting}>
+                  Change request waiting
+                </Link>
+              ) : (
+                <span className={waiting}>Change request waiting for {decider}</span>
+              ))}
+            {photoPending &&
+              (decidesRequests ? (
+                <Link href="/approvals" className={waiting}>
+                  New photo waiting
+                </Link>
+              ) : (
+                <span className={waiting}>New photo waiting for {decider}</span>
+              ))}
+          </>
         )}
       </div>
     </div>

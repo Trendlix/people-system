@@ -112,6 +112,10 @@ export const NOTIFICATION_KINDS = [
   // the hiring steps (owner, 29 October 2026: "Manager view the shortlisted and accept or reject them"): the hiring
   // manager told once a batch of applicants is shortlisted for them to review
   'shortlist_review',
+  // a new photo of themself the employee sends HR (owner, 31 October 2026: "allow them to upload a new photo as a request
+  // and approved from the HR"): those who decide it told one waits, and the employee told it was approved or rejected
+  'photo_request_waiting',
+  'photo_request_decided',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
@@ -195,6 +199,8 @@ export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
   resignation_new: 'Resignation',
   resignation_update: 'Resignation',
   payroll_locked_change: 'Payroll',
+  photo_request_waiting: 'Photo',
+  photo_request_decided: 'Photo',
 };
 
 // ---------- the reminders and the person's switches ----------

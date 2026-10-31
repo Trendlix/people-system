@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { ProfileConfirmation } from '../../../lib/types';
+import type { ChangeRequest, ProfileConfirmation } from '../../../lib/types';
 import {
   bannerMessage,
   changedKeys,
@@ -8,10 +8,13 @@ import {
   fieldName,
   fieldNames,
   fieldTexts,
+  mustReview,
+  openDuringReview,
   parseFieldTexts,
   pendingRequest,
   profileValue,
   requestedChanges,
+  reviewHref,
   shownValue,
 } from './confirmation';
 
@@ -186,5 +189,37 @@ describe('the change request form', () => {
     expect(parseFieldTexts('not json')).toBeNull();
     expect(parseFieldTexts('[1]')).toBeNull();
     expect(parseFieldTexts(null)).toBeNull();
+  });
+});
+
+// the review at sign-in (owner, 31 October 2026: "make the data review obligatory upon the signin for employees")
+describe('mustReview', () => {
+  const request = (status: ChangeRequest['status']) => ({ status }) as ChangeRequest;
+
+  it('asks for the review until the details are confirmed as they are now', () => {
+    expect(mustReview(confirmation({}), [])).toBe(true);
+    expect(mustReview(confirmation({ confirmedAt: '2026-10-15T08:00:00Z', changedFields: ['mobile'] }), undefined)).toBe(true);
+    expect(mustReview(confirmation({ confirmedAt: '2026-10-15T08:00:00Z', upToDate: true }), [])).toBe(false);
+  });
+
+  it('lets them through while a change they asked for waits for HR, and asks again once HR decided it', () => {
+    expect(mustReview(confirmation({}), [request('pending')])).toBe(false);
+    expect(mustReview(confirmation({}), [request('approved'), request('rejected'), request('cancelled')])).toBe(true);
+  });
+
+  it('asks nothing of an API without confirmations', () => {
+    expect(mustReview(undefined, [])).toBe(false);
+  });
+});
+
+describe('openDuringReview', () => {
+  it('keeps the review, the change request and the new photo open; everything else waits', () => {
+    expect(reviewHref('e1')).toBe('/employees/e1/confirm');
+    for (const path of ['/employees/e1/confirm', '/employees/e1/change-request', '/employees/e1/photo', '/employees/e1/confirm/']) {
+      expect(openDuringReview(path, 'e1')).toBe(true);
+    }
+    for (const path of ['/', '/dashboard', '/employees/e1', '/employees/e2/confirm', '/employees/e1/confirm-x', '/leave', '/app']) {
+      expect(openDuringReview(path, 'e1')).toBe(false);
+    }
   });
 });

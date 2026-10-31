@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import '../api/people_client.dart';
 import '../auth/auth_controller.dart';
 import '../features/kpis/kpi_words.dart' show KpiWords;
+import '../features/review/review_gate.dart';
 import '../format.dart';
 import '../models/me.dart';
 import '../theme/look.dart';
@@ -78,25 +79,29 @@ class _AppShellState extends ConsumerState<AppShell> {
     // a message (a SnackBar) shows above the floating tab bar, never over it
     return Theme(
       data: theme.copyWith(snackBarTheme: theme.snackBarTheme.copyWith(insetPadding: EdgeInsets.fromLTRB(16, 0, 16, 96 + bottom))),
-      child: Scaffold(
-        body: Stack(
-          children: [
-            SafeArea(
-              bottom: false,
-              child: Column(
-                children: [
-                  AppHeader(me: widget.me),
-                  Expanded(child: widget.shell),
-                ],
+      // Review your details first while it waits (owner, 31 October 2026: "make the data review obligatory upon the signin
+      // for employees")
+      child: ReviewGate(
+        child: Scaffold(
+          body: Stack(
+            children: [
+              SafeArea(
+                bottom: false,
+                child: Column(
+                  children: [
+                    AppHeader(me: widget.me),
+                    Expanded(child: widget.shell),
+                  ],
+                ),
               ),
-            ),
-            Positioned(
-              left: 12,
-              right: 12,
-              bottom: 12 + bottom,
-              child: TabBarFloating(current: widget.shell.currentIndex, onTab: _go, onMore: () => showMoreMenu(context, widget.me)),
-            ),
-          ],
+              Positioned(
+                left: 12,
+                right: 12,
+                bottom: 12 + bottom,
+                child: TabBarFloating(current: widget.shell.currentIndex, onTab: _go, onMore: () => showMoreMenu(context, widget.me)),
+              ),
+            ],
+          ),
         ),
       ),
     );

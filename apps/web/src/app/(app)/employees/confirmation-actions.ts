@@ -20,8 +20,8 @@ function submitted(fd: FormData): Record<string, string> {
 
 /**
  * Confirm my details: the employee accepts the statement (`accept`, the version they read in `disclaimerVersion`).
- * The API refuses (409) when the statement changed since the page was opened. Back to the profile, thanked; the banner
- * on every page goes, hence the refresh.
+ * The API refuses (409) when the statement changed since the page was opened. Back to the profile, thanked; the review
+ * at sign-in lets them through from then on, hence the refresh (31 October 2026).
  */
 export async function confirmDetails(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
   const values = submitted(fd);
@@ -63,10 +63,12 @@ export async function requestChange(id: string, _prev: FormState, fd: FormData):
     if (err instanceof ApiError) return { errors: err.messages, values };
     throw err;
   }
+  // a change asked for lets them past the review at sign-in while HR decides (31 October 2026): the layout reads again
+  refresh();
   redirect(`/employees/${id}/change-request?sent=1`);
 }
 
-/** Withdraws the employee's request while it waits for HR. Back to the page. */
+/** Withdraws the employee's request while it waits for HR. Back to the page; the review at sign-in may wait again. */
 export async function cancelChangeRequest(employeeId: string, requestId: string): Promise<FormState> {
   try {
     await apiSend('POST', `/change-requests/${encodeURIComponent(requestId)}/cancel`, {});
@@ -74,5 +76,6 @@ export async function cancelChangeRequest(employeeId: string, requestId: string)
     if (err instanceof ApiError) return { errors: err.messages };
     throw err;
   }
+  refresh();
   redirect(`/employees/${employeeId}/change-request?cancelled=1`);
 }

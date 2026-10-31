@@ -15,7 +15,7 @@ import { ChangeRequestStatusBadge, ChangesTable } from './request-parts';
 // Below the form, their requests and what HR decided. Only for the employee themself (the API checks this again).
 
 const DONE: Record<string, string> = {
-  sent: 'Your request was sent to HR. You will see their decision here.',
+  sent: 'Your request was sent to HR. You will see their decision here; meanwhile you can use People as usual.',
   cancelled: 'Your request was cancelled.',
 };
 

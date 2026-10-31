@@ -2,11 +2,15 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { decidesChangeOfDetails } from '@/lib/confidential';
-import type { ChangeRequest, SessionUser } from '@/lib/types';
+import type { ChangeRequest, PhotoRequest, SessionUser } from '@/lib/types';
 import { getCurrentUser } from '@/lib/session';
 import { decideListedChangeRequest } from '../../approvals/actions';
+import { getOrNull } from '../../approvals/data';
 import { DecisionForm } from '../../approvals/decision-form';
 import { ChangeRequestCard } from '../../employees/[id]/change-request/request-parts';
+import { decideListedPhotoRequest } from '../../employees/photo-request-actions';
+import { PhotoDecision, PhotoRequestCard } from '../../employees/photo-request-card';
+import { photoRequestsPath } from '../../employees/photo-requests';
 import { Empty, Loading } from '../../organization/ui';
 import { loadJson } from '../../payroll/load';
 import { StaffOnly } from '../../staff-only';
@@ -98,6 +102,46 @@ function Decision({ request: r, status, user }: { request: ChangeRequest; status
   );
 }
 
+/**
+ * The new photos employees sent (owner, 31 October 2026: "allow them to upload a new photo as a request and approved from
+ * the HR"), with the same status as the change requests above: decided here as on Approvals by who decides each (a
+ * C-level person's: the CEO or a Super Admin), else who decided it and why. Read quietly: an API from before it shows
+ * nothing.
+ */
+async function Photos({ status, user }: { status: StatusFilter; user: SessionUser }) {
+  const photos = await getOrNull<PhotoRequest[]>(photoRequestsPath(status));
+  if (photos === null) return null;
+  return (
+    <section className="space-y-4 pt-4" aria-labelledby="new-photos">
+      <h2 id="new-photos" className="text-lg font-semibold">
+        New Photos
+      </h2>
+      {photos.length === 0 ? (
+        <Empty>{status === 'pending' ? 'No new photos are waiting.' : status ? 'No new photos with this status.' : 'No new photos yet. Employees send them from their profile.'}</Empty>
+      ) : (
+        <ul className="space-y-4">
+          {photos.map((r) => (
+            <PhotoRequestCard key={r.id} request={r}>
+              {r.status !== 'pending' ? (
+                <PhotoDecision request={r} />
+              ) : decidesChangeOfDetails(user, r.confidential) ? (
+                <DecisionForm
+                  action={decideListedPhotoRequest.bind(null, r.id, status)}
+                  confirmApprove={`Use this photo for ${r.employee.fullNameEn}? It becomes the personal photo in their employee file.`}
+                  noteMax={1000}
+                  noteHint="optional"
+                />
+              ) : (
+                <p className="mt-4 border-t border-line-soft pt-4 text-sm text-muted">Waiting for {changeDeciders(r.confidential)} to decide it.</p>
+              )}
+            </PhotoRequestCard>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 async function Requests({ searchParams }: { searchParams: PageProps<'/requests/details-changes'>['searchParams'] }) {
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
   if (!readsChangeRequests(user)) return <Empty>Only HR, Admin and the CEO can see the employees&apos; change requests.</Empty>;
@@ -139,6 +183,11 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/requests/d
           </ul>
         </>
       )}
+      {listing.kind === 'ok' && (
+        <Suspense fallback={<Loading />}>
+          <Photos status={status} user={user} />
+        </Suspense>
+      )}
     </div>
   );
 }
@@ -149,9 +198,9 @@ export default function DetailsChangesPage({ searchParams }: PageProps<'/request
       <div className="max-w-5xl">
         <h1 className="page-title">Details Changes</h1>
         <p className="mt-1 text-muted">
-          Employees&apos; requests to change their details, asked for when they check them on their profile. HR or an Admin approves a request,
-          which makes the change, or rejects it with a note the employee sees; a C-level person&apos;s, the CEO or a Super Admin. The ones
-          waiting are on <Link href="/approvals">Approvals</Link> too.
+          Employees&apos; requests to change their details, asked for when they check them on their profile, and the new photos they send.
+          HR or an Admin approves a request, which makes the change, or rejects it with a note the employee sees; a C-level person&apos;s, the
+          CEO or a Super Admin. The ones waiting are on <Link href="/approvals">Approvals</Link> too.
         </p>
         <div className="mt-6">
           <Suspense fallback={<Loading />}>

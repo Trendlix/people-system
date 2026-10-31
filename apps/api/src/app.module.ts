@@ -31,6 +31,7 @@ import { RecruitmentModule } from './recruitment/recruitment.module.js';
 import { VersionController } from './health/version.controller.js';
 import { OrganisationModule } from './organisation/organisation.module.js';
 import { PaperworkModule } from './paperwork/paperwork.module.js';
+import { PhotoRequestsModule } from './photo-requests/photo-requests.module.js';
 import { PayrollModule } from './payroll/payroll.module.js';
 import { PayrollAdjustmentsModule } from './payroll/adjustments/adjustments.module.js';
 import { LawRatesModule } from './payroll/law-rates/law-rates.module.js';
@@ -75,6 +76,9 @@ import { ZohoPeopleModule } from './zoho-people/zoho-people.module.js';
     // an employee's request to resign (owner, 26 October 2026: "the employee has to request resignation and then the HR generates the document")
     ResignationRequestsModule,
     ConfirmationsModule,
+    // a new photo the employee sends HR to approve (owner, 31 October 2026: "allow them to upload a new photo as a request
+    // and approved from the HR")
+    PhotoRequestsModule,
     PaperworkModule,
     TemplatesModule,
     DocumentsModule,

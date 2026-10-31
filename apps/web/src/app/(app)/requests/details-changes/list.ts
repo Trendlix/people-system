@@ -53,6 +53,9 @@ export function readStatus(query: Query): StatusFilter {
 export const DONE = {
   'change-approved': 'Change request approved: the profile is updated.',
   'change-rejected': 'Change request rejected. The employee sees your note.',
+  // a new photo the employee sent (31 October 2026)
+  'photo-approved': 'New photo approved: it is now the picture beside their name. You can crop it on their profile.',
+  'photo-rejected': 'New photo rejected: they keep their current one.',
 } as const;
 
 export type Done = keyof typeof DONE;

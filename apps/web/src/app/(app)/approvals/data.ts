@@ -32,6 +32,9 @@ export function decidesChangeRequests(user: Pick<SessionUser, 'roles'>): boolean
 /** The employees' change requests waiting for HR or an Admin (a C-level person's, for the CEO), newest first. */
 export const PENDING_CHANGE_REQUESTS = '/change-requests?status=pending';
 
+/** The new photos employees sent, waiting for those who decide their change requests (31 October 2026), newest first. */
+export const PENDING_PHOTO_REQUESTS = '/photo-requests?status=pending';
+
 /**
  * A GET whose failure must not take the page down (the home page's cards, the sidebar's count): null when the API
  * refuses, can't be reached or doesn't have the endpoint yet, where `apiGet` would show the error or 404 page. The

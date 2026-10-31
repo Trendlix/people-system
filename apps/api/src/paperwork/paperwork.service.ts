@@ -1,10 +1,11 @@
-import { BadGatewayException, BadRequestException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
+import { BadGatewayException, BadRequestException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { photoCropProblem, RESTRICTED_PAPERWORK, type PaperworkKind, type PhotoCrop } from '@trendlix/shared';
 import { AuditService, changes } from '../audit/audit.service.js';
 import { fromDateOnly, toDateOnly } from '../common/date-only.js';
 import { assertDeletes } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { Prisma } from '../generated/prisma/client.js';
+import { seesEmployeeFile } from '../employees/access.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { NORMALIZE_FROM, NORMALIZE_TO, normalizeArabic, snippet } from './arabic-text.js';
@@ -20,6 +21,7 @@ import { PHOTO_PAPER, storedCrop } from './photo-crop.js';
 import { photoSize } from './photo-size.js';
 
 const ENTITY = 'paperwork';
+const NOT_YOUR_PHOTO = 'Only HR, the CEO and the employee themself can see this photo.';
 const SEARCH_LIMIT = 50;
 
 /** What lists show: never the file or its text. */
@@ -244,10 +246,20 @@ export class PaperworkService {
   /**
    * A personal photo, as the employee's picture beside their name on the profile and the list: only a personal photo
    * kept as an image answers, so this never serves any other paper (nor a national ID scan, whose views are audited).
+   * To HR and the CEO, who see the employee file; and to the employee themself, their own (owner, 31 October 2026: they
+   * send HR a new photo, so they see the one they have): anyone else is refused as before, whether the photo exists or not.
    */
-  async photo(itemId: string) {
-    const item = await this.prisma.paperworkItem.findFirst({ where: { id: itemId, ...PHOTO_PAPER }, select: { mimeType: true, data: true } });
-    if (!item) throw new NotFoundException('Photo not found.');
+  async photo(itemId: string, user: SessionUser) {
+    const own = !seesEmployeeFile(user);
+    if (own && !user.employeeId) throw new ForbiddenException(NOT_YOUR_PHOTO);
+    const item = await this.prisma.paperworkItem.findFirst({
+      where: { id: itemId, ...PHOTO_PAPER, ...(own && { employeeId: user.employeeId! }) },
+      select: { mimeType: true, data: true },
+    });
+    if (!item) {
+      if (own) throw new ForbiddenException(NOT_YOUR_PHOTO);
+      throw new NotFoundException('Photo not found.');
+    }
     return { data: Buffer.from(item.data.buffer, item.data.byteOffset, item.data.byteLength), type: item.mimeType };
   }
 
@@ -329,6 +341,18 @@ export class PaperworkService {
       diff: { employeeId: item.employeeId, ocrStatus: { from: item.ocrStatus, to: updated.ocrStatus } },
     });
     return updated;
+  }
+
+  /**
+   * A new photo the employee sent, approved (owner, 31 October 2026: "allow them to upload a new photo as a request and
+   * approved from the HR"): kept in the employee file as the personal photo, as HR's upload of it would be (uploaded by
+   * the one who approved it, logged with the request it came from, its text read), so it is the picture beside the name
+   * from then on, uncropped until HR crops it. Answers its id.
+   */
+  async addApprovedPhoto(employeeId: string, photo: { data: Buffer; type: PaperworkType; fileName: string }, user: SessionUser, photoRequestId: string): Promise<string> {
+    const id = await this.store(employeeId, 'personal_photo', photo, user, undefined, { photoRequestId });
+    await this.read(id, photo, 'personal_photo');
+    return id;
   }
 
   /** Deletes a stored paper, the national ID's sides too: a Super Admin only (owner's decision, 15 October 2026). */
@@ -572,6 +596,7 @@ export class PaperworkService {
     upload: Upload,
     user: SessionUser,
     about: { documentNo: string | null; expiresOn: string | null } = { documentNo: null, expiresOn: null },
+    logged: Record<string, unknown> = {},
   ): Promise<string> {
     const { fileName, type, data } = upload;
     const { id } = await this.prisma.paperworkItem.create({
@@ -593,7 +618,7 @@ export class PaperworkService {
       action: 'create',
       entityType: ENTITY,
       entityId: id,
-      diff: { employeeId, kind, fileName, sizeBytes: data.length },
+      diff: { employeeId, kind, fileName, sizeBytes: data.length, ...logged },
     });
     return id;
   }

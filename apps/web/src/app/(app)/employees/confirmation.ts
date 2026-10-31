@@ -78,6 +78,27 @@ export function pendingRequest(requests: readonly ChangeRequest[] | undefined): 
   return requests?.find((r) => r.status === 'pending');
 }
 
+// ---------- the review at sign-in (owner, 31 October 2026: "make the data review obligatory upon the signin for employees") ----------
+
+/**
+ * Whether the employee must review their details before using the rest of the system: their confirmation isn't up to
+ * date (never confirmed, or changed by HR since) and no change request of theirs waits for HR. Asking HR for a change is
+ * their part done, so it lets them through while HR decides (the API lets them confirm meanwhile too); once HR decides,
+ * the review comes back unless their details are as they confirmed them. Nothing before the API sends confirmations.
+ */
+export function mustReview(c: ProfileConfirmation | undefined, requests: readonly ChangeRequest[] | undefined): boolean {
+  return !!c && !c.upToDate && !pendingRequest(requests);
+}
+
+/** The review's page: where every other page sends the employee while it waits. */
+export const reviewHref = (employeeId: string) => `/employees/${employeeId}/confirm`;
+
+/** What stays open while the review waits: the review, asking HR for a change, and sending HR a new photo. */
+export function openDuringReview(path: string, employeeId: string): boolean {
+  const own = `/employees/${employeeId}`;
+  return [reviewHref(employeeId), `${own}/change-request`, `${own}/photo`].some((open) => path === open || path === `${open}/`);
+}
+
 /** One asked-for change as shown: the field's name, and what it was and what is asked for, as the profile shows them. */
 export function changeShown(c: ChangeRequestChange): { name: string; from: string; to: string; ar: boolean } {
   return {
