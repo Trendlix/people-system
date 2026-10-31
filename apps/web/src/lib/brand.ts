@@ -15,7 +15,11 @@ export function thumbnailUrl(version: number | string): string {
   return `/company-thumbnail?v=${encodeURIComponent(String(version))}`;
 }
 
-/** The People System's own browser tab icon (public/favicon.ico), for a company without a thumbnail. */
+/**
+ * The browser tab icon for a company without a thumbnail, and the one browsers fetch by themselves (public/favicon.ico):
+ * TrendLIX's "T." mark at 16, 32 and 48 pixels (owner, 31 October 2026, on a tab still showing Next.js's "N": "check the
+ * icon").
+ */
 export const FAVICON = '/favicon.ico';
 
 /** The cache tag of the browser tab icon (components/brand.tsx), expired when the thumbnail is uploaded or removed. */
