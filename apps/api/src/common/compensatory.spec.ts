@@ -21,9 +21,19 @@ import {
   compensatoryRequestProblems,
   compensatorySameMonthProblem,
   compensatoryWorkedProblems,
+  COMPENSATORY_DAY_GROUP_LABELS,
+  compensatoryCashNotYetProblem,
+  compensatoryEligibleDays,
+  compensatoryEligibleNote,
+  compensatoryFutureProblem,
+  compensatoryNoEligibleText,
+  compensatoryNotWorkedYetProblem,
+  compensatoryUpcoming,
   EMPTY_PAYROLL_INPUTS,
   historyDay,
   payrollLine,
+  type CompensatoryEligibleContext,
+  type CompensatoryEligibleDay,
   type CompensatoryOffDay,
   type CompensatoryWorkedDay,
   type PayrollAdjustmentItem,
@@ -103,8 +113,126 @@ describe('asking', () => {
     ]);
   });
 
-  it('is not for a day worked still to come', () => {
-    expect(compensatoryRequestProblems('2026-11-13', '2026-11-16', worked(), off(), TODAY)).toEqual(["13/11/2026 hasn't come yet: a compensatory day is asked for a day already worked."]);
+  // owner, 31 October 2026: "or choose a future day in the same month only, for upcomming days"
+  it('takes a day worked still to come in this month, asked ahead, never one of a later month', () => {
+    expect(compensatoryRequestProblems('2026-11-13', '2026-11-16', worked({ checkedIn: false }), off(), TODAY)).toEqual([]);
+    // the day off may come before it, in the same month, from tomorrow
+    expect(compensatoryRequestProblems('2026-11-20', '2026-11-16', worked({ checkedIn: false }), off(), TODAY)).toEqual([]);
+    expect(compensatoryRequestProblems('2026-12-04', '2026-12-07', worked({ checkedIn: false }), off(), TODAY)).toEqual([
+      '04/12/2026 is in December 2026: a day still to come can be asked for in this month only, up to 30/11/2026.',
+    ]);
+    expect(compensatoryFutureProblem('2026-11-30', TODAY)).toBeNull();
+    expect(compensatoryFutureProblem('2026-11-01', TODAY)).toBeNull();
+  });
+
+  it('never takes the day worked as the day off', () => {
+    expect(compensatoryRequestProblems('2026-11-13', '2026-11-13', worked(), off({ workingDay: false }), TODAY)).toEqual(['The day off can’t be the day worked: choose a working day.']);
+  });
+
+  it('is a working day of the shift still to come, refused as the day worked', () => {
+    expect(compensatoryRequestProblems('2026-11-16', '2026-11-17', worked({ workingDay: true, checkedIn: false }), off(), TODAY)).toEqual([
+      '16/11/2026 is a working day of your shift, not a rest day or an official holiday: there is nothing to compensate.',
+    ]);
+  });
+});
+
+describe('a day worked still to come (31 October 2026)', () => {
+  it('is never paid in cash before it is worked: a day off, or HR decides it from that day on', () => {
+    expect(compensatoryUpcoming('2026-11-13', TODAY)).toBe(true);
+    expect(compensatoryUpcoming(TODAY, TODAY)).toBe(false);
+    expect(compensatoryCashNotYetProblem('2026-11-13', TODAY)).toBe(
+      "13/11/2026 hasn't come yet: cash instead is paid for a day already worked. Approve it as a day off, or decide it from 13/11/2026 on.",
+    );
+    expect(compensatoryCashNotYetProblem(TODAY, TODAY)).toBeNull();
+    expect(compensatoryCashNotYetProblem('2026-11-06', TODAY)).toBeNull();
+  });
+
+  it('is never recorded by HR: HR records a day already worked', () => {
+    expect(compensatoryRecordCheck('2026-11-13', '2026-11-16', worked({ checkedIn: false }), off(), TODAY, 'Ben').problems).toEqual([
+      "13/11/2026 hasn't come yet: HR records a compensatory day for a day already worked.",
+    ]);
+    expect(compensatoryNotWorkedYetProblem(TODAY, TODAY)).toBeNull();
+  });
+});
+
+// The day worked picked from a menu (owner, 31 October 2026: "let the employee pick from a drop menu the eligable day, or
+// choose a future day in the same month only, for upcomming days"). Today Thursday 12/11/2026; the shift rests on Fridays
+// and Saturdays.
+describe('the days the day worked is picked from', () => {
+  const ctx = (over: Partial<CompensatoryEligibleContext> = {}): CompensatoryEligibleContext => ({
+    today: TODAY,
+    workingDays: [0, 1, 2, 3, 4],
+    holidays: [
+      { date: '2026-11-10', nameEn: 'Test Day' },
+      { date: '2026-11-24', nameEn: 'Later Day' },
+    ],
+    claimed: ['2026-11-07'],
+    checkedIn: ['2026-11-06'],
+    leave: [],
+    other: [],
+    offWithinDays: null,
+    ...over,
+  });
+  const dates = (days: CompensatoryEligibleDay[], when?: string) => days.filter((d) => !when || d.when === when).map((d) => d.date);
+
+  it('gone by: this month’s rest days and official holidays not asked for already, the latest first, with their check-ins', () => {
+    const days = compensatoryEligibleDays(ctx());
+    expect(days.filter((d) => d.when === 'worked')).toEqual([
+      { date: '2026-11-10', when: 'worked', holiday: 'Test Day', checkedIn: false },
+      { date: '2026-11-06', when: 'worked', holiday: null, checkedIn: true },
+    ]);
+  });
+
+  it('to come: the rest days and official holidays from tomorrow to the end of this month, the soonest first', () => {
+    const days = compensatoryEligibleDays(ctx());
+    expect(dates(days, 'upcoming')).toEqual(['2026-11-13', '2026-11-14', '2026-11-20', '2026-11-21', '2026-11-24', '2026-11-27', '2026-11-28']);
+    expect(days.find((d) => d.date === '2026-11-24')).toEqual({ date: '2026-11-24', when: 'upcoming', holiday: 'Later Day', checkedIn: false });
+    // never one with a check-in, even if one were kept
+    expect(compensatoryEligibleDays(ctx({ checkedIn: ['2026-11-13'] })).find((d) => d.date === '2026-11-13')?.checkedIn).toBe(false);
+    // nor one asked for already
+    expect(dates(compensatoryEligibleDays(ctx({ claimed: ['2026-11-13'] })), 'upcoming')).not.toContain('2026-11-13');
+  });
+
+  it('only days with a free working day left for the day off, from tomorrow', () => {
+    // today Thursday 26/11: Friday and Saturday to come, Sunday 29 and Monday 30 on leave and at home
+    const late = ctx({ today: '2026-11-26', leave: [{ date: '2026-11-29' }], other: [{ date: '2026-11-30' }] });
+    expect(compensatoryEligibleDays(late)).toEqual([]);
+    expect(dates(compensatoryEligibleDays({ ...late, other: [] }))).toEqual(['2026-11-24', '2026-11-21', '2026-11-20', '2026-11-14', '2026-11-13', '2026-11-10', '2026-11-06', '2026-11-27', '2026-11-28']);
+  });
+
+  it('nothing on the last day of a month, said plainly', () => {
+    expect(compensatoryEligibleDays(ctx({ today: '2026-10-31' }))).toEqual([]);
+    expect(compensatoryNoEligibleText('2026-10-31', null)).toBe(
+      'No day can be asked for today: the day off must be a working day in the same month as the day worked, from tomorrow, and today is the last day of October 2026. From 01/11/2026 you can ask for November’s rest days and official holidays, worked or coming up.',
+    );
+    expect(compensatoryNoEligibleText(TODAY, null)).toBe(
+      'No day can be asked for now. The day worked is a rest day of your shift or an official holiday, worked this month or coming up this month, not asked for already, with a free working day left for the day off (in the same month, from tomorrow).',
+    );
+    expect(compensatoryNoEligibleText('2026-10-31', 10)).toContain('worked in the last 10 days or coming up this month');
+  });
+
+  it('within the Setup’s days after the day worked: days gone by that far back, across months; still to come this month only', () => {
+    const days = compensatoryEligibleDays(ctx({ today: '2026-11-03', offWithinDays: 10, holidays: [], claimed: [], checkedIn: ['2026-10-30'] }));
+    expect(days.filter((d) => d.when === 'worked')).toEqual([
+      { date: '2026-10-31', when: 'worked', holiday: null, checkedIn: false },
+      { date: '2026-10-30', when: 'worked', holiday: null, checkedIn: true },
+    ]);
+    expect(dates(days, 'upcoming')).toEqual(['2026-11-06', '2026-11-07', '2026-11-13', '2026-11-14', '2026-11-20', '2026-11-21', '2026-11-27', '2026-11-28']);
+  });
+
+  it('within the employment, and never in a month whose payroll is locked', () => {
+    const base = ctx({ today: '2026-11-03', offWithinDays: 10, holidays: [], claimed: [] });
+    expect(dates(compensatoryEligibleDays({ ...base, lockedMonths: ['2026-10'] }), 'worked')).toEqual([]);
+    expect(dates(compensatoryEligibleDays({ ...base, employedFrom: '2026-10-31' }), 'worked')).toEqual(['2026-10-31']);
+    // a shift with no working day: nothing to take off
+    expect(compensatoryEligibleDays({ ...base, workingDays: [] })).toEqual([]);
+  });
+
+  it('says what each is: a rest day or the holiday, and for one gone by its check-in', () => {
+    expect(compensatoryEligibleNote({ when: 'worked', holiday: null, checkedIn: true })).toBe('rest day · check-in kept');
+    expect(compensatoryEligibleNote({ when: 'worked', holiday: 'Test Day', checkedIn: false })).toBe('Test Day (official holiday) · no check-in: HR will ask to confirm');
+    expect(compensatoryEligibleNote({ when: 'upcoming', holiday: null, checkedIn: false })).toBe('rest day');
+    expect(COMPENSATORY_DAY_GROUP_LABELS).toEqual({ worked: 'Worked', upcoming: 'Coming up this month' });
   });
 });
 

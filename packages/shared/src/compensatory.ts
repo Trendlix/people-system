@@ -221,9 +221,31 @@ export function compensatoryNoticeProblem(dayOff: string, today: string): string
   return null;
 }
 
-/** The day worked can't be in the future: it has to have been worked. */
+/**
+ * An employee's day worked still to come is asked for ahead, in this calendar month only (owner, 31 October 2026: "or
+ * choose a future day in the same month only, for upcomming days"); null when it is one gone by, today, or to come this
+ * month. Before, it had to have been worked.
+ */
 export function compensatoryFutureProblem(dayWorked: string, today: string): string | null {
-  return isDate(dayWorked) && dayWorked > today ? `${shown(dayWorked)} hasn't come yet: a compensatory day is asked for a day already worked.` : null;
+  if (!isDate(dayWorked) || !isDate(today) || dayWorked <= today || compensatoryMonth(dayWorked) === compensatoryMonth(today)) return null;
+  return `${shown(dayWorked)} is in ${monthName(dayWorked)}: a day still to come can be asked for in this month only, up to ${shown(monthEnd(today))}.`;
+}
+
+/** HR records one for a day already worked (today or gone by): null when it is. Only the employee asks ahead. */
+export function compensatoryNotWorkedYetProblem(dayWorked: string, today: string): string | null {
+  return isDate(dayWorked) && dayWorked > today ? `${shown(dayWorked)} hasn't come yet: HR records a compensatory day for a day already worked.` : null;
+}
+
+/** The day worked is still to come (asked ahead, 31 October 2026): it has not been worked yet. */
+export const compensatoryUpcoming = (dayWorked: string, today: string): boolean => isDate(dayWorked) && dayWorked > today;
+
+/**
+ * Cash instead is paid for a day worked: a request whose day worked is still to come is approved as a day off, or stays
+ * with HR until that day (31 October 2026); null when cash may be approved.
+ */
+export function compensatoryCashNotYetProblem(dayWorked: string, today: string): string | null {
+  if (!compensatoryUpcoming(dayWorked, today)) return null;
+  return `${shown(dayWorked)} hasn't come yet: cash instead is paid for a day already worked. Approve it as a day off, or decide it from ${shown(dayWorked)} on.`;
 }
 
 /** Everything an employee's request is checked against, in the order to fix them; the window the Setup's (27 October 2026). */
@@ -238,7 +260,9 @@ export function compensatoryRequestProblems(
   const same = compensatoryWindowProblem(dayWorked, dayOff, rules.offWithinDays);
   const notice = compensatoryNoticeProblem(dayOff, today);
   const future = compensatoryFutureProblem(dayWorked, today);
-  return [...compensatoryWorkedProblems(dayWorked, worked), ...(future ? [future] : []), ...compensatoryOffProblems(dayOff, off), ...(same ? [same] : []), ...(notice ? [notice] : [])];
+  // never the day worked itself (a day worked to come could be typed as both, 31 October 2026)
+  const offProblems = isDate(dayOff) && dayOff === dayWorked ? ['The day off can’t be the day worked: choose a working day.'] : compensatoryOffProblems(dayOff, off);
+  return [...compensatoryWorkedProblems(dayWorked, worked), ...(future ? [future] : []), ...offProblems, ...(same ? [same] : []), ...(notice ? [notice] : [])];
 }
 
 /**
@@ -255,7 +279,8 @@ export function compensatoryRecordCheck(
   rules: Pick<CompensatoryRules, 'offWithinDays'> = COMPENSATORY_RULE_DEFAULTS,
 ): { problems: string[]; warnings: string[] } {
   const problems = [...compensatoryWorkedProblems(dayWorked, worked, name)];
-  const future = compensatoryFutureProblem(dayWorked, today);
+  // HR records a day already worked; asking ahead is the employee's (31 October 2026)
+  const future = compensatoryNotWorkedYetProblem(dayWorked, today);
   if (future) problems.push(future);
   const warnings: string[] = [];
   if (dayOff !== null && off) {
@@ -270,6 +295,116 @@ export function compensatoryRecordCheck(
 
 /** HR confirms a day worked with no check-in kept on it when deciding. */
 export const NO_CHECK_IN_WARNING = (dayWorked: string): string => `No check-in is kept on ${shown(dayWorked)}: HR confirms the day was worked when deciding.`;
+
+// ---------- the days an employee may choose as the day worked (owner, 31 October 2026) ----------
+// "on choosing compensatory, let the employee pick from a drop menu the eligable day, or choose a future day in the same
+// month only, for upcomming days": the day worked is picked from a menu instead of typed: the days gone by that qualify
+// today, and the rest days and official holidays still to come this month, asked for ahead.
+
+/** A day of the menu: 'worked', today or gone by; 'upcoming', from tomorrow to the end of this month. */
+export type CompensatoryDayWhen = 'worked' | 'upcoming';
+
+/** The menu's two groups. */
+export const COMPENSATORY_DAY_GROUP_LABELS: Record<CompensatoryDayWhen, string> = { worked: 'Worked', upcoming: 'Coming up this month' };
+
+/** A day that can be the day worked. */
+export interface CompensatoryEligibleDay {
+  date: string;
+  when: CompensatoryDayWhen;
+  /** The official holiday on it, by its English name; null: a rest day of the shift. */
+  holiday: string | null;
+  /** A check-in is kept on it (never for one still to come). */
+  checkedIn: boolean;
+}
+
+/** What the menu is worked out from: the person's days as the request form reads them (GET /me/compensatory/form). */
+export interface CompensatoryEligibleContext {
+  today: string;
+  /** Their shift's working days (0 = Sunday); null: Sunday to Thursday. */
+  workingDays: readonly number[] | null;
+  holidays: readonly { date: string; nameEn: string }[];
+  /** Days worked asked for already (approved or being decided). */
+  claimed: readonly string[];
+  /** Days with a check-in kept. */
+  checkedIn: readonly string[];
+  /** Days that can't be the day off: leave, work from home, official duty, another compensatory day off. */
+  leave: readonly { date: string }[];
+  other: readonly { date: string }[];
+  /** The Setup's window for the day off (null: the same calendar month as the day worked). */
+  offWithinDays: number | null;
+  /** Their employment (null or left out: no bound). */
+  employedFrom?: string | null;
+  employedTo?: string | null;
+  /** Months (YYYY-MM) whose payroll is with the CEO, approved or paid: their days can't change. */
+  lockedMonths?: readonly string[];
+}
+
+/**
+ * The days an employee may choose as the day worked (owner, 31 October 2026), each a rest day of their shift or an official
+ * holiday, within their employment, in a month whose payroll is open, not asked for already, and with a free working day
+ * left for the day off (from tomorrow, in the Setup's window: the same calendar month as the day worked, or within its
+ * days after it; not leave, work from home, official duty or another compensatory day off):
+ * - worked: from the window's start (the first of this month; or tomorrow less the Setup's days) to today, the latest
+ *   first, each with whether a check-in is kept;
+ * - upcoming: from tomorrow to the end of this month, the soonest first, asked for ahead.
+ */
+export function compensatoryEligibleDays(ctx: CompensatoryEligibleContext): CompensatoryEligibleDay[] {
+  const today = ctx.today;
+  if (!isDate(today)) return [];
+  const working = new Set(ctx.workingDays ?? SUN_TO_THU);
+  const holidays = new Map(ctx.holidays.map((h) => [h.date, h.nameEn]));
+  const claimed = new Set(ctx.claimed);
+  const checkedIn = new Set(ctx.checkedIn);
+  const taken = new Set([...ctx.leave, ...ctx.other].map((d) => d.date));
+  const locked = new Set(ctx.lockedMonths ?? []);
+  const within = ctx.offWithinDays;
+  const tomorrow = plusDays(today, 1);
+  const allowed = (d: string) => (!ctx.employedFrom || d >= ctx.employedFrom) && (!ctx.employedTo || d <= ctx.employedTo) && !locked.has(compensatoryMonth(d));
+  const workingDay = (d: string) => working.has(weekdayOf(d)) && !holidays.has(d);
+  const dayOffLeft = (worked: string) => {
+    const from = within === null ? (tomorrow > `${compensatoryMonth(worked)}-01` ? tomorrow : `${compensatoryMonth(worked)}-01`) : tomorrow > worked ? tomorrow : plusDays(worked, 1);
+    const to = within === null ? monthEnd(worked) : plusDays(worked, within);
+    for (let d = from; d <= to; d = plusDays(d, 1)) if (d !== worked && workingDay(d) && !taken.has(d) && allowed(d)) return true;
+    return false;
+  };
+  const day = (d: string, when: CompensatoryDayWhen): CompensatoryEligibleDay | null =>
+    !workingDay(d) && !claimed.has(d) && allowed(d) && dayOffLeft(d) ? { date: d, when, holiday: holidays.get(d) ?? null, checkedIn: when === 'worked' && checkedIn.has(d) } : null;
+  const out: CompensatoryEligibleDay[] = [];
+  const first = within === null ? `${compensatoryMonth(today)}-01` : plusDays(tomorrow, -within);
+  for (let d = today; d >= first; d = plusDays(d, -1)) {
+    const e = day(d, 'worked');
+    if (e) out.push(e);
+  }
+  for (let d = tomorrow; d <= monthEnd(today); d = plusDays(d, 1)) {
+    const e = day(d, 'upcoming');
+    if (e) out.push(e);
+  }
+  return out;
+}
+
+/**
+ * What the menu says after a day's date: "rest day · check-in kept", "Armed Forces Day (official holiday) · no check-in:
+ * HR will ask to confirm"; one to come, what it is alone.
+ */
+export function compensatoryEligibleNote(d: Pick<CompensatoryEligibleDay, 'when' | 'holiday' | 'checkedIn'>): string {
+  const what = d.holiday ? `${d.holiday} (official holiday)` : 'rest day';
+  if (d.when === 'upcoming') return what;
+  return `${what} · ${d.checkedIn ? 'check-in kept' : 'no check-in: HR will ask to confirm'}`;
+}
+
+/**
+ * Said plainly instead of an empty menu: on the last day of a month (the Setup's same-month window) nothing can be asked
+ * until tomorrow; else what a day needs to qualify.
+ */
+export function compensatoryNoEligibleText(today: string, offWithinDays: number | null): string {
+  if (offWithinDays === null && isDate(today) && today === monthEnd(today)) {
+    const next = plusDays(today, 1);
+    return `No day can be asked for today: the day off must be a working day in the same month as the day worked, from tomorrow, and today is the last day of ${monthName(today)}. From ${shown(next)} you can ask for ${MONTHS[Number(next.slice(5, 7)) - 1]}’s rest days and official holidays, worked or coming up.`;
+  }
+  const window = offWithinDays === null ? 'in the same month' : `within ${offWithinDays} ${offWithinDays === 1 ? 'day' : 'days'} after it`;
+  const worked = offWithinDays === null ? 'this month' : `in the last ${offWithinDays} ${offWithinDays === 1 ? 'day' : 'days'}`;
+  return `No day can be asked for now. The day worked is a rest day of your shift or an official holiday, worked ${worked} or coming up this month, not asked for already, with a free working day left for the day off (${window}, from tomorrow).`;
+}
 
 // ---------- with an official duty on a rest day or an official holiday ----------
 
@@ -418,3 +553,9 @@ const isDate = (s: unknown): s is string => typeof s === 'string' && DATE.test(s
 const shown = (ymd: string) => `${ymd.slice(8, 10)}/${ymd.slice(5, 7)}/${ymd.slice(0, 4)}`;
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const monthName = (ymd: string) => `${MONTHS[Number(ymd.slice(5, 7)) - 1]} ${ymd.slice(0, 4)}`;
+/** The day `n` days later (earlier when negative). */
+const plusDays = (ymd: string, n: number) => new Date(Date.parse(`${ymd}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+/** The last day of the day's month. */
+const monthEnd = (ymd: string) => new Date(Date.UTC(Number(ymd.slice(0, 4)), Number(ymd.slice(5, 7)), 0)).toISOString().slice(0, 10);
+/** 0 = Sunday. */
+const weekdayOf = (ymd: string) => new Date(`${ymd}T00:00:00Z`).getUTCDay();

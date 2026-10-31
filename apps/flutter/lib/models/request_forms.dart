@@ -356,6 +356,16 @@ class OdForm {
   final List<({String date, String status})> compensated;
 }
 
+/// A day the day worked is picked from (owner, 31 October 2026: "let the employee pick from a drop menu the eligable day,
+/// or choose a future day in the same month only, for upcomming days"): one gone by that qualifies today, or one to come
+/// this month (packages/shared compensatoryEligibleDays).
+typedef CompensatoryEligibleDay = ({String date, bool upcoming, String? holiday, bool checkedIn});
+
+CompensatoryEligibleDay _eligibleDay(Object? json) {
+  final j = JsonMap(json);
+  return (date: j.str('date'), upcoming: j.str('when') == 'upcoming', holiday: j.text('holiday'), checkedIn: j.flag('checkedIn'));
+}
+
 /// The compensatory day's form (GET /api/me/compensatory/form).
 class CompensatoryForm {
   const CompensatoryForm({
@@ -373,6 +383,7 @@ class CompensatoryForm {
     required this.checkedIn,
     required this.from,
     required this.to,
+    this.eligibleDays,
   });
 
   factory CompensatoryForm.fromJson(Object? json) {
@@ -392,6 +403,7 @@ class CompensatoryForm {
       checkedIn: j.strings('checkedIn'),
       from: j.str('from'),
       to: j.str('to'),
+      eligibleDays: j.m['eligibleDays'] is List ? j.list('eligibleDays', _eligibleDay) : null,
     );
   }
 
@@ -419,6 +431,9 @@ class CompensatoryForm {
   final List<String> checkedIn;
   final String from;
   final String to;
+
+  /// The days the day worked is picked from, worked then to come; null from a People from before them.
+  final List<CompensatoryEligibleDay>? eligibleDays;
 
   bool get asks => offered && refusal == null;
 }

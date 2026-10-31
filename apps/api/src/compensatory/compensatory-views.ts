@@ -2,16 +2,18 @@ import {
   COMPENSATORY_CASH_RATE_DEFAULT,
   COMPENSATORY_DAY_OFF_LABEL,
   COMPENSATORY_LABEL_AR,
+  compensatoryUpcoming,
   isOpenLeave,
   leaveStage,
   type ApproverRole,
+  type CompensatoryEligibleDay,
   type CompensatoryOutcome,
   type CompensatoryRules,
   type LeaveDecision,
   type LeaveStage,
   type LeaveStatus,
 } from '@trendlix/shared';
-import { fromDateOnly } from '../common/date-only.js';
+import { dayInCairo, fromDateOnly } from '../common/date-only.js';
 import type { LeaveSettings, Prisma } from '../generated/prisma/client.js';
 import { hrMayCancel, isConfidentialRequest, isRequester, standingInFor, waitsFor, type Caller } from '../leave/access.js';
 import { placeOf } from '../leave/views.js';
@@ -55,13 +57,17 @@ export const compensatoryParties = (r: Pick<CompensatoryRow, 'employeeId' | 'man
 /**
  * A request as `caller` sees it: whether it waits for their decision, whether its employee may cancel it (while being
  * decided) and whether HR may (an approved one, not their own). `names`: who took each step, by user id; `noCheckIn`: no
- * check-in is kept on the day worked (HR confirms it on the decision); `cashDays`: the days' pay a cash decision pays now.
+ * check-in is kept on the day worked (HR confirms it on the decision); `cashDays`: the days' pay a cash decision pays now;
+ * `today`: in Cairo, for a day worked still to come.
  */
-export function compensatoryView(r: CompensatoryRow, caller: Caller, names: ReadonlyMap<string, UserRef>, extra: { noCheckIn: boolean | null; cashDays: number }) {
+export function compensatoryView(r: CompensatoryRow, caller: Caller, names: ReadonlyMap<string, UserRef>, extra: { noCheckIn: boolean | null; cashDays: number; today: string }) {
   const status = r.status as LeaveStatus;
   const parties = compensatoryParties(r);
   const dayWorked = fromDateOnly(r.dayWorked);
   const dayOff = fromDateOnly(r.dayOff);
+  // asked ahead (owner, 31 October 2026: "or choose a future day in the same month only, for upcomming days"): the day
+  // worked still to come now, and whether it was when asked; nothing to confirm about a check-in before it comes
+  const upcoming = compensatoryUpcoming(dayWorked, extra.today);
   // one an official duty carries is decided and cancelled with it, never by itself (27 October 2026)
   const withOd = r.odRequest !== null;
   return {
@@ -83,7 +89,9 @@ export function compensatoryView(r: CompensatoryRow, caller: Caller, names: Read
     hoursOff: r.hoursOff?.toNumber() ?? null,
     // the official duty it goes with
     od: r.odRequest ? { id: r.odRequest.id, startDate: fromDateOnly(r.odRequest.startDate)!, status: r.odRequest.status as LeaveStatus } : null,
-    noCheckIn: extra.noCheckIn,
+    noCheckIn: upcoming && extra.noCheckIn !== null ? false : extra.noCheckIn,
+    upcoming,
+    askedAhead: compensatoryUpcoming(dayWorked, dayInCairo(r.createdAt)),
     waitingForYou: !withOd && waitsFor({ ...parties, status }, caller),
     standingInFor: standingInFor(parties, caller),
     confidential: isConfidentialRequest(parties, caller),
@@ -143,6 +151,12 @@ export interface CompensatoryFormView {
   claimed: string[];
   /** Days with a check-in kept, in the window. */
   checkedIn: string[];
+  /**
+   * The days the day worked is picked from (owner, 31 October 2026: "let the employee pick from a drop menu the eligable
+   * day, or choose a future day in the same month only, for upcomming days"): those gone by that qualify today, the latest
+   * first, then those to come this month (packages/shared compensatoryEligibleDays); none when they can't ask.
+   */
+  eligibleDays: CompensatoryEligibleDay[];
   from: string;
   to: string;
 }

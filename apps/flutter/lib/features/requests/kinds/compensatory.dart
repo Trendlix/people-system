@@ -16,7 +16,9 @@ import '../sheet_parts.dart';
 // a rest day or an official holiday worked, or hours off for part of one, asked a day before the day off at the latest.
 // Its sheet (the phone design's bottom sheet) and its page, as the website's (apps/web attendance/compensatory:
 // compensatory.ts, compensatory-forms.tsx, [id]/compensatory-request.tsx; packages/shared compensatory.ts). People checks
-// everything again when it is sent; HR decides it as a day off or, rarely, pays it in cash instead.
+// everything again when it is sent; HR decides it as a day off or, rarely, pays it in cash instead. The day worked is
+// picked from a menu (owner, 31 October 2026: "let the employee pick from a drop menu the eligable day, or choose a future
+// day in the same month only, for upcomming days"): the days gone by that qualify, and this month's to come, asked ahead.
 
 /// The compensatory day's words, People's where it has them.
 abstract final class CompensatoryWords {
@@ -24,7 +26,16 @@ abstract final class CompensatoryWords {
   static String intro(bool toCeo) =>
       'A day off for a rest day or an official holiday you worked, asked a day before at the latest. Your direct manager decides first, then ${toCeo ? 'the CEO' : 'HR'}, who approves it as time off or, rarely, pays it in cash instead.';
   static const dayWorked = 'Day worked';
-  static const dayWorkedHint = 'A rest day of your shift or an official holiday you worked: today or a day gone by.';
+  static const dayWorkedHint = 'A rest day of your shift or an official holiday: one you worked, or one coming up this month that you will work.';
+  static const chooseDayWorked = 'Choose the day worked';
+  static const groupWorked = 'Worked';
+  static const groupUpcoming = 'Coming up this month';
+  static String eligibleNote(String? holiday, bool upcoming, bool checkedIn) =>
+      '${holiday == null ? 'rest day' : '$holiday (official holiday)'}${upcoming ? '' : ' · ${checkedIn ? 'check-in kept' : 'no check-in: HR will ask to confirm'}'}';
+  static String noDaysMonthEnd(String month, String next, String nextMonth) =>
+      'No day can be asked for today: the day off must be a working day in the same month as the day worked, from tomorrow, and today is the last day of $month. From $next you can ask for $nextMonth’s rest days and official holidays, worked or coming up.';
+  static String noDays(int? within) =>
+      'No day can be asked for now. The day worked is a rest day of your shift or an official holiday, worked ${within == null ? 'this month' : 'in the last $within ${within == 1 ? 'day' : 'days'}'} or coming up this month, not asked for already, with a free working day left for the day off (${within == null ? 'in the same month' : 'within $within ${within == 1 ? 'day' : 'days'} after it'}, from tomorrow).';
   static const hoursWorked = 'Hours worked';
   static const theWholeDay = 'The whole day';
   static const partOfTheDay = 'Part of the day';
@@ -49,13 +60,14 @@ abstract final class CompensatoryWords {
   static String noCheckIn(String day) => 'No check-in is kept on $day: HR will ask to confirm you worked that day.';
 
   // the checks (People's words, packages/shared compensatory.ts and the website's form)
-  static const enterDayWorked = 'Enter the day you worked.';
+  static const enterDayWorked = 'Choose the day you worked.';
   static const enterHours = 'Enter the hours worked, e.g. 4 or 3.5.';
   static const hoursAsNumber = 'Enter the hours worked as a number above 0, up to 24, e.g. 4 or 3.5.';
   static String fewerThanMin(String hours, String min) => 'You worked $hours: fewer than the $min that earn a compensation (Compensatory Setup).';
   static String workingDay(String day) => '$day is a working day of your shift, not a rest day or an official holiday: there is nothing to compensate.';
   static String claimedAlready(String day) => 'You have asked to compensate $day already.';
-  static String notYet(String day) => '$day hasn’t come yet: a compensatory day is asked for a day already worked.';
+  static String thisMonthOnly(String day, String month, String end) => '$day is in $month: a day still to come can be asked for in this month only, up to $end.';
+  static const notTheDayWorked = 'The day off can’t be the day worked: choose a working day.';
   static const enterDayOff = 'Enter the day off you ask for.';
   static String dayOffHoliday(String day, String name) => '$day is an official holiday ($name): the day off must be a working day.';
   static String dayOffRest(String day) => '$day is a rest day of your shift: the day off must be a working day.';
@@ -75,6 +87,8 @@ abstract final class CompensatoryWords {
   // its page
   static const dayWorkedNote = 'A rest day of the shift or an official holiday. Nothing is paid for it when it is compensated with a day.';
   static const noCheckInNote = 'No check-in is kept on this day: HR confirms it was worked when deciding.';
+  static const stillToComeNote = 'Still to come: asked ahead for a day to be worked. No check-in to confirm until then; cash instead only once it is worked.';
+  static const askedAheadNote = 'Asked ahead, before the day was worked.';
   static String earnedWholeDay(String worked) => '$worked: earned a whole day off';
   static String earnedHours(String worked, String off, String? cap) => '$worked: earned $off off${cap == null ? '' : ' (capped at $cap)'}';
   static const partOfTheDayNote = 'Part of the day, by the Compensatory Setup.';
@@ -132,6 +146,61 @@ double? _earnedHours(CompensatoryRules rules, double? hours) {
   return hours < rules.hoursCap ? hours : rules.hoursCap;
 }
 
+/// The last day of a day's month.
+String _monthEnd(String iso) {
+  final d = DateTime.utc(int.parse(iso.substring(0, 4)), int.parse(iso.substring(5, 7)) + 1, 0);
+  return d.toIso8601String().substring(0, 10);
+}
+
+String _later(String a, String b) => a.compareTo(b) >= 0 ? a : b;
+
+/// The days the day worked is picked from (owner, 31 October 2026): People's, or, from a People from before them, worked out
+/// here by its rule (packages/shared compensatoryEligibleDays; the employment's dates and the locked months are People's to
+/// check when it is sent): a rest day of the shift or an official holiday, not asked for already, with a free working day
+/// left for the day off from tomorrow in the Setup's window; gone by from the window's start to today, the latest first,
+/// then from tomorrow to the end of this month.
+List<CompensatoryEligibleDay> eligibleDaysOf(CompensatoryForm f) {
+  if (f.refusal != null) return const [];
+  final sent = f.eligibleDays;
+  if (sent != null) return sent;
+  final today = f.today;
+  if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(today)) return const [];
+  final holidays = {for (final h in f.holidays) h.date: h.name};
+  final taken = {...f.leave.map((l) => l.date), ...f.other.map((o) => o.date)};
+  final within = f.rules.offWithinDays;
+  final tomorrow = addDays(today, 1);
+  bool workingDay(String d) => f.workingDays.contains(weekdayIndex(d)) && !holidays.containsKey(d);
+  bool dayOffLeft(String worked) {
+    final from = within == null ? _later(tomorrow, '${worked.substring(0, 7)}-01') : _later(tomorrow, addDays(worked, 1));
+    final to = within == null ? _monthEnd(worked) : addDays(worked, within);
+    for (var d = from; d.compareTo(to) <= 0; d = addDays(d, 1)) {
+      if (d != worked && workingDay(d) && !taken.contains(d)) return true;
+    }
+    return false;
+  }
+
+  CompensatoryEligibleDay? day(String d, bool upcoming) => !workingDay(d) && !f.claimed.contains(d) && dayOffLeft(d)
+      ? (date: d, upcoming: upcoming, holiday: holidays[d], checkedIn: !upcoming && f.checkedIn.contains(d))
+      : null;
+  final first = within == null ? '${today.substring(0, 7)}-01' : addDays(tomorrow, -within);
+  final end = _monthEnd(today);
+  return [
+    for (var d = today; d.compareTo(first) >= 0; d = addDays(d, -1)) ?day(d, false),
+    for (var d = tomorrow; d.compareTo(end) <= 0; d = addDays(d, 1)) ?day(d, true),
+  ];
+}
+
+/// Said plainly instead of an empty menu (packages/shared compensatoryNoEligibleText).
+String noEligibleDaysText(CompensatoryForm f) {
+  final today = f.today;
+  final within = f.rules.offWithinDays;
+  if (within == null && RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(today) && today == _monthEnd(today)) {
+    final next = addDays(today, 1);
+    return CompensatoryWords.noDaysMonthEnd(monthNameOf(today.substring(0, 7)), dmy(next), monthNameOf(next.substring(0, 7)).split(' ').first);
+  }
+  return CompensatoryWords.noDays(within);
+}
+
 // ---------- the sheet ----------
 
 class _CompensatoryForm extends ConsumerStatefulWidget {
@@ -173,30 +242,26 @@ class _CompensatoryFormState extends ConsumerState<_CompensatoryForm> {
   bool _free(CompensatoryForm f, String d) =>
       !_restOrHoliday(f, d) && !f.leave.any((l) => l.date == d) && !f.other.any((o) => o.date == d);
 
-  /// The smart default: the latest rest day or official holiday worked (a check-in kept), not yet claimed.
+  /// The smart default: the latest rest day or official holiday worked with a check-in kept, of the days it can be.
   void _seed(CompensatoryForm f) {
     _seeded = true;
-    final from = f.from.isEmpty ? addDays(f.today, -62) : f.from;
-    for (var d = f.today; d.compareTo(from) >= 0; d = addDays(d, -1)) {
-      if (_restOrHoliday(f, d) && f.checkedIn.contains(d) && !f.claimed.contains(d)) {
-        _worked = d;
-        return;
-      }
-    }
+    _worked = eligibleDaysOf(f).where((d) => !d.upcoming && d.checkedIn).firstOrNull?.date;
   }
 
-  /// The day off first offered: the next free working day from tomorrow inside the window after the day worked.
+  /// The day off first offered: the next free working day from tomorrow in the window, after the day worked when there is
+  /// one (a day worked to come, asked ahead, may have its day off before it in the same month).
   String? _defaultDayOff(CompensatoryForm f, String worked) {
-    var d = addDays(f.today, 1);
-    if (d.compareTo(worked) <= 0) d = addDays(worked, 1);
-    for (var i = 0; i < 62; i++, d = addDays(d, 1)) {
-      if (!_inWindow(f, worked, d)) {
-        if (d.substring(0, 7).compareTo(worked.substring(0, 7)) > 0 || (f.rules.offWithinDays != null && daysBetween(worked, d) > f.rules.offWithinDays!)) return null;
-        continue;
-      }
-      if (_free(f, d)) return d;
+    final within = f.rules.offWithinDays;
+    final tomorrow = addDays(f.today, 1);
+    final from = within == null ? _later(tomorrow, '${worked.substring(0, 7)}-01') : _later(tomorrow, addDays(worked, 1));
+    final to = within == null ? _monthEnd(worked) : addDays(worked, within);
+    String? first;
+    for (var d = from; d.compareTo(to) <= 0; d = addDays(d, 1)) {
+      if (d == worked || !_free(f, d)) continue;
+      if (d.compareTo(worked) > 0) return d;
+      first ??= d;
     }
-    return null;
+    return first;
   }
 
   List<String> _problems(CompensatoryForm f, double? hours) {
@@ -216,7 +281,10 @@ class _CompensatoryFormState extends ConsumerState<_CompensatoryForm> {
     if (w != null) {
       if (!_restOrHoliday(f, w)) out.add(CompensatoryWords.workingDay(dmy(w)));
       if (f.claimed.contains(w)) out.add(CompensatoryWords.claimedAlready(dmy(w)));
-      if (w.compareTo(f.today) > 0) out.add(CompensatoryWords.notYet(dmy(w)));
+      // a day to come is asked ahead in this month only (31 October 2026)
+      if (w.compareTo(f.today) > 0 && w.substring(0, 7) != f.today.substring(0, 7)) {
+        out.add(CompensatoryWords.thisMonthOnly(dmy(w), monthNameOf(w.substring(0, 7)), dmy(_monthEnd(f.today))));
+      }
     }
     final off = _dayOff;
     if (off == null) {
@@ -225,7 +293,9 @@ class _CompensatoryFormState extends ConsumerState<_CompensatoryForm> {
       final holiday = f.holidays.where((h) => h.date == off).firstOrNull;
       final leave = f.leave.where((l) => l.date == off).firstOrNull;
       final other = f.other.where((o) => o.date == off).firstOrNull;
-      if (holiday != null) {
+      if (off == w) {
+        out.add(CompensatoryWords.notTheDayWorked);
+      } else if (holiday != null) {
         out.add(CompensatoryWords.dayOffHoliday(dmy(off), holiday.name));
       } else if (!f.workingDays.contains(weekdayIndex(off))) {
         out.add(CompensatoryWords.dayOffRest(dmy(off)));
@@ -321,6 +391,9 @@ class _CompensatoryFormState extends ConsumerState<_CompensatoryForm> {
       earnsLine = CompensatoryWords.earnsHours(hoursShort(earned), hours > rules.hoursCap ? _number(rules.hoursCap) : null);
     }
     final window = rules.offWithinDays == null ? CompensatoryWords.inTheSameMonth : CompensatoryWords.withinDaysAfter(rules.offWithinDays!);
+    // the days the day worked is picked from, worked and to come this month (31 October 2026)
+    final eligible = eligibleDaysOf(f);
+    final upcoming = _worked != null && _worked!.compareTo(f.today) > 0;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -328,17 +401,17 @@ class _CompensatoryFormState extends ConsumerState<_CompensatoryForm> {
         const SizedBox(height: 20),
         SheetField(
           label: CompensatoryWords.dayWorked,
-          hint: CompensatoryWords.dayWorkedHint,
-          child: PickDayField(
-            label: CompensatoryWords.dayWorked,
-            value: _worked,
-            first: f.from.isEmpty ? null : f.from,
-            last: f.today,
-            onChanged: (d) => setState(() {
-              _worked = d;
-              if (!_dayOffByHand) _dayOff = null;
-            }),
-          ),
+          hint: eligible.isEmpty ? null : CompensatoryWords.dayWorkedHint,
+          child: eligible.isEmpty
+              ? RulesNote(icon: CupertinoIcons.info_circle, lines: [noEligibleDaysText(f)])
+              : DayWorkedMenu(
+                  days: eligible,
+                  value: _worked,
+                  onChanged: (d) => setState(() {
+                    _worked = d;
+                    if (!_dayOffByHand) _dayOff = null;
+                  }),
+                ),
         ),
         SheetField(
           label: CompensatoryWords.hoursWorked,
@@ -400,13 +473,87 @@ class _CompensatoryFormState extends ConsumerState<_CompensatoryForm> {
           hint: CompensatoryWords.reasonHint,
           child: SheetTextBox(controller: _reason, label: CompensatoryWords.reason, lines: 3, max: 500),
         ),
-        if (_worked != null && !f.checkedIn.contains(_worked))
+        // a day to come, asked ahead, has no check-in to keep yet
+        if (_worked != null && !upcoming && !f.checkedIn.contains(_worked))
           RulesNote(icon: CupertinoIcons.exclamationmark_circle, lines: [CompensatoryWords.noCheckIn(dmy(_worked!))]),
         SendChecks(problems: problems, ready: problems.isEmpty ? _ready(toCeo, hours, earned) : null),
         PeopleRefusal(messages: _refusal),
         SheetButtons(busy: _busy, onSend: problems.isEmpty ? () => _send(hours) : null),
         const SizedBox(height: Tokens.gapSmall),
       ],
+    );
+  }
+}
+
+/// The day worked's menu (owner, 31 October 2026: "let the employee pick from a drop menu the eligable day"): "Worked", the
+/// latest first, then "Coming up this month", each day with its weekday, what it is and, gone by, whether a check-in is
+/// kept; the phone's menu opens on a tap.
+class DayWorkedMenu extends StatelessWidget {
+  const DayWorkedMenu({super.key, required this.days, required this.value, required this.onChanged});
+
+  final List<CompensatoryEligibleDay> days;
+  final String? value;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = context.palette;
+    final text = Theme.of(context).textTheme;
+    // each group under its heading, a heading never chosen
+    final rows = <(String, CompensatoryEligibleDay?)>[
+      for (final (upcoming, label) in const [(false, CompensatoryWords.groupWorked), (true, CompensatoryWords.groupUpcoming)])
+        if (days.any((d) => d.upcoming == upcoming)) ...[
+          ('#$label', null),
+          for (final d in days.where((d) => d.upcoming == upcoming)) (d.date, d),
+        ],
+    ];
+    String headingOf(String key) => key.substring(1);
+    return Semantics(
+      label: CompensatoryWords.dayWorked,
+      child: DropdownButtonFormField<String>(
+        // drawn again when the days change, so it never keeps one no longer offered
+        key: ValueKey(days.map((d) => d.date).join()),
+        initialValue: days.any((d) => d.date == value) ? value : null,
+        isExpanded: true,
+        itemHeight: null,
+        hint: Text(CompensatoryWords.chooseDayWorked, style: text.bodyLarge?.copyWith(color: p.muted)),
+        icon: Icon(CupertinoIcons.chevron_down, size: 16, color: p.ink),
+        borderRadius: BorderRadius.circular(Tokens.radiusControl),
+        dropdownColor: p.card,
+        decoration: const InputDecoration(contentPadding: EdgeInsets.symmetric(horizontal: 14, vertical: 12)),
+        selectedItemBuilder: (context) => [
+          for (final (key, d) in rows) Text(d == null ? headingOf(key) : dayWords(d.date), overflow: TextOverflow.ellipsis),
+        ],
+        items: [
+          for (final (key, d) in rows)
+            d == null
+                ? DropdownMenuItem<String>(
+                    value: key,
+                    enabled: false,
+                    child: Text(headingOf(key), style: text.labelMedium?.copyWith(color: p.muted, fontWeight: FontWeight.w600)),
+                  )
+                : DropdownMenuItem<String>(
+                    value: d.date,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(dayWords(d.date), style: text.bodyLarge),
+                          Text(
+                            CompensatoryWords.eligibleNote(d.holiday, d.upcoming, d.checkedIn),
+                            style: text.bodySmall?.copyWith(color: !d.upcoming && !d.checkedIn ? p.warn : p.muted),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+        ],
+        onChanged: (key) {
+          if (key != null && !key.startsWith('#')) onChanged(key);
+        },
+      ),
     );
   }
 }
@@ -428,7 +575,15 @@ RequestDetail compensatoryDetail(CompensatoryRequest r) {
       (
         label: CompensatoryWords.dayWorked,
         value: dayWords(r.dayWorked),
-        note: r.noCheckIn ? '${CompensatoryWords.dayWorkedNote}\n${CompensatoryWords.noCheckInNote}' : CompensatoryWords.dayWorkedNote,
+        note: [
+          CompensatoryWords.dayWorkedNote,
+          // asked ahead (31 October 2026): still to come, or asked before it came
+          if (r.upcoming)
+            CompensatoryWords.stillToComeNote
+          else if (r.askedAhead && r.od == null)
+            CompensatoryWords.askedAheadNote,
+          if (r.noCheckIn) CompensatoryWords.noCheckInNote,
+        ].join('\n'),
       ),
       if (worked != null)
         (

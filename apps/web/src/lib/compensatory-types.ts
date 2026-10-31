@@ -1,4 +1,4 @@
-import type { CompensationEarned, CompensatoryOutcome, CompensatoryRules, LeaveDecision, LeaveStage, LeaveStatus } from '@trendlix/shared';
+import type { CompensationEarned, CompensatoryEligibleDay, CompensatoryOutcome, CompensatoryRules, LeaveDecision, LeaveStage, LeaveStatus } from '@trendlix/shared';
 import type { RequestApprover } from './types';
 
 // Compensatory days (owner, 26 October 2026: "my compensatory is a compensation with another day in the same month. and
@@ -41,8 +41,14 @@ export interface CompensatoryRequestView {
   hoursOff?: number | null;
   /** The official duty it goes with (27 October 2026): decided and cancelled with it, never on its own. */
   od?: { id: string; startDate: string; status: LeaveStatus } | null;
-  /** No check-in is kept on the day worked: HR confirms it on the decision; null when not shown. */
+  /** No check-in is kept on the day worked: HR confirms it on the decision; null when not shown (false while it is to come). */
   noCheckIn: boolean | null;
+  /**
+   * Asked ahead (owner, 31 October 2026: "or choose a future day in the same month only, for upcomming days"): the day
+   * worked is still to come, and it was when asked. Optional: an API from before them omits them.
+   */
+  upcoming?: boolean;
+  askedAhead?: boolean;
   waitingForYou: boolean;
   standingInFor?: { id: string; fullNameEn: string } | null;
   confidential: boolean;
@@ -73,6 +79,11 @@ export interface CompensatoryForm {
   other: { date: string; what: string }[];
   claimed: string[];
   checkedIn: string[];
+  /**
+   * The days the day worked is picked from (owner, 31 October 2026: "let the employee pick from a drop menu the eligable
+   * day"): those gone by that qualify today, the latest first, then this month's to come. An API from before it omits it.
+   */
+  eligibleDays?: CompensatoryEligibleDay[];
   from: string;
   to: string;
 }

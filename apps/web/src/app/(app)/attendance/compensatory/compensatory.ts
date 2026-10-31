@@ -1,12 +1,16 @@
 import {
   COMPENSATORY_CASH_HINT,
+  COMPENSATORY_DAY_GROUP_LABELS,
   COMPENSATORY_OUTCOME_LABELS,
   COMPENSATORY_RULE_DEFAULTS,
   compensationEarned,
   compensationEarnedText,
   compensatoryCashDays,
+  compensatoryEligibleDays,
+  compensatoryEligibleNote,
   compensatoryRequestProblems,
   compensatoryRulesProblems,
+  compensatoryUpcoming,
   hoursText,
   hoursWorkedProblems,
   LEAVE_DECISIONS,
@@ -14,6 +18,7 @@ import {
   LEAVE_STATUS_LABELS,
   leaveStatusAfterApproval,
   type CompensationEarned,
+  type CompensatoryEligibleDay,
   type CompensatoryOffDay,
   type CompensatoryOutcome,
   type CompensatoryRules,
@@ -47,7 +52,9 @@ import { odHref } from '../official-duty/od';
 // Compensatory Setup's rules ("up to 4 hours to be compensated by hours - minimum 6 hours can be compensated by a day",
 // between them "Capped at 4 hours"), which HR sets on its own page ("i need a setup dashboard for the compensatory
 // leaves"); and an official duty on a rest day or an official holiday carries its compensatory day, decided and cancelled
-// with the duty.
+// with the duty. Since 31 October 2026 (owner: "let the employee pick from a drop menu the eligable day, or choose a future
+// day in the same month only, for upcomming days") the employee picks the day worked from a menu of the days that qualify,
+// those to come this month too, asked ahead.
 
 type WithRoles = { roles: readonly Role[] };
 type Query = Record<string, string | string[] | undefined>;
@@ -256,6 +263,26 @@ export const COMPENSATORY_WITH_OD_NOTE = 'It is decided and cancelled with the o
 
 /** The official duty's page: on the site, or in the phone pages' section the request is opened in. */
 export const compensatoryOdHref = (od: { id: string }, surface: Surface = 'site') => (surface === 'site' ? odHref(od.id) : appItemHref(surface, 'od', od.id));
+
+/**
+ * A day worked asked ahead (owner, 31 October 2026: "or choose a future day in the same month only, for upcomming days"),
+ * on the request's page: still to come, or asked before it came; null for one asked once worked (or an API from before).
+ */
+export function compensatoryAheadText(r: Pick<CompensatoryRequestView, 'upcoming' | 'askedAhead'>): string | null {
+  if (r.upcoming) return 'Still to come: asked ahead for a day to be worked. No check-in to confirm until then; cash instead only once it is worked.';
+  if (r.askedAhead) return 'Asked ahead, before the day was worked.';
+  return null;
+}
+
+/** A list's short mark of one asked ahead (not one an official duty carries, which says so): null for none. */
+export function compensatoryAheadMark(r: Pick<CompensatoryRequestView, 'upcoming' | 'askedAhead' | 'od'>): string | null {
+  if (r.od || !r.askedAhead) return null;
+  return r.upcoming ? 'Asked ahead: the day worked is still to come' : 'Asked ahead';
+}
+
+/** Under HR's choice for a day worked still to come: cash instead waits for the day (the API refuses it before). */
+export const compensatoryCashWaitsText = (dayWorked: string) =>
+  `Cash instead once the day is worked: ${compensatoryDateText(dayWorked)} is still to come. Approve it as a day off now, or decide it from that day on.`;
 
 /** HR's decision once approved, in words; null while undecided. */
 export const compensatoryOutcomeText = (outcome: CompensatoryOutcome | null): string | null => (outcome ? COMPENSATORY_OUTCOME_LABELS[outcome] : null);
@@ -542,11 +569,54 @@ export function compensatoryFormProblems(
   return [...hoursWorkedProblems(hoursWorked, rules), ...compensatoryRequestProblems(dayWorked, dayOff, worked, off, form.today, rules)].map(shownMessage);
 }
 
-/** A warning (not a refusal) under the form: no check-in is kept on the day worked, so HR will confirm it. */
-export function compensatoryFormWarning(typed: TypedCompensatory, form: Pick<CompensatoryForm, 'checkedIn'> | null): string | null {
+/**
+ * A warning (not a refusal) under the form: no check-in is kept on the day worked, so HR will confirm it; none for a day
+ * still to come, asked ahead (31 October 2026): it hasn't been worked yet.
+ */
+export function compensatoryFormWarning(typed: TypedCompensatory, form: Pick<CompensatoryForm, 'checkedIn' | 'today'> | null): string | null {
   const dayWorked = parseDate(typed.dayWorked);
-  if (!form || !dayWorked || form.checkedIn.includes(dayWorked)) return null;
+  if (!form || !dayWorked || form.checkedIn.includes(dayWorked) || compensatoryUpcoming(dayWorked, form.today)) return null;
   return `No check-in is kept on ${formatDate(dayWorked)}: HR will ask to confirm you worked that day.`;
+}
+
+// ---------- the day worked, picked from a menu (owner, 31 October 2026) ----------
+// "on choosing compensatory, let the employee pick from a drop menu the eligable day, or choose a future day in the same
+// month only, for upcomming days".
+
+/** Under the day worked's menu. */
+export const COMPENSATORY_DAY_WORKED_HINT = 'A rest day of your shift or an official holiday: one you worked, or one coming up this month that you will work.';
+
+/**
+ * The days the day worked is picked from: the API's (GET /me/compensatory/form), or, from an API from before them, worked
+ * out from what the form read by the same shared rule (without the employment's dates and the locked months only the API
+ * knows; it checks them all again); none while they can't ask.
+ */
+export function compensatoryEligibleOf(
+  form: Pick<CompensatoryForm, 'refusal' | 'today' | 'workingDays' | 'holidays' | 'claimed' | 'checkedIn' | 'leave' | 'other' | 'rules' | 'eligibleDays'>,
+): CompensatoryEligibleDay[] {
+  if (form.refusal) return [];
+  if (form.eligibleDays) return form.eligibleDays;
+  return compensatoryEligibleDays({ ...form, offWithinDays: compensatoryRulesOf(form.rules).offWithinDays });
+}
+
+/** A group of the menu, its options' values the dates as typed (DD/MM/YYYY), as the form sends them. */
+export interface CompensatoryDayGroup {
+  label: string;
+  options: { value: string; label: string }[];
+}
+
+/**
+ * The menu: "Worked" (the latest first), then "Coming up this month" (the soonest first), each day "Friday 06/11/2026 ·
+ * rest day · check-in kept", "Tuesday 10/11/2026 · Test Day (official holiday) · no check-in: HR will ask to confirm";
+ * a group with no day left out.
+ */
+export function compensatoryDayGroups(days: readonly CompensatoryEligibleDay[]): CompensatoryDayGroup[] {
+  return (['worked', 'upcoming'] as const)
+    .map((when) => ({
+      label: COMPENSATORY_DAY_GROUP_LABELS[when],
+      options: days.filter((d) => d.when === when).map((d) => ({ value: formatDate(d.date), label: `${compensatoryDateText(d.date)} · ${compensatoryEligibleNote(d)}` })),
+    }))
+    .filter((g) => g.options.length > 0);
 }
 
 /**

@@ -5,6 +5,7 @@ import { startTransition, useActionState, useRef, useState, useTransition } from
 import {
   COMPENSATORY_CASH_HINT,
   COMPENSATORY_OFF_WITHIN_MAX,
+  compensatoryNoEligibleText,
   COMPENSATORY_OUTCOME_LABELS,
   COMPENSATORY_OUTCOMES,
   compensationEarned,
@@ -20,6 +21,7 @@ import {
 } from '@trendlix/shared';
 import { DateInput } from '@/components/date-time-inputs';
 import { FormErrors, useFieldIds, valueOf } from '@/components/form';
+import { Select } from '@/components/select';
 import { SurfaceField } from '@/components/surface';
 import type { CompensatoryCheck, CompensatoryForm } from '@/lib/compensatory-types';
 import { parseDate } from '@/lib/format';
@@ -28,9 +30,13 @@ import { choice } from '../../employees/[id]/contracts/pay-fields';
 import { leaveCommentReaders } from '../../leave/list';
 import { checkCompensatory } from './actions';
 import {
+  COMPENSATORY_DAY_WORKED_HINT,
   COMPENSATORY_REASON_MAX,
+  compensatoryCashWaitsText,
+  compensatoryDayGroups,
   compensatoryDayOffField,
   compensatoryDecisionButton,
+  compensatoryEligibleOf,
   compensatoryEarnsText,
   compensatoryFormProblems,
   compensatoryFormWarning,
@@ -57,6 +63,9 @@ import {
 // Cancel of an approved one, with a comment. Part of a day worked (owner, 27 October 2026: "Hours off for hours worked"):
 // both request forms ask the hours worked, the whole day unless part of it is chosen, and say live what they earn by the
 // Compensatory Setup; and the Setup itself ("i need a setup dashboard for the compensatory leaves"), HR's to change.
+// The employee picks the day worked from a menu (owner, 31 October 2026: "let the employee pick from a drop menu the
+// eligable day, or choose a future day in the same month only, for upcomming days"); HR approves one still to come as a
+// day off, cash instead waiting for the day.
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -157,6 +166,9 @@ export function NewCompensatoryForm({ action, form, cancelHref, toCeo = false }:
   const rules = compensatoryRulesOf(form.rules);
   const hours = readHoursWorked(typed.part, typed.hours);
   const offField = compensatoryDayOffField(hours.error ? null : compensationEarned(hours.hoursWorked, rules), rules, 'employee');
+  // the days the day worked is picked from, worked and to come this month (31 October 2026)
+  const groups = compensatoryDayGroups(compensatoryEligibleOf(form));
+  const offered = groups.some((g) => g.options.some((o) => o.value === typed.dayWorked));
   const problems = compensatoryFormProblems(typed, form);
   const warning = compensatoryFormWarning(typed, form);
   const blocked = problems.length > 0 || sending;
@@ -185,8 +197,40 @@ export function NewCompensatoryForm({ action, form, cancelHref, toCeo = false }:
           <label htmlFor={fid('dayWorked')} className="label">
             Day worked
           </label>
-          <DateInput id={fid('dayWorked')} name="dayWorked" required defaultValue={typed.dayWorked} aria-describedby={fid('dayWorked-hint')} />
-          <p id={fid('dayWorked-hint')} className="hint">A rest day of your shift or an official holiday you worked: today or a day gone by.</p>
+          {groups.length ? (
+            <>
+              <Select
+                id={fid('dayWorked')}
+                name="dayWorked"
+                required
+                value={offered ? typed.dayWorked : ''}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setTyped((x) => ({ ...x, dayWorked: value }));
+                }}
+                aria-describedby={fid('dayWorked-hint')}
+                className="input"
+              >
+                <option value="">Choose the day worked</option>
+                {groups.map((g) => (
+                  <optgroup key={g.label} label={g.label}>
+                    {g.options.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </Select>
+              <p id={fid('dayWorked-hint')} className="hint">
+                {COMPENSATORY_DAY_WORKED_HINT}
+              </p>
+            </>
+          ) : (
+            <p id={fid('dayWorked')} className="rounded-lg border border-line bg-canvas px-4 py-3 text-sm text-muted">
+              {compensatoryNoEligibleText(form.today, rules.offWithinDays)}
+            </p>
+          )}
         </div>
         <HoursWorkedField fid={fid} typed={typed} rules={rules} onChange={(next) => setTyped((x) => ({ ...x, ...next }))} />
         <div>
@@ -406,7 +450,8 @@ export function RecordCompensatoryForm({ action, employee, cancelHref, rules: sa
 /**
  * An approver's decision: Approve (a comment optional), or Reject with a comment; at HR's stage the approval is a day off
  * (the default; hours off for part of a day worked, 27 October 2026) or cash instead (a whole day's rate, or the hours' pay
- * at it), and a day worked with no check-in kept needs HR's confirmation.
+ * at it), and a day worked with no check-in kept needs HR's confirmation. A day worked still to come, asked ahead (31
+ * October 2026: `upcoming`, the day in `dayWorked`), is approved as a day off: cash instead waits for the day.
  */
 export function CompensatoryDecisionForm({
   action,
@@ -417,12 +462,17 @@ export function CompensatoryDecisionForm({
   cashDays,
   dayOff = null,
   hoursOff = null,
+  upcoming = false,
+  dayWorked = null,
 }: {
   action: Action;
   stage: LeaveStage;
   name: string;
   confidential?: boolean;
   noCheckIn?: boolean;
+  /** The day worked is still to come (asked ahead): no cash instead yet. */
+  upcoming?: boolean;
+  dayWorked?: string | null;
   /** The Setup's cash rate: a whole day's days' pay, and the rate of the hours' pay. */
   cashDays: number;
   dayOff?: string | null;
@@ -435,7 +485,7 @@ export function CompensatoryDecisionForm({
     const kept = valueOf(state, 'decision');
     return (LEAVE_DECISIONS as readonly string[]).includes(kept) ? (kept as LeaveDecision) : '';
   });
-  const [outcome, setOutcome] = useState<CompensatoryOutcome>(() => (valueOf(state, 'outcome') === 'cash' ? 'cash' : 'day_off'));
+  const [outcome, setOutcome] = useState<CompensatoryOutcome>(() => (valueOf(state, 'outcome') === 'cash' && !upcoming ? 'cash' : 'day_off'));
   const [comment, setComment] = useState(() => valueOf(state, 'comment'));
   const [confirmed, setConfirmed] = useState(false);
   const needsComment = decision !== '' && leaveDecisionNeedsComment(decision);
@@ -469,13 +519,22 @@ export function CompensatoryDecisionForm({
           <legend className="label">Approve as</legend>
           <div className="flex flex-wrap gap-2">
             {COMPENSATORY_OUTCOMES.map((o) => (
-              <label key={o} className={choice}>
-                <input type="radio" name="outcome" value={o} checked={outcome === o} onChange={() => setOutcome(o)} className="size-4 accent-accent" />
+              <label key={o} className={`${choice} ${o === 'cash' && upcoming ? 'cursor-not-allowed opacity-60' : ''}`}>
+                <input
+                  type="radio"
+                  name="outcome"
+                  value={o}
+                  checked={outcome === o}
+                  disabled={o === 'cash' && upcoming}
+                  onChange={() => setOutcome(o)}
+                  className="size-4 accent-accent"
+                />
                 {o === 'cash' ? 'Cash instead' : hoursOff !== null ? 'Hours off' : 'A day off'}
               </label>
             ))}
           </div>
           <p className="hint">{compensatoryOutcomeHint(outcome, { dayOff, hoursOff }, cashDays)}</p>
+          {upcoming && dayWorked && <p className="hint">{compensatoryCashWaitsText(dayWorked)}</p>}
         </fieldset>
       )}
       {hrApproves && noCheckIn && (

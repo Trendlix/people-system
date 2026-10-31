@@ -4,7 +4,7 @@ import { formatDateTime } from '@/lib/format';
 import type { CompensatoryRequestView } from '@/lib/compensatory-types';
 import { placeOfEmployee } from '../../leave/list';
 import { LeaveStatusBadge } from '../../leave/ui';
-import { compensatoryDaysLine, compensatoryHref, compensatoryLabel, compensatoryOdText, compensatoryOutcomeText, compensatoryProgressText, compensatorySourceText } from './compensatory';
+import { compensatoryAheadMark, compensatoryDaysLine, compensatoryHref, compensatoryLabel, compensatoryOdText, compensatoryOutcomeText, compensatoryProgressText, compensatorySourceText } from './compensatory';
 import { joinShown } from '@/lib/hidden';
 
 // Compensatory day requests in a list (owner, 26 October 2026: "my compensatory is a compensation with another day in the
@@ -13,7 +13,7 @@ import { joinShown } from '@/lib/hidden';
 // and HR's decision (a day off, or cash instead), where it stands with a status chip, a warning mark for one HR recorded
 // past the notice or with no check-in kept, opening its page (Decide when it waits for the user). No hooks. Since 27
 // October 2026: part of a day with its hours ("Worked Friday 06/11/2026 (4 hours) · 4 hours off Tuesday 10/11/2026"), and
-// the official duty one goes with.
+// the official duty one goes with; since 31 October 2026, one asked ahead for a day worked still to come.
 
 export function CompensatoryTable({ requests, who = false, how = false, note }: { requests: readonly CompensatoryRequestView[]; who?: boolean; how?: boolean; note: string }) {
   return (
@@ -48,6 +48,7 @@ export function CompensatoryTable({ requests, who = false, how = false, note }: 
                   {compensatoryDaysLine(r)}
                   {/* one an official duty carries (27 October 2026), decided with it */}
                   {r.od && <span className="mt-1 block text-xs text-muted">{compensatoryOdText(r.od)}</span>}
+                  {compensatoryAheadMark(r) && <span className="mt-1 block text-xs text-accent">{compensatoryAheadMark(r)}</span>}
                 </td>
                 {how && (
                   <td>

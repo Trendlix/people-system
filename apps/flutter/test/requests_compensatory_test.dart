@@ -95,6 +95,129 @@ void main() {
     expect(CompensatoryForm.fromJson(compensatoryForm(refusal: 'No.')).asks, isFalse);
   });
 
+  // The day worked picked from a menu (owner, 31 October 2026: "let the employee pick from a drop menu the eligable day, or
+  // choose a future day in the same month only, for upcomming days"). Today Friday 30/10/2026, the day off within 10 days.
+  group('the day worked’s menu', () {
+    testWidgets('lists the days worked and those coming up this month, each with what it is; asks ahead for one to come', (tester) async {
+      await openSheet(tester, people, showCompensatorySheet);
+      expect(find.text(CompensatoryWords.dayWorkedHint), findsOneWidget);
+      await scrollAndTap(tester, find.text('Saturday 24/10/2026'));
+      expect(find.text(CompensatoryWords.groupWorked), findsOneWidget);
+      expect(find.text(CompensatoryWords.groupUpcoming), findsOneWidget);
+      // 24/10 with its check-in; 30/10 (today) and 23/10 without; 31/10 to come
+      expect(find.text('rest day · check-in kept'), findsOneWidget);
+      expect(find.text('rest day · no check-in: HR will ask to confirm'), findsNWidgets(2));
+      expect(find.text('Friday 30/10/2026'), findsOneWidget);
+      expect(find.text('Friday 23/10/2026'), findsOneWidget);
+      expect(find.text(CompensatoryWords.eligibleNote(null, true, false)), findsOneWidget);
+      await tester.tap(find.text('Saturday 31/10/2026').last);
+      await tester.pumpAndSettle();
+      // nothing to check in yet; the day off the next free working day after it, in the window
+      expect(find.text(CompensatoryWords.noCheckIn('31/10/2026')), findsNothing);
+      expect(find.text('Sunday 01/11/2026'), findsOneWidget);
+      await scrollAndTap(tester, find.text(RequestsWords.send));
+      expect(people.bodyOf('POST /api/me/compensatory'), {'dayWorked': '2026-10-31', 'dayOff': '2026-11-01'});
+    });
+
+    testWidgets('a day gone by with no check-in kept is warned of once picked', (tester) async {
+      await openSheet(tester, people, showCompensatorySheet);
+      await scrollAndTap(tester, find.text('Saturday 24/10/2026'));
+      await tester.tap(find.text('Friday 23/10/2026').last);
+      await tester.pumpAndSettle();
+      expect(find.text(CompensatoryWords.noCheckIn('23/10/2026')), findsOneWidget);
+    });
+
+    testWidgets('takes People’s days as sent, with the holiday’s name', (tester) async {
+      people.on(
+        'GET /api/me/compensatory/form',
+        (req) => json({
+          ...compensatoryForm(),
+          'eligibleDays': [
+            {'date': '2026-10-31', 'when': 'upcoming', 'holiday': 'Test Day', 'checkedIn': false},
+          ],
+        }),
+      );
+      await openSheet(tester, people, showCompensatorySheet);
+      // none worked with a check-in kept: nothing picked yet
+      expect(find.text(CompensatoryWords.enterDayWorked), findsOneWidget);
+      expect(find.text(CompensatoryWords.chooseDayWorked), findsOneWidget);
+      await scrollAndTap(tester, find.byType(DayWorkedMenu));
+      expect(find.text(CompensatoryWords.groupWorked), findsNothing);
+      expect(find.text('Test Day (official holiday)'), findsOneWidget);
+      await tester.tap(find.text('Saturday 31/10/2026').last);
+      await tester.pumpAndSettle();
+      await scrollAndTap(tester, find.text(RequestsWords.send));
+      expect(people.bodyOf('POST /api/me/compensatory'), {'dayWorked': '2026-10-31', 'dayOff': '2026-11-01'});
+    });
+
+    testWidgets('says plainly when no day can be asked for, and sends nothing', (tester) async {
+      people.on('GET /api/me/compensatory/form', (req) => json({...compensatoryForm(), 'eligibleDays': <Object>[]}));
+      await openSheet(tester, people, showCompensatorySheet);
+      expect(find.text(CompensatoryWords.noDays(10)), findsOneWidget);
+      expect(find.text(CompensatoryWords.chooseDayWorked), findsNothing);
+      await scrollAndTap(tester, find.text(RequestsWords.send));
+      expect(people.calls, isNot(contains('POST /api/me/compensatory')));
+    });
+
+    test('worked out by People’s rule from a People from before it: the same days as the website', () {
+      final f = CompensatoryForm.fromJson({
+        ...compensatoryForm(),
+        'today': '2026-11-12',
+        'rules': {'cashRate': 1.5, 'minHours': 2, 'hoursCap': 4, 'fullDayHours': 6, 'offWithinDays': null},
+        'holidays': [
+          {'date': '2026-11-10', 'nameEn': 'Test Day'},
+          {'date': '2026-11-24', 'nameEn': 'Later Day'},
+        ],
+        'claimed': ['2026-11-07'],
+        'checkedIn': ['2026-11-06'],
+      });
+      expect(f.eligibleDays, isNull);
+      final days = eligibleDaysOf(f);
+      expect(days.where((d) => !d.upcoming).toList(), [
+        (date: '2026-11-10', upcoming: false, holiday: 'Test Day', checkedIn: false),
+        (date: '2026-11-06', upcoming: false, holiday: null, checkedIn: true),
+      ]);
+      expect(days.where((d) => d.upcoming).map((d) => d.date), ['2026-11-13', '2026-11-14', '2026-11-20', '2026-11-21', '2026-11-24', '2026-11-27', '2026-11-28']);
+      // a day of next month is refused, never offered
+      expect(CompensatoryWords.thisMonthOnly('04/12/2026', 'December 2026', '30/11/2026'), '04/12/2026 is in December 2026: a day still to come can be asked for in this month only, up to 30/11/2026.');
+    });
+
+    test('on the last day of a month in the same-month window, nothing until tomorrow', () {
+      final f = CompensatoryForm.fromJson({
+        ...compensatoryForm(),
+        'today': '2026-10-31',
+        'rules': {'cashRate': 1.5, 'minHours': 2, 'hoursCap': 4, 'fullDayHours': 6, 'offWithinDays': null},
+      });
+      expect(eligibleDaysOf(f), isEmpty);
+      expect(
+        noEligibleDaysText(f),
+        'No day can be asked for today: the day off must be a working day in the same month as the day worked, from tomorrow, and today is the last day of October 2026. From 01/11/2026 you can ask for November’s rest days and official holidays, worked or coming up.',
+      );
+    });
+
+    test('People’s days read by hand', () {
+      final f = CompensatoryForm.fromJson({
+        ...compensatoryForm(),
+        'eligibleDays': [
+          {'date': '2026-10-24', 'when': 'worked', 'holiday': null, 'checkedIn': true},
+          {'date': '2026-10-31', 'when': 'upcoming', 'holiday': 'Test Day', 'checkedIn': false},
+        ],
+      });
+      expect(f.eligibleDays, [
+        (date: '2026-10-24', upcoming: false, holiday: null, checkedIn: true),
+        (date: '2026-10-31', upcoming: true, holiday: 'Test Day', checkedIn: false),
+      ]);
+    });
+  });
+
+  test('its page says a day worked was asked ahead, still to come or since worked', () {
+    String noteOf(Map<String, Object?> extra) =>
+        compensatoryDetail(CompensatoryRequest.fromJson({...compensatoryJson(), ...extra})).facts.firstWhere((f) => f.label == CompensatoryWords.dayWorked).note!;
+    expect(noteOf({'upcoming': true, 'askedAhead': true, 'noCheckIn': false}), '${CompensatoryWords.dayWorkedNote}\n${CompensatoryWords.stillToComeNote}');
+    expect(noteOf({'upcoming': false, 'askedAhead': true, 'noCheckIn': true}), '${CompensatoryWords.dayWorkedNote}\n${CompensatoryWords.askedAheadNote}\n${CompensatoryWords.noCheckInNote}');
+    expect(noteOf({}), CompensatoryWords.dayWorkedNote);
+  });
+
   test('its page: the days, every step; cancel while it is decided, never one carried by an official duty', () {
     final d = compensatoryDetail(CompensatoryRequest.fromJson(compensatoryJson()));
     expect(d.title, CompensatoryWords.title);

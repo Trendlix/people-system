@@ -15,6 +15,7 @@ import { cancelCompensatoryByHr, cancelMyCompensatory, decideCompensatory } from
 import { COMPENSATORY_OUTCOME_LABELS, hoursText } from '@trendlix/shared';
 import {
   COMPENSATORY_WITH_OD_NOTE,
+  compensatoryAheadText,
   compensatoryBack,
   compensatoryCashAddedText,
   compensatoryDateText,
@@ -40,7 +41,9 @@ import { loadCompensatory } from '../data';
 // CEO (or HR with Super Admin). Shown on the site and on the phone pages, where the back link goes to the section's list
 // and what is done on it comes back there. Part of a day worked (owner, 27 October 2026: "Hours off for hours worked")
 // shows its hours and the hours off they earned; one an official duty on a rest day or an official holiday carries says
-// so, linking to the duty, and is decided and cancelled with it (the API sends it without a decision or Cancel here).
+// so, linking to the duty, and is decided and cancelled with it (the API sends it without a decision or Cancel here). A day
+// worked asked ahead (owner, 31 October 2026: "or choose a future day in the same month only, for upcomming days") says it
+// is still to come, or that it was when asked; HR approves one still to come as a day off, cash instead waiting for it.
 
 type Query = Record<string, string | string[] | undefined>;
 
@@ -82,6 +85,7 @@ export async function CompensatoryRequestDetail({
   const back = surface === 'site' ? compensatoryBack(user, r) : appBack(surface);
   const hoursOff = r.hoursOff ?? null;
   const hoursFact = compensatoryHoursFact(r);
+  const ahead = compensatoryAheadText(r);
   const done = compensatoryDoneText(query, r.status, r.manager, r.confidential, r.outcome, hoursOff);
   const place = placeOfEmployee(r.employee);
   const progress = compensatoryProgressText(r);
@@ -126,6 +130,7 @@ export async function CompensatoryRequestDetail({
               <Fact label="Day worked">
                 <span className="text-base font-semibold tabular-nums">{compensatoryDateText(r.dayWorked)}</span>
                 <span className="block text-xs text-muted">A rest day of the shift or an official holiday. Nothing is paid for it when it is compensated with a day.</span>
+                {ahead && <span className="mt-1 block text-xs font-medium text-accent">{ahead}</span>}
                 {r.noCheckIn && <span className="mt-1 block text-xs font-medium text-warn">No check-in is kept on this day: HR confirms it was worked when deciding.</span>}
               </Fact>
               {/* part of the day worked (27 October 2026: "Hours off for hours worked") */}
@@ -205,6 +210,8 @@ export async function CompensatoryRequestDetail({
                 name={r.employee.fullNameEn}
                 confidential={r.confidential}
                 noCheckIn={r.noCheckIn === true}
+                upcoming={r.upcoming === true}
+                dayWorked={r.dayWorked}
                 cashDays={r.cashDays}
                 dayOff={r.dayOff}
                 hoursOff={hoursOff}

@@ -5,15 +5,20 @@ import { calendarPeople, cellLabel } from '../../leave/calendar';
 import { exemptBadge, compensatoryDaysText, compensatoryHoursText } from '../attendance';
 import {
   COMPENSATORY_SETUP_PATH,
+  compensatoryAheadMark,
+  compensatoryAheadText,
   compensatoryBack,
   compensatoryCancelBody,
   compensatoryCashAddedText,
+  compensatoryCashWaitsText,
+  compensatoryDayGroups,
   compensatoryDayOffField,
   compensatoryDecisionBody,
   compensatoryDecisionButton,
   compensatoryDoneHref,
   compensatoryDoneText,
   compensatoryEarnsText,
+  compensatoryEligibleOf,
   compensatoryForm,
   compensatoryFormProblems,
   compensatoryFormWarning,
@@ -130,6 +135,67 @@ describe('the request form’s live checks', () => {
       'Ready to send: a compensatory day for Friday 06/11/2026, with a day off on Monday 16/11/2026, to your direct manager (without one, your lead), then HR.',
     );
     expect(compensatoryReadyText(typed('06/11/2026', '16/11/2026'), true)).toContain('then the CEO');
+  });
+});
+
+// The day worked picked from a menu (owner, 31 October 2026: "let the employee pick from a drop menu the eligable day, or
+// choose a future day in the same month only, for upcomming days"). Today Thursday 12/11/2026.
+describe('the day worked’s menu', () => {
+  it('lists the days gone by that qualify, the latest first, then this month’s to come, worked out by the shared rule from an API from before it', () => {
+    const days = compensatoryEligibleOf(FORM);
+    expect(days.filter((d) => d.when === 'worked')).toEqual([
+      { date: '2026-11-10', when: 'worked', holiday: 'Test Day', checkedIn: false },
+      { date: '2026-11-06', when: 'worked', holiday: null, checkedIn: true },
+    ]);
+    expect(days.filter((d) => d.when === 'upcoming').map((d) => d.date)).toEqual(['2026-11-13', '2026-11-14', '2026-11-20', '2026-11-21', '2026-11-24', '2026-11-27', '2026-11-28']);
+  });
+
+  it('takes the API’s days as they are, and none while they can’t ask', () => {
+    const sent = [{ date: '2026-11-13', when: 'upcoming' as const, holiday: null, checkedIn: false }];
+    expect(compensatoryEligibleOf({ ...FORM, eligibleDays: sent })).toEqual(sent);
+    expect(compensatoryEligibleOf({ ...FORM, eligibleDays: [] })).toEqual([]);
+    expect(compensatoryEligibleOf({ ...FORM, refusal: 'You work freelance.' })).toEqual([]);
+  });
+
+  it('groups them, Worked and Coming up this month, each with its weekday, the holiday and the check-in; the value as typed', () => {
+    expect(compensatoryDayGroups(compensatoryEligibleOf(FORM)).map((g) => [g.label, g.options.slice(0, 2)])).toEqual([
+      [
+        'Worked',
+        [
+          { value: '10/11/2026', label: 'Tuesday 10/11/2026 · Test Day (official holiday) · no check-in: HR will ask to confirm' },
+          { value: '06/11/2026', label: 'Friday 06/11/2026 · rest day · check-in kept' },
+        ],
+      ],
+      [
+        'Coming up this month',
+        [
+          { value: '13/11/2026', label: 'Friday 13/11/2026 · rest day' },
+          { value: '14/11/2026', label: 'Saturday 14/11/2026 · rest day' },
+        ],
+      ],
+    ]);
+    // a group with no day is left out; none at all, no menu
+    expect(compensatoryDayGroups([{ date: '2026-11-13', when: 'upcoming', holiday: null, checkedIn: false }]).map((g) => g.label)).toEqual(['Coming up this month']);
+    expect(compensatoryDayGroups([])).toEqual([]);
+  });
+
+  it('passes a day still to come this month, with no check-in warning, and refuses one of next month', () => {
+    expect(compensatoryFormProblems(typed('13/11/2026', '16/11/2026'), FORM)).toEqual([]);
+    expect(compensatoryFormWarning(typed('13/11/2026', '16/11/2026'), FORM)).toBeNull();
+    expect(compensatoryFormProblems(typed('04/12/2026', '07/12/2026'), FORM)).toEqual(['04/12/2026 is in December 2026: a day still to come can be asked for in this month only, up to 30/11/2026.']);
+  });
+
+  it('says on the request one was asked ahead, and that cash instead waits for the day', () => {
+    expect(compensatoryAheadText({ upcoming: true, askedAhead: true })).toBe(
+      'Still to come: asked ahead for a day to be worked. No check-in to confirm until then; cash instead only once it is worked.',
+    );
+    expect(compensatoryAheadText({ upcoming: false, askedAhead: true })).toBe('Asked ahead, before the day was worked.');
+    expect(compensatoryAheadText({ upcoming: false, askedAhead: false })).toBeNull();
+    expect(compensatoryAheadText({})).toBeNull();
+    expect(compensatoryAheadMark({ upcoming: true, askedAhead: true, od: null })).toBe('Asked ahead: the day worked is still to come');
+    expect(compensatoryAheadMark({ upcoming: false, askedAhead: true })).toBe('Asked ahead');
+    expect(compensatoryAheadMark({ upcoming: true, askedAhead: true, od: { id: 'o1', startDate: '2026-11-13', status: 'with_hr' } })).toBeNull();
+    expect(compensatoryCashWaitsText('2026-11-13')).toBe('Cash instead once the day is worked: Friday 13/11/2026 is still to come. Approve it as a day off now, or decide it from that day on.');
   });
 });
 

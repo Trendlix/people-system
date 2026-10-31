@@ -515,6 +515,115 @@ describe('Compensatory days (e2e)', () => {
     });
   });
 
+  // The day worked picked from a menu (owner, 31 October 2026: "let the employee pick from a drop menu the eligable day, or
+  // choose a future day in the same month only, for upcomming days"). Today by a clock pinned to the first of this month
+  // (Date alone, as attendance-corrections.e2e-spec.ts pins it; never ahead of the real clock, which would end HR's session
+  // as idle), so this month's rest days still to come are offered and asked for ahead whatever the real day.
+  describe('asking ahead for a day still to come this month', () => {
+    const PINNED = firstDay(CURRENT);
+    let ahead: string; // the first Friday after the pinned day, a rest day of the M shift
+    let aheadOff: string; // a working day after it, this month
+    let later: string; // a Saturday later this month
+    let earlyOff: string; // a working day from tomorrow, before `later`
+    let asked: View & { upcoming: boolean; askedAhead: boolean };
+
+    /** Runs `steps` with today pinned to the first of this month in Cairo. */
+    async function pinned(steps: () => Promise<void>): Promise<void> {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(zonedMoment(PINNED, '00:05'));
+      try {
+        expect(todayInCairo()).toBe(PINNED);
+        await steps();
+      } finally {
+        vi.useRealTimers();
+      }
+    }
+
+    beforeAll(async () => {
+      await person('ada', 'Ada Ahead', 'M', { managerId: ids.mona });
+      const holidays = new Set((await prisma.holiday.findMany({ select: { date: true } })).map((h) => fromDateOnly(h.date)));
+      const after = (from: string, ok: (d: string) => boolean) => {
+        for (let d = addDays(from, 1); d <= lastDay(CURRENT); d = addDays(d, 1)) if (!holidays.has(d) && ok(d)) return d;
+        throw new Error(`No such day after ${from} in ${CURRENT}`);
+      };
+      ahead = after(PINNED, (d) => weekday(d) === 5);
+      aheadOff = after(ahead, (d) => weekday(d) <= 4);
+      later = after(aheadOff, (d) => weekday(d) === 6);
+      earlyOff = after(PINNED, (d) => weekday(d) <= 4 && d !== aheadOff);
+    });
+
+    it('offers the days gone by that qualify, and this month’s rest days and holidays to come, never next month’s', async () => {
+      await pinned(async () => {
+        const form = (await api().get('/api/me/compensatory/form').set('Cookie', sessions.ada).expect(200)).body as {
+          today: string;
+          eligibleDays: { date: string; when: string; holiday: string | null; checkedIn: boolean }[];
+        };
+        expect(form.today).toBe(PINNED);
+        // the holiday on the first of the month is today's: worked, no check-in kept
+        expect(form.eligibleDays.filter((d) => d.when === 'worked')).toEqual([{ date: PINNED, when: 'worked', holiday: expect.any(String), checkedIn: false }]);
+        const upcoming = form.eligibleDays.filter((d) => d.when === 'upcoming');
+        expect(upcoming[0]).toEqual({ date: ahead, when: 'upcoming', holiday: null, checkedIn: false });
+        expect(upcoming.map((d) => d.date)).toContain(later);
+        // rest days (Friday, Saturday) or holidays only, from tomorrow to the end of this month, the soonest first
+        for (const d of upcoming) {
+          expect(d.date > PINNED && d.date <= lastDay(CURRENT)).toBe(true);
+          expect(weekday(d.date) >= 5 || d.holiday !== null).toBe(true);
+        }
+        expect(upcoming.map((d) => d.date)).toEqual(upcoming.map((d) => d.date).sort());
+      });
+    });
+
+    it('is asked ahead for a day to come this month, never one of next month', async () => {
+      await pinned(async () => {
+        const nextFriday = weekdayOn(NEXT, 5);
+        const nextSunday = addDays(nextFriday, 2);
+        expect(said(await ask('ada', { dayWorked: nextFriday, dayOff: nextSunday }).expect(400))).toEqual([
+          `${shown(nextFriday)} is in ${shownMonth(NEXT)}: a day still to come can be asked for in this month only, up to ${shown(lastDay(CURRENT))}.`,
+        ]);
+        // a working day of the shift to come is no more a day worked than one gone by
+        expect(said(await ask('ada', { dayWorked: aheadOff, dayOff: addDays(aheadOff, 1) }).expect(400))[0]).toContain('is a working day of your shift');
+        asked = (await ask('ada', { dayWorked: ahead, dayOff: aheadOff, reason: 'The shoot next Friday' }).expect(201)).body;
+        expect(asked).toMatchObject({ status: 'with_manager', dayWorked: ahead, dayOff: aheadOff, upcoming: true, askedAhead: true, noCheckIn: false });
+        // the day is taken now: no longer offered
+        const form = (await api().get('/api/me/compensatory/form').set('Cookie', sessions.ada).expect(200)).body as { eligibleDays: { date: string }[] };
+        expect(form.eligibleDays.map((d) => d.date)).not.toContain(ahead);
+      });
+    });
+
+    it('is approved by HR as a day off before the day, with no check-in to confirm; never paid in cash until it is worked', async () => {
+      await pinned(async () => {
+        await decide(asked.id, sessions.mona).expect(200);
+        expect(said(await decide(asked.id, hr, { decision: 'approve', outcome: 'cash' }).expect(409))).toEqual([
+          `${shown(ahead)} hasn't come yet: cash instead is paid for a day already worked. Approve it as a day off, or decide it from ${shown(ahead)} on.`,
+        ]);
+        expect((await one(asked.id)).status).toBe('with_hr');
+        const approved = (await decide(asked.id, hr).expect(200)).body as View & { upcoming: boolean };
+        expect(approved).toMatchObject({ status: 'approved', outcome: 'day_off', upcoming: true, noCheckIn: false });
+        expect(await adjustments('ada')).toEqual([]);
+      });
+    });
+
+    it('takes a day off before the day worked to come, in the same month; HR records only a day already worked', async () => {
+      await pinned(async () => {
+        // the day off taken by the first request is refused for that alone
+        expect(said(await ask('ada', { dayWorked: later, dayOff: aheadOff }).expect(400))).toEqual([`You have a compensatory day off on ${shown(aheadOff)} already.`]);
+        const before = (await ask('ada', { dayWorked: later, dayOff: earlyOff }).expect(201)).body as View;
+        expect(earlyOff < later && before.dayWorked === later && before.dayOff === earlyOff).toBe(true);
+        await api().post(`/api/me/compensatory/${before.id}/cancel`).set('Cookie', sessions.ada).expect(200);
+        expect(said(await record('ada', { dayWorked: later, dayOff: aheadOff, reason: 'Ahead' }).expect(400))).toContain(
+          `${shown(later)} hasn't come yet: HR records a compensatory day for a day already worked.`,
+        );
+      });
+    });
+
+    it('shows HR it was asked ahead; once the day has come, whether a check-in was kept (the real clock)', async () => {
+      const seen = (await one(asked.id)) as View & { upcoming: boolean; askedAhead: boolean };
+      expect(seen.askedAhead).toBe(true);
+      expect(seen.upcoming).toBe(ahead > TODAY);
+      expect(seen.noCheckIn).toBe(ahead <= TODAY);
+    });
+  });
+
   describe('a developer', () => {
     it('sees pseudonyms and no reasons, comments or amounts, and decides nothing', async () => {
       const [first] = (await api().get(`/api/compensatory?employeeId=${ids.pam}`).set('Cookie', developer).expect(200)).body as View[];

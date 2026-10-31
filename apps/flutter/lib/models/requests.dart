@@ -373,6 +373,8 @@ class CompensatoryRequest extends PeopleRequest {
       hoursOff = j.numberOrNull('hoursOff'),
       od = j.has('od') ? (id: j.obj('od').str('id'), startDate: j.obj('od').str('startDate'), status: j.obj('od').str('status')) : null,
       noCheckIn = j.flag('noCheckIn'),
+      upcoming = j.flag('upcoming'),
+      askedAhead = j.flag('askedAhead'),
       super.read();
 
   factory CompensatoryRequest.fromJson(Object? json) => CompensatoryRequest._(JsonMap(json));
@@ -395,6 +397,10 @@ class CompensatoryRequest extends PeopleRequest {
   /// Carried by an official duty: decided and cancelled with it.
   final ({String id, String startDate, String status})? od;
   final bool noCheckIn;
+
+  /// Asked ahead (owner, 31 October 2026): the day worked is still to come, and it was when asked.
+  final bool upcoming;
+  final bool askedAhead;
 }
 
 // ---------- check-in location ----------
@@ -510,6 +516,7 @@ class ResignationRequest extends PeopleRequest {
       notice = j.str('notice'),
       ruleLastDay = j.str('ruleLastDay'),
       letter = j.has('letter') ? RequestFile.fromJson(j.m['letter']) : null,
+      preparedLetter = j.text('preparedLetter'),
       withdrawnAt = j.text('withdrawnAt'),
       returnedReason = j.obj('returned').text('reason'),
       returnedAt = j.obj('returned').text('at'),
@@ -535,7 +542,13 @@ class ResignationRequest extends PeopleRequest {
 
   /// The last working day that notice gives from the day it was sent.
   final String ruleLastDay;
+
+  /// The signed copy HR uploaded (or the one attached before 31 October 2026).
   final RequestFile? letter;
+
+  /// The letter People prepares from the request (owner, 31 October 2026): 'ready' to view, 'no_template' until HR sets
+  /// its template up; null for an API from before it.
+  final String? preparedLetter;
   final String? withdrawnAt;
   final String? returnedReason;
   final String? returnedAt;

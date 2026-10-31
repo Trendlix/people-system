@@ -4,13 +4,16 @@ import {
   COMPENSATORY_RULE_DEFAULTS,
   compensationEarned,
   compensatoryCashDays,
+  compensatoryCashNotYetProblem,
   compensatoryCashReason,
+  compensatoryEligibleDays,
   compensatoryForOdCheck,
   compensatoryMonth,
   compensatoryOffProblems,
   compensatoryRecordCheck,
   compensatoryRequestProblems,
   compensatoryRulesProblems,
+  compensatoryUpcoming,
   DEFAULT_WORKING_DAYS,
   hoursWorkedProblems,
   shiftWorkHours,
@@ -202,6 +205,10 @@ const earnedOf = (r: { hoursOff: Prisma.Decimal | null }): CompensationEarned =>
 // hours sent) earns hours off on the day off, or their pay in cash, by the Setup's rules; fewer than its minimum nothing;
 // and an official duty on a rest day or an official holiday carries its own compensatory day, asked and recorded with it
 // (OdService), decided, rejected and cancelled with it, never on its own (forOd, followOd).
+// Since 31 October 2026 (owner: "let the employee pick from a drop menu the eligable day, or choose a future day in the
+// same month only, for upcomming days"): the form sends the days the day worked is picked from, and an employee may ask
+// ahead for a rest day or an official holiday still to come this month. HR approves such a request as a day off at once
+// (no check-in to confirm yet); cash instead waits with HR until the day has come. HR records only days already worked.
 @Injectable()
 export class CompensatoryService {
   constructor(
@@ -229,13 +236,16 @@ export class CompensatoryService {
     if (!caller.employeeId) throw new ForbiddenException('Your sign-in has no employee profile, so there are no compensatory days.');
     const today = todayInCairo();
     const around = query.around ?? today;
-    const from = addDays(firstDay(around.slice(0, 7)), -WINDOW_DAYS);
-    const to = addDays(lastDay(around.slice(0, 7)), WINDOW_DAYS);
+    // around the day asked, and always around today: the days the day worked is picked from are today's (31 October 2026)
+    const [aroundFrom, todayFrom] = [around, today].map((d) => addDays(firstDay(d.slice(0, 7)), -WINDOW_DAYS));
+    const [aroundTo, todayTo] = [around, today].map((d) => addDays(lastDay(d.slice(0, 7)), WINDOW_DAYS));
+    const from = aroundFrom < todayFrom ? aroundFrom : todayFrom;
+    const to = aroundTo > todayTo ? aroundTo : todayTo;
     const employment = await this.currentEmployment(caller.employeeId);
     const refusal = this.refusalOf(employment);
     const employeeId = caller.employeeId;
     const range = { gte: toDateOnly(from), lte: toDateOnly(to) };
-    const [holidays, leave, wfh, od, own, days, punches] = await Promise.all([
+    const [holidays, leave, wfh, od, own, days, punches, runs] = await Promise.all([
       this.prisma.holiday.findMany({ where: { date: range }, select: { date: true, nameEn: true }, orderBy: { date: 'asc' } }),
       this.prisma.leaveRequest.findMany({
         where: { employeeId, status: { in: [...TAKING] }, startDate: { lte: range.lte }, endDate: { gte: range.gte } },
@@ -246,6 +256,8 @@ export class CompensatoryService {
       this.prisma.compensatoryRequest.findMany({ where: { employeeId, status: { in: [...TAKING] }, OR: [{ dayWorked: range }, { dayOff: range }] }, select: { dayWorked: true, dayOff: true, outcome: true, hoursOff: true } }),
       this.prisma.attendanceDay.findMany({ where: { employeeId, date: range, checkIn: { not: null } }, select: { date: true } }),
       this.prisma.attendancePunch.findMany({ where: { employeeId, date: range, kind: 'in' }, select: { date: true } }),
+      // the months whose payroll is with the CEO, approved or paid: their days can't be picked
+      this.prisma.payrollRun.findMany({ where: { month: { gte: toDateOnly(firstDay(from.slice(0, 7))), lte: range.lte } }, select: { month: true, status: true } }),
     ]);
     const leaveRows: CompensatoryFormView['leave'] = [];
     for (const l of leave) {
@@ -261,6 +273,28 @@ export class CompensatoryService {
       for (let d = fromDateOnly(o.startDate); d <= fromDateOnly(o.endDate); d = addDays(d, 1)) if (d >= from && d <= to) other.push({ date: d, what: 'an official duty' });
     }
     const rules = await this.rules();
+    const workingDays = [...(employment?.shift?.workingDays ?? DEFAULT_WORKING_DAYS)];
+    const holidayRows = holidays.map((h) => ({ date: fromDateOnly(h.date), nameEn: h.nameEn }));
+    const claimed = own.map((c) => fromDateOnly(c.dayWorked));
+    const checkedIn = [...new Set([...days, ...punches].map((d) => fromDateOnly(d.date)))].sort();
+    // the menu the day worked is picked from (owner, 31 October 2026: "let the employee pick from a drop menu the eligable
+    // day, or choose a future day in the same month only, for upcomming days")
+    const eligibleDays =
+      refusal || !employment
+        ? []
+        : compensatoryEligibleDays({
+            today,
+            workingDays,
+            holidays: holidayRows,
+            claimed,
+            checkedIn,
+            leave: leaveRows,
+            other,
+            offWithinDays: rules.offWithinDays,
+            employedFrom: fromDateOnly(employment.joinDate),
+            employedTo: fromDateOnly(employment.endDate),
+            lockedMonths: runs.filter((r) => locksMonth(r.status as PayrollStatus)).map((r) => fromDateOnly(r.month).slice(0, 7)),
+          });
     return {
       refusal,
       offered: !refusal,
@@ -270,12 +304,13 @@ export class CompensatoryService {
       // the Compensatory Setup and the shift's hours a day, for what part of a day earns (27 October 2026)
       rules,
       hoursADay: hoursADayOf(employment),
-      workingDays: [...(employment?.shift?.workingDays ?? DEFAULT_WORKING_DAYS)],
-      holidays: holidays.map((h) => ({ date: fromDateOnly(h.date), nameEn: h.nameEn })),
+      workingDays,
+      holidays: holidayRows,
       leave: leaveRows,
       other,
-      claimed: own.map((c) => fromDateOnly(c.dayWorked)),
-      checkedIn: [...new Set([...days, ...punches].map((d) => fromDateOnly(d.date)))].sort(),
+      claimed,
+      checkedIn,
+      eligibleDays,
       from,
       to,
     };
@@ -481,12 +516,17 @@ export class CompensatoryService {
     if (dto.outcome && !approvesNow) throw new BadRequestException(["Only HR's approval chooses a day off or cash instead."]);
     let cashDays = 0;
     if (approvesNow) {
+      // a day worked still to come, asked ahead (31 October 2026): approved as a day off now, never paid in cash before it is
+      // worked (it stays with HR till then), and no check-in to confirm yet
+      const upcoming = compensatoryUpcoming(dayWorked, todayInCairo());
+      const notYet = outcome === 'cash' ? compensatoryCashNotYetProblem(dayWorked, todayInCairo()) : null;
+      if (notYet) throw new ConflictException(notYet);
       const employment = await this.prisma.employment.findUnique({ where: { id: before.employmentId }, select: EMPLOYMENT });
       // cash instead: a whole day's rate, or the hours' share of it (27 October 2026)
       cashDays = compensatoryCashDays(earnedOf(before), await this.rules(), hoursADayOf(employment));
       await this.assertMonthOpen(compensatoryMonth(dayWorked));
       const states = await this.dayStates(this.prisma, employment!, dayWorked, outcome === 'day_off' ? dayOff : null, id);
-      if (!states.worked.checkedIn && dto.confirmNoCheckIn !== true) {
+      if (!upcoming && !states.worked.checkedIn && dto.confirmNoCheckIn !== true) {
         throw new ConflictException(`${NO_CHECK_IN_WARNING(dayWorked)} Confirm it was worked to approve.`);
       }
       if (outcome === 'day_off') {
@@ -1098,8 +1138,9 @@ export class CompensatoryService {
       this.cashRate(),
     ]);
     const checked = new Set([...days, ...punches].map((d) => `${d.employeeId}:${fromDateOnly(d.date)}`));
+    const today = todayInCairo();
     return rows.map((r) =>
-      compensatoryView(r, caller, names, { noCheckIn: hiddenRequest(r, caller) ? null : !checked.has(`${r.employeeId}:${fromDateOnly(r.dayWorked)}`), cashDays }),
+      compensatoryView(r, caller, names, { noCheckIn: hiddenRequest(r, caller) ? null : !checked.has(`${r.employeeId}:${fromDateOnly(r.dayWorked)}`), cashDays, today }),
     );
   }
 }
