@@ -183,6 +183,25 @@ void main() {
     expect(find.text(SignInWords.subtitle), findsOneWidget);
   });
 
+  // owner, 31 October 2026, the menu cut off at Team KPIs on his phone: "is there a signout button in the app?"
+  testWidgets('keeps Sign out in reach on a small phone, the menu’s rows scrolling', (tester) async {
+    people
+      ..on('GET /api/auth/me', (req) => json({...meJson(), 'roles': ['employee', 'manager']}))
+      ..on('POST /api/auth/logout', (req) => json({}, 204));
+    await open(tester, people);
+    // a 360 × 640 phone
+    tester.view
+      ..physicalSize = const Size(1080, 1920)
+      ..devicePixelRatio = 3;
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(ShellWords.more));
+    await tester.pumpAndSettle();
+    expect(find.text(ShellWords.signOut).hitTestable(), findsOneWidget);
+    await tester.tap(find.text(ShellWords.signOut));
+    await tester.pumpAndSettle();
+    expect(find.text(SignInWords.subtitle), findsOneWidget);
+  });
+
   testWidgets('moves between the tabs, each its own page', (tester) async {
     await open(tester, people);
     expect(find.text(DashboardWords.intro), findsOneWidget);

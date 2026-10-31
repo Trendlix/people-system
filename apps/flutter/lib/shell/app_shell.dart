@@ -264,6 +264,10 @@ Future<void> showMoreMenu(BuildContext context, Me me) {
   final router = GoRouter.of(context);
   return showModalBottomSheet<void>(
     context: context,
+    // over the tab bar and as tall as it needs (owner, 31 October 2026, the menu cut off at Team KPIs: "is there a
+    // signout button in the app?"): the rows scroll when they don't fit, Sign out stays at the foot
+    useRootNavigator: true,
+    isScrollControlled: true,
     useSafeArea: true,
     backgroundColor: Colors.transparent,
     builder: (context) {
@@ -314,17 +318,27 @@ Future<void> showMoreMenu(BuildContext context, Me me) {
               ),
               const SizedBox(height: 8),
               Divider(color: p.line),
-              if (me.employeeId != null) ...[
-                _MenuRow(icon: CupertinoIcons.person, label: ShellWords.viewProfile, onTap: () => go('/profile')),
-                _MenuRow(icon: CupertinoIcons.person_crop_square, label: ShellWords.changePhoto, onTap: () => go('/profile/photo')),
-                // what the company handed them (owner, 31 October 2026: "every employee sees his assets")
-                _MenuRow(icon: CupertinoIcons.cube_box, label: ShellWords.assets, onTap: () => go('/profile/assets')),
-              ],
-              _MenuRow(icon: CupertinoIcons.lock, label: ShellWords.password, onTap: () => go('/profile/password')),
-              _MenuRow(icon: CupertinoIcons.device_phone_portrait, label: ShellWords.devices, onTap: () => go('/profile/sessions')),
-              if (me.employeeId != null) _MenuRow(icon: CupertinoIcons.clock, label: ShellWords.hiring, onTap: () => go('/profile/interview-hours')),
-              // their people's KPI scorecards to score and sign (owner, 31 October 2026), as the website offers Team KPIs
-              if (me.scoresTeam) _MenuRow(icon: CupertinoIcons.person_2, label: KpiWords.teamTitle, onTap: () => go('/dashboard/performance/team')),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                    if (me.employeeId != null) ...[
+                      _MenuRow(icon: CupertinoIcons.person, label: ShellWords.viewProfile, onTap: () => go('/profile')),
+                      _MenuRow(icon: CupertinoIcons.person_crop_square, label: ShellWords.changePhoto, onTap: () => go('/profile/photo')),
+                      // what the company handed them (owner, 31 October 2026: "every employee sees his assets")
+                      _MenuRow(icon: CupertinoIcons.cube_box, label: ShellWords.assets, onTap: () => go('/profile/assets')),
+                    ],
+                    _MenuRow(icon: CupertinoIcons.lock, label: ShellWords.password, onTap: () => go('/profile/password')),
+                    _MenuRow(icon: CupertinoIcons.device_phone_portrait, label: ShellWords.devices, onTap: () => go('/profile/sessions')),
+                    if (me.employeeId != null) _MenuRow(icon: CupertinoIcons.clock, label: ShellWords.hiring, onTap: () => go('/profile/interview-hours')),
+                    // their people's KPI scorecards to score and sign (owner, 31 October 2026), as the website offers Team KPIs
+                    if (me.scoresTeam) _MenuRow(icon: CupertinoIcons.person_2, label: KpiWords.teamTitle, onTap: () => go('/dashboard/performance/team')),
+                    ],
+                  ),
+                ),
+              ),
               Divider(color: p.line),
               _MenuRow(
                 icon: CupertinoIcons.square_arrow_left,
