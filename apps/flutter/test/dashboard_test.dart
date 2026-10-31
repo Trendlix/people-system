@@ -108,6 +108,27 @@ void main() {
     expect(timer.style?.color, Palette.light.bandColour(RateBand.low, onInverse: true));
   });
 
+  testWidgets('says this week’s hours as the attendance rate counts them (owner, 31 October 2026)', (tester) async {
+    people.on(
+      'GET /api/attendance/me',
+      (req) => json({
+        'month': req.url.queryParameters['month'],
+        'person': {'hoursADay': 9, 'figures': <String, Object>{}, 'days': <Object>[]},
+        'rates': {
+          'month': '2026-10',
+          'monthToDate': {'from': '2026-10-01', 'to': '2026-10-31', 'attendedDays': 20, 'expectedDays': 20, 'dueHours': 180, 'workedHours': 169.8, 'rate': 169.8 / 180},
+          'weeks': [
+            {'from': '2026-10-25', 'to': '2026-10-31', 'attendedDays': 5, 'expectedDays': 5, 'dueHours': 45, 'workedHours': 34.8, 'rate': 34.8 / 45, 'current': true},
+          ],
+        },
+      }),
+    );
+    await open(tester, people);
+    await tester.scrollUntilVisible(find.text(DashboardWords.hoursThisWeek), 300, scrollable: find.byType(Scrollable).first);
+    expect(find.text('34.8 hrs'), findsOneWidget);
+    expect(find.text(DashboardWords.ofDue(77, '45')), findsOneWidget);
+  });
+
   testWidgets('offers official duty among the quick actions, in place of a correction', (tester) async {
     await open(tester, people);
     // owner, 31 October 2026: "replace correction with OD in the homepage for the requests section"

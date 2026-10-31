@@ -453,7 +453,9 @@ void main() {
       expect(AttendanceWords.weekRange('2026-10-25', '2026-10-31'), '25–31 Oct');
       expect(AttendanceWords.weekRange('2026-10-31', '2026-10-31'), '31 Oct');
       expect(AttendanceWords.percent(2 / 3), '67%');
-      expect(AttendanceWords.daysOf(0, 0), 'No working day yet');
+      expect(AttendanceWords.hoursOf(0, 0), 'No hours due yet');
+      expect(AttendanceWords.hoursOf(34.8, 45, soFar: true), '34:48 of 45:00 hours so far');
+      expect(AttendanceWords.weekRange('2026-09-27', '2026-10-03'), '27 Sep–3 Oct');
     });
 
     test('colours a share by the whole percent shown: under 80 red, 80 to 90 yellow, over 90 green', () {

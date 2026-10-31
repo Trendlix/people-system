@@ -7,9 +7,9 @@ import '../../theme/tokens.dart';
 import 'attendance_words.dart';
 
 /// The attendance rate through the month (owner, 31 October 2026: "show the weekly attendance percentage and monthly
-/// percentage ongoing through the month"), People's (days attended ÷ working days expected, as HR's attendance history
-/// counts it): the month so far large, this week beside it, and every week of the month begun as a chip, each in the
-/// owner's colours (under 80% red, 80 to 90 yellow, over 90 green).
+/// percentage ongoing through the month"), People's: the hours worked against the hours due, as "Hours this week" and the
+/// payroll measure it ("there is a missmatch in the work percentage"): the month so far large, this week beside it, and
+/// every week of the month begun as a chip, each in the owner's colours (under 80% red, 80 to 90 yellow, over 90 green).
 class RateCard extends StatelessWidget {
   const RateCard({super.key, required this.rates});
 
@@ -21,7 +21,7 @@ class RateCard extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     final month = rates.monthToDate;
     final week = rates.thisWeek;
-    final weeks = rates.weeks.where((w) => w.expectedDays > 0 || w.current).toList();
+    final weeks = rates.weeks.where((w) => w.dueHours > 0 || w.current).toList();
     Color? colour(double? rate) => switch (rateBandOf(rate)) {
       final b? => p.bandColour(b),
       null => null,
@@ -43,7 +43,7 @@ class RateCard extends StatelessWidget {
                     children: [
                       Text(week != null ? AttendanceWords.thisMonth : monthNameOfRate(month), style: text.bodySmall),
                       Text(AttendanceWords.percent(month.rate), style: figure?.copyWith(color: colour(month.rate))),
-                      Text(AttendanceWords.daysOf(month.attendedDays, month.expectedDays, soFar: week != null), style: text.bodySmall),
+                      Text(AttendanceWords.hoursOf(month.workedHours, month.dueHours, soFar: week != null), style: text.bodySmall),
                     ],
                   ),
                 ),

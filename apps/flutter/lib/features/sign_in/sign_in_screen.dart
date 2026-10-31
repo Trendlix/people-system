@@ -6,6 +6,7 @@ import '../../api/people_client.dart';
 import '../../auth/auth_controller.dart';
 import '../../theme/parts.dart';
 import '../../theme/tokens.dart';
+import 'forgot_password.dart';
 
 /// Sign-in's words, in one place (ready for Arabic).
 abstract final class SignInWords {
@@ -174,8 +175,16 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                               ),
                             ),
                           ),
-                          if (_error != null) ...[const SizedBox(height: 12), Notice(text: _error!, ok: false)],
-                          const SizedBox(height: 18),
+                          // forgot password (owner, 31 October 2026: "add forget password to the app")
+                          Align(
+                            alignment: AlignmentDirectional.centerEnd,
+                            child: TextButton(
+                              onPressed: _busy ? null : () => showForgotPassword(context, email: _email.text),
+                              child: const Text(ForgotWords.link),
+                            ),
+                          ),
+                          if (_error != null) ...[const SizedBox(height: 4), Notice(text: _error!, ok: false)],
+                          const SizedBox(height: 12),
                           SizedBox(height: Tokens.buttonHeight, child: _signInButton()),
                         ],
                       ),

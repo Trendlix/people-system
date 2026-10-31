@@ -5,6 +5,7 @@ import 'package:people/app.dart';
 import 'package:people/auth/session_store.dart';
 import 'package:people/features/today/check_in_words.dart';
 import 'package:people/shell/shell_words.dart';
+import 'package:people/features/sign_in/forgot_password.dart';
 import 'package:people/features/sign_in/sign_in_screen.dart';
 import 'package:people/providers.dart';
 
@@ -51,6 +52,42 @@ void main() {
     await tester.tap(find.text(SignInWords.signIn));
     await tester.pumpAndSettle();
     expect(find.text(CheckInWords.checkInForWork), findsOneWidget);
+  });
+
+  // owner, 31 October 2026: "add forget password to the app"
+  testWidgets('sends a link to set a new password, with the email typed, and says People’s answer', (tester) async {
+    const answer = 'If that email has an account, a link to set a new password is on its way. It works for 7 days.';
+    people.on('POST /api/auth/forgot-password', (req) => json({'message': answer}));
+    await open(tester, people, MemorySessionStore());
+    await tester.enterText(find.widgetWithText(TextField, SignInWords.email), 'h.test@example.test');
+    await tester.tap(find.text(ForgotWords.link));
+    await tester.pumpAndSettle();
+    expect(find.text(ForgotWords.intro), findsOneWidget);
+    final sheetField = find.descendant(of: find.byType(ForgotPasswordForm), matching: find.byType(TextField));
+    expect(tester.widget<TextField>(sheetField).controller?.text, 'h.test@example.test');
+    await tester.tap(find.text(ForgotWords.send));
+    await tester.pumpAndSettle();
+    expect(people.bodyOf('POST /api/auth/forgot-password'), {'email': 'h.test@example.test'});
+    expect(find.text(answer), findsOneWidget);
+    expect(find.text(ForgotWords.spam), findsOneWidget);
+    await tester.tap(find.text(ForgotWords.done));
+    await tester.pumpAndSettle();
+    expect(find.text(SignInWords.signIn), findsOneWidget);
+  });
+
+  testWidgets('asks for the email, and says People’s refusal in its words', (tester) async {
+    people.on('POST /api/auth/forgot-password', (req) => json({'message': 'Too many tries. Please try again in an hour.'}, 429));
+    await open(tester, people, MemorySessionStore());
+    await tester.tap(find.text(ForgotWords.link));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(ForgotWords.send));
+    await tester.pump();
+    expect(find.text(ForgotWords.needEmail), findsOneWidget);
+    await tester.enterText(find.descendant(of: find.byType(ForgotPasswordForm), matching: find.byType(TextField)), 'h.test@example.test');
+    await tester.tap(find.text(ForgotWords.send));
+    await tester.pumpAndSettle();
+    expect(find.text('Too many tries. Please try again in an hour.'), findsOneWidget);
+    expect(find.text(ForgotWords.send), findsOneWidget);
   });
 
   testWidgets('offers the fingerprint after the password, and asks for it at once next time', (tester) async {

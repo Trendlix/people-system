@@ -456,15 +456,21 @@ class StatTile extends StatelessWidget {
         children: [
           Text(label, style: text.bodySmall),
           const SizedBox(height: 6),
-          Text.rich(
-            TextSpan(
-              children: [
-                TextSpan(text: value, style: text.headlineMedium),
-                if (unit != null) TextSpan(text: ' $unit', style: text.bodySmall),
-              ],
+          // never taller than the tile: the figure scales down and the note keeps to one line (a narrow phone, large text)
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: AlignmentDirectional.centerStart,
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(text: value, style: text.headlineMedium),
+                  if (unit != null) TextSpan(text: ' $unit', style: text.bodySmall),
+                ],
+              ),
+              maxLines: 1,
             ),
           ),
-          if (note != null) ...[const SizedBox(height: 10), Text(note!, style: text.bodySmall)],
+          if (note != null) ...[const SizedBox(height: 10), Text(note!, style: text.bodySmall, maxLines: 1, overflow: TextOverflow.ellipsis)],
         ],
       ),
     );

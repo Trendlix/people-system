@@ -310,9 +310,19 @@ class MonthCorrection {
   bool get open => status == 'with_manager' || status == 'with_hr';
 }
 
-/// Days attended of the working days expected over some days (People's attendance rate; owner, 31 October 2026).
+/// The attendance rate over some days, as People's payroll measures attendance (owner, 31 October 2026: "there is a
+/// missmatch in the work percentage"): the hours worked (and permission) ÷ the hours due.
 class RatePart {
-  const RatePart({required this.from, required this.to, required this.attendedDays, required this.expectedDays, this.rate, this.current = false});
+  const RatePart({
+    required this.from,
+    required this.to,
+    required this.attendedDays,
+    required this.expectedDays,
+    this.dueHours = 0,
+    this.workedHours = 0,
+    this.rate,
+    this.current = false,
+  });
 
   static RatePart? of(Object? json) {
     if (json is! Map) return null;
@@ -324,6 +334,8 @@ class RatePart {
       to: to,
       attendedDays: _number(json['attendedDays'])?.toInt() ?? 0,
       expectedDays: _number(json['expectedDays'])?.toInt() ?? 0,
+      dueHours: _number(json['dueHours']) ?? 0,
+      workedHours: _number(json['workedHours']) ?? 0,
       rate: _number(json['rate']),
       current: json['current'] == true,
     );
@@ -334,7 +346,11 @@ class RatePart {
   final int attendedDays;
   final int expectedDays;
 
-  /// Attended ÷ expected (0.95); null with no working day expected yet.
+  /// The shift's hours on the working days expected of them, and the hours worked (and permission), so far.
+  final double dueHours;
+  final double workedHours;
+
+  /// Worked ÷ due (0.95; above 1 with extra time); null with no hours due yet.
   final double? rate;
 
   /// The week today is in.

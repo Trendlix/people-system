@@ -8,6 +8,7 @@ import '../../models/attendance_month.dart';
 import '../../models/holiday.dart';
 import '../../models/leave.dart';
 import '../../models/me.dart';
+import '../../models/my_attendance.dart' show MonthRates;
 import '../../shell/app_shell.dart';
 import '../../theme/parts.dart';
 import '../../theme/tokens.dart';
@@ -54,6 +55,7 @@ abstract final class DashboardWords {
   static String openOf(int n) => n == 1 ? '1 open request' : '$n open requests';
   static String ofThisYear(String n) => 'of $n this year';
   static String cycleOf(String month) => '$month cycle';
+  static String ofDue(int percent, String due) => '$percent% of $due';
 }
 
 class DashboardScreen extends ConsumerWidget {
@@ -217,6 +219,10 @@ class _Glance extends ConsumerWidget {
     final counted = months.every((m) => m == null) ? null : _hoursOn(months, week, today).values.fold<double>(0, (a, b) => a + b);
     final working = ref.watch(ownProfileProvider).value?.workingDays.length ?? 5;
     final target = hoursADay == null ? null : hoursADay * working;
+    // this week as People counts it, the attendance rate's (owner, 31 October 2026: "there is a missmatch in the work
+    // percentage"): the hours worked against the hours due so far; without it (an API from before), as counted here
+    final thisMonth = ref.watch(attendanceMonthProvider(today.substring(0, 7))).value;
+    final rated = thisMonth == null ? null : MonthRates.of(thisMonth.raw['rates'])?.thisWeek;
     final open = ref.watch(openRequestsProvider).value;
     final holidays = ref.watch(holidaysProvider(year)).value;
     final next = holidays == null ? null : upcomingHolidays(holidays, today, limit: 1).firstOrNull;
@@ -232,9 +238,11 @@ class _Glance extends ConsumerWidget {
       StatTile(
         width: 190,
         label: DashboardWords.hoursThisWeek,
-        value: counted == null ? '—' : oneDecimal(counted),
-        unit: counted == null ? null : 'hrs',
-        note: counted == null || target == null || target == 0 ? null : '${(counted / target * 100).round()}% of ${oneDecimal(target)}',
+        value: rated != null ? oneDecimal(rated.workedHours) : (counted == null ? '—' : oneDecimal(counted)),
+        unit: rated != null || counted != null ? 'hrs' : null,
+        note: rated != null
+            ? (rated.rate == null ? null : DashboardWords.ofDue((rated.rate! * 100).round(), oneDecimal(rated.dueHours)))
+            : (counted == null || target == null || target == 0 ? null : '${(counted / target * 100).round()}% of ${oneDecimal(target)}'),
         onTap: () => context.go('/attendance'),
       ),
       StatTile(

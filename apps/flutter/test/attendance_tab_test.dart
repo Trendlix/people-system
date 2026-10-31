@@ -87,11 +87,11 @@ void main() {
         ...octoberJson(),
         'rates': {
           'month': '2026-10',
-          'monthToDate': {'from': '2026-10-01', 'to': '2026-10-30', 'attendedDays': 19, 'expectedDays': 20, 'rate': 0.95},
+          'monthToDate': {'from': '2026-10-01', 'to': '2026-10-30', 'attendedDays': 19, 'expectedDays': 20, 'dueHours': 180, 'workedHours': 171, 'rate': 0.95},
           'weeks': [
-            {'from': '2026-10-01', 'to': '2026-10-03', 'attendedDays': 1, 'expectedDays': 1, 'rate': 1, 'current': false},
-            {'from': '2026-10-18', 'to': '2026-10-24', 'attendedDays': 4, 'expectedDays': 5, 'rate': 0.8, 'current': false},
-            {'from': '2026-10-25', 'to': '2026-10-31', 'attendedDays': 2, 'expectedDays': 3, 'rate': 2 / 3, 'current': true},
+            {'from': '2026-09-27', 'to': '2026-10-03', 'attendedDays': 1, 'expectedDays': 1, 'dueHours': 9, 'workedHours': 9, 'rate': 1, 'current': false},
+            {'from': '2026-10-18', 'to': '2026-10-24', 'attendedDays': 4, 'expectedDays': 5, 'dueHours': 45, 'workedHours': 36, 'rate': 0.8, 'current': false},
+            {'from': '2026-10-25', 'to': '2026-10-31', 'attendedDays': 2, 'expectedDays': 3, 'dueHours': 27, 'workedHours': 18, 'rate': 2 / 3, 'current': true},
           ],
         },
       });
@@ -112,7 +112,8 @@ void main() {
 
     await reach(tester, find.text('95%'));
     expect(find.text(AttendanceWords.attendanceRate.toUpperCase()), findsOneWidget);
-    expect(find.text('19 of 20 working days so far'), findsOneWidget);
+    expect(find.text('171:00 of 180:00 hours so far'), findsOneWidget);
+    expect(find.bySemanticsLabel('27 Sep–3 Oct: 100%'), findsOneWidget);
     expect(find.text('67%'), findsOneWidget);
     expect(find.bySemanticsLabel('This week, 25–31 Oct: 67%'), findsOneWidget);
     expect(find.bySemanticsLabel('18–24 Oct: 80%'), findsOneWidget);

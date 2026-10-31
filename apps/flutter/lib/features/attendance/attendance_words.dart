@@ -110,12 +110,17 @@ abstract final class AttendanceWords {
   static const thisWeek = 'This week';
   static const weekByWeek = 'Week by week';
   static String percent(double? rate) => rate == null ? '—' : '${(rate * 100).round()}%';
-  static String daysOf(int attended, int expected, {bool soFar = false}) =>
-      expected == 0 ? 'No working day yet' : '$attended of $expected working ${expected == 1 ? 'day' : 'days'}${soFar ? ' so far' : ''}';
+  /// "34:48 of 45:00 hours so far": the hours worked against the hours due (as "Hours this week" and the payroll).
+  static String hoursOf(double worked, double due, {bool soFar = false}) =>
+      due <= 0 ? 'No hours due yet' : '${hoursText(worked)} of ${hoursText(due)} hours${soFar ? ' so far' : ''}';
+
+  /// "25–31 Oct"; "27 Sep–3 Oct" across two months.
   static String weekRange(String from, String to) {
     final a = int.parse(from.substring(8, 10));
     final b = int.parse(to.substring(8, 10));
+    final fromMonth = monthsShort[int.parse(from.substring(5, 7)) - 1];
     final month = monthsShort[int.parse(to.substring(5, 7)) - 1];
+    if (fromMonth != month) return '$a $fromMonth–$b $month';
     return a == b ? '$a $month' : '$a–$b $month';
   }
 
