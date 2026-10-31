@@ -98,10 +98,12 @@ export function FigureCards({ tiles, label }: { tiles: (Omit<FigureTile, 'tone'>
       className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-[repeat(var(--cols),minmax(0,1fr))]"
     >
       {tiles.map((t) => (
-        <div key={t.key} className="card flex min-h-[112px] flex-col p-[15px]">
+        // no description under the number (owner, 31 October 2026: "remove the description below the number"): on hover,
+        // and for a screen reader
+        <div key={t.key} className="card flex flex-col p-[15px]" title={t.note ?? undefined}>
           <dt className="text-xs text-muted">{t.label}</dt>
           <dd className={`mt-2 text-[1.6rem] leading-tight font-normal tracking-[-0.04em] tabular-nums ${t.tone ? TONE[t.tone] : ''}`}>{t.value}</dd>
-          {t.note && <dd className="mt-auto pt-2 text-[11px] leading-snug text-muted">{t.note}</dd>}
+          {t.note && <dd className="sr-only">{t.note}</dd>}
         </div>
       ))}
     </dl>

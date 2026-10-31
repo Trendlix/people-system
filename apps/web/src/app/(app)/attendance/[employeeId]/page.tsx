@@ -19,6 +19,8 @@ import { DaysTable, ExemptionNote, FigureTiles, MonthNav, SourcesNote } from '..
 import { joinShown } from '@/lib/hidden';
 import { historyHref } from '../../employees/[id]/attendance/history';
 import { recordsHref } from '@/lib/attendance-records';
+import type { AttendanceRates } from '@trendlix/shared';
+import { rateTiles } from '../../my-attendance/my-days';
 
 // A person's month (owner's brief, 19 October 2026: Daily Attendance, "A person's month also as a page"): their figures
 // and every day kept, from their check-ins on the system (owner, 19 October 2026: "Check-in through the system (phone or
@@ -40,7 +42,7 @@ async function PersonMonth({ params, searchParams }: { params: PageProps<'/atten
   const loaded = await loadPerson(employeeId, month);
   if (loaded.kind === 'unavailable') notFound();
   if (loaded.kind !== 'ok') return <Empty>{notLoaded(loaded, 'attendance')}</Empty>;
-  const view = loaded.value as typeof loaded.value & MonthCorrectionsPart & { punches?: PunchRow[] };
+  const view = loaded.value as typeof loaded.value & MonthCorrectionsPart & { punches?: PunchRow[]; rates?: AttendanceRates | null };
   const { person: p, sources, run } = view;
   const today = todayInCairo();
   // attendance corrections (19 October 2026): HR corrects a day directly; anyone here sees a correction being decided
@@ -82,7 +84,7 @@ async function PersonMonth({ params, searchParams }: { params: PageProps<'/atten
         </div>
       ) : (
         <>
-          <FigureTiles label={`${p.employee.fullNameEn} in ${monthName(month)}`} tiles={figureTiles(p.figures, p)} />
+          <FigureTiles label={`${p.employee.fullNameEn} in ${monthName(month)}`} tiles={[...rateTiles(view.rates), ...figureTiles(p.figures, p)]} />
           <section aria-labelledby="days-heading" className="space-y-3">
             <h2 id="days-heading" className="text-lg font-semibold">
               Days

@@ -73,19 +73,25 @@ export function MonthNav({ month, hrefFor }: { month: string; hrefFor: (month: s
 }
 
 /** A month's figures as tiles. */
-export function FigureTiles({ tiles, label }: { tiles: FigureTile[]; label: string }) {
+/**
+ * The figures: what each counts and the number, no description under it (owner, 31 October 2026: "remove the
+ * description below the number"): it shows on hover, and a screen reader says it.
+ */
+export function FigureTiles({ tiles, label }: { tiles: (Omit<FigureTile, 'tone'> & { tone: 'danger' | 'warn' | 'ok' | null })[]; label: string }) {
   return (
     <dl aria-label={label} className="grid grid-cols-2 gap-3 sm:grid-cols-4 xl:grid-cols-7">
       {tiles.map((t) => (
-        <div key={t.key} className="card px-4 py-3">
+        <div key={t.key} className="card px-4 py-3" title={t.note ?? undefined}>
           <dt className="text-xs text-muted">{t.label}</dt>
-          <dd className={`mt-1 text-lg font-semibold tabular-nums ${t.tone ? TONE[t.tone] : ''}`}>{t.value}</dd>
-          {t.note && <dd className="text-xs text-muted">{t.note}</dd>}
+          <dd className={`mt-1 text-lg font-semibold tabular-nums ${t.tone ? FIGURE_TONE[t.tone] : ''}`}>{t.value}</dd>
+          {t.note && <dd className="sr-only">{t.note}</dd>}
         </div>
       ))}
     </dl>
   );
 }
+
+const FIGURE_TONE = { danger: 'text-danger', warn: 'text-warn', ok: 'text-ok' } as const;
 
 const NONE = <span className="text-muted">—</span>;
 

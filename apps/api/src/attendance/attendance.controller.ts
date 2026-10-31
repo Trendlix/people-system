@@ -90,7 +90,9 @@ export class AttendanceController {
   /** One person's month (?month=). */
   @Get('employees/:employeeId')
   @Header('Cache-Control', 'private, no-store')
-  person(@Param('employeeId', ParseUUIDPipe) employeeId: string, @Query() query: AttendanceMonthQueryDto, @CurrentUser() user: SessionUser) {
-    return this.attendance.person(employeeId, query.month, user);
+  async person(@Param('employeeId', ParseUUIDPipe) employeeId: string, @Query() query: AttendanceMonthQueryDto, @CurrentUser() user: SessionUser) {
+    // their month as the caller may see it (refused here otherwise), with their attendance rate through it (31 October 2026)
+    const view = await this.attendance.person(employeeId, query.month, user);
+    return { ...view, rates: await this.historyOf.ratesOf(employeeId, view.month) };
   }
 }

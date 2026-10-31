@@ -370,7 +370,10 @@ describe('The Attendance section (e2e)', () => {
       // a Super Admin without HR, the CEO or Finance (owner, 31 October 2026: the day's records "as a super admin"):
       // anyone's month, Daily Attendance too; the Summary stays HR's, the CEO's and Finance's
       const superAdmin = await signIn(app, await createUser(prisma, ['super_admin']));
-      await api().get(`/api/attendance/employees/${ids.rami}?month=${MONTH}`).set('Cookie', superAdmin).expect(200);
+      // with their attendance rate through the month (owner, 31 October 2026: "where is the attendance score up to date?")
+      const seen = (await api().get(`/api/attendance/employees/${ids.rami}?month=${MONTH}`).set('Cookie', superAdmin).expect(200)).body as { rates: { month: string; monthToDate: { dueHours: number } } };
+      expect(seen.rates.month).toBe(MONTH);
+      expect(typeof seen.rates.monthToDate.dueHours).toBe('number');
       await api().get(`/api/attendance?month=${MONTH}`).set('Cookie', superAdmin).expect(200);
       await api().get(`/api/attendance/summary?month=${MONTH}`).set('Cookie', superAdmin).expect(403);
     });

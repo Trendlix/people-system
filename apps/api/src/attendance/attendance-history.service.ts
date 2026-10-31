@@ -184,12 +184,19 @@ export class AttendanceHistoryService {
    */
   async myRates(user: SessionUser, month: string): Promise<AttendanceRates | null> {
     const me = await this.confidential.selfId(user);
-    if (!me) return null;
+    return me ? this.ratesOf(me, month) : null;
+  }
+
+  /**
+   * A person's attendance rate through a month (owner, 31 October 2026, on HR's view of a person's month: "where is the
+   * attendance score up to date?"), for whoever may see their month (the caller checks: AttendanceService.person).
+   */
+  async ratesOf(employeeId: string, month: string): Promise<AttendanceRates> {
     const today = todayInCairo();
     // a month still to come has no day yet
     if (`${month}-01` > today) return attendanceRates([], month, today);
     // from the Sunday its first week starts on, the month before's days of that week with it
-    const built = await this.collect(me, { period: 'custom', from: weekStartOf(firstDay(month)), to: lastDay(month) }, false);
+    const built = await this.collect(employeeId, { period: 'custom', from: weekStartOf(firstDay(month)), to: lastDay(month) }, false);
     return attendanceRates(built.days, month, today);
   }
 
