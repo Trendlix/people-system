@@ -1,4 +1,12 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  AUDIT_MODULE_LABELS,
+  AUDIT_MODULES,
+  AUDIT_RESULT_LABELS,
+  AUDIT_RESULTS,
+  SIGN_IN_OUTCOME_LABELS,
+  SIGN_IN_OUTCOMES,
+} from '@trendlix/shared';
 import type { SessionUser } from '../auth/session-user.js';
 import { shownDate, todayInCairo } from '../common/date-only.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
@@ -7,9 +15,10 @@ import { monthName } from '../payroll/months.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AuditService } from './audit.service.js';
 import { ACTION_LABELS, actionLabel, ENTITY_LABELS, entityLabel } from './audit-labels.js';
-import { PAGE_SIZE, type AuditQueryDto } from './audit-log.dto.js';
+import { PAGE_SIZE, type AuditQueryDto, type SignInsQueryDto } from './audit-log.dto.js';
 import { auditWhere, type AuditFilters, type People } from './audit-query.js';
-import { auditLogFileName, auditLogWorkbook, EXPORT_LIMIT, type FilterLine } from './audit-workbook.js';
+import { METHOD_SQL, OUTCOME_SQL, SIGN_INS_FROM, signInsWhere, signInView, type SignInRow, type SignInView } from './audit-sign-ins.js';
+import { auditLogFileName, auditLogWorkbook, EXPORT_LIMIT, signInsFileName, signInsWorkbook, type FilterLine } from './audit-workbook.js';
 import {
   codeIn,
   entryView,
@@ -45,12 +54,27 @@ export interface AuditPage {
   next: string | null;
 }
 
-/** What the page's filters offer: who, the actions, the kinds of record and the people, each with its words. */
+/** A page of the Sign-ins tab, as GET /audit/sign-ins answers it (31 October 2026). */
+export interface SignInsPage {
+  entries: SignInView[];
+  total: number;
+  page: number;
+  pageSize: number;
+  pages: number;
+}
+
+/**
+ * What the page's filters offer: who, the actions, the kinds of record and the people, each with its words; and (31
+ * October 2026) the modules, the results and the sign-ins' outcomes.
+ */
 export interface AuditOptions {
   users: (AuditPerson & { active: boolean })[];
   actions: { value: string; label: string }[];
   entityTypes: { value: string; label: string }[];
   employees: AuditEmployee[];
+  modules: { value: string; label: string }[];
+  results: { value: string; label: string }[];
+  outcomes: { value: string; label: string }[];
 }
 
 /** Ids per query: Postgres takes at most 65,535 bound values in one, and an export names up to tens of thousands. */
@@ -141,7 +165,70 @@ export class AuditLogService {
         .map(([value, label]) => ({ value, label }))
         .sort(byLabel),
       employees: employees.filter((e) => !out.has(e.id)),
+      modules: AUDIT_MODULES.map((value) => ({ value, label: AUDIT_MODULE_LABELS[value] })),
+      results: AUDIT_RESULTS.map((value) => ({ value, label: AUDIT_RESULT_LABELS[value] })),
+      outcomes: SIGN_IN_OUTCOMES.map((value) => ({ value, label: SIGN_IN_OUTCOME_LABELS[value] })),
     };
+  }
+
+  // ---------- sign-ins ----------
+
+  /** A page of the sign-ins asked for, newest first (owner, 31 October 2026: "Every sign-in in its own tab"). */
+  async signIns(query: SignInsQueryDto): Promise<SignInsPage> {
+    const where = this.signInsWhere(query);
+    const pageSize = query.limit ?? PAGE_SIZE;
+    const page = query.page ?? 1;
+    const [rows, total] = await Promise.all([this.signInRows(where, pageSize, (page - 1) * pageSize), this.signInCount(where)]);
+    return { entries: await this.signInViews(rows), total, page, pageSize, pages: Math.max(1, Math.ceil(total / pageSize)) };
+  }
+
+  /** The same sign-ins as an Excel workbook, newest first, up to EXPORT_LIMIT; the download is written to the log. */
+  async signInsWorkbook(query: SignInsQueryDto, user: SessionUser): Promise<{ fileName: string; data: Buffer }> {
+    const where = this.signInsWhere(query);
+    const [rows, total] = await Promise.all([this.signInRows(where, EXPORT_LIMIT, 0), this.signInCount(where)]);
+    const entries = await this.signInViews(rows);
+    const filters: FilterLine[] = [];
+    if (query.from) filters.push({ label: 'From', value: shownDate(query.from) });
+    if (query.to) filters.push({ label: 'To', value: shownDate(query.to) });
+    if (query.outcome) filters.push({ label: 'Outcome', value: SIGN_IN_OUTCOME_LABELS[query.outcome] });
+    if (query.q) filters.push({ label: 'Search', value: query.q });
+    const data = await signInsWorkbook(entries, total, filters, shownMoment(new Date()));
+    await this.audit.record({
+      userId: user.id,
+      action: 'sign_ins_file',
+      entityType: 'audit_log',
+      diff: { ...(query.from && { from: query.from }), ...(query.to && { to: query.to }), ...(query.outcome && { outcome: query.outcome }), ...(query.q && { q: query.q }), entries: entries.length, total },
+    });
+    return { fileName: signInsFileName(todayInCairo()), data };
+  }
+
+  private signInsWhere(query: SignInsQueryDto): Prisma.Sql {
+    if (query.from && query.to && query.from > query.to) throw new BadRequestException('Choose a first day on or before the last day.');
+    return signInsWhere({ from: query.from, to: query.to, outcome: query.outcome, q: query.q });
+  }
+
+  private signInRows(where: Prisma.Sql, limit: number, offset: number): Promise<SignInRow[]> {
+    // an entry from before the address was kept: its session's address and browser, when it names one
+    return this.prisma.$queryRaw<SignInRow[]>`
+      SELECT a.id, a.at, a.action, COALESCE(a.diff->>'email', u.email) AS email, u.id AS "accountId",
+        ${OUTCOME_SQL} AS outcome, ${METHOD_SQL} AS method, a.diff->>'kind' AS kind,
+        COALESCE(a.ip, s.ip) AS ip, a.ip_source AS "ipSource", a.country, a.region, a.city,
+        COALESCE(a.user_agent, s.user_agent) AS "userAgent", a.latitude::float8 AS latitude, a.longitude::float8 AS longitude,
+        a.accuracy_metres AS "accuracyMetres", a.location_mock AS "locationMock"
+      ${SIGN_INS_FROM}
+      ${where}
+      ORDER BY a.id DESC
+      LIMIT ${Prisma.raw(String(Math.trunc(limit)))} OFFSET ${Prisma.raw(String(Math.trunc(offset)))}`;
+  }
+
+  private async signInCount(where: Prisma.Sql): Promise<number> {
+    const [{ n }] = await this.prisma.$queryRaw<{ n: number }[]>`SELECT count(*)::int AS n ${SIGN_INS_FROM} ${where}`;
+    return Number(n);
+  }
+
+  private async signInViews(rows: SignInRow[]): Promise<SignInView[]> {
+    const people = await this.people(rows.map((r) => r.accountId).filter((id): id is string => !!id));
+    return rows.map((r) => signInView(r, people));
   }
 
   // ---------- the query ----------
@@ -174,7 +261,9 @@ export class AuditLogService {
     // newest first by when it was written: the id follows the order of writing (audit_log.at is now() then too)
     return this.prisma.$queryRaw<AuditRow[]>`
       SELECT a.id, a.user_id AS "userId", a.on_behalf_by AS "onBehalfById", a.via, a.action, a.entity_type AS "entityType",
-        a.entity_id AS "entityId", a.diff, a.at
+        a.entity_id AS "entityId", a.diff, a.at, a.ip, a.ip_source AS "ipSource", a.country, a.region, a.city,
+        a.user_agent AS "userAgent", a.latitude::float8 AS latitude, a.longitude::float8 AS longitude,
+        a.accuracy_metres AS "accuracyMetres", a.location_mock AS "locationMock"
       FROM audit_log a
       ${where}
       ORDER BY a.id DESC
@@ -298,6 +387,8 @@ export class AuditLogService {
       const e = await this.prisma.employee.findUnique({ where: { id: query.employeeId }, select: { employeeCode: true, fullNameEn: true } });
       lines.push({ label: 'Employee', value: e ? `${e.fullNameEn} (${e.employeeCode})` : query.employeeId });
     }
+    if (query.module) lines.push({ label: 'Module', value: AUDIT_MODULE_LABELS[query.module] });
+    if (query.result) lines.push({ label: 'Result', value: AUDIT_RESULT_LABELS[query.result] });
     if (query.q) lines.push({ label: 'Search', value: query.q });
     if (query.before) lines.push({ label: 'Older than entry', value: query.before });
     return lines;
@@ -411,5 +502,7 @@ function recordLookups(p: PrismaService): Readonly<Record<string, Lookup>> {
 function filtersOf(q: AuditQueryDto): AuditFilters {
   const out: AuditFilters = {};
   for (const key of ['from', 'to', 'userId', 'action', 'entityType', 'entityId', 'q', 'before'] as const) if (q[key]) out[key] = q[key];
+  if (q.module) out.module = q.module;
+  if (q.result) out.result = q.result;
   return out;
 }

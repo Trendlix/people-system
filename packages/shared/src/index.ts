@@ -679,3 +679,4 @@ export * from './marketing-agencies.js';
 export * from './career.js';
 export * from './hiring-steps.js';
 export * from './attendance-records.js';
+export * from './audit-log.js';

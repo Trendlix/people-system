@@ -6,8 +6,9 @@ import { apiExportPathOf } from '../audit';
 
 // Serves the Audit Log as an Excel workbook (owner, 19 October 2026: "an Audit Log page showing who changed what and
 // when") from the API under the web domain, with the caller's session: the browser never talks to the API. The filters
-// are the page's (?from=&to=&user=&action=&type=&record=&employee=&q=): the newest 10,000 entries that match. The API
-// checks the role (the Super Admin and the CEO) and records each download. Links here are plain links, never prefetched.
+// are the page's (?from=&to=&user=&action=&type=&record=&employee=&q=&module=&result=): the newest 10,000 entries that
+// match; the Sign-ins tab's (?tab=sign-ins&from=&to=&outcome=&q=, 31 October 2026) its sign-ins. The API checks the role
+// (the Super Admin and the CEO) and records each download. Links here are plain links, never prefetched.
 
 export async function GET(req: Request) {
   let res: Response;
@@ -22,5 +23,5 @@ export async function GET(req: Request) {
   if (res.status === 400) return text(await apiReason(res, 'Check the filters, then export again.'), 400);
   if (res.status === 404) return text(await apiReason(res, 'Not available yet: the server does not have the audit log yet.'), 404);
   if (!res.ok) return text('The audit log could not be exported. Please try again.', 502);
-  return passSheetOn(res, 'Audit log.xlsx') ?? text('The audit log could not be exported. Please try again.', 502);
+  return passSheetOn(res, new URL(req.url).searchParams.get('tab') === 'sign-ins' ? 'Sign-ins.xlsx' : 'Audit log.xlsx') ?? text('The audit log could not be exported. Please try again.', 502);
 }

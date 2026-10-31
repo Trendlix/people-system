@@ -1,3 +1,5 @@
+import { AUDIT_MODULE_LABELS, isAuditModule } from '@trendlix/shared';
+
 // The audit log in words (owner, 19 October 2026: "an Audit Log page showing who changed what and when"): what each
 // kind of record and each action written to audit_log is called on the Audit Log page and in its Excel export. The
 // keys are the entityType and action values the services pass to AuditService.record (grep `entityType:` and `action:`
@@ -132,6 +134,8 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   permission_request: 'Permission request',
   profile_change_request: 'Details change request',
   profile_confirmation: 'Details confirmation',
+  // a new photo the employee sends HR to approve (31 October 2026)
+  profile_photo_request: 'Photo request',
   raise_request: 'Raise request',
   recurring_deduction: 'Recurring deduction',
   reimbursement_claim: 'Reimbursement claim',
@@ -182,6 +186,8 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   // a person's attendance history as Excel (owner, 23 October 2026: "Attendance history on the profile … an Excel export")
   attendance_history_file: 'Downloaded the attendance history',
   audit_log_file: 'Downloaded the audit log',
+  // the Audit Log's Sign-ins as Excel (owner, 31 October 2026)
+  sign_ins_file: 'Downloaded the sign-ins',
   // HR's calibration of a KPI scorecard (owner, 21 October 2026: "Self, manager, HR, sign-off"), each pick changed with its reason
   calibrate: 'Calibrated',
   cancel: 'Cancelled',
@@ -275,6 +281,8 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   // an asset's label printed (21 October 2026)
   label: 'Marked the label printed',
   login_failed: 'Sign-in failed',
+  // the Audit Log's Sign-ins (owner, 31 October 2026): a sign-in refused while the email is locked out
+  login_locked_out: 'Sign-in locked out',
   // a person's attendance records put right by a Super Admin (owner, 31 October 2026: "delete one of them"; "zoho or system")
   attendance_record_remove: 'Removed an attendance record',
   attendance_record_restore: 'Put an attendance record back',
@@ -331,6 +339,9 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   refilled: 'Handled by a refill',
   refresh_attendance: 'Refreshed from attendance',
   reject: 'Rejected',
+  // a change a signed-in person tried and was refused (owner, 31 October 2026: "Also log what someone tried and was
+  // refused (no permission, a locked month, a rule broken)"), on its module, with the address and the answer
+  refused: 'Refused',
   // the email settings' saved password removed, and a test email sent (23 October 2026); never the password
   remove_password: 'Removed the saved password',
   // the Google Maps key removed, every map back on OpenStreetMap (24 October 2026); never the key
@@ -466,7 +477,9 @@ export function humanized(key: string): string {
   return words ? words[0].toUpperCase() + words.slice(1) : key;
 }
 
-export const entityLabel = (entityType: string): string => ENTITY_LABELS[entityType] ?? humanized(entityType);
+/** A kind of record in words; a refused attempt's module (31 October 2026) by the module's name. */
+export const entityLabel = (entityType: string): string =>
+  ENTITY_LABELS[entityType] ?? (isAuditModule(entityType) ? AUDIT_MODULE_LABELS[entityType] : humanized(entityType));
 
 export const actionLabel = (action: string): string => ACTION_LABELS[action] ?? humanized(action);
 

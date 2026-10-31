@@ -1,5 +1,7 @@
 import type { INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
+import { AuditService } from './audit/audit.service.js';
+import { auditRequests } from './audit/audit-requests.js';
 import { PrismaExceptionFilter } from './common/prisma-exception.filter.js';
 import { ExampleRecorder, recordExamplesTo } from './docs/example-recorder.js';
 import { FORM_VALIDATION, FormValidationPipe } from './common/validation.js';
@@ -13,6 +15,9 @@ export function configureApp(app: INestApplication): void {
   // and Twilio's (25 October 2026: "Add Twilio as a choice"): its signature is over the parameters exactly as sent
   app.use(WHATSAPP_TWILIO_ROUTE, twilioWebhookBody);
   app.use(cookieParser());
+  // the audit log (owner, 31 October 2026: "i want a log for all actions taken on the system"): where each request came
+  // from, for the entries it writes ("with location and ip capture"), and the changes a signed-in person was refused
+  app.use(auditRequests(app.get(AuditService)));
   app.useGlobalPipes(new FormValidationPipe(FORM_VALIDATION));
   app.useGlobalFilters(new PrismaExceptionFilter());
   // the API documentation's examples (31 October 2026), recorded only while the end-to-end tests run with DOCS_RECORD

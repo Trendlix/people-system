@@ -1,5 +1,6 @@
 import 'server-only';
 import { API_URL, ApiError, messagesOf } from './api';
+import { originHeaders } from './origin-headers';
 
 // Calls to the API's public addresses (/api/public/...), for the pages people open without signing in: a candidate's
 // job offer, from the link HR sends (owner's request, 15 October 2026). Never sends the session cookie, even when the
@@ -9,6 +10,8 @@ import { API_URL, ApiError, messagesOf } from './api';
 export async function publicFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const headers = new Headers(init.headers);
   if (typeof init.body === 'string') headers.set('content-type', 'application/json');
+  // a form sent (an application, an offer's answer): where the visitor is, signed, for the audit log (31 October 2026)
+  if (init.method && init.method !== 'GET') for (const [name, value] of Object.entries(await originHeaders())) headers.set(name, value);
   try {
     return await fetch(`${API_URL}/api/public${path}`, { ...init, headers, cache: 'no-store' });
   } catch {

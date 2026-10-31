@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation';
 import { sessionKindOf } from '@trendlix/shared';
 import { API_URL, messagesOf } from './api';
 import { clientIp } from './client-ip';
+import { originHeaders } from './origin-headers';
 import { safeNext } from './safe-next';
 import { keepSession } from './session-cookie';
 import { CHOOSE_MODE_PATH } from './session-mode';
@@ -25,7 +26,8 @@ export async function signInThrough(path: '/auth/login' | '/auth/email-code/sign
   try {
     res = await fetch(`${API_URL}/api${path}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      // where the visitor is, signed for the audit log's Sign-ins (owner, 31 October 2026: "with location and ip capture")
+      headers: { 'content-type': 'application/json', ...(await originHeaders()) },
       body: JSON.stringify({ ...body, ...(userAgent && { userAgent }), ...(ip && { ip }) }),
     });
   } catch {

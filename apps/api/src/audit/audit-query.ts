@@ -1,3 +1,4 @@
+import { auditEntityTypesOf, REFUSAL_ACTIONS, type AuditModule, type AuditResult } from '@trendlix/shared';
 import { Prisma } from '../generated/prisma/client.js';
 
 // Which audit_log entries the Audit Log page lists (owner, 19 October 2026: "an Audit Log page showing who changed what
@@ -14,8 +15,12 @@ export interface AuditFilters {
   action?: string;
   entityType?: string;
   entityId?: string;
-  /** Text anywhere in the diff, whatever the case. */
+  /** Text anywhere in the diff, or in the address or the city it came from (31 October 2026), whatever the case. */
   q?: string;
+  /** The part of the system (owner, 31 October 2026: "filter by module, as the website does"): its kinds of record. */
+  module?: AuditModule;
+  /** Done, or refused (owner, 31 October 2026: "a Result column, Succeeded or Refused"). */
+  result?: AuditResult;
   /** Older than this entry (audit_log.id): the next page after it. */
   before?: string;
 }
@@ -95,7 +100,13 @@ export function auditWhere(f: AuditFilters, about?: People | null, hidden?: Peop
   if (f.action) parts.push(Prisma.sql`a.action = ${f.action}`);
   if (f.entityType) parts.push(Prisma.sql`a.entity_type = ${f.entityType}`);
   if (f.entityId) parts.push(Prisma.sql`a.entity_id = ${f.entityId}::uuid`);
-  if (f.q) parts.push(Prisma.sql`a.diff::text ILIKE ${likePattern(f.q)}`);
+  if (f.q) {
+    const like = likePattern(f.q);
+    parts.push(Prisma.sql`(a.diff::text ILIKE ${like} OR a.ip ILIKE ${like} OR a.city ILIKE ${like})`);
+  }
+  if (f.module) parts.push(Prisma.sql`a.entity_type = ANY(${auditEntityTypesOf(f.module)}::text[])`);
+  if (f.result === 'refused') parts.push(Prisma.sql`a.action = ANY(${[...REFUSAL_ACTIONS]}::text[])`);
+  if (f.result === 'succeeded') parts.push(Prisma.sql`NOT (a.action = ANY(${[...REFUSAL_ACTIONS]}::text[]))`);
   if (f.before) parts.push(Prisma.sql`a.id < ${f.before}::bigint`);
   if (about) parts.push(aboutPeople(about));
   if (hidden && hidden.ids.length) parts.push(Prisma.sql`NOT ${aboutPeople(hidden)}`);

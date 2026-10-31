@@ -1800,24 +1800,42 @@ model GeneratedDocument {
 // ---------- audit ----------
 
 model AuditLog {
-  id           BigInt   @id @default(autoincrement())
-  userId       String?  @map("user_id") @db.Uuid
-  user         User?    @relation("AuditUser", fields: [userId], references: [id])
+  id             BigInt   @id @default(autoincrement())
+  userId         String?  @map("user_id") @db.Uuid
+  user           User?    @relation("AuditUser", fields: [userId], references: [id])
   // The Super Admin who did it while viewing as the user (owner's decision, 17 October 2026: "a super admin can view any
   // other user profile from a switcher"): set on what they did in the user's name with Act as them on, and on the
   // restricted data they viewed; null otherwise.
-  onBehalfById String?  @map("on_behalf_by") @db.Uuid
-  onBehalfBy   User?    @relation("AuditOnBehalf", fields: [onBehalfById], references: [id], onDelete: SetNull)
-  action       String // create, update, delete, login, view_restricted, view_as_start …
-  entityType   String   @map("entity_type")
-  entityId     String?  @map("entity_id") @db.Uuid
-  diff         Json?
-  at           DateTime @default(now()) @db.Timestamptz
+  onBehalfById   String?  @map("on_behalf_by") @db.Uuid
+  onBehalfBy     User?    @relation("AuditOnBehalf", fields: [onBehalfById], references: [id], onDelete: SetNull)
+  action         String // create, update, delete, login, view_restricted, view_as_start …
+  entityType     String   @map("entity_type")
+  entityId       String?  @map("entity_id") @db.Uuid
+  diff           Json?
+  at             DateTime @default(now()) @db.Timestamptz
   // How it was done, when not on the website or the app: 'claude_connector' (owner, 21 October 2026: "the connection
   // method"), the user's own Claude through the connector; null otherwise.
-  via          String?
+  via            String?
+  // Where it came from (owner, 31 October 2026: "with location and ip capture"), from the request it was written in;
+  // all null for what no request wrote (the schedulers, the nightly Zoho fetch) and for entries from before. The
+  // address: the website's, signed with WEB_KEY ('website'), else the connection's own ('connection': the app, or a
+  // request the website didn't sign). The place: Vercel's city, region and country for the website's requests. The
+  // browser or app: its user agent. The phone's position (owner, 31 October 2026: "Yes, with each sign-in and action"):
+  // only from the app, as it sent it, `locationMock` when the phone said the position is made up.
+  ip             String?
+  ipSource       String?  @map("ip_source")
+  country        String?
+  region         String?
+  city           String?
+  userAgent      String?  @map("user_agent")
+  latitude       Decimal? @db.Decimal(9, 6)
+  longitude      Decimal? @db.Decimal(9, 6)
+  accuracyMetres Int?     @map("accuracy_metres")
+  locationMock   Boolean? @map("location_mock")
 
   @@index([entityType, entityId])
+  // the Sign-ins tab and the Result filter: by action, newest first
+  @@index([action, id])
   @@map("audit_log")
 }
 

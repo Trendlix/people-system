@@ -129,10 +129,11 @@ describe('View as (e2e)', () => {
     // the people the employee sees: only themself
     const people = await api().get('/api/employees').set('Cookie', viewing).expect(200);
     expect(people.body.map((e: { id: string }) => e.id)).toEqual([profile.id]);
-    // their own contract, without the salary, as the employee sees it
+    // no contract, as the employee sees it (owner, 31 October 2026: "show no contract details anywhere in an employee
+    // profile")
     const contracts = `/api/employees/${profile.id}/employments/${profile.employmentId}/contracts`;
     const own = await api().get(contracts).set('Cookie', viewing).expect(200);
-    expect(own.body[0]).toMatchObject({ grossSalary: null, salaryHidden: true });
+    expect(own.body).toEqual([]);
     const asHr = await api().get(contracts).set('Cookie', hr).expect(200);
     expect(asHr.body[0]).toMatchObject({ grossSalary: 12000, salaryHidden: false });
 
@@ -160,6 +161,16 @@ describe('View as (e2e)', () => {
     const viewing = await viewAs(hrId);
     const message = `Viewing as ${hrEmail}: view only. Switch on Act as them to make changes.`; // HR has no profile: their email
     const before = await prisma.auditLog.count();
+    const beforeRefused = await prisma.auditLog.count({ where: { action: 'refused' } });
+    // written once the answer has gone
+    const eventuallyRefused = async (n: number) => {
+      for (let i = 0; i < 40; i++) {
+        const rows = await prisma.auditLog.findMany({ where: { action: 'refused' }, orderBy: { id: 'asc' }, skip: beforeRefused });
+        if (rows.length >= n) return rows;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      return prisma.auditLog.findMany({ where: { action: 'refused' }, orderBy: { id: 'asc' }, skip: beforeRefused });
+    };
     const patch = await api().patch(`/api/employees/${profile.id}`).set('Cookie', viewing).send({ personalEmail: `changed-${RUN}@test.local` }).expect(403);
     expect(patch.body.message).toBe(message);
     const created = await api().post('/api/employees').set('Cookie', viewing).send({ fullNameEn: `Not Added ${RUN}`, fullNameAr: 'لا' }).expect(403);
@@ -172,7 +183,16 @@ describe('View as (e2e)', () => {
     await api().get('/api/users').set('Cookie', asSuper).expect(200); // reading is not
 
     expect((await prisma.employee.findUniqueOrThrow({ where: { id: profile.id } })).personalEmail).toBeNull();
-    expect(await prisma.auditLog.count()).toBe(before + 1); // only the second switch
+    // only the second switch changed anything; each refusal is written as refused (owner, 31 October 2026: "Also log
+    // what someone tried and was refused"), in the user's name with the Super Admin recorded too
+    const refused = await eventuallyRefused(4);
+    expect(refused.map((r) => [(r.diff as { status: number }).status, r.onBehalfById !== null])).toEqual([
+      [403, true],
+      [403, true],
+      [403, true],
+      [403, true],
+    ]);
+    expect(await prisma.auditLog.count({ where: { action: { not: 'refused' } } })).toBe(before - beforeRefused + 1);
   });
 
   it('lets the Super Admin act as them with Act as them on, recording both; off again on every switch', async () => {

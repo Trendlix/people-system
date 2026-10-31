@@ -95,7 +95,7 @@ export class LoginCodesService {
     if (!email || email.length > 254 || !email.includes('@')) throw new BadRequestException(['Enter your sign-in email.']);
     const code = loginCodeOf(codeIn);
     if (!code) throw new BadRequestException([LOGIN_CODE_FORMAT]);
-    await this.auth.ensureNotLockedOut(email);
+    await this.auth.ensureNotLockedOut(email, 'email_code');
     const user = await this.prisma.user.findUnique({ where: { email }, include: WITH_ROLES });
     const live = user
       ? await this.prisma.loginCode.findFirst({

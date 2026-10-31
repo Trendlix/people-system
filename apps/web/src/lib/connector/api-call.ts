@@ -1,6 +1,7 @@
 import 'server-only';
 import '../api-ca';
 import { API_URL } from '../api';
+import { originHeaders } from '../origin-headers';
 import type { ConnectorCall } from './assets-api';
 import type { ApiCall } from './oauth-proxy';
 
@@ -11,9 +12,13 @@ import type { ApiCall } from './oauth-proxy';
 /** A request to the API's public OAuth endpoints (no session). */
 export const oauthApiCall: ApiCall = (path, init) => fetch(`${API_URL}/api${path}`, { ...init, cache: 'no-store' });
 
-/** A request to the API with the connector's bearer token. */
-export const connectorApiCall: ConnectorCall = (path, token, init = {}) => {
+/**
+ * A request to the API with the connector's bearer token, with where it came from (Claude's servers) signed for the
+ * audit log (31 October 2026).
+ */
+export const connectorApiCall: ConnectorCall = async (path, token, init = {}) => {
   const headers = new Headers(init.headers);
   headers.set('authorization', `Bearer ${token}`);
+  for (const [name, value] of Object.entries(await originHeaders(token))) headers.set(name, value);
   return fetch(`${API_URL}/api${path}`, { ...init, headers, cache: 'no-store' });
 };

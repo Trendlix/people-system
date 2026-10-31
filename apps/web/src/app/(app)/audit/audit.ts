@@ -1,6 +1,7 @@
-import type { Role } from '@trendlix/shared';
+import { isAuditModule, isAuditResult, isSignInOutcome, type AuditModule, type AuditResult, type Role, type SignInOutcome } from '@trendlix/shared';
 import { AUDIT_LOG_PATH } from '../../../components/nav';
 import { formatDate, parseDate } from '../../../lib/format';
+import { googleMapsHref } from '../../../lib/map-point';
 import { hasRole } from '../../../lib/roles';
 import { shownCode, withCode } from '../../../lib/hidden';
 
@@ -50,6 +51,24 @@ export interface AuditChange {
   masked: 'changed' | 'set' | null;
 }
 
+/**
+ * Where an entry came from (owner, 31 October 2026: "with location and ip capture"): the visitor's address (none when
+ * not known, or only the host's own), the place ("Cairo, Egypt", from the website's host), the browser or app in a few
+ * words ("Chrome 141 on macOS"), and the phone's position from the app ("Yes, with each sign-in and action").
+ */
+export interface AuditFrom {
+  ip: string | null;
+  /** 'website': signed by the website; 'connection': the connection's own (the app's, or not signed). */
+  ipSource: 'website' | 'connection' | null;
+  place: string | null;
+  country: string | null;
+  region: string | null;
+  city: string | null;
+  userAgent: string | null;
+  browser: string | null;
+  location: { latitude: number; longitude: number; accuracyMetres: number | null; mock: boolean } | null;
+}
+
 export interface AuditEntry {
   id: string;
   at: string;
@@ -65,6 +84,13 @@ export interface AuditEntry {
   employee: AuditEmployee | null;
   link: { href: string; label: string } | null;
   changes: AuditChange[];
+  /** Done, or refused (owner, 31 October 2026: "a Result column, Succeeded or Refused, with the reason"). */
+  result: AuditResult;
+  resultLabel: string;
+  /** The part of the system ("Module filter"); null for a kind of record with none. */
+  module: AuditModule | null;
+  moduleLabel: string | null;
+  from: AuditFrom;
 }
 
 export interface AuditPage {
@@ -81,6 +107,36 @@ export interface AuditOptions {
   actions: { value: string; label: string }[];
   entityTypes: { value: string; label: string }[];
   employees: AuditEmployee[];
+  /** 31 October 2026; an API from before sends none. */
+  modules?: { value: string; label: string }[];
+  results?: { value: string; label: string }[];
+  outcomes?: { value: string; label: string }[];
+}
+
+/** A sign-in as GET /audit/sign-ins answers it (owner, 31 October 2026: "Every sign-in in its own tab"). */
+export interface SignInEntry {
+  id: string;
+  at: string;
+  when: string;
+  email: string | null;
+  user: AuditPerson | null;
+  outcome: SignInOutcome;
+  outcomeLabel: string;
+  /** Went through (green), or refused (red). */
+  ok: boolean;
+  method: string | null;
+  methodLabel: string | null;
+  kind: string | null;
+  action: string;
+  from: AuditFrom;
+}
+
+export interface SignInsPage {
+  entries: SignInEntry[];
+  total: number;
+  page: number;
+  pageSize: number;
+  pages: number;
 }
 
 // ---------- the filters, in the address ----------
@@ -98,13 +154,17 @@ export interface AuditFilters {
   record: string;
   /** Everything about one person: an employee's id. */
   employee: string;
-  /** Text in what changed. */
+  /** Text in what changed, or the address or city it came from. */
   q: string;
+  /** The part of the system (31 October 2026). */
+  module: AuditModule | '';
+  /** Succeeded or refused (31 October 2026). */
+  result: AuditResult | '';
   /** The page, 1 for the newest. */
   page: number;
 }
 
-export const NO_FILTERS: AuditFilters = { from: '', to: '', user: '', action: '', type: '', record: '', employee: '', q: '', page: 1 };
+export const NO_FILTERS: AuditFilters = { from: '', to: '', user: '', action: '', type: '', record: '', employee: '', q: '', module: '', result: '', page: 1 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KEY = /^[a-z][a-z_]{0,63}$/;
@@ -148,6 +208,8 @@ export function readAuditFilters(query: Query): { filters: AuditFilters; problem
     record: id('record', 'Enter the record’s id as the system writes it, e.g. 0b8f0c1e-2d3a-4b5c-8d9e-0f1a2b3c4d5e.'),
     employee: id('employee', 'Choose the employee from the list.'),
     q: one(query.q).slice(0, 200),
+    module: isAuditModule(one(query.module)) ? (one(query.module) as AuditModule) : '',
+    result: isAuditResult(one(query.result)) ? (one(query.result) as AuditResult) : '',
     page: Number.isInteger(page) && page > 1 ? Math.min(page, 100000) : 1,
   };
   if (filters.from && filters.to && filters.from > filters.to) {
@@ -174,6 +236,8 @@ function apiQuery(f: AuditFilters, withPage: boolean): URLSearchParams {
   set('entityId', f.record);
   set('employeeId', f.employee);
   set('q', f.q);
+  set('module', f.module);
+  set('result', f.result);
   if (withPage && f.page > 1) params.set('page', String(f.page));
   return params;
 }
@@ -203,6 +267,8 @@ export function auditHref(f: AuditFilters, page = 1): string {
   set('record', f.record);
   set('employee', f.employee);
   set('q', f.q);
+  set('module', f.module);
+  set('result', f.result);
   if (page > 1) params.set('page', String(page));
   return withQuery(AUDIT_PATH, params);
 }
@@ -216,11 +282,111 @@ export const auditExcelHref = (f: AuditFilters) => {
 /** An employee's History: the log filtered to everything about them (the profile's History link). */
 export const historyHref = (employeeId: string) => auditHref({ ...NO_FILTERS, employee: employeeId });
 
-/** The same filters on the API's query as the Excel route passes them on: the web's names read back from its address. */
+/**
+ * The same filters on the API's query as the Excel route passes them on: the web's names read back from its address;
+ * the Sign-ins tab's (?tab=sign-ins) to its own export.
+ */
 export function apiExportPathOf(search: URLSearchParams): string {
   const query: Query = Object.fromEntries(search.entries());
+  if (readTab(query) === 'sign-ins') return apiSignInsExportPath(readSignInFilters(query).filters);
   return apiExportPath(readAuditFilters(query).filters);
 }
+
+// ---------- the tabs ----------
+
+/** The page's two tabs (owner, 31 October 2026: "Every sign-in in its own tab"): every entry, and the sign-ins. */
+export type AuditTab = 'activity' | 'sign-ins';
+
+export const readTab = (query: Query): AuditTab => (one(query.tab) === 'sign-ins' ? 'sign-ins' : 'activity');
+
+// ---------- the Sign-ins tab's filters ----------
+
+/** The Sign-ins tab's filters (owner: "with its own filters"): the days, the outcome, text in the email, address or browser. */
+export interface SignInFilters {
+  from: string;
+  to: string;
+  outcome: SignInOutcome | '';
+  q: string;
+  page: number;
+}
+
+export const NO_SIGN_IN_FILTERS: SignInFilters = { from: '', to: '', outcome: '', q: '', page: 1 };
+
+/** The Sign-ins tab's filters in the address, and what was wrong with any (left out then). */
+export function readSignInFilters(query: Query): { filters: SignInFilters; problems: string[] } {
+  const problems: string[] = [];
+  const from = dayOf(one(query.from));
+  const to = dayOf(one(query.to));
+  if (from === null) problems.push('Enter the first day as DD/MM/YYYY, e.g. 01/10/2026.');
+  if (to === null) problems.push('Enter the last day as DD/MM/YYYY, e.g. 31/10/2026.');
+  const page = Number(one(query.page));
+  const outcome = one(query.outcome);
+  const filters: SignInFilters = {
+    from: from ?? '',
+    to: to ?? '',
+    outcome: isSignInOutcome(outcome) ? outcome : '',
+    q: one(query.q).slice(0, 200),
+    page: Number.isInteger(page) && page > 1 ? Math.min(page, 100000) : 1,
+  };
+  if (filters.from && filters.to && filters.from > filters.to) {
+    problems.push('Choose a first day on or before the last day.');
+    filters.to = '';
+  }
+  return { filters, problems };
+}
+
+export const isSignInFiltered = (f: SignInFilters) => !!(f.from || f.to || f.outcome || f.q);
+
+function signInParams(f: SignInFilters, page: number, web: boolean): URLSearchParams {
+  const params = new URLSearchParams();
+  if (web) params.set('tab', 'sign-ins');
+  for (const key of ['from', 'to', 'outcome', 'q'] as const) if (f[key]) params.set(key, f[key]);
+  if (page > 1) params.set('page', String(page));
+  return params;
+}
+
+/** GET /audit/sign-ins with the filters and the page. */
+export const apiSignInsPath = (f: SignInFilters) => withQuery('/audit/sign-ins', signInParams(f, f.page, false));
+
+/** GET /audit/sign-ins/export with the filters. */
+export const apiSignInsExportPath = (f: SignInFilters) => withQuery('/audit/sign-ins/export', signInParams(f, 1, false));
+
+/** The Sign-ins tab's address with these filters, on `page`. */
+export const signInsHref = (f: SignInFilters, page = 1) => withQuery(AUDIT_PATH, signInParams(f, page, true));
+
+/** The Sign-ins tab's Excel export, served under the web domain (excel/route.ts). */
+export const signInsExcelHref = (f: SignInFilters) => withQuery(`${AUDIT_PATH}/excel`, signInParams(f, 1, true));
+
+/** The Sign-ins tab's filters in words: "From 01/10/2026 · Wrong password · “41.33”". */
+export function signInFiltersText(f: SignInFilters, options: AuditOptions | null): string {
+  const parts: string[] = [];
+  if (f.from) parts.push(`From ${formatDate(f.from)}`);
+  if (f.to) parts.push(`to ${formatDate(f.to)}`);
+  if (f.outcome) parts.push(options?.outcomes?.find((o) => o.value === f.outcome)?.label ?? f.outcome);
+  if (f.q) parts.push(`“${f.q}”`);
+  return parts.join(' · ');
+}
+
+// ---------- where it came from, in words ----------
+
+/** The address, or a dash; with how it was known, for its tooltip. */
+export const ipText = (from: AuditFrom | undefined) => from?.ip ?? '—';
+
+export const ipTitle = (from: AuditFrom | undefined): string | undefined =>
+  from?.ip ? (from.ipSource === 'website' ? 'The visitor’s address, as the website saw it' : 'The connection’s own address') : undefined;
+
+/**
+ * Where it was, in words: the phone's position from the app ("Phone location ±12 m", with its map, flagged when the
+ * phone said it was made up); else the place the website's host named ("Cairo, Egypt"); else a dash.
+ */
+export function placeOf(from: AuditFrom | undefined): { text: string; href: string | null; mock: boolean } {
+  const l = from?.location;
+  if (l) return { text: `Phone location${l.accuracyMetres !== null ? ` ±${l.accuracyMetres.toLocaleString('en-US')} m` : ''}`, href: googleMapsHref(l), mock: l.mock };
+  return { text: from?.place ?? '—', href: null, mock: false };
+}
+
+/** The browser or app in a few words, or a dash. */
+export const browserText = (from: AuditFrom | undefined) => from?.browser ?? '—';
 
 // ---------- the entries in words ----------
 
@@ -229,8 +395,11 @@ const count = (n: number) => n.toLocaleString('en-US');
 /** "1 entry", "1,234 entries". */
 export const entriesLabel = (n: number) => `${count(n)} ${n === 1 ? 'entry' : 'entries'}`;
 
+/** "1 sign-in", "1,234 sign-ins". */
+export const signInsLabel = (n: number) => `${count(n)} ${n === 1 ? 'sign-in' : 'sign-ins'}`;
+
 /** Where the page is: "Entries 51–100 of 1,234"; "No entries" when none match. */
-export function rangeText(p: Pick<AuditPage, 'page' | 'pageSize' | 'total' | 'entries'>): string {
+export function rangeText(p: Pick<AuditPage, 'page' | 'pageSize' | 'total'> & { entries: readonly unknown[] }): string {
   if (p.total === 0 || p.entries.length === 0) return 'No entries';
   const first = (p.page - 1) * p.pageSize + 1;
   const last = first + p.entries.length - 1;
@@ -240,6 +409,29 @@ export function rangeText(p: Pick<AuditPage, 'page' | 'pageSize' | 'total' | 'en
 /** The changes from → to, and the values given (on a create, or naming what it is about), apart. */
 export function splitChanges(changes: readonly AuditChange[]): { changed: AuditChange[]; values: AuditChange[] } {
   return { changed: changes.filter((c) => c.kind === 'change'), values: changes.filter((c) => c.kind === 'value') };
+}
+
+/**
+ * Which fields a change changed, in a few words (as the Trendlix website's log sums up a save: "title, cover image"):
+ * "Gross salary, Status, Grade and 2 more"; empty when it changed none (a create, a look).
+ */
+export function changedFieldsText(changes: readonly AuditChange[], most = 3): string {
+  const labels = changes.filter((c) => c.kind === 'change').map((c) => c.label);
+  if (labels.length <= most + 1) return labels.join(', ');
+  return `${labels.slice(0, most).join(', ')} and ${labels.length - most} more`;
+}
+
+/**
+ * Why a refused entry was refused, as the person was told, and what was tried ("POST /api/departments → 403"): from a
+ * refused attempt's own lines (31 October 2026), else a refusal's reason; null for an entry that went through.
+ */
+export function refusalOf(entry: Pick<AuditEntry, 'result' | 'changes'>): { why: string | null; tried: string | null } | null {
+  if (entry.result !== 'refused') return null;
+  const value = (field: string) => entry.changes.find((c) => c.field === field && !c.masked)?.to ?? null;
+  const method = value('method');
+  const path = value('path');
+  const status = value('status');
+  return { why: value('message') ?? value('reason'), tried: method && path ? `${method} ${path}${status ? ` → ${status}` : ''}` : null };
 }
 
 /** A restricted value as the log has it: "Changed, not shown", "Set, not shown". */
@@ -272,6 +464,8 @@ export function filtersText(f: AuditFilters, options: AuditOptions | null): stri
   if (f.action) parts.push(options?.actions.find((a) => a.value === f.action)?.label ?? f.action);
   if (f.type) parts.push(options?.entityTypes.find((t) => t.value === f.type)?.label ?? f.type);
   if (f.record) parts.push('one record');
+  if (f.module) parts.push(options?.modules?.find((m) => m.value === f.module)?.label ?? f.module);
+  if (f.result) parts.push(options?.results?.find((r) => r.value === f.result)?.label ?? f.result);
   if (f.q) parts.push(`“${f.q}”`);
   return parts.join(' · ');
 }

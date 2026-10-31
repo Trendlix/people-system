@@ -12,6 +12,8 @@ import {
   type Role,
   type SessionKind,
   type SessionMode,
+  type SignInMethod,
+  type SignInRefusal,
 } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
 import { standInViewOf } from '../leave/stand-ins.js';
@@ -30,6 +32,10 @@ const INVALID = 'Invalid email or password.';
 // Failed sign-ins allowed per email within the window before further attempts are refused.
 export const MAX_FAILED_LOGINS = 10;
 const LOCKOUT_MINUTES = 15;
+
+/** Why a password sign-in was refused, for the Audit Log only: no such email, the wrong password, or access turned off. */
+const refusalOf = (user: { isActive: boolean } | null, passwordOk: boolean): SignInRefusal =>
+  !user ? 'unknown_email' : !passwordOk ? 'wrong_password' : 'inactive';
 
 @Injectable()
 export class AuthService {
@@ -58,12 +64,13 @@ export class AuthService {
     else await verifyPassword(password, await this.dummyHash);
 
     if (!user || !ok || !user.isActive) {
+      // why, for the Audit Log's Sign-ins (owner, 31 October 2026); the person is told the same either way
       await this.audit.record({
         userId: null,
         action: 'login_failed',
         entityType: 'user',
         entityId: user?.id ?? null,
-        diff: { email: normalized },
+        diff: { email: normalized, reason: refusalOf(user, ok) },
       });
       throw new UnauthorizedException(INVALID);
     }
@@ -72,7 +79,7 @@ export class AuthService {
     const own = sessionUserOf(user);
     const mode = startingMode(own.roles, kind);
     const { sid, token } = await this.openSession(user.id, kind, origin, mode);
-    await this.audit.record({ userId: user.id, action: 'login', entityType: 'user', entityId: user.id, diff: { kind, sessionId: sid } });
+    await this.audit.record({ userId: user.id, action: 'login', entityType: 'user', entityId: user.id, diff: { kind, sessionId: sid, method: 'password' } });
     // a developer who holds another role: the mode they start in (null on the website: the web asks them first, 22
     // October 2026)
     return { token, user: choosesMode(own.roles) ? { ...own, mode } : own };
@@ -243,14 +250,15 @@ export class AuthService {
    */
   async docsSignIn(email: string, password: string): Promise<SessionUser | null> {
     const normalized = email.trim().toLowerCase();
-    await this.ensureNotLockedOut(normalized);
+    await this.ensureNotLockedOut(normalized, 'api_docs');
     const user = await this.prisma.user.findUnique({ where: { email: normalized }, include: WITH_ROLES });
     let ok = false;
     if (user?.passwordHash) ok = await verifyPassword(password, user.passwordHash);
     else await verifyPassword(password, await this.dummyHash);
     const own = user && ok && user.isActive ? sessionUserOf(user) : null;
     if (!own || !own.roles.some((r) => r === 'super_admin' || r === 'developer')) {
-      await this.audit.record({ userId: null, action: 'login_failed', entityType: 'user', entityId: user?.id ?? null, diff: { email: normalized, to: 'api_docs' } });
+      const reason: SignInRefusal = own ? 'not_allowed' : refusalOf(user, ok);
+      await this.audit.record({ userId: null, action: 'login_failed', entityType: 'user', entityId: user?.id ?? null, diff: { email: normalized, to: 'api_docs', reason } });
       return null;
     }
     await this.audit.record({ userId: own.id, action: 'api_docs_open', entityType: 'user', entityId: own.id, diff: {} });
@@ -274,13 +282,23 @@ export class AuthService {
     return { token, user: choosesMode(own.roles) ? { ...own, mode } : own };
   }
 
-  /** Too many failed sign-ins for the email lately (its lockout): 429. Signing in with a code checks it too. */
-  async ensureNotLockedOut(email: string): Promise<void> {
-    const since = new Date(Date.now() - LOCKOUT_MINUTES * 60 * 1000);
+  /**
+   * Too many failed sign-ins for the email lately (its lockout): 429. Signing in with a code checks it too, and the API
+   * documentation's sign-in. Each refusal is written to the Audit Log's Sign-ins (owner, 31 October 2026), at most once
+   * a minute for an email, so tries against a locked email can't fill the log; not as a failed sign-in, so it never
+   * makes the lockout longer.
+   */
+  async ensureNotLockedOut(email: string, method: Extract<SignInMethod, 'password' | 'email_code' | 'api_docs'> = 'password'): Promise<void> {
+    const now = Date.now();
+    const since = new Date(now - LOCKOUT_MINUTES * 60 * 1000);
     const failures = await this.prisma.auditLog.count({
       where: { action: 'login_failed', at: { gte: since }, diff: { path: ['email'], equals: email } },
     });
     if (failures >= MAX_FAILED_LOGINS) {
+      const lately = await this.prisma.auditLog.count({
+        where: { action: 'login_locked_out', at: { gte: new Date(now - 60_000) }, diff: { path: ['email'], equals: email } },
+      });
+      if (!lately) await this.audit.record({ userId: null, action: 'login_locked_out', entityType: 'user', entityId: null, diff: { email, method } });
       throw new HttpException(
         `Too many failed sign-in attempts. Try again in ${LOCKOUT_MINUTES} minutes.`,
         HttpStatus.TOO_MANY_REQUESTS,

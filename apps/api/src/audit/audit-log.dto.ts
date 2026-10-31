@@ -1,5 +1,6 @@
+import { AUDIT_MODULES, AUDIT_RESULTS, SIGN_IN_OUTCOMES, type AuditModule, type AuditResult, type SignInOutcome } from '@trendlix/shared';
 import { Transform } from 'class-transformer';
-import { IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min } from 'class-validator';
 import { IsDateOnly } from '../common/date-only.js';
 
 // The Audit Log's filters (owner, 19 October 2026: "an Audit Log page showing who changed what and when"), as the query
@@ -49,9 +50,17 @@ export class AuditQueryDto {
   @EmptyIsUnset() @IsOptional() @IsUUID('all', { message: 'Choose the employee.' })
   employeeId?: string;
 
-  /** Text anywhere in what changed, whatever the case. */
+  /** Text anywhere in what changed, or the address or city it came from, whatever the case. */
   @EmptyIsUnset() @IsOptional() @IsString({ message: 'Search with one text.' }) @MaxLength(200, { message: 'Search with at most 200 characters.' })
   q?: string;
+
+  /** The part of the system (31 October 2026): attendance, leave, payroll, assets, recruitment … */
+  @EmptyIsUnset() @IsOptional() @IsIn(AUDIT_MODULES, { message: 'Choose a module from the list.' })
+  module?: AuditModule;
+
+  /** Succeeded or refused (31 October 2026). */
+  @EmptyIsUnset() @IsOptional() @IsIn(AUDIT_RESULTS, { message: 'Choose Succeeded or Refused.' })
+  result?: AuditResult;
 
   /** The page, 1 for the newest. */
   @NumberOf() @IsOptional() @IsInt({ message: 'Choose the page as a whole number, e.g. 2.' }) @Min(1, { message: 'Choose page 1 or later.' }) @Max(100000, { message: 'Choose an earlier page.' })
@@ -64,4 +73,34 @@ export class AuditQueryDto {
   /** Only entries older than this one (its id): the page after it, for a caller paging by where it stopped. */
   @EmptyIsUnset() @IsOptional() @Matches(/^[1-9]\d{0,18}$/, { message: 'Send the id of the last entry seen, e.g. 1234.' })
   before?: string;
+}
+
+/**
+ * The Sign-ins tab's filters (owner, 31 October 2026: "Every sign-in in its own tab … with its own filters"), as the
+ * query of GET /audit/sign-ins and its export: the days, the outcome, and text in the email, the address or the
+ * browser; paged as the log is.
+ */
+export class SignInsQueryDto {
+  /** From this day (Cairo), YYYY-MM-DD. */
+  @EmptyIsUnset() @IsOptional() @IsDateOnly('Enter the first day, e.g. 2026-10-01.')
+  from?: string;
+
+  /** To this day (Cairo), YYYY-MM-DD, the whole day. */
+  @EmptyIsUnset() @IsOptional() @IsDateOnly('Enter the last day, e.g. 2026-10-31.')
+  to?: string;
+
+  @EmptyIsUnset() @IsOptional() @IsIn(SIGN_IN_OUTCOMES, { message: 'Choose an outcome from the list.' })
+  outcome?: SignInOutcome;
+
+  /** Text in the email, the address, the city or the browser, whatever the case. */
+  @EmptyIsUnset() @IsOptional() @IsString({ message: 'Search with one text.' }) @MaxLength(200, { message: 'Search with at most 200 characters.' })
+  q?: string;
+
+  /** The page, 1 for the newest. */
+  @NumberOf() @IsOptional() @IsInt({ message: 'Choose the page as a whole number, e.g. 2.' }) @Min(1, { message: 'Choose page 1 or later.' }) @Max(100000, { message: 'Choose an earlier page.' })
+  page?: number;
+
+  /** Entries per page: 50 unless asked, at most 100. */
+  @NumberOf() @IsOptional() @IsInt({ message: `Show between 1 and ${MAX_PAGE_SIZE} entries a page.` }) @Min(1, { message: `Show between 1 and ${MAX_PAGE_SIZE} entries a page.` }) @Max(MAX_PAGE_SIZE, { message: `Show between 1 and ${MAX_PAGE_SIZE} entries a page.` })
+  limit?: number;
 }

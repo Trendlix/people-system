@@ -1,9 +1,6 @@
 import 'server-only';
-import { headers } from 'next/headers';
-import { ACCESS_IP_TOKEN } from '@trendlix/shared';
 import { API_URL, messagesOf } from './api';
-import { clientIp } from './client-ip';
-import { signedIpHeaders } from './signed-ip';
+import { originHeaders } from './origin-headers';
 
 // The set-password page's and Forgot password's calls to the API (owner, 22 October 2026: "Set-password link"): its
 // public /auth addresses, never with the session cookie, the token always in the body (never in a path a log keeps),
@@ -12,7 +9,8 @@ import { signedIpHeaders } from './signed-ip';
 export type AccessCall<T> = { ok: true; data: T } | { ok: false; status: number; messages: string[] };
 
 export async function accessPost<T>(path: '/auth/password-link/check' | '/auth/password-link' | '/auth/forgot-password' | '/auth/email-code', body: unknown): Promise<AccessCall<T>> {
-  const signed = signedIpHeaders(process.env.WEB_KEY, ACCESS_IP_TOKEN, clientIp(await headers()));
+  // the address signed for the stand-in token, with the browser and place for the audit log (31 October 2026)
+  const signed = await originHeaders();
   let res: Response;
   try {
     res = await fetch(`${API_URL}/api${path}`, {

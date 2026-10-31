@@ -1,11 +1,10 @@
 import 'server-only';
 import './api-ca';
 import { BACKGROUND_HEADER } from '@trendlix/shared';
-import { cookies, headers as requestHeaders } from 'next/headers';
+import { cookies } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
-import { clientIp } from './client-ip';
 import { SESSION_COOKIE } from './constants';
-import { signedIpHeaders } from './signed-ip';
+import { originHeaders } from './origin-headers';
 import { reasonOf, signInPath } from './signed-out';
 import type { CompanyBrand } from './types';
 
@@ -42,7 +41,8 @@ export interface CallOptions {
   background?: boolean;
   /**
    * `signIp`: the visitor's address as this website saw it, signed with WEB_KEY for this session's token (lib/signed-ip.ts;
-   * owner, 20 October 2026: check-ins locked to the office network). Only on a check-in's calls and Check-in Setup's;
+   * owner, 20 October 2026: check-ins locked to the office network). Every call has carried it since 31 October 2026,
+   * with the browser and place, for the audit log (lib/origin-headers.ts), so this says only that the call relies on it;
    * nothing is signed without the key or an address.
    */
   signIp?: boolean;
@@ -54,9 +54,8 @@ async function call(path: string, init: RequestInit = {}, options: CallOptions =
   if (typeof init.body === 'string') headers.set('content-type', 'application/json');
   if (token) headers.set('authorization', `Bearer ${token}`);
   if (options.background) headers.set(BACKGROUND_HEADER, '1');
-  if (options.signIp) {
-    for (const [name, value] of Object.entries(signedIpHeaders(process.env.WEB_KEY, token, clientIp(await requestHeaders())))) headers.set(name, value);
-  }
+  // where the visitor is, for the audit log and a check-in's network lock (owner, 31 October 2026: "with location and ip capture")
+  for (const [name, value] of Object.entries(await originHeaders(token))) headers.set(name, value);
   try {
     return await fetch(`${API_URL}/api${path}`, { ...init, headers });
   } catch {

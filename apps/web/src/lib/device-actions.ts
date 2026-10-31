@@ -13,6 +13,7 @@ import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { API_URL, ApiError, apiSend, messagesOf } from './api';
 import { clientIp } from './client-ip';
+import { originHeaders } from './origin-headers';
 import { safeNext } from './safe-next';
 import { keepSession } from './session-cookie';
 
@@ -85,7 +86,8 @@ export async function signInWithFingerprint(input: { id: string; secret: string;
   try {
     res = await fetch(`${API_URL}/api/auth/devices/sign-in`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      // where the visitor is, signed for the audit log's Sign-ins (owner, 31 October 2026: "with location and ip capture")
+      headers: { 'content-type': 'application/json', ...(await originHeaders()) },
       body: JSON.stringify({ id, secret, ...(userAgent && { userAgent }), ...(ip && { ip }) }),
     });
   } catch {

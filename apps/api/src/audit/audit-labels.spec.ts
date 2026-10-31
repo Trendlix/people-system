@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { AUDIT_ENTITY_MODULES, AUDIT_MODULE_LABELS, AUDIT_MODULES, auditEntityTypesOf, auditModuleOf } from '@trendlix/shared';
 import { ACTION_LABELS, actionLabel, ENTITY_LABELS, entityLabel, fieldLabel, humanized } from './audit-labels.js';
 
 // The Audit Log's words (owner, 19 October 2026: "an Audit Log page showing who changed what and when"): every action and
@@ -68,6 +69,24 @@ describe('the audit log in words', () => {
     expect(types.size).toBeGreaterThan(35);
     for (const t of ['employee', 'contract', 'payroll_line', 'leave_request', 'reimbursement_claim', 'raise_request', 'user']) expect(types).toContain(t);
     expect([...types].filter((t) => !(t in ENTITY_LABELS))).toEqual([]);
+  });
+
+  // the Module filter (owner, 31 October 2026: "Group the kinds of record into modules … and filter by module, as the
+  // website does"): a kind of record written with no module would be found under none
+  it('puts every kind of record the services write, and every one with words, in a module', () => {
+    const types = new Set([...writtenEntityTypes(), ...Object.keys(ENTITY_LABELS)]);
+    expect([...types].filter((t) => !auditModuleOf(t))).toEqual([]);
+    expect(Object.keys(AUDIT_ENTITY_MODULES).filter((t) => !(t in ENTITY_LABELS))).toEqual([]);
+    for (const m of AUDIT_MODULES) expect(AUDIT_MODULE_LABELS[m]).toMatch(/^[A-Z]/);
+    expect(auditModuleOf('leave_request')).toBe('leave');
+    expect(auditModuleOf('custody_record')).toBe('assets');
+    expect(auditModuleOf('attendance_day')).toBe('attendance');
+    // a refused attempt is written on its module's key, found under it and named by it
+    expect(auditModuleOf('payroll')).toBe('payroll');
+    expect(auditEntityTypesOf('payroll')).toEqual(expect.arrayContaining(['payroll_run', 'payroll_line', 'payroll']));
+    expect(auditEntityTypesOf('payroll')).not.toContain('leave_request');
+    expect(entityLabel('kpis')).toBe('KPIs');
+    expect(actionLabel('refused')).toBe('Refused');
   });
 
   it('labels the common ones in sentence case', () => {

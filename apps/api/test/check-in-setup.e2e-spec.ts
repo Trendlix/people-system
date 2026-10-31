@@ -339,13 +339,19 @@ describe('Check-in Setup and the office network (e2e)', () => {
   it('keeps no employee’s address anywhere, and a reading’s point only on its press: not on the days or in the audit log', async () => {
     const punches = await prisma.attendancePunch.findMany({ where: { employeeId: { in: people } } });
     const days = await prisma.attendanceDay.findMany({ where: { employeeId: { in: people } } });
-    const audit = await prisma.auditLog.findMany({ where: { at: { gte: started } } });
+    const rows = await prisma.auditLog.findMany({ where: { at: { gte: started } } });
+    // the audit log keeps where each entry came from in its own columns since 31 October 2026 (owner: "with location
+    // and ip capture"), for the Super Admin and the CEO only: never in what an entry says
+    const audit = rows.map((a) => ({ id: a.id, userId: a.userId, action: a.action, entityType: a.entityType, entityId: a.entityId, diff: a.diff }));
+    expect(rows.some((a) => a.ip === ON_NETWORK && a.ipSource === 'website')).toBe(true);
     expect(punches.length).toBeGreaterThan(5);
     const kept = JSON.stringify({ punches, days, audit }, (_k, v: unknown) => (typeof v === 'bigint' ? v.toString() : v));
     expect(kept).not.toContain(ON_NETWORK);
     expect(kept).not.toContain(OFF_NETWORK);
     // a reading's point on its press (owner, 20 October 2026: "Yes, keep the spot"), never on a day or in the audit log
+    // (the app's own position, sent apart, is kept on an app session's entries: not a press's point)
     expect(punches.some((p) => p.latitude?.toNumber() === AT_STUDIO.latitude)).toBe(true);
     expect(JSON.stringify({ days, audit }, (_k, v: unknown) => (typeof v === 'bigint' ? v.toString() : v))).not.toContain('30.0446');
+    expect(rows.every((a) => a.latitude === null)).toBe(true);
   });
 });

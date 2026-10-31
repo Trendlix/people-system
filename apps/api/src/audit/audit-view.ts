@@ -1,4 +1,17 @@
-import { AUDIT_VIA_CONNECTOR, type Role } from '@trendlix/shared';
+import {
+  AUDIT_MODULE_LABELS,
+  AUDIT_RESULT_LABELS,
+  auditModuleOf,
+  auditResultOf,
+  placeText,
+  shownAddress,
+  userAgentSummary,
+  AUDIT_VIA_CONNECTOR,
+  type AuditIpSource,
+  type AuditModule,
+  type AuditResult,
+  type Role,
+} from '@trendlix/shared';
 import { actsAs } from '../auth/roles.js';
 import { monthName } from '../payroll/months.js';
 import { actionLabel, entityLabel, fieldLabel } from './audit-labels.js';
@@ -22,6 +35,59 @@ export interface AuditRow {
   entityId: string | null;
   diff: unknown;
   at: Date;
+  // where it came from (31 October 2026: "with location and ip capture"); null for entries no request wrote, and before
+  ip?: string | null;
+  ipSource?: string | null;
+  country?: string | null;
+  region?: string | null;
+  city?: string | null;
+  userAgent?: string | null;
+  latitude?: number | string | null;
+  longitude?: number | string | null;
+  accuracyMetres?: number | null;
+  locationMock?: boolean | null;
+}
+
+/**
+ * Where an entry came from, for reading (owner, 31 October 2026: "with location and ip capture"): the address (shown
+ * only when it is the visitor's: one inside the host's own network, as entries from before hold, isn't), the place in
+ * words ("Cairo, Egypt"), the browser or app in a few words ("Chrome 141 on macOS"), and the phone's position from the
+ * app. All null when not known.
+ */
+export interface AuditFrom {
+  ip: string | null;
+  /** 'website': signed by the website; 'connection': the connection's own (the app's, or unsigned). */
+  ipSource: AuditIpSource | null;
+  place: string | null;
+  country: string | null;
+  region: string | null;
+  city: string | null;
+  userAgent: string | null;
+  browser: string | null;
+  location: { latitude: number; longitude: number; accuracyMetres: number | null; mock: boolean } | null;
+}
+
+const coordinate = (v: number | string | null | undefined): number | null => {
+  const n = typeof v === 'string' ? Number(v) : v;
+  return typeof n === 'number' && Number.isFinite(n) ? n : null;
+};
+
+/** Where a row came from, in words (above). */
+export function fromOf(row: Pick<AuditRow, 'ip' | 'ipSource' | 'country' | 'region' | 'city' | 'userAgent' | 'latitude' | 'longitude' | 'accuracyMetres' | 'locationMock'>): AuditFrom {
+  const latitude = coordinate(row.latitude);
+  const longitude = coordinate(row.longitude);
+  const source = row.ipSource === 'website' || row.ipSource === 'connection' ? row.ipSource : null;
+  return {
+    ip: shownAddress(row.ip),
+    ipSource: source,
+    place: placeText(row),
+    country: row.country ?? null,
+    region: row.region ?? null,
+    city: row.city ?? null,
+    userAgent: row.userAgent ?? null,
+    browser: userAgentSummary(row.userAgent),
+    location: latitude !== null && longitude !== null ? { latitude, longitude, accuracyMetres: row.accuracyMetres ?? null, mock: row.locationMock === true } : null,
+  };
 }
 
 /** A sign-in account: its email, and the name of the employee it is linked to, if any. */
@@ -108,6 +174,14 @@ export interface AuditEntryView {
   /** Where the record is in the system, for a caller who can open that page; null when none or deleted since. */
   link: { href: string; label: string } | null;
   changes: AuditChange[];
+  /** Done, or refused (owner, 31 October 2026: "a Result column, Succeeded or Refused, with the reason"). */
+  result: AuditResult;
+  resultLabel: string;
+  /** The part of the system it is in ("Module filter"); null for a kind of record with none. */
+  module: AuditModule | null;
+  moduleLabel: string | null;
+  /** Where it came from. */
+  from: AuditFrom;
 }
 
 // ---------- values ----------
@@ -536,6 +610,7 @@ export function linkOf(row: Pick<AuditRow, 'entityType' | 'entityId' | 'diff'>, 
 /** The entry for reading, as the caller (by their roles) may follow its link. */
 export function entryView(row: AuditRow, refs: AuditRefs, roles: readonly Role[]): AuditEntryView {
   const employee = employeeOf(row, refs);
+  const module = auditModuleOf(row.entityType);
   return {
     id: String(row.id),
     at: row.at.toISOString(),
@@ -550,6 +625,11 @@ export function entryView(row: AuditRow, refs: AuditRefs, roles: readonly Role[]
     employee,
     link: linkOf(row, refs, employee, roles),
     changes: changesOf(row.diff, refs.names),
+    result: auditResultOf(row.action),
+    resultLabel: AUDIT_RESULT_LABELS[auditResultOf(row.action)],
+    module,
+    moduleLabel: module ? AUDIT_MODULE_LABELS[module] : null,
+    from: fromOf(row),
   };
 }
 

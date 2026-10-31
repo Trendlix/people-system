@@ -21,7 +21,23 @@ import {
   splitChanges,
   userOptionLabel,
   type AuditChange,
+  type AuditFrom,
   type AuditOptions,
+  browserText,
+  ipText,
+  ipTitle,
+  NO_SIGN_IN_FILTERS,
+  placeOf,
+  readSignInFilters,
+  readTab,
+  signInFiltersText,
+  signInsExcelHref,
+  signInsHref,
+  signInsLabel,
+  apiSignInsPath,
+  isSignInFiltered,
+  changedFieldsText,
+  refusalOf,
 } from './audit';
 
 // The Audit Log (owner, 19 October 2026: "an Audit Log page showing who changed what and when").
@@ -55,10 +71,24 @@ describe('the filters in the address', () => {
       record: MONA,
       employee: MONA,
       q: '  CON-2026  ',
+      module: 'payroll',
+      result: 'refused',
       page: '3',
     });
     expect(problems).toEqual([]);
-    expect(filters).toEqual({ from: '2026-10-01', to: '2026-10-31', user: USER, action: 'update', type: 'contract', record: MONA, employee: MONA, q: 'CON-2026', page: 3 });
+    expect(filters).toEqual({
+      from: '2026-10-01',
+      to: '2026-10-31',
+      user: USER,
+      action: 'update',
+      type: 'contract',
+      record: MONA,
+      employee: MONA,
+      q: 'CON-2026',
+      module: 'payroll',
+      result: 'refused',
+      page: 3,
+    });
     expect(isFiltered(filters)).toBe(true);
   });
 
@@ -70,7 +100,7 @@ describe('the filters in the address', () => {
   });
 
   it('leaves out what isn’t right, and says so', () => {
-    const { filters, problems } = readAuditFilters({ from: '31/02/2026', to: '2026-13-01', user: 'mona', record: 'abc', action: 'DROP TABLE', type: 'a-b' });
+    const { filters, problems } = readAuditFilters({ from: '31/02/2026', to: '2026-13-01', user: 'mona', record: 'abc', action: 'DROP TABLE', type: 'a-b', module: 'nothing', result: 'maybe' });
     expect(filters).toEqual(NO_FILTERS);
     expect(problems).toEqual([
       'Enter the first day as DD/MM/YYYY, e.g. 01/10/2026.',
@@ -157,5 +187,82 @@ describe('the entries in words', () => {
       'From 01/10/2026 · to 31/10/2026 · by Mona Hassan · Updated · Contract · “CON”',
     );
     expect(filtersText({ ...NO_FILTERS, action: 'update' }, null)).toBe('update');
+  });
+});
+
+// owner, 31 October 2026: "i want a log for all actions taken on the system ,, same as the one on trendlix website";
+// chosen: "Sign-ins tab", "Refused attempts (Result)", "Module filter"; "with location and ip capture"
+describe('the module and result filters', () => {
+  it('asks the API and keeps them in the address and the export', () => {
+    const f = { ...NO_FILTERS, module: 'assets' as const, result: 'refused' as const };
+    expect(apiAuditPath(f)).toBe('/audit?module=assets&result=refused');
+    expect(auditHref(f)).toBe('/audit?module=assets&result=refused');
+    expect(auditExcelHref(f)).toBe('/audit/excel?module=assets&result=refused');
+    expect(apiExportPathOf(new URLSearchParams('module=assets&result=succeeded'))).toBe('/audit/export?module=assets&result=succeeded');
+    const options = { users: [], actions: [], entityTypes: [], employees: [], modules: [{ value: 'assets', label: 'Assets' }], results: [{ value: 'refused', label: 'Refused' }] };
+    expect(filtersText(f, options)).toBe('Assets · Refused');
+  });
+});
+
+describe('the Sign-ins tab', () => {
+  it('is its own tab, with its own filters in the address', () => {
+    expect(readTab({ tab: 'sign-ins' })).toBe('sign-ins');
+    expect(readTab({})).toBe('activity');
+    expect(readTab({ tab: 'other' })).toBe('activity');
+    const { filters, problems } = readSignInFilters({ tab: 'sign-ins', from: '01/10/2026', outcome: 'wrong_password', q: ' 41.33 ', page: '2' });
+    expect(problems).toEqual([]);
+    expect(filters).toEqual({ from: '2026-10-01', to: '', outcome: 'wrong_password', q: '41.33', page: 2 });
+    expect(isSignInFiltered(filters)).toBe(true);
+    expect(readSignInFilters({ outcome: 'hacked', from: '99/99/2026' })).toEqual({ filters: NO_SIGN_IN_FILTERS, problems: ['Enter the first day as DD/MM/YYYY, e.g. 01/10/2026.'] });
+    expect(apiSignInsPath(filters)).toBe('/audit/sign-ins?from=2026-10-01&outcome=wrong_password&q=41.33&page=2');
+    expect(signInsHref(filters, 3)).toBe('/audit?tab=sign-ins&from=2026-10-01&outcome=wrong_password&q=41.33&page=3');
+    expect(signInsHref(NO_SIGN_IN_FILTERS)).toBe('/audit?tab=sign-ins');
+    expect(signInsExcelHref(filters)).toBe('/audit/excel?tab=sign-ins&from=2026-10-01&outcome=wrong_password&q=41.33');
+    // the Excel route asks the API for the sign-ins
+    expect(apiExportPathOf(new URLSearchParams('tab=sign-ins&outcome=locked_out&page=4'))).toBe('/audit/sign-ins/export?outcome=locked_out');
+    expect(signInFiltersText(filters, { users: [], actions: [], entityTypes: [], employees: [], outcomes: [{ value: 'wrong_password', label: 'Wrong password' }] })).toBe(
+      'From 01/10/2026 · Wrong password · “41.33”',
+    );
+    expect(signInsLabel(1)).toBe('1 sign-in');
+    expect(signInsLabel(1234)).toBe('1,234 sign-ins');
+  });
+});
+
+describe('where an entry came from, in words', () => {
+  const from: AuditFrom = { ip: '41.33.10.2', ipSource: 'website', place: 'Cairo, Egypt', country: 'EG', region: 'C', city: 'Cairo', userAgent: 'UA', browser: 'Chrome 141 on macOS', location: null };
+
+  it('says the address, the place and the browser', () => {
+    expect([ipText(from), ipTitle(from), placeOf(from), browserText(from)]).toEqual([
+      '41.33.10.2',
+      'The visitor’s address, as the website saw it',
+      { text: 'Cairo, Egypt', href: null, mock: false },
+      'Chrome 141 on macOS',
+    ]);
+    expect(ipTitle({ ...from, ipSource: 'connection' })).toBe('The connection’s own address');
+    expect([ipText(undefined), placeOf(undefined).text, browserText(undefined)]).toEqual(['—', '—', '—']);
+  });
+
+  it('shows the app’s position on Google Maps, flagged when made up', () => {
+    const app = { ...from, place: null, location: { latitude: 30.04442, longitude: 31.235712, accuracyMetres: 1200, mock: true } };
+    expect(placeOf(app)).toEqual({ text: 'Phone location ±1,200 m', href: 'https://www.google.com/maps?q=30.044420,31.235712', mock: true });
+    expect(placeOf({ ...app, location: { ...app.location, accuracyMetres: null, mock: false } }).text).toBe('Phone location');
+  });
+});
+
+describe('an entry summed up', () => {
+  const line = (field: string, kind: 'change' | 'value', to: string | null = null): AuditChange => ({ field, label: field[0].toUpperCase() + field.slice(1), kind, from: null, to, masked: null });
+
+  it('names the fields a change changed, a few at most', () => {
+    expect(changedFieldsText([line('grade', 'change'), line('status', 'change'), line('note', 'value')])).toBe('Grade, Status');
+    expect(changedFieldsText(['a', 'b', 'c', 'd', 'e', 'f'].map((f) => line(f, 'change')))).toBe('A, B, C and 3 more');
+    expect(changedFieldsText(['a', 'b', 'c', 'd'].map((f) => line(f, 'change')))).toBe('A, B, C, D');
+    expect(changedFieldsText([line('name', 'value')])).toBe('');
+  });
+
+  it('says why a refused one was refused and what was tried', () => {
+    const changes = [line('method', 'value', 'POST'), line('path', 'value', '/api/departments'), line('status', 'value', '403'), line('message', 'value', 'Not allowed.')];
+    expect(refusalOf({ result: 'refused', changes })).toEqual({ why: 'Not allowed.', tried: 'POST /api/departments → 403' });
+    expect(refusalOf({ result: 'refused', changes: [line('reason', 'value', 'off_network')] })).toEqual({ why: 'off_network', tried: null });
+    expect(refusalOf({ result: 'succeeded', changes })).toBeNull();
   });
 });

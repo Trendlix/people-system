@@ -26,11 +26,21 @@ describe('the Audit Log’s filters', () => {
         'AND a.action = ?',
         'AND a.entity_type = ?',
         'AND a.entity_id = ?::uuid',
-        'AND a.diff::text ILIKE ?',
+        // the search finds the address or the city an entry came from too (31 October 2026)
+        'AND (a.diff::text ILIKE ? OR a.ip ILIKE ? OR a.city ILIKE ?)',
         'AND a.id < ?::bigint',
       ].join(' '),
     );
-    expect(where.values).toEqual(['2026-10-01', '2026-10-31', USER, USER, 'update', 'contract', RECORD, '%CON-2026%', '120']);
+    expect(where.values).toEqual(['2026-10-01', '2026-10-31', USER, USER, 'update', 'contract', RECORD, '%CON-2026%', '%CON-2026%', '%CON-2026%', '120']);
+  });
+
+  // owner, 31 October 2026: "filter by module, as the website does"; "a Result column, Succeeded or Refused"
+  it('filters by module (its kinds of record and its refused attempts) and by result', () => {
+    const where = auditWhere({ module: 'assets', result: 'refused' });
+    expect(text(where)).toBe('WHERE a.entity_type = ANY(?::text[]) AND a.action = ANY(?::text[])');
+    expect(where.values[0]).toEqual(expect.arrayContaining(['asset', 'custody_record', 'assets']));
+    expect(where.values[1]).toEqual(expect.arrayContaining(['refused', 'login_failed', 'check_in_refused']));
+    expect(text(auditWhere({ result: 'succeeded' }))).toBe('WHERE NOT (a.action = ANY(?::text[]))');
   });
 
   it('takes the search text literally', () => {

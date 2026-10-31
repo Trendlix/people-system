@@ -11,26 +11,44 @@ import {
   AUDIT_PATH,
   auditExcelHref,
   auditHref,
+  browserText,
   canSeeAuditLog,
+  changedFieldsText,
   employeeOptionLabel,
   entriesLabel,
   filtersText,
   historyHref,
+  ipText,
+  ipTitle,
   isFiltered,
+  isSignInFiltered,
   maskedText,
+  NO_SIGN_IN_FILTERS,
   opensProfiles,
+  placeOf,
   rangeText,
   readAuditFilters,
+  readSignInFilters,
+  readTab,
   recordText,
+  refusalOf,
   shown,
+  signInFiltersText,
+  signInsExcelHref,
+  signInsHref,
+  signInsLabel,
   splitChanges,
   userOptionLabel,
   type AuditEntry,
   type AuditFilters,
+  type AuditFrom,
   type AuditOptions,
   type AuditPage,
+  type AuditTab,
+  type SignInFilters,
+  type SignInsPage,
 } from './audit';
-import { loadAuditOptions, loadAuditPage } from './data';
+import { loadAuditOptions, loadAuditPage, loadSignIns } from './data';
 import { shownCode } from '@/lib/hidden';
 
 // The Audit Log (owner, 19 October 2026: "an Audit Log page showing who changed what and when"), in the sidebar for the
@@ -42,6 +60,12 @@ import { shownCode } from '@/lib/hidden';
 // of record, one record, one person and text in what changed, all in the address (?from=&to=&user=&action=&type=&record=
 // &employee=&q=&page=) so a view can be shared; an employee's History link on their profile opens it with ?employee=.
 // Export to Excel gives the same filters' newest 10,000 entries (excel/route.ts). The API checks the roles again.
+// Made like the Trendlix website's log (owner, 31 October 2026: "i want a log for all actions taken on the system ,, same
+// as the one on trendlix website"; chosen: "Sign-ins tab", "Refused attempts (Result)", "Module filter"; "with location
+// and ip capture"): each entry says whether it went through or was refused, its module, and where it came from (the
+// address, the place or the phone's position on a map, the browser or app); filtered by module and result too, and the
+// search finds an address or a city. The Sign-ins tab (?tab=sign-ins) lists every sign-in, refusal, code and sign-out
+// in a table, with its own filters and its own Excel export.
 
 export const metadata: Metadata = { title: 'Audit Log · People System' };
 
@@ -133,8 +157,28 @@ function Filters({ filters, options }: { filters: AuditFilters; options: AuditOp
             One record, by the id in its address.
           </p>
         </Field>
+        <Field id="audit-module" label="Module">
+          <Select id="audit-module" name="module" defaultValue={filters.module} className="input">
+            <option value="">Any module</option>
+            {options?.modules?.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field id="audit-result" label="Result">
+          <Select id="audit-result" name="result" defaultValue={filters.result} className="input">
+            <option value="">All</option>
+            {options?.results?.map((r) => (
+              <option key={r.value} value={r.value}>
+                {r.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
         <Field id="audit-q" label="Search the changes">
-          <input id="audit-q" name="q" type="search" maxLength={200} defaultValue={filters.q} placeholder="A name, a number, a value" className="input" />
+          <input id="audit-q" name="q" type="search" maxLength={200} defaultValue={filters.q} placeholder="A name, a number, an IP or a city" className="input" />
         </Field>
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -158,7 +202,10 @@ function Changes({ entry }: { entry: AuditEntry }) {
   const rowHead = 'text-sm font-medium tracking-normal whitespace-normal text-ink normal-case';
   return (
     <details>
-      <summary className="cursor-pointer text-sm font-semibold text-accent">Changes ({entry.changes.length})</summary>
+      <summary className="cursor-pointer text-sm font-semibold text-accent">
+        Changes ({entry.changes.length})
+        {changedFieldsText(entry.changes) && <span className="font-normal text-muted">: {changedFieldsText(entry.changes)}</span>}
+      </summary>
       <div className="mt-2 space-y-3">
         {changed.length > 0 && (
           <div className="overflow-x-auto rounded-lg border border-line">
@@ -224,6 +271,8 @@ function EntryItem({ entry }: { entry: AuditEntry }) {
           <span className="font-semibold">{entry.who.text}</span>
           <span className="text-muted"> · </span>
           {entry.actionLabel}
+          {entry.result === 'refused' && <span className="ml-2 badge bg-danger-soft text-danger">{entry.resultLabel}</span>}
+          {entry.moduleLabel && <span className="ml-2 badge bg-line-soft text-muted">{entry.moduleLabel}</span>}
         </p>
         <p className="text-sm break-words">
           <span className="font-medium">{recordText(entry)}</span>
@@ -245,9 +294,58 @@ function EntryItem({ entry }: { entry: AuditEntry }) {
             </>
           )}
         </p>
+        <Refusal entry={entry} />
+        <FromLine from={entry.from} />
         <Changes entry={entry} />
       </div>
     </li>
+  );
+}
+
+/** Why it was refused, as the person was told, and what was tried (owner: "a Result column, Succeeded or Refused, with the reason"). */
+function Refusal({ entry }: { entry: AuditEntry }) {
+  const refusal = refusalOf(entry);
+  if (!refusal || (!refusal.why && !refusal.tried)) return null;
+  return (
+    <p className="text-sm break-words text-danger">
+      {refusal.why}
+      {refusal.tried && <span className="ml-2 font-mono text-xs text-muted">{refusal.tried}</span>}
+    </p>
+  );
+}
+
+/** The phone's position on Google Maps, or the place in words; flagged when the phone said it was made up. */
+function Place({ from }: { from: AuditFrom | undefined }) {
+  const place = placeOf(from);
+  return (
+    <>
+      {place.href ? (
+        <a href={place.href} target="_blank" rel="noopener noreferrer">
+          {place.text}
+        </a>
+      ) : (
+        place.text
+      )}
+      {place.mock && (
+        <span className="ml-1.5 badge bg-danger-soft text-danger" title="The phone said this position is made up (a fake GPS app).">
+          Made-up position
+        </span>
+      )}
+    </>
+  );
+}
+
+/** Where an entry came from: the address, the place and the browser or app; nothing for an entry no request wrote. */
+function FromLine({ from }: { from: AuditFrom | undefined }) {
+  if (!from || (!from.ip && !from.place && !from.location && !from.browser)) return null;
+  return (
+    <p className="text-xs break-words text-muted">
+      <span title={ipTitle(from)}>IP {ipText(from)}</span>
+      <span> · </span>
+      <Place from={from} />
+      <span> · </span>
+      <span title={from.userAgent ?? undefined}>{browserText(from)}</span>
+    </p>
   );
 }
 
@@ -292,9 +390,215 @@ function PersonHeading({ filters, options, profileLink }: { filters: AuditFilter
   );
 }
 
+const tabClass = (on: boolean) =>
+  `inline-flex min-h-10 items-center gap-2 border-b-2 px-1 text-sm font-semibold no-underline ${on ? 'border-ink text-ink hover:text-ink' : 'border-transparent text-muted hover:text-ink'}`;
+
+/** Every entry, and the sign-ins (owner, 31 October 2026: "Every sign-in in its own tab"), as links. */
+function Tabs({ tab }: { tab: AuditTab }) {
+  return (
+    <nav aria-label="Audit log" className="flex gap-6 border-b border-line">
+      <Link href={AUDIT_PATH} className={tabClass(tab === 'activity')} aria-current={tab === 'activity' ? 'page' : undefined}>
+        Activity
+      </Link>
+      <Link href={signInsHref(NO_SIGN_IN_FILTERS)} className={tabClass(tab === 'sign-ins')} aria-current={tab === 'sign-ins' ? 'page' : undefined}>
+        Sign-ins
+      </Link>
+    </nav>
+  );
+}
+
+function Problems({ problems }: { problems: string[] }) {
+  if (!problems.length) return null;
+  return (
+    <div role="alert" className="rounded-lg border border-warn/30 bg-warn-soft px-4 py-3 text-sm text-warn">
+      {problems.map((p) => (
+        <p key={p}>{p} That filter is left out.</p>
+      ))}
+    </div>
+  );
+}
+
 async function Log({ searchParams }: { searchParams: Promise<Query> }) {
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
   if (!canSeeAuditLog(user)) return <Empty>{NOT_ALLOWED}</Empty>;
+  const tab = readTab(query);
+  return (
+    <div className="space-y-4">
+      <Tabs tab={tab} />
+      {tab === 'sign-ins' ? <SignIns query={query} /> : <Activity query={query} profileLink={opensProfiles(user)} />}
+    </div>
+  );
+}
+
+/** The Sign-ins tab's filters: a GET form, the tab kept. */
+function SignInFiltersForm({ filters, options }: { filters: SignInFilters; options: AuditOptions | null }) {
+  return (
+    <form key={signInsHref(filters)} action={AUDIT_PATH} aria-label="Filter the sign-ins" className="card space-y-4 p-4">
+      <input type="hidden" name="tab" value="sign-ins" />
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <Field id="sign-ins-q" label="Search">
+          <input id="sign-ins-q" name="q" type="search" maxLength={200} defaultValue={filters.q} placeholder="Email, IP, city or browser" className="input" />
+        </Field>
+        <Field id="sign-ins-outcome" label="Outcome">
+          <Select id="sign-ins-outcome" name="outcome" defaultValue={filters.outcome} className="input">
+            <option value="">All outcomes</option>
+            {options?.outcomes?.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field id="sign-ins-from" label="From">
+          <DateInput id="sign-ins-from" name="from" defaultValue={formatDate(filters.from)} />
+        </Field>
+        <Field id="sign-ins-to" label="To">
+          <DateInput id="sign-ins-to" name="to" defaultValue={formatDate(filters.to)} />
+        </Field>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="submit" className="btn btn-primary">
+          Show
+        </button>
+        {isSignInFiltered(filters) && (
+          <Link href={signInsHref(NO_SIGN_IN_FILTERS)} className="btn btn-secondary">
+            Clear filters
+          </Link>
+        )}
+      </div>
+    </form>
+  );
+}
+
+function SignInsTable({ page }: { page: SignInsPage }) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="table">
+        <thead>
+          <tr>
+            <th scope="col">When</th>
+            <th scope="col">Email</th>
+            <th scope="col">Outcome</th>
+            <th scope="col">How</th>
+            <th scope="col">IP</th>
+            <th scope="col">Location</th>
+            <th scope="col">Browser or app</th>
+          </tr>
+        </thead>
+        <tbody>
+          {page.entries.map((e) => (
+            <tr key={e.id} className="align-top">
+              <td className="whitespace-nowrap tabular-nums">
+                <time dateTime={e.at}>{e.when}</time>
+              </td>
+              <td className="break-words">
+                {e.email ?? '—'}
+                {e.user?.name && <span className="block text-xs text-muted">{e.user.name}</span>}
+              </td>
+              <td>
+                <span className={`badge whitespace-nowrap ${e.ok ? 'bg-ok-soft text-ok' : 'bg-danger-soft text-danger'}`}>{e.outcomeLabel}</span>
+              </td>
+              <td className="whitespace-nowrap">{e.methodLabel ?? '—'}</td>
+              <td className="whitespace-nowrap tabular-nums" title={ipTitle(e.from)}>
+                {ipText(e.from)}
+              </td>
+              <td className="min-w-32">
+                <Place from={e.from} />
+              </td>
+              <td className="min-w-40" title={e.from.userAgent ?? undefined}>
+                {browserText(e.from)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+async function SignIns({ query }: { query: Query }) {
+  const { filters, problems } = readSignInFilters(query);
+  const [options, loaded] = await Promise.all([loadAuditOptions(), loadSignIns(filters)]);
+  const choices = options.kind === 'ok' ? options.value : null;
+  const described = signInFiltersText(filters, choices);
+
+  let body: React.ReactNode;
+  if (loaded.kind === 'ok') {
+    const page = loaded.value;
+    body = page.entries.length ? (
+      <>
+        <SignInsTable page={page} />
+        <nav aria-label="Pages" className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3 text-sm">
+          <span className="text-muted">
+            {rangeText(page)}, newest first{page.pages > 1 && ` · page ${page.page} of ${page.pages.toLocaleString('en-US')}`}
+          </span>
+          {page.pages > 1 && (
+            <div className="flex gap-2">
+              {page.page > 1 && (
+                <Link href={signInsHref(filters, page.page - 1)} className={small}>
+                  ← Newer
+                </Link>
+              )}
+              {page.page < page.pages && (
+                <Link href={signInsHref(filters, page.page + 1)} className={small}>
+                  Older →
+                </Link>
+              )}
+            </div>
+          )}
+        </nav>
+      </>
+    ) : (
+      <p className={quiet}>
+        {page.total > 0 ? `No sign-ins on this page: there are ${signInsLabel(page.total)}.` : isSignInFiltered(filters) ? 'No sign-in matches these filters.' : 'No sign-ins yet.'}
+      </p>
+    );
+  } else {
+    body = (
+      <p className={quiet}>
+        {loaded.kind === 'forbidden'
+          ? NOT_ALLOWED
+          : loaded.kind === 'unavailable'
+            ? 'Not available yet: the server does not list the sign-ins yet.'
+            : `The sign-ins could not be loaded. ${loaded.messages.join(' ')}`}
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <Problems problems={problems} />
+      <SignInFiltersForm filters={filters} options={choices} />
+      <section aria-labelledby="sign-ins-entries" className="card">
+        <div className="flex flex-wrap items-end justify-between gap-3 border-b border-line px-4 py-3">
+          <div>
+            <h2 id="sign-ins-entries" className="font-semibold">
+              Sign-ins
+            </h2>
+            <p className="text-xs text-muted">
+              {loaded.kind === 'ok' ? signInsLabel(loaded.value.total) : 'Not loaded'}
+              {described && ` · ${described}`}
+            </p>
+          </div>
+          <div className="text-right">
+            {/* a plain link, never prefetched: the API makes the workbook on each download, and logs it */}
+            <a href={signInsExcelHref(filters)} className="btn btn-secondary">
+              Export to Excel
+            </a>
+            <p className="hint">The newest 10,000 sign-ins with these filters.</p>
+          </div>
+        </div>
+        {body}
+      </section>
+      <p className="text-xs text-muted">
+        Sign-ins from before 31 October 2026 show the address and browser their session was opened with, when known, and no location. An address inside the
+        server’s own network shows as a dash.
+      </p>
+    </div>
+  );
+}
+
+async function Activity({ query, profileLink }: { query: Query; profileLink: boolean }) {
   const { filters, problems } = readAuditFilters(query);
   const [options, loaded] = await Promise.all([loadAuditOptions(), loadAuditPage(filters)]);
   const choices = options.kind === 'ok' ? options.value : null;
@@ -337,16 +641,10 @@ async function Log({ searchParams }: { searchParams: Promise<Query> }) {
 
   return (
     <div className="space-y-4">
-      {problems.length > 0 && (
-        <div role="alert" className="rounded-lg border border-warn/30 bg-warn-soft px-4 py-3 text-sm text-warn">
-          {problems.map((p) => (
-            <p key={p}>{p} That filter is left out.</p>
-          ))}
-        </div>
-      )}
+      <Problems problems={problems} />
       <Filters filters={filters} options={choices} />
       {options.kind !== 'ok' && <p className="text-sm text-muted">The lists of users, actions and employees could not be loaded: the filters already in the address still apply.</p>}
-      <PersonHeading filters={filters} options={choices} profileLink={opensProfiles(user)} />
+      <PersonHeading filters={filters} options={choices} profileLink={profileLink} />
       <section aria-labelledby="audit-entries" className="card">
         <div className="flex flex-wrap items-end justify-between gap-3 border-b border-line px-4 py-3">
           <div>
@@ -379,8 +677,8 @@ export default function AuditLogPage({ searchParams }: PageProps<'/audit'>) {
         <div>
           <h1 className="page-title">Audit Log</h1>
           <p className="mt-1 text-muted">
-            Who changed what and when, in every part of the system, newest first. Restricted values, such as national IDs, bank accounts and pay, show only that
-            they changed.
+            Who changed what and when, in every part of the system, newest first, with what was refused and where each came from. Restricted values, such as
+            national IDs, bank accounts and pay, show only that they changed.
           </p>
         </div>
         <Suspense fallback={<Loading />}>
