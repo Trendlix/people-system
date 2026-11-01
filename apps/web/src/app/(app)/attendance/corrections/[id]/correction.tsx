@@ -15,6 +15,7 @@ import { notLoadedText } from '../../../payroll/load';
 import { cancelMyCorrection, decideCorrection } from '../actions';
 import { correctionBack, correctionDayText, correctionDoneText, correctionStepText, dayBeforeText, MY_CORRECTIONS_HREF, rightTimesText, seesCorrections } from '../corrections';
 import { loadCorrection } from '../data';
+import { leaveStepsAhead } from '@/lib/steps-ahead';
 
 // An attendance correction (owner, 19 October 2026: "Attendance corrections with approval ("I forgot to check out")"),
 // for the employee, the one who decides it first (their direct manager, else their team lead, else their department's
@@ -154,7 +155,7 @@ export async function CorrectionDetail({
         </div>
 
         <Section title="Every Step">
-          <LeaveTimeline request={r} stepText={correctionStepText} />
+          <LeaveTimeline request={r} stepText={correctionStepText} ahead={leaveStepsAhead(r)} />
         </Section>
       </div>
     </div>

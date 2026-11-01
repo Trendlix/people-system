@@ -17,6 +17,8 @@ import {
   homeWhatText,
   overlapText,
 } from './home-locations';
+import { StepsAheadItems } from '@/components/steps-ahead';
+import type { StepAhead } from '@/lib/steps-ahead';
 
 // Parts of a home location request (owner, 20 October 2026: "allow other users to request to add their home locations
 // when working from home"), shown on its page, on My Requests, on Approvals, on Check-in Setup and on a profile: its
@@ -92,9 +94,9 @@ export function HomeMap({ request, radiusMetres, own = false, height = 'h-[200px
 const DOT: Record<'ok' | 'danger' | 'none', string> = { ok: 'bg-ok', danger: 'bg-danger', none: 'bg-line' };
 
 /** Every step, in the order taken, with who and when. */
-export function HomeTimeline({ request }: { request: Pick<HomeLocationView, 'steps' | 'confidential'> }) {
+export function HomeTimeline({ request, ahead }: { request: Pick<HomeLocationView, 'steps' | 'confidential'>; ahead?: readonly StepAhead[] }) {
   const steps = request.steps ?? [];
-  if (!steps.length) return <p className="text-sm text-muted">No steps logged yet.</p>;
+  if (!steps.length && !ahead?.length) return <p className="text-sm text-muted">No steps logged yet.</p>;
   return (
     <ol className="space-y-3 border-l-2 border-line-soft pl-4" aria-label={`Every step of the request, ${steps.length} ${steps.length === 1 ? 'step' : 'steps'}`}>
       {steps.map((s) => (
@@ -108,6 +110,8 @@ export function HomeTimeline({ request }: { request: Pick<HomeLocationView, 'ste
           </p>
         </li>
       ))}
+      {/* the steps it still has to go through (owner, 1 November 2026) */}
+      {ahead && <StepsAheadItems steps={ahead} />}
     </ol>
   );
 }

@@ -25,6 +25,7 @@ import {
   radiusText,
 } from '../home-locations';
 import { HomeMap, HomeOverlaps, HomeProgress, HomeStatusBadge, HomeTimeline } from '../ui';
+import { homeStepsAhead } from '@/lib/steps-ahead';
 
 // A home location request (owner, 20 October 2026: "allow other users to request to add their home locations when
 // working from home"; then "Label Home, flag elsewhere", "then approved by the HR and CEO"), for its employee, HR (not a
@@ -207,7 +208,7 @@ export async function HomeLocationDetail({
         </div>
 
         <Section title="Every Step">
-          <HomeTimeline request={r} />
+          <HomeTimeline request={r} ahead={homeStepsAhead(r)} />
         </Section>
       </div>
     </div>

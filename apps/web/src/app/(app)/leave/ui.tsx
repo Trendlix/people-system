@@ -10,6 +10,8 @@ import { annualFigures, availableText, typeLeftText } from './balance';
 import { daysText, leaveProgressText, leaveStatusLabel, leaveStepText, leaveStepTone, periodText, standingInText, STATUS_BADGE } from './list';
 import { isPermission, permissionDayText, permissionHoursLine, permissionWhenText, requestHref, type RequestRow } from './permissions';
 import { isWfh, WFH_WHEN_NOTE, type LeaveListRow } from './wfh-rows';
+import { StepsAheadItems } from '@/components/steps-ahead';
+import type { StepAhead } from '@/lib/steps-ahead';
 
 // Parts of a leave request (owner, 18 October 2026: "can you apply the leaves according to the law?") shown on its page,
 // on Requests → Leave Requests, on My Requests, on My Team, on the dashboard and on a profile, worded as the
@@ -63,6 +65,7 @@ const DOT: Record<'ok' | 'danger' | 'none', string> = { ok: 'bg-ok', danger: 'bg
 export function LeaveTimeline({
   request,
   stepText = leaveStepText,
+  ahead,
 }: {
   request: Pick<LeaveRequestView, 'steps' | 'manager' | 'confidential'>;
   /**
@@ -70,11 +73,13 @@ export function LeaveTimeline({
    * leaveStepText words, the default.
    */
   stepText?: (s: Pick<LeaveRequestStep, 'decision' | 'comment'> & { kind: LeaveStepKind }, manager?: Pick<RequestApprover, 'role'> | null, confidential?: boolean | null) => string;
+  /** The steps it still has to go through, the one it waits at first (owner, 1 November 2026; lib/steps-ahead.ts). */
+  ahead?: readonly StepAhead[];
 }) {
   const steps = request.steps ?? [];
-  if (!steps.length) return <p className="text-sm text-muted">No steps logged yet.</p>;
+  if (!steps.length && !ahead?.length) return <p className="text-sm text-muted">No steps logged yet.</p>;
   return (
-    <ol className="space-y-3 border-l-2 border-line-soft pl-4" aria-label={`Every step of the request, ${steps.length} ${steps.length === 1 ? 'step' : 'steps'}`}>
+    <ol className="space-y-3 border-l-2 border-line-soft pl-4" aria-label={`Every step of the request, ${steps.length} ${steps.length === 1 ? 'step' : 'steps'}${ahead?.length ? ` and ${ahead.length} ahead` : ''}`}>
       {steps.map((s) => (
         <li key={s.id} className="relative">
           <span aria-hidden="true" className={`absolute top-1.5 -left-[23px] size-3 rounded-full border-2 border-card ${DOT[leaveStepTone(s) ?? 'none']}`} />
@@ -91,6 +96,7 @@ export function LeaveTimeline({
           </p>
         </li>
       ))}
+      {ahead && <StepsAheadItems steps={ahead} />}
     </ol>
   );
 }

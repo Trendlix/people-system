@@ -16,6 +16,7 @@ import { cancelMyOd, cancelOdByHr, decideOd } from '../actions';
 import { loadOd } from '../data';
 import { MY_OD_HREF, odBack, odCompensationText, odDoneText, odProgressText, odSourceText, odSpanText, odStepText, odWhenWords } from '../od';
 import { CancelOdForm, HrCancelOdForm, OdDecisionForm } from '../od-forms';
+import { leaveStepsAhead } from '@/lib/steps-ahead';
 
 // An official duty request (owner, 23 October 2026: "Official duty (OD) requests"; asked, "Manager, then HR", "Ahead
 // or up to 3 days after"), for the employee, the one who decides it first (the approver in charge), HR and the CEO;
@@ -220,7 +221,7 @@ export async function OdRequestDetail({
         </div>
 
         <Section title="Every Step">
-          <LeaveTimeline request={timeline} stepText={odStepText} />
+          <LeaveTimeline request={timeline} stepText={odStepText} ahead={leaveStepsAhead(timeline)} />
         </Section>
       </div>
     </div>

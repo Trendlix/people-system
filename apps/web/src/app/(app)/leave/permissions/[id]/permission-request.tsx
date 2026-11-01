@@ -23,6 +23,7 @@ import {
   recordsPermission,
 } from '../../permissions';
 import { LeaveProgress, LeaveStatusBadge, LeaveTimeline, PayrollLockedNotice } from '../../ui';
+import { leaveStepsAhead } from '@/lib/steps-ahead';
 
 // A permission request (owner, 19 October 2026: "this is an option given by us .. 4 hours per month with a maximum 2
 // hours per day", asked "In the system, like leave"), for the employee, the one who decides it first (their direct
@@ -182,7 +183,7 @@ export async function PermissionRequestDetail({
         </div>
 
         <Section title="Every Step">
-          <LeaveTimeline request={r} stepText={permissionStepText} />
+          <LeaveTimeline request={r} stepText={permissionStepText} ahead={leaveStepsAhead(r)} />
         </Section>
       </div>
     </div>

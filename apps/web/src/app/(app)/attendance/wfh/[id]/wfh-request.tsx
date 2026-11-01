@@ -15,6 +15,7 @@ import { cancelMyWfh, cancelWfhByHr, decideWfh } from '../actions';
 import { loadWfh } from '../data';
 import { MY_WFH_HREF, wfhBack, wfhDayText, wfhDoneText, wfhProgressText, wfhSourceText, wfhStepText } from '../wfh';
 import { CancelWfhForm, HrCancelWfhForm, WfhDecisionForm } from '../wfh-forms';
+import { leaveStepsAhead } from '@/lib/steps-ahead';
 
 // A work from home request (owner, 21 October 2026: "think about how should we handle the working from home in out
 // erp"; asked, "Manager, then HR"), for the employee, the one who decides it first (the approver in charge), HR and the
@@ -166,7 +167,7 @@ export async function WfhRequestDetail({
         </div>
 
         <Section title="Every Step">
-          <LeaveTimeline request={timeline} stepText={wfhStepText} />
+          <LeaveTimeline request={timeline} stepText={wfhStepText} ahead={leaveStepsAhead(timeline)} />
         </Section>
       </div>
     </div>

@@ -6,6 +6,8 @@ import type { ReimbursementClaimView } from '@/lib/types';
 import { formatEgp } from '../employees/[id]/contracts/salary';
 import { standingInText } from '../leave/list';
 import { claimHref, lowerApproved, payMonthOf, progressText, STATUS_BADGE, statusLabel, stepsLabel, stepText, stepTone } from './list';
+import { StepsAheadItems } from '@/components/steps-ahead';
+import type { StepAhead } from '@/lib/steps-ahead';
 
 // Parts of a reimbursement claim (owner, 18 October 2026) shown on its page, on Requests → Reimbursements, on My
 // Requests, on My Team and on the dashboard, worded as the raise requests are: its status, the amount claimed and the
@@ -52,9 +54,9 @@ const DOT: Record<'ok' | 'danger' | 'warn' | 'none', string> = { ok: 'bg-ok', da
  * person's HR and Finance stages by the stage, which the CEO decides), and for a stand-in's decision whom they stood in
  * for (owner, 25 October 2026: "To a stand-in").
  */
-export function ClaimTimeline({ claim }: { claim: Pick<ReimbursementClaimView, 'steps' | 'manager' | 'confidential'> }) {
+export function ClaimTimeline({ claim, ahead }: { claim: Pick<ReimbursementClaimView, 'steps' | 'manager' | 'confidential'>; ahead?: readonly StepAhead[] }) {
   const steps = claim.steps ?? [];
-  if (!steps.length) return <p className="text-sm text-muted">No steps logged yet.</p>;
+  if (!steps.length && !ahead?.length) return <p className="text-sm text-muted">No steps logged yet.</p>;
   return (
     <ol className="space-y-3 border-l-2 border-line-soft pl-4" aria-label={`Every step of the claim, ${stepsLabel(steps.length)}`}>
       {steps.map((s) => {
@@ -77,6 +79,8 @@ export function ClaimTimeline({ claim }: { claim: Pick<ReimbursementClaimView, '
           </li>
         );
       })}
+      {/* the steps it still has to go through (owner, 1 November 2026) */}
+      {ahead && <StepsAheadItems steps={ahead} />}
     </ol>
   );
 }

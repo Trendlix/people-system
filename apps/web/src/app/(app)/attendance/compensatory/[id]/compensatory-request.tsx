@@ -31,6 +31,7 @@ import {
 } from '../compensatory';
 import { CancelCompensatoryForm, CompensatoryDecisionForm, HrCancelCompensatoryForm } from '../compensatory-forms';
 import { loadCompensatory } from '../data';
+import { leaveStepsAhead } from '@/lib/steps-ahead';
 
 // A compensatory day request (owner, 26 October 2026: "my compensatory is a compensation with another day in the same
 // month. and rarely to be compensated in cash"; "Manager, then HR"), for the employee, the one who decides it first (the approver in charge), HR and the
@@ -234,7 +235,7 @@ export async function CompensatoryRequestDetail({
         </div>
 
         <Section title="Every Step">
-          <LeaveTimeline request={timeline} stepText={compensatoryStepText} />
+          <LeaveTimeline request={timeline} stepText={compensatoryStepText} ahead={leaveStepsAhead(timeline)} />
         </Section>
       </div>
     </div>

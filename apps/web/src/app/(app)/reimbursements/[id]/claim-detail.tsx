@@ -16,6 +16,7 @@ import { sizeText } from '../claim';
 import { loadClaim } from '../data';
 import { claimBack, currentAmount, decidingAsTitle, doneText, lowerApproved, payMonthOf, placeOfClaim, receiptHref } from '../list';
 import { ClaimProgress, ClaimStatusBadge, ClaimTimeline } from '../ui';
+import { claimStepsAhead } from '@/lib/steps-ahead';
 
 // A reimbursement claim (owner, 18 October 2026: "allow the employee to add reimbursement request … for specific preset
 // up conditions"), for the employee who claimed it, their direct manager, HR, Finance and the CEO (anyone else gets the
@@ -186,7 +187,7 @@ export async function ClaimDetail({
         </div>
 
         <Section title="Every Step">
-          <ClaimTimeline claim={c} />
+          <ClaimTimeline claim={c} ahead={claimStepsAhead(c)} />
         </Section>
       </div>
     </div>
