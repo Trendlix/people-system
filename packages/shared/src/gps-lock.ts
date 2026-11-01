@@ -11,7 +11,7 @@
 // the phone said is a mock one inside a circle passes (it is still flagged "Fake GPS suspected"): the lock trusts the
 // point it is given. Pure: the API decides with these and the web shows the same words.
 
-import { distanceMetres, officeLocationSet, type HomePoint, type LocationReading, type OfficeLocation } from './check-in.js';
+import { ACCURACY_ALLOWANCE_MAX, distanceMetres, insideWithAllowance, officeLocationSet, type HomePoint, type LocationReading, type OfficeLocation } from './check-in.js';
 import { NETWORK_LOCKED_ARRANGEMENTS, OFF_NETWORK_MESSAGE, type NetworkLockPerson } from './office-network.js';
 import { NO_LOCATION_MESSAGE, type LocationRulePerson } from './punch-location.js';
 import { networkNeededText, type CheckInPlaces } from './sub-locations.js';
@@ -21,8 +21,11 @@ import { networkNeededText, type CheckInPlaces } from './sub-locations.js';
 /** The switch on Check-in Setup (owner, 24 October 2026: "Yes, add a GPS lock too"). */
 export const GPS_LOCK_LABEL = 'Refuse Office staff’s check-ins and check-outs outside the check-in locations';
 
-/** The most of a reading's accuracy taken off its distance: a reading counts as inside when distance − min(accuracy, 100 m) ≤ the radius. */
-export const GPS_ACCURACY_ALLOWANCE_MAX = 100;
+/**
+ * The most of a reading's accuracy taken off its distance: a reading counts as inside when distance − min(accuracy, 100
+ * m) ≤ the radius (check-in.ts ACCURACY_ALLOWANCE_MAX, which the place a check-in is recorded at reads too).
+ */
+export const GPS_ACCURACY_ALLOWANCE_MAX = ACCURACY_ALLOWANCE_MAX;
 
 /** A reading less accurate than this is too rough to tell (200 m to start with; HR sets 50 to 500 m). */
 export const GPS_ROUGH_DEFAULT = 200;
@@ -61,11 +64,6 @@ export function lockedToCheckInLocations(setting: GpsLockSetting, places: Pick<C
 
 const isNumber = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
 
-/** What of a reading's accuracy is allowed for: all of it up to 100 m; none when it isn't known. */
-export const accuracyAllowance = (accuracy: number | null | undefined): number => (isNumber(accuracy) && accuracy > 0 ? Math.min(accuracy, GPS_ACCURACY_ALLOWANCE_MAX) : 0);
-
-/** Whether a reading `distance` metres from a place's point counts as inside its radius: distance − min(accuracy, 100 m) ≤ radius. */
-export const insideWithAllowance = (distance: number, accuracy: number | null | undefined, radiusMetres: number): boolean => distance - accuracyAllowance(accuracy) <= radiusMetres;
 
 /** A place a reading is held to: its point and radius, and its name (none: the main office without one, or a home). */
 type Circle = Pick<OfficeLocation, 'latitude' | 'longitude' | 'radiusMetres'> & { name?: string | null };

@@ -3,6 +3,7 @@ import {
   BOTH_LOCKS_NEEDED_TEXT,
   checkInLockRefusal,
   checkInLockText,
+  checkInPlace,
   checkInPlaceAt,
   distanceText,
   GPS_NEEDED_TEXT,
@@ -218,5 +219,35 @@ describe('a press within a client location or a remote site (24 October 2026)', 
     expect(pressPlaceLabel('remote', 'Flat', 'remote_site')).toBe('Remote site · Flat');
     expect(pressPlaceLabel('remote', 'Studio')).toBe('Remote - Studio');
     expect(pressPlaceLabel('home', null, null)).toBe('Home');
+  });
+});
+
+// the place a check-in is recorded at reads the reading as the lock does (owner, 1 November 2026: "people signing in from
+// office are recorded remote, however they are in the perimeter of the office")
+describe('the place recorded, as the lock reads the reading', () => {
+  it('is the office when the reading is past the radius by less than its accuracy, as the lock lets it in', () => {
+    // 180 m from the point of a 150 m office, 40 m accurate: inside with the allowance, Office, and the lock lets it in
+    const fuzzy = north(MAIN, 180, 40);
+    expect(checkInPlaceAt(fuzzy, PLACES)).toMatchObject({ place: 'office', location: MAIN.name, accuracyMetres: 40 });
+    expect(verdict({ reading: fuzzy }).refused).toBeNull();
+    expect(checkInPlace(fuzzy, MAIN)).toMatchObject({ place: 'office' });
+    // 20 m accurate: outside, Remote, and the lock refuses it too
+    const sharp = north(MAIN, 180, 20);
+    expect(checkInPlaceAt(sharp, PLACES).place).toBe('remote');
+    expect(verdict({ reading: sharp }).refused).toBe('outside');
+    // its accuracy unknown: none allowed for
+    expect(checkInPlaceAt(north(MAIN, 180, null), PLACES).place).toBe('remote');
+    // at most 100 m allowed for, however rough: 300 m away, 180 m rough, is outside
+    expect(checkInPlaceAt(north(MAIN, 300, 180), PLACES).place).toBe('remote');
+  });
+
+  it('agrees with the lock on every reading around the office', () => {
+    for (const metres of [0, 100, 149, 150, 151, 200, 249, 250, 251, 300]) {
+      for (const accuracy of [null, 5, 50, 99, 100, 150]) {
+        const reading = north(MAIN, metres, accuracy);
+        const office = checkInPlaceAt(reading, PLACES).place === 'office';
+        expect(office, `${metres} m, ±${accuracy}`).toBe(verdict({ reading }).refused === null);
+      }
+    }
   });
 });

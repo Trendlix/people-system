@@ -170,6 +170,22 @@ export function distanceMetres(a: { latitude: number; longitude: number }, b: { 
   return 2 * 6_371_000 * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
+/**
+ * The most of a reading's accuracy allowed for when telling whether it is inside a place's circle: a reading counts as
+ * inside when distance − min(accuracy, 100 m) ≤ the radius. The GPS lock's rule since 24 October 2026; the place a
+ * check-in is recorded at reads the same since 1 November 2026 (owner: "people signing in from office are recorded
+ * remote, however they are in the perimeter of the office": a reading the lock let through as at the office was kept as
+ * Remote and flagged "Outside the office", its point a few metres past the radius within its accuracy).
+ */
+export const ACCURACY_ALLOWANCE_MAX = 100;
+
+/** What of a reading's accuracy is allowed for: all of it up to 100 m; none when it isn't known. */
+export const accuracyAllowance = (accuracy: number | null | undefined): number =>
+  typeof accuracy === 'number' && Number.isFinite(accuracy) && accuracy > 0 ? Math.min(accuracy, ACCURACY_ALLOWANCE_MAX) : 0;
+
+/** Whether a reading `distance` metres from a place's point counts as inside its radius: distance − min(accuracy, 100 m) ≤ radius. */
+export const insideWithAllowance = (distance: number, accuracy: number | null | undefined, radiusMetres: number): boolean => distance - accuracyAllowance(accuracy) <= radiusMetres;
+
 /** What the browser read of where the phone or computer is: its point and how accurate it is, in metres. */
 export interface LocationReading {
   latitude: number;
@@ -231,10 +247,11 @@ export function checkInPlace(
   let within: { office: OfficeLocation; d: number } | null = null;
   for (const office of set) {
     const d = distanceMetres(reading, { latitude: office.latitude!, longitude: office.longitude! });
-    if (d <= office.radiusMetres && (!within || d < within.d)) within = { office, d };
+    // its accuracy allowed for, as the GPS lock does (1 November 2026)
+    if (insideWithAllowance(d, reading.accuracy, office.radiusMetres) && (!within || d < within.d)) within = { office, d };
   }
   if (within) return within.office.name ? { place: 'office', accuracyMetres, location: within.office.name } : { place: 'office', accuracyMetres };
-  if (home && officeLocationSet(home) && distanceMetres(reading, { latitude: home.latitude!, longitude: home.longitude! }) <= home.radiusMetres) {
+  if (home && officeLocationSet(home) && insideWithAllowance(distanceMetres(reading, { latitude: home.latitude!, longitude: home.longitude! }), reading.accuracy, home.radiusMetres)) {
     return { place: 'home', accuracyMetres };
   }
   return { place: set.length ? 'remote' : 'unknown', accuracyMetres };

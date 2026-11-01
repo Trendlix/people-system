@@ -27,6 +27,7 @@
 import {
   CHECK_IN_PLACE_LABELS,
   distanceMetres,
+  insideWithAllowance,
   officeLocationSet,
   type CheckInPlace,
   type HomePoint,
@@ -137,13 +138,17 @@ export interface PlaceRead {
 
 const isNumber = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n);
 
-/** The nearest of `places` the reading is within its radius of; none: outside them all. */
+/**
+ * The nearest of `places` the reading is within its radius of, its accuracy allowed for as the GPS lock does (up to 100
+ * m: check-in.ts insideWithAllowance; owner, 1 November 2026: "people signing in from office are recorded remote,
+ * however they are in the perimeter of the office"); none: outside them all.
+ */
 function nearestWithin<P extends OfficeLocation>(reading: LocationReading, places: readonly P[]): P | null {
   let best: { place: P; d: number } | null = null;
   for (const p of places) {
     if (!officeLocationSet(p)) continue;
     const d = distanceMetres(reading, { latitude: p.latitude!, longitude: p.longitude! });
-    if (d <= p.radiusMetres && (!best || d < best.d)) best = { place: p, d };
+    if (insideWithAllowance(d, reading.accuracy, p.radiusMetres) && (!best || d < best.d)) best = { place: p, d };
   }
   return best?.place ?? null;
 }
