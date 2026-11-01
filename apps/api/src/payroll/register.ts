@@ -144,6 +144,8 @@ export const REGISTER_COLUMNS: readonly Column[] = [
   // waived by the CEO (17 October 2026): none on lines worked out before then
   { header: 'Attendance waived', kind: 'money', width: 12, value: (l) => l.result.attendanceWaived ?? 0 },
   { header: 'KPI cut', kind: 'money', width: 12, value: (l) => l.result.kpiCut },
+  // waived by the CEO (1 November 2026): none on lines worked out before then
+  { header: 'KPI waived', kind: 'money', width: 12, value: (l) => l.result.kpiWaived ?? 0 },
   { header: 'No-show cut', kind: 'money', width: 12, value: (l) => l.result.noShowCut },
   // unpaid leave (18 October 2026): none on lines worked out before then
   { header: 'Unpaid leave cut', kind: 'money', width: 12, value: (l) => l.result.unpaidLeaveCut ?? 0 },

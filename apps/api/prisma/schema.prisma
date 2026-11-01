@@ -224,6 +224,10 @@ model User {
   checkInExemptionsAdded    CheckInExemption[]         @relation("CheckInExemptionAddedBy")
   checkInExemptionsEnded    CheckInExemption[]         @relation("CheckInExemptionEndedBy")
   agencyMarks               AgencyMark[]               @relation("AgencyMarkBy")
+  // the KPI reminder (owner, 1 November 2026: "in a popup reminder on each login", "can be postponed for 1 day only"):
+  // until when they put it off, and the month's round (YYYY-MM) they did it for: once a round
+  kpiReminderPostponedUntil DateTime?                  @map("kpi_reminder_postponed_until") @db.Timestamptz
+  kpiReminderPostponedRound String?                    @map("kpi_reminder_postponed_round")
 
   @@map("users")
 }

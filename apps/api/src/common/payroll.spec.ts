@@ -943,6 +943,32 @@ describe('payroll: hours as typed', () => {
   });
 });
 
+describe('payroll: the KPI deduction waived by the CEO (owner, 1 November 2026)', () => {
+  // "make a button wave KPI deduction like the attendance one"
+  it('takes no KPI cut, keeps what it was, and leaves the KPI score and the other cuts as they are', () => {
+    // a KPI of 70%, below 80%: 30% of the variable 2,400 = 720
+    const cut = payrollLine(salaried, inputs({ softSkills: 70 }));
+    expect(cut).toMatchObject({ kpiScore: 0.7, kpiCut: 720, kpiWaived: 0, earned: 11_280 });
+    const waived = payrollLine(salaried, inputs({ softSkills: 70, kpiWaived: true }));
+    expect(waived).toMatchObject({ kpiScore: 0.7, kpiCut: 0, kpiWaived: 720, earned: 12_000 });
+    expect(waived.net).toBe(payrollLine(salaried, inputs()).net);
+    // the attendance cut stays: 160 of 200 hours, 20% of the fixed 9,600 = 1,920
+    expect(payrollLine(shiftOf(200), inputs({ workedHours: 160, softSkills: 70, kpiWaived: true }))).toMatchObject({ attendanceCut: 1_920, kpiCut: 0, kpiWaived: 720 });
+    // both waived: nothing cut
+    expect(payrollLine(shiftOf(200), inputs({ workedHours: 160, softSkills: 70, kpiWaived: true, attendanceWaived: true }))).toMatchObject({
+      attendanceCut: 0,
+      kpiCut: 0,
+      earned: 12_000,
+    });
+  });
+
+  it('waives nothing without a KPI cut, nor for pay by the hour', () => {
+    expect(payrollLine(salaried, inputs({ softSkills: 95, kpiWaived: true }))).toMatchObject({ kpiCut: 0, kpiWaived: 0 });
+    const hourly: PayrollTerms = { ...salaried, payBasis: 'hourly', gross: 15_600, hourlyRate: 150, insuredWage: 15_600 };
+    expect(payrollLine(hourly, inputs({ workedHours: 80, kpiWaived: true }))).toMatchObject({ kpiCut: 0, kpiWaived: 0 });
+  });
+});
+
 describe('payroll: the attendance deduction waived by the CEO (owner, 17 October 2026)', () => {
   // "if there is an attendance deduction, allow the CEO to wave the deduction by ticking a box"
   it('takes no attendance cut, and keeps what it was', () => {

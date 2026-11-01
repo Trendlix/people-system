@@ -48,6 +48,10 @@
 // is worked out with none, the cut it would have been kept as attendanceWaived. The no-show and KPI cuts stay as they
 // are worked out, and the attendance still counts in the KPI average where the rules average it in
 // (kpiAveragesAttendance): the CEO waives the money, not the measure.
+// The KPI deduction waived the same way (owner, 1 November 2026: "make a button wave KPI deduction like the attendance
+// one"): while the run is with the CEO, the CEO may waive a line's KPI cut; the line is worked out with none, the cut it
+// would have been kept as kpiWaived. The attendance and no-show cuts stay as they are worked out, and the KPI score
+// stays as it is: the CEO waives the money, not the measure.
 // Leave (owner, 18 October 2026: "can you apply the leaves according to the law?"): the month's approved leave from the
 // Leave module fills in the Leave days (paid leave: nothing cut) and a new Unpaid leave days (unpaid leave, and the
 // unpaid share of a partly paid one such as sick leave below 100%: a day of the gross ÷ the day divisor cut for each),
@@ -472,6 +476,12 @@ export interface PayrollInputs {
    * worked out without the attendance cut. Missing on inputs saved before then: not waived.
    */
   attendanceWaived: boolean;
+  /**
+   * The CEO waived the KPI deduction (owner, 1 November 2026: "make a button wave KPI deduction like the attendance
+   * one"): ticked while the run is with the CEO, never typed by HR; the line is worked out without the KPI cut. Missing
+   * on inputs saved before then: not waived.
+   */
+  kpiWaived?: boolean;
 }
 
 export const EMPTY_PAYROLL_INPUTS: PayrollInputs = {
@@ -487,6 +497,7 @@ export const EMPTY_PAYROLL_INPUTS: PayrollInputs = {
   flexDaysOff: null,
   released: null,
   attendanceWaived: false,
+  kpiWaived: false,
 };
 
 /**
@@ -585,6 +596,11 @@ export interface PayrollResult {
    * worked out before then: none waived.
    */
   attendanceWaived?: number;
+  /**
+   * The KPI cut the CEO waived (owner, 1 November 2026): what kpiCut would have been, now 0; 0 when not waived. Missing
+   * on lines worked out before then: none waived.
+   */
+  kpiWaived?: number;
   overtime: number;
   /**
    * The bonus days' pay, a day of the fixed part each: since 17 October 2026 the Bonus (days) additions' days summed,
@@ -775,7 +791,7 @@ type SalaryPart = Pick<
   | 'kpiCut'
   | 'noShowCut'
   | 'overtime'
-> & { attendanceWaived: number; unpaidLeaveCut: number; permissionHours?: number; hoursOverExpected?: number; hourlyTopUp?: number };
+> & { attendanceWaived: number; kpiWaived: number; unpaidLeaveCut: number; permissionHours?: number; hoursOverExpected?: number; hourlyTopUp?: number };
 
 /**
  * A shift's window in hours, from its start and end ("HH:mm"): an end before the start runs past midnight. Null when
@@ -1197,7 +1213,7 @@ export function payrollLine(
  * declared insurance salary, empty for most), never more than the salary left for the days paid after the other cuts.
  * A paid leave day costs nothing; an unpaid leave day (owner, 18 October 2026) a day of the gross, never more than the
  * salary the no-show cut leaves. The attendance cut the CEO waived (owner, 17 October 2026) is 0, kept as attendanceWaived;
- * the other cuts are as without the waiver.
+ * the KPI cut the CEO waived (1 November 2026) is 0, kept as kpiWaived; the other cuts are as without the waivers.
  */
 function monthlyPart(
   i: PayrollInputs,
@@ -1289,10 +1305,10 @@ function monthlyPart(
     pay.kpi !== undefined ? kpiPayScore(pay.kpi, rules.kpiGracePercent) : kpis.length === 0 || kpiAverage >= rules.kpiGracePercent / 100 ? 1 : kpiAverage;
 
   const workedOut = piasters(fixed * Math.max(0, 1 - attendanceScore));
-  const kpiCut = piasters(variable * Math.max(0, 1 - kpiScore));
+  const kpiWorkedOut = piasters(variable * Math.max(0, 1 - kpiScore));
   // never more than the salary left for the days paid, so absences alone can't take the pay below 0
   const noShowFull = piasters((noShowDays * rules.noShowDayMultiplier * pay.gross) / rules.dayDivisor);
-  const salaryLeft = Math.max(0, piasters(fixed - workedOut + variable - kpiCut));
+  const salaryLeft = Math.max(0, piasters(fixed - workedOut + variable - kpiWorkedOut));
   const noShowCut = Math.min(noShowFull, salaryLeft);
   if (noShowFull > noShowCut) warnings.push('The no-show days cost more than the salary left for the days paid: the cut is capped there');
   // unpaid leave (owner, 18 October 2026): a day of the gross ÷ the day divisor for each, never more than the salary the
@@ -1305,6 +1321,10 @@ function monthlyPart(
   // and the attendance score still counts in the KPI average where the rules average it in
   const waived = i.attendanceWaived === true ? workedOut : 0;
   const attendanceCut = piasters(workedOut - waived);
+  // the CEO waived the KPI deduction (owner, 1 November 2026: "make a button wave KPI deduction like the attendance
+  // one"): none taken, what it was kept; the no-show cut stays as worked out with it, and the KPI score as it is
+  const kpiWaived = i.kpiWaived === true ? kpiWorkedOut : 0;
+  const kpiCut = piasters(kpiWorkedOut - kpiWaived);
 
   // the most attendance will count (owner, 16 October 2026: "maximum working hours to be recorded per day is 9 hours
   // between checkin and check out"): the shift's hours to work a day on its working days in the days paid, less the
@@ -1333,6 +1353,7 @@ function monthlyPart(
     attendanceCut,
     attendanceWaived: waived,
     kpiCut,
+    kpiWaived,
     noShowCut,
     unpaidLeaveCut,
     // none while the rules don't pay it (owner, 16 October 2026: "No overtime for now"); the sheet's intent: its overtime
@@ -1398,6 +1419,7 @@ function hourlyPart(terms: PayrollTerms, i: PayrollInputs, dayDivisor: number, w
     attendanceCut: 0,
     attendanceWaived: 0,
     kpiCut: 0,
+    kpiWaived: 0,
     noShowCut: 0,
     unpaidLeaveCut: 0,
     overtime: 0,

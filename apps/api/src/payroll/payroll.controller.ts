@@ -4,7 +4,7 @@ import type { SessionUser } from '../auth/session-user.js';
 import { attachment } from '../templates/template-file.js';
 import type { BankFileKind } from './bank.js';
 import { XLSX_TYPE } from './bank-files.js';
-import { AttendanceWaiverDto, CibFileQueryDto, CreatePayrollRunDto, PaidPayrollDto, ReturnPayrollDto, UpdatePayrollLinesDto, UpdatePayrollSettingsDto } from './payroll.dto.js';
+import { AttendanceWaiverDto, KpiWaiverDto, CibFileQueryDto, CreatePayrollRunDto, PaidPayrollDto, ReturnPayrollDto, UpdatePayrollLinesDto, UpdatePayrollSettingsDto } from './payroll.dto.js';
 import { PayrollSettingsService } from './payroll-settings.service.js';
 import { PayrollService } from './payroll.service.js';
 
@@ -113,6 +113,22 @@ export class PayrollController {
     @CurrentUser() user: SessionUser,
   ) {
     return this.payroll.waiveAttendance(id, lineId, dto, user);
+  }
+
+  /**
+   * { waived }: the CEO waives a line's KPI deduction while the run is with the CEO, or takes the waiver back (owner,
+   * 1 November 2026: "make a button wave KPI deduction like the attendance one").
+   */
+  @Roles('ceo')
+  @Post(':id/lines/:lineId/kpi-waiver')
+  @HttpCode(200)
+  waiveKpi(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('lineId', ParseUUIDPipe) lineId: string,
+    @Body() dto: KpiWaiverDto,
+    @CurrentUser() user: SessionUser,
+  ) {
+    return this.payroll.waiveKpi(id, lineId, dto, user);
   }
 
   @Roles('ceo')

@@ -352,6 +352,10 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   // the Google Maps key removed, every map back on OpenStreetMap (24 October 2026); never the key
   remove_key: 'Removed the Google Maps key',
   send_test: 'Sent a test email',
+  // a message HR sent to the people chosen on the Employees list (1 November 2026)
+  send_message: 'Sent a message',
+  // the chosen people of the Employees list as a spreadsheet (1 November 2026)
+  export_employees: 'Exported the chosen people',
   // an email template back to the system's words (1 November 2026)
   reset_to_standard: 'Reset to the standard words',
   // online interview meetings (24 October 2026): a connection made, removed, refused or needing connecting again (the
@@ -390,6 +394,8 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   reorder: 'Reordered',
   replace: 'Replaced by a newer one',
   restore_attendance: 'Restored the attendance cut',
+  // the CEO's KPI waiver taken back (1 November 2026)
+  restore_kpi: 'Restored the KPI cut',
   return: 'Returned',
   salary_raises_file: 'Downloaded the salary raises',
   contracts_report_file: 'Downloaded the contracts report',
@@ -424,6 +430,8 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   // a developer's look at it, the values hidden (22 October 2026)
   view_hidden: 'Viewed with amounts and IDs hidden',
   waive_attendance: 'Waived the attendance cut',
+  // the CEO waived a line's KPI deduction (owner, 1 November 2026: "make a button wave KPI deduction like the attendance one")
+  waive_kpi: 'Waived the KPI cut',
   withdraw: 'Withdrew',
   // offboarding (22 October 2026): a case opened (or opened again after a withdrawn ending), a clearance item cleared or
   // put back, one added, rehire eligibility set, the exit interview sent or recorded, or declined; the turnover's Excel

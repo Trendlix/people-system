@@ -44,7 +44,7 @@ import { finalKpis, withKpi } from './kpi-terms.js';
 import { json, savedInputs, withAdjustments, worked } from './line-work.js';
 import { PayrollLockedChangesService } from './locked-changes/locked-changes.service.js';
 import { firstDay, lastDay, monthName, monthShort, monthsLater } from './months.js';
-import type { AttendanceWaiverDto, CibFileQueryDto, CreatePayrollRunDto, PaidPayrollDto, ReturnPayrollDto, UpdatePayrollLinesDto } from './payroll.dto.js';
+import type { AttendanceWaiverDto, KpiWaiverDto, CibFileQueryDto, CreatePayrollRunDto, PaidPayrollDto, ReturnPayrollDto, UpdatePayrollLinesDto } from './payroll.dto.js';
 import { PayrollSettingsService } from './payroll-settings.service.js';
 import { PayslipsService } from './payslips.service.js';
 import { registerWorkbook } from './register.js';
@@ -252,7 +252,8 @@ const sent = <T extends object>(dto: T) => Object.fromEntries(Object.entries(dto
 // draft's line, or a run the CEO returns, has those typed before then cleared (expected-hours.service.ts).
 // While the run is with the CEO, the CEO may waive a line's attendance deduction (owner, 17 October 2026: "if there is
 // an attendance deduction, allow the CEO to wave the deduction by ticking a box"): the line is worked out again without
-// it at once, and the approval takes it as it is.
+// it at once, and the approval takes it as it is. The same for a line's KPI deduction (owner, 1 November 2026: "make a
+// button wave KPI deduction like the attendance one").
 // Recurring deductions (owner, 18 October 2026, e.g. a medical subscription's share): a run made or refreshed adds the
 // month's Recurring deduction of each one due that month first (adjustments/recurring.service.ts), so its lines take
 // them with the month's other deductions. Each line's warnings say when it passes the Labour Law's limits (owner, 18
@@ -713,6 +714,42 @@ export class PayrollService {
       entityId: line.id,
       // the amount only as changed, as for a salary
       diff: { runId: id, month, employeeCode: line.employeeCode, attendanceWaived: { from: was, to: dto.waived }, attendanceCut: 'changed' },
+    });
+    return this.get(id, user);
+  }
+
+  /**
+   * The CEO waives a line's KPI deduction, or takes the waiver back (owner, 1 November 2026: "make a button wave KPI
+   * deduction like the attendance one"): as the attendance waiver, only while the run is with the CEO and only on a line
+   * with a KPI cut to waive. The line is worked out again at once, its attendance and no-show cuts as they were. The
+   * audit log has the waiver's from and to, the amount only as changed.
+   */
+  async waiveKpi(id: string, lineId: string, dto: KpiWaiverDto, user: SessionUser): Promise<PayrollRunView> {
+    const run = await this.row(id);
+    const month = monthOf(run);
+    if (run.status !== 'pending_ceo') {
+      throw new ConflictException(`The ${monthName(month)} payroll ${STATUS_TEXT[run.status as PayrollStatus]}: a KPI deduction is waived only while the run is with the CEO.`);
+    }
+    const line = run.lines.find((l) => l.id === lineId);
+    if (!line) throw new NotFoundException('This line is not on this payroll. Reload it and try again.');
+    const rules = run.rules as unknown as PayrollRules;
+    const law = runLawRates(run);
+    const terms = line.terms as unknown as PayrollTerms;
+    const saved = { ...EMPTY_PAYROLL_INPUTS, ...(line.inputs as object) } as PayrollInputs;
+    const was = saved.kpiWaived === true;
+    if (dto.waived === was) return this.get(id, user);
+    if (dto.waived && !(payrollLine(terms, { ...saved, kpiWaived: false }, rules, law).kpiCut > 0)) {
+      throw new ConflictException(`${line.nameEn} has no KPI deduction to waive this month.`);
+    }
+    const inputs: PayrollInputs = { ...saved, kpiWaived: dto.waived };
+    await this.prisma.payrollLine.update({ where: { id: line.id }, data: { inputs: json(inputs), ...worked(terms, inputs, rules, law) } });
+    await this.audit.record({
+      userId: user.id,
+      action: dto.waived ? 'waive_kpi' : 'restore_kpi',
+      entityType: LINE,
+      entityId: line.id,
+      // the amount only as changed, as for a salary
+      diff: { runId: id, month, employeeCode: line.employeeCode, kpiWaived: { from: was, to: dto.waived }, kpiCut: 'changed' },
     });
     return this.get(id, user);
   }

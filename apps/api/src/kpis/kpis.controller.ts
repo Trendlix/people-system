@@ -172,6 +172,19 @@ export class KpiScorecardsController {
     return this.scorecards.counts(user);
   }
 
+  /** The KPI reminder's popup (1 November 2026): what waits for the caller, and whether it is put off. */
+  @Get('reminder')
+  reminder(@CurrentUser() user: SessionUser) {
+    return this.scorecards.reminder(user);
+  }
+
+  /** "Postpone 1 day": once for each month's round. */
+  @Post('reminder/postpone')
+  @HttpCode(200)
+  postponeReminder(@CurrentUser() user: SessionUser) {
+    return this.scorecards.postponeReminder(user);
+  }
+
   @Get('scorecards/mine')
   mine(@CurrentUser() user: SessionUser) {
     return this.scorecards.mine(user);

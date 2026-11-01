@@ -14,6 +14,7 @@ import { ContractsModule } from './contracts/contracts.module.js';
 import { DocumentsModule } from './documents/documents.module.js';
 import { ConfidentialModule } from './employees/confidential.module.js';
 import { EmployeesModule } from './employees/employees.module.js';
+import { EmployeeBulkModule } from './employee-bulk/employee-bulk.module.js';
 import { HealthController } from './health/health.controller.js';
 import { AppReleasesModule } from './app-version/app-releases.module.js';
 import { KpisModule } from './kpis/kpis.module.js';
@@ -78,6 +79,8 @@ import { ZohoPeopleModule } from './zoho-people/zoho-people.module.js';
     // Clients → Client Accounts and the accounts allowance (owner, 25 October 2026)
     ClientAccountsModule,
     EmployeesModule,
+    // the Employees list's bulk actions (owner, 1 November 2026: "i want to select and create bulk actions")
+    EmployeeBulkModule,
     ContractsModule,
     // an employee's request to resign (owner, 26 October 2026: "the employee has to request resignation and then the HR generates the document")
     ResignationRequestsModule,

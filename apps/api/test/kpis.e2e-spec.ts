@@ -1,5 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
-import type { KpiCounts, KpiHeatmap, KpiJobTitleTemplates, KpiOverview, KpiScorecardSummary, KpiScorecardView, KpiTemplateRow, KpiTemplateView, PayrollTerms } from '@trendlix/shared';
+import { KPI_REMINDER_NOTHING_WAITING, KPI_REMINDER_POSTPONE_MS, KPI_REMINDER_POSTPONED_ALREADY } from '@trendlix/shared';
+import type { KpiCounts, KpiHeatmap, KpiJobTitleTemplates, KpiOverview, KpiReminderView, KpiScorecardSummary, KpiScorecardView, KpiTemplateRow, KpiTemplateView, PayrollTerms } from '@trendlix/shared';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { addDays, addMonths, todayInCairo, toDateOnly } from '../src/common/date-only.js';
@@ -660,6 +661,36 @@ describe('KPIs (e2e)', () => {
       const waiting = (await get('/kpis/scorecards/waiting', sessions.mona).expect(200)).body as KpiScorecardSummary[];
       expect(waiting.map((s) => [s.id, s.action])).toEqual(expect.arrayContaining([[cards.tia, 'score'], [cards.tom, 'score']]));
       expect(((await get('/kpis/counts', sessions.mona).expect(200)).body as KpiCounts).team).toBe(2);
+    });
+
+    // owner, 1 November 2026: "in a popup reminder on each login", "can be postponed for 1 day only", "and can be done
+    // before the postponed date"
+    it('the reminder: what waits, postponed a day once a round, the scorecards still open meanwhile', async () => {
+      await prisma.user.update({ where: { id: users.mona }, data: { kpiReminderPostponedUntil: null, kpiReminderPostponedRound: null } });
+      let r = (await get('/kpis/reminder', sessions.mona).expect(200)).body as KpiReminderView;
+      expect(r).toMatchObject({ waiting: 2, counts: { self: 0, team: 2, hr: 0 }, only: null, round: M, postponedUntil: null, canPostpone: true });
+      expect(r.due).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+
+      const before = Date.now();
+      r = (await post('/kpis/reminder/postpone', sessions.mona).expect(200)).body as KpiReminderView;
+      expect(r.canPostpone).toBe(false);
+      const until = Date.parse(r.postponedUntil!);
+      expect(until - before).toBeGreaterThanOrEqual(KPI_REMINDER_POSTPONE_MS - 1000);
+      expect(until - Date.now()).toBeLessThanOrEqual(KPI_REMINDER_POSTPONE_MS);
+      expect((await post('/kpis/reminder/postpone', sessions.mona).expect(409)).body.message).toBe(KPI_REMINDER_POSTPONED_ALREADY);
+      // the scorecards can be done before the day is up
+      expect((await card(cards.tia, sessions.mona)).can.score).toBe(true);
+
+      // the day up: it shows again, and isn't postponed again this round
+      await prisma.user.update({ where: { id: users.mona }, data: { kpiReminderPostponedUntil: new Date(Date.now() - 1000) } });
+      r = (await get('/kpis/reminder', sessions.mona).expect(200)).body as KpiReminderView;
+      expect(r).toMatchObject({ waiting: 2, postponedUntil: null, canPostpone: false });
+
+      // nothing waiting: nothing to postpone
+      const ben = (await get('/kpis/reminder', sessions.ben).expect(200)).body as KpiReminderView;
+      expect(ben).toMatchObject({ waiting: 0, round: null, due: null, canPostpone: false });
+      expect((await post('/kpis/reminder/postpone', sessions.ben).expect(409)).body.message).toBe(KPI_REMINDER_NOTHING_WAITING);
+      await prisma.user.update({ where: { id: users.mona }, data: { kpiReminderPostponedUntil: null, kpiReminderPostponedRound: null } });
     });
   });
 

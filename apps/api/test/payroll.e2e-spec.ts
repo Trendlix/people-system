@@ -379,6 +379,8 @@ describe('Payroll (e2e)', () => {
         // the CEO's waiver (17 October 2026); no bonus or penalty days, commission or settlements: they are on
         // Additions / Deductions since then
         attendanceWaived: false,
+        // the CEO's KPI waiver (1 November 2026)
+        kpiWaived: false,
       });
       expect(r.result).toEqual(payrollLine(r.terms, r.inputs, run.rules));
       expect(r.result).toMatchObject({ earned: 12000, allowances: 1000, employeeInsurance: 1430, employerInsurance: 2437.5 });

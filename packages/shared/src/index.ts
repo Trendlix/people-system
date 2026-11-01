@@ -692,3 +692,5 @@ export * from './career.js';
 export * from './hiring-steps.js';
 export * from './attendance-records.js';
 export * from './audit-log.js';
+export * from './employee-bulk.js';
+export * from './location-pings.js';

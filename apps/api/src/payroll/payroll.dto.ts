@@ -281,6 +281,15 @@ export class AttendanceWaiverDto {
   waived: boolean;
 }
 
+/**
+ * The CEO waives a line's KPI deduction, or takes the waiver back (owner, 1 November 2026: "make a button wave KPI
+ * deduction like the attendance one").
+ */
+export class KpiWaiverDto {
+  @IsBoolean({ message: 'Send whether the KPI deduction is waived as true or false.' })
+  waived: boolean;
+}
+
 export class ReturnPayrollDto {
   @Trim()
   @IsString({ message: 'Say why the payroll goes back to HR.' })

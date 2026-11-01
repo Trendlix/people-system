@@ -193,6 +193,7 @@ const L = {
   unpaidLeaveDays: { en: 'Unpaid leave days', ar: 'أيام الإجازة بدون أجر' },
   penaltyDays: { en: 'Penalty days', ar: 'أيام الجزاء' },
   attendanceWaived: { en: 'Attendance deduction', ar: 'خصم الحضور' },
+  kpiWaived: { en: 'KPI deduction', ar: 'خصم مؤشرات الأداء' },
   softSkills: { en: 'Soft skills', ar: 'المهارات الشخصية' },
   performance: { en: 'Performance', ar: 'الأداء' },
   clientSatisfaction: { en: 'Client satisfaction', ar: 'رضا العملاء' },
@@ -451,6 +452,8 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
   const expected = measuredExpectedHours({ payBasis: line.payBasis, terms, inputs, result });
   // the attendance deduction the CEO waived (17 October 2026): none on a line worked out before then
   const waived = Number.isFinite(result.attendanceWaived) && (result.attendanceWaived ?? 0) > 0 ? result.attendanceWaived! : 0;
+  // the KPI deduction the CEO waived (1 November 2026): none on a line worked out before then
+  const kpiWaived = Number.isFinite(result.kpiWaived) && (result.kpiWaived ?? 0) > 0 ? result.kpiWaived! : 0;
   if (hourly) {
     if (inputs.workedHours !== null) {
       const rate = terms.hourlyRate ?? 0;
@@ -541,6 +544,13 @@ export function payslipContent(source: PayslipSource, language: PayslipLanguage)
     cells.push({
       label: t(L.attendanceWaived),
       value: money(waived),
+      note: ar ? 'أعفى منه الرئيس التنفيذي: لا يُخصم' : 'Waived by the CEO: not deducted',
+    });
+  }
+  if (kpiWaived > 0) {
+    cells.push({
+      label: t(L.kpiWaived),
+      value: money(kpiWaived),
       note: ar ? 'أعفى منه الرئيس التنفيذي: لا يُخصم' : 'Waived by the CEO: not deducted',
     });
   }

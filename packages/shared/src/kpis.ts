@@ -992,6 +992,43 @@ export interface KpiCounts {
   hr: number;
 }
 
+/**
+ * The KPI reminder (owner, 1 November 2026: "when there is a KPI Scoring Pending make it in a floater, can be postponed
+ * for 1 day only"; "and can be done before the postponed date"; "in a popup reminder on each login"): while scorecards
+ * wait for someone, a popup on each sign-in. "Postpone 1 day" puts it off for a day, once for each month's round (the
+ * month of the newest scorecard waiting); the scorecards can be done meanwhile, as always.
+ */
+export const KPI_REMINDER_POSTPONE_MS = 24 * 60 * 60 * 1000;
+
+/** GET /kpis/reminder: what waits for the caller, and whether the popup is put off. */
+export interface KpiReminderView {
+  /** How many scorecards wait for them, and whose. */
+  waiting: number;
+  counts: KpiCounts;
+  /** The one scorecard waiting, when only one does ("Score now" opens it); null otherwise. */
+  only: string | null;
+  /** The month of the newest scorecard waiting (YYYY-MM): the round a postponement is for; null with none. */
+  round: string | null;
+  /** The nearest deadline among them (YYYY-MM-DD); null with none. */
+  due: string | null;
+  /** Until when the popup is put off (ISO), while it still is; null otherwise. */
+  postponedUntil: string | null;
+  /** Whether "Postpone 1 day" may be pressed: something waits and this round's postponement isn't used. */
+  canPostpone: boolean;
+}
+
+/** Refused: the round's one postponement is used, or nothing waits. */
+export const KPI_REMINDER_POSTPONED_ALREADY = 'The KPI reminder was postponed once this month already.';
+export const KPI_REMINDER_NOTHING_WAITING = 'No KPI scorecards are waiting for you.';
+
+/** Whether the popup shows now: something waits, and it isn't put off. */
+export const kpiPopupShows = (v: Pick<KpiReminderView, 'waiting' | 'postponedUntil'> | null | undefined, nowMs: number): boolean =>
+  !!v && v.waiting > 0 && !(v.postponedUntil && Date.parse(v.postponedUntil) > nowMs);
+
+/** Whether a postponement saved for `round` until `until` still holds at `nowMs`. */
+export const kpiPostponed = (saved: { until: Date | null; round: string | null }, round: string | null, nowMs: number): boolean =>
+  !!round && saved.round === round && !!saved.until && saved.until.getTime() > nowMs;
+
 /** GET /kpis/heatmap: people × months, final % coloured by level, and the latest month's level distribution. */
 export interface KpiHeatmap {
   /** YYYY-MM, oldest first. */

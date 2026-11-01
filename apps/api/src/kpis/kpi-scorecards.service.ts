@@ -10,6 +10,11 @@ import {
   type KpiScorecardSummary,
   type KpiScorecardView,
   type KpiStatus,
+  KPI_REMINDER_NOTHING_WAITING,
+  KPI_REMINDER_POSTPONE_MS,
+  KPI_REMINDER_POSTPONED_ALREADY,
+  kpiPostponed,
+  type KpiReminderView,
 } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
@@ -100,6 +105,17 @@ export function checkedPicks(raw: readonly unknown[], metrics: readonly { id: st
   return picks;
 }
 
+/** Whose the scorecards waiting are: their own, their people's, HR's (scored by HR, or to calibrate). */
+function countsOf(waiting: readonly KpiScorecardSummary[], caller: KpiCaller): KpiCounts {
+  const counts: KpiCounts = { self: 0, team: 0, hr: 0 };
+  for (const s of waiting) {
+    if (caller.employeeId && s.employee.id === caller.employeeId) counts.self++;
+    else if (s.action === 'calibrate' || s.scorer.kind === 'hr') counts.hr++;
+    else counts.team++;
+  }
+  return counts;
+}
+
 @Injectable()
 export class KpiScorecardsService {
   constructor(
@@ -131,15 +147,43 @@ export class KpiScorecardsService {
 
   /** How many wait for the caller: their own, their people's, HR's (scored by HR, or to calibrate). */
   async counts(user: SessionUser): Promise<KpiCounts> {
-    const caller = await this.caller(user);
+    return countsOf(await this.waiting(user), await this.caller(user));
+  }
+
+  /**
+   * GET /kpis/reminder (owner, 1 November 2026: "when there is a KPI Scoring Pending make it in a floater, can be
+   * postponed for 1 day only"; "in a popup reminder on each login"): what waits for the caller, the newest month's round,
+   * the nearest deadline, and whether the popup is put off or may be. The scorecards can be done meanwhile, as always.
+   */
+  async reminder(user: SessionUser, now = new Date()): Promise<KpiReminderView> {
     const waiting = await this.waiting(user);
-    const counts: KpiCounts = { self: 0, team: 0, hr: 0 };
-    for (const s of waiting) {
-      if (caller.employeeId && s.employee.id === caller.employeeId) counts.self++;
-      else if (s.action === 'calibrate' || s.scorer.kind === 'hr') counts.hr++;
-      else counts.team++;
-    }
-    return counts;
+    const counts = countsOf(waiting, await this.caller(user));
+    const round = waiting.reduce<string | null>((m, s) => (m === null || s.month > m ? s.month : m), null);
+    const due = waiting.reduce<string | null>((d, s) => (s.deadline && (d === null || s.deadline < d) ? s.deadline : d), null);
+    const saved = await this.prisma.user.findUnique({ where: { id: user.id }, select: { kpiReminderPostponedUntil: true, kpiReminderPostponedRound: true } });
+    const postponement = { until: saved?.kpiReminderPostponedUntil ?? null, round: saved?.kpiReminderPostponedRound ?? null };
+    const postponed = kpiPostponed(postponement, round, now.getTime());
+    return {
+      waiting: waiting.length,
+      counts,
+      only: waiting.length === 1 ? waiting[0].id : null,
+      round,
+      due,
+      postponedUntil: postponed ? postponement.until!.toISOString() : null,
+      canPostpone: waiting.length > 0 && postponement.round !== round,
+    };
+  }
+
+  /** POST /kpis/reminder/postpone: "Postpone 1 day", once for each month's round. */
+  async postponeReminder(user: SessionUser, now = new Date()): Promise<KpiReminderView> {
+    const view = await this.reminder(user, now);
+    if (!view.waiting) throw new ConflictException(KPI_REMINDER_NOTHING_WAITING);
+    if (!view.canPostpone) throw new ConflictException(KPI_REMINDER_POSTPONED_ALREADY);
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { kpiReminderPostponedUntil: new Date(now.getTime() + KPI_REMINDER_POSTPONE_MS), kpiReminderPostponedRound: view.round },
+    });
+    return this.reminder(user, now);
   }
 
   /**

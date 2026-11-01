@@ -116,6 +116,8 @@ export const NOTIFICATION_KINDS = [
   // and approved from the HR"): those who decide it told one waits, and the employee told it was approved or rejected
   'photo_request_waiting',
   'photo_request_decided',
+  // a message HR sends to the people they chose on the Employees list (owner, 1 November 2026: bulk actions)
+  'hr_message',
 ] as const;
 export type NotificationKind = (typeof NOTIFICATION_KINDS)[number];
 
@@ -201,6 +203,7 @@ export const NOTIFICATION_KIND_LABELS: Record<NotificationKind, string> = {
   payroll_locked_change: 'Payroll',
   photo_request_waiting: 'Photo',
   photo_request_decided: 'Photo',
+  hr_message: 'Message from HR',
 };
 
 // ---------- the reminders and the person's switches ----------
