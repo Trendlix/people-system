@@ -15,6 +15,8 @@ import {
   type ImportedDay,
   type PunchKind,
   type PunchLike,
+  distanceMetres,
+  insideWithAllowance,
 } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
 import type { SessionUser } from '../auth/session-user.js';
@@ -132,15 +134,65 @@ export class HoursByPairsService {
     private readonly imports: AttendanceImportsService,
   ) {}
 
-  /** The pass once, on deploy (main.ts, once the API listens; the tests run it themselves). Never throws. */
+  /**
+   * The pass once, on deploy (main.ts, once the API listens; the tests run it themselves), after the check-ins' places
+   * are read again (rereadPlaces). Never throws.
+   */
   start(): void {
-    void this.recount({ audit: true })
+    void this.rereadPlaces()
+      .catch((err: unknown) => {
+        this.logger.error(`The check-ins' places could not be read again: ${(err as Error).message}`);
+        return 0;
+      })
+      .then(() => this.recount({ audit: true }))
       .then((r) => {
         if (r && (r.daysWritten || r.correctedDaysChanged)) {
           this.logger.log(`Recounted ${r.daysRecounted} days by their pairs (${r.daysChanged} changed), ${r.correctedDays} corrected days made again, ${r.linesRefilled} draft lines refilled.`);
         }
       })
       .catch((err: unknown) => this.logger.error(`The hours by pairs could not be recounted: ${(err as Error).message}`));
+  }
+
+  /**
+   * The check-ins kept as Remote or Home whose point is inside the main office within its accuracy, as the GPS lock reads
+   * it (owner, 1 November 2026: "people signing in from office are recorded remote, however they are in the perimeter of
+   * the office"; packages/shared insideWithAllowance): made Office, the main office's name kept, and the flags that said
+   * they were away from it (outside the office, not at home or the office, not their location) taken off; the days are
+   * then made again from them by the recount. Only those read from a point (not an office network's, which are Office
+   * already), never in a month whose payroll is with the CEO, approved or paid. One audit entry with how many. Answers
+   * how many changed; none without a main office.
+   */
+  async rereadPlaces(): Promise<number> {
+    const main = await this.prisma.checkInLocation.findFirst({ where: { isMain: true, kind: { not: 'client' } }, select: { name: true, latitude: true, longitude: true, radiusMetres: true } });
+    if (!main || main.latitude === null || main.longitude === null) return 0;
+    const point = { latitude: main.latitude.toNumber(), longitude: main.longitude.toNumber() };
+    const runs = await this.prisma.payrollRun.findMany({ select: { month: true, status: true } });
+    const locked = new Set(runs.filter((r) => locksMonth(r.status)).map((r) => fromDateOnly(r.month).slice(0, 7)));
+    const rows = await this.prisma.attendancePunch.findMany({
+      where: { place: { in: ['remote', 'home'] }, officeNetwork: null, latitude: { not: null }, longitude: { not: null } },
+      select: { id: true, employeeId: true, date: true, latitude: true, longitude: true, accuracyMetres: true, flags: true },
+    });
+    const due = rows.filter(
+      (r) =>
+        !locked.has(fromDateOnly(r.date).slice(0, 7)) &&
+        insideWithAllowance(distanceMetres({ latitude: r.latitude!.toNumber(), longitude: r.longitude!.toNumber() }, point), r.accuracyMetres, main.radiusMetres),
+    );
+    if (!due.length) return 0;
+    const away = new Set(['outside_office', 'not_home_or_office', 'not_their_location']);
+    for (const r of due) {
+      await this.prisma.attendancePunch.update({
+        where: { id: r.id },
+        data: { place: 'office', locationName: main.name ?? null, locationKind: null, flags: r.flags.filter((f) => !away.has(f)) },
+      });
+    }
+    await this.audit.record({
+      userId: null,
+      action: 'recount_places',
+      entityType: 'attendance_day',
+      diff: { checkIns: due.length, people: new Set(due.map((r) => r.employeeId)).size, dates: [...new Set(due.map((r) => fromDateOnly(r.date)))].sort() },
+    });
+    this.logger.log(`Read ${due.length} check-ins inside the main office within their accuracy as Office.`);
+    return due.length;
   }
 
   /**

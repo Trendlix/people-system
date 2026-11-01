@@ -315,6 +315,9 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   // access follows the contract (owner, 23 October 2026: "Active - Grace - Hold - No Access"): HR's 7 days' grace, and each
   // change of where someone's access stands (Active, Grace, Hold, No access), recorded once
   give_grace: 'Gave 7 days’ grace',
+  // HR's hold on someone's access, whatever the contract, and its release (owner, 1 November 2026)
+  hold_access: 'Put access on hold',
+  release_access: 'Released access hold',
   access_standing: 'Access standing changed',
   // no contract entered (23 October 2026: "Hold them after 7 days"): first seen, the day their access holds from set
   access_no_contract: 'Recorded no contract entered',
@@ -461,6 +464,8 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   // the days of the months not yet paid recounted on deploy: by their pairs (owner, 25 October 2026), from the first
   // check-in to the last check-out with the breaks counted since 31 October 2026 (owner: "9:00, break included")
   recount_hours: 'Recounted the hours from check-ins and check-outs',
+  // check-ins inside the main office within their accuracy, kept as Remote before 1 November 2026, read as Office
+  recount_places: 'Read check-ins at the office again as Office',
   // approved work from home days counted full (owner, 26 October 2026: "Full day, always"): the draft lines refilled once
   refill_wfh_days: 'Refilled the draft payroll lines for approved work from home days',
   // Recount past days on the current shifts (owner, 26 October 2026)

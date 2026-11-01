@@ -12,6 +12,7 @@ import {
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { CheckInLocationEndingsService } from '../src/attendance/check-in-location-endings.service.js';
+import { HoursByPairsService } from '../src/attendance/hours-by-pairs.service.js';
 import { signatureOf } from '../src/attendance/signed-ip.js';
 import { addDays, addMonths, toDateOnly, todayInCairo } from '../src/common/date-only.js';
 import { toTimeOfDay } from '../src/common/time-of-day.js';
@@ -223,7 +224,11 @@ describe('The GPS lock and requested check-in locations (e2e)', () => {
     it('is let in inside a circle, the reading’s accuracy allowed for (up to 100 m), in and out', async () => {
       // 200 m out with ±60 m: 200 − 60 ≤ 150
       const inside = (await punch(sessions.olga, { kind: 'in', ...north(200, 60) }).expect(200)).body;
-      expect(inside.punches.at(-1)).toMatchObject({ kind: 'in', accuracyMetres: 60 });
+      // kept as at the office, as the lock read it (owner, 1 November 2026: "people signing in from office are recorded
+      // remote, however they are in the perimeter of the office"), never flagged outside it
+      expect(inside.punches.at(-1)).toMatchObject({ kind: 'in', accuracyMetres: 60, place: 'office' });
+      const kept = await prisma.attendancePunch.findFirstOrThrow({ where: { employeeId: ids.olga }, orderBy: { at: 'desc' }, select: { place: true, flags: true, locationName: true } });
+      expect(kept).toEqual({ place: 'office', flags: [], locationName: MAIN.name });
       // 200 m out with ±40 m: refused
       await punch(sessions.olga, { kind: 'out', ...north(200, 40) }).expect(409);
       const out = (await punch(sessions.olga, { kind: 'out', ...north(20, 15) }).expect(200)).body;
@@ -455,5 +460,37 @@ describe('The GPS lock and requested check-in locations (e2e)', () => {
 
   it('kept the main office as the main', async () => {
     expect((await prisma.checkInLocation.findUniqueOrThrow({ where: { id: mainId } })).isMain).toBe(true);
+  });
+
+  // check-ins kept as Remote before 1 November 2026 though inside the office within their accuracy: read as Office again
+  // on deploy, and their days made again from them
+  it('reads a check-in kept as Remote inside the office within its accuracy as Office again, and its day with it', async () => {
+    await person('pia', 'Pia Perimeter', { workArrangement: 'office' });
+    const at = new Date();
+    const fuzzy = north(200, 60);
+    const far = north(1200, 60);
+    const kept = async (latitude: number, longitude: number, minutes: number) =>
+      (
+        await prisma.attendancePunch.create({
+          data: { employeeId: ids.pia, date: toDateOnly(TODAY), kind: minutes ? 'out' : 'in', at: new Date(at.getTime() + minutes * 60_000), place: 'remote', accuracyMetres: 60, latitude, longitude, expected: 'office', flags: ['outside_office'], source: 'system' },
+          select: { id: true },
+        })
+      ).id;
+    const inside = await kept(fuzzy.latitude, fuzzy.longitude, 0);
+    const away = await kept(far.latitude, far.longitude, 1);
+    await prisma.attendanceDay.create({
+      data: { employeeId: ids.pia, date: toDateOnly(TODAY), status: 'worked', checkIn: at, place: 'remote', flags: ['outside_office'], hoursCounted: 0, source: 'system' },
+    });
+    const pass = app.get(HoursByPairsService);
+    expect(await pass.rereadPlaces()).toBeGreaterThanOrEqual(1);
+    // inside within its accuracy: Office, the main office's name, the flag gone; 1,200 m out: as it was
+    expect(await prisma.attendancePunch.findUniqueOrThrow({ where: { id: inside }, select: { place: true, flags: true, locationName: true } })).toEqual({ place: 'office', flags: [], locationName: MAIN.name });
+    expect(await prisma.attendancePunch.findUniqueOrThrow({ where: { id: away }, select: { place: true, flags: true } })).toEqual({ place: 'remote', flags: ['outside_office'] });
+    // the day made again from its presses: the first one's place, at the office
+    await pass.recount({ employeeIds: [ids.pia] });
+    expect(await prisma.attendanceDay.findFirstOrThrow({ where: { employeeId: ids.pia, date: toDateOnly(TODAY) }, select: { place: true } })).toEqual({ place: 'office' });
+    // once only: nothing more to read
+    expect(await pass.rereadPlaces()).toBe(0);
+    expect((await prisma.auditLog.findFirst({ where: { action: 'recount_places' }, orderBy: { id: 'desc' }, select: { diff: true } }))?.diff).toMatchObject({ dates: expect.arrayContaining([TODAY]) });
   });
 });
