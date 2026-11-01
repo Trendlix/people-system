@@ -30,7 +30,6 @@ Future<void> askToChange(
     overAll(context),
     eyebrow: ChangeWords.eyebrow,
     title: ChangeWords.title,
-    intro: ChangeWords.intro,
     builder: (context) => ChangeRequestForm(employeeId: employeeId, details: details, groups: groups),
   );
   if (sent != true) return;
@@ -212,7 +211,6 @@ class _ChangeRequestFormState extends ConsumerState<ChangeRequestForm> {
               Text(ChangeWords.note, style: text.bodyMedium?.copyWith(color: p.muted)),
               const SizedBox(height: 8),
               TextField(controller: _note, minLines: 3, maxLines: 6, maxLength: 1000, enabled: !_busy),
-              Text(ChangeWords.noteHint, style: text.bodySmall),
             ],
           ),
         ),

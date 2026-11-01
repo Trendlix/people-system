@@ -30,7 +30,6 @@ class SessionsScreen extends ConsumerWidget {
     return AccountPage(
       eyebrow: AccountWords.securityEyebrow,
       title: AccountWords.sessionsTitle,
-      intro: AccountWords.sessionsIntro,
       onRefresh: () async {
         ref
           ..invalidate(mySessionsProvider)
@@ -109,8 +108,6 @@ class _Health extends StatelessWidget {
             onlyThis ? AccountWords.onlyThisDevice : AccountWords.checkTheOthers,
             style: text.titleLarge?.copyWith(fontSize: 22, fontWeight: FontWeight.w400, letterSpacing: -0.88),
           ),
-          const SizedBox(height: 10),
-          Text(AccountWords.healthLine, style: text.bodySmall),
         ],
       ),
     );
@@ -351,8 +348,6 @@ class _FingerprintCardState extends ConsumerState<_FingerprintCard> {
                   header: true,
                   child: Text(AccountWords.fingerprintTitle, style: text.titleMedium?.copyWith(fontSize: 18, letterSpacing: 0, height: 1.5)),
                 ),
-                const SizedBox(height: 8),
-                Text(AccountWords.fingerprintLine(deviceUnusedDays), style: text.bodySmall),
                 const SizedBox(height: 15),
                 switch (devices) {
                   AsyncValue(value: final List<FingerprintDevice> list) when list.isEmpty => Text(

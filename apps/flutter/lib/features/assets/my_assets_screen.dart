@@ -26,7 +26,6 @@ class MyAssetsScreen extends ConsumerWidget {
     return AccountPage(
       eyebrow: AssetsWords.eyebrow,
       title: AssetsWords.title,
-      intro: AssetsWords.intro,
       onRefresh: () async {
         ref.invalidate(myCustodyProvider);
         await ref.read(myCustodyProvider.future).catchError((_) => const MyCustody());
@@ -154,7 +153,6 @@ class _RecordsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
-    final files = records.any((r) => r.files.isNotEmpty);
     return SurfaceCard(
       padding: const EdgeInsets.all(18),
       child: Column(
@@ -164,10 +162,8 @@ class _RecordsCard extends StatelessWidget {
           const SizedBox(height: 17),
           if (records.isEmpty)
             Text(AssetsWords.noRecords, style: text.bodyLarge?.copyWith(color: context.palette.muted))
-          else ...[
+          else
             for (final r in records) _RecordRow(record: r),
-            if (files) ...[const SizedBox(height: 8), Text(AssetsWords.openOnWebsite, style: text.bodySmall)],
-          ],
         ],
       ),
     );
@@ -296,7 +292,7 @@ class AssetsRow extends ConsumerWidget {
     return RecordRow(
       icon: CupertinoIcons.cube_box,
       title: AssetsWords.companyAssets,
-      subtitle: held == null ? AssetsWords.assetsLine : AssetsWords.withYou(held),
+      subtitle: held == null ? null : AssetsWords.withYou(held),
       onTap: onTap,
     );
   }

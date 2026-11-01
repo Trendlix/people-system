@@ -71,7 +71,7 @@ class _AttendanceTabState extends ConsumerState<AttendanceTab> {
       child: ListView(
         padding: tabPagePadding(context),
         children: [
-          const PageHead(eyebrow: AttendanceWords.eyebrow, title: AttendanceWords.title, intro: AttendanceWords.intro),
+          const PageHead(eyebrow: AttendanceWords.eyebrow, title: AttendanceWords.title),
           if (withMonth) ...[const SizedBox(height: 20), _MonthSwitch(month: _month, onChanged: (m) => setState(() => _month = m))],
           const SizedBox(height: 24),
           const TodayPanel(),

@@ -22,45 +22,31 @@ import '../sheet_parts.dart';
 /// Official duty's words, People's where it has them.
 abstract final class OdWords {
   static const title = 'Official duty';
-  static String intro(bool toCeo) =>
-      'Work for the company away from the office, e.g. at a client’s site: ask ahead, or up to 3 days after. Your direct manager decides first, then ${toCeo ? 'the CEO' : 'HR'}.';
-  static String shiftNote(String start, String end) => 'Your shift is $start to $end: part of a day is within it. Asked ahead, today or up to 3 days after.';
+  static String shiftNote(String start, String end) => 'Your shift: $start to $end.';
   static const howLong = 'How long';
   static const fullDays = 'Full days';
   static const partOfADay = 'Part of a day';
   static const firstDay = 'First day';
   static const day = 'Day';
-  static const firstDayHint = 'A working day of your shift, or a single rest day or official holiday with its compensation: ahead, today, or up to 3 days gone by.';
   static const lastDay = 'Last day';
-  static const lastDayHint =
-      'For several days in a row, up to 31: their official holidays and rest days aren’t duty days. A single rest day or official holiday goes on its own, with its compensation.';
   static const from = 'From';
   static const to = 'To';
-  static const timesHint = 'Within your shift. Within these hours you check in from where you are; outside them, as on any day.';
   static const where = 'Where';
-  static const whereHint = 'E.g. the client’s office in New Cairo, or the shoot’s location. Up to 200 characters.';
+  static const wherePlaceholder = 'E.g. the client’s office in New Cairo';
   static const reason = 'Reason';
-  static const reasonHint = 'What the duty is for. Your direct manager and HR read it. Up to 1000 characters.';
-  static const askedAfter =
-      'Asked after the day: it is marked “requested after”. That’s fine up to 3 days after; the reason tells your manager and HR why it wasn’t asked ahead.';
 
   // the compensation
   static const compensation = 'Compensation';
   static String what(String day, String? holiday) => '$day is ${holiday != null ? 'an official holiday ($holiday)' : 'a rest day of your shift'}';
-  static String compensatedAlready(String what, String status) => '$what, compensated already by a compensatory day ($status): there is nothing more to choose.';
-  static String earnsNothing(String what, String hours, String min) =>
-      '$what: $hours of official duty on it earns nothing, fewer than the $min that earn a compensation (Compensatory Setup), so there is no compensation to choose.';
-  static String earns(String what, String earned, String cash) => '$what: official duty on it earns $earned, or $cash instead. The day itself adds no hours or overtime.';
+  static String compensatedAlready(String what, String status) => '$what, compensated already by a compensatory day ($status).';
+  static String earnsNothing(String what, String hours, String min) => '$what: $hours earns no compensation (at least $min needed).';
+  static String earns(String what, String earned, String cash) => '$what: it earns $earned, or $cash instead.';
   static const aWholeDayOff = 'a whole day off';
   static String hoursOff(String hours) => '$hours off';
   static const dayOff = 'Day off';
   static const hoursOffChoice = 'Hours off';
   static const cashInstead = 'Cash instead';
   static const dayForTheHoursOff = 'Day for the hours off';
-  static String dayOffHint(String window, String? hours) => 'A working day of your shift $window, from tomorrow on.${hours == null ? '' : ' The $hours off are taken that day, with no deduction.'}';
-  static const inTheSameMonth = 'in the same month';
-  static String withinDaysAfter(int n) => 'within $n ${n == 1 ? 'day' : 'days'} after it';
-  static String cashHint(String cash) => 'Cash instead: $cash added to the month’s payroll once approved, and no day off.';
   static String hoursPay(String hours, double h, String rate) => '$hours${h == 1 ? '’s' : '’'} pay at $rate×';
   static String daysPay(double n, String days) => n == 1 ? '1 day’s pay' : '$days days’ pay';
 
@@ -85,41 +71,26 @@ abstract final class OdWords {
   static String isToday(String day) => '$day is today: ask for a compensatory day a day before the day off at the latest.';
   static const writePlace = 'Write where the official duty is, e.g. the client’s office in New Cairo.';
   static const writeReason = 'Write what the official duty is for, e.g. a site visit for the client’s launch.';
-  static String ready(String when, String compensation, bool toCeo) =>
-      'Ready to send: official duty for $when$compensation, to your direct manager (without one, your lead), then ${toCeo ? 'the CEO' : 'HR'}.';
-  static String withDayOffOn(String day) => ', with a day off on $day';
-  static String withHoursOffOn(String hours, String day) => ', with $hours off on $day';
-  static const withADayOff = ', with a day off';
-  static String paidInstead(String cash) => ', paid $cash instead';
 
   // its page
   static const days = 'Days';
   static const whereFact = 'Where';
   static const reasonFact = 'Reason';
   static const compensationFact = 'Compensation';
-  static const compensationNote = 'For working a rest day or an official holiday: decided and cancelled with this official duty. The day itself adds no hours or overtime.';
   static const asked = 'Asked';
-  static const askedAfterFact = 'After its first day: requested after, within the 3 days allowed.';
   static const requestedAfter = 'Requested after';
   static const aFullDay = 'A full day';
   static String daysInARow(int n) => '$n days in a row, full days';
-  static const compensatedBelow = 'on a rest day or an official holiday, compensated below';
-  static const workingDayAway = 'a working day away from the office, not leave';
   static String cashInsteadOf(String off) => 'Cash instead of $off';
   static const aDayOff = 'a day off';
   static const imported = 'Imported';
   static const askedByTheEmployee = 'Asked';
-  static const approvedNote =
-      'On its days (or within its hours) you check in from where you are, without the office location or network, and the days count as attended for its hours.';
-  static const others = 'Your other official duty requests are on My Requests.';
   static const stepImported = 'Imported, approved';
   static const stepCancelled = 'Cancelled';
   static const cancelTitle = 'Cancel the request';
-  static const cancelExplain = 'While it is being decided you can cancel it, e.g. when the visit is called off.';
-  static String cancelExplainWith(String comp) => ' Its compensation ($comp) is cancelled with it.';
   static const cancelButton = 'Cancel this request';
-  static String cancelConfirm(String when) => 'Cancel your official duty request for $when? It stays on your list, cancelled; ask again with a new request.';
-  static const cancelled = 'Official duty cancelled. It stays on the list, cancelled; its days are free again.';
+  static String cancelConfirm(String when) => 'Cancel your official duty request for $when?';
+  static const cancelled = 'Official duty cancelled.';
 }
 
 /// Opens the sheet to ask for an official duty, from the tab's [context].
@@ -299,24 +270,6 @@ class _OdFormState extends ConsumerState<_OdForm> {
     return out;
   }
 
-  String _ready(OdForm f, ({String what, String? status, _Earned? earned, bool needed})? comp) {
-    final s = _start!;
-    final end = _part ? s : (_end ?? s);
-    final when = odWhenWords(s, end, !_part, _part ? _from : null, _part ? _to : null);
-    var words = '';
-    final earned = comp?.earned;
-    if (comp != null && comp.needed && earned != null) {
-      if (_compensation == 'cash') {
-        words = OdWords.paidInstead(_cashText(earned, f.rules!.cashRate));
-      } else if (_dayOff == null) {
-        words = OdWords.withADayOff;
-      } else {
-        words = earned.day ? OdWords.withDayOffOn(dayWords(_dayOff!)) : OdWords.withHoursOffOn(hoursShort(earned.hours), dayWords(_dayOff!));
-      }
-    }
-    return OdWords.ready(when, words, f.toCeo);
-  }
-
   Future<void> _send(OdForm f, bool needed) async {
     final s = _start!;
     final body = <String, Object?>{
@@ -368,19 +321,15 @@ class _OdFormState extends ConsumerState<_OdForm> {
   Widget _body(BuildContext context, OdForm f) {
     if (f.refusal != null) return SheetState.refused(f.refusal!);
     if (!_seeded) _seed(f);
-    final p = context.palette;
     final text = Theme.of(context).textTheme;
     final comp = _comp(f);
     final earned = comp?.earned;
     if (comp != null && comp.needed && _dayOff == null && !_dayOffByHand) _dayOff = _defaultDayOff(f, _start!);
     final problems = _problems(f, comp);
     final rate = f.rules?.cashRate ?? 1.5;
-    final window = f.rules?.offWithinDays == null ? OdWords.inTheSameMonth : OdWords.withinDaysAfter(f.rules!.offWithinDays!);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(OdWords.intro(f.toCeo), style: text.bodyLarge?.copyWith(color: p.muted)),
-        const SizedBox(height: 20),
         if (f.shift != null) RulesNote(icon: CupertinoIcons.clock, lines: [OdWords.shiftNote(time12(f.shift!.startTime), time12(f.shift!.endTime))]),
         SheetField(
           label: OdWords.howLong,
@@ -393,7 +342,6 @@ class _OdFormState extends ConsumerState<_OdForm> {
         ),
         SheetField(
           label: _part ? OdWords.day : OdWords.firstDay,
-          hint: OdWords.firstDayHint,
           child: PickDayField(
             label: _part ? OdWords.day : OdWords.firstDay,
             value: _start,
@@ -410,7 +358,6 @@ class _OdFormState extends ConsumerState<_OdForm> {
         if (_part)
           SheetField(
             label: '${OdWords.from} · ${OdWords.to}',
-            hint: OdWords.timesHint,
             child: Row(
               children: [
                 Expanded(
@@ -427,7 +374,6 @@ class _OdFormState extends ConsumerState<_OdForm> {
           SheetField(
             label: OdWords.lastDay,
             optional: true,
-            hint: OdWords.lastDayHint,
             child: PickDayField(
               label: OdWords.lastDay,
               value: _end,
@@ -463,7 +409,6 @@ class _OdFormState extends ConsumerState<_OdForm> {
                   if (_compensation == 'day_off')
                     SheetField(
                       label: earned.day ? OdWords.dayOff : OdWords.dayForTheHoursOff,
-                      hint: OdWords.dayOffHint(window, earned.day ? null : hoursShort(earned.hours)),
                       child: PickDayField(
                         label: earned.day ? OdWords.dayOff : OdWords.dayForTheHoursOff,
                         value: _dayOff,
@@ -474,25 +419,20 @@ class _OdFormState extends ConsumerState<_OdForm> {
                           _dayOffByHand = true;
                         }),
                       ),
-                    )
-                  else
-                    Text(OdWords.cashHint(_cashText(earned, rate)), style: text.bodySmall),
+                    ),
                 ],
               ],
             ),
           ),
         SheetField(
           label: OdWords.where,
-          hint: OdWords.whereHint,
-          child: SheetTextBox(controller: _place, label: OdWords.where, max: 200, onChanged: (_) => setState(() {})),
+          child: SheetTextBox(controller: _place, label: OdWords.where, hint: OdWords.wherePlaceholder, max: 200, onChanged: (_) => setState(() {})),
         ),
         SheetField(
           label: OdWords.reason,
-          hint: OdWords.reasonHint,
           child: SheetTextBox(controller: _reason, label: OdWords.reason, lines: 3, max: 1000, onChanged: (_) => setState(() {})),
         ),
-        if (_start != null && _start!.compareTo(f.today) < 0) RulesNote(icon: CupertinoIcons.exclamationmark_circle, lines: const [OdWords.askedAfter]),
-        SendChecks(problems: problems, ready: problems.isEmpty ? _ready(f, comp) : null),
+        SendChecks(problems: problems),
         PeopleRefusal(messages: _refusal),
         SheetButtons(busy: _busy, onSend: problems.isEmpty ? () => _send(f, comp?.needed ?? false) : null),
         const SizedBox(height: Tokens.gapSmall),
@@ -532,7 +472,7 @@ RequestDetail odDetail(OdRequest r) {
       (
         label: r.startDate == r.endDate ? OdWords.day : OdWords.days,
         value: when,
-        note: '${_spanText(r)}: ${comp != null ? OdWords.compensatedBelow : OdWords.workingDayAway}',
+        note: _spanText(r),
       ),
       (label: OdWords.whereFact, value: r.dutyPlace, note: null),
       (label: OdWords.reasonFact, value: r.reason, note: null),
@@ -540,21 +480,19 @@ RequestDetail odDetail(OdRequest r) {
         (
           label: OdWords.compensationFact,
           value: '${_compensationText(comp)} · ${RequestsWords.statusLabels[comp.status] ?? comp.status}',
-          note: OdWords.compensationNote,
+          note: null,
         ),
-      if (r.late && !byHr) (label: OdWords.asked, value: OdWords.askedAfterFact, note: null),
+      if (r.late && !byHr) (label: OdWords.asked, value: OdWords.requestedAfter, note: null),
     ],
     stepText: (s) => switch (s.kind) {
       'imported' => OdWords.stepImported,
       'cancelled' => OdWords.stepCancelled,
       _ => stepTextOf(s, r.manager, r.confidential),
     },
-    notes: [if (r.status == 'approved') OdWords.approvedNote, OdWords.others],
     actions: [
       if (r.canCancel)
         (
           title: OdWords.cancelTitle,
-          explain: '${OdWords.cancelExplain}${comp == null ? '' : OdWords.cancelExplainWith(_compensationText(comp).toLowerCase())}',
           button: OdWords.cancelButton,
           confirm: OdWords.cancelConfirm(when),
           path: RequestPaths.action(RequestKind.od, r.id, 'cancel'),

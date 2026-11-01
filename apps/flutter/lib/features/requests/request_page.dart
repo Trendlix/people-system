@@ -46,17 +46,17 @@ typedef Fact = ({String label, String value, String? note});
 /// A step as the page shows it: what happened, the comment given, who and when; [tone] the dot's (approved, rejected).
 typedef StepLine = ({String text, String? comment, String who, RequestState? tone});
 
-/// Something its employee may still do: its words, what it does, the question asked first, where it is sent, and what
-/// the page says once done.
-typedef RequestAction = ({String title, String explain, String button, String confirm, String path, String done});
+/// Something its employee may still do: its words, the question asked first, where it is sent, and what the page says
+/// once done.
+typedef RequestAction = ({String title, String button, String confirm, String path, String done});
 
 /// A file its employee opens on the phone (owner, 31 October 2026: a resignation's letter): the button's words, where
 /// People gives it, and the name and type it opens under.
 typedef OpenableFile = ({String button, String path, String fileName, String mimeType});
 
-/// A card of files to open in the phone's viewer: its words, the files, lines for what isn't there yet, and what to say
+/// A card of files to open in the phone's viewer: its title, the files, lines for what isn't there yet, and what to say
 /// when no app on the phone opens them.
-typedef FilesToOpen = ({String title, String explain, List<OpenableFile> files, List<String> notes, String noViewer});
+typedef FilesToOpen = ({String title, List<OpenableFile> files, List<String> notes, String noViewer});
 
 /// What a request's page shows, as its kind says it.
 class RequestDetail {
@@ -70,7 +70,6 @@ class RequestDetail {
     this.files,
     this.filesTitle,
     this.filesEmpty,
-    this.notes = const [],
     this.actions = const [],
     this.banner,
     this.opens,
@@ -89,9 +88,6 @@ class RequestDetail {
   final List<String>? files;
   final String? filesTitle;
   final String? filesEmpty;
-
-  /// Lines under the facts (what an approval means, where the others are).
-  final List<String> notes;
   final List<RequestAction> actions;
 
   /// A line over everything (it goes with an official duty).
@@ -110,7 +106,6 @@ RequestDetail basicDetail(
   required List<Fact> facts,
   String Function(RequestStep s)? stepText,
   String? subline,
-  List<String> notes = const [],
   List<RequestAction> actions = const [],
   List<String>? files,
   String? filesTitle,
@@ -137,7 +132,6 @@ RequestDetail basicDetail(
       if (r.warnings.isNotEmpty) (label: RequestsWords.recordedPast, value: r.warnings.join('\n'), note: null),
     ],
     steps: stepLinesOf(r, stepText),
-    notes: notes,
     actions: actions,
     files: files,
     filesTitle: filesTitle,
@@ -354,7 +348,6 @@ class _RequestPageState extends ConsumerState<RequestPage> {
                       Text(f.value, style: text.bodyLarge),
                       if (f.note != null) ...[const SizedBox(height: 2), Text(f.note!, style: text.bodySmall)],
                     ],
-                    for (final n in d.notes) ...[const SizedBox(height: 16), Text(n, style: text.bodySmall)],
                   ],
                 ),
               ),
@@ -365,8 +358,6 @@ class _RequestPageState extends ConsumerState<RequestPage> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Text(o.title, style: text.titleLarge),
-                      const SizedBox(height: 8),
-                      Text(o.explain, style: text.bodyMedium?.copyWith(color: p.muted)),
                       for (final n in o.notes) ...[const SizedBox(height: 10), Text(n, style: text.bodyMedium)],
                       for (final f in o.files) ...[
                         const SizedBox(height: 14),
@@ -402,7 +393,6 @@ class _RequestPageState extends ConsumerState<RequestPage> {
                             ],
                           ),
                         ),
-                      if (d.files!.isNotEmpty) Text(RequestsWords.filesKeptOnWebsite, style: text.bodySmall),
                     ],
                   ),
                 ),
@@ -414,8 +404,6 @@ class _RequestPageState extends ConsumerState<RequestPage> {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Text(a.title, style: text.titleLarge),
-                      const SizedBox(height: 8),
-                      Text(a.explain, style: text.bodyMedium?.copyWith(color: p.muted)),
                       const SizedBox(height: 14),
                       OutlinedButton(
                         onPressed: _busy ? null : () => _act(a),

@@ -90,7 +90,6 @@ class _InterviewHoursScreenState extends ConsumerState<InterviewHoursScreen> {
     return AccountPage(
       eyebrow: AccountWords.availabilityEyebrow,
       title: AccountWords.hoursTitle,
-      intro: AccountWords.hoursIntro,
       // what was changed and not saved stays: only an untouched form is read again
       onRefresh: () async {
         ref.invalidate(myCalendarsProvider);
@@ -164,8 +163,7 @@ class _InterviewHoursScreenState extends ConsumerState<InterviewHoursScreen> {
             onPicked: (day) => _edit((d) => d.effectiveFrom = day),
             first: DateTime(2020),
           ),
-          _hint(AccountWords.countsFromHint),
-          const SizedBox(height: 10),
+          const SizedBox(height: 20),
           _label(AccountWords.minimumNotice),
           _ChoiceBox(
             label: AccountWords.minimumNotice,
@@ -174,8 +172,7 @@ class _InterviewHoursScreenState extends ConsumerState<InterviewHoursScreen> {
             enabled: !_busy,
             onChanged: (n) => _edit((d) => d.notice = n),
           ),
-          _hint(AccountWords.noticeHint),
-          const SizedBox(height: 10),
+          const SizedBox(height: 20),
           _label(AccountWords.buffer),
           _ChoiceBox(
             label: AccountWords.buffer,
@@ -184,13 +181,10 @@ class _InterviewHoursScreenState extends ConsumerState<InterviewHoursScreen> {
             enabled: !_busy,
             onChanged: (n) => _edit((d) => d.buffer = n),
           ),
-          _hint(AccountWords.bufferHint),
           const SizedBox(height: 25),
           Container(height: 1, color: p.line),
           const SizedBox(height: 20),
           Semantics(header: true, child: Text(AccountWords.oneOff, style: text.labelMedium?.copyWith(height: 1.5))),
-          const SizedBox(height: 5),
-          Text(AccountWords.oneOffHint, style: text.bodySmall),
           const SizedBox(height: 12),
           for (final (i, c) in d.changes.indexed) _changeRow(i, c),
           if (d.changes.length < HoursLimits.changes)
@@ -217,11 +211,6 @@ class _InterviewHoursScreenState extends ConsumerState<InterviewHoursScreen> {
   Widget _label(String s) => Padding(
     padding: const EdgeInsets.only(bottom: 8),
     child: Text(s, style: Theme.of(context).textTheme.labelMedium?.copyWith(height: 1.5)),
-  );
-
-  Widget _hint(String s) => Padding(
-    padding: const EdgeInsets.only(top: 6, bottom: 4),
-    child: Text(s, style: Theme.of(context).textTheme.bodySmall),
   );
 
   Widget _dayRow(int day, _Draft d) {
@@ -550,9 +539,9 @@ class _CalendarCard extends ConsumerWidget {
       final l = c.connected.first;
       return (AccountWords.connected(calendarLabels[l.provider] ?? l.provider), AccountWords.connectedAs(l.account));
     }
-    if (c.companyZoho) return (AccountWords.companyReads(calendarLabels['zoho']!), AccountWords.companyReadsLine(c.workEmail));
-    if (c.companyMicrosoft) return (AccountWords.companyReads(calendarLabels['microsoft']!), AccountWords.companyReadsLine(c.workEmail));
-    return (AccountWords.noCalendar, AccountWords.noCalendarLine);
+    if (c.companyZoho) return (AccountWords.companyReads(calendarLabels['zoho']!), '');
+    if (c.companyMicrosoft) return (AccountWords.companyReads(calendarLabels['microsoft']!), '');
+    return (AccountWords.noCalendar, '');
   }
 }
 

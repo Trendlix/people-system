@@ -6,10 +6,9 @@
 abstract final class AboutWords {
   static const eyebrow = 'More';
   static const title = 'About this app';
-  static const intro = 'The details that help when something isn’t working. Copy them into your message when you report a problem.';
   static const menu = 'About this app';
   static const copy = 'Copy details';
-  static const copied = 'Copied. Paste them into your message.';
+  static const copied = 'Copied.';
   static const checking = 'Checking…';
   static const notKnown = 'Not known';
 

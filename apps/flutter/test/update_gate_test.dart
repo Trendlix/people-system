@@ -67,7 +67,7 @@ void main() {
     latest('0.6.15');
     await open(tester);
     expect(find.text(UpdateWords.title), findsOneWidget);
-    expect(find.text(UpdateWords.intro('0.6.15', '0.6.14')), findsOneWidget);
+    expect(find.text(UpdateWords.versions('0.6.15', '0.6.14')), findsOneWidget);
     expect(find.text(CheckInWords.checkInForWork), findsNothing);
     expect(opened, [Uri.parse(download)]);
     await tester.tap(find.text(UpdateWords.download));
@@ -80,7 +80,6 @@ void main() {
     await open(tester);
     expect(find.text(UpdateWords.stepRemove), findsOneWidget);
     expect(find.text(UpdateWords.stepInstallAfterRemoving), findsOneWidget);
-    expect(find.text(UpdateWords.untilStores), findsOneWidget);
     await tester.ensureVisible(find.text(UpdateWords.remove));
     await tester.tap(find.text(UpdateWords.remove));
     await tester.pumpAndSettle();
@@ -93,14 +92,13 @@ void main() {
     expect(find.text(UpdateWords.stepInstall), findsOneWidget);
     expect(find.text(UpdateWords.stepRemove), findsNothing);
     expect(find.text(UpdateWords.remove), findsNothing);
-    expect(find.text(UpdateWords.untilStores), findsNothing);
   });
 
   testWidgets('signed out too', (tester) async {
     latest('0.6.15');
     await open(tester, token: null);
     expect(find.text(UpdateWords.title), findsOneWidget);
-    expect(find.text(SignInWords.subtitle), findsNothing);
+    expect(find.text(SignInWords.title), findsNothing);
   });
 
   testWidgets('the browser not opening says where to go', (tester) async {

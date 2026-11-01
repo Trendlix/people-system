@@ -12,10 +12,9 @@ import 'locator.dart';
 abstract final class LocationGateWords {
   static const eyebrow = 'Trendlix People';
   static const title = 'Turn on location';
-  static const intro = 'Trendlix People works with your location on: for checking in and out, and to keep a record of where each action is made.';
   static const serviceOff = 'Location is off on this phone.';
   static const denied = 'Trendlix People isn’t allowed to use your location.';
-  static const deniedForever = 'Location was refused for Trendlix People. Allow it in the app’s settings: Permissions → Location → Allow.';
+  static const deniedForever = 'Location was refused for Trendlix People: allow it in the app’s settings.';
   static const turnOn = 'Turn on location';
   static const allow = 'Allow location';
   static const openSettings = 'Open the app’s settings';
@@ -113,8 +112,6 @@ class _LocationGateState extends ConsumerState<LocationGate> with WidgetsBinding
                     const Center(child: Eyebrow(LocationGateWords.eyebrow)),
                     const SizedBox(height: 8),
                     Text(LocationGateWords.title, textAlign: TextAlign.center, style: text.displaySmall),
-                    const SizedBox(height: 10),
-                    Text(LocationGateWords.intro, textAlign: TextAlign.center, style: text.bodyMedium?.copyWith(color: p.muted)),
                     const SizedBox(height: 18),
                     Notice(text: line, ok: false),
                     const Spacer(),

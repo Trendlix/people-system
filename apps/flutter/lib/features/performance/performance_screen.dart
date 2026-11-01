@@ -10,8 +10,6 @@ class PerformanceScreen extends StatelessWidget {
   const PerformanceScreen({super.key});
 
   static const title = KpiWords.myTitle;
-  static const intro = KpiWords.myIntro;
-  static const none = KpiWords.noneText;
   static const failed = KpiWords.notLoaded;
 
   @override

@@ -148,7 +148,7 @@ List<TypeBalance> otherLeaveTypes(LeaveBalances b, List<LeaveType>? types) => [
 
 /// The permission figure: this month's hours left as a clock ("3:30") and what of; off when Leave Setup gives none.
 ({String value, String note, bool off}) permissionFigure(PermissionMonth m) {
-  if (m.hoursPerMonth <= 0) return (value: RequestsWords.permissionOffValue, note: RequestsWords.permissionOff, off: true);
+  if (m.hoursPerMonth <= 0) return (value: RequestsWords.permissionOffValue, note: '', off: true);
   return (value: clockHours(m.left), note: RequestsWords.ofHoursThisMonth(clockHours(m.hoursPerMonth)), off: false);
 }
 

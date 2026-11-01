@@ -74,10 +74,9 @@ void main() {
   testWidgets('sends a resignation once the box is ticked, with the notice the rule gives shown and no letter to attach', (tester) async {
     final people = requestsPeople()..on('POST /api/me/resignation', (req) => json(resignationJson(), 201));
     await openSheet(tester, people, showResignationSheet);
-    expect(find.text(ResignationWords.noticeHint('3 months', '${y + 1}-01-29')), findsOneWidget);
-    expect(find.text('The notice is 3 months by the resignation rule: sent today, it would end on 29/01/${y + 1}. A shorter time is for HR to agree.'), findsOneWidget);
+    expect(find.text(ResignationWords.noticeHint('3 months', '${y + 1}-01-29')!), findsOneWidget);
+    expect(find.text('Notice: 3 months, ending 29/01/${y + 1} if sent today.'), findsOneWidget);
     // People prepares the letter: nothing to photograph
-    expect(find.text(ResignationWords.letterNote(false)), findsOneWidget);
     expect(find.text(RequestsWords.takePhoto), findsNothing);
 
     await typeInto(tester, ResignationWords.reason, 'Moving abroad.');
@@ -93,7 +92,7 @@ void main() {
     expect(sent.headers['content-type'], startsWith('application/json'));
     expect(people.bodyOf('POST /api/me/resignation'), {'reason': 'Moving abroad.', 'preferredLastDay': '', 'confirmed': true});
     expect(find.text(ResignationWords.pageTitle), findsOneWidget);
-    expect(find.text(ResignationWords.sent), findsOneWidget);
+    expect(find.text(ResignationWords.sent(false)), findsOneWidget);
   });
 
   testWidgets('says People’s refusal in its words', (tester) async {
@@ -145,7 +144,7 @@ void main() {
     final waiting = resignationDetail(ResignationRequest.fromJson({...resignationJson(), 'preparedLetter': 'no_template'})).opens!;
     expect(waiting.title, ResignationWords.letterTitle);
     expect(waiting.files, isEmpty);
-    expect(waiting.notes, [ResignationWords.noTemplate, ResignationWords.signedNotYet(false)]);
+    expect(waiting.notes, [ResignationWords.noTemplate]);
 
     final ready = resignationDetail(
       ResignationRequest.fromJson({
@@ -162,8 +161,8 @@ void main() {
     ]);
     // a C-level person's is the CEO's
     final ceo = resignationDetail(ResignationRequest.fromJson({...resignationJson(), 'preparedLetter': 'ready', 'confidential': true}));
-    expect(ceo.opens!.explain, ResignationWords.letterExplain(true));
-    expect(ceo.opens!.notes, [ResignationWords.signedNotYet(true)]);
+    expect(ceo.opens!.files.single.button, ResignationWords.viewLetter);
+    expect(ceo.opens!.notes, isEmpty);
   });
 
   testWidgets('View letter reads it with the session, never in a link, and opens it in the phone’s viewer', (tester) async {

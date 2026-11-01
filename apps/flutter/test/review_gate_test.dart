@@ -85,7 +85,6 @@ void main() {
 
     expect(find.byType(ReviewScreen), findsOneWidget);
     expect(find.text(ReviewWords.title), findsOneWidget);
-    expect(find.text(ReviewWords.never), findsOneWidget);
     expect(find.text(ReviewWords.signOut), findsOneWidget);
     // nothing of the app behind it: no tabs
     expect(find.text(ShellWords.requests), findsNothing);

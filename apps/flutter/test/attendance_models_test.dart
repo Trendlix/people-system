@@ -400,7 +400,6 @@ void main() {
       expect(pairs.breakText, 'Break 50 min');
       expect(pairsOf(m.dayOn('2026-10-01')!), isNull);
       expect(correctedNoteOf(m.dayOn('2026-10-13')!), 'Corrected from ${clockOf(DateTime.parse('2026-10-13T09:00:00.000+03:00'))} – no check-out');
-      expect(usualSourceOf(m.days), 'system');
       expect(AttendanceWords.hoursText(141.93), '141:56');
       expect(AttendanceWords.dayLabel('2026-10-01'), (day: 'Thu 01', rest: '/10/2026'));
       expect(AttendanceWords.dayTitle('2026-10-27'), 'Tuesday 27/10/2026');

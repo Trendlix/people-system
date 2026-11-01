@@ -35,7 +35,7 @@ class MyCorrectionsScreen extends ConsumerWidget {
               child: IconTile(CupertinoIcons.arrow_left, tooltip: AttendanceWords.back, onCard: false, onTap: () => Navigator.of(context).maybePop()),
             ),
             const SizedBox(height: 8),
-            const PageHead(eyebrow: AttendanceWords.correctionsEyebrow, title: AttendanceWords.myCorrections, intro: AttendanceWords.correctionsIntro),
+            const PageHead(eyebrow: AttendanceWords.correctionsEyebrow, title: AttendanceWords.myCorrections),
             const SizedBox(height: 24),
             list.when(
               loading: () => const Padding(
@@ -82,7 +82,6 @@ class _CorrectionCardState extends ConsumerState<_CorrectionCard> {
       context: context,
       builder: (context) => AlertDialog(
         title: Text(AttendanceWords.cancelAsk(day)),
-        content: const Text(AttendanceWords.cancelBody),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text(AttendanceWords.keepIt)),
           FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text(AttendanceWords.cancelIt)),
@@ -137,13 +136,7 @@ class _CorrectionCardState extends ConsumerState<_CorrectionCard> {
           Text(c.recordedByHr ? AttendanceWords.correctedByHr : (c.createdAt == null ? '' : AttendanceWords.sentOn(momentText(c.createdAt!))), style: small),
           fact(
             AttendanceWords.rightTimes,
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(rightTimesText(c.checkIn, c.checkOut), style: text.bodyLarge?.copyWith(fontFeatures: const [FontFeature.tabularFigures()])),
-                if (c.kind == 'worked_remotely') Text(AttendanceWords.remoteNote, style: small),
-              ],
-            ),
+            Text(rightTimesText(c.checkIn, c.checkOut), style: text.bodyLarge?.copyWith(fontFeatures: const [FontFeature.tabularFigures()])),
           ),
           fact(
             AttendanceWords.onRecordWhenAsked,

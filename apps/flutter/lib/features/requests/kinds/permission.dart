@@ -10,7 +10,6 @@ import '../../dashboard/dashboard_data.dart';
 import '../request_page.dart';
 import '../request_text.dart';
 import '../requests_data.dart';
-import '../requests_words.dart';
 import '../sheet_parts.dart';
 
 // Permission (owner, 19 October 2026: "4 hours per month with a maximum 2 hours per day", asked "In the system, like
@@ -22,26 +21,20 @@ import '../sheet_parts.dart';
 /// Permission's words (apps/web leave/permissions.ts, permission-forms.tsx, permission-request.tsx).
 abstract final class PermissionWords {
   static const title = 'New permission';
-  static const intro = 'A few hours away from a working day, in half-hour blocks: to come late or leave early.';
-  static String whoDecides(bool ceo) => 'Your direct manager decides first, then ${ceo ? 'the CEO' : 'HR'}.';
-  static const off = 'Permission is turned off: Leave Setup gives no permission hours a month. Ask HR.';
-  static const turnedOff = 'Permission is turned off in Leave Setup: there are no permission hours a month to ask for.';
+  static const off = 'Permission is turned off: ask HR.';
+  static const turnedOff = 'Permission is turned off.';
   static const thisMonth = 'This month';
   static String monthOff(String when) => '$when: permission is turned off in Leave Setup.';
   static String monthText(String when, String approved, String? waiting, String left, String perMonth) =>
       '$when: $approved approved${waiting == null ? '' : ', $waiting waiting'}, $left left of $perMonth';
-  static String rules(String perDay, String perMonth) => 'Your permission: at most $perDay a day and $perMonth a month, as Leave Setup gives it.';
+  static String rules(String perDay, String perMonth) => 'At most $perDay a day and $perMonth a month.';
   static String dayUsed(String clock, String day) => '$clock already asked for on $day.';
   static const day = 'Day';
-  static const dayHint = 'A working day of your shift, not an official holiday or a day of leave.';
   static const hours = 'Hours';
-  static String hoursHint(String perDay) => 'In half hours, at most $perDay a day.';
   static const from = 'From';
   static const to = 'To';
-  static const timesHint = 'Choose one: the other follows from the hours, e.g. leaving at 5:00 PM for 2 hours is from 5:00 PM.';
   static String asChosen(String times) => 'As chosen: $times.';
   static const reason = 'Reason';
-  static const reasonHint = 'Your direct manager and HR read it. Up to 500 characters.';
   static const reasonPlaceholder = 'E.g. a doctor’s appointment';
 
   // the checks, in People's words (packages/shared permissions.ts)
@@ -55,25 +48,18 @@ abstract final class PermissionWords {
   static String spanNot(String from, String to, String span, String hours) => 'From $from to $to is $span, not $hours: change the hours or the times.';
   static String pastMidnight(String hours, String from) => '$hours from $from run to midnight or past it: choose an earlier time.';
   static String beforeMidnight(String hours, String to) => '$hours up to $to start before midnight: choose a later time.';
-  static String ready(String hours, String day, String? times, String hr) =>
-      'Ready to send: $hours on $day${times == null ? '' : ' ($times)'}, to your direct manager (without one, your lead), then $hr.';
-  static const recordedApproved = 'Permission recorded, approved at once. Its hours count as worked in the month’s payroll.';
+  static const recordedApproved = 'Permission recorded, approved at once.';
 
   // its page
   static const pageTitle = 'Permission';
-  static const hoursNote = 'Counted as worked once approved';
   static const times = 'Times';
   static const notGiven = 'Not given';
   static const leftOfMonth = 'Left of its month';
-  static const leftNote = 'Of the month\'s permission hours, with those approved and waiting taken';
-  static const others = 'Your other permission requests are on My Requests.';
   static const stepCancelled = 'Cancelled, the hours given back';
   static const cancelTitle = 'Cancel the permission';
-  static const cancelApproved = 'Approved and its day still to come: you can still cancel it, and its hours go back to the month’s allowance.';
-  static const cancelOpen = 'While it is being decided you can cancel it, e.g. to ask again for another day or other hours.';
   static const cancelButton = 'Cancel this permission';
-  static String cancelConfirm(String day, String hours) => 'Cancel your permission on $day ($hours)? It stays on your list, cancelled; ask again with a new request.';
-  static const cancelled = 'Permission cancelled. Its hours are back in the month’s allowance; it stays on the list, cancelled.';
+  static String cancelConfirm(String day, String hours) => 'Cancel your permission on $day ($hours)?';
+  static const cancelled = 'Permission cancelled.';
 }
 
 /// "This month: 1:30 approved, 0:30 waiting, 2:00 left of 4:00" (the website's permissionMonthText).
@@ -150,12 +136,10 @@ List<String> permissionProblems({required String date, required double hours, re
 
 /// Opens the sheet to ask for permission, from the tab's [context].
 Future<void> showPermissionSheet(BuildContext context) {
-  final ceo = ProviderScope.containerOf(context, listen: false).read(confidentialProvider).value;
   return openRequestSheet(
     context,
     title: PermissionWords.title,
     icon: kindIcons[RequestKind.permission]!,
-    intro: ceo == null ? PermissionWords.intro : '${PermissionWords.intro} ${PermissionWords.whoDecides(ceo)}',
     builder: (sheetContext, sent) => _PermissionForm(sent: sent),
   );
 }
@@ -235,7 +219,6 @@ class _PermissionFormState extends ConsumerState<_PermissionForm> {
     final chosen = ref.watch(permissionMonthProvider(month));
     final m = chosen.value;
     final hours = _hours ?? defaultPermissionHours(m ?? first);
-    final ceo = ref.watch(confidentialProvider).value ?? false;
     final perDay = (m ?? first).maxHoursPerDay;
     final choices = [for (var h = 0.5; h <= perDay + 0.001; h += 0.5) h];
     final problems = m == null
@@ -258,12 +241,10 @@ class _PermissionFormState extends ConsumerState<_PermissionForm> {
         ),
         SheetField(
           label: PermissionWords.day,
-          hint: PermissionWords.dayHint,
           child: PickDayField(label: PermissionWords.day, value: _date, onChanged: (d) => setState(() => _picked = d)),
         ),
         SheetField(
           label: PermissionWords.hours,
-          hint: PermissionWords.hoursHint(hoursText(perDay)),
           child: ChoicePills<double>(values: choices, labelOf: hoursText, selected: hours, onChanged: (h) => setState(() => _hours = h)),
         ),
         SheetField(
@@ -279,7 +260,7 @@ class _PermissionFormState extends ConsumerState<_PermissionForm> {
         SheetField(
           label: PermissionWords.to,
           optional: true,
-          hint: '${PermissionWords.timesHint}${shownTimes == null ? '' : ' ${PermissionWords.asChosen(shownTimes)}'}',
+          hint: shownTimes == null ? null : PermissionWords.asChosen(shownTimes),
           child: PickTimeField(
             label: PermissionWords.to,
             value: _to,
@@ -290,13 +271,9 @@ class _PermissionFormState extends ConsumerState<_PermissionForm> {
         SheetField(
           label: PermissionWords.reason,
           optional: true,
-          hint: PermissionWords.reasonHint,
           child: SheetTextBox(controller: _reason, label: PermissionWords.reason, hint: PermissionWords.reasonPlaceholder, lines: 3, max: 500),
         ),
-        SendChecks(
-          problems: problems,
-          ready: PermissionWords.ready(hoursText(hours), dayWords(_date), shownTimes, RequestsWords.hrStage(ceo)),
-        ),
+        SendChecks(problems: problems),
         PeopleRefusal(messages: _refusal),
         SheetButtons(busy: _busy, onSend: problems.isEmpty ? () => _send(hours) : null),
       ],
@@ -312,18 +289,16 @@ RequestDetail permissionDetail(PermissionRequest r) {
     title: PermissionWords.pageTitle,
     facts: [
       (label: PermissionWords.day, value: dayWords(r.date), note: null),
-      (label: PermissionWords.hours, value: hoursText(r.hours), note: PermissionWords.hoursNote),
+      (label: PermissionWords.hours, value: hoursText(r.hours), note: null),
       (label: PermissionWords.times, value: times ?? PermissionWords.notGiven, note: null),
-      if (r.monthLeft != null) (label: PermissionWords.leftOfMonth, value: clockHours(r.monthLeft!), note: PermissionWords.leftNote),
+      if (r.monthLeft != null) (label: PermissionWords.leftOfMonth, value: clockHours(r.monthLeft!), note: null),
       if (r.reason != null) (label: PermissionWords.reason, value: r.reason!, note: null),
     ],
     stepText: (s) => s.kind == 'cancelled' ? PermissionWords.stepCancelled : stepTextOf(s, r.manager, r.confidential),
-    notes: const [PermissionWords.others],
     actions: [
       if (r.canCancel)
         (
           title: PermissionWords.cancelTitle,
-          explain: r.status == 'approved' ? PermissionWords.cancelApproved : PermissionWords.cancelOpen,
           button: PermissionWords.cancelButton,
           confirm: PermissionWords.cancelConfirm(dayWords(r.date), hoursText(r.hours)),
           path: RequestPaths.action(RequestKind.permission, r.id, 'cancel'),

@@ -122,7 +122,6 @@ class _AboutScreenState extends ConsumerState<AboutScreen> {
     return AccountPage(
       eyebrow: AboutWords.eyebrow,
       title: AboutWords.title,
-      intro: AboutWords.intro,
       onRefresh: _gather,
       children: [
         if (found == null)

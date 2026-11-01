@@ -157,7 +157,7 @@ void main() {
       'reason': 'I left for a client meeting and forgot to check out.',
       'checkOut': '18:00',
     });
-    expect(find.text('Request sent. It goes to your direct manager, then HR; each step shows on the request.'), findsOneWidget);
+    expect(find.text('Sent to your direct manager.'), findsOneWidget);
   }, skip: !sameMonth);
 
   testWidgets('asks for a time when a time is wrong', (tester) async {

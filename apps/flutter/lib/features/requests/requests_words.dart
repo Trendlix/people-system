@@ -5,9 +5,8 @@ abstract final class RequestsWords {
   // ---------- the page ----------
   static const eyebrow = 'People System · Requests';
   static const title = 'My Requests';
-  static const intro = 'What you have asked for, newest first, with each decision as it is made.';
   static const createRequest = 'Create request';
-  static const noProfile = 'Requests are for someone with an employee profile. Ask HR to add one for your sign-in.';
+  static const noProfile = 'No employee profile uses your sign-in yet: ask HR to add one.';
   static const notLoaded = 'Couldn’t load this. Pull down to try again.';
   static const balanceNotLoaded = 'Your leave balance couldn’t be loaded. Pull down to try again.';
 
@@ -37,7 +36,6 @@ abstract final class RequestsWords {
   static const permissionLeft = 'Permission left';
   static const permission = 'Permission';
   static const permissionOffValue = 'Off';
-  static const permissionOff = 'Permission is turned off: Leave Setup gives no permission hours a month.';
   static String ofHoursThisMonth(String clock) => 'of $clock hours this month';
 
   // ---------- recent requests ----------
@@ -45,9 +43,9 @@ abstract final class RequestsWords {
   static const recentRequests = 'Recent requests';
   static const all = 'All';
   static const approved = 'Approved';
-  static const emptyAll = 'You haven’t asked for anything yet. Start a request below.';
+  static const emptyAll = 'You haven’t asked for anything yet.';
   static const emptyApproved = 'None of your requests is approved yet.';
-  static const emptyWaiting = 'Nothing is waiting: every request you sent is decided.';
+  static const emptyWaiting = 'Nothing is waiting.';
   static String showAll(int n) => 'Show all $n';
   static const showFewer = 'Show fewer';
   static String failedOf(List<String> kinds) => 'Some of your requests couldn’t be loaded (${kinds.join(', ')}). Pull down to try again.';
@@ -64,18 +62,17 @@ abstract final class RequestsWords {
   // ---------- start another request ----------
   static const selfService = 'Self service';
   static const startAnother = 'Start another request';
-  static const startIntro = 'Choose a request type and we’ll guide you through the details.';
 
-  /// Each kind's card: its name, what it is for, and the way on (as My Requests on the website words them).
+  /// Each kind's card: its name and the way on (as My Requests on the website words them).
   static const startCards = {
-    'permission': ('Permission', 'A few hours away from a working day, in half-hour blocks.', 'New permission'),
-    'correction': ('Attendance correction', 'Correct a check-in or check-out that is missing or not right.', 'Ask for a correction'),
-    'wfh': ('Work from home', 'A working day from home instead of the office.', 'Work from home'),
-    'od': ('Official duty', 'Work for the company away from the office, e.g. at a client’s site.', 'Request official duty'),
-    'compensatory': ('Compensatory days', 'A day off for a rest day or an official holiday you worked.', 'Compensatory day'),
-    'home': ('Check-in locations', 'Ask for a place to check in from besides the office.', 'Request a check-in location'),
-    'claim': ('Reimbursements', 'Claim back an expense you paid for the company.', 'New reimbursement'),
-    'resignation': ('Resignation', 'Tell HR you wish to resign, and when you plan to leave.', 'Resign'),
+    'permission': ('Permission', 'New permission'),
+    'correction': ('Attendance correction', 'Ask for a correction'),
+    'wfh': ('Work from home', 'Work from home'),
+    'od': ('Official duty', 'Request official duty'),
+    'compensatory': ('Compensatory days', 'Compensatory day'),
+    'home': ('Check-in locations', 'Request a check-in location'),
+    'claim': ('Reimbursements', 'New reimbursement'),
+    'resignation': ('Resignation', 'Resign'),
   };
 
   // ---------- each kind, as a row of Recent requests ----------
@@ -156,9 +153,9 @@ abstract final class RequestsWords {
   static const stepImported = 'Imported, approved';
   static String standingIn(String name) => 'standing in for $name';
 
-  /// Once sent: where it goes next.
-  static String sentGoesTo(String first, String hr) => 'Request sent. It goes to $first, then $hr; each step shows on the request.';
-  static String sentGoesToHr(String hr) => 'Request sent. It goes to $hr; each step shows on the request.';
+  /// Once sent: where it went.
+  static String sentGoesTo(String first) => 'Sent to $first.';
+  static String sentGoesToHr(String hr) => 'Sent to $hr.';
   static const sentApprovedAtOnce = 'Recorded, approved at once.';
 
   // ---------- a request's page ----------
@@ -171,9 +168,8 @@ abstract final class RequestsWords {
   static String noneSentStraightTo(String who) => 'None: sent straight to $who';
   static const recordedNoDecision = 'Recorded by HR: no decision needed';
   static const keepIt = 'Keep it';
-  static const moved = 'This request has moved on since you opened it: someone else decided it, or it was cancelled. It shows where it stands now.';
+  static const moved = 'This request has moved on since you opened it.';
   static const notYours = 'This request couldn’t be found, or isn’t yours to see.';
-  static const filesKeptOnWebsite = 'Open them on the People website.';
   static String fileLine(String name, String kind, String size) => '$name · $kind · $size';
   static const pdf = 'PDF';
   static const photo = 'Photo';

@@ -17,10 +17,9 @@ abstract final class ShellWords {
   static const hiring = 'Hiring availability';
   static const signOut = 'Sign out';
   static const markAllRead = 'Mark all as read';
-  static const noNotifications = 'Nothing new. Decisions on your requests and things waiting for you show here.';
+  static const noNotifications = 'Nothing new.';
   static const notificationsFailed = 'Couldn’t load your notifications.';
   static const offerTitle = 'Sign in with your fingerprint?';
-  static const offerBody = 'Next time, open the app and touch the sensor: no password.';
   static const offerYes = 'Use fingerprint';
   static const offerNo = 'Not now';
   static const fingerprintOn = 'Fingerprint sign-in is on.';

@@ -72,7 +72,7 @@ class _RequestsTabState extends ConsumerState<RequestsTab> {
   Widget build(BuildContext context) {
     final auth = ref.watch(authProvider).value;
     final me = auth is SignedIn ? auth.me : null;
-    const head = PageHead(eyebrow: RequestsWords.eyebrow, title: RequestsWords.title, intro: RequestsWords.intro);
+    const head = PageHead(eyebrow: RequestsWords.eyebrow, title: RequestsWords.title);
     if (me == null || me.employeeId == null || me.hold) {
       return ListView(
         padding: tabPagePadding(context),
@@ -85,8 +85,6 @@ class _RequestsTabState extends ConsumerState<RequestsTab> {
     }
     final year = DateTime.now().year;
     final profile = ref.watch(ownProfileProvider).value;
-    // kept read while the tab shows, so each sheet says at once who decides (the CEO for a C-level person)
-    ref.watch(confidentialProvider);
     final employment = profile?.raw['employment'];
     final employmentType = employment is Map ? employment['employmentType'] as String? : null;
     final leaveOffered = employment is Map && underLabourLaw(employmentType) && !isUnavailable(ref.watch(myRequestsProvider(RequestKind.leave)).error);
@@ -592,11 +590,10 @@ class _OtherLeave extends ConsumerWidget {
 
 /// A section's head on the page: the small capitals over a title of 23 (the design's "Other leave").
 class _Head extends StatelessWidget {
-  const _Head({required this.eyebrow, required this.title, this.intro});
+  const _Head({required this.eyebrow, required this.title});
 
   final String eyebrow;
   final String title;
-  final String? intro;
 
   @override
   Widget build(BuildContext context) {
@@ -607,7 +604,6 @@ class _Head extends StatelessWidget {
         Eyebrow(eyebrow),
         const SizedBox(height: 5),
         Text(title, style: text.titleLarge),
-        if (intro != null) ...[const SizedBox(height: 6), Text(intro!, style: text.bodySmall)],
       ],
     );
   }
@@ -645,7 +641,7 @@ class _StartAnother extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const _Head(eyebrow: RequestsWords.selfService, title: RequestsWords.startAnother, intro: RequestsWords.startIntro),
+        const _Head(eyebrow: RequestsWords.selfService, title: RequestsWords.startAnother),
         const SizedBox(height: 16),
         for (final (key, show) in cards) ...[
           _StartCard(kind: RequestKind.values.byName(key), words: RequestsWords.startCards[key]!, onTap: () => show(context)),
@@ -660,17 +656,17 @@ class _StartCard extends StatelessWidget {
   const _StartCard({required this.kind, required this.words, required this.onTap});
 
   final RequestKind kind;
-  final (String, String, String) words;
+  final (String, String) words;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
     final text = Theme.of(context).textTheme;
-    final (title, line, action) = words;
+    final (title, action) = words;
     return Semantics(
       button: true,
-      label: '$title. $line $action.',
+      label: '$title. $action.',
       excludeSemantics: true,
       child: Material(
         color: p.card,
@@ -686,8 +682,6 @@ class _StartCard extends StatelessWidget {
                 IconTile(kindIcons[kind]!),
                 const SizedBox(height: 16),
                 Text(title, style: text.labelMedium?.copyWith(height: 1.5)),
-                const SizedBox(height: 7),
-                Text(line, style: text.bodySmall),
                 const SizedBox(height: 26),
                 Row(
                   mainAxisSize: MainAxisSize.min,

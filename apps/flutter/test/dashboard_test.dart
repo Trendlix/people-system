@@ -125,6 +125,7 @@ void main() {
     );
     await open(tester, people);
     await tester.scrollUntilVisible(find.text(DashboardWords.hoursThisWeek), 300, scrollable: find.byType(Scrollable).first);
+    await tester.pumpAndSettle();
     expect(find.text('34.8 hrs'), findsOneWidget);
     expect(find.text(DashboardWords.ofDue(77, '45')), findsOneWidget);
   });
@@ -133,7 +134,6 @@ void main() {
     await open(tester, people);
     // owner, 31 October 2026: "replace correction with OD in the homepage for the requests section"
     await tester.scrollUntilVisible(find.text(DashboardWords.officialDuty), 300, scrollable: find.byType(Scrollable).first);
-    expect(find.text(DashboardWords.awayFromOffice), findsOneWidget);
     expect(find.text('Fix attendance'), findsNothing);
     await tester.tap(find.text(DashboardWords.officialDuty));
     await tester.pumpAndSettle();
@@ -180,7 +180,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text(ShellWords.signOut));
     await tester.pumpAndSettle();
-    expect(find.text(SignInWords.subtitle), findsOneWidget);
+    expect(find.text(SignInWords.title), findsOneWidget);
   });
 
   // owner, 31 October 2026, the menu cut off at Team KPIs on his phone: "is there a signout button in the app?"
@@ -199,12 +199,12 @@ void main() {
     expect(find.text(ShellWords.signOut).hitTestable(), findsOneWidget);
     await tester.tap(find.text(ShellWords.signOut));
     await tester.pumpAndSettle();
-    expect(find.text(SignInWords.subtitle), findsOneWidget);
+    expect(find.text(SignInWords.title), findsOneWidget);
   });
 
   testWidgets('moves between the tabs, each its own page', (tester) async {
     await open(tester, people);
-    expect(find.text(DashboardWords.intro), findsOneWidget);
+    expect(find.text(DashboardWords.quickActions), findsOneWidget);
     await tester.tap(find.text(ShellWords.requests));
     await tester.pumpAndSettle();
     expect(find.text('My Requests'), findsOneWidget);
@@ -213,7 +213,7 @@ void main() {
     expect(find.text('My Attendance'), findsOneWidget);
     await tester.tap(find.text(ShellWords.dashboard));
     await tester.pumpAndSettle();
-    expect(find.text(DashboardWords.intro), findsOneWidget);
+    expect(find.text(DashboardWords.quickActions), findsOneWidget);
   });
 
   testWidgets('switches to the dark look and keeps it for next time', (tester) async {

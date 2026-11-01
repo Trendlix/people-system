@@ -12,12 +12,11 @@ abstract final class ForgotWords {
   static const link = 'Forgot password?';
   static const eyebrow = 'Trendlix People';
   static const title = 'Forgot password';
-  static const intro = 'Type the email you sign in with. If it has an account, we email it a link to set a new password.';
+  static const sent = 'Check your email for the link.';
   static const email = 'Work email';
   static const send = 'Email me a link';
   static const sending = 'Sending…';
   static const needEmail = 'Enter your sign-in email.';
-  static const spam = 'Nothing after a few minutes? Check your spam folder, or ask HR for a link.';
   static const done = 'Back to sign in';
   static const failed = 'Couldn’t send it. Check your connection and try again.';
 }
@@ -30,7 +29,6 @@ Future<void> showForgotPassword(BuildContext context, {String email = ''}) => sh
   eyebrow: ForgotWords.eyebrow,
   title: ForgotWords.title,
   icon: CupertinoIcons.lock_rotation,
-  intro: ForgotWords.intro,
   builder: (_) => ForgotPasswordForm(email: email),
 );
 
@@ -65,7 +63,7 @@ class _ForgotPasswordFormState extends ConsumerState<ForgotPasswordForm> {
     try {
       final answer = await ref.read(peopleClientProvider).post('/api/auth/forgot-password', {'email': email});
       final message = answer is Map && answer['message'] is String ? answer['message'] as String : null;
-      if (mounted) setState(() => _sent = message ?? ForgotWords.intro);
+      if (mounted) setState(() => _sent = message ?? ForgotWords.sent);
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
     } catch (_) {
@@ -77,14 +75,11 @@ class _ForgotPasswordFormState extends ConsumerState<ForgotPasswordForm> {
 
   @override
   Widget build(BuildContext context) {
-    final text = Theme.of(context).textTheme;
     if (_sent != null) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Notice(text: _sent!, ok: true),
-          const SizedBox(height: 12),
-          Text(ForgotWords.spam, style: text.bodySmall),
           const SizedBox(height: 18),
           SizedBox(
             height: Tokens.buttonHeight,

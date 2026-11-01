@@ -116,9 +116,6 @@ final reimbursementTypesProvider = FutureProvider.autoDispose.family<List<Reimbu
   (ref, expenseDate) async => reimbursementTypesOf(await ref.read(peopleClientProvider).get('/api/me/reimbursement-types?expenseDate=$expenseDate')),
 );
 
-/// Whether the signed-in person is C-level: their requests go to the CEO where others' go to HR (their profile's).
-final confidentialProvider = FutureProvider.autoDispose<bool>((ref) async => (await ref.watch(ownProfileProvider.future))?.raw['confidential'] == true);
-
 /// After a request is sent, cancelled or withdrawn: everything that counts it is read again.
 void requestsChanged(WidgetRef ref) {
   ref

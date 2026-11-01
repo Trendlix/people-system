@@ -54,7 +54,6 @@ class _AppShellState extends ConsumerState<AppShell> {
       builder: (context) => AlertDialog(
         icon: const Icon(Icons.fingerprint_rounded, size: 40),
         title: const Text(ShellWords.offerTitle),
-        content: const Text(ShellWords.offerBody),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text(ShellWords.offerNo)),
           FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text(ShellWords.offerYes)),

@@ -9,40 +9,26 @@ abstract final class KpiWords {
   // ---------- My KPIs ----------
   static const eyebrow = 'People System · Performance';
   static const myTitle = 'My KPIs';
-  static const myIntro = 'Your monthly scorecard, built from your job description: rate yourself, see your score at the sign-off, and sign it.';
   static const yourTurn = 'Your turn';
   static const waitingForYou = 'Waiting for you';
-  static const rateIntro = 'Pick how you did on each metric, with a comment if you like. Your manager sees it when scoring.';
-  static const signIntro = 'Read the score, the picks and the comments, then sign that you have read it.';
   static const yourScorecards = 'Your scorecards';
   static const history = 'History';
   static const noneTitle = 'Your first scorecard isn’t open yet.';
-  static const noneText = 'A month’s scorecard opens on the 1st of the next month once HR has published the KPI template for your job title.';
-  static const noneNotify = 'You get a notification when it opens.';
   static const noScore = 'No score';
   static const shownAtSignOff = 'Shown at the sign-off';
   static const selfMissedShort = 'Self-rating missed';
   static const unsignedShort = 'Final without every signature';
-  static const howItWorks = 'How it works';
-  static const reviewProcess = 'Monthly review process';
-  static const payTiming = "Last month's KPI counts in this month's pay.";
   static const notLoaded = 'Couldn’t load your scorecards.';
   static const tryAgain = 'Try again';
   static const back = 'Back';
 
   // ---------- Team KPIs ----------
   static const teamTitle = 'Team KPIs';
-  static const teamIntro =
-      'The monthly KPI scorecards of the people you are in charge of. Each person rates themself first; you score the month, seeing their self-rating; HR calibrates it; then you both sign that you have read it. A missed self-rating doesn’t hold up your scoring.';
-  static const teamRow = 'Your people’s scorecards';
-  static const teamWaitingIntro = 'Score the month, or sign that you have read it as the manager.';
   static const month = 'Month';
   static const teamNotLoaded = 'Couldn’t load the scorecards.';
   static String teamWaitingOf(int n) => n == 1 ? '1 waiting for you' : '$n waiting for you';
   static String scorecardsOf(String month) => 'Scorecards of $month';
-  static String noTeamScorecards(String month) =>
-      'No scorecards of your people for $month. They open on the 1st of the next month for everyone whose job title has a published template.';
-  static String scorecardsCount(int n) => n == 1 ? '1 scorecard' : '$n scorecards';
+  static String noTeamScorecards(String month) => 'No scorecards of your people for $month.';
 
   // ---------- a scorecard ----------
   static const scorecard = 'KPI scorecard';
@@ -56,15 +42,12 @@ abstract final class KpiWords {
   static const selfMissed = 'The self-rating was missed: not sent by its day.';
   static const deadlines = 'Deadlines';
   static const pay = 'Pay';
-  static const payNote = 'Its final % is the KPI that payroll’s variable part follows.';
   static const signatures = 'Signatures';
   static const template = 'Template';
   static const practice = 'Practice';
   static const practiceBanner = 'Practice: not counted anywhere';
-  static const practiceNote =
-      'Nobody is told of it, no deadline holds a step back, and it never reaches payroll, the payslips, the KPI figures or the Excel. The employee and their manager never see it in their own sign-in.';
   static const cLevel = 'C-level';
-  static const calibrateOnWebsite = 'HR’s calibration is taken on the People website, where every pick can be changed with its reason.';
+  static const calibrateOnWebsite = 'Calibrate on the People website.';
   static const comments = 'Comments';
   static const noComments = 'No comments yet.';
   static const everyStep = 'Every step';
@@ -78,7 +61,6 @@ abstract final class KpiWords {
   static const measures = 'Measures:';
   static const automatic = 'Automatic';
   static const attendanceMetric = 'Attendance';
-  static const attendanceAbout = 'The month’s worked hours against the expected, as payroll counts them. Filled in by the system; nobody picks it.';
   static const noMetrics = 'No metrics in this pillar.';
   static const notScored = 'Not scored';
   static const comment = 'Comment';
@@ -86,7 +68,6 @@ abstract final class KpiWords {
   static const addComment = 'Add a comment';
   static const pickHowYouDid = 'Pick how you did';
   static const pickOne = 'Pick one';
-  static const workedOut = 'Worked out as you pick.';
   static const cappedNote = 'Capped at 110%.';
   static const neededToSend = '(needed to send)';
   static const sendSelf = 'Send self-rating';
@@ -99,38 +80,25 @@ abstract final class KpiWords {
   static const cancel = 'Cancel';
   static const signYours = 'Sign your scorecard';
   static const signAsManager = 'Sign as the manager';
-  static const signEmployeeText = 'Read the scorecard above: the score, the picks and the comments. Signing says you have read it.';
-  static const signManagerText = 'Read the scorecard as it goes to the employee. Signing says you have read it, as their manager.';
-  static const readyToSend = 'Every metric is picked: ready to send.';
   static const writeComments = 'Write your comments: how the month went and the areas of focus.';
-  static const moved = 'This scorecard has moved on since you opened it. It shows where it stands now.';
+  static const moved = 'This scorecard has moved on since you opened it.';
   static const scoreTitle = 'Score';
   static const finalScore = 'Final score';
   static const yourSelfRating = 'Your self-rating';
   static const yourScoring = 'Your scoring';
   static const selfRatingTitle = 'Self-rating';
-  static const managersBeforeHr = 'The manager’s scoring, before HR’s calibration.';
-  static const ownSelfNote = 'Your own rating. The score that counts shows here from the sign-off.';
-  static const othersSelfNote = 'The employee’s own rating; not scored yet.';
-  static const ownNoScore = 'The score that counts shows here from the sign-off.';
   static const notScoredYet = 'Not scored yet.';
-  static const performanceOnly = 'The KPI is performance only: attendance is cut on the fixed part.';
   static const commentSelfLabel = 'Your comment on the month';
-  static const commentSelfHint = 'What went well, and what held you back. Your manager reads it.';
   static const commentScoreLabel = 'Your comments and areas of focus';
-  static const commentScoreHint = 'What went well, and what to focus on next month. The employee reads it at the sign-off.';
-  static const confirmSelf = 'Send your self-rating? You can’t change it once it is sent.';
-  static String confirmScore(String name) => 'Send your scoring of $name? You can’t change it once it is sent.';
-  static String upTo(int n) => 'Up to $n characters.';
-  static String stillToPick(List<String> names) => 'Pick a criterion for every metric to send it. Still to pick: ${names.join(', ')}.';
-  static String waitsForSelf(String date) => 'The self-rating is due by $date. Save your scoring now; send it once the self-rating is in, or after that day.';
-  static String notPickedYet(int n) => '${n == 1 ? 'One metric' : '$n metrics'} not picked yet: ${n == 1 ? 'it counts' : 'they count'} 0 until picked.';
+  static const confirmSelf = 'Send your self-rating?';
+  static String confirmScore(String name) => 'Send your scoring of $name?';
+  static String stillToPick(List<String> names) => 'Still to pick: ${names.join(', ')}.';
+  static String waitsForSelf(String date) => 'You can send it once the self-rating is in, or after $date.';
+  static String notPickedYet(int n) => '${n == 1 ? 'One metric' : '$n metrics'} not picked yet.';
   static String selfLine(KpiScoreResult s) => 'Self-rating: ${kpiPercentText(s.finalPercent)} · ${s.levelLabel}.';
-  static String hrChanged(int n) => 'HR changed ${n == 1 ? 'one pick' : '$n picks'}, each with its reason.';
+  static String hrChanged(int n) => 'HR changed ${n == 1 ? 'one pick' : '$n picks'}.';
   static String pillarHead(int number, double weight) => 'Pillar $number · weight ${_number(weight)}%';
   static String ofPoints(double max) => 'of ${pointsText(max)}';
-  static String leftOutText(double weight) => 'Not scored: attendance is out of the KPI, so this pillar’s ${_number(weight)}% is spread over the other pillars.';
-  static String signNote(String deadline) => 'Not signed by $deadline, it is final anyway, and that is noted.';
   static String version(int n) => 'Version $n';
 }
 
@@ -191,8 +159,6 @@ String scorerText(String kind, String? name) {
   }
 }
 
-String _scorerSubject(String scorer) => scorer == 'manager' ? 'Your manager' : (scorer == 'hr' ? 'HR' : (scorer == 'ceo' ? 'The CEO' : 'A Super Admin'));
-
 /// What the caller is to do on it, and by when: "Score by 06/11/2026", "Rate yourself by 03/11/2026"; null: nothing.
 String? actionText(KpiScorecard s) {
   final action = s.action;
@@ -235,7 +201,7 @@ String? stepDeadlineText(String status, KpiDeadlines d) {
     'self_rating' => 'Self-rating by $date',
     'manager' => 'Scoring by $date',
     'hr' => "HR's calibration by $date",
-    'sign_off' => 'Sign-off by $date; final then even if not signed',
+    'sign_off' => 'Sign-off by $date',
     _ => null,
   };
 }
@@ -263,42 +229,20 @@ int targetIndex(KpiMetric m) => m.criteria.indexWhere((c) => c.points == m.targe
 /// The pick that counts as the caller sees it: HR's change, else the manager's.
 int? countedChoice(KpiMetric m) => m.hr?.choice ?? m.manager?.choice;
 
-/// The step a review has, with the day it is due by (the KPI settings; null when they couldn't be read).
-List<({String title, String text, String? due})> reviewSteps(KpiSettings? s) {
-  String? due(int? day) => day == null ? null : 'By the ${ordinalDay(day)}';
-  return [
-    (title: 'Self-rating', text: 'From the 1st of the next month, you pick how you did on each metric, with a comment if you like.', due: due(s?.selfRatingDay)),
-    (title: 'Manager’s scoring', text: 'Your manager scores the month, seeing your self-rating.', due: due(s?.managerDay)),
-    (title: 'HR calibration', text: 'HR checks the scoring and may change a pick, giving the reason.', due: due(s?.hrDay)),
-    (title: 'Sign-off', text: 'You see the score, then you both sign that you have read it.', due: due(s?.signOffDay)),
-  ];
-}
-
-/// "1st", "2nd", "3rd", "11th", "21st".
-String ordinalDay(int day) {
-  final tens = day % 100;
-  if (tens >= 11 && tens <= 13) return '${day}th';
-  final unit = day % 10;
-  return '$day${unit == 1 ? 'st' : (unit == 2 ? 'nd' : (unit == 3 ? 'rd' : 'th'))}';
-}
-
 /// What a page says once a step is done, and in which tone (the website's doneText).
 ({String text, bool ok}) doneText(String done, KpiScorecardView v) {
   final d = v.deadlines;
   switch (done) {
     case 'self_saved':
-      return (text: 'Your self-rating is saved, not sent yet. Send it by ${kpiDate(d.selfRating)}.', ok: true);
+      return (text: 'Saved. Send it by ${kpiDate(d.selfRating)}.', ok: true);
     case 'self_sent':
-      return (text: 'Your self-rating is sent. ${_scorerSubject(v.card.scorerKind)} scores the month next; you see the score at the sign-off.', ok: true);
+      return (text: 'Self-rating sent.', ok: true);
     case 'score_saved':
-      return (text: 'Your scoring is saved, not sent yet. Send it by ${kpiDate(d.manager)}.', ok: true);
+      return (text: 'Saved. Send it by ${kpiDate(d.manager)}.', ok: true);
     case 'score_sent':
-      return (
-        text: v.card.status == 'hr' ? 'Your scoring is sent to HR to calibrate.' : 'Your scoring is sent. The scorecard is ready for the employee and the manager to sign.',
-        ok: true,
-      );
+      return (text: v.card.status == 'hr' ? 'Scoring sent to HR.' : 'Scoring sent.', ok: true);
     case 'signed':
-      return (text: v.card.status == 'final' ? 'Signed. The scorecard is final.' : 'Signed. It is final once both have signed, or after ${kpiDate(d.signOff)} anyway.', ok: true);
+      return (text: v.card.status == 'final' ? 'Signed. The scorecard is final.' : 'Signed.', ok: true);
     default:
       return (text: KpiWords.moved, ok: false);
   }

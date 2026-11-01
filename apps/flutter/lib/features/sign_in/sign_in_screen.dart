@@ -13,7 +13,6 @@ import 'forgot_password.dart';
 abstract final class SignInWords {
   static const eyebrow = 'Trendlix People';
   static const title = 'Welcome back.';
-  static const subtitle = 'Sign in with your work email.';
   static const fingerprint = 'Sign in with fingerprint';
   static const orPassword = 'or use your password';
   static const email = 'Work email';
@@ -99,7 +98,6 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final p = context.palette;
     final text = Theme.of(context).textTheme;
     final notice = widget.state.notice;
     return Scaffold(
@@ -118,8 +116,6 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                     const Eyebrow(SignInWords.eyebrow),
                     const SizedBox(height: 8),
                     Text(SignInWords.title, style: text.displaySmall),
-                    const SizedBox(height: 8),
-                    Text(SignInWords.subtitle, style: text.bodyMedium?.copyWith(color: p.muted)),
                     const SizedBox(height: 28),
                     if (notice != null) ...[Notice(text: notice, ok: false), const SizedBox(height: 12)],
                     SurfaceCard(

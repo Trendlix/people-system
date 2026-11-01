@@ -100,7 +100,7 @@ void main() {
     expect(find.text(AttendanceWords.title), findsOneWidget);
     expect(find.text(AttendanceWords.readyToStart), findsOneWidget);
     expect(find.text(AttendanceWords.notCheckedIn), findsOneWidget);
-    expect(find.text('You work at the office: check in there. ${CheckInWords.privacy}'), findsOneWidget);
+    expect(find.text('You work at the office: check in there.'), findsOneWidget);
     expect(find.text(CheckInWords.checkIn), findsOneWidget);
     expect(find.text('October 2026'), findsWidgets);
     expect(monthsAsked, contains('2026-10'));
@@ -158,7 +158,6 @@ void main() {
     expect(find.text('Monday 12/10/2026'), findsOneWidget);
     expect(find.text('Break 50 min'), findsOneWidget);
     expect(find.text('+0:11 extra'), findsWidgets);
-    expect(find.text(AttendanceWords.extraTitle), findsOneWidget);
     expect(find.text('Checked in on the system'), findsOneWidget);
     expect(find.text('Office · Head office'), findsWidgets);
     expect(find.text(AttendanceWords.askCorrection), findsWidgets);
@@ -195,7 +194,7 @@ void main() {
 
     // work away from the office is official duty now (owner, 31 October 2026: "Remove it, point to OD")
     expect(find.text(AttendanceWords.kinds['worked_remotely']!), findsNothing);
-    expect(find.text(AttendanceWords.awayIsOd), findsOneWidget);
+    expect(find.text(AttendanceWords.askOd), findsOneWidget);
     await tester.tap(find.text(AttendanceWords.kinds['wrong_time']!));
     await tester.pumpAndSettle();
     expect(find.textContaining(AttendanceWords.optional), findsWidgets);
@@ -206,7 +205,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'The door reader missed me.');
     await tester.pumpAndSettle();
-    expect(find.text(AttendanceWords.ready('wrong_time', 'Tuesday 27/10/2026')), findsOneWidget);
+    expect(find.text(AttendanceWords.beforeSend), findsNothing);
 
     await centre(tester, find.text(AttendanceWords.send));
     await tester.tap(find.text(AttendanceWords.send));

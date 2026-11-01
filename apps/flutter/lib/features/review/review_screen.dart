@@ -20,10 +20,9 @@ import 'review_words.dart';
 // website sends it); Ask for a change (the Profile's sheet). Shown by the review gate before anything else while it
 // waits, with Sign out; and opened from the Profile or the Dashboard to confirm while a change waits for HR.
 
-/// What the review says first: why it is asked for now.
-String reviewReason(Confirmation? c) {
-  if (c == null || c.confirmedAt == null) return ReviewWords.never;
-  if (c.changedFields.isEmpty) return ReviewWords.again;
+/// What changed since they last confirmed, said once under the title; null when nothing did.
+String? reviewReason(Confirmation? c) {
+  if (c == null || c.confirmedAt == null || c.changedFields.isEmpty) return null;
   return ReviewWords.changed(ConfirmFields.namesOf(c.changedFields));
 }
 
@@ -113,10 +112,12 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                   const SizedBox(height: 20),
                   Semantics(
                     header: true,
-                    child: PageHead(eyebrow: ReviewWords.eyebrow, title: ReviewWords.title, intro: reviewReason(own.confirmation)),
+                    child: const PageHead(eyebrow: ReviewWords.eyebrow, title: ReviewWords.title),
                   ),
-                  const SizedBox(height: 10),
-                  Text(ReviewWords.why, style: text.bodyMedium?.copyWith(color: p.muted)),
+                  if (reviewReason(own.confirmation) case final reason?) ...[
+                    const SizedBox(height: 10),
+                    Text(reason, style: text.bodyLarge?.copyWith(color: p.muted)),
+                  ],
                   if (own.changeWaiting) ...[const SizedBox(height: 16), const Notice(text: ReviewWords.changeWaiting, ok: true)],
                   const SizedBox(height: 20),
                   for (final section in ConfirmSection.values) ...[
@@ -163,8 +164,6 @@ class _ReviewScreenState extends ConsumerState<ReviewScreen> {
                         FilledButton(onPressed: _busy ? null : () => _confirm(own), child: Text(_busy ? ReviewWords.confirming : ReviewWords.confirm)),
                         if (!own.changeWaiting) ...[
                           const SizedBox(height: 18),
-                          Text(ReviewWords.askLine, style: text.bodySmall),
-                          const SizedBox(height: 10),
                           QuietButton(
                             ReviewWords.askForChange,
                             expand: true,

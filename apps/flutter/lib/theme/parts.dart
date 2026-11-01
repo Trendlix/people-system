@@ -289,13 +289,12 @@ class BrandLine extends StatelessWidget {
 
 // ---------- the phone design's pieces (Figma "Mobile Flutter App", 30 October 2026) ----------
 
-/// A page's head: the small capitals ("PEOPLE SYSTEM · REQUESTS"), the large title, a line under it.
+/// A page's head: the small capitals ("PEOPLE SYSTEM · REQUESTS") over the large title.
 class PageHead extends StatelessWidget {
-  const PageHead({super.key, this.eyebrow, required this.title, this.intro});
+  const PageHead({super.key, this.eyebrow, required this.title});
 
   final String? eyebrow;
   final String title;
-  final String? intro;
 
   @override
   Widget build(BuildContext context) {
@@ -305,7 +304,6 @@ class PageHead extends StatelessWidget {
       children: [
         if (eyebrow != null) ...[Eyebrow(eyebrow!), const SizedBox(height: 8)],
         Text(title, style: text.displaySmall),
-        if (intro != null) ...[const SizedBox(height: 10), Text(intro!, style: text.bodyLarge?.copyWith(color: context.palette.muted))],
       ],
     );
   }
@@ -479,9 +477,9 @@ class StatTile extends StatelessWidget {
   }
 }
 
-/// The design's bottom sheet ("New request — New leave"): the small capitals, the title with an icon, a line under it,
-/// the close button; its body scrolls; the keyboard pushes it up.
-Future<T?> showDesignSheet<T>(BuildContext context, {String? eyebrow, required String title, IconData? icon, String? intro, required WidgetBuilder builder}) {
+/// The design's bottom sheet ("New request — New leave"): the small capitals, the title with an icon, the close button;
+/// its body scrolls; the keyboard pushes it up.
+Future<T?> showDesignSheet<T>(BuildContext context, {String? eyebrow, required String title, IconData? icon, required WidgetBuilder builder}) {
   return showModalBottomSheet<T>(
     context: context,
     // over the whole app, so the floating tab bar never covers the sheet's buttons
@@ -490,17 +488,16 @@ Future<T?> showDesignSheet<T>(BuildContext context, {String? eyebrow, required S
     useSafeArea: true,
     showDragHandle: false,
     backgroundColor: Colors.transparent,
-    builder: (context) => _DesignSheet(eyebrow: eyebrow, title: title, icon: icon, intro: intro, child: builder(context)),
+    builder: (context) => _DesignSheet(eyebrow: eyebrow, title: title, icon: icon, child: builder(context)),
   );
 }
 
 class _DesignSheet extends StatelessWidget {
-  const _DesignSheet({required this.eyebrow, required this.title, required this.icon, required this.intro, required this.child});
+  const _DesignSheet({required this.eyebrow, required this.title, required this.icon, required this.child});
 
   final String? eyebrow;
   final String title;
   final IconData? icon;
-  final String? intro;
   final Widget child;
 
   static const close = 'Close';
@@ -549,7 +546,6 @@ class _DesignSheet extends StatelessWidget {
                   ),
                 ],
               ),
-              if (intro != null) ...[const SizedBox(height: 10), Text(intro!, style: text.bodyLarge?.copyWith(color: p.muted))],
               const SizedBox(height: 20),
               child,
             ],

@@ -68,9 +68,10 @@ void main() {
     final people = requestsPeople()..on('POST /api/me/permissions', (req) => json({...permissionJson(id: 'p9', status: 'with_manager', date: firstDay()), 'canCancel': true}, 201));
     await openSheet(tester, people, showPermissionSheet);
     expect(find.text(PermissionWords.title), findsOneWidget);
-    expect(find.text('This month: 0:00 approved, 4:00 left of 4:00'), findsOneWidget);
-    expect(find.text('Your permission: at most 2 hours a day and 4 hours a month, as Leave Setup gives it.'), findsOneWidget);
-    expect(find.textContaining('Ready to send: 2 hours on ${dayWords(firstDay())}'), findsOneWidget);
+    // "This month: …", or the fixtures' month by name once today is past it
+    expect(find.textContaining('0:00 approved, 4:00 left of 4:00'), findsOneWidget);
+    expect(find.text('At most 2 hours a day and 4 hours a month.'), findsOneWidget);
+    expect(find.text(RequestsWords.beforeYouSend), findsNothing);
 
     await scrollAndTap(tester, find.text('1 hour 30 minutes'));
     await typeInto(tester, PermissionWords.reason, 'Doctor’s appointment');
@@ -78,7 +79,7 @@ void main() {
     expect(people.bodyOf('POST /api/me/permissions'), {'date': firstDay(), 'hours': 1.5, 'reason': 'Doctor’s appointment'});
 
     // the request's page opens, saying where it goes
-    expect(find.text('Request sent. It goes to your direct manager, then HR; each step shows on the request.'), findsOneWidget);
+    expect(find.text('Sent to your direct manager.'), findsOneWidget);
     expect(find.text(PermissionWords.pageTitle), findsOneWidget);
   });
 

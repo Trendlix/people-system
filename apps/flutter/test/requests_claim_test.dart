@@ -42,7 +42,7 @@ void main() {
     await typeInto(tester, ClaimWords.amount, '250.50');
     await typeInto(tester, ClaimWords.what, 'Taxi to the client’s office');
     await scrollAndTap(tester, find.text(RequestsWords.takePhoto));
-    expect(find.text(ClaimWords.ready('EGP 250.50', 'Transport', 1, false)), findsOneWidget);
+    expect(find.text(RequestsWords.beforeYouSend), findsNothing);
     await scrollAndTap(tester, find.text(RequestsWords.send));
 
     final sent = readable(lastSent(people, 'POST /api/me/reimbursements'));

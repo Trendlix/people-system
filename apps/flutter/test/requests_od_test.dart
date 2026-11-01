@@ -38,7 +38,7 @@ void main() {
 
     await typeInto(tester, OdWords.where, 'Client’s office, New Cairo');
     await typeInto(tester, OdWords.reason, 'Launch shoot');
-    expect(find.text(OdWords.ready('Thursday 29/10/2026', '', false)), findsOneWidget);
+    expect(find.text(RequestsWords.beforeYouSend), findsNothing);
     await scrollAndTap(tester, find.text(RequestsWords.send));
 
     expect(people.bodyOf('POST /api/me/official-duty'), {
@@ -48,7 +48,7 @@ void main() {
       'place': 'Client’s office, New Cairo',
       'reason': 'Launch shoot',
     });
-    expect(find.text('Request sent. It goes to your direct manager, then HR; each step shows on the request.'), findsOneWidget);
+    expect(find.text('Sent to your direct manager.'), findsOneWidget);
     expect(find.text(OdWords.title), findsWidgets);
   });
 
@@ -80,10 +80,9 @@ void main() {
       findsOneWidget,
     );
     await scrollAndTap(tester, find.text(OdWords.cashInstead));
-    expect(find.text(OdWords.cashHint('1.5 days’ pay')), findsOneWidget);
     await typeInto(tester, OdWords.where, 'Client’s office');
     await typeInto(tester, OdWords.reason, 'Weekend launch');
-    expect(find.text(OdWords.ready('Friday 30/10/2026', OdWords.paidInstead('1.5 days’ pay'), false)), findsOneWidget);
+    expect(find.text(RequestsWords.beforeYouSend), findsNothing);
     await scrollAndTap(tester, find.text(RequestsWords.send));
     expect(people.bodyOf('POST /api/me/official-duty'), {
       'startDate': '2026-10-30',
@@ -138,7 +137,6 @@ void main() {
     expect(facts['Direct manager'], 'Sara Ali');
     expect(approved.steps.map((s) => s.text), ['Asked for by the employee', 'The direct manager approved it', 'HR approved it']);
     expect(approved.actions, isEmpty);
-    expect(approved.notes.first, OdWords.approvedNote);
 
     final open = odDetail(
       OdRequest.fromJson({
@@ -154,6 +152,5 @@ void main() {
     expect(f[OdWords.compensationFact]?.value, 'A day off on ${dayWords('$y-11-02')} · With the manager');
     expect(f[RequestsWords.whereItStands]?.value, 'With the direct manager (Sara Ali)');
     expect(open.actions.single.path, '/api/me/official-duty/o1/cancel');
-    expect(open.actions.single.explain, contains('Its compensation (a day off on'));
   });
 }

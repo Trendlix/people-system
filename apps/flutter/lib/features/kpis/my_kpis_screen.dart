@@ -17,9 +17,8 @@ import 'team_kpis_screen.dart';
 // My KPIs (owner, 21 October 2026: "Self, manager, HR, sign-off"; 31 October 2026: "employees and managers can perform
 // the KPI's from the mobile app"), as the website's My KPIs has it (apps/web kpis/mine-ui.tsx): what waits for the
 // employee on their own scorecards (to rate themself, to sign), their scorecards month by month with the final % once
-// it is shown to them (from the sign-off), and how a month's review goes with the day each step is due by. For those who
-// score a team's, the way to Team KPIs, with how many wait for them. Each scorecard opens its page, where the step is
-// taken.
+// it is shown to them (from the sign-off). For those who score a team's, the way to Team KPIs, with how many wait for
+// them. Each scorecard opens its page, where the step is taken.
 
 class MyKpisScreen extends ConsumerWidget {
   const MyKpisScreen({super.key});
@@ -46,8 +45,7 @@ class MyKpisScreen extends ConsumerWidget {
           ref
             ..invalidate(myKpisProvider)
             ..invalidate(kpiWaitingProvider)
-            ..invalidate(kpiCountsProvider)
-            ..invalidate(kpiSettingsProvider);
+            ..invalidate(kpiCountsProvider);
           await ref.read(myKpisProvider.future);
         },
         child: ListView(
@@ -55,7 +53,7 @@ class MyKpisScreen extends ConsumerWidget {
           children: [
             const KpiBack(KpiWords.back),
             const SizedBox(height: 6),
-            const PageHead(eyebrow: KpiWords.eyebrow, title: KpiWords.myTitle, intro: KpiWords.myIntro),
+            const PageHead(eyebrow: KpiWords.eyebrow, title: KpiWords.myTitle),
             const SizedBox(height: 24),
             if (scoresTeam) ...[
               SurfaceCard(
@@ -63,7 +61,7 @@ class MyKpisScreen extends ConsumerWidget {
                 child: ListRow(
                   icon: CupertinoIcons.person_2,
                   title: KpiWords.teamTitle,
-                  subtitle: counts != null && counts.team > 0 ? KpiWords.teamWaitingOf(counts.team) : KpiWords.teamRow,
+                  subtitle: counts != null && counts.team > 0 ? KpiWords.teamWaitingOf(counts.team) : null,
                   onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const TeamKpisScreen(back: KpiWords.myTitle))),
                 ),
               ),
@@ -76,8 +74,6 @@ class MyKpisScreen extends ConsumerWidget {
               AsyncError() => KpiLoadFailed(text: KpiWords.notLoaded, onRetry: () => ref.invalidate(myKpisProvider)),
               _ => const KpiLoading(),
             },
-            const SizedBox(height: 12),
-            const _HowItWorks(),
           ],
         ),
       ),
@@ -107,16 +103,7 @@ class _Waiting extends StatelessWidget {
               children: [
                 IconTile(s.action == 'sign' ? CupertinoIcons.signature : CupertinoIcons.checkmark_square),
                 const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(ownCardText(s), style: text.bodyLarge),
-                      const SizedBox(height: 2),
-                      Text(s.action == 'self_rate' ? KpiWords.rateIntro : KpiWords.signIntro, style: text.bodySmall),
-                    ],
-                  ),
-                ),
+                Expanded(child: Text(ownCardText(s), style: text.bodyLarge)),
               ],
             ),
             const SizedBox(height: 10),
@@ -138,7 +125,6 @@ class _History extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
-    final text = Theme.of(context).textTheme;
     return SurfaceCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -149,15 +135,13 @@ class _History extends StatelessWidget {
             if (i > 0) Divider(height: 1, color: p.line),
             KpiScorecardRow(card: k, title: monthTitle(k), subtitle: historyLine(k), button: k.action == null ? null : actionButton(k), onTap: () => onOpen(k)),
           ],
-          const SizedBox(height: 6),
-          Text('${KpiWords.scorecardsCount(cards.length)}, newest first.', style: text.bodySmall),
         ],
       ),
     );
   }
 }
 
-/// No scorecard yet: when a month's opens, and that the employee is told then.
+/// No scorecard yet.
 class _NoneYet extends StatelessWidget {
   const _NoneYet();
 
@@ -171,71 +155,6 @@ class _NoneYet extends StatelessWidget {
           const Eyebrow('No scorecards yet'),
           const SizedBox(height: 8),
           Text(KpiWords.noneTitle, style: text.titleLarge),
-          const SizedBox(height: 8),
-          Text(KpiWords.noneText, style: text.bodyMedium?.copyWith(color: context.palette.muted)),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Icon(CupertinoIcons.bell, size: 16, color: context.palette.ink),
-              const SizedBox(width: 8),
-              Expanded(child: Text(KpiWords.noneNotify, style: text.bodyMedium)),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// How a month's review goes: the four steps, each with the day of the next month it is due by; and what the score does.
-class _HowItWorks extends ConsumerWidget {
-  const _HowItWorks();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final p = context.palette;
-    final text = Theme.of(context).textTheme;
-    final steps = reviewSteps(ref.watch(kpiSettingsProvider).value);
-    return SurfaceCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const CardHead(eyebrow: KpiWords.howItWorks, title: KpiWords.reviewProcess),
-          for (final (i, s) in steps.indexed) ...[
-            const SizedBox(height: 14),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 26,
-                  height: 26,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(color: p.primary, shape: BoxShape.circle),
-                  child: Text((i + 1).toString().padLeft(2, '0'), style: text.bodySmall?.copyWith(color: p.onPrimary, fontSize: 10)),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(s.title, style: text.bodyLarge),
-                      Text(s.text, style: text.bodySmall),
-                      if (s.due != null) ...[const SizedBox(height: 4), Pill(s.due!)],
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ],
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(color: p.raised, borderRadius: BorderRadius.circular(Tokens.radiusControl), border: Border.all(color: p.line)),
-            child: Text(
-              "Each month's scorecard ends in one final %, with its level. ${KpiWords.payTiming} Open any scorecard to see its metrics, the comments and every step.",
-              style: text.bodySmall,
-            ),
-          ),
         ],
       ),
     );

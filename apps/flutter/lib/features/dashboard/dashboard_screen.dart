@@ -20,13 +20,11 @@ import 'shift_card.dart';
 
 /// The Dashboard's words, in one place (ready for Arabic).
 abstract final class DashboardWords {
-  static const intro = 'Your workday, requests, and people tools in one place.';
-  static const hold = 'Your access is on hold: you can still check in and out.';
+  static const hold = 'Your access is on hold.';
   static const selfService = 'Self service';
   static const quickActions = 'Quick actions';
   static const requestLeave = 'Request leave';
   static const officialDuty = 'Official duty';
-  static const awayFromOffice = 'Work away from the office';
   static const viewRequests = 'View requests';
   static const myPerformance = 'My performance';
   static const overview = 'Overview';
@@ -48,7 +46,6 @@ abstract final class DashboardWords {
   static const documentsNeeded = 'Documents needed';
   static const allSet = 'Nothing to do. You’re all set.';
   static const requiredByHr = 'Required by HR';
-  static const bringToHr = 'Bring them to HR, who add them to your file.';
   static const confirmDetails = 'Please review and confirm your details.';
   static const reviewDetails = 'Review my details';
   static const noHolidays = 'No more official holidays on file yet.';
@@ -84,7 +81,7 @@ class DashboardScreen extends ConsumerWidget {
       child: ListView(
         padding: tabPagePadding(context),
         children: [
-          PageHead(eyebrow: eyebrowDateOf(now), title: '${greetingAt(now)}, ${me.firstName}', intro: DashboardWords.intro),
+          PageHead(eyebrow: eyebrowDateOf(now), title: '${greetingAt(now)}, ${me.firstName}'),
           if (me.hold) ...[const SizedBox(height: Tokens.gap), const Notice(text: DashboardWords.hold, ok: false)],
           const SizedBox(height: 24),
           const ShiftCard(),
@@ -135,7 +132,7 @@ class _QuickActions extends ConsumerWidget {
       ),
       // official duty in place of a correction (owner, 31 October 2026: "replace correction with OD in the homepage for the
       // requests section"): its sheet, as the Requests tab opens it
-      (CupertinoIcons.briefcase, DashboardWords.officialDuty, DashboardWords.awayFromOffice, null),
+      (CupertinoIcons.briefcase, DashboardWords.officialDuty, null, null),
       (CupertinoIcons.doc_text, DashboardWords.viewRequests, open == null ? null : DashboardWords.openOf(open), '/requests'),
       (
         CupertinoIcons.graph_square,
@@ -570,7 +567,10 @@ class _WeeklyHours extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 18),
-          Row(
+          // wraps rather than overflows on a narrow phone with large text
+          Wrap(
+            spacing: 40,
+            runSpacing: 12,
             children: [
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -579,7 +579,6 @@ class _WeeklyHours extends ConsumerWidget {
                   Text(average == null ? '—' : hoursAndMinutesOf(average), style: text.bodyLarge),
                 ],
               ),
-              const SizedBox(width: 40),
               if (hoursADay != null)
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -657,7 +656,6 @@ class _Documents extends ConsumerWidget {
                 ],
               ),
             ),
-          if (papers.isNotEmpty) Text(DashboardWords.bringToHr, style: text.bodySmall),
         ],
       ),
     );

@@ -67,7 +67,7 @@ class _TeamKpisScreenState extends ConsumerState<TeamKpisScreen> {
           children: [
             KpiBack(widget.back),
             const SizedBox(height: 6),
-            const PageHead(eyebrow: KpiWords.eyebrow, title: KpiWords.teamTitle, intro: KpiWords.teamIntro),
+            const PageHead(eyebrow: KpiWords.eyebrow, title: KpiWords.teamTitle),
             const SizedBox(height: 24),
             if (mine.isNotEmpty) ...[
               SurfaceCard(
@@ -75,8 +75,6 @@ class _TeamKpisScreenState extends ConsumerState<TeamKpisScreen> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     CardHead(eyebrow: KpiWords.yourTurn, title: KpiWords.waitingForYou, trailing: Pill('${mine.length}', strong: true)),
-                    const SizedBox(height: 6),
-                    Text(KpiWords.teamWaitingIntro, style: text.bodySmall),
                     const SizedBox(height: 6),
                     for (final (i, s) in mine.indexed) ...[
                       if (i > 0) Divider(height: 1, color: p.line),
@@ -124,8 +122,6 @@ class _TeamKpisScreenState extends ConsumerState<TeamKpisScreen> {
                             onTap: () => open(s),
                           ),
                         ],
-                        const SizedBox(height: 6),
-                        Text('${KpiWords.scorecardsCount(list.length)}.', style: text.bodySmall),
                       ],
                     ),
                     AsyncError() => KpiLoadFailed(text: KpiWords.teamNotLoaded, onRetry: () => ref.invalidate(teamScorecardsProvider(month))),

@@ -10,13 +10,12 @@ export 'sessions_screen.dart';
 
 /// The account's screens under Profile (the phone design: Change Password, Profile Image, Your Sessions, Your Interview
 /// Hours), opened from the Profile's Security & preferences and from the More menu: the small capitals, the large
-/// title and its line, then the cards, 12 apart.
+/// title, then the cards, 12 apart.
 class AccountPage extends StatelessWidget {
-  const AccountPage({super.key, required this.eyebrow, required this.title, required this.intro, required this.children, this.onRefresh});
+  const AccountPage({super.key, required this.eyebrow, required this.title, required this.children, this.onRefresh});
 
   final String eyebrow;
   final String title;
-  final String intro;
   final List<Widget> children;
 
   /// Pulled down: read again.
@@ -29,7 +28,7 @@ class AccountPage extends StatelessWidget {
       children: [
         Semantics(
           header: true,
-          child: PageHead(eyebrow: eyebrow, title: title, intro: intro),
+          child: PageHead(eyebrow: eyebrow, title: title),
         ),
         const SizedBox(height: 24),
         for (final (i, child) in children.indexed) ...[if (i > 0) const SizedBox(height: 12), child],

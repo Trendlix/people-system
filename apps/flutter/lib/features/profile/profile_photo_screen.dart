@@ -47,7 +47,6 @@ class ProfilePhotoScreen extends ConsumerWidget {
     return AccountPage(
       eyebrow: AccountWords.profileEyebrow,
       title: AccountWords.photoTitle,
-      intro: AccountWords.photoIntro,
       onRefresh: () async {
         ref.invalidate(ownProfileProvider);
         await ref.read(ownProfileProvider.future).catchError((_) => null);
@@ -58,7 +57,6 @@ class ProfilePhotoScreen extends ConsumerWidget {
           LoadFailed(error: read.error!, what: ProfileWords.notLoaded, onRetry: () => ref.invalidate(ownProfileProvider))
         else if (profile != null)
           waiting != null ? _WaitingCard(request: waiting, name: name) : _SendCard(employeeId: profile.id, last: last),
-        const _TipsCard(),
       ],
     );
   }
@@ -95,8 +93,7 @@ class _NowCard extends StatelessWidget {
             header: true,
             child: Text(AccountWords.photoNow, style: text.titleLarge?.copyWith(fontSize: 22, fontWeight: FontWeight.w400, letterSpacing: -0.88)),
           ),
-          const SizedBox(height: 10),
-          Text(id == null ? AccountWords.noPhotoYet : AccountWords.photoFromFile, style: text.bodySmall),
+          if (id == null) ...[const SizedBox(height: 10), Text(AccountWords.noPhotoYet, style: text.bodySmall)],
         ],
       ),
     );
@@ -248,8 +245,6 @@ class _SendCardState extends ConsumerState<_SendCard> {
             header: true,
             child: Text(AccountWords.newPhoto, style: text.titleLarge?.copyWith(fontSize: 22, fontWeight: FontWeight.w400, letterSpacing: -0.88)),
           ),
-          const SizedBox(height: 10),
-          Text(AccountWords.newPhotoLine, style: text.bodySmall),
           if (last != null && last.requestedAt != null) ...[
             const SizedBox(height: 14),
             Text(AccountWords.photoOutcome(last.status, shortDateOf(isoDayOf(last.requestedAt!.toLocal()))), style: text.bodyMedium),
@@ -295,51 +290,6 @@ class _SendCardState extends ConsumerState<_SendCard> {
             QuietButton(AccountWords.chooseAnother, expand: true, onPressed: _busy ? null : () => setState(() => _photo = null)),
           ],
           if (_error != null) ...[const SizedBox(height: 14), Notice(text: _error!, ok: false)],
-        ],
-      ),
-    );
-  }
-}
-
-/// The design's advice for a good photo.
-class _TipsCard extends StatelessWidget {
-  const _TipsCard();
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    final text = Theme.of(context).textTheme;
-    return SurfaceCard(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Eyebrow(AccountWords.goodPhoto),
-          for (final (i, tip) in AccountWords.photoTips.indexed) ...[
-            const SizedBox(height: 20),
-            MergeSemantics(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 27,
-                    height: 27,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(shape: BoxShape.circle, color: p.primary),
-                    child: Text((i + 1).toString().padLeft(2, '0'), style: text.labelMedium?.copyWith(color: p.onPrimary)),
-                  ),
-                  const SizedBox(width: 11),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 3),
-                      child: Text(tip, style: text.bodySmall),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          const SizedBox(height: Tokens.gapSmall),
         ],
       ),
     );

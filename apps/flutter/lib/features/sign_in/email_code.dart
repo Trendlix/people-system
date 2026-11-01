@@ -17,13 +17,13 @@ abstract final class EmailCodeWords {
   static const link = 'Email me a sign-in code';
   static const eyebrow = 'Trendlix People';
   static const title = 'Sign in with a code';
-  static const intro = 'Type the email you sign in with. If it has an account, we email it a 6-digit code to sign in with.';
+  static const sent = 'Check your email for the code.';
   static const email = 'Work email';
   static const send = 'Email me a code';
   static const sending = 'Sending…';
   static const needEmail = 'Enter your sign-in email.';
   static const code = 'Code from the email';
-  static String sentTo(String email) => 'Sent to $email. Nothing after a few minutes? Check your spam folder.';
+  static String sentTo(String email) => 'Sent to $email.';
   static const signIn = 'Sign in';
   static const signingIn = 'Signing in…';
   static const needCode = 'Enter the 6-digit code from the email.';
@@ -61,7 +61,6 @@ Future<void> showEmailCode(BuildContext context, {String email = ''}) => showDes
   eyebrow: EmailCodeWords.eyebrow,
   title: EmailCodeWords.title,
   icon: CupertinoIcons.envelope_badge,
-  intro: EmailCodeWords.intro,
   builder: (_) => EmailCodeForm(email: email),
 );
 
@@ -102,7 +101,7 @@ class _EmailCodeFormState extends ConsumerState<EmailCodeForm> {
       final answer = await ref.read(peopleClientProvider).post('/api/auth/email-code', {'email': email});
       if (!mounted) return;
       setState(() {
-        _message = answer is Map && answer['message'] is String ? answer['message'] as String : EmailCodeWords.intro;
+        _message = answer is Map && answer['message'] is String ? answer['message'] as String : EmailCodeWords.sent;
         _sentAt = DateTime.now();
         _code.clear();
       });

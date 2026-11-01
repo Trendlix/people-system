@@ -11,12 +11,11 @@ import 'auth_controller.dart';
 abstract final class LockWords {
   static const eyebrow = 'Trendlix People';
   static const title = 'Locked';
-  static const intro = 'Use your fingerprint or face to open Trendlix People.';
   static const reason = 'Unlock Trendlix People';
   static const unlock = 'Unlock';
   static const signOut = 'Sign out';
-  static const lockedOut = 'Too many tries. Unlock your phone, then try again, or sign out and sign in with your password.';
-  static const unavailable = 'The fingerprint isn’t available right now. Sign out, then sign in with your password.';
+  static const lockedOut = 'Too many tries: unlock your phone and try again, or sign out.';
+  static const unavailable = 'The fingerprint isn’t available right now: sign out and sign in with your password.';
 }
 
 /// The app locked behind the fingerprint or face (owner, 31 October 2026: "when the app is closed and reopened, ask for
@@ -144,8 +143,6 @@ class _LockScreenState extends ConsumerState<LockScreen> {
               const Center(child: Eyebrow(LockWords.eyebrow)),
               const SizedBox(height: 8),
               Text(LockWords.title, textAlign: TextAlign.center, style: text.displaySmall),
-              const SizedBox(height: 10),
-              Text(LockWords.intro, textAlign: TextAlign.center, style: text.bodyMedium?.copyWith(color: p.muted)),
               if (_problem != null) ...[const SizedBox(height: 18), Notice(text: _problem!, ok: false)],
               const Spacer(),
               SizedBox(

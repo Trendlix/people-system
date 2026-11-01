@@ -80,12 +80,12 @@ void main() {
     expect(locator.openedApp, 1);
     await tester.tap(find.text(LocationGateWords.signOut));
     await tester.pumpAndSettle();
-    expect(find.text(SignInWords.subtitle), findsOneWidget);
+    expect(find.text(SignInWords.title), findsOneWidget);
   });
 
   testWidgets('signed out, the sign-in shows whatever the location', (tester) async {
     await open(tester, people, FakeLocator()..ready = LocationProblem.serviceOff, token: null);
-    expect(find.text(SignInWords.subtitle), findsOneWidget);
+    expect(find.text(SignInWords.title), findsOneWidget);
     expect(find.text(LocationGateWords.serviceOff), findsNothing);
   });
 

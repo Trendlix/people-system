@@ -16,9 +16,9 @@ abstract final class AuthWords {
   static const sessionEnded = 'Your session ended. Please sign in again.';
   static const confirmSignIn = 'Sign in to Trendlix People';
   static const confirmTurnOn = 'Confirm it’s you to sign in with your fingerprint next time';
-  static const lockedOut = 'Too many tries. Unlock your phone, then try the fingerprint again, or sign in with your password.';
-  static const unavailable = 'The fingerprint isn’t available right now. Sign in with your password.';
-  static const noCredential = 'People didn’t give this phone a fingerprint sign-in. Please try again.';
+  static const lockedOut = 'Too many tries: unlock your phone and try again, or sign in with your password.';
+  static const unavailable = 'The fingerprint isn’t available right now: sign in with your password.';
+  static const noCredential = 'People didn’t give this phone a fingerprint sign-in: please try again.';
 }
 
 sealed class AuthState {

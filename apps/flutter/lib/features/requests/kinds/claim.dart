@@ -20,23 +20,16 @@ import '../sheet_parts.dart';
 /// The reimbursement's words, in one place (ready for Arabic).
 abstract final class ClaimWords {
   static const title = 'New reimbursement';
-  static String intro(bool toCeo) =>
-      'Claim back an expense you paid for the company, with its receipts. Your direct manager decides first, then '
-      '${toCeo ? 'the CEO, for HR’s and Finance’s stages' : 'HR, then Finance'}; once approved, it is paid with the next payroll, untaxed.';
 
   // the form
   static const type = 'Type of expense';
-  static const typeHint = 'The types HR set up that you may claim, each with its own conditions.';
   static const chooseType = 'Choose a type';
   static const date = 'Date of the expense';
-  static String dateHint(int? within) => 'The day on the receipt; not after today.${within == null ? '' : ' This type is claimed within $within days of it.'}';
   static const amount = 'Amount spent (EGP)';
-  static const amountHint = 'As on the receipt, e.g. 250 or 250.50.';
   static const what = 'What it was for';
-  static const whatHint = 'E.g. a taxi to the client’s office for the launch meeting. Your direct manager, HR and Finance read it. Up to 500 characters.';
+  static const whatPlaceholder = 'E.g. a taxi to the client’s office';
   static const receipts = 'Receipts';
   static const receiptsRequired = 'Receipts (required for this type)';
-  static const receiptsHint = 'A clear photo of each receipt or invoice; up to 5.';
 
   // the type's panel
   static const receiptNeeded = 'Receipt needed';
@@ -50,7 +43,6 @@ abstract final class ClaimWords {
   static String aClaim(String most) => 'A claim: $most, at most each time';
   static String monthLeft(String month, String left, String cap, String used) => '$month: $left left, of $cap a month; $used claimed';
   static String yearLeft(String year, String left, String cap, String used) => '$year: $left left, of $cap a year; $used claimed';
-  static const anyAmount = 'No cap: any amount spent can be claimed.';
   static String canClaimUpTo(String most) => 'You can claim up to $most now.';
   static String checking(String month) => 'Checking what is left for $month…';
 
@@ -65,21 +57,14 @@ abstract final class ClaimWords {
   static String onlyLeftYear(double left, double cap) => 'Only EGP ${left.toStringAsFixed(2)} is left of this type’s EGP ${cap.toStringAsFixed(2)} for the expense’s year.';
   static const describe = 'Describe the expense: what it was for.';
   static const receiptTooBig = 'Each receipt must be 10 MB or smaller.';
-  static String ready(String amount, String type, int receipts, bool toCeo) =>
-      'Ready to send: $amount for $type${receipts == 0 ? '' : (receipts == 1 ? ', with one receipt' : ', with $receipts receipts')}, to your direct manager '
-      '(without one, your lead), then ${toCeo ? 'the CEO' : 'HR, then Finance'}.';
 
   // when it can't be asked
-  static const noTypes = 'There is no type of expense you can claim now. HR sets them up, each for the people it is for: ask HR if you expected one.';
+  static const noTypes = 'There is no type of expense you can claim now.';
   static const notAvailable = 'Not available yet: the server does not have reimbursements yet.';
   static const cannotClaim = 'You can’t claim a reimbursement.';
 
   // once sent
-  static String sent(String status, Approver? manager, bool toCeo) {
-    final stages = toCeo ? 'the CEO, for HR’s and Finance’s stages' : 'HR, then Finance';
-    final first = status == 'with_manager' ? '${yourApprover(manager)}, then $stages' : stages;
-    return 'Claim sent. It goes to $first; each step shows on the claim. Once approved, it is paid with the next payroll.';
-  }
+  static String sent(String status, Approver? manager, bool toCeo) => 'Sent to ${status == 'with_manager' ? yourApprover(manager) : (toCeo ? 'the CEO' : 'HR')}.';
 
   // its page
   static String claimTitle(String type) => '$type claim';
@@ -88,12 +73,11 @@ abstract final class ClaimWords {
   static const amountClaimed = 'Amount claimed';
   static const amountApproved = 'Amount approved';
   static const approvedSoFar = 'Approved so far';
-  static const lessThanClaimed = 'Less than claimed: see the comment in the log.';
+  static const lessThanClaimed = 'Less than claimed';
   static const paidWith = 'Paid with';
   static String payrollUntaxed(String month) => 'The $month payroll, untaxed';
   static const receiptsTitle = 'Receipts';
   static const noReceipt = 'No receipt attached.';
-  static const noReceiptNeeded2 = 'No receipt attached; this type needs none.';
   static String receiptN(int n) => 'Receipt $n';
 
   // where it stands (apps/web reimbursements/list.ts progressText)
@@ -122,22 +106,19 @@ abstract final class ClaimWords {
 
   // cancelling it
   static const cancelTitle = 'Cancel the claim';
-  static const cancelExplain = 'While it is being decided you can cancel it, e.g. to send it again with another amount or receipt.';
-  static String cancelConfirm(String type, String amount) => 'Cancel your $type claim of $amount? It stays on your list, cancelled; send a new claim to ask again.';
+  static String cancelConfirm(String type, String amount) => 'Cancel your $type claim of $amount?';
   static const cancelButton = 'Cancel this claim';
-  static const cancelled = 'Claim cancelled. It stays on your list, cancelled.';
+  static const cancelled = 'Claim cancelled.';
 
   static String dayCount(int n) => n == 1 ? '1 day' : '$n days';
 }
 
 /// Opens the sheet to claim a reimbursement, from the tab's [context].
 Future<void> showClaimSheet(BuildContext context) {
-  final toCeo = ProviderScope.containerOf(context, listen: false).read(confidentialProvider).value ?? false;
   return openRequestSheet(
     context,
     title: ClaimWords.title,
     icon: kindIcons[RequestKind.claim]!,
-    intro: ClaimWords.intro(toCeo),
     builder: (sheetContext, sent) => _ClaimForm(sent: sent),
   );
 }
@@ -203,7 +184,7 @@ class _ClaimFormState extends ConsumerState<_ClaimForm> {
       if (t.capPerMonth != null)
         ClaimWords.monthLeft(monthNameOf(_date.substring(0, 7)), egp(left(t.capPerMonth!, t.usedInMonth)), egp(t.capPerMonth!), egp(t.usedInMonth)),
       if (t.capPerYear != null) ClaimWords.yearLeft(_date.substring(0, 4), egp(left(t.capPerYear!, t.usedInYear)), egp(t.capPerYear!), egp(t.usedInYear)),
-      most == null ? ClaimWords.anyAmount : ClaimWords.canClaimUpTo(egp(most)),
+      if (most != null) ClaimWords.canClaimUpTo(egp(most)),
     ];
   }
 
@@ -280,14 +261,12 @@ class _ClaimFormState extends ConsumerState<_ClaimForm> {
     _typeId ??= types.length == 1 ? types.first.id : null;
     final t = types.where((x) => x.id == _typeId).firstOrNull;
     final amount = amountOf(_amount.text);
-    final toCeo = ref.watch(confidentialProvider).value ?? false;
     final problems = _problems(t, amount);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SheetField(
           label: ClaimWords.type,
-          hint: ClaimWords.typeHint,
           child: types.length <= 6
               ? ChoicePills<String>(
                   values: [for (final x in types) x.id],
@@ -307,7 +286,6 @@ class _ClaimFormState extends ConsumerState<_ClaimForm> {
         if (t != null) RulesNote(lines: [..._panel(t), if (async.isLoading) ClaimWords.checking(monthNameOf(_date.substring(0, 7)))]),
         SheetField(
           label: ClaimWords.date,
-          hint: ClaimWords.dateHint(t?.claimWithinDays),
           child: PickDayField(
             label: ClaimWords.date,
             value: _date,
@@ -318,7 +296,6 @@ class _ClaimFormState extends ConsumerState<_ClaimForm> {
         ),
         SheetField(
           label: ClaimWords.amount,
-          hint: ClaimWords.amountHint,
           child: SheetTextBox(
             controller: _amount,
             label: ClaimWords.amount,
@@ -329,16 +306,14 @@ class _ClaimFormState extends ConsumerState<_ClaimForm> {
         ),
         SheetField(
           label: ClaimWords.what,
-          hint: ClaimWords.whatHint,
-          child: SheetTextBox(controller: _what, label: ClaimWords.what, lines: 3, max: 500, onChanged: (_) => setState(() {})),
+          child: SheetTextBox(controller: _what, label: ClaimWords.what, hint: ClaimWords.whatPlaceholder, lines: 3, max: 500, onChanged: (_) => setState(() {})),
         ),
         SheetField(
           label: t?.receiptRequired == true ? ClaimWords.receiptsRequired : ClaimWords.receipts,
           optional: t?.receiptRequired != true,
-          hint: ClaimWords.receiptsHint,
           child: PhotosField(photos: _photos, max: 5, onChanged: (p) => setState(() => _photos = p)),
         ),
-        SendChecks(problems: problems, ready: t == null || amount == null ? null : ClaimWords.ready(egp(amount), t.nameEn, _photos.length, toCeo)),
+        SendChecks(problems: problems),
         PeopleRefusal(messages: _refusal),
         SheetButtons(busy: _busy, onSend: problems.isEmpty && t != null && amount != null ? () => _send(t, amount) : null),
       ],
@@ -440,12 +415,11 @@ RequestDetail claimDetail(ReimbursementClaim r) {
         fileLineOf(f.fileName.isEmpty ? RequestFile(id: f.id, fileName: ClaimWords.receiptN(i + 1), mimeType: f.mimeType, sizeBytes: f.sizeBytes) : f),
     ],
     filesTitle: ClaimWords.receiptsTitle,
-    filesEmpty: r.receiptRequired ? ClaimWords.noReceipt : ClaimWords.noReceiptNeeded2,
+    filesEmpty: ClaimWords.noReceipt,
     actions: [
       if (r.canCancel)
         (
           title: ClaimWords.cancelTitle,
-          explain: ClaimWords.cancelExplain,
           button: ClaimWords.cancelButton,
           confirm: ClaimWords.cancelConfirm(r.typeName, egp(r.amount)),
           path: RequestPaths.action(RequestKind.claim, r.id, 'cancel'),

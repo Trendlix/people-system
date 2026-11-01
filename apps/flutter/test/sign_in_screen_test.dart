@@ -63,14 +63,13 @@ void main() {
     await tester.enterText(find.widgetWithText(TextField, SignInWords.email), 'h.test@example.test');
     await tester.tap(find.text(ForgotWords.link));
     await tester.pumpAndSettle();
-    expect(find.text(ForgotWords.intro), findsOneWidget);
+    expect(find.text(ForgotWords.title), findsOneWidget);
     final sheetField = find.descendant(of: find.byType(ForgotPasswordForm), matching: find.byType(TextField));
     expect(tester.widget<TextField>(sheetField).controller?.text, 'h.test@example.test');
     await tester.tap(find.text(ForgotWords.send));
     await tester.pumpAndSettle();
     expect(people.bodyOf('POST /api/auth/forgot-password'), {'email': 'h.test@example.test'});
     expect(find.text(answer), findsOneWidget);
-    expect(find.text(ForgotWords.spam), findsOneWidget);
     await tester.tap(find.text(ForgotWords.done));
     await tester.pumpAndSettle();
     expect(find.text(SignInWords.signIn), findsOneWidget);
@@ -101,7 +100,7 @@ void main() {
     await tester.enterText(find.widgetWithText(TextField, SignInWords.email), 'h.test@example.test');
     await tester.tap(find.text(EmailCodeWords.link));
     await tester.pumpAndSettle();
-    expect(find.text(EmailCodeWords.intro), findsOneWidget);
+    expect(find.text(EmailCodeWords.title), findsOneWidget);
     await tester.tap(find.text(EmailCodeWords.send));
     await tester.pumpAndSettle();
     expect(people.bodyOf('POST /api/auth/email-code'), {'email': 'h.test@example.test'});

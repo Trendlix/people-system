@@ -87,7 +87,6 @@ void main() {
     await openSheet(tester, people, showHomeSheet);
     expect(find.text('Home location: ${HomeWords.openAlready}'), findsOneWidget);
     // the first type free is chosen: a remote site needs a name
-    expect(find.text(HomeWords.typeTexts['remote_site']!), findsOneWidget);
     expect(find.text(HomeWords.name), findsWidgets);
   });
 
@@ -106,7 +105,7 @@ void main() {
     expect(d.actions.single.path, '/api/me/home-locations/h1/withdraw');
 
     final approved = homeDetail(HomeLocationRequest.fromJson({...homeJson(status: 'approved'), 'inForce': true, 'approvedAt': '$y-10-25T10:00:00.000Z', 'validity': 'contract'}));
-    expect(approved.facts.firstWhere((f) => f.label == RequestsWords.whereItStands).value, 'Approved 25/10/$y: a check-in within 100 m of it shows as Home');
+    expect(approved.facts.firstWhere((f) => f.label == RequestsWords.whereItStands).value, 'Approved 25/10/$y');
     expect(approved.facts.firstWhere((f) => f.label == HomeWords.howLong).value, 'Until the contract ends');
     expect(approved.actions.single.path, '/api/me/home-locations/h1/remove');
     expect(approved.actions.single.button, 'Remove the home location');

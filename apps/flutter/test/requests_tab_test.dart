@@ -75,12 +75,13 @@ void main() {
       ..on('GET /api/me/official-duty', (req) => json({'message': 'Not found.'}, 404));
     await openRequestsTab(tester, people);
     await reveal(tester, find.text(RequestsWords.startAnother), 400);
+    String card(String kind) => '${RequestsWords.startCards[kind]!.$1}. ${RequestsWords.startCards[kind]!.$2}.';
     for (final kind in ['permission', 'correction', 'compensatory', 'home', 'claim']) {
-      await reveal(tester, find.text(RequestsWords.startCards[kind]!.$3));
-      expect(find.text(RequestsWords.startCards[kind]!.$3), findsOneWidget, reason: kind);
+      await reveal(tester, find.text(RequestsWords.startCards[kind]!.$2));
+      expect(find.bySemanticsLabel(card(kind)), findsOneWidget, reason: kind);
     }
     for (final kind in ['wfh', 'od', 'resignation']) {
-      expect(find.text(RequestsWords.startCards[kind]!.$2), findsNothing, reason: kind);
+      expect(find.bySemanticsLabel(card(kind)), findsNothing, reason: kind);
     }
     // an API without official duty isn't a failure to say
     expect(find.textContaining('couldn’t be loaded'), findsNothing);
@@ -100,13 +101,12 @@ void main() {
     await tester.tap(find.text(RequestsWords.createRequest));
     await tester.pumpAndSettle();
     expect(find.text(LeaveWords.title), findsOneWidget);
-    expect(find.text(LeaveWords.intro(false)), findsOneWidget);
     expect(find.text(LeaveWords.annualAvailable(y, '19')), findsOneWidget);
     expect(find.text(dayWords(firstDay())), findsNWidgets(2));
     expect(find.text(LeaveWords.countFromAnnual('1 day', '18')), findsOneWidget);
 
     await typeInto(tester, LeaveWords.reason, 'Family trip');
-    expect(find.text(LeaveWords.ready('1 day', 'Annual leave', 'HR', false)), findsOneWidget);
+    expect(find.text(RequestsWords.beforeYouSend), findsNothing);
     await sendLeave(tester);
 
     final sent = lastSent(people, 'POST /api/me/leave/requests');
@@ -115,7 +115,7 @@ void main() {
     expect(formFields(sent), {'typeId': 't-annual', 'startDate': firstDay(), 'endDate': firstDay(), 'halfDay': 'false', 'reason': 'Family trip'});
     expect(formFiles(sent), isEmpty);
     // its page opens in the tab, saying where it goes next
-    expect(find.text(RequestsWords.sentGoesTo('your direct manager', 'HR')), findsOneWidget);
+    expect(find.text(RequestsWords.sentGoesTo('your direct manager')), findsOneWidget);
     expect(find.text('With the direct manager (Sara Ali)'), findsOneWidget);
   });
 
@@ -153,7 +153,6 @@ void main() {
     await tester.tap(find.text(RequestsWords.createRequest));
     await tester.pumpAndSettle();
     expect(find.text(LeaveWords.needsCover), findsOneWidget);
-    expect(find.text(LeaveWords.coverHintRequired), findsOneWidget);
 
     await tester.ensureVisible(find.text(LeaveWords.chooseColleague));
     await tester.tap(find.byType(DropdownButtonFormField<String>));

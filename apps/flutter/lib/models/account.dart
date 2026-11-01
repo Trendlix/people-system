@@ -90,9 +90,6 @@ class FingerprintDevice {
 
 List<FingerprintDevice> devicesOf(Object? json) => json is List ? [for (final d in json) ?FingerprintDevice.fromJson(d)] : const [];
 
-/// How many days without use stop a phone's fingerprint sign-in (packages/shared DEVICE_UNUSED_DAYS).
-const deviceUnusedDays = 90;
-
 /// The browser and system a user agent names, or the app (apps/web lib/devices.ts `deviceOf`); "Unknown device" when
 /// it says neither. Only a hint: it is what the browser says of itself. The app's own ("… (android) TrendLIXPeople")
 /// names its platform in small letters.

@@ -10,8 +10,7 @@ import 'attendance_words.dart';
 /// "Your days" (the phone design, 30 October 2026; the website's My Attendance table): My corrections and Ask for a
 /// correction (while the month's payroll isn't approved, else why not), every day kept, each its day and date, what it
 /// was (worked and leave as badges; working from home, official duty, exempt, a correction under it) and its hours with
-/// its balance; a day opens its details. Under the list, what to do about a day that isn't right, where the days came
-/// from, what the balance is, and when HR imported Zoho People's days.
+/// its balance; a day opens its details.
 class YourDaysCard extends StatelessWidget {
   const YourDaysCard({super.key, required this.month, required this.today, required this.onOpenDay, required this.onMyCorrections, required this.onAsk});
 
@@ -27,7 +26,6 @@ class YourDaysCard extends StatelessWidget {
     final text = Theme.of(context).textTheme;
     final m = month;
     final corrections = m.corrections != null;
-    final usual = usualSourceOf(m.days);
     final small = text.bodyMedium?.copyWith(color: p.muted, height: 1.5);
     return SurfaceCard(
       child: Column(
@@ -73,7 +71,7 @@ class YourDaysCard extends StatelessWidget {
               decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), border: Border.all(color: p.line)),
               child: Text(AttendanceWords.notYet(monthNameOf(m.month)), textAlign: TextAlign.center, style: small),
             )
-          else ...[
+          else
             Container(
               clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(borderRadius: BorderRadius.circular(16), border: Border.all(color: p.line)),
@@ -83,13 +81,6 @@ class YourDaysCard extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(height: 17),
-            Text(corrections ? AttendanceWords.daysNote : AttendanceWords.daysNoteNoCorrections, style: small),
-            if (usual != null) ...[const SizedBox(height: 4), Text(AttendanceWords.usualSource(AttendanceWords.sourceOf(usual)), style: small)],
-            const SizedBox(height: 4),
-            Text(AttendanceWords.balanceNote, style: small),
-            if (m.importedAt != null) ...[const SizedBox(height: 4), Text(AttendanceWords.importedOn(AttendanceWords.dmy(isoDayOf(m.importedAt!))), style: small)],
-          ],
         ],
       ),
     );

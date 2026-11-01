@@ -20,7 +20,7 @@ import 'attendance_words.dart';
 
 /// The Attendance tab's Today (the phone design, 30 October 2026; the website's My Attendance "Ready to start?"):
 /// "TODAY · TUESDAY 27/10/2026" over where the day stands and its badge, the time now before a check-in and the time
-/// worked after it, where, what today brings (working from home, exempt, the arrangement's place, a first day, the locks),
+/// worked after it, where, what today brings (working from home, exempt, the arrangement's place, the locks),
 /// the one button and what a press came to; then today's check-ins. The same press as the Dashboard's (CheckInPress).
 class TodayPanel extends ConsumerStatefulWidget {
   const TodayPanel({super.key});
@@ -141,7 +141,6 @@ class _Card extends StatelessWidget {
 
     // never a lock for someone exempt today (25 October 2026: "Optional check-in")
     final lock = d.exemption != null ? null : AttendanceWords.lockText(network: t.networkLocked, gps: t.gpsLocked, ownPlaces: d.ownPlaces);
-    final arrangement = [?t.expectedText, CheckInWords.privacy].join(' ');
     final muted = text.bodyMedium?.copyWith(color: p.muted, height: 1.45);
     final notes = <Widget>[
       if (t.workingFromHome) const Align(alignment: Alignment.centerLeft, child: Pill(AttendanceWords.wfhToday)),
@@ -155,10 +154,8 @@ class _Card extends StatelessWidget {
             Text(AttendanceWords.exemptionWhen(d.exemption!), style: muted),
           ],
         ),
-      Text(arrangement, style: text.bodyLarge?.copyWith(color: p.muted, height: 1.55)),
-      if (d.firstDay) Text(AttendanceWords.firstDayToday(d.shiftStart), style: text.bodyLarge?.copyWith(fontWeight: FontWeight.w500)),
+      if (t.expectedText case final expected?) Text(expected, style: text.bodyLarge?.copyWith(color: p.muted, height: 1.55)),
       if (lock != null) Text(lock, style: text.bodyLarge),
-      if (!d.officeLocationSet) Text(AttendanceWords.officeNotSet, style: text.bodySmall),
     ];
 
     return SurfaceCard(
@@ -205,7 +202,7 @@ class _Card extends StatelessWidget {
             Divider(color: p.line, height: 1),
             const SizedBox(height: 20),
             for (final (i, n) in notes.indexed) ...[if (i > 0) const SizedBox(height: 10), n],
-            const SizedBox(height: 17),
+            if (notes.isNotEmpty) const SizedBox(height: 17),
             _PressButton(next: t.next, busy: busy, onPress: onPress),
             if (notice case final n?) ...[const SizedBox(height: 12), Notice(text: n.text, ok: n.ok, action: n.action, onAction: n.onAction)],
             if (t.punches.isNotEmpty) ...[

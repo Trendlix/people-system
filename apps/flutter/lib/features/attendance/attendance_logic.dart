@@ -185,19 +185,6 @@ String? correctedNoteOf(DayRecord d) {
 MonthPress? pressAt(List<MonthPress> presses, DateTime? at, {required bool checkIn}) =>
     at == null ? null : presses.where((p) => p.checkIn == checkIn && p.at.isAtSameMomentAs(at)).firstOrNull;
 
-/// Where most of the month's days came from, said once under the list; null without days.
-String? usualSourceOf(List<DayRecord> days) {
-  final counts = <String, int>{};
-  for (final d in days) {
-    counts[d.source] = (counts[d.source] ?? 0) + 1;
-  }
-  String? best;
-  for (final e in counts.entries) {
-    if (best == null || e.value > counts[best]!) best = e.key;
-  }
-  return best;
-}
-
 /// The Map link of a press where People gives its spot: Google Maps at its point.
 Uri? mapOf(MonthPress p) {
   final lat = p.latitude;

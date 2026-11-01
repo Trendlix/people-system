@@ -25,7 +25,6 @@ Future<AttendanceCorrection?> showCorrectionSheet(BuildContext context, {require
     eyebrow: AttendanceWords.newRequest,
     title: AttendanceWords.askCorrection,
     icon: CupertinoIcons.clock,
-    intro: AttendanceWords.correctionIntro,
     builder: (context) => CorrectionForm(month: month, today: today, date: date),
   );
 }
@@ -159,8 +158,6 @@ class _CorrectionFormState extends ConsumerState<CorrectionForm> {
       children: [
         label(AttendanceWords.day),
         _FieldButton(text: _date == null ? AttendanceWords.chooseDay : AttendanceWords.dayTitle(_date!), placeholder: _date == null, icon: CupertinoIcons.calendar, onTap: _pickDay),
-        const SizedBox(height: 6),
-        Text(AttendanceWords.dayHint, style: muted),
         if (_date != null) ...[
           const SizedBox(height: 12),
           Semantics(
@@ -187,8 +184,6 @@ class _CorrectionFormState extends ConsumerState<CorrectionForm> {
         label(AttendanceWords.whatWasWrong),
         for (final k in correctionKinds) _Choice(label: AttendanceWords.kinds[k]!, selected: _kind == k, onTap: () => setState(() => _kind = k)),
         // work away from the office is official duty (owner, 31 October 2026: "Remove it, point to OD")
-        const SizedBox(height: 6),
-        Text(AttendanceWords.awayIsOd, style: Theme.of(context).textTheme.bodySmall),
         Align(
           alignment: AlignmentDirectional.centerStart,
           child: TextButton(
@@ -210,8 +205,6 @@ class _CorrectionFormState extends ConsumerState<CorrectionForm> {
           label(AttendanceWords.leftAt, optional: needs.checkOut == TimeNeed.optional),
           _TimeField(value: _out, what: AttendanceWords.leftAt, onTap: () => _pickTime(false), onClear: () => setState(() => _out = null)),
         ],
-        const SizedBox(height: 6),
-        Text(AttendanceWords.timesHint, style: muted),
         const SizedBox(height: 22),
         label(AttendanceWords.why),
         TextField(
@@ -223,27 +216,27 @@ class _CorrectionFormState extends ConsumerState<CorrectionForm> {
           style: text.bodyLarge,
           decoration: const InputDecoration(hintText: AttendanceWords.whyHint, hintMaxLines: 3),
         ),
-        const SizedBox(height: 12),
-        Semantics(
-          liveRegion: true,
-          child: problems.isEmpty
-              ? Text(AttendanceWords.ready(_kind!, AttendanceWords.dayTitle(_date!)), style: text.bodyMedium)
-              : Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  decoration: BoxDecoration(color: p.raised, borderRadius: BorderRadius.circular(Tokens.radiusControl), border: Border.all(color: p.line)),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(AttendanceWords.beforeSend, style: text.bodyMedium?.copyWith(fontWeight: FontWeight.w500)),
-                      for (final problem in problems)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4),
-                          child: Text('·  $problem', style: text.bodyMedium?.copyWith(color: p.muted)),
-                        ),
-                    ],
-                  ),
-                ),
-        ),
+        if (problems.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Semantics(
+            liveRegion: true,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(color: p.raised, borderRadius: BorderRadius.circular(Tokens.radiusControl), border: Border.all(color: p.line)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(AttendanceWords.beforeSend, style: text.bodyMedium?.copyWith(fontWeight: FontWeight.w500)),
+                  for (final problem in problems)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text('·  $problem', style: text.bodyMedium?.copyWith(color: p.muted)),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
         if (_refused != null) ...[const SizedBox(height: 12), Notice(text: _refused!.join('\n'), ok: false)],
         const SizedBox(height: 20),
         Row(

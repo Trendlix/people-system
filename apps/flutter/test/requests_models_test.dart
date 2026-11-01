@@ -111,7 +111,7 @@ void main() {
       expect(statusLabelOf(waiting), 'With the manager');
       expect(stateOf(waiting), RequestState.waiting);
       expect(progressOf(waiting).text, 'With the direct manager (Sara Ali)');
-      expect(sentTextOf(waiting), 'Request sent. It goes to your direct manager, then HR; each step shows on the request.');
+      expect(sentTextOf(waiting), 'Sent to your direct manager.');
       final ceo = LeaveRequest.fromJson({...leaveJson(status: 'with_hr'), 'confidential': true});
       expect(statusLabelOf(ceo), 'With the CEO');
       expect(progressOf(ceo).text, 'Waiting for the CEO');
@@ -178,7 +178,7 @@ void main() {
       expect(leaveDaysBetween('2026-11-07', '2026-11-01', workingDays: sunToThu, holidays: const {}, calendarDays: false), 0);
     });
 
-    test('the first working day from today, the cover rule, the types offered and their rules in a line', () {
+    test('the first working day from today, the cover rule and the types offered', () {
       // Friday 30 October 2026: the next working day is Sunday 1 November
       expect(nextWorkingDay('2026-10-30', sunToThu, const {}), '2026-11-01');
       expect(nextWorkingDay('2026-11-01', sunToThu, {'2026-11-01'}), '2026-11-02');
@@ -188,8 +188,6 @@ void main() {
       expect(coverRequiredFor(types[2], 5), isFalse);
       final female = LeaveType.fromJson({...leaveTypeJson('maternity', 'Maternity leave', sort: 9), 'gender': 'female'});
       expect(offeredLeaveTypes([...types, female], 'male').map((t) => t.key), ['annual', 'casual', 'sick', 'unpaid']);
-      expect(leaveTypeRulesText(types[1]), 'Paid · Working days · From the annual balance · At most 7 days a year · Half days allowed');
-      expect(leaveTypeRulesText(types[2]), 'Paid · Working days · No balance · Document needed');
     });
   });
 }

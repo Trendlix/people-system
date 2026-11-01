@@ -25,15 +25,12 @@ import 'od.dart' show showOdSheet;
 /// The correction's words (packages/shared attendance-corrections.ts; apps/web attendance/corrections).
 abstract final class CorrectionWords {
   static const title = 'Attendance correction';
-  static const intro = 'A day that isn’t right: you forgot to check in or out, or a time is wrong. Ask on the day or within 2 working days of it.';
-  static String whoDecides(bool ceo) => 'Your direct manager (or lead) decides first, then ${ceo ? 'the CEO' : 'HR'}; approved, the day is corrected.';
 
   /// What was wrong, as the employee chooses it (owner, 31 October 2026: work away from the office is official duty now,
   /// "Remove it, point to OD").
   static const kindLabels = {'forgot_check_in': 'I forgot to check in', 'forgot_check_out': 'I forgot to check out', 'wrong_time': 'A time is wrong'};
-  static const awayIsOd = 'Working away from the office (at a client, a shoot, an errand) is official duty: ask for official duty instead, or work from home for a day at home.';
   static const askOd = 'Ask for official duty';
-  static String tooLate(String day) => 'It’s too late to ask to correct $day: ask within 2 working days of the day. HR can still correct it for you.';
+  static String tooLate(String day) => 'It’s too late to ask to correct $day: ask within 2 working days of the day.';
 
   /// What was wrong, as the lists, HR and the manager say it.
   static const kindNames = {
@@ -50,16 +47,12 @@ abstract final class CorrectionWords {
   static const noCheckIn = 'no check-in';
   static const noCheckOut = 'no check-out';
   static String onRecordFor(String day) => 'On record for $day';
-  static const checkedWhenSent = 'The day on record is checked when it is sent.';
   static const checkingDay = 'Checking what is on record…';
   static const day = 'Day';
-  static const dayHint = 'Today, or a day up to 2 working days ago, in a month whose payroll isn’t approved yet.';
   static const whatWasWrong = 'What was wrong';
   static const cameIn = 'Came in at';
   static const leftAt = 'Left at';
-  static const timesHint = 'Times on the day, e.g. 9:15 AM and 6:30 PM. A time left empty stays as on record.';
   static const why = 'Why';
-  static const whyHint = 'E.g. I left for a client meeting and forgot to check out. Your manager and HR read it. Up to 500 characters.';
   static const whyPlaceholder = 'What happened that day';
 
   // the checks, in People's words (packages/shared correctionProblems)
@@ -75,9 +68,7 @@ abstract final class CorrectionWords {
   static String nothingToCorrect(String day) => 'There is no check-in or check-out on $day to correct: choose “I forgot to check in”.';
   static String notYet(String time) => 'Choose a time that has passed: $time today hasn’t come yet.';
   static String outAfterIn(String out, String inAt) => 'The check-out ($out) must be after the check-in ($inAt) on the same day.';
-  static String ready(String what, String day, String hr) =>
-      'Ready to send: ${what.toLowerCase()} on $day, to your direct manager (without one, your lead), then $hr.';
-  static const correctedAtOnce = 'Day corrected, approved at once: its hours are counted again, and the month’s draft payroll takes it.';
+  static const correctedAtOnce = 'Day corrected.';
 
   // its page
   static const pageTitle = 'Attendance correction';
@@ -86,17 +77,14 @@ abstract final class CorrectionWords {
   static const onRecordWhenAsked = 'On record when asked';
   static const rightTimes = 'The right times';
   static const asOnRecord = 'As on record';
-  static const remoteNote = 'Counted as remote work, no longer flagged once approved';
-  static String applied(String when) => 'The day was corrected $when';
+  static const appliedFact = 'Day corrected';
   static const correctedDirectly = 'Corrected by HR directly: no decision needed';
-  static const others = 'Your other corrections are on My Requests.';
   static const stepRecorded = 'Corrected by HR directly, approved at once';
   static const stepCancelled = 'Cancelled by the employee';
   static const cancelTitle = 'Cancel the correction';
-  static const cancelExplain = 'While it is being decided you can cancel it, e.g. to ask again with other times. The day stays as it is.';
   static const cancelButton = 'Cancel this correction';
-  static String cancelConfirm(String day) => 'Cancel your correction of $day? It stays on your list, cancelled; ask again with a new request.';
-  static const cancelled = 'Correction cancelled. It stays on the list, cancelled; the day is as it was.';
+  static String cancelConfirm(String day) => 'Cancel your correction of $day?';
+  static const cancelled = 'Correction cancelled.';
 }
 
 /// Whether a time is asked for, may be given, or isn't sent at all, by what was wrong (apps/web timesNeeded).
@@ -216,12 +204,10 @@ List<String> correctionProblems({
 
 /// Opens the sheet to ask for a correction, from the tab's [context].
 Future<void> showCorrectionSheet(BuildContext context) {
-  final ceo = ProviderScope.containerOf(context, listen: false).read(confidentialProvider).value;
   return openRequestSheet(
     context,
     title: CorrectionWords.title,
     icon: kindIcons[RequestKind.correction]!,
-    intro: ceo == null ? CorrectionWords.intro : '${CorrectionWords.intro} ${CorrectionWords.whoDecides(ceo)}',
     builder: (sheetContext, sent) => _CorrectionForm(sent: sent),
   );
 }
@@ -318,7 +304,6 @@ class _CorrectionFormState extends ConsumerState<_CorrectionForm> {
     final checkOut = needs.checkOut == TimeNeed.none ? null : (_outSet ? _checkOut : (needs.checkOut == TimeNeed.required ? shift?.shiftEnd : null));
     final correctable = m?.raw['correctable'];
     final locked = correctable is Map && correctable['allowed'] == false ? '${correctable['reason'] ?? ''}'.trim() : null;
-    final ceo = ref.watch(confidentialProvider).value ?? false;
     final night = (_minutes(shift?.shiftEnd) ?? 1) < (_minutes(shift?.shiftStart) ?? 0);
     final problems = correctionProblems(
       date: date,
@@ -337,7 +322,7 @@ class _CorrectionFormState extends ConsumerState<_CorrectionForm> {
     );
     final record = switch ((monthOf.isLoading, dayKnown)) {
       (true, false) => CorrectionWords.checkingDay,
-      (false, false) => CorrectionWords.checkedWhenSent,
+      (false, false) => '—',
       _ => day == null ? CorrectionWords.noDay : onRecordText(status: day.status, checkIn: day.checkIn, checkOut: day.checkOut),
     };
     final source = day == null ? null : CorrectionWords.sources['${day.raw['source'] ?? 'zoho'}'];
@@ -347,7 +332,6 @@ class _CorrectionFormState extends ConsumerState<_CorrectionForm> {
       children: [
         SheetField(
           label: CorrectionWords.day,
-          hint: CorrectionWords.dayHint,
           child: PickDayField(
             label: CorrectionWords.day,
             value: date,
@@ -374,7 +358,6 @@ class _CorrectionFormState extends ConsumerState<_CorrectionForm> {
           ),
         ),
         // work away from the office is official duty (owner, 31 October 2026: "Remove it, point to OD")
-        Text(CorrectionWords.awayIsOd, style: Theme.of(context).textTheme.bodySmall),
         Align(
           alignment: AlignmentDirectional.centerStart,
           child: TextButton(
@@ -401,7 +384,6 @@ class _CorrectionFormState extends ConsumerState<_CorrectionForm> {
         SheetField(
           label: CorrectionWords.leftAt,
           optional: needs.checkOut == TimeNeed.optional,
-          hint: CorrectionWords.timesHint,
           child: PickTimeField(
             label: CorrectionWords.leftAt,
             value: checkOut,
@@ -411,10 +393,9 @@ class _CorrectionFormState extends ConsumerState<_CorrectionForm> {
         ),
         SheetField(
           label: CorrectionWords.why,
-          hint: CorrectionWords.whyHint,
           child: SheetTextBox(controller: _reason, label: CorrectionWords.why, hint: CorrectionWords.whyPlaceholder, lines: 3, max: 500, onChanged: (_) => setState(() {})),
         ),
-        SendChecks(problems: problems, ready: CorrectionWords.ready(CorrectionWords.kindNames[kind]!, dayWords(date), RequestsWords.hrStage(ceo))),
+        SendChecks(problems: problems),
         PeopleRefusal(messages: _refusal),
         SheetButtons(
           busy: _busy,
@@ -450,20 +431,19 @@ RequestDetail correctionDetail(CorrectionRequest r) {
         value: before == null ? CorrectionWords.noDay : onRecordText(status: before.status, checkIn: before.checkIn, checkOut: before.checkOut),
         note: before == null ? null : CorrectionWords.sources[before.source],
       ),
-      (label: CorrectionWords.rightTimes, value: rightTimesText(r), note: r.correctionKind == 'worked_remotely' ? CorrectionWords.remoteNote : null),
+      (label: CorrectionWords.rightTimes, value: rightTimesText(r), note: null),
       (label: CorrectionWords.why, value: r.reason, note: null),
+      if (r.appliedAt != null) (label: CorrectionWords.appliedFact, value: dateTimeWords(r.appliedAt!), note: null),
     ],
     stepText: (s) => switch (s.kind) {
       'recorded_by_hr' => CorrectionWords.stepRecorded,
       'cancelled' => CorrectionWords.stepCancelled,
       _ => stepTextOf(s, r.manager, r.confidential),
     },
-    notes: [if (r.appliedAt != null) CorrectionWords.applied(dateTimeWords(r.appliedAt!)), CorrectionWords.others],
     actions: [
       if (r.canCancel)
         (
           title: CorrectionWords.cancelTitle,
-          explain: CorrectionWords.cancelExplain,
           button: CorrectionWords.cancelButton,
           confirm: CorrectionWords.cancelConfirm(dayWords(r.date)),
           path: RequestPaths.action(RequestKind.correction, r.id, 'cancel'),
@@ -480,7 +460,6 @@ RequestDetail correctionDetail(CorrectionRequest r) {
     subline: d.subline,
     facts: [for (final f in d.facts) f.value == RequestsWords.recordedNoDecision ? (label: f.label, value: CorrectionWords.correctedDirectly, note: f.note) : f],
     steps: d.steps,
-    notes: d.notes,
     actions: d.actions,
   );
 }

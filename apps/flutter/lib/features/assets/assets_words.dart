@@ -6,7 +6,6 @@ import '../../format.dart';
 abstract final class AssetsWords {
   static const eyebrow = 'Account · Assets';
   static const title = 'My Assets';
-  static const intro = 'What the company has handed to you, since when and until when. Each handover and return is recorded by the asset team.';
   static const custody = 'Custody';
   static const whatYouHold = 'What you hold';
   static const holdNothing = 'You hold no company assets.';
@@ -14,7 +13,6 @@ abstract final class AssetsWords {
   static const records = 'Your custody records';
   static const noRecords = 'No custody records yet.';
   static const notSigned = 'Not signed';
-  static const openOnWebsite = 'To open a signed form, use the People website.';
   static const notLoaded = 'Couldn’t load your assets.';
   static String serial(String s) => 'S/N $s';
   static String condition(String c) => 'Condition when handed over: $c';
@@ -23,13 +21,10 @@ abstract final class AssetsWords {
   static String outOn(String day) => 'Out $day';
   static String signedForm(String name, String size) => 'Signed form: $name · $size';
   static String countOf(int n) => n == 1 ? '1 item' : '$n items';
-  static String overdue(int n) => n == 1
-      ? 'One item is past its return date. Please return it, or speak to the person who handed it over.'
-      : '$n items are past their return date. Please return them, or speak to the person who handed them over.';
+  static String overdue(int n) => n == 1 ? 'One item is past its return date: please return it.' : '$n items are past their return date: please return them.';
 
   // the Profile's row and the More menu
   static const companyAssets = 'Company assets';
-  static const assetsLine = 'What the company has handed to you';
   static String withYou(int n) => n == 0 ? 'Nothing with you now' : (n == 1 ? '1 item with you' : '$n items with you');
 }
 

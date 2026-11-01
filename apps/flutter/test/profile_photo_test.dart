@@ -113,7 +113,7 @@ void main() {
 
     // their picture now, read from People with their session
     expect(people.calls, contains('GET /api/paperwork/ph1/photo'));
-    expect(find.text(AccountWords.photoFromFile), findsOneWidget);
+    expect(find.text(AccountWords.noPhotoYet), findsNothing);
     expect(find.descendant(of: find.byType(RoundPicture).first, matching: find.byType(Image)), findsOneWidget);
 
     await tapShown(tester, find.text(AccountWords.choosePhoto));

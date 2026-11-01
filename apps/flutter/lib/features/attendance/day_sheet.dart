@@ -98,8 +98,6 @@ class DayDetails extends StatelessWidget {
                     Semantics(label: AttendanceWords.compensatoryHoursTitle, child: Pill(AttendanceWords.compensatoryHours(d.compensatoryHours!))),
                 ],
               ),
-              if (d.exempt && !d.compensatory) ...[const SizedBox(height: 6), Text(AttendanceWords.exemptDayTitle, style: small)],
-              if (d.compensatory) ...[const SizedBox(height: 6), Text(AttendanceWords.compensatoryDayTitle, style: small)],
               if (corrected != null) ...[const SizedBox(height: 6), Text(corrected, style: small)],
             ],
           ),
@@ -146,7 +144,6 @@ class DayDetails extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(balance?.text ?? '—', style: text.bodyLarge?.copyWith(fontFeatures: const [FontFeature.tabularFigures()])),
-              if (balance != null) Text(balance.short ? AttendanceWords.shortTitle : AttendanceWords.extraTitle, style: small),
               if (d.permissionHours > 0) Text(AttendanceWords.permissionOf(AttendanceWords.hoursText(d.permissionHours)), style: small),
             ],
           ),

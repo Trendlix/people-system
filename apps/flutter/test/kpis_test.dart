@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:people/app.dart';
 import 'package:people/auth/session_store.dart';
 import 'package:people/features/kpis/kpi_words.dart';
+import 'package:people/features/kpis/team_kpis_screen.dart';
 import 'package:people/providers.dart';
 import 'package:people/shell/app_shell.dart';
 import 'package:people/shell/shell_words.dart';
@@ -102,7 +103,6 @@ void main() {
       expect(find.text('Your October 2026 KPI: rate yourself by 03/11/2026'), findsOneWidget);
       expect(find.text('September 2026'), findsOneWidget);
       expect(find.text('95%'), findsOneWidget);
-      expect(find.text('By the 3rd'), findsOneWidget);
 
       await tapOn(tester, find.widgetWithText(FilledButton, 'Rate yourself'));
       expect(find.text('${KpiWords.yourStep}: Rate yourself by 03/11/2026'), findsOneWidget);
@@ -116,7 +116,7 @@ void main() {
       // 40 of 40 in Delivery; 30 + the Attendance metric's 20 of 60 in Discipline: 100 × 50% + 83.3 × 50%
       expect(find.text('91.7%'), findsOneWidget);
       expect(find.text('Meets expectations'), findsOneWidget);
-      expect(find.text(KpiWords.readyToSend), findsOneWidget);
+      expect(find.textContaining('Still to pick'), findsNothing);
 
       await tapOn(tester, find.text('${KpiWords.addComment} ${KpiWords.optional}').first);
       await tester.enterText(field('${KpiWords.comment} ${KpiWords.optional}'), 'Shipped every brief');
@@ -134,7 +134,7 @@ void main() {
         'comment': 'A good month',
         'submit': true,
       });
-      expect(find.text('Your self-rating is sent. Your manager scores the month next; you see the score at the sign-off.'), findsOneWidget);
+      expect(find.text('Self-rating sent.'), findsOneWidget);
       // the step is taken: no form left; back on My KPIs, the lists are read again
       expect(find.widgetWithText(FilledButton, KpiWords.sendSelf), findsNothing);
       final before = people.calls.where((c) => c == 'GET /api/kpis/scorecards/mine').length;
@@ -153,7 +153,7 @@ void main() {
       await tapOn(tester, find.widgetWithText(OutlinedButton, KpiWords.save));
       expect(people.bodyOf('POST /api/kpis/scorecards/k1/self')['submit'], isFalse);
       expect((people.bodyOf('POST /api/kpis/scorecards/k1/self')['picks'] as List).last, {'metricId': 'm2', 'choice': null, 'comment': null});
-      expect(find.text('Your self-rating is saved, not sent yet. Send it by 03/11/2026.'), findsOneWidget);
+      expect(find.text('Saved. Send it by 03/11/2026.'), findsOneWidget);
 
       people.on('POST /api/kpis/scorecards/k1/self', (req) => json({'message': ['Keep the comment to 1000 characters or fewer.']}, 400));
       await tapOn(tester, find.widgetWithText(OutlinedButton, KpiWords.save));
@@ -199,7 +199,7 @@ void main() {
       await tester.enterText(field('${KpiWords.comment} ${KpiWords.optional}'), 'Thanks, noted.');
       await tapOn(tester, find.widgetWithText(FilledButton, KpiWords.iveReadIt));
       expect(people.bodyOf('POST /api/kpis/scorecards/k1/sign'), {'comment': 'Thanks, noted.'});
-      expect(find.text('Signed. It is final once both have signed, or after 10/11/2026 anyway.'), findsOneWidget);
+      expect(find.text('Signed.'), findsOneWidget);
       expect(find.text(KpiWords.signYours), findsNothing);
       expect(find.text('✓ The employee signed'), findsOneWidget);
     });
@@ -241,7 +241,6 @@ void main() {
       await tester.tap(find.text(KpiWords.teamTitle));
       await tester.pumpAndSettle();
 
-      expect(find.text(KpiWords.teamIntro), findsOneWidget);
       expect(find.text('October 2026 · Score by 06/11/2026'), findsOneWidget);
       expect(find.text(KpiWords.scorecardsOf('October 2026')), findsOneWidget);
       expect(find.text('Omar Ali'), findsNWidgets(2));
@@ -274,7 +273,7 @@ void main() {
         'comment': 'Strong month. Plan the briefs a day earlier.',
         'submit': true,
       });
-      expect(find.text('Your scoring is sent to HR to calibrate.'), findsOneWidget);
+      expect(find.text('Scoring sent to HR.'), findsOneWidget);
     });
 
     testWidgets('while the self-rating is still open, saves the scoring but can’t send it yet', (tester) async {
@@ -292,7 +291,7 @@ void main() {
 
       await tapOn(tester, find.widgetWithText(OutlinedButton, KpiWords.save));
       expect(people.bodyOf('POST /api/kpis/scorecards/k2/score')['submit'], isFalse);
-      expect(find.text('Your scoring is saved, not sent yet. Send it by 06/11/2026.'), findsOneWidget);
+      expect(find.text('Saved. Send it by 06/11/2026.'), findsOneWidget);
     });
 
     testWidgets('My KPIs leads them to Team KPIs, with how many wait', (tester) async {
@@ -300,7 +299,7 @@ void main() {
       await goTo(tester, '/dashboard/performance');
       expect(find.text(KpiWords.teamWaitingOf(1)), findsOneWidget);
       await tapOn(tester, find.text(KpiWords.teamTitle));
-      expect(find.text(KpiWords.teamIntro), findsOneWidget);
+      expect(find.byType(TeamKpisScreen), findsOneWidget);
     });
   });
 
@@ -355,8 +354,10 @@ void main() {
         await tester.tap(find.widgetWithText(FilledButton, 'Rate yourself'));
         await tester.pumpAndSettle();
         final page = find.descendant(of: find.byType(ListView).last, matching: find.byType(Scrollable)).first;
+        // from the page's left gutter: a drag that starts on a comment field scrolls the field, not the page
+        final gutter = Offset(tester.getTopLeft(page).dx + 6, tester.getCenter(page).dy);
         for (var i = 0; i < 40; i++) {
-          await tester.drag(page, const Offset(0, -400));
+          await tester.dragFrom(gutter, const Offset(0, -400));
           await tester.pumpAndSettle();
         }
         expect(find.text(KpiWords.everyStep), findsOneWidget);

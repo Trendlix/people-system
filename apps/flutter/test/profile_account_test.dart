@@ -66,7 +66,6 @@ void main() {
       await openAccount(tester, people, ShellWords.password, store: store);
       expect(find.text(AccountWords.passwordTitle), findsOneWidget);
       expect(find.text(AccountWords.rule), findsOneWidget);
-      expect(find.text(AccountWords.guidanceTitle), findsOneWidget);
 
       await tester.enterText(field(AccountWords.current), 'old password here');
       await tester.enterText(field(AccountWords.fresh), 'a brand new sentence');
@@ -119,10 +118,6 @@ void main() {
     expect(find.text(AccountWords.newPhoto), findsOneWidget);
     expect(find.text(AccountWords.takePhoto), findsOneWidget);
     expect(find.text(AccountWords.choosePhoto), findsOneWidget);
-    for (final tip in AccountWords.photoTips) {
-      await tester.scrollUntilVisible(find.text(tip), 200, scrollable: find.byType(Scrollable).last);
-      expect(find.text(tip), findsOneWidget);
-    }
   });
 
   group('Your Sessions', () {
@@ -165,7 +160,7 @@ void main() {
       await tester.tap(find.widgetWithText(FilledButton, AccountWords.signOut));
       await tester.pumpAndSettle();
       expect(people.calls, contains('POST /api/auth/logout'));
-      expect(find.text(SignInWords.subtitle), findsOneWidget);
+      expect(find.text(SignInWords.title), findsOneWidget);
     });
 
     testWidgets('marks this phone among the fingerprint phones, and signing it out forgets its credential', (tester) async {

@@ -19,7 +19,6 @@ abstract final class CheckInWords {
   static String checkedOut(String at, String place) => 'Checked out at $at · $place';
   static String shift(String from, String to) => 'Shift $from – $to';
   static const sameAgain = 'Already done: kept once.';
-  static const privacy = 'Your location is only read when you check in or out.';
   static const networkNeeded = 'Office network';
   static const wfh = 'Working from home';
   static const duty = 'Official duty';
@@ -35,11 +34,11 @@ abstract final class CheckInWords {
   }
 
   static String noLocation(LocationProblem p) => switch (p) {
-    LocationProblem.serviceOff => 'Your phone’s location is off. Turn it on to check in.',
-    LocationProblem.denied => 'Trendlix People needs your location to check you in. Allow it when the phone asks.',
-    LocationProblem.deniedForever => 'Location is blocked for Trendlix People. Allow it in the app’s settings to check in.',
-    LocationProblem.timeout => 'Couldn’t find your location in time. Move near a window or outside, then try again.',
-    LocationProblem.unavailable => 'Couldn’t read your location. Please try again.',
+    LocationProblem.serviceOff => 'Your phone’s location is off: turn it on to check in.',
+    LocationProblem.denied => 'Allow your location when the phone asks, to check in.',
+    LocationProblem.deniedForever => 'Location is blocked for Trendlix People: allow it in the app’s settings.',
+    LocationProblem.timeout => 'Couldn’t find your location in time: move near a window, then try again.',
+    LocationProblem.unavailable => 'Couldn’t read your location: please try again.',
   };
 
   static String locationAction(LocationProblem p) => switch (p) {

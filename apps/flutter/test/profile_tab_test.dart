@@ -105,7 +105,7 @@ void main() {
     await tester.pumpAndSettle();
     await scrollTo(tester, find.text('+201012345678'));
     expect(find.text('m.abdelrahman@trendlix.example'), findsOneWidget);
-    expect(find.text(ProfileWords.workEmailNote), findsOneWidget);
+    expect(find.text(ProfileWords.workEmail), findsOneWidget);
     await scrollTo(tester, find.text('Sara Ali'));
     expect(find.text('Wife'), findsOneWidget);
 

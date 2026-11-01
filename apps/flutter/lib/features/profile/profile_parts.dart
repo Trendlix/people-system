@@ -23,11 +23,10 @@ String wordsOf(Object error) => error is ApiException ? error.message : PeopleCl
 
 /// The Profile's card head: the small capitals over a title of 25 (Figma 25/400, −4%), something on the right.
 class ProfileCardHead extends StatelessWidget {
-  const ProfileCardHead({super.key, required this.eyebrow, required this.title, this.intro, this.trailing});
+  const ProfileCardHead({super.key, required this.eyebrow, required this.title, this.trailing});
 
   final String eyebrow;
   final String title;
-  final String? intro;
   final Widget? trailing;
 
   @override
@@ -52,7 +51,6 @@ class ProfileCardHead extends StatelessWidget {
             if (trailing != null) ...[const SizedBox(width: 16), trailing!],
           ],
         ),
-        if (intro != null) ...[const SizedBox(height: 8), Text(intro!, style: text.bodyLarge?.copyWith(color: context.palette.muted))],
       ],
     );
   }

@@ -23,21 +23,13 @@ import '../sheet_parts.dart';
 /// The check-in location's words, in one place (ready for Arabic).
 abstract final class HomeWords {
   static const title = 'Check-in location';
-  static const intro =
-      'A place you check in from besides the office: your home, a remote site you work from, or a client’s place. HR approves it, then the CEO; once approved, a check-in there shows with its name.';
 
   // the types
   static const types = ['home', 'remote_site', 'client'];
   static const typeLines = {'home': 'Home location', 'remote_site': 'Remote site', 'client': 'Client location'};
-  static const typeTexts = {
-    'home': 'Where you live, for the days you work from home. Only for you.',
-    'remote_site': 'Somewhere you work from often, e.g. a studio or a shoot’s place. Only for you.',
-    'client': 'A client’s place staff work at. Once approved it counts for every employee, not only you.',
-  };
   static const type = 'Type';
-  static const openAlready = 'One is being decided already: wait for it, or withdraw it.';
-  static const allOpen = 'A request of each type is being decided already. Open one under Recent requests to follow it, or withdraw it to ask again.';
-  static const clientNote = 'Once approved, a client location is the company’s: every employee checking in within it counts as there, shown as Client · its name.';
+  static const openAlready = 'being decided already';
+  static const allOpen = 'A request of each type is being decided already.';
   static const notAvailable = 'Not available yet: the server does not have check-in locations yet.';
 
   // the point
@@ -58,33 +50,25 @@ abstract final class HomeWords {
   }
 
   static const paste = 'Or paste a map link or coordinates';
-  static const pasteHint = 'A Google Maps link, or coordinates like 30.0457, 31.1923.';
+  static const pasteHint = 'A Google Maps link or 30.0457, 31.1923';
   static const shortLink = 'Short links (maps.app.goo.gl) can’t be read: open the link and copy the long one, or the coordinates.';
   static const unreadable = 'That isn’t a point the app can read: paste coordinates like 30.0457, 31.1923, or a Google Maps link.';
   static String pointLine(double lat, double lng, double? accuracy) =>
       'The point: ${lat.toStringAsFixed(6)}, ${lng.toStringAsFixed(6)}${accuracy == null ? '' : ' · within ±${accuracy.round()} m'}';
-  static String noPoint(bool home) => 'No point yet: use your current location while at ${home ? 'home' : 'the place'}, or paste a map link of it.';
+  static String noPoint(bool home) => 'No point yet.';
 
   // the name, the radius, until when, why
   static const label = 'Label';
   static const name = 'Name';
-  static const labelHints = {
-    'home': 'A name or the address, if you want: up to 200 characters.',
-    'client': 'The client’s name, as staff will see it: “Client · Acme”.',
-    'remote_site': 'What you call it, as your check-ins there will show: “Remote site · Studio”.',
-  };
   static const placeholders = {'home': 'Home, Nasr City', 'client': 'Acme Cairo office', 'remote_site': 'Studio in Zamalek'};
   static const radius = 'Radius';
-  static const radiusHint = '25 to 500; 100 m to start with. HR may change it when approving.';
   static const radii = [50, 100, 200, 300, 500];
   static const until = 'Needed until';
-  static String untilHint(bool client) => 'HR sets how long it lasts: until a date, or until your contract ends${client ? ', or with no end' : ''}.';
   static const reason = 'Reason';
-  static String reasonHint(bool home, bool toCeo) => 'Why you need to check in from ${place(home)}: ${toCeo ? 'the CEO reads' : 'HR and the CEO read'} it. Up to 1,000 characters.';
-  static String footer(String type, String shown) => type == 'client'
-      ? 'A client location is the company’s once approved: HR keeps it on Check-in Setup. Each check-in keeps the spot where you pressed, read only then; HR can see it.'
-      : '${type == 'home' ? 'Your home is personal' : 'Your remote site is yours'}: only you, HR and the CEO see it, never your manager. Sending it is your consent. '
-            'A check-in within it shows as $shown. Each check-in keeps the spot where you pressed, read only then; HR can see it. You can remove it at any time.';
+
+  /// The consent a home or remote site is sent with; a client location's has none.
+  static String? consent(String type) =>
+      type == 'client' ? null : '${type == 'home' ? 'Your home is personal' : 'Your remote site is yours'}: only you, HR and the CEO see it. Sending it is your consent.';
   static const send = 'Send to HR';
 
   // the checks (packages/shared home-locations.ts homeRequestProblems)
@@ -92,18 +76,13 @@ abstract final class HomeWords {
   static String nameIt(String type) => type == 'client' ? 'Name the place: the client’s name, e.g. Acme Cairo office.' : 'Name the place, e.g. Studio in Zamalek.';
   static const writeReason = 'Write the reason: why you need this place to check in from.';
   static const endToday = 'Choose an end date of today or later.';
-  static String ready(String what, int radius, bool toCeo) => 'Ready to send: $what within $radius m, to ${toCeo ? 'the CEO' : 'HR, then the CEO'}.';
 
   // once sent
   static String sent(bool toCeo) => toCeo ? 'Sent to the CEO.' : 'Sent to HR.';
 
   // its page
-  static const counts = 'Counts only for you';
-  static const countsForEveryone = 'Counts for every employee once approved';
   static const deletedWithPoint = 'Deleted with the point';
   static const noneGiven = 'None given';
-  static const asAsked = 'As asked: HR sets it when approving';
-  static String showsAs(String shown) => 'A check-in within it shows as $shown';
   static const pointDeleted = 'Its point is deleted: it is no longer kept.';
   static const putOnMap = 'Put on the map by the employee';
   static String readOnDevice(int metres) => 'Read on the employee’s device, within ±$metres m';
@@ -111,21 +90,19 @@ abstract final class HomeWords {
   static const setByHr = 'Set by HR when approving';
   static String askedUntil(String date) => 'Asked until $date';
   static const noLongerCounts = 'It no longer counts for check-ins';
-  static const approvingForEveryone = 'Approving makes this place count for everyone.';
   static const onSetup = 'On Check-in Setup';
-  static String onSetupText(String name, String? ended) => '$name, a client location for every employee${ended == null ? '' : ', ended $ended'}. HR changes or ends it there.';
+  static String onSetupText(String name, String? ended) => '$name${ended == null ? '' : ', ended $ended'}';
   static const removedFromSetup = 'Removed from Check-in Setup: it no longer counts.';
   static String untilDate(String d) => 'Until $d';
   static String untilContract(String? d) => d == null ? 'Until the contract ends' : 'Until the contract ends ($d)';
   static const noEnd = 'No end';
 
   // where it stands (apps/web home-locations.ts homeProgressText)
-  static String withHr(bool ceo) => ceo ? 'With the CEO, who takes HR’s step and then decides it' : 'With HR, who decides it first; then the CEO';
-  static String withCeo(bool ceo) => ceo ? 'Approved at HR’s step: with the CEO to decide it' : 'HR approved it: with the CEO now';
-  static String endedOnSetup(String shown) => 'Ended on Check-in Setup: a check-in there no longer shows as $shown';
-  static String endedOn(String? date, String shown) => 'Ended${date == null ? ' with the employment' : ' $date'}: a check-in there no longer shows as $shown';
-  static String approvedOn(String date, int radius, String shown, bool client) =>
-      'Approved $date: a check-in within $radius m of it shows as $shown${client ? ', for every employee' : ''}';
+  static String withHr(bool ceo) => ceo ? 'With the CEO' : 'With HR';
+  static String withCeo(bool ceo) => ceo ? 'Approved at HR’s step: with the CEO' : 'HR approved it: with the CEO now';
+  static const endedOnSetup = 'Ended on Check-in Setup';
+  static String endedOn(String? date) => 'Ended${date == null ? ' with the employment' : ' $date'}';
+  static String approvedOn(String date) => 'Approved $date';
   static String rejectedBy(String who) => 'Rejected by $who';
   static const withdrawnText = 'Withdrawn while it was being decided: its point is deleted';
   static const replacedText = 'Replaced by a newer home location: its point is deleted';
@@ -144,23 +121,12 @@ abstract final class HomeWords {
 
   // withdrawing and removing it
   static const withdrawTitle = 'Withdraw the request';
-  static const withdrawExplain = 'While it is being decided you can withdraw it, e.g. to ask again with another point. Its point is deleted.';
-  static const withdrawConfirm = 'Withdraw your request? Its point is deleted; you can ask again at any time.';
+  static const withdrawConfirm = 'Withdraw your request?';
   static const withdrawButton = 'Withdraw the request';
-  static const withdrawn = 'Withdrawn. Its point is deleted; ask again whenever you want.';
+  static const withdrawn = 'Withdrawn.';
   static String removeTitle(bool home) => home ? 'Remove the home location' : 'Remove the remote site';
-  static String removeExplain(bool home, String shown) =>
-      'You can remove your ${home ? 'home location' : 'remote site'} at any time: its point is deleted, and your check-ins from there no longer show as $shown.';
-  static String removeConfirm(bool home) =>
-      'Remove your ${home ? 'home location' : 'remote site'}? Its point is deleted, and your check-ins from there no longer show as ${home ? 'Home' : 'Remote site'}. You can ask again later.';
-  static String removed(String shown) => 'Removed. Its point is deleted, and check-ins no longer show as $shown.';
-}
-
-/// "Home", "Remote site · Studio", "Client · Acme": how a check-in within it shows.
-String homeShownAs(String type, String? label) {
-  if (type == 'home') return 'Home';
-  final name = (label ?? HomeWords.typeLines[type] ?? type).trim().replaceAll(RegExp(r'\s+'), ' ');
-  return '${type == 'remote_site' ? 'Remote site' : 'Client'} · $name';
+  static String removeConfirm(bool home) => 'Remove your ${home ? 'home location' : 'remote site'}?';
+  static const removed = 'Removed.';
 }
 
 /// 100, 1,000: metres as the website writes them.
@@ -194,7 +160,6 @@ Future<void> showHomeSheet(BuildContext context) => openRequestSheet(
   context,
   title: HomeWords.title,
   icon: kindIcons[RequestKind.home]!,
-  intro: HomeWords.intro,
   builder: (sheetContext, sent) => _HomeForm(sent: sent),
 );
 
@@ -331,9 +296,7 @@ class _HomeFormState extends ConsumerState<_HomeForm> {
     if (free.isEmpty) return const SheetState.refused(HomeWords.allOpen);
     if (_type == null || open.contains(_type)) _type = free.first;
     final type = _type!;
-    final toCeo = ref.watch(confidentialProvider).value ?? false;
-    final label = _label.text.trim();
-    final shown = homeShownAs(type, label.isEmpty ? null : label);
+    final consent = HomeWords.consent(type);
     final problems = _problems();
     final point = _point;
     return Column(
@@ -341,7 +304,6 @@ class _HomeFormState extends ConsumerState<_HomeForm> {
       children: [
         SheetField(
           label: HomeWords.type,
-          hint: open.contains(type) ? HomeWords.openAlready : HomeWords.typeTexts[type],
           child: ChoicePills<String>(
             values: HomeWords.types,
             labelOf: (t) => HomeWords.typeLines[t]!,
@@ -351,7 +313,6 @@ class _HomeFormState extends ConsumerState<_HomeForm> {
           ),
         ),
         if (open.isNotEmpty) RulesNote(lines: [for (final t in open) '${HomeWords.typeLines[t]}: ${HomeWords.openAlready}']),
-        if (type == 'client') RulesNote(lines: const [HomeWords.clientNote]),
         SheetField(
           label: HomeWords.point,
           child: Column(
@@ -380,7 +341,6 @@ class _HomeFormState extends ConsumerState<_HomeForm> {
         SheetField(
           label: _home ? HomeWords.label : HomeWords.name,
           optional: _home,
-          hint: HomeWords.labelHints[type],
           child: SheetTextBox(
             controller: _label,
             label: _home ? HomeWords.label : HomeWords.name,
@@ -391,14 +351,12 @@ class _HomeFormState extends ConsumerState<_HomeForm> {
         ),
         SheetField(
           label: HomeWords.radius,
-          hint: HomeWords.radiusHint,
           child: ChoicePills<int>(values: HomeWords.radii, labelOf: (m) => '${_metres(m)} m', selected: _radius, onChanged: (m) => setState(() => _radius = m)),
         ),
         if (!_home)
           SheetField(
             label: HomeWords.until,
             optional: true,
-            hint: HomeWords.untilHint(type == 'client'),
             child: PickDayField(
               label: HomeWords.until,
               value: _until,
@@ -410,14 +368,14 @@ class _HomeFormState extends ConsumerState<_HomeForm> {
           ),
         SheetField(
           label: HomeWords.reason,
-          hint: HomeWords.reasonHint(_home, toCeo),
           child: SheetTextBox(controller: _reason, label: HomeWords.reason, lines: 3, max: 1000, onChanged: (_) => setState(() {})),
         ),
-        Padding(
-          padding: const EdgeInsets.only(bottom: 16),
-          child: Text(HomeWords.footer(type, shown), style: text.bodySmall),
-        ),
-        SendChecks(problems: problems, ready: HomeWords.ready(HomeWords.typeLines[type]!.toLowerCase(), _radius, toCeo)),
+        if (consent != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Text(consent, style: text.bodySmall),
+          ),
+        SendChecks(problems: problems),
         PeopleRefusal(messages: _refusal),
         SheetButtons(busy: _busy, sendLabel: HomeWords.send, onSend: problems.isEmpty ? _send : null),
       ],
@@ -430,7 +388,6 @@ class _HomeFormState extends ConsumerState<_HomeForm> {
 /// Where a check-in location stands, and the reason given for a rejection.
 ({String text, String? reason}) homeProgressText(HomeLocationRequest r) {
   final ceo = r.confidential;
-  final shown = homeShownAs(r.type, r.label);
   switch (r.status) {
     case 'with_hr':
       return (text: HomeWords.withHr(ceo), reason: null);
@@ -438,10 +395,10 @@ class _HomeFormState extends ConsumerState<_HomeForm> {
       return (text: HomeWords.withCeo(ceo), reason: null);
     case 'approved':
       if (r.inForce == false) {
-        if (r.type == 'client' && r.locationEndedAt != null) return (text: HomeWords.endedOnSetup(shown), reason: null);
-        return (text: HomeWords.endedOn(r.endsOn == null ? null : dmy(r.endsOn!), shown), reason: null);
+        if (r.type == 'client' && r.locationEndedAt != null) return (text: HomeWords.endedOnSetup, reason: null);
+        return (text: HomeWords.endedOn(r.endsOn == null ? null : dmy(r.endsOn!)), reason: null);
       }
-      return (text: HomeWords.approvedOn(r.approvedAt == null ? '' : dmyOfMoment(r.approvedAt!), r.radiusMetres, shown, r.type == 'client'), reason: null);
+      return (text: HomeWords.approvedOn(r.approvedAt == null ? '' : dmyOfMoment(r.approvedAt!)), reason: null);
     case 'rejected':
       final who = r.rejectedStage == 'ceo' || ceo ? 'the CEO' : 'HR';
       return (text: HomeWords.rejectedBy(who), reason: r.rejectReason);
@@ -482,9 +439,7 @@ String? homeValidityText(HomeLocationRequest r) {
 RequestDetail homeDetail(HomeLocationRequest r) {
   final home = r.type == 'home';
   final client = r.type == 'client';
-  final shown = homeShownAs(r.type, r.label);
   final progress = homeProgressText(r);
-  final open = r.status == 'with_hr' || r.status == 'with_ceo';
   final lat = r.latitude;
   final lng = r.longitude;
   return RequestDetail(
@@ -493,9 +448,9 @@ RequestDetail homeDetail(HomeLocationRequest r) {
     state: stateOf(r),
     subline: RequestsWords.sentOn(dateTimeWords(r.createdAt)),
     facts: [
-      (label: HomeWords.type, value: HomeWords.typeLines[r.type] ?? r.type, note: client ? HomeWords.countsForEveryone : HomeWords.counts),
+      (label: HomeWords.type, value: HomeWords.typeLines[r.type] ?? r.type, note: null),
       (label: home ? HomeWords.label : HomeWords.name, value: r.label ?? (lat == null ? HomeWords.deletedWithPoint : HomeWords.noneGiven), note: null),
-      (label: HomeWords.radius, value: '${_metres(r.radiusMetres)} m', note: r.status == 'with_hr' ? HomeWords.asAsked : HomeWords.showsAs(shown)),
+      (label: HomeWords.radius, value: '${_metres(r.radiusMetres)} m', note: null),
       (
         label: HomeWords.point,
         value: lat == null || lng == null ? HomeWords.pointDeleted : '${lat.toStringAsFixed(6)}, ${lng.toStringAsFixed(6)}',
@@ -515,13 +470,11 @@ RequestDetail homeDetail(HomeLocationRequest r) {
           note: null,
         ),
     ],
-    notes: [if (client && open) HomeWords.approvingForEveryone],
     steps: stepLinesOf(r, (s) => homeStepText(s, r.confidential)),
     actions: [
       if (r.canWithdraw)
         (
           title: HomeWords.withdrawTitle,
-          explain: HomeWords.withdrawExplain,
           button: HomeWords.withdrawButton,
           confirm: HomeWords.withdrawConfirm,
           path: RequestPaths.action(RequestKind.home, r.id, 'withdraw'),
@@ -530,11 +483,10 @@ RequestDetail homeDetail(HomeLocationRequest r) {
       if (r.canRemove)
         (
           title: HomeWords.removeTitle(home),
-          explain: HomeWords.removeExplain(home, shown),
           button: HomeWords.removeTitle(home),
           confirm: HomeWords.removeConfirm(home),
           path: RequestPaths.action(RequestKind.home, r.id, 'remove'),
-          done: HomeWords.removed(shown),
+          done: HomeWords.removed,
         ),
     ],
   );

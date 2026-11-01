@@ -12,9 +12,9 @@ import 'requests_data.dart';
 import 'requests_words.dart';
 
 // The pieces every request's bottom sheet is built with (the phone design's "New request — New leave", Figma 11:2077):
-// a field's label over it and its hint under it, a day or a time to pick, choices as pills, a list to pick from, a box
-// to write in, a note of the rules, the live checks ("Before you can send it:"), People's refusal in its words, photos
-// to attach, and Cancel / Send request. Colours from the palette only, so light and dark both work.
+// a field's label over it, a day or a time to pick, choices as pills, a list to pick from, a box to write in, a note of
+// the rules, the live checks ("Before you can send it:"), People's refusal in its words, photos to attach, and Cancel /
+// Send request. Colours from the palette only, so light and dark both work.
 
 /// What a sheet calls once People has kept the request: the sheet closes and the request's page opens in the tab,
 /// saying where it goes next.
@@ -26,7 +26,6 @@ Future<void> openRequestSheet(
   BuildContext context, {
   required String title,
   required IconData icon,
-  String? intro,
   String eyebrow = RequestsWords.newRequest,
   required Widget Function(BuildContext sheetContext, SentHandler sent) builder,
 }) {
@@ -37,7 +36,6 @@ Future<void> openRequestSheet(
     eyebrow: eyebrow,
     title: title,
     icon: icon,
-    intro: intro,
     builder: (sheetContext) => builder(sheetContext, (made, notice) {
       Navigator.of(sheetContext).pop();
       tab.push(MaterialPageRoute<void>(builder: (_) => RequestPage(kind: made.kind, id: made.id, initial: made, notice: notice)));
@@ -48,7 +46,7 @@ Future<void> openRequestSheet(
 /// People's refusal as a list of its sentences, its dates and times as the website shows them.
 List<String> refusalOf(Object error) => error is ApiException ? [for (final m in error.messages) shownMessage(m)] : [PeopleClient.unreachableText];
 
-/// A field: its label (with "(optional)"), the field, and a hint under it.
+/// A field: its label (with "(optional)"), the field, and a line of what it comes to under it (data, never help).
 class SheetField extends StatelessWidget {
   const SheetField({super.key, required this.label, this.optional = false, this.hint, required this.child});
 
@@ -378,54 +376,44 @@ class RulesNote extends StatelessWidget {
   }
 }
 
-/// The live checks: what stops it being sent ("Before you can send it:"), or the line saying what will be sent and to
-/// whom. People checks everything again when it is sent.
+/// The live checks: what stops it being sent ("Before you can send it:"); nothing once it can be sent. People checks
+/// everything again when it is sent.
 class SendChecks extends StatelessWidget {
-  const SendChecks({super.key, required this.problems, this.ready});
+  const SendChecks({super.key, required this.problems});
 
   final List<String> problems;
-  final String? ready;
 
   @override
   Widget build(BuildContext context) {
     final p = context.palette;
     final text = Theme.of(context).textTheme;
-    if (problems.isEmpty && ready == null) return const SizedBox.shrink();
+    if (problems.isEmpty) return const SizedBox.shrink();
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: BoxDecoration(
         color: p.card,
         borderRadius: BorderRadius.circular(Tokens.radiusControl),
-        border: Border.all(color: problems.isEmpty ? p.line : p.danger.withValues(alpha: 0.45)),
+        border: Border.all(color: p.danger.withValues(alpha: 0.45)),
       ),
-      child: problems.isEmpty
-          ? Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(CupertinoIcons.checkmark_circle, size: 18, color: p.ink),
-                const SizedBox(width: 10),
-                Expanded(child: Text(ready!, style: text.bodyMedium)),
-              ],
-            )
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(RequestsWords.beforeYouSend, style: text.labelMedium?.copyWith(color: p.danger)),
-                const SizedBox(height: 6),
-                for (final problem in problems)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('•  ', style: text.bodyMedium),
-                        Expanded(child: Text(problem, style: text.bodyMedium)),
-                      ],
-                    ),
-                  ),
-              ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(RequestsWords.beforeYouSend, style: text.labelMedium?.copyWith(color: p.danger)),
+          const SizedBox(height: 6),
+          for (final problem in problems)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('•  ', style: text.bodyMedium),
+                  Expanded(child: Text(problem, style: text.bodyMedium)),
+                ],
+              ),
             ),
+        ],
+      ),
     );
   }
 }
@@ -484,12 +472,11 @@ class SheetButtons extends StatelessWidget {
 
 /// A switch with its words ("Half a day").
 class SwitchRow extends StatelessWidget {
-  const SwitchRow({super.key, required this.label, required this.value, required this.onChanged, this.hint});
+  const SwitchRow({super.key, required this.label, required this.value, required this.onChanged});
 
   final String label;
   final bool value;
   final ValueChanged<bool>? onChanged;
-  final String? hint;
 
   @override
   Widget build(BuildContext context) {
@@ -500,13 +487,7 @@ class SwitchRow extends StatelessWidget {
         child: Row(
           children: [
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(label, style: text.labelMedium?.copyWith(color: onChanged == null ? context.palette.muted : null)),
-                  if (hint != null) Text(hint!, style: text.bodySmall),
-                ],
-              ),
+              child: Text(label, style: text.labelMedium?.copyWith(color: onChanged == null ? context.palette.muted : null)),
             ),
             Switch(value: value, onChanged: onChanged),
           ],

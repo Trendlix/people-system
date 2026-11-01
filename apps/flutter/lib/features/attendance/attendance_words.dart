@@ -6,21 +6,18 @@ abstract final class AttendanceWords {
   // ---------- the page ----------
   static const eyebrow = 'People System · Attendance';
   static const title = 'My Attendance';
-  static const intro = 'Your check-ins and check-outs, counted by the company’s attendance rules.';
   static String showMonth(String month) => 'Show $month';
-  static const hold = 'Your access is on hold: you can still check in and out.';
-  static String noProfile(String email) => 'No employee record uses your sign-in email ($email) as its work email yet. Ask HR to add it to your profile.';
+  static const hold = 'Your access is on hold.';
+  static String noProfile(String email) => 'No employee record uses $email yet: ask HR to add it.';
   static const monthFailed = 'Couldn’t load this month.';
   static const tryAgain = 'Try again';
-  static String notYet(String month) =>
-      'No attendance for $month yet. Check-ins on the system show here as they are made, and HR imports Zoho People’s attendance with the month’s payroll.';
+  static String notYet(String month) => 'No attendance for $month yet.';
 
   // ---------- exempt from check-in (25 October 2026) ----------
   static const exempt = 'Exempt';
   static const exemptionLabel = 'Exempt from check-in';
   static String exemptionWhen(ExemptionPeriod p) => 'From ${dmy(p.startDate)}${p.endDate == null ? ', no end date' : ' until ${dmy(p.endDate!)}'}';
-  static String exemptions(List<ExemptionPeriod> periods) =>
-      '$exemptionLabel: ${periods.map((p) => exemptionWhen(p).replaceFirst('From', 'from')).join('; ')}. Your working days count as full hours; checking in is optional.';
+  static String exemptions(List<ExemptionPeriod> periods) => '$exemptionLabel: ${periods.map((p) => exemptionWhen(p).replaceFirst('From', 'from')).join('; ')}.';
 
   // ---------- today ----------
   static String todayOf(String day) => 'Today · $day';
@@ -40,8 +37,7 @@ abstract final class AttendanceWords {
   static const officialDuty = 'Official duty';
   static String officeAt(String name) => 'Office · $name';
   static const wfhToday = 'Working from home today';
-  static String firstDayToday(String? start) => 'Your first day: it is counted from your shift’s start${start == null ? '' : ', $start'}, whatever time you check in.';
-  static const networkNeeded = 'Check-ins need the office network: connect to the office Wi-Fi before you check in or out.';
+  static const networkNeeded = 'Connect to the office Wi-Fi to check in or out.';
   static const gpsNeeded = 'You need to be inside the office to check in or out.';
   static const bothNeeded = 'You need to be on the office Wi-Fi, or inside the office, to check in or out.';
 
@@ -53,7 +49,6 @@ abstract final class AttendanceWords {
     return '${network ? bothNeeded : gpsNeeded}${n == 0 ? '' : ' Your own check-in place${n == 1 ? '' : 's'} ($names) count${n == 1 ? 's' : ''} too.'}';
   }
 
-  static const officeNotSet = 'HR hasn’t set the office’s location on the system yet, so check-ins are kept as location unknown for now.';
   static const todaysCheckIns = 'Today’s check-ins';
   static String breakNotCounted(String text) => '$text, not counted';
 
@@ -134,11 +129,6 @@ abstract final class AttendanceWords {
   static const yourDays = 'Your days';
   static const myCorrections = 'My corrections';
   static const askCorrection = 'Ask for a correction';
-  static const daysNote = 'A day that isn’t right? Ask for a correction on its row: your manager, then HR, decide it.';
-  static const daysNoteNoCorrections = 'Something wrong? Ask HR to check it.';
-  static String usualSource(String source) => 'Where the days came from: $source, unless a day says otherwise.';
-  static const balanceNote = 'Balance: the time over (+) or short (−) of your shift’s hours that day, after its permission.';
-  static String importedOn(String date) => 'Days from Zoho People imported by HR on $date.';
   static String correctionOf(String status) => 'Correction ${status[0].toLowerCase()}${status.substring(1)}';
   static String openDay(String day) => 'Open $day';
 
@@ -234,11 +224,8 @@ abstract final class AttendanceWords {
 
   // ---------- asking for a correction ----------
   static const newRequest = 'New request';
-  static const correctionIntro = 'Your direct manager decides first (without one, your lead), then HR.';
-  static const correctionIntroCeo = 'Your direct manager decides first (without one, your lead), then the CEO.';
   static const day = 'Day';
   static const chooseDay = 'Choose the day';
-  static const dayHint = 'A day gone by, or today, in a month whose payroll isn’t approved yet.';
   static String onRecordFor(String day) => 'On record for $day';
   static const whatWasWrong = 'What was wrong';
   static const kinds = {
@@ -259,9 +246,8 @@ abstract final class AttendanceWords {
   static const optional = '(optional)';
   static const chooseTime = 'Choose a time';
   static String clear(String what) => 'Clear $what';
-  static const timesHint = 'A time left empty stays as on record.';
   static const why = 'Why';
-  static const whyHint = 'E.g. I left for a client meeting and forgot to check out. Your manager and HR read it. Up to 500 characters.';
+  static const whyHint = 'E.g. I left for a client meeting and forgot to check out.';
   static const beforeSend = 'Before you can send it:';
   static const cancel = 'Cancel';
   static const send = 'Send request';
@@ -282,32 +268,23 @@ abstract final class AttendanceWords {
   static const needATime = 'Enter the right time of the check-in, of the check-out, or both.';
   static String nothingToCorrect(String day) => 'There is no check-in or check-out on $day to correct: choose “${kinds['forgot_check_in']}”.';
   static String tooLate(String day, int workingDays) =>
-      'It’s too late to ask to correct $day: ask within $workingDays working days of the day. HR can still correct it for you.';
+      'It’s too late to ask to correct $day: ask within $workingDays working days of the day.';
 
   /// Under what was wrong (owner, 31 October 2026: "Remove it, point to OD"): work away from the office is official duty.
-  static const awayIsOd = 'Working away from the office (at a client, a shoot, an errand) is official duty: ask for official duty instead, or work from home for a day at home.';
   static const askOd = 'Ask for official duty';
 
-  /// When asking stays open (owner, 31 October 2026: "locked after 2 working days").
-  static String askWithin(int workingDays) => 'Ask on the day or within $workingDays working days of it.';
   static String notYetCome(String at) => 'Choose a time that has passed: $at today hasn’t come yet.';
 
-  /// Once it can be sent: what and where it goes.
-  static String ready(String kind, String day, {bool toCeo = false}) =>
-      'Ready to send: ${kindName(kind).toLowerCase()} on $day, to your direct manager (without one, your lead), then ${toCeo ? 'the CEO' : 'HR'}.';
-
-  /// Once sent: where it goes.
+  /// Once sent: where it went.
   static String sent(String status, {String? managerRole, bool confidential = false}) {
-    final hr = confidential ? 'the CEO' : 'HR';
-    if (status == 'approved') return 'Day corrected, approved at once: its hours are counted again, and the month’s draft payroll takes it.';
+    if (status == 'approved') return 'Day corrected.';
     final first = managerRole == 'team_lead' ? 'your team lead' : (managerRole == 'department_head' ? 'your head of department' : 'your direct manager');
-    return status == 'with_manager' ? 'Request sent. It goes to $first, then $hr; each step shows on the request.' : 'Request sent. It goes to $hr; each step shows on the request.';
+    return 'Sent to ${status == 'with_manager' ? first : (confidential ? 'the CEO' : 'HR')}.';
   }
 
   // ---------- my corrections ----------
   static const correctionsEyebrow = 'Attendance · Corrections';
-  static const correctionsIntro = 'Your attendance corrections, the latest day first, with each step as it is decided.';
-  static const noCorrections = 'No corrections yet. Open a day of your attendance that isn’t right to ask for one.';
+  static const noCorrections = 'No corrections yet.';
   static const correctionsFailed = 'Couldn’t load your corrections.';
   static const back = 'Back';
   static const rightTimes = 'The right times';
@@ -320,7 +297,6 @@ abstract final class AttendanceWords {
   static const absent = 'Absent';
   static const leaveLike = {'rest': 'Rest day', 'holiday': 'Official holiday', 'leave': 'On leave', 'zoho_leave': 'Leave in Zoho only', 'no_check_in': 'No check-in'};
   static String times(String? checkIn, String? checkOut) => '${checkIn ?? 'no check-in'} – ${checkOut ?? 'no check-out'}';
-  static const remoteNote = 'Counted as remote work, no longer flagged once approved';
   static const whereItStands = 'Where it stands';
   static const rejectedBecause = 'Why it was rejected';
   static String appliedOn(String when) => 'The day was corrected $when';
@@ -364,13 +340,12 @@ abstract final class AttendanceWords {
 
   static String standingIn(String name) => 'standing in for $name';
   static const cancelTitle = 'Cancel the correction';
-  static const cancelBody = 'While it is being decided you can cancel it, e.g. to ask again with other times. The day stays as it is.';
   static String cancelAsk(String day) => 'Cancel the correction of $day?';
   static const keepIt = 'Keep it';
   static const cancelIt = 'Cancel it';
   static const cancelling = 'Cancelling…';
-  static const cancelled = 'Correction cancelled. It stays on the list, cancelled; the day is as it was.';
-  static const movedOn = 'This correction has moved on since you opened it, or can’t be applied now: it shows where it stands, and why.';
+  static const cancelled = 'Correction cancelled.';
+  static const movedOn = 'This correction has moved on since you opened it.';
 
   // ---------- dates and hours as attendance shows them ----------
   static const _weekdays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];

@@ -235,7 +235,7 @@ void main() {
     test('the step’s deadline, the payroll, the attendance and the pick in words', () {
       final v = KpiScorecardView.fromJson(viewJson());
       expect(stepDeadlineText('manager', v.deadlines), 'Scoring by 06/11/2026');
-      expect(stepDeadlineText('sign_off', v.deadlines), 'Sign-off by 10/11/2026; final then even if not signed');
+      expect(stepDeadlineText('sign_off', v.deadlines), 'Sign-off by 10/11/2026');
       expect(stepDeadlineText('final', v.deadlines), isNull);
       expect(payrollText(v.payrollMonth), 'Counts in the November 2026 payroll');
       expect(attendanceText(v.attendance).detail, 'Worked 98% of the expected hours, attendance score 100%.');
@@ -246,22 +246,18 @@ void main() {
 
     test('what a page says once a step is done', () {
       final v = KpiScorecardView.fromJson(viewJson(status: 'manager', action: null));
-      expect(doneText('self_sent', v).text, 'Your self-rating is sent. Your manager scores the month next; you see the score at the sign-off.');
-      expect(doneText('self_saved', v).text, 'Your self-rating is saved, not sent yet. Send it by 03/11/2026.');
-      expect(doneText('score_saved', v).text, 'Your scoring is saved, not sent yet. Send it by 06/11/2026.');
+      expect(doneText('self_sent', v).text, 'Self-rating sent.');
+      expect(doneText('self_saved', v).text, 'Saved. Send it by 03/11/2026.');
+      expect(doneText('score_saved', v).text, 'Saved. Send it by 06/11/2026.');
       final hr = KpiScorecardView.fromJson(viewJson(status: 'hr', action: null));
-      expect(doneText('score_sent', hr).text, 'Your scoring is sent to HR to calibrate.');
-      expect(doneText('signed', hr).text, 'Signed. It is final once both have signed, or after 10/11/2026 anyway.');
+      expect(doneText('score_sent', hr).text, 'Scoring sent to HR.');
+      expect(doneText('signed', hr).text, 'Signed.');
       expect(doneText('moved', hr).ok, isFalse);
     });
 
-    test('dates as the website shows them; the months and days of the review', () {
+    test('dates as the website shows them; the months of the review', () {
       expect((kpiDate('2026-11-03'), kpiMessage('Due by 2026-11-03, then 2026-11-06.')), ('03/11/2026', 'Due by 03/11/2026, then 06/11/2026.'));
-      expect([1, 2, 3, 4, 11, 12, 13, 21, 22, 23].map(ordinalDay), ['1st', '2nd', '3rd', '4th', '11th', '12th', '13th', '21st', '22nd', '23rd']);
       expect((scorecardMonthOn('2026-11-02'), scorecardMonthOn('2027-01-15')), ('2026-10', '2026-12'));
-      final steps = reviewSteps(const KpiSettings(selfRatingDay: 3, managerDay: 6, hrDay: 8, signOffDay: 10));
-      expect(steps.map((s) => (s.title, s.due)), [('Self-rating', 'By the 3rd'), ('Manager’s scoring', 'By the 6th'), ('HR calibration', 'By the 8th'), ('Sign-off', 'By the 10th')]);
-      expect(reviewSteps(null).every((s) => s.due == null), isTrue);
       expect(KpiSettings.fromJson({'selfRatingDay': 3}), isNull);
     });
   });

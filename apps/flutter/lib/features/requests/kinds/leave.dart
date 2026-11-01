@@ -23,57 +23,41 @@ import '../sheet_parts.dart';
 /// Leave's words (apps/web leave/leave-forms.tsx, coverage-fields.tsx, request.ts, [id]/leave-request.tsx).
 abstract final class LeaveWords {
   static const title = 'New leave';
-  static String intro(bool ceo) => 'Add the request details. Your direct manager decides first, then ${ceo ? 'the CEO' : 'HR'}.';
-  static const noTypes = 'No type of leave is on yet. HR sets them up: ask HR.';
-  static const noEmployment = 'Leave is asked for during an employment: you have no current employment on file.';
-  static const freelance = 'No leave under a freelance employment: a freelancer works outside the labour law (Art. 1(1)), so the law’s leave (Arts. 124–133) isn’t theirs.';
-  static const intern = 'No leave under an unpaid internship: an intern works outside the labour law, so the law’s leave (Arts. 124–133) isn’t theirs.';
+  static const noTypes = 'No type of leave is on yet: ask HR.';
+  static const noEmployment = 'You have no current employment on file.';
+  static const freelance = 'No leave under a freelance employment.';
+  static const intern = 'No leave under an unpaid internship.';
 
   static const type = 'Type of leave';
-  static const typeHint = 'The types HR set up, each with its rules from the Labour Law.';
   static String annualAvailable(int year, String n) => 'Annual balance available in $year: $n';
   static String leftOfType(String name, String n) => 'Left of ${name.toLowerCase()} this year: $n';
   static String takenTimes(int n, int max) => 'Taken $n of $max times in service.';
 
   static const firstDay = 'First day';
-  static const firstDayHint = 'The first day off.';
-  static String noticeHint(String days) => 'This type needs $days’ notice.';
   static const lastDay = 'Last day';
-  static const lastDayHint = 'It moves with the first day unless you set it.';
   static const halfDay = 'Half a day';
-  static const halfDayHint = 'For one day only: make the first and last day the same.';
 
   static const noDays = 'No days yet: choose the first and last day.';
   static String count(String days) => '$days.';
-  static String countFromAnnual(String days, String after) => '$days, from the annual balance: $after left after it, as far as is approved.';
-  static const countedCalendar = 'Counted in calendar days, every day from the first to the last.';
-  static const countedWorking = 'Counted in working days of the shift: rest days and official holidays aren’t counted (Labour Law Art. 124).';
+  static String countFromAnnual(String days, String after) => '$days, from the annual balance: $after left after it.';
   static String holidaysLeftOut(String list) => 'Holidays left out: $list.';
 
   static const checkingCover = 'Checking who else is off…';
   static const cover = 'Colleague who covers';
   static const chooseColleague = 'Choose a colleague';
   static const nobody = 'Nobody';
-  static const coverHintRequired =
-      'Leave of this type for more than 2 working days needs a colleague who covers your work, someone not off on these days. They are told, and see your handover note.';
-  static const coverHint = 'A colleague not off on these days. They are told, and see your handover note.';
   static const handover = 'Handover note';
-  static const handoverHint = 'What the colleague who covers should know: open tasks, files, who to call. Up to 1000 characters.';
   static const standIn = 'Stand-in while you are away';
   static String standInDefault(String name) => '$name (the default)';
   static const hr = 'HR';
-  static const standInHint = 'While you are on leave, they decide the requests that wait for you (your team’s leave, permission, working from home and more), then what still waits comes back to you.';
-  static const standInHintCeo = 'While you are on leave, the CEO or a Super Admin decides the requests that wait for you, then they come back to you.';
-  static String overLimit(String group, String hr) => 'This would take $group past its staffing limit on some of these days: $hr will need to approve it too. You can still send it.';
-  static String covering(String name, String when, bool waiting) => 'You’re covering $name on $when${waiting ? ' (waiting)' : ''}: you can still send it; HR sees it.';
+  static String overLimit(String group) => 'This takes $group past its staffing limit on some of these days.';
+  static String covering(String name, String when, bool waiting) => 'You’re covering $name on $when${waiting ? ' (waiting)' : ''}.';
   static const yourTeam = 'your team';
 
   static const reason = 'Reason';
-  static const reasonHint = 'Your direct manager and HR read it. Up to 500 characters.';
   static const reasonPlaceholder = 'Add context for this request…';
   static const documents = 'Documents';
   static const documentsRequired = 'Documents (required for this type)';
-  static const documentsHint = 'A medical certificate for sick leave, proof of sitting the exam for exam leave, or another paper the leave needs.';
 
   // the checks, in People's words (packages/shared leaves.ts)
   static const chooseType = 'Choose the type of leave.';
@@ -90,8 +74,6 @@ abstract final class LeaveWords {
   static String atMost(String name, String max, String days) => '$name is at most $max at a time; this is $days.';
   static String needsDocument(String name) => 'Attach a document: ${name.toLowerCase()} needs one.';
   static const needsCover = 'Choose the colleague who covers your work: leave of more than 2 working days needs one.';
-  static String ready(String days, String name, String hr, bool overLimit) =>
-      'Ready to send: $days of ${name.toLowerCase()}, to your direct manager (without one, your lead), then $hr${overLimit ? ' (over the staffing limit)' : ''}.';
 
   // its page
   static const typeFact = 'Type';
@@ -99,53 +81,17 @@ abstract final class LeaveWords {
   static const when = 'When';
   static const days = 'Days';
   static const balanceAfter = 'Annual balance after it';
-  static const balanceAfterNote = 'Available once this is taken';
   static const staffing = 'Staffing limit';
   static const overTeamLimit = 'Over its team’s limit when sent';
-  static const overTeamLimitNote = 'So HR approves it too, after the manager.';
   static const coveredBy = 'Covered by';
-  static const nobodyNamed = 'Nobody named';
-  static const coveredNote = 'Told, and sees the handover note';
   static const standInFact = 'Stand-in';
-  static const standInNote = 'Decides what waits for you during these days, once approved';
   static const documentsTitle = 'Documents';
   static const noDocument = 'No document attached.';
   static const stepCancelled = 'Cancelled, the days given back';
   static const cancelTitle = 'Cancel the leave';
-  static const cancelApproved = 'Approved and not started yet: you can still cancel it, and its days go back to your balance.';
-  static const cancelOpen = 'While it is being decided you can cancel it, e.g. to ask again for other days.';
   static const cancelButton = 'Cancel this leave';
-  static String cancelConfirm(String type, String period) => 'Cancel your ${type.toLowerCase()} ($period)? It stays on your list, cancelled; ask again with a new request.';
-  static const cancelled = 'Leave cancelled. Its days are back in the balance; it stays on the list, cancelled.';
-}
-
-/// The type's rules in a line: "Paid · Working days · The annual balance · Half days allowed" (packages/shared leaves.ts
-/// leaveTypeRulesText).
-String leaveTypeRulesText(LeaveType t) {
-  String days(double n) => '${daysNumber(n)} ${n == 1 ? 'day' : 'days'}';
-  String times(int n) => n == 1 ? 'Once' : (n == 2 ? 'Twice' : '$n times');
-  String months(int n) => n % 12 == 0 ? '${n ~/ 12} ${n == 12 ? 'year' : 'years'}' : '$n ${n == 1 ? 'month' : 'months'}';
-  final pay = t.paid == 'partly' ? 'Paid at ${daysNumber(t.payPercent ?? 100)}%' : (LeaveWords.pay[t.paid] ?? t.paid);
-  return [
-    pay,
-    t.calendarDays ? 'Calendar days' : 'Working days',
-    switch (t.balance) {
-      'annual' => 'The annual balance',
-      'from_annual' => 'From the annual balance',
-      'yearly' => t.daysPerYear == null ? null : '${days(t.daysPerYear!)} a year',
-      'none' => 'No balance',
-      _ => null,
-    },
-    if (t.balance == 'from_annual' && t.daysPerYear != null) 'At most ${days(t.daysPerYear!)} a year',
-    if (t.maxPerRequest != null) 'At most ${days(t.maxPerRequest!)} at a time',
-    if (t.maxTimesInService != null) '${times(t.maxTimesInService!)} in service',
-    if (t.minServiceMonths != null) 'After ${months(t.minServiceMonths!)} of service',
-    if ((t.noticeDays ?? 0) > 0) '${days(t.noticeDays!.toDouble())}’ notice',
-    if (t.documentRequired) 'Document needed',
-    if (t.gender == 'female') 'Female employees',
-    if (t.gender == 'male') 'Male employees',
-    if (t.halfDays) 'Half days allowed',
-  ].whereType<String>().join(' · ');
+  static String cancelConfirm(String type, String period) => 'Cancel your ${type.toLowerCase()} ($period)?';
+  static const cancelled = 'Leave cancelled.';
 }
 
 /// The days a leave takes, as the law counts them: working days of the shift that aren't official holidays, or every
@@ -174,12 +120,10 @@ List<LeaveType> offeredLeaveTypes(List<LeaveType> types, String? gender) =>
 
 /// Opens the New leave sheet, from the tab's [context].
 Future<void> showLeaveSheet(BuildContext context) {
-  final ceo = ProviderScope.containerOf(context, listen: false).read(confidentialProvider).value ?? false;
   return openRequestSheet(
     context,
     title: LeaveWords.title,
     icon: kindIcons[RequestKind.leave]!,
-    intro: LeaveWords.intro(ceo),
     builder: (sheetContext, sent) => _LeaveForm(sent: sent),
   );
 }
@@ -282,8 +226,6 @@ class _LeaveFormState extends ConsumerState<_LeaveForm> {
     if (types.isEmpty) return const SheetState.refused(LeaveWords.noTypes);
     final type = types.firstWhere((t) => t.id == _typeId, orElse: () => types.firstWhere((t) => t.kind == 'annual', orElse: () => types.first));
 
-    final ceo = profile?.raw['confidential'] == true;
-    final hr = RequestsWords.hrStage(ceo);
     final p = context.palette;
     final text = Theme.of(context).textTheme;
     final today = todayIso();
@@ -348,7 +290,6 @@ class _LeaveFormState extends ConsumerState<_LeaveForm> {
       children: [
         SheetField(
           label: LeaveWords.type,
-          hint: leaveTypeRulesText(type),
           child: ChoicePills<LeaveType>(
             values: types,
             labelOf: (t) => t.nameEn,
@@ -363,12 +304,10 @@ class _LeaveFormState extends ConsumerState<_LeaveForm> {
         if (balanceLines.isNotEmpty) RulesNote(lines: [balanceLines.join(' · ')]),
         SheetField(
           label: LeaveWords.firstDay,
-          hint: (type.noticeDays ?? 0) > 0 ? LeaveWords.noticeHint(daysText(type.noticeDays!.toDouble())) : LeaveWords.firstDayHint,
           child: PickDayField(label: LeaveWords.firstDay, value: _start, onChanged: _setStart),
         ),
         SheetField(
           label: LeaveWords.lastDay,
-          hint: LeaveWords.lastDayHint,
           child: PickDayField(
             label: LeaveWords.lastDay,
             value: _end,
@@ -382,7 +321,6 @@ class _LeaveFormState extends ConsumerState<_LeaveForm> {
         if (type.halfDays)
           SwitchRow(
             label: LeaveWords.halfDay,
-            hint: LeaveWords.halfDayHint,
             value: halfDay,
             onChanged: _start == _end ? (v) => setState(() => _halfDay = v) : null,
           ),
@@ -394,7 +332,6 @@ class _LeaveFormState extends ConsumerState<_LeaveForm> {
               LeaveWords.countFromAnnual(daysText(days), daysNumber(after))
             else
               LeaveWords.count(daysText(days)),
-            type.calendarDays ? LeaveWords.countedCalendar : LeaveWords.countedWorking,
             if (!type.calendarDays && namedHolidays.isNotEmpty) LeaveWords.holidaysLeftOut(namedHolidays.map((h) => '${h.nameEn} (${dmy(h.date)})').join(', ')),
           ],
         ),
@@ -408,13 +345,12 @@ class _LeaveFormState extends ConsumerState<_LeaveForm> {
           if (coverage.overLimit)
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
-              child: Text(LeaveWords.overLimit(coverage.group ?? LeaveWords.yourTeam, hr), style: text.bodySmall?.copyWith(color: p.ink)),
+              child: Text(LeaveWords.overLimit(coverage.group ?? LeaveWords.yourTeam), style: text.bodySmall?.copyWith(color: p.ink)),
             ),
           if (coverNeeded || candidates.isNotEmpty)
             SheetField(
               label: LeaveWords.cover,
               optional: !coverNeeded,
-              hint: coverNeeded ? LeaveWords.coverHintRequired : LeaveWords.coverHint,
               child: PickListField<String>(
                 key: ValueKey('cover:$query'),
                 label: LeaveWords.cover,
@@ -431,13 +367,11 @@ class _LeaveFormState extends ConsumerState<_LeaveForm> {
             SheetField(
               label: LeaveWords.handover,
               optional: true,
-              hint: LeaveWords.handoverHint,
               child: SheetTextBox(controller: _handover, label: LeaveWords.handover, lines: 3, max: 1000),
             ),
           if (coverage.standInNeeded)
             SheetField(
               label: LeaveWords.standIn,
-              hint: coverage.cLevel ? LeaveWords.standInHintCeo : LeaveWords.standInHint,
               child: PickListField<String>(
                 label: LeaveWords.standIn,
                 value: _standIn,
@@ -454,16 +388,14 @@ class _LeaveFormState extends ConsumerState<_LeaveForm> {
         SheetField(
           label: LeaveWords.reason,
           optional: true,
-          hint: LeaveWords.reasonHint,
           child: SheetTextBox(controller: _reason, label: LeaveWords.reason, hint: LeaveWords.reasonPlaceholder, lines: 4, max: 500),
         ),
         SheetField(
           label: type.documentRequired ? LeaveWords.documentsRequired : LeaveWords.documents,
           optional: !type.documentRequired,
-          hint: LeaveWords.documentsHint,
           child: PhotosField(photos: _documents, max: 3, onChanged: (d) => setState(() => _documents = d)),
         ),
-        SendChecks(problems: problems, ready: LeaveWords.ready(daysText(days), type.nameEn, hr, coverage?.overLimit ?? false)),
+        SendChecks(problems: problems),
         PeopleRefusal(messages: _refusal),
         SheetButtons(busy: _busy, onSend: problems.isEmpty && !coverageAsync.isLoading ? () => _send(type, coverage) : null),
       ],
@@ -481,14 +413,12 @@ RequestDetail leaveDetail(LeaveRequest r) {
       (label: LeaveWords.typeFact, value: [r.typeName, ?r.typeNameAr].join(' · '), note: LeaveWords.pay[r.paid]),
       (label: LeaveWords.when, value: period, note: null),
       (label: LeaveWords.days, value: daysText(r.days), note: null),
-      if (r.balanceAfter != null) (label: LeaveWords.balanceAfter, value: daysNumber(r.balanceAfter!), note: LeaveWords.balanceAfterNote),
+      if (r.balanceAfter != null) (label: LeaveWords.balanceAfter, value: daysNumber(r.balanceAfter!), note: null),
       if (r.reason != null) (label: LeaveWords.reason, value: r.reason!, note: null),
-    ],
-    notes: [
-      if (r.overStaffingLimit) '${LeaveWords.overTeamLimit}. ${LeaveWords.overTeamLimitNote}',
-      if (r.cover != null) '${LeaveWords.coveredBy}: ${r.cover}. ${LeaveWords.coveredNote}.',
-      if (r.standIn != null || r.standInHr) '${LeaveWords.standInFact}: ${r.standIn ?? LeaveWords.hr}. ${LeaveWords.standInNote}.',
-      if (r.handoverNote != null) '${LeaveWords.handover}: “${r.handoverNote}”',
+      if (r.overStaffingLimit) (label: LeaveWords.staffing, value: LeaveWords.overTeamLimit, note: null),
+      if (r.cover != null) (label: LeaveWords.coveredBy, value: r.cover!, note: null),
+      if (r.standIn != null || r.standInHr) (label: LeaveWords.standInFact, value: r.standIn ?? LeaveWords.hr, note: null),
+      if (r.handoverNote != null) (label: LeaveWords.handover, value: '“${r.handoverNote}”', note: null),
     ],
     stepText: (s) => s.kind == 'cancelled' ? LeaveWords.stepCancelled : stepTextOf(s, r.manager, r.confidential),
     files: [for (final d in r.documents) fileLineOf(d)],
@@ -498,7 +428,6 @@ RequestDetail leaveDetail(LeaveRequest r) {
       if (r.canCancel)
         (
           title: LeaveWords.cancelTitle,
-          explain: r.status == 'approved' ? LeaveWords.cancelApproved : LeaveWords.cancelOpen,
           button: LeaveWords.cancelButton,
           confirm: LeaveWords.cancelConfirm(r.typeName, period),
           path: RequestPaths.action(RequestKind.leave, r.id, 'cancel'),

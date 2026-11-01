@@ -203,12 +203,11 @@ String stepWhoLine(RequestStep s) {
   return [if (who.isNotEmpty) who, if (when.isNotEmpty) when].join(' · ');
 }
 
-/// Once a leave-like request is sent: where it goes next.
+/// Once a leave-like request is sent: where it went.
 String sentTextOf(PeopleRequest r) {
-  final hr = RequestsWords.hrStage(r.confidential);
   if (r.status == 'approved') return RequestsWords.sentApprovedAtOnce;
-  if (r.status == 'with_manager') return RequestsWords.sentGoesTo(yourApprover(r.manager), hr);
-  return RequestsWords.sentGoesToHr(hr);
+  if (r.status == 'with_manager') return RequestsWords.sentGoesTo(yourApprover(r.manager));
+  return RequestsWords.sentGoesToHr(RequestsWords.hrStage(r.confidential));
 }
 
 /// "Sent 26/10/2026", or "Recorded by HR 26/10/2026".

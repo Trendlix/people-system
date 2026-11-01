@@ -247,7 +247,6 @@ void main() {
       expect(find.text('Shoot · Nile Bank shoot · Out 25 Oct 2026 · 2 items, 1 of 2 out'), findsOneWidget);
       expect(find.text('Was due 12 Aug 2026'), findsOneWidget);
       expect(find.text(AssetsWords.signedForm('CUS-0042 signed.pdf', '240 KB')), findsOneWidget);
-      await scrollToAsset(tester, find.text(AssetsWords.openOnWebsite));
       // never a value
       expect(find.textContaining('EGP'), findsNothing);
     });
@@ -258,7 +257,6 @@ void main() {
       expect(find.text(AssetsWords.holdNothing), findsOneWidget);
       expect(find.text(AssetsWords.noRecords), findsOneWidget);
       expect(find.text(AssetsWords.overdue(1)), findsNothing);
-      expect(find.text(AssetsWords.openOnWebsite), findsNothing);
     });
 
     testWidgets('says what failed to load, with Try again', (tester) async {

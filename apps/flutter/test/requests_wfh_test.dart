@@ -51,12 +51,12 @@ void main() {
     expect(find.text(WfhWords.title), findsOneWidget);
     // the chosen day's month: next month's days
     expect(find.text('0 of 2 in November $y · next possible from 02/11/$y'), findsOneWidget);
-    expect(find.text('At most 2 days a month, any two at least 7 days apart, asked a day before at the latest, as Leave Setup gives it.'), findsOneWidget);
+    expect(find.text('At most 2 days a month, at least 7 days apart.'), findsOneWidget);
     expect(find.text(dayWords('$y-11-02')), findsOneWidget);
 
     await scrollAndTap(tester, find.text(RequestsWords.send));
     expect(people.bodyOf('POST /api/me/wfh'), {'date': '$y-11-02'});
-    expect(find.text('Request sent. It goes to your direct manager, then HR; each step shows on the request.'), findsOneWidget);
+    expect(find.text('Sent to your direct manager.'), findsOneWidget);
   });
 
   testWidgets('sends the reason when one is written', (tester) async {

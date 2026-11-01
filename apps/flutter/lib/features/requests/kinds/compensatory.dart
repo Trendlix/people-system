@@ -23,41 +23,26 @@ import '../sheet_parts.dart';
 /// The compensatory day's words, People's where it has them.
 abstract final class CompensatoryWords {
   static const title = 'Compensatory day';
-  static String intro(bool toCeo) =>
-      'A day off for a rest day or an official holiday you worked, asked a day before at the latest. Your direct manager decides first, then ${toCeo ? 'the CEO' : 'HR'}, who approves it as time off or, rarely, pays it in cash instead.';
   static const dayWorked = 'Day worked';
-  static const dayWorkedHint = 'A rest day of your shift or an official holiday: one you worked, or one coming up this month that you will work.';
   static const chooseDayWorked = 'Choose the day worked';
   static const groupWorked = 'Worked';
   static const groupUpcoming = 'Coming up this month';
   static String eligibleNote(String? holiday, bool upcoming, bool checkedIn) =>
       '${holiday == null ? 'rest day' : '$holiday (official holiday)'}${upcoming ? '' : ' · ${checkedIn ? 'check-in kept' : 'no check-in: HR will ask to confirm'}'}';
-  static String noDaysMonthEnd(String month, String next, String nextMonth) =>
-      'No day can be asked for today: the day off must be a working day in the same month as the day worked, from tomorrow, and today is the last day of $month. From $next you can ask for $nextMonth’s rest days and official holidays, worked or coming up.';
-  static String noDays(int? within) =>
-      'No day can be asked for now. The day worked is a rest day of your shift or an official holiday, worked ${within == null ? 'this month' : 'in the last $within ${within == 1 ? 'day' : 'days'}'} or coming up this month, not asked for already, with a free working day left for the day off (${within == null ? 'in the same month' : 'within $within ${within == 1 ? 'day' : 'days'} after it'}, from tomorrow).';
+  static String noDaysUntil(String next) => 'No day can be asked for until $next.';
+  static const noDays = 'No day can be asked for now.';
   static const hoursWorked = 'Hours worked';
   static const theWholeDay = 'The whole day';
   static const partOfTheDay = 'Part of the day';
   static const hoursWorkedThatDay = 'Hours worked that day';
   static const hoursPlaceholder = 'e.g. 4';
-  static const hoursHint = 'The hours worked that day, e.g. 4 or 3.5.';
   static const earnsWholeDay = 'Earns a whole day off';
   static String earnsWholeDayFrom(String hours) => 'Earns a whole day off ($hours or more)';
   static String earnsHours(String hours, String? cap) => 'Earns $hours off${cap == null ? '' : ' (capped at $cap)'}';
   static String earnsNothing(String min) => 'Earns nothing: fewer than $min worked';
-  static String rules(String min, String? sameHours, String full) =>
-      '${['Under $min earn nothing', ?sameHours, '$full or more, a whole day'].join('; ')} (Compensatory Setup).';
-  static String sameHoursOff(String min, String? cap) => 'from $min, the same hours off${cap == null ? '' : ', at most $cap'}';
   static const dayOff = 'Day off';
   static const dayForTheHoursOff = 'Day for the hours off';
-  static String dayOffHint(String window, String? hours, double h) =>
-      'A working day $window, tomorrow or later: not leave, work from home or an official holiday.${hours == null ? '' : ' The $hours off ${h == 1 ? 'is' : 'are'} counted as worked that day, with no deduction; you work the rest of it.'}';
-  static const inTheSameMonth = 'in the same month as the day worked';
-  static String withinDaysAfter(int n) => 'within $n ${n == 1 ? 'day' : 'days'} after the day worked';
   static const reason = 'Reason';
-  static const reasonHint = 'Your direct manager and HR read it. Up to 500 characters.';
-  static String noCheckIn(String day) => 'No check-in is kept on $day: HR will ask to confirm you worked that day.';
 
   // the checks (People's words, packages/shared compensatory.ts and the website's form)
   static const enterDayWorked = 'Choose the day you worked.';
@@ -78,26 +63,17 @@ abstract final class CompensatoryWords {
   static String withinDays(int n, String from, String to) => 'The day off must be within $n ${n == 1 ? 'day' : 'days'} after the day worked: from $from to $to.';
   static String goneBy(String day) => '$day has gone by: only HR records a day off that is past.';
   static String isToday(String day) => '$day is today: ask for a compensatory day a day before the day off at the latest.';
-  static String ready(String days, bool toCeo) =>
-      'Ready to send: a compensatory day$days, to your direct manager (without one, your lead), then ${toCeo ? 'the CEO' : 'HR'}.';
-  static String readyDay(String worked, String off) => ' for $worked, with a day off on $off';
-  static String readyHours(String hours, String worked, String off, String offDay) => ' for $hours worked on $worked, with $off off on $offDay';
-  static String sentFor(String hours) => 'Request sent for $hours off.';
 
   // its page
-  static const dayWorkedNote = 'A rest day of the shift or an official holiday. Nothing is paid for it when it is compensated with a day.';
-  static const noCheckInNote = 'No check-in is kept on this day: HR confirms it was worked when deciding.';
-  static const stillToComeNote = 'Still to come: asked ahead for a day to be worked. No check-in to confirm until then; cash instead only once it is worked.';
-  static const askedAheadNote = 'Asked ahead, before the day was worked.';
+  static const noCheckInNote = 'No check-in kept';
+  static const stillToComeNote = 'Still to come';
+  static const askedAheadNote = 'Asked ahead';
   static String earnedWholeDay(String worked) => '$worked: earned a whole day off';
   static String earnedHours(String worked, String off, String? cap) => '$worked: earned $off off${cap == null ? '' : ' (capped at $cap)'}';
-  static const partOfTheDayNote = 'Part of the day, by the Compensatory Setup.';
   static const hoursOffLabel = 'Hours off';
   static const dayOffAskedFor = 'Day off asked for';
   static const paidInCash = 'None: paid in cash instead';
   static String hoursOffOn(String hours) => '$hours off on ';
-  static const hoursNote = 'Once approved, those hours count as worked that day, with no deduction: not leave, nothing comes off any balance.';
-  static const dayNote = 'Once approved it counts as a full paid day, not leave: nothing comes off any balance.';
   static const none = 'None';
   static const hrDecision = 'HR’s decision';
   static const outcomes = {'day_off': 'Day off', 'cash': 'Cash instead'};
@@ -106,16 +82,14 @@ abstract final class CompensatoryWords {
   static String hoursPay(double h, String hours) => h == 1 ? '1 hour’s pay' : '$hours’ pay';
   static String daysPay(double n, String days) => n == 1 ? '1 day’s pay' : '$days days’ pay';
   static const reasonFact = 'Reason';
-  static String withOd(String day) => 'With the official duty on $day. It is decided and cancelled with the official duty, never on its own.';
+  static String withOd(String day) => 'With the official duty on $day.';
   static const recordedByHr = 'Recorded by HR';
   static const asked = 'Asked';
-  static const others = 'Your other compensatory day requests are on My Requests.';
   static const stepCancelled = 'Cancelled';
   static const cancelTitle = 'Cancel the request';
-  static const cancelExplain = 'While it is being decided you can cancel it, e.g. to ask for another day.';
   static const cancelButton = 'Cancel this request';
-  static String cancelConfirm(String days) => 'Cancel your compensatory day request for $days? It stays on your list, cancelled; ask again with a new request.';
-  static const cancelled = 'Compensatory day cancelled. It stays on the list, cancelled; the day off is a working day again.';
+  static String cancelConfirm(String days) => 'Cancel your compensatory day request for $days?';
+  static const cancelled = 'Compensatory day cancelled.';
 }
 
 /// Opens the sheet to ask for a compensatory day, from the tab's [context].
@@ -196,9 +170,9 @@ String noEligibleDaysText(CompensatoryForm f) {
   final within = f.rules.offWithinDays;
   if (within == null && RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(today) && today == _monthEnd(today)) {
     final next = addDays(today, 1);
-    return CompensatoryWords.noDaysMonthEnd(monthNameOf(today.substring(0, 7)), dmy(next), monthNameOf(next.substring(0, 7)).split(' ').first);
+    return CompensatoryWords.noDaysUntil(dmy(next));
   }
-  return CompensatoryWords.noDays(within);
+  return CompensatoryWords.noDays;
 }
 
 // ---------- the sheet ----------
@@ -318,15 +292,6 @@ class _CompensatoryFormState extends ConsumerState<_CompensatoryForm> {
     return out;
   }
 
-  String _ready(bool toCeo, double? hours, double? earned) {
-    final w = dayWords(_worked!);
-    final off = dayWords(_dayOff!);
-    final days = _part && hours != null && earned != null && earned > 0
-        ? CompensatoryWords.readyHours(hoursShort(hours), w, hoursShort(earned), off)
-        : CompensatoryWords.readyDay(w, off);
-    return CompensatoryWords.ready(days, toCeo);
-  }
-
   Future<void> _send(double? hours) async {
     final reason = _reason.text.trim();
     final body = <String, Object?>{
@@ -343,9 +308,8 @@ class _CompensatoryFormState extends ConsumerState<_CompensatoryForm> {
       final json = await sendJson(ref, RequestPaths.create(RequestKind.compensatory), body);
       if (!mounted) return;
       requestsChanged(ref);
-      final made = requestOf(RequestKind.compensatory, json) as CompensatoryRequest;
-      final sent = sentTextOf(made);
-      widget.sent(made, made.hoursOff == null ? sent : sent.replaceFirst('Request sent.', CompensatoryWords.sentFor(hoursShort(made.hoursOff!))));
+      final made = requestOf(RequestKind.compensatory, json);
+      widget.sent(made, sentTextOf(made));
     } on Object catch (e) {
       if (!mounted) return;
       setState(() {
@@ -368,21 +332,18 @@ class _CompensatoryFormState extends ConsumerState<_CompensatoryForm> {
   Widget _body(BuildContext context, CompensatoryForm f) {
     if (f.refusal != null || !f.offered) return SheetState.refused(f.refusal ?? RequestsWords.formNotLoaded);
     if (!_seeded) _seed(f);
-    final p = context.palette;
     final text = Theme.of(context).textTheme;
-    final toCeo = ref.watch(confidentialProvider).value ?? false;
     final rules = f.rules;
     final hours = _part ? _hoursOf(_hours.text) : null;
     final earned = _part ? _earnedHours(rules, hours) : 0.0;
     if (_worked != null && _dayOff == null && !_dayOffByHand) _dayOff = _defaultDayOff(f, _worked!);
     final problems = _problems(f, hours);
     final byHours = _part && earned != null && earned > 0;
-    final cap = rules.hoursCap < rules.fullDayHours ? _number(rules.hoursCap) : null;
-    String earnsLine;
+    String? earnsLine;
     if (!_part) {
       earnsLine = CompensatoryWords.earnsWholeDay;
     } else if (hours == null) {
-      earnsLine = CompensatoryWords.hoursHint;
+      earnsLine = null;
     } else if (hours >= rules.fullDayHours) {
       earnsLine = CompensatoryWords.earnsWholeDayFrom(hoursShort(rules.fullDayHours));
     } else if (earned == null) {
@@ -390,18 +351,13 @@ class _CompensatoryFormState extends ConsumerState<_CompensatoryForm> {
     } else {
       earnsLine = CompensatoryWords.earnsHours(hoursShort(earned), hours > rules.hoursCap ? _number(rules.hoursCap) : null);
     }
-    final window = rules.offWithinDays == null ? CompensatoryWords.inTheSameMonth : CompensatoryWords.withinDaysAfter(rules.offWithinDays!);
     // the days the day worked is picked from, worked and to come this month (31 October 2026)
     final eligible = eligibleDaysOf(f);
-    final upcoming = _worked != null && _worked!.compareTo(f.today) > 0;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(CompensatoryWords.intro(toCeo), style: text.bodyLarge?.copyWith(color: p.muted)),
-        const SizedBox(height: 20),
         SheetField(
           label: CompensatoryWords.dayWorked,
-          hint: eligible.isEmpty ? null : CompensatoryWords.dayWorkedHint,
           child: eligible.isEmpty
               ? RulesNote(icon: CupertinoIcons.info_circle, lines: [noEligibleDaysText(f)])
               : DayWorkedMenu(
@@ -438,24 +394,13 @@ class _CompensatoryFormState extends ConsumerState<_CompensatoryForm> {
                   max: 5,
                   onChanged: (_) => setState(() {}),
                 ),
-                const SizedBox(height: 6),
-                Text(earnsLine, style: text.bodyMedium),
-                const SizedBox(height: 4),
-                Text(
-                  CompensatoryWords.rules(
-                    hoursShort(rules.minHours),
-                    rules.minHours < rules.fullDayHours ? CompensatoryWords.sameHoursOff(hoursShort(rules.minHours), cap) : null,
-                    hoursShort(rules.fullDayHours),
-                  ),
-                  style: text.bodySmall,
-                ),
+                if (earnsLine != null) ...[const SizedBox(height: 6), Text(earnsLine, style: text.bodyMedium)],
               ],
             ],
           ),
         ),
         SheetField(
           label: byHours ? CompensatoryWords.dayForTheHoursOff : CompensatoryWords.dayOff,
-          hint: CompensatoryWords.dayOffHint(window, byHours ? hoursShort(earned) : null, earned ?? 0),
           child: PickDayField(
             label: byHours ? CompensatoryWords.dayForTheHoursOff : CompensatoryWords.dayOff,
             value: _dayOff,
@@ -470,13 +415,9 @@ class _CompensatoryFormState extends ConsumerState<_CompensatoryForm> {
         SheetField(
           label: CompensatoryWords.reason,
           optional: true,
-          hint: CompensatoryWords.reasonHint,
           child: SheetTextBox(controller: _reason, label: CompensatoryWords.reason, lines: 3, max: 500),
         ),
-        // a day to come, asked ahead, has no check-in to keep yet
-        if (_worked != null && !upcoming && !f.checkedIn.contains(_worked))
-          RulesNote(icon: CupertinoIcons.exclamationmark_circle, lines: [CompensatoryWords.noCheckIn(dmy(_worked!))]),
-        SendChecks(problems: problems, ready: problems.isEmpty ? _ready(toCeo, hours, earned) : null),
+        SendChecks(problems: problems),
         PeopleRefusal(messages: _refusal),
         SheetButtons(busy: _busy, onSend: problems.isEmpty ? () => _send(hours) : null),
         const SizedBox(height: Tokens.gapSmall),
@@ -576,14 +517,13 @@ RequestDetail compensatoryDetail(CompensatoryRequest r) {
         label: CompensatoryWords.dayWorked,
         value: dayWords(r.dayWorked),
         note: [
-          CompensatoryWords.dayWorkedNote,
           // asked ahead (31 October 2026): still to come, or asked before it came
           if (r.upcoming)
             CompensatoryWords.stillToComeNote
           else if (r.askedAhead && r.od == null)
             CompensatoryWords.askedAheadNote,
           if (r.noCheckIn) CompensatoryWords.noCheckInNote,
-        ].join('\n'),
+        ].join(' · ').emptyAsNull,
       ),
       if (worked != null)
         (
@@ -591,14 +531,14 @@ RequestDetail compensatoryDetail(CompensatoryRequest r) {
           value: off == null
               ? CompensatoryWords.earnedWholeDay(hoursShort(worked))
               : CompensatoryWords.earnedHours(hoursShort(worked), hoursShort(off), off < worked ? _number(off) : null),
-          note: CompensatoryWords.partOfTheDayNote,
+          note: null,
         ),
       (
         label: cash ? (byHours ? CompensatoryWords.hoursOffLabel : CompensatoryWords.dayOff) : (byHours ? CompensatoryWords.dayForTheHoursOff : CompensatoryWords.dayOffAskedFor),
         value: cash
             ? CompensatoryWords.paidInCash
             : (r.dayOff == null ? CompensatoryWords.none : '${off != null ? CompensatoryWords.hoursOffOn(hoursShort(off)) : ''}${dayWords(r.dayOff!)}'),
-        note: cash || r.dayOff == null ? null : (byHours ? CompensatoryWords.hoursNote : CompensatoryWords.dayNote),
+        note: null,
       ),
       if (r.outcome != null)
         (
@@ -613,12 +553,10 @@ RequestDetail compensatoryDetail(CompensatoryRequest r) {
       if (r.reason != null) (label: CompensatoryWords.reasonFact, value: r.reason!, note: null),
     ],
     stepText: (s) => s.kind == 'cancelled' ? CompensatoryWords.stepCancelled : stepTextOf(s, r.manager, r.confidential),
-    notes: const [CompensatoryWords.others],
     actions: [
       if (r.canCancel && r.od == null)
         (
           title: CompensatoryWords.cancelTitle,
-          explain: CompensatoryWords.cancelExplain,
           button: CompensatoryWords.cancelButton,
           confirm: CompensatoryWords.cancelConfirm(compensatoryDaysLine(r)),
           path: RequestPaths.action(RequestKind.compensatory, r.id, 'cancel'),
@@ -626,4 +564,8 @@ RequestDetail compensatoryDetail(CompensatoryRequest r) {
         ),
     ],
   );
+}
+
+extension on String {
+  String? get emptyAsNull => isEmpty ? null : this;
 }

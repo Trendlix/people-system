@@ -242,7 +242,7 @@ class _ScorecardScreenState extends ConsumerState<ScorecardScreen> {
       const SizedBox(height: 10),
       Text('${own ? KpiWords.yours : (v.card.employee?.fullNameEn ?? '')}${where.isEmpty ? '' : ' · $where'}', style: text.bodyMedium?.copyWith(color: p.muted)),
       if (todo != null) ...[const SizedBox(height: 8), Text('${KpiWords.yourStep}: $todo', style: text.labelLarge)],
-      if (v.card.practice) ...[const SizedBox(height: 14), const Notice(text: '${KpiWords.practiceBanner}. ${KpiWords.practiceNote}', ok: false)],
+      if (v.card.practice) ...[const SizedBox(height: 14), const Notice(text: KpiWords.practiceBanner, ok: false)],
       if (_notice != null) ...[const SizedBox(height: 14), Notice(text: _notice!.text, ok: _notice!.ok)],
       const SizedBox(height: 18),
       _About(view: v),
@@ -253,11 +253,9 @@ class _ScorecardScreenState extends ConsumerState<ScorecardScreen> {
           title: mode == KpiSheetMode.self ? KpiWords.yourSelfRating : KpiWords.yourScoring,
           score: live,
           notes: [
-            KpiWords.workedOut,
             if (_unpicked(v).isNotEmpty) KpiWords.notPickedYet(_unpicked(v).length),
             if (live.capped) KpiWords.cappedNote,
             if (mode == KpiSheetMode.score && v.selfScore != null) KpiWords.selfLine(v.selfScore!),
-            if (!v.attendance.counted) KpiWords.performanceOnly,
           ],
         )
       else
@@ -305,11 +303,9 @@ class _ScorecardScreenState extends ConsumerState<ScorecardScreen> {
         title: v.card.status == 'final' ? KpiWords.finalScore : KpiWords.scoreTitle,
         score: s,
         notes: [
-          if (v.card.status == 'hr') KpiWords.managersBeforeHr,
           if (v.card.calibrated > 0) KpiWords.hrChanged(v.card.calibrated),
           if (s.capped) KpiWords.cappedNote,
           if (v.selfScore != null) KpiWords.selfLine(v.selfScore!),
-          if (!v.attendance.counted) KpiWords.performanceOnly,
         ],
       );
     }
@@ -317,13 +313,13 @@ class _ScorecardScreenState extends ConsumerState<ScorecardScreen> {
       return _ScoreCard(
         title: own ? KpiWords.yourSelfRating : KpiWords.selfRatingTitle,
         score: v.selfScore,
-        notes: [own ? KpiWords.ownSelfNote : KpiWords.othersSelfNote, if (!v.attendance.counted) KpiWords.performanceOnly],
+        notes: const [],
       );
     }
     return _ScoreCard(
       title: KpiWords.scoreTitle,
       score: null,
-      notes: [own ? KpiWords.ownNoScore : KpiWords.notScoredYet, if (!v.attendance.counted) KpiWords.performanceOnly],
+      notes: [if (!own) KpiWords.notScoredYet],
     );
   }
 
@@ -337,7 +333,7 @@ class _ScorecardScreenState extends ConsumerState<ScorecardScreen> {
     final waitsForSelf = mode == KpiSheetMode.score && v.card.status == 'self_rating' && !v.card.practice && !(today.compareTo(v.deadlines.selfRating) > 0);
     final canSend = left.isEmpty && !waitsForSelf;
     final self = mode == KpiSheetMode.self;
-    final status = waitsForSelf ? KpiWords.waitsForSelf(kpiDate(v.deadlines.selfRating)) : (left.isNotEmpty ? KpiWords.stillToPick(left) : KpiWords.readyToSend);
+    final status = waitsForSelf ? KpiWords.waitsForSelf(kpiDate(v.deadlines.selfRating)) : (left.isNotEmpty ? KpiWords.stillToPick(left) : null);
     return SurfaceCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -361,9 +357,7 @@ class _ScorecardScreenState extends ConsumerState<ScorecardScreen> {
             textCapitalization: TextCapitalization.sentences,
             decoration: InputDecoration(semanticCounterText: '', labelText: self ? KpiWords.commentSelfLabel : KpiWords.commentScoreLabel),
           ),
-          Text('${self ? KpiWords.commentSelfHint : KpiWords.commentScoreHint} ${KpiWords.upTo(kpiCommentMax)}', style: text.bodySmall),
-          const SizedBox(height: 14),
-          Text(status, style: text.bodyMedium?.copyWith(color: canSend ? p.ink : p.muted)),
+          if (status != null) ...[const SizedBox(height: 14), Text(status, style: text.bodyMedium?.copyWith(color: p.muted))],
           const SizedBox(height: 16),
           FilledButton(
             onPressed: _busy == null && canSend ? () => _sendPicks(v, mode, submit: true) : null,
@@ -383,14 +377,11 @@ class _ScorecardScreenState extends ConsumerState<ScorecardScreen> {
   Widget _signCard(BuildContext context, KpiScorecardView v) {
     final text = Theme.of(context).textTheme;
     final asEmployee = v.can.signAsEmployee;
-    final note = v.card.practice ? 'A practice scorecard is final once both sides have signed: no day makes it final.' : KpiWords.signNote(kpiDate(v.deadlines.signOff));
     return SurfaceCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(asEmployee ? KpiWords.signYours : KpiWords.signAsManager, style: text.titleLarge),
-          const SizedBox(height: 10),
-          Text('${asEmployee ? KpiWords.signEmployeeText : KpiWords.signManagerText} $note', style: text.bodyMedium),
           const SizedBox(height: 14),
           TextField(
             controller: _signComment,
@@ -466,13 +457,7 @@ class _About extends StatelessWidget {
             if (v.card.jobTitle != null) Text(v.card.jobTitle!, style: text.bodySmall),
           ]),
           fact(KpiWords.pay, [
-            if (v.card.practice) ...[
-              Text('Not counted', style: text.bodyLarge),
-              Text('A practice scorecard never reaches payroll or the payslips.', style: text.bodySmall),
-            ] else ...[
-              Text(payrollText(v.payrollMonth), style: text.bodyLarge),
-              Text(KpiWords.payNote, style: text.bodySmall),
-            ],
+            Text(v.card.practice ? 'Not counted' : payrollText(v.payrollMonth), style: text.bodyLarge),
           ]),
           if (v.card.status == 'sign_off' || v.card.status == 'final')
             fact(KpiWords.signatures, [
@@ -609,11 +594,11 @@ class _PillarCard extends StatelessWidget {
           ),
           for (final child in children) ...[Divider(height: 1, color: p.line), child],
           if (attendance) ...[Divider(height: 1, color: p.line), _AttendanceBlock(view: view)],
-          if (pillar.metrics.isEmpty && !attendance) ...[
+          if (pillar.metrics.isEmpty && !attendance && !leftOut) ...[
             Divider(height: 1, color: p.line),
             Padding(
               padding: const EdgeInsets.all(20),
-              child: Text(leftOut ? KpiWords.leftOutText(pillar.weight) : KpiWords.noMetrics, style: text.bodySmall),
+              child: Text(KpiWords.noMetrics, style: text.bodySmall),
             ),
           ],
         ],
@@ -648,8 +633,6 @@ class _AttendanceBlock extends StatelessWidget {
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [Text(KpiWords.attendanceMetric, style: text.bodyLarge?.copyWith(fontWeight: FontWeight.w600)), const _Tag(KpiWords.automatic)],
                 ),
-                const SizedBox(height: 4),
-                Text(KpiWords.attendanceAbout, style: text.bodySmall),
                 const SizedBox(height: 8),
                 Text(t.detail, style: text.bodyMedium),
                 Text(t.source, style: text.bodySmall),

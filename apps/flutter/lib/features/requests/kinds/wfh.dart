@@ -9,7 +9,6 @@ import '../../../models/requests.dart';
 import '../request_page.dart';
 import '../request_text.dart';
 import '../requests_data.dart';
-import '../requests_words.dart';
 import '../sheet_parts.dart';
 
 // Working from home (owner, 21 October 2026: "think about how should we handle the working from home in out erp"): a
@@ -20,19 +19,14 @@ import '../sheet_parts.dart';
 /// Working from home's words (apps/web attendance/wfh/wfh.ts, wfh-forms.tsx, wfh-request.tsx; packages/shared wfh.ts).
 abstract final class WfhWords {
   static const title = 'Work from home';
-  static const intro = 'A working day from home instead of the office, asked a day before at the latest.';
-  static String whoDecides(bool ceo) => 'Your direct manager decides first, then ${ceo ? 'the CEO' : 'HR'}.';
-  static const turnedOff = 'Working from home is turned off: Leave Setup gives no work from home days a month. Ask HR.';
+  static const turnedOff = 'Working from home is turned off: ask HR.';
   static const turnedOffLine = 'Working from home is turned off in Leave Setup.';
   static const notYet = 'Not available yet: the server does not have working from home yet.';
   static String allowance(int used, int perMonth, String? next) =>
       '$used of $perMonth this month · ${next == null ? 'no day possible in the coming months' : 'next possible from $next'}';
-  static String rules(int perMonth, int gap) =>
-      'At most $perMonth ${perMonth == 1 ? 'day' : 'days'} a month, any two at least $gap ${gap == 1 ? 'day' : 'days'} apart, asked a day before at the latest, as Leave Setup gives it.';
+  static String rules(int perMonth, int gap) => 'At most $perMonth ${perMonth == 1 ? 'day' : 'days'} a month, at least $gap ${gap == 1 ? 'day' : 'days'} apart.';
   static const day = 'Day';
-  static const dayHint = 'Tomorrow or later: a working day you would be at the office, not an official holiday or a day of leave.';
   static const reason = 'Reason';
-  static const reasonHint = 'Your direct manager and HR read it. Up to 500 characters.';
   static const reasonPlaceholder = 'E.g. a delivery at home in the morning';
 
   // the checks, in People's words (packages/shared wfh.ts)
@@ -43,27 +37,22 @@ abstract final class WfhWords {
       '$month\'s $n ${n == 1 ? 'day' : 'days'} of working from home are already asked for: $inMonth of $n.';
   static String gap(int g, String day, int k, String other) =>
       'Two work from home days must be at least $g ${g == 1 ? 'day' : 'days'} apart: $day is $k ${k == 1 ? 'day' : 'days'} from your day on $other.';
-  static String ready(String day, String hr) => 'Ready to send: working from home on $day, to your direct manager (without one, your lead), then $hr.';
-  static const recordedApproved = 'Work from home day recorded, approved at once. That day you check in from home, without the office network.';
+  static const recordedApproved = 'Work from home day recorded, approved at once.';
 
   // its page
   static const pageTitle = 'Work from home';
-  static const dayNote = 'A working day from home, not leave: checked in from home as any day';
   static const itsMonth = 'Its month';
   static String taken(int n) => '$n taken';
-  static const takenNote = 'Approved and waiting, this one counted';
   static const imported = 'Imported from Zoho People';
   static const recordedByHr = 'Recorded by HR';
   static const asked = 'Asked by the employee';
-  static const others = 'Your other work from home requests are on My Requests.';
   static const stepImported = 'Imported from Zoho People, approved';
   static const stepRecorded = 'Recorded by HR, approved at once';
   static const stepCancelled = 'Cancelled';
   static const cancelTitle = 'Cancel the request';
-  static const cancelExplain = 'While it is being decided you can cancel it, e.g. to ask for another day.';
   static const cancelButton = 'Cancel this request';
-  static String cancelConfirm(String day) => 'Cancel your work from home request for $day? It stays on your list, cancelled; ask again with a new request.';
-  static const cancelled = 'Work from home cancelled. It stays on the list, cancelled; the day is free again.';
+  static String cancelConfirm(String day) => 'Cancel your work from home request for $day?';
+  static const cancelled = 'Work from home cancelled.';
 }
 
 /// "0 of 2 this month · next possible from 02/11/2026", or "in November 2026" for a day in another month.
@@ -103,12 +92,10 @@ List<String> wfhProblems(WfhAllowance a, String date) {
 
 /// Opens the sheet to ask to work from home, from the tab's [context].
 Future<void> showWfhSheet(BuildContext context) {
-  final ceo = ProviderScope.containerOf(context, listen: false).read(confidentialProvider).value;
   return openRequestSheet(
     context,
     title: WfhWords.title,
     icon: kindIcons[RequestKind.wfh]!,
-    intro: ceo == null ? WfhWords.intro : '${WfhWords.intro} ${WfhWords.whoDecides(ceo)}',
     builder: (sheetContext, sent) => _WfhForm(sent: sent),
   );
 }
@@ -171,7 +158,6 @@ class _WfhFormState extends ConsumerState<_WfhForm> {
 
     final today = a.today.isEmpty ? todayIso() : a.today;
     final date = _date ?? a.nextPossible ?? addDays(today, 1);
-    final ceo = ref.watch(confidentialProvider).value ?? false;
     final problems = wfhProblems(a, date);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -179,16 +165,14 @@ class _WfhFormState extends ConsumerState<_WfhForm> {
         RulesNote(icon: CupertinoIcons.house, lines: [wfhAllowanceLine(a, date), WfhWords.rules(a.daysPerMonth, a.minGapDays)]),
         SheetField(
           label: WfhWords.day,
-          hint: WfhWords.dayHint,
           child: PickDayField(label: WfhWords.day, value: date, first: addDays(today, 1), last: addDays(today, 180), onChanged: (d) => setState(() => _date = d)),
         ),
         SheetField(
           label: WfhWords.reason,
           optional: true,
-          hint: WfhWords.reasonHint,
           child: SheetTextBox(controller: _reason, label: WfhWords.reason, hint: WfhWords.reasonPlaceholder, lines: 3, max: 500),
         ),
-        SendChecks(problems: problems, ready: WfhWords.ready(dayWords(date), RequestsWords.hrStage(ceo))),
+        SendChecks(problems: problems),
         PeopleRefusal(messages: _refusal),
         SheetButtons(busy: _busy, onSend: problems.isEmpty ? () => _send(date) : null),
       ],
@@ -208,8 +192,8 @@ RequestDetail wfhDetail(WfhRequest r) {
     subline: '${_source(r)} ${dateTimeWords(r.createdAt)}',
     progress: imported && r.status == 'approved' ? WfhWords.imported : null,
     facts: [
-      (label: WfhWords.day, value: dayWords(r.date), note: WfhWords.dayNote),
-      if (r.monthUsed != null) (label: WfhWords.itsMonth, value: WfhWords.taken(r.monthUsed!), note: WfhWords.takenNote),
+      (label: WfhWords.day, value: dayWords(r.date), note: null),
+      if (r.monthUsed != null) (label: WfhWords.itsMonth, value: WfhWords.taken(r.monthUsed!), note: null),
       if (r.reason != null) (label: WfhWords.reason, value: r.reason!, note: null),
     ],
     stepText: (s) => switch (s.kind) {
@@ -218,12 +202,10 @@ RequestDetail wfhDetail(WfhRequest r) {
       'cancelled' => WfhWords.stepCancelled,
       _ => stepTextOf(s, r.manager, r.confidential),
     },
-    notes: const [WfhWords.others],
     actions: [
       if (r.canCancel)
         (
           title: WfhWords.cancelTitle,
-          explain: WfhWords.cancelExplain,
           button: WfhWords.cancelButton,
           confirm: WfhWords.cancelConfirm(dayWords(r.date)),
           path: RequestPaths.action(RequestKind.wfh, r.id, 'cancel'),

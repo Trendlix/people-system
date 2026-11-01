@@ -425,14 +425,12 @@ class _DetailsCard extends ConsumerWidget {
   const _DetailsCard.personal({required this.profile, required this.details})
     : eyebrow = ProfileWords.personalInformation,
       title = ProfileWords.personalDetails,
-      intro = ProfileWords.personalIntro,
       groups = const [(null, DetailFields.personal), (ProfileWords.education, DetailFields.education)],
       workEmail = false;
 
   const _DetailsCard.contact({required this.profile, required this.details})
     : eyebrow = ProfileWords.contactInformation,
       title = ProfileWords.contactDetails,
-      intro = ProfileWords.contactIntro,
       groups = const [(null, DetailFields.contact), (ProfileWords.emergencyContact, DetailFields.emergency)],
       workEmail = true;
 
@@ -440,7 +438,6 @@ class _DetailsCard extends ConsumerWidget {
   final EmployeeDetails details;
   final String eyebrow;
   final String title;
-  final String intro;
   final List<(String?, List<DetailField>)> groups;
   final bool workEmail;
 
@@ -455,7 +452,7 @@ class _DetailsCard extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          ProfileCardHead(eyebrow: eyebrow, title: title, intro: intro),
+          ProfileCardHead(eyebrow: eyebrow, title: title),
           const SizedBox(height: 24),
           if (pending != null)
             _PendingRequest(request: pending)
@@ -478,7 +475,7 @@ class _DetailsCard extends ConsumerWidget {
           const SizedBox(height: 24),
           Container(height: 1, color: p.line),
           const SizedBox(height: 22),
-          if (workEmail) ReadOnlyField(label: ProfileWords.workEmail, value: details.workEmail, note: ProfileWords.workEmailNote),
+          if (workEmail) ReadOnlyField(label: ProfileWords.workEmail, value: details.workEmail),
           for (final (heading, fields) in groups) ...[
             if (heading != null) ...[
               const SizedBox(height: 10),
@@ -598,7 +595,7 @@ class _EmploymentCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const ProfileCardHead(eyebrow: ProfileWords.employment, title: ProfileWords.yourJob, intro: ProfileWords.employmentIntro),
+          const ProfileCardHead(eyebrow: ProfileWords.employment, title: ProfileWords.yourJob),
           const SizedBox(height: 24),
           Container(height: 1, color: p.line),
           const SizedBox(height: 22),
@@ -648,7 +645,7 @@ class _KpisCard extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const ProfileCardHead(eyebrow: ProfileWords.performance, title: ProfileWords.kpisTitle, intro: ProfileWords.kpisIntro),
+          const ProfileCardHead(eyebrow: ProfileWords.performance, title: ProfileWords.kpisTitle),
           const SizedBox(height: 17),
           switch (cards) {
             AsyncValue(value: final List<KpiScorecard> list) when list.isEmpty => Text(ProfileWords.noKpis, style: text.bodyMedium),
@@ -755,26 +752,22 @@ class _AccountCard extends StatelessWidget {
             RecordRow(
               icon: CupertinoIcons.person,
               title: ProfileWords.changePhoto,
-              subtitle: ProfileWords.photoLine,
               onTap: () => context.go('/profile/photo'),
             ),
           RecordRow(
             icon: CupertinoIcons.lock,
             title: ProfileWords.changePassword,
-            subtitle: ProfileWords.passwordLine,
             onTap: () => context.go('/profile/password'),
           ),
           RecordRow(
             icon: CupertinoIcons.square_grid_2x2,
             title: ProfileWords.sessions,
-            subtitle: ProfileWords.sessionsLine,
             onTap: () => context.go('/profile/sessions'),
           ),
           if (employee)
             RecordRow(
               icon: CupertinoIcons.clock,
               title: ProfileWords.interviewHours,
-              subtitle: ProfileWords.interviewLine,
               onTap: () => context.go('/profile/interview-hours'),
             ),
         ],

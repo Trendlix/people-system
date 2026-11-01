@@ -87,7 +87,7 @@ void main() {
     await open(tester, people, FakeBiometrics(outcome: FingerprintOutcome.cancelled));
     await tester.tap(find.text(LockWords.signOut));
     await tester.pumpAndSettle();
-    expect(find.text(SignInWords.subtitle), findsOneWidget);
+    expect(find.text(SignInWords.title), findsOneWidget);
   });
 
   testWidgets('says why after too many tries', (tester) async {

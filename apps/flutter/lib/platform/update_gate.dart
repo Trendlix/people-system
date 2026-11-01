@@ -12,15 +12,11 @@ import '../theme/tokens.dart';
 abstract final class UpdateWords {
   static const eyebrow = 'Trendlix People';
   static const title = 'Update required';
-  static String intro(String latest, String mine) =>
-      'A newer version of Trendlix People is out ($latest). Install it to keep using the app; this phone has $mine.';
-  static const stepDownload =
-      'Download the new version. It opens in your browser and saves trendlix-people.apk to Downloads.';
+  static String versions(String latest, String mine) => 'Version $latest is out; this phone has $mine.';
+  static const stepDownload = 'Download the new version: it saves trendlix-people.apk to Downloads.';
   static const stepRemove = 'Remove this version: on its App info page, tap Uninstall.';
   static const stepInstallAfterRemoving = 'Open trendlix-people.apk from Downloads, tap Install, then sign in again.';
   static const stepInstall = 'Open trendlix-people.apk from Downloads and tap Install.';
-  static const untilStores =
-      'Until Trendlix People is on Google Play and the App Store, remove the old version before installing each new one.';
   static const download = 'Download the update';
   static const remove = 'Remove this version';
   static String cantOpen(String url) => 'The browser couldn’t be opened. Go to $url to download the update.';
@@ -173,16 +169,12 @@ class _UpdateGateState extends ConsumerState<UpdateGate> with WidgetsBindingObse
                     Text(UpdateWords.title, textAlign: TextAlign.center, style: text.displaySmall),
                     const SizedBox(height: 10),
                     Text(
-                      UpdateWords.intro(newer.version, mine),
+                      UpdateWords.versions(newer.version, mine),
                       textAlign: TextAlign.center,
                       style: text.bodyMedium?.copyWith(color: p.muted),
                     ),
                     const SizedBox(height: 22),
                     for (final (i, step) in steps.indexed) _Step(number: i + 1, text: step),
-                    if (newer.removeOldFirst) ...[
-                      const SizedBox(height: 4),
-                      Notice(text: UpdateWords.untilStores, ok: false),
-                    ],
                     if (problem != null) ...[const SizedBox(height: 12), Notice(text: problem, ok: false)],
                     const SizedBox(height: 24),
                     SizedBox(

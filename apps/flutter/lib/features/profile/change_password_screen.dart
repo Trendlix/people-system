@@ -80,7 +80,6 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
     return AccountPage(
       eyebrow: AccountWords.securityEyebrow,
       title: AccountWords.passwordTitle,
-      intro: AccountWords.passwordIntro,
       children: [
         SurfaceCard(
           padding: const EdgeInsets.all(24),
@@ -123,7 +122,6 @@ class _ChangePasswordScreenState extends ConsumerState<ChangePasswordScreen> {
             ),
           ),
         ),
-        const _Guidance(),
       ],
     );
   }
@@ -183,55 +181,6 @@ class _PasswordFieldState extends State<PasswordField> {
           ),
         ),
       ],
-    );
-  }
-}
-
-/// The dark card of advice (the design's "Password guidance"), light on the dark look.
-class _Guidance extends StatelessWidget {
-  const _Guidance();
-
-  @override
-  Widget build(BuildContext context) {
-    final p = context.palette;
-    final text = Theme.of(context).textTheme;
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(color: p.inverse, borderRadius: BorderRadius.circular(Tokens.radiusCard), boxShadow: p.shadow),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            AccountWords.guidance.toUpperCase(),
-            style: text.labelSmall?.copyWith(color: p.inverseMuted),
-            semanticsLabel: AccountWords.guidance,
-          ),
-          const SizedBox(height: 8),
-          Text(AccountWords.guidanceTitle, style: text.headlineSmall?.copyWith(fontSize: 27, letterSpacing: -1.35, height: 1.05, color: p.onInverse)),
-          const SizedBox(height: 29),
-          for (final tip in AccountWords.tips)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(top: 7),
-                    child: Container(
-                      width: 5,
-                      height: 5,
-                      decoration: BoxDecoration(shape: BoxShape.circle, color: p.onInverse),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(tip, style: text.bodySmall?.copyWith(color: p.inverseMuted)),
-                  ),
-                ],
-              ),
-            ),
-        ],
-      ),
     );
   }
 }
