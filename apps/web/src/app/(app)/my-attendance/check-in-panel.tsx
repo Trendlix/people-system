@@ -3,7 +3,7 @@
 import { ArrowRight, Clock, LogOut, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useId, useRef, useState } from 'react';
+import { useId, useLayoutEffect, useRef, useState } from 'react';
 import { cairoClock, LOCATION_NEEDED_TEXT } from '@trendlix/shared';
 import { MY_ATTENDANCE } from '@/components/nav';
 import { ArrowLink, PanelHead, Pill } from '@/components/design';
@@ -486,14 +486,26 @@ export function TodayCard({
  * read again after a press, so the Today card follows. Checked in, it is the time of the check-in, not a button (Check
  * out is on the card).
  */
+/** The box's width under the head's button: w-80. */
+const BOX_WIDTH = 320;
+
 export function TodayHeadButton({ initial }: { initial: CheckInTodayView }) {
   const p = usePunch(initial);
   const { view, phase, busy } = p;
   const [closed, setClosed] = useState(0);
   const said = p.messages.length + p.errors.length > 0 && closed !== p.pressCount;
   const open = view.next === 'out' ? [...view.punches].sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).at(-1) : undefined;
+  // the box under the button opens towards the side with room (owner, 1 November 2026, its words cut off on a phone):
+  // under the button's right end when it is on the right of the page (a computer), else under its left end (a phone,
+  // where the head's button wraps to the left)
+  const holder = useRef<HTMLDivElement>(null);
+  const [fromLeft, setFromLeft] = useState(false);
+  useLayoutEffect(() => {
+    if (!said || !holder.current) return;
+    setFromLeft(holder.current.getBoundingClientRect().right < BOX_WIDTH + 16);
+  }, [said, p.pressCount]);
   return (
-    <div className="relative">
+    <div ref={holder} className="relative">
       {view.next === 'out' ? (
         <p className="btn btn-primary min-h-11 cursor-default rounded-xl px-4 font-normal tabular-nums">
           <Clock aria-hidden="true" className="size-[18px]" strokeWidth={1.5} />
@@ -516,7 +528,7 @@ export function TodayHeadButton({ initial }: { initial: CheckInTodayView }) {
       <div
         className={
           said
-            ? 'absolute top-full right-0 z-20 mt-2 w-80 max-w-[calc(100vw-2rem)] space-y-2 rounded-xl border border-line bg-card p-2 shadow-card'
+            ? `absolute top-full ${fromLeft ? 'left-0' : 'right-0'} z-20 mt-2 w-80 max-w-[calc(100vw-2rem)] space-y-2 rounded-xl border border-line bg-card p-2 shadow-card`
             : p.messages.length + p.errors.length > 0
               ? 'hidden'
               : ''
