@@ -1,6 +1,7 @@
 import type { Role } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 import { seesEmailSettings } from '../../../lib/email-setup';
+import { seesEmailTemplates } from '../../../lib/email-templates';
 import { seesCalendarSettings } from '../../../lib/calendars';
 import { seesMeetingSettings } from '../../../lib/meetings';
 import { seesWhatsAppSettings } from '../../../lib/whatsapp';
@@ -32,6 +33,7 @@ describe('the setup menu', () => {
         [
           ['Company Details', '/organization/company'],
           ['Email Settings', '/organization/email'],
+          ['Email Templates', '/organization/email-templates'],
           ['Meetings', '/organization/meetings'],
           ['Calendars', '/organization/calendars'],
           ['WhatsApp', '/organization/whatsapp'],
@@ -89,9 +91,9 @@ describe('the setup menu', () => {
     expect(setupPage('kpi-deadlines' as SetupKey).label).toBe('KPI Deadlines');
   });
 
-  it('shows a Super Admin every page, Email Settings, Meetings, Calendars, WhatsApp, Zoho People and Templates included', () => {
+  it('shows a Super Admin every page, Email Settings, Email Templates, Meetings, Calendars, WhatsApp, Zoho People and Templates included', () => {
     expect(menu(as('super_admin'))).toEqual([
-      'Company: Company Details, Email Settings, Meetings, Calendars, WhatsApp, Templates',
+      'Company: Company Details, Email Settings, Email Templates, Meetings, Calendars, WhatsApp, Templates',
       'Structure: Departments & Job Titles, Grades',
       'Time & Leave: Shifts, Holidays, Leave, Check-in Setup, Zoho People',
       'Pay & Contracts: Allowances, Contracts & Endings, Payroll Setup',
@@ -102,14 +104,14 @@ describe('the setup menu', () => {
 
   it('shows a developer a Super Admin’s pages but Email Settings, Meetings, Calendars, WhatsApp and Zoho People', () => {
     const developer = { roles: ['super_admin'] as Role[], developer: true };
-    expect(menu(developer)[0]).toBe('Company: Company Details, Templates');
+    expect(menu(developer)[0]).toBe('Company: Company Details, Email Templates, Templates');
     expect(menu(developer)[2]).toBe('Time & Leave: Shifts, Holidays, Leave, Check-in Setup');
     expect([menu(developer)[1], ...menu(developer).slice(3)]).toEqual([menu(as('super_admin'))[1], ...menu(as('super_admin')).slice(3)]);
   });
 
-  it('shows HR the nine, Check-in Setup, Zoho People, the KPI pages and Hiring & Leaving, not Email Settings or Templates', () => {
+  it('shows HR the nine, Email Templates, Check-in Setup, Zoho People, the KPI pages and Hiring & Leaving, not Email Settings or Templates', () => {
     expect(menu(as('hr'))).toEqual([
-      'Company: Company Details',
+      'Company: Company Details, Email Templates',
       'Structure: Departments & Job Titles, Grades',
       'Time & Leave: Shifts, Holidays, Leave, Check-in Setup, Zoho People',
       'Pay & Contracts: Allowances, Contracts & Endings, Payroll Setup',
@@ -118,9 +120,9 @@ describe('the setup menu', () => {
     ]);
   });
 
-  it('shows the CEO the nine and Hiring & Leaving: no Check-in Setup, no Performance heading', () => {
+  it('shows the CEO the nine, Email Templates and Hiring & Leaving: no Check-in Setup, no Performance heading', () => {
     expect(menu(as('ceo'))).toEqual([
-      'Company: Company Details',
+      'Company: Company Details, Email Templates',
       'Structure: Departments & Job Titles, Grades',
       'Time & Leave: Shifts, Holidays, Leave',
       'Pay & Contracts: Allowances, Contracts & Endings, Payroll Setup',
@@ -183,6 +185,13 @@ describe('each page keeps the roles it had', () => {
   it('Email Settings as lib/email-setup.ts, a developer never', () => {
     for (const roles of ROLES) expect(sees('email', as(...roles))).toBe(seesEmailSettings(as(...roles)));
     expect(sees('email', { roles: ['super_admin'], developer: true })).toBe(false);
+  });
+
+  // the words of the system's emails (owner, 1 November 2026: "build the mail templetes")
+  it('Email Templates as lib/email-templates.ts: HR, the CEO and a Super Admin', () => {
+    for (const roles of ROLES) expect(sees('email-templates', as(...roles))).toBe(seesEmailTemplates(as(...roles)));
+    expect(seesEmailTemplates(as('finance'))).toBe(false);
+    expect(seesEmailTemplates(as('admin'))).toBe(false);
   });
 
   // online interview meetings (owner, 24 October 2026: "make it both"): the company's, a Super Admin's

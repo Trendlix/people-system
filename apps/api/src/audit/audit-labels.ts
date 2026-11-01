@@ -91,6 +91,8 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   leave_staffing_limit: 'Staffing limit',
   leave_type: 'Leave type',
   leave_year_closing: 'Leave year closing',
+  // Organization → Email Templates (owner, 1 November 2026: "build the mail templetes"): HR's words for an email
+  email_template: 'Email template',
   // Organization → Email Settings (owner, 23 October 2026: "why dont we add SMTP setup in the organization setup")
   mail_settings: 'Email settings',
   // Organization → Check-in Setup → Google Maps (owner, 24 October 2026: "Google Maps"): the browser key, only as changed
@@ -350,6 +352,8 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   // the Google Maps key removed, every map back on OpenStreetMap (24 October 2026); never the key
   remove_key: 'Removed the Google Maps key',
   send_test: 'Sent a test email',
+  // an email template back to the system's words (1 November 2026)
+  reset_to_standard: 'Reset to the standard words',
   // online interview meetings (24 October 2026): a connection made, removed, refused or needing connecting again (the
   // provider refused its sign-in), a test meeting, the default; an interview's meeting created, moved, deleted, refused,
   // or its link pasted after; never a token or a secret

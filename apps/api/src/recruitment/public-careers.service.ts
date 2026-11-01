@@ -653,6 +653,8 @@ export class PublicCareersService {
         subject: updated ? `Your updated application for ${title} (${reference})` : `Your application for ${title} (${reference})`,
         text: lines.join('\n'),
         html: lines.map((l) => (l ? `<p>${escape(l)}</p>` : '')).join(''),
+        // HR's words when they wrote them (1 November 2026: Organization → Email Templates)
+        template: { key: updated ? 'application_updated' : 'application_received', values: { first_name: first, job: title, company: from, reference } },
       });
     } catch (err) {
       this.logger.warn(`The confirmation of ${reference} could not be sent: ${(err as Error).message}`);

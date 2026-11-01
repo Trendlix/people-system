@@ -15,6 +15,7 @@ import {
   LOGIN_CODE_TRIES,
   loginCodeMail,
   loginCodeOf,
+  loginCodeShown
 } from '@trendlix/shared';
 import { verifySignedIp } from '../attendance/signed-ip.js';
 import { AuditService } from '../audit/audit.service.js';
@@ -79,7 +80,13 @@ export class LoginCodesService {
       await tx.loginCode.create({ data: { id, userId: user.id, codeHash: this.hashOf(id, code), createdAt: now, expiresAt: new Date(now.getTime() + LOGIN_CODE_MINUTES * 60 * 1000), ip } });
     });
     try {
-      await this.mail.send({ to: user.email, ...loginCodeMail(code, user.employee?.fullNameEn ?? null) });
+      // HR's words when they wrote them (1 November 2026: Organization → Email Templates)
+      const name = user.employee?.fullNameEn ?? null;
+      await this.mail.send({
+        to: user.email,
+        ...loginCodeMail(code, name),
+        template: { key: 'sign_in_code', values: { name: name ?? '', code: loginCodeShown(code), minutes: String(LOGIN_CODE_MINUTES) } },
+      });
       await this.audit.record({ userId: null, action: 'login_code_sent', entityType: 'user', entityId: user.id, diff: { email } });
     } catch (err) {
       // email not set up, or refused: the answer stays the same; the code, never sent, ends

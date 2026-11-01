@@ -26,6 +26,21 @@ export interface OfferEmailInput {
   link: string;
 }
 
+/** The values of the offer email's fields (owner, 1 November 2026: "build the mail templetes"; email-templates.ts job_offer). */
+export function offerTemplateValues(o: OfferEmailInput): Record<string, string> {
+  const type = LABELS.employmentType[o.employmentType].toLowerCase();
+  return {
+    name: o.fullNameEn,
+    position: o.jobTitleEn ? `the ${type} position of ${o.jobTitleEn}` : `a ${type} position`,
+    job: o.jobTitleEn ?? 'the position',
+    company: o.companyName,
+    join_date: shownDate(o.joinDate),
+    open_until: shownDate(o.expiresOn),
+    message: o.message ?? '',
+    link: o.link,
+  };
+}
+
 /** The offer to the candidate. */
 export function offerEmail(o: OfferEmailInput): { subject: string; text: string; html: string } {
   const type = LABELS.employmentType[o.employmentType].toLowerCase();
@@ -63,6 +78,25 @@ export interface AnswerEmailInput {
   reason: string | null;
   /** Accepted: whether the profile, employment and draft contract were made, or why not. */
   hired: { employeeCode: string } | { error: string } | null;
+}
+
+/** The values of the answer email's fields (owner, 1 November 2026; email-templates.ts offer_answer). */
+export function answerTemplateValues(a: AnswerEmailInput): Record<string, string> {
+  const profile =
+    a.hired && 'employeeCode' in a.hired
+      ? `Their profile (${a.hired.employeeCode}), employment and draft contract are ready in the People System.`
+      : a.hired
+        ? `Their profile could not be made: ${a.hired.error} Open the offer in the People System to fix this and make it.`
+        : '';
+  return {
+    name: a.fullNameEn,
+    number: a.number,
+    answer: a.answer,
+    date: shownDate(a.on),
+    how: a.online ? 'on the offer’s page' : 'as recorded by HR',
+    reason: a.reason ? `Their reason: ${a.reason}` : '',
+    profile,
+  };
 }
 
 /** The answer, to the HR user who sent the offer. */

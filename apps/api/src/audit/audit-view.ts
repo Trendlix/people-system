@@ -540,6 +540,11 @@ function targetOf(row: Pick<AuditRow, 'entityType' | 'entityId' | 'diff'>, refs:
     // a team's staffing limit (25 October 2026), in the Leave Setup's Staffing section
     case 'leave_staffing_limit':
       return { href: '/organization/leave#staffing', label: 'Open staffing limits', roles: ORG };
+    // Organization → Email Templates (1 November 2026): HR's, the CEO's and a Super Admin's to read
+    case 'email_template': {
+      const key = stringAt(row.diff, 'key');
+      return { href: key ? `/organization/email-templates#${encodeURIComponent(key)}` : '/organization/email-templates', label: 'Open email templates', roles: RECRUITMENT };
+    }
     case 'mail_settings':
       return { href: '/organization/email', label: 'Open email settings', roles: MAIL };
     // Check-in Setup's Google Maps section (24 October 2026), a Super Admin's as Email Settings are

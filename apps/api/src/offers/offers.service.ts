@@ -42,7 +42,7 @@ import { PDF_NOT_SET_UP } from '../pdf/pdf.service.js';
 import { earlierOffersOn } from './earlier-offers.js';
 import { FILL_IN, OfferDocumentsService } from './offer-documents.service.js';
 import { OfferHiringService, salaryMasked, type HireResult } from './offer-hiring.service.js';
-import { offerEmail } from './offer-mail.js';
+import { offerEmail, offerTemplateValues } from './offer-mail.js';
 import type { AnswerOfferDto, CreateOfferDto, ListOffersDto, RecordSentOfferDto, SendOfferDto, UpdateOfferDto, WithdrawOfferDto } from './offers.dto.js';
 import { answerDayProblem, lastDayProblem, momentOn, offerSlot, pastLastDay, recordSentProblem, shownStatus, termDates, tokenHash } from './rules.js';
 import { OFFER_INCLUDE, OFFER_LIST_SELECT, offerListView, offerView, WITHOUT_FILES, type OfferRow, type OfferView } from './views.js';
@@ -342,7 +342,7 @@ export class OffersService {
     const to = dto.to ?? o.email;
     if (dto.via === 'email') {
       const company = await this.prisma.company.findUnique({ where: { id: 1 }, select: { nameEn: true } });
-      const mail = offerEmail({
+      const offerInput = {
         fullNameEn: o.fullNameEn,
         jobTitleEn: o.jobTitle?.titleEn ?? null,
         employmentType: o.employmentType,
@@ -351,10 +351,12 @@ export class OffersService {
         expiresOn: fromDateOnly(o.expiresOn),
         message: o.message,
         link,
-      });
+      };
+      const mail = offerEmail(offerInput);
       const attachment = { filename: this.documents.pdfName(filled.fileName), content: pdf, contentType: 'application/pdf' };
       // refused (503) when the provider refuses it: the offer is then left as it was
-      await this.mail.send({ to, replyTo: user.email, ...mail, attachments: [attachment] });
+      // HR's words when they wrote them (1 November 2026: Organization → Email Templates)
+      await this.mail.send({ to, replyTo: user.email, ...mail, attachments: [attachment], template: { key: 'job_offer', values: offerTemplateValues(offerInput) } });
     }
 
     const sentAt = new Date();

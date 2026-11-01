@@ -820,7 +820,14 @@ export class GeneralCvsService {
         `${from} HR`,
       ];
       const escape = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-      await this.mail.send({ to, subject: `Your CV (${reference})`, text: lines.join('\n'), html: lines.map((l) => (l ? `<p>${escape(l)}</p>` : '')).join('') });
+      await this.mail.send({
+        to,
+        subject: `Your CV (${reference})`,
+        text: lines.join('\n'),
+        html: lines.map((l) => (l ? `<p>${escape(l)}</p>` : '')).join(''),
+        // HR's words when they wrote them (1 November 2026: Organization → Email Templates)
+        template: { key: 'cv_received', values: { first_name: first, company: from, reference } },
+      });
     } catch (err) {
       this.logger.warn(`The confirmation of ${reference} could not be sent: ${(err as Error).message}`);
     }

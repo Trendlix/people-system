@@ -299,6 +299,25 @@ function howAr(f: InterviewMailFacts): string {
 }
 
 /**
+ * The values of an interview email's fields (owner, 1 November 2026: "build the mail templetes"; email-templates.ts):
+ * the candidate, the job, the company, the day (in Arabic too), the time, how long, where or how, and HR's note.
+ */
+export function interviewTemplateValues(f: InterviewMailFacts): Record<string, string> {
+  return {
+    candidate: f.candidate,
+    job: f.job,
+    company: f.company,
+    day: f.day,
+    day_ar: f.dayAr || f.day,
+    time: f.time,
+    minutes: String(f.minutes),
+    how: howEn(f),
+    how_ar: howAr(f),
+    note: f.note ?? '',
+  };
+}
+
+/**
  * The candidate's email about an interview, in English then Arabic (the brief: "bilingual-friendly"): invited, moved to
  * another time, or cancelled. The calendar invitation goes with it.
  */

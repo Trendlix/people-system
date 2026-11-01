@@ -146,6 +146,11 @@ export function shortlistNotice(job: string, names: readonly string[]): { title:
   return { title: `${people(names.length)} shortlisted for ${job}: please accept or reject them`, body: namesLine(names) };
 }
 
+/** The values of the hiring manager's email's fields (owner, 1 November 2026; email-templates.ts shortlist_review). */
+export function shortlistTemplateValues(job: string, names: readonly string[], link: string): Record<string, string> {
+  return { job, count: people(names.length), names: names.map((x) => `- ${x}`).join('\n'), link };
+}
+
 /** The hiring manager's email: who, and where to review them. */
 export function shortlistEmail(job: string, names: readonly string[], link: string): { subject: string; text: string } {
   const n = shortlistNotice(job, names);

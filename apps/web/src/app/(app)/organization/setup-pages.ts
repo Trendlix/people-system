@@ -1,5 +1,6 @@
 import { WHATSAPP_SETTINGS_PATH, ZOHO_PEOPLE_PAGE, type Role } from '@trendlix/shared';
 import { EMAIL_SETTINGS_PATH } from '../../../lib/email-setup';
+import { EMAIL_TEMPLATES_PATH } from '../../../lib/email-templates';
 import { MEETING_SETTINGS_PATH } from '../../../lib/meetings';
 import { CALENDAR_SETTINGS_PATH } from '../../../lib/calendars';
 import { INTERVIEW_HOURS_SETUP_PATH } from '../../../lib/interview-hours';
@@ -20,6 +21,7 @@ import { hasRole } from '../../../lib/roles';
 export const SETUP_PATHS = {
   company: '/organization/company',
   email: EMAIL_SETTINGS_PATH,
+  emailTemplates: EMAIL_TEMPLATES_PATH,
   meetings: MEETING_SETTINGS_PATH,
   calendars: CALENDAR_SETTINGS_PATH,
   whatsapp: WHATSAPP_SETTINGS_PATH,
@@ -67,6 +69,7 @@ export interface SetupGroup {
 export type SetupKey =
   | 'company'
   | 'email'
+  | 'email-templates'
   | 'meetings'
   | 'calendars'
   | 'whatsapp'
@@ -100,6 +103,9 @@ export const SETUP_GROUPS: readonly SetupGroup[] = [
       // the company's email (owner, 23 October 2026: "why dont we add SMTP setup in the organization setup"): a Super
       // Admin's only, as lib/email-setup.ts seesEmailSettings
       { key: 'email', href: SETUP_PATHS.email, label: 'Email Settings', roles: ['super_admin'], noDevelopers: true },
+      // the words of the system's emails (owner, 1 November 2026: "build the mail templetes"): HR's, the CEO's and a
+      // Super Admin's, as lib/email-templates.ts seesEmailTemplates
+      { key: 'email-templates', href: SETUP_PATHS.emailTemplates, label: 'Email Templates', roles: ['hr', 'ceo', 'super_admin'] },
       // online interview meetings (owner, 24 October 2026: "can i link an online meeting service provider to
       // automatically generate meeting links?"; "make it both"): the providers' apps and the company's accounts, a Super
       // Admin's only, never a developer's, as lib/meetings.ts seesMeetingSettings

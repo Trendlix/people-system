@@ -36,6 +36,7 @@ import {
   type ScreeningCallResult,
   type ScreeningCallView,
   type WorkArrangement,
+  shortlistTemplateValues
 } from '@trendlix/shared';
 import { isSuperAdmin } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
@@ -643,9 +644,16 @@ export class ApplicationsService {
     await this.notifications.notify([hm.id], { kind: 'shortlist_review', ...shortlistNotice(v.title, names), link: MY_HIRING_LINK });
     try {
       if (!(await this.mail.ready())) return;
-      const mail = shortlistEmail(v.title, names, `${webOriginOf(this.config)}${MY_HIRING_LINK}`);
-      // their work email, else the one they sign in with
-      await this.mail.send({ to: hm.employee?.workEmail || hm.email, replyTo: user.email, subject: mail.subject, text: mail.text });
+      const link = `${webOriginOf(this.config)}${MY_HIRING_LINK}`;
+      const mail = shortlistEmail(v.title, names, link);
+      // their work email, else the one they sign in with; HR's words when they wrote them (1 November 2026)
+      await this.mail.send({
+        to: hm.employee?.workEmail || hm.email,
+        replyTo: user.email,
+        subject: mail.subject,
+        text: mail.text,
+        template: { key: 'shortlist_review', values: shortlistTemplateValues(v.title, names, link) },
+      });
     } catch (err) {
       this.logger.warn(`The shortlist email of ${v.number} could not be sent: ${(err as Error).message}`);
     }

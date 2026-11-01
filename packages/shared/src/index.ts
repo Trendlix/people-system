@@ -405,6 +405,10 @@ export * from './flexible-days.js';
 // the swap the API makes in an employee's answers and pushes
 export * from './colleague-names.js';
 
+// email templates (owner, 1 November 2026: "build the mail templetes"): the emails HR may word, their fields, filling
+// them in and their HTML
+export * from './email-templates.js';
+
 // checking in on the system (owner, 19 October 2026: "Check-in through the system (phone or web with the office location
 // check, or a device) to replace Zoho"): the office's point and radius, office, remote or unknown, the rules by work
 // arrangement and their flags, punches made a day, who checks in, and where a day came from (a device's later)

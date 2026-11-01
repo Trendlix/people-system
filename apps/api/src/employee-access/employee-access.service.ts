@@ -513,7 +513,12 @@ export class EmployeeAccessService {
       `اختر كلمة المرور من هذا الرابط (يعمل مرة واحدة حتى ${until}):`,
       link,
     ].join('\n');
-    return { to, subject, text };
+    // HR's words when they wrote them (1 November 2026: Organization → Email Templates)
+    const template = {
+      key: invite ? ('account_invite' as const) : ('password_reset' as const),
+      values: { name: name ?? '', company: company.nameEn, company_ar: company.nameAr ?? company.nameEn, email: to, link, until, sign_in: `${origin}/login` },
+    };
+    return { to, subject, text, template };
   }
 
   // ---------- who may ----------

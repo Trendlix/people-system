@@ -1,6 +1,6 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { addressOfSender, mailFromText, mailMissing, type MailProvider, type MailSecurity, type MailSource } from '@trendlix/shared';
+import { addressOfSender, mailFromText, mailMissing, renderEmailTemplate, type EmailTemplateUse, type EmailTemplateText, type MailProvider, type MailSecurity, type MailSource } from '@trendlix/shared';
 import nodemailer, { type Transporter } from 'nodemailer';
 import type { MailSettings } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -36,6 +36,12 @@ export interface Mail {
   text: string;
   html?: string;
   attachments?: MailAttachment[];
+  /**
+   * The kind of email and the values its fields are filled with (owner, 1 November 2026: "build the mail templetes"):
+   * when HR worded this kind (Organization → Email Templates), its subject, text and HTML are HR's, filled in; else as
+   * given. Never sent itself.
+   */
+  template?: EmailTemplateUse;
 }
 
 /** A message as MAIL_TRANSPORT=memory keeps it: with the sender it went from and whose settings those were. */
@@ -85,6 +91,8 @@ export class MailService {
   readonly outbox: KeptMail[] = [];
   private readonly memory: boolean;
   private kept: { at: number; row: Promise<MailSettings | null> } | null = null;
+  /** HR's worded emails, by kind, read at most every 30 seconds, and at once after a save (forgetTemplates()). */
+  private templates: { at: number; rows: Promise<Map<string, EmailTemplateText>> } | null = null;
   /** The system's transport, made from the saved settings as they were (`stamp`) when first needed. */
   private system: { stamp: string; sender: Sender | null } | null = null;
 
@@ -183,18 +191,22 @@ export class MailService {
   async send(given: Mail): Promise<void> {
     const sender = await this.sender();
     if (!sender) throw new ServiceUnavailableException("Email isn't set up on the server yet. Send the offer's link yourself instead.");
-    const swap = await this.names.forAddress(given.to);
+    // HR's words for this kind of email, when they wrote them (1 November 2026)
+    const worded = await this.worded(given);
+    const swap = await this.names.forAddress(worded.to);
+    const { template: _template, ...sent } = worded;
+    void _template;
     const mail: Mail = swap
       ? {
-          ...given,
-          subject: swap(given.subject),
-          text: swap(given.text),
-          ...(given.html !== undefined && { html: swap(given.html) }),
-          ...(given.attachments && {
-            attachments: given.attachments.map((a) => (a.contentType.startsWith('text/calendar') ? { ...a, content: Buffer.from(swap(a.content.toString('utf8')), 'utf8') } : a)),
+          ...sent,
+          subject: swap(sent.subject),
+          text: swap(sent.text),
+          ...(sent.html !== undefined && { html: swap(sent.html) }),
+          ...(sent.attachments && {
+            attachments: sent.attachments.map((a) => (a.contentType.startsWith('text/calendar') ? { ...a, content: Buffer.from(swap(a.content.toString('utf8')), 'utf8') } : a)),
           }),
         }
-      : given;
+      : sent;
     const replyTo = mail.replyTo ?? sender.replyTo ?? undefined;
     try {
       await sender.transport.sendMail({ ...mail, from: sender.from, replyTo });
@@ -234,6 +246,39 @@ export class MailService {
     } finally {
       transport.close();
     }
+  }
+
+  /**
+   * An email with HR's words for its kind when they wrote them (Organization → Email Templates), filled with its values;
+   * as given otherwise, or when they can't be read (logged).
+   */
+  private async worded(mail: Mail): Promise<Mail> {
+    if (!mail.template) return mail;
+    try {
+      const t = (await this.templateRows()).get(mail.template.key);
+      return t ? { ...mail, ...renderEmailTemplate(t, mail.template.values) } : mail;
+    } catch (err) {
+      this.logger.warn(`The email templates could not be read, so the system's words are used: ${(err as Error).message}`);
+      return mail;
+    }
+  }
+
+  /** HR's worded emails by kind: kept 30 seconds; a failed read isn't kept. */
+  private templateRows(): Promise<Map<string, EmailTemplateText>> {
+    if (!this.templates || Date.now() - this.templates.at > KEPT_MS) {
+      const rows = this.prisma.emailTemplate.findMany({ select: { key: true, subject: true, body: true } }).then((all) => new Map(all.map((r) => [r.key, { subject: r.subject, body: r.body }])));
+      const kept = { at: Date.now(), rows };
+      this.templates = kept;
+      void rows.catch(() => {
+        if (this.templates === kept) this.templates = null;
+      });
+    }
+    return this.templates.rows;
+  }
+
+  /** After a template is saved or reset: read again on the next email. */
+  forgetTemplates(): void {
+    this.templates = null;
   }
 
   /** The saved row, or null when it can't be read: then the server's settings, as before there was a page. */

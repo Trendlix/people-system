@@ -213,6 +213,7 @@ model User {
   // access follows the contract (owner, 23 October 2026): the 7 days' grace this user gave
   accessGracesGiven         AccessGrace[]              @relation("AccessGraceGrantedBy")
   accessHoldsPut            AccessHold[]               @relation("AccessHoldPutBy")
+  emailTemplatesSaved       EmailTemplate[]            @relation("EmailTemplateUpdatedBy")
   accessHoldsReleased       AccessHold[]               @relation("AccessHoldReleasedBy")
   // WhatsApp notifications (owner, 24 October 2026: "how to make whatsapp notifications?"): the settings this user saved
   // last, their own opt-in, and the WhatsApp messages sent to them
@@ -5316,4 +5317,18 @@ model AgencyMark {
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   @@map("agency_marks")
+}
+
+// An email worded by HR (owner, 1 November 2026: "build the mail templetes"; packages/shared email-templates.ts): its
+// subject and text, with fields such as {{name}} filled in when sent. One a kind of email (EMAIL_TEMPLATE_KEYS); none
+// saved, the system's words. Deleted by "Reset to standard".
+model EmailTemplate {
+  key         String   @id // EMAIL_TEMPLATE_KEYS
+  subject     String
+  body        String
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  updatedById String?  @map("updated_by") @db.Uuid
+  updatedBy   User?    @relation("EmailTemplateUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("email_templates")
 }

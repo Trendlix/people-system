@@ -174,6 +174,7 @@ export const AUDIT_ENTITY_MODULES: Readonly<Record<string, AuditModule>> = {
   user: 'access',
   audit_log: 'access',
   // settings
+  email_template: 'settings',
   mail_settings: 'settings',
   maps_settings: 'settings',
   whatsapp_settings: 'settings',

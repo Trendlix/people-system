@@ -30,6 +30,7 @@ import {
   type MyHiring,
   type Recommendation,
   type WhatsAppPanelChange,
+  interviewTemplateValues
 } from '@trendlix/shared';
 import { randomUUID } from 'node:crypto';
 import { AuditService } from '../audit/audit.service.js';
@@ -811,7 +812,16 @@ export class InterviewsService {
     } else {
       try {
         const m = interviewMail(kind, facts);
-        await this.mail.send({ to: candidate.email, replyTo: user.email, subject: m.subject, text: m.text, attachments: [attach(method, [candidate, ...panel])] });
+        // HR's words when they wrote them (1 November 2026: Organization → Email Templates)
+        const key = kind === 'cancelled' ? 'interview_cancelled' : kind === 'moved' ? 'interview_moved' : 'interview_invite';
+        await this.mail.send({
+          to: candidate.email,
+          replyTo: user.email,
+          subject: m.subject,
+          text: m.text,
+          attachments: [attach(method, [candidate, ...panel])],
+          template: { key, values: interviewTemplateValues(facts) },
+        });
         await this.prisma.interview.update({ where: { id: r.id }, data: { emailedAt: new Date(), emailProblem: null } });
         email = 'sent';
       } catch (err) {
@@ -841,6 +851,7 @@ export class InterviewsService {
         whatsapp: { facts: { template: 'interview_panel', change, candidate: r.application.fullName, job, at: r.startsAt.toISOString() }, confidential: cLevel },
       });
       if (!(await this.mail.ready())) return;
+      const how = `${INTERVIEW_KIND_LABELS[facts.kind]}${meetingName ? ` (${meetingName})` : ''}${r.location ? `: ${r.location}` : ''}`;
       for (const e of employees) {
         if (!e.workEmail) continue;
         try {
@@ -848,8 +859,10 @@ export class InterviewsService {
             to: e.workEmail,
             replyTo: user.email,
             subject: `${title}: ${r.application.fullName} · ${job}`,
-            text: `${body}\n\n${INTERVIEW_KIND_LABELS[facts.kind]}${meetingName ? ` (${meetingName})` : ''}${r.location ? `: ${r.location}` : ''}\n\nOpen the applicant in People System → Recruitment → My Hiring.`,
+            text: `${body}\n\n${how}\n\nOpen the applicant in People System → Recruitment → My Hiring.`,
             attachments: [attach(m, [candidate, ...panel])],
+            // HR's words when they wrote them (1 November 2026: Organization → Email Templates)
+            template: { key: 'interviewer_notice', values: { what: title, candidate: r.application.fullName, job, details: body, how } },
           });
         } catch (err) {
           this.logger.warn(`The interview email to an interviewer could not be sent: ${(err as Error).message}`);

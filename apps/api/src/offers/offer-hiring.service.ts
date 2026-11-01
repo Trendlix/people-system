@@ -10,7 +10,7 @@ import { MailService } from '../mail/mail.service.js';
 import { defaultManagerId } from '../organisation/departments/leads.js';
 import { LawRatesService } from '../payroll/law-rates/law-rates.service.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { answerEmail } from './offer-mail.js';
+import { answerEmail, answerTemplateValues } from './offer-mail.js';
 import { cairoDate, offerSlot, termDates } from './rules.js';
 import { offerPay } from './views.js';
 
@@ -285,7 +285,7 @@ export class OfferHiringService {
     try {
       const sender = await this.prisma.user.findUnique({ where: { id: o.sentById }, select: { email: true, isActive: true } });
       if (!sender?.isActive) return;
-      const mail = answerEmail({
+      const answerInput = {
         number: o.number,
         fullNameEn: o.fullNameEn,
         answer,
@@ -293,8 +293,10 @@ export class OfferHiringService {
         on: cairoDate(o.respondedAt ?? new Date()),
         reason: answer === 'declined' ? o.declineReason : null,
         hired: hired && ('error' in hired ? { error: hired.error } : { employeeCode: hired.employeeCode }),
-      });
-      await this.mail.send({ to: sender.email, ...mail });
+      };
+      const mail = answerEmail(answerInput);
+      // HR's words when they wrote them (1 November 2026: Organization → Email Templates)
+      await this.mail.send({ to: sender.email, ...mail, template: { key: 'offer_answer', values: answerTemplateValues(answerInput) } });
     } catch (err) {
       this.logger.warn(`Telling the sender of ${o.number} about the answer failed: ${(err as Error).message}`);
     }

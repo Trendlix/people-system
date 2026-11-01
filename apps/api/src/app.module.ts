@@ -19,6 +19,7 @@ import { AppReleasesModule } from './app-version/app-releases.module.js';
 import { KpisModule } from './kpis/kpis.module.js';
 import { LeaveModule } from './leave/leave.module.js';
 import { MailModule } from './mail/mail.module.js';
+import { EmailTemplatesModule } from './email-templates/email-templates.module.js';
 import { ColleagueNamesModule } from './auth/colleague-names.module.js';
 import { MeetingsModule } from './meetings/meetings.module.js';
 import { CalendarsModule } from './calendars/calendars.module.js';
@@ -63,6 +64,8 @@ import { ZohoPeopleModule } from './zoho-people/zoho-people.module.js';
     AppReleasesModule,
     ConfidentialModule,
     MailModule,
+    // Organization → Email Templates: HR's words for the system's emails (owner, 1 November 2026)
+    EmailTemplatesModule,
     // WhatsApp notifications (owner, 24 October 2026: "how to make whatsapp notifications?"; "Directly to Meta"): a
     // channel beside the bell, push and email, for those who opt in
     WhatsAppModule,
