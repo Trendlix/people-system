@@ -339,7 +339,7 @@ function PendingHomeCard({ request: r }: { request: HomeLocationView }) {
       {r.reason && <p className="mt-3 text-sm whitespace-pre-line">“{r.reason}”</p>}
       {lockHint && (
         <p className="mt-3 text-sm text-muted">
-          {r.employee.fullNameEn} works at the office: while check-ins are locked to the office network alone, a check-in from home is still refused off it.
+          {r.employee.fullNameEn} works at the office: while check-ins need the office Wi-Fi, they can’t check in from home.
         </p>
       )}
       {(r.overlaps?.length ?? 0) > 0 && (

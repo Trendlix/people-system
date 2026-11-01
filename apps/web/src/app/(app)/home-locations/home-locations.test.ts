@@ -160,7 +160,7 @@ describe('the words', () => {
   });
 
   it('tells Office staff the office network’s lock still holds at home, unless HR lets them check in anywhere', () => {
-    expect(officeLockHint({ workArrangement: 'office' })).toContain('a check-in from home is still refused off it');
+    expect(officeLockHint({ workArrangement: 'office' })).toBe('While check-ins need the office Wi-Fi, you can’t check in from home, even once it’s approved.');
     expect(officeLockHint({ workArrangement: 'office', checkInAnywhere: true })).toBeNull();
     expect(officeLockHint({ workArrangement: 'hybrid' })).toBeNull();
     expect(officeLockHint({ workArrangement: 'wfh' })).toBeNull();

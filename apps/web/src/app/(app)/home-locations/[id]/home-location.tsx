@@ -161,7 +161,7 @@ export async function HomeLocationDetail({
                 )}
                 {lockHint && !own && (
                   <Fact label="Checking in" wide>
-                    {`${r.employee.fullNameEn} works at the office: while check-ins are locked to the office network alone, a check-in from home is still refused off it, unless you let them check in from anywhere on their profile. With check-ins locked to the check-in locations, an approved home lets their check-ins from there through.`}
+                    {`${r.employee.fullNameEn} works at the office: while check-ins need the office Wi-Fi, they can’t check in from home unless you let them check in from anywhere.`}
                   </Fact>
                 )}
               </dl>

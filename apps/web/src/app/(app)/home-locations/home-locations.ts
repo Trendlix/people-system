@@ -313,7 +313,8 @@ export const asksHome = (list: readonly HomeLocationView[], type?: HomeType) => 
  */
 export function officeLockHint(employment: { workArrangement: string; checkInAnywhere?: boolean } | null | undefined): string | null {
   if (employment?.workArrangement !== 'office' || employment.checkInAnywhere) return null;
-  return 'You work at the office: while check-ins are locked to the office network alone, a check-in from home is still refused off it, unless HR lets you check in from anywhere. With check-ins locked to the check-in locations, an approved home lets your check-ins from there through. An approved home shows your check-ins from there as Home.';
+  // one short line (owner, 1 November 2026: "limit the description text")
+  return 'While check-ins need the office Wi-Fi, you can’t check in from home, even once it’s approved.';
 }
 
 // ---------- the map ----------

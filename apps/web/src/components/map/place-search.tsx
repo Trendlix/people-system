@@ -245,10 +245,10 @@ export function PlaceSearch({
       </div>
       <p id={fid('place-hint')} className="hint">
         {search.provider === 'google' ? (
-          <>In Egypt, in English or Arabic, suggested as you type; a Google Maps link or a point (30.0457, 31.1923) puts the pin at once. Places from Google Maps.</>
+          <>Type a name or address, or paste a Google Maps link.</>
         ) : (
           <>
-            In Egypt, in English or Arabic; a Google Maps link or a point (30.0457, 31.1923) puts the pin at once. Search by{' '}
+            Type a name or address, or paste a Google Maps link. Search by{' '}
             <a href="https://nominatim.openstreetmap.org/" target="_blank" rel="noreferrer">
               Nominatim
             </a>
