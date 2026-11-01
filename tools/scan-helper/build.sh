@@ -3,13 +3,13 @@
 #   dist/TrendLIX-Scan-Helper-mac.zip      macOS universal binary (Apple silicon + Intel)
 #   dist/TrendLIX-Scan-Helper-windows.zip  Windows x64 and ARM64 .exe
 #
-# Usage: ./build.sh            (version 1.0.0)
-#        VERSION=1.0.1 ./build.sh
+# Usage: ./build.sh            (version 1.0.1)
+#        VERSION=1.0.2 ./build.sh
 # Needs Go, and on macOS lipo (Xcode command line tools) for the universal binary.
 set -euo pipefail
 
 cd "$(dirname "$0")"
-VERSION="${VERSION:-1.0.0}"
+VERSION="${VERSION:-1.0.1}"
 GO="${GO:-$(command -v go || echo /usr/local/go/bin/go)}"
 LDFLAGS="-s -w -X main.version=${VERSION}"
 FLAGS=(-trimpath -buildvcs=false -ldflags "$LDFLAGS")

@@ -79,6 +79,10 @@ Scanners you add this way are remembered. You can remove them from the same page
 | The scan took more than 2 minutes… | Look at the scanner for a paper jam, an open cover or a message on its screen. |
 | The scanner reported an error: … | Read the scanner's screen; restarting the scanner often helps. |
 
+## Updating
+
+When the scan window says a newer version is out, download it again and open it as on the first run. It replaces the older copy by itself and keeps starting at login. If the older copy is open in a window, close that window first.
+
 ## Stopping or uninstalling
 
 - **Stop it for now:** if it runs in a window, close that window. If it runs in the background: on a Mac, uninstall it (below); on Windows, open **Task Manager → Details**, select **TrendLIX-Scan-Helper.exe** and click **End task**.
@@ -109,13 +113,13 @@ TrendLIX-Scan-Helper uninstall    undo install
 TrendLIX-Scan-Helper version      print the version
 ```
 
-`install` uses a LaunchAgent (`~/Library/LaunchAgents/com.trendlix.scan-helper.plist`, loaded with `launchctl`) on macOS, inside a minimal app bundle so that macOS's Local Network prompt can name it, and the `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` value on Windows. The login copy runs with `--background`: on Windows it drops its console window, and if another copy already holds the port it waits and takes over when that copy exits. A copy started by hand exits 0 if a helper is already running, and 1 with a message if another program has the port.
+`install` uses a LaunchAgent (`~/Library/LaunchAgents/com.trendlix.scan-helper.plist`, loaded with `launchctl`) on macOS, inside a minimal app bundle so that macOS's Local Network prompt can name it, and the `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` value on Windows. The login copy runs with `--background`: on Windows it drops its console window, and if another copy already holds the port it waits and takes over when that copy exits. A copy started by hand exits 0 if a helper of the same or a newer version is already running; if an older one is running and installed, it updates it (installs itself in its place); if an older one runs in a window, it asks for that window to be closed first. It exits 1 with a message if another program has the port.
 
 ### API
 
 | Method and path | Answer |
 |---|---|
-| `GET /v1/status` | `{ "app": "trendlix-scan-helper", "version": "1.0.0" }` |
+| `GET /v1/status` | `{ "app": "trendlix-scan-helper", "version": "1.0.1" }` |
 | `GET /v1/scanners[?refresh=1]` | `[{ id, name, url, secure, sources, duplex, colorModes, resolutions, formats, manual }]`, within about 3 s |
 | `POST /v1/scanners` `{ "url" }` | Adds a scanner by URL, host or IP (tries `http://host/eSCL` and `https://host/eSCL`) and answers it. 400 for bad input, 502 if no eSCL scanner answers. |
 | `DELETE /v1/scanners/{id}` | Removes a manually added scanner: `{ "ok": true }`. 400 for a discovered one, 404 if unknown. |

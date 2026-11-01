@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/xml"
 	"net"
+	"net/http"
 	"slices"
 	"strings"
 	"testing"
@@ -174,6 +175,45 @@ func TestScanFeederWithWrongLocationHost(t *testing.T) {
 	}
 	if len(docs) != 2 {
 		t.Errorf("pages = %d, want 2", len(docs))
+	}
+}
+
+// A scanner that drops the scan request once (a printer that closed the
+// connection, or was waking up) still scans: the request is sent once more.
+func TestScanRetriesAStartThatGotNoAnswer(t *testing.T) {
+	f := &escltest.Scanner{DropScanJobs: 1}
+	f.Start(false)
+	defer f.Close()
+	c := escl.NewClient("test")
+	c.RetryWait = 10 * time.Millisecond
+	docs, err := c.Scan(context.Background(), f.BaseURL(), escl.ScanSettings{Source: escl.SourcePlaten, ColorMode: "RGB24", Resolution: 300, Format: "image/jpeg", Width: 2480, Height: 3508}, 5*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(docs) != 1 {
+		t.Errorf("pages = %d, want 1", len(docs))
+	}
+}
+
+// Asked once more only: a scanner that never answers is reported as not answering.
+func TestScanGivesUpAfterOneRetry(t *testing.T) {
+	f := &escltest.Scanner{DropScanJobs: 2}
+	f.Start(false)
+	defer f.Close()
+	c := escl.NewClient("test")
+	c.RetryWait = 10 * time.Millisecond
+	_, err := c.Scan(context.Background(), f.BaseURL(), escl.ScanSettings{Source: escl.SourcePlaten, ColorMode: "RGB24", Resolution: 300, Format: "image/jpeg", Width: 2480, Height: 3508}, 5*time.Second)
+	if escl.KindOf(err) != escl.KindUnreachable {
+		t.Fatalf("err = %v, want unreachable", err)
+	}
+}
+
+// Every request to a scanner goes on a new connection: printers drop kept-open
+// ones without saying so (Xerox WorkCentre 3335, 1 November 2026).
+func TestNoKeptOpenConnections(t *testing.T) {
+	tr, ok := escl.NewHTTPClient().Transport.(*http.Transport)
+	if !ok || !tr.DisableKeepAlives {
+		t.Fatal("the scanner client keeps connections open between requests")
 	}
 }
 

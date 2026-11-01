@@ -32,7 +32,7 @@ import (
 )
 
 // version is set at build time with -ldflags "-X main.version=...".
-var version = "1.0.0"
+var version = "1.0.1"
 
 const statusURL = "http://127.0.0.1:47815"
 
@@ -140,6 +140,18 @@ func serve(background bool) int {
 	ln, err := server.Listen(server.DefaultPort)
 	if err != nil {
 		if v, ok := server.ProbeHelper(server.DefaultPort); ok && !background {
+			// This copy is newer than the one running: update it (installing
+			// stops the older copy and starts this one at login and now).
+			if install.Newer(version, v) {
+				if install.Supported() && install.IsInstalled() {
+					fmt.Printf("An older TrendLIX Scan Helper (version %s) is running. Updating it to version %s...\n", v, version)
+					logger.Printf("updating the running helper %s to %s", v, version)
+					return finishInstall()
+				}
+				fmt.Printf("An older TrendLIX Scan Helper (version %s) is open in another window.\nClose that window, then open this one (version %s) again.\n", v, version)
+				pauseIfOwnConsole()
+				return 1
+			}
 			fmt.Printf("TrendLIX Scan Helper is already running (version %s), so there is nothing more to do.\nYou can check it at %s\n", v, statusURL)
 			pauseIfOwnConsole()
 			return 0

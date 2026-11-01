@@ -27,6 +27,7 @@ type Scanner struct {
 	PageType     string        // Content-Type of pages (default image/jpeg)
 	Page         func(n int) []byte
 	LocationHost string // host put in the Location header (mimics scanners that report a wrong one)
+	DropScanJobs int    // the first this many POST ScanJobs get no answer: the connection is closed
 
 	mu       sync.Mutex
 	settings []string
@@ -71,6 +72,14 @@ func (f *Scanner) Start(tls bool) *Scanner {
 	mux.HandleFunc("POST /eSCL/ScanJobs", func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		f.mu.Lock()
+		if f.DropScanJobs > 0 {
+			f.DropScanJobs--
+			f.mu.Unlock()
+			if conn, _, err := http.NewResponseController(w).Hijack(); err == nil {
+				conn.Close()
+			}
+			return
+		}
 		f.settings = append(f.settings, string(body))
 		status := f.JobStatus
 		f.jobs++

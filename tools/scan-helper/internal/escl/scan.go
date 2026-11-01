@@ -186,6 +186,17 @@ func (c *Client) feederEmpty(parent context.Context, base string) bool {
 
 func (c *Client) createJob(ctx context.Context, base string, s ScanSettings) (string, error) {
 	resp, err := c.request(ctx, http.MethodPost, base+"/ScanJobs", strings.NewReader(string(s.XML())))
+	if err != nil && ctx.Err() == nil {
+		// No answer at all (the connection dropped, or the scanner was waking
+		// up): ask once more before giving up. A scanner that did start a job
+		// answers the second ask "busy", which is reported as such.
+		select {
+		case <-time.After(c.retryWait()):
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+		resp, err = c.request(ctx, http.MethodPost, base+"/ScanJobs", strings.NewReader(string(s.XML())))
+	}
 	if err != nil {
 		return "", err
 	}

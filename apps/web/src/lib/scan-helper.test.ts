@@ -8,11 +8,13 @@ import {
   filenameFrom,
   formatSize,
   helperErrorMessage,
+  helperOutdated,
   helperStatus,
   hostOf,
   listScanners,
   nearestResolution,
   pagesFrom,
+  SCAN_HELPER_LATEST,
   scan,
   SCAN_HELPER_URL,
   ScanHelperError,
@@ -303,5 +305,17 @@ describe('calls to the helper', () => {
     expect((await addScanner(' 192.168.1.60 ')).manual).toBe(true);
     const init = add.mock.calls[0] as unknown as [string, RequestInit];
     expect(JSON.parse(String(init[1].body))).toEqual({ url: '192.168.1.60' });
+  });
+});
+
+describe('an older Scan Helper', () => {
+  it('is told apart from the newest one, whatever a version that can’t be read says', () => {
+    expect(SCAN_HELPER_LATEST).toBe('1.0.1');
+    expect(helperOutdated('1.0.0')).toBe(true);
+    expect(helperOutdated('1.0.1')).toBe(false);
+    expect(helperOutdated('1.1.0')).toBe(false);
+    expect(helperOutdated('0.9')).toBe(true);
+    expect(helperOutdated('dev')).toBe(false);
+    expect(helperOutdated('')).toBe(false);
   });
 });

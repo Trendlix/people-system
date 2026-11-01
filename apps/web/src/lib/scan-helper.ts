@@ -20,6 +20,26 @@ export const SCAN_HELPER_DOWNLOADS = {
   windows: '/downloads/TrendLIX-Scan-Helper-windows.zip',
 } as const;
 
+/**
+ * The helper's newest version, the one in public/downloads (tools/scan-helper/build.sh). 1.0.1 (1 November 2026): a new
+ * connection for each request to the scanner, and starting a scan asked once more when it got no answer (a Xerox
+ * WorkCentre 3335 "didn't answer"); opening it updates an older copy that starts at login.
+ */
+export const SCAN_HELPER_LATEST = '1.0.1';
+
+/** Whether a running helper is older than the newest; a version that can't be read isn't. */
+export function helperOutdated(version: string, latest: string = SCAN_HELPER_LATEST): boolean {
+  const parse = (v: string) => {
+    const parts = v.trim().replace(/^v/, '').split('.');
+    return parts.length <= 3 && parts.every((p) => /^\d+$/.test(p)) ? [0, 1, 2].map((i) => Number(parts[i] ?? 0)) : null;
+  };
+  const a = parse(version);
+  const b = parse(latest);
+  if (!a || !b) return false;
+  for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] < b[i];
+  return false;
+}
+
 /** Glass (eSCL "Platen") or document feeder. */
 export type ScanSource = 'platen' | 'feeder';
 export type ColorMode = 'color' | 'grayscale' | 'bw';

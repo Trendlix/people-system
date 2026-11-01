@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 )
 
 // Options for Install.
@@ -72,4 +74,37 @@ func runningFrom(dir string) bool {
 	}
 	rel, err := filepath.Rel(dir, exe)
 	return err == nil && rel != ".." && !filepath.IsAbs(rel) && (len(rel) < 3 || rel[:3] != ".."+string(filepath.Separator))
+}
+
+// Newer reports whether version a (such as "1.0.1") is newer than b (such as
+// "1.0.0"): opening a newer copy by hand updates the one already running.
+// A version that can't be read is never newer.
+func Newer(a, b string) bool {
+	pa, okA := parseVersion(a)
+	pb, okB := parseVersion(b)
+	if !okA || !okB {
+		return false
+	}
+	for i := range pa {
+		if pa[i] != pb[i] {
+			return pa[i] > pb[i]
+		}
+	}
+	return false
+}
+
+func parseVersion(v string) ([3]int, bool) {
+	var out [3]int
+	parts := strings.Split(strings.TrimPrefix(strings.TrimSpace(v), "v"), ".")
+	if len(parts) == 0 || len(parts) > 3 {
+		return out, false
+	}
+	for i, p := range parts {
+		n, err := strconv.Atoi(p)
+		if err != nil || n < 0 {
+			return out, false
+		}
+		out[i] = n
+	}
+	return out, true
 }

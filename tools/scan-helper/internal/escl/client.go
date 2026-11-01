@@ -79,6 +79,16 @@ type Client struct {
 	// PollInterval is how long to wait before asking again when the scanner
 	// says the next page isn't ready yet (HTTP 503).
 	PollInterval time.Duration
+	// RetryWait is how long to wait before asking once more to start a scan
+	// that got no answer at all (default 2 seconds).
+	RetryWait time.Duration
+}
+
+func (c *Client) retryWait() time.Duration {
+	if c.RetryWait > 0 {
+		return c.RetryWait
+	}
+	return 2 * time.Second
 }
 
 // NewClient returns a Client with an HTTP client suited to LAN scanners.
@@ -97,8 +107,11 @@ func NewHTTPClient() *http.Client {
 		DialTLSContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
 			return dialScannerTLS(ctx, dialer, network, addr)
 		},
-		MaxIdleConnsPerHost:   2,
-		IdleConnTimeout:       30 * time.Second,
+		// A new connection for every request: the web servers in many printers
+		// (Xerox and Samsung among them) drop a connection kept open between
+		// requests without saying so, and the next request on it (the scan
+		// itself, a POST that is never retried) fails as if nothing answered.
+		DisableKeepAlives:     true,
 		ExpectContinueTimeout: time.Second,
 	}}
 }

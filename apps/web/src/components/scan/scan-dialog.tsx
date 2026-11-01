@@ -19,6 +19,8 @@ import {
   localNetworkPermission,
   scan,
   SCAN_HELPER_DOWNLOADS,
+  SCAN_HELPER_LATEST,
+  helperOutdated,
   scanErrorMessage,
   SOURCE_LABELS,
   SOURCES,
@@ -752,7 +754,23 @@ function ScanWindow({ title, hint, purpose, maxBytes, onScanned, onClosed }: Sca
       <div className="min-h-0 flex-auto overflow-y-auto p-5">{body}</div>
 
       <div className="flex flex-wrap items-center justify-end gap-3 border-t border-line px-5 py-3">
-        {version && <p className="w-full text-xs text-muted sm:mr-auto sm:w-auto">TrendLIX Scan Helper {version}</p>}
+        {version &&
+          (helperOutdated(version) ? (
+            // an older helper on this computer (1 November 2026): the newer one fixes scanners that "didn't answer"
+            <p className="w-full text-xs text-warn sm:mr-auto sm:w-auto sm:max-w-sm">
+              TrendLIX Scan Helper {version}. Version {SCAN_HELPER_LATEST} is out: download it for{' '}
+              <a href={SCAN_HELPER_DOWNLOADS.mac} download className="font-semibold underline underline-offset-2">
+                Mac
+              </a>{' '}
+              or{' '}
+              <a href={SCAN_HELPER_DOWNLOADS.windows} download className="font-semibold underline underline-offset-2">
+                Windows
+              </a>{' '}
+              and open it: it replaces this one.
+            </p>
+          ) : (
+            <p className="w-full text-xs text-muted sm:mr-auto sm:w-auto">TrendLIX Scan Helper {version}</p>
+          ))}
         {actions}
       </div>
       <p aria-live="polite" className="sr-only">
