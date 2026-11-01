@@ -8224,7 +8224,7 @@
    },
    "exemption": null,
    "expected": "office",
-   "expectedText": "You work at the office: check in there.",
+   "expectedText": "Check in at the office.",
    "officeLocationSet": true,
    "network": {
     "locked": true
@@ -8304,7 +8304,7 @@
    },
    "exemption": null,
    "expected": "office",
-   "expectedText": "You work at the office: check in there.",
+   "expectedText": "Check in at the office.",
    "officeLocationSet": true,
    "network": {
     "locked": true

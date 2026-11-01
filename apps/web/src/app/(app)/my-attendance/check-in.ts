@@ -20,7 +20,6 @@ import {
   PUNCH_KIND_LABELS,
   shiftWindowOn,
   shiftWorkHours,
-  SPOT_KEPT_TEXT,
   timeOfDayText,
   type CheckInLocationError,
   type CheckInPlace,
@@ -563,13 +562,13 @@ export const OFFICE_NOT_SET_TEXT = "HR hasn't set the office's location on the s
  * What the panel says of where the location goes: it is asked each press, and the spot is kept with it (owner, 20
  * October 2026: "Yes, keep the spot"; HR, the CEO and the Super Admin see it).
  */
-export const LOCATION_NOTE = `Each press asks your browser for your location to tell the office from remote. ${SPOT_KEPT_TEXT}`;
+export const LOCATION_NOTE = 'Your location is read only when you press, and HR can see it.';
 
 /**
  * The same inside the employee app, which reads the phone's own location and tells a made-up one (Phase 2, 20 October
  * 2026), and needs it for a press (owner, 20 October 2026: "Refuse without location", "App only").
  */
-export const LOCATION_NOTE_IN_APP = `Each press needs your phone’s location to tell the office from remote. ${SPOT_KEPT_TEXT} A location the phone says an app made up is flagged.`;
+export const LOCATION_NOTE_IN_APP = 'Your phone’s location is read only when you press, and HR can see it. A faked location is flagged.';
 
 /**
  * What to do when a press's location couldn't be read (the employee app's Phase 2, 20 October 2026: "a clear message

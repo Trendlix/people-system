@@ -210,10 +210,10 @@ export function checkInLockRefusal(network: { locked: boolean; refused: boolean;
 // ---------- what the check-in panel says before a press ----------
 
 /** What the panel tells someone held to the check-in locations, before they press. */
-export const GPS_NEEDED_TEXT = 'Check-ins need you at the office: your location is checked when you check in or out, and the app reads it more precisely than a browser.';
+export const GPS_NEEDED_TEXT = 'You need to be inside the office to check in or out.';
 
 /** What it tells someone held to both locks. */
-export const BOTH_LOCKS_NEEDED_TEXT = 'Check-ins need you at the office: on the office Wi-Fi, or with your location inside the office’s area.';
+export const BOTH_LOCKS_NEEDED_TEXT = 'You need to be on the office Wi-Fi, or inside the office, to check in or out.';
 
 /**
  * What the panel tells someone locked, before they press: the office network's words (with their own sub-locations),

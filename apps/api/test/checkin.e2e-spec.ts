@@ -204,7 +204,7 @@ describe('Checking in on the system (e2e)', () => {
 
     it('tells where they are expected, and that the next press is Check in', async () => {
       const t = await today('olga');
-      expect(t).toMatchObject({ next: 'in', punches: [], day: null, expected: 'office', expectedText: 'You work at the office: check in there.', officeLocationSet: true });
+      expect(t).toMatchObject({ next: 'in', punches: [], day: null, expected: 'office', expectedText: 'Check in at the office.', officeLocationSet: true });
       expect(t.date).toBe(TODAY);
       expect((await today('hugo')).expected).toBe('office');
       expect((await today('hela')).expected).toBe('anywhere');

@@ -351,7 +351,7 @@ export function punchFlags(
 /** What the employee is told of where today's check-in is expected; on an approved work from home day (wfh.ts), so. */
 export function expectedPlaceText(arrangement: string, expected: ExpectedPlace, workingFromHome = false): string {
   if (workingFromHome) return 'Today is your approved work from home day: check in from home.';
-  if (expected === 'office') return arrangement === 'hybrid' ? 'Today is one of your office days: check in at the office.' : 'You work at the office: check in there.';
+  if (expected === 'office') return arrangement === 'hybrid' ? 'Today is an office day: check in at the office.' : 'Check in at the office.';
   if (arrangement === 'hybrid') return 'Today is a home day: check in wherever you work from.';
   return 'You may check in wherever you work today.';
 }

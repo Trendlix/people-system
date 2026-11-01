@@ -42,8 +42,8 @@ abstract final class AttendanceWords {
   static const wfhToday = 'Working from home today';
   static String firstDayToday(String? start) => 'Your first day: it is counted from your shift’s start${start == null ? '' : ', $start'}, whatever time you check in.';
   static const networkNeeded = 'Check-ins need the office network: connect to the office Wi-Fi before you check in or out.';
-  static const gpsNeeded = 'Check-ins need you at the office: your location is checked when you check in or out, and the app reads it more precisely than a browser.';
-  static const bothNeeded = 'Check-ins need you at the office: on the office Wi-Fi, or with your location inside the office’s area.';
+  static const gpsNeeded = 'You need to be inside the office to check in or out.';
+  static const bothNeeded = 'You need to be on the office Wi-Fi, or inside the office, to check in or out.';
 
   /// What someone locked to the office network or the check-in locations is told before pressing; null when neither.
   static String? lockText({required bool network, required bool gps, List<String> ownPlaces = const []}) {

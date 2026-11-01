@@ -73,7 +73,7 @@ const TODAY: CheckInTodayView = {
   punches: [],
   day: null,
   expected: 'office',
-  expectedText: 'You work at the office: check in there.',
+  expectedText: 'Check in at the office.',
   officeLocationSet: true,
   shift: { startTime: '09:00', endTime: '17:00', hoursPerDay: 8, graceMinutes: 15 },
 };
@@ -246,8 +246,9 @@ describe('the panel', () => {
   });
 
   it('tells the employee the spot is kept, on the website and in the app (owner, 20 October 2026: "Yes, keep the spot")', () => {
-    expect(LOCATION_NOTE).toBe('Each press asks your browser for your location to tell the office from remote. Each check-in keeps the spot where you pressed, read only then; HR can see it.');
-    expect(LOCATION_NOTE_IN_APP).toContain('Each check-in keeps the spot where you pressed, read only then; HR can see it.');
+    // simpler words (owner, 1 November 2026: "make it simpler")
+    expect(LOCATION_NOTE).toBe('Your location is read only when you press, and HR can see it.');
+    expect(LOCATION_NOTE_IN_APP).toBe('Your phone’s location is read only when you press, and HR can see it. A faked location is flagged.');
     expect(`${LOCATION_NOTE} ${LOCATION_NOTE_IN_APP}`).not.toMatch(/never where you are/);
   });
 

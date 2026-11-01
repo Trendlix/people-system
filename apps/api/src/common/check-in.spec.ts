@@ -109,8 +109,8 @@ describe('the rules by work arrangement', () => {
   });
 
   it('tells the employee where they are expected', () => {
-    expect(expectedPlaceText('office', 'office')).toBe('You work at the office: check in there.');
-    expect(expectedPlaceText('hybrid', 'office')).toBe('Today is one of your office days: check in at the office.');
+    expect(expectedPlaceText('office', 'office')).toBe('Check in at the office.');
+    expect(expectedPlaceText('hybrid', 'office')).toBe('Today is an office day: check in at the office.');
     expect(expectedPlaceText('hybrid', 'anywhere')).toBe('Today is a home day: check in wherever you work from.');
     expect(expectedPlaceText('wfh', 'anywhere')).toBe('You may check in wherever you work today.');
   });
