@@ -465,7 +465,7 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   // check-in to the last check-out with the breaks counted since 31 October 2026 (owner: "9:00, break included")
   recount_hours: 'Recounted the hours from check-ins and check-outs',
   // check-ins inside the main office within their accuracy, kept as Remote before 1 November 2026, read as Office
-  recount_places: 'Read check-ins at the office again as Office',
+  recount_places: 'Read check-ins inside the office again',
   // approved work from home days counted full (owner, 26 October 2026: "Full day, always"): the draft lines refilled once
   refill_wfh_days: 'Refilled the draft payroll lines for approved work from home days',
   // Recount past days on the current shifts (owner, 26 October 2026)
