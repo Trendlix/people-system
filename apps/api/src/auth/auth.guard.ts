@@ -2,7 +2,7 @@ import { CanActivate, ExecutionContext, ForbiddenException, Injectable, Unauthor
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import {
-  ACCESS_HOLD_MESSAGE,
+  holdMessageOf,
   ACCESS_HOLD_REASON,
   BACKGROUND_HEADER,
   DEVELOPER_READ_ONLY,
@@ -144,11 +144,13 @@ export class AuthGuard implements CanActivate {
 
     // on Hold (23 October 2026): the account the request is for (the one viewed as, while a Super Admin views as someone)
     const subject = claims.viewAs ? users.find((u) => u.id === claims.viewAs)! : signedIn;
-    if (await this.onHold(subject)) {
-      req.user = { ...req.user, hold: true };
+    const hold = await this.onHold(subject);
+    if (hold) {
+      // HR's hold (1 November 2026) said as HR's, else the contract's
+      req.user = { ...req.user, hold: true, ...(hold === 'hr' && { heldByHr: true }) };
       const open = this.reflector.getAllAndOverride<boolean>(OPEN_ON_HOLD, targets) === true;
       const switching = !!req.user.viewAs && this.reflector.getAllAndOverride<boolean>(VIEW_AS_CONTROL, targets) === true;
-      if (!open && !switching) throw holdRefusal();
+      if (!open && !switching) throw holdRefusal(hold === 'hr');
     }
 
     const required = this.reflector.getAllAndOverride<Role[] | undefined>(REQUIRED_ROLES, targets);
@@ -191,7 +193,8 @@ export class AuthGuard implements CanActivate {
     };
     req.user = { ...answeredAs(sessionUserOf(session.user)), viewAs: null };
     // an account on Hold (23 October 2026): no route of the connector's is open to it
-    if (await this.onHold(session.user)) throw holdRefusal();
+    const held = await this.onHold(session.user);
+    if (held) throw holdRefusal(held === 'hr');
     // a developer's Claude reads and drafts nothing (22 October 2026)
     if (req.user.developer && changesData(req.method)) throw new ForbiddenException(DEVELOPER_READ_ONLY);
     const required = this.reflector.getAllAndOverride<Role[] | undefined>(REQUIRED_ROLES, targets);
@@ -204,11 +207,14 @@ export class AuthGuard implements CanActivate {
 
   /**
    * Whether an account is on Hold now (23 October 2026): an employee's, on, held by none of NEVER_HELD_ROLES (its own
-   * roles, never a developer's sight), whose standing is Hold (packages/shared accessStandingOf).
+   * roles, never a developer's sight), whose standing is Hold (packages/shared accessStandingOf): 'hr' when HR put it on
+   * hold (1 November 2026), 'contract' for the contract's; false when not on Hold.
    */
-  private async onHold(account: { employeeId: string | null; isActive: boolean; roles: { role: { key: string } }[] }): Promise<boolean> {
+  private async onHold(account: { employeeId: string | null; isActive: boolean; roles: { role: { key: string } }[] }): Promise<'hr' | 'contract' | false> {
     if (!account.employeeId || !account.isActive || neverHeldRole(account.roles.map((r) => r.role.key))) return false;
-    return (await standingOf(this.prisma, account.employeeId))?.result.standing === 'hold';
+    const result = (await standingOf(this.prisma, account.employeeId))?.result;
+    if (result?.standing !== 'hold') return false;
+    return result.held ? 'hr' : 'contract';
   }
 
   /** The user's name from their employee profile (the account's link, 22 October 2026), else their email. */
@@ -219,7 +225,7 @@ export class AuthGuard implements CanActivate {
 }
 
 /** The refusal of anything but checking in and out to an account on Hold, with a reason the website knows it by. */
-export const holdRefusal = () => new ForbiddenException({ statusCode: 403, error: 'Forbidden', message: ACCESS_HOLD_MESSAGE, reason: ACCESS_HOLD_REASON });
+export const holdRefusal = (heldByHr = false) => new ForbiddenException({ statusCode: 403, error: 'Forbidden', message: holdMessageOf(heldByHr), reason: ACCESS_HOLD_REASON });
 
 /** The session token a request carries: the cookie (the API's own, as the tests send it), else the bearer the web sends. */
 export function readToken(req: Request): string | undefined {

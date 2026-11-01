@@ -59,6 +59,8 @@ export interface SessionUser {
    * routes marked @OpenOnHold answer. Left out (never false) for anyone else.
    */
   hold?: boolean;
+  /** On Hold because HR put them on hold (1 November 2026), not by their contract: the Hold page says so. Left out otherwise. */
+  heldByHr?: boolean;
 }
 
 /** A user as the database has them (with their roles), for a session. */

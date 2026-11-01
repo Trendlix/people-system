@@ -118,6 +118,8 @@ export interface SessionUser {
    * CEO and an account that isn't an employee's are never held).
    */
   hold?: boolean;
+  /** On Hold because HR put them on hold (owner, 1 November 2026), whatever the contract: the Hold page says so. */
+  heldByHr?: boolean;
 }
 
 /**

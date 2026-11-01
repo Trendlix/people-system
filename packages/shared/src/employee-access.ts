@@ -149,6 +149,26 @@ export type NeverHeldRole = (typeof NEVER_HELD_ROLES)[number];
 /** What an account on Hold is told: on the Hold page, and in every refusal (403) of anything but checking in and out. */
 export const ACCESS_HOLD_MESSAGE = 'Your access is on hold until your contract is renewed. You can still check in and out.';
 
+/**
+ * What an account HR put on hold is told (owner, 1 November 2026: "how can i hold access to any employee", then "build
+ * it"): the same Hold, check-in and check-out only, put on by HR whatever the contract, until HR releases it.
+ */
+export const ACCESS_HELD_MESSAGE = 'HR has put your access on hold. You can still check in and out.';
+
+/** What an account on Hold is told: HR's hold, else the contract's. */
+export const holdMessageOf = (heldByHr: boolean | null | undefined): string => (heldByHr ? ACCESS_HELD_MESSAGE : ACCESS_HOLD_MESSAGE);
+
+/** The longest reason HR gives for a hold. */
+export const HOLD_REASON_MAX = 500;
+
+/** Why a hold's reason can't be taken (null: it can): written, and not too long. */
+export function holdReasonProblem(reason: unknown): string | null {
+  const r = typeof reason === 'string' ? reason.trim() : '';
+  if (!r) return 'Write why their access is on hold.';
+  if (r.length > HOLD_REASON_MAX) return `Keep the reason to ${HOLD_REASON_MAX} characters.`;
+  return null;
+}
+
 /** The `reason` of the API's 403 to an account on Hold, so the website knows it from any other refusal. */
 export const ACCESS_HOLD_REASON = 'access_hold';
 
@@ -182,6 +202,16 @@ export interface StandingGrace {
   grantedAt: string;
 }
 
+/**
+ * A hold HR put on an employee's access (access_holds, 1 November 2026), not released yet: why, since when (ISO) and by
+ * whom (their account).
+ */
+export interface StandingHold {
+  reason: string;
+  since: string;
+  byId: string | null;
+}
+
 /** What the standing is read from. */
 export interface AccessStandingInput {
   /** The account: on or off, and its own roles (as the database holds them, never a developer's sight); null without one. */
@@ -194,6 +224,8 @@ export interface AccessStandingInput {
   everEmployed?: boolean;
   /** The day "No contract entered" was first recorded for them (YYYY-MM-DD, Cairo); null when not recorded (yet). */
   noContractSince?: string | null;
+  /** HR's hold not released yet (1 November 2026); null or missing: none. */
+  held?: StandingHold | null;
 }
 
 /** An employee's standing, with why and the gap they are in. */
@@ -211,6 +243,8 @@ export interface AccessStandingResult {
    * the last day of full access and the day it holds from (null until recorded); null for anyone else.
    */
   noContract: { employmentId: string | null; since: string | null; until: string | null; holdFrom: string | null } | null;
+  /** On Hold because HR put them on hold (1 November 2026), whatever the contract; null for anyone else. */
+  held: StandingHold | null;
 }
 
 const isSigned = (c: StandingContract) => (SIGNED_CONTRACT_STATUSES as readonly string[]).includes(c.status);
@@ -232,13 +266,17 @@ export function neverHeldRole(roles: readonly string[]): NeverHeldRole | null {
  * - else they are in a gap, opened by the end of the signed version that ended last (the latest end; a later version
  *   when two end the same day): Grace while this gap's grace runs (to the end of its last day), else Hold. A renewal
  *   signed to start later leaves them on Hold until it starts.
+ * And whatever the contract, an account switched on that HR put on hold (owner, 1 November 2026: "how can i hold access
+ * to any employee") is on Hold until HR releases it; a grace doesn't lift it. Never a Super Admin's or the CEO's.
  */
 export function accessStandingOf(input: AccessStandingInput, today: string): AccessStandingResult {
   const a = input.account;
-  const none = (standing: AccessStanding, exempt: NeverHeldRole | null = null): AccessStandingResult => ({ standing, exempt, gap: null, grace: null, noContract: null });
+  const none = (standing: AccessStanding, exempt: NeverHeldRole | null = null): AccessStandingResult => ({ standing, exempt, gap: null, grace: null, noContract: null, held: null });
   if (a && !a.isActive) return none('no_access');
   const exempt = a ? neverHeldRole(a.roles) : null;
   if (exempt) return none('active', exempt);
+  // HR's hold (1 November 2026), whatever the contract
+  if (a && input.held) return { ...none('hold'), held: input.held };
   // no contract entered (owner, 23 October 2026: "Hold them after 7 days"): only an account switched on is concerned
   const noContract = (employmentId: string | null): AccessStandingResult => {
     if (!a) return none('no_access');
@@ -247,7 +285,7 @@ export function accessStandingOf(input: AccessStandingInput, today: string): Acc
     const info = { employmentId, since, until, holdFrom: until ? addDaysTo(until, 1) : null };
     if (!until || today <= until) return { ...none('no_access'), noContract: info };
     const grace = input.graces.find((g) => g.contractId === null && (g.employmentId ?? null) === employmentId) ?? null;
-    return { standing: grace && grace.until >= today ? 'grace' : 'hold', exempt: null, gap: null, grace, noContract: info };
+    return { standing: grace && grace.until >= today ? 'grace' : 'hold', exempt: null, gap: null, grace, noContract: info, held: null };
   };
   const e = input.employment;
   if (!e) return input.everEmployed ? none('no_access') : noContract(null);
@@ -257,15 +295,16 @@ export function accessStandingOf(input: AccessStandingInput, today: string): Acc
   // every one started has ended (an end of null is in force): the one that ended last opened the gap
   const gap = [...started].sort((x, y) => (y.endDate! < x.endDate! ? -1 : y.endDate! > x.endDate! ? 1 : y.version - x.version))[0];
   const grace = input.graces.find((g) => g.contractId === gap.id) ?? null;
-  return { standing: grace && grace.until >= today ? 'grace' : 'hold', exempt: null, gap, grace, noContract: null };
+  return { standing: grace && grace.until >= today ? 'grace' : 'hold', exempt: null, gap, grace, noContract: null, held: null };
 }
 
 /**
  * Whether HR may give 7 days' grace now: on Hold, in a gap (a contract's end, or no contract entered), and none given in
  * this gap yet ("Once per contract gap").
  */
-export function graceAllowed(s: Pick<AccessStandingResult, 'standing' | 'gap' | 'grace'> & { noContract?: AccessStandingResult['noContract'] }): boolean {
-  return s.standing === 'hold' && (s.gap !== null || !!s.noContract) && s.grace === null;
+export function graceAllowed(s: Pick<AccessStandingResult, 'standing' | 'gap' | 'grace'> & { noContract?: AccessStandingResult['noContract']; held?: AccessStandingResult['held'] }): boolean {
+  // a grace doesn't lift HR's hold (1 November 2026): released first
+  return s.standing === 'hold' && !s.held && (s.gap !== null || !!s.noContract) && s.grace === null;
 }
 
 /**
@@ -273,11 +312,13 @@ export function graceAllowed(s: Pick<AccessStandingResult, 'standing' | 'gap' | 
  * oneself). `date`: how a day is shown (DD/MM/YYYY on the website).
  */
 export function graceRefusal(
-  s: Pick<AccessStandingResult, 'standing' | 'gap' | 'grace' | 'exempt'> & { noContract?: AccessStandingResult['noContract'] },
+  s: Pick<AccessStandingResult, 'standing' | 'gap' | 'grace' | 'exempt'> & { noContract?: AccessStandingResult['noContract']; held?: AccessStandingResult['held'] },
   opts: { self: boolean; date?: (ymd: string) => string },
 ): string | null {
   const date = opts.date ?? shownDay;
   if (opts.self) return 'You can’t give yourself grace: another HR person, an Admin or a Super Admin can.';
+  // HR's hold (1 November 2026) isn't lifted by a grace
+  if (s.held) return 'HR put their access on hold: release the hold instead.';
   if (s.standing === 'active') return s.exempt ? 'They are never on hold, so they need no grace.' : 'Their contract is in force: they have full access.';
   if (s.standing === 'grace') return `They are on grace already, until ${date(s.grace!.until)}. It can’t be extended.`;
   if (s.standing === 'no_access' && s.noContract) {
@@ -287,6 +328,26 @@ export function graceRefusal(
   }
   if (s.standing === 'no_access') return 'Grace is for someone on hold, while their contract is renewed. They have no signed contract in force to renew, or no current employment.';
   if (s.grace) return `Grace was used already in this gap (${date(graceFromOf(s.grace))} to ${date(s.grace.until)}). It’s given once a gap and can’t be extended.`;
+  return null;
+}
+
+/**
+ * Why HR can't put someone on hold now (null: they can; owner, 1 November 2026: "how can i hold access to any
+ * employee"): never oneself, a Super Admin or the CEO; not twice; only an account switched on.
+ */
+export function accessHoldRefusal(s: Pick<AccessStandingResult, 'exempt' | 'held'>, opts: { self: boolean; account: { isActive: boolean } | null }): string | null {
+  if (opts.self) return 'You can’t put yourself on hold: another HR person, an Admin or a Super Admin can.';
+  if (s.exempt) return 'A Super Admin and the CEO are never on hold.';
+  if (s.held) return 'Their access is on hold already.';
+  if (!opts.account) return 'They have no account yet, so there is no access to hold.';
+  if (!opts.account.isActive) return 'Their account is turned off: they can’t sign in at all.';
+  return null;
+}
+
+/** Why HR can't release a hold now (null: they can): never one's own, and only HR's hold. */
+export function accessReleaseRefusal(s: Pick<AccessStandingResult, 'held'>, opts: { self: boolean }): string | null {
+  if (opts.self) return 'You can’t release your own hold: another HR person, an Admin or a Super Admin can.';
+  if (!s.held) return 'Their access isn’t on hold by HR.';
   return null;
 }
 
@@ -340,6 +401,15 @@ export interface AccessStandingView {
    * contract entered: on hold from … unless HR enters a signed contract".
    */
   noContract: { since: string | null; holdFrom: string | null } | null;
+  /**
+   * HR's hold (owner, 1 November 2026: "how can i hold access to any employee"): why, since when (ISO) and by whom; null
+   * without one. Left out by an API from before it.
+   */
+  held?: { reason: string; since: string; by: { id: string; name: string } | null } | null;
+  /** Whether the one asking may put them on hold now (HR, never themself, nor a Super Admin or the CEO). Left out: no. */
+  canHold?: boolean;
+  /** Whether the one asking may release HR's hold now. Left out: no. */
+  canRelease?: boolean;
 }
 
 /** An Employees list row's access (HR, an Admin, a Super Admin): the account's state, the standing, a grace's last day. */

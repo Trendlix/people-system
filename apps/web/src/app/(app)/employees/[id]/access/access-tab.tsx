@@ -24,10 +24,10 @@ import type { EmployeeProfile, FingerprintDevice, OpenSession, UserAccount } fro
 import { loadJson, notLoadedText, type Loaded } from '../../../payroll/load';
 import { AccountPanel } from '../../../users/account-panel';
 import { RoleBadges } from '../../../users/ui';
-import { giveAccessNow, giveGrace, sendAccessLink, setSignInEmail } from '../../access-actions';
+import { giveAccessNow, giveGrace, holdAccess, releaseAccess, sendAccessLink, setSignInEmail } from '../../access-actions';
 import { profileHref } from '../../tab-list';
 import { todayInCairo } from '../../ui';
-import { GiveAccessForm, GraceForm, LinkForm, SignInEmailForm } from './access-forms';
+import { GiveAccessForm, GraceForm, HoldForm, LinkForm, ReleaseForm, SignInEmailForm } from './access-forms';
 
 // The profile's Access tab (owner, 22 October 2026: "i dont thint that the users and employees needs to be divided, any
 // active employee with active contract should have access"; asked where: "On the employee profile"). For HR, an Admin
@@ -103,7 +103,16 @@ export async function AccessTab({ profile }: { profile: Pick<EmployeeProfile, 'i
           // an account made before the standings, of someone with no signed contract in force: it works as before, said here
           <p className="rounded-lg bg-warn-soft px-3 py-2 text-sm text-warn">{STILL_SIGNS_IN_NOTE}</p>
         )}
+        {/* HR's hold (owner, 1 November 2026): why, for HR */}
+        {s?.held && (
+          <p className="rounded-lg bg-warn-soft px-3 py-2 text-sm text-warn">
+            <span className="font-medium">Why: </span>
+            {s.held.reason}
+          </p>
+        )}
         {s && offersGrace(v) && <GraceForm action={giveGrace.bind(null, profile.id)} question={graceQuestion(graceUntilOf(today), formatDate)} />}
+        {s?.canRelease && <ReleaseForm action={releaseAccess.bind(null, profile.id)} name={profile.fullNameEn} />}
+        {s?.canHold && <HoldForm action={holdAccess.bind(null, profile.id)} name={profile.fullNameEn} />}
         {v.state === 'clash' && v.clash?.otherEmployee && (
           <p className="text-sm">
             The account is {v.clash.otherEmployee.id === profile.id ? 'theirs' : <Link href={profileHref(v.clash.otherEmployee.id, 'access')}>{v.clash.otherEmployee.fullNameEn}’s</Link>}.

@@ -1,4 +1,4 @@
-import { ACCESS_HOLD_MESSAGE } from '@trendlix/shared';
+import { holdMessageOf } from '@trendlix/shared';
 import type { Metadata, Viewport } from 'next';
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
@@ -34,6 +34,8 @@ const HEADING = 'Your Access Is on Hold';
 
 /** What to do about it: HR renews the contract, or gives 7 days' grace meanwhile. */
 const WHAT_NEXT = 'HR renews your contract, or can give you 7 days’ full access meanwhile. Ask HR if you have any questions.';
+/** HR's hold (owner, 1 November 2026): released by HR, whatever the contract. */
+const WHAT_NEXT_HELD = 'HR releases the hold when it’s settled. Ask HR if you have any questions.';
 
 function SignOut({ className = '' }: { className?: string }) {
   return (
@@ -57,9 +59,9 @@ function HoldBody({ user, big }: { user: Session; big: boolean }) {
         </h1>
         {user.name && <p className="text-sm text-muted">{user.name}</p>}
         <p role="status" className="rounded-lg bg-danger-soft px-3 py-2 text-sm font-medium text-danger">
-          {ACCESS_HOLD_MESSAGE}
+          {holdMessageOf(user.heldByHr)}
         </p>
-        <p className="text-sm text-muted">{WHAT_NEXT}</p>
+        <p className="text-sm text-muted">{user.heldByHr ? WHAT_NEXT_HELD : WHAT_NEXT}</p>
       </section>
       {/* the same panel as My Attendance's, the larger one in the app */}
       <Suspense fallback={<section className="card p-5 text-sm text-muted">Loading today’s check-in…</section>}>

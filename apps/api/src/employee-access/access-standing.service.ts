@@ -9,6 +9,8 @@ import {
   type AccessCounts,
   type AccessStanding,
   type AccessStandingView,
+  ACCESS_HELD_MESSAGE,
+  accessHoldRefusal,
 } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
 import { actsAs } from '../auth/roles.js';
@@ -125,7 +127,11 @@ export class AccessStandingService {
             ...(to === 'grace' && s.result.grace && { graceUntil: s.result.grace.until }),
           },
         });
-        if (to === 'hold') {
+        if (to === 'hold' && s.result.held) {
+          // HR's hold (1 November 2026): told so; not on WhatsApp, whose approved words are the contract's; HR, who put
+          // it on, isn't told again
+          await this.toEmployee(person.id, { kind: 'access_hold', title: 'Your access is on hold', body: ACCESS_HELD_MESSAGE, link: HOLD_PATH });
+        } else if (to === 'hold') {
           // on WhatsApp too for those who opted in (24 October 2026: "Request decisions … access on hold")
           await this.toEmployee(person.id, { kind: 'access_hold', title: 'Your access is on hold', body: ACCESS_HOLD_MESSAGE, link: HOLD_PATH, whatsapp: { facts: { template: 'access_on_hold' } } });
           held.push({ id: person.id, name: person.fullNameEn, noContract: !!s.result.noContract });
@@ -243,7 +249,7 @@ export class AccessStandingService {
    */
   async viewOf(employeeId: string, user: SessionUser, mayGive: boolean, today: string = todayInCairo()): Promise<AccessStandingView> {
     const s = await standingOf(this.prisma, employeeId, today);
-    if (!s) return { standing: 'no_access', exempt: null, gap: null, grace: null, canGiveGrace: false, noContract: null };
+    if (!s) return { standing: 'no_access', exempt: null, gap: null, grace: null, canGiveGrace: false, noContract: null, held: null, canHold: false, canRelease: false };
     return this.view(s, mayGive && user.employeeId !== employeeId, today);
   }
 
@@ -256,6 +262,11 @@ export class AccessStandingService {
     const by = graceRow?.grantedById
       ? await this.prisma.user.findUnique({ where: { id: graceRow.grantedById }, select: { id: true, email: true, employee: { select: { fullNameEn: true } } } })
       : null;
+    // HR's hold (1 November 2026): who put it on
+    const heldBy = result.held?.byId
+      ? await this.prisma.user.findUnique({ where: { id: result.held.byId }, select: { id: true, email: true, employee: { select: { fullNameEn: true } } } })
+      : null;
+    const account = s.row.account;
     return {
       standing: result.standing,
       exempt: result.exempt,
@@ -271,6 +282,10 @@ export class AccessStandingService {
         : null,
       canGiveGrace: mayGive && graceAllowed(result),
       noContract: result.noContract ? { since: result.noContract.since, holdFrom: result.noContract.holdFrom } : null,
+      held: result.held ? { reason: result.held.reason, since: result.held.since, by: heldBy ? { id: heldBy.id, name: heldBy.employee?.fullNameEn ?? heldBy.email } : null } : null,
+      // `mayGive`: HR, an Admin, a Super Admin (the CEO for a C-level person), never for themself
+      canHold: mayGive && accessHoldRefusal(result, { self: false, account }) === null,
+      canRelease: mayGive && !!result.held,
     };
   }
 

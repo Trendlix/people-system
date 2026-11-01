@@ -449,7 +449,8 @@ describe('Compensatory days (e2e)', () => {
         `The day off must be in the same month as the day worked: ${shown(dayWorked)} is in ${shownMonth(CURRENT)}, ${shown(addDays(firstDay(NEXT), 4))} in ${shownMonth(NEXT)}.`,
       ]);
       // today and the past: the notice
-      expect(said(await ask('nia', { dayWorked, dayOff: TODAY }).expect(400))).toEqual([`${shown(TODAY)} is today: ask for a compensatory day a day before the day off at the latest.`]);
+      // (on the 1st of a month the day worked, the month's first day, is today too: that is said as well)
+      expect(said(await ask('nia', { dayWorked, dayOff: TODAY }).expect(400))).toContain(`${shown(TODAY)} is today: ask for a compensatory day a day before the day off at the latest.`);
       // a day still to come as the day worked, which is also a working day
       const later = addDays(firstDay(NEXT), 2);
       expect(said(await ask('nia', { dayWorked: later, dayOff: addDays(later, 1) }).expect(400))[0]).toContain('is a working day of your shift');

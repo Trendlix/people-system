@@ -1,7 +1,7 @@
 'use client';
 
-import { SIGN_IN_EMAIL_LABELS, type SignInEmailChoice } from '@trendlix/shared';
-import { useActionState, useState } from 'react';
+import { HOLD_REASON_MAX, SIGN_IN_EMAIL_LABELS, type SignInEmailChoice } from '@trendlix/shared';
+import { useActionState, useId, useState } from 'react';
 import { FormErrors } from '@/components/form';
 import { SetUpEmailLink } from '@/components/set-up-email-link';
 import type { FormState } from '@/lib/types';
@@ -9,7 +9,8 @@ import type { LinkState } from '../../access-actions';
 
 // The Access tab's forms (owner, 22 October 2026: "On the employee profile"): the sign-in email HR chose ("let the HR
 // Choose which mail to use"), Give access now, and the set-password links ("Set-password link"), emailed or copied once
-// to send by hand.
+// to send by hand. HR's hold on their access and its release (owner, 1 November 2026: "how can i hold access to any
+// employee").
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -118,6 +119,76 @@ export function GraceForm({ action, question }: { action: (prev: FormState) => P
       <div className="flex flex-wrap items-center gap-3">
         <button type="submit" disabled={pending} className="btn btn-primary">
           {pending ? 'Giving it…' : 'Give 7 days’ grace'}
+        </button>
+        <Saved state={state} />
+      </div>
+    </form>
+  );
+}
+
+/**
+ * Hold access (owner, 1 November 2026: "how can i hold access to any employee"): why, required, then confirmed; check-in
+ * and check-out only until released, whatever the contract. Opened from a button so the form isn't always there.
+ */
+export function HoldForm({ action, name }: { action: (prev: FormState, fd: FormData) => Promise<FormState>; name: string }) {
+  const [state, formAction, pending] = useActionState(action, {});
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  if (!open && !state.errors?.length) {
+    return (
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="button" onClick={() => setOpen(true)} className="btn btn-secondary">
+          Hold access
+        </button>
+        <Saved state={state} />
+      </div>
+    );
+  }
+  return (
+    <form
+      action={formAction}
+      onSubmit={(e) => {
+        if (!window.confirm(`Put ${name}’s access on hold? Only check-in and check-out will work until you release it.`)) e.preventDefault();
+      }}
+      className="space-y-3 rounded-lg border border-line p-4"
+    >
+      <FormErrors errors={state.errors} />
+      <div>
+        <label htmlFor={`${id}-reason`} className="label">
+          Why
+        </label>
+        <textarea id={`${id}-reason`} name="reason" required maxLength={HOLD_REASON_MAX} rows={3} className="input" aria-describedby={`${id}-reason-hint`} />
+        <p id={`${id}-reason-hint`} className="hint">
+          Kept with the hold and in the activity log for HR. They see only that HR put their access on hold.
+        </p>
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="submit" disabled={pending} className="btn btn-primary">
+          {pending ? 'Holding…' : 'Hold access'}
+        </button>
+        <button type="button" onClick={() => setOpen(false)} className="btn btn-secondary">
+          Cancel
+        </button>
+      </div>
+    </form>
+  );
+}
+
+/** Release HR's hold: where they stand follows their contract again; confirmed first. */
+export function ReleaseForm({ action, name }: { action: (prev: FormState) => Promise<FormState>; name: string }) {
+  const [state, formAction, pending] = useActionState(action, {});
+  return (
+    <form
+      action={formAction}
+      onSubmit={(e) => {
+        if (!window.confirm(`Release the hold on ${name}’s access?`)) e.preventDefault();
+      }}
+      className="space-y-3"
+    >
+      <FormErrors errors={state.errors} />
+      <div className="flex flex-wrap items-center gap-3">
+        <button type="submit" disabled={pending} className="btn btn-primary">
+          {pending ? 'Releasing…' : 'Release hold'}
         </button>
         <Saved state={state} />
       </div>

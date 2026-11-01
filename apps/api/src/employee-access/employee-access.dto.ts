@@ -8,6 +8,12 @@ export class SignInEmailDto {
   choice!: 'work' | 'personal';
 }
 
+/** HR's hold on someone's access (owner, 1 November 2026): why, required (checked with holdReasonProblem). */
+export class AccessHoldDto {
+  @IsString({ message: 'Write why their access is on hold.' })
+  reason!: string;
+}
+
 export class AccessLinkDto {
   /** email: sent by email (SMTP set up); copy: the link comes back once, to send by hand. */
   @IsIn(['email', 'copy'], { message: 'Choose to email the link or to copy it.' })

@@ -16,6 +16,9 @@ import {
   type EmployeeAccessView,
   type Role,
   type SignInEmailChoice,
+  accessHoldRefusal,
+  accessReleaseRefusal,
+  holdReasonProblem,
 } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
 import { actsAs } from '../auth/roles.js';
@@ -304,6 +307,64 @@ export class EmployeeAccessService {
       entityType: EMPLOYEE_ENTITY,
       entityId: employeeId,
       diff: gap ? { contract: gap.number, graceUntil: until } : { noContract: true, graceUntil: until },
+    });
+    await this.standings.sync([employeeId], { actorId: user.id, today });
+    return this.view(employeeId, user);
+  }
+
+  /**
+   * POST /employees/:id/access/hold: HR puts someone's access on hold (owner, 1 November 2026: "how can i hold access to
+   * any employee", then "build it"): check-in and check-out only, whatever their contract, until released; with why.
+   * HR, an Admin, a Super Admin (the CEO for a C-level person); never oneself, a Super Admin or the CEO; an account
+   * switched on. Audited, the employee told (sync), at once on their next request.
+   */
+  async hold(employeeId: string, reason: unknown, user: SessionUser, today = todayInCairo()): Promise<EmployeeAccessView> {
+    await this.allowed(employeeId, user);
+    if (!this.mayManage(user)) throw new NotFoundException('Employee not found.');
+    const problem = holdReasonProblem(reason);
+    if (problem) throw new BadRequestException([problem]);
+    const s = await standingOf(this.prisma, employeeId, today);
+    if (!s) throw new NotFoundException('Employee not found.');
+    const self = user.employeeId === employeeId;
+    const refusal = accessHoldRefusal(s.result, { self, account: s.row.account });
+    if (refusal) {
+      if (self) throw new ForbiddenException(refusal);
+      throw new ConflictException(refusal);
+    }
+    const why = (reason as string).trim();
+    try {
+      await this.prisma.accessHold.create({ data: { employeeId, reason: why, heldById: user.id } });
+    } catch (err) {
+      // put on at the same moment by someone else: one at a time
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') throw new ConflictException('Their access is on hold already.');
+      throw err;
+    }
+    await this.audit.record({ userId: user.id, action: 'hold_access', entityType: EMPLOYEE_ENTITY, entityId: employeeId, diff: { reason: why } });
+    await this.standings.sync([employeeId], { actorId: user.id, today });
+    return this.view(employeeId, user);
+  }
+
+  /** POST /employees/:id/access/release: HR releases their hold (1 November 2026); where they stand follows their contract again. */
+  async release(employeeId: string, user: SessionUser, today = todayInCairo(), now = new Date()): Promise<EmployeeAccessView> {
+    await this.allowed(employeeId, user);
+    if (!this.mayManage(user)) throw new NotFoundException('Employee not found.');
+    const s = await standingOf(this.prisma, employeeId, today);
+    if (!s) throw new NotFoundException('Employee not found.');
+    const self = user.employeeId === employeeId;
+    const refusal = accessReleaseRefusal(s.result, { self });
+    if (refusal) {
+      if (self) throw new ForbiddenException(refusal);
+      throw new ConflictException(refusal);
+    }
+    const open = s.row.accessHolds[0];
+    const { count } = await this.prisma.accessHold.updateMany({ where: { id: open.id, releasedAt: null }, data: { releasedAt: now, releasedById: user.id } });
+    if (!count) throw new ConflictException('Their access isn’t on hold by HR.');
+    await this.audit.record({
+      userId: user.id,
+      action: 'release_access',
+      entityType: EMPLOYEE_ENTITY,
+      entityId: employeeId,
+      diff: { reason: open.reason, heldSince: open.heldAt.toISOString() },
     });
     await this.standings.sync([employeeId], { actorId: user.id, today });
     return this.view(employeeId, user);

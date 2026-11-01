@@ -58,6 +58,28 @@ export async function giveGrace(employeeId: string): Promise<FormState> {
   return { message: until ? `Grace given: full access until the end of ${formatDate(until)}.` : 'Grace given.' };
 }
 
+/**
+ * HR puts someone's access on hold (owner, 1 November 2026: "how can i hold access to any employee", then "build it"):
+ * check-in and check-out only until released, with why. The API refuses it (with why) for oneself, a Super Admin or the
+ * CEO, someone on hold already, or without an account switched on.
+ */
+export async function holdAccess(employeeId: string, _prev: FormState, fd: FormData): Promise<FormState> {
+  const reason = String(fd.get('reason') ?? '').trim();
+  if (!reason) return { errors: ['Write why their access is on hold.'] };
+  const r = await send(() => apiSend<EmployeeAccessView>('POST', `/employees/${employeeId}/access/hold`, { reason }));
+  if (!r.ok) return r.state;
+  refresh();
+  return { message: 'Their access is on hold: only check-in and check-out work until you release it.' };
+}
+
+/** HR releases their hold: where they stand follows their contract again. */
+export async function releaseAccess(employeeId: string): Promise<FormState> {
+  const r = await send(() => apiSend<EmployeeAccessView>('POST', `/employees/${employeeId}/access/release`));
+  if (!r.ok) return r.state;
+  refresh();
+  return { message: 'Hold released.' };
+}
+
 /** An invitation or a password reset: emailed, or a link to copy and send by hand (WhatsApp). */
 export async function sendAccessLink(employeeId: string, purpose: 'invite' | 'reset', _prev: LinkState, fd: FormData): Promise<LinkState> {
   const mode = fd.get('mode') === 'copy' ? 'copy' : 'email';

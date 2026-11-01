@@ -114,6 +114,10 @@ describe('the standing on screen (23 October 2026: "Active - Grace - Hold - No A
     expect(usedGraceLine(standing({ standing: 'grace', gap, grace }), date)).toBeNull();
     expect(usedGraceLine(standing({ standing: 'hold', gap, grace: { ...grace, running: false } }), date)).toBe('Grace already used in this gap (2026-10-23 to 2026-10-30).');
     expect(standingLine(standing(), date)).toBeNull();
+    // HR's hold (owner, 1 November 2026), whatever the contract: who and when
+    expect(standingLine(standing({ standing: 'hold', held: { reason: 'Investigation pending', since: '2026-11-01T09:00:00.000Z', by: { id: 'u1', name: 'Hana HR' } } }), date)).toBe(
+      'Hana HR put their access on hold on 2026-11-01: only check-in and check-out work until HR releases it.',
+    );
     expect(exemptLine(standing({ exempt: 'super_admin' }))).toBe('Never on hold: Super Admin.');
     expect(exemptLine(standing({ exempt: 'ceo' }))).toBe('Never on hold: CEO.');
     expect(exemptLine(standing())).toBeNull();

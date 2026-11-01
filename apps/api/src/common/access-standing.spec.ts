@@ -1,5 +1,10 @@
 import {
+  ACCESS_HELD_MESSAGE,
   ACCESS_HOLD_MESSAGE,
+  accessHoldRefusal,
+  accessReleaseRefusal,
+  holdMessageOf,
+  holdReasonProblem,
   ACCESS_STANDING_LABELS,
   accessStandingOf,
   GRACE_DAYS,
@@ -45,7 +50,7 @@ const standing = (over: Partial<AccessStandingInput> = {}, today = TODAY) => acc
 
 describe('where access stands', () => {
   it('is Active with a signed contract in force today, open-ended too', () => {
-    expect(standing()).toEqual({ standing: 'active', exempt: null, gap: null, grace: null, noContract: null });
+    expect(standing()).toEqual({ standing: 'active', exempt: null, gap: null, grace: null, noContract: null, held: null });
     expect(standing({ employment: { contracts: [contract({ endDate: null, startDate: '2024-01-01' })] } }).standing).toBe('active');
     // its last day still in force
     expect(standing({ employment: { contracts: [contract({ endDate: TODAY })] } }).standing).toBe('active');
@@ -64,20 +69,20 @@ describe('where access stands', () => {
     expect(standing({ employment: { contracts: [] } }).standing).toBe('no_access');
     expect(standing({ employment: null }).standing).toBe('no_access');
     // left: no current employment, one before; never "no contract entered"
-    expect(standing({ employment: null, everEmployed: true })).toEqual({ standing: 'no_access', exempt: null, gap: null, grace: null, noContract: null });
+    expect(standing({ employment: null, everEmployed: true })).toEqual({ standing: 'no_access', exempt: null, gap: null, grace: null, noContract: null, held: null });
   });
 
   it('is No Access for an account turned off, whoever it is', () => {
     expect(standing({ account: { isActive: false, roles: ['employee'] } }).standing).toBe('no_access');
-    expect(standing({ account: { isActive: false, roles: ['super_admin'] } })).toEqual({ standing: 'no_access', exempt: null, gap: null, grace: null, noContract: null });
+    expect(standing({ account: { isActive: false, roles: ['super_admin'] } })).toEqual({ standing: 'no_access', exempt: null, gap: null, grace: null, noContract: null, held: null });
     // no contract entered either: an account off is concerned by nothing
     expect(standing({ account: { isActive: false, roles: ['employee'] }, employment: { contracts: [] }, noContractSince: '2026-10-01' }).noContract).toBeNull();
   });
 
   it('never holds a Super Admin or the CEO, whatever the contract; a developer or HR is held', () => {
     const ended = { employment: { contracts: [contract()] } };
-    expect(standing({ ...ended, account: { isActive: true, roles: ['employee', 'super_admin'] } })).toEqual({ standing: 'active', exempt: 'super_admin', gap: null, grace: null, noContract: null });
-    expect(standing({ ...ended, account: { isActive: true, roles: ['ceo'] } })).toEqual({ standing: 'active', exempt: 'ceo', gap: null, grace: null, noContract: null });
+    expect(standing({ ...ended, account: { isActive: true, roles: ['employee', 'super_admin'] } })).toEqual({ standing: 'active', exempt: 'super_admin', gap: null, grace: null, noContract: null, held: null });
+    expect(standing({ ...ended, account: { isActive: true, roles: ['ceo'] } })).toEqual({ standing: 'active', exempt: 'ceo', gap: null, grace: null, noContract: null, held: null });
     expect(standing({ employment: { contracts: [] }, noContractSince: '2026-01-01', account: { isActive: true, roles: ['ceo'] } }).standing).toBe('active');
     expect(standing({ employment: null, account: { isActive: true, roles: ['ceo'] } }).standing).toBe('active');
     expect(standing({ ...ended, account: { isActive: true, roles: ['employee', 'developer'] } }).standing).toBe('hold');
@@ -135,7 +140,7 @@ describe('no contract entered (owner, 23 October 2026: "Hold them after 7 days")
   it('keeps an account switched on with no signed contract ever in force working for 7 days from the day first recorded', () => {
     expect(NO_CONTRACT_DAYS).toBe(7);
     // not recorded yet (the sweep records it within minutes): working, no day yet
-    expect(draftOnly()).toEqual({ standing: 'no_access', exempt: null, gap: null, grace: null, noContract: { employmentId: 'e1', since: null, until: null, holdFrom: null } });
+    expect(draftOnly()).toEqual({ standing: 'no_access', exempt: null, gap: null, grace: null, noContract: { employmentId: 'e1', since: null, until: null, holdFrom: null }, held: null });
     // recorded on 20 October: full access to the end of the 27th, on hold from the 28th
     expect(draftOnly({ noContractSince: '2026-10-20' })).toMatchObject({ standing: 'no_access', noContract: { since: '2026-10-20', until: '2026-10-27', holdFrom: '2026-10-28' } });
     expect(draftOnly({ noContractSince: '2026-10-20' }, '2026-10-27').standing).toBe('no_access');
@@ -209,5 +214,55 @@ describe('giving grace', () => {
     expect(Object.values(ACCESS_STANDING_LABELS)).toEqual(['Active', 'Grace', 'Hold', 'No access']);
     expect(shortDay('2026-10-05', TODAY)).toBe('5 Oct');
     expect(ACCESS_HOLD_MESSAGE).toBe('Your access is on hold until your contract is renewed. You can still check in and out.');
+  });
+});
+
+// HR's hold (owner, 1 November 2026: "how can i hold access to any employee", then "build it")
+describe('HR’s hold', () => {
+  const held = { reason: 'Investigation pending', since: '2026-11-01T09:00:00.000Z', byId: 'u-hr' };
+
+  it('puts an account switched on on Hold whatever the contract, Grace included, until released', () => {
+    expect(standing({ held })).toEqual({ standing: 'hold', exempt: null, gap: null, grace: null, noContract: null, held });
+    // a fixed term run past its end, on Grace: still HR's hold
+    expect(standing({ held, employment: { contracts: [contract()] }, graces: [grace()] })).toMatchObject({ standing: 'hold', held });
+    // released (none): their contract's standing again
+    expect(standing({ held: null }).standing).toBe('active');
+  });
+
+  it('never holds a Super Admin or the CEO, nor an account turned off (No Access)', () => {
+    expect(standing({ held, account: { isActive: true, roles: ['employee', 'ceo'] } })).toMatchObject({ standing: 'active', exempt: 'ceo', held: null });
+    expect(standing({ held, account: { isActive: false, roles: ['employee'] } })).toMatchObject({ standing: 'no_access', held: null });
+  });
+
+  it('isn’t lifted by a grace: none offered, and refused with what to do', () => {
+    const s = standing({ held, employment: { contracts: [contract()] } });
+    expect(graceAllowed(s)).toBe(false);
+    expect(graceRefusal(s, { self: false })).toBe('HR put their access on hold: release the hold instead.');
+  });
+
+  it('says it is HR’s on the Hold page and in each refusal', () => {
+    expect(holdMessageOf(true)).toBe(ACCESS_HELD_MESSAGE);
+    expect(holdMessageOf(false)).toBe(ACCESS_HOLD_MESSAGE);
+    expect(ACCESS_HELD_MESSAGE).toBe('HR has put your access on hold. You can still check in and out.');
+  });
+
+  it('is put on with a reason, never on oneself, a Super Admin or the CEO, twice, or without an account switched on', () => {
+    const on = { self: false, account: { isActive: true } };
+    expect(holdReasonProblem('  ')).toBe('Write why their access is on hold.');
+    expect(holdReasonProblem(undefined)).toBe('Write why their access is on hold.');
+    expect(holdReasonProblem('x'.repeat(501))).toBe('Keep the reason to 500 characters.');
+    expect(holdReasonProblem('Investigation pending')).toBeNull();
+    expect(accessHoldRefusal(standing(), on)).toBeNull();
+    expect(accessHoldRefusal(standing(), { ...on, self: true })).toMatch(/^You can’t put yourself on hold/);
+    expect(accessHoldRefusal(standing({ account: { isActive: true, roles: ['super_admin'] } }), on)).toBe('A Super Admin and the CEO are never on hold.');
+    expect(accessHoldRefusal(standing({ held }), on)).toBe('Their access is on hold already.');
+    expect(accessHoldRefusal(standing({ account: null }), { ...on, account: null })).toBe('They have no account yet, so there is no access to hold.');
+    expect(accessHoldRefusal(standing(), { ...on, account: { isActive: false } })).toBe('Their account is turned off: they can’t sign in at all.');
+  });
+
+  it('is released only when HR’s, never by the person themself', () => {
+    expect(accessReleaseRefusal(standing({ held }), { self: false })).toBeNull();
+    expect(accessReleaseRefusal(standing({ held }), { self: true })).toMatch(/^You can’t release your own hold/);
+    expect(accessReleaseRefusal(standing({ employment: { contracts: [contract()] } }), { self: false })).toBe('Their access isn’t on hold by HR.');
   });
 });

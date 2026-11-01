@@ -3,7 +3,7 @@ import type { Request } from 'express';
 import { CurrentUser, Public } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { AccessLinksService } from './access-links.service.js';
-import { AccessLinkDto, CheckPasswordLinkDto, ForgotPasswordDto, InvitationsDto, SetPasswordWithLinkDto, SignInEmailDto } from './employee-access.dto.js';
+import { AccessHoldDto, AccessLinkDto, CheckPasswordLinkDto, ForgotPasswordDto, InvitationsDto, SetPasswordWithLinkDto, SignInEmailDto } from './employee-access.dto.js';
 import { AccessStandingService } from './access-standing.service.js';
 import { EmployeeAccessService } from './employee-access.service.js';
 
@@ -50,6 +50,23 @@ export class EmployeeAccessController {
   @HttpCode(200)
   grace(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {
     return this.access.giveGrace(id, user);
+  }
+
+  /**
+   * HR's hold on someone's access (owner, 1 November 2026: "how can i hold access to any employee"): check-in and
+   * check-out only until released, with why; refused with the reason for oneself, a Super Admin or the CEO, or twice.
+   */
+  @Post(':id/access/hold')
+  @HttpCode(200)
+  hold(@Param('id', ParseUUIDPipe) id: string, @Body() dto: AccessHoldDto, @CurrentUser() user: SessionUser) {
+    return this.access.hold(id, dto.reason, user);
+  }
+
+  /** Releases HR's hold: where they stand follows their contract again. */
+  @Post(':id/access/release')
+  @HttpCode(200)
+  release(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {
+    return this.access.release(id, user);
   }
 
   @Put(':id/access/sign-in-email')

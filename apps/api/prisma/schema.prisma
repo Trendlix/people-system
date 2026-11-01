@@ -212,6 +212,8 @@ model User {
   vacancySuggestionsDecided VacancySuggestion[]        @relation("VacancySuggestionDecision")
   // access follows the contract (owner, 23 October 2026): the 7 days' grace this user gave
   accessGracesGiven         AccessGrace[]              @relation("AccessGraceGrantedBy")
+  accessHoldsPut            AccessHold[]               @relation("AccessHoldPutBy")
+  accessHoldsReleased       AccessHold[]               @relation("AccessHoldReleasedBy")
   // WhatsApp notifications (owner, 24 October 2026: "how to make whatsapp notifications?"): the settings this user saved
   // last, their own opt-in, and the WhatsApp messages sent to them
   whatsAppSettingsSet       WhatsAppSettings[]         @relation("WhatsAppSettingsChange")
@@ -1210,6 +1212,7 @@ model Employee {
   accessStanding             String?                    @map("access_standing")
   accessStandingAt           DateTime?                  @map("access_standing_at") @db.Timestamptz
   accessGraces               AccessGrace[] // the 7 days' grace HR gave them, one a contract gap
+  accessHolds                AccessHold[] // the holds HR put on their access, whatever the contract (1 November 2026)
   // no contract entered (owner, 23 October 2026: "Hold them after 7 days"): the day the sweep first recorded their
   // account switched on without a signed contract ever in force (Cairo); on Hold from the 8th day after unless one is
   // entered. Cleared once a signed contract starts (or they leave); kept while their account is off, so turning it off
@@ -5277,6 +5280,26 @@ model AccessGrace {
   @@unique([employeeId, employmentId])
   @@index([until])
   @@map("access_graces")
+}
+
+// A hold HR put on an employee's access (owner, 1 November 2026: "how can i hold access to any employee", then "build
+// it"; packages/shared employee-access.ts): on Hold, check-in and check-out only, whatever the contract, until HR
+// releases it. Why (required), who and when, and once released who and when; one not released a person at most (a
+// partial unique index in the migration). Kept after release, as the history. Never a Super Admin's or the CEO's.
+model AccessHold {
+  id           String    @id @default(uuid()) @db.Uuid
+  employeeId   String    @map("employee_id") @db.Uuid
+  employee     Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  reason       String
+  heldById     String?   @map("held_by") @db.Uuid
+  heldBy       User?     @relation("AccessHoldPutBy", fields: [heldById], references: [id], onDelete: SetNull)
+  heldAt       DateTime  @default(now()) @map("held_at") @db.Timestamptz
+  releasedById String?   @map("released_by") @db.Uuid
+  releasedBy   User?     @relation("AccessHoldReleasedBy", fields: [releasedById], references: [id], onDelete: SetNull)
+  releasedAt   DateTime? @map("released_at") @db.Timestamptz
+
+  @@index([employeeId])
+  @@map("access_holds")
 }
 
 // A company HR marked a marketing agency, or not one (owner, 27 October 2026: "Name words + your list"; packages/shared

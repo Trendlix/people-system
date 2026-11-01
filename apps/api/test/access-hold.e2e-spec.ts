@@ -1,5 +1,5 @@
 import type { INestApplication } from '@nestjs/common';
-import { ACCESS_HOLD_MESSAGE, ACCESS_HOLD_REASON, HOLD_PATH, type AccessCounts, type EmployeeAccessView, type Role, type RowAccessView } from '@trendlix/shared';
+import { ACCESS_HELD_MESSAGE, ACCESS_HOLD_MESSAGE, ACCESS_HOLD_REASON, HOLD_PATH, type AccessCounts, type EmployeeAccessView, type Role, type RowAccessView } from '@trendlix/shared';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import type { SessionUser } from '../src/auth/session-user.js';
@@ -375,5 +375,43 @@ describe('Access on hold (e2e)', () => {
     expect((await api().get('/api/auth/me').set('Cookie', viewing).expect(200)).body).toMatchObject({ hold: true, viewAs: { by: { id: users.superAdmin } } });
     held(await api().get('/api/employees').set('Cookie', viewing));
     await api().post('/api/auth/view-as/stop').set('Cookie', viewing).expect(200);
+  });
+
+  // HR's hold (owner, 1 November 2026: "how can i hold access to any employee", then "build it")
+  it('lets HR put anyone’s access on hold with a reason, whatever the contract, and release it, at once', async () => {
+    await person('hivy', 'Ivy Inforce', { contract: 'in_force' });
+    await person('hceo', 'Cleo Chief', { roles: ['ceo'], contract: 'in_force' });
+    const hold = (key: string, reason = 'Investigation pending') => post('hr', `/employees/${people[key].id}/access/hold`, { reason });
+    const release = (key: string) => post('hr', `/employees/${people[key].id}/access/release`);
+
+    // offered on an active profile; a reason required; never the CEO
+    expect((await accessOf('hivy')).standing).toMatchObject({ standing: 'active', held: null, canHold: true, canRelease: false });
+    expect((await hold('hivy', '  ').expect(400)).body.message).toEqual(['Write why their access is on hold.']);
+    expect((await hold('hceo').expect(409)).body.message).toBe('A Super Admin and the CEO are never on hold.');
+    expect((await accessOf('hceo')).standing).toMatchObject({ canHold: false });
+
+    // held: why and by whom on the Access tab; not twice; a grace doesn't lift it
+    const v = (await hold('hivy').expect(200)).body as EmployeeAccessView;
+    expect(v.standing).toMatchObject({ standing: 'hold', held: { reason: 'Investigation pending', by: { id: users.hr } }, canHold: false, canRelease: true, canGiveGrace: false });
+    expect((await hold('hivy').expect(409)).body.message).toBe('Their access is on hold already.');
+    expect((await grace('hivy').expect(409)).body.message).toBe('HR put their access on hold: release the hold instead.');
+
+    // Ivy, in the same session: on hold in HR's words, checking in still works
+    expect((await get('hivy', '/auth/me').expect(200)).body).toMatchObject({ hold: true, heldByHr: true });
+    const refused = await get('hivy', '/me/payslips');
+    expect(refused.status).toBe(403);
+    expect(refused.body).toMatchObject({ message: ACCESS_HELD_MESSAGE, reason: ACCESS_HOLD_REASON });
+    expect((await get('hivy', '/me/attendance/today').expect(200)).body.refusal).toBeNull();
+    // told on the bell (not on WhatsApp, whose approved words are the contract's), and audited
+    expect(await noticesOf('hivy', 'access_hold')).toEqual([{ title: 'Your access is on hold', body: ACCESS_HELD_MESSAGE, link: HOLD_PATH }]);
+    expect((await auditsOf('hivy', 'hold_access')).map((a) => [a.userId, a.diff])).toEqual([[users.hr, { reason: 'Investigation pending' }]]);
+
+    // released: everything opens in the same session; audited; the hold kept as history
+    expect((await release('hivy').expect(200)).body.standing).toMatchObject({ standing: 'active', held: null, canHold: true, canRelease: false });
+    await get('hivy', '/me/payslips').expect(200);
+    expect((await get('hivy', '/auth/me').expect(200)).body.hold).toBeFalsy();
+    expect((await release('hivy').expect(409)).body.message).toBe('Their access isn’t on hold by HR.');
+    expect((await auditsOf('hivy', 'release_access'))[0]).toMatchObject({ userId: users.hr, diff: { reason: 'Investigation pending' } });
+    expect(await prisma.accessHold.count({ where: { employeeId: people.hivy.id, releasedAt: { not: null } } })).toBe(1);
   });
 });

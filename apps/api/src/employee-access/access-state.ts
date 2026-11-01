@@ -103,6 +103,8 @@ export function standingSelect(today: string) {
     // ever employed (with no current employment: they left, else never employed)
     noContractSince: true,
     _count: { select: { employments: true } },
+    // HR's hold not released yet (1 November 2026: "how can i hold access to any employee")
+    accessHolds: { where: { releasedAt: null }, orderBy: { heldAt: 'desc' }, take: 1, select: { id: true, reason: true, heldAt: true, heldById: true } },
   } satisfies Prisma.EmployeeSelect;
 }
 
@@ -122,6 +124,7 @@ export function standingInputOf(row: StandingRow): AccessStandingInput {
     graces: row.accessGraces.map((g) => ({ contractId: g.contractId, employmentId: g.employmentId, until: fromDateOnly(g.until), grantedAt: g.grantedAt.toISOString() })),
     everEmployed: row._count.employments > 0,
     noContractSince: fromDateOnly(row.noContractSince),
+    held: row.accessHolds[0] ? { reason: row.accessHolds[0].reason, since: row.accessHolds[0].heldAt.toISOString(), byId: row.accessHolds[0].heldById } : null,
   };
 }
 

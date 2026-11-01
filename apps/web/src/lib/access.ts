@@ -74,6 +74,9 @@ export function exemptLine(s: Pick<AccessStandingView, 'exempt'>): string | null
   return s.exempt ? `Never on hold: ${s.exempt === 'super_admin' ? 'Super Admin' : 'CEO'}.` : null;
 }
 
+/** A moment's day in Cairo (YYYY-MM-DD): the day HR put a hold on. */
+const CAIRO_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo' });
+
 /**
  * What the standing means for them now, under the badge: on Hold which contract ended and what still works; during
  * Grace until when, by whom and since when; after a grace used in this gap, when it ran. Null for Active and No access
@@ -83,6 +86,8 @@ export function standingLine(s: AccessStandingView, date: DateText): string | nu
   const g = s.grace;
   if (s.standing === 'grace' && g) return `Grace until ${date(g.until)}, given by ${g.grantedBy?.name ?? 'HR'} on ${date(g.from)}. Full access until the end of that day.`;
   if (s.standing !== 'hold') return null;
+  // HR's hold (owner, 1 November 2026), whatever the contract
+  if (s.held) return `${s.held.by?.name ?? 'HR'} put their access on hold on ${date(CAIRO_DAY.format(new Date(s.held.since)))}: only check-in and check-out work until HR releases it.`;
   // no contract entered (owner, 23 October 2026: "Hold them after 7 days"): held since its 7 days ran out
   if (!s.gap && s.noContract) return 'No contract entered: only check-in and check-out work until a signed contract is entered.';
   const ended = s.gap ? (s.gap.endDate ? `Their contract ${s.gap.number} ended on ${date(s.gap.endDate)}` : `Their contract ${s.gap.number} has ended`) : 'Their contract isn’t in force';
