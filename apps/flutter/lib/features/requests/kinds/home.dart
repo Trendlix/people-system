@@ -95,7 +95,7 @@ abstract final class HomeWords {
   static String ready(String what, int radius, bool toCeo) => 'Ready to send: $what within $radius m, to ${toCeo ? 'the CEO' : 'HR, then the CEO'}.';
 
   // once sent
-  static String sent(bool toCeo) => toCeo ? 'Sent. The CEO decides it; you can follow it here.' : 'Sent. HR decides it first, then the CEO; you can follow it here.';
+  static String sent(bool toCeo) => toCeo ? 'Sent to the CEO.' : 'Sent to HR.';
 
   // its page
   static const counts = 'Counts only for you';

@@ -137,8 +137,8 @@ describe('the words', () => {
   });
 
   it('says what was just done', () => {
-    expect(homeDoneText({ done: 'sent' }, home())?.text).toBe('Sent. HR decides it first, then the CEO; you can follow it here.');
-    expect(homeDoneText({ done: 'sent' }, home({ confidential: true }))?.text).toBe('Sent. The CEO decides it; you can follow it here.');
+    expect(homeDoneText({ done: 'sent' }, home())?.text).toBe('Sent to HR.');
+    expect(homeDoneText({ done: 'sent' }, home({ confidential: true }))?.text).toBe('Sent to the CEO.');
     expect(homeDoneText({ done: 'hr_approve' }, home())?.text).toBe('Approved at HR’s step: it is with the CEO now.');
     expect(homeDoneText({ done: 'ceo_approve' }, home())?.text).toBe('Approved: check-ins within it now show as Home.');
     expect(homeDoneText({ done: 'ceo_reject' }, home())?.text).toContain('its point is deleted');

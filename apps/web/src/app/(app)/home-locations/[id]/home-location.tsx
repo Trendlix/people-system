@@ -96,9 +96,16 @@ export async function HomeLocationDetail({
           <HomeStatusBadge status={r.status} confidential={r.confidential} inForce={r.inForce} />
           {r.confidential && <CLevelBadge title="A C-level person: the CEO takes both steps, and HR doesn’t see the request." />}
         </div>
+        {/* their own request: when it was sent, no more (owner, 1 November 2026: "same here", on its long header) */}
         <p className="text-muted">
-          {r.employee.fullNameEn}
-          {place && ` · ${place}`} · sent {formatDateTime(r.createdAt)}
+          {own ? (
+            `Sent ${formatDateTime(r.createdAt)}`
+          ) : (
+            <>
+              {r.employee.fullNameEn}
+              {place && ` · ${place}`} · sent {formatDateTime(r.createdAt)}
+            </>
+          )}
         </p>
       </div>
       {done && (

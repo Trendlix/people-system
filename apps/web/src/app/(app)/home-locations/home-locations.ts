@@ -267,7 +267,7 @@ export const decidingAsTitle = (stage: HomeStage, confidential?: boolean | null)
 export function homeDoneText(query: Query, r: Pick<HomeLocationView, 'confidential'> & Partial<Pick<HomeLocationView, 'type' | 'label'>>): { text: string; tone: 'ok' | 'warn' } | null {
   const done = one(query.done);
   const shown = homeShownAs(r);
-  if (done === 'sent') return { text: `Sent. ${r.confidential ? 'The CEO decides it' : 'HR decides it first, then the CEO'}; you can follow it here.`, tone: 'ok' };
+  if (done === 'sent') return { text: r.confidential ? 'Sent to the CEO.' : 'Sent to HR.', tone: 'ok' };
   if (done === 'withdrawn') return { text: 'Withdrawn. Its point is deleted; ask again whenever you want.', tone: 'ok' };
   if (done === 'removed') return { text: `Removed. Its point is deleted, and check-ins no longer show as ${shown}.`, tone: 'ok' };
   if (done === 'moved') return { text: 'This request moved on meanwhile: here is where it stands now.', tone: 'warn' };
