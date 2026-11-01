@@ -50,3 +50,11 @@ export async function signIn(app: INestApplication<App>, email: string, userAgen
   if (!cookie) throw new Error('No session cookie returned');
   return cookie.split(';')[0];
 }
+
+/**
+ * An interview of an application held yesterday and marked done: a job offer is made only after one (owner, 1 November
+ * 2026: "Offer only after interview"; packages/shared offerProblem).
+ */
+export async function interviewDone(prisma: PrismaService, applicationId: string): Promise<void> {
+  await prisma.interview.create({ data: { applicationId, startsAt: new Date(Date.now() - 86_400_000), minutes: 30, kind: 'phone', status: 'done' } });
+}

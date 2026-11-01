@@ -12,6 +12,7 @@ import {
   noticeParts,
   noticeProblem,
   offerable,
+  offerProblem,
   publicQuestionOf,
   questionMaxPoints,
   restorable,
@@ -307,14 +308,19 @@ describe('applicants', () => {
     expect(stageMoveProblem('shortlisted', 'shortlisted', free)).toBe('They are shortlisted already.');
   });
 
-  it('restores one filtered out or rejected, and offers to one shortlisted or at interview', () => {
+  it('restores one filtered out or rejected, and offers only once an interview of theirs is marked done', () => {
     expect(restorable({ stage: 'applied', filteredOut: true })).toBe(true);
     expect(restorable({ stage: 'rejected', filteredOut: false })).toBe(true);
     expect(restorable({ stage: 'shortlisted', filteredOut: false })).toBe(false);
-    expect(offerable({ stage: 'shortlisted', filteredOut: false })).toBe(true);
-    expect(offerable({ stage: 'interview', filteredOut: false })).toBe(true);
-    expect(offerable({ stage: 'applied', filteredOut: false })).toBe(false);
-    expect(offerable({ stage: 'shortlisted', filteredOut: true })).toBe(false);
+    // owner, 1 November 2026: "Offer only after interview"
+    expect(offerable({ stage: 'interview', filteredOut: false, interviewsDone: 1 })).toBe(true);
+    expect(offerable({ stage: 'shortlisted', filteredOut: false, interviewsDone: 1 })).toBe(true);
+    expect(offerable({ stage: 'offer', filteredOut: false, interviewsDone: 2 })).toBe(true);
+    expect(offerProblem({ stage: 'interview', filteredOut: false, interviewsDone: 0 })).toBe('Interview them first: a job offer comes once an interview of theirs is marked done.');
+    expect(offerProblem({ stage: 'shortlisted', filteredOut: false })).toBe('Interview them first: a job offer comes once an interview of theirs is marked done.');
+    expect(offerProblem({ stage: 'applied', filteredOut: false, interviewsDone: 1 })).toBe('Shortlist them first: a job offer comes after their interview.');
+    expect(offerable({ stage: 'interview', filteredOut: true, interviewsDone: 1 })).toBe(false);
+    expect(offerProblem({ stage: 'rejected', filteredOut: false, interviewsDone: 1 })).toBe('They were rejected: restore them first.');
   });
 });
 

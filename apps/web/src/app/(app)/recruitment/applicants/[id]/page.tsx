@@ -111,6 +111,10 @@ function Actions({ a }: { a: ApplicationView }) {
           Make offer
         </Link>
       )}
+      {/* a job offer only after an interview marked done (owner, 1 November 2026: "Offer only after interview") */}
+      {!c.makeOffer && c.scheduleInterview && (a.stage === 'shortlisted' || a.stage === 'interview') && !a.interviews.some((i) => i.status === 'done') && (
+        <p className="hint w-full">Make offer comes once an interview of theirs is marked done.</p>
+      )}
       {c.shortlist && <ActionButton action={moveApplicant.bind(null, a.id, 'shortlisted')} label={a.stage === 'interview' ? 'Back to shortlisted' : 'Shortlist'} pendingLabel="Saving…" kind={a.stage === 'applied' ? 'primary' : 'secondary'} />}
       {c.interview && !a.interviewBlocked && <ActionButton action={moveApplicant.bind(null, a.id, 'interview')} label="Move to interview" pendingLabel="Saving…" />}
       {c.restore && <ActionButton action={restoreApplicant.bind(null, a.id)} label="Restore" pendingLabel="Restoring…" kind="primary" />}

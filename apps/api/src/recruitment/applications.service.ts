@@ -114,6 +114,8 @@ function byMatch<T extends { matchPercent: number | null; cvMatchPercent: number
 export const OPEN_OFFER: Prisma.JobOfferWhereInput = { status: { in: ['draft', 'sent'] } };
 
 const DETAIL_INCLUDE = {
+  // their interviews marked done: a job offer only after one (owner, 1 November 2026: "Offer only after interview")
+  _count: { select: { interviews: { where: { status: 'done' } } } },
   vacancy: {
     select: {
       id: true,
@@ -313,7 +315,8 @@ export class ApplicationsService {
       interview: manages && stageMoveProblem(stage, 'interview', { filteredOut: a.filteredOut, openOffer }) === null && gate === null,
       reject: manages && stageMoveProblem(stage, 'rejected', { filteredOut: a.filteredOut, openOffer }) === null,
       restore: manages && restorable({ stage, filteredOut: a.filteredOut }),
-      makeOffer: manages && offerable({ stage, filteredOut: a.filteredOut }) && !openOffer,
+      // only after an interview marked done (1 November 2026)
+      makeOffer: manages && offerable({ stage, filteredOut: a.filteredOut, interviewsDone: a._count.interviews }) && !openOffer,
       // the notes became screening comments (24 October 2026): kept read only
       editNotes: false,
       scheduleInterview: manages && !a.filteredOut && !settled,
@@ -713,6 +716,8 @@ export class ApplicationsService {
         steps: { select: { stage: true, at: true }, orderBy: { at: 'asc' } },
         offers: { where: OPEN_OFFER, select: { id: true } },
         interviews: { where: { status: 'scheduled', startsAt: { gte: now } }, select: { id: true } },
+        // those marked done: a job offer only after one (1 November 2026)
+        _count: { select: { interviews: { where: { status: 'done' } } } },
         candidateId: true,
         cvUpdatedAt: true,
       },
@@ -747,6 +752,7 @@ export class ApplicationsService {
         daysInStage: daysSince(stageSince(r.steps, r.createdAt), now),
         openOffer: r.offers.length > 0,
         upcomingInterviews: r.interviews.length,
+        interviewsDone: r._count.interviews,
         suggestion: (r.suggestion as HiringSuggestion | null) ?? null,
         // waiting for the manager, the screening call due, ready to interview… (29 October 2026, hiring-steps.ts)
         hiringStep: hiringStepOf(hiringStepInput({ ...r, vacancy: v })),

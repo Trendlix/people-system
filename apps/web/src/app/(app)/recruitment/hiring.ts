@@ -42,8 +42,9 @@ export const analyticsExcelHref = (q: AnalyticsQuery) => `${ANALYTICS_PATH}/exce
 // ---------- the board ----------
 
 /** What dropping a card on a column does (shared boardMove), with the card's own state. */
-export const dropOn = (card: Pick<BoardCard, 'stage' | 'filteredOut' | 'openOffer'>, to: ApplicationStage): BoardMove =>
-  boardMove(card.stage, to, { filteredOut: card.filteredOut, openOffer: card.openOffer });
+export const dropOn = (card: Pick<BoardCard, 'stage' | 'filteredOut' | 'openOffer' | 'interviewsDone'>, to: ApplicationStage): BoardMove =>
+  // a job offer only after an interview marked done (owner, 1 November 2026: "Offer only after interview")
+  boardMove(card.stage, to, { filteredOut: card.filteredOut, openOffer: card.openOffer, interviewsDone: card.interviewsDone });
 
 /** "3 days", "1 day", "Today". */
 export const daysText = (days: number) => (days <= 0 ? 'Today' : days === 1 ? '1 day' : `${days} days`);

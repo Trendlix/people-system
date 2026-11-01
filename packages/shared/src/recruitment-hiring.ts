@@ -14,7 +14,7 @@
 //   probation pass rate, the funnel, hires by month, sources and time to hire by department.
 // Pure code: the API enforces these rules, the web shows them. Tested in apps/api/src/common/recruitment-hiring.spec.ts.
 
-import { APPLICATION_STAGE_LABELS, offerable, stageMoveProblem, type ApplicationSource, type ApplicationStage, type HandStage, type RecruitmentUserRef } from './recruitment.js';
+import { APPLICATION_STAGE_LABELS, offerProblem, stageMoveProblem, type ApplicationSource, type ApplicationStage, type HandStage, type RecruitmentUserRef } from './recruitment.js';
 import type { GeneralCvSource } from './general-cvs.js';
 import type { CandidateBadge } from './candidates.js';
 import type { BetterFitBadge, CvFit } from './cv-fit.js';
@@ -54,18 +54,15 @@ export type BoardMove = { kind: 'move'; to: HandStage; needsReason: boolean } | 
  * What moving an applicant from `from` to the column `to` does on the board (the brief: "the same rules as the stage
  * actions: Reject asks for a reason; Offer goes through Make offer; Hired only by an accepted offer").
  */
-export function boardMove(from: ApplicationStage, to: ApplicationStage, state: { filteredOut: boolean; openOffer: boolean }): BoardMove {
+export function boardMove(from: ApplicationStage, to: ApplicationStage, state: { filteredOut: boolean; openOffer: boolean; interviewsDone?: number | null }): BoardMove {
   if (from === to) return { kind: 'refused', reason: `They are at ${APPLICATION_STAGE_LABELS[to]} already.` };
   if (to === 'applied') return { kind: 'refused', reason: 'Nobody goes back to Applied: shortlist them, or reject them.' };
   if (to === 'hired') return { kind: 'refused', reason: 'Hired follows an accepted job offer: make them an offer first.' };
   if (to === 'offer') {
     if (state.openOffer) return { kind: 'refused', reason: 'A job offer to them is open already: open it from their page.' };
-    if (!offerable({ stage: from, filteredOut: state.filteredOut })) {
-      return {
-        kind: 'refused',
-        reason: state.filteredOut ? 'They failed a must-have question and were filtered out: restore them first.' : `They are at ${APPLICATION_STAGE_LABELS[from]}: shortlist them first.`,
-      };
-    }
+    // only after an interview marked done (owner, 1 November 2026: "Offer only after interview")
+    const problem = offerProblem({ stage: from, filteredOut: state.filteredOut, interviewsDone: state.interviewsDone });
+    if (problem) return { kind: 'refused', reason: problem };
     return { kind: 'offer' };
   }
   const problem = stageMoveProblem(from, to, state);
@@ -651,6 +648,11 @@ export interface BoardCard {
   openOffer: boolean;
   /** Interviews still to come. */
   upcomingInterviews: number;
+  /**
+   * Their interviews marked done (owner, 1 November 2026: "Offer only after interview"): none, no job offer yet. Left out by an
+   * API from before it.
+   */
+  interviewsDone?: number;
   suggestion: HiringSuggestion | null;
   /** Where a shortlisted applicant stands in the hiring steps (29 October 2026, hiring-steps.ts); null at another stage. */
   hiringStep?: HiringStep | null;

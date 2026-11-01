@@ -36,15 +36,17 @@ describe('the pipeline board', () => {
     expect(boardMove('applied', 'shortlisted', free)).toEqual({ kind: 'move', to: 'shortlisted', needsReason: false });
     expect(boardMove('shortlisted', 'interview', free)).toEqual({ kind: 'move', to: 'interview', needsReason: false });
     expect(boardMove('interview', 'rejected', free)).toEqual({ kind: 'move', to: 'rejected', needsReason: true });
-    expect(boardMove('interview', 'offer', free)).toEqual({ kind: 'offer' });
-    expect(boardMove('shortlisted', 'offer', free)).toEqual({ kind: 'offer' });
+    // an offer only once an interview of theirs is marked done (owner, 1 November 2026: "Offer only after interview")
+    expect(boardMove('interview', 'offer', { ...free, interviewsDone: 1 })).toEqual({ kind: 'offer' });
+    expect(boardMove('shortlisted', 'offer', { ...free, interviewsDone: 1 })).toEqual({ kind: 'offer' });
+    expect(boardMove('interview', 'offer', free)).toEqual({ kind: 'refused', reason: 'Interview them first: a job offer comes once an interview of theirs is marked done.' });
   });
 
   it('refuses in words what the stage actions refuse', () => {
     expect(boardMove('applied', 'hired', free)).toEqual({ kind: 'refused', reason: 'Hired follows an accepted job offer: make them an offer first.' });
     expect(boardMove('shortlisted', 'applied', free).kind).toBe('refused');
     expect(boardMove('applied', 'interview', free)).toEqual({ kind: 'refused', reason: 'Shortlist them first.' });
-    expect(boardMove('applied', 'offer', free)).toEqual({ kind: 'refused', reason: 'They are at Applied: shortlist them first.' });
+    expect(boardMove('applied', 'offer', free)).toEqual({ kind: 'refused', reason: 'Shortlist them first: a job offer comes after their interview.' });
     expect(boardMove('interview', 'offer', { filteredOut: false, openOffer: true }).kind).toBe('refused');
     expect(boardMove('offer', 'rejected', { filteredOut: false, openOffer: true })).toEqual({ kind: 'refused', reason: 'A job offer to them is open: withdraw it first.' });
     expect(boardMove('applied', 'shortlisted', { filteredOut: true, openOffer: false }).kind).toBe('refused');

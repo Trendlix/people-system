@@ -729,8 +729,23 @@ export function stageMoveProblem(from: ApplicationStage, to: HandStage, state: {
 /** Whether an applicant can be restored: one filtered out, or one rejected. */
 export const restorable = (a: { stage: ApplicationStage; filteredOut: boolean }): boolean => a.filteredOut || a.stage === 'rejected';
 
-/** Whether a job offer can be made from an application: shortlisted, at interview, or back at the offer stage after one was declined. */
-export const offerable = (a: { stage: ApplicationStage; filteredOut: boolean }): boolean => !a.filteredOut && (a.stage === 'shortlisted' || a.stage === 'interview' || a.stage === 'offer');
+/**
+ * Why a job offer can't be made from an application now (null: it can). Only after an interview of theirs is marked done
+ * (owner, 1 November 2026, of the hiring steps: "i dont think this workflow is applied"; asked, "Offer only after
+ * interview"), so the hiring manager's acceptance and HR's screening call, which come before the interview, come first
+ * too: at Shortlisted, Interview, or back at Offer after one was declined; never one filtered out.
+ */
+export function offerProblem(a: { stage: ApplicationStage; filteredOut: boolean; interviewsDone?: number | null }): string | null {
+  if (a.filteredOut) return 'They failed a must-have question and were filtered out: restore them first.';
+  if (a.stage === 'hired') return 'They were hired already.';
+  if (a.stage === 'rejected') return 'They were rejected: restore them first.';
+  if (a.stage === 'applied') return 'Shortlist them first: a job offer comes after their interview.';
+  if (!((a.interviewsDone ?? 0) > 0)) return 'Interview them first: a job offer comes once an interview of theirs is marked done.';
+  return null;
+}
+
+/** Whether a job offer can be made from an application (offerProblem). */
+export const offerable = (a: { stage: ApplicationStage; filteredOut: boolean; interviewsDone?: number | null }): boolean => offerProblem(a) === null;
 
 /** What happened to an application, as its history lists it. */
 export const APPLICATION_EVENTS = ['applied', 'filtered_out', 'shortlisted', 'interview', 'offer', 'hired', 'rejected', 'restored', 'offer_declined', 'offer_withdrawn', 'updated'] as const;

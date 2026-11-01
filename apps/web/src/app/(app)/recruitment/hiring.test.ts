@@ -13,10 +13,12 @@ const form = (entries: [string, string][]) => {
 describe('the board', () => {
   it('links a vacancy’s board, and says what a drop does', () => {
     expect(boardHref('abc')).toBe('/recruitment/vacancies/abc?view=board');
-    const card = { stage: 'shortlisted' as const, filteredOut: false, openOffer: false };
+    const card = { stage: 'shortlisted' as const, filteredOut: false, openOffer: false, interviewsDone: 1 };
     expect(dropOn(card, 'interview')).toEqual({ kind: 'move', to: 'interview', needsReason: false });
     expect(dropOn(card, 'rejected')).toEqual({ kind: 'move', to: 'rejected', needsReason: true });
     expect(dropOn(card, 'offer')).toEqual({ kind: 'offer' });
+    // an offer only after an interview marked done (owner, 1 November 2026: "Offer only after interview")
+    expect(dropOn({ ...card, interviewsDone: 0 }, 'offer')).toEqual({ kind: 'refused', reason: 'Interview them first: a job offer comes once an interview of theirs is marked done.' });
     expect(dropOn(card, 'hired').kind).toBe('refused');
     expect(dropOn({ ...card, openOffer: true }, 'offer').kind).toBe('refused');
   });

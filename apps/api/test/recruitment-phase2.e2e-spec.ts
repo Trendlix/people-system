@@ -6,7 +6,7 @@ import { addDays, todayInCairo } from '../src/common/date-only.js';
 import { MailService } from '../src/mail/mail.service.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { RecruitmentSchedulerService } from '../src/recruitment/recruitment-scheduler.service.js';
-import { createApp, createUser, signIn } from './helpers.js';
+import { createApp, createUser, signIn, interviewDone } from './helpers.js';
 
 // Recruitment, Phase 2 (owner, 22 October 2026: "where will we include the ATS?"; "interview invites go by email through
 // the owner's SMTP settings"). A Video Editor vacancy with Hana as its hiring manager: the pipeline board (HR's in full,
@@ -424,6 +424,8 @@ describe('Recruitment, Phase 2 (e2e)', () => {
     let checklist: OnboardingView;
 
     it('opens on a hire through an accepted job offer, with the system’s three items and HR’s defaults', async () => {
+      // a job offer only after an interview marked done (1 November 2026)
+      if (!(await prisma.interview.count({ where: { applicationId: apps.Sara, status: 'done' } }))) await interviewDone(prisma, apps.Sara);
       const offer = (await post('hr', '/offers', {
         fullNameEn: `Sara Hired ${RUN}`,
         fullNameAr: 'سارة',

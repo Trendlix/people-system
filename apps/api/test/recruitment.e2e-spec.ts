@@ -6,7 +6,7 @@ import type { App } from 'supertest/types.js';
 import { addDays, todayInCairo } from '../src/common/date-only.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { signatureOf } from '../src/attendance/signed-ip.js';
-import { createApp, createUser, signIn } from './helpers.js';
+import { createApp, createUser, signIn, interviewDone } from './helpers.js';
 
 // Recruitment, Phase 1 (owner, 22 October 2026: "where will we include the ATS?"; "HR creates a vacancy and the CEO
 // approves it"; "the match score uses rules from the screening questions"). HR drafts a Video Producer vacancy from its
@@ -473,7 +473,12 @@ describe('Recruitment (e2e)', () => {
       });
       // not from one only applied
       const lina = (await appByEmail(`lina.low.${RUN}@mail.test`)).id;
-      expect(said(await post('hr', '/offers', offer({ applicationId: lina })).expect(409))).toEqual(['They are at Applied: shortlist them first.']);
+      expect(said(await post('hr', '/offers', offer({ applicationId: lina })).expect(409))).toEqual(['Shortlist them first: a job offer comes after their interview.']);
+      // nor before an interview of theirs is marked done (owner, 1 November 2026: "Offer only after interview")
+      expect(said(await post('hr', '/offers', offer()).expect(409))).toEqual(['Interview them first: a job offer comes once an interview of theirs is marked done.']);
+      expect((await get('hr', `/recruitment/applications/${sara}`).expect(200)).body.can.makeOffer).toBe(false);
+      await interviewDone(prisma, sara);
+      expect((await get('hr', `/recruitment/applications/${sara}`).expect(200)).body.can.makeOffer).toBe(true);
       const first = (await post('hr', '/offers', offer()).expect(201)).body as { id: string; number: string; application: { id: string; number: string } };
       expect(first.application.id).toBe(sara);
       expect((await get('hr', `/recruitment/applications/${sara}`).expect(200)).body.stage).toBe('offer');

@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { APPLICATION_STAGE_LABELS, offerable, type ApplicationEvent, type ApplicationStage } from '@trendlix/shared';
+import { offerProblem, type ApplicationEvent, type ApplicationStage } from '@trendlix/shared';
 import type { SessionUser } from '../auth/session-user.js';
 import { AuditService } from '../audit/audit.service.js';
 import { OnboardingService } from '../onboarding/onboarding.service.js';
@@ -29,22 +29,19 @@ export class RecruitmentOffersService {
   ) {}
 
   /**
-   * Whether a job offer may be made from the application, for the caller: one they may see (404 otherwise),
-   * shortlisted, at interview or at Offer, not filtered out, with no job offer open to them (409 in words otherwise).
+   * Whether a job offer may be made from the application, for the caller: one they may see (404 otherwise), once an
+   * interview of theirs is marked done (owner, 1 November 2026: "Offer only after interview"; packages/shared
+   * offerProblem), not filtered out, with no job offer open to them (409 in words otherwise).
    */
   async assertOfferable(applicationId: string, user: SessionUser): Promise<void> {
     const a = await this.prisma.jobApplication.findFirst({
       where: { id: applicationId, vacancy: vacancyWhere(user) },
-      select: { stage: true, filteredOut: true, offers: { where: OPEN_OFFER, select: { number: true } } },
+      select: { stage: true, filteredOut: true, offers: { where: OPEN_OFFER, select: { number: true } }, _count: { select: { interviews: { where: { status: 'done' } } } } },
     });
     if (!a) throw new NotFoundException('Applicant not found.');
     if (a.offers.length) throw new ConflictException(`A job offer to them is open already (${a.offers[0].number}).`);
-    const stage = a.stage as ApplicationStage;
-    if (!offerable({ stage, filteredOut: a.filteredOut })) {
-      throw new ConflictException(
-        a.filteredOut ? 'They failed a must-have question and were filtered out: restore them first.' : `They are at ${APPLICATION_STAGE_LABELS[stage]}: shortlist them first.`,
-      );
-    }
+    const problem = offerProblem({ stage: a.stage as ApplicationStage, filteredOut: a.filteredOut, interviewsDone: a._count.interviews });
+    if (problem) throw new ConflictException(problem);
   }
 
   /** The job offer drafted from the application: it moves to Offer, with the offer's number in its history. */

@@ -29,7 +29,7 @@ import { addDays, todayInCairo } from '../src/common/date-only.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { CandidatesService } from '../src/recruitment/candidates.service.js';
 import { CvReadingsService } from '../src/recruitment/cv-readings.service.js';
-import { createApp, createUser, signIn } from './helpers.js';
+import { createApp, createUser, signIn, interviewDone } from './helpers.js';
 
 // Candidate profiles (owner, 22 October 2026: "how to make like a profile for each candidate to store history and prevent
 // duplication? even if the same candidate applied for 2 jobs"; asked, "Email or mobile" and "Link and show rehire"; then
@@ -405,6 +405,8 @@ describe('Candidate profiles (e2e)', () => {
       status(await apply(C, 'yara'), 201);
       const a = await appOf(C, 'yara');
       await post('hr', `/recruitment/applications/${a.id}/stage`, { to: 'shortlisted' }).expect(200);
+      // a job offer only after an interview marked done (1 November 2026)
+      await interviewDone(prisma, a.id);
       const offer = (
         await post('hr', '/offers', {
           fullNameEn: nameOf('yara'),
