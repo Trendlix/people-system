@@ -5,6 +5,8 @@ import type { SessionUser } from '../auth/session-user.js';
 import { ConfidentialOf } from '../employees/confidential.guard.js';
 import { CreateCheckInLocationDto, LinkPeopleDto, UpdateCheckInLocationDto, UpdateGpsLockDto, UpdateLocationRuleDto, UpdateOfficeNetworksDto } from './check-in-setup.dto.js';
 import { CheckInSetupService } from './check-in-setup.service.js';
+import { LocationPingsSettingDto } from './location-pings.dto.js';
+import { LocationPingsService } from './location-pings.service.js';
 
 // Attendance → Check-in Setup (owner, 20 October 2026: "Own page, several locations"): the check-in locations and the
 // office networks with the lock (check-ins locked to the office network, the same day). HR and Admin (a Super Admin as an
@@ -18,7 +20,10 @@ import { CheckInSetupService } from './check-in-setup.service.js';
 // employees if a customer location"), made by a request's approval, ended here by HR or Admin.
 @Controller('attendance/check-in-setup')
 export class CheckInSetupController {
-  constructor(private readonly setup: CheckInSetupService) {}
+  constructor(
+    private readonly setup: CheckInSetupService,
+    private readonly pings: LocationPingsService,
+  ) {}
 
   /** The main office first, then the sub-locations, each with its linked people the caller may see. */
   @Roles('hr', 'admin')
@@ -131,6 +136,20 @@ export class CheckInSetupController {
   @Put('gps-lock')
   updateGpsLock(@Body() dto: UpdateGpsLockDto, @CurrentUser() user: SessionUser) {
     return this.setup.updateGpsLock(dto, user);
+  }
+
+  /** { enabled }: the app reads the location every hour while checked in (owner, 1 November 2026: "Silent automatic ping"). */
+  @Roles('hr', 'admin')
+  @Get('location-pings')
+  @Header('Cache-Control', 'private, no-store')
+  async locationPings() {
+    return { enabled: await this.pings.enabled() };
+  }
+
+  @Roles('hr', 'admin')
+  @Put('location-pings')
+  updateLocationPings(@Body() dto: LocationPingsSettingDto, @CurrentUser() user: SessionUser) {
+    return this.pings.setEnabled(dto.enabled, user);
   }
 }
 

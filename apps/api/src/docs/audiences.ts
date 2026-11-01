@@ -62,6 +62,8 @@ export const APP_ENDPOINTS: readonly string[] = [
   // checking in and attendance
   'GET /api/me/attendance/today',
   'POST /api/me/attendance/punches',
+  // the hourly location while checked in, from the background (1 November 2026)
+  'POST /api/me/attendance/pings',
   'GET /api/attendance/me',
   'GET /api/me/attendance/corrections',
   'POST /api/me/attendance/corrections',

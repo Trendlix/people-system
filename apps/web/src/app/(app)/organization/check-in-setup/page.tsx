@@ -20,6 +20,7 @@ import {
   removeLocation,
   saveClientEnd,
   saveGpsLock,
+  saveLocationPings,
   saveLocationRule,
   saveNetworks,
   saveZohoAddresses,
@@ -28,9 +29,10 @@ import {
 } from './actions';
 import { AddLocation } from './add-location';
 import { ClientLocationCard } from './client-location-card';
-import { loadGpsLock, loadLinkable, loadLocationRule, loadLocations, loadNetworks, loadSettings } from './data';
+import { loadGpsLock, loadLinkable, loadLocationPings, loadLocationRule, loadLocations, loadNetworks, loadSettings } from './data';
 import { ExemptionsSection } from './exemptions-section';
 import { GpsLockForm } from './gps-lock-form';
+import { PingsForm } from './pings-form';
 import { HomeLocationsSection } from './home-locations-section';
 import { MainOfficeCard, SubLocationCard } from './location-card';
 import { MapsSection } from './maps-section';
@@ -42,6 +44,7 @@ import {
   CLIENTS_ID,
   faintCircles,
   GPS_LOCK_ID,
+  PINGS_ID,
   gpsLockText,
   LOCATION_RULE_ID,
   locationRuleText,
@@ -252,6 +255,15 @@ async function GpsLockSection() {
   );
 }
 
+async function PingsSection() {
+  const loaded = await loadLocationPings();
+  return (
+    <SetupSection id={PINGS_ID} title="Hourly Location">
+      {loaded.kind !== 'ok' ? <Missing>{notLoaded(loaded, 'the switch')}</Missing> : <PingsForm action={saveLocationPings} on={loaded.value.enabled} />}
+    </SetupSection>
+  );
+}
+
 async function ZohoSection() {
   const loaded = await loadSettings();
   return (
@@ -283,6 +295,9 @@ async function Gate({ searchParams }: { searchParams: PageProps<'/organization/c
       </Suspense>
       <Suspense fallback={<Loading />}>
         <GpsLockSection />
+      </Suspense>
+      <Suspense fallback={<Loading />}>
+        <PingsSection />
       </Suspense>
       <Suspense fallback={<Loading />}>
         <ExemptionsSection />

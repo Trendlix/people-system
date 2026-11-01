@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -5,6 +7,7 @@ import '../../api/people_client.dart';
 import '../../format.dart';
 import '../../models/today.dart';
 import '../../platform/locator.dart';
+import '../../platform/location_pings.dart';
 import '../../providers.dart';
 import 'check_in_words.dart';
 import 'today_controller.dart';
@@ -35,6 +38,10 @@ mixin CheckInPress<T extends ConsumerStatefulWidget> on ConsumerState<T> {
               ? null
               : (punch.kind == PunchKind.checkIn ? CheckInWords.checkedIn : CheckInWords.checkedOut)(clockOf(punch.at), CheckInWords.placeOf(punch));
           said = (text: [if (!kept) CheckInWords.sameAgain, ?done, ...messages].join('\n'), ok: true, action: null, onAction: null);
+          // checked in with the hourly location on (1 November 2026): what it reads and why, then "Allow all the time"
+          if (kept && punch?.kind == PunchKind.checkIn && (ref.read(todayProvider).value?.locationPings ?? false) && mounted) {
+            unawaited(askAlwaysLocation(context));
+          }
         case NoLocation(:final problem):
           final locator = ref.read(locatorProvider);
           final VoidCallback onAction = switch (problem) {

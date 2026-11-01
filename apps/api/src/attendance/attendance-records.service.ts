@@ -19,6 +19,7 @@ import {
   type PunchLike,
   type RecordSource,
   type WorkPlace,
+  type PingView,
 } from '@trendlix/shared';
 import { AuditService } from '../audit/audit.service.js';
 import { isSuperAdmin } from '../auth/roles.js';
@@ -33,6 +34,7 @@ import { seesEveryonesAttendance, teamOf } from './attendance-scope.js';
 import { EMPLOYMENT_SELECT, shiftTimesOf } from './attendance-days.service.js';
 import { AttendanceFillService } from './attendance-fill.service.js';
 import { AttendanceImportsService } from './attendance-imports.service.js';
+import { LocationPingsService } from './location-pings.service.js';
 import { keptDayData } from './check-in.service.js';
 import { CorrectionDaysService } from './correction-days.service.js';
 import { firstWorkingDayOn } from './first-day.js';
@@ -82,6 +84,8 @@ export interface RemovedRecordView {
 
 /** GET /attendance/employees/:employeeId/records?date=: a day's records and which source counts. */
 export interface DayRecordsView {
+  /** The app's hourly location while checked in (1 November 2026), oldest first. */
+  pings: PingView[];
   employee: { id: string; fullNameEn: string; employeeCode: string };
   date: string;
   system: { kept: boolean; hoursCounted: number | null; records: DayRecordView[] };
@@ -108,6 +112,7 @@ export class AttendanceRecordsService {
     private readonly correctionDays: CorrectionDaysService,
     private readonly fill: AttendanceFillService,
     private readonly imports: AttendanceImportsService,
+    private readonly pings: LocationPingsService,
   ) {}
 
   // ---------- seeing ----------
@@ -115,7 +120,7 @@ export class AttendanceRecordsService {
   async day(employeeId: string, date: string, user: SessionUser): Promise<DayRecordsView> {
     const person = await this.visible(employeeId, user);
     const d = toDateOnly(date);
-    const [punches, days, removals, choice, locked] = await Promise.all([
+    const [punches, days, removals, choice, locked, pings] = await Promise.all([
       this.prisma.attendancePunch.findMany({ where: { employeeId, date: d }, orderBy: { at: 'asc' }, select: { id: true, kind: true, at: true, place: true, locationName: true, flags: true } }),
       this.prisma.attendanceDay.findMany({ where: { employeeId, date: d }, select: { source: true, checkIn: true, checkOut: true, pairs: true, openAt: true, hoursCounted: true } }),
       isSuperAdmin(user)
@@ -123,6 +128,8 @@ export class AttendanceRecordsService {
         : Promise.resolve([]),
       this.prisma.attendanceDaySource.findUnique({ where: { employeeId_date: { employeeId, date: d } }, include: { chosenBy: { select: { id: true, email: true } } } }),
       this.lockOf(date),
+      // the app's hourly location while checked in (1 November 2026)
+      this.pings.ofDay(employeeId, date),
     ]);
     const names = await userNames(this.prisma, [...removals.map((r) => r.removedBy), choice?.chosenBy ?? null]);
     const nameOf = (u: { id: string } | null) => (u ? (names.get(u.id)?.name ?? null) : null);
@@ -134,6 +141,7 @@ export class AttendanceRecordsService {
     return {
       employee: person,
       date,
+      pings,
       system: {
         kept: !!system,
         hoursCounted: system ? system.hoursCounted.toNumber() : null,

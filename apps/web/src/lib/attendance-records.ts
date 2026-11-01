@@ -1,4 +1,4 @@
-import { CHECK_IN_FLAG_LABELS, DAY_SOURCE_CHOICE_LABELS, cairoClock, isCheckInFlag, type DaySourceChoice, type RecordSource } from '@trendlix/shared';
+import { CHECK_IN_FLAG_LABELS, DAY_SOURCE_CHOICE_LABELS, cairoClock, isCheckInFlag, type DaySourceChoice, type PingView, type RecordSource } from '@trendlix/shared';
 
 // A person's attendance records on the website (owner, 31 October 2026: "is there a way to check the checkin records?
 // even if imported from zoho and delete one of them?" — "as a super admin"; "zoho or system"): the day's records page
@@ -28,6 +28,8 @@ export interface RemovedRecord {
 
 export interface DayRecordsView {
   employee: { id: string; fullNameEn: string; employeeCode: string };
+  /** The app's hourly location while checked in (1 November 2026); missing from an API from before them. */
+  pings?: PingView[];
   date: string;
   system: { kept: boolean; hoursCounted: number | null; records: DayRecord[] };
   zoho: { kept: boolean; hoursCounted: number | null; records: DayRecord[] };

@@ -45,6 +45,9 @@ export const loadLocationRule = cache(() => loadJson<LocationRuleView>('/attenda
 /** GET /attendance/check-in-setup/gps-lock: the GPS lock (owner, 24 October 2026: "Yes, add a GPS lock too"). */
 export const loadGpsLock = cache(() => loadJson<GpsLockView>('/attendance/check-in-setup/gps-lock'));
 
+/** GET …/location-pings: the app's hourly location while checked in (owner, 1 November 2026: "Silent automatic ping"). */
+export const loadLocationPings = cache(() => loadJson<{ enabled: boolean }>('/attendance/check-in-setup/location-pings'));
+
 /**
  * GET /home-locations?status=&type=: the requested check-in locations (owner, 24 October 2026: "Home Location - Remote
  * Site - Client Location"), HR's, the CEO's and the Super Admin's, as the list's filters ask (setup.ts requestsApi).

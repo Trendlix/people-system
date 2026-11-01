@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app.dart';
+import 'platform/location_pings.dart';
 import 'providers.dart';
 
 // Trendlix People, the employee app in Flutter (owner, 30 October 2026: "lets start in the flutter one"). The plan and
@@ -13,5 +16,8 @@ void main() {
   LicenseRegistry.addLicense(() async* {
     yield LicenseEntryWithLineBreaks(const ['Instrument Sans'], await rootBundle.loadString('assets/fonts/OFL.txt'));
   });
+  // the hourly location while checked in (1 November 2026): the background task's entry point
+  WidgetsFlutterBinding.ensureInitialized();
+  unawaited(initPings());
   runApp(const ProviderScope(retry: noRetry, child: PeopleApp()));
 }

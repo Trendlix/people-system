@@ -63,6 +63,11 @@ const SAME_PRESS_MS = 60_000;
 export interface CheckInTodayView {
   /** Null: they check in on the system; else why not, in a sentence. */
   refusal: string | null;
+  /**
+   * The company has the hourly location on (owner, 1 November 2026: "Silent automatic ping"): the app reads the location
+   * every hour while they are checked in (location-pings.service.ts).
+   */
+  locationPings: boolean;
   /** The working day the next punch counts on (YYYY-MM-DD, Cairo). */
   date: string;
   /** The server's time now (ISO): the time a punch takes. */
@@ -419,7 +424,10 @@ export class CheckInService {
     // held to the check-in locations by GPS (24 October 2026), never on a work from home day or within an official duty
     const gpsLocked = !!employment && lockedToCheckInLocations(gps, places, employment) && !anywhere;
     const expected = employment ? expectedPlace(employment.workArrangement, employment.officeDays, weekday(date), anywhere) : null;
+    // the hourly location while checked in (1 November 2026), for the app
+    const pingSetting = await db.payrollSettings.findUnique({ where: { id: 1 }, select: { locationPings: true } });
     return {
+      locationPings: (pingSetting?.locationPings ?? false) && employeeId !== null && refusal === null,
       refusal,
       date,
       now: now.toISOString(),

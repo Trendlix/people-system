@@ -35,6 +35,8 @@ export const ENTITY_LABELS: Readonly<Record<string, string>> = {
   check_in_location_rule: 'Check-ins without a location',
   // the GPS lock (owner, 24 October 2026: "Yes, add a GPS lock too"): Office staff's check-ins held to the check-in locations
   check_in_gps_lock: 'Check-ins locked to the check-in locations',
+  // the app's hourly location while checked in (owner, 1 November 2026: "Silent automatic ping")
+  check_in_location_pings: 'Hourly location while checked in',
   // people exempt from check-in (owner, 25 October 2026: "allow me to select people that are not eligable for attendance
   // checkins and outs"): a period added, ended or removed
   check_in_exemption: 'Exemption from check-in',

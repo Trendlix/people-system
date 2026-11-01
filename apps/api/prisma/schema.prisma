@@ -1176,6 +1176,7 @@ model Employee {
   permissions                PermissionRequest[]        @relation("PermissionRequester") // the permission hours this person asked for, or HR recorded for them
   attendanceDays             AttendanceDay[] // each day of attendance kept: imported from Zoho People, or from their check-ins on the system
   attendancePunches          AttendancePunch[] // each press of Check in and Check out on the system (19 October 2026)
+  attendancePings            AttendancePing[] // the app's hourly location while checked in (1 November 2026)
   attendanceRecordRemovals   AttendanceRecordRemoval[] // their attendance records a Super Admin removed (31 October 2026)
   attendanceDaySources       AttendanceDaySource[] // their days whose source a Super Admin chose (31 October 2026)
   attendanceCorrections      AttendanceCorrection[]     @relation("AttendanceCorrectionRequester") // the days this person asked to correct, or HR corrected
@@ -3054,6 +3055,8 @@ model PayrollSettings {
   // rough to tell (packages/shared gps-lock.ts)
   gpsLock                 Boolean  @default(false) @map("gps_lock")
   gpsRoughMetres          Int      @default(200) @map("gps_rough_metres")
+  // the app reads the location every hour while checked in (owner, 1 November 2026: "Silent automatic ping")
+  locationPings           Boolean  @default(false) @map("location_pings")
   updatedAt               DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   @@map("payroll_settings")
@@ -4219,9 +4222,37 @@ model AttendancePunch {
   source         String     @default("system") // system; device for a fingerprint or face device, later
   userId         String?    @map("user_id") @db.Uuid
   user           User?      @relation("AttendancePunchBy", fields: [userId], references: [id], onDelete: SetNull)
+  pings          AttendancePing[]
 
   @@index([employeeId, date])
   @@map("attendance_punches")
+}
+
+// The app's hourly location while checked in (owner, 1 November 2026: "can the devices ping every 1 hour their location?
+// and flag if someone is not in the checked in location?"; chose "Silent automatic ping"): read against the check-in it
+// follows (packages/shared location-pings.ts), at the place, away, can't tell, or the location off; the point to 6
+// decimals, seen by HR, the CEO, the Super Admin and the person, never in the audit log
+model AttendancePing {
+  id             String           @id @default(uuid()) @db.Uuid
+  employeeId     String           @map("employee_id") @db.Uuid
+  employee       Employee         @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date           DateTime         @db.Date // the check-in's working day
+  at             DateTime         @default(now()) @db.Timestamptz
+  punchId        String?          @map("punch_id") @db.Uuid
+  punch          AttendancePunch? @relation(fields: [punchId], references: [id], onDelete: SetNull)
+  status         String // PING_STATUSES: at_place, away, unknown, off
+  offReason      String?          @map("off_reason") // PING_OFF_REASONS: permission, service
+  place          String? // CHECK_IN_PLACES, where its point is
+  locationName   String?          @map("location_name")
+  latitude       Decimal?         @db.Decimal(9, 6)
+  longitude      Decimal?         @db.Decimal(9, 6)
+  accuracyMetres Int?             @map("accuracy_metres")
+  distanceMetres Int?             @map("distance_metres") // from the check-in's spot, when it has one
+  mock           Boolean          @default(false)
+
+  @@index([employeeId, date])
+  @@index([employeeId, at])
+  @@map("attendance_pings")
 }
 
 // An attendance record removed by a Super Admin (owner, 31 October 2026: "is there a way to check the checkin records?

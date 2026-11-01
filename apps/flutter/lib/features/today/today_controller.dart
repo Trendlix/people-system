@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/today.dart';
 import '../../platform/locator.dart';
+import '../../platform/location_pings.dart';
 import '../../providers.dart';
 
 // One-tap check-in (README Phase 1; owner, 30 October 2026: "One-tap check-in"): today's state, and a press that reads
@@ -35,7 +38,12 @@ final todayProvider = AsyncNotifierProvider.autoDispose<TodayController, Today>(
 
 class TodayController extends AsyncNotifier<Today> {
   @override
-  Future<Today> build() async => Today.fromJson(await ref.read(peopleClientProvider).get('/api/me/attendance/today'));
+  Future<Today> build() async {
+    final today = Today.fromJson(await ref.read(peopleClientProvider).get('/api/me/attendance/today'));
+    // the hourly location while checked in (1 November 2026): started or stopped as today says
+    unawaited(syncPings(today, ref.read(pingSchedulerProvider)));
+    return today;
+  }
 
   /// Check in or out, whichever is next. People's refusal comes as an ApiException, in its words.
   Future<PressOutcome> press() async {
@@ -55,6 +63,7 @@ class TodayController extends AsyncNotifier<Today> {
     };
     final result = punchResultOf(await ref.read(peopleClientProvider).post('/api/me/attendance/punches', body));
     state = AsyncData(result.today);
+    unawaited(syncPings(result.today, ref.read(pingSchedulerProvider)));
     return Pressed(result.today.last, result.messages, kept: result.kept);
   }
 }

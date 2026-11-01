@@ -11,6 +11,7 @@ import { CheckInExemptionsService } from './check-in-exemptions.service.js';
 import { CheckInLocationEndingsService } from './check-in-location-endings.service.js';
 import { CheckInSetupController, EmployeeCheckInPlacesController } from './check-in-setup.controller.js';
 import { CheckInSetupService } from './check-in-setup.service.js';
+import { LocationPingsService } from './location-pings.service.js';
 import { CheckInController } from './check-in.controller.js';
 import { CheckInService } from './check-in.service.js';
 import { CorrectionDaysService } from './correction-days.service.js';
@@ -77,6 +78,8 @@ import { AttendanceRecordsService } from './attendance-records.service.js';
     AttendanceFillService,
     CheckInService,
     CheckInSetupService,
+    // the app's hourly location while checked in (1 November 2026)
+    LocationPingsService,
     CorrectionDaysService,
     AttendanceCorrectionsService,
     HomeLocationsService,

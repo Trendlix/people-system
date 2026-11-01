@@ -1,8 +1,9 @@
 import Link from 'next/link';
-import { cairoClock, removedText } from '@trendlix/shared';
+import { cairoClock, flaggedPing, PING_STATUS_LABELS, removedText, type PingView } from '@trendlix/shared';
 import { PageHead, Panel, PanelHead, Pill } from '@/components/design';
 import { countsWords, hoursWords, recordWhere, recordWords, SOURCE_HEADS, type DayRecord, type DayRecordsView } from '@/lib/attendance-records';
 import { formatDate } from '@/lib/format';
+import { mapHref } from '@/lib/map-point';
 import { weekdayOf } from '../../organization/holidays/holidays';
 import { BackLink } from '../../organization/ui';
 import { ChooseSourceForm, ClearSourceForm, RemoveRecordForm, RestoreRecordForm } from './records-forms';
@@ -28,6 +29,35 @@ function RecordList({ view, source, records }: { view: DayRecordsView; source: '
           </li>
         );
       })}
+    </ul>
+  );
+}
+
+/** "5.2 km away", "120 m away". */
+const farText = (m: number) => (m >= 1000 ? `${(m / 1000).toFixed(1)} km away` : `${m} m away`);
+
+/** The app's hourly location while checked in (owner, 1 November 2026: "flag if someone is not in the checked in location"). */
+function PingList({ pings }: { pings: PingView[] }) {
+  return (
+    <ul className="mt-3 divide-y divide-line">
+      {pings.map((p) => (
+        <li key={p.at} className="flex flex-wrap items-center justify-between gap-3 py-2.5">
+          <div>
+            <p className="font-medium tabular-nums">
+              {cairoClock(p.at)} · {p.placeText}
+            </p>
+            {p.distanceMetres !== null && <p className="text-xs text-muted">{farText(p.distanceMetres)}</p>}
+          </div>
+          <div className="flex items-center gap-3">
+            {p.latitude !== null && p.longitude !== null && (
+              <a href={mapHref({ latitude: p.latitude, longitude: p.longitude })} target="_blank" rel="noreferrer" className="text-sm font-semibold">
+                Map
+              </a>
+            )}
+            <span className={`badge ${flaggedPing(p.status) ? 'bg-warn-soft text-warn' : 'bg-ok-soft text-ok'}`}>{PING_STATUS_LABELS[p.status]}</span>
+          </div>
+        </li>
+      ))}
     </ul>
   );
 }
@@ -61,6 +91,15 @@ export function RecordsView({ view, back }: { view: DayRecordsView; back: { href
             </Panel>
           ))}
         </div>
+      )}
+      {!!view.pings?.length && (
+        <Panel>
+          <PanelHead
+            eyebrow={`${view.pings.filter((p) => flaggedPing(p.status)).length || 'No'} flagged`}
+            title="Hourly Location"
+          />
+          <PingList pings={view.pings} />
+        </Panel>
       )}
       {/* Zoho's record of the day not in People yet (owner, 31 October 2026: "how to override the system checkin and
           take zoho record?" — "if available"): fetched first, then chosen here */}

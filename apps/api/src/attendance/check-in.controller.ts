@@ -4,6 +4,8 @@ import { CurrentActiveSession, CurrentUser, OpenOnHold } from '../auth/decorator
 import type { SessionUser } from '../auth/session-user.js';
 import type { ActiveSession } from '../auth/sessions.service.js';
 import { CheckInSetupService } from './check-in-setup.service.js';
+import { LocationPingDto } from './location-pings.dto.js';
+import { LocationPingsService } from './location-pings.service.js';
 import { PunchDto } from './check-in.dto.js';
 import { CheckInService } from './check-in.service.js';
 
@@ -21,6 +23,7 @@ export class CheckInController {
   constructor(
     private readonly checkIn: CheckInService,
     private readonly setup: CheckInSetupService,
+    private readonly pings: LocationPingsService,
   ) {}
 
   /** Today's punches and day, whether they check in, where they are expected, and what the next press is. */
@@ -28,6 +31,16 @@ export class CheckInController {
   @Header('Cache-Control', 'private, no-store')
   today(@CurrentUser() user: SessionUser) {
     return this.checkIn.today(user);
+  }
+
+  /**
+   * { latitude, longitude, accuracy, mock } or { off }: the app's hourly location while checked in (1 November 2026),
+   * read against the check-in; 409 once not checked in (the app stops then).
+   */
+  @Post('pings')
+  @HttpCode(200)
+  ping(@Body() dto: LocationPingDto, @CurrentUser() user: SessionUser, @CurrentActiveSession() session: ActiveSession) {
+    return this.pings.ping(dto, user, session);
   }
 
   /** { kind: in | out, latitude?, longitude?, accuracy?, locationError?, mock? }: at the server's time. */

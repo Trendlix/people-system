@@ -124,6 +124,9 @@ class Today {
   /// Today as People sent it, for what a screen needs beyond these (the Attendance tab's Today panel).
   final Map raw;
 
+  /// The company has the hourly location on (1 November 2026): the app reads the location every hour while checked in.
+  bool get locationPings => raw['locationPings'] == true;
+
   Punch? get last => punches.isEmpty ? null : punches.last;
 
   /// The time worked so far at [now], breaks included (owner, 31 October 2026: "dont calculate breaks, they are included

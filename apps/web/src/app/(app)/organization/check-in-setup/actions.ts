@@ -106,6 +106,12 @@ export async function saveGpsLock(_prev: FormState, fd: FormData): Promise<FormS
   return send(fd, () => apiSend('PUT', '/attendance/check-in-setup/gps-lock', body), 'Saved.');
 }
 
+/** The app's hourly location while checked in (PUT …/location-pings { enabled }; 1 November 2026). */
+export async function saveLocationPings(_prev: FormState, fd: FormData): Promise<FormState> {
+  const enabled = fd.getAll('enabled').includes('true');
+  return send(fd, () => apiSend('PUT', '/attendance/check-in-setup/location-pings', { enabled }), enabled ? 'On.' : 'Off.');
+}
+
 /** A client location's end changed (PATCH …/locations/:id { validUntil }): a date, or none. */
 export async function saveClientEnd(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
   const { body, problems } = clientEndBody(fd, todayInCairo());

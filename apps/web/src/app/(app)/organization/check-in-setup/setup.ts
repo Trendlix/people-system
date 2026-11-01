@@ -64,6 +64,8 @@ export const ZOHO_ID = 'zoho-addresses';
 export const HOMES_ID = 'home-locations';
 /** Office staff's check-ins locked to the check-in locations by GPS (owner, 24 October 2026: "Yes, add a GPS lock too"). */
 export const GPS_LOCK_ID = 'gps-lock';
+/** The app's hourly location while checked in (owner, 1 November 2026: "Silent automatic ping"). */
+export const PINGS_ID = 'hourly-location';
 /** The client locations, everyone's (owner, 24 October 2026: "all employees if a customer location"). */
 export const CLIENTS_ID = 'client-locations';
 

@@ -82,6 +82,7 @@ export const AUDIT_ENTITY_MODULES: Readonly<Record<string, AuditModule>> = {
   check_in_location: 'attendance',
   check_in_location_rule: 'attendance',
   check_in_gps_lock: 'attendance',
+  check_in_location_pings: 'attendance',
   check_in_exemption: 'attendance',
   home_location: 'attendance',
   office_networks: 'attendance',
