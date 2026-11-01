@@ -83,8 +83,8 @@ export function ActionButton({
   );
 }
 
-/** Sign, on a draft: asks for the date it was signed (today, to start with). `hint`: what signing does, when not a contract's. */
-export function SignContract({ action, today, name, hint }: { action: Action; today: string; name: string; hint?: string }) {
+/** Sign, on a draft: asks for the date it was signed (today, to start with). */
+export function SignContract({ action, today, name }: { action: Action; today: string; name: string }) {
   const { state, pending, form } = useKeptForm(action);
   const [open, setOpen] = useClosesOnSave(state);
   const fid = useFieldIds();
@@ -103,18 +103,8 @@ export function SignContract({ action, today, name, hint }: { action: Action; to
         <label htmlFor={fid('signedOn')} className="label">
           Signed on
         </label>
-        <DateInput
-          id={fid('signedOn')}
-          name="signedOn"
-          required
-          aria-describedby={fid('signedOn-hint')}
-          defaultValue={valueOf(state, 'signedOn', formatDate(today))}
-        />
+        <DateInput id={fid('signedOn')} name="signedOn" required defaultValue={valueOf(state, 'signedOn', formatDate(today))} />
       </div>
-      <p id={fid('signedOn-hint')} className="hint">
-        {hint ??
-          "The day the employee and the company signed it. A first contract starts the probation it sets; a renewal replaces the version before it. A signed contract can't be changed, except its filing dates and note."}
-      </p>
       <div className="flex flex-wrap gap-3">
         <SubmitButton busy={pending} pendingText="Signing…">
           Mark as signed
@@ -162,12 +152,7 @@ export function SignedContractDetails({ action, contract }: { action: Action; co
           <label htmlFor={fid('insuranceFiledOn')} className="label">
             Filed with social insurance on
           </label>
-          <DateInput
-            id={fid('insuranceFiledOn')}
-            name="insuranceFiledOn"
-            aria-describedby={fid('filed-hint')}
-            defaultValue={valueOf(state, 'insuranceFiledOn', formatDate(contract.insuranceFiledOn))}
-          />
+          <DateInput id={fid('insuranceFiledOn')} name="insuranceFiledOn" defaultValue={valueOf(state, 'insuranceFiledOn', formatDate(contract.insuranceFiledOn))} />
         </div>
         <div>
           <label htmlFor={fid('labourOfficeFiledOn')} className="label">
@@ -176,14 +161,10 @@ export function SignedContractDetails({ action, contract }: { action: Action; co
           <DateInput
             id={fid('labourOfficeFiledOn')}
             name="labourOfficeFiledOn"
-            aria-describedby={fid('filed-hint')}
             defaultValue={valueOf(state, 'labourOfficeFiledOn', formatDate(contract.labourOfficeFiledOn))}
           />
         </div>
       </div>
-      <p id={fid('filed-hint')} className="hint">
-        Leave a filing date empty until the copy is filed.
-      </p>
       <div>
         <label htmlFor={fid('note')} className="label">
           Note <span className="font-normal text-muted">(optional)</span>

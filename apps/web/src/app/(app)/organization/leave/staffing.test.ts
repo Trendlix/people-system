@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { StaffingUnitView } from '@trendlix/shared';
 import { editsStaffing } from './setup';
-import { limitNowText, peopleNowText, STAFFING_HREF, staffingBody, staffingGroups, staffingSavedText, takesLimit, unitLimitText } from './staffing';
+import { peopleNowText, STAFFING_HREF, staffingBody, staffingGroups, staffingSavedText, takesLimit, unitLimitText } from './staffing';
 
 // Organization → Leave → Staffing (owner, 25 October 2026: "Warn and need HR"): the teams' limits for annual leave.
 
@@ -45,13 +45,7 @@ describe('Staffing', () => {
     expect(takesLimit({ team: true, hasTeams: false })).toBe(true);
   });
 
-  it('says what the limit means with the people now', () => {
-    expect(limitNowText(unit({ id: 't', nameEn: 'Video', team: true, members: 4, limit: { maxOff: 2, minAtWorkPercent: null } }))).toBe('With 4 people now, at least 2 are at work on any day.');
-    // 50% of 3 is 2, rounded up; the stricter of the two wins
-    expect(limitNowText(unit({ id: 't', nameEn: 'Video', team: true, members: 3, limit: { maxOff: 2, minAtWorkPercent: 50 } }))).toBe('With 3 people now, at least 2 are at work on any day.');
-    expect(limitNowText(unit({ id: 't', nameEn: 'Video', team: true, members: 2, limit: { maxOff: 1, minAtWorkPercent: null } }))).toBe('With 2 people now, at least 1 is at work on any day.');
-    expect(limitNowText(unit({ id: 't', nameEn: 'Video', team: true, members: 0, limit: { maxOff: 1, minAtWorkPercent: null } }))).toBeNull();
-    expect(limitNowText(unit({ id: 't', nameEn: 'Video', team: true, members: 4 }))).toBeNull();
+  it('says the people now', () => {
     expect(peopleNowText(1)).toBe('1 person');
     expect(peopleNowText(0)).toBe('Nobody yet');
   });
@@ -69,9 +63,9 @@ describe('Staffing', () => {
   });
 
   it('says what was saved, and who sets it', () => {
-    expect(staffingSavedText('Video', { maxOff: 2, minAtWorkPercent: 50 })).toBe('Saved: Video, at most 2 people on annual leave at once · at least 50% at work.');
-    expect(staffingSavedText('Video', { maxOff: null, minAtWorkPercent: 75 })).toBe('Saved: Video, at least 75% at work.');
-    expect(staffingSavedText('Video', { maxOff: null, minAtWorkPercent: null })).toBe('Video has no staffing limit now.');
+    expect(staffingSavedText({ maxOff: 2, minAtWorkPercent: 50 })).toBe('Saved.');
+    expect(staffingSavedText({ maxOff: null, minAtWorkPercent: 75 })).toBe('Saved.');
+    expect(staffingSavedText({ maxOff: null, minAtWorkPercent: null })).toBe('Limit removed.');
     expect(editsStaffing({ roles: ['hr'] })).toBe(true);
     expect(editsStaffing({ roles: ['super_admin'] })).toBe(true);
     expect(editsStaffing({ roles: ['ceo'] })).toBe(false);

@@ -18,8 +18,8 @@ describe('the annual balance (owner, 18 October 2026: "can you apply the leaves 
       ['Carried in', '0', null],
       ['Adjusted by HR', '−1', null],
       ['Taken', '2', null],
-      ['Booked', '1', 'Approved, to come'],
-      ['Waiting', '0.5', 'Being decided'],
+      ['Booked', '1', null],
+      ['Waiting', '0.5', null],
       ['Available', '3', null],
     ]);
     expect(annualFigures({ ...annual, usableFrom: '2026-01-01', carriedIn: 4 }, 2026)[0].note).toBeNull();

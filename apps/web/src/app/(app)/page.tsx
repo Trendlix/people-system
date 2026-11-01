@@ -25,9 +25,9 @@ import { TodayCheckIn } from './my-attendance/check-in-card';
 // location check, or a device) to replace Zoho"): a compact Today card while they do, with the way to My Attendance.
 
 const MODULES = [
-  { title: 'Organization', text: 'Company profile, departments and their teams, job titles with their grade ranges and job descriptions, grades, shifts.', href: '/organization/company' },
-  { title: 'Employees', text: 'Directory and employee profiles.', href: '/employees' },
-  { title: 'Contracts', text: 'Contract versions, probation, renewals, and endings approved by HR and the CEO.', href: '/contracts' },
+  { title: 'Organization', href: '/organization/company' },
+  { title: 'Employees', href: '/employees' },
+  { title: 'Contracts', href: '/contracts' },
 ];
 
 async function SystemStatus() {
@@ -218,7 +218,6 @@ function StaffHome() {
   return (
     <div className="max-w-4xl">
       <h1 className="page-title">Welcome</h1>
-      <p className="mt-1 text-muted">TrendLIX People System. Modules go live one at a time.</p>
 
       {/* last night's fetch from Zoho People failed, or its connection needs connecting again (25 October 2026): HR's and
           a Super Admin's, the API says when */}
@@ -240,13 +239,11 @@ function StaffHome() {
             <Link key={m.title} href={m.href} className="card block p-5 text-ink no-underline hover:border-accent">
               <span className="badge">Live</span>
               <h2 className="mt-3 font-semibold">{m.title}</h2>
-              <p className="mt-1 text-sm text-muted">{m.text}</p>
             </Link>
           ) : (
             <div key={m.title} className="card p-5 opacity-70">
               <span className="badge bg-line-soft text-muted">Coming next</span>
               <h2 className="mt-3 font-semibold">{m.title}</h2>
-              <p className="mt-1 text-sm text-muted">{m.text}</p>
             </div>
           ),
         )}

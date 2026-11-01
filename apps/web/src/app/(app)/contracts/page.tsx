@@ -35,15 +35,11 @@ async function Contracts({ searchParams }: { searchParams: PageProps<'/contracts
   );
 }
 
-// the full width (owner, 31 October 2026: "fill the page"): the list has eight columns; the intro stays at a readable width
+// the full width (owner, 31 October 2026: "fill the page"): the list has eight columns
 export default function ContractsPage({ searchParams }: PageProps<'/contracts'>) {
   return (
     <div>
       <h1 className="page-title">Contracts</h1>
-      <p className="mt-1 max-w-4xl text-muted">
-        Every employee&apos;s contracts in one place; each is drafted, signed and renewed on the employee&apos;s Employment tab. Their{' '}
-        <Link href="/organization/contracts">defaults and ending rules</Link> are under Organization → Contracts &amp; Endings.
-      </p>
       <div className="mt-4 flex flex-wrap gap-2">
         <Link href="/contracts/calculator" className="btn btn-secondary">Salary calculator</Link>
         {/* status, start and end dates with an Excel download (owner, 25 October 2026: "A report under Reports") */}

@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import type { TemplateSlotView } from '../../../../lib/types';
 import {
   appliesToLabel,
-  BILINGUAL_HINT,
   byFolder,
   draftIssues,
   draftText,
@@ -90,7 +89,6 @@ describe('a slot as the library words it', () => {
     expect(languageLabel('en')).toBe('English');
     expect(languageLabel(null)).toBe('Arabic, English or both, chosen on upload');
     expect(languageLabel('bilingual')).toBe('Arabic and English');
-    expect(BILINGUAL_HINT).toContain('{{job_title_ar}} and {{job_title_en}}');
   });
 
   it('names the employment types, or says all of them', () => {
@@ -101,7 +99,7 @@ describe('a slot as the library words it', () => {
     expect(appliesToLabel(['full_time', 'part_time', 'freelance'])).toBe('Full-time, Part-time, Freelance (outside the labour law)');
     expect(appliesToLabel(['intern'])).toBe('Unpaid internship');
     // the Sales slots (18 October 2026): full-time paid by commission
-    expect(appliesToLabel(['full_time'], true)).toBe('Full-time, paid by commission (the full-time one until this is published)');
+    expect(appliesToLabel(['full_time'], true)).toBe('Full-time, paid by commission');
     expect(appliesToLabel(['freelance'])).toBe('Freelance (outside the labour law)');
   });
 
@@ -162,11 +160,9 @@ describe('where a slot stands', () => {
 
 // Use the standard layout on Place Fields (owner, 16 October 2026)
 describe('the standard layout', () => {
-  it('asks first, saying the fields placed or moved are replaced, and unsaved changes lost when there are some', () => {
-    expect(standardLayoutConfirm(false)).toBe('Replace the fields on this form with the standard layout? Fields you placed or moved are replaced.');
-    expect(standardLayoutConfirm(true)).toBe(
-      'Replace the fields on this form with the standard layout? Fields you placed or moved are replaced. Your unsaved changes will be lost.',
-    );
+  it('asks first, saying unsaved changes are lost when there are some', () => {
+    expect(standardLayoutConfirm(false)).toBe('Replace the fields with the standard layout?');
+    expect(standardLayoutConfirm(true)).toBe('Replace the fields with the standard layout and lose your unsaved changes?');
     expect(STANDARD_LAYOUT_APPLIED).toBe('Standard layout applied.');
   });
 });

@@ -5,7 +5,6 @@ import { useState } from 'react';
 import {
   lawRatesFor,
   RAISE_REASON_LABELS,
-  RAISE_WAY_HINTS,
   RAISE_WAY_LABELS,
   RAISE_WAYS,
   raiseEffectiveProblem,
@@ -21,10 +20,9 @@ import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/c
 import { Select } from '@/components/select';
 import { formatDate, parseDate } from '@/lib/format';
 import type { AllowanceType, FormState, Grade, GradeRef, JobTitleSummary } from '@/lib/types';
-import { CONFIDENTIAL_GRADES_LEFT_OUT, gradeLabel, gradeRangeSentence, inGradeRange } from '../../../organization/grades/label';
+import { gradeLabel, gradeRangeSentence, inGradeRange } from '../../../organization/grades/label';
 import { contractEnd } from './dates';
 import { choice, PayFields, typedPayOf, usePay, type PayDefaults } from './pay-fields';
-import { commentReaders } from '../../../raise-requests/list';
 import { fromToText, insuredWageText, jobTitleGroups } from './raise';
 
 // The form of the Raise and Edit raise pages (owner's decisions, 16 October 2026): a raise on the signed contract in
@@ -179,13 +177,12 @@ export function RaiseForm({
       <FormErrors errors={state.errors} />
       {approved && (
         <p className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
-          The CEO approved this raise. Changing its terms sends it back to HR as a draft, to send to the CEO again; changing the note alone keeps the
-          approval.
+          The CEO approved this raise: changing its terms sends it back to HR as a draft.
         </p>
       )}
       {request && <input type="hidden" name="requestId" value={request.id} />}
 
-      <fieldset aria-describedby={fid('way-hint')}>
+      <fieldset>
         <legend className="label">How the raise is made</legend>
         <div className="flex flex-wrap gap-2">
           {RAISE_WAYS.map((w) => (
@@ -195,9 +192,6 @@ export function RaiseForm({
             </label>
           ))}
         </div>
-        <p id={fid('way-hint')} className="hint">
-          {RAISE_WAY_HINTS[way]}
-        </p>
       </fieldset>
 
       <div className="grid gap-5 sm:grid-cols-2">
@@ -209,13 +203,9 @@ export function RaiseForm({
             id={fid('effectiveDate')}
             name="effectiveDate"
             required
-            aria-describedby={`${fid('effectiveDate-hint')}${problem ? ` ${fid('effectiveDate-problem')}` : ''}`}
+            aria-describedby={problem ? fid('effectiveDate-problem') : undefined}
             defaultValue={typed.effectiveDate}
           />
-          <p id={fid('effectiveDate-hint')} className="hint">
-            The 1st of a month, after {formatDate(current.startDate)}, when version {current.version} started
-            {current.endDate ? `, and up to its end on ${formatDate(current.endDate)}` : ''}: each payroll month has one salary.
-          </p>
           <div role="status">
             {problem && (
               <p id={fid('effectiveDate-problem')} className="hint text-warn">
@@ -235,14 +225,8 @@ export function RaiseForm({
               id={fid('length')}
               value={current.form === 'open_ended' ? 'Open-ended' : 'For a specific job'}
               readOnly
-              aria-describedby={fid('length-hint')}
               className="input bg-canvas text-muted"
             />
-            <p id={fid('length-hint')} className="hint">
-              {current.form === 'open_ended'
-                ? `Open-ended, as version ${current.version}: no end date, without probation, replacing it once signed.`
-                : `For the same job as version ${current.version}, with its expected end, without probation, replacing it once signed.`}
-            </p>
           </div>
         ) : way === 'contract' ? (
           <div key="durationMonths">
@@ -258,14 +242,15 @@ export function RaiseForm({
               max={60}
               step={1}
               required
-              aria-describedby={fid('durationMonths-hint')}
+              aria-describedby={end ? fid('durationMonths-hint') : undefined}
               defaultValue={typed.durationMonths}
               className="input tabular-nums"
             />
-            <p id={fid('durationMonths-hint')} className="hint">
-              {end ? `Ends on ${formatDate(end)}. ` : ''}A new contract has its own fixed term from the date it takes effect, without probation, and replaces
-              version {current.version} once signed.
-            </p>
+            {end && (
+              <p id={fid('durationMonths-hint')} className="hint">
+                Ends on {formatDate(end)}.
+              </p>
+            )}
           </div>
         ) : (
           <div key="endDate">
@@ -277,17 +262,13 @@ export function RaiseForm({
               id={fid('endDate')}
               value={current.endDate ? formatDate(current.endDate) : 'No end date'}
               readOnly
-              aria-describedby={fid('endDate-hint')}
               className="input bg-canvas text-muted"
             />
-            <p id={fid('endDate-hint')} className="hint">
-              An amendment keeps the contract&apos;s term and end, without probation; it is renewed as before.
-            </p>
           </div>
         )}
       </div>
 
-      <PayFields pay={pay} state={state} fid={fid} allowanceTypes={allowanceTypes} fullTime={fullTime} year={year} yearIs="the year the raise takes effect" />
+      <PayFields pay={pay} state={state} fid={fid} allowanceTypes={allowanceTypes} fullTime={fullTime} />
 
       <div className="space-y-2 rounded-lg border border-line bg-canvas px-4 py-3">
         <p id={fid('summary')} className="label">
@@ -305,11 +286,7 @@ export function RaiseForm({
             </>
           )}
         </dl>
-        <p className="hint">
-          {starts
-            ? `${insuredWageText(starts, defaults.form2From)} The salary tax follows the new pay from ${formatDate(starts)}.`
-            : 'Insured wage stays as before until the next January unless Form 2 is filed; the salary tax follows the new pay at once.'}
-        </p>
+        {starts && <p className="hint">{insuredWageText(starts, defaults.form2From)}</p>}
       </div>
 
       <div className="grid gap-5 sm:grid-cols-2">
@@ -321,7 +298,6 @@ export function RaiseForm({
             id={fid('reason')}
             name="reason"
             required
-            aria-describedby={fid('reason-hint')}
             defaultValue={valueOf(state, 'reason', defaults.reason)}
             className="input"
           >
@@ -332,17 +308,11 @@ export function RaiseForm({
               </option>
             ))}
           </Select>
-          <p id={fid('reason-hint')} className="hint">
-            The CEO sees it with the raise.
-          </p>
         </div>
       </div>
 
-      <fieldset className="space-y-3" aria-describedby={fid('promotion-hint')}>
+      <fieldset className="space-y-3">
         <legend className="label">Promotion {optional}</legend>
-        <p id={fid('promotion-hint')} className="hint">
-          A new job title or grade with the raise, applied to the employment when the raise is signed; the department follows the job title.
-        </p>
         <div className="grid gap-5 sm:grid-cols-2">
           <div>
             <label htmlFor={fid('newJobTitleId')} className="label">
@@ -390,11 +360,10 @@ export function RaiseForm({
                 {outOfRange ?? range}
               </p>
             )}
-            {promotion.confidentialGradesLeftOut && <p className="hint">{CONFIDENTIAL_GRADES_LEFT_OUT}</p>}
             <div role="status">
               {clearedGrade && (
                 <p className="hint text-warn">
-                  {gradeLabel(clearedGrade.grade)} was cleared: {clearedGrade.title} doesn&apos;t take it. Choose a grade again.
+                  {gradeLabel(clearedGrade.grade)} was cleared: {clearedGrade.title} doesn&apos;t take it.
                 </p>
               )}
             </div>
@@ -411,13 +380,9 @@ export function RaiseForm({
           name="note"
           rows={3}
           maxLength={500}
-          aria-describedby={fid('note-hint')}
           defaultValue={valueOf(state, 'note', defaults.note)}
           className="input"
         />
-        <p id={fid('note-hint')} className="hint">
-          E.g. the review it follows. The CEO sees it with the raise. Up to 500 characters.
-        </p>
       </div>
 
       {request && (
@@ -431,14 +396,9 @@ export function RaiseForm({
             rows={3}
             required
             maxLength={1000}
-            aria-describedby={fid('comment-hint')}
             defaultValue={valueOf(state, 'comment')}
             className="input"
           />
-          <p id={fid('comment-hint')} className="hint">
-            Saving approves the request, as suggested when the gross is the one suggested, else with another raise, and sends the raise to the CEO.{' '}
-            {commentReaders('decision', request.requester ?? 'self')}
-          </p>
         </div>
       )}
 

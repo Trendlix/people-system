@@ -203,9 +203,7 @@ function RequestsTable({ requests, order = 'department' }: { requests: LeaveList
           </tbody>
         ))}
       </table>
-      <p className="border-t border-line px-4 py-3 text-sm text-muted">
-        {requestsLabel(requests.length)}, {byDate ? (order === 'oldest' ? 'by date, oldest first' : 'by date, newest first') : 'newest first in each group'}.
-      </p>
+      <p className="border-t border-line px-4 py-3 text-sm text-muted">{requestsLabel(requests.length)}</p>
     </div>
   );
 }
@@ -330,8 +328,7 @@ async function LeaveRequests({ searchParams }: { searchParams: PageProps<'/leave
   if (!canSeeLeaveRequests(user)) {
     return (
       <Empty>
-        Only HR and the CEO see everyone&apos;s leave and permission. Your own is on <Link href="/my-requests">My Requests</Link>; a direct manager,
-        team lead or head of department decides the requests waiting for them on <Link href="/my-team">My Team</Link>.
+        Only HR and the CEO see everyone&apos;s leave. Yours is on <Link href="/my-requests">My Requests</Link>.
       </Empty>
     );
   }
@@ -387,14 +384,6 @@ export default function LeaveRequestsPage({ searchParams }: PageProps<'/leave'>)
   return (
     <div className="max-w-7xl">
       <h1 className="page-title">Leave Requests</h1>
-      <p className="mt-1 text-muted">
-        Leave as the Labour Law gives it, of the types set up on <Link href="/organization/leave">Organization → Leave</Link>, and permission: a few
-        hours away from a working day, within the hours a day and a month set there. The direct manager decides a request first (for someone without
-        one, their team lead, else their department&apos;s head), then HR: each approves it or rejects it with a comment, and every step is logged
-        on the request; a C-level person&apos;s goes to the CEO instead of HR. HR records leave and permission on an employee&apos;s behalf,
-        approved at once. Work from home days are listed too: a working day from home, not leave, with no balance; HR records one with Record
-        leave. The calendar shows who is off each day of a month, the hours of permission and the work from home days.
-      </p>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>
           <LeaveRequests searchParams={searchParams} />

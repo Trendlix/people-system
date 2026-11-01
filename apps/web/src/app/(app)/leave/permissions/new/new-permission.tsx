@@ -24,11 +24,6 @@ export function NewPermissionHeading({ back }: { back: { href: string; label: st
     <div className="space-y-2">
       {back && <BackLink href={back.href}>{back.label}</BackLink>}
       <h1 className="page-title">New Permission</h1>
-      <p className="text-muted">
-        Ask to be away for a few hours of a working day, e.g. to leave early or come late: the day, the hours in half hours, the times if you know them,
-        and a reason. Your direct manager decides it first (without one, your team lead, else the head of your department), then HR; each step shows
-        on the request. Approved, its hours count as worked.
-      </p>
     </div>
   );
 }
@@ -43,10 +38,10 @@ export async function NewPermission({ surface = 'site' }: { surface?: Surface })
         <NewPermissionHeading back={back} />
         <Empty>
           {!user.employeeId
-            ? `Only someone with an employee profile can ask for permission. No employee record uses your sign-in email (${user.email}) as its work email yet: ask HR to add it to your profile.`
+            ? `No employee profile uses your sign-in email (${user.email}): ask HR.`
             : !profile
               ? 'Your profile couldn’t be loaded. Please try again in a moment.'
-              : 'Permission is asked for during an employment: you have no current employment on file.'}
+              : 'You have no current employment on file.'}
         </Empty>
       </>
     );
@@ -75,8 +70,6 @@ export async function NewPermission({ surface = 'site' }: { surface?: Surface })
         initial={month.value}
         today={today}
         cancelHref={back.href}
-        // a C-level person's goes to the CEO, not HR (owner, 19 October 2026: "make C level Employees details not visible to HR")
-        toCeo={profile.confidential === true}
       />
     );
   }

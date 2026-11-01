@@ -67,9 +67,6 @@ async function Connect() {
             In a chat, turn it on from <strong>+ → Connectors</strong>, then ask, e.g. “What does Mona hold?” or “Draft these three lenses from the photos”.
           </Step>
         </ol>
-        <p className="text-sm text-muted">
-          Any Claude plan can add a custom connector (the Free plan, one). It runs on your own Claude subscription: no API key, nothing billed to the company.
-        </p>
       </section>
 
       <section aria-labelledby="can-heading" className="card space-y-3 p-5">
@@ -87,10 +84,6 @@ async function Connect() {
             <li key={c}>{c}</li>
           ))}
         </ul>
-        <p className="text-sm text-muted">
-          The money (purchase cost, market and book value) is only for the CEO, Finance and a Super Admin, through Claude too. Every draft Claude saves is in the
-          audit log as yours, via the Claude connector.
-        </p>
       </section>
 
       <section aria-labelledby="tools-heading" className="card space-y-3 p-5">
@@ -104,13 +97,6 @@ async function Connect() {
             </li>
           ))}
         </ul>
-        {can.register && (
-          <p className="text-sm text-muted">
-            A draft is not an asset: it waits on <Link href={ASSET_PATHS.drafts}>Drafts from Claude</Link> until someone reviews it on the Add form, adds its
-            photos (they can’t come through Claude) and confirms it, when its code is given. Claude can add the maker’s product image from a link it finds,
-            up to 3 a draft, labelled as a product image: it shows the model, not the item itself.
-          </p>
-        )}
       </section>
 
       <section aria-labelledby="end-heading" className="card space-y-2 p-5">
@@ -118,8 +104,7 @@ async function Connect() {
           Ending It
         </h2>
         <p className="text-sm">
-          The connection shows on <Link href="/account/sessions">Your Sessions</Link> as Claude connector, with Sign out. It also ends when your password
-          changes or is reset, when your account is deactivated, or after 90 days without use; then press Connect again in Claude.
+          Sign out of Claude connector on <Link href="/account/sessions">Your Sessions</Link>.
         </p>
       </section>
     </div>
@@ -132,10 +117,6 @@ export default function ConnectClaudePage() {
   return (
     <AssetsFrame tab={ASSET_PATHS.connectClaude}>
       <div className="max-w-3xl space-y-4">
-        <p className="text-muted">
-          Add Trendlix People to your own Claude as a connector: Claude then reads the Assets section with your access, and drafts assets for you to confirm
-          here.
-        </p>
         <Suspense fallback={<Loading />}>
           <Connect />
         </Suspense>

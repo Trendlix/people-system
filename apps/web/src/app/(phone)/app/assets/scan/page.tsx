@@ -15,7 +15,7 @@ async function Scan() {
   if (!can.view) {
     return (
       <PhoneCard>
-        <Quiet>You don&apos;t have access to Assets. An Admin gives it on the Users page.</Quiet>
+        <Quiet>You don&apos;t have access to Assets.</Quiet>
       </PhoneCard>
     );
   }
@@ -29,9 +29,7 @@ async function Scan() {
 export default function PhoneScanPage() {
   return (
     <div className="space-y-4">
-      <PageTitle title="Scan a Label" back={{ href: APP_ASSET_PATHS.list, label: 'Assets' }}>
-        Hold the asset&apos;s QR label in front of the camera to open it.
-      </PageTitle>
+      <PageTitle title="Scan a Label" back={{ href: APP_ASSET_PATHS.list, label: 'Assets' }} />
       <Suspense fallback={<PhoneLoading />}>
         <Scan />
       </Suspense>

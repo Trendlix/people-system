@@ -47,10 +47,6 @@ export function NationalIdEditor({
     <>
       <section className="card max-w-2xl p-6">
         <h2 className="font-semibold">Fill from the ID Card</h2>
-        <p className="mt-1 text-sm text-muted">
-          Scan the card, front and back. The card is found on the scan, cut out and set straight; check both sides, then read them, and the
-          national ID details below are filled in for you to check. Nothing changes until you save. The cut-out card is kept in the employee file.
-        </p>
         <LearnedFixesNote />
 
         <div className="mt-4">

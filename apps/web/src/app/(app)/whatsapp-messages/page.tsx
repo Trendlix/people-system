@@ -95,10 +95,6 @@ function Days({ page }: { page: WhatsAppMessagePage }) {
         <h2 id="wa-days" className="font-semibold">
           Messages a Day
         </h2>
-        <p className="text-xs text-muted">
-          Meta charges for each template message delivered; failed and waiting ones cost nothing. The STOP answers are free at Meta. Through Twilio, Twilio
-          adds its own small fee per message, sent or received.
-        </p>
       </div>
       <div className="overflow-x-auto">
         <table className="table">
@@ -194,7 +190,8 @@ function Pager({ page, filters }: { page: WhatsAppMessagePage; filters: MessageF
   return (
     <nav aria-label="Pages" className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3 text-sm">
       <span className="text-muted">
-        {rangeText(page)}, newest first{pages > 1 && ` · page ${page.page} of ${pages.toLocaleString('en-US')}`}
+        {rangeText(page)}
+        {pages > 1 && ` · page ${page.page} of ${pages.toLocaleString('en-US')}`}
       </span>
       {pages > 1 && (
         <div className="flex gap-2">
@@ -216,7 +213,7 @@ function Pager({ page, filters }: { page: WhatsAppMessagePage; filters: MessageF
 
 async function Log({ searchParams }: { searchParams: Promise<Query> }) {
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
-  if (user.developer) return <Empty>The WhatsApp messages carry people’s numbers: they aren’t open to developers.</Empty>;
+  if (user.developer) return <Empty>The WhatsApp messages aren’t open to developers.</Empty>;
   if (!seesWhatsAppLog(user)) return <Empty>{WHATSAPP_LOG_STAFF_ONLY}</Empty>;
   const { filters, problems } = readMessageFilters(query);
   const loaded = await loadJson<WhatsAppMessagePage>(apiMessagesPath(filters));
@@ -226,7 +223,7 @@ async function Log({ searchParams }: { searchParams: Promise<Query> }) {
         {loaded.kind === 'forbidden'
           ? WHATSAPP_LOG_STAFF_ONLY
           : loaded.kind === 'unavailable'
-            ? 'Not available yet: the server does not send WhatsApp messages yet. Please try again after its next update.'
+            ? 'Not available yet.'
             : `The WhatsApp messages could not be loaded. ${loaded.messages.join(' ')}`}
       </Empty>
     );
@@ -289,13 +286,7 @@ export default function WhatsAppMessagesPage({ searchParams }: PageProps<'/whats
   return (
     <StaffOnly>
       <div className="max-w-7xl space-y-4">
-        <div>
-          <h1 className="page-title">WhatsApp Messages</h1>
-          <p className="mt-1 max-w-3xl text-muted">
-            Every WhatsApp message the system made, newest first: to whom, which template, and whether it was delivered. What a message said is never kept
-            here, only its template and the record it is about.
-          </p>
-        </div>
+        <h1 className="page-title">WhatsApp Messages</h1>
         <Suspense fallback={<Loading />}>
           <Log searchParams={searchParams} />
         </Suspense>

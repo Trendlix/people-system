@@ -1,13 +1,8 @@
 import {
   CASUAL_MAX_MONTHS,
   CONTRACT_FORM_LABELS,
-  INTERN_DEFAULT_MONTHS,
-  INTERN_MAX_MONTHS,
   LABELS,
-  TRAINING_AGAIN_AFTER_MONTHS,
   WORK_NATURE_LABELS,
-  WORK_PATTERN_LABELS,
-  workPatternOf,
   type ContractForm,
   type EmploymentType,
   type WorkNature,
@@ -40,28 +35,12 @@ export function typeWord(type: EmploymentType | string): string {
   return label.replace(/\s*\(.*\)$/, '').toLowerCase();
 }
 
-/** The same with its article: "a full-time", "a part-time", "an unpaid internship". */
-export function aTypeWord(type: EmploymentType | string): string {
-  const word = typeWord(type);
-  return `${/^[aeiou]/.test(word) ? 'an' : 'a'} ${word}`;
-}
-
-/** Why freelance is outside the labour law, and what follows from it. */
-export const FREELANCE_NOTE =
-  "Outside the labour law: a freelancer doesn't work under the company's management or supervision (Labour Law Art. 1(1): “تحت إدارته أو إشرافه”). No leave and no company social insurance; a service agreement rather than an employment contract.";
-
 /** Why a freelance employment has no leave (the API refuses a request under one, and gives no annual leave). */
 export const FREELANCE_NO_LEAVE =
   "No leave under a freelance employment: a freelancer works outside the labour law (Art. 1(1)), so the law's leave (Arts. 124–133) isn't theirs.";
 
 /** The same in a few words, under the type on the profile. */
 export const FREELANCE_SHORT = 'Outside the labour law (Art. 1(1)): no leave, no company social insurance, a service agreement';
-
-/** How an internship agreement goes on (19 October 2026): renewed once, then full-time or ended; again after 6 months. */
-export const TRAINING_RENEWAL_RULE = `No probation. Renewed once at most, then converted to a full-time contract or ended; a new one starts ${TRAINING_AGAIN_AFTER_MONTHS} months after the last one ended at the earliest.`;
-
-/** An intern (19 October 2026: "we are not paying them salary, its just transportation allowance"): the unpaid internship. */
-export const INTERN_NOTE = `Unpaid, outside the labour law: an internship agreement that pays no wage, only allowances such as transportation, for ${INTERN_DEFAULT_MONTHS} months unless you choose another (${INTERN_MAX_MONTHS} at most). No leave and no company social insurance. ${TRAINING_RENEWAL_RULE}`;
 
 /** The same in a few words, under the type on the profile. */
 export const INTERN_SHORT = 'Outside the labour law: no wage (allowances only), no probation, no leave, no company social insurance';
@@ -80,53 +59,8 @@ export function outsideLawShort(type: EmploymentType | string): string | undefin
   return type === 'freelance' ? FREELANCE_SHORT : type === 'intern' ? INTERN_SHORT : undefined;
 }
 
-/**
- * Where the contract's terms are, from the form the type is chosen on: below it (hiring in one form), on the Employment
- * tab, or once an offer is accepted.
- */
-export type TermsPlace = 'below' | 'tab' | 'offer';
-
-/**
- * The hint under the employment type, for the type chosen: where part-time pay is set (not on an offer, whose terms
- * have it), the unpaid internship and freelance outside the law. Null for full-time (paid by commission has its own
- * hint).
- */
-export function employmentTypeHint(type: string, place: TermsPlace): string | null {
-  // the pay terms belong to the contract, not the employment (owner, 15 October 2026)
-  if (type === 'part_time') {
-    if (place === 'offer') return null;
-    return place === 'below'
-      ? "Pay by the hour, hours a week and days a week are the contract's terms, below."
-      : "Pay by the hour, hours a week and days a week are the contract's terms: a new version of it, on the Employment tab.";
-  }
-  if (type === 'intern') return INTERN_NOTE;
-  if (type === 'freelance') return FREELANCE_NOTE;
-  return null;
-}
-
-/** The hint under Paid by commission (full-time only). */
-export const COMMISSION_HINT =
-  'As Sales was: full-time, with a commission on what they sell (the law\'s wage includes “العمولة أو النسبة المئوية”, Labour Law Art. 1(4)). Its contract and job offer come from the "paid by commission" templates once they are published, else the full-time ones.';
-
-/** What each nature of the work is, in the law's words (Art. 1(6–8)), under the field. */
-export const WORK_NATURE_HINTS: Record<WorkNature, string> = {
-  regular: "The company's ongoing work.",
-  temporary: "Of the company's own kind, but needing a set time, or one job in itself that ends with it (Labour Law Art. 1(6)).",
-  casual: `Not of the company's own kind, and done within ${CASUAL_MAX_MONTHS} months (Labour Law Art. 1(7)): HR is warned once it goes past them.`,
-  seasonal: 'Done in recognised seasons that come back each year (Labour Law Art. 1(8)).',
-};
-
 /** The nature's label, regular for an API from before it. */
 export const workNatureLabel = (nature: WorkNature | undefined) => WORK_NATURE_LABELS[nature ?? 'regular'] ?? WORK_NATURE_LABELS.regular;
-
-/**
- * The work arrangement in the law's words, for a note under it: "Remote work (Labour Law Art. 96(1))" for Work from home,
- * "Partly remote work (Labour Law Art. 96(1))" for Hybrid; null on site (the office, the field).
- */
-export function workPatternNote(workArrangement: string): string | null {
-  const pattern = workPatternOf(workArrangement);
-  return pattern === 'on_site' ? null : `${WORK_PATTERN_LABELS[pattern]} (Labour Law Art. 96(1))`;
-}
 
 /**
  * A contract's length in a few words: "Fixed-term · 12 months" (its months when known), "Open-ended", "For a specific
@@ -139,14 +73,6 @@ export function contractLengthText(c: { form: ContractForm; durationMonths?: num
   return c.durationMonths ? `${label} · ${c.durationMonths} ${c.durationMonths === 1 ? 'month' : 'months'}` : label;
 }
 
-/** What an open-ended contract means, under Contract length and on the contract. */
-export const OPEN_ENDED_NOTE =
-  "No end date and no renewal: either side ends it with 3 months' written notice (Labour Law Art. 156: “جاز لأى من طرفيه إنهاؤه بشرط أن يخطر الطرف الآخر كتابة قبل الإنهاء بثلاثة أشهر”).";
-
-/** What a contract for a specific job means. */
-export const SPECIFIC_JOB_NOTE =
-  'It ends when the job is done (Labour Law Art. 155: “انتهى العقد بإنجاز هذا العمل”); renewed by an express agreement for another like it, and carried on after it, it counts as renewed.';
-
 /** One of HR's warnings about an employment or its contract, as a badge: its words, and what it means. */
 export interface LawWarning {
   key: 'became_open_ended' | 'casual_too_long' | 'training_ended';
@@ -158,15 +84,14 @@ export interface LawWarning {
 export const BECAME_OPEN_ENDED: LawWarning = {
   key: 'became_open_ended',
   text: 'Became open-ended — Art. 88',
-  detail:
-    'The fixed term ended and the work went on without a signed renewal, so the law counts the contract as open-ended (Labour Law Art. 88(3): “واستمر الطرفان فى تنفيذه بعد انتهاء هذه المدة دون اتفاق مكتوب بينهما”). Renew it in writing, or record how it ends.',
+  detail: 'The term ended without a signed renewal: renew it in writing, or record how it ends.',
 };
 
 /** The warning that casual work has gone past its 6 months (Art. 1(7)). */
 export const CASUAL_TOO_LONG: LawWarning = {
   key: 'casual_too_long',
   text: `Casual work past ${CASUAL_MAX_MONTHS} months`,
-  detail: `Casual work takes no more than ${CASUAL_MAX_MONTHS} months (Labour Law Art. 1(7): “ولا يستغرق إنجازه أكثر من ستة أشهر”). Change the nature of the work, or end the employment.`,
+  detail: 'Change the nature of the work, or end the employment.',
 };
 
 /**
@@ -176,8 +101,7 @@ export const CASUAL_TOO_LONG: LawWarning = {
 export const TRAINING_ENDED: LawWarning = {
   key: 'training_ended',
   text: 'Internship ended',
-  detail:
-    'The internship agreement has ended, and the work goes on with nothing signed after it. Renew it, if it hasn’t been renewed yet; convert it to a full-time contract; or end the internship with End employment, choosing Training completed.',
+  detail: 'Renew it, convert it to a full-time contract, or end it with End employment.',
 };
 
 /** HR's warnings on an employment or a contract, as the API sends them (each left out by an older API). */

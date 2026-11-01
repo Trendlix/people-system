@@ -1,6 +1,6 @@
 'use client';
 
-import { CUSTODY_TERMS_MAX, CUSTODY_TERMS_REVIEW_NOTE, CUSTODY_TEXT_LIMITS } from '@trendlix/shared';
+import { CUSTODY_TERMS_REVIEW_NOTE } from '@trendlix/shared';
 import { useActionState } from 'react';
 import { FormErrors, SubmitButton, useFieldIds, valueOf } from '@/components/form';
 import type { FormState } from '@/lib/types';
@@ -37,11 +37,8 @@ export function TermsForm({
   const [reset, resetAction] = useActionState(standardAction, {});
   const fid = useFieldIds();
   const said = state.message ?? reset.message;
-  const arNow = !arStandard
-    ? 'Your Arabic wording is printed now.'
-    : termsAr.length
-      ? 'The standard Arabic wording is printed now.'
-      : 'Your English terms aren’t the standard wording, so the standard Arabic doesn’t fit them: write them in Arabic here, or the forms print the English terms alone.';
+  // English terms of their own and no Arabic: the forms print the English alone
+  const arMissing = arStandard && !termsAr.length;
   return (
     <div className="space-y-3">
       <p role="note" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
@@ -61,13 +58,8 @@ export function TermsForm({
               name="terms"
               rows={Math.min(12, Math.max(6, terms.length + 1))}
               defaultValue={valueOf(state, 'terms', terms.join('\n'))}
-              aria-describedby={fid('terms-hint')}
               className="input"
             />
-            <p id={fid('terms-hint')} className="hint">
-              Printed in order on each custody form, at most {CUSTODY_TERMS_MAX} terms of {CUSTODY_TEXT_LIMITS.term} characters each.{' '}
-              {standard ? 'The standard wording is printed now.' : 'Your wording is printed now.'}
-            </p>
           </div>
           <div>
             <label htmlFor={fid('termsAr')} className="label">
@@ -81,12 +73,14 @@ export function TermsForm({
               lang="ar"
               rows={Math.min(12, Math.max(6, termsAr.length + 1))}
               defaultValue={valueOf(state, 'termsAr', termsAr.join('\n'))}
-              aria-describedby={fid('termsAr-hint')}
+              aria-describedby={arMissing ? fid('termsAr-hint') : undefined}
               className="input"
             />
-            <p id={fid('termsAr-hint')} className={`hint${arStandard && !termsAr.length ? ' text-warn' : ''}`}>
-              Printed beside the English terms, in Arabic, same limits. {arNow}
-            </p>
+            {arMissing && (
+              <p id={fid('termsAr-hint')} className="hint text-warn">
+                Write them in Arabic, or the forms print the English terms alone.
+              </p>
+            )}
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-3">

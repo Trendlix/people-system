@@ -50,14 +50,7 @@ export function AddLocation({ action, around, first }: { action: (prev: FormStat
 
   return (
     <section aria-label={title} className="w-full space-y-4 rounded-xl border border-accent/30 bg-card p-5 shadow-sm">
-      <div>
-        <h4 className="font-semibold">{title}</h4>
-        <p className="mt-0.5 text-sm text-muted">
-          {first
-            ? 'Check-ins within it are Office, for everyone.'
-            : 'A place people work from, such as a studio or a client’s site: check-ins within it are remote, shown with its name. Link its people once it is added.'}
-        </p>
-      </div>
+      <h4 className="font-semibold">{title}</h4>
       <LocationForm
         action={action}
         around={around}

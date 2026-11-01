@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { startTransition, useActionState, useRef, useState, useTransition } from 'react';
 import {
-  COMPENSATORY_CASH_HINT,
   COMPENSATORY_OFF_WITHIN_MAX,
   compensatoryNoEligibleText,
   COMPENSATORY_OUTCOME_LABELS,
@@ -27,24 +26,20 @@ import type { CompensatoryCheck, CompensatoryForm } from '@/lib/compensatory-typ
 import { parseDate } from '@/lib/format';
 import type { FormState } from '@/lib/types';
 import { choice } from '../../employees/[id]/contracts/pay-fields';
-import { leaveCommentReaders } from '../../leave/list';
 import { checkCompensatory } from './actions';
 import {
-  COMPENSATORY_DAY_WORKED_HINT,
   COMPENSATORY_REASON_MAX,
+  compensatoryCashPayText,
   compensatoryCashWaitsText,
   compensatoryDayGroups,
-  compensatoryDayOffField,
+  compensatoryDayOffLabel,
   compensatoryDecisionButton,
   compensatoryEligibleOf,
   compensatoryEarnsText,
   compensatoryFormProblems,
   compensatoryFormWarning,
-  compensatoryOutcomeHint,
-  compensatoryReadyText,
   compensatoryRecordCashText,
   compensatoryRulesOf,
-  compensatoryRulesText,
   compensatorySetupRows,
   readCompensatorySetup,
   readHoursWorked,
@@ -71,10 +66,10 @@ type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
 const optional = <span className="font-normal text-muted">(optional)</span>;
 
-function Problems({ problems, verb, ready }: { problems: readonly string[]; verb: string; ready: string }) {
+function Problems({ problems, verb }: { problems: readonly string[]; verb: string }) {
   return (
     <div role="status" aria-live="polite">
-      {problems.length ? (
+      {problems.length > 0 && (
         <div className="rounded-lg border border-line bg-canvas px-4 py-3 text-sm">
           <p className="font-medium">Before you can {verb} it:</p>
           <ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted">
@@ -83,8 +78,6 @@ function Problems({ problems, verb, ready }: { problems: readonly string[]; verb
             ))}
           </ul>
         </div>
-      ) : (
-        <p className="rounded-lg bg-ok-soft px-4 py-3 text-sm text-ok">{ready}</p>
       )}
     </div>
   );
@@ -117,7 +110,7 @@ function HoursWorkedField({
   const part = typed.part ?? 'whole';
   const hours = typed.hours ?? '';
   const read = readHoursWorked(part, hours);
-  const earns = read.error ? 'The hours worked that day, e.g. 4 or 3.5.' : compensatoryEarnsText(read.hoursWorked, rules);
+  const earns = read.error ? null : compensatoryEarnsText(read.hoursWorked, rules);
   return (
     <fieldset>
       <legend className="label">Hours worked</legend>
@@ -150,22 +143,21 @@ function HoursWorkedField({
           </span>
         )}
       </div>
-      <p id={fid('hoursWorked-hint')} className="hint" aria-live="polite">
-        <span className="font-medium text-ink">{earns}</span>
-        {part === 'part' && <span className="block">{compensatoryRulesText(rules)}</span>}
+      <p id={fid('hoursWorked-hint')} className="hint font-medium text-ink" aria-live="polite">
+        {earns}
       </p>
     </fieldset>
   );
 }
 
 /** The employee's request: the day worked, the hours worked, the day off and why, with the checks live. */
-export function NewCompensatoryForm({ action, form, cancelHref, toCeo = false }: { action: Action; form: CompensatoryForm; cancelHref: string; toCeo?: boolean }) {
+export function NewCompensatoryForm({ action, form, cancelHref }: { action: Action; form: CompensatoryForm; cancelHref: string }) {
   const [state, formAction, sending] = useActionState(action, {});
   const fid = useFieldIds();
   const [typed, setTyped] = useState<TypedCompensatory>(() => typedFrom(state));
   const rules = compensatoryRulesOf(form.rules);
   const hours = readHoursWorked(typed.part, typed.hours);
-  const offField = compensatoryDayOffField(hours.error ? null : compensationEarned(hours.hoursWorked, rules), rules, 'employee');
+  const offLabel = compensatoryDayOffLabel(hours.error ? null : compensationEarned(hours.hoursWorked, rules));
   // the days the day worked is picked from, worked and to come this month (31 October 2026)
   const groups = compensatoryDayGroups(compensatoryEligibleOf(form));
   const offered = groups.some((g) => g.options.some((o) => o.value === typed.dayWorked));
@@ -208,7 +200,6 @@ export function NewCompensatoryForm({ action, form, cancelHref, toCeo = false }:
                   const value = e.target.value;
                   setTyped((x) => ({ ...x, dayWorked: value }));
                 }}
-                aria-describedby={fid('dayWorked-hint')}
                 className="input"
               >
                 <option value="">Choose the day worked</option>
@@ -222,9 +213,6 @@ export function NewCompensatoryForm({ action, form, cancelHref, toCeo = false }:
                   </optgroup>
                 ))}
               </Select>
-              <p id={fid('dayWorked-hint')} className="hint">
-                {COMPENSATORY_DAY_WORKED_HINT}
-              </p>
             </>
           ) : (
             <p id={fid('dayWorked')} className="rounded-lg border border-line bg-canvas px-4 py-3 text-sm text-muted">
@@ -235,12 +223,9 @@ export function NewCompensatoryForm({ action, form, cancelHref, toCeo = false }:
         <HoursWorkedField fid={fid} typed={typed} rules={rules} onChange={(next) => setTyped((x) => ({ ...x, ...next }))} />
         <div>
           <label htmlFor={fid('dayOff')} className="label">
-            {offField.label}
+            {offLabel}
           </label>
-          <DateInput id={fid('dayOff')} name="dayOff" required defaultValue={typed.dayOff} aria-describedby={fid('dayOff-hint')} />
-          <p id={fid('dayOff-hint')} className="hint">
-            {offField.hint}
-          </p>
+          <DateInput id={fid('dayOff')} name="dayOff" required defaultValue={typed.dayOff} />
         </div>
         <div className="sm:col-span-2">
           <label htmlFor={fid('reason')} className="label">
@@ -253,14 +238,12 @@ export function NewCompensatoryForm({ action, form, cancelHref, toCeo = false }:
             maxLength={COMPENSATORY_REASON_MAX}
             value={typed.reason}
             onChange={(e) => setTyped((x) => ({ ...x, reason: e.target.value }))}
-            aria-describedby={fid('reason-hint')}
             className="input"
           />
-          <p id={fid('reason-hint')} className="hint">Your direct manager and HR read it. Up to {COMPENSATORY_REASON_MAX} characters.</p>
         </div>
       </div>
       {warning && <p className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">{warning}</p>}
-      <Problems problems={problems} verb="send" ready={compensatoryReadyText(typed, toCeo, rules)} />
+      <Problems problems={problems} verb="send" />
       <div className="flex flex-wrap gap-3">
         <button type="submit" disabled={blocked} className="btn btn-primary disabled:cursor-not-allowed disabled:opacity-60">
           {sending ? 'Sending…' : 'Send request'}
@@ -293,7 +276,8 @@ export function RecordCompensatoryForm({ action, employee, cancelHref, rules: sa
   const rules = compensatoryRulesOf(check?.rules ?? saved);
   const hours = readHoursWorked(typed.part, typed.hours);
   const earned: CompensationEarned | null = hours.error ? null : compensationEarned(hours.hoursWorked, rules);
-  const offField = compensatoryDayOffField(earned, rules, 'hr');
+  const offLabel = compensatoryDayOffLabel(earned);
+  const cashText = outcome === 'cash' && earned ? compensatoryRecordCashText(earned, rules, check ? check.cashDays : null) : null;
 
   /** What the days and hours typed would meet, read from the API once the day worked is a date. */
   function readFor(next: TypedCompensatory, as: CompensatoryOutcome) {
@@ -311,7 +295,7 @@ export function RecordCompensatoryForm({ action, employee, cancelHref, rules: sa
       const answer = await checkCompensatory(employee.id, w, o || null, h);
       if (asked.current !== key) return;
       if ('check' in answer) setCheck(answer.check);
-      else if (answer.errors.length) setCheckProblem(`The days couldn't be checked: ${answer.errors.join(' ')} They are checked again when you record it.`);
+      else if (answer.errors.length) setCheckProblem(`The days couldn't be checked: ${answer.errors.join(' ')}`);
     });
   }
 
@@ -377,32 +361,22 @@ export function RecordCompensatoryForm({ action, employee, cancelHref, rules: sa
             </label>
           ))}
         </div>
-        <p className="hint">
-          {outcome === 'cash'
-            ? earned
-              ? compensatoryRecordCashText(earned, rules, check ? check.cashDays : null)
-              : `Cash instead: the hours' pay at ${rules.cashRate}×, once the hours are typed. ${COMPENSATORY_CASH_HINT}`
-            : compensatoryOutcomeHint('day_off', { dayOff: off, hoursOff }, rules.cashRate)}
-        </p>
+        {cashText && <p className="hint">{cashText}</p>}
       </fieldset>
       <div className="grid gap-5 sm:grid-cols-2">
         <div>
           <label htmlFor={fid('dayWorked')} className="label">
             Day worked
           </label>
-          <DateInput id={fid('dayWorked')} name="dayWorked" required defaultValue={typed.dayWorked} aria-describedby={fid('dayWorked-hint')} />
-          <p id={fid('dayWorked-hint')} className="hint">A rest day of their shift or an official holiday, today or gone by.</p>
+          <DateInput id={fid('dayWorked')} name="dayWorked" required defaultValue={typed.dayWorked} />
         </div>
         <HoursWorkedField fid={fid} typed={typed} rules={rules} onChange={(next) => change({ ...typed, ...next })} />
         {outcome === 'day_off' && (
           <div>
             <label htmlFor={fid('dayOff')} className="label">
-              {offField.label}
+              {offLabel}
             </label>
-            <DateInput id={fid('dayOff')} name="dayOff" required defaultValue={typed.dayOff} aria-describedby={fid('dayOff-hint')} />
-            <p id={fid('dayOff-hint')} className="hint">
-              {offField.hint}
-            </p>
+            <DateInput id={fid('dayOff')} name="dayOff" required defaultValue={typed.dayOff} />
           </div>
         )}
         <div className="sm:col-span-2">
@@ -417,10 +391,8 @@ export function RecordCompensatoryForm({ action, employee, cancelHref, rules: sa
             maxLength={COMPENSATORY_REASON_MAX}
             value={typed.reason}
             onChange={(e) => setTyped((x) => ({ ...x, reason: e.target.value }))}
-            aria-describedby={fid('reason-hint')}
             className="input"
           />
-          <p id={fid('reason-hint')} className="hint">E.g. worked the Friday shoot, told by phone. The employee sees it; it is kept in the audit log.</p>
         </div>
       </div>
       {checkProblem && <p className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">{checkProblem}</p>}
@@ -434,7 +406,7 @@ export function RecordCompensatoryForm({ action, employee, cancelHref, rules: sa
           </ul>
         </div>
       )}
-      <Problems problems={problems} verb="record" ready={`Ready to record: approved at once for ${employee.name}, logged as recorded by HR.`} />
+      <Problems problems={problems} verb="record" />
       <div className="flex flex-wrap gap-3">
         <button type="submit" disabled={blocked} className="btn btn-primary disabled:cursor-not-allowed disabled:opacity-60">
           {sending ? 'Recording…' : warnings.length ? 'Record with the warnings' : 'Record the compensatory day'}
@@ -460,7 +432,6 @@ export function CompensatoryDecisionForm({
   confidential = false,
   noCheckIn = false,
   cashDays,
-  dayOff = null,
   hoursOff = null,
   upcoming = false,
   dayWorked = null,
@@ -475,7 +446,6 @@ export function CompensatoryDecisionForm({
   dayWorked?: string | null;
   /** The Setup's cash rate: a whole day's days' pay, and the rate of the hours' pay. */
   cashDays: number;
-  dayOff?: string | null;
   /** The hours off a part of a day earned; null: a whole day. */
   hoursOff?: number | null;
 }) {
@@ -496,7 +466,7 @@ export function CompensatoryDecisionForm({
     <form
       action={formAction}
       onSubmit={(e) => {
-        if (decision === 'reject' && !window.confirm(`Reject the compensatory day request by ${name}? Your comment shows on it.`)) e.preventDefault();
+        if (decision === 'reject' && !window.confirm(`Reject the compensatory day request by ${name}?`)) e.preventDefault();
       }}
       aria-label={`Decide on the compensatory day request by ${name}`}
       className="space-y-4"
@@ -533,7 +503,7 @@ export function CompensatoryDecisionForm({
               </label>
             ))}
           </div>
-          <p className="hint">{compensatoryOutcomeHint(outcome, { dayOff, hoursOff }, cashDays)}</p>
+          {outcome === 'cash' && <p className="hint">{compensatoryCashPayText({ hoursOff }, cashDays)}</p>}
           {upcoming && dayWorked && <p className="hint">{compensatoryCashWaitsText(dayWorked)}</p>}
         </fieldset>
       )}
@@ -555,13 +525,8 @@ export function CompensatoryDecisionForm({
           required={needsComment}
           value={comment}
           onChange={(e) => setComment(e.target.value)}
-          aria-describedby={fid('comment-hint')}
           className="input"
         />
-        <p id={fid('comment-hint')} className="hint">
-          {decision === 'reject' ? 'Why it is rejected. ' : ''}
-          {leaveCommentReaders(confidential)}
-        </p>
       </div>
       <button type="submit" disabled={pending || !ready} className={`btn ${decision === 'reject' ? 'btn-danger' : 'btn-primary'} disabled:cursor-not-allowed disabled:opacity-60`}>
         {pending ? button.busy : button.label}
@@ -577,7 +542,7 @@ export function CancelCompensatoryForm({ action, what }: { action: () => Promise
     <form
       action={formAction}
       onSubmit={(e) => {
-        if (!window.confirm(`Cancel your ${what}? It stays on your list, cancelled; ask again with a new request.`)) e.preventDefault();
+        if (!window.confirm(`Cancel your ${what}?`)) e.preventDefault();
       }}
       className="space-y-3"
     >
@@ -599,7 +564,7 @@ export function HrCancelCompensatoryForm({ action, what }: { action: Action; wha
     <form
       action={formAction}
       onSubmit={(e) => {
-        if (!window.confirm(`Cancel the approved ${what}? The day off is a working day again, or its addition leaves the draft payroll; your comment shows on it.`)) e.preventDefault();
+        if (!window.confirm(`Cancel the approved ${what}?`)) e.preventDefault();
       }}
       className="space-y-3"
     >
@@ -617,10 +582,8 @@ export function HrCancelCompensatoryForm({ action, what }: { action: Action; wha
           required
           value={comment}
           onChange={(e) => setComment(e.target.value)}
-          aria-describedby={fid('comment-hint')}
           className="input"
         />
-        <p id={fid('comment-hint')} className="hint">E.g. recorded by mistake, or the day worked was not worked. The employee sees it.</p>
       </div>
       <button type="submit" disabled={pending || comment.trim() === ''} className="btn btn-danger">
         {pending ? 'Cancelling…' : 'Cancel the compensatory day'}
@@ -629,12 +592,11 @@ export function HrCancelCompensatoryForm({ action, what }: { action: Action; wha
   );
 }
 
-/** A number of the Setup, with its label and hint. */
+/** A number of the Setup, with its label. */
 function SetupNumber({
   fid,
   name,
   label,
-  hint,
   value,
   step,
   min,
@@ -645,7 +607,6 @@ function SetupNumber({
   fid: (name: string) => string;
   name: keyof TypedCompensatorySetup;
   label: string;
-  hint: React.ReactNode;
   value: string;
   step: number;
   min: number;
@@ -670,12 +631,8 @@ function SetupNumber({
         disabled={disabled}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        aria-describedby={fid(`${name}-hint`)}
         className="input"
       />
-      <p id={fid(`${name}-hint`)} className="hint">
-        {hint}
-      </p>
     </div>
   );
 }
@@ -708,7 +665,6 @@ export function CompensatorySetupForm({ action, settings, canEdit }: { action: A
           fid={fid}
           name="minHours"
           label="Minimum hours to qualify"
-          hint="Fewer hours worked on a rest day or an official holiday earn nothing. Whole or half hours."
           value={typed.minHours}
           step={0.5}
           min={0.5}
@@ -720,7 +676,6 @@ export function CompensatorySetupForm({ action, settings, canEdit }: { action: A
           fid={fid}
           name="hoursCap"
           label="Most hours off"
-          hint="Part of a day earns the same hours off, at most these: more hours, still under a whole day, are capped at them."
           value={typed.hoursCap}
           step={0.5}
           min={0.5}
@@ -732,7 +687,6 @@ export function CompensatorySetupForm({ action, settings, canEdit }: { action: A
           fid={fid}
           name="fullDayHours"
           label="Hours for a whole day"
-          hint="From these hours worked, a whole day off, as for the whole day worked."
           value={typed.fullDayHours}
           step={0.5}
           min={0.5}
@@ -744,7 +698,6 @@ export function CompensatorySetupForm({ action, settings, canEdit }: { action: A
           fid={fid}
           name="cashRate"
           label="Cash instead: days' pay for a whole day"
-          hint={`When HR approves cash instead of a day off, rarely: whole or half days. Hours are paid their share of it. ${COMPENSATORY_CASH_HINT}`}
           value={typed.cashRate}
           step={0.5}
           min={0.5}
@@ -780,10 +733,6 @@ export function CompensatorySetupForm({ action, settings, canEdit }: { action: A
             days after the day worked
           </label>
         </div>
-        <p className="hint">
-          The day off, or the day for the hours off, is a working day: in the same month, before or after the day worked; or after it, within these days
-          (1 to {COMPENSATORY_OFF_WITHIN_MAX}), across months too.
-        </p>
       </fieldset>
       <section aria-labelledby={fid('rows')} className="space-y-2">
         <h3 id={fid('rows')} className="font-semibold">
@@ -824,10 +773,6 @@ export function CompensatorySetupForm({ action, settings, canEdit }: { action: A
             </tbody>
           </table>
         </div>
-        <p className="text-xs text-muted">
-          {read.rules ? 'With the numbers above' : 'With the numbers saved'}; cash for hours on a shift of 8 hours a day: each employee&apos;s is by their own
-          shift&apos;s hours. Requests already made keep what they earned.
-        </p>
       </section>
       {canEdit && (
         <button type="submit" disabled={pending || read.errors.length > 0} className="btn btn-primary disabled:cursor-not-allowed disabled:opacity-60">

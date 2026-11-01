@@ -23,11 +23,6 @@ export function NewWfhHeading({ back }: { back: { href: string; label: string } 
     <div className="space-y-2">
       {back && <BackLink href={back.href}>{back.label}</BackLink>}
       <h1 className="page-title">Work From Home</h1>
-      <p className="text-muted">
-        Ask to work from home on a day you would be at the office: a working day, asked a day before at the latest. Your direct manager decides it
-        first (without one, your team lead, else the head of your department), then HR; each step shows on the request. It is a working day, not
-        leave: you check in from home as on any day.
-      </p>
     </div>
   );
 }
@@ -41,22 +36,20 @@ export async function NewWfh({ surface = 'site' }: { surface?: Surface }) {
     body = (
       <Empty>
         {!user.employeeId
-          ? `Only someone with an employee profile can ask to work from home. No employee record uses your sign-in email (${user.email}) as its work email yet: ask HR to add it to your profile.`
+          ? `Only someone with an employee profile can ask to work from home: ask HR to add your sign-in email (${user.email}).`
           : 'Your profile couldn’t be loaded. Please try again in a moment.'}
       </Empty>
     );
   } else if (!allowance || allowance.kind === 'unavailable') body = <Empty>Not available yet: the server does not have working from home yet.</Empty>;
   else if (allowance.kind !== 'ok') body = <Empty>{notLoadedText(allowance, 'work from home days')}</Empty>;
   else if (allowance.value.refusal) body = <Empty>{allowance.value.refusal}</Empty>;
-  else if (!(allowance.value.daysPerMonth > 0)) body = <Empty>Working from home is turned off: Leave Setup gives no work from home days a month. Ask HR.</Empty>;
+  else if (!(allowance.value.daysPerMonth > 0)) body = <Empty>Working from home is turned off. Ask HR.</Empty>;
   else {
     body = (
       <NewWfhForm
         action={sendWfh}
         allowance={allowance.value}
         cancelHref={back.href}
-        // a C-level person's goes to the CEO, not HR (owner, 19 October 2026: "make C level Employees details not visible to HR")
-        toCeo={profile.confidential === true}
       />
     );
   }

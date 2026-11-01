@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { DAY_SOURCE_CHOICE_LABELS, cairoClock, removedText } from '@trendlix/shared';
+import { cairoClock, removedText } from '@trendlix/shared';
 import { PageHead, Panel, PanelHead, Pill } from '@/components/design';
 import { countsWords, hoursWords, recordWhere, recordWords, SOURCE_HEADS, type DayRecord, type DayRecordsView } from '@/lib/attendance-records';
 import { formatDate } from '@/lib/format';
@@ -43,7 +43,6 @@ export function RecordsView({ view, back }: { view: DayRecordsView; back: { href
       <PageHead
         eyebrow={`${view.employee.fullNameEn} · ${view.employee.employeeCode}`}
         title={`${weekdayOf(view.date)} ${formatDate(view.date)}`}
-        intro="Every check-in and check-out kept for the day, the system’s and Zoho People’s, and which of them the day uses."
       />
       <p className="rounded-lg bg-raised px-4 py-3 text-sm">{countsWords(view)}</p>
       {view.locked && <p className="rounded-lg bg-raised px-4 py-3 text-sm text-muted">{view.locked}</p>}
@@ -67,11 +66,10 @@ export function RecordsView({ view, back }: { view: DayRecordsView; back: { href
           take zoho record?" — "if available"): fetched first, then chosen here */}
       {view.canChange && view.system.kept && !view.zoho.kept && !view.locked && (
         <p className="rounded-lg bg-raised px-4 py-3 text-sm">
-          People has no Zoho record of this day, so only the system’s can count. To use Zoho’s, fetch this person’s day first in{' '}
+          No Zoho record of this day.{' '}
           <Link href="/organization/zoho-people" className="font-semibold">
-            Organization → Zoho People → Fetch from Zoho
+            Fetch it from Zoho
           </Link>
-          , then come back here and choose Zoho’s records.
         </p>
       )}
       {view.removed.length > 0 && (
@@ -95,10 +93,6 @@ export function RecordsView({ view, back }: { view: DayRecordsView; back: { href
       {view.canChange && both && (
         <Panel>
           <PanelHead eyebrow="Super Admin" title="Which records the day uses" />
-          <p className="mt-2 text-sm text-muted">
-            Usually the system&apos;s check-ins come before Zoho&apos;s. Choose for this day only; an approved correction still applies over it.
-            {view.chosen && ` Chosen now: ${DAY_SOURCE_CHOICE_LABELS[view.chosen.source]}.`}
-          </p>
           <div className="mt-4 space-y-4">
             <ChooseSourceForm employeeId={view.employee.id} date={view.date} offer={offer.length ? [...offer] : ['zoho', 'system']} />
             {view.chosen && <ClearSourceForm employeeId={view.employee.id} date={view.date} />}

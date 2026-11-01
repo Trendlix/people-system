@@ -65,7 +65,7 @@ export function SignedCopyAttach({ code }: { code: string }) {
           </label>
         </span>
       </div>
-      <p className="hint">{pending ? 'Attaching…' : 'A photo of the signed page, or a PDF scan of it. At most 10 MB each.'}</p>
+      <p className="hint">{pending ? 'Attaching…' : 'Photo or PDF, up to 10 MB.'}</p>
       {said && (
         <p role="status" className={`text-sm ${said.ok ? 'text-ok' : 'text-danger'}`}>
           {said.text}

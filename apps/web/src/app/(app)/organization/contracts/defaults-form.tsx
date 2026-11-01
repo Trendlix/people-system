@@ -35,12 +35,8 @@ export function ContractDefaultsForm({
             max={3}
             step={1}
             defaultValue={valueOf(state, 'probationMonths', String(settings.probationMonths))}
-            aria-describedby={fid('probationMonths-hint')}
             className="input"
           />
-          <p id={fid('probationMonths-hint')} className="hint">
-            The law allows probation once per employer, up to 3 months (Labour Law Art. 90). 0 for none.
-          </p>
         </div>
         <div>
           <label htmlFor={fid('durationMonths')} className="label">
@@ -54,12 +50,8 @@ export function ContractDefaultsForm({
             min={1}
             step={1}
             defaultValue={valueOf(state, 'durationMonths', String(settings.durationMonths))}
-            aria-describedby={fid('durationMonths-hint')}
             className="input"
           />
-          <p id={fid('durationMonths-hint')} className="hint">
-            A fixed-term contract, the default, runs this long, then is renewed or ends. Open-ended and specific-job contracts have no length (Labour Law Arts. 87, 155).
-          </p>
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-3">

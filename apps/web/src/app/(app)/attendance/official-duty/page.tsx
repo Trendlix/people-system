@@ -77,7 +77,7 @@ function Filters({ q, places }: { q: OdQuery; places: readonly PlaceRef[] }) {
 
 async function List({ searchParams }: { searchParams: PageProps<'/attendance/official-duty'>['searchParams'] }) {
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
-  if (!seesAllOd(user)) return <Empty>Only HR and the CEO see everyone&apos;s official duty. A manager decides their team&apos;s on My Team.</Empty>;
+  if (!seesAllOd(user)) return <Empty>Only HR and the CEO see everyone&apos;s official duty.</Empty>;
   const q = readOdQuery(query);
   const [loaded, places] = await Promise.all([loadOdRequests(q), loadPlaces()]);
   return (
@@ -106,7 +106,7 @@ async function List({ searchParams }: { searchParams: PageProps<'/attendance/off
           {q.late && ' Requested after only.'}
         </div>
       ) : (
-        <OdTable requests={loaded.value} who where note={q.month ? `with a day in ${monthName(q.month)}, the latest first day first.` : 'the latest first day first.'} />
+        <OdTable requests={loaded.value} who where note={q.month ? `with a day in ${monthName(q.month)}` : ''} />
       )}
     </div>
   );
@@ -116,15 +116,7 @@ export default function OdListPage({ searchParams }: PageProps<'/attendance/offi
   return (
     <StaffOnly>
       <div className="max-w-6xl space-y-6">
-        <div>
-          <h1 className="page-title">Official Duty</h1>
-          <p className="mt-1 max-w-3xl text-muted">
-            Work for the company away from the office, a client&apos;s site or a shoot: a working day, not leave. Asked ahead, or up to 3 days after
-            (marked requested after); decided by their direct manager (or lead), then HR, a C-level person&apos;s by the CEO. On an approved day they check
-            in from where they are, without the office location or network, and the day counts as attended for its hours. HR records one for someone,
-            approved at once and past the 3 days too, with a reason; the leave import brings them over.
-          </p>
-        </div>
+        <h1 className="page-title">Official Duty</h1>
         <Suspense fallback={<Loading />}>
           <List searchParams={searchParams} />
         </Suspense>

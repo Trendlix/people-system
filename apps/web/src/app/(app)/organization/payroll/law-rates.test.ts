@@ -342,8 +342,6 @@ describe('the rates in words', () => {
     expect(deletable([2025, 2026, 2027], 2026)).toBe(true);
     expect(deletable([2025, 2026, 2027], 2025)).toBe(false);
     expect(deletable([2025], 2025)).toBe(false);
-    expect(deleteQuestion([2025, 2026, 2028], 2028)).toBe(
-      'Delete the rates set by law for 2028? 2028 then uses those of 2026, as does each later year without its own. Approved payroll runs keep the rates they were worked out with.',
-    );
+    expect(deleteQuestion([2025, 2026, 2028], 2028)).toBe('Delete the 2028 rates and use 2026’s instead?');
   });
 });

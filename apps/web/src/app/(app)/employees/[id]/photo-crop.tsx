@@ -286,11 +286,10 @@ function CropWindow({ photoId, crop, name, onSaved, onClosed }: { photoId: strin
               </figure>
             </div>
           </div>
-          <p id={howId} className="text-sm text-muted">
-            Drag the photo to move it, and zoom in with the slider, the mouse wheel or by pinching, until the face fills the circle. With the
-            keyboard, the arrow keys move the photo (further with Shift), and + and − zoom in and out.
+          <p id={howId} className="sr-only">
+            Drag the photo to move it, and zoom until the face fills the circle. With the keyboard, the arrow keys move the photo (further with
+            Shift), and + and − zoom in and out.
           </p>
-          <p className="text-sm text-muted">Only the picture beside the name changes: the uploaded photo stays as it is.</p>
         </div>
       </div>
 

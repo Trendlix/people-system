@@ -302,12 +302,6 @@ export function signedAmount(row: Pick<AdjustmentRow, 'kind' | 'amount' | 'days'
   return `${sign}${formatEgp(row.amount ?? 0)}`;
 }
 
-/** What a day of each type in days is (17 October 2026), as the form says it. */
-export const DAYS_HINTS: Record<string, string> = {
-  bonus_days: 'A day of the fixed part of the salary (the gross’s basic percent) ÷ the days a month counts as, taxed with the pay. The month’s run works the amount out.',
-  penalty_days: 'A day of the contract’s net salary ÷ the days a month counts as, taken after tax. The month’s run works the amount out.',
-};
-
 /** An amount with its sign, "EGP 0.00" for none: a person's or the month's net effect. */
 export function netText(amount: number): string {
   if (Math.round(amount * 100) === 0) return formatEgp(0);
@@ -427,10 +421,6 @@ export function adjustmentBody(fd: FormData, entering: boolean): { body: Record<
   if (custodyItemId) body.custodyItemId = custodyItemId;
   return { body, errors };
 }
-
-/** The note on how they reach the pay (owner, 17 October 2026): the month's run takes them. */
-export const RUN_NOTE =
-  "Each is added to its month's payroll run: taxed additions into the gross, untaxed ones after tax, deductions after tax (a recurring deduction ticked before tax lowers the taxable pay first); a bonus or penalty in days is worked out from the person's pay that month. A draft run takes a change at once; from the CEO's step on they can't change, and the CEO's approval applies them.";
 
 // ---------- on a run ----------
 

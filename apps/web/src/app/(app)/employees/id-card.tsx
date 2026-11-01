@@ -43,8 +43,8 @@ export function CardReadStatus({ suggestions, notes = [] }: { suggestions: CardS
     <div role="status" className="space-y-2">
       <p className={`rounded-lg px-4 py-3 text-sm ${found ? 'bg-ok-soft text-ok' : 'bg-warn-soft text-warn'}`}>
         {found
-          ? `${found} ${found === 1 ? 'detail was' : 'details were'} read from the card and filled in below. Check each one against the card before saving.`
-          : 'Nothing could be read from the card with confidence. Fill in the details by hand, or try a sharper photo or scan.'}
+          ? `${found} ${found === 1 ? 'detail' : 'details'} read from the card. Check before saving.`
+          : 'Nothing could be read from the card. Fill in the details by hand.'}
       </p>
       {notes.length > 0 && (
         <ul className="space-y-1 rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
@@ -63,10 +63,9 @@ export function CardReadStatus({ suggestions, notes = [] }: { suggestions: CardS
  */
 export function LearnedFixesNote() {
   return (
-    <p className="mt-2 text-sm text-muted">
-      The reader learns from your corrections to the Arabic name and address.{' '}
+    <p className="mt-2 text-sm">
       <a href={CARD_FIXES_PATH} target="_blank" rel="noopener" className="font-semibold text-accent hover:underline">
-        See what it has learned
+        See what the card reader has learned
       </a>
     </p>
   );
@@ -144,13 +143,11 @@ export function NationalIdFields({
           inputMode="numeric"
           autoComplete="off"
           maxLength={14}
-          aria-describedby={card.describedBy('nationalId', fid('nationalId-hint'))}
+          placeholder="14 digits"
+          aria-describedby={card.describedBy('nationalId')}
           defaultValue={valueOf(state, 'nationalId', s.nationalId ?? identity?.nationalId)}
           className="input tabular-nums"
         />
-        <p id={fid('nationalId-hint')} className="hint">
-          14 digits. It must agree with the date of birth.
-        </p>
         {card.note('nationalId')}
       </div>
       <div>

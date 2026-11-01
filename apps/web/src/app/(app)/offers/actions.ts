@@ -22,7 +22,7 @@ const asShown = (messages: string[]) => messages.map((m) => m.replace(/\b(\d{4})
 /** An API from before job offers (October 2026) answers "Cannot POST /api/…" for their addresses. */
 function messagesOf(err: ApiError): string[] {
   if (err.status === 404 && err.messages.some((m) => /^Cannot (GET|POST|PUT|PATCH|DELETE) /.test(m))) {
-    return ['Not available yet: the server does not have job offers yet. Please try again after its next update.'];
+    return ['Not available yet: the server does not have job offers yet.'];
   }
   return asShown(err.messages);
 }
@@ -119,7 +119,7 @@ export async function linkOffer(id: string): Promise<OfferSendState> {
   try {
     const sent = await apiSend<OfferSendResult>('POST', `/offers/${id}/send`, { via: 'link', origin: await webOrigin() });
     refresh();
-    return { message: 'The link is ready. Copy it and send it to the candidate.', link: sent?.link, via: 'link' };
+    return { message: 'Link ready.', link: sent?.link, via: 'link' };
   } catch (err) {
     if (err instanceof ApiError) return { errors: messagesOf(err) };
     throw err;

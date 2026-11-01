@@ -35,11 +35,7 @@ export function ProbationBanner({
   if (left === null || !e.probationEnd) text = 'On probation.';
   else if (left > 0) text = `On probation until ${formatDate(e.probationEnd)} (${daysLabel(left)} left).`;
   else if (left === 0) text = `On probation until today, ${formatDate(e.probationEnd)}.`;
-  else {
-    // notice during probation must have been given by its end date (the API refuses a later one)
-    const next = canDecide ? ' Confirm it, or end the employment during probation if notice was given by then.' : '';
-    text = `Probation was due to end on ${formatDate(e.probationEnd)}, ${daysLabel(-left)} ago, and is not confirmed yet.${next}`;
-  }
+  else text = `Probation was due to end on ${formatDate(e.probationEnd)}, ${daysLabel(-left)} ago, and is not confirmed yet.`;
 
   return (
     <div
@@ -56,7 +52,7 @@ export function ProbationBanner({
             action={confirmProbation.bind(null, employee.id, e.id)}
             pendingText="Confirming…"
             variant="primary"
-            confirmText={`Confirm that ${employee.fullNameEn} passed probation? Their status becomes Active.`}
+            confirmText={`Confirm that ${employee.fullNameEn} passed probation?`}
           >
             Confirm<span className="sr-only"> that probation passed</span>
           </ActionButton>

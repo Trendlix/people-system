@@ -4,7 +4,6 @@ import {
   VS_INSURANCE_FIGURE_KEYS,
   VS_INSURANCE_FIGURE_LABELS,
   VS_INSURANCE_STANDING_LABELS,
-  VS_INSURANCE_STANDING_NOTES,
   vsInsuranceStatusText,
   type PayrollVsInsurance,
   type ReportPeriod,
@@ -120,14 +119,8 @@ export const differenceText = (n: number) => (n === 0 ? formatEgp(0) : signedEgp
 /** Where someone stands with social insurance: "Registered", "Counted as insured (not registered)" … */
 export const standingText = (r: Pick<VsInsuranceRow, 'standing'>) => VS_INSURANCE_STANDING_LABELS[r.standing] ?? r.standing;
 
-/** Why someone has no SI cycle; null for someone registered. */
-export const standingNote = (r: Pick<VsInsuranceRow, 'standing'>): string | null => VS_INSURANCE_STANDING_NOTES[r.standing] ?? null;
-
 /** A run's status as the report marks it ("Draft: may change"). */
 export const statusText = (r: { status: VsInsuranceRow['status'] }) => vsInsuranceStatusText(r.status);
-
-/** Beside a run's status badge: a draft may change, a run with the CEO may still; null once approved or paid. */
-export const mayChangeNote = (r: { status: VsInsuranceRow['status'] }): string | null => (r.status === 'draft' ? 'May change' : r.status === 'pending_ceo' ? 'May still change' : null);
 
 /** "1 row", "12 rows": the lines on the report. */
 export const rowsLabel = (n: number) => `${n} ${n === 1 ? 'row' : 'rows'}`;

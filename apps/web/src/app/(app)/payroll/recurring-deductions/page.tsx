@@ -201,22 +201,17 @@ async function RecurringDeductions() {
         <div className="card px-4 py-3">
           <dt className="text-xs text-muted">Still to start</dt>
           <dd className="mt-1 text-lg font-semibold tabular-nums">{current.length - running.length}</dd>
-          <dd className="text-xs text-muted">From a later month</dd>
         </div>
         <div className="card px-4 py-3">
           <dt className="text-xs text-muted">People</dt>
           <dd className="mt-1 text-lg font-semibold tabular-nums">{peopleOf(current)}</dd>
-          <dd className="text-xs text-muted">With one running or to start</dd>
         </div>
       </dl>
 
       <section aria-labelledby="recurring-current" className="space-y-3">
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h2 id="recurring-current" className="font-semibold">
-            Running and Upcoming
-          </h2>
-          <span className="text-xs text-muted">By department, then team</span>
-        </div>
+        <h2 id="recurring-current" className="font-semibold">
+          Running and Upcoming
+        </h2>
         <div className="card">
           {hr && (
             <details className="border-b border-line" open={current.length === 0 && ended.length === 0}>
@@ -252,12 +247,6 @@ export default function RecurringDeductionsPage() {
     <StaffOnly>
       <div className="max-w-6xl">
         <h1 className="page-title">Recurring Deductions</h1>
-        <p className="mt-1 text-muted">
-          A fixed amount taken from an employee&apos;s pay every month, such as their share of a medical subscription: from its first month to its last, or
-          until it is stopped. Each month&apos;s payroll run takes it after tax, or before tax when ticked so (it then lowers the taxable pay), named on
-          the payslip as it is here. The employee&apos;s signed consent must be on file, and the law allows such deductions up to 25% of the pay after
-          tax, insurance and installments (Labour Law Art. 114). Advances and loans are recovered by their installments, on Unsettled.
-        </p>
         <div className="mt-6">
           <Suspense fallback={<Loading />}>
             <RecurringDeductions />

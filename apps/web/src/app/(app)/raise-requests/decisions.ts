@@ -162,7 +162,7 @@ export function ceoDecisionBody(
   const choice: CeoChoice | null = typed === 'return' || isIn(RAISE_DECISIONS, typed) ? (typed as CeoChoice) : null;
   if (!choice) errors.push('Choose approve, approve with another raise, reject or return to HR.');
   const comment = text(fd, 'comment');
-  if (!comment) errors.push(choice === 'return' ? 'Write what HR should change: it goes back to HR with your comment.' : 'Write your comment on the decision.');
+  if (!comment) errors.push(choice === 'return' ? 'Write what HR should change.' : 'Write your comment on the decision.');
   const figure = choice === 'approve_other' ? figureFrom(fd, errors, RAISE_FIGURE_KINDS, true) : null;
   const path = choice === 'reject' ? 'decline' : choice === 'return' ? 'return' : choice ? 'approve' : null;
   const reason = text(fd, 'raiseReason');

@@ -8,7 +8,7 @@ import { parseAmount } from '../../employees/[id]/contracts/salary';
 import type { PersonRef } from '../adjustments/adjustments';
 import { limitHref } from '../unsettled/installments';
 import { InlineForm, Note } from '../unsettled/unsettled-forms';
-import { BEFORE_TAX_HINT, BEFORE_TAX_TICK, CONSENT_FILE_MAX_MB, lastMonth, NAME_MAX, raisesAmount, recurringPreview, type RecurringPreview } from './recurring';
+import { BEFORE_TAX_TICK, CONSENT_FILE_MAX_MB, lastMonth, NAME_MAX, raisesAmount, recurringPreview, type RecurringPreview } from './recurring';
 import { joinShown } from '@/lib/hidden';
 
 // Recurring Deductions' forms (owner, 18 October 2026: a medical subscription is an ongoing monthly share), for HR: a
@@ -76,12 +76,8 @@ function NameField({ state, fid, saved }: { state: FormState; fid: (n: string) =
         autoComplete="off"
         placeholder="e.g. Medical subscription (family)"
         defaultValue={valueOf(state, 'name', saved)}
-        aria-describedby={fid('name-hint')}
         className="input"
       />
-      <p id={fid('name-hint')} className="hint">
-        The payslip names the deduction so.
-      </p>
     </div>
   );
 }
@@ -123,7 +119,7 @@ function AmountField({
  * The tick that the employee's signed consent is on file (Labour Law Art. 114): `required` to add one, or for a higher
  * amount (`label` says so).
  */
-function ConsentTick({ state, fid, label = 'The employee’s signed consent is on file' }: { state: FormState; fid: (n: string) => string; label?: string }) {
+function ConsentTick({ state, label = 'The employee’s signed consent is on file' }: { state: FormState; label?: string }) {
   return (
     <div>
       <label className="flex min-h-11 w-fit cursor-pointer items-center gap-3 text-sm font-semibold">
@@ -133,30 +129,23 @@ function ConsentTick({ state, fid, label = 'The employee’s signed consent is o
           value="yes"
           required
           defaultChecked={valueOf(state, 'consentOnFile') === 'yes'}
-          aria-describedby={fid('consentOnFile-hint')}
           className="size-5 accent-accent"
         />
         {label}
       </label>
-      <p id={fid('consentOnFile-hint')} className="hint">
-        A deduction from the pay the employee agrees to needs their written consent (Labour Law Art. 114). Kept with who ticked it and when.
-      </p>
     </div>
   );
 }
 
 /**
- * "Deducted before tax (lowers taxable pay)" (owner, 20 October 2026: "Before Tax i think"), off unless `saved`, with
- * its hint: the tax law limits the deduction.
+ * "Deducted before tax (lowers taxable pay)" (owner, 20 October 2026: "Before Tax i think"), off unless `saved`.
  */
 function BeforeTaxTick({
   state,
-  fid,
   saved = false,
   onChange,
 }: {
   state: FormState;
-  fid: (n: string) => string;
   saved?: boolean;
   /** Told when it is ticked or not, e.g. for What It Comes To. */
   onChange?: (ticked: boolean) => void;
@@ -170,14 +159,10 @@ function BeforeTaxTick({
           value="yes"
           defaultChecked={valueOf(state, 'beforeTax', saved ? 'yes' : '') === 'yes'}
           onChange={onChange && ((e) => onChange(e.target.checked))}
-          aria-describedby={fid('beforeTax-hint')}
           className="size-5 accent-accent"
         />
         {BEFORE_TAX_TICK}
       </label>
-      <p id={fid('beforeTax-hint')} className="hint">
-        {BEFORE_TAX_HINT}
-      </p>
     </div>
   );
 }
@@ -199,7 +184,7 @@ function ConsentFile({ fid, required = false }: { fid: (n: string) => string; re
         className="input py-2"
       />
       <p id={fid('consentFile-hint')} className="hint">
-        A photo or a PDF of up to {CONSENT_FILE_MAX_MB} MB, kept in the employee file.
+        Photo or PDF, up to {CONSENT_FILE_MAX_MB} MB.
       </p>
     </div>
   );
@@ -227,7 +212,6 @@ function WhatItComesTo({ preview }: { preview: RecurringPreview | null }) {
               And {preview.warnings.length - 3} more {preview.warnings.length - 3 === 1 ? 'month' : 'months'}.
             </p>
           )}
-          <p className="mt-1 text-xs">A warning only: it can still be saved.</p>
         </div>
       )}
     </div>
@@ -329,16 +313,12 @@ export function AddRecurringForm({
           </div>
         </div>
       </div>
-      <BeforeTaxTick state={state} fid={fid} onChange={setBeforeTax} />
+      <BeforeTaxTick state={state} onChange={setBeforeTax} />
       <WhatItComesTo preview={preview} />
       <div className="space-y-3 rounded-lg border border-line bg-card p-3">
-        <ConsentTick state={state} fid={fid} />
+        <ConsentTick state={state} />
         <ConsentFile fid={fid} />
       </div>
-      <p className="hint">
-        Each month&apos;s payroll run takes it as a deduction after tax (before tax when ticked so), from its first month to its last, or until it is
-        stopped; it stops by itself from the month after someone&apos;s last working day.
-      </p>
       <div className="flex flex-wrap items-center gap-3">
         <SubmitButton busy={pending} pendingText="Adding…">
           Add
@@ -391,11 +371,10 @@ function ChangeFields({
           From
         </label>
         <MonthSelect id={fid('fromMonth')} name="fromMonth" required months={froms} value={valueOf(state, 'fromMonth', froms[0]?.value ?? '')} onChange={setFrom} />
-        <p className="hint">The months before keep the amount they had.</p>
       </div>
-      <BeforeTaxTick state={state} fid={fid} saved={saved.beforeTax === true} onChange={setBeforeTax} />
+      <BeforeTaxTick state={state} saved={saved.beforeTax === true} onChange={setBeforeTax} />
       <WhatItComesTo preview={preview} />
-      {raised && <ConsentTick state={state} fid={fid} label="The employee’s signed consent to the new amount is on file" />}
+      {raised && <ConsentTick state={state} label="The employee’s signed consent to the new amount is on file" />}
     </>
   );
 }
@@ -449,7 +428,7 @@ export function RecurringActions({
           {(state, fid) => (
             <>
               <input type="hidden" name="recorded" value="no" />
-              <ConsentTick state={state} fid={fid} />
+              <ConsentTick state={state} />
               <ConsentFile fid={fid} />
             </>
           )}
@@ -495,7 +474,7 @@ export function RecurringActions({
               </label>
               <MonthSelect id={fid('endMonth')} name="endMonth" months={ends} value={valueOf(state, 'endMonth', saved.endMonth ?? '')} emptyLabel="Until stopped" />
             </div>
-            <BeforeTaxTick state={state} fid={fid} saved={saved.beforeTax === true} />
+            <BeforeTaxTick state={state} saved={saved.beforeTax === true} />
           </>
         )}
       </InlineForm>

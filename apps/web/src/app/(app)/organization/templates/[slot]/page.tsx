@@ -3,7 +3,6 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
 import { formatDateTime, titleCase } from '@/lib/format';
-import { PROTECTED_PDF_HINT } from '@/lib/protected-pdf';
 import { canDelete } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import type { SessionUser, TemplateDetail, TemplateVersion } from '@/lib/types';
@@ -13,7 +12,7 @@ import { BackLink, Empty, Loading } from '../../ui';
 import { deleteTemplateVersion, publishTemplateVersion, renameTemplateVersion, uploadTemplateVersion } from '../actions';
 import { loadTemplate } from '../data';
 import { SlotDetails, StatusLines, Tag } from '../parts';
-import { isOfferSlot, previewHint } from '../preview-people';
+import { isOfferSlot } from '../preview-people';
 import { PreviewWithData } from '../preview-with-data';
 import { checkTags, count, tagCount } from '../tag-check';
 import { UploadTemplateForm } from '../upload-form';
@@ -36,7 +35,6 @@ import {
   versionFileHref,
   versionPreviewHref,
   WHO_SEES,
-  OVERRIDES_NOTE,
   pdfPublishBlock,
 } from '../wording';
 
@@ -99,14 +97,10 @@ function DraftCheck({ version: v, slotKey, inUse, manages }: { version: Template
         // a PDF form: printed exactly as uploaded, with the data where its fields are placed
         <div className="space-y-3">
           <PdfFormLine version={v} />
-          <p className="text-sm text-muted">
-            Documents are this form exactly as uploaded, with the data printed where its fields are placed.
-            {manages && !v.fieldCount && ' Place its fields, then publish it.'}
-          </p>
           <FieldsLink version={v} slotKey={slotKey} manages={manages} className="btn btn-secondary" />
         </div>
       ) : (
-        nothing && <p className="text-sm text-muted">No merge tags were found in this file: documents made from it will be the file exactly as it is.</p>
+        nothing && <p className="text-sm text-muted">No merge tags found.</p>
       )}
 
       {check.unknown.length > 0 && (
@@ -133,9 +127,7 @@ function DraftCheck({ version: v, slotKey, inUse, manages }: { version: Template
       {check.broken.length > 0 && (
         <div className="rounded-lg border border-danger/30 bg-danger-soft/40 p-4">
           <h4 className="text-sm font-semibold text-danger">Broken Tags ({check.broken.length})</h4>
-          <p className="mt-1 text-sm text-danger">
-            These look like tags but aren&apos;t: each tag needs two braces on each side, {'{{like_this}}'}, with only the tag&apos;s name between them.
-          </p>
+          <p className="mt-1 text-sm text-danger">Each tag needs two braces on each side: {'{{like_this}}'}.</p>
           <ul className="mt-3 flex flex-wrap gap-2">
             {check.broken.map((fragment) => (
               <li key={fragment}>
@@ -165,21 +157,15 @@ function DraftCheck({ version: v, slotKey, inUse, manages }: { version: Template
               </li>
             ))}
           </ul>
-          {check.known.some((t) => t.restricted) && (
-            <p className="hint">Restricted: national ID, salary or bank data. Only those who may see it can make a document with it.</p>
-          )}
         </div>
       )}
 
-      <div>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-          {/* a plain link: never prefetched */}
-          <a href={versionPreviewHref(v.id)} target="_blank" rel="noopener" className="inline-flex min-h-9 items-center text-sm font-semibold">
-            Preview<span className="sr-only"> draft v{v.version} ({v.fileName}) as a PDF, in a new tab</span>
-          </a>
-          <PreviewWithData versionId={v.id} label={`draft v${v.version} (${v.fileName})`} align="start" offers={isOfferSlot(slotKey)} />
-        </div>
-        <p className="hint">{previewHint(slotKey)}</p>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        {/* a plain link: never prefetched */}
+        <a href={versionPreviewHref(v.id)} target="_blank" rel="noopener" className="inline-flex min-h-9 items-center text-sm font-semibold">
+          Preview<span className="sr-only"> draft v{v.version} ({v.fileName}) as a PDF, in a new tab</span>
+        </a>
+        <PreviewWithData versionId={v.id} label={`draft v${v.version} (${v.fileName})`} align="start" offers={isOfferSlot(slotKey)} />
       </div>
 
       {manages && (
@@ -271,9 +257,7 @@ function VersionRow({ version: v, slotKey, deletes, manages }: { version: Templa
               action={deleteTemplateVersion.bind(null, slotKey, v.id, v.version)}
               label={v.status === 'draft' ? `draft v${v.version}` : `v${v.version}`}
               confirmText={
-                v.status === 'published'
-                  ? `Delete v${v.version} (${v.fileName})? It is the version in use: until another version is published, no document can be made from this template. This can't be undone.`
-                  : `Delete v${v.version} (${v.fileName})? This can't be undone.`
+                v.status === 'published' ? `Delete v${v.version} (${v.fileName}), the version in use?` : `Delete v${v.version} (${v.fileName})?`
               }
             />
           )}
@@ -313,11 +297,26 @@ function VersionsTable({ versions, slotKey, deletes, manages }: { versions: Temp
 
 // ---------- the page ----------
 
+/** The tags that print another's value on this template: "{{gross_salary}} reads {{insured_salary}}". */
+function Overrides({ overrides }: { overrides: TemplateDetail['overrides'] }) {
+  const entries = Object.entries(overrides ?? {});
+  if (!entries.length) return null;
+  return (
+    <ul className="space-y-1 text-sm">
+      {entries.map(([tag, reads]) => (
+        <li key={tag} className="flex flex-wrap items-center gap-2">
+          <Tag tag={tag} /> <span className="text-muted">reads</span> <Tag tag={reads} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** What the page says after Publish or Delete brought the browser back here. */
 function doneMessage(query: Record<string, string | string[] | undefined>): string | null {
   const n = (key: string) => (typeof query[key] === 'string' && /^\d{1,4}$/.test(query[key]) ? query[key] : null);
   const published = n('published');
-  if (published) return `v${published} is now in use: new documents are made from it. Documents made earlier keep the version they were made with.`;
+  if (published) return `v${published} is now in use.`;
   const deleted = n('deleted');
   if (deleted) return `Version ${deleted} deleted.`;
   return null;
@@ -326,21 +325,12 @@ function doneMessage(query: Record<string, string | string[] | undefined>): stri
 function Body({ detail, user }: { detail: TemplateDetail; user: SessionUser }) {
   const manages = managesTemplates(user);
   if (detail.copyOf) {
-    const overrides = Object.entries(detail.overrides ?? {});
     return (
       <section className="card space-y-3 p-6">
         <p className="text-sm">
           {COPY_NOTE} <Link href={templateHref(detail.copyOf)}>{sourceName(detail.copyOf)}</Link>
         </p>
-        {overrides.length > 0 && (
-          <ul className="space-y-1 text-sm">
-            {overrides.map(([tag, reads]) => (
-              <li key={tag} className="flex flex-wrap items-center gap-2">
-                <Tag tag={tag} /> <span className="text-muted">reads</span> <Tag tag={reads} />
-              </li>
-            ))}
-          </ul>
-        )}
+        <Overrides overrides={detail.overrides} />
       </section>
     );
   }
@@ -350,7 +340,7 @@ function Body({ detail, user }: { detail: TemplateDetail; user: SessionUser }) {
   const inUse = detail.published?.version ?? versions.find((v) => v.status === 'published')?.version ?? null;
   return (
     <div className="space-y-8">
-      {Object.keys(detail.overrides ?? {}).length > 0 && <p className="rounded-lg bg-accent-soft px-4 py-3 text-sm">{OVERRIDES_NOTE}</p>}
+      <Overrides overrides={detail.overrides} />
       {manages && (
         <section id="upload" className="card scroll-mt-6 p-6">
           <UploadTemplateForm action={uploadTemplateVersion.bind(null, detail.key)} language={detail.language} hasFile={versions.length > 0} />
@@ -359,16 +349,9 @@ function Body({ detail, user }: { detail: TemplateDetail; user: SessionUser }) {
 
       {drafts.length > 0 && (
         <section aria-labelledby="drafts" className="space-y-4">
-          <div>
-            <h2 id="drafts" className="text-lg font-semibold">
-              {drafts.length === 1 ? 'Draft to Check' : 'Drafts to Check'}
-            </h2>
-            <p className="mt-1 text-sm text-muted">
-              {manages
-                ? 'Check the tags found in the file, then publish it. Unknown or broken tags must be fixed in Word first, and the file uploaded again. A PDF form needs its fields placed first.'
-                : 'HR or an Admin checks the tags found in the file, then publishes it.'}
-            </p>
-          </div>
+          <h2 id="drafts" className="text-lg font-semibold">
+            {drafts.length === 1 ? 'Draft to Check' : 'Drafts to Check'}
+          </h2>
           {drafts.map((v) => (
             <DraftCheck key={v.id} version={v} slotKey={detail.key} inUse={inUse} manages={manages} />
           ))}
@@ -376,20 +359,9 @@ function Body({ detail, user }: { detail: TemplateDetail; user: SessionUser }) {
       )}
 
       <section aria-labelledby="versions" className="space-y-3">
-        <div>
-          <h2 id="versions" className="text-lg font-semibold">
-            Versions
-          </h2>
-          <p className="mt-1 text-sm text-muted">
-            New documents are made from the version in use. A newer published version replaces it; documents made earlier keep the version they were made
-            with.
-          </p>
-          {versions.length > 0 && (
-            <p className="hint">
-              {previewHint(detail.key)} {PROTECTED_PDF_HINT}
-            </p>
-          )}
-        </div>
+        <h2 id="versions" className="text-lg font-semibold">
+          Versions
+        </h2>
         {versions.length === 0 ? <Empty>No file yet.</Empty> : <VersionsTable versions={versions} slotKey={detail.key} deletes={canDelete(user)} manages={manages} />}
       </section>
     </div>

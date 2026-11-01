@@ -18,7 +18,7 @@ export function DeleteAllPracticeForm({ action, total, mine }: { action: (prev: 
       action={formAction}
       onSubmit={(e) => {
         const what = onlyMine ? 'the practice scorecards you started' : 'every practice scorecard';
-        if (!window.confirm(`Delete ${what} (${count})? Their picks, comments and steps go with them; nothing real changes.`)) e.preventDefault();
+        if (!window.confirm(`Delete ${what} (${count})?`)) e.preventDefault();
       }}
       className="flex flex-wrap items-center gap-3"
     >

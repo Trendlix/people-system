@@ -70,19 +70,14 @@ function Status({ view }: { view: WhatsAppSettingsView }) {
 
 async function Gate() {
   const user = await getCurrentUser();
-  if (user.developer) return <Empty>The WhatsApp settings hold the company’s number and its token: they aren’t open to developers.</Empty>;
+  if (user.developer) return <Empty>The WhatsApp settings aren’t open to developers.</Empty>;
   if (!seesWhatsAppSettings(user)) return <Empty>{WHATSAPP_SETTINGS_SUPER_ADMIN_ONLY}</Empty>;
   if (user.viewAs) return <Empty>{WHATSAPP_SETTINGS_OWN_ACCOUNT}</Empty>;
   const [loaded, mine] = await Promise.all([load<WhatsAppSettingsView>('/whatsapp/settings'), load<MyWhatsAppView>('/me/whatsapp')]);
-  if (loaded.kind === 'unavailable') return <Empty>Not available yet: the server does not send WhatsApp messages yet. Please try again after its next update.</Empty>;
+  if (loaded.kind === 'unavailable') return <Empty>Not available yet: the server does not send WhatsApp messages yet.</Empty>;
   if (loaded.kind === 'failed') return <Empty>The WhatsApp settings could not be loaded. {loaded.messages.join(' ')}</Empty>;
   return (
     <div className="space-y-6">
-      <p className="max-w-3xl text-sm text-muted">
-        WhatsApp messages from the company’s own WhatsApp Business number, sent through Meta’s WhatsApp Cloud API directly or through Twilio: to employees
-        who turn them on (approvals waiting, decisions on their requests, check-in reminders, interviews they sit on) and to candidates who tick it on the
-        careers forms (their application received and their interviews). They are added to the bell, push and email, never in their place.
-      </p>
       <Status view={loaded.value} />
       {/* the test goes to the Super Admin's own mobile unless they write another */}
       <WhatsAppSettingsForm action={submitWhatsAppSettings} view={loaded.value} testTo={mine.kind === 'ok' ? mine.value.mobile : null} />

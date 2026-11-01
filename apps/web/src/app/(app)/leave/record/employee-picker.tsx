@@ -38,7 +38,6 @@ export function LeaveEmployeePicker({
           required
           defaultValue={chosen ?? ''}
           onChange={() => form.current?.requestSubmit()}
-          aria-describedby="record-leave-employee-hint"
           className="input"
         >
           {!chosen && <option value="">Choose who the {what} is for</option>}
@@ -48,9 +47,6 @@ export function LeaveEmployeePicker({
             </option>
           ))}
         </Select>
-        <p id="record-leave-employee-hint" className="hint">
-          Everyone employed now. Type to search.
-        </p>
       </div>
       <button type="submit" className="btn btn-secondary">
         Choose

@@ -65,7 +65,7 @@ async function List({ searchParams }: { searchParams: PageProps<'/assets/custody
       {loaded.kind !== 'ok' ? (
         <Empty>{assetsNotLoaded(loaded, 'custody records')}</Empty>
       ) : loaded.value.items.length === 0 ? (
-        <Empty>{query.q || query.filter !== 'active' ? 'No custody record matches. Try another filter or search.' : 'Nothing is out now.'}</Empty>
+        <Empty>{query.q || query.filter !== 'active' ? 'No custody record matches.' : 'Nothing is out now.'}</Empty>
       ) : (
         <>
           <CustodyTable rows={loaded.value.items} href={CUSTODY_PATHS.record} />
@@ -99,15 +99,9 @@ async function List({ searchParams }: { searchParams: PageProps<'/assets/custody
 export default function CustodyPage({ searchParams }: PageProps<'/assets/custody'>) {
   return (
     <AssetsFrame tab={CUSTODY_PATHS.list}>
-      <p className="text-muted">
-        Assets handed over to employees: for a shoot, back by its return date, or held long term until clearance. Each record&apos;s form is printed,
-        signed on paper, and its signed copy attached.
-      </p>
-      <div className="mt-6">
-        <Suspense fallback={<Loading />}>
-          <List searchParams={searchParams} />
-        </Suspense>
-      </div>
+      <Suspense fallback={<Loading />}>
+        <List searchParams={searchParams} />
+      </Suspense>
     </AssetsFrame>
   );
 }

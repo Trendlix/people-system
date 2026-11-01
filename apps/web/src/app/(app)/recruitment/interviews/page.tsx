@@ -21,7 +21,6 @@ async function Upcoming() {
   const hours = (
     <p className="text-sm">
       <Link href="/organization/interview-hours">Interviewers’ hours</Link>
-      <span className="text-muted">: when each interviewer is free for interviews.</span>
     </p>
   );
   if (loaded.kind !== 'ok') return <Empty>{recruitmentNotLoaded(loaded, 'interviews')}</Empty>;
@@ -29,7 +28,7 @@ async function Upcoming() {
     return (
       <div className="space-y-3">
         {hours}
-        <div className="card px-6 py-8 text-center text-sm text-muted">No interviews to come. Schedule one from an applicant’s page.</div>
+        <div className="card px-6 py-8 text-center text-sm text-muted">No interviews to come.</div>
       </div>
     );
   }
@@ -44,12 +43,7 @@ async function Upcoming() {
 export default function InterviewsPage() {
   return (
     <div className="max-w-5xl space-y-4">
-      <div className="space-y-1">
-        <h1 className="page-title">Upcoming Interviews</h1>
-        <p className="max-w-3xl text-sm text-muted">
-          Scheduled from an applicant’s page: the candidate is emailed the calendar invitation, and the interviewers are told.
-        </p>
-      </div>
+      <h1 className="page-title">Upcoming Interviews</h1>
       <Suspense fallback={<Loading />}>
         <Upcoming />
       </Suspense>

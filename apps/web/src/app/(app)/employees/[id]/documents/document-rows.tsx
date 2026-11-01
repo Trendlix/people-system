@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { DocumentViewer, VIEW_BUTTON } from '@/components/document-viewer';
 import { PrintPdf } from '@/components/print-pdf';
 import { formatDate, formatDateTime, titleCase } from '@/lib/format';
-import { pdfFileName, PROTECTED_PDF_HINT } from '@/lib/protected-pdf';
+import { pdfFileName } from '@/lib/protected-pdf';
 import type { DocumentItem, EmployeeProfile, GeneratedDocument, GeneratedDocumentStatus } from '@/lib/types';
 import { ASK_SUPER_ADMIN } from '../../../organization/templates/wording';
 import { contractHref, Loading, ProfileSection, todayInCairo } from '../../ui';
@@ -29,7 +29,6 @@ import {
   sectionTitle,
   signedFileHref,
   signedMimeType,
-  signersText,
   templateStateText,
   type Tone,
 } from './wording';
@@ -84,7 +83,6 @@ function Progress({ document: d }: { document: GeneratedDocument }) {
 function DocumentLine({ document: d, item, employee, can }: { document: GeneratedDocument; item: DocumentItem; employee: Employee; can: DocumentAccess }) {
   const steps = nextSteps(d.status);
   const what = `${item.name}, generated ${formatDate(d.generatedAt)}`;
-  const signers = signersText(item.slotKey);
   const hasSigned = Boolean(d.signedFileName || d.signedUploadedAt);
   const typed = inputsText(d.inputs);
   return (
@@ -124,11 +122,7 @@ function DocumentLine({ document: d, item, employee, can }: { document: Generate
         )}
         {/* HR only: Adobe Sign and DocuSign refuse the protected PDF (owner, 15 October 2026); every download is recorded */}
         {can.act && !hasSigned && (
-          <a
-            href={documentESignHref(employee.id, d.id)}
-            title="Unprotected, to upload to Adobe Sign or DocuSign. Every download is recorded."
-            className={`${VIEW_BUTTON} text-accent`}
-          >
+          <a href={documentESignHref(employee.id, d.id)} className={`${VIEW_BUTTON} text-accent`}>
             PDF for e-signature<span className="sr-only"> ({what}): unprotected, to upload to Adobe Sign or DocuSign; every download is recorded</span>
           </a>
         )}
@@ -150,7 +144,7 @@ function DocumentLine({ document: d, item, employee, can }: { document: Generate
             action={verifyDocument.bind(null, d.id)}
             pendingText="Verifying…"
             variant="primary"
-            confirmText={`Verify the signed copy of ${what}? Check first that every page is there${signers ? ` and that it is signed by ${signers}` : ''}.`}
+            confirmText={`Verify the signed copy of ${what}?`}
           >
             Verify<span className="sr-only"> ({what})</span>
           </ActionButton>
@@ -160,7 +154,7 @@ function DocumentLine({ document: d, item, employee, can }: { document: Generate
             action={deleteDocument.bind(null, d.id)}
             pendingText="Deleting…"
             variant="danger"
-            confirmText={`Delete ${what}${hasSigned ? ', with its signed copy' : ''}? This cannot be undone.`}
+            confirmText={`Delete ${what}${hasSigned ? ' and its signed copy' : ''}?`}
           >
             Delete<span className="sr-only"> ({what})</span>
           </ActionButton>
@@ -208,7 +202,6 @@ function ItemRow({ item, employee, can, today }: { item: DocumentItem; employee:
             name={context ? `${item.name} (${context})` : item.name}
             needsInputs={item.needsInputs ?? []}
             today={item.defaultDate ? formatDate(item.defaultDate) : today}
-            dateHint={item.defaultDate ? 'The date written on the document: the contract’s start date, unless it should carry another date.' : undefined}
             again={documents.length > 0}
           />
         )}
@@ -259,10 +252,7 @@ export async function GeneratedDocuments({ employee, can }: { employee: Employee
   if (load.kind === 'forbidden') return null;
   if (load.kind === 'unavailable') {
     return (
-      <Unavailable>
-        {NOT_AVAILABLE} Documents generated from the templates (the contract copies, the job offer and NDA, letters and certificates, and the
-        leaving papers) will be listed here.
-      </Unavailable>
+      <Unavailable>{NOT_AVAILABLE}</Unavailable>
     );
   }
   if (load.kind === 'failed') return <Unavailable>The documents could not be loaded. Please try again in a moment.</Unavailable>;
@@ -271,11 +261,9 @@ export async function GeneratedDocuments({ employee, can }: { employee: Employee
   // social insurance has its own tab
   const listed = employmentTabSections(load.tab.sections);
   if (!listed.some((s) => s.items.length > 0)) {
-    return <Unavailable>No documents apply to {employee.fullNameEn} yet: they follow the employment and its contract.</Unavailable>;
+    return <Unavailable>No documents apply yet.</Unavailable>;
   }
   const sections = listed.filter((s) => s.key === 'contract' || s.items.length > 0);
-  // said once, under the first part, once there is a document to open
-  const anyDocument = listed.some((s) => s.items.some((i) => (i.documents ?? []).length > 0));
 
   return (
     <>
@@ -284,14 +272,14 @@ export async function GeneratedDocuments({ employee, can }: { employee: Employee
           const groups = contractGroups(section.items);
           return (
             // first, where #contract-documents (the Issued Documents sub-tab around it) lands
-            <ProfileSection key={section.key} title={sectionTitle(section.key)} note="Generated from the templates for each contract version, to print and sign">
+            <ProfileSection key={section.key} title={sectionTitle(section.key)}>
               {groups.length === 0 ? (
                 <p className="rounded-lg border border-dashed border-line px-4 py-4 text-sm text-muted">
-                  No contract version to generate documents for yet.
+                  No contract yet.
                   {can.act && employee.employment && (
                     <>
                       {' '}
-                      Add the contract first, on <Link href={contractHref(employee.id)}>Details</Link>.
+                      <Link href={contractHref(employee.id)}>Add the contract</Link>
                     </>
                   )}
                 </p>
@@ -303,7 +291,6 @@ export async function GeneratedDocuments({ employee, can }: { employee: Employee
                   </div>
                 ))
               )}
-              {anyDocument && <p className="text-xs text-muted">{PROTECTED_PDF_HINT}</p>}
             </ProfileSection>
           );
         }

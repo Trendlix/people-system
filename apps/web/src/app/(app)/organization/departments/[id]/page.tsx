@@ -28,21 +28,16 @@ type Query = Record<string, string | string[] | undefined>;
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 const dash = <span className="text-muted">—</span>;
 
-/**
- * The job titles directly in this department or team (`id`), with Add job title. `intro`: a line under the heading;
- * `empty`: what to say when it has none.
- */
+/** The job titles directly in this department or team (`id`), with Add job title. `empty`: what to say when it has none. */
 function JobTitles({
   id,
   heading,
-  intro,
   empty,
   jobTitles,
   canEdit,
 }: {
   id: string;
   heading: string;
-  intro?: string;
   empty: string;
   jobTitles: JobTitleSummary[];
   canEdit: boolean;
@@ -50,12 +45,9 @@ function JobTitles({
   return (
     <section className="card">
       <div className="flex flex-wrap items-center justify-between gap-3 p-5">
-        <div className="min-w-0">
-          <h3 className="font-semibold">
-            {heading} <span className="font-normal text-muted">· {jobTitles.length}</span>
-          </h3>
-          {intro && <p className="mt-1 text-sm text-muted">{intro}</p>}
-        </div>
+        <h3 className="min-w-0 font-semibold">
+          {heading} <span className="font-normal text-muted">· {jobTitles.length}</span>
+        </h3>
         {canEdit && (
           <Link href={`/organization/departments/${id}/job-titles/new`} className="btn btn-primary">
             Add job title
@@ -101,9 +93,7 @@ function Teams({ department, canEdit, canReorder, linkPeople }: { department: De
         )}
       </div>
       {teams.length === 0 ? (
-        <p className="border-t border-line px-5 py-4 text-sm text-muted">
-          No teams in this department yet. A team is a group inside it with job titles of its own, e.g. Content Team in Marketing.
-        </p>
+        <p className="border-t border-line px-5 py-4 text-sm text-muted">No teams in this department yet.</p>
       ) : (
         <div className="overflow-x-auto border-t border-line">
           <table className="table">
@@ -202,7 +192,6 @@ async function DepartmentDetails({ params, searchParams }: { params: Promise<{ i
         <JobTitles
           id={id}
           heading="Department-Level Job Titles"
-          intro={`Job titles of ${department.nameEn} itself rather than of one of its teams, e.g. Head of ${department.nameEn}.`}
           empty={`No job titles of ${department.nameEn} itself yet.`}
           jobTitles={jobTitles}
           canEdit={canEdit}
@@ -213,7 +202,6 @@ async function DepartmentDetails({ params, searchParams }: { params: Promise<{ i
         (canReorder && query.reorder === 'teams' ? (
           <ReorderList
             title="Reorder Teams"
-            hint={`Drag a team by its handle, or use Move up and Move down. The teams in ${department.nameEn} are listed in this order everywhere.`}
             items={teams.map(({ id, nameEn, nameAr }) => ({ id, nameEn, nameAr }))}
             action={reorderDepartments.bind(null, id)}
             cancelHref={`/organization/departments/${id}`}
@@ -239,11 +227,7 @@ async function DepartmentDetails({ params, searchParams }: { params: Promise<{ i
               ) : (
                 <DeleteForm
                   action={deleteDepartment.bind(null, id, department.parentId)}
-                  confirmText={
-                    parent
-                      ? `Delete the ${department.nameEn} team in ${parent.nameEn}? This cannot be undone.`
-                      : `Delete the ${department.nameEn} department? This cannot be undone.`
-                  }
+                  confirmText={parent ? `Delete the ${department.nameEn} team in ${parent.nameEn}?` : `Delete the ${department.nameEn} department?`}
                   label={`Delete ${kind}`}
                 />
               )}

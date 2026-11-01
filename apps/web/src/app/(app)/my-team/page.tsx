@@ -38,7 +38,7 @@ import { loadTeamResignations } from '../resignations/data';
 import { seesResignations } from '../resignations/resignation';
 import { ResignationsTable } from '../resignations/ui';
 import { loadTeam } from './data';
-import { askedByText, latestRaise, myTeamIntro, probationOf } from './team';
+import { askedByText, latestRaise, probationOf } from './team';
 import { shownCode } from '@/lib/hidden';
 
 // My Team (owner's decisions, 17 October 2026): a direct manager's direct reports, in their sidebar, so they reach
@@ -167,17 +167,11 @@ async function ToApprove() {
   if (claims.kind === 'unavailable' || claims.kind === 'forbidden') return null;
   return (
     <section aria-labelledby="reimbursements-to-approve" className="space-y-3">
-      <div>
-        <h2 id="reimbursements-to-approve" className="text-lg font-semibold">
-          Reimbursements to Approve
-        </h2>
-        <p className="text-sm text-muted">
-          Your direct reports&apos; claims waiting for you, and those of people without a direct manager in a team you lead or a department you head.
-          Approve one, approve a lower amount or reject it, with a comment; HR, then Finance, decide it after you.
-        </p>
-      </div>
+      <h2 id="reimbursements-to-approve" className="text-lg font-semibold">
+        Reimbursements to Approve
+      </h2>
       {claims.kind === 'failed' ? (
-        <div className="card px-6 py-6 text-sm text-muted">The claims waiting for you couldn&apos;t be loaded. Please try again in a moment.</div>
+        <div className="card px-6 py-6 text-sm text-muted">The claims waiting for you couldn&apos;t be loaded.</div>
       ) : claims.value.length === 0 ? (
         <div className="card px-6 py-6 text-sm text-muted">No claims are waiting for you.</div>
       ) : (
@@ -202,19 +196,12 @@ async function LeaveToApprove() {
   const requests = mergeRequests(leave.kind === 'ok' ? leave.value : [], permissions.kind === 'ok' ? permissions.value : []);
   return (
     <section aria-labelledby="leave-to-approve" className="space-y-3">
-      <div>
-        <h2 id="leave-to-approve" className="text-lg font-semibold">
-          Leave to Approve
-        </h2>
-        <p className="text-sm text-muted">
-          Your direct reports&apos; leave and permission requests waiting for you, and those of people without a direct manager in a team you lead
-          or a department you head. Approve one, or reject it with a comment; HR decides it after you.
-        </p>
-      </div>
+      <h2 id="leave-to-approve" className="text-lg font-semibold">
+        Leave to Approve
+      </h2>
       {failed && (
         <div className="card px-6 py-6 text-sm text-muted">
-          {leave.kind === 'failed' ? 'The leave requests' : 'The permission requests'} waiting for you couldn&apos;t be loaded. Please try again in a
-          moment.
+          {leave.kind === 'failed' ? 'The leave requests' : 'The permission requests'} waiting for you couldn&apos;t be loaded.
         </div>
       )}
       {requests.length === 0 ? (
@@ -239,17 +226,11 @@ async function CorrectionsToApprove() {
   if (corrections.kind === 'unavailable' || corrections.kind === 'forbidden') return null;
   return (
     <section aria-labelledby="corrections-to-approve" className="space-y-3">
-      <div>
-        <h2 id="corrections-to-approve" className="text-lg font-semibold">
-          Corrections to Approve
-        </h2>
-        <p className="text-sm text-muted">
-          Days your direct reports asked to correct (a check-in or check-out forgotten, a time wrong, work away from the office), and those of people
-          without a direct manager in a team you lead or a department you head. Approve one, or reject it with a comment; HR decides it after you.
-        </p>
-      </div>
+      <h2 id="corrections-to-approve" className="text-lg font-semibold">
+        Corrections to Approve
+      </h2>
       {corrections.kind === 'failed' ? (
-        <div className="card px-6 py-6 text-sm text-muted">The corrections waiting for you couldn&apos;t be loaded. Please try again in a moment.</div>
+        <div className="card px-6 py-6 text-sm text-muted">The corrections waiting for you couldn&apos;t be loaded.</div>
       ) : corrections.value.length === 0 ? (
         <div className="card px-6 py-6 text-sm text-muted">No corrections are waiting for you.</div>
       ) : (
@@ -268,17 +249,11 @@ async function WfhToApprove() {
   if (waiting.kind === 'unavailable' || waiting.kind === 'forbidden') return null;
   return (
     <section aria-labelledby="wfh-to-approve" className="space-y-3">
-      <div>
-        <h2 id="wfh-to-approve" className="text-lg font-semibold">
-          Work From Home to Approve
-        </h2>
-        <p className="text-sm text-muted">
-          Days your direct reports asked to work from home, and those of people without a direct manager in a team you lead or a department you
-          head. Approve one, or reject it with a comment; HR decides it after you.
-        </p>
-      </div>
+      <h2 id="wfh-to-approve" className="text-lg font-semibold">
+        Work From Home to Approve
+      </h2>
       {waiting.kind === 'failed' ? (
-        <div className="card px-6 py-6 text-sm text-muted">The work from home requests waiting for you couldn&apos;t be loaded. Please try again in a moment.</div>
+        <div className="card px-6 py-6 text-sm text-muted">The work from home requests waiting for you couldn&apos;t be loaded.</div>
       ) : waiting.value.length === 0 ? (
         <div className="card px-6 py-6 text-sm text-muted">No work from home requests are waiting for you.</div>
       ) : (
@@ -297,17 +272,11 @@ async function CompensatoryToApprove() {
   if (waiting.kind === 'unavailable' || waiting.kind === 'forbidden') return null;
   return (
     <section aria-labelledby="compensatory-to-approve" className="space-y-3">
-      <div>
-        <h2 id="compensatory-to-approve" className="text-lg font-semibold">
-          Compensatory Days to Approve
-        </h2>
-        <p className="text-sm text-muted">
-          Days off your direct reports asked for in exchange for a rest day or an official holiday they worked, and those of people without a direct
-          manager in a team you lead or a department you head. Approve one, or reject it with a comment; HR decides it after you.
-        </p>
-      </div>
+      <h2 id="compensatory-to-approve" className="text-lg font-semibold">
+        Compensatory Days to Approve
+      </h2>
       {waiting.kind === 'failed' ? (
-        <div className="card px-6 py-6 text-sm text-muted">The compensatory day requests waiting for you couldn&apos;t be loaded. Please try again in a moment.</div>
+        <div className="card px-6 py-6 text-sm text-muted">The compensatory day requests waiting for you couldn&apos;t be loaded.</div>
       ) : waiting.value.length === 0 ? (
         <div className="card px-6 py-6 text-sm text-muted">No compensatory day requests are waiting for you.</div>
       ) : (
@@ -326,17 +295,11 @@ async function OdToApprove() {
   if (waiting.kind === 'unavailable' || waiting.kind === 'forbidden') return null;
   return (
     <section aria-labelledby="od-to-approve" className="space-y-3">
-      <div>
-        <h2 id="od-to-approve" className="text-lg font-semibold">
-          Official Duty to Approve
-        </h2>
-        <p className="text-sm text-muted">
-          Official duties your direct reports asked for, and those of people without a direct manager in a team you lead or a department you head.
-          Approve one, or reject it with a comment; HR decides it after you.
-        </p>
-      </div>
+      <h2 id="od-to-approve" className="text-lg font-semibold">
+        Official Duty to Approve
+      </h2>
       {waiting.kind === 'failed' ? (
-        <div className="card px-6 py-6 text-sm text-muted">The official duty requests waiting for you couldn&apos;t be loaded. Please try again in a moment.</div>
+        <div className="card px-6 py-6 text-sm text-muted">The official duty requests waiting for you couldn&apos;t be loaded.</div>
       ) : waiting.value.length === 0 ? (
         <div className="card px-6 py-6 text-sm text-muted">No official duty requests are waiting for you.</div>
       ) : (
@@ -357,12 +320,9 @@ async function OnDutyToday() {
   if (!people.length) return null;
   return (
     <section aria-labelledby="od-today" className="space-y-3">
-      <div>
-        <h2 id="od-today" className="text-lg font-semibold">
-          On Official Duty Today
-        </h2>
-        <p className="text-sm text-muted">Who in your team works away from the office today, on an approved official duty: they check in from where they are.</p>
-      </div>
+      <h2 id="od-today" className="text-lg font-semibold">
+        On Official Duty Today
+      </h2>
       <ul className="card divide-y divide-line-soft">
         {people.map((e) => (
           <li key={e.id} className="flex flex-wrap items-baseline justify-between gap-x-3 px-4 py-3 text-sm">
@@ -387,12 +347,9 @@ async function HomeToday() {
   const people = homeOn(loaded.value, today);
   return (
     <section aria-labelledby="home-today" className="space-y-3">
-      <div>
-        <h2 id="home-today" className="text-lg font-semibold">
-          Home Today
-        </h2>
-        <p className="text-sm text-muted">Who in your team works from home today, on an approved day: they check in from home.</p>
-      </div>
+      <h2 id="home-today" className="text-lg font-semibold">
+        Home Today
+      </h2>
       {people.length === 0 ? (
         <div className="card px-6 py-6 text-sm text-muted">No one in your team works from home today.</div>
       ) : (
@@ -424,15 +381,9 @@ async function TeamCalendar({ searchParams }: { searchParams: PageProps<'/my-tea
   const days = calendarDays(month, holidays.kind === 'ok' ? holidays.value : [], today);
   return (
     <section id="team-calendar" aria-labelledby="team-calendar-heading" className="scroll-mt-6 space-y-3">
-      <div>
-        <h2 id="team-calendar-heading" className="text-lg font-semibold">
-          Team Calendar
-        </h2>
-        <p className="text-sm text-muted">
-          Who in your team is off each day of the month: approved leave, the hours of approved permission, the days working from home and on
-          official duty, with the official holidays.
-        </p>
-      </div>
+      <h2 id="team-calendar-heading" className="text-lg font-semibold">
+        Team Calendar
+      </h2>
       {entries.kind === 'failed' ? (
         <div className="card px-6 py-6 text-sm text-muted">{notLoadedText(entries, 'team calendar')}</div>
       ) : (
@@ -456,15 +407,9 @@ async function TeamCalendar({ searchParams }: { searchParams: PageProps<'/my-tea
 function TeamAttendance() {
   return (
     <section aria-labelledby="team-attendance-heading" className="space-y-3">
-      <div>
-        <h2 id="team-attendance-heading" className="text-lg font-semibold">
-          Team Attendance
-        </h2>
-        <p className="text-sm text-muted">
-          Your team&apos;s check-ins and check-outs month by month, on the system and from Zoho People&apos;s imports: the hours counted, absent
-          days, short hours, permission, leave and the flagged check-ins, each day of them.
-        </p>
-      </div>
+      <h2 id="team-attendance-heading" className="text-lg font-semibold">
+        Team Attendance
+      </h2>
       <Link href={TEAM_ATTENDANCE_PATH} className="btn btn-secondary no-underline">
         Open Team Attendance
       </Link>
@@ -483,31 +428,18 @@ async function TeamResignations() {
   if (loaded.kind !== 'ok' || loaded.value.length === 0) return null;
   return (
     <section aria-labelledby="team-resignations-heading" className="space-y-3">
-      <div>
-        <h2 id="team-resignations-heading" className="text-lg font-semibold">
-          Resignation Requests
-        </h2>
-        <p className="text-sm text-muted">Waiting for HR. You are told, not asked: HR records or returns them.</p>
-      </div>
-      <ResignationsTable requests={loaded.value} who note="Newest first." />
+      <h2 id="team-resignations-heading" className="text-lg font-semibold">
+        Resignation Requests
+      </h2>
+      <ResignationsTable requests={loaded.value} who />
     </section>
   );
-}
-
-/** The page's line, naming their raise requests only to those who see them (20 October 2026). */
-async function Intro() {
-  return myTeamIntro(seesRaiseRequests(await getCurrentUser()));
 }
 
 export default function MyTeamPage({ searchParams }: PageProps<'/my-team'>) {
   return (
     <div className="max-w-5xl">
       <h1 className="page-title">My Team</h1>
-      <p className="mt-1 text-muted">
-        <Suspense fallback={myTeamIntro(false)}>
-          <Intro />
-        </Suspense>
-      </p>
       <div className="mt-6 space-y-8">
         <Suspense fallback={null}>
           <TeamResignations />

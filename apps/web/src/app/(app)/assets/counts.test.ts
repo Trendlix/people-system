@@ -73,17 +73,17 @@ describe('ticking on a count\'s sheet', () => {
 
   it('says what happened in words', () => {
     expect(tickText({ kind: 'ticked', code: 'PK-CAM-0001', name: 'Camera 1' }, 'Studio A')).toBe('Ticked PK-CAM-0001 · Camera 1.');
-    expect(tickText({ kind: 'out', code: 'PK-CAM-0002', name: 'Camera 2' }, 'Studio A')).toBe('PK-CAM-0002 · Camera 2 is in custody: it counts as out.');
-    expect(tickText({ kind: 'elsewhere', code: 'PK-CAM-0099' }, 'Studio A')).toBe('PK-CAM-0099 isn’t counted with Studio A. Count it where it is kept.');
-    expect(tickText({ kind: 'unread' }, 'Studio A')).toBe('That isn’t an asset’s code. Type it as on the label, e.g. PK-CAM-0003.');
+    expect(tickText({ kind: 'out', code: 'PK-CAM-0002', name: 'Camera 2' }, 'Studio A')).toBe('PK-CAM-0002 · Camera 2 is in custody.');
+    expect(tickText({ kind: 'elsewhere', code: 'PK-CAM-0099' }, 'Studio A')).toBe('PK-CAM-0099 isn’t counted with Studio A.');
+    expect(tickText({ kind: 'unread' }, 'Studio A')).toBe('That isn’t an asset’s code.');
   });
 
   it('sends only what is ticked and on the sheet, never one in custody, and asks before saving with some unticked', () => {
     const ticked = new Set(['PK-CAM-0003', 'PK-CAM-0001', 'PK-CAM-0002', 'XX']);
     expect(foundCodes(SHEET, ticked)).toEqual(['PK-CAM-0001', 'PK-CAM-0003']);
     expect(untickedCount(SHEET, ticked)).toBe(1);
-    expect(saveCountQuestion(1)).toBe('1 asset isn’t ticked: it will be counted missing. Save the count?');
-    expect(saveCountQuestion(3)).toBe('3 assets aren’t ticked: they will be counted missing. Save the count?');
+    expect(saveCountQuestion(1)).toBe('Save with 1 asset missing?');
+    expect(saveCountQuestion(3)).toBe('Save with 3 assets missing?');
     expect(saveCountQuestion(0)).toBeNull();
   });
 

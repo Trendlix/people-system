@@ -6,9 +6,6 @@ export default function AppError({ error, retry }: { error: Error & { digest?: s
   return (
     <div className="card max-w-xl p-6">
       <h1 className="text-lg font-semibold">This Page Could Not Be Loaded</h1>
-      <p className="mt-2 text-sm text-muted">
-        The server may be busy or unreachable for a moment. Please try again. If it keeps happening, contact your administrator.
-      </p>
       {error.digest && <p className="mt-2 text-xs text-muted">Reference: {error.digest}</p>}
       <button type="button" onClick={() => retry()} className="btn btn-secondary mt-4">
         Try again

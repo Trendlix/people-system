@@ -29,10 +29,6 @@ import { monthName } from '../../list';
  */
 export const refreshesFromAttendance = (user: { roles: readonly Role[] }, status: PayrollStatus): boolean => status === 'draft' && hasRole(user, 'hr', 'ceo');
 
-/** What Refresh from attendance does, said beside it. */
-export const REFRESH_FROM_ATTENDANCE_HINT =
-  "Fills the worked hours, no-show days and permission hours again from the month's attendance days, for those who check in on the system or whose days were corrected. Each check-in and each correction approved does it by itself; refresh after a shift, a leave or a holiday changes.";
-
 /** The upload page of a run, and an import's review. */
 export const attendanceUploadHref = (runId: string) => `/payroll/${encodeURIComponent(runId)}/attendance`;
 export const attendanceReviewHref = (runId: string, importId: string) => `${attendanceUploadHref(runId)}/${encodeURIComponent(importId)}`;
@@ -114,13 +110,13 @@ export const applicable = (people: readonly AttendancePersonView[]) => people.fi
 /** The confirmation Apply asks first. */
 export function applyConfirmText(view: Pick<AttendanceImportView, 'people'>): string {
   const n = applicable(view.people).length;
-  return `Fill the worked hours, no-show days and permission hours of ${n} ${n === 1 ? 'line' : 'lines'} from Zoho People? What was typed on ${n === 1 ? 'that line' : 'those lines'} is replaced.`;
+  return `Fill ${n} ${n === 1 ? 'line' : 'lines'} from Zoho People, replacing what was typed?`;
 }
 
 /** The confirmation Undo this import asks first. */
 export function undoConfirmText(view: Pick<AttendanceImportView, 'undoable'>): string {
   const n = view.undoable ?? 0;
-  return `Undo this import on ${n} ${n === 1 ? 'line' : 'lines'}? The worked hours, no-show days and permission hours go back to what was typed before it was applied (empty if nothing was), and the days it kept are removed.`;
+  return `Undo this import on ${n} ${n === 1 ? 'line' : 'lines'}?`;
 }
 
 // ---------- deleting an import (asked, 21 October 2026: "how to delete previous imports"; a Super Admin only, like
@@ -149,18 +145,7 @@ const filesText = (files: readonly { name: string }[]) => (files.length === 1 ? 
 /** The confirmation Delete asks first, saying what happens to the payroll. */
 export function deleteImportConfirmText(i: ImportToDelete): string {
   const what = `the ${monthName(i.month)} import (${filesText(i.files)})`;
-  if (!undoesBeforeDelete(i)) return `Delete ${what}? It isn't applied, so nothing on the payroll changes. This can't be undone.`;
-  const k = i.kept;
-  const parts: string[] = [];
-  if (!k || k.lines) {
-    const lines = !k ? 'The lines it filled, whoever fills them, go' : k.lines === 1 ? 'The line it filled, whoever fills it, goes' : `The ${k.lines} lines it filled, whoever fills them, go`;
-    parts.push(`${lines} back to the worked hours, no-show days and permission hours typed before it (empty if none were).`);
-  }
-  if (!k || k.days) {
-    const days = !k ? 'The days' : k.days === 1 ? 'The day' : `The ${k.days} days`;
-    parts.push(`${days} of attendance it kept ${k?.days === 1 ? 'is' : 'are'} removed, and the lines filled from the attendance days are filled again without them.`);
-  }
-  return `Undo and delete ${what}? ${parts.join(' ')} Then the import is deleted. This can't be undone.`;
+  return undoesBeforeDelete(i) ? `Undo and delete ${what}?` : `Delete ${what}?`;
 }
 
 /** Why an import can't be deleted now (the API refuses it): its payroll isn't a draft any more. Null on a draft. */
@@ -171,7 +156,7 @@ export const deleteImportBlocked = (status: PayrollStatus): string | null => (st
  * system (phone or web with the office location check, or a device) to replace Zoho"): applying keeps their Zoho days,
  * counted before their first check-in, and their line is filled from their attendance days instead of Zoho's month.
  */
-export const CHECKS_IN_NOTE = "Checks in on the system this month: Zoho's days count before their first check-in, and their line is filled from their attendance days.";
+export const CHECKS_IN_NOTE = 'Checks in on the system this month';
 
 /** Why someone matched isn't filled by Apply, when they aren't: null when they are. */
 export function notAppliedReason(p: AttendancePersonView, hr: boolean): string | null {
@@ -184,7 +169,7 @@ export function notAppliedReason(p: AttendancePersonView, hr: boolean): string |
 
 /** Where the month's permission hours come from, in words. */
 export function permissionText(m: Pick<AttendanceMonthResult, 'permissionHours' | 'permissionFrom'>): string {
-  if (m.permissionFrom === 'system') return "The requests approved in the system (the line has them)";
+  if (m.permissionFrom === 'system') return 'Approved in the system';
   if (m.permissionFrom === 'zoho' && m.permissionHours !== null) return `${formatHours(m.permissionHours)} from Zoho`;
   return 'None';
 }

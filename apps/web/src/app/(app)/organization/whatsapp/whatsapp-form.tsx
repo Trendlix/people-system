@@ -1,22 +1,17 @@
 'use client';
 
 import {
-  WHATSAPP_CATEGORY,
   WHATSAPP_FOOTER,
-  WHATSAPP_HELLO_WORLD,
   WHATSAPP_LANGUAGE_LABELS,
-  WHATSAPP_PROVIDER_HINTS,
   WHATSAPP_PROVIDER_LABELS,
   WHATSAPP_PROVIDERS,
   WHATSAPP_SECRET_UNREADABLE,
   WHATSAPP_SETUP_STEPS,
   WHATSAPP_TEMPLATES,
   WHATSAPP_TOKEN_UNREADABLE,
-  WHATSAPP_TWILIO_SETUP_NOTE,
   WHATSAPP_TWILIO_SETUP_STEPS,
   WHATSAPP_TWILIO_TOKEN_UNREADABLE,
   isWhatsAppTemplateKey,
-  twilioTemplateName,
   type WhatsAppProvider,
   type WhatsAppSettingsView,
 } from '@trendlix/shared';
@@ -40,11 +35,10 @@ import { lastTestText, quietStart, switchNote, templatesByKey, templatesFor, typ
 
 type Action = (prev: WhatsAppFormState, fd: FormData) => Promise<WhatsAppFormState>;
 
-const NEW_TOKEN_CONFIRM =
-  'Make a new verify token? Meta’s webhook stops verifying with the old one: paste the new one in the app’s WhatsApp → Configuration → Webhook and verify it again.';
+const NEW_TOKEN_CONFIRM = 'Make a new verify token and verify Meta’s webhook again?';
 
 /** A read-only value with Copy; without clipboard access the box is selected for Ctrl+C. */
-function CopyField({ label, value, hint, where = 'Meta' }: { label: string; value: string; hint?: string; where?: string }) {
+function CopyField({ label, value }: { label: string; value: string }) {
   const id = useId();
   const [copied, setCopied] = useState<'yes' | 'failed' | null>(null);
   async function copy() {
@@ -69,7 +63,7 @@ function CopyField({ label, value, hint, where = 'Meta' }: { label: string; valu
         </button>
       </div>
       <p role="status" className="hint">
-        {copied === 'yes' ? `Copied. Paste it in ${where}.` : copied === 'failed' ? 'Press Ctrl+C (⌘C on a Mac) to copy it.' : (hint ?? '')}
+        {copied === 'yes' ? 'Copied.' : copied === 'failed' ? 'Press Ctrl+C (⌘C on a Mac) to copy it.' : ''}
       </p>
     </div>
   );
@@ -84,7 +78,6 @@ function SecretField({
   saved,
   unreadable,
   unreadableText,
-  hint,
   replacing,
   setReplacing,
 }: {
@@ -93,7 +86,6 @@ function SecretField({
   saved: boolean;
   unreadable: boolean;
   unreadableText: string;
-  hint: string;
   replacing: boolean;
   setReplacing: (v: boolean) => void;
 }) {
@@ -113,7 +105,6 @@ function SecretField({
             Replace<span className="sr-only"> the {label.toLowerCase()}</span>
           </button>
         </div>
-        <p className="hint">Saved encrypted, and never shown again.</p>
       </div>
     );
   }
@@ -131,20 +122,21 @@ function SecretField({
         spellCheck={false}
         maxLength={SECRET_MAX[name]}
         autoFocus={replacing}
-        aria-describedby={`${id}-hint`}
+        aria-describedby={unreadable ? `${id}-hint` : undefined}
         className="input font-mono"
       />
-      <p id={`${id}-hint`} className={unreadable ? 'hint text-warn' : 'hint'}>
-        {unreadable ? unreadableText : saved ? 'Leave it empty to keep the saved one.' : hint}
-        {saved && (
-          <>
-            {' '}
-            <button type="button" onClick={() => setReplacing(false)} className="font-semibold text-accent underline-offset-2 hover:underline">
-              Keep the saved one
-            </button>
-          </>
-        )}
-      </p>
+      {unreadable && (
+        <p id={`${id}-hint`} className="hint text-warn">
+          {unreadableText}
+        </p>
+      )}
+      {saved && (
+        <p className="hint">
+          <button type="button" onClick={() => setReplacing(false)} className="font-semibold text-accent underline-offset-2 hover:underline">
+            Keep the saved one
+          </button>
+        </p>
+      )}
     </div>
   );
 }
@@ -159,11 +151,6 @@ function Steps({ provider }: { provider: WhatsAppProvider }) {
       <h2 id={id} className="text-lg font-semibold">
         {twilio ? 'Set Up in Twilio' : 'Set Up in Meta'}
       </h2>
-      <p className="mt-1 max-w-3xl text-sm text-muted">
-        {twilio
-          ? 'Once, in this order. Meta charges per message and Twilio adds its own small fee; Twilio bills both to the company’s Twilio account.'
-          : 'Once, in this order. Meta charges per message; the company pays Meta directly.'}
-      </p>
       <ol className="mt-4 space-y-3">
         {steps.map((step, i) => (
           <li key={step.title} className="flex gap-3">
@@ -177,7 +164,6 @@ function Steps({ provider }: { provider: WhatsAppProvider }) {
           </li>
         ))}
       </ol>
-      {twilio && <p className="mt-4 max-w-3xl text-sm text-muted">{WHATSAPP_TWILIO_SETUP_NOTE}</p>}
     </section>
   );
 }
@@ -249,10 +235,6 @@ export function WhatsAppSettingsForm({ action, view, testTo }: { action: Action;
         <h2 id={fid('provider-heading')} className="text-lg font-semibold">
           Send Through
         </h2>
-        <p className="mt-1 max-w-3xl text-sm text-muted">
-          One at a time, and switchable later: the same messages, opt-ins, quiet hours and log either way. Each keeps its own templates’ approval. WhatsApp
-          only: no SMS.
-        </p>
         <fieldset className="mt-4">
           <legend className="sr-only">Send WhatsApp messages through</legend>
           <div className="grid gap-3 sm:grid-cols-2">
@@ -264,17 +246,11 @@ export function WhatsAppSettingsForm({ action, view, testTo }: { action: Action;
                   value={p}
                   checked={provider === p}
                   onChange={() => setProvider(p)}
-                  aria-describedby={fid(`provider-${p}-hint`)}
                   className="mt-0.5 size-4 shrink-0 accent-accent"
                 />
-                <span className="min-w-0">
-                  <span className="block font-semibold">
-                    {WHATSAPP_PROVIDER_LABELS[p]}
-                    {view.provider === p && <span className="ml-2 text-xs font-normal text-muted">(chosen now)</span>}
-                  </span>
-                  <span id={fid(`provider-${p}-hint`)} className="block text-sm text-muted">
-                    {WHATSAPP_PROVIDER_HINTS[p]}
-                  </span>
+                <span className="min-w-0 font-semibold">
+                  {WHATSAPP_PROVIDER_LABELS[p]}
+                  {view.provider === p && <span className="ml-2 text-xs font-normal text-muted">(chosen now)</span>}
                 </span>
               </label>
             ))}
@@ -293,11 +269,6 @@ export function WhatsAppSettingsForm({ action, view, testTo }: { action: Action;
         <h2 id={fid('connection-heading')} className="text-lg font-semibold">
           Connection
         </h2>
-        <p className="mt-1 max-w-3xl text-sm text-muted">
-          {twilio
-            ? 'The Twilio account and the WhatsApp sender the messages go from (from the steps above). Meta’s own settings stay below it, hidden, for a switch back.'
-            : 'The WhatsApp Business number the messages go from, and what lets the system send with it (from the steps above).'}
-        </p>
 
         {/* Meta's: hidden while Twilio is chosen, still sent so nothing of them is lost */}
         <div hidden={twilio}>
@@ -313,12 +284,8 @@ export function WhatsAppSettingsForm({ action, view, testTo }: { action: Action;
                 inputMode="numeric"
                 autoComplete="off"
                 maxLength={30}
-                aria-describedby={fid('phoneNumberId-hint')}
                 className="input font-mono tabular-nums"
               />
-              <p id={fid('phoneNumberId-hint')} className="hint">
-                WhatsApp → API Setup, under the number: a long number, not the phone number itself.
-              </p>
             </div>
             <div>
               <label htmlFor={fid('businessAccountId')} className="label">
@@ -331,21 +298,14 @@ export function WhatsAppSettingsForm({ action, view, testTo }: { action: Action;
                 inputMode="numeric"
                 autoComplete="off"
                 maxLength={30}
-                aria-describedby={fid('businessAccountId-hint')}
                 className="input font-mono tabular-nums"
               />
-              <p id={fid('businessAccountId-hint')} className="hint">
-                WhatsApp → API Setup: the account the number and the templates belong to.
-              </p>
             </div>
             <div>
               <label htmlFor={fid('displayPhone')} className="label">
                 The business number
               </label>
-              <PhoneInput id={fid('displayPhone')} name="displayPhone" label="The business number" defaultValue={view.displayPhone} aria-describedby={fid('displayPhone-hint')} />
-              <p id={fid('displayPhone-hint')} className="hint">
-                As people see it in WhatsApp: the number added and verified in Meta.
-              </p>
+              <PhoneInput id={fid('displayPhone')} name="displayPhone" label="The business number" defaultValue={view.displayPhone} />
             </div>
           </div>
 
@@ -356,7 +316,6 @@ export function WhatsAppSettingsForm({ action, view, testTo }: { action: Action;
               saved={tokenSaved}
               unreadable={view.tokenUnreadable}
               unreadableText={WHATSAPP_TOKEN_UNREADABLE}
-              hint="The system user’s token (expiry Never). Saved encrypted, and never shown again."
               replacing={replacingToken}
               setReplacing={setReplacingToken}
             />
@@ -366,21 +325,16 @@ export function WhatsAppSettingsForm({ action, view, testTo }: { action: Action;
               saved={secretSaved}
               unreadable={view.appSecretUnreadable}
               unreadableText={WHATSAPP_SECRET_UNREADABLE}
-              hint="App settings → Basic → App secret: checks that the webhook’s calls come from Meta. Saved encrypted."
               replacing={replacingSecret}
               setReplacing={setReplacingSecret}
             />
           </div>
 
           <h3 className="mt-8 font-semibold">Webhook</h3>
-          <p className="mt-1 max-w-3xl text-sm text-muted">
-            Paste both in the app → WhatsApp → Configuration → Webhook, then subscribe to messages. Meta tells the system with it whether each message was
-            delivered and read, and when someone replies STOP.
-          </p>
           <div className="mt-3 grid gap-5 lg:grid-cols-2">
             <CopyField label="Callback URL" value={view.webhookUrl} />
             <div>
-              <CopyField label="Verify token" value={view.verifyToken} hint="Made by the system. Meta asks for it once, when the webhook is verified." />
+              <CopyField label="Verify token" value={view.verifyToken} />
               <button type="button" onClick={newVerifyToken} disabled={pending} className="btn btn-secondary mt-1 min-h-9 px-3">
                 {busy('verify-token') ? 'Making…' : 'Make a new verify token'}
               </button>
@@ -407,12 +361,9 @@ export function WhatsAppSettingsForm({ action, view, testTo }: { action: Action;
                 autoCapitalize="none"
                 spellCheck={false}
                 maxLength={40}
-                aria-describedby={fid('twilioAccountSid-hint')}
+                placeholder="AC…"
                 className="input font-mono"
               />
-              <p id={fid('twilioAccountSid-hint')} className="hint">
-                The Twilio Console’s home page, under Account Info: AC and 32 letters and digits.
-              </p>
             </div>
             <SecretField
               name="twilioAuthToken"
@@ -420,7 +371,6 @@ export function WhatsAppSettingsForm({ action, view, testTo }: { action: Action;
               saved={twilioTokenSaved}
               unreadable={view.twilio.authTokenUnreadable}
               unreadableText={WHATSAPP_TWILIO_TOKEN_UNREADABLE}
-              hint="Beside the Account SID: it lets the system send through Twilio, and check that Twilio’s calls are Twilio’s. Saved encrypted, and never shown again."
               replacing={replacingTwilio}
               setReplacing={setReplacingTwilio}
             />
@@ -436,27 +386,16 @@ export function WhatsAppSettingsForm({ action, view, testTo }: { action: Action;
                 autoCapitalize="none"
                 spellCheck={false}
                 maxLength={60}
-                placeholder="whatsapp:+20 100 123 4567"
-                aria-describedby={fid('twilioSender-hint')}
+                placeholder="whatsapp:+20 100 123 4567 or MG…"
                 className="input max-w-xl font-mono"
               />
-              <p id={fid('twilioSender-hint')} className="hint max-w-3xl">
-                The number registered as a WhatsApp sender in Twilio, written whatsapp:+20… with its country code; or the SID of a Messaging Service that holds
-                it (MG…), and Twilio sends from the service’s sender. Either works; a Messaging Service lets numbers be added or changed in Twilio later
-                without changing this.
-              </p>
             </div>
           </div>
 
           <h3 className="mt-8 font-semibold">Webhooks</h3>
-          <p className="mt-1 max-w-3xl text-sm text-muted">
-            In the Twilio Console, paste the incoming-message URL as the sender’s “When a message comes in” (HTTP POST): STOP from someone turns their messages
-            off. The status callback goes with every message by itself (it may be pasted as the sender’s status callback URL too): Twilio tells the system
-            through it whether each message was delivered and read. Every call is checked against the Auth Token.
-          </p>
           <div className="mt-3 grid gap-5 lg:grid-cols-2">
-            <CopyField label="Incoming-message URL" value={view.twilio.incomingUrl} where="Twilio" hint="The sender’s “When a message comes in”, method HTTP POST." />
-            <CopyField label="Status callback URL" value={view.twilio.statusCallbackUrl} where="Twilio" hint="Sent with every message; pasting it in Twilio is optional." />
+            <CopyField label="Incoming-message URL" value={view.twilio.incomingUrl} />
+            <CopyField label="Status callback URL" value={view.twilio.statusCallbackUrl} />
           </div>
           <p className="mt-3 text-sm text-muted">{view.twilio.lastEventAt ? `Twilio last called ${formatDateTime(view.twilio.lastEventAt)}.` : 'Twilio hasn’t called yet.'}</p>
         </div>
@@ -473,7 +412,6 @@ export function WhatsAppSettingsForm({ action, view, testTo }: { action: Action;
               value="true"
               checked={quietOn}
               onChange={(e) => setQuietOn(e.target.checked)}
-              aria-describedby={fid('quiet-hint')}
               className="size-5 accent-accent"
             />
             No WhatsApp messages at night
@@ -494,10 +432,6 @@ export function WhatsAppSettingsForm({ action, view, testTo }: { action: Action;
               </div>
             </div>
           )}
-          <p id={fid('quiet-hint')} className="hint max-w-3xl">
-            Cairo time, 10:00 PM to 8:00 AM unless changed. A message due in them waits until they end; a check-in or check-out reminder is dropped
-            instead, as it would come too late.
-          </p>
         </div>
 
         <div className="mt-6 border-t border-line-soft pt-5">
@@ -510,15 +444,10 @@ export function WhatsAppSettingsForm({ action, view, testTo }: { action: Action;
               value="true"
               checked={enabled}
               onChange={(e) => setEnabled(e.target.checked)}
-              aria-describedby={fid('enabled-hint')}
               className="size-5 accent-accent"
             />
             Send WhatsApp messages
           </label>
-          <p id={fid('enabled-hint')} className="hint max-w-3xl">
-            Only to those who turned them on (employees on their Notifications page, candidates with the tick on the careers forms), and only with
-            approved templates. The bell, push and email go on as before, whatever this says.
-          </p>
         </div>
 
         <div className="mt-5 flex flex-wrap items-center gap-3">
@@ -543,23 +472,6 @@ export function WhatsAppSettingsForm({ action, view, testTo }: { action: Action;
         <h2 id={fid('test-heading')} className="text-lg font-semibold">
           Send a Test Message
         </h2>
-        <p className="mt-1 max-w-3xl text-sm text-muted">
-          {twilio ? (
-            <>
-              Sent through Twilio with its saved settings (save first), to a number that has WhatsApp: our own template {twilioTemplateName('test_message', 'en')}{' '}
-              once it is approved on Twilio; until then a plain text, which WhatsApp delivers only if that phone wrote to the business number in the last 24
-              hours (else Twilio fails it with error 63016, and the result here says so). The result says in plain words what Twilio answered: authentication
-              failed, the sender not WhatsApp-enabled, a template not approved, the recipient not on WhatsApp, or the account suspended or out of funds.
-            </>
-          ) : (
-            <>
-              Sent with the saved settings (save first), to a number that has WhatsApp: our own template {WHATSAPP_TEMPLATES.test_message.name} once Meta
-              approves it, until then Meta’s sample {WHATSAPP_HELLO_WORLD.name} (in English), which every new WhatsApp Business Account has. The result says
-              in plain words what Meta answered: a token expired or invalid, the number not registered, a template not approved, the recipient not on
-              WhatsApp, or a payment problem.
-            </>
-          )}
-        </p>
         <div className="mt-5 flex flex-wrap items-end gap-3">
           <div className="min-w-0 flex-1 sm:max-w-md">
             <label htmlFor={fid('testTo')} className="label">
@@ -591,11 +503,6 @@ export function WhatsAppSettingsForm({ action, view, testTo }: { action: Action;
         <h2 id={fid('templates-heading')} className="text-lg font-semibold">
           {twilio ? 'Templates on Twilio' : 'Templates'}
         </h2>
-        <p className="mt-1 max-w-3xl text-sm text-muted">
-          {twilio
-            ? `The same texts as Meta’s, in English and Arabic, made in Twilio as Content (a text, or a text with the button), named people_<template>_<language>, and submitted for WhatsApp’s approval in the ${WHATSAPP_CATEGORY.toLowerCase()} category; the STOP line ends each text, as these have no footer. Twilio keeps its own approval, apart from Meta’s: only approved ones are used while Twilio sends, anything else goes by the bell, push and email only.`
-            : `Every WhatsApp message is one of these, in English and Arabic, of Meta’s ${WHATSAPP_CATEGORY.toLowerCase()} category: names, dates and references, never an amount or a reason. Submit them once the connection is saved; Meta reviews each (usually within minutes, up to a day). Only approved ones are used: anything else goes by the bell, push and email only.`}
-        </p>
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <button type="submit" name="intent" value="submit" disabled={pending} className="btn btn-primary">
             {busy('submit') ? 'Submitting…' : 'Submit templates'}

@@ -45,14 +45,6 @@ const OFFER_SLOTS: readonly string[] = TEMPLATE_SLOTS.filter((s) => s.folder ===
 /** Whether a template is a job offer template (an employment type's, or paid by commission), previewed with job offers' data. */
 export const isOfferSlot = (slotKey: string) => OFFER_SLOTS.includes(slotKey);
 
-export const PREVIEW_HINT = "Filled with a real employee's data, nothing saved. Missing values show as [Field].";
-
-/** The hint under a job offer template's previews. */
-export const OFFER_PREVIEW_HINT = "Filled with a job offer's data (an employee's while there is no offer yet), nothing saved. Missing values show as [Field].";
-
-/** The hint under a template's previews. */
-export const previewHint = (slotKey: string) => (isOfferSlot(slotKey) ? OFFER_PREVIEW_HINT : PREVIEW_HINT);
-
 const versionPath = (versionId: string) => `/organization/templates/versions/${encodeURIComponent(versionId)}`;
 
 /** The query parameter that names whose data to preview with: ?offerId= or ?employeeId=. */

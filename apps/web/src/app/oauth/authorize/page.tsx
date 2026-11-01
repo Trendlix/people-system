@@ -113,8 +113,7 @@ async function Consent({ searchParams }: { searchParams: PageProps<'/oauth/autho
       <List title="Claude Can" items={can} tone="ok" />
       <List title="Claude Can’t" items={cannot} tone="muted" />
       <p className="text-sm text-muted">
-        You will go back to <strong className="text-ink">{check.redirectHost}</strong>. You can sign the connection out any time on Your Sessions, where it
-        shows as Claude connector; changing your password ends it too.
+        You will go back to <strong className="text-ink">{check.redirectHost}</strong>. You can sign it out any time on Your Sessions.
       </p>
       <ConsentButtons request={request} allow />
     </div>

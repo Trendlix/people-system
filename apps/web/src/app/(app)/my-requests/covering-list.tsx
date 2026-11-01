@@ -25,7 +25,7 @@ export function CoveringList({ list, today, compact = false }: { list: readonly 
               <p className="mt-0.5 whitespace-pre-line break-words">{a.handoverNote}</p>
             </div>
           ) : (
-            !compact && <p className="text-xs text-muted">No handover note: ask them what to pick up.</p>
+            !compact && <p className="text-xs text-muted">No handover note.</p>
           )}
         </li>
       ))}

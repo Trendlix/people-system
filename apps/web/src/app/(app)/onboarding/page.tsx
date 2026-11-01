@@ -81,13 +81,7 @@ async function List({ searchParams }: { searchParams: PageProps<'/onboarding'>['
 export default function OnboardingPage({ searchParams }: PageProps<'/onboarding'>) {
   return (
     <div className="max-w-5xl space-y-4">
-      <div className="space-y-1">
-        <h1 className="page-title">Onboarding</h1>
-        <p className="max-w-3xl text-sm text-muted">
-          A checklist for each new employee: opened when an applicant is hired through an accepted job offer, or from a new employee’s profile. The contract,
-          the KPI template and their equipment are ticked by the system.
-        </p>
-      </div>
+      <h1 className="page-title">Onboarding</h1>
       <Suspense fallback={<Loading />}>
         <List searchParams={searchParams} />
       </Suspense>

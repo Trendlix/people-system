@@ -83,10 +83,7 @@ export function ReasonButton({
       {emailOption && (
         <label className="flex items-start gap-2 text-sm">
           <input type="checkbox" name="email" className="mt-1" />
-          <span>
-            Email the candidate
-            <span className="block text-xs text-muted">A polite rejection, English then Arabic, with the words in Recruitment Settings. Your reason is never sent.</span>
-          </span>
+          <span>Email the candidate</span>
         </label>
       )}
       <div className="flex flex-wrap gap-2">

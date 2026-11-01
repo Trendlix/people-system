@@ -3,7 +3,7 @@
 import { ArrowRight, Clock, LogOut, X } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { useId, useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { cairoClock, LOCATION_NEEDED_TEXT } from '@trendlix/shared';
 import { MY_ATTENDANCE } from '@/components/nav';
 import { ArrowLink, PanelHead, Pill } from '@/components/design';
@@ -22,15 +22,11 @@ import {
   dayTitle,
   exemptToday,
   expectedTextOf,
-  firstDayNote,
   flagLabels,
   latestView,
   locationHelpText,
-  LOCATION_NOTE,
-  LOCATION_NOTE_IN_APP,
   lockNote,
   longDayTitle,
-  OFFICE_NOT_SET_TEXT,
   punchBody,
   punchRows,
   todayBadge,
@@ -88,7 +84,6 @@ function usePunch(initial: CheckInTodayView) {
   // refused for where it was, with a reading: that reading, to ask for the place (24 October 2026)
   const [refusedAt, setRefusedAt] = useState<{ latitude: number; longitude: number; accuracy: number | null } | null>(null);
   const inApp = useNativeApp();
-  const noteId = useId();
   const view = latestView(initial, pressed);
   const busy = phase !== 'idle';
   // a second tap while the first is on its way is ignored (the API keeps the same press twice in a minute once anyway)
@@ -138,14 +133,14 @@ function usePunch(initial: CheckInTodayView) {
   // the press's words in amber when what it kept is flagged or its place unknown, else in green
   const last = pressed ? [...pressed.punches].sort((a, b) => Date.parse(a.at) - Date.parse(b.at)).at(-1) : undefined;
   const warned = !!last && (last.flags.length > 0 || last.place === 'unknown');
-  return { view, press, phase, busy, messages, errors, help, askCorrection, refusedAt, inApp, noteId, warned, pressCount };
+  return { view, press, phase, busy, messages, errors, help, askCorrection, refusedAt, inApp, warned, pressCount };
 }
 
 type Punch = ReturnType<typeof usePunch>;
 
 /**
  * What is said before a press: working from home today (the phone pages' Home says it on its own), exempt today, where
- * they are expected (`quiet`: in grey, as the design's cards say it), their first day, a lock, the location needed.
+ * they are expected (`quiet`: in grey, as the design's cards say it), a lock, the location needed.
  */
 function BeforePress({ p, big = false, quiet = false, className = 'space-y-4' }: { p: Punch; big?: boolean; quiet?: boolean; className?: string }) {
   const { view, inApp } = p;
@@ -153,12 +148,10 @@ function BeforePress({ p, big = false, quiet = false, className = 'space-y-4' }:
   const note = lockNote(view);
   const exempt = exemptToday(view);
   const expectedText = expectedTextOf(view);
-  // their first working day (owner, 27 October 2026): counted from the shift's start whatever time they check in
-  const firstDayText = firstDayNote(view);
   // on the website, when presses without a location are refused for them (inside the app it is always needed); the GPS
   // lock's note says so already
   const locationNeeded = view.location?.required && !inApp && !view.gps?.locked;
-  if (!(view.workingFromHome && !big) && !exempt && !expectedText && !firstDayText && !note && !locationNeeded) return null;
+  if (!(view.workingFromHome && !big) && !exempt && !expectedText && !note && !locationNeeded) return null;
   return (
     <div className={className}>
       {view.workingFromHome && !big && (
@@ -174,19 +167,9 @@ function BeforePress({ p, big = false, quiet = false, className = 'space-y-4' }:
         </p>
       )}
       {expectedText && <p className={`text-sm ${quiet ? 'text-muted' : ''}`}>{expectedText}</p>}
-      {firstDayText && <p className="text-sm font-medium">{firstDayText}</p>}
       {note && <p className="text-sm">{note}</p>}
       {locationNeeded && <p className="text-sm">{LOCATION_NEEDED_TEXT}</p>}
     </div>
-  );
-}
-
-/** Where the location goes, asked each press and the spot kept (the button's description). */
-function LocationNote({ p, className = 'hint max-w-md' }: { p: Punch; className?: string }) {
-  return (
-    <p id={p.noteId} className={className}>
-      {p.inApp ? LOCATION_NOTE_IN_APP : LOCATION_NOTE}
-    </p>
   );
 }
 
@@ -199,7 +182,7 @@ function PressButton({ p, look }: { p: Punch; look: 'big' | 'box' | 'link' | 'so
   const { view, phase, busy } = p;
   const label = buttonLabel(view.next, phase);
   const wait = busy ? 'cursor-wait opacity-60' : '';
-  const common = { type: 'button' as const, onClick: p.press, 'aria-disabled': busy || undefined, 'aria-describedby': p.noteId };
+  const common = { type: 'button' as const, onClick: p.press, 'aria-disabled': busy || undefined };
   if (look === 'link') {
     return (
       <button {...common} className={`inline-flex min-h-11 items-center text-sm text-ink ${wait}`}>
@@ -274,8 +257,7 @@ function PressOutcome({ p }: { p: Punch }) {
                 }}
               >
                 Request this place
-              </button>{' '}
-              as your home, a remote site or a client&apos;s location: HR, then the CEO, decide it.
+              </button>
             </p>
           )}
         </div>
@@ -296,7 +278,7 @@ function DaySoFar({ view }: { view: CheckInTodayView }) {
         <dt className="text-xs text-muted">Today so far</dt>
         <dd className="font-semibold tabular-nums">{dayTimesText(day)}</dd>
         {/* the break between today's pairs (25 October 2026), counted in the hours since 31 October 2026 */}
-        {breakTime && <dd className="text-xs text-muted">{breakTime}, counted in your hours</dd>}
+        {breakTime && <dd className="text-xs text-muted">{breakTime}</dd>}
         {day.place && <dd className="text-xs text-muted">{dayPlaceLabel(day, view.punches)}</dd>}
       </div>
       {/* with a check-in, the counter says the hours */}
@@ -368,15 +350,11 @@ export function CheckInPanel({ initial, compact = false, big = false }: { initia
   return (
     <div className="space-y-4">
       <BeforePress p={p} big={big} />
-      <div>
-        <PressButton p={p} look={big ? 'big' : 'box'} />
-        <LocationNote p={p} />
-      </div>
+      <PressButton p={p} look={big ? 'big' : 'box'} />
       <PressOutcome p={p} />
       <CheckInCounter view={view} big={big} />
       <DaySoFar view={view} />
       {!compact && <TodayPunches view={view} />}
-      {!view.officeLocationSet && <p className="text-xs text-muted">{OFFICE_NOT_SET_TEXT}</p>}
     </div>
   );
 }
@@ -410,7 +388,6 @@ export function TodayCard({
       {!compact && <TodayPunches view={view} />}
     </div>
   );
-  const notSet = !view.officeLocationSet && <p className="mt-4 text-xs text-muted">{OFFICE_NOT_SET_TEXT}</p>;
   const pill = (
     <Pill strong={badge.strong}>{badge.label}</Pill>
   );
@@ -433,13 +410,11 @@ export function TodayCard({
           </div>
           <div className="space-y-4 border-line @xl:border-l @xl:pl-7">
             <BeforePress p={p} quiet className="space-y-2" />
-            <LocationNote p={p} className="max-w-md text-xs text-muted" />
             <PressButton p={p} look="solid" />
             <PressOutcome p={p} />
           </div>
         </div>
         {below}
-        {notSet}
       </section>
     );
   }
@@ -460,7 +435,6 @@ export function TodayCard({
           )}
           <CounterLines view={view} className="mt-2" />
           <BeforePress p={p} quiet className="mt-3 space-y-2" />
-          <LocationNote p={p} className="mt-2.5 max-w-md text-xs text-muted" />
           <div className="mt-3">
             <PressButton p={p} look="link" />
           </div>
@@ -470,7 +444,6 @@ export function TodayCard({
         </div>
       </div>
       {below}
-      {notSet}
       {home && (
         <p className="mt-5">
           <ArrowLink href={MY_ATTENDANCE}>Open my attendance</ArrowLink>
@@ -516,14 +489,12 @@ export function TodayHeadButton({ initial }: { initial: CheckInTodayView }) {
           type="button"
           onClick={p.press}
           aria-disabled={busy || undefined}
-          aria-describedby={p.noteId}
           className={`btn btn-primary min-h-11 rounded-xl px-4 font-normal ${busy ? 'cursor-wait opacity-60' : ''}`}
         >
           <Clock aria-hidden="true" className="size-[18px]" strokeWidth={1.5} />
           {phase === 'idle' ? 'Check in for work' : buttonLabel('in', phase)}
         </button>
       )}
-      <LocationNote p={p} className="sr-only" />
       {/* what came of the press, under the button until closed (closed: hidden, its words said already) */}
       <div
         className={

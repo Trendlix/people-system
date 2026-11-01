@@ -51,7 +51,7 @@ function placeChoices(places: readonly PlaceRef[]): { id: string; label: string 
 
 async function List({ searchParams }: { searchParams: PageProps<'/attendance/compensatory'>['searchParams'] }) {
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
-  if (!seesAllCompensatory(user)) return <Empty>Only HR and the CEO see everyone&apos;s compensatory days. A manager decides their team&apos;s on My Team.</Empty>;
+  if (!seesAllCompensatory(user)) return <Empty>Only HR and the CEO see everyone&apos;s compensatory days.</Empty>;
   const q = readCompensatoryQuery(query);
   const [loaded, places, directory] = await Promise.all([loadCompensatoryRequests(q), loadPlaces(), getOrNull<EmployeeSummary[]>('/employees')]);
   // the people the user sees (the directory without the C-level cards they can't open), as Leave Requests lists them
@@ -92,7 +92,7 @@ async function List({ searchParams }: { searchParams: PageProps<'/attendance/com
           {days && ` ${days.charAt(0).toUpperCase()}${days.slice(1)}.`}
         </div>
       ) : (
-        <CompensatoryTable requests={loaded.value} who how note={days ? `${days}, the latest day first.` : 'the latest day first.'} />
+        <CompensatoryTable requests={loaded.value} who how note={days ?? ''} />
       )}
     </div>
   );
@@ -102,15 +102,7 @@ export default function CompensatoryListPage({ searchParams }: PageProps<'/atten
   return (
     <StaffOnly>
       <div className="max-w-6xl space-y-6">
-        <div>
-          <h1 className="page-title">Compensatory Days</h1>
-          <p className="mt-1 max-w-3xl text-muted">
-            Days off in exchange for a rest day or an official holiday worked, or hours off for part of one, by the Compensatory Setup&apos;s rules:
-            asked a day before the day off at the latest, decided by the direct manager (or lead), then HR, a C-level person&apos;s by the CEO. HR
-            approves it as time off, which adds no pay, or, rarely, as cash instead. HR records one for someone, with a reason. One that goes with an
-            official duty on a rest day is decided with the duty.
-          </p>
-        </div>
+        <h1 className="page-title">Compensatory Days</h1>
         <Suspense fallback={<Loading />}>
           <List searchParams={searchParams} />
         </Suspense>

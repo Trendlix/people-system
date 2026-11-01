@@ -55,12 +55,11 @@ export const KIND_ICONS: Record<HistoryKind, LucideIcon> = {
   team: TrendingUp,
 };
 
-/** A section's head on the page (not in a card): the small capitals over its title, and a line under it. */
-export function SectionHead({ id, eyebrow, title, intro }: { id: string; eyebrow?: string; title: React.ReactNode; intro?: React.ReactNode }) {
+/** A section's head on the page (not in a card): the small capitals over its title. */
+export function SectionHead({ id, eyebrow, title }: { id: string; eyebrow?: string; title: React.ReactNode }) {
   return (
     <div>
       <PanelHead eyebrow={eyebrow} title={<span id={id}>{title}</span>} />
-      {intro && <p className="mt-2 max-w-3xl text-sm text-muted">{intro}</p>}
     </div>
   );
 }
@@ -131,7 +130,6 @@ export function AnnualLeaveCard({ balances, today, className = '' }: { balances:
           </div>
         ))}
       </dl>
-      <p className="mt-auto pt-4 text-[11px] text-muted">Annual leave, {balances.year}: what you can still ask for, once what is waiting is decided.</p>
     </section>
   );
 }
@@ -166,13 +164,12 @@ export function OtherLeaveCards({ balances, types }: { balances: LeaveBalances; 
   );
 }
 
-/** A card to start a request: its icon, what it is, a line on it, and the way on (the whole card opens it). */
-export function StartCard({ icon, title, text, href, action }: { icon: LucideIcon; title: string; text: string; href: string; action: string }) {
+/** A card to start a request: its icon, what it is, and the way on (the whole card opens it). */
+export function StartCard({ icon, title, href, action }: { icon: LucideIcon; title: string; href: string; action: string }) {
   return (
     <li className="card relative flex flex-col rounded-[15px] p-[17px] sm:min-h-[190px] shadow-none transition-colors hover:bg-raised has-[a:focus-visible]:ring-2 has-[a:focus-visible]:ring-accent">
       <IconTile icon={icon} />
       <h3 className="mt-4 text-[15px] font-normal">{title}</h3>
-      <p className="mt-1.5 text-xs text-muted">{text}</p>
       <Link
         href={href}
         className="mt-auto inline-flex items-center gap-1.5 self-start pt-4 text-[13px] text-ink no-underline after:absolute after:inset-0 after:rounded-[15px] focus-visible:outline-none"
@@ -231,7 +228,7 @@ export function HistoryPanel({ rows, show, all, query, failed }: { rows: readonl
   return (
     <section id={HISTORY_ID} aria-labelledby={`${HISTORY_ID}-heading`} className="card scroll-mt-6 p-[22px]">
       <PanelHead eyebrow="History" title={<span id={`${HISTORY_ID}-heading`}>Recent requests</span>} aside={<HistoryFilterLinks query={query} show={show} />} />
-      {failed.length > 0 && <p className="mt-4 text-sm text-muted">Some of your requests couldn&apos;t be loaded ({failed.join(', ')}). Please try again in a moment.</p>}
+      {failed.length > 0 && <p className="mt-4 text-sm text-muted">Some of your requests couldn&apos;t be loaded ({failed.join(', ')}).</p>}
       {shown.length === 0 ? (
         <div className="mt-5 rounded-[13px] border border-line px-6 py-10 text-center text-sm text-muted">
           {rows.length === 0 ? emptyHistoryText('') : emptyHistoryText(show)}
@@ -305,8 +302,7 @@ export function HistoryPanel({ rows, show, all, query, failed }: { rows: readonl
             </table>
           </div>
           <p className="mt-4 text-xs text-muted">
-            {shown.length < matching.length ? `The latest ${shown.length} of ${matching.length}` : requestsLabel(matching.length)}, newest first. Each kind lists all of
-            its own, with every detail, further down.
+            {shown.length < matching.length ? `The latest ${shown.length} of ${matching.length}` : requestsLabel(matching.length)}
             {shown.length < matching.length && (
               <>
                 {' '}

@@ -42,14 +42,9 @@ export function UploadLeaveForm({ action }: { action: Action }) {
           type="file"
           required
           accept={UPLOAD_ACCEPT}
-          aria-describedby={fid('file-hint')}
           onChange={() => setProblem(null)}
           className="block w-full text-sm file:mr-3 file:min-h-11 file:cursor-pointer file:rounded-lg file:border file:border-line file:bg-card file:px-4 file:text-sm file:font-semibold"
         />
-        <p id={fid('file-hint')} className="hint">
-          The template filled in, or Zoho People&apos;s leave export as it is (Excel, .xlsx, up to 5 MB). Nothing is saved to anyone&apos;s leave until
-          you apply the review.
-        </p>
       </div>
       <SubmitButton pendingText="Reading the file…">Read the file</SubmitButton>
     </form>

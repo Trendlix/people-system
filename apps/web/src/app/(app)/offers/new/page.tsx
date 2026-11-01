@@ -48,8 +48,6 @@ async function NewOffer({ searchParams }: { searchParams: PageProps<'/offers/new
           ) : (
             <Link href={applicantHref(from.id)}>{from.fullName}</Link>
           )}
-          : filled in from them and the vacancy. Type their name in the other
-          language, and the terms.
         </p>
       )}
       {applicationId && !from && <p className="max-w-3xl rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">The applicant could not be read: this offer starts empty.</p>}
@@ -74,9 +72,6 @@ export default function NewOfferPage({ searchParams }: PageProps<'/offers/new'>)
       <div className="space-y-2">
         <BackLink href="/offers">Job offers</BackLink>
         <h1 className="page-title">New Job Offer</h1>
-        <p className="max-w-3xl text-sm text-muted">
-          Saved as a draft: nothing reaches the candidate until you send it from the offer&apos;s page, after checking its PDF.
-        </p>
       </div>
       <Suspense fallback={<Loading />}>
         <NewOffer searchParams={searchParams} />

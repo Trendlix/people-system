@@ -40,12 +40,7 @@ export async function saveLeaveSettings(_prev: FormState, fd: FormData): Promise
     throw err;
   }
   refresh();
-  return {
-    message:
-      body.permissionHoursPerMonth !== undefined
-        ? 'Saved. Balances are worked out with these days from now on, and new permission requests are checked against these hours.'
-        : 'Saved. Balances are worked out with these days from now on.',
-  };
+  return { message: 'Saved.' };
 }
 
 async function saveType(fd: FormData, request: () => Promise<unknown>): Promise<FormState> {
@@ -114,7 +109,7 @@ export async function reopenLeaveYear(year: number): Promise<FormState> {
  * "Warn and need HR"): at most so many on annual leave at once and/or at least so many percent at work; both empty removes
  * it. What the API refuses (a department with teams, a figure out of range) shows on the row, with what was typed.
  */
-export async function saveStaffingLimit(departmentId: string, name: string, _prev: FormState, fd: FormData): Promise<FormState> {
+export async function saveStaffingLimit(departmentId: string, _prev: FormState, fd: FormData): Promise<FormState> {
   const { body, errors } = staffingBody(fd);
   if (errors.length) return { errors, values: submitted(fd) };
   try {
@@ -124,5 +119,5 @@ export async function saveStaffingLimit(departmentId: string, name: string, _pre
     throw err;
   }
   refresh();
-  return { message: staffingSavedText(name, body) };
+  return { message: staffingSavedText(body) };
 }

@@ -1,6 +1,5 @@
 import {
   checkInLocationProblems,
-  GPS_ACCURACY_ALLOWANCE_MAX,
   GPS_ROUGH_DEFAULT,
   gpsRoughProblems,
   HOME_STATUSES,
@@ -16,8 +15,6 @@ import {
   officeAddressesProblems,
   officeNetworksFrom,
   SIGNED_IP_PROBLEM_TEXT,
-  SMALL_RADIUS_HINT,
-  SMALL_RADIUS_METRES,
   subLocationLabel,
   validityText,
   type HomeStatus,
@@ -148,9 +145,6 @@ export const clientLocationsOf = <L extends Located>(locations: readonly L[]): L
 /** A radius in words: "Within 20 m". */
 export const withinText = (metres: number): string => `Within ${metres.toLocaleString('en-US')} m`;
 
-/** The gentle hint on a main office of a small radius (under 50 m): phones are often that far off. None otherwise. */
-export const radiusHint = (metres: number): string | null => (metres < SMALL_RADIUS_METRES ? SMALL_RADIUS_HINT : null);
-
 /** How a check-in within a sub-location shows on the attendance pages: "Remote - Studio". */
 export const shownAsText = (name: string): string => subLocationLabel(name);
 
@@ -190,20 +184,11 @@ export const withChosen = (chosen: readonly string[], id: string): string[] => (
 export const linkButtonText = (count: number): string => (count === 1 ? 'Link 1 person' : `Link ${count} people`);
 
 /** What Make main asks first. */
-export const makeMainConfirm = (name: string, main: string | null): string =>
-  `Make ${name} the main office? Check-ins within it will count as Office for everyone${
-    main ? `, and ${main} becomes a sub-location: check-ins there will show as ${subLocationLabel(main)}` : ''
-  }.`;
+export const makeMainConfirm = (name: string): string => `Make ${name} the main office?`;
 
 /** What removing a location asks first: the main office (only once it is the last), or a sub-location with its people. */
 export const removeConfirm = (name: string, isMain: boolean): string =>
-  isMain
-    ? `Remove the main office ${name}? With no check-in location left, every check-in on the system is kept as location unknown.`
-    : `Remove the sub-location ${name}? Its people are unlinked, and check-ins within it will be plain Remote.`;
-
-/** What a location added says: the first is the main office, every later one a sub-location. */
-export const addedText = (name: string, isMain: boolean): string =>
-  isMain ? `Added ${name}, the main office: check-ins within it count as Office.` : `Added ${name}: check-ins within it show as ${subLocationLabel(name)}.`;
+  isMain ? `Remove the main office ${name}?` : `Remove the sub-location ${name}?`;
 
 // ---------- the office networks ----------
 
@@ -235,26 +220,20 @@ export function networkStatus(state: NetworksState, webKey: boolean): { ready: b
   if (!state.here.signed) {
     const { problem } = state.here;
     if (problem === 'unsigned') {
-      return { ready: false, text: webKey ? 'Your address couldn’t be read on this page, so the lock can’t be checked from here: open the page on the website itself.' : NO_WEB_KEY_TEXT };
+      return { ready: false, text: webKey ? 'Your address couldn’t be read on this page: open it on the website itself.' : NO_WEB_KEY_TEXT };
     }
     return { ready: false, text: SIGNED_IP_PROBLEM_TEXT[problem] };
   }
   const { ip, network } = state.here;
-  return { ready: true, text: `Ready: the website and the server share the key. You are on ${ip}${network ? `, the office network ${network}` : ', which isn’t one of the office networks'}.` };
+  return { ready: true, text: `Ready. You are on ${ip}${network ? `, the office network ${network}` : ', not an office network'}.` };
 }
 
-/**
- * The lock as it stands, in a sentence; `gpsInForce`: the GPS lock is in force too (24 October 2026), when a press passing
- * either lock is enough.
- */
-export function lockText(state: Pick<NetworksState, 'lock' | 'inForce' | 'serverKey' | 'networks'>, gpsInForce = false): string {
-  if (state.inForce) {
-    const either = gpsInForce ? ' With the GPS lock on too (below), a press passes when either does: on the office network, or inside a check-in location.' : '';
-    return `On: Office staff check in and out on the office network only, or at a sub-location they are linked to, unless HR lets them check in from anywhere.${either}`;
-  }
-  if (state.lock && !state.serverKey) return 'Switched on, but not in force: the server has no key, so no one is refused.';
-  if (state.lock && !state.networks.length) return 'Switched on, but not in force: there is no office network.';
-  return 'Off: everyone checks in from anywhere; a check-in on an office network still counts as at the office.';
+/** The lock as it stands, in a sentence. */
+export function lockText(state: Pick<NetworksState, 'lock' | 'inForce' | 'serverKey' | 'networks'>): string {
+  if (state.inForce) return 'Lock on.';
+  if (state.lock && !state.serverKey) return 'Lock switched on, but not in force: the server has no key.';
+  if (state.lock && !state.networks.length) return 'Lock switched on, but not in force: there is no office network.';
+  return 'Lock off.';
 }
 
 // ---------- presses without a location (owner, 20 October 2026: "i want a flag to restrict checkin and out from
@@ -263,29 +242,8 @@ export function lockText(state: Pick<NetworksState, 'lock' | 'inForce' | 'server
 /** The switch's form, as PUT /attendance/check-in-setup/location-rule takes it (a hidden "false", then the checkbox's "true"). */
 export const locationRuleBody = (fd: FormData): { refuseWithoutLocation: boolean } => ({ refuseWithoutLocation: fd.getAll('refuseWithoutLocation').includes('true') });
 
-/**
- * The switch as it stands, in a sentence; `networkReady`: an office network counts without a location (the key in place
- * and a network); `gpsInForce`: the GPS lock (24 October 2026) refuses Office staff's presses without a location whatever
- * this switch says.
- */
-export function locationRuleText(rule: { refuseWithoutLocation: boolean }, networkReady: boolean | null, gpsInForce = false): string {
-  const gps = gpsInForce ? ` ${GPS_NO_LOCATION_TEXT}` : '';
-  if (!rule.refuseWithoutLocation) return `Off: on the website a check-in without a location is kept as location unknown. In the app a location is always needed.${gps}`;
-  const office = networkReady
-    ? ' A press from an office network without one counts as at the office.'
-    : networkReady === false
-      ? ' Without the key or an office network (above), a press from the office without a location is refused too.'
-      : '';
-  return `On: on the website a check-in or check-out without a location is refused, unless HR lets the person check in without one on their profile.${office} In the app a location is always needed.${gps}`;
-}
-
-/** What the location rule's section says of the GPS lock's own rule for presses without a location (24 October 2026). */
-export const GPS_NO_LOCATION_TEXT =
-  'With the GPS lock on (below), an Office person’s check-in or check-out without a location is refused on the website too, whatever this switch says, unless HR lets them check in without one.';
-
-/** What the saved switch says. */
-export const locationRuleSaved = (on: boolean): string =>
-  on ? 'Saved. Check-ins and check-outs without a location are refused from now on.' : 'Saved. Check-ins without a location are kept as location unknown again.';
+/** The switch as it stands, in a sentence. */
+export const locationRuleText = (rule: { refuseWithoutLocation: boolean }): string => (rule.refuseWithoutLocation ? 'On.' : 'Off.');
 
 // ---------- the GPS lock (owner, 24 October 2026: "while these aare not checked, people can still check in and out from
 // anywhere"; asked, "Yes, add a GPS lock too") ----------
@@ -307,25 +265,12 @@ export function gpsLockBody(fd: FormData): { body: { lock: boolean; roughMetres:
   return { body: { lock: fd.getAll('lock').includes('true'), roughMetres }, problems: gpsRoughProblems(roughMetres) };
 }
 
-/**
- * The GPS lock as it stands, in a sentence; `networkInForce`: the office network's lock is in force too, when a press
- * passing either lock is enough.
- */
-export function gpsLockText(state: GpsLockState, networkInForce = false): string {
-  if (state.inForce) {
-    const either = networkInForce ? ' With the office network’s lock on too, a press passes when either does: on the office network, or inside a check-in location.' : '';
-    return `On: Office staff check in and out only inside a check-in location or one of their own approved places, unless HR lets them check in from anywhere; a reading less accurate than ${state.roughMetres.toLocaleString('en-US')} m is refused as too rough.${either}`;
-  }
-  if (state.lock) return 'Switched on, but not in force: there is no main office yet, so no one is refused.';
-  return 'Off: a check-in outside every check-in location is kept as remote and flagged for HR on an office day, never refused.';
+/** The GPS lock as it stands, in a sentence. */
+export function gpsLockText(state: GpsLockState): string {
+  if (state.inForce) return 'On.';
+  if (state.lock) return 'Switched on, but not in force: there is no main office yet.';
+  return 'Off.';
 }
-
-/** How the accuracy is allowed for, in words, for the form's hint. */
-export const GPS_ALLOWANCE_TEXT = `A reading counts as inside a location when its distance from the location’s point, less its accuracy (at most ${GPS_ACCURACY_ALLOWANCE_MAX} m), is within the radius.`;
-
-/** What the saved GPS lock says. */
-export const gpsLockSaved = (on: boolean): string =>
-  on ? 'Saved. Office staff now check in and out inside the check-in locations only.' : 'Saved. Check-ins outside the check-in locations are kept as remote again, never refused.';
 
 // ---------- the client locations (owner, 24 October 2026: "all employees if a customer location") ----------
 
@@ -352,8 +297,7 @@ export function clientEndBody(fd: FormData, today: string): { body: { validUntil
 }
 
 /** What ending a client location asks first. */
-export const endClientConfirm = (name: string): string =>
-  `End ${name} now? Check-ins within it stop counting for everyone from now on; it stays listed as ended, with its request.`;
+export const endClientConfirm = (name: string): string => `End ${name} now?`;
 
 // ---------- the requested check-in locations (owner, 24 October 2026: "Home Location - Remote Site - Client Location") ----------
 

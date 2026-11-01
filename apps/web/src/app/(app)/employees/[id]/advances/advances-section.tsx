@@ -1,11 +1,9 @@
-import Link from 'next/link';
 import { formatDate } from '@/lib/format';
 import type { DeductionPlansView, EmployeeProfile } from '@/lib/types';
 import type { AdvanceRow } from '../../../payroll/adjustments/adjustments';
 import { monthName } from '../../../payroll/list';
 import { loadJson, type Loaded } from '../../../payroll/load';
 import { periodText, RECURRING_BADGE, RECURRING_STATUS_LABELS } from '../../../payroll/recurring-deductions/recurring';
-import { RECURRING_PATH, UNSETTLED_PATH } from '../../../payroll/sections';
 import { settledText } from '../../../payroll/unsettled/installments';
 import { advanceKindText } from '../../../payroll/unsettled/unsettled';
 import { formatEgp } from '../contracts/salary';
@@ -189,14 +187,11 @@ export async function AdvancesSection({ employee, staff, loaded }: { employee: E
   }
   const settled = (advances ?? []).filter((a) => a.status === 'settled');
   if (!hasPlans(plans) && !settled.length) {
-    // the employee sees the sub-tab only with something here; HR, Finance and the CEO are told where they are recorded
+    // the employee sees the sub-tab only with something here
     if (!staff) return null;
     return (
       <Title>
-        <p className="rounded-lg border border-dashed border-line px-4 py-4 text-sm text-muted">
-          No advances, loans or recurring deductions. HR records advances and loans on <Link href={`${UNSETTLED_PATH}#advances`}>Payroll → Unsettled</Link>,
-          and recurring deductions on <Link href={RECURRING_PATH}>Payroll → Recurring Deductions</Link>.
-        </p>
+        <p className="rounded-lg border border-dashed border-line px-4 py-4 text-sm text-muted">No advances, loans or recurring deductions.</p>
       </Title>
     );
   }

@@ -79,12 +79,8 @@ const cardOf = (f: IdCardFound): Card => ({ cx: f.box.cx, cy: f.box.cy, w: f.box
 function whatHappened(p: IdCardPrepared): string {
   const { front, back } = p;
   if (front && back) {
-    const done =
-      front.page === back.page
-        ? 'The picture showed both sides. Each card was found, cut out along its edges and set straight.'
-        : 'Both sides were found, each cut out along its edges and set straight.';
     const told = front.recognised === 'front' && back.recognised === 'back';
-    return told ? done : `${done} Which side is which could not be told for sure: check them, and swap front and back if needed.`;
+    return told ? 'Both sides found.' : 'Both sides found. Check which side is which.';
   }
   if (front || back) return `Only one card was found: frame the ${front ? 'back' : 'front'} by hand.`;
   return 'No card was found: frame each side by hand.';
@@ -204,7 +200,7 @@ export function IdScan({ onRead, name }: { onRead: (cards: { front: File; back: 
 
   function swap() {
     setAdjust(null);
-    setSet((s) => s && { ...s, front: s.back, back: s.front, note: 'The two sides have changed places.' });
+    setSet((s) => s && { ...s, front: s.back, back: s.front, note: 'Front and back swapped.' });
   }
 
   // ---------- a side framed by hand ----------
@@ -299,16 +295,14 @@ export function IdScan({ onRead, name }: { onRead: (cards: { front: File; back: 
           return;
         }
         if (!fit) {
-          setAdjustSays("The card's edges couldn't be found near the frame, so it was left as it was. Frame the card more closely and try again.");
+          setAdjustSays("The card's edges couldn't be found. Frame it more closely and try again.");
           return;
         }
         const { rect, fine } = fit;
         const turned = Math.round((fine - st.fine) * 10) / 10;
         setAdjust((a) => (a === st ? { ...a, rect, fine } : a));
         setAdjustSays(
-          turned
-            ? `The frame has been fitted to the card's edges and the card turned by ${degrees(turned)}. Check it, then press Use this frame.`
-            : "The frame has been fitted to the card's edges, and the card was already level. Check it, then press Use this frame.",
+          turned ? `Fitted to the card's edges, turned by ${degrees(turned)}.` : "Fitted to the card's edges.",
           { rect: st.rect, fine: st.fine },
         );
       }, 0),
@@ -320,7 +314,7 @@ export function IdScan({ onRead, name }: { onRead: (cards: { front: File; back: 
     const before = said.before;
     if (!before) return;
     setAdjust((a) => a && { ...a, rect: before.rect, fine: before.fine });
-    setAdjustSays('The frame is back where it was.');
+    setAdjustSays('Fit undone.');
   }
 
   /** The framed card becomes the picture of that side: cut out with its margin and brought to the size of an ID card. */
@@ -331,7 +325,7 @@ export function IdScan({ onRead, name }: { onRead: (cards: { front: File; back: 
     const H = st.work.height;
     if (Math.abs(cardOff(st.rect.w * W, st.rect.h * H)) > CARD_TOL) {
       setAdjust({ ...st, rect: cardRect(st.rect, W, H) });
-      setAdjustSays('The frame was far from the shape of an ID card, so it has been fitted to one. Check it, then press Use this frame again.');
+      setAdjustSays('The frame was reshaped to an ID card. Check it, then press Use this frame again.');
       return;
     }
     const [cw, ch] = cardDims(Math.round(st.rect.w * W), Math.round(st.rect.h * H));
@@ -349,7 +343,7 @@ export function IdScan({ onRead, name }: { onRead: (cards: { front: File; back: 
       if (!s) return s;
       const was = s[st.side];
       const card: SideCard = { file, page: st.page, found: was?.page === st.page ? was.found : null, hand };
-      const again = readOnce ? ' Press Read data from the scan to read it again from the adjusted picture.' : '';
+      const again = readOnce ? ' Read the scan again to use it.' : '';
       return { ...s, [st.side]: card, note: `The ${st.side} was framed by hand.${again}` };
     });
     closeAdjust(st.side);
@@ -412,14 +406,12 @@ export function IdScan({ onRead, name }: { onRead: (cards: { front: File; back: 
           <FileDrop
             id={fid('front')}
             accept={PAPERWORK_ACCEPT}
-            aria-describedby={fid('front-hint')}
             onChange={(e) => choose('front', e.currentTarget.files?.[0] ?? null)}
           >
             {/* a scan is put on the box as a chosen file is, so it goes to choose() the same way */}
             {(take) => (
               <ScanButton
                 title="Scan the ID Card, Front"
-                hint="Put the front of the card face down on the glass, or a photocopy that shows both sides."
                 purpose="photo"
                 maxBytes={PDF_MAX_BYTES}
                 context="the front"
@@ -427,24 +419,19 @@ export function IdScan({ onRead, name }: { onRead: (cards: { front: File; back: 
               />
             )}
           </FileDrop>
-          <p id={fid('front-hint')} className="hint">
-            JPG, PNG or PDF. One file that holds both sides is enough.
-          </p>
         </div>
         <div>
           <label htmlFor={fid('back')} className="label">
-            ID scan, back
+            ID scan, back <span className="font-normal text-muted">(optional)</span>
           </label>
           <FileDrop
             id={fid('back')}
             accept={PAPERWORK_ACCEPT}
-            aria-describedby={fid('back-hint')}
             onChange={(e) => choose('back', e.currentTarget.files?.[0] ?? null)}
           >
             {(take) => (
               <ScanButton
                 title="Scan the ID Card, Back"
-                hint="Turn the card over, and put its back face down on the glass."
                 purpose="photo"
                 maxBytes={PDF_MAX_BYTES}
                 context="the back"
@@ -452,19 +439,11 @@ export function IdScan({ onRead, name }: { onRead: (cards: { front: File; back: 
               />
             )}
           </FileDrop>
-          <p id={fid('back-hint')} className="hint">
-            Optional. Leave it empty when the first file holds both sides.
-          </p>
         </div>
       </div>
-      <p className="text-sm text-muted">
-        From a scanner: press Scan to scan straight from an office scanner, the front and then the back (a photocopy of both sides takes one
-        scan). Or scan to a JPG or PDF file, then choose it, drag it in or paste it. Both sides on one page, or on two pages of one PDF, are told
-        apart. On a phone the camera can be used.
-      </p>
 
       <FormErrors errors={errors} />
-      {files.back && !files.front && <p className="text-sm text-muted">Choose the front too: a file that holds the front, or both sides.</p>}
+      {files.back && !files.front && <p className="text-sm text-muted">Choose the front too.</p>}
 
       <div aria-live="polite" className="space-y-3" hidden={!preparing && !set}>
         {preparing ? (
@@ -504,11 +483,9 @@ export function IdScan({ onRead, name }: { onRead: (cards: { front: File; back: 
           aria-label={`Frame the ${adjust.side} by hand`}
           className="space-y-3 rounded-lg border border-line bg-canvas p-4 outline-none"
         >
-          <p id={fid('adjust-how')} className="text-sm">
-            <b>{SIDE_LABEL[adjust.side]}: frame the card by hand.</b> Drag the frame over the card, or drag its handles to resize it. Rotate the card
-            until it lies exactly level: up to 10 degrees either way, a tenth of a degree at a time. Or frame it roughly and press Fit to the
-            card&apos;s edges: the frame snaps onto the card&apos;s own edges and the card is turned level. With the keyboard, the arrow keys move
-            the frame and Shift with the arrow keys resizes it.
+          <p className="text-sm font-semibold">{SIDE_LABEL[adjust.side]}: frame the card by hand</p>
+          <p id={fid('adjust-how')} className="sr-only">
+            The arrow keys move the frame; Shift with the arrow keys resizes it.
           </p>
           {set.pages.length > 1 && (
             <div role="group" aria-label="Page of the scan" className="flex flex-wrap items-center gap-2">
@@ -607,7 +584,7 @@ export function IdScan({ onRead, name }: { onRead: (cards: { front: File; back: 
           <button type="button" onClick={read} disabled={!both || busy || adjust !== null} className="btn btn-primary">
             {reading ? 'Reading the card…' : 'Read data from the scan'}
           </button>
-          {set && !both && !preparing && <p className="text-sm text-muted">Both sides are needed to read the card: frame the missing side by hand.</p>}
+          {set && !both && !preparing && <p className="text-sm text-muted">Frame the missing side by hand.</p>}
         </div>
       </div>
     </div>

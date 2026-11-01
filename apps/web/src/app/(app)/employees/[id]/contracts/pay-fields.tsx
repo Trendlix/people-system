@@ -21,7 +21,6 @@ import {
   parseAmount,
   plainAmount,
   RATE_BASIS_LABELS,
-  ratesYearText,
   SALARY_BASES,
   SALARY_BASIS_LABELS,
   salaryFor,
@@ -30,7 +29,6 @@ import {
   switchBasis,
   switchRateBasis,
   typedHourlyMinimum,
-  workedOutGross,
   workedOutRate,
   type SalaryResult,
 } from './salary';
@@ -196,9 +194,8 @@ export function typedPayOf(pay: Pay): VersionPay | null {
 
 /**
  * The pay fields, from `usePay`. `fullTime`: a full-time version has a social insurance copy, whose salary is the
- * insured salary. `year` and `yearIs`: the year whose rates set by law are used, and what it is ("the year the contract
- * starts"). `lead`: a question above the pay basis, e.g. whether a renewal's pay changes. `noWage`: an intern's, with no
- * gross, the allowances alone paid.
+ * insured salary. `lead`: a question above the pay basis, e.g. whether a renewal's pay changes. `noWage`: an intern's,
+ * with no gross, the allowances alone paid.
  */
 export function PayFields({
   pay,
@@ -206,8 +203,6 @@ export function PayFields({
   fid,
   allowanceTypes,
   fullTime,
-  year,
-  yearIs,
   lead,
   noWage = false,
 }: {
@@ -216,8 +211,6 @@ export function PayFields({
   fid: (name: string) => string;
   allowanceTypes: readonly AllowanceType[];
   fullTime: boolean;
-  year: number;
-  yearIs: string;
   lead?: React.ReactNode;
   noWage?: boolean;
 }) {
@@ -230,7 +223,7 @@ export function PayFields({
     <div className="space-y-5 border-t border-line pt-6">
       {lead}
 
-      <fieldset aria-describedby={fid('payBasis-hint')}>
+      <fieldset>
         <legend className="label">Pay basis</legend>
         <div className="flex flex-wrap gap-2">
           {PAY_BASES.map((b) => (
@@ -240,15 +233,10 @@ export function PayFields({
             </label>
           ))}
         </div>
-        <p id={fid('payBasis-hint')} className="hint">
-          {hourly
-            ? 'Part-time by the hour, e.g. 2 or 3 days a week: the gross is the monthly estimate, the hourly rate × the hours a week × 52 ÷ 12.'
-            : 'A monthly salary, set from the gross or from the net wanted.'}
-        </p>
       </fieldset>
 
       {hourly ? (
-        <fieldset key="rateBasis" aria-describedby={fid('rateBasis-hint')}>
+        <fieldset key="rateBasis">
           <legend className="label">Start from</legend>
           <div className="flex flex-wrap gap-2">
             {SALARY_BASES.map((b) => (
@@ -258,14 +246,9 @@ export function PayFields({
               </label>
             ))}
           </div>
-          <p id={fid('rateBasis-hint')} className="hint">
-            {fromNetRate
-              ? 'Type the net per hour agreed, allowances included: the gross rate is worked out, to the piaster.'
-              : 'Type the gross per hour: the net is worked out.'}
-          </p>
         </fieldset>
       ) : (
-        <fieldset key="salaryBasis" aria-describedby={fid('salaryBasis-hint')}>
+        <fieldset key="salaryBasis">
           <legend className="label">Start from</legend>
           <div className="flex flex-wrap gap-2">
             {SALARY_BASES.map((b) => (
@@ -275,9 +258,6 @@ export function PayFields({
               </label>
             ))}
           </div>
-          <p id={fid('salaryBasis-hint')} className="hint">
-            {basis === 'net' ? 'Type the net wanted, allowances included: the gross is worked out, in whole pounds.' : 'Type the gross: the net is worked out.'}
-          </p>
         </fieldset>
       )}
 
@@ -295,7 +275,7 @@ export function PayFields({
                   inputMode="decimal"
                   autoComplete="off"
                   required
-                  aria-describedby={fid('netRate-hint')}
+                  aria-describedby={hourlyPay.kind === 'ok' || hourlyPay.kind === 'belowAllowances' ? fid('netRate-hint') : undefined}
                   defaultValue={typed.netRate}
                   // only the gross rate worked out from it is saved, so a mistake is caught here rather than as a missing rate
                   ref={(el) =>
@@ -309,13 +289,11 @@ export function PayFields({
                   }
                   className="input tabular-nums"
                 />
-                <p id={fid('netRate-hint')} className="hint">
-                  {hourlyPay.kind === 'ok'
-                    ? workedOutRate(hourlyPay)
-                    : hourlyPay.kind === 'belowAllowances'
-                      ? belowAllowancesText(hourlyPay.net, true)
-                      : 'The net pay agreed for an hour of work, allowances included.'}
-                </p>
+                {(hourlyPay.kind === 'ok' || hourlyPay.kind === 'belowAllowances') && (
+                  <p id={fid('netRate-hint')} className="hint">
+                    {hourlyPay.kind === 'ok' ? workedOutRate(hourlyPay) : belowAllowancesText(hourlyPay.net, true)}
+                  </p>
+                )}
                 {/* what is saved: the gross rate worked out */}
                 <input type="hidden" name="hourlyRate" value={hourlyPay.kind === 'ok' ? plainAmount(hourlyPay.rate) : ''} />
               </div>
@@ -330,14 +308,16 @@ export function PayFields({
                   inputMode="decimal"
                   autoComplete="off"
                   required
-                  aria-describedby={fid('hourlyRate-hint')}
+                  aria-describedby={hourlyPay.kind === 'ok' ? fid('hourlyRate-hint') : undefined}
                   defaultValue={typed.hourlyRate}
                   ref={(el) => el?.setCustomValidity(hourlyPay.kind === 'invalid' && hourlyPay.field === 'rate' ? RATE_INVALID : '')}
                   className="input tabular-nums"
                 />
-                <p id={fid('hourlyRate-hint')} className="hint">
-                  The gross pay for an hour of work{hourlyPay.kind === 'ok' ? `: ${netPerHourText(hourlyPay.breakdown.net, hourlyPay.hours)}.` : '.'}
-                </p>
+                {hourlyPay.kind === 'ok' && (
+                  <p id={fid('hourlyRate-hint')} className="hint">
+                    {netPerHourText(hourlyPay.breakdown.net, hourlyPay.hours)}.
+                  </p>
+                )}
               </div>
             )}
             <div key="hoursPerWeek">
@@ -350,16 +330,16 @@ export function PayFields({
                 inputMode="decimal"
                 autoComplete="off"
                 required
-                aria-describedby={fid('hoursPerWeek-hint')}
+                aria-describedby={hourlyPay.kind === 'ok' ? fid('hoursPerWeek-hint') : undefined}
                 defaultValue={typed.hoursPerWeek}
                 ref={(el) => el?.setCustomValidity(hourlyPay.kind === 'invalid' && hourlyPay.field === 'hours' ? HOURS_INVALID : '')}
                 className="input tabular-nums"
               />
-              <p id={fid('hoursPerWeek-hint')} className="hint">
-                {hourlyPay.kind === 'ok'
-                  ? `Gross: ${monthlyEstimateText(hourlyPay)}.${insuredText ? ` ${insuredText}` : ''}`
-                  : 'The contracted hours each week, e.g. 16 for two 8-hour days.'}
-              </p>
+              {hourlyPay.kind === 'ok' && (
+                <p id={fid('hoursPerWeek-hint')} className="hint">
+                  Gross: {monthlyEstimateText(hourlyPay)}.{insuredText ? ` ${insuredText}` : ''}
+                </p>
+              )}
             </div>
             {/* the least paid a month (owner, 27 October 2026: "can i add rate per hour with a minimum monthly payment?") */}
             <div key="hourlyMinimum">
@@ -371,14 +351,10 @@ export function PayFields({
                 name="hourlyMinimum"
                 inputMode="decimal"
                 autoComplete="off"
-                aria-describedby={fid('hourlyMinimum-hint')}
                 defaultValue={typed.hourlyMinimum}
                 ref={(el) => el?.setCustomValidity(Number.isNaN(typedHourlyMinimum(typed.hourlyMinimum)) ? MINIMUM_INVALID : '')}
                 className="input tabular-nums"
               />
-              <p id={fid('hourlyMinimum-hint')} className="hint">
-                Paid when the hours worked come to less, for the days of a part month. Leave empty for none.
-              </p>
             </div>
           </>
         ) : basis === 'gross' ? (
@@ -392,16 +368,15 @@ export function PayFields({
               inputMode="decimal"
               autoComplete="off"
               required
-              aria-describedby={fid('grossSalary-hint')}
+              aria-describedby={insuredText ? fid('grossSalary-hint') : undefined}
               defaultValue={typed.grossSalary}
               className="input tabular-nums"
             />
-            <p id={fid('grossSalary-hint')} className="hint">
-              {insuredText ??
-                (fullTime
-                  ? 'The actual monthly gross, without the allowances. The social insurance copy shows it, with the insured allowances, capped at the maximum insurable wage.'
-                  : 'The actual monthly gross, without the allowances.')}
-            </p>
+            {insuredText && (
+              <p id={fid('grossSalary-hint')} className="hint">
+                {insuredText}
+              </p>
+            )}
           </div>
         ) : (
           <div key="net">
@@ -414,7 +389,7 @@ export function PayFields({
               inputMode="decimal"
               autoComplete="off"
               required
-              aria-describedby={fid('wantedNet-hint')}
+              aria-describedby={salary.kind === 'ok' || salary.kind === 'belowAllowances' ? fid('wantedNet-hint') : undefined}
               defaultValue={typed.wantedNet}
               // only the gross worked out from it is saved, so a mistake is caught here rather than as a missing gross
               ref={(el) =>
@@ -422,13 +397,11 @@ export function PayFields({
               }
               className="input tabular-nums"
             />
-            <p id={fid('wantedNet-hint')} className="hint">
-              {salary.kind === 'ok'
-                ? `${workedOutGross(salary.typed, salary.breakdown)}${insuredText ? ` ${insuredText}` : ''}`
-                : salary.kind === 'belowAllowances'
-                  ? belowAllowancesText(salary.net)
-                  : 'The monthly net to pay, allowances included.'}
-            </p>
+            {(salary.kind === 'ok' || salary.kind === 'belowAllowances') && (
+              <p id={fid('wantedNet-hint')} className="hint">
+                {salary.kind === 'ok' ? `Gross: ${formatEgp(salary.breakdown.gross)}.${insuredText ? ` ${insuredText}` : ''}` : belowAllowancesText(salary.net)}
+              </p>
+            )}
             {/* what is saved: the gross worked out */}
             <input type="hidden" name="grossSalary" value={calc ? plainAmount(calc.gross) : ''} />
           </div>
@@ -445,15 +418,15 @@ export function PayFields({
             min={1}
             max={100}
             step={1}
-            aria-describedby={fid('basicPercent-hint')}
+            aria-describedby={split ? fid('basicPercent-hint') : undefined}
             defaultValue={valueOf(state, 'basicPercent', String(defaults.basicPercent))}
             className="input tabular-nums"
           />
-          <p id={fid('basicPercent-hint')} className="hint">
-            {split
-              ? `Basic ${formatEgp(split.basic)} · variable ${formatEgp(split.variable)}, which follows the monthly performance reports.`
-              : 'The rest of the gross is variable, following the monthly performance reports.'}
-          </p>
+          {split && (
+            <p id={fid('basicPercent-hint')} className="hint">
+              Basic {formatEgp(split.basic)} · variable {formatEgp(split.variable)}
+            </p>
+          )}
         </div>
         <div>
           <label htmlFor={fid('daysPerWeek')} className="label">
@@ -467,22 +440,13 @@ export function PayFields({
             min={1}
             max={6}
             step={1}
-            aria-describedby={fid('daysPerWeek-hint')}
             defaultValue={valueOf(state, 'daysPerWeek', amountText(defaults.daysPerWeek))}
             className="input tabular-nums"
           />
-          <p id={fid('daysPerWeek-hint')} className="hint">
-            E.g. 2 or 3 for part-time; leave empty for the shift&apos;s week. Which days comes from the shift.
-          </p>
         </div>
       </div>
 
-      <AllowanceRows
-        types={allowanceTypes}
-        defaultRows={rows}
-        onChange={setRows}
-        hint="A month each, paid on top of the gross salary. Each is taxed and insured as its kind is set in Organization → Allowances."
-      />
+      <AllowanceRows types={allowanceTypes} defaultRows={rows} onChange={setRows} />
 
       <div>
         <p id={fid('breakdown')} className="label">
@@ -495,28 +459,17 @@ export function PayFields({
             {salary.kind === 'belowAllowances'
               ? belowAllowancesText(salary.net, hourly)
               : salary.kind === 'invalid'
-                ? `Enter the ${what} as ${hourly ? 'numbers' : 'an amount in EGP'} to see the breakdown, e.g. ${hourly ? `${fromNetRate ? '120' : '150'} an hour for 20 hours` : '15,000'}.`
+                ? `Enter the ${what} as ${hourly ? 'numbers' : 'an amount in EGP'}.`
                 : `Enter the ${what} to see the breakdown.`}
-          </p>
-        )}
-        {pay.perAccount && calc?.gross === 0 && (
-          <p className="mt-2 rounded-lg bg-canvas px-3 py-2 text-sm">
-            Salary 0: paid per client account only. Payroll pays the accounts they hold each month, by the days held, and works out the tax and social
-            insurance on that pay.
           </p>
         )}
         {/* what is saved, and goes into the contract as {{net_salary}}: the net worked out */}
         <input type="hidden" name="netSalary" value={calc ? plainAmount(calc.net) : ''} />
         {savedNet && (
           <p className="mt-2 rounded-lg bg-warn-soft px-3 py-2 text-sm text-warn">
-            The net saved before, {formatEgp(savedNet.saved)}, isn&apos;t what is calculated now. Saving uses the calculated {formatEgp(savedNet.calculated)}.
+            The saved net, {formatEgp(savedNet.saved)}, will be replaced by the calculated {formatEgp(savedNet.calculated)}.
           </p>
         )}
-        <p className="hint">
-          Calculated as the Ministry of Finance&apos;s salary tax system does: social insurance on the insured wage, salary tax in its tiers, and the
-          Martyrs&apos; Fund. Allowances are added to the gross: the taxed ones are taxed with it and the insured ones counted in the insured wage. Assumes
-          the full gross, including the variable part, is paid{hourly && ', for the contracted hours every week'}. Uses {ratesYearText(year, rates)}, {yearIs}.
-        </p>
       </div>
     </div>
   );
@@ -552,10 +505,7 @@ function UnpaidFields({
             Gross salary
           </label>
           {/* not sent: an intern's gross is 0, kept by the API */}
-          <input id={fid('grossSalary')} value={INTERN_NO_WAGE_TEXT} readOnly aria-describedby={fid('grossSalary-hint')} className="input bg-canvas text-muted" />
-          <p id={fid('grossSalary-hint')} className="hint">
-            An unpaid internship pays no wage. The allowances below, such as transportation, are paid a month.
-          </p>
+          <input id={fid('grossSalary')} value={INTERN_NO_WAGE_TEXT} readOnly className="input bg-canvas text-muted" />
         </div>
         <div>
           <label htmlFor={fid('daysPerWeek')} className="label">
@@ -569,22 +519,13 @@ function UnpaidFields({
             min={1}
             max={6}
             step={1}
-            aria-describedby={fid('daysPerWeek-hint')}
             defaultValue={valueOf(state, 'daysPerWeek', amountText(defaults.daysPerWeek))}
             className="input tabular-nums"
           />
-          <p id={fid('daysPerWeek-hint')} className="hint">
-            E.g. 2 or 3; leave empty for the shift&apos;s week. Which days comes from the shift.
-          </p>
         </div>
       </div>
 
-      <AllowanceRows
-        types={allowanceTypes}
-        defaultRows={rows}
-        onChange={setRows}
-        hint="A month each, such as the transportation allowance: with no wage, they are what the intern is paid."
-      />
+      <AllowanceRows types={allowanceTypes} defaultRows={rows} onChange={setRows} />
       <p className="rounded-lg border border-dashed border-line px-4 py-3 text-sm text-muted">
         {total > 0 ? `No wage: ${formatEgp(total)} a month in allowances.` : 'No wage, and no allowances yet.'}
       </p>

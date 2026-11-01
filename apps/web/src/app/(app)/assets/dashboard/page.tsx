@@ -64,8 +64,7 @@ async function Dashboard() {
         )}
         {d.values && d.values.withoutCost > 0 && (
           <p className="text-sm text-muted">
-            {d.values.withoutCost} {d.values.withoutCost === 1 ? 'asset has' : 'assets have'} no purchase cost yet, so no book value:{' '}
-            <Link href={ASSET_PATHS.needsValues}>Needs values</Link>.
+            {d.values.withoutCost} without a purchase cost · <Link href={ASSET_PATHS.needsValues}>Needs values</Link>
           </p>
         )}
       </section>
@@ -96,7 +95,7 @@ async function Dashboard() {
         </ul>
         {d.unlabelled > 0 && (
           <p className="text-sm text-muted">
-            {d.unlabelled} {d.unlabelled === 1 ? 'asset has' : 'assets have'} no label printed yet: <Link href={ASSET_PATHS.labelsWith({ unlabelled: true })}>Label sheets</Link>.
+            {d.unlabelled} not labelled yet · <Link href={ASSET_PATHS.labelsWith({ unlabelled: true })}>Label sheets</Link>
           </p>
         )}
       </section>
@@ -118,17 +117,13 @@ async function Dashboard() {
       </section>
 
       <section aria-labelledby="exports" className="space-y-3">
-        <div>
-          <h2 id="exports" className="font-semibold">
-            Exports
-          </h2>
-          <p className="mt-1 text-sm text-muted">Excel workbooks of the whole module, as it stands now.{can.values ? '' : ' The money columns are only in the CEO’s, Finance’s and a Super Admin’s.'}</p>
-        </div>
+        <h2 id="exports" className="font-semibold">
+          Exports
+        </h2>
         <ul className="grid gap-3 sm:grid-cols-2">
           {ASSET_EXPORTS.map((k) => (
             <li key={k} className="card flex flex-col gap-2 p-4">
               <span className="font-semibold">{ASSET_EXPORT_LABELS[k].title}</span>
-              <span className="text-sm text-muted">{ASSET_EXPORT_LABELS[k].hint}</span>
               {/* a plain link to a file: never prefetched */}
               <a href={ASSET_PATHS.exportFile(k)} className="btn btn-secondary mt-auto self-start" download>
                 Download Excel
@@ -146,7 +141,6 @@ export default function AssetsDashboardPage() {
   return (
     <div className="max-w-5xl">
       <h1 className="page-title">Assets Dashboard</h1>
-      <p className="mt-1 text-muted">What is out, what needs attention, and the exports. Disposed assets are left out.</p>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>
           <Dashboard />

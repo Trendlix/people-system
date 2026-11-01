@@ -1,7 +1,6 @@
 import {
   KPI_ACTION_LABELS,
   KPI_COMMENT_MAX,
-  KPI_PERFORMANCE_ONLY_NOTE,
   KPI_PRACTICE_BADGE,
   KPI_STATUS_LABELS,
   kpiMonthAdd,
@@ -14,7 +13,6 @@ import {
   type KpiCalibrateInput,
   type KpiLevel,
   type KpiPicksInput,
-  type KpiPillar,
   type KpiScorecardAttendance,
   type KpiScorecardMetric,
   type KpiScorecardSummary,
@@ -102,7 +100,7 @@ export function scorerText(scorer: KpiScorecardSummary['scorer']): string {
     case 'manager':
       return name ? `${name} (manager)` : 'The manager';
     case 'hr':
-      return name ? `${name} (HR)` : 'HR: nobody is in charge of this person';
+      return name ? `${name} (HR)` : 'HR';
     case 'ceo':
       return name ? `${name} (the CEO)` : 'The CEO';
     case 'super_admin':
@@ -111,9 +109,6 @@ export function scorerText(scorer: KpiScorecardSummary['scorer']): string {
       return name ?? String(scorer.kind);
   }
 }
-
-/** Who scores it, starting a sentence for the employee: "Your manager", "HR", "The CEO", "A Super Admin". */
-const scorerSubject = (scorer: KpiScorer) => (scorer === 'manager' ? 'Your manager' : scorer === 'hr' ? 'HR' : scorer === 'ceo' ? 'The CEO' : 'A Super Admin');
 
 /** A percent as the screens write it ("86%", "89.6%"); a dash when there is none (not scored, or not shown yet). */
 export const percentText = (percent: number | null | undefined) => (typeof percent === 'number' && Number.isFinite(percent) ? kpiPercentText(percent) : '—');
@@ -181,7 +176,7 @@ export function stepDeadlineText(view: Pick<KpiScorecardView, 'status' | 'deadli
     case 'hr':
       return `HR's calibration by ${date}`;
     case 'sign_off':
-      return `Sign-off by ${date}; final then even if not signed`;
+      return `Sign-off by ${date}`;
     default:
       return null;
   }
@@ -216,7 +211,7 @@ export const seesAllKpis = (user: { roles: readonly Role[] }) => hasRole(user, '
  */
 export function attendanceText(a: Pick<KpiScorecardAttendance, 'ratio' | 'score' | 'source'>): { source: string; detail: string } {
   const source = a.source === 'payroll' ? "From the month's payroll line" : a.source === 'attendance' ? "From the month's attendance" : 'Not counted: full points';
-  if (a.ratio === null && a.score === null) return { source, detail: "Attendance isn't counted for this month, so it counts as full." };
+  if (a.ratio === null && a.score === null) return { source, detail: 'Not counted this month.' };
   const parts = [
     a.ratio !== null ? `Worked ${kpiPercentText(a.ratio * 100)} of the expected hours` : null,
     a.score !== null ? `attendance score ${kpiPercentText(a.score * 100)}` : null,
@@ -231,17 +226,6 @@ export function attendanceText(a: Pick<KpiScorecardAttendance, 'ratio' | 'score'
  * from before then sends nothing, and it counted. Not counting, the metric is hidden and the KPI is performance only.
  */
 export const attendanceCounts = (view: { attendance: Pick<KpiScorecardAttendance, 'counted'> }): boolean => view.attendance.counted !== false;
-
-/** What a performance-only scorecard says under its score (25 October 2026); none while the Attendance metric counts. */
-export const performanceOnlyNote = (view: { attendance: Pick<KpiScorecardAttendance, 'counted'> }): string | null => (attendanceCounts(view) ? null : KPI_PERFORMANCE_ONLY_NOTE);
-
-/**
- * A pillar left out of the score (25 October 2026: the Attendance metric's pillar with no metric of its own, while
- * attendance is out of the KPI): "Not scored: attendance is out of the KPI, so this pillar's 20% is spread over the
- * others."
- */
-export const leftOutText = (pillar: Pick<KpiPillar, 'weight'>): string =>
-  `Not scored: attendance is out of the KPI, so this pillar’s ${pillar.weight}% is spread over the other pillars.`;
 
 // ---------- the picks ----------
 
@@ -262,8 +246,7 @@ export function sheetMode(can: Pick<KpiScorecardView['can'], 'selfRate' | 'score
  * title (owner, 22 October 2026: "but i need pillars to each department / wights can be changed for each department and
  * Job title"), said as differing.
  */
-export const PILLARS_CHANGED_THIS_MONTH =
-  'Pillars differ between this month’s scorecards (by department, job title or a change): averages by name. A pillar’s weight shows when every scorecard with it has the same.';
+export const PILLARS_CHANGED_THIS_MONTH = 'Pillars differ this month: averages by name.';
 
 /** Every metric the caller may pick, in the order of the pillars (never the Attendance metric: the system's). */
 export const allMetrics = (view: Pick<KpiScorecardView, 'pillars'>): KpiScorecardMetric[] => view.pillars.flatMap((p) => p.metrics);
@@ -440,25 +423,19 @@ export function doneText(query: Query, view: Pick<KpiScorecardView, 'status' | '
   const done = typeof query.done === 'string' ? query.done : '';
   switch (done) {
     case 'self_saved':
-      return { text: `Your self-rating is saved, not sent yet. Send it by ${formatDate(view.deadlines.selfRating)}.`, tone: 'ok' };
+      return { text: `Saved, not sent yet. Send it by ${formatDate(view.deadlines.selfRating)}.`, tone: 'ok' };
     case 'self_sent':
-      return { text: `Your self-rating is sent. ${scorerSubject(view.scorer.kind)} scores the month next; you see the score at the sign-off.`, tone: 'ok' };
+      return { text: 'Self-rating sent.', tone: 'ok' };
     case 'score_saved':
-      return { text: `Your scoring is saved, not sent yet. Send it by ${formatDate(view.deadlines.manager)}.`, tone: 'ok' };
+      return { text: `Saved, not sent yet. Send it by ${formatDate(view.deadlines.manager)}.`, tone: 'ok' };
     case 'score_sent':
-      return {
-        text: view.status === 'hr' ? 'Your scoring is sent to HR to calibrate.' : 'Your scoring is sent. The scorecard is ready for the employee and the manager to sign.',
-        tone: 'ok',
-      };
+      return { text: view.status === 'hr' ? 'Sent to HR.' : 'Sent for sign-off.', tone: 'ok' };
     case 'calibrated':
-      return { text: 'Calibrated and sent for sign-off: the employee and the manager are asked to sign.', tone: 'ok' };
+      return { text: 'Calibrated and sent for sign-off.', tone: 'ok' };
     case 'signed':
-      return {
-        text: view.status === 'final' ? 'Signed. The scorecard is final.' : `Signed. It is final once both have signed, or after ${formatDate(view.deadlines.signOff)} anyway.`,
-        tone: 'ok',
-      };
+      return { text: view.status === 'final' ? 'Signed. The scorecard is final.' : 'Signed.', tone: 'ok' };
     case 'moved':
-      return { text: 'This scorecard has moved on since you opened it. It shows where it stands now.', tone: 'warn' };
+      return { text: 'This scorecard has moved on since you opened it.', tone: 'warn' };
     default:
       return null;
   }
@@ -497,8 +474,8 @@ export const scorecardsLabel = (n: number) => `${n} ${n === 1 ? 'scorecard' : 's
 /** What opening a month's scorecards did (POST /kpis/open). */
 export function openedText(r: { month: string; opened: number }): string {
   const month = kpiMonthName(r.month);
-  if (r.opened === 0) return `No new scorecards for ${month}: everyone with a published template has theirs already.`;
-  return `${scorecardsLabel(r.opened)} opened for ${month}. Each person is told to rate themself.`;
+  if (r.opened === 0) return `No new scorecards for ${month}.`;
+  return `${scorecardsLabel(r.opened)} opened for ${month}.`;
 }
 
 const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;

@@ -32,11 +32,6 @@ function Heading() {
     <div className="space-y-2">
       <BackLink href={OD_PATH}>Official Duty</BackLink>
       <h1 className="page-title">Record Official Duty</h1>
-      <p className="text-muted">
-        Official duty an employee is on or was on, recorded by HR: approved at once and logged as recorded by HR, with your reason, and the employee is
-        told. More than 3 days after its first day it is recorded with a warning, kept with it. On its days they check in from where they are, and the
-        days count as attended for its hours. A single rest day or official holiday is recorded with its compensation: a day off, or cash instead.
-      </p>
     </div>
   );
 }
@@ -49,7 +44,7 @@ async function Record({ searchParams }: { searchParams: PageProps<'/attendance/o
   const employed = actionablePeople(people)
     .filter((p) => p.employment && p.id !== user.employeeId && recordsOdFor(user, p.confidential === true))
     .sort((a, b) => a.fullNameEn.localeCompare(b.fullNameEn, 'en'));
-  if (!employed.length) return <Empty>There is nobody you record official duty for: the CEO records a C-level person&apos;s, HR everyone else&apos;s.</Empty>;
+  if (!employed.length) return <Empty>There is nobody you record official duty for.</Empty>;
   const options = employed.map((p) => ({ id: p.id, label: withCode(p.fullNameEn, p.employeeCode) }));
   const asked = readEmployee(query);
   const chosen = asked ? (employed.find((p) => p.id === asked) ?? null) : null;

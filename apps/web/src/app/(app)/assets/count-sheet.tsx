@@ -112,7 +112,7 @@ export function CountSheet({ sheet, action, phone = false }: { sheet: AssetCount
                   <span className="mt-0.5 block text-xs text-muted">
                     <span className="font-mono">{i.code}</span>
                     {i.serial ? ` · ${i.serial}` : ''}
-                    {isOut ? ` · out with ${i.holder ? i.holder.fullNameEn : 'someone'}: counts as out` : ''}
+                    {isOut ? ` · out with ${i.holder ? i.holder.fullNameEn : 'someone'}` : ''}
                   </span>
                 </span>
                 <span className={`badge shrink-0 ${statusTone(i.status)}`}>{ASSET_STATUS_LABELS[i.status]}</span>
@@ -143,7 +143,7 @@ export function MarkLostButton({ code, name, action }: { code: string; name: str
     <form
       action={formAction}
       onSubmit={(e) => {
-        if (!window.confirm(`Mark ${code} · ${name} lost? It leaves the available assets until it is found.`)) e.preventDefault();
+        if (!window.confirm(`Mark ${code} · ${name} lost?`)) e.preventDefault();
       }}
       className="flex flex-col items-end gap-1"
     >

@@ -45,7 +45,7 @@ export async function saveMeetingHost(provider: string, prev: FormState, fd: For
   return refused(prev, async () => {
     await apiSend<MeetingSettingsView>('POST', `/meetings/company/${enc(provider)}/host`, body);
     refresh();
-    return { message: 'Saved: the company’s meetings are hosted there.' };
+    return { message: 'Saved.' };
   });
 }
 
@@ -76,6 +76,6 @@ export async function saveMeetingDefault(prev: FormState, fd: FormData): Promise
   return refused(prev, async () => {
     await apiSend<MeetingSettingsView>('PUT', '/meetings/default', body);
     refresh();
-    return { message: body.choice ? 'Saved: new online interviews start with it.' : 'Saved: each scheduler starts with their own, else a pasted link.' };
+    return { message: 'Saved.' };
   });
 }

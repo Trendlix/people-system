@@ -27,5 +27,5 @@ export async function cropPhoto(itemId: string, crop: PhotoCrop | null, size?: {
     throw err;
   }
   refresh();
-  return { message: crop ? 'The picture beside the name is cropped.' : 'The picture beside the name shows the whole photo again.' };
+  return { message: crop ? 'Photo cropped.' : 'Crop removed.' };
 }

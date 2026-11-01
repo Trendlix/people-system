@@ -1,7 +1,7 @@
 'use client';
 
 import { NOTIFICATION_SETTING_LABELS, type NotificationSettings } from '@trendlix/shared';
-import { useActionState, useId } from 'react';
+import { useActionState } from 'react';
 import { SubmitButton } from '@/components/form';
 import { saveReminderSettings, type ReminderSettingsState } from './actions';
 
@@ -15,14 +15,13 @@ const KEYS = Object.keys(NOTIFICATION_SETTING_LABELS) as (keyof NotificationSett
 
 export function ReminderSettingsForm({ initial, big = false }: { initial: NotificationSettings; big?: boolean }) {
   const [state, action] = useActionState<ReminderSettingsState, FormData>(saveReminderSettings, {});
-  const id = useId();
   // the switches as last saved (or as sent, when refused): the form shows them again once Save is done
   const current = state.values ?? initial;
   return (
     <form action={action} className="space-y-3">
       {KEYS.map((key) => {
-        const { label, hint, alwaysOn } = NOTIFICATION_SETTING_LABELS[key];
-        // always on: ticked and greyed out (not sent with the form), with why
+        const { label, alwaysOn } = NOTIFICATION_SETTING_LABELS[key];
+        // always on: ticked and greyed out (not sent with the form)
         return (
           <label
             key={key}
@@ -32,17 +31,12 @@ export function ReminderSettingsForm({ initial, big = false }: { initial: Notifi
               type="checkbox"
               name={key}
               {...(alwaysOn ? { checked: true, disabled: true, readOnly: true } : { defaultChecked: current[key] })}
-              aria-describedby={`${id}-${key}`}
               className="mt-0.5 size-5 shrink-0 accent-accent"
             />
             <span className="min-w-0">
               <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm font-medium">
                 {label}
                 {alwaysOn && <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-semibold text-accent">Always on</span>}
-              </span>
-              <span id={`${id}-${key}`} className="hint block">
-                {hint}
-                {alwaysOn && <span className="mt-1 block">{alwaysOn}</span>}
               </span>
             </span>
           </label>

@@ -129,7 +129,7 @@ function DigitsCheck({ field, slotKey, language, onChange }: { field: PdfField; 
   return (
     <Check
       label="Arabic digits"
-      hint={locked ?? '٠١٢٣ instead of 0123.'}
+      hint={locked ?? undefined}
       checked={checked}
       disabled={locked !== null}
       onChange={(arabicDigits) => onChange((f) => ({ ...f, arabicDigits }))}
@@ -176,12 +176,14 @@ function GroupsInput({ field, onChange }: { field: PdfField; onChange: Update })
         onBlur={() => setTyped(null)}
         placeholder="e.g. 4+2+2"
         aria-invalid={!!error}
-        aria-describedby={fid('groups-hint')}
+        aria-describedby={error ? fid('groups-hint') : undefined}
         className={`${SMALL_INPUT} font-mono`}
       />
-      <p id={fid('groups-hint')} className={`hint ${error ? 'text-danger' : ''}`}>
-        {error ?? 'Boxes in groups, left to right, with the group gap between them.'}
-      </p>
+      {error && (
+        <p id={fid('groups-hint')} className="hint text-danger">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
@@ -268,7 +270,6 @@ export function FieldProperties({
       {canBeOptional(field.kind) && (
         <Check
           label="Leave blank when there’s no value"
-          hint="Otherwise a missing value stops the document, as in a Word template."
           checked={!!field.optional}
           onChange={(optional) => onChange((f) => withOptional(f, optional))}
         />
@@ -282,7 +283,6 @@ export function FieldProperties({
                 Is
               </label>
               <input id={fid('equals')} dir="auto" value={field.equals ?? ''} onChange={(e) => set({ equals: e.target.value })} placeholder="e.g. ذكر" className={SMALL_INPUT} />
-              <p className="hint">Ticked only when the tag prints exactly this.</p>
             </div>
           )}
           <div>
@@ -333,15 +333,9 @@ export function FieldProperties({
               Lines
             </label>
             <NumberInput id={fid('lines')} value={rows} onValue={(n) => onChange((f) => withLines(f, n))} min={1} max={LINES_MAX} step={1} className={`${SMALL_INPUT} w-24`} />
-            <p className="hint">
-              {rows > 1
-                ? `The box is split into ${rows} rows: a short value sits on the bottom one, a longer one wraps onto the rows above.`
-                : 'More than 1 lets a long value wrap onto the rows above instead of printing small.'}
-            </p>
           </div>
           <Check
             label="Shrink to fit"
-            hint={rows > 1 ? 'A value too long for all its lines prints smaller.' : 'A value too long for the box prints smaller.'}
             checked={!!field.shrinkToFit}
             onChange={(shrinkToFit) => set({ shrinkToFit })}
           />
@@ -409,11 +403,7 @@ export function FieldProperties({
           )}
           <DigitsCheck field={field} slotKey={slotKey} language={language} onChange={onChange} />
           <div className="space-y-2">
-            <p className="text-xs text-muted">
-              {box !== null
-                ? `Box ${box + 1} is picked: the arrow keys move it alone. Esc lets it go.`
-                : 'A box printed off line? Alt-click it (Option-click on a Mac), then move it alone with the arrow keys.'}
-            </p>
+            {box !== null && <p className="text-xs text-muted">Box {box + 1} picked</p>}
             <button type="button" onClick={() => set({ nudges: undefined })} disabled={!moved} className="btn btn-secondary min-h-9 w-full px-3">
               Reset box positions
             </button>

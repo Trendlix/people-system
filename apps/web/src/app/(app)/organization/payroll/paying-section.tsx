@@ -11,14 +11,11 @@ import { dayOfMonth } from './settings';
 // 16 October 2026). The payday, the day of the month the salaries are paid, in the month after the run's: Mark as paid
 // starts from it. HR and Admin change these (PATCH /payroll/settings); Finance and the CEO read them.
 
-const INTRO =
-  'How the salaries are paid: CIB accounts through the CIB payroll file, from the company’s account below, and every other bank through the ACH file. Each employee’s own bank details are on their profile. The payday is the date a run is marked paid on, to start with.';
-
 export async function PayingSalariesSection({ user }: { user: SessionUser }) {
   const settings = await loadPayrollSettings();
 
   return (
-    <SetupSection id="paying-salaries" title="Paying Salaries" intro={INTRO}>
+    <SetupSection id="paying-salaries" title="Paying Salaries">
       {settings.kind !== 'ok' ? (
         <NotLoaded what="the payroll settings" loaded={settings} />
       ) : canEditOrganisation(user) ? (
@@ -33,10 +30,7 @@ export async function PayingSalariesSection({ user }: { user: SessionUser }) {
           {settings.value.payday !== undefined && (
             <SettingRow label="Payday">
               {settings.value.payday ? (
-                <>
-                  On {dayOfMonth(settings.value.payday)} of the month after the one the salaries are for
-                  <span className="text-muted"> · a day past a month&apos;s end is its last day</span>
-                </>
+                <>On {dayOfMonth(settings.value.payday)} of the month after the one the salaries are for</>
               ) : (
                 notSet
               )}

@@ -189,7 +189,7 @@ export function InterviewForm({
           )}
         </div>
         <TimeCheckAnswer result={checked} />
-        {finding !== null && <FindTime form={form} kind={kind} interviewId={interviewId} startMinutes={finding} onPick={pick} />}
+        {finding !== null && <FindTime form={form} interviewId={interviewId} startMinutes={finding} onPick={pick} />}
       </div>
       <div className="grid gap-4 sm:grid-cols-3">
         <div>
@@ -209,16 +209,13 @@ export function InterviewForm({
             <label htmlFor={fid('meeting')} className="label">
               Create the meeting with
             </label>
-            <Select id={fid('meeting')} name="meeting" value={meeting} onChange={(e) => setMeeting(e.target.value)} aria-describedby={fid('meeting-hint')} className="input">
+            <Select id={fid('meeting')} name="meeting" value={meeting} onChange={(e) => setMeeting(e.target.value)} className="input">
               {meetingChoice.options.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
                 </option>
               ))}
             </Select>
-            <p id={fid('meeting-hint')} className="hint">
-              {pasted ? 'Paste the link of a meeting you made yourself.' : 'The link goes into the invitations.'}
-            </p>
           </div>
         )}
         {pasted && (
@@ -248,7 +245,6 @@ export function InterviewForm({
             </label>
           ))}
         </div>
-        <p className="text-xs text-muted">Each gets a notification, and the calendar invitation at their work email.</p>
       </fieldset>
       <div>
         <label htmlFor={fid('note')} className="label">
@@ -316,13 +312,11 @@ function TimeCheckAnswer({ result }: { result: CheckResult | null }) {
  */
 function FindTime({
   form,
-  kind,
   interviewId,
   startMinutes,
   onPick,
 }: {
   form: RefObject<HTMLFormElement | null>;
-  kind: InterviewKind;
   interviewId: string | null;
   startMinutes: number;
   onPick: (fields: { date: string; time: string; minutes: string }, said: string) => void;
@@ -358,15 +352,9 @@ function FindTime({
         find();
       }}
     >
-      <div>
-        <h3 id={fid('find')} className="font-semibold">
-          Find a Time
-        </h3>
-        <p className="text-xs text-muted">
-          The times all the interviewers ticked below are free: their interview hours, less leave, public holidays, their other interviews and a busy calendar
-          {kind === 'in_person' ? ', and days they work from home' : ''}.
-        </p>
-      </div>
+      <h3 id={fid('find')} className="font-semibold">
+        Find a Time
+      </h3>
       <div className="grid gap-3 sm:grid-cols-3">
         <div>
           <label htmlFor={fid('find-minutes')} className="label">
@@ -401,7 +389,6 @@ function FindTime({
         <div className="space-y-3">
           <p role="status" className="text-sm">
             {slotCountText(view)} for {lengthText(view.minutes)}, {formatDate(view.from)} to {formatDate(view.to)}.
-            {groups.some((g) => g.slots.some((s) => s.marked)) && <span className="text-muted"> Marked times have someone who is only “maybe”.</span>}
           </p>
           {[...view.notes, ...calendars].length > 0 && (
             <ul className="list-disc space-y-0.5 ps-5 text-xs text-muted">
@@ -411,7 +398,7 @@ function FindTime({
             </ul>
           )}
           {groups.length === 0 ? (
-            <p className="text-sm text-muted">No time suits them all on these days. Try other days or a shorter length, or type a time by hand.</p>
+            <p className="text-sm text-muted">No time suits them all on these days.</p>
           ) : (
             <div className="max-h-96 space-y-4 overflow-y-auto pe-1">
               {groups.map((g) => (
@@ -437,7 +424,7 @@ function FindTime({
                       ))}
                     </ul>
                   ) : (
-                    <p className="mt-1 text-sm text-muted">No times: nobody added extra hours on the holiday.</p>
+                    <p className="mt-1 text-sm text-muted">No times.</p>
                   )}
                 </div>
               ))}

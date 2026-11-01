@@ -57,7 +57,7 @@ describe('the insured wage after a raise', () => {
   it('stays as before until the next January, unless Form 2 is filed', () => {
     expect(insuredWageText('2026-11-01', null)).toBe('Insured wage stays as before until January 2027 unless Form 2 is filed.');
     expect(insuredWageText('2026-11-01', '2026-12-01')).toBe('Insured wage follows the new pay from December 2026, with Form 2 filed.');
-    expect(insuredWageText('2027-01-01', null)).toBe('Insured wage follows the new pay at once: it is set each January.');
+    expect(insuredWageText('2027-01-01', null)).toBe('Insured wage follows the new pay at once.');
   });
 
   it('says from when, and whether by Form 2', () => {
@@ -243,9 +243,9 @@ describe('a raise as the API takes it', () => {
     const errors: string[] = [];
     raiseBody(form({ ...amendment, way: '', effectiveDate: '', reason: '' }), errors, false);
     expect(errors).toEqual([
-      'Choose how the raise is made: an amendment to the contract in force, or a new contract.',
+      'Choose how the raise is made.',
       'Enter the date the raise takes effect, e.g. 01/12/2026.',
-      'Choose why the pay changes: annual raise, performance raise, counter-offer raise, promotion, market adjustment, cost of living or other.',
+      'Choose why the pay changes.',
     ]);
     const badDate: string[] = [];
     raiseBody(form({ ...amendment, effectiveDate: '31/02/2026' }), badDate, false);

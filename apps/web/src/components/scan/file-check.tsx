@@ -68,12 +68,9 @@ export function FileCheck({
 
   return (
     <section aria-labelledby={headingId} className="space-y-3 rounded-lg border border-line bg-canvas p-4">
-      <div>
-        <h4 id={headingId} className="font-semibold">
-          Check the File
-        </h4>
-        <p className="mt-0.5 text-sm text-muted">Make sure it is the right document, complete and readable. Then confirm and upload it.</p>
-      </div>
+      <h4 id={headingId} className="font-semibold">
+        Check the File
+      </h4>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
         <div className="w-full shrink-0 sm:w-72">
           {isPdf ? (
@@ -82,7 +79,7 @@ export function FileCheck({
             // eslint-disable-next-line @next/next/no-img-element -- a file chosen in this page (a blob), not a file of the site
             <img ref={shown} alt={`Preview of ${file.name}`} className="max-h-80 w-full rounded-md border border-line bg-white object-contain" />
           ) : (
-            <p className="rounded-md border border-dashed border-line p-4 text-sm text-muted">This kind of file can&apos;t be shown here.</p>
+            <p className="rounded-md border border-dashed border-line p-4 text-sm text-muted">No preview.</p>
           )}
         </div>
         <div className="min-w-0 flex-1 space-y-3 text-sm">

@@ -39,8 +39,6 @@ export function StartPracticeForm({
     setTemplateId(next?.templates[0]?.id ?? '');
   }
 
-  const chosen = person?.templates.find((t) => t.id === templateId) ?? null;
-
   return (
     <form {...form} aria-label="Start a practice scorecard" className="card space-y-4 p-5">
       <div className="grid gap-4 md:grid-cols-3">
@@ -80,7 +78,6 @@ export function StartPracticeForm({
             value={templateId}
             onChange={(e) => setTemplateId(e.target.value)}
             disabled={!person}
-            aria-describedby={fid('template-hint')}
             className="input"
           >
             {!person && <option value="">Choose the employee first</option>}
@@ -90,12 +87,9 @@ export function StartPracticeForm({
               </option>
             ))}
           </Select>
-          <p id={fid('template-hint')} className="hint">
-            {chosen?.draft ? 'The draft as it is saved now: saving a change to it starts this scorecard again.' : 'The newest version is chosen; pick the draft to try it before publishing.'}
-          </p>
         </div>
       </div>
-      {choices.people.length === 0 && <p className="text-sm text-muted">Nobody to start one for yet: only people whose job title has a KPI template (a draft or published) are listed.</p>}
+      {choices.people.length === 0 && <p className="text-sm text-muted">Nobody to start one for yet.</p>}
       <FormErrors errors={state.errors} />
       <button type="submit" disabled={pending || !person} className="btn btn-primary">
         {pending ? 'Starting…' : 'Start practice scorecard'}

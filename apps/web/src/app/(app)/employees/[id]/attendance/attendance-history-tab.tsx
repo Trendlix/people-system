@@ -11,7 +11,6 @@ import { loadJson } from '../../../payroll/load';
 import { ColumnBarChart, TrendLineChart } from './history-charts';
 import {
   binsChart,
-  hasRehireGap,
   historyApiPath,
   historyExcelHref,
   historyFilterChoices,
@@ -89,32 +88,19 @@ function PeriodPicker({ employeeId, q }: { employeeId: string; q: HistoryQuery }
   );
 }
 
-/** The figures, each with its definition on hover (title) and in the list below them. */
+/** The figures, each a tile. */
 function Tiles({ v }: { v: AttendanceHistoryView }) {
   const tiles = historyTiles(v);
   return (
-    <div className="space-y-2">
-      <dl aria-label={`${v.employee.fullNameEn}'s attendance, ${v.periodLabel.toLowerCase()}`} className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        {tiles.map((t) => (
-          <div key={t.key} className="card px-4 py-3" title={t.definition}>
-            <dt className="text-xs text-muted">{t.label}</dt>
-            <dd className={`mt-1 text-lg font-semibold ${t.tone ? TONE[t.tone] : ''}`}>{t.value}</dd>
-            {t.note && <dd className="text-xs text-muted">{t.note}</dd>}
-          </div>
-        ))}
-      </dl>
-      <details className="text-sm">
-        <summary className="cursor-pointer font-semibold">What the figures mean</summary>
-        <dl className="mt-2 grid gap-x-6 gap-y-2 sm:grid-cols-2">
-          {tiles.map((t) => (
-            <div key={t.key}>
-              <dt className="font-medium">{t.label}</dt>
-              <dd className="text-muted">{t.definition}</dd>
-            </div>
-          ))}
-        </dl>
-      </details>
-    </div>
+    <dl aria-label={`${v.employee.fullNameEn}'s attendance, ${v.periodLabel.toLowerCase()}`} className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+      {tiles.map((t) => (
+        <div key={t.key} className="card px-4 py-3">
+          <dt className="text-xs text-muted">{t.label}</dt>
+          <dd className={`mt-1 text-lg font-semibold ${t.tone ? TONE[t.tone] : ''}`}>{t.value}</dd>
+          {t.note && <dd className="text-xs text-muted">{t.note}</dd>}
+        </div>
+      ))}
+    </dl>
   );
 }
 
@@ -166,7 +152,7 @@ function Charts({ v }: { v: AttendanceHistoryView }) {
         </h3>
         {trend ? (
           <>
-            <TrendLineChart chart={trend} caption={`The share of the days attended checked in on time, by ${by}; the larger dot is the latest.`} />
+            <TrendLineChart chart={trend} />
             <ChartTable
               caption={`On time by ${by}`}
               head={[by === 'quarter' ? 'Quarter' : 'Month', 'On time', 'Attendance rate']}
@@ -174,7 +160,7 @@ function Charts({ v }: { v: AttendanceHistoryView }) {
             />
           </>
         ) : (
-          none('No day in this period has a check-in that can be told on time or late.')
+          none('No day in this period can be told on time or late.')
         )}
       </section>
       <div className="grid gap-6 lg:grid-cols-2">
@@ -184,7 +170,7 @@ function Charts({ v }: { v: AttendanceHistoryView }) {
           </h3>
           {bins ? (
             <>
-              <ColumnBarChart chart={bins} caption="The first check-in of each day attended, by the 15 minutes it falls in (Cairo time)." />
+              <ColumnBarChart chart={bins} />
               <ChartTable caption="Check-ins by 15 minutes" head={['From', 'Check-ins']} rows={v.checkIns.map((b) => [`${b.label}–${clockText(b.from + 14)}`, b.count])} />
             </>
           ) : (
@@ -197,7 +183,7 @@ function Charts({ v }: { v: AttendanceHistoryView }) {
           </h3>
           {weekdays ? (
             <>
-              <ColumnBarChart chart={weekdays} caption="Days checked in after the shift’s start and its grace minutes, on each working day of the week." />
+              <ColumnBarChart chart={weekdays} />
               <ChartTable caption="Late days by weekday" head={['Weekday', 'Late days', 'Days measured']} rows={v.weekdays.map((w) => [w.label, w.lateDays, w.measuredDays])} />
             </>
           ) : (
@@ -330,7 +316,7 @@ function Log({ v, q }: { v: AttendanceHistoryView; q: HistoryQuery }) {
           </table>
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3 text-sm">
             <span className="text-muted tabular-nums">
-              {first === last ? `Day ${first}` : `Days ${first}–${last}`} of {log.total}, the latest first
+              {first === last ? `Day ${first}` : `Days ${first}–${last}`} of {log.total}
             </span>
             {log.pages > 1 && (
               <nav aria-label="Pages of the log" className="flex items-center gap-3">
@@ -364,10 +350,7 @@ export async function AttendanceHistoryTab({ profile: p, query: q }: { profile: 
   const loaded = await loadJson<AttendanceHistoryView>(historyApiPath(p.id, q));
   if (loaded.kind === 'unavailable' || loaded.kind === 'forbidden') {
     return (
-      <Empty>
-        {p.fullNameEn}&apos;s attendance history isn&apos;t shown here. Only HR, the CEO, Finance and the Super Admin see it, and a C-level
-        person&apos;s only the CEO and the Super Admin.
-      </Empty>
+      <Empty>{p.fullNameEn}&apos;s attendance history isn&apos;t shown to you.</Empty>
     );
   }
   if (loaded.kind === 'failed') {
@@ -379,7 +362,6 @@ export async function AttendanceHistoryTab({ profile: p, query: q }: { profile: 
     );
   }
   const v = loaded.value;
-  const rehire = hasRehireGap(v);
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -402,16 +384,8 @@ export async function AttendanceHistoryTab({ profile: p, query: q }: { profile: 
         </div>
       </div>
       <PeriodPicker employeeId={v.employee.id} q={q} />
-      {rehire && (
-        <p className="rounded-lg bg-canvas px-4 py-3 text-sm">
-          Rehired: since joining is from the first join date, and the days between two employments are left out (neither expected nor absent).
-        </p>
-      )}
       {v.figures.daysOnRecord === 0 ? (
-        <Empty>
-          No attendance on record for {v.employee.fullNameEn} in this period: they haven&apos;t checked in on the system, and no Zoho People attendance
-          was imported for these days.
-        </Empty>
+        <Empty>No attendance on record in this period.</Empty>
       ) : (
         <>
           <Tiles v={v} />
@@ -419,10 +393,7 @@ export async function AttendanceHistoryTab({ profile: p, query: q }: { profile: 
           <Log v={v} q={q} />
         </>
       )}
-      <p className="text-xs text-muted">
-        The days on record only: Zoho People&apos;s imports, the system&apos;s check-ins (from the first one, every working day gone by) and the
-        corrections. Worked out {formatDateTime(v.generatedAt)}.
-      </p>
+      <p className="text-xs text-muted">Worked out {formatDateTime(v.generatedAt)}.</p>
     </div>
   );
 }

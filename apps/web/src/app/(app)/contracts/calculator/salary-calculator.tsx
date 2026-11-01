@@ -24,7 +24,6 @@ import {
   type SalaryResult,
 } from '../../employees/[id]/contracts/salary';
 import { allowancesEffect, calculatorRows, calculatorSearch, namedAllowances, type CalculatorInput, type CalculatorRow } from './calculator';
-import { HowItsCalculated } from './how-its-calculated';
 
 // The Salary Calculator's form and table, worked out in the browser as it is typed (no API). The address keeps the
 // input (?gross=… or ?net=…, or ?rate=…&hours=… or ?netRate=…&hours=… by the hour, the year and the allowances), so a
@@ -32,7 +31,7 @@ import { HowItsCalculated } from './how-its-calculated';
 // kinds HR sets in Organization → Allowances, on top of the gross, each taxed and insured as its kind says, and by the
 // hour the rate can be the net per hour agreed, when the gross rate is worked out. The rates set by law are the chosen
 // year's (owner's request, 16 October 2026: the Super Admin keeps them by year in Organization → Payroll), from the
-// years the page loaded (`lawYears`), and the "How It's Calculated" list below follows the year chosen.
+// years the page loaded (`lawYears`).
 
 const ROW: Record<CalculatorRow['kind'], string> = {
   amount: '',
@@ -88,6 +87,16 @@ export function SalaryCalculator({
       ? { kind: 'ok', typed: perHour.gross, breakdown: perHour.breakdown }
       : perHour;
   const rateWrong = perHour.kind === 'invalid' && perHour.field === 'rate';
+  const hoursWrong = perHour.kind === 'invalid' && perHour.field === 'hours';
+  // under the rate: what's wrong with it, else what it gives
+  const netRateHint = rateWrong
+    ? 'Enter an amount in EGP above 0, e.g. 120.'
+    : perHour.kind === 'belowAllowances'
+      ? belowAllowancesText(perHour.net, true)
+      : perHour.kind === 'ok'
+        ? workedOutRate(perHour)
+        : null;
+  const rateHint = rateWrong ? 'Enter an amount in EGP above 0, e.g. 150.' : perHour.kind === 'ok' ? `${netPerHourText(perHour.breakdown.net, perHour.hours)}.` : null;
 
   function change(next: Partial<CalculatorInput>) {
     const v = { ...input, ...next };
@@ -115,232 +124,226 @@ export function SalaryCalculator({
   }
 
   return (
-    <>
-      <div className="grid items-start gap-6 lg:grid-cols-[22rem_minmax(0,1fr)]">
-        <form className="card space-y-5 p-5" onSubmit={(e) => e.preventDefault()}>
-          <fieldset>
-            <legend className="label">Pay basis</legend>
-            <div className="flex flex-wrap gap-2">
-              {PAY_BASES.map((p) => (
-                <label key={p} className={choice}>
-                  <input type="radio" name="pay" value={p} checked={pay === p} onChange={() => change({ pay: p })} className="size-4 accent-accent" />
-                  {PAY_BASIS_LABELS[p]}
-                </label>
-              ))}
-            </div>
-          </fieldset>
+    <div className="grid items-start gap-6 lg:grid-cols-[22rem_minmax(0,1fr)]">
+      <form className="card space-y-5 p-5" onSubmit={(e) => e.preventDefault()}>
+        <fieldset>
+          <legend className="label">Pay basis</legend>
+          <div className="flex flex-wrap gap-2">
+            {PAY_BASES.map((p) => (
+              <label key={p} className={choice}>
+                <input type="radio" name="pay" value={p} checked={pay === p} onChange={() => change({ pay: p })} className="size-4 accent-accent" />
+                {PAY_BASIS_LABELS[p]}
+              </label>
+            ))}
+          </div>
+        </fieldset>
 
-          {hourly ? (
-            <>
-              <fieldset key="rateBasis">
-                <legend className="label">Start from</legend>
-                <div className="flex flex-wrap gap-2">
-                  {SALARY_BASES.map((b) => (
-                    <label key={b} className={choice}>
-                      <input
-                        type="radio"
-                        name="rateBasis"
-                        value={b}
-                        checked={rateBasis === b}
-                        // the other rate starts with what this one gives, so the pay stays the same
-                        onChange={() => change({ rateBasis: b, ...switchRateBasis(b, { rate, netRate, hours }, rates, allowances) })}
-                        className="size-4 accent-accent"
-                      />
-                      {RATE_BASIS_LABELS[b]}
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
+        {hourly ? (
+          <>
+            <fieldset key="rateBasis">
+              <legend className="label">Start from</legend>
+              <div className="flex flex-wrap gap-2">
+                {SALARY_BASES.map((b) => (
+                  <label key={b} className={choice}>
+                    <input
+                      type="radio"
+                      name="rateBasis"
+                      value={b}
+                      checked={rateBasis === b}
+                      // the other rate starts with what this one gives, so the pay stays the same
+                      onChange={() => change({ rateBasis: b, ...switchRateBasis(b, { rate, netRate, hours }, rates, allowances) })}
+                      className="size-4 accent-accent"
+                    />
+                    {RATE_BASIS_LABELS[b]}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
 
-              <div key="rates" className="grid gap-5 sm:grid-cols-2 lg:grid-cols-1">
-                {fromNetRate ? (
-                  <div key="netRate">
-                    <label htmlFor={fid('netRate')} className="label">
-                      Net per hour (EGP)
-                    </label>
-                    <input
-                      id={fid('netRate')}
-                      inputMode="decimal"
-                      autoComplete="off"
-                      value={netRate}
-                      onChange={(e) => change({ netRate: e.target.value })}
-                      aria-describedby={fid('netRate-hint')}
-                      aria-invalid={rateWrong || perHour.kind === 'belowAllowances' || undefined}
-                      className="input tabular-nums"
-                    />
-                    <p id={fid('netRate-hint')} className={rateWrong || perHour.kind === 'belowAllowances' ? 'mt-1 text-xs text-danger' : 'hint'}>
-                      {rateWrong
-                        ? 'Enter an amount in EGP above 0, e.g. 120.'
-                        : perHour.kind === 'belowAllowances'
-                          ? belowAllowancesText(perHour.net, true)
-                          : perHour.kind === 'ok'
-                            ? workedOutRate(perHour)
-                            : 'The net pay agreed for an hour of work, allowances included: the gross rate is worked out, to the piaster.'}
-                    </p>
-                  </div>
-                ) : (
-                  <div key="rate">
-                    <label htmlFor={fid('rate')} className="label">
-                      Hourly rate (EGP)
-                    </label>
-                    <input
-                      id={fid('rate')}
-                      inputMode="decimal"
-                      autoComplete="off"
-                      value={rate}
-                      onChange={(e) => change({ rate: e.target.value })}
-                      aria-describedby={fid('rate-hint')}
-                      aria-invalid={rateWrong || undefined}
-                      className="input tabular-nums"
-                    />
-                    <p id={fid('rate-hint')} className={rateWrong ? 'mt-1 text-xs text-danger' : 'hint'}>
-                      {rateWrong
-                        ? 'Enter an amount in EGP above 0, e.g. 150.'
-                        : `The gross pay for an hour of work${perHour.kind === 'ok' ? `: ${netPerHourText(perHour.breakdown.net, perHour.hours)}` : ''}.`}
-                    </p>
-                  </div>
-                )}
-                <div>
-                  <label htmlFor={fid('hours')} className="label">
-                    Hours a week
+            <div key="rates" className="grid gap-5 sm:grid-cols-2 lg:grid-cols-1">
+              {fromNetRate ? (
+                <div key="netRate">
+                  <label htmlFor={fid('netRate')} className="label">
+                    Net per hour (EGP)
                   </label>
                   <input
-                    id={fid('hours')}
+                    id={fid('netRate')}
                     inputMode="decimal"
                     autoComplete="off"
-                    value={hours}
-                    onChange={(e) => change({ hours: e.target.value })}
-                    aria-describedby={fid('hours-hint')}
-                    aria-invalid={(perHour.kind === 'invalid' && perHour.field === 'hours') || undefined}
+                    value={netRate}
+                    onChange={(e) => change({ netRate: e.target.value })}
+                    aria-describedby={netRateHint ? fid('netRate-hint') : undefined}
+                    aria-invalid={rateWrong || perHour.kind === 'belowAllowances' || undefined}
                     className="input tabular-nums"
                   />
-                  <p id={fid('hours-hint')} className={perHour.kind === 'invalid' && perHour.field === 'hours' ? 'mt-1 text-xs text-danger' : 'hint'}>
-                    {perHour.kind === 'invalid' && perHour.field === 'hours'
-                      ? `Enter the hours as a number above 0, up to ${MAX_HOURS_PER_WEEK}, e.g. 20 or 22.5.`
-                      : 'The gross is the monthly estimate: rate × hours a week × 52 ÷ 12.'}
-                  </p>
+                  {netRateHint && (
+                    <p id={fid('netRate-hint')} className={rateWrong || perHour.kind === 'belowAllowances' ? 'mt-1 text-xs text-danger' : 'hint'}>
+                      {netRateHint}
+                    </p>
+                  )}
                 </div>
-              </div>
-            </>
-          ) : (
-            <>
-              <fieldset key="basis">
-                <legend className="label">Start from</legend>
-                <div className="flex flex-wrap gap-2">
-                  {SALARY_BASES.map((b) => (
-                    <label key={b} className={choice}>
-                      <input
-                        type="radio"
-                        name="basis"
-                        value={b}
-                        checked={basis === b}
-                        onChange={() => change({ basis: b })}
-                        className="size-4 accent-accent"
-                      />
-                      {SALARY_BASIS_LABELS[b]}
-                    </label>
-                  ))}
+              ) : (
+                <div key="rate">
+                  <label htmlFor={fid('rate')} className="label">
+                    Hourly rate (EGP)
+                  </label>
+                  <input
+                    id={fid('rate')}
+                    inputMode="decimal"
+                    autoComplete="off"
+                    value={rate}
+                    onChange={(e) => change({ rate: e.target.value })}
+                    aria-describedby={rateHint ? fid('rate-hint') : undefined}
+                    aria-invalid={rateWrong || undefined}
+                    className="input tabular-nums"
+                  />
+                  {rateHint && (
+                    <p id={fid('rate-hint')} className={rateWrong ? 'mt-1 text-xs text-danger' : 'hint'}>
+                      {rateHint}
+                    </p>
+                  )}
                 </div>
-              </fieldset>
-
+              )}
               <div>
-                <label htmlFor={fid('amount')} className="label">
-                  {basis === 'net' ? 'Net salary' : 'Gross salary'} (EGP, monthly)
+                <label htmlFor={fid('hours')} className="label">
+                  Hours a week
                 </label>
                 <input
-                  id={fid('amount')}
+                  id={fid('hours')}
                   inputMode="decimal"
                   autoComplete="off"
-                  value={amount}
-                  onChange={(e) => change({ amount: e.target.value })}
-                  aria-describedby={fid('amount-hint')}
-                  aria-invalid={salary.kind === 'invalid' || salary.kind === 'belowAllowances' || undefined}
+                  value={hours}
+                  onChange={(e) => change({ hours: e.target.value })}
+                  aria-describedby={hoursWrong ? fid('hours-hint') : undefined}
+                  aria-invalid={hoursWrong || undefined}
                   className="input tabular-nums"
                 />
-                <p id={fid('amount-hint')} className={salary.kind === 'invalid' || salary.kind === 'belowAllowances' ? 'mt-1 text-xs text-danger' : 'hint'}>
-                  {salary.kind === 'invalid'
-                    ? 'Enter an amount in EGP above 0, e.g. 15,000.'
-                    : salary.kind === 'belowAllowances'
-                      ? belowAllowancesText(salary.net)
-                      : basis === 'net'
-                        ? 'The net to pay, allowances included: the gross is worked out, in whole pounds.'
-                        : 'Without the allowances: the net is worked out.'}
+                {hoursWrong && (
+                  <p id={fid('hours-hint')} className="mt-1 text-xs text-danger">
+                    Enter the hours as a number above 0, up to {MAX_HOURS_PER_WEEK}, e.g. 20 or 22.5.
+                  </p>
+                )}
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <fieldset key="basis">
+              <legend className="label">Start from</legend>
+              <div className="flex flex-wrap gap-2">
+                {SALARY_BASES.map((b) => (
+                  <label key={b} className={choice}>
+                    <input
+                      type="radio"
+                      name="basis"
+                      value={b}
+                      checked={basis === b}
+                      onChange={() => change({ basis: b })}
+                      className="size-4 accent-accent"
+                    />
+                    {SALARY_BASIS_LABELS[b]}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
+            <div>
+              <label htmlFor={fid('amount')} className="label">
+                {basis === 'net' ? 'Net salary' : 'Gross salary'} (EGP, monthly)
+              </label>
+              <input
+                id={fid('amount')}
+                inputMode="decimal"
+                autoComplete="off"
+                value={amount}
+                onChange={(e) => change({ amount: e.target.value })}
+                aria-describedby={salary.kind === 'invalid' || salary.kind === 'belowAllowances' ? fid('amount-hint') : undefined}
+                aria-invalid={salary.kind === 'invalid' || salary.kind === 'belowAllowances' || undefined}
+                className="input tabular-nums"
+              />
+              {(salary.kind === 'invalid' || salary.kind === 'belowAllowances') && (
+                <p id={fid('amount-hint')} className="mt-1 text-xs text-danger">
+                  {salary.kind === 'invalid' ? 'Enter an amount in EGP above 0, e.g. 15,000.' : belowAllowancesText(salary.net)}
                 </p>
-              </div>
-            </>
-          )}
+              )}
+            </div>
+          </>
+        )}
 
-          <div>
-            <label htmlFor={fid('year')} className="label">
-              Year
-            </label>
-            <Select id={fid('year')} value={year} onChange={(e) => change({ year: Number(e.target.value) })} aria-describedby={fid('year-hint')} className="input">
-              {years.map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </Select>
+        <div>
+          <label htmlFor={fid('year')} className="label">
+            Year
+          </label>
+          <Select
+            id={fid('year')}
+            value={year}
+            onChange={(e) => change({ year: Number(e.target.value) })}
+            aria-describedby={rates.year !== year ? fid('year-hint') : undefined}
+            className="input"
+          >
+            {years.map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </Select>
+          {rates.year !== year && (
             <p id={fid('year-hint')} className="hint">
-              {rates.year === year
-                ? 'The rates set by law, such as the insurable wage limits, can differ by year.'
-                : `${year} has no rates set by law of its own: those of ${rates.year} are used.`}
-            </p>
-          </div>
-
-          <AllowanceRows
-            // one paid per client account (25 October 2026) has no amount to work out
-            types={allowanceTypes.filter((t) => !isPerAccount(t))}
-            defaultRows={initial.allowances}
-            onChange={(rows) => change({ allowances: rows })}
-            hint="A month each, on top of the gross, taxed and insured as each kind is set in Organization → Allowances."
-          />
-        </form>
-
-        <section aria-labelledby={fid('result')} className="card overflow-hidden">
-          <h2 id={fid('result')} className="px-4 pt-4 font-semibold">
-            Breakdown
-          </h2>
-          {salary.kind === 'ok' && rows ? (
-            <>
-              <p className="px-4 pt-1 text-sm text-muted">{summary}</p>
-              <div className="mt-3 overflow-x-auto border-t border-line">
-                <table className="table">
-                  <caption className="sr-only">Salary breakdown in EGP, monthly unless a year is shown</caption>
-                  <thead>
-                    <tr>
-                      <th scope="col">Employee</th>
-                      <th scope="col" className="text-right">
-                        EGP
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <Rows rows={rows.employee} />
-                  </tbody>
-                  <tbody>
-                    <tr>
-                      <th scope="colgroup" colSpan={2}>
-                        Company
-                      </th>
-                    </tr>
-                    <Rows rows={rows.company} />
-                  </tbody>
-                </table>
-              </div>
-            </>
-          ) : (
-            <p className="px-4 pt-1 pb-6 text-sm text-muted">
-              {salary.kind === 'belowAllowances'
-                ? belowAllowancesText(salary.net, hourly)
-                : hourly
-                  ? `Enter the ${fromNetRate ? 'net per hour' : 'hourly rate'} and the hours a week to see how the pay breaks down${salary.kind === 'invalid' ? ', as numbers' : ''}.`
-                  : `Enter the ${basis === 'net' ? 'net' : 'gross'} salary to see how it breaks down${salary.kind === 'invalid' ? ', as an amount in EGP' : ''}.`}
+              {year} has no rates of its own: {rates.year}&apos;s are used.
             </p>
           )}
-        </section>
-      </div>
-      <HowItsCalculated year={year} rates={rates} lawYears={lawYears} />
-    </>
+        </div>
+
+        <AllowanceRows
+          // one paid per client account (25 October 2026) has no amount to work out
+          types={allowanceTypes.filter((t) => !isPerAccount(t))}
+          defaultRows={initial.allowances}
+          onChange={(rows) => change({ allowances: rows })}
+        />
+      </form>
+
+      <section aria-labelledby={fid('result')} className="card overflow-hidden">
+        <h2 id={fid('result')} className="px-4 pt-4 font-semibold">
+          Breakdown
+        </h2>
+        {salary.kind === 'ok' && rows ? (
+          <>
+            <p className="px-4 pt-1 text-sm text-muted">{summary}</p>
+            <div className="mt-3 overflow-x-auto border-t border-line">
+              <table className="table">
+                <caption className="sr-only">Salary breakdown in EGP, monthly unless a year is shown</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Employee</th>
+                    <th scope="col" className="text-right">
+                      EGP
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <Rows rows={rows.employee} />
+                </tbody>
+                <tbody>
+                  <tr>
+                    <th scope="colgroup" colSpan={2}>
+                      Company
+                    </th>
+                  </tr>
+                  <Rows rows={rows.company} />
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : (
+          <p className="px-4 pt-1 pb-6 text-sm text-muted">
+            {salary.kind === 'belowAllowances'
+              ? belowAllowancesText(salary.net, hourly)
+              : hourly
+                ? `Enter the ${fromNetRate ? 'net per hour' : 'hourly rate'} and the hours a week.`
+                : `Enter the ${basis === 'net' ? 'net' : 'gross'} salary.`}
+          </p>
+        )}
+      </section>
+    </div>
   );
 }

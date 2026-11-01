@@ -25,7 +25,7 @@ export async function saveEmailTemplate(key: string, words: EmailTemplateText): 
   return refused(async () => {
     const view = (await apiSend<EmailTemplateView>('PUT', path(key), { subject: words.subject, body: words.body }))!;
     refresh();
-    return { view, message: view.custom ? 'Saved. The next emails go with these words.' : 'Saved: these are the standard words, so the email is back to standard.' };
+    return { view, message: 'Saved.' };
   });
 }
 

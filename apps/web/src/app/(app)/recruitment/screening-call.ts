@@ -43,7 +43,7 @@ export const screeningCallApiPath = (applicationId: string) => `/recruitment/app
 
 /** What the page says once the screening call is saved. */
 export const screeningCallSavedText = (result: ScreeningCallResult) =>
-  result === 'passed' ? 'Saved: they passed the screening call. Schedule their interview under Interviews.' : 'Saved: they failed the screening call, so no interview can be scheduled.';
+  result === 'passed' ? 'Saved: passed.' : 'Saved: failed.';
 
 /** What the hiring steps' rules read of an applicant as the page has them. */
 export const stepInputOf = (a: Pick<ApplicationView, 'stage' | 'filteredOut' | 'suggestion' | 'screeningCall' | 'hasHiringManager'>): HiringStepInput => ({

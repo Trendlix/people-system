@@ -81,14 +81,6 @@ export function insurableLimits(rates: LawRatesOrYear): { year: number; min: num
   return insurableWageLimits(rates);
 }
 
-/**
- * Which year's rates set by law a year uses, in a few words: "the rates set by law for 2026", or for a year without its
- * own "the rates set by law for 2027, those of 2026" (the latest earlier one, or the earliest for a year before them).
- */
-export function ratesYearText(year: number, rates: LawRates): string {
-  return `the rates set by law for ${year}${rates.year === year ? '' : `, those of ${rates.year}`}`;
-}
-
 /** Allowances added up, a month: all of them, the taxed ones and the insured ones. */
 export function allowanceTotals(allowances: readonly AllowanceTerms[]): { total: number; taxable: number; insured: number } {
   const sum = (which: (a: AllowanceTerms) => boolean) => cents(allowances.reduce((t, a) => t + (which(a) ? a.amount : 0), 0));

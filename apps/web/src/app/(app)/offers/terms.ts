@@ -78,13 +78,13 @@ export function offerSalary(t: TermsTyped, rates: LawRatesOrYear, allowances: re
     if (pay.kind === 'invalid') return net ? { kind: 'invalid', field: 'netRate', reason: NET_RATE_INVALID } : { kind: 'invalid', field: 'hourlyRate', reason: RATE_INVALID };
     if (pay.kind === 'belowAllowances') return { kind: 'invalid', field: 'netRate', reason: belowAllowancesText(pay.net, true) };
     if (pay.kind === 'empty') {
-      return { kind: 'empty', reason: `Enter the ${net ? 'net per hour' : 'hourly rate'} and the hours a week to see the monthly estimate and the net.` };
+      return { kind: 'empty', reason: `Enter the ${net ? 'net per hour' : 'hourly rate'} and the hours a week.` };
     }
     return { kind: 'ok', breakdown: pay.breakdown, estimate: pay.gross, hourly: { rate: pay.rate, hours: pay.hours } };
   }
   const start = salaryStartFrom(t.salaryBasis);
   const n = parseAmount(start === 'net' ? t.wantedNet : t.grossSalary);
-  if (n === null) return { kind: 'empty', reason: `Enter the ${start} salary to see the breakdown.` };
+  if (n === null) return { kind: 'empty', reason: `Enter the ${start} salary.` };
   // a salary of 0 for someone paid per client account only (owner, 27 October 2026)
   if (n === 0 && zeroAllowed) return { kind: 'ok', breakdown: grossToNet(0, rates, allowances), estimate: null };
   if (Number.isNaN(n) || n <= 0) {

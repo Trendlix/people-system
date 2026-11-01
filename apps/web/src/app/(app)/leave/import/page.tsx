@@ -37,17 +37,9 @@ async function Imports({ searchParams }: { searchParams: PageProps<'/leave/impor
         </p>
       )}
       <section aria-labelledby="upload-heading" className="card space-y-4 p-6">
-        <div className="space-y-1">
-          <h2 id="upload-heading" className="text-lg font-semibold">
-            Upload a File
-          </h2>
-          <p className="text-sm text-muted">
-            The template has three sheets: Leaves taken (who, the leave type from a list, From, To, the days if you know them, notes), Balances (each
-            person&apos;s annual leave left as of a day) and How to fill (the steps, the leave types and the employees&apos; codes). Its Leave type
-            list ends with Work from home and Official duty, which aren&apos;t leave. Zoho People&apos;s leave export can be uploaded as it is: its leave
-            types are matched to the system&apos;s on the review, On Duty to official duty.
-          </p>
-        </div>
+        <h2 id="upload-heading" className="text-lg font-semibold">
+          Upload a File
+        </h2>
         <a href={LEAVE_IMPORT_TEMPLATE_HREF} className="btn btn-secondary no-underline" download>
           Download the template
         </a>
@@ -118,7 +110,7 @@ async function Imports({ searchParams }: { searchParams: PageProps<'/leave/impor
               </tbody>
             </table>
             <p className="border-t border-line px-4 py-3 text-sm text-muted">
-              {loaded.value.length} {loaded.value.length === 1 ? 'import' : 'imports'}, the latest first
+              {loaded.value.length} {loaded.value.length === 1 ? 'import' : 'imports'}
             </p>
           </div>
         )}
@@ -133,11 +125,6 @@ export default function LeaveImportPage({ searchParams }: PageProps<'/leave/impo
       <div className="space-y-2">
         <BackLink href={LEAVE_PATH}>Leave Requests</BackLink>
         <h1 className="page-title">Import Leave</h1>
-        <p className="max-w-3xl text-muted">
-          Leave already taken, recorded as approved, and each person&apos;s balance, so the system starts from the right numbers. Upload the template
-          filled in, or Zoho People&apos;s leave export, then review every row before it is applied: ready, a duplicate, a problem to put right, or a
-          person to confirm.
-        </p>
       </div>
       <Suspense fallback={<Loading />}>
         <Imports searchParams={searchParams} />

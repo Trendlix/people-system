@@ -66,14 +66,9 @@ function Checklist({ c }: { c: OffboardingCaseView }) {
             </div>
             <span className={`badge ${ITEM_STYLE[i.status]}`}>{CLEARANCE_ITEM_STATUS_LABELS[i.status]}</span>
           </div>
-          {i.kind === 'assets' && c.status === 'open' && i.status === 'pending' && (
-            <p className="text-sm text-muted">Done once everything they hold is received back on Custody.</p>
-          )}
-          {i.kind === 'final_settlement' && c.status === 'open' && i.status === 'pending' && c.finalSettlement && (
-            <p className="text-sm text-muted">
-              {c.finalSettlement.status === 'not_yet' ? 'Their final settlement opens once the employment has ended.' : 'Done once it is marked settled under '}
-              {c.finalSettlement.status === 'open' && <Link href="/payroll/unsettled#settlements">Payroll → Unsettled</Link>}
-              {c.finalSettlement.status === 'open' && '.'}
+          {i.kind === 'final_settlement' && c.status === 'open' && i.status === 'pending' && c.finalSettlement?.status === 'open' && (
+            <p className="text-sm">
+              <Link href="/payroll/unsettled#settlements">Payroll → Unsettled</Link>
             </p>
           )}
           {i.canMark && <ItemActions action={markItem.bind(null, c.id, i.id)} status={i.status} note={i.note} />}
@@ -112,7 +107,6 @@ function Holdings({ c }: { c: OffboardingCaseView }) {
           ))}
         </tbody>
       </table>
-      <p className="mt-2 text-sm text-muted">Receive each back on its custody record. Anything missing or damaged goes to HR for a deduction there.</p>
     </div>
   );
 }
@@ -164,7 +158,7 @@ function Interview({ c }: { c: OffboardingCaseView }) {
       <p className="text-sm text-muted">
         {i.status === 'declined'
           ? `Declined${i.declinedNote ? `: ${i.declinedNote}` : ''}${i.recordedBy ? ` · ${i.recordedBy}` : ''}.`
-          : 'Not done yet. They can fill it in under My Requests while they can still sign in; or record it here from a conversation with them.'}
+          : 'Not done yet.'}
       </p>
       {c.can.interview && (
         <>

@@ -118,7 +118,7 @@ describe('a contract as the API takes it', () => {
   it('asks why the pay changes when none is chosen', () => {
     const errors: string[] = [];
     const body = contractBody(form({ ...monthly, payChange: 'changes', raiseReason: '' }), errors, true, true);
-    expect(errors).toEqual(['Choose why the pay changes: annual raise, performance raise, counter-offer raise, promotion, market adjustment, cost of living or other.']);
+    expect(errors).toEqual(['Choose why the pay changes.']);
     expect(body).not.toHaveProperty('raiseReason');
     const unknown: string[] = [];
     contractBody(form({ ...monthly, payChange: 'changes', raiseReason: 'bonus' }), unknown, true, true);
@@ -181,7 +181,7 @@ describe('the contract’s length by the labour law (18 October 2026)', () => {
     expect(errors).toEqual([]);
     const missing: string[] = [];
     lengthBody(form({ form: 'specific_job', jobToDo: '  ' }), missing, false);
-    expect(missing).toEqual(['Enter the job the contract is for: a contract for a specific job ends when it is done (Labour Law Art. 155).']);
+    expect(missing).toEqual(['Enter the job the contract is for.']);
   });
 
   it('sends no training stages: the paid trainee went on 25 October 2026, a fixed term for its months alone', () => {

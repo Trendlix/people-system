@@ -38,7 +38,6 @@ export async function LeaveSection({ employee: p, user, year: asked }: { employe
   return (
     <ProfileSection
       title={`Leave in ${year}`}
-      note="Annual leave by Labour Law Art. 124; each year from January to December"
       actions={
         <>
           <Link href={yearHref(year - 1)} className={YEAR_LINK}>
@@ -94,7 +93,7 @@ export async function LeaveSection({ employee: p, user, year: asked }: { employe
           {leave.value.requests.length > 0 ? (
             <div className="card">
               <MyLeaveTable requests={leave.value.requests} />
-              <p className="border-t border-line px-4 py-3 text-sm text-muted">{requestsLabel(leave.value.requests.length)} in {year}, newest first.</p>
+              <p className="border-t border-line px-4 py-3 text-sm text-muted">{requestsLabel(leave.value.requests.length)} in {year}.</p>
             </div>
           ) : (
             <p className="text-sm text-muted">No leave requests in {year}.</p>

@@ -25,20 +25,16 @@ export function TagPalette({ picked, onPick, placed }: { picked: PaletteItem | n
 
   return (
     <div className="space-y-3">
-      <div>
-        <h2 className="font-semibold">Add a Field</h2>
-        <p className="mt-0.5 text-xs text-muted">Pick one, then click on the form where it goes, or drag to draw its box.</p>
-      </div>
+      <h2 className="font-semibold">Add a Field</h2>
       <div className="grid grid-cols-2 gap-2">
         {(
           [
-            [{ kind: 'check' }, 'Check mark', '✓ in a box'],
-            [{ kind: 'fixed' }, 'Fixed text', 'The same on every form'],
+            [{ kind: 'check' }, 'Check mark'],
+            [{ kind: 'fixed' }, 'Fixed text'],
           ] as const
-        ).map(([item, label, hint]) => (
+        ).map(([item, label]) => (
           <button key={label} type="button" aria-pressed={same(picked, item)} onClick={() => pick(item)} className={`${ITEM} border-line ${same(picked, item) ? ITEM_PICKED : 'hover:bg-canvas'}`}>
             <span className="font-medium">{label}</span>
-            <span className="text-xs text-muted">{hint}</span>
           </button>
         ))}
       </div>
@@ -86,10 +82,8 @@ export function TagPalette({ picked, onPick, placed }: { picked: PaletteItem | n
 export function FieldList({ fields, selected, onSelect, pageCount }: { fields: readonly PdfField[]; selected: string | null; onSelect: (id: string) => void; pageCount: number }) {
   return (
     <div className="space-y-3">
-      <div>
-        <h2 className="font-semibold">Fields on This Form</h2>
-        <p className="mt-0.5 text-xs text-muted">{fields.length ? 'Select one to see its settings.' : 'No fields are placed yet.'}</p>
-      </div>
+      <h2 className="font-semibold">Fields on This Form</h2>
+      {!fields.length && <p className="text-xs text-muted">No fields are placed yet.</p>}
       {Array.from({ length: pageCount }, (_, i) => i + 1).map((page) => {
         const on = fields.filter((f) => f.page === page);
         if (!on.length) return null;
@@ -106,7 +100,7 @@ export function FieldList({ fields, selected, onSelect, pageCount }: { fields: r
                         {f.tag}
                       </code>
                     )}
-                    {isOptional(f) && <span className="text-[11px] text-muted">Optional: left blank when there’s no value</span>}
+                    {isOptional(f) && <span className="text-[11px] text-muted">Optional</span>}
                   </button>
                 </li>
               ))}

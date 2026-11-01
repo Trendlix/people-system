@@ -35,12 +35,6 @@ export function inGradeRange(grade: { rank: number }, { minGrade: min, maxGrade:
   return (!min || grade.rank >= min.rank) && (!max || grade.rank <= max.rank);
 }
 
-/**
- * What a C-level grade means, beside its mark (owner, 19 October 2026: "make C level Employees details not visible to
- * HR"): those holding it are hidden from HR.
- */
-export const CONFIDENTIAL_GRADE_HINT = 'People holding it are hidden from HR: only the CEO and the Super Admin see their details.';
-
 /** What a grade picker says when it leaves the C-level grades out (pickableGrades). */
 export const CONFIDENTIAL_GRADES_LEFT_OUT = 'C-level grades are set by the CEO or the Super Admin.';
 

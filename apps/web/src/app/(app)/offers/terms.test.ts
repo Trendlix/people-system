@@ -89,7 +89,7 @@ describe('pay by the hour', () => {
     const net = { payBasis: 'hourly', rateBasis: 'net', hoursPerWeek: '16' };
     expect(offerSalary(typed({ ...net }), 2026)).toEqual({
       kind: 'empty',
-      reason: 'Enter the net per hour and the hours a week to see the monthly estimate and the net.',
+      reason: 'Enter the net per hour and the hours a week.',
     });
     expect(offerSalary(typed({ ...net, netRate: 'abc' }), 2026)).toEqual({ kind: 'invalid', field: 'netRate', reason: 'Enter the net per hour as an amount in EGP, e.g. 120.' });
     expect(offerSalary(typed({ ...net, netRate: '10', hoursPerWeek: '4' }), 2026, [{ amount: 3000, taxable: false, insured: false }])).toMatchObject({

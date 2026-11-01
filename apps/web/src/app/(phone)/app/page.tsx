@@ -95,11 +95,8 @@ async function Waiting({ user }: { user: Session }) {
   if (!n) return null;
   return (
     <Link href={APP_PATHS.approve} className="card flex min-h-16 items-center justify-between gap-3 border-accent/40 bg-accent-soft px-4 py-3 text-ink no-underline">
-      <span>
-        <span className="block font-semibold">
-          {n} {n === 1 ? 'request waits' : 'requests wait'} for you
-        </span>
-        <span className="block text-xs text-muted">Approve or reject them on To Approve.</span>
+      <span className="font-semibold">
+        {n} {n === 1 ? 'request waits' : 'requests wait'} for you
       </span>
       <span aria-hidden="true" className="text-lg text-accent">
         ›
@@ -164,7 +161,7 @@ async function ComingUp({ profile, today }: { profile: EmployeeProfile | null; t
     <PhoneCard title="Coming Up" flush>
       {myLeave.length === 0 && myHours.length === 0 && days.length === 0 ? (
         <div className="px-4 pb-4">
-          <Quiet>Nothing coming up: no leave, permission or official holiday on file.</Quiet>
+          <Quiet>Nothing coming up.</Quiet>
         </div>
       ) : (
         <RowList label="Coming up">

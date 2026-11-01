@@ -43,11 +43,10 @@ const SAME_SCAN_MS = 2500;
 /** What is said when the camera can't be used. */
 export function cameraProblem(err: unknown): string {
   const name = err && typeof err === 'object' && 'name' in err ? String((err as { name: unknown }).name) : '';
-  if (name === 'NotAllowedError' || name === 'SecurityError')
-    return 'The camera isn’t allowed. Allow it for this site (or for Trendlix People in the phone’s Settings → Apps → Permissions → Camera), or type the codes instead.';
-  if (name === 'NotFoundError' || name === 'OverconstrainedError') return 'No camera was found. Type the codes instead.';
-  if (name === 'NotReadableError') return 'The camera is in use by another app. Close it, then try again.';
-  return 'The camera could not be started. Type the codes instead.';
+  if (name === 'NotAllowedError' || name === 'SecurityError') return 'The camera isn’t allowed: allow it for this site.';
+  if (name === 'NotFoundError' || name === 'OverconstrainedError') return 'No camera was found.';
+  if (name === 'NotReadableError') return 'The camera is in use by another app.';
+  return 'The camera could not be started.';
 }
 
 /**

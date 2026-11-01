@@ -80,7 +80,6 @@ export function ReimbursementTypeForm({
             placeholder="e.g. Mobile bill"
             autoComplete="off"
             defaultValue={valueOf(state, 'nameEn', type?.nameEn)}
-            aria-describedby={fid('name-hint')}
             className="input"
           />
         </div>
@@ -97,13 +96,9 @@ export function ReimbursementTypeForm({
             maxLength={100}
             autoComplete="off"
             defaultValue={valueOf(state, 'nameAr', type?.nameAr)}
-            aria-describedby={fid('name-hint')}
             className="input"
           />
         </div>
-        <p id={fid('name-hint')} className="hint -mt-3 sm:col-span-2">
-          As employees choose it when they claim, and as their payslip&apos;s Reimbursement addition says it. Each type has its own English name.
-        </p>
         <div className="sm:col-span-2">
           <label htmlFor={fid('description')} className="label">
             Description {optional}
@@ -114,21 +109,14 @@ export function ReimbursementTypeForm({
             rows={2}
             maxLength={500}
             defaultValue={valueOf(state, 'description', type?.description)}
-            aria-describedby={fid('description-hint')}
+            placeholder="What it covers"
             className="input"
           />
-          <p id={fid('description-hint')} className="hint">
-            What it covers, shown to the employee beside the type, e.g. &ldquo;Taxis and fuel for visits to clients; not the daily commute.&rdquo;
-          </p>
         </div>
       </div>
 
-      <fieldset className="space-y-3 rounded-lg border border-accent/30 bg-accent-soft/40 p-4" aria-describedby={fid('caps-hint')}>
+      <fieldset className="space-y-3 rounded-lg border border-accent/30 bg-accent-soft/40 p-4">
         <legend className="px-1 text-base font-semibold">Caps</legend>
-        <p id={fid('caps-hint')} className="hint -mt-1">
-          The most an employee may claim of this type, in EGP: at once, in a calendar month and in a calendar year, by the expense&apos;s date. Leave a
-          cap empty for no cap. A claim over a cap can&apos;t be sent.
-        </p>
         <div className="grid gap-4 sm:grid-cols-3">
           {CAP_FIELDS.map((f) => (
             <div key={f.key}>
@@ -163,14 +151,10 @@ export function ReimbursementTypeForm({
                 name="receiptRequired"
                 checked={receipt}
                 onChange={(e) => setReceipt(e.target.checked)}
-                aria-describedby={fid('receipt-hint')}
                 className="size-4 accent-accent"
               />
               Receipt required
             </label>
-            <p id={fid('receipt-hint')} className="hint">
-              A claim must have at least one photo or PDF of the receipt.
-            </p>
           </div>
           <div>
             <label htmlFor={fid('claimWithinDays')} className="label">
@@ -185,12 +169,8 @@ export function ReimbursementTypeForm({
               placeholder="No deadline"
               value={days}
               onChange={(e) => setDays(e.target.value)}
-              aria-describedby={fid('claimWithinDays-hint')}
               className="input w-32 tabular-nums"
             />
-            <p id={fid('claimWithinDays-hint')} className="hint">
-              How many days after the expense it can still be claimed, 1 to 365, e.g. 30. Empty: any time.
-            </p>
           </div>
         </div>
         <p role="status" className="rounded-lg bg-canvas px-4 py-3 text-sm">
@@ -199,15 +179,12 @@ export function ReimbursementTypeForm({
         </p>
       </fieldset>
 
-      <fieldset className="space-y-4" aria-describedby={fid('who-hint')}>
+      <fieldset className="space-y-4">
         <legend className="font-semibold">Who Can Claim It</legend>
-        <p id={fid('who-hint')} className="hint -mt-2">
-          By their current employment. Nothing ticked in a list: everyone, whatever it is. A department takes its teams with it.
-        </p>
         <div>
           <p className="label">Departments</p>
           {departments === null ? (
-            <p className="text-sm text-muted">The departments couldn&apos;t be loaded. Please try again in a moment.</p>
+            <p className="text-sm text-muted">The departments couldn&apos;t be loaded.</p>
           ) : (
             <div className="space-y-2">
               {departments.map((d) => (
@@ -230,7 +207,7 @@ export function ReimbursementTypeForm({
         <div>
           <p className="label">Grades</p>
           {grades === null ? (
-            <p className="text-sm text-muted">The grades couldn&apos;t be loaded. Please try again in a moment.</p>
+            <p className="text-sm text-muted">The grades couldn&apos;t be loaded.</p>
           ) : (
             <div className="flex flex-wrap gap-2">
               {grades.map((g) => (
@@ -262,17 +239,12 @@ export function ReimbursementTypeForm({
             role="switch"
             name="active"
             defaultChecked={ticked('active', type?.active ?? true)}
-            aria-describedby={fid('active-hint')}
             className="size-5 accent-accent"
           />
           On
         </label>
-        <p id={fid('active-hint')} className="hint">
-          Off: not offered for new claims. The claims already sent keep going through their approvals.
-        </p>
       </div>
 
-      {type && <p className="hint">A change applies to the claims sent from now on; those sent keep the conditions they were sent under.</p>}
       <div className="flex flex-wrap gap-3">
         <SubmitButton busy={pending}>{type ? 'Save changes' : 'Add type'}</SubmitButton>
         <Link href={cancelHref} className="btn btn-secondary">

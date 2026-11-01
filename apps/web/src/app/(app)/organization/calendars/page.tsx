@@ -1,14 +1,12 @@
 import { calendarRedirectUri, CALENDARS_OWN_ACCOUNT, CALENDARS_SUPER_ADMIN_ONLY, type CalendarSettingsView } from '@trendlix/shared';
 import type { Metadata } from 'next';
 import { headers } from 'next/headers';
-import Link from 'next/link';
 import { Suspense } from 'react';
 import { CalendarConnection } from '@/components/calendar-connections';
 import { startCalendarConnect } from '@/lib/calendar-actions';
 import { calendarBanner, seesCalendarSettings } from '@/lib/calendars';
 import { originFromHeaders } from '@/lib/connector/site';
 import { loadJson } from '@/lib/interview-hours-data';
-import { MEETING_SETTINGS_PATH } from '@/lib/meetings';
 import { getCurrentUser } from '@/lib/session';
 import { CopyUri } from '../meetings/meetings-forms';
 import { Empty, Loading } from '../ui';
@@ -27,8 +25,7 @@ import { otherSteps, zohoStatus, zohoSteps, type SetupStep } from './setup';
 
 export const metadata: Metadata = { title: 'Calendars · People System' };
 
-const DISCONNECT_COMPANY =
-  'Disconnect the company’s Zoho account? HR’s times won’t leave out anyone’s Zoho Calendar busy times until it is connected again (or each person connects their own).';
+const DISCONNECT_COMPANY = 'Disconnect the company’s Zoho account?';
 
 function Steps({ steps }: { steps: SetupStep[] }) {
   return (
@@ -53,11 +50,11 @@ function Steps({ steps }: { steps: SetupStep[] }) {
 
 async function Gate({ searchParams }: { searchParams: PageProps<'/organization/calendars'>['searchParams'] }) {
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
-  if (user.developer) return <Empty>The calendar settings hold the company’s Zoho app and account: they aren’t open to developers.</Empty>;
+  if (user.developer) return <Empty>The calendar settings aren’t open to developers.</Empty>;
   if (!seesCalendarSettings(user)) return <Empty>{CALENDARS_SUPER_ADMIN_ONLY}</Empty>;
   if (user.viewAs) return <Empty>{CALENDARS_OWN_ACCOUNT}</Empty>;
   const loaded = await loadJson<CalendarSettingsView>('/calendars/settings');
-  if (loaded.kind === 'unavailable') return <Empty>Not available yet: the server doesn’t read calendars yet. Please try again after its next update.</Empty>;
+  if (loaded.kind === 'unavailable') return <Empty>Not available yet: the server doesn’t read calendars yet.</Empty>;
   if (loaded.kind !== 'ok') return <Empty>The calendar settings could not be loaded. {loaded.messages.join(' ')}</Empty>;
   const view = loaded.value;
   const origin = originFromHeaders(await headers());
@@ -66,11 +63,6 @@ async function Gate({ searchParams }: { searchParams: PageProps<'/organization/c
   const connected = view.company?.status === 'connected';
   return (
     <div className="space-y-6">
-      <p className="max-w-3xl text-sm text-muted">
-        When HR schedules an interview, “Find a time” lists the times every interviewer is free: their interview hours, less their leave, the public holidays, their
-        other interviews and their calendar’s busy times. The company’s calendars are Zoho Calendar’s: connect the company’s Zoho account once, and everyone’s busy
-        times are read by their work email. Only when someone is busy is read, never what their events are.
-      </p>
       {banner && (
         <p role={banner.tone === 'danger' ? 'alert' : 'status'} className={`rounded-lg px-4 py-3 text-sm font-semibold ${banner.tone === 'ok' ? 'bg-ok-soft text-ok' : 'bg-danger-soft text-danger'}`}>
           {banner.text}
@@ -105,27 +97,18 @@ async function Gate({ searchParams }: { searchParams: PageProps<'/organization/c
             test={testCompanyZoho}
             testWithEmail
           />
-          <p className="text-sm text-muted">
-            If Zoho can’t share someone’s free/busy (their sharing is off, or they aren’t in the company’s Zoho organization), HR is told “Couldn’t check …” and the
-            times are still offered, marked. Each person can also connect their own calendar on Your Interview Hours.
-          </p>
         </div>
       </section>
       <section aria-labelledby="calendars-others" className="card space-y-3 p-6">
         <h2 id="calendars-others" className="text-lg font-semibold">
           Google and Microsoft
         </h2>
-        <p className="max-w-3xl text-sm text-muted">
-          Secondary sources, for anyone who keeps a Google or Outlook calendar too. They sign in through the apps on{' '}
-          <Link href={MEETING_SETTINGS_PATH}>Organization → Meetings</Link>, which need these additions:
-        </p>
         <Steps
           steps={otherSteps(
             origin ? calendarRedirectUri(origin, 'google') : '(this website’s address)/calendars/oauth/google',
             origin ? calendarRedirectUri(origin, 'microsoft') : '(this website’s address)/calendars/oauth/microsoft',
           )}
         />
-        <p className="text-sm text-muted">HR’s own Google Meet connections share their busy times once connected again and allowed (Your Meetings).</p>
       </section>
     </div>
   );

@@ -18,7 +18,7 @@ const optional = <span className="font-normal text-muted">(optional)</span>;
 export function ValuesForm({ action, saved, cancelHref }: { action: Action; saved: Record<string, string>; cancelHref: string }) {
   const [state, formAction] = useActionState(action, {});
   const fid = useFieldIds();
-  const money = (name: string, label: string, hint?: string) => (
+  const money = (name: string, label: string, placeholder?: string) => (
     <div>
       <label htmlFor={fid(name)} className="label">
         {label} {optional}
@@ -29,21 +29,16 @@ export function ValuesForm({ action, saved, cancelHref }: { action: Action; save
         inputMode="decimal"
         autoComplete="off"
         defaultValue={valueOf(state, name, saved[name])}
-        aria-describedby={hint ? fid(`${name}-hint`) : undefined}
+        placeholder={placeholder}
         className="input tabular-nums"
       />
-      {hint && (
-        <p id={fid(`${name}-hint`)} className="hint">
-          {hint}
-        </p>
-      )}
     </div>
   );
   return (
     <form action={formAction} className="card space-y-5 p-5">
       <FormErrors errors={state.errors} />
       <div className="grid gap-5 sm:grid-cols-2">
-        {money('purchasePrice', 'Purchase cost (EGP)', 'From the invoice, e.g. 45000 or 45000.50.')}
+        {money('purchasePrice', 'Purchase cost (EGP)', 'E.g. 45000.50')}
         <div>
           <label htmlFor={fid('supplier')} className="label">
             Supplier {optional}
@@ -56,7 +51,7 @@ export function ValuesForm({ action, saved, cancelHref }: { action: Action; save
           </label>
           <input id={fid('invoiceNo')} name="invoiceNo" maxLength={ASSET_TEXT_LIMITS.invoiceNo} defaultValue={valueOf(state, 'invoiceNo', saved.invoiceNo)} className="input" />
         </div>
-        {money('marketValue', 'Market value (EGP)', 'What it would fetch now in Egypt, in its condition.')}
+        {money('marketValue', 'Market value (EGP)')}
         {money('priceLow', 'Market value, low (EGP)')}
         {money('priceHigh', 'Market value, high (EGP)')}
         <div className="sm:col-span-2">
@@ -69,12 +64,8 @@ export function ValuesForm({ action, saved, cancelHref }: { action: Action; save
             rows={2}
             maxLength={ASSET_TEXT_LIMITS.priceNote}
             defaultValue={valueOf(state, 'priceNote', saved.priceNote)}
-            aria-describedby={fid('priceNote-hint')}
             className="input"
           />
-          <p id={fid('priceNote-hint')} className="hint">
-            One or two sentences, e.g. three listings for the same model in good condition.
-          </p>
         </div>
       </div>
       <div className="flex flex-wrap gap-3">

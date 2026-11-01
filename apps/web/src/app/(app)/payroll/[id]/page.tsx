@@ -13,16 +13,16 @@ import { loadPayrollSettings } from '../../organization/payroll/data';
 import { paidOnDefault } from '../../organization/payroll/settings';
 import { BackLink, Empty, Loading } from '../../organization/ui';
 import { adjustmentsHref } from '../adjustments/adjustments';
-import { approveRun, deleteRun, markRunPaid, refreshFromAttendance, refreshRun, returnRun, saveRunLines, setAttendanceWaiver, submitRun } from '../actions';
+import { approveRun, deleteRun, markRunPaid, refreshFromAttendance, refreshRun, returnRun, saveRunLines, setAttendanceWaiver, setKpiWaiver, submitRun } from '../actions';
 import { loadRun } from '../data';
 import { bankFilesReady, bankLeftOut, etaCheckPath, fileHref, type EtaCheck } from '../files';
 import { loadJson, notLoadedText } from '../load';
-import { canSeePayroll, employeesLabel, preparesPayroll, rulesSummary, runActions, runTitle } from '../list';
+import { canSeePayroll, employeesLabel, hiddenTotalsText, preparesPayroll, rulesSummary, runActions, runTitle } from '../list';
 import { payslipsIssued, payslipsIssuedLabel, payslipsZipHref } from '../payslips';
 import { PayrollStatusBadge, PayrollStepper } from '../ui';
-import { anyEditable, employeesNote, figuresNote, filesNote, hiddenCount, hiddenRowLabel, hiddenTotalsNote, lineEditable } from './access';
+import { anyEditable, employeesNote, figuresNote, hiddenCount, hiddenRowLabel, lineEditable } from './access';
 import { RunAdjustments } from './adjustments-section';
-import { attendanceUploadHref, REFRESH_FROM_ATTENDANCE_HINT, refreshesFromAttendance } from './attendance/attendance';
+import { attendanceUploadHref, refreshesFromAttendance } from './attendance/attendance';
 import { loadImports } from './attendance/data';
 import { ImportsList } from './attendance/imports-list';
 import { CibFileForm } from './downloads';
@@ -65,7 +65,7 @@ function history(run: PayrollRunView): string {
 function SummaryCards({ run }: { run: PayrollRunView }) {
   const t = run.totals;
   // the C-level people's lines hidden from the caller are not in the totals (19 October 2026)
-  const hidden = hiddenTotalsNote(hiddenCount(run));
+  const hidden = hiddenTotalsText(hiddenCount(run));
   const cards: { label: string; value: string; note?: string }[] = [
     { label: 'Employees', value: String(t.employees), note: employeesNote(run.exclusions.length, hiddenCount(run)) },
     { label: 'Earned', value: formatEgp(t.earned), note: t.allowances ? `Allowances ${formatEgp(t.allowances)}` : undefined },
@@ -73,7 +73,7 @@ function SummaryCards({ run }: { run: PayrollRunView }) {
     { label: 'Income tax', value: formatEgp(t.monthlyTax) },
     { label: 'Martyrs’ fund', value: formatEgp(t.martyrsFund) },
     { label: 'Net', value: formatEgp(t.net), note: `Deductions ${formatEgp(t.deductions)}` },
-    { label: 'Transfer', value: formatEgp(t.transfer), note: t.released ? `Released already ${formatEgp(t.released)}` : 'What the banks pay' },
+    { label: 'Transfer', value: formatEgp(t.transfer), note: t.released ? `Released already ${formatEgp(t.released)}` : undefined },
     { label: 'Company cost', value: formatEgp(t.companyCost) },
   ];
   return (
@@ -99,8 +99,6 @@ function Actions({ run, user, title, payday }: { run: PayrollRunView; user: Sess
   // days counted as half a day for an open check-in (owner, 27 October 2026: "open check ins with half day"): HR confirms
   // before sending, never blocked (the rule is "until corrected", and HR may decide to pay them so)
   const openCheckIns = openCheckInsConfirm(run.openCheckIns?.length ?? 0);
-  // the register and the payslips leave out the C-level people hidden from the caller (19 October 2026)
-  const excluded = filesNote(run);
   return (
     <div className="flex flex-wrap items-start gap-3">
       {can.refresh && (
@@ -113,7 +111,7 @@ function Actions({ run, user, title, payday }: { run: PayrollRunView; user: Sess
           action={submitRun.bind(null, run.id)}
           pendingText="Sending…"
           variant="primary"
-          confirmText={`Send ${title} to the CEO to approve? It can't be changed while it is with the CEO.${problems ? ` ${problems} ${problems === 1 ? 'employee has' : 'employees have'} bank details to put right first.` : ''}${openCheckIns ? ` ${openCheckIns}` : ''}`}
+          confirmText={`Send ${title} to the CEO?${problems ? ` ${problems} ${problems === 1 ? 'employee has' : 'employees have'} bank details to put right.` : ''}${openCheckIns ? ` ${openCheckIns}` : ''}`}
         >
           Send to the CEO
         </ActionButton>
@@ -123,7 +121,7 @@ function Actions({ run, user, title, payday }: { run: PayrollRunView; user: Sess
           action={approveRun.bind(null, run.id)}
           pendingText="Approving…"
           variant="primary"
-          confirmText={`Approve ${title}? It is locked, and the bank files can be made from it.`}
+          confirmText={`Approve ${title}?`}
         >
           Approve
         </ActionButton>
@@ -145,12 +143,11 @@ function Actions({ run, user, title, payday }: { run: PayrollRunView; user: Sess
           action={deleteRun.bind(null, run.id)}
           pendingText="Deleting…"
           variant="danger"
-          confirmText={`Delete the draft ${title}? Its figures are deleted with it. This can't be undone.`}
+          confirmText={`Delete the draft ${title}?`}
         >
           Delete draft
         </ActionButton>
       )}
-      {excluded && <p className="w-full text-sm text-muted">{excluded}</p>}
     </div>
   );
 }
@@ -211,8 +208,6 @@ function BankFiles({ run, user }: { run: PayrollRunView; user: SessionUser }) {
   const { problems, held, nothingToPay } = bankLeftOut(run.lines);
   const ready = bankFilesReady(run.status);
   const hr = preparesPayroll(user);
-  // the bank files leave out the C-level people hidden from the caller (19 October 2026)
-  const excluded = filesNote(run);
   return (
     <section className="space-y-3">
       <h2 className="text-lg font-semibold">Bank Files</h2>
@@ -231,12 +226,6 @@ function BankFiles({ run, user }: { run: PayrollRunView; user: SessionUser }) {
             <dd className={`text-lg font-semibold tabular-nums ${run.bankCheck.problems ? 'text-danger' : ''}`}>{run.bankCheck.problems}</dd>
           </div>
         </dl>
-        <p className="text-sm text-muted">
-          {run.status === 'approved' || run.status === 'paid'
-            ? 'From each employee’s bank details on their profile, copied onto the run when the CEO approved it: later changes to a profile don’t change these files.'
-            : 'From each employee’s bank details on their profile: there is nothing to enter here. They are copied onto the run when the CEO approves it, so later changes to a profile don’t change its files.'}
-        </p>
-        {excluded && <p className="text-sm text-muted">{excluded}</p>}
 
         {problems.length > 0 && (
           <div className="space-y-2">
@@ -273,11 +262,10 @@ function BankFiles({ run, user }: { run: PayrollRunView; user: SessionUser }) {
               <a href={fileHref(run.id, 'ach')} className="btn btn-secondary">
                 Download ACH file
               </a>
-              <p className="hint">Every bank but CIB, through EG-ACH.</p>
             </div>
           </div>
         ) : (
-          <p className="border-t border-line-soft pt-4 text-sm text-muted">The CIB and ACH files are made once the CEO approves the run.</p>
+          <p className="border-t border-line-soft pt-4 text-sm text-muted">Made once the CEO approves the run.</p>
         )}
       </div>
     </section>
@@ -300,14 +288,10 @@ async function EtaFile({ run }: { run: PayrollRunView }) {
     <section className="space-y-3">
       <h2 className="text-lg font-semibold">ETA Salary Tax File</h2>
       <div className="card space-y-4 p-6">
-        <p className="text-sm text-muted">
-          The Tax Authority&rsquo;s monthly upload (<span lang="ar">نموذج القطاع الخاص</span>), filled from this run: one row per employee on salary tax,
-          freelancers left out, every row a full month. The file is ETA&rsquo;s own template, so its payroll system reads it as it is.
-        </p>
         {!ready ? (
-          <p className="text-sm text-muted">It is made once the CEO approves the run.</p>
+          <p className="text-sm text-muted">Made once the CEO approves the run.</p>
         ) : hidden ? (
-          <p className="text-sm text-muted">It reports everyone&rsquo;s pay, the C-level&rsquo;s included, so it is downloaded by the CEO or a Super Admin.</p>
+          <p className="text-sm text-muted">Only the CEO or a Super Admin can download it.</p>
         ) : check?.kind !== 'ok' ? (
           <p className="text-sm text-danger">{check ? notLoadedText(check, 'ETA check') : 'The ETA check could not be loaded.'}</p>
         ) : (
@@ -325,10 +309,6 @@ async function EtaFile({ run }: { run: PayrollRunView }) {
             {check.value.differences.length > 0 && (
               <div className="space-y-2">
                 <h3 className="font-semibold">ETA&rsquo;s Tax Differs From the Payroll&rsquo;s</h3>
-                <p className="text-sm text-muted">
-                  ETA spreads a commission or bonus over the year&rsquo;s months so far; the payroll taxes the month on its own. The file carries ETA&rsquo;s
-                  figures; the payslips carry the payroll&rsquo;s.
-                </p>
                 <ul className="divide-y divide-line-soft rounded-lg border border-line">
                   {check.value.differences.map((d) => (
                     <li key={d.employeeId} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 py-2 text-sm">
@@ -345,7 +325,6 @@ async function EtaFile({ run }: { run: PayrollRunView }) {
               <a href={fileHref(run.id, 'eta')} className="btn btn-secondary">
                 Download ETA file
               </a>
-              <p className="hint">Upload it on ETA&rsquo;s payroll system as it is.</p>
             </div>
           </>
         )}
@@ -374,24 +353,13 @@ async function Attendance({ run, user }: { run: PayrollRunView; user: SessionUse
   const refreshes = refreshesFromAttendance(user, run.status);
   return (
     <section className="space-y-3">
-      <div>
-        <h2 className="text-lg font-semibold">Attendance</h2>
-        <p className="max-w-4xl text-sm text-muted">
-          The month&apos;s attendance fills the worked hours, the no-show days and the permission hours, by the system&apos;s rules: the attendance
-          days of those who check in on the system, marked &ldquo;from attendance&rdquo;, and Zoho People&apos;s import for the others, marked
-          &ldquo;from Zoho&rdquo;. Those figures can&apos;t be typed over: they change with the attendance, or by importing the month again or
-          undoing the import on its review.
-        </p>
-      </div>
+      <h2 className="text-lg font-semibold">Attendance</h2>
       {(refreshes || (hr && draft)) && (
         <div className="flex flex-wrap items-start gap-x-6 gap-y-3">
           {refreshes && (
-            <div className="max-w-md space-y-1">
-              <ActionButton action={refreshFromAttendance.bind(null, run.id)} pendingText="Refreshing…">
-                Refresh from attendance
-              </ActionButton>
-              <p className="text-xs text-muted">{REFRESH_FROM_ATTENDANCE_HINT}</p>
-            </div>
+            <ActionButton action={refreshFromAttendance.bind(null, run.id)} pendingText="Refreshing…">
+              Refresh from attendance
+            </ActionButton>
           )}
           {hr && draft && (
             <Link href={attendanceUploadHref(run.id)} className="btn btn-secondary min-h-9 px-3">
@@ -419,7 +387,6 @@ function Exclusions({ run }: { run: PayrollRunView }) {
   return (
     <section className="space-y-3">
       <h2 className="text-lg font-semibold">Not on This Run</h2>
-      <p className="text-sm text-muted">Employed in the month, but left out of the run. Refresh the run once each is put right.</p>
       <ul className="card divide-y divide-line-soft">
         {run.exclusions.map((x) => (
           <li key={x.employeeId} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-4 py-3 text-sm">
@@ -475,15 +442,14 @@ async function PayrollRun({ params }: { params: Promise<{ id: string }> }) {
       <section className="space-y-3">
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
           <h2 className="text-lg font-semibold">Monthly Figures</h2>
-          <span className="text-sm text-muted">{figuresNote(run.status, run.lines, can.editInputs, hiddenCount(run))}</span>
+          {figuresNote(run.status) && <span className="text-sm text-muted">{figuresNote(run.status)}</span>}
         </div>
         {run.lines.length === 0 && !hidden ? (
-          <Empty>No one is on this run.{can.refresh ? ' Refresh it once the contracts are signed.' : ''}</Empty>
+          <Empty>No one is on this run.</Empty>
         ) : (
           <InputsGrid
             key={run.status}
             rows={gridRows(run.lines, run.month, todayInCairo(), can.editInputs)}
-            noShowDayMultiplier={run.rules.noShowDayMultiplier}
             editable={editable}
             save={editable ? saveRunLines.bind(null, run.id) : null}
             places={places}
@@ -498,12 +464,7 @@ async function PayrollRun({ params }: { params: Promise<{ id: string }> }) {
         <section className="space-y-3">
           <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
             <h2 className="text-lg font-semibold">Pay</h2>
-            {paid && (
-              <span className="text-sm text-muted">
-                {run.payslips !== undefined && `${payslipsIssuedLabel(run.payslips)}, in English. `}
-                Each opens as a protected PDF; the Arabic one is made from the employee’s Employment tab, on Salary.
-              </span>
-            )}
+            {paid && run.payslips !== undefined && <span className="text-sm text-muted">{payslipsIssuedLabel(run.payslips)}</span>}
           </div>
           <ResultsTable
             lines={run.lines}
@@ -512,6 +473,7 @@ async function PayrollRun({ params }: { params: Promise<{ id: string }> }) {
             lawRates={run.lawRates}
             payslips={paid}
             waive={can.waiveAttendance ? setAttendanceWaiver.bind(null, run.id) : null}
+            waiveKpi={can.waiveKpi ? setKpiWaiver.bind(null, run.id) : null}
             places={places}
             hidden={hidden}
             month={run.month}
@@ -532,10 +494,6 @@ async function PayrollRun({ params }: { params: Promise<{ id: string }> }) {
             <li key={r}>{r}</li>
           ))}
         </ul>
-        <p className="text-sm text-muted">
-          {run.status === 'draft' ? 'Refreshing the run takes the rules as they are now, ' : 'The rules are '}
-          under <Link href="/organization/payroll">Organization → Payroll Setup</Link>.
-        </p>
       </section>
     </div>
   );

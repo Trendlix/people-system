@@ -281,14 +281,11 @@ export function LeaveCalendar({
         {departments && <CalendarDepartmentFilter action={filterAction} hidden={hidden} departments={departments} chosen={departmentId} />}
       </div>
 
-      <p className="text-sm text-muted">
-        {monthSummaryText(people)}
-        {showsWaiting && ', approved and still being decided'}.
-      </p>
+      <p className="text-sm text-muted">{monthSummaryText(people)}</p>
 
       {people.length === 0 ? (
         <div className="card px-6 py-8 text-center text-sm text-muted">
-          No one has leave, permission, a work from home day or official duty in {monthTitle(month)}
+          No one is off in {monthTitle(month)}
           {departmentId ? ' in this department' : ''}.
         </div>
       ) : (

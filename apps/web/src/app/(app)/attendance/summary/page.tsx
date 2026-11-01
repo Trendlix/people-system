@@ -141,9 +141,7 @@ async function Summary({ searchParams }: { searchParams: PageProps<'/attendance/
               <h2 id="summary-heading" className="text-lg font-semibold">
                 {titleCase(title)} by Department and Team
               </h2>
-              <p className="text-xs text-muted">
-                As of {formatDateTime(loaded.value.generatedAt)} · a team is counted in its department too · each person where they worked that month
-              </p>
+              <p className="text-xs text-muted">As of {formatDateTime(loaded.value.generatedAt)}</p>
             </div>
             {/* a plain link, never prefetched: the workbook is made on the API */}
             <a href={summaryExcelHref(period)} className="btn btn-secondary no-underline">
@@ -233,13 +231,7 @@ export default function AttendanceSummaryPage({ searchParams }: PageProps<'/atte
   return (
     <StaffOnly>
       <div className="space-y-6">
-        <div>
-          <h1 className="page-title">Attendance Summary</h1>
-          <p className="mt-1 max-w-3xl text-muted">
-            The attendance, from check-ins on the system and Zoho People&apos;s imports, by department and team: absent days, short hours against
-            each shift, permission hours, remote days and the hours worked a day on average.
-          </p>
-        </div>
+        <h1 className="page-title">Attendance Summary</h1>
         <Suspense fallback={<Loading />}>
           <Summary searchParams={searchParams} />
         </Suspense>

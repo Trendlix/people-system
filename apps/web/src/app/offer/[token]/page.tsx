@@ -92,12 +92,10 @@ function OfferDocument({ token, offer }: { token: string; offer: PublicOffer }) 
         </a>
       </div>
       <iframe src={src} title={`Job offer ${offer.number}`} className="h-[70dvh] min-h-96 w-full rounded-xl border border-line bg-white" />
-      <p className="text-xs text-muted">
-        If the offer doesn&apos;t show above (some phones show only its first page),{' '}
+      <p className="text-xs">
         <a href={src} target="_blank" rel="noopener noreferrer">
-          open it in a new tab
-        </a>{' '}
-        or download it.
+          Open in a new tab
+        </a>
       </p>
     </section>
   );
@@ -109,7 +107,7 @@ async function CandidateOffer({ params }: { params: Promise<{ token: string }> }
   const invalid = (brand: Brand | null, said?: string) => (
     <Notice brand={brand} title="This Link Isn't Valid" titleAr="هذا الرابط غير صالح">
       {said && <p>{said}</p>}
-      <p>Please open the latest link you received, or contact the HR team who sent it. A link that wasn&apos;t copied in full doesn&apos;t work either.</p>
+      <p>Please open the latest link you received, or contact the HR team who sent it.</p>
     </Notice>
   );
   if (!isOfferToken(token)) return invalid(null);
@@ -146,29 +144,28 @@ async function CandidateOffer({ params }: { params: Promise<{ token: string }> }
             {o.respondedAt && ` on ${formatDate(o.respondedAt)}`}
             {o.acceptedName && <>, as “{o.acceptedName}”</>}. Welcome to {brand.nameEn}.
           </p>
-          <p>The HR team will be in touch about your first day, {formatDate(o.joinDate)}, and the papers to bring.</p>
+          <p>First day: {formatDate(o.joinDate)}.</p>
         </Notice>
       );
     case 'declined':
       return (
         <Notice brand={brand} title="You Declined This Offer" titleAr="تم الاعتذار عن العرض">
           <p>
-            You declined the offer{o.respondedAt && ` on ${formatDate(o.respondedAt)}`}. Thank you for letting us know, {firstName}, and we wish you all
-            the best.
+            You declined the offer{o.respondedAt && ` on ${formatDate(o.respondedAt)}`}. Thank you for letting us know.
           </p>
         </Notice>
       );
     case 'withdrawn':
       return (
         <Notice brand={brand} title="This Offer Has Been Withdrawn" titleAr="تم سحب هذا العرض">
-          <p>It can no longer be accepted. If you have any questions, please contact the HR team at {brand.nameEn}.</p>
+          <p>It can no longer be accepted.</p>
         </Notice>
       );
     case 'expired':
       return (
         <Notice brand={brand} title="This Offer Has Expired" titleAr="انتهت صلاحية هذا العرض">
           <p>
-            It was open until {formatDate(o.expiresOn)}. If you are still interested, please contact the HR team at {brand.nameEn}: they can extend it.
+            It was open until {formatDate(o.expiresOn)}; the HR team at {brand.nameEn} can extend it.
           </p>
         </Notice>
       );
@@ -208,12 +205,9 @@ async function CandidateOffer({ params }: { params: Promise<{ token: string }> }
 
         <OfferDocument token={token} offer={o} />
 
-        <AcceptOffer action={acceptOffer.bind(null, token)} nameEn={o.fullNameEn} nameAr={o.fullNameAr} />
+        <AcceptOffer action={acceptOffer.bind(null, token)} nameEn={o.fullNameEn} />
         <DeclineOffer action={declineOffer.bind(null, token)} />
-        <p className="text-center text-xs text-muted">
-          Your answer is recorded with the date, time and device it is sent from. Questions? Reply to the email the offer came in, or contact the HR team at{' '}
-          {brand.nameEn}.
-        </p>
+        <p className="text-center text-xs text-muted">Your answer is recorded with the date, time and device it is sent from.</p>
       </div>
     </>
   );

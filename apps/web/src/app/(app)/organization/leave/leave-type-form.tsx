@@ -22,15 +22,6 @@ const optional = <span className="font-normal text-muted">(optional)</span>;
 const chip =
   'flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-card px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft';
 
-/** What each kind of balance means, under its picker. */
-const BALANCE_HINTS: Record<LeaveBalanceKind, string> = {
-  annual: 'The annual leave itself: its days by service, age and disability are set above.',
-  from_annual: 'Counted against the annual balance, with a most a year of its own: casual leave, 7 a year (Art. 128).',
-  yearly: 'Days of its own each calendar year, apart from the annual balance.',
-  per_request: 'So many days each time it is taken, e.g. Hajj 30, maternity 120.',
-  none: 'No balance: as many days as needed, e.g. sick leave as the medical authority sets.',
-};
-
 export function LeaveTypeForm({ action, type, nextOrder, cancelHref }: { action: Action; type?: LeaveTypeView; nextOrder: number; cancelHref: string }) {
   const { state, pending, form } = useKeptForm(action);
   const fid = useFieldIds();
@@ -77,7 +68,7 @@ export function LeaveTypeForm({ action, type, nextOrder, cancelHref }: { action:
       })
     : null;
 
-  const limitInput = (key: keyof typeof limits, label: string, hint: string, placeholder: string) => (
+  const limitInput = (key: keyof typeof limits, label: string, placeholder: string) => (
     <div>
       <label htmlFor={fid(key)} className="label">
         {label} {optional}
@@ -91,12 +82,8 @@ export function LeaveTypeForm({ action, type, nextOrder, cancelHref }: { action:
         placeholder={placeholder}
         value={limits[key]}
         onChange={(e) => setLimits((l) => ({ ...l, [key]: e.target.value }))}
-        aria-describedby={fid(`${key}-hint`)}
         className="input w-32 tabular-nums"
       />
-      <p id={fid(`${key}-hint`)} className="hint">
-        {hint}
-      </p>
     </div>
   );
 
@@ -152,13 +139,9 @@ export function LeaveTypeForm({ action, type, nextOrder, cancelHref }: { action:
               maxLength={3}
               value={percent}
               onChange={(e) => setPercent(e.target.value)}
-              aria-describedby={fid('payPercent-hint')}
+              placeholder="e.g. 75"
               className="input w-24 tabular-nums"
             />
-            <p id={fid('payPercent-hint')} className="hint">
-              What a day of it pays; the rest of the day is deducted on the payroll. Sick leave: as the Social Insurance Law 148/2019 sets it (the
-              accountant confirms).
-            </p>
           </div>
         )}
       </fieldset>
@@ -169,23 +152,20 @@ export function LeaveTypeForm({ action, type, nextOrder, cancelHref }: { action:
           <label htmlFor={fid('balance')} className="label">
             Counted against
           </label>
-          <Select id={fid('balance')} name="balance" value={balance} onChange={(e) => setBalance(e.target.value as LeaveBalanceKind)} aria-describedby={fid('balance-hint')} className="input">
+          <Select id={fid('balance')} name="balance" value={balance} onChange={(e) => setBalance(e.target.value as LeaveBalanceKind)} className="input">
             {LEAVE_BALANCES.map((b) => (
               <option key={b} value={b}>
                 {LEAVE_BALANCE_LABELS[b]}
               </option>
             ))}
           </Select>
-          <p id={fid('balance-hint')} className="hint">
-            {BALANCE_HINTS[balance]}
-          </p>
         </div>
         <div className="grid gap-5 sm:grid-cols-2">
-          {withYear && limitInput('daysPerYear', balance === 'yearly' ? 'Days a year' : 'Most days a year', 'Whole days, e.g. 7.', balance === 'yearly' ? '' : 'No limit')}
-          {limitInput('maxPerRequest', balance === 'per_request' ? 'Days a request' : 'Most days a request', 'Whole days, e.g. 2.', 'No limit')}
-          {limitInput('maxTimesInService', 'Most times in service', 'E.g. 3 for the birth of a child; once for Hajj.', 'No limit')}
-          {limitInput('minServiceMonths', 'Months of service needed first', 'E.g. 60 (5 years) for Hajj (Art. 130).', 'None')}
-          {limitInput('noticeDays', 'Days of notice', 'Days before the first day an employee must ask, e.g. 10 for exams (Art. 126). HR recording it needs none.', 'None')}
+          {withYear && limitInput('daysPerYear', balance === 'yearly' ? 'Days a year' : 'Most days a year', balance === 'yearly' ? 'e.g. 7' : 'No limit')}
+          {limitInput('maxPerRequest', balance === 'per_request' ? 'Days a request' : 'Most days a request', 'No limit')}
+          {limitInput('maxTimesInService', 'Most times in service', 'No limit')}
+          {limitInput('minServiceMonths', 'Months of service needed first', 'None')}
+          {limitInput('noticeDays', 'Days of notice', 'None')}
         </div>
       </fieldset>
 
@@ -217,10 +197,6 @@ export function LeaveTypeForm({ action, type, nextOrder, cancelHref }: { action:
             Half days allowed
           </label>
         </div>
-        <p className="hint">
-          A document: a medical certificate, proof of sitting the exam. Calendar days: every day from the first to the last (Hajj, maternity); else
-          working days, the rest days and official holidays not counted (Art. 124).
-        </p>
         <div className="grid gap-5 sm:grid-cols-2">
           <div>
             <label htmlFor={fid('gender')} className="label">
@@ -243,12 +219,8 @@ export function LeaveTypeForm({ action, type, nextOrder, cancelHref }: { action:
               autoComplete="off"
               maxLength={3}
               defaultValue={valueOf(state, 'sortOrder', String(type?.sortOrder ?? nextOrder))}
-              aria-describedby={fid('sortOrder-hint')}
               className="input w-24 tabular-nums"
             />
-            <p id={fid('sortOrder-hint')} className="hint">
-              Lower first, as employees choose it.
-            </p>
           </div>
         </div>
       </fieldset>
@@ -260,15 +232,11 @@ export function LeaveTypeForm({ action, type, nextOrder, cancelHref }: { action:
 
       <div className="border-t border-line-soft pt-5">
         <label className={`${chip} w-fit font-semibold`}>
-          <input type="checkbox" role="switch" name="active" defaultChecked={ticked('active', type?.active ?? true)} aria-describedby={fid('active-hint')} className="size-5 accent-accent" />
+          <input type="checkbox" role="switch" name="active" defaultChecked={ticked('active', type?.active ?? true)} className="size-5 accent-accent" />
           On
         </label>
-        <p id={fid('active-hint')} className="hint">
-          Off: not offered for new requests. The requests already sent keep going through their approvals.
-        </p>
       </div>
 
-      {type && <p className="hint">A change applies to the requests sent from now on; those sent keep their days.</p>}
       <div className="flex flex-wrap gap-3">
         <SubmitButton busy={pending}>{type ? 'Save changes' : 'Add type'}</SubmitButton>
         <Link href={cancelHref} className="btn btn-secondary">

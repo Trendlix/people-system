@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
-import { KPI_PRACTICE_BANNER, KPI_PRACTICE_NOTE, kpiMonthName, type KpiPracticeRow } from '@trendlix/shared';
+import { kpiMonthName, type KpiPracticeRow } from '@trendlix/shared';
 import { DeleteForm } from '@/components/form';
 import { KPI_PATHS } from '@/lib/kpi-paths';
 import { canDelete } from '@/lib/roles';
@@ -72,7 +72,7 @@ function PracticeList({ rows, deletes }: { rows: KpiPracticeRow[]; deletes: bool
                   {deletes && (
                     <DeleteForm
                       action={deletePractice.bind(null, r.id)}
-                      confirmText={`Delete the practice scorecard of ${r.employee.fullNameEn} for ${kpiMonthName(r.month)}? Nothing real changes.`}
+                      confirmText={`Delete the practice scorecard of ${r.employee.fullNameEn} for ${kpiMonthName(r.month)}?`}
                     />
                   )}
                 </div>
@@ -96,10 +96,6 @@ async function Practice({ searchParams }: { searchParams: PageProps<'/kpis/all/p
   return (
     <div className="space-y-6">
       <AllKpisTabs current="practice" />
-      <div role="note" className="rounded-lg border border-warn/40 bg-warn-soft px-4 py-3 text-sm text-warn">
-        <p className="font-semibold">{KPI_PRACTICE_BANNER}</p>
-        <p className="mt-0.5">{KPI_PRACTICE_NOTE}</p>
-      </div>
       {deleted && (
         <p role="status" className="rounded-lg bg-ok-soft px-4 py-3 text-sm text-ok">
           {deleted}
@@ -126,11 +122,11 @@ async function Practice({ searchParams }: { searchParams: PageProps<'/kpis/all/p
           {rows.kind !== 'ok' ? (
             <p className="px-5 pb-5 text-sm text-muted">{kpiNotLoaded(rows, 'practice scorecards')}</p>
           ) : rows.value.length === 0 ? (
-            <p className="px-5 pb-5 text-sm text-muted">No practice scorecards yet. Start one above to try the steps today.</p>
+            <p className="px-5 pb-5 text-sm text-muted">No practice scorecards yet.</p>
           ) : (
             <>
               <PracticeList rows={rows.value} deletes={deletes} />
-              <p className="border-t border-line px-5 py-3 text-sm text-muted">{practiceLabel(rows.value.length)}, newest first.</p>
+              <p className="border-t border-line px-5 py-3 text-sm text-muted">{practiceLabel(rows.value.length)}.</p>
             </>
           )}
         </div>
@@ -143,10 +139,6 @@ export default function PracticeScorecardsPage({ searchParams }: PageProps<'/kpi
   return (
     <div className="max-w-7xl">
       <h1 className="page-title">Practice Scorecards</h1>
-      <p className="mt-1 text-muted">
-        Try the whole KPI flow today: start a practice scorecard for anyone and any month, from a draft or a published template, then take every step
-        yourself (the self-rating, the manager&apos;s scoring, HR&apos;s calibration and the sign-off), or view as the person and act as them.
-      </p>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>
           <Practice searchParams={searchParams} />

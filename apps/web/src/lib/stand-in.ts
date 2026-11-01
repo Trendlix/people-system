@@ -23,7 +23,7 @@ export function standingInBannerText(list: readonly StandingFor[] | null | undef
   if (!people.length) return null;
   const parts = people.map((p) => `${p.fullNameEn} until ${formatDate(p.until)}`);
   const who = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
-  return `You’re standing in for ${who}: their ${people.length === 1 ? 'team’s' : 'teams’'} requests come to you.`;
+  return `You’re standing in for ${who}.`;
 }
 
 /**
@@ -32,5 +32,5 @@ export function standingInBannerText(list: readonly StandingFor[] | null | undef
  */
 export function standingInNoteText(person: { fullNameEn: string } | null | undefined): string | null {
   if (!person?.fullNameEn.trim()) return null;
-  return `Standing in for ${person.fullNameEn}, who is on leave: you decide this at their step until they are back.`;
+  return `Standing in for ${person.fullNameEn}, on leave.`;
 }

@@ -38,12 +38,6 @@ export function lastDayText(e: { lastWorkingDay: string; noticeEndsOn?: string |
     : `Agreed last working day ${show(e.lastWorkingDay)}`;
 }
 
-/** The hint under the "Agreed last working day" field, with the day worked out from the notice (null: not known yet). */
-export function agreedLastDayHint(workedOut: string | null, approximate: boolean, show: (ymd: string) => string): string {
-  const use = workedOut ? `Leave it empty to use the notice: ${approximate ? 'about ' : ''}${show(workedOut)}.` : 'Leave it empty to use the notice.';
-  return `${use} Set it when you agreed a different last day with them.`;
-}
-
 /**
  * Why an agreed last working day typed can't be used, or null: before the notice day (the API checks the same). Both are
  * YYYY-MM-DD, or null while empty or not (properly) typed, which is nothing to check.

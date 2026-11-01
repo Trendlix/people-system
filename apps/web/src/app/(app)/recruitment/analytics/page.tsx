@@ -31,11 +31,11 @@ function Figures({ r }: { r: RecruitmentAnalytics }) {
   return (
     <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
       <Figure label="Open positions" value={r.openPositions} note={`${r.openVacancies} open ${r.openVacancies === 1 ? 'vacancy' : 'vacancies'}`} />
-      <Figure label="Active candidates" value={r.activeCandidates} note="Applied to Offer, on open vacancies" />
+      <Figure label="Active candidates" value={r.activeCandidates} />
       <Figure label="Applicants" value={r.applicants} note={`Applied in ${r.year}`} />
       <Figure label="Hires" value={r.hires} note={`Offers accepted in ${r.year}`} />
-      <Figure label="Time to hire" value={daysFigure(r.timeToHireDays)} note="Applied → offer accepted" />
-      <Figure label="Time to fill" value={daysFigure(r.timeToFillDays)} note="Published → offer accepted" />
+      <Figure label="Time to hire" value={daysFigure(r.timeToHireDays)} />
+      <Figure label="Time to fill" value={daysFigure(r.timeToFillDays)} />
       <Figure label="Offer acceptance" value={percentFigure(r.offers.acceptanceRate)} note={`${r.offers.accepted} of ${r.offers.accepted + r.offers.declined} answered`} />
       <Figure label="Probation pass rate" value={percentFigure(r.probation.rate)} note={`${r.probation.passed} of ${r.probation.ended} ended`} />
     </div>
@@ -50,7 +50,6 @@ async function Report({ q }: { q: AnalyticsQuery }) {
   return (
     <div className="space-y-6">
       <Figures r={r} />
-      {r.hidden > 0 && <p className="text-xs text-muted">C-level vacancies are left out.</p>}
       <div className="grid gap-6 lg:grid-cols-2">
         <section aria-labelledby="funnel" className="card overflow-x-auto">
           <h2 id="funnel" className="px-6 pt-5 text-lg font-semibold">

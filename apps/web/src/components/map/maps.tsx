@@ -23,7 +23,7 @@ type PickerProps = ComponentProps<typeof LeafletPicker>;
 
 const say = 'flex h-full items-center justify-center p-4 text-center text-sm text-muted';
 const Waiting = () => <p className={say}>Loading the map…</p>;
-const NotLoaded = () => <p className={say}>The map could not be loaded. The fields work without it; reload the page to try again.</p>;
+const NotLoaded = () => <p className={say}>The map could not be loaded.</p>;
 
 const LazyLocations = dynamic(
   () =>

@@ -27,7 +27,7 @@ export function readAgainChoices(r: Pick<CvReadingView, 'status' | 'method'>): R
       asScan: false,
       label: 'Read again',
       pendingLabel: 'Asking…',
-      confirm: 'Read this CV again? What it found is worked out again, and the CV match with it. If it fails, what was read before stays.',
+      confirm: 'Read this CV again?',
     },
   ];
   if (r.method !== 'docx')
@@ -35,7 +35,7 @@ export function readAgainChoices(r: Pick<CvReadingView, 'status' | 'method'>): R
       asScan: true,
       label: 'Read as a scan (OCR)',
       pendingLabel: 'Asking…',
-      confirm: 'Read this CV as a scan, by the OCR service, even though it has text of its own? For a designed PDF whose text came out jumbled. If it fails, what was read before stays.',
+      confirm: 'Read this CV as a scan?',
     });
   return choices;
 }

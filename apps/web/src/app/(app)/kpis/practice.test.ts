@@ -104,9 +104,9 @@ describe('the step stood in for', () => {
     expect(practiceStepLabel('score', v)).toBe('Score as the manager');
     expect(practiceStepLabel('sign_employee', v)).toBe('Sign as Omar');
     expect(practiceStepLabel('score', card('self_rating', { scorer: { kind: 'hr', name: null } }))).toBe('Score as HR');
-    expect(standInText('self_rate', v)).toBe('You’re rating as Omar Ali. It is kept as done by you for Omar Ali.');
-    expect(standInText('calibrate', v)).toBe('You’re calibrating as HR. It is kept as done by you for HR.');
-    expect(standInText('sign_manager', v)).toBe('You’re signing as the manager. It is kept as done by you for the manager.');
+    expect(standInText('self_rate', v)).toBe('You’re rating as Omar Ali.');
+    expect(standInText('calibrate', v)).toBe('You’re calibrating as HR.');
+    expect(standInText('sign_manager', v)).toBe('You’re signing as the manager.');
     expect(standInTitle('score', 'the manager')).toBe('Scoring as the manager');
   });
 });
@@ -115,26 +115,26 @@ describe('once a step is done', () => {
   it('says what was done and the next step', () => {
     expect(practiceDoneHref(ID, 'started')).toBe(`/kpis/scorecards/${ID}?done=started`);
     expect(practiceDoneText({ done: 'started' }, card('self_rating'))).toEqual({
-      text: 'Practice scorecard started. Nobody is told of it. Next: Rate as Omar (practice) or Score as the manager.',
+      text: 'Practice scorecard started. Next: Rate as Omar (practice) or Score as the manager.',
       tone: 'ok',
     });
-    expect(practiceDoneText({ done: 'self_sent' }, card('manager'))?.text).toBe('The self-rating is sent. Next: Score as the manager.');
-    expect(practiceDoneText({ done: 'score_sent' }, card('hr'))?.text).toBe('The scoring is sent to HR to calibrate. Next: Calibrate as HR.');
+    expect(practiceDoneText({ done: 'self_sent' }, card('manager'))?.text).toBe('Self-rating sent. Next: Score as the manager.');
+    expect(practiceDoneText({ done: 'score_sent' }, card('hr'))?.text).toBe('Sent to HR. Next: Calibrate as HR.');
     expect(practiceDoneText({ done: 'calibrated' }, card('sign_off'))?.text).toBe('Calibrated and sent for sign-off. Next: Sign as Omar or Sign as the manager.');
-    expect(practiceDoneText({ done: 'signed' }, card('final'))?.text).toBe('Signed. Both have signed. It is final now: the practice run is complete.');
+    expect(practiceDoneText({ done: 'signed' }, card('final'))?.text).toBe('Signed. Both have signed. It is final now.');
   });
 
   it('says it moved on in amber, nothing for anything else, and no next step for someone viewing as the person', () => {
     expect(practiceDoneText({ done: 'moved' }, card('hr'))?.tone).toBe('warn');
     expect(practiceDoneText({ done: 'nope' }, card('hr'))).toBeNull();
     expect(practiceDoneText({}, card('hr'))).toBeNull();
-    expect(practiceDoneText({ done: 'self_sent' }, card('manager', { standIn: null }))?.text).toBe('The self-rating is sent.');
+    expect(practiceDoneText({ done: 'self_sent' }, card('manager', { standIn: null }))?.text).toBe('Self-rating sent.');
   });
 
   it('says how many were deleted', () => {
     expect(deletedText({ deleted: '1' })).toBe('1 practice scorecard deleted.');
     expect(deletedText({ deleted: '4' })).toBe('4 practice scorecards deleted.');
-    expect(deletedText({ deleted: '0' })).toBe('There were no practice scorecards to delete.');
+    expect(deletedText({ deleted: '0' })).toBe('None to delete.');
     expect(deletedText({ deleted: 'x' })).toBeNull();
     expect(deletedText({})).toBeNull();
   });
@@ -179,7 +179,7 @@ describe('the list and the page', () => {
       `Started by hr@example.test on ${formatDateTime(PRACTICE.startedAt)}, on version 2.`,
     );
     expect(unplacedText(0)).toBeNull();
-    expect(unplacedText(2)).toBe('2 metrics of the draft are in Unplaced, so left out until placed in a pillar.');
+    expect(unplacedText(2)).toBe('2 metrics in Unplaced left out.');
   });
 
   it('marks a practice one Practice in the lists a Super Admin viewing as the person sees', () => {

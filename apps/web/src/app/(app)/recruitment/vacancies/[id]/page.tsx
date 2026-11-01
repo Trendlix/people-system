@@ -15,7 +15,7 @@ import { moveOnBoard, moveVacancy } from '../../actions';
 import { PipelineBoard } from '../../board';
 import { candidateHref } from '../../candidates';
 import { CvDialogHost, CvOpenButton } from '../../cv-dialog';
-import { NO_KEY_SKILLS_NOTE, suggestKeySkillsHref } from '../../cv-fit';
+import { suggestKeySkillsHref } from '../../cv-fit';
 import { DeleteVacancyButton } from '../../delete-ui';
 import { loadApplicants, loadBoard, loadSuggestions, loadVacancy, recruitmentNotLoaded } from '../../data';
 import { ActionButton, CopyLink, ReasonButton } from '../../forms';
@@ -28,7 +28,6 @@ import {
   emptyText,
   inviteConfirmText,
   pausedText,
-  poolText,
   readSuggestionStatus,
   reasonChips,
   scoreText,
@@ -258,12 +257,9 @@ async function Suggestions({ v, searchParams }: { v: VacancyView; searchParams: 
   const cvs = s.rows.map((r) => r.cv).filter((c): c is ScreeningCv => !!c);
   return (
     <section aria-labelledby="vacancy-suggestions" className="space-y-3">
-      <div className="space-y-1">
-        <h2 id="vacancy-suggestions" className="text-lg font-semibold">
-          Suggested From Earlier CVs
-        </h2>
-        <p className="max-w-3xl text-sm text-muted">{poolText(s.recencyMonths)}</p>
-      </div>
+      <h2 id="vacancy-suggestions" className="text-lg font-semibold">
+        Suggested From Earlier CVs
+      </h2>
       {paused && (
         <p role="note" className="rounded-lg bg-canvas px-4 py-3 text-sm text-muted">
           {paused}
@@ -292,7 +288,7 @@ async function Suggestions({ v, searchParams }: { v: VacancyView; searchParams: 
       )}
       {/* the CV window, opened by ?cv= (24 October 2026); the comments stay on the candidate's profile */}
       <Suspense fallback={null}>
-        <CvDialogHost cvs={cvs} data={null} pageKey={GENERAL_KEY} commentsNotLoaded="Their screening comments are on the candidate’s profile." />
+        <CvDialogHost cvs={cvs} data={null} pageKey={GENERAL_KEY} commentsNotLoaded="On the candidate’s profile." />
       </Suspense>
     </section>
   );
@@ -344,7 +340,7 @@ async function Vacancy({ params, searchParams }: PageProps<'/recruitment/vacanci
           <p>{v.sentBackReason}</p>
         </div>
       )}
-      {v.status === 'pending' && <p className="text-sm text-muted">Waiting for the CEO since {v.submittedAt ? formatDateTime(v.submittedAt) : '—'}: it shows on the careers page once approved.</p>}
+      {v.status === 'pending' && <p className="text-sm text-muted">Waiting for the CEO since {v.submittedAt ? formatDateTime(v.submittedAt) : '—'}.</p>}
       {v.status === 'closed' && v.closeReason && <p className="text-sm text-muted">Closed: {v.closeReason}</p>}
 
       <Moves v={v} />
@@ -375,7 +371,6 @@ async function Vacancy({ params, searchParams }: PageProps<'/recruitment/vacanci
           <Fact label="Drafted by">{v.createdBy?.name ?? v.createdBy?.email ?? '—'}</Fact>
           <Fact label="Approved by">{v.status !== 'draft' && v.status !== 'pending' && v.decidedBy ? (v.decidedBy.name ?? v.decidedBy.email) : '—'}</Fact>
         </dl>
-        {!hiringManager && <p className="text-xs text-muted">The salary range is for HR, the CEO and a Super Admin only: never on the careers page.</p>}
       </section>
 
       {published && (
@@ -391,7 +386,6 @@ async function Vacancy({ params, searchParams }: PageProps<'/recruitment/vacanci
               </a>
             )}
           </div>
-          <p className="text-sm text-muted">The same job page on the careers site for each channel: applications say which link they came by.</p>
           <ul>
             {channelLinks(careersSite, v.slug).map((l) => (
               <CopyLink key={l.source} source={l.source} href={l.href} />
@@ -424,7 +418,7 @@ async function Vacancy({ params, searchParams }: PageProps<'/recruitment/vacanci
           Screening Questions
         </h2>
         {v.questions.length === 0 ? (
-          <p className="text-sm text-muted">None: applicants send their details and CV only.</p>
+          <p className="text-sm text-muted">None.</p>
         ) : (
           <ol className="list-decimal space-y-2 pl-5 text-sm">
             {v.questions.map((q) => (
@@ -449,21 +443,17 @@ async function Vacancy({ params, searchParams }: PageProps<'/recruitment/vacanci
         </h2>
         {/* none listed (owner, 25 October 2026: "when a vacancy has no key skills, suggest them from its description for HR to confirm") */}
         {v.keySkills.length === 0 ? (
-          <p role="note" className="text-sm text-muted">
-            {NO_KEY_SKILLS_NOTE}{' '}
-            {v.can.edit ? <Link href={suggestKeySkillsHref(v.id)}>Suggest key skills</Link> : 'HR can suggest key skills on its form.'}
+          <p className="text-sm text-muted">
+            None yet. {v.can.edit && <Link href={suggestKeySkillsHref(v.id)}>Suggest key skills</Link>}
           </p>
         ) : (
-          <>
-            <ul className="flex flex-wrap gap-2">
-              {v.keySkills.map((s) => (
-                <li key={s} className="badge bg-canvas text-ink">
-                  {s}
-                </li>
-              ))}
-            </ul>
-            <p className="text-xs text-muted">Looked for in each applicant&apos;s CV: one part of the CV match %, with the title, years, requirements, education and agency background. It never filters anyone out.</p>
-          </>
+          <ul className="flex flex-wrap gap-2">
+            {v.keySkills.map((s) => (
+              <li key={s} className="badge bg-canvas text-ink">
+                {s}
+              </li>
+            ))}
+          </ul>
         )}
       </section>
 

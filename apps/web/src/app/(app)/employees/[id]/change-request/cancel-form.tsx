@@ -11,7 +11,7 @@ export function CancelRequestForm({ action }: { action: (prev: FormState, fd: Fo
     <form
       action={formAction}
       onSubmit={(e) => {
-        if (!window.confirm('Cancel this change request? HR will no longer be asked to decide on it.')) e.preventDefault();
+        if (!window.confirm('Cancel this change request?')) e.preventDefault();
       }}
       className="space-y-3"
     >

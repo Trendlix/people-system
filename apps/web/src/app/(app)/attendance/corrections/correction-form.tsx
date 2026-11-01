@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { startTransition, useActionState, useState, useSyncExternalStore } from 'react';
-import { ATTENDANCE_SOURCE_LABELS, CORRECTION_ASK_WORKING_DAYS, CORRECTION_AWAY_TEXT, CORRECTION_REASON_MAX, type AttendanceSource, type CorrectableDay } from '@trendlix/shared';
+import { ATTENDANCE_SOURCE_LABELS, CORRECTION_REASON_MAX, type AttendanceSource, type CorrectableDay } from '@trendlix/shared';
 import { DateInput, TimeInput } from '@/components/date-time-inputs';
 import { FormErrors, useFieldIds, valueOf } from '@/components/form';
 import { Select } from '@/components/select';
@@ -11,7 +11,7 @@ import type { MonthCorrectable, MonthCorrection } from '@/lib/correction-types';
 import { formatDate, parseDate } from '@/lib/format';
 import type { FormState } from '@/lib/types';
 import { weekdayOf } from '../../organization/holidays/holidays';
-import { CORRECTION_KIND_OPTIONS, correctionFormProblems, correctionReadyText, dayBeforeText, timesNeeded, type TypedCorrection } from './corrections';
+import { CORRECTION_KIND_OPTIONS, correctionFormProblems, dayBeforeText, timesNeeded, type TypedCorrection } from './corrections';
 
 // The attendance correction form (owner, 19 October 2026: "Attendance corrections with approval ("I forgot to check
 // out")"): the employee's own from My Attendance → the day → Ask for a correction, or HR's direct correction from the
@@ -55,7 +55,6 @@ export function CorrectionForm({
   date,
   today,
   cancelHref,
-  toCeo = false,
   odHref = NEW_OD_HREF,
 }: {
   action: Action;
@@ -66,8 +65,6 @@ export function CorrectionForm({
   date: string | null;
   today: string;
   cancelHref: string;
-  /** The employee is C-level (19 October 2026): after their manager it goes to the CEO, not HR. */
-  toCeo?: boolean;
   /** Where the employee asks for official duty (the phone pages have their own). */
   odHref?: string;
 }) {
@@ -127,24 +124,17 @@ export function CorrectionForm({
           <label htmlFor={fid('date')} className="label">
             Day
           </label>
-          <DateInput id={fid('date')} name="date" required defaultValue={typed.date} aria-describedby={fid('date-hint')} />
-          <p id={fid('date-hint')} className="hint">
-            {byHr
-              ? 'A day gone by, or today, in a month whose payroll isn’t approved yet.'
-              : `Today, or a day up to ${CORRECTION_ASK_WORKING_DAYS} working days ago, in a month whose payroll isn’t approved yet.`}
-          </p>
+          <DateInput id={fid('date')} name="date" required defaultValue={typed.date} />
         </div>
-        <div role="status" aria-live="polite" className="rounded-lg bg-canvas px-4 py-3 text-sm sm:self-start">
-          {day && known ? (
-            <>
+        <div role="status" aria-live="polite" className="sm:self-start">
+          {day && known && (
+            <div className="rounded-lg bg-canvas px-4 py-3 text-sm">
               <p className="text-xs text-muted">
                 On record for {weekdayOf(day)} {formatDate(day)}
               </p>
               <p className="mt-0.5 font-semibold tabular-nums">{dayBeforeText(onRecord)}</p>
               {onRecord && <p className="text-xs text-muted">{ATTENDANCE_SOURCE_LABELS[onRecord.source as AttendanceSource] ?? onRecord.source}</p>}
-            </>
-          ) : (
-            <p className="text-muted">{day ? 'The day on record is checked when it is sent.' : 'Choose the day to see what is on record for it.'}</p>
+            </div>
           )}
         </div>
         <div className="sm:col-span-2">
@@ -159,35 +149,28 @@ export function CorrectionForm({
               </option>
             ))}
           </Select>
-          <p className="hint">
-            {CORRECTION_AWAY_TEXT}
-            {!byHr && (
-              <>
-                {' '}
-                <Link href={odHref} className="font-semibold">
-                  Ask for official duty
-                </Link>
-              </>
-            )}
-          </p>
+          {!byHr && (
+            <p className="hint">
+              <Link href={odHref} className="font-semibold">
+                Worked away from the office? Ask for official duty
+              </Link>
+            </p>
+          )}
         </div>
         {needs.checkIn !== 'none' && (
           <div>
             <label htmlFor={fid('checkIn')} className="label">
               {label(needs.checkIn, 'Came in at')}
             </label>
-            <TimeInput id={fid('checkIn')} name="checkIn" defaultValue={typed.checkIn} aria-describedby={fid('times-hint')} />
+            <TimeInput id={fid('checkIn')} name="checkIn" defaultValue={typed.checkIn} />
           </div>
         )}
         <div>
           <label htmlFor={fid('checkOut')} className="label">
             {label(needs.checkOut, 'Left at')}
           </label>
-          <TimeInput id={fid('checkOut')} name="checkOut" defaultValue={typed.checkOut} aria-describedby={fid('times-hint')} />
+          <TimeInput id={fid('checkOut')} name="checkOut" defaultValue={typed.checkOut} />
         </div>
-        <p id={fid('times-hint')} className="hint -mt-3 sm:col-span-2">
-          Times on the day, to the quarter hour, e.g. 9:15 AM and 6:30 PM. A time left empty stays as on record.
-        </p>
         <div className="sm:col-span-2">
           <label htmlFor={fid('reason')} className="label">
             Why
@@ -200,18 +183,14 @@ export function CorrectionForm({
             maxLength={CORRECTION_REASON_MAX}
             value={typed.reason}
             onChange={(e) => set('reason', e.target.value)}
-            aria-describedby={fid('reason-hint')}
+            placeholder={byHr ? 'E.g. Seen at the office by HR' : 'E.g. I forgot to check out'}
             className="input"
           />
-          <p id={fid('reason-hint')} className="hint">
-            {byHr ? 'Why HR corrects it, e.g. seen at the office by HR.' : 'E.g. I left for a client meeting and forgot to check out. Your manager and HR read it.'} Up to{' '}
-            {CORRECTION_REASON_MAX} characters.
-          </p>
         </div>
       </div>
 
       <div role="status" aria-live="polite">
-        {problems.length ? (
+        {problems.length > 0 && (
           <div className="rounded-lg border border-line bg-canvas px-4 py-3 text-sm">
             <p className="font-medium">Before you can {byHr ? 'correct' : 'send'} it:</p>
             <ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted">
@@ -220,8 +199,6 @@ export function CorrectionForm({
               ))}
             </ul>
           </div>
-        ) : (
-          <p className="rounded-lg bg-ok-soft px-4 py-3 text-sm text-ok">{correctionReadyText(typed, byHr, person.name, toCeo)}</p>
         )}
       </div>
 

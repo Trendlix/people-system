@@ -83,7 +83,6 @@ export function LinkPeople({
           autoFocus
           value=""
           onChange={(e) => setChosen((c) => withChosen(c, e.target.value))}
-          aria-describedby={fid('person-hint')}
           className="input"
         >
           <option value="">{options.length ? 'Choose a person…' : 'No one else to choose'}</option>
@@ -93,9 +92,6 @@ export function LinkPeople({
             </option>
           ))}
         </Select>
-        <p id={fid('person-hint')} className="hint">
-          Type a name, a code or a department to search. Choose several, then link them together.
-        </p>
       </div>
       {chosen.length > 0 && (
         <ul className="flex flex-wrap gap-1.5" aria-label="Chosen to link">

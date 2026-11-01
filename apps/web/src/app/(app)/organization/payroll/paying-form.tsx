@@ -26,12 +26,9 @@ export function PayingSalariesForm({ action, settings }: { action: (prev: FormSt
             autoComplete="off"
             maxLength={20}
             defaultValue={valueOf(state, 'cibDebitAccount', settings.cibDebitAccount)}
-            aria-describedby={fid('cibDebitAccount-hint')}
+            placeholder="12 digits"
             className="input tabular-nums"
           />
-          <p id={fid('cibDebitAccount-hint')} className="hint">
-            The company&apos;s 12-digit CIB account, the debit line at the top of the CIB file.
-          </p>
         </div>
         <div>
           <label htmlFor={fid('cibDebitAccountName')} className="label">
@@ -43,12 +40,8 @@ export function PayingSalariesForm({ action, settings }: { action: (prev: FormSt
             autoComplete="off"
             maxLength={100}
             defaultValue={valueOf(state, 'cibDebitAccountName', settings.cibDebitAccountName)}
-            aria-describedby={fid('cibDebitAccountName-hint')}
             className="input"
           />
-          <p id={fid('cibDebitAccountName-hint')} className="hint">
-            As CIB has it.
-          </p>
         </div>
         <div>
           <label htmlFor={fid('achPurpose')} className="label">
@@ -61,12 +54,9 @@ export function PayingSalariesForm({ action, settings }: { action: (prev: FormSt
             autoComplete="off"
             maxLength={20}
             defaultValue={valueOf(state, 'achPurpose', settings.achPurpose)}
-            aria-describedby={fid('achPurpose-hint')}
+            placeholder="e.g. CASH"
             className="input"
           />
-          <p id={fid('achPurpose-hint')} className="hint">
-            The transaction purpose on every line of the ACH file, e.g. CASH.
-          </p>
         </div>
         {settings.payday !== undefined && (
           <div>
@@ -80,13 +70,9 @@ export function PayingSalariesForm({ action, settings }: { action: (prev: FormSt
               autoComplete="off"
               maxLength={2}
               defaultValue={valueOf(state, 'payday', settings.payday === null ? '' : String(settings.payday))}
-              aria-describedby={fid('payday-hint')}
+              placeholder="1–31"
               className="input w-24 tabular-nums"
             />
-            <p id={fid('payday-hint')} className="hint">
-              The day of the month the salaries are paid, 1 to 31, in the month after the one they are for: with 5, the September salaries on 5
-              October. A day past a month&apos;s end is its last day. Mark as paid starts from this date; empty, from today.
-            </p>
           </div>
         )}
       </div>

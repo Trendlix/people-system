@@ -212,14 +212,8 @@ export function FileDrop({
       ) : (
         fileBox
       )}
-      <p id={hintId} aria-live="polite" className={`text-xs ${refused ? 'text-danger' : 'text-muted'}`}>
-        {refused
-          ? `${refused} was not taken. This box takes ${kindsOf(accept ?? '')}.`
-          : over
-            ? 'Drop the file here to choose it.'
-            : chosen
-              ? `Chosen: ${chosen.name} (${sizeOf(chosen.size)}). Drag another file here to replace it.`
-              : 'Drag a file here, or choose one.'}
+      <p id={hintId} aria-live="polite" className={`text-xs empty:hidden ${refused ? 'text-danger' : 'text-muted'}`}>
+        {refused ? `${refused} was not taken: only ${kindsOf(accept ?? '')}.` : over ? 'Drop the file here.' : chosen ? `${chosen.name} (${sizeOf(chosen.size)})` : null}
       </p>
     </div>
   );

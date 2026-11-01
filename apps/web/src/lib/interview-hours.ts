@@ -163,7 +163,7 @@ export const changeText = (c: Pick<HoursChange, 'kind' | 'from' | 'to'>): string
 
 /** What a saved form says: saved, or cleared when nothing was left in it. */
 export const savedHoursText = (hours: InterviewHours | null): string =>
-  hours ? 'Saved. HR sees you free in these hours, less your leave, interviews and busy calendar.' : 'Saved: you have no interview hours now.';
+  hours ? 'Saved.' : 'Saved: you have no interview hours now.';
 
 /** The notice and the buffer in effect, in words: "24 hours’ notice · 15 minutes between interviews". */
 export function rulesText(hours: Pick<InterviewHours, 'noticeHours' | 'bufferMinutes'> | null, defaults: InterviewDefaults): string {

@@ -6,7 +6,7 @@ import { SetupFrame } from '../setup-menu';
 import { Empty, Loading } from '../ui';
 import { loadLibrary } from './data';
 import { SlotDetails, StatusLines } from './parts';
-import { byFolder, COPY_NOTE, FIELDS_GUIDE_DOCX_HREF, FIELDS_GUIDE_PAGE, FIELDS_GUIDE_PDF_HREF, folderLabel, OVERRIDES_NOTE, managesTemplates, NOT_AVAILABLE, progress, seesTemplates, sourceName, statusLines, templateHref, uploadLabel, WHO_SEES } from './wording';
+import { byFolder, COPY_NOTE, FIELDS_GUIDE_DOCX_HREF, FIELDS_GUIDE_PAGE, FIELDS_GUIDE_PDF_HREF, folderLabel, managesTemplates, NOT_AVAILABLE, progress, seesTemplates, sourceName, statusLines, templateHref, uploadLabel, WHO_SEES } from './wording';
 import { titleCase } from '@/lib/format';
 
 // The template library (spec §8, owner's request of 15 October 2026): one slot per document, by folder, each with where
@@ -22,7 +22,6 @@ function SlotCard({ slot, slots, manages }: { slot: TemplateSlotView; slots: Tem
           <Link href={templateHref(slot.key)}>{titleCase(slot.name)}</Link>
         </h3>
         <SlotDetails slot={slot} />
-        {!copy && Object.keys(slot.overrides ?? {}).length > 0 && <p className="text-sm text-muted">{OVERRIDES_NOTE}</p>}
       </div>
       <div className="flex shrink-0 flex-col gap-3 sm:w-72 sm:items-end sm:text-right">
         {copy ? (
@@ -60,7 +59,6 @@ async function Library() {
     <div className="space-y-8">
       <p className={`text-sm font-medium ${done.inUse === done.total ? 'text-ok' : 'text-ink'}`}>
         {done.text}
-        {done.inUse < done.total && <span className="font-normal text-muted"> · each one needs its Word file uploaded and published</span>}
       </p>
       {byFolder(slots).map(({ folder, slots: inFolder }) => (
         <section key={folder} aria-labelledby={`folder-${folder}`} className="space-y-3">
@@ -83,13 +81,9 @@ async function Library() {
 export default function TemplatesPage() {
   return (
     <SetupFrame active="templates">
-      <p className="max-w-3xl text-sm text-muted">
-        Upload each Word file exactly as you use it today, with merge tags like <code className="font-mono text-xs">{'{{full_name_ar}}'}</code> where the data
-        goes. The system only fills in the tags. The tags you can use are in the <Link href={FIELDS_GUIDE_PAGE}>Fields Guide</Link>.
-      </p>
       {/* the Fields Guide as buttons too (owner, 25 October 2026: "i still cant find the Fields Guide": the link in the
           text above was easy to miss) */}
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2">
         <Link href={FIELDS_GUIDE_PAGE} className="btn btn-primary">
           Fields Guide
         </Link>

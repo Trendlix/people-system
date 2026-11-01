@@ -20,7 +20,7 @@ async function Person({ params }: { params: PageProps<'/organization/interview-h
   const [{ employeeId }, user] = await Promise.all([params, getCurrentUser()]);
   if (!readsRecruitment(user)) return <Empty>{WHO_SEES}</Empty>;
   const loaded = await loadJson<InterviewHoursView>(`/interview-hours/people/${encodeURIComponent(employeeId)}`);
-  if (loaded.kind === 'unavailable') return <Empty>Not available yet: the server doesn’t keep interview hours yet. Please try again after its next update.</Empty>;
+  if (loaded.kind === 'unavailable') return <Empty>Not available yet: the server doesn’t keep interview hours yet.</Empty>;
   if (loaded.kind === 'missing') return <Empty>This person isn’t there, or isn’t yours to see. {loaded.messages.join(' ')}</Empty>;
   if (loaded.kind !== 'ok') return <Empty>Their interview hours could not be loaded. {loaded.messages.join(' ')}</Empty>;
   const view = loaded.value;
@@ -30,10 +30,7 @@ async function Person({ params }: { params: PageProps<'/organization/interview-h
         <h2 id="person-hours" className="text-lg font-semibold">
           Interview Hours: {view.name}
         </h2>
-        <p className="text-sm text-muted">
-          {view.hours ? `In effect: ${rulesText(view.hours, view.defaults)}.` : 'None set yet: “Find a time” checks only their leave, interviews and calendar.'} Their leave,
-          the public holidays, their other interviews and their calendar’s busy times are taken away by themselves.
-        </p>
+        <p className="text-sm text-muted">{view.hours ? `In effect: ${rulesText(view.hours, view.defaults)}.` : 'None set yet.'}</p>
       </div>
       <InterviewHoursForm
         action={saveHoursFor.bind(null, view.employeeId)}

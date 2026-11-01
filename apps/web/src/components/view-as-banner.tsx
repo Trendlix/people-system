@@ -31,9 +31,7 @@ export async function ViewAsBanner() {
             {viewingAsText(user)}
           </p>
           <p className={`text-xs ${acting ? '' : 'text-muted'}`}>
-            {acting
-              ? `Acting as them: changes are made in their name and recorded as done by you (${viewAs.by.email}).`
-              : 'View only: you see what they see; changes are refused.'}
+            {acting ? 'Acting as them: changes are recorded as yours.' : 'View only.'}
           </p>
         </div>
         {/* a developer who is also an employee: as themselves first, as a developer with its switch (22 October 2026) */}

@@ -29,7 +29,6 @@ export default function AddCvPage() {
       <div className="space-y-2">
         <BackLink href={tabHref('general')}>General CVs</BackLink>
         <h1 className="page-title">Add a CV</h1>
-        <p className="text-sm text-muted">A CV that came without a posted job: by email, WhatsApp, LinkedIn, in person or by referral.</p>
       </div>
       <Suspense fallback={<Loading />}>
         <AddCv />

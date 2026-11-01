@@ -3,17 +3,14 @@ import type { OdForm, OdRequestView } from '../../../../lib/od-types';
 import {
   awayOn,
   MY_OD_HREF,
-  odAfterNote,
   odBack,
   odCancelBody,
-  odCashHint,
   odCashText,
   odCompensatedAlready,
   odCompensationLead,
   odCompensationNote,
   odCompensationText,
   odDayOf,
-  odDayOffHint,
   odDayTitle,
   odDecisionButton,
   odDoneHref,
@@ -26,7 +23,6 @@ import {
   odListPath,
   odOnDayPath,
   odProgressText,
-  odReadyText,
   odSent,
   odSentText,
   odSpanText,
@@ -120,10 +116,10 @@ describe('a request in words', () => {
   it('says where it stands and where it goes, a C-level person’s to the CEO', () => {
     expect(odProgressText(request()).text).toContain('Sara Ali');
     expect(odProgressText(request({ status: 'with_hr', confidential: true })).text).toBe('Waiting for the CEO');
-    expect(odSentText('with_manager', { role: 'team_lead' })).toBe('Request sent. It goes to your team lead, then HR; each step shows on the request.');
-    expect(odSentText('with_hr', null, true)).toBe('Request sent. It goes to the CEO; each step shows on the request.');
-    expect(odDoneText({ done: 'hr_approve' }, 'approved')?.text).toBe('Approved: on its days they check in from where they are, and the days count as attended for its hours.');
-    expect(odDoneText({ done: 'manager_approve' }, 'with_hr')?.text).toBe('Approved: the request goes to HR.');
+    expect(odSentText('with_manager', { role: 'team_lead' })).toBe('Sent to your team lead.');
+    expect(odSentText('with_hr', null, true)).toBe('Sent to the CEO.');
+    expect(odDoneText({ done: 'hr_approve' }, 'approved')?.text).toBe('Official duty approved.');
+    expect(odDoneText({ done: 'manager_approve' }, 'with_hr')?.text).toBe('Approved: sent to HR.');
     expect(odDoneText({ done: 'moved' }, 'with_hr')?.tone).toBe('warn');
     expect(odDoneText({ done: 'nonsense' }, 'with_hr')).toBeNull();
     expect(odDecisionButton('approve', 'hr').label).toBe('Approve the official duty');
@@ -163,10 +159,8 @@ describe('the request form (owner, 23 October 2026: "Ahead or up to 3 days after
     expect(odFormProblems(typed({ span: 'part', fromTime: '', toTime: '' }), FORM)).toEqual(['Choose the time it starts, e.g. 10:00 AM.', 'Choose the time it ends, e.g. 2:00 PM.']);
   });
 
-  it('allows up to 3 days after, marked requested after; 4 days refused', () => {
+  it('allows up to 3 days after; 4 days refused', () => {
     expect(odFormProblems(typed({ startDate: '20/10/2026' }), FORM)).toEqual([]);
-    expect(odAfterNote(typed({ startDate: '20/10/2026' }), FORM)).toContain('requested after');
-    expect(odAfterNote(typed({ startDate: '23/10/2026' }), FORM)).toBeNull();
     expect(odFormProblems(typed({ startDate: '19/10/2026' }), FORM)).toEqual([
       '19/10/2026 is more than 3 days ago: ask for an official duty ahead, or within 3 days after the day (from 20/10/2026).',
     ]);
@@ -176,10 +170,6 @@ describe('the request form (owner, 23 October 2026: "Ahead or up to 3 days after
     expect(odFormProblems(typed({ span: 'part', fromTime: '7:00 AM', toTime: '10:00 AM' }), FORM)).toEqual(['Choose times within your shift, 9:00 AM to 7:00 PM.']);
     expect(odFormProblems(typed({ span: 'part', fromTime: '10:00 AM', toTime: '2:00 PM' }), FORM)).toEqual([]);
     expect(odFormProblems(typed(), { ...FORM, refusal: 'You work freelance.' })).toEqual(['You work freelance.']);
-    expect(odReadyText(typed({ span: 'part', fromTime: '10:00 AM', toTime: '2:00 PM' }))).toBe(
-      'Ready to send: official duty for Monday 02/11/2026, 10:00 AM–2:00 PM, to your direct manager (without one, your lead), then HR.',
-    );
-    expect(odReadyText(typed(), true)).toContain('then the CEO');
   });
 });
 
@@ -329,45 +319,13 @@ describe('on a rest day or an official holiday (owner, 27 October 2026: "it shou
     const day = odFormCompensation(friday(), DAY_OFF_FORM)!;
     const hours = odFormCompensation(part('10:00 AM', '2:00 PM'), DAY_OFF_FORM)!;
     const none = odFormCompensation(part('10:00 AM', '11:00 AM'), DAY_OFF_FORM)!;
-    expect(odCompensationLead(day, day.what, RULES)).toBe(
-      "Friday 23/10/2026 is a rest day of your shift: official duty on it earns a whole day off, or 1.5 days' pay instead. The day itself adds no hours or overtime.",
-    );
-    expect(odCompensationLead(hours, hours.what, RULES)).toBe(
-      "Friday 23/10/2026 is a rest day of your shift: official duty on it earns 4 hours off, or 4 hours' pay at 1.5× instead. The day itself adds no hours or overtime.",
-    );
-    expect(odCompensationLead(none, none.what, RULES)).toBe(
-      'Friday 23/10/2026 is a rest day of your shift: 1 hour of official duty on it earns nothing, fewer than the 2 hours that earn a compensation (Compensatory Setup), so there is no compensation to choose.',
-    );
-    expect(odCompensationLead({ ...day, already: 'approved' }, null, null)).toBe(
-      'A rest day or an official holiday, compensated already by a compensatory day (approved): there is nothing more to choose.',
-    );
+    expect(odCompensationLead(day, day.what, RULES)).toBe("Friday 23/10/2026 is a rest day of your shift: earns a whole day off, or 1.5 days' pay instead.");
+    expect(odCompensationLead(hours, hours.what, RULES)).toBe("Friday 23/10/2026 is a rest day of your shift: earns 4 hours off, or 4 hours' pay at 1.5× instead.");
+    expect(odCompensationLead(none, none.what, RULES)).toBe('Friday 23/10/2026 is a rest day of your shift: 1 hour earns no compensation (under 2 hours).');
+    expect(odCompensationLead({ ...day, already: 'approved' }, null, null)).toBe('A rest day or an official holiday: compensated already (approved).');
     // HR's check doesn't say the rate: the days' pay
     expect(odCashText(hours)).toBe("0.75 days' pay");
     expect(odCashText(day)).toBe("1.5 days' pay");
-    expect(odCashHint(hours, 1.5)).toBe("Cash instead: 4 hours' pay at 1.5× added to the month's payroll once approved, and no day off.");
-    expect(odDayOffHint(day, RULES, false)).toBe('A working day of your shift in the same month, from tomorrow on.');
-    expect(odDayOffHint(hours, { offWithinDays: 7 }, true)).toBe(
-      'A working day of their shift within 7 days after it; a day gone by is recorded with a warning. The 4 hours off are taken that day, with no deduction.',
-    );
-  });
-
-  it('says the compensation in the ready text', () => {
-    const day = odFormCompensation(friday(), DAY_OFF_FORM);
-    const hours = odFormCompensation(part('10:00 AM', '2:00 PM'), DAY_OFF_FORM);
-    expect(odReadyText(friday(), false, day, 1.5)).toBe(
-      'Ready to send: official duty for Friday 23/10/2026, with a day off on Tuesday 27/10/2026, to your direct manager (without one, your lead), then HR.',
-    );
-    expect(odReadyText(friday({ compensation: 'cash' }), false, day, 1.5)).toBe(
-      "Ready to send: official duty for Friday 23/10/2026, paid 1.5 days' pay instead, to your direct manager (without one, your lead), then HR.",
-    );
-    expect(odReadyText(part('10:00 AM', '2:00 PM'), false, hours, 1.5)).toBe(
-      'Ready to send: official duty for Friday 23/10/2026, 10:00 AM–2:00 PM, with 4 hours off on Tuesday 27/10/2026, to your direct manager (without one, your lead), then HR.',
-    );
-    expect(odReadyText(part('10:00 AM', '2:00 PM', { compensation: 'cash' }), false, hours, 1.5)).toContain("paid 4 hours' pay at 1.5× instead");
-    // none asked for: none said
-    expect(odReadyText(friday({ startDate: '26/10/2026' }), false, null, 1.5)).toBe(
-      'Ready to send: official duty for Monday 26/10/2026, to your direct manager (without one, your lead), then HR.',
-    );
   });
 
   it('shows the compensation on the request’s page and in the lists', () => {

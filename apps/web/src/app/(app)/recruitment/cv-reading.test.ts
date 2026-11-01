@@ -3,7 +3,6 @@ import { DICTIONARY_SKILL_NAMES, type CvListFacts, type CvReadingView, type CvUp
 import { candidatesApiPath, readCandidatesQuery } from './candidates';
 import {
   applicantCvTextApiPath,
-  CV_CARD_NOTE,
   cvTextMissing,
   educationText,
   experienceCell,
@@ -59,7 +58,7 @@ describe('the From the CV card', () => {
   it('says how the CV was read, or that it is being read', () => {
     expect(readingStatusText(reading())).toBe('Read 22/10/2026 · The PDF’s own text');
     expect(readingStatusText(reading({ method: 'ocr_ar' }))).toBe('Read 22/10/2026 · Read from the scan (Arabic)');
-    expect(readingStatusText(reading({ status: 'pending', method: null, readAt: null }))).toMatch(/^Reading the CV… Refresh the page/);
+    expect(readingStatusText(reading({ status: 'pending', method: null, readAt: null }))).toBe('Reading the CV…');
     expect(readingStatusText(reading({ status: 'no_text', method: null }))).toBe('No text found in the CV');
     expect(readingStatusText(reading({ status: 'failed', method: null }))).toBe('The CV could not be read');
   });
@@ -93,7 +92,6 @@ describe('the From the CV card', () => {
     expect(cvTextMissing({ kind: 'forbidden' })).toBe("The CV's text and the contacts in it aren't shown to your role.");
     expect(cvTextMissing({ kind: 'unavailable' })).toBe("The CV's text isn't available yet.");
     expect(cvTextMissing({ kind: 'failed', messages: ['Down.'] })).toBe("The CV's text could not be loaded. Down.");
-    expect(CV_CARD_NOTE).toBe("Found by simple rules in the CV's text; check the CV itself.");
     expect(applicantCvTextApiPath(ID)).toBe(`/recruitment/applications/${ID}/cv-text`);
     expect(generalCvTextApiPath(ID)).toBe(`/recruitment/general-cvs/${ID}/cv-text`);
   });

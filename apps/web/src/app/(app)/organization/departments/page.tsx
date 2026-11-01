@@ -56,7 +56,6 @@ async function DepartmentsList({ searchParams }: { searchParams: Promise<Query> 
     return (
       <ReorderList
         title="Reorder Departments"
-        hint="Drag a department by its handle, or use Move up and Move down. Departments are listed in this order everywhere, each with its teams."
         items={topLevel.map(({ id, nameEn, nameAr }) => ({ id, nameEn, nameAr }))}
         action={reorderDepartments.bind(null, null)}
         cancelHref="/organization/departments"
@@ -106,7 +105,7 @@ async function DepartmentsList({ searchParams }: { searchParams: Promise<Query> 
             </Link>
           </div>
         )}
-        <Empty>No departments yet.{canEdit && ' Create the first one, then add its teams and job titles.'}</Empty>
+        <Empty>No departments yet.</Empty>
       </>
     );
   }

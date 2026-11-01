@@ -161,9 +161,9 @@ export function registerTiles(r: Pick<SiRegisterReport, 'totals' | 'rates' | 'no
   const heads = shareHeads(r.rates);
   return [
     { key: 'people', label: 'Registered', value: String(t.people), note: r.notRegistered > 0 ? `${r.notRegistered} under the labour law not registered` : null },
-    { key: 'insured', label: 'Insured wages', value: formatEgp(t.insuredWage), note: t.insured < t.people ? `${peopleLabel(t.people - t.insured)} without an insured wage` : 'A month' },
-    { key: 'employee', label: `${heads.employee} a month`, value: formatEgp(t.employeeInsurance), note: 'Deducted from their pay' },
-    { key: 'employer', label: `${heads.employer} a month`, value: formatEgp(t.employerInsurance), note: 'Paid by the company' },
+    { key: 'insured', label: 'Insured wages', value: formatEgp(t.insuredWage), note: t.insured < t.people ? `${peopleLabel(t.people - t.insured)} without an insured wage` : null },
+    { key: 'employee', label: `${heads.employee} a month`, value: formatEgp(t.employeeInsurance), note: null },
+    { key: 'employer', label: `${heads.employer} a month`, value: formatEgp(t.employerInsurance), note: null },
   ];
 }
 
@@ -176,14 +176,14 @@ export function contributionTiles(r: Pick<SiContributionsReport, 'totals' | 'rat
     { key: 'insured', label: 'Insured wages', value: formatEgp(t.insuredWage), note: t.insured < t.people ? `${peopleLabel(t.people - t.insured)} without an insured wage` : null },
     { key: 'employee', label: heads.employee, value: formatEgp(t.employeeInsurance), note: null },
     { key: 'employer', label: heads.employer, value: formatEgp(t.employerInsurance), note: null },
-    { key: 'toPay', label: 'To pay the office', value: formatEgp(t.toPay), note: 'Both shares' },
+    { key: 'toPay', label: 'To pay the office', value: formatEgp(t.toPay), note: null },
   ];
 }
 
 /** The checklist's figures: who was checked, who misses something, and how many miss each item. */
 export function missingTiles(r: Pick<SiMissingReport, 'checked' | 'rows' | 'byItem'>): Tile[] {
   return [
-    { key: 'checked', label: 'Checked', value: String(r.checked), note: 'Full time, and registered part-timers' },
+    { key: 'checked', label: 'Checked', value: String(r.checked), note: null },
     { key: 'missing', label: 'Missing something', value: String(r.rows.length), note: `${peopleLabel(r.checked - r.rows.length)} complete` },
     ...SI_MISSING_ITEMS.filter((i) => r.byItem[i] > 0).map((i) => ({ key: i, label: SI_MISSING_LABELS[i], value: String(r.byItem[i]), note: null })),
   ];

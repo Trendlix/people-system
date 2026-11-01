@@ -111,7 +111,7 @@ async function Candidates({ searchParams }: { searchParams: PageProps<'/recruitm
       {loaded.kind !== 'ok' ? (
         <Empty>{recruitmentNotLoaded(loaded, 'candidates')}</Empty>
       ) : loaded.value.length === 0 ? (
-        <div className="card px-6 py-8 text-center text-sm text-muted">{candidatesFiltering(f) ? 'Nobody here.' : 'No candidates yet. Everyone who applies or sends a CV gets one.'}</div>
+        <div className="card px-6 py-8 text-center text-sm text-muted">{candidatesFiltering(f) ? 'Nobody here.' : 'No candidates yet.'}</div>
       ) : (
         <CandidatesTable rows={loaded.value} />
       )}
@@ -122,10 +122,7 @@ async function Candidates({ searchParams }: { searchParams: PageProps<'/recruitm
 export default function CandidatesPage({ searchParams }: PageProps<'/recruitment/candidates'>) {
   return (
     <div className="space-y-4">
-      <div className="space-y-1">
-        <h1 className="page-title">Candidates</h1>
-        <p className="max-w-3xl text-sm text-muted">One profile per person, with every application, CV, interview and offer. The same email or mobile joins a profile by itself; other signs are suggested to HR.</p>
-      </div>
+      <h1 className="page-title">Candidates</h1>
       <Suspense fallback={<Loading />}>
         <Candidates searchParams={searchParams} />
       </Suspense>

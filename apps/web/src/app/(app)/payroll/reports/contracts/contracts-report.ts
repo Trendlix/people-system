@@ -161,13 +161,13 @@ const peopleLabel = (n: number) => `${n} ${n === 1 ? 'person' : 'people'}`;
 export function summaryTiles(t: ContractsReportTotals): Tile[] {
   return [
     { key: 'contracts', label: 'Contracts', value: String(t.contracts), note: peopleLabel(t.people) },
-    { key: 'active', label: CONTRACTS_REPORT_STATUS_LABELS.active, value: String(t.byStatus.active), note: 'Signed, in force' },
-    { key: 'draft', label: 'Drafts', value: String(t.byStatus.draft), note: 'Not signed yet' },
-    { key: 'ended', label: CONTRACTS_REPORT_STATUS_LABELS.ended, value: String(t.byStatus.ended), note: 'With the employment' },
-    { key: 'superseded', label: CONTRACTS_REPORT_STATUS_LABELS.superseded, value: String(t.byStatus.superseded), note: 'By a later version' },
-    ...t.endingIn.map((e) => ({ key: `ending-${e.days}`, label: `Ending in ${e.days} days`, value: String(e.count), note: 'Active, from today' })),
-    { key: 'not-renewed', label: 'Not renewed', value: String(t.notRenewed), note: 'Ended in the period, no later version signed' },
-    { key: 'renewals', label: 'Renewals signed', value: String(t.renewalsSigned), note: 'In the period' },
+    { key: 'active', label: CONTRACTS_REPORT_STATUS_LABELS.active, value: String(t.byStatus.active), note: null },
+    { key: 'draft', label: 'Drafts', value: String(t.byStatus.draft), note: null },
+    { key: 'ended', label: CONTRACTS_REPORT_STATUS_LABELS.ended, value: String(t.byStatus.ended), note: null },
+    { key: 'superseded', label: CONTRACTS_REPORT_STATUS_LABELS.superseded, value: String(t.byStatus.superseded), note: null },
+    ...t.endingIn.map((e) => ({ key: `ending-${e.days}`, label: `Ending in ${e.days} days`, value: String(e.count), note: null })),
+    { key: 'not-renewed', label: 'Not renewed', value: String(t.notRenewed), note: null },
+    { key: 'renewals', label: 'Renewals signed', value: String(t.renewalsSigned), note: null },
   ];
 }
 

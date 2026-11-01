@@ -6,7 +6,7 @@ import { FormErrors, useFieldIds } from '@/components/form';
 import { freshMapsConfig } from '@/components/map/provider';
 import { formatDateTime } from '@/lib/format';
 import { KEY_CHECK_PATH, keyCheckResultOf, keyCheckStart, keyCheckText, type KeyCheckResult } from '@/lib/google-maps';
-import { MAP_ID_HINT, MAPS_REMOVE_CONFIRM, type MapsFormState, type MapsIntent } from './maps-setup';
+import { MAPS_REMOVE_CONFIRM, type MapsFormState, type MapsIntent } from './maps-setup';
 
 // Check-in Setup → Google Maps' form (owner, 24 October 2026: "Google Maps"): the browser key and the Map ID, Save,
 // Remove the key, and Check the key. The key is never shown again once saved: "…Ab3x · Replace" opens an empty box, and
@@ -132,7 +132,6 @@ export function MapsSettingsForm({ action, view }: { action: Action; view: MapsS
                   Replace<span className="sr-only"> the key</span>
                 </button>
               </div>
-              <p className="hint">Saved, and never shown in full again.</p>
             </>
           ) : (
             <>
@@ -149,20 +148,15 @@ export function MapsSettingsForm({ action, view }: { action: Action; view: MapsS
                 maxLength={100}
                 autoFocus={replacing}
                 placeholder="AIza…"
-                aria-describedby={fid('browserKey-hint')}
                 className="input font-mono"
               />
-              <p id={fid('browserKey-hint')} className="hint">
-                {view.keySet ? 'Leave it empty to keep the saved key.' : 'The key made in Google Cloud for the maps, 39 characters starting AIza.'}
-                {view.keySet && (
-                  <>
-                    {' '}
-                    <button type="button" onClick={() => setReplacing(false)} className="font-semibold text-accent underline-offset-2 hover:underline">
-                      Keep the saved one
-                    </button>
-                  </>
-                )}
-              </p>
+              {view.keySet && (
+                <p className="hint">
+                  <button type="button" onClick={() => setReplacing(false)} className="font-semibold text-accent underline-offset-2 hover:underline">
+                    Keep the saved one
+                  </button>
+                </p>
+              )}
             </>
           )}
           {view.keySet && (
@@ -184,12 +178,8 @@ export function MapsSettingsForm({ action, view }: { action: Action; view: MapsS
             autoCapitalize="none"
             spellCheck={false}
             maxLength={100}
-            aria-describedby={fid('mapId-hint')}
             className="input font-mono"
           />
-          <p id={fid('mapId-hint')} className="hint">
-            {MAP_ID_HINT}
-          </p>
         </div>
       </div>
 
@@ -206,7 +196,6 @@ export function MapsSettingsForm({ action, view }: { action: Action; view: MapsS
           </p>
         )}
       </div>
-      <p className="hint max-w-3xl">Check the key loads a map with the key in the box (or the saved one, when the box is empty) and searches one place with it. It saves nothing.</p>
 
       <div aria-live="polite" className="empty:hidden">
         {checkProblem && <p className="text-sm text-danger">{checkProblem}</p>}

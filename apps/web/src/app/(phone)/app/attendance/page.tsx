@@ -68,12 +68,7 @@ async function Month({ searchParams }: { searchParams: PageProps<'/app/attendanc
             </h2>
             <DayList days={p.days} punches={view.punches ?? []} corrections={view.corrections} correctable={view.correctable} today={today} wfhDays={p.wfhDays} askFrom={view.ask?.from ?? null} />
           </section>
-          <p className="text-xs text-muted">
-            {imported && `Days from Zoho People imported by HR on ${formatDate(imported)}. `}
-            {view.corrections
-              ? 'A day that isn’t right? Ask for a correction on it: your manager, then HR, decide it.'
-              : 'Something wrong? Ask HR to check it.'}
-          </p>
+          {imported && <p className="text-xs text-muted">Days from Zoho People imported by HR on {formatDate(imported)}.</p>}
         </>
       )}
     </div>
@@ -83,7 +78,7 @@ async function Month({ searchParams }: { searchParams: PageProps<'/app/attendanc
 export default function PhoneAttendancePage({ searchParams }: PageProps<'/app/attendance'>) {
   return (
     <div className="space-y-4">
-      <PageTitle title="Attendance">Your check-ins and check-outs, counted by the company&apos;s rules.</PageTitle>
+      <PageTitle title="Attendance" />
       <Suspense fallback={<PhoneLoading />}>
         <Month searchParams={searchParams} />
       </Suspense>

@@ -5,7 +5,7 @@ import { approverLabel } from '@/lib/department-leads';
 import { formatDateTime } from '@/lib/format';
 import { getCurrentUser } from '@/lib/session';
 import { standingInNoteText } from '@/lib/stand-in';
-import { appBack, appItemHref, appRequestsHref, type Surface } from '@/lib/surface';
+import { appBack, appItemHref, type Surface } from '@/lib/surface';
 import type { LeaveRequestStep } from '@/lib/types';
 import { decidingAsTitle, hrStageName, placeOfEmployee } from '../../../leave/list';
 import { LeaveStatusBadge, LeaveTimeline, PayrollLockedNotice } from '../../../leave/ui';
@@ -14,7 +14,7 @@ import { notLoadedText } from '../../../payroll/load';
 import { compensatoryHref } from '../../compensatory/compensatory';
 import { cancelMyOd, cancelOdByHr, decideOd } from '../actions';
 import { loadOd } from '../data';
-import { MY_OD_HREF, odBack, odCompensationText, odDoneText, odProgressText, odSourceText, odSpanText, odStepText, odWhenWords } from '../od';
+import { odBack, odCompensationText, odDoneText, odProgressText, odSourceText, odSpanText, odStepText, odWhenWords } from '../od';
 import { CancelOdForm, HrCancelOdForm, OdDecisionForm } from '../od-forms';
 import { leaveStepsAhead } from '@/lib/steps-ahead';
 
@@ -74,7 +74,6 @@ export async function OdRequestDetail({
   const progress = odProgressText(r);
   const when = odWhenWords(r);
   const what = `official duty request for ${when}`;
-  const own = user.employeeId === r.employee.id;
   // recorded by HR or imported (26 October 2026): no decision was asked for, and "requested after" isn't theirs
   const byHr = r.recordedByHr === true || r.imported === true;
   const warnings = r.warnings ?? [];
@@ -84,7 +83,6 @@ export async function OdRequestDetail({
   const comp = r.compensation ?? null;
   const compHref = comp ? (surface === 'site' ? compensatoryHref(comp.id) : appItemHref(surface, 'compensatory', comp.id)) : null;
   const compText = comp ? odCompensationText(comp) : '';
-  const compWords = compText.charAt(0).toLowerCase() + compText.slice(1);
 
   return (
     <div className="space-y-5">
@@ -123,9 +121,7 @@ export async function OdRequestDetail({
             <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
               <Fact label={r.startDate === r.endDate ? 'Day' : 'Days'}>
                 <span className="text-base font-semibold tabular-nums">{when}</span>
-                <span className="block text-xs text-muted">
-                  {odSpanText(r)}: {comp ? 'on a rest day or an official holiday, compensated below' : 'a working day away from the office, not leave'}
-                </span>
+                <span className="block text-xs text-muted">{odSpanText(r)}</span>
               </Fact>
               <Fact label="Where">
                 <span className="whitespace-pre-line">{r.dutyPlace}</span>
@@ -142,14 +138,6 @@ export async function OdRequestDetail({
                       Open the compensatory day
                     </Link>
                   </span>
-                  <span className="mt-0.5 block text-xs text-muted">
-                    For working a rest day or an official holiday: decided and cancelled with this official duty. The day itself adds no hours or overtime.
-                  </span>
-                </Fact>
-              )}
-              {r.late && !byHr && (
-                <Fact label="Asked" wide>
-                  <span className="text-warn">After its first day: requested after, within the 3 days allowed.</span>
                 </Fact>
               )}
               {warnings.length > 0 && (
@@ -175,46 +163,23 @@ export async function OdRequestDetail({
                 )}
               </Fact>
             </dl>
-            {r.status === 'approved' && (
-              <p className="mt-4 text-sm text-muted">
-                On its days (or within its hours) the check-in is taken from where they are, without the office location or network, and the days count as
-                attended for its hours.
-              </p>
-            )}
-            {own && (
-              <p className="mt-4 text-sm text-muted">
-                Your other official duty requests are on <Link href={surface === 'site' ? MY_OD_HREF : appRequestsHref('od')}>My Requests</Link>.
-              </p>
-            )}
           </Section>
 
           {r.waitingForYou && r.stage && (
             <Section title={`Your Decision as ${decidingAsTitle(user, r.stage, r.manager, r.confidential)}`}>
               {/* deciding it standing in for the approver on leave (owner, 25 October 2026: "To a stand-in") */}
               {standingInNoteText(r.standingInFor) && <p className="mb-4 rounded-lg bg-accent-soft px-4 py-3 text-sm">{standingInNoteText(r.standingInFor)}</p>}
-              {comp && (
-                <p className="mb-4 rounded-lg bg-canvas px-4 py-3 text-sm">
-                  Its compensation ({compWords}) takes the same decision: approving the official duty approves it, and rejecting the duty rejects it.
-                </p>
-              )}
               <OdDecisionForm action={decideOd.bind(null, r.id, r.stage)} stage={r.stage} name={r.employee.fullNameEn} confidential={r.confidential} />
             </Section>
           )}
 
           {r.canCancel && (
             <Section title="Cancel the Request">
-              <p className="mb-3 text-sm text-muted">
-                While it is being decided you can cancel it, e.g. when the visit is called off.{comp && ` Its compensation (${compWords}) is cancelled with it.`}
-              </p>
               <CancelOdForm action={cancelMyOd.bind(null, r.id)} what={what} />
             </Section>
           )}
           {!r.canCancel && r.hrCanCancel && (
             <Section title="Cancel the Official Duty">
-              <p className="mb-3 text-sm text-muted">
-                An approved official duty HR cancels: its days are expected as usual again, and the employee sees why.
-                {comp && ` Its compensation (${compWords}) is cancelled with it${comp.outcome === 'cash' ? ', its cash addition too' : ''}.`}
-              </p>
               <HrCancelOdForm action={cancelOdByHr.bind(null, r.id)} what={what} />
             </Section>
           )}

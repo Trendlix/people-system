@@ -128,9 +128,6 @@ export function NationalIdForm({
         <div className="border-t border-line pt-6">
           <fieldset className="space-y-4">
             <legend className="font-semibold">Personal Details on the Card</legend>
-            {differing.length > 0 && (
-              <p className="text-sm text-muted">Tick the ones to save to the profile as well. They are saved together with the national ID.</p>
-            )}
             {differing.map(({ key, label }) => (
               <div key={key} className="rounded-lg border border-line p-4">
                 <label htmlFor={fid(`card_${key}`)} className="label">

@@ -22,7 +22,7 @@ const isWord = (v: Pick<TemplateVersion, 'format'> | undefined) => !!v?.format &
 /** What the page says when it was reached straight after uploading a PDF draft (actions.ts). */
 function uploadedNotice(query: Record<string, string | string[] | undefined>): string | null {
   const n = typeof query.uploaded === 'string' && /^\d{1,4}$/.test(query.uploaded) ? query.uploaded : null;
-  return n ? `Draft v${n} uploaded. Place each field on the form, check it with Test print, then save. Publish it from the template's page.` : null;
+  return n ? `Draft v${n} uploaded.` : null;
 }
 
 async function Fields({ params, searchParams }: PageProps<'/organization/templates/[slot]/versions/[versionId]/fields'>) {
@@ -46,7 +46,7 @@ async function Fields({ params, searchParams }: PageProps<'/organization/templat
   // a version of another template, reached with this one's address
   if (slot.kind === 'ok' && !listed) notFound();
   // a Word version has no fields to place (the API refuses them with a 409)
-  if (isWord(listed) || (loaded.kind === 'ok' && isWord(loaded.data.version))) return quiet('This version is a Word file: its fields are the merge tags written in the file itself.');
+  if (isWord(listed) || (loaded.kind === 'ok' && isWord(loaded.data.version))) return quiet('This version is a Word file: it has no fields to place.');
   if (loaded.kind === 'unavailable') return quiet(NOT_AVAILABLE);
   if (loaded.kind === 'forbidden') return quiet(WHO_SEES);
   if (loaded.kind === 'failed') return quiet(`The fields couldn't load: ${loaded.message}`);
@@ -54,9 +54,9 @@ async function Fields({ params, searchParams }: PageProps<'/organization/templat
   const { version, pages, fields, editable, standardLayout } = loaded.data;
   const manages = managesTemplates(user);
   const readOnly = !manages
-    ? 'Only HR and Admin can place fields. You can see them, test print the form and preview it with data.'
+    ? 'Only HR and Admin can place fields.'
     : !editable
-      ? 'This version was replaced, so its fields can no longer be changed. To change them, upload the form again as a new version.'
+      ? 'This version was replaced: its fields can’t be changed.'
       : null;
   const pageCount = version.pageCount ?? pages.length;
   const copyFrom: CopySource[] = versions

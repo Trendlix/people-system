@@ -21,12 +21,6 @@ import { joinShown, shownCode } from '@/lib/hidden';
 
 export const metadata: Metadata = { title: 'Onboarding · People System' };
 
-const HINT: Record<string, string> = {
-  contract: 'Done once their contract is signed, on the Employment tab.',
-  kpi_template: 'Done once their job title’s KPI template is published, under KPIs → KPI Templates.',
-  assets: 'Done once something is handed over to them on Assets → Custody.',
-};
-
 function Checklist({ c }: { c: OnboardingView }) {
   return (
     <ol className="divide-y divide-line-soft">
@@ -45,7 +39,6 @@ function Checklist({ c }: { c: OnboardingView }) {
             </div>
             <span className={`badge ${ITEM_STYLE[i.status]}`}>{CLEARANCE_ITEM_STATUS_LABELS[i.status]}</span>
           </div>
-          {i.kind !== 'manual' && c.status === 'open' && i.status === 'pending' && <p className="text-sm text-muted">{HINT[i.kind]}</p>}
           {i.canMark && <ItemActions action={markOnboardingItem.bind(null, c.id, i.id)} status={i.status} note={i.note} />}
         </li>
       ))}
@@ -92,9 +85,9 @@ async function Onboarding({ params }: { params: PageProps<'/onboarding/[id]'>['p
         <section className="card space-y-2 p-6">
           <h2 className="text-lg font-semibold">Complete</h2>
           {pending > 0 ? (
-            <p className="text-sm text-muted">Every item must be done or not applicable first: {pending} still pending.</p>
+            <p className="text-sm text-muted">{pending} still pending.</p>
           ) : (
-            <ActionButton action={completeOnboarding.bind(null, c.id)} label="Complete onboarding" pendingLabel="Completing…" kind="primary" confirm="Complete this onboarding? Its items can’t change after." />
+            <ActionButton action={completeOnboarding.bind(null, c.id)} label="Complete onboarding" pendingLabel="Completing…" kind="primary" confirm="Complete this onboarding?" />
           )}
         </section>
       )}

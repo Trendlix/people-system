@@ -18,10 +18,6 @@ type WithRoles = { roles: readonly Role[] };
 /** Who opens the page: HR, the CEO, Finance (read only) and a Super Admin (read only, unless HR or the CEO too). */
 export const seesClientAccounts = (user: WithRoles): boolean => hasRole(user, 'hr', 'ceo', 'finance', 'super_admin');
 
-/** What the page says of payroll: drafts take a change when refreshed; a month with the CEO, approved or paid never changes. */
-export const PAYROLL_NOTE =
-  'Each month, payroll pays a person the sum of their accounts for the days held (calendar days held ÷ the month’s days), as the accounts allowance, when their contract has it. A draft payroll takes a change here when it is refreshed; a month whose payroll is with the CEO, approved or paid never changes: date the change after it, or add the difference in Additions.';
-
 /** "Active" or "Ended", with the badge's colours. */
 export function statusBadge(a: Pick<ClientAccountView, 'status' | 'endedOn'>): {
   label: string;
@@ -311,11 +307,9 @@ export function assignable(people: readonly PersonRow[], account: Pick<ClientAcc
 // ---------- what the buttons ask and say ----------
 
 /** What End account asks first. */
-export const endAccountConfirm = (name: string): string =>
-  `End ${name}? Its people's open assignments end on the day you give, and it takes no new ones. Payroll pays them up to that day.`;
+export const endAccountConfirm = (name: string): string => `End ${name}?`;
 
 /** What Delete asks first (a Super Admin only). */
-export const deleteAssignmentConfirm = (person: string, account: string): string =>
-  `Delete ${person}'s assignment to ${account}? Delete only one added by mistake: to stop it, end it instead.`;
+export const deleteAssignmentConfirm = (person: string, account: string): string => `Delete ${person}'s assignment to ${account}?`;
 
-export const deleteTierConfirm = (name: string): string => `Delete the size ${name}? Accounts of this size keep their default amounts, with no size.`;
+export const deleteTierConfirm = (name: string): string => `Delete the size ${name}?`;

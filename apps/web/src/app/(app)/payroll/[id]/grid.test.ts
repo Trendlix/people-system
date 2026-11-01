@@ -4,7 +4,6 @@ import {
   attendanceHours,
   attendancePercent,
   cellText,
-  columnNote,
   contractsNote,
   dayRange,
   errorLine,
@@ -21,7 +20,6 @@ import {
   leaveFill,
   lineItems,
   linePatches,
-  noShowPay,
   parseCell,
   permissionFill,
   placeApiErrors,
@@ -56,24 +54,12 @@ describe('the grid’s columns', () => {
     expect(ITEMS_AFTER).toBe('unpaidLeaveDays');
     // nor the CEO's attendance waiver, ticked on the results table (17 October 2026), nor a flexible days shift's days
     // off, filled from the attendance and listed with the expected hours (31 October 2026)
-    const notTyped = ['softSkills', 'performance', 'clientSatisfaction', 'attendanceWaived', 'flexDaysOff'];
+    const notTyped = ['softSkills', 'performance', 'clientSatisfaction', 'attendanceWaived', 'kpiWaived', 'flexDaysOff'];
     expect(new Set(GRID_COLUMNS.map((c) => c.field))).toEqual(new Set(Object.keys(EMPTY_PAYROLL_INPUTS).filter((k) => !notTyped.includes(k))));
   });
 
   it('show the Expected hours worked out, never typed: the one column that is (owner, 20 October 2026: "expected hours to be locked based on shifts and attendance data")', () => {
     expect(GRID_COLUMNS.filter((c) => c.workedOut).map((c) => c.field)).toEqual(['expectedHours']);
-  });
-
-  it('say what a no-show day costs under its column', () => {
-    expect([noShowPay(2), noShowPay(1), noShowPay(1.5)]).toEqual(["2 days' pay each", "1 day's pay each", "1.5 days' pay each"]);
-  });
-
-  it('say under the no-show and leave days that their hours come out of the expected hours (17 October 2026)', () => {
-    expect(columnNote('noShowDays', 2)).toBe("2 days' pay each, out of the expected hours");
-    expect(columnNote('noShowDays', 1)).toBe("1 day's pay each, out of the expected hours");
-    expect(columnNote('leaveDays', 2)).toBe('Paid, out of the expected hours');
-    expect(columnNote('released', 2)).toBeNull();
-    expect(columnNote('expectedHours', 2)).toBeNull();
   });
 });
 
@@ -492,11 +478,6 @@ describe('the leave days filled in from the leave approved (owner, 18 October 20
     expect(expectedCell(shift, cells({ expectedHours: 150 }))).toEqual({ hours: 150, fromShift: false });
   });
 
-  it('say an unpaid leave day costs a day’s pay, under its column', () => {
-    expect(columnNote('unpaidLeaveDays', 2)).toBe("A day's pay each, out of the expected hours");
-    expect(columnNote('leaveDays', 2)).toBe('Paid, out of the expected hours');
-  });
-
   it('are typed as days, whole or half, like the other days', () => {
     expect(parseCell('days', '1.5')).toEqual({ ok: true, value: 1.5 });
     expect(linePatches([{ id: A, name: 'Mona Farid', inputs: { ...EMPTY_PAYROLL_INPUTS }, onHold: false, comments: null }], { [A]: { inputs: { unpaidLeaveDays: '2' } } }).patches).toEqual([
@@ -515,7 +496,6 @@ describe('the permission hours (owner, 19 October 2026: "this is an option given
     expect(permissionFill(0, 'permissionHours')).toBeNull();
     expect(permissionFill(null, 'permissionHours')).toBeNull();
     expect(permissionFill(undefined, 'permissionHours')).toBeNull();
-    expect(columnNote('permissionHours', 2)).toBe('Counted as worked');
   });
 
   it('are the typed ones when typed (0 too), else the approved ones', () => {

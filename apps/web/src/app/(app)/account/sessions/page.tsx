@@ -1,4 +1,3 @@
-import { DEVICE_UNUSED_DAYS } from '@trendlix/shared';
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { logout } from '@/app/login/actions';
@@ -50,16 +49,9 @@ async function Fingerprints() {
   const own = !user.viewAs;
   return (
     <section aria-labelledby="fingerprint-heading" className="card space-y-4 p-6">
-      <div>
-        <h2 id="fingerprint-heading" className="font-semibold">
-          Fingerprint Sign-In
-        </h2>
-        <p className="mt-1 text-sm text-muted">
-          Fingerprint sign-in is turned on in the Trendlix People app, after signing in there with your password. A phone
-          stops signing in with it after {DEVICE_UNUSED_DAYS} days without use, and every phone does when your password
-          changes: the password is asked for then.
-        </p>
-      </div>
+      <h2 id="fingerprint-heading" className="font-semibold">
+        Fingerprint Sign-In
+      </h2>
       {devices.kind === 'ok' ? (
         <FingerprintDevices
           devices={devices.value}
@@ -78,15 +70,7 @@ async function Fingerprints() {
 export default function YourSessionsPage() {
   return (
     <div className="max-w-2xl space-y-4">
-      <div>
-        <h1 className="page-title">Your Sessions</h1>
-        <p className="mt-1 text-muted">
-          You can be signed in once on the website and once in the app. Signing in again on another device signs the older
-          one out. Sign out of any you don’t recognise, then change your password: that signs out your other sessions and
-          turns off fingerprint sign-in on your phones. A Claude connector you allowed (Assets → Setup → Connect Claude) shows here
-          too, as Claude connector.
-        </p>
-      </div>
+      <h1 className="page-title">Your Sessions</h1>
       <Suspense fallback={<p className="text-sm text-muted">Loading…</p>}>
         <Sessions />
       </Suspense>

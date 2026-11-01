@@ -27,7 +27,7 @@ export async function submitMailSettings(prev: MailFormState, fd: FormData): Pro
     return refused(prev, async () => {
       await apiSend<MailSettingsView>('DELETE', '/mail-settings/password');
       refresh();
-      return { message: 'The saved password was removed.', saved: (prev.saved ?? 0) + 1 };
+      return { message: 'Password removed.', saved: (prev.saved ?? 0) + 1 };
     });
   }
 

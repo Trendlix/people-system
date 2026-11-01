@@ -23,7 +23,6 @@ import {
   deleteTierConfirm,
   focusedAccount,
   hiddenText,
-  PAYROLL_NOTE,
   peopleCount,
   peopleOf,
   periodText,
@@ -186,7 +185,6 @@ function People({
           </table>
         </div>
       ))}
-      {hidden && <p className="text-xs text-muted">{hidden}: only the CEO and the Super Admin see them.</p>}
     </div>
   );
 }
@@ -262,12 +260,9 @@ function Sizes({ tiers, seesAmounts, edits, removes }: { tiers: readonly TierVie
   // a Super Admin deletes one made by mistake, whoever else they are
   return (
     <section aria-labelledby="account-sizes" className="card space-y-3 p-5">
-      <div>
-        <h2 id="account-sizes" className="font-semibold">
-          Account Sizes
-        </h2>
-        <p className="text-sm text-muted">Optional: a size fills in an account&apos;s default amount when chosen, which can still be changed on the account.</p>
-      </div>
+      <h2 id="account-sizes" className="font-semibold">
+        Account Sizes
+      </h2>
       {tiers.length > 0 ? (
         <ul className="divide-y divide-line-soft">
           {tiers.map((t) => (
@@ -307,7 +302,7 @@ async function AccountsView({ searchParams }: { searchParams: Promise<Query> }) 
     return (
       <Empty>
         {loaded.kind === 'unavailable'
-          ? 'Not available yet: the server does not have client accounts yet. Please try again after its next update.'
+          ? 'Client accounts aren’t available yet.'
           : loaded.kind === 'forbidden'
             ? 'Only HR, the CEO, Finance and a Super Admin can see the client accounts.'
             : `The client accounts could not be loaded. ${loaded.messages.join(' ')}`}
@@ -323,10 +318,6 @@ async function AccountsView({ searchParams }: { searchParams: Promise<Query> }) 
   const accounts = sortedAccounts(list.accounts);
   return (
     <div className="space-y-6">
-      <p role="note" className="rounded-lg bg-accent-soft px-4 py-3 text-sm">
-        {PAYROLL_NOTE}
-      </p>
-      {!list.edits && <p className="text-sm text-muted">You can read the client accounts here; HR and the CEO change them.</p>}
       {list.edits && <AddAccount action={createAccount} tiers={list.tiers} departments={departments ?? []} />}
       <section aria-labelledby="accounts-list" className="space-y-4">
         <h2 id="accounts-list" className="font-semibold">
@@ -346,10 +337,7 @@ async function AccountsView({ searchParams }: { searchParams: Promise<Query> }) 
             />
           ))
         ) : (
-          <Empty>
-            No client accounts yet.
-            {list.edits ? ' Add the first one above.' : ''}
-          </Empty>
+          <Empty>No client accounts yet.</Empty>
         )}
       </section>
       <Sizes tiers={list.tiers} seesAmounts={list.seesAmounts} edits={list.edits} removes={removes} />
@@ -362,10 +350,6 @@ export default function ClientAccountsPage({ searchParams }: PageProps<'/clients
     <StaffOnly>
       <div className="max-w-6xl">
         <h1 className="page-title">Client Accounts</h1>
-        <p className="mt-1 text-muted">
-          The company&apos;s client accounts and the people on each, from a day to a day, each at an amount a month: the account&apos;s default unless theirs
-          differs.
-        </p>
         <div className="mt-6">
           <Suspense fallback={<Loading />}>
             <AccountsView searchParams={searchParams} />

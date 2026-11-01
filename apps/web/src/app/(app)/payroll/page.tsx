@@ -98,7 +98,7 @@ async function Runs() {
               Couldn&apos;t load the payroll runs. <span className="block pt-1 text-xs">{listing.message}</span>
             </p>
           ) : listing.rows.length === 0 ? (
-            <p className={quiet}>No payroll runs yet.{preparesPayroll(user) ? ' Make the first one above.' : ''}</p>
+            <p className={quiet}>No payroll runs yet.</p>
           ) : (
             <RunsTable runs={listing.rows} />
           )}
@@ -112,11 +112,6 @@ export default function PayrollPage() {
   return (
     <div className="max-w-6xl">
       <h1 className="page-title">Payroll Overview</h1>
-      <p className="mt-1 text-muted">
-        Each month&apos;s pay: HR prepares the run, the CEO approves it, then the bank files are made and HR marks it paid. The rules, rates
-        and payday it is worked out with are under <Link href="/organization/payroll">Organization → Payroll Setup</Link>, the holidays under{' '}
-        <Link href="/organization/holidays">Organization → Holidays</Link>.
-      </p>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>
           <Runs />

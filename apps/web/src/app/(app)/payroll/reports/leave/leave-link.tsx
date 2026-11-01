@@ -8,10 +8,5 @@ import { canSeeLeaveReport, LEAVE_REPORT_PATH } from './leave-report';
 export async function LeaveReportLink() {
   const user = await getCurrentUser();
   if (!canSeeLeaveReport(user)) return null;
-  return (
-    <>
-      {' '}
-      The month’s leave has one too: <Link href={LEAVE_REPORT_PATH}>Leave</Link>.
-    </>
-  );
+  return <Link href={LEAVE_REPORT_PATH}>Leave</Link>;
 }

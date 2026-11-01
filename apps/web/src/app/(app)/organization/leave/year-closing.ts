@@ -156,31 +156,26 @@ export function payoutText(p: YearClosingRow['payout']): string | null {
   return `To be paid with the ${month} payroll`;
 }
 
-/** How the C-level people left out are closed (19 October 2026): carryRest's, the days that must be paid now paid. */
-const byDefault = (year: number) => `the days that must be paid now are paid, the rest carried into ${year + 1}`;
-
 /**
  * What the page says when C-level people are left out for the caller (owner, 19 October 2026: "make C level Employees
- * details not visible to HR"): that only the CEO and the Super Admin see their leave, and, while the year is open, that
- * closing it settles theirs by default; null for none.
+ * details not visible to HR"); null for none.
  */
-export function closingExcludedText(count: number | null | undefined, year: number, closed: boolean): string | null {
+export function closingExcludedText(count: number | null | undefined): string | null {
   if (typeof count !== 'number' || !(count > 0)) return null;
-  const left = `${confidentialPeople(count)} ${count === 1 ? 'is' : 'are'} left out: only the CEO and the Super Admin see their leave.`;
-  return closed ? left : `${left} Closing the year settles theirs by default: ${byDefault(year)}.`;
+  return `${confidentialPeople(count)} ${count === 1 ? 'is' : 'are'} left out: only the CEO and the Super Admin see their leave.`;
 }
 
-/** What Close the year asks first: the days carried and paid, and how the C-level people left out (`excluded`) are closed. */
+/** What Close the year asks first: the days carried and paid, and the C-level people left out (`excluded`), closed by default. */
 export function closingConfirmText(year: number, totals: { carry: number; pay: number; amount: number }, excluded = 0): string {
-  const text = `Close ${year}? ${totals.carry} days are carried into ${year + 1}, and ${totals.pay} days are paid (${formatEgp(totals.amount)}) with the payroll of January ${year + 1}, or the next one open.`;
-  if (!(excluded > 0)) return text;
-  return `${text} ${confidentialPeople(excluded)}, left out here, ${excluded === 1 ? 'is' : 'are'} closed by default: ${byDefault(year)}.`;
+  const figures = `${totals.carry} days carried, ${totals.pay} paid (${formatEgp(totals.amount)})`;
+  if (!(excluded > 0)) return `Close ${year}: ${figures}?`;
+  return `Close ${year}: ${figures}, ${confidentialPeople(excluded)} closed by default?`;
 }
 
 /** What the page says after `?done=`: closed, or opened again. */
 export function closingDoneText(query: Query, year: number): string | null {
   const done = typeof query.done === 'string' ? query.done : '';
-  if (done === 'closed') return `${year} is closed: the days carried are in ${year + 1}'s balances, and the days paid are added to the payroll as Unused leave paid.`;
-  if (done === 'reopened') return `${year} is open again: its carried days and payouts are taken back until it is closed again.`;
+  if (done === 'closed') return `${year} is closed.`;
+  if (done === 'reopened') return `${year} is open again.`;
   return null;
 }

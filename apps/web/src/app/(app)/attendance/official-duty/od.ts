@@ -6,7 +6,6 @@ import {
   LEAVE_STAGES,
   LEAVE_STATUS_LABELS,
   leaveStatusAfterApproval,
-  OD_AFTER_DAYS,
   OD_DAY_LABEL,
   OD_PLACE_MAX,
   OD_REASON_MAX,
@@ -183,7 +182,7 @@ export const odLabel = (n: number) => `${n} ${n === 1 ? 'request' : 'requests'}`
 
 const EMPTY: Record<OdFilter, string> = {
   waiting: 'No official duty requests are waiting for you.',
-  all: 'No official duty requests yet. Employees ask from My Requests → Request official duty.',
+  all: 'No official duty requests yet.',
   with_manager: 'No official duty requests are with a manager.',
   with_hr: 'No official duty requests are with HR.',
   approved: 'No official duties approved.',
@@ -262,28 +261,25 @@ export function odProgressText(r: Pick<OdRequestView, 'status' | 'manager' | 're
 
 /** Once sent: where it goes, or, recorded by HR, that it is approved at once. */
 export function odSentText(status: LeaveStatus, manager?: Pick<RequestApprover, 'role'> | null, confidential?: boolean | null): string {
-  if (status === 'approved') return 'Official duty recorded, approved at once; the employee is told. On its days they check in from where they are, and the days count as attended for its hours.';
-  const hr = hrStageName(confidential);
+  if (status === 'approved') return 'Official duty recorded.';
   const first = manager?.role === 'team_lead' ? 'your team lead' : manager?.role === 'department_head' ? 'your head of department' : 'your direct manager';
-  return status === 'with_manager' ? `Request sent. It goes to ${first}, then ${hr}; each step shows on the request.` : `Request sent. It goes to ${hr}; each step shows on the request.`;
+  return `Sent to ${status === 'with_manager' ? first : hrStageName(confidential)}.`;
 }
 
 /** Once a decision went through; a C-level person's goes on to the CEO, not HR (`confidential`). */
 export function odDecidedText(decision: LeaveDecision, stage: LeaveStage, confidential?: boolean | null): string {
-  if (decision === 'reject') return 'Request rejected. The employee sees your comment.';
-  return leaveStatusAfterApproval(stage) === 'with_hr'
-    ? `Approved: the request goes to ${hrStageName(confidential)}.`
-    : 'Approved: on its days they check in from where they are, and the days count as attended for its hours.';
+  if (decision === 'reject') return 'Request rejected.';
+  return leaveStatusAfterApproval(stage) === 'with_hr' ? `Approved: sent to ${hrStageName(confidential)}.` : 'Official duty approved.';
 }
 
 /** Said when a decision is refused as the request moved on since the page was opened (the API's 409). */
-export const OD_MOVED_ON = 'This request has moved on since you opened it: someone else decided it, or it was cancelled. It shows where it stands now.';
+export const OD_MOVED_ON = 'This request has moved on since you opened it.';
 
 /** What a request's page says after `?done=`, and in which tone; null for anything else. */
 export function odDoneText(query: Query, status: LeaveStatus, manager?: Pick<RequestApprover, 'role'> | null, confidential?: boolean | null): { text: string; tone: 'ok' | 'warn' } | null {
   const done = one(query.done);
   if (done === 'sent' || done === 'recorded') return { text: odSentText(status, manager, confidential), tone: 'ok' };
-  if (done === 'cancelled') return { text: 'Official duty cancelled. It stays on the list, cancelled; its days are free again.', tone: 'ok' };
+  if (done === 'cancelled') return { text: 'Official duty cancelled.', tone: 'ok' };
   if (done === 'moved') return { text: OD_MOVED_ON, tone: 'warn' };
   const [stage, decision] = done.split('_');
   if (!(LEAVE_STAGES as readonly string[]).includes(stage) || !(LEAVE_DECISIONS as readonly string[]).includes(decision)) return null;
@@ -524,8 +520,8 @@ export function odCashText(comp: Pick<OdCompensationView, 'earned' | 'cashDays'>
 }
 
 /**
- * What the compensation part of a form says first: what the day earns ("…: official duty on it earns a whole day off,
- * or 1.5 days' pay instead"), that it is compensated already, or that part of it below the Setup's minimum earns nothing.
+ * What the compensation part of a form says first: what the day earns ("…: earns a whole day off, or 1.5 days' pay
+ * instead"), that it is compensated already, or that part of it below the Setup's minimum earns nothing.
  * `what`: the day (the employee's form knows it; HR's check doesn't say). `rules`: the Setup, when known.
  */
 export function odCompensationLead(
@@ -534,48 +530,12 @@ export function odCompensationLead(
   rules: Pick<CompensatoryRules, 'minHours' | 'cashRate'> | null,
 ): string {
   const day = what ?? 'A rest day or an official holiday';
-  if (comp.already) return `${day}, compensated already by a compensatory day (${comp.already}): there is nothing more to choose.`;
+  if (comp.already) return `${day}: compensated already (${comp.already}).`;
   const e = comp.earned;
   if (!e) return '';
-  if (e.kind === 'none') {
-    const least = rules ? `the ${hoursText(rules.minHours)} that earn a compensation (Compensatory Setup)` : 'the hours that earn a compensation (Compensatory Setup)';
-    return `${day}: ${hoursText(e.hours)} of official duty on it earns nothing, fewer than ${least}, so there is no compensation to choose.`;
-  }
+  if (e.kind === 'none') return `${day}: ${hoursText(e.hours)} earns no compensation${rules ? ` (under ${hoursText(rules.minHours)})` : ''}.`;
   const earns = e.kind === 'day' ? 'a whole day off' : `${hoursText(e.hours)} off`;
-  return `${day}: official duty on it earns ${earns}, or ${odCashText(comp, rules?.cashRate ?? null)} instead. The day itself adds no hours or overtime.`;
-}
-
-/**
- * The day off's hint: a working day in the window the Setup allows (the same month, or within so many days after), from
- * tomorrow for the employee (a day's notice), a day gone by recorded with a warning by HR (`hr`); the hours off taken
- * that day with no deduction.
- */
-export function odDayOffHint(comp: Pick<OdCompensationView, 'earned'>, rules: Pick<CompensatoryRules, 'offWithinDays'> | null, hr: boolean): string {
-  const window =
-    rules === null ? 'in the window the Compensatory Setup allows' : rules.offWithinDays === null ? 'in the same month' : `within ${rules.offWithinDays} ${rules.offWithinDays === 1 ? 'day' : 'days'} after it`;
-  const when = hr ? `A working day of their shift ${window}; a day gone by is recorded with a warning.` : `A working day of your shift ${window}, from tomorrow on.`;
-  return comp.earned?.kind === 'hours' ? `${when} The ${hoursText(comp.earned.hours)} off are taken that day, with no deduction.` : when;
-}
-
-/** Cash instead's hint: what is added to the payroll, and no day off. */
-export const odCashHint = (comp: Pick<OdCompensationView, 'earned' | 'cashDays'>, rate: number | null = null): string =>
-  `Cash instead: ${odCashText(comp, rate)} added to the month's payroll once approved, and no day off.`;
-
-/**
- * The compensation chosen, for the ready texts: ", with a day off on Tuesday 27/10/2026", ", with 4 hours off on …",
- * ", paid 1.5 days' pay instead", ", paid 4 hours' pay at 1.5× instead"; empty while none is asked for.
- */
-export function odCompensationWords(
-  typed: Pick<TypedOd, 'compensation' | 'dayOff'>,
-  comp: Pick<OdCompensationView, 'needed' | 'earned' | 'cashDays'> | null,
-  rate: number | null = null,
-): string {
-  if (!comp?.needed || !comp.earned || comp.earned.kind === 'none') return '';
-  const asked = readCompensation(typed).asked;
-  if (!asked?.compensation) return '';
-  if (asked.compensation === 'cash') return `, paid ${odCashText(comp, rate)} instead`;
-  const off = comp.earned.kind === 'hours' ? `${hoursText(comp.earned.hours)} off` : 'a day off';
-  return asked.dayOff ? `, with ${off} on ${dayWords(asked.dayOff)}` : `, with ${off}`;
+  return `${day}: earns ${earns}, or ${odCashText(comp, rules?.cashRate ?? null)} instead.`;
 }
 
 // ---------- the employee's form ----------
@@ -613,26 +573,6 @@ export function odFormProblems(typed: TypedOd, form: OdFormRead | null, done: Od
     }
   }
   return problems.map(shownMessage);
-}
-
-/**
- * The note shown when the first day has gone by (owner, 23 October 2026: "Ahead or up to 3 days after"): it is marked
- * requested after; null otherwise.
- */
-export function odAfterNote(typed: Pick<TypedOd, 'startDate'>, form: Pick<OdForm, 'today'> | null): string | null {
-  const date = parseDate(typed.startDate);
-  if (!date || !form || date >= form.today) return null;
-  return `Asked after the day: it is marked “requested after”. That’s fine up to ${OD_AFTER_DAYS} days after; the reason tells your manager and HR why it wasn’t asked ahead.`;
-}
-
-/**
- * What the form says once it can be sent: the days, the compensation chosen on a day off (`comp`; `rate`: the Setup's
- * cash rate) and where it goes (`toCeo`: a C-level person's goes to the CEO, not HR).
- */
-export function odReadyText(typed: TypedOd, toCeo = false, comp: Pick<OdCompensationView, 'needed' | 'earned' | 'cashDays'> | null = null, rate: number | null = null): string {
-  const { body } = read(odSent(typed, comp?.needed === true));
-  const when = body ? ` for ${odWhenWords({ startDate: body.startDate, endDate: body.endDate, fullDay: body.fullDay, fromTime: body.fromTime ?? null, toTime: body.toTime ?? null })}` : '';
-  return `Ready to send: official duty${when}${odCompensationWords(typed, comp, rate)}, to your direct manager (without one, your lead), then ${hrStageName(toCeo)}.`;
 }
 
 /** The request sent, or what can't be read: the API checks the rest and answers what is wrong. Its compensation goes only while the form shows it. */
@@ -681,13 +621,6 @@ export function odRecordProblems(typed: TypedOd, check: Pick<OdCheck, 'problems'
   const { errors } = read(typed);
   if (errors.length) return errors;
   return check ? check.problems.map(shownMessage) : [];
-}
-
-/** What HR's form says once it can be recorded: the days, the compensation chosen on a day off, approved at once for the person, who is told. */
-export function odRecordReadyText(typed: TypedOd, name: string, comp: Pick<OdCompensationView, 'needed' | 'earned' | 'cashDays'> | null = null, rate: number | null = null): string {
-  const { body } = read(odSent(typed, comp?.needed === true));
-  const when = body ? ` for ${odWhenWords({ startDate: body.startDate, endDate: body.endDate, fullDay: body.fullDay, fromTime: body.fromTime ?? null, toTime: body.toTime ?? null })}` : '';
-  return `Ready to record: official duty${when}${odCompensationWords(typed, comp, rate)}, approved at once for ${name} and logged as recorded by HR. ${name} is told.`;
 }
 
 const FIELDS = ['startDate', 'endDate', 'span', 'fromTime', 'toTime', 'place', 'reason', 'compensation', 'dayOff'] as const;

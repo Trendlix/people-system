@@ -18,8 +18,8 @@ import { PhotoForm } from './photo-form';
 // review at sign-in too, which leads here.
 
 const DONE: Record<string, string> = {
-  sent: 'Your new photo was sent to HR. It becomes your picture once HR approves it.',
-  cancelled: 'Your new photo was cancelled.',
+  sent: 'Sent to HR.',
+  cancelled: 'New photo cancelled.',
 };
 
 function Waiting({ request: r, employeeId }: { request: PhotoRequest; employeeId: string }) {
@@ -35,8 +35,7 @@ function Waiting({ request: r, employeeId }: { request: PhotoRequest; employeeId
         </DocumentViewer>
         <div className="min-w-0 flex-1 space-y-1 text-sm">
           <p>
-            Sent <span className="font-medium">{formatDate(r.requestedAt)}</span>. HR decides whether it becomes your picture; you can send another
-            once they have, or cancel this one to send a different photo.
+            Sent <span className="font-medium">{formatDate(r.requestedAt)}</span>
           </p>
           {r.note && <p className="whitespace-pre-line text-muted">Your note: {r.note}</p>}
         </div>
@@ -85,11 +84,7 @@ async function Photo({ params, searchParams }: Address) {
           <h2 id="photo-now" className="font-semibold">
             Your Picture Now
           </h2>
-          <p className="text-sm text-muted">
-            {p.photoId
-              ? 'The personal photo in your employee file, shown beside your name across People. HR may crop it to show your face.'
-              : 'There is no personal photo in your employee file yet, so your initials are shown beside your name.'}
-          </p>
+          {!p.photoId && <p className="text-sm text-muted">No photo yet.</p>}
         </div>
       </section>
 

@@ -103,7 +103,7 @@ export async function generateDocument(employeeId: string, target: GenerateTarge
     return { errors: messagesFor(err) };
   }
   refresh();
-  return { message: 'Generated. Download it below, print it, and upload the signed copy once it is signed.' };
+  return { message: 'Generated.' };
 }
 
 /** The document was printed (for signing). */

@@ -96,9 +96,6 @@ export function CareersSiteForm({ action, address }: { action: Action; address: 
           placeholder={CAREERS_SITE_STANDARD}
           className="input"
         />
-        <p className="mt-1 text-xs text-muted">
-          The job list’s page, starting with https://, with no ? or #. Leave it empty for the standard, {CAREERS_SITE_STANDARD}.
-        </p>
       </div>
       <div className="flex flex-wrap items-center gap-3">
         <button type="submit" disabled={pending} className="btn btn-primary">
@@ -141,9 +138,6 @@ export function SuggestionSettingsForm({ action, settings }: { action: Action; s
           defaultValue={str(v.suggestMonths) ?? String(settings.suggestions.recencyMonths)}
           className="input"
         />
-        <p className="mt-1 text-xs text-muted">
-          From {SUGGESTION_LIMITS.recencyMonthsMin} to {SUGGESTION_LIMITS.recencyMonthsMax} months; the standard is {SUGGESTION_LIMITS.recencyMonths}.
-        </p>
       </div>
       <div className="flex flex-wrap items-center gap-3">
         <button type="submit" disabled={pending} className="btn btn-primary">
@@ -262,7 +256,6 @@ export function PositionsForm({ action, positions }: { action: Action; positions
           </ul>
         </fieldset>
       ))}
-      <p className="hint">The switch on: shown on the careers page. Off: hidden there, still on HR’s lists (marked hidden).</p>
       <div className="flex flex-wrap items-center gap-3">
         <button type="submit" disabled={pending} className="btn btn-primary">
           {pending ? 'Saving…' : 'Save the positions'}

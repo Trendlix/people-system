@@ -66,17 +66,17 @@ export function wholeFrom(raw: string, min: number, max: number): number | null 
 
 // ---------- the annual leave's days (Art. 124) ----------
 
-/** Each setting of the Leave Setup: its label, the law's words it comes from, its unit and its limits. */
-export const SETTING_FIELDS: readonly { key: keyof LeaveRules; label: string; law: string; unit: 'days' | 'years' | 'months'; min: number; max: number }[] = [
-  { key: 'firstYearDays', label: 'First year of service', law: 'خمسة عشر يوما فى السنة الأولى', unit: 'days', min: 0, max: 366 },
-  { key: 'standardDays', label: 'From the second year', law: 'واحد وعشرون يوما اعتبارا من السنة الثانية', unit: 'days', min: 0, max: 366 },
-  { key: 'longServiceDays', label: 'After long service or over the age', law: 'ثلاثون يوما لمن أمضى عشر سنوات كاملة لدى صاحب عمل أو أكثر، أو لمن تجاوزت سنه خمسين عاما', unit: 'days', min: 0, max: 366 },
-  { key: 'longServiceYears', label: 'Long service: full years with any employer', law: 'عشر سنوات كاملة لدى صاحب عمل أو أكثر', unit: 'years', min: 1, max: 60 },
-  { key: 'longServiceAge', label: 'Over the age of', law: 'لمن تجاوزت سنه خمسين عاما', unit: 'years', min: 18, max: 100 },
-  { key: 'disabilityDays', label: 'A person with a disability', law: 'خمسة وأربعون يوما للأشخاص ذوى الإعاقة والأقزام', unit: 'days', min: 0, max: 366 },
-  { key: 'hazardousExtraDays', label: 'Added for hazardous, unhealthy or remote work', law: 'تزاد مدة الإجازة السنوية بمقدار سبعة أيام', unit: 'days', min: 0, max: 366 },
-  { key: 'firstYearMinMonths', label: 'Months served before a first year’s leave is used', law: 'بشرط أن يكون قد أمضى ستة أشهر على الأقل فى خدمة صاحب العمل', unit: 'months', min: 0, max: 12 },
-  { key: 'settleWithinYears', label: 'Days carried are settled within', law: 'بتسوية رصيد الإجازات، أو الأجر المقابل له كل ثلاث سنوات على الأكثر (Art. 125)', unit: 'years', min: 1, max: 10 },
+/** Each setting of the Leave Setup: its label, its unit and its limits. */
+export const SETTING_FIELDS: readonly { key: keyof LeaveRules; label: string; unit: 'days' | 'years' | 'months'; min: number; max: number }[] = [
+  { key: 'firstYearDays', label: 'First year of service', unit: 'days', min: 0, max: 366 },
+  { key: 'standardDays', label: 'From the second year', unit: 'days', min: 0, max: 366 },
+  { key: 'longServiceDays', label: 'After long service or over the age', unit: 'days', min: 0, max: 366 },
+  { key: 'longServiceYears', label: 'Long service: full years with any employer', unit: 'years', min: 1, max: 60 },
+  { key: 'longServiceAge', label: 'Over the age of', unit: 'years', min: 18, max: 100 },
+  { key: 'disabilityDays', label: 'A person with a disability', unit: 'days', min: 0, max: 366 },
+  { key: 'hazardousExtraDays', label: 'Added for hazardous, unhealthy or remote work', unit: 'days', min: 0, max: 366 },
+  { key: 'firstYearMinMonths', label: 'Months served before a first year’s leave is used', unit: 'months', min: 0, max: 12 },
+  { key: 'settleWithinYears', label: 'Days carried are settled within', unit: 'years', min: 1, max: 10 },
 ];
 
 /** "21 days", "10 years", "6 months", with the unit's singular for 1. */
@@ -95,9 +95,6 @@ export const PERMISSION_FIELDS: readonly { key: 'permissionHoursPerMonth' | 'per
   { key: 'permissionHoursPerMonth', label: 'Permission hours a month', min: 0, max: PERMISSION_MONTH_MAX, defaultHours: PERMISSION_RULE_DEFAULTS.hoursPerMonth },
   { key: 'permissionMaxHoursPerDay', label: 'Most permission hours a day', min: 0.5, max: PERMISSION_DAY_MAX, defaultHours: PERMISSION_RULE_DEFAULTS.maxHoursPerDay },
 ];
-
-/** The hint under the permission figures. */
-export const PERMISSION_HINT = '0 hours a month: no permission. In half hours.';
 
 /** Hours as typed ("4", "1.5", "1,5", "٤"); NaN when they aren't a number (the checks then say so). */
 export function hoursFromText(raw: string): number {

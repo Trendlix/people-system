@@ -227,7 +227,7 @@ function Merges({ c }: { c: CandidateView }) {
                 {m.undoneAt ? ` · undone ${formatDateTime(m.undoneAt)}` : ''}
               </span>
             </span>
-            {m.canUndo && <ActionButton action={undoMerge.bind(null, m.id)} label="Undo merge" pendingLabel="Undoing…" confirm={`Undo the merge of ${shownCode(m.merged.code) ?? 'this candidate'}? What moved goes back to it.`} />}
+            {m.canUndo && <ActionButton action={undoMerge.bind(null, m.id)} label="Undo merge" pendingLabel="Undoing…" confirm={`Undo the merge of ${shownCode(m.merged.code) ?? 'this candidate'}?`} />}
           </li>
         ))}
       </ul>

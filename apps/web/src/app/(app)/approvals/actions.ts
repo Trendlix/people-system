@@ -45,7 +45,7 @@ async function sendChangeDecision(id: string, fd: FormData): Promise<{ decision:
   const note = String(fd.get('note') ?? '').trim();
   const values = { note };
   if (decision !== 'approve' && decision !== 'reject') return { state: { errors: ['Choose Approve or Reject.'], values } };
-  if (decision === 'reject' && !note) return { state: { errors: ['Write a note saying why the change is rejected: the employee sees it.'], values } };
+  if (decision === 'reject' && !note) return { state: { errors: ['Write a note saying why the change is rejected.'], values } };
 
   try {
     await apiSend('POST', `/change-requests/${encodeURIComponent(id)}/${decision}`, note ? { note } : {});

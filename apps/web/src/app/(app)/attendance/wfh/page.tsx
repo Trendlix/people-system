@@ -10,7 +10,6 @@ import type { EmployeeSummary } from '@/lib/types';
 import { getOrNull } from '../../approvals/data';
 import { Empty, Loading } from '../../organization/ui';
 import { StaffOnly } from '../../staff-only';
-import { NO_FILTERS, requestFiltersHref, WFH_TYPE } from '../../leave/request-filters';
 import { notLoaded } from '../not-loaded';
 import { loadWfhRequests } from './data';
 import { WfhTable } from './ui';
@@ -44,7 +43,7 @@ function placeChoices(places: readonly PlaceRef[]): { id: string; label: string 
 
 async function List({ searchParams }: { searchParams: PageProps<'/attendance/wfh'>['searchParams'] }) {
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
-  if (!seesAllWfh(user)) return <Empty>Only HR and the CEO see everyone&apos;s work from home days. A manager decides their team&apos;s on My Team.</Empty>;
+  if (!seesAllWfh(user)) return <Empty>Only HR and the CEO see everyone&apos;s work from home days.</Empty>;
   const q = readWfhQuery(query);
   const [loaded, places, directory] = await Promise.all([loadWfhRequests(q), loadPlaces(), getOrNull<EmployeeSummary[]>('/employees')]);
   // the people the user sees (the directory without the C-level cards they can't open), as Leave Requests lists them
@@ -79,7 +78,7 @@ async function List({ searchParams }: { searchParams: PageProps<'/attendance/wfh
           {days && ` ${days.charAt(0).toUpperCase()}${days.slice(1)}.`}
         </div>
       ) : (
-        <WfhTable requests={loaded.value} who how note={days ? `${days}, the latest day first.` : 'the latest day first.'} />
+        <WfhTable requests={loaded.value} who how note={days ?? ''} />
       )}
     </div>
   );
@@ -89,15 +88,7 @@ export default function WfhListPage({ searchParams }: PageProps<'/attendance/wfh
   return (
     <StaffOnly>
       <div className="max-w-6xl space-y-6">
-        <div>
-          <h1 className="page-title">Work From Home</h1>
-          <p className="mt-1 max-w-3xl text-muted">
-            Days employees work from home instead of the office: a working day, not leave. Asked a day before at the latest, at most the days a month
-            Leave Setup gives, a week apart; decided by their direct manager (or lead), then HR, a C-level person&apos;s by the CEO. That day they check
-            in from home, without the office network. HR records a day for someone, past the limits too, with a reason. They are listed with leave
-            and permission on <Link href={requestFiltersHref('all', { ...NO_FILTERS, type: WFH_TYPE })}>Leave Requests</Link> too.
-          </p>
-        </div>
+        <h1 className="page-title">Work From Home</h1>
         <Suspense fallback={<Loading />}>
           <List searchParams={searchParams} />
         </Suspense>

@@ -140,7 +140,7 @@ function ByDepartment({ report }: { report: SalaryRaisesView }) {
   const t = report.totals;
   return (
     <section aria-labelledby="raises-by-department" className="space-y-3">
-      <SectionTitle id="raises-by-department" title="By Department" note="A team’s raises are its department’s" />
+      <SectionTitle id="raises-by-department" title="By Department" />
       <div className="card overflow-x-auto">
         <table className="table">
           <thead>
@@ -232,11 +232,9 @@ function Raises({ report }: { report: SalaryRaisesView }) {
   const title = periodTitle(report.period);
   return (
     <section aria-labelledby="raises-list" className="space-y-3">
-      <SectionTitle id="raises-list" title="Raises" note={report.raises.length > 0 && `${raisesLabel(report.raises.length)} for ${peopleLabel(report.totals.people)}, oldest first`} />
+      <SectionTitle id="raises-list" title="Raises" note={report.raises.length > 0 && `${raisesLabel(report.raises.length)} for ${peopleLabel(report.totals.people)}`} />
       {report.raises.length === 0 ? (
-        <Empty>
-          No raise took effect in {title}. A raise counts once it is signed; a first contract or a renewal with the same pay is not a raise.
-        </Empty>
+        <Empty>No raise took effect in {title}.</Empty>
       ) : (
         <div className="card overflow-x-auto">
           <table className="table">
@@ -304,7 +302,7 @@ function DueForReview({ report, user }: { report: SalaryRaisesView; user: Sessio
   const rows = report.dueForReview;
   const rule = (
     <>
-      {reviewRuleText(report.reviewMonths)}, or since joining without one, as of today ·{' '}
+      {reviewRuleText(report.reviewMonths)} ·{' '}
       <Link href="/organization/payroll#your-rules">Payroll Setup → Your Rules</Link>
     </>
   );
@@ -312,7 +310,7 @@ function DueForReview({ report, user }: { report: SalaryRaisesView; user: Sessio
     <section aria-labelledby="raises-due" className="space-y-3">
       <SectionTitle id="raises-due" title="Due for Review" note={rule} />
       {rows.length === 0 ? (
-        <Empty>No one is due for a salary review: every current employee has had a raise, or joined, within the last {report.reviewMonths === 1 ? 'month' : `${report.reviewMonths} months`}.</Empty>
+        <Empty>No one is due for a salary review.</Empty>
       ) : (
         <div className="card overflow-x-auto">
           <table className="table">
@@ -338,9 +336,7 @@ function DueForReview({ report, user }: { report: SalaryRaisesView; user: Sessio
               ))}
             </tbody>
           </table>
-          <p className="border-t border-line px-4 py-3 text-sm text-muted">
-            {peopleLabel(rows.length)}, longest without a raise first
-          </p>
+          <p className="border-t border-line px-4 py-3 text-sm text-muted">{peopleLabel(rows.length)}</p>
         </div>
       )}
     </section>
@@ -357,13 +353,10 @@ async function Report({ searchParams }: { searchParams: Promise<Query> }) {
   const header = (
     <section className="card flex flex-wrap items-end justify-between gap-4 p-4">
       <PeriodPicker period={period} today={today} />
-      <div className="text-right">
-        {/* a plain link, never prefetched: the API makes the workbook on each download */}
-        <a href={excelHref(period)} className="btn btn-secondary">
-          Download Excel
-        </a>
-        <p className="hint">The raises, by department and due for review.</p>
-      </div>
+      {/* a plain link, never prefetched: the API makes the workbook on each download */}
+      <a href={excelHref(period)} className="btn btn-secondary">
+        Download Excel
+      </a>
     </section>
   );
 
@@ -406,10 +399,7 @@ export default function SalaryRaisesPage({ searchParams }: PageProps<'/payroll/r
     <StaffOnly>
       <div className="space-y-4">
         <BackLink href="/payroll/reports">Payroll Reports</BackLink>
-        <div>
-          <h1 className="page-title">Salary Raises</h1>
-          <p className="mt-1 text-muted">Every signed raise of a period and what it costs, by department, and who is due for a salary review.</p>
-        </div>
+        <h1 className="page-title">Salary Raises</h1>
         <Suspense fallback={<Loading />}>
           <Report searchParams={searchParams} />
         </Suspense>

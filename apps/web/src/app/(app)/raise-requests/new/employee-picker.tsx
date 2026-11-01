@@ -30,7 +30,6 @@ export function EmployeePicker({ options, chosen, action = NEW_RAISE_REQUEST_PAT
           required
           defaultValue={chosen ?? ''}
           onChange={() => form.current?.requestSubmit()}
-          aria-describedby="raise-request-employee-hint"
           className="input"
         >
           {!chosen && <option value="">Choose who the raise is for</option>}
@@ -40,9 +39,6 @@ export function EmployeePicker({ options, chosen, action = NEW_RAISE_REQUEST_PAT
             </option>
           ))}
         </Select>
-        <p id="raise-request-employee-hint" className="hint">
-          {options.length === 1 ? 'You may ask for a raise for yourself.' : 'Only the people you may ask for a raise for, employed now. Type to search.'}
-        </p>
       </div>
       {options.length > 1 && (
         <button type="submit" className="btn btn-secondary">

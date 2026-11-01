@@ -3,7 +3,7 @@
 import { useActionState, useState } from 'react';
 import { FormErrors, SubmitButton, useFieldIds } from '@/components/form';
 import type { FormState } from '@/lib/types';
-import { UPLOAD_ACCEPT, UPLOAD_MAX_MB, uploadProblems, ZOHO_MAX_FILES, ZOHO_MAX_MB } from './attendance';
+import { UPLOAD_ACCEPT, uploadProblems } from './attendance';
 
 // Uploading Zoho People's attendance entries on a draft run (owner, 19 October 2026: "Accept one file with everyone, or
 // many files at once"): the files chosen together, checked here for a quick answer (their kind, size and number) and
@@ -37,18 +37,12 @@ export function UploadAttendanceForm({ action }: { action: (prev: FormState, fd:
           multiple
           required
           accept={UPLOAD_ACCEPT}
-          aria-describedby={fid('files-hint')}
           onChange={(e) => {
             setProblems([]);
             setChosen(e.target.files?.length ?? 0);
           }}
           className="block w-full text-sm file:mr-3 file:min-h-11 file:cursor-pointer file:rounded-lg file:border file:border-line file:bg-card file:px-4 file:text-sm file:font-semibold"
         />
-        <p id={fid('files-hint')} className="hint">
-          In Zoho People, export the month&apos;s attendance entries as Excel (XLSX): one file with everyone, or a file per person, up to {ZOHO_MAX_FILES}{' '}
-          files of {ZOHO_MAX_MB} MB each and {UPLOAD_MAX_MB} MB in all at once. Only this payroll&apos;s month is read; days of another month are left
-          out. Nothing changes on the payroll until you apply the review.
-        </p>
         {chosen > 0 && (
           <p role="status" className="mt-1 text-sm text-muted">
             {chosen} {chosen === 1 ? 'file' : 'files'} chosen

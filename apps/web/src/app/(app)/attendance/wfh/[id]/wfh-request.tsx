@@ -1,11 +1,10 @@
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { CLevelBadge } from '@/components/c-level-badge';
 import { approverLabel } from '@/lib/department-leads';
 import { formatDateTime } from '@/lib/format';
 import { getCurrentUser } from '@/lib/session';
 import { standingInNoteText } from '@/lib/stand-in';
-import { appBack, appRequestsHref, type Surface } from '@/lib/surface';
+import { appBack, type Surface } from '@/lib/surface';
 import type { LeaveRequestStep } from '@/lib/types';
 import { decidingAsTitle, hrStageName, placeOfEmployee } from '../../../leave/list';
 import { LeaveStatusBadge, LeaveTimeline, PayrollLockedNotice } from '../../../leave/ui';
@@ -13,7 +12,7 @@ import { BackLink, Empty, UUID } from '../../../organization/ui';
 import { notLoadedText } from '../../../payroll/load';
 import { cancelMyWfh, cancelWfhByHr, decideWfh } from '../actions';
 import { loadWfh } from '../data';
-import { MY_WFH_HREF, wfhBack, wfhDayText, wfhDoneText, wfhProgressText, wfhSourceText, wfhStepText } from '../wfh';
+import { wfhBack, wfhDayText, wfhDoneText, wfhProgressText, wfhSourceText, wfhStepText } from '../wfh';
 import { CancelWfhForm, HrCancelWfhForm, WfhDecisionForm } from '../wfh-forms';
 import { leaveStepsAhead } from '@/lib/steps-ahead';
 
@@ -69,7 +68,6 @@ export async function WfhRequestDetail({
   const place = placeOfEmployee(r.employee);
   const progress = wfhProgressText(r);
   const what = `work from home request for ${wfhDayText(r)}`;
-  const own = user.employeeId === r.employee.id;
   // the log as the leave timeline draws it, an import worded its own way (wfhStepText)
   const timeline = { ...r, steps: r.steps as unknown as LeaveRequestStep[] };
 
@@ -101,12 +99,10 @@ export async function WfhRequestDetail({
             <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
               <Fact label="Day">
                 <span className="text-base font-semibold tabular-nums">{wfhDayText(r)}</span>
-                <span className="block text-xs text-muted">A working day from home, not leave: checked in from home as any day</span>
               </Fact>
               {r.monthUsed !== null && (
                 <Fact label="Its month">
                   <span className="tabular-nums">{r.monthUsed} taken</span>
-                  <span className="block text-xs text-muted">Approved and waiting, this one counted</span>
                 </Fact>
               )}
               {r.reason && (
@@ -137,11 +133,6 @@ export async function WfhRequestDetail({
                 </Fact>
               )}
             </dl>
-            {own && (
-              <p className="mt-4 text-sm text-muted">
-                Your other work from home requests are on <Link href={surface === 'site' ? MY_WFH_HREF : appRequestsHref('wfh')}>My Requests</Link>.
-              </p>
-            )}
           </Section>
 
           {r.waitingForYou && r.stage && (
@@ -154,13 +145,11 @@ export async function WfhRequestDetail({
 
           {r.canCancel && (
             <Section title="Cancel the Request">
-              <p className="mb-3 text-sm text-muted">While it is being decided you can cancel it, e.g. to ask for another day.</p>
               <CancelWfhForm action={cancelMyWfh.bind(null, r.id)} what={what} />
             </Section>
           )}
           {!r.canCancel && r.hrCanCancel && (
             <Section title="Cancel the Day">
-              <p className="mb-3 text-sm text-muted">An approved day HR cancels: they are expected at the office that day again, and see why.</p>
               <HrCancelWfhForm action={cancelWfhByHr.bind(null, r.id)} what={what} />
             </Section>
           )}

@@ -12,7 +12,7 @@ import { ChangeRequestStatusBadge, ChangesTable } from '../employees/[id]/change
 import { Loading, todayInCairo } from '../employees/ui';
 import { loadOwnProfile } from '../own-profile';
 import { RaiseCard } from './raise-card';
-import { COVERING_ID, coveringCountText, coveringToCome } from './covering';
+import { COVERING_ID, coveringToCome } from './covering';
 import { loadMyCovering } from './covering-data';
 import { CoveringList } from './covering-list';
 import { justSent, newRaiseRequestHref } from '../raise-requests/list';
@@ -51,7 +51,7 @@ import { AnnualLeaveCard, FigureTile, HistoryPanel, KIND_ICONS, OtherLeaveCards,
 import {
   filterRequests,
   myRequestsHref,
-  noRequestsText,
+  NO_REQUESTS_TEXT,
   readRequestFilters,
   REQUEST_KIND_LABELS,
   REQUEST_STATE_LABELS,
@@ -235,7 +235,6 @@ function startCards(o: Overview, profile: EmployeeProfile) {
       key: 'leave',
       icon: KIND_ICONS.leave,
       title: 'Leave',
-      text: 'Time off: annual, casual, sick or another type of leave.',
       href: NEW_LEAVE_PATH,
       action: 'New leave',
     });
@@ -246,7 +245,6 @@ function startCards(o: Overview, profile: EmployeeProfile) {
       key: 'permission',
       icon: KIND_ICONS.permission,
       title: 'Permission',
-      text: 'A few hours away from a working day, in half-hour blocks.',
       href: NEW_PERMISSION_PATH,
       action: 'New permission',
     });
@@ -256,7 +254,6 @@ function startCards(o: Overview, profile: EmployeeProfile) {
       key: 'correction',
       icon: KIND_ICONS.correction,
       title: 'Attendance correction',
-      text: 'Correct a check-in or check-out that is missing or not right.',
       href: ASK_CORRECTION_PATH,
       action: 'Ask for a correction',
     });
@@ -272,7 +269,6 @@ function startCards(o: Overview, profile: EmployeeProfile) {
       key: 'wfh',
       icon: KIND_ICONS.wfh,
       title: 'Work from home',
-      text: 'A working day from home instead of the office.',
       href: NEW_WFH_PATH,
       action: 'Work from home',
     });
@@ -282,7 +278,6 @@ function startCards(o: Overview, profile: EmployeeProfile) {
       key: 'od',
       icon: KIND_ICONS.od,
       title: 'Official duty',
-      text: 'Work for the company away from the office, e.g. at a client’s site.',
       href: NEW_OD_PATH,
       action: 'Request official duty',
     });
@@ -292,7 +287,6 @@ function startCards(o: Overview, profile: EmployeeProfile) {
       key: 'compensatory',
       icon: KIND_ICONS.compensatory,
       title: 'Compensatory days',
-      text: 'A day off for a rest day or an official holiday you worked.',
       href: NEW_COMPENSATORY_PATH,
       action: 'Compensatory day',
     });
@@ -302,7 +296,6 @@ function startCards(o: Overview, profile: EmployeeProfile) {
       key: 'home',
       icon: KIND_ICONS.home,
       title: 'Check-in locations',
-      text: 'Ask for a place to check in from besides the office.',
       href: NEW_HOME_PATH,
       action: 'Request a check-in location',
     });
@@ -312,7 +305,6 @@ function startCards(o: Overview, profile: EmployeeProfile) {
       key: 'claim',
       icon: KIND_ICONS.claim,
       title: 'Reimbursements',
-      text: 'Claim back an expense you paid for the company.',
       href: NEW_CLAIM_PATH,
       action: 'New reimbursement',
     });
@@ -321,7 +313,6 @@ function startCards(o: Overview, profile: EmployeeProfile) {
     key: 'details',
     icon: KIND_ICONS.details,
     title: 'My details',
-    text: 'Ask HR to change your details on your profile.',
     href: `/employees/${profile.id}/change-request`,
     action: 'Ask to change my details',
   });
@@ -330,7 +321,6 @@ function startCards(o: Overview, profile: EmployeeProfile) {
       key: 'raise',
       icon: KIND_ICONS.raise,
       title: 'Raise',
-      text: 'Ask for a raise: HR, then the CEO, decide it.',
       href: newRaiseRequestHref(profile.id),
       action: 'Request a raise',
     });
@@ -340,7 +330,6 @@ function startCards(o: Overview, profile: EmployeeProfile) {
       key: 'resignation',
       icon: KIND_ICONS.resignation,
       title: 'Resignation',
-      text: 'Tell HR you wish to resign, and when you plan to leave.',
       href: RESIGN_PATH,
       action: 'Resign',
     });
@@ -409,7 +398,7 @@ async function OverviewPart({ searchParams }: { searchParams: PageProps<'/my-req
           <AnnualLeaveCard balances={o.balances.value} today={today} className={wide} />
         ) : (
           balanceShown && (
-            <div className={`card flex items-center p-[22px] text-sm text-muted ${wide}`}>Your leave balance couldn&apos;t be loaded. Please try again in a moment.</div>
+            <div className={`card flex items-center p-[22px] text-sm text-muted ${wide}`}>Your leave balance couldn&apos;t be loaded.</div>
           )
         )}
         <FigureTile icon={FileText} label="Requests this year" value={twoDigits(thisYear.count)} spoken={String(thisYear.count)} note={thisYear.note} />
@@ -438,7 +427,6 @@ async function OverviewPart({ searchParams }: { searchParams: PageProps<'/my-req
           id="start-request-heading"
           eyebrow="Self service"
           title="Start another request"
-          intro="Choose a request type and we’ll guide you through the details."
         />
         <ul className="mt-4 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
           {cards.map(({ key, ...c }) => (
@@ -474,15 +462,10 @@ async function ChangesAndRaises({ searchParams }: { searchParams: PageProps<'/my
           id={`${CHANGES_ID}-heading`}
           eyebrow="Your profile"
           title={seesRaises ? 'Changes and raises' : 'Changes to your details'}
-          intro={
-            seesRaises
-              ? 'The changes to your details you asked HR for, and the raises you asked for, each with every decision.'
-              : 'The changes to your details you asked HR for, each with HR’s decision.'
-          }
         />
-        {unloaded && <p className="text-sm text-muted">Some of your raise requests couldn&apos;t be loaded. Please try again in a moment.</p>}
+        {unloaded && <p className="text-sm text-muted">Some of your raise requests couldn&apos;t be loaded.</p>}
         {all.length === 0 ? (
-          <Note roomy>{noRequestsText(seesRaises)}</Note>
+          <Note roomy>{NO_REQUESTS_TEXT}</Note>
         ) : (
           <>
             <Filters all={all} f={f} offered={offered} team={forTeam.length > 0} query={query} />
@@ -526,21 +509,20 @@ async function Permission() {
         id="my-permission-heading"
         eyebrow="Time off"
         title="Permission"
-        intro="A few hours away from a working day, e.g. to leave early or come late, in half hours. Decided as leave is; approved, its hours count as worked."
       />
       {figures.kind === 'ok' ? (
         <p className="card px-5 py-4 text-sm tabular-nums">{figures.value.hoursPerMonth > 0 ? permissionMonthText(figures.value, month) : PERMISSION_OFF_TEXT}</p>
       ) : (
-        figures.kind !== 'unavailable' && figures.kind !== 'forbidden' && <Note>Your permission hours couldn&apos;t be loaded. Please try again in a moment.</Note>
+        figures.kind !== 'unavailable' && figures.kind !== 'forbidden' && <Note>Your permission hours couldn&apos;t be loaded.</Note>
       )}
       {requests.kind !== 'ok' ? (
-        <Note>Your permission requests couldn&apos;t be loaded. Please try again in a moment.</Note>
+        <Note>Your permission requests couldn&apos;t be loaded.</Note>
       ) : requests.value.length === 0 ? (
-        <Note roomy>You haven&apos;t asked for permission yet. Ask with New permission.</Note>
+        <Note roomy>You haven&apos;t asked for permission yet.</Note>
       ) : (
         <div className="card overflow-hidden">
           <MyPermissionTable requests={requests.value} />
-          <p className="border-t border-line px-4 py-3 text-sm text-muted">{requestsLabel(requests.value.length)}, the latest day first.</p>
+          <p className="border-t border-line px-4 py-3 text-sm text-muted">{requestsLabel(requests.value.length)}</p>
         </div>
       )}
     </section>
@@ -564,16 +546,15 @@ async function Leave() {
         id="my-leave-heading"
         eyebrow="Time off"
         title="Leave"
-        intro="Your leave requests. Your direct manager decides each request first, then HR; your balance is at the top of the page."
       />
       {requests.kind !== 'ok' ? (
-        <Note>Your leave requests couldn&apos;t be loaded. Please try again in a moment.</Note>
+        <Note>Your leave requests couldn&apos;t be loaded.</Note>
       ) : requests.value.length === 0 ? (
-        <Note roomy>You haven&apos;t asked for leave yet. Ask with New leave.</Note>
+        <Note roomy>You haven&apos;t asked for leave yet.</Note>
       ) : (
         <div className="card overflow-hidden">
           <MyLeaveTable requests={requests.value} />
-          <p className="border-t border-line px-4 py-3 text-sm text-muted">{requestsLabel(requests.value.length)}, newest first.</p>
+          <p className="border-t border-line px-4 py-3 text-sm text-muted">{requestsLabel(requests.value.length)}</p>
         </div>
       )}
     </section>
@@ -597,16 +578,15 @@ async function Reimbursements() {
         id="my-reimbursements"
         eyebrow="Expenses"
         title="Reimbursements"
-        intro="Expenses you paid for the company, claimed back. Your direct manager decides each first, then HR, then Finance; once approved, it is paid with the next payroll."
       />
       {claims.kind !== 'ok' ? (
-        <Note>Your reimbursement claims couldn&apos;t be loaded. Please try again in a moment.</Note>
+        <Note>Your reimbursement claims couldn&apos;t be loaded.</Note>
       ) : claims.value.length === 0 ? (
-        <Note roomy>You haven&apos;t claimed a reimbursement yet. Claim one with New reimbursement.</Note>
+        <Note roomy>You haven&apos;t claimed a reimbursement yet.</Note>
       ) : (
         <div className="card overflow-hidden">
           <MyClaimsTable claims={claims.value} />
-          <p className="border-t border-line px-4 py-3 text-sm text-muted">{claimsLabel(claims.value.length)}, newest first.</p>
+          <p className="border-t border-line px-4 py-3 text-sm text-muted">{claimsLabel(claims.value.length)}</p>
         </div>
       )}
     </section>
@@ -631,14 +611,13 @@ async function Corrections() {
         id="my-corrections-heading"
         eyebrow="Attendance"
         title="Attendance corrections"
-        intro="Days you asked to correct: a check-in or check-out forgotten, a time wrong, work away from the office. Your direct manager decides each first, then HR; approved, the day is corrected."
       />
       {corrections.kind !== 'ok' ? (
-        <Note>Your corrections couldn&apos;t be loaded. Please try again in a moment.</Note>
+        <Note>Your corrections couldn&apos;t be loaded.</Note>
       ) : corrections.value.length === 0 ? (
-        <Note roomy>You haven&apos;t asked for a correction. Ask from My Attendance, on the day that isn&apos;t right.</Note>
+        <Note roomy>You haven&apos;t asked for a correction.</Note>
       ) : (
-        <CorrectionsTable corrections={corrections.value} note="the latest day first." />
+        <CorrectionsTable corrections={corrections.value} note="" />
       )}
     </section>
   );
@@ -667,15 +646,14 @@ async function WorkFromHome() {
         id="my-wfh-heading"
         eyebrow="Attendance"
         title="Work from home"
-        intro="A working day from home instead of the office, asked a day before at the latest. Your direct manager decides it first, then HR; it is not leave, you check in from home as on any day."
       />
       {asks && allowance.kind === 'ok' && <p className="card px-5 py-4 text-sm tabular-nums">{wfhAllowanceLine(allowance.value)}</p>}
       {requests.kind !== 'ok' ? (
-        <Note>Your work from home requests couldn&apos;t be loaded. Please try again in a moment.</Note>
+        <Note>Your work from home requests couldn&apos;t be loaded.</Note>
       ) : list.length === 0 ? (
-        <Note roomy>You haven&apos;t asked to work from home. Ask with Work from home.</Note>
+        <Note roomy>You haven&apos;t asked to work from home.</Note>
       ) : (
-        <WfhTable requests={list} note="the latest day first." />
+        <WfhTable requests={list} note="" />
       )}
     </section>
   );
@@ -704,14 +682,13 @@ async function Compensatory() {
         id="my-compensatory-heading"
         eyebrow="Attendance"
         title="Compensatory days"
-        intro="A day off in the same month in exchange for a rest day or an official holiday you worked, asked a day before at the latest. Your direct manager decides it first, then HR, who approves it as a day off or, rarely, pays it in cash instead."
       />
       {requests.kind !== 'ok' ? (
-        <Note>Your compensatory day requests couldn&apos;t be loaded. Please try again in a moment.</Note>
+        <Note>Your compensatory day requests couldn&apos;t be loaded.</Note>
       ) : list.length === 0 ? (
-        <Note roomy>You haven&apos;t asked for a compensatory day. Ask with Compensatory day.</Note>
+        <Note roomy>You haven&apos;t asked for a compensatory day.</Note>
       ) : (
-        <CompensatoryTable requests={list} note="the latest day worked first." />
+        <CompensatoryTable requests={list} note="" />
       )}
     </section>
   );
@@ -736,9 +713,8 @@ async function Resignation() {
         id="my-resignation-heading"
         eyebrow="Employment"
         title="Resignation"
-        intro="Tell HR you wish to resign. HR records it, and you can withdraw it until then."
       />
-      {requests.length === 0 ? <Note roomy>You haven&apos;t sent a resignation request.</Note> : <ResignationsTable requests={requests} note="Newest first." />}
+      {requests.length === 0 ? <Note roomy>You haven&apos;t sent a resignation request.</Note> : <ResignationsTable requests={requests} />}
     </section>
   );
 }
@@ -765,14 +741,13 @@ async function OfficialDuty() {
         id="my-od-heading"
         eyebrow="Attendance"
         title="Official duty"
-        intro="Work for the company away from the office, e.g. at a client’s site, asked ahead or up to 3 days after. Your direct manager decides it first, then HR; on an approved day you check in from where you are, and the day counts as attended."
       />
       {requests.kind !== 'ok' ? (
-        <Note>Your official duty requests couldn&apos;t be loaded. Please try again in a moment.</Note>
+        <Note>Your official duty requests couldn&apos;t be loaded.</Note>
       ) : list.length === 0 ? (
-        <Note roomy>You haven&apos;t asked for an official duty. Ask with Request official duty.</Note>
+        <Note roomy>You haven&apos;t asked for an official duty.</Note>
       ) : (
-        <OdTable requests={list} where note="the latest first day first." />
+        <OdTable requests={list} where note="" />
       )}
     </section>
   );
@@ -800,12 +775,11 @@ async function HomeLocation() {
         id={`${MY_HOME_ID}-heading`}
         eyebrow="Attendance"
         title="Check-in locations"
-        intro="Places you check in from besides the office: your home, a remote site or a client’s place. HR approves each, then the CEO; approved, a check-in there shows with its name. Your home and remote sites are only for you, seen by you, HR and the CEO, never your manager; a client location counts for every employee."
       />
       {homes.kind !== 'ok' ? (
-        <Note>Your check-in locations couldn&apos;t be loaded. Please try again in a moment.</Note>
+        <Note>Your check-in locations couldn&apos;t be loaded.</Note>
       ) : list.length === 0 ? (
-        <Note roomy>You haven&apos;t asked for a check-in location. Ask with Request a check-in location.</Note>
+        <Note roomy>You haven&apos;t asked for a check-in location.</Note>
       ) : (
         <>
           {inForce.length > 0 && (
@@ -818,7 +792,7 @@ async function HomeLocation() {
               ))}
             </ul>
           )}
-          <MyHomesTable requests={list} note="newest first." />
+          <MyHomesTable requests={list} />
         </>
       )}
     </section>
@@ -842,7 +816,6 @@ async function Covering() {
         id={`${COVERING_ID}-heading`}
         eyebrow="Colleagues"
         title="I’m covering"
-        intro={`Colleagues who named you to cover their work while they are away: ${coveringCountText(list.length)}, the nearest first. Asking for leave on these days yourself is still possible, with a warning, and HR sees it.`}
       />
       <CoveringList list={list} today={today} />
     </section>
@@ -864,10 +837,7 @@ async function ExitInterview() {
         <h2 id="exit-interview" className="mt-1.5 text-xl font-medium tracking-[-0.035em]">
           Exit interview
         </h2>
-        <p className="mt-1 text-sm text-muted">
-          A few questions about your time here
-          {i.lastWorkingDay ? `, before your last working day, ${formatDate(i.lastWorkingDay)}` : ''}. Your manager never sees your answers.
-        </p>
+        {i.lastWorkingDay && <p className="mt-1 text-sm text-muted">Before your last working day, {formatDate(i.lastWorkingDay)}</p>}
       </div>
       <Link href={MY_EXIT_INTERVIEW_PATH} className="btn btn-primary no-underline">
         Fill it in
@@ -893,7 +863,6 @@ export default function MyRequestsPage({ searchParams }: PageProps<'/my-requests
       <PageHead
         eyebrow="People System · Requests"
         title="My Requests"
-        intro="What you have asked for, newest first, with each decision as it is made."
         actions={
           <Suspense fallback={null}>
             <CreateRequest />

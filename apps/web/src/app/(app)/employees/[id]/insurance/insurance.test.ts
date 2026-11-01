@@ -7,12 +7,9 @@ import {
   comprehensivePrinted,
   formsGap,
   formsToCheck,
-  hasInsuranceCopy,
   insurableLimitsText,
-  insuranceCopyHref,
   insuranceForms,
   insuredEmployment,
-  insuredNote,
   insuredPrinted,
   occupationText,
   printHref,
@@ -64,19 +61,13 @@ describe('the forms', () => {
     expect(insuranceForms({ sections: [] })).toEqual([]);
   });
 
-  it('point to the contract’s social insurance copy with the contract on the Employment tab, when there is one', () => {
-    expect(hasInsuranceCopy(tab)).toBe(true);
-    expect(hasInsuranceCopy({ sections: [{ key: 'contract', items: [item('contract_part_time')] }] })).toBe(false);
-    expect(insuranceCopyHref(ID)).toBe('/employees/emp-1?tab=employment&sub=documents#contract-documents');
-  });
-
   it('say why one isn’t listed: no employment, not full time, or Form 6 before an ending', () => {
     expect(formsGap(null, [])?.kind).toBe('not_employed');
     expect(formsGap(employment({ employmentType: 'part_time' }), [])).toEqual({
       kind: 'not_full_time',
-      text: 'Forms 1 and 6 are for full-time employments. This one is part-time.',
+      text: 'Forms 1 and 6 are for full-time employments only.',
     });
-    expect(formsGap(employment(), [item('insurance_form_1')])).toEqual({ kind: 'no_ending', text: 'Form 6 (leaving) comes once an ending is recorded on the Employment tab.' });
+    expect(formsGap(employment(), [item('insurance_form_1')])).toEqual({ kind: 'no_ending', text: 'Form 6 comes once an ending is recorded.' });
     expect(formsGap(employment(), [item('insurance_form_1'), item('insurance_form_6')])).toBeNull();
   });
 });
@@ -172,10 +163,9 @@ describe('the occupation, subscription start and wages', () => {
       expect(insuredPrinted({})).toBeNull();
     });
 
-    it('the note says what sets it, and the year’s limits', () => {
+    it('the year’s limits, in words', () => {
       expect(insurableLimitsText(LIMITS)).toBe('EGP 2,700.00 to 16,700.00 in 2026');
       expect(insurableLimitsText({ year: 2025, min: 2300, max: 14500 })).toBe('EGP 2,300.00 to 14,500.00 in 2025');
-      expect(insuredNote(LIMITS)).toBe('Set by the comprehensive wage, within EGP 2,700.00 to 16,700.00 in 2026.');
     });
   });
 });

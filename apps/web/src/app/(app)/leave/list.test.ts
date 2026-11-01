@@ -8,11 +8,9 @@ import {
   emptyLeaveText,
   hrCancelBody,
   hrStageName,
-  LEAVE_COMMENT_READERS,
   LEAVE_FILTERS,
   leaveBack,
   leaveCalendarHref,
-  leaveCommentReaders,
   leaveDecidedText,
   leaveDecisionBody,
   leaveDecisionButton,
@@ -171,12 +169,8 @@ describe('a request in words', () => {
     expect(stageTitle('manager', { role: 'department_head' })).toBe('the Head of Department');
     expect(stageTitle('manager', null)).toBe('the Direct Manager');
     expect(stageTitle('hr', { role: 'team_lead' })).toBe('HR');
-    expect(leaveDoneText({ done: 'sent' }, 'with_manager', { role: 'team_lead' })?.text).toBe(
-      'Request sent. It goes to your team lead, then HR; each step shows on the request.',
-    );
-    expect(leaveDoneText({ done: 'sent' }, 'with_manager', { role: 'department_head' })?.text).toBe(
-      'Request sent. It goes to your head of department, then HR; each step shows on the request.',
-    );
+    expect(leaveDoneText({ done: 'sent' }, 'with_manager', { role: 'team_lead' })?.text).toBe('Sent to your team lead.');
+    expect(leaveDoneText({ done: 'sent' }, 'with_manager', { role: 'department_head' })?.text).toBe('Sent to your head of department.');
   });
 
   it('words each step of its log, and marks the decisions', () => {
@@ -200,15 +194,15 @@ describe('a request in words', () => {
   });
 
   it('says what was just done on its page', () => {
-    expect(leaveDoneText({ done: 'sent' }, 'with_manager')).toEqual({ text: 'Request sent. It goes to your direct manager, then HR; each step shows on the request.', tone: 'ok' });
-    expect(leaveDoneText({ done: 'sent' }, 'with_hr')?.text).toBe('Request sent. It goes to HR; each step shows on the request.');
-    expect(leaveDoneText({ done: 'recorded' }, 'approved')?.text).toContain('approved at once');
+    expect(leaveDoneText({ done: 'sent' }, 'with_manager')).toEqual({ text: 'Sent to your direct manager.', tone: 'ok' });
+    expect(leaveDoneText({ done: 'sent' }, 'with_hr')?.text).toBe('Sent to HR.');
+    expect(leaveDoneText({ done: 'recorded' }, 'approved')?.text).toBe('Leave recorded.');
     expect(leaveDoneText({ done: 'moved' }, 'approved')?.tone).toBe('warn');
-    expect(leaveDoneText({ done: 'manager_approve' }, 'with_hr')?.text).toBe('Approved: the request goes to HR.');
-    expect(leaveDoneText({ done: 'hr_reject' }, 'rejected')?.text).toBe('Request rejected. The employee sees your comment.');
+    expect(leaveDoneText({ done: 'manager_approve' }, 'with_hr')?.text).toBe('Approved and sent to HR.');
+    expect(leaveDoneText({ done: 'hr_reject' }, 'rejected')?.text).toBe('Request rejected.');
     expect(leaveDoneText({ done: 'finance_approve' }, 'approved')).toBeNull();
     expect(leaveDoneText({}, 'approved')).toBeNull();
-    expect(leaveDecidedText('approve', 'hr')).toBe('Approved: the leave counts in the balance and in the month’s payroll.');
+    expect(leaveDecidedText('approve', 'hr')).toBe('Leave approved.');
   });
 });
 
@@ -277,11 +271,11 @@ describe('a C-level person’s request (owner, 19 October 2026: "make C level Em
     expect(leaveDecisionButton('approve', 'manager', true).label).toBe('Approve and send to the CEO');
     expect(leaveDecisionButton('approve', 'manager').label).toBe('Approve and send to HR');
     expect(leaveDecisionButton('approve', 'hr', true).label).toBe('Approve the leave');
-    expect(leaveDecidedText('approve', 'manager', true)).toBe('Approved: the request goes to the CEO.');
-    expect(leaveDoneText({ done: 'manager_approve' }, 'with_hr', null, true)?.text).toBe('Approved: the request goes to the CEO.');
-    expect(leaveSentText('with_manager', null, true)).toBe('Request sent. It goes to your direct manager, then the CEO; each step shows on the request.');
-    expect(leaveSentText('with_hr', null, true)).toBe('Request sent. It goes to the CEO; each step shows on the request.');
-    expect(leaveDoneText({ done: 'sent' }, 'with_hr', null, true)?.text).toBe('Request sent. It goes to the CEO; each step shows on the request.');
+    expect(leaveDecidedText('approve', 'manager', true)).toBe('Approved and sent to the CEO.');
+    expect(leaveDoneText({ done: 'manager_approve' }, 'with_hr', null, true)?.text).toBe('Approved and sent to the CEO.');
+    expect(leaveSentText('with_manager', null, true)).toBe('Sent to your direct manager.');
+    expect(leaveSentText('with_hr', null, true)).toBe('Sent to the CEO.');
+    expect(leaveDoneText({ done: 'sent' }, 'with_hr', null, true)?.text).toBe('Sent to the CEO.');
   });
 
   it('names HR’s stage, not who decided it, once decided: the log says who', () => {
@@ -302,10 +296,5 @@ describe('a C-level person’s request (owner, 19 October 2026: "make C level Em
     expect(decidingAsTitle({ roles: ['hr', 'super_admin'] }, 'hr', null, true)).toBe('HR');
     expect(decidingAsTitle({ roles: ['hr'] }, 'hr', null, false)).toBe('HR');
     expect(decidingAsTitle({ roles: ['ceo'] }, 'manager', { role: 'team_lead' }, true)).toBe('the Team Lead');
-  });
-
-  it('tells the approver HR doesn’t read the comment', () => {
-    expect(leaveCommentReaders(true)).toBe('The employee sees your comment, and so do the direct manager, the CEO and the Super Admin.');
-    expect(leaveCommentReaders(false)).toBe(LEAVE_COMMENT_READERS);
   });
 });

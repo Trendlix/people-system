@@ -142,13 +142,7 @@ export default function AttendanceImportsPage({ searchParams }: PageProps<'/atte
   return (
     <StaffOnly>
       <div className="max-w-6xl space-y-6">
-        <div>
-          <h1 className="page-title">Import History</h1>
-          <p className="mt-1 max-w-3xl text-muted">
-            Every import of Zoho People&apos;s attendance, on each month&apos;s payroll, the latest first: who read it and when, its people, and whether it
-            was applied to the payroll&apos;s figures.
-          </p>
-        </div>
+        <h1 className="page-title">Import History</h1>
         <Suspense fallback={<Loading />}>
           <History searchParams={searchParams} />
         </Suspense>

@@ -105,7 +105,7 @@ export function CompleteForm({ action, pending: itemsPending, override }: { acti
     <form
       {...form}
       onSubmit={(e) => {
-        if (!window.confirm(needsReason ? 'Complete this case with items still pending?' : 'Complete this case? Its items can’t change after.')) {
+        if (!window.confirm(needsReason ? 'Complete this case with items still pending?' : 'Complete this case?')) {
           e.preventDefault();
           return;
         }
@@ -202,7 +202,6 @@ export function ExitInterviewForm({ action, submitLabel, intro }: { action: Acti
             </div>
           </div>
         ))}
-        <p className="text-xs text-muted">1 is very poor, 5 very good.</p>
       </fieldset>
       <fieldset>
         <legend className="label">Would you recommend working here?</legend>

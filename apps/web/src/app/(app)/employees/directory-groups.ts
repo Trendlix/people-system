@@ -10,8 +10,6 @@ import type { EmployeeSummary } from '../../../lib/types';
 export interface DirectorySection<T> {
   key: 'active' | 'inactive';
   label: string;
-  /** Who is in it, under its heading. */
-  note: string;
   count: number;
   groups: DepartmentGroup<T>[];
 }
@@ -35,8 +33,8 @@ export function directorySections<T extends Pick<EmployeeSummary, 'employment'>>
   place: (row: T) => string | null = placeNow,
 ): DirectorySection<T>[] {
   const sections = [
-    { key: 'active' as const, label: 'Active', note: 'Employed now: on probation, active, interns, on notice or on leave', rows: rows.filter((e) => e.employment !== null) },
-    { key: 'inactive' as const, label: 'Inactive', note: 'Not employed yet, or left', rows: rows.filter((e) => e.employment === null) },
+    { key: 'active' as const, label: 'Active', rows: rows.filter((e) => e.employment !== null) },
+    { key: 'inactive' as const, label: 'Inactive', rows: rows.filter((e) => e.employment === null) },
   ];
   return sections
     .filter((s) => s.rows.length > 0)

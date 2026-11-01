@@ -165,7 +165,7 @@ function PersonRow({ row: r }: { row: MissingDetailsRow }) {
 function nothingListed(f: MissingFilters): string {
   if (f.what === 'personal') return 'No personal details are missing.';
   if (f.what === 'documents') return 'No documents are missing.';
-  return 'Nothing is missing. Every profile is complete.';
+  return 'Nothing is missing.';
 }
 
 async function Report({ searchParams }: { searchParams: Promise<Query> }) {
@@ -202,7 +202,6 @@ async function Report({ searchParams }: { searchParams: Promise<Query> }) {
           <a href={EXCEL_HREF} className="btn btn-secondary">
             Download Excel
           </a>
-          <p className="hint">Everyone with something missing, people not employed yet too.</p>
         </div>
       </section>
 
@@ -242,7 +241,7 @@ async function Report({ searchParams }: { searchParams: Promise<Query> }) {
               </table>
             </div>
             <p className="border-t border-line px-4 py-3 text-sm text-muted">
-              Showing {rows.length} {rows.length === 1 ? 'person' : 'people'}, least complete first
+              Showing {rows.length} {rows.length === 1 ? 'person' : 'people'}
             </p>
           </>
         )}
@@ -256,10 +255,7 @@ export default function MissingDetailsPage({ searchParams }: PageProps<'/employe
     <StaffOnly>
       <div className="space-y-4">
         <BackLink href="/employees">Employees</BackLink>
-        <div>
-          <h1 className="page-title">Missing Details</h1>
-          <p className="mt-1 text-muted">The personal details and documents each profile still lacks, by the same checklist as the profile.</p>
-        </div>
+        <h1 className="page-title">Missing Details</h1>
         <Suspense fallback={<Loading />}>
           <Report searchParams={searchParams} />
         </Suspense>

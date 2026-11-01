@@ -13,7 +13,6 @@ import {
   peopleLabel,
   publishDraftsConfirmText,
   publishDraftsSummary,
-  publishTimingNote,
   refusedDraftName,
   templateRowText,
   type PublishDraftsState,
@@ -146,10 +145,6 @@ export function TemplatesTable({
             <button type="submit" disabled={pending || !selected.length} className="btn btn-secondary">
               {pending ? 'Publishing…' : selected.length ? `Publish selected drafts (${selected.length})` : 'Publish selected drafts'}
             </button>
-            <p className="max-w-2xl text-sm text-muted">
-              {drafts.length ? 'Tick the drafts to publish, or all of them in the header. ' : 'No job title has a draft to publish. '}
-              {publishTimingNote(today, pillarsFrom)}
-            </p>
           </form>
           <FormErrors errors={state.errors} />
           {state.result && (

@@ -119,15 +119,11 @@ export async function AccessTab({ profile }: { profile: Pick<EmployeeProfile, 'i
           </p>
         )}
         {v.state === 'pending' && <GiveAccessForm action={giveAccessNow.bind(null, profile.id)} />}
-        {v.state === 'closed' && !v.can.manageAccount && <p className="hint">An Admin can turn their access back on.</p>}
       </section>
 
       {(v.signInEmail.work || v.signInEmail.personal) && (
         <section className="card max-w-xl space-y-3 p-6">
-          <div>
-            <h3 className="font-semibold">Sign-In Email</h3>
-            <p className="mt-1 text-sm text-muted">The email they sign in with. Switching keeps the same account and the same password.</p>
-          </div>
+          <h3 className="font-semibold">Sign-In Email</h3>
           <SignInEmailForm
             action={setSignInEmail.bind(null, profile.id)}
             saved={v.signInEmail.choice ?? (v.signInEmail.email && v.signInEmail.email === v.signInEmail.personal?.toLowerCase() ? 'personal' : 'work')}
@@ -141,20 +137,12 @@ export async function AccessTab({ profile }: { profile: Pick<EmployeeProfile, 'i
         <section className="card max-w-xl space-y-3 p-6">
           {a.passwordSet ? (
             <>
-              <div>
-                <h3 className="font-semibold">Password Reset</h3>
-                <p className="mt-1 text-sm text-muted">A link to set a new password, working once for 7 days. Setting it signs them out everywhere.</p>
-              </div>
+              <h3 className="font-semibold">Password Reset</h3>
               <LinkForm action={sendAccessLink.bind(null, profile.id, 'reset')} purpose="reset" emailReady={v.emailReady} setUpEmail={setsUpEmail(me)} resend={false} email={a.email} />
             </>
           ) : (
             <>
-              <div>
-                <h3 className="font-semibold">Invitation</h3>
-                <p className="mt-1 text-sm text-muted">
-                  A link to set their first password, working once for 7 days, in English and Arabic. Nothing is sent until you press it.
-                </p>
-              </div>
+              <h3 className="font-semibold">Invitation</h3>
               <LinkForm action={sendAccessLink.bind(null, profile.id, 'invite')} purpose="invite" emailReady={v.emailReady} setUpEmail={setsUpEmail(me)} resend={v.state === 'invited'} email={a.email} />
             </>
           )}
@@ -169,7 +157,6 @@ export async function AccessTab({ profile }: { profile: Pick<EmployeeProfile, 'i
           <p className="text-sm">
             Assets access: <span className="font-medium">{ASSETS_ACCESS_LABELS[a.assetsAccess]}</span>
           </p>
-          <p className="hint">An Admin changes their roles, their Assets access and their sessions.</p>
         </section>
       )}
 
@@ -200,7 +187,6 @@ function WhatsAppStatus({ loaded, name }: { loaded: Loaded<WhatsAppPersonView> |
           {d}
         </p>
       ))}
-      <p className="hint">{lines.note}</p>
     </section>
   );
 }
@@ -236,7 +222,7 @@ function YourSignIn({ view: v, today }: { view: EmployeeAccessView; today: strin
         )}
       </dl>
       <p className="text-sm text-muted">
-        <Link href="/account/password">Change password</Link> · <Link href="/account/sessions">Your sessions</Link>. HR changes the email you sign in with.
+        <Link href="/account/password">Change password</Link> · <Link href="/account/sessions">Your sessions</Link>
       </p>
     </section>
   );

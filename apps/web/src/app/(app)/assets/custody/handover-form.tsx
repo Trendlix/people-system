@@ -3,7 +3,6 @@
 import {
   ASSET_CONDITION_LABELS,
   ASSET_CONDITIONS,
-  CUSTODY_KIND_HINTS,
   CUSTODY_KIND_LABELS,
   CUSTODY_KINDS,
   CUSTODY_TEXT_LIMITS,
@@ -133,7 +132,7 @@ export function HandoverForm({
 
       {startAssetCode && !startAsset && (
         <p role="status" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
-          {startAssetCode} can&apos;t be handed over now: only available assets that aren&apos;t consumables are.
+          {startAssetCode} can&apos;t be handed over now.
         </p>
       )}
 
@@ -144,7 +143,7 @@ export function HandoverForm({
             <label htmlFor={fid('employeeId')} className="label">
               Employee
             </label>
-            <Select id={fid('employeeId')} name="employeeId" required defaultValue={people ?? ''} aria-describedby={fid('employee-hint')} className="input">
+            <Select id={fid('employeeId')} name="employeeId" required defaultValue={people ?? ''} className="input">
               <option value="">Choose the employee</option>
               {choices.people.map((p) => (
                 <option key={p.id} value={p.id}>
@@ -152,20 +151,14 @@ export function HandoverForm({
                 </option>
               ))}
             </Select>
-            <p id={fid('employee-hint')} className="hint">
-              Current employees only.
-            </p>
           </div>
           <fieldset className="sm:col-span-2">
             <legend className="label">Kind</legend>
             <div className="grid gap-2 sm:grid-cols-2">
               {CUSTODY_KINDS.map((k) => (
-                <label key={k} className={`flex min-h-11 cursor-pointer items-start gap-2 rounded-lg border p-3 text-sm ${kind === k ? 'border-accent bg-accent-soft' : 'border-line'}`}>
-                  <input type="radio" name="kind" value={k} checked={kind === k} onChange={() => setKind(k)} className="mt-0.5" />
-                  <span>
-                    <span className="block font-semibold">{CUSTODY_KIND_LABELS[k]}</span>
-                    <span className="block text-muted">{CUSTODY_KIND_HINTS[k]}</span>
-                  </span>
+                <label key={k} className={`flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border p-3 text-sm ${kind === k ? 'border-accent bg-accent-soft' : 'border-line'}`}>
+                  <input type="radio" name="kind" value={k} checked={kind === k} onChange={() => setKind(k)} />
+                  <span className="font-semibold">{CUSTODY_KIND_LABELS[k]}</span>
                 </label>
               ))}
             </div>
@@ -175,10 +168,7 @@ export function HandoverForm({
               <label htmlFor={fid('dueDate')} className="label">
                 Return date
               </label>
-              <DateInput id={fid('dueDate')} name="dueDate" defaultValue="" required aria-describedby={fid('dueDate-hint')} />
-              <p id={fid('dueDate-hint')} className="hint">
-                Overdue once it has passed and the record isn&apos;t closed.
-              </p>
+              <DateInput id={fid('dueDate')} name="dueDate" defaultValue="" required />
             </div>
           )}
           <div className={kind === 'shoot' ? undefined : 'sm:col-span-2'}>
@@ -197,12 +187,8 @@ export function HandoverForm({
               required
               maxLength={CUSTODY_TEXT_LIMITS.handedOverBy}
               defaultValue={choices.handedOverBy}
-              aria-describedby={fid('handedOverBy-hint')}
               className="input"
             />
-            <p id={fid('handedOverBy-hint')} className="hint">
-              Printed on the form beside their signature.
-            </p>
           </div>
           <div className="sm:col-span-2">
             <label htmlFor={fid('notes')} className="label">
@@ -214,10 +200,7 @@ export function HandoverForm({
       </section>
 
       <section className="space-y-4 border-t border-line-soft pt-5">
-        <div>
-          <h2 className="font-semibold">Assets</h2>
-          <p className="mt-0.5 text-sm text-muted">Only available assets that aren&apos;t consumables can be handed over.</p>
-        </div>
+        <h2 className="font-semibold">Assets</h2>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <label htmlFor={fid('pick')} className="label">
@@ -256,7 +239,6 @@ export function HandoverForm({
                   Add kit
                 </button>
               </div>
-              <p className="hint">Adds its available assets; the others are listed with why.</p>
             </div>
           )}
         </div>

@@ -83,7 +83,7 @@ export async function saveReminderSettings(_prev: ReminderSettingsState, formDat
     return { saved: true, values: settingsOf(answer, values) };
   } catch (err) {
     if (!(err instanceof ApiError)) throw err;
-    const error = err.status === 404 ? 'Reminder settings aren’t on the server yet. Please try again after its next update.' : err.messages.join(' ');
+    const error = err.status === 404 ? 'Reminder settings aren’t on the server yet.' : err.messages.join(' ');
     return { error, values };
   }
 }
@@ -99,7 +99,7 @@ export async function saveMyWhatsApp(prev: WhatsAppChoiceState, formData: FormDa
     return { saved: true, view };
   } catch (err) {
     if (!(err instanceof ApiError)) throw err;
-    const error = err.status === 404 ? 'WhatsApp messages aren’t on the server yet. Please try again after its next update.' : err.messages.join(' ');
+    const error = err.status === 404 ? 'WhatsApp messages aren’t on the server yet.' : err.messages.join(' ');
     return { error, view: prev.view };
   }
 }

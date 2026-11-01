@@ -24,7 +24,6 @@ export async function CheckInPlacesLine({ employee, user }: { employee: Pick<Emp
   return (
     <p className="text-sm">
       <span className="font-medium">{text}</span>
-      <span className="text-muted"> · their own places: check-ins there show as Remote with the place&apos;s name, not flagged</span>
     </p>
   );
 }

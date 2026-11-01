@@ -28,16 +28,12 @@ export function LeaveFactsFields({ state, fid, employee }: { state: FormState; f
             type="checkbox"
             name="disability"
             defaultChecked={tickedOf(state, 'disability', employee.disability ?? false)}
-            aria-describedby={fid('disability-hint')}
             className="size-4 accent-accent"
           />
           A person with a disability
         </label>
-        <p id={fid('disability-hint')} className="hint">
-          45 days of annual leave a year (Labour Law Art. 124: <span lang="ar">خمسة وأربعون يوما للأشخاص ذوى الإعاقة والأقزام</span>).
-        </p>
       </div>
-      <fieldset aria-describedby={fid('prior-hint')}>
+      <fieldset>
         <legend className="label">Service with earlier employers</legend>
         <div className="flex flex-wrap items-center gap-2">
           <input
@@ -63,17 +59,13 @@ export function LeaveFactsFields({ state, fid, employee }: { state: FormState; f
           />
           <span className="text-sm text-muted">months</span>
         </div>
-        <p id={fid('prior-hint')} className="hint">
-          As the social insurance print shows it. With the service here, 10 full years give 30 days of annual leave (Art. 124:{' '}
-          <span lang="ar">عشر سنوات كاملة لدى صاحب عمل أو أكثر</span>). Empty: none.
-        </p>
       </fieldset>
     </fieldset>
   );
 }
 
 /** Hazardous work, on the employment form: a checkbox and its marker. */
-export function HazardousWorkField({ state, fid, employment }: { state: FormState; fid: (name: string) => string; employment: Employment }) {
+export function HazardousWorkField({ state, employment }: { state: FormState; employment: Employment }) {
   return (
     <div>
       <input type="hidden" name="hazardousWorkSent" value="1" />
@@ -82,15 +74,10 @@ export function HazardousWorkField({ state, fid, employment }: { state: FormStat
           type="checkbox"
           name="hazardousWork"
           defaultChecked={tickedOf(state, 'hazardousWork', employment.hazardousWork ?? false)}
-          aria-describedby={fid('hazardousWork-hint')}
           className="size-4 accent-accent"
         />
         Hazardous, unhealthy or remote work
       </label>
-      <p id={fid('hazardousWork-hint')} className="hint">
-        7 more days of annual leave a year (Labour Law Art. 124: <span lang="ar">تزاد مدة الإجازة السنوية بمقدار سبعة أيام للعمال الذين يعملون فى الأعمال الخطرة</span>), for the
-        work the minister&apos;s decree lists.
-      </p>
     </div>
   );
 }

@@ -31,8 +31,8 @@ describe('the resignation request form', () => {
   });
 
   it('hints the notice and the day it would end', () => {
-    expect(noticeHint('3 months', '2027-01-26', shown)).toBe('The notice is 3 months by the resignation rule: sent today, it would end on 26/01/2027. A shorter time is for HR to agree.');
-    expect(noticeHint(null, null, shown)).toBe('Leave it empty to leave it to the notice.');
+    expect(noticeHint('3 months', '2027-01-26', shown)).toBe('Notice: 3 months, ending 26/01/2027 if sent today.');
+    expect(noticeHint(null, null, shown)).toBeNull();
   });
 });
 

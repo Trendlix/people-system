@@ -6,7 +6,7 @@ import { profileHref } from '../../employees/tab-list';
 import { loadExemptions, loadLinkable } from './data';
 import { addExemptions, endExemption } from './exemption-actions';
 import { AddExemptions, EndExemptionButton } from './exemption-form';
-import { EXEMPTIONS_ID, EXEMPTIONS_INTRO, exemptionCandidates, exemptionRowText, periodByText, stateBadge } from './exemptions';
+import { EXEMPTIONS_ID, exemptionCandidates, exemptionRowText, periodByText, stateBadge } from './exemptions';
 
 // Organization → Check-in Setup → Exempt From Check-in (owner, 25 October 2026: "allow me to select people that are not
 // eligable for attendance checkins and outs, trat them as if they achived their full working hours"; asked, "Optional
@@ -20,7 +20,7 @@ export async function ExemptionsSection() {
   const [loaded, linkable] = await Promise.all([loadExemptions(), loadLinkable()]);
   const today = todayInCairo();
   return (
-    <SetupSection id={EXEMPTIONS_ID} title="Exempt From Check-in" intro={EXEMPTIONS_INTRO}>
+    <SetupSection id={EXEMPTIONS_ID} title="Exempt From Check-in">
       {loaded.kind === 'unavailable' ? (
         <p className="rounded-lg bg-line-soft px-4 py-3 text-sm text-muted">Not available yet: the server does not have exemptions from check-in yet.</p>
       ) : loaded.kind === 'forbidden' ? (
@@ -33,7 +33,7 @@ export async function ExemptionsSection() {
             <AddExemptions action={addExemptions} options={exemptionCandidates(linkable.value, loaded.value.exemptions)} today={today} />
           )}
           {loaded.value.exemptions.length === 0 ? (
-            <p className="text-sm text-muted">No one is exempt from check-in. Add people here, or switch it on from a person&apos;s profile.</p>
+            <p className="text-sm text-muted">No one is exempt from check-in.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[40rem] text-sm">

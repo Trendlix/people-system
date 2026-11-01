@@ -154,7 +154,7 @@ async function OfferList({ searchParams }: { searchParams: Promise<Query> }) {
         <StatusChips filters={f} />
         <Search filters={f} />
         {listing.kind === 'unavailable' ? (
-          <p className={quiet}>Not available yet: the server does not have job offers yet.</p>
+          <p className={quiet}>Not available yet.</p>
         ) : listing.kind === 'failed' ? (
           <p className={quiet}>
             Couldn&apos;t load the offers. <span className="block pt-1 text-xs">{listing.message}</span>
@@ -203,10 +203,6 @@ export default function OffersPage({ searchParams }: { searchParams: Promise<Que
   return (
     <div className="max-w-6xl">
       <h1 className="page-title">Job Offers</h1>
-      <p className="mt-1 text-muted">
-        Candidates aren&apos;t employees yet: draft an offer, send it by email or as a link, and the candidate accepts or declines it online. Accepting makes
-        their profile, the employment and a draft contract.
-      </p>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>
           <OfferList searchParams={searchParams} />

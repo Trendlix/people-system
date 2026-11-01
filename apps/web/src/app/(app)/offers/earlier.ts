@@ -42,10 +42,3 @@ export function answersNow(o: Pick<OfferView, 'expiresOn' | 'recordedEarlier' | 
   if (o.expiresOn < today && !leeway) return false;
   return leeway ? recordsEarlier(user) : hasRole(user, 'hr');
 }
-
-/** What the Record as sent earlier form says about the document, by the template's standing. */
-export function recordSentDocumentHint(o: Pick<OfferView, 'template'>): string {
-  return o.template.status === 'published'
-    ? 'Nothing is emailed and no link is made. Its document is filled in as of that day and kept, as when an offer is sent.'
-    : `Nothing is emailed and no link is made. The ${o.template.name} template isn’t published, so no document is kept with it.`;
-}

@@ -3,7 +3,7 @@ import { Suspense } from 'react';
 import { CONTRACT_STATUS_LABELS, END_REASON_LABELS, LABELS, seesRaiseRequests } from '@trendlix/shared';
 import { ApiError, apiGet } from '@/lib/api';
 import { Shown } from '@/components/hidden';
-import { DECIDES_NOTE, leadRows } from '@/lib/department-leads';
+import { leadRows } from '@/lib/department-leads';
 import { departmentName } from '@/lib/departments';
 import { formatDate } from '@/lib/format';
 import { employmentHidden, isHidden, joinShown, labelOf } from '@/lib/hidden';
@@ -14,7 +14,7 @@ import { canSeePayroll } from '../../payroll/list';
 import { loadEmployeeRaiseRequests, type EmployeeRaiseRequestsLoad } from '../../raise-requests/data';
 import { showsRaiseRequests } from '../../raise-requests/list';
 import { deleteEmployment } from '../employment-actions';
-import { outsideLawShort, typeWord, workNatureLabel, workPatternNote } from '../employment-law';
+import { typeWord, workNatureLabel } from '../employment-law';
 import { LawWarningBadges } from '../law-badges';
 import { openSubTab, visibleSubTabs } from '../tab-list';
 import {
@@ -25,7 +25,6 @@ import {
   gradeLabel,
   periodLabel,
   ProfileSection,
-  profileHref,
   reportStanding,
   shiftLabel,
   StandingBadge,
@@ -109,7 +108,7 @@ function employmentFields(e: Employment, linkPeople: boolean, topGrade: boolean)
       value: labelOf(LABELS.employmentType, e.employmentType),
       // by the labour law (18 October 2026): Sales became Full-time paid by commission; freelance is outside the law, and
       // the unpaid internship (19 October 2026)
-      note: e.paidByCommission ? 'Paid by commission' : outsideLawShort(e.employmentType),
+      note: e.paidByCommission ? 'Paid by commission' : undefined,
     },
     // an intern's Active shows as Intern (19 October 2026)
     { key: 'status', label: 'Status', value: <StatusBadge status={e.status} employmentType={e.employmentType} /> },
@@ -147,12 +146,11 @@ function employmentFields(e: Employment, linkPeople: boolean, topGrade: boolean)
         key: row.key,
         label: row.label,
         value: row.person && (linkPeople ? <Link href={`/employees/${row.person.id}`}>{row.person.fullNameEn}</Link> : row.person.fullNameEn),
-        note: row.decides ? DECIDES_NOTE : undefined,
       }),
     ),
     { key: 'joinDate', label: 'Join date', value: formatDate(e.joinDate), hidden },
     { key: 'probationEnd', label: 'Probation end date', value: formatDate(e.probationEnd), hidden },
-    { key: 'workArrangement', label: 'Work arrangement', value: arrangementLabel(e), note: workPatternNote(e.workArrangement), hidden },
+    { key: 'workArrangement', label: 'Work arrangement', value: arrangementLabel(e), hidden },
     // the nature of the work (Labour Law Art. 1(6–8)), from an API that has it, with casual work past its 6 months warned
     ...(e.workNature !== undefined
       ? [
@@ -171,7 +169,7 @@ function employmentFields(e: Employment, linkPeople: boolean, topGrade: boolean)
     { key: 'shift', label: 'Shift', value: e.shift && shiftLabel(e.shift), required: true },
     // 7 more days of annual leave (18 October 2026; Labour Law Art. 124), from an API that has it
     ...(e.hazardousWork !== undefined
-      ? [{ key: 'hazardousWork', label: 'Hazardous work', value: e.hazardousWork ? 'Yes' : 'No', note: e.hazardousWork ? '7 more days of annual leave (Art. 124)' : undefined, hidden }]
+      ? [{ key: 'hazardousWork', label: 'Hazardous work', value: e.hazardousWork ? 'Yes' : 'No', hidden }]
       : []),
     // where they check in from (20 October 2026: check-ins locked to the office network, "Office staff, plus exceptions";
     // 24 October 2026: or to the check-in locations by GPS, "Yes, add a GPS lock too")
@@ -180,9 +178,9 @@ function employmentFields(e: Employment, linkPeople: boolean, topGrade: boolean)
           {
             key: 'checkInAnywhere',
             label: 'Checks in from',
-            value: e.checkInAnywhere || e.workArrangement !== 'office' ? 'Anywhere' : 'The office network or the check-in locations, when check-ins are locked to them',
+            value: e.checkInAnywhere || e.workArrangement !== 'office' ? 'Anywhere' : 'The office or the check-in locations',
             hidden,
-            note: e.checkInAnywhere ? 'Can check in from anywhere (HR’s exception)' : undefined,
+            note: e.checkInAnywhere ? 'HR’s exception' : undefined,
           },
         ]
       : []),
@@ -193,9 +191,7 @@ function employmentFields(e: Employment, linkPeople: boolean, topGrade: boolean)
             key: 'checkInWithoutLocation',
             label: 'Checks in without a location',
             value: e.checkInWithoutLocation ? 'Yes' : 'No',
-            note: e.checkInWithoutLocation
-              ? 'Can check in without a location (HR’s exception)'
-              : 'Needs it when Check-in Setup refuses check-ins without one, or locks Office staff to the check-in locations',
+            note: e.checkInWithoutLocation ? 'HR’s exception' : undefined,
           },
         ]
       : []),
@@ -331,7 +327,7 @@ function History({ profile: p }: { profile: EmployeeProfile }) {
                       <DeleteRowButton
                         action={deleteEmployment.bind(null, p.id, e.id)}
                         name={described(e)}
-                        confirmText={`Delete ${described(e)}? Only for an employment added by mistake: it is taken out of ${p.fullNameEn}'s history. This cannot be undone.`}
+                        confirmText={`Delete ${described(e)}?`}
                       />
                     )}
                   </div>
@@ -400,7 +396,7 @@ async function DetailsSubTab({
     <div className="space-y-8">
       {justAdded && !e && p.employments.length === 0 && (
         <p role="status" className="rounded-lg bg-ok-soft px-4 py-3 text-sm text-ok">
-          The profile of {p.fullNameEn} is saved, with the ID card in the employee file. Next, add the employment and its contract.
+          Profile saved.
         </p>
       )}
       {e && e.contract !== undefined && <ProbationBanner employee={p} employment={e} today={today} endingInProgress={Boolean(ending)} />}
@@ -436,9 +432,6 @@ async function DetailsSubTab({
             <Suspense fallback={null}>
               <CheckInPlacesLine employee={p} user={user} />
             </Suspense>
-            <p className="text-sm text-muted">
-              The social insurance forms are on the <Link href={profileHref(p.id, 'insurance')}>Social Insurance tab</Link>.
-            </p>
           </ProfileSection>
           {/* exempt from check-in (owner, 25 October 2026: "Profile + a list in Check-in Setup"), by their attendance details,
               for HR, Admin, the CEO and themself; loads on its own */}
@@ -466,10 +459,10 @@ async function DetailsSubTab({
             <div className="card space-y-4 px-6 py-8 text-center">
               <p className="text-sm text-muted">
                 {lastEnded && !lastEnded.endDate
-                  ? 'No current employment. The profile and the employment history are kept.'
+                  ? 'No current employment.'
                   : lastEnded?.endDate
-                    ? `No current employment. ${p.fullNameEn} left on ${formatDate(lastEnded.endDate)}${lastEnded.endReason ? ` (${END_REASON_LABELS[lastEnded.endReason].toLowerCase()})` : ''}. The profile and the employment history are kept.`
-                    : `${p.fullNameEn} is not employed yet. Add the employment once they are hired: the job and the terms of its contract, in one form.`}
+                    ? `No current employment. ${p.fullNameEn} left on ${formatDate(lastEnded.endDate)}${lastEnded.endReason ? ` (${END_REASON_LABELS[lastEnded.endReason].toLowerCase()})` : ''}.`
+                    : `${p.fullNameEn} is not employed yet.`}
               </p>
               {p.access.edit && (
                 <Link href={`${base}/employment/new`} className="btn btn-primary">
@@ -499,7 +492,7 @@ async function DetailsSubTab({
 
       <ProfileSection
         title="Employment History"
-        note={p.employments.length > 0 && `${p.employments.length} ${p.employments.length === 1 ? 'employment' : 'employments'}, newest first`}
+        note={p.employments.length > 0 && `${p.employments.length} ${p.employments.length === 1 ? 'employment' : 'employments'}`}
       >
         <History profile={p} />
       </ProfileSection>

@@ -14,7 +14,7 @@ export function OpenScorecardsForm({ action, monthName }: { action: () => Promis
     <form
       action={formAction}
       onSubmit={(e) => {
-        if (!window.confirm(`Open ${monthName}'s scorecards now? Everyone whose job title has a published template gets theirs, and is told to rate themself.`)) e.preventDefault();
+        if (!window.confirm(`Open ${monthName}'s scorecards now?`)) e.preventDefault();
       }}
       className="space-y-2"
     >

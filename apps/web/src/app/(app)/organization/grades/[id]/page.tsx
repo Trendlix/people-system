@@ -10,7 +10,7 @@ import type { Grade } from '@/lib/types';
 import { deleteGrade, updateGrade } from '../../actions';
 import { BackLink, Loading, RequireEditor, UUID } from '../../ui';
 import { GradeForm } from '../grade-form';
-import { CONFIDENTIAL_GRADE_HINT, gradeLabel } from '../label';
+import { gradeLabel } from '../label';
 
 async function EditGrade({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -27,7 +27,7 @@ async function EditGrade({ params }: { params: Promise<{ id: string }> }) {
     <RequireEditor>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <h2 className="text-lg font-semibold">Grade {gradeLabel(grade)}</h2>
-        {grade.confidential && <CLevelBadge title={CONFIDENTIAL_GRADE_HINT} />}
+        {grade.confidential && <CLevelBadge />}
       </div>
       <div className="mt-4 space-y-8">
         {/* the C-level tick, a Super Admin's only (owner, 19 October 2026) */}
@@ -38,12 +38,12 @@ async function EditGrade({ params }: { params: Promise<{ id: string }> }) {
             <h3 className="font-semibold">Delete Grade</h3>
             {uses.length > 0 ? (
               <p className="text-sm text-muted">
-                {grade.code} is in use: {uses.join(', and ')}. Change {jobTitles + employments === 1 ? 'it' : 'them'} first.
+                {grade.code} is in use: {uses.join(', and ')}.
               </p>
             ) : (
               <DeleteForm
                 action={deleteGrade.bind(null, id)}
-                confirmText={`Delete grade ${gradeLabel(grade)}? This cannot be undone.`}
+                confirmText={`Delete grade ${gradeLabel(grade)}?`}
                 label="Delete grade"
               />
             )}

@@ -95,7 +95,7 @@ async function GeneralCv({ params }: { params: PageProps<'/recruitment/general-c
         <div className="flex flex-wrap items-start gap-2">
           {c.can.review && <ActionButton action={setGeneralCvStatus.bind(null, c.id, 'review')} label="Mark as reviewed" pendingLabel="Saving…" kind="primary" />}
           {c.can.restore && <ActionButton action={setGeneralCvStatus.bind(null, c.id, 'restore')} label="Restore" pendingLabel="Restoring…" kind="primary" />}
-          {c.can.archive && <ActionButton action={setGeneralCvStatus.bind(null, c.id, 'archive')} label="Archive" pendingLabel="Archiving…" confirm={`Archive ${shownCode(c.number) ?? 'this CV'}? It can be restored.`} />}
+          {c.can.archive && <ActionButton action={setGeneralCvStatus.bind(null, c.id, 'archive')} label="Archive" pendingLabel="Archiving…" confirm={`Archive ${shownCode(c.number) ?? 'this CV'}?`} />}
         </div>
       )}
 

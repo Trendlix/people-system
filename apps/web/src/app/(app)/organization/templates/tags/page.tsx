@@ -14,14 +14,7 @@ export default function TagsPage() {
       <div className="space-y-6">
         <BackLink href={TEMPLATES_PATH}>Templates</BackLink>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <h2 className="text-lg font-semibold">Fields Guide</h2>
-            <p className="mt-1 max-w-3xl text-sm text-muted">
-              The fields a template can use, as merge tags. Type a tag in the Word file where its value goes, braces included, e.g.{' '}
-              <code className="font-mono text-sm">{'{{full_name_ar}}'}</code>; when a document is made, the system puts the employee&apos;s data in its place. A
-              tag that isn&apos;t listed here stops the file from being published.
-            </p>
-          </div>
+          <h2 className="text-lg font-semibold">Fields Guide</h2>
           {/* plain links: the files are made on request, never prefetched */}
           <div className="flex shrink-0 flex-wrap gap-3">
             <a href={FIELDS_GUIDE_DOCX_HREF} className="btn btn-secondary">
@@ -32,23 +25,6 @@ export default function TagsPage() {
             </a>
           </div>
         </div>
-        <section aria-labelledby="typing-tags" className="card max-w-3xl p-5">
-          <h2 id="typing-tags" className="font-semibold">
-            Typing Tags in Word
-          </h2>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm">
-            <li>
-              Tags are case-sensitive: type them exactly as listed, in small letters (<code className="font-mono text-xs">{'{{full_name_ar}}'}</code>, not{' '}
-              <code className="font-mono text-xs">{'{{Full_Name_AR}}'}</code>).
-            </li>
-            <li>
-              Type each tag in one go, without changing its formatting halfway through (bold, a colour or another font in the middle of a tag). The system copes
-              when Word splits a tag, but one typed in one go is the surest.
-            </li>
-            <li>Dates come as DD/MM/YYYY (14/10/2026) unless the tag&apos;s note says otherwise.</li>
-            <li>Restricted tags hold national ID, salary or bank data: only those who may see that data can make a document that uses them.</li>
-          </ul>
-        </section>
         <TagReference />
       </div>
     </SetupFrame>

@@ -41,11 +41,8 @@ export function ChangePasswordForm() {
           minLength={10}
           maxLength={200}
           autoComplete="new-password"
-          aria-describedby={fid('newPassword-hint')}
+          placeholder="At least 10 characters"
         />
-        <p id={fid('newPassword-hint')} className="hint">
-          At least 10 characters, and different from your current password. A short sentence is easy to remember.
-        </p>
       </div>
       <div>
         <label htmlFor={fid('confirmPassword')} className="label">

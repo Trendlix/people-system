@@ -33,14 +33,11 @@ export function CibFileForm({ runId, today }: { runId: string; today: string }) 
         <label htmlFor={fid('valueDate')} className="label">
           Value date
         </label>
-        <DateInput id={fid('valueDate')} name="valueDate" required aria-describedby={fid('valueDate-hint')} defaultValue={formatDate(today)} />
+        <DateInput id={fid('valueDate')} name="valueDate" required defaultValue={formatDate(today)} />
       </div>
       <button type="submit" className="btn btn-secondary">
         Download CIB file
       </button>
-      <p id={fid('valueDate-hint')} className="hint w-full">
-        The day CIB is to pay the salaries.
-      </p>
       {error && (
         <p role="alert" className="w-full text-sm text-danger">
           {error}

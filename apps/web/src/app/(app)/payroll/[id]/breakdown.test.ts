@@ -58,6 +58,8 @@ const result: PayrollResult = {
   // not waived by the CEO (17 October 2026)
   attendanceWaived: 0,
   kpiCut: 475,
+  // not waived by the CEO (1 November 2026)
+  kpiWaived: 0,
   noShowCut: 666.67,
   // no unpaid leave (18 October 2026)
   unpaidLeaveCut: 0,

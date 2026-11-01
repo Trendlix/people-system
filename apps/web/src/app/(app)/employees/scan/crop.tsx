@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useId, useRef, type PointerEvent } from 'react';
-import { CARD_MM, CARD_RATIO, CUT_MM, dragRect, FINE_MAX, frameCard, frameSays, HANDLES, keyRect, type Grip, type Rect } from './card';
+import { dragRect, FINE_MAX, frameCard, frameSays, HANDLES, keyRect, type Grip, type Rect } from './card';
 import { cutSize } from './image';
 
 // Ported from Prime ERP (Trendlix), production/web/src/scan/crop.tsx at commit 1368621. Changes: plain English words
@@ -178,8 +178,6 @@ export function RotateBar({ fine, onFine }: { fine: number; onFine: (fine: numbe
   );
 }
 
-const MARGIN = `${CUT_MM} mm above and below it and ${(CUT_MM * CARD_RATIO).toFixed(1)} mm at its sides`;
-
 /**
  * What the frame will give, said under the picture: the card brought to the size of an ID card, with the margin the cut
  * keeps around it (never past the picture). W, H: the picture under the frame; `tilt`: how far it is shown turned.
@@ -189,12 +187,8 @@ export function FrameSays({ rect, W, H, tilt }: { rect: Rect; W: number; H: numb
   const [w, h] = cutSize(frameCard(rect, W, H, tilt), W, H, [s.w, s.h]);
   return (
     <>
-      The cropped picture will be {w} × {h} pixels, fixed to the size of an ID card: {CARD_MM[0]} × {CARD_MM[1]} mm, with a margin of {MARGIN}.
-      {s.far
-        ? ' The frame is far from the shape of a card: Use this frame fits it to one first.'
-        : s.pct
-          ? ` The frame is ${s.pct}% ${s.wider ? 'wider' : 'taller'} than a card, so the picture is adjusted to match.`
-          : ''}
+      {w} × {h} pixels
+      {s.far ? ' · far from the shape of a card' : s.pct ? ` · ${s.pct}% ${s.wider ? 'wider' : 'taller'} than a card` : ''}
     </>
   );
 }

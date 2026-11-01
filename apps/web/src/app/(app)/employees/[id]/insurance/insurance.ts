@@ -1,9 +1,9 @@
-import { LABELS, paperworkType, requiredPaperwork } from '@trendlix/shared';
+import { paperworkType, requiredPaperwork } from '@trendlix/shared';
 import { formatDate } from '../../../../../lib/format';
 import { employmentHidden } from '../../../../../lib/hidden';
 import type { Contract, DocumentItem, DocumentsTab, EmployeeProfile, Employment, PaperworkItem } from '../../../../../lib/types';
 import { monthName } from '../../../payroll/list';
-import { contractDocumentsHref, profileHref } from '../../tab-list';
+import { profileHref } from '../../tab-list';
 import { formatEgp } from '../contracts/salary';
 import { templateStateText, type CheckResult, type MissingLink } from '../documents/wording';
 import { occupationLabel } from './occupation';
@@ -15,9 +15,6 @@ import { occupationLabel } from './occupation';
 /** Social insurance Form 1 (joining) and Form 6 (leaving): the API's insurance section (documents/offer.ts). */
 export const FORM_1 = 'insurance_form_1';
 export const FORM_6 = 'insurance_form_6';
-
-/** The contract's social insurance copy: a copy of the contract, so it is listed with the contract on the Employment tab. */
-export const CONTRACT_INSURANCE_COPY = 'contract_full_time_insurance';
 
 /**
  * The employment the tab is about: the current one, else the latest, as the documents are (Form 6 is generated after
@@ -32,14 +29,6 @@ export function insuranceForms(tab: Pick<DocumentsTab, 'sections'>): DocumentIte
   return tab.sections.find((s) => s.key === 'insurance')?.items ?? [];
 }
 
-/** Whether the Employment tab lists the contract's social insurance copy (a full-time contract version has one). */
-export function hasInsuranceCopy(tab: Pick<DocumentsTab, 'sections'>): boolean {
-  return tab.sections.some((s) => s.key === 'contract' && s.items.some((i) => i.slotKey === CONTRACT_INSURANCE_COPY));
-}
-
-/** Where the contract's social insurance copy is: with the contract's documents, on the Employment tab's Issued Documents. */
-export const insuranceCopyHref = (employeeId: string) => contractDocumentsHref(employeeId);
-
 /**
  * Why a form isn't listed: none without an employment or for one that isn't full time, Form 6 only once there is an
  * ending. For a developer, who gets no employment type (owner, 22 October 2026: "Hide per-person details"), only that
@@ -48,15 +37,13 @@ export const insuranceCopyHref = (employeeId: string) => contractDocumentsHref(e
 export type FormsGap = { kind: 'not_employed' | 'not_full_time' | 'no_ending' | 'hidden'; text: string };
 
 /** Why a developer sees no forms: the employment's type, which says whether they apply, is hidden. */
-export const FORMS_HIDDEN = 'The employment’s details are hidden, so whether Forms 1 and 6 apply isn’t shown.';
+export const FORMS_HIDDEN = 'The employment’s details are hidden.';
 
 export function formsGap(employment: Pick<Employment, 'employmentType'> | null, forms: readonly Pick<DocumentItem, 'slotKey'>[]): FormsGap | null {
-  if (!employment) return { kind: 'not_employed', text: 'Not employed yet: Form 1 comes once they are hired full time.' };
+  if (!employment) return { kind: 'not_employed', text: 'Not employed yet.' };
   if (employmentHidden(employment)) return forms.length ? null : { kind: 'hidden', text: FORMS_HIDDEN };
-  if (employment.employmentType !== 'full_time') {
-    return { kind: 'not_full_time', text: `Forms 1 and 6 are for full-time employments. This one is ${LABELS.employmentType[employment.employmentType].toLowerCase()}.` };
-  }
-  if (!forms.some((f) => f.slotKey === FORM_6)) return { kind: 'no_ending', text: 'Form 6 (leaving) comes once an ending is recorded on the Employment tab.' };
+  if (employment.employmentType !== 'full_time') return { kind: 'not_full_time', text: 'Forms 1 and 6 are for full-time employments only.' };
+  if (!forms.some((f) => f.slotKey === FORM_6)) return { kind: 'no_ending', text: 'Form 6 comes once an ending is recorded.' };
   return null;
 }
 
@@ -106,9 +93,6 @@ export function insuredPrinted(p: Pick<EmployeeProfile, 'insuredWage'>): Printed
   return { text: formatEgp(w.amount), from: how ? `the comprehensive wage (${formatEgp(w.comprehensive)}) ${how}` : 'the comprehensive wage' };
 }
 
-/** Under the insured wage, which isn't edited: "Set by the comprehensive wage, within EGP 2,700.00 to 16,700.00 in 2026." */
-export const insuredNote = (limits: InsurableLimits): string => `Set by the comprehensive wage, within ${insurableLimitsText(limits)}.`;
-
 /**
  * After a signed raise (owner's decision, 16 October 2026: "From the next January unless amended in Form 2"): "As
  * before the raise until January 2027; Form 2 not filed", or until the Form 2 date once it is filed. Null otherwise.
@@ -118,9 +102,6 @@ export function asBeforeRaiseNote(p: Pick<EmployeeProfile, 'insuredWageAsBefore'
   if (!b) return null;
   return `As before the raise until ${monthName(b.until.slice(0, 7))}; Form 2 ${b.form2Filed ? 'filed' : 'not filed'}.`;
 }
-
-/** Under "Registered with social insurance", in one plain sentence. */
-export const REGISTERED_NOTE = 'Payroll deducts social insurance only for registered employees.';
 
 /**
  * The comprehensive wage: the employee's own, else the contract's gross and allowances (after a signed raise, those

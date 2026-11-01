@@ -45,14 +45,8 @@ async function ContractsAndEndings() {
 
   return (
     <div className="space-y-6">
-      <p className="max-w-3xl text-sm text-muted">
-        How contracts start and how an employment can end, following the company&apos;s decisions and Labour Law 14/2025. A
-        signed contract keeps the rules it was signed under, so a change here applies to contracts signed afterwards.
-      </p>
-
       <section className="card p-6">
         <h2 className="font-semibold">Contract Defaults</h2>
-        <p className="mt-1 text-sm text-muted">What every new contract starts with.</p>
         {canEdit ? (
           <ContractDefaultsForm action={updateContractSettings} settings={settings} />
         ) : (
@@ -62,7 +56,6 @@ async function ContractsAndEndings() {
             </Row>
             <Row label="Probation">
               {monthsLabel(settings.probationMonths, 'No probation')}
-              <span className="text-muted"> · the law allows it once per employer, up to 3 months (Art. 90)</span>
             </Row>
           </dl>
         )}
@@ -72,36 +65,25 @@ async function ContractsAndEndings() {
               {settings.basicPercentDefault !== undefined && (
                 <Row label="Basic share of the gross">
                   <span className="tabular-nums">{settings.basicPercentDefault}%</span>
-                  <span className="text-muted"> · the rest is the variable part, which follows the KPIs</span>
                 </Row>
               )}
               {settings.insuranceBasicDefault !== undefined && (
                 <Row label="Basic wage on social insurance forms (default)">
                   <span className="tabular-nums">{formatEgp(settings.insuranceBasicDefault)}</span>
-                  <span className="text-muted"> · for an employee without a basic wage of their own</span>
                 </Row>
               )}
             </dl>
-            <p className="mt-2 text-sm text-muted">
-              These change the payroll sheet, so they are set with the payroll rules
-              {seesPayrollSettings(user) ? (
-                <>
-                  : <Link href="/organization/payroll#your-rules">Payroll Setup → Your Rules</Link>.
-                </>
-              ) : (
-                ', on Payroll Setup.'
-              )}
-            </p>
+            {seesPayrollSettings(user) && (
+              <p className="mt-2 text-sm">
+                <Link href="/organization/payroll#your-rules">Payroll Setup → Your Rules</Link>
+              </p>
+            )}
           </>
         )}
       </section>
 
       <section>
         <h2 className="text-lg font-semibold">Ending Rules</h2>
-        <p className="mt-1 max-w-3xl text-sm text-muted">
-          The ways an employment can end, and the notice each needs. Pay in lieu: the notice can be paid instead of worked.
-          HR can choose only the offered rules when recording an ending; HR approves it, then the CEO.
-        </p>
         {rules.length === 0 ? (
           <div className="mt-4">
             <Empty>No ending rules yet.</Empty>

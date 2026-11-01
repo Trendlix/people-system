@@ -56,9 +56,8 @@ describe('the CV fit’s words', () => {
       weight: '38.5% of the fit',
       detail: 'Close to the job’s title: the latest job',
     });
-    expect(fitSummary(FIT)).toBe('72% from the parts below.');
-    expect(fitSummary({ ...FIT, parts: FIT.parts.slice(1) })).toBe('72% from the parts below. The parts that couldn’t be scored are left out, the others re-weighted to 100.');
-    expect(fitSummary({ percent: null, version: CV_FIT_VERSION, parts: [] })).toMatch(/^Nothing to score/);
+    expect(fitSummary(FIT)).toBeNull();
+    expect(fitSummary({ percent: null, version: CV_FIT_VERSION, parts: [] })).toBe('Nothing to score.');
     expect(openPositionTitle({ percent: 82, fit: null })).toBe('82%');
     expect(openPositionTitle({ percent: 72, fit: FIT })).toContain('Key skills 4 of 6');
   });
@@ -118,7 +117,7 @@ describe('Other Open Positions and the General CVs’ best', () => {
 
 describe('the key skills suggested (vacancy form)', () => {
   it('the note and its link to the form, suggesting as it opens', () => {
-    expect(NO_KEY_SKILLS_NOTE).toBe('No key skills listed: the CV match uses the title, years and requirements only.');
+    expect(NO_KEY_SKILLS_NOTE).toBe('No key skills listed.');
     expect(suggestKeySkillsHref('abc')).toBe('/recruitment/vacancies/abc/edit?suggest=1');
     expect(wantsSuggestion({ suggest: '1' })).toBe(true);
     expect(wantsSuggestion({ suggest: ['1'] })).toBe(true);
@@ -138,10 +137,10 @@ describe('the key skills suggested (vacancy form)', () => {
     expect(withSuggested(['seo', 'Copywriting'], found)).toEqual({ skills: ['seo', 'Copywriting', 'Marketing', 'Google Analytics', 'Meta Ads', 'Google Ads'], added: 4 });
     const full = Array.from({ length: 19 }, (_, i) => `Skill ${i}`);
     expect(withSuggested(full, found)).toEqual({ skills: [...full, 'Marketing'], added: 1 });
-    expect(suggestedText(4, 5)).toBe('4 key skills suggested from the title and texts: remove any that don’t fit, then save.');
-    expect(suggestedText(1, 1)).toBe('1 key skill suggested from the title and texts: remove any that don’t fit, then save.');
-    expect(suggestedText(0, 3)).toBe('The suggested key skills are listed already.');
-    expect(suggestedText(0, 0)).toBe('Nothing to suggest from the title and texts: add the key skills yourself.');
+    expect(suggestedText(4, 5)).toBe('4 key skills suggested.');
+    expect(suggestedText(1, 1)).toBe('1 key skill suggested.');
+    expect(suggestedText(0, 3)).toBe('Already listed.');
+    expect(suggestedText(0, 0)).toBe('Nothing to suggest.');
     expect(typedKeySkills('Premiere Pro, After Effects، premiere pro\nCanva')).toEqual(['Premiere Pro', 'After Effects', 'Canva']);
     expect(jobTitleName('Video Editor — Production · Video')).toBe('Video Editor');
     expect(jobTitleName(null)).toBeNull();
@@ -150,7 +149,7 @@ describe('the key skills suggested (vacancy form)', () => {
   it('as the form opens: suggested only when asked and none are listed', () => {
     const d = { keySkills: [] as string[], title: 'Video Editor', about: '', responsibilities: '<p>Premiere Pro</p>', requirements: '' };
     expect(openingKeySkills(d, 'Video Editor', false)).toEqual({ skills: [], note: null });
-    expect(openingKeySkills(d, 'Video Editor', true)).toEqual({ skills: ['Video editing', 'Premiere Pro'], note: '2 key skills suggested from the title and texts: remove any that don’t fit, then save.' });
+    expect(openingKeySkills(d, 'Video Editor', true)).toEqual({ skills: ['Video editing', 'Premiere Pro'], note: '2 key skills suggested.' });
     expect(openingKeySkills({ ...d, keySkills: ['Canva'] }, 'Video Editor', true)).toEqual({ skills: ['Canva'], note: null });
   });
 });

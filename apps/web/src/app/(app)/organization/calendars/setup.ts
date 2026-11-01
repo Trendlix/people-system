@@ -48,9 +48,9 @@ export const dataCentreOptions = (): { value: string; label: string }[] => ZOHO_
 
 /** The company's Zoho account, in words: what it does, and what is missing. */
 export function zohoStatus(app: Pick<CalendarAppView, 'ready'>, connected: boolean): string {
-  if (!app.ready) return 'The Zoho app isn’t set up yet: follow the steps, then save its credentials below.';
-  if (!connected) return 'The Zoho app is set up: connect the company’s Zoho account below.';
-  return 'Connected: everyone’s busy times are read from Zoho Calendar by their work email. Nobody needs to connect anything.';
+  if (!app.ready) return 'The Zoho app isn’t set up yet.';
+  if (!connected) return 'The company’s Zoho account isn’t connected yet.';
+  return 'Connected.';
 }
 
 /** One step of a console's setup: its words, and the exact values to type or tick there. */

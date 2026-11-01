@@ -1,6 +1,5 @@
 import {
   addedWithoutAnswers,
-  CV_FIT_PARTS,
   cvFitLine,
   cvFitPartDetail,
   cvFitSkipperText,
@@ -48,19 +47,12 @@ export function fitRows(fit: CvFit): { key: string; label: string; score: string
   }));
 }
 
-/** The parts every fit tries to score; agency background (27 October 2026) only when its vacancy wants it, so apart. */
-const SCORED_ALWAYS = CV_FIT_PARTS.filter((k) => k !== 'agency').length;
-
-/**
- * The CV Fit section's summary under its heading: why the parts left out are, in a line. Agency background (owner, 27
- * October 2026: "Set per job") left out by its vacancy ("Not needed") isn't one that couldn't be scored.
- */
-export function fitSummary(fit: CvFit): string {
-  if (fit.percent === null) return cvFitLine(fit);
-  const left = fit.parts.filter((p) => p.key !== 'agency').length < SCORED_ALWAYS ? ' The parts that couldn’t be scored are left out, the others re-weighted to 100.' : '';
+/** The CV Fit section's line under its heading: nothing to score, or a skipper's points off; null otherwise. */
+export function fitSummary(fit: CvFit): string | null {
+  if (fit.percent === null) return fit.parts.length ? cvFitLine(fit) : 'Nothing to score.';
   // a skipper's points off (owner, 29 October 2026: "Flag + lower the score")
   const skipper = cvFitSkipperText(fit);
-  return skipper ? `${fit.percent}% from the parts below, less a skipper’s points. ${skipper}.${left}` : `${fit.percent}% from the parts below.${left}`;
+  return skipper ? `${skipper}.` : null;
 }
 
 /** An open position's hover: its breakdown, else its percent. */
@@ -92,7 +84,7 @@ export const NO_OPEN_POSITIONS = 'No other open vacancy fits this CV at 50% or m
 // ---------- the key skills suggested (vacancy form) ----------
 
 /** The vacancy page's note when it lists none, before its link "Suggest key skills". */
-export const NO_KEY_SKILLS_NOTE = 'No key skills listed: the CV match uses the title, years and requirements only.';
+export const NO_KEY_SKILLS_NOTE = 'No key skills listed.';
 
 /** The edit form, suggesting key skills as it opens. */
 export const suggestKeySkillsHref = (vacancyId: string) => `${vacancyEditHref(vacancyId)}?suggest=1`;
@@ -148,7 +140,7 @@ export function openingKeySkills(
 
 /** What the suggestion did, in words, for HR to check before saving. */
 export function suggestedText(added: number, found: number): string {
-  if (!found) return 'Nothing to suggest from the title and texts: add the key skills yourself.';
-  if (!added) return 'The suggested key skills are listed already.';
-  return `${added} key ${added === 1 ? 'skill' : 'skills'} suggested from the title and texts: remove any that don’t fit, then save.`;
+  if (!found) return 'Nothing to suggest.';
+  if (!added) return 'Already listed.';
+  return `${added} key ${added === 1 ? 'skill' : 'skills'} suggested.`;
 }

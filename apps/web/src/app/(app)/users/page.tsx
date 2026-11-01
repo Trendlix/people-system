@@ -7,7 +7,7 @@ import { getCurrentUser } from '@/lib/session';
 import type { UserAccount } from '@/lib/types';
 import { accessShort } from '../assets/assets';
 import { profileHref } from '../employees/tab-list';
-import { Loading, managesAccessOnProfile, RequireAdmin, RoleBadges, StatusBadge, USERS_PAGE_NOTE } from './ui';
+import { Loading, managesAccessOnProfile, RequireAdmin, RoleBadges, StatusBadge } from './ui';
 import { shownCode } from '@/lib/hidden';
 
 // The accounts that aren't an employee's (owner, 22 October 2026: "any active employee with active contract should have
@@ -99,7 +99,6 @@ async function UsersList({ searchParams }: { searchParams: Promise<Record<string
           </tbody>
         </table>
       </div>
-      <p className="mt-3 text-xs text-muted">{USERS_PAGE_NOTE}</p>
     </>
   );
 }

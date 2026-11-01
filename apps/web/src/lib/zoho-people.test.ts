@@ -85,7 +85,7 @@ describe('who sees Organization → Zoho People', () => {
 describe('coming back from Zoho’s sign-in', () => {
   it('says connected, or why not in the system’s own words, and nothing else from the address', () => {
     expect(zohoPeopleBanner({ connected: '1' })?.tone).toBe('ok');
-    expect(zohoPeopleBanner({ connected: '1' })?.text).toMatch(/^Zoho People is connected: every night at 02:00/);
+    expect(zohoPeopleBanner({ connected: '1' })?.text).toBe('Zoho People is connected.');
     expect(zohoPeopleBanner({ problem: 'refused', said: 'invalid_redirect_uri' })).toEqual({
       tone: 'danger',
       text: 'Zoho refused the return address: add the redirect URI shown on this page to the Zoho app’s Authorized Redirect URIs.',
@@ -245,12 +245,12 @@ describe('a run', () => {
   });
 
   it('says when the nightly run runs and how the last one went', () => {
-    expect(nightlyText({ time: '02:00', last: null })).toBe('Every night at 02:00 (Cairo), yesterday’s check-ins and check-outs are fetched for everyone. It hasn’t run yet.');
+    expect(nightlyText({ time: '02:00', last: null })).toBe('Every night at 02:00 (Cairo). It hasn’t run yet.');
     expect(nightlyText({ time: '02:00', last: { day: '2026-10-24', status: 'finished', finishedAt: '2026-10-25T00:05:00.000Z', problem: null } })).toBe(
-      'Every night at 02:00 (Cairo), yesterday’s check-ins and check-outs are fetched for everyone. The last one, for 24/10/2026, finished.',
+      'Every night at 02:00 (Cairo). The last one, for 24/10/2026, finished.',
     );
     expect(nightlyText({ time: '02:00', last: { day: '2026-10-24', status: 'failed', finishedAt: null, problem: 'Zoho People refused the connection’s sign-in.' } })).toBe(
-      'Every night at 02:00 (Cairo), yesterday’s check-ins and check-outs are fetched for everyone. The last one, for 24/10/2026, failed: Zoho People refused the connection’s sign-in.',
+      'Every night at 02:00 (Cairo). The last one, for 24/10/2026, failed: Zoho People refused the connection’s sign-in.',
     );
   });
 });

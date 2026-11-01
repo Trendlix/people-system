@@ -9,8 +9,6 @@ import type { HolidayImportDay, HolidayImportPreview, HolidayImportResult, Holid
 /** The largest file the API takes (1 MB): a year's holidays take a few kilobytes. */
 export const IMPORT_MAX_MB = 1;
 export const IMPORT_MAX_BYTES = IMPORT_MAX_MB * 1024 * 1024;
-/** The most rows of holidays one file can have (the API's). */
-export const IMPORT_MAX_ROWS = 500;
 /** What the file box takes. The API tells the two apart by their content, not their names. */
 export const IMPORT_ACCEPT = '.xlsx,.csv';
 
@@ -29,23 +27,18 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 /** "a, b and c" */
 const listed = (parts: readonly string[]) => (parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : (parts[0] ?? ''));
 
-/** A group of the preview: the days that go one way, under a heading in Title Case and a line on what happens to them. */
+/** A group of the preview: the days that go one way, under a heading in Title Case. */
 export interface ImportGroup {
   status: HolidayImportStatus;
   title: string;
-  intro: string;
   days: HolidayImportDay[];
 }
 
 const GROUPS: readonly Omit<ImportGroup, 'days'>[] = [
-  { status: 'new', title: 'New', intro: 'Added when you import.' },
-  { status: 'on_file', title: 'Already on File', intro: 'The same day and name are on file already: skipped.' },
-  {
-    status: 'clash',
-    title: 'Clashes',
-    intro: 'Another holiday is on file on these days: not imported. If the file is right, change or remove the one on file, then import the file again.',
-  },
-  { status: 'duplicate', title: 'In the File Twice', intro: 'The day is given again further down the file: only the first counts.' },
+  { status: 'new', title: 'New' },
+  { status: 'on_file', title: 'Already on File' },
+  { status: 'clash', title: 'Clashes' },
+  { status: 'duplicate', title: 'In the File Twice' },
 ];
 
 /** The preview's days by what happens to them, in that order (new, already on file, clashes, in the file twice); empty groups left out. */
@@ -91,13 +84,10 @@ export function dayNote(day: HolidayImportDay): string {
 /** The years the import added holidays in, in order. */
 export const importedYears = (result: Pick<HolidayImportResult, 'imported'>) => [...new Set(result.imported.map((h) => Number(h.date.slice(0, 4))))].sort((a, b) => a - b);
 
-/**
- * The answer once imported: "Imported 5 holidays in 2027. Left out: 1 already on file and 1 clash. Runs made or
- * refreshed from now on count them."; or, when none was new by then, that nothing was.
- */
+/** The answer once imported: "Imported 5 holidays in 2027. Left out: 1 already on file and 1 clash."; or, when none was new by then, that nothing was. */
 export function importedMessage(result: Pick<HolidayImportResult, 'imported' | 'days' | 'problems'>): string {
   const rest = listed(leftOut(result));
   if (!result.imported.length) return `Nothing was imported: no day in the file is new now${rest ? ` (${rest})` : ''}.`;
   const years = listed(importedYears(result).map(String));
-  return `Imported ${plural(result.imported.length, 'holiday', 'holidays')} in ${years}.${rest ? ` Left out: ${rest}.` : ''} Runs made or refreshed from now on count ${result.imported.length === 1 ? 'it' : 'them'}.`;
+  return `Imported ${plural(result.imported.length, 'holiday', 'holidays')} in ${years}.${rest ? ` Left out: ${rest}.` : ''}`;
 }

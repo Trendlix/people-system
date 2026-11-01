@@ -1,6 +1,5 @@
 import { EMAIL_TEMPLATE_GROUP_LABELS, EMAIL_TEMPLATE_GROUPS, type EmailTemplateView } from '@trendlix/shared';
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
 import { ApiError, apiFetch, messagesOf } from '@/lib/api';
@@ -42,28 +41,15 @@ async function Gate() {
   const user = await getCurrentUser();
   if (!seesEmailTemplates(user)) return <Empty>The email templates are for HR, the CEO and a Super Admin.</Empty>;
   const loaded = await loadTemplates();
-  if (loaded.kind === 'unavailable') return <Empty>Not available yet: the server does not have the email templates yet. Please try again after its next update.</Empty>;
+  if (loaded.kind === 'unavailable') return <Empty>Not available yet: the server does not have the email templates yet.</Empty>;
   if (loaded.kind === 'failed') return <Empty>The email templates could not be loaded. {loaded.messages.join(' ')}</Empty>;
   const edits = editsEmailTemplates(user);
   const customised = loaded.value.filter((t) => t.custom).length;
   return (
     <div className="space-y-6">
-      <div className="max-w-3xl space-y-2 text-sm text-muted">
-        <p>
-          The words of each email the system sends. Write a field such as {'{{name}}'} or {'{{link}}'} where the person’s details go: it’s filled in when the email
-          is sent. An email you haven’t changed goes with the standard words.
-        </p>
-        <p>
-          The rejection and invitation emails are in{' '}
-          <Link href="/organization/recruitment" className="font-semibold text-accent underline-offset-2 hover:underline">
-            Recruitment Settings
-          </Link>
-          . WhatsApp messages aren’t here: Meta approves their words, so they are changed in WhatsApp Manager.
-        </p>
-        <p className="font-semibold text-ink">
-          {customised ? `${customised} of ${loaded.value.length} emails have your words.` : `All ${loaded.value.length} emails go with the standard words.`}
-        </p>
-      </div>
+      <p className="text-sm text-muted">
+        {customised ? `${customised} of ${loaded.value.length} emails have your words.` : `All ${loaded.value.length} emails go with the standard words.`}
+      </p>
       {EMAIL_TEMPLATE_GROUPS.map((g) => {
         const list = loaded.value.filter((t) => t.group === g);
         if (!list.length) return null;

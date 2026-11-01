@@ -8,9 +8,6 @@ import {
   exemptionBody,
   exemptionCandidates,
   exemptionRowText,
-  FROM_NONE_HINT,
-  FROM_SEVERAL_HINT,
-  FROM_TYPED_HINT,
   fromField,
   ownStartText,
   periodByText,
@@ -18,7 +15,6 @@ import {
   reasonCount,
   seesExemptions,
   splitPeriods,
-  startHint,
   stateBadge,
 } from './exemptions';
 
@@ -144,17 +140,15 @@ describe('the list and the profile', () => {
   });
 
   it('asks before ending: one started ends today, one not started is removed; and says what happened', () => {
-    expect(endExemptionConfirm('Lina Hassan', view(), TODAY)).toBe(
-      'End Lina Hassan’s exemption from check-in now? Today still counts as full; from tomorrow their working days count from their check-ins again.',
-    );
-    expect(endExemptionConfirm('Lina Hassan', view({ startDate: '2026-11-01' }), TODAY)).toBe('Remove Lina Hassan’s exemption from check-in? It hasn’t started yet, so it is removed.');
-    expect(endedExemptionText('Lina Hassan', false)).toBe('Lina Hassan’s exemption from check-in ends today: from tomorrow their check-ins count again.');
-    expect(endedExemptionText('Lina Hassan', true)).toBe('Removed Lina Hassan’s exemption from check-in: it hadn’t started.');
+    expect(endExemptionConfirm('Lina Hassan', view(), TODAY)).toBe('End Lina Hassan’s exemption from check-in now?');
+    expect(endExemptionConfirm('Lina Hassan', view({ startDate: '2026-11-01' }), TODAY)).toBe('Remove Lina Hassan’s exemption from check-in?');
+    expect(endedExemptionText('Lina Hassan', false)).toBe('Lina Hassan’s exemption ends today.');
+    expect(endedExemptionText('Lina Hassan', true)).toBe('Removed Lina Hassan’s exemption.');
   });
 
-  it('says what saving did: one person with the period, several by number', () => {
-    expect(addedExemptionsText([view({ startDate: '2026-11-01', endDate: '2026-11-30' })])).toBe('Lina Hassan is exempt from check-in: from 01/11/2026 until 30/11/2026.');
-    expect(addedExemptionsText([view(), view({ id: 'x2' })])).toBe('Exempted 2 people from check-in.');
+  it('says what saving did: one person by name, several by number', () => {
+    expect(addedExemptionsText([view({ startDate: '2026-11-01', endDate: '2026-11-30' })])).toBe('Exempted Lina Hassan.');
+    expect(addedExemptionsText([view(), view({ id: 'x2' })])).toBe('Exempted 2 people.');
   });
 });
 
@@ -165,33 +159,26 @@ describe('the first day to start with', () => {
   const JOIN = { date: '2026-09-14', source: 'join' as const, contractNumber: null };
   const NONE = { date: TODAY, source: 'today' as const, contractNumber: null };
 
-  it('says where it came from: their contract’s start with its number, their join date, or today', () => {
-    expect(startHint(CONTRACT)).toBe('Their contract’s start date (CON-2025-0012, 30/07/2025).');
-    expect(startHint(JOIN)).toBe('Their join date (14/09/2026).');
-    expect(startHint(NONE)).toBe('Today unless changed.');
+  it('on the profile: their contract’s start, else their join date, else today', () => {
+    expect(fromField([CONTRACT], null, TODAY)).toEqual({ value: '30/07/2025', own: false });
+    expect(fromField([JOIN], null, TODAY)).toEqual({ value: '14/09/2026', own: false });
+    expect(fromField([NONE], null, TODAY)).toEqual({ value: '25/10/2026', own: false });
     // none sent (a developer, an API from before it): today, as before
-    expect(startHint(null)).toBe('Today unless changed.');
-    expect(startHint(undefined)).toBe('Today unless changed.');
-  });
-
-  it('on the profile: their contract’s start, else their join date, else today, with the hint', () => {
-    expect(fromField([CONTRACT], null, TODAY)).toEqual({ value: '30/07/2025', hint: 'Their contract’s start date (CON-2025-0012, 30/07/2025).', own: false });
-    expect(fromField([JOIN], null, TODAY)).toEqual({ value: '14/09/2026', hint: 'Their join date (14/09/2026).', own: false });
-    expect(fromField([null], null, TODAY)).toEqual({ value: '25/10/2026', hint: 'Today unless changed.', own: false });
+    expect(fromField([null], null, TODAY)).toEqual({ value: '25/10/2026', own: false });
   });
 
   it('on Check-in Setup: empty until someone is chosen, filled in for one, each their own for several', () => {
-    expect(fromField([], null, TODAY)).toEqual({ value: '', hint: FROM_NONE_HINT, own: true });
-    expect(fromField([JOIN], null, TODAY)).toEqual({ value: '14/09/2026', hint: 'Their join date (14/09/2026).', own: false });
-    expect(fromField([CONTRACT, JOIN], null, TODAY)).toEqual({ value: '', hint: FROM_SEVERAL_HINT, own: true });
+    expect(fromField([], null, TODAY)).toEqual({ value: '', own: true });
+    expect(fromField([JOIN], null, TODAY)).toEqual({ value: '14/09/2026', own: false });
+    expect(fromField([CONTRACT, JOIN], null, TODAY)).toEqual({ value: '', own: true });
     expect(ownStartText(CONTRACT)).toBe('from 30/07/2025');
     expect(ownStartText(null)).toBeNull();
   });
 
   it('a date HR types is kept, and for several is everyone’s; emptied, each their own again', () => {
-    expect(fromField([CONTRACT, JOIN], '01/11/2026', TODAY)).toEqual({ value: '01/11/2026', hint: FROM_TYPED_HINT, own: false });
-    expect(fromField([CONTRACT], '01/11/2026', TODAY)).toEqual({ value: '01/11/2026', hint: 'Their contract’s start date (CON-2025-0012, 30/07/2025).', own: false });
-    expect(fromField([CONTRACT, JOIN], '', TODAY)).toEqual({ value: '', hint: FROM_SEVERAL_HINT, own: true });
+    expect(fromField([CONTRACT, JOIN], '01/11/2026', TODAY)).toEqual({ value: '01/11/2026', own: false });
+    expect(fromField([CONTRACT], '01/11/2026', TODAY)).toEqual({ value: '01/11/2026', own: false });
+    expect(fromField([CONTRACT, JOIN], '', TODAY)).toEqual({ value: '', own: true });
     expect(fromField([CONTRACT], ' ', TODAY).own).toBe(true);
   });
 
@@ -209,13 +196,5 @@ describe('the first day to start with', () => {
     expect(exemptionBody(form({ employeeId: 'e1', reason: 'On site', startDate: 'soon', ownStart: '1' }), TODAY).problems).toEqual([
       'Enter the first day as DD/MM/YYYY, e.g. 01/11/2026, or leave it empty for their own start date.',
     ]);
-  });
-
-  it('says each one’s first day after saving several whose days differ', () => {
-    const lina = view({ startDate: '2025-07-30' });
-    const omar = view({ id: 'x2', employee: { id: 'e2', employeeCode: 'EMP-0182', fullNameEn: 'Omar Khaled', department: null }, startDate: '2026-09-14' });
-    expect(addedExemptionsText([lina, omar])).toBe('Exempted 2 people from check-in, each from their own first day: Lina Hassan from 30/07/2025, Omar Khaled from 14/09/2026.');
-    const seven = Array.from({ length: 7 }, (_, i) => view({ id: `x${i}`, startDate: `2026-09-0${i + 1}` }));
-    expect(addedExemptionsText(seven)).toMatch(/^Exempted 7 people from check-in, each from their own first day: (Lina Hassan from 0\d\/09\/2026, ){4}Lina Hassan from 05\/09\/2026 and 2 more\.$/);
   });
 });

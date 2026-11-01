@@ -11,7 +11,7 @@ import { saveKpiFramework, updateAttendanceInKpi } from '../../kpis/templates/ac
 import { loadKpi } from '../../kpis/templates/data';
 import { attendanceInKpiOf, departmentPillarsText, hasOwnPillars, inForceText, jobTitlesCount, nextText } from '../../kpis/templates/framework';
 import { KpiFrameworkForm } from '../../kpis/templates/framework-form';
-import { ATTENDANCE_IN_KPI_RESCORE_NOTE, ATTENDANCE_IN_KPI_TEXT, buildsKpiTemplates, readsKpiTemplates, settingsChangedText } from '../../kpis/templates/templates';
+import { buildsKpiTemplates, readsKpiTemplates, settingsChangedText } from '../../kpis/templates/templates';
 import { AttendanceInKpiForm } from './attendance-form';
 import { FrameworkVersion } from './ui';
 
@@ -28,12 +28,6 @@ import { FrameworkVersion } from './ui';
 // fixed part alone. While it is off, no pillar is marked as the Attendance metric's.
 
 export const metadata: Metadata = { title: 'KPI Pillars · People System' };
-
-const COMPANY_INTRO =
-  'The pillars every template places its metrics in, and their weights in the final %: final % = Σ pillar % × its weight. The company’s are every department’s unless it has its own. Changed pillars apply from a month whose scorecards aren’t open yet, next month unless chosen. Each template keeps the pillars it was published with, so the scorecards opened already never change; a template on the old pillars keeps opening its scorecards with them until it is updated.';
-
-const DEPARTMENTS_INTRO =
-  'A department can have its own pillars instead of the company’s: other names, another count, other weights. A team can have its own too, else it takes its department’s. Each job title can also weight its pillars its own way, on its KPI template.';
 
 /** A department's row, or a team's under it (indented), with what it takes, its next change and its link. */
 function PillarsRow({ row: d, builds }: { row: KpiDepartmentPillarsView; builds: boolean }) {
@@ -83,28 +77,17 @@ function AttendanceInKpi({ settings, framework, builds }: { settings: KpiSetting
   const changed = settings ? settingsChangedText(settings) : null;
   return (
     <section aria-labelledby="attendance-in-kpi-heading" className="card space-y-4 p-6">
-      <div>
-        <h2 id="attendance-in-kpi-heading" className="text-lg font-semibold">
-          Attendance In The KPI
-        </h2>
-        <p className="mt-1 max-w-3xl text-sm text-muted">
-          Short hours already cut the fixed part of the pay. Counted in the KPI too, attendance would cut the variable part again; off, the KPI measures
-          performance only and attendance is never cut twice.
-        </p>
-      </div>
+      <h2 id="attendance-in-kpi-heading" className="text-lg font-semibold">
+        Attendance In The KPI
+      </h2>
       {known === undefined ? (
-        <p className="rounded-lg bg-line-soft px-4 py-3 text-sm text-muted">Not available yet: the server doesn’t have this setting yet, so attendance still counts in the KPI.</p>
+        <p className="rounded-lg bg-line-soft px-4 py-3 text-sm text-muted">Not available yet.</p>
       ) : builds ? (
         <AttendanceInKpiForm action={updateAttendanceInKpi} on={on} />
       ) : (
-        <div className="space-y-1 text-sm">
-          <p className="font-semibold">{on ? 'On' : 'Off'}</p>
-          <p className="max-w-3xl text-muted">
-            {ATTENDANCE_IN_KPI_TEXT[on ? 'on' : 'off']} {ATTENDANCE_IN_KPI_RESCORE_NOTE}
-          </p>
-        </div>
+        <p className="text-sm font-semibold">{on ? 'On' : 'Off'}</p>
       )}
-      {changed && <p className="text-xs text-muted">{changed} (the KPI settings).</p>}
+      {changed && <p className="text-xs text-muted">{changed}.</p>}
     </section>
   );
 }
@@ -112,12 +95,9 @@ function AttendanceInKpi({ settings, framework, builds }: { settings: KpiSetting
 function CompanyPillars({ view, builds }: { view: KpiFrameworkView; builds: boolean }) {
   return (
     <section id="company-pillars" aria-labelledby="company-pillars-heading" className="card scroll-mt-6 space-y-5 p-6">
-      <div>
-        <h2 id="company-pillars-heading" className="text-lg font-semibold">
-          Company Pillars
-        </h2>
-        <p className="mt-1 max-w-3xl text-sm text-muted">{COMPANY_INTRO}</p>
-      </div>
+      <h2 id="company-pillars-heading" className="text-lg font-semibold">
+        Company Pillars
+      </h2>
       <div className="grid items-start gap-6 lg:grid-cols-2">
         <FrameworkVersion title="In Force" version={view.inForce} note={inForceText(view.inForce)} attendance={attendanceInKpiOf(view)} />
         {view.next ? (
@@ -139,16 +119,13 @@ function DepartmentPillars({ view, builds }: { view: KpiFrameworkView; builds: b
   const departments = view.departments;
   return (
     <section aria-labelledby="department-pillars-heading" className="space-y-3">
-      <div>
-        <h2 id="department-pillars-heading" className="text-lg font-semibold">
-          Department Pillars
-        </h2>
-        <p className="mt-1 max-w-3xl text-sm text-muted">{DEPARTMENTS_INTRO}</p>
-      </div>
+      <h2 id="department-pillars-heading" className="text-lg font-semibold">
+        Department Pillars
+      </h2>
       {!departments ? (
-        <p className="rounded-lg bg-line-soft px-4 py-3 text-sm text-muted">Not available yet: the server does not have pillars by department yet.</p>
+        <p className="rounded-lg bg-line-soft px-4 py-3 text-sm text-muted">Not available yet.</p>
       ) : departments.length === 0 ? (
-        <Empty>No departments yet: add them on Organization → Departments &amp; Job Titles.</Empty>
+        <Empty>No departments yet.</Empty>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-line">
           <table className="table">
@@ -185,10 +162,6 @@ async function KpiPillars() {
   const builds = buildsKpiTemplates(user);
   return (
     <div className="space-y-8">
-      <p className="max-w-3xl text-sm text-muted">
-        Each job title’s KPI template places its metrics in these pillars: its team’s own, its department’s, or the company’s. Templates are built on{' '}
-        <Link href={KPI_PATHS.templates}>KPI Templates</Link>.
-      </p>
       <AttendanceInKpi settings={settings.kind === 'ok' ? settings.value : null} framework={loaded.value} builds={builds} />
       <CompanyPillars view={loaded.value} builds={builds} />
       <DepartmentPillars view={loaded.value} builds={builds} />

@@ -11,7 +11,7 @@ import { formatEgp } from '../../employees/[id]/contracts/salary';
 import { ActionButton, focusFirstField, useClosesOnSave } from '../../employees/[id]/contracts/contract-buttons';
 import { monthName, monthOf } from '../list';
 import type { AdvanceRow, PersonRef } from '../adjustments/adjustments';
-import { changePreview, firstMonthChoices, limitHref, limitText, planPreview, planProblem, postponeConfirm, SETTLE_CHOICES } from './installments';
+import { changePreview, firstMonthChoices, limitHref, planPreview, planProblem, postponeConfirm, SETTLE_CHOICES } from './installments';
 import { clearanceOption, METHOD_CHOICES, type ClearanceDocument } from './unsettled';
 import { joinShown } from '@/lib/hidden';
 
@@ -207,7 +207,6 @@ export function PaidOutForm({ action, name, today }: { action: Action; name: str
 /** The settle form's choice of how, and the note it needs: why for a waiver, how for a payback. */
 function SettleFields({ state, fid, outstanding }: { state: FormState; fid: (n: string) => string; outstanding: number }) {
   const [how, setHow] = useState<AdvanceSettleWay>((valueOf(state, 'how', 'paid_back') as AdvanceSettleWay) || 'paid_back');
-  const hint = SETTLE_CHOICES.find((c) => c.value === how)?.hint;
   return (
     <>
       <fieldset>
@@ -222,7 +221,6 @@ function SettleFields({ state, fid, outstanding }: { state: FormState; fid: (n: 
             </label>
           ))}
         </div>
-        {hint && <p className="hint">{hint} Its pending installments are cancelled.</p>}
       </fieldset>
       {how === 'waived' ? (
         <Note state={state} fid={fid} label="Why it is waived" required />
@@ -254,7 +252,7 @@ export function SettleAdvanceForm({ action, name, outstanding }: { action: Actio
 export function OutstandingActions({ deduct, waive, name }: { deduct: (prev: FormState) => Promise<FormState>; waive: Action; name: string }) {
   return (
     <div className="flex flex-wrap items-start justify-end gap-2">
-      <ActionButton action={deduct} pendingText="Recording…" confirmText={`Record what is outstanding on ${name} as deducted from the final settlement? It is marked settled.`}>
+      <ActionButton action={deduct} pendingText="Recording…" confirmText={`Deduct what is outstanding on ${name} from the final settlement?`}>
         Deducted from the final settlement<span className="sr-only"> for {name}</span>
       </ActionButton>
       <InlineForm label="Waive" name={name} action={waive} submit="Waive">
@@ -292,7 +290,7 @@ function ChangeFields({ state, fid, installments, month }: { state: FormState; f
         className="input tabular-nums"
       />
       <p id={fid('amount-hint')} aria-live="polite" className={`hint ${preview && 'problem' in preview ? 'text-danger' : ''}`}>
-        {preview ? ('problem' in preview ? preview.problem : preview.text) : 'The later installments share what is left.'}
+        {preview && ('problem' in preview ? preview.problem : preview.text)}
       </p>
     </div>
   );
@@ -395,12 +393,8 @@ function AdvanceFields({
             autoComplete="off"
             placeholder="e.g. 6 installments of 1,000"
             defaultValue={valueOf(state, 'plan', advance?.plan)}
-            aria-describedby={fid('plan-hint')}
             className="input"
           />
-          <p id={fid('plan-hint')} className="hint">
-            Recovered by deductions on Additions / Deductions: an advance recovery or a loan installment, each linked to it.
-          </p>
         </div>
       )}
     </div>
@@ -420,26 +414,11 @@ export function EditAdvanceForm({ action, advance, today }: { action: Action; ad
  * The plan of a new one recovered in installments, worked out as it is typed (owner, 18 October 2026): each month's
  * installment, and why it can't be recorded when a month passes the law's limit (`problem`, planProblem).
  */
-function PlanPreview({
-  amount,
-  count,
-  firstMonth,
-  limit,
-  problem,
-}: {
-  amount: string;
-  count: string;
-  firstMonth: string;
-  limit: AdvanceLimitView | null;
-  problem: string | null;
-}) {
+function PlanPreview({ amount, count, firstMonth, problem }: { amount: string; count: string; firstMonth: string; problem: string | null }) {
   const preview = planPreview(amount, count, firstMonth);
-  const about = limitText(limit);
   return (
     <div aria-live="polite" className="space-y-2 sm:col-span-2">
-      {!preview ? (
-        <p className="hint">Enter the amount and how many months to see each installment.</p>
-      ) : !preview.ok ? (
+      {!preview ? null : !preview.ok ? (
         <p className="text-sm text-danger">{preview.problems.join(' ')}</p>
       ) : (
         <div className="text-sm">
@@ -462,12 +441,10 @@ function PlanPreview({
         </div>
       )}
       {problem && (
-        <div role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
-          <p>{problem}</p>
-          <p className="mt-1 text-xs">It can&apos;t be recorded so: the Labour Law allows at most 10% of the wage a month to repay an advance or a loan.</p>
-        </div>
+        <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
+          {problem}
+        </p>
       )}
-      {about && <p className="hint">{about}</p>}
     </div>
   );
 }
@@ -564,16 +541,10 @@ export function NewAdvanceForm({ action, people, today }: { action: Action; peop
               value="yes"
               checked={byInstallments}
               onChange={(e) => setByInstallments(e.target.checked)}
-              aria-describedby={fid('byInstallments-hint')}
               className="size-5 accent-accent"
             />
             Recover in installments
           </label>
-          <p id={fid('byInstallments-hint')} className="hint">
-            {byInstallments
-              ? 'Every monthly installment is made now, each a deduction linked to it on its month’s payroll: equal amounts, the last taking the rounding. Each can be moved or changed later.'
-              : 'No installments made: plan its recovery by hand on Additions / Deductions.'}
-          </p>
         </div>
         {byInstallments && (
           <div className="grid gap-3 sm:grid-cols-2">
@@ -605,7 +576,7 @@ export function NewAdvanceForm({ action, people, today }: { action: Action; peop
                 ))}
               </Select>
             </div>
-            <PlanPreview amount={amount} count={count} firstMonth={firstMonth} limit={limit} problem={problem} />
+            <PlanPreview amount={amount} count={count} firstMonth={firstMonth} problem={problem} />
           </div>
         )}
       </div>
@@ -613,7 +584,6 @@ export function NewAdvanceForm({ action, people, today }: { action: Action; peop
         <SubmitButton busy={pending} pendingText="Recording…" disabled={problem !== null}>
           Record
         </SubmitButton>
-        {problem && <p className="text-sm text-muted">Spread it over more months, or start it later, to record it.</p>}
         {state.message && !pending && (
           <p role="status" className="text-sm text-ok">
             {state.message}

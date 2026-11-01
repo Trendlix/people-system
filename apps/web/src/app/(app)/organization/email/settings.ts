@@ -90,11 +90,11 @@ export function mailTestBody(fd: FormData): { body: MailTestInput; errors: strin
 
 /** What a save that went through says, by where emails are sent from now. */
 export function savedMessage(view: MailSettingsView): string {
-  if (view.enabled && view.sending.source === 'system') return 'Saved. The system’s emails are sent with these settings from now on.';
+  if (view.enabled && view.sending.source === 'system') return 'Saved.';
   if (view.enabled && view.passwordUnreadable) return `Saved, but not used yet. ${MAIL_PASSWORD_UNREADABLE}`;
   if (view.enabled && view.missing.length) return `Saved, but not used yet: enter ${listed(view.missing)}.`;
   if (view.enabled) return 'Saved.';
-  return view.sending.source === 'server' ? 'Saved, switched off: the server’s settings are used meanwhile.' : 'Saved, switched off: nothing is emailed until they are switched on.';
+  return 'Saved, switched off.';
 }
 
 /** The status at the top of the page: where emails are sent from now, and what keeps these settings from being used. */
@@ -114,7 +114,6 @@ export function mailStatus(view: MailSettingsView): MailStatus {
   if (!view.enabled && view.host) notes.push('These settings are saved but switched off.');
   if (source === 'system') return { tone: 'ok', headline: address ? `Emails are sent from ${address}` : 'Emails are sent with the system’s settings', alert, notes };
   if (source === 'server') {
-    notes.push('They come from the server’s deploy/.env, until the settings below are filled in and switched on.');
     return { tone: 'neutral', headline: address ? `Using the server’s settings: emails are sent from ${address}` : 'Using the server’s settings', alert, notes };
   }
   return { tone: 'warn', headline: 'Not set up: nothing is emailed', alert, notes };

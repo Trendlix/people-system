@@ -28,10 +28,7 @@ export default function NewHandoverPage({ searchParams }: PageProps<'/assets/cus
   return (
     <div className="max-w-4xl space-y-4">
       <BackLink href={CUSTODY_PATHS.list}>Custody</BackLink>
-      <div>
-        <h1 className="page-title">New Handover</h1>
-        <p className="mt-1 text-muted">The record gets its code when you save it. Then print its form, have it signed, and attach the signed copy.</p>
-      </div>
+      <h1 className="page-title">New Handover</h1>
       <Suspense fallback={<Loading />}>
         <NewHandover searchParams={searchParams} />
       </Suspense>

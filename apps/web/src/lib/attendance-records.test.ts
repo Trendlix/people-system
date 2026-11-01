@@ -18,8 +18,8 @@ describe('a day’s records', () => {
   });
 
   it('says which records the day uses: a correction, the one chosen, the usual order', () => {
-    expect(countsWords({ counts: 'correction', chosen: null, usual: 'system' })).toBe('An approved correction counts for this day, over its records.');
-    expect(countsWords({ counts: 'system', chosen: null, usual: 'system' })).toBe('Checked in on the system counts for this day: the system’s check-ins come before Zoho’s.');
+    expect(countsWords({ counts: 'correction', chosen: null, usual: 'system' })).toBe('An approved correction counts for this day.');
+    expect(countsWords({ counts: 'system', chosen: null, usual: 'system' })).toBe('Checked in on the system counts for this day.');
     expect(countsWords({ counts: 'zoho', chosen: { source: 'zoho', reason: 'The reader missed the day', by: 'Mona', at: '2026-10-31T10:00:00.000Z' }, usual: 'system' })).toBe(
       'Zoho People counts for this day: chosen by Mona, “The reader missed the day”.',
     );

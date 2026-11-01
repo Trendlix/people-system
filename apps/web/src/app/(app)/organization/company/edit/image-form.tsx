@@ -14,13 +14,11 @@ const IMAGE_MAX_BYTES = 1024 * 1024;
 const IMAGES = {
   logo: {
     title: 'Logo',
-    hint: 'Shown in the sidebar and on the sign-in page. PNG, JPEG or WebP, up to 1 MB.',
     upload: uploadLogo,
     remove: removeLogo,
   },
   thumbnail: {
     title: 'Thumbnail',
-    hint: 'A square icon, e.g. your brand mark: shown as the browser tab icon and where there is no room for the full logo. PNG, JPEG or WebP, up to 1 MB.',
     upload: uploadThumbnail,
     remove: removeThumbnail,
   },
@@ -41,7 +39,7 @@ function limitSize(image: CompanyImage) {
  * 15 October 2026); replacing it is for every editor.
  */
 export function CompanyImageForm({ image, name, src, canRemove }: { image: CompanyImage; name: string; src: string | null; canRemove: boolean }) {
-  const { title, hint, upload: uploadImage, remove: removeImage } = IMAGES[image];
+  const { title, upload: uploadImage, remove: removeImage } = IMAGES[image];
   const [upload, uploadAction] = useActionState(uploadImage, {} as FormState);
   const [removal, removeAction, removing] = useActionState(removeImage, {} as FormState);
   const fid = useFieldIds();
@@ -50,7 +48,6 @@ export function CompanyImageForm({ image, name, src, canRemove }: { image: Compa
   return (
     <section className="card p-6">
       <h3 className="font-semibold">{title}</h3>
-      <p className="mt-1 text-sm text-muted">{hint} Drag it here, paste it, or choose it.</p>
 
       <div className="mt-4 flex flex-wrap items-start gap-5">
         <span className="relative flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-line bg-card">

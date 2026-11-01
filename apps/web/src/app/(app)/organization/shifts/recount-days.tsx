@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react';
 import { FormErrors } from '@/components/form';
 import { Select } from '@/components/select';
-import { monthLabel, monthsAfter, previewText, recountMonths, recountRangeProblem, resultText, skippedText, type RecountView } from '@/lib/recount';
+import { monthLabel, monthsAfter, previewText, recountMonths, recountRangeProblem, resultText, type RecountView } from '@/lib/recount';
 import type { Shift } from '@/lib/types';
 import { previewRecount, runRecount, type RecountState } from './recount-actions';
 
@@ -45,10 +45,7 @@ export function RecountDays({ shifts, thisMonth }: { shifts: Shift[]; thisMonth:
   return (
     <section className="card mb-6 p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold">Recount Past Days</h2>
-          <p className="text-sm text-muted">Count the days of past months again on each person’s shift as it is now, after changing a shift.</p>
-        </div>
+        <h2 className="text-base font-semibold">Recount Past Days</h2>
         {!open && (
           <button type="button" className="btn" onClick={() => setOpen(true)}>
             Recount past days
@@ -98,9 +95,6 @@ export function RecountDays({ shifts, thisMonth }: { shifts: Shift[]; thisMonth:
             </div>
           </div>
           {problem && <p className="text-sm text-danger">{problem}</p>}
-          <p className="text-sm text-muted">
-            Months whose payroll is with the CEO, approved or paid are left as they are. Send the payroll back to draft to recount it. The check-in and check-out times never change.
-          </p>
           <div className="flex flex-wrap gap-3">
             <button type="button" className="btn" disabled={pending || !!problem} onClick={() => start(async () => apply(await previewRecount(from, to, shiftId)))}>
               {pending && !preview ? 'Counting…' : 'Preview'}
@@ -120,7 +114,6 @@ export function RecountDays({ shifts, thisMonth }: { shifts: Shift[]; thisMonth:
           {result && (
             <p role="status" className="rounded-lg bg-ok-soft px-4 py-3 text-sm text-ok">
               {resultText(result)}
-              {result.skipped.length > 0 && <span className="block text-muted">Send the payroll back to draft to recount {result.skipped.length === 1 ? 'it' : 'them'}: {skippedText(result.skipped)}.</span>}
             </p>
           )}
         </div>

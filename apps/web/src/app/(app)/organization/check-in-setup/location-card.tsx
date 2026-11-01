@@ -11,7 +11,7 @@ import type { FormState } from '@/lib/types';
 import { profileHref } from '../../employees/tab-list';
 import { LinkPeople } from './link-people';
 import { LocationForm } from './location-form';
-import { chipsOf, makeMainConfirm, moreText, radiusHint, removeConfirm, shownAsText, withinText, type LinkCandidate } from './setup';
+import { chipsOf, makeMainConfirm, moreText, removeConfirm, shownAsText, withinText, type LinkCandidate } from './setup';
 import { withCode } from '@/lib/hidden';
 
 // The check-in locations on Attendance → Check-in Setup (owner, 20 October 2026: "Own page, several locations", then of
@@ -65,7 +65,6 @@ export function MainOfficeCard({
 }) {
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState<string | null>(null);
-  const hint = radiusHint(l.radiusMetres);
   return (
     <article aria-labelledby={`main-office-${l.id}`} className="overflow-hidden rounded-xl border border-line bg-card shadow-sm">
       {editing ? (
@@ -108,12 +107,6 @@ export function MainOfficeCard({
               <p className="text-xs text-muted tabular-nums">
                 {l.latitude.toFixed(6)}, {l.longitude.toFixed(6)}
               </p>
-              <p className="text-sm">A check-in within it is Office, for everyone.</p>
-              {hint && (
-                <p className="mt-2 max-w-md rounded-lg bg-warn-soft px-3 py-2 text-sm text-warn">
-                  <span className="font-semibold">A small radius.</span> {hint}
-                </p>
-              )}
             </div>
             <div className="flex flex-wrap items-start gap-2">
               <button
@@ -145,7 +138,7 @@ function PeopleChips({ people, place, unlink }: { people: readonly LinkedPersonV
   const [all, setAll] = useState(false);
   const { shown, more } = chipsOf(people);
   const listed = all ? people : shown;
-  if (!people.length) return <p className="text-sm text-muted">No one linked yet: anyone checking in here is flagged &ldquo;Not their location&rdquo;.</p>;
+  if (!people.length) return <p className="text-sm text-muted">No one linked yet.</p>;
   return (
     <ul className="flex flex-wrap gap-1.5" aria-label={`People linked to ${place}`}>
       {listed.map((p) => (
@@ -186,7 +179,6 @@ export function SubLocationCard({
   link,
   unlink,
   makeMain,
-  mainName,
   remove,
 }: {
   location: CheckInLocationView;
@@ -198,7 +190,6 @@ export function SubLocationCard({
   link: Action;
   unlink: (employeeId: string, name: string, place: string) => Promise<FormState>;
   makeMain: () => Promise<FormState>;
-  mainName: string | null;
   /** A Super Admin's; none for anyone else. */
   remove: Action | null;
 }) {
@@ -264,7 +255,7 @@ export function SubLocationCard({
             people={people}
             place={l.name}
             unlink={(p) => {
-              if (window.confirm(`Unlink ${p.fullNameEn} from ${l.name}? Their check-ins there will be flagged as not their location.`)) run(() => unlink(p.id, p.fullNameEn, l.name));
+              if (window.confirm(`Unlink ${p.fullNameEn} from ${l.name}?`)) run(() => unlink(p.id, p.fullNameEn, l.name));
             }}
           />
           {candidates && <LinkPeople action={link} candidates={candidates} linked={people.map((p) => p.id)} place={l.name} />}
@@ -285,7 +276,7 @@ export function SubLocationCard({
             type="button"
             disabled={pending}
             onClick={() => {
-              if (window.confirm(makeMainConfirm(l.name, mainName))) run(makeMain);
+              if (window.confirm(makeMainConfirm(l.name))) run(makeMain);
             }}
             className="btn btn-secondary"
           >

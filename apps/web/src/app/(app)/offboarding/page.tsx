@@ -69,7 +69,7 @@ async function Cases({ searchParams }: { searchParams: PageProps<'/offboarding'>
         <div className="card px-6 py-8 text-center text-sm text-muted">
           {filter === 'open'
             ? manages
-              ? 'Nobody is in clearance. A case opens when the CEO approves an ending, or when an employment is ended.'
+              ? 'Nobody is in clearance.'
               : 'No clearance items wait for you.'
             : 'No cases here.'}
         </div>
@@ -132,14 +132,7 @@ async function Cases({ searchParams }: { searchParams: PageProps<'/offboarding'>
 export default function OffboardingPage({ searchParams }: PageProps<'/offboarding'>) {
   return (
     <div className="max-w-6xl space-y-6">
-      <div>
-        <h1 className="page-title">Offboarding</h1>
-        <p className="mt-1 max-w-3xl text-muted">
-          Everyone leaving, from the CEO&apos;s approval of their ending (or the day their employment is ended) until their clearance is done: what they hold
-          is received back, each item is cleared by the person in charge of it, the final settlement is paid, and the exit interview and rehire eligibility
-          are recorded.
-        </p>
-      </div>
+      <h1 className="page-title">Offboarding</h1>
       <Suspense fallback={<Loading />}>
         <Cases searchParams={searchParams} />
       </Suspense>

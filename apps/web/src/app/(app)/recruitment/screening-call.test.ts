@@ -32,8 +32,8 @@ describe('the screening call’s form', () => {
 
   it('is sent to the applicant’s address, and says what was saved', () => {
     expect(screeningCallApiPath('a b')).toBe('/recruitment/applications/a%20b/screening-call');
-    expect(screeningCallSavedText('passed')).toContain('Schedule their interview');
-    expect(screeningCallSavedText('failed')).toContain('no interview can be scheduled');
+    expect(screeningCallSavedText('passed')).toBe('Saved: passed.');
+    expect(screeningCallSavedText('failed')).toBe('Saved: failed.');
   });
 });
 

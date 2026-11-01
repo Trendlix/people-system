@@ -2,11 +2,11 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { BANKS, bankNamed } from '@trendlix/shared';
+import { accountLengthText, BANKS, bankNamed } from '@trendlix/shared';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import { ListOrOther } from '@/components/list-or-other';
 import type { EmployeeBank, FormState } from '@/lib/types';
-import { accountCount, accountHint } from './bank-rules';
+import { accountCount } from './bank-rules';
 
 // Salaries are sent through EG-ACH, so the bank is chosen from the EG-ACH banks list (packages/shared banks.ts) and
 // saved under the name the list gives it; Other keeps a bank not on the list as typed. A bank saved by its abbreviation
@@ -37,12 +37,11 @@ export function BankForm({
   const [accountNo, setAccountNo] = useState(() => valueOf(state, 'accountNo', bank.accountNo));
   const [typing, setTyping] = useState(false);
   const listed = bankNamed(bankName);
-  const accountRule = listed && accountHint(listed);
+  const bic = listed?.bic;
   const count = listed && accountCount(listed, accountNo);
   // The count warns once no more typing can make the number right, or when it is left at a length the bank doesn't use.
   // Only a warning: the API refuses the save anyway, with the bank's rule.
   const warn = Boolean(count && (count.over || (!count.fits && !typing)));
-  const accountDescribedBy = [accountRule && fid('accountNo-hint'), count && fid('accountNo-count')].filter(Boolean).join(' ') || undefined;
 
   return (
     <form {...form} className="card max-w-2xl space-y-5 p-6">
@@ -63,18 +62,14 @@ export function BankForm({
             max={100}
             onValue={setBankName}
             otherPlaceholder="As written on the bank's letter"
-            aria-describedby={fid('bankName-hint')}
+            aria-describedby={bic ? fid('bankName-hint') : undefined}
           />
-          <p id={fid('bankName-hint')} className="hint">
-            As on the EG-ACH banks list. Not on it? Choose Other.
-            {/* the SWIFT code (BIC) is the list's, so it is not typed or saved: it follows the bank */}
-            {bankNamed(bankName)?.bic && (
-              <>
-                {' '}
-                SWIFT/BIC: <span className="tabular-nums">{bankNamed(bankName)!.bic}</span>.
-              </>
-            )}
-          </p>
+          {/* the SWIFT code (BIC) is the list's, so it is not typed or saved: it follows the bank */}
+          {bic && (
+            <p id={fid('bankName-hint')} className="hint">
+              SWIFT/BIC: <span className="tabular-nums">{bic}</span>
+            </p>
+          )}
         </div>
         <div>
           <label htmlFor={fid('accountNo')} className="label">
@@ -90,15 +85,11 @@ export function BankForm({
             onChange={(e) => setAccountNo(e.target.value)}
             onFocus={() => setTyping(true)}
             onBlur={() => setTyping(false)}
-            aria-describedby={accountDescribedBy}
+            placeholder={(listed && accountLengthText(listed)) || undefined}
+            aria-describedby={count ? fid('accountNo-count') : undefined}
             aria-invalid={warn || undefined}
             className="input tabular-nums"
           />
-          {accountRule && (
-            <p id={fid('accountNo-hint')} className="hint">
-              {accountRule} Spaces and dashes are fine.
-            </p>
-          )}
           {count && (
             <p id={fid('accountNo-count')} className={`hint tabular-nums ${warn ? 'text-warn' : ''}`}>
               {count.text}
@@ -115,13 +106,9 @@ export function BankForm({
             autoComplete="off"
             maxLength={40}
             placeholder="EG00 0000 0000 0000 0000 0000 0000 0"
-            aria-describedby={fid('iban-hint')}
             defaultValue={valueOf(state, 'iban', bank.iban)}
             className="input uppercase tabular-nums"
           />
-          <p id={fid('iban-hint')} className="hint">
-            EG followed by 27 digits. Spaces are fine.
-          </p>
         </div>
         <div className="sm:col-span-2">
           <label htmlFor={fid('holderName')} className="label">
@@ -131,13 +118,9 @@ export function BankForm({
             id={fid('holderName')}
             name="holderName"
             maxLength={150}
-            aria-describedby={fid('holderName-hint')}
             defaultValue={valueOf(state, 'holderName', bank.holderName?.trim() || profileName)}
             className="input"
           />
-          <p id={fid('holderName-hint')} className="hint">
-            As registered at the bank.{!bank.holderName?.trim() && ' Filled in from the profile: change it if the bank has it otherwise.'}
-          </p>
         </div>
       </div>
 

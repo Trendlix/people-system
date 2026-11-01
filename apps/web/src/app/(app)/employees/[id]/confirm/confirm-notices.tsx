@@ -10,7 +10,7 @@ export function ConfirmedNotice() {
   if (!confirmed) return null;
   return (
     <p role="status" className="rounded-lg bg-ok-soft px-4 py-3 text-sm text-ok">
-      Thank you, your details are confirmed.
+      Details confirmed.
     </p>
   );
 }

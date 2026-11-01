@@ -30,8 +30,8 @@ import { sizeText } from '../reimbursements/claim';
 import { leaveCoverage, leaveYearData } from './actions';
 import { CoverageFields, type CoverageChoice } from './coverage-fields';
 import { placeText } from './coverage';
-import { EDIT_NOTE_MAX, editChanged, editHint, editPreview, editPreviewText, editStart, type TypedEdit } from './edit';
-import { daysNumber, daysText, hrStageName, LEAVE_COMMENT_READERS, leaveCommentReaders, leaveDecisionButton } from './list';
+import { EDIT_NOTE_MAX, editChanged, editPreview, editPreviewText, editStart, type TypedEdit } from './edit';
+import { daysNumber, leaveDecisionButton } from './list';
 import { correctionDecisionButton } from '../attendance/corrections/corrections';
 import { permissionDecisionButton } from './permissions';
 import { balanceAfter, countLeaveDays, countText, coverProblems, datesLine, DOCUMENT_ACCEPT, endFollowingStart, leaveFormProblems, overBalanceNote, readDates, REASON_MAX, requestYear, rulesOf, type TypedLeave } from './request';
@@ -102,8 +102,8 @@ function DocumentsField({
 
   const left = LEAVE_DOCUMENTS_MAX - documents.length;
   return (
-    <fieldset aria-describedby={fid('documents-hint')}>
-      <legend className="label">Documents {required ? <span className="font-normal text-muted">(required for this type)</span> : optional}</legend>
+    <fieldset>
+      <legend className="label">Documents {required ? <span className="font-normal text-muted">(required)</span> : optional}</legend>
       <div
         tabIndex={-1}
         onDragOver={(e) => {
@@ -144,16 +144,12 @@ function DocumentsField({
           {refused.length
             ? `${refused.join(', ')} ${refused.length === 1 ? 'was' : 'were'} not added: a document is a photo (JPG, PNG or WebP) or a PDF.`
             : over
-              ? 'Drop the files here to add them.'
+              ? 'Drop the files here.'
               : left > 0
-                ? `Choose, drag or paste photos or PDFs; ${left === LEAVE_DOCUMENTS_MAX ? `up to ${left}` : `${left} more`}.`
+                ? ''
                 : `That is ${LEAVE_DOCUMENTS_MAX}, the most a request takes.`}
         </p>
       </div>
-      <p id={fid('documents-hint')} className="hint">
-        A medical certificate for sick leave, proof of sitting the exam for exam leave, or another paper the leave needs. On a phone you can take
-        the photo here.
-      </p>
       {documents.length > 0 && (
         <ul className="mt-2 divide-y divide-line-soft rounded-lg border border-line bg-card" aria-label="Documents added">
           {documents.map(({ key, file }, i) => (
@@ -265,7 +261,7 @@ export function NewLeaveForm({
   /** A Super Admin recording it: beyond the annual balance is allowed, after a warning (26 October 2026). */
   allowNegative?: boolean;
   /** A choice after the types that isn't one (Record leave's Work from home): `onChoose` shows its own form; the label says Type. */
-  extraChoice?: { value: string; label: string; hint: string; onChoose: () => void };
+  extraChoice?: { value: string; label: string; onChoose: () => void };
   /** The type chosen to start with: back from Work from home's form, the type chosen there. */
   startTypeId?: string;
 }) {
@@ -332,7 +328,7 @@ export function NewLeaveForm({
       const answer = await leaveYearData(wanted, person.employeeId);
       if (asked.current !== wanted) return;
       if ('balances' in answer) setLoaded({ year: wanted, balances: answer.balances, holidays: answer.holidays });
-      else setLoadProblem(`The balance of ${wanted} couldn't be checked: ${answer.errors.join(' ')} It is checked again when you send it.`);
+      else setLoadProblem(`The balance of ${wanted} couldn't be checked: ${answer.errors.join(' ')}`);
     });
   }
 
@@ -360,7 +356,7 @@ export function NewLeaveForm({
         setCoverageProblem(null);
       } else {
         setCoverage(null);
-        setCoverageProblem(`Who else is off couldn't be checked: ${answer.errors.join(' ')} The cover and the limit are checked when you send it.`);
+        setCoverageProblem(`Who else is off couldn't be checked: ${answer.errors.join(' ')}`);
       }
     });
   }
@@ -424,7 +420,6 @@ export function NewLeaveForm({
             required
             value={typed.typeId}
             onChange={(e) => (extraChoice && e.target.value === extraChoice.value ? extraChoice.onChoose() : set('typeId', e.target.value))}
-            aria-describedby={fid('typeId-hint')}
             className="input"
           >
             <option value="">Choose a type</option>
@@ -435,9 +430,6 @@ export function NewLeaveForm({
             ))}
             {extraChoice && <option value={extraChoice.value}>{extraChoice.label}</option>}
           </Select>
-          <p id={fid('typeId-hint')} className="hint">
-            {extraChoice ? extraChoice.hint : 'The types HR set up, each with its rules from the Labour Law.'}
-          </p>
         </div>
         {type && (
           <div className="sm:col-span-2">
@@ -448,19 +440,13 @@ export function NewLeaveForm({
           <label htmlFor={fid('startDate')} className="label">
             First day
           </label>
-          <DateInput id={fid('startDate')} name="startDate" required defaultValue={typed.startDate} aria-describedby={fid('startDate-hint')} />
-          <p id={fid('startDate-hint')} className="hint">
-            {byHr ? 'It may be in the past, e.g. sick leave reported afterwards.' : type?.noticeDays ? `This type needs ${daysText(type.noticeDays)}' notice.` : 'The first day off.'}
-          </p>
+          <DateInput id={fid('startDate')} name="startDate" required defaultValue={typed.startDate} />
         </div>
         <div>
           <label htmlFor={fid('endDate')} className="label">
             Last day {optional}
           </label>
-          <DateInput key={endKey} id={fid('endDate')} name="endDate" defaultValue={typed.endDate} aria-describedby={fid('endDate-hint')} />
-          <p id={fid('endDate-hint')} className="hint">
-            Empty: one day, the first. It moves with the first day unless you set it.
-          </p>
+          <DateInput key={endKey} id={fid('endDate')} name="endDate" defaultValue={typed.endDate} />
         </div>
         {halfAllowed && (
           <div className="sm:col-span-2">
@@ -470,38 +456,27 @@ export function NewLeaveForm({
                 checked={typed.halfDay}
                 onChange={(e) => set('halfDay', e.target.checked)}
                 disabled={!oneDay && !typed.halfDay}
-                aria-describedby={fid('halfDay-hint')}
                 className="size-4 accent-accent"
               />
               Half a day
             </label>
-            <p id={fid('halfDay-hint')} className="hint">
-              For one day only: make the first and last day the same.
-            </p>
           </div>
         )}
         {/* sent as "true" or "false", whatever the type (a type without half days sends false) */}
         <input type="hidden" name="halfDay" value={String(typed.halfDay && halfAllowed)} />
         <div className="sm:col-span-2" role="status" aria-live="polite">
-          {overNote && (
-            <p className="mb-2 rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">{overNote} Only a Super Admin may record leave beyond the balance.</p>
-          )}
+          {overNote && <p className="mb-2 rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">{overNote}</p>}
           <p className="rounded-lg bg-canvas px-4 py-3 text-sm">
-            <span className="font-semibold tabular-nums">{countText(days, after, byHr)}</span>
-            {type && days > 0 && (
-              <span className="block text-xs text-muted">
-                {type.calendarDays
-                  ? 'Counted in calendar days, every day from the first to the last.'
-                  : 'Counted in working days of the shift: rest days and official holidays aren’t counted (Labour Law Art. 124).'}
-                {!type.calendarDays &&
-                  (() => {
-                    const s = parseDate(typed.startDate);
-                    const end = typed.endDate.trim() === '' ? s : parseDate(typed.endDate);
-                    const off = loaded.holidays.filter((h) => s && end && h.date >= s && h.date <= end);
-                    return off.length ? ` Holidays left out: ${off.map((h) => `${h.nameEn} (${formatDate(h.date)})`).join(', ')}.` : '';
-                  })()}
-              </span>
-            )}
+            <span className="font-semibold tabular-nums">{countText(days, after)}</span>
+            {type &&
+              days > 0 &&
+              !type.calendarDays &&
+              (() => {
+                const s = parseDate(typed.startDate);
+                const end = typed.endDate.trim() === '' ? s : parseDate(typed.endDate);
+                const off = loaded.holidays.filter((h) => s && end && h.date >= s && h.date <= end);
+                return off.length ? <span className="block text-xs text-muted">Holidays left out: {off.map((h) => `${h.nameEn} (${formatDate(h.date)})`).join(', ')}</span> : null;
+              })()}
           </p>
         </div>
         <div className="sm:col-span-2">
@@ -515,12 +490,8 @@ export function NewLeaveForm({
             maxLength={REASON_MAX}
             value={typed.reason}
             onChange={(e) => set('reason', e.target.value)}
-            aria-describedby={fid('reason-hint')}
             className="input"
           />
-          <p id={fid('reason-hint')} className="hint">
-            {byHr ? 'E.g. reported by phone; the certificate follows.' : 'Your direct manager and HR read it.'} Up to {REASON_MAX} characters.
-          </p>
         </div>
         <div className="sm:col-span-2">
           <DocumentsField fid={fid} documents={documents} onChange={setDocuments} onBusy={setShrinking} required={!!type?.documentRequired} />
@@ -541,9 +512,9 @@ export function NewLeaveForm({
       </div>
 
       {loadProblem && <p className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">{loadProblem}</p>}
-      {!initial.balances && !loadProblem && <p className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">The balance couldn&apos;t be loaded: it is checked when you send it.</p>}
+      {!initial.balances && !loadProblem && <p className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">The balance couldn&apos;t be loaded.</p>}
       <div role="status" aria-live="polite">
-        {problems.length ? (
+        {problems.length > 0 && (
           <div className="rounded-lg border border-line bg-canvas px-4 py-3 text-sm">
             <p className="font-medium">Before you can send it:</p>
             <ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted">
@@ -552,13 +523,6 @@ export function NewLeaveForm({
               ))}
             </ul>
           </div>
-        ) : (
-          <p className="rounded-lg bg-ok-soft px-4 py-3 text-sm text-ok">
-            Ready to {byHr ? 'record' : 'send'}: {daysText(days)} of {type?.nameEn.toLowerCase()}
-            {byHr
-              ? ` for ${person.name}, approved at once.`
-              : `, to your direct manager (without one, your lead), then ${hrStageName(toCeo)}${coverage?.overLimit ? ' (over the staffing limit)' : ''}.`}
-          </p>
         )}
       </div>
 
@@ -650,7 +614,7 @@ export function EditLeaveForm({
       const answer = await leaveYearData(year, request.employee.id);
       if (asked.current !== year) return;
       if ('balances' in answer) setLoaded({ year, balances: answer.balances, holidays: answer.holidays });
-      else setLoadProblem(`The balance of ${year} couldn't be checked: ${answer.errors.join(' ')} It is checked when you save.`);
+      else setLoadProblem(`The balance of ${year} couldn't be checked: ${answer.errors.join(' ')}`);
     });
   }
 
@@ -706,10 +670,7 @@ export function EditLeaveForm({
           <label htmlFor={fid('endDate')} className="label">
             Last day {optional}
           </label>
-          <DateInput key={endKey} id={fid('endDate')} name="endDate" defaultValue={typed.endDate} aria-describedby={fid('endDate-hint')} />
-          <p id={fid('endDate-hint')} className="hint">
-            Empty: one day, the first. It moves with the first day unless you set it.
-          </p>
+          <DateInput key={endKey} id={fid('endDate')} name="endDate" defaultValue={typed.endDate} />
         </div>
         {halfAllowed && (
           <div className="sm:col-span-2">
@@ -719,14 +680,10 @@ export function EditLeaveForm({
                 checked={typed.halfDay}
                 onChange={(e) => set('halfDay', e.target.checked)}
                 disabled={!oneDay && !typed.halfDay}
-                aria-describedby={fid('halfDay-hint')}
                 className="size-4 accent-accent"
               />
               Half a day
             </label>
-            <p id={fid('halfDay-hint')} className="hint">
-              For one day only: make the first and last day the same.
-            </p>
           </div>
         )}
         {/* sent as "true" or "false", whatever the type (a type without half days sends false) */}
@@ -744,7 +701,7 @@ export function EditLeaveForm({
           <label htmlFor={fid('coverId')} className="label">
             Covered by {optional}
           </label>
-          <Select id={fid('coverId')} name="coverId" value={typed.coverId} onChange={(e) => set('coverId', e.target.value)} aria-describedby={fid('coverId-hint')} className="input">
+          <Select id={fid('coverId')} name="coverId" value={typed.coverId} onChange={(e) => set('coverId', e.target.value)} aria-describedby={colleagues ? undefined : fid('coverId-hint')} className="input">
             <option value="">Nobody</option>
             {/* the one covering now, even if the list lacks them (no longer employed) */}
             {request.cover && !colleagues?.some((c) => c.id === request.cover?.id) && <option value={request.cover.id}>{request.cover.fullNameEn}</option>}
@@ -756,22 +713,21 @@ export function EditLeaveForm({
                 </option>
               ))}
           </Select>
-          <p id={fid('coverId-hint')} className="hint">
-            {colleagues ? 'Anyone employed now but the employee, not off on these days. Type to search. The new colleague is told, and the one before.' : 'The colleagues couldn’t be loaded: try again in a moment.'}
-          </p>
+          {!colleagues && (
+            <p id={fid('coverId-hint')} className="hint">
+              The colleagues couldn’t be loaded: try again in a moment.
+            </p>
+          )}
         </div>
         <div className="sm:col-span-2">
           <label htmlFor={fid('note')} className="label">
             Why it’s edited {optional}
           </label>
-          <input id={fid('note')} name="note" maxLength={EDIT_NOTE_MAX} autoComplete="off" value={typed.note} onChange={(e) => set('note', e.target.value)} aria-describedby={fid('note-hint')} className="input" />
-          <p id={fid('note-hint')} className="hint">
-            {editHint(request)}
-          </p>
+          <input id={fid('note')} name="note" maxLength={EDIT_NOTE_MAX} autoComplete="off" value={typed.note} onChange={(e) => set('note', e.target.value)} className="input" />
         </div>
       </div>
       {loadProblem && <p className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">{loadProblem}</p>}
-      {overNote && <p role="status" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">{overNote} Only a Super Admin may.</p>}
+      {overNote && <p role="status" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">{overNote}</p>}
       {saved && (
         <p role="status" aria-live="polite" className="text-sm font-semibold tabular-nums">
           Will be saved: {saved}
@@ -829,7 +785,7 @@ export function LeaveDecisionForm({
     <form
       action={formAction}
       onSubmit={(e) => {
-        if (decision === 'reject' && !window.confirm(`Reject the ${kind} request by ${name}? Your comment shows on it.`)) e.preventDefault();
+        if (decision === 'reject' && !window.confirm(`Reject the ${kind} request by ${name}?`)) e.preventDefault();
       }}
       aria-label={`Decide on the ${kind} request by ${name}`}
       className="space-y-4"
@@ -859,13 +815,8 @@ export function LeaveDecisionForm({
           required={needsComment}
           value={comment}
           onChange={(e) => setComment(e.target.value)}
-          aria-describedby={fid('comment-hint')}
           className="input"
         />
-        <p id={fid('comment-hint')} className="hint">
-          {decision === 'reject' ? 'Why it is rejected. ' : ''}
-          {leaveCommentReaders(confidential)}
-        </p>
       </div>
       <button
         type="submit"
@@ -885,7 +836,7 @@ export function CancelLeaveForm({ action, what, kind = 'leave' }: { action: () =
     <form
       action={formAction}
       onSubmit={(e) => {
-        if (!window.confirm(`Cancel your ${what}? It stays on your list, cancelled; ask again with a new request.`)) e.preventDefault();
+        if (!window.confirm(`Cancel your ${what}?`)) e.preventDefault();
       }}
       className="space-y-3"
     >
@@ -907,8 +858,7 @@ export function HrCancelLeaveForm({ action, what, kind = 'leave' }: { action: Ac
     <form
       action={formAction}
       onSubmit={(e) => {
-        const back = kind === 'permission' ? 'Its hours go back to the month’s allowance' : 'Its days go back to the balance';
-        if (!window.confirm(`Cancel the approved ${what}? ${back}; your comment shows on it.`)) e.preventDefault();
+        if (!window.confirm(`Cancel the approved ${what}?`)) e.preventDefault();
       }}
       className="space-y-3"
     >
@@ -926,13 +876,8 @@ export function HrCancelLeaveForm({ action, what, kind = 'leave' }: { action: Ac
           required
           value={comment}
           onChange={(e) => setComment(e.target.value)}
-          aria-describedby={fid('comment-hint')}
           className="input"
         />
-        <p id={fid('comment-hint')} className="hint">
-          {kind === 'permission' ? 'E.g. the employee stayed at work after all, or it was recorded by mistake.' : 'E.g. the employee came back early, or it was recorded by mistake.'}{' '}
-          {LEAVE_COMMENT_READERS}
-        </p>
       </div>
       <button type="submit" disabled={pending || comment.trim() === ''} className="btn btn-danger">
         {pending ? 'Cancelling…' : `Cancel the ${kind}`}
@@ -953,7 +898,7 @@ export function RestoreLeaveForm({ action, what, warning }: { action: Action; wh
     <form
       action={formAction}
       onSubmit={(e) => {
-        if (!window.confirm(`Restore the cancelled ${what}? It goes back to where it stood before it was cancelled.${warning ? ` ${warning}` : ''}`)) e.preventDefault();
+        if (!window.confirm(`Restore the cancelled ${what}?`)) e.preventDefault();
       }}
       className="space-y-3"
     >
@@ -961,7 +906,7 @@ export function RestoreLeaveForm({ action, what, warning }: { action: Action; wh
       <SurfaceField />
       {warning && (
         <p role="status" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
-          {warning} Only a Super Admin may.
+          {warning}
         </p>
       )}
       <div>
@@ -1029,15 +974,17 @@ export function ChangeCoverForm({
         <label htmlFor={fid('coverId')} className="label">
           Colleague who covers {!required && optional}
         </label>
-        <Select id={fid('coverId')} name="coverId" required={required} value={coverId} onChange={(e) => setCoverId(e.target.value)} aria-describedby={fid('coverId-hint')} className="input">
+        <Select id={fid('coverId')} name="coverId" required={required} value={coverId} onChange={(e) => setCoverId(e.target.value)} aria-describedby={candidates ? undefined : fid('coverId-hint')} className="input">
           <option value="">{required ? 'Choose a colleague' : 'Nobody'}</option>
           {kept && <option value={kept.id}>{kept.fullNameEn} (off on some of these days now)</option>}
           {team.length > 0 && <optgroup label={groupName ?? 'Your team'}>{team.map(option)}</optgroup>}
           {others.length > 0 && <optgroup label={team.length ? 'Everyone else' : 'Colleagues'}>{others.map(option)}</optgroup>}
         </Select>
-        <p id={fid('coverId-hint')} className="hint">
-          {candidates ? 'Colleagues not off on these days. The new one is told, and the one before is told they no longer cover it.' : 'The colleagues couldn’t be loaded: try again in a moment.'}
-        </p>
+        {!candidates && (
+          <p id={fid('coverId-hint')} className="hint">
+            The colleagues couldn’t be loaded: try again in a moment.
+          </p>
+        )}
       </div>
       <div>
         <label htmlFor={fid('handoverNote')} className="label">
@@ -1101,19 +1048,14 @@ export function AdjustBalanceForm({ action, year, name }: { action: Action; year
             autoComplete="off"
             placeholder="e.g. 2 or -1.5"
             defaultValue={valueOf(state, 'days')}
-            aria-describedby={fid('days-hint')}
             className="input tabular-nums"
           />
-          <p id={fid('days-hint')} className="hint">
-            Added to {year}&apos;s balance; a minus takes days off.
-          </p>
         </div>
         <div>
           <label htmlFor={fid('reason')} className="label">
             Reason
           </label>
           <input id={fid('reason')} name="reason" required maxLength={500} autoComplete="off" defaultValue={valueOf(state, 'reason')} className="input" />
-          <p className="hint">Kept with the adjustment, e.g. days worked on an official holiday given as leave (Art. 129).</p>
         </div>
       </div>
       <div className="flex flex-wrap gap-3">

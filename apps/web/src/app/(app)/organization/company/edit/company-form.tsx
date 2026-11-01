@@ -15,15 +15,15 @@ type TextField = {
   multiline?: boolean;
   /** Digits only, in a narrow box. */
   numeric?: boolean;
-  hint?: React.ReactNode;
+  placeholder?: string;
 };
 
-const GROUPS: { title: string; hint?: string; fields: TextField[] }[] = [
+const GROUPS: { title: string; fields: TextField[] }[] = [
   {
     title: 'Company',
     fields: [
       { name: 'nameEn', label: 'Company name (English)', max: 150 },
-      { name: 'nameAr', label: 'Company name (Arabic)', ar: true, max: 150, hint: 'As printed on contracts.' },
+      { name: 'nameAr', label: 'Company name (Arabic)', ar: true, max: 150 },
       { name: 'activity', label: 'Business activity', ar: true, max: 1000, multiline: true },
     ],
   },
@@ -34,53 +34,27 @@ const GROUPS: { title: string; hint?: string; fields: TextField[] }[] = [
       { name: 'taxRegNo', label: 'Tax registration number', max: 30 },
       { name: 'insuranceEmployerNo', label: 'Social insurance employer number', max: 30 },
       // for social insurance Form 1 (owner, 15 October 2026)
-      {
-        name: 'insuranceOffice',
-        label: 'Social insurance office',
-        ar: true,
-        max: 120,
-        hint: (
-          <>
-            The office the company is registered with, e.g. <span lang="ar">مكتب تأمينات الدقي</span>.
-          </>
-        ),
-      },
-      {
-        name: 'insuranceSectorCode',
-        label: 'Sector code',
-        max: 2,
-        numeric: true,
-        hint: (
-          <>
-            1 or 2 digits, as the insurance office gave it. Printed in the <span lang="ar">قطاع المنشأة</span> boxes of Form 1.
-          </>
-        ),
-      },
+      { name: 'insuranceOffice', label: 'Social insurance office', ar: true, max: 120 },
+      { name: 'insuranceSectorCode', label: 'Sector code', max: 2, numeric: true },
     ],
   },
   {
     title: 'Address & Contact',
     fields: [
-      { name: 'addressAr', label: 'Address (Arabic)', ar: true, max: 300, multiline: true, hint: 'As printed on contracts.' },
+      { name: 'addressAr', label: 'Address (Arabic)', ar: true, max: 300, multiline: true },
       { name: 'addressEn', label: 'Address (English)', max: 300, multiline: true },
       { name: 'city', label: 'City', max: 100 },
       { name: 'phone', label: 'Phone', type: 'tel', max: 30 },
       { name: 'email', label: 'Email', type: 'email', max: 254 },
-      { name: 'website', label: 'Website', max: 200, hint: 'e.g. trendlix.com' },
-      {
-        name: 'emailDomain',
-        label: 'Work email domain',
-        max: 253,
-        hint: 'e.g. trendlix.com. Every employee’s work email must then end in @trendlix.com. Leave empty to allow any work email.',
-      },
+      { name: 'website', label: 'Website', max: 200, placeholder: 'trendlix.com' },
+      { name: 'emailDomain', label: 'Work email domain', max: 253, placeholder: 'trendlix.com' },
     ],
   },
   {
     title: 'Company Representative',
-    hint: 'Signs documents on the company’s behalf, such as the clearance form.',
     fields: [
-      { name: 'repName', label: 'Name (Arabic)', ar: true, max: 150, hint: 'As printed on documents.' },
-      { name: 'repNameEn', label: 'Name (English)', max: 150, hint: 'For the English side of bilingual documents.' },
+      { name: 'repName', label: 'Name (Arabic)', ar: true, max: 150 },
+      { name: 'repNameEn', label: 'Name (English)', max: 150 },
       { name: 'repTitle', label: 'Job title (Arabic)', ar: true, max: 100 },
       { name: 'repTitleEn', label: 'Job title (English)', max: 100 },
     ],
@@ -98,7 +72,6 @@ export function CompanyForm({ company }: { company: Company }) {
       {GROUPS.map((group) => (
         <fieldset key={group.title} className="space-y-5">
           <legend className="font-semibold">{group.title}</legend>
-          {group.hint && <p className="-mt-3 text-sm text-muted">{group.hint}</p>}
           {group.fields.map((f) => {
             const saved = company[f.name];
             const common = {
@@ -107,7 +80,7 @@ export function CompanyForm({ company }: { company: Company }) {
               maxLength: f.max,
               required: f.name === 'nameEn',
               defaultValue: valueOf(state, f.name, typeof saved === 'string' ? saved : null),
-              'aria-describedby': f.hint ? fid(`${f.name}-hint`) : undefined,
+              placeholder: f.placeholder,
               className: f.numeric ? 'input max-w-24 tabular-nums' : 'input',
               ...(f.numeric ? { inputMode: 'numeric' as const, autoComplete: 'off' } : {}),
               ...(f.ar ? { lang: 'ar', dir: 'rtl' as const } : {}),
@@ -118,11 +91,6 @@ export function CompanyForm({ company }: { company: Company }) {
                   {f.label}
                 </label>
                 {f.multiline ? <textarea rows={2} {...common} /> : <input type={f.type ?? 'text'} {...common} />}
-                {f.hint && (
-                  <p id={fid(`${f.name}-hint`)} className="hint">
-                    {f.hint}
-                  </p>
-                )}
               </div>
             );
           })}
@@ -141,11 +109,6 @@ export function CompanyForm({ company }: { company: Company }) {
                 defaultValue={valueOf(state, 'repNationalId')}
                 className="input max-w-64"
               />
-              <p className="hint">
-                {company.repNationalIdMasked
-                  ? 'Stored securely and never shown in full. Leave empty to keep the current number.'
-                  : 'Stored securely and never shown in full.'}
-              </p>
             </div>
           )}
         </fieldset>

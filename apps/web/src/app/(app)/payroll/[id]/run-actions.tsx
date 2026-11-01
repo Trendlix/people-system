@@ -40,13 +40,9 @@ export function ReturnRun({ action, title }: { action: Action; title: string }) 
           rows={3}
           required
           maxLength={1000}
-          aria-describedby={fid('reason-hint')}
           defaultValue={valueOf(state, 'reason', '')}
           className="input"
         />
-        <p id={fid('reason-hint')} className="hint">
-          What HR should look at or change. The run goes back to HR as a draft, with this reason on it.
-        </p>
       </div>
       <div className="flex flex-wrap gap-3">
         <SubmitButton busy={pending} pendingText="Returning…">
@@ -82,12 +78,8 @@ export function MarkPaid({ action, paidOn, title }: { action: Action; paidOn: st
         <label htmlFor={fid('paidOn')} className="label">
           Paid on
         </label>
-        <DateInput id={fid('paidOn')} name="paidOn" required aria-describedby={fid('paidOn-hint')} defaultValue={valueOf(state, 'paidOn', formatDate(paidOn))} />
+        <DateInput id={fid('paidOn')} name="paidOn" required defaultValue={valueOf(state, 'paidOn', formatDate(paidOn))} />
       </div>
-      <p id={fid('paidOn-hint')} className="hint">
-        The day the bank paid the salaries: the payday set on Payroll Setup to start with, or today without one. The run
-        stays as it is; this records that it was paid, and issues each employee’s payslip in English.
-      </p>
       <div className="flex flex-wrap gap-3">
         <SubmitButton busy={pending} pendingText="Saving…">
           Mark as paid

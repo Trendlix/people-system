@@ -241,7 +241,7 @@ async function UpcomingHolidays({ today }: { today: string }) {
   if (lists[0] === null) {
     return (
       <Card title="Upcoming Holidays" eyebrow="Schedule">
-        <Quiet>The holidays couldn&apos;t be loaded. Please try again in a moment.</Quiet>
+        <Quiet>The holidays couldn&apos;t be loaded.</Quiet>
       </Card>
     );
   }
@@ -651,14 +651,10 @@ function ToDoCard({ profile: p }: { profile: EmployeeProfile }) {
                 {papers.papers.map((paper) => (
                   <li key={paper} className="flex items-center gap-3 rounded-xl border border-line px-3.5 py-3 text-sm">
                     <span aria-hidden="true" className="size-[22px] shrink-0 rounded-full border border-line" />
-                    <span className="min-w-0">
-                      <span className="block">{paper}</span>
-                      <span className="block text-[11px] text-muted">Required by HR</span>
-                    </span>
+                    <span className="min-w-0">{paper}</span>
                   </li>
                 ))}
               </ul>
-              <p className="mt-3 text-xs text-muted">Bring them to HR, who add them to your file.</p>
             </div>
           )}
         </div>
@@ -745,8 +741,8 @@ export function NoProfile({ user }: { user: Session }) {
   return (
     <div className="card px-6 py-6 text-sm text-muted">
       {user.employeeId
-        ? 'Your profile couldn’t be loaded. Please try again in a moment.'
-        : `No employee record uses your sign-in email (${user.email}) as its work email yet. Ask HR to add it to your profile.`}
+        ? 'Your profile couldn’t be loaded.'
+        : `No employee record uses your sign-in email (${user.email}) yet. Ask HR to add it.`}
     </div>
   );
 }
@@ -911,7 +907,6 @@ export async function Dashboard({ user }: { user: Session }) {
       <PageHead
         eyebrow={dayEyebrow(today)}
         title={profile ? `${greetingAt(cairoHour())}, ${greetingName(profile)}.` : 'Welcome'}
-        intro="Here’s what needs your attention today: checking in, your hours, your leave, your requests and what is left to do."
         actions={
           // the design's "Check in for work" / "Checked in · 8:57 AM", for a current employment, as the Today card
           profile?.employment && (

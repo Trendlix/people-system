@@ -55,19 +55,19 @@ async function JobTitles({ user }: { user: SessionUser }) {
   }
   const rows = loaded.value;
   const counts = templateCounts(rows);
-  const banner = oldPillarsBanner(counts.oldPillars, next);
+  const banner = oldPillarsBanner(counts.oldPillars);
   return (
     <>
       {banner && (
-        <p role="status" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
-          <span className="font-semibold">{banner.head}</span> {banner.body}
+        <p role="status" className="rounded-lg bg-warn-soft px-4 py-3 text-sm font-semibold text-warn">
+          {banner}
         </p>
       )}
       {builds && rows.length > 0 && <DraftAllForm action={draftAllKpiTemplates} confirmText={draftAllConfirmText(counts.none)} withoutTemplate={counts.none} />}
       <section aria-labelledby="kpi-job-titles" className="space-y-3">
         {heading}
         {rows.length === 0 ? (
-          <Empty>No job titles yet: add them on Organization → Departments &amp; Job Titles.</Empty>
+          <Empty>No job titles yet.</Empty>
         ) : (
           <>
             <p className="text-sm text-muted">
@@ -112,7 +112,7 @@ async function KpiPillarsCard() {
         </p>
       )}
       <p className="text-sm">
-        <Link href={KPI_PATHS.pillars}>Open KPI Pillars</Link> to change the company’s pillars or set a department’s own.
+        <Link href={KPI_PATHS.pillars}>Open KPI Pillars</Link>
       </p>
     </section>
   );
@@ -125,18 +125,6 @@ async function KpiTemplates() {
   if (!readsKpiTemplates(user)) return <Empty>Only HR and the Super Admin build KPI templates.</Empty>;
   return (
     <div className="space-y-8">
-      <div className="space-y-2">
-        <p className="max-w-3xl text-sm text-muted">
-          Every job title gets its own KPI template, built from its job description: metrics in the KPI pillars, each pillar with its weight, each metric
-          with a points scale, one criterion picked a month. A version published applies to the scorecards opened from the next month on; a scorecard keeps
-          the version it opened with.
-          {buildsKpiTemplates(user)
-            ? ' Draft every job title at once from the KPI role library, or open a job title to build its template, from a library role, a sample or another job title’s.'
-            : ''}{' '}
-          The pillars, the company’s and each department’s, are on <Link href={KPI_PATHS.pillars}>KPI Pillars</Link>, and the deadlines of each
-          month’s steps on <Link href={KPI_PATHS.deadlines}>KPI Deadlines</Link>, both under Organization.
-        </p>
-      </div>
       <Suspense fallback={<Loading />}>
         <JobTitles user={user} />
       </Suspense>

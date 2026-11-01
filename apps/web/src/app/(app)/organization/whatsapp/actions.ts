@@ -41,7 +41,7 @@ export async function submitWhatsAppSettings(prev: WhatsAppFormState, fd: FormDa
     return refused(prev, async () => {
       await apiSend<WhatsAppSettingsView>('POST', '/whatsapp/settings/verify-token');
       refresh();
-      return { message: 'A new verify token was made. Paste it in Meta’s webhook settings and verify the webhook again.', saved: prev.saved };
+      return { message: 'New verify token made: verify Meta’s webhook again.', saved: prev.saved };
     });
   }
 

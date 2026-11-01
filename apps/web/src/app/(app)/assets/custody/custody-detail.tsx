@@ -35,7 +35,7 @@ function Card({ title, children, action }: { title: string; children: React.Reac
 /** What the page says once something was done (?done=, ?skipped=). */
 export function custodyDoneText(done: string | null, skipped: string[]): string | null {
   const left = skipped.length ? ` Not handed over from the kit: ${skipped.join(', ')}.` : '';
-  if (done === 'handed') return `Handed over. Print the form, have it signed, then attach the signed copy.${left}`;
+  if (done === 'handed') return `Handed over.${left}`;
   return left ? left.trim() : null;
 }
 
@@ -98,7 +98,7 @@ export function CustodyDetail({ record: r, surface, today, done }: { record: Cus
       )}
       {!r.signed && (
         <p role="status" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
-          {NOT_SIGNED_TEXT}. Print the form, have {r.employee.fullNameEn} sign it, then attach a photo or a scan of the signed page.
+          {NOT_SIGNED_TEXT}.
         </p>
       )}
 
@@ -222,7 +222,6 @@ export function CustodyDetail({ record: r, surface, today, done }: { record: Cus
             <li key={t}>{t}</li>
           ))}
         </ol>
-        <p className="mt-2 text-xs text-muted">As they were when it was handed over.</p>
       </Card>
     </div>
   );

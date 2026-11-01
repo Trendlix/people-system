@@ -39,9 +39,7 @@ async function NewHandover({ searchParams }: { searchParams: PageProps<'/app/ass
 export default function PhoneNewHandoverPage({ searchParams }: PageProps<'/app/assets/custody/new'>) {
   return (
     <div className="space-y-4">
-      <PageTitle title="New Handover" back={{ href: APP_ASSET_PATHS.list, label: 'Assets' }}>
-        Choose the employee and the assets. The record gets its code when you save it.
-      </PageTitle>
+      <PageTitle title="New Handover" back={{ href: APP_ASSET_PATHS.list, label: 'Assets' }} />
       <Suspense fallback={<PhoneLoading rows={4} />}>
         <NewHandover searchParams={searchParams} />
       </Suspense>

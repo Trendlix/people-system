@@ -294,5 +294,5 @@ export function deletable(years: readonly number[], year: number): boolean {
 /** What deleting a year (not the earliest) asks first: the year then uses the latest earlier one's. */
 export function deleteQuestion(years: readonly number[], year: number): string {
   const before = Math.max(...years.filter((y) => y < year));
-  return `Delete the rates set by law for ${year}? ${year} then uses those of ${before}, as does each later year without its own. Approved payroll runs keep the rates they were worked out with.`;
+  return `Delete the ${year} rates and use ${before}’s instead?`;
 }

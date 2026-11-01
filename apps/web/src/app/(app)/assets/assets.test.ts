@@ -29,7 +29,6 @@ import {
   rowBookText,
   statusChips,
   statusTone,
-  usefulLifeHint,
   valuesDefaults,
   warrantyText,
 } from './assets';
@@ -171,12 +170,10 @@ describe('what a row says', () => {
     expect(statusTone('disposed')).toContain('text-muted');
   });
 
-  it('says the warranty and the group’s useful life', () => {
+  it('says the warranty', () => {
     expect(warrantyText('2027-01-31', TODAY)).toBe('Until 31/01/2027');
     expect(warrantyText('2025-01-31', TODAY)).toBe('Ended 31/01/2025');
     expect(warrantyText(null, TODAY)).toBeNull();
-    expect(usefulLifeHint('kit')).toBe('Production kit (movable): 5 years unless you set another.');
-    expect(usefulLifeHint('consumable')).toBe('Consumables have no useful life.');
   });
 
   it('says what was just done on the asset’s page', () => {
@@ -343,7 +340,7 @@ describe('drafts from Claude (step 2, owner, 21 October 2026: "the connection me
 
 describe('photos', () => {
   it('says how many more can be added, and what was sent', () => {
-    expect(photosLeftText(0, 0, 6)).toBe('Up to 6 photos. The first is the one the lists show.');
+    expect(photosLeftText(0, 0, 6)).toBe('Up to 6 photos.');
     expect(photosLeftText(2, 3, 6)).toBe('1 more photo can be added.');
     expect(photosLeftText(4, 2, 6)).toBe('That is 6, the most an asset has.');
     expect(photosSentText(2, [])).toBe('2 photos added.');

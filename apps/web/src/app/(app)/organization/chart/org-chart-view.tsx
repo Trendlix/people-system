@@ -192,7 +192,6 @@ export function OrgChartView({ chart }: { chart: OrgChart }) {
               id={`${id}-arrangement`}
               value={arrangement}
               onChange={(e) => setArrangement(e.target.value as Arrangement)}
-              aria-describedby={`${id}-arrangement-hint`}
               className="input w-auto"
             >
               {ARRANGEMENTS.map((a) => (
@@ -215,15 +214,6 @@ export function OrgChartView({ chart }: { chart: OrgChart }) {
             </Select>
           </div>
         </div>
-        <p id={`${id}-arrangement-hint`} className="hint">
-          {arrangement === 'tree'
-            ? 'A card for each department in its own colour, over its teams side by side, each listing its job titles.'
-            : arrangement === 'balanced'
-              ? 'Puts the teams of the longest departments side by side, so the chart takes the shape of a landscape page.'
-              : arrangement === 'stacked'
-                ? 'Each department is one column, with its teams one under another.'
-                : 'Each department’s teams are side by side under it: wider, and shorter.'}
-        </p>
 
         <div className="flex flex-wrap items-end gap-2 border-t border-line pt-4">
           <div className="mr-1">

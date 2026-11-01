@@ -36,7 +36,7 @@ async function Kits() {
           <NameNotesForm
             action={createKit}
             nameLabel="Name"
-            nameHint="E.g. Interview kit. Its code is given when it is added: PK-KIT-A, then B …"
+            namePlaceholder="Interview kit"
             nameMax={ASSET_TEXT_LIMITS.kitName}
             notesMax={ASSET_TEXT_LIMITS.kitNotes}
             submit="Add kit"
@@ -44,7 +44,7 @@ async function Kits() {
         </section>
       )}
       {kits.length === 0 ? (
-        <Empty>No kits yet.{can.register ? ' Add the first one above.' : ''}</Empty>
+        <Empty>No kits yet.</Empty>
       ) : (
         <ul aria-label="Kits" className="space-y-3">
           {kits.map((k) => (
@@ -127,7 +127,6 @@ export default function KitsPage() {
   return (
     <div className="max-w-4xl">
       <h1 className="page-title">Kits</h1>
-      <p className="mt-1 text-muted">Production kit assets packed together for shoots: each kit with its assets and how it stands. Hand a kit over at once; only its available assets go.</p>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>
           <Kits />

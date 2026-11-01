@@ -161,10 +161,7 @@ export function AddCvForm({ action, positions }: { action: Action; positions: re
           <label htmlFor={fid('notes')} className="label">
             First screening comment <span className="font-normal text-muted">(optional)</span>
           </label>
-          <textarea id={fid('notes')} name="notes" rows={3} maxLength={L.notes} defaultValue={v('notes')} aria-describedby={fid('notes-hint')} className="input" />
-          <p id={fid('notes-hint')} className="hint">
-            Kept as your first comment on this CV, for HR, the CEO and a Super Admin.
-          </p>
+          <textarea id={fid('notes')} name="notes" rows={3} maxLength={L.notes} defaultValue={v('notes')} className="input" />
         </div>
         <div className="sm:col-span-2">
           <label htmlFor={fid('cv')} className="label">
@@ -172,16 +169,13 @@ export function AddCvForm({ action, positions }: { action: Action; positions: re
           </label>
           <input id={fid('cv')} name="cv" type="file" required accept={CV_ACCEPT} aria-describedby={fid('cv-hint')} className="input" />
           <p id={fid('cv-hint')} className="hint">
-            A PDF or a Word file (.docx), at most {L.cvMb} MB.
+            PDF or .docx, up to {L.cvMb} MB.
           </p>
         </div>
       </div>
       <label className="flex items-start gap-3 text-sm">
         <input type="checkbox" name="consent" required defaultChecked={v('consent') === 'on'} className="mt-1 size-4 shrink-0" />
-        <span>
-          {HR_CONSENT_TEXT}
-          <span className="block text-xs text-muted">Kept with your name and the time, as the person’s consent.</span>
-        </span>
+        <span>{HR_CONSENT_TEXT}</span>
       </label>
       <button type="submit" disabled={pending} className="btn btn-primary">
         {pending ? 'Adding…' : 'Add the CV'}
@@ -196,7 +190,7 @@ export function AddCvForm({ action, positions }: { action: Action; positions: re
 export function MoveForm({ action, vacancies }: { action: Action; vacancies: { id: string; label: string }[] }) {
   const { state, pending, form } = useKeptForm(action);
   const fid = useFieldIds();
-  if (!vacancies.length) return <p className="text-sm text-muted">No vacancy is open (or on hold) to add it to.</p>;
+  if (!vacancies.length) return <p className="text-sm text-muted">No vacancy is open.</p>;
   return (
     <form {...form} className="space-y-3">
       <FormErrors errors={state.errors} />
@@ -229,7 +223,6 @@ export function MoveForm({ action, vacancies }: { action: Action; vacancies: { i
           {pending ? 'Adding…' : 'Add to the vacancy'}
         </button>
       </div>
-      <p className="hint">Its CV is copied to an application with the same reference. The vacancy’s screening questions weren’t asked, so it has no match (—).</p>
     </form>
   );
 }
@@ -343,7 +336,7 @@ export function BulkUpload({
   }
 
   async function discard(id?: string) {
-    if (!id && !window.confirm(`Discard the ${rows.length} CVs of this batch? Nothing of them is saved.`)) return;
+    if (!id && !window.confirm(`Discard the ${rows.length} CVs of this batch?`)) return;
     setBusy('discard');
     const r = await discardBatch(target, id).catch(() => ({ errors: ['Could not discard. Please try again.'] }));
     setBusy(null);
@@ -372,13 +365,6 @@ export function BulkUpload({
     return () => window.clearTimeout(timer);
   }, [anyReading, polls, target]);
 
-  const placeHint =
-    target.kind === 'vacancy'
-      ? 'Saved as applications at Applied on this vacancy. Anyone who applied for it already is skipped.'
-      : destinations?.length
-        ? 'Saved as general CVs. Choose a vacancy to add them all to it as applications instead.'
-        : 'Saved as general CVs. No vacancy is open (or on hold) now.';
-
   return (
     <div className="space-y-4">
       {destinations && (
@@ -391,7 +377,6 @@ export function BulkUpload({
             value={target.kind === 'vacancy' ? target.vacancyId : ''}
             onChange={(e) => void moveTo(e.target.value)}
             disabled={!!busy || !!progress}
-            aria-describedby={fid('save-to-hint')}
             className="input max-w-xl"
           >
             <option value="">General CVs</option>
@@ -405,9 +390,11 @@ export function BulkUpload({
               </optgroup>
             )}
           </Select>
-          <p id={fid('save-to-hint')} className="hint">
-            {busy === 'move' ? 'Moving the batch…' : placeHint}
-          </p>
+          {busy === 'move' && (
+            <p role="status" className="hint">
+              Moving the batch…
+            </p>
+          )}
         </div>
       )}
       <div
@@ -436,13 +423,8 @@ export function BulkUpload({
           accept={CV_ACCEPT}
           disabled={!!progress || busy === 'move' || rows.length >= CV_BATCH_LIMIT}
           onChange={(e) => void take(Array.from(e.currentTarget.files ?? []))}
-          aria-describedby={fid('files-hint')}
           className="input"
         />
-        <p id={fid('files-hint')} className="hint">
-          Choose or drop PDF or Word files (.docx), each at most {L.cvMb} MB, up to {CV_BATCH_LIMIT} in a batch. Each is read for the name, email and mobile; a scanned PDF is read by the OCR service in a
-          minute or two, its row filling in as it is (or fill it in yourself).
-        </p>
         {progress && (
           <p role="status" className="text-sm">
             Uploading {Math.min(progress.done + 1, progress.of)} of {progress.of}…
@@ -456,7 +438,7 @@ export function BulkUpload({
         <div role="status" className="rounded-lg bg-ok-soft px-4 py-3 text-sm text-ok">
           <p className="font-semibold">
             {result.saved.length ? `Saved ${result.saved.length}: ${result.saved.map((s) => s.reference).join(', ')}.` : 'Nothing was saved.'}
-            {result.skipped.length > 0 && ` ${result.skipped.length} left in the batch: see each row.`}
+            {result.skipped.length > 0 && ` ${result.skipped.length} left in the batch.`}
           </p>
           {result.saved.length > 0 && rows.length === 0 && (
             <a href={batchDoneHref(target)} className="font-semibold">
@@ -601,11 +583,6 @@ export function BulkUpload({
               </tbody>
             </table>
           </div>
-          <p className="hint">
-            {general
-              ? 'Each is saved as a general CV, its consent recorded as yours (by HR).'
-              : 'Each is saved as an application at Applied, its consent recorded as yours (by HR, LinkedIn Easy Apply for LinkedIn). The screening questions weren’t asked, so it has no match (—).'}
-          </p>
           <div className="flex flex-wrap gap-2">
             <button type="button" onClick={() => void save()} disabled={!!busy || !!progress || toSave === 0} className="btn btn-primary">
               {busy === 'save' ? 'Saving…' : `Save ${toSave} ${toSave === 1 ? 'CV' : 'CVs'}`}

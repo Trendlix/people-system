@@ -35,7 +35,6 @@ function EndFields({ state, fid, employment }: { state: FormState; fid: (name: s
           id={fid('endReason')}
           name="endReason"
           required
-          aria-describedby={fid('endReason-hint')}
           defaultValue={valueOf(state, 'endReason', employment?.endReason)}
           className="input"
         >
@@ -46,9 +45,6 @@ function EndFields({ state, fid, employment }: { state: FormState; fid: (name: s
             </option>
           ))}
         </Select>
-        <p id={fid('endReason-hint')} className="hint">
-          Resigned gives the status Resigned; the others give Terminated.
-        </p>
       </div>
       <div className="sm:col-span-2">
         <label htmlFor={fid('endNote')} className="label">
@@ -59,13 +55,9 @@ function EndFields({ state, fid, employment }: { state: FormState; fid: (name: s
           name="endNote"
           rows={3}
           maxLength={500}
-          aria-describedby={fid('endNote-hint')}
           defaultValue={valueOf(state, 'endNote', employment?.endNote)}
           className="input"
         />
-        <p id={fid('endNote-hint')} className="hint">
-          E.g. the handover, or what was agreed. Up to 500 characters.
-        </p>
       </div>
     </div>
   );
@@ -81,13 +73,8 @@ function JobDescriptionField({ state, fid, employment }: { state: FormState; fid
       <DateInput
         id={fid('jdAcknowledgedAt')}
         name="jdAcknowledgedAt"
-        aria-describedby={fid('jdAcknowledgedAt-hint')}
         defaultValue={valueOf(state, 'jdAcknowledgedAt', formatDate(employment?.jdAcknowledgedAt))}
       />
-      <p id={fid('jdAcknowledgedAt-hint')} className="hint">
-        The date the employee signed their job description{employment?.jobTitle ? ` (version ${employment.jobTitle.jdVersion})` : ''}. Leave empty
-        until then.
-      </p>
     </div>
   );
 }
@@ -114,7 +101,7 @@ export function HireForm({
       employmentType=""
       job={(state, fid) => (
         <>
-          <EmploymentFields state={state} fid={fid} pickers={pickers} contractBelow />
+          <EmploymentFields state={state} fid={fid} pickers={pickers} />
           <JobDescriptionField state={state} fid={fid} />
         </>
       )}

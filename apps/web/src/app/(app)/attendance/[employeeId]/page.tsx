@@ -75,8 +75,7 @@ async function PersonMonth({ params, searchParams }: { params: PageProps<'/atten
       {p.days.length === 0 ? (
         <div className="card space-y-3 px-6 py-8 text-center">
           <p className="text-muted">
-            No attendance of {p.employee.fullNameEn} kept for {monthName(month)}: they haven&apos;t checked in on the system, and Zoho People&apos;s
-            attendance for the month isn&apos;t imported yet or they weren&apos;t matched in its files. Import it on the month&apos;s payroll run.
+            No attendance of {p.employee.fullNameEn} kept for {monthName(month)}.
           </p>
           <Link href={way.href} className="btn btn-secondary no-underline">
             {way.label}

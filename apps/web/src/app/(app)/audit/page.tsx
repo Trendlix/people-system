@@ -129,7 +129,7 @@ function Filters({ filters, options }: { filters: AuditFilters; options: AuditOp
           </Select>
         </Field>
         <Field id="audit-employee" label="Employee">
-          <Select id="audit-employee" name="employee" defaultValue={filters.employee} className="input" aria-describedby="audit-employee-hint">
+          <Select id="audit-employee" name="employee" defaultValue={filters.employee} className="input">
             <option value="">Anyone</option>
             {options?.employees.map((e) => (
               <option key={e.id} value={e.id}>
@@ -137,9 +137,6 @@ function Filters({ filters, options }: { filters: AuditFilters; options: AuditOp
               </option>
             ))}
           </Select>
-          <p id="audit-employee-hint" className="hint">
-            Everything about them. Type to search.
-          </p>
         </Field>
         <Field id="audit-record" label="Record ID">
           <input
@@ -150,12 +147,8 @@ function Filters({ filters, options }: { filters: AuditFilters; options: AuditOp
             autoComplete="off"
             spellCheck={false}
             placeholder="e.g. 0b8f0c1e-2d3a-…"
-            aria-describedby="audit-record-hint"
             className="input font-mono"
           />
-          <p id="audit-record-hint" className="hint">
-            One record, by the id in its address.
-          </p>
         </Field>
         <Field id="audit-module" label="Module">
           <Select id="audit-module" name="module" defaultValue={filters.module} className="input">
@@ -279,7 +272,7 @@ function EntryItem({ entry }: { entry: AuditEntry }) {
           {e && (
             <>
               <span className="text-muted"> · </span>
-              <Link href={historyHref(e.id)} title={`Everything about ${e.fullNameEn}`}>
+              <Link href={historyHref(e.id)}>
                 {e.fullNameEn}
               </Link>
               {shownCode(e.employeeCode) && <span className="text-muted"> {e.employeeCode}</span>}
@@ -327,7 +320,7 @@ function Place({ from }: { from: AuditFrom | undefined }) {
         place.text
       )}
       {place.mock && (
-        <span className="ml-1.5 badge bg-danger-soft text-danger" title="The phone said this position is made up (a fake GPS app).">
+        <span className="ml-1.5 badge bg-danger-soft text-danger">
           Made-up position
         </span>
       )}
@@ -559,7 +552,7 @@ async function SignIns({ query }: { query: Query }) {
         {loaded.kind === 'forbidden'
           ? NOT_ALLOWED
           : loaded.kind === 'unavailable'
-            ? 'Not available yet: the server does not list the sign-ins yet.'
+            ? 'Not available yet.'
             : `The sign-ins could not be loaded. ${loaded.messages.join(' ')}`}
       </p>
     );
@@ -580,20 +573,13 @@ async function SignIns({ query }: { query: Query }) {
               {described && ` · ${described}`}
             </p>
           </div>
-          <div className="text-right">
-            {/* a plain link, never prefetched: the API makes the workbook on each download, and logs it */}
-            <a href={signInsExcelHref(filters)} className="btn btn-secondary">
-              Export to Excel
-            </a>
-            <p className="hint">The newest 10,000 sign-ins with these filters.</p>
-          </div>
+          {/* a plain link, never prefetched: the API makes the workbook on each download, and logs it */}
+          <a href={signInsExcelHref(filters)} className="btn btn-secondary">
+            Export to Excel
+          </a>
         </div>
         {body}
       </section>
-      <p className="text-xs text-muted">
-        Sign-ins from before 31 October 2026 show the address and browser their session was opened with, when known, and no location. An address inside the
-        server’s own network shows as a dash.
-      </p>
     </div>
   );
 }
@@ -633,7 +619,7 @@ async function Activity({ query, profileLink }: { query: Query; profileLink: boo
           : loaded.kind === 'unavailable'
             ? choices && filters.employee
               ? 'That employee isn’t on record.'
-              : 'Not available yet: the server does not have the audit log yet.'
+              : 'Not available yet.'
             : `The audit log could not be loaded. ${loaded.messages.join(' ')}`}
       </p>
     );
@@ -643,7 +629,7 @@ async function Activity({ query, profileLink }: { query: Query; profileLink: boo
     <div className="space-y-4">
       <Problems problems={problems} />
       <Filters filters={filters} options={choices} />
-      {options.kind !== 'ok' && <p className="text-sm text-muted">The lists of users, actions and employees could not be loaded: the filters already in the address still apply.</p>}
+      {options.kind !== 'ok' && <p className="text-sm text-muted">The filter lists could not be loaded.</p>}
       <PersonHeading filters={filters} options={choices} profileLink={profileLink} />
       <section aria-labelledby="audit-entries" className="card">
         <div className="flex flex-wrap items-end justify-between gap-3 border-b border-line px-4 py-3">
@@ -656,13 +642,10 @@ async function Activity({ query, profileLink }: { query: Query; profileLink: boo
               {described && ` · ${described}`}
             </p>
           </div>
-          <div className="text-right">
-            {/* a plain link, never prefetched: the API makes the workbook on each download, and logs it */}
-            <a href={auditExcelHref(filters)} className="btn btn-secondary">
-              Export to Excel
-            </a>
-            <p className="hint">The newest 10,000 entries with these filters.</p>
-          </div>
+          {/* a plain link, never prefetched: the API makes the workbook on each download, and logs it */}
+          <a href={auditExcelHref(filters)} className="btn btn-secondary">
+            Export to Excel
+          </a>
         </div>
         {body}
       </section>
@@ -674,13 +657,7 @@ export default function AuditLogPage({ searchParams }: PageProps<'/audit'>) {
   return (
     <StaffOnly>
       <div className="space-y-4">
-        <div>
-          <h1 className="page-title">Audit Log</h1>
-          <p className="mt-1 text-muted">
-            Who changed what and when, in every part of the system, newest first, with what was refused and where each came from. Restricted values, such as
-            national IDs, bank accounts and pay, show only that they changed.
-          </p>
-        </div>
+        <h1 className="page-title">Audit Log</h1>
         <Suspense fallback={<Loading />}>
           <Log searchParams={searchParams} />
         </Suspense>

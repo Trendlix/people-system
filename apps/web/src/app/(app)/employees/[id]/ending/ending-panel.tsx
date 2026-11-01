@@ -49,7 +49,6 @@ function endingFields(x: Ending): GridField[] {
       key: 'ending-decision-due',
       label: 'Decision due',
       value: formatDate(x.decisionDueOn),
-      note: 'Or the resignation counts as accepted (Decree 187/2025)',
     },
     !!(x.certifiedOffice || x.certifiedSerial || x.certifiedOn) && {
       key: 'ending-certified',
@@ -108,11 +107,6 @@ export function EndingPanel({
       <div className="space-y-3">
         <FieldGrid fields={endingFields(x)} />
 
-        {x.status === 'pending_ceo' && !isCeo && <p className="text-sm text-muted">Waiting for the CEO&apos;s approval.</p>}
-        {x.status === 'approved' && !canEdit && (
-          <p className="text-sm text-muted">Approved. HR completes it on or after the last working day, {formatDate(x.lastWorkingDay)}.</p>
-        )}
-
         {(decides || completes || withdraws || setsLastDay) && (
           <div className="flex flex-wrap items-start gap-3">
             {decides && <EndingDecision approve={decideEnding.bind(null, x.id, 'approve')} reject={decideEnding.bind(null, x.id, 'reject')} name={name} />}
@@ -122,8 +116,8 @@ export function EndingPanel({
                 pendingText="Completing…"
                 variant="primary"
                 disabled={!canComplete}
-                disabledNote={canComplete ? undefined : `Can be completed from ${formatDate(x.lastWorkingDay)}, the last working day.`}
-                confirmText={`Complete ${name}? The employment ends on ${formatDate(x.lastWorkingDay)}, and ${employeeName} is then a former employee. This cannot be undone.`}
+                disabledNote={canComplete ? undefined : `Can be completed from ${formatDate(x.lastWorkingDay)}.`}
+                confirmText={`Complete ${name}? This can't be undone.`}
               >
                 Complete<span className="sr-only"> {name}</span>
               </ActionButton>

@@ -125,8 +125,8 @@ describe('what the page says', () => {
 
 describe('the C-level people left out (owner, 19 October 2026: "make C level Employees details not visible to HR")', () => {
   it('are said to be left out, their details only the CEO’s and the Super Admin’s', () => {
-    expect(confidentialExcludedText(2)).toBe('C-level (2 people) are left out: only the CEO and the Super Admin see their details.');
-    expect(confidentialExcludedText(1)).toBe('C-level (1 person) is left out: only the CEO and the Super Admin see their details.');
+    expect(confidentialExcludedText(2)).toBe('C-level (2 people) are left out.');
+    expect(confidentialExcludedText(1)).toBe('C-level (1 person) is left out.');
   });
 
   it('say nothing when none are, or an older API doesn’t say', () => {

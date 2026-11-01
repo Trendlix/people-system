@@ -48,7 +48,6 @@ type Field = {
   ar?: boolean;
   multiline?: boolean;
   required?: boolean;
-  hint?: React.ReactNode;
   placeholder?: string;
   options?: readonly Option[];
   /** For `list`: the choices, and the other ways a value on file may be written. */
@@ -86,19 +85,10 @@ const GROUPS: { title: string; part: Part; fields: Field[] }[] = [
     part: 'profile',
     fields: [
       { name: 'fullNameEn', label: 'Full name (English)', max: 150, required: true },
-      { name: 'fullNameAr', label: 'Full name (Arabic)', ar: true, max: 150, required: true, hint: 'As printed on contracts.' },
-      { name: 'displayName', label: 'Display name', max: 80, placeholder: 'e.g. Hazem Magdy', hint: 'The short name they go by, as shown in the email signature.' },
+      { name: 'fullNameAr', label: 'Full name (Arabic)', ar: true, max: 150, required: true },
+      { name: 'displayName', label: 'Display name', max: 80, placeholder: 'e.g. Hazem Magdy' },
       { name: 'employeeCode', label: 'Employee code', max: 20, required: true, placeholder: 'EMP-0000' },
-      {
-        name: 'insuranceNo',
-        label: 'Social insurance number',
-        max: 20,
-        hint: (
-          <>
-            The <span lang="ar">الرقم التأميني</span>, digits only, as on the social insurance print.
-          </>
-        ),
-      },
+      { name: 'insuranceNo', label: 'Social insurance number', max: 20, placeholder: 'Digits only' },
       { name: 'dateOfBirth', label: 'Date of birth', kind: 'date' },
       { name: 'gender', label: 'Gender', kind: 'select', options: options(GENDERS, LABELS.gender) },
       { name: 'nationality', label: 'Nationality', max: 60, placeholder: 'e.g. Egyptian' },
@@ -110,41 +100,15 @@ const GROUPS: { title: string; part: Part; fields: Field[] }[] = [
     title: 'Contact & Address',
     part: 'profile',
     fields: [
-      {
-        name: 'workEmail',
-        label: 'Work email',
-        kind: 'email',
-        max: 254,
-        hint: 'A sign-in account with this email is linked to this employee.',
-      },
+      { name: 'workEmail', label: 'Work email', kind: 'email', max: 254 },
       { name: 'personalEmail', label: 'Personal email', kind: 'email', max: 254 },
-      { name: 'mobile', label: 'Mobile', kind: 'tel', hint: 'The number without the 0 in front.' },
-      { name: 'mobile2', label: 'Second mobile', kind: 'tel', hint: 'The number without the 0 in front.' },
+      { name: 'mobile', label: 'Mobile', kind: 'tel' },
+      { name: 'mobile2', label: 'Second mobile', kind: 'tel' },
       { name: 'governorate', label: 'Governorate', kind: 'select', options: GOVERNORATES.map((g) => ({ value: g, label: g })) },
-      {
-        name: 'city',
-        label: 'City',
-        ar: true,
-        max: 100,
-        hint: (
-          <>
-            As on the ID card, e.g. <span lang="ar">مدينة نصر</span>.
-          </>
-        ),
-      },
-      { name: 'addressAr', label: 'Address (Arabic)', ar: true, multiline: true, max: 300, wide: true, hint: 'As printed on contracts.' },
+      { name: 'city', label: 'City', ar: true, max: 100 },
+      { name: 'addressAr', label: 'Address (Arabic)', ar: true, multiline: true, max: 300, wide: true },
       // asked for apart from the address on social insurance Form 1 (owner, 15 October 2026)
-      {
-        name: 'buildingNo',
-        label: 'Building number',
-        max: 10,
-        placeholder: 'e.g. 12',
-        hint: (
-          <>
-            Printed as <span lang="ar">عقار رقم</span> on social insurance Form 1.
-          </>
-        ),
-      },
+      { name: 'buildingNo', label: 'Building number', max: 10, placeholder: 'e.g. 12' },
     ],
   },
   {
@@ -153,7 +117,7 @@ const GROUPS: { title: string; part: Part; fields: Field[] }[] = [
     fields: [
       { name: 'emergencyName', label: 'Name', max: 150 },
       { name: 'emergencyRelation', label: 'Relation', max: 50, placeholder: 'e.g. Sister' },
-      { name: 'emergencyMobile', label: 'Mobile', kind: 'tel', hint: 'The number without the 0 in front.' },
+      { name: 'emergencyMobile', label: 'Mobile', kind: 'tel' },
     ],
   },
   {
@@ -163,39 +127,16 @@ const GROUPS: { title: string; part: Part; fields: Field[] }[] = [
       // a student (owner, 25 October 2026: "Add a Student option"): the year and the expected graduation instead of a
       // degree, a major, a graduation year and a grade; contracts print the student's wording while Qualification
       // (Arabic) is empty
-      {
-        name: 'stillStudying',
-        label: 'Still studying',
-        kind: 'switch',
-        wide: true,
-        hint: 'A student is asked the year and the expected graduation, not a degree, major, graduation year or grade.',
-      },
-      {
-        name: 'studyYear',
-        label: 'Study year',
-        kind: 'select',
-        options: options(STUDY_YEARS, STUDY_YEAR_LABELS),
-        student: true,
-        hint: (
-          <>
-            The <span lang="ar">الفرقة</span>, or the postgraduate study.
-          </>
-        ),
-      },
-      {
-        name: 'expectedGraduation',
-        label: 'Expected graduation',
-        kind: 'month',
-        student: true,
-        hint: 'The month, e.g. 06/2027. Once it has passed, Missing Details asks HR to update the qualification.',
-      },
-      { name: 'university', label: 'University', kind: 'list', list: UNIVERSITY_LIST, max: 150, hint: 'Not on the list? Choose Other and type it.' },
-      { name: 'faculty', label: 'Faculty', kind: 'list', list: FACULTY_LIST, max: 150, hint: 'The subject, without "Faculty of". Not on the list? Choose Other.' },
+      { name: 'stillStudying', label: 'Still studying', kind: 'switch', wide: true },
+      { name: 'studyYear', label: 'Study year', kind: 'select', options: options(STUDY_YEARS, STUDY_YEAR_LABELS), student: true },
+      { name: 'expectedGraduation', label: 'Expected graduation', kind: 'month', student: true },
+      { name: 'university', label: 'University', kind: 'list', list: UNIVERSITY_LIST, max: 150 },
+      { name: 'faculty', label: 'Faculty', kind: 'list', list: FACULTY_LIST, max: 150 },
       { name: 'degree', label: 'Degree', kind: 'select', options: options(DEGREES, LABELS.degree) },
       { name: 'major', label: 'Major', max: 150 },
       { name: 'graduationYear', label: 'Graduation year', kind: 'year' },
       { name: 'educationGrade', label: 'Grade', kind: 'select', options: options(EDUCATION_GRADES, LABELS.educationGrade) },
-      { name: 'qualificationAr', label: 'Qualification (Arabic)', ar: true, max: 200, wide: true, hint: 'As printed on contracts.' },
+      { name: 'qualificationAr', label: 'Qualification (Arabic)', ar: true, max: 200, wide: true },
     ],
   },
 ];
@@ -208,12 +149,11 @@ const named = (things: readonly string[]) =>
   things.map((t) => `the ${t}`).reduce((all, t, i, list) => (i === 0 ? t : `${all}${i === list.length - 1 ? ' and ' : ', '}${t}`), '');
 
 /** A new employee's code may be left empty: the API gives the next number. */
-const NEW_CODE: Partial<Field> = { required: false, hint: 'Leave empty to give the next number automatically.' };
+const NEW_CODE: Partial<Field> = { required: false, placeholder: 'Next number if left empty' };
 
 /** With the company's work email domain set (e.g. trendlix.com), every work email must end in it; the API checks this. */
 const inDomain = (domain: string): Partial<Field> => ({
   placeholder: `name@${domain}`,
-  hint: `Must end in @${domain}. A sign-in account with this email is linked to this employee.`,
 });
 
 /** The value a field starts with, as the field shows it (dates as DD/MM/YYYY, numbers as text): saved, or read from the card. */
@@ -273,27 +213,29 @@ export function PersonalFields({
   const wording = studying ? studentQualificationAr({ studyYear, gender, faculty: edu.faculty, university: edu.university }) : '';
   const [qual, setQual] = useState(() => valueOf(state, 'qualificationAr', employee?.qualificationAr));
   const [ownQual, setOwnQual] = useState(() => qual !== '');
-  const qualHint = (
-    <>
-      As printed on contracts.
-      {!ownQual && proposal.text && ' Proposed from the details above: check it, and edit it as needed.'}
-      {ownQual && proposal.text && proposal.text !== qual && (
-        <>
-          {' '}
-          Proposed:{' '}
-          <span lang="ar" dir="rtl">
-            {proposal.text}
-          </span>{' '}
-          <button type="button" onClick={() => setQual(proposal.text)} className="font-semibold text-accent hover:underline">
-            Use it
-          </button>
-        </>
-      )}
-      {proposal.text &&
-        proposal.left.length > 0 &&
-        ` ${named(proposal.left).replace(/^t/, 'T')} ${proposal.left.length > 1 ? 'are' : 'is'} in English, so left out: add ${proposal.left.length > 1 ? 'them' : 'it'} in Arabic.`}
-    </>
-  );
+  const proposed = ownQual && proposal.text !== '' && proposal.text !== qual;
+  const leftOut =
+    proposal.text && proposal.left.length > 0
+      ? `${named(proposal.left).replace(/^t/, 'T')} ${proposal.left.length > 1 ? 'are' : 'is'} in English, so left out: add ${proposal.left.length > 1 ? 'them' : 'it'} in Arabic.`
+      : '';
+  const qualHint =
+    proposed || leftOut ? (
+      <>
+        {proposed && (
+          <>
+            Proposed:{' '}
+            <span lang="ar" dir="rtl">
+              {proposal.text}
+            </span>{' '}
+            <button type="button" onClick={() => setQual(proposal.text)} className="font-semibold text-accent hover:underline">
+              Use it
+            </button>
+          </>
+        )}
+        {proposed && leftOut && ' '}
+        {leftOut}
+      </>
+    ) : null;
 
   const typedQual = ownQual ? qual.trim() : '';
   const useWording = (
@@ -308,9 +250,7 @@ export function PersonalFields({
       Use this wording
     </button>
   );
-  const studentHint = !wording ? (
-    'As printed on contracts. For a student, choose the study year to word it, or type it.'
-  ) : !typedQual ? (
+  const studentHint = !wording ? null : !typedQual ? (
     <>
       Prints as:{' '}
       <span lang="ar" dir="rtl">
@@ -318,24 +258,17 @@ export function PersonalFields({
       </span>{' '}
       {useWording}
     </>
-  ) : (
+  ) : typedQual !== wording ? (
     <>
-      As printed on contracts.
-      {typedQual !== wording && (
-        <>
-          {' '}
-          The student wording:{' '}
-          <span lang="ar" dir="rtl">
-            {wording}
-          </span>{' '}
-          {useWording}
-        </>
-      )}
+      The student wording:{' '}
+      <span lang="ar" dir="rtl">
+        {wording}
+      </span>{' '}
+      {useWording}
     </>
-  );
+  ) : null;
 
-  const hintOf = (f: Field) =>
-    noMilitary(f) ? 'Women need no military papers.' : f.name === 'qualificationAr' ? (studying ? studentHint : qualHint) : f.hint;
+  const hintOf = (f: Field) => (f.name === 'qualificationAr' ? (studying ? studentHint : qualHint) : null);
 
   function control(f: Field) {
     const saved = startText(f, employee, suggestions);

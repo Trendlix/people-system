@@ -168,12 +168,9 @@ export async function Reminders({ surface }: { surface: InboxSurface }) {
   const loaded = await loadReminderSettings();
   return (
     <section aria-labelledby="reminders-heading" className={`card space-y-3 ${surface === 'app' ? 'p-4' : 'p-6'}`}>
-      <div>
-        <h2 id="reminders-heading" className="font-semibold">
-          Reminders
-        </h2>
-        <p className="mt-1 text-sm text-muted">Kept here, and sent to your phone when notifications are on in the Trendlix People app.</p>
-      </div>
+      <h2 id="reminders-heading" className="font-semibold">
+        Reminders
+      </h2>
       {loaded.kind === 'ok' ? (
         <ReminderSettingsForm initial={switchesOf(loaded.value)} big={surface === 'app'} />
       ) : (
@@ -195,12 +192,9 @@ export async function WhatsAppMessages({ surface }: { surface: InboxSurface }) {
   if (loaded.kind === 'unavailable') return null;
   return (
     <section id="whatsapp" aria-labelledby="whatsapp-heading" className={`card scroll-mt-20 space-y-3 ${surface === 'app' ? 'p-4' : 'p-6'}`}>
-      <div>
-        <h2 id="whatsapp-heading" className="font-semibold">
-          WhatsApp Messages
-        </h2>
-        <p className="mt-1 text-sm text-muted">Get what waits for you, decisions on your requests, the check-in reminders and your interviews on WhatsApp too, if you like.</p>
-      </div>
+      <h2 id="whatsapp-heading" className="font-semibold">
+        WhatsApp Messages
+      </h2>
       {loaded.kind === 'ok' ? (
         <WhatsAppSettingsForm initial={loaded.value} viewingAs={!!user.viewAs} big={surface === 'app'} />
       ) : (

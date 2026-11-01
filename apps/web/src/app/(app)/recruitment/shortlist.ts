@@ -97,9 +97,5 @@ export function batchDoneText(verb: 'Shortlisted' | 'Accepted' | 'Rejected', res
   return `${head}; ${skipped.length} skipped: ${named}${more}.`;
 }
 
-/** What the hiring manager's review says once done; a rejection is HR's to confirm ("HR confirms"). */
-export function reviewDoneText(decision: HiringSuggestion, result: HiringBatchResult): string {
-  const text = batchDoneText(decision === 'next' ? 'Accepted' : 'Rejected', result);
-  if (!result.done.length) return text;
-  return `${text} ${decision === 'next' ? 'HR makes the screening call next.' : 'HR confirms each rejection.'}`;
-}
+/** What the hiring manager's review says once done. */
+export const reviewDoneText = (decision: HiringSuggestion, result: HiringBatchResult): string => batchDoneText(decision === 'next' ? 'Accepted' : 'Rejected', result);

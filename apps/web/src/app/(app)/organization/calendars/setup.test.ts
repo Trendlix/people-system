@@ -55,7 +55,7 @@ describe('the steps', () => {
 
   it('say where the company’s Zoho stands', () => {
     expect(zohoStatus({ ready: false }, false)).toContain('isn’t set up yet');
-    expect(zohoStatus({ ready: true }, false)).toContain('connect the company’s Zoho account');
-    expect(zohoStatus({ ready: true }, true)).toContain('Nobody needs to connect anything');
+    expect(zohoStatus({ ready: true }, false)).toContain('account isn’t connected yet');
+    expect(zohoStatus({ ready: true }, true)).toBe('Connected.');
   });
 });

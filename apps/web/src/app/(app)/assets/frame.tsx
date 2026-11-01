@@ -106,7 +106,7 @@ async function Framed({ section, tab, children }: { section: Tabbed; tab: Assets
     <>
       <Heading section={section} action={action} />
       {row && <Tabs label={section.label} tabs={tabs} current={tab} />}
-      <div className={row ? 'mt-4' : 'mt-1'}>{children}</div>
+      <div className="mt-6">{children}</div>
     </>
   );
 }

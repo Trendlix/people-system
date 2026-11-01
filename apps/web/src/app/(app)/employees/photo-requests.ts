@@ -34,8 +34,8 @@ export function photoOutcome(r: Pick<PhotoRequest, 'status' | 'requestedAt' | 'd
   const sent = `Sent ${formatDate(r.requestedAt)}`;
   const on = r.decidedAt ? ` on ${formatDate(r.decidedAt)}` : '';
   const note = r.decisionNote?.trim() || null;
-  if (r.status === 'approved') return { title: `${sent} · approved${on}: now your picture`, note };
-  if (r.status === 'rejected') return { title: `${sent} · rejected${on}: your photo stayed as it was`, note };
+  if (r.status === 'approved') return { title: `${sent} · approved${on}`, note };
+  if (r.status === 'rejected') return { title: `${sent} · rejected${on}`, note };
   return { title: `${sent} · cancelled${on}`, note: null };
 }
 

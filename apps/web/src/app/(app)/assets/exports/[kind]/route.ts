@@ -22,7 +22,7 @@ export async function GET(_req: Request, { params }: RouteContext<'/assets/expor
     throw err;
   }
   if (res.status === 401) redirect('/login');
-  if (res.status === 403) return text('You don’t have access to Assets. An Admin gives it on the Users page.', 403);
+  if (res.status === 403) return text('You don’t have access to Assets.', 403);
   if (res.status === 404) return text('Not available yet: the server does not have the Assets exports yet.', 404);
   if (!res.ok) return text('The export could not be made. Please try again.', 502);
   return passSheetOn(res, assetExportFileName(kind, todayInCairo())) ?? text('The export could not be made. Please try again.', 502);

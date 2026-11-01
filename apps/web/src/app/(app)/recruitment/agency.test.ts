@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { CV_FIT_VERSION, HIDDEN, type AgencyBackground, type CvFit, type CvFitPart } from '@trendlix/shared';
 import {
   AGENCY_BACKGROUND_FIELD,
-  AGENCY_BACKGROUND_HINT,
   agencyBackgroundChoices,
   agencyBackgroundText,
   agencyFlag,
@@ -20,7 +19,7 @@ import {
   markText,
   vacancyAgencyBackgroundOf,
 } from './agency';
-import { fitRows, fitSummary } from './cv-fit';
+import { fitRows } from './cv-fit';
 import { workHistoryHeading } from './cv-reading';
 import { vacancyForm } from './recruitment';
 
@@ -40,13 +39,12 @@ const background = (over: Partial<AgencyBackground> = {}): AgencyBackground => (
 });
 
 describe('the vacancy’s Agency background', () => {
-  it('offers Required, Preferred and Not needed, with their weights in the hint', () => {
+  it('offers Required, Preferred and Not needed', () => {
     expect(agencyBackgroundChoices()).toEqual([
       { value: 'required', label: 'Required' },
       { value: 'preferred', label: 'Preferred' },
       { value: 'not_needed', label: 'Not needed' },
     ]);
-    expect(AGENCY_BACKGROUND_HINT).toBe('How much marketing agency experience counts in the CV match: Required weighs 20, Preferred 10, Not needed leaves it out.');
   });
 
   it('reads the choice, nothing else', () => {
@@ -164,12 +162,6 @@ describe('the CV match’s agency part', () => {
   it('shows like the others in the CV Fit section', () => {
     const fit: CvFit = { percent: 81, version: CV_FIT_VERSION, parts: [...five, agency] };
     expect(fitRows(fit)[5]).toEqual({ key: 'agency', label: 'Agency background', score: '50%', weight: '9.1% of the fit', detail: 'Ex-agency: 4 m at marketing agencies; the job prefers it (preferred)' });
-  });
-
-  it('isn’t a part that couldn’t be scored when its vacancy doesn’t need it', () => {
-    expect(fitSummary({ percent: 80, version: CV_FIT_VERSION, parts: five })).toBe('80% from the parts below.');
-    expect(fitSummary({ percent: 81, version: CV_FIT_VERSION, parts: [...five, agency] })).toBe('81% from the parts below.');
-    expect(fitSummary({ percent: 70, version: CV_FIT_VERSION, parts: [...five.slice(1), agency] })).toMatch(/left out, the others re-weighted to 100\.$/);
   });
 });
 

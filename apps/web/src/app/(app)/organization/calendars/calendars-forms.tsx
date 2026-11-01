@@ -38,7 +38,6 @@ function SecretField({ set, unreadable, saved }: { set: boolean; unreadable: boo
             Replace<span className="sr-only"> the client secret</span>
           </button>
         </div>
-        <p className="hint">Saved encrypted, and never shown again.</p>
       </div>
     );
   }
@@ -48,17 +47,14 @@ function SecretField({ set, unreadable, saved }: { set: boolean; unreadable: boo
         Client secret
       </label>
       <input id={fid('clientSecret')} name="clientSecret" type="password" autoComplete="new-password" maxLength={500} autoFocus={replacing} className="input" />
-      <p className={unreadable ? 'hint text-warn' : 'hint'}>
-        {unreadable ? 'The saved secret can’t be read any more: paste it again.' : kept ? 'Leave it empty to keep the saved secret.' : 'Saved encrypted, and never shown again.'}
-        {kept && (
-          <>
-            {' '}
-            <button type="button" onClick={() => setReplacing(false)} className="font-semibold text-accent underline-offset-2 hover:underline">
-              Keep the saved one
-            </button>
-          </>
-        )}
-      </p>
+      {unreadable && <p className="hint text-warn">The saved secret can’t be read any more: paste it again.</p>}
+      {kept && (
+        <p className="hint">
+          <button type="button" onClick={() => setReplacing(false)} className="font-semibold text-accent underline-offset-2 hover:underline">
+            Keep the saved one
+          </button>
+        </p>
+      )}
     </div>
   );
 }
@@ -93,7 +89,7 @@ export function ZohoAppForm({ app, action }: { app: CalendarAppView; action: Act
         <label htmlFor={fid('dataCentre')} className="label">
           Data centre
         </label>
-        <Select id={fid('dataCentre')} name="dataCentre" defaultValue={app.dataCentre ?? ''} aria-describedby={fid('dataCentre-hint')} className="input">
+        <Select id={fid('dataCentre')} name="dataCentre" defaultValue={app.dataCentre ?? ''} className="input">
           <option value="" disabled>
             Choose…
           </option>
@@ -103,9 +99,6 @@ export function ZohoAppForm({ app, action }: { app: CalendarAppView; action: Act
             </option>
           ))}
         </Select>
-        <p id={fid('dataCentre-hint')} className="hint">
-          Where the company’s Zoho account is: the address you sign in to Zoho Mail at.
-        </p>
       </div>
       <div className="flex flex-wrap items-center gap-3">
         <button type="submit" disabled={pending} className="btn btn-primary">

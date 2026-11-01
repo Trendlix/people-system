@@ -18,11 +18,8 @@ export type RequestKind = (typeof REQUEST_KINDS)[number];
 /** The kinds My Requests may filter by: all of them for someone who sees raise requests, else the details changes alone. */
 export const requestKindsFor = (seesRaises: boolean): RequestKind[] => REQUEST_KINDS.filter((k) => seesRaises || k === 'details');
 
-/** What My Requests says before anything is asked for, naming only the buttons there are. */
-export const noRequestsText = (seesRaises: boolean) =>
-  seesRaises
-    ? 'You haven’t made any requests yet. Ask HR to change your details, or ask for a raise, with the buttons above.'
-    : 'You haven’t made any requests yet. Ask HR to change your details with the button above.';
+/** What My Requests says before anything is asked for. */
+export const NO_REQUESTS_TEXT = 'You haven’t made any requests yet.';
 
 export const REQUEST_KIND_LABELS: Record<RequestKind, string> = {
   details: 'Details changes',

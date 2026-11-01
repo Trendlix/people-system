@@ -76,11 +76,11 @@ export function tickText(outcome: TickOutcome, scopeLabel: string): string {
     case 'already':
       return `${outcome.code} · ${outcome.name} is ticked already.`;
     case 'out':
-      return `${outcome.code} · ${outcome.name} is in custody: it counts as out.`;
+      return `${outcome.code} · ${outcome.name} is in custody.`;
     case 'elsewhere':
-      return `${outcome.code} isn’t counted with ${scopeLabel}. Count it where it is kept.`;
+      return `${outcome.code} isn’t counted with ${scopeLabel}.`;
     case 'unread':
-      return 'That isn’t an asset’s code. Type it as on the label, e.g. PK-CAM-0003.';
+      return 'That isn’t an asset’s code.';
   }
 }
 
@@ -95,10 +95,10 @@ export const foundCodes = (items: readonly Pick<AssetCountSheetItem, 'code' | 's
 export const untickedCount = (items: readonly Pick<AssetCountSheetItem, 'code' | 'status'>[], ticked: ReadonlySet<string>): number =>
   items.filter((i) => i.status !== 'custody' && !ticked.has(i.code)).length;
 
-/** Asked before saving with some unticked: "2 assets aren’t ticked: they will be counted missing. Save the count?" */
+/** Asked before saving with some unticked (they will be counted missing): "Save with 2 assets missing?" */
 export function saveCountQuestion(unticked: number): string | null {
   if (!unticked) return null;
-  return `${unticked} ${unticked === 1 ? 'asset isn’t' : 'assets aren’t'} ticked: ${unticked === 1 ? 'it' : 'they'} will be counted missing. Save the count?`;
+  return `Save with ${unticked} ${unticked === 1 ? 'asset' : 'assets'} missing?`;
 }
 
 /** A count in a line: "6 expected · 3 found · 1 missing · 2 out", with how many were marked lost since. */

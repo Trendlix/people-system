@@ -29,7 +29,7 @@ describe('the first contract, as hiring in one form starts it', () => {
 
   it('has no probation for someone employed here before: once with an employer (Art. 90)', () => {
     expect(firstContractDefaults(settings, '', true).probationMonths).toBe(0);
-    expect(noProbationAgain('Omar Khaled')).toBe('0: Omar Khaled was employed here before, and probation comes only once with an employer (Labour Law Art. 90).');
+    expect(noProbationAgain('Omar Khaled')).toBe('0: Omar Khaled was employed here before (probation once per employer).');
   });
 
   // owner, 19 October 2026: an intern's agreement has no probation, and runs 3 months to start with

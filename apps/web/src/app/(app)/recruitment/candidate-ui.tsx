@@ -95,7 +95,6 @@ export function MatchItem({ m, selfId, manages }: { m: PossibleMatchView; selfId
         <p className="text-sm">
           {m.why}
           <span className="text-muted tabular-nums"> · {m.score}%</span>
-          {m.weak && <span className="text-muted"> · a name alone is a weak sign</span>}
         </p>
         <p className="text-xs text-muted">
           {shown
@@ -110,9 +109,9 @@ export function MatchItem({ m, selfId, manages }: { m: PossibleMatchView; selfId
             label="Merge"
             pendingLabel="Merging…"
             kind="primary"
-            confirm={`Merge ${named(merged)} into ${named(kept)}? Its applications, general CVs, emails, mobiles and employee link move to ${named(kept)}. A Super Admin can undo it.`}
+            confirm={`Merge ${named(merged)} into ${named(kept)}?`}
           />
-          <ActionButton action={dismissMatch.bind(null, m.id)} label="Not the same person" pendingLabel="Saving…" confirm={`${named(kept)} and ${named(merged)} are not the same person? They won’t be suggested again.`} />
+          <ActionButton action={dismissMatch.bind(null, m.id)} label="Not the same person" pendingLabel="Saving…" confirm={`${named(kept)} and ${named(merged)} are not the same person?`} />
         </div>
       )}
     </li>

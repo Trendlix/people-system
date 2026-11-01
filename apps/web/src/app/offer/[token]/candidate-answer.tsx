@@ -11,7 +11,7 @@ import type { FormState } from '@/lib/types';
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
-export function AcceptOffer({ action, nameEn, nameAr }: { action: Action; nameEn: string; nameAr: string }) {
+export function AcceptOffer({ action, nameEn }: { action: Action; nameEn: string }) {
   const { state, pending, form } = useKeptForm(action);
   const fid = useFieldIds();
   return (
@@ -35,23 +35,10 @@ export function AcceptOffer({ action, nameEn, nameAr }: { action: Action; nameEn
           required
           maxLength={150}
           autoComplete="name"
-          aria-describedby={fid('name-hint')}
+          placeholder={nameEn}
           defaultValue={valueOf(state, 'name', '')}
           className="input text-base"
         />
-        <p id={fid('name-hint')} className="hint">
-          As written on the offer: {nameEn}
-          {nameAr && (
-            <>
-              {' '}
-              or{' '}
-              <span lang="ar" dir="rtl">
-                {nameAr}
-              </span>
-            </>
-          )}
-          .
-        </p>
       </div>
       <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-line bg-canvas p-4 text-sm has-checked:border-accent has-checked:bg-accent-soft">
         <input type="checkbox" name="agree" value="yes" required className="mt-0.5 size-5 shrink-0 accent-accent" />
@@ -87,7 +74,7 @@ export function DeclineOffer({ action }: { action: Action }) {
     <form
       {...form}
       onSubmit={(e) => {
-        if (!window.confirm('Decline this job offer? Once declined, it can no longer be accepted from this page.')) {
+        if (!window.confirm('Decline this job offer?')) {
           e.preventDefault();
           return;
         }
@@ -114,13 +101,9 @@ export function DeclineOffer({ action }: { action: Action }) {
           name="reason"
           rows={3}
           maxLength={1000}
-          aria-describedby={fid('reason-hint')}
           defaultValue={valueOf(state, 'reason', '')}
           className="input text-base"
         />
-        <p id={fid('reason-hint')} className="hint">
-          If you&apos;d like to tell us why. It helps us, but you don&apos;t have to.
-        </p>
       </div>
       <div className="flex flex-wrap gap-3">
         <button type="submit" disabled={pending} className="btn btn-danger">

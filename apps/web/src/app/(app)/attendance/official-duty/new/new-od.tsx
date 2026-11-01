@@ -22,12 +22,6 @@ export function NewOdHeading({ back }: { back: { href: string; label: string } |
     <div className="space-y-2">
       {back && <BackLink href={back.href}>{back.label}</BackLink>}
       <h1 className="page-title">Official Duty</h1>
-      <p className="text-muted">
-        Ask for an official duty: work for the company away from the office, e.g. at a client&apos;s site or a shoot. Ask ahead, or up to 3 days after.
-        Your direct manager decides it first (without one, your team lead, else the head of your department), then HR; each step shows on the request.
-        On an approved day you check in from where you are, and the day counts as attended for its hours. On a rest day or an official holiday, ask for
-        that one day with its compensation: a day off (hours off for part of the day), or cash instead.
-      </p>
     </div>
   );
 }
@@ -39,10 +33,7 @@ export async function NewOd({ surface = 'site' }: { surface?: Surface }) {
   let body: React.ReactNode;
   if (!user.employeeId) {
     body = (
-      <Empty>
-        Only someone with an employee profile can ask for an official duty. No employee record uses your sign-in email ({user.email}) as its work email yet:
-        ask HR to add it to your profile.
-      </Empty>
+      <Empty>Only someone with an employee profile can ask for an official duty: ask HR to add your sign-in email ({user.email}).</Empty>
     );
   } else if (!form || form.kind === 'unavailable') body = <Empty>Not available yet: the server does not have official duty yet.</Empty>;
   else if (form.kind !== 'ok') body = <Empty>{notLoadedText(form, 'official duty form')}</Empty>;

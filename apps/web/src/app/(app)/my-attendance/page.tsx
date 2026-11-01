@@ -1,4 +1,4 @@
-import { CORRECTION_ASK_WORKING_DAYS, type AttendanceRates } from '@trendlix/shared';
+import type { AttendanceRates } from '@trendlix/shared';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { cache, Suspense } from 'react';
@@ -130,16 +130,12 @@ async function Mine({ searchParams }: { searchParams: Query }) {
                 )}
               />
             </div>
-            <div className="mt-4 space-y-1 text-xs text-muted">
-              <p>
-                {corrections
-                  ? `A day that isn’t right (a check-in or check-out forgotten, a time wrong)? Ask for a correction on its row, on the day or within ${CORRECTION_ASK_WORKING_DAYS} working days of it: your manager, then HR, decide it. Work away from the office is official duty.`
-                  : 'Something wrong? Ask HR to check it.'}
-              </p>
-              {usual && <p>Where the days came from: {usual}, unless a day says otherwise.</p>}
-              <p>Balance: the time over (+) or short (−) of your shift&apos;s hours that day, after its permission.</p>
-              {imported && <p>Days from Zoho People imported by HR on {formatDate(imported)}.</p>}
-            </div>
+            {(usual || imported) && (
+              <div className="mt-4 space-y-1 text-xs text-muted">
+                {usual && <p>From: {usual}</p>}
+                {imported && <p>Zoho People import: {formatDate(imported)}</p>}
+              </div>
+            )}
           </>
         )}
       </section>

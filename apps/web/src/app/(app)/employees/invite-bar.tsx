@@ -24,15 +24,7 @@ export function InviteBar({ notInvited, setUpEmail = false }: { notInvited: numb
       id={INVITE_FORM_ID}
       action={formAction}
       onSubmit={(e) => {
-        const button = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
-        const all = button?.value === '1';
-        const count = all ? notInvited : new FormData(e.currentTarget).getAll('employeeIds').length;
-        if (!count) {
-          e.preventDefault();
-          window.alert('Tick the people to invite in the Access column first.');
-          return;
-        }
-        if (!window.confirm(inviteQuestion(count))) e.preventDefault();
+        if (!notInvited || !window.confirm(inviteQuestion(notInvited))) e.preventDefault();
       }}
       className="space-y-3 border-t border-line px-4 py-3"
     >
@@ -46,9 +38,6 @@ export function InviteBar({ notInvited, setUpEmail = false }: { notInvited: numb
         <span className="text-sm text-muted">
           {notInvited === 1 ? '1 person has an account and no invitation yet.' : `${notInvited} people have an account and no invitation yet.`}
         </span>
-        <button type="submit" name="all" value="0" disabled={pending} className="btn btn-secondary">
-          Invite ticked
-        </button>
         <button type="submit" name="all" value="1" disabled={pending || notInvited === 0} className="btn btn-primary">
           {pending ? 'Sending…' : 'Send invitations to all'}
         </button>

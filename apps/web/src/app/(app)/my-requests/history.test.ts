@@ -350,8 +350,8 @@ describe('the filter', () => {
   });
 
   it('says why the table is empty', () => {
-    expect(emptyHistoryText('')).toBe('You haven’t asked for anything yet. Start a request below.');
-    expect(emptyHistoryText('waiting')).toBe('Nothing is waiting: every request you sent is decided.');
+    expect(emptyHistoryText('')).toBe('You haven’t asked for anything yet.');
+    expect(emptyHistoryText('waiting')).toBe('Nothing is waiting.');
   });
 });
 

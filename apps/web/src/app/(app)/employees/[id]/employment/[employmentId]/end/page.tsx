@@ -33,29 +33,22 @@ async function EndEmployment({ params }: { params: Promise<{ id: string; employm
       <RequireHr profile={employee}>
         {e.endDate ? (
           <Empty>
-            This employment already ended on {formatDate(e.endDate)}. To correct how it ended, <Link href={`/employees/${employee.id}/employment/${e.id}/edit`}>edit it</Link>.
+            This employment already ended on {formatDate(e.endDate)}. <Link href={`/employees/${employee.id}/employment/${e.id}/edit`}>Edit it</Link>
           </Empty>
         ) : (
           <div className="max-w-3xl space-y-4">
             <p className="text-sm">
               <span className="font-semibold">{what}</span> <span className="text-muted">since {formatDate(e.joinDate)}</span>
             </p>
-            <div role="note" className="space-y-1 rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
-              <p className="font-semibold">For records only: an employment that already ended outside People System.</p>
-              <p>
-                This ends it at once, without notice, the CEO&apos;s approval or the deadlines for the final dues and the labour office. To end an employment
-                now, use <Link href={`/employees/${employee.id}/ending/new`}>End employment</Link> instead.
-              </p>
-            </div>
-            <p className="text-sm text-muted">
-              The profile stays: {employee.fullNameEn} is then listed in the directory as a former employee, and this employment moves to the
-              employment history. To hire them again later, add a new employment on the Employment tab.
+            <p role="note" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
+              For records only: this ends it at once, without the CEO&apos;s approval. To end it now, use{' '}
+              <Link href={`/employees/${employee.id}/ending/new`}>End employment</Link>.
             </p>
             {employee.reports.length > 0 && (
               <div role="alert" className="space-y-2 rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
                 <p>
-                  {employee.reports.length === 1 ? '1 person reports' : `${employee.reports.length} people report`} to {employee.fullNameEn}. Choose another
-                  manager for {employee.reports.length === 1 ? 'them' : 'each of them'} before ending this employment:
+                  {employee.reports.length === 1 ? '1 person reports' : `${employee.reports.length} people report`} to {employee.fullNameEn}. Give them another
+                  manager before ending this employment:
                 </p>
                 <ul className="list-disc pl-5">
                   {employee.reports.map((r) => (

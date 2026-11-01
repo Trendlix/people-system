@@ -30,17 +30,9 @@ export function DraftAllForm({
   const nothingLeft = withoutTemplate === 0;
   return (
     <section aria-labelledby={fid('heading')} className="card space-y-4 p-6">
-      <div>
-        <h2 id={fid('heading')} className="text-lg font-semibold">
-          Draft Templates for Every Job Title
-        </h2>
-        <p className="mt-1 max-w-3xl text-sm text-muted">
-          Starts a draft for each job title that has no KPI template yet, from the closest role in the KPI role library: developers, designers, video, content,
-          social media, marketing, accounts, projects, sales, HR, finance and the office, or a general one for its kind of department. Each draft’s metrics are
-          linked to the job title’s duties where they match, and a title that leads people (head, lead, manager, director, supervisor) gets a team leadership
-          metric. Nothing is published: review each draft, then publish it.
-        </p>
-      </div>
+      <h2 id={fid('heading')} className="text-lg font-semibold">
+        Draft Templates for Every Job Title
+      </h2>
       <form
         action={formAction}
         onSubmit={(e) => {

@@ -36,7 +36,7 @@ export async function updateContractSettings(_prev: FormState, fd: FormData): Pr
     throw err;
   }
   refresh();
-  return { message: 'Contract defaults saved. New contracts start with them.' };
+  return { message: 'Saved.' };
 }
 
 /** A rule's label, notice, pay in lieu and whether it is offered. Who starts it, how it ends and its source stay. */

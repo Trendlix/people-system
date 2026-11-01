@@ -256,7 +256,7 @@ function SummaryTable({ report }: { report: LeaveReportView }) {
 function LeaveList({ report }: { report: LeaveReportView }) {
   return (
     <section aria-labelledby="leave-report-list" className="space-y-3">
-      <SectionTitle id="leave-report-list" title="Leaves" note={`${leavesLabel(report.leaves.length)}, by first day`} />
+      <SectionTitle id="leave-report-list" title="Leaves" note={leavesLabel(report.leaves.length)} />
       <div className="card overflow-x-auto">
         <table className="table">
           <thead>
@@ -328,8 +328,7 @@ async function Report({ searchParams }: { searchParams: Promise<Query> }) {
   const header = (
     <section className="card space-y-4 p-4">
       <Filters filters={f} today={today} departments={departments && departmentOptions(departments)} people={people} />
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
-        <p className="hint">Approved leave only. A leave crossing the period counts only its days inside it, counted as the leave counts its days.</p>
+      <div className="flex justify-end border-t border-line pt-4">
         {/* a plain link, never prefetched: the API makes the workbook on each download */}
         <a href={excelHref(f)} className="btn btn-secondary">
           Download Excel
@@ -379,13 +378,7 @@ export default function LeaveReportPage({ searchParams }: PageProps<'/payroll/re
     <StaffOnly>
       <div className="space-y-4">
         <BackLink href="/payroll/reports">Payroll Reports</BackLink>
-        <div>
-          <h1 className="page-title">Leave Report</h1>
-          <p className="mt-1 text-muted">
-            The approved leave of a month or of a range of months, by employee and leave type, with the permission hours, the work from home days and the annual
-            balance left. Leave is recorded and decided on <Link href="/leave">Leave Requests</Link>.
-          </p>
-        </div>
+        <h1 className="page-title">Leave Report</h1>
         <Suspense fallback={<Loading />}>
           <Report searchParams={searchParams} />
         </Suspense>

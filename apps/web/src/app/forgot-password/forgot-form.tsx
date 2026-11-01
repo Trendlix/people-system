@@ -14,7 +14,6 @@ export function ForgotForm() {
         <p role="status" className="rounded-lg bg-ok-soft px-3 py-2 text-sm text-ok">
           {state.message}
         </p>
-        <p className="text-sm text-muted">Nothing after a few minutes? Check your spam folder, or ask HR for a link.</p>
         <p className="text-sm">
           <Link href="/login">Back to sign in</Link>
         </p>
@@ -23,7 +22,6 @@ export function ForgotForm() {
   }
   return (
     <form action={action} className="space-y-4">
-      <p className="text-sm text-muted">Type the email you sign in with. If it has an account, we email it a link to set a new password.</p>
       <div>
         <label htmlFor={fid('email')} className="mb-1 block text-sm font-medium">
           Email

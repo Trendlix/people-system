@@ -1,13 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { firstJanuaryFrom, form2Problem } from '@trendlix/shared';
+import { form2Problem } from '@trendlix/shared';
 import { DateInput } from '@/components/date-time-inputs';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import { formatDate, parseDate } from '@/lib/format';
 import type { FormState } from '@/lib/types';
 import { focusFirstField, useClosesOnSave } from './contract-buttons';
-import { monthOf } from './raise';
 
 // A step on a change of pay in the Contract section (owner's decisions, 16 October 2026): HR records the Form 2 filed
 // once the CEO approves it. The CEO's decision is approvals/raise-decision-form.tsx, as on Approvals. The small form
@@ -58,17 +57,8 @@ export function RecordForm2({ action, effective, form2From, name }: { action: Ac
         <label htmlFor={fid('form2From')} className="label">
           Insured wage follows from
         </label>
-        <DateInput
-          id={fid('form2From')}
-          name="form2From"
-          aria-describedby={`${fid('form2From-hint')}${problem ? ` ${fid('form2From-problem')}` : ''}`}
-          defaultValue={typed}
-        />
+        <DateInput id={fid('form2From')} name="form2From" aria-describedby={problem ? fid('form2From-problem') : undefined} defaultValue={typed} />
       </div>
-      <p id={fid('form2From-hint')} className="hint">
-        The 1st of the month given with the Form 2 filed (wage change), from {formatDate(effective)}. Without it, the insured wage follows the new pay from{' '}
-        {monthOf(firstJanuaryFrom(effective))}. Leave empty if no Form 2 was filed.
-      </p>
       <div role="status">
         {problem && (
           <p id={fid('form2From-problem')} className="hint text-warn">

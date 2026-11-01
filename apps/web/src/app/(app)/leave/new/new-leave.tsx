@@ -29,11 +29,6 @@ export function NewLeaveHeading({ back }: { back: { href: string; label: string 
     <div className="space-y-2">
       {back && <BackLink href={back.href}>{back.label}</BackLink>}
       <h1 className="page-title">New Leave</h1>
-      <p className="text-muted">
-        Ask for leave: the type, the first and last day, and a reason, with a document when the type needs one. Your direct manager decides it first
-        (without one, your team lead, else the head of your department), then HR; each step shows on the request. As you choose the days you
-        see who else in your team is off; annual leave of more than 2 working days names a colleague who covers your work.
-      </p>
     </div>
   );
 }
@@ -48,10 +43,10 @@ export async function NewLeave({ surface = 'site' }: { surface?: Surface }) {
         <NewLeaveHeading back={back} />
         <Empty>
           {!user.employeeId
-            ? `Only someone with an employee profile can ask for leave. No employee record uses your sign-in email (${user.email}) as its work email yet: ask HR to add it to your profile.`
+            ? `No employee profile uses your sign-in email (${user.email}): ask HR.`
             : !profile
               ? 'Your profile couldn’t be loaded. Please try again in a moment.'
-              : 'Leave is asked for during an employment: you have no current employment on file.'}
+              : 'You have no current employment on file.'}
         </Empty>
       </>
     );
@@ -87,7 +82,7 @@ export async function NewLeave({ surface = 'site' }: { surface?: Surface }) {
         toCeo={profile.confidential === true}
       />
     ) : (
-      <Empty>No type of leave is on yet. HR sets them up: ask HR.</Empty>
+      <Empty>No type of leave is on yet: ask HR.</Empty>
     );
   }
 

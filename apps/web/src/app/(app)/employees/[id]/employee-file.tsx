@@ -5,7 +5,6 @@ import { DocumentViewer, type ViewerFile } from '@/components/document-viewer';
 import { ApiError, apiGet } from '@/lib/api';
 import { formatDate, titleCase } from '@/lib/format';
 import type { EmployeeProfile, PaperworkItem } from '@/lib/types';
-import { aTypeWord, typeWord } from '../employment-law';
 import { describePaperwork } from '../paper-details-actions';
 import { formatSize, idScanTitle, OCR_LABEL, paperworkHref } from '../paperwork';
 import { deletePaperwork, deletePaperworkItems, rereadPaperwork, uploadPaperwork } from '../paperwork-actions';
@@ -100,7 +99,7 @@ function FileLine({ item, owner, can }: { item: PaperworkItem; owner: string; ca
           <DeleteFileButton
             action={deletePaperwork.bind(null, item.id)}
             name={name}
-            confirmText={`Delete ${name} (${item.fileName}) from the employee file? This cannot be undone.`}
+            confirmText={`Delete ${name} (${item.fileName})?`}
           />
         )}
       </div>
@@ -163,7 +162,7 @@ function IdScanLine({ scan, owner, can }: { scan: IdScan; owner: string; can: Fi
           <DeleteFileButton
             action={deletePaperworkItems.bind(null, items.map((item) => item.id))}
             name="the national ID scan"
-            confirmText={`Delete this national ID scan (${sides}) from the employee file? This cannot be undone.`}
+            confirmText={`Delete this national ID scan (${sides})?`}
           />
         )}
       </div>
@@ -253,18 +252,9 @@ export async function EmployeeFile({ employee, today }: { employee: Employee; to
           {uploaded} of {papers.length} uploaded
         </span>
       </Title>
-      <p className="text-sm text-muted">
-        {current
-          ? `The papers ${aTypeWord(current)} employee's file needs.`
-          : type
-            ? `No current employment: the papers of their last employment (${typeWord(type)}).`
-            : 'Not employed yet: the papers a full-time hire needs, collected before the start date. Once hired, the checklist follows the employment type.'}
-        {type && type !== 'full_time' && ' The signed job offer and NDA will be added here with document generation.'}
-      </p>
-
       {expired && (
         <p role="alert" className="rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger">
-          <b>Expired:</b> {expired}. Ask for a new copy and upload it.
+          <b>Expired:</b> {expired}.
         </p>
       )}
       {soon && (

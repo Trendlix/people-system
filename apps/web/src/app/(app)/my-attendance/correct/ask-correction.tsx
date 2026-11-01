@@ -1,4 +1,3 @@
-import { CORRECTION_ASK_WORKING_DAYS } from '@trendlix/shared';
 import type { PersonAttendanceView } from '@/lib/attendance-types';
 import type { MonthCorrectionsPart } from '@/lib/correction-types';
 import { getCurrentUser } from '@/lib/session';
@@ -27,10 +26,6 @@ export function AskCorrectionHeading({ back }: { back: { href: string; label: st
     <div className="space-y-2">
       <BackLink href={back.href}>{back.label}</BackLink>
       <h1 className="page-title">Ask for a Correction</h1>
-      <p className="text-muted">
-        A day that isn&apos;t right: you forgot to check in or out, or a time is wrong. Ask on the day or within {CORRECTION_ASK_WORKING_DAYS} working
-        days of it. Your direct manager (or lead) decides it, then HR; approved, the day is corrected and keeps what it was.
-      </p>
     </div>
   );
 }
@@ -55,7 +50,6 @@ export async function AskCorrection({ searchParams, surface = 'site' }: { search
       date={date}
       today={today}
       cancelHref={surface === 'site' ? `/my-attendance?month=${month}` : appAttendanceHref(month)}
-      toCeo={view.person.employee.confidential}
     />
   );
 }

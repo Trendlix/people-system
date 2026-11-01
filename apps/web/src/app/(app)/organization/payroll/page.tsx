@@ -34,10 +34,6 @@ const Section = ({ children }: { children: React.ReactNode }) => <Suspense fallb
 function PayrollSetup({ user }: { user: SessionUser }) {
   return (
     <div className="space-y-6">
-      <p className="max-w-3xl text-sm text-muted">
-        Everything that changes how each month&apos;s <Link href="/payroll">payroll</Link> is worked out and paid. A run keeps what it was made or last
-        refreshed with, so a change here applies to runs made or refreshed afterwards; approved runs keep theirs.
-      </p>
       <Section>
         <YourRulesSection user={user} />
       </Section>
@@ -45,7 +41,7 @@ function PayrollSetup({ user }: { user: SessionUser }) {
         <LawRatesSection user={user} />
       </Section>
       <p className="card px-6 py-4 text-sm">
-        Holidays: a new run&apos;s expected hours leave out the holidays on the <Link href={holidaysHref()}>Holidays tab</Link>.
+        Holidays are on the <Link href={holidaysHref()}>Holidays tab</Link>.
       </p>
       <Section>
         <PayingSalariesSection user={user} />

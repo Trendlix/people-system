@@ -28,7 +28,7 @@ import { practiceLabel } from '../../practice';
 import { discardKpiDraft, sendKpiDraft, startKpiDraft } from '../actions';
 import { OLD_PILLARS_BADGE, pillarRowsOf, pillarsMonthOf } from '../framework';
 import { TemplateView } from '../template-view';
-import { copyChoices, libraryChoices, librarySuggestion, metricsLabel, publishConfirmText, readsKpiTemplates, sampleLabel, userName } from '../templates';
+import { copyChoices, libraryChoices, metricsLabel, publishConfirmText, readsKpiTemplates, sampleLabel, userName } from '../templates';
 import { DraftEditor } from './draft-editor';
 import { StartDraft } from './start-draft';
 
@@ -68,12 +68,9 @@ function Part({ title, children }: { title: string; children: React.ReactNode })
 function JobDescription({ jobTitle, editLink }: { jobTitle: KpiJobTitleTemplates['jobTitle']; editLink: boolean }) {
   return (
     <section aria-labelledby="kpi-jd" className="card space-y-4 p-5">
-      <div>
-        <h2 id="kpi-jd" className="font-semibold">
-          Job Description
-        </h2>
-        <p className="text-xs text-muted">Link each metric to the duty it measures.</p>
-      </div>
+      <h2 id="kpi-jd" className="font-semibold">
+        Job Description
+      </h2>
       <Part title="Purpose of the Role">{field(jobTitle.jdPurpose)}</Part>
       <Part title="Duties & Responsibilities">{field(jobTitle.jdDuties)}</Part>
       <Part title="Requirements">{field(jobTitle.jdRequirements)}</Part>
@@ -147,7 +144,7 @@ function DraftReadOnly({ draft, attendance }: { draft: KpiTemplateView; attendan
         </h2>
         <span className="badge bg-warn-soft text-warn">Version {draft.version}</span>
       </div>
-      <p className="text-sm text-muted">Being prepared by HR; last saved {formatDateTime(draft.updatedAt)}. It changes nothing until it is published.</p>
+      <p className="text-sm text-muted">Last saved {formatDateTime(draft.updatedAt)}</p>
       <details>
         <summary className="min-h-9 cursor-pointer text-sm font-semibold text-accent">View the draft</summary>
         <div className="mt-4">
@@ -159,9 +156,9 @@ function DraftReadOnly({ draft, attendance }: { draft: KpiTemplateView; attendan
 }
 
 const DONE: Record<string, string> = {
-  started: 'Draft started. Change it below, then save it or publish it.',
+  started: 'Draft started.',
   saved: 'Draft saved.',
-  discarded: 'Draft discarded. The published versions are as they were.',
+  discarded: 'Draft discarded.',
 };
 
 async function Builder({ params, searchParams }: { params: PageProps<'/kpis/templates/[jobTitleId]'>['params']; searchParams: PageProps<'/kpis/templates/[jobTitleId]'>['searchParams'] }) {
@@ -190,7 +187,7 @@ async function Builder({ params, searchParams }: { params: PageProps<'/kpis/temp
   const done = typeof query.done === 'string' ? query.done : null;
   const published = done === 'published' ? (versions[0] ?? null) : null;
   const doneText = published
-    ? `Version ${published.version} is published. It applies to the scorecards opened from ${formatDate(published.opensFrom)}${published.firstMonth ? `: ${kpiMonthName(published.firstMonth)}’s KPIs on` : ''}.`
+    ? `Version ${published.version} published, applying from ${formatDate(published.opensFrom)}.`
     : done
       ? (DONE[done] ?? null)
       : null;
@@ -232,10 +229,8 @@ async function Builder({ params, searchParams }: { params: PageProps<'/kpis/temp
           {draft && !canEdit && <DraftReadOnly draft={draft} attendance={attendance} />}
           {oldNewest && !draft && (
             <p role="status" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
-              <span className="font-semibold">Version {oldNewest.version} uses the old pillars.</span>{' '}
-              {canEdit
-                ? `Start a draft from a copy of it to place its metrics in the new pillars, then publish it. Until a version on the new pillars applies, its scorecards keep opening on version ${oldNewest.version} and its pillars.`
-                : `HR updates it to the new pillars. Until then, its scorecards keep opening on version ${oldNewest.version} and its pillars.`}
+              <span className="font-semibold">Version {oldNewest.version} uses the old pillars.</span>
+              {canEdit && ' Start a draft from a copy of it to update it.'}
             </p>
           )}
           {starting && (
@@ -245,13 +240,8 @@ async function Builder({ params, searchParams }: { params: PageProps<'/kpis/temp
               // the API's samples; when they can't be read, the same three from the shared rules (their codes are the API's)
               samples={(samples ?? KPI_SAMPLE_TEMPLATES).map((s) => ({ code: s.code, label: sampleLabel(s) }))}
               copies={rows ? copyChoices(rows, jobTitleId) : null}
-              library={{ groups: libraryChoices(libraryRoles), suggested: suggested?.key ?? null, suggestion: suggested ? librarySuggestion(suggested) : null }}
+              library={{ groups: libraryChoices(libraryRoles), suggested: suggested?.key ?? null }}
             />
-          )}
-          {!canEdit && (
-            <p className="text-sm text-muted">
-              {versions.length ? 'The versions published, newest first. HR builds the templates.' : 'No KPI template is published for this job title yet. HR builds the templates.'}
-            </p>
           )}
           <Versions versions={versions} today={today} openInForce={!canEdit} attendance={attendance} />
         </div>

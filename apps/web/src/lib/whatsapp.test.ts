@@ -65,7 +65,7 @@ describe('what HR sees on the Access tab', () => {
     expect(lines).toEqual({
       status: 'On',
       details: ['On since 24/10/2026, 2:05 PM, at +201001234567.', 'In العربية (Arabic): Request decisions, Check-in reminders.'],
-      note: 'Only Mona Adel turns this on or off, from their own Notifications page (or by replying STOP).',
+      note: 'Only Mona Adel turns this on or off.',
     });
   });
 

@@ -60,7 +60,7 @@ export function DepartmentForm({
           value={parentId}
           onChange={(e) => setParentId(e.target.value)}
           disabled={teams > 0}
-          aria-describedby={fid('parentId-hint')}
+          aria-describedby={teams > 0 ? fid('parentId-hint') : undefined}
           className="input disabled:cursor-not-allowed disabled:bg-canvas disabled:text-muted"
         >
           <option value="">None — this is a department</option>
@@ -70,11 +70,11 @@ export function DepartmentForm({
             </option>
           ))}
         </Select>
-        <p id={fid('parentId-hint')} className="hint">
-          {teams > 0
-            ? `${department?.nameEn} has ${teams} ${teams === 1 ? 'team' : 'teams'}, so it stays a department. Move its teams to another department first to make it a team.`
-            : 'Choose a department to make this a team in it, e.g. Content Team in Marketing.'}
-        </p>
+        {teams > 0 && (
+          <p id={fid('parentId-hint')} className="hint">
+            It has teams, so it stays a department.
+          </p>
+        )}
       </div>
       <div>
         <label htmlFor={fid('nameEn')} className="label">
@@ -104,7 +104,6 @@ export function DepartmentForm({
           id={fid('headId')}
           name="headId"
           defaultValue={valueOf(state, 'headId', department?.head?.id)}
-          aria-describedby={fid('headId-hint')}
           className="input"
         >
           <option value="">No one</option>
@@ -114,11 +113,6 @@ export function DepartmentForm({
             </option>
           ))}
         </Select>
-        <p id={fid('headId-hint')} className="hint">
-          {isTeam
-            ? 'The person in charge of the team, any current employee. Suggested as the direct manager of people hired into it, and decides the leave and reimbursement claims of its people who have no direct manager.'
-            : 'The person in charge of the department, any current employee. Suggested as the direct manager of people hired into it (or into a team of it without a team lead), and decides the leave and reimbursement claims of its people who have no direct manager or team lead.'}
-        </p>
       </div>
       <div className="flex flex-wrap gap-3">
         <SubmitButton busy={pending}>{department ? 'Save changes' : isTeam ? 'Create team' : 'Create department'}</SubmitButton>

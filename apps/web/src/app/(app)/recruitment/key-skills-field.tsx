@@ -15,7 +15,6 @@ export function KeySkillsField({
   initialNote = null,
   jobTitles,
   inputId,
-  hintId,
 }: {
   initial: string[];
   /** Said as the form opens with key skills suggested already (?suggest=1). */
@@ -23,7 +22,6 @@ export function KeySkillsField({
   /** The job titles' picker labels, to read the chosen one's name. */
   jobTitles: { id: string; label: string }[];
   inputId: string;
-  hintId: string;
 }) {
   const [skills, setSkills] = useState<string[]>(initial);
   const [draft, setDraft] = useState('');
@@ -99,7 +97,6 @@ export function KeySkillsField({
                 add();
               }
             }}
-            aria-describedby={hintId}
             placeholder="e.g. Premiere Pro, After Effects, color grading"
             className="input"
           />
@@ -111,10 +108,6 @@ export function KeySkillsField({
           Suggest key skills
         </button>
       </div>
-      <p id={hintId} className="hint">
-        Up to {KEY_SKILLS_LIMITS.max}, each up to {KEY_SKILLS_LIMITS.length} characters. Found as whole words in any case, in English or Arabic (a known skill
-        under its other names too). Suggest key skills reads the title and the texts above.
-      </p>
       {note && (
         <p role="status" className="text-sm text-muted">
           {note}

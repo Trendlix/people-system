@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { EXIT_RATING_LABELS, EXIT_RATINGS, EXIT_REASON_LABELS, EXIT_RECOMMEND_LABELS } from '@trendlix/shared';
 import { MY_REQUESTS } from '@/components/nav';
-import { formatDate } from '@/lib/format';
 import { BackLink, Empty, Loading } from '../../organization/ui';
 import { declineMyInterview, sendMyInterview } from '../../offboarding/actions';
 import { loadMyExitInterview, offboardingNotLoaded } from '../../offboarding/data';
@@ -21,13 +20,13 @@ async function Interview({ searchParams }: { searchParams: PageProps<'/my-reques
   const i = loaded.value.interview;
   if (!i) return <Empty>There is no exit interview for you.</Empty>;
   if (i.status === 'declined') {
-    return <Empty>{query.declined === '1' ? 'Noted: no exit interview. Thank you for your time here.' : 'You chose not to do the exit interview.'}</Empty>;
+    return <Empty>{query.declined === '1' ? 'Noted: no exit interview.' : 'You chose not to do the exit interview.'}</Empty>;
   }
   if (i.status === 'submitted') {
     return (
       <div className="card space-y-4 p-6">
         <p role="status" className="rounded-lg bg-ok-soft px-4 py-3 text-sm text-ok">
-          {query.sent === '1' ? 'Sent. Thank you: HR reads every answer.' : 'Your exit interview was sent. Thank you.'}
+          {query.sent === '1' ? 'Sent. Thank you.' : 'Your exit interview was sent. Thank you.'}
         </p>
         {i.answers && (
           <dl className="grid gap-x-6 gap-y-2 sm:grid-cols-[14rem_1fr]">
@@ -55,11 +54,7 @@ async function Interview({ searchParams }: { searchParams: PageProps<'/my-reques
   return (
     <div className="space-y-6">
       <div className="card p-6">
-        <ExitInterviewForm
-          action={sendMyInterview}
-          submitLabel="Send"
-          intro={`A few questions about your time here${i.lastWorkingDay ? `, before your last working day, ${formatDate(i.lastWorkingDay)}` : ''}. HR reads your answers to make the company a better place to work; your manager never sees them. You can send them once.`}
-        />
+        <ExitInterviewForm action={sendMyInterview} submitLabel="Send" />
       </div>
       <div className="card p-6">
         <h2 className="mb-2 font-semibold">Rather Not?</h2>

@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { Suspense } from 'react';
 import { INTERNSHIP_AGREEMENT } from '@trendlix/shared';
@@ -10,7 +9,6 @@ import { contractHref, EditHeading, Empty, Loading, RequireHr, todayInCairo } fr
 import { ContractForm } from '../../contract-form';
 import { loadAllowanceTypes, loadContractSettings, loadContracts } from '../../data';
 import { changeOf, editHref, stageOf, versionBefore, versionPay } from '../../raise';
-import { CONVERSION_PROBATION_HINT, CONVERSION_START_HINT } from '../../training';
 import { withCodeInBrackets } from '@/lib/hidden';
 
 // Changing a draft of the current employment's contract, before it is signed. A signed version changes only in its
@@ -42,15 +40,14 @@ async function EditContract({ params }: { params: Promise<{ id: string; contract
   } else if (contract.status !== 'draft') {
     body = (
       <Empty>
-        {withCodeInBrackets(`Version ${contract.version}`, contract.number)} was signed{contract.signedOn && ` on ${formatDate(contract.signedOn)}`}: only its filing dates and note
-        can change, with the contract on the Employment tab. A change of terms is a new version.
+        {withCodeInBrackets(`Version ${contract.version}`, contract.number)} was signed{contract.signedOn && ` on ${formatDate(contract.signedOn)}`}: a change of terms is a
+        new version.
       </Empty>
     );
   } else if (stageOf(contract) === 'pending_ceo') {
     body = (
       <Empty>
-        {withCodeInBrackets(`Version ${contract.version}`, contract.number)} changes the pay and is with the CEO: it can&apos;t be changed unless the CEO returns it. See it with
-        the contract on the <Link href={back}>Employment tab</Link>.
+        {withCodeInBrackets(`Version ${contract.version}`, contract.number)} is with the CEO: it can&apos;t be changed unless the CEO returns it.
       </Empty>
     );
   } else {
@@ -63,14 +60,11 @@ async function EditContract({ params }: { params: Promise<{ id: string; contract
         <p className="text-sm text-muted">
           Draft of {withCodeInBrackets(`version ${contract.version}`, contract.number)}
           {conversion
-            ? `, the full-time contract the ${INTERNSHIP_AGREEMENT} (version ${contract.version - 1}) converts to; signing it makes the employment full-time`
+            ? `, the full-time contract the ${INTERNSHIP_AGREEMENT} (version ${contract.version - 1}) converts to`
             : renewal
               ? `, renewing version ${contract.version - 1}`
               : ''}
-          .{' '}
-          {raise
-            ? 'It changes the pay: send it to the CEO on the Employment tab, and sign it there once the CEO approves it and the employee and the company have signed it.'
-            : 'Sign it on the Employment tab once the employee and the company have signed it.'}
+          .
         </p>
         {raise?.returnedReason && (
           <p role="alert" className="rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger">
@@ -79,8 +73,7 @@ async function EditContract({ params }: { params: Promise<{ id: string; contract
         )}
         {raise?.approval === 'approved' && (
           <p className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
-            The CEO approved its new pay. Changing its terms sends it back to HR as a draft, to send to the CEO again; changing the note alone keeps the
-            approval.
+            The CEO approved its new pay: changing its terms sends it back to HR as a draft.
           </p>
         )}
         <ContractForm
@@ -105,14 +98,12 @@ async function EditContract({ params }: { params: Promise<{ id: string; contract
             note: contract.note ?? '',
           }}
           allowanceTypes={allowanceTypes}
-          renewal={renewal ? { startDate: contract.startDate, after: `version ${contract.version - 1}` } : null}
+          renewal={renewal ? { startDate: contract.startDate } : null}
           payChange={
             renewal && previous && e.employmentType !== 'intern'
               ? { version: previous.version, pay: versionPay(previous), changes: Boolean(raise), reason: raise?.reason ?? null }
               : undefined
           }
-          probationHint={conversion ? CONVERSION_PROBATION_HINT : undefined}
-          startHint={conversion ? CONVERSION_START_HINT : undefined}
           employmentType={conversion ? 'full_time' : e.employmentType}
           today={today}
           lawYears={lawYears}

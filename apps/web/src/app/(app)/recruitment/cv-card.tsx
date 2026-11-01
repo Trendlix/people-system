@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import type { CvReadingView } from '@trendlix/shared';
 import { getCurrentUser } from '@/lib/session';
-import { CV_CARD_NOTE, cvTextMissing, latestRoleText, linksFound, moreFromCv, periodText, readingFacts, readingStatusText, shortLink, workHistoryHeading } from './cv-reading';
+import { cvTextMissing, latestRoleText, linksFound, moreFromCv, periodText, readingFacts, readingStatusText, shortLink, workHistoryHeading } from './cv-reading';
 import { CvFitSection, FitPercent } from './cv-fit-ui';
 import { NO_KEY_SKILLS_NOTE } from './cv-fit';
 import { CvTextViewer } from './cv-text-viewer';
@@ -162,8 +162,8 @@ export async function FromTheCv({ reading, subject }: { reading: CvReadingView; 
             })}
           </ol>
           {marksCompanies && (
-            <p className="border-t border-line px-4 py-3 text-xs text-muted">
-              A mark counts for every CV that names the company. <Link href={AGENCY_MARKS_HREF}>See all marketing agency marks</Link>
+            <p className="border-t border-line px-4 py-3 text-xs">
+              <Link href={AGENCY_MARKS_HREF}>See all marketing agency marks</Link>
             </p>
           )}
         </details>
@@ -217,16 +217,15 @@ export async function FromTheCv({ reading, subject }: { reading: CvReadingView; 
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-muted">Looked for once the CV&apos;s text is read: {[...reading.skills.found, ...reading.skills.missing].join(', ')}.</p>
+              <p className="text-sm text-muted">Not checked yet: {[...reading.skills.found, ...reading.skills.missing].join(', ')}.</p>
             )}
           </div>
         ) : (
-          <p className="text-sm text-muted">{NO_KEY_SKILLS_NOTE} Add them on the vacancy&apos;s form to see which the CV names.</p>
+          <p className="text-sm text-muted">{NO_KEY_SKILLS_NOTE}</p>
         ))}
 
       {text && (text.kind === 'ok' ? text.value.cvText && <CvTextViewer text={text.value.cvText} /> : <p className="text-sm text-muted">{cvTextMissing(text)}</p>)}
 
-      <p className="text-xs text-muted">{CV_CARD_NOTE}</p>
     </section>
   );
 }

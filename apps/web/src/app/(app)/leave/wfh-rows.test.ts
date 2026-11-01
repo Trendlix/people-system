@@ -3,9 +3,9 @@ import type { LeaveRequestView, PermissionRequestView } from '../../../lib/types
 import type { WfhRequestView } from '../../../lib/wfh-types';
 import { wfhListPath } from '../attendance/wfh/wfh';
 import { isPermission } from './permissions';
-import { isWfhChoice, OWN_WFH_TEXT, recordTypeChoices, WFH_CHOICE, WFH_CHOICE_HINT } from './record/record-kind';
+import { isWfhChoice, OWN_WFH_TEXT, recordTypeChoices, WFH_CHOICE } from './record/record-kind';
 import { WFH_TYPE } from './request-filters';
-import { isWfh, listEmptyText, mergeLeaveList, rowHref, rowKind, WFH_WHEN_NOTE, wfhQueryOf } from './wfh-rows';
+import { isWfh, listEmptyText, mergeLeaveList, rowHref, rowKind, wfhQueryOf } from './wfh-rows';
 
 // Work from home shown with leave (owner, 26 October 2026, on Record leave's types: "YES move it to leaves"; asked,
 // "Show it with leave"): listed on Leave Requests with the leave and the permissions, and recorded from Record leave.
@@ -110,7 +110,6 @@ describe('Leave Requests with work from home', () => {
     expect(rowHref(wfh())).toBe(`/attendance/wfh/${WFH_ID}`);
     expect(rowHref(permission({ id: 'p-1' }))).toBe('/leave/permissions/p-1');
     expect(rowHref(leave({ id: 'l-1' }))).toBe('/leave/l-1');
-    expect(WFH_WHEN_NOTE).toBe('A working day, not leave');
   });
 
   it('asks the work from home list with the same status, person and days: Waiting for you is what waits for the caller', () => {
@@ -126,7 +125,7 @@ describe('Leave Requests with work from home', () => {
     expect(listEmptyText('waiting', 'all')).toBe('No leave, permission or work from home requests are waiting for you.');
     expect(listEmptyText('approved', 'all')).toBe('No leave, permission or work from home approved.');
     expect(listEmptyText('waiting', 'wfh')).toBe('No work from home requests are waiting for you.');
-    expect(listEmptyText('all', 'wfh')).toBe('No work from home requests yet. Employees ask from My Requests; HR records a day for someone with Record leave, choosing Work from home.');
+    expect(listEmptyText('all', 'wfh')).toBe('No work from home requests yet.');
     expect(listEmptyText('waiting', 'leave')).toBe('No leave requests are waiting for you.');
     expect(listEmptyText('waiting', 'permission')).toBe('No permission requests are waiting for you.');
   });
@@ -155,9 +154,7 @@ describe('Record leave’s Work from home', () => {
     expect(isWfhChoice('')).toBe(false);
   });
 
-  it('is one day at a time, a working day, and never HR’s own', () => {
-    expect(WFH_CHOICE_HINT).toContain('One day at a time');
-    expect(WFH_CHOICE_HINT).toContain('Not leave');
-    expect(OWN_WFH_TEXT).toBe('Someone else in HR has to record your own work from home day, or ask for it from My Requests.');
+  it('is never HR’s own', () => {
+    expect(OWN_WFH_TEXT).toBe('Someone else in HR has to record your own work from home day.');
   });
 });

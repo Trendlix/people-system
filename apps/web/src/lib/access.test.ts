@@ -73,10 +73,10 @@ describe('the access states on screen', () => {
     expect(accessStatusLine(active, date)).toBe('Password set. They haven’t signed in yet.');
     expect(accessStatusLine({ ...active, account: { ...active.account!, lastSignInAt: '2026-10-23T07:00:00Z' } }, date)).toBe('Password set. Last signed in 2026-10-23.');
     expect(accessStatusLine(view({ state: 'closed', closedReason: 'Their employment ended on 2026-10-21.' }), date)).toBe('Their employment ended on 2026-10-21.');
-    expect(accessStatusLine(view({ state: 'no_email', account: null }), date)).toBe('Add an email to give access: a work or personal email on Basic Data.');
+    expect(accessStatusLine(view({ state: 'no_email', account: null }), date)).toBe('Add an email to give access.');
     expect(accessStatusLine(view({ state: 'not_eligible', account: null, notEligibleReason: 'Their contract isn’t signed yet.' }), date)).toBe('Their contract isn’t signed yet.');
     expect(accessStatusLine(view({ state: 'clash', account: null, clash: { email: 'x@y.com', otherEmployee: null } }), date)).toContain('Another account already signs in with x@y.com.');
-    expect(accessStatusLine(view({ state: 'pending', account: null }), date)).toContain('Give access now');
+    expect(accessStatusLine(view({ state: 'pending', account: null }), date)).toBe('The account is made within a few minutes.');
   });
 });
 
@@ -108,15 +108,15 @@ describe('the standing on screen (23 October 2026: "Active - Grace - Hold - No A
 
   it('says what Hold and Grace mean, and when a grace of this gap was used', () => {
     const gap = { contractId: 'c1', number: 'CON-2025-0007', endDate: '2026-10-20' };
-    expect(standingLine(standing({ standing: 'hold', gap }), date)).toBe('Their contract CON-2025-0007 ended on 2026-10-20: only check-in and check-out work until it’s renewed.');
+    expect(standingLine(standing({ standing: 'hold', gap }), date)).toBe('Their contract CON-2025-0007 ended on 2026-10-20: check-in and check-out only.');
     const grace = { from: '2026-10-23', until: '2026-10-30', grantedAt: '2026-10-23T08:00:00Z', grantedBy: { id: 'u9', name: 'Hana HR' }, running: true };
-    expect(standingLine(standing({ standing: 'grace', gap, grace }), date)).toBe('Grace until 2026-10-30, given by Hana HR on 2026-10-23. Full access until the end of that day.');
+    expect(standingLine(standing({ standing: 'grace', gap, grace }), date)).toBe('Grace until 2026-10-30, given by Hana HR on 2026-10-23.');
     expect(usedGraceLine(standing({ standing: 'grace', gap, grace }), date)).toBeNull();
     expect(usedGraceLine(standing({ standing: 'hold', gap, grace: { ...grace, running: false } }), date)).toBe('Grace already used in this gap (2026-10-23 to 2026-10-30).');
     expect(standingLine(standing(), date)).toBeNull();
     // HR's hold (owner, 1 November 2026), whatever the contract: who and when
     expect(standingLine(standing({ standing: 'hold', held: { reason: 'Investigation pending', since: '2026-11-01T09:00:00.000Z', by: { id: 'u1', name: 'Hana HR' } } }), date)).toBe(
-      'Hana HR put their access on hold on 2026-11-01: only check-in and check-out work until HR releases it.',
+      'Hana HR put their access on hold on 2026-11-01: check-in and check-out only.',
     );
     expect(exemptLine(standing({ exempt: 'super_admin' }))).toBe('Never on hold: Super Admin.');
     expect(exemptLine(standing({ exempt: 'ceo' }))).toBe('Never on hold: CEO.');
@@ -127,7 +127,7 @@ describe('the standing on screen (23 October 2026: "Active - Grace - Hold - No A
     expect(offersGrace(view({ standing: standing({ standing: 'hold', canGiveGrace: true }) }))).toBe(true);
     expect(offersGrace(view({ standing: standing({ standing: 'hold', canGiveGrace: false }) }))).toBe(false);
     expect(offersGrace(view({}))).toBe(false);
-    expect(graceQuestion('2026-10-30', date)).toBe('Give 7 days’ grace, until 2026-10-30? Once in this gap; it can’t be extended.');
+    expect(graceQuestion('2026-10-30', date)).toBe('Give 7 days’ grace, until 2026-10-30? It can’t be extended.');
   });
 
   it('flags an account that still signs in though they left', () => {
@@ -143,14 +143,14 @@ describe('the standing on screen (23 October 2026: "Active - Grace - Hold - No A
 
   it('warns of no contract entered: on hold from a day unless HR enters a signed contract, then held (23 October 2026)', () => {
     const counting = standing({ standing: 'no_access', noContract: { since: '2026-10-23', holdFrom: '2026-10-31' } });
-    expect(noContractLine(counting, date)).toBe('No contract entered: on hold from 2026-10-31 unless HR enters a signed contract.');
+    expect(noContractLine(counting, date)).toBe('No contract entered: on hold from 2026-10-31.');
     expect(noContractLine(standing({ standing: 'no_access', noContract: { since: null, holdFrom: null } }), date)).toBe(
-      'No contract entered: on hold 7 days from now unless HR enters a signed contract.',
+      'No contract entered: on hold 7 days from now.',
     );
     expect(noContractLine(standing({ standing: 'no_access' }), date)).toBeNull();
     const held = standing({ standing: 'hold', noContract: { since: '2026-10-10', holdFrom: '2026-10-18' }, canGiveGrace: true });
     expect(noContractLine(held, date)).toBeNull();
-    expect(standingLine(held, date)).toBe('No contract entered: only check-in and check-out work until a signed contract is entered.');
+    expect(standingLine(held, date)).toBe('No contract entered: check-in and check-out only.');
     expect(offersGrace(view({ standing: held }))).toBe(true);
   });
 });
@@ -204,8 +204,8 @@ describe('the Employees list’s Access column', () => {
 
   it('invites those with an account and no invitation, and asks first how many', () => {
     expect(invitableIds(rows)).toEqual(['a']);
-    expect(inviteQuestion(1)).toBe('Email a set-password invitation to 1 person? The link works for 7 days.');
-    expect(inviteQuestion(12)).toBe('Email a set-password invitation to 12 people? Each link works for 7 days.');
+    expect(inviteQuestion(1)).toBe('Email a set-password invitation to 1 person?');
+    expect(inviteQuestion(12)).toBe('Email a set-password invitation to 12 people?');
   });
 });
 

@@ -21,12 +21,12 @@ async function Mine() {
   const [user, loaded] = await Promise.all([getCurrentUser(), loadMyHiring()]);
   if (loaded.kind !== 'ok') return <Empty>{recruitmentNotLoaded(loaded, 'hiring')}</Empty>;
   const { vacancies, interviews, feedbackDue } = loaded.value;
-  if (!vacancies.length && !interviews.length) return <Empty>Nothing to hire for or interview yet: HR adds you as a vacancy’s hiring manager or an interviewer.</Empty>;
+  if (!vacancies.length && !interviews.length) return <Empty>Nothing to hire for or interview yet.</Empty>;
   return (
     <div className="space-y-6">
       {feedbackDue > 0 && (
         <p role="note" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
-          {feedbackDue} {feedbackDue === 1 ? 'scorecard is' : 'scorecards are'} waiting for you: open the applicant to give it.
+          {feedbackDue} {feedbackDue === 1 ? 'scorecard is' : 'scorecards are'} waiting for you.
         </p>
       )}
       {/* the shortlists HR sent them, to accept or reject (owner, 29 October 2026: "Manager view the shortlisted and accept or reject them") */}
@@ -66,12 +66,7 @@ async function Mine() {
 export default function MyHiringPage() {
   return (
     <div className="max-w-5xl space-y-4">
-      <div className="space-y-1">
-        <h1 className="page-title">My Hiring</h1>
-        <p className="max-w-3xl text-sm text-muted">
-          The vacancies you hire for, from Shortlisted on, and the interviews you sit on or hire for. Give your scorecard on the applicant’s page after each interview.
-        </p>
-      </div>
+      <h1 className="page-title">My Hiring</h1>
       <Suspense fallback={<Loading />}>
         <Mine />
       </Suspense>

@@ -57,7 +57,7 @@ export const loadDraft = cache((id: string): Promise<Loaded<AssetDraftView>> => 
 
 /** What an Assets page says in place of what it couldn't load. */
 export function assetsNotLoaded(loaded: Exclude<Loaded<unknown>, { kind: 'ok' }>, what: string): string {
-  if (loaded.kind === 'unavailable') return 'Not available yet: the server does not have Assets yet. Please try again after its next update.';
+  if (loaded.kind === 'unavailable') return 'Not available yet.';
   if (loaded.kind === 'forbidden') return `You can't see the ${what}.`;
   return `The ${what} could not be loaded. ${loaded.messages.join(' ')}`;
 }

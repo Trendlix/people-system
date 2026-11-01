@@ -77,7 +77,7 @@ export const metadata: Metadata = { title: 'Unsettled · People System' };
 const quiet = 'px-4 py-10 text-center text-sm text-muted';
 const dash = <span className="text-muted">—</span>;
 
-function Section({ id, title, count, total, note, children }: { id: string; title: string; count: string; total?: string; note?: string; children: React.ReactNode }) {
+function Section({ id, title, count, total, children }: { id: string; title: string; count: string; total?: string; children: React.ReactNode }) {
   return (
     <section id={id} aria-labelledby={`${id}-title`} className="scroll-mt-6 space-y-3">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -88,7 +88,6 @@ function Section({ id, title, count, total, note, children }: { id: string; titl
           {count}
           {total && <> · {total}</>}
         </span>
-        {note && <span className="w-full text-xs text-muted">{note}</span>}
       </div>
       <div className="card">{children}</div>
     </section>
@@ -155,13 +154,7 @@ function RunsNotPaid({ u }: { u: UnsettledView }) {
 
 function LinesOnHold({ u, hr, today }: { u: UnsettledView; hr: boolean; today: string }) {
   return (
-    <Section
-      id="held"
-      title="Lines on Hold"
-      count={counted(u.held.count, 'line', 'lines')}
-      total={`${formatEgp(u.held.amount)} held`}
-      note="Held on an approved or paid run, so the bank files left them out. Each stays here until HR records it paid out."
-    >
+    <Section id="held" title="Lines on Hold" count={counted(u.held.count, 'line', 'lines')} total={`${formatEgp(u.held.amount)} held`}>
       {u.held.rows.length === 0 ? (
         <p className={quiet}>No held pay waiting to be paid out.</p>
       ) : (
@@ -218,12 +211,7 @@ function ChangedAfterLock({ u, hr }: { u: UnsettledView; hr: boolean }) {
   if (!u.lockedChanges) return null;
   const rows = u.lockedChanges.rows;
   return (
-    <Section
-      id="locked"
-      title="Changed After the Payroll Moved On"
-      count={counted(u.lockedChanges.count, 'change', 'changes')}
-      note="Leave, permission, work from home or official duty recorded, approved or cancelled for a month whose payroll was with the CEO, approved or paid: that payroll keeps its lines. Correct each by hand on a later payroll and mark it handled; a run returned to HR and refreshed handles its own."
-    >
+    <Section id="locked" title="Changed After the Payroll Moved On" count={counted(u.lockedChanges.count, 'change', 'changes')}>
       {rows.length === 0 ? (
         <p className={quiet}>Nothing changed after a payroll moved on.</p>
       ) : (
@@ -342,7 +330,7 @@ function UnusedLeaveToPay({ settlement: s, hr }: { settlement: FinalSettlement; 
           <ActionButton
             action={payUnusedLeave.bind(null, s.employmentId)}
             pendingText="Recording…"
-            confirmText={`Record ${s.employee.name}'s unused leave paid? ${formatEgp(u.amount)} is added to the payroll of the final month (or the next one open) as Unused leave paid, taxed.`}
+            confirmText={`Record ${s.employee.name}'s unused leave (${formatEgp(u.amount)}) as paid?`}
           >
             Record as paid<span className="sr-only"> for {s.employee.name}</span>
           </ActionButton>
@@ -355,12 +343,7 @@ function UnusedLeaveToPay({ settlement: s, hr }: { settlement: FinalSettlement; 
 function FinalSettlements({ u, hr, today }: { u: UnsettledView; hr: boolean; today: string }) {
   const recent = u.settlements.recentlySettled;
   return (
-    <Section
-      id="settlements"
-      title="Final Settlements"
-      count={counted(u.settlements.count, 'open', 'open')}
-      note="Each employment that has ended, from its end date until HR marks its final dues settled."
-    >
+    <Section id="settlements" title="Final Settlements" count={counted(u.settlements.count, 'open', 'open')}>
       {u.settlements.rows.length === 0 ? (
         <p className={quiet}>No final settlements open.</p>
       ) : (
@@ -556,7 +539,6 @@ function AdvancesAndLoans({ u, hr, today, people }: { u: UnsettledView; hr: bool
       title="Advances and Loans"
       count={counted(u.advances.count, 'open', 'open')}
       total={`${formatEgp(u.advances.outstanding)} outstanding of ${formatEgp(u.advances.amount)}`}
-      note="Each is recovered by its monthly installments, made when it is recorded, or by deductions linked to it on Additions / Deductions: those applied to a run count as recovered, those pending as planned."
     >
       {hr && (
         <details className="border-b border-line">
@@ -690,10 +672,6 @@ export default function UnsettledPage() {
     <StaffOnly>
       <div className="max-w-6xl">
         <h1 className="page-title">Unsettled</h1>
-        <p className="mt-1 text-muted">
-          What the payroll still owes or is owed: runs not yet paid, pay held on a run and not paid out since, leave or attendance changed after a payroll moved
-          on, the final dues of people who left, and advances and loans still being recovered.
-        </p>
         <div className="mt-6">
           <Suspense fallback={<Loading />}>
             <Unsettled />

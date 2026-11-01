@@ -62,26 +62,24 @@ async function NewRaise({ params, searchParams }: { params: Promise<{ id: string
     // the unpaid internship (19 October 2026): no wage to raise
     body = (
       <Empty>
-        An intern is unpaid: the internship agreement pays no wage, only allowances. To pay a wage, convert it to a full-time contract (Convert to
-        full-time, with the contract on the <Link href={back}>Employment tab</Link>).
+        An intern is unpaid: convert the agreement to a full-time contract on the <Link href={back}>Employment tab</Link> first.
       </Empty>
     );
   } else if (draft) {
     body = (
       <Empty>
-        {withCodeInBrackets(`Version ${draft.version}`, draft.number)} is still a draft: sign it, or have a Super Admin delete it, before adding a raise.{' '}
-        <Link href={editHref(employee.id, draft.id, changeOf(draft, contracts))}>Change the draft</Link>, or see it with the contract on the{' '}
-        <Link href={back}>Employment tab</Link>.
+        {withCodeInBrackets(`Version ${draft.version}`, draft.number)} is still a draft: sign or delete it before adding a raise.{' '}
+        <Link href={editHref(employee.id, draft.id, changeOf(draft, contracts))}>Change the draft</Link>
       </Empty>
     );
   } else if (!active) {
     body = (
       <Empty>
-        A raise changes the signed contract in force: sign the contract first, with the contract on the <Link href={back}>Employment tab</Link>.
+        No signed contract is in force: sign it on the <Link href={back}>Employment tab</Link> first.
       </Empty>
     );
   } else if (e.ending?.status === 'pending_ceo' || e.ending?.status === 'approved') {
-    body = <Empty>An ending of this employment is in progress: no raise while it is. Withdraw the ending first.</Empty>;
+    body = <Empty>An ending of this employment is in progress: withdraw it first.</Empty>;
   } else {
     const defaults: RaiseDefaults = {
       way: 'amendment',
@@ -111,24 +109,18 @@ async function NewRaise({ params, searchParams }: { params: Promise<{ id: string
         <p className="text-sm text-muted">
           A raise on {withCodeInBrackets(`version ${active.version}`, active.number)}, the contract in force
           {active.endDate ? ` from ${formatDate(active.startDate)} to ${formatDate(active.endDate)}` : ` since ${formatDate(active.startDate)}`}
-          {active.grossSalary !== null && `, paying a gross of ${formatEgp(active.grossSalary)} a month`}.{' '}
-          {preparable
-            ? 'Sign it with the contract on the Employment tab once the CEO approves it.'
-            : 'It is saved as a draft: send it to the CEO with the contract on the Employment tab, and sign it there once the CEO approves it.'}
+          {active.grossSalary !== null && `, paying a gross of ${formatEgp(active.grossSalary)} a month`}.
         </p>
         {requestId &&
           (preparable ? (
             <p className="rounded-lg bg-accent-soft px-4 py-3 text-sm">
               Approving the raise request by {RAISE_REQUESTER_LABELS[preparable.requester].toLowerCase()}
               {preparable.requestedBy && ` (${preparable.requestedBy.email})`} on {formatDate(preparable.createdAt)}
-              {suggestionText(preparable.suggestion ?? null) && `, suggesting ${suggestionText(preparable.suggestion ?? null)}`}. The gross starts from what it
-              suggests, the date from the month it is asked from and the note from its comment. Saving approves it with your comment and sends the raise to the CEO at once; the CEO&apos;s
-              decision on the raise is the request&apos;s.
+              {suggestionText(preparable.suggestion ?? null) && `, suggesting ${suggestionText(preparable.suggestion ?? null)}`}.
             </p>
           ) : (
             <p role="alert" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
-              The raise request can&apos;t be prepared here: it isn&apos;t this employment&apos;s, isn&apos;t with HR any more, or a raise is already prepared
-              from it. This raise is entered on its own.
+              The raise request can&apos;t be prepared here: this raise is entered on its own.
             </p>
           ))}
         <RaiseForm

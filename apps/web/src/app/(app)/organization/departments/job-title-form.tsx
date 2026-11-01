@@ -61,16 +61,11 @@ export function JobTitleForm({
           name="departmentId"
           required
           defaultValue={valueOf(state, 'departmentId', jobTitle?.departmentId ?? defaultDepartmentId)}
-          aria-describedby={fid('departmentId-hint')}
           className="input"
         >
           <option value="">Choose a department or team</option>
           <DepartmentOrTeamOptions departments={departments} />
         </Select>
-        <p id={fid('departmentId-hint')} className="hint">
-          The department itself for a job title over the whole department, e.g. Head of Marketing; otherwise one of its teams,
-          e.g. Content Team for Senior Content Creator.
-        </p>
       </div>
 
       <div className="grid gap-5 sm:grid-cols-2">
@@ -82,7 +77,7 @@ export function JobTitleForm({
         </div>
         <div>
           <label htmlFor={fid('titleAr')} className="label">
-            Job title (Arabic) <span className="font-normal text-muted">· printed on contracts</span>
+            Job title (Arabic)
           </label>
           <input
             id={fid('titleAr')}
@@ -96,7 +91,7 @@ export function JobTitleForm({
         </div>
       </div>
 
-      <fieldset aria-describedby={fid('grades-hint')} className="max-w-lg">
+      <fieldset className="max-w-lg">
         <legend className="label">Grades</legend>
         <div className="grid grid-cols-2 gap-3">
           <div>
@@ -152,13 +147,10 @@ export function JobTitleForm({
             </Select>
           </div>
         </div>
-        <p id={fid('grades-hint')} className="hint">
-          The grades people with this title can have, e.g. G3 to G6 for Account Manager. Leave empty to allow any grade.
-        </p>
         <div role="status">
           {clearedMax && minGrade && (
             <p className="hint text-warn">
-              &ldquo;To&rdquo; was {gradeLabel(clearedMax)}, below {gradeLabel(minGrade)}, so it was cleared. Choose the highest grade again.
+              &ldquo;To&rdquo; was cleared: {gradeLabel(clearedMax)} is below {gradeLabel(minGrade)}.
             </p>
           )}
         </div>
@@ -167,19 +159,8 @@ export function JobTitleForm({
       <fieldset className="space-y-5 border-t border-line pt-5">
         <legend className="pr-2 font-semibold">Job Description</legend>
         <RichTextEditor name="jdPurpose" label="Purpose of the role" rows={3} defaultValue={valueOf(state, 'jdPurpose', jobTitle?.jdPurpose)} />
-        <RichTextEditor
-          name="jdDuties"
-          label="Duties & responsibilities"
-          rows={7}
-          defaultValue={valueOf(state, 'jdDuties', jobTitle?.jdDuties)}
-          hint="Format it as in an email: bold for headings, bullets or numbers for points, indent to nest. Its KPI template's metrics link to these duties (KPIs → KPI Templates)."
-        />
+        <RichTextEditor name="jdDuties" label="Duties & responsibilities" rows={7} defaultValue={valueOf(state, 'jdDuties', jobTitle?.jdDuties)} />
         <RichTextEditor name="jdRequirements" label="Requirements" rows={4} defaultValue={valueOf(state, 'jdRequirements', jobTitle?.jdRequirements)} />
-        {jobTitle && (
-          <p className="hint">
-            Job description version {jobTitle.jdVersion}. Changing the purpose, duties or requirements creates version {jobTitle.jdVersion + 1}.
-          </p>
-        )}
       </fieldset>
 
       <div className="flex flex-wrap gap-3">

@@ -27,11 +27,6 @@ async function EditAllowance({ params }: { params: Promise<{ id: string }> }) {
         <AllowanceTypeForm action={updateAllowanceType.bind(null, id)} allowance={allowance} />
         <section className="max-w-xl space-y-2">
           <h3 className="font-semibold">{active ? 'Make Inactive' : 'Make Active'}</h3>
-          <p className="text-sm text-muted">
-            {active
-              ? 'An inactive allowance is not offered for new contracts and job offers. Those it is already on keep it, and you can make it active again later.'
-              : 'This allowance is inactive: it is not offered for new contracts and job offers. Those it is already on keep it.'}
-          </p>
           <AllowanceActiveForm action={setAllowanceTypeActive.bind(null, id, !active)} active={active} />
         </section>
         {/* only a Super Admin deletes (owner's decision, 15 October 2026) */}
@@ -39,14 +34,11 @@ async function EditAllowance({ params }: { params: Promise<{ id: string }> }) {
           <section className="max-w-xl space-y-2">
             <h3 className="font-semibold">Delete Allowance</h3>
             {inUse ? (
-              <p className="text-sm text-muted">
-                {nameEn} is on a contract or job offer, so it can&apos;t be deleted.{' '}
-                {active ? 'Make it inactive instead: it is then not offered for new ones.' : 'It is inactive, so it is not offered for new ones.'}
-              </p>
+              <p className="text-sm text-muted">It&apos;s on a contract or job offer, so it can&apos;t be deleted.</p>
             ) : (
               <DeleteForm
                 action={deleteAllowanceType.bind(null, id)}
-                confirmText={`Delete the allowance ${nameEn}? This cannot be undone.`}
+                confirmText={`Delete the allowance ${nameEn}?`}
                 label="Delete allowance"
               />
             )}

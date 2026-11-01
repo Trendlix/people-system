@@ -9,7 +9,6 @@ import {
   RAISE_FIGURE_KINDS,
   RAISE_REASON_CHOICES,
   RAISE_REASON_LABELS,
-  RAISE_WAY_HINTS,
   RAISE_WAY_LABELS,
   RAISE_WAYS,
   raiseEffectiveProblem,
@@ -17,7 +16,6 @@ import {
   type LawRates,
   type RaiseDecision,
   type RaiseFigureKind,
-  type RaiseRequester,
   type RaiseWay,
 } from '@trendlix/shared';
 import { DateInput } from '@/components/date-time-inputs';
@@ -30,7 +28,7 @@ import { choice } from '../employees/[id]/contracts/pay-fields';
 import { formatEgp } from '../employees/[id]/contracts/salary';
 import { previewGross } from './decisions';
 import { changeWords, typedRaiseFigures, yearOf, type Change, type PayBefore, type RaiseFigures } from './figures';
-import { commentReaders, effectiveFromOptions, figuresNote } from './list';
+import { effectiveFromOptions } from './list';
 
 // The small forms of raise requests (owner's decisions, 16 October 2026; reworked 17 October 2026: "requesting a raise
 // should have a drop list reason first ( Annual Raise - Performance Raise - Counter Offer Raise - etc..) then add
@@ -77,8 +75,6 @@ export interface FiguresFor {
   rates: readonly LawRates[];
   /** The year the raise takes effect in, for the rates. */
   year: number;
-  /** Who sees these figures, under them. */
-  note: string;
   /** The allowances after the raise, when they change with it; else the same. */
   allowancesAfter?: readonly AllowanceTerms[] | null;
   /** By the hour, the raise's own hours a week, when they change with it. */
@@ -104,7 +100,7 @@ function ChangeRow({ label, c, prominent = false, suffix }: { label: string; c: 
  * the hour the rate, which the raise is on, with the monthly estimate; then the net a month, approximately, with the
  * allowances as they are. Live as the raise is typed; a line asking for it until it is a valid raise.
  */
-export function FiguresPanel({ figures, note, id }: { figures: RaiseFigures | null; note: string; id?: string }) {
+export function FiguresPanel({ figures, id }: { figures: RaiseFigures | null; id?: string }) {
   return (
     <section id={id} aria-label="What the raise comes to" className="space-y-3 rounded-lg border border-line bg-canvas p-4">
       <h3 className="text-sm font-semibold">What the Raise Comes To</h3>
@@ -114,18 +110,11 @@ export function FiguresPanel({ figures, note, id }: { figures: RaiseFigures | nu
             {figures.hourly && <ChangeRow label="Hourly rate" c={figures.hourly} prominent />}
             <ChangeRow label={figures.hourly ? 'Gross a month (estimate from the hours)' : 'Gross a month'} c={figures.gross} prominent={!figures.hourly} />
             <ChangeRow label="Net a month (approximate)" c={figures.net} />
-            <p className="text-xs text-muted">
-              {figures.allowances > 0
-                ? `The net includes the allowances, ${formatEgp(figures.allowances)} a month, unchanged by the raise.`
-                : 'No allowances: the net is from the gross alone.'}{' '}
-              Worked out with the {figures.year} rates set by law.
-            </p>
           </dl>
         ) : (
-          <p className="text-sm text-muted">Type the raise, as an amount or a percent, to see the gross and the net it comes to.</p>
+          <p className="text-sm text-muted">Type the raise to see its figures.</p>
         )}
       </div>
-      <p className="hint">{note}</p>
     </section>
   );
 }
@@ -144,7 +133,6 @@ export function FigureField({
   figures = null,
   wide = false,
   label,
-  hint,
   required = false,
 }: {
   fid: (name: string) => string;
@@ -157,7 +145,6 @@ export function FigureField({
   /** The panel beside the field on a wide screen, rather than under it. */
   wide?: boolean;
   label: string;
-  hint?: string;
   required?: boolean;
 }) {
   const [kind, setKind] = useState<RaiseFigureKind>(() => {
@@ -168,7 +155,6 @@ export function FigureField({
   // the panel says it all when there is one; else the one line of the gross it comes to
   const preview = figures ? null : previewGross(gross, kind, value);
   const worked = figures ? typedRaiseFigures(figures.pay, kind, value, figures.rates, figures.year, figures) : null;
-  const describedBy = `${fid('figureValue-hint')}${preview !== null ? ` ${fid('figureValue-preview')}` : ''}`;
   const field = (
     <fieldset className="space-y-2">
       <legend className="label">
@@ -199,14 +185,12 @@ export function FigureField({
           required={required}
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          aria-describedby={describedBy}
+          placeholder={kind === 'amount' ? 'e.g. 1,500' : 'e.g. 10'}
+          aria-describedby={preview !== null ? fid('figureValue-preview') : undefined}
           className="input max-w-40 tabular-nums"
         />
         {kind === 'percent' && <span className="text-sm text-muted">%</span>}
       </div>
-      <p id={fid('figureValue-hint')} className="hint">
-        {hint ?? (kind === 'amount' ? 'Added to the monthly gross, e.g. 1,500; the allowances stay as they are.' : 'Of the monthly gross, e.g. 10 or 7.5; the allowances stay as they are.')}
-      </p>
       <div role="status">
         {preview !== null && (
           <p id={fid('figureValue-preview')} className="hint font-medium text-ink">
@@ -220,13 +204,13 @@ export function FigureField({
   return (
     <div className={wide ? 'grid gap-4 md:grid-cols-2 md:items-start' : 'space-y-4'}>
       {field}
-      <FiguresPanel id={fid('figures')} figures={worked} note={figures.note} />
+      <FiguresPanel id={fid('figures')} figures={worked} />
     </div>
   );
 }
 
-/** A required comment, saying who reads it. */
-function CommentField({ fid, state, label, readers, rows = 3, maxLength = 1000 }: { fid: (name: string) => string; state: FormState; label: string; readers: string; rows?: number; maxLength?: number }) {
+/** A required comment. */
+function CommentField({ fid, state, label, rows = 3, maxLength = 1000 }: { fid: (name: string) => string; state: FormState; label: string; rows?: number; maxLength?: number }) {
   return (
     <div>
       <label htmlFor={fid('comment')} className="label">
@@ -238,13 +222,9 @@ function CommentField({ fid, state, label, readers, rows = 3, maxLength = 1000 }
         rows={rows}
         required
         maxLength={maxLength}
-        aria-describedby={fid('comment-hint')}
         defaultValue={valueOf(state, 'comment')}
         className="input"
       />
-      <p id={fid('comment-hint')} className="hint">
-        {readers}
-      </p>
     </div>
   );
 }
@@ -291,7 +271,6 @@ export function RequestRaiseForm({
     return months.some((m) => m.value === kept) ? kept : defaultEffectiveFrom(today);
   });
   const kinds: readonly RaiseFigureKind[] = suggestionKinds?.length ? suggestionKinds : suggestsAmount ? RAISE_FIGURE_KINDS : ['percent'];
-  const requester: RaiseRequester = forSelf ? 'self' : suggestsAmount ? 'hr' : 'manager';
   const year = yearOf(effectiveFrom, today);
 
   return (
@@ -308,7 +287,6 @@ export function RequestRaiseForm({
             name="raiseReason"
             required
             defaultValue={valueOf(state, 'raiseReason')}
-            aria-describedby={fid('raiseReason-hint')}
             className="input"
           >
             <option value="">Choose a reason</option>
@@ -318,9 +296,6 @@ export function RequestRaiseForm({
               </option>
             ))}
           </Select>
-          <p id={fid('raiseReason-hint')} className="hint">
-            Why the raise is asked for. HR decides first, then the CEO.
-          </p>
         </div>
         <div>
           <label htmlFor={fid('effectiveFrom')} className="label">
@@ -332,7 +307,6 @@ export function RequestRaiseForm({
             required
             value={effectiveFrom}
             onChange={(e) => setEffectiveFrom(e.target.value)}
-            aria-describedby={fid('effectiveFrom-hint')}
             className="input"
           >
             {months.map((m) => (
@@ -341,32 +315,17 @@ export function RequestRaiseForm({
               </option>
             ))}
           </Select>
-          <p id={fid('effectiveFrom-hint')} className="hint">
-            The month the raise is to take effect from, on its 1st. HR and the CEO may set another.
-          </p>
         </div>
       </div>
-      <CommentField
-        fid={fid}
-        state={state}
-        label="Comment"
-        rows={4}
-        maxLength={2000}
-        readers={`${forSelf ? 'What you have taken on or achieved, and since when.' : `What ${name} has taken on or achieved, and since when.`} ${commentReaders('request', requester, forSelf)}`}
-      />
+      <CommentField fid={fid} state={state} label="Comment" rows={4} maxLength={2000} />
       <FigureField
         fid={fid}
         state={state}
         kinds={kinds}
         gross={currentGross}
-        figures={pay ? { pay, rates, year, note: figuresNote(forSelf) } : null}
+        figures={pay ? { pay, rates, year } : null}
         wide
         label="Suggested raise"
-        hint={
-          kinds.length === 1
-            ? "A percent of the monthly gross, e.g. 10: a direct manager doesn't see salaries, so HR and the CEO set the amount."
-            : 'An amount in EGP added to the monthly gross, e.g. 1,500, or a percent of it, e.g. 10. HR and the CEO decide the raise.'
-        }
       />
       <div className="flex flex-wrap gap-3">
         <SubmitButton busy={pending} pendingText="Sending…">
@@ -397,7 +356,6 @@ const SUBMIT: Record<RaiseDecision, { label: string; busy: string }> = {
 export function HrDecisionForm({
   action,
   name,
-  requester,
   suggestion,
   gross,
   inForce,
@@ -408,7 +366,6 @@ export function HrDecisionForm({
 }: {
   action: Action;
   name: string;
-  requester: RaiseRequester;
   /** The raise suggested, in words; null when it suggests none (it is then approved with another raise only). */
   suggestion: string | null;
   /** The gross in force, for what another raise comes to. */
@@ -456,7 +413,7 @@ export function HrDecisionForm({
         if (e.target instanceof HTMLInputElement && e.target.name === 'effectiveDate') setEffective(e.target.value);
       }}
       onSubmit={(e) => {
-        if (decision === 'reject' && !window.confirm(`Reject the raise request for ${name}? Your comment shows on it.`)) e.preventDefault();
+        if (decision === 'reject' && !window.confirm(`Reject the raise request for ${name}?`)) e.preventDefault();
       }}
       aria-label={`Decide on the raise request for ${name}`}
       className="w-full max-w-xl min-w-72 space-y-4 rounded-lg border border-line bg-canvas p-4 whitespace-normal"
@@ -483,7 +440,6 @@ export function HrDecisionForm({
             </label>
           ))}
         </div>
-        {!suggestion && <p className="hint">The request suggests no raise: approving it sets the raise.</p>}
       </fieldset>
 
       {decision === 'approve_other' && (
@@ -491,7 +447,7 @@ export function HrDecisionForm({
           fid={fid}
           state={state}
           gross={gross}
-          figures={pay ? { pay, rates, year: yearOf(date, defaultEffective), note: figuresNote(false) } : null}
+          figures={pay ? { pay, rates, year: yearOf(date, defaultEffective) } : null}
           label="The raise"
           required
         />
@@ -499,7 +455,7 @@ export function HrDecisionForm({
 
       {approving && (
         <>
-          <fieldset aria-describedby={fid('way-hint')}>
+          <fieldset>
             <legend className="label">How the raise is made</legend>
             <div className="flex flex-wrap gap-2">
               {RAISE_WAYS.map((w) => (
@@ -509,9 +465,6 @@ export function HrDecisionForm({
                 </label>
               ))}
             </div>
-            <p id={fid('way-hint')} className="hint">
-              {RAISE_WAY_HINTS[way]}
-            </p>
           </fieldset>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
@@ -523,11 +476,8 @@ export function HrDecisionForm({
                 name="effectiveDate"
                 required
                 defaultValue={effective}
-                aria-describedby={`${fid('effectiveDate-hint')}${problem ? ` ${fid('effectiveDate-problem')}` : ''}`}
+                aria-describedby={problem ? fid('effectiveDate-problem') : undefined}
               />
-              <p id={fid('effectiveDate-hint')} className="hint">
-                The 1st of a month, so each payroll month has one salary.
-              </p>
               <div role="status">
                 {problem && (
                   <p id={fid('effectiveDate-problem')} className="hint text-warn">
@@ -549,33 +499,22 @@ export function HrDecisionForm({
                   min={1}
                   max={60}
                   step={1}
-                  aria-describedby={fid('durationMonths-hint')}
                   defaultValue={valueOf(state, 'durationMonths')}
                   className="input tabular-nums"
                 />
-                <p id={fid('durationMonths-hint')} className="hint">
-                  Empty: the usual length from the contract settings.
-                </p>
               </div>
             )}
           </div>
         </>
       )}
 
-      <CommentField fid={fid} state={state} label="Comment" readers={commentReaders('decision', requester)} />
+      <CommentField fid={fid} state={state} label="Comment" />
 
-      {approving && (
-        <p className="hint">
-          The raise is prepared from the pay in force, the allowances as they are, and sent to the CEO.
-          {fullFormHref && (
-            <>
-              {' '}
-              <Link href={fullFormHref} prefetch={false}>
-                Approve it in the whole raise form
-              </Link>{' '}
-              for a promotion or other allowances with it.
-            </>
-          )}
+      {approving && fullFormHref && (
+        <p className="text-sm">
+          <Link href={fullFormHref} prefetch={false}>
+            Approve with a promotion or other allowances
+          </Link>
         </p>
       )}
       <div className="flex flex-wrap gap-3">
@@ -600,7 +539,7 @@ export function HrDecisionForm({
  * HR's Reject, for a request whose raise is prepared (returned by the CEO, or prepared before 17 October 2026): the
  * comment is required; asks first. The raise goes with it.
  */
-export function DeclineRequestForm({ action, name, requester = 'self' }: { action: Action; name: string; requester?: RaiseRequester }) {
+export function DeclineRequestForm({ action, name }: { action: Action; name: string }) {
   const [state, formAction, pending] = useActionState(action, {});
   const [open, setOpen] = useState(false);
   const fid = useFieldIds();
@@ -621,13 +560,13 @@ export function DeclineRequestForm({ action, name, requester = 'self' }: { actio
     <form
       action={formAction}
       onSubmit={(e) => {
-        if (!window.confirm(`Reject the raise request for ${name}? The raise prepared from it goes with it.`)) e.preventDefault();
+        if (!window.confirm(`Reject the raise request for ${name} and its prepared raise?`)) e.preventDefault();
       }}
       aria-label={`Reject the raise request for ${name}`}
       className="min-w-64 space-y-3 rounded-lg border border-line bg-canvas p-4"
     >
       <FormErrors errors={state.errors} />
-      <CommentField fid={fid} state={state} label="Comment" readers={commentReaders('decision', requester)} />
+      <CommentField fid={fid} state={state} label="Comment" />
       <div className="flex flex-wrap gap-3">
         <button type="submit" disabled={pending} className="btn btn-danger">
           {pending ? 'Rejecting…' : 'Reject the request'}

@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { careersSiteUrl, EARLIER_OFFERS_SWITCH } from '@trendlix/shared';
+import { EARLIER_OFFERS_SWITCH } from '@trendlix/shared';
 import { Suspense } from 'react';
 import { careersSiteFrom } from '@/lib/careers-base';
 import { isSuperAdmin } from '@/lib/roles';
@@ -17,7 +17,7 @@ import { LinkedInSettingsForm } from './linkedin-form';
 import { PortfolioSettingsForm, PortfolioSettingsList } from './portfolio-form';
 import { formatDate } from '@/lib/format';
 import { loadAgencyMarks } from '../../recruitment/data';
-import { AGENCY_MARKS_NOTE, markNote, markText, removeMarkConfirmText } from '../../recruitment/agency';
+import { markNote, markText, removeMarkConfirmText } from '../../recruitment/agency';
 import { removeAgencyMark, saveAgencyMark } from '../../recruitment/agency-actions';
 import { SmallActionButton } from '../../recruitment/agency-ui';
 import { AgencyMarkForm } from './agency-marks-form';
@@ -55,16 +55,9 @@ async function Settings() {
   return (
     <div className="space-y-6">
       <section aria-labelledby="careers-site" className="card space-y-4 p-6">
-        <div className="space-y-1">
-          <h2 id="careers-site" className="text-lg font-semibold">
-            Careers Site
-          </h2>
-          <p className="max-w-3xl text-sm text-muted">
-            Where the careers pages are, on the main website. Every careers link the system makes is built on this address: the apply links of each vacancy, the
-            invitation to apply’s link and LinkedIn’s redirect URL. A job’s page is the address and the job’s own name; “Send us your CV” is{' '}
-            <span className="break-all">{careersSiteUrl(careersSite, { general: true })}</span>.
-          </p>
-        </div>
+        <h2 id="careers-site" className="text-lg font-semibold">
+          Careers Site
+        </h2>
         {manages ? (
           <CareersSiteForm action={saveCareersSite} address={careersSite} />
         ) : (
@@ -76,16 +69,9 @@ async function Settings() {
       </section>
 
       <section aria-labelledby="earlier-offers" className="card space-y-4 p-6">
-        <div className="space-y-1">
-          <h2 id="earlier-offers" className="text-lg font-semibold">
-            Earlier Offers
-          </h2>
-          <p className="max-w-3xl text-sm text-muted">
-            For entering the job offers made before the system. While it is on, an offer can be saved with a past last day, recorded as sent earlier (no email, no
-            link) and have its answer recorded with the day it was given. Nothing is sent to the candidate, and emailing or linking an offer past its last day
-            stays refused. Switch it off once the earlier offers are in: the usual rules come back.
-          </p>
-        </div>
+        <h2 id="earlier-offers" className="text-lg font-semibold">
+          Earlier Offers
+        </h2>
         <Suspense fallback={<Loading />}>
           <EarlierOffersSection manages={manages} />
         </Suspense>
@@ -96,10 +82,11 @@ async function Settings() {
           <h2 id="rejection-email" className="text-lg font-semibold">
             Rejection Email
           </h2>
-          <p className="max-w-3xl text-sm text-muted">
-            Sent only when “Email the candidate” is ticked on Reject; never to someone filtered out by a must-have question on its own. {'{name}'}, {'{job}'} and{' '}
-            {'{company}'} are filled in. Leave a box empty for the standard words, shown in grey.
-          </p>
+          {manages && (
+            <p className="text-sm text-muted">
+              Filled in: {'{name}'}, {'{job}'}, {'{company}'}
+            </p>
+          )}
         </div>
         {manages ? (
           <RejectionWordsForm action={saveRecruitmentSettings} settings={s} />
@@ -115,15 +102,9 @@ async function Settings() {
       </section>
 
       <section aria-labelledby="suggested-cvs" className="card space-y-4 p-6">
-        <div className="space-y-1">
-          <h2 id="suggested-cvs" className="text-lg font-semibold">
-            Suggested From Earlier CVs
-          </h2>
-          <p className="max-w-3xl text-sm text-muted">
-            Each open vacancy lists the general CVs and the earlier applicants for other jobs that match it, with the reasons. Nobody joins a vacancy until HR adds
-            them. Never for a C-level vacancy.
-          </p>
-        </div>
+        <h2 id="suggested-cvs" className="text-lg font-semibold">
+          Suggested From Earlier CVs
+        </h2>
         {manages ? (
           <SuggestionSettingsForm action={saveSuggestionSettings} settings={s} />
         ) : (
@@ -136,10 +117,11 @@ async function Settings() {
           <h2 id="invite-email" className="text-lg font-semibold">
             Invitation Email
           </h2>
-          <p className="max-w-3xl text-sm text-muted">
-            Sent only when HR presses “Invite to apply” on a suggested CV, never by itself. {'{name}'}, {'{job}'}, {'{company}'} and {'{link}'} (the job’s apply link)
-            are filled in; the link is added at the end if you leave it out. Leave a box empty for the standard words, shown in grey.
-          </p>
+          {manages && (
+            <p className="text-sm text-muted">
+              Filled in: {'{name}'}, {'{job}'}, {'{company}'}, {'{link}'}
+            </p>
+          )}
         </div>
         {manages ? (
           <InviteWordsForm action={saveInviteWords} settings={s} />
@@ -155,19 +137,13 @@ async function Settings() {
       </section>
 
       <section aria-labelledby="cv-positions" className="card space-y-4 p-6">
-        <div className="space-y-1">
-          <h2 id="cv-positions" className="text-lg font-semibold">
-            Positions on the CV Form
-          </h2>
-          <p className="max-w-3xl text-sm text-muted">
-            The positions people choose from on “Send us your CV”, grouped by team: the job titles with their levels merged (“Video Editor” for Junior and Senior), never a
-            C-level one. A new job title’s position is shown until you hide it. A hidden one leaves the careers page only: HR’s lists keep it, marked hidden.
-          </p>
-        </div>
+        <h2 id="cv-positions" className="text-lg font-semibold">
+          Positions on the CV Form
+        </h2>
         {positions.kind !== 'ok' ? (
           <p className="text-sm text-muted">{recruitmentNotLoaded(positions, 'positions')}</p>
         ) : positions.value.positions.length === 0 ? (
-          <p className="text-sm text-muted">No positions yet: they come from the job titles.</p>
+          <p className="text-sm text-muted">No positions yet.</p>
         ) : manages ? (
           <PositionsForm action={savePositionChoices} positions={positions.value.positions} />
         ) : (
@@ -176,28 +152,18 @@ async function Settings() {
       </section>
 
       <section aria-labelledby="portfolio-forms" className="card space-y-4 p-6">
-        <div className="space-y-1">
-          <h2 id="portfolio-forms" className="text-lg font-semibold">
-            Portfolio on the Forms
-          </h2>
-          <p className="max-w-3xl text-sm text-muted">
-            What both careers forms ask each position for: hidden, optional or required, a hint under the field, the kinds taken and how many links. Links are checked
-            by their shape only, never opened by the system. A position you haven’t set follows the default for its name (a video editor’s showreel, a
-            designer’s Behance …). A vacancy can ask otherwise on its own form.
-          </p>
-        </div>
+        <h2 id="portfolio-forms" className="text-lg font-semibold">
+          Portfolio on the Forms
+        </h2>
         <Suspense fallback={<Loading />}>
           <PortfolioSection manages={manages} />
         </Suspense>
       </section>
 
       <section aria-labelledby="marketing-agencies" className="card space-y-4 p-6">
-        <div className="space-y-1">
-          <h2 id="marketing-agencies" className="text-lg font-semibold">
-            Marketing Agencies
-          </h2>
-          <p className="max-w-3xl text-sm text-muted">{AGENCY_MARKS_NOTE}</p>
-        </div>
+        <h2 id="marketing-agencies" className="text-lg font-semibold">
+          Marketing Agencies
+        </h2>
         <Suspense fallback={<Loading />}>
           <AgencyMarksSection manages={manages} />
         </Suspense>
@@ -206,17 +172,11 @@ async function Settings() {
       {/* a Super Admin's only (never a developer's): the app's secret is set here */}
       {isSuperAdmin(user) && !user.developer && (
         <section aria-labelledby="linkedin-signin" className="card space-y-4 p-6">
-          <div className="space-y-1">
-            <h2 id="linkedin-signin" className="text-lg font-semibold">
-              LinkedIn Sign-in
-            </h2>
-            <p className="max-w-3xl text-sm text-muted">
-              “Fill in with LinkedIn” on both careers forms: the person signs in with LinkedIn, and their name and email are filled in where empty. LinkedIn shares
-              only those (never the work history); an email LinkedIn confirmed shows “Confirmed by LinkedIn” to HR. No account is made and nothing else is kept.
-            </p>
-          </div>
+          <h2 id="linkedin-signin" className="text-lg font-semibold">
+            LinkedIn Sign-in
+          </h2>
           {user.viewAs ? (
-            <p className="text-sm text-muted">Open this in your own session to set it up: not while viewing as someone.</p>
+            <p className="text-sm text-muted">Open this in your own session to set it up.</p>
           ) : (
             <Suspense fallback={<Loading />}>
               <LinkedInSection careersSite={careersSite} />
@@ -245,7 +205,7 @@ async function PortfolioSection({ manages }: { manages: boolean }) {
   const loaded = await loadPortfolioSettings();
   if (loaded.kind !== 'ok') return <p className="text-sm text-muted">{recruitmentNotLoaded(loaded, 'portfolio settings')}</p>;
   const { positions } = loaded.value;
-  if (!positions.length) return <p className="text-sm text-muted">No positions yet: they come from the job titles.</p>;
+  if (!positions.length) return <p className="text-sm text-muted">No positions yet.</p>;
   return manages ? <PortfolioSettingsForm action={savePortfolioSettings} positions={positions} /> : <PortfolioSettingsList positions={positions} />;
 }
 
@@ -261,7 +221,7 @@ async function AgencyMarksSection({ manages }: { manages: boolean }) {
     <div className="space-y-4">
       {manages && <AgencyMarkForm action={saveAgencyMark} />}
       {marks.length === 0 ? (
-        <p className="text-sm text-muted">No company marked yet: each past employer is told by its name.</p>
+        <p className="text-sm text-muted">No company marked yet.</p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-line">
           <table className="table">

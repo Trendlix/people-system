@@ -25,7 +25,7 @@ export const metadata: Metadata = { title: 'Correct a Day · People System' };
 async function Correct({ params, searchParams }: { params: PageProps<'/attendance/[employeeId]/correct'>['params']; searchParams: PageProps<'/attendance/[employeeId]/correct'>['searchParams'] }) {
   const [{ employeeId }, query, user] = await Promise.all([params, searchParams, getCurrentUser()]);
   if (!UUID.test(employeeId)) notFound();
-  if (!correctsDays(user)) return <Empty>Only HR corrects a day directly. An employee asks for a correction from My Attendance.</Empty>;
+  if (!correctsDays(user)) return <Empty>Only HR corrects a day directly.</Empty>;
   const today = todayInCairo();
   const date = askedDate(query);
   const month = (date ?? today).slice(0, 7);
@@ -54,7 +54,6 @@ export default function CorrectDayPage({ params, searchParams }: PageProps<'/att
         <div className="space-y-2">
           <BackLink href="/attendance">Daily Attendance</BackLink>
           <h1 className="page-title">Correct a Day</h1>
-          <p className="text-muted">HR&apos;s correction, approved at once and in the audit log: the day keeps what it was, shown as corrected from it.</p>
         </div>
         <Suspense fallback={<Loading />}>
           <Correct params={params} searchParams={searchParams} />

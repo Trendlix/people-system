@@ -65,7 +65,7 @@ function Item({ label, wide = false, children }: { label: string; wide?: boolean
 // ---------- the summary ----------
 
 function Summary({ history: h }: { history: EmploymentSalaryHistory }) {
-  if (!h.summary) return <Quiet>No signed contract yet in this employment: its salary history starts once one is signed.</Quiet>;
+  if (!h.summary) return <Quiet>No signed contract yet.</Quiet>;
   return (
     <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
       {summaryFigures(h.summary, firstSignedDate(h.events)).map((f) => (
@@ -112,7 +112,7 @@ function Documents({ employee, event, view: v, what }: { employee: Employee; eve
           </Link>
         </>
       ) : (
-        <span className="text-muted">Generated once the CEO approves it</span>
+        <span className="text-muted">Not generated yet</span>
       )}
     </Item>
   );
@@ -212,7 +212,7 @@ function Timeline({
         <Heading level={level} className="font-semibold">
           Pay Events
         </Heading>
-        <span className="text-xs text-muted">{eventsLabel(h.events.length)}, oldest first</span>
+        <span className="text-xs text-muted">{eventsLabel(h.events.length)}</span>
       </div>
       {h.events.length === 0 ? (
         <Quiet>No contract yet in this employment.</Quiet>
@@ -275,7 +275,7 @@ export async function SalaryHistorySection({ employee }: { employee: Employee })
   if (load.kind === 'unavailable') {
     return (
       <Title>
-        <Quiet>Not available yet: the server does not have the salary history yet.</Quiet>
+        <Quiet>Not available yet.</Quiet>
       </Title>
     );
   }
@@ -293,7 +293,7 @@ export async function SalaryHistorySection({ employee }: { employee: Employee })
   if (!current && past.length === 0) {
     return (
       <Title>
-        <Quiet>No employments yet: the salary history starts with the first contract.</Quiet>
+        <Quiet>No employments yet.</Quiet>
       </Title>
     );
   }
@@ -303,7 +303,7 @@ export async function SalaryHistorySection({ employee }: { employee: Employee })
       {current ? (
         <EmploymentPay employee={employee} history={current} raises={raises} today={today} level={3} />
       ) : (
-        <Quiet>No current employment. The past employments&apos; pay is below.</Quiet>
+        <Quiet>No current employment.</Quiet>
       )}
       {past.length > 0 && (
         <section className="space-y-3 pt-2">

@@ -37,7 +37,6 @@ import {
   readCustodyPrefill,
   readEmployee,
   readMonth,
-  RUN_NOTE,
   signedAmount,
   STATUS_BADGE,
   statusText,
@@ -110,8 +109,8 @@ function Totals({ rows }: { rows: AdjustmentRow[] }) {
     { label: 'Additions', value: formatEgp(t.additions), note: `${formatEgp(t.taxedAdditions)} taxed · ${formatEgp(t.untaxedAdditions)} not taxed` },
     // those before tax (20 October 2026) said apart
     { label: 'Deductions', value: formatEgp(t.deductions), note: deductionsTaxNote(rows) },
-    { label: 'Net effect on pay', value: netText(t.net), note: 'Before the tax the taxed additions bring' },
-    { label: 'People', value: String(t.people), note: `${t.count} ${t.count === 1 ? 'entry' : 'entries'}, the cancelled left out` },
+    { label: 'Net effect on pay', value: netText(t.net), note: null },
+    { label: 'People', value: String(t.people), note: `${t.count} ${t.count === 1 ? 'entry' : 'entries'}` },
   ];
   // in days with no run to work them out yet (17 October 2026): not in the sums
   const unknown = daysNotWorkedOut(rows);
@@ -121,14 +120,11 @@ function Totals({ rows }: { rows: AdjustmentRow[] }) {
         <div key={x.label} className="card px-4 py-3">
           <dt className="text-xs text-muted">{x.label}</dt>
           <dd className="mt-1 text-lg font-semibold tabular-nums">{x.value}</dd>
-          <dd className="text-xs text-muted">{x.note}</dd>
+          {x.note && <dd className="text-xs text-muted">{x.note}</dd>}
         </div>
       ))}
       {unknown > 0 && (
-        <p className="text-xs text-muted sm:col-span-2 lg:col-span-4">
-          {unknown === 1 ? 'One is' : `${unknown} are`} in days with no run to work {unknown === 1 ? 'it' : 'them'} out yet: not in these sums until the month&apos;s
-          run is made.
-        </p>
+        <p className="text-xs text-muted sm:col-span-2 lg:col-span-4">{unknown} in days, not in these sums until the run is made.</p>
       )}
     </dl>
   );
@@ -246,16 +242,14 @@ function LeftBehind({ choices, rows, hr, today }: { choices: AdjustmentChoices; 
       {here.length > 0 && (
         <div className="flex flex-wrap items-end justify-between gap-3">
           <p>
-            {here.length === 1 ? 'One pending addition or deduction is' : `${here.length} pending additions or deductions are`} left on {monthName(choices.month)}: its
-            run was approved without {here.length === 1 ? 'it' : 'them'}. Move {here.length === 1 ? 'it' : 'them'} to a later month to be paid.
+            {here.length} pending left on {monthName(choices.month)}, approved without {here.length === 1 ? 'it' : 'them'}.
           </p>
           {hr && <MoveForm action={moveAdjustments.bind(null, here)} months={laterMonths(today, choices.month)} label={here.length === 1 ? 'Move' : 'Move all'} what="the pending ones" />}
         </div>
       )}
       {notOnRun > 0 && (
         <p>
-          {notOnRun === 1 ? 'One is' : `${notOnRun} are`} for people not on the {monthName(choices.month)} run: no line takes {notOnRun === 1 ? 'it' : 'them'}.
-          Put the person on the run (a signed contract, then Refresh), or move {notOnRun === 1 ? 'it' : 'them'} to a later month.
+          {notOnRun} for people not on the {monthName(choices.month)} run.
         </p>
       )}
       {elsewhere.length > 0 && (
@@ -349,12 +343,9 @@ async function MonthView({ searchParams }: { searchParams: Promise<Query> }) {
         </section>
       )}
       <section aria-labelledby="month-adjustments" className="space-y-3">
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h2 id="month-adjustments" className="font-semibold">
-            {monthName(month)}
-          </h2>
-          <span className="text-xs text-muted">By employee: additions, deductions and the net effect on their pay</span>
-        </div>
+        <h2 id="month-adjustments" className="font-semibold">
+          {monthName(month)}
+        </h2>
         <div className="card">
           {rows.length ? (
             <AdjustmentsTable rows={rows} choices={choices} hr={hr} today={today} />
@@ -375,10 +366,6 @@ export default function AdjustmentsPage({ searchParams }: PageProps<'/payroll/ad
     <StaffOnly>
       <div className="max-w-6xl">
         <h1 className="page-title">Additions / Deductions</h1>
-        <p className="mt-1 text-muted">
-          One-off amounts on an employee&apos;s pay for a month: a bonus (in EGP or in days), commission, incentive, correction or reimbursement added;
-          a penalty (in EGP or in days), correction, damage or loss, an advance&apos;s recovery or a loan&apos;s installment taken. {RUN_NOTE}
-        </p>
         <div className="mt-6">
           <Suspense fallback={<Loading />}>
             <MonthView searchParams={searchParams} />

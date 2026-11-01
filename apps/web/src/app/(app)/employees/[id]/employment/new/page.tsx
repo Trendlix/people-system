@@ -35,8 +35,8 @@ async function AddEmployment({ params }: { params: Promise<{ id: string }> }) {
       <RequireHr profile={employee}>
         {current ? (
           <Empty>
-            {employee.fullNameEn} already has a current employment, since {formatDate(current.joinDate)}. To hire them again, first{' '}
-            <Link href={`/employees/${employee.id}/ending/new`}>end that employment</Link>.
+            {employee.fullNameEn} already has a current employment, since {formatDate(current.joinDate)}.{' '}
+            <Link href={`/employees/${employee.id}/ending/new`}>End it</Link> first.
           </Empty>
         ) : (
           pickers && (
@@ -50,31 +50,25 @@ async function AddEmployment({ params }: { params: Promise<{ id: string }> }) {
               {lastEnded?.endDate && (
                 <p className="text-sm text-muted">
                   Rehiring: the last employment ended on {formatDate(lastEnded.endDate)}
-                  {lastEnded.endReason && ` (${END_REASON_LABELS[lastEnded.endReason].toLowerCase()})`}. The new one starts after that day; the earlier
-                  ones stay in the employment history.
+                  {lastEnded.endReason && ` (${END_REASON_LABELS[lastEnded.endReason].toLowerCase()})`}.
                 </p>
               )}
               {settings ? (
-                <>
-                  <p className="text-sm text-muted">
-                    The job, then the terms of its contract. Saving adds both: the contract as a draft, version 1, to print and sign on the Employment tab.
-                  </p>
-                  <HireForm
-                    pickers={pickers}
-                    contract={{
-                      action: hire.bind(null, employee.id),
-                      defaults: firstContractDefaults(settings, '', employedBefore),
-                      allowanceTypes,
-                      probationHint: employedBefore ? noProbationAgain(employee.fullNameEn) : undefined,
-                      // a new intern's agreement 6 months after the last one ended at the earliest (19 October 2026)
-                      trainingAgain: employee.nextTraining ? { name: employee.fullNameEn, ...employee.nextTraining } : null,
-                      today: todayInCairo(),
-                      lawYears,
-                      cancelHref: back,
-                      submitLabel: 'Add employment and contract',
-                    }}
-                  />
-                </>
+                <HireForm
+                  pickers={pickers}
+                  contract={{
+                    action: hire.bind(null, employee.id),
+                    defaults: firstContractDefaults(settings, '', employedBefore),
+                    allowanceTypes,
+                    probationHint: employedBefore ? noProbationAgain(employee.fullNameEn) : undefined,
+                    // a new intern's agreement 6 months after the last one ended at the earliest (19 October 2026)
+                    trainingAgain: employee.nextTraining ? { name: employee.fullNameEn, ...employee.nextTraining } : null,
+                    today: todayInCairo(),
+                    lawYears,
+                    cancelHref: back,
+                    submitLabel: 'Add employment and contract',
+                  }}
+                />
               ) : (
                 <EmploymentForm action={addEmployment.bind(null, employee.id)} pickers={pickers} cancelHref={back} submitLabel="Add employment" />
               )}

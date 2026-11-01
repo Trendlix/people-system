@@ -10,9 +10,8 @@ import { parseDate } from '@/lib/format';
 import type { FormState } from '@/lib/types';
 import type { WfhAllowance, WfhCheck, WfhSettings } from '@/lib/wfh-types';
 import { choice } from '../../employees/[id]/contracts/pay-fields';
-import { leaveCommentReaders } from '../../leave/list';
 import { checkWfhDay } from './actions';
-import { WFH_REASON_MAX, wfhAllowanceLine, wfhDecisionButton, wfhFormProblems, wfhReadyText, type TypedWfh } from './wfh';
+import { WFH_REASON_MAX, wfhAllowanceLine, wfhDecisionButton, wfhFormProblems, type TypedWfh } from './wfh';
 
 // The forms of working from home (owner, 21 October 2026: "think about how should we handle the working from home in
 // out erp"): the employee's request (one day, a day before at the latest, with "x of 2 this month · next possible from
@@ -26,10 +25,10 @@ type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
 const optional = <span className="font-normal text-muted">(optional)</span>;
 
-function Problems({ problems, verb, ready }: { problems: readonly string[]; verb: string; ready: string }) {
+function Problems({ problems, verb }: { problems: readonly string[]; verb: string }) {
   return (
     <div role="status" aria-live="polite">
-      {problems.length ? (
+      {problems.length > 0 && (
         <div className="rounded-lg border border-line bg-canvas px-4 py-3 text-sm">
           <p className="font-medium">Before you can {verb} it:</p>
           <ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted">
@@ -38,8 +37,6 @@ function Problems({ problems, verb, ready }: { problems: readonly string[]; verb
             ))}
           </ul>
         </div>
-      ) : (
-        <p className="rounded-lg bg-ok-soft px-4 py-3 text-sm text-ok">{ready}</p>
       )}
     </div>
   );
@@ -50,14 +47,11 @@ export function NewWfhForm({
   action,
   allowance,
   cancelHref,
-  toCeo = false,
 }: {
   action: Action;
   /** Their month (this month's), with their days around it and the next day possible. */
   allowance: WfhAllowance;
   cancelHref: string;
-  /** The employee is C-level (19 October 2026): after their manager it goes to the CEO, not HR. */
-  toCeo?: boolean;
 }) {
   const [state, formAction, sending] = useActionState(action, {});
   const fid = useFieldIds();
@@ -88,20 +82,13 @@ export function NewWfhForm({
       <SurfaceField />
       <div role="status" aria-live="polite" className="rounded-lg bg-canvas px-4 py-3 text-sm">
         <p className="font-semibold tabular-nums">{wfhAllowanceLine(allowance, date)}</p>
-        <p className="text-xs text-muted">
-          At most {allowance.daysPerMonth} {allowance.daysPerMonth === 1 ? 'day' : 'days'} a month, any two at least {allowance.minGapDays}{' '}
-          {allowance.minGapDays === 1 ? 'day' : 'days'} apart, asked a day before at the latest, as Leave Setup gives it.
-        </p>
       </div>
       <div className="grid gap-5 sm:grid-cols-2">
         <div>
           <label htmlFor={fid('date')} className="label">
             Day
           </label>
-          <DateInput id={fid('date')} name="date" required defaultValue={typed.date} aria-describedby={fid('date-hint')} />
-          <p id={fid('date-hint')} className="hint">
-            Tomorrow or later: a working day you would be at the office, not an official holiday or a day of leave.
-          </p>
+          <DateInput id={fid('date')} name="date" required defaultValue={typed.date} />
         </div>
         <div className="sm:col-span-2">
           <label htmlFor={fid('reason')} className="label">
@@ -114,13 +101,11 @@ export function NewWfhForm({
             maxLength={WFH_REASON_MAX}
             value={typed.reason}
             onChange={(e) => setTyped((x) => ({ ...x, reason: e.target.value }))}
-            aria-describedby={fid('reason-hint')}
             className="input"
           />
-          <p id={fid('reason-hint')} className="hint">Your direct manager and HR read it. Up to {WFH_REASON_MAX} characters.</p>
         </div>
       </div>
-      <Problems problems={problems} verb="send" ready={wfhReadyText(typed, toCeo)} />
+      <Problems problems={problems} verb="send" />
       <div className="flex flex-wrap gap-3">
         <button type="submit" disabled={blocked} className="btn btn-primary disabled:cursor-not-allowed disabled:opacity-60">
           {sending ? 'Sending…' : 'Send request'}
@@ -171,7 +156,7 @@ export function RecordWfhForm({
       const answer = await checkWfhDay(employee.id, wanted);
       if (asked.current !== wanted) return;
       if ('check' in answer) setCheck(answer.check);
-      else if (answer.errors.length) setCheckProblem(`The day couldn't be checked: ${answer.errors.join(' ')} It is checked again when you record it.`);
+      else if (answer.errors.length) setCheckProblem(`The day couldn't be checked: ${answer.errors.join(' ')}`);
     });
   }
 
@@ -218,8 +203,7 @@ export function RecordWfhForm({
           <label htmlFor={fid('date')} className="label">
             Day
           </label>
-          <DateInput id={fid('date')} name="date" required defaultValue={typed.date} aria-describedby={fid('date-hint')} />
-          <p id={fid('date-hint')} className="hint">Any day, past or today too: past the notice and the limits it is recorded with a warning.</p>
+          <DateInput id={fid('date')} name="date" required defaultValue={typed.date} />
         </div>
         <div className="sm:col-span-2">
           <label htmlFor={fid('reason')} className="label">
@@ -233,10 +217,8 @@ export function RecordWfhForm({
             maxLength={WFH_REASON_MAX}
             value={typed.reason}
             onChange={(e) => setTyped((x) => ({ ...x, reason: e.target.value }))}
-            aria-describedby={fid('reason-hint')}
             className="input"
           />
-          <p id={fid('reason-hint')} className="hint">E.g. asked by phone on the day. The employee sees it; it is kept in the audit log.</p>
         </div>
       </div>
       {checkProblem && <p className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">{checkProblem}</p>}
@@ -250,7 +232,7 @@ export function RecordWfhForm({
           </ul>
         </div>
       )}
-      <Problems problems={problems} verb="record" ready={`Ready to record: approved at once for ${employee.name}, logged as recorded by HR.`} />
+      <Problems problems={problems} verb="record" />
       <div className="flex flex-wrap gap-3">
         <button type="submit" disabled={blocked} className="btn btn-primary disabled:cursor-not-allowed disabled:opacity-60">
           {sending ? 'Recording…' : warnings.length ? 'Record with the warnings' : 'Record the day'}
@@ -279,7 +261,7 @@ export function WfhDecisionForm({ action, stage, name, confidential = false }: {
     <form
       action={formAction}
       onSubmit={(e) => {
-        if (decision === 'reject' && !window.confirm(`Reject the work from home request by ${name}? Your comment shows on it.`)) e.preventDefault();
+        if (decision === 'reject' && !window.confirm(`Reject the work from home request by ${name}?`)) e.preventDefault();
       }}
       aria-label={`Decide on the work from home request by ${name}`}
       className="space-y-4"
@@ -309,13 +291,8 @@ export function WfhDecisionForm({ action, stage, name, confidential = false }: {
           required={needsComment}
           value={comment}
           onChange={(e) => setComment(e.target.value)}
-          aria-describedby={fid('comment-hint')}
           className="input"
         />
-        <p id={fid('comment-hint')} className="hint">
-          {decision === 'reject' ? 'Why it is rejected. ' : ''}
-          {leaveCommentReaders(confidential)}
-        </p>
       </div>
       <button type="submit" disabled={pending || !ready} className={`btn ${decision === 'reject' ? 'btn-danger' : 'btn-primary'} disabled:cursor-not-allowed disabled:opacity-60`}>
         {pending ? button.busy : button.label}
@@ -331,7 +308,7 @@ export function CancelWfhForm({ action, what }: { action: () => Promise<FormStat
     <form
       action={formAction}
       onSubmit={(e) => {
-        if (!window.confirm(`Cancel your ${what}? It stays on your list, cancelled; ask again with a new request.`)) e.preventDefault();
+        if (!window.confirm(`Cancel your ${what}?`)) e.preventDefault();
       }}
       className="space-y-3"
     >
@@ -353,7 +330,7 @@ export function HrCancelWfhForm({ action, what }: { action: Action; what: string
     <form
       action={formAction}
       onSubmit={(e) => {
-        if (!window.confirm(`Cancel the approved ${what}? That day they are expected at the office again; your comment shows on it.`)) e.preventDefault();
+        if (!window.confirm(`Cancel the approved ${what}?`)) e.preventDefault();
       }}
       className="space-y-3"
     >
@@ -371,10 +348,8 @@ export function HrCancelWfhForm({ action, what }: { action: Action; what: string
           required
           value={comment}
           onChange={(e) => setComment(e.target.value)}
-          aria-describedby={fid('comment-hint')}
           className="input"
         />
-        <p id={fid('comment-hint')} className="hint">E.g. the team day moved, or it was recorded by mistake. The employee sees it.</p>
       </div>
       <button type="submit" disabled={pending || comment.trim() === ''} className="btn btn-danger">
         {pending ? 'Cancelling…' : 'Cancel the work from home day'}
@@ -412,12 +387,8 @@ export function WfhSettingsForm({ action, settings, canEdit }: { action: Action;
             required
             disabled={!canEdit}
             defaultValue={kept('daysPerMonth', settings.daysPerMonth)}
-            aria-describedby={fid('daysPerMonth-hint')}
             className="input"
           />
-          <p id={fid('daysPerMonth-hint')} className="hint">
-            The work from home days someone may have a calendar month, approved and waiting counted. 0 turns asking off.
-          </p>
         </div>
         <div>
           <label htmlFor={fid('minGapDays')} className="label">
@@ -434,10 +405,8 @@ export function WfhSettingsForm({ action, settings, canEdit }: { action: Action;
             required
             disabled={!canEdit}
             defaultValue={kept('minGapDays', settings.minGapDays)}
-            aria-describedby={fid('minGapDays-hint')}
             className="input"
           />
-          <p id={fid('minGapDays-hint')} className="hint">The fewest days between any two of someone&apos;s days, across months too: 7 is a week.</p>
         </div>
       </div>
       {canEdit && (

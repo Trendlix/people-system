@@ -82,12 +82,9 @@ export function ShiftForm({ action, shift }: { action: (prev: FormState, fd: For
             placeholder="Whole shift"
             maxLength={5}
             defaultValue={shown.hoursPerDay}
-            aria-describedby={`${fid('hoursPerDay-hint')} ${fid('hint')}`}
+            aria-describedby={fid('hint')}
             className="input tabular-nums"
           />
-          <p id={fid('hoursPerDay-hint')} className="hint">
-            As 9 or 9:00, in half hours. Empty: the whole shift. Fewer: flexible. Also the most hours attendance counts a day.
-          </p>
         </div>
         <div>
           <label htmlFor={fid('graceMinutes')} className="label">
@@ -109,12 +106,8 @@ export function ShiftForm({ action, shift }: { action: (prev: FormState, fd: For
             Count hours until
           </label>
           <div className="max-w-xs">
-            <TimeInput id={fid('countUntil')} name="countUntil" defaultValue={shown.countUntil ?? ''} aria-describedby={`${fid('countUntil-hint')} ${fid('hint')}`} />
+            <TimeInput id={fid('countUntil')} name="countUntil" defaultValue={shown.countUntil ?? ''} aria-describedby={fid('hint')} />
           </div>
-          <p id={fid('countUntil-hint')} className="hint">
-            Optional, at or after the shift ends and before midnight. Set, hours count until this time even past the hours to work, so a long day fills short hours on
-            the month&apos;s other days. Empty: they count until the end plus the grace, at most the hours to work.
-          </p>
         </div>
       </div>
       <p id={fid('hint')} aria-live="polite" className={`hint -mt-2 ${hint.problem ? 'text-danger' : ''}`}>
@@ -139,7 +132,6 @@ export function ShiftForm({ action, shift }: { action: (prev: FormState, fd: For
           id={fid('daysPerWeek')}
           name="daysPerWeek"
           defaultValue={valueOf(state, 'daysPerWeek', shift?.daysPerWeek ? String(shift.daysPerWeek) : '')}
-          aria-describedby={fid('daysPerWeek-hint')}
           className="input"
         >
           <option value="">Every working day</option>
@@ -149,10 +141,6 @@ export function ShiftForm({ action, shift }: { action: (prev: FormState, fd: For
             </option>
           ))}
         </Select>
-        <p id={fid('daysPerWeek-hint')} className="hint">
-          For part-timers and interns who choose their days, fewer than the working days ticked. A day without a check-in counts as absent only once the week can
-          no longer have its days.
-        </p>
       </div>
       <div className="flex flex-wrap gap-3">
         <SubmitButton>{shift ? 'Save changes' : 'Create shift'}</SubmitButton>

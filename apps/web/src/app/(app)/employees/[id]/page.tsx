@@ -93,7 +93,7 @@ async function Profile({ params, searchParams }: { params: Promise<{ id: string 
         <div className="flex flex-wrap items-center justify-between gap-2">
           {back ? <BackLink href={back.href}>{back.label}</BackLink> : <span />}
           {history && (
-            <Link href={history} prefetch={false} title={`Everything changed about ${p.fullNameEn}, in the Audit Log`} className="text-sm font-semibold">
+            <Link href={history} prefetch={false} className="text-sm font-semibold">
               History
             </Link>
           )}

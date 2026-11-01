@@ -111,13 +111,7 @@ async function Vacancies({ searchParams }: { searchParams: PageProps<'/recruitme
 export default function VacanciesPage({ searchParams }: PageProps<'/recruitment/vacancies'>) {
   return (
     <div className="space-y-4">
-      <div className="space-y-1">
-        <h1 className="page-title">Vacancies</h1>
-        <p className="max-w-3xl text-sm text-muted">
-          HR drafts a vacancy from a job title and sends it to the CEO; once approved, it is on the careers page until it closes or its hires reach the
-          headcount.
-        </p>
-      </div>
+      <h1 className="page-title">Vacancies</h1>
       <Suspense fallback={<Loading />}>
         <Vacancies searchParams={searchParams} />
       </Suspense>

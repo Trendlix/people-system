@@ -89,7 +89,7 @@ export function receiptProblems(files: readonly ReceiptFile[]): string[] {
   }
   if (files.some((f) => f.size > RECEIPT_MAX_BYTES)) problems.push(`Each receipt must be ${REIMBURSEMENT_RECEIPT_MAX_MB} MB or smaller.`);
   else if (files.reduce((n, f) => n + f.size, 0) > RECEIPTS_SEND_MAX_BYTES) {
-    problems.push('Together the receipts are too large to send: at most 4 MB. Take the photos again, or scan a PDF at a lower resolution (150–200 dpi is enough).');
+    problems.push('Together the receipts are too large to send: at most 4 MB.');
   }
   return problems;
 }

@@ -10,8 +10,8 @@ import type { FormState, PayrollLineView, PayrollTotals } from '@/lib/types';
 import { formatEgp } from '../../employees/[id]/contracts/salary';
 import { contractHref } from '../../employees/tab-list';
 import { payslipHref } from '../payslips';
-import { CONFIDENTIAL_LINE_TITLE, HIDDEN_PAY_NOTE } from './access';
-import { breakdown, cutsMark, cutText, payCuts, waivedByCeo, waiverOf, type BreakdownRow } from './breakdown';
+import { CONFIDENTIAL_LINE_TITLE } from './access';
+import { breakdown, cutsMark, cutText, kpiWaiverOf, payCuts, waivedByCeo, waiverOf, type BreakdownRow } from './breakdown';
 import { shownCode } from '@/lib/hidden';
 
 // The run's results (owner's decisions, 16 October 2026): what each employee earned, what is deducted, the net and what
@@ -30,8 +30,8 @@ import { shownCode } from '@/lib/hidden';
 /** The CEO's waiver of a line's attendance deduction: saves it as it is ticked or unticked (POST …/attendance-waiver). */
 type Waive = (lineId: string, waived: boolean) => Promise<FormState>;
 
-function WaiverBox({ line, waive }: { line: PayrollLineView; waive: Waive }) {
-  const w = waiverOf(line);
+function WaiverBox({ line, waive, kind = 'attendance' }: { line: PayrollLineView; waive: Waive; kind?: 'attendance' | 'kpi' }) {
+  const w = kind === 'kpi' ? kpiWaiverOf(line) : waiverOf(line);
   const [pending, startTransition] = useTransition();
   const [shown, setShown] = useOptimistic(w?.waived ?? false);
   const [error, setError] = useState<string | null>(null);
@@ -55,7 +55,7 @@ function WaiverBox({ line, waive }: { line: PayrollLineView; waive: Waive }) {
           className="size-4 accent-accent"
         />
         <span>
-          Waive the attendance deduction of <span className="tabular-nums">{formatEgp(w.amount)}</span>
+          Waive the {kind === 'kpi' ? 'KPI' : 'attendance'} deduction of <span className="tabular-nums">{formatEgp(w.amount)}</span>
           <span className="sr-only"> for {line.name}</span>
         </span>
       </label>
@@ -138,6 +138,7 @@ export function ResultsTable({
   lawRates,
   payslips,
   waive = null,
+  waiveKpi = null,
   places = [],
   hidden = null,
   month,
@@ -154,6 +155,8 @@ export function ResultsTable({
   payslips: boolean;
   /** The CEO, while the run is with the CEO: waives a line's attendance deduction (17 October 2026); null otherwise. */
   waive?: Waive | null;
+  /** The CEO, while the run is with the CEO: waives a line's KPI deduction (1 November 2026); null otherwise. */
+  waiveKpi?: Waive | null;
   /** The row standing for the C-level people's lines hidden from the caller ("C-level (2 people) — hidden"); null for none. */
   hidden?: string | null;
   /** The run's month (YYYY-MM): the KPI is the month before's (21 October 2026). */
@@ -186,7 +189,7 @@ export function ResultsTable({
             </span>
             <span className="inline-flex items-center gap-1.5">
               <span aria-hidden="true" className="size-2 rounded-full bg-warn" />
-              Deductions: attendance, absence, unpaid leave, KPI, penalties or the month&apos;s deductions
+              Deductions
             </span>
           </p>
           <button type="button" onClick={() => setOpen(allOpen ? new Set() : new Set(lines.map((l) => l.id)))} className="text-sm font-semibold text-accent hover:underline">
@@ -250,7 +253,7 @@ export function ResultsTable({
                             <div className="mt-1 flex flex-wrap gap-1 pl-5">
                               {l.confidential && <CLevelBadge title={CONFIDENTIAL_LINE_TITLE} />}
                               {l.onHold && <span className="badge bg-warn-soft text-warn">On hold</span>}
-                              {!waive && waivedByCeo(l) && <span className="badge bg-ok-soft text-ok">Waived by the CEO</span>}
+                              {!waive && !waiveKpi && waivedByCeo(l) && <span className="badge bg-ok-soft text-ok">Waived by the CEO</span>}
                               {l.result.warnings.length > 0 && (
                                 <span className="badge bg-warn-soft text-warn">
                                   {l.result.warnings.length} {l.result.warnings.length === 1 ? 'warning' : 'warnings'}
@@ -258,6 +261,7 @@ export function ResultsTable({
                               )}
                             </div>
                             {waive && <WaiverBox line={l} waive={waive} />}
+                            {waiveKpi && <WaiverBox line={l} waive={waiveKpi} kind="kpi" />}
                           </td>
                           <Amounts values={l.result} />
                           {payslips && (
@@ -294,9 +298,7 @@ export function ResultsTable({
                 <th scope="row" className="text-sm font-semibold tracking-normal text-ink normal-case">
                   {hidden}
                 </th>
-                <td colSpan={span - 1} className="text-sm text-muted">
-                  {HIDDEN_PAY_NOTE}
-                </td>
+                <td colSpan={span - 1} />
               </tr>
             </tbody>
           )}

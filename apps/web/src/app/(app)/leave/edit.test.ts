@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LeaveBalances, LeaveRequestView, LeaveTypeView } from '../../../lib/types';
-import { EDIT_NOTE_MAX, editBody, editChanged, editHint, editPreview, editPreviewText, editStart, editTypes, typedEditValues, type TypedEdit } from './edit';
+import { EDIT_NOTE_MAX, editBody, editChanged, editPreview, editPreviewText, editStart, editTypes, typedEditValues, type TypedEdit } from './edit';
 
 // A Super Admin edits a leave (owner, 26 October 2026: "as a superadmin i need to edit the leaves"). Invented types and balances.
 
@@ -125,7 +125,7 @@ describe('the days and the balance after it', () => {
     expect(editPreviewText({ days: 1, after: 15.5, counted: false })).toBe('1 day · annual balance after it: 15.5');
     expect(editPreviewText({ days: 2, after: null, counted: false })).toBe('2 days');
     expect(editPreviewText({ days: 2, after: null, counted: true })).toBe('2 days · the annual balance is counted on save');
-    expect(editPreviewText({ days: 0, after: null, counted: false })).toBe('No days yet: choose the first and last day.');
+    expect(editPreviewText({ days: 0, after: null, counted: false })).toBe('No days yet');
   });
 });
 
@@ -158,15 +158,5 @@ describe('what the form sends', () => {
 
   it('keeps what was typed for the form to show again', () => {
     expect(typedEditValues(form(ok))).toEqual({ typeId: 'casual', startDate: '06/11/2026', endDate: '', halfDay: 'false', reason: ' Moved ', coverId: '', note: ' Wrong day ' });
-  });
-});
-
-describe('the hint', () => {
-  it('says what an edit does for the leave’s status, and the import', () => {
-    expect(editHint({ status: 'approved', imported: false })).toMatch(/^The balance and the month’s draft payroll follow it/);
-    expect(editHint({ status: 'with_hr', imported: false })).toMatch(/^It stays with the same approver at the same step/);
-    expect(editHint({ status: 'cancelled', imported: false })).toMatch(/^Only its fields change: no balance, no payroll\./);
-    expect(editHint({ status: 'approved', imported: true })).toMatch(/ Undoing its import removes it, edits too\.$/);
-    expect(editHint({ status: 'approved', imported: false })).not.toMatch(/import/);
   });
 });

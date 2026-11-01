@@ -27,7 +27,6 @@ export function RunAdjustments({ run, today }: { run: PayrollRunView; today: str
         {sums.count === 0
           ? 'None on this run.'
           : `${sums.count} on ${sums.lines} ${sums.lines === 1 ? 'line' : 'lines'}: ${formatEgp(sums.taxed)} taxed additions in the pay earned, ${formatEgp(sums.untaxed)} untaxed added after tax, ${formatEgp(sums.deductions)} deducted after tax.`}
-        {run.status === 'draft' && ' A change to one of them is on its line at once.'}
       </p>
       {missing.length > 0 && (
         <div role="status" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
@@ -40,8 +39,7 @@ export function RunAdjustments({ run, today }: { run: PayrollRunView; today: str
             ))}
           </ul>
           <p className="mt-1">
-            {run.status === 'draft' ? 'Refresh the run once each is on a signed contract, or ' : ''}
-            <Link href={href}>move them to a later month</Link>.
+            <Link href={href}>Move them to a later month</Link>
           </p>
         </div>
       )}

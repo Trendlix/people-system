@@ -41,9 +41,7 @@ async function NewAsset() {
 export default function PhoneNewAssetPage() {
   return (
     <div className="space-y-4">
-      <PageTitle title="Add Asset" back={{ href: APP_ASSET_PATHS.list, label: 'Assets' }}>
-        Take its photos, then fill in what it is. Its code is given when you save it.
-      </PageTitle>
+      <PageTitle title="Add Asset" back={{ href: APP_ASSET_PATHS.list, label: 'Assets' }} />
       <Suspense fallback={<PhoneLoading rows={4} />}>
         <NewAsset />
       </Suspense>

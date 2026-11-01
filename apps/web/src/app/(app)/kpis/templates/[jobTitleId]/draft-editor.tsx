@@ -22,7 +22,6 @@ import {
   formGroups,
   formOf,
   hasDuty,
-  leftOutPillarNote,
   moveMetric,
   onlyForPublishing,
   PILLARS_CHANGED_NOTE,
@@ -81,12 +80,8 @@ const smallDanger =
 function CriteriaEditor({ metric, number, id, setForm, newKey }: { metric: MetricForm; number: number; id: (field: string) => string; setForm: SetForm; newKey: () => string }) {
   const criteria = metric.criteria;
   return (
-    <fieldset aria-describedby={id('criteria-hint')}>
+    <fieldset>
       <legend className="label">Criteria scale</legend>
-      <p id={id('criteria-hint')} className="hint mb-2">
-        From {L.criteriaMin} to {L.criteriaMax}, one picked each month, e.g. “No delays” 35, “1–2 delays” 30, “3+ delays” 20. A criterion may give more than the
-        target: the final % can then reach 110%.
-      </p>
       <ol className="space-y-2">
         {criteria.map((c, j) => (
           <li key={c.key} className="flex flex-wrap items-center gap-2">
@@ -228,7 +223,7 @@ function MetricEditor({
               </option>
             ))}
           </Select>
-          {metric.pillar === null && metric.wasIn && <p className="hint text-warn">It was in {metric.wasIn}, which the framework no longer has.</p>}
+          {metric.pillar === null && metric.wasIn && <p className="hint text-warn">Was in {metric.wasIn}</p>}
         </div>
       </div>
 
@@ -275,13 +270,9 @@ function MetricEditor({
             inputMode="numeric"
             autoComplete="off"
             maxLength={3}
-            aria-describedby={id('target-hint')}
             onChange={(e) => update({ targetPoints: e.target.value })}
             className="input w-24 tabular-nums"
           />
-          <p id={id('target-hint')} className="hint">
-            What counts as 100% of it.
-          </p>
         </div>
       </div>
 
@@ -315,14 +306,10 @@ function DutiesEditor({
   const ticked = duties.filter((d) => hasDuty(metric, d)).length;
   const add = () => update(addTypedDuty(metric));
   return (
-    <fieldset className="min-w-0 space-y-2" aria-describedby={id('duty-hint')}>
+    <fieldset className="min-w-0 space-y-2">
       <legend className="label">
         JD duties <span className="font-normal text-muted">(optional)</span>
       </legend>
-      <p id={id('duty-hint')} className="hint -mt-1">
-        {duties.length > 0 ? 'The duties of the job description it measures: tick them, or add another duty.' : 'The job description has no duties listed: add the duties it measures.'}{' '}
-        Up to {L.duties}.
-      </p>
       {metric.jdDuties.length > 0 ? (
         <ul aria-label={`Metric ${number}’s duties`} className="flex flex-wrap gap-2">
           {metric.jdDuties.map((d) => (
@@ -399,7 +386,7 @@ function DutiesEditor({
           Add<span className="sr-only"> the duty to metric {number}</span>
         </button>
       </div>
-      {full && <p className="hint">It has {L.duties} duties, the most: remove one to add another.</p>}
+      {full && <p className="hint">At most {L.duties} duties.</p>}
     </fieldset>
   );
 }
@@ -412,10 +399,6 @@ function AttendanceEditor({ value, fid, setForm }: { value: string; fid: (name: 
         <span className="font-semibold">Attendance</span>
         <span className="badge bg-line-soft text-muted">Automatic</span>
       </div>
-      <p className="mt-1 max-w-3xl text-sm text-muted">
-        Filled in by the system each month: its points × the month’s attendance score as payroll works it out (worked ÷ expected hours, in full at or above
-        the attendance grace). Nobody picks it, and it can’t be removed.
-      </p>
       <label htmlFor={fid('attendancePoints')} className="label mt-3">
         Points
       </label>
@@ -505,7 +488,7 @@ function PillarEditor({
       </div>
       {!pillar && <p className="max-w-3xl text-sm text-warn">{UNPLACED_NOTE}</p>}
       {attendance && <AttendanceEditor value={form.attendancePoints} fid={fid} setForm={setForm} />}
-      {group.leftOut && pillar && metrics.length === 0 && <p className="max-w-3xl text-sm text-muted">{leftOutPillarNote(pillar)} Add a metric to score it.</p>}
+      {group.leftOut && pillar && metrics.length === 0 && <p className="text-sm text-muted">Not scored.</p>}
       {metrics.length > 0 ? (
         <ol className="space-y-3">
           {metrics.map((m) => (
@@ -524,7 +507,7 @@ function PillarEditor({
           ))}
         </ol>
       ) : (
-        !attendance && !group.leftOut && <p className="text-sm text-muted">No metric yet. Every pillar is scored: add one before publishing.</p>
+        !attendance && !group.leftOut && <p className="text-sm text-muted">No metric yet.</p>
       )}
       {pillar && (
         <button
@@ -655,9 +638,7 @@ export function DraftEditor({
           <span className="badge bg-warn-soft text-warn">Version {draft.version}</span>
           {dirty && <span className="badge bg-line-soft text-muted">Changes not saved</span>}
         </div>
-        <p className="mt-1 max-w-3xl text-sm text-muted">
-          Last saved {formatDateTime(draft.updatedAt)}. Nothing changes until it is published; then it applies to the scorecards opened from the next month on.
-        </p>
+        <p className="mt-1 text-sm text-muted">Last saved {formatDateTime(draft.updatedAt)}</p>
         {draft.pillarsChanged && (
           <p role="status" className="mt-3 max-w-3xl rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
             {PILLARS_CHANGED_NOTE}
@@ -676,10 +657,7 @@ export function DraftEditor({
       </div>
       {form.baseWeights && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg bg-canvas px-4 py-3 text-sm">
-          <p className="max-w-xl text-muted">
-            {whose ? `${whose}. ` : ''}Type a pillar’s weight on its heading to weight it for this job title only; the pillars themselves are changed on{' '}
-            <Link href={KPI_PATHS.pillars}>KPI Pillars</Link>.
-          </p>
+          <Link href={KPI_PATHS.pillars}>{whose ?? 'KPI Pillars'}</Link>
           <p role="status" aria-live="polite" className={`font-semibold tabular-nums ${total === 100 ? 'text-ok' : 'text-warn'}`}>
             Weights total {total}%{total === 100 ? '' : ': they must add up to 100%'}
           </p>
@@ -714,7 +692,7 @@ export function DraftEditor({
         <div className="border-t border-line-soft pt-5">
           <DeleteForm
             action={discard}
-            confirmText={`Discard the draft of version ${draft.version}? What it has is lost; the published versions stay as they are.${discardPracticeText(practice)}`}
+            confirmText={`Discard the draft of version ${draft.version}?${discardPracticeText(practice)}`}
             label="Discard draft"
           />
         </div>

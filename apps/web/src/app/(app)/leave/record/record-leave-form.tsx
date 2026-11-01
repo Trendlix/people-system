@@ -6,7 +6,7 @@ import { Select } from '@/components/select';
 import type { FormState } from '@/lib/types';
 import { RecordWfhForm } from '../../attendance/wfh/wfh-forms';
 import { NewLeaveForm } from '../leave-forms';
-import { isWfhChoice, OWN_WFH_TEXT, RECORD_TYPES_HINT, recordTypeChoices, WFH_CHOICE, WFH_CHOICE_HINT } from './record-kind';
+import { isWfhChoice, OWN_WFH_TEXT, recordTypeChoices, WFH_CHOICE } from './record-kind';
 
 // Record leave's form (owner, 26 October 2026, on its types: "YES move it to leaves", then "Show it with leave"): the
 // leave form, its types ending with Work from home; choosing that shows the work from home record's fields (the day and a
@@ -35,16 +35,13 @@ function WfhChosen({
         Type
       </label>
       {/* no name: the work from home record sends the day and the reason alone */}
-      <Select id={fid('type')} value={WFH_CHOICE.value} onChange={(e) => onType(e.target.value)} aria-describedby={fid('type-hint')} className="input">
+      <Select id={fid('type')} value={WFH_CHOICE.value} onChange={(e) => onType(e.target.value)} className="input">
         {recordTypeChoices(types).map((c) => (
           <option key={c.value} value={c.value}>
             {c.label}
           </option>
         ))}
       </Select>
-      <p id={fid('type-hint')} className="hint">
-        {WFH_CHOICE_HINT}
-      </p>
     </div>
   );
   if (wfh.own) {
@@ -86,5 +83,5 @@ export function RecordLeaveForm({
       />
     );
   }
-  return <NewLeaveForm {...leave} startTypeId={typeId} extraChoice={{ ...WFH_CHOICE, hint: RECORD_TYPES_HINT, onChoose: () => setWfhChosen(true) }} />;
+  return <NewLeaveForm {...leave} startTypeId={typeId} extraChoice={{ ...WFH_CHOICE, onChoose: () => setWfhChosen(true) }} />;
 }

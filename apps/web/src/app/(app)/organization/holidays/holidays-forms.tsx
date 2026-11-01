@@ -88,7 +88,6 @@ export function AddHolidayForm({ action }: { action: Action }) {
     <form {...form} ref={ref} aria-label="Add a holiday" className="space-y-3 rounded-lg border border-line bg-canvas p-4">
       <FormErrors errors={state.errors} />
       <HolidayFields state={state} holiday={null} />
-      <p className="hint">One day each: add every day of a holiday that runs several days, such as Eid al-Adha.</p>
       <div className="flex flex-wrap items-center gap-3">
         <SubmitButton busy={pending} pendingText="Adding…">
           Add holiday
@@ -127,7 +126,7 @@ export function EditableHoliday({ holiday, action, remove }: { holiday: Holiday;
               action={remove}
               pendingText="Removing…"
               variant="danger"
-              confirmText={`Remove ${name}? Runs made or refreshed afterwards no longer count it; approved runs keep what they were worked out with.`}
+              confirmText={`Remove ${name}?`}
             >
               Remove<span className="sr-only"> {name}</span>
             </ActionButton>

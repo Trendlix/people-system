@@ -276,5 +276,5 @@ export async function saveAssetSettings(_prev: FormState, fd: FormData): Promise
     return { errors: messages(err), values: { capitalizationThreshold: raw } };
   }
   refresh();
-  return { message: 'Saved. Book values follow the new threshold straight away.' };
+  return { message: 'Saved.' };
 }

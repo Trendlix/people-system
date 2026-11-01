@@ -41,7 +41,7 @@ const dash = <span className="text-muted">—</span>;
 export function RequestSent() {
   return (
     <p role="status" className="rounded-lg bg-ok-soft px-4 py-3 text-sm text-ok">
-      Raise request sent. HR approves or rejects it, then the CEO decides; each step shows on the request.
+      Raise request sent.
     </p>
   );
 }
@@ -179,7 +179,6 @@ export function HrRequestActions({ request: r, user, rates = [] }: { request: Ra
         <HrDecisionForm
           action={decideRaiseRequest.bind(null, r.id, !!r.suggestion)}
           name={name}
-          requester={r.requester}
           suggestion={suggestionText(r.suggestion ?? null) ?? (r.suggestedGross !== null ? `Gross ${formatEgp(r.suggestedGross)}` : null)}
           gross={inForce?.grossSalary ?? null}
           inForce={inForce}
@@ -194,7 +193,7 @@ export function HrRequestActions({ request: r, user, rates = [] }: { request: Ra
           Open the raise<span className="sr-only"> prepared for {name}</span>
         </Link>
       )}
-      {can.decline && <DeclineRequestForm action={declineRaiseRequest.bind(null, r.id)} name={name} requester={r.requester} />}
+      {can.decline && <DeclineRequestForm action={declineRaiseRequest.bind(null, r.id)} name={name} />}
     </div>
   );
 }

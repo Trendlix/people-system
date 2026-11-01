@@ -21,7 +21,7 @@ async function Counts() {
   if (!can.view) {
     return (
       <PhoneCard>
-        <Quiet>You don&apos;t have access to Assets. An Admin gives it on the Users page.</Quiet>
+        <Quiet>You don&apos;t have access to Assets.</Quiet>
       </PhoneCard>
     );
   }
@@ -126,9 +126,7 @@ async function Counts() {
 export default function PhoneCountsPage() {
   return (
     <div className="space-y-4">
-      <PageTitle title="Counts" back={{ href: APP_ASSET_PATHS.list, label: 'Assets' }}>
-        Tick what is there by scanning its label, typing its code or tapping it.
-      </PageTitle>
+      <PageTitle title="Counts" back={{ href: APP_ASSET_PATHS.list, label: 'Assets' }} />
       <Suspense fallback={<PhoneLoading />}>
         <Counts />
       </Suspense>

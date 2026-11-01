@@ -91,7 +91,6 @@ export function NetworksForm({
                   placeholder="41.33.10.2"
                   value={r.range}
                   onChange={(e) => change(r.key, 'range', e.target.value)}
-                  aria-describedby={fid('range-hint')}
                   className="input font-mono"
                 />
               </div>
@@ -130,12 +129,6 @@ export function NetworksForm({
             )}
           </p>
         </div>
-        <p id={fid('range-hint')} className="hint max-w-3xl">
-          The office&apos;s public address: an IPv4 address (41.33.10.2), an IPv4 range (41.33.10.0/24) or an IPv6 range (an IPv6 office line has its
-          /64, e.g. 2001:db8:1234:5678::/64). Not the Wi-Fi&apos;s name, and not an address inside the office (192.168…): the system sees the line&apos;s
-          public one. Easiest: in the office, on its Wi-Fi, press Add the network I&apos;m on now. The office line needs a fixed IP from the internet
-          provider: if its address changes, check-ins are refused until it is added here.
-        </p>
         <div aria-live="polite">
           {touched && problems.length > 0 && (
             <ul className="list-disc space-y-0.5 pl-5 text-sm text-danger">
@@ -159,17 +152,16 @@ export function NetworksForm({
             checked={locked}
             disabled={!ready}
             onChange={(e) => setLocked(e.target.checked)}
-            aria-describedby={fid('lock-hint')}
+            aria-describedby={ready ? undefined : fid('lock-hint')}
             className="size-5 accent-accent"
           />
           Lock check-ins to the office network
         </label>
-        <p id={fid('lock-hint')} className="hint max-w-3xl">
-          On: Office staff check in and out only on these networks, or at a sub-location they are linked to; anywhere else the press is refused, and
-          they ask for an attendance correction (or HR records the time). Hybrid, Outdoor, Indoor and outdoor and Work from home staff, and anyone HR lets check in from anywhere on their profile,
-          check in from anywhere. A check-in on an office network counts as at the office either way.
-          {!ready && (lock ? ' It can’t stay on until the key is ready: saving now switches it off.' : ' It can be turned on once the key is ready (above).')}
-        </p>
+        {!ready && (
+          <p id={fid('lock-hint')} className="hint max-w-3xl">
+            {lock ? 'The key isn’t ready: saving now switches the lock off.' : 'It can be turned on once the key is ready (above).'}
+          </p>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-3">

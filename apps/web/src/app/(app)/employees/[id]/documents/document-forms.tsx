@@ -54,7 +54,7 @@ type Phase =
   | { at: 'checking' }
   | { at: 'missing'; missing: MissingLink[] }
   | { at: 'refused'; errors: string[] }
-  | { at: 'form'; usesRestricted: boolean; errors?: string[] };
+  | { at: 'form'; errors?: string[] };
 
 /**
  * Generate (or Generate again): first checks what the published template needs. If anything is missing it lists it,
@@ -67,7 +67,6 @@ export function GenerateDocument({
   name,
   needsInputs,
   today,
-  dateHint,
   again,
 }: {
   check: () => Promise<CheckResult>;
@@ -76,8 +75,6 @@ export function GenerateDocument({
   needsInputs: string[];
   /** DD/MM/YYYY: the date to start with (today, or a contract document's start date) */
   today: string;
-  /** What the date field's hint says; today's wording unless sent. */
-  dateHint?: string;
   /** Documents were generated from it before: they stay, and this adds one. */
   again: boolean;
 }) {
@@ -98,7 +95,7 @@ export function GenerateDocument({
       }
       if (result.errors?.length) setPhase({ at: 'refused', errors: result.errors });
       else if (result.missing?.length) setPhase({ at: 'missing', missing: result.missing });
-      else setPhase({ at: 'form', usesRestricted: Boolean(result.usesRestricted) });
+      else setPhase({ at: 'form' });
     });
   }
 
@@ -146,7 +143,7 @@ export function GenerateDocument({
       <div role="group" aria-label={`Generate ${name}`} className="w-full space-y-3 rounded-lg border border-line bg-canvas p-4">
         {phase.at === 'checking' && (
           <p role="status" className="text-sm text-muted">
-            Checking the details the template needs…
+            Checking…
           </p>
         )}
         {phase.at === 'missing' && <MissingList missing={phase.missing} />}
@@ -170,43 +167,30 @@ export function GenerateDocument({
       <FormErrors errors={phase.errors} />
       {needsInputs.length > 0 && (
         <div className="grid gap-4 sm:grid-cols-2">
-          {needsInputs.map((tag) => {
-            const hint = INPUT_LABELS[tag]?.hint;
-            return (
-              <div key={tag}>
-                <label htmlFor={fid(tag)} className="label">
-                  {inputLabel(tag)}
-                </label>
-                <input
-                  id={fid(tag)}
-                  name={tag}
-                  required
-                  maxLength={300}
-                  autoComplete="off"
-                  aria-describedby={hint ? fid(`${tag}-hint`) : undefined}
-                  className="input"
-                />
-                {hint && (
-                  <p id={fid(`${tag}-hint`)} className="hint">
-                    {hint}
-                  </p>
-                )}
-              </div>
-            );
-          })}
+          {needsInputs.map((tag) => (
+            <div key={tag}>
+              <label htmlFor={fid(tag)} className="label">
+                {inputLabel(tag)}
+              </label>
+              <input
+                id={fid(tag)}
+                name={tag}
+                required
+                maxLength={300}
+                autoComplete="off"
+                placeholder={INPUT_LABELS[tag]?.placeholder}
+                className="input"
+              />
+            </div>
+          ))}
         </div>
       )}
       <div className="max-w-60">
         <label htmlFor={fid('documentDate')} className="label">
           Document date <span className="font-normal text-muted">(optional)</span>
         </label>
-        <DateInput id={fid('documentDate')} name="documentDate" defaultValue={today} aria-describedby={fid('documentDate-hint')} />
+        <DateInput id={fid('documentDate')} name="documentDate" defaultValue={today} />
       </div>
-      <p id={fid('documentDate-hint')} className="hint">
-        {dateHint ?? 'The date written on the document: today, unless it should carry another date.'}
-      </p>
-      {phase.usesRestricted && <p className="text-sm text-muted">The template uses restricted details (the national ID, the salary or the bank account).</p>}
-      {again && <p className="text-sm text-muted">The documents generated before stay as they are: this adds a new one.</p>}
       <div className="flex flex-wrap gap-3">
         <button type="submit" disabled={pending} className="btn btn-primary">
           {pending ? 'Generating…' : 'Generate'}
@@ -311,13 +295,7 @@ export function UploadSignedCopy({ action, name, again }: { action: Action; name
       aria-label={`Upload the signed copy of ${name}`}
       className="w-full basis-full space-y-4 rounded-lg border border-line bg-canvas p-4"
     >
-      <div>
-        <h4 className="font-semibold">Signed Copy</h4>
-        <p className="mt-1 text-sm text-muted">
-          A photo (JPEG, PNG or WebP) or a PDF of up to 4 MB of the signed document, every page, or press Scan to scan it from an office scanner.
-          {again && ' It replaces the signed copy uploaded before.'}
-        </p>
-      </div>
+      <h4 className="font-semibold">Signed Copy</h4>
       <FormErrors errors={state.errors} />
       <div>
         <label htmlFor={fid('file')} className="label">
@@ -327,7 +305,6 @@ export function UploadSignedCopy({ action, name, again }: { action: Action; name
           {(take) => (
             <ScanButton
               title="Scan the Signed Copy"
-              hint="Put the signed document face down on the glass, or its pages in the document feeder."
               purpose="document"
               maxBytes={PDF_MAX_BYTES}
               onScanned={(result) => scanned(take, result)}

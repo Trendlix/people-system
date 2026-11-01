@@ -21,11 +21,11 @@ async function Payslips() {
   const user = await getCurrentUser();
   if (!user.employeeId) return <NoProfile user={user} />;
   const loaded = await loadMyPayslips();
-  if (loaded.kind === 'unavailable') return <p className={quiet}>Not available yet: the server doesn&apos;t have payslips for you yet. Please try again after its next update.</p>;
+  if (loaded.kind === 'unavailable') return <p className={quiet}>Not available yet.</p>;
   if (loaded.kind === 'forbidden') return <p className={quiet}>Your payslips can&apos;t be opened here. Ask HR for them.</p>;
   if (loaded.kind === 'failed') return <p className={quiet}>Your payslips couldn&apos;t be loaded. {loaded.messages.join(' ')}</p>;
   const rows = payslipRows(loaded.value);
-  if (rows.length === 0) return <p className={quiet}>No payslips yet: each month&apos;s is issued once HR marks that payroll paid.</p>;
+  if (rows.length === 0) return <p className={quiet}>No payslips yet.</p>;
   return (
     <div className="card">
       <RowList label="Your payslips">
@@ -34,7 +34,7 @@ async function Payslips() {
             <li key={r.lineId} className="flex min-h-16 items-center gap-3 px-4 py-3">
               <span className="min-w-0 flex-1">
                 <span className="block font-medium">{r.title}</span>
-                <span className="mt-0.5 block text-xs text-muted">On hold this month: not paid, so there is no payslip.</span>
+                <span className="mt-0.5 block text-xs text-muted">On hold this month: not paid.</span>
               </span>
             </li>
           ) : (
@@ -60,7 +60,7 @@ async function Payslips() {
 export default function PhonePayslipsPage() {
   return (
     <div className="space-y-4">
-      <PageTitle title="Payslips">Your payslip for each month paid, newest first. Each is a protected PDF: it opens and prints, but can&apos;t be edited.</PageTitle>
+      <PageTitle title="Payslips" />
       <Suspense fallback={<PhoneLoading />}>
         <Payslips />
       </Suspense>

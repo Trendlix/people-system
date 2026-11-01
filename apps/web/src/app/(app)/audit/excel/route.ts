@@ -21,7 +21,7 @@ export async function GET(req: Request) {
   if (res.status === 401) redirect('/login');
   if (res.status === 403) return text('Only the Super Admin and the CEO can export the audit log.', 403);
   if (res.status === 400) return text(await apiReason(res, 'Check the filters, then export again.'), 400);
-  if (res.status === 404) return text(await apiReason(res, 'Not available yet: the server does not have the audit log yet.'), 404);
+  if (res.status === 404) return text(await apiReason(res, 'Not available yet.'), 404);
   if (!res.ok) return text('The audit log could not be exported. Please try again.', 502);
   return passSheetOn(res, new URL(req.url).searchParams.get('tab') === 'sign-ins' ? 'Sign-ins.xlsx' : 'Audit log.xlsx') ?? text('The audit log could not be exported. Please try again.', 502);
 }

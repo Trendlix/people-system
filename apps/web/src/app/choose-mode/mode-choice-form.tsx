@@ -26,7 +26,6 @@ export function ModeChoiceForm({ cards, selected }: { cards: ModeCard[]; selecte
               name="mode"
               value={card.mode}
               defaultChecked={card.mode === selected}
-              aria-describedby={fid(`${card.mode}-text`)}
               className="mt-1 size-4 shrink-0 accent-accent"
             />
             <span className="min-w-0">
@@ -36,14 +35,10 @@ export function ModeChoiceForm({ cards, selected }: { cards: ModeCard[]; selecte
                   {card.who}
                 </span>
               )}
-              <span id={fid(`${card.mode}-text`)} className="mt-1 block text-sm text-muted">
-                {card.text}
-              </span>
             </span>
           </label>
         ))}
       </fieldset>
-      <p className="hint">You can switch at any time from the top bar.</p>
       {state.error && (
         <p role="alert" className="rounded-lg bg-danger-soft px-3 py-2 text-sm text-danger">
           {state.error}

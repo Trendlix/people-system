@@ -1,11 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { HISTORY_FIGURE_DEFINITIONS, type HistoryBin, type HistoryFigures, type HistoryTrendPoint, type HistoryWeekday } from '@trendlix/shared';
+import { type HistoryBin, type HistoryFigures, type HistoryTrendPoint, type HistoryWeekday } from '@trendlix/shared';
 import {
-  EXEMPT_DAYS_DEFINITION,
   binsChart,
   columnPath,
   countTicks,
-  hasRehireGap,
   historyApiExcelPath,
   historyApiPath,
   historyExcelHref,
@@ -104,8 +102,8 @@ describe('the tab’s addresses', () => {
 });
 
 describe('the figures', () => {
-  it('are tiles in the brief’s order, each with its definition', () => {
-    const tiles = historyTiles({ figures: FIGURES, definitions: HISTORY_FIGURE_DEFINITIONS });
+  it('are tiles in the brief’s order', () => {
+    const tiles = historyTiles({ figures: FIGURES });
     expect(tiles.map((t) => t.label)).toEqual([
       'Attendance rate',
       'On time',
@@ -123,19 +121,17 @@ describe('the figures', () => {
     expect(tiles.find((t) => t.key === 'late')).toMatchObject({ note: '1 h 35 min late in all', tone: 'warn' });
     expect(tiles.find((t) => t.key === 'absent')?.tone).toBe('danger');
     expect(tiles.find((t) => t.key === 'leave')?.note).toBe('And 1 day of leave in Zoho only');
-    expect(tiles.every((t) => t.definition.length > 20)).toBe(true);
-    expect(tiles.find((t) => t.key === 'od')?.definition).toBe(HISTORY_FIGURE_DEFINITIONS.odDays);
   });
 
   it('adds an Exempt days tile only with exempt days (owner, 25 October 2026: "trat them as if they achived their full working hours")', () => {
-    expect(historyTiles({ figures: FIGURES, definitions: HISTORY_FIGURE_DEFINITIONS }).map((t) => t.key)).not.toContain('exempt');
-    const tiles = historyTiles({ figures: { ...FIGURES, exemptDays: 5 }, definitions: HISTORY_FIGURE_DEFINITIONS });
-    expect(tiles.find((t) => t.key === 'exempt')).toEqual({ key: 'exempt', label: 'Exempt days', value: '5', note: null, definition: EXEMPT_DAYS_DEFINITION, tone: null });
+    expect(historyTiles({ figures: FIGURES }).map((t) => t.key)).not.toContain('exempt');
+    const tiles = historyTiles({ figures: { ...FIGURES, exemptDays: 5 } });
+    expect(tiles.find((t) => t.key === 'exempt')).toEqual({ key: 'exempt', label: 'Exempt days', value: '5', note: null, tone: null });
     expect(tiles.map((t) => t.key).indexOf('exempt')).toBe(tiles.map((t) => t.key).indexOf('od') + 1);
   });
 
   it('says none as a dash', () => {
-    const none = historyTiles({ figures: { ...FIGURES, attendanceRate: null, onTimeRate: null, averageCheckIn: null, averageHours: null }, definitions: HISTORY_FIGURE_DEFINITIONS });
+    const none = historyTiles({ figures: { ...FIGURES, attendanceRate: null, onTimeRate: null, averageCheckIn: null, averageHours: null } });
     expect(none.slice(0, 4).map((t) => t.value)).toEqual(['—', '—', '—', '—']);
   });
 
@@ -159,8 +155,6 @@ describe('the figures', () => {
     expect(rangeText({ from: '2026-10-23', to: '2026-10-23' })).toBe('23/10/2026');
     expect(trendCell(point('2026-10', 'Oct 2026', 17, 20))).toBe('85% (17 of 20)');
     expect(trendCell(point('2026-09', 'Sep 2026', 0, 0))).toBe('No day measured');
-    expect(hasRehireGap({ employments: [{ joinDate: '2024-01-01', endDate: '2025-01-31' }, { joinDate: '2025-06-01', endDate: null }] })).toBe(true);
-    expect(hasRehireGap({ employments: [{ joinDate: '2024-01-01', endDate: null }] })).toBe(false);
   });
 });
 

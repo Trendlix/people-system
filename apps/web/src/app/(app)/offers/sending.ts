@@ -82,5 +82,5 @@ export function offerMailto(p: OfferMailParts): string {
 
 /** Asked before a new link is made for an offer sent before: the earlier link stops working. */
 export function newLinkConfirm(sentCount: number): string | undefined {
-  return sentCount > 0 ? 'A new link replaces the one sent before: the earlier link will stop working. Make a new link?' : undefined;
+  return sentCount > 0 ? 'Replace the earlier link with a new one?' : undefined;
 }

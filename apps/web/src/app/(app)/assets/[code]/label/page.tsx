@@ -9,7 +9,7 @@ import { BackLink } from '../../../organization/ui';
 import { markAssetLabelled } from '../../actions';
 import { codeFromParam } from '../../assets';
 import { assetsCaller, assetsNotLoaded, loadAsset } from '../../data';
-import { LABEL_CSS, LABEL_SIZE, labelDocument, labelMarkup } from '../../label';
+import { LABEL_CSS, labelDocument, labelMarkup } from '../../label';
 import { MarkLabelledForm, PrintLabelButton } from '../../label-actions';
 import { Empty, Loading, NoAccess } from '../../ui';
 
@@ -35,13 +35,7 @@ async function Label({ params }: { params: PageProps<'/assets/[code]/label'>['pa
   return (
     <>
       <BackLink href={ASSET_PATHS.asset(asset.code)}>{asset.code}</BackLink>
-      <div>
-        <h1 className="page-title">Print Label</h1>
-        <p className="mt-1 text-sm text-muted">
-          One label of {LABEL_SIZE.widthMm} × {LABEL_SIZE.heightMm} mm. Set the printer to that paper size, or print it on a label sheet. Its QR code opens
-          this asset&apos;s page.
-        </p>
-      </div>
+      <h1 className="page-title">Print Label</h1>
       <section aria-label="The label, twice its size" className="card overflow-x-auto p-6">
         <style>{LABEL_CSS}</style>
         <div className="inline-block border border-dashed border-line" style={{ zoom: 2 }} dangerouslySetInnerHTML={{ __html: labelMarkup(content) }} />

@@ -1,11 +1,9 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { Suspense } from 'react';
 import { Empty, Loading } from '../ui';
 import { ChecklistEditor } from '../../offboarding/forms';
 import { saveOnboardingChecklist } from '../../onboarding/actions';
 import { loadOnboardingDefaults, onboardingNotLoaded } from '../../onboarding/data';
-import { ONBOARDING_PATH } from '../../onboarding/onboarding';
 
 // The default onboarding items (owner, 22 October 2026, the ATS's Phase 2; the brief: "Default items (HR-editable, like
 // offboarding's clearance defaults), each with an owner role"): the items every new checklist starts with, after the
@@ -21,7 +19,7 @@ async function Editor({ searchParams }: { searchParams: PageProps<'/organization
     <div className="card space-y-4 p-6">
       {query.saved === '1' && (
         <p role="status" className="rounded-lg bg-ok-soft px-4 py-3 text-sm text-ok">
-          Saved. New checklists start with these items.
+          Saved.
         </p>
       )}
       <ChecklistEditor key={loaded.value.map((i) => i.id).join()} action={saveOnboardingChecklist} items={loaded.value} />
@@ -34,11 +32,6 @@ async function Editor({ searchParams }: { searchParams: PageProps<'/organization
 export default function OnboardingDefaultsPage({ searchParams }: PageProps<'/organization/onboarding-checklist'>) {
   return (
     <div className="max-w-4xl space-y-6">
-      <p className="max-w-3xl text-sm text-muted">
-        The items every new onboarding checklist starts with, after the three the system ticks itself: Contract signed, KPI template in place and Equipment
-        handed over. Each is cleared by the person in charge of it, or by HR. Checklists already open keep their own items, on{' '}
-        <Link href={ONBOARDING_PATH}>Onboarding</Link>.
-      </p>
       <Suspense fallback={<Loading />}>
         <Editor searchParams={searchParams} />
       </Suspense>

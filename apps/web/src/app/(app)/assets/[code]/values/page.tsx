@@ -36,10 +36,7 @@ async function Values({ params, searchParams }: { params: Props['params']; searc
       <BackLink href={back ? ASSET_PATHS.needsValues : ASSET_PATHS.asset(asset.code)}>{back ? 'Needs Values' : asset.code}</BackLink>
       <div>
         <h1 className="page-title">Values of {titleCase(asset.name)}</h1>
-        <p className="mt-1 text-sm text-muted">
-          <span className="font-mono">{asset.code}</span> · Only the CEO, Finance and a Super Admin see these. The book value is worked out from the purchase
-          cost, the purchase date and the useful life.
-        </p>
+        <p className="mt-1 font-mono text-sm text-muted">{asset.code}</p>
       </div>
       <ValuesForm action={saveAssetValues.bind(null, asset.code, back)} saved={valuesDefaults(asset.values)} cancelHref={back ? ASSET_PATHS.needsValues : ASSET_PATHS.asset(asset.code)} />
     </>

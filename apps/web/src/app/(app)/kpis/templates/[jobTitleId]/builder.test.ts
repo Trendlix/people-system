@@ -14,7 +14,6 @@ import {
   formGroups,
   formOf,
   hasDuty,
-  leftOutPillarNote,
   moveMetric,
   onlyForPublishing,
   ownWeightsOf,
@@ -187,9 +186,6 @@ describe('the pillars', () => {
       ['clients', false, false, 0],
       ['discipline', false, true, 0],
     ]);
-    expect(leftOutPillarNote(groups[3].pillar!)).toBe(
-      'Not scored while attendance is out of the KPI: the Attendance metric was its only one, so its 20% is spread over the other pillars.',
-    );
     // with a metric of its own it is scored, the Attendance metric's points not in its max
     expect(pillarGroups(sample.metrics, sample.attendancePoints, FOUR, false).map((g) => [g.max, g.leftOut])).toEqual([
       [65, false],
@@ -424,9 +420,9 @@ describe('a job title’s own weights', () => {
     expect(pillarsFromText(undefined)).toBeNull();
     expect(pillarsFromText({ nameEn: 'video production' }, (t) => t.toUpperCase())).toBe('VIDEO PRODUCTION’s pillars');
     expect([baseWeightLabel({ nameEn: 'Production' }), baseWeightLabel(null), baseWeightLabel(undefined)]).toEqual(['Production', 'Company', 'Company']);
-    expect(weightsResetNote({ nameEn: 'Production' })).toMatch(/^Production’s pillars changed .* reset to Production’s\. /);
+    expect(weightsResetNote({ nameEn: 'Production' })).toBe('Production’s pillars changed, so this job title’s own weights were reset to Production’s.');
     // a team's own (22 October 2026: "Yes, add team pillars")
-    expect(weightsResetNote({ nameEn: 'Video' })).toMatch(/^Video’s pillars changed .* reset to Video’s\. /);
-    expect(weightsResetNote(null)).toMatch(/^The company’s pillars changed .* reset to the company’s\. /);
+    expect(weightsResetNote({ nameEn: 'Video' })).toBe('Video’s pillars changed, so this job title’s own weights were reset to Video’s.');
+    expect(weightsResetNote(null)).toBe('The company’s pillars changed, so this job title’s own weights were reset to the company’s.');
   });
 });

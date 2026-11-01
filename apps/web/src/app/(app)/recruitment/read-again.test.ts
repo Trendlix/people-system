@@ -18,7 +18,7 @@ describe('reading a CV again', () => {
     expect(readAgainChoices({ status: 'read', method: 'docx' }).map((c) => c.label)).toEqual(['Read again']);
     expect(readAgainChoices({ status: 'failed', method: null }).map((c) => c.label)).toEqual(['Read again', 'Read as a scan (OCR)']);
     expect(readAgainChoices({ status: 'pending', method: 'pdf' })).toEqual([]);
-    expect(readAgainChoices({ status: 'read', method: 'pdf' })[1].confirm).toContain('what was read before stays');
+    expect(readAgainChoices({ status: 'read', method: 'pdf' })[1].confirm).toBe('Read this CV as a scan?');
   });
 
   it('says why reading it again didn’t work, the earlier reading shown', () => {

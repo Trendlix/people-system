@@ -37,7 +37,6 @@ export const ringShare = (percent: number): number => Math.max(0, Math.min(1, pe
 /** A step of the month's review, as "How it works" shows it. */
 export interface ReviewStep {
   title: string;
-  text: string;
   /** "By the 3rd" (of the next month), from the KPI settings; null when they couldn't be read. */
   due: string | null;
 }
@@ -50,13 +49,9 @@ export interface ReviewStep {
 export function reviewSteps(settings: Pick<KpiSettings, 'selfRatingDay' | 'managerDay' | 'hrDay' | 'signOffDay'> | null): ReviewStep[] {
   const due = (day: number | undefined) => (typeof day === 'number' ? `By the ${ordinalDay(day)}` : null);
   return [
-    {
-      title: 'Self-rating',
-      text: 'From the 1st of the next month, you pick how you did on each metric, with a comment if you like.',
-      due: due(settings?.selfRatingDay),
-    },
-    { title: 'Manager’s scoring', text: 'Your manager scores the month, seeing your self-rating.', due: due(settings?.managerDay) },
-    { title: 'HR calibration', text: 'HR checks the scoring and may change a pick, giving the reason.', due: due(settings?.hrDay) },
-    { title: 'Sign-off', text: 'You see the score, then you both sign that you have read it.', due: due(settings?.signOffDay) },
+    { title: 'Self-rating', due: due(settings?.selfRatingDay) },
+    { title: 'Manager’s scoring', due: due(settings?.managerDay) },
+    { title: 'HR calibration', due: due(settings?.hrDay) },
+    { title: 'Sign-off', due: due(settings?.signOffDay) },
   ];
 }

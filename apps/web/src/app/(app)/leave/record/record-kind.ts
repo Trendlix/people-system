@@ -22,12 +22,5 @@ export function recordTypeChoices(types: readonly Pick<LeaveTypeView, 'id' | 'na
   return [{ value: '', label: 'Choose a type' }, ...types.map((t) => ({ value: t.id, label: t.nameEn })), { ...WFH_CHOICE }];
 }
 
-/** The hint under the types once Work from home is chosen: a working day, one at a time. */
-export const WFH_CHOICE_HINT =
-  'Not leave: a working day from home, with no balance; that day they check in from home. One day at a time: record each day on its own.';
-
-/** The hint under Record leave's types. */
-export const RECORD_TYPES_HINT = 'The types HR set up, each with its rules from the Labour Law; Work from home last, a working day rather than leave.';
-
 /** Said in place of the work from home fields when the employee chosen is the user themself (the API refuses it). */
-export const OWN_WFH_TEXT = 'Someone else in HR has to record your own work from home day, or ask for it from My Requests.';
+export const OWN_WFH_TEXT = 'Someone else in HR has to record your own work from home day.';

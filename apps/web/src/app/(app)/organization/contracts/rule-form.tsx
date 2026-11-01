@@ -30,14 +30,10 @@ export function EndingRuleForm({ action, rule }: { action: (prev: FormState, fd:
           required
           maxLength={200}
           defaultValue={valueOf(state, 'label', rule.label)}
-          aria-describedby={fid('label-hint')}
           className="input"
         />
-        <p id={fid('label-hint')} className="hint">
-          As HR sees it when recording an ending.
-        </p>
       </div>
-      <fieldset aria-describedby={fid('notice-hint')}>
+      <fieldset>
         <legend className="label">Notice</legend>
         <div className="grid max-w-sm grid-cols-2 gap-3">
           <div>
@@ -68,9 +64,6 @@ export function EndingRuleForm({ action, rule }: { action: (prev: FormState, fd:
             </Select>
           </div>
         </div>
-        <p id={fid('notice-hint')} className="hint">
-          0 for no notice. Working days follow the employee&apos;s shift (Sunday to Thursday when there is none).
-        </p>
       </fieldset>
       <div className="space-y-2">
         <label className={choice}>
@@ -78,12 +71,9 @@ export function EndingRuleForm({ action, rule }: { action: (prev: FormState, fd:
           The notice can be paid instead of worked
         </label>
         <label className={choice}>
-          <input type="checkbox" name="active" value="true" defaultChecked={rule.active} aria-describedby={fid('active-hint')} className="size-4 accent-accent" />
+          <input type="checkbox" name="active" value="true" defaultChecked={rule.active} className="size-4 accent-accent" />
           Offered
         </label>
-        <p id={fid('active-hint')} className="hint">
-          HR can choose an offered rule when recording an ending.
-        </p>
       </div>
       <div className="flex flex-wrap gap-3">
         <SubmitButton busy={pending}>Save changes</SubmitButton>

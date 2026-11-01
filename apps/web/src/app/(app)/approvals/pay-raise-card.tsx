@@ -121,7 +121,7 @@ export function PayRaiseCard({
           </div>
         )}
       </dl>
-      {decides && <CeoRaiseDecision raise={r} request={request} rates={rates} action={decideRaise.bind(null, r.id)} />}
+      {decides && <CeoRaiseDecision raise={r} rates={rates} action={decideRaise.bind(null, r.id)} />}
     </li>
   );
 }

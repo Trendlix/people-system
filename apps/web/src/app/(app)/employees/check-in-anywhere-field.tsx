@@ -1,6 +1,6 @@
 'use client';
 
-import { CHECK_IN_WITHOUT_LOCATION_LABEL, REFUSE_WITHOUT_LOCATION_LABEL } from '@trendlix/shared';
+import { CHECK_IN_WITHOUT_LOCATION_LABEL } from '@trendlix/shared';
 import type { Employment, FormState } from '@/lib/types';
 
 // "Can check in from anywhere" on the employment form (owner, 20 October 2026: check-ins locked to the office network,
@@ -19,7 +19,7 @@ const chip =
 /** After a refused save, ticked if it was sent; otherwise as saved. */
 const tickedOf = (state: FormState, key: string, saved: boolean) => (state.values ? key in state.values : saved);
 
-export function CheckInAnywhereField({ state, fid, employment, arrangement }: { state: FormState; fid: (name: string) => string; employment: Employment; arrangement: string }) {
+export function CheckInAnywhereField({ state, employment }: { state: FormState; employment: Employment }) {
   return (
     <div>
       <input type="hidden" name="checkInAnywhereSent" value="1" />
@@ -28,21 +28,15 @@ export function CheckInAnywhereField({ state, fid, employment, arrangement }: { 
           type="checkbox"
           name="checkInAnywhere"
           defaultChecked={tickedOf(state, 'checkInAnywhere', employment.checkInAnywhere ?? false)}
-          aria-describedby={fid('checkInAnywhere-hint')}
           className="size-4 accent-accent"
         />
         Can check in from anywhere
       </label>
-      <p id={fid('checkInAnywhere-hint')} className="hint">
-        {arrangement === 'office'
-          ? 'With check-ins locked to the office network or to the check-in locations (Organization → Check-in Setup), Office staff check in and out only there; ticked, this person checks in from anywhere.'
-          : 'Only Office staff are locked to the office network or the check-in locations; this work arrangement checks in from anywhere already.'}
-      </p>
     </div>
   );
 }
 
-export function CheckInWithoutLocationField({ state, fid, employment }: { state: FormState; fid: (name: string) => string; employment: Employment }) {
+export function CheckInWithoutLocationField({ state, employment }: { state: FormState; employment: Employment }) {
   return (
     <div>
       <input type="hidden" name="checkInWithoutLocationSent" value="1" />
@@ -51,16 +45,10 @@ export function CheckInWithoutLocationField({ state, fid, employment }: { state:
           type="checkbox"
           name="checkInWithoutLocation"
           defaultChecked={tickedOf(state, 'checkInWithoutLocation', employment.checkInWithoutLocation ?? false)}
-          aria-describedby={fid('checkInWithoutLocation-hint')}
           className="size-4 accent-accent"
         />
         {CHECK_IN_WITHOUT_LOCATION_LABEL}
       </label>
-      <p id={fid('checkInWithoutLocation-hint')} className="hint">
-        With &ldquo;{REFUSE_WITHOUT_LOCATION_LABEL}&rdquo; on, or (for Office staff) check-ins locked to the check-in locations (Organization → Check-in
-        Setup), a check-in on the website without a location is refused; ticked, this person&apos;s is kept as location unknown. In the app a location is
-        always needed.
-      </p>
     </div>
   );
 }

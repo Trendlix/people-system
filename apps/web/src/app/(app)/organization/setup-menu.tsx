@@ -12,9 +12,6 @@ import { SetupPicker } from './setup-picker';
 // Rendered by each section's own layout with its key, so the current page is known on the server and shows at once
 // (reading the address in the browser would flash an unselected state).
 
-const INTRO =
-  'How the company is set up, in six groups: the company itself, its structure, time and leave, pay and contracts, performance, and hiring and leaving. You see the pages your role keeps.';
-
 const headingId = (group: SetupGroup) => `setup-group-${group.label.toLowerCase().replace(/[^a-z]+/g, '-')}`;
 
 /**
@@ -80,7 +77,6 @@ export function SetupFrame({ active, children }: { active: SetupKey; children: R
   return (
     <div className="max-w-7xl">
       <h1 className="page-title">Organization</h1>
-      <p className="mt-1 max-w-3xl text-muted">{INTRO}</p>
       <div className="mt-6 lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-start lg:gap-8">
         {/* who it is was read for the page already (StaffOnly), so this waits for nothing; meanwhile, the pages everyone has */}
         <Suspense fallback={<Menus groups={setupGroupsFor(null)} active={active} />}>

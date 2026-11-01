@@ -19,7 +19,6 @@ import {
   sectionTitle,
   signedFileHref,
   signedMimeType,
-  signersText,
   templateStateText,
 } from './wording';
 
@@ -163,12 +162,6 @@ describe('an item', () => {
       ['c1', ['contract_full_time']],
     ]);
     expect(contractGroupTitle(groups[0])).toBe('Contract CON-2026-0002 · Version 2');
-  });
-
-  it('says who signs it, from the template library', () => {
-    expect(signersText('contract_full_time')).toBe('the employee and the company');
-    expect(signersText('resignation_request')).toBe('the employee');
-    expect(signersText('payslip_en')).toBeNull();
   });
 });
 

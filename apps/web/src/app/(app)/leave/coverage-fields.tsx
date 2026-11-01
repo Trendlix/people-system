@@ -1,6 +1,6 @@
 'use client';
 
-import { COVER_REQUIRED_OVER_DAYS, HANDOVER_NOTE_MAX, staffingLimitText, type CoverageDay, type CoverageViewer, type LeaveCoverageView, type LeaveFormCoverage } from '@trendlix/shared';
+import { HANDOVER_NOTE_MAX, staffingLimitText, type CoverageDay, type CoverageViewer, type LeaveCoverageView, type LeaveFormCoverage } from '@trendlix/shared';
 import { Select } from '@/components/select';
 import { titleCase } from '@/lib/format';
 import { atWorkText, busyDays, clashText, coverGroups, coveringText, coversText, elsewhereLines, offLines, overLimitText, placeText, shortDay } from './coverage';
@@ -44,7 +44,7 @@ export function WhoElseIsOff({ coverage, viewer, reading = false }: { coverage: 
   return (
     <div className="space-y-2" aria-busy={reading || undefined}>
       {!group ? (
-        <p className="text-sm text-muted">Not in a department or team, so there is nobody else’s leave to show.</p>
+        <p className="text-sm text-muted">Not in a department or team.</p>
       ) : lines.length ? (
         <ul className="list-disc space-y-0.5 pl-5 text-sm">
           {lines.map((l) => (
@@ -81,7 +81,7 @@ export function RequestCoverage({ coverage, employeeName }: { coverage: LeaveCov
     <div className="space-y-3">
       {clash && (
         <p role="note" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
-          {clash} HR approves it too.
+          {clash}
         </p>
       )}
       {/* the colleagues its employee covers on those days: a warning, never a block (HR sees the clash) */}
@@ -161,7 +161,7 @@ export function CoverageFields({
       )}
       {coverage.covering.map((c) => (
         <p key={c.requestId} role="note" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
-          {coveringText(c)}: you can still send it; HR sees it.
+          {coveringText(c)}.
         </p>
       ))}
       {problem && <p className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">{problem}</p>}
@@ -178,18 +178,12 @@ export function CoverageFields({
             required={required}
             value={choice.coverId}
             onChange={(e) => onChange({ coverId: e.target.value })}
-            aria-describedby={fid('coverId-hint')}
             className="input"
           >
             <option value="">{required ? 'Choose a colleague' : 'Nobody'}</option>
             {team.length > 0 && <optgroup label={coverage.group ? `${coverage.group.nameEn}` : 'Your team'}>{team.map(option)}</optgroup>}
             {others.length > 0 && <optgroup label={team.length ? 'Everyone else' : 'Colleagues'}>{others.map(option)}</optgroup>}
           </Select>
-          <p id={fid('coverId-hint')} className="hint">
-            {required
-              ? `Leave of this type for more than ${COVER_REQUIRED_OVER_DAYS} working days needs a colleague who covers your work, someone not off on these days. They are told, and see your handover note.`
-              : 'A colleague not off on these days. They are told, and see your handover note.'}
-          </p>
         </div>
         <div>
           <label htmlFor={fid('handoverNote')} className="label">
@@ -202,12 +196,8 @@ export function CoverageFields({
             maxLength={HANDOVER_NOTE_MAX}
             value={choice.handoverNote}
             onChange={(e) => onChange({ handoverNote: e.target.value })}
-            aria-describedby={fid('handoverNote-hint')}
             className="input"
           />
-          <p id={fid('handoverNote-hint')} className="hint">
-            What the colleague who covers should know: open tasks, files, who to call. Up to {HANDOVER_NOTE_MAX} characters.
-          </p>
         </div>
       </fieldset>
 
@@ -221,18 +211,12 @@ export function CoverageFields({
             name="standIn"
             value={choice.standIn}
             onChange={(e) => onChange({ standIn: e.target.value })}
-            aria-describedby={fid('standIn-hint')}
             className="input"
           >
             <option value="">{defaultLabel ? `${defaultLabel} (the default)` : 'Nobody'}</option>
             {standIn.hr && !standIn.default?.hr && <option value="hr">HR</option>}
             {standIn.options.filter((o) => o.id !== defaultPerson?.id).map(option)}
           </Select>
-          <p id={fid('standIn-hint')} className="hint">
-            {standIn.cLevel
-              ? 'While you are on leave, the CEO or a Super Admin decides the requests that wait for you, then they come back to you.'
-              : 'While you are on leave, they decide the requests that wait for you (your team’s leave, permission, working from home and more), then what still waits comes back to you.'}
-          </p>
         </div>
       ) : (
         <input type="hidden" name="standIn" value="" />

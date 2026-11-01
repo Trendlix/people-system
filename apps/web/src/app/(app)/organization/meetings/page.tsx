@@ -23,7 +23,7 @@ import { getCurrentUser } from '@/lib/session';
 import { Empty, Loading } from '../ui';
 import { disconnectCompanyMeetings, saveMeetingApp, saveMeetingDefault, saveMeetingHost, testCompanyMeetings } from './actions';
 import { CopyUri, MeetingAppForm, MeetingDefaultForm, MeetingHostForm } from './meetings-forms';
-import { defaultOptions, meetingNote, setupSteps } from './setup';
+import { defaultOptions, setupSteps } from './setup';
 
 // Organization → Meetings (owner, 24 October 2026: "can i link an online meeting service provider to automatically
 // generate meeting links? line teams - gogole meet - zoom - etc.."; asked, "Google Meet, Microsoft Teams, Zoom", and who
@@ -56,8 +56,7 @@ async function loadSettings(): Promise<Loaded> {
   }
 }
 
-const DISCONNECT_COMPANY =
-  'Disconnect the company’s account? New interviews can’t use it until it is connected again. Meetings already made keep their link, but moving or cancelling them won’t change them at the provider any more.';
+const DISCONNECT_COMPANY = 'Disconnect the company’s account?';
 
 /** The company's account: Google's signed in to; Microsoft's and Zoom's the host named. */
 function CompanyAccount({ provider, app, connection }: { provider: MeetingProvider; app: MeetingAppView; connection: MeetingConnectionView | null }) {
@@ -92,8 +91,7 @@ function ProviderCard({ provider, app, connection, origin }: { provider: Meeting
           {MEETING_PROVIDER_LABELS[provider]}
         </h2>
         <p className="text-sm text-muted">
-          {app.companyReady ? 'The company’s app is set up.' : 'The company’s app isn’t set up yet.'}{' '}
-          {app.personalReady ? 'HR can connect their own on Your Meetings.' : 'HR can’t connect their own until it is.'}
+          Company app: {app.companyReady ? 'set up' : 'not set up'} · HR’s own: {app.personalReady ? 'ready' : 'not ready'}
         </p>
       </div>
       <div className="space-y-3">
@@ -115,7 +113,6 @@ function ProviderCard({ provider, app, connection, origin }: { provider: Meeting
           ))}
         </ol>
         {uri ? <CopyUri uri={uri} /> : <p className="text-sm text-warn">This page could not tell its own address: open it again from the website.</p>}
-        <p className="text-sm text-muted">{meetingNote(provider)}</p>
       </div>
       <div className="space-y-3">
         <h3 className="font-semibold">App Credentials</h3>
@@ -128,23 +125,17 @@ function ProviderCard({ provider, app, connection, origin }: { provider: Meeting
 
 async function Gate({ searchParams }: { searchParams: PageProps<'/organization/meetings'>['searchParams'] }) {
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
-  if (user.developer) return <Empty>The meeting settings hold the company’s apps and accounts: they aren’t open to developers.</Empty>;
+  if (user.developer) return <Empty>The meeting settings aren’t open to developers.</Empty>;
   if (!seesMeetingSettings(user)) return <Empty>{MEETINGS_SUPER_ADMIN_ONLY}</Empty>;
   if (user.viewAs) return <Empty>{MEETINGS_OWN_ACCOUNT}</Empty>;
   const loaded = await loadSettings();
-  if (loaded.kind === 'unavailable') return <Empty>Not available yet: the server doesn’t make meetings yet. Please try again after its next update.</Empty>;
+  if (loaded.kind === 'unavailable') return <Empty>Not available yet: the server doesn’t make meetings yet.</Empty>;
   if (loaded.kind === 'failed') return <Empty>The meeting settings could not be loaded. {loaded.messages.join(' ')}</Empty>;
   const view = loaded.value;
   const origin = originFromHeaders(await headers());
   const banner = meetingBanner(query);
   return (
     <div className="space-y-6">
-      <p className="max-w-3xl text-sm text-muted">
-        Online interviews get their meeting made by the system, with Google Meet, Microsoft Teams or Zoom: hosted by the company’s account set up here, or by
-        each HR person’s own (Your Meetings, in the menu at the top). The link goes into the candidate’s invitation, the interviewers’ emails and the
-        calendar invitation; moving the interview moves the meeting, cancelling it deletes it. The meeting has no guests at the provider: the system’s
-        invitation is the only one anybody gets.
-      </p>
       {banner && (
         <p role={banner.tone === 'danger' ? 'alert' : 'status'} className={`rounded-lg px-4 py-3 text-sm font-semibold ${banner.tone === 'ok' ? 'bg-ok-soft text-ok' : 'bg-danger-soft text-danger'}`}>
           {banner.text}
@@ -154,10 +145,6 @@ async function Gate({ searchParams }: { searchParams: PageProps<'/organization/m
         <h2 id="meetings-default" className="text-lg font-semibold">
           Default for New Online Interviews
         </h2>
-        <p className="max-w-3xl text-sm text-muted">
-          What “Create the meeting with” starts on when HR chooses Online. Without a default, each HR person starts on their own account, else on pasting a
-          link; they can always choose another.
-        </p>
         <MeetingDefaultForm options={defaultOptions(view)} current={view.defaultChoice} action={saveMeetingDefault} />
       </section>
       {MEETING_PROVIDERS.map((p) => {

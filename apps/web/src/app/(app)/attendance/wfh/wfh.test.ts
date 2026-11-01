@@ -168,10 +168,10 @@ describe('HR’s form', () => {
 
 describe('a request, in words', () => {
   it('says where it goes once sent, and what was done', () => {
-    expect(wfhSentText('with_manager', { role: 'team_lead' })).toBe('Request sent. It goes to your team lead, then HR; each step shows on the request.');
-    expect(wfhSentText('with_hr', null, true)).toBe('Request sent. It goes to the CEO; each step shows on the request.');
-    expect(wfhSentText('approved')).toContain('approved at once');
-    expect(wfhDoneText({ done: 'manager_approve' }, 'with_hr')).toEqual({ text: 'Approved: the request goes to HR.', tone: 'ok' });
+    expect(wfhSentText('with_manager', { role: 'team_lead' })).toBe('Sent to your team lead.');
+    expect(wfhSentText('with_hr', null, true)).toBe('Sent to the CEO.');
+    expect(wfhSentText('approved')).toBe('Work from home day recorded.');
+    expect(wfhDoneText({ done: 'manager_approve' }, 'with_hr')).toEqual({ text: 'Approved: sent to HR.', tone: 'ok' });
     expect(wfhDoneText({ done: 'moved' }, 'approved')?.tone).toBe('warn');
     expect(wfhDoneText({ done: 'nonsense' }, 'approved')).toBeNull();
     expect(wfhDecisionButton('approve', 'hr')).toEqual({ label: 'Approve working from home', busy: 'Approving…' });

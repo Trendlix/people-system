@@ -37,7 +37,7 @@ export async function saveLawRates(_prev: FormState, fd: FormData): Promise<Form
     throw err;
   }
   refresh();
-  return { message: `The rates set by law for ${rates.year} are saved. Runs made from now on use them, and a draft run when it is refreshed.` };
+  return { message: `The ${rates.year} rates are saved.` };
 }
 
 /** A year's rates deleted (DELETE /payroll/law-rates/:year): not the earliest, whose rates the years before it use. */
@@ -52,5 +52,5 @@ export async function deleteLawRates(year: number): Promise<FormState> {
     throw err;
   }
   refresh();
-  return { message: `The rates set by law for ${year} are deleted.` };
+  return { message: `The ${year} rates are deleted.` };
 }

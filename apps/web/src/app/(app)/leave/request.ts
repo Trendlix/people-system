@@ -226,12 +226,12 @@ export function overBalanceNote(type: Pick<LeaveTypeView, 'balance'> | null, bal
   return balances.annual.available - days < 0 ? overBalanceWarning(balances.annual.available, days) : null;
 }
 
-/** "3 days, from your annual balance: 18 left after it." and the like, for the line under the dates. */
-export function countText(days: number, after: number | null, byHr: boolean): string {
-  if (days <= 0) return 'No days yet: choose the first and last day.';
+/** "3 days · 18 left after it" and the like, for the line under the dates. */
+export function countText(days: number, after: number | null): string {
+  if (days <= 0) return 'No days yet';
   const counted = daysText(days);
-  if (after === null) return `${counted}.`;
-  return `${counted}, from the annual balance: ${daysNumber(after)} left after it${byHr ? '' : ', as far as is approved'}.`;
+  if (after === null) return counted;
+  return `${counted} · ${daysNumber(after)} left after it`;
 }
 
 /** The year the request's balances are read for: its first day's, else this year. */

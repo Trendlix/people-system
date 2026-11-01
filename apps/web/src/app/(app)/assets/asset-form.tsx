@@ -32,7 +32,7 @@ import { Select } from '@/components/select';
 import { APP_ASSET_PATHS, ASSET_PATHS } from '@/lib/asset-paths';
 import { saveAsset } from './actions';
 import { PhotoPicker, sendPhotos, type ChosenPhoto } from './asset-photos';
-import { readAssetForm, readValuesForm, usefulLifeHint } from './assets';
+import { readAssetForm, readValuesForm } from './assets';
 import { accessoryField, ACCESSORY_ROWS_MAX, readAccessoriesForm, readParentCode } from './upkeep';
 
 // The Add asset and Edit asset form (owner, 21 October 2026: "i want to add this module with a special permission to the
@@ -48,40 +48,24 @@ type Surface = 'site' | 'app';
 
 const optional = <span className="font-normal text-muted">(optional)</span>;
 
-function Section({ title, children, note }: { title: string; children: React.ReactNode; note?: string }) {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="space-y-4 border-t border-line-soft pt-5 first:border-0 first:pt-0">
-      <div>
-        <h2 className="font-semibold">{title}</h2>
-        {note && <p className="mt-0.5 text-sm text-muted">{note}</p>}
-      </div>
+      <h2 className="font-semibold">{title}</h2>
       <div className="grid gap-5 sm:grid-cols-2">{children}</div>
     </section>
   );
 }
 
-function Field({ id, label, hint, children, wide = false, opt = false }: { id: string; label: string; hint?: string; children: React.ReactNode; wide?: boolean; opt?: boolean }) {
+function Field({ id, label, children, wide = false, opt = false }: { id: string; label: string; children: React.ReactNode; wide?: boolean; opt?: boolean }) {
   return (
     <div className={wide ? 'sm:col-span-2' : undefined}>
       <label htmlFor={id} className="label">
         {label} {opt && optional}
       </label>
       {children}
-      {hint && (
-        <p id={`${id}-hint`} className="hint">
-          {hint}
-        </p>
-      )}
     </div>
   );
-}
-
-/** "In custody: it changes when it is received back", for a status the form can't change. */
-function fixedStatusText(status: AssetStatus, group: AssetGroup): string {
-  if (group === 'consumable') return 'Available: consumables always are, as they are kept by quantity.';
-  if (status === 'custody') return 'In custody: it changes when it is received back.';
-  if (status === 'disposed') return 'Disposed: it stays so.';
-  return ASSET_STATUS_LABELS[status];
 }
 
 export function AssetForm({
@@ -197,14 +181,13 @@ export function AssetForm({
       {ai && mode === 'add' && !draftId && <RegisterWithClaude />}
 
       <Section title="What It Is">
-        <Field id={fid('group')} label="Group" hint={`${rule.examples}. Its code starts ${rule.prefix}-.`}>
+        <Field id={fid('group')} label="Group">
           <Select
             id={fid('group')}
             name="group"
             required
             value={group}
             onChange={(e) => isAssetGroup(e.target.value) && setGroup(e.target.value)}
-            aria-describedby={`${fid('group')}-hint`}
             className="input"
           >
             {ASSET_GROUPS.map((g) => (
@@ -214,8 +197,8 @@ export function AssetForm({
             ))}
           </Select>
         </Field>
-        <Field id={fid('type')} label="Type" hint={mode === 'edit' ? `The code stays ${code}, whatever the group and type become.` : 'The code is given when it is saved, e.g. PK-CAM-0001.'}>
-          <Select id={fid('type')} name="type" required defaultValue={defaults.type ?? ''} aria-describedby={`${fid('type')}-hint`} className="input">
+        <Field id={fid('type')} label="Type">
+          <Select id={fid('type')} name="type" required defaultValue={defaults.type ?? ''} className="input">
             <option value="">Choose a type</option>
             <optgroup label={`Usual for ${ASSET_GROUP_LABELS[group].toLowerCase()}`}>
               {usual.map((t) => (
@@ -233,8 +216,8 @@ export function AssetForm({
             </optgroup>
           </Select>
         </Field>
-        <Field id={fid('name')} label="Name" hint="What people call it, e.g. Sony FX3 camera body." wide>
-          <input id={fid('name')} name="name" required maxLength={ASSET_TEXT_LIMITS.name} defaultValue={defaults.name ?? ''} aria-describedby={`${fid('name')}-hint`} className="input" />
+        <Field id={fid('name')} label="Name" wide>
+          <input id={fid('name')} name="name" required maxLength={ASSET_TEXT_LIMITS.name} defaultValue={defaults.name ?? ''} placeholder="E.g. Sony FX3 camera body" className="input" />
         </Field>
         <Field id={fid('brand')} label="Brand" opt>
           <input id={fid('brand')} name="brand" maxLength={ASSET_TEXT_LIMITS.brand} defaultValue={defaults.brand ?? ''} className="input" />
@@ -243,7 +226,7 @@ export function AssetForm({
           <input id={fid('model')} name="model" maxLength={ASSET_TEXT_LIMITS.model} defaultValue={defaults.model ?? ''} className="input" />
         </Field>
         {fields.serial && (
-          <Field id={fid('serial')} label="Serial number" hint="Copied exactly from its label." opt>
+          <Field id={fid('serial')} label="Serial number" opt>
             <input
               id={fid('serial')}
               name="serial"
@@ -251,7 +234,6 @@ export function AssetForm({
               autoComplete="off"
               spellCheck={false}
               defaultValue={defaults.serial ?? ''}
-              aria-describedby={`${fid('serial')}-hint`}
               className="input font-mono"
             />
           </Field>
@@ -268,8 +250,8 @@ export function AssetForm({
             </Select>
           </Field>
         )}
-        <Field id={fid('assetClass')} label="Accounting class" hint="Fixed: kept for years (cameras, laptops, furniture). Current: used up within a year, or bought to resell.">
-          <Select key={`class-${group}`} id={fid('assetClass')} name="assetClass" defaultValue={classDefault} aria-describedby={`${fid('assetClass')}-hint`} className="input">
+        <Field id={fid('assetClass')} label="Accounting class">
+          <Select key={`class-${group}`} id={fid('assetClass')} name="assetClass" defaultValue={classDefault} className="input">
             {ASSET_CLASSES.map((c) => (
               <option key={c} value={c}>
                 {ASSET_CLASS_LABELS[c]}
@@ -280,8 +262,8 @@ export function AssetForm({
       </Section>
 
       <Section title="Where It Is">
-        <Field id={fid('roomId')} label="Room" hint={rooms.length ? 'Where it is kept when nobody holds it.' : 'No rooms yet: an Assets manager adds them on Rooms.'} opt>
-          <Select id={fid('roomId')} name="roomId" defaultValue={defaults.roomId ?? ''} aria-describedby={`${fid('roomId')}-hint`} className="input">
+        <Field id={fid('roomId')} label="Room" opt>
+          <Select id={fid('roomId')} name="roomId" defaultValue={defaults.roomId ?? ''} className="input">
             <option value="">No room</option>
             {pickableRooms.map((r) => (
               <option key={r.id} value={r.id}>
@@ -292,8 +274,8 @@ export function AssetForm({
           </Select>
         </Field>
         {fields.kit && (
-          <Field id={fid('kitId')} label="Kit" hint={kits.length ? 'Only production kit assets go in a kit.' : 'No kits yet: add them on Kits.'} opt>
-            <Select id={fid('kitId')} name="kitId" defaultValue={defaults.kitId ?? ''} aria-describedby={`${fid('kitId')}-hint`} className="input">
+          <Field id={fid('kitId')} label="Kit" opt>
+            <Select id={fid('kitId')} name="kitId" defaultValue={defaults.kitId ?? ''} className="input">
               <option value="">No kit</option>
               {kits.map((k) => (
                 <option key={k.id} value={k.id}>
@@ -304,9 +286,9 @@ export function AssetForm({
           </Field>
         )}
         {mode === 'edit' && from !== null && (
-          <Field id={fid('status')} label="Status" hint={statusByHand ? 'In custody is set by a handover only, and Disposed by disposal.' : undefined}>
+          <Field id={fid('status')} label="Status">
             {statusByHand ? (
-              <Select id={fid('status')} name="status" defaultValue={from} aria-describedby={`${fid('status')}-hint`} className="input">
+              <Select id={fid('status')} name="status" defaultValue={from} className="input">
                 {ASSET_STATUSES_BY_HAND.map((s) => (
                   <option key={s} value={s}>
                     {ASSET_STATUS_LABELS[s]}
@@ -315,7 +297,7 @@ export function AssetForm({
               </Select>
             ) : (
               <p id={fid('status')} className="input flex items-center bg-canvas text-muted">
-                {fixedStatusText(from, group)}
+                {ASSET_STATUS_LABELS[from]}
               </p>
             )}
           </Field>
@@ -323,25 +305,25 @@ export function AssetForm({
       </Section>
 
       {fields.stock && (
-        <Section title="Stock" note="Consumables are kept by quantity, and are always available.">
-          <Field id={fid('quantity')} label="Quantity" hint="How many there are now, e.g. 12 or 3.5.">
-            <input id={fid('quantity')} name="quantity" inputMode="decimal" autoComplete="off" defaultValue={defaults.quantity ?? ''} aria-describedby={`${fid('quantity')}-hint`} className="input tabular-nums" />
+        <Section title="Stock">
+          <Field id={fid('quantity')} label="Quantity">
+            <input id={fid('quantity')} name="quantity" inputMode="decimal" autoComplete="off" defaultValue={defaults.quantity ?? ''} className="input tabular-nums" />
           </Field>
-          <Field id={fid('unit')} label="Unit" hint="E.g. rolls, packs, sheets, m." opt>
-            <input id={fid('unit')} name="unit" maxLength={ASSET_TEXT_LIMITS.unit} defaultValue={defaults.unit ?? ''} aria-describedby={`${fid('unit')}-hint`} className="input" />
+          <Field id={fid('unit')} label="Unit" opt>
+            <input id={fid('unit')} name="unit" maxLength={ASSET_TEXT_LIMITS.unit} defaultValue={defaults.unit ?? ''} placeholder="E.g. rolls" className="input" />
           </Field>
-          <Field id={fid('reorderLevel')} label="Reorder level" hint="Flagged to reorder at or under it." opt>
-            <input id={fid('reorderLevel')} name="reorderLevel" inputMode="decimal" autoComplete="off" defaultValue={defaults.reorderLevel ?? ''} aria-describedby={`${fid('reorderLevel')}-hint`} className="input tabular-nums" />
+          <Field id={fid('reorderLevel')} label="Reorder level" opt>
+            <input id={fid('reorderLevel')} name="reorderLevel" inputMode="decimal" autoComplete="off" defaultValue={defaults.reorderLevel ?? ''} className="input tabular-nums" />
           </Field>
         </Section>
       )}
 
       <Section title="Purchase">
-        <Field id={fid('purchaseDate')} label="Purchase date" hint="As on the invoice; not after today." opt>
-          <DateInput id={fid('purchaseDate')} name="purchaseDate" defaultValue={defaults.purchaseDate ?? ''} aria-describedby={`${fid('purchaseDate')}-hint`} />
+        <Field id={fid('purchaseDate')} label="Purchase date" opt>
+          <DateInput id={fid('purchaseDate')} name="purchaseDate" defaultValue={defaults.purchaseDate ?? ''} />
         </Field>
         {fields.usefulLife && (
-          <Field id={fid('usefulLifeYears')} label="Useful life (years)" hint={usefulLifeHint(group)} opt>
+          <Field id={fid('usefulLifeYears')} label="Useful life (years)" opt>
             <input
               key={`life-${group}`}
               id={fid('usefulLifeYears')}
@@ -349,7 +331,6 @@ export function AssetForm({
               inputMode="numeric"
               autoComplete="off"
               defaultValue={lifeDefault}
-              aria-describedby={`${fid('usefulLifeYears')}-hint`}
               className="input tabular-nums"
             />
           </Field>
@@ -360,9 +341,9 @@ export function AssetForm({
       </Section>
 
       {values && (
-        <Section title="Values" note="Only the CEO, Finance and a Super Admin see and set these. All in EGP.">
-          <Field id={fid('purchasePrice')} label="Purchase cost (EGP)" hint="From the invoice, e.g. 45000 or 45000.50." opt>
-            <input id={fid('purchasePrice')} name="purchasePrice" inputMode="decimal" autoComplete="off" defaultValue={values.purchasePrice} aria-describedby={`${fid('purchasePrice')}-hint`} className="input tabular-nums" />
+        <Section title="Values">
+          <Field id={fid('purchasePrice')} label="Purchase cost (EGP)" opt>
+            <input id={fid('purchasePrice')} name="purchasePrice" inputMode="decimal" autoComplete="off" defaultValue={values.purchasePrice} placeholder="E.g. 45000.50" className="input tabular-nums" />
           </Field>
           <Field id={fid('supplier')} label="Supplier" opt>
             <input id={fid('supplier')} name="supplier" maxLength={ASSET_TEXT_LIMITS.supplier} defaultValue={values.supplier} className="input" />
@@ -370,8 +351,8 @@ export function AssetForm({
           <Field id={fid('invoiceNo')} label="Invoice number" opt>
             <input id={fid('invoiceNo')} name="invoiceNo" maxLength={ASSET_TEXT_LIMITS.invoiceNo} defaultValue={values.invoiceNo} className="input" />
           </Field>
-          <Field id={fid('marketValue')} label="Market value (EGP)" hint="What it would fetch now in Egypt, in its condition." opt>
-            <input id={fid('marketValue')} name="marketValue" inputMode="decimal" autoComplete="off" defaultValue={values.marketValue} aria-describedby={`${fid('marketValue')}-hint`} className="input tabular-nums" />
+          <Field id={fid('marketValue')} label="Market value (EGP)" opt>
+            <input id={fid('marketValue')} name="marketValue" inputMode="decimal" autoComplete="off" defaultValue={values.marketValue} className="input tabular-nums" />
           </Field>
           <Field id={fid('priceLow')} label="Market value, low (EGP)" opt>
             <input id={fid('priceLow')} name="priceLow" inputMode="decimal" autoComplete="off" defaultValue={values.priceLow} className="input tabular-nums" />
@@ -379,8 +360,8 @@ export function AssetForm({
           <Field id={fid('priceHigh')} label="Market value, high (EGP)" opt>
             <input id={fid('priceHigh')} name="priceHigh" inputMode="decimal" autoComplete="off" defaultValue={values.priceHigh} className="input tabular-nums" />
           </Field>
-          <Field id={fid('priceNote')} label="How the market value was reached" hint="One or two sentences, e.g. three listings for the same model in good condition." wide opt>
-            <textarea id={fid('priceNote')} name="priceNote" rows={2} maxLength={ASSET_TEXT_LIMITS.priceNote} defaultValue={values.priceNote} aria-describedby={`${fid('priceNote')}-hint`} className="input" />
+          <Field id={fid('priceNote')} label="How the market value was reached" wide opt>
+            <textarea id={fid('priceNote')} name="priceNote" rows={2} maxLength={ASSET_TEXT_LIMITS.priceNote} defaultValue={values.priceNote} className="input" />
           </Field>
         </Section>
       )}
@@ -388,8 +369,8 @@ export function AssetForm({
       {mode === 'add' && group !== 'consumable' && (
         <Section title="Accessories">
           <input type="hidden" name="rows" value={accessoryRows} />
-          <Field id={fid('parentCode')} label="Accessory of" hint="When it is itself an accessory with its own code, e.g. a Ronin battery: the main asset’s code. It then goes out with it." opt>
-            <input id={fid('parentCode')} name="parentCode" maxLength={40} defaultValue={parentCode ?? ''} placeholder="E.g. PK-GMB-0001" aria-describedby={`${fid('parentCode')}-hint`} className="input font-mono uppercase" />
+          <Field id={fid('parentCode')} label="Accessory of" opt>
+            <input id={fid('parentCode')} name="parentCode" maxLength={40} defaultValue={parentCode ?? ''} placeholder="E.g. PK-GMB-0001" className="input font-mono uppercase" />
           </Field>
           <div className="space-y-2 sm:col-span-2">
             <p className="label">What comes with it</p>
@@ -422,7 +403,6 @@ export function AssetForm({
                 );
               })}
             </ol>
-            <p className="hint">A charger, cables, a case: each goes out with it on a handover and is ticked when it comes back. Leave a line empty to skip it.</p>
             {accessoryRows < ACCESSORY_ROWS_MAX && (
               <button type="button" onClick={() => setAccessoryRows((n) => Math.min(ACCESSORY_ROWS_MAX, n + 1))} className="btn btn-secondary">
                 Add a line
@@ -433,8 +413,8 @@ export function AssetForm({
       )}
 
       <Section title="Notes">
-        <Field id={fid('notes')} label="Notes" hint="Visible specs, colour, accessories, defects." wide opt>
-          <textarea id={fid('notes')} name="notes" rows={3} maxLength={ASSET_TEXT_LIMITS.notes} defaultValue={defaults.notes ?? ''} aria-describedby={`${fid('notes')}-hint`} className="input" />
+        <Field id={fid('notes')} label="Notes" wide opt>
+          <textarea id={fid('notes')} name="notes" rows={3} maxLength={ASSET_TEXT_LIMITS.notes} defaultValue={defaults.notes ?? ''} placeholder="Specs, colour, defects" className="input" />
         </Field>
       </Section>
 

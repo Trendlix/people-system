@@ -68,7 +68,7 @@ describe('what it says', () => {
     expect(choiceNotes(view({ on: true, optedInAt: '2026-10-24T11:05:00.000Z' }), when)).toEqual(['On since 24/10/2026, 2:05 PM.']);
     expect(choiceNotes(view({ mobileChanged: true }), when)[0]).toMatch(/^Your mobile number changed/);
     expect(choiceNotes(view({ stoppedBy: 'stop', stoppedAt: '2026-10-24T11:05:00.000Z' }), when)).toEqual([
-      'You replied STOP on WhatsApp on 24/10/2026, 2:05 PM, so they are off. Turn them on again here if you like.',
+      'You replied STOP on WhatsApp on 24/10/2026, 2:05 PM, so they are off.',
     ]);
     expect(choiceNotes(view({ on: true, available: false }), when)[0]).toMatch(/switched off for now/);
   });

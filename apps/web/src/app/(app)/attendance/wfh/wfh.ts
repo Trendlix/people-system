@@ -197,7 +197,7 @@ export const wfhLabel = (n: number) => `${n} ${n === 1 ? 'request' : 'requests'}
 
 const EMPTY: Record<WfhFilter, string> = {
   waiting: 'No work from home requests are waiting for you.',
-  all: 'No work from home requests yet. Employees ask from My Requests; HR records a day for someone with Record a WFH day.',
+  all: 'No work from home requests yet.',
   with_manager: 'No work from home requests are with a manager.',
   with_hr: 'No work from home requests are with HR.',
   approved: 'No work from home days approved.',
@@ -232,28 +232,25 @@ export function wfhProgressText(r: Pick<WfhRequestView, 'status' | 'manager' | '
 
 /** Once sent: where it goes, or, recorded by HR, that it is approved at once. */
 export function wfhSentText(status: LeaveStatus, manager?: Pick<RequestApprover, 'role'> | null, confidential?: boolean | null): string {
-  if (status === 'approved') return 'Work from home day recorded, approved at once. That day they check in from home, without the office network.';
-  const hr = hrStageName(confidential);
+  if (status === 'approved') return 'Work from home day recorded.';
   const first = manager?.role === 'team_lead' ? 'your team lead' : manager?.role === 'department_head' ? 'your head of department' : 'your direct manager';
-  return status === 'with_manager' ? `Request sent. It goes to ${first}, then ${hr}; each step shows on the request.` : `Request sent. It goes to ${hr}; each step shows on the request.`;
+  return `Sent to ${status === 'with_manager' ? first : hrStageName(confidential)}.`;
 }
 
 /** Once a decision went through; a C-level person's goes on to the CEO, not HR (`confidential`). */
 export function wfhDecidedText(decision: LeaveDecision, stage: LeaveStage, confidential?: boolean | null): string {
-  if (decision === 'reject') return 'Request rejected. The employee sees your comment.';
-  return leaveStatusAfterApproval(stage) === 'with_hr'
-    ? `Approved: the request goes to ${hrStageName(confidential)}.`
-    : 'Approved: that day they work from home, and check in from there without the office network.';
+  if (decision === 'reject') return 'Request rejected.';
+  return leaveStatusAfterApproval(stage) === 'with_hr' ? `Approved: sent to ${hrStageName(confidential)}.` : 'Work from home approved.';
 }
 
 /** Said when a decision is refused as the request moved on since the page was opened (the API's 409). */
-export const WFH_MOVED_ON = 'This request has moved on since you opened it: someone else decided it, or it was cancelled. It shows where it stands now.';
+export const WFH_MOVED_ON = 'This request has moved on since you opened it.';
 
 /** What a request's page says after `?done=`, and in which tone; null for anything else. */
 export function wfhDoneText(query: Query, status: LeaveStatus, manager?: Pick<RequestApprover, 'role'> | null, confidential?: boolean | null): { text: string; tone: 'ok' | 'warn' } | null {
   const done = one(query.done);
   if (done === 'sent' || done === 'recorded') return { text: wfhSentText(status, manager, confidential), tone: 'ok' };
-  if (done === 'cancelled') return { text: 'Work from home cancelled. It stays on the list, cancelled; the day is free again.', tone: 'ok' };
+  if (done === 'cancelled') return { text: 'Work from home cancelled.', tone: 'ok' };
   if (done === 'moved') return { text: WFH_MOVED_ON, tone: 'warn' };
   const [stage, decision] = done.split('_');
   if (!(LEAVE_STAGES as readonly string[]).includes(stage) || !(LEAVE_DECISIONS as readonly string[]).includes(decision)) return null;
@@ -338,13 +335,6 @@ export function wfhAllowanceLine(allowance: Pick<WfhAllowance, 'daysPerMonth' | 
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const monthWords = (month: string) => `${MONTHS[Number(month.slice(5, 7)) - 1]} ${month.slice(0, 4)}`;
-
-/** What the form says once it can be sent: the day and where it goes (`toCeo`: a C-level person's goes to the CEO, not HR). */
-export function wfhReadyText(typed: TypedWfh, toCeo = false): string {
-  const date = parseDate(typed.date);
-  const day = date ? ` on ${weekdayOf(date)} ${formatDate(date)}` : '';
-  return `Ready to send: working from home${day}, to your direct manager (without one, your lead), then ${hrStageName(toCeo)}.`;
-}
 
 /** The employee's request sent, or what can't be read: the API checks the rest and answers what is wrong. */
 export function wfhForm(fd: FormData): { body: WfhBody | null; errors: string[] } {

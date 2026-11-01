@@ -47,7 +47,7 @@ async function Options() {
     <div className="card">
       <RowList label="Kinds of request">
         {options.map((o) => (
-          <RowLink key={o.key} href={o.href} title={o.label} line={o.text} />
+          <RowLink key={o.key} href={o.href} title={o.label} />
         ))}
       </RowList>
     </div>
@@ -57,10 +57,7 @@ async function Options() {
 export default function PhoneNewRequestPage() {
   return (
     <div className="space-y-4">
-      <PageTitle title="New Request" back={appBack('requests')}>
-        What would you like to ask for? Your direct manager decides it first (without one, your team lead or the head of your department), then HR; a
-        check-in location goes to HR, then the CEO.
-      </PageTitle>
+      <PageTitle title="New Request" back={appBack('requests')} />
       <Suspense fallback={<PhoneLoading />}>
         <Options />
       </Suspense>

@@ -19,12 +19,9 @@ async function AllowancesList() {
   return (
     <>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="text-sm text-muted">
-          <p>
-            {allowances.length} {allowances.length === 1 ? 'allowance' : 'allowances'}
-          </p>
-          <p>Paid a month on top of the gross salary. HR adds them to contracts and job offers.</p>
-        </div>
+        <p className="text-sm text-muted">
+          {allowances.length} {allowances.length === 1 ? 'allowance' : 'allowances'}
+        </p>
         {canEdit && (
           <Link href="/organization/allowances/new" className="btn btn-primary">
             New allowance
@@ -32,7 +29,7 @@ async function AllowancesList() {
         )}
       </div>
       {allowances.length === 0 ? (
-        <Empty>No allowances yet.{canEdit && ' Add the first one, e.g. Transport or Mobile.'}</Empty>
+        <Empty>No allowances yet.</Empty>
       ) : (
         <div className="card overflow-x-auto">
           <table className="table">
@@ -81,26 +78,6 @@ async function AllowancesList() {
           </table>
         </div>
       )}
-      <div className="mt-4 max-w-3xl space-y-1 text-sm text-muted">
-        <p>
-          <span className="font-medium text-ink">Taxed:</span> an allowance paid in cash is taxed with the salary by law (Law
-          91/2005, Art. 9), a transport allowance too. Only transport the company itself provides, such as its own buses, is
-          exempt.
-        </p>
-        <p>
-          <span className="font-medium text-ink">Insured:</span> counted in the insured wage with the gross salary, within the
-          year&apos;s maximum insurable wage.
-        </p>
-        <p>
-          <span className="font-medium text-ink">Inactive:</span> not offered for new contracts and job offers. Those it is
-          already on keep it.
-        </p>
-        <p>
-          <span className="font-medium text-ink">Per client account assigned:</span> no amount on the contract or the job offer;
-          payroll pays the amounts of the client accounts the person is assigned to under Clients → Client Accounts, by the
-          days held in the month (25 October 2026).
-        </p>
-      </div>
     </>
   );
 }

@@ -8,10 +8,5 @@ import { canSeeVsInsurance, VS_INSURANCE_PATH } from './vs-insurance';
 export async function VsInsuranceLink() {
   const user = await getCurrentUser();
   if (!canSeeVsInsurance(user)) return null;
-  return (
-    <>
-      {' '}
-      The actual payroll beside the social insurance cycle: <Link href={VS_INSURANCE_PATH}>Payroll vs Social Insurance</Link>.
-    </>
-  );
+  return <Link href={VS_INSURANCE_PATH}>Payroll vs Social Insurance</Link>;
 }

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useActionState, useState } from 'react';
-import { RESIGNATION_CONFIRMATION, RESIGNATION_REASON_MAX, resignationLetterNote } from '@trendlix/shared';
+import { RESIGNATION_CONFIRMATION, RESIGNATION_REASON_MAX } from '@trendlix/shared';
 import { DateInput } from '@/components/date-time-inputs';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import { formatDate } from '@/lib/format';
@@ -19,11 +19,12 @@ type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 const optional = <span className="font-normal text-muted">(optional)</span>;
 
 /** The employee's request: the reason, a preferred last working day, and the confirmation; what becomes of the letter. */
-export function ResignForm({ action, today, notice, lastDayIfToday, toCeo, cancelHref }: { action: Action; today: string; notice: string | null; lastDayIfToday: string | null; toCeo: boolean; cancelHref: string }) {
+export function ResignForm({ action, today, notice, lastDayIfToday, cancelHref }: { action: Action; today: string; notice: string | null; lastDayIfToday: string | null; toCeo?: boolean; cancelHref: string }) {
   const { state, pending, form } = useKeptForm(action);
   const fid = useFieldIds();
   const [typed, setTyped] = useState(() => ({ reason: valueOf(state, 'reason'), preferredLastDay: valueOf(state, 'preferredLastDay'), confirmed: valueOf(state, 'confirmed') === 'yes' }));
   const problems = formProblems(typed, today);
+  const hint = noticeHint(notice, lastDayIfToday, formatDate);
 
   return (
     <form
@@ -43,23 +44,21 @@ export function ResignForm({ action, today, notice, lastDayIfToday, toCeo, cance
         <label htmlFor={fid('reason')} className="label">
           Reason
         </label>
-        <textarea id={fid('reason')} name="reason" rows={3} required maxLength={RESIGNATION_REASON_MAX} defaultValue={typed.reason} aria-describedby={fid('reason-hint')} className="input" />
-        <p id={fid('reason-hint')} className="hint">
-          Short. {toCeo ? 'The CEO reads it.' : 'HR reads it.'} Up to {RESIGNATION_REASON_MAX} characters.
-        </p>
+        <textarea id={fid('reason')} name="reason" rows={3} required maxLength={RESIGNATION_REASON_MAX} defaultValue={typed.reason} className="input" />
       </div>
       <div className="grid gap-5 sm:grid-cols-2">
         <div>
           <label htmlFor={fid('preferredLastDay')} className="label">
             Preferred last working day {optional}
           </label>
-          <DateInput id={fid('preferredLastDay')} name="preferredLastDay" defaultValue={typed.preferredLastDay} aria-describedby={fid('preferred-hint')} />
-          <p id={fid('preferred-hint')} className="hint">
-            {noticeHint(notice, lastDayIfToday, formatDate)}
-          </p>
+          <DateInput id={fid('preferredLastDay')} name="preferredLastDay" defaultValue={typed.preferredLastDay} aria-describedby={hint ? fid('preferred-hint') : undefined} />
+          {hint && (
+            <p id={fid('preferred-hint')} className="hint">
+              {hint}
+            </p>
+          )}
         </div>
       </div>
-      <p className="rounded-lg border border-line bg-canvas px-4 py-3 text-sm">{resignationLetterNote(toCeo)}</p>
       <label className="flex min-h-11 cursor-pointer items-start gap-3 text-sm">
         <input type="checkbox" name="confirmed" value="yes" defaultChecked={typed.confirmed} className="mt-0.5 size-4 accent-accent" />
         <span>{RESIGNATION_CONFIRMATION}</span>
@@ -111,7 +110,6 @@ export function ReturnForm({ action }: { action: Action }) {
           Why it is returned
         </label>
         <textarea id={fid('reason')} name="reason" rows={2} required maxLength={1000} defaultValue={valueOf(state, 'reason')} className="input" />
-        <p className="hint">For a request sent by mistake. The employee is told and may send it again.</p>
       </div>
       <SubmitButton busy={pending} pendingText="Returning…">
         Return it

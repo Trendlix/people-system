@@ -5,7 +5,6 @@ import {
   ZOHO_PEOPLE_OWN_ACCOUNT,
   ZOHO_PEOPLE_RUN_GOING,
   ZOHO_PEOPLE_SCOPES,
-  ZOHO_RECORDED_LABEL,
   ZOHO_RUN_KIND_LABELS,
   zohoPeopleRedirectUri,
   type ZohoPeopleView,
@@ -85,14 +84,12 @@ function Steps({ steps }: { steps: { text: string; values?: readonly string[] }[
 /** The owner's steps (25 October 2026): Zoho's API console, the redirect URI, the scopes, the account, the data centre. */
 function setupSteps(redirectUri: string): { text: string; values?: readonly string[] }[] {
   return [
-    {
-      text: 'On api-console.zoho.com, open the Server-based Application already made for Organization → Calendars (one Zoho app serves both, each sign-in asking its own permissions), or add one: Add Client → Server-based Applications.',
-    },
+    { text: 'On api-console.zoho.com, open the Server-based Application already made for Organization → Calendars, or add one: Add Client → Server-based Applications.' },
     { text: 'Add this to its Authorized Redirect URIs, beside the calendars’ one, and update:', values: [redirectUri] },
-    { text: 'Its client ID, secret and data centre are the ones below (the same as on Organization → Calendars: saved in either place, they are kept once).' },
-    { text: 'The sign-in asks Zoho People only for these (reading attendance, Zoho People’s time zone and date format, and who signed in); nothing is ever written to Zoho:', values: ZOHO_PEOPLE_SCOPES },
-    { text: 'Connect Zoho People signed in as a Zoho People administrator, who can read everyone’s attendance, e.g. hr@trendlix.com, in the data centre the company’s Zoho account is in.' },
-    { text: 'Test it: today’s check-ins are read for that account and, if you write one, a colleague’s work email.' },
+    { text: 'Its client ID, secret and data centre are the ones below.' },
+    { text: 'The sign-in asks Zoho People for these scopes:', values: ZOHO_PEOPLE_SCOPES },
+    { text: 'Connect Zoho People signed in as a Zoho People administrator, in the data centre the company’s Zoho account is in.' },
+    { text: 'Test it.' },
   ];
 }
 
@@ -115,11 +112,6 @@ function RunRow({ run }: { run: ZohoRunView }) {
         {run.counts.peopleDone.toLocaleString('en-US')} of {run.counts.people.toLocaleString('en-US')} people
       </p>
       {summary && <p>{summary}.</p>}
-      {run.counts.daysRecorded > 0 && (
-        <p className="text-xs text-muted">
-          {ZOHO_RECORDED_LABEL}: days missing from a month whose payroll is with the CEO, approved or paid were added for attendance history; nothing kept there was replaced, and its payroll didn’t change.
-        </p>
-      )}
       {skipped.length > 0 && (
         <ul className="list-disc space-y-0.5 pl-5 text-xs text-muted" aria-label="Left as they were, or not fetched">
           {skipped.map((s) => (
@@ -155,7 +147,7 @@ async function Gate({ searchParams }: { searchParams: PageProps<'/organization/z
   if (user.developer) return <Empty>Zoho People’s connection and fetches aren’t open to developers.</Empty>;
   if (!seesZohoPeople(user)) return <Empty>{ZOHO_PEOPLE_HR_ONLY}</Empty>;
   const loaded = await loadJson<ZohoPeopleView>('/zoho-people');
-  if (loaded.kind === 'unavailable') return <Empty>Not available yet: the server doesn’t fetch from Zoho People yet. Please try again after its next update.</Empty>;
+  if (loaded.kind === 'unavailable') return <Empty>Not available yet: the server doesn’t fetch from Zoho People yet.</Empty>;
   if (loaded.kind !== 'ok') return <Empty>Zoho People’s page could not be loaded. {loaded.messages.join(' ')}</Empty>;
   const view = loaded.value;
   const people = view.canFetch ? await getOrNull<ZohoChoosable[]>('/zoho-people/people') : null;
@@ -174,18 +166,13 @@ async function Gate({ searchParams }: { searchParams: PageProps<'/organization/z
 
   return (
     <div className="space-y-6">
-      <p className="max-w-3xl text-sm text-muted">
-        Zoho People’s check-ins and check-outs come into the system’s attendance as Zoho People’s days, the way its Excel import brings them: every night for
-        yesterday, and for earlier days with Fetch from Zoho. Each day counts from its first check-in to its last check-out by the person’s shift, breaks included; what was checked in on the system,
-        HR’s corrections and the payroll already with the CEO, approved or paid are never changed.
-      </p>
       {banner && (
         <p role={banner.tone === 'danger' ? 'alert' : 'status'} className={`rounded-lg px-4 py-3 text-sm font-semibold ${banner.tone === 'ok' ? 'bg-ok-soft text-ok' : 'bg-danger-soft text-danger'}`}>
           {banner.text}
         </p>
       )}
 
-      <SetupSection id="zoho-connection" title="Connection" intro="The Zoho account the system reads Zoho People’s attendance with: a Super Admin connects it once.">
+      <SetupSection id="zoho-connection" title="Connection">
         {view.canManage ? (
           <div className="space-y-6">
             <div className="space-y-3">
@@ -224,10 +211,10 @@ async function Gate({ searchParams }: { searchParams: PageProps<'/organization/z
           <div className="space-y-2">
             <p role="status" className={`text-sm font-semibold ${!view.connection ? 'text-muted' : connected ? 'text-ok' : 'text-warn'}`}>
               {!view.connection
-                ? 'Not connected: a Super Admin connects Zoho People on this page.'
+                ? 'Not connected.'
                 : connected
                   ? `Connected as ${view.connection.accountEmail}.`
-                  : `Needs connecting again: ${view.connection.problem ?? 'a Super Admin connects it again on this page.'}`}
+                  : `Needs connecting again${view.connection.problem ? `: ${view.connection.problem}` : '.'}`}
             </p>
             {superAdminViewingAs && <p className="text-sm text-muted">{ZOHO_PEOPLE_OWN_ACCOUNT}</p>}
           </div>
@@ -237,30 +224,22 @@ async function Gate({ searchParams }: { searchParams: PageProps<'/organization/z
       <p className="max-w-3xl text-sm">{nightlyText(view.nightly)}</p>
 
       {view.current && (
-        <SetupSection id="zoho-now" title="Now Fetching" intro={`${ZOHO_RUN_KIND_LABELS[view.current.kind]} · ${runDaysText(view.current)} · ${runWhoText(view.current)}. It goes on in the background: this page can be closed.`}>
+        <SetupSection id="zoho-now" title="Now Fetching" intro={`${ZOHO_RUN_KIND_LABELS[view.current.kind]} · ${runDaysText(view.current)} · ${runWhoText(view.current)}`}>
           <RunProgress run={view.current} cancel={view.canFetch ? cancelZohoRun.bind(null, view.current.id) : null} />
         </SetupSection>
       )}
 
       {view.canFetch && (
-        <SetupSection
-          id="zoho-fetch"
-          title="Fetch From Zoho"
-          intro="Earlier days from Zoho People: up to 12 months at a time, everyone employed in them (former employees too, by the work email they had) or the people you choose. Days Zoho’s Excel import or an earlier fetch kept aren’t added twice; a day Zoho changed since is replaced."
-        >
+        <SetupSection id="zoho-fetch" title="Fetch From Zoho">
           <FetchForm action={fetchFromZoho} people={people} everyone={view.people} yesterday={yesterday} blocked={blocked} />
         </SetupSection>
       )}
 
       {view.canFetch && (
-        <SetupSection
-          id="zoho-left-out"
-          title="Left Out of the Zoho Fetch"
-          intro="People the nightly run and Fetch from Zoho skip, even when chosen by hand: e.g. someone who checks in on the system now. Their days fetched before stay as they are; taken off the list, they are fetched again from the next run."
-        >
+        <SetupSection id="zoho-left-out" title="Left Out of the Zoho Fetch">
           <div className="space-y-5">
             {exclusions.exclusions.length === 0 && !hiddenLeftOut ? (
-              <p className="text-sm text-muted">No one is left out: every run fetches everyone it covers.</p>
+              <p className="text-sm text-muted">No one is left out.</p>
             ) : (
               <ul className="divide-y divide-line-soft" aria-label="Left out of the Zoho fetch">
                 {exclusions.exclusions.map((x) => {
@@ -286,7 +265,7 @@ async function Gate({ searchParams }: { searchParams: PageProps<'/organization/z
         </SetupSection>
       )}
 
-      <SetupSection id="zoho-not-found" title="Not Found in Zoho People" intro="People Zoho People doesn’t know by their work email, as the last fetch of them found: fix the work email on their profile, or in Zoho People.">
+      <SetupSection id="zoho-not-found" title="Not Found in Zoho People">
         {view.notFound.length === 0 && !hidden ? (
           <p className="text-sm text-muted">Everyone fetched was found.</p>
         ) : (
@@ -302,7 +281,7 @@ async function Gate({ searchParams }: { searchParams: PageProps<'/organization/z
         )}
       </SetupSection>
 
-      <SetupSection id="zoho-runs" title="Last Runs" intro="The nightly runs and the fetches, the latest first: what each added, replaced and left as it was, and why.">
+      <SetupSection id="zoho-runs" title="Last Runs">
         {view.runs.length === 0 ? (
           <p className="text-sm text-muted">Nothing has been fetched from Zoho People yet.</p>
         ) : (

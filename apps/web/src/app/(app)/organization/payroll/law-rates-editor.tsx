@@ -101,7 +101,7 @@ export function LawRatesEditor({ views, currentYear, thisYear }: { views: readon
           )}
         />
       ) : (
-        <p className="text-sm text-muted">No years are kept yet: add the first one.</p>
+        <p className="text-sm text-muted">No years are kept yet.</p>
       )}
       {editing ? (
         <LawRatesForm
@@ -128,18 +128,16 @@ export function LawRatesEditor({ views, currentYear, thisYear }: { views: readon
   );
 }
 
-/** A field of the form: its label, the input, and a hint under it. */
+/** A field of the form: its label and the input. */
 function Field({
   id,
   label,
-  hint,
   value,
   onChange,
   numeric = false,
 }: {
   id: string;
   label: string;
-  hint?: string;
   value: string;
   onChange: (value: string) => void;
   numeric?: boolean;
@@ -155,14 +153,8 @@ function Field({
         onChange={(e) => onChange(e.target.value)}
         inputMode={numeric ? 'numeric' : 'decimal'}
         autoComplete="off"
-        aria-describedby={hint ? `${id}-hint` : undefined}
         className="input tabular-nums"
       />
-      {hint && (
-        <p id={`${id}-hint`} className="hint">
-          {hint}
-        </p>
-      )}
     </div>
   );
 }
@@ -189,7 +181,6 @@ function LawRatesForm({
     return next;
   }, {});
   const set = (key: Exclude<keyof LawRatesTyped, 'taxTiers'>) => (value: string) => setTyped((t) => ({ ...t, [key]: value }));
-  const year = adding ? typed.year : start.year;
 
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -215,7 +206,6 @@ function LawRatesForm({
             <Field
               id={fid('year')}
               label="Applies from (year)"
-              hint="A year without its own uses the latest earlier one's."
               value={typed.year}
               onChange={set('year')}
               numeric
@@ -229,28 +219,24 @@ function LawRatesForm({
             <Field
               id={fid('employeeInsuranceRate')}
               label="Employee's share (%)"
-              hint="Of the insured wage, e.g. 11."
               value={typed.employeeInsuranceRate}
               onChange={set('employeeInsuranceRate')}
             />
             <Field
               id={fid('employerInsuranceRate')}
               label="Company's share (%)"
-              hint="Of the insured wage, e.g. 18.75."
               value={typed.employerInsuranceRate}
               onChange={set('employerInsuranceRate')}
             />
             <Field
               id={fid('insurableWageMin')}
               label="Minimum insurable wage (EGP)"
-              hint="A month: a lower wage is insured at it."
               value={typed.insurableWageMin}
               onChange={set('insurableWageMin')}
             />
             <Field
               id={fid('insurableWageMax')}
               label="Maximum insurable wage (EGP)"
-              hint="A month: a higher wage is insured at it."
               value={typed.insurableWageMax}
               onChange={set('insurableWageMax')}
             />
@@ -264,21 +250,18 @@ function LawRatesForm({
               <Field
                 id={fid('personalExemption')}
                 label="Personal exemption (EGP a year)"
-                hint="Taken off the annual net income before the tax, e.g. 20,000."
                 value={typed.personalExemption}
                 onChange={set('personalExemption')}
               />
               <Field
                 id={fid('martyrsRate')}
                 label="Martyrs' Fund (%)"
-                hint="Of the gross and the taxed allowances, e.g. 0.05."
                 value={typed.martyrsRate}
                 onChange={set('martyrsRate')}
               />
               <Field
                 id={fid('healthInsuranceRate')}
                 label="Health insurance (%)"
-                hint="The employee's share of comprehensive health insurance, taken off before the tax: 0 while it doesn't apply in Cairo."
                 value={typed.healthInsuranceRate}
                 onChange={set('healthInsuranceRate')}
               />
@@ -294,7 +277,6 @@ function LawRatesForm({
               <Field
                 id={fid('minimumWage')}
                 label="Minimum wage (EGP a month)"
-                hint="The private sector's minimum wage, for reference. Leave it empty while it isn't set: nothing is checked against it."
                 value={typed.minimumWage}
                 onChange={set('minimumWage')}
               />
@@ -310,7 +292,6 @@ function LawRatesForm({
               <Field
                 id={fid('beforeTaxHealthLimit')}
                 label="Before-tax health insurance limit a year (EGP)"
-                hint="The most of an employee's health insurance share, the recurring deductions ticked Deducted before tax, that lowers their taxable pay in a year: a twelfth of it a month. The tax law limits it: ask your accountant for the limit. Leave it empty for no limit."
                 value={typed.beforeTaxHealthLimit}
                 onChange={set('beforeTaxHealthLimit')}
               />
@@ -320,10 +301,6 @@ function LawRatesForm({
 
         <TierEditor fid={fid} rows={typed.taxTiers} onChange={(taxTiers) => setTyped((t) => ({ ...t, taxTiers }))} />
 
-        <p className="text-sm text-muted">
-          Payroll runs made from now on use these rates for {/^\d{4}$/.test(year) ? year : 'the year'}, and a draft run takes them when it is refreshed.
-          Approved runs keep the rates they were worked out with.
-        </p>
         <div className="flex flex-wrap gap-3">
           <button type="submit" disabled={pending} className="btn btn-primary">
             {pending ? 'Saving…' : adding ? 'Add the year' : 'Save changes'}
@@ -349,12 +326,8 @@ function TierEditor({ fid, rows, onChange }: { fid: (name: string) => string; ro
 
   return (
     <div className="border-t border-line-soft pt-5">
-      <fieldset className="space-y-4" aria-describedby={fid('tiers-hint')}>
+      <fieldset className="space-y-4">
         <legend className="font-semibold">Salary Tax Tiers</legend>
-        <p id={fid('tiers-hint')} className="text-sm text-muted">
-          The tier is chosen by the whole annual net income (after social insurance and the personal exemption), and the whole income is then taxed on that
-          tier&apos;s bands, from 0. The last tier, and each tier&apos;s last band, have no limit. Limits in EGP a year, rates in percent.
-        </p>
         <ol className="space-y-4">
           {rows.map((tier, i) => {
             const lastTier = i === rows.length - 1;
@@ -365,7 +338,7 @@ function TierEditor({ fid, rows, onChange }: { fid: (name: string) => string; ro
                   <legend className="text-sm font-semibold">{name}</legend>
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     {lastTier ? (
-                      <p className="text-sm text-muted">{rows.length > 1 ? 'No limit: every income above the tier before it.' : 'No limit: every income.'}</p>
+                      <p className="text-sm text-muted">No limit</p>
                     ) : (
                       <div className="flex flex-wrap items-center gap-2">
                         <label htmlFor={fid(`${tier.key}-upTo`)} className="text-sm">

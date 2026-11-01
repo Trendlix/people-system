@@ -20,8 +20,8 @@ const dash = <span className="text-muted">—</span>;
 
 type Employee = Pick<EmployeeProfile, 'id' | 'fullNameEn'>;
 
-const Title = ({ note, children }: { note?: string; children: React.ReactNode }) => (
-  <ProfileSection title="Pay Received" note={note} restricted>
+const Title = ({ children }: { children: React.ReactNode }) => (
+  <ProfileSection title="Pay Received" restricted>
     {children}
   </ProfileSection>
 );
@@ -116,7 +116,7 @@ export async function PayReceived({ employee }: { employee: Employee }) {
   if (load.kind === 'unavailable') {
     return (
       <Title>
-        <Quiet>Not available yet: the server does not have payslips yet.</Quiet>
+        <Quiet>Not available yet.</Quiet>
       </Title>
     );
   }
@@ -130,15 +130,14 @@ export async function PayReceived({ employee }: { employee: Employee }) {
   if (load.payslips.length === 0) {
     return (
       <Title>
-        <Quiet>No paid payroll month yet. The payslips are issued when a payroll run is marked paid.</Quiet>
+        <Quiet>No paid payroll month yet.</Quiet>
       </Title>
     );
   }
 
   return (
-    <Title note="Each paid payroll month, newest first, with its payslips">
+    <Title>
       <PayTable employee={employee} payslips={load.payslips} />
-      <p className="text-xs text-muted">Payslips are protected PDFs: they open and print, but can&apos;t be edited.</p>
     </Title>
   );
 }

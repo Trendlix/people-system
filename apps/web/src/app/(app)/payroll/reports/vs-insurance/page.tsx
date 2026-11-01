@@ -33,7 +33,6 @@ import {
   differenceText,
   excelHref,
   FIGURE_COLUMNS,
-  mayChangeNote,
   moneyText,
   profileHref,
   quickPeriods,
@@ -41,7 +40,6 @@ import {
   reportHref,
   rowsLabel,
   samePeriod,
-  standingNote,
   standingText,
   statusText,
   type VsInsuranceView,
@@ -130,7 +128,7 @@ function SectionTitle({ id, title, note }: { id: string; title: string; note?: R
 function Runs({ runs }: { runs: VsInsuranceRun[] }) {
   return (
     <section aria-labelledby="vs-insurance-runs" className="space-y-3">
-      <SectionTitle id="vs-insurance-runs" title="Runs and Rules" note="Every run of the period, whatever its status; the SI cycle is worked out with the run's own copied rules and rates" />
+      <SectionTitle id="vs-insurance-runs" title="Runs and Rules" />
       <div className="card">
         {runs.length === 0 ? (
           <p className="px-4 py-6 text-center text-sm text-muted">No payroll run in this period.</p>
@@ -142,9 +140,8 @@ function Runs({ runs }: { runs: VsInsuranceRun[] }) {
                   <Link href={runHref(r.id)} className="font-semibold">
                     {monthName(r.month)}
                   </Link>
-                  <div className="mt-0.5 flex flex-wrap items-center gap-2">
+                  <div className="mt-0.5">
                     <PayrollStatusBadge status={r.status} />
-                    {mayChangeNote(r) && <span className="text-xs text-muted">{mayChangeNote(r)}</span>}
                   </div>
                 </div>
                 <p className="flex-1 text-sm text-muted">{vsInsuranceRulesText(r)}</p>
@@ -191,7 +188,6 @@ function TotalRow({ label, totals, grand = false }: { label: string; totals: VsI
 }
 
 function Row({ row: r }: { row: VsInsuranceRow }) {
-  const note = standingNote(r);
   return (
     <tr className="align-top">
       <td className="min-w-48">
@@ -216,8 +212,8 @@ function Row({ row: r }: { row: VsInsuranceRow }) {
         </>
       ) : (
         <>
-          <td colSpan={FIGURE_COLUMNS.length} className="max-w-96 text-sm text-muted">
-            {note}
+          <td colSpan={FIGURE_COLUMNS.length} className="text-center">
+            {dash}
           </td>
           <td colSpan={DIFFERENCE_COLUMNS.length} className="text-center">
             {dash}
@@ -305,11 +301,7 @@ async function Report({ searchParams }: { searchParams: Promise<Query> }) {
   const header = (
     <section className="card space-y-4 p-4">
       <PeriodPicker period={period} shown={shown} today={today} />
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
-        <p className="hint">
-          Column A is the run as paid. Column B is the same month worked out by the same engine on the registered insured wage: no allowances, no amount-based
-          additions. The differences are B − A.
-        </p>
+      <div className="flex justify-end border-t border-line pt-4">
         {/* a plain link, never prefetched: the API makes the workbook on each download */}
         <a href={excelHref(period)} className="btn btn-secondary">
           Download Excel
@@ -361,14 +353,7 @@ export default function VsInsurancePage({ searchParams }: PageProps<'/payroll/re
     <StaffOnly>
       <div className="space-y-4">
         <BackLink href="/payroll/reports">Payroll Reports</BackLink>
-        <div>
-          <h1 className="page-title">Payroll vs Social Insurance</h1>
-          <p className="mt-1 text-muted">
-            Per employee and month, the actual payroll run&rsquo;s whole cycle beside the same month on the registered social insurance wage, and the differences in
-            the insurance shares, the tax, the Martyrs&rsquo; Fund, the net and the company cost. The registered wage is on each profile&rsquo;s Social Insurance tab;
-            the runs are on <Link href="/payroll">Payroll</Link>.
-          </p>
-        </div>
+        <h1 className="page-title">Payroll vs Social Insurance</h1>
         <Suspense fallback={<Loading />}>
           <Report searchParams={searchParams} />
         </Suspense>

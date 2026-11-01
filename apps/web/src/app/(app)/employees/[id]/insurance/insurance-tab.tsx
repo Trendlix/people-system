@@ -3,14 +3,11 @@ import { Suspense } from 'react';
 import { ApiError, apiGet } from '@/lib/api';
 import { formatDate, titleCase } from '@/lib/format';
 import { isHidden } from '@/lib/hidden';
-import { PROTECTED_PDF_HINT } from '@/lib/protected-pdf';
 import { canDelete } from '@/lib/roles';
 import { getCurrentUser } from '@/lib/session';
 import type { DocumentItem, EmployeeProfile, PaperworkItem } from '@/lib/types';
-import { aTypeWord } from '../../employment-law';
 import { saveInsuranceDetail } from '../../insurance-actions';
-import { canSeeEmployeeFiles, contractHref, FieldGrid, Loading, ProfileSection, profileHref, todayInCairo, type GridField } from '../../ui';
-import { formatEgp } from '../contracts/salary';
+import { canSeeEmployeeFiles, FieldGrid, Loading, ProfileSection, profileHref, todayInCairo, type GridField } from '../../ui';
 import { loadDocuments } from '../documents/data';
 import { checkDocument } from '../documents/document-actions';
 import { MissingList } from '../documents/document-forms';
@@ -22,18 +19,14 @@ import {
   comprehensivePrinted,
   formsGap,
   formsToCheck,
-  hasInsuranceCopy,
-  insuranceCopyHref,
   insuranceForms,
   insuredEmployment,
   asBeforeRaiseNote,
-  insuredNote,
   insuredPrinted,
   printHref,
   printRequired,
   printStatus,
   readiness,
-  REGISTERED_NOTE,
   showsWages,
   startPrinted,
   type Printed,
@@ -154,7 +147,6 @@ function InsuranceDetails({ profile: p, hidden }: { profile: EmployeeProfile; hi
       key: 'socialInsured',
       label: 'Registered with social insurance',
       value: <RegisteredSwitch action={edit('socialInsured')} registered={p.socialInsured} />,
-      note: REGISTERED_NOTE,
     });
   }
   // salary data: for those who see salaries only, as the contract's salary (the API leaves them out for anyone else)
@@ -171,11 +163,6 @@ function InsuranceDetails({ profile: p, hidden }: { profile: EmployeeProfile; hi
             name="basic wage"
             label="Basic wage (EGP)"
             value={typedAmount(p.insuranceBasicWage)}
-            hint={
-              <>
-                Printed in Form 1&apos;s <bdi lang="ar">أجر أساسي</bdi> boxes. Leave empty to use the default ({formatEgp(p.insuranceBasicDefault ?? 0)}).
-              </>
-            }
           >
             <PrintedText printed={basicPrinted(p)} />
           </WageDetail>
@@ -188,7 +175,7 @@ function InsuranceDetails({ profile: p, hidden }: { profile: EmployeeProfile; hi
         protected: true,
         value: <PrintedText printed={insuredPrinted(p)} />,
         // after a signed raise, as before it until January or the Form 2 date (owner's decision, 16 October 2026)
-        note: [asBeforeRaiseNote(p), p.insurableLimits ? insuredNote(p.insurableLimits) : null].filter(Boolean).join(' ') || undefined,
+        note: asBeforeRaiseNote(p) ?? undefined,
       },
       {
         key: 'insuranceComprehensiveWage',
@@ -201,12 +188,6 @@ function InsuranceDetails({ profile: p, hidden }: { profile: EmployeeProfile; hi
             name="comprehensive wage"
             label="Comprehensive wage (EGP)"
             value={typedAmount(p.insuranceComprehensiveWage)}
-            hint={
-              <>
-                Printed in Form 1&apos;s <bdi lang="ar">الأجر الشامل</bdi> boxes, and sets the insured wage. Leave empty to use the contract&apos;s gross and
-                allowances.
-              </>
-            }
           >
             <PrintedText printed={comprehensivePrinted(p, c)} />
           </WageDetail>
@@ -227,15 +208,6 @@ function InsuranceDetails({ profile: p, hidden }: { profile: EmployeeProfile; hi
   return (
     <ProfileSection title="Insurance Details" note={!p.employment && e?.endDate ? `Their last employment, ended ${formatDate(e.endDate)}` : undefined}>
       <FieldGrid fields={fields} />
-      {c && p.access.edit && (
-        <p className="text-xs text-muted">
-          The filing dates are set on the contract, on the{' '}
-          <Link href={contractHref(p.id)} className={LINK}>
-            Employment tab
-          </Link>
-          , with Edit filing dates and note.
-        </p>
-      )}
     </ProfileSection>
   );
 }
@@ -257,7 +229,7 @@ function readyText(r: Readiness): string {
 /** For HR: whether each form offered can be generated now, or the details it still needs, each linked to where it is filled in. */
 function FormsReadiness({ forms, checks, templates }: { forms: DocumentItem[]; checks: (CheckResult | null)[]; templates: boolean }) {
   return (
-    <ProfileSection title="Readiness" note="Checked against what each form's template prints">
+    <ProfileSection title="Readiness">
       <ul className="card">
         {forms.map((form, i) => {
           const r = readiness(form, checks[i] ?? null);
@@ -298,9 +270,7 @@ async function InsuranceForms({ profile: p, can }: { profile: EmployeeProfile; c
     return (
       <ProfileSection title="Forms">
         <Dashed>
-          {load.kind === 'unavailable'
-            ? `${NOT_AVAILABLE} Social insurance Forms 1 and 6 will be listed here.`
-            : 'The forms could not be loaded. Please try again in a moment.'}
+          {load.kind === 'unavailable' ? NOT_AVAILABLE : 'The forms could not be loaded. Please try again in a moment.'}
         </Dashed>
       </ProfileSection>
     );
@@ -314,7 +284,6 @@ async function InsuranceForms({ profile: p, can }: { profile: EmployeeProfile; c
   const answers = await Promise.all(checked.map((f) => checkDocument(p.id, f.slotKey, f.contractId ?? null)));
   const checks = forms.map((f) => answers[checked.indexOf(f)] ?? null);
   const today = formatDate(todayInCairo());
-  const anyDocument = forms.some((f) => (f.documents ?? []).length > 0);
   const gapText = gap && (
     <>
       {gap.text}
@@ -332,19 +301,8 @@ async function InsuranceForms({ profile: p, can }: { profile: EmployeeProfile; c
   return (
     <>
       {can.act && forms.length > 0 && <FormsReadiness forms={forms} checks={checks} templates={!!can.templates} />}
-      <ProfileSection title="Forms" note={forms.length > 0 ? 'Generated from the templates, to print and sign' : undefined}>
+      <ProfileSection title="Forms">
         {forms.length > 0 ? <DocumentItems items={forms} employee={p} can={can} today={today} /> : <Dashed>{gapText ?? 'No social insurance forms apply yet.'}</Dashed>}
-        {forms.length > 0 && gapText && <p className="text-sm text-muted">{gapText}</p>}
-        {anyDocument && <p className="text-xs text-muted">{PROTECTED_PDF_HINT}</p>}
-        {hasInsuranceCopy(load.tab) && (
-          <p className="text-sm text-muted">
-            The contract&apos;s social insurance copy is with the contract&apos;s documents, on the Employment tab&apos;s{' '}
-            <Link href={insuranceCopyHref(p.id)} className={LINK}>
-              Issued Documents
-            </Link>
-            .
-          </p>
-        )}
       </ProfileSection>
     </>
   );
@@ -366,7 +324,6 @@ async function InsurancePrint({ profile: p }: { profile: EmployeeProfile }) {
   }
   const required = printRequired(p);
   const status = printStatus(items, required);
-  const type = insuredEmployment(p)?.employmentType;
   const action = status.state === 'uploaded' ? 'View it on the Documents tab' : p.access.edit ? 'Upload it on the Documents tab' : 'Open the Documents tab';
 
   return (
@@ -395,14 +352,9 @@ async function InsurancePrint({ profile: p }: { profile: EmployeeProfile }) {
               )}
             </>
           ) : status.required ? (
-            <>
-              <span className="badge bg-warn-soft text-warn">Missing</span>
-              <span className="text-muted">The employee file needs it.</span>
-            </>
+            <span className="badge bg-warn-soft text-warn">Missing</span>
           ) : (
-            <span className="text-muted">
-              Not uploaded. {type ? `${aTypeWord(type).replace(/^a/, 'A')} employee's file doesn't need it.` : 'The employee file doesn’t need it.'}
-            </span>
+            <span className="text-muted">Not uploaded · not needed</span>
           )}
         </p>
         <Link href={printHref(p.id, required)} className={`text-sm ${LINK}`}>

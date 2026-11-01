@@ -96,22 +96,18 @@ export function decisionText(row: Pick<VacancySuggestionView, 'status' | 'decide
 
 /** "Email Mona Example at mona@example.com an invitation to apply for Video Editor?" before Invite to apply. */
 export const inviteConfirmText = (row: Pick<VacancySuggestionView, 'candidate' | 'email'>, jobTitle: string) =>
-  `Email ${row.candidate.fullName}${row.email ? ` at ${row.email}` : ''} an invitation to apply for ${jobTitle}? It has the job's apply link; they apply themselves.`;
+  `Email ${row.candidate.fullName}${row.email ? ` at ${row.email}` : ''} an invitation to apply for ${jobTitle}?`;
 
 /** Why none are worked out for the vacancy now, in words; null when they are. */
 export function pausedText(s: Pick<VacancySuggestions, 'paused' | 'recencyMonths'>): string | null {
   if (s.paused === 'c_level') return 'Earlier CVs are never suggested for a C-level vacancy.';
-  if (s.paused === 'not_open') return 'Not worked out while the vacancy isn’t taking applications: those kept are shown.';
+  if (s.paused === 'not_open') return 'Paused while the vacancy isn’t taking applications.';
   return null;
 }
-
-/** What the list says it holds: "General CVs and past applicants of the last 12 months, best first." */
-export const poolText = (recencyMonths: number) =>
-  `General CVs and earlier applicants for other jobs from the last ${recencyMonths} ${recencyMonths === 1 ? 'month' : 'months'}, best first. Nobody joins the vacancy until you add them.`;
 
 /** What a status filter with nobody says. */
 export const emptyText = (status: SuggestionStatus) =>
   status === 'suggested' ? 'No earlier CVs match this vacancy now.' : `Nobody ${SUGGESTION_STATUS_LABELS[status].toLowerCase()} yet.`;
 
 /** What Add to this vacancy did. */
-export const addedText = (number: string | null | undefined) => `Added to the vacancy${shownCode(number) ? ` as ${number}` : ''}, at Applied.`;
+export const addedText = (number: string | null | undefined) => `Added${shownCode(number) ? ` as ${number}` : ''}.`;

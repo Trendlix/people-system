@@ -28,11 +28,7 @@ async function Drafts() {
   if (loaded.kind !== 'ok') return <Empty>{assetsNotLoaded(loaded, 'drafts')}</Empty>;
   const drafts = loaded.value;
   if (!drafts.length) {
-    return (
-      <Empty>
-        No draft is waiting. Ask Claude to draft assets with the Trendlix People connector: <Link href={ASSET_PATHS.connectClaude}>Connect Claude</Link>.
-      </Empty>
-    );
+    return <Empty>No draft is waiting.</Empty>;
   }
   return (
     <ul aria-label="Drafts from Claude" className="space-y-3">
@@ -86,10 +82,6 @@ export default function DraftsPage() {
   return (
     <AssetsFrame tab={ASSET_PATHS.drafts}>
       <div className="max-w-4xl space-y-4">
-        <p className="text-muted">
-          Assets Claude drafted through the Trendlix People connector. None is in the register yet: review each, add its photos and confirm it, and it gets its
-          code; or discard it.
-        </p>
         <Suspense fallback={<Loading />}>
           <Drafts />
         </Suspense>

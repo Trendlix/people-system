@@ -149,7 +149,6 @@ export function InterviewHoursForm({
       <fieldset disabled={readOnly} className="min-w-0 space-y-6">
         <fieldset className="space-y-4">
           <legend className="text-base font-semibold">Weekly Hours</legend>
-          <p className="text-sm text-muted">The times you can interview in each week, in Cairo time. Leave a day empty when you don’t interview on it.</p>
           {WEEKDAY_ORDER.map((day) => {
             const rows = ranges.filter((r) => r.day === day);
             return (
@@ -179,46 +178,36 @@ export function InterviewHoursForm({
             <label htmlFor={fid('effectiveFrom')} className="label">
               Counts from
             </label>
-            <DateInput id={fid('effectiveFrom')} name="effectiveFrom" defaultValue={formatDate(hours?.effectiveFrom ?? today)} required aria-describedby={fid('effectiveFrom-hint')} />
-            <p id={fid('effectiveFrom-hint')} className="hint">
-              The weekly hours apply from this day on.
-            </p>
+            <DateInput id={fid('effectiveFrom')} name="effectiveFrom" defaultValue={formatDate(hours?.effectiveFrom ?? today)} required />
           </div>
           <div>
             <label htmlFor={fid('noticeHours')} className="label">
               Minimum notice
             </label>
-            <Select id={fid('noticeHours')} name="noticeHours" defaultValue={hours?.noticeHours != null ? String(hours.noticeHours) : ''} aria-describedby={fid('notice-hint')} className="input">
+            <Select id={fid('noticeHours')} name="noticeHours" defaultValue={hours?.noticeHours != null ? String(hours.noticeHours) : ''} className="input">
               {noticeOptions(defaults, hours?.noticeHours).map((o) => (
                 <option key={o.value || 'company'} value={o.value}>
                   {o.label}
                 </option>
               ))}
             </Select>
-            <p id={fid('notice-hint')} className="hint">
-              How far ahead you must be booked. Only longer than the company’s.
-            </p>
           </div>
           <div>
             <label htmlFor={fid('bufferMinutes')} className="label">
               Buffer between interviews
             </label>
-            <Select id={fid('bufferMinutes')} name="bufferMinutes" defaultValue={hours?.bufferMinutes != null ? String(hours.bufferMinutes) : ''} aria-describedby={fid('buffer-hint')} className="input">
+            <Select id={fid('bufferMinutes')} name="bufferMinutes" defaultValue={hours?.bufferMinutes != null ? String(hours.bufferMinutes) : ''} className="input">
               {bufferOptions(defaults, hours?.bufferMinutes).map((o) => (
                 <option key={o.value || 'company'} value={o.value}>
                   {o.label}
                 </option>
               ))}
             </Select>
-            <p id={fid('buffer-hint')} className="hint">
-              Kept free before and after each of your interviews.
-            </p>
           </div>
         </div>
 
         <fieldset className="space-y-3">
           <legend className="text-base font-semibold">One-off Changes</legend>
-          <p className="text-sm text-muted">A day off from interviews, or extra hours on a date. Past ones go by themselves.</p>
           {changes.length === 0 && <p className="text-sm text-muted">None.</p>}
           {changes.map((c) => (
             <ChangeFields key={c.key} row={c} onRemove={() => setChanges((cs) => cs.filter((x) => x.key !== c.key))} />

@@ -76,7 +76,7 @@ export function calendarConnectProblemText(problem: MeetingConnectProblem, provi
     case 'unreachable':
       return `${who} couldn’t be reached. Try again in a moment.`;
     case 'not_allowed':
-      return 'Calendars are connected by the people who interview, in their own session or by a Super Admin acting as them with Act as them on; the company’s by a Super Admin in their own session.';
+      return 'Not allowed: a calendar is connected by its owner or a Super Admin.';
     case 'no_account':
       return `${who} didn’t say which account signed in. Try again.`;
     case 'other_account':
@@ -101,10 +101,10 @@ export function calendarBanner(query: Record<string, string | string[] | undefin
     if (one(query.said) === 'no_email') {
       return {
         tone: 'ok',
-        text: `The ${CALENDAR_ACCOUNT_LABELS[connected]} is connected, but ${CALENDAR_COMPANY_NAMES[connected]} didn’t say which account signed in: its busy times are read for the email shown below. Check the busy times to be sure it’s your calendar.`,
+        text: `The ${CALENDAR_ACCOUNT_LABELS[connected]} is connected, but ${CALENDAR_COMPANY_NAMES[connected]} didn’t say which account signed in: check the busy times.`,
       };
     }
-    return { tone: 'ok', text: `The ${CALENDAR_ACCOUNT_LABELS[connected]} is connected: its busy times are read from now on.` };
+    return { tone: 'ok', text: `The ${CALENDAR_ACCOUNT_LABELS[connected]} is connected.` };
   }
   const provider = one(query.connect);
   const problem = one(query.problem);

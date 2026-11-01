@@ -133,7 +133,7 @@ export const correctionsLabel = (n: number) => `${n} ${n === 1 ? 'correction' : 
 
 const EMPTY: Record<CorrectionFilter, string> = {
   waiting: 'No attendance corrections are waiting for you.',
-  all: 'No attendance corrections yet. Employees ask for them from My Attendance; HR corrects a day directly from the person’s month.',
+  all: 'No attendance corrections yet.',
   with_manager: 'No corrections are with a manager.',
   with_hr: 'No corrections are with HR.',
   approved: 'No corrections approved.',
@@ -168,22 +168,19 @@ const LEAVE_LIKE: Partial<Record<string, string>> = { rest: 'Rest day', holiday:
 
 /** Once sent: where it goes, or, recorded by HR, that the day is changed. */
 export function correctionSentText(status: LeaveStatus, manager?: Pick<RequestApprover, 'role'> | null, confidential?: boolean | null): string {
-  if (status === 'approved') return 'Day corrected, approved at once: its hours are counted again, and the month’s draft payroll takes it.';
-  const hr = hrStageName(confidential);
+  if (status === 'approved') return 'Day corrected.';
   const first = manager?.role === 'team_lead' ? 'your team lead' : manager?.role === 'department_head' ? 'your head of department' : 'your direct manager';
-  return status === 'with_manager' ? `Request sent. It goes to ${first}, then ${hr}; each step shows on the request.` : `Request sent. It goes to ${hr}; each step shows on the request.`;
+  return `Sent to ${status === 'with_manager' ? first : hrStageName(confidential)}.`;
 }
 
 /** Once a decision went through; a C-level person's goes on to the CEO, not HR (`confidential`). */
 export function correctionDecidedText(decision: LeaveDecision, stage: LeaveStage, confidential?: boolean | null): string {
-  if (decision === 'reject') return 'Correction rejected. The employee sees your comment.';
-  return leaveStatusAfterApproval(stage) === 'with_hr'
-    ? `Approved: the correction goes to ${hrStageName(confidential)}.`
-    : 'Approved: the day is corrected, its hours counted again, and the month’s draft payroll takes it.';
+  if (decision === 'reject') return 'Correction rejected.';
+  return leaveStatusAfterApproval(stage) === 'with_hr' ? `Approved and sent to ${hrStageName(confidential)}.` : 'Approved: the day is corrected.';
 }
 
 /** Said when a decision is refused as the correction moved on since the page was opened (the API's 409). */
-export const CORRECTION_MOVED_ON = 'This correction has moved on since you opened it, or can’t be applied now: it shows where it stands, and why.';
+export const CORRECTION_MOVED_ON = 'This correction has moved on since you opened it, or can’t be applied now.';
 
 /** What a correction's page says after `?done=`, and in which tone; null for anything else. */
 export function correctionDoneText(
@@ -194,7 +191,7 @@ export function correctionDoneText(
 ): { text: string; tone: 'ok' | 'warn' } | null {
   const done = one(query.done);
   if (done === 'sent' || done === 'recorded') return { text: correctionSentText(status, manager, confidential), tone: 'ok' };
-  if (done === 'cancelled') return { text: 'Correction cancelled. It stays on the list, cancelled; the day is as it was.', tone: 'ok' };
+  if (done === 'cancelled') return { text: 'Correction cancelled.', tone: 'ok' };
   if (done === 'moved') return { text: CORRECTION_MOVED_ON, tone: 'warn' };
   const [stage, decision] = done.split('_');
   if (!(LEAVE_STAGES as readonly string[]).includes(stage) || !(LEAVE_DECISIONS as readonly string[]).includes(decision)) return null;
@@ -370,15 +367,3 @@ export const typedCorrection = (fd: FormData): TypedCorrection => ({
 /** The fields as the form shows them again after a refusal. */
 export const typedCorrectionValues = (fd: FormData): Record<string, string> =>
   Object.fromEntries(['date', 'kind', 'checkIn', 'checkOut', 'reason', 'employeeId'].map((k) => [k, String(fd.get(k) ?? '')]));
-
-/**
- * What the form says once it can be sent: the day, what was wrong and where it goes (`byHr`: corrected for `name` at
- * once; `toCeo`: a C-level person's goes to the CEO after the manager, not HR).
- */
-export function correctionReadyText(typed: TypedCorrection, byHr: boolean, name: string, toCeo = false): string {
-  const date = parseDate(typed.date);
-  const what = `${isCorrectionKind(typed.kind) ? CORRECTION_KIND_NAMES[typed.kind].toLowerCase() : 'a correction'}${date ? ` on ${weekdayOf(date)} ${formatDate(date)}` : ''}`;
-  return byHr
-    ? `Ready to correct: ${what} for ${name}, at once. The day keeps what it was, shown as corrected from it.`
-    : `Ready to send: ${what}, to your direct manager (without one, your lead), then ${hrStageName(toCeo)}.`;
-}

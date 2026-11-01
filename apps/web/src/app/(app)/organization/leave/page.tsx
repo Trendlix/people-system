@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { leaveTypeRulesText, type StaffingUnitView } from '@trendlix/shared';
-import { LEAVE_PATH } from '@/components/nav';
 import { DeleteForm } from '@/components/form';
 import { titleCase } from '@/lib/format';
 import { canDelete } from '@/lib/roles';
@@ -33,7 +32,7 @@ import {
   yearClosingHref,
 } from './setup';
 import { closingYear } from './year-closing';
-import { limitNowText, peopleNowText, STAFFING_ID, staffingGroups, takesLimit, unitLimitText } from './staffing';
+import { peopleNowText, STAFFING_ID, staffingGroups, takesLimit, unitLimitText } from './staffing';
 import { loadStaffing } from './staffing-data';
 import { StaffingLimitForm } from './staffing-form';
 import { COMPENSATORY_SETUP_PATH } from '../../attendance/compensatory/compensatory';
@@ -66,9 +65,6 @@ export const metadata: Metadata = { title: 'Leave Setup · People System' };
 
 const Section = ({ children }: { children: React.ReactNode }) => <Suspense fallback={<Loading />}>{children}</Suspense>;
 
-const INTRO =
-  'Leave as Labour Law 14/2025 gives it (Arts. 124–133, and 54–57 for maternity and childcare). Each year runs from January to December: the annual leave is earned month by month, and at the year’s end HR decides in the Year Closing what of the unused days is carried and what is paid.';
-
 async function AnnualLeave({ user }: { user: SessionUser }) {
   const loaded = await loadLeaveSettings();
   const edits = editsLeaveSetup(user);
@@ -84,9 +80,6 @@ async function AnnualLeave({ user }: { user: SessionUser }) {
         {SETTING_FIELDS.map((f) => (
           <SettingRow key={f.key} label={f.label}>
             <span className="tabular-nums">{unitText(s[f.key], f.unit)}</span>
-            <span lang="ar" dir="rtl" className="mt-0.5 block text-xs text-muted">
-              {f.law}
-            </span>
           </SettingRow>
         ))}
         {/* permission's hours (19 October 2026), when the API has them */}
@@ -103,11 +96,7 @@ async function AnnualLeave({ user }: { user: SessionUser }) {
   }
   const permission = loaded.kind === 'ok' && typeof loaded.value.permissionHoursPerMonth === 'number';
   return (
-    <SetupSection
-      id="annual-leave"
-      title={permission ? 'Annual Leave and Permission' : 'Annual Leave'}
-      intro={`The days a year by service, age and disability (Art. 124: “لا يدخل فى حسابها أيام عطلات الأعياد والمناسبات الرسمية والراحة الأسبوعية”: holidays and rest days aren’t counted). Each employee’s prior service, disability and hazardous work are on their profile.${permission ? ' Then permission: the hours a month and the most a day an employee may be away from a working day.' : ''}`}
-    >
+    <SetupSection id="annual-leave" title={permission ? 'Annual Leave and Permission' : 'Annual Leave'}>
       {body}
     </SetupSection>
   );
@@ -161,7 +150,7 @@ function TypeCard({ type: t, edits, deletes }: { type: LeaveTypeView; edits: boo
       </dl>
       {/* only a Super Admin deletes (owner's decision, 15 October 2026), and only a type no request uses */}
       {deletes && t.requests === 0 && (
-        <DeleteForm action={deleteLeaveType.bind(null, t.id)} confirmText={`Delete the leave type ${t.nameEn}? No request uses it. This cannot be undone.`} label="Delete type" />
+        <DeleteForm action={deleteLeaveType.bind(null, t.id)} confirmText={`Delete the leave type ${t.nameEn}?`} label="Delete type" />
       )}
     </li>
   );
@@ -186,11 +175,7 @@ async function LeaveTypes({ user }: { user: SessionUser }) {
     );
   }
   return (
-    <SetupSection
-      id={LEAVE_TYPES_ID}
-      title="Leave Types"
-      intro="The kinds of leave employees ask for from My Requests, the law's to start with: each with its days, its pay and its rules. A request goes to the direct manager, then HR. Off: not offered for new requests. A change applies to the requests sent afterwards."
-    >
+    <SetupSection id={LEAVE_TYPES_ID} title="Leave Types">
       {edits && loaded.kind === 'ok' && (
         <div className="mb-4">
           <Link href={NEW_LEAVE_TYPE_HREF} className="btn btn-primary">
@@ -205,7 +190,6 @@ async function LeaveTypes({ user }: { user: SessionUser }) {
 
 /** A team's (or a department's) row of Staffing: its name, its people now, its limit in words and what it means, and its form. */
 function StaffingRow({ unit: u, edits }: { unit: StaffingUnitView; edits: boolean }) {
-  const now = limitNowText(u);
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
@@ -214,14 +198,11 @@ function StaffingRow({ unit: u, edits }: { unit: StaffingUnitView; edits: boolea
         </h3>
         <span className="text-sm text-muted tabular-nums">{peopleNowText(u.members)}</span>
       </div>
-      {takesLimit(u) ? (
+      {takesLimit(u) && (
         <>
           <p className="text-sm">{unitLimitText(u)}</p>
-          {now && <p className="text-xs text-muted">{now}</p>}
-          {edits && <StaffingLimitForm action={saveStaffingLimit.bind(null, u.id, u.nameEn)} unit={u} />}
+          {edits && <StaffingLimitForm action={saveStaffingLimit.bind(null, u.id)} unit={u} />}
         </>
-      ) : (
-        <p className="text-sm text-muted">It has teams: each team below has its own limit.</p>
       )}
     </div>
   );
@@ -239,7 +220,7 @@ async function Staffing({ user }: { user: SessionUser }) {
   let body: React.ReactNode;
   if (loaded.kind === 'forbidden') body = <p className="text-sm text-muted">Only HR, the CEO, Finance and Admins see the staffing limits.</p>;
   else if (loaded.kind === 'failed') body = <NotLoaded what="the staffing limits" loaded={{ kind: 'failed', message: loaded.messages.join(' ') }} />;
-  else if (loaded.value.length === 0) body = <p className="text-sm text-muted">No departments yet: they are added on Organization → Departments.</p>;
+  else if (loaded.value.length === 0) body = <p className="text-sm text-muted">No departments yet.</p>;
   else {
     body = (
       <ul className="space-y-4">
@@ -261,11 +242,7 @@ async function Staffing({ user }: { user: SessionUser }) {
     );
   }
   return (
-    <SetupSection
-      id={STAFFING_ID}
-      title="Staffing"
-      intro="How many of a team may be on annual leave at once, so leave doesn't stop its work: at most so many people, or at least a share of them at work, either, both or none; a department without teams has its own. A request of annual or unpaid leave that would break it on any day, counting the approved and waiting ones, is still sent: the employee is warned, the manager and HR see the clash, and HR approves it too, marked Over the staffing limit. Sick and casual leave are never limited, as the law doesn't let them be refused. HR and the Super Admin set the limits."
-    >
+    <SetupSection id={STAFFING_ID} title="Staffing">
       {body}
     </SetupSection>
   );
@@ -280,11 +257,7 @@ async function WorkFromHome({ user }: { user: SessionUser }) {
   const loaded = await loadWfhSettings();
   if (loaded.kind === 'unavailable') return null;
   return (
-    <SetupSection
-      id="work-from-home"
-      title="Work From Home"
-      intro="A working day from home instead of the office, not leave: no balance, no pay effect, its hours counted as any day's. Asked a day before at the latest by someone expected at the office that day, decided by their manager, then HR. At most these days a calendar month, any two at least these days apart, across months too; HR may record a day past them, with a warning."
-    >
+    <SetupSection id="work-from-home" title="Work From Home">
       {loaded.kind === 'ok' ? (
         <WfhSettingsForm action={saveWfhSettings} settings={loaded.value} canEdit={editsLeaveSetup(user)} />
       ) : (
@@ -302,11 +275,7 @@ async function WorkFromHome({ user }: { user: SessionUser }) {
  */
 function CompensatoryDays() {
   return (
-    <SetupSection
-      id="compensatory-days"
-      title="Compensatory Days"
-      intro="A day off in exchange for a rest day or an official holiday worked, or hours off for part of one, decided by the manager, then HR, who approves it as time off, which adds no pay, or, rarely, as cash instead. The cash rate, the hours that earn hours off or a whole day, and when the day off is taken are on the Compensatory Setup."
-    >
+    <SetupSection id="compensatory-days" title="Compensatory Days">
       <Link href={COMPENSATORY_SETUP_PATH} className="btn btn-secondary no-underline">
         Compensatory Setup
       </Link>
@@ -317,11 +286,7 @@ function CompensatoryDays() {
 function YearClosingSection({ user }: { user: SessionUser }) {
   const year = closingYear({}, todayInCairo());
   return (
-    <SetupSection
-      id="year-closing"
-      title="Year Closing"
-      intro="At a year's end, HR decides for each employee how many of their unused annual days are carried into the new year and how many are paid: together they are all the unused days, as leave can't be lost, and days carried for three years are paid (Art. 125). The pay is added to the January payroll as Unused leave paid. Someone who leaves is paid their balance in the final settlement."
-    >
+    <SetupSection id="year-closing" title="Year Closing">
       {seesYearClosing(user) ? (
         <div className="flex flex-wrap gap-2">
           <Link href={yearClosingHref(year)} className="btn btn-primary">
@@ -342,9 +307,6 @@ async function LeaveSetup() {
   const user = await getCurrentUser();
   return (
     <div className="space-y-6">
-      <p className="max-w-3xl text-sm text-muted">
-        {INTRO} Requests are on <Link href={LEAVE_PATH}>Requests → Leave Requests</Link>.
-      </p>
       <Section>
         <AnnualLeave user={user} />
       </Section>

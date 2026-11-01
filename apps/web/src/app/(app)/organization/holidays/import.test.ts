@@ -73,12 +73,12 @@ describe('Importing holidays', () => {
     const imported = (dates: string[]) => dates.map((date, i) => ({ id: String(i), date, nameEn: 'A holiday', nameAr: null }));
     const result: HolidayImportResult = { ...preview, imported: imported(['2027-01-07', '2027-05-16', '2027-05-17']) };
     expect(importedMessage(result)).toBe(
-      'Imported 3 holidays in 2027. Left out: 1 already on file, 1 clash, 1 in the file twice and 2 rows with problems. Runs made or refreshed from now on count them.',
+      'Imported 3 holidays in 2027. Left out: 1 already on file, 1 clash, 1 in the file twice and 2 rows with problems.',
     );
     const across = { days: [days[0]], problems: [], imported: imported(['2027-12-31', '2028-01-01']) };
     expect(importedYears(across)).toEqual([2027, 2028]);
-    expect(importedMessage(across)).toBe('Imported 2 holidays in 2027 and 2028. Runs made or refreshed from now on count them.');
-    expect(importedMessage({ days: [days[0]], problems: [], imported: imported(['2027-01-07']) })).toBe('Imported 1 holiday in 2027. Runs made or refreshed from now on count it.');
+    expect(importedMessage(across)).toBe('Imported 2 holidays in 2027 and 2028.');
+    expect(importedMessage({ days: [days[0]], problems: [], imported: imported(['2027-01-07']) })).toBe('Imported 1 holiday in 2027.');
     // a holiday added on its day since the preview: nothing new by then
     expect(importedMessage({ days: [{ ...days[0], status: 'clash' }], problems: [], imported: [] })).toBe('Nothing was imported: no day in the file is new now (1 clash).');
     expect(importedMessage({ days: [], problems: [], imported: [] })).toBe('Nothing was imported: no day in the file is new now.');

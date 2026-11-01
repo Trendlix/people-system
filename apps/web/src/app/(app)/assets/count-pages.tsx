@@ -20,8 +20,8 @@ const RESULT_TONE: Record<AssetCountResult, string> = { found: 'bg-ok-soft text-
 export async function NewCount({ scope, phone = false }: { scope: CountScopeQuery | null; phone?: boolean }) {
   const { can } = await assetsCaller();
   if (!can.view) return <NoAccess />;
-  if (!can.register) return <Empty>Only an Assets custodian or manager counts. You can read the counts made.</Empty>;
-  if (!scope) return <Empty>Choose a group, a room or a kit to count, from Counts.</Empty>;
+  if (!can.register) return <Empty>Only an Assets custodian or manager counts.</Empty>;
+  if (!scope) return <Empty>Choose a group, a room or a kit to count.</Empty>;
   const loaded = await loadCountSheet(scope);
   if (loaded.kind !== 'ok') return <Empty>{assetsNotLoaded(loaded, 'count’s sheet')}</Empty>;
   const sheet = loaded.value;
@@ -31,10 +31,10 @@ export async function NewCount({ scope, phone = false }: { scope: CountScopeQuer
         <p className="text-sm text-muted">{scopeKindText(sheet.scope.kind)}</p>
         <h1 className={phone ? 'text-xl font-semibold' : 'text-2xl font-semibold'}>Count {titleCase(sheet.scope.label)}</h1>
         <p className="mt-1 text-sm text-muted">
-          {sheet.items.length} {sheet.items.length === 1 ? 'asset' : 'assets'} to see. Tick each one that is here: what isn&apos;t ticked is counted missing.
+          {sheet.items.length} {sheet.items.length === 1 ? 'asset' : 'assets'}
         </p>
       </div>
-      {sheet.items.length === 0 ? <Empty>Nothing to count: it has no assets.</Empty> : <CountSheet sheet={sheet} action={saveCount.bind(null, scope, phone)} phone={phone} />}
+      {sheet.items.length === 0 ? <Empty>No assets to count.</Empty> : <CountSheet sheet={sheet} action={saveCount.bind(null, scope, phone)} phone={phone} />}
     </div>
   );
 }

@@ -67,18 +67,14 @@ function Status({ view }: { view: MailSettingsView }) {
 
 async function Gate() {
   const user = await getCurrentUser();
-  if (user.developer) return <Empty>The email settings hold a mailbox and its password: they aren’t open to developers.</Empty>;
+  if (user.developer) return <Empty>The email settings aren’t open to developers.</Empty>;
   if (!seesEmailSettings(user)) return <Empty>{MAIL_SETTINGS_SUPER_ADMIN_ONLY}</Empty>;
   if (user.viewAs) return <Empty>{MAIL_SETTINGS_OWN_ACCOUNT}</Empty>;
   const loaded = await loadMailSettings();
-  if (loaded.kind === 'unavailable') return <Empty>Not available yet: the server does not have the email settings yet. Please try again after its next update.</Empty>;
+  if (loaded.kind === 'unavailable') return <Empty>Not available yet: the server does not have the email settings yet.</Empty>;
   if (loaded.kind === 'failed') return <Empty>The email settings could not be loaded. {loaded.messages.join(' ')}</Empty>;
   return (
     <div className="space-y-6">
-      <p className="max-w-3xl text-sm text-muted">
-        The company mailbox the system sends its emails from: set-password links and invitations, job offers, interview invitations and the emails to
-        applicants. Until these are filled in and switched on, the server’s settings (deploy/.env) are used, as before.
-      </p>
       <Status view={loaded.value} />
       {/* the test goes to the Super Admin's own address unless they write another */}
       <MailSettingsForm action={submitMailSettings} view={loaded.value} testTo={user.email} />

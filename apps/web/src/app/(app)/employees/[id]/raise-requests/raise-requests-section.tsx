@@ -32,8 +32,8 @@ import { ProfileSection } from '../../ui';
 
 type Profile = Pick<EmployeeProfile, 'id' | 'fullNameEn' | 'isSelf' | 'employment'>;
 
-const Title = ({ note, children }: { note?: string; children: React.ReactNode }) => (
-  <ProfileSection title="Raise Requests" note={note}>
+const Title = ({ children }: { children: React.ReactNode }) => (
+  <ProfileSection title="Raise Requests">
     {children}
   </ProfileSection>
 );
@@ -80,14 +80,9 @@ export async function RaiseRequestsSection({
   const forSelf = Boolean(p.isSelf);
   // those who may ask are told why they can't now (e.g. one is open); the CEO and Finance only follow them
   const asks = forSelf || handlesRaiseRequests(user) || isManagerOf(user, p);
-  const hidden = requests.some((r) => r.amountsHidden) && !forSelf;
 
   return (
-    <Title
-      note={
-        requests.length > 0 ? `Newest first${hidden ? ' · amounts are private: you see the reasons, the comments and each decision' : ''}` : undefined
-      }
-    >
+    <Title>
       {canRequest ? (
         <Link href={newRaiseRequestHref(p.id)} className="btn btn-primary">
           Request a raise<span className="sr-only">{forSelf ? ' for yourself' : ` for ${p.fullNameEn}`}</span>

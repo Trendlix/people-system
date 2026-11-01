@@ -28,9 +28,6 @@ import {
 // Admin deletes one no claim uses (one with claims is turned off instead). An approved claim is paid with the next
 // payroll, untaxed, as a Reimbursement addition.
 
-const INTRO =
-  'The kinds of expense employees can claim back from My Requests, each with its caps and conditions. A claim goes to the direct manager, then HR, then Finance; once approved, it is paid with the next payroll as an untaxed Reimbursement addition. A change applies to the claims sent afterwards.';
-
 function TypeCard({
   type: t,
   departments,
@@ -92,7 +89,7 @@ function TypeCard({
       {deletes && t.claims === 0 && (
         <DeleteForm
           action={deleteReimbursementType.bind(null, t.id)}
-          confirmText={`Delete the reimbursement type ${t.nameEn}? No claim uses it. This cannot be undone.`}
+          confirmText={`Delete the reimbursement type ${t.nameEn}?`}
           label="Delete type"
         />
       )}
@@ -115,7 +112,7 @@ export async function ReimbursementTypesSection({ user }: { user: SessionUser })
   } else if (loaded.kind === 'forbidden') {
     body = <NotLoaded what="the reimbursement types" loaded={{ kind: 'failed', message: 'Only HR, Finance, the CEO and Admin can see them.' }} />;
   } else if (loaded.value.length === 0) {
-    body = <p className="text-sm text-muted">No reimbursement types yet.{edits && ' Add the first one, e.g. Mobile bill or Transport, with its caps.'}</p>;
+    body = <p className="text-sm text-muted">No reimbursement types yet.</p>;
   } else {
     body = (
       <ul className="space-y-3">
@@ -127,7 +124,7 @@ export async function ReimbursementTypesSection({ user }: { user: SessionUser })
   }
 
   return (
-    <SetupSection id={REIMBURSEMENT_TYPES_ID} title="Reimbursement Types" intro={INTRO}>
+    <SetupSection id={REIMBURSEMENT_TYPES_ID} title="Reimbursement Types">
       {edits && loaded.kind !== 'unavailable' && (
         <div className="mb-4">
           <Link href={NEW_REIMBURSEMENT_TYPE_HREF} className="btn btn-primary">

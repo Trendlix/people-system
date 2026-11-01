@@ -113,7 +113,7 @@ function Actions({ a }: { a: ApplicationView }) {
       )}
       {/* a job offer only after an interview marked done (owner, 1 November 2026: "Offer only after interview") */}
       {!c.makeOffer && c.scheduleInterview && (a.stage === 'shortlisted' || a.stage === 'interview') && !a.interviews.some((i) => i.status === 'done') && (
-        <p className="hint w-full">Make offer comes once an interview of theirs is marked done.</p>
+        <p className="hint w-full">An offer needs an interview marked done first.</p>
       )}
       {c.shortlist && <ActionButton action={moveApplicant.bind(null, a.id, 'shortlisted')} label={a.stage === 'interview' ? 'Back to shortlisted' : 'Shortlist'} pendingLabel="Saving…" kind={a.stage === 'applied' ? 'primary' : 'secondary'} />}
       {c.interview && !a.interviewBlocked && <ActionButton action={moveApplicant.bind(null, a.id, 'interview')} label="Move to interview" pendingLabel="Saving…" />}
@@ -123,7 +123,7 @@ function Actions({ a }: { a: ApplicationView }) {
           action={moveApplicant.bind(null, a.id, 'rejected')}
           label="Reject"
           pendingLabel="Rejecting…"
-          reasonLabel="Why (kept with the application, never sent)"
+          reasonLabel="Why (never sent)"
           required
           kind="danger"
           emailOption={c.emailOnReject}
@@ -153,7 +153,7 @@ function OtherApplications({ a }: { a: ApplicationView }) {
                 action={splitApplication.bind(null, a.id)}
                 label="Move to a new candidate"
                 pendingLabel="Moving…"
-                confirm={`Move ${shownCode(a.number) ?? 'this application'} to a new candidate? It leaves ${shownCode(c.code) ?? 'its candidate'}, with the email and mobile used only on it; the two won’t be suggested as one person.`}
+                confirm={`Move ${shownCode(a.number) ?? 'this application'} to a new candidate?`}
               />
             )}
           </div>
@@ -249,7 +249,7 @@ function InterviewItem({
         {i.can.reschedule && <MoveInterview action={rescheduleInterview.bind(null, i.id)} people={people} interview={i} meetings={meetings} />}
         {i.can.mark && <ActionButton action={markInterview.bind(null, i.id, 'done')} label="Mark done" pendingLabel="Saving…" kind="primary" />}
         {i.can.mark && <ActionButton action={markInterview.bind(null, i.id, 'no_show')} label="No-show" pendingLabel="Saving…" />}
-        {i.can.cancel && <ReasonButton action={cancelInterview.bind(null, i.id)} label="Cancel interview" pendingLabel="Cancelling…" reasonLabel="Why (for the record)" required={false} kind="danger" />}
+        {i.can.cancel && <ReasonButton action={cancelInterview.bind(null, i.id)} label="Cancel interview" pendingLabel="Cancelling…" reasonLabel="Why" required={false} kind="danger" />}
       </div>
       {i.can.feedback && (
         <div className="space-y-2">
@@ -270,7 +270,7 @@ function Scorecards({ a }: { a: ApplicationView }) {
       </h2>
       {a.feedbackHidden > 0 && (
         <p className="text-sm text-muted">
-          {a.feedbackHidden} {a.feedbackHidden === 1 ? 'scorecard is' : 'scorecards are'} hidden until you give yours, so you score them on your own.
+          {a.feedbackHidden} {a.feedbackHidden === 1 ? 'scorecard is' : 'scorecards are'} hidden until you give yours.
         </p>
       )}
       {/* HR's, the hiring manager's and the interviewers' recommendations in a line (29 October 2026) */}
@@ -399,11 +399,6 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
           <p>{a.rejectReason}</p>
         </div>
       )}
-      {a.filteredOut && (
-        <div role="note" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
-          They didn&apos;t meet a must-have question, so they were filtered out. Restore them to consider them anyway.
-        </div>
-      )}
 
       <Actions a={a} />
 
@@ -530,7 +525,6 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
           <h2 id="applicant-suggest" className="text-lg font-semibold">
             Your Suggestion
           </h2>
-          <p className="text-sm text-muted">As the hiring manager, tell HR what you think should happen next. HR acts on it.</p>
           <SuggestForm action={suggestNext.bind(null, a.id)} stage={a.stage} />
         </section>
       )}

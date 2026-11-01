@@ -19,9 +19,6 @@ import { ImportHolidays } from './import-holidays';
 // over the figure on the run. Without a shift there is none, and pay by the hour isn't affected. HR and Admin add and
 // change holidays; a Super Admin removes one; HR, Finance, the CEO and Admin read them.
 
-const INTRO =
-  'The year’s official holidays. A holiday on a shift’s working day isn’t worked, so a run takes its hours out of the expected hours: each monthly-paid person is expected their shift’s working days in the days they are paid for, less the holidays on them, at the shift’s hours to work a day. HR can type over that figure on the run. Runs made or refreshed afterwards count a change; approved runs keep theirs. Pay by the hour isn’t affected.';
-
 function YearNav({ year }: { year: number }) {
   return (
     <nav aria-label="Year" className="flex flex-wrap items-center gap-2">
@@ -93,12 +90,9 @@ export async function HolidaysTab({ user, year }: { user: SessionUser; year: num
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="max-w-3xl text-sm text-muted">{INTRO}</p>
-        <YearNav year={year} />
-      </div>
+      <YearNav year={year} />
 
-      <SetupSection id="holidays" title={`Official Holidays in ${year}`} intro="Each holiday is one day: a holiday of several days, such as Eid al-Adha, has one for each of its days.">
+      <SetupSection id="holidays" title={`Official Holidays in ${year}`}>
         {holidays.kind !== 'ok' ? (
           <NotLoaded what="the holidays" loaded={holidays} />
         ) : (
@@ -128,18 +122,12 @@ export async function HolidaysTab({ user, year }: { user: SessionUser; year: num
       <SetupSection
         id="working-days"
         title={`Working Days in ${year}`}
-        intro={
-          <>
-            Each shift&apos;s working days in each month, less the holidays on them, and the expected hours they come to for someone employed all month,
-            at the shift&apos;s hours to work a day. Someone who joins or leaves in a month is expected the days they are employed.{' '}
-            {canEdit && <Link href="/organization/shifts">Change the shifts</Link>}
-          </>
-        }
+        intro={canEdit && <Link href="/organization/shifts">Change the shifts</Link>}
       >
         {shifts.kind !== 'ok' ? (
           <NotLoaded what="the shifts" loaded={shifts} />
         ) : shifts.value.length === 0 ? (
-          <p className="text-sm text-muted">No shifts yet: without a shift, a run has no expected hours to work out.</p>
+          <p className="text-sm text-muted">No shifts yet.</p>
         ) : (
           <WorkingDaysTable year={year} shifts={shifts.value} holidays={list} />
         )}

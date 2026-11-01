@@ -1,4 +1,3 @@
-import { TEMPLATE_SLOTS } from '@trendlix/shared';
 import type {
   DocumentDetailPlace,
   DocumentItem,
@@ -7,7 +6,7 @@ import type {
   GeneratedDocumentStatus,
   MissingDocumentDetail,
 } from '../../../../../lib/types';
-import { SIGNER_LABELS, templateHref } from '../../../organization/templates/wording';
+import { templateHref } from '../../../organization/templates/wording';
 import { askedTab, contractHref, profileHref } from '../../tab-list';
 import { shownCode } from '../../../../../lib/hidden';
 
@@ -131,9 +130,9 @@ export function templateStateText(item: Pick<DocumentItem, 'templateStatus' | 't
 export const itemTemplateHref = (item: Pick<DocumentItem, 'slotKey'>) => templateHref(item.slotKey);
 
 /** What is typed when generating (`needsInputs`), with its label; tags the screens don't know are labelled by name. */
-export const INPUT_LABELS: Record<string, { label: string; hint: string }> = {
-  letter_to: { label: 'Addressed to', hint: 'Who the letter is for, e.g. the embassy or the bank, as it should read on the letter.' },
-  letter_purpose: { label: 'Purpose', hint: 'What the letter is for, e.g. a visa application.' },
+export const INPUT_LABELS: Record<string, { label: string; placeholder: string }> = {
+  letter_to: { label: 'Addressed to', placeholder: 'e.g. the embassy or the bank' },
+  letter_purpose: { label: 'Purpose', placeholder: 'e.g. a visa application' },
 };
 
 export function inputLabel(tag: string): string {
@@ -269,17 +268,11 @@ export interface GenerateResult {
 
 /** Said where the server doesn't have document generation yet (it answers 404 for its addresses). */
 export const NOT_AVAILABLE = 'Not available yet.';
-export const NOT_AVAILABLE_ACTION = 'Not available yet: the server does not have document generation yet. Please try again after its next update.';
-export const NO_TEMPLATE = 'There is no published template for this document yet. Upload and publish one in Templates first.';
+export const NOT_AVAILABLE_ACTION = 'Not available yet. Please try again after the server’s next update.';
+export const NO_TEMPLATE = 'No published template for this document yet.';
 
 /** Whether a 404's messages are the server's own "Cannot GET /api/…" for an address it doesn't have. */
 export const isMissingRoute = (messages: readonly string[]) => messages.some((m) => /^Cannot (GET|POST|PUT|PATCH|DELETE) /.test(m));
-
-/** Who signs a slot's printed document, in a sentence: "the employee and the company" (from the template library). */
-export function signersText(slotKey: string): string | null {
-  const signers = TEMPLATE_SLOTS.find((s) => s.key === slotKey)?.signers;
-  return signers && signers !== 'none' ? (SIGNER_LABELS[signers] ?? '').toLowerCase() || null : null;
-}
 
 /** What was typed when a document was generated, as "Addressed to: … · Purpose: …"; null when nothing was. */
 export function inputsText(inputs: Record<string, string> | null | undefined): string | null {

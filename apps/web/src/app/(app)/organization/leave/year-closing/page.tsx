@@ -60,18 +60,14 @@ async function Closing({ searchParams }: { searchParams: PageProps<'/organizatio
   else {
     const v = loaded.value;
     const yearRunning = year >= Number(today.slice(0, 4));
-    const excluded = closingExcludedText(v.confidentialExcluded, year, v.closed);
+    const excluded = closingExcludedText(v.confidentialExcluded);
     body = (
       <div className="space-y-4">
         <div className="flex flex-wrap items-center gap-3">
           {v.closed ? <span className="badge bg-ok-soft text-ok">Closed</span> : <span className="badge bg-warn-soft text-warn">Open</span>}
-          <p className="text-sm text-muted">
-            {v.closed
-              ? `Closed${v.closedAt ? ` on ${formatDateTime(v.closedAt)}` : ''}: the days carried are ${year + 1}'s carried in, and the days paid are on the payroll.`
-              : yearRunning
-                ? `${year} is still running: the unused days shown are as of today, and change with the leave taken until 31 December.`
-                : `What each employee had unused at the end of ${year}, with the days carried and paid proposed.`}
-          </p>
+          {v.closed
+            ? v.closedAt && <p className="text-sm text-muted">Closed on {formatDateTime(v.closedAt)}</p>
+            : yearRunning && <p className="text-sm text-muted">Unused days as of today</p>}
         </div>
         {excluded && <p className="max-w-3xl text-sm text-muted">{excluded}</p>}
         {v.rows.length === 0 && !(hr && !v.closed && (v.confidentialExcluded ?? 0) > 0) ? (
@@ -89,11 +85,7 @@ async function Closing({ searchParams }: { searchParams: PageProps<'/organizatio
         {hr && v.closed && !v.rows.some((r) => r.payout?.status === 'applied') && (
           <div className="card space-y-3 p-5">
             <h2 className="font-semibold">Open {year} Again</h2>
-            <p className="text-sm text-muted">
-              While its payouts aren&apos;t paid with a payroll yet, the year can be opened again to change what is carried and paid: the days carried
-              into {year + 1} and the payouts are taken back until it is closed again.
-            </p>
-            <ActionButton action={reopenLeaveYear.bind(null, year)} pendingText="Opening…" confirmText={`Open ${year} again? Its carried days and payouts are taken back until it is closed again.`}>
+            <ActionButton action={reopenLeaveYear.bind(null, year)} pendingText="Opening…" confirmText={`Open ${year} again and take back its carried days and payouts?`}>
               Open {year} again
             </ActionButton>
           </div>
@@ -113,11 +105,6 @@ async function Closing({ searchParams }: { searchParams: PageProps<'/organizatio
           {done}
         </p>
       )}
-      <p className="max-w-3xl text-sm text-muted">
-        For each employee, the days carried into {year + 1} and the days paid must add up to the days unused: leave can&apos;t be lost (Art. 125:
-        <span lang="ar"> “لا يجوز للعامل النزول عن إجازته”</span>). Days carried for three years are highlighted: they are paid now. A day is paid at the
-        gross ÷ the payroll&apos;s day divisor, with the payroll of January {year + 1}, or the next one open.
-      </p>
       {body}
     </div>
   );

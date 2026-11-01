@@ -1,5 +1,5 @@
 import { KPI_ATTENDANCE_METRIC, kpiMetricDuties, type KpiTemplateView } from '@trendlix/shared';
-import { aboveTarget, leftOutPillarNote, pillarGroups, pillarsFromText, UNPLACED_TITLE } from './[jobTitleId]/builder';
+import { aboveTarget, pillarGroups, pillarsFromText, UNPLACED_TITLE } from './[jobTitleId]/builder';
 
 // A version of a job title's KPI template as everyone reads it (owner, 21 October 2026: "Managers can view their team's
 // templates"): its pillars with their weights and max points, each metric with the JD duty it is linked to, its
@@ -79,7 +79,7 @@ export function TemplateView({
                   <tr key={m.id ?? m.number} className="align-top">
                     <td className="min-w-56 align-top">
                       <span className="font-semibold">{m.name}</span>
-                      {m.pillar === null && m.wasIn && <span className="block text-xs text-warn">It was in {m.wasIn}, which the framework no longer has.</span>}
+                      {m.pillar === null && m.wasIn && <span className="block text-xs text-warn">Was in {m.wasIn}</span>}
                       {m.definition && <span className="block text-xs text-muted">{m.definition}</span>}
                       {m.howMeasured && <span className="mt-1 block text-xs text-muted">Measured: {m.howMeasured}</span>}
                     </td>
@@ -104,17 +104,16 @@ export function TemplateView({
                   <tr className="align-top">
                     <td className="align-top">
                       <span className="font-semibold">{KPI_ATTENDANCE_METRIC}</span> <span className="badge bg-line-soft text-muted">Automatic</span>
-                      <span className="block text-xs text-muted">Filled in by the system: its points × the month&apos;s attendance score, as payroll works it out.</span>
                     </td>
                     <td className="align-top">{none}</td>
-                    <td className="align-top text-sm text-muted">Nobody picks it</td>
+                    <td className="align-top">{none}</td>
                     <td className="text-right align-top tabular-nums">{template.attendancePoints}</td>
                   </tr>
                 )}
                 {g.metrics.length === 0 && !g.attendance && (
                   <tr>
                     <td colSpan={4} className="text-sm text-muted">
-                      {g.leftOut && g.pillar ? leftOutPillarNote(g.pillar) : 'No metric in this pillar.'}
+                      {g.leftOut && g.pillar ? 'Not scored.' : 'No metric in this pillar.'}
                     </td>
                   </tr>
                 )}

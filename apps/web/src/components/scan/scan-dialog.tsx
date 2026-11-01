@@ -123,7 +123,6 @@ function ScanPreview({ result, problem }: { result: ScanResult; problem: string 
   const details = [pagesText(result.pages), formatSize(result.file.size)].filter(Boolean).join(' · ');
   return (
     <div className="space-y-3">
-      <p className="text-sm">Check the scan: every page there, the right way up, and readable. Then use it, or scan again.</p>
       <iframe ref={frame} title={`The scan, ${result.file.name}`} className="h-[min(60dvh,40rem)] w-full rounded-md border border-line bg-white" />
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm">
         <p className="min-w-0 break-words">
@@ -207,7 +206,7 @@ function ScanWindow({ title, hint, purpose, maxBytes, onScanned, onClosed }: Sca
       const status = await helperStatus({ signal: c.signal, timeout: allowed === 'prompt' ? TIMEOUTS.statusAsking : TIMEOUTS.status });
       if (!status) {
         setPhase(allowed === 'denied' ? { at: 'blocked', checking: false } : { at: 'missing', checking: false });
-        say(allowed === 'denied' ? 'The browser is blocking access to the Scan Helper.' : "The TrendLIX Scan Helper isn't running on this computer.");
+        say(allowed === 'denied' ? 'The browser is blocking the Scan Helper.' : "The Scan Helper isn't running.");
         return;
       }
       setVersion(status.version);
@@ -301,7 +300,7 @@ function ScanWindow({ title, hint, purpose, maxBytes, onScanned, onClosed }: Sca
       pick(added, true);
       setAdding(null);
       setError(null);
-      setNote(`${added.name} was added, and is chosen.`);
+      setNote(`${added.name} added.`);
       requestAnimationFrame(() => dialog.current?.querySelector<HTMLInputElement>(`input[name="${fid}scanner"]:checked`)?.focus());
     } catch (e) {
       if (isCancelled(e)) return;
@@ -335,14 +334,14 @@ function ScanWindow({ title, hint, purpose, maxBytes, onScanned, onClosed }: Sca
       remember(SCANNER_KEY, scanner.id);
       setScannedBefore(true);
       setPhase({ at: 'preview', scan: result, settings: options, scanner });
-      say(`The scan is ready: ${[pagesText(result.pages), formatSize(result.file.size)].filter(Boolean).join(', ')}. Check it, then use it or scan again.`);
+      say(`The scan is ready: ${[pagesText(result.pages), formatSize(result.file.size)].filter(Boolean).join(', ')}.`);
     } catch (e) {
       if (isUnreachable(e)) {
         setPhase({ at: 'missing', checking: false });
         return;
       }
       setPhase({ at: 'ready' });
-      if (isCancelled(e)) setNote('Scanning was cancelled. The scanner may still finish the page it is on.');
+      if (isCancelled(e)) setNote('Scanning was cancelled.');
       else setError(scanErrorMessage(e));
     } finally {
       done(c);
@@ -384,12 +383,11 @@ function ScanWindow({ title, hint, purpose, maxBytes, onScanned, onClosed }: Sca
     return (
       <div className="space-y-4">
         <p className="flex items-center gap-3 text-sm">
-          <Spinner /> Looking for the TrendLIX Scan Helper on this computer…
+          <Spinner /> Looking for the Scan Helper…
         </p>
         {asking && (
           <p className="rounded-lg bg-accent-soft px-4 py-3 text-sm">
-            Your browser may ask whether this site may access devices on your local network. Choose <b>Allow</b>, so that it can reach the Scan
-            Helper.
+            If your browser asks about local network access, choose <b>Allow</b>.
           </p>
         )}
       </div>
@@ -401,17 +399,13 @@ function ScanWindow({ title, hint, purpose, maxBytes, onScanned, onClosed }: Sca
       <div className="space-y-5 text-sm">
         <div className="space-y-2">
           <h3 className="text-base font-semibold">The Scan Helper Isn&apos;t Running</h3>
-          <p>
-            Scanning needs the TrendLIX Scan Helper, a small app on this computer that talks to the office scanners. If it is installed, open it,
-            then press Try again.
-          </p>
-          <p className="text-muted">If your browser asked whether this site may access devices on your local network, choose Allow, then press Try again.</p>
+          <p>If it&apos;s installed, open it, then press Try again.</p>
         </div>
         <div className="space-y-2">
           <h3 className="text-base font-semibold">Install It Once on This Computer</h3>
           <ol className="list-decimal space-y-2 pl-5">
             <li>
-              Download it, then unzip it.
+              Download and unzip it.
               <span className="mt-2 flex flex-wrap gap-2">
                 <a href={SCAN_HELPER_DOWNLOADS.mac} download className="btn btn-secondary">
                   <DownloadIcon /> For Mac
@@ -422,14 +416,12 @@ function ScanWindow({ title, hint, purpose, maxBytes, onScanned, onClosed }: Sca
               </span>
             </li>
             <li>
-              Open it once. On a Mac, the first time, right-click it and choose <b>Open</b>, then <b>Open</b> again: macOS asks before it opens an
-              app from the internet. If Windows warns you, choose <b>More info</b>, then <b>Run anyway</b>.
+              Open it. Mac: right-click, <b>Open</b>, <b>Open</b>. Windows: <b>More info</b>, <b>Run anyway</b>.
             </li>
             <li>
-              When its window asks, type <b>Y</b> and press Enter (or run it with <b>install</b>): it then starts by itself every time you log in
-              to this computer. Until then, keep its window open while you scan.
+              When asked, type <b>Y</b> and press Enter.
             </li>
-            <li>The first time you scan, your browser may ask whether this site may access devices on your local network: choose Allow.</li>
+            <li>If the browser asks about local network access, choose <b>Allow</b>.</li>
           </ol>
         </div>
         {checking && (
@@ -446,9 +438,7 @@ function ScanWindow({ title, hint, purpose, maxBytes, onScanned, onClosed }: Sca
       <div className="space-y-2 text-sm">
         <h3 className="text-base font-semibold">Your Browser Is Blocking the Scan Helper</h3>
         <p>
-          This site isn&apos;t allowed to access devices on your local network, so it can&apos;t reach the TrendLIX Scan Helper on this computer.
-          To allow it, click the icon at the left of the address bar, open the site settings, and set <b>Local network access</b> to <b>Allow</b>.
-          Then press Try again, or reload the page.
+          In the site settings (the icon left of the address bar), set <b>Local network access</b> to <b>Allow</b>, then press Try again.
         </p>
         {checking && (
           <p className="flex items-center gap-2 text-muted">
@@ -485,7 +475,7 @@ function ScanWindow({ title, hint, purpose, maxBytes, onScanned, onClosed }: Sca
         {canDuplex(s, st.source) && (
           <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm">
             <input type="checkbox" checked={st.duplex} onChange={(e) => set({ duplex: e.currentTarget.checked })} className="size-4 accent-accent" />
-            Two-sided: both sides of each page
+            Two-sided
           </label>
         )}
         {colours.length > 1 ? (
@@ -532,14 +522,11 @@ function ScanWindow({ title, hint, purpose, maxBytes, onScanned, onClosed }: Sca
           <legend className="label">Scanner</legend>
           {scanners === null ? (
             <p className="flex items-center gap-2 text-sm text-muted">
-              <Spinner className="size-4" /> Looking for scanners on the network. This takes a few seconds…
+              <Spinner className="size-4" /> Looking for scanners…
             </p>
           ) : scanners.length === 0 ? (
             !finding && (
-              <p className="text-sm">
-                No scanner was found on the network. Check that the scanner is on and connected to the office network, then press Refresh, or add it
-                by its IP address.
-              </p>
+              <p className="text-sm">No scanner found.</p>
             )
           ) : (
             <div className="grid gap-2">
@@ -602,7 +589,6 @@ function ScanWindow({ title, hint, purpose, maxBytes, onScanned, onClosed }: Sca
                   autoComplete="off"
                   spellCheck={false}
                   placeholder="192.168.1.50"
-                  aria-describedby={`${fid}address-hint`}
                   aria-invalid={adding.error ? true : undefined}
                   className="input max-w-xs min-w-0 flex-1 tabular-nums"
                 />
@@ -613,9 +599,6 @@ function ScanWindow({ title, hint, purpose, maxBytes, onScanned, onClosed }: Sca
                   Cancel
                 </button>
               </div>
-              <p id={`${fid}address-hint`} className="hint">
-                As shown in the scanner&apos;s network settings, e.g. 192.168.1.50. A name or an eSCL address works too.
-              </p>
               {adding.error && (
                 <p role="alert" className="text-sm text-danger">
                   {adding.error}
@@ -627,8 +610,7 @@ function ScanWindow({ title, hint, purpose, maxBytes, onScanned, onClosed }: Sca
         {scanner && settings && settingsView(scanner, settings)}
         {!scannedBefore && permission !== 'granted' && (
           <p className="rounded-lg bg-accent-soft px-4 py-3 text-sm">
-            The first time you scan, your browser may ask whether this site may access devices on your local network. Choose <b>Allow</b>, or the
-            scan can&apos;t start.
+            If your browser asks about local network access, choose <b>Allow</b>.
           </p>
         )}
         {note && (
@@ -650,9 +632,8 @@ function ScanWindow({ title, hint, purpose, maxBytes, onScanned, onClosed }: Sca
       <div className="flex flex-col items-center gap-4 py-10 text-center">
         <Spinner className="size-10" />
         <p className="font-medium">
-          {source === 'feeder' ? 'Scanning… the pages are going through the document feeder.' : 'Scanning… keep the page on the glass until it is done.'}
+          {source === 'feeder' ? 'Scanning…' : 'Scanning… keep the page on the glass.'}
         </p>
-        <p className="text-sm text-muted">This can take up to two minutes.</p>
       </div>
     );
   }
@@ -758,15 +739,14 @@ function ScanWindow({ title, hint, purpose, maxBytes, onScanned, onClosed }: Sca
           (helperOutdated(version) ? (
             // an older helper on this computer (1 November 2026): the newer one fixes scanners that "didn't answer"
             <p className="w-full text-xs text-warn sm:mr-auto sm:w-auto sm:max-w-sm">
-              TrendLIX Scan Helper {version}. Version {SCAN_HELPER_LATEST} is out: download it for{' '}
+              Scan Helper {version} · {SCAN_HELPER_LATEST} is out:{' '}
               <a href={SCAN_HELPER_DOWNLOADS.mac} download className="font-semibold underline underline-offset-2">
                 Mac
               </a>{' '}
-              or{' '}
+              ·{' '}
               <a href={SCAN_HELPER_DOWNLOADS.windows} download className="font-semibold underline underline-offset-2">
                 Windows
-              </a>{' '}
-              and open it: it replaces this one.
+              </a>
             </p>
           ) : (
             <p className="w-full text-xs text-muted sm:mr-auto sm:w-auto">TrendLIX Scan Helper {version}</p>

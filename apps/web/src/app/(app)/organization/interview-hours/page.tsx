@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { formatDateTime } from '@/lib/format';
-import { interviewHoursHref, rulesText } from '@/lib/interview-hours';
+import { interviewHoursHref } from '@/lib/interview-hours';
 import { loadJson } from '@/lib/interview-hours-data';
 import { getCurrentUser } from '@/lib/session';
 import { readsRecruitment, WHO_SEES } from '../../recruitment/recruitment';
@@ -24,24 +24,21 @@ async function Gate() {
   const user = await getCurrentUser();
   if (!readsRecruitment(user)) return <Empty>{WHO_SEES}</Empty>;
   const loaded = await loadJson<InterviewersView>('/interview-hours');
-  if (loaded.kind === 'unavailable') return <Empty>Not available yet: the server doesn’t keep interview hours yet. Please try again after its next update.</Empty>;
+  if (loaded.kind === 'unavailable') return <Empty>Not available yet: the server doesn’t keep interview hours yet.</Empty>;
   if (loaded.kind !== 'ok') return <Empty>The interview hours could not be loaded. {loaded.messages.join(' ')}</Empty>;
   const { settings, people } = loaded.value;
   return (
     <div className="space-y-6">
-      <p className="max-w-3xl text-sm text-muted">
-        Each interviewer sets the weekly hours they can interview in, on their own Interview Hours page (in the menu at the top). When HR schedules an interview, “Find
-        a time” lists the times the whole panel is free: their hours, less their leave, the public holidays, their other interviews with the buffer around each, and
-        their calendar’s busy times.
-      </p>
       <section aria-labelledby="interview-defaults" className="card space-y-3 p-6">
         <h2 id="interview-defaults" className="text-lg font-semibold">
           Company Defaults
         </h2>
-        <p className="max-w-3xl text-sm text-muted">
-          Everyone’s unless they set a stricter one: {rulesText(null, settings.defaults)}.
-          {settings.updatedAt ? ` Last saved ${formatDateTime(settings.updatedAt)}${settings.updatedBy ? ` by ${settings.updatedBy.name}` : ''}.` : ''}
-        </p>
+        {settings.updatedAt && (
+          <p className="text-sm text-muted">
+            Last saved {formatDateTime(settings.updatedAt)}
+            {settings.updatedBy ? ` by ${settings.updatedBy.name}` : ''}
+          </p>
+        )}
         <InterviewDefaultsForm defaults={settings.defaults} action={saveInterviewDefaults} />
       </section>
       <section aria-labelledby="interviewers" className="card space-y-3 p-6">
@@ -89,7 +86,7 @@ async function Gate() {
             </table>
           </div>
         ) : (
-          <p className="text-sm text-muted">Nobody yet: the hiring managers of open vacancies and the people on upcoming panels show here.</p>
+          <p className="text-sm text-muted">Nobody yet.</p>
         )}
       </section>
     </div>

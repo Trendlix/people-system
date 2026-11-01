@@ -4,11 +4,8 @@ import {
   choiceParam,
   dataPreviewHref,
   isOfferSlot,
-  OFFER_PREVIEW_HINT,
   offerOption,
   personOption,
-  PREVIEW_HINT,
-  previewHint,
   previewPeopleHref,
   readPeople,
 } from './preview-people';
@@ -71,17 +68,14 @@ describe('a template previewed with data', () => {
     expect(readPeople([{ ...offer, number: '' }, { ...offer, status: undefined }, { ...offer, filled: 'nine' }])).toEqual([]);
   });
 
-  it('a job offer template says it is filled with a job offer’s data', () => {
+  it('knows the job offer templates', () => {
     // an intern's is offer_internship (19 October 2026)
     for (const key of ['offer_full_time', 'offer_part_time', 'offer_freelance', 'offer_internship', 'offer_sales']) {
       expect(isOfferSlot(key)).toBe(true);
-      expect(previewHint(key)).toBe(OFFER_PREVIEW_HINT);
     }
     // the trainee's slots went on 25 October 2026: offer_trainee is no job offer template any more
     for (const key of ['contract_full_time', 'contract_internship', 'offer_trainee', 'hr_letter_en', 'nda', 'offer', 'offer_intern']) {
       expect(isOfferSlot(key)).toBe(false);
-      expect(previewHint(key)).toBe(PREVIEW_HINT);
     }
-    expect(OFFER_PREVIEW_HINT).toMatch(/^Filled with a job offer's data/);
   });
 });

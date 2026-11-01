@@ -55,10 +55,6 @@ export function NewRaiseRequestHeading({ back }: { back: string | null }) {
     <div className="space-y-2">
       {back && <BackLink href={back}>{BACK_LABELS[back] ?? 'Back'}</BackLink>}
       <h1 className="page-title">New Raise Request</h1>
-      <p className="text-muted">
-        Ask for a raise for yourself, for a direct report, or, from HR, for anyone employed now: a reason, the month it is to take effect from, a
-        comment and the raise you suggest. HR approves or rejects it, then the CEO decides; every step is logged on the request.
-      </p>
     </div>
   );
 }
@@ -76,8 +72,8 @@ export async function NewRaiseRequest({ searchParams, surface = 'site' }: { sear
         <NewRaiseRequestHeading back={listBack} />
         <Empty>
           {people === null
-            ? 'The people you may ask for a raise for couldn’t be loaded. Please try again in a moment.'
-            : 'There is no one you can ask for a raise for: a raise is asked for someone employed now, by themself, their direct manager or HR.'}
+            ? 'The people you may ask for a raise for couldn’t be loaded.'
+            : 'There is no one you can ask for a raise for.'}
         </Empty>
       </>
     );
@@ -94,9 +90,9 @@ export async function NewRaiseRequest({ searchParams, surface = 'site' }: { sear
 
   let form: React.ReactNode = null;
   if (chosen && load) {
-    if (load.kind === 'unavailable') form = <p className={quiet}>Not available yet: the server does not have raise requests yet.</p>;
+    if (load.kind === 'unavailable') form = <p className={quiet}>Not available yet.</p>;
     else if (load.kind === 'forbidden') form = <p className={quiet}>You can&apos;t ask for a raise for {chosen.fullNameEn}.</p>;
-    else if (load.kind === 'failed') form = <p className={quiet}>Couldn&apos;t load what you may ask for {chosen.fullNameEn}. Please try again in a moment.</p>;
+    else if (load.kind === 'failed') form = <p className={quiet}>Couldn&apos;t load what you may ask for {chosen.fullNameEn}.</p>;
     else if (!load.value.canRequest) {
       form = (
         <p className={quiet}>
@@ -128,7 +124,7 @@ export async function NewRaiseRequest({ searchParams, surface = 'site' }: { sear
       <NewRaiseRequestHeading back={back} />
       {asked && asked !== chosenId && (
         <p role="alert" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
-          You can&apos;t ask for a raise for the person in the link: choose among the people you may ask for.
+          You can&apos;t ask for a raise for the person in the link.
         </p>
       )}
       <EmployeePicker options={pickerOptions(user, choices)} chosen={chosenId} action={app ? APP_PATHS.newRaise : NEW_RAISE_REQUEST_PATH} />

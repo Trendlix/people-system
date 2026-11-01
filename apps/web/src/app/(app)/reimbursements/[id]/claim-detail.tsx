@@ -14,7 +14,7 @@ import { cancelClaim, decideClaim } from '../actions';
 import { CancelClaimForm, DecisionForm } from '../claim-forms';
 import { sizeText } from '../claim';
 import { loadClaim } from '../data';
-import { claimBack, currentAmount, decidingAsTitle, doneText, lowerApproved, payMonthOf, placeOfClaim, receiptHref } from '../list';
+import { claimBack, currentAmount, decidingAsTitle, doneText, payMonthOf, placeOfClaim, receiptHref } from '../list';
 import { ClaimProgress, ClaimStatusBadge, ClaimTimeline } from '../ui';
 import { claimStepsAhead } from '@/lib/steps-ahead';
 
@@ -54,7 +54,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 /** The receipts, each opened in the document viewer on its own (fetched only then, under the web domain). */
 function Receipts({ claim: c }: { claim: ReimbursementClaimView }) {
   if (!c.receipts.length) {
-    return <p className="text-sm text-muted">{c.type.receiptRequired ? 'No receipt attached.' : 'No receipt attached; this type needs none.'}</p>;
+    return <p className="text-sm text-muted">No receipt attached.</p>;
   }
   return (
     <ul className="divide-y divide-line-soft">
@@ -98,7 +98,6 @@ export async function ClaimDetail({
   const back = surface === 'site' ? claimBack(user, c) : appBack(surface);
   const done = doneText(query, c.status, c.manager, c.confidential);
   const place = placeOfClaim(c.employee);
-  const lower = lowerApproved(c);
   const month = payMonthOf(c);
 
   return (
@@ -140,7 +139,6 @@ export async function ClaimDetail({
               {c.approvedAmount !== null && c.status !== 'rejected' && (
                 <Fact label={c.status === 'approved' ? 'Amount approved' : 'Approved so far'}>
                   <span className="text-base font-semibold tabular-nums">{formatEgp(c.approvedAmount)}</span>
-                  {lower !== null && <span className="block text-xs text-muted">Less than claimed: see the comment in the log.</span>}
                 </Fact>
               )}
               <Fact label="What it was for" wide>
@@ -150,7 +148,7 @@ export async function ClaimDetail({
                 <ClaimProgress claim={c} />
               </Fact>
               <Fact label={c.manager ? approverLabel(c.manager) : 'Direct manager'}>
-                {c.manager ? c.manager.fullNameEn : <span className="text-muted">None: sent straight to {c.confidential ? 'the CEO' : 'HR'}</span>}
+                {c.manager ? c.manager.fullNameEn : <span className="text-muted">None</span>}
               </Fact>
               {month && <Fact label="Paid with">{`The ${month} payroll, untaxed`}</Fact>}
             </dl>
@@ -180,7 +178,6 @@ export async function ClaimDetail({
 
           {c.canCancel && (
             <Section title="Cancel the Claim">
-              <p className="mb-3 text-sm text-muted">While it is being decided you can cancel it, e.g. to send it again with another amount or receipt.</p>
               <CancelClaimForm action={cancelClaim.bind(null, c.id)} what={`${c.type.nameEn} claim of ${formatEgp(c.amount)}`} />
             </Section>
           )}

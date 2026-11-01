@@ -77,7 +77,7 @@ function Filters({ q, years, places }: { q: FormerQuery; years: number[]; places
 
 async function List({ searchParams }: { searchParams: PageProps<'/employees/former'>['searchParams'] }) {
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
-  if (!managesOffboarding(user)) return <Empty>Only HR, the CEO and a Super Admin see former employees here. Everyone keeps their profile.</Empty>;
+  if (!managesOffboarding(user)) return <Empty>Only HR, the CEO and a Super Admin see former employees.</Empty>;
   const q = readFormerQuery(query);
   const [loaded, placesList] = await Promise.all([loadFormer(q), loadPlaces()]);
   if (loaded.kind !== 'ok') return <Empty>{offboardingNotLoaded(loaded, 'former employees')}</Empty>;
@@ -160,13 +160,7 @@ export default function FormerEmployeesPage({ searchParams }: PageProps<'/employ
   return (
     <div className="max-w-6xl space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="page-title">Former Employees</h1>
-          <p className="mt-1 max-w-3xl text-muted">
-            Everyone who left and doesn&apos;t work here now, the latest first. Their profiles keep every record: employment, contracts, payslips, leave and
-            documents. Open a case to see their clearance, exit interview and rehire eligibility.
-          </p>
-        </div>
+        <h1 className="page-title">Former Employees</h1>
         <Link href={OFFBOARDING_PATH} className="btn btn-secondary no-underline">
           Offboarding
         </Link>

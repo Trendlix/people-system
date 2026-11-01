@@ -56,7 +56,7 @@ const ZOOMS: readonly (readonly [Zoom, string])[] = [
 /** The room around the pages in the scrolling area (pdf-pages.tsx's p-4), taken off the width Fit width fills. */
 const PAGES_PADDING = 32;
 
-const LEAVE = 'Leave without saving? The changes to the fields will be lost.';
+const LEAVE = 'Leave without saving?';
 
 /** What a drag on a page is doing: drawing a new field, or moving, resizing or nudging one box of the field pressed. */
 type Drag =
@@ -120,7 +120,7 @@ function CopyFields({ sources, current, onCopy }: { sources: readonly CopySource
   async function copy() {
     if (!source) return;
     const replace = current ? `Replace the ${count(current, 'field')} here with the ${count(source.fieldCount, 'field')} of v${source.version}?` : `Copy the ${count(source.fieldCount, 'field')} of v${source.version}?`;
-    if (!window.confirm(`${replace} Nothing is saved until you save.`)) return;
+    if (!window.confirm(replace)) return;
     setBusy(true);
     setError(null);
     try {
@@ -168,24 +168,12 @@ function CopyFields({ sources, current, onCopy }: { sources: readonly CopySource
   );
 }
 
-/** What the right panel says while no field is selected: how to place and move fields. */
-function Help({ editable, fields, pages }: { editable: boolean; fields: number; pages: number }) {
+/** What the right panel says while no field is selected: how many fields on how many pages. */
+function Help({ fields, pages }: { fields: number; pages: number }) {
   return (
-    <div className="space-y-3 text-sm">
-      <p className="text-muted">
-        {count(fields, 'field')} on {count(pages, 'page')}. {editable ? 'Select a field to change it.' : 'Select a field to see its settings.'}
-      </p>
-      {editable && (
-        <ul className="list-disc space-y-1.5 pl-4 text-xs text-muted">
-          <li>Drag a field to move it, or its corners to resize it.</li>
-          <li>Arrow keys move it half a point; with Shift, 5 points.</li>
-          <li>Delete removes it; Ctrl+D (⌘D on a Mac) duplicates it; Esc lets it go.</li>
-          <li>Alt-click (Option-click on a Mac) a box of a Boxes field to move that box alone.</li>
-          <li>Dashed lines mark an optional field: it is left blank when there’s no value.</li>
-          <li>Test print shows the form filled with sample values, exactly as it will print.</li>
-        </ul>
-      )}
-    </div>
+    <p className="text-sm text-muted">
+      {count(fields, 'field')} on {count(pages, 'page')}
+    </p>
   );
 }
 
@@ -470,13 +458,7 @@ export function FieldEditor({
     });
   }
 
-  const hint = tool
-    ? 'Click on the form where it goes, or drag to draw its box. Esc cancels.'
-    : canEdit
-      ? fields.length
-        ? null
-        : 'Pick a tag on the left, then click on the form where it goes.'
-      : null;
+  const hint = tool ? 'Click on the form to place it.' : null;
 
   return (
     <div className="space-y-4" onKeyDown={onKey}>
@@ -535,7 +517,6 @@ export function FieldEditor({
               Open the form<span className="sr-only"> as uploaded, in a new tab</span>
             </a>
             <PreviewWithData versionId={version.id} label={`v${version.version} (${version.fileName})`} align="start" offers={offers} />
-            {canEdit && dirty && <span className="text-xs text-muted">Preview with data uses the saved fields.</span>}
           </div>
           {canEdit && copyFrom.length > 0 && <CopyFields sources={copyFrom} current={fields.length} onCopy={copyIn} />}
         </div>
@@ -651,7 +632,7 @@ export function FieldEditor({
               onDelete={() => remove(current.id)}
             />
           ) : (
-            <Help editable={canEdit} fields={fields.length} pages={pages.length} />
+            <Help fields={fields.length} pages={pages.length} />
           )}
         </aside>
       </div>

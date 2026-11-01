@@ -13,7 +13,7 @@ export const TOO_LARGE = 'Each file must be 10 MB or smaller.';
  * browser first (shrink-photo.ts), so this only limits PDFs, which are sent as they are.
  */
 export const PDF_MAX_BYTES = 4 * 1024 * 1024;
-export const PDF_TOO_LARGE = 'A PDF must be 4 MB or smaller. Scan it again at a lower resolution (150–200 dpi is enough), or upload photos of the pages instead.';
+export const PDF_TOO_LARGE = 'A PDF must be 4 MB or smaller: scan it again at 150–200 dpi.';
 
 // Listing the types (not image/*) makes an iPhone hand over a JPEG instead of a HEIC photo.
 export const PAPERWORK_ACCEPT = 'image/jpeg,image/png,image/webp,application/pdf';
@@ -74,7 +74,7 @@ export type IdPrepareState = FormState & { prepared?: IdCardPrepared };
  */
 export const SCANS_MAX_BYTES = PDF_MAX_BYTES;
 export const SCANS_TOO_LARGE =
-  'Together the two files are too large to send: at most 4 MB. Use one file that holds both sides, or scan again at a lower resolution (150–200 dpi is enough).';
+  'Together the two files must be 4 MB or smaller: scan again at 150–200 dpi.';
 
 /**
  * The fields whose corrections the card reader learns from (POST /id-card/corrections). What the reading suggested for

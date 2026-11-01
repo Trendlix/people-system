@@ -125,7 +125,7 @@ export const CLAIM_COUNTS = '/reimbursements/counts';
 /** What the list says when no claim has the filter chosen. */
 const EMPTY: Record<ClaimFilter, string> = {
   waiting: 'No claims are waiting for you.',
-  all: 'No reimbursement claims yet. Employees claim them from My Requests.',
+  all: 'No reimbursement claims yet.',
   with_manager: 'No claims are with a direct manager.',
   with_hr: 'No claims are with HR.',
   with_finance: 'No claims are with Finance.',
@@ -264,9 +264,8 @@ export const payMonthOf = (c: Pick<ReimbursementClaimView, 'payMonth' | 'payroll
  * a C-level person's (`confidential`) goes to the CEO, who decides HR's and Finance's stages (19 October 2026).
  */
 export function sentText(status: ReimbursementStatus, manager?: Approver, confidential?: boolean | null): string {
-  const then = confidential === true ? 'the CEO, for HR’s and Finance’s stages' : 'HR, then Finance';
-  const paid = 'each step shows on the claim. Once approved, it is paid with the next payroll.';
-  return status === 'with_manager' ? `Claim sent. It goes to ${yourApprover(manager)}, then ${then}; ${paid}` : `Claim sent. It goes to ${then}; ${paid}`;
+  if (status === 'with_manager') return `Claim sent to ${yourApprover(manager)}.`;
+  return confidential === true ? 'Claim sent to the CEO.' : 'Claim sent to HR.';
 }
 
 /**
@@ -277,7 +276,7 @@ export function sentText(status: ReimbursementStatus, manager?: Approver, confid
 export function doneText(query: Query, status: ReimbursementStatus, manager?: Approver, confidential?: boolean | null): { text: string; tone: 'ok' | 'warn' } | null {
   const done = typeof query.done === 'string' ? query.done : '';
   if (done === 'sent') return { text: sentText(status, manager, confidential), tone: 'ok' };
-  if (done === 'cancelled') return { text: 'Claim cancelled. It stays on your list, cancelled.', tone: 'ok' };
+  if (done === 'cancelled') return { text: 'Claim cancelled.', tone: 'ok' };
   if (done === 'moved') return { text: MOVED_ON, tone: 'warn' };
   const [stage, ...rest] = done.split('_');
   const decision = rest.join('_');
@@ -286,7 +285,7 @@ export function doneText(query: Query, status: ReimbursementStatus, manager?: Ap
 }
 
 /** Said when a decision is refused as the claim moved on since the page was opened (the API's 409). */
-export const MOVED_ON = 'This claim has moved on since you opened it: someone else decided it, or it was cancelled. It shows where it stands now.';
+export const MOVED_ON = 'This claim has moved on since you opened it.';
 
 // ---------- the log ----------
 
@@ -402,19 +401,10 @@ export function decisionButton(decision: ReimbursementDecision | '', stage: Reim
 
 /** What the page says once a decision went through; a C-level person's claim (`confidential`) goes on to the CEO's stages. */
 export function decidedText(decision: ReimbursementDecision, stage: ReimbursementStage, confidential?: boolean | null): string {
-  if (decision === 'reject') return 'Claim rejected. The employee sees your comment.';
+  if (decision === 'reject') return 'Claim rejected.';
   const next = statusAfterApproval(stage);
-  if (next === 'approved') return 'Approved: it is added, untaxed, to the next payroll not yet approved.';
-  if (confidential === true && next === 'with_finance') return `Approved: the claim goes on to ${stageOf('finance')}, which the CEO decides too.`;
+  if (next === 'approved') return 'Approved: added to the next payroll.';
+  if (confidential === true && next === 'with_finance') return `Approved: the claim goes on to ${stageOf('finance')}.`;
   return `Approved: the claim goes to ${nextStageName(next, confidential)}.`;
 }
 
-/** Who reads the decision's comment, for the hint under its box. */
-export const COMMENT_READERS = 'The employee sees your comment, and so do the direct manager, HR, Finance and the CEO.';
-
-/**
- * Who reads the decision's comment: COMMENT_READERS; a C-level person's claim (`confidential`) HR and Finance don't
- * see, only the CEO and the Super Admin (19 October 2026).
- */
-export const commentReaders = (confidential?: boolean | null) =>
-  confidential === true ? 'The employee sees your comment, and so do the direct manager, the CEO and the Super Admin.' : COMMENT_READERS;

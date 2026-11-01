@@ -92,5 +92,5 @@ export async function replacePaperworkFile(itemId: string, fd: FormData): Promis
     throw err;
   }
   refresh();
-  return { message: 'The adjusted file has replaced the stored one. Its text is being read again.' };
+  return { message: 'Adjusted file saved.' };
 }

@@ -41,11 +41,7 @@ function DraftDone({ draft }: { draft: AssetDraftView }) {
       </Empty>
     );
   }
-  return (
-    <Empty>
-      This draft was discarded. <Link href={ASSET_PATHS.drafts}>Drafts from Claude</Link> lists the ones still waiting.
-    </Empty>
-  );
+  return <Empty>This draft was discarded.</Empty>;
 }
 
 async function NewAsset({ searchParams }: { searchParams: PageProps<'/assets/new'>['searchParams'] }) {
@@ -57,20 +53,14 @@ async function NewAsset({ searchParams }: { searchParams: PageProps<'/assets/new
 
   if (loadedDraft) {
     if (loadedDraft.kind !== 'ok') {
-      return <Empty>{loadedDraft.kind === 'unavailable' ? 'This draft isn’t there any more. Drafts from Claude lists the ones waiting.' : assetsNotLoaded(loadedDraft, 'draft')}</Empty>;
+      return <Empty>{loadedDraft.kind === 'unavailable' ? 'This draft isn’t there any more.' : assetsNotLoaded(loadedDraft, 'draft')}</Empty>;
     }
     const draft = loadedDraft.value;
     if (draft.status !== 'open') return <DraftDone draft={draft} />;
     return (
       <div className="space-y-4">
         <section aria-label="Draft from Claude" className="space-y-3 rounded-lg bg-accent-soft p-4">
-          <p className="text-sm">
-            <span className="font-semibold">{draftedText(draft)}.</span> Review it, add its photos, then press Confirm and add: it joins the register
-            and its code is given then. Until then it is in no total or list.
-          </p>
-          {draft.valuesSet && !can.values && (
-            <p className="text-sm text-muted">Values were drafted by someone who sees them: they are kept when you confirm it.</p>
-          )}
+          <p className="text-sm font-semibold">{draftedText(draft)}</p>
           <DraftProductImages draftId={draft.id} images={draft.productImages ?? []} />
           <DiscardDraftButton id={draft.id} name={draft.fields.name} back={ASSET_PATHS.drafts} />
         </section>
@@ -113,10 +103,7 @@ export default function NewAssetPage({ searchParams }: PageProps<'/assets/new'>)
   return (
     <div className="max-w-3xl space-y-4">
       <BackLink href={ASSET_PATHS.list}>Assets</BackLink>
-      <div>
-        <h1 className="page-title">Add Asset</h1>
-        <p className="mt-1 text-muted">Its group decides its code, its fields and how it is kept. The code is given when you save it, and never changes.</p>
-      </div>
+      <h1 className="page-title">Add Asset</h1>
       <Suspense fallback={<Loading />}>
         <NewAsset searchParams={searchParams} />
       </Suspense>

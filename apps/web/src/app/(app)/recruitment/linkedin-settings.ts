@@ -14,11 +14,11 @@ export const redirectUrlFor = (careersSite: string): string => linkedinRedirectU
 
 /** Where the sign-in stands, in words, with its tone. */
 export function linkedinStatus(v: LinkedInSettingsView): { tone: 'ok' | 'warn' | 'neutral'; text: string } {
-  if (v.ready) return { tone: 'ok', text: 'On: the careers forms show “Fill in with LinkedIn”.' };
-  if (v.secretUnreadable) return { tone: 'warn', text: 'The saved client secret can’t be read any more (the server’s key changed): paste it again. The button is off meanwhile.' };
-  if (v.enabled) return { tone: 'warn', text: 'Switched on, but the client ID or the secret is missing: the careers forms don’t show the button yet.' };
-  if (!v.clientId && !v.secretSet) return { tone: 'neutral', text: 'Not set up yet: the careers forms don’t show “Fill in with LinkedIn”.' };
-  return { tone: 'neutral', text: 'Off: the careers forms don’t show “Fill in with LinkedIn”.' };
+  if (v.ready) return { tone: 'ok', text: 'On.' };
+  if (v.secretUnreadable) return { tone: 'warn', text: 'The saved client secret can’t be read: paste it again.' };
+  if (v.enabled) return { tone: 'warn', text: 'Switched on, but the client ID or the secret is missing.' };
+  if (!v.clientId && !v.secretSet) return { tone: 'neutral', text: 'Not set up yet.' };
+  return { tone: 'neutral', text: 'Off.' };
 }
 
 const text = (fd: FormData, name: string): string => {

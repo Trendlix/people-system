@@ -8,10 +8,5 @@ import { canSeeSocialInsurance, SOCIAL_INSURANCE_PATH } from './social-insurance
 export async function SocialInsuranceLink() {
   const user = await getCurrentUser();
   if (!canSeeSocialInsurance(user)) return null;
-  return (
-    <>
-      {' '}
-      From each Social Insurance tab, the register, a month&rsquo;s contributions and the missing data: <Link href={SOCIAL_INSURANCE_PATH}>Social Insurance</Link>.
-    </>
-  );
+  return <Link href={SOCIAL_INSURANCE_PATH}>Social Insurance</Link>;
 }

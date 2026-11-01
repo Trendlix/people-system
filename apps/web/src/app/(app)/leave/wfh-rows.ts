@@ -48,12 +48,9 @@ export function wfhQueryOf(filter: LeaveFilter, employeeId: string | null, days:
   return { filter: WFH_FILTER_OF[filter], employeeId, from: days.from, to: days.to };
 }
 
-/** The second line of a work from home row's When, where a leave has its days and a permission its hours. */
-export const WFH_WHEN_NOTE = 'A working day, not leave';
-
 const EMPTY_WFH: Record<LeaveFilter, string> = {
   waiting: 'No work from home requests are waiting for you.',
-  all: 'No work from home requests yet. Employees ask from My Requests; HR records a day for someone with Record leave, choosing Work from home.',
+  all: 'No work from home requests yet.',
   with_manager: 'No work from home requests are with a direct manager.',
   with_hr: 'No work from home requests are with HR.',
   approved: 'No work from home days approved.',
@@ -63,7 +60,7 @@ const EMPTY_WFH: Record<LeaveFilter, string> = {
 
 const EMPTY_ALL: Record<LeaveFilter, string> = {
   waiting: 'No leave, permission or work from home requests are waiting for you.',
-  all: 'No leave, permission or work from home requests yet. Employees ask for them from My Requests; HR records them on their behalf with Record leave (work from home too) and Record permission.',
+  all: 'No leave, permission or work from home requests yet.',
   with_manager: 'No leave, permission or work from home requests are with a direct manager.',
   with_hr: 'No leave, permission or work from home requests are with HR.',
   approved: 'No leave, permission or work from home approved.',

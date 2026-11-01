@@ -23,7 +23,6 @@ import {
   permissionHref,
   permissionInDaysText,
   permissionMonthText,
-  permissionReadyText,
   permissionSentText,
   permissionsPath,
   permissionStepText,
@@ -247,23 +246,23 @@ describe('coming up, on the dashboard', () => {
 
 describe('what its page says once something is done', () => {
   it('says where a request sent goes, and that one recorded is approved', () => {
-    expect(permissionSentText('with_manager', { role: 'direct_manager' })).toBe('Request sent. It goes to your direct manager, then HR; each step shows on the request.');
-    expect(permissionSentText('with_hr', null, true)).toBe('Request sent. It goes to the CEO; each step shows on the request.');
-    expect(permissionSentText('approved')).toBe('Permission recorded, approved at once. Its hours count as worked in the month’s payroll.');
+    expect(permissionSentText('with_manager', { role: 'direct_manager' })).toBe('Sent to your direct manager.');
+    expect(permissionSentText('with_hr', null, true)).toBe('Sent to the CEO.');
+    expect(permissionSentText('approved')).toBe('Permission recorded.');
   });
 
   it('says each decision, and where an approved one goes', () => {
-    expect(permissionDecidedText('approve', 'manager')).toBe('Approved: the request goes to HR.');
-    expect(permissionDecidedText('approve', 'manager', true)).toBe('Approved: the request goes to the CEO.');
-    expect(permissionDecidedText('approve', 'hr')).toBe('Approved: its hours count as worked in the month’s payroll.');
-    expect(permissionDecidedText('reject', 'hr')).toBe('Request rejected. The employee sees your comment.');
+    expect(permissionDecidedText('approve', 'manager')).toBe('Approved and sent to HR.');
+    expect(permissionDecidedText('approve', 'manager', true)).toBe('Approved and sent to the CEO.');
+    expect(permissionDecidedText('approve', 'hr')).toBe('Permission approved.');
+    expect(permissionDecidedText('reject', 'hr')).toBe('Request rejected.');
   });
 
   it('reads ?done=', () => {
-    expect(permissionDoneText({ done: 'sent' }, 'with_manager', { role: 'team_lead' })).toEqual({ text: 'Request sent. It goes to your team lead, then HR; each step shows on the request.', tone: 'ok' });
-    expect(permissionDoneText({ done: 'cancelled' }, 'cancelled')?.text).toBe('Permission cancelled. Its hours are back in the month’s allowance; it stays on the list, cancelled.');
+    expect(permissionDoneText({ done: 'sent' }, 'with_manager', { role: 'team_lead' })).toEqual({ text: 'Sent to your team lead.', tone: 'ok' });
+    expect(permissionDoneText({ done: 'cancelled' }, 'cancelled')?.text).toBe('Permission cancelled.');
     expect(permissionDoneText({ done: 'moved' }, 'approved')?.tone).toBe('warn');
-    expect(permissionDoneText({ done: 'hr_approve' }, 'approved')?.text).toBe('Approved: its hours count as worked in the month’s payroll.');
+    expect(permissionDoneText({ done: 'hr_approve' }, 'approved')?.text).toBe('Permission approved.');
     expect(permissionDoneText({ done: 'other' }, 'approved')).toBeNull();
     expect(permissionDoneText({}, 'approved')).toBeNull();
   });
@@ -327,15 +326,10 @@ describe('the form', () => {
     expect(permissionFormProblems(typed({ reason: 'x'.repeat(501) }), month())).toEqual(['Keep the reason to 500 characters; it has 501.']);
   });
 
-  it('shows the times as they will be saved, and what it is ready to send', () => {
+  it('shows the times as they will be saved', () => {
     expect(workedOutTimes(typed({ hours: '2', fromTime: '5:00 PM' }))).toBe('5:00 PM – 7:00 PM');
     expect(workedOutTimes(typed({ hours: '1.5', toTime: '10:30 AM' }))).toBe('9:00 AM – 10:30 AM');
     expect(workedOutTimes(typed())).toBeNull();
-    expect(permissionReadyText(typed({ hours: '2', fromTime: '5:00 PM' }), false, 'Nour Adel')).toBe(
-      'Ready to send: 2 hours on Tuesday 10/11/2026 (5:00 PM – 7:00 PM), to your direct manager (without one, your lead), then HR.',
-    );
-    expect(permissionReadyText(typed(), false, 'Nour Adel', true)).toBe('Ready to send: 1 hour on Tuesday 10/11/2026, to your direct manager (without one, your lead), then the CEO.');
-    expect(permissionReadyText(typed(), true, 'Nour Adel')).toBe('Ready to record: 1 hour on Tuesday 10/11/2026 for Nour Adel, approved at once.');
   });
 
   it('is read into what the API takes, the times only when given', () => {

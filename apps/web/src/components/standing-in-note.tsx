@@ -12,8 +12,7 @@ export function StandingInNote({ person, until }: { person: { fullNameEn: string
   if (!person) return null;
   return (
     <p role="note" className="rounded-lg bg-accent-soft px-4 py-3 text-sm">
-      <span className="font-semibold">Standing in for {person.fullNameEn}</span>: they are on leave{until ? ` until ${formatDate(until)}` : ''}, so this request is yours to
-      decide meanwhile. Its step and the audit log keep you both.
+      <span className="font-semibold">Standing in for {person.fullNameEn}</span>, on leave{until ? ` until ${formatDate(until)}` : ''}.
     </p>
   );
 }

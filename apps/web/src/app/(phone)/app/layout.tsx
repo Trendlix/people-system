@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Suspense } from 'react';
 import { brandMetadata } from '@/components/brand';
 import { CheckInReminder } from '@/components/check-in-reminder';
+import { KpiReminder } from '@/components/kpi-reminder';
 import { SessionWatch } from '@/components/session-watch';
 import { DeveloperBanner } from '@/components/developer-banner';
 import { ModeGate } from '@/components/mode-gate';
@@ -93,6 +94,8 @@ export default function PhoneLayout({ children }: LayoutProps<'/app'>) {
           leave every 10 minutes. like a popup"), Check in opening Home; never while viewing as someone */}
       <Suspense fallback={null}>
         <CheckInReminder surface="app" />
+        {/* KPI scorecards waiting: once a sign-in, unless postponed (1 November 2026) */}
+        <KpiReminder big />
       </Suspense>
       {/* push notifications inside the app (Phase 4, 20 October 2026): registered again on each open once allowed, and a
           notification tapped opens its page here */}

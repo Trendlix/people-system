@@ -101,7 +101,7 @@ export async function disposeAsset(code: string, values: boolean, purchaseDate: 
     const done = await apiSend<{ result: DisposalResult }>('POST', ASSET_STEP4_API.dispose(code), body);
     refresh();
     const also = done?.result ? disposalResultText(done.result) : null;
-    return { message: `Disposed of. It stays on record, out of every total and list.${also ? ` ${also}` : ''}` };
+    return { message: `Disposed of.${also ? ` ${also}` : ''}` };
   } catch (err) {
     return { errors: messages(err), values: typedOf(fd) };
   }

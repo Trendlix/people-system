@@ -50,10 +50,8 @@ export const opensConsent = (user: WithRoles) => hasRole(user, 'hr', 'ceo');
 /** The most a name may be: the API's. */
 export const NAME_MAX = 100;
 
-/** The tick (owner, 20 October 2026: "Before Tax i think"), and its hint: the tax law limits the deduction. */
+/** The tick (owner, 20 October 2026: "Before Tax i think"). */
 export const BEFORE_TAX_TICK = 'Deducted before tax (lowers taxable pay)';
-export const BEFORE_TAX_HINT =
-  'The tax law limits this deduction: ask your accountant for the limit. Once a Super Admin sets it in Payroll Setup (rates set by law), the payroll keeps to it.';
 
 /** "Before tax" on the list for one ticked so; null for one after tax, as they are by default. */
 export const beforeTaxText = (r: Pick<RecurringDeductionView, 'beforeTax'>): string | null => (r.beforeTax === true ? 'Before tax' : null);
@@ -241,7 +239,7 @@ export function recurringPreview(
       : `From ${monthName(start)} until stopped: ${formatEgp(amount)} a month, ${formatEgp(sumAmounts(Array(12).fill(amount)))} a year.`;
   // before tax (20 October 2026): the share lowers the taxable pay, within the tax law's limit on it
   const beforeTax = options.beforeTax
-    ? { beforeTax: `Deducted before tax: the share lowers the taxable pay by ${formatEgp(amount)} a month, so less income tax is taken (within the limit the tax law sets on it).` }
+    ? { beforeTax: `Lowers the taxable pay by ${formatEgp(amount)} a month.` }
     : {};
   if (limit === undefined) return { period, share: null, warnings: [], ...beforeTax };
   if (!limit || limit.gross === null || limit.gross <= 0) {
@@ -256,7 +254,7 @@ export function recurringPreview(
 
   const first = baseIn(start);
   const left = deductionBaseOf(first);
-  const counted = `The law counts it against the pay after income tax, social insurance and the installments of advances and loans (Labour Law Art. 114): in ${monthName(start)}, the gross of ${formatEgp(gross)} less about ${formatEgp(tax)} tax, ${formatEgp(insurance)} insurance and ${formatEgp(first.installments)} installments leaves ${formatEgp(left)}, of which recurring deductions may take ${LAW_DEDUCTION_PERCENT}%, ${formatEgp(deductionLimit(first))}.`;
+  const counted = `In ${monthName(start)}, the gross of ${formatEgp(gross)} less about ${formatEgp(tax)} tax, ${formatEgp(insurance)} insurance and ${formatEgp(first.installments)} installments leaves ${formatEgp(left)}; ${LAW_DEDUCTION_PERCENT}% of it is ${formatEgp(deductionLimit(first))}.`;
   const total = totalIn(start);
   const mine = total > amount ? `With their other recurring deductions, ${formatEgp(total)} a month, it is ${left > 0 ? `${percentOf(total, left)}%` : 'all'} of it.` : `It is ${left > 0 ? `${percentOf(amount, left)}%` : 'all'} of it.`;
   const warnings = lookedAt(start, last, limit.byMonth).flatMap((m) => {

@@ -51,11 +51,11 @@ export function readStatus(query: Query): StatusFilter {
 
 /** What a decision made on the page says after it, by `?done=`. */
 export const DONE = {
-  'change-approved': 'Change request approved: the profile is updated.',
-  'change-rejected': 'Change request rejected. The employee sees your note.',
+  'change-approved': 'Change request approved.',
+  'change-rejected': 'Change request rejected.',
   // a new photo the employee sent (31 October 2026)
-  'photo-approved': 'New photo approved: it is now the picture beside their name. You can crop it on their profile.',
-  'photo-rejected': 'New photo rejected: they keep their current one.',
+  'photo-approved': 'New photo approved.',
+  'photo-rejected': 'New photo rejected.',
 } as const;
 
 export type Done = keyof typeof DONE;
@@ -88,7 +88,7 @@ export const requestsLabel = (n: number) => `${n} ${n === 1 ? 'request' : 'reque
 export function emptyText(status: StatusFilter): string {
   switch (status) {
     case '':
-      return 'No change requests yet. Employees ask for them when they check their details on their profile.';
+      return 'No change requests yet.';
     case 'pending':
       return 'No change requests are waiting.';
     default:

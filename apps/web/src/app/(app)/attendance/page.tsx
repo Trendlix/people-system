@@ -210,10 +210,6 @@ async function Daily({ searchParams }: { searchParams: PageProps<'/attendance'>[
           <summary className="cursor-pointer font-semibold">
             {missing.length} {missing.length === 1 ? 'person' : 'people'} employed in {monthName(month)} with no attendance kept
           </summary>
-          <p className="mt-2 text-muted">
-            They haven&apos;t checked in on the system, and aren&apos;t in Zoho People&apos;s imported files or weren&apos;t matched to their
-            profile: check the import&apos;s review.
-          </p>
           <ul className="mt-2 columns-1 gap-6 sm:columns-2">
             {missing.map((e) => (
               <li key={e.id}>
@@ -232,14 +228,7 @@ export default function DailyAttendancePage({ searchParams }: PageProps<'/attend
     <StaffOnly>
       {/* the page's whole width (owner, 31 October 2026: "fill the page") */}
       <div className="space-y-6">
-        <div>
-          <h1 className="page-title">Daily Attendance</h1>
-          <p className="mt-1 max-w-3xl text-muted">
-            Everyone&apos;s days, from their check-ins on the system and Zoho People&apos;s imports, counted by the system&apos;s rules: the hours
-            within each person&apos;s shift, at most its hours a day; a working day without a check-in is absent; leave from the Leave module. A
-            check-in outside the work arrangement&apos;s rule is flagged. Open a row for its days.
-          </p>
-        </div>
+        <h1 className="page-title">Daily Attendance</h1>
         <Suspense fallback={<Loading />}>
           <Daily searchParams={searchParams} />
         </Suspense>

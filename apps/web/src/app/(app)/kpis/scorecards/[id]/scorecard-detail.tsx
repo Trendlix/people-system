@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { KPI_PRACTICE_BANNER, KPI_PRACTICE_NOTE, KPI_STEP_LABELS, kpiAttendanceSoFar, kpiCalibrationStep, kpiMonthName, kpiStepDeadline, type KpiPracticeStep, type KpiScorecardView } from '@trendlix/shared';
+import { KPI_PRACTICE_BANNER, KPI_STEP_LABELS, kpiAttendanceSoFar, kpiCalibrationStep, kpiMonthName, kpiStepDeadline, type KpiPracticeStep, type KpiScorecardView } from '@trendlix/shared';
 import { CLevelBadge } from '@/components/c-level-badge';
 import { DeleteForm } from '@/components/form';
 import { formatDate, formatDateTime, titleCase } from '@/lib/format';
@@ -150,7 +150,6 @@ function PracticeBanner({ view: v }: { view: KpiScorecardView }) {
   return (
     <div role="note" className="rounded-lg border border-warn/40 bg-warn-soft px-4 py-3 text-sm text-warn">
       <p className="font-semibold">{KPI_PRACTICE_BANNER}</p>
-      <p className="mt-0.5">{KPI_PRACTICE_NOTE}</p>
       <p className="mt-1 text-xs">{startedSentence(v.practice, v.templateVersion)}</p>
       {unplaced && <p className="mt-1 text-xs">{unplaced}</p>}
     </div>
@@ -161,8 +160,7 @@ function PracticeBanner({ view: v }: { view: KpiScorecardView }) {
 function StandInSteps({ view: v, step }: { view: KpiScorecardView; step: KpiPracticeStep }) {
   return (
     <Section title="Take a Step">
-      <p className="text-sm text-muted">Take each step yourself, for whoever it belongs to. No deadline holds a step back.</p>
-      <nav aria-label="Practice steps" className="mt-3 flex flex-wrap gap-2">
+      <nav aria-label="Practice steps" className="flex flex-wrap gap-2">
         {openPracticeSteps(v.standIn).map((s) => (
           <Link key={s} href={practiceStepHref(v.id, s)} aria-current={s === step ? 'true' : undefined} className={`btn no-underline ${s === step ? 'btn-primary' : 'btn-secondary'}`}>
             {practiceStepLabel(s, v)}
@@ -185,7 +183,7 @@ function Signatures({ view: v }: { view: KpiScorecardView }) {
     <>
       {row(v.signed.employee, 'The employee')}
       {row(v.signed.manager, v.scorer.kind === 'manager' ? 'The manager' : 'The scorer')}
-      {v.unsigned && <span className="block text-warn">Final without every signature, by the sign-off day</span>}
+      {v.unsigned && <span className="block text-warn">Final without every signature</span>}
     </>
   );
 }
@@ -260,7 +258,7 @@ export async function ScorecardDetail({
             {step ?? 'Final and locked'}
             {v.selfMissed && (
               <span className="block text-xs text-warn">
-                {v.practice ? 'The self-rating was left out: the scoring was sent without it.' : 'The self-rating was missed: not sent by its day.'}
+                {v.practice ? 'Self-rating left out' : 'Self-rating missed'}
               </span>
             )}
           </Fact>
@@ -268,17 +266,7 @@ export async function ScorecardDetail({
             <Deadlines view={v} />
           </Fact>
           <Fact label="Pay">
-            {v.practice ? (
-              <>
-                Not counted
-                <span className="block text-xs text-muted">A practice scorecard never reaches payroll or the payslips.</span>
-              </>
-            ) : (
-              <>
-                {payrollText(v.payrollMonth)}
-                <span className="block text-xs text-muted">Its final % is the KPI that payroll&apos;s variable part follows.</span>
-              </>
-            )}
+            {v.practice ? 'Not counted' : payrollText(v.payrollMonth)}
           </Fact>
           {(v.status === 'sign_off' || v.status === 'final') && (
             <Fact label="Signatures">
@@ -315,13 +303,13 @@ export async function ScorecardDetail({
 
       {standStep && signAs ? (
         <Section title={titleCase(practiceStepLabel(standStep, v))}>
-          <SignForm key={standStep} action={practiceSign.bind(null, v.id, signAs)} as={signAs} deadline={v.deadlines.signOff} practice />
+          <SignForm key={standStep} action={practiceSign.bind(null, v.id, signAs)} />
         </Section>
       ) : (
         !standStep &&
         (v.can.signAsEmployee || v.can.signAsManager) && (
           <Section title={v.can.signAsEmployee ? 'Sign Your Scorecard' : 'Sign as the Manager'}>
-            <SignForm action={sign.bind(null, v.id)} as={v.can.signAsEmployee ? 'employee' : 'manager'} deadline={v.deadlines.signOff} practice={!!v.practice} />
+            <SignForm action={sign.bind(null, v.id)} />
           </Section>
         )
       )}
@@ -340,7 +328,7 @@ export async function ScorecardDetail({
         <div className="border-t border-line pt-5">
           <DeleteForm
             action={deletePractice.bind(null, v.id)}
-            confirmText={`Delete this practice scorecard of ${v.employee.fullNameEn}? Its picks, comments and steps go with it; nothing real changes.`}
+            confirmText={`Delete this practice scorecard of ${v.employee.fullNameEn}?`}
             label="Delete practice scorecard"
           />
         </div>

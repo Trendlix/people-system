@@ -111,10 +111,10 @@ describe('the leave import', () => {
 
   it('asks before Apply, saying what it does', () => {
     const view = { leaves: [row({}), row({ row: 3, pending: true }), row({ row: 4, yours: false })], balances: [row({ sheet: 'balances', row: 2 })] };
-    expect(applyConfirmText(view)).toMatch(/^Apply 1 leave as approved, 1 pending request sent for a decision, 1 balance set\? /);
+    expect(applyConfirmText(view)).toBe('Apply 1 leave as approved, 1 pending request sent for a decision, 1 balance set?');
     // Zoho's Working from home rows: a work-from-home day each working day (owner, 21 October 2026: "Yes, as approved WFH days")
     const wfh = { leaves: [row({}), row({ row: 3, wfh: true, days: 2 }), row({ row: 4, wfh: true, days: 1, pending: true })], balances: [] };
-    expect(applyConfirmText(wfh)).toMatch(/^Apply 1 leave as approved, 2 work-from-home days as approved, 1 pending work-from-home request sent for a decision\? /);
+    expect(applyConfirmText(wfh)).toBe('Apply 1 leave as approved, 2 work-from-home days as approved, 1 pending work-from-home request sent for a decision?');
   });
 
   it('shows a Working from home row as a work-from-home day, its days, and the mapping’s choice', () => {
@@ -131,9 +131,7 @@ describe('the leave import', () => {
   it('says what Undo removes: all the import made, or the user’s share', () => {
     expect(undoWhatText({ undoable: 8, kept: { leaves: 1, adjustments: 0, wfhDays: 7 } })).toBe('the 1 leave and 7 work-from-home days');
     expect(undoWhatText({ undoable: 2, kept: { leaves: 2, adjustments: 1, wfhDays: 1 } })).toBe('2 of the 2 leaves, 1 balance change and 1 work-from-home day');
-    expect(undoConfirmText({ undoable: 1, kept: { leaves: 0, adjustments: 0, wfhDays: 1 } })).toBe(
-      'Undo this import? The 1 work-from-home day it made that you import is removed, and its rows can be imported again.',
-    );
+    expect(undoConfirmText({ undoable: 1, kept: { leaves: 0, adjustments: 0, wfhDays: 1 } })).toBe('Undo this import and remove the 1 work-from-home day?');
   });
 
   it('lists the people to confirm and the choices made, each by what they are known by', () => {

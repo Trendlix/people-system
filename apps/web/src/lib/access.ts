@@ -84,14 +84,14 @@ const CAIRO_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Cairo' })
  */
 export function standingLine(s: AccessStandingView, date: DateText): string | null {
   const g = s.grace;
-  if (s.standing === 'grace' && g) return `Grace until ${date(g.until)}, given by ${g.grantedBy?.name ?? 'HR'} on ${date(g.from)}. Full access until the end of that day.`;
+  if (s.standing === 'grace' && g) return `Grace until ${date(g.until)}, given by ${g.grantedBy?.name ?? 'HR'} on ${date(g.from)}.`;
   if (s.standing !== 'hold') return null;
   // HR's hold (owner, 1 November 2026), whatever the contract
-  if (s.held) return `${s.held.by?.name ?? 'HR'} put their access on hold on ${date(CAIRO_DAY.format(new Date(s.held.since)))}: only check-in and check-out work until HR releases it.`;
+  if (s.held) return `${s.held.by?.name ?? 'HR'} put their access on hold on ${date(CAIRO_DAY.format(new Date(s.held.since)))}: check-in and check-out only.`;
   // no contract entered (owner, 23 October 2026: "Hold them after 7 days"): held since its 7 days ran out
-  if (!s.gap && s.noContract) return 'No contract entered: only check-in and check-out work until a signed contract is entered.';
+  if (!s.gap && s.noContract) return 'No contract entered: check-in and check-out only.';
   const ended = s.gap ? (s.gap.endDate ? `Their contract ${s.gap.number} ended on ${date(s.gap.endDate)}` : `Their contract ${s.gap.number} has ended`) : 'Their contract isn’t in force';
-  return `${ended}: only check-in and check-out work until it’s renewed.`;
+  return `${ended}: check-in and check-out only.`;
 }
 
 /**
@@ -102,8 +102,8 @@ export function standingLine(s: AccessStandingView, date: DateText): string | nu
 export function noContractLine(s: Pick<AccessStandingView, 'standing' | 'noContract'>, date: DateText): string | null {
   if (s.standing !== 'no_access' || !s.noContract) return null;
   return s.noContract.holdFrom
-    ? `No contract entered: on hold from ${date(s.noContract.holdFrom)} unless HR enters a signed contract.`
-    : `No contract entered: on hold ${NO_CONTRACT_DAYS} days from now unless HR enters a signed contract.`;
+    ? `No contract entered: on hold from ${date(s.noContract.holdFrom)}.`
+    : `No contract entered: on hold ${NO_CONTRACT_DAYS} days from now.`;
 }
 
 /** An Employees list row's "No contract entered" under its badge: when it holds, or that it does; null for anyone else. */
@@ -125,7 +125,7 @@ export function usedGraceLine(s: AccessStandingView, date: DateText): string | n
  * An account that still signs in though they are No access: someone who left, whose account an Admin turned back on
  * (no contract entered is said apart: noContractLine). Said here so HR acts on it.
  */
-export const STILL_SIGNS_IN_NOTE = 'Their account still signs in though their employment has ended: an Admin can turn it off.';
+export const STILL_SIGNS_IN_NOTE = 'Their account still signs in though their employment has ended.';
 
 export function stillSignsIn(v: Pick<EmployeeAccessView, 'state' | 'account' | 'standing'>): boolean {
   return v.standing.standing === 'no_access' && !v.standing.exempt && !v.standing.noContract && !!v.account?.isActive && v.state !== 'closed';
@@ -136,7 +136,7 @@ export const offersGrace = (v: Pick<EmployeeAccessView, 'standing'>): boolean =>
 
 /** The question before giving grace, with its last day as the API sets it (today and 7 days after). */
 export function graceQuestion(until: string, date: DateText): string {
-  return `Give ${GRACE_DAYS} days’ grace, until ${date(until)}? Once in this gap; it can’t be extended.`;
+  return `Give ${GRACE_DAYS} days’ grace, until ${date(until)}? It can’t be extended.`;
 }
 
 // ---------- the Employees list's filter ----------
@@ -200,8 +200,8 @@ export function invitableIds(rows: readonly { id: string; access?: RowAccess | n
 /** "Send invitations to 3 people?" and the like, for the confirmation. */
 export function inviteQuestion(count: number): string {
   return count === 1
-    ? 'Email a set-password invitation to 1 person? The link works for 7 days.'
-    : `Email a set-password invitation to ${count} people? Each link works for 7 days.`;
+    ? 'Email a set-password invitation to 1 person?'
+    : `Email a set-password invitation to ${count} people?`;
 }
 
 type DateText = (iso: string) => string;
@@ -218,13 +218,13 @@ export function accessStatusLine(v: Pick<EmployeeAccessView, 'state' | 'account'
     case 'not_invited':
       return v.account ? `Account made ${date(v.account.createdAt)}. No invitation sent yet.` : 'No invitation sent yet.';
     case 'pending':
-      return 'Their account is made within a few minutes, or now with Give access now. Nothing is sent to them.';
+      return 'The account is made within a few minutes.';
     case 'clash':
       return v.clash
-        ? `Another account already signs in with ${v.clash.email}. An Admin can change that account, or choose their other email.`
+        ? `Another account already signs in with ${v.clash.email}.`
         : 'Another account already uses their email.';
     case 'no_email':
-      return 'Add an email to give access: a work or personal email on Basic Data.';
+      return 'Add an email to give access.';
     case 'not_eligible':
       return v.notEligibleReason ?? 'They have no signed contract in force today.';
     case 'closed':

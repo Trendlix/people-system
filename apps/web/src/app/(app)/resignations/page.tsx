@@ -41,7 +41,7 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/resignatio
       ) : loaded.value.length === 0 ? (
         <Empty>{filter === 'sent' ? 'No resignation request is waiting.' : 'No requests here.'}</Empty>
       ) : (
-        <ResignationsTable requests={loaded.value} who note="Newest first. Open one to record the resignation or return it." />
+        <ResignationsTable requests={loaded.value} who />
       )}
     </div>
   );
@@ -51,10 +51,6 @@ export default function ResignationsPage({ searchParams }: PageProps<'/resignati
   return (
     <div className="max-w-5xl">
       <h1 className="page-title">Resignations</h1>
-      <p className="mt-1 text-muted">
-        What employees asked for with Resign on My Requests. Record the resignation to open the End employment form with it filled in; the ending, its
-        document, the labour office certification and the CEO&apos;s approval carry on as always.
-      </p>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>
           <Requests searchParams={searchParams} />

@@ -104,7 +104,7 @@ export function PhotoPicker({ had, photos, onChange, onBusy, disabled }: { had: 
       <legend className="label">Photos</legend>
       <AddButtons left={left} disabled={disabled} onFiles={(files) => void add(files)} />
       <p id={hintId} className="hint">
-        {photosLeftText(had, photos.length, ASSET_PHOTOS_MAX)} Photos are made smaller before they are sent, and go once the asset is saved.
+        {photosLeftText(had, photos.length, ASSET_PHOTOS_MAX)}
       </p>
       {refused.length > 0 && (
         <p role="status" className="text-xs text-danger">
@@ -235,7 +235,7 @@ function PhotoTile({ code, photo, index, total, canChange, canDelete }: { code: 
               type="button"
               disabled={pending}
               onClick={() => {
-                if (!window.confirm(`Delete ${name.toLowerCase()} of ${code}? This can't be undone.`)) return;
+                if (!window.confirm(`Delete ${name.toLowerCase()} of ${code}?`)) return;
                 start(async () => {
                   const r = await deleteAssetPhoto(code, photo.id);
                   setProblem(r.error ?? null);

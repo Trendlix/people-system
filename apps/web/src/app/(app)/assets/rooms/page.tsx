@@ -36,14 +36,14 @@ async function Rooms() {
         <NameNotesForm
           action={createRoom}
           nameLabel="Name"
-          nameHint="E.g. Studio A, Storeroom, Office 2. Each name once."
+          namePlaceholder="Studio A"
           nameMax={ASSET_TEXT_LIMITS.roomName}
           notesMax={ASSET_TEXT_LIMITS.roomNotes}
           submit="Add room"
         />
       </section>
       {rooms.length === 0 ? (
-        <Empty>No rooms yet. Add the first one above.</Empty>
+        <Empty>No rooms yet.</Empty>
       ) : (
         <ul aria-label="Rooms" className="space-y-3">
           {rooms.map((r) => (
@@ -76,7 +76,7 @@ async function Rooms() {
               </details>
               <div className="mt-2 flex flex-wrap items-start gap-4">
                 <ArchiveButton action={setRoomArchived.bind(null, r.id, !r.archived)} archived={r.archived} name={r.name} />
-                {deletes && r.assets === 0 && <DeleteForm action={deleteRoom.bind(null, r.id)} confirmText={`Delete the room ${r.name}? This can't be undone.`} label="Delete room" />}
+                {deletes && r.assets === 0 && <DeleteForm action={deleteRoom.bind(null, r.id)} confirmText={`Delete the room ${r.name}?`} label="Delete room" />}
               </div>
             </li>
           ))}
@@ -91,12 +91,9 @@ async function Rooms() {
 export default function RoomsPage() {
   return (
     <AssetsFrame tab={ASSET_PATHS.rooms}>
-      <p className="text-muted">Where the assets are kept when nobody holds them: the studios, the storeroom, the offices.</p>
-      <div className="mt-6">
-        <Suspense fallback={<Loading />}>
-          <Rooms />
-        </Suspense>
-      </div>
+      <Suspense fallback={<Loading />}>
+        <Rooms />
+      </Suspense>
     </AssetsFrame>
   );
 }

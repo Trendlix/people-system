@@ -20,16 +20,11 @@ export function ShortlistToReview({ groups, hires }: { groups: readonly ReviewGr
   if (!hires && !groups.length) return null;
   return (
     <section aria-labelledby="my-shortlist" className="space-y-3">
-      <div className="space-y-1">
-        <h2 id="my-shortlist" className="text-lg font-semibold">
-          Shortlist to Review
-        </h2>
-        <p className="max-w-3xl text-sm text-muted">
-          Tick the applicants HR shortlisted, then accept or reject them together. HR makes a screening call with those you accept, and confirms those you reject.
-        </p>
-      </div>
+      <h2 id="my-shortlist" className="text-lg font-semibold">
+        Shortlist to Review
+      </h2>
       {groups.length === 0 ? (
-        <div className="card px-6 py-8 text-center text-sm text-muted">Nothing to review: HR hasn’t shortlisted anyone for your vacancies yet.</div>
+        <div className="card px-6 py-8 text-center text-sm text-muted">Nothing to review.</div>
       ) : (
         groups.map((g) => <ReviewCard key={g.vacancy.id} group={g} />)
       )}

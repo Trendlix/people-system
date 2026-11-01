@@ -6,7 +6,7 @@ import { PrintPdf } from '@/components/print-pdf';
 import { allowanceAmountText } from '@/lib/allowances';
 import { getBrand } from '@/lib/api';
 import { formatDate, formatDateTime } from '@/lib/format';
-import { pdfFileName, PROTECTED_PDF_HINT } from '@/lib/protected-pdf';
+import { pdfFileName } from '@/lib/protected-pdf';
 import { canDelete } from '@/lib/roles';
 import { setsUpEmail } from '@/lib/email-setup';
 import { getCurrentUser } from '@/lib/session';
@@ -14,14 +14,14 @@ import type { OfferView } from '@/lib/types';
 import { ActionButton } from '../../employees/[id]/contracts/contract-buttons';
 import { addDays } from '../../employees/[id]/contracts/dates';
 import { formatEgp, hourlyNetTerms } from '../../employees/[id]/contracts/salary';
-import { outsideLawShort, workNatureLabel, workPatternNote } from '../../employees/employment-law';
+import { outsideLawShort, workNatureLabel } from '../../employees/employment-law';
 import { arrangementLabel, FieldGrid, todayInCairo, type GridField } from '../../employees/ui';
 import { BackLink, Empty, Loading } from '../../organization/ui';
 import { answerOffer, deleteOffer, emailOffer, extendOffer, hireFromOffer, linkOffer, recordSentOffer, withdrawOffer } from '../actions';
 import { loadOffer } from '../data';
 import { canSeeOffers, managesOffers, offerDocumentHref, placeName, shownStatus, WHO_SEES } from '../list';
 import { canBeSent, documentLabels, documentState, draftTemplateVersion, missingHelp, offerTimeline, templateProblem, waitingText, type TimelineEvent } from '../timeline';
-import { answerLeeway, answersNow, canRecordSent, recordsEarlier, recordSentDocumentHint } from '../earlier';
+import { answerLeeway, answersNow, canRecordSent, recordsEarlier } from '../earlier';
 import { OfferStatusBadge, RecordedEarlierMark } from '../ui';
 import { ExtendOffer, RecordAnswer, RecordSentEarlier, SendOffer, WithdrawOffer } from './offer-actions';
 import { ASK_SUPER_ADMIN, seesTemplates, TEMPLATES_PATH } from '../../organization/templates/wording';
@@ -80,15 +80,6 @@ function MissingValues({ offer: o, status, templates }: { offer: OfferView; stat
           ))}
         </ul>
       )}
-      <p>
-        {o.status !== 'draft'
-          ? 'Sending it again waits for this.'
-          : !o.recordedEarlier
-            ? 'Sending it by email or as a link waits for this.'
-            : problem
-              ? 'Recorded as sent earlier meanwhile, it keeps no document.'
-              : 'Recording it as sent earlier waits for this.'}
-      </p>
     </section>
   );
 }
@@ -136,7 +127,7 @@ function positionFields(o: OfferView): GridField[] {
     { key: 'offer-grade', label: 'Grade', value: o.grade && `${o.grade.code} · ${o.grade.levelEn}` },
     { key: 'offer-manager', label: 'Direct manager', value: o.manager && <Link href={`/employees/${o.manager.id}`}>{o.manager.fullNameEn}</Link> },
     { key: 'offer-shift', label: 'Shift', value: o.shift && `Shift ${o.shift.code}` },
-    { key: 'offer-arrangement', label: 'Work arrangement', value: arrangementLabel(o), note: workPatternNote(o.workArrangement) },
+    { key: 'offer-arrangement', label: 'Work arrangement', value: arrangementLabel(o) },
     ...(o.workNature !== undefined ? [{ key: 'offer-nature', label: 'Nature of the work', value: workNatureLabel(o.workNature) }] : []),
     { key: 'offer-join', label: 'Join date', value: formatDate(o.joinDate) },
   ];
@@ -148,7 +139,7 @@ function termsFields(o: OfferView): GridField[] {
   const fields: GridField[] = [{ key: 'offer-pay-basis', label: 'Pay basis', value: PAY_BASIS_LABELS[o.payBasis] ?? o.payBasis }];
   if (!o.salaryHidden && unpaid) {
     fields.push(
-      { key: 'offer-gross', label: 'Gross salary', value: INTERN_NO_WAGE_TEXT, protected: true, note: 'The allowances are what the intern is paid' },
+      { key: 'offer-gross', label: 'Gross salary', value: INTERN_NO_WAGE_TEXT, protected: true },
       {
         key: 'offer-allowances',
         label: 'Allowances',
@@ -179,13 +170,7 @@ function termsFields(o: OfferView): GridField[] {
       });
       // the least paid a month (owner, 27 October 2026: "can i add rate per hour with a minimum monthly payment?")
       if (o.hourlyMinimum) {
-        fields.push({
-          key: 'offer-hourly-minimum',
-          label: 'Minimum a month',
-          value: formatEgp(o.hourlyMinimum),
-          protected: true,
-          note: 'Paid when the hours worked come to less, for the days of a part month',
-        });
+        fields.push({ key: 'offer-hourly-minimum', label: 'Minimum a month', value: formatEgp(o.hourlyMinimum), protected: true });
       }
     }
     fields.push(
@@ -194,7 +179,7 @@ function termsFields(o: OfferView): GridField[] {
         label: o.payBasis === 'hourly' ? 'Gross (monthly estimate)' : 'Gross salary',
         value: o.grossSalary !== null && formatEgp(o.grossSalary),
         protected: true,
-        note: o.basicPercent !== null && `${o.basicPercent}% basic; the variable part follows the monthly performance reports`,
+        note: o.basicPercent !== null && `${o.basicPercent}% basic`,
       },
       {
         key: 'offer-allowances',
@@ -220,7 +205,7 @@ function termsFields(o: OfferView): GridField[] {
         protected: true,
         note: 'A month',
       },
-      { key: 'offer-net', label: 'Net salary', value: o.netSalary !== null && formatEgp(o.netSalary), protected: true, note: 'Approximate, as calculated' },
+      { key: 'offer-net', label: 'Net salary', value: o.netSalary !== null && formatEgp(o.netSalary), protected: true },
       {
         key: 'offer-insured',
         label: 'Insured wage',
@@ -236,13 +221,13 @@ function termsFields(o: OfferView): GridField[] {
       key: 'offer-duration',
       label: unpaid ? 'Internship length' : 'Contract length',
       value: `${o.durationMonths} months`,
-      note: unpaid ? 'The internship agreement, from the join date' : 'Fixed term, from the join date',
+      note: unpaid ? undefined : 'Fixed term',
     },
   );
   return fields;
 }
 
-function offerFields(o: OfferView, open: boolean): GridField[] {
+function offerFields(o: OfferView): GridField[] {
   return [
     {
       key: 'offer-number',
@@ -253,12 +238,7 @@ function offerFields(o: OfferView, open: boolean): GridField[] {
         </span>
       ),
     },
-    {
-      key: 'offer-expires',
-      label: 'Open until',
-      value: formatDate(o.expiresOn),
-      note: open ? 'The last day to accept' : undefined,
-    },
+    { key: 'offer-expires', label: 'Open until', value: formatDate(o.expiresOn) },
     {
       key: 'offer-template',
       label: 'Template',
@@ -270,8 +250,8 @@ function offerFields(o: OfferView, open: boolean): GridField[] {
             : 'Published'
           : o.template.status === 'draft'
             ? o.template.previewVersion !== null
-              ? `Only draft v${o.template.previewVersion}: previews use it; publish it to send the offer`
-              : 'Only a draft: publish it first'
+              ? `Only draft v${o.template.previewVersion}`
+              : 'Only a draft'
             : 'Not uploaded yet',
     },
     {
@@ -279,7 +259,7 @@ function offerFields(o: OfferView, open: boolean): GridField[] {
       label: 'Document',
       // the name of the PDF it is given out as
       value: o.document && pdfFileName(o.document.fileName),
-      note: o.document ? `Dated ${formatDate(o.document.documentDate)}` : o.status === 'draft' ? 'Filled in afresh at each preview until it is sent' : undefined,
+      note: o.document ? `Dated ${formatDate(o.document.documentDate)}` : undefined,
     },
   ];
 }
@@ -335,7 +315,7 @@ async function Offer({ params, searchParams }: { params: Promise<{ id: string }>
   const user = await getCurrentUser();
   if (!canSeeOffers(user)) return <Empty>{WHO_SEES}</Empty>;
   const offer = await loadOffer(params);
-  if (!offer) return <Empty>Not available yet: the server does not have job offers yet.</Empty>;
+  if (!offer) return <Empty>Not available yet.</Empty>;
   const o = offer;
   const brand = await getBrand();
   const today = todayInCairo();
@@ -352,7 +332,6 @@ async function Offer({ params, searchParams }: { params: Promise<{ id: string }>
   const manages = managesOffers(user);
   const doc = documentState(o, status);
   const labels = documentLabels(doc.draftTemplate);
-  const open = status === 'draft' || status === 'sent';
   // its number, hidden from a developer (23 October 2026): the offer by its candidate's name instead
   const number = shownCode(o.number);
   const name = number ? `offer ${number}` : `offer to ${o.fullNameEn}`;
@@ -403,9 +382,7 @@ async function Offer({ params, searchParams }: { params: Promise<{ id: string }>
 
       {status === 'accepted' && !o.hiredAt && (
         <p role="alert" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
-          {hireError
-            ? `The acceptance is recorded, but the profile couldn't be made: ${hireError} Fix that, then press Make the profile.`
-            : "The offer is accepted, but the employee profile, employment and draft contract haven't been made yet. Press Make the profile; if it fails, it says why."}
+          {hireError ? `The profile couldn't be made: ${hireError}` : "The profile hasn't been made yet."}
         </p>
       )}
 
@@ -443,7 +420,7 @@ async function Offer({ params, searchParams }: { params: Promise<{ id: string }>
             {manages && (status === 'sent' || status === 'expired') && !o.recordedEarlier && (
               <ExtendOffer action={extendOffer.bind(null, o.id)} expiresOn={o.expiresOn} suggested={addDays(o.expiresOn < today ? today : o.expiresOn, OFFER_VALID_DAYS)} />
             )}
-            {recordsSent && <RecordSentEarlier action={recordSentOffer.bind(null, o.id)} expiresOn={o.expiresOn} documentHint={recordSentDocumentHint(o)} />}
+            {recordsSent && <RecordSentEarlier action={recordSentOffer.bind(null, o.id)} expiresOn={o.expiresOn} />}
             {answerable && <RecordAnswer action={answerOffer.bind(null, o.id)} withDay={leeway} />}
             {manages && (status === 'draft' || status === 'sent' || status === 'expired') && <WithdrawOffer action={withdrawOffer.bind(null, o.id)} number={number ?? `to ${o.fullNameEn}`} />}
             {manages && status === 'accepted' && !o.hiredAt && (
@@ -461,13 +438,12 @@ async function Offer({ params, searchParams }: { params: Promise<{ id: string }>
                 action={deleteOffer.bind(null, o.id)}
                 pendingText="Deleting…"
                 variant="danger"
-                confirmText={`Delete ${name} for ${o.fullNameEn}? This cannot be undone.`}
+                confirmText={`Delete ${name}?`}
               >
                 Delete<span className="sr-only"> {name}</span>
               </ActionButton>
             )}
           </div>
-          {doc.pdf && <p className="text-xs text-muted">{PROTECTED_PDF_HINT}</p>}
           {doc.why && <p className="text-xs text-muted">{doc.why}</p>}
           {manages && canBeSent(o, today) && (
             <div className="border-t border-line pt-4">
@@ -481,17 +457,12 @@ async function Offer({ params, searchParams }: { params: Promise<{ id: string }>
               />
             </div>
           )}
-          {manages && status === 'expired' && !o.recordedEarlier && (
-            <p className="text-sm text-muted">Extend the offer to send it again, or to record an answer the candidate gave before its last day.</p>
+          {o.recordedEarlier && !leeway && status === 'expired' && (
+            <p className="text-sm text-muted">Recording its answer past its last day needs Entering earlier offers on (Recruitment Settings).</p>
           )}
-          {o.recordedEarlier && !leeway && (status === 'sent' || status === 'expired') && (
-            <p className="text-sm text-muted">An earlier offer, recorded after it was given: it is never emailed or linked. Recording its answer past its last day needs entering earlier offers switched on (Recruitment Settings).</p>
-          )}
-          {status === 'draft' && pastLastDay && leeway && <p className="text-sm text-muted">{EARLIER_OFFER_NOTE} Record it as sent earlier, or record the answer, each with the day it happened.</p>}
+          {status === 'draft' && pastLastDay && leeway && <p className="text-sm text-muted">{EARLIER_OFFER_NOTE}</p>}
           {manages && status === 'draft' && pastLastDay && !leeway && (
-            <p className="text-sm text-warn">
-              Its last day, {formatDate(o.expiresOn)}, has passed. Edit it to set a later one, then send it or record the answer.
-            </p>
+            <p className="text-sm text-warn">Its last day, {formatDate(o.expiresOn)}, has passed: edit it to set a later one.</p>
           )}
         </section>
       )}
@@ -505,11 +476,10 @@ async function Offer({ params, searchParams }: { params: Promise<{ id: string }>
             <FieldGrid fields={positionFields(o)} />
           </Part>
           <Part title="Terms">
-            {o.salaryHidden && <p className="text-sm text-muted">The pay is shown to HR, Finance and the CEO only.</p>}
             <FieldGrid fields={termsFields(o)} />
           </Part>
           <Part title="Offer">
-            <FieldGrid fields={offerFields(o, open)} />
+            <FieldGrid fields={offerFields(o)} />
             {o.message && (
               <div className="card p-4 text-sm">
                 <p className="text-[11px] font-medium tracking-wide text-muted uppercase">Message to the candidate</p>

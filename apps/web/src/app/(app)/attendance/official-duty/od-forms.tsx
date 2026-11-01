@@ -10,24 +10,18 @@ import { formatTime } from '@/lib/format';
 import type { OdCheck, OdCompensationView, OdForm } from '@/lib/od-types';
 import type { FormState } from '@/lib/types';
 import { choice } from '../../employees/[id]/contracts/pay-fields';
-import { leaveCommentReaders } from '../../leave/list';
 import { checkOdDays } from './actions';
 import {
   OD_PLACE_MAX,
   OD_REASON_MAX,
-  odAfterNote,
   odAskedOf,
-  odCashHint,
   odCheckPath,
   odCompensatedAlready,
   odCompensationLead,
-  odDayOffHint,
   odDecisionButton,
   odFormCompensation,
   odFormProblems,
-  odReadyText,
   odRecordProblems,
-  odRecordReadyText,
   odSent,
   odWhenOf,
   type TypedOd,
@@ -54,10 +48,10 @@ const optional = <span className="font-normal text-muted">(optional)</span>;
 /** The fields typed into uncontrolled inputs, kept for the checks: the days, the times, and a day off's date. */
 const TYPED_FIELDS = ['startDate', 'endDate', 'fromTime', 'toTime', 'dayOff'];
 
-function Problems({ problems, verb, ready }: { problems: readonly string[]; verb: string; ready: string }) {
+function Problems({ problems, verb }: { problems: readonly string[]; verb: string }) {
   return (
     <div role="status" aria-live="polite">
-      {problems.length ? (
+      {problems.length > 0 && (
         <div className="rounded-lg border border-line bg-canvas px-4 py-3 text-sm">
           <p className="font-medium">Before you can {verb} it:</p>
           <ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted">
@@ -66,8 +60,6 @@ function Problems({ problems, verb, ready }: { problems: readonly string[]; verb
             ))}
           </ul>
         </div>
-      ) : (
-        <p className="rounded-lg bg-ok-soft px-4 py-3 text-sm text-ok">{ready}</p>
       )}
     </div>
   );
@@ -77,13 +69,12 @@ function Problems({ problems, verb, ready }: { problems: readonly string[]; verb
  * The compensation of a single rest day or official holiday (owner, 27 October 2026: "it should count in the
  * compensatories"; "One step"): what the day earns, then Day off (Hours off for part of the day) or Cash instead and the
  * day off's date; for a day compensated already, or part of it below the Setup's minimum, only what it is. `what`: the
- * day, when known; `rules`: the Compensatory Setup, when known; `hr`: HR records it.
+ * day, when known; `rules`: the Compensatory Setup, when known.
  */
 function CompensationFields({
   comp,
   what,
   rules,
-  hr,
   typed,
   setTyped,
   fid,
@@ -91,7 +82,6 @@ function CompensationFields({
   comp: OdCompensationView;
   what: string | null;
   rules: CompensatoryRules | null;
-  hr: boolean;
   typed: TypedOd;
   setTyped: (next: TypedOd) => void;
   fid: (name: string) => string;
@@ -116,13 +106,9 @@ function CompensationFields({
           <label htmlFor={fid('dayOff')} className="label">
             {hours ? 'Day for the hours off' : 'Day off'}
           </label>
-          <DateInput id={fid('dayOff')} name="dayOff" required defaultValue={typed.dayOff ?? ''} aria-describedby={fid('dayOff-hint')} />
-          <p id={fid('dayOff-hint')} className="hint">
-            {odDayOffHint(comp, rules, hr)}
-          </p>
+          <DateInput id={fid('dayOff')} name="dayOff" required defaultValue={typed.dayOff ?? ''} />
         </div>
       )}
-      {typed.compensation === 'cash' && <p className="hint">{odCashHint(comp, rules?.cashRate ?? null)}</p>}
     </fieldset>
   );
 }
@@ -148,7 +134,6 @@ export function NewOdForm({ action, form, cancelHref }: { action: Action; form: 
   // a single rest day or official holiday (27 October 2026): what it earns, from the working days and holidays read first
   const comp = odFormCompensation(typed, form, done);
   const problems = odFormProblems(typed, form, done);
-  const after = odAfterNote(typed, form);
   const blocked = problems.length > 0 || sending;
 
   function send(e: React.FormEvent<HTMLFormElement>) {
@@ -173,20 +158,16 @@ export function NewOdForm({ action, form, cancelHref }: { action: Action; form: 
       <SurfaceField />
       {form.shift && (
         <p className="rounded-lg bg-canvas px-4 py-3 text-sm">
-          Your shift is {formatTime(form.shift.startTime)} to {formatTime(form.shift.endTime)}: part of a day is within it. Asked ahead, today or up to 3 days after.
+          Your shift: {formatTime(form.shift.startTime)} – {formatTime(form.shift.endTime)}
         </p>
       )}
       <OdFields
         typed={typed}
         setTyped={setTyped}
         fid={fid}
-        dayHint="A working day of your shift, or a single rest day or official holiday with its compensation: ahead, today, or up to 3 days gone by."
-        timesHint="Within your shift. Within these hours you check in from where you are; outside them, as on any day."
-        reasonHint="What the duty is for. Your direct manager and HR read it."
-        compensation={comp && <CompensationFields comp={comp} what={comp.what} rules={form.rules ?? null} hr={false} typed={typed} setTyped={setTyped} fid={fid} />}
+        compensation={comp && <CompensationFields comp={comp} what={comp.what} rules={form.rules ?? null} typed={typed} setTyped={setTyped} fid={fid} />}
       />
-      {after && <p className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">{after}</p>}
-      <Problems problems={problems} verb="send" ready={odReadyText(typed, form.toCeo, comp, form.rules?.cashRate ?? null)} />
+      <Problems problems={problems} verb="send" />
       <div className="flex flex-wrap gap-3">
         <button type="submit" disabled={blocked} className="btn btn-primary disabled:cursor-not-allowed disabled:opacity-60">
           {sending ? 'Sending…' : 'Send request'}
@@ -207,17 +188,11 @@ function OdFields({
   typed,
   setTyped,
   fid,
-  dayHint,
-  timesHint,
-  reasonHint,
   compensation,
 }: {
   typed: TypedOd;
   setTyped: (next: TypedOd) => void;
   fid: (name: string) => string;
-  dayHint: string;
-  timesHint: string;
-  reasonHint: string;
   compensation?: React.ReactNode;
 }) {
   const part = typed.span === 'part';
@@ -242,10 +217,7 @@ function OdFields({
           <label htmlFor={fid('startDate')} className="label">
             {part ? 'Day' : 'First day'}
           </label>
-          <DateInput id={fid('startDate')} name="startDate" required defaultValue={typed.startDate} aria-describedby={fid('startDate-hint')} />
-          <p id={fid('startDate-hint')} className="hint">
-            {dayHint}
-          </p>
+          <DateInput id={fid('startDate')} name="startDate" required defaultValue={typed.startDate} />
         </div>
         {part ? (
           <>
@@ -253,28 +225,21 @@ function OdFields({
               <label htmlFor={fid('fromTime')} className="label">
                 From
               </label>
-              <TimeInput id={fid('fromTime')} name="fromTime" required defaultValue={typed.fromTime} aria-describedby={fid('times-hint')} />
+              <TimeInput id={fid('fromTime')} name="fromTime" required defaultValue={typed.fromTime} />
             </div>
             <div>
               <label htmlFor={fid('toTime')} className="label">
                 To
               </label>
-              <TimeInput id={fid('toTime')} name="toTime" required defaultValue={typed.toTime} aria-describedby={fid('times-hint')} />
+              <TimeInput id={fid('toTime')} name="toTime" required defaultValue={typed.toTime} />
             </div>
-            <p id={fid('times-hint')} className="hint -mt-3 sm:col-span-2">
-              {timesHint}
-            </p>
           </>
         ) : (
           <div>
             <label htmlFor={fid('endDate')} className="label">
               Last day {optional}
             </label>
-            <DateInput id={fid('endDate')} name="endDate" defaultValue={typed.endDate} aria-describedby={fid('endDate-hint')} />
-            <p id={fid('endDate-hint')} className="hint">
-              For several days in a row, up to 31: their official holidays and rest days aren&apos;t duty days. A single rest day or official holiday goes on
-              its own, with its compensation.
-            </p>
+            <DateInput id={fid('endDate')} name="endDate" defaultValue={typed.endDate} />
           </div>
         )}
         {compensation && <div className="sm:col-span-2">{compensation}</div>}
@@ -289,10 +254,8 @@ function OdFields({
             maxLength={OD_PLACE_MAX}
             value={typed.place}
             onChange={(e) => setTyped({ ...typed, place: e.target.value })}
-            aria-describedby={fid('place-hint')}
             className="input"
           />
-          <p id={fid('place-hint')} className="hint">E.g. the client’s office in New Cairo, or the shoot’s location. Up to {OD_PLACE_MAX} characters.</p>
         </div>
         <div className="sm:col-span-2">
           <label htmlFor={fid('reason')} className="label">
@@ -306,12 +269,8 @@ function OdFields({
             maxLength={OD_REASON_MAX}
             value={typed.reason}
             onChange={(e) => setTyped({ ...typed, reason: e.target.value })}
-            aria-describedby={fid('reason-hint')}
             className="input"
           />
-          <p id={fid('reason-hint')} className="hint">
-            {reasonHint} Up to {OD_REASON_MAX} characters.
-          </p>
         </div>
       </div>
     </>
@@ -383,7 +342,7 @@ export function RecordOdForm({
         const found = answer.check.compensation ?? null;
         setComp(found);
         if ((found?.needed === true) !== withCompensation) readFor(next, found?.needed === true);
-      } else if (answer.errors.length) setCheckProblem(`The days couldn't be checked: ${answer.errors.join(' ')} They are checked again when you record it.`);
+      } else if (answer.errors.length) setCheckProblem(`The days couldn't be checked: ${answer.errors.join(' ')}`);
     });
   }
 
@@ -422,17 +381,14 @@ export function RecordOdForm({
       <input type="hidden" name="employeeId" value={employee.id} />
       {shift && (
         <p className="rounded-lg bg-canvas px-4 py-3 text-sm">
-          {employee.name}&apos;s shift is {formatTime(shift.startTime)} to {formatTime(shift.endTime)}: part of a day is within it.
+          {employee.name}&apos;s shift: {formatTime(shift.startTime)} – {formatTime(shift.endTime)}
         </p>
       )}
       <OdFields
         typed={typed}
         setTyped={setTyped}
         fid={fid}
-        dayHint="Any working day of their shift, or a single rest day or official holiday with its compensation, ahead or gone by: more than 3 days after, it is recorded with a warning."
-        timesHint="Within their shift. Within these hours they check in from where they are; outside them, as on any day."
-        reasonHint="What the duty is for, and why HR records it, e.g. a site visit agreed by phone. The employee sees it; it is kept in the audit log."
-        compensation={comp?.onDayOff && <CompensationFields comp={comp} what={null} rules={rules} hr typed={typed} setTyped={setTyped} fid={fid} />}
+        compensation={comp?.onDayOff && <CompensationFields comp={comp} what={null} rules={rules} typed={typed} setTyped={setTyped} fid={fid} />}
       />
       {checkProblem && <p className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">{checkProblem}</p>}
       {warnings.length > 0 && (
@@ -445,7 +401,7 @@ export function RecordOdForm({
           </ul>
         </div>
       )}
-      <Problems problems={problems} verb="record" ready={odRecordReadyText(typed, employee.name, comp, rules?.cashRate ?? null)} />
+      <Problems problems={problems} verb="record" />
       <div className="flex flex-wrap gap-3">
         <button type="submit" disabled={blocked} className="btn btn-primary disabled:cursor-not-allowed disabled:opacity-60">
           {sending ? 'Recording…' : warnings.length ? 'Record with the warnings' : 'Record the official duty'}
@@ -474,7 +430,7 @@ export function OdDecisionForm({ action, stage, name, confidential = false }: { 
     <form
       action={formAction}
       onSubmit={(e) => {
-        if (decision === 'reject' && !window.confirm(`Reject the official duty request by ${name}? Your comment shows on it.`)) e.preventDefault();
+        if (decision === 'reject' && !window.confirm(`Reject the official duty request by ${name}?`)) e.preventDefault();
       }}
       aria-label={`Decide on the official duty request by ${name}`}
       className="space-y-4"
@@ -504,13 +460,8 @@ export function OdDecisionForm({ action, stage, name, confidential = false }: { 
           required={needsComment}
           value={comment}
           onChange={(e) => setComment(e.target.value)}
-          aria-describedby={fid('comment-hint')}
           className="input"
         />
-        <p id={fid('comment-hint')} className="hint">
-          {decision === 'reject' ? 'Why it is rejected. ' : ''}
-          {leaveCommentReaders(confidential)}
-        </p>
       </div>
       <button type="submit" disabled={pending || !ready} className={`btn ${decision === 'reject' ? 'btn-danger' : 'btn-primary'} disabled:cursor-not-allowed disabled:opacity-60`}>
         {pending ? button.busy : button.label}
@@ -526,7 +477,7 @@ export function CancelOdForm({ action, what }: { action: () => Promise<FormState
     <form
       action={formAction}
       onSubmit={(e) => {
-        if (!window.confirm(`Cancel your ${what}? It stays on your list, cancelled; ask again with a new request.`)) e.preventDefault();
+        if (!window.confirm(`Cancel your ${what}?`)) e.preventDefault();
       }}
       className="space-y-3"
     >
@@ -548,7 +499,7 @@ export function HrCancelOdForm({ action, what }: { action: Action; what: string 
     <form
       action={formAction}
       onSubmit={(e) => {
-        if (!window.confirm(`Cancel the approved ${what}? Its days are expected as usual again; your comment shows on it.`)) e.preventDefault();
+        if (!window.confirm(`Cancel the approved ${what}?`)) e.preventDefault();
       }}
       className="space-y-3"
     >
@@ -566,10 +517,8 @@ export function HrCancelOdForm({ action, what }: { action: Action; what: string 
           required
           value={comment}
           onChange={(e) => setComment(e.target.value)}
-          aria-describedby={fid('comment-hint')}
           className="input"
         />
-        <p id={fid('comment-hint')} className="hint">E.g. the client visit was called off. The employee sees it.</p>
       </div>
       <button type="submit" disabled={pending || comment.trim() === ''} className="btn btn-danger">
         {pending ? 'Cancelling…' : 'Cancel the official duty'}

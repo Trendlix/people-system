@@ -65,11 +65,11 @@ export const SOURCE_HEADS: Record<RecordSource, string> = { system: DAY_SOURCE_C
 
 /** Which records the day uses, in words. */
 export function countsWords(v: Pick<DayRecordsView, 'counts' | 'chosen' | 'usual'>): string {
-  if (v.counts === 'correction') return 'An approved correction counts for this day, over its records.';
+  if (v.counts === 'correction') return 'An approved correction counts for this day.';
   if (!v.counts) return 'No records kept for this day.';
   const name = DAY_SOURCE_CHOICE_LABELS[v.counts];
   if (v.chosen) return `${name} counts for this day: chosen${v.chosen.by ? ` by ${v.chosen.by}` : ''}, “${v.chosen.reason}”.`;
-  return `${name} counts for this day${v.usual === 'system' ? ': the system’s check-ins come before Zoho’s.' : '.'}`;
+  return `${name} counts for this day.`;
 }
 
 /** Hours as the page says them: 8.5 → "8:30". */

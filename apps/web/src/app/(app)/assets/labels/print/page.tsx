@@ -1,4 +1,4 @@
-import { LABEL_SHEET, labelSheetSlots } from '@trendlix/shared';
+import { labelSheetSlots } from '@trendlix/shared';
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { getBrand } from '@/lib/api';
@@ -37,7 +37,7 @@ async function Sheets({ searchParams }: { searchParams: PageProps<'/assets/label
         <h1 className="page-title">Print Label Sheets</h1>
         <p className="mt-1 text-sm text-muted">
           {sheetsText(labels.length, start)}
-          {start > 1 ? `, starting at label ${start}` : ''}. Print on A4 label paper at 100% (&ldquo;Actual size&rdquo;), with no scaling or margins added by the printer.
+          {start > 1 ? `, starting at label ${start}` : ''}. Print at 100%.
         </p>
         {startProblem && (
           <p role="alert" className="mt-1 text-sm text-warn">
@@ -60,7 +60,6 @@ async function Sheets({ searchParams }: { searchParams: PageProps<'/assets/label
           </div>
         ))}
       </section>
-      <p className="text-xs text-muted">Up to {LABEL_SHEET.maxLabels} labels at once.</p>
     </div>
   );
 }

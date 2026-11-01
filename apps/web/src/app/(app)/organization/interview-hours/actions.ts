@@ -21,7 +21,7 @@ export async function saveInterviewDefaults(_prev: FormState, fd: FormData): Pro
     throw err;
   }
   refresh();
-  return { message: 'Saved: new interviews are booked with them.' };
+  return { message: 'Saved.' };
 }
 
 /** PUT /interview-hours/people/:employeeId: someone's hours; an empty week and no one-off changes clears them. */
@@ -36,5 +36,5 @@ export async function saveHoursFor(employeeId: string, _prev: FormState, fd: For
     throw err;
   }
   refresh();
-  return { message: (saved ? saved.hours : body.windows.length || body.changes.length) ? 'Saved. HR’s times follow these hours from now on.' : 'Saved: they have no interview hours now.' };
+  return { message: (saved ? saved.hours : body.windows.length || body.changes.length) ? 'Saved.' : 'Saved: no interview hours now.' };
 }

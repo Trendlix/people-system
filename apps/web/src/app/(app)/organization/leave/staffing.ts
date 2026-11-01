@@ -1,4 +1,4 @@
-import { fewestAtWork, hasStaffingLimit, STAFFING_MAX_OFF_LIMIT, staffingLimitProblems, staffingLimitText, type StaffingLimit, type StaffingUnitView } from '@trendlix/shared';
+import { hasStaffingLimit, STAFFING_MAX_OFF_LIMIT, staffingLimitProblems, staffingLimitText, type StaffingLimit, type StaffingUnitView } from '@trendlix/shared';
 import { wholeFrom } from './setup';
 
 // Organization → Leave → Staffing (owner, 25 October 2026: "if there are leaves applied by an employee and another
@@ -51,17 +51,6 @@ export const takesLimit = (u: Pick<StaffingUnitView, 'team' | 'hasTeams'>): bool
 /** Its limit in words: "At most 2 people on annual leave at once · At least 50% at work", "No limit", "Set on its teams". */
 export const unitLimitText = (u: Pick<StaffingUnitView, 'team' | 'hasTeams' | 'limit'>): string => (takesLimit(u) ? staffingLimitText(u.limit) : 'Set on its teams');
 
-/**
- * What the limit means with its people now: "With 4 people now, at least 2 are at work on any day." Null without a
- * limit, or with nobody in it.
- */
-export function limitNowText(u: Pick<StaffingUnitView, 'team' | 'hasTeams' | 'limit' | 'members'>): string | null {
-  if (!takesLimit(u)) return null;
-  const fewest = fewestAtWork(u.limit, u.members);
-  if (fewest === null) return null;
-  return `With ${peopleNowText(u.members).toLowerCase()} now, at least ${fewest} ${fewest === 1 ? 'is' : 'are'} at work on any day.`;
-}
-
 const text = (fd: FormData, key: string) => String(fd.get(key) ?? '').trim();
 
 /**
@@ -77,9 +66,5 @@ export function staffingBody(fd: FormData): { body: StaffingLimit; errors: strin
   return { body, errors: staffingLimitProblems(body) };
 }
 
-/** What a save says: "Saved: Video, at most 2 people on annual leave at once."; removed, "Video has no staffing limit now." */
-export function staffingSavedText(name: string, limit: StaffingLimit): string {
-  if (!hasStaffingLimit(limit)) return `${name} has no staffing limit now.`;
-  const words = staffingLimitText(limit);
-  return `Saved: ${name}, ${words.charAt(0).toLowerCase()}${words.slice(1).replace(' · At', ' · at')}.`;
-}
+/** What a save says: "Saved."; removed, "Limit removed." */
+export const staffingSavedText = (limit: StaffingLimit): string => (hasStaffingLimit(limit) ? 'Saved.' : 'Limit removed.');

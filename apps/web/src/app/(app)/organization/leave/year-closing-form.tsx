@@ -170,7 +170,7 @@ export function YearClosingForm({
                           <td className="min-w-32 text-xs text-muted tabular-nums">{carriedText(r.carriedByYear) ?? '—'}</td>
                           <td className="text-right tabular-nums">
                             {due ? (
-                              <span className="badge bg-warn-soft text-warn" title="Carried for three years: settled now (Labour Law Art. 125)">
+                              <span className="badge bg-warn-soft text-warn">
                                 {r.mustSettle} days
                               </span>
                             ) : (
@@ -234,10 +234,8 @@ export function YearClosingForm({
           <button type="submit" disabled={blocked} className="btn btn-primary">
             {pending ? 'Closing…' : `Close ${year}`}
           </button>
-          <p role="status" className={`text-sm ${totals.problems ? 'text-danger' : 'text-muted'}`}>
-            {totals.problems
-              ? `${totals.problems} ${totals.problems === 1 ? 'row needs' : 'rows need'} putting right: the days carried and paid must add up to the days unused.`
-              : `${totals.carry} days carried into ${year + 1}; ${totals.pay} days paid, ${formatEgp(totals.amount)}, with the January ${year + 1} payroll.`}
+          <p role="status" className="text-sm text-danger">
+            {totals.problems ? `${totals.problems} ${totals.problems === 1 ? 'row needs' : 'rows need'} putting right.` : ''}
           </p>
         </div>
       )}

@@ -33,7 +33,6 @@ export function ViewAsButton() {
 /** The pop-up window: a search box over the users; choosing one switches to them. */
 function ViewAsWindow({ onClosed }: { onClosed: () => void }) {
   const titleId = useId();
-  const hintId = useId();
   const searchId = useId();
   const dialog = useRef<HTMLDialogElement | null>(null);
   const attach = useCallback((el: HTMLDialogElement | null) => {
@@ -81,7 +80,6 @@ function ViewAsWindow({ onClosed }: { onClosed: () => void }) {
     <dialog
       ref={attach}
       aria-labelledby={titleId}
-      aria-describedby={hintId}
       onClose={onClosed}
       className="m-auto max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-lg overflow-hidden rounded-xl bg-card p-0 text-ink shadow-xl backdrop:bg-black/70 open:flex open:flex-col sm:max-h-[calc(100dvh-4rem)]"
     >
@@ -102,9 +100,6 @@ function ViewAsWindow({ onClosed }: { onClosed: () => void }) {
       </div>
 
       <div className="space-y-3 border-b border-line-soft px-5 py-4">
-        <p id={hintId} className="text-sm text-muted">
-          You see the system as they do: their menus, pages and data. View only: to make changes in their name, switch on Act as them in the banner.
-        </p>
         <div>
           <label htmlFor={searchId} className="label">
             Search users

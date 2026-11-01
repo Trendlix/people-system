@@ -41,7 +41,6 @@ async function NewVacancy({ searchParams }: { searchParams: PageProps<'/recruitm
               </option>
             ))}
           </Select>
-          <p className="hint">Its job description fills the careers page&apos;s text; you can change it on the next step.</p>
         </div>
         <div className="flex gap-3">
           <button type="submit" className="btn btn-primary">
@@ -85,11 +84,7 @@ async function NewVacancy({ searchParams }: { searchParams: PageProps<'/recruitm
       withQuestions
       cancelHref={VACANCIES_PATH}
       submitLabel="Save draft"
-      jobTitleNote={
-        <>
-          The text below came from this job title. <Link href={NEW_VACANCY_PATH}>Start from another job title</Link>.
-        </>
-      }
+      jobTitleNote={<Link href={NEW_VACANCY_PATH}>Start from another job title</Link>}
     />
   );
 }
@@ -100,7 +95,6 @@ export default function NewVacancyPage({ searchParams }: PageProps<'/recruitment
       <div className="space-y-2">
         <BackLink href={VACANCIES_PATH}>Vacancies</BackLink>
         <h1 className="page-title">New Vacancy</h1>
-        <p className="max-w-3xl text-sm text-muted">Saved as a draft. Send it to the CEO from its page: once approved, it shows on the careers page.</p>
       </div>
       <Suspense fallback={<Loading />}>
         <NewVacancy searchParams={searchParams} />

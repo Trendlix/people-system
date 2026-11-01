@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { Suspense } from 'react';
 import { updateEmployment } from '../../../../employment-actions';
 import { loadEmployment, loadPickers } from '../../../../data';
@@ -20,15 +19,7 @@ async function EditEmployment({ params }: { params: Promise<{ id: string; employ
       <RequireHr profile={employee}>
         {pickers && (
           <div className="max-w-3xl space-y-4">
-            <p className="text-sm text-muted">
-              {periodLabel(employment)}
-              {ended ? '. Its status follows why it ended.' : '. '}
-              {!ended && (
-                <>
-                  When they leave, <Link href={`/employees/${employee.id}/ending/new`}>end the employment</Link> instead of changing it.
-                </>
-              )}
-            </p>
+            <p className="text-sm text-muted">{periodLabel(employment)}</p>
             <EmploymentForm
               action={updateEmployment.bind(null, employee.id, employment.id, ended)}
               pickers={pickers}

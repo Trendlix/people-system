@@ -40,16 +40,8 @@ function Chips({ label, chips }: { label: string; chips: ChipLink[] }) {
 }
 
 /** What the register says with no rows to show. */
-function NoRows({ filtered, registers }: { filtered: boolean; registers: boolean }) {
-  return (
-    <Empty>
-      {filtered
-        ? 'No asset matches. Try another search, or clear the filters.'
-        : registers
-          ? 'No assets yet. Add the first one with Add asset.'
-          : 'No assets yet. A custodian or a manager registers them.'}
-    </Empty>
-  );
+function NoRows({ filtered }: { filtered: boolean }) {
+  return <Empty>{filtered ? 'No asset matches.' : 'No assets yet.'}</Empty>;
 }
 
 async function Register({ searchParams }: { searchParams: PageProps<'/assets'>['searchParams'] }) {
@@ -67,7 +59,7 @@ async function Register({ searchParams }: { searchParams: PageProps<'/assets'>['
     <div className="space-y-4">
       {deleted && (
         <p role="status" className="rounded-lg bg-ok-soft px-4 py-3 text-sm text-ok">
-          {deleted} was deleted. Its code is never given again.
+          {deleted} was deleted.
         </p>
       )}
       <form action={ASSET_PATHS.list} className="card flex flex-wrap items-end gap-3 p-4">
@@ -128,7 +120,7 @@ async function Register({ searchParams }: { searchParams: PageProps<'/assets'>['
         // still shows what was done above its "No asset matches"
         <BulkSelection key={JSON.stringify(query)} rows={loaded.value.items.map(bulkRowOf)} can={bulk}>
           {loaded.value.items.length === 0 ? (
-            <NoRows filtered={isFiltered(query)} registers={can.register} />
+            <NoRows filtered={isFiltered(query)} />
           ) : (
             <>
               <AssetTable rows={loaded.value.items} values={access.values} href={ASSET_PATHS.asset} select />
@@ -137,7 +129,7 @@ async function Register({ searchParams }: { searchParams: PageProps<'/assets'>['
           )}
         </BulkSelection>
       ) : loaded.value.items.length === 0 ? (
-        <NoRows filtered={isFiltered(query)} registers={can.register} />
+        <NoRows filtered={isFiltered(query)} />
       ) : (
         <>
           <AssetTable rows={loaded.value.items} values={access.values} href={ASSET_PATHS.asset} />
@@ -154,15 +146,9 @@ async function Register({ searchParams }: { searchParams: PageProps<'/assets'>['
 export default function AssetsPage({ searchParams }: PageProps<'/assets'>) {
   return (
     <AssetsFrame tab={ASSET_PATHS.list}>
-      <p className="text-muted">
-        The studio&apos;s register: everything the company owns, where it is and who holds it. Each asset has a code that never changes, the
-        address its QR label opens.
-      </p>
-      <div className="mt-6">
-        <Suspense fallback={<Loading />}>
-          <Register searchParams={searchParams} />
-        </Suspense>
-      </div>
+      <Suspense fallback={<Loading />}>
+        <Register searchParams={searchParams} />
+      </Suspense>
     </AssetsFrame>
   );
 }

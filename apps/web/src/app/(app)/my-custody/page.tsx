@@ -35,11 +35,7 @@ async function Mine() {
 export default function MyAssetsPage() {
   return (
     <div>
-      <PageHead
-        eyebrow="People System · Assets"
-        title="My Assets"
-        intro="The company’s assets handed over to you, since when and until when, and your custody records with their signed forms. The asset team records each handover and return."
-      />
+      <PageHead eyebrow="People System · Assets" title="My Assets" />
       <div className="mt-7">
         <Suspense fallback={<Loading />}>
           <Mine />

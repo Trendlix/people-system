@@ -8,6 +8,7 @@ import { decidesForTeam, DETAILS_CHANGES_PATH, LEAVE_PATH, MY_TEAM, navFor, RAIS
 import { NavLinks, NavLinksFallback } from '@/components/nav-links';
 import { BellLink, NotificationBell } from '@/components/notification-bell';
 import { CheckInReminder } from '@/components/check-in-reminder';
+import { KpiReminder } from '@/components/kpi-reminder';
 import { SessionWatch } from '@/components/session-watch';
 import { PhoneMenu } from '@/components/phone-menu';
 import { ThemeSwitch } from '@/components/theme-switch';
@@ -61,7 +62,6 @@ async function MainNav() {
   if (due) {
     return (
       <div className="space-y-3 px-3 py-2">
-        <p className="text-sm text-sidebar-text">Review your details to open the rest of People.</p>
         <Link href={reviewHref(due)} className="inline-flex items-center gap-1.5 text-sm text-sidebar-ink no-underline hover:underline">
           Review your details
           <ArrowRight aria-hidden="true" className="size-3.5" strokeWidth={1.6} />
@@ -220,6 +220,8 @@ export default function AppLayout({ children }: LayoutProps<'/'>) {
           leave every 10 minutes. like a popup"), never while viewing as someone */}
       <Suspense fallback={null}>
         <CheckInReminder surface="site" />
+        {/* KPI scorecards waiting: once a sign-in, unless postponed (1 November 2026) */}
+        <KpiReminder />
       </Suspense>
       <div className="flex flex-1 flex-col md:flex-row">
         {/* the owner's design (30 October 2026): the near-black side menu, its own scroll on a computer so the page's

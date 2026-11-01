@@ -43,7 +43,7 @@ export function SignInEmailForm({
       action={formAction}
       onSubmit={(e) => {
         const to = address[choice];
-        if (choice === saved || !to || !window.confirm(`Sign in with ${to} from now on? Their password stays the same; the old email stops working for signing in.`)) {
+        if (choice === saved || !to || !window.confirm(`Sign in with ${to} from now on?`)) {
           e.preventDefault();
         }
       }}
@@ -148,7 +148,7 @@ export function HoldForm({ action, name }: { action: (prev: FormState, fd: FormD
     <form
       action={formAction}
       onSubmit={(e) => {
-        if (!window.confirm(`Put ${name}’s access on hold? Only check-in and check-out will work until you release it.`)) e.preventDefault();
+        if (!window.confirm(`Put ${name}’s access on hold?`)) e.preventDefault();
       }}
       className="space-y-3 rounded-lg border border-line p-4"
     >
@@ -157,10 +157,7 @@ export function HoldForm({ action, name }: { action: (prev: FormState, fd: FormD
         <label htmlFor={`${id}-reason`} className="label">
           Why
         </label>
-        <textarea id={`${id}-reason`} name="reason" required maxLength={HOLD_REASON_MAX} rows={3} className="input" aria-describedby={`${id}-reason-hint`} />
-        <p id={`${id}-reason-hint`} className="hint">
-          Kept with the hold and in the activity log for HR. They see only that HR put their access on hold.
-        </p>
+        <textarea id={`${id}-reason`} name="reason" required maxLength={HOLD_REASON_MAX} rows={3} className="input" />
       </div>
       <div className="flex flex-wrap items-center gap-3">
         <button type="submit" disabled={pending} className="btn btn-primary">
@@ -237,15 +234,8 @@ export function LinkForm({
       action={formAction}
       onSubmit={(e) => {
         setCopied(false);
-        const button = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
-        const byEmail = button?.value !== 'copy';
-        const question =
-          purpose === 'reset'
-            ? `Make a password reset link for ${email}? Setting a new password with it signs them out everywhere.`
-            : resend
-              ? `Make a new invitation for ${email}? The one sent before stops working.`
-              : null;
-        if (question && !window.confirm(byEmail ? `${question} It is emailed to them.` : question)) e.preventDefault();
+        const question = purpose === 'reset' ? `Make a password reset link for ${email}?` : resend ? `Make a new invitation for ${email}?` : null;
+        if (question && !window.confirm(question)) e.preventDefault();
       }}
       className="space-y-3"
     >
@@ -262,7 +252,7 @@ export function LinkForm({
       </div>
       {!emailReady && (
         <p className="hint">
-          Email isn’t set up on the server yet: copy the link and send it to them yourself, by WhatsApp for example.
+          Email isn’t set up yet.
           {setUpEmail && (
             <>
               {' '}

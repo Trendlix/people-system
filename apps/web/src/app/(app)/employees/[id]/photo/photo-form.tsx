@@ -44,13 +44,7 @@ export function PhotoForm({ action }: { action: (prev: FormState, fd: FormData) 
   const sending = pending || busy;
   return (
     <form action={send} className="card space-y-4 p-6">
-      <div>
-        <h2 className="font-semibold">Send a New Photo</h2>
-        <p className="mt-1 text-sm text-muted">
-          A recent photo with your face clearly visible, on a plain background (JPEG, PNG or WebP). HR checks it first: it becomes your picture
-          once HR approves it.
-        </p>
-      </div>
+      <h2 className="font-semibold">Send a New Photo</h2>
       <FormErrors errors={tooLarge ? [PHOTO_TOO_LARGE, ...(state.errors ?? [])] : state.errors} />
       <div className="flex flex-wrap items-start gap-5">
         {preview && (

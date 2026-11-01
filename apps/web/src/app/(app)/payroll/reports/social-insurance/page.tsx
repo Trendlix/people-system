@@ -25,7 +25,6 @@ import { StaffOnly } from '../../../staff-only';
 import { monthName } from '../../list';
 import { loadJson, type Loaded } from '../../load';
 import { monthChoices } from '../salary-raises/salary-raises';
-import { VS_INSURANCE_PATH } from '../vs-insurance/vs-insurance';
 import {
   apiReportPath,
   basicText,
@@ -83,7 +82,7 @@ export const metadata: Metadata = { title: 'Social Insurance Report · People Sy
 type Query = Record<string, string | string[] | undefined>;
 
 const NOT_ALLOWED = 'Only HR, Finance and the CEO can see the social insurance report.';
-const MISSING_NOT_ALLOWED = 'Only HR and the CEO see the missing data: it lists the employee file’s forms and print.';
+const MISSING_NOT_ALLOWED = 'Only HR and the CEO see the missing data.';
 const dash = <span className="text-muted">—</span>;
 const num = 'whitespace-nowrap text-right tabular-nums';
 const TONE = { ok: 'bg-ok-soft text-ok', warn: 'bg-warn-soft text-warn', accent: 'bg-accent-soft text-accent', muted: 'bg-line-soft text-muted' } as const;
@@ -106,7 +105,7 @@ function FilterSelect({ id, name, label, value, options }: { id: string; name: s
 }
 
 /** The view's filters (department or team; the register's status, the month's month), Show, and the Excel download. */
-function Filters({ f, today, departments, note }: { f: SiFilters; today: string; departments: readonly { id: string; label: string }[] | null; note: string }) {
+function Filters({ f, today, departments }: { f: SiFilters; today: string; departments: readonly { id: string; label: string }[] | null }) {
   const months = monthChoices(today, { from: f.month, to: f.month });
   return (
     <section className="card space-y-4 p-4">
@@ -129,8 +128,7 @@ function Filters({ f, today, departments, note }: { f: SiFilters; today: string;
           Show
         </button>
       </form>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
-        <p className="hint max-w-3xl">{note}</p>
+      <div className="flex justify-end border-t border-line pt-4">
         {/* a plain link, never prefetched: the API makes the workbook on each download */}
         <a href={excelHref(f, today)} className="btn btn-secondary">
           Download Excel
@@ -295,14 +293,7 @@ function RegisterRow({ row: r, report, today }: { row: SiRegisterRow; report: Si
 
 async function RegisterView({ f, today, departments }: { f: SiFilters; today: string; departments: readonly { id: string; label: string }[] | null }) {
   const loaded = await loadJson<SiRegisterReport>(apiReportPath(f, today));
-  const filters = (
-    <Filters
-      f={f}
-      today={today}
-      departments={departments}
-      note="Everyone registered with social insurance on their Social Insurance tab. The insured wage is the comprehensive wage within this year’s insurable limits, and the shares are a whole month’s."
-    />
-  );
+  const filters = <Filters f={f} today={today} departments={departments} />;
   if (loaded.kind !== 'ok') {
     return (
       <div className="space-y-4">
@@ -380,7 +371,6 @@ async function RegisterView({ f, today, departments }: { f: SiFilters; today: st
             </table>
           </div>
         )}
-        {!report.seesIdentity && <p className="text-xs text-muted">The national ID, and Forms 1 and 6 and the print in the employee file, are for HR and the CEO.</p>}
       </section>
     </div>
   );
@@ -409,14 +399,7 @@ function MonthRow({ row: r, month }: { row: SiMonthRow; month: string }) {
 
 async function ContributionsView({ f, today, departments }: { f: SiFilters; today: string; departments: readonly { id: string; label: string }[] | null }) {
   const loaded = await loadJson<SiContributionsReport>(apiReportPath(f, today));
-  const filters = (
-    <Filters
-      f={f}
-      today={today}
-      departments={departments}
-      note="What the Social Insurance tab says for the month: everyone registered employed in it, joiners and leavers too, on the whole month’s shares. Payroll vs Social Insurance compares it with the payroll."
-    />
-  );
+  const filters = <Filters f={f} today={today} departments={departments} />;
   if (loaded.kind !== 'ok') {
     return (
       <div className="space-y-4">
@@ -435,14 +418,7 @@ async function ContributionsView({ f, today, departments }: { f: SiFilters; toda
       <section aria-labelledby="si-contributions" className="space-y-3">
         <SectionTitle id="si-contributions" title={`Contributions for ${monthName(report.month)}`} note={`As of ${formatDateTime(report.generatedAt)}; ${limitsText(report.rates)}`} />
         {excluded && <p className="text-sm text-muted">{excluded}</p>}
-        {(report.notRegistered > 0 || report.insureEveryone) && (
-          <p className="text-sm text-muted">
-            {report.notRegistered > 0 && `${report.notRegistered} employed under the labour law in ${monthName(report.month)} ${report.notRegistered === 1 ? 'isn’t' : 'aren’t'} registered, so ${report.notRegistered === 1 ? 'isn’t' : 'aren’t'} listed. `}
-            {report.insureEveryone && 'Payroll counts everyone under the labour law as insured, registered or not (Payroll Setup): '}
-            {report.insureEveryone && <Link href={VS_INSURANCE_PATH}>compare with the payroll</Link>}
-            {report.insureEveryone && '.'}
-          </p>
-        )}
+        {report.notRegistered > 0 && <p className="text-sm text-muted">{report.notRegistered} under the labour law not registered.</p>}
         <Tiles tiles={contributionTiles(report)} />
         {report.rows.length === 0 ? (
           <Empty>No one registered with social insurance was employed in {monthName(report.month)}.</Empty>
@@ -494,14 +470,7 @@ async function ContributionsView({ f, today, departments }: { f: SiFilters; toda
 
 async function MissingView({ f, today, departments }: { f: SiFilters; today: string; departments: readonly { id: string; label: string }[] | null }) {
   const loaded = await loadJson<SiMissingReport>(apiReportPath(f, today));
-  const filters = (
-    <Filters
-      f={f}
-      today={today}
-      departments={departments}
-      note="Current full-time employees, and part-timers registered with social insurance, missing something on their Social Insurance tab. Each item links to where it is filled in."
-    />
-  );
+  const filters = <Filters f={f} today={today} departments={departments} />;
   if (loaded.kind !== 'ok') {
     return (
       <div className="space-y-4">
@@ -520,7 +489,7 @@ async function MissingView({ f, today, departments }: { f: SiFilters; today: str
         {excluded && <p className="text-sm text-muted">{excluded}</p>}
         <Tiles tiles={missingTiles(report)} />
         {report.rows.length === 0 ? (
-          <Empty>Nothing is missing: every Social Insurance tab checked is complete.</Empty>
+          <Empty>Nothing is missing.</Empty>
         ) : (
           <div className="card overflow-x-auto">
             <table className="table">
@@ -597,13 +566,7 @@ export default function SocialInsurancePage({ searchParams }: PageProps<'/payrol
     <StaffOnly>
       <div className="space-y-4">
         <BackLink href="/payroll/reports">Payroll Reports</BackLink>
-        <div>
-          <h1 className="page-title">Social Insurance</h1>
-          <p className="mt-1 text-muted">
-            From each employee&rsquo;s Social Insurance tab: who is registered and on what wage, a month&rsquo;s contributions to pay the insurance office, and what
-            is still missing. It shows what the tab says, not a payroll run: <Link href={VS_INSURANCE_PATH}>Payroll vs Social Insurance</Link> compares the two.
-          </p>
-        </div>
+        <h1 className="page-title">Social Insurance</h1>
         <Suspense fallback={<Loading />}>
           <Report searchParams={searchParams} />
         </Suspense>

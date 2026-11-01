@@ -94,10 +94,10 @@ export function formProblems(typed: TypedResignation, today: string): string[] {
   return resignationProblems({ reason: typed.reason, preferredLastDay: day === null ? 'not-a-date' : day, confirmed: typed.confirmed }, today);
 }
 
-/** The form's hint under the preferred day: the notice, and the day it would end if sent today. */
-export function noticeHint(notice: string | null, lastDay: string | null, show: (ymd: string) => string): string {
-  if (!notice) return 'Leave it empty to leave it to the notice.';
-  return `The notice is ${notice} by the resignation rule${lastDay ? `: sent today, it would end on ${show(lastDay)}` : ''}. A shorter time is for HR to agree.`;
+/** Under the preferred day: the notice, and the day it would end if sent today; null without a notice. */
+export function noticeHint(notice: string | null, lastDay: string | null, show: (ymd: string) => string): string | null {
+  if (!notice) return null;
+  return `Notice: ${notice}${lastDay ? `, ending ${show(lastDay)} if sent today` : ''}.`;
 }
 
 // ---------- recording it ----------

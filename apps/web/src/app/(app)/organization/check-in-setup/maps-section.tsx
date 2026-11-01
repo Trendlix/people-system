@@ -11,21 +11,18 @@ import { MAPS_ID, MAPS_NOT_FOR_DEVELOPERS, MAPS_STEPS, mapsStatus } from './maps
 // steps in the company's Google Cloud project. Until a key is saved, every map stays OpenStreetMap's, as before. A
 // developer and a Super Admin viewing as someone are told why it isn't theirs (the API refuses them too).
 
-const INTRO =
-  'Every map in the system (check-in locations, home locations, on the website and in the app) on Google Maps, with a Map/Satellite switch and Google’s place search. Until a key is set, the maps are OpenStreetMap’s, as before.';
-
 const Note = ({ children }: { children: React.ReactNode }) => <p className="rounded-lg bg-line-soft px-4 py-3 text-sm text-muted">{children}</p>;
 
 export async function MapsSection({ user }: { user: Session }) {
   const section = (body: React.ReactNode) => (
-    <SetupSection id={MAPS_ID} title="Google Maps" intro={INTRO}>
+    <SetupSection id={MAPS_ID} title="Google Maps">
       {body}
     </SetupSection>
   );
   if (user.developer) return section(<Note>{MAPS_NOT_FOR_DEVELOPERS}</Note>);
   if (user.viewAs) return section(<Note>{MAPS_SETTINGS_OWN_ACCOUNT}</Note>);
   const loaded = await loadMapsSettings();
-  if (loaded.kind === 'unavailable') return section(<Note>Not available yet: the server does not have the Google Maps settings yet. Please try again after its next update.</Note>);
+  if (loaded.kind === 'unavailable') return section(<Note>Not available yet: the server does not have the Google Maps settings yet.</Note>);
   if (loaded.kind !== 'ok') return section(<Note>The Google Maps settings could not be loaded. {loaded.kind === 'failed' ? loaded.messages.join(' ') : ''}</Note>);
   const status = mapsStatus(loaded.value);
   return section(

@@ -35,12 +35,11 @@ export interface MissingDetailsReport {
 
 /**
  * What the report says when C-level people are left out for the caller (owner, 19 October 2026): their details, not
- * amounts, as the payroll reports say: "C-level (2 people) are left out: only the CEO and the Super Admin see their
- * details."; null for none.
+ * amounts: "C-level (2 people) are left out."; null for none.
  */
 export function confidentialExcludedText(count: number | null | undefined): string | null {
   if (typeof count !== 'number' || !(count > 0)) return null;
-  return `${confidentialPeople(count)} ${count === 1 ? 'is' : 'are'} left out: only the CEO and the Super Admin see their details.`;
+  return `${confidentialPeople(count)} ${count === 1 ? 'is' : 'are'} left out.`;
 }
 
 /** Where the browser downloads the report as an Excel workbook (a plain link, never prefetched). */

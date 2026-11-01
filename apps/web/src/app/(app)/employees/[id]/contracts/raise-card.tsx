@@ -25,13 +25,11 @@ export function StageBadge({ stage }: { stage: PayStage }) {
   return <span className={`badge ${stageTone(stage)}`}>{PAY_STAGE_LABELS[stage]}</span>;
 }
 
-/** Where it stands, in a sentence for whoever looks at it. */
-function stageNote(d: Contract, stage: PayStage, canEdit: boolean, isCeo: boolean): string {
-  const step = decisionText(d.raise);
-  if (stage === 'pending_ceo') return `${step}: ${isCeo ? 'waiting for your decision' : "it can't be changed unless the CEO returns it"}.`;
-  if (stage === 'approved') return `${step}. ${canEdit ? 'Sign it once the employee and the company have signed it.' : 'HR signs it next.'}`;
-  if (stage === 'returned') return canEdit ? 'Change it as the CEO asks, and send it to the CEO again.' : 'Returned to HR, to change and send again.';
-  return canEdit ? 'Send it to the CEO once it is ready: the CEO approves a change of pay before it is signed.' : 'HR is preparing it for the CEO.';
+/** Where it stands with the CEO ("With the CEO since 16/10/2026"); null for a draft or a returned one (the badge says it). */
+function stageNote(d: Contract, stage: PayStage, isCeo: boolean): string | null {
+  if (stage === 'pending_ceo') return `${decisionText(d.raise)}${isCeo ? ': waiting for your decision' : ''}.`;
+  if (stage === 'approved') return `${decisionText(d.raise)}.`;
+  return null;
 }
 
 export function RaiseCard({
@@ -103,7 +101,7 @@ export function RaiseCard({
         {promotion && (
           <>
             <dt className="text-muted">Promotion</dt>
-            <dd>{promotion}, from the signing</dd>
+            <dd>{promotion}</dd>
           </>
         )}
       </dl>
@@ -113,26 +111,18 @@ export function RaiseCard({
           Returned by the CEO: {raise.returnedReason}
         </p>
       )}
-      <p className="text-xs text-muted">
-        {stageNote(d, stage, canEdit, isCeo)} {insuredWageText(d.startDate, raise.form2From)}
-        {raise.approval !== 'approved' && ' Documents are generated once the CEO approves it.'}
-      </p>
+      <p className="text-xs text-muted">{[stageNote(d, stage, isCeo), insuredWageText(d.startDate, raise.form2From)].filter(Boolean).join(' ')}</p>
       {(send || edit || sign || decide || canDelete) && (
         <div className="flex flex-wrap items-start gap-3">
           {sign && (
-            <SignContract
-              action={signContract.bind(null, d.id)}
-              today={today}
-              name={name}
-              hint={`The day the employee and the company signed it. It replaces version ${d.version - 1} from ${formatDate(d.startDate)}${promotion ? ', and the promotion applies to the employment' : ''}. A signed version can't be changed, except its filing dates and note.`}
-            />
+            <SignContract action={signContract.bind(null, d.id)} today={today} name={name} />
           )}
           {send && (
             <ActionButton
               action={sendRaise.bind(null, d.id)}
               pendingText="Sending…"
               variant="primary"
-              confirmText={`Send ${name} to the CEO to approve? It can't be changed while it is with the CEO.`}
+              confirmText={`Send ${name} to the CEO?`}
             >
               Send to the CEO<span className="sr-only">: {name}</span>
             </ActionButton>
@@ -146,7 +136,7 @@ export function RaiseCard({
             <div className="w-full">
               <RaiseDecisionForm
                 action={ceoDecidesRaise.bind(null, d.id)}
-                confirmApprove={`Approve ${name}? HR can then sign it, and its documents are generated.`}
+                confirmApprove={`Approve ${name}?`}
                 name={name}
                 previousGross={before?.grossSalary ?? null}
                 // the CEO may change the reason when approving (19 October 2026)
@@ -159,7 +149,7 @@ export function RaiseCard({
               action={deleteContract.bind(null, d.id)}
               pendingText="Deleting…"
               variant="danger"
-              confirmText={`Delete ${name}? The pay stays as it is. This cannot be undone.`}
+              confirmText={`Delete ${name}?`}
             >
               Delete<span className="sr-only"> {name}</span>
             </ActionButton>

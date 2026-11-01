@@ -143,18 +143,13 @@ export function NewEmployeeForm({ emailDomain }: { emailDomain: string | null })
 
       <section hidden={step !== 1} className="card p-6">
         <h2 {...heading(1)}>Start with the National ID Card</h2>
-        <p className="mt-1 text-sm text-muted">
-          Every new employee starts from a scan of their national ID card, front and back. The card is found on the scan, cut out and set
-          straight; check both sides, then read them, and the details are filled in for you to check. The cut-out card is kept in the employee
-          file once the profile is saved.
-        </p>
         <LearnedFixesNote />
 
         <div className="mt-4 space-y-4">
           <IdScan onRead={read} />
           {card && (
             <div className="flex flex-wrap items-center gap-3">
-              <p className="text-sm text-muted">The card has been read. Reading the scan again fills in the profile again from it.</p>
+              <p className="text-sm text-muted">Card read.</p>
               <button type="button" onClick={() => go(2)} className="btn btn-secondary">
                 Next
               </button>
@@ -165,10 +160,7 @@ export function NewEmployeeForm({ emailDomain }: { emailDomain: string | null })
 
       <form onSubmit={create} hidden={step === 1}>
         <section ref={profile} hidden={step !== 2} className="card space-y-8 p-6">
-          <div>
-            <h2 {...heading(2)}>Profile</h2>
-            <p className="mt-1 text-sm text-muted">Only the names are needed now. Anything left empty can be added on the profile later.</p>
-          </div>
+          <h2 {...heading(2)}>Profile</h2>
           <FormErrors errors={state.errors} />
 
           {card && (
@@ -221,13 +213,7 @@ export function NewEmployeeForm({ emailDomain }: { emailDomain: string | null })
         </section>
 
         <section hidden={step !== 3} className="card space-y-8 p-6">
-          <div>
-            <h2 {...heading(3)}>Education</h2>
-            <p className="mt-1 text-sm text-muted">
-              Anything left empty can be added on the profile later. After saving, add the employment (team, job title, join date) on the profile,
-              and the bank details.
-            </p>
-          </div>
+          <h2 {...heading(3)}>Education</h2>
           <FormErrors errors={state.errors} />
           <PersonalFields state={FRESH} fid={fid} part="education" />
 

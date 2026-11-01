@@ -13,7 +13,7 @@ export function ResignationStatusBadge({ r }: { r: Pick<ResignationRequestView, 
 
 const dash = <span className="text-muted">—</span>;
 
-export function ResignationsTable({ requests, who = false, note }: { requests: readonly ResignationRequestView[]; who?: boolean; note: string }) {
+export function ResignationsTable({ requests, who = false, note }: { requests: readonly ResignationRequestView[]; who?: boolean; note?: string }) {
   return (
     <div className="card overflow-x-auto">
       <table className="table">
@@ -57,7 +57,7 @@ export function ResignationsTable({ requests, who = false, note }: { requests: r
           ))}
         </tbody>
       </table>
-      <p className="border-t border-line px-4 py-3 text-sm text-muted">{note}</p>
+      {note && <p className="border-t border-line px-4 py-3 text-sm text-muted">{note}</p>}
     </div>
   );
 }

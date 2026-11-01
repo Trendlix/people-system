@@ -22,10 +22,6 @@ export function NewClaimHeading({ back }: { back: { href: string; label: string 
     <div className="space-y-2">
       {back && <BackLink href={back.href}>{back.label}</BackLink>}
       <h1 className="page-title">New Reimbursement</h1>
-      <p className="text-muted">
-        Claim back an expense you paid for the company: the type, the date, the amount and what it was for, with the receipts. Your direct manager
-        decides it first (without one, your team lead, else the head of your department), then HR, then Finance (the CEO for a C-level person, both stages); once approved, it is paid with the next payroll, untaxed.
-      </p>
     </div>
   );
 }
@@ -37,21 +33,18 @@ export async function NewClaim({ surface = 'site' }: { surface?: Surface }) {
     return (
       <>
         <NewClaimHeading back={back} />
-        <Empty>
-          Only someone with an employee profile can claim a reimbursement. No employee record uses your sign-in email ({user.email}) as its work email
-          yet: ask HR to add it to your profile.
-        </Empty>
+        <Empty>No employee profile uses your sign-in email ({user.email}): ask HR to add it.</Empty>
       </>
     );
   }
   const today = todayInCairo();
   const types = await loadMyTypes(today);
   let body: React.ReactNode;
-  if (types.kind === 'unavailable') body = <Empty>Not available yet: the server does not have reimbursements yet.</Empty>;
+  if (types.kind === 'unavailable') body = <Empty>Not available yet.</Empty>;
   else if (types.kind === 'forbidden') body = <Empty>You can&apos;t claim a reimbursement.</Empty>;
   else if (types.kind === 'failed') body = <Empty>{notLoadedText(types, 'types of expense you may claim')}</Empty>;
   else if (types.value.length === 0) {
-    body = <Empty>There is no type of expense you can claim now. HR sets them up, each for the people it is for: ask HR if you expected one.</Empty>;
+    body = <Empty>There is no type of expense you can claim now.</Empty>;
   } else body = <NewClaimForm action={sendClaim} types={types.value} today={today} cancelHref={back.href} />;
 
   return (

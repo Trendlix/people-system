@@ -103,7 +103,7 @@ describe('the review', () => {
 
   it('applies only those matched once, on the run and the user’s to fill, and says why the others aren’t', () => {
     expect(applicable(people).map((p) => p.key)).toEqual(['c']);
-    expect(applyConfirmText({ people })).toBe('Fill the worked hours, no-show days and permission hours of 1 line from Zoho People? What was typed on that line is replaced.');
+    expect(applyConfirmText({ people })).toBe('Fill 1 line from Zoho People, replacing what was typed?');
     expect(notAppliedReason(people[3], true)).toBe('Matched twice: choose who is who before applying.');
     expect(notAppliedReason(people[4], true)).toBe('Not on this payroll: refresh the payroll once their contract is signed.');
     expect(notAppliedReason(people[6], true)).toBe('C-level: the CEO fills their line.');
@@ -123,7 +123,7 @@ describe('the review', () => {
 
   it('says where the permission hours come from', () => {
     expect(permissionText(MONTH)).toBe('2:00 from Zoho');
-    expect(permissionText({ permissionHours: null, permissionFrom: 'system' })).toBe('The requests approved in the system (the line has them)');
+    expect(permissionText({ permissionHours: null, permissionFrom: 'system' })).toBe('Approved in the system');
     expect(permissionText({ permissionHours: null, permissionFrom: null })).toBe('None');
   });
 
@@ -164,8 +164,8 @@ describe('checking in on the system (owner, 19 October 2026: "Check-in through t
     for (const status of ['pending_ceo', 'approved', 'paid'] as const) expect(refreshesFromAttendance({ roles: ['hr', 'ceo'] }, status)).toBe(false);
   });
 
-  it('says of someone who checks in that their line is filled from their attendance days', () => {
-    expect(CHECKS_IN_NOTE).toBe("Checks in on the system this month: Zoho's days count before their first check-in, and their line is filled from their attendance days.");
+  it('says of someone who checks in that they do', () => {
+    expect(CHECKS_IN_NOTE).toBe('Checks in on the system this month');
   });
 });
 
@@ -192,17 +192,11 @@ describe('deleting an import (asked, 21 October 2026: "how to delete previous im
     expect(deleteImportPath(RUN, IMPORT, true)).toBe(`/payroll/runs/${RUN}/attendance-imports/${IMPORT}?undo=1`);
   });
 
-  it('says what happens before deleting', () => {
-    expect(deleteImportConfirmText(notApplied)).toBe(
-      "Delete the September 2026 import (Presence hours break-up_902.xlsx)? It isn't applied, so nothing on the payroll changes. This can't be undone.",
-    );
-    expect(deleteImportConfirmText(applied)).toBe(
-      "Undo and delete the September 2026 import (2 files)? The 26 lines it filled, whoever fills them, go back to the worked hours, no-show days and permission hours typed before it (empty if none were). The 640 days of attendance it kept are removed, and the lines filled from the attendance days are filled again without them. Then the import is deleted. This can't be undone.",
-    );
-    expect(deleteImportConfirmText({ ...applied, kept: { lines: 1, days: 0 } })).toContain('(2 files)? The line it filled, whoever fills it, goes back');
-    expect(deleteImportConfirmText({ ...applied, kept: { lines: 0, days: 1 } })).toContain('(2 files)? The day of attendance it kept is removed');
-    // an API from before Delete: what it says without the counts
-    expect(deleteImportConfirmText({ ...applied, kept: undefined })).toContain('The lines it filled, whoever fills them, go back');
+  it('asks before deleting', () => {
+    expect(deleteImportConfirmText(notApplied)).toBe('Delete the September 2026 import (Presence hours break-up_902.xlsx)?');
+    expect(deleteImportConfirmText(applied)).toBe('Undo and delete the September 2026 import (2 files)?');
+    // an API from before Delete: applied means undone first
+    expect(deleteImportConfirmText({ ...applied, kept: undefined })).toBe('Undo and delete the September 2026 import (2 files)?');
   });
 
   it('is only on a draft payroll, as the API says', () => {

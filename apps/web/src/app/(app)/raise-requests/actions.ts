@@ -80,12 +80,7 @@ export async function decideRaiseRequest(requestId: string, suggested: boolean, 
     throw err;
   }
   refresh();
-  return {
-    message:
-      decision === 'reject'
-        ? 'Request rejected. Your comment shows on it.'
-        : 'Approved: the raise is prepared from it and sent to the CEO. Each step shows on the request.',
-  };
+  return { message: decision === 'reject' ? 'Request rejected.' : 'Approved and sent to the CEO.' };
 }
 
 /** HR rejects a request with HR, with a comment. A raise prepared from it and not with the CEO goes with it. */
@@ -100,5 +95,5 @@ export async function declineRaiseRequest(requestId: string, _prev: FormState, f
     throw err;
   }
   refresh();
-  return { message: 'Request rejected. Your comment shows on it.' };
+  return { message: 'Request rejected.' };
 }

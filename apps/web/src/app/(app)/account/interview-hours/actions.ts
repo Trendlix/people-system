@@ -12,7 +12,7 @@ import { ApiError, apiSend } from '@/lib/api';
 import { hoursFormBody, savedHoursText } from '@/lib/interview-hours';
 import type { FormState } from '@/lib/types';
 
-const OLDER_API = 'Not available yet: the server doesn’t keep interview hours yet. Please try again after its next update.';
+const OLDER_API = 'Not available yet.';
 
 /** PUT /me/interview-hours: an empty week and no one-off changes clears them. */
 export async function saveMyInterviewHours(_prev: FormState, fd: FormData): Promise<FormState> {

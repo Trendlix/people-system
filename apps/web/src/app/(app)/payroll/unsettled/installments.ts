@@ -2,7 +2,6 @@ import {
   ADJUSTMENT_STATUS_LABELS,
   ADVANCE_SETTLED_HOW_LABELS,
   changeInstallment,
-  installmentLimit,
   installmentPlan,
   installmentPlanProblems,
   installmentPlanText,
@@ -79,8 +78,7 @@ export function planPreview(amountInput: string, countInput: string, first: stri
  * An intern's contract pays no wage (owner, 19 October 2026: the unpaid internship, "its just transportation
  * allowance"), its gross 0: there is no pay to take installments from, as the API says it when it refuses them.
  */
-export const NO_WAGE_INSTALLMENTS =
-  'The current contract pays no wage (an unpaid internship), so there is no pay to take installments of advances and loans from: record it without installments, to be paid back otherwise.';
+export const NO_WAGE_INSTALLMENTS = 'The current contract pays no wage: record it without installments.';
 
 /**
  * Why a plan can't be recorded (owner, 18 October 2026, after reading the law: "Block above 10%"): the first month
@@ -93,17 +91,6 @@ export function planProblem(plan: readonly Installment[], limit: AdvanceLimitVie
   if (!limit || limit.gross === null) return null;
   if (limit.gross === 0) return plan.length > 0 ? NO_WAGE_INSTALLMENTS : null;
   return planLimitProblem(plan, limit.byMonth, limit.gross, limit.percent ?? LAW_INSTALLMENT_PERCENT);
-}
-
-/** What the law's limit is worked out with, as the form says it under the plan; null without the figures. */
-export function limitText(limit: AdvanceLimitView | null): string | null {
-  if (!limit) return null;
-  if (limit.gross === null) return 'No current contract, so the law’s limit on installments can’t be checked.';
-  if (limit.gross === 0) return NO_WAGE_INSTALLMENTS;
-  const percent = limit.percent ?? LAW_INSTALLMENT_PERCENT;
-  const most = installmentLimit(limit.gross, percent) ?? 0;
-  const whose = percent >= LAW_INSTALLMENT_PERCENT ? 'the most the law allows (Labour Law Art. 113)' : `the limit set in Payroll Setup (the law’s is ${LAW_INSTALLMENT_PERCENT}%)`;
-  return `The current gross is ${formatEgp(limit.gross)} a month: a month’s installments of all their advances and loans may take at most ${percent}% of it (${formatEgp(most)}), ${whose}.`;
 }
 
 // ---------- each installment ----------
@@ -129,7 +116,7 @@ export const nextText = (next: AdvanceRow['nextInstallment']) => (next ? `Next: 
 
 /** What Move to next month asks first. */
 export const postponeConfirm = (month: string) =>
-  `Move the ${monthName(month)} installment, and every later one, a month on? Nothing of it is deducted in ${monthName(month)}; the plan ends a month later.`;
+  `Move the ${monthName(month)} installment, and every later one, a month on?`;
 
 /**
  * What changing the installment of `month` to the amount typed does to the later ones, worked out as it is typed:
@@ -165,13 +152,10 @@ export function settledText(a: Pick<AdvanceRow, 'settledHow' | 'settledNote'>): 
 }
 
 /** The three ways HR marks one settled with something outstanding, as the settle form offers them, paid back first. */
-export const SETTLE_CHOICES: { value: AdvanceSettleWay; label: string; hint: string }[] = (
-  [
-    ['paid_back', 'The employee paid back what is outstanding, e.g. in cash.'],
-    ['final_settlement', 'Taken from the final dues of someone who left.'],
-    ['waived', 'The company forgoes what is outstanding. Say why: it is kept with who waived it.'],
-  ] as const
-).map(([value, hint]) => ({ value, label: ADVANCE_SETTLED_HOW_LABELS[value], hint }));
+export const SETTLE_CHOICES: { value: AdvanceSettleWay; label: string }[] = (['paid_back', 'final_settlement', 'waived'] as const).map((value) => ({
+  value,
+  label: ADVANCE_SETTLED_HOW_LABELS[value],
+}));
 
 /**
  * The settle form (owner, 18 October 2026: leaving before it is paid back, "taken from the final settlement, unless

@@ -134,7 +134,7 @@ export function AdjustStoredButton({ itemId, fileName, mimeType, name, owner }: 
           source={source}
           title={`Adjust ${name} · ${owner}`}
           saveLabel="Save"
-          confirmText="Replace the stored file with the adjusted one? The original is not kept."
+          confirmText="Replace the stored file with the adjusted one?"
           onDone={replace}
           onClose={closed}
         />

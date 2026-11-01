@@ -25,7 +25,7 @@ export const metadata: Metadata = { title: 'Team Attendance · People System' };
 async function Team({ searchParams }: { searchParams: PageProps<'/my-team/attendance'>['searchParams'] }) {
   const month = readAttendanceMonth(await searchParams, todayInCairo());
   const [loaded, places] = await Promise.all([loadMonth(month), loadPlaces()]);
-  if (loaded.kind === 'forbidden') return <Empty>Team Attendance is for direct managers and leads: no one reports to you at the moment.</Empty>;
+  if (loaded.kind === 'forbidden') return <Empty>No one reports to you at the moment.</Empty>;
   if (loaded.kind !== 'ok') return <Empty>{notLoaded(loaded, 'team attendance')}</Empty>;
   const view = loaded.value;
   return (
@@ -51,10 +51,6 @@ export default function TeamAttendancePage({ searchParams }: PageProps<'/my-team
       <div className="space-y-2">
         <BackLink href={MY_TEAM}>My Team</BackLink>
         <h1 className="page-title">Team Attendance</h1>
-        <p className="max-w-3xl text-muted">
-          Your team&apos;s days, from their check-ins on the system and Zoho People&apos;s imports: the hours within each person&apos;s shift, absent
-          days, short hours, permission and leave; a check-in outside the work arrangement&apos;s rule is flagged. Open a row for its days.
-        </p>
       </div>
       <Suspense fallback={<Loading />}>
         <Team searchParams={searchParams} />

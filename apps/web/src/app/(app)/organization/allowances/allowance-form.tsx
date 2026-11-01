@@ -39,7 +39,6 @@ export function AllowanceTypeForm({ action, allowance }: { action: Action; allow
             placeholder="e.g. Transport"
             autoComplete="off"
             defaultValue={valueOf(state, 'nameEn', allowance?.nameEn)}
-            aria-describedby={fid('name-hint')}
             className="input"
           />
         </div>
@@ -56,23 +55,17 @@ export function AllowanceTypeForm({ action, allowance }: { action: Action; allow
             maxLength={100}
             autoComplete="off"
             defaultValue={valueOf(state, 'nameAr', allowance?.nameAr)}
-            aria-describedby={fid('name-hint')}
             className="input"
           />
         </div>
       </div>
-      <p id={fid('name-hint')} className="hint -mt-3">
-        As it shows on contracts and job offers, and in their documents in each language. Each allowance has its own English
-        name.
-      </p>
       {allowance?.inUse ? (
         <div>
           <p className="label">How it is paid</p>
           <p>{ALLOWANCE_BASIS_LABELS[allowance.basis ?? 'fixed']}</p>
-          <p className="hint">It is on contracts or job offers, so how it is paid stays. Add another allowance to pay it the other way.</p>
         </div>
       ) : (
-        <fieldset className="space-y-2" aria-describedby={fid('basis-hint')}>
+        <fieldset className="space-y-2">
           <legend className="label">How it is paid</legend>
           {ALLOWANCE_BASES.map((b) => (
             <label key={b} className={choice}>
@@ -86,10 +79,6 @@ export function AllowanceTypeForm({ action, allowance }: { action: Action; allow
               {ALLOWANCE_BASIS_LABELS[b]}
             </label>
           ))}
-          <p id={fid('basis-hint')} className="hint">
-            Per client account assigned: a contract or a job offer takes it with no amount, and payroll pays, each month, the
-            amounts of the client accounts the person is assigned to under Clients → Client Accounts, by the days held.
-          </p>
         </fieldset>
       )}
       <fieldset className="space-y-4">
@@ -100,15 +89,10 @@ export function AllowanceTypeForm({ action, allowance }: { action: Action; allow
               type="checkbox"
               name="taxable"
               defaultChecked={checked('taxable', allowance?.taxable ?? true)}
-              aria-describedby={fid('taxable-hint')}
               className="size-4 accent-accent"
             />
             Taxed
           </label>
-          <p id={fid('taxable-hint')} className="hint">
-            Taxed with the salary. By law an allowance paid in cash is taxed (Law 91/2005, Art. 9), a transport allowance
-            too; only transport the company itself provides, such as its own buses, is exempt.
-          </p>
         </div>
         <div>
           <label className={choice}>
@@ -116,17 +100,12 @@ export function AllowanceTypeForm({ action, allowance }: { action: Action; allow
               type="checkbox"
               name="insured"
               defaultChecked={checked('insured', allowance?.insured ?? false)}
-              aria-describedby={fid('insured-hint')}
               className="size-4 accent-accent"
             />
             Insured
           </label>
-          <p id={fid('insured-hint')} className="hint">
-            Counted in the insured wage with the gross salary, within the year&apos;s maximum insurable wage.
-          </p>
         </div>
       </fieldset>
-      {allowance && <p className="hint">Contracts and job offers already drafted keep the names and treatment they were drafted with.</p>}
       <div className="flex flex-wrap gap-3">
         <SubmitButton busy={pending}>{allowance ? 'Save changes' : 'Create allowance'}</SubmitButton>
         <Link href="/organization/allowances" className="btn btn-secondary">

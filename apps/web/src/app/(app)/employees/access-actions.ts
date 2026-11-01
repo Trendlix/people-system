@@ -34,7 +34,7 @@ export async function setSignInEmail(employeeId: string, _prev: FormState, fd: F
   const r = await send(() => apiSend<EmployeeAccessView>('PUT', `/employees/${employeeId}/access/sign-in-email`, { choice }));
   if (!r.ok) return { ...r.state, values: { choice } };
   refresh();
-  return { message: `Saved. They sign in with ${r.value?.signInEmail.email ?? 'it'} from now on, with the same password.` };
+  return { message: 'Saved.' };
 }
 
 /** Give access now: their account made at once, nothing sent. */
@@ -42,7 +42,7 @@ export async function giveAccessNow(employeeId: string): Promise<FormState> {
   const r = await send(() => apiSend<EmployeeAccessView>('POST', `/employees/${employeeId}/access/account`));
   if (!r.ok) return r.state;
   refresh();
-  return { message: 'Their account is made. Send them an invitation when you’re ready.' };
+  return { message: 'Account made.' };
 }
 
 /**
@@ -55,7 +55,7 @@ export async function giveGrace(employeeId: string): Promise<FormState> {
   if (!r.ok) return r.state;
   refresh();
   const until = r.value?.standing.grace?.until;
-  return { message: until ? `Grace given: full access until the end of ${formatDate(until)}.` : 'Grace given.' };
+  return { message: until ? `Grace given until ${formatDate(until)}.` : 'Grace given.' };
 }
 
 /**
@@ -69,7 +69,7 @@ export async function holdAccess(employeeId: string, _prev: FormState, fd: FormD
   const r = await send(() => apiSend<EmployeeAccessView>('POST', `/employees/${employeeId}/access/hold`, { reason }));
   if (!r.ok) return r.state;
   refresh();
-  return { message: 'Their access is on hold: only check-in and check-out work until you release it.' };
+  return { message: 'Access on hold.' };
 }
 
 /** HR releases their hold: where they stand follows their contract again. */
@@ -87,7 +87,7 @@ export async function sendAccessLink(employeeId: string, purpose: 'invite' | 're
   if (!r.ok) return r.state;
   refresh();
   const sent = r.value!;
-  if (sent.link) return { link: sent.link, expiresAt: sent.expiresAt, message: 'Copy the link and send it to them yourself. It is shown only now.' };
+  if (sent.link) return { link: sent.link, expiresAt: sent.expiresAt, message: 'Copy the link now: it is shown only once.' };
   return { expiresAt: sent.expiresAt, message: purpose === 'invite' ? 'Invitation emailed.' : 'Password reset link emailed.' };
 }
 

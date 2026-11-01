@@ -104,7 +104,7 @@ async function JobTitleDetails({ params }: { params: Promise<{ id: string; jobTi
               <h3 className="font-semibold">Delete Job Title</h3>
               <DeleteForm
                 action={deleteJobTitle.bind(null, jobTitleId, jobTitle.departmentId)}
-                confirmText={`Delete the job title "${jobTitle.titleEn}" and its job description? This cannot be undone.`}
+                confirmText={`Delete the job title "${jobTitle.titleEn}"?`}
                 label="Delete job title"
               />
             </section>

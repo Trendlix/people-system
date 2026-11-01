@@ -21,11 +21,6 @@ export function NewCompensatoryHeading({ back }: { back: { href: string; label: 
     <div className="space-y-2">
       {back && <BackLink href={back.href}>{back.label}</BackLink>}
       <h1 className="page-title">Compensatory Day</h1>
-      <p className="text-muted">
-        Ask for a day off in exchange for a rest day or an official holiday you worked, or hours off for part of one, a day before at the latest. Your
-        direct manager decides it first (without one, your team lead, else the head of your department), then HR, who approves it as time off or,
-        rarely, pays it in cash instead.
-      </p>
     </div>
   );
 }
@@ -39,7 +34,7 @@ export async function NewCompensatory({ surface = 'site' }: { surface?: Surface 
     body = (
       <Empty>
         {!user.employeeId
-          ? `Only someone with an employee profile can ask for a compensatory day. No employee record uses your sign-in email (${user.email}) as its work email yet: ask HR to add it to your profile.`
+          ? `Only someone with an employee profile can ask for a compensatory day: ask HR to add your sign-in email (${user.email}).`
           : 'Your profile couldn’t be loaded. Please try again in a moment.'}
       </Empty>
     );
@@ -47,7 +42,7 @@ export async function NewCompensatory({ surface = 'site' }: { surface?: Surface 
   else if (form.kind !== 'ok') body = <Empty>{notLoadedText(form, 'compensatory days')}</Empty>;
   else if (form.value.refusal) body = <Empty>{form.value.refusal}</Empty>;
   else {
-    body = <NewCompensatoryForm action={sendCompensatory} form={form.value} cancelHref={back.href} toCeo={profile.confidential === true} />;
+    body = <NewCompensatoryForm action={sendCompensatory} form={form.value} cancelHref={back.href} />;
   }
   return (
     <>

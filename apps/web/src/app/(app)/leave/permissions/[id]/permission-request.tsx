@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { permissionClock, permissionHoursText } from '@trendlix/shared';
 import { CLevelBadge } from '@/components/c-level-badge';
@@ -6,7 +5,7 @@ import { StandingInNote } from '@/components/standing-in-note';
 import { approverLabel } from '@/lib/department-leads';
 import { formatDateTime } from '@/lib/format';
 import { getCurrentUser } from '@/lib/session';
-import { appBack, appRequestsHref, type Surface } from '@/lib/surface';
+import { appBack, type Surface } from '@/lib/surface';
 import { BackLink, Empty, UUID } from '../../../organization/ui';
 import { notLoadedText } from '../../../payroll/load';
 import { loadPermission } from '../../data';
@@ -14,7 +13,6 @@ import { CancelLeaveForm, HrCancelLeaveForm, LeaveDecisionForm } from '../../lea
 import { decidingAsTitle, hrStageName, placeOfEmployee } from '../../list';
 import { cancelMyPermission, cancelPermissionByHr, decidePermission } from '../../permission-actions';
 import {
-  MY_PERMISSION_HREF,
   permissionBack,
   permissionDayText,
   permissionDoneText,
@@ -112,13 +110,11 @@ export async function PermissionRequestDetail({
               </Fact>
               <Fact label="Hours">
                 <span className="text-base font-semibold tabular-nums">{permissionHoursText(r.hours)}</span>
-                <span className="block text-xs text-muted">Counted as worked once approved</span>
               </Fact>
               <Fact label="Times">{times ? <span className="tabular-nums">{times}</span> : <span className="text-muted">Not given</span>}</Fact>
               {r.monthLeft !== null && (
                 <Fact label="Left of its month">
                   <span className="text-base font-semibold tabular-nums">{permissionClock(r.monthLeft)}</span>
-                  <span className="block text-xs text-muted">Of the month&apos;s permission hours, with those approved and waiting taken</span>
                 </Fact>
               )}
               {r.reason && (
@@ -131,7 +127,7 @@ export async function PermissionRequestDetail({
               </Fact>
               <Fact label={r.manager ? approverLabel(r.manager) : 'Direct manager'}>
                 {r.recordedByHr ? (
-                  <span className="text-muted">Recorded by HR: no decision needed</span>
+                  <span className="text-muted">Recorded by HR</span>
                 ) : r.manager ? (
                   r.manager.fullNameEn
                 ) : (
@@ -139,11 +135,6 @@ export async function PermissionRequestDetail({
                 )}
               </Fact>
             </dl>
-            {own && (
-              <p className="mt-4 text-sm text-muted">
-                Your other permission requests are on <Link href={surface === 'site' ? MY_PERMISSION_HREF : appRequestsHref('permission')}>My Requests</Link>.
-              </p>
-            )}
           </Section>
 
           {r.waitingForYou && r.stage && (
@@ -166,17 +157,11 @@ export async function PermissionRequestDetail({
 
           {r.canCancel && (
             <Section title="Cancel the Permission">
-              <p className="mb-3 text-sm text-muted">
-                {r.status === 'approved'
-                  ? 'Approved and its day still to come: you can still cancel it, and its hours go back to the month’s allowance.'
-                  : 'While it is being decided you can cancel it, e.g. to ask again for another day or other hours.'}
-              </p>
               <CancelLeaveForm action={cancelMyPermission.bind(null, r.id)} what={what} kind="permission" />
             </Section>
           )}
           {!r.canCancel && (r.hrCanCancel ?? (recordsPermission(user) && r.status === 'approved' && !own)) && (
             <Section title="Cancel the Permission">
-              <p className="mb-3 text-sm text-muted">Approved permission HR cancels gives its hours back to the month; the employee sees why.</p>
               <HrCancelLeaveForm action={cancelPermissionByHr.bind(null, r.id)} what={what} kind="permission" />
             </Section>
           )}

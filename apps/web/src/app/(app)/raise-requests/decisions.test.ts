@@ -195,7 +195,7 @@ describe("the CEO's decision", () => {
     expect(errors).toEqual([
       'Choose approve, approve with another raise, reject or return to HR.',
       'Write your comment on the decision.',
-      'Write what HR should change: it goes back to HR with your comment.',
+      'Write what HR should change.',
       'Enter the raise as an amount in EGP or a percent of the gross.',
     ]);
   });

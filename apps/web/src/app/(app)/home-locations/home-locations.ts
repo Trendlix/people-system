@@ -11,7 +11,6 @@ import {
   isHomeType,
   isLocationValidity,
   isOpenHome,
-  locationKindLabel,
   seesHomeLocations,
   validitiesFor,
   validityProblems,
@@ -111,20 +110,6 @@ export const homeTypeOf = (r: Partial<Pick<HomeLocationView, 'type'>>): HomeType
 /** Each type in a sentence's start or a line: "Home location", "Remote site", "Client location". */
 export const HOME_TYPE_LINES: Record<HomeType, string> = { home: 'Home location', remote_site: 'Remote site', client: 'Client location' };
 
-/** What the form says of each type. */
-export const HOME_TYPE_HINTS: Record<HomeType, string> = {
-  home: 'Where you live, for the days you work from home. Only for you.',
-  remote_site: 'Somewhere you work from often, e.g. a studio or a shoot’s place. Only for you.',
-  client: 'A client’s place staff work at. Once approved it counts for every employee, not only you.',
-};
-
-/** How a check-in within it shows on the attendance pages: "Home", "Remote site · Studio", "Client · Acme". */
-export function homeShownAs(r: Partial<Pick<HomeLocationView, 'type' | 'label'>>): string {
-  const type = homeTypeOf(r);
-  if (type === 'home') return 'Home';
-  return locationKindLabel(type, r.label ?? HOME_TYPE_LINES[type]);
-}
-
 /** "home location", "remote site", "client location", inside a sentence. */
 const typeWords = (r: Partial<Pick<HomeLocationView, 'type'>>) => HOME_TYPE_LINES[homeTypeOf(r)].toLowerCase();
 
@@ -162,13 +147,11 @@ export function homeProgressText(
     case 'with_ceo':
       return { text: r.confidential ? 'Approved at HR’s step: with the CEO to decide it' : 'HR approved it: with the CEO now' };
     case 'approved': {
-      const shown = homeShownAs(r);
-      const everyone = homeTypeOf(r) === 'client' ? ', for every employee' : '';
       if (r.inForce === false) {
-        if (homeTypeOf(r) === 'client' && r.location?.endedAt) return { text: `Ended on Check-in Setup: a check-in there no longer shows as ${shown}` };
-        return { text: `Ended${r.endsOn ? ` ${formatDate(r.endsOn)}` : ' with the employment'}: a check-in there no longer shows as ${shown}` };
+        if (homeTypeOf(r) === 'client' && r.location?.endedAt) return { text: 'Ended on Check-in Setup' };
+        return { text: `Ended${r.endsOn ? ` ${formatDate(r.endsOn)}` : ' with the employment'}` };
       }
-      return { text: `Approved ${formatDate(r.approvedAt)}: a check-in within ${radiusText(r.radiusMetres)} of it shows as ${shown}${everyone}` };
+      return { text: `Approved ${formatDate(r.approvedAt)}` };
     }
     case 'rejected':
       return { text: `Rejected by ${homeStageName(r.rejectedStage ?? 'hr', r.confidential)}`, reason: r.rejectReason };
@@ -266,26 +249,24 @@ export const decidingAsTitle = (stage: HomeStage, confidential?: boolean | null)
 /** What a request's page says of what was just done on it (?done=). */
 export function homeDoneText(query: Query, r: Pick<HomeLocationView, 'confidential'> & Partial<Pick<HomeLocationView, 'type' | 'label'>>): { text: string; tone: 'ok' | 'warn' } | null {
   const done = one(query.done);
-  const shown = homeShownAs(r);
   if (done === 'sent') return { text: r.confidential ? 'Sent to the CEO.' : 'Sent to HR.', tone: 'ok' };
-  if (done === 'withdrawn') return { text: 'Withdrawn. Its point is deleted; ask again whenever you want.', tone: 'ok' };
-  if (done === 'removed') return { text: `Removed. Its point is deleted, and check-ins no longer show as ${shown}.`, tone: 'ok' };
-  if (done === 'moved') return { text: 'This request moved on meanwhile: here is where it stands now.', tone: 'warn' };
-  if (done === 'validity') return { text: 'Saved: how long it lasts is changed.', tone: 'ok' };
+  if (done === 'withdrawn') return { text: 'Withdrawn.', tone: 'ok' };
+  if (done === 'removed') return { text: 'Removed.', tone: 'ok' };
+  if (done === 'moved') return { text: 'This request has moved on since you opened it.', tone: 'warn' };
+  if (done === 'validity') return { text: 'Saved.', tone: 'ok' };
   const [stage, decision] = done.split('_');
   if (!(HOME_STAGES as readonly string[]).includes(stage) || !(HOME_DECISIONS as readonly string[]).includes(decision)) return null;
-  if (decision === 'reject') return { text: 'Rejected. The employee sees your comment, and its point is deleted.', tone: 'ok' };
-  if (stage === 'hr') return { text: 'Approved at HR’s step: it is with the CEO now.', tone: 'ok' };
-  if (homeTypeOf(r) === 'client') return { text: `Approved: it is a client location for every employee now, on Check-in Setup; check-ins within it show as ${shown}.`, tone: 'ok' };
-  return { text: `Approved: check-ins within it now show as ${shown}.`, tone: 'ok' };
+  if (decision === 'reject') return { text: 'Rejected.', tone: 'ok' };
+  if (stage === 'hr') return { text: 'Approved: sent to the CEO.', tone: 'ok' };
+  return { text: homeTypeOf(r) === 'client' ? 'Approved: a client location for every employee now.' : 'Approved.', tone: 'ok' };
 }
 
 /** What Approvals says once a check-in location is decided there (?done=home-…). */
 export const APPROVALS_HOME_DONE: Record<string, string> = {
-  'home-hr-approve': 'Check-in location approved at HR’s step: it is with the CEO now.',
-  'home-ceo-approve': 'Check-in location approved: check-ins within it now count there.',
-  'home-hr-reject': 'Check-in location rejected. The employee sees your comment.',
-  'home-ceo-reject': 'Check-in location rejected. The employee sees your comment.',
+  'home-hr-approve': 'Check-in location approved: sent to the CEO.',
+  'home-ceo-approve': 'Check-in location approved.',
+  'home-hr-reject': 'Check-in location rejected.',
+  'home-ceo-reject': 'Check-in location rejected.',
 };
 
 /** "1 check-in location request", "3 check-in location requests". */

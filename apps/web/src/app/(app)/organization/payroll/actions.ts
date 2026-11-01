@@ -35,12 +35,12 @@ export async function updateYourRules(_prev: FormState, fd: FormData): Promise<F
     }
   }
   refresh();
-  return { message: 'Saved. Runs made or refreshed from now on use these rules; new contracts and offers start with the basic share.' };
+  return { message: 'Saved.' };
 }
 
 /** 4 Paying Salaries: the company's CIB account and its name, the ACH purpose and the payday (PATCH /payroll/settings). */
 export async function updatePayingSalaries(_prev: FormState, fd: FormData): Promise<FormState> {
   const { body, errors } = payingBody(fd);
   if (errors.length) return { errors, values: submitted(fd) };
-  return send(() => apiSend('PATCH', '/payroll/settings', body), fd, 'Saved. The bank files and Mark as paid use these from now on.');
+  return send(() => apiSend('PATCH', '/payroll/settings', body), fd, 'Saved.');
 }

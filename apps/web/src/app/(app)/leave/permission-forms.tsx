@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { startTransition, useActionState, useRef, useState, useTransition } from 'react';
-import { permissionClock, permissionHoursText, permissionMonth } from '@trendlix/shared';
+import { permissionClock, permissionMonth } from '@trendlix/shared';
 import { DateInput, TimeInput } from '@/components/date-time-inputs';
 import { FormErrors, useFieldIds, valueOf } from '@/components/form';
 import { Select } from '@/components/select';
@@ -16,7 +16,6 @@ import {
   permissionFormProblems,
   permissionHourOptions,
   permissionMonthText,
-  permissionReadyText,
   usedOnDay,
   workedOutTimes,
   type TypedPermission,
@@ -49,7 +48,6 @@ export function NewPermissionForm({
   initial,
   today,
   cancelHref,
-  toCeo = false,
 }: {
   action: Action;
   person: PermissionPerson;
@@ -58,8 +56,6 @@ export function NewPermissionForm({
   /** Today, YYYY-MM-DD (Cairo). */
   today: string;
   cancelHref: string;
-  /** The employee is C-level (19 October 2026): after their manager it goes to the CEO, not HR. */
-  toCeo?: boolean;
 }) {
   const [state, formAction, sending] = useActionState(action, {});
   const fid = useFieldIds();
@@ -95,7 +91,7 @@ export function NewPermissionForm({
       const answer = await permissionMonthData(wanted, person.employeeId);
       if (asked.current !== wanted) return;
       if ('month' in answer) setLoaded(answer.month);
-      else setLoadProblem(`The permission hours of ${monthName(wanted)} couldn't be checked: ${answer.errors.join(' ')} They are checked again when you send it.`);
+      else setLoadProblem(`The permission hours of ${monthName(wanted)} couldn't be checked: ${answer.errors.join(' ')}`);
     });
   }
 
@@ -131,11 +127,11 @@ export function NewPermissionForm({
 
       <div role="status" aria-live="polite" className="rounded-lg bg-canvas px-4 py-3 text-sm">
         <p className="font-semibold tabular-nums">{permissionMonthText(loaded, today.slice(0, 7))}</p>
-        <p className="text-xs text-muted">
-          {byHr ? `${person.name}'s permission` : 'Your permission'}: at most {permissionHoursText(loaded.maxHoursPerDay)} a day and{' '}
-          {permissionHoursText(loaded.hoursPerMonth)} a month, as Leave Setup gives it.
-          {date && dayUsed > 0 && ` ${permissionClock(dayUsed)} already asked for on ${weekdayOf(date)} ${formatDate(date)}.`}
-        </p>
+        {date && dayUsed > 0 && (
+          <p className="text-xs text-muted">
+            {permissionClock(dayUsed)} already asked for on {weekdayOf(date)} {formatDate(date)}.
+          </p>
+        )}
       </div>
 
       <div className="grid gap-5 sm:grid-cols-2">
@@ -143,12 +139,7 @@ export function NewPermissionForm({
           <label htmlFor={fid('date')} className="label">
             Day
           </label>
-          <DateInput id={fid('date')} name="date" required defaultValue={typed.date} aria-describedby={fid('date-hint')} />
-          <p id={fid('date-hint')} className="hint">
-            {byHr
-              ? 'A working day of their shift, not an official holiday or a day of leave. It may be in the past.'
-              : 'A working day of your shift, not an official holiday or a day of leave.'}
-          </p>
+          <DateInput id={fid('date')} name="date" required defaultValue={typed.date} />
         </div>
         <div>
           <label htmlFor={fid('hours')} className="label">
@@ -160,7 +151,6 @@ export function NewPermissionForm({
             required
             value={typed.hours}
             onChange={(e) => set('hours', e.target.value)}
-            aria-describedby={fid('hours-hint')}
             className="input"
           >
             <option value="">Choose the hours</option>
@@ -170,26 +160,20 @@ export function NewPermissionForm({
               </option>
             ))}
           </Select>
-          <p id={fid('hours-hint')} className="hint">
-            In half hours, at most {permissionHoursText(loaded.maxHoursPerDay)} a day.
-          </p>
         </div>
         <div>
           <label htmlFor={fid('fromTime')} className="label">
             From {optional}
           </label>
-          <TimeInput id={fid('fromTime')} name="fromTime" defaultValue={typed.fromTime} aria-describedby={fid('times-hint')} />
+          <TimeInput id={fid('fromTime')} name="fromTime" defaultValue={typed.fromTime} />
         </div>
         <div>
           <label htmlFor={fid('toTime')} className="label">
             To {optional}
           </label>
-          <TimeInput id={fid('toTime')} name="toTime" defaultValue={typed.toTime} aria-describedby={fid('times-hint')} />
+          <TimeInput id={fid('toTime')} name="toTime" defaultValue={typed.toTime} />
         </div>
-        <p id={fid('times-hint')} className="hint -mt-3 sm:col-span-2">
-          Choose one: the other follows from the hours, e.g. leaving at 5:00 PM for 2 hours is from 5:00 PM.
-          {times && ` As chosen: ${times}.`}
-        </p>
+        {times && <p className="hint -mt-3 tabular-nums sm:col-span-2">{times}</p>}
         <div className="sm:col-span-2">
           <label htmlFor={fid('reason')} className="label">
             Reason {optional}
@@ -201,18 +185,14 @@ export function NewPermissionForm({
             maxLength={REASON_MAX}
             value={typed.reason}
             onChange={(e) => set('reason', e.target.value)}
-            aria-describedby={fid('reason-hint')}
             className="input"
           />
-          <p id={fid('reason-hint')} className="hint">
-            {byHr ? 'E.g. a doctor’s appointment, reported by phone.' : 'Your direct manager and HR read it.'} Up to {REASON_MAX} characters.
-          </p>
         </div>
       </div>
 
       {loadProblem && <p className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">{loadProblem}</p>}
       <div role="status" aria-live="polite">
-        {problems.length ? (
+        {problems.length > 0 && (
           <div className="rounded-lg border border-line bg-canvas px-4 py-3 text-sm">
             <p className="font-medium">Before you can {byHr ? 'record' : 'send'} it:</p>
             <ul className="mt-1 list-disc space-y-0.5 pl-5 text-muted">
@@ -221,8 +201,6 @@ export function NewPermissionForm({
               ))}
             </ul>
           </div>
-        ) : (
-          <p className="rounded-lg bg-ok-soft px-4 py-3 text-sm text-ok">{permissionReadyText(typed, byHr, person.name, toCeo)}</p>
         )}
       </div>
 

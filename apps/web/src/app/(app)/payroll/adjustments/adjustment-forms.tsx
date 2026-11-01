@@ -11,7 +11,6 @@ import {
   advancesFor,
   asksDays,
   asksTaxed,
-  DAYS_HINTS,
   KIND_CHOICES,
   linksAdvance,
   typeChoices,
@@ -62,7 +61,6 @@ function Fields({
   const chosen = types.some((t) => t.value === type) ? type : types[0].value;
   const advanceKind = linksAdvance(kind, chosen);
   const linkable = advancesFor(advances, employeeId, advanceKind);
-  const taxedNote = types.find((t) => t.value === chosen)?.taxed;
 
   return (
     <div className="grid gap-4 sm:grid-cols-2">
@@ -86,16 +84,13 @@ function Fields({
         <label htmlFor={fid('type')} className="label">
           Type
         </label>
-        <Select id={fid('type')} name="type" required value={chosen} onChange={(e) => setType(e.target.value)} aria-describedby={fid('type-hint')} className="input">
+        <Select id={fid('type')} name="type" required value={chosen} onChange={(e) => setType(e.target.value)} className="input">
           {types.map((t) => (
             <option key={t.value} value={t.value}>
               {t.label}
             </option>
           ))}
         </Select>
-        <p id={fid('type-hint')} className="hint">
-          {kind === 'deduction' ? 'Taken after tax.' : taxedNote === null ? 'Choose below whether it is taxed.' : taxedNote ? 'Taxed with the pay.' : 'Not taxed: added after tax.'}
-        </p>
       </div>
       {asksTaxed(kind, chosen) && (
         <fieldset className="sm:col-span-2">
@@ -126,14 +121,10 @@ function Fields({
             required
             inputMode="decimal"
             autoComplete="off"
-            placeholder="e.g. 2 or 1.5"
+            placeholder="Up to 31, e.g. 2 or 1.5"
             defaultValue={valueOf(state, 'days', typeof row?.days === 'number' ? String(row.days) : '')}
-            aria-describedby={fid('days-hint')}
             className="input tabular-nums"
           />
-          <p id={fid('days-hint')} className="hint">
-            Whole or half days, up to 31. {DAYS_HINTS[chosen]}
-          </p>
         </div>
       ) : (
         <div>
@@ -165,7 +156,6 @@ function Fields({
               </option>
             ))}
           </Select>
-          <p className="hint">Advances and loans are recorded on Unsettled.</p>
         </div>
       )}
       <div className="sm:col-span-2">
@@ -247,8 +237,7 @@ export function AddAdjustmentForm({
       </div>
       {linked && kind === 'deduction' && (
         <p role="note" className="rounded-lg bg-accent-soft px-3 py-2 text-sm">
-          A deduction for an asset returned damaged or missing: it is linked to its custody record. Enter the amount; the month&apos;s damage or loss deductions
-          are checked against 5 days&apos; wage (Labour Law Art. 151).
+          Linked to its custody record.
           <input type="hidden" name="custodyItemId" value={linked.custodyItemId} />
         </p>
       )}
@@ -306,7 +295,7 @@ export function AdjustmentActions({
         <button type="button" aria-expanded={false} onClick={() => setOpen(true)} className={`${small} btn-secondary`}>
           Edit<span className="sr-only"> the {what}</span>
         </button>
-        <ActionButton action={cancel} pendingText="Cancelling…" variant="danger" confirmText={`Cancel this ${what}? It stays on record, left out of the month's totals.`}>
+        <ActionButton action={cancel} pendingText="Cancelling…" variant="danger" confirmText={`Cancel this ${what}?`}>
           Cancel<span className="sr-only"> the {what}</span>
         </ActionButton>
       </div>

@@ -148,10 +148,10 @@ export interface Tile {
 export function summaryTiles(t: RaiseTotals): Tile[] {
   return [
     { key: 'raises', label: 'Raises', value: String(t.count), note: null },
-    { key: 'people', label: 'People', value: String(t.people), note: 'Someone with two raises counts once' },
+    { key: 'people', label: 'People', value: String(t.people), note: null },
     { key: 'average', label: 'Average raise', value: percentText(t.averagePercent), note: t.medianPercent === null ? null : `Median ${signedPercent(t.medianPercent)}` },
-    { key: 'monthly', label: 'Monthly cost increase', value: costText(t.monthlyCostIncrease), note: 'Gross and allowances' },
-    { key: 'yearly', label: 'Yearly cost increase', value: costText(t.yearlyCostIncrease), note: 'The monthly increase × 12' },
+    { key: 'monthly', label: 'Monthly cost increase', value: costText(t.monthlyCostIncrease), note: null },
+    { key: 'yearly', label: 'Yearly cost increase', value: costText(t.yearlyCostIncrease), note: null },
   ];
 }
 

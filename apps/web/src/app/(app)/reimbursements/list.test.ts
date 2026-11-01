@@ -10,8 +10,6 @@ import {
   claimHref,
   claimsLabel,
   claimsPath,
-  COMMENT_READERS,
-  commentReaders,
   currentAmount,
   decidedText,
   decisionBody,
@@ -264,17 +262,17 @@ describe('deciding a claim', () => {
     expect(decisionButton('reject', 'hr').label).toBe('Reject the claim');
     expect(decidedText('approve', 'manager')).toBe('Approved: the claim goes to HR.');
     expect(decidedText('approve_other', 'hr')).toBe('Approved: the claim goes to Finance.');
-    expect(decidedText('approve', 'finance')).toMatch(/added, untaxed, to the next payroll/);
-    expect(decidedText('reject', 'finance')).toBe('Claim rejected. The employee sees your comment.');
+    expect(decidedText('approve', 'finance')).toBe('Approved: added to the next payroll.');
+    expect(decidedText('reject', 'finance')).toBe('Claim rejected.');
   });
 
   it('says on the claim’s page what was just done there, and nothing for anything else', () => {
-    expect(doneText({ done: 'sent' }, 'with_manager')?.text).toMatch(/^Claim sent\. It goes to your direct manager, then HR, then Finance/);
-    expect(doneText({ done: 'sent' }, 'with_hr')?.text).toMatch(/^Claim sent\. It goes to HR, then Finance/);
-    expect(doneText({ done: 'sent' }, 'with_manager', { role: 'team_lead' })?.text).toMatch(/^Claim sent\. It goes to your team lead, then HR, then Finance/);
-    expect(doneText({ done: 'cancelled' }, 'cancelled')).toEqual({ text: 'Claim cancelled. It stays on your list, cancelled.', tone: 'ok' });
+    expect(doneText({ done: 'sent' }, 'with_manager')?.text).toBe('Claim sent to your direct manager.');
+    expect(doneText({ done: 'sent' }, 'with_hr')?.text).toBe('Claim sent to HR.');
+    expect(doneText({ done: 'sent' }, 'with_manager', { role: 'team_lead' })?.text).toBe('Claim sent to your team lead.');
+    expect(doneText({ done: 'cancelled' }, 'cancelled')).toEqual({ text: 'Claim cancelled.', tone: 'ok' });
     expect(doneText({ done: 'hr_approve_other' }, 'with_finance')).toEqual({ text: 'Approved: the claim goes to Finance.', tone: 'ok' });
-    expect(doneText({ done: 'manager_reject' }, 'rejected')?.text).toBe('Claim rejected. The employee sees your comment.');
+    expect(doneText({ done: 'manager_reject' }, 'rejected')?.text).toBe('Claim rejected.');
     // refused as the claim moved on since the page was opened (the API's 409)
     expect(doneText({ done: 'moved' }, 'with_finance')).toEqual({ text: MOVED_ON, tone: 'warn' });
     expect(claimDoneHref(ID, 'moved')).toBe(`/reimbursements/${ID}?done=moved`);
@@ -304,12 +302,11 @@ describe('a C-level person’s claim (owner, 19 October 2026: "make C level Empl
     expect(decisionButton('approve', 'manager').label).toBe('Approve and send to HR');
     expect(decisionButton('approve', 'hr').label).toBe('Approve and send to Finance');
     expect(decidedText('approve', 'manager', true)).toBe('Approved: the claim goes to the CEO.');
-    expect(decidedText('approve', 'hr', true)).toBe('Approved: the claim goes on to Finance’s stage, which the CEO decides too.');
+    expect(decidedText('approve', 'hr', true)).toBe('Approved: the claim goes on to Finance’s stage.');
     expect(decidedText('approve', 'hr')).toBe('Approved: the claim goes to Finance.');
-    expect(doneText({ done: 'hr_approve_other' }, 'with_finance', null, true)?.text).toBe('Approved: the claim goes on to Finance’s stage, which the CEO decides too.');
-    expect(sentText('with_manager', null, true)).toBe(
-      'Claim sent. It goes to your direct manager, then the CEO, for HR’s and Finance’s stages; each step shows on the claim. Once approved, it is paid with the next payroll.',
-    );
+    expect(doneText({ done: 'hr_approve_other' }, 'with_finance', null, true)?.text).toBe('Approved: the claim goes on to Finance’s stage.');
+    expect(sentText('with_manager', null, true)).toBe('Claim sent to your direct manager.');
+    expect(sentText('with_hr', null, true)).toBe('Claim sent to the CEO.');
   });
 
   it('names the stage once decided, not who decided it: the log says who', () => {
@@ -328,10 +325,5 @@ describe('a C-level person’s claim (owner, 19 October 2026: "make C level Empl
     expect(decidingAsTitle(as('finance', 'super_admin'), 'finance', 'the Direct Manager', true)).toBe('Finance');
     expect(decidingAsTitle(as('finance'), 'finance', 'the Direct Manager', false)).toBe('Finance');
     expect(decidingAsTitle(as('ceo'), 'manager', 'the Team Lead', true)).toBe('the Team Lead');
-  });
-
-  it('tells the approver HR and Finance don’t read the comment', () => {
-    expect(commentReaders(true)).toBe('The employee sees your comment, and so do the direct manager, the CEO and the Super Admin.');
-    expect(commentReaders(undefined)).toBe(COMMENT_READERS);
   });
 });

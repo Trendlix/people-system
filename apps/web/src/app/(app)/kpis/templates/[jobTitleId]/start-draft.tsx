@@ -26,24 +26,17 @@ export function StartDraft({
   samples: { code: string; label: string }[] | null;
   /** Other job titles' versions, by department; null: they couldn't be read. */
   copies: CopyGroup[] | null;
-  /** The role library's roles by kind, the one suggested for this job title and why; null: they couldn't be read. */
-  library: { groups: CopyGroup[]; suggested: string | null; suggestion: string | null } | null;
+  /** The role library's roles by kind and the one suggested for this job title; null: they couldn't be read. */
+  library: { groups: CopyGroup[]; suggested: string | null } | null;
 }) {
   const { state, pending, form } = useKeptForm(start);
   const fid = useFieldIds();
 
   return (
     <section aria-labelledby={fid('heading')} className="card space-y-5 p-6">
-      <div>
-        <h2 id={fid('heading')} className="text-lg font-semibold">
-          Start a Draft
-        </h2>
-        <p className="mt-1 max-w-3xl text-sm text-muted">
-          {newestVersion !== null
-            ? `Version ${newestVersion} is the newest published. A draft becomes the next version: nothing changes until it is published, and then only from the next month’s scorecards.`
-            : 'This job title has no KPI template yet. Build it from its job description, beside this: each key duty becomes a metric with a points scale.'}
-        </p>
-      </div>
+      <h2 id={fid('heading')} className="text-lg font-semibold">
+        Start a Draft
+      </h2>
       <FormErrors errors={state.errors} />
       <div className="flex flex-wrap gap-3">
         {newestVersion !== null && (
@@ -75,7 +68,6 @@ export function StartDraft({
                 name="libraryKey"
                 required
                 defaultValue={library.suggested ?? ''}
-                aria-describedby={fid('library-hint')}
                 className="input max-w-xl"
               >
                 <option value="" disabled>
@@ -91,11 +83,6 @@ export function StartDraft({
                   </optgroup>
                 ))}
               </Select>
-              <p id={fid('library-hint')} className="hint max-w-3xl">
-                {library.suggestion ? `${library.suggestion} ` : ''}
-                Its metrics are linked to this job title’s duties where they match, and a title that leads people gets a team leadership metric. Change them to fit
-                before publishing.
-              </p>
               <button type="submit" disabled={pending} className="btn btn-secondary">
                 Start from this role
               </button>
@@ -115,7 +102,7 @@ export function StartDraft({
               <label htmlFor={fid('sample')} className="label">
                 Start from a sample
               </label>
-              <Select id={fid('sample')} name="sampleCode" required defaultValue="" aria-describedby={fid('sample-hint')} className="input">
+              <Select id={fid('sample')} name="sampleCode" required defaultValue="" className="input">
                 <option value="" disabled>
                   Choose a sample
                 </option>
@@ -125,9 +112,6 @@ export function StartDraft({
                   </option>
                 ))}
               </Select>
-              <p id={fid('sample-hint')} className="hint">
-                The framework’s role templates from the HR KPI sheet: change their metrics to fit this job title before publishing.
-              </p>
               <button type="submit" disabled={pending} className="btn btn-secondary">
                 Start from this sample
               </button>
@@ -147,7 +131,7 @@ export function StartDraft({
               <label htmlFor={fid('copy')} className="label">
                 Copy from another job title
               </label>
-              <Select id={fid('copy')} name="templateId" required defaultValue="" aria-describedby={fid('copy-hint')} className="input">
+              <Select id={fid('copy')} name="templateId" required defaultValue="" className="input">
                 <option value="" disabled>
                   Choose a job title’s version
                 </option>
@@ -161,9 +145,6 @@ export function StartDraft({
                   </optgroup>
                 ))}
               </Select>
-              <p id={fid('copy-hint')} className="hint">
-                Its metrics and points are copied into this job title’s draft; the other job title’s stay as they are.
-              </p>
               <button type="submit" disabled={pending} className="btn btn-secondary">
                 Copy this template
               </button>

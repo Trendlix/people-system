@@ -58,7 +58,7 @@ export function offerTimeline(o: OfferView): TimelineEvent[] {
       key: 'hired',
       label: 'Profile made',
       at: o.hiredAt,
-      detail: 'The employee profile, the employment and a draft contract',
+      detail: null,
       tone: 'ok',
       ...(o.employeeId && { href: `/employees/${encodeURIComponent(o.employeeId)}` }),
     });
@@ -75,14 +75,13 @@ export function waitingText(o: Pick<OfferView, 'status' | 'expiresOn' | 'hiredAt
   const earlier = o.recordedEarlier === true && o.earlierOffers === true;
   switch (o.status) {
     case 'draft':
-      return earlier ? 'An earlier offer: record it as sent earlier, then the answer the candidate gave.' : 'Not sent yet. Check the PDF, then send it by email or copy the link.';
+      return earlier ? 'Not recorded as sent yet.' : 'Not sent yet.';
     case 'sent':
-      return earlier ? "Recorded as sent earlier: record the candidate's answer." : `Waiting for the candidate's answer. Open until ${formatDate(o.expiresOn)}.`;
+      return earlier ? "Waiting for the candidate's answer." : `Waiting for the candidate's answer. Open until ${formatDate(o.expiresOn)}.`;
     case 'expired':
-      if (earlier) return `Recorded as sent earlier; its last day was ${formatDate(o.expiresOn)}. Record the answer the candidate gave, with its day.`;
-      return `Not answered by ${formatDate(o.expiresOn)}, its last day. Extend it to give more time, or record an answer given another way.`;
+      return `Not answered by ${formatDate(o.expiresOn)}, its last day.`;
     case 'accepted':
-      return o.hiredAt ? null : "Accepted, but the employee profile hasn't been made yet: press Make the profile.";
+      return o.hiredAt ? null : "The profile hasn't been made yet.";
     default:
       return null;
   }
@@ -126,7 +125,7 @@ export function missingHelp(o: Pick<OfferView, 'id' | 'status' | 'missing' | 'te
       return {
         tag: m.tag,
         label,
-        what: `An offer never has this: it belongs on an employee's documents. Remove {{${m.tag}}} from the job offer template, then publish it again.`,
+        what: `Remove {{${m.tag}}} from the job offer template, then publish it again.`,
         href: o.template?.slotKey ? templateHref(o.template.slotKey) : TEMPLATES_PATH,
         linkText: 'Open the template',
       };

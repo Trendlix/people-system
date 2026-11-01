@@ -82,7 +82,10 @@ function MentionText({
   const suggestions = typing ? mentionSuggestions(people, mentionable, typing.query, chosen) : [];
   const kept = keptMentions(text, chosen, people);
   const allowed = kept.filter((m) => mentionable.includes(m));
-  const notTold = kept.filter((m) => !mentionable.includes(m)).map((m) => people.find((p) => p.id === m)?.name ?? '');
+  const notTold = kept
+    .filter((m) => !mentionable.includes(m))
+    .map((m) => people.find((p) => p.id === m)?.name ?? '')
+    .filter(Boolean);
 
   function look(el: HTMLTextAreaElement) {
     setTyping(mentionQueryAt(el.value, el.selectionStart ?? el.value.length));
@@ -144,7 +147,7 @@ function MentionText({
         aria-expanded={suggestions.length > 0}
         aria-controls={listId}
         aria-activedescendant={suggestions.length ? `${listId}-${Math.min(active, suggestions.length - 1)}` : undefined}
-        aria-describedby={hintId}
+        aria-describedby={notTold.length ? hintId : undefined}
         className="input"
       />
       {suggestions.length > 0 && (
@@ -166,10 +169,11 @@ function MentionText({
           ))}
         </ul>
       )}
-      <p id={hintId} className="hint">
-        Type @ to mention a colleague who may read it: they are told.
-        {notTold.length > 0 && ` ${notTold.filter(Boolean).join(', ')} can’t read a comment about this, so won’t be told.`}
-      </p>
+      {notTold.length > 0 && (
+        <p id={hintId} className="hint">
+          {notTold.join(', ')} can’t read this, so won’t be told.
+        </p>
+      )}
       {allowed.map((m) => (
         <input key={m} type="hidden" name="mentions" value={m} />
       ))}
@@ -298,7 +302,7 @@ function DeleteComment({ id }: { id: string }) {
     <form
       action={formAction}
       onSubmit={(e) => {
-        if (!window.confirm('Delete this comment? This can’t be undone.')) e.preventDefault();
+        if (!window.confirm('Delete this comment?')) e.preventDefault();
       }}
       className="space-y-2"
     >
@@ -343,7 +347,7 @@ function CommentItem({ c, data, showChip }: { c: ScreeningCommentView; data: Scr
             </button>
           )}
           {c.can.delete && <DeleteComment id={c.id} />}
-          {c.can.edit && c.editableUntil && <span className="self-center text-xs text-muted">You can edit it until {formatDateTime(c.editableUntil)}.</span>}
+          {c.can.edit && c.editableUntil && <span className="self-center text-xs text-muted">Editable until {formatDateTime(c.editableUntil)}</span>}
         </div>
       )}
     </li>

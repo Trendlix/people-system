@@ -67,7 +67,7 @@ async function Waiting({ searchParams }: { searchParams: PageProps<'/app/approve
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
   const done = ceoDoneMessage(query);
   if (!decidesSomething(user)) {
-    return <div className="card px-4 py-8 text-center text-sm text-muted">Nothing here is yours to decide: requests wait here for those who decide them.</div>;
+    return <div className="card px-4 py-8 text-center text-sm text-muted">Nothing here is yours to decide.</div>;
   }
   const [leave, permissions, wfh, compensatory, od, claims, corrections, withHr, payRaises, homes, scorecards] = await Promise.all([
     loadWaitingLeave(),
@@ -101,7 +101,7 @@ async function Waiting({ searchParams }: { searchParams: PageProps<'/app/approve
     <div className="space-y-4">
       {done && <DoneLine text={done} />}
       {sections.length === 0 ? (
-        <div className="card px-4 py-8 text-center text-sm text-muted">Nothing is waiting for you. You&apos;re all caught up.</div>
+        <div className="card px-4 py-8 text-center text-sm text-muted">Nothing is waiting for you.</div>
       ) : (
         <>
           <p className="text-sm text-muted">
@@ -137,7 +137,7 @@ async function Waiting({ searchParams }: { searchParams: PageProps<'/app/approve
 export default function PhoneApprovePage({ searchParams }: PageProps<'/app/approve'>) {
   return (
     <div className="space-y-4">
-      <PageTitle title="To Approve">What waits for your decision: approve it, or reject it with a comment.</PageTitle>
+      <PageTitle title="To Approve" />
       <Suspense fallback={<PhoneLoading />}>
         <Waiting searchParams={searchParams} />
       </Suspense>

@@ -59,7 +59,6 @@ async function DepartmentPillars({ params }: { params: PageProps<'/organization/
         <h2 className="text-xl font-semibold">{name}</h2>
         <p className="mt-1 text-sm text-muted">
           {jobTitlesCount(row.jobTitles)}
-          {parentName ? '' : ', those of its teams without their own included'}
           {row.oldTemplates > 0 ? `; ${row.oldTemplates === 1 ? '1 template uses' : `${row.oldTemplates} templates use`} the old pillars` : ''}.{' '}
           <Link href={KPI_PATHS.templates}>KPI Templates</Link>
         </p>
@@ -84,8 +83,7 @@ async function DepartmentPillars({ params }: { params: PageProps<'/organization/
               <div className="space-y-2">
                 <h3 className="font-semibold">Next</h3>
                 <p className="text-sm text-muted">
-                  Back to {aboveText} from {kpiMonthName(row.next.appliesFrom)}’s scorecards, which open on {formatDate(row.next.opensFrom)}. It can be changed
-                  until then.
+                  Back to {aboveText} from {kpiMonthName(row.next.appliesFrom)}’s scorecards, which open on {formatDate(row.next.opensFrom)}.
                 </p>
                 <PillarsList version={above} attendance={attendance} />
               </div>
@@ -100,17 +98,9 @@ async function DepartmentPillars({ params }: { params: PageProps<'/organization/
 
       {buildsKpiTemplates(user) && (
         <section aria-labelledby="department-pillars-change" className="card space-y-5 p-6">
-          <div>
-            <h2 id="department-pillars-change" className="text-lg font-semibold">
-              Change Its Pillars
-            </h2>
-            <p className="mt-1 max-w-3xl text-sm text-muted">
-              {parentName
-                ? `Its own pillars replace ${parentName}’s for its job titles.`
-                : 'Its own pillars replace the company’s for its job titles, and its teams’ unless they have their own.'}{' '}
-              Each template of its job titles must then place its metrics in them; until it does, its scorecards keep opening on its old version and old pillars.
-            </p>
-          </div>
+          <h2 id="department-pillars-change" className="text-lg font-semibold">
+            Change Its Pillars
+          </h2>
           <DepartmentPillarsChoice
             view={view}
             department={{ id: row.department.id, name, row, above: parentName ? { possessive: `${parentName}’s`, newest: above } : null }}

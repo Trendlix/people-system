@@ -38,7 +38,6 @@ import {
   draftSourceOf,
   SETTING_KEYS,
   settingsOf,
-  settingsSummary,
   templateIdsOf,
   type DraftAllState,
   type PublishDraftsState,
@@ -68,7 +67,7 @@ export async function updateKpiSettings(_prev: FormState, fd: FormData): Promise
     return refused(err);
   }
   refresh();
-  return { message: `Saved: ${settingsSummary(settings)} of the month after the scorecard's.` };
+  return { message: 'Saved.' };
 }
 
 /**

@@ -62,7 +62,7 @@ export function summaryTiles(s: StatisticsView): Tile[] {
   const months = `${t.months} ${t.months === 1 ? 'month' : 'months'} approved`;
   return [
     { key: 'companyCost', label: 'Company cost', value: formatEgp(t.companyCost), note: months },
-    { key: 'gross', label: 'Gross', value: formatEgp(t.gross), note: 'Earned and allowances' },
+    { key: 'gross', label: 'Gross', value: formatEgp(t.gross), note: null },
     { key: 'net', label: 'Net', value: formatEgp(t.net), note: `${formatEgp(t.transfer)} transferred` },
     { key: 'employees', label: 'Employees paid', value: String(t.employees), note: `${t.personMonths} person-months` },
     { key: 'average', label: 'Average gross', value: t.averageGross === null ? '—' : formatEgp(t.averageGross), note: t.medianGross === null ? null : `Median ${formatEgp(t.medianGross)}` },

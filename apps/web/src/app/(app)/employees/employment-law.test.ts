@@ -1,28 +1,22 @@
-import { EMPLOYMENT_TYPES, LABELS, WORK_NATURES } from '@trendlix/shared';
+import { EMPLOYMENT_TYPES, LABELS } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 import {
   ART_154_NOTE,
   art154Estimate,
   art154Text,
-  aTypeWord,
   BECAME_OPEN_ENDED,
   CASUAL_TOO_LONG,
   contractLengthText,
-  employmentTypeHint,
   FREELANCE_NO_LEAVE,
-  FREELANCE_NOTE,
   FREELANCE_SHORT,
   INTERN_NO_LEAVE,
-  INTERN_NOTE,
   INTERN_SHORT,
   lawWarnings,
   noLeaveText,
   outsideLawShort,
   TRAINING_ENDED,
   typeWord,
-  WORK_NATURE_HINTS,
   workNatureLabel,
-  workPatternNote,
 } from './employment-law';
 
 describe('the employment types by the labour law (18 October 2026)', () => {
@@ -40,32 +34,6 @@ describe('the employment types by the labour law (18 October 2026)', () => {
     expect(typeWord('intern')).toBe('unpaid internship');
     // a value the screens don't know is shown as it is
     expect(typeWord('robot')).toBe('robot');
-    // with its article
-    expect(aTypeWord('full_time')).toBe('a full-time');
-    expect(aTypeWord('part_time')).toBe('a part-time');
-    expect(aTypeWord('intern')).toBe('an unpaid internship');
-  });
-
-  it('hints at what each type means, where its terms are', () => {
-    expect(employmentTypeHint('full_time', 'below')).toBeNull();
-    expect(employmentTypeHint('', 'tab')).toBeNull();
-    expect(employmentTypeHint('part_time', 'below')).toMatch(/contract's terms, below\.$/);
-    expect(employmentTypeHint('part_time', 'tab')).toMatch(/on the Employment tab\.$/);
-    // an offer has the pay terms itself
-    expect(employmentTypeHint('part_time', 'offer')).toBeNull();
-    // a trainee is no type of its own any more (25 October 2026)
-    expect(employmentTypeHint('trainee', 'below')).toBeNull();
-    expect(employmentTypeHint('freelance', 'tab')).toBe(FREELANCE_NOTE);
-    expect(FREELANCE_NOTE).toMatch(/^Outside the labour law.*Art\. 1\(1\).*No leave and no company social insurance; a service agreement/);
-    expect(employmentTypeHint('intern', 'below')).toBe(INTERN_NOTE);
-    expect(employmentTypeHint('intern', 'offer')).toBe(INTERN_NOTE);
-  });
-
-  // owner, 19 October 2026: no probation, renewed once, then full-time; a new one 6 months after the last
-  it('says an internship agreement has no probation, is renewed once, then converted to full-time', () => {
-    expect(INTERN_NOTE).toMatch(/No probation\. Renewed once at most, then converted to a full-time contract or ended; a new one starts 6 months after/);
-    expect(INTERN_NOTE).toMatch(/^Unpaid, outside the labour law: an internship agreement that pays no wage, only allowances such as transportation, for 3 months/);
-    expect(INTERN_NOTE).toMatch(/12 at most\)\. No leave and no company social insurance\. No probation\. Renewed once at most/);
   });
 
   it('has no leave outside the labour law: a freelancer’s or an intern’s', () => {
@@ -79,20 +47,10 @@ describe('the employment types by the labour law (18 October 2026)', () => {
   });
 });
 
-describe('the nature of the work and remote work', () => {
-  it('has a hint for each nature, casual with its 6 months', () => {
-    for (const n of WORK_NATURES) expect(WORK_NATURE_HINTS[n]).toBeTruthy();
-    expect(WORK_NATURE_HINTS.casual).toMatch(/within 6 months \(Labour Law Art\. 1\(7\)\)/);
+describe('the nature of the work', () => {
+  it('has a label for each nature, regular for an API from before it', () => {
     expect(workNatureLabel('seasonal')).toBe('Seasonal');
-    // an API from before it: regular
     expect(workNatureLabel(undefined)).toBe('Regular');
-  });
-
-  it('names Work from home and Hybrid as the law’s remote work (Art. 96(1))', () => {
-    expect(workPatternNote('wfh')).toBe('Remote work (Labour Law Art. 96(1))');
-    expect(workPatternNote('hybrid')).toBe('Partly remote work (Labour Law Art. 96(1))');
-    expect(workPatternNote('office')).toBeNull();
-    expect(workPatternNote('outdoor')).toBeNull();
   });
 });
 
@@ -116,13 +74,13 @@ describe('HR’s warnings', () => {
       'Casual work past 6 months',
     ]);
     expect(lawWarnings({ casualTooLong: true })).toEqual([CASUAL_TOO_LONG]);
-    expect(BECAME_OPEN_ENDED.detail).toMatch(/Art\. 88\(3\).*Renew it in writing, or record how it ends\.$/);
+    expect(BECAME_OPEN_ENDED.detail).toBe('The term ended without a signed renewal: renew it in writing, or record how it ends.');
   });
 
   it('warns of a training or internship agreement past its end with the way forward, never open-ended (19 October 2026)', () => {
     expect(TRAINING_ENDED.key).toBe('training_ended');
     expect(TRAINING_ENDED.text).toBe('Internship ended');
-    expect(TRAINING_ENDED.detail).toMatch(/convert it to a full-time contract; or end the internship with End employment, choosing Training completed\.$/);
+    expect(TRAINING_ENDED.detail).toBe('Renew it, convert it to a full-time contract, or end it with End employment.');
     expect(TRAINING_ENDED.detail).not.toMatch(/open-ended|Art\. 88|in writing/);
   });
 });

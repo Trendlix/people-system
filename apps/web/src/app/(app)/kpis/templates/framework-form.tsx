@@ -7,7 +7,6 @@ import { Select } from '@/components/select';
 import type { FormState } from '@/lib/types';
 import {
   addPillar,
-  appliesFromHint,
   attendanceInKpiOf,
   followCompanyConfirmText,
   frameworkConfirmText,
@@ -104,15 +103,9 @@ export function KpiFrameworkForm({
 
   return (
     <form noValidate onSubmit={submit} aria-labelledby={fid('heading')} className="space-y-5">
-      <div>
-        <h3 id={fid('heading')} className="font-semibold">
-          {heading}
-        </h3>
-        <p className="mt-1 max-w-3xl text-sm text-muted">
-          From {L.pillarsMin} to {L.pillarsMax} pillars, each with a different name; their weights are whole percents adding up to 100%. Renaming a pillar keeps
-          its metrics in it; a template whose pillar is removed has those metrics to place again.
-        </p>
-      </div>
+      <h3 id={fid('heading')} className="font-semibold">
+        {heading}
+      </h3>
       <FormErrors errors={state.errors} />
       <ol className="space-y-3">
         {form.pillars.map((p, i) => (
@@ -130,7 +123,7 @@ export function KpiFrameworkForm({
                   type="button"
                   disabled={form.pillars.length <= L.pillarsMin}
                   onClick={() => {
-                    if (p.name.trim() && !window.confirm(`Remove pillar ${i + 1} (${p.name.trim()})? Templates with metrics in it will have them to place again.`)) return;
+                    if (p.name.trim() && !window.confirm(`Remove pillar ${i + 1} (${p.name.trim()})?`)) return;
                     setForm((f) => removePillar(f, p.rowKey));
                   }}
                   className={smallDanger}
@@ -228,7 +221,6 @@ export function KpiFrameworkForm({
                 const attendance = e.target.value;
                 setForm((f) => ({ ...f, attendance }));
               }}
-              aria-describedby={fid('attendance-hint')}
               className="input"
             >
               {!form.pillars.some((p) => p.rowKey === form.attendance) && <option value="">Choose a pillar</option>}
@@ -238,9 +230,6 @@ export function KpiFrameworkForm({
                 </option>
               ))}
             </Select>
-            <p id={fid('attendance-hint')} className="hint">
-              {department ? 'The pillar of the automatic Attendance metric, on every template of its job titles.' : 'The pillar of the automatic Attendance metric, on every template.'}
-            </p>
           </div>
         )}
         <div>
@@ -254,7 +243,6 @@ export function KpiFrameworkForm({
               const appliesFrom = e.target.value;
               setForm((f) => ({ ...f, appliesFrom }));
             }}
-            aria-describedby={fid('appliesFrom-hint')}
             className="input"
           >
             {monthChoices(view.earliestMonth, view.latestMonth).map((m) => (
@@ -264,9 +252,6 @@ export function KpiFrameworkForm({
               </option>
             ))}
           </Select>
-          <p id={fid('appliesFrom-hint')} className="hint">
-            {appliesFromHint(form.appliesFrom)} The scorecards open already keep their pillars.
-          </p>
         </div>
       </div>
       {problems.length > 0 && (
@@ -338,15 +323,9 @@ export function FollowCompanyForm({
 
   return (
     <form noValidate onSubmit={submit} aria-labelledby={fid('heading')} className="space-y-4">
-      <div>
-        <h3 id={fid('heading')} className="font-semibold">
-          {next?.followsCompany ? `Change When It Goes Back to ${aboveTitle} Pillars` : `Go Back to ${aboveTitle} Pillars`}
-        </h3>
-        <p className="mt-1 max-w-3xl text-sm text-muted">
-          From the month chosen, {department.name}’s job titles take {above} pillars again, and its own stop applying.
-          {next && !next.followsCompany ? ' The change coming is replaced.' : ''}
-        </p>
-      </div>
+      <h3 id={fid('heading')} className="font-semibold">
+        {next?.followsCompany ? `Change When It Goes Back to ${aboveTitle} Pillars` : `Go Back to ${aboveTitle} Pillars`}
+      </h3>
       <FormErrors errors={state.errors} />
       <div className="max-w-sm">
         <label htmlFor={fid('appliesFrom')} className="label">
@@ -356,7 +335,6 @@ export function FollowCompanyForm({
           id={fid('appliesFrom')}
           value={appliesFrom}
           onChange={(e) => setAppliesFrom(e.target.value)}
-          aria-describedby={fid('appliesFrom-hint')}
           className="input"
         >
           {monthChoices(view.earliestMonth, view.latestMonth).map((m) => (
@@ -366,9 +344,6 @@ export function FollowCompanyForm({
             </option>
           ))}
         </Select>
-        <p id={fid('appliesFrom-hint')} className="hint">
-          {appliesFromHint(appliesFrom)} The scorecards open already keep their pillars.
-        </p>
       </div>
       {problems.length > 0 && (
         <ul className="list-disc space-y-1 rounded-lg bg-warn-soft py-3 pr-4 pl-8 text-sm text-warn">

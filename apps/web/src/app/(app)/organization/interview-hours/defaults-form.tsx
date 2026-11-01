@@ -24,31 +24,25 @@ export function InterviewDefaultsForm({ defaults, action }: { defaults: Intervie
           <label htmlFor={fid('noticeHours')} className="label">
             Minimum notice
           </label>
-          <Select id={fid('noticeHours')} name="noticeHours" defaultValue={String(defaults.noticeHours)} aria-describedby={fid('notice-hint')} className="input">
+          <Select id={fid('noticeHours')} name="noticeHours" defaultValue={String(defaults.noticeHours)} className="input">
             {choices.notice.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
               </option>
             ))}
           </Select>
-          <p id={fid('notice-hint')} className="hint">
-            “Find a time” offers no time sooner than this.
-          </p>
         </div>
         <div>
           <label htmlFor={fid('bufferMinutes')} className="label">
             Buffer between interviews
           </label>
-          <Select id={fid('bufferMinutes')} name="bufferMinutes" defaultValue={String(defaults.bufferMinutes)} aria-describedby={fid('buffer-hint')} className="input">
+          <Select id={fid('bufferMinutes')} name="bufferMinutes" defaultValue={String(defaults.bufferMinutes)} className="input">
             {choices.buffer.map((o) => (
               <option key={o.value} value={o.value}>
                 {o.label}
               </option>
             ))}
           </Select>
-          <p id={fid('buffer-hint')} className="hint">
-            Kept free before and after each of a person’s interviews.
-          </p>
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-3">

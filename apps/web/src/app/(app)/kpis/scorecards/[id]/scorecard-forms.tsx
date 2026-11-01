@@ -26,10 +26,8 @@ import {
   COMMENT_FIELD,
   countedChoice,
   isChange,
-  leftOutText,
   liveScore,
   NOTE_FIELD,
-  performanceOnlyNote,
   PICK_FIELD,
   pickText,
   pointsText,
@@ -270,12 +268,8 @@ function MetricRow({
                 maxLength={KPI_COMMENT_MAX}
                 value={note ?? ''}
                 onChange={(e) => onNote?.(e.target.value)}
-                aria-describedby={fid(`reason-${m.id}-hint`)}
                 className="input"
               />
-              <p id={fid(`reason-${m.id}-hint`)} className="hint">
-                Required: the manager&apos;s pick was {pickText(m, managerPick) ?? 'none'}. The employee and the manager read it, and it is logged.
-              </p>
             </div>
           )}
         </div>
@@ -304,12 +298,11 @@ function AttendanceRow({ view, soFar = false }: { view: Pick<KpiScorecardView, '
           <h3 className="flex flex-wrap items-center gap-2 font-semibold">
             {KPI_ATTENDANCE_METRIC} <Tag>Automatic</Tag>
           </h3>
-          <p className="text-sm text-muted">The month&apos;s worked hours against the expected, as payroll counts them. Filled in by the system; nobody picks it.</p>
         </div>
         <div className="min-w-0 space-y-1 text-sm">
           <p>{t.detail}</p>
           <p className="text-xs text-muted">{t.source}</p>
-          {soFar && <p className="text-xs text-warn">So far: the month isn&apos;t over, so its attendance is the days until today.</p>}
+          {soFar && <p className="text-xs text-warn">So far this month</p>}
         </div>
         <div className="text-left md:text-right">
           <span className="text-xl font-semibold tabular-nums">{a.achieved}</span>
@@ -363,7 +356,7 @@ function PillarCard({
       {children}
       {attendance && <AttendanceRow view={view} soFar={soFar} />}
       {pillar.metrics.length === 0 && !attendance && (
-        <p className="border-t border-line-soft px-5 py-4 text-sm text-muted">{leftOut ? leftOutText(pillar) : 'No metrics in this pillar.'}</p>
+        <p className="border-t border-line-soft px-5 py-4 text-sm text-muted">No metrics in this pillar.</p>
       )}
     </section>
   );
@@ -378,11 +371,10 @@ function shownSummary(view: KpiScorecardView, own: boolean): { title: string; sc
       title: view.status === 'final' ? 'Final Score' : 'Score',
       score: view.score,
       notes: [
-        view.status === 'hr' && 'The manager’s scoring, before HR’s calibration.',
-        view.calibrated > 0 && `HR changed ${view.calibrated === 1 ? 'one pick' : `${view.calibrated} picks`}, each with its reason.`,
+        view.status === 'hr' && 'Before HR’s calibration.',
+        view.calibrated > 0 && `HR changed ${view.calibrated === 1 ? 'one pick' : `${view.calibrated} picks`}.`,
         view.score.capped && 'Capped at 110%.',
         view.selfScore && `Self-rating: ${scoreLine(view.selfScore)}.`,
-        performanceOnlyNote(view),
       ],
     };
   }
@@ -390,10 +382,10 @@ function shownSummary(view: KpiScorecardView, own: boolean): { title: string; sc
     return {
       title: own ? 'Your Self-rating' : 'Self-rating',
       score: view.selfScore,
-      notes: [own ? 'Your own rating. The score that counts shows here from the sign-off.' : 'The employee’s own rating; not scored yet.', performanceOnlyNote(view)],
+      notes: [!own && 'Not scored yet.'],
     };
   }
-  return { title: 'Score', score: null, notes: [own ? 'The score that counts shows here from the sign-off.' : 'Not scored yet.', performanceOnlyNote(view)] };
+  return { title: 'Score', score: null, notes: [own ? 'Shown at the sign-off.' : 'Not scored yet.'] };
 }
 
 /** The scorecard's pillars as it stands, with its score: no form. `soFar`: its attendance is this month's so far. */
@@ -415,10 +407,10 @@ export function ScorecardView({ view, own, soFar = false }: { view: KpiScorecard
   );
 }
 
-const COMMENT_LABELS: Record<Exclude<SheetMode, 'view'>, { label: string; hint: string }> = {
-  self: { label: 'Your comment on the month', hint: 'What went well, and what held you back. Your manager reads it.' },
-  score: { label: 'Your comments and areas of focus', hint: 'What went well, and what to focus on next month. The employee reads it at the sign-off.' },
-  calibrate: { label: 'HR’s comment', hint: 'Said to both at the sign-off, with your reasons.' },
+const COMMENT_LABELS: Record<Exclude<SheetMode, 'view'>, string> = {
+  self: 'Your comment on the month',
+  score: 'Your comments and areas of focus',
+  calibrate: 'HR’s comment',
 };
 
 /**
@@ -475,12 +467,12 @@ export function ScorecardForm({
     if (submit) {
       const ask =
         mode === 'self'
-          ? 'Send your self-rating? You can’t change it once it is sent.'
+          ? 'Send your self-rating?'
           : mode === 'score'
-            ? `Send your scoring of ${view.employee.fullNameEn}? You can’t change it once it is sent.`
+            ? `Send your scoring of ${view.employee.fullNameEn}?`
             : changes.length
               ? `Calibrate with ${changes.length === 1 ? 'one change' : `${changes.length} changes`} and send for sign-off?`
-              : 'Send for sign-off with the manager’s picks as they are?';
+              : 'Send for sign-off unchanged?';
       if (!window.confirm(ask)) return;
     }
     setSending(mode === 'calibrate' ? '1' : fd.get(SUBMIT_FIELD) === '1' ? '1' : '0');
@@ -488,11 +480,10 @@ export function ScorecardForm({
   }
 
   const scoreNotes = [
-    left.length ? `${left.length === 1 ? 'One metric' : `${left.length} metrics`} not picked yet: ${left.length === 1 ? 'it counts' : 'they count'} 0 until picked.` : null,
+    left.length ? `${left.length === 1 ? 'One metric' : `${left.length} metrics`} not picked yet.` : null,
     score.capped && 'Capped at 110%.',
     mode !== 'self' && view.selfScore && `Self-rating: ${scoreLine(view.selfScore)}.`,
     mode === 'calibrate' && view.score && `The manager’s score: ${scoreLine(view.score)}.`,
-    performanceOnlyNote(view),
   ];
 
   return (
@@ -506,7 +497,7 @@ export function ScorecardForm({
       <ScoreSummary
         title={standIn ? titleCase(standInTitle(mode, standIn)) : mode === 'self' ? 'Your Self-rating' : mode === 'score' ? 'Your Scoring' : 'Calibrated Score'}
         score={score}
-        notes={['Worked out as you pick.', ...scoreNotes]}
+        notes={scoreNotes}
       />
       {view.pillars.map((p, i) => (
         <PillarCard key={p.key} pillar={p} number={i + 1} view={view} soFar={soFar} score={score.pillars.find((s) => s.key === p.key) ?? null}>
@@ -529,7 +520,7 @@ export function ScorecardForm({
         <div>
           <label htmlFor={fid('comment')} className="label">
             {/* the manager's comments go with the scoring (owner's brief, 21 October 2026: "The manager scores with comments") */}
-            {c.label} {mode === 'score' ? <span className="font-normal text-muted">(needed to send)</span> : optional}
+            {c} {mode === 'score' ? <span className="font-normal text-muted">(needed to send)</span> : optional}
           </label>
           <textarea
             id={fid('comment')}
@@ -538,12 +529,8 @@ export function ScorecardForm({
             maxLength={KPI_COMMENT_MAX}
             value={comment}
             onChange={(e) => setComment(e.target.value)}
-            aria-describedby={fid('comment-hint')}
             className="input"
           />
-          <p id={fid('comment-hint')} className="hint">
-            {c.hint} Up to {KPI_COMMENT_MAX} characters.
-          </p>
         </div>
 
         <FormErrors errors={state.errors} />
@@ -552,20 +539,14 @@ export function ScorecardForm({
             reasonsLeft.length ? (
               <p className="text-warn">Give the reason for each change: {reasonsLeft.join(', ')}.</p>
             ) : (
-              <p className="text-muted">
-                {changes.length
-                  ? `${changes.length === 1 ? 'One pick changed' : `${changes.length} picks changed`} from the manager’s, each with its reason.`
-                  : 'No pick changed: the manager’s scoring goes to the sign-off as it is.'}
-              </p>
+              <p className="text-muted">{changes.length ? `${changes.length === 1 ? 'One pick changed' : `${changes.length} picks changed`}.` : 'No pick changed.'}</p>
             )
           ) : waitsForSelf ? (
-            <p className="text-muted">
-              The self-rating is due by {formatDate(view.deadlines.selfRating)}. Save your scoring now; send it once the self-rating is in, or after that day.
-            </p>
+            <p className="text-muted">Send once the self-rating is in, or after {formatDate(view.deadlines.selfRating)}.</p>
           ) : left.length ? (
-            <p className="text-muted">Pick a criterion for every metric to send it. Still to pick: {left.join(', ')}.</p>
+            <p className="text-muted">Still to pick: {left.join(', ')}.</p>
           ) : (
-            <p className="text-ok">Every metric is picked: ready to send.</p>
+            <p className="text-ok">Ready to send.</p>
           )}
         </div>
 
@@ -592,32 +573,15 @@ export function ScorecardForm({
 
 /**
  * The sign-off (owner's brief, 21 October 2026: "Sign-off by both, the employee and the manager: a digital "I've read
- * it" with an optional comment"). `as`: whose side the caller signs.
+ * it" with an optional comment").
  */
-export function SignForm({
-  action,
-  as,
-  deadline,
-  practice = false,
-}: {
-  action: Action;
-  as: 'employee' | 'manager';
-  deadline: string;
-  /** A practice scorecard (owner, 22 October 2026: "Deadlines aren't enforced"): no day makes it final. */
-  practice?: boolean;
-}) {
+export function SignForm({ action }: { action: Action }) {
   // the comment typed stays when the API refuses the signature
   const { state, pending, form } = useKeptForm(action);
   const fid = useFieldIds();
   return (
     <form {...form} aria-label="Sign the scorecard" className="space-y-4">
       <SurfaceField />
-      <p className="text-sm text-muted">
-        {as === 'employee'
-          ? 'Read the scorecard above: the score, the picks and the comments. Signing says you have read it.'
-          : 'Read the scorecard as it goes to the employee. Signing says you have read it, as their manager.'}{' '}
-        {practice ? 'A practice scorecard is final once both sides have signed: no day makes it final.' : `Not signed by ${formatDate(deadline)}, it is final anyway, and that is noted.`}
-      </p>
       <div>
         <label htmlFor={fid('sign-comment')} className="label">
           Comment {optional}

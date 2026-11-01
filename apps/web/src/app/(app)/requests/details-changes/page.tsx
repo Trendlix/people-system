@@ -77,7 +77,7 @@ function Decision({ request: r, status, user }: { request: ChangeRequest; status
     return (
       <DecisionForm
         action={decideListedChangeRequest.bind(null, r.id, status)}
-        confirmApprove={`Approve the change to ${r.employee.fullNameEn}'s details? Their profile is updated with what they asked for.`}
+        confirmApprove={`Approve the change to ${r.employee.fullNameEn}'s details?`}
         noteMax={1000}
       />
     );
@@ -117,7 +117,7 @@ async function Photos({ status, user }: { status: StatusFilter; user: SessionUse
         New Photos
       </h2>
       {photos.length === 0 ? (
-        <Empty>{status === 'pending' ? 'No new photos are waiting.' : status ? 'No new photos with this status.' : 'No new photos yet. Employees send them from their profile.'}</Empty>
+        <Empty>{status === 'pending' ? 'No new photos are waiting.' : status ? 'No new photos with this status.' : 'No new photos yet.'}</Empty>
       ) : (
         <ul className="space-y-4">
           {photos.map((r) => (
@@ -127,7 +127,7 @@ async function Photos({ status, user }: { status: StatusFilter; user: SessionUse
               ) : decidesChangeOfDetails(user, r.confidential) ? (
                 <DecisionForm
                   action={decideListedPhotoRequest.bind(null, r.id, status)}
-                  confirmApprove={`Use this photo for ${r.employee.fullNameEn}? It becomes the personal photo in their employee file.`}
+                  confirmApprove={`Use this photo for ${r.employee.fullNameEn}?`}
                   noteMax={1000}
                   noteHint="optional"
                 />
@@ -170,10 +170,7 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/requests/d
         </Empty>
       ) : (
         <>
-          <p className="text-sm text-muted">
-            {requestsLabel(listing.value.length)}, newest first. Approving makes the change on the profile; a rejection needs a note saying why,
-            which the employee sees.
-          </p>
+          <p className="text-sm text-muted">{requestsLabel(listing.value.length)}</p>
           <ul className="space-y-4">
             {listing.value.map((r) => (
               <ChangeRequestCard key={r.id} request={r} fromLabel={fromLabel(r.status)}>
@@ -197,11 +194,6 @@ export default function DetailsChangesPage({ searchParams }: PageProps<'/request
     <StaffOnly>
       <div className="max-w-5xl">
         <h1 className="page-title">Details Changes</h1>
-        <p className="mt-1 text-muted">
-          Employees&apos; requests to change their details, asked for when they check them on their profile, and the new photos they send.
-          HR or an Admin approves a request, which makes the change, or rejects it with a note the employee sees; a C-level person&apos;s, the
-          CEO or a Super Admin. The ones waiting are on <Link href="/approvals">Approvals</Link> too.
-        </p>
         <div className="mt-6">
           <Suspense fallback={<Loading />}>
             <Requests searchParams={searchParams} />

@@ -74,8 +74,8 @@ export const RECIPIENT_KIND_LABELS: Readonly<Record<'employee' | 'candidate' | '
  * someone in"): on or off and since when, the number, the language and the groups; a STOP reply; who turns it on.
  */
 export function personWhatsAppLines(v: WhatsAppPersonView, name: string, when: (iso: string) => string): { status: string; details: string[]; note: string } {
-  const note = `Only ${name} turns this on or off, from their own Notifications page (or by replying STOP).`;
-  if (v.noAccount) return { status: 'Off', details: ['They have no account yet, so they can’t turn WhatsApp messages on.'], note };
+  const note = `Only ${name} turns this on or off.`;
+  if (v.noAccount) return { status: 'Off', details: ['They have no account yet.'], note };
   if (!v.on) {
     const details = v.stoppedBy === 'stop' && v.stoppedAt ? [`They replied STOP on ${when(v.stoppedAt)}.`] : v.stoppedAt ? [`Turned off on ${when(v.stoppedAt)}.`] : ['They haven’t turned WhatsApp messages on.'];
     return { status: 'Off', details, note };

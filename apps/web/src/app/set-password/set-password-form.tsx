@@ -63,8 +63,8 @@ function PasswordFields({ token, check }: { token: string; check: AccessLinkChec
   return (
     <form action={action} className="space-y-4">
       <p className="text-sm">
-        {check.purpose === 'reset' ? 'Choose a new password for' : 'Welcome! Choose a password for'} <span className="font-medium break-all">{check.email}</span>.
-        {check.expiresAt && <span className="text-muted"> This link works until {formatDate(check.expiresAt)}.</span>}
+        <span className="font-medium break-all">{check.email}</span>
+        {check.expiresAt && <span className="text-muted"> · Link works until {formatDate(check.expiresAt)}</span>}
       </p>
       {/* the sign-in email, for the browser's password manager */}
       <input type="email" name="username" autoComplete="username" value={check.email ?? ''} readOnly hidden />

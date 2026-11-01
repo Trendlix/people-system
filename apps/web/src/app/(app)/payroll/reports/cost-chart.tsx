@@ -33,7 +33,6 @@ export function CostTrendChart({ chart: c }: { chart: CostChart }) {
           ))}
         </svg>
       </div>
-      <figcaption className="mt-2 text-xs text-muted">Company cost a month, in EGP: earned, allowances and the company&apos;s social insurance share. A gap is a month with no approved run.</figcaption>
     </figure>
   );
 }

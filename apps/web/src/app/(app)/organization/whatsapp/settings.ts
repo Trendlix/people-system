@@ -100,13 +100,13 @@ export function quietStart(view: Pick<WhatsAppSettingsView, 'quietHours'>): { on
 /** What a save that went through says, by whether messages go now. */
 export function savedMessage(view: WhatsAppSettingsView): string {
   const twilio = view.provider === 'twilio';
-  if (view.enabled && view.sending.on) return twilio ? 'Saved. WhatsApp messages go out through Twilio from now on.' : 'Saved. WhatsApp messages go out with these settings from now on.';
+  if (view.enabled && view.sending.on) return 'Saved.';
   if (view.enabled && twilio && view.twilio.authTokenUnreadable) return `Saved, but not used yet. ${WHATSAPP_TWILIO_TOKEN_UNREADABLE}`;
   if (view.enabled && !twilio && view.tokenUnreadable) return `Saved, but not used yet. ${WHATSAPP_TOKEN_UNREADABLE}`;
   if (view.enabled && !twilio && view.appSecretUnreadable) return `Saved, but not used yet. ${WHATSAPP_SECRET_UNREADABLE}`;
   if (view.enabled && view.missing.length) return `Saved, but not used yet: enter ${listed(view.missing)}.`;
   if (view.enabled) return view.sending.why ? `Saved. ${view.sending.why}` : 'Saved.';
-  return 'Saved, switched off: no WhatsApp messages go out until it is switched on. The bell, push and email go on as before.';
+  return 'Saved, switched off.';
 }
 
 /** The status at the top of the page: whether messages go out now, and what keeps them from going. */
@@ -138,7 +138,7 @@ export function whatsappStatus(view: WhatsAppSettingsView): WhatsAppStatus {
   const notes: string[] = [];
   if (view.missing.length) notes.push(`To send, enter ${listed(view.missing)}.`);
   const templates = templatesFor(view, view.provider).templates;
-  if (templates.length) notes.push(`${approvedText(templates)}${twilio ? ' on Twilio' : ''}: only approved templates are used; anything else goes by the bell, push and email only.`);
+  if (templates.length) notes.push(`${approvedText(templates)}${twilio ? ' on Twilio' : ''}.`);
   if (view.sending.on) {
     if (twilio) {
       const from = view.twilio.senderKind === 'service' ? `, from the Messaging Service ${view.twilio.sender}` : view.twilio.sender ? ` from ${twilioSenderText(view.twilio.sender)}` : '';
@@ -163,12 +163,10 @@ export function switchNote(view: WhatsAppSettingsView, chosen: WhatsAppProvider)
   if (chosen === view.provider) return null;
   const { templates } = templatesFor(view, chosen);
   const approved = templates.filter((t) => t.status === 'approved').length;
-  const first = `Once saved, WhatsApp messages go through ${chosen === 'twilio' ? 'Twilio' : 'Meta directly'}, those already waiting too.`;
-  if (!approved) {
-    return `${first} None of ${chosen === 'twilio' ? 'Twilio’s' : 'Meta’s'} templates is approved yet, so nothing goes on WhatsApp until they are: submit them below and sync their status until they are approved. The bell, push and email go on meanwhile.`;
-  }
-  if (approved < templates.length) return `${first} ${approvedText(templates)} there: the others go by the bell, push and email only until they are approved.`;
-  return first;
+  const first = `Once saved, WhatsApp messages go through ${chosen === 'twilio' ? 'Twilio' : 'Meta directly'}`;
+  if (!approved) return `${first}, which has no approved templates yet.`;
+  if (approved < templates.length) return `${first}: ${approvedText(templates)} there.`;
+  return `${first}.`;
 }
 
 /** The last test, in words: "Last test 24/10/2026, 2:05 PM: …". `when`: how the page writes a moment. */

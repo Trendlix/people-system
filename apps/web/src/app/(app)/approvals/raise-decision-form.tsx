@@ -1,13 +1,12 @@
 'use client';
 
 import { useActionState, useState } from 'react';
-import { RAISE_DECISION_LABELS, RAISE_DECISIONS, RAISE_REASON_LABELS, raiseReasonOptions, type RaiseDecision, type RaiseReason, type RaiseRequester } from '@trendlix/shared';
+import { RAISE_DECISION_LABELS, RAISE_DECISIONS, RAISE_REASON_LABELS, raiseReasonOptions, type RaiseDecision, type RaiseReason } from '@trendlix/shared';
 import { FormErrors, useFieldIds, valueOf } from '@/components/form';
 import { Select } from '@/components/select';
 import { SurfaceField } from '@/components/surface';
 import type { FormState } from '@/lib/types';
 import { choice } from '../employees/[id]/contracts/pay-fields';
-import { commentReaders } from '../raise-requests/list';
 import { FigureField, type FiguresFor } from '../raise-requests/request-forms';
 
 const SUBMIT: Record<RaiseDecision, { label: string; busy: string }> = {
@@ -34,7 +33,6 @@ export function RaiseDecisionForm({
   confirmApprove,
   name,
   previousGross = null,
-  requester = null,
   figures = null,
   reason = null,
   folded = false,
@@ -46,8 +44,6 @@ export function RaiseDecisionForm({
   name: string;
   /** The gross before it, for what another raise comes to. */
   previousGross?: number | null;
-  /** Who asked for the raise it came from, to say who reads the comment; null: a raise HR prepared directly. */
-  requester?: RaiseRequester | null;
   /** The pay before it and the rates, for the figures of another raise; null: none shown. */
   figures?: FiguresFor | null;
   /** Why the pay changes, as the raise has it now: the Reason the CEO may change when approving. */
@@ -83,9 +79,9 @@ export function RaiseDecisionForm({
           : decision === 'approve'
             ? confirmApprove
             : decision === 'approve_other'
-              ? `Approve ${name}'s raise with the raise you entered? Its pay is changed to it, and HR then has it signed.`
+              ? `Approve ${name}'s raise with the raise you entered?`
               : decision === 'reject'
-                ? `Reject ${name}'s raise? The draft goes, and its raise request shows as rejected.`
+                ? `Reject ${name}'s raise?`
                 : null;
         if (question && !window.confirm(question)) {
           e.preventDefault();
@@ -119,7 +115,6 @@ export function RaiseDecisionForm({
           gross={previousGross}
           figures={figures}
           label="The raise"
-          hint="Over the pay before it: an amount in EGP added to the monthly gross, or a percent of it. The allowances stay as they are."
           required
         />
       )}
@@ -133,7 +128,6 @@ export function RaiseDecisionForm({
             name="raiseReason"
             required
             defaultValue={valueOf(state, 'raiseReason', reason)}
-            aria-describedby={fid('raiseReason-hint')}
             className="input max-w-xs"
           >
             {raiseReasonOptions(reason).map((r) => (
@@ -142,9 +136,6 @@ export function RaiseDecisionForm({
               </option>
             ))}
           </Select>
-          <p id={fid('raiseReason-hint')} className="hint">
-            Why the pay changes, as HR sent it: {RAISE_REASON_LABELS[reason]}. Choose another to change it with your approval; the request’s log says so.
-          </p>
         </div>
       )}
       <div>
@@ -157,13 +148,9 @@ export function RaiseDecisionForm({
           rows={2}
           required
           maxLength={1000}
-          aria-describedby={fid('comment-hint')}
           defaultValue={valueOf(state, 'comment')}
           className="input"
         />
-        <p id={fid('comment-hint')} className="hint">
-          {commentReaders('decision', requester)} Returned to HR, HR alone sees it.
-        </p>
       </div>
       <div className="flex flex-wrap gap-3">
         <button type="submit" disabled={pending} className={`btn ${decision === 'reject' ? 'btn-danger' : 'btn-primary'}`}>

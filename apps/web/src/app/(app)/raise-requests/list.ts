@@ -177,10 +177,10 @@ export const raiseRequestOnListHref = (r: Pick<RaiseRequest, 'id' | 'status'>) =
 
 /** What the CEO did, as the page says it after (?done=): approved, approved with another raise, returned, rejected. */
 export const CEO_DONE_MESSAGES = {
-  'raise-approved': 'Raise approved. HR now has it signed; it is paid from its effective date.',
-  'raise-approved-other': 'Raise approved with your raise: its pay is changed to it. HR now has it signed; it is paid from its effective date.',
-  'raise-returned': 'Raise returned to HR with your comment.',
-  'raise-declined': 'Raise rejected: its request shows as rejected, with your comment.',
+  'raise-approved': 'Raise approved.',
+  'raise-approved-other': 'Raise approved with your raise.',
+  'raise-returned': 'Raise returned to HR.',
+  'raise-declined': 'Raise rejected.',
 } as const;
 export type CeoDone = keyof typeof CEO_DONE_MESSAGES;
 
@@ -567,19 +567,6 @@ export const decisionLabel = (s: Pick<RaiseRequestStep, 'decision'>) => (s.decis
 
 /** "3 steps", "1 step". */
 export const stepsLabel = (n: number) => `${n} ${n === 1 ? 'step' : 'steps'}`;
-
-// ---------- who sees the figures ----------
-
-/**
- * Who sees the figures panel's figures, under it (owner, 17 October 2026: "HR, Finance and the CEO only", then "allow
- * the requestor raiser to see figures too"; a manager "No, only percent"): `forSelf`, the employee asking for themself,
- * their own pay; else HR, Finance and the CEO.
- */
-export function figuresNote(forSelf: boolean): string {
-  return forSelf
-    ? 'Your own pay, which only you, HR, Finance and the CEO see: your direct manager doesn’t. The net is approximate.'
-    : 'HR, Finance and the CEO see these figures; a direct manager sees no salary figures, a percent only. The net is approximate.';
-}
 
 // ---------- who reads a comment ----------
 

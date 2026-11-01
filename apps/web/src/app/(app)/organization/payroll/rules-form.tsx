@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { INSTALLMENT_LIMIT_MIN, LAW_INSTALLMENT_PERCENT } from '@trendlix/shared';
+import { LAW_INSTALLMENT_PERCENT } from '@trendlix/shared';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import type { ContractSettings, FormState, PayrollSettingsView } from '@/lib/types';
 import { SETUP_PATHS } from '../setup-pages';
@@ -27,18 +27,18 @@ import { plainAmount } from '../../employees/[id]/contracts/salary';
 
 type RuleKey = 'dayDivisor' | 'attendanceGracePercent' | 'kpiGracePercent' | 'overtimeAbovePercent' | 'overtimeRate' | 'noShowDayMultiplier';
 
-const RULE_FIELDS: { key: RuleKey; label: string; hint: string; whole?: boolean }[] = [
-  { key: 'dayDivisor', label: 'Days in a month', hint: 'For day rates and part months: someone who joined or left in the month, or was under contract for part of it, is paid for their days of these.', whole: true },
-  { key: 'attendanceGracePercent', label: 'Attendance grace (%)', hint: 'Attendance at or above this counts in full; below it, the fixed part of the gross follows it.' },
-  { key: 'kpiGracePercent', label: 'KPI grace (%)', hint: "Last month's final KPI scorecard at or above this counts in full; below it, the variable part of the gross follows its final %. With no final scorecard, it isn't cut." },
-  { key: 'noShowDayMultiplier', label: 'No-show day costs (days)', hint: "A day absent without notice costs this many days' pay; its hours aren't counted again in attendance." },
+type RuleField = { key: RuleKey; label: string; whole?: boolean };
+
+const RULE_FIELDS: RuleField[] = [
+  { key: 'dayDivisor', label: 'Days in a month', whole: true },
+  { key: 'attendanceGracePercent', label: 'Attendance grace (%)' },
+  { key: 'kpiGracePercent', label: 'KPI grace (%)' },
+  { key: 'noShowDayMultiplier', label: 'No-show day costs (days)' },
 ];
 
-type RuleField = { key: RuleKey; label: string; hint: string; whole?: boolean };
-
 const OVERTIME_FIELDS: RuleField[] = [
-  { key: 'overtimeAbovePercent', label: 'Overtime above (%)', hint: 'Overtime is paid for attendance above this.' },
-  { key: 'overtimeRate', label: 'Overtime rate', hint: 'Overtime is paid at this rate, e.g. 1.5 for time and a half.' },
+  { key: 'overtimeAbovePercent', label: 'Overtime above (%)' },
+  { key: 'overtimeRate', label: 'Overtime rate' },
 ];
 
 /** Whether the switch was on in what was typed (after a failed save: the hidden "false", then "true" when checked). */
@@ -84,12 +84,8 @@ export function YourRulesForm({
         inputMode={f.whole ? 'numeric' : 'decimal'}
         autoComplete="off"
         defaultValue={valueOf(state, f.key, String(rules[f.key]))}
-        aria-describedby={fid(`${f.key}-hint`)}
         className="input tabular-nums"
       />
-      <p id={fid(`${f.key}-hint`)} className="hint">
-        {f.hint}
-      </p>
     </div>
   );
 
@@ -116,15 +112,10 @@ export function YourRulesForm({
                   value="true"
                   checked={paysOvertime}
                   onChange={(e) => setPaysOvertime(e.target.checked)}
-                  aria-describedby={fid('payOvertime-hint')}
                   className="size-5 accent-accent"
                 />
                 Pay overtime
               </label>
-              <p id={fid('payOvertime-hint')} className="hint">
-                Off until attendance and an approval step exist (owner, 16 October 2026). While it is off, no run pays overtime, whatever the
-                attendance; the percent and rate below are kept for when it is turned on.
-              </p>
             </div>
           )}
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">{OVERTIME_FIELDS.map((f) => numberField(f, off))}</div>
@@ -146,16 +137,10 @@ export function YourRulesForm({
                   value="true"
                   checked={insuresAll}
                   onChange={(e) => setInsuresAll(e.target.checked)}
-                  aria-describedby={fid('insureEveryone-hint')}
                   className="size-5 accent-accent"
                 />
                 Social insurance for everyone, registered or not
               </label>
-              <p id={fid('insureEveryone-hint')} className="hint">
-                On: every employee under the labour law has social insurance deducted on their insured wage, and the company&apos;s share counted,
-                whether or not they&apos;re registered on their Social Insurance tab. Turn it off once registrations are complete, and only those
-                registered are.
-              </p>
             </div>
           </fieldset>
         </div>
@@ -177,13 +162,8 @@ export function YourRulesForm({
                   inputMode="numeric"
                   autoComplete="off"
                   defaultValue={valueOf(state, 'salaryReviewMonths', String(reviewMonths))}
-                  aria-describedby={fid('salaryReviewMonths-hint')}
                   className="input tabular-nums"
                 />
-                <p id={fid('salaryReviewMonths-hint')} className="hint">
-                  The Salary Raises report lists everyone who has had no raise for this many months, or none since joining, as due for a review. 1 to
-                  60; 12 is a year.
-                </p>
               </div>
             </div>
           </fieldset>
@@ -206,19 +186,13 @@ export function YourRulesForm({
                   inputMode="decimal"
                   autoComplete="off"
                   defaultValue={valueOf(state, 'installmentLimitPercent', String(limitPercent ?? LAW_INSTALLMENT_PERCENT))}
-                  aria-describedby={`${fid('installmentLimitPercent-unit')} ${fid('installmentLimitPercent-hint')}`}
+                  aria-describedby={fid('installmentLimitPercent-unit')}
                   className="input w-32 tabular-nums"
                 />
                 <span id={fid('installmentLimitPercent-unit')} className="text-sm">
                   % of the wage
                 </span>
               </div>
-              <p id={fid('installmentLimitPercent-hint')} className="hint">
-                The Labour Law allows at most {LAW_INSTALLMENT_PERCENT}% of the wage a month to repay an advance or a loan (Law No. 14 of 2025, Art. 113):
-                all of the employee&apos;s advance recoveries and loan installments in a month together, against their current contract&apos;s gross.
-                Recording a plan, changing or moving an installment, or entering a recovery past it is refused, and the run&apos;s line warns past it.
-                {` ${INSTALLMENT_LIMIT_MIN} to ${LAW_INSTALLMENT_PERCENT}`}; lower if the company wants less.
-              </p>
             </div>
           </fieldset>
         </div>
@@ -227,7 +201,7 @@ export function YourRulesForm({
       {/* the check-in places moved to their own page (owner, 20 October 2026: "Own page, several locations") */}
       <div className="border-t border-line-soft pt-5">
         <p className="text-sm">
-          Check-in locations and Zoho&apos;s addresses are on <Link href={SETUP_PATHS.checkInSetup}>Check-in Setup</Link>, under Time &amp; Leave.
+          Check-in locations are on <Link href={SETUP_PATHS.checkInSetup}>Check-in Setup</Link>.
         </p>
       </div>
 
@@ -248,13 +222,8 @@ export function YourRulesForm({
                     inputMode="numeric"
                     autoComplete="off"
                     defaultValue={valueOf(state, 'basicPercentDefault', String(basicShare))}
-                    aria-describedby={fid('basicPercentDefault-hint')}
                     className="input tabular-nums"
                   />
-                  <p id={fid('basicPercentDefault-hint')} className="hint">
-                    The fixed part of the gross a new contract or job offer starts with, which follows attendance; the rest is the variable part,
-                    which follows the KPIs. HR can set another on each contract, and a signed contract keeps its own.
-                  </p>
                 </div>
               )}
               {insuranceBasic !== undefined && (
@@ -269,13 +238,8 @@ export function YourRulesForm({
                     inputMode="decimal"
                     autoComplete="off"
                     defaultValue={valueOf(state, 'insuranceBasicDefault', plainAmount(insuranceBasic))}
-                    aria-describedby={fid('insuranceBasicDefault-hint')}
                     className="input tabular-nums"
                   />
-                  <p id={fid('insuranceBasicDefault-hint')} className="hint">
-                    Printed in Form 1&apos;s <bdi lang="ar">أجر أساسي</bdi> boxes for an employee without a basic wage of their own on the Social
-                    Insurance tab. The contract&apos;s basic salary is not changed by it.
-                  </p>
                 </div>
               )}
             </div>

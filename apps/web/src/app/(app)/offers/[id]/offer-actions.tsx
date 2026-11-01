@@ -65,11 +65,11 @@ export function LinkBox({ link, mail }: { link: string; mail: Omit<OfferMailPart
       </p>
       {copied === 'failed' && (
         <p role="alert" className="text-sm text-warn">
-          Couldn&apos;t copy it here: the link is selected, press Ctrl+C (⌘C on a Mac) to copy it.
+          Couldn&apos;t copy: press Ctrl+C (⌘C on a Mac).
         </p>
       )}
       <p id={fid('link-hint')} className="hint">
-        Anyone with this link can open the offer, so send it to the candidate only. Sending the offer again makes a new link, and this one stops working.
+        Anyone with this link can open the offer.
       </p>
     </div>
   );
@@ -161,14 +161,9 @@ export function SendOffer({
               type="email"
               required
               autoComplete="off"
-              aria-describedby={fid('to-hint')}
               defaultValue={valueOf(emailed, 'to', mail.to)}
               className="input"
             />
-            <p id={fid('to-hint')} className="hint">
-              The candidate&apos;s personal email. The email has the offer as a protected PDF and the link to accept or decline it; answers to it come
-              back to you.
-            </p>
           </div>
           {again && <p className="text-sm text-warn">Sending again makes a new link: the one sent before stops working.</p>}
           <div className="flex flex-wrap gap-3">
@@ -227,7 +222,7 @@ export function ExtendOffer({ action, expiresOn, suggested }: { action: Action; 
         />
       </div>
       <p id={fid('expiresOn-hint')} className="hint">
-        The new last day to accept; it was {formatDate(expiresOn)}. The candidate&apos;s link stays the same.
+        Was {formatDate(expiresOn)}.
       </p>
       <div className="flex flex-wrap gap-3">
         <SubmitButton busy={pending}>Extend</SubmitButton>
@@ -255,7 +250,7 @@ export function WithdrawOffer({ action, number }: { action: Action; number: stri
     <form
       {...form}
       onSubmit={(e) => {
-        if (!window.confirm(`Withdraw offer ${number}? The candidate can no longer accept it.`)) {
+        if (!window.confirm(`Withdraw offer ${number}?`)) {
           e.preventDefault();
           return;
         }
@@ -275,13 +270,9 @@ export function WithdrawOffer({ action, number }: { action: Action; number: stri
           name="reason"
           rows={2}
           maxLength={1000}
-          aria-describedby={fid('reason-hint')}
           defaultValue={valueOf(state, 'reason', '')}
           className="input"
         />
-        <p id={fid('reason-hint')} className="hint">
-          For HR&apos;s records, e.g. the position was filled. The candidate&apos;s page only says the offer was withdrawn.
-        </p>
       </div>
       <div className="flex flex-wrap gap-3">
         <SubmitButton busy={pending} pendingText="Withdrawing…">
@@ -298,9 +289,9 @@ export function WithdrawOffer({ action, number }: { action: Action; number: stri
 /**
  * Record as sent earlier (owner, 25 October 2026: "allow the HR to add for now job offers with a past duedate to enter
  * the previous data"): a draft marked sent outside the system, on the day it was sent. Nothing is emailed and no link is
- * made; `documentHint` says what is kept.
+ * made.
  */
-export function RecordSentEarlier({ action, expiresOn, documentHint }: { action: Action; expiresOn: string; documentHint: string }) {
+export function RecordSentEarlier({ action, expiresOn }: { action: Action; expiresOn: string }) {
   const { state, pending, form } = useKeptForm(action);
   const [open, setOpen] = useClosesOnSave(state);
   const fid = useFieldIds();
@@ -328,7 +319,7 @@ export function RecordSentEarlier({ action, expiresOn, documentHint }: { action:
         <DateInput id={fid('sentOn')} name="sentOn" required aria-describedby={fid('sentOn-hint')} defaultValue={valueOf(state, 'sentOn', '')} />
       </div>
       <p id={fid('sentOn-hint')} className="hint">
-        The day the candidate was given the offer, outside the system: not in the future, nor after its last day, {formatDate(expiresOn)}. {documentHint}
+        Not in the future, nor after {formatDate(expiresOn)}.
       </p>
       <div className="flex flex-wrap gap-3">
         <SubmitButton busy={pending} pendingText="Recording…">
@@ -364,7 +355,7 @@ export function RecordAnswer({ action, withDay = false }: { action: Action; with
       onSubmit={(e) => {
         const text =
           answer === 'accepted'
-            ? 'Record that the candidate accepted? Their profile, employment and a draft contract are made from the offer.'
+            ? 'Record that the candidate accepted?'
             : 'Record that the candidate declined?';
         if (answer && !window.confirm(text)) {
           e.preventDefault();
@@ -404,17 +395,13 @@ export function RecordAnswer({ action, withDay = false }: { action: Action; with
           {answer === 'declined' ? 'Why they declined' : 'Note'} {optional}
         </label>
         <textarea id={fid('reason')} name="reason" rows={2} maxLength={1000} defaultValue={valueOf(state, 'reason', '')} className="input" />
-        <p className="hint">E.g. how they answered (by phone, in person) and anything they said.</p>
       </div>
       {withDay && (
         <div className="max-w-60">
           <label htmlFor={fid('answeredOn')} className="label">
             Answered on {optional}
           </label>
-          <DateInput id={fid('answeredOn')} name="answeredOn" aria-describedby={fid('answeredOn-hint')} defaultValue={valueOf(state, 'answeredOn', '')} />
-          <p id={fid('answeredOn-hint')} className="hint">
-            The day the candidate answered: not in the future, nor before the offer was sent. Empty: today.
-          </p>
+          <DateInput id={fid('answeredOn')} name="answeredOn" defaultValue={valueOf(state, 'answeredOn', '')} />
         </div>
       )}
       <div className="flex flex-wrap gap-3">

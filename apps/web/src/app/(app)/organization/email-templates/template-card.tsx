@@ -18,7 +18,7 @@ type Actions = {
 
 type Busy = 'save' | 'reset' | 'test' | null;
 
-const RESET_CONFIRM = 'Go back to the standard words? Your words for this email are removed.';
+const RESET_CONFIRM = 'Go back to the standard words?';
 
 /** The preview: the subject, then the text as the email shows it, each paragraph in its own direction (Arabic right to left). */
 function Preview({ template, words }: { template: EmailTemplateView; words: EmailTemplateText }) {
@@ -171,12 +171,10 @@ export function TemplateCard({ template, edits, testTo, actions }: { template: E
                 dir="auto"
                 className="input font-mono text-[13px] leading-relaxed"
               />
-              <p className="hint">An empty line starts a new paragraph. Links become clickable.</p>
             </div>
             {edits && (
               <div>
                 <p className="label">Fields</p>
-                <p className="hint !mt-0 mb-2">Press one to put it where the cursor is.</p>
                 <ul className="flex flex-wrap gap-2">
                   {view.fields.map((f) => (
                     <li key={f.key}>

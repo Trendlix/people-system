@@ -63,11 +63,11 @@ describe('the status filter of Details Changes', () => {
   });
 
   it('says what was done after a decision, and nothing for anything else', () => {
-    expect(readDone({ done: 'change-approved' })).toBe('Change request approved: the profile is updated.');
-    expect(readDone({ done: 'change-rejected' })).toBe('Change request rejected. The employee sees your note.');
+    expect(readDone({ done: 'change-approved' })).toBe('Change request approved.');
+    expect(readDone({ done: 'change-rejected' })).toBe('Change request rejected.');
     // a new photo the employee sent (31 October 2026)
     expect(readDone({ done: 'photo-approved' })).toContain('New photo approved');
-    expect(readDone({ done: 'photo-rejected' })).toBe('New photo rejected: they keep their current one.');
+    expect(readDone({ done: 'photo-rejected' })).toBe('New photo rejected.');
     expect(readDone({ done: 'approved' })).toBeNull();
     expect(readDone({ done: 'toString' })).toBeNull();
     expect(readDone({})).toBeNull();
@@ -117,7 +117,7 @@ describe('a change request on Details Changes', () => {
   it('counts and says when there are none', () => {
     expect(requestsLabel(1)).toBe('1 request');
     expect(requestsLabel(12)).toBe('12 requests');
-    expect(emptyText('')).toBe('No change requests yet. Employees ask for them when they check their details on their profile.');
+    expect(emptyText('')).toBe('No change requests yet.');
     expect(emptyText('pending')).toBe('No change requests are waiting.');
     expect(emptyText('approved')).toBe('No approved change requests.');
     expect(emptyText('rejected')).toBe('No rejected change requests.');

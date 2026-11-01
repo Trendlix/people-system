@@ -55,7 +55,7 @@ export function AssetThumb({ code, photo, size = 'size-12' }: { code: string; ph
 
 /** Without Assets access: what the page says (the API refuses anyway). */
 export function NoAccess() {
-  return <Empty>You don&apos;t have access to Assets. An Admin gives it on the Users page.</Empty>;
+  return <Empty>You don&apos;t have access to Assets.</Empty>;
 }
 
 /**

@@ -2,7 +2,6 @@ import {
   isEmail,
   isMeetingConnectProblem,
   normalEmail,
-  ZOHO_PEOPLE_NIGHTLY_TIME,
   ZOHO_PEOPLE_PAGE,
   ZOHO_RECORDED_LABEL,
   ZOHO_RUN_STATUS_LABELS,
@@ -51,7 +50,7 @@ export type ZohoPeopleBanner = { tone: 'ok' | 'danger'; text: string } | null;
 /** The banner of `?connected=1` or `?problem=refused&said=invalid_client`: only known problems, in the system's words. */
 export function zohoPeopleBanner(query: Record<string, string | string[] | undefined>): ZohoPeopleBanner {
   if (one(query.connected) === '1') {
-    return { tone: 'ok', text: `Zoho People is connected: every night at ${ZOHO_PEOPLE_NIGHTLY_TIME} yesterday’s check-ins are fetched, and earlier days can be fetched below.` };
+    return { tone: 'ok', text: 'Zoho People is connected.' };
   }
   const problem = one(query.problem);
   if (isMeetingConnectProblem(problem)) return { tone: 'danger', text: zohoPeopleConnectProblemText(problem, saidOf(one(query.said))) };
@@ -194,7 +193,7 @@ export const hiddenText = (n: number): string | null => (n > 0 ? `and ${n} C-lev
 
 /** The nightly run in words: when it runs, and how the last one went. */
 export function nightlyText(nightly: ZohoPeopleView['nightly']): string {
-  const base = `Every night at ${nightly.time} (Cairo), yesterday’s check-ins and check-outs are fetched for everyone.`;
+  const base = `Every night at ${nightly.time} (Cairo).`;
   const last = nightly.last;
   if (!last) return `${base} It hasn’t run yet.`;
   const how = last.status === 'failed' ? `failed${last.problem ? `: ${last.problem}` : ''}` : ZOHO_RUN_STATUS_LABELS[last.status].toLowerCase();

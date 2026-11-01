@@ -4,7 +4,6 @@ import { Suspense } from 'react';
 import { notFound } from 'next/navigation';
 import { canWithdrawResignation, RESIGNATION_CONFIRMATION, RESIGNATION_LETTER_NO_TEMPLATE } from '@trendlix/shared';
 import { formatDate, formatDateTime } from '@/lib/format';
-import { PROTECTED_PDF_HINT } from '@/lib/protected-pdf';
 import type { ResignationRequestView } from '@/lib/resignation-types';
 import { UploadSignedCopy } from '../../employees/[id]/documents/document-forms';
 import { BackLink, Empty, Loading } from '../../organization/ui';
@@ -26,10 +25,10 @@ import { profileHref } from '../../employees/ui';
 export const metadata: Metadata = { title: 'Resignation Request · People System' };
 
 const DONE: Record<ResignationDone, string> = {
-  sent: 'Your resignation request was sent. HR has been told; you can withdraw it until it is recorded. Your resignation letter is below.',
-  withdrawn: 'The request was withdrawn. It is kept, marked withdrawn.',
-  returned: 'The request was returned. The employee has been told and may send it again.',
-  moved: 'This request moved on meanwhile. It is shown as it stands now.',
+  sent: 'Resignation request sent.',
+  withdrawn: 'Request withdrawn.',
+  returned: 'Request returned.',
+  moved: 'This request changed meanwhile.',
 };
 
 function Item({ label, wide = false, children }: { label: string; wide?: boolean; children: React.ReactNode }) {
@@ -43,31 +42,20 @@ function Item({ label, wide = false, children }: { label: string; wide?: boolean
 
 /** The letter People prepares, to view or save, and the signed copy: for the employee, HR and the CEO; HR uploads it. */
 function Letter({ r }: { r: ResignationRequestView }) {
-  const keeper = r.confidential ? 'the CEO' : 'HR';
   return (
     <div className="card mt-4 space-y-4 p-5">
-      <div>
-        <h2 className="text-lg font-semibold">Resignation Letter</h2>
-        <p className="text-sm text-muted">
-          {r.mine
-            ? `People prepares your letter from this request. Print it, sign it and hand it to ${keeper}, who keeps the signed copy here.`
-            : 'People prepares the letter from the request, for the employee to print and sign. The signed copy they hand in is kept here.'}
-        </p>
-      </div>
+      <h2 className="text-lg font-semibold">Resignation Letter</h2>
       <dl className="grid gap-4 text-sm sm:grid-cols-2">
         <Item label="Letter">
           {r.preparedLetter === 'ready' ? (
-            <>
-              <span className="flex flex-wrap gap-x-4 gap-y-1">
-                <a href={generatedLetterHref(r.id)} target="_blank" rel="noreferrer" className="font-semibold">
-                  View letter
-                </a>
-                <a href={generatedLetterHref(r.id, true)} className="font-semibold">
-                  Download PDF
-                </a>
-              </span>
-              <span className="mt-1 block text-xs text-muted">{PROTECTED_PDF_HINT}</span>
-            </>
+            <span className="flex flex-wrap gap-x-4 gap-y-1">
+              <a href={generatedLetterHref(r.id)} target="_blank" rel="noreferrer" className="font-semibold">
+                View letter
+              </a>
+              <a href={generatedLetterHref(r.id, true)} className="font-semibold">
+                Download PDF
+              </a>
+            </span>
           ) : (
             <span className="text-muted">{RESIGNATION_LETTER_NO_TEMPLATE}</span>
           )}
@@ -124,7 +112,6 @@ async function Request({ params, searchParams }: { params: PageProps<'/resignati
               <span className="whitespace-pre-line">{r.reason}</span>
             </Item>
           )}
-          {r.reason === null && <p className="text-muted sm:col-span-2">The reason and the letter are for HR. You are shown this because the employee reports to you.</p>}
           {r.returned && (
             <Item label="Returned" wide>
               {r.returned.at && <>{formatDateTime(r.returned.at)} · </>}
@@ -154,13 +141,7 @@ async function Request({ params, searchParams }: { params: PageProps<'/resignati
       )}
       {decides && (
         <div className="card mt-4 space-y-4 p-5">
-          <div>
-            <h2 className="text-lg font-semibold">Record Or Return</h2>
-            <p className="text-sm text-muted">
-              Recording opens the End employment form with the resignation, the notice day, the reason and the preferred day filled in. Recording it counts as
-              HR&apos;s approval; the labour office certification is entered there, and the CEO approves.
-            </p>
-          </div>
+          <h2 className="text-lg font-semibold">Record Or Return</h2>
           <Link href={recordResignationHref(r.employee.id, r.id)} className="btn btn-primary inline-block">
             Record the resignation
           </Link>

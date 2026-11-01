@@ -14,7 +14,6 @@ import { notLoadedText } from '../../../payroll/load';
 import { cancelCompensatoryByHr, cancelMyCompensatory, decideCompensatory } from '../actions';
 import { COMPENSATORY_OUTCOME_LABELS, hoursText } from '@trendlix/shared';
 import {
-  COMPENSATORY_WITH_OD_NOTE,
   compensatoryAheadText,
   compensatoryBack,
   compensatoryCashAddedText,
@@ -27,7 +26,6 @@ import {
   compensatoryProgressText,
   compensatorySourceText,
   compensatoryStepText,
-  MY_COMPENSATORY_HREF,
 } from '../compensatory';
 import { CancelCompensatoryForm, CompensatoryDecisionForm, HrCancelCompensatoryForm } from '../compensatory-forms';
 import { loadCompensatory } from '../data';
@@ -91,7 +89,6 @@ export async function CompensatoryRequestDetail({
   const place = placeOfEmployee(r.employee);
   const progress = compensatoryProgressText(r);
   const what = `compensatory day request for ${compensatoryDaysLine(r)}`;
-  const own = user.employeeId === r.employee.id;
   // the log as the leave timeline draws it, an import worded its own way (compensatoryStepText)
   const timeline = { ...r, steps: r.steps as unknown as LeaveRequestStep[] };
 
@@ -115,7 +112,6 @@ export async function CompensatoryRequestDetail({
           <Link href={compensatoryOdHref(r.od, surface)} className="font-semibold">
             {compensatoryOdText(r.od)}
           </Link>
-          . {COMPENSATORY_WITH_OD_NOTE}
         </p>
       )}
       {done && (
@@ -130,32 +126,23 @@ export async function CompensatoryRequestDetail({
             <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
               <Fact label="Day worked">
                 <span className="text-base font-semibold tabular-nums">{compensatoryDateText(r.dayWorked)}</span>
-                <span className="block text-xs text-muted">A rest day of the shift or an official holiday. Nothing is paid for it when it is compensated with a day.</span>
                 {ahead && <span className="mt-1 block text-xs font-medium text-accent">{ahead}</span>}
-                {r.noCheckIn && <span className="mt-1 block text-xs font-medium text-warn">No check-in is kept on this day: HR confirms it was worked when deciding.</span>}
+                {r.noCheckIn && <span className="mt-1 block text-xs font-medium text-warn">No check-in kept.</span>}
               </Fact>
               {/* part of the day worked (27 October 2026: "Hours off for hours worked") */}
               {hoursFact && (
                 <Fact label="Hours worked">
                   <span className="font-semibold tabular-nums">{hoursFact}</span>
-                  <span className="block text-xs text-muted">Part of the day, by the Compensatory Setup.</span>
                 </Fact>
               )}
               <Fact label={r.outcome === 'cash' ? (hoursOff !== null ? 'Hours off' : 'Day off') : hoursOff !== null ? 'Day for the hours off' : 'Day off asked for'}>
                 {r.outcome === 'cash' ? (
                   <span className="text-muted">None: paid in cash instead</span>
                 ) : r.dayOff ? (
-                  <>
-                    <span className="text-base font-semibold tabular-nums">
-                      {hoursOff !== null && `${hoursText(hoursOff)} off on `}
-                      {compensatoryDateText(r.dayOff)}
-                    </span>
-                    <span className="block text-xs text-muted">
-                      {hoursOff !== null
-                        ? 'Once approved, those hours count as worked that day, with no deduction: not leave, nothing comes off any balance.'
-                        : 'Once approved it counts as a full paid day, not leave: nothing comes off any balance.'}
-                    </span>
-                  </>
+                  <span className="text-base font-semibold tabular-nums">
+                    {hoursOff !== null && `${hoursText(hoursOff)} off on `}
+                    {compensatoryDateText(r.dayOff)}
+                  </span>
                 ) : (
                   <span className="text-muted">None</span>
                 )}
@@ -194,11 +181,6 @@ export async function CompensatoryRequestDetail({
                 </Fact>
               )}
             </dl>
-            {own && (
-              <p className="mt-4 text-sm text-muted">
-                Your other compensatory day requests are on <Link href={surface === 'site' ? MY_COMPENSATORY_HREF : appBack(surface).href}>My Requests</Link>.
-              </p>
-            )}
           </Section>
 
           {r.waitingForYou && r.stage && (
@@ -214,7 +196,6 @@ export async function CompensatoryRequestDetail({
                 upcoming={r.upcoming === true}
                 dayWorked={r.dayWorked}
                 cashDays={r.cashDays}
-                dayOff={r.dayOff}
                 hoursOff={hoursOff}
               />
             </Section>
@@ -222,13 +203,11 @@ export async function CompensatoryRequestDetail({
 
           {r.canCancel && (
             <Section title="Cancel the Request">
-              <p className="mb-3 text-sm text-muted">While it is being decided you can cancel it, e.g. to ask for another day.</p>
               <CancelCompensatoryForm action={cancelMyCompensatory.bind(null, r.id)} what={what} />
             </Section>
           )}
           {!r.canCancel && r.hrCanCancel && (
             <Section title="Cancel the Compensatory Day">
-              <p className="mb-3 text-sm text-muted">An approved one HR cancels: the day off is a working day again, or the cash addition leaves the draft payroll (not once the month&apos;s payroll is with the CEO, approved or paid). The employee sees why.</p>
               <HrCancelCompensatoryForm action={cancelCompensatoryByHr.bind(null, r.id)} what={what} />
             </Section>
           )}

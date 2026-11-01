@@ -16,12 +16,10 @@ import {
   decidingAsTitle,
   HOME_TYPE_LINES,
   homeDoneText,
-  homeShownAs,
   homeSourceText,
   homeTypeOf,
   homeValidityText,
   MY_HOMES_HREF,
-  officeLockHint,
   radiusText,
 } from '../home-locations';
 import { HomeMap, HomeOverlaps, HomeProgress, HomeStatusBadge, HomeTimeline } from '../ui';
@@ -80,12 +78,10 @@ export async function HomeLocationDetail({
   const r = loaded.value;
   const own = user.employeeId === r.employee.id;
   const type = homeTypeOf(r);
-  const what = HOME_TYPE_LINES[type].toLowerCase();
   const validity = homeValidityText(r);
   const back = surface !== 'site' ? appBack(surface) : own ? { href: MY_HOMES_HREF, label: 'My Requests' } : { href: '/approvals', label: 'Approvals' };
   const done = homeDoneText(query, r);
   const place = [r.employee.department, r.employee.team].filter(Boolean).join(' › ');
-  const lockHint = type === 'home' && r.employee.workArrangement ? officeLockHint({ workArrangement: r.employee.workArrangement, checkInAnywhere: r.employee.checkInAnywhere }) : null;
 
   return (
     <div className="space-y-5">
@@ -122,14 +118,10 @@ export async function HomeLocationDetail({
               {!own && <HomeOverlaps request={r} />}
               <HomeMap request={r} own={own} />
               <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
-                <Fact label="Type">
-                  {HOME_TYPE_LINES[type]}
-                  <span className="block text-xs text-muted">{type === 'client' ? 'Counts for every employee once approved' : `Counts only for ${own ? 'you' : r.employee.fullNameEn}`}</span>
-                </Fact>
+                <Fact label="Type">{HOME_TYPE_LINES[type]}</Fact>
                 <Fact label={type === 'home' ? 'Label' : 'Name'}>{r.label ?? <span className="text-muted">{r.latitude === null ? 'Deleted with the point' : 'None given'}</span>}</Fact>
                 <Fact label="Radius">
                   <span className="tabular-nums">{radiusText(r.radiusMetres)}</span>
-                  <span className="block text-xs text-muted">{r.stage === 'hr' ? 'As asked: HR sets it when approving' : `A check-in within it shows as ${homeShownAs(r)}`}</span>
                 </Fact>
                 {r.latitude !== null && (
                   <Fact label="The point">
@@ -144,9 +136,8 @@ export async function HomeLocationDetail({
                 </Fact>
                 {(validity || r.wishedEndDate) && (
                   <Fact label="How long it lasts">
-                    {validity ?? <span className="text-muted">Set by HR when approving</span>}
+                    {validity ?? <span className="text-muted">Not set yet</span>}
                     {r.wishedEndDate && <span className="block text-xs text-muted">Asked until {formatDate(r.wishedEndDate)}</span>}
-                    {r.status === 'approved' && r.inForce === false && <span className="block text-xs text-muted">It no longer counts for check-ins</span>}
                   </Fact>
                 )}
                 {r.reason && (
@@ -158,17 +149,12 @@ export async function HomeLocationDetail({
                   <Fact label="On Check-in Setup" wide>
                     {r.location ? (
                       <>
-                        {hasRole(user, 'hr', 'admin') ? <Link href={CLIENT_LOCATIONS_HREF}>{r.location.name}</Link> : r.location.name}, a client location for every employee
-                        {r.location.endedAt && `, ended ${formatDate(r.location.endedAt)}`}. HR changes or ends it there.
+                        {hasRole(user, 'hr', 'admin') ? <Link href={CLIENT_LOCATIONS_HREF}>{r.location.name}</Link> : r.location.name}
+                        {r.location.endedAt && `, ended ${formatDate(r.location.endedAt)}`}
                       </>
                     ) : (
-                      'Removed from Check-in Setup: it no longer counts.'
+                      'Removed'
                     )}
-                  </Fact>
-                )}
-                {lockHint && !own && (
-                  <Fact label="Checking in" wide>
-                    {`${r.employee.fullNameEn} works at the office: while check-ins need the office Wi-Fi, they can’t check in from home unless you let them check in from anywhere.`}
                   </Fact>
                 )}
               </dl>
@@ -188,27 +174,18 @@ export async function HomeLocationDetail({
 
           {r.canSetValidity && (
             <Section title="Change How Long It Lasts">
-              <p className="mb-3 text-sm text-muted">
-                {validity ? `Now: ${validity}. ` : ''}Until a date, or until {r.employee.fullNameEn}’s contract ends (it moves when the contract is renewed).
-              </p>
               <HomeValidityForm action={setHomeValidity.bind(null, r.id, type)} request={r} />
             </Section>
           )}
 
           {r.canWithdraw && (
             <Section title="Withdraw the Request">
-              <p className="mb-3 text-sm text-muted">While it is being decided you can withdraw it, e.g. to ask again with another point. Its point is deleted.</p>
               <WithdrawHomeForm action={withdrawHome.bind(null, r.id)} />
             </Section>
           )}
 
           {r.canRemove && (
             <Section title={type === 'home' ? 'Remove the Home Location' : 'Remove the Remote Site'}>
-              <p className="mb-3 text-sm text-muted">
-                {own
-                  ? `You can remove your ${what} at any time: its point is deleted, and your check-ins from there no longer show as ${homeShownAs(r)}.`
-                  : 'Its point is deleted, not just hidden, and the removal is logged without it.'}
-              </p>
               <RemoveHomeForm action={removeHome.bind(null, r.id, own)} own={own} name={r.employee.fullNameEn} type={type} />
             </Section>
           )}

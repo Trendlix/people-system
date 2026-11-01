@@ -74,7 +74,7 @@ async function Search({ searchParams }: { searchParams: Promise<Query> }) {
       {error ? (
         <Message>{error}</Message>
       ) : hits === null ? (
-        <Message>{q ? 'Type at least 2 characters to search.' : 'Only files whose text has been read can be found.'}</Message>
+        q && <Message>Type at least 2 characters to search.</Message>
       ) : hits.length === 0 ? (
         <Message>No documents contain “{q}”.</Message>
       ) : (
@@ -133,7 +133,7 @@ async function Search({ searchParams }: { searchParams: Promise<Query> }) {
           </div>
           <p className="border-t border-line px-4 py-3 text-sm text-muted">
             {hits.length === 1 ? '1 document' : `${hits.length} documents`}
-            {hits.length >= LIMIT && `: the ${LIMIT} newest. Add more words to narrow the search.`}
+            {hits.length >= LIMIT && `: the ${LIMIT} newest`}
           </p>
         </>
       )}
@@ -146,10 +146,7 @@ export default function DocumentSearchPage({ searchParams }: PageProps<'/employe
     <StaffOnly>
       <div className="space-y-4">
         <BackLink href="/employees">Employees</BackLink>
-        <div>
-          <h1 className="page-title">Search Documents</h1>
-          <p className="mt-1 text-muted">Find scanned paperwork in the employee files by the text read from it.</p>
-        </div>
+        <h1 className="page-title">Search Documents</h1>
         <Suspense fallback={<Loading />}>
           <Search searchParams={searchParams} />
         </Suspense>

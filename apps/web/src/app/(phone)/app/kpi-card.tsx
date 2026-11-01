@@ -23,7 +23,6 @@ export async function MyKpiCard({ user }: { user: Pick<Session, 'employeeId'> })
             key={s.id}
             href={appItemHref('requests', 'kpi', s.id)}
             title={ownCardText(s)}
-            line={s.action === 'self_rate' ? 'Pick how you did on each metric, then send it.' : 'Read the score and the comments, then sign that you have read it.'}
             aside={<span className="badge">{actionButton(s)}</span>}
           />
         ))}

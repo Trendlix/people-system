@@ -39,7 +39,7 @@ const IDLE = 'border-line bg-card text-ink hover:bg-canvas hover:text-ink';
 
 async function List({ searchParams }: { searchParams: PageProps<'/attendance/corrections'>['searchParams'] }) {
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
-  if (!seesCorrections(user)) return <Empty>Only HR and the CEO see everyone&apos;s corrections. A manager decides their team&apos;s on My Team.</Empty>;
+  if (!seesCorrections(user)) return <Empty>Only HR and the CEO see everyone&apos;s corrections.</Empty>;
   const { filter, month } = readCorrectionQuery(query);
   const loaded = await loadCorrections(filter, month);
   return (
@@ -121,14 +121,7 @@ export default function CorrectionsPage({ searchParams }: PageProps<'/attendance
   return (
     <StaffOnly>
       <div className="max-w-6xl space-y-6">
-        <div>
-          <h1 className="page-title">Corrections</h1>
-          <p className="mt-1 max-w-3xl text-muted">
-            Days employees asked to correct (I forgot to check in or out, a time is wrong, I worked remotely or at a client), decided by their direct
-            manager (or lead), then HR; a C-level person&apos;s by the CEO. Approved, the day is corrected, keeping what it was, and the month&apos;s draft
-            payroll takes it. HR corrects a day directly from the person&apos;s month.
-          </p>
-        </div>
+        <h1 className="page-title">Corrections</h1>
         <Suspense fallback={<Loading />}>
           <List searchParams={searchParams} />
         </Suspense>

@@ -4,7 +4,6 @@ import type { PendingRaise } from '../../../lib/raise-types';
 import { hasRole } from '../../../lib/roles';
 import { formatEgp } from '../employees/[id]/contracts/salary';
 import { changeText, fromToText } from '../employees/[id]/salary-history/salary-history';
-import { figuresNote } from '../raise-requests/list';
 import type { FiguresFor } from '../raise-requests/request-forms';
 import { shownCode } from '../../../lib/hidden';
 
@@ -86,14 +85,14 @@ export function pendingRaiseView(r: PendingRaise): PendingRaiseView {
     reason: r.raise ? (RAISE_REASON_LABELS[r.raise.reason] ?? r.raise.reason) : null,
     promotion: promotion || null,
     sentAt: r.raise?.sentAt ? formatDateTime(r.raise.sentAt) : null,
-    confirmApprove: `Approve ${name}'s new pay, ${formatEgp(gross)} a month${r.startDate ? ` from ${formatDate(r.startDate)}` : ''}? HR then has ${shownCode(r.number) ?? 'it'} signed.`,
+    confirmApprove: `Approve ${name}'s new pay, ${formatEgp(gross)} a month${r.startDate ? ` from ${formatDate(r.startDate)}` : ''}?`,
   };
 }
 
 /**
  * What the CEO's other raise is worked out from (17 October 2026), on Approvals and Raise Requests alike: the pay before
- * it (its gross, rate, hours and allowances), with the raise's own allowances and hours after it, the year's rates and
- * who sees the figures; null when the API sends no pay before it (one from before, or someone who doesn't see salaries).
+ * it (its gross, rate, hours and allowances), with the raise's own allowances and hours after it, the year's rates;
+ * null when the API sends no pay before it (one from before, or someone who doesn't see salaries).
  */
 export function decisionFigures(r: PendingRaise, rates: readonly LawRates[]): FiguresFor | null {
   const before = r.previous;
@@ -105,7 +104,6 @@ export function decisionFigures(r: PendingRaise, rates: readonly LawRates[]): Fi
     rates,
     // a developer gets no contract dates (owner, 22 October 2026: "Hide per-person details"): this year's rates then
     year: r.startDate ? Number(r.startDate.slice(0, 4)) : new Date().getFullYear(),
-    note: figuresNote(false),
   };
 }
 

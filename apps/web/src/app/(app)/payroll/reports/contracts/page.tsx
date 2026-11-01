@@ -235,13 +235,9 @@ function Contracts({ report }: { report: ContractsReportView }) {
   const title = periodTitle(report.filters.period);
   return (
     <section aria-labelledby="contracts-list" className="space-y-3">
-      <SectionTitle
-        id="contracts-list"
-        title="Contracts"
-        note={report.rows.length > 0 && `${contractsLabel(report.rows.length)}, by employee code; ${report.filters.show === 'every' ? 'every version' : 'the latest version per employment'}`}
-      />
+      <SectionTitle id="contracts-list" title="Contracts" note={report.rows.length > 0 && contractsLabel(report.rows.length)} />
       {report.rows.length === 0 ? (
-        <Empty>No contract in {title} matches these filters. A contract counts when its term, from its start to its end, touches the period.</Empty>
+        <Empty>No contract in {title} matches these filters.</Empty>
       ) : (
         // the table scrolls inside its box on a phone, the page doesn't
         <div className="card overflow-x-auto">
@@ -297,8 +293,7 @@ async function Report({ searchParams }: { searchParams: Promise<Query> }) {
   const header = (
     <section className="card space-y-4 p-4">
       <Filters filters={f} today={today} departments={departments && departmentOptions(departments)} />
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
-        <p className="hint">Each contract’s status, start and end dates, as shown; no salary or allowances.</p>
+      <div className="flex justify-end border-t border-line pt-4">
         {/* a plain link, never prefetched: the API makes the workbook on each download */}
         <a href={excelHref(f)} className="btn btn-secondary">
           Download Excel
@@ -344,13 +339,7 @@ export default function ContractsReportPage({ searchParams }: PageProps<'/payrol
     <StaffOnly>
       <div className="space-y-4">
         <BackLink href="/payroll/reports">Payroll Reports</BackLink>
-        <div>
-          <h1 className="page-title">Contracts Report</h1>
-          <p className="mt-1 text-muted">
-            Every contract of a period with its status, start and end dates, and what ends soon or wasn’t renewed. Each is drafted and signed on the employee’s Employment
-            tab; all of them are on <Link href="/contracts">Contracts</Link>.
-          </p>
-        </div>
+        <h1 className="page-title">Contracts Report</h1>
         <Suspense fallback={<Loading />}>
           <Report searchParams={searchParams} />
         </Suspense>

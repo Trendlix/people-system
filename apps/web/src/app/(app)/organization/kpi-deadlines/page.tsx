@@ -1,8 +1,7 @@
 import { KPI_SETTING_LABELS, type KpiSettingsView } from '@trendlix/shared';
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { Suspense } from 'react';
-import { KPI_API, KPI_PATHS } from '@/lib/kpi-paths';
+import { KPI_API } from '@/lib/kpi-paths';
 import { getCurrentUser } from '@/lib/session';
 import type { SessionUser } from '@/lib/types';
 import { updateKpiSettings } from '../../kpis/templates/actions';
@@ -22,9 +21,6 @@ import { Empty, Loading } from '../ui';
 
 export const metadata: Metadata = { title: 'KPI Deadlines · People System' };
 
-const INTRO =
-  'Each month’s scorecard opens on the 1st of the next month (October’s on the 1st of November), and each step is due by a day of that month. A self-rating not sent by its day doesn’t hold up the manager, and a scorecard not signed by the sign-off day is final anyway; each is noted on it. One reminder goes the day before each deadline.';
-
 async function KpiDeadlines({ user }: { user: SessionUser }) {
   const loaded = await loadKpi<KpiSettingsView>(KPI_API.settings);
   const changed = loaded.kind === 'ok' ? settingsChangedText(loaded.value) : null;
@@ -33,7 +29,6 @@ async function KpiDeadlines({ user }: { user: SessionUser }) {
       <h2 id="kpi-deadlines-heading" className="text-lg font-semibold">
         Monthly Deadlines
       </h2>
-      <p className="mt-1 max-w-3xl text-sm text-muted">{INTRO}</p>
       <div className="mt-5">
         {loaded.kind !== 'ok' ? (
           <NotLoaded what="the KPI deadlines" loaded={loaded} />
@@ -58,14 +53,9 @@ async function Gate() {
   const user = await getCurrentUser();
   if (!readsKpiTemplates(user)) return <Empty>Only HR and the Super Admin set the KPI deadlines.</Empty>;
   return (
-    <div className="space-y-6">
-      <p className="max-w-3xl text-sm text-muted">
-        When each step of a month&apos;s KPI scorecards is due. The templates are built on <Link href={KPI_PATHS.templates}>KPI Templates</Link>.
-      </p>
-      <Suspense fallback={<Loading />}>
-        <KpiDeadlines user={user} />
-      </Suspense>
-    </div>
+    <Suspense fallback={<Loading />}>
+      <KpiDeadlines user={user} />
+    </Suspense>
   );
 }
 

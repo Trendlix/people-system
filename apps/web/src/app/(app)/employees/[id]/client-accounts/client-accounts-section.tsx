@@ -18,9 +18,7 @@ export async function ClientAccountsSection({ employee }: { employee: Pick<Emplo
   return (
     <ProfileSection title="Client Accounts" note={clientAccountsNote(view)} restricted={seesAmounts}>
       {assignments.length === 0 ? (
-        <p className="text-sm text-muted">
-          {employee.fullNameEn} is on no client account. HR assigns people to accounts under <Link href="/clients/accounts">Clients → Client Accounts</Link>.
-        </p>
+        <p className="text-sm text-muted">{employee.fullNameEn} is on no client account.</p>
       ) : (
         <div className="space-y-2">
           <ul className="divide-y divide-line rounded-lg border border-line bg-card" aria-label={`${employee.fullNameEn}’s client accounts`}>
@@ -43,11 +41,6 @@ export async function ClientAccountsSection({ employee }: { employee: Pick<Emplo
               </li>
             ))}
           </ul>
-          <p className="text-xs text-muted">
-            {full
-              ? 'Paid as the accounts allowance when the contract has it: each account’s amount (or the contract’s rate per account) for the days held in the month.'
-              : 'The accounts allowance for these accounts shows on the payslip.'}
-          </p>
         </div>
       )}
     </ProfileSection>

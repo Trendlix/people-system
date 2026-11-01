@@ -111,7 +111,6 @@ export function AccessoriesEditor({ code, group, accessories, onClose }: { code:
           );
         })}
       </ol>
-      <p className="hint">Leave a line empty to take it off. Each goes out with the asset on a handover and is ticked when it comes back.</p>
       <div className="flex flex-wrap gap-2">
         <SubmitButton>Save accessories</SubmitButton>
         {rows < ACCESSORY_ROWS_MAX && (
@@ -146,7 +145,7 @@ export function AccessoriesSection({ code, group, accessories, canEdit }: { code
           ))}
         </ul>
       ) : (
-        <p className="text-sm text-muted">No accessories listed. A charger, cables or a case that come with it go here.</p>
+        <p className="text-sm text-muted">No accessories listed.</p>
       )}
       {canEdit &&
         (editing ? (
@@ -177,7 +176,6 @@ export function AttachToForm({ code }: { code: string }) {
         <input id={fid('parentCode')} name="parentCode" required maxLength={40} defaultValue={valueOf(state, 'parentCode', '')} placeholder="E.g. PK-GMB-0001" className="input max-w-56 font-mono uppercase" />
         <SubmitButton>Attach</SubmitButton>
       </div>
-      <p className="hint">It then goes out with the main asset on a handover, and can still be handed over alone.</p>
     </form>
   );
 }
@@ -197,7 +195,6 @@ export function AttachItemForm({ code }: { code: string }) {
         <input id={fid('itemCode')} name="itemCode" required maxLength={40} defaultValue={valueOf(state, 'itemCode', '')} placeholder="E.g. PK-BAT-0004" className="input max-w-56 font-mono uppercase" />
         <SubmitButton>Attach</SubmitButton>
       </div>
-      <p className="hint">For a valuable accessory with its own code and label, e.g. a battery or a monitor.</p>
     </form>
   );
 }
@@ -209,7 +206,7 @@ export function DetachButton({ code, mainCode }: { code: string; mainCode: strin
     <form
       action={formAction}
       onSubmit={(e) => {
-        if (!window.confirm(`Detach ${code} from ${mainCode}? It stays in the register on its own.`)) e.preventDefault();
+        if (!window.confirm(`Detach ${code} from ${mainCode}?`)) e.preventDefault();
       }}
       className="space-y-2"
     >
@@ -361,7 +358,7 @@ export function MaintenanceEntry({ code, values }: { code: string; values: boole
 // ---------- disposal ----------
 
 /** Dispose of it (an Assets manager): how, when, who approved it, notes, and the amount for those who see the values. */
-export function DisposeForm({ code, name, values, purchaseDate, inKit, attached }: { code: string; name: string; values: boolean; purchaseDate: string | null; inKit: string | null; attached: number }) {
+export function DisposeForm({ code, name, values, purchaseDate }: { code: string; name: string; values: boolean; purchaseDate: string | null }) {
   const [open, setOpen] = useState(false);
   const [state, formAction] = useActionState(disposeAsset.bind(null, code, values, purchaseDate), {});
   const fid = useFieldIds();
@@ -373,12 +370,11 @@ export function DisposeForm({ code, name, values, purchaseDate, inKit, attached 
       </button>
     );
   }
-  const also = [inKit ? `it leaves ${inKit}` : null, attached ? `${attached} attached ${attached === 1 ? 'asset is' : 'assets are'} detached` : null].filter(Boolean);
   return (
     <form
       action={formAction}
       onSubmit={(e) => {
-        if (!window.confirm(`Dispose of ${code} ${name}? It stays on record but leaves every total and list. This can't be undone.`)) e.preventDefault();
+        if (!window.confirm(`Dispose of ${code} ${name}?`)) e.preventDefault();
       }}
       aria-label="Dispose of it"
       className="space-y-3 rounded-lg border border-danger/40 bg-canvas p-4"
@@ -425,10 +421,6 @@ export function DisposeForm({ code, name, values, purchaseDate, inKit, attached 
         </label>
         <textarea id={fid('notes')} name="notes" rows={2} maxLength={DISPOSAL_TEXT_LIMITS.notes} defaultValue={valueOf(state, 'notes', '')} className="input" />
       </div>
-      <p className="hint">
-        Its book value on that day is kept.{also.length ? ` Also, ${also.join(' and ')}.` : ''}
-        {!values ? ' Finance or the CEO can add the amount received later.' : ''}
-      </p>
       <div className="flex flex-wrap gap-2">
         <Send className="btn btn-danger">Dispose of it</Send>
         <button type="button" onClick={() => setOpen(false)} className="btn btn-secondary">
@@ -472,7 +464,6 @@ export function KitAddForm({ kitId, kitCode }: { kitId: string; kitCode: string 
         Add assets by code
       </label>
       <textarea id={fid('codes')} name="codes" rows={2} defaultValue={valueOf(state, 'codes', '')} placeholder="E.g. PK-CAM-0003, PK-LEN-0007" className="input font-mono uppercase" />
-      <p className="hint">Production kit assets only. One in another kit moves to this one.</p>
       <Send className="btn btn-secondary">Add to kit</Send>
     </form>
   );

@@ -32,7 +32,7 @@ const asShown = (messages: string[]) => messages.map((m) => m.replace(/\b(\d{4})
 /** An API from before raises (16 October 2026) answers "Cannot POST /api/…" for their addresses. */
 function messagesOf(err: ApiError): string[] {
   if (err.status === 404 && err.messages.some((m) => /^Cannot (GET|POST|PUT|PATCH|DELETE) /.test(m))) {
-    return ['Not available yet: the server does not have pay raises yet. Please try again after its next update.'];
+    return ['Not available yet: the server does not have pay raises yet.'];
   }
   return asShown(err.messages);
 }

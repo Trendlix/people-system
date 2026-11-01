@@ -11,7 +11,7 @@ export function CancelPhotoForm({ action }: { action: (prev: FormState, fd: Form
     <form
       action={formAction}
       onSubmit={(e) => {
-        if (!window.confirm('Cancel this photo? HR will no longer be asked to decide on it.')) e.preventDefault();
+        if (!window.confirm('Cancel this photo?')) e.preventDefault();
       }}
       className="space-y-3"
     >

@@ -66,7 +66,6 @@ export function HomeOverlaps({ request }: { request: Pick<HomeLocationView, 'ove
           <li key={`${o.kind}-${o.label ?? i}`}>{overlapText(o)}</li>
         ))}
       </ul>
-      <p className="mt-1">A warning only: it can still be approved. A check-in within both shows as the place read first: the office, then its sub-locations and the client locations, then the person’s own.</p>
     </div>
   );
 }
@@ -87,7 +86,7 @@ export function HomeMap({ request, radiusMetres, own = false, height = 'h-[200px
   const circle = homeCircle(request, radiusMetres);
   // a home being decided or in force keeps its point: without one, it was hidden (a developer's view, 24 October 2026)
   if (!circle && keepsHomePoint(request.status)) return <p className="rounded-lg bg-line-soft px-4 py-3 text-sm text-muted">Its point is hidden in the developer view.</p>;
-  if (!circle) return <p className="rounded-lg bg-line-soft px-4 py-3 text-sm text-muted">Its point is deleted: it is no longer kept.</p>;
+  if (!circle) return <p className="rounded-lg bg-line-soft px-4 py-3 text-sm text-muted">Its point is deleted.</p>;
   return <LocationsMap circles={[circle]} label={homeMapLabel({ ...request, radiusMetres: circle.radiusMetres }, own)} height={height} />;
 }
 
@@ -117,7 +116,7 @@ export function HomeTimeline({ request, ahead }: { request: Pick<HomeLocationVie
 }
 
 /** The employee's own requests, newest first: what, where it stands, opening each one's page. */
-export function MyHomesTable({ requests, note }: { requests: readonly HomeLocationView[]; note: string }) {
+export function MyHomesTable({ requests }: { requests: readonly HomeLocationView[] }) {
   return (
     <div className="card overflow-x-auto">
       <table className="table">
@@ -155,9 +154,7 @@ export function MyHomesTable({ requests, note }: { requests: readonly HomeLocati
           ))}
         </tbody>
       </table>
-      <p className="border-t border-line px-4 py-3 text-sm text-muted">
-        {homesLabel(requests.length)}, {note}
-      </p>
+      <p className="border-t border-line px-4 py-3 text-sm text-muted">{homesLabel(requests.length)}</p>
     </div>
   );
 }

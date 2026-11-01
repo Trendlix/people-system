@@ -213,15 +213,13 @@ export function CompensatoryHoursBadge({ day, className = '' }: { day: Parameter
 }
 
 /** A person's month's periods exempt from check-in, at its top (25 October 2026); nothing without any. */
-export function ExemptionNote({ periods, self = false, className = '' }: { periods: Parameters<typeof exemptionsText>[0]; self?: boolean; className?: string }) {
+export function ExemptionNote({ periods, className = '' }: { periods: Parameters<typeof exemptionsText>[0]; self?: boolean; className?: string }) {
   const text = exemptionsText(periods);
   if (!text) return null;
   return (
     <p className={`flex flex-wrap items-center gap-2 text-sm ${className}`}>
       <ExemptBadge of={{ exempt: true }} />
-      <span>
-        {text}. {self ? 'Your working days count as full hours; checking in is optional.' : 'Their working days count as full hours; any presses are kept for reference.'}
-      </span>
+      <span>{text}</span>
     </p>
   );
 }

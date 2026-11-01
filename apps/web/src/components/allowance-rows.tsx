@@ -1,6 +1,6 @@
 'use client';
 
-import { isPerAccount, PER_ACCOUNT_TEXT } from '@trendlix/shared';
+import { isPerAccount } from '@trendlix/shared';
 import { useState } from 'react';
 import { useFieldIds } from '@/components/form';
 import { Select } from '@/components/select';
@@ -26,7 +26,7 @@ export function AllowanceRows({
   defaultRows,
   onChange,
   legend = 'Allowances',
-  hint = 'A month each, paid on top of the gross salary.',
+  hint,
 }: {
   /** The kinds: the active ones are offered, and any kind already on a row stays shown. */
   types: readonly AllowanceType[];
@@ -46,13 +46,13 @@ export function AllowanceRows({
   const canAdd = types.some((t) => t.active && !rows.some((r) => r.allowanceTypeId === t.id));
 
   return (
-    <fieldset className="space-y-3" aria-describedby={fid('hint')}>
+    <fieldset className="space-y-3" aria-describedby={hint ? fid('hint') : undefined}>
       <legend className="label">{legend}</legend>
-      <p id={fid('hint')} className="hint">
-        {hint}
-        {types.some((t) => isPerAccount(t)) &&
-          ' One paid per client account is paid for each client account assigned under Clients → Client Accounts: at the amount per account typed here, or, left empty, at each assignment’s amount.'}
-      </p>
+      {hint && (
+        <p id={fid('hint')} className="hint">
+          {hint}
+        </p>
+      )}
       {rows.length > 0 && (
         <ul className="space-y-2">
           {rows.map((row, i) => {
@@ -99,13 +99,8 @@ export function AllowanceRows({
                       placeholder="EGP per account"
                       value={row.amount}
                       onChange={(e) => update(rows.map((r, j) => (j === i ? { ...r, amount: e.target.value } : r)))}
-                      aria-describedby={fid(`amount-${i}-hint`)}
                       className="input tabular-nums"
                     />
-                    <p id={fid(`amount-${i}-hint`)} className="hint">
-                      {PER_ACCOUNT_TEXT}
-                      {row.amount.trim() ? ', at this amount each.' : ': empty, each assignment’s amount.'}
-                    </p>
                   </div>
                 ) : (
                   <div className="w-40">
@@ -137,7 +132,7 @@ export function AllowanceRows({
           Add allowance
         </button>
       ) : (
-        types.length === 0 && <p className="text-sm text-muted">No kinds of allowance yet: HR adds them in Organization → Allowances.</p>
+        types.length === 0 && <p className="text-sm text-muted">No kinds of allowance yet.</p>
       )}
     </fieldset>
   );

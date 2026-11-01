@@ -31,7 +31,7 @@ export function CopyAddress({ address }: { address: string }) {
         </button>
       </div>
       <p role="status" className="text-sm text-muted">
-        {copied === 'yes' ? 'Copied. Paste it into Claude.' : copied === 'failed' ? 'Press Ctrl+C (⌘C on a Mac) to copy it.' : ''}
+        {copied === 'yes' ? 'Copied.' : copied === 'failed' ? 'Press Ctrl+C (⌘C on a Mac) to copy it.' : ''}
       </p>
     </div>
   );

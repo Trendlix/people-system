@@ -1,13 +1,13 @@
 // One section of Payroll Setup (owner's request, 16 October 2026): its heading in Title Case, a short intro saying what
 // it changes, and its form or, for those who can't change it, what it is set to. Each section loads and saves on its own.
 
-export function SetupSection({ id, title, intro, children }: { id: string; title: string; intro: React.ReactNode; children: React.ReactNode }) {
+export function SetupSection({ id, title, intro, children }: { id: string; title: string; intro?: React.ReactNode; children: React.ReactNode }) {
   return (
     <section id={id} aria-labelledby={`${id}-heading`} className="card scroll-mt-6 p-6">
       <h2 id={`${id}-heading`} className="text-lg font-semibold">
         {title}
       </h2>
-      <p className="mt-1 max-w-3xl text-sm text-muted">{intro}</p>
+      {intro && <p className="mt-1 max-w-3xl text-sm text-muted">{intro}</p>}
       <div className="mt-5">{children}</div>
     </section>
   );

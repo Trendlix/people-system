@@ -10,9 +10,10 @@ import {
   compensatoryBack,
   compensatoryCancelBody,
   compensatoryCashAddedText,
+  compensatoryCashPayText,
   compensatoryCashWaitsText,
   compensatoryDayGroups,
-  compensatoryDayOffField,
+  compensatoryDayOffLabel,
   compensatoryDecisionBody,
   compensatoryDecisionButton,
   compensatoryDoneHref,
@@ -27,16 +28,12 @@ import {
   compensatoryListPath,
   compensatoryOdHref,
   compensatoryOdText,
-  compensatoryOutcomeHint,
   compensatoryProgressText,
   compensatoryRecordCashText,
   compensatoryRecordForm,
-  compensatoryReadyText,
   compensatoryRulesOf,
-  compensatoryRulesText,
   compensatorySetupRows,
   compensatoryDaysLine,
-  compensatoryWindowText,
   editsCompensatorySetup,
   hasCompensatoryFilters,
   readCompensatoryQuery,
@@ -129,13 +126,6 @@ describe('the request form’s live checks', () => {
     expect(compensatoryFormWarning(typed('10/11/2026', '16/11/2026'), FORM)).toBe('No check-in is kept on 10/11/2026: HR will ask to confirm you worked that day.');
     expect(compensatoryFormWarning(typed('', ''), FORM)).toBeNull();
   });
-
-  it('says where the request goes once it is ready', () => {
-    expect(compensatoryReadyText(typed('06/11/2026', '16/11/2026'))).toBe(
-      'Ready to send: a compensatory day for Friday 06/11/2026, with a day off on Monday 16/11/2026, to your direct manager (without one, your lead), then HR.',
-    );
-    expect(compensatoryReadyText(typed('06/11/2026', '16/11/2026'), true)).toContain('then the CEO');
-  });
 });
 
 // The day worked picked from a menu (owner, 31 October 2026: "let the employee pick from a drop menu the eligable day, or
@@ -186,16 +176,14 @@ describe('the day worked’s menu', () => {
   });
 
   it('says on the request one was asked ahead, and that cash instead waits for the day', () => {
-    expect(compensatoryAheadText({ upcoming: true, askedAhead: true })).toBe(
-      'Still to come: asked ahead for a day to be worked. No check-in to confirm until then; cash instead only once it is worked.',
-    );
-    expect(compensatoryAheadText({ upcoming: false, askedAhead: true })).toBe('Asked ahead, before the day was worked.');
+    expect(compensatoryAheadText({ upcoming: true, askedAhead: true })).toBe('Still to come: asked ahead.');
+    expect(compensatoryAheadText({ upcoming: false, askedAhead: true })).toBe('Asked ahead.');
     expect(compensatoryAheadText({ upcoming: false, askedAhead: false })).toBeNull();
     expect(compensatoryAheadText({})).toBeNull();
     expect(compensatoryAheadMark({ upcoming: true, askedAhead: true, od: null })).toBe('Asked ahead: the day worked is still to come');
     expect(compensatoryAheadMark({ upcoming: false, askedAhead: true })).toBe('Asked ahead');
     expect(compensatoryAheadMark({ upcoming: true, askedAhead: true, od: { id: 'o1', startDate: '2026-11-13', status: 'with_hr' } })).toBeNull();
-    expect(compensatoryCashWaitsText('2026-11-13')).toBe('Cash instead once the day is worked: Friday 13/11/2026 is still to come. Approve it as a day off now, or decide it from that day on.');
+    expect(compensatoryCashWaitsText('2026-11-13')).toBe('Cash instead only once Friday 13/11/2026 is worked.');
   });
 });
 
@@ -273,8 +261,8 @@ describe('the list and the addresses', () => {
     expect(compensatoryDaysLine({ dayWorked: '2026-11-06', dayOff: '2026-11-16', outcome: null })).toBe('Worked Friday 06/11/2026 · day off Monday 16/11/2026');
     expect(compensatoryDaysLine({ dayWorked: '2026-11-06', dayOff: null, outcome: 'cash' })).toBe('Worked Friday 06/11/2026 · paid in cash instead');
     expect(compensatoryDoneHref(ID, 'hr_approve')).toBe(`/attendance/compensatory/${ID}?done=hr_approve`);
-    expect(compensatoryDoneText({ done: 'hr_approve' }, 'approved', null, false, 'cash')?.text).toContain('cash instead');
-    expect(compensatoryDoneText({ done: 'hr_approve' }, 'approved')?.text).toContain('day off');
+    expect(compensatoryDoneText({ done: 'hr_approve' }, 'approved', null, false, 'cash')?.text).toBe('Approved as cash instead.');
+    expect(compensatoryDoneText({ done: 'hr_approve' }, 'approved')?.text).toBe('Approved as a day off.');
     expect(compensatoryDoneText({ done: 'moved' }, 'approved')?.tone).toBe('warn');
     expect(compensatoryDoneText({ done: 'nonsense' }, 'approved')).toBeNull();
   });
@@ -338,23 +326,12 @@ describe('the hours worked', () => {
     expect(compensatoryEarnsText(5, r)).toBe('Earns 4 hours off (capped at 4)');
     expect(compensatoryEarnsText(6, r)).toBe('Earns a whole day off (6 hours or more)');
     expect(compensatoryEarnsText(5, { minHours: 1, hoursCap: 3, fullDayHours: 8 })).toBe('Earns 3 hours off (capped at 3)');
-    expect(compensatoryRulesText(r)).toBe('Under 2 hours earn nothing; from 2 hours, the same hours off, at most 4; 6 hours or more, a whole day (Compensatory Setup).');
-    expect(compensatoryRulesText({ minHours: 6, hoursCap: 6, fullDayHours: 6 })).toBe('Under 6 hours earn nothing; 6 hours or more, a whole day (Compensatory Setup).');
   });
 
-  it('names the day off by what is earned, its window the Setup’s', () => {
-    expect(compensatoryDayOffField({ kind: 'day' }, { offWithinDays: null }, 'employee')).toEqual({
-      label: 'Day off',
-      hint: 'A working day in the same month as the day worked, tomorrow or later: not leave, work from home or an official holiday.',
-    });
-    const hours = compensatoryDayOffField({ kind: 'hours', hours: 4 }, { offWithinDays: 10 }, 'employee');
-    expect(hours.label).toBe('Day for the hours off');
-    expect(hours.hint).toBe(
-      'A working day within 10 days after the day worked, tomorrow or later: not leave, work from home or an official holiday. The 4 hours off are counted as worked that day, with no deduction; you work the rest of it.',
-    );
-    expect(compensatoryDayOffField({ kind: 'hours', hours: 1 }, { offWithinDays: null }, 'hr').hint).toContain('The 1 hour off is counted as worked that day, with no deduction; they work the rest of it.');
-    expect(compensatoryDayOffField(null, { offWithinDays: null }, 'hr').label).toBe('Day off');
-    expect(compensatoryWindowText(1)).toBe('within 1 day after the day worked');
+  it('names the day off by what is earned', () => {
+    expect(compensatoryDayOffLabel({ kind: 'day' })).toBe('Day off');
+    expect(compensatoryDayOffLabel({ kind: 'hours', hours: 4 })).toBe('Day for the hours off');
+    expect(compensatoryDayOffLabel(null)).toBe('Day off');
   });
 
   it('checks the hours live: to be read, and the Setup’s minimum', () => {
@@ -374,13 +351,6 @@ describe('the hours worked', () => {
     expect(compensatoryFormProblems(typed('06/11/2026', '19/11/2026'), ten)).toEqual(['The day off must be within 10 days after the day worked: from 07/11/2026 to 16/11/2026.']);
   });
 
-  it('says what is sent: the hours worked and the hours off', () => {
-    expect(compensatoryReadyText(partOf('06/11/2026', '16/11/2026', '5'))).toBe(
-      'Ready to send: a compensatory day for 5 hours worked on Friday 06/11/2026, with 4 hours off on Monday 16/11/2026, to your direct manager (without one, your lead), then HR.',
-    );
-    expect(compensatoryReadyText(partOf('06/11/2026', '16/11/2026', '7'))).toContain('for Friday 06/11/2026, with a day off on Monday 16/11/2026');
-  });
-
   it('sends the hours worked only for part of the day', () => {
     expect(compensatoryForm(fields({ dayWorked: '06/11/2026', dayOff: '16/11/2026', part: 'part', hoursWorked: '3,5' })).body).toEqual({ dayWorked: '2026-11-06', dayOff: '2026-11-16', hoursWorked: 3.5 });
     expect(compensatoryForm(fields({ dayWorked: '06/11/2026', dayOff: '16/11/2026', part: 'whole', hoursWorked: '4' })).body).toEqual({ dayWorked: '2026-11-06', dayOff: '2026-11-16' });
@@ -396,10 +366,10 @@ describe('the hours worked', () => {
 
   it('words HR’s cash instead by what is earned: the check’s days’ pay for hours', () => {
     const r = COMPENSATORY_RULE_DEFAULTS;
-    expect(compensatoryRecordCashText({ kind: 'day' }, r, null)).toMatch(/^Cash instead: an addition of 1.5 days' pay on the month's draft payroll, and no day off\./);
-    expect(compensatoryRecordCashText({ kind: 'hours', hours: 4 }, r, 0.75)).toBe("Cash instead: 0.75 days' pay (4 hours at 1.5×) on the month's draft payroll, and no hours off.");
-    expect(compensatoryRecordCashText({ kind: 'hours', hours: 4 }, r, null)).toBe("Cash instead: 4 hours' pay at 1.5× (in days' pay by their shift's hours a day) on the month's draft payroll, and no hours off.");
-    expect(compensatoryRecordCashText({ kind: 'none', hours: 1 }, r, 0)).toBe('Nothing to pay: fewer than 2 hours worked earn nothing.');
+    expect(compensatoryRecordCashText({ kind: 'day' }, r, null)).toBe("1.5 days' pay on the draft payroll.");
+    expect(compensatoryRecordCashText({ kind: 'hours', hours: 4 }, r, 0.75)).toBe("0.75 days' pay (4 hours at 1.5×) on the draft payroll.");
+    expect(compensatoryRecordCashText({ kind: 'hours', hours: 4 }, r, null)).toBe("4 hours' pay at 1.5× on the draft payroll.");
+    expect(compensatoryRecordCashText({ kind: 'none', hours: 1 }, r, 0)).toBeNull();
   });
 });
 
@@ -416,22 +386,21 @@ describe('a request with hours, and one with an official duty', () => {
     expect(compensatoryCashAddedText({ cashDays: 1.5, hoursOff: 4 })).toBe("An addition of 4 hours' pay at 1.5× on the month's payroll.");
   });
 
-  it('words HR’s decision in hours: hours off on the day, or the hours’ pay at the rate', () => {
-    expect(compensatoryOutcomeHint('cash', { dayOff: '2026-11-10', hoursOff: 4 }, 1.5)).toMatch(/^Cash instead: 4 hours' pay at 1.5×, an addition on the draft payroll of the month, and no hours off\./);
-    expect(compensatoryOutcomeHint('day_off', { dayOff: '2026-11-10', hoursOff: 4 }, 1.5)).toBe('4 hours off on Tuesday 10/11/2026: counted as worked hours that day, and nothing is paid for the hours worked.');
-    expect(compensatoryOutcomeHint('day_off', { dayOff: '2026-11-10' }, 1.5)).toBe('A day off (the default): a full paid day, and nothing is paid for the day worked.');
-    expect(compensatoryOutcomeHint('cash', { dayOff: null }, 1.5)).toMatch(/^Cash instead \(rarely\): an addition of 1.5 days' pay/);
+  it('words HR’s cash instead: the hours’ pay at the rate, or a whole day’s', () => {
+    expect(compensatoryCashPayText({ hoursOff: 4 }, 1.5)).toBe("4 hours' pay at 1.5× on the draft payroll.");
+    expect(compensatoryCashPayText({}, 1.5)).toBe("1.5 days' pay on the draft payroll.");
     expect(compensatoryDecisionButton('approve', 'hr', 'day_off', false, true).label).toBe('Approve as hours off');
     expect(compensatoryDecisionButton('approve', 'hr', 'cash', false, true).label).toBe('Approve as cash instead');
   });
 
   it('says what was done in hours', () => {
-    expect(compensatoryDoneText({ done: 'sent' }, 'with_manager', null, false, null, 4)?.text).toBe('Request sent for 4 hours off. It goes to your direct manager, then HR; each step shows on the request.');
-    expect(compensatoryDoneText({ done: 'recorded' }, 'approved', null, false, 'day_off', 4)?.text).toBe('Compensatory hours recorded, approved at once: 4 hours off.');
-    expect(compensatoryDoneText({ done: 'recorded' }, 'approved', null, false, 'cash', 1)?.text).toBe("Compensatory hours recorded, approved at once: 1 hour's pay in cash instead.");
-    expect(compensatoryDoneText({ done: 'hr_approve' }, 'approved', null, false, 'day_off', 4)?.text).toBe('Approved as 4 hours off: they count as worked hours on the day off.');
-    expect(compensatoryDoneText({ done: 'hr_approve' }, 'approved', null, false, 'cash', 4)?.text).toContain("the addition for 4 hours' pay is on the month’s draft payroll");
-    expect(compensatoryDoneText({ done: 'recorded' }, 'approved')?.text).toBe('Compensatory day recorded, approved at once.');
+    expect(compensatoryDoneText({ done: 'sent' }, 'with_manager', null, false, null, 4)?.text).toBe('Sent to your direct manager.');
+    expect(compensatoryDoneText({ done: 'sent' }, 'with_hr', null, true)?.text).toBe('Sent to the CEO.');
+    expect(compensatoryDoneText({ done: 'recorded' }, 'approved', null, false, 'day_off', 4)?.text).toBe('Compensatory hours recorded: 4 hours off.');
+    expect(compensatoryDoneText({ done: 'recorded' }, 'approved', null, false, 'cash', 1)?.text).toBe("Compensatory hours recorded: 1 hour's pay in cash instead.");
+    expect(compensatoryDoneText({ done: 'hr_approve' }, 'approved', null, false, 'day_off', 4)?.text).toBe('Approved as 4 hours off.');
+    expect(compensatoryDoneText({ done: 'hr_approve' }, 'approved', null, false, 'cash', 4)?.text).toBe('Approved as cash instead.');
+    expect(compensatoryDoneText({ done: 'recorded' }, 'approved')?.text).toBe('Compensatory day recorded.');
   });
 
   it('links one an official duty carries to the duty, on the site and the phone pages', () => {

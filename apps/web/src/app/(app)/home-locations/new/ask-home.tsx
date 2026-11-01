@@ -28,10 +28,6 @@ export function AskHomeHeading({ back }: { back: { href: string; label: string }
     <div className="space-y-2">
       <BackLink href={back.href}>{back.label}</BackLink>
       <h1 className="page-title">Request a Check-in Location</h1>
-      <p className="text-muted">
-        A place you check in from besides the office: your home, a remote site you work from, or a client’s place. HR approves it, then the CEO; once
-        approved, a check-in there shows with its name, and while check-ins are locked to the check-in locations it lets yours through.
-      </p>
     </div>
   );
 }
@@ -41,7 +37,7 @@ export async function AskHome({ surface = 'site', searchParams }: { surface?: Su
   const profile = await loadOwnProfile(user);
   if (!profile) return <NoProfile user={user} />;
   const mine = await loadMyHomes();
-  if (mine.kind === 'unavailable') return <Empty>Not available yet: the server does not have check-in location requests yet.</Empty>;
+  if (mine.kind === 'unavailable') return <Empty>Not available yet.</Empty>;
   const list = mine.kind === 'ok' ? mine.value : [];
   const open = openTypes(list);
   const href = (id: string) => (surface === 'site' ? homeLocationHref(id) : appItemHref(surface, 'home', id));
@@ -56,7 +52,7 @@ export async function AskHome({ surface = 'site', searchParams }: { surface?: Su
             <Link href={href(r.id)}>{HOME_TYPE_LINES[homeTypeOf(r)].toLowerCase()}</Link>
           </span>
         ))}
-        . Open one to follow it, or withdraw it to ask again.
+        .
       </Empty>
     );
   }
@@ -64,7 +60,7 @@ export async function AskHome({ surface = 'site', searchParams }: { surface?: Su
     <div className="space-y-4">
       {deciding.length > 0 && (
         <p className="rounded-lg bg-line-soft px-4 py-3 text-sm text-muted">
-          Being decided already, one at a time of each type:{' '}
+          Being decided already:{' '}
           {deciding.map((r, i) => (
             <span key={r.id}>
               {i > 0 && ', '}

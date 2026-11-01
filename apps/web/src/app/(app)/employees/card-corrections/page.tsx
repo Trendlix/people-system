@@ -33,7 +33,7 @@ async function Fixes() {
   const mayDelete = canDelete(user);
   const fixes = await apiGet<CardCorrection[]>('/id-card/corrections');
   if (fixes.length === 0) {
-    return <Empty>Nothing learned yet. A fix is learned when HR corrects a word read from an ID card and saves.</Empty>;
+    return <Empty>Nothing learned yet.</Empty>;
   }
 
   return (
@@ -70,7 +70,7 @@ async function Fixes() {
                   <DeleteFixButton
                     action={deleteCardCorrection.bind(null, f.id)}
                     name={f.wrong}
-                    confirmText={`Delete this fix? “${f.wrong}” will no longer be changed to “${f.right}” in the next card readings.`}
+                    confirmText={`Delete the fix of “${f.wrong}”?`}
                   />
                 </td>
               )}
@@ -79,8 +79,7 @@ async function Fixes() {
         </tbody>
       </table>
       <p className="border-t border-line px-4 py-3 text-sm text-muted">
-        {fixes.length} {fixes.length === 1 ? 'fix' : 'fixes'}. Times: how often HR made the same correction. Last used: when it was last learned or
-        confirmed.
+        {fixes.length} {fixes.length === 1 ? 'fix' : 'fixes'}
       </p>
     </section>
   );
@@ -91,14 +90,7 @@ export default function CardCorrectionsPage() {
     <StaffOnly>
       <div className="space-y-4">
         <BackLink href="/employees">Employees</BackLink>
-        <div>
-          <h1 className="page-title">Card Reading Fixes</h1>
-          <p className="mt-1 max-w-3xl text-muted">
-            Words the ID card reader got wrong and HR corrected before saving: in the Arabic name and the address, never in numbers or dates. Each
-            fix is applied to the next card readings, and the fields it changes are marked for checking. Only a Super Admin can delete a fix, e.g. one
-            learned by mistake.
-          </p>
-        </div>
+        <h1 className="page-title">Card Reading Fixes</h1>
         <Suspense fallback={<Loading />}>
           <Fixes />
         </Suspense>

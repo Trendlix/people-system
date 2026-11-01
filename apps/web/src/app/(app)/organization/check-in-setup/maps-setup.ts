@@ -44,26 +44,20 @@ export interface MapsFormState extends FormState {
   saved?: number;
 }
 
-/** What a save that went through says. */
-export const mapsSavedText = (view: MapsSettingsView): string =>
-  view.keySet
-    ? 'Saved. Every map is Google’s from the next page opened (reload this page to see it here).'
-    : 'Saved. The maps stay on OpenStreetMap until a key is set.';
-
-export const MAPS_REMOVED_TEXT = 'The key was removed: every map is OpenStreetMap’s from the next page opened.';
-export const MAPS_REMOVE_CONFIRM = 'Remove the Google Maps key? Every map goes back to OpenStreetMap, without the satellite view or Google’s place search.';
+export const MAPS_REMOVED_TEXT = 'Key removed.';
+export const MAPS_REMOVE_CONFIRM = 'Remove the Google Maps key?';
 
 /** The section's status: which maps the system draws now. */
 export function mapsStatus(view: MapsSettingsView): { tone: 'ok' | 'neutral'; text: string } {
   if (view.keySet) {
     const ending = view.keyEnding ? ` (key …${view.keyEnding}${view.mapId ? `, Map ID ${view.mapId}` : ''})` : '';
-    return { tone: 'ok', text: `Every map is Google Maps${ending}, with Map and Satellite, and Google’s place search.` };
+    return { tone: 'ok', text: `Every map is Google Maps${ending}.` };
   }
-  return { tone: 'neutral', text: 'The maps are OpenStreetMap’s: no Google Maps key is set. Set one for Google’s maps, the satellite view and Google’s place search.' };
+  return { tone: 'neutral', text: 'The maps are OpenStreetMap’s: no Google Maps key is set.' };
 }
 
 /** Said to a developer, and to a Super Admin viewing as someone. */
-export const MAPS_NOT_FOR_DEVELOPERS = 'The Google Maps key isn’t open to developers: the maps you see are OpenStreetMap’s.';
+export const MAPS_NOT_FOR_DEVELOPERS = 'The Google Maps key isn’t open to developers.';
 
 const quoted = (list: readonly string[]) => list.map((s) => `“${s}”`).join(' and ');
 
@@ -80,7 +74,3 @@ export const MAPS_STEPS: readonly string[] = [
   'Under Billing, make sure the project has a billing account linked. Google’s free monthly usage covers this system’s maps and searches.',
   'Paste the key here, save, then press Check the key.',
 ];
-
-/** What the Map ID box says under it. */
-export const MAP_ID_HINT =
-  'Optional. Google’s newer pins (Advanced Markers) need one: Google Maps Platform → Map management → Create Map ID, of type JavaScript. Without one the classic pins are used, which look the same.';

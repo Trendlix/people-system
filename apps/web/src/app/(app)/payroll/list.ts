@@ -126,6 +126,8 @@ export interface RunActions {
    * 2026: "if there is an attendance deduction, allow the CEO to wave the deduction by ticking a box").
    */
   waiveAttendance: boolean;
+  /** The CEO, on a run with the CEO: waive a line's KPI deduction, or take the waiver back (1 November 2026). */
+  waiveKpi: boolean;
   /** HR, once approved. */
   markPaid: boolean;
   /** A Super Admin, on a draft only (the only role that deletes: owner's decision, 15 October 2026). */
@@ -145,6 +147,7 @@ export function runActions(user: WithRoles, status: PayrollStatus): RunActions {
     approve: ceo && status === 'pending_ceo',
     returnToHr: ceo && status === 'pending_ceo',
     waiveAttendance: ceo && status === 'pending_ceo',
+    waiveKpi: ceo && status === 'pending_ceo',
     markPaid: hr && status === 'approved',
     delete: isSuperAdmin(user) && draft,
     bankFiles: status === 'approved' || status === 'paid',

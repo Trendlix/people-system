@@ -39,14 +39,9 @@ async function Settings() {
       </div>
       {can.manage && s.custodyTerms && (
         <section aria-labelledby="custody-terms" className="card space-y-3 p-5">
-          <div>
-            <h2 id="custody-terms" className="font-semibold">
-              Custody Terms
-            </h2>
-            <p className="mt-0.5 text-sm text-muted">
-              What the employee agrees to when they sign a custody form, in English and in Arabic side by side. Each record keeps the terms it was printed with.
-            </p>
-          </div>
+          <h2 id="custody-terms" className="font-semibold">
+            Custody Terms
+          </h2>
           <TermsForm
             action={saveCustodyTerms}
             standardAction={restoreStandardTerms}
@@ -67,15 +62,9 @@ async function Settings() {
 export default function AssetSettingsPage() {
   return (
     <AssetsFrame tab={ASSET_PATHS.settings}>
-      <p className="text-muted">
-        The capitalization threshold: an asset cheaper than it is Expensed, its book value 0. Every other fixed asset loses its value in a straight
-        line over its useful life.
-      </p>
-      <div className="mt-6">
-        <Suspense fallback={<Loading />}>
-          <Settings />
-        </Suspense>
-      </div>
+      <Suspense fallback={<Loading />}>
+        <Settings />
+      </Suspense>
     </AssetsFrame>
   );
 }

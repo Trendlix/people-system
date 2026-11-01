@@ -1,6 +1,6 @@
 'use client';
 
-import { ASSET_PRODUCT_IMAGES_MAX, productImageLabel, type AssetDraftImageView } from '@trendlix/shared';
+import { productImageLabel, type AssetDraftImageView } from '@trendlix/shared';
 import { useState, useTransition } from 'react';
 import { DocumentViewer } from '@/components/document-viewer';
 import { draftImageSrc } from '@/lib/asset-paths';
@@ -110,13 +110,7 @@ export function DraftProductImages({ draftId, images, canRemove = true }: { draf
   if (!images.length) return null;
   return (
     <div className="space-y-2">
-      <div>
-        <h3 className="text-sm font-semibold">Product Images</h3>
-        <p className="text-xs text-muted">
-          The maker’s {images.length === 1 ? 'image' : 'images'} Claude found ({images.length} of {ASSET_PRODUCT_IMAGES_MAX}). {images.length === 1 ? 'It shows' : 'They show'} the
-          model, not this item: add a real photo of it too, for its condition and serial number. It becomes the main photo.
-        </p>
-      </div>
+      <h3 className="text-sm font-semibold">Product Images</h3>
       <ul aria-label="Product images" className="grid grid-cols-3 gap-3 sm:grid-cols-4">
         {images.map((image, i) => (
           <DraftImageTile key={image.id} draftId={draftId} image={image} index={i} canRemove={canRemove} />

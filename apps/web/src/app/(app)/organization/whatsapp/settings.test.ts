@@ -179,26 +179,22 @@ describe('Twilio on the form (25 October 2026: "Add Twilio as a choice")', () =>
   it('says where messages go through Twilio, and an Auth Token that can’t be read', () => {
     const on = view({ provider: 'twilio', twilio: twilio({ templates: [template({ name: 'people_approval_waiting_en' })] }) });
     expect(whatsappStatus(on)).toMatchObject({ tone: 'ok', headline: 'WhatsApp messages go out through Twilio from +201000005555', alert: null });
-    expect(whatsappStatus(on).notes).toEqual(['1 of 1 template approved on Twilio: only approved templates are used; anything else goes by the bell, push and email only.']);
+    expect(whatsappStatus(on).notes).toEqual(['1 of 1 template approved on Twilio.']);
     const service = `MG${'0'.repeat(32)}`;
     expect(whatsappStatus(view({ provider: 'twilio', twilio: twilio({ sender: service, senderKind: 'service' }) })).headline).toBe(`WhatsApp messages go out through Twilio, from the Messaging Service ${service}`);
     const stuck = view({ provider: 'twilio', tokenUnreadable: true, twilio: twilio({ authTokenUnreadable: true }), sending: { on: false, why: 'Enter the Auth Token.' } });
     expect(whatsappStatus(stuck)).toMatchObject({ tone: 'warn', alert: WHATSAPP_TWILIO_TOKEN_UNREADABLE });
     expect(savedMessage(stuck)).toBe(`Saved, but not used yet. ${WHATSAPP_TWILIO_TOKEN_UNREADABLE}`);
-    expect(savedMessage(on)).toBe('Saved. WhatsApp messages go out through Twilio from now on.');
+    expect(savedMessage(on)).toBe('Saved.');
   });
 
   it('says what a switch means before saving: messages waiting go that way too, and only with its own approved templates', () => {
     expect(switchNote(view(), 'meta')).toBeNull();
-    expect(switchNote(view(), 'twilio')).toBe(
-      'Once saved, WhatsApp messages go through Twilio, those already waiting too. None of Twilio’s templates is approved yet, so nothing goes on WhatsApp until they are: submit them below and sync their status until they are approved. The bell, push and email go on meanwhile.',
-    );
+    expect(switchNote(view(), 'twilio')).toBe('Once saved, WhatsApp messages go through Twilio, which has no approved templates yet.');
     const some = view({ twilio: twilio({ templates: [template({}), template({ language: 'ar', status: 'pending' })] }) });
-    expect(switchNote(some, 'twilio')).toBe(
-      'Once saved, WhatsApp messages go through Twilio, those already waiting too. 1 of 2 templates approved there: the others go by the bell, push and email only until they are approved.',
-    );
+    expect(switchNote(some, 'twilio')).toBe('Once saved, WhatsApp messages go through Twilio: 1 of 2 templates approved there.');
     const back = view({ provider: 'twilio', templates: [template({})] });
-    expect(switchNote(back, 'meta')).toBe('Once saved, WhatsApp messages go through Meta directly, those already waiting too.');
+    expect(switchNote(back, 'meta')).toBe('Once saved, WhatsApp messages go through Meta directly.');
   });
 
   it('lists each provider’s own templates', () => {
@@ -223,7 +219,7 @@ describe('what the page says', () => {
 
   it('says whether messages go out, and what keeps them', () => {
     expect(whatsappStatus(view())).toMatchObject({ tone: 'ok', headline: 'WhatsApp messages go out from +201001234567', alert: null });
-    expect(whatsappStatus(view()).notes).toEqual(['1 of 2 templates approved: only approved templates are used; anything else goes by the bell, push and email only.']);
+    expect(whatsappStatus(view()).notes).toEqual(['1 of 2 templates approved.']);
     expect(whatsappStatus(view({ enabled: false, sending: { on: false, why: 'Switched off.' } }))).toMatchObject({ tone: 'neutral', headline: 'Switched off: no WhatsApp messages go out' });
     const stuck = whatsappStatus(view({ tokenUnreadable: true, missing: ['the access token'], sending: { on: false, why: 'The access token can’t be read.' } }));
     expect(stuck).toMatchObject({ tone: 'warn', headline: 'Not sending: The access token can’t be read.', alert: WHATSAPP_TOKEN_UNREADABLE });
@@ -231,7 +227,7 @@ describe('what the page says', () => {
   });
 
   it('says what a save came to', () => {
-    expect(savedMessage(view())).toBe('Saved. WhatsApp messages go out with these settings from now on.');
+    expect(savedMessage(view())).toBe('Saved.');
     expect(savedMessage(view({ sending: { on: false, why: null }, missing: ['the app secret'] }))).toBe('Saved, but not used yet: enter the app secret.');
     expect(savedMessage(view({ enabled: false, sending: { on: false, why: null } }))).toMatch(/^Saved, switched off/);
   });

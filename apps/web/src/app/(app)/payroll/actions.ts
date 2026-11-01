@@ -75,7 +75,7 @@ export async function refreshFromAttendance(id: string): Promise<FormState> {
 export async function saveRunLines(id: string, lines: LinePatch[]): Promise<FormState> {
   if (!UUID.test(id)) return NOT_FOUND;
   if (!Array.isArray(lines) || lines.length === 0) return { errors: ['Nothing has changed.'] };
-  return act(() => apiSend('PATCH', `/payroll/runs/${id}/lines`, { lines }), 'Saved. The pay below is worked out again.');
+  return act(() => apiSend('PATCH', `/payroll/runs/${id}/lines`, { lines }), 'Saved.');
 }
 
 /** Sends a draft to the CEO to approve; it can't be changed meanwhile. */
@@ -100,11 +100,21 @@ export async function setAttendanceWaiver(id: string, lineId: string, waived: bo
   return act(() => apiSend('POST', `/payroll/runs/${id}/lines/${lineId}/attendance-waiver`, { waived }), waived ? 'Waived.' : 'Deducted again.');
 }
 
+/**
+ * The CEO waives a line's KPI deduction, or takes the waiver back, while the run is with the CEO (owner, 1 November
+ * 2026: "make a button wave KPI deduction like the attendance one").
+ */
+export async function setKpiWaiver(id: string, lineId: string, waived: boolean): Promise<FormState> {
+  if (!UUID.test(id) || !UUID.test(lineId)) return NOT_FOUND;
+  if (typeof waived !== 'boolean') return { errors: ['Tick the box to waive the KPI deduction, or untick it to take it again.'] };
+  return act(() => apiSend('POST', `/payroll/runs/${id}/lines/${lineId}/kpi-waiver`, { waived }), waived ? 'Waived.' : 'Deducted again.');
+}
+
 /** The CEO returns the run to HR as a draft, with the reason HR sees on it. */
 export async function returnRun(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
   if (!UUID.test(id)) return NOT_FOUND;
   const reason = String(fd.get('reason') ?? '').trim();
-  if (!reason) return { errors: ['Say why it goes back to HR: HR sees it on the run.'], values: { reason } };
+  if (!reason) return { errors: ['Say why it goes back to HR.'], values: { reason } };
   return act(() => apiSend('POST', `/payroll/runs/${id}/return`, { reason }), 'Returned to HR.', { reason });
 }
 

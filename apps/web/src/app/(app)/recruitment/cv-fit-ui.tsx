@@ -58,7 +58,7 @@ export function CvFitSection({ fit, id, level = 'h3' }: { fit: CvFit; id: string
         </Heading>
         {fit.percent !== null && <span className="text-sm font-semibold tabular-nums">{fit.percent}%</span>}
       </div>
-      <p className="text-xs text-muted">{fitSummary(fit)}</p>
+      {fitSummary(fit) && <p className="text-xs text-muted">{fitSummary(fit)}</p>}
       <FitParts fit={fit} />
     </section>
   );
@@ -96,12 +96,9 @@ export function CandidateFits({ rows }: { rows: readonly { id: string; vacancy: 
   if (!fitted.length) return null;
   return (
     <section aria-labelledby="candidate-cv-fit" className="card space-y-4 p-6">
-      <div className="space-y-1">
-        <h2 id="candidate-cv-fit" className="text-lg font-semibold">
-          CV Fit
-        </h2>
-        <p className="text-xs text-muted">Each application’s CV against its vacancy: the parts that couldn’t be scored are left out, the others re-weighted to 100.</p>
-      </div>
+      <h2 id="candidate-cv-fit" className="text-lg font-semibold">
+        CV Fit
+      </h2>
       {fitted.map((r) => (
         <div key={r.id} className="space-y-2">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -138,12 +135,9 @@ export function OpenPositions({
   const Heading = level;
   return (
     <section aria-labelledby={id} className={card ? 'card space-y-3 p-6' : 'space-y-2'}>
-      <div className="space-y-1">
-        <Heading id={id} className={level === 'h2' ? 'text-lg font-semibold' : 'text-sm font-semibold'}>
-          Other Open Positions
-        </Heading>
-        <p className="text-xs text-muted">Open vacancies their CV fits, by the same CV fit Suggested From Earlier CVs uses there.</p>
-      </div>
+      <Heading id={id} className={level === 'h2' ? 'text-lg font-semibold' : 'text-sm font-semibold'}>
+        Other Open Positions
+      </Heading>
       {positions.length === 0 ? (
         <p className="text-sm text-muted">{NO_OPEN_POSITIONS}</p>
       ) : (

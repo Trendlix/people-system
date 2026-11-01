@@ -685,12 +685,10 @@ export function sourceText(s: AttendanceSource): string {
 }
 
 /** What a month without days says: no one checked in on the system, nor is Zoho People's attendance imported. */
-export const noAttendanceText = (month: string) =>
-  `No attendance for ${monthName(month)} yet: no one has checked in on the system, and Zoho People's attendance isn't imported — import it on the month's payroll run.`;
+export const noAttendanceText = (month: string) => `No attendance for ${monthName(month)} yet.`;
 
 /** What a month without days says to someone who doesn't import it: an employee, a manager. */
-export const notImportedYetText = (month: string) =>
-  `No attendance for ${monthName(month)} yet. Check-ins on the system show here as they are made, and HR imports Zoho People's attendance with the month's payroll.`;
+export const notImportedYetText = (month: string) => `No attendance for ${monthName(month)} yet.`;
 
 /** The month's payroll run, or Payroll when it has none. */
 export const runWay = (month: string, run: AttendanceRunRef | null): { href: string; label: string } =>
@@ -807,6 +805,6 @@ export function deletedImportNotice(query: Query): string | null {
   const month = one(query.deleted);
   if (!isAttendanceMonth(month)) return null;
   return one(query.undone) === '1'
-    ? `Undid and deleted the ${monthName(month)} import: the lines it filled are back to the figures typed before it, and its days are removed.`
+    ? `Undid and deleted the ${monthName(month)} import.`
     : `Deleted the ${monthName(month)} import.`;
 }

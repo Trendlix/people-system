@@ -18,7 +18,7 @@ async function EditOffer({ params }: { params: Promise<{ id: string }> }) {
   const user = await getCurrentUser();
   if (!canSeeOffers(user)) return <Empty>{WHO_SEES}</Empty>;
   const offer = await loadOffer(params);
-  if (!offer) return <Empty>Not available yet: the server does not have job offers yet.</Empty>;
+  if (!offer) return <Empty>Not available yet.</Empty>;
   const back = offerHref(offer.id);
   const heading = (
     <div className="space-y-2">
@@ -62,7 +62,6 @@ async function EditOffer({ params }: { params: Promise<{ id: string }> }) {
         expiresOn={offer.expiresOn}
         note={offer.note}
         cancelHref={back}
-        earlier={offer.recordedEarlier === true && offer.earlierOffers === true}
       />
     );
   } else {

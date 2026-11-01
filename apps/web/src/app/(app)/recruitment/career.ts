@@ -2,7 +2,6 @@ import {
   averageStayText,
   cvFitSkipperText,
   EXPERIENCE_BASES,
-  EXPERIENCE_BASIS_HINTS,
   EXPERIENCE_BASIS_LABELS,
   SKIPPER_LABEL,
   SKIPPER_LIMITS,
@@ -20,9 +19,6 @@ import {
 
 /** The vacancy form's field. */
 export const EXPERIENCE_BASIS_FIELD = 'experienceBasis';
-
-/** Under the choice: both ways in words. */
-export const EXPERIENCE_BASIS_HINT = `How the years in a CV count in the CV match. Company based: ${EXPERIENCE_BASIS_HINTS.company.toLowerCase()} Career based: ${EXPERIENCE_BASIS_HINTS.career.toLowerCase()}`;
 
 const isExperienceBasis = (value: string): value is ExperienceBasis => (EXPERIENCE_BASES as readonly string[]).includes(value);
 

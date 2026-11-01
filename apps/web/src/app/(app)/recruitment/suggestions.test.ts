@@ -6,7 +6,6 @@ import {
   emptyText,
   inviteConfirmText,
   pausedText,
-  poolText,
   readSuggestionStatus,
   reasonChips,
   scoreText,
@@ -65,10 +64,8 @@ describe('the addresses and the filter', () => {
     expect(statusChip('dismissed', {})).toBe('Dismissed (0)');
     expect(emptyText('suggested')).toBe('No earlier CVs match this vacancy now.');
     expect(emptyText('dismissed')).toBe('Nobody dismissed yet.');
-    expect(poolText(12)).toContain('the last 12 months');
-    expect(poolText(1)).toContain('the last 1 month,');
     expect(pausedText({ paused: 'c_level', recencyMonths: 12 })).toBe('Earlier CVs are never suggested for a C-level vacancy.');
-    expect(pausedText({ paused: 'not_open', recencyMonths: 12 })).toContain('isn’t taking applications');
+    expect(pausedText({ paused: 'not_open', recencyMonths: 12 })).toBe('Paused while the vacancy isn’t taking applications.');
     expect(pausedText({ paused: null, recencyMonths: 12 })).toBeNull();
   });
 });
@@ -119,8 +116,8 @@ describe('a row', () => {
       'Applied on 25/10/2026, invited before',
     );
     expect(decisionText(row({ status: 'dismissed', decidedAt: '2026-10-24T08:00:00.000Z', decidedBy: { email: 'hr@example.test', name: null } }))).toBe('Dismissed on 24/10/2026 by hr@example.test');
-    expect(inviteConfirmText(row(), 'Video Editor')).toBe("Email Mona Example at mona@example.test an invitation to apply for Video Editor? It has the job's apply link; they apply themselves.");
-    expect(addedText('APP-2026-0012')).toBe('Added to the vacancy as APP-2026-0012, at Applied.');
-    expect(addedText(HIDDEN)).toBe('Added to the vacancy, at Applied.');
+    expect(inviteConfirmText(row(), 'Video Editor')).toBe('Email Mona Example at mona@example.test an invitation to apply for Video Editor?');
+    expect(addedText('APP-2026-0012')).toBe('Added as APP-2026-0012.');
+    expect(addedText(HIDDEN)).toBe('Added.');
   });
 });

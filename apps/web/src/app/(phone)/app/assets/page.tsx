@@ -21,7 +21,7 @@ async function List({ searchParams }: { searchParams: PageProps<'/app/assets'>['
   if (!can.view) {
     return (
       <PhoneCard>
-        <Quiet>You don&apos;t have access to Assets. An Admin gives it on the Users page.</Quiet>
+        <Quiet>You don&apos;t have access to Assets.</Quiet>
       </PhoneCard>
     );
   }
@@ -119,9 +119,7 @@ function PhonePages({ list, query }: { list: Parameters<typeof pagesOf>[0] & Par
 export default function PhoneAssetsPage({ searchParams }: PageProps<'/app/assets'>) {
   return (
     <div className="space-y-4">
-      <PageTitle title="Assets" back={{ href: APP_PATHS.home, label: 'Home' }}>
-        The studio&apos;s register. Scan an asset&apos;s QR label with the phone&apos;s camera to open it.
-      </PageTitle>
+      <PageTitle title="Assets" back={{ href: APP_PATHS.home, label: 'Home' }} />
       <Suspense fallback={<PhoneLoading />}>
         <List searchParams={searchParams} />
       </Suspense>

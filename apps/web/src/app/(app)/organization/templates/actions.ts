@@ -60,8 +60,8 @@ export async function uploadTemplateVersion(slotKey: string, _prev: UploadState,
   }
   refresh();
   if (draft && isPdfVersion(draft)) redirect(`${fieldsHref(slotKey, draft.id)}?uploaded=${draft.version}`);
-  if (!draft) return { message: 'Draft uploaded: its check is below.' };
-  return { message: `Draft v${draft.version} uploaded: its check is below.`, draft: { id: draft.id, version: draft.version } };
+  if (!draft) return { message: 'Draft uploaded.' };
+  return { message: `Draft v${draft.version} uploaded.`, draft: { id: draft.id, version: draft.version } };
 }
 
 /**

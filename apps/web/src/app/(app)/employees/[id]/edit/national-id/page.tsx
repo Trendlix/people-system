@@ -17,7 +17,7 @@ async function EditNationalId({ params }: { params: Promise<{ id: string }> }) {
       <RequireHr profile={employee}>
         {identity && (
           <>
-            <p className="text-sm text-muted">Restricted. Opening this page is recorded, because it shows the full numbers.</p>
+            <p className="text-sm text-muted">Restricted: opening this page is recorded.</p>
             <NationalIdEditor
               saveAction={updateIdentity.bind(null, employee.id)}
               scanAction={scanIdCard.bind(null, employee.id)}

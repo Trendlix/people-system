@@ -8,14 +8,12 @@ import {
   defaultedText,
   differenceText,
   excelHref,
-  mayChangeNote,
   moneyText,
   quickPeriods,
   readPeriod,
   reportHref,
   rowsLabel,
   samePeriod,
-  standingNote,
   standingText,
   statusText,
 } from './vs-insurance';
@@ -96,18 +94,12 @@ describe('the words', () => {
     expect(differenceText(0)).toBe('EGP 0.00');
   });
 
-  it('name the standing, why there is no SI cycle, and the run’s status', () => {
+  it('name the standing and the run’s status', () => {
     expect(standingText({ standing: 'registered' })).toBe('Registered');
     expect(standingText({ standing: 'counted_as_insured' })).toBe('Counted as insured (not registered)');
     expect(standingText({ standing: 'outside_law' })).toBe('Outside the labour law');
-    expect(standingNote({ standing: 'registered' })).toBeNull();
-    expect(standingNote({ standing: 'not_registered' })).toContain('no SI cycle');
     expect(statusText({ status: 'draft' })).toBe('Draft: may change');
     expect(statusText({ status: 'paid' })).toBe('Paid');
-    expect(mayChangeNote({ status: 'draft' })).toBe('May change');
-    expect(mayChangeNote({ status: 'pending_ceo' })).toBe('May still change');
-    expect(mayChangeNote({ status: 'approved' })).toBeNull();
-    expect(mayChangeNote({ status: 'paid' })).toBeNull();
     expect(rowsLabel(1)).toBe('1 row');
     expect(rowsLabel(3)).toBe('3 rows');
   });

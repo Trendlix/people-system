@@ -61,12 +61,8 @@ export function ChangeForm({
               value={employee.workEmail ?? ''}
               placeholder="Not set"
               readOnly
-              aria-describedby={fid('email-shown-hint')}
               className="input bg-canvas text-muted"
             />
-            <p id={fid('email-shown-hint')} className="hint">
-              Set by the company; ask HR to change it.
-            </p>
           </div>
         </div>
       </fieldset>
@@ -87,13 +83,9 @@ export function ChangeForm({
             rows={3}
             required
             maxLength={1000}
-            aria-describedby={fid('note-hint')}
             defaultValue={valueOf(state, 'note')}
             className="input"
           />
-          <p id={fid('note-hint')} className="hint">
-            You can attach proof by giving it to HR.
-          </p>
         </div>
         {/* by the button, where the request is sent from: the form is long */}
         <FormErrors errors={state.errors} />

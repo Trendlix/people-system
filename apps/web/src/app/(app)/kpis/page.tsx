@@ -7,7 +7,7 @@ import { getCurrentUser } from '@/lib/session';
 import { Empty, Loading } from '../organization/ui';
 import { kpiNotLoaded, loadKpiSettings, loadMyScorecards } from './data';
 import { latestShown, nextCycleText } from './mine';
-import { History, HowItWorks, LatestScoreHero, NoScorecardsHero, PayrollImpact, PendingScoreHero, WaitingForYou } from './mine-ui';
+import { History, HowItWorks, LatestScoreHero, NoScorecardsHero, PendingScoreHero, WaitingForYou } from './mine-ui';
 
 // My KPIs (owner's brief, 21 October 2026: "My KPIs: this month's scorecard to self-rate, and the history with level and
 // final % by month"): the caller's own scorecards waiting for them (to rate themself, or to sign), each with the way in,
@@ -33,10 +33,7 @@ async function Mine() {
   const user = await getCurrentUser();
   if (!user.employeeId) {
     return (
-      <Empty>
-        No employee record uses your sign-in email ({user.email}) as its work email, so there are no KPI scorecards for you. Ask HR to add it to
-        your profile.
-      </Empty>
+      <Empty>No employee record uses your sign-in email ({user.email}). Ask HR to add it to your profile.</Empty>
     );
   }
   const loaded = await loadMyScorecards();
@@ -55,9 +52,9 @@ async function Mine() {
 }
 
 /** "How it works", with the day each step is due by (the KPI settings, which everyone may read). */
-async function Steps({ className }: { className: string }) {
+async function Steps() {
   const settings = await loadKpiSettings();
-  return <HowItWorks settings={settings.kind === 'ok' ? settings.value : null} className={className} />;
+  return <HowItWorks settings={settings.kind === 'ok' ? settings.value : null} />;
 }
 
 export default function MyKpisPage() {
@@ -66,7 +63,6 @@ export default function MyKpisPage() {
       <PageHead
         eyebrow="People System · Performance"
         title="My KPIs"
-        intro="Your monthly scorecard is built from your job description, its pillars, weights and metrics."
         actions={
           <Suspense fallback={null}>
             <NextCycle />
@@ -77,12 +73,9 @@ export default function MyKpisPage() {
         <Suspense fallback={<Loading />}>
           <Mine />
         </Suspense>
-        <div className="grid gap-3 xl:grid-cols-3">
-          <Suspense fallback={<HowItWorks settings={null} className="xl:col-span-2" />}>
-            <Steps className="xl:col-span-2" />
-          </Suspense>
-          <PayrollImpact />
-        </div>
+        <Suspense fallback={<HowItWorks settings={null} />}>
+          <Steps />
+        </Suspense>
       </div>
     </div>
   );

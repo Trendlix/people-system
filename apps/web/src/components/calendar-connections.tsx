@@ -60,18 +60,13 @@ function TestForm({ action, last, withEmail, disabled = false }: { action: TestA
             <label htmlFor={fid('email')} className="label">
               A colleague’s work email <span className="font-normal text-muted">(optional)</span>
             </label>
-            <input id={fid('email')} name="email" type="email" autoComplete="off" maxLength={254} placeholder="name@trendlix.com" aria-describedby={fid('email-hint')} className="input" />
+            <input id={fid('email')} name="email" type="email" autoComplete="off" maxLength={254} placeholder="name@trendlix.com" className="input" />
           </div>
         )}
         <button type="submit" disabled={pending || disabled} className="btn btn-secondary">
           {pending ? 'Checking…' : 'Check the busy times'}
         </button>
       </div>
-      {withEmail && (
-        <p id={fid('email-hint')} className="hint">
-          Left empty, the connected account’s own are checked. Only how many busy times there are is said, never what they are.
-        </p>
-      )}
       {shown && !pending && (
         <p role="status" className={`text-sm ${shown.ok ? 'text-ok' : 'text-danger'}`}>
           {calendarTestText(shown, formatDateTime)}

@@ -102,9 +102,9 @@ describe('the confirms', () => {
       { code: 'PK-CAM-0004', reason: 'It was in custody: dispose of it instead.' },
       { code: 'PK-CAM-0005', reason: 'In custody now.' },
     ]);
-    expect(deleteConfirmText(f)).toBe('2 assets will be deleted, with their photos. Their codes are never given again. This can’t be undone. 2 will be skipped: only an asset never in custody can be deleted.');
-    expect(deleteConfirmText(deleteForecast([A]))).toBe('1 asset will be deleted, with their photos. Their codes are never given again. This can’t be undone.');
-    expect(deleteConfirmText(deleteForecast([BACK]))).toBe('None of them can be deleted. 1 will be skipped: only an asset never in custody can be deleted.');
+    expect(deleteConfirmText(f)).toBe('2 assets will be deleted. 2 will be skipped.');
+    expect(deleteConfirmText(deleteForecast([A]))).toBe('1 asset will be deleted.');
+    expect(deleteConfirmText(deleteForecast([BACK]))).toBe('None of them can be deleted. 1 will be skipped.');
   });
 
   it('DELETE typed for more than 10, exactly', () => {
@@ -124,7 +124,7 @@ describe('the confirms', () => {
       { code: 'CS-TAP-0001', reason: 'It is a consumable: it is used up through Stock, not disposed of.' },
       { code: 'PK-CAM-0006', reason: 'It is disposed already.' },
     ]);
-    expect(disposeConfirmText(f)).toBe('2 assets will be disposed of. They stay on record but leave every total and list. 3 will be skipped.');
+    expect(disposeConfirmText(f)).toBe('2 assets will be disposed of. 3 will be skipped.');
     expect(disposeConfirmText(disposeForecast([TAPE]))).toBe('None of them can be disposed of. 1 will be skipped.');
   });
 });

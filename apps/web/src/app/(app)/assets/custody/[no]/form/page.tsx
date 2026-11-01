@@ -36,13 +36,7 @@ async function Form({ params }: { params: PageProps<'/assets/custody/[no]/form'>
     <>
       <BackLink href={CUSTODY_PATHS.record(r.code)}>{r.code}</BackLink>
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="page-title">{title}</h1>
-          <p className="mt-1 text-sm text-muted">
-            Print it on A4, have {r.employee.fullNameEn} and HR sign it, then attach a photo or a scan of the signed page on the record.
-            {r.returns.length ? ' Each return is printed after the signatures, with its own signature lines.' : ''}
-          </p>
-        </div>
+        <h1 className="page-title">{title}</h1>
         <PrintDocumentButton document={custodyFormDocument(r, brand)} title={`${r.code} ${title}`} label="Print form" what="form" />
       </div>
       <section aria-label="The form as it prints" className="card overflow-x-auto p-6">

@@ -33,8 +33,6 @@ import {
   punchBodyFrom,
   punchErrors,
   punchRows,
-  LOCATION_NOTE,
-  LOCATION_NOTE_IN_APP,
   longDayTitle,
   readingOf,
   readLocation,
@@ -245,13 +243,6 @@ describe('the panel', () => {
     expect([networkNote({}), networkNote({ ownPlaces: [] })]).toEqual([NETWORK_NEEDED_TEXT, NETWORK_NEEDED_TEXT]);
   });
 
-  it('tells the employee the spot is kept, on the website and in the app (owner, 20 October 2026: "Yes, keep the spot")', () => {
-    // simpler words (owner, 1 November 2026: "make it simpler")
-    expect(LOCATION_NOTE).toBe('Your location is read only when you press, and HR can see it.');
-    expect(LOCATION_NOTE_IN_APP).toBe('Your phone’s location is read only when you press, and HR can see it. A faked location is flagged.');
-    expect(`${LOCATION_NOTE} ${LOCATION_NOTE_IN_APP}`).not.toMatch(/never where you are/);
-  });
-
   it('says the day so far, its hours, and the day it is for', () => {
     expect(dayTimesText({ checkIn: '2026-10-19T06:05:00.000Z', checkOut: '2026-10-19T14:10:00.000Z' })).toBe('9:05 AM → 5:10 PM');
     expect(dayTimesText({ checkIn: '2026-10-19T06:05:00.000Z', checkOut: null })).toBe('9:05 AM → not checked out yet');
@@ -338,7 +329,7 @@ describe('the check-in counter', () => {
 
   it('checked in after the window: nothing counts', () => {
     expect(count('19:30:00', '20:00:00')).toMatchObject({ phase: 'after_limit', countedMs: 0 });
-    expect(words('19:30:00', '20:00:00')).toEqual({ value: '0:00:00', note: null, status: 'Hours count only until 7:15 PM, so none are counted after it' });
+    expect(words('19:30:00', '20:00:00')).toEqual({ value: '0:00:00', note: null, status: 'No hours count after 7:15 PM' });
   });
 
   it('past 9 hours: stops at them and says they are done', () => {
@@ -357,16 +348,16 @@ describe('the check-in counter', () => {
     // none (null, or left out by an API from before it): today's rule
     expect(countRuleOf(DATE, { ...MORNING, countUntil: null })).toEqual(rule);
     expect(count('09:00:00', '18:30:00', makeUp)).toMatchObject({ phase: 'extra', countedMs: 9.5 * 3_600_000 });
-    expect(words('09:00:00', '18:30:00', makeUp)).toEqual({ value: '9:30:00', note: null, status: 'Your 9 hours are done. Extra time until 8:00 PM fills short hours this month' });
+    expect(words('09:00:00', '18:30:00', makeUp)).toEqual({ value: '9:30:00', note: null, status: 'Your 9 hours are done. Extra time counts until 8:00 PM' });
     expect(count('09:00:00', '23:00:00', makeUp)).toMatchObject({ phase: 'stopped', countedMs: 11 * 3_600_000 });
-    expect(words('09:00:00', '23:00:00', makeUp).status).toBe('Your 9 hours are done. Extra time until 8:00 PM fills short hours this month');
+    expect(words('09:00:00', '23:00:00', makeUp).status).toBe('Your 9 hours are done. Extra time counts until 8:00 PM');
     // short of the hours when the limit comes
     expect(words('12:00:00', '21:00:00', makeUp)).toEqual({ value: '8:00:00', note: null, status: 'Hours counted until 8:00 PM' });
     expect(counterShows(open('09:00:00', UNTIL_8PM), at('18:30:00'))).toEqual({
       kind: 'live',
       value: '9:30:00',
       note: null,
-      status: 'Your 9 hours are done. Extra time until 8:00 PM fills short hours this month',
+      status: 'Your 9 hours are done. Extra time counts until 8:00 PM',
     });
     // as attendance counts the day once they check out then: until 8:00 PM, past the 9 hours
     const cases: [string, string, number][] = [

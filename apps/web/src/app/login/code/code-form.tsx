@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useActionState, useSyncExternalStore } from 'react';
-import { LOGIN_CODE_DIGITS } from '@trendlix/shared';
 import { FormErrors, useFieldIds } from '@/components/form';
 import { askCode, signInWithCode, type AskState, type CodeState } from './actions';
 import { resendIn, resendLabel } from './code';
@@ -29,7 +28,6 @@ export function CodeForm() {
   if (!asked.sentAt) {
     return (
       <form action={ask} className="space-y-4">
-        <p className="text-sm text-muted">Type the email you sign in with. If it has an account, we email it a {LOGIN_CODE_DIGITS}-digit code to sign in with.</p>
         <div>
           <label htmlFor={fid('email')} className="mb-1 block text-sm font-medium">
             Email
@@ -72,7 +70,7 @@ export function CodeForm() {
             aria-describedby={fid('code-hint')}
           />
           <p id={fid('code-hint')} className="hint">
-            Sent to {asked.email}. Nothing after a few minutes? Check your spam folder.
+            Sent to {asked.email}.
           </p>
         </div>
         {state.error && (

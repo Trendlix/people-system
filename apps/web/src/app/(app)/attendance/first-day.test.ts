@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CheckInTodayView } from '../../../lib/attendance-types';
-import { checkInCount, counterShows, counterWords, countRuleOf, firstDayNote as firstDayToday, PLAIN_COUNT } from '../my-attendance/check-in';
+import { checkInCount, counterShows, counterWords, countRuleOf, PLAIN_COUNT } from '../my-attendance/check-in';
 import { FIRST_DAY_BADGE, firstDayNote } from './attendance';
 
 // A new employee's first day (owner, 27 October 2026: "a new employee when checked in in his first day move the checkin to
@@ -39,13 +39,6 @@ describe('a day counted from the shift start, on the pages', () => {
 });
 
 describe('the employee’s own first day on the panel', () => {
-  it('tells them the day counts from the shift’s start, with its time; nothing on any other day or from an API from before it', () => {
-    expect(firstDayToday({ firstDay: true, shift: MORNING })).toBe('Your first day: it is counted from your shift’s start, 8:00 AM, whatever time you check in.');
-    expect(firstDayToday({ firstDay: true, shift: null })).toBe('Your first day: it is counted from your shift’s start, whatever time you check in.');
-    expect(firstDayToday({ firstDay: false, shift: MORNING })).toBeNull();
-    expect(firstDayToday({ shift: MORNING })).toBeNull();
-  });
-
   it('counts from the shift’s start though they checked in after it, and says so; a check-in before the start as before', () => {
     const rule = countRuleOf(DATE, MORNING, true);
     expect(rule).toEqual({ windowStart: at('08:00:00'), countUntil: at('20:00:00'), hoursToWork: 9, extraCounts: false, fromStart: true });

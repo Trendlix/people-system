@@ -27,9 +27,6 @@ import {
 // removes it. A home and a remote site are personal data: shown only to HR (not a C-level person's), the CEO and the
 // Super Admin here, never to an Admin without them, managers or Finance; the API sends each only what they may see.
 
-const INTRO =
-  'Places employees asked to check in from, decided by HR, then the CEO. An approved home or remote site counts only for its person: a check-in within it shows as Home or “Remote site · name”. An approved client location counts for everyone and is listed with the check-in locations above. Only HR, the CEO and the Super Admin see them (a C-level person’s only the CEO and the Super Admin).';
-
 type Query = Record<string, string | string[] | undefined>;
 
 /** A row of filters: each a link, the chosen one marked. */
@@ -88,7 +85,7 @@ export async function HomeLocationsSection({ searchParams }: { searchParams: Pro
   const typeHref = (type: RequestTypeFilter) => requestFilterHref(filters, { type });
   const statusHref = (status: RequestStatusFilter) => requestFilterHref(filters, { status });
   return (
-    <SetupSection id={HOMES_ID} title="Check-in Location Requests" intro={INTRO}>
+    <SetupSection id={HOMES_ID} title="Check-in Location Requests">
       <div className="space-y-4">
         <div className="space-y-2">
           <Filters label="Type" options={REQUEST_TYPE_FILTERS} chosen={filters.type} href={typeHref} />
@@ -101,9 +98,7 @@ export async function HomeLocationsSection({ searchParams }: { searchParams: Pro
         ) : loaded.kind === 'failed' ? (
           <p className="rounded-lg bg-line-soft px-4 py-3 text-sm text-muted">The requests could not be loaded. {loaded.messages.join(' ')}</p>
         ) : loaded.value.length === 0 ? (
-          <p className="text-sm text-muted">
-            None here. Employees ask from My Requests, or from a check-in refused for its location; HR, then the CEO, decide each on Approvals.
-          </p>
+          <p className="text-sm text-muted">None here.</p>
         ) : (
           <ul className="divide-y divide-line-soft">
             {loaded.value.map((r) => (

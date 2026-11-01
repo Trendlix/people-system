@@ -9,7 +9,7 @@ import { monthName } from '../payroll/list';
 import { annualFigures, availableText, typeLeftText } from './balance';
 import { daysText, leaveProgressText, leaveStatusLabel, leaveStepText, leaveStepTone, periodText, standingInText, STATUS_BADGE } from './list';
 import { isPermission, permissionDayText, permissionHoursLine, permissionWhenText, requestHref, type RequestRow } from './permissions';
-import { isWfh, WFH_WHEN_NOTE, type LeaveListRow } from './wfh-rows';
+import { isWfh, type LeaveListRow } from './wfh-rows';
 import { StepsAheadItems } from '@/components/steps-ahead';
 import type { StepAhead } from '@/lib/steps-ahead';
 
@@ -111,8 +111,7 @@ export function PayrollLockedNotice({ months }: { months?: readonly string[] | n
   const list = names.length === 1 ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
   return (
     <p role="status" className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
-      <span className="font-semibold">Not in the {list} {names.length === 1 ? 'payroll' : 'payrolls'}.</span> That payroll had moved on (with the CEO, approved or paid) when
-      this was recorded, approved or cancelled, so it isn&apos;t changed. HR corrects it by hand on a later payroll; Unsettled lists it until then.
+      <span className="font-semibold">Not in the {list} {names.length === 1 ? 'payroll' : 'payrolls'}.</span> HR corrects it on a later payroll.
     </p>
   );
 }
@@ -144,14 +143,7 @@ function TypeLink({ request: r, who = false }: { request: RequestRow; who?: bool
  * times ("Tuesday 03/11/2026", "2 hours (5:00 PM – 7:00 PM)"); a work from home day, a working day (26 October 2026).
  */
 export function RequestWhen({ request: r }: { request: LeaveListRow }) {
-  if (isWfh(r)) {
-    return (
-      <>
-        <span className="whitespace-nowrap tabular-nums">{wfhDayText(r)}</span>
-        <span className="block text-xs text-muted">{WFH_WHEN_NOTE}</span>
-      </>
-    );
-  }
+  if (isWfh(r)) return <span className="whitespace-nowrap tabular-nums">{wfhDayText(r)}</span>;
   return (
     <>
       <span className="whitespace-nowrap tabular-nums">{isPermission(r) ? permissionDayText(r) : periodText(r)}</span>
@@ -314,7 +306,7 @@ export function LeaveBalanceFigures({ balances, types, compact = false }: { bala
     <div className="space-y-4">
       <div>
         <p className="text-2xl font-semibold tabular-nums">{availableText(a)}</p>
-        <p className="text-xs text-muted">Annual leave, {balances.year}: what you can still ask for, once what is waiting is decided.</p>
+        <p className="text-xs text-muted">Annual leave, {balances.year}</p>
       </div>
       <dl className={`grid gap-3 ${compact ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6'}`}>
         {figures.map((f) => (

@@ -33,7 +33,7 @@ export function QuestionsEditor({ initial }: { initial: VacancyQuestion[] }) {
   return (
     <div className="space-y-4">
       <input type="hidden" name="questions" value={JSON.stringify(questions)} />
-      {questions.length === 0 && <p className="text-sm text-muted">No questions yet. Applicants send their details and CV only.</p>}
+      {questions.length === 0 && <p className="text-sm text-muted">No questions yet.</p>}
       <ol className="space-y-4">
         {questions.map((q, i) => {
           const id = (name: string) => fid(`${q.key}-${name}`);
@@ -89,7 +89,7 @@ export function QuestionsEditor({ initial }: { initial: VacancyQuestion[] }) {
                 {q.kind !== 'text' && (
                   <label className="flex items-center gap-2">
                     <input type="checkbox" checked={q.knockout} onChange={(e) => update(i, { knockout: e.target.checked, ...(e.target.checked && { required: true }) })} className="size-4" />
-                    Must-have: filter out those who don&apos;t meet it
+                    Must-have
                   </label>
                 )}
               </div>
@@ -181,7 +181,7 @@ export function QuestionsEditor({ initial }: { initial: VacancyQuestion[] }) {
                   >
                     Add an option
                   </button>
-                  <p className="hint">Points per option{q.knockout ? '; untick the options that filter an applicant out' : ''}.</p>
+                  <p className="hint">Points per option.</p>
                 </div>
               )}
             </li>
@@ -202,7 +202,7 @@ export function QuestionsEditor({ initial }: { initial: VacancyQuestion[] }) {
             </button>
           ))}
         </div>
-        <p className="text-sm text-muted tabular-nums">{total ? `A perfect match scores ${total} points.` : 'No question gives points yet: no match % is worked out.'}</p>
+        <p className="text-sm text-muted tabular-nums">{total ? `A perfect match scores ${total} points.` : 'No question gives points.'}</p>
       </div>
     </div>
   );

@@ -1,7 +1,6 @@
 import { NO_WEB_KEY_TEXT, SIGNED_IP_PROBLEM_TEXT, type Role } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 import {
-  addedText,
   addressesBody,
   chipsOf,
   clientEndBody,
@@ -9,10 +8,7 @@ import {
   clientLocationsOf,
   clientShownAsText,
   endClientConfirm,
-  GPS_ALLOWANCE_TEXT,
-  GPS_NO_LOCATION_TEXT,
   gpsLockBody,
-  gpsLockSaved,
   gpsLockText,
   readRequestFilters,
   requestFilterHref,
@@ -26,7 +22,6 @@ import {
   mainAndSubs,
   makeMainConfirm,
   moreText,
-  radiusHint,
   removeConfirm,
   shownAsText,
   withChosen,
@@ -34,7 +29,6 @@ import {
   locationBody,
   locationFrom,
   locationRuleBody,
-  locationRuleSaved,
   locationRuleText,
   locationText,
   lockText,
@@ -147,8 +141,8 @@ describe('the office networks', () => {
   });
 
   it('is ready with the key on both sides, saying the address the page came from', () => {
-    expect(networkStatus(state(), true)).toEqual({ ready: true, text: 'Ready: the website and the server share the key. You are on 41.33.10.77, the office network Main office line.' });
-    expect(networkStatus(state({ here: { signed: true, ip: '197.45.1.9', network: null } }), true).text).toContain('which isn’t one of the office networks');
+    expect(networkStatus(state(), true)).toEqual({ ready: true, text: 'Ready. You are on 41.33.10.77, the office network Main office line.' });
+    expect(networkStatus(state({ here: { signed: true, ip: '197.45.1.9', network: null } }), true).text).toBe('Ready. You are on 197.45.1.9, not an office network.');
   });
 
   it('says what is missing: the server’s key, the website’s, or a key that doesn’t match', () => {
@@ -160,10 +154,10 @@ describe('the office networks', () => {
   });
 
   it('says how the lock stands', () => {
-    expect(lockText(state({ lock: true, inForce: true }))).toMatch(/^On: Office staff/);
-    expect(lockText(state({ lock: true, serverKey: false }))).toContain('the server has no key, so no one is refused');
+    expect(lockText(state({ lock: true, inForce: true }))).toBe('Lock on.');
+    expect(lockText(state({ lock: true, serverKey: false }))).toContain('not in force: the server has no key');
     expect(lockText(state({ lock: true, networks: [] }))).toContain('there is no office network');
-    expect(lockText(state())).toMatch(/^Off:/);
+    expect(lockText(state())).toBe('Lock off.');
   });
 });
 
@@ -174,19 +168,9 @@ describe('check-ins without a location (owner, 20 October 2026: "Company switch 
     expect(locationRuleBody(form([]))).toEqual({ refuseWithoutLocation: false });
   });
 
-  it('says where it stands: off; on, with the exemption, the office network when it is ready, and the app', () => {
-    expect(locationRuleText({ refuseWithoutLocation: false }, true)).toBe(
-      'Off: on the website a check-in without a location is kept as location unknown. In the app a location is always needed.',
-    );
-    const on = locationRuleText({ refuseWithoutLocation: true }, true);
-    expect(on).toContain('refused, unless HR lets the person check in without one on their profile');
-    expect(on).toContain('A press from an office network without one counts as at the office.');
-    expect(locationRuleText({ refuseWithoutLocation: true }, false)).toContain('a press from the office without a location is refused too');
-    expect(locationRuleText({ refuseWithoutLocation: true }, null)).not.toContain('office network');
-    expect([locationRuleSaved(true), locationRuleSaved(false)]).toEqual([
-      'Saved. Check-ins and check-outs without a location are refused from now on.',
-      'Saved. Check-ins without a location are kept as location unknown again.',
-    ]);
+  it('says where it stands: on or off', () => {
+    expect(locationRuleText({ refuseWithoutLocation: false })).toBe('Off.');
+    expect(locationRuleText({ refuseWithoutLocation: true })).toBe('On.');
   });
 });
 
@@ -206,11 +190,8 @@ describe('the main office and its sub-locations (owner, 20 October 2026: "main o
     expect(mainAndSubs(old)).toEqual({ main: old[0], subs: [old[1]] });
   });
 
-  it('says the radius, hints a wider one under 50 m, and how a sub-location shows', () => {
+  it('says the radius, and how a sub-location shows', () => {
     expect([withinText(20), withinText(1500)]).toEqual(['Within 20 m', 'Within 1,500 m']);
-    expect(radiusHint(20)).toBe('Phones are often 10–30 m off; 50–80 m is safer.');
-    expect(radiusHint(49)).not.toBeNull();
-    expect([radiusHint(50), radiusHint(150)]).toEqual([null, null]);
     expect(shownAsText(' Client  X ')).toBe('Remote - Client X');
     expect(faintCircles([STUDIO])).toEqual([{ latitude: STUDIO.latitude, longitude: STUDIO.longitude, radiusMetres: 50, name: 'Studio (sub-location)' }]);
   });
@@ -240,19 +221,10 @@ describe('the main office and its sub-locations (owner, 20 October 2026: "main o
     expect([linkButtonText(1), linkButtonText(3)]).toEqual(['Link 1 person', 'Link 3 people']);
   });
 
-  it('asks before Make main and removing, and says what was added', () => {
-    expect(makeMainConfirm('Studio', 'Head office')).toBe(
-      'Make Studio the main office? Check-ins within it will count as Office for everyone, and Head office becomes a sub-location: check-ins there will show as Remote - Head office.',
-    );
-    expect(makeMainConfirm('Studio', null)).toBe('Make Studio the main office? Check-ins within it will count as Office for everyone.');
-    expect(removeConfirm('Studio', false)).toContain('Its people are unlinked');
-    expect(removeConfirm('Head office', true)).toContain('every check-in on the system is kept as location unknown');
-    expect(addedText('Head office', true)).toBe('Added Head office, the main office: check-ins within it count as Office.');
-    expect(addedText('Studio', false)).toBe('Added Studio: check-ins within it show as Remote - Studio.');
-  });
-
-  it('says the lock lets Office staff check in at a sub-location they are linked to', () => {
-    expect(lockText({ lock: true, inForce: true, serverKey: true, networks: [{ label: 'Main office line', range: '41.33.10.0/24' }] })).toContain('or at a sub-location they are linked to');
+  it('asks before Make main and removing', () => {
+    expect(makeMainConfirm('Studio')).toBe('Make Studio the main office?');
+    expect(removeConfirm('Studio', false)).toBe('Remove the sub-location Studio?');
+    expect(removeConfirm('Head office', true)).toBe('Remove the main office Head office?');
   });
 });
 
@@ -276,28 +248,10 @@ describe('the GPS lock (owner, 24 October 2026: "Yes, add a GPS lock too")', () 
     expect(gpsLockBody(form([['roughMetres', '1.5']])).problems[0]).toContain('from 50 to 500');
   });
 
-  it('says where it stands: on with the limit, and either lock with the network’s on; on without the main office; off', () => {
-    const on = gpsLockText({ lock: true, roughMetres: 200, inForce: true });
-    expect(on).toMatch(/^On: Office staff check in and out only inside a check-in location/);
-    expect(on).toContain('less accurate than 200 m is refused as too rough');
-    expect(on).not.toContain('either');
-    expect(gpsLockText({ lock: true, roughMetres: 200, inForce: true }, true)).toContain('a press passes when either does');
-    expect(gpsLockText({ lock: true, roughMetres: 200, inForce: false })).toContain('there is no main office yet, so no one is refused');
-    expect(gpsLockText({ lock: false, roughMetres: 200, inForce: false })).toMatch(/^Off: a check-in outside every check-in location is kept as remote/);
-    expect(GPS_ALLOWANCE_TEXT).toContain('less its accuracy (at most 100 m), is within the radius');
-    expect([gpsLockSaved(true), gpsLockSaved(false)]).toEqual([
-      'Saved. Office staff now check in and out inside the check-in locations only.',
-      'Saved. Check-ins outside the check-in locations are kept as remote again, never refused.',
-    ]);
-  });
-
-  it('says either lock passing is enough on the networks’ status, and the GPS lock’s rule without a location', () => {
-    const networks = { lock: true, inForce: true, serverKey: true, networks: [{ label: 'Main office line', range: '41.33.10.0/24' }] };
-    expect(lockText(networks)).not.toContain('either');
-    expect(lockText(networks, true)).toContain('a press passes when either does');
-    expect(locationRuleText({ refuseWithoutLocation: false }, null, true)).toContain(GPS_NO_LOCATION_TEXT);
-    expect(locationRuleText({ refuseWithoutLocation: true }, true, true)).toContain('whatever this switch says');
-    expect(locationRuleText({ refuseWithoutLocation: true }, true)).not.toContain('GPS');
+  it('says where it stands: on; on without the main office; off', () => {
+    expect(gpsLockText({ lock: true, roughMetres: 200, inForce: true })).toBe('On.');
+    expect(gpsLockText({ lock: true, roughMetres: 200, inForce: false })).toContain('there is no main office yet');
+    expect(gpsLockText({ lock: false, roughMetres: 200, inForce: false })).toBe('Off.');
   });
 });
 
@@ -328,7 +282,7 @@ describe('the client locations (owner, 24 October 2026: "all employees if a cust
     expect(clientEndBody(form([['ends', 'until_date'], ['validUntil', '24/10/2026']]), today).body).toEqual({ validUntil: '2026-10-24' });
     expect(clientEndBody(form([['ends', 'until_date'], ['validUntil', '23/10/2026']]), today)).toEqual({ body: null, problems: ['Choose an end date of today or later.'] });
     expect(clientEndBody(form([['ends', 'until_date'], ['validUntil', '31/02/2026']]), today).problems[0]).toContain('DD/MM/YYYY');
-    expect(endClientConfirm('Acme')).toBe('End Acme now? Check-ins within it stop counting for everyone from now on; it stays listed as ended, with its request.');
+    expect(endClientConfirm('Acme')).toBe('End Acme now?');
   });
 });
 

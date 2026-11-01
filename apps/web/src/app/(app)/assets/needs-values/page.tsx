@@ -55,7 +55,7 @@ async function NeedsValues({ searchParams }: { searchParams: PageProps<'/assets/
       {loaded.kind !== 'ok' ? (
         <Empty>{assetsNotLoaded(loaded, 'assets')}</Empty>
       ) : loaded.value.items.length === 0 ? (
-        <Empty>{query.q ? 'No asset without values matches.' : 'Every asset has its purchase cost. Nothing needs values.'}</Empty>
+        <Empty>{query.q ? 'No asset without values matches.' : 'Nothing needs values.'}</Empty>
       ) : (
         <>
           <div className="card overflow-x-auto">
@@ -114,15 +114,9 @@ export default function NeedsValuesPage({ searchParams }: PageProps<'/assets/nee
   return (
     <AssetsFrame tab={ASSET_PATHS.needsValues}>
       <div className="max-w-5xl">
-        <p className="text-muted">
-          The assets without a purchase cost, for the CEO, Finance and a Super Admin to fill in from the invoice, with the market value. Only you
-          see the values.
-        </p>
-        <div className="mt-6">
-          <Suspense fallback={<Loading />}>
-            <NeedsValues searchParams={searchParams} />
-          </Suspense>
-        </div>
+        <Suspense fallback={<Loading />}>
+          <NeedsValues searchParams={searchParams} />
+        </Suspense>
       </div>
     </AssetsFrame>
   );

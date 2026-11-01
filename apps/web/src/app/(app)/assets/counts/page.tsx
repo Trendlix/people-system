@@ -174,15 +174,9 @@ async function Counts({ searchParams }: { searchParams: PageProps<'/assets/count
 export default function CountsPage({ searchParams }: PageProps<'/assets/counts'>) {
   return (
     <AssetsFrame tab={ASSET_PATHS.counts}>
-      <p className="text-muted">
-        Tick what is there, by tapping, typing or scanning labels. Whatever isn&apos;t ticked is missing; what is in custody counts as out. Mark a missing asset lost
-        from its count once it is looked for.
-      </p>
-      <div className="mt-6">
-        <Suspense fallback={<Loading />}>
-          <Counts searchParams={searchParams} />
-        </Suspense>
-      </div>
+      <Suspense fallback={<Loading />}>
+        <Counts searchParams={searchParams} />
+      </Suspense>
     </AssetsFrame>
   );
 }

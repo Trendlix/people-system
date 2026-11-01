@@ -111,13 +111,8 @@ export function OccupationDetail({ action, code, children }: { action: Action | 
                 id={fid('occupationCode')}
                 name="occupationCode"
                 defaultValue={valueOf(state, 'occupationCode', code)}
-                describedBy={fid('occupationCode-hint')}
                 autoFocus
               />
-              <p id={fid('occupationCode-hint')} className="hint">
-                Printed on social insurance Form 1 (<bdi lang="ar">كود المهنة</bdi> and <bdi lang="ar">المسمى</bdi>). Type part of the
-                Arabic name, or the code.
-              </p>
             </div>
           )}
         </DetailForm>
@@ -145,13 +140,9 @@ export function StartDateDetail({ action, value, children }: { action: Action | 
                 <DateInput
                   id={fid('insuranceStartDate')}
                   name="insuranceStartDate"
-                  aria-describedby={fid('insuranceStartDate-hint')}
                   defaultValue={valueOf(state, 'insuranceStartDate', value)}
                 />
               </div>
-              <p id={fid('insuranceStartDate-hint')} className="hint">
-                Printed in Form 1&apos;s <bdi lang="ar">تاريخ بدء الاشتراك</bdi> boxes. Leave empty to use the join date.
-              </p>
             </div>
           )}
         </DetailForm>
@@ -162,14 +153,13 @@ export function StartDateDetail({ action, value, children }: { action: Action | 
   );
 }
 
-/** One of the wages, in EGP to the piastre; empty: what stands in for it is printed (`hint` says what). */
+/** One of the wages, in EGP to the piastre; empty: what stands in for it is printed. */
 export function WageDetail({
   action,
   field,
   name,
   label,
   value,
-  hint,
   children,
 }: {
   action: Action | null;
@@ -180,7 +170,6 @@ export function WageDetail({
   label: string;
   /** The employee's own, with two decimals ("2500.50"), or "". */
   value: string;
-  hint: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -200,13 +189,9 @@ export function WageDetail({
                 name={field}
                 inputMode="decimal"
                 autoComplete="off"
-                aria-describedby={fid(`${field}-hint`)}
                 defaultValue={valueOf(state, field, value)}
                 className="input max-w-48 tabular-nums"
               />
-              <p id={fid(`${field}-hint`)} className="hint">
-                {hint}
-              </p>
             </div>
           )}
         </DetailForm>

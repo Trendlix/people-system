@@ -104,15 +104,15 @@ describe('the Contracts report', () => {
     };
     expect(summaryTiles(totals).map((t) => [t.label, t.value, t.note])).toEqual([
       ['Contracts', '12', '1 person'],
-      ['Active', '8', 'Signed, in force'],
-      ['Drafts', '1', 'Not signed yet'],
-      ['Ended', '2', 'With the employment'],
-      ['Replaced', '1', 'By a later version'],
-      ['Ending in 30 days', '1', 'Active, from today'],
-      ['Ending in 60 days', '2', 'Active, from today'],
-      ['Ending in 90 days', '4', 'Active, from today'],
-      ['Not renewed', '3', 'Ended in the period, no later version signed'],
-      ['Renewals signed', '5', 'In the period'],
+      ['Active', '8', null],
+      ['Drafts', '1', null],
+      ['Ended', '2', null],
+      ['Replaced', '1', null],
+      ['Ending in 30 days', '1', null],
+      ['Ending in 60 days', '2', null],
+      ['Ending in 90 days', '4', null],
+      ['Not renewed', '3', null],
+      ['Renewals signed', '5', null],
     ]);
   });
 

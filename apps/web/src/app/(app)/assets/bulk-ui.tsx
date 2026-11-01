@@ -234,7 +234,6 @@ function DeleteWindow({ rows, onDispose, onDone, onClosed }: { rows: BulkRow[]; 
       <FormErrors errors={errors} />
       <p className="text-sm">{deleteConfirmText(forecast)}</p>
       <SkippedList skipped={forecast.skipped} label="Will be skipped" />
-      {forecast.skipped.length > 0 && <p className="hint">Those that were in custody are disposed of instead: they stay on record, out of every total and list.</p>}
       {typing && (
         <div>
           <label htmlFor={typedId} className="label">
@@ -287,7 +286,7 @@ function DisposeWindow({ rows, onDone, onClosed }: { rows: BulkRow[]; onDone: (r
         <form
           {...form}
           onSubmit={(e) => {
-            if (!window.confirm(`Dispose of ${assetsText(n)}? They stay on record but leave every total and list. This can't be undone.`)) {
+            if (!window.confirm(`Dispose of ${assetsText(n)}?`)) {
               e.preventDefault();
               return;
             }
@@ -330,7 +329,6 @@ function DisposeWindow({ rows, onDone, onClosed }: { rows: BulkRow[]; onDone: (r
             </label>
             <textarea id={fid('notes')} name="notes" rows={2} maxLength={DISPOSAL_TEXT_LIMITS.notes} defaultValue={valueOf(state, 'notes', '')} className="input" />
           </div>
-          <p className="hint">Each one&apos;s book value on that day is kept; each leaves its kit, and the assets attached to it are detached. Finance or the CEO can add the amount received later.</p>
           <div className="flex flex-wrap gap-2">
             <button type="submit" disabled={pending} className="btn btn-danger">
               {pending ? 'Disposing…' : `Dispose of ${assetsText(n)}`}
@@ -369,7 +367,6 @@ function ResultPanel({ done, onDispose, onClose }: { done: Done; onDispose: ((co
     <div ref={panel} tabIndex={-1} role="status" className={`space-y-3 rounded-lg border px-4 py-3 text-sm outline-none ${tone}`}>
       <p className={list.length ? 'text-ok' : 'text-warn'}>
         {bulkDoneText(verb, list.length, skipped)}
-        {done.kind === 'delete' && list.length > 0 ? ' Their codes are never given again.' : ''}
       </p>
       {(list.length > 0 || skipped.length > 5) && (
         <details>

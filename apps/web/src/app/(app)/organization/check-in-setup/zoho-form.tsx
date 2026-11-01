@@ -23,13 +23,8 @@ export function ZohoAddressesForm({ action, addresses }: { action: (prev: FormSt
           name="officeAddresses"
           rows={Math.max(4, addresses.length + 1)}
           defaultValue={valueOf(state, 'officeAddresses', addresses.join('\n'))}
-          aria-describedby={fid('officeAddresses-hint')}
           className="input max-w-xl"
         />
-        <p id={fid('officeAddresses-hint')} className="hint">
-          For attendance from Zoho People: a check-in at one of these is a day at the office, anywhere else remote, and only that is kept, never the
-          address. Part of the address as Zoho People writes it, e.g. 15, Al Doctor Al Mahrouqi Street, or the company&apos;s name. At most 20.
-        </p>
       </div>
       <div className="flex flex-wrap items-center gap-3">
         <SubmitButton busy={pending}>Save addresses</SubmitButton>

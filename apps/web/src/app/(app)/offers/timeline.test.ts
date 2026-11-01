@@ -121,7 +121,7 @@ describe('what the offer waits for', () => {
     expect(waitingText(offer())).toMatch(/^Not sent yet/);
     expect(waitingText(offer({ status: 'sent' }))).toBe("Waiting for the candidate's answer. Open until 22/10/2026.");
     expect(waitingText(offer({ status: 'expired' }))).toMatch(/^Not answered by 22\/10\/2026/);
-    expect(waitingText(offer({ status: 'accepted' }))).toMatch(/profile hasn't been made yet: press Make the profile/);
+    expect(waitingText(offer({ status: 'accepted' }))).toBe("The profile hasn't been made yet.");
     expect(waitingText(offer({ status: 'accepted', hiredAt: '2026-10-16T07:30:00.000Z' }))).toBeNull();
     expect(waitingText(offer({ status: 'withdrawn' }))).toBeNull();
   });
@@ -143,7 +143,7 @@ describe('what the template lacks', () => {
       {
         tag: 'national_id',
         label: 'National ID',
-        what: "An offer never has this: it belongs on an employee's documents. Remove {{national_id}} from the job offer template, then publish it again.",
+        what: 'Remove {{national_id}} from the job offer template, then publish it again.',
         href: '/organization/templates/offer_full_time',
         linkText: 'Open the template',
       },
@@ -166,7 +166,7 @@ describe('what the template lacks', () => {
       {
         tag: 'occupation_code',
         label: 'Occupation code (social insurance)',
-        what: "An offer never has this: it belongs on an employee's documents. Remove {{occupation_code}} from the job offer template, then publish it again.",
+        what: 'Remove {{occupation_code}} from the job offer template, then publish it again.',
         href: '/organization/templates/offer_full_time',
         linkText: 'Open the template',
       },
@@ -321,12 +321,10 @@ describe('an earlier offer', () => {
   });
 
   it('says what it waits for while entering earlier offers is on, and as before once it is off', () => {
-    expect(waitingText(earlier({ status: 'draft', sentVia: null, sentAt: null }))).toBe('An earlier offer: record it as sent earlier, then the answer the candidate gave.');
-    expect(waitingText(earlier({ status: 'sent', expiresOn: '2026-11-30' }))).toBe("Recorded as sent earlier: record the candidate's answer.");
-    expect(waitingText(earlier({ status: 'expired' }))).toBe('Recorded as sent earlier; its last day was 27/09/2026. Record the answer the candidate gave, with its day.');
-    expect(waitingText(earlier({ status: 'expired', earlierOffers: false }))).toBe(
-      'Not answered by 27/09/2026, its last day. Extend it to give more time, or record an answer given another way.',
-    );
+    expect(waitingText(earlier({ status: 'draft', sentVia: null, sentAt: null }))).toBe('Not recorded as sent yet.');
+    expect(waitingText(earlier({ status: 'sent', expiresOn: '2026-11-30' }))).toBe("Waiting for the candidate's answer.");
+    expect(waitingText(earlier({ status: 'expired' }))).toBe('Not answered by 27/09/2026, its last day.');
+    expect(waitingText(earlier({ status: 'draft', sentVia: null, sentAt: null, earlierOffers: false }))).toBe('Not sent yet.');
   });
 
   it('says why no document was kept, when its template was not published', () => {

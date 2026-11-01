@@ -1,12 +1,11 @@
 'use client';
 
-import { ASSETS_ACCESS_HINTS, ASSETS_ACCESS_LABELS, ASSETS_ACCESS_LEVELS, DEVELOPER_CHOOSES_NOTE, type AssetsAccess, type Role } from '@trendlix/shared';
+import { ASSETS_ACCESS_LABELS, ASSETS_ACCESS_LEVELS, type AssetsAccess, type Role } from '@trendlix/shared';
 import Link from 'next/link';
 import { useActionState, useState } from 'react';
 import { FormErrors, SubmitButton, useFieldIds, valueOf } from '@/components/form';
 import { ROLE_LABELS } from '@/lib/roles';
 import type { FormState } from '@/lib/types';
-import { ASSETS_VALUES_NOTE } from '../assets/assets';
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -37,12 +36,6 @@ function RoleFields({ choices, checked, hint }: { choices: readonly Role[]; chec
         ))}
       </div>
       {hint && <p className="hint">{hint}</p>}
-      {choices.includes('super_admin') && (
-        <p className="hint">Super Admin: everything an Admin can do, and the only role that can delete records.</p>
-      )}
-      {/* a developer who is also an employee (owner, 22 October 2026: "give hin a switched to use the account as the main
-          role assigned to him or as a developer") */}
-      {choices.includes('developer') && <p className="hint">Developer + Employee: {DEVELOPER_CHOOSES_NOTE}</p>}
     </fieldset>
   );
 }
@@ -90,7 +83,7 @@ function TemporaryPassword({ id, label }: { id: string; label: string }) {
             setPassword(e.target.value);
             setCopied(false);
           }}
-          aria-describedby={`${id}-hint`}
+          placeholder="At least 10 characters"
           className="input min-w-0 flex-1 font-mono"
         />
         <button
@@ -107,10 +100,6 @@ function TemporaryPassword({ id, label }: { id: string; label: string }) {
           {copied ? 'Copied' : 'Copy'}
         </button>
       </div>
-      <p id={`${id}-hint`} className="hint">
-        At least 10 characters, or press Generate. Pass it on to the person yourself; they should change it after signing in
-        (Change password, at the top of every page).
-      </p>
       <p aria-live="polite" className="sr-only">
         {copied ? 'Password copied.' : ''}
       </p>
@@ -144,20 +133,12 @@ export function NewUserForm({ action, choices }: { action: Action; choices: read
           required
           maxLength={254}
           autoComplete="off"
-          aria-describedby={fid('email-hint')}
           defaultValue={valueOf(state, 'email')}
           className="input"
         />
-        <p id={fid('email-hint')} className="hint">
-          They sign in with this email. For someone who isn’t an employee: employees get their account by themselves, on their profile’s Access tab.
-        </p>
       </div>
       <TemporaryPassword id={fid('password')} label="Temporary password" />
-      <RoleFields
-        choices={choices}
-        checked={checkedRoles(state, ['employee'])}
-        hint="Everyone who works here is an Employee; add the other roles they need."
-      />
+      <RoleFields choices={choices} checked={checkedRoles(state, ['employee'])} />
       <div className="flex flex-wrap gap-3">
         <SubmitButton>Create user</SubmitButton>
         <Link href="/users" className="btn btn-secondary">
@@ -169,7 +150,7 @@ export function NewUserForm({ action, choices }: { action: Action; choices: read
 }
 
 /** `hint`: under the roles, e.g. that it is the user's own account. */
-export function RolesForm({ action, roles, choices, hint }: { action: Action; roles: Role[]; choices: readonly Role[]; hint: string }) {
+export function RolesForm({ action, roles, choices, hint }: { action: Action; roles: Role[]; choices: readonly Role[]; hint?: string }) {
   const [state, formAction] = useActionState(action, {});
   return (
     <form action={formAction} className="card max-w-xl space-y-5 p-6">
@@ -190,8 +171,7 @@ export function StatusForm({ action, active, email }: { action: Action; active: 
     <form
       action={formAction}
       onSubmit={(e) => {
-        const question = `Deactivate ${email}? They are signed out at once and cannot sign in until an admin reactivates the account.`;
-        if (active && !window.confirm(question)) e.preventDefault();
+        if (active && !window.confirm(`Deactivate ${email}?`)) e.preventDefault();
       }}
       className="space-y-3"
     >
@@ -207,18 +187,12 @@ export function StatusForm({ action, active, email }: { action: Action; active: 
   );
 }
 
-export function PasswordForm({ action, email }: { action: Action; email: string }) {
+export function PasswordForm({ action }: { action: Action }) {
   const [state, formAction] = useActionState(action, {});
   const fid = useFieldIds();
   return (
     <form action={formAction} className="card max-w-xl space-y-5 p-6">
-      <div>
-        <h3 className="font-semibold">Set a New Temporary Password</h3>
-        <p className="mt-1 text-sm text-muted">
-          For when {email} has forgotten their password. The old one stops working at once, and fingerprint sign-in on their
-          phones is turned off too.
-        </p>
-      </div>
+      <h3 className="font-semibold">Set a New Temporary Password</h3>
       <FormErrors errors={state.errors} />
       <TemporaryPassword id={fid('password')} label="New temporary password" />
       <div className="flex flex-wrap items-center gap-3">
@@ -236,7 +210,7 @@ export function EndSessionsForm({ action, email }: { action: Action; email: stri
     <form
       action={formAction}
       onSubmit={(e) => {
-        if (!window.confirm(`End every session of ${email}? They are signed out at once, on the website and in the app.`)) e.preventDefault();
+        if (!window.confirm(`End every session of ${email}?`)) e.preventDefault();
       }}
       className="space-y-3"
     >
@@ -261,7 +235,7 @@ export function SignOutDevicesForm({ action, email }: { action: Action; email: s
     <form
       action={formAction}
       onSubmit={(e) => {
-        if (!window.confirm(`Turn off fingerprint sign-in on every phone of ${email}? They sign in with their password there next time.`)) e.preventDefault();
+        if (!window.confirm(`Turn off fingerprint sign-in on every phone of ${email}?`)) e.preventDefault();
       }}
       className="space-y-3"
     >
@@ -287,10 +261,7 @@ export function AssetsAccessForm({ action, saved, inEffectNote }: { action: Acti
   const checked = typeof typed === 'string' ? typed : saved;
   return (
     <form action={formAction} className="card max-w-xl space-y-5 p-6">
-      <div>
-        <h3 className="font-semibold">Assets Access</h3>
-        <p className="mt-1 text-sm text-muted">What they may do in Assets, the studio&apos;s asset register.</p>
-      </div>
+      <h3 className="font-semibold">Assets Access</h3>
       <FormErrors errors={state.errors} />
       <fieldset>
         <legend className="sr-only">Assets access</legend>
@@ -301,16 +272,12 @@ export function AssetsAccessForm({ action, saved, inEffectNote }: { action: Acti
               className="flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border border-line bg-card px-3 py-2.5 text-sm has-checked:border-accent has-checked:bg-accent-soft"
             >
               <input type="radio" name="assetsAccess" value={level} defaultChecked={checked === level} className="mt-0.5 size-4 accent-accent" />
-              <span>
-                <span className="block font-medium">{ASSETS_ACCESS_LABELS[level]}</span>
-                <span className="block text-xs text-muted">{ASSETS_ACCESS_HINTS[level]}</span>
-              </span>
+              <span className="font-medium">{ASSETS_ACCESS_LABELS[level]}</span>
             </label>
           ))}
         </div>
       </fieldset>
       {inEffectNote && <p className="rounded-lg bg-canvas px-3 py-2 text-sm">{inEffectNote}</p>}
-      <p className="hint">{ASSETS_VALUES_NOTE}</p>
       <div className="flex flex-wrap items-center gap-3">
         <SubmitButton>Save Assets access</SubmitButton>
         <Saved state={state} />

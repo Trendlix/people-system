@@ -32,7 +32,7 @@ export function priorServiceFrom(years: string, months: string): { months: numbe
   const y = latin(years).trim();
   const m = latin(months).trim();
   if (y === '' && m === '') return { months: null, error: null };
-  const error = 'Enter the service with earlier employers as whole years and months (0 to 11), e.g. 4 years 6 months, or leave both empty for none.';
+  const error = 'Enter the service with earlier employers as whole years and months (0 to 11).';
   if ((y !== '' && !/^\d{1,2}$/.test(y)) || (m !== '' && !/^\d{1,2}$/.test(m)) || Number(m || 0) > 11) return { months: null, error };
   const total = Number(y || 0) * 12 + Number(m || 0);
   if (total > PRIOR_SERVICE_MAX_MONTHS) return { months: null, error };

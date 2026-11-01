@@ -20,14 +20,11 @@ import { formatDate } from '../../../lib/format';
 // column falls back to the CV's estimate ("≈ 4 y · CV") and gains a Latest role column; the card shows the latest
 // title and company, the city, the education details, the work history, the dictionary's skills and the certifications.
 
-export const CV_CARD_NOTE = "Found by simple rules in the CV's text; check the CV itself.";
-
 export const applicantCvTextApiPath = (id: string) => `/recruitment/applications/${encodeURIComponent(id)}/cv-text`;
 export const generalCvTextApiPath = (id: string) => `/recruitment/general-cvs/${encodeURIComponent(id)}/cv-text`;
 
 /** The reading's status in words: "Read 22/10/2026 · The PDF's own text", "Reading the CV…", "No text found in the CV". */
 export function readingStatusText(r: Pick<CvReadingView, 'status' | 'method' | 'readAt'>): string {
-  if (r.status === 'pending') return `${CV_READING_STATUS_LABELS.pending} Refresh the page in a minute or two to see what it found.`;
   if (r.status !== 'read') return CV_READING_STATUS_LABELS[r.status];
   const read = r.readAt ? `${CV_READING_STATUS_LABELS.read} ${formatDate(r.readAt)}` : CV_READING_STATUS_LABELS.read;
   return r.method ? `${read} · ${CV_READING_METHOD_LABELS[r.method]}` : read;

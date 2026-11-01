@@ -95,7 +95,7 @@ async function Choices({ searchParams }: { searchParams: PageProps<'/assets/labe
         <form action={`${ASSET_PATHS.labels}/print`} className="space-y-4">
           <p className="text-sm text-muted">
             {choices.length} {choices.length === 1 ? 'asset' : 'assets'}
-            {choices.length > LABEL_SHEET.maxLabels ? `: the first ${LABEL_SHEET.maxLabels} are ticked (ten sheets). Print them, then the rest.` : '. Untick those not to print.'}
+            {choices.length > LABEL_SHEET.maxLabels ? ` · the first ${LABEL_SHEET.maxLabels} ticked` : ''}
           </p>
           <ul aria-label="Labels to print" className="card divide-y divide-line-soft">
             {choices.map((c, i) => (
@@ -122,7 +122,6 @@ async function Choices({ searchParams }: { searchParams: PageProps<'/assets/labe
                 Start at label
               </label>
               <input id="labels-start" name="start" type="number" min={1} max={LABEL_SHEET.perSheet} step={1} defaultValue={1} className="input w-28" />
-              <p className="mt-1 text-xs text-muted">1 to 24: on a sheet already partly used, the first label left.</p>
             </div>
             <button type="submit" className="btn btn-primary">
               Preview sheets
@@ -140,15 +139,9 @@ export default function LabelSheetsPage({ searchParams }: PageProps<'/assets/lab
   return (
     <AssetsFrame tab={ASSET_PATHS.labels}>
       <div className="max-w-4xl">
-        <p className="text-muted">
-          A4 sheets of 24 labels ({LABEL_SHEET.columns} × {LABEL_SHEET.rows}, {LABEL_SHEET.labelWidthMm} × {LABEL_SHEET.labelHeightMm} mm). Each label&apos;s QR code
-          opens its asset&apos;s page.
-        </p>
-        <div className="mt-6">
-          <Suspense fallback={<Loading />}>
-            <Choices searchParams={searchParams} />
-          </Suspense>
-        </div>
+        <Suspense fallback={<Loading />}>
+          <Choices searchParams={searchParams} />
+        </Suspense>
       </div>
     </AssetsFrame>
   );

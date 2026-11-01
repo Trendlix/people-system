@@ -2,7 +2,6 @@ import { KPI_PILLARS, type KpiDepartmentPillarsView, type KpiFrameworkVersionVie
 import { describe, expect, it } from 'vitest';
 import {
   addPillar,
-  appliesFromHint,
   attendanceInKpiOf,
   canFollowCompany,
   companyNewest,
@@ -164,7 +163,6 @@ describe('the form', () => {
     expect(months).toHaveLength(13);
     expect(months[0]).toEqual({ value: '2026-10', label: 'October 2026' });
     expect(months.at(-1)).toEqual({ value: '2027-10', label: 'October 2027' });
-    expect(appliesFromHint('2026-11')).toBe('November 2026’s scorecards open on 01/12/2026.');
   });
 });
 
@@ -172,31 +170,22 @@ describe('in words', () => {
   it('says when the pillars apply, and who saved them', () => {
     expect(inForceText(version())).toBe('In force from the start: the plan’s pillars.');
     expect(inForceText(version({ version: 2, appliesFrom: '2026-11' }))).toBe('In force since November 2026’s scorecards.');
-    expect(nextText(version({ appliesFrom: '2026-11', opensFrom: '2026-12-01' }))).toBe(
-      'Apply from November 2026’s scorecards, which open on 01/12/2026. They can be changed until then.',
-    );
+    expect(nextText(version({ appliesFrom: '2026-11', opensFrom: '2026-12-01' }))).toBe('Apply from November 2026’s scorecards, which open on 01/12/2026.');
     expect(frameworkChangedText(version())).toBeNull();
     expect(frameworkChangedText(version({ updatedBy: { email: 'mona@trendlix.com', name: 'Mona Adel' } }))).toMatch(/^Saved by Mona Adel on 21\/10\/2026, /);
     expect([pillarsLabel(1), pillarsLabel(5)]).toEqual(['1 pillar', '5 pillars']);
   });
 
-  it('asks before saving, and says every template must then be updated', () => {
-    expect(frameworkConfirmText('2026-11', false)).toBe(
-      'Save these pillars? They apply from November 2026’s scorecards, which open on 01/12/2026. Every template must then be updated to place its metrics in them; until it is, its scorecards keep opening on its old version and old pillars. The scorecards opened already keep theirs.',
-    );
-    expect(frameworkConfirmText('2026-11', true)).toMatch(/^Save the changes to the next pillars\? /);
-    expect(frameworkSavedText('2026-11')).toBe('Saved. The new pillars apply from November 2026’s scorecards: update each template marked “Uses the old pillars”.');
+  it('asks before saving, saying when they apply', () => {
+    expect(frameworkConfirmText('2026-11', false)).toBe('Save these pillars, from November 2026’s scorecards?');
+    expect(frameworkConfirmText('2026-11', true)).toBe('Save the next pillars, from November 2026’s scorecards?');
+    expect(frameworkSavedText('2026-11')).toBe('Saved. The new pillars apply from November 2026’s scorecards.');
   });
 
-  it('counts the templates on the old pillars, saying their scorecards keep opening on their old version', () => {
-    expect(oldPillarsBanner(0, null)).toBeNull();
-    const next = { appliesFrom: '2026-11', opensFrom: '2026-12-01' };
-    expect(oldPillarsBanner(3, next)).toEqual({
-      head: '3 templates use the old pillars: update them.',
-      body: 'Open each one marked, start a draft from its version and place its metrics in the new pillars, then publish it. The new pillars apply from November 2026’s scorecards, which open on 01/12/2026. Until a template is updated, its scorecards keep opening on its old version and old pillars, so nobody is left without a scorecard.',
-    });
-    expect(oldPillarsBanner(1, null)!.head).toBe('1 template uses the old pillars: update it.');
-    expect(oldPillarsBanner(1, null)!.body).not.toContain('apply from');
+  it('counts the templates on the old pillars', () => {
+    expect(oldPillarsBanner(0)).toBeNull();
+    expect(oldPillarsBanner(3)).toBe('3 templates use the old pillars: update them.');
+    expect(oldPillarsBanner(1)).toBe('1 template uses the old pillars: update it.');
   });
 });
 
@@ -306,19 +295,11 @@ describe('pillars by department', () => {
   });
 
   it('asks before saving a department’s pillars, or its going back to the company’s, and says what was done', () => {
-    expect(frameworkConfirmText('2026-11', false, 'Production')).toBe(
-      'Save these pillars for Production? They apply from November 2026’s scorecards, which open on 01/12/2026. Every template of Production’s job titles must then be updated to place its metrics in them; until it is, its scorecards keep opening on its old version and old pillars. The scorecards opened already keep theirs.',
-    );
-    expect(frameworkConfirmText('2026-11', true, 'Production')).toMatch(/^Save the changes to Production’s next pillars\? /);
-    expect(frameworkSavedText('2026-11', 'Production')).toBe(
-      'Saved. Production’s new pillars apply from November 2026’s scorecards: update each template marked “Uses the old pillars”.',
-    );
-    expect(followCompanyConfirmText('Production', '2026-12')).toBe(
-      'Take the company’s pillars again for Production? From December 2026’s scorecards, which open on 01/01/2027, its job titles take the company’s pillars. Every template of its job titles must then be updated to place its metrics in them; until it is, its scorecards keep opening on its old version and old pillars. The scorecards opened already keep theirs.',
-    );
-    expect(followCompanySavedText('Production', '2026-12')).toBe(
-      'Saved. Production takes the company’s pillars from December 2026’s scorecards: update each template marked “Uses the old pillars”.',
-    );
+    expect(frameworkConfirmText('2026-11', false, 'Production')).toBe('Save these pillars for Production, from November 2026’s scorecards?');
+    expect(frameworkConfirmText('2026-11', true, 'Production')).toBe('Save Production’s next pillars, from November 2026’s scorecards?');
+    expect(frameworkSavedText('2026-11', 'Production')).toBe('Saved. Production’s new pillars apply from November 2026’s scorecards.');
+    expect(followCompanyConfirmText('Production', '2026-12')).toBe('Take the company’s pillars again for Production, from December 2026’s scorecards?');
+    expect(followCompanySavedText('Production', '2026-12')).toBe('Saved. Production takes the company’s pillars from December 2026’s scorecards.');
   });
 });
 
@@ -390,10 +371,8 @@ describe('pillars by team', () => {
   it('says a team’s pillars, its going back to its department’s, and counts the teams with their own', () => {
     expect(departmentPillarsText(teamRow(VIDEO, 'Video'))).toEqual({ now: 'Production’s pillars', next: null });
     expect(departmentPillarsText(teamRow(VIDEO, 'Video', { inForce: videoOwn, next: videoBack })).next).toBe('Back to Production’s pillars from January 2027’s scorecards.');
-    expect(followCompanyConfirmText('Video', '2027-01', 'Production’s')).toMatch(/^Take Production’s pillars again for Video\? From January 2027’s scorecards, which open on 01\/02\/2027, its job titles take Production’s pillars\. /);
-    expect(followCompanySavedText('Video', '2027-01', 'Production’s')).toBe(
-      'Saved. Video takes Production’s pillars from January 2027’s scorecards: update each template marked “Uses the old pillars”.',
-    );
+    expect(followCompanyConfirmText('Video', '2027-01', 'Production’s')).toBe('Take Production’s pillars again for Video, from January 2027’s scorecards?');
+    expect(followCompanySavedText('Video', '2027-01', 'Production’s')).toBe('Saved. Video takes Production’s pillars from January 2027’s scorecards.');
     expect(ownPillarsCountText({ departments: [production([teamRow(VIDEO, 'Video', { inForce: videoOwn })])] })).toBe('1 team has its own pillars; the others take the company’s.');
     expect(ownPillarsCountText({ departments: [production([teamRow(VIDEO, 'Video', { inForce: videoOwn }), teamRow(DESIGN, 'Design', { next: videoOwn })], { inForce: prodOwn })] })).toBe(
       '1 department and 2 teams have their own pillars; the others take the company’s.',

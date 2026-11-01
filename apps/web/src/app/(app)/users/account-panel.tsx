@@ -1,4 +1,4 @@
-import { ASSETS_ACCESS_HINTS, ASSETS_ACCESS_LABELS, ROLES } from '@trendlix/shared';
+import { ASSETS_ACCESS_LABELS, ROLES } from '@trendlix/shared';
 import Link from 'next/link';
 import { FingerprintDevices } from '@/components/fingerprint-devices';
 import { SessionList } from '@/components/session-list';
@@ -6,7 +6,7 @@ import { devicesNotLoadedText } from '@/lib/fingerprint';
 import { assignableRoles, canChangeAccount, isSuperAdmin } from '@/lib/roles';
 import type { FingerprintDevice, OpenSession, SessionUser, UserAccount } from '@/lib/types';
 import type { Loaded } from '../payroll/load';
-import { accessInEffectText, ASSETS_VALUES_NOTE } from '../assets/assets';
+import { accessInEffectText } from '../assets/assets';
 import { endUserSession, endUserSessions, setActive, setPassword, signOutUserDevice, signOutUserDevices, updateAssetsAccess, updateRoles } from './actions';
 import { ONLY_SUPER_ADMIN_CHANGES, RoleBadges } from './ui';
 import { AssetsAccessForm, EndSessionsForm, PasswordForm, RolesForm, SignOutDevicesForm, StatusForm } from './user-forms';
@@ -35,11 +35,7 @@ export function AccountPanel({
   // A Super Admin's roles, active flag and password are a Super Admin's to change: an Admin sees them read-only (the
   // API refuses with 403). Only a Super Admin is offered the Super Admin role.
   const mayChange = canChangeAccount(me, user);
-  const rolesHint = !self
-    ? 'Changes apply straight away, even if they are signed in.'
-    : isSuperAdmin(user)
-      ? 'This is your own account: you cannot remove your own admin rights, and the last active Super Admin keeps that role.'
-      : 'This is your own account: you cannot remove your own Admin role.';
+  const rolesHint = !self ? undefined : isSuperAdmin(user) ? 'You can’t remove your own admin rights.' : 'You can’t remove your own Admin role.';
 
   return (
     <>
@@ -65,11 +61,7 @@ export function AccountPanel({
         ) : (
           <section className="card max-w-xl space-y-3 p-6">
             <h3 className="font-semibold">Assets Access</h3>
-            <p className="text-sm">
-              <span className="font-medium">{ASSETS_ACCESS_LABELS[user.assetsAccessInEffect ?? user.assetsAccess]}</span>
-              <span className="block text-muted">{ASSETS_ACCESS_HINTS[user.assetsAccessInEffect ?? user.assetsAccess]}</span>
-            </p>
-            <p className="hint">{ASSETS_VALUES_NOTE}</p>
+            <p className="text-sm font-medium">{ASSETS_ACCESS_LABELS[user.assetsAccessInEffect ?? user.assetsAccess]}</p>
             <p className="text-sm text-muted">{ONLY_SUPER_ADMIN_CHANGES}</p>
           </section>
         ))}
@@ -78,16 +70,9 @@ export function AccountPanel({
         <section className="card max-w-xl space-y-3 p-6">
           <h3 className="font-semibold">{user.isActive ? 'Deactivate' : 'Reactivate'}</h3>
           {self ? (
-            <p className="text-sm text-muted">You cannot deactivate your own account. Another admin can do it.</p>
+            <p className="text-sm text-muted">You can’t deactivate your own account.</p>
           ) : (
-            <>
-              <p className="text-sm text-muted">
-                {user.isActive
-                  ? 'Deactivating signs them out at once and stops them signing in. Nothing else is deleted, and you can reactivate the account later.'
-                  : 'This account is deactivated: they cannot sign in.'}
-              </p>
-              <StatusForm action={setActive.bind(null, id)} active={user.isActive} email={user.email} />
-            </>
+            <StatusForm action={setActive.bind(null, id)} active={user.isActive} email={user.email} />
           )}
         </section>
       )}
@@ -97,15 +82,11 @@ export function AccountPanel({
       <section className="card max-w-xl space-y-4 p-6">
         <div>
           <h3 className="font-semibold">Sessions</h3>
-          <p className="mt-1 text-sm text-muted">
-            {self ? (
-              <>
-                Your own sessions are on <Link href="/account/sessions">Your Sessions</Link>.
-              </>
-            ) : (
-              'Where they are signed in now: once on the website and once in the app at most. Ending a session signs them out there at once.'
-            )}
-          </p>
+          {self && (
+            <p className="mt-1 text-sm text-muted">
+              Your own sessions are on <Link href="/account/sessions">Your Sessions</Link>.
+            </p>
+          )}
         </div>
         {!self && (
           <>
@@ -126,15 +107,11 @@ export function AccountPanel({
       <section className="card max-w-xl space-y-4 p-6">
         <div>
           <h3 className="font-semibold">Fingerprint Sign-In</h3>
-          <p className="mt-1 text-sm text-muted">
-            {self ? (
-              <>
-                Your own phones are on <Link href="/account/sessions">Your Sessions</Link>.
-              </>
-            ) : (
-              'The phones they sign in to the Trendlix People app on with a fingerprint. Signing a phone out asks for their password there next time.'
-            )}
-          </p>
+          {self && (
+            <p className="mt-1 text-sm text-muted">
+              Your own phones are on <Link href="/account/sessions">Your Sessions</Link>.
+            </p>
+          )}
         </div>
         {!self &&
           (devices.kind === 'ok' ? (
@@ -161,7 +138,7 @@ export function AccountPanel({
             </p>
           </section>
         ) : (
-          <PasswordForm action={setPassword.bind(null, id)} email={user.email} />
+          <PasswordForm action={setPassword.bind(null, id)} />
         ))}
     </>
   );

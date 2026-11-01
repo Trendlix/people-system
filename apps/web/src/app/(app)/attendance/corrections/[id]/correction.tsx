@@ -6,14 +6,14 @@ import { approverLabel } from '@/lib/department-leads';
 import { formatDateTime } from '@/lib/format';
 import { getCurrentUser } from '@/lib/session';
 import { standingInNoteText } from '@/lib/stand-in';
-import { appAttendanceHref, appBack, appRequestsHref, type Surface } from '@/lib/surface';
+import { appAttendanceHref, appBack, type Surface } from '@/lib/surface';
 import { CancelLeaveForm, LeaveDecisionForm } from '../../../leave/leave-forms';
 import { decidingAsTitle, hrStageName, placeOfEmployee } from '../../../leave/list';
 import { LeaveProgress, LeaveStatusBadge, LeaveTimeline } from '../../../leave/ui';
 import { BackLink, Empty, UUID } from '../../../organization/ui';
 import { notLoadedText } from '../../../payroll/load';
 import { cancelMyCorrection, decideCorrection } from '../actions';
-import { correctionBack, correctionDayText, correctionDoneText, correctionStepText, dayBeforeText, MY_CORRECTIONS_HREF, rightTimesText, seesCorrections } from '../corrections';
+import { correctionBack, correctionDayText, correctionDoneText, correctionStepText, dayBeforeText, rightTimesText, seesCorrections } from '../corrections';
 import { loadCorrection } from '../data';
 import { leaveStepsAhead } from '@/lib/steps-ahead';
 
@@ -113,7 +113,6 @@ export async function CorrectionDetail({
               </Fact>
               <Fact label="The right times">
                 <span className="text-base font-semibold tabular-nums">{rightTimesText(r)}</span>
-                {r.correctionKind === 'worked_remotely' && <span className="block text-xs text-muted">Counted as remote work, no longer flagged once approved</span>}
               </Fact>
               <Fact label="Why" wide>
                 <span className="whitespace-pre-line">{r.reason}</span>
@@ -124,7 +123,7 @@ export async function CorrectionDetail({
               </Fact>
               <Fact label={r.manager ? approverLabel(r.manager) : 'Direct manager'}>
                 {r.recordedByHr ? (
-                  <span className="text-muted">Corrected by HR directly: no decision needed</span>
+                  <span className="text-muted">Corrected by HR directly</span>
                 ) : r.manager ? (
                   r.manager.fullNameEn
                 ) : (
@@ -132,10 +131,11 @@ export async function CorrectionDetail({
                 )}
               </Fact>
             </dl>
-            <div className="mt-4 flex flex-wrap gap-x-4 gap-y-1 text-sm">
-              {monthHref && <Link href={monthHref}>{own ? 'Open My Attendance' : 'Open their month'}</Link>}
-              {own && <Link href={surface === 'site' ? MY_CORRECTIONS_HREF : appRequestsHref('correction')}>Your other corrections are on My Requests</Link>}
-            </div>
+            {monthHref && (
+              <div className="mt-4 text-sm">
+                <Link href={monthHref}>{own ? 'Open My Attendance' : 'Open their month'}</Link>
+              </div>
+            )}
           </Section>
 
           {r.waitingForYou && r.stage && (
@@ -148,7 +148,6 @@ export async function CorrectionDetail({
 
           {r.canCancel && (
             <Section title="Cancel the Correction">
-              <p className="mb-3 text-sm text-muted">While it is being decided you can cancel it, e.g. to ask again with other times. The day stays as it is.</p>
               <CancelLeaveForm action={cancelMyCorrection.bind(null, r.id)} what={what} kind="correction" />
             </Section>
           )}

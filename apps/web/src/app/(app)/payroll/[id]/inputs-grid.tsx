@@ -11,13 +11,12 @@ import { groupByPlace, placeOrder, showsDepartment, type PlaceRef } from '@/lib/
 import type { FormState } from '@/lib/types';
 import { formatEgp } from '../../employees/[id]/contracts/salary';
 import { profileHref } from '../../employees/tab-list';
-import { CONFIDENTIAL_LINE_TITLE, HIDDEN_INPUTS_NOTE, typist } from './access';
+import { CONFIDENTIAL_LINE_TITLE, typist } from './access';
 import { cutText } from './breakdown';
 import {
   attendanceHours,
   attendancePercent,
   cellText,
-  columnNote,
   errorLine,
   expectedCell,
   expectedMark,
@@ -31,7 +30,6 @@ import {
   LEAVE_FIELDS,
   leaveFill,
   linePatches,
-  noShowPay,
   parseCell,
   permissionFill,
   placeApiErrors,
@@ -433,7 +431,6 @@ function withoutEmpty(edits: GridEdits, lineId: string, row: RowEdits): GridEdit
 
 export function InputsGrid({
   rows,
-  noShowDayMultiplier,
   editable,
   save,
   places = [],
@@ -442,8 +439,6 @@ export function InputsGrid({
   rows: GridRow[];
   /** The departments and teams in Organization's order, for the groups to follow it (owner, 19 October 2026). */
   places?: PlaceRef[];
-  /** The run's rule: what a no-show day costs, in days' pay. */
-  noShowDayMultiplier: number;
   /** Whether any row takes edits; a row whose line isn't the caller's (`editable: false`) stays read only (19 October 2026). */
   editable: boolean;
   /** Saves the changed rows (PATCH /payroll/runs/:id/lines); null when the grid is read only. */
@@ -563,7 +558,7 @@ export function InputsGrid({
   }
 
   function discard() {
-    if (!window.confirm('Discard the changes not saved? The grid goes back to what is saved.')) return;
+    if (!window.confirm('Discard unsaved changes?')) return;
     setEdits({});
     setTouched(new Set());
     setApiErrors([]);
@@ -610,9 +605,6 @@ export function InputsGrid({
                 <Fragment key={c.field}>
                   <th scope="col" className="px-2 text-right">
                     {titleCase(c.label)}
-                    {columnNote(c.field, noShowDayMultiplier) && (
-                      <span className="ml-auto block max-w-32 text-xs font-normal whitespace-normal text-muted">{columnNote(c.field, noShowDayMultiplier)}</span>
-                    )}
                   </th>
                   {c.field === ATTENDANCE_AFTER && (
                     <th scope="col" className="text-right">
@@ -623,11 +615,9 @@ export function InputsGrid({
                     <>
                       <th scope="col" className="px-2 text-right">
                         Earnings
-                        <span className="ml-auto block max-w-32 text-xs font-normal whitespace-normal text-muted">On Additions / Deductions</span>
                       </th>
                       <th scope="col" className="px-2 text-right">
                         Deductions
-                        <span className="ml-auto block max-w-32 text-xs font-normal whitespace-normal text-muted">After tax</span>
                       </th>
                     </>
                   )}
@@ -673,9 +663,7 @@ export function InputsGrid({
                 <th scope="row" className={`${stickyCell} min-w-52 text-sm font-semibold tracking-normal text-ink normal-case`}>
                   {hidden}
                 </th>
-                <td colSpan={COLUMN_COUNT - 1} className="text-sm text-muted">
-                  {HIDDEN_INPUTS_NOTE}
-                </td>
+                <td colSpan={COLUMN_COUNT - 1} />
               </tr>
             </tbody>
           )}
@@ -703,31 +691,6 @@ export function InputsGrid({
             </p>
           )}
         </div>
-      )}
-      {canEdit && (
-        <p className="hint">
-          Hours as 270:00 or 270.5; days in whole or half days. Leave a cell empty when it doesn&apos;t apply: empty
-          worked hours count in full. Permission hours: filled in from the permission approved this month (
-          <Link href="/leave?kind=permission">Requests → Leave Requests</Link>), within the hours a month Leave Setup gives, and counted as worked:
-          the attendance is the worked hours with them; type other hours to replace them, and clearing them brings the approved ones back. The
-          expected hours are worked out, never typed: the shift&apos;s working days in the days paid less the holidays (
-          <Link href="/organization/holidays">Organization → Holidays</Link>) and less the no-show and leave days, at its
-          hours to work a day, and they change as those days do. Without a shift there are none, and attendance isn&apos;t
-          counted: set the shift on the Employment tab, then refresh the run. No-show days: {noShowPay(noShowDayMultiplier)}, and their hours
-          aren&apos;t counted in attendance. Leave days and unpaid leave days: filled in from the leave approved this
-          month (<Link href="/leave">Requests → Leave Requests</Link>), the unpaid share of a partly paid leave, such as
-          sick leave below 100%, with the unpaid; type other days to replace them, and clearing them brings the
-          leave&apos;s back. A leave day is paid, nothing cut; an unpaid leave day costs a day&apos;s pay (the gross ÷ the
-          day divisor). Neither&apos;s hours are counted in attendance. Earnings and deductions: the
-          month&apos;s on <Link href="/payroll/adjustments">Additions / Deductions</Link>, where a bonus or penalty in
-          days, a commission or a correction is entered with its reason; open one to add or change them, and the pay
-          below follows. Released: already paid out this month, so not in the bank transfer. On hold: left out of the
-          bank files this month. Figures marked &ldquo;from Zoho&rdquo; were filled by an attendance import from Zoho People
-          (Attendance, above) and can&apos;t be typed over: to change them, import the month again, or undo the import on
-          its review. Figures marked &ldquo;from attendance&rdquo; come from the month&apos;s attendance days of those who check in on the
-          system (or whose day was corrected) and can&apos;t be typed over either: they change with the attendance, by a correction
-          approved or Refresh from attendance.
-        </p>
       )}
     </div>
   );

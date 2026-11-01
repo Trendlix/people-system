@@ -58,7 +58,7 @@ export const monthOf = (ymd: string) => monthName(ymd.slice(0, 7));
 export function insuredWageText(effective: string, form2From: string | null): string {
   if (form2From) return `Insured wage follows the new pay from ${monthOf(form2From)}, with Form 2 filed.`;
   const january = firstJanuaryFrom(effective);
-  if (january === effective) return 'Insured wage follows the new pay at once: it is set each January.';
+  if (january === effective) return 'Insured wage follows the new pay at once.';
   return `Insured wage stays as before until ${monthOf(january)} unless Form 2 is filed.`;
 }
 
@@ -227,7 +227,7 @@ function requiredDate(fd: FormData, key: string, label: string, example: string,
 export function raiseBody(fd: FormData, errors: string[], draft: boolean) {
   const typedWay = text(fd, 'way');
   const way = (RAISE_WAYS as readonly string[]).includes(typedWay) ? (typedWay as RaiseWay) : null;
-  if (!way) errors.push('Choose how the raise is made: an amendment to the contract in force, or a new contract.');
+  if (!way) errors.push('Choose how the raise is made.');
   const effectiveDate = requiredDate(fd, 'effectiveDate', 'date the raise takes effect', '01/12/2026', errors);
   const durationMonths = way === 'contract' ? monthsFrom(fd, 'durationMonths', 'length', 60, errors) : undefined;
   if (durationMonths === 0) errors.push('A fixed term runs for 1 to 60 months.');

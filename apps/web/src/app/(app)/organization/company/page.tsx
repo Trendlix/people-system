@@ -28,11 +28,10 @@ function Row({ label, children, ar = false }: { label: string; children: React.R
   );
 }
 
-function Section({ title, hint, children }: { title: string; hint?: string; children: React.ReactNode }) {
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="card p-6">
       <h3 className="font-semibold">{title}</h3>
-      {hint && <p className="mt-1 text-sm text-muted">{hint}</p>}
       <dl className="mt-3">{children}</dl>
     </section>
   );
@@ -119,7 +118,7 @@ async function CompanyProfile() {
           <Row label="Work email domain">{company.emailDomain}</Row>
         </Section>
 
-        <Section title="Company Representative" hint="Signs documents on the company's behalf, such as the clearance form.">
+        <Section title="Company Representative">
           <Row label="Name (Arabic)" ar>
             {company.repName}
           </Row>
@@ -132,7 +131,7 @@ async function CompanyProfile() {
         </Section>
       </div>
 
-      <p className="text-xs text-muted">Last updated {formatDate(company.updatedAt)}. Names and the Arabic address are printed on contracts and other documents.</p>
+      <p className="text-xs text-muted">Last updated {formatDate(company.updatedAt)}.</p>
     </div>
   );
 }

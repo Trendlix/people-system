@@ -1,12 +1,10 @@
 import {
-  INTERNSHIP_AGREEMENT,
   isTrainingType,
   RENEWED_ONCE_MESSAGE,
   trainingEndsText,
   trainingTooSoon,
   trainingTooSoonMessage,
   type EmploymentType,
-  type TrainingNext,
 } from '@trendlix/shared';
 import type { Contract, ContractSettings, ContractTraining } from '../../../../../lib/types';
 import type { ContractDefaults } from './contract-form';
@@ -59,29 +57,22 @@ export function contractActions(x: {
   };
 }
 
-/** The way forward once an agreement ends, in plain words, with where each is done. */
-export function trainingWayText(next: TrainingNext): string {
-  return next === 'renew_or_convert'
-    ? 'Renew it once with Renew, or convert it with Convert to full-time. To end the internship, use End employment and choose Training completed.'
-    : 'It was renewed once already, so it isn’t renewed again: convert it with Convert to full-time, or end the internship with End employment, choosing Training completed.';
-}
-
 /** An agreement's reminder this many days before it ends, as a fixed term's renewal warning. */
 export const TRAINING_REMINDER_DAYS = 60;
 
 /**
  * The reminder of an agreement's end on the Employment tab: "Internship ends on 31/03/2027: renew it once, or convert to
- * full-time." with the way forward, from 60 days before its end (ended once past: `passed`); null before then, or for a
- * contract that isn't an intern's agreement.
+ * full-time.", from 60 days before its end (ended once past: `passed`); null before then, or for a contract that isn't an
+ * intern's agreement.
  */
 export function trainingReminder(
   c: { endDate: string | null; training?: ContractTraining | null },
   today: string,
-): { text: string; way: string; passed: boolean } | null {
+): { text: string; passed: boolean } | null {
   if (!c.training || !c.endDate) return null;
   const toEnd = daysBetween(today, c.endDate);
   if (toEnd > TRAINING_REMINDER_DAYS) return null;
-  return { text: trainingEndsText(c.endDate, c.training.next, today), way: trainingWayText(c.training.next), passed: toEnd < 0 };
+  return { text: trainingEndsText(c.endDate, c.training.next, today), passed: toEnd < 0 };
 }
 
 /** What a draft is, beside its version on the draft card: a conversion to full-time, a renewal, or the first contract. */
@@ -90,10 +81,6 @@ export function draftKind(d: Pick<Contract, 'version' | 'convertsTo'>): string {
   return d.version > 1 ? ' (Renewal)' : '';
 }
 
-/** Why the probation of an intern's agreement is none, under the field (shown as 0, not editable). */
-export const noProbationHint = (): string =>
-  'None: an intern has no probation, as an internship agreement isn’t an employment contract (probation, Labour Law Art. 90, is an employment contract’s).';
-
 /**
  * Renew after an agreement was renewed once: why not, and the way instead (null while it may be renewed, or for any other
  * contract): "An internship agreement is renewed once. Convert it to a full-time contract instead."
@@ -101,9 +88,6 @@ export const noProbationHint = (): string =>
 export function renewalRefusal(previous: Pick<Contract, 'training'> | undefined): string | null {
   return previous?.training?.next === 'convert_or_end' ? RENEWED_ONCE_MESSAGE : null;
 }
-
-/** On renewing a first agreement: that it is its one renewal. */
-export const onlyRenewalNote = (): string => `This is the ${INTERNSHIP_AGREEMENT}’s one renewal: when it ends, it is converted to a full-time contract or the internship ends.`;
 
 // ---------- converting an agreement to a full-time contract ----------
 
@@ -136,17 +120,6 @@ export function conversionDefaults(settings: ContractSettings, agreement: Contra
     note: '',
   };
 }
-
-/** Under Signed on, for the full-time contract an agreement converts to: what signing it does. */
-export const CONVERSION_SIGN_HINT =
-  "The day the employee and the company signed it. Signing makes the employment full-time, on probation while the contract's probation runs, and it replaces the agreement. A signed contract can't be changed, except its filing dates and note.";
-
-/** Under the full-time contract's start date: from when it runs. */
-export const CONVERSION_START_HINT = 'The day after the agreement ends, unless the full-time contract starts earlier. It must start after the agreement’s start.';
-
-/** Under its probation, for someone with no earlier employment here. */
-export const CONVERSION_PROBATION_HINT =
-  'At most 3 months, 0 for none: the agreement had no probation, so the full-time contract may have it, once with the company (Labour Law Art. 90).';
 
 // ---------- a new agreement, 6 months after the last ----------
 

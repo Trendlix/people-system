@@ -86,9 +86,9 @@ export async function BasicTab({ profile: p, show, today, education }: { profile
             // for the annual leave (owner, 18 October 2026: "can you apply the leaves according to the law?"; Labour Law
             // Art. 124): 45 days with a disability, and the service with earlier employers towards the 30 days of 10
             // years' service; HR's, left out by an API from before leave
-            ...(p.disability !== undefined ? [{ key: 'disability', label: 'Disability', value: p.disability ? 'Yes' : 'No', note: p.disability ? '45 days of annual leave (Labour Law Art. 124)' : undefined }] : []),
+            ...(p.disability !== undefined ? [{ key: 'disability', label: 'Disability', value: p.disability ? 'Yes' : 'No' }] : []),
             ...(p.priorServiceMonths !== undefined
-              ? [{ key: 'priorService', label: 'Service with earlier employers', value: priorServiceText(p.priorServiceMonths), note: 'Counts towards 10 years, for 30 days of annual leave' }]
+              ? [{ key: 'priorService', label: 'Service with earlier employers', value: priorServiceText(p.priorServiceMonths) }]
               : []),
           ]}
         />
@@ -223,13 +223,9 @@ export async function BasicTab({ profile: p, show, today, education }: { profile
       {p.access.delete && (
         <section className="card space-y-3 p-6">
           <h2 className="font-semibold">Delete Profile</h2>
-          <p className="text-sm text-muted">
-            Only for a profile added by mistake. When someone leaves, end their employment on the Employment tab instead: the profile and their
-            employment history are kept, and they are listed as a former employee.
-          </p>
           <DeleteForm
             action={deleteEmployee.bind(null, p.id)}
-            confirmText={`Delete ${withCodeInBrackets(p.fullNameEn, p.employeeCode)} with their national ID, bank details, employment history and employee file? This cannot be undone.`}
+            confirmText={`Delete ${withCodeInBrackets(p.fullNameEn, p.employeeCode)} and all their records?`}
             label="Delete profile"
           />
         </section>

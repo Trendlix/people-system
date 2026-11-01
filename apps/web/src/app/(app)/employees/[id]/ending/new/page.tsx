@@ -36,15 +36,14 @@ async function NewEnding({ params, searchParams }: { params: Promise<{ id: strin
   } else if (!allRules) {
     body = (
       <Empty>
-        Not available yet: endings that go to the CEO for approval come with the server&apos;s next update. Meanwhile, an ending that already happened can be{' '}
-        <Link href={pastEndingHref}>recorded directly</Link>.
+        Not available yet. <Link href={pastEndingHref}>Record a past ending</Link> instead.
       </Empty>
     );
   } else if (e.ending && (e.ending.status === 'pending_ceo' || e.ending.status === 'approved')) {
     body = (
       <Empty>
-        An ending is already in progress ({e.ending.ruleLabel}, {ENDING_STATUS_LABELS[e.ending.status].toLowerCase()}), with the last working day on{' '}
-        {formatDate(e.ending.lastWorkingDay)}. To record another, first withdraw it on the <Link href={back}>Employment tab</Link>.
+        An ending is already in progress ({e.ending.ruleLabel}, {ENDING_STATUS_LABELS[e.ending.status].toLowerCase()}). Withdraw it on the{' '}
+        <Link href={back}>Employment tab</Link> first.
       </Empty>
     );
   } else {
@@ -69,15 +68,11 @@ async function NewEnding({ params, searchParams }: { params: Promise<{ id: strin
         <p className="text-sm">
           <span className="font-semibold">{what}</span> <span className="text-muted">since {formatDate(e.joinDate)}</span>
         </p>
-        <p className="text-sm text-muted">
-          Recording it counts as HR&apos;s approval; it then goes to the CEO. Once approved, complete it on the Employment tab on or after the last working day:
-          that ends the employment, and {employee.fullNameEn} is then listed as a former employee, with the profile kept.
-        </p>
         {employee.reports.length > 0 && (
           <div role="alert" className="space-y-2 rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
             <p>
-              {employee.reports.length === 1 ? '1 person reports' : `${employee.reports.length} people report`} to {employee.fullNameEn}. Choose another manager
-              for {employee.reports.length === 1 ? 'them' : 'each of them'} before the ending is completed:
+              {employee.reports.length === 1 ? '1 person reports' : `${employee.reports.length} people report`} to {employee.fullNameEn}. Give them another
+              manager before the ending is completed:
             </p>
             <ul className="list-disc pl-5">
               {employee.reports.map((r) => (
@@ -90,7 +85,7 @@ async function NewEnding({ params, searchParams }: { params: Promise<{ id: strin
           </div>
         )}
         {rules.length === 0 ? (
-          <Empty>No ways of ending an employment are offered. HR or Admin turn them on in Organization → Contracts &amp; Endings.</Empty>
+          <Empty>No ways of ending are turned on in Organization → Contracts &amp; Endings.</Empty>
         ) : (
           <EndingForm
             action={from ? recordResignation.bind(null, from.id, employee.id) : startEnding.bind(null, employee.id, e.id)}
@@ -109,8 +104,8 @@ async function NewEnding({ params, searchParams }: { params: Promise<{ id: strin
             cancelHref={back}
           />
         )}
-        <p className="text-xs text-muted">
-          Already ended outside People System, e.g. before it was used? <Link href={pastEndingHref}>Record a past ending</Link> instead.
+        <p className="text-xs">
+          <Link href={pastEndingHref}>Record a past ending</Link>
         </p>
       </div>
     );

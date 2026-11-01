@@ -7,7 +7,6 @@ import {
   MAIL_SECURITY_LABELS,
   MAIL_PASSWORD_UNREADABLE,
   mailPreset,
-  mailProviderNote,
   type MailProvider,
   type MailSecurity,
   type MailSettingsView,
@@ -27,7 +26,7 @@ import { lastTestText, type MailFormState, type MailIntent } from './settings';
 
 type Action = (prev: MailFormState, fd: FormData) => Promise<MailFormState>;
 
-const REMOVE_CONFIRM = 'Remove the saved password? Settings that need it stop being used until a new one is entered.';
+const REMOVE_CONFIRM = 'Remove the saved password?';
 
 export function MailSettingsForm({ action, view, testTo }: { action: Action; view: MailSettingsView; testTo: string }) {
   const [state, formAction, pending] = useActionState(action, {});
@@ -94,7 +93,6 @@ export function MailSettingsForm({ action, view, testTo }: { action: Action; vie
         <h2 id={fid('server-heading')} className="text-lg font-semibold">
           Email Server
         </h2>
-        <p className="mt-1 max-w-3xl text-sm text-muted">The company mailbox the system sends from, and its provider’s sending (SMTP) server.</p>
 
         <div className="mt-5 space-y-5">
           <div className="max-w-md">
@@ -106,7 +104,6 @@ export function MailSettingsForm({ action, view, testTo }: { action: Action; vie
               name="provider"
               value={provider}
               onChange={(e) => choose(e.target.value as MailProvider)}
-              aria-describedby={fid('provider-hint')}
               className="input"
             >
               {MAIL_PROVIDERS.map((p) => (
@@ -115,9 +112,6 @@ export function MailSettingsForm({ action, view, testTo }: { action: Action; vie
                 </option>
               ))}
             </Select>
-            <p id={fid('provider-hint')} className="hint">
-              {mailProviderNote(provider)}
-            </p>
           </div>
 
           <div className="grid gap-5 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,2fr)]">
@@ -180,12 +174,8 @@ export function MailSettingsForm({ action, view, testTo }: { action: Action; vie
                 autoCapitalize="none"
                 spellCheck={false}
                 maxLength={254}
-                aria-describedby={fid('username-hint')}
                 className="input"
               />
-              <p id={fid('username-hint')} className="hint">
-                Usually the mailbox’s address, e.g. hr@trendlix.com. Leave it empty for a server that needs no sign-in.
-              </p>
             </div>
             <div>
               {saved && !replacing ? (
@@ -202,7 +192,6 @@ export function MailSettingsForm({ action, view, testTo }: { action: Action; vie
                       Replace<span className="sr-only"> the password</span>
                     </button>
                   </div>
-                  <p className="hint">Saved encrypted, and never shown again.</p>
                 </>
               ) : (
                 <>
@@ -216,24 +205,21 @@ export function MailSettingsForm({ action, view, testTo }: { action: Action; vie
                     autoComplete="new-password"
                     maxLength={256}
                     autoFocus={replacing}
-                    aria-describedby={fid('password-hint')}
+                    aria-describedby={view.passwordUnreadable ? fid('password-hint') : undefined}
                     className="input"
                   />
-                  <p id={fid('password-hint')} className={view.passwordUnreadable ? 'hint text-warn' : 'hint'}>
-                    {view.passwordUnreadable
-                      ? MAIL_PASSWORD_UNREADABLE
-                      : saved
-                        ? 'Leave it empty to keep the saved password.'
-                        : 'Saved encrypted, and never shown again: an app password where the provider asks for one.'}
-                    {saved && (
-                      <>
-                        {' '}
-                        <button type="button" onClick={() => setReplacing(false)} className="font-semibold text-accent underline-offset-2 hover:underline">
-                          Keep the saved one
-                        </button>
-                      </>
-                    )}
-                  </p>
+                  {view.passwordUnreadable && (
+                    <p id={fid('password-hint')} className="hint text-warn">
+                      {MAIL_PASSWORD_UNREADABLE}
+                    </p>
+                  )}
+                  {saved && (
+                    <p className="hint">
+                      <button type="button" onClick={() => setReplacing(false)} className="font-semibold text-accent underline-offset-2 hover:underline">
+                        Keep the saved one
+                      </button>
+                    </p>
+                  )}
                 </>
               )}
               {view.passwordSet && (
@@ -265,21 +251,14 @@ export function MailSettingsForm({ action, view, testTo }: { action: Action; vie
               autoComplete="off"
               maxLength={254}
               placeholder="hr@trendlix.com"
-              aria-describedby={fid('fromAddress-hint')}
               className="input"
             />
-            <p id={fid('fromAddress-hint')} className="hint">
-              The mailbox’s own address, or one it may send as.
-            </p>
           </div>
           <div>
             <label htmlFor={fid('replyTo')} className="label">
               Reply-to <span className="font-normal text-muted">(optional)</span>
             </label>
-            <input id={fid('replyTo')} name="replyTo" type="email" defaultValue={view.replyTo ?? ''} autoComplete="off" maxLength={254} aria-describedby={fid('replyTo-hint')} className="input" />
-            <p id={fid('replyTo-hint')} className="hint">
-              Where answers go when nobody else is named: a job offer’s or an interview’s go to the HR user who sent it.
-            </p>
+            <input id={fid('replyTo')} name="replyTo" type="email" defaultValue={view.replyTo ?? ''} autoComplete="off" maxLength={254} className="input" />
           </div>
         </div>
 
@@ -294,14 +273,10 @@ export function MailSettingsForm({ action, view, testTo }: { action: Action; vie
               value="true"
               checked={enabled}
               onChange={(e) => setEnabled(e.target.checked)}
-              aria-describedby={fid('enabled-hint')}
               className="size-5 accent-accent"
             />
             Send the system’s emails with these settings
           </label>
-          <p id={fid('enabled-hint')} className="hint">
-            Off, or not complete: the server’s settings (deploy/.env) are used, if it has them. The test below works either way.
-          </p>
         </div>
 
         <div className="mt-5 flex flex-wrap items-center gap-3">
@@ -326,10 +301,6 @@ export function MailSettingsForm({ action, view, testTo }: { action: Action; vie
         <h2 id={fid('test-heading')} className="text-lg font-semibold">
           Send a Test Email
         </h2>
-        <p className="mt-1 max-w-3xl text-sm text-muted">
-          A short email sent with the settings above as they are on screen, saved or not (an empty password box uses the saved password), so they can be
-          checked before they are saved or switched on.
-        </p>
         <div className="mt-5 flex flex-wrap items-end gap-3">
           <div className="min-w-0 flex-1 sm:max-w-sm">
             <label htmlFor={fid('testTo')} className="label">

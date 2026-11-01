@@ -13,10 +13,7 @@ export async function WfhToday({ today }: { today: string }) {
   if (!day) return null;
   return (
     <Link href={appItemHref('requests', 'wfh', day.id)} className="card flex min-h-14 items-center justify-between gap-3 px-4 py-3 text-ink no-underline">
-      <span>
-        <span className="block font-semibold">Working from home today</span>
-        <span className="block text-xs text-muted">Check in from home: the office network isn&apos;t needed today.</span>
-      </span>
+      <span className="font-semibold">Working from home today</span>
       <span aria-hidden="true" className="text-lg text-accent">
         ›
       </span>

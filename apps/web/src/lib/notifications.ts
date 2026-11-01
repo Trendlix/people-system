@@ -132,7 +132,6 @@ export function notificationTime(createdAt: string, now: Date = new Date()): str
 /** The words of notifications on the phone. */
 export const PUSH_TEXT = {
   offer: 'Get notified on this phone?',
-  offerHint: 'Requests waiting for you, decisions on yours, your payslip and the check-in reminders.',
   on: 'Notifications are on.',
   denied: 'Notifications are off for Trendlix People. To allow them: Settings → Apps → Trendlix People → Notifications.',
   failed: 'Notifications couldn’t be turned on. Please try again.',

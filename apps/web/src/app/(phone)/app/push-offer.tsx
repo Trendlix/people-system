@@ -52,7 +52,6 @@ export function PushOffer() {
         </span>
         <div className="min-w-0">
           <p className="font-semibold">{PUSH_TEXT.offer}</p>
-          <p className="hint">{PUSH_TEXT.offerHint}</p>
         </div>
       </div>
       {outcome?.kind === 'error' && (

@@ -34,7 +34,7 @@ export function NewRunForm({
           <label htmlFor={fid('month')} className="label">
             Month
           </label>
-          <Select id={fid('month')} name="month" required defaultValue={valueOf(state, 'month', suggested)} aria-describedby={fid('month-hint')} className="input">
+          <Select id={fid('month')} name="month" required defaultValue={valueOf(state, 'month', suggested)} className="input">
             {months.map((m) => (
               <option key={m} value={m} disabled={taken.includes(m)}>
                 {monthName(m)}
@@ -47,9 +47,6 @@ export function NewRunForm({
           New payroll run
         </SubmitButton>
       </div>
-      <p id={fid('month-hint')} className="hint">
-        Everyone employed in the month on a signed contract is on it, with the month&apos;s figures empty for you to type.
-      </p>
     </form>
   );
 }

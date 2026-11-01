@@ -36,7 +36,7 @@ function RejectPrompt({ card, onSend, onCancel, pending }: { card: BoardCard; on
         Reject {card.fullName}
       </p>
       <label htmlFor={fid('reason')} className="label">
-        Why (kept with the application, never sent)
+        Reason
       </label>
       <textarea id={fid('reason')} rows={2} maxLength={RECRUITMENT_LIMITS.reason} value={reason} onChange={(e) => setReason(e.target.value)} className="input" />
       <label className="flex items-center gap-2 text-sm">
@@ -97,7 +97,6 @@ export function PipelineBoard({ board, move, deletes = false }: { board: Vacancy
           }
         />
       )}
-      {board.canMove && <p className="text-xs text-muted">Drag a card to another column, or choose its column under Move to.</p>}
       <div className="flex gap-3 overflow-x-auto pb-2">
         {board.columns.map((col) => (
           <section
@@ -197,7 +196,7 @@ export function PipelineBoard({ board, move, deletes = false }: { board: Vacancy
           </section>
         ))}
       </div>
-      {board.filteredOut > 0 && <p className="text-xs text-muted">{board.filteredOut} filtered out by a must-have question are kept off the board: see them in the list.</p>}
+      {board.filteredOut > 0 && <p className="text-xs text-muted">{board.filteredOut} filtered out, not on the board.</p>}
     </div>
   );
 }

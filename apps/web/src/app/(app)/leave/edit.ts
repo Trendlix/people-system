@@ -86,7 +86,7 @@ export function editPreview(
 
 /** "2 days · annual balance after it: 16", "3 days", or "2 days · the annual balance is counted on save". */
 export function editPreviewText(preview: { days: number; after: number | null; counted: boolean }): string {
-  if (preview.days <= 0) return 'No days yet: choose the first and last day.';
+  if (preview.days <= 0) return 'No days yet';
   if (preview.after !== null) return `${daysText(preview.days)} · annual balance after it: ${daysNumber(preview.after)}`;
   return preview.counted ? `${daysText(preview.days)} · the annual balance is counted on save` : daysText(preview.days);
 }
@@ -129,14 +129,3 @@ export function editBody(fd: FormData): { body: EditBody | null; errors: string[
 /** The fields as the form shows them again after a refusal. */
 export const typedEditValues = (fd: FormData): Record<string, string> =>
   Object.fromEntries(['typeId', 'startDate', 'endDate', 'halfDay', 'reason', 'coverId', 'note'].map((k) => [k, String(fd.get(k) ?? '')]));
-
-/** The hint under the form: what an edit does to the balance and the payroll, and the import's. */
-export function editHint(r: Pick<LeaveRequestView, 'status' | 'imported'>): string {
-  const effect =
-    r.status === 'approved'
-      ? 'The balance and the month’s draft payroll follow it, a month with the CEO, approved or paid refuses it, and the employee is told.'
-      : r.status === 'with_manager' || r.status === 'with_hr'
-        ? 'It stays with the same approver at the same step, who sees the new values.'
-        : 'Only its fields change: no balance, no payroll.';
-  return `${effect} Every edit is a step of the leave and in the audit log.${r.imported ? ' Undoing its import removes it, edits too.' : ''}`;
-}

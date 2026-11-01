@@ -7,7 +7,6 @@ import {
   filterRequests,
   myRequests,
   myRequestsHref,
-  noRequestsText,
   readRequestFilters,
   requestCounts,
   requestKindsFor,
@@ -165,10 +164,5 @@ describe('raise requests kept from the employee level (owner, 20 October 2026: "
     expect(readRequestFilters({ kind: 'team' }, kinds)).toEqual({ kind: '', status: '' });
     expect(readRequestFilters({ kind: 'details' }, kinds)).toEqual({ kind: 'details', status: '' });
     expect(readRequestFilters({ kind: 'raise' }, requestKindsFor(true))).toEqual({ kind: 'raise', status: '' });
-  });
-
-  it('names only the buttons there are before anything is asked for', () => {
-    expect(noRequestsText(true)).toBe('You haven’t made any requests yet. Ask HR to change your details, or ask for a raise, with the buttons above.');
-    expect(noRequestsText(false)).toBe('You haven’t made any requests yet. Ask HR to change your details with the button above.');
   });
 });

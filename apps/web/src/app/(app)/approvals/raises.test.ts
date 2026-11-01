@@ -99,7 +99,7 @@ describe('a pending raise', () => {
       reason: 'Promotion',
       promotion: 'Senior Designer, grade G4',
       sentAt: '16/10/2026, 3:00 PM', // Cairo, on summer time (UTC+3)
-      confirmApprove: "Approve Omar Khaled's new pay, EGP 12,500.00 a month from 01/11/2026? HR then has CON-2026-0001-A1 signed.",
+      confirmApprove: "Approve Omar Khaled's new pay, EGP 12,500.00 a month from 01/11/2026?",
     });
   });
 
@@ -156,7 +156,6 @@ describe('what the CEO’s other raise is worked out from, on Approvals and Rais
       hoursAfter: null,
       rates: [],
       year: 2026,
-      note: expect.stringMatching(/^HR, Finance and the CEO see these figures/),
     });
     // by the hour: the raise's hours when the version before doesn't say
     const hourly = pending({ payBasis: 'hourly', hourlyRate: 175, hoursPerWeek: 20, previous: { ...pending().previous!, payBasis: 'hourly', hourlyRate: 150, allowances } });

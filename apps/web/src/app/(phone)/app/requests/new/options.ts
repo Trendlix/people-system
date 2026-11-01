@@ -25,26 +25,19 @@ export interface AskOption {
   key: AskKind;
   href: string;
   label: string;
-  /** What it is for, in a line. */
-  text: string;
 }
 
 const OPTIONS: Record<AskKind, AskOption> = {
-  leave: { key: 'leave', href: APP_PATHS.newLeave, label: 'Leave', text: 'Days off: annual, sick, casual and the other types HR set up.' },
-  permission: { key: 'permission', href: APP_PATHS.newPermission, label: 'Permission', text: 'A few hours away from a working day, to come late or leave early.' },
-  wfh: { key: 'wfh', href: APP_PATHS.newWfh, label: 'Work from home', text: 'A working day from home instead of the office, asked a day before.' },
-  compensatory: {
-    key: 'compensatory',
-    href: APP_PATHS.newCompensatory,
-    label: 'Compensatory day',
-    text: 'A day off in the same month for a rest day or an official holiday you worked, asked a day before.',
-  },
-  od: { key: 'od', href: APP_PATHS.newOd, label: 'Official duty', text: 'Work away from the office, e.g. at a client’s: asked ahead or up to 3 days after.' },
-  reimbursement: { key: 'reimbursement', href: APP_PATHS.newReimbursement, label: 'Reimbursement', text: 'An expense you paid for the company, with a photo of the receipt.' },
-  correction: { key: 'correction', href: APP_PATHS.newCorrection, label: 'Correction', text: 'A day of your attendance that isn’t right: a check-in or check-out forgotten.' },
-  raise: { key: 'raise', href: APP_PATHS.newRaise, label: 'Raise', text: 'A raise for yourself, or for a direct report, with a reason.' },
+  leave: { key: 'leave', href: APP_PATHS.newLeave, label: 'Leave' },
+  permission: { key: 'permission', href: APP_PATHS.newPermission, label: 'Permission' },
+  wfh: { key: 'wfh', href: APP_PATHS.newWfh, label: 'Work from home' },
+  compensatory: { key: 'compensatory', href: APP_PATHS.newCompensatory, label: 'Compensatory day' },
+  od: { key: 'od', href: APP_PATHS.newOd, label: 'Official duty' },
+  reimbursement: { key: 'reimbursement', href: APP_PATHS.newReimbursement, label: 'Reimbursement' },
+  correction: { key: 'correction', href: APP_PATHS.newCorrection, label: 'Correction' },
+  raise: { key: 'raise', href: APP_PATHS.newRaise, label: 'Raise' },
   // any check-in location since 24 October 2026 ("Home Location - Remote Site - Client Location")
-  home: { key: 'home', href: APP_PATHS.newHome, label: 'Check-in location', text: 'Your home, a remote site or a client’s place to check in from: HR, then the CEO, approve it.' },
+  home: { key: 'home', href: APP_PATHS.newHome, label: 'Check-in location' },
 };
 
 /**

@@ -118,10 +118,10 @@ describe('the totals', () => {
     const tiles = summaryTiles({ count: 4, people: 3, averagePercent: 12.9, medianPercent: 11.3, monthlyCostIncrease: 4700, yearlyCostIncrease: 56400 });
     expect(tiles.map((t) => [t.label, t.value, t.note])).toEqual([
       ['Raises', '4', null],
-      ['People', '3', 'Someone with two raises counts once'],
+      ['People', '3', null],
       ['Average raise', '+12.9%', 'Median +11.3%'],
-      ['Monthly cost increase', '+EGP 4,700.00', 'Gross and allowances'],
-      ['Yearly cost increase', '+EGP 56,400.00', 'The monthly increase × 12'],
+      ['Monthly cost increase', '+EGP 4,700.00', null],
+      ['Yearly cost increase', '+EGP 56,400.00', null],
     ]);
     const none = summaryTiles({ count: 0, people: 0, averagePercent: null, medianPercent: null, monthlyCostIncrease: 0, yearlyCostIncrease: 0 });
     expect(none.map((t) => t.value)).toEqual(['0', '0', '—', 'EGP 0.00', 'EGP 0.00']);

@@ -134,13 +134,11 @@ describe('mailTestBody', () => {
 
 describe('savedMessage', () => {
   it('says where emails go from now on', () => {
-    expect(savedMessage(view())).toBe('Saved. The system’s emails are sent with these settings from now on.');
+    expect(savedMessage(view())).toBe('Saved.');
     expect(savedMessage(view({ enabled: true, missing: ['the password'], sending: { source: 'server', from: null, address: null } }))).toBe('Saved, but not used yet: enter the password.');
     expect(savedMessage(view({ passwordUnreadable: true, sending: { source: 'none', from: null, address: null } }))).toBe(`Saved, but not used yet. ${MAIL_PASSWORD_UNREADABLE}`);
-    expect(savedMessage(view({ enabled: false, sending: { source: 'server', from: null, address: 'server@trendlix.com' } }))).toBe(
-      'Saved, switched off: the server’s settings are used meanwhile.',
-    );
-    expect(savedMessage(view({ enabled: false, sending: { source: 'none', from: null, address: null } }))).toBe('Saved, switched off: nothing is emailed until they are switched on.');
+    expect(savedMessage(view({ enabled: false, sending: { source: 'server', from: null, address: 'server@trendlix.com' } }))).toBe('Saved, switched off.');
+    expect(savedMessage(view({ enabled: false, sending: { source: 'none', from: null, address: null } }))).toBe('Saved, switched off.');
   });
 });
 

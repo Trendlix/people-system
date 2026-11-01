@@ -25,7 +25,7 @@ async function Mine() {
   if (!loaded.value.employeeId) {
     return (
       <PhoneCard>
-        <Quiet>No employee record uses your sign-in email as its work email yet, so there is no custody of yours to show.</Quiet>
+        <Quiet>No custody to show.</Quiet>
       </PhoneCard>
     );
   }
@@ -35,9 +35,7 @@ async function Mine() {
 export default function PhoneMyCustodyPage() {
   return (
     <div className="space-y-4">
-      <PageTitle title="My Custody" back={{ href: APP_PATHS.home, label: 'Home' }}>
-        The company&apos;s assets handed over to you, and your signed forms.
-      </PageTitle>
+      <PageTitle title="My Custody" back={{ href: APP_PATHS.home, label: 'Home' }} />
       <Suspense fallback={<PhoneLoading />}>
         <Mine />
       </Suspense>

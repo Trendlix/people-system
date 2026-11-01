@@ -1,6 +1,6 @@
-import { Bell, ClipboardCheck, Signature, TrendingUp } from 'lucide-react';
+import { ClipboardCheck, Signature } from 'lucide-react';
 import Link from 'next/link';
-import { KPI_LEVEL_LABELS, KPI_PAY_TIMING_NOTE, KPI_PRACTICE_BANNER, kpiMonthName, kpiPayrollMonth, type KpiScorecardSummary, type KpiSettings } from '@trendlix/shared';
+import { KPI_LEVEL_LABELS, KPI_PRACTICE_BANNER, kpiMonthName, kpiPayrollMonth, type KpiScorecardSummary, type KpiSettings } from '@trendlix/shared';
 import { ArrowLink, IconTile, Panel, PanelHead, Pill, Ring } from '@/components/design';
 import { formatDate } from '@/lib/format';
 import { KPI_PATHS } from '@/lib/kpi-paths';
@@ -65,13 +65,6 @@ export function NoScorecardsHero() {
       <h2 id="kpi-none" className={HERO_TITLE}>
         Your first scorecard isn’t open yet.
       </h2>
-      <p className="mt-3.5 max-w-[440px] text-sm text-muted">
-        A month’s scorecard opens on the 1st of the next month once HR has published the KPI template for your job title.
-      </p>
-      <p className="mt-6 inline-flex items-center gap-2 text-sm">
-        <Bell aria-hidden="true" className="size-4 shrink-0" strokeWidth={1.6} />
-        You get a notification when it opens.
-      </p>
     </Hero>
   );
 }
@@ -122,7 +115,6 @@ export function PendingScoreHero({ scorecard: s }: { scorecard: KpiScorecardSumm
       <h2 id="kpi-pending" className={HERO_TITLE}>
         {final ? 'This month has no score.' : 'Your score shows at the sign-off.'}
       </h2>
-      {!final && <p className="mt-3.5 text-sm text-muted">Until then you see only your own self-rating.</p>}
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <StatusBadge status={s.status} scorer={s.scorer.kind} />
         {s.deadline && <span className="text-xs text-muted tabular-nums">Due {formatDate(s.deadline)}</span>}
@@ -146,11 +138,6 @@ export function WaitingForYou({ scorecards }: { scorecards: KpiScorecardSummary[
             <IconTile icon={s.action === 'sign' ? Signature : ClipboardCheck} />
             <span className="min-w-0 flex-1">
               <span className="block text-sm font-medium">{ownCardText(s)}</span>
-              <span className="mt-0.5 block text-xs text-muted">
-                {s.action === 'self_rate'
-                  ? 'Pick how you did on each metric, with a comment if you like. Your manager sees it when scoring.'
-                  : 'Read the score, the picks and the comments, then sign that you have read it.'}
-              </span>
             </span>
             <Link href={KPI_PATHS.scorecard(s.id)} className="btn btn-primary">
               {actionButton(s)}
@@ -230,7 +217,7 @@ export function History({ scorecards }: { scorecards: KpiScorecardSummary[] }) {
           </tbody>
         </table>
       </div>
-      <p className="border-t border-line px-[22px] py-3 text-sm text-muted">{scorecardsLabel(scorecards.length)}, newest first.</p>
+      <p className="border-t border-line px-[22px] py-3 text-sm text-muted">{scorecardsLabel(scorecards.length)}.</p>
     </section>
   );
 }
@@ -245,12 +232,11 @@ export function HowItWorks({ settings, className = '' }: { settings: KpiSettings
       <div className="@container">
         <ol className="grid gap-2.5 @md:grid-cols-2 @2xl:grid-cols-4">
           {reviewSteps(settings).map((step, i) => (
-            <li key={step.title} className="flex min-h-[135px] flex-col rounded-xl border border-line bg-raised p-[13px]">
+            <li key={step.title} className="flex flex-col rounded-xl border border-line bg-raised p-[13px]">
               <span aria-hidden="true" className="flex size-[25px] items-center justify-center rounded-full bg-accent text-[10px] text-on-accent tabular-nums">
                 {String(i + 1).padStart(2, '0')}
               </span>
               <h3 className="mt-[18px] text-sm">{step.title}</h3>
-              <p className="mt-1.5 text-xs leading-snug text-muted">{step.text}</p>
               {step.due && (
                 <div className="mt-auto pt-3">
                   <Pill>{step.due}</Pill>
@@ -261,32 +247,5 @@ export function HowItWorks({ settings, className = '' }: { settings: KpiSettings
         </ol>
       </div>
     </Panel>
-  );
-}
-
-/**
- * What the score does (owner, 21 October 2026: "Last month's KPI, this pay"), on the design's solid card (black on the
- * light look, off-white on the dark), with its bars as a picture.
- */
-export function PayrollImpact() {
-  const bars = [34, 49, 63, 77];
-  return (
-    <section aria-labelledby="kpi-payroll" className="card overflow-hidden bg-accent p-[22px] pb-[104px] text-on-accent">
-      <span aria-hidden="true" className="flex size-10 items-center justify-center rounded-xl border border-on-accent/35">
-        <TrendingUp className="size-[18px]" strokeWidth={1.6} />
-      </span>
-      <p className="mt-6 text-[11px] tracking-[0.12em] text-on-accent/60 uppercase">Payroll impact</p>
-      <h2 id="kpi-payroll" className="mt-1.5 text-2xl font-normal tracking-[-0.045em]">
-        One clear final score.
-      </h2>
-      <p className="mt-2.5 max-w-[320px] text-xs leading-relaxed text-on-accent/65">
-        {`Each month's scorecard ends in one final %, with its level. ${KPI_PAY_TIMING_NOTE} Open any scorecard to see its metrics, the comments and every step.`}
-      </p>
-      <div aria-hidden="true" className="absolute right-[22px] bottom-0 flex items-end gap-[5px]">
-        {bars.map((h) => (
-          <span key={h} className="w-6 rounded-t-[5px] bg-on-accent/75" style={{ height: h }} />
-        ))}
-      </div>
-    </section>
   );
 }

@@ -50,7 +50,7 @@ export function CopyUri({ uri }: { uri: string }) {
         </button>
       </div>
       <p role="status" className="text-xs text-muted">
-        {copied === 'yes' ? 'Copied. Paste it in the provider’s console.' : copied === 'failed' ? 'Press Ctrl+C (⌘C on a Mac) to copy it.' : ''}
+        {copied === 'yes' ? 'Copied.' : copied === 'failed' ? 'Press Ctrl+C (⌘C on a Mac) to copy it.' : ''}
       </p>
     </div>
   );
@@ -82,7 +82,6 @@ function SecretField({ name, label, set, unreadable, saved }: { name: string; la
             Replace<span className="sr-only"> the {label.toLowerCase()}</span>
           </button>
         </div>
-        <p className="hint">Saved encrypted, and never shown again.</p>
       </div>
     );
   }
@@ -92,17 +91,14 @@ function SecretField({ name, label, set, unreadable, saved }: { name: string; la
         {label}
       </label>
       <input id={fid(name)} name={name} type="password" autoComplete="new-password" maxLength={500} autoFocus={replacing} className="input" />
-      <p className={unreadable ? 'hint text-warn' : 'hint'}>
-        {unreadable ? 'The saved secret can’t be read any more: paste it again.' : kept ? 'Leave it empty to keep the saved secret.' : 'Saved encrypted, and never shown again.'}
-        {kept && (
-          <>
-            {' '}
-            <button type="button" onClick={() => setReplacing(false)} className="font-semibold text-accent underline-offset-2 hover:underline">
-              Keep the saved one
-            </button>
-          </>
-        )}
-      </p>
+      {unreadable && <p className="hint text-warn">The saved secret can’t be read any more: paste it again.</p>}
+      {kept && (
+        <p className="hint">
+          <button type="button" onClick={() => setReplacing(false)} className="font-semibold text-accent underline-offset-2 hover:underline">
+            Keep the saved one
+          </button>
+        </p>
+      )}
     </div>
   );
 }
@@ -200,7 +196,7 @@ export function MeetingHostForm({ provider, current, action, disabled }: { provi
             autoComplete="off"
             maxLength={254}
             placeholder="hr@trendlix.com"
-            aria-describedby={fid('hostEmail-hint')}
+            aria-describedby={disabled ? fid('hostEmail-hint') : undefined}
             className="input"
           />
         </div>
@@ -208,12 +204,11 @@ export function MeetingHostForm({ provider, current, action, disabled }: { provi
           {pending ? 'Checking…' : current ? 'Change the host' : 'Use this host'}
         </button>
       </div>
-      <p id={fid('hostEmail-hint')} className="hint">
-        {provider === 'microsoft'
-          ? 'The mailbox whose calendar holds the company’s interview meetings, with a Teams licence.'
-          : 'A user of the company’s Zoom account, who hosts its interview meetings.'}
-        {disabled ? ' Save the app’s credentials first.' : ''}
-      </p>
+      {disabled && (
+        <p id={fid('hostEmail-hint')} className="hint">
+          Save the app’s credentials first.
+        </p>
+      )}
       <Saved state={state} pending={pending} />
     </form>
   );

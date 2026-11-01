@@ -8,7 +8,6 @@ export default function PhoneNotFound() {
   return (
     <div className="card p-5 text-center">
       <h1 className="text-lg font-semibold">Page Not Found</h1>
-      <p className="mt-2 text-sm text-muted">It may have been deleted, or the link is wrong.</p>
       <Link href={APP_PATHS.home} className="btn btn-secondary mt-4 min-h-12 w-full">
         Go to home
       </Link>

@@ -94,7 +94,7 @@ const typingIn = (el: EventTarget | null) => el instanceof HTMLElement && (el.is
 
 /** Whether a comment is typed in the window and not saved: closing it asks first. */
 const unsaved = (dialog: HTMLDialogElement) => !!dialog.querySelector('textarea[data-unsaved="true"]');
-const LEAVE = 'Close the CV? The comment you typed isn’t saved.';
+const LEAVE = 'Close without saving the comment?';
 
 const ICON = 'inline-flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-lg text-ink hover:bg-canvas disabled:cursor-default disabled:opacity-40';
 
@@ -157,7 +157,7 @@ function CvWindow({ cvs, index, data, pageKey, commentsNotLoaded }: { cvs: reado
           </h2>
           <p className="truncate text-xs text-muted">
             {cvBelongsTo(cv)} · sent {formatDate(cv.sentAt)} · {kb(cv.sizeBytes)}
-            {word && ' · a Word file, shown as a PDF'}
+            {word && ' · Word file'}
           </p>
         </div>
         {several && (

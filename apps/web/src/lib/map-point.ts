@@ -129,7 +129,7 @@ export const isLink = (text: string): boolean => /https?:\/\/|www\.|maps\.|goo\.
 export const isShortMapLink = (text: string): boolean => /(?:maps\.app\.goo\.gl|goo\.gl\/maps)\//i.test(text);
 
 export const SHORT_LINK_TEXT =
-  'A short maps.app.goo.gl link has no point in it: open it, then copy the address from the browser’s address bar, or the point itself, e.g. 30.0457, 31.1923.';
+  'A short maps.app.goo.gl link has no point: open it and paste the full link.';
 
 // ---------- fitting the map ----------
 

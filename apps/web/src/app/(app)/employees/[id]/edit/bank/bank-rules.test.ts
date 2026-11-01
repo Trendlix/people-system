@@ -1,28 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { bankNamed, type Bank } from '@trendlix/shared';
-import { accountCount, accountHint, accountKept, bankShown } from './bank-rules';
+import { accountCount, accountKept, bankShown } from './bank-rules';
 
 const bank = (name: string): Bank => {
   const b = bankNamed(name);
   if (!b) throw new Error(`${name} is not on the list`);
   return b;
 };
-
-describe('the account number hint', () => {
-  it('gives the length and how the number is made up', () => {
-    expect(accountHint(bank('NBE'))).toBe(
-      'National Bank of Egypt account numbers have 19 digits: branch code (3), product type (3), CIF ID (8), sequence (5).',
-    );
-    expect(accountHint(bank('AIB'))).toBe('Arab Investment Bank account numbers have 6 digits: the customer ID.');
-    expect(accountHint(bank('AUDI'))).toBe('Audi Bank account numbers have 12 or 16 digits and start with 00.');
-  });
-
-  it('gives only the length when the list doesn’t say how the number is made up, and nothing without a length', () => {
-    expect(accountHint(bank('CIB'))).toBe('Commercial International Bank account numbers have 12 digits.');
-    expect(accountHint(bank('ABK'))).toBe('Al Ahli Bank of Kuwait – Egypt account numbers have up to 10 digits.');
-    expect(accountHint(bank('CBE'))).toBeNull();
-  });
-});
 
 describe('the digit count', () => {
   it('keeps the number as the API does: no spaces or dashes, Arabic digits as 0-9', () => {

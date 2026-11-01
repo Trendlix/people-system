@@ -6,10 +6,7 @@ export const metadata: Metadata = { title: 'Change Password · People System' };
 export default function ChangePasswordPage() {
   return (
     <div className="max-w-xl space-y-4">
-      <div>
-        <h1 className="page-title">Change Password</h1>
-        <p className="mt-1 text-muted">If an admin gave you a temporary password, replace it here with one only you know.</p>
-      </div>
+      <h1 className="page-title">Change Password</h1>
       <ChangePasswordForm />
     </div>
   );

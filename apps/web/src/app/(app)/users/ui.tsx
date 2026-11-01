@@ -40,15 +40,6 @@ export function RoleBadges({ roles }: { roles: Role[] }) {
 export const ONLY_SUPER_ADMIN_CHANGES = 'Only a Super Admin can change this account.';
 
 /**
- * The Users page keeps the accounts that aren't an employee's (owner, 22 October 2026: "i dont thint that the users and
- * employees needs to be divided, any active employee with active contract should have access"; asked where: "On the
- * employee profile"): every employee with a signed contract in force gets an account by themself, managed on their
- * profile's Access tab.
- */
-export const USERS_PAGE_NOTE =
-  'For someone who isn’t an employee: a developer, an outside accountant. Employees get their account by themselves once their contract is signed, on their profile’s Access tab.';
-
-/**
  * Who opens an employee's account on their profile rather than here: HR, who open every profile (an Admin without HR
  * doesn't, and keeps the account's page here).
  */

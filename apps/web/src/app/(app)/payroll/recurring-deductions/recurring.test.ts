@@ -2,7 +2,6 @@ import type { Role } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
 import type { RecurringDeductionView } from '../../../../lib/types';
 import {
-  BEFORE_TAX_HINT,
   BEFORE_TAX_TICK,
   beforeTaxText,
   canSeeRecurring,
@@ -273,9 +272,8 @@ describe('what the forms send', () => {
 });
 
 describe('deducted before tax (owner, 20 October 2026: "Before Tax i think")', () => {
-  it('is a tick, off by default, with the hint that the tax law limits it', () => {
+  it('is a tick, off by default', () => {
     expect(BEFORE_TAX_TICK).toBe('Deducted before tax (lowers taxable pay)');
-    expect(BEFORE_TAX_HINT).toMatch(/^The tax law limits this deduction: ask your accountant for the limit\. /);
   });
 
   it('the add, change and edit forms send it ticked or not', () => {
@@ -298,7 +296,7 @@ describe('deducted before tax (owner, 20 October 2026: "Before Tax i think")', (
   });
 
   it('What It Comes To says the share lowers the taxable pay, only when ticked', () => {
-    const said = 'Deducted before tax: the share lowers the taxable pay by EGP 350.00 a month, so less income tax is taken (within the limit the tax law sets on it).';
+    const said = 'Lowers the taxable pay by EGP 350.00 a month.';
     expect(recurringPreview('350', '2026-11', '', undefined, { beforeTax: true })?.beforeTax).toBe(said);
     expect(recurringPreview('350', '2026-11', '', null, { beforeTax: true })?.beforeTax).toBe(said);
     expect(recurringPreview('350', '2026-11', '', { gross: 10_000, byMonth: {} }, { beforeTax: true })?.beforeTax).toBe(said);
@@ -336,7 +334,7 @@ describe('what a new one comes to', () => {
 
   it('says what the law counts the 25% against, and its share of it with the employee’s other recurring deductions (Art. 114)', () => {
     expect(recurringPreview('1300', '2026-11', '2027-01', limit)?.share).toBe(
-      'The law counts it against the pay after income tax, social insurance and the installments of advances and loans (Labour Law Art. 114): in November 2026, the gross of EGP 10,000.00 less about EGP 1,000.00 tax, EGP 1,100.00 insurance and EGP 900.00 installments leaves EGP 7,000.00, of which recurring deductions may take 25%, EGP 1,750.00. With their other recurring deductions, EGP 1,800.00 a month, it is 25.7% of it.',
+      'In November 2026, the gross of EGP 10,000.00 less about EGP 1,000.00 tax, EGP 1,100.00 insurance and EGP 900.00 installments leaves EGP 7,000.00; 25% of it is EGP 1,750.00. With their other recurring deductions, EGP 1,800.00 a month, it is 25.7% of it.',
     );
     // a change of amount: the one changed stops then, so it isn't counted
     expect(recurringPreview('1300', '2026-11', '2027-01', limit, { replacing: 'r9' })?.share).toMatch(/ It is 18\.6% of it\.$/);

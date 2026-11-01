@@ -98,18 +98,17 @@ export function setupSteps(provider: MeetingProvider, redirectUri: string): Setu
     return [
       { text: `In Google Cloud console, open the project ${MEETINGS_GOOGLE_PROJECT}. APIs & Services → Library: turn on the Google Calendar API.` },
       {
-        text: 'OAuth consent screen: user type Internal (Google Workspace). The calendar scope is a sensitive one: an Internal app needs no Google verification, while an External app left in Testing loses its connections after 7 days. Add these scopes:',
+        text: 'OAuth consent screen: user type Internal (Google Workspace). Add these scopes:',
         values: GOOGLE_SCOPES,
       },
       { text: 'Credentials → Create credentials → OAuth client ID → Web application. Under Authorized redirect URIs, add:', values: [redirectUri] },
-      { text: 'Paste the client ID and the client secret below and save. Then Connect a Google account, signed in as the account that hosts the company’s interviews, e.g. hr@trendlix.com.' },
-      { text: 'Each HR person connects their own on Your Meetings, through the same client.' },
+      { text: 'Paste the client ID and the client secret below and save. Then Connect a Google account, signed in as the account that hosts the company’s interviews.' },
     ];
   }
   if (provider === 'microsoft') {
     return [
       { text: 'In the Microsoft Entra admin center: App registrations → New registration. Accounts in this organizational directory only. Redirect URI: platform Web,', values: [redirectUri] },
-      { text: 'Certificates & secrets → New client secret: paste its Value below (not its Secret ID). It expires: set a reminder to replace it.' },
+      { text: 'Certificates & secrets → New client secret: paste its Value below (not its Secret ID).' },
       { text: 'API permissions → Add a permission → Microsoft Graph → Application permissions, for the company’s host mailbox:', values: MICROSOFT_APPLICATION_PERMISSIONS },
       { text: 'And Delegated permissions, for each HR person’s own:', values: MICROSOFT_DELEGATED_PERMISSIONS },
       { text: 'Grant admin consent for the company. Paste the Directory (tenant) ID and the Application (client) ID below.' },
@@ -117,23 +116,15 @@ export function setupSteps(provider: MeetingProvider, redirectUri: string): Setu
         text: 'Recommended: limit the application permission to the host mailbox, in Exchange Online PowerShell (or with RBAC for Applications):',
         values: ['New-ApplicationAccessPolicy -AppId <client id> -PolicyScopeGroupId <a mail-enabled security group holding the host mailbox> -AccessRight RestrictAccess -Description "People System meetings"'],
       },
-      { text: 'Then name the host mailbox below. It needs a Teams licence. No Teams application access policy is needed: each meeting is a calendar event with a Teams link.' },
+      { text: 'Then name the host mailbox below. It needs a Teams licence.' },
     ];
   }
   return [
     { text: 'On marketplace.zoom.us: Develop → Build App → Server-to-Server OAuth app, for the company’s meetings. Under Scopes, add:', values: ZOOM_COMPANY_SCOPES },
-    { text: 'Activate it, and paste its Account ID, Client ID and Client secret below. Then name the host: a user of the company’s Zoom account, e.g. hr@trendlix.com.' },
+    { text: 'Activate it, and paste its Account ID, Client ID and Client secret below. Then name the host: a user of the company’s Zoom account.' },
     { text: 'For each HR person’s own: Build App → General App, user-managed. Its OAuth Redirect URL, and its OAuth Allow List:', values: [redirectUri] },
     { text: 'Under Scopes, add:', values: ZOOM_PERSONAL_SCOPES },
-    { text: 'Paste the General app’s Client ID and Client secret below. Left unpublished, it is open only to users of the company’s Zoom account.' },
+    { text: 'Paste the General app’s Client ID and Client secret below.' },
   ];
 }
 
-/** What to know about who gets into a meeting made with each provider. */
-export function meetingNote(provider: MeetingProvider): string {
-  if (provider === 'google') {
-    return 'Google lets only the organizer admit people who ask to join: a candidate from outside the company asks. With the company’s account hosting, join from that account or set the meeting’s access to Open; an HR person’s own meetings are hosted by them.';
-  }
-  if (provider === 'microsoft') return 'A candidate waits in the Teams lobby until an interviewer admits them.';
-  return 'Meetings are made with join before host on and the waiting room off, the passcode in the link: anyone with the link joins.';
-}

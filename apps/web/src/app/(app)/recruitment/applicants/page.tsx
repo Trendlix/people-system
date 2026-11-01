@@ -322,7 +322,7 @@ function GeneralTable({ rows, manages, q }: { rows: GeneralCvListItem[]; manages
                         </Link>
                       )}
                       {(c.status === 'new' || c.status === 'reviewed') && (
-                        <ActionButton action={setGeneralCvStatus.bind(null, c.id, 'archive')} label="Archive" pendingLabel="Archiving…" confirm={`Archive ${shownCode(c.number) ?? 'this CV'}? It can be restored.`} />
+                        <ActionButton action={setGeneralCvStatus.bind(null, c.id, 'archive')} label="Archive" pendingLabel="Archiving…" confirm={`Archive ${shownCode(c.number) ?? 'this CV'}?`} />
                       )}
                     </div>
                   </td>
@@ -426,7 +426,7 @@ async function General({ query, manages }: { query: Query; manages: boolean }) {
       {loaded.kind !== 'ok' ? (
         <Empty>{recruitmentNotLoaded(loaded, 'general CVs')}</Empty>
       ) : loaded.value.length === 0 ? (
-        <div className="card px-6 py-8 text-center text-sm text-muted">{filtered ? 'Nobody here.' : 'No general CVs yet. They come from “Send us your CV” on the careers page, or HR adds them.'}</div>
+        <div className="card px-6 py-8 text-center text-sm text-muted">{filtered ? 'Nobody here.' : 'No general CVs yet.'}</div>
       ) : (
         <GeneralTable rows={loaded.value} manages={manages} q={g} />
       )}
@@ -450,10 +450,7 @@ async function Applicants({ searchParams }: { searchParams: PageProps<'/recruitm
 export default function ApplicantsPage({ searchParams }: PageProps<'/recruitment/applicants'>) {
   return (
     <div className="space-y-4">
-      <div className="space-y-1">
-        <h1 className="page-title">Applicants</h1>
-        <p className="max-w-3xl text-sm text-muted">Those who applied for a posted job, by vacancy, and the general CVs sent without one.</p>
-      </div>
+      <h1 className="page-title">Applicants</h1>
       <Suspense fallback={<Loading />}>
         <Applicants searchParams={searchParams} />
       </Suspense>

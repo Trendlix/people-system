@@ -13,8 +13,7 @@ export function MyCustody({ view }: { view: MyCustodyView }) {
     <div className="space-y-6">
       {view.overdue > 0 && (
         <p role="status" className="rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger">
-          {view.overdue === 1 ? 'One item is' : `${view.overdue} items are`} past the return date. Please return {view.overdue === 1 ? 'it' : 'them'}, or speak to the
-          person who handed {view.overdue === 1 ? 'it' : 'them'} over.
+          Please return the {view.overdue === 1 ? 'item' : `${view.overdue} items`} past the return date.
         </p>
       )}
 
@@ -39,7 +38,7 @@ export function MyCustody({ view }: { view: MyCustodyView }) {
             ))}
           </ul>
         ) : (
-          <p className="text-sm text-muted">You hold nothing of the company&apos;s assets now.</p>
+          <p className="text-sm text-muted">You hold nothing now.</p>
         )}
       </section>
 

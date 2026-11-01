@@ -33,10 +33,7 @@ async function Statement({ params }: { params: PageProps<'/assets/holders/[emplo
     <>
       <BackLink href={CUSTODY_PATHS.person(h.employee.id)}>{h.employee.fullNameEn}</BackLink>
       <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h1 className="page-title">Custody Statement</h1>
-          <p className="mt-1 text-sm text-muted">Everything {h.employee.fullNameEn} holds today, to print on A4 and have them and HR sign.</p>
-        </div>
+        <h1 className="page-title">Custody Statement</h1>
         <PrintDocumentButton document={custodyStatementDocument(h, brand, today)} title={`Custody statement of ${h.employee.fullNameEn}`} label="Print statement" what="statement" />
       </div>
       <section aria-label="The statement as it prints" className="card overflow-x-auto p-6">

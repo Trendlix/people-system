@@ -5,7 +5,7 @@ import { TEMPLATE_LANGUAGES, type TemplateLanguage } from '@trendlix/shared';
 import { FileDrop } from '@/components/file-drop';
 import { FormErrors, SubmitButton, useFieldIds } from '@/components/form';
 import type { UploadState } from './actions';
-import { BILINGUAL_HINT, fileProblem, LANGUAGE_LABELS, TEMPLATE_ACCEPT } from './wording';
+import { fileProblem, LANGUAGE_LABELS, TEMPLATE_ACCEPT } from './wording';
 
 /**
  * Uploading a version of a template's file, as a draft (HR and Admin): a Word file, or an official form as a PDF (owner's
@@ -42,14 +42,7 @@ export function UploadTemplateForm({
 
   return (
     <form ref={form} action={formAction} onSubmit={onSubmit} className="space-y-4">
-      <div>
-        <h2 className="font-semibold">{hasFile ? 'Upload a New Version' : 'Upload the File'}</h2>
-        <p className="mt-1 text-sm text-muted">
-          A Word file (.docx) exactly as you use it today, with merge tags like <code className="font-mono text-xs">{'{{full_name_ar}}'}</code> where the
-          data goes; or an official form as a PDF, printed exactly as issued, whose fields you place on it after uploading. Up to 4 MB. It is uploaded as a
-          draft: check it, then publish it.
-        </p>
-      </div>
+      <h2 className="font-semibold">{hasFile ? 'Upload a New Version' : 'Upload the File'}</h2>
       <FormErrors errors={state.errors} />
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="sm:col-span-2">
@@ -68,7 +61,7 @@ export function UploadTemplateForm({
           />
         </div>
         {language === null && (
-          <fieldset aria-describedby={fid('language-hint')}>
+          <fieldset>
             <legend className="label">Language of the document</legend>
             <div className="flex flex-wrap gap-x-6 gap-y-2">
               {TEMPLATE_LANGUAGES.map((l) => (
@@ -78,20 +71,13 @@ export function UploadTemplateForm({
                 </label>
               ))}
             </div>
-            <p id={fid('language-hint')} className="hint">
-              {LANGUAGE_LABELS.bilingual}: {BILINGUAL_HINT}
-            </p>
           </fieldset>
         )}
-        {language === 'bilingual' && <p className="hint sm:col-span-2">{BILINGUAL_HINT}</p>}
         <div className={language === null ? undefined : 'sm:col-span-2'}>
           <label htmlFor={fid('note')} className="label">
             What changed <span className="font-normal text-muted">(optional)</span>
           </label>
-          <textarea id={fid('note')} name="note" rows={2} maxLength={500} className="input" aria-describedby={fid('note-hint')} />
-          <p id={fid('note-hint')} className="hint">
-            E.g. &quot;New company address&quot; or &quot;Probation clause updated&quot;. Shown in the list of versions.
-          </p>
+          <textarea id={fid('note')} name="note" rows={2} maxLength={500} placeholder="e.g. New company address" className="input" />
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">

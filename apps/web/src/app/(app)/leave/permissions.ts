@@ -4,7 +4,6 @@ import {
   LEAVE_DECISIONS,
   LEAVE_STAGES,
   PERMISSION_DAY_MAX,
-  PERMISSION_LABEL,
   PERMISSION_STEP_HOURS,
   permissionClock,
   permissionHoursText,
@@ -138,7 +137,7 @@ export const WAITING_PERMISSIONS = permissionsPath('waiting');
 
 const EMPTY_PERMISSIONS: Record<LeaveFilter, string> = {
   waiting: 'No permission requests are waiting for you.',
-  all: 'No permission requests yet. Employees ask for permission from My Requests; HR records it on their behalf with Record permission.',
+  all: 'No permission requests yet.',
   with_manager: 'No permission requests are with a direct manager.',
   with_hr: 'No permission requests are with HR.',
   approved: 'No permission approved.',
@@ -148,7 +147,7 @@ const EMPTY_PERMISSIONS: Record<LeaveFilter, string> = {
 
 const EMPTY_BOTH: Record<LeaveFilter, string> = {
   waiting: 'No leave or permission requests are waiting for you.',
-  all: 'No leave or permission requests yet. Employees ask for them from My Requests; HR records them on their behalf with Record leave and Record permission.',
+  all: 'No leave or permission requests yet.',
   with_manager: 'No leave or permission requests are with a direct manager.',
   with_hr: 'No leave or permission requests are with HR.',
   approved: 'No leave or permission approved.',
@@ -235,7 +234,7 @@ export function permissionInDaysText(p: Pick<PermissionRequestView, 'date'>, tod
 }
 
 /** Said in place of the form, and on My Requests, while Leave Setup gives no permission hours. */
-export const PERMISSION_OFF_TEXT = 'Permission is turned off: Leave Setup gives no permission hours a month.';
+export const PERMISSION_OFF_TEXT = 'Permission is turned off in Leave Setup.';
 
 /**
  * A month's permission hours in a line: "This month: 1:30 approved, 0:30 waiting, 2:00 left of 4:00" (another month by
@@ -260,8 +259,8 @@ export const usedOnDay = (m: Pick<PermissionMonthView, 'days'>, date: string) =>
 export function noPermissionText(employmentType: string): string | null {
   if (underLabourLaw(employmentType)) return null;
   return employmentType === 'intern'
-    ? 'No permission under an unpaid internship: an intern works outside the labour law, so permission, like leave, isn’t theirs.'
-    : 'No permission under a freelance employment: a freelancer works outside the labour law (Art. 1(1)), so permission, like leave, isn’t theirs.';
+    ? 'No permission under an unpaid internship: it is outside the labour law.'
+    : 'No permission under a freelance employment: it is outside the labour law.';
 }
 
 /**
@@ -277,16 +276,14 @@ export function asksPermission(employment: { employmentType: string } | null | u
 
 /** Once sent: where it goes (as a leave request), or, recorded by HR, that it is approved and counts as worked. */
 export function permissionSentText(status: LeaveStatus, manager?: Pick<RequestApprover, 'role'> | null, confidential?: boolean | null): string {
-  if (status === 'approved') return 'Permission recorded, approved at once. Its hours count as worked in the month’s payroll.';
+  if (status === 'approved') return 'Permission recorded.';
   return leaveSentText(status, manager, confidential);
 }
 
 /** Once a decision went through; a C-level person's request goes on to the CEO, not HR (`confidential`). */
 export function permissionDecidedText(decision: LeaveDecision, stage: LeaveStage, confidential?: boolean | null): string {
-  if (decision === 'reject') return 'Request rejected. The employee sees your comment.';
-  return leaveStatusAfterApproval(stage) === 'with_hr'
-    ? `Approved: the request goes to ${hrStageName(confidential)}.`
-    : 'Approved: its hours count as worked in the month’s payroll.';
+  if (decision === 'reject') return 'Request rejected.';
+  return leaveStatusAfterApproval(stage) === 'with_hr' ? `Approved and sent to ${hrStageName(confidential)}.` : 'Permission approved.';
 }
 
 /** What a permission request's page says after `?done=`, and in which tone; null for anything else. */
@@ -298,7 +295,7 @@ export function permissionDoneText(
 ): { text: string; tone: 'ok' | 'warn' } | null {
   const done = one(query.done);
   if (done === 'sent' || done === 'recorded') return { text: permissionSentText(status, manager, confidential), tone: 'ok' };
-  if (done === 'cancelled') return { text: 'Permission cancelled. Its hours are back in the month’s allowance; it stays on the list, cancelled.', tone: 'ok' };
+  if (done === 'cancelled') return { text: 'Permission cancelled.', tone: 'ok' };
   if (done === 'moved') return { text: LEAVE_MOVED_ON, tone: 'warn' };
   const [stage, decision] = done.split('_');
   if (!(LEAVE_STAGES as readonly string[]).includes(stage) || !(LEAVE_DECISIONS as readonly string[]).includes(decision)) return null;
@@ -406,20 +403,6 @@ export function workedOutTimes(typed: TypedPermission): string | null {
   if (hours === null || times.problems.length) return null;
   const worked = permissionTimes(hours, times.fromTime, times.toTime);
   return worked.problems.length ? null : permissionTimesText(worked);
-}
-
-/**
- * What the form says once it can be sent: the hours and the day, the times, and where it goes (`byHr`: recorded for
- * `name`, approved at once; `toCeo`: a C-level person's goes to the CEO after the manager, not HR).
- */
-export function permissionReadyText(typed: TypedPermission, byHr: boolean, name: string, toCeo = false): string {
-  const hours = hoursFrom(typed.hours);
-  const date = parseDate(typed.date);
-  const times = workedOutTimes(typed);
-  const what = `${hours === null ? PERMISSION_LABEL : permissionHoursText(hours)}${date ? ` on ${weekdayOf(date)} ${formatDate(date)}` : ''}${times ? ` (${times})` : ''}`;
-  return byHr
-    ? `Ready to record: ${what} for ${name}, approved at once.`
-    : `Ready to send: ${what}, to your direct manager (without one, your lead), then ${hrStageName(toCeo)}.`;
 }
 
 /** What POST /me/permissions takes (HR's POST /leave/permissions with the employee too). */

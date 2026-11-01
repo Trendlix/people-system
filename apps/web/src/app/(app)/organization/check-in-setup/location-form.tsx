@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { CHECK_IN_LOCATION_ERROR_LABELS, OFFICE_RADIUS_DEFAULT, OFFICE_RADIUS_MAX, OFFICE_RADIUS_MIN } from '@trendlix/shared';
+import { CHECK_IN_LOCATION_ERROR_LABELS, OFFICE_RADIUS_DEFAULT } from '@trendlix/shared';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm } from '@/components/form';
 import { PickPointMap } from '@/components/map/maps';
 import { PlaceSearch } from '@/components/map/place-search';
@@ -104,7 +104,7 @@ export function LocationForm({
     }
     putPoint({ latitude: roundCoordinate(result.latitude), longitude: roundCoordinate(result.longitude) }, true);
     const within = accuracyText(result.accuracy);
-    setNote({ ok: true, text: `Filled from your current location${within ? `, read within ${within}` : ''}. Save the location to keep it.` });
+    setNote({ ok: true, text: `Filled from your current location${within ? `, read within ${within}` : ''}.` });
   }
 
   const typed = (set: (v: string) => void) => (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -150,7 +150,6 @@ export function LocationForm({
             value={lat}
             onChange={latitudeTyped}
             onPaste={latitudePasted}
-            aria-describedby={fid('point-hint')}
             className="input tabular-nums"
           />
         </div>
@@ -167,7 +166,6 @@ export function LocationForm({
             placeholder="31.346200"
             value={lng}
             onChange={typed(setLng)}
-            aria-describedby={fid('point-hint')}
             className="input tabular-nums"
           />
         </div>
@@ -183,12 +181,8 @@ export function LocationForm({
             autoComplete="off"
             value={metres}
             onChange={typed(setMetres)}
-            aria-describedby={fid('radius-hint')}
             className="input tabular-nums"
           />
-          <p id={fid('radius-hint')} className="hint">
-            {OFFICE_RADIUS_MIN} to {OFFICE_RADIUS_MAX.toLocaleString('en-US')}; {OFFICE_RADIUS_DEFAULT} to start with.
-          </p>
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-3">
@@ -213,10 +207,6 @@ export function LocationForm({
               : 'Map for the new location: click to put its point there, then drag the pin to adjust it'
           }
         />
-        <p id={fid('point-hint')} className="hint max-w-3xl">
-          Click the map or drag the pin to put the point there; search for the place; paste a Google Maps link or the point (30.0457, 31.1923) into
-          the search or into Latitude; or, standing in the place, use your current location. Click the map before zooming it with the mouse wheel.
-        </p>
       </div>
       <div aria-live="polite">
         {touched && problems.length > 0 && (

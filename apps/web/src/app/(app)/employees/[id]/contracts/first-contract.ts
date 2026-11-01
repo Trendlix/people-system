@@ -40,4 +40,4 @@ export function firstContractDefaults(settings: ContractSettings, startDate: str
 
 /** Why the probation of someone employed here before starts at 0. */
 export const noProbationAgain = (name: string) =>
-  `0: ${name} was employed here before, and probation comes only once with an employer (Labour Law Art. 90).`;
+  `0: ${name} was employed here before (probation once per employer).`;

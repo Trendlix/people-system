@@ -181,12 +181,12 @@ function PageSays({ page }: { page: Page }) {
   const [w, h] = cutSize(page.rect, W, H, MAX_SIDE);
   const shape = shapeOf(page.rect, W, H);
   const paper = paperOf(page);
-  const sheet = paper ? `, printed on an ${paper.toUpperCase()} sheet` : ', the shape of an A4 or A5 sheet';
+  const way = shape === 'a4Portrait' ? 'portrait' : shape === 'a4Landscape' ? 'landscape' : '';
   return (
     <>
-      The page will be {w} × {h} pixels
-      {shape === 'a4Portrait' ? `${sheet}, portrait` : shape === 'a4Landscape' ? `${sheet}, landscape` : ''}
-      {page.fine ? `, straightened by ${degrees(page.fine)}` : ''}.
+      {w} × {h} pixels
+      {way ? ` · ${paper ? paper.toUpperCase() : 'A4/A5'} ${way}` : ''}
+      {page.fine ? ` · straightened by ${degrees(page.fine)}` : ''}
     </>
   );
 }
@@ -359,24 +359,16 @@ export function DocumentAdjuster({ source, title, saveLabel = 'Save', confirmTex
         const now = pagesNow.current.find((p) => p.key === st.key);
         if (!now || now.rect !== st.rect || now.fine !== st.fine || now.quarter !== st.quarter) return; // changed meanwhile
         if (fit === undefined) {
-          setSaid({ text: 'The page could not be looked at in this browser. Frame it by hand.', tone: 'warn' });
+          setSaid({ text: 'The page couldn’t be read here: frame it by hand.', tone: 'warn' });
           return;
         }
         if (!fit) {
-          setSaid({
-            text: "The page's edges couldn't be found near the frame, so it was left as it was. Frame the page more closely and try again.",
-            tone: 'warn',
-          });
+          setSaid({ text: 'No page edges found near the frame.', tone: 'warn' });
           return;
         }
         const { rect, fine, sides } = fit;
         const by = Math.round((fine - st.fine) * 10) / 10;
-        const text =
-          (by
-            ? `The frame has been fitted to the page's edges and the page straightened by ${degrees(by)}.`
-            : "The frame has been fitted to the page's edges; the page was already level.") +
-          (sides < 4 ? ' One side showed no edge, so it stays where the frame was.' : '') +
-          ` Check it, then press ${saveLabel}.`;
+        const text = (by ? `Fitted and straightened by ${degrees(by)}.` : 'Fitted to the page’s edges.') + (sides < 4 ? ' One side had no edge.' : '');
         update(st.key, () => ({ rect, fine }), { text, tone: 'ok', undo: { key: st.key, rect: st.rect, fine: st.fine } });
       }, 0),
     );
@@ -386,7 +378,7 @@ export function DocumentAdjuster({ source, title, saveLabel = 'Save', confirmTex
   function undoFit() {
     const before = said?.undo;
     if (!before) return;
-    update(before.key, () => ({ rect: before.rect, fine: before.fine }), { text: 'The frame is back where it was.', tone: 'ok' });
+    update(before.key, () => ({ rect: before.rect, fine: before.fine }), { text: 'Fit undone.', tone: 'ok' });
   }
 
   async function save() {
@@ -442,7 +434,9 @@ export function DocumentAdjuster({ source, title, saveLabel = 'Save', confirmTex
     ? ''
     : !kept.length
       ? 'Every page is removed: put one back to save.'
-      : `${kept.length === pages.length ? '' : `${kept.length} of ${pages.length} pages kept. `}Saved as ${kept.length > 1 ? `one PDF of ${kept.length} pages` : 'a JPG picture'}, ${LIMIT_TEXT} at most.`;
+      : kept.length === pages.length
+        ? ''
+        : `${kept.length} of ${pages.length} pages kept.`;
 
   const textButton = 'inline-flex min-h-9 cursor-pointer items-center text-xs font-semibold hover:underline';
 
@@ -516,7 +510,7 @@ export function DocumentAdjuster({ source, title, saveLabel = 'Save', confirmTex
             page &&
             (page.removed ? (
               <div className="space-y-3">
-                <p className="text-sm">Page {index + 1} is removed: it won&apos;t be in the adjusted document.</p>
+                <p className="text-sm">Page {index + 1} is removed.</p>
                 <button type="button" onClick={() => toggleRemoved(page.key)} className="btn btn-secondary">
                   Put back page {index + 1}
                 </button>
@@ -590,11 +584,8 @@ export function DocumentAdjuster({ source, title, saveLabel = 'Save', confirmTex
                 <p className="text-sm text-muted" aria-live="polite">
                   <PageSays page={page} />
                 </p>
-                <p id={howId} className="text-xs text-muted">
-                  Drag the frame over the document, or drag its handles to resize it: it takes any shape. Straighten the page up to 10 degrees
-                  either way, a tenth of a degree at a time. Or frame it roughly and press Fit to the page&apos;s edges: the frame snaps onto the
-                  paper&apos;s edges and the page is set level. With the keyboard, the arrow keys move the frame and Shift with the arrow keys
-                  resizes it.
+                <p id={howId} className="sr-only">
+                  Arrow keys move the frame; Shift with the arrow keys resizes it.
                 </p>
               </>
             ))

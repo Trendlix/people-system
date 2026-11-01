@@ -26,7 +26,7 @@ async function Matches() {
       {loaded.kind !== 'ok' ? (
         <Empty>{recruitmentNotLoaded(loaded, 'possible matches')}</Empty>
       ) : loaded.value.duplicates.length + loaded.value.suggested.length === 0 ? (
-        <div className="card px-6 py-8 text-center text-sm text-muted">Nothing to decide: no possible duplicates or suggested matches.</div>
+        <div className="card px-6 py-8 text-center text-sm text-muted">No possible matches.</div>
       ) : (
         <>
           {loaded.value.duplicates.length > 0 && (
@@ -34,7 +34,6 @@ async function Matches() {
               <h2 id="matches-duplicates" className="text-lg font-semibold">
                 Possible Duplicates
               </h2>
-              <p className="text-sm text-muted">The same email or mobile on two candidates: an application with one candidate’s email and another’s mobile, or a profile split.</p>
               <ul className="space-y-3">
                 {loaded.value.duplicates.map((m) => (
                   <MatchItem key={m.id} m={m} selfId={null} manages={manages} />
@@ -47,7 +46,6 @@ async function Matches() {
               <h2 id="matches-suggested" className="text-lg font-semibold">
                 Suggested Matches
               </h2>
-              <p className="text-sm text-muted">Signs that two candidates may be one person. They are never joined by themselves: merge them, or say they are not the same person.</p>
               <ul className="space-y-3">
                 {loaded.value.suggested.map((m) => (
                   <MatchItem key={m.id} m={m} selfId={null} manages={manages} />
@@ -64,10 +62,7 @@ async function Matches() {
 export default function PossibleMatchesPage() {
   return (
     <div className="space-y-4">
-      <div className="space-y-1">
-        <h1 className="page-title">Possible Matches</h1>
-        <p className="max-w-3xl text-sm text-muted">Candidates who may be one person, for HR to decide.</p>
-      </div>
+      <h1 className="page-title">Possible Matches</h1>
       <Suspense fallback={<Loading />}>
         <Matches />
       </Suspense>

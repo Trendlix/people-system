@@ -36,7 +36,7 @@ export async function OnboardingBanner({ profile: p }: { profile: EmployeeProfil
   if (!employment || !offersOnboarding(employment, todayInCairo())) return null;
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-card px-4 py-3 text-sm">
-      <p className="text-muted">New here, with no onboarding checklist.</p>
+      <p className="text-muted">No onboarding checklist.</p>
       <ActionButton action={openOnboarding.bind(null, employment.id)} label="Start onboarding" pendingLabel="Opening…" />
     </div>
   );

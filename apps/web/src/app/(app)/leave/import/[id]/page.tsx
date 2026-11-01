@@ -36,7 +36,6 @@ import {
   statusLabel,
   typeMapValue,
   undoConfirmText,
-  undoWhatText,
   whenText,
   wfhDaysListText,
 } from '../import';
@@ -197,7 +196,7 @@ function BalancesTable({ rows }: { rows: LeaveImportRow[] }) {
 
 function Notices({ view }: { view: LeaveImportView }) {
   const items = [
-    view.sameFile && { tone: 'bg-danger-soft text-danger', text: `${view.sameFile} Every row of it is a duplicate: nothing new to apply.` },
+    view.sameFile && { tone: 'bg-danger-soft text-danger', text: view.sameFile },
     view.uploadedBefore && { tone: 'bg-line-soft text-muted', text: view.uploadedBefore },
     view.holidaysHint && { tone: 'bg-warn-soft text-warn', text: view.holidaysHint },
     view.noShowsToLeave && { tone: 'bg-accent-soft text-accent', text: view.noShowsToLeave.text },
@@ -256,14 +255,9 @@ async function Review({ params }: { params: PageProps<'/leave/import/[id]'>['par
 
       {view.types.length > 0 && (
         <section aria-labelledby="types-heading" className="space-y-3">
-          <div>
-            <h2 id="types-heading" className="text-lg font-semibold">
-              Leave Types
-            </h2>
-            <p className="text-sm text-muted">
-              Each of Zoho&apos;s leave types once: the system&apos;s type its rows are imported as, work-from-home days, official duty days, or Skip.
-            </p>
-          </div>
+          <h2 id="types-heading" className="text-lg font-semibold">
+            Leave Types
+          </h2>
           <ul className="card divide-y divide-line-soft">
             {view.types.map((t) => (
               <li key={t.zohoType} className="grid gap-3 px-4 py-4 md:grid-cols-[minmax(12rem,1fr)_2fr]">
@@ -285,12 +279,9 @@ async function Review({ params }: { params: PageProps<'/leave/import/[id]'>['par
 
       {toConfirm.length > 0 && (
         <section aria-labelledby="people-heading" className="space-y-3">
-          <div>
-            <h2 id="people-heading" className="text-lg font-semibold">
-              People to Confirm <span className="font-normal text-muted tabular-nums">({toConfirm.length})</span>
-            </h2>
-            <p className="text-sm text-muted">Found by their name only, close to a name, or not found: say who they are, or skip them. Their rows wait until then.</p>
-          </div>
+          <h2 id="people-heading" className="text-lg font-semibold">
+            People to Confirm <span className="font-normal text-muted tabular-nums">({toConfirm.length})</span>
+          </h2>
           <ul className="card divide-y divide-line-soft">
             {toConfirm.map((p) => (
               <li key={p.key} className="space-y-3 px-4 py-4">
@@ -340,32 +331,18 @@ async function Review({ params }: { params: PageProps<'/leave/import/[id]'>['par
 
       {view.leaves.length > 0 && (
         <section aria-labelledby="leaves-heading" className="space-y-3">
-          <div>
-            <h2 id="leaves-heading" className="text-lg font-semibold">
-              Leaves Taken <span className="font-normal text-muted tabular-nums">({view.leaves.length})</span>
-            </h2>
-            <p className="text-sm text-muted">
-              Counted as recorded leave is: working days by the person&apos;s shift, without rest days and the official holidays; a different figure in the
-              file is a warning and the system&apos;s is used. A type&apos;s limits and a missing document are warnings only: this is history. A
-              work-from-home row makes a work-from-home day each working day of it, not leave; its limits are warnings only too. An official duty row
-              makes one approved official duty from its first working day to its last, full days, not leave: its days count as attended.
-            </p>
-          </div>
+          <h2 id="leaves-heading" className="text-lg font-semibold">
+            Leaves Taken <span className="font-normal text-muted tabular-nums">({view.leaves.length})</span>
+          </h2>
           <LeavesTable rows={view.leaves} />
         </section>
       )}
 
       {view.balances.length > 0 && (
         <section aria-labelledby="balances-heading" className="space-y-3">
-          <div>
-            <h2 id="balances-heading" className="text-lg font-semibold">
-              Balances <span className="font-normal text-muted tabular-nums">({view.balances.length})</span>
-            </h2>
-            <p className="text-sm text-muted">
-              Each person&apos;s annual leave left as of a day, set after the leave above is counted: the change is the figure less what the system has
-              left as of that day. A balance at its figure already changes nothing.
-            </p>
-          </div>
+          <h2 id="balances-heading" className="text-lg font-semibold">
+            Balances <span className="font-normal text-muted tabular-nums">({view.balances.length})</span>
+          </h2>
           <BalancesTable rows={view.balances} />
         </section>
       )}
@@ -374,18 +351,12 @@ async function Review({ params }: { params: PageProps<'/leave/import/[id]'>['par
         <h2 id="apply-heading" className="font-semibold">
           Apply the Import
         </h2>
-        <p className="text-sm text-muted">
-          In one go: the leave ready is recorded as approved and marked imported (Zoho&apos;s pending leave as requests, sent to their deciders), with
-          the work-from-home days and the official duties (approved, or pending ones as requests), then each balance is set. The draft payrolls of
-          their months take the leave and the official duties; a payroll with the CEO, approved or paid isn&apos;t changed. A C-level person&apos;s rows
-          are the CEO&apos;s to apply.
-        </p>
         {view.canApply ? (
           <ActionButton action={applyLeaveImport.bind(null, id)} pendingText="Applying…" variant="primary" confirmText={applyConfirmText(view)}>
             Apply the import
           </ActionButton>
         ) : (
-          <p className="text-sm text-muted">Nothing is ready for you to apply: put right the rows with problems, or say who the people waiting are.</p>
+          <p className="text-sm text-muted">Nothing is ready for you to apply.</p>
         )}
       </section>
 
@@ -394,10 +365,6 @@ async function Review({ params }: { params: PageProps<'/leave/import/[id]'>['par
           <h2 id="undo-heading" className="font-semibold">
             Undo the Import
           </h2>
-          <p className="text-sm text-muted">
-            Removes {undoWhatText(view)} it made that you import, while no payroll counting its leave is past its draft; its rows can then be
-            imported again.
-          </p>
           <ActionButton action={undoLeaveImport.bind(null, id)} pendingText="Undoing…" confirmText={undoConfirmText(view)}>
             Undo the import
           </ActionButton>
@@ -409,7 +376,6 @@ async function Review({ params }: { params: PageProps<'/leave/import/[id]'>['par
           <h2 id="delete-heading" className="font-semibold">
             Delete the Import
           </h2>
-          <p className="text-sm text-muted">Deletes the file and its review. Only an import with nothing left in the system: not applied, or undone.</p>
           <ActionButton
             action={deleteLeaveImport.bind(null, id)}
             pendingText="Deleting…"

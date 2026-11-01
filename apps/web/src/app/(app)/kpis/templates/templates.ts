@@ -1,15 +1,11 @@
 import {
   KPI_LIBRARY_KIND_LABELS,
   KPI_SETTING_DEFAULTS,
-  KPI_SETTING_LABELS,
   kpiMonthAdd,
-  kpiMonthName,
-  kpiMonthOnly,
   kpiTemplateOpensFrom,
   type KpiDraftAllResult,
   type KpiDraftSource,
   type KpiLibraryKind,
-  type KpiLibraryMatch,
   type KpiLibraryRole,
   type KpiPublishDraftsResult,
   type KpiSampleView,
@@ -21,7 +17,6 @@ import {
 } from '@trendlix/shared';
 import { formatDate, formatDateTime } from '../../../../lib/format';
 import { hasRole, isSuperAdmin } from '../../../../lib/roles';
-import { dayOfMonth } from '../../organization/payroll/settings';
 
 // KPI Templates (owner, 21 October 2026: "Templates: HR"): every job title with its KPI template's versions, and the KPI
 // settings, the deadlines of each month's steps. HR (and the Super Admin) build the templates, "with a draft and
@@ -183,23 +178,20 @@ export function libraryChoices(roles: readonly KpiLibraryRole[]): CopyGroup[] {
   return [...groups].map(([kind, options]) => ({ label: KPI_LIBRARY_KIND_LABELS[kind] ?? kind, options }));
 }
 
-/** Under the role picker: the role suggested for the job title, and why ("Suggested: Frontend Developer. The job title says …"). */
-export const librarySuggestion = (match: Pick<KpiLibraryMatch, 'name' | 'reason'>): string => `Suggested: ${match.name}. ${match.reason}`;
-
 /**
  * What "Draft templates for every job title" asks first: how many job titles have no template yet, that nothing is
  * published, and that the others stay as they are.
  */
 export function draftAllConfirmText(withoutTemplate: number): string {
-  return `Make a draft for each job title with no KPI template yet (${jobTitlesLabel(withoutTemplate)})? Each starts from the closest role in the library, its metrics linked to the job title’s duties. Nothing is published, and the job titles with a draft or a published version stay as they are.`;
+  return `Make a draft for each job title with no KPI template yet (${jobTitlesLabel(withoutTemplate)})?`;
 }
 
 /** The result's headline: "12 drafts made; 3 job titles skipped. Review each draft, then publish it." */
 export function draftAllSummary(result: KpiDraftAllResult): string {
   const made = result.made.length;
   const skipped = result.skipped.length;
-  if (!made) return skipped ? `No drafts made: each of the ${jobTitlesLabel(skipped)} has a draft or a published version already.` : 'No drafts made: there are no job titles yet.';
-  return `${draftsLabel(made)} made${skipped ? `; ${jobTitlesLabel(skipped)} skipped` : ''}. Review each draft, then publish it.`;
+  if (!made) return 'No drafts made.';
+  return `${draftsLabel(made)} made${skipped ? `; ${jobTitlesLabel(skipped)} skipped` : ''}.`;
 }
 
 /**
@@ -208,7 +200,7 @@ export function draftAllSummary(result: KpiDraftAllResult): string {
  */
 export const madeDraftUnplaced = (made: Pick<KpiDraftAllResult['made'][number], 'unplaced'>): string | null =>
   made.unplaced > 0
-    ? `${made.unplaced === 1 ? '1 metric is' : `${made.unplaced} metrics are`} in Unplaced: written for pillars the KPI framework no longer has. Place ${made.unplaced === 1 ? 'it' : 'them'} before publishing.`
+    ? `${made.unplaced === 1 ? '1 metric' : `${made.unplaced} metrics`} in Unplaced: place ${made.unplaced === 1 ? 'it' : 'them'} before publishing.`
     : null;
 
 /** The role a made draft used: "Frontend Developer", "General HR + team leadership". */
@@ -229,19 +221,7 @@ export const opensFromIfPublished = (today: string, pillarsFrom?: string | null)
  */
 export function publishConfirmText(version: number, today: string, pillarsFrom?: string | null): string {
   const from = opensFromIfPublished(today, pillarsFrom);
-  return `Publish version ${version}? It applies to the scorecards opened from ${formatDate(from)}: ${kpiMonthName(kpiMonthAdd(from, -1))}'s KPIs on. The scorecards opened already keep the version they opened with.`;
-}
-
-/**
- * When a version published today applies (owner's brief, 21 October 2026: "publishing now applies from November's
- * scorecards for October"): "Publishing now applies from November’s scorecards, those for October: 1 November opens
- * October’s scorecards."
- */
-export function publishTimingNote(today: string, pillarsFrom?: string | null): string {
-  const from = opensFromIfPublished(today, pillarsFrom);
-  const opening = kpiMonthOnly(from);
-  const month = kpiMonthOnly(kpiMonthAdd(from, -1));
-  return `Publishing now applies from ${opening}’s scorecards, those for ${month}: 1 ${opening} opens ${month}’s scorecards.`;
+  return `Publish version ${version}, applying from ${formatDate(from)}?`;
 }
 
 /** The job titles' drafts: what "Publish selected drafts" can choose from. */
@@ -255,7 +235,7 @@ export function templateIdsOf(fd: Pick<FormData, 'getAll'>): string[] {
 /** What "Publish selected drafts" asks first. */
 export function publishDraftsConfirmText(count: number, today: string, pillarsFrom?: string | null): string {
   const from = opensFromIfPublished(today, pillarsFrom);
-  return `Publish ${count === 1 ? 'the selected draft' : `the ${draftsLabel(count)} selected`}? Each one that passes the checks applies to the scorecards opened from ${formatDate(from)}: ${kpiMonthName(kpiMonthAdd(from, -1))}'s KPIs on. A draft with problems stays a draft, and you’ll see why.`;
+  return `Publish ${count === 1 ? 'the selected draft' : `the ${draftsLabel(count)} selected`}, applying from ${formatDate(from)}?`;
 }
 
 /** The result's headline: "3 drafts published, applying from 01/11/2026; 1 not published." */
@@ -311,17 +291,6 @@ export function settingsOf(values: Partial<Record<SettingKey, string | null | un
   return Object.fromEntries(SETTING_KEYS.map((k) => [k, wholeOf(values[k])])) as unknown as KpiSettings;
 }
 
-/** "Self-rating by the 3rd, manager’s scoring by the 6th, HR’s calibration by the 8th and sign-off by the 10th". */
-export function settingsSummary(s: KpiSettings): string {
-  const parts = SETTING_KEYS.map((k, i) => {
-    const label = KPI_SETTING_LABELS[k];
-    // in the middle of the sentence, in lower case but for a capital's word (HR)
-    const lower = i > 0 && label.charAt(1) === label.charAt(1).toLowerCase();
-    return `${lower ? label.charAt(0).toLowerCase() + label.slice(1) : label} ${dayOfMonth(s[k])}`;
-  });
-  return `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`;
-}
-
 /** "Last changed by Mona Adel on 21/10/2026, 5:42 PM"; null when never changed (the defaults). */
 export function settingsChangedText(view: Pick<KpiSettingsView, 'updatedAt' | 'updatedBy'>): string | null {
   if (!view.updatedAt) return null;
@@ -352,11 +321,11 @@ export const ATTENDANCE_IN_KPI_RESCORE_NOTE =
 /** What Save asks first. */
 export const attendanceInKpiConfirmText = (on: boolean): string =>
   on
-    ? 'Count attendance in the KPI again? The scorecards not yet final are worked out again with the Attendance metric; final ones don’t change.'
-    : 'Take attendance out of the KPI? The scorecards not yet final are worked out again without the Attendance metric; final ones don’t change.';
+    ? 'Count attendance in the KPI again?'
+    : 'Take attendance out of the KPI?';
 
 /** What the page says once it is saved. */
 export const attendanceInKpiSavedText = (on: boolean): string =>
   on
-    ? 'Saved: attendance counts in the KPI again. The scorecards not yet final were worked out again with it.'
-    : 'Saved: the KPI is performance only, and attendance is cut on the fixed part. The scorecards not yet final were worked out again without it.';
+    ? 'Saved: attendance counts in the KPI.'
+    : 'Saved: the KPI is performance only.';

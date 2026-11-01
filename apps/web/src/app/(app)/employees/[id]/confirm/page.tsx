@@ -50,27 +50,18 @@ async function Confirm({ params }: { params: Promise<{ id: string }> }) {
             Review your details before you go on
           </h2>
           <p>{bannerMessage(c)}</p>
-          <p>
-            People asks you to check the details HR keeps about you when you sign in, and again whenever HR changes them. The rest of People
-            opens once you confirm them, or once you ask HR for a change: you can carry on while HR decides. Sign out is in the menu at the top.
-          </p>
         </section>
       )}
 
       {c.upToDate && c.confirmedAt ? (
         <p role="status" className="rounded-lg bg-ok-soft px-4 py-3 text-sm text-ok">
-          You confirmed your details on {formatDate(c.confirmedAt)}. Nothing has changed since.
+          Confirmed on {formatDate(c.confirmedAt)}.
         </p>
       ) : !due && c.confirmedAt && c.changedFields.length > 0 ? (
         <p className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
-          Changed since you confirmed on {formatDate(c.confirmedAt)}: {fieldNames(c.changedFields)}. Check them below, then confirm again.
+          Changed since you confirmed on {formatDate(c.confirmedAt)}: {fieldNames(c.changedFields)}.
         </p>
       ) : null}
-
-      <p className="max-w-3xl text-sm text-muted">
-        These are the details HR keeps on your profile. Check each one. If they are all correct, accept the statement at the end and confirm
-        them. If anything is wrong or missing, request a change: HR checks it, and your profile is updated once HR approves it.
-      </p>
 
       <div className="max-w-5xl space-y-8">
         {CONFIRM_SECTIONS.map((section) => (
@@ -92,7 +83,6 @@ async function Confirm({ params }: { params: Promise<{ id: string }> }) {
         {c.upToDate ? (
           <div className="card space-y-3 p-6">
             <h2 className="font-semibold">Something Wrong?</h2>
-            <p className="text-sm text-muted">If any detail is wrong or out of date, ask HR to change it.</p>
             {requestLink}
           </div>
         ) : (
@@ -102,10 +92,6 @@ async function Confirm({ params }: { params: Promise<{ id: string }> }) {
 
       <div className="card max-w-3xl space-y-3 p-6">
         <h2 className="font-semibold">Your Photo</h2>
-        <p className="text-sm text-muted">
-          The picture beside your name comes from the personal photo in your employee file. To change it, send HR a new photo of yourself: it
-          is used once HR approves it.
-        </p>
         <Link href={`/employees/${p.id}/photo`} className={photoWaiting ? 'badge bg-warn-soft text-warn no-underline' : 'btn btn-secondary'}>
           {photoWaiting ? 'Your new photo is waiting for HR' : 'Send a new photo'}
         </Link>

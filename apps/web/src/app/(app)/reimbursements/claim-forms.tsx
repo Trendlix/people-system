@@ -27,7 +27,7 @@ import { shrinkPhoto } from '../employees/shrink-photo';
 import { monthName } from '../payroll/list';
 import { typesForDate } from './actions';
 import { capsMonth, claimProblems, DESCRIPTION_MAX, leftText, RECEIPT_ACCEPT, sizeText } from './claim';
-import { amountTyped, commentReaders, decisionButton } from './list';
+import { amountTyped, decisionButton } from './list';
 
 // The forms of a reimbursement claim (owner, 18 October 2026: "allow the employee to add reimbursement request … for
 // specific preset up conditions"): the new claim, with the type's conditions and what is left of its caps beside it
@@ -90,8 +90,8 @@ function ReceiptsField({
 
   const left = REIMBURSEMENT_RECEIPTS_MAX - receipts.length;
   return (
-    <fieldset aria-describedby={fid('receipts-hint')}>
-      <legend className="label">Receipts {required ? <span className="font-normal text-muted">(required for this type)</span> : optional}</legend>
+    <fieldset>
+      <legend className="label">Receipts {required ? <span className="font-normal text-muted">(required)</span> : optional}</legend>
       <div
         tabIndex={-1}
         onDragOver={(e) => {
@@ -134,13 +134,10 @@ function ReceiptsField({
             : over
               ? 'Drop the files here to add them.'
               : left > 0
-                ? `Choose, drag or paste photos or PDFs; ${left === REIMBURSEMENT_RECEIPTS_MAX ? `up to ${left}` : `${left} more`}.`
+                ? `${left === REIMBURSEMENT_RECEIPTS_MAX ? `Up to ${left}` : `${left} more`} photos or PDFs.`
                 : `That is ${REIMBURSEMENT_RECEIPTS_MAX}, the most a claim takes.`}
         </p>
       </div>
-      <p id={fid('receipts-hint')} className="hint">
-        A clear photo of each receipt or invoice, or a PDF. On a phone you can take the photo here. Photos are made smaller before they are sent.
-      </p>
       {receipts.length > 0 && (
         <ul className="mt-2 divide-y divide-line-soft rounded-lg border border-line bg-card" aria-label="Receipts added">
           {receipts.map(({ key, file }, i) => (
@@ -202,7 +199,7 @@ function TypePanel({ type, month, checking }: { type: MyReimbursementType; month
             ))}
           </dl>
         ) : (
-          <p className="text-sm text-muted">No cap: any amount spent can be claimed.</p>
+          <p className="text-sm text-muted">No cap.</p>
         )}
         {!checking && left.most !== null && (
           <p className="mt-3 text-sm font-medium">
@@ -270,7 +267,7 @@ export function NewClaimForm({ action, types, today, cancelHref }: { action: Act
       // another date was typed meanwhile: its answer is the one that counts
       if (asked.current !== wanted) return;
       if ('types' in answer) setLoaded({ month: wanted, types: answer.types });
-      else setLoadProblem(`What is left for ${monthName(wanted)} couldn't be checked: ${answer.errors.join(' ')} The amount is checked again when you send it.`);
+      else setLoadProblem(`What is left for ${monthName(wanted)} couldn't be checked: ${answer.errors.join(' ')}`);
     });
   }
 
@@ -314,7 +311,6 @@ export function NewClaimForm({ action, types, today, cancelHref }: { action: Act
             required
             value={typed.typeId}
             onChange={(e) => set('typeId', e.target.value)}
-            aria-describedby={fid('typeId-hint')}
             className="input"
           >
             <option value="">Choose a type</option>
@@ -324,9 +320,6 @@ export function NewClaimForm({ action, types, today, cancelHref }: { action: Act
               </option>
             ))}
           </Select>
-          <p id={fid('typeId-hint')} className="hint">
-            The types HR set up that you may claim, each with its own conditions.
-          </p>
         </div>
         {type && (
           <div className="sm:col-span-2">
@@ -337,10 +330,7 @@ export function NewClaimForm({ action, types, today, cancelHref }: { action: Act
           <label htmlFor={fid('expenseDate')} className="label">
             Date of the expense
           </label>
-          <DateInput id={fid('expenseDate')} name="expenseDate" required defaultValue={typed.expenseDate} aria-describedby={fid('expenseDate-hint')} />
-          <p id={fid('expenseDate-hint')} className="hint">
-            The day on the receipt; not after today.{type?.claimWithinDays ? ` This type is claimed within ${type.claimWithinDays} days of it.` : ''}
-          </p>
+          <DateInput id={fid('expenseDate')} name="expenseDate" required defaultValue={typed.expenseDate} />
         </div>
         <div>
           <label htmlFor={fid('amount')} className="label">
@@ -354,12 +344,9 @@ export function NewClaimForm({ action, types, today, cancelHref }: { action: Act
             autoComplete="off"
             value={typed.amount}
             onChange={(e) => set('amount', e.target.value)}
-            aria-describedby={fid('amount-hint')}
+            placeholder="e.g. 250.50"
             className="input tabular-nums"
           />
-          <p id={fid('amount-hint')} className="hint">
-            As on the receipt, e.g. 250 or 250.50.
-          </p>
         </div>
         <div className="sm:col-span-2">
           <label htmlFor={fid('description')} className="label">
@@ -373,13 +360,9 @@ export function NewClaimForm({ action, types, today, cancelHref }: { action: Act
             maxLength={DESCRIPTION_MAX}
             value={typed.description}
             onChange={(e) => set('description', e.target.value)}
-            aria-describedby={fid('description-hint')}
+            placeholder="e.g. a taxi to the client's office"
             className="input"
           />
-          <p id={fid('description-hint')} className="hint">
-            E.g. a taxi to the client&apos;s office for the launch meeting. Your direct manager, HR and Finance read it. Up to {DESCRIPTION_MAX}{' '}
-            characters.
-          </p>
         </div>
         <div className="sm:col-span-2">
           <ReceiptsField fid={fid} receipts={receipts} onChange={setReceipts} onBusy={setShrinking} required={!!type?.receiptRequired} />
@@ -456,7 +439,7 @@ export function DecisionForm({
     <form
       action={formAction}
       onSubmit={(e) => {
-        if (decision === 'reject' && !window.confirm(`Reject the claim by ${name}? Your comment shows on it.`)) e.preventDefault();
+        if (decision === 'reject' && !window.confirm(`Reject the claim by ${name}?`)) e.preventDefault();
       }}
       aria-label={`Decide on the claim by ${name}`}
       className="space-y-4"
@@ -491,12 +474,10 @@ export function DecisionForm({
             autoComplete="off"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            aria-describedby={`${fid('amount-hint')}${amountProblem ? ` ${fid('amount-problem')}` : ''}`}
+            aria-describedby={amountProblem ? fid('amount-problem') : undefined}
+            placeholder={`Less than ${formatEgp(current)}`}
             className="input max-w-48 tabular-nums"
           />
-          <p id={fid('amount-hint')} className="hint">
-            Less than {formatEgp(current)}, e.g. what the type&apos;s conditions or the receipt allow. Say why in the comment.
-          </p>
           <div role="status">
             {amountProblem && (
               <p id={fid('amount-problem')} className="hint text-warn">
@@ -519,13 +500,8 @@ export function DecisionForm({
           required={needsComment}
           value={comment}
           onChange={(e) => setComment(e.target.value)}
-          aria-describedby={fid('comment-hint')}
           className="input"
         />
-        <p id={fid('comment-hint')} className="hint">
-          {decision === 'reject' ? 'Why it is rejected. ' : lower ? 'Why a lower amount is approved. ' : ''}
-          {commentReaders(confidential)}
-        </p>
       </div>
 
       <div className="flex flex-wrap gap-3">
@@ -548,7 +524,7 @@ export function CancelClaimForm({ action, what }: { action: () => Promise<FormSt
     <form
       action={formAction}
       onSubmit={(e) => {
-        if (!window.confirm(`Cancel your ${what}? It stays on your list, cancelled; send a new claim to ask again.`)) e.preventDefault();
+        if (!window.confirm(`Cancel your ${what}?`)) e.preventDefault();
       }}
       className="space-y-3"
     >

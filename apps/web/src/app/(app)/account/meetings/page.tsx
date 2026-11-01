@@ -42,8 +42,7 @@ async function loadMine(): Promise<Loaded> {
   }
 }
 
-const DISCONNECT_MINE =
-  'Disconnect your account? Interviews can’t use it until you connect it again. Meetings already made keep their link, but moving or cancelling them won’t change them at the provider any more.';
+const DISCONNECT_MINE = 'Disconnect your account?';
 
 function Note({ children }: { children: React.ReactNode }) {
   return <section className="card p-6 text-sm text-muted">{children}</section>;
@@ -54,7 +53,7 @@ async function Mine({ searchParams }: { searchParams: PageProps<'/account/meetin
   if (user.developer) return <Note>Meeting connections hold your accounts: they aren’t open to developers.</Note>;
   if (!connectsOwnMeetings(user)) return <Note>{MEETINGS_SCHEDULERS_ONLY}</Note>;
   const loaded = await loadMine();
-  if (loaded.kind === 'unavailable') return <Note>Not available yet: the server doesn’t make meetings yet. Please try again after its next update.</Note>;
+  if (loaded.kind === 'unavailable') return <Note>Not available yet.</Note>;
   if (loaded.kind === 'failed') return <Note>Your meeting connections could not be loaded. {loaded.messages.join(' ')}</Note>;
   // whose account a refused sign-in should have been: the person acted as, by name
   const banner = meetingBanner(query, user.viewAs ? (user.name ?? user.email) : null);
@@ -93,7 +92,7 @@ async function Mine({ searchParams }: { searchParams: PageProps<'/account/meetin
           )}
           {/* busy times for "Find a time" (25 October 2026): a Google connection made before its free/busy scope was asked */}
           {provider === 'google' && connection?.status === 'connected' && connection.busyTimes === false && (
-            <p className="text-sm text-warn">Reconnect to share your busy times: disconnect, then connect your Google account again and allow it.</p>
+            <p className="text-sm text-warn">Reconnect your Google account to share your busy times.</p>
           )}
         </section>
       ))}
@@ -104,13 +103,7 @@ async function Mine({ searchParams }: { searchParams: PageProps<'/account/meetin
 export default function YourMeetingsPage({ searchParams }: PageProps<'/account/meetings'>) {
   return (
     <div className="max-w-2xl space-y-4">
-      <div>
-        <h1 className="page-title">Your Meetings</h1>
-        <p className="mt-1 text-muted">
-          Connect your own Google, Microsoft or Zoom account, and the interviews you schedule online can have their meeting made with it, hosted by you. The
-          system keeps only what it needs to make, move and delete those meetings, encrypted; you can disconnect at any time.
-        </p>
-      </div>
+      <h1 className="page-title">Your Meetings</h1>
       <Suspense fallback={<p className="text-sm text-muted">Loading…</p>}>
         <Mine searchParams={searchParams} />
       </Suspense>

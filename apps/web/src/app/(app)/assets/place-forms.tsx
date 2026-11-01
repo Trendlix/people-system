@@ -24,7 +24,7 @@ export function NameNotesForm({
   action,
   saved,
   nameLabel,
-  nameHint,
+  namePlaceholder,
   nameMax,
   notesMax,
   submit,
@@ -33,7 +33,7 @@ export function NameNotesForm({
   action: Action;
   saved?: { name: string; notes: string | null };
   nameLabel: string;
-  nameHint?: string;
+  namePlaceholder?: string;
   nameMax: number;
   notesMax: number;
   submit: string;
@@ -56,14 +56,9 @@ export function NameNotesForm({
             required
             maxLength={nameMax}
             defaultValue={valueOf(state, 'name', saved?.name)}
-            aria-describedby={nameHint ? fid('name-hint') : undefined}
+            placeholder={namePlaceholder}
             className="input"
           />
-          {nameHint && (
-            <p id={fid('name-hint')} className="hint">
-              {nameHint}
-            </p>
-          )}
         </div>
         <div>
           <label htmlFor={fid('notes')} className="label">
@@ -112,12 +107,8 @@ export function ThresholdForm({ action, saved }: { action: Action; saved: string
           autoComplete="off"
           required
           defaultValue={valueOf(state, 'capitalizationThreshold', saved)}
-          aria-describedby={fid('threshold-hint')}
           className="input max-w-56 tabular-nums"
         />
-        <p id={fid('threshold-hint')} className="hint">
-          An asset bought for less than this is Expensed: its book value is 0 from the start. 0: none is.
-        </p>
       </div>
       <div className="flex flex-wrap items-center gap-3">
         <SubmitButton>Save threshold</SubmitButton>

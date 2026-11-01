@@ -40,7 +40,7 @@ export function ScreeningCallCard({ card, action }: { card: Card; action: Action
       <h2 id="applicant-screening-call" className="text-lg font-semibold">
         Screening Call
       </h2>
-      {call ? (
+      {call && (
         <div className="space-y-1">
           <p className="flex flex-wrap items-center gap-2 text-sm">
             <ScreeningCallBadge call={call} />
@@ -51,8 +51,6 @@ export function ScreeningCallCard({ card, action }: { card: Card; action: Action
           </p>
           {call.note && <p className="text-sm whitespace-pre-line">{call.note}</p>}
         </div>
-      ) : (
-        form && <p className="text-sm text-muted">Call them before the interview: only those who pass the screening call are interviewed.</p>
       )}
       {problem && (
         <p role="note" className="rounded-lg bg-canvas px-4 py-3 text-sm text-muted">
@@ -101,7 +99,7 @@ export function ScreeningCallForm({ action, call }: { action: Action; call: Scre
       </fieldset>
       <div>
         <label htmlFor={fid('note')} className="label">
-          Comment <span className="font-normal text-muted">(optional, kept from the hiring manager and the interviewers)</span>
+          Comment <span className="font-normal text-muted">(optional)</span>
         </label>
         <textarea id={fid('note')} name="note" rows={2} maxLength={SCREENING_CALL_NOTE_MAX} defaultValue={str(v.note) ?? call?.note ?? ''} className="input" />
       </div>

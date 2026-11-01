@@ -241,7 +241,7 @@ export const baseWeightLabel = (pillarsFrom: { nameEn: string } | null | undefin
  */
 export function weightsResetNote(pillarsFrom: { nameEn: string } | null | undefined): string {
   const whose = pillarsFrom ? `${pillarsFrom.nameEn}’s` : 'the company’s';
-  return `${whose.charAt(0).toUpperCase()}${whose.slice(1)} pillars changed (a pillar was added or removed), so this job title’s own weights were reset to ${whose}. Set them again if needed, then save.`;
+  return `${whose.charAt(0).toUpperCase()}${whose.slice(1)} pillars changed, so this job title’s own weights were reset to ${whose}.`;
 }
 
 // ---------- the pillars ----------
@@ -290,13 +290,6 @@ export function pillarGroups<M extends { pillar: string | null; targetPoints: nu
   if (unplaced.length) groups.push({ pillar: null, attendance: false, leftOut: false, metrics: unplaced, max: unplaced.reduce((sum, m) => sum + pointsOrZero(m.targetPoints), 0) });
   return groups;
 }
-
-/**
- * A pillar not scored while attendance is out of the KPI (25 October 2026): its only metric was Attendance. Said on the
- * template and in the builder, where adding a metric scores it again.
- */
-export const leftOutPillarNote = (pillar: Pick<KpiPillar, 'weight'>): string =>
-  `Not scored while attendance is out of the KPI: the Attendance metric was its only one, so its ${pillar.weight}% is spread over the other pillars.`;
 
 /** The form's metrics by pillar, as the content numbers them, each with its max points; Unplaced last. */
 export function formGroups(form: DraftForm): PillarGroup<{ form: MetricForm; number: number }>[] {
@@ -429,9 +422,7 @@ export const onlyForPublishing = (publishing: readonly string[], saving: readonl
 
 /** The Unplaced group's heading and what it says. */
 export const UNPLACED_TITLE = 'Unplaced';
-export const UNPLACED_NOTE =
-  'These metrics were in pillars the KPI framework no longer has. Choose a pillar for each, or remove it: the draft can’t be published until this group is empty.';
+export const UNPLACED_NOTE = 'Choose a pillar for each, or remove it, before publishing.';
 
 /** Over a draft whose metrics were written for other pillars than the framework's newest. */
-export const PILLARS_CHANGED_NOTE =
-  'The KPI pillars changed since this draft was made: its metrics were placed in the new pillars by name. Check them, then save; those whose pillar is gone are in Unplaced, at the end.';
+export const PILLARS_CHANGED_NOTE = 'The KPI pillars changed: check where its metrics were placed, then save.';

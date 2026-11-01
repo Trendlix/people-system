@@ -254,7 +254,7 @@ export function DeleteVacancyButton({ id, number, applicants }: { id: string; nu
         disabled={pending}
         onClick={() => {
           if (applicants > 0) return setOpen(true);
-          if (!window.confirm(`Delete ${number}? Nobody has applied; this can’t be undone.`)) return;
+          if (!window.confirm(`Delete ${number}?`)) return;
           start(async () => setState((await deleteVacancy(id, null)) ?? {}));
         }}
         className="btn btn-danger"

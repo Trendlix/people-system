@@ -15,7 +15,6 @@ import {
   decisionEffectiveDate,
   effectiveFromOptions,
   effectiveFromText,
-  figuresNote,
   handlesRaiseRequests,
   isRequestForSelf,
   justSent,
@@ -200,7 +199,7 @@ describe('a raise HR prepared directly (owner, 19 October 2026: every raise on R
     expect(raiseRequestsDoneHref('with_ceo', 'raise-approved')).toBe('/raise-requests?status=with_ceo&done=raise-approved');
     expect(raiseRequestsDoneHref('', 'raise-returned')).toBe('/raise-requests?done=raise-returned');
     expect(ceoDoneMessage({ done: 'raise-approved-other' })).toMatch(/^Raise approved with your raise/);
-    expect(ceoDoneMessage({ done: 'raise-declined' })).toBe('Raise rejected: its request shows as rejected, with your comment.');
+    expect(ceoDoneMessage({ done: 'raise-declined' })).toBe('Raise rejected.');
     expect(ceoDoneMessage({ done: 'toString' })).toBeNull();
     expect(ceoDoneMessage({})).toBeNull();
   });
@@ -508,12 +507,6 @@ describe('asking for a raise under Requests (owner, 17 October 2026: "Under Requ
     // the employee's own, or HR's, read by their manager: the profile is its place
     expect(requestPlace(mona, request({ requester: 'self', requestedBy: { email: 'ben@trendlix.com' } }), false)).toBeNull();
     expect(requestPlace(mona, request({ requester: 'hr', requestedBy: { email: 'hr@trendlix.com' } }), false)).toBeNull();
-  });
-
-  it('says who sees the figures while asking', () => {
-    expect(figuresNote(true)).toMatch(/^Your own pay, which only you, HR, Finance and the CEO see: your direct manager doesn’t/);
-    expect(figuresNote(false)).toMatch(/^HR, Finance and the CEO see these figures; a direct manager sees no salary figures/);
-    expect(figuresNote(false)).toMatch(/The net is approximate\.$/);
   });
 });
 

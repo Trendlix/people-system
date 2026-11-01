@@ -83,7 +83,6 @@ export function LinkedInSettingsForm({ action, view, redirectUrl }: { action: Ac
           </code>
           <CopyButton value={redirectUrl} />
         </div>
-        <p className="hint">The careers site’s address above and /linkedin/callback. Paste it on the app’s Auth tab exactly as shown.</p>
       </div>
 
       <form action={formAction} className="space-y-4">
@@ -119,7 +118,6 @@ export function LinkedInSettingsForm({ action, view, redirectUrl }: { action: Ac
                     Paste a new one to replace it
                   </button>
                 </div>
-                <p className="hint">Saved encrypted, and never shown again.</p>
               </>
             ) : (
               <>
@@ -133,24 +131,21 @@ export function LinkedInSettingsForm({ action, view, redirectUrl }: { action: Ac
                   autoComplete="new-password"
                   maxLength={LINKEDIN_LIMITS.clientSecret}
                   autoFocus={replacing}
-                  aria-describedby={fid('clientSecret-hint')}
+                  aria-describedby={view.secretUnreadable ? fid('clientSecret-hint') : undefined}
                   className="input"
                 />
-                <p id={fid('clientSecret-hint')} className={view.secretUnreadable ? 'hint text-warn' : 'hint'}>
-                  {view.secretUnreadable
-                    ? 'The saved secret can’t be read any more (the server’s key changed): paste it again.'
-                    : saved
-                      ? 'Leave it empty to keep the saved secret.'
-                      : 'The Primary Client Secret from the app’s Auth tab. Saved encrypted, and never shown again.'}
-                  {saved && (
-                    <>
-                      {' '}
-                      <button type="button" onClick={() => setReplacing(false)} className="font-semibold text-accent underline-offset-2 hover:underline">
-                        Keep the saved one
-                      </button>
-                    </>
-                  )}
-                </p>
+                {view.secretUnreadable && (
+                  <p id={fid('clientSecret-hint')} className="hint text-warn">
+                    The saved secret can’t be read any more: paste it again.
+                  </p>
+                )}
+                {saved && (
+                  <p className="hint">
+                    <button type="button" onClick={() => setReplacing(false)} className="font-semibold text-accent underline-offset-2 hover:underline">
+                      Keep the saved one
+                    </button>
+                  </p>
+                )}
               </>
             )}
           </div>

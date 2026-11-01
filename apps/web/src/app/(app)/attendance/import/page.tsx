@@ -26,7 +26,7 @@ async function Import({ searchParams }: { searchParams: PageProps<'/attendance/i
   if (!importsAttendance(user)) {
     return (
       <Empty>
-        HR imports the attendance from Zoho People. <Link href={ATTENDANCE_IMPORTS_PATH}>Import History</Link> lists every import.
+        Only HR imports attendance. <Link href={ATTENDANCE_IMPORTS_PATH}>Import History</Link>
       </Empty>
     );
   }
@@ -54,16 +54,7 @@ export default function ImportAttendancePage({ searchParams }: PageProps<'/atten
   return (
     <StaffOnly>
       <div className="max-w-4xl space-y-6">
-        <div>
-          <h1 className="page-title">Import Attendance from Zoho People</h1>
-          <p className="mt-1 max-w-3xl text-muted">
-            The month&apos;s check-ins and check-outs from Zoho People, counted by the system&apos;s rules, not Zoho&apos;s: the hours within each
-            person&apos;s shift (until its end plus the grace minutes), at most its hours a day; a working day without a check-in is an absent day;
-            leave comes from the Leave module. Once read, the review opens on the month&apos;s payroll: confirm who each person is, then apply it to
-            the payroll&apos;s figures, which can&apos;t be typed over afterwards. To change them, import the month again or undo the import on its
-            review.
-          </p>
-        </div>
+        <h1 className="page-title">Import Attendance from Zoho People</h1>
         <Suspense fallback={<Loading />}>
           <Import searchParams={searchParams} />
         </Suspense>

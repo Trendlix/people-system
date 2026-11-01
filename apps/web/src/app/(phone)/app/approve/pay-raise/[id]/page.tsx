@@ -29,7 +29,7 @@ async function Raise({ params }: { params: PageProps<'/app/approve/pay-raise/[id
   const raises = await getOrNull<PendingRaise[]>(PENDING_RAISES);
   if (raises === null) return <p className={quiet}>Pay raises couldn&apos;t load. Please try again in a moment.</p>;
   const r = raises.find((x) => x.id === id);
-  if (!r) return <p className={quiet}>This pay raise isn&apos;t waiting any more: it was decided or returned to HR.</p>;
+  if (!r) return <p className={quiet}>This pay raise isn&apos;t waiting any more.</p>;
   const decides = decidesRaises(user);
   const [requests, rates] = await Promise.all([
     r.raise?.requestId ? getOrNull<RaiseRequest[]>(raiseRequestsHref('with_ceo')) : null,

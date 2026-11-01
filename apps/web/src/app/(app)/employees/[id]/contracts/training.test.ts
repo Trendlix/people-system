@@ -1,18 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import type { Contract } from '../../../../../lib/types';
 import {
-  CONVERSION_PROBATION_HINT,
   conversionDefaults,
   conversionStart,
   contractActions,
   convertHref,
   draftKind,
   hireTooSoonText,
-  noProbationHint,
-  onlyRenewalNote,
   renewalRefusal,
   trainingReminder,
-  trainingWayText,
 } from './training';
 
 // Interns' agreements (owner, 19 October 2026): renewed once at most, then converted to full-time; the one internship
@@ -63,12 +59,10 @@ describe('the reminder of an agreement’s end', () => {
   it('says when it ends and the way forward, from 60 days before', () => {
     expect(trainingReminder({ endDate: '2027-03-31', training: first }, '2027-02-01')).toEqual({
       text: 'Internship ends on 31/03/2027: renew it once, or convert to full-time.',
-      way: trainingWayText('renew_or_convert'),
       passed: false,
     });
     expect(trainingReminder({ endDate: '2027-03-31', training: renewal }, '2027-03-31')).toEqual({
       text: 'Internship ends on 31/03/2027: convert to full-time, or end the internship.',
-      way: trainingWayText('convert_or_end'),
       passed: false,
     });
     expect(trainingReminder({ endDate: '2027-03-31', training: renewal }, '2027-04-02')).toMatchObject({
@@ -82,14 +76,6 @@ describe('the reminder of an agreement’s end', () => {
     expect(trainingReminder({ endDate: '2027-03-31', training: first }, '2027-01-30')).not.toBeNull();
     expect(trainingReminder({ endDate: '2027-03-31', training: null }, '2027-03-30')).toBeNull();
     expect(trainingReminder({ endDate: null, training: first }, '2027-03-30')).toBeNull();
-  });
-
-  it('words the way forward without a renewal in writing, a non-renewal notice or Art. 88', () => {
-    expect(trainingWayText('renew_or_convert')).toBe(
-      'Renew it once with Renew, or convert it with Convert to full-time. To end the internship, use End employment and choose Training completed.',
-    );
-    expect(trainingWayText('convert_or_end')).toMatch(/^It was renewed once already, so it isn’t renewed again: convert it with Convert to full-time/);
-    for (const next of ['renew_or_convert', 'convert_or_end'] as const) expect(trainingWayText(next)).not.toMatch(/in writing|non-renewal|Art\. 88/);
   });
 });
 
@@ -105,13 +91,6 @@ describe('drafts and the renewal', () => {
     expect(renewalRefusal({ training: first })).toBeNull();
     expect(renewalRefusal({ training: null })).toBeNull();
     expect(renewalRefusal(undefined)).toBeNull();
-    expect(onlyRenewalNote()).toBe(
-      'This is the internship agreement’s one renewal: when it ends, it is converted to a full-time contract or the internship ends.',
-    );
-  });
-
-  it('says plainly why an intern has no probation', () => {
-    expect(noProbationHint()).toMatch(/^None: an intern has no probation, as an internship agreement isn’t an employment contract/);
   });
 });
 
@@ -143,7 +122,6 @@ describe('converting an agreement to full-time', () => {
       allowances: [{ allowanceTypeId: 'transport', amount: 1500 }],
       note: '',
     });
-    expect(CONVERSION_PROBATION_HINT).toMatch(/the agreement had no probation, so the full-time contract may have it/);
   });
 
   it('has no probation for someone who had an earlier employment here, and no start without an end', () => {

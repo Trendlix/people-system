@@ -39,7 +39,7 @@ type Choice = { key: string; name: string; choose: () => void };
 
 export function PlaceSearch({
   onPoint,
-  keepText = 'Save the location to keep it.',
+  keepText = '',
 }: {
   onPoint: (p: Point) => void;
   /** What keeps the point, said once the pin is put (a home location's form: sending the request). */
@@ -74,15 +74,15 @@ export function PlaceSearch({
     onPoint(p);
     setPlaces([]);
     setSuggestions([]);
-    setStatus(`Pin put ${where}, at ${pointText(p)}. ${keepText}`);
+    setStatus(`Pin put ${where}, at ${pointText(p)}.${keepText ? ` ${keepText}` : ''}`);
   }
 
   function showFound(query: string, count: number) {
     setBusy(false);
     setStatus(
       count
-        ? `${count === 1 ? 'One place' : `${count} places`} found: choose one to put the pin there.`
-        : `No place found in Egypt for “${query}”. Try another name or the street, or click the map.`,
+        ? `${count === 1 ? 'One place' : `${count} places`} found.`
+        : `No place found in Egypt for “${query}”.`,
     );
   }
 
@@ -103,7 +103,7 @@ export function PlaceSearch({
     } catch {
       if (request.signal.aborted) return;
       setPlaces([]);
-      setStatus('The search didn’t answer. Try again in a moment, or click the map to put the pin.');
+      setStatus('The search didn’t answer. Try again.');
     } finally {
       if (asking.current === request) {
         asking.current = null;
@@ -112,7 +112,7 @@ export function PlaceSearch({
     }
   }
 
-  function nominatim(query: string, said = '') {
+  function nominatim(query: string) {
     // pressed again before it went: only the last one goes
     if (timer.current) clearTimeout(timer.current);
     setSuggestions([]);
@@ -123,7 +123,7 @@ export function PlaceSearch({
     }
     const wait = bookSearch();
     setBusy(true);
-    setStatus(`${said}Searching…`);
+    setStatus('Searching…');
     timer.current = setTimeout(() => void ask(query), wait);
   }
 
@@ -152,7 +152,7 @@ export function PlaceSearch({
       // Google's search refused (or didn't answer): OpenStreetMap's from now on, this search too
       markPlacesFailed();
       setBusy(false);
-      nominatim(query, 'Google’s place search didn’t answer, so OpenStreetMap’s is used. ');
+      nominatim(query);
     }
   }
 
@@ -175,7 +175,7 @@ export function PlaceSearch({
     } catch {
       if (mine !== latest.current.ask) return;
       setBusy(false);
-      setStatus('Google didn’t give that place’s point. Choose another, or click the map to put the pin.');
+      setStatus('Google didn’t give that place’s point. Choose another.');
     }
   }
 
@@ -236,30 +236,26 @@ export function PlaceSearch({
               if (search.ready) find();
             }
           }}
-          aria-describedby={`${fid('place-hint')} ${fid('place-status')}`}
+          aria-describedby={fid('place-status')}
           className="input min-w-0 flex-1"
         />
         <button type="button" onClick={find} disabled={busy || !search.ready} className="btn btn-secondary shrink-0">
           {busy ? 'Searching…' : 'Search'}
         </button>
       </div>
-      <p id={fid('place-hint')} className="hint">
-        {search.provider === 'google' ? (
-          <>Type a name or address, or paste a Google Maps link.</>
-        ) : (
-          <>
-            Type a name or address, or paste a Google Maps link. Search by{' '}
-            <a href="https://nominatim.openstreetmap.org/" target="_blank" rel="noreferrer">
-              Nominatim
-            </a>
-            , places ©{' '}
-            <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">
-              OpenStreetMap contributors
-            </a>
-            .
-          </>
-        )}
-      </p>
+      {search.provider !== 'google' && (
+        <p className="hint">
+          Search by{' '}
+          <a href="https://nominatim.openstreetmap.org/" target="_blank" rel="noreferrer">
+            Nominatim
+          </a>
+          , places ©{' '}
+          <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">
+            OpenStreetMap contributors
+          </a>
+          .
+        </p>
+      )}
       <p id={fid('place-status')} role="status" className="text-sm text-muted">
         {status}
       </p>

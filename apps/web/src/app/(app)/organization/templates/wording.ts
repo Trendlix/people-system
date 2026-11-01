@@ -42,7 +42,7 @@ export const ASK_SUPER_ADMIN = 'A Super Admin manages the templates.';
 
 /** Said where the server doesn't have templates yet (it answers 404). */
 export const NOT_AVAILABLE = 'Not available yet.';
-export const NOT_AVAILABLE_ACTION = 'Not available yet: the server does not have templates yet. Please try again after its next update.';
+export const NOT_AVAILABLE_ACTION = 'Not available yet: the server does not have templates yet.';
 
 export const LANGUAGE_LABELS: Record<TemplateLanguage, string> = { ar: 'Arabic', en: 'English', bilingual: 'Arabic and English' };
 
@@ -50,13 +50,6 @@ export const LANGUAGE_LABELS: Record<TemplateLanguage, string> = { ar: 'Arabic',
 export function languageLabel(language: TemplateLanguage | null): string {
   return language ? LANGUAGE_LABELS[language] : 'Arabic, English or both, chosen on upload';
 }
-
-/**
- * How a bilingual template (both languages side by side, like the owner's NDA, 15 October 2026) takes its tags: those
- * that depend on the language print in Arabic, and their _ar and _en forms print the language they name.
- */
-export const BILINGUAL_HINT =
-  'Arabic and English side by side, e.g. the NDA. Tags that depend on the language print in Arabic; for each side use their _ar and _en forms, e.g. {{job_title_ar}} and {{job_title_en}}.';
 
 export const SIGNER_LABELS: Record<TemplateSigners, string> = {
   both: 'The employee and the company',
@@ -67,13 +60,12 @@ export const SIGNER_LABELS: Record<TemplateSigners, string> = {
 
 /**
  * "All employment types", or the ones named: "Full-time", "Part-time, Unpaid internship". A Sales slot (`paidByCommission`;
- * owner, 18 October 2026: Sales became Full-time paid by commission): "Full-time, paid by commission (the full-time one
- * until this is published)".
+ * owner, 18 October 2026: Sales became Full-time paid by commission): "Full-time, paid by commission".
  */
 export function appliesToLabel(types: readonly EmploymentType[], paidByCommission = false): string {
   if (EMPLOYMENT_TYPES.every((t) => types.includes(t))) return 'All employment types';
   const names = types.map((t) => LABELS.employmentType[t] ?? t).join(', ');
-  return paidByCommission ? `${names}, paid by commission (the ${names.toLowerCase()} one until this is published)` : names;
+  return paidByCommission ? `${names}, paid by commission` : names;
 }
 
 /** "On hiring · On renewal" */
@@ -114,12 +106,8 @@ export function sourceName(key: string, slots: readonly Pick<TemplateSlotView, '
   return slots.find((s) => s.key === key)?.name ?? TEMPLATE_SLOTS.find((s) => s.key === key)?.name ?? key;
 }
 
-/** Said on a template whose salary tags read the insured salary (the full-time contract's social insurance copy). */
-export const OVERRIDES_NOTE =
-  'On this template, {{gross_salary}} and {{gross_salary_words}} print the insured salary: the gross, capped at the maximum insurable wage.';
-
-/** Said on a copy slot (printed from another slot's file), in place of its own files. */
-export const COPY_NOTE = "Printed from the official copy's file. On this copy, the salary reads the insured salary.";
+/** Said on a copy slot (printed from another slot's file), before the link to that slot, in place of its own files. */
+export const COPY_NOTE = 'Printed from';
 
 type Draft = NonNullable<TemplateSlotView['latestDraft']>;
 type Published = NonNullable<TemplateSlotView['published']>;
@@ -201,9 +189,9 @@ export function publishConfirm(version: number, inUse: number | null | undefined
  */
 export const TEMPLATE_ACCEPT = '.docx,.pdf';
 export const TEMPLATE_MAX_BYTES = 4 * 1024 * 1024;
-export const TEMPLATE_TOO_LARGE = 'The Word file must be 4 MB or smaller. Large pictures in it can be compressed in Word (Picture Format → Compress Pictures).';
-export const PDF_TEMPLATE_TOO_LARGE = 'The PDF must be 4 MB or smaller. Save a smaller copy of it and upload that.';
-export const NOT_TEMPLATE_FILE = 'Choose a Word file (.docx) or a PDF. A .doc file must be saved as .docx in Word first.';
+export const TEMPLATE_TOO_LARGE = 'The Word file must be 4 MB or smaller.';
+export const PDF_TEMPLATE_TOO_LARGE = 'The PDF must be 4 MB or smaller.';
+export const NOT_TEMPLATE_FILE = 'Choose a Word file (.docx) or a PDF.';
 
 /** Whether a file name is a Word document's (.docx). */
 export const isDocx = (name: string) => name.trim().toLowerCase().endsWith('.docx');
@@ -244,8 +232,7 @@ export function fieldsSummary(version: Pick<TemplateVersion, 'pageCount' | 'fiel
  * are lost too.
  */
 export function standardLayoutConfirm(dirty: boolean): string {
-  const ask = 'Replace the fields on this form with the standard layout? Fields you placed or moved are replaced.';
-  return dirty ? `${ask} Your unsaved changes will be lost.` : ask;
+  return dirty ? 'Replace the fields with the standard layout and lose your unsaved changes?' : 'Replace the fields with the standard layout?';
 }
 
 /** Said once the standard layout is on the form. */
@@ -253,5 +240,5 @@ export const STANDARD_LAYOUT_APPLIED = 'Standard layout applied.';
 
 /** Why a PDF draft can't be published yet: no field is placed on it (the API refuses it too); null when it can. */
 export function pdfPublishBlock(version: Pick<TemplateVersion, 'format' | 'fieldCount'>): string | null {
-  return isPdfVersion(version) && version.fieldCount === 0 ? "Can't be published yet: no fields are placed on the form. Place them first." : null;
+  return isPdfVersion(version) && version.fieldCount === 0 ? "Can't be published yet: no fields are placed on the form." : null;
 }

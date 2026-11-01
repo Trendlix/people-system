@@ -41,13 +41,13 @@ function Note({ children }: { children: React.ReactNode }) {
   return <section className="card p-6 text-sm text-muted">{children}</section>;
 }
 
-const DISCONNECT_MINE = 'Disconnect your calendar? HR’s times won’t leave out your busy times from it until you connect it again.';
+const DISCONNECT_MINE = 'Disconnect your calendar?';
 
 /** Their calendar: read by the company's connection, connected here, or nothing to connect yet; read only viewing only. */
 async function YourCalendar({ user }: { user: Session }) {
   const readOnly = isViewOnly(user);
   const loaded = await loadJson<MyCalendarsView>('/calendars/mine');
-  if (loaded.kind === 'unavailable') return <Note>Not available yet: the server doesn’t read calendars yet. Please try again after its next update.</Note>;
+  if (loaded.kind === 'unavailable') return <Note>Not available yet.</Note>;
   if (loaded.kind !== 'ok') return <Note>Your calendar connections could not be loaded. {loaded.messages.join(' ')}</Note>;
   const v = loaded.value;
   // the company's Zoho reads theirs already: no personal Zoho offered (one connected before stays, to disconnect)
@@ -55,28 +55,18 @@ async function YourCalendar({ user }: { user: Session }) {
   const google = v.meetings.find((m) => m.provider === 'google');
   return (
     <section aria-labelledby="your-calendar" className="card space-y-4 p-6">
-      <div className="space-y-1">
-        <h2 id="your-calendar" className="text-lg font-semibold">
-          Your Calendar
-        </h2>
-        <p className="text-sm text-muted">Only when you’re busy is read, never what your events are, who is in them or where they are.</p>
-      </div>
+      <h2 id="your-calendar" className="text-lg font-semibold">
+        Your Calendar
+      </h2>
       {v.companyZoho && (
-        <p className="text-sm">
-          Your Zoho Calendar’s busy times are read through the company’s Zoho connection, by your work email{v.workEmail ? ` (${v.workEmail})` : ''}: there is nothing to
-          connect.
-        </p>
+        <p className="text-sm">Zoho Calendar: read through the company’s connection{v.workEmail ? ` (${v.workEmail})` : ''}.</p>
       )}
       {v.companyMicrosoft && (
-        <p className="text-sm">
-          Your Outlook calendar’s busy times are read through the company’s Microsoft 365 app, by your work email{v.workEmail ? ` (${v.workEmail})` : ''}: there is nothing to
-          connect.
-        </p>
+        <p className="text-sm">Outlook calendar: read through the company’s Microsoft 365 app{v.workEmail ? ` (${v.workEmail})` : ''}.</p>
       )}
       {google && !google.busyTimes && (
         <p className="text-sm text-warn">
-          Your Google Meet connection doesn’t share your busy times yet. <Link href={MY_MEETINGS_PATH}>Reconnect to share your busy times</Link> (disconnect it on Your
-          Meetings, then connect it again and allow it).
+          Your Google Meet connection doesn’t share your busy times: <Link href={MY_MEETINGS_PATH}>reconnect it</Link>.
         </p>
       )}
       {shown.map(({ provider, available, connection }) => (
@@ -96,10 +86,7 @@ async function YourCalendar({ user }: { user: Session }) {
         </div>
       ))}
       {!shown.length && !v.companyZoho && !v.companyMicrosoft && (
-        <p className="text-sm text-muted">
-          No calendar can be connected yet: a Super Admin sets up the company’s Zoho Calendar (Organization → Calendars), or the Google and Microsoft apps (Organization →
-          Meetings). Your leave, holidays and booked interviews are taken away all the same.
-        </p>
+        <p className="text-sm text-muted">No calendar can be connected yet.</p>
       )}
     </section>
   );
@@ -137,9 +124,9 @@ function Upcoming({ rows }: { rows: MyUpcomingInterview[] }) {
 async function Mine({ searchParams }: { searchParams: PageProps<'/account/interview-hours'>['searchParams'] }) {
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
   if (user.developer) return <Note>Interview hours are each interviewer’s own: they aren’t open to developers.</Note>;
-  if (!user.employeeId) return <Note>Interview hours are for the people who interview: an account with an employee profile. Yours has none.</Note>;
+  if (!user.employeeId) return <Note>Interview hours need an employee profile; your account has none.</Note>;
   const loaded = await loadJson<MyInterviewHoursView>('/me/interview-hours');
-  if (loaded.kind === 'unavailable') return <Note>Not available yet: the server doesn’t keep interview hours yet. Please try again after its next update.</Note>;
+  if (loaded.kind === 'unavailable') return <Note>Not available yet.</Note>;
   if (loaded.kind !== 'ok') return <Note>Your interview hours could not be loaded. {loaded.messages.join(' ')}</Note>;
   const view = loaded.value;
   // whose account a refused sign-in should have been: the person acted as, by name (else one's own)
@@ -187,13 +174,7 @@ async function Mine({ searchParams }: { searchParams: PageProps<'/account/interv
 export default function YourInterviewHoursPage({ searchParams }: PageProps<'/account/interview-hours'>) {
   return (
     <div className="max-w-3xl space-y-4">
-      <div>
-        <h1 className="page-title">Your Interview Hours</h1>
-        <p className="mt-1 text-muted">
-          Set the weekly hours you can interview in, once. HR then sees the times you and the rest of a panel are free, with your leave, public holidays, your other
-          interviews and your calendar’s busy times already taken away, and books one; the candidate is invited by the system.
-        </p>
-      </div>
+      <h1 className="page-title">Your Interview Hours</h1>
       <Suspense fallback={<p className="text-sm text-muted">Loading…</p>}>
         <Mine searchParams={searchParams} />
       </Suspense>

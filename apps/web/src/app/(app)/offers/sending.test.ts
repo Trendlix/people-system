@@ -78,6 +78,6 @@ describe('the email HR sends from their own email', () => {
 describe('a new link', () => {
   it('asks first once a link was sent, since the earlier one stops working', () => {
     expect(newLinkConfirm(0)).toBeUndefined();
-    expect(newLinkConfirm(1)).toMatch(/earlier link will stop working/);
+    expect(newLinkConfirm(1)).toBe('Replace the earlier link with a new one?');
   });
 });

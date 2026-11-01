@@ -120,22 +120,13 @@ function EditablePaperDetails({
             <label htmlFor={fid('kind')} className="label">
               Document type
             </label>
-            <Select
-              id={fid('kind')}
-              name="kind"
-              aria-describedby={fid('kind-hint')}
-              defaultValue={valueOf(state, 'kind', kind)}
-              className="input sm:max-w-xs"
-            >
+            <Select id={fid('kind')} name="kind" defaultValue={valueOf(state, 'kind', kind)} className="input sm:max-w-xs">
               {MOVABLE_KINDS.map((k) => (
                 <option key={k} value={k}>
                   {PAPERWORK_LABELS[k]}
                 </option>
               ))}
             </Select>
-            <p id={fid('kind-hint')} className="hint">
-              Uploaded as the wrong document? Choose the right one and the file moves there.
-            </p>
           </div>
         )}
         <div>
@@ -156,10 +147,7 @@ function EditablePaperDetails({
           <label htmlFor={fid('expiresOn')} className="label">
             Expiry date
           </label>
-          <DateInput id={fid('expiresOn')} name="expiresOn" aria-describedby={fid('expiresOn-hint')} defaultValue={valueOf(state, 'expiresOn', expiresOn)} />
-          <p id={fid('expiresOn-hint')} className="hint">
-            Leave empty if it does not expire.
-          </p>
+          <DateInput id={fid('expiresOn')} name="expiresOn" defaultValue={valueOf(state, 'expiresOn', expiresOn)} />
         </div>
       </div>
       <div className="flex flex-wrap gap-3">

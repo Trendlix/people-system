@@ -144,15 +144,13 @@ export async function makeDocument(pages: PageCut[], name: string, limit: number
     return out;
   });
   if (!fitted) {
-    throw new Error(
-      `The adjusted document is still larger than ${limitText}, even at a lower quality and resolution. Remove the pages that aren't needed, or crop more closely.`,
-    );
+    throw new Error(`Still larger than ${limitText}: remove pages or crop more closely.`);
   }
   const note =
     fitted.lowered === 'quality'
-      ? `To stay under ${limitText}, the ${pdf ? 'pages were' : 'picture was'} saved at a lower quality.`
+      ? `Saved at a lower quality to stay under ${limitText}.`
       : fitted.lowered === 'resolution'
-        ? `To stay under ${limitText}, the ${pdf ? 'pages were' : 'picture was'} saved at a lower quality and resolution.`
+        ? `Saved at a lower quality and resolution to stay under ${limitText}.`
         : undefined;
   if (!pdf) {
     // its print size goes in the file too: the sheet chosen, else 300 dpi or an A4 sheet when it has the shape of one

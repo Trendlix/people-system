@@ -59,7 +59,6 @@ export function WhatsAppSettingsForm({ initial, viewingAs, big = false }: { init
           checked={on}
           disabled={viewingAs || (locked && !view.on)}
           onChange={(e) => switchTo(e.target.checked)}
-          aria-describedby={`${id}-on`}
           className="mt-0.5 size-5 shrink-0 accent-accent"
         />
         <span className="min-w-0">
@@ -70,10 +69,6 @@ export function WhatsAppSettingsForm({ initial, viewingAs, big = false }: { init
                 {view.mobile}
               </span>
             )}
-          </span>
-          <span id={`${id}-on`} className="hint block">
-            Besides the bell and your phone’s notifications, never instead. Your mobile on your profile; ask HR to change it. Reply STOP to any message
-            to turn them off.
           </span>
         </span>
       </label>
@@ -94,7 +89,7 @@ export function WhatsAppSettingsForm({ initial, viewingAs, big = false }: { init
             </Select>
           </div>
           {offered.map((g) => {
-            const { label, hint } = WHATSAPP_GROUP_LABELS[g];
+            const { label } = WHATSAPP_GROUP_LABELS[g];
             return (
               <label key={g} className={`${row} cursor-pointer hover:bg-canvas`}>
                 <input type="hidden" name="offered" value={g} />
@@ -103,14 +98,10 @@ export function WhatsAppSettingsForm({ initial, viewingAs, big = false }: { init
                   name={`group-${g}`}
                   checked={groups[g]}
                   onChange={(e) => setGroups((now) => ({ ...now, [g]: e.target.checked }))}
-                  aria-describedby={`${id}-${g}`}
                   className="mt-0.5 size-5 shrink-0 accent-accent"
                 />
                 <span className="min-w-0">
                   <span className="block text-sm font-medium">{label}</span>
-                  <span id={`${id}-${g}`} className="hint block">
-                    {hint}
-                  </span>
                 </span>
               </label>
             );

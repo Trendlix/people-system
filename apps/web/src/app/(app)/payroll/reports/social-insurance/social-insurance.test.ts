@@ -181,8 +181,8 @@ describe('the tiles', () => {
     expect(registerTiles(report).map((t) => [t.label, t.value, t.note])).toEqual([
       ['Registered', '3', '2 under the labour law not registered'],
       ['Insured wages', 'EGP 28,700.00', '1 person without an insured wage'],
-      ['Employee 11% a month', 'EGP 3,157.00', 'Deducted from their pay'],
-      ['Company 18.75% a month', 'EGP 5,381.25', 'Paid by the company'],
+      ['Employee 11% a month', 'EGP 3,157.00', null],
+      ['Company 18.75% a month', 'EGP 5,381.25', null],
     ]);
   });
 

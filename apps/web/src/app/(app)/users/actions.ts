@@ -35,7 +35,7 @@ export async function createUser(_prev: FormState, fd: FormData): Promise<FormSt
 }
 
 export async function updateRoles(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
-  return change(() => apiSend('PATCH', `/users/${id}`, { roles: roles(fd) }), 'Roles saved. They apply straight away.', {
+  return change(() => apiSend('PATCH', `/users/${id}`, { roles: roles(fd) }), 'Roles saved.', {
     roles: roles(fd),
   });
 }
@@ -46,14 +46,14 @@ export async function updateRoles(id: string, _prev: FormState, fd: FormData): P
  */
 export async function updateAssetsAccess(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
   const assetsAccess = text(fd, 'assetsAccess');
-  return change(() => apiSend('PATCH', `/users/${id}`, { assetsAccess }), 'Assets access saved. It applies straight away.', { assetsAccess });
+  return change(() => apiSend('PATCH', `/users/${id}`, { assetsAccess }), 'Assets access saved.', { assetsAccess });
 }
 
 export async function setActive(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
   const isActive = text(fd, 'isActive') === 'true';
   return change(
     () => apiSend('PATCH', `/users/${id}`, { isActive }),
-    isActive ? 'User reactivated. They can sign in again.' : 'User deactivated. They have been signed out and cannot sign in.',
+    isActive ? 'User reactivated.' : 'User deactivated.',
   );
 }
 
@@ -61,7 +61,7 @@ export async function setActive(id: string, _prev: FormState, fd: FormData): Pro
 export async function setPassword(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
   return change(
     () => apiSend('PUT', `/users/${id}/password`, { password: text(fd, 'password') }),
-    'New temporary password set, and fingerprint sign-in turned off on their phones. Pass it on to the person; they should change it after signing in.',
+    'Temporary password set.',
   );
 }
 
@@ -78,7 +78,7 @@ export async function endUserSessions(id: string): Promise<FormState> {
     throw err;
   }
   refresh();
-  return { message: ended === 1 ? 'Session ended. They have been signed out.' : ended ? `${ended} sessions ended. They have been signed out.` : 'They had no sessions open.' };
+  return { message: ended === 1 ? 'Session ended.' : ended ? `${ended} sessions ended.` : 'They had no sessions open.' };
 }
 
 /** Ends one of the user's sessions, as listed on their page. */

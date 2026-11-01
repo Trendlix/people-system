@@ -41,9 +41,9 @@ export function startingGroups(view: Pick<MyWhatsAppView, 'on' | 'groups'>): Rec
 
 /** Why the switch can't be turned on now, in words; null when it can. */
 export function blockedText(view: Pick<MyWhatsAppView, 'available' | 'mobile' | 'on'>, viewingAs: boolean): string | null {
-  if (viewingAs) return 'Only the person themself turns WhatsApp messages on or off, from their own account.';
-  if (!view.mobile) return 'There is no mobile number on your profile. Ask HR to add it, then turn WhatsApp messages on here.';
-  if (!view.available && !view.on) return 'The company hasn’t switched WhatsApp messages on yet. You can turn them on here once it does.';
+  if (viewingAs) return 'Only the person themself can change this.';
+  if (!view.mobile) return 'There is no mobile number on your profile: ask HR to add it.';
+  if (!view.available && !view.on) return 'The company hasn’t switched WhatsApp messages on yet.';
   return null;
 }
 
@@ -51,8 +51,8 @@ export function blockedText(view: Pick<MyWhatsAppView, 'available' | 'mobile' | 
 export function choiceNotes(view: MyWhatsAppView, when: (iso: string) => string): string[] {
   const out: string[] = [];
   if (view.on && view.optedInAt) out.push(`On since ${when(view.optedInAt)}.`);
-  if (view.on && !view.available) out.push('The company has WhatsApp messages switched off for now: nothing is sent until it switches them on again.');
-  if (view.mobileChanged) out.push('Your mobile number changed since you turned them on, so they are off: turn them on again for your number now.');
-  if (!view.on && view.stoppedBy === 'stop' && view.stoppedAt) out.push(`You replied STOP on WhatsApp on ${when(view.stoppedAt)}, so they are off. Turn them on again here if you like.`);
+  if (view.on && !view.available) out.push('The company has WhatsApp messages switched off for now.');
+  if (view.mobileChanged) out.push('Your mobile number changed, so they are off.');
+  if (!view.on && view.stoppedBy === 'stop' && view.stoppedAt) out.push(`You replied STOP on WhatsApp on ${when(view.stoppedAt)}, so they are off.`);
   return out;
 }

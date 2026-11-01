@@ -159,7 +159,6 @@ export function ReviewSelection({ vacancyId, ids, children }: { vacancyId: strin
             <button type="submit" name="decision" value="reject" disabled={pending || n === 0} className="btn btn-secondary">
               {reviewLabel('reject', n)}
             </button>
-            {n === 0 && !state.message && <span className="text-sm text-muted">Tick the applicants first.</span>}
             <Said state={state} />
           </div>
         </form>

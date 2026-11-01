@@ -30,14 +30,7 @@ export default function SalaryCalculatorPage({ searchParams }: PageProps<'/contr
   return (
     <div className="max-w-6xl space-y-6">
       <BackLink href="/contracts">Contracts</BackLink>
-      <div>
-        <h1 className="page-title">Salary Calculator</h1>
-        <p className="mt-1 max-w-3xl text-muted">
-          A gross salary&apos;s net, or the gross for a net, step by step, as the Ministry of Finance&apos;s salary tax system works it out: social insurance
-          on the insured wage, salary tax in its tiers, and the Martyrs&apos; Fund. For a monthly salary or pay by the hour (from the gross
-          or the net per hour), with any allowances on top. The address keeps what you type, to share a result.
-        </p>
-      </div>
+      <h1 className="page-title">Salary Calculator</h1>
       <Suspense fallback={<Loading />}>
         <Calculator searchParams={searchParams} />
       </Suspense>

@@ -40,7 +40,7 @@ describe('who sees the calendar pages', () => {
 
 describe('coming back from a calendar’s sign-in', () => {
   it('says connected, or why not in the system’s own words, and nothing else from the address', () => {
-    expect(calendarBanner({ connected: 'zoho' })).toEqual({ tone: 'ok', text: 'The Zoho account is connected: its busy times are read from now on.' });
+    expect(calendarBanner({ connected: 'zoho' })).toEqual({ tone: 'ok', text: 'The Zoho account is connected.' });
     expect(calendarBanner({ connect: 'google', problem: 'denied' })).toEqual({
       tone: 'danger',
       text: 'Google wasn’t allowed to share the busy times, so nothing was connected. Try again and allow it.',
@@ -95,7 +95,7 @@ describe('coming back from a calendar’s sign-in', () => {
     expect(target).toBe('/account/interview-hours?connected=zoho&said=no_email');
     expect(calendarBanner({ connected: 'zoho', said: 'no_email' })).toEqual({
       tone: 'ok',
-      text: 'The Zoho account is connected, but Zoho didn’t say which account signed in: its busy times are read for the email shown below. Check the busy times to be sure it’s your calendar.',
+      text: 'The Zoho account is connected, but Zoho didn’t say which account signed in: check the busy times.',
     });
     expect(calendarCallbackTarget({ back: '/account/interview-hours', ok: true, problem: null, said: 'something' }, 'zoho')).toBe('/account/interview-hours?connected=zoho');
   });

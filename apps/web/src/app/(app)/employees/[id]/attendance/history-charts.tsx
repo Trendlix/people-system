@@ -46,7 +46,7 @@ function Axes({ c }: { c: TrendChart | ColumnChart }) {
 }
 
 /** A chart's frame: the card, sideways scroll on a phone rather than labels shrunk out of reading, the tooltip. */
-function Frame({ c, tip, caption, children }: { c: TrendChart | ColumnChart; tip: ChartTip | null; caption: string; children: React.ReactNode }) {
+function Frame({ c, tip, children }: { c: TrendChart | ColumnChart; tip: ChartTip | null; children: React.ReactNode }) {
   return (
     <figure className="card p-4">
       <div className="overflow-x-auto">
@@ -58,16 +58,15 @@ function Frame({ c, tip, caption, children }: { c: TrendChart | ColumnChart; tip
           <Tip tip={tip} width={c.width} height={c.height} />
         </div>
       </div>
-      <figcaption className="mt-2 text-xs text-muted">{caption}</figcaption>
     </figure>
   );
 }
 
 /** The on-time trend: a 2px line, a dot on each month (or quarter) measured, the latest value at the line's end. */
-export function TrendLineChart({ chart: c, caption }: { chart: TrendChart; caption: string }) {
+export function TrendLineChart({ chart: c }: { chart: TrendChart }) {
   const [tip, setTip] = useState<ChartTip | null>(null);
   return (
-    <Frame c={c} tip={tip} caption={caption}>
+    <Frame c={c} tip={tip}>
       {c.paths.map((d) => (
         <path key={d} d={d} fill="none" className="stroke-accent" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
       ))}
@@ -102,10 +101,10 @@ export function TrendLineChart({ chart: c, caption }: { chart: TrendChart; capti
 }
 
 /** Columns from one baseline, 4px rounded at the data end, a 2px gap between them; the hovered one darker. */
-export function ColumnBarChart({ chart: c, caption }: { chart: ColumnChart; caption: string }) {
+export function ColumnBarChart({ chart: c }: { chart: ColumnChart }) {
   const [tip, setTip] = useState<ChartTip | null>(null);
   return (
-    <Frame c={c} tip={tip} caption={caption}>
+    <Frame c={c} tip={tip}>
       {c.bars.map((b) => {
         const on = tip?.key === b.key;
         return (

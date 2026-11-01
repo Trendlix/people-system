@@ -28,7 +28,6 @@ export function DepartmentPillarsChoice({
   // a team's department ("The department’s pillars (Production)"), else the company
   const parent = department.row.parent;
   const aboveLabel = parent ? `The department’s pillars (${parent.nameEn})` : 'The company’s pillars';
-  const above = department.above?.possessive ?? 'the company’s';
   return (
     <div className="space-y-5">
       <fieldset>
@@ -60,9 +59,7 @@ export function DepartmentPillarsChoice({
       ) : canFollowCompany(department.row) ? (
         <FollowCompanyForm view={view} department={department} action={action} today={today} />
       ) : (
-        <p className="text-sm text-muted">
-          {department.name} takes {above} pillars, with nothing coming: there is nothing to change. Choose “Its own pillars” to set pillars for it alone.
-        </p>
+        <p className="text-sm text-muted">Nothing to change.</p>
       )}
     </div>
   );

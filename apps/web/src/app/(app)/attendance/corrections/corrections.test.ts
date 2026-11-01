@@ -10,7 +10,6 @@ import {
   correctionForm,
   correctionFormProblems,
   correctionKindName,
-  correctionReadyText,
   correctionsListHref,
   correctionsPath,
   correctionStepText,
@@ -75,9 +74,10 @@ describe('a correction, in words', () => {
   });
 
   it('says where it goes once sent, each decision, and the steps in its own words', () => {
-    expect(correctionDoneText({ done: 'sent' }, 'with_manager', { role: 'team_lead' })?.text).toBe('Request sent. It goes to your team lead, then HR; each step shows on the request.');
-    expect(correctionDoneText({ done: 'recorded' }, 'approved')?.text).toContain('Day corrected, approved at once');
-    expect(correctionDoneText({ done: 'manager_approve' }, 'with_hr', null, true)?.text).toBe('Approved: the correction goes to the CEO.');
+    expect(correctionDoneText({ done: 'sent' }, 'with_manager', { role: 'team_lead' })?.text).toBe('Sent to your team lead.');
+    expect(correctionDoneText({ done: 'sent' }, 'with_hr', null, true)?.text).toBe('Sent to the CEO.');
+    expect(correctionDoneText({ done: 'recorded' }, 'approved')?.text).toBe('Day corrected.');
+    expect(correctionDoneText({ done: 'manager_approve' }, 'with_hr', null, true)?.text).toBe('Approved and sent to the CEO.');
     expect(correctionDoneText({ done: 'hr_approve' }, 'approved')?.text).toContain('the day is corrected');
     expect(correctionDoneText({ done: 'moved' }, 'with_hr')?.tone).toBe('warn');
     expect(correctionDoneText({ done: 'nonsense' }, 'with_hr')).toBeNull();
@@ -167,14 +167,6 @@ describe('the form', () => {
     });
     expect(correctionForm(form({ date: '12/10/2026', kind: 'wrong_time', checkIn: '8:55 am', checkOut: '', reason: 'x' })).body).toEqual({ date: DAY, kind: 'wrong_time', checkIn: '08:55', reason: 'x' });
     expect(correctionForm(form({ date: '', kind: 'x', checkIn: '', checkOut: '', reason: '' })).errors).toEqual(['Enter the day to correct.', 'Choose what was wrong.']);
-  });
-
-  it('says where it goes when it can be sent, or that HR corrects it at once', () => {
-    expect(correctionReadyText(typed(), false, 'Nour Adel')).toBe('Ready to send: forgot to check out on Monday 12/10/2026, to your direct manager (without one, your lead), then HR.');
-    expect(correctionReadyText(typed(), false, 'Nour Adel', true)).toContain('then the CEO');
-    expect(correctionReadyText(typed(), true, 'Nour Adel')).toBe(
-      'Ready to correct: forgot to check out on Monday 12/10/2026 for Nour Adel, at once. The day keeps what it was, shown as corrected from it.',
-    );
   });
 
   it('takes the month from the person’s view, none from an API from before corrections', () => {

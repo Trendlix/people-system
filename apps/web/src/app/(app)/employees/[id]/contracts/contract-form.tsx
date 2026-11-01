@@ -21,11 +21,10 @@ import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/c
 import { Select } from '@/components/select';
 import { formatDate, parseDate } from '@/lib/format';
 import type { AllowanceType, FormState } from '@/lib/types';
-import { OPEN_ENDED_NOTE, SPECIFIC_JOB_NOTE } from '../../employment-law';
 import { contractEnd, probationEnd } from './dates';
 import { choice, PayFields, typedPayOf, usePay, type PayDefaults } from './pay-fields';
 import { payChangeWarning } from './raise';
-import { hireTooSoonText, noProbationHint } from './training';
+import { hireTooSoonText } from './training';
 
 // The form of the New contract, Renew and Edit draft pages. While HR types, it shows when the contract ends, when
 // probation ends, and the pay (pay-fields.tsx): the basic and variable parts of the gross, for a full-time contract the
@@ -52,7 +51,7 @@ import { hireTooSoonText, noProbationHint } from './training';
 // another (12 at most), a monthly pay basis with no gross (No wage), and the allowances paid on top. Hiring one in one
 // form, HR is warned when the join date is less than 6 months after their last agreement ended ("a new trainee contract
 // can be issued after 6 months of the expiration of the last trainee contract"), which the API refuses. Converting an
-// agreement to a full-time contract uses this form as a full-time one, with its own start date hint (`startHint`).
+// agreement to a full-time contract uses this form as a full-time one.
 
 type Action = (prev: FormState, fd: FormData) => Promise<FormState>;
 
@@ -67,13 +66,6 @@ export type ContractDefaults = PayDefaults & {
   endDate: string;
   probationMonths: number;
   note: string;
-};
-
-/** What Contract length says under each choice. */
-const LENGTH_HINTS: Record<Length, string> = {
-  fixed: 'For a set number of months, renewed in writing before it ends. Carried on after its end without a written renewal, the law counts it as open-ended (Labour Law Art. 88).',
-  open_ended: OPEN_ENDED_NOTE,
-  specific_job: SPECIFIC_JOB_NOTE,
 };
 
 const lengthOf = (value: string): Length => ((CONTRACT_FORMS as readonly string[]).includes(value) ? (value as Length) : 'fixed');
@@ -92,7 +84,6 @@ export function ContractForm({
   renewal,
   payChange,
   probationHint,
-  startHint,
   trainingAgain,
   employmentType: employmentTypeProp,
   today,
@@ -106,7 +97,7 @@ export function ContractForm({
   /** The kinds of allowance (GET /allowance-types), the inactive ones too: those already on the contract stay shown. */
   allowanceTypes: readonly AllowanceType[];
   /** A renewal starts the day after the version before it ends (`startDate`, null when unknown), without probation. */
-  renewal: { startDate: string | null; after: string } | null;
+  renewal: { startDate: string | null } | null;
   /**
    * A renewal's pay against the version it renews (`version`, its `pay`): whether it changes to start with, and why
    * (owner's decisions, 16 October 2026). A change of pay is a raise, which the CEO approves before it is signed.
@@ -114,8 +105,6 @@ export function ContractForm({
   payChange?: { version: number; pay: VersionPay; changes: boolean; reason: RaiseReason | null };
   /** Why the probation starts as it does, e.g. someone who already had probation with the company. */
   probationHint?: string;
-  /** What the start date's hint says instead of the first contract's, e.g. converting an agreement to full-time. */
-  startHint?: string;
   /**
    * Hiring in one form: the person's name and their last internship agreement (the profile's nextTraining), to warn when
    * an intern's join date is before the 6 months are up; none when they never had one.
@@ -177,6 +166,7 @@ export function ContractForm({
         : null;
   const probation = renewal || intern ? 0 : Number(typed.probationMonths);
   const probationEnds = start && Number.isInteger(probation) && probation > 0 && probation <= 3 ? probationEnd(start, probation) : null;
+  const probationNote = renewal || intern ? '' : [probationHint, probationEnds && `Probation ends on ${formatDate(probationEnds)}.`].filter(Boolean).join(' ');
   // the salary, with the rates set by law of the year the contract starts (this year while there is no start date)
   const year = Number((start ?? today).slice(0, 4));
   const rates = lawRatesFor(year, lawYears);
@@ -235,24 +225,11 @@ export function ContractForm({
               id={fid('startDate')}
               value={renewal ? (renewal.startDate ? formatDate(renewal.startDate) : 'The day after the current version ends') : start ? formatDate(start) : 'The join date'}
               readOnly
-              aria-describedby={fid('startDate-hint')}
               className="input bg-canvas text-muted"
             />
           ) : (
-            <DateInput
-              id={fid('startDate')}
-              name="startDate"
-              aria-describedby={fid('startDate-hint')}
-              defaultValue={valueOf(state, 'startDate', formatDate(defaults.startDate))}
-            />
+            <DateInput id={fid('startDate')} name="startDate" defaultValue={valueOf(state, 'startDate', formatDate(defaults.startDate))} />
           )}
-          <p id={fid('startDate-hint')} className="hint">
-            {renewal
-              ? `A renewal starts the day after ${renewal.after} ends.`
-              : job
-                ? 'The first contract starts on the join date.'
-                : (startHint ?? 'The join date, unless the contract starts later. Leave empty for the join date.')}
-          </p>
         </div>
 
         <div>
@@ -261,11 +238,11 @@ export function ContractForm({
           </label>
           {renewal ? (
             // not sent: no probation on a renewal
-            <input id={fid('probationMonths')} value="0" readOnly aria-describedby={fid('probationMonths-hint')} className="input bg-canvas text-muted" />
+            <input id={fid('probationMonths')} value="0" readOnly className="input bg-canvas text-muted" />
           ) : intern ? (
             // an intern's agreement: none, sent as 0 (the API refuses more)
             <>
-              <input id={fid('probationMonths')} value="0" readOnly aria-describedby={fid('probationMonths-hint')} className="input bg-canvas text-muted" />
+              <input id={fid('probationMonths')} value="0" readOnly className="input bg-canvas text-muted" />
               <input type="hidden" name="probationMonths" value="0" />
             </>
           ) : (
@@ -277,18 +254,16 @@ export function ContractForm({
               min={0}
               max={3}
               step={1}
-              aria-describedby={fid('probationMonths-hint')}
+              aria-describedby={probationNote ? fid('probationMonths-hint') : undefined}
               defaultValue={valueOf(state, 'probationMonths', String(defaults.probationMonths))}
               className="input tabular-nums"
             />
           )}
-          <p id={fid('probationMonths-hint')} className="hint">
-            {intern
-              ? noProbationHint()
-              : renewal
-                ? 'No probation on a renewal: probation comes once with an employer (Labour Law Art. 90).'
-                : `${probationHint ?? 'At most 3 months, and only once with the company (Labour Law Art. 90). 0 for none.'}${probationEnds ? ` Probation ends on ${formatDate(probationEnds)}.` : ''}`}
-          </p>
+          {probationNote && (
+            <p id={fid('probationMonths-hint')} className="hint">
+              {probationNote}
+            </p>
+          )}
         </div>
       </div>
 
@@ -309,17 +284,18 @@ export function ContractForm({
             max={INTERN_MAX_MONTHS}
             step={1}
             required
-            aria-describedby={fid('durationMonths-hint')}
+            aria-describedby={end ? fid('durationMonths-hint') : undefined}
             defaultValue={typed.durationMonths}
             className="input tabular-nums"
           />
-          <p id={fid('durationMonths-hint')} className="hint">
-            An internship agreement is short: 1 to {INTERN_MAX_MONTHS} months, {INTERN_DEFAULT_MONTHS} unless you choose another.{' '}
-            {end ? `Ends on ${formatDate(end)}.` : start ? 'Enter the length to see when it ends.' : 'Enter the start date to see when it ends.'}
-          </p>
+          {end && (
+            <p id={fid('durationMonths-hint')} className="hint">
+              Ends on {formatDate(end)}.
+            </p>
+          )}
         </div>
       ) : (
-        <fieldset className="space-y-4" aria-describedby={fid('form-hint')}>
+        <fieldset className="space-y-4">
           <legend className="label">Contract length</legend>
           <div className="flex flex-wrap gap-2">
             {CONTRACT_FORMS.map((f) => (
@@ -329,9 +305,6 @@ export function ContractForm({
               </label>
             ))}
           </div>
-          <p id={fid('form-hint')} className="hint">
-            {LENGTH_HINTS[length]}
-          </p>
           {length === 'fixed' && (
             <div className="sm:max-w-[calc(50%-0.625rem)]">
               <label htmlFor={fid('durationMonths')} className="label">
@@ -347,13 +320,15 @@ export function ContractForm({
                 max={60}
                 step={1}
                 required
-                aria-describedby={fid('durationMonths-hint')}
+                aria-describedby={end ? fid('durationMonths-hint') : undefined}
                 defaultValue={typed.durationMonths}
                 className="input tabular-nums"
               />
-              <p id={fid('durationMonths-hint')} className="hint">
-                {end ? `Ends on ${formatDate(end)}.` : start ? 'Enter the length to see when it ends.' : 'Enter the start date to see when it ends.'}
-              </p>
+              {end && (
+                <p id={fid('durationMonths-hint')} className="hint">
+                  Ends on {formatDate(end)}.
+                </p>
+              )}
             </div>
           )}
           {length === 'specific_job' && (
@@ -368,22 +343,16 @@ export function ContractForm({
                   required
                   maxLength={500}
                   autoComplete="off"
-                  aria-describedby={fid('jobToDo-hint')}
+                  placeholder="e.g. Building the new website"
                   defaultValue={typed.jobToDo}
                   className="input"
                 />
-                <p id={fid('jobToDo-hint')} className="hint">
-                  What the contract is for, as the contract names it, e.g. &quot;Building the new website&quot;.
-                </p>
               </div>
               <div>
                 <label htmlFor={fid('endDate')} className="label">
                   Expected end date {optional}
                 </label>
-                <DateInput id={fid('endDate')} name="endDate" aria-describedby={fid('endDate-hint')} defaultValue={typed.endDate} />
-                <p id={fid('endDate-hint')} className="hint">
-                  When the job should be done, if known. The contract ends when it is done.
-                </p>
+                <DateInput id={fid('endDate')} name="endDate" defaultValue={typed.endDate} />
               </div>
             </div>
           )}
@@ -397,12 +366,10 @@ export function ContractForm({
         allowanceTypes={allowanceTypes}
         fullTime={fullTime}
         noWage={intern}
-        year={year}
-        yearIs="the year the contract starts"
         lead={
           payChange && (
             <div className="space-y-5">
-              <fieldset aria-describedby={`${fid('payChange-hint')}${payWarning ? ` ${fid('payChange-warning')}` : ''}`}>
+              <fieldset aria-describedby={payWarning ? fid('payChange-warning') : undefined}>
                 <legend className="label">Does the pay change?</legend>
                 <div className="flex flex-wrap gap-2">
                   {(Object.keys(PAY_CHANGE_ANSWERS) as PayChangeAnswer[]).map((a) => (
@@ -412,11 +379,6 @@ export function ContractForm({
                     </label>
                   ))}
                 </div>
-                <p id={fid('payChange-hint')} className="hint">
-                  {answer === 'changes'
-                    ? 'A renewal with new pay counts as a raise: the CEO approves it before it is signed. Once saved, send it to the CEO with the contract on the Employment tab.'
-                    : `The pay of version ${payChange.version}, as below. A renewal with the same pay needs no approval.`}
-                </p>
                 <div role="status">
                   {payWarning && (
                     <p id={fid('payChange-warning')} className="hint text-warn">
@@ -434,7 +396,6 @@ export function ContractForm({
                     id={fid('raiseReason')}
                     name="raiseReason"
                     required
-                    aria-describedby={fid('raiseReason-hint')}
                     defaultValue={valueOf(state, 'raiseReason', payChange.reason ?? '')}
                     className="input"
                   >
@@ -445,9 +406,6 @@ export function ContractForm({
                       </option>
                     ))}
                   </Select>
-                  <p id={fid('raiseReason-hint')} className="hint">
-                    The CEO sees it with the change of pay.
-                  </p>
                 </div>
               )}
             </div>
@@ -464,13 +422,9 @@ export function ContractForm({
           name="note"
           rows={3}
           maxLength={500}
-          aria-describedby={fid('note-hint')}
           defaultValue={valueOf(state, 'note', defaults.note)}
           className="input"
         />
-        <p id={fid('note-hint')} className="hint">
-          E.g. what was agreed beyond the contract. Up to 500 characters.
-        </p>
       </div>
 
       <div className="flex flex-wrap gap-3 border-t border-line pt-6">

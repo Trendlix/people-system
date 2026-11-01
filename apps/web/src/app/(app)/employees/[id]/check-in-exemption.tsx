@@ -65,7 +65,7 @@ export async function CheckInExemptionSection({ employee, user }: { employee: Pi
             today={today}
           />
         ) : (
-          active.length === 0 && <p className="text-sm text-muted">Not exempt from check-in now: their working days count from their check-ins.</p>
+          active.length === 0 && <p className="text-sm text-muted">Not exempt from check-in now.</p>
         )}
         {ended.length > 0 && (
           <details className="text-sm">

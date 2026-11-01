@@ -30,16 +30,9 @@ async function ImportAttendance({ params }: { params: PageProps<'/payroll/[id]/a
       <div className="space-y-2">
         <BackLink href={runHref(run.id)}>{title}</BackLink>
         <h1 className="page-title">Import Attendance from Zoho People</h1>
-        <p className="max-w-3xl text-muted">
-          The month&apos;s check-ins and check-outs from Zoho People, for {title}. Each day is counted by the system&apos;s rules, not Zoho&apos;s: the
-          hours within the employee&apos;s shift, at most its hours a day; a working day without a check-in is an absent day (the run&apos;s no-show
-          days); leave comes from the Leave module, and a day Zoho marks as leave without leave in the system is listed for you to record; the
-          permission hours are the requests approved in the system, else Zoho&apos;s, within the month&apos;s allowance. Each check-in is kept as at
-          the office or remote, never its address.
-        </p>
       </div>
       {run.status !== 'draft' ? (
-        <Empty>This payroll isn&apos;t a draft any more, so attendance can&apos;t be imported on it.</Empty>
+        <Empty>This payroll isn&apos;t a draft, so attendance can&apos;t be imported.</Empty>
       ) : preparesPayroll(user) ? (
         <section aria-labelledby="upload-heading" className="card space-y-3 p-6">
           <h2 id="upload-heading" className="font-semibold">
@@ -48,7 +41,7 @@ async function ImportAttendance({ params }: { params: PageProps<'/payroll/[id]/a
           <UploadAttendanceForm action={uploadAttendance.bind(null, run.id)} />
         </section>
       ) : (
-        <Empty>HR uploads the attendance files. Open an import below to review it.</Empty>
+        <Empty>Only HR uploads attendance files.</Empty>
       )}
       <section aria-labelledby="imports-heading" className="space-y-3">
         <h2 id="imports-heading" className="text-lg font-semibold">

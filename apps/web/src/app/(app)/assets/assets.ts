@@ -206,12 +206,6 @@ export function statusTone(status: AssetStatus): string {
 /** A useful life in years: "5 years", "1 year". */
 export const yearsText = (years: number | null): string => (years === null ? '—' : `${years} ${years === 1 ? 'year' : 'years'}`);
 
-/** The group's useful life, as the field's placeholder: "5 (the group's)"; none for consumables. */
-export function usefulLifeHint(group: AssetGroup): string {
-  const years = ASSET_GROUP_RULES[group].usefulLifeYears;
-  return years === null ? 'Consumables have no useful life.' : `${ASSET_GROUP_LABELS[group]}: ${yearsText(years)} unless you set another.`;
-}
-
 // ---------- the forms ----------
 
 const ARABIC_DIGITS = /[٠-٩]/g;
@@ -435,7 +429,7 @@ export function draftedText(draft: Pick<AssetDraftView, 'createdAt' | 'createdBy
 export function photosLeftText(had: number, chosen: number, max: number): string {
   const left = max - had - chosen;
   if (left <= 0) return `That is ${max}, the most an asset has.`;
-  if (had + chosen === 0) return `Up to ${max} photos. The first is the one the lists show.`;
+  if (had + chosen === 0) return `Up to ${max} photos.`;
   return `${left} more ${left === 1 ? 'photo' : 'photos'} can be added.`;
 }
 

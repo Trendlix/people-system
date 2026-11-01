@@ -27,7 +27,6 @@ import {
   parseHours,
   payLabel,
   plainAmount,
-  ratesYearText,
   salaryFor,
   savedNetChange,
   splitSalary,
@@ -424,12 +423,6 @@ describe('the rates set by law of the year', () => {
     ]);
     expect(rows[1].note).toBe('capped at 18,000.00');
     expect(rows.at(-1)?.note).toBe("gross plus the company's 19% insurance, 3,420.00");
-  });
-
-  it('says which year’s rates are used', () => {
-    expect(ratesYearText(2026, lawRatesFor(2026, KEPT))).toBe('the rates set by law for 2026');
-    expect(ratesYearText(2028, lawRatesFor(2028, KEPT))).toBe('the rates set by law for 2028, those of 2027');
-    expect(ratesYearText(2024, lawRatesFor(2024, KEPT))).toBe('the rates set by law for 2024, those of 2025');
   });
 
   it('carries the salary over with them when switching what HR starts from', () => {

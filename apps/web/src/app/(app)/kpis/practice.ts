@@ -80,7 +80,7 @@ export const practiceWho = (step: KpiPracticeStep, v: Card) => kpiStandInWho(KPI
 export function standInText(step: KpiPracticeStep, v: Card): string {
   const who = practiceWho(step, v);
   const doing = step === 'self_rate' ? 'rating' : step === 'score' ? 'scoring' : step === 'calibrate' ? 'calibrating' : 'signing';
-  return `You’re ${doing} as ${who}. It is kept as done by you for ${who}.`;
+  return `You’re ${doing} as ${who}.`;
 }
 
 /** A form's title for a step stood in for: "Rating as Omar Ali", "Scoring as the manager", "Calibrating as HR". */
@@ -100,7 +100,7 @@ export const practiceDoneHref = (id: string, done: PracticeDone) => `${KPI_PATHS
 
 /** The step that comes next for the caller, in words: "Next: Score as the manager."; final: said so. */
 export function practiceNextText(v: Pick<KpiScorecardView, 'status' | 'standIn' | 'employee' | 'scorer'>): string {
-  if (v.status === 'final') return 'It is final now: the practice run is complete.';
+  if (v.status === 'final') return 'It is final now.';
   const next = openPracticeSteps(v.standIn);
   if (!next.length) return '';
   return `Next: ${next.map((s) => practiceStepLabel(s, v)).join(' or ')}.`;
@@ -113,21 +113,21 @@ export function practiceDoneText(query: Query, v: Pick<KpiScorecardView, 'status
   const say = (text: string) => ({ text: [text, next].filter(Boolean).join(' '), tone: 'ok' as const });
   switch (done) {
     case 'started':
-      return say('Practice scorecard started. Nobody is told of it.');
+      return say('Practice scorecard started.');
     case 'self_saved':
-      return say('The self-rating is saved, not sent yet.');
+      return say('Self-rating saved, not sent yet.');
     case 'self_sent':
-      return say('The self-rating is sent.');
+      return say('Self-rating sent.');
     case 'score_saved':
-      return say('The scoring is saved, not sent yet.');
+      return say('Scoring saved, not sent yet.');
     case 'score_sent':
-      return say(v.status === 'hr' ? 'The scoring is sent to HR to calibrate.' : 'The scoring is sent: it is ready to sign.');
+      return say(v.status === 'hr' ? 'Sent to HR.' : 'Sent for sign-off.');
     case 'calibrated':
       return say('Calibrated and sent for sign-off.');
     case 'signed':
       return say(v.status === 'final' ? 'Signed. Both have signed.' : 'Signed.');
     case 'moved':
-      return { text: 'This practice scorecard has moved on since you opened it. It shows where it stands now.', tone: 'warn' };
+      return { text: 'This practice scorecard has moved on since you opened it.', tone: 'warn' };
     default:
       return null;
   }
@@ -138,7 +138,7 @@ export function deletedText(query: Query): string | null {
   const raw = typeof query.deleted === 'string' ? query.deleted : '';
   if (!/^\d+$/.test(raw)) return null;
   const n = Number(raw);
-  if (n === 0) return 'There were no practice scorecards to delete.';
+  if (n === 0) return 'None to delete.';
   return `${practiceLabel(n)} deleted.`;
 }
 
@@ -203,7 +203,7 @@ export function startedSentence(p: Pick<KpiPracticeInfo, 'startedBy' | 'startedA
 
 /** A draft's metrics left out of a practice scorecard, being in Unplaced; null with none. */
 export const unplacedText = (n: number | null | undefined): string | null =>
-  n ? `${n === 1 ? 'One metric' : `${n} metrics`} of the draft ${n === 1 ? 'is' : 'are'} in Unplaced, so left out until placed in a pillar.` : null;
+  n ? `${n === 1 ? 'One metric' : `${n} metrics`} in Unplaced left out.` : null;
 
 /** Its template version in a list: "Version 3", with whether it is a draft (shown as a badge). */
 export const rowTemplateText = (r: Pick<KpiPracticeRow, 'template'>) => `Version ${r.template.version}`;

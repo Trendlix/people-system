@@ -154,7 +154,7 @@ export const LEAVE_COUNTS = '/leave/requests/counts';
 
 const EMPTY: Record<LeaveFilter, string> = {
   waiting: 'No leave requests are waiting for you.',
-  all: 'No leave requests yet. Employees ask for leave from My Requests; HR records leave on their behalf with Record leave.',
+  all: 'No leave requests yet.',
   with_manager: 'No leave requests are with a direct manager.',
   with_hr: 'No leave requests are with HR.',
   approved: 'No leave approved.',
@@ -282,22 +282,17 @@ export function leaveProgressText(
  * a C-level person's (`confidential`) goes to the CEO instead of HR (19 October 2026).
  */
 export function leaveSentText(status: LeaveStatus, manager?: Pick<RequestApprover, 'role'> | null, confidential?: boolean | null): string {
-  if (status === 'approved') return 'Leave recorded, approved at once. It counts in the balance and in the month’s payroll.';
-  const hr = hrStageName(confidential);
-  return status === 'with_manager'
-    ? `Request sent. It goes to ${yourApprover(manager)}, then ${hr}; each step shows on the request.`
-    : `Request sent. It goes to ${hr}; each step shows on the request.`;
+  if (status === 'approved') return 'Leave recorded.';
+  return `Sent to ${status === 'with_manager' ? yourApprover(manager) : hrStageName(confidential)}.`;
 }
 
 /** Said when a decision is refused as the request moved on since the page was opened (the API's 409). */
-export const LEAVE_MOVED_ON = 'This request has moved on since you opened it: someone else decided it, or it was cancelled. It shows where it stands now.';
+export const LEAVE_MOVED_ON = 'This request has moved on since you opened it.';
 
 /** What the page says once a decision went through; a C-level person's request goes on to the CEO, not HR (`confidential`). */
 export function leaveDecidedText(decision: LeaveDecision, stage: LeaveStage, confidential?: boolean | null): string {
-  if (decision === 'reject') return 'Request rejected. The employee sees your comment.';
-  return leaveStatusAfterApproval(stage) === 'with_hr'
-    ? `Approved: the request goes to ${hrStageName(confidential)}.`
-    : 'Approved: the leave counts in the balance and in the month’s payroll.';
+  if (decision === 'reject') return 'Request rejected.';
+  return leaveStatusAfterApproval(stage) === 'with_hr' ? `Approved and sent to ${hrStageName(confidential)}.` : 'Leave approved.';
 }
 
 /**
@@ -313,14 +308,14 @@ export function leaveDoneText(
 ): { text: string; tone: 'ok' | 'warn' } | null {
   const done = one(query.done);
   if (done === 'sent' || done === 'recorded') return { text: leaveSentText(status, manager, confidential), tone: 'ok' };
-  if (done === 'cancelled') return { text: 'Leave cancelled. Its days are back in the balance; it stays on the list, cancelled.', tone: 'ok' };
+  if (done === 'cancelled') return { text: 'Leave cancelled.', tone: 'ok' };
   if (done === 'moved') return { text: LEAVE_MOVED_ON, tone: 'warn' };
   // the colleague who covers changed by the employee (25 October 2026)
-  if (done === 'cover') return { text: 'Cover saved. The colleague who covers now is told, and the one before is told they no longer cover it.', tone: 'ok' };
+  if (done === 'cover') return { text: 'Cover saved.', tone: 'ok' };
   // a Super Admin's edit (26 October 2026)
-  if (done === 'edited') return { text: 'Leave edited. The log of every step lists what changed.', tone: 'ok' };
+  if (done === 'edited') return { text: 'Leave edited.', tone: 'ok' };
   // a Super Admin undid its cancellation (26 October 2026)
-  if (done === 'restored') return { text: 'Cancellation undone. The leave is back where it stood before; the log of every step says so.', tone: 'ok' };
+  if (done === 'restored') return { text: 'Cancellation undone.', tone: 'ok' };
   const [stage, decision] = done.split('_');
   if (!(LEAVE_STAGES as readonly string[]).includes(stage) || !(LEAVE_DECISIONS as readonly string[]).includes(decision)) return null;
   return { text: leaveDecidedText(decision as LeaveDecision, stage as LeaveStage, confidential), tone: 'ok' };
@@ -408,16 +403,6 @@ export function leaveDecisionButton(decision: LeaveDecision | '', stage: LeaveSt
   if (decision === '') return { label: 'Save the decision', busy: 'Saving…' };
   return { label: leaveStatusAfterApproval(stage) === 'with_hr' ? `Approve and send to ${hrStageName(confidential)}` : 'Approve the leave', busy: 'Approving…' };
 }
-
-/** Who reads the decision's comment, for the hint under its box. */
-export const LEAVE_COMMENT_READERS = 'The employee sees your comment, and so do the direct manager, HR and the CEO.';
-
-/**
- * Who reads the decision's comment: LEAVE_COMMENT_READERS; a C-level person's request (`confidential`) HR doesn't see,
- * only the CEO and the Super Admin (19 October 2026).
- */
-export const leaveCommentReaders = (confidential?: boolean | null) =>
-  confidential === true ? 'The employee sees your comment, and so do the direct manager, the CEO and the Super Admin.' : LEAVE_COMMENT_READERS;
 
 /**
  * HR cancelling an approved request: the comment is required (POST /leave/requests/:id/cancel); `what` it is, leave or

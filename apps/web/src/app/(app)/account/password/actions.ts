@@ -18,5 +18,5 @@ export async function changePassword(_prev: FormState, fd: FormData): Promise<Fo
     throw err;
   }
   // the API also ends the person's other sessions and turns off fingerprint sign-in on their phones (20 October 2026)
-  return { message: 'Your password has been changed. Your other sessions were signed out and fingerprint sign-in was turned off on your phones.' };
+  return { message: 'Password changed.' };
 }

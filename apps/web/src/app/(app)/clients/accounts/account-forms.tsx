@@ -52,7 +52,6 @@ function AmountField({
   value,
   onChange,
   required,
-  hint,
 }: {
   id: string;
   name: string;
@@ -60,7 +59,6 @@ function AmountField({
   value: string;
   onChange: (v: string) => void;
   required: boolean;
-  hint?: string;
 }) {
   return (
     <div>
@@ -76,14 +74,8 @@ function AmountField({
         placeholder="e.g. 1500.00"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        aria-describedby={hint ? `${id}-hint` : undefined}
         className="input tabular-nums"
       />
-      {hint && (
-        <p id={`${id}-hint`} className="hint">
-          {hint}
-        </p>
-      )}
     </div>
   );
 }
@@ -181,11 +173,6 @@ function AccountFields({
         value={amount}
         onChange={setAmount}
         required={!!account || !tierId}
-        hint={
-          account
-            ? 'Filled in for the next people assigned: those on it keep their own amounts.'
-            : 'Filled in for each person assigned; change it for one whose amount differs.'
-        }
       />
       <div>
         <label htmlFor={fid('departmentId')} className="label">
@@ -276,16 +263,7 @@ export function AccountActions({
           <label htmlFor={fid('endedOn')} className="label">
             Ends on
           </label>
-          <DateInput
-            id={fid('endedOn')}
-            name="endedOn"
-            required
-            defaultValue={valueOf(ending.state, 'endedOn', formatDate(today))}
-            aria-describedby={fid('endedOn-hint')}
-          />
-          <p id={fid('endedOn-hint')} className="hint">
-            Its people&apos;s open assignments end that day.
-          </p>
+          <DateInput id={fid('endedOn')} name="endedOn" required defaultValue={valueOf(ending.state, 'endedOn', formatDate(today))} />
         </div>
         <Footer pending={ending.pending} label="End account" pendingText="Ending…" onClose={() => setClosing(false)} />
       </form>
@@ -350,14 +328,7 @@ export function AssignPerson({
           <label htmlFor={fid('employeeId')} className="label">
             Person
           </label>
-          <Select
-            id={fid('employeeId')}
-            name="employeeId"
-            required
-            defaultValue={valueOf(state, 'employeeId', '')}
-            aria-describedby={fid('employeeId-hint')}
-            className="input"
-          >
+          <Select id={fid('employeeId')} name="employeeId" required defaultValue={valueOf(state, 'employeeId', '')} className="input">
             <option value="">{options.length ? 'Choose…' : 'No one else to choose'}</option>
             {options.map((o) => (
               <option key={o.value} value={o.value}>
@@ -365,9 +336,6 @@ export function AssignPerson({
               </option>
             ))}
           </Select>
-          <p id={fid('employeeId-hint')} className="hint">
-            Someone with a current employment whose contract has the per-account allowance (the accounts allowance).
-          </p>
         </div>
         <div>
           <label htmlFor={fid('fromDate')} className="label">
@@ -379,10 +347,7 @@ export function AssignPerson({
           <label htmlFor={fid('toDate')} className="label">
             To <span className="font-normal text-muted">(optional)</span>
           </label>
-          <DateInput id={fid('toDate')} name="toDate" defaultValue={valueOf(state, 'toDate', '')} aria-describedby={fid('toDate-hint')} />
-          <p id={fid('toDate-hint')} className="hint">
-            Empty: still on it.
-          </p>
+          <DateInput id={fid('toDate')} name="toDate" defaultValue={valueOf(state, 'toDate', '')} />
         </div>
         {seesAmounts && (
           <AmountField
@@ -392,7 +357,6 @@ export function AssignPerson({
             value={amount}
             onChange={setAmount}
             required={false}
-            hint="The account’s default, filled in: change it when this person’s differs."
           />
         )}
         <div className={seesAmounts ? undefined : 'sm:col-span-2'}>
@@ -451,15 +415,7 @@ export function AssignmentActions({
             <label htmlFor={fid('toDate')} className="label">
               To <span className="font-normal text-muted">(optional)</span>
             </label>
-            <DateInput
-              id={fid('toDate')}
-              name="toDate"
-              defaultValue={valueOf(edit.state, 'toDate', formatDate(assignment.toDate))}
-              aria-describedby={fid('toDate-hint')}
-            />
-            <p id={fid('toDate-hint')} className="hint">
-              Empty: still on it.
-            </p>
+            <DateInput id={fid('toDate')} name="toDate" defaultValue={valueOf(edit.state, 'toDate', formatDate(assignment.toDate))} />
           </div>
           {seesAmounts && assignment.amount !== null && (
             <AmountField id={fid('amount')} name="amount" label="Amount (EGP a month)" value={amount} onChange={setAmount} required />

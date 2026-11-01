@@ -18,8 +18,8 @@ import type { CheckInLocationView } from '@/lib/attendance-types';
 import { deleteRefusal } from '@/lib/session';
 import type { FormState } from '@/lib/types';
 import { todayInCairo } from '@/lib/date-picker';
-import { addedText, addressesBody, clientEndBody, gpsLockBody, gpsLockSaved, locationBody, locationRuleBody, locationRuleSaved, networksBody } from './setup';
-import { MAPS_REMOVED_TEXT, mapsIntentOf, mapsSavedText, mapsSettingsBody, type MapsFormState } from './maps-setup';
+import { addressesBody, clientEndBody, gpsLockBody, locationBody, locationRuleBody, networksBody } from './setup';
+import { MAPS_REMOVED_TEXT, mapsIntentOf, mapsSettingsBody, type MapsFormState } from './maps-setup';
 
 /** The submitted values, so the form can be refilled after an error. */
 function submitted(fd: FormData): Record<string, string> {
@@ -48,16 +48,12 @@ const at = (id: string) => `${LOCATIONS}/${encodeURIComponent(id)}`;
 export async function createLocation(_prev: FormState, fd: FormData): Promise<FormState> {
   const { body, problems } = locationBody(fd);
   if (problems.length) return { errors: problems, values: submitted(fd) };
-  return send(
-    fd,
-    () => apiSend<CheckInLocationView>('POST', LOCATIONS, body),
-    (made) => addedText(body.name, made?.isMain ?? false),
-  );
+  return send(fd, () => apiSend<CheckInLocationView>('POST', LOCATIONS, body), `Added ${body.name}.`);
 }
 
 /** This location made the main office, the main until now a sub-location (POST …/locations/:id/make-main). */
 export async function makeMain(id: string, name: string): Promise<FormState> {
-  return send(null, () => apiSend('POST', `${at(id)}/make-main`), `${name} is the main office now: check-ins within it count as Office.`);
+  return send(null, () => apiSend('POST', `${at(id)}/make-main`), `${name} is the main office now.`);
 }
 
 /** People linked to a sub-location (POST …/locations/:id/people { employeeIds }), the ids chosen in the picker. */
@@ -94,43 +90,39 @@ export async function removeLocation(id: string): Promise<FormState> {
 export async function saveNetworks(_prev: FormState, fd: FormData): Promise<FormState> {
   const { body, problems } = networksBody(fd);
   if (problems.length) return { errors: problems, values: submitted(fd) };
-  return send(
-    fd,
-    () => apiSend('PUT', '/attendance/check-in-setup/networks', body, { signIp: true }),
-    body.lock ? 'Saved. Office staff now check in and out on the office network only.' : 'Saved. Check-ins aren’t locked to the office network.',
-  );
+  return send(fd, () => apiSend('PUT', '/attendance/check-in-setup/networks', body, { signIp: true }), 'Saved.');
 }
 
 /** The switch refusing presses without a location (PUT /attendance/check-in-setup/location-rule). */
 export async function saveLocationRule(_prev: FormState, fd: FormData): Promise<FormState> {
   const body = locationRuleBody(fd);
-  return send(fd, () => apiSend('PUT', '/attendance/check-in-setup/location-rule', body), locationRuleSaved(body.refuseWithoutLocation));
+  return send(fd, () => apiSend('PUT', '/attendance/check-in-setup/location-rule', body), 'Saved.');
 }
 
 /** The GPS lock (PUT /attendance/check-in-setup/gps-lock { lock, roughMetres }): switched on only with the main office set (the API says so). */
 export async function saveGpsLock(_prev: FormState, fd: FormData): Promise<FormState> {
   const { body, problems } = gpsLockBody(fd);
   if (problems.length) return { errors: problems, values: submitted(fd) };
-  return send(fd, () => apiSend('PUT', '/attendance/check-in-setup/gps-lock', body), gpsLockSaved(body.lock));
+  return send(fd, () => apiSend('PUT', '/attendance/check-in-setup/gps-lock', body), 'Saved.');
 }
 
 /** A client location's end changed (PATCH …/locations/:id { validUntil }): a date, or none. */
 export async function saveClientEnd(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
   const { body, problems } = clientEndBody(fd, todayInCairo());
   if (!body) return { errors: problems, values: submitted(fd) };
-  return send(fd, () => apiSend('PATCH', at(id), body), body.validUntil ? 'Saved. It counts until the date chosen.' : 'Saved. It has no end now, until HR ends it.');
+  return send(fd, () => apiSend('PATCH', at(id), body), 'Saved.');
 }
 
 /** A client location ended now (POST …/locations/:id/end): no check-in counts within it from now on. */
 export async function endClientLocation(id: string, name: string): Promise<FormState> {
-  return send(null, () => apiSend('POST', `${at(id)}/end`), `${name} is ended: check-ins within it no longer count.`);
+  return send(null, () => apiSend('POST', `${at(id)}/end`), `${name} is ended.`);
 }
 
 /** Zoho People's check-in addresses (PATCH /payroll/settings { officeAddresses }). */
 export async function saveZohoAddresses(_prev: FormState, fd: FormData): Promise<FormState> {
   const { body, problems } = addressesBody(fd);
   if (problems.length) return { errors: problems, values: submitted(fd) };
-  return send(fd, () => apiSend('PATCH', '/payroll/settings', body), 'Saved. The next Zoho People import reads check-ins with these.');
+  return send(fd, () => apiSend('PATCH', '/payroll/settings', body), 'Saved.');
 }
 
 /**
@@ -148,9 +140,9 @@ export async function submitMapsSettings(prev: MapsFormState, fd: FormData): Pro
     }
     const { body, errors } = mapsSettingsBody(fd);
     if (errors.length) return { errors, saved: prev.saved };
-    const view = (await apiSend<MapsSettingsView>('PUT', '/maps-settings', body))!;
+    await apiSend<MapsSettingsView>('PUT', '/maps-settings', body);
     refresh();
-    return { message: mapsSavedText(view), saved: (prev.saved ?? 0) + 1 };
+    return { message: 'Saved.', saved: (prev.saved ?? 0) + 1 };
   } catch (err) {
     if (err instanceof ApiError) return { errors: err.messages, saved: prev.saved };
     throw err;

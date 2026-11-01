@@ -35,7 +35,7 @@ describe('the tiles', () => {
     } as unknown as StatisticsView;
     expect(summaryTiles(s).map((t) => [t.label, t.value, t.note])).toEqual([
       ['Company cost', 'EGP 1,000,000.00', '3 months approved'],
-      ['Gross', 'EGP 900,000.00', 'Earned and allowances'],
+      ['Gross', 'EGP 900,000.00', null],
       ['Net', 'EGP 700,000.00', 'EGP 690,000.00 transferred'],
       ['Employees paid', '12', '34 person-months'],
       ['Average gross', 'EGP 26,470.59', 'Median EGP 25,000.00'],

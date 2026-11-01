@@ -129,7 +129,7 @@ export function payBody(fd: FormData, errors: string[], draft: boolean) {
 export function raiseReasonFrom(fd: FormData, key: string, errors: string[]): RaiseReason | undefined {
   const reason = text(fd, key);
   if ((RAISE_REASONS as readonly string[]).includes(reason)) return reason as RaiseReason;
-  errors.push('Choose why the pay changes: annual raise, performance raise, counter-offer raise, promotion, market adjustment, cost of living or other.');
+  errors.push('Choose why the pay changes.');
   return undefined;
 }
 
@@ -145,7 +145,7 @@ export function lengthBody(fd: FormData, errors: string[], draft: boolean) {
   if (form === 'open_ended') return { form };
   if (form === 'specific_job') {
     const jobToDo = text(fd, 'jobToDo');
-    if (!jobToDo) errors.push('Enter the job the contract is for: a contract for a specific job ends when it is done (Labour Law Art. 155).');
+    if (!jobToDo) errors.push('Enter the job the contract is for.');
     const endDate = dateFrom(fd, 'endDate', 'expected end date', errors);
     return { form, jobToDo, ...(endDate ? { endDate } : draft ? { endDate: null } : {}) };
   }

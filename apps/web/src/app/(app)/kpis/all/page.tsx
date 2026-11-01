@@ -109,9 +109,9 @@ function Figures({ overview: o }: { overview: KpiOverview }) {
     <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
       <Stat label="Scorecards" value={o.total} note={`${final} final · ${o.total - final} still open`} />
       <Stat label="Average final %" value={percentText(o.average)} note={averageChangeText(o.average, o.previousAverage, o.month) ?? 'None scored yet'} />
-      <Stat label="Calibrated by HR" value={o.calibrated} note="Scorecards with a pick HR changed, with its reason" />
-      <Stat label="Self-ratings missed" value={o.selfMissed} note="Not sent by the self-rating day; the scoring went on" />
-      <Stat label="Final unsigned" value={o.unsigned} note="Final on the sign-off day without every signature" />
+      <Stat label="Calibrated by HR" value={o.calibrated} />
+      <Stat label="Self-ratings missed" value={o.selfMissed} />
+      <Stat label="Final unsigned" value={o.unsigned} />
     </dl>
   );
 }
@@ -180,7 +180,7 @@ function Departments({ overview: o }: { overview: KpiOverview }) {
 
 async function All({ searchParams }: { searchParams: PageProps<'/kpis/all'>['searchParams'] }) {
   const [user, query] = await Promise.all([getCurrentUser(), searchParams]);
-  if (!seesAllKpis(user)) return <Empty>Only HR, the CEO and a Super Admin see every scorecard. Yours are on My KPIs.</Empty>;
+  if (!seesAllKpis(user)) return <Empty>Only HR, the CEO and a Super Admin see every scorecard.</Empty>;
   const status = readStatus(query);
   const department = readDepartment(query);
   const loaded = await loadOverview(readMonth(query));
@@ -220,12 +220,12 @@ async function All({ searchParams }: { searchParams: PageProps<'/kpis/all'>['sea
       </div>
       {o.hidden > 0 && (
         <p className="rounded-lg bg-card px-4 py-3 text-sm text-muted">
-          C-level people are left out: {o.hidden === 1 ? 'one scorecard' : `${o.hidden} scorecards`}, which the CEO scores.
+          C-level people left out: {o.hidden === 1 ? 'one scorecard' : `${o.hidden} scorecards`}.
         </p>
       )}
 
       {o.total === 0 ? (
-        <Empty>No scorecards for {monthName}. A month&apos;s scorecards open on the 1st of the next month for everyone whose job title has a published template.</Empty>
+        <Empty>No scorecards for {monthName}.</Empty>
       ) : (
         <>
           <Figures overview={o} />
@@ -283,12 +283,9 @@ async function All({ searchParams }: { searchParams: PageProps<'/kpis/all'>['sea
 
       {heatmap.kind === 'ok' && heatmap.value.rows.length > 0 && (
         <section aria-labelledby="all-heatmap" className="card">
-          <div className="flex flex-wrap items-baseline justify-between gap-3 px-5 pt-5">
-            <h2 id="all-heatmap" className="font-semibold">
-              Everyone by Month
-            </h2>
-            <span className="text-sm text-muted">Final % by month, coloured by level</span>
-          </div>
+          <h2 id="all-heatmap" className="px-5 pt-5 font-semibold">
+            Everyone by Month
+          </h2>
           <div className="mt-3">
             <Heatmap heatmap={heatmap.value} label="Everyone’s final % by month" />
           </div>
@@ -302,10 +299,6 @@ export default function AllKpisPage({ searchParams }: PageProps<'/kpis/all'>) {
   return (
     <div className="max-w-7xl">
       <h1 className="page-title">All KPIs</h1>
-      <p className="mt-1 text-muted">
-        Every KPI scorecard of a month: where each stands, HR&apos;s calibrations, the levels and each department&apos;s pillar averages. A
-        month&apos;s scorecards open on the 1st of the next month and count in that month&apos;s payroll.
-      </p>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>
           <All searchParams={searchParams} />

@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { headers } from 'next/headers';
 import { Suspense } from 'react';
 import { currentNetworkOf, normalizedIp } from '@trendlix/shared';
@@ -88,23 +87,9 @@ import { ZohoAddressesForm } from './zoho-form';
 
 export const metadata: Metadata = { title: 'Check-in Setup · People System' };
 
-const LOCATIONS_INTRO =
-  'A check-in on the system within the main office is Office; within a sub-location it is remote, shown with its name; anywhere else remote, at an approved home Home, and without the location, location unknown. Each check-in keeps the spot where it was pressed, read only then: HR, the CEO and the Super Admin see it on a map, and each employee their own.';
-const SUBS_INTRO =
-  'Places people work from, such as a studio or a client’s site. A check-in within one is remote, shown as “Remote - Studio”. Those linked to it check in there as their own place: not flagged, and while check-ins are locked to the office network, Office staff linked to it may check in there off it. Anyone else is flagged “Not their location” for HR to check.';
-const NETWORKS_INTRO =
-  'The office’s internet line, by its public address. With the lock on, Office staff can check in and out only from it, or at a sub-location they are linked to: elsewhere the press is refused, with a link to ask for an attendance correction. A check-in on it counts as at the main office whatever the location says. With the GPS lock on too, a press passes when either does, so a rough reading on the office Wi-Fi isn’t refused. No employee’s address is ever kept.';
-const ZOHO_INTRO = 'For attendance imported from Zoho People: a check-in at one of these addresses is a day at the office, anywhere else remote.';
-const LOCATION_RULE_INTRO =
-  'Whether a check-in or check-out on the website needs the location, for everyone. In the app it always does; HR recording a day never does. The GPS lock (below) needs it from Office staff whatever this says.';
-const GPS_LOCK_INTRO =
-  'Whether Office staff must be at a check-in location to check in and out, read from the location of each press. No server key or fixed address is needed, unlike the office network’s lock; with both on, a press passes when either does. Best in the app, whose location is more precise than a browser’s.';
-const CLIENTS_INTRO =
-  'Places at a client the CEO approved from an employee’s request: a check-in within one counts for everyone, shown as “Client · name”, and passes the GPS lock. HR changes or ends one here.';
-
 /** What a section says in place of what it couldn't load. */
 function notLoaded(loaded: Exclude<Loaded<unknown>, { kind: 'ok' }>, what: string): string {
-  if (loaded.kind === 'unavailable') return `Not available yet: the server does not have ${what} yet. Please try again after its next update.`;
+  if (loaded.kind === 'unavailable') return `Not available yet: the server does not have ${what} yet.`;
   if (loaded.kind === 'forbidden') return 'Only HR and Admin keep the check-in setup.';
   return `The ${what} could not be loaded. ${loaded.messages.join(' ')}`;
 }
@@ -115,7 +100,7 @@ async function LocationsSection({ user }: { user: SessionUser }) {
   const [loaded, linkable] = await Promise.all([loadLocations(), loadLinkable()]);
   if (loaded.kind !== 'ok') {
     return (
-      <SetupSection id={LOCATIONS_ID} title="Check-in Locations" intro={LOCATIONS_INTRO}>
+      <SetupSection id={LOCATIONS_ID} title="Check-in Locations">
         <Missing>{notLoaded(loaded, 'the check-in locations')}</Missing>
       </SetupSection>
     );
@@ -130,7 +115,7 @@ async function LocationsSection({ user }: { user: SessionUser }) {
   // whom Link people offers; an API from before sub-locations has no such list, and no linking
   const candidates = linkable.kind === 'ok' ? linkable.value : null;
   return (
-    <SetupSection id={LOCATIONS_ID} title="Check-in Locations" intro={LOCATIONS_INTRO}>
+    <SetupSection id={LOCATIONS_ID} title="Check-in Locations">
       <div className="space-y-8">
         {main ? (
           <MainOfficeCard
@@ -144,7 +129,7 @@ async function LocationsSection({ user }: { user: SessionUser }) {
           <div className="space-y-4 rounded-xl border border-dashed border-line bg-canvas p-6">
             <div>
               <h3 className="font-semibold">Main Office</h3>
-              <p className="mt-1 text-sm text-muted">No main office yet: every check-in on the system is kept as location unknown. Add the office: the first location added is the main office.</p>
+              <p className="mt-1 text-sm text-muted">No main office yet.</p>
             </div>
             <AddLocation action={createLocation} around={all} first />
           </div>
@@ -152,18 +137,11 @@ async function LocationsSection({ user }: { user: SessionUser }) {
 
         {(main || subs.length > 0) && (
           <div className="space-y-4">
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <div className="max-w-3xl">
-                <h3 className="font-semibold">
-                  Sub-Locations{subs.length > 0 && <span className="font-normal text-muted tabular-nums"> · {subs.length}</span>}
-                </h3>
-                <p className="mt-1 text-sm text-muted">{SUBS_INTRO}</p>
-              </div>
-            </div>
+            <h3 className="font-semibold">
+              Sub-Locations{subs.length > 0 && <span className="font-normal text-muted tabular-nums"> · {subs.length}</span>}
+            </h3>
             {subs.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-line px-4 py-8 text-center text-sm text-muted">
-                No sub-locations. Add places people work from, such as a studio or a client&apos;s site.
-              </p>
+              <p className="rounded-xl border border-dashed border-line px-4 py-8 text-center text-sm text-muted">No sub-locations.</p>
             ) : (
               <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {subs.map((l) => (
@@ -176,7 +154,6 @@ async function LocationsSection({ user }: { user: SessionUser }) {
                     link={linkPeople.bind(null, l.id)}
                     unlink={unlinkPerson.bind(null, l.id)}
                     makeMain={makeMain.bind(null, l.id, l.name)}
-                    mainName={main?.name ?? null}
                     remove={removes ? removeLocation.bind(null, l.id) : null}
                   />
                 ))}
@@ -188,12 +165,9 @@ async function LocationsSection({ user }: { user: SessionUser }) {
 
         {clients.length > 0 && (
           <div id={CLIENTS_ID} className="scroll-mt-6 space-y-4">
-            <div className="max-w-3xl">
-              <h3 className="font-semibold">
-                Client Locations<span className="font-normal text-muted tabular-nums"> · {clients.length}</span>
-              </h3>
-              <p className="mt-1 text-sm text-muted">{CLIENTS_INTRO}</p>
-            </div>
+            <h3 className="font-semibold">
+              Client Locations<span className="font-normal text-muted tabular-nums"> · {clients.length}</span>
+            </h3>
             <ul className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {clients.map((l) => (
                 <ClientLocationCard
@@ -208,17 +182,16 @@ async function LocationsSection({ user }: { user: SessionUser }) {
             </ul>
           </div>
         )}
-        {!removes && <p className="text-xs text-muted">Only a Super Admin removes a location, and the main office only once it is the last; edit one to move it, or make another the main office.</p>}
       </div>
     </SetupSection>
   );
 }
 
 async function NetworksSection() {
-  const [loaded, h, gps] = await Promise.all([loadNetworks(), headers(), loadGpsLock()]);
+  const [loaded, h] = await Promise.all([loadNetworks(), headers()]);
   if (loaded.kind !== 'ok') {
     return (
-      <SetupSection id={NETWORKS_ID} title="Office Networks" intro={NETWORKS_INTRO}>
+      <SetupSection id={NETWORKS_ID} title="Office Networks">
         <Missing>{notLoaded(loaded, 'the office networks')}</Missing>
       </SetupSection>
     );
@@ -228,11 +201,11 @@ async function NetworksSection() {
   // this page's address: as the API trusted it, else as this website sees it (before the key is in place)
   const currentIp = state.here.signed ? state.here.ip : normalizedIp(clientIp(h));
   return (
-    <SetupSection id={NETWORKS_ID} title="Office Networks" intro={NETWORKS_INTRO}>
+    <SetupSection id={NETWORKS_ID} title="Office Networks">
       <div className="space-y-5">
         <div className={`rounded-lg px-4 py-3 text-sm ${status.ready ? 'bg-ok-soft text-ok' : 'bg-warn-soft text-warn'}`} role="status">
           <p>{status.text}</p>
-          <p className="mt-1">{lockText(state, gps.kind === 'ok' && gps.value.inForce)}</p>
+          <p className="mt-1">{lockText(state)}</p>
         </div>
         <NetworksForm action={saveNetworks} networks={state.networks} lock={state.lock} ready={status.ready} currentIp={currentIp} currentRange={currentNetworkOf(currentIp)} />
       </div>
@@ -241,17 +214,15 @@ async function NetworksSection() {
 }
 
 async function LocationRuleSection() {
-  const [loaded, networks, gps] = await Promise.all([loadLocationRule(), loadNetworks(), loadGpsLock()]);
-  // whether a press from the office network counts without a location: the key in place on both sides, and a network
-  const networkReady = networks.kind === 'ok' ? networkStatus(networks.value, webKeySet()).ready && networks.value.networks.length > 0 : null;
+  const loaded = await loadLocationRule();
   return (
-    <SetupSection id={LOCATION_RULE_ID} title="Check-ins Without a Location" intro={LOCATION_RULE_INTRO}>
+    <SetupSection id={LOCATION_RULE_ID} title="Check-ins Without a Location">
       {loaded.kind !== 'ok' ? (
         <Missing>{notLoaded(loaded, 'the switch')}</Missing>
       ) : (
         <div className="space-y-5">
           <p className={`rounded-lg px-4 py-3 text-sm ${loaded.value.refuseWithoutLocation ? 'bg-ok-soft text-ok' : 'bg-line-soft text-muted'}`} role="status">
-            {locationRuleText(loaded.value, networkReady, gps.kind === 'ok' && gps.value.inForce)}
+            {locationRuleText(loaded.value)}
           </p>
           <LocationRuleForm action={saveLocationRule} on={loaded.value.refuseWithoutLocation} />
         </div>
@@ -261,10 +232,9 @@ async function LocationRuleSection() {
 }
 
 async function GpsLockSection() {
-  const [loaded, networks] = await Promise.all([loadGpsLock(), loadNetworks()]);
-  const networkInForce = networks.kind === 'ok' && networks.value.inForce;
+  const loaded = await loadGpsLock();
   return (
-    <SetupSection id={GPS_LOCK_ID} title="Check-ins Outside the Check-in Locations" intro={GPS_LOCK_INTRO}>
+    <SetupSection id={GPS_LOCK_ID} title="Check-ins Outside the Check-in Locations">
       {loaded.kind !== 'ok' ? (
         <Missing>{notLoaded(loaded, 'the GPS lock')}</Missing>
       ) : (
@@ -273,7 +243,7 @@ async function GpsLockSection() {
             className={`rounded-lg px-4 py-3 text-sm ${loaded.value.inForce ? 'bg-ok-soft text-ok' : loaded.value.lock ? 'bg-warn-soft text-warn' : 'bg-line-soft text-muted'}`}
             role="status"
           >
-            {gpsLockText(loaded.value, networkInForce)}
+            {gpsLockText(loaded.value)}
           </p>
           <GpsLockForm action={saveGpsLock} on={loaded.value.lock} roughMetres={loaded.value.roughMetres} />
         </div>
@@ -285,7 +255,7 @@ async function GpsLockSection() {
 async function ZohoSection() {
   const loaded = await loadSettings();
   return (
-    <SetupSection id={ZOHO_ID} title="Zoho People's Check-in Addresses" intro={ZOHO_INTRO}>
+    <SetupSection id={ZOHO_ID} title="Zoho People's Check-in Addresses">
       {loaded.kind !== 'ok' ? (
         <Missing>{notLoaded(loaded, 'the addresses')}</Missing>
       ) : loaded.value.officeAddresses === undefined ? (
@@ -340,14 +310,6 @@ async function Gate({ searchParams }: { searchParams: PageProps<'/organization/c
 export default function CheckInSetupPage({ searchParams }: PageProps<'/organization/check-in-setup'>) {
   return (
     <div className="max-w-5xl space-y-6">
-      <p className="max-w-3xl text-sm text-muted">
-        Where a check-in counts as Office: the main office and the office&apos;s networks, with the lock that keeps Office staff&apos;s check-ins to the
-        office network; the sub-locations people work from, shown as Remote with their name, and the client locations, everyone&apos;s; whether a check-in
-        needs the location; the GPS lock that keeps Office staff&apos;s check-ins to the check-in locations (with both locks on, either passing is enough);
-        the people exempt from check-in, whose working days count as full hours; the places employees asked to check in from; and Zoho People&apos;s
-        addresses for its import. Who can check in from anywhere, or without a location, is set on each person&apos;s <Link href="/employees">profile</Link>,
-        with their work arrangement.
-      </p>
       <Suspense fallback={<Loading />}>
         <Gate searchParams={searchParams} />
       </Suspense>

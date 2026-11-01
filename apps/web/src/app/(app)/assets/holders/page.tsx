@@ -27,7 +27,7 @@ async function Cards({ searchParams }: { searchParams: PageProps<'/assets/holder
       <form action={CUSTODY_PATHS.holders} role="search" className="card flex flex-wrap items-end gap-3 p-4">
         <div className="min-w-56 flex-1">
           <label htmlFor="holders-search" className="label">
-            Type a name or code to see what they hold
+            Name or code
           </label>
           <input id="holders-search" name="q" type="search" maxLength={100} defaultValue={q} placeholder="E.g. Mona or EMP-0007" className="input" />
         </div>
@@ -46,7 +46,6 @@ async function Cards({ searchParams }: { searchParams: PageProps<'/assets/holder
         <Empty>{q ? `Nobody matches "${q}".` : 'Nobody holds anything now.'}</Empty>
       ) : (
         <>
-          {!q && <p className="text-sm text-muted">Everyone holding something now:</p>}
           <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {loaded.value.map((c) => (
               <li key={c.employee.id}>
@@ -75,12 +74,9 @@ export default function HoldersPage({ searchParams }: PageProps<'/assets/holders
   return (
     <AssetsFrame tab={CUSTODY_PATHS.holders}>
       <div className="max-w-6xl">
-        <p className="text-muted">What each employee holds of the company&apos;s assets, since when, and what came back damaged or missing.</p>
-        <div className="mt-6">
-          <Suspense fallback={<Loading />}>
-            <Cards searchParams={searchParams} />
-          </Suspense>
-        </div>
+        <Suspense fallback={<Loading />}>
+          <Cards searchParams={searchParams} />
+        </Suspense>
       </div>
     </AssetsFrame>
   );

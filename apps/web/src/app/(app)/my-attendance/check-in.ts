@@ -20,7 +20,6 @@ import {
   PUNCH_KIND_LABELS,
   shiftWindowOn,
   shiftWorkHours,
-  timeOfDayText,
   type CheckInLocationError,
   type CheckInPlace,
   type PunchKind,
@@ -474,9 +473,9 @@ export interface CounterWords {
 export function counterWords(c: CheckInCount): CounterWords {
   const until = c.countUntil === null ? null : cairoClock(c.countUntil);
   const yours = c.hoursToWork === null ? null : `Your ${hoursToWorkText(c.hoursToWork)} ${c.hoursToWork === 1 ? 'is' : 'are'} done`;
-  const extra = `${yours}. Extra time${until ? ` until ${until}` : ''} fills short hours this month`;
+  const extra = `${yours}. Extra time counts${until ? ` until ${until}` : ''}`;
   let status: string | null = null;
-  if (c.phase === 'after_limit') status = `Hours count only until ${until}, so none are counted after it`;
+  if (c.phase === 'after_limit') status = `No hours count after ${until}`;
   else if (c.phase === 'done') status = yours;
   else if (c.phase === 'extra' || (c.phase === 'stopped' && c.hoursDone)) status = extra;
   else if (c.phase === 'stopped') status = `Hours counted until ${until}`;
@@ -524,18 +523,6 @@ function liveCount(view: Pick<CheckInTodayView, 'date' | 'next' | 'day' | 'shift
   return checkInCount({ ...countRuleOf(view.date, view.shift, !!view.firstDay), checkIn: Date.parse(day.checkIn), now, again });
 }
 
-/**
- * What the panel tells a new employee on their first working day (owner, 27 October 2026: "a new employee when checked in
- * in his first day move the checkin to 9am automatically to prevent delay in instructions"): "Your first day: it is
- * counted from your shift’s start, 8:00 AM, whatever time you check in." Null on any other day, and from an API from
- * before it.
- */
-export function firstDayNote(view: Pick<CheckInTodayView, 'firstDay' | 'shift'>): string | null {
-  if (!view.firstDay) return null;
-  const start = view.shift?.startTime ? `, ${timeOfDayText(view.shift.startTime)}` : '';
-  return `Your first day: it is counted from your shift’s start${start}, whatever time you check in.`;
-}
-
 /** The server's clock as the counter keeps it: the newest server time seen, and how far it is ahead of this device's. */
 export interface ServerClock {
   newest: number;
@@ -554,21 +541,6 @@ export function noteServerTime(clock: ServerClock, serverMs: number, deviceMs: n
 
 /** The working day the panel is for: "Monday 19/10/2026". */
 export const dayTitle = (date: string): string => `${weekdayOf(date)} ${formatDate(date)}`.trim();
-
-/** Said quietly when HR hasn't set the office's point yet. */
-export const OFFICE_NOT_SET_TEXT = "HR hasn't set the office's location on the system yet, so check-ins are kept as location unknown for now.";
-
-/**
- * What the panel says of where the location goes: it is asked each press, and the spot is kept with it (owner, 20
- * October 2026: "Yes, keep the spot"; HR, the CEO and the Super Admin see it).
- */
-export const LOCATION_NOTE = 'Your location is read only when you press, and HR can see it.';
-
-/**
- * The same inside the employee app, which reads the phone's own location and tells a made-up one (Phase 2, 20 October
- * 2026), and needs it for a press (owner, 20 October 2026: "Refuse without location", "App only").
- */
-export const LOCATION_NOTE_IN_APP = 'Your phone’s location is read only when you press, and HR can see it. A faked location is flagged.';
 
 /**
  * What to do when a press's location couldn't be read (the employee app's Phase 2, 20 October 2026: "a clear message

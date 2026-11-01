@@ -45,7 +45,7 @@ async function Stock({ searchParams }: { searchParams: PageProps<'/assets/stock'
         )}
       </div>
       {rows.length === 0 ? (
-        <Empty>{reorderOnly ? 'Nothing needs reordering.' : 'No consumables yet. Add one from Add Asset, in the Consumables and stock group.'}</Empty>
+        <Empty>{reorderOnly ? 'Nothing needs reordering.' : 'No consumables yet.'}</Empty>
       ) : (
         <ul aria-label="Consumables" className="space-y-3">
           {rows.map((r) => (
@@ -71,7 +71,6 @@ async function Stock({ searchParams }: { searchParams: PageProps<'/assets/stock'
           ))}
         </ul>
       )}
-      <p className="text-xs text-muted">Each use and restock is kept on the consumable&apos;s page, with who made it and the stock after it.</p>
     </div>
   );
 }
@@ -80,7 +79,6 @@ export default function StockPage({ searchParams }: PageProps<'/assets/stock'>) 
   return (
     <div className="max-w-4xl">
       <h1 className="page-title">Stock</h1>
-      <p className="mt-1 text-muted">Consumables by quantity: use them, restock them, and see what needs reordering.</p>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>
           <Stock searchParams={searchParams} />

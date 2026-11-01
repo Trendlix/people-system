@@ -108,16 +108,16 @@ export const assetsText = (n: number): string => `${n} ${n === 1 ? 'asset' : 'as
 
 /** What the Delete selected confirm says first. */
 export function deleteConfirmText(f: BulkForecast): string {
-  const skip = f.skipped.length ? ` ${f.skipped.length} will be skipped: only an asset never in custody can be deleted.` : '';
+  const skip = f.skipped.length ? ` ${f.skipped.length} will be skipped.` : '';
   if (!f.will.length) return `None of them can be deleted.${skip}`;
-  return `${assetsText(f.will.length)} will be deleted, with their photos. Their codes are never given again. This can’t be undone.${skip}`;
+  return `${assetsText(f.will.length)} will be deleted.${skip}`;
 }
 
 /** What the Dispose selected confirm says first. */
 export function disposeConfirmText(f: BulkForecast): string {
   const skip = f.skipped.length ? ` ${f.skipped.length} will be skipped.` : '';
   if (!f.will.length) return `None of them can be disposed of.${skip}`;
-  return `${assetsText(f.will.length)} will be disposed of. They stay on record but leave every total and list.${skip}`;
+  return `${assetsText(f.will.length)} will be disposed of.${skip}`;
 }
 
 // ---------- the result ----------

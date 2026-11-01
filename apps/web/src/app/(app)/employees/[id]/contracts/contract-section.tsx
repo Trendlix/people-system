@@ -8,7 +8,7 @@ import { getCurrentUser } from '@/lib/session';
 import type { AllowanceLine, Contract, EmployeeProfile, Employment } from '@/lib/types';
 import { canSeePayroll } from '../../../payroll/list';
 import { deleteContract, signContract, unsignContract, updateSignedContract } from '../../contract-actions';
-import { contractLengthText, OPEN_ENDED_NOTE, SPECIFIC_JOB_NOTE } from '../../employment-law';
+import { contractLengthText } from '../../employment-law';
 import { LawWarningBadges, LawWarningNotes } from '../../law-badges';
 import { FieldGrid, Loading, ProfileSection, salaryHistoryHref, todayInCairo, type GridField } from '../../ui';
 import { ActionButton, SignContract, SignedContractDetails } from './contract-buttons';
@@ -16,7 +16,7 @@ import { loadContracts } from './data';
 import { daysBetween, termLabel } from './dates';
 import { RaiseCard } from './raise-card';
 import { allowancesLabel, daysLabel, formatEgp, hourlyNetTerms, hourlyTerms, payLabel } from './salary';
-import { CONVERSION_SIGN_HINT, contractActions, convertHref, draftKind, trainingReminder } from './training';
+import { contractActions, convertHref, draftKind, trainingReminder } from './training';
 import { shownCode, withCodeInBrackets } from '@/lib/hidden';
 import { Hidden } from '@/components/hidden';
 
@@ -93,10 +93,9 @@ function AllowanceList({ lines }: { lines: AllowanceLine[] }) {
   );
 }
 
-/** Under an intern's agreement's length: which one it is, and what follows it (19 October 2026). */
+/** Under an intern's agreement's length: renewed once already (19 October 2026). */
 function agreementNote(c: Contract): string | undefined {
-  if (!c.training) return undefined;
-  return c.training.next === 'convert_or_end' ? 'Renewed once: next, converted to full-time or ended' : 'Renewed once at most, then converted to full-time';
+  return c.training?.next === 'convert_or_end' ? 'Renewed once' : undefined;
 }
 
 /**
@@ -114,18 +113,8 @@ function contractFields(c: Contract, unpaid: boolean): GridField[] {
     { key: 'contract-number', label: 'Contract number', value: shownCode(c.number) ?? <Hidden />, note: `Version ${c.version}` },
     unpaid
       ? { key: 'contract-form', label: 'Contract length', value: 'Internship agreement', note: [contractLengthText(c), agreementNote(c)].filter(Boolean).join('. ') }
-      : {
-          key: 'contract-form',
-          label: 'Contract length',
-          value: contractLengthText(c),
-          note: c.form === 'open_ended' ? OPEN_ENDED_NOTE : c.form === 'specific_job' ? SPECIFIC_JOB_NOTE : agreementNote(c),
-        },
-    {
-      key: 'contract-period',
-      label: 'Start – end',
-      value: termLabel(c),
-      note: c.form === 'specific_job' && c.endDate ? 'The end: when the job is expected to be done' : undefined,
-    },
+      : { key: 'contract-form', label: 'Contract length', value: contractLengthText(c), note: agreementNote(c) },
+    { key: 'contract-period', label: 'Start – end', value: termLabel(c) },
     {
       key: 'contract-probation',
       label: 'Probation end date',
@@ -161,7 +150,7 @@ function contractFields(c: Contract, unpaid: boolean): GridField[] {
     // the unpaid internship: no wage, the allowances alone (no basic part, net or insured salary to show)
     const allowances = c.allowances ?? [];
     fields.push(
-      { key: 'contract-gross', label: 'Gross salary', value: INTERN_NO_WAGE_TEXT, protected: true, note: 'The allowances are what the intern is paid' },
+      { key: 'contract-gross', label: 'Gross salary', value: INTERN_NO_WAGE_TEXT, protected: true },
       {
         key: 'contract-allowances',
         label: 'Allowances',
@@ -178,14 +167,14 @@ function contractFields(c: Contract, unpaid: boolean): GridField[] {
         label: 'Gross salary',
         value: formatEgp(c.grossSalary),
         protected: true,
-        note: hourly ? 'The monthly estimate: the hourly rate × the hours a week × 52 ÷ 12' : allowances.length > 0 ? 'Without the allowances' : undefined,
+        note: hourly ? 'Monthly estimate' : undefined,
       },
       {
         key: 'contract-allowances',
         label: 'Allowances',
         value: allowances.length > 0 ? <AllowanceList lines={allowances} /> : <span className="text-muted">None</span>,
         protected: true,
-        note: allowances.length > 0 && c.allowancesTotal !== null && `${formatEgp(c.allowancesTotal)} a month in total, on top of the gross`,
+        note: allowances.length > 0 && c.allowancesTotal !== null && `${formatEgp(c.allowancesTotal)} a month in total`,
       },
       ...(allowances.length > 0
         ? [{ key: 'contract-total', label: 'Gross and allowances', value: c.totalSalary !== null && formatEgp(c.totalSalary), protected: true, note: 'A month' }]
@@ -195,7 +184,7 @@ function contractFields(c: Contract, unpaid: boolean): GridField[] {
         label: 'Basic / variable',
         value: c.basicSalary !== null && c.variableSalary !== null && `${formatEgp(c.basicSalary)} / ${formatEgp(c.variableSalary)}`,
         protected: true,
-        note: c.basicPercent !== null && `${c.basicPercent}% basic; the variable part follows the monthly performance reports`,
+        note: c.basicPercent !== null && `${c.basicPercent}% basic`,
       },
       {
         key: 'contract-net',
@@ -204,13 +193,7 @@ function contractFields(c: Contract, unpaid: boolean): GridField[] {
         protected: true,
         note: allowances.length > 0 ? 'Allowances included' : undefined,
       },
-      {
-        key: 'contract-insured',
-        label: 'Insured salary',
-        value: c.insuredSalary !== null && formatEgp(c.insuredSalary),
-        protected: true,
-        note: 'On the social insurance copy: the gross and the insured allowances, capped at the maximum insurable wage',
-      },
+      { key: 'contract-insured', label: 'Insured salary', value: c.insuredSalary !== null && formatEgp(c.insuredSalary), protected: true },
     );
   }
   if (c.note) fields.push({ key: 'contract-note', label: 'Note', value: c.note });
@@ -233,8 +216,7 @@ function RenewalWarning({ contract: c, today }: { contract: Contract; today: str
   if (toEnd < 0) {
     return (
       <p role="alert" className="rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger">
-        The contract ended on {formatDate(c.endDate)} without a written renewal. If work continued, it now counts as open-ended (Labour Law Art. 88). Renew it
-        in writing.
+        The contract ended on {formatDate(c.endDate)} without a written renewal: renew it in writing.
       </p>
     );
   }
@@ -259,7 +241,7 @@ function TrainingReminder({ contract: c, today }: { contract: Contract; today: s
   if (!reminder) return null;
   return (
     <p role="alert" className={`rounded-lg px-4 py-3 text-sm ${reminder.passed ? 'bg-danger-soft text-danger' : 'bg-warn-soft text-warn'}`}>
-      {reminder.text} {reminder.way}
+      {reminder.text}
     </p>
   );
 }
@@ -314,12 +296,7 @@ function DraftCard({
         <div className="flex flex-wrap items-start gap-3">
           {canEdit && (
             <>
-              <SignContract
-                action={signContract.bind(null, d.id)}
-                today={today}
-                name={name}
-                hint={d.convertsTo ? CONVERSION_SIGN_HINT : undefined}
-              />
+              <SignContract action={signContract.bind(null, d.id)} today={today} name={name} />
               <Link href={`/employees/${employeeId}/contracts/${d.id}/edit`} className={`${small} btn-secondary`}>
                 Edit<span className="sr-only"> the draft of {name}</span>
               </Link>
@@ -330,7 +307,7 @@ function DraftCard({
               action={deleteContract.bind(null, d.id)}
               pendingText="Deleting…"
               variant="danger"
-              confirmText={`Delete the draft of ${name}? This cannot be undone.`}
+              confirmText={`Delete the draft of ${name}?`}
             >
               Delete<span className="sr-only"> the draft of {name}</span>
             </ActionButton>
@@ -366,10 +343,6 @@ function UndoSigning({ contract: c, draft, endingInProgress }: { contract: Contr
     : endingInProgress
       ? 'An ending of this employment is in progress.'
       : undefined;
-  const after =
-    c.version > 1
-      ? `it becomes a draft again and version ${c.version - 1} is the contract again`
-      : 'it becomes a draft again and the probation is as before the signing';
   return (
     <ActionButton
       action={unsignContract.bind(null, c.id)}
@@ -377,7 +350,7 @@ function UndoSigning({ contract: c, draft, endingInProgress }: { contract: Contr
       variant="danger"
       disabled={!!blocked}
       disabledNote={blocked}
-      confirmText={`Undo the signing of ${name}? Only for a contract marked signed by mistake: ${after}.`}
+      confirmText={`Undo the signing of ${name}?`}
     >
       Undo signing<span className="sr-only"> of {name}</span>
     </ActionButton>
@@ -391,10 +364,7 @@ function UndoSigning({ contract: c, draft, endingInProgress }: { contract: Contr
 function NoContract({ employeeId, canEdit }: { employeeId: string; canEdit: boolean }) {
   return (
     <div role={canEdit ? 'alert' : undefined} className="space-y-3 rounded-lg bg-warn-soft px-4 py-4 text-sm text-warn">
-      <p>
-        This employment has no contract yet.
-        {canEdit && ' Add it now: its terms are saved as a draft to print, and signed here once the employee and the company have signed it.'}
-      </p>
+      <p>This employment has no contract yet.</p>
       {canEdit && (
         <Link href={`/employees/${employeeId}/contracts/new`} className={`${small} btn-primary`}>
           Add the contract
@@ -512,7 +482,6 @@ export async function ContractSection({
       {active ? (
         <div className="space-y-3">
           <FieldGrid fields={contractFields(active, unpaid)} />
-          {active.salaryHidden && <p className="text-xs text-muted">The salary is shown to HR, Finance and the CEO only.</p>}
           {canEdit && <SignedContractDetails action={updateSignedContract.bind(null, active.id)} contract={active} />}
           {employee.access.delete && <UndoSigning contract={active} draft={draft} endingInProgress={endingInProgress} />}
         </div>
@@ -555,8 +524,8 @@ export async function ContractSection({
         ))}
       {contracts.length > 0 && canSeePayroll(user) && (
         // every version and its pay are in the Salary History (the Pay History table was merged into it)
-        <p className="text-sm text-muted">
-          Every version, with its pay, the CEO&apos;s decision and Form 2: <Link href={salaryHistoryHref(employee.id)}>Salary History</Link>.
+        <p className="text-sm">
+          <Link href={salaryHistoryHref(employee.id)}>Salary History</Link>
         </p>
       )}
     </ProfileSection>

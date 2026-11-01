@@ -20,7 +20,6 @@ function NoteForm({
   action,
   label,
   noteLabel,
-  noteHint,
   required,
   submitLabel,
   pendingText,
@@ -31,7 +30,6 @@ function NoteForm({
   /** What the form is, for screen readers. */
   label: string;
   noteLabel: string;
-  noteHint: string;
   required: boolean;
   submitLabel: string;
   pendingText: string;
@@ -53,13 +51,9 @@ function NoteForm({
           rows={3}
           maxLength={500}
           required={required}
-          aria-describedby={fid('note-hint')}
           defaultValue={valueOf(state, 'note')}
           className="input"
         />
-        <p id={fid('note-hint')} className="hint">
-          {noteHint}
-        </p>
       </div>
       <div className="flex flex-wrap gap-3">
         {danger ? (
@@ -88,7 +82,6 @@ export function EndingDecision({ approve, reject, name }: { approve: Action; rej
         action={approve}
         label={`Approve ${name}`}
         noteLabel="Note"
-        noteHint="HR sees this note with your approval."
         required={false}
         submitLabel="Approve the ending"
         pendingText="Approving…"
@@ -102,7 +95,6 @@ export function EndingDecision({ approve, reject, name }: { approve: Action; rej
         action={reject}
         label={`Reject ${name}`}
         noteLabel="Why it is rejected"
-        noteHint="HR sees this note. The employment then goes on as it is."
         required
         submitLabel="Reject the ending"
         pendingText="Rejecting…"
@@ -165,13 +157,8 @@ export function ChangeLastDay({
         <DateInput
           id={fid('agreedLastWorkingDay')}
           name="agreedLastWorkingDay"
-          aria-describedby={fid('agreedLastWorkingDay-hint')}
           defaultValue={agreed ? formatDate(lastWorkingDay) : valueOf(state, 'agreedLastWorkingDay')}
         />
-        <p id={fid('agreedLastWorkingDay-hint')} className="hint">
-          Empty it to use the notice&apos;s end again.{' '}
-          {approved ? 'The CEO already approved this ending: a change sends it back to the CEO for approval.' : 'It is still waiting for the CEO, who will see the new day.'}
-        </p>
       </div>
       <div>
         <label htmlFor={fid('note')} className="label">
@@ -206,7 +193,6 @@ export function WithdrawEnding({ action, name }: { action: Action; name: string 
       action={action}
       label={`Withdraw ${name}`}
       noteLabel="Note"
-      noteHint="E.g. the employee withdrew the resignation. The employment then goes on as it is."
       required={false}
       submitLabel="Withdraw the ending"
       pendingText="Withdrawing…"

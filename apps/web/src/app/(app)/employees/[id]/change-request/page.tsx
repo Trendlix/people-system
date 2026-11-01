@@ -15,8 +15,8 @@ import { ChangeRequestStatusBadge, ChangesTable } from './request-parts';
 // Below the form, their requests and what HR decided. Only for the employee themself (the API checks this again).
 
 const DONE: Record<string, string> = {
-  sent: 'Your request was sent to HR. You will see their decision here; meanwhile you can use People as usual.',
-  cancelled: 'Your request was cancelled.',
+  sent: 'Sent to HR.',
+  cancelled: 'Request cancelled.',
 };
 
 function RequestCard({ request: r, employeeId }: { request: ChangeRequest; employeeId: string }) {
@@ -76,17 +76,10 @@ async function ChangeRequestView({ params, searchParams }: { params: Promise<{ i
 
       {pending ? (
         <p className="max-w-3xl rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
-          Your request of {formatDate(pending.requestedAt)} is waiting for HR. You can send another once HR has decided on it, or cancel it below to
-          send a different one.
+          Your request of {formatDate(pending.requestedAt)} is waiting for HR.
         </p>
       ) : (
-        <>
-          <p className="max-w-3xl text-sm text-muted">
-            Correct the details that are wrong or missing, say what should change and why, and send it to HR. Only what you change is sent, and
-            nothing changes on your profile until HR approves it.
-          </p>
-          <ChangeForm action={requestChange.bind(null, p.id)} employee={p} cancelHref={`/employees/${p.id}/confirm`} />
-        </>
+        <ChangeForm action={requestChange.bind(null, p.id)} employee={p} cancelHref={`/employees/${p.id}/confirm`} />
       )}
 
       <section className="max-w-3xl space-y-3 pt-2">

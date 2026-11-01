@@ -97,7 +97,6 @@ function Row({ p, sent }: { p: PortfolioPositionView; sent?: Record<string, stri
             ))}
           </div>
         </fieldset>
-        {!asked && <p className="hint">Hidden: the forms don’t ask for a portfolio. The kinds and hint stay for a vacancy that asks for one anyway.</p>}
       </div>
     </li>
   );

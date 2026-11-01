@@ -19,7 +19,7 @@ async function Page({ searchParams }: { searchParams: PageProps<'/app/notificati
 export default function PhoneNotificationsPage({ searchParams }: PageProps<'/app/notifications'>) {
   return (
     <div className="space-y-4">
-      <PageTitle title="Notifications">Requests waiting for you, decisions on yours, your payslips and the reminders.</PageTitle>
+      <PageTitle title="Notifications" />
       <Suspense fallback={<PhoneLoading />}>
         <Page searchParams={searchParams} />
       </Suspense>

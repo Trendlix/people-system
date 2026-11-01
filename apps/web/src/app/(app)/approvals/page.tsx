@@ -33,7 +33,6 @@ import {
   homesLabel,
   homeSourceText,
   homeTypeOf,
-  officeLockHint,
   seesHomes,
   WAITING_HOMES,
 } from '../home-locations/home-locations';
@@ -90,15 +89,15 @@ import { Hidden } from '@/components/hidden';
 const DONE: Record<string, string> = {
   approved: 'Ending approved.',
   rejected: 'Ending rejected.',
-  'change-approved': 'Change request approved: the profile is updated.',
-  'change-rejected': 'Change request rejected. The employee sees your note.',
+  'change-approved': 'Change request approved.',
+  'change-rejected': 'Change request rejected.',
   // a new photo the employee sent (31 October 2026)
-  'photo-approved': 'New photo approved: it is now the picture beside their name. You can crop it on their profile.',
-  'photo-rejected': 'New photo rejected: they keep their current one.',
-  'raise-approved': 'Pay raise approved. HR now has it signed; it is paid from its effective date.',
-  'raise-approved-other': 'Pay raise approved with your raise: its pay is changed to it. HR now has it signed; it is paid from its effective date.',
-  'raise-returned': 'Pay raise returned to HR with your comment.',
-  'raise-declined': 'Pay raise rejected. Its raise request shows as rejected, with your comment.',
+  'photo-approved': 'New photo approved.',
+  'photo-rejected': 'New photo rejected.',
+  'raise-approved': 'Pay raise approved.',
+  'raise-approved-other': 'Pay raise approved with your raise.',
+  'raise-returned': 'Pay raise returned to HR.',
+  'raise-declined': 'Pay raise rejected.',
   ...APPROVALS_HOME_DONE,
 };
 
@@ -135,7 +134,7 @@ function EndingCard({ ending: e, decides }: { ending: EndingSummary; decides: bo
         <Item label={e.lastDayAgreed ? 'Last working day (agreed)' : 'Last working day'}>
           {e.lastWorkingDay ? <span className="font-medium">{lastDayText({ ...e, lastWorkingDay: e.lastWorkingDay }, formatDate)}</span> : <Hidden />}
         </Item>
-        <Item label="Pay in lieu">{e.payInLieu ? 'Yes: the notice is paid, not worked' : 'No'}</Item>
+        <Item label="Pay in lieu">{e.payInLieu ? 'Yes' : 'No'}</Item>
         {e.reason && (
           <div className="sm:col-span-2 lg:col-span-4">
             <dt className="text-xs text-muted">Reason</dt>
@@ -168,7 +167,7 @@ function EndingCard({ ending: e, decides }: { ending: EndingSummary; decides: bo
       {decides && (
         <DecisionForm
           action={decideEnding.bind(null, e.id)}
-          confirmApprove={`Approve the end of ${e.employee.fullNameEn}'s employment?${e.lastWorkingDay ? ` The last working day is ${formatDate(e.lastWorkingDay)}${e.lastDayAgreed ? ' (agreed)' : ''}.` : ''}`}
+          confirmApprove={`Approve the end of ${e.employee.fullNameEn}'s employment?`}
         />
       )}
     </li>
@@ -180,10 +179,7 @@ async function PendingEndings({ decides }: { decides: boolean }) {
   if (endings.length === 0) return <Empty>No endings are waiting for approval.</Empty>;
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted">
-        {endings.length} waiting.{' '}
-        {decides ? 'Approve or reject each one; a rejection needs a note saying why.' : 'The CEO approves or rejects each one; you can follow them here until then.'}
-      </p>
+      <p className="text-sm text-muted">{endings.length} waiting.</p>
       <ul className="space-y-4">
         {endings.map((e) => (
           <EndingCard key={e.id} ending={e} decides={decides} />
@@ -206,7 +202,7 @@ async function HrStepRequests({ user }: { user: SessionUser }) {
   if (!n) return null;
   return (
     <p className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">
-      Also waiting for you: {n === 1 ? '1 raise request' : `${n} raise requests`} of C-level people at HR&apos;s step, which you take.{' '}
+      Also waiting for you: {n === 1 ? '1 raise request' : `${n} raise requests`} at HR&apos;s step.{' '}
       <Link href={raiseRequestsHref('with_hr')} className="font-semibold">
         Decide on Raise Requests
       </Link>
@@ -225,12 +221,7 @@ async function PendingRaises({ decides }: { decides: boolean }) {
   const rates = decides ? await loadLawRates() : [];
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted">
-        {raisesLabel(raises.length)} waiting, oldest sent first.{' '}
-        {decides
-          ? 'Approve each one as it is or with another raise, or reject it, with a comment; or return it to HR.'
-          : 'The CEO approves, rejects or returns each one; you can follow them here until then.'}
-      </p>
+      <p className="text-sm text-muted">{raisesLabel(raises.length)} waiting.</p>
       <ul className="space-y-4">
         {raises.map((r) => (
           <PayRaiseCard key={r.id} raise={r} request={requests.find((q) => q.id === r.raise?.requestId) ?? null} decides={decides} rates={rates} />
@@ -249,7 +240,7 @@ function PendingChangeRequestCard({ request: r, decides }: { request: ChangeRequ
       {decides ? (
         <DecisionForm
           action={decideChangeRequest.bind(null, r.id)}
-          confirmApprove={`Approve the change to ${r.employee.fullNameEn}'s details? Their profile is updated with what they asked for.`}
+          confirmApprove={`Approve the change to ${r.employee.fullNameEn}'s details?`}
           noteMax={1000}
         />
       ) : (
@@ -266,9 +257,7 @@ async function PendingChangeRequests({ user }: { user: SessionUser }) {
   if (requests.length === 0) return <Empty>No change requests are waiting.</Empty>;
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted">
-        {requests.length} waiting. Approving makes the change on the profile; a rejection needs a note saying why, which the employee sees.
-      </p>
+      <p className="text-sm text-muted">{requests.length} waiting.</p>
       <ul className="space-y-4">
         {requests.map((r) => (
           <PendingChangeRequestCard key={r.id} request={r} decides={decidesChangeOfDetails(user, r.confidential)} />
@@ -288,17 +277,14 @@ async function PendingPhotoRequests({ user }: { user: SessionUser }) {
   if (requests.length === 0) return <Empty>No new photos are waiting.</Empty>;
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted">
-        {photosLabel(requests.length)} waiting. Approving puts the photo in the employee file as their personal photo, the picture beside their
-        name (you can crop it on their profile); rejecting keeps the one they have.
-      </p>
+      <p className="text-sm text-muted">{photosLabel(requests.length)} waiting.</p>
       <ul className="space-y-4">
         {requests.map((r) => (
           <PhotoRequestCard key={r.id} request={r}>
             {decidesChangeOfDetails(user, r.confidential) ? (
               <DecisionForm
                 action={decidePhotoRequest.bind(null, r.id)}
-                confirmApprove={`Use this photo for ${r.employee.fullNameEn}? It becomes the personal photo in their employee file.`}
+                confirmApprove={`Use this photo for ${r.employee.fullNameEn}?`}
                 noteMax={1000}
                 noteHint="optional"
               />
@@ -318,7 +304,6 @@ async function PendingPhotoRequests({ user }: { user: SessionUser }) {
 function PendingHomeCard({ request: r }: { request: HomeLocationView }) {
   const stage = r.stage ?? 'hr';
   const type = homeTypeOf(r);
-  const lockHint = type === 'home' && r.employee.workArrangement ? officeLockHint({ workArrangement: r.employee.workArrangement, checkInAnywhere: r.employee.checkInAnywhere }) : null;
   return (
     <li className="card p-6">
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -337,11 +322,6 @@ function PendingHomeCard({ request: r }: { request: HomeLocationView }) {
         <HomeStatusBadge status={r.status} confidential={r.confidential} />
       </div>
       {r.reason && <p className="mt-3 text-sm whitespace-pre-line">“{r.reason}”</p>}
-      {lockHint && (
-        <p className="mt-3 text-sm text-muted">
-          {r.employee.fullNameEn} works at the office: while check-ins need the office Wi-Fi, they can’t check in from home.
-        </p>
-      )}
       {(r.overlaps?.length ?? 0) > 0 && (
         <div className="mt-3">
           <HomeOverlaps request={r} />
@@ -367,13 +347,9 @@ async function PendingHomes() {
   const homes = await getOrNull<HomeLocationView[]>(WAITING_HOMES);
   if (homes === null) return <Empty>Check-in location requests couldn&apos;t load.</Empty>;
   if (homes.length === 0) return <Empty>No check-in location requests are waiting for you.</Empty>;
-  const atHr = homes.some((h) => h.stage === 'hr');
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted">
-        {homesLabel(homes.length)} waiting for you, newest first. {atHr ? `At HR’s step, approve it with the radius and how long it lasts, or reject it; then the CEO decides it. ` : ''}A
-        rejection needs a comment, which the employee sees; its point is deleted.
-      </p>
+      <p className="text-sm text-muted">{homesLabel(homes.length)} waiting for you.</p>
       <ul className="space-y-4">
         {homes.map((h) => (
           <PendingHomeCard key={h.id} request={h} />
@@ -393,7 +369,7 @@ async function PendingKpis({ user }: { user: SessionUser }) {
   if (rows.length === 0) return <Empty>No KPI scorecards are waiting for you.</Empty>;
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted">{kpiScorecardsLabel(rows.length)} waiting for you, the nearest deadline first. Each opens on its scorecard.</p>
+      <p className="text-sm text-muted">{kpiScorecardsLabel(rows.length)} waiting for you.</p>
       <div className="card overflow-x-auto">
         <table className="table">
           <thead>
@@ -448,8 +424,8 @@ async function PendingWfh({ all }: { all: boolean }) {
   if (waiting.value.length === 0) return <Empty>No work from home requests are waiting for you. {every}</Empty>;
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted">Waiting for your decision: approve each, or reject it with a comment the employee sees. {every}</p>
-      <WfhTable requests={waiting.value} who note="waiting for you, the latest day first." />
+      {every && <p className="text-sm">{every}</p>}
+      <WfhTable requests={waiting.value} who note="waiting for you." />
     </div>
   );
 }
@@ -466,8 +442,8 @@ async function PendingCompensatory({ all }: { all: boolean }) {
   if (waiting.value.length === 0) return <Empty>No compensatory day requests are waiting for you. {every}</Empty>;
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted">Waiting for your decision: approve each as a day off or, rarely, as cash instead, or reject it with a comment the employee sees. {every}</p>
-      <CompensatoryTable requests={waiting.value} who note="waiting for you, the latest day worked first." />
+      {every && <p className="text-sm">{every}</p>}
+      <CompensatoryTable requests={waiting.value} who note="waiting for you." />
     </div>
   );
 }
@@ -484,8 +460,8 @@ async function PendingOd({ all }: { all: boolean }) {
   if (waiting.value.length === 0) return <Empty>No official duty requests are waiting for you. {every}</Empty>;
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted">Waiting for your decision: approve each, or reject it with a comment the employee sees. {every}</p>
-      <OdTable requests={waiting.value} who where note="waiting for you, the latest first day first." />
+      {every && <p className="text-sm">{every}</p>}
+      <OdTable requests={waiting.value} who where note="waiting for you." />
     </div>
   );
 }

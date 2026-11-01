@@ -158,5 +158,5 @@ export async function saveCompensatorySettings(_prev: FormState, fd: FormData): 
     throw err;
   }
   refresh();
-  return { message: 'Compensatory Setup saved. Requests already made keep what they earned.', values };
+  return { message: 'Compensatory Setup saved.', values };
 }

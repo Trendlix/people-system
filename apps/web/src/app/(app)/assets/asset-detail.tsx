@@ -76,7 +76,6 @@ function ValuesCard({ asset, surface }: { asset: AssetView; surface: 'site' | 'a
         ) : undefined
       }
     >
-      <p className="mb-2 text-xs text-muted">Only the CEO, Finance and a Super Admin see these. All in EGP.</p>
       <dl>
         <ValueRow label="Purchase cost">{amount(v.purchasePrice)}</ValueRow>
         <ValueRow label="Supplier">{v.supplier}</ValueRow>
@@ -95,7 +94,6 @@ function ValuesCard({ asset, surface }: { asset: AssetView; surface: 'site' | 'a
           {v.priceNote}
         </p>
       )}
-      <p className="mt-2 text-xs text-muted">Book value: straight line over its useful life from the purchase date; 0 (Expensed) below the capitalization threshold.</p>
     </Card>
   );
 }
@@ -232,11 +230,11 @@ export function AssetDetail({
                 {asset.parent ? (
                   <div className="space-y-2">
                     <p className="text-sm">
-                      It is attached to{' '}
+                      Attached to{' '}
                       <Link href={site ? ASSET_PATHS.asset(asset.parent.code) : APP_ASSET_PATHS.asset(asset.parent.code)} className="font-mono font-semibold">
                         {asset.parent.code}
                       </Link>{' '}
-                      {asset.parent.name}: it goes out with it on a handover, and can still be handed over alone.
+                      {asset.parent.name}
                     </p>
                     {asset.can.attach && site && <DetachButton code={asset.code} mainCode={asset.parent.code} />}
                   </div>
@@ -256,7 +254,7 @@ export function AssetDetail({
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-sm text-muted">Nothing is attached to it. Valuable accessories with their own code (a battery, a monitor) can be attached, to go out with it.</p>
+                  <p className="text-sm text-muted">Nothing is attached.</p>
                 )}
                 {asset.can.attach && site && !asset.parent && <AttachItemForm code={asset.code} />}
                 {asset.can.attach && site && !asset.parent && !(asset.attached?.length ?? 0) && <AttachToForm code={asset.code} />}
@@ -349,33 +347,16 @@ export function AssetDetail({
             asset.can.dispose &&
             site && (
               <Card title="Dispose">
-                <div className="space-y-3">
-                  <p className="text-sm text-muted">Sold, scrapped, written off or donated: it stays on record, out of every total and list but Disposed.</p>
-                  <DisposeForm
-                    code={asset.code}
-                    name={asset.name}
-                    values={asset.can.values}
-                    purchaseDate={asset.purchaseDate}
-                    inKit={asset.kit?.code ?? null}
-                    attached={asset.attached?.length ?? 0}
-                  />
-                </div>
+                <DisposeForm code={asset.code} name={asset.name} values={asset.can.values} purchaseDate={asset.purchaseDate} />
               </Card>
             )
           )}
           {asset.can.delete && site && (
             <Card title="Delete">
               {asset.everInCustody ? (
-                <p className="text-sm text-muted">It was in custody, so it stays on record: dispose of it instead.</p>
+                <p className="text-sm text-muted">It was in custody: dispose of it instead.</p>
               ) : (
-                <div className="space-y-3">
-                  <p className="text-sm text-muted">For an asset registered by mistake. Its code is never given again. An asset that was in custody can&apos;t be deleted.</p>
-                  <DeleteForm
-                    action={deleteAsset.bind(null, asset.code)}
-                    confirmText={`Delete ${asset.code} ${asset.name}? Its photos go with it. This can't be undone.`}
-                    label="Delete asset"
-                  />
-                </div>
+                <DeleteForm action={deleteAsset.bind(null, asset.code)} confirmText={`Delete ${asset.code} ${asset.name}?`} label="Delete asset" />
               )}
             </Card>
           )}

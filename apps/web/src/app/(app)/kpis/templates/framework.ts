@@ -1,7 +1,6 @@
 import {
   KPI_FRAMEWORK_LIMITS,
   kpiFrameworkMonthProblems,
-  kpiFrameworkOpensFrom,
   kpiMonthAdd,
   kpiMonthName,
   kpiPillarKeyFor,
@@ -153,9 +152,6 @@ export function monthChoices(earliest: string, latest: string): { value: string;
   return out;
 }
 
-/** Under "Applies from": "November 2026's scorecards open on 01/12/2026." */
-export const appliesFromHint = (month: string): string => `${kpiMonthName(month)}’s scorecards open on ${formatDate(kpiFrameworkOpensFrom(month))}.`;
-
 // ---------- in words ----------
 
 /** "1 pillar", "5 pillars". */
@@ -168,9 +164,9 @@ export const pillarsLabel = (n: number): string => `${n} ${n === 1 ? 'pillar' : 
 export const inForceText = (v: Pick<KpiFrameworkVersionView, 'version' | 'appliesFrom'> & Partial<Pick<KpiFrameworkVersionView, 'departmentId'>>): string =>
   v.version === 1 && !v.departmentId ? 'In force from the start: the plan’s pillars.' : `In force since ${kpiMonthName(v.appliesFrom)}’s scorecards.`;
 
-/** "Apply from November 2026's scorecards, which open on 01/12/2026. They can be changed until then." */
+/** "Apply from November 2026's scorecards, which open on 01/12/2026." */
 export const nextText = (v: Pick<KpiFrameworkVersionView, 'appliesFrom' | 'opensFrom'>): string =>
-  `Apply from ${kpiMonthName(v.appliesFrom)}’s scorecards, which open on ${formatDate(v.opensFrom)}. They can be changed until then.`;
+  `Apply from ${kpiMonthName(v.appliesFrom)}’s scorecards, which open on ${formatDate(v.opensFrom)}.`;
 
 /** "Saved by Mona Adel on 21/10/2026, 5:42 PM"; null for the first version, which nobody saved. */
 export function frameworkChangedText(v: Pick<KpiFrameworkVersionView, 'updatedAt' | 'updatedBy' | 'createdBy'>): string | null {
@@ -183,20 +179,13 @@ export function frameworkChangedText(v: Pick<KpiFrameworkVersionView, 'updatedAt
  * department's own pillars (its job titles' templates); none: the company's.
  */
 export function frameworkConfirmText(appliesFrom: string, changingNext: boolean, department: string | null = null): string {
-  const ask = department
-    ? changingNext
-      ? `Save the changes to ${department}’s next pillars?`
-      : `Save these pillars for ${department}?`
-    : changingNext
-      ? 'Save the changes to the next pillars?'
-      : 'Save these pillars?';
-  const templates = department ? `Every template of ${department}’s job titles` : 'Every template';
-  return `${ask} They apply from ${kpiMonthName(appliesFrom)}’s scorecards, which open on ${formatDate(kpiFrameworkOpensFrom(appliesFrom))}. ${templates} must then be updated to place its metrics in them; until it is, its scorecards keep opening on its old version and old pillars. The scorecards opened already keep theirs.`;
+  const ask = department ? (changingNext ? `Save ${department}’s next pillars` : `Save these pillars for ${department}`) : changingNext ? 'Save the next pillars' : 'Save these pillars';
+  return `${ask}, from ${kpiMonthName(appliesFrom)}’s scorecards?`;
 }
 
 /** What the page says once saved; `department`: its name, for a department's own pillars. */
 export const frameworkSavedText = (appliesFrom: string, department: string | null = null): string =>
-  `Saved. ${department ? `${department}’s new pillars apply` : 'The new pillars apply'} from ${kpiMonthName(appliesFrom)}’s scorecards: update each template marked “Uses the old pillars”.`;
+  `Saved. ${department ? `${department}’s new pillars apply` : 'The new pillars apply'} from ${kpiMonthName(appliesFrom)}’s scorecards.`;
 
 // ---------- by department and team ----------
 // (owner, 22 October 2026: "but i need pillars to each department", then "where is the pillars for team?" and "Yes, add
@@ -304,12 +293,12 @@ export function departmentPillarsText(row: Pick<KpiDepartmentPillarsView, 'inFor
 
 /** What "Go back to the company's pillars" (a team: its department's) asks first; `above`: "Production’s", else the company's. */
 export function followCompanyConfirmText(department: string, appliesFrom: string, above = 'the company’s'): string {
-  return `Take ${above} pillars again for ${department}? From ${kpiMonthName(appliesFrom)}’s scorecards, which open on ${formatDate(kpiFrameworkOpensFrom(appliesFrom))}, its job titles take ${above} pillars. Every template of its job titles must then be updated to place its metrics in them; until it is, its scorecards keep opening on its old version and old pillars. The scorecards opened already keep theirs.`;
+  return `Take ${above} pillars again for ${department}, from ${kpiMonthName(appliesFrom)}’s scorecards?`;
 }
 
 /** What the page says once a department goes back to the company's pillars (a team: its department's). */
 export const followCompanySavedText = (department: string, appliesFrom: string, above = 'the company’s'): string =>
-  `Saved. ${department} takes ${above} pillars from ${kpiMonthName(appliesFrom)}’s scorecards: update each template marked “Uses the old pillars”.`;
+  `Saved. ${department} takes ${above} pillars from ${kpiMonthName(appliesFrom)}’s scorecards.`;
 
 /** "1 job title", "4 job titles". */
 export const jobTitlesCount = (n: number): string => `${n} ${n === 1 ? 'job title' : 'job titles'}`;
@@ -332,12 +321,7 @@ export const OLD_PILLARS_BADGE = 'Uses the old pillars: update it';
  * banner … Until a template is updated, its scorecards keep opening on its old version and old pillars, so nobody is
  * left without a scorecard. Say so on the banner"); null when none does.
  */
-export function oldPillarsBanner(count: number, next: Pick<KpiFrameworkVersionView, 'appliesFrom' | 'opensFrom'> | null): { head: string; body: string } | null {
+export function oldPillarsBanner(count: number): string | null {
   if (!count) return null;
-  const head = count === 1 ? '1 template uses the old pillars: update it.' : `${count} templates use the old pillars: update them.`;
-  const when = next ? ` The new pillars apply from ${kpiMonthName(next.appliesFrom)}’s scorecards, which open on ${formatDate(next.opensFrom)}.` : '';
-  return {
-    head,
-    body: `Open each one marked, start a draft from its version and place its metrics in the new pillars, then publish it.${when} Until a template is updated, its scorecards keep opening on its old version and old pillars, so nobody is left without a scorecard.`,
-  };
+  return count === 1 ? '1 template uses the old pillars: update it.' : `${count} templates use the old pillars: update them.`;
 }

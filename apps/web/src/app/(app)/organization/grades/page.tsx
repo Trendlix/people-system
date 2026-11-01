@@ -5,7 +5,7 @@ import { apiGet } from '@/lib/api';
 import { canEditOrganisation, getCurrentUser } from '@/lib/session';
 import type { Grade, JobTitleSummary } from '@/lib/types';
 import { Empty, Loading } from '../ui';
-import { CONFIDENTIAL_GRADE_HINT, inGradeRange } from './label';
+import { inGradeRange } from './label';
 
 // The grading system (owner's table: G1 Entry Level … G9 Executive). The rank is the level in the hierarchy; the API
 // lists the grades lowest rank first. A job title may limit the grades people with it can have to a range (Account
@@ -25,13 +25,9 @@ async function GradesList() {
   return (
     <>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="text-sm text-muted">
-          <p>
-            {grades.length} {grades.length === 1 ? 'grade' : 'grades'}, lowest level first
-          </p>
-          <p>Each employee has their own grade. A job title can limit it to a range, e.g. G3 to G6 for Account Manager.</p>
-          {grades.some((g) => g.confidential) && <p>People holding a C-level grade are hidden from HR: only the CEO and the Super Admin see their details.</p>}
-        </div>
+        <p className="text-sm text-muted">
+          {grades.length} {grades.length === 1 ? 'grade' : 'grades'}
+        </p>
         {canEdit && (
           <Link href="/organization/grades/new" className="btn btn-primary">
             New grade
@@ -39,7 +35,7 @@ async function GradesList() {
         )}
       </div>
       {grades.length === 0 ? (
-        <Empty>No grades yet.{canEdit && ' Add the first one, e.g. G1 Entry Level.'}</Empty>
+        <Empty>No grades yet.</Empty>
       ) : (
         <div className="card overflow-x-auto">
           <table className="table">
@@ -64,7 +60,7 @@ async function GradesList() {
                 <tr key={g.id}>
                   <td className="font-medium whitespace-nowrap">
                     {g.code}
-                    {g.confidential && <CLevelBadge title={CONFIDENTIAL_GRADE_HINT} className="ml-2" />}
+                    {g.confidential && <CLevelBadge className="ml-2" />}
                   </td>
                   <td>{g.levelEn}</td>
                   <td lang="ar" dir="rtl" className="text-right">

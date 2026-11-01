@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { EARLIER_OFFER_NOTE } from '@trendlix/shared';
-import { answerLeeway, answersNow, canRecordSent, earlierNote, recordsEarlier, recordSentDocumentHint } from './earlier';
+import { answerLeeway, answersNow, canRecordSent, earlierNote, recordsEarlier } from './earlier';
 
 // Earlier job offers (owner, 25 October 2026: "allow the HR to add for now job offers with a past duedate to enter the
 // previous data"): what the offers' pages offer while "Entering earlier offers" is on, and as before while it is off.
@@ -51,15 +51,5 @@ describe('earlier offers on the offers pages', () => {
     expect(answersNow(open, 'sent', TODAY, CEO)).toBe(false);
     expect(answersNow({ ...open, expiresOn: '2026-10-24' }, 'expired', TODAY, HR)).toBe(false);
     expect(answersNow({ ...open, expiresOn: '2026-10-24' }, 'draft', TODAY, HR)).toBe(false);
-  });
-
-  it('says what Record as sent earlier keeps, by the template', () => {
-    const template = { slotKey: 'offer_full_time', name: 'Job offer · Full-time', version: 2, previewVersion: null };
-    expect(recordSentDocumentHint({ template: { ...template, status: 'published' } })).toBe(
-      'Nothing is emailed and no link is made. Its document is filled in as of that day and kept, as when an offer is sent.',
-    );
-    expect(recordSentDocumentHint({ template: { ...template, status: 'draft', version: null } })).toBe(
-      'Nothing is emailed and no link is made. The Job offer · Full-time template isn’t published, so no document is kept with it.',
-    );
   });
 });

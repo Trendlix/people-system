@@ -69,12 +69,8 @@ function Report({ t }: { t: TurnoverReport }) {
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Tile label="Leavers" value={String(t.leavers)} note={`${t.voluntary} voluntary · ${t.involuntary} involuntary${t.other ? ` · ${t.other} other` : ''}`} />
-        <Tile label="Turnover rate" value={percentText(t.rate)} note={`Leavers ÷ average headcount (${t.averageHeadcount})`} />
-        <Tile
-          label="Voluntary turnover"
-          value={percentText(t.averageHeadcount > 0 ? Math.round((t.voluntary / t.averageHeadcount) * 1000) / 10 : null)}
-          note="Resigned, mutual agreement or retired"
-        />
+        <Tile label="Turnover rate" value={percentText(t.rate)} note={`Average headcount ${t.averageHeadcount}`} />
+        <Tile label="Voluntary turnover" value={percentText(t.averageHeadcount > 0 ? Math.round((t.voluntary / t.averageHeadcount) * 1000) / 10 : null)} />
         <Tile label="Average tenure at exit" value={t.averageTenureMonths === null ? '—' : tenureText(Math.round(t.averageTenureMonths))} />
       </div>
 
@@ -193,13 +189,7 @@ export default function TurnoverPage({ searchParams }: PageProps<'/offboarding/t
   return (
     <div className="max-w-6xl space-y-6">
       <BackLink href={OFFBOARDING_PATH}>Offboarding</BackLink>
-      <div>
-        <h1 className="page-title">Turnover</h1>
-        <p className="mt-1 max-w-3xl text-muted">
-          Who left in the year and how many, against the average headcount: voluntary (resigned, mutual agreement, retired) or involuntary (terminated, a
-          fixed term or an internship agreement not renewed), by department, reason and how long they stayed. Freelancers are left out.
-        </p>
-      </div>
+      <h1 className="page-title">Turnover</h1>
       <Suspense fallback={<Loading />}>
         <Turnover searchParams={searchParams} />
       </Suspense>

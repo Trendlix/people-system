@@ -177,13 +177,9 @@ export function OfferForm({
               autoComplete="off"
               lang="ar"
               dir="rtl"
-              aria-describedby={fid('fullNameAr-hint')}
               defaultValue={valueOf(state, 'fullNameAr', defaults.fullNameAr)}
               className="input"
             />
-            <p id={fid('fullNameAr-hint')} className="hint">
-              As on their national ID.
-            </p>
           </div>
           <div id="field-email" className="scroll-mt-6">
             <label htmlFor={fid('email')} className="label">
@@ -196,13 +192,9 @@ export function OfferForm({
               required
               maxLength={254}
               autoComplete="off"
-              aria-describedby={fid('email-hint')}
               defaultValue={valueOf(state, 'email', defaults.email)}
               className="input"
             />
-            <p id={fid('email-hint')} className="hint">
-              Where the offer is sent. Their work email comes once they join.
-            </p>
           </div>
           <div id="field-mobile" className="scroll-mt-6">
             <label htmlFor={fid('mobile')} className="label">
@@ -218,7 +210,6 @@ export function OfferForm({
               <Select
                 id={fid('employeeId')}
                 name="employeeId"
-                aria-describedby={fid('employeeId-hint')}
                 defaultValue={valueOf(state, 'employeeId', defaults.employeeId)}
                 onChange={(e) => {
                   // probation is allowed once per employer (Art. 90): someone employed here before gets none
@@ -239,10 +230,6 @@ export function OfferForm({
                     </option>
                   ))}
               </Select>
-              <p id={fid('employeeId-hint')} className="hint">
-                For a former employee offered a job again, or someone added before being hired: accepting adds the new employment to their profile
-                instead of making another one.
-              </p>
             </div>
           )}
         </div>
@@ -263,7 +250,6 @@ export function OfferForm({
           rows={rows}
           onRows={setRows}
           allowanceTypes={pickers.allowanceTypes}
-          year={year}
           rates={rates}
         />
       </Section>
@@ -278,15 +264,11 @@ export function OfferForm({
               id={fid('expiresOn')}
               name="expiresOn"
               required
-              aria-describedby={fid('expiresOn-hint')}
+              aria-describedby={earlier ? fid('expiresOn-earlier') : undefined}
               defaultValue={valueOf(state, 'expiresOn', formatDate(defaults.expiresOn))}
             />
-            <p id={fid('expiresOn-hint')} className="hint">
-              The last day the candidate can accept. It can be extended later.
-              {earlierOffers && !earlier && ' While entering earlier offers is on, a past day records an earlier offer.'}
-            </p>
             {earlier && (
-              <p role="status" className="mt-1 text-sm font-semibold text-warn">
+              <p id={fid('expiresOn-earlier')} role="status" className="mt-1 text-sm font-semibold text-warn">
                 {earlier}
               </p>
             )}
@@ -301,14 +283,9 @@ export function OfferForm({
             name="message"
             rows={4}
             maxLength={2000}
-            aria-describedby={fid('message-hint')}
             defaultValue={valueOf(state, 'message', defaults.message)}
             className="input"
           />
-          <p id={fid('message-hint')} className="hint">
-            A few words in the email and on the candidate&apos;s page, e.g. &quot;We enjoyed meeting you and are happy to offer you the role.&quot; Up to 2,000
-            characters.
-          </p>
         </div>
         <div id="field-note" className="scroll-mt-6">
           <label htmlFor={fid('note')} className="label">
@@ -319,13 +296,9 @@ export function OfferForm({
             name="note"
             rows={3}
             maxLength={1000}
-            aria-describedby={fid('note-hint')}
             defaultValue={valueOf(state, 'note', defaults.note)}
             className="input"
           />
-          <p id={fid('note-hint')} className="hint">
-            Never shown to the candidate. Up to 1,000 characters.
-          </p>
         </div>
       </Section>
 
@@ -340,30 +313,15 @@ export function OfferForm({
 }
 
 /**
- * A sent (or expired) offer: only its last day to accept and its note can change. An earlier one's (`earlier`: recorded
- * as sent earlier, while entering earlier offers is on; 25 October 2026) can be a past day.
+ * A sent (or expired) offer: only its last day to accept and its note can change. An earlier one's (recorded as sent
+ * earlier, while entering earlier offers is on; 25 October 2026) can be a past day.
  */
-export function SentOfferForm({
-  action,
-  expiresOn,
-  note,
-  cancelHref,
-  earlier = false,
-}: {
-  action: Action;
-  expiresOn: string;
-  note: string | null;
-  cancelHref: string;
-  earlier?: boolean;
-}) {
+export function SentOfferForm({ action, expiresOn, note, cancelHref }: { action: Action; expiresOn: string; note: string | null; cancelHref: string }) {
   const { state, pending, form } = useKeptForm(action);
   const fid = useFieldIds();
   return (
     <form {...form} className="card max-w-3xl space-y-6 p-6">
       <FormErrors errors={state.errors} />
-      <p className="text-sm text-muted">
-        The offer has been sent, so its terms are as the candidate read them. To change them, withdraw it and draft a new one.
-      </p>
       <div className="max-w-72">
         <label htmlFor={fid('expiresOn')} className="label">
           Open until
@@ -372,13 +330,8 @@ export function SentOfferForm({
           id={fid('expiresOn')}
           name="expiresOn"
           required
-          aria-describedby={fid('expiresOn-hint')}
           defaultValue={valueOf(state, 'expiresOn', formatDate(expiresOn))}
         />
-        <p id={fid('expiresOn-hint')} className="hint">
-          The last day the candidate can accept.
-          {earlier && ' An earlier offer: a past day is kept, not before the day it was sent.'}
-        </p>
       </div>
       <div>
         <label htmlFor={fid('note')} className="label">

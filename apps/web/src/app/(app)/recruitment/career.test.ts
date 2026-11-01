@@ -50,7 +50,7 @@ describe('the skipper', () => {
   it('says the points off in the CV match', () => {
     const fit = { percent: 50, version: 3, parts: [], skipper: { penalty: 10, averageStayMonths: 9 } };
     expect(fitSkipperLine(fit)).toBe('Skipper (9 m a company on average): 10 points off');
-    expect(fitSummary(fit)).toMatch(/^50% from the parts below, less a skipper’s points\. Skipper \(9 m a company on average\): 10 points off\./);
+    expect(fitSummary(fit)).toBe('Skipper (9 m a company on average): 10 points off.');
     expect(fitSkipperLine({ skipper: undefined })).toBeNull();
   });
 });

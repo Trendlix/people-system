@@ -38,7 +38,7 @@ export function PrintDocumentButton({ document: html, title, label, what }: { do
         f.contentWindow?.focus();
         f.contentWindow?.print();
       } catch {
-        setProblem(`The ${what} could not be printed from here. Try another browser, or print this page.`);
+        setProblem(`The ${what} could not be printed from here.`);
       }
     };
     f.srcdoc = html;

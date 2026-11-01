@@ -1,7 +1,6 @@
 import {
   KPI_SAMPLE_TEMPLATES,
   KPI_SETTING_DEFAULTS,
-  kpiLibraryMatchOf,
   kpiLibraryRoles,
   kpiSettingsProblems,
   type KpiDraftAllResult,
@@ -23,7 +22,6 @@ import {
   draftSourceOf,
   groupTemplateRows,
   libraryChoices,
-  librarySuggestion,
   madeDraftRole,
   madeDraftUnplaced,
   metricsLabel,
@@ -32,13 +30,11 @@ import {
   publishConfirmText,
   publishDraftsConfirmText,
   publishDraftsSummary,
-  publishTimingNote,
   readsKpiTemplates,
   refusedDraftName,
   sampleLabel,
   settingsChangedText,
   settingsOf,
-  settingsSummary,
   settingValuesOf,
   templateCounts,
   templateRowText,
@@ -181,30 +177,23 @@ describe('the role library', () => {
     expect(libraryChoices([])).toEqual([]);
   });
 
-  it('suggests the role matching the job title, saying why', () => {
-    const match = kpiLibraryMatchOf({ titleEn: 'Senior Frontend Developer', department: { nameEn: 'Frontend', parentName: 'Web Development' } });
-    expect(librarySuggestion(match)).toBe('Suggested: Frontend Developer. The job title says “frontend developer”.');
-  });
-
   it('asks before drafting every job title, then says what it made and left', () => {
-    expect(draftAllConfirmText(12)).toBe(
-      'Make a draft for each job title with no KPI template yet (12 job titles)? Each starts from the closest role in the library, its metrics linked to the job title’s duties. Nothing is published, and the job titles with a draft or a published version stay as they are.',
-    );
+    expect(draftAllConfirmText(12)).toBe('Make a draft for each job title with no KPI template yet (12 job titles)?');
     expect(draftAllConfirmText(1)).toContain('(1 job title)');
     const made = (n: number): KpiDraftAllResult['made'] =>
       Array.from({ length: n }, (_, i) => ({ jobTitleId: `j${i}`, templateId: `t${i}`, title: `T${i}`, department: 'D', libraryKey: 'general', libraryName: 'Universal (Any Role)', leadership: false, reason: 'R', unplaced: 0 }));
     const skipped = (n: number): KpiDraftAllResult['skipped'] => Array.from({ length: n }, (_, i) => ({ jobTitleId: `s${i}`, title: `S${i}`, department: 'D', why: 'It has a draft already.' }));
-    expect(draftAllSummary({ made: made(12), skipped: skipped(3) })).toBe('12 drafts made; 3 job titles skipped. Review each draft, then publish it.');
-    expect(draftAllSummary({ made: made(1), skipped: [] })).toBe('1 draft made. Review each draft, then publish it.');
-    expect(draftAllSummary({ made: [], skipped: skipped(2) })).toBe('No drafts made: each of the 2 job titles has a draft or a published version already.');
-    expect(draftAllSummary({ made: [], skipped: [] })).toBe('No drafts made: there are no job titles yet.');
+    expect(draftAllSummary({ made: made(12), skipped: skipped(3) })).toBe('12 drafts made; 3 job titles skipped.');
+    expect(draftAllSummary({ made: made(1), skipped: [] })).toBe('1 draft made.');
+    expect(draftAllSummary({ made: [], skipped: skipped(2) })).toBe('No drafts made.');
+    expect(draftAllSummary({ made: [], skipped: [] })).toBe('No drafts made.');
     expect(madeDraftRole({ libraryName: 'Frontend Developer', leadership: false })).toBe('Frontend Developer');
     expect(madeDraftRole({ libraryName: 'General HR', leadership: true })).toBe('General HR + team leadership');
     expect([draftsLabel(1), draftsLabel(2)]).toEqual(['1 draft', '2 drafts']);
     // a role's metrics in pillars the framework no longer has (owner, 21 October 2026: "Fully flexible")
     expect(madeDraftUnplaced({ unplaced: 0 })).toBeNull();
-    expect(madeDraftUnplaced({ unplaced: 1 })).toBe('1 metric is in Unplaced: written for pillars the KPI framework no longer has. Place it before publishing.');
-    expect(madeDraftUnplaced({ unplaced: 3 })).toBe('3 metrics are in Unplaced: written for pillars the KPI framework no longer has. Place them before publishing.');
+    expect(madeDraftUnplaced({ unplaced: 1 })).toBe('1 metric in Unplaced: place it before publishing.');
+    expect(madeDraftUnplaced({ unplaced: 3 })).toBe('3 metrics in Unplaced: place them before publishing.');
   });
 });
 
@@ -219,17 +208,12 @@ describe('publishing the drafts chosen', () => {
     expect(templateIdsOf(fd([]))).toEqual([]);
   });
 
-  it('says when what is published now applies: 1 November opens October’s scorecards', () => {
-    expect(publishTimingNote('2026-10-21')).toBe('Publishing now applies from November’s scorecards, those for October: 1 November opens October’s scorecards.');
-    expect(publishTimingNote('2026-12-05')).toBe('Publishing now applies from January’s scorecards, those for December: 1 January opens December’s scorecards.');
-    expect(publishDraftsConfirmText(3, '2026-10-21')).toBe(
-      "Publish the 3 drafts selected? Each one that passes the checks applies to the scorecards opened from 01/11/2026: October 2026's KPIs on. A draft with problems stays a draft, and you’ll see why.",
-    );
-    expect(publishDraftsConfirmText(1, '2026-10-21')).toMatch(/^Publish the selected draft\? /);
+  it('asks first, saying when what is published now applies: 1 November opens October’s scorecards', () => {
+    expect(publishDraftsConfirmText(3, '2026-10-21')).toBe('Publish the 3 drafts selected, applying from 01/11/2026?');
+    expect(publishDraftsConfirmText(1, '2026-10-21')).toBe('Publish the selected draft, applying from 01/11/2026?');
     // new pillars applying from November: what is published now waits for November's scorecards, opening 1 December
-    expect(publishTimingNote('2026-10-21', '2026-11')).toBe('Publishing now applies from December’s scorecards, those for November: 1 December opens November’s scorecards.');
-    expect(publishTimingNote('2026-10-21', '2000-01')).toBe(publishTimingNote('2026-10-21'));
-    expect(publishDraftsConfirmText(3, '2026-10-21', '2026-11')).toContain('opened from 01/12/2026: November 2026');
+    expect(publishDraftsConfirmText(3, '2026-10-21', '2026-11')).toBe('Publish the 3 drafts selected, applying from 01/12/2026?');
+    expect(publishDraftsConfirmText(3, '2026-10-21', '2000-01')).toBe(publishDraftsConfirmText(3, '2026-10-21'));
   });
 
   it('says what was published and what stopped the others', () => {
@@ -254,18 +238,14 @@ describe('publishing ("Publishing applies from the next month")', () => {
   it('applies to the scorecards opened from the 1st of the next month: this month’s KPIs on', () => {
     expect(opensFromIfPublished('2026-10-21')).toBe('2026-11-01');
     expect(opensFromIfPublished('2026-12-31')).toBe('2027-01-01');
-    expect(publishConfirmText(2, '2026-10-21')).toBe(
-      "Publish version 2? It applies to the scorecards opened from 01/11/2026: October 2026's KPIs on. The scorecards opened already keep the version they opened with.",
-    );
+    expect(publishConfirmText(2, '2026-10-21')).toBe('Publish version 2, applying from 01/11/2026?');
   });
 
   it('while new pillars are coming, from their first month’s scorecards (owner, 21 October 2026: "Fully flexible")', () => {
     expect(opensFromIfPublished('2026-10-21', '2026-11')).toBe('2026-12-01');
     expect(opensFromIfPublished('2026-10-21', '2026-10')).toBe('2026-11-01');
     expect(opensFromIfPublished('2026-10-21', null)).toBe('2026-11-01');
-    expect(publishConfirmText(2, '2026-10-21', '2026-11')).toBe(
-      "Publish version 2? It applies to the scorecards opened from 01/12/2026: November 2026's KPIs on. The scorecards opened already keep the version they opened with.",
-    );
+    expect(publishConfirmText(2, '2026-10-21', '2026-11')).toBe('Publish version 2, applying from 01/12/2026?');
   });
 });
 
@@ -283,8 +263,7 @@ describe('the KPI settings: the deadlines', () => {
     expect(kpiSettingsProblems(settingsOf({ ...values, managerDay: '2' }))).toEqual(['The manager’s scoring must be due after the self-rating: choose a later day.']);
   });
 
-  it('says them in a sentence, and who changed them last', () => {
-    expect(settingsSummary(KPI_SETTING_DEFAULTS)).toBe('Self-rating by the 3rd, manager’s scoring by the 6th, HR’s calibration by the 8th and sign-off by the 10th');
+  it('says who changed them last', () => {
     expect(settingsChangedText({ updatedAt: null, updatedBy: null })).toBeNull();
     expect(settingsChangedText({ updatedAt: '2026-10-21T14:42:00.000Z', updatedBy: { email: 'hr@trendlix.com', name: 'Mona Adel' } })).toBe(
       'Last changed by Mona Adel on 21/10/2026, 5:42 PM',
@@ -311,11 +290,9 @@ describe('the KPI settings: attendance in the KPI (owner, 25 October 2026: "Fixe
   it('says what it means, what Save asks and what was saved', () => {
     expect(ATTENDANCE_IN_KPI_TEXT.off).toMatch(/^Off: the KPI is performance only\. Attendance is cut on the fixed part of the pay alone/);
     expect(ATTENDANCE_IN_KPI_TEXT.on).toMatch(/^On: the automatic Attendance metric counts in its pillar/);
-    expect(attendanceInKpiConfirmText(false)).toContain('final ones don’t change');
-    expect(attendanceInKpiConfirmText(true)).toMatch(/^Count attendance in the KPI again\?/);
-    expect(attendanceInKpiSavedText(false)).toBe(
-      'Saved: the KPI is performance only, and attendance is cut on the fixed part. The scorecards not yet final were worked out again without it.',
-    );
-    expect(attendanceInKpiSavedText(true)).toBe('Saved: attendance counts in the KPI again. The scorecards not yet final were worked out again with it.');
+    expect(attendanceInKpiConfirmText(false)).toBe('Take attendance out of the KPI?');
+    expect(attendanceInKpiConfirmText(true)).toBe('Count attendance in the KPI again?');
+    expect(attendanceInKpiSavedText(false)).toBe('Saved: the KPI is performance only.');
+    expect(attendanceInKpiSavedText(true)).toBe('Saved: attendance counts in the KPI.');
   });
 });

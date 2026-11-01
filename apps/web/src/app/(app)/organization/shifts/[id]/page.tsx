@@ -22,7 +22,7 @@ async function EditShift({ params }: { params: Promise<{ id: string }> }) {
             <h3 className="font-semibold">Delete Shift</h3>
             <DeleteForm
               action={deleteShift.bind(null, id)}
-              confirmText={`Delete shift ${shift.code}? This cannot be undone.`}
+              confirmText={`Delete shift ${shift.code}?`}
               label="Delete shift"
             />
           </section>

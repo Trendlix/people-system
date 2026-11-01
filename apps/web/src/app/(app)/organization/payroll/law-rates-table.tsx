@@ -16,11 +16,6 @@ function TaxTiers({ view }: { view: LawRatesView }) {
   return (
     <details className="min-w-56">
       <summary className="cursor-pointer whitespace-nowrap text-accent">{tiersSummary(view.taxTiers)}</summary>
-      <p className="mt-2 max-w-72 text-xs text-muted">
-        {tiers.length > 1
-          ? "The tier is chosen by the whole annual net income, and the whole income is taxed on that tier's bands, from 0."
-          : 'The annual net income is taxed on these bands, from 0.'}
-      </p>
       <ol className="mt-2 space-y-2">
         {tiers.map((t, i) => (
           <li key={t.range}>

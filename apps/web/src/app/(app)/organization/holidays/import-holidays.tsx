@@ -11,8 +11,6 @@ import { holidaysHref, weekdayOf } from './holidays';
 import {
   dayNote,
   IMPORT_ACCEPT,
-  IMPORT_MAX_MB,
-  IMPORT_MAX_ROWS,
   importButtonText,
   importCounts,
   importedYears,
@@ -41,12 +39,9 @@ function ImportPreview({ preview }: { preview: HolidayImportPreview }) {
       <p className="text-sm font-medium">{previewSummary(preview)}</p>
       {groups.map((g) => (
         <section key={g.status} aria-label={g.title} className="space-y-2">
-          <div>
-            <h4 className="text-sm font-semibold">
-              {titleCase(g.title)} <span className="font-normal text-muted tabular-nums">({g.days.length})</span>
-            </h4>
-            <p className="hint">{g.intro}</p>
-          </div>
+          <h4 className="text-sm font-semibold">
+            {titleCase(g.title)} <span className="font-normal text-muted tabular-nums">({g.days.length})</span>
+          </h4>
           <div className="overflow-x-auto rounded-lg border border-line bg-card">
             <table className="table">
               <thead>
@@ -88,12 +83,9 @@ function ImportPreview({ preview }: { preview: HolidayImportPreview }) {
       ))}
       {preview.problems.length > 0 && (
         <section aria-label="Problems" className="space-y-2">
-          <div>
-            <h4 className="text-sm font-semibold">
-              {titleCase('Problems')} <span className="font-normal text-muted tabular-nums">({preview.problems.length})</span>
-            </h4>
-            <p className="hint">These rows aren’t imported. Put them right in the file and import it again: the days imported already are then skipped.</p>
-          </div>
+          <h4 className="text-sm font-semibold">
+            {titleCase('Problems')} <span className="font-normal text-muted tabular-nums">({preview.problems.length})</span>
+          </h4>
           <ul className="list-disc space-y-1 rounded-lg bg-danger-soft py-3 pr-4 pl-8 text-sm text-danger">
             {preview.problems.map((p, i) => (
               <li key={`${p.row}-${i}`}>{p.message}</li>
@@ -148,7 +140,6 @@ export function ImportHolidays({ action, year }: { action: (prev: HolidayImportS
         <button type="button" aria-expanded={false} onClick={() => setOpen(true)} className="btn btn-secondary">
           Import holidays
         </button>
-        <p className="hint">The year’s list from a file: fill in the template, then import it.</p>
       </div>
     );
   }
@@ -156,14 +147,7 @@ export function ImportHolidays({ action, year }: { action: (prev: HolidayImportS
   return (
     <div className="space-y-4 rounded-lg border border-line bg-canvas p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="max-w-2xl">
-          <h3 className="font-semibold">Import a Year’s Holidays</h3>
-          <p className="mt-1 text-sm text-muted">
-            Fill in the template, one row for each holiday (a holiday of several days, such as Eid al-Adha, is one row with its last day under Until),
-            and import it as it is or saved as CSV. Up to {IMPORT_MAX_ROWS} rows and {IMPORT_MAX_MB} MB. You see what will happen to each day before
-            anything is saved.
-          </p>
-        </div>
+        <h3 className="font-semibold">Import a Year’s Holidays</h3>
         {download}
       </div>
 

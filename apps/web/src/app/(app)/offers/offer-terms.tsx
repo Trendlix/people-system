@@ -1,6 +1,6 @@
 'use client';
 
-import { INTERN_DEFAULT_MONTHS, INTERN_MAX_MONTHS, INTERN_NO_WAGE_TEXT, isPerAccount, isTrainingType, PAY_BASES, PAY_BASIS_LABELS, type LawRates } from '@trendlix/shared';
+import { INTERN_MAX_MONTHS, INTERN_NO_WAGE_TEXT, isPerAccount, isTrainingType, PAY_BASES, PAY_BASIS_LABELS, type LawRates } from '@trendlix/shared';
 import { AllowanceRows } from '@/components/allowance-rows';
 import { valueOf } from '@/components/form';
 import { allowanceTerms, type AllowanceRow } from '@/lib/allowances';
@@ -12,7 +12,6 @@ import {
   parseAmount,
   plainAmount,
   RATE_BASIS_LABELS,
-  ratesYearText,
   SALARY_BASES,
   SALARY_BASIS_LABELS,
   splitSalary,
@@ -20,7 +19,6 @@ import {
   workedOutRate,
 } from '../employees/[id]/contracts/salary';
 import { SalaryBreakdownList } from '../employees/[id]/contracts/salary-breakdown';
-import { noProbationHint } from '../employees/[id]/contracts/training';
 import { internMonthsOf, type OfferDefaults } from './form-body';
 import { estimateText, insuredAllowancesOf, offerBreakdownRows, offerSalary, payBasisFrom, salaryStartFrom, totalPay, type TermsTyped } from './terms';
 
@@ -51,7 +49,6 @@ export function OfferTerms({
   rows,
   onRows,
   allowanceTypes,
-  year,
   rates,
 }: {
   state: FormState;
@@ -66,9 +63,7 @@ export function OfferTerms({
   rows: AllowanceRow[];
   onRows: (rows: AllowanceRow[]) => void;
   allowanceTypes: AllowanceType[];
-  /** The salary's year: the join date's, else this year. */
-  year: number;
-  /** That year's rates set by law (lawRatesFor on the years kept). */
+  /** The salary's year's rates set by law (lawRatesFor on the years kept): the join date's, else this year's. */
   rates: LawRates;
 }) {
   // an intern's agreement has no probation and pays no wage, monthly (19 October 2026)
@@ -87,6 +82,8 @@ export function OfferTerms({
   const perHour = salary.kind === 'ok' && salary.hourly ? { ...salary.hourly, breakdown: salary.breakdown } : null;
 
   const allowancesTotal = allowanceTotals(terms).total;
+  // under the net rate: the gross rate it gives, or what's wrong with it
+  const netRateHint = perHour ? workedOutRate(perHour) : salary.kind === 'invalid' && salary.field === 'netRate' ? salary.reason : null;
 
   return (
     <div className="space-y-5">
@@ -101,15 +98,11 @@ export function OfferTerms({
             id={fid('grossSalary')}
             value={INTERN_NO_WAGE_TEXT}
             readOnly
-            aria-describedby={fid('grossSalary-hint')}
             className="input bg-canvas text-muted"
           />
-          <p id={fid('grossSalary-hint')} className="hint">
-            An unpaid internship pays no wage. The allowances below, such as transportation, are paid a month.
-          </p>
         </div>
       ) : (
-        <fieldset id="field-payBasis" className="scroll-mt-6" aria-describedby={fid('payBasis-hint')}>
+        <fieldset id="field-payBasis" className="scroll-mt-6">
           <legend className="label">Pay basis</legend>
           <div className="flex flex-wrap gap-2">
             {PAY_BASES.map((b) => (
@@ -119,17 +112,12 @@ export function OfferTerms({
               </label>
             ))}
           </div>
-          <p id={fid('payBasis-hint')} className="hint">
-            {hourly
-              ? 'By the hour, e.g. part-time two or three days a week: the hourly rate × the hours a week × 52 ÷ 12 is the monthly gross.'
-              : 'A monthly salary: type the gross, and the net is worked out, or the net wanted, and the gross is worked out.'}
-          </p>
         </fieldset>
       )}
 
       {intern ? null : hourly ? (
         <div key="hourly" className="space-y-5">
-          <fieldset aria-describedby={fid('rateBasis-hint')}>
+          <fieldset>
             <legend className="label">Start from</legend>
             <div className="flex flex-wrap gap-2">
               {SALARY_BASES.map((b) => (
@@ -139,11 +127,6 @@ export function OfferTerms({
                 </label>
               ))}
             </div>
-            <p id={fid('rateBasis-hint')} className="hint">
-              {rateStart === 'net'
-                ? 'Type the net per hour agreed, allowances included: the gross rate is worked out, to the piaster.'
-                : 'Type the gross per hour: the net is worked out.'}
-            </p>
           </fieldset>
           <div className="grid gap-5 sm:grid-cols-2">
             {rateStart === 'net' ? (
@@ -157,19 +140,17 @@ export function OfferTerms({
                   inputMode="decimal"
                   autoComplete="off"
                   required
-                  aria-describedby={fid('netRate-hint')}
+                  aria-describedby={netRateHint ? fid('netRate-hint') : undefined}
                   defaultValue={typed.netRate}
                   // only the gross rate worked out from it is saved, so a mistake is caught here rather than as a missing rate
                   ref={(el) => el?.setCustomValidity(salary.kind === 'invalid' && salary.field === 'netRate' ? salary.reason : '')}
                   className="input tabular-nums"
                 />
-                <p id={fid('netRate-hint')} className="hint">
-                  {perHour
-                    ? workedOutRate(perHour)
-                    : salary.kind === 'invalid' && salary.field === 'netRate'
-                      ? salary.reason
-                      : 'The net pay agreed for an hour of work, allowances included.'}
-                </p>
+                {netRateHint && (
+                  <p id={fid('netRate-hint')} className="hint">
+                    {netRateHint}
+                  </p>
+                )}
                 {/* what is saved: the gross rate worked out */}
                 <input type="hidden" name="hourlyRate" value={perHour ? plainAmount(perHour.rate) : ''} />
               </div>
@@ -184,14 +165,16 @@ export function OfferTerms({
                   inputMode="decimal"
                   autoComplete="off"
                   required
-                  aria-describedby={fid('hourlyRate-hint')}
+                  aria-describedby={perHour ? fid('hourlyRate-hint') : undefined}
                   defaultValue={typed.hourlyRate}
                   aria-invalid={(salary.kind === 'invalid' && salary.field === 'hourlyRate') || undefined}
                   className="input tabular-nums"
                 />
-                <p id={fid('hourlyRate-hint')} className="hint">
-                  The gross pay for an hour of work{perHour ? `: ${netPerHourText(perHour.breakdown.net, perHour.hours)}.` : '.'}
-                </p>
+                {perHour && (
+                  <p id={fid('hourlyRate-hint')} className="hint">
+                    {netPerHourText(perHour.breakdown.net, perHour.hours)}.
+                  </p>
+                )}
               </div>
             )}
             <div id="field-hoursPerWeek" className="scroll-mt-6">
@@ -204,14 +187,17 @@ export function OfferTerms({
                 inputMode="decimal"
                 autoComplete="off"
                 required
-                aria-describedby={fid('hoursPerWeek-hint')}
+                placeholder="e.g. 20, at most 48"
+                aria-describedby={perHour ? fid('hoursPerWeek-hint') : undefined}
                 defaultValue={typed.hoursPerWeek}
                 aria-invalid={(salary.kind === 'invalid' && salary.field === 'hoursPerWeek') || undefined}
                 className="input tabular-nums"
               />
-              <p id={fid('hoursPerWeek-hint')} className="hint">
-                {perHour ? estimateText(perHour.rate, perHour.hours, perHour.breakdown.gross) : 'E.g. 20, or 22.5: at most 48, the legal working week.'}
-              </p>
+              {perHour && (
+                <p id={fid('hoursPerWeek-hint')} className="hint">
+                  {estimateText(perHour.rate, perHour.hours, perHour.breakdown.gross)}
+                </p>
+              )}
             </div>
             {/* the least paid a month (owner, 27 October 2026: "can i add rate per hour with a minimum monthly payment?") */}
             <div id="field-hourlyMinimum" className="scroll-mt-6">
@@ -223,13 +209,9 @@ export function OfferTerms({
                 name="hourlyMinimum"
                 inputMode="decimal"
                 autoComplete="off"
-                aria-describedby={fid('hourlyMinimum-hint')}
                 defaultValue={valueOf(state, 'hourlyMinimum', defaults.hourlyMinimum === null ? '' : String(defaults.hourlyMinimum))}
                 className="input tabular-nums"
               />
-              <p id={fid('hourlyMinimum-hint')} className="hint">
-                Paid when the hours worked come to less, for the days of a part month. Leave empty for none.
-              </p>
             </div>
             {/* what is saved as the gross: the monthly estimate */}
             <input type="hidden" name="grossSalary" value={calc ? plainAmount(calc.gross) : ''} />
@@ -237,7 +219,7 @@ export function OfferTerms({
         </div>
       ) : (
         <div key="monthly" className="space-y-5">
-          <fieldset aria-describedby={fid('salaryBasis-hint')}>
+          <fieldset>
             <legend className="label">Start from</legend>
             <div className="flex flex-wrap gap-2">
               {SALARY_BASES.map((b) => (
@@ -247,11 +229,6 @@ export function OfferTerms({
                 </label>
               ))}
             </div>
-            <p id={fid('salaryBasis-hint')} className="hint">
-              {start === 'net'
-                ? 'Type the net wanted, allowances included: the gross is worked out, in whole pounds.'
-                : 'Type the gross: the net is worked out.'}
-            </p>
           </fieldset>
           {start === 'gross' ? (
             <div key="gross" id="field-grossSalary" className="scroll-mt-6 sm:max-w-[calc(50%-0.625rem)]">
@@ -280,15 +257,17 @@ export function OfferTerms({
                 inputMode="decimal"
                 autoComplete="off"
                 required
-                aria-describedby={fid('wantedNet-hint')}
+                aria-describedby={salary.kind === 'ok' ? fid('wantedNet-hint') : undefined}
                 defaultValue={typed.wantedNet}
                 // only the gross worked out from it is saved, so a mistake is caught here rather than as a missing gross
                 ref={(el) => el?.setCustomValidity(salary.kind === 'invalid' ? salary.reason : '')}
                 className="input tabular-nums"
               />
-              <p id={fid('wantedNet-hint')} className="hint">
-                {salary.kind === 'ok' ? workedOutGross(parseAmount(typed.wantedNet) ?? 0, salary.breakdown) : 'The monthly net to pay.'}
-              </p>
+              {salary.kind === 'ok' && (
+                <p id={fid('wantedNet-hint')} className="hint">
+                  {workedOutGross(parseAmount(typed.wantedNet) ?? 0, salary.breakdown)}
+                </p>
+              )}
               {/* what is saved: the gross worked out */}
               <input type="hidden" name="grossSalary" value={calc ? plainAmount(calc.gross) : ''} />
             </div>
@@ -309,13 +288,9 @@ export function OfferTerms({
             min={1}
             max={6}
             step={1}
-            aria-describedby={fid('daysPerWeek-hint')}
             defaultValue={valueOf(state, 'daysPerWeek', defaults.daysPerWeek === null ? '' : String(defaults.daysPerWeek))}
             className="input tabular-nums"
           />
-          <p id={fid('daysPerWeek-hint')} className="hint">
-            E.g. 2 or 3 for part-time. Leave empty for the shift&apos;s working days.
-          </p>
         </div>
         {!intern && (
           <div id="field-basicPercent" className="scroll-mt-6">
@@ -330,15 +305,15 @@ export function OfferTerms({
               min={1}
               max={100}
               step={1}
-              aria-describedby={fid('basicPercent-hint')}
+              aria-describedby={split ? fid('basicPercent-hint') : undefined}
               defaultValue={valueOf(state, 'basicPercent', String(defaults.basicPercent))}
               className="input tabular-nums"
             />
-            <p id={fid('basicPercent-hint')} className="hint">
-              {split
-                ? `Basic ${formatEgp(split.basic)} · variable ${formatEgp(split.variable)}, which follows the monthly performance reports.`
-                : 'The rest of the gross is variable, following the monthly performance reports.'}
-            </p>
+            {split && (
+              <p id={fid('basicPercent-hint')} className="hint">
+                Basic {formatEgp(split.basic)} · variable {formatEgp(split.variable)}
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -369,10 +344,6 @@ export function OfferTerms({
           )}
           {/* what is saved, and goes into the offer as {{net_salary}}: the net worked out */}
           <input type="hidden" name="netSalary" value={calc ? plainAmount(calc.net) : ''} />
-          <p className="hint">
-            Calculated as the Ministry of Finance&apos;s salary tax system does: social insurance on the insured wage, salary tax in its tiers, and the
-            Martyrs&apos; Fund. Uses {ratesYearText(year, rates)}, the year of the join date.
-          </p>
         </div>
       )}
 
@@ -384,7 +355,7 @@ export function OfferTerms({
           {intern ? (
             // an intern's agreement: none, sent as 0
             <>
-              <input id={fid('probationMonths')} value="0" readOnly aria-describedby={fid('probationMonths-hint')} className="input bg-canvas text-muted" />
+              <input id={fid('probationMonths')} value="0" readOnly className="input bg-canvas text-muted" />
               <input type="hidden" name="probationMonths" value="0" />
             </>
           ) : (
@@ -397,16 +368,10 @@ export function OfferTerms({
               min={0}
               max={3}
               step={1}
-              aria-describedby={fid('probationMonths-hint')}
               defaultValue={valueOf(state, 'probationMonths', String(defaults.probationMonths))}
               className="input tabular-nums"
             />
           )}
-          <p id={fid('probationMonths-hint')} className="hint">
-            {intern
-              ? noProbationHint()
-              : 'At most 3 months, and only once with the company (Labour Law Art. 90): 0 for someone employed here before. 0 for none.'}
-          </p>
         </div>
         <div id="field-durationMonths" className="scroll-mt-6">
           <label htmlFor={fid('durationMonths')} className="label">
@@ -422,15 +387,9 @@ export function OfferTerms({
             min={1}
             max={intern ? INTERN_MAX_MONTHS : 60}
             step={1}
-            aria-describedby={fid('durationMonths-hint')}
             defaultValue={valueOf(state, 'durationMonths', String(intern ? internMonthsOf(defaults) : defaults.durationMonths))}
             className="input tabular-nums"
           />
-          <p id={fid('durationMonths-hint')} className="hint">
-            {intern
-              ? `Short: 1 to ${INTERN_MAX_MONTHS} months, ${INTERN_DEFAULT_MONTHS} unless you choose another. Accepting the offer drafts the internship agreement for this length from the join date.`
-              : 'Accepting the offer drafts a fixed-term contract for this length from the join date; on the draft it can be made open-ended or for a specific job instead.'}
-          </p>
         </div>
       </div>
     </div>

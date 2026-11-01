@@ -18,7 +18,7 @@ export function ScanToOpen() {
   const open = (text: string) => {
     const code = codeFromLabel(text);
     if (!code) {
-      setSaid('That isn’t an asset’s label. Try again, or type the code, e.g. PK-CAM-0003.');
+      setSaid('That isn’t an asset’s label.');
       return;
     }
     setSaid(`Opening ${code}…`);
@@ -27,7 +27,7 @@ export function ScanToOpen() {
   return (
     <div className="space-y-4">
       <QrScanner onCode={open} label="Scan a label" stopAfterOne />
-      {!can && <p className="text-sm text-muted">This phone&apos;s browser can&apos;t read QR codes here. Type the code from the label, or scan it with the phone&apos;s camera app.</p>}
+      {!can && <p className="text-sm text-muted">This browser can&apos;t read QR codes: type the code.</p>}
       <form
         onSubmit={(e) => {
           e.preventDefault();

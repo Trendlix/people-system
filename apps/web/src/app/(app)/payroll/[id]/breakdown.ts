@@ -357,7 +357,14 @@ function monthlySteps(line: Line, rules: PayrollRules, split: SplitPart[] | null
               ? 'No KPIs given: the attendance alone'
               : "No KPIs given: the variable part isn't cut",
         },
-    { key: 'kpiCut', label: 'KPI cut', value: cutText(r.kpiCut), kind: 'cut' },
+    {
+      key: 'kpiCut',
+      label: 'KPI cut',
+      value: cutText(r.kpiCut),
+      kind: 'cut',
+      // waived by the CEO (1 November 2026)
+      ...((r.kpiWaived ?? 0) > 0 && { note: `KPI deduction of ${formatEgp(r.kpiWaived!)} waived by the CEO` }),
+    },
     {
       key: 'noShowCut',
       label: 'No-show cut',
@@ -480,6 +487,14 @@ export function waiverOf(line: Pick<Line, 'inputs' | 'result'>): { amount: numbe
   return { amount, waived };
 }
 
+/** The same for a line's KPI cut (owner, 1 November 2026: "make a button wave KPI deduction like the attendance one"). */
+export function kpiWaiverOf(line: Pick<Line, 'inputs' | 'result'>): { amount: number; waived: boolean } | null {
+  const waived = line.inputs.kpiWaived === true;
+  const amount = waived ? (line.result.kpiWaived ?? 0) : line.result.kpiCut;
+  if (!(amount > 0) && !waived) return null;
+  return { amount, waived };
+}
+
 /**
  * What was taken off a line besides the insurance, tax and Martyrs' Fund everyone pays (owner, 31 October 2026: "if the
  * employee has no deductions make his name in green, if there is deductions (attendance - absence, etcc.. ) mark
@@ -504,7 +519,8 @@ export function cutsMark(cuts: readonly string[]): { tone: 'ok' | 'warn'; text: 
 }
 
 /** A line whose attendance deduction the CEO waived: "Waived by the CEO" on it for HR and Finance. */
-export const waivedByCeo = (line: Pick<Line, 'inputs' | 'result'>) => line.inputs.attendanceWaived === true && (line.result.attendanceWaived ?? 0) > 0;
+export const waivedByCeo = (line: Pick<Line, 'inputs' | 'result'>) =>
+  (line.inputs.attendanceWaived === true && (line.result.attendanceWaived ?? 0) > 0) || (line.inputs.kpiWaived === true && (line.result.kpiWaived ?? 0) > 0);
 
 /**
  * The taxable pay's note: a year's net income for tax, and on a line with deductions before tax (owner, 20 October
@@ -582,8 +598,8 @@ export function breakdown(given: Line, rules: PayrollRules, law?: LawRates, mont
     { key: 'deductions', label: 'Deductions', value: cutText(r.deductions), kind: 'total' },
     ...adjustmentRows(line, 'addition', false),
     { key: 'net', label: 'Net', value: formatEgp(r.net), kind: 'total' },
-    { key: 'released', label: 'Released', value: cutText(r.released), kind: 'cut', note: r.released ? 'Already paid out this month' : undefined },
-    { key: 'transfer', label: 'Transfer', value: formatEgp(r.transfer), kind: 'total', note: 'What the bank pays' },
+    { key: 'released', label: 'Released', value: cutText(r.released), kind: 'cut' },
+    { key: 'transfer', label: 'Transfer', value: formatEgp(r.transfer), kind: 'total' },
     {
       key: 'companyCost',
       label: 'Company cost',

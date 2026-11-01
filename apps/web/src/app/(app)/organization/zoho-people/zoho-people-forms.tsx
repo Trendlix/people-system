@@ -97,15 +97,12 @@ function TestForm({ action, last }: { action: TestAction; last: ZohoPeopleTestVi
           <label htmlFor={fid('email')} className="label">
             A colleague’s work email <span className="font-normal text-muted">(optional)</span>
           </label>
-          <input id={fid('email')} name="email" type="email" autoComplete="off" maxLength={254} placeholder="name@trendlix.com" aria-describedby={fid('email-hint')} className="input" />
+          <input id={fid('email')} name="email" type="email" autoComplete="off" maxLength={254} placeholder="name@trendlix.com" className="input" />
         </div>
         <button type="submit" disabled={pending} className="btn btn-secondary">
           {pending ? 'Testing…' : 'Test'}
         </button>
       </div>
-      <p id={fid('email-hint')} className="hint">
-        Reads today’s check-ins in Zoho People for the connected account, and for the colleague written here: how many there are, never kept.
-      </p>
       {shown && !pending && (
         <p role="status" className={`text-sm ${shown.ok ? 'text-ok' : 'text-danger'}`}>
           {zohoTestText(shown, formatDateTime)}
@@ -144,7 +141,7 @@ export function ZohoConnection({
             action={disconnect}
             label="Disconnect"
             pendingLabel="Disconnecting…"
-            confirm="Disconnect Zoho People? Nothing is fetched from it, nightly or by Fetch from Zoho, until it is connected again. The days fetched so far stay."
+            confirm="Disconnect Zoho People?"
           />
         )}
       </div>
@@ -208,7 +205,7 @@ export function FetchForm({
         </div>
       </div>
       <p id={fid('range-hint')} className="hint -mt-2">
-        Up to yesterday ({formatDate(yesterday)}): today’s check-ins are fetched tonight. {ZOHO_PEOPLE_MAX_MONTHS} months at most at a time.
+        Up to {formatDate(yesterday)}, {ZOHO_PEOPLE_MAX_MONTHS} months at most.
       </p>
       <fieldset className="space-y-2">
         <legend className="label">Whose</legend>
@@ -226,13 +223,13 @@ export function FetchForm({
       {who === 'chosen' && (
         <div className="space-y-2">
           {people === null ? (
-            <p className="text-sm text-muted">The people couldn’t be loaded. Reload the page, or fetch everyone.</p>
+            <p className="text-sm text-muted">The people couldn’t be loaded.</p>
           ) : (
             <div className="sm:max-w-xl">
               <label htmlFor={fid('person')} className="label">
                 Person
               </label>
-              <Select id={fid('person')} value="" onChange={(e) => setChosen((c) => zohoWithChosen(c, e.target.value))} aria-describedby={fid('person-hint')} className="input">
+              <Select id={fid('person')} value="" onChange={(e) => setChosen((c) => zohoWithChosen(c, e.target.value))} className="input">
                 <option value="">{options.length ? 'Choose a person…' : 'No one else to choose'}</option>
                 {options.map((o) => (
                   <option key={o.value} value={o.value} disabled={o.disabled}>
@@ -240,18 +237,13 @@ export function FetchForm({
                   </option>
                 ))}
               </Select>
-              <p id={fid('person-hint')} className="hint">
-                Type a name or a code to search. Choose several; former employees are marked, and those left out of the Zoho fetch can’t be chosen.
-              </p>
             </div>
           )}
           <ChosenChips chosen={chosen} names={names} label="Chosen to fetch" onRemove={(id) => setChosen((c) => c.filter((x) => x !== id))} />
         </div>
       )}
       <p aria-live="polite" className="text-sm text-muted">
-        {days !== null && count > 0
-          ? `${zohoEstimateText(count, days)}.${who === 'everyone' ? ' Former employees employed in those days add to it.' : ''} It goes on in the background: this page can be closed.`
-          : 'Choose the days to see how long it takes: Zoho is called 60 times a minute, once for each person and day.'}
+        {days !== null && count > 0 ? `${zohoEstimateText(count, days)}.` : ''}
       </p>
       <div className="flex flex-wrap items-center gap-3">
         <SubmitButton busy={pending} disabled={!!blocked || (who === 'chosen' && !chosen.length)} pendingText="Starting…">
@@ -305,9 +297,9 @@ export function RunProgress({ run, cancel }: { run: ZohoRunView; cancel: Action 
       <p className="text-sm tabular-nums">{runProgressText(run)}</p>
       <p className="text-sm text-muted">
         {run.cancelRequested
-          ? 'Cancelling: it stops after the call it is making.'
+          ? 'Cancelling…'
           : run.minutesLeft !== null
-            ? `${titleFirst(zohoDurationText(run.minutesLeft))} left at 60 calls a minute.`
+            ? `${titleFirst(zohoDurationText(run.minutesLeft))} left`
             : 'Working out how long is left…'}
       </p>
       {waiting && (
@@ -316,7 +308,7 @@ export function RunProgress({ run, cancel }: { run: ZohoRunView; cancel: Action 
         </p>
       )}
       {cancel && !run.cancelRequested && (
-        <ActionForm action={cancel} label="Cancel" pendingLabel="Cancelling…" confirm="Cancel this fetch? The days fetched so far stay; the rest isn’t fetched." />
+        <ActionForm action={cancel} label="Cancel" pendingLabel="Cancelling…" confirm="Cancel this fetch?" />
       )}
     </div>
   );
@@ -346,7 +338,7 @@ export function ExclusionForm({ action, people }: { action: Action; people: read
         <label htmlFor={fid('person')} className="label">
           Person
         </label>
-        <Select id={fid('person')} value="" onChange={(e) => setPicked((c) => zohoWithChosen(c, e.target.value))} aria-describedby={fid('person-hint')} className="input">
+        <Select id={fid('person')} value="" onChange={(e) => setPicked((c) => zohoWithChosen(c, e.target.value))} className="input">
           <option value="">{options.length ? 'Choose a person…' : 'No one else to choose'}</option>
           {options.map((o) => (
             <option key={o.value} value={o.value}>
@@ -354,9 +346,6 @@ export function ExclusionForm({ action, people }: { action: Action; people: read
             </option>
           ))}
         </Select>
-        <p id={fid('person-hint')} className="hint">
-          Type a name or a code to search. Choose several.
-        </p>
       </div>
       <ChosenChips chosen={chosen} names={names} label="Chosen to leave out" onRemove={(id) => setPicked((c) => c.filter((x) => x !== id))} />
       <div className="sm:max-w-xl">
@@ -381,5 +370,5 @@ export function ExclusionForm({ action, people }: { action: Action; people: read
 
 /** Take someone off the list: back in the Zoho fetch from the next run on. */
 export function RemoveExclusion({ action, name }: { action: Action; name: string }) {
-  return <ActionForm action={action} label="Take off the list" pendingLabel="Taking off…" confirm={`Take ${name} off the list? From the next run on, the Zoho fetch includes them again.`} />;
+  return <ActionForm action={action} label="Take off the list" pendingLabel="Taking off…" confirm={`Take ${name} off the list?`} />;
 }

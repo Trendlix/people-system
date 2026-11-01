@@ -82,7 +82,7 @@ export function ChangeRequestCard({ request: r, fromLabel = 'Current', children 
           <h3 className="font-semibold">
             <Link href={profileHref(r.employee.id)}>{name}</Link>
             {shownCode(r.employee.employeeCode) && <span className="font-normal text-muted"> · {r.employee.employeeCode}</span>}
-            {r.confidential && <CLevelBadge className="ml-2 align-middle" title="The CEO or a Super Admin decides a C-level person’s change request, not HR." />}
+            {r.confidential && <CLevelBadge className="ml-2 align-middle" />}
           </h3>
           <p className="mt-0.5 text-sm text-muted">
             Asked {formatDateTime(r.requestedAt)}

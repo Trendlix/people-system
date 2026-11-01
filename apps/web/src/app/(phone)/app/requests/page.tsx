@@ -69,7 +69,7 @@ async function Covering() {
       <h2 id="covering-heading" className="font-semibold">
         I’m Covering
       </h2>
-      <p className="text-xs text-muted">Colleagues who named you to cover their work while they are away: {coveringCountText(list.length)}.</p>
+      <p className="text-xs text-muted">{coveringCountText(list.length)}</p>
       <CoveringList list={list} today={today} compact />
     </section>
   );
@@ -141,7 +141,7 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/app/reques
         <Chip href={appRequestsHref(f.kind, 'open')} label="Being decided" active={f.status === 'open'} />
       </nav>
       {rows.length === 0 ? (
-        <div className="card px-4 py-8 text-center text-sm text-muted">You haven&apos;t asked for anything yet. Ask with New request.</div>
+        <div className="card px-4 py-8 text-center text-sm text-muted">You haven&apos;t asked for anything yet.</div>
       ) : shown.length === 0 ? (
         <div className="card px-4 py-8 text-center text-sm text-muted">
           No requests match these filters. <Link href={APP_PATHS.requests}>Show all</Link>
@@ -165,7 +165,7 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/app/reques
             ))}
           </RowList>
           <p className="border-t border-line px-4 py-3 text-xs text-muted">
-            {shown.length} {shown.length === 1 ? 'request' : 'requests'}, newest first.
+            {shown.length} {shown.length === 1 ? 'request' : 'requests'}
           </p>
         </div>
       )}
@@ -176,7 +176,7 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/app/reques
 export default function PhoneRequestsPage({ searchParams }: PageProps<'/app/requests'>) {
   return (
     <div className="space-y-4">
-      <PageTitle title="My Requests">What you have asked for, newest first, with each decision as it is made.</PageTitle>
+      <PageTitle title="My Requests" />
       <Suspense fallback={<PhoneLoading />}>
         <Requests searchParams={searchParams} />
       </Suspense>

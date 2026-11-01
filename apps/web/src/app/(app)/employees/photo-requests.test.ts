@@ -37,9 +37,9 @@ describe('photo requests', () => {
 
   it('tells the employee what happened to each, with HR’s note', () => {
     expect(photoOutcome(request({}))).toBeNull();
-    expect(photoOutcome(request({ status: 'approved', decidedAt: '2026-10-31T10:00:00Z' }))).toEqual({ title: 'Sent 30/10/2026 · approved on 31/10/2026: now your picture', note: null });
+    expect(photoOutcome(request({ status: 'approved', decidedAt: '2026-10-31T10:00:00Z' }))).toEqual({ title: 'Sent 30/10/2026 · approved on 31/10/2026', note: null });
     expect(photoOutcome(request({ status: 'rejected', decidedAt: '2026-10-31T10:00:00Z', decisionNote: ' No sunglasses ' }))).toEqual({
-      title: 'Sent 30/10/2026 · rejected on 31/10/2026: your photo stayed as it was',
+      title: 'Sent 30/10/2026 · rejected on 31/10/2026',
       note: 'No sunglasses',
     });
     expect(photoOutcome(request({ status: 'cancelled', decidedAt: '2026-10-31T10:00:00Z', decisionNote: 'x' }))?.note).toBeNull();

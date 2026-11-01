@@ -23,7 +23,6 @@ import {
   homeSourceText,
   homeStepText,
   homeStepTone,
-  homeShownAs,
   homesApi,
   homeValidityBody,
   homeValidityText,
@@ -100,9 +99,7 @@ describe('the words', () => {
     expect(homeProgressText(home()).text).toBe('With HR, who decides it first; then the CEO');
     expect(homeProgressText(home({ confidential: true })).text).toBe('With the CEO, who takes HR’s step and then decides it');
     expect(homeProgressText(home({ status: 'with_ceo' })).text).toBe('HR approved it: with the CEO now');
-    expect(homeProgressText(home({ status: 'approved', approvedAt: '2026-10-20T11:00:00.000Z', radiusMetres: 150 })).text).toBe(
-      'Approved 20/10/2026: a check-in within 150 m of it shows as Home',
-    );
+    expect(homeProgressText(home({ status: 'approved', approvedAt: '2026-10-20T11:00:00.000Z', radiusMetres: 150 })).text).toBe('Approved 20/10/2026');
     expect(homeProgressText(home({ status: 'rejected', rejectedStage: 'ceo', rejectReason: 'Not needed' }))).toEqual({ text: 'Rejected by the CEO', reason: 'Not needed' });
     expect(homeProgressText(home({ status: 'rejected', rejectedStage: 'hr', rejectReason: 'No' })).text).toBe('Rejected by HR');
     expect(homeProgressText(home({ status: 'replaced' })).text).toBe('Replaced by a newer home location: its point is deleted');
@@ -139,9 +136,9 @@ describe('the words', () => {
   it('says what was just done', () => {
     expect(homeDoneText({ done: 'sent' }, home())?.text).toBe('Sent to HR.');
     expect(homeDoneText({ done: 'sent' }, home({ confidential: true }))?.text).toBe('Sent to the CEO.');
-    expect(homeDoneText({ done: 'hr_approve' }, home())?.text).toBe('Approved at HR’s step: it is with the CEO now.');
-    expect(homeDoneText({ done: 'ceo_approve' }, home())?.text).toBe('Approved: check-ins within it now show as Home.');
-    expect(homeDoneText({ done: 'ceo_reject' }, home())?.text).toContain('its point is deleted');
+    expect(homeDoneText({ done: 'hr_approve' }, home())?.text).toBe('Approved: sent to the CEO.');
+    expect(homeDoneText({ done: 'ceo_approve' }, home())?.text).toBe('Approved.');
+    expect(homeDoneText({ done: 'ceo_reject' }, home())?.text).toBe('Rejected.');
     expect(homeDoneText({ done: 'moved' }, home())?.tone).toBe('warn');
     expect(homeDoneText({ done: 'nonsense' }, home())).toBeNull();
     expect(homeDoneText({}, home())).toBeNull();
@@ -291,26 +288,18 @@ describe('the forms', () => {
 });
 
 describe('the types (24 October 2026: "Home Location - Remote Site - Client Location")', () => {
-  it('says each and how a check-in within it shows', () => {
+  it('says each', () => {
     expect(HOME_TYPE_LINES).toEqual({ home: 'Home location', remote_site: 'Remote site', client: 'Client location' });
-    expect(homeShownAs(home())).toBe('Home');
-    expect(homeShownAs(home({ type: 'remote_site', label: 'Studio' }))).toBe('Remote site · Studio');
-    expect(homeShownAs(home({ type: 'client', label: 'Acme' }))).toBe('Client · Acme');
     expect(homeWhatText(home({ type: 'client', label: 'Acme', radiusMetres: 120 }))).toBe('Client location: Acme · 120 m');
     expect(profileHomeText(home({ type: 'remote_site', approvedAt: '2026-10-20T11:00:00.000Z' }))).toBe('Remote site: approved 20/10/2026 · 100 m');
   });
 
   it('says where an approved one stands: in force with its end, ended, a client location for everyone', () => {
     const approved = { status: 'approved' as const, approvedAt: '2026-10-20T11:00:00.000Z' };
-    expect(homeProgressText(home({ ...approved, type: 'remote_site', label: 'Studio', inForce: true })).text).toBe('Approved 20/10/2026: a check-in within 100 m of it shows as Remote site · Studio');
-    expect(homeProgressText(home({ ...approved, type: 'client', label: 'Acme', inForce: true })).text).toBe(
-      'Approved 20/10/2026: a check-in within 100 m of it shows as Client · Acme, for every employee',
-    );
-    expect(homeProgressText(home({ ...approved, inForce: false, endsOn: '2026-10-23' })).text).toBe('Ended 23/10/2026: a check-in there no longer shows as Home');
-    expect(homeProgressText(home({ ...approved, inForce: false, endsOn: null })).text).toBe('Ended with the employment: a check-in there no longer shows as Home');
-    expect(homeProgressText(home({ ...approved, type: 'client', label: 'Acme', inForce: false, location: { id: 'l1', name: 'Acme', endedAt: '2026-10-23T10:00:00.000Z' } })).text).toBe(
-      'Ended on Check-in Setup: a check-in there no longer shows as Client · Acme',
-    );
+    expect(homeProgressText(home({ ...approved, type: 'remote_site', label: 'Studio', inForce: true })).text).toBe('Approved 20/10/2026');
+    expect(homeProgressText(home({ ...approved, inForce: false, endsOn: '2026-10-23' })).text).toBe('Ended 23/10/2026');
+    expect(homeProgressText(home({ ...approved, inForce: false, endsOn: null })).text).toBe('Ended with the employment');
+    expect(homeProgressText(home({ ...approved, type: 'client', label: 'Acme', inForce: false, location: { id: 'l1', name: 'Acme', endedAt: '2026-10-23T10:00:00.000Z' } })).text).toBe('Ended on Check-in Setup');
     expect(homeValidityText(home({ validity: 'contract', endsOn: '2027-06-30' }))).toBe('Until the contract ends (30/06/2027)');
     expect(homeValidityText(home({ validity: 'until_date', validUntil: '2026-12-31', endsOn: '2026-12-31' }))).toBe('Until 31/12/2026');
     expect(homeValidityText(home({ validity: 'no_end' }))).toBe('No end');
@@ -318,9 +307,9 @@ describe('the types (24 October 2026: "Home Location - Remote Site - Client Loca
   });
 
   it('words what was just done, and a validity changed', () => {
-    expect(homeDoneText({ done: 'ceo_approve' }, home({ type: 'client', label: 'Acme' }))?.text).toContain('a client location for every employee now');
-    expect(homeDoneText({ done: 'ceo_approve' }, home({ type: 'remote_site', label: 'Studio' }))?.text).toBe('Approved: check-ins within it now show as Remote site · Studio.');
-    expect(homeDoneText({ done: 'validity' }, home())?.text).toBe('Saved: how long it lasts is changed.');
+    expect(homeDoneText({ done: 'ceo_approve' }, home({ type: 'client', label: 'Acme' }))?.text).toBe('Approved: a client location for every employee now.');
+    expect(homeDoneText({ done: 'ceo_approve' }, home({ type: 'remote_site', label: 'Studio' }))?.text).toBe('Approved.');
+    expect(homeDoneText({ done: 'validity' }, home())?.text).toBe('Saved.');
     expect(homeStepText({ kind: 'validity_changed', decision: null, radiusMetres: null })).toBe('How long it lasts changed');
     expect(homeDecisionButton('approve', 'ceo', false, 'client').label).toBe('Approve the client location');
     expect(homeDecisionButton('reject', 'hr', false, 'remote_site').label).toBe('Reject the remote site');

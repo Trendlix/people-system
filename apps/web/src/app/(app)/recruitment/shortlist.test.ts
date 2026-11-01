@@ -94,10 +94,10 @@ describe('the hiring manager’s review', () => {
     expect(reviewBadge('reject')).toMatchObject({ label: 'Rejected', title: 'You rejected them: HR confirms the rejection.' });
   });
 
-  it('says what it did: a rejection is HR’s to confirm', () => {
+  it('says what it did', () => {
     const one = { done: [{ id: 'a', number: 'APP-1', fullName: 'Sara Ali' }], skipped: [] };
-    expect(reviewDoneText('next', one)).toBe('Accepted 1. HR makes the screening call next.');
-    expect(reviewDoneText('reject', one)).toBe('Rejected 1. HR confirms each rejection.');
+    expect(reviewDoneText('next', one)).toBe('Accepted 1.');
+    expect(reviewDoneText('reject', one)).toBe('Rejected 1.');
     expect(reviewDoneText('reject', { done: [], skipped: [{ id: 'b', number: 'APP-2', fullName: 'Omar Adel', reason: 'They were rejected already.' }] })).toBe(
       'Rejected 0; 1 skipped: Omar Adel (they were rejected already).',
     );

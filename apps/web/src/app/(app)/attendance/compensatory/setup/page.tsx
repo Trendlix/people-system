@@ -6,7 +6,7 @@ import { BackLink, Empty, Loading } from '../../../organization/ui';
 import { notLoadedText } from '../../../payroll/load';
 import { StaffOnly } from '../../../staff-only';
 import { saveCompensatorySettings } from '../actions';
-import { COMPENSATORY_PATH, compensatoryRulesOf, compensatoryWindowText, editsCompensatorySetup, seesAllCompensatory } from '../compensatory';
+import { COMPENSATORY_PATH, compensatoryRulesOf, editsCompensatorySetup, seesAllCompensatory } from '../compensatory';
 import { CompensatorySetupForm } from '../compensatory-forms';
 import { loadCompensatorySettings } from '../data';
 
@@ -25,10 +25,6 @@ function Heading({ back }: { back: { href: string; label: string } | null }) {
     <div className="space-y-2">
       {back && <BackLink href={back.href}>{back.label}</BackLink>}
       <h1 className="page-title">Compensatory Setup</h1>
-      <p className="max-w-3xl text-muted">
-        What working a rest day or an official holiday earns: a whole day off, or for part of the day the same hours off on a working day, with no
-        deduction; or, rarely, cash instead. The day off is taken in the window below.
-      </p>
     </div>
   );
 }
@@ -49,11 +45,6 @@ async function Setup() {
         <h2 id="compensatory-rules-heading" className="text-lg font-semibold">
           The Rules
         </h2>
-        <p className="mt-1 max-w-3xl text-sm text-muted">
-          {edits
-            ? 'Each request is checked against them when it is sent, recorded and decided; the employee’s form says live what their hours earn.'
-            : `Only HR changes them. The day off is taken ${compensatoryWindowText(rules.offWithinDays)}.`}
-        </p>
         <div className="mt-5">
           <CompensatorySetupForm action={saveCompensatorySettings} settings={rules} canEdit={edits} />
         </div>

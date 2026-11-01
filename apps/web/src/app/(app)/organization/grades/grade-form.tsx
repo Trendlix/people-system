@@ -58,13 +58,10 @@ export function GradeForm({
             min={1}
             max={99}
             step={1}
+            placeholder="1 = lowest"
             defaultValue={valueOf(state, 'rank', grade ? String(grade.rank) : undefined)}
-            aria-describedby={fid('rank-hint')}
             className="input"
           />
-          <p id={fid('rank-hint')} className="hint">
-            Its level in the hierarchy: 1 for the lowest. Each grade has its own rank.
-          </p>
         </div>
       </div>
       <div className="grid gap-5 sm:grid-cols-2">
@@ -91,31 +88,17 @@ export function GradeForm({
           maxLength={300}
           placeholder="e.g. Senior Graphic Designer"
           defaultValue={valueOf(state, 'description', grade?.description)}
-          aria-describedby={fid('description-hint')}
           className="input"
         />
-        <p id={fid('description-hint')} className="hint">
-          The roles at this level, as a guide when choosing an employee&apos;s grade or the grades a job title allows.
-        </p>
       </div>
       {marksConfidential && (
         <div>
           {/* tells the action the tick was on the form, so an unticked box clears the flag rather than leaving it */}
           <input type="hidden" name="confidentialShown" value="1" />
           <label className={choice}>
-            <input
-              type="checkbox"
-              name="confidential"
-              defaultChecked={confidential}
-              aria-describedby={fid('confidential-hint')}
-              className="size-4 accent-accent"
-            />
+            <input type="checkbox" name="confidential" defaultChecked={confidential} className="size-4 accent-accent" />
             Confidential ({CONFIDENTIAL_LABEL})
           </label>
-          <p id={fid('confidential-hint')} className="hint">
-            People holding it are hidden from HR: only the CEO and the Super Admin see their details. Everyone else sees
-            their directory card only: name, photo, job title, department or team, work email and employee code.
-          </p>
         </div>
       )}
       <div className="flex flex-wrap gap-3">

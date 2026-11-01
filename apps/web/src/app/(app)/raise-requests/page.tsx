@@ -99,7 +99,7 @@ function CeoDecision({ request: r, pending, rates, status }: { request: RaiseReq
       </Link>
     );
   }
-  return <CeoRaiseDecision raise={pending} request={r} rates={rates} action={decideListedRaise.bind(null, pending.id, status)} folded />;
+  return <CeoRaiseDecision raise={pending} rates={rates} action={decideListedRaise.bind(null, pending.id, status)} folded />;
 }
 
 async function Requests({ searchParams }: { searchParams: PageProps<'/raise-requests'>['searchParams'] }) {
@@ -122,7 +122,7 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/raise-requ
     <div className="card">
       <Filters status={status} />
       {listing.kind === 'unavailable' ? (
-        <p className={quiet}>Not available yet: the server does not have raise requests yet.</p>
+        <p className={quiet}>Not available yet.</p>
       ) : listing.kind === 'forbidden' ? (
         <p className={quiet}>Only HR, the CEO and Finance can see raise requests.</p>
       ) : listing.kind === 'failed' ? (
@@ -131,7 +131,7 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/raise-requ
         </p>
       ) : listing.value.length === 0 ? (
         <p className={quiet}>
-          {status ? noneWithStatusText(status) : 'No raise requests yet. Ask for one with New raise request.'}{' '}
+          {status ? noneWithStatusText(status) : 'No raise requests yet.'}{' '}
           {status && <Link href={raiseRequestsHref('')}>Show all</Link>}
         </p>
       ) : (
@@ -164,7 +164,7 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/raise-requ
                       <Link href={requestHref(r)} className="font-semibold">
                         {r.employee.fullNameEn}
                       </Link>
-                      {r.confidential && <CLevelBadge className="ml-1.5" title="The CEO takes HR’s step on a C-level person’s raise request." />}
+                      {r.confidential && <CLevelBadge className="ml-1.5" />}
                       <div className="text-xs text-muted">
                         {shownCode(r.employee.employeeCode) && <span className="tabular-nums">{r.employee.employeeCode} · </span>}
                         {askedWord(r)} {askedAt(r)}
@@ -245,12 +245,6 @@ export default function RaiseRequestsPage({ searchParams }: PageProps<'/raise-re
   return (
     <div className="max-w-7xl">
       <h1 className="page-title">Raise Requests</h1>
-      <p className="mt-1 text-muted">
-        Every raise, at every stage: those asked for by employees for themselves, by their direct managers or by HR, each with a reason, a
-        comment and the raise suggested, and those HR prepares directly on a contract or a renewal. HR approves a request, as suggested or
-        with another raise, or rejects it (a C-level person&apos;s, the CEO); the CEO then decides the raise here or on{' '}
-        <Link href="/approvals">Approvals</Link>. Every step is logged on the request; History lists those approved, done or rejected.
-      </p>
       <div className="mt-6">
         <Suspense fallback={null}>
           <Asking searchParams={searchParams} />

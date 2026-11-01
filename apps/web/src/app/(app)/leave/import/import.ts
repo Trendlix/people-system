@@ -37,8 +37,8 @@ export const UPLOAD_ACCEPT = '.xlsx,application/vnd.openxmlformats-officedocumen
 
 /** Why a file chosen can't be uploaded, before it is sent (the API reads it by its content again); null: it can. */
 export function uploadProblem(file: Pick<File, 'name' | 'size'> | null | undefined): string | null {
-  if (!file || file.size === 0) return 'Choose the file to import: the leave template filled in, or Zoho People’s leave export (.xlsx).';
-  if (!/\.xlsx$/i.test(file.name)) return 'Choose an Excel workbook (.xlsx): the leave template filled in, or Zoho People’s leave export saved as XLSX.';
+  if (!file || file.size === 0) return 'Choose the file to import (.xlsx).';
+  if (!/\.xlsx$/i.test(file.name)) return 'Choose an Excel workbook (.xlsx).';
   if (file.size > LEAVE_IMPORT_MAX_MB * 1024 * 1024) return `The file must be ${LEAVE_IMPORT_MAX_MB} MB or smaller.`;
   return null;
 }
@@ -168,7 +168,7 @@ export function applyConfirmText(view: Pick<LeaveImportView, 'leaves' | 'balance
     odRequests ? `${odRequests} pending official duty ${odRequests === 1 ? 'request' : 'requests'} sent for a decision` : null,
     balances ? `${balances} ${balances === 1 ? 'balance' : 'balances'} set` : null,
   ].filter(Boolean);
-  return `Apply ${parts.join(', ')}? The draft payrolls of their months take the leave; a payroll with the CEO, approved or paid doesn’t change. You can undo it while no payroll counting it is past its draft.`;
+  return `Apply ${parts.join(', ')}?`;
 }
 
 /** What an import made that is still there: "4 leaves, 1 balance change, 7 work-from-home days and 2 official duties"; none: null. */
@@ -192,12 +192,11 @@ export function undoWhatText(view: Pick<LeaveImportView, 'undoable' | 'kept'>): 
 }
 
 export function undoConfirmText(view: Pick<LeaveImportView, 'undoable' | 'kept'>): string {
-  const what = undoWhatText(view);
-  return `Undo this import? ${what[0].toUpperCase()}${what.slice(1)} it made that you import ${view.undoable === 1 ? 'is' : 'are'} removed, and its rows can be imported again.`;
+  return `Undo this import and remove ${undoWhatText(view)}?`;
 }
 
 export function deleteConfirmText(fileName: string): string {
-  return `Delete the import of ${fileName}? The file and its review are deleted for good; nothing it made is left in the system.`;
+  return `Delete the import of ${fileName}?`;
 }
 
 /** Why a Super Admin can't delete an import yet; null: they can. */

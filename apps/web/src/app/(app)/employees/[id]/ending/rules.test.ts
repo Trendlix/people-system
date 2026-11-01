@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ENDING_RULE_DEFAULTS, ENDING_RULES } from '@trendlix/shared';
 import type { EndingRule } from '../../../../../lib/types';
-import { agreedLastDayHint, agreedLastDayProblem, endingRulesFor, lastDayText, trainingLastDay } from './rules';
+import { agreedLastDayProblem, endingRulesFor, lastDayText, trainingLastDay } from './rules';
 
 // Training completed for interns (owner, 19 October 2026), the others as before; the paid trainee went on 25 October 2026.
 
@@ -63,14 +63,6 @@ describe('the last working day shown', () => {
 });
 
 describe('the agreed last working day field', () => {
-  it('hints at the notice’s day', () => {
-    expect(agreedLastDayHint('2027-01-26', false, show)).toBe(
-      'Leave it empty to use the notice: 26/01/2027. Set it when you agreed a different last day with them.',
-    );
-    expect(agreedLastDayHint('2027-01-26', true, show)).toContain('about 26/01/2027');
-    expect(agreedLastDayHint(null, false, show)).toBe('Leave it empty to use the notice. Set it when you agreed a different last day with them.');
-  });
-
   it('refuses a day before the notice day, and nothing while empty', () => {
     expect(agreedLastDayProblem('2026-09-30', '2026-10-01', show)).toBe('The agreed last working day must be on or after the notice date, 01/10/2026.');
     expect(agreedLastDayProblem('2026-10-01', '2026-10-01', show)).toBeNull();

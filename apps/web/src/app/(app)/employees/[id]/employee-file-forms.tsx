@@ -96,13 +96,7 @@ export function UploadPaperworkForm({ action, defaultKind }: { action: Action; d
 
   return (
     <form action={upload} onReset={emptied} className="space-y-4">
-      <div>
-        <h3 className="font-semibold">Upload a Scan</h3>
-        <p className="mt-1 text-sm text-muted">
-          A photo (JPEG, PNG or WebP) or a PDF of up to 4 MB, or press Scan to scan it from an office scanner. On a phone you can take a photo.
-          Reading the text takes a few seconds.
-        </p>
-      </div>
+      <h3 className="font-semibold">Upload a Scan</h3>
       <FormErrors errors={state.errors} />
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
@@ -125,7 +119,6 @@ export function UploadPaperworkForm({ action, defaultKind }: { action: Action; d
             {(take) => (
               <ScanButton
                 title="Scan a Document"
-                hint="Put the document face down on the glass, or its pages in the document feeder."
                 purpose={COLOUR_KINDS.includes(kind) ? 'photo' : 'document'}
                 maxBytes={PDF_MAX_BYTES}
                 onScanned={(result) => scanned(take, result)}
@@ -143,10 +136,7 @@ export function UploadPaperworkForm({ action, defaultKind }: { action: Action; d
           <label htmlFor={fid('expiresOn')} className="label">
             Expiry date <span className="font-normal text-muted">(optional)</span>
           </label>
-          <DateInput id={fid('expiresOn')} name="expiresOn" aria-describedby={fid('expiresOn-hint')} defaultValue="" />
-          <p id={fid('expiresOn-hint')} className="hint">
-            For a paper that stops being valid, e.g. a criminal record certificate.
-          </p>
+          <DateInput id={fid('expiresOn')} name="expiresOn" defaultValue="" />
         </div>
       </div>
       {chosen && (

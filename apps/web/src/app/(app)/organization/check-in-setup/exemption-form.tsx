@@ -6,7 +6,7 @@ import { DateInput } from '@/components/date-time-inputs';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import { Select } from '@/components/select';
 import type { FormState } from '@/lib/types';
-import { endExemptionConfirm, exemptButtonText, FROM_LOCK_HINT, fromField, ownStartText, periodText, reasonCount, startHint } from './exemptions';
+import { endExemptionConfirm, exemptButtonText, fromField, ownStartText, reasonCount } from './exemptions';
 import { withChosen } from './setup';
 
 // The forms of people exempt from check-in (owner, 25 October 2026: "allow me to select people that are not eligable for
@@ -90,7 +90,6 @@ export function ExemptionForm({
               autoFocus
               value=""
               onChange={(e) => setChosen((c) => withChosen(c, e.target.value))}
-              aria-describedby={fid('person-hint')}
               className="input"
             >
               <option value="">{left.length ? 'Choose a person…' : 'No one else to choose'}</option>
@@ -100,10 +99,6 @@ export function ExemptionForm({
                 </option>
               ))}
             </Select>
-            <p id={fid('person-hint')} className="hint">
-              Type a name, a code or a team to search. Choose several: they get the same reason and last day, each from their own first day unless you type
-              one. Someone exempt already isn&apos;t offered; their profile adds a later period.
-            </p>
           </div>
           {chosen.length > 0 && (
             <ul className="flex flex-wrap gap-1.5" aria-label="Chosen to exempt">
@@ -114,7 +109,7 @@ export function ExemptionForm({
                   <li key={id} className="inline-flex items-center gap-0.5 rounded-full border border-accent/40 bg-accent-soft py-0.5 ps-2.5 pe-0.5 text-xs font-medium text-accent">
                     {names.get(id) ?? id}
                     {own && (
-                      <span className="font-normal tabular-nums" title={startHint(starts.get(id))}>
+                      <span className="font-normal tabular-nums">
                         &nbsp;· {own}
                       </span>
                     )}
@@ -153,9 +148,8 @@ export function ExemptionForm({
           // the profile's form opens with the reason, the picker's with the people
           autoFocus={!picking}
         />
-        <p id={fid('reason-hint')} className="hint flex justify-between gap-3">
-          <span>Why they don&apos;t check in, e.g. works at the client&apos;s site all month.</span>
-          <span className="tabular-nums">{reasonCount(reason || valueOf(state, 'reason'))}</span>
+        <p id={fid('reason-hint')} className="hint text-right tabular-nums">
+          {reasonCount(reason || valueOf(state, 'reason'))}
         </p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
@@ -177,22 +171,15 @@ export function ExemptionForm({
                   }
                 : undefined
             }
-            aria-describedby={fid('from-hint')}
           />
           {/* empty: each from their own first day (their contract's start, else their join date) */}
           <input type="hidden" name="ownStart" value="1" />
-          <p id={fid('from-hint')} className="hint">
-            {from.hint} {FROM_LOCK_HINT}
-          </p>
         </div>
         <div>
           <label htmlFor={fid('endDate')} className="label">
             Until <span className="font-normal text-muted">(optional)</span>
           </label>
-          <DateInput id={fid('endDate')} name="endDate" defaultValue={valueOf(state, 'endDate')} aria-describedby={fid('until-hint')} />
-          <p id={fid('until-hint')} className="hint">
-            Its last day; empty for no end date, until HR ends it.
-          </p>
+          <DateInput id={fid('endDate')} name="endDate" defaultValue={valueOf(state, 'endDate')} />
         </div>
       </div>
       <div className="flex flex-wrap gap-2">
@@ -310,7 +297,6 @@ export function ExemptionSwitch({
   suggested: SuggestedExemptionStart | null;
   today: string;
 }) {
-  const fid = useFieldIds();
   const [formOpen, setFormOpen] = useState(false);
   const [pending, start] = useTransition();
   const [said, setSaid] = useState<FormState>({});
@@ -330,16 +316,10 @@ export function ExemptionSwitch({
               else if (formOpen && !active) setFormOpen(false);
               else if (active && end && window.confirm(endExemptionConfirm(name, active, today))) start(async () => setSaid(await end()));
             }}
-            aria-describedby={fid('switch-hint')}
             className="size-5 accent-accent"
           />
           {EXEMPTION_LABEL}
         </label>
-        <p id={fid('switch-hint')} className="hint max-w-3xl">
-          {active
-            ? `${periodText(active)}. Turning it off ends it now, asked first.`
-            : 'On: their working days count as the shift’s full hours, whatever they press; checking in stays optional. Approved leave still counts as leave.'}
-        </p>
       </div>
       {active?.endDate && !formOpen && (
         <button type="button" onClick={() => setFormOpen(true)} className="btn btn-secondary min-h-9 px-3">

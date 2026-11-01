@@ -1,6 +1,6 @@
 'use client';
 
-import { CUSTODY_TEXT_LIMITS, RETURN_CONDITION_HINTS, RETURN_CONDITION_LABELS, RETURN_CONDITIONS, type CustodyItemView } from '@trendlix/shared';
+import { CUSTODY_TEXT_LIMITS, RETURN_CONDITION_LABELS, RETURN_CONDITIONS, type CustodyItemView } from '@trendlix/shared';
 import { useActionState } from 'react';
 import { FormErrors, SubmitButton, useFieldIds, valueOf } from '@/components/form';
 import type { FormState } from '@/lib/types';
@@ -39,7 +39,7 @@ export function ReceiveForm({ action, items }: { action: Action; items: CustodyI
                   Still out
                 </label>
                 {RETURN_CONDITIONS.map((c) => (
-                  <label key={c} title={RETURN_CONDITION_HINTS[c]} className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line px-3">
+                  <label key={c} className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line px-3">
                     <input type="radio" name={conditionField(i.id)} value={c} defaultChecked={valueOf(state, conditionField(i.id), '') === c} />
                     {RETURN_CONDITION_LABELS[c]}
                   </label>
@@ -75,7 +75,6 @@ export function ReceiveForm({ action, items }: { action: Action; items: CustodyI
                     ),
                   )}
                 </ul>
-                <p className="hint">Untick, or lower the number of, what didn&apos;t come back: it stays on the person&apos;s record. An item missing has its accessories missing too.</p>
               </fieldset>
             )}
             <div>
@@ -91,13 +90,6 @@ export function ReceiveForm({ action, items }: { action: Action; items: CustodyI
                 className="input"
               />
             </div>
-          </li>
-        ))}
-      </ul>
-      <ul className="space-y-0.5 text-xs text-muted">
-        {RETURN_CONDITIONS.map((c) => (
-          <li key={c}>
-            <span className="font-semibold">{RETURN_CONDITION_LABELS[c]}:</span> {RETURN_CONDITION_HINTS[c]}
           </li>
         ))}
       </ul>

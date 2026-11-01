@@ -21,9 +21,7 @@ async function Bulk({ params }: { params: PageProps<'/recruitment/vacancies/[id]
     <div className="space-y-2">
       <BackLink href={vacancyHref(v.id)}>{v.title}</BackLink>
       <h1 className="page-title">Bulk Upload CVs</h1>
-      <p className="max-w-3xl text-sm text-muted">
-        {v.number} · each CV is saved as an application at Applied, after you check the name, email and mobile read from it.
-      </p>
+      <p className="text-sm text-muted">{v.number}</p>
     </div>
   );
   if (v.viewer !== 'manages') return <Empty>Only HR and a Super Admin upload CVs.</Empty>;

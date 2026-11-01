@@ -146,53 +146,37 @@ export function lateText(minutes: number): string {
 /** "1 day", "3 days". */
 const days = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`;
 
-/**
- * Whether the period has employments with a gap between them (a rehire): since joining is from the first join date,
- * the days between two employments left out.
- */
-export const hasRehireGap = (v: Pick<AttendanceHistoryView, 'employments'>): boolean => v.employments.length > 1;
-
-/** A figure as its tile shows it: its value, a note under it, its one-line definition (on hover and below), its tone. */
+/** A figure as its tile shows it: its value, a note under it, its tone. */
 export interface HistoryTile {
   key: string;
   label: string;
   value: string;
   note: string | null;
-  definition: string;
   tone: 'danger' | 'warn' | null;
 }
 
-/**
- * What the Exempt days tile means (owner, 25 October 2026: "trat them as if they achived their full working hours"), when
- * the API sends no definition of it.
- */
-export const COMPENSATORY_DAYS_DEFINITION = 'Working days off in exchange for a rest day or an official holiday worked: full paid days, never late, short or absent.';
-
-export const EXEMPT_DAYS_DEFINITION = 'Working days exempt from check-in: counted as full hours, never late or absent; any presses are kept for reference.';
-
-/** The period's figures as tiles (the brief's list), in order, each with the API's definition of it. */
-export function historyTiles(v: Pick<AttendanceHistoryView, 'figures' | 'definitions'>): HistoryTile[] {
+/** The period's figures as tiles (the brief's list), in order. */
+export function historyTiles(v: Pick<AttendanceHistoryView, 'figures'>): HistoryTile[] {
   const f = v.figures;
-  const d = v.definitions;
   return [
-    { key: 'rate', label: 'Attendance rate', value: percentText(f.attendanceRate), note: `${f.attendedDays} of ${days(f.expectedDays)} expected`, definition: d.attendanceRate, tone: null },
-    { key: 'ontime', label: 'On time', value: percentText(f.onTimeRate), note: `${f.onTimeDays} of ${days(f.measuredDays)}`, definition: d.onTimeRate, tone: null },
-    { key: 'checkin', label: 'Average check-in', value: f.averageCheckIn === null ? '—' : clockText(f.averageCheckIn), note: null, definition: d.averageCheckIn, tone: null },
-    { key: 'hours', label: 'Average hours a day', value: hoursText(f.averageHours), note: f.daysCounted ? `Over ${days(f.daysCounted)} counted` : null, definition: d.averageHours, tone: null },
-    { key: 'late', label: 'Late days', value: String(f.lateDays), note: f.lateMinutes > 0 ? `${lateText(f.lateMinutes)} late in all` : null, definition: d.lateDays, tone: f.lateDays > 0 ? 'warn' : null },
-    { key: 'absent', label: 'Absences', value: String(f.absences), note: null, definition: d.absences, tone: f.absences > 0 ? 'danger' : null },
-    { key: 'leave', label: 'Leave days', value: String(f.leaveDays), note: f.zohoLeaveDays > 0 ? `And ${days(f.zohoLeaveDays)} of leave in Zoho only` : null, definition: d.leaveDays, tone: null },
-    { key: 'wfh', label: 'Work from home days', value: String(f.wfhDays), note: null, definition: d.wfhDays, tone: null },
-    { key: 'od', label: 'Official duty days', value: String(f.odDays), note: null, definition: d.odDays, tone: null },
+    { key: 'rate', label: 'Attendance rate', value: percentText(f.attendanceRate), note: `${f.attendedDays} of ${days(f.expectedDays)} expected`, tone: null },
+    { key: 'ontime', label: 'On time', value: percentText(f.onTimeRate), note: `${f.onTimeDays} of ${days(f.measuredDays)}`, tone: null },
+    { key: 'checkin', label: 'Average check-in', value: f.averageCheckIn === null ? '—' : clockText(f.averageCheckIn), note: null, tone: null },
+    { key: 'hours', label: 'Average hours a day', value: hoursText(f.averageHours), note: f.daysCounted ? `Over ${days(f.daysCounted)} counted` : null, tone: null },
+    { key: 'late', label: 'Late days', value: String(f.lateDays), note: f.lateMinutes > 0 ? `${lateText(f.lateMinutes)} late in all` : null, tone: f.lateDays > 0 ? 'warn' : null },
+    { key: 'absent', label: 'Absences', value: String(f.absences), note: null, tone: f.absences > 0 ? 'danger' : null },
+    { key: 'leave', label: 'Leave days', value: String(f.leaveDays), note: f.zohoLeaveDays > 0 ? `And ${days(f.zohoLeaveDays)} of leave in Zoho only` : null, tone: null },
+    { key: 'wfh', label: 'Work from home days', value: String(f.wfhDays), note: null, tone: null },
+    { key: 'od', label: 'Official duty days', value: String(f.odDays), note: null, tone: null },
     // exempt from check-in (owner, 25 October 2026): only with exempt days; an API from before them has none
     ...((f.exemptDays ?? 0) > 0
-      ? [{ key: 'exempt', label: 'Exempt days', value: String(f.exemptDays), note: null, definition: (d as Partial<Record<string, string>>).exemptDays ?? EXEMPT_DAYS_DEFINITION, tone: null }]
+      ? [{ key: 'exempt', label: 'Exempt days', value: String(f.exemptDays), note: null, tone: null }]
       : []),
     // compensatory days off (owner, 26 October 2026): only with some; an API from before them has none
     ...((f.compensatoryDays ?? 0) > 0
-      ? [{ key: 'compensatory', label: 'Compensatory days off', value: String(f.compensatoryDays), note: null, definition: COMPENSATORY_DAYS_DEFINITION, tone: null }]
+      ? [{ key: 'compensatory', label: 'Compensatory days off', value: String(f.compensatoryDays), note: null, tone: null }]
       : []),
-    { key: 'extra', label: 'Overtime (extra time)', value: hoursText(f.extraHours), note: f.offDaysWorked > 0 ? `${days(f.offDaysWorked)} worked on a rest day or holiday` : null, definition: d.extraHours, tone: null },
+    { key: 'extra', label: 'Overtime (extra time)', value: hoursText(f.extraHours), note: f.offDaysWorked > 0 ? `${days(f.offDaysWorked)} worked on a rest day or holiday` : null, tone: null },
   ];
 }
 

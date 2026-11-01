@@ -3,18 +3,16 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { EMPLOYMENT_TYPES, LABELS, WORK_ARRANGEMENTS, WORK_NATURE_LABELS, WORK_NATURES, type WorkNature } from '@trendlix/shared';
+import { EMPLOYMENT_TYPES, LABELS, WORK_ARRANGEMENTS, WORK_NATURE_LABELS, WORK_NATURES } from '@trendlix/shared';
 import { DateInput } from '@/components/date-time-inputs';
 import { DepartmentOrTeamOptions } from '@/components/department-options';
 import { valueOf } from '@/components/form';
 import { Select } from '@/components/select';
-import { offerManagerHint, suggestManager } from '@/lib/department-leads';
 import { formatDate } from '@/lib/format';
 import { shiftTimesText } from '@/lib/shifts';
 import type { FormState, Grade } from '@/lib/types';
 import { CommissionField, type EmploymentPickers } from '../employees/employment-fields';
-import { employmentTypeHint, WORK_NATURE_HINTS, workPatternNote } from '../employees/employment-law';
-import { CONFIDENTIAL_GRADES_LEFT_OUT, gradeLabel, gradeRangeSentence, inGradeRange } from '../organization/grades/label';
+import { gradeLabel, gradeRangeSentence, inGradeRange } from '../organization/grades/label';
 import type { OfferDefaults } from './form-body';
 import { withCode } from '@/lib/hidden';
 
@@ -89,19 +87,10 @@ export function OfferPositionFields({
   }, [noTitles, router]);
 
   const savedManagerId = valueOf(state, 'managerId', defaults.managerId);
-  // followed for the hint: left empty, the lead becomes the manager when the offer is accepted (the API's default)
-  const [managerId, setManagerId] = useState(savedManagerId);
   const managers = pickers.managers
     .filter((m) => EMPLOYED.includes(m.standing) || m.id === savedManagerId)
     .sort((a, b) => a.fullNameEn.localeCompare(b.fullNameEn));
-  const managerHint = offerManagerHint(
-    managerId,
-    suggestManager(pickers.departments, departmentId, { canPick: (id) => pickers.managers.some((m) => m.id === id && EMPLOYED.includes(m.standing)) }),
-  );
   const officeDays = officeDaysOf(state, defaults.officeDays);
-  // the unpaid internship and freelance say what they mean by the law
-  const typeHint = employmentTypeHint(type, 'offer');
-  const pattern = workPatternNote(arrangement);
 
   function pickDepartment(id: string) {
     setDepartmentId(id);
@@ -132,7 +121,6 @@ export function OfferPositionFields({
             id={fid('employmentType')}
             name="employmentType"
             required
-            aria-describedby={fid('employmentType-hint')}
             defaultValue={valueOf(state, 'employmentType', defaults.employmentType)}
             onChange={(e) => setType(e.target.value)}
             className="input"
@@ -144,9 +132,6 @@ export function OfferPositionFields({
               </option>
             ))}
           </Select>
-          <p id={fid('employmentType-hint')} className="hint">
-            Picks the job offer template: each type has its own in Templates.{typeHint && ` ${typeHint}`}
-          </p>
           {type === 'full_time' && <CommissionField state={state} fid={fid} saved={defaults.paidByCommission} />}
         </div>
         <div id="field-joinDate" className="scroll-mt-6">
@@ -157,12 +142,8 @@ export function OfferPositionFields({
             id={fid('joinDate')}
             name="joinDate"
             required
-            aria-describedby={fid('joinDate-hint')}
             defaultValue={valueOf(state, 'joinDate', formatDate(defaults.joinDate))}
           />
-          <p id={fid('joinDate-hint')} className="hint">
-            The expected first day. The contract starts on it.
-          </p>
         </div>
 
         <div id="field-departmentId" className="scroll-mt-6">
@@ -197,11 +178,10 @@ export function OfferPositionFields({
           </Select>
           {noTitles && (
             <p id={fid('jobTitleId-hint')} className="hint">
-              {chosen.parentId ? 'No job titles in this team yet.' : 'No job titles of the department itself yet.'}{' '}
+              No job titles yet.{' '}
               <Link href={`/organization/departments/${chosen.id}`} target="_blank" rel="noopener">
-                Add one on the {chosen.parentId ? 'team' : 'department'}&apos;s page
-              </Link>{' '}
-              (opens in a new tab){!chosen.parentId && chosen._count.children > 0 && ', or choose one of its teams'}.
+                Add one<span className="sr-only"> (opens in a new tab)</span>
+              </Link>
             </p>
           )}
         </div>
@@ -218,7 +198,7 @@ export function OfferPositionFields({
               setGradeId(e.target.value);
               setClearedGrade(null);
             }}
-            aria-describedby={range || outOfRange ? fid('gradeId-hint') : undefined}
+            aria-describedby={outOfRange ? fid('gradeId-hint') : undefined}
             aria-invalid={outOfRange || undefined}
             className="input"
           >
@@ -229,13 +209,11 @@ export function OfferPositionFields({
               </option>
             ))}
           </Select>
-          {(range || outOfRange) && (
-            <p id={fid('gradeId-hint')} className={`hint ${outOfRange ? 'text-warn' : ''}`}>
-              {outOfRange ? `${range} ${gradeLabel(grade)} was set before that.` : range}
+          {outOfRange && (
+            <p id={fid('gradeId-hint')} className="hint text-warn">
+              {range} {gradeLabel(grade)} was set before that.
             </p>
           )}
-          {/* only the CEO and the Super Admin offer a C-level grade (owner, 19 October 2026) */}
-          {pickers.confidentialGradesLeftOut && <p className="hint">{CONFIDENTIAL_GRADES_LEFT_OUT}</p>}
           <div role="status">
             {clearedGrade && (
               <p className="hint text-warn">
@@ -252,8 +230,6 @@ export function OfferPositionFields({
             id={fid('managerId')}
             name="managerId"
             defaultValue={savedManagerId}
-            onChange={(e) => setManagerId(e.target.value)}
-            aria-describedby={managerHint ? fid('managerId-hint') : undefined}
             className="input"
           >
             <option value="">No direct manager</option>
@@ -263,11 +239,6 @@ export function OfferPositionFields({
               </option>
             ))}
           </Select>
-          {managerHint && (
-            <p id={fid('managerId-hint')} className="hint">
-              {managerHint}
-            </p>
-          )}
         </div>
 
         <div id="field-workNature" className="scroll-mt-6">
@@ -279,7 +250,6 @@ export function OfferPositionFields({
             name="workNature"
             value={nature}
             onChange={(e) => setNature(e.target.value)}
-            aria-describedby={fid('workNature-hint')}
             className="input"
           >
             {WORK_NATURES.map((n) => (
@@ -288,9 +258,6 @@ export function OfferPositionFields({
               </option>
             ))}
           </Select>
-          <p id={fid('workNature-hint')} className="hint">
-            {WORK_NATURE_HINTS[nature as WorkNature] ?? WORK_NATURE_HINTS.regular}
-          </p>
         </div>
         <div id="field-workArrangement" className="scroll-mt-6">
           <label htmlFor={fid('workArrangement')} className="label">
@@ -301,7 +268,6 @@ export function OfferPositionFields({
             name="workArrangement"
             value={arrangement}
             onChange={(e) => setArrangement(e.target.value)}
-            aria-describedby={pattern ? fid('workArrangement-hint') : undefined}
             className="input"
           >
             {WORK_ARRANGEMENTS.map((w) => (
@@ -310,11 +276,6 @@ export function OfferPositionFields({
               </option>
             ))}
           </Select>
-          {pattern && (
-            <p id={fid('workArrangement-hint')} className="hint">
-              In the law&apos;s words: {pattern}.
-            </p>
-          )}
         </div>
         <div id="field-shiftId" className="scroll-mt-6">
           <label htmlFor={fid('shiftId')} className="label">
@@ -345,7 +306,7 @@ export function OfferPositionFields({
               </label>
             ))}
           </div>
-          <p className="hint">The days the candidate would come to the office. Pick at least one.</p>
+          <p className="hint">Pick at least one.</p>
         </fieldset>
       )}
     </>

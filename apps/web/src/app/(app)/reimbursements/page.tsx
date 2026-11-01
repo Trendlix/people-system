@@ -128,7 +128,7 @@ function ClaimsTable({ claims }: { claims: ReimbursementClaimView[] }) {
           </tbody>
         ))}
       </table>
-      <p className="border-t border-line px-4 py-3 text-sm text-muted">{claimsLabel(claims.length)}, newest first in each group.</p>
+      <p className="border-t border-line px-4 py-3 text-sm text-muted">{claimsLabel(claims.length)}</p>
     </div>
   );
 }
@@ -138,8 +138,7 @@ async function Claims({ searchParams }: { searchParams: PageProps<'/reimbursemen
   if (!canSeeReimbursements(user)) {
     return (
       <Empty>
-        Only HR, Finance and the CEO see every claim. Your own are on <Link href="/my-requests">My Requests</Link>; a direct manager, team lead or
-        head of department decides the claims waiting for them on <Link href="/my-team">My Team</Link>.
+        Only HR, Finance and the CEO see every claim: yours are on <Link href="/my-requests">My Requests</Link>.
       </Empty>
     );
   }
@@ -157,7 +156,7 @@ async function Claims({ searchParams }: { searchParams: PageProps<'/reimbursemen
         )}
       </div>
       {listing.kind === 'unavailable' ? (
-        <Empty>Not available yet: the server does not have reimbursements yet.</Empty>
+        <Empty>Not available yet.</Empty>
       ) : listing.kind === 'forbidden' ? (
         <Empty>Only HR, Finance and the CEO see every claim.</Empty>
       ) : listing.kind === 'failed' ? (
@@ -177,13 +176,6 @@ export default function ReimbursementsPage({ searchParams }: PageProps<'/reimbur
   return (
     <div className="max-w-7xl">
       <h1 className="page-title">Reimbursements</h1>
-      <p className="mt-1 text-muted">
-        Expenses employees claim back, each of a type set up in{' '}
-        <Link href="/organization/payroll#reimbursement-types">Payroll Setup</Link> with its caps and conditions. The direct manager decides a claim
-        first (for someone without one, their team lead, else their department&apos;s head), then HR, then Finance: each approves it, approves a lower amount or rejects it, with a comment. Finance&apos;s approval adds it,
-        untaxed, to the next payroll. Every step is logged on the claim. A C-level person&apos;s claim goes to the CEO for HR&apos;s and
-        Finance&apos;s stages.
-      </p>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>
           <Claims searchParams={searchParams} />

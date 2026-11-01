@@ -64,7 +64,7 @@ describe('the consoles’ steps', () => {
     expect(values('microsoft')).toEqual(expect.arrayContaining([URI, ...MICROSOFT_APPLICATION_PERMISSIONS, ...MICROSOFT_DELEGATED_PERMISSIONS]));
     expect(values('zoom')).toEqual([...ZOOM_COMPANY_SCOPES, URI, ...ZOOM_PERSONAL_SCOPES]);
     // Google's consent screen Internal, to need no verification
-    expect(setupSteps('google', URI).some((s) => /Internal/.test(s.text) && /verification/.test(s.text))).toBe(true);
+    expect(setupSteps('google', URI).some((s) => /Internal/.test(s.text))).toBe(true);
     expect(setupSteps('google', URI)[0].text).toContain('trendlix-people');
   });
 });

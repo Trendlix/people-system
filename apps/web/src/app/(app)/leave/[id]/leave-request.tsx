@@ -192,7 +192,6 @@ export async function LeaveRequestDetail({
               {r.balanceAfter !== null && (
                 <Fact label="Annual balance after it">
                   <span className="text-base font-semibold tabular-nums">{daysNumber(r.balanceAfter)}</span>
-                  <span className="block text-xs text-muted">Available once this is taken</span>
                 </Fact>
               )}
               {r.reason && (
@@ -205,7 +204,7 @@ export async function LeaveRequestDetail({
               </Fact>
               <Fact label={r.manager ? approverLabel(r.manager) : 'Direct manager'}>
                 {r.recordedByHr ? (
-                  <span className="text-muted">Recorded by HR: no decision needed</span>
+                  <span className="text-muted">Recorded by HR</span>
                 ) : r.manager ? (
                   r.manager.fullNameEn
                 ) : (
@@ -215,19 +214,16 @@ export async function LeaveRequestDetail({
               {r.overStaffingLimit && (
                 <Fact label="Staffing limit">
                   <span className="text-warn">Over its team’s limit when sent</span>
-                  <span className="block text-xs text-muted">So {hrStageName(r.confidential)} approves it too, after the manager.</span>
                 </Fact>
               )}
               {r.cover !== undefined && (
                 <Fact label="Covered by">
                   {r.cover ? r.cover.fullNameEn : <span className="text-muted">Nobody named</span>}
-                  {r.cover && <span className="block text-xs text-muted">Told, and sees the handover note</span>}
                 </Fact>
               )}
               {r.standIn && (
                 <Fact label="Stand-in">
                   {standInText(r.standIn)}
-                  <span className="block text-xs text-muted">Decides what waits for {r.employee.fullNameEn} during these days, once approved</span>
                 </Fact>
               )}
               {r.handoverNote && (
@@ -266,10 +262,6 @@ export async function LeaveRequestDetail({
 
           {r.canChangeCover && (
             <Section title="Who Covers It">
-              <p className="mb-3 text-sm text-muted">
-                {r.cover ? `${r.cover.fullNameEn} covers your work on these days.` : 'Nobody is named to cover your work on these days.'} If they can’t any more, choose
-                someone else: both are told.
-              </p>
               <ChangeCoverForm
                 action={changeLeaveCover.bind(null, r.id)}
                 cover={r.cover ?? null}
@@ -296,34 +288,24 @@ export async function LeaveRequestDetail({
                   today={todayInCairo()}
                 />
               ) : (
-                <p className="text-sm text-muted">The leave types couldn’t be loaded, so it can’t be edited now. Please try again in a moment.</p>
+                <p className="text-sm text-muted">The leave types couldn’t be loaded. Please try again in a moment.</p>
               )}
             </Section>
           )}
 
           {r.canRestore && (
             <Section title="Undo the Cancellation">
-              <p className="mb-3 text-sm text-muted">
-                Put the leave back where it stood before it was cancelled, then edit its dates if they were wrong. It is checked as an edit is: no clash with other
-                leave, the year open, and no payroll month with the CEO, approved or paid.
-              </p>
               <RestoreLeaveForm action={restoreLeave.bind(null, r.id)} what={what} warning={restoreWarning(r)} />
             </Section>
           )}
 
           {r.canCancel && (
             <Section title="Cancel the Leave">
-              <p className="mb-3 text-sm text-muted">
-                {r.status === 'approved'
-                  ? 'Approved and not started yet: you can still cancel it, and its days go back to your balance.'
-                  : 'While it is being decided you can cancel it, e.g. to ask again for other days.'}
-              </p>
               <CancelLeaveForm action={cancelMyLeave.bind(null, r.id)} what={what} />
             </Section>
           )}
           {!r.canCancel && (r.hrCanCancel ?? (recordsLeave(user) && r.status === 'approved' && user.employeeId !== r.employee.id)) && (
             <Section title="Cancel the Leave">
-              <p className="mb-3 text-sm text-muted">Approved leave HR cancels gives its days back to the balance; the employee sees why.</p>
               <HrCancelLeaveForm action={cancelLeaveByHr.bind(null, r.id)} what={what} />
             </Section>
           )}

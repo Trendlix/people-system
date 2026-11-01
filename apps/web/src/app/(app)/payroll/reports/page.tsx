@@ -120,7 +120,7 @@ const figureHeads = FIGURE_COLUMNS.map((c) => (
 function ByMonth({ s }: { s: StatisticsView }) {
   return (
     <section aria-labelledby="statistics-by-month" className="space-y-3">
-      <SectionTitle id="statistics-by-month" title="By Month" note="From the runs the CEO approved: a draft or a run with the CEO may still change" />
+      <SectionTitle id="statistics-by-month" title="By Month" />
       <div className="card overflow-x-auto">
         {s.months.length === 0 ? (
           <p className={quiet}>No approved payroll in {periodTitle(s.period)}.</p>
@@ -182,7 +182,7 @@ function ByDepartment({ s }: { s: StatisticsView }) {
   if (!s.byDepartment.length) return null;
   return (
     <section aria-labelledby="statistics-by-department" className="space-y-3">
-      <SectionTitle id="statistics-by-department" title="By Department and Team" note="As each line was placed when its run was made; a team is counted in its department too" />
+      <SectionTitle id="statistics-by-department" title="By Department and Team" />
       <div className="card overflow-x-auto">
         <table className="table">
           <thead>
@@ -236,7 +236,7 @@ function YearToDate({ s }: { s: StatisticsView }) {
   const y = s.yearToDate;
   return (
     <section aria-labelledby="statistics-ytd" className="space-y-3">
-      <SectionTitle id="statistics-ytd" title={`${y.year} Year to Date`} note={`${yearToDateTitle(s)}: ${y.months} ${y.months === 1 ? 'month' : 'months'} approved, whatever the period above`} />
+      <SectionTitle id="statistics-ytd" title={`${y.year} Year to Date`} note={`${yearToDateTitle(s)}: ${y.months} ${y.months === 1 ? 'month' : 'months'} approved`} />
       <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {[
           { label: 'Company cost', value: formatEgp(y.companyCost) },
@@ -268,13 +268,10 @@ async function Report({ searchParams }: { searchParams: Promise<Query> }) {
   const header = (
     <section className="card flex flex-wrap items-end justify-between gap-4 p-4">
       <PeriodPicker period={period} today={today} />
-      <div className="text-right">
-        {/* a plain link, never prefetched: the API makes the workbook on each download */}
-        <a href={excelHref(period)} className="btn btn-secondary">
-          Download Excel
-        </a>
-        <p className="hint">By month, by department and the totals.</p>
-      </div>
+      {/* a plain link, never prefetched: the API makes the workbook on each download */}
+      <a href={excelHref(period)} className="btn btn-secondary">
+        Download Excel
+      </a>
     </section>
   );
   if (loaded.kind !== 'ok') {
@@ -323,16 +320,16 @@ export default function PayrollReportsPage({ searchParams }: PageProps<'/payroll
     <StaffOnly>
       <div className="max-w-6xl">
         <h1 className="page-title">Payroll Reports</h1>
-        <p className="mt-1 text-muted">
-          What the approved payroll paid and cost, by month, department and team, and this year to date. The salary raises and the contracts have reports of
-          their own: <Link href={SALARY_RAISES_HREF}>Salary Raises</Link> and <Link href={CONTRACTS_REPORT_HREF}>Contracts</Link>.
+        <nav aria-label="Other reports" className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
+          <Link href={SALARY_RAISES_HREF}>Salary Raises</Link>
+          <Link href={CONTRACTS_REPORT_HREF}>Contracts</Link>
           <Suspense fallback={null}>
             <LeaveReportLink />
             <VsInsuranceLink />
             {/* the Social Insurance report (owner, 27 October 2026: "to be filled from the social insurance tab") */}
             <SocialInsuranceLink />
           </Suspense>
-        </p>
+        </nav>
         <div className="mt-6">
           <Suspense fallback={<Loading />}>
             <Report searchParams={searchParams} />

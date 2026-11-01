@@ -156,10 +156,9 @@ describe('what the form says of the days', () => {
     expect(balanceAfter(CASUAL, balances, 1)).toBe(3);
     expect(balanceAfter(EXAM, balances, 1)).toBeNull();
     expect(balanceAfter(ANNUAL, null, 1)).toBeNull();
-    expect(countText(3, 1, false)).toBe('3 days, from the annual balance: 1 left after it, as far as is approved.');
-    expect(countText(3, 1, true)).toBe('3 days, from the annual balance: 1 left after it.');
-    expect(countText(1, null, false)).toBe('1 day.');
-    expect(countText(0, null, false)).toBe('No days yet: choose the first and last day.');
+    expect(countText(3, 1)).toBe('3 days · 1 left after it');
+    expect(countText(1, null)).toBe('1 day');
+    expect(countText(0, null)).toBe('No days yet');
   });
 
   it('counts full months of service', () => {

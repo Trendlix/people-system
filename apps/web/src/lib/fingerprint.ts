@@ -13,7 +13,7 @@ import type { BiometricEnrollResult, BiometricStatus, BiometricUnlockResult } fr
 export const FINGERPRINT_TEXT = {
   offer: 'Use your fingerprint to sign in next time?',
   offerHint: 'Your fingerprint stays on this phone; the system never sees it.',
-  on: 'Fingerprint sign-in is on. Next time, sign in with your fingerprint.',
+  on: 'Fingerprint sign-in is on.',
   refused: DEVICE_SIGN_IN_REFUSED,
   keyInvalidated: 'Your fingerprints changed: sign in with your password.',
   lockout: 'Too many tries with the fingerprint. Sign in with your password.',

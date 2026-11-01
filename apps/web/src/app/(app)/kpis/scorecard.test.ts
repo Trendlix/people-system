@@ -15,7 +15,6 @@ import {
   isChange,
   kpiExcelHref,
   kpiExcelName,
-  leftOutText,
   liveScore,
   NOTE_FIELD,
   openedText,
@@ -24,7 +23,6 @@ import {
   ownWaiting,
   payrollText,
   percentText,
-  performanceOnlyNote,
   PILLARS_CHANGED_THIS_MONTH,
   PICK_FIELD,
   pickText,
@@ -141,7 +139,7 @@ describe('where a scorecard stands', () => {
   it('says who scores it', () => {
     expect(scorerText({ kind: 'manager', name: 'Sara Ali' })).toBe('Sara Ali (manager)');
     expect(scorerText({ kind: 'manager', name: null })).toBe('The manager');
-    expect(scorerText({ kind: 'hr', name: null })).toBe('HR: nobody is in charge of this person');
+    expect(scorerText({ kind: 'hr', name: null })).toBe('HR');
     expect(scorerText({ kind: 'ceo', name: 'Omar Nabil' })).toBe('Omar Nabil (the CEO)');
     expect(scorerText({ kind: 'super_admin', name: null })).toBe('A Super Admin');
   });
@@ -156,7 +154,7 @@ describe('where a scorecard stands', () => {
     expect(stepDeadlineText(view({ status: 'self_rating' }))).toBe('Self-rating by 03/11/2026');
     expect(stepDeadlineText(view({ status: 'manager' }))).toBe('Scoring by 06/11/2026');
     expect(stepDeadlineText(view({ status: 'hr' }))).toBe("HR's calibration by 08/11/2026");
-    expect(stepDeadlineText(view({ status: 'sign_off' }))).toMatch(/^Sign-off by 10\/11\/2026/);
+    expect(stepDeadlineText(view({ status: 'sign_off' }))).toBe('Sign-off by 10/11/2026');
     expect(stepDeadlineText(view({ status: 'final' }))).toBeNull();
     expect(payrollText('2026-11')).toBe('Counts in the November 2026 payroll');
   });
@@ -222,7 +220,7 @@ describe('the automatic Attendance metric', () => {
     expect(attendanceText({ ratio: 0.97, score: 1, source: 'attendance' }).detail).toBe('Worked 97% of the expected hours, attendance score 100%.');
     expect(attendanceText({ ratio: null, score: null, source: 'none' })).toEqual({
       source: 'Not counted: full points',
-      detail: "Attendance isn't counted for this month, so it counts as full.",
+      detail: 'Not counted this month.',
     });
   });
 });
@@ -294,8 +292,6 @@ describe('the picks a form starts from, and the live score', () => {
     // counted, and an API from before then (nothing said): it counts
     expect(attendanceCounts(view({ attendance: { ...view().attendance, counted: true } }))).toBe(true);
     expect(attendanceCounts(view())).toBe(true);
-    expect(performanceOnlyNote(off)).toBe('The KPI is performance only: attendance is cut on the fixed part.');
-    expect(performanceOnlyNote(view())).toBeNull();
     // Discipline & Growth: the plan's 0 of 25 alone, the 24 attendance points gone
     expect(liveScore(off, {}).pillars[3]).toMatchObject({ achieved: 0, max: 25, percent: 0 });
     // every target met: 100%, the attendance (24 of 25) no longer taking any off
@@ -312,7 +308,6 @@ describe('the picks a form starts from, and the live score', () => {
     expect(s.pillars[3]).toMatchObject({ key: 'discipline', leftOut: true, max: 0 });
     // (30 × 25/35 + 25 × 35/35 + 25 × 20/30) ÷ 80% = (21.43 + 25 + 16.67) ÷ 0.8
     expect(s.finalPercent).toBe(78.9);
-    expect(leftOutText(alone.pillars[3])).toBe('Not scored: attendance is out of the KPI, so this pillar’s 20% is spread over the other pillars.');
     // counted: as before, the Attendance metric alone in it (24 of 25), nothing spread
     const counted = liveScore({ ...alone, attendance: view().attendance }, { m1: 1, m2: 0, m3: 1 });
     expect(counted.pillars[3]).toMatchObject({ achieved: 24, max: 25, percent: 96 });
@@ -412,15 +407,14 @@ describe('once something is done', () => {
   it('says what was done, on the scorecard’s page', () => {
     expect(scorecardDoneHref(ID, 'self_sent')).toBe(`/kpis/scorecards/${ID}?done=self_sent`);
     const v = view();
-    expect(doneText({ done: 'self_saved' }, v)?.text).toBe('Your self-rating is saved, not sent yet. Send it by 03/11/2026.');
-    expect(doneText({ done: 'self_sent' }, v)?.text).toMatch(/^Your self-rating is sent\. Your manager scores the month next/);
-    expect(doneText({ done: 'self_sent' }, view({ scorer: { kind: 'ceo', name: null } }))?.text).toMatch(/The CEO scores the month next/);
-    expect(doneText({ done: 'score_saved' }, v)?.text).toBe('Your scoring is saved, not sent yet. Send it by 06/11/2026.');
-    expect(doneText({ done: 'score_sent' }, view({ status: 'hr' }))?.text).toBe('Your scoring is sent to HR to calibrate.');
-    expect(doneText({ done: 'score_sent' }, view({ status: 'sign_off' }))?.text).toMatch(/ready for the employee and the manager to sign/);
-    expect(doneText({ done: 'calibrated' }, v)?.text).toMatch(/^Calibrated and sent for sign-off/);
+    expect(doneText({ done: 'self_saved' }, v)?.text).toBe('Saved, not sent yet. Send it by 03/11/2026.');
+    expect(doneText({ done: 'self_sent' }, v)?.text).toBe('Self-rating sent.');
+    expect(doneText({ done: 'score_saved' }, v)?.text).toBe('Saved, not sent yet. Send it by 06/11/2026.');
+    expect(doneText({ done: 'score_sent' }, view({ status: 'hr' }))?.text).toBe('Sent to HR.');
+    expect(doneText({ done: 'score_sent' }, view({ status: 'sign_off' }))?.text).toBe('Sent for sign-off.');
+    expect(doneText({ done: 'calibrated' }, v)?.text).toBe('Calibrated and sent for sign-off.');
     expect(doneText({ done: 'signed' }, view({ status: 'final' }))?.text).toBe('Signed. The scorecard is final.');
-    expect(doneText({ done: 'signed' }, view({ status: 'sign_off' }))?.text).toBe('Signed. It is final once both have signed, or after 10/11/2026 anyway.');
+    expect(doneText({ done: 'signed' }, view({ status: 'sign_off' }))?.text).toBe('Signed.');
     expect(doneText({ done: 'moved' }, v)).toEqual({ text: expect.stringMatching(/moved on/), tone: 'warn' });
     expect(doneText({ done: 'other' }, v)).toBeNull();
     expect(doneText({}, v)).toBeNull();
@@ -437,9 +431,9 @@ describe('All KPIs', () => {
   });
 
   it('says what opening the month did', () => {
-    expect(openedText({ month: '2026-09', opened: 12 })).toBe('12 scorecards opened for September 2026. Each person is told to rate themself.');
-    expect(openedText({ month: '2026-09', opened: 1 })).toMatch(/^1 scorecard opened/);
-    expect(openedText({ month: '2026-09', opened: 0 })).toMatch(/^No new scorecards for September 2026/);
+    expect(openedText({ month: '2026-09', opened: 12 })).toBe('12 scorecards opened for September 2026.');
+    expect(openedText({ month: '2026-09', opened: 1 })).toBe('1 scorecard opened for September 2026.');
+    expect(openedText({ month: '2026-09', opened: 0 })).toBe('No new scorecards for September 2026.');
   });
 
   it('reads the month and the filters from the address, only when they are one', () => {
@@ -463,8 +457,6 @@ describe('All KPIs', () => {
 // owner, 22 October 2026: "but i need pillars to each department / wights can be changed for each department and Job title"
 describe('the month’s pillars when they differ', () => {
   it('says they differ by department, job title or a change, the averages being by name', () => {
-    expect(PILLARS_CHANGED_THIS_MONTH).toBe(
-      'Pillars differ between this month’s scorecards (by department, job title or a change): averages by name. A pillar’s weight shows when every scorecard with it has the same.',
-    );
+    expect(PILLARS_CHANGED_THIS_MONTH).toBe('Pillars differ this month: averages by name.');
   });
 });

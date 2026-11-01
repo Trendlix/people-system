@@ -28,9 +28,6 @@ import { isHidden } from '../../../lib/hidden';
 /** The vacancy form's field. */
 export const AGENCY_BACKGROUND_FIELD = 'agencyBackground';
 
-/** Under the choice, its weights from the rules themselves. */
-export const AGENCY_BACKGROUND_HINT = `How much marketing agency experience counts in the CV match: Required weighs ${AGENCY_FIT_WEIGHTS.required}, Preferred ${AGENCY_FIT_WEIGHTS.preferred}, Not needed leaves it out.`;
-
 const isAgencyBackground = (value: string): value is AgencyBackgroundWanted => (AGENCY_BACKGROUNDS as readonly string[]).includes(value);
 
 /** The choice sent: required, preferred or not needed; null for anything else (left out: the API keeps it, or its default). */
@@ -103,10 +100,10 @@ export type MarkAction =
 
 /** The confirmation of a mark: it counts in every CV naming the company, whose CV matches are worked out again. */
 export function markConfirmText(company: string, agency: boolean): string {
-  return `Mark “${company}” as ${agency ? 'a marketing agency' : 'not a marketing agency'}? It counts for every CV that names it, and their CV matches are worked out again.`;
+  return `Mark “${company}” as ${agency ? 'a marketing agency' : 'not a marketing agency'}?`;
 }
 
-export const removeMarkConfirmText = (company: string) => `Remove the mark on “${company}”? Its name’s words decide again, for every CV that names it.`;
+export const removeMarkConfirmText = (company: string) => `Remove the mark on “${company}”?`;
 
 /**
  * A job's actions for HR (and a Super Admin): the mark that changes what it is now (Mark as agency, or Not an agency), and

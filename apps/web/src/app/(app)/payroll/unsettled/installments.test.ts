@@ -9,7 +9,6 @@ import {
   installmentsOf,
   installmentStatusText,
   limitHref,
-  limitText,
   monthsText,
   nextText,
   NO_WAGE_INSTALLMENTS,
@@ -101,18 +100,8 @@ describe('the record form', () => {
     expect(planProblem([], { gross: 0, percent: 10, byMonth: {} })).toBeNull();
   });
 
-  it('says what the law’s limit is worked out with', () => {
-    expect(limitText({ gross: 20000, percent: 10, byMonth: {} })).toBe(
-      'The current gross is EGP 20,000.00 a month: a month’s installments of all their advances and loans may take at most 10% of it (EGP 2,000.00), the most the law allows (Labour Law Art. 113).',
-    );
-    expect(limitText({ gross: 20000, percent: 7.5, byMonth: {} })).toBe(
-      'The current gross is EGP 20,000.00 a month: a month’s installments of all their advances and loans may take at most 7.5% of it (EGP 1,500.00), the limit set in Payroll Setup (the law’s is 10%).',
-    );
-    expect(limitText({ gross: null, percent: 10, byMonth: {} })).toBe('No current contract, so the law’s limit on installments can’t be checked.');
-    // an unpaid internship (19 October 2026): no pay to take installments from, not the 10% of EGP 0.00
-    expect(limitText({ gross: 0, percent: 10, byMonth: {} })).toBe(NO_WAGE_INSTALLMENTS);
-    expect(NO_WAGE_INSTALLMENTS).toMatch(/^The current contract pays no wage \(an unpaid internship\), so there is no pay to take installments/);
-    expect(limitText(null)).toBeNull();
+  it('reads the limit from its own address', () => {
+    expect(NO_WAGE_INSTALLMENTS).toBe('The current contract pays no wage: record it without installments.');
     expect(limitHref('e1')).toBe('/payroll/unsettled/installments-limit?employeeId=e1');
   });
 });
@@ -134,9 +123,7 @@ describe('each installment', () => {
     expect(nextText({ month: '2026-12', amount: 1000 })).toBe('Next: December 2026, EGP 1,000.00');
     expect(nextText(null)).toBeNull();
     expect(nextText(undefined)).toBeNull();
-    expect(postponeConfirm('2026-12')).toBe(
-      'Move the December 2026 installment, and every later one, a month on? Nothing of it is deducted in December 2026; the plan ends a month later.',
-    );
+    expect(postponeConfirm('2026-12')).toBe('Move the December 2026 installment, and every later one, a month on?');
   });
 
   it('shows what a change does to the later ones as it is typed', () => {

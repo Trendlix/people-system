@@ -3,17 +3,7 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import {
-  EMPLOYMENT_TYPES,
-  INTERNSHIP_AGREEMENT,
-  isTrainingType,
-  LABELS,
-  PROBATION_MONTHS,
-  WORK_ARRANGEMENTS,
-  WORK_NATURE_LABELS,
-  WORK_NATURES,
-  type WorkNature,
-} from '@trendlix/shared';
+import { EMPLOYMENT_TYPES, LABELS, WORK_ARRANGEMENTS, WORK_NATURE_LABELS, WORK_NATURES } from '@trendlix/shared';
 import { DateInput } from '@/components/date-time-inputs';
 import { DepartmentOrTeamOptions } from '@/components/department-options';
 import { valueOf } from '@/components/form';
@@ -22,9 +12,9 @@ import { firstPick, pickAfterPlace, suggestionHint, suggestManager, type Manager
 import { formatDate } from '@/lib/format';
 import { shiftTimesText } from '@/lib/shifts';
 import type { Department, EmployeeSummary, Employment, FormState, Grade, JobTitleSummary, Shift } from '@/lib/types';
-import { CONFIDENTIAL_GRADES_LEFT_OUT, gradeLabel, gradeRangeSentence, inGradeRange } from '../organization/grades/label';
+import { gradeLabel, gradeRangeSentence, inGradeRange } from '../organization/grades/label';
 import { CheckInAnywhereField, CheckInWithoutLocationField } from './check-in-anywhere-field';
-import { COMMISSION_HINT, employmentTypeHint, WORK_NATURE_HINTS, workPatternNote } from './employment-law';
+import { CASUAL_TOO_LONG } from './employment-law';
 import { statusField } from './employment-status';
 import { HazardousWorkField } from './leave-fields';
 import { withCode } from '@/lib/hidden';
@@ -76,24 +66,15 @@ function officeDaysOf(state: FormState, saved: number[]): Set<number> {
  * Paid by commission, under a full-time employment type (the employment form, and the offer's): a checkbox, which the
  * actions send as yes when ticked with a full-time type, and as no otherwise (unticked, or the box not shown).
  */
-export function CommissionField({ state, fid, saved }: { state: FormState; fid: (name: string) => string; saved: boolean }) {
+export function CommissionField({ state, saved }: { state: FormState; /** No longer used (its hint went); kept for callers that still pass it. */ fid?: (name: string) => string; saved: boolean }) {
   // after a refused save, ticked if it was sent; otherwise as saved
   const ticked = state.values ? 'paidByCommission' in state.values : saved;
   return (
     <div className="mt-3">
       <label className="flex min-h-11 w-fit cursor-pointer items-center gap-2 rounded-lg border border-line bg-card px-3 text-sm has-checked:border-accent has-checked:bg-accent-soft">
-        <input
-          type="checkbox"
-          name="paidByCommission"
-          defaultChecked={ticked}
-          aria-describedby={fid('paidByCommission-hint')}
-          className="size-4 accent-accent"
-        />
+        <input type="checkbox" name="paidByCommission" defaultChecked={ticked} className="size-4 accent-accent" />
         Paid by commission
       </label>
-      <p id={fid('paidByCommission-hint')} className="hint">
-        {COMMISSION_HINT}
-      </p>
     </div>
   );
 }
@@ -103,13 +84,10 @@ export function EmploymentFields({
   fid,
   pickers,
   employment,
-  contractBelow = false,
 }: {
   state: FormState;
   fid: (name: string) => string;
   pickers: EmploymentPickers;
-  /** Hiring in one form: the first contract's terms follow in the same form. */
-  contractBelow?: boolean;
   /**
    * The employment being changed; none when adding one. HR chooses Active or On leave only; a new one's status, and
    * Probation and Notice period, are the system's, and an ended one's follows why it ended (employment-status.ts).
@@ -120,7 +98,7 @@ export function EmploymentFields({
   // Kept in state: office days show only for Hybrid, and the job titles listed are the chosen department's or team's.
   const [arrangement, setArrangement] = useState(() => valueOf(state, 'workArrangement', employment?.workArrangement ?? 'office'));
   const [type, setType] = useState(() => valueOf(state, 'employmentType', employment?.employmentType));
-  const status = statusField(employment, type);
+  const status = statusField(employment);
   const [nature, setNature] = useState(() => valueOf(state, 'workNature', employment?.workNature ?? 'regular'));
   const [jobTitleId, setJobTitleId] = useState(() => valueOf(state, 'jobTitleId', employment?.jobTitleId));
   // A job title without a department on the employment brings its own department or team, so it stays selected.
@@ -174,8 +152,7 @@ export function EmploymentFields({
     .sort((a, b) => a.fullNameEn.localeCompare(b.fullNameEn));
 
   const officeDays = officeDaysOf(state, employment?.officeDays ?? []);
-  const typeHint = employmentTypeHint(type, contractBelow ? 'below' : 'tab');
-  const pattern = workPatternNote(arrangement);
+  const casualTooLong = nature === 'casual' && employment?.casualTooLong;
 
   function pickDepartment(id: string) {
     setDepartmentId(id);
@@ -210,7 +187,6 @@ export function EmploymentFields({
             required
             defaultValue={valueOf(state, 'employmentType', employment?.employmentType)}
             onChange={(e) => setType(e.target.value)}
-            aria-describedby={typeHint ? fid('employmentType-hint') : undefined}
             className="input"
           >
             <option value="">Choose a type</option>
@@ -220,13 +196,8 @@ export function EmploymentFields({
               </option>
             ))}
           </Select>
-          {typeHint && (
-            <p id={fid('employmentType-hint')} className="hint">
-              {typeHint}
-            </p>
-          )}
           {/* Sales became Full-time paid by commission (18 October 2026): full-time only, the API refuses it otherwise */}
-          {type === 'full_time' && <CommissionField state={state} fid={fid} saved={employment?.paidByCommission ?? false} />}
+          {type === 'full_time' && <CommissionField state={state} saved={employment?.paidByCommission ?? false} />}
         </div>
         <div>
           <label htmlFor={fid('status')} className="label">
@@ -243,16 +214,7 @@ export function EmploymentFields({
           ) : (
             // not sent (no name): the system sets it, or for an ended employment why it ended
             <>
-              <input
-                id={fid('status')}
-                value={status.value}
-                readOnly
-                aria-describedby={fid('status-hint')}
-                className="input bg-canvas text-muted"
-              />
-              <p id={fid('status-hint')} className="hint">
-                {status.hint}
-              </p>
+              <input id={fid('status')} value={status.value} readOnly className="input bg-canvas text-muted" />
             </>
           )}
         </div>
@@ -296,11 +258,10 @@ export function EmploymentFields({
           </Select>
           {noTitles && (
             <p id={fid('jobTitleId-hint')} className="hint">
-              {chosen.parentId ? 'No job titles in this team yet.' : 'No job titles of the department itself yet.'}{' '}
+              No job titles here yet.{' '}
               <Link href={`/organization/departments/${chosen.id}`} target="_blank" rel="noopener">
-                Add one on the {chosen.parentId ? 'team' : 'department'}&apos;s page
-              </Link>{' '}
-              (opens in a new tab){!chosen.parentId && chosen._count.children > 0 && ', or choose one of its teams'}.
+                Add one
+              </Link>
             </p>
           )}
         </div>
@@ -317,7 +278,7 @@ export function EmploymentFields({
               setGradeId(e.target.value);
               setClearedGrade(null);
             }}
-            aria-describedby={range || outOfRange ? fid('gradeId-hint') : undefined}
+            aria-describedby={outOfRange ? fid('gradeId-hint') : undefined}
             aria-invalid={outOfRange || undefined}
             className="input"
           >
@@ -328,17 +289,15 @@ export function EmploymentFields({
               </option>
             ))}
           </Select>
-          {(range || outOfRange) && (
-            <p id={fid('gradeId-hint')} className={`hint ${outOfRange ? 'text-warn' : ''}`}>
-              {outOfRange ? `${range} ${gradeLabel(grade)} was set before that, and can stay as it is.` : range}
+          {outOfRange && (
+            <p id={fid('gradeId-hint')} className="hint text-warn">
+              {range}
             </p>
           )}
-          {/* only the CEO and the Super Admin set a C-level grade (owner, 19 October 2026) */}
-          {pickers.confidentialGradesLeftOut && <p className="hint">{CONFIDENTIAL_GRADES_LEFT_OUT}</p>}
           <div role="status">
             {clearedGrade && (
               <p className="hint text-warn">
-                {gradeLabel(clearedGrade.grade)} was cleared: {clearedGrade.title} doesn&apos;t take it. Choose a grade again.
+                {gradeLabel(clearedGrade.grade)} was cleared: {clearedGrade.title} doesn&apos;t take it.
               </p>
             )}
           </div>
@@ -378,18 +337,15 @@ export function EmploymentFields({
             id={fid('joinDate')}
             name="joinDate"
             required
-            aria-describedby={fid('joinDate-hint')}
+            aria-describedby={employment?.probationEnd ? fid('joinDate-hint') : undefined}
             defaultValue={valueOf(state, 'joinDate', formatDate(employment?.joinDate))}
           />
           {/* the probation end is worked out, never typed (owner, 15 October 2026) */}
-          <p id={fid('joinDate-hint')} className="hint">
-            {isTrainingType(type)
-              ? `The ${INTERNSHIP_AGREEMENT} starts on it, with no probation.`
-              : contractBelow
-                ? "The contract starts on it, and its probation, set below, runs from it: at most 3 months, and none for someone who worked here before (Labour Law Art. 90)."
-                : `Probation is worked out from it: ${PROBATION_MONTHS} months, or none for someone who worked here before (Labour Law Art. 90). Once the first contract is drafted, its probation applies.`}
-            {employment?.probationEnd && ` Probation ends ${formatDate(employment.probationEnd)}.`}
-          </p>
+          {employment?.probationEnd && (
+            <p id={fid('joinDate-hint')} className="hint">
+              Probation ends {formatDate(employment.probationEnd)}.
+            </p>
+          )}
         </div>
 
         <div>
@@ -401,7 +357,7 @@ export function EmploymentFields({
             name="workNature"
             value={nature}
             onChange={(e) => setNature(e.target.value)}
-            aria-describedby={fid('workNature-hint')}
+            aria-describedby={casualTooLong ? fid('workNature-hint') : undefined}
             className="input"
           >
             {WORK_NATURES.map((n) => (
@@ -410,10 +366,11 @@ export function EmploymentFields({
               </option>
             ))}
           </Select>
-          <p id={fid('workNature-hint')} className={`hint ${nature === 'casual' && employment?.casualTooLong ? 'text-danger' : ''}`}>
-            {WORK_NATURE_HINTS[nature as WorkNature] ?? WORK_NATURE_HINTS.regular}
-            {nature === 'casual' && employment?.casualTooLong && ' It has gone past them.'}
-          </p>
+          {casualTooLong && (
+            <p id={fid('workNature-hint')} className="hint text-danger">
+              {CASUAL_TOO_LONG.text}.
+            </p>
+          )}
         </div>
 
         <div>
@@ -425,7 +382,6 @@ export function EmploymentFields({
             name="workArrangement"
             value={arrangement}
             onChange={(e) => setArrangement(e.target.value)}
-            aria-describedby={pattern ? fid('workArrangement-hint') : undefined}
             className="input"
           >
             {WORK_ARRANGEMENTS.map((w) => (
@@ -434,12 +390,6 @@ export function EmploymentFields({
               </option>
             ))}
           </Select>
-          {/* the law's remote work (Art. 96(1)), as the contract and its documents name it */}
-          {pattern && (
-            <p id={fid('workArrangement-hint')} className="hint">
-              In the law&apos;s words: {pattern}.
-            </p>
-          )}
         </div>
         <div>
           <label htmlFor={fid('shiftId')} className="label">
@@ -448,7 +398,6 @@ export function EmploymentFields({
           <Select
             id={fid('shiftId')}
             name="shiftId"
-            aria-describedby={fid('shiftId-hint')}
             defaultValue={valueOf(state, 'shiftId', employment?.shiftId)}
             className="input"
           >
@@ -459,20 +408,17 @@ export function EmploymentFields({
               </option>
             ))}
           </Select>
-          <p id={fid('shiftId-hint')} className="hint">
-            No shift: no fixed days, e.g. a part-timer who comes in any 2 days a week.
-          </p>
         </div>
       </div>
 
       {/* for the annual leave (18 October 2026), on an employment from an API that has it */}
-      {employment?.hazardousWork !== undefined && <HazardousWorkField state={state} fid={fid} employment={employment} />}
+      {employment?.hazardousWork !== undefined && <HazardousWorkField state={state} employment={employment} />}
 
       {/* the office network's exception (20 October 2026: "Office staff, plus exceptions"), on an employment from an API that has it */}
-      {employment?.checkInAnywhere !== undefined && <CheckInAnywhereField state={state} fid={fid} employment={employment} arrangement={arrangement} />}
+      {employment?.checkInAnywhere !== undefined && <CheckInAnywhereField state={state} employment={employment} />}
 
       {/* refusing presses without a location's exception (20 October 2026: "Company switch + exceptions"), from an API that has it */}
-      {employment?.checkInWithoutLocation !== undefined && <CheckInWithoutLocationField state={state} fid={fid} employment={employment} />}
+      {employment?.checkInWithoutLocation !== undefined && <CheckInWithoutLocationField state={state} employment={employment} />}
 
       {arrangement === 'hybrid' && (
         <fieldset>
@@ -488,7 +434,6 @@ export function EmploymentFields({
               </label>
             ))}
           </div>
-          <p className="hint">The days this employee comes to the office. Pick at least one.</p>
         </fieldset>
       )}
     </>

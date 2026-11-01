@@ -17,5 +17,5 @@ export async function readCvAgain(subject: { applicationId: string } | { general
     throw err;
   }
   refresh();
-  return { message: 'Being read again: refresh the page in a minute.' };
+  return { message: 'Being read again.' };
 }

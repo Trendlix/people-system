@@ -65,7 +65,7 @@ export async function applyAttendance(runId: string, importId: string): Promise<
   }
   refresh();
   const n = view?.people.filter((p) => p.applied && p.applied.at === view?.appliedAt).length ?? 0;
-  return { message: `Applied: ${n} ${n === 1 ? 'line' : 'lines'} filled from Zoho People. The payroll's figures and pay show them.` };
+  return { message: `Applied to ${n} ${n === 1 ? 'line' : 'lines'}.` };
 }
 
 /**
@@ -81,7 +81,7 @@ export async function undoAttendance(runId: string, importId: string): Promise<F
     throw err;
   }
   refresh();
-  return { message: 'Undone: the lines it filled are back to what they had before it, and its days are no longer kept.' };
+  return { message: 'Undone.' };
 }
 
 /**

@@ -316,8 +316,8 @@ export const filterHistory = (rows: readonly HistoryRow[], show: HistoryFilter):
 /** What the panel says when nothing matches its filter. */
 export function emptyHistoryText(show: HistoryFilter): string {
   if (show === 'approved') return 'None of your requests is approved yet.';
-  if (show === 'waiting') return 'Nothing is waiting: every request you sent is decided.';
-  return 'You haven’t asked for anything yet. Start a request below.';
+  if (show === 'waiting') return 'Nothing is waiting.';
+  return 'You haven’t asked for anything yet.';
 }
 
 // ---------- "Requests this year" ----------

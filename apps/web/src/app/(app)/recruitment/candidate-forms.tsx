@@ -27,7 +27,7 @@ export function MergeWithForm({ action, code }: { action: Action; code: string }
       action={formAction}
       onSubmit={(e) => {
         const other = new FormData(e.currentTarget).get('code');
-        if (!window.confirm(`Merge ${String(other ?? '').trim()} into ${code}? Its applications, general CVs, emails, mobiles and employee link move to ${code}. A Super Admin can undo it.`)) e.preventDefault();
+        if (!window.confirm(`Merge ${String(other ?? '').trim()} into ${code}?`)) e.preventDefault();
       }}
       className="w-full max-w-md space-y-2 rounded-lg border border-line p-4"
     >
@@ -36,7 +36,6 @@ export function MergeWithForm({ action, code }: { action: Action; code: string }
         The other candidate’s code
       </label>
       <input id={fid('code')} name="code" required placeholder="CAN-0042" defaultValue={typeof typed === 'string' ? typed : ''} className="input" autoComplete="off" />
-      <p className="text-xs text-muted">The other candidate is merged into {code}, which is kept.</p>
       <div className="flex flex-wrap gap-2">
         <button type="submit" disabled={pending} className="btn btn-primary">
           {pending ? 'Merging…' : 'Merge'}

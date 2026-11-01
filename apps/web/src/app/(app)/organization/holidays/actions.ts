@@ -18,7 +18,7 @@ const UUID = /^[0-9a-f-]{36}$/i;
 export async function addHoliday(_prev: FormState, fd: FormData): Promise<FormState> {
   const { body, errors } = holidayBody(fd);
   if (errors.length) return { errors, values: submitted(fd) };
-  return send(() => apiSend('POST', '/payroll/holidays', body), fd, `Added ${body.nameEn} on ${formatDate(body.date)}. Runs made or refreshed from now on count it.`);
+  return send(() => apiSend('POST', '/payroll/holidays', body), fd, `Added ${body.nameEn} on ${formatDate(body.date)}.`);
 }
 
 /** A holiday's day or names changed (PATCH /payroll/holidays/:id). */

@@ -33,7 +33,7 @@ async function Detail({ params, searchParams }: { params: Props['params']; searc
   if (!can.view) {
     return (
       <PhoneCard>
-        <Quiet>You don&apos;t have access to Assets. An Admin gives it on the Users page.</Quiet>
+        <Quiet>You don&apos;t have access to Assets.</Quiet>
       </PhoneCard>
     );
   }

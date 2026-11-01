@@ -57,7 +57,7 @@ import { shownCode } from '../../../../lib/hidden';
 // the cell they are about.
 
 /** The inputs HR types on the grid: not the CEO's attendance waiver (17 October 2026), which the results table has. */
-export type InputField = Exclude<keyof PayrollInputs, 'attendanceWaived'>;
+export type InputField = Exclude<keyof PayrollInputs, 'attendanceWaived' | 'kpiWaived'>;
 
 /**
  * How a cell is typed, and the limits the API checks: hours as attendance shows them ("270:00") or as a number
@@ -295,23 +295,6 @@ export function leaveFill(leave: PayrollLeaveDays | null | undefined, field: Inp
   if (!leave) return null;
   if (field === 'leaveDays') return leave.paidDays > 0 ? leave.paidDays : null;
   if (field === 'unpaidLeaveDays') return leave.unpaidDays > 0 ? leave.unpaidDays : null;
-  return null;
-}
-
-/** What a no-show day costs, under the column: "2 days' pay each". */
-export const noShowPay = (multiplier: number) => `${multiplier} ${multiplier === 1 ? "day's" : "days'"} pay each`;
-
-/**
- * What a column's heading says under it: what a no-show day costs and that a leave day is paid, each with its hours out
- * of the expected hours (owner, 16 and 17 October 2026), and that permission hours count as worked (19 October 2026);
- * null for the others.
- */
-export function columnNote(field: InputField, noShowDayMultiplier: number): string | null {
-  if (field === 'noShowDays') return `${noShowPay(noShowDayMultiplier)}, out of the expected hours`;
-  if (field === 'leaveDays') return 'Paid, out of the expected hours';
-  if (field === 'unpaidLeaveDays') return "A day's pay each, out of the expected hours";
-  // permission (owner, 19 October 2026: "4 hours per month with a maximum 2 hours per day")
-  if (field === 'permissionHours') return 'Counted as worked';
   return null;
 }
 

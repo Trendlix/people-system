@@ -27,7 +27,7 @@ async function refused<S extends FormState>(prev: S, request: () => Promise<S>):
     return await request();
   } catch (err) {
     if (err instanceof ApiError) {
-      return { ...prev, errors: err.status === 404 && err.messages.every((m) => /^Cannot /.test(m)) ? ['Not available yet: the server doesn’t fetch from Zoho People yet. Please try again after its next update.'] : err.messages, message: undefined };
+      return { ...prev, errors: err.status === 404 && err.messages.every((m) => /^Cannot /.test(m)) ? ['Not available yet: the server doesn’t fetch from Zoho People yet.'] : err.messages, message: undefined };
     }
     throw err;
   }
@@ -41,7 +41,7 @@ export async function startZohoPeopleConnect(): Promise<FormState> {
   try {
     start = await apiSend<{ url: string }>('POST', '/zoho-people/oauth/start', { origin });
   } catch (err) {
-    if (err instanceof ApiError) return { errors: err.status === 404 ? ['Not available yet: the server doesn’t fetch from Zoho People yet. Please try again after its next update.'] : err.messages };
+    if (err instanceof ApiError) return { errors: err.status === 404 ? ['Not available yet: the server doesn’t fetch from Zoho People yet.'] : err.messages };
     throw err;
   }
   // only Zoho's https sign-in page
@@ -77,7 +77,7 @@ export async function fetchFromZoho(prev: FormState, fd: FormData): Promise<Form
   const result = await refused<FormState>({ ...prev, values }, async () => {
     await apiSend<ZohoRunView>('POST', '/zoho-people/runs', body);
     refresh();
-    return { message: 'Fetching from Zoho People: it goes on in the background, its progress below.' };
+    return { message: 'Fetch started.' };
   });
   return result.errors ? { ...result, values } : result;
 }
@@ -88,7 +88,7 @@ export async function cancelZohoRun(id: string, prev: FormState): Promise<FormSt
   return refused(prev, async () => {
     await apiSend<ZohoRunView>('POST', `/zoho-people/runs/${id}/cancel`);
     refresh();
-    return { message: 'Cancelling: it stops after the call it is making.' };
+    return { message: 'Cancelling.' };
   });
 }
 
@@ -102,7 +102,7 @@ export async function excludeFromZoho(prev: FormState, fd: FormData): Promise<Fo
   return refused(prev, async () => {
     await apiSend<ZohoExclusionsView>('POST', '/zoho-people/exclusions', body);
     refresh();
-    return { message: `Left out of the Zoho fetch from the next run on: ${body.employeeIds.length === 1 ? '1 person' : `${body.employeeIds.length} people`}.` };
+    return { message: `Left out: ${body.employeeIds.length === 1 ? '1 person' : `${body.employeeIds.length} people`}.` };
   });
 }
 
@@ -112,6 +112,6 @@ export async function includeInZoho(employeeId: string, prev: FormState): Promis
   return refused(prev, async () => {
     await apiSend<ZohoExclusionsView>('DELETE', `/zoho-people/exclusions/${employeeId}`);
     refresh();
-    return { message: 'Back in the Zoho fetch from the next run on.' };
+    return { message: 'Back in the Zoho fetch.' };
   });
 }

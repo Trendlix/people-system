@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { EMPLOYMENT_TYPES, KEY_SKILLS_LIMITS, LABELS, PORTFOLIO_MODE_LABELS, PORTFOLIO_MODES, RECRUITMENT_LIMITS, WORK_ARRANGEMENTS, type PortfolioAsk, type VacancyQuestion } from '@trendlix/shared';
+import { EMPLOYMENT_TYPES, LABELS, PORTFOLIO_MODE_LABELS, PORTFOLIO_MODES, RECRUITMENT_LIMITS, WORK_ARRANGEMENTS, type PortfolioAsk, type VacancyQuestion } from '@trendlix/shared';
 import { DateInput } from '@/components/date-time-inputs';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm, valueOf } from '@/components/form';
 import { RichTextEditor } from '@/components/rich-text-editor';
@@ -12,8 +12,8 @@ import { jobTitleAskText, PORTFOLIO_MODE_FIELD } from './portfolio';
 import { QuestionsEditor } from './questions-editor';
 import { jobTitleName, openingKeySkills } from './cv-fit';
 import { KeySkillsField } from './key-skills-field';
-import { AGENCY_BACKGROUND_FIELD, AGENCY_BACKGROUND_HINT, agencyBackgroundChoices } from './agency';
-import { EXPERIENCE_BASIS_FIELD, EXPERIENCE_BASIS_HINT, experienceBasisChoices } from './career';
+import { AGENCY_BACKGROUND_FIELD, agencyBackgroundChoices } from './agency';
+import { EXPERIENCE_BASIS_FIELD, experienceBasisChoices } from './career';
 
 // A vacancy's form (owner, 22 October 2026: "where will we include the ATS?"): its job title and title on the careers
 // page, the position (grade, hiring manager, headcount, employment type, where the work is done, shift, contract length,
@@ -84,6 +84,7 @@ export function VacancyForm({
   const fid = useFieldIds();
   const jobTitle = options.jobTitles.find((j) => j.id === defaults.jobTitleId);
   const opening = openingKeySkills(defaults, jobTitleName(jobTitle?.label), suggestKeySkills);
+  const portfolioAsk = jobTitleAskText(defaults.jobTitlePortfolio);
 
   return (
     <form {...form} className="card max-w-3xl space-y-6 p-6">
@@ -229,7 +230,6 @@ export function VacancyForm({
         <h2 id={fid('salary')} className="text-lg font-semibold">
           Salary Range
         </h2>
-        <p className="text-sm text-muted">For HR, the CEO and a Super Admin only: never on the careers page.</p>
         <div className="grid gap-5 sm:grid-cols-2">
           <div>
             <label htmlFor={fid('salaryMin')} className="label">
@@ -247,12 +247,9 @@ export function VacancyForm({
       </section>
 
       <section aria-labelledby={fid('description')} className="space-y-5 border-t border-line pt-6">
-        <div>
-          <h2 id={fid('description')} className="text-lg font-semibold">
-            On the Careers Page
-          </h2>
-          <p className="mt-1 text-sm text-muted">Filled in from the job title&apos;s job description; change it for the advert as you like.</p>
-        </div>
+        <h2 id={fid('description')} className="text-lg font-semibold">
+          On the Careers Page
+        </h2>
         <RichTextEditor name="about" label="About the role" rows={3} defaultValue={valueOf(state, 'about', defaults.about)} />
         <RichTextEditor name="responsibilities" label="Responsibilities" rows={5} defaultValue={valueOf(state, 'responsibilities', defaults.responsibilities)} />
         <RichTextEditor name="requirements" label="Requirements" rows={4} defaultValue={valueOf(state, 'requirements', defaults.requirements)} />
@@ -266,7 +263,7 @@ export function VacancyForm({
             id={fid('portfolioMode')}
             name={PORTFOLIO_MODE_FIELD}
             defaultValue={valueOf(state, PORTFOLIO_MODE_FIELD, defaults.portfolioMode)}
-            aria-describedby={fid('portfolioModeHint')}
+            aria-describedby={portfolioAsk ? fid('portfolioModeHint') : undefined}
             className="input"
           >
             <option value="">As the job title</option>
@@ -276,10 +273,11 @@ export function VacancyForm({
               </option>
             ))}
           </Select>
-          <p id={fid('portfolioModeHint')} className="hint">
-            {jobTitleAskText(defaults.jobTitlePortfolio) ?? 'As the job title: what Recruitment Settings’ Portfolio on the Forms says for it.'} Optional or Required here
-            keep the job title’s kinds and hint (every kind when it asks for none).
-          </p>
+          {portfolioAsk && (
+            <p id={fid('portfolioModeHint')} className="hint">
+              {portfolioAsk}
+            </p>
+          )}
         </div>
       </section>
 
@@ -288,16 +286,10 @@ export function VacancyForm({
           25 October 2026 ("Full CV fit score") they are one part of the CV fit, as chips HR keeps, removes or adds to, with
           Suggest key skills ("suggest them from its description for HR to confirm"); saved only with the form. */}
       <section aria-labelledby={fid('keySkills')} className="space-y-3 border-t border-line pt-6">
-        <div>
-          <h2 id={fid('keySkills')} className="text-lg font-semibold">
-            Key Skills
-          </h2>
-          <p className="mt-1 text-sm text-muted">
-            Up to {KEY_SKILLS_LIMITS.max}, looked for in each applicant&apos;s CV: with its title, years, requirements, education and agency background they make
-            the CV match %. It never filters anyone out. Not shown on the careers page.
-          </p>
-        </div>
-        <KeySkillsField initial={opening.skills} initialNote={opening.note} jobTitles={options.jobTitles} inputId={fid('keySkillsInput')} hintId={fid('keySkillsHint')} />
+        <h2 id={fid('keySkills')} className="text-lg font-semibold">
+          Key Skills
+        </h2>
+        <KeySkillsField initial={opening.skills} initialNote={opening.note} jobTitles={options.jobTitles} inputId={fid('keySkillsInput')} />
         {/* marketing agency background in the CV match (owner, 27 October 2026: "i need a flag if the candidate is ex
             marketing agencies or not AND reflectin the scoring"; asked, "Set per job"): Preferred unless chosen */}
         <div className="max-w-md pt-2">
@@ -308,7 +300,6 @@ export function VacancyForm({
             id={fid('agencyBackground')}
             name={AGENCY_BACKGROUND_FIELD}
             defaultValue={valueOf(state, AGENCY_BACKGROUND_FIELD, defaults.agencyBackground)}
-            aria-describedby={fid('agencyBackgroundHint')}
             className="input"
           >
             {agencyBackgroundChoices().map((c) => (
@@ -317,9 +308,6 @@ export function VacancyForm({
               </option>
             ))}
           </Select>
-          <p id={fid('agencyBackgroundHint')} className="hint">
-            {AGENCY_BACKGROUND_HINT}
-          </p>
         </div>
         {/* how the CV match counts a CV's years (owner, 29 October 2026: "make it career based or company based"; asked,
             "Set per job"): Company based unless chosen */}
@@ -331,7 +319,6 @@ export function VacancyForm({
             id={fid('experienceBasis')}
             name={EXPERIENCE_BASIS_FIELD}
             defaultValue={valueOf(state, EXPERIENCE_BASIS_FIELD, defaults.experienceBasis)}
-            aria-describedby={fid('experienceBasisHint')}
             className="input"
           >
             {experienceBasisChoices().map((c) => (
@@ -340,25 +327,17 @@ export function VacancyForm({
               </option>
             ))}
           </Select>
-          <p id={fid('experienceBasisHint')} className="hint">
-            {EXPERIENCE_BASIS_HINT}
-          </p>
         </div>
       </section>
 
       <section aria-labelledby={fid('questions')} className="space-y-3 border-t border-line pt-6">
-        <div>
-          <h2 id={fid('questions')} className="text-lg font-semibold">
-            Screening Questions
-          </h2>
-          <p className="mt-1 text-sm text-muted">
-            Asked on the application form. A must-have filters out those who don&apos;t meet it (they are kept, and can be restored); points make the match %.
-          </p>
-        </div>
+        <h2 id={fid('questions')} className="text-lg font-semibold">
+          Screening Questions
+        </h2>
         {withQuestions ? (
           <QuestionsEditor initial={defaults.questions} />
         ) : (
-          <p className="text-sm text-muted">People have applied already, so the questions stay as they answered them.</p>
+          <p className="text-sm text-muted">People have applied, so the questions can&apos;t change.</p>
         )}
       </section>
 

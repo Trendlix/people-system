@@ -50,10 +50,7 @@ function EndForm({ location: l, action, onSaved, onCancel }: { location: CheckIn
           <label htmlFor={fid('validUntil')} className="label">
             Its last day
           </label>
-          <DateInput id={fid('validUntil')} name="validUntil" defaultValue={valueOf(state, 'validUntil', formatDate(l.validUntil ?? null))} aria-describedby={fid('until-hint')} />
-          <p id={fid('until-hint')} className="hint">
-            Check-ins within it count to the end of this day. HR is told 7 days before.
-          </p>
+          <DateInput id={fid('validUntil')} name="validUntil" defaultValue={valueOf(state, 'validUntil', formatDate(l.validUntil ?? null))} />
         </div>
       )}
       <div className="flex flex-wrap gap-2">

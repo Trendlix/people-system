@@ -1,10 +1,9 @@
 'use client';
 
-import { KPI_SETTING_DEFAULTS, KPI_SETTING_LABELS, kpiSettingsProblems, type KpiSettings } from '@trendlix/shared';
+import { KPI_SETTING_LABELS, kpiSettingsProblems, type KpiSettings } from '@trendlix/shared';
 import { useState } from 'react';
 import { FormErrors, SubmitButton, useFieldIds, useKeptForm } from '@/components/form';
 import type { FormState } from '@/lib/types';
-import { dayOfMonth } from '../../organization/payroll/settings';
 import { SETTING_KEYS, settingsOf, settingValuesOf, type SettingValues } from './templates';
 
 // The KPI settings (owner's brief, 21 October 2026: "Deadlines in a small KPI settings section, defaults: self-rating by
@@ -40,14 +39,10 @@ export function KpiSettingsForm({ action, settings }: { action: (prev: FormState
                   const typed = e.target.value;
                   setValues((v) => ({ ...v, [k]: typed }));
                 }}
-                aria-describedby={fid(`${k}-hint`)}
                 className="input w-20 tabular-nums"
               />
               <span className="text-sm text-muted">of the next month</span>
             </div>
-            <p id={fid(`${k}-hint`)} className="hint">
-              Default: {dayOfMonth(KPI_SETTING_DEFAULTS[k])}
-            </p>
           </div>
         ))}
       </div>

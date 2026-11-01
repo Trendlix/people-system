@@ -11,8 +11,6 @@ type Item = { id: string; nameEn: string; nameAr: string | null };
 type Props = {
   /** A heading, e.g. "Reorder Departments". */
   title: string;
-  /** How to do it, under the title. */
-  hint: string;
   /** Every department (or every team of one department), in the saved order. */
   items: Item[];
   /** Saves `ids`: every item's id, in the new order. */
@@ -67,7 +65,7 @@ export function ReorderList(props: Props) {
   return <Reorder key={visit} {...props} />;
 }
 
-function Reorder({ title, hint, items, action, cancelHref }: Props) {
+function Reorder({ title, items, action, cancelHref }: Props) {
   const { state, pending, form } = useKeptForm(action);
   const [order, setOrder] = useState(items);
   const [said, setSaid] = useState('');
@@ -146,7 +144,6 @@ function Reorder({ title, hint, items, action, cancelHref }: Props) {
         <h3 id={headingId} ref={heading} tabIndex={-1} className="font-semibold outline-none">
           {title}
         </h3>
-        <p className="mt-1 text-sm text-muted">{hint}</p>
       </div>
       <form {...form} className="border-t border-line">
         <ol

@@ -8,7 +8,8 @@ import { Hidden, Shown } from '@/components/hidden';
 import { Select } from '@/components/select';
 import { apiGet } from '@/lib/api';
 import { cLevelTitle } from '@/lib/confidential';
-import { withTeams } from '@/lib/departments';
+import { departmentOptions, withTeams } from '@/lib/departments';
+import { bulkActionsFor } from '@/lib/employee-bulk';
 import { setsUpEmail } from '@/lib/email-setup';
 import { formatDate } from '@/lib/format';
 import { employmentHidden, filtersByJob } from '@/lib/hidden';
@@ -28,13 +29,14 @@ import {
   type AccessFilter,
 } from '@/lib/access';
 import { getCurrentUser } from '@/lib/session';
-import type { Department, EmployeeSummary, Grade } from '@/lib/types';
+import type { Department, EmployeeSummary, Grade, Shift } from '@/lib/types';
 import { StaffOnly } from '../staff-only';
 import { directorySections, hiddenPlace } from './directory-groups';
 import { CARD_FIXES_PATH } from './paperwork';
 import { canSeeSalaryRaises, RAISES_PATH } from '../payroll/reports/salary-raises/salary-raises';
 import { CONTRACT_TONE_STYLE, directoryContractStatus } from './contract-status';
-import { INVITE_FORM_ID, InviteBar } from './invite-bar';
+import { BulkBar, RowBox, SelectAllBox } from './bulk-bar';
+import { InviteBar } from './invite-bar';
 import { Avatar, canAddEmployees, canSeeCardFixes, canSeeEmployeeFiles, Empty, gradeLabel, Loading, seesEveryone, StandingBadge, todayInCairo } from './ui';
 
 // Not an employee's: someone who is only an employee and/or a direct manager is sent to their dashboard, which links
@@ -170,9 +172,6 @@ function AccessCell({ employee: e, today }: { employee: EmployeeSummary; today: 
   return (
     <td className="whitespace-nowrap">
       <span className="inline-flex items-center gap-2">
-        {a.state === 'not_invited' && (
-          <input type="checkbox" name="employeeIds" value={e.id} form={INVITE_FORM_ID} aria-label={`Invite ${e.fullNameEn}`} className="size-4 accent-accent" />
-        )}
         {a.standing ? (
           <span className={standingBadgeClass(a.standing)}>{standingBadge(a.standing, a.graceUntil, today)}</span>
         ) : (
@@ -231,7 +230,11 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
   const showAccess = everyone.some((e) => !e.restricted && e.access !== undefined);
   // no contract entered (owner, 23 October 2026: "Hold them after 7 days"): how many, for the filter and the note
   const noContracts = noContractCount(everyone.map((e) => ({ access: e.restricted ? null : e.access })));
-  const columns = COLUMN_COUNT + (showAccess ? 1 : 0);
+  // the bulk actions (owner, 1 November 2026: "i want to select and create bulk actions"): a box on each row
+  const actions = bulkActionsFor(user);
+  const ticks = actions.length > 0;
+  const columns = COLUMN_COUNT + (showAccess ? 1 : 0) + (ticks ? 1 : 0);
+  const shifts = actions.includes('shift') ? await apiGet<Shift[]>('/shifts').catch(() => []) : [];
 
   return (
     <section className="card">
@@ -322,8 +325,7 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
       {showAccess && noContracts > 0 && f.access !== 'no_contract' && (
         // HR's list of those with an account and no contract entered (23 October 2026: "Hold them after 7 days")
         <p className="mx-4 mb-4 rounded-lg bg-warn-soft px-3 py-2 text-sm text-warn">
-          {noContracts === 1 ? '1 person has' : `${noContracts} people have`} an account but no contract entered: on hold 7 days after it was first seen unless a signed
-          contract is entered. <Link href={directoryHref({ ...f, access: 'no_contract' })}>Show {noContracts === 1 ? 'them' : 'them all'}</Link>
+          {noContracts === 1 ? '1 person has' : `${noContracts} people have`} an account but no contract entered. <Link href={directoryHref({ ...f, access: 'no_contract' })}>Show {noContracts === 1 ? 'them' : 'them all'}</Link>
         </p>
       )}
 
@@ -336,6 +338,11 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
           <table className="table">
             <thead>
               <tr>
+                {ticks && (
+                  <th className="w-10">
+                    <SelectAllBox />
+                  </th>
+                )}
                 <th>Employee</th>
                 <th>Contract</th>
                 <th>Job Title</th>
@@ -348,7 +355,7 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
             {/* Active, then Inactive, each by department, then team (owner's request, 16 October 2026) */}
             {sections.map((section) => (
               <tbody key={section.key}>
-                <GroupHeading level="section" name={section.label} count={section.count} span={columns} note={section.note} />
+                <GroupHeading level="section" name={section.label} count={section.count} span={columns} />
                 {section.groups.map((g) => (
                   <Fragment key={g.department ?? ''}>
                     {showsDepartment(section.groups, g) && <GroupHeading level="department" name={g.department} count={g.count} span={columns} />}
@@ -357,6 +364,11 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
                         {t.team !== null && <GroupHeading level="team" name={t.team} count={t.rows.length} span={columns} />}
                         {t.rows.map((e) => (
                           <tr key={e.id}>
+                            {ticks && (
+                              <td className="w-10">
+                                <RowBox id={e.id} name={e.fullNameEn} />
+                              </td>
+                            )}
                             <td>
                               <div className="flex items-center gap-3">
                                 <Avatar name={e.fullNameEn} photoId={e.photoId} crop={e.photoCrop} />
@@ -385,6 +397,15 @@ async function Directory({ searchParams }: { searchParams: Promise<Query> }) {
             ))}
           </table>
         </div>
+      )}
+
+      {ticks && (
+        <BulkBar
+          actions={actions}
+          managers={everyone.filter((e) => e.standing !== 'former' && e.standing !== 'not_employed').map((e) => ({ id: e.id, name: e.fullNameEn }))}
+          departments={departmentOptions(departments).map((o) => ({ id: o.id, label: o.label }))}
+          shifts={shifts.map((s) => ({ id: s.id, label: `${s.code} · ${s.startTime.slice(0, 5)}–${s.endTime.slice(0, 5)}` }))}
+        />
       )}
 
       {showAccess && <InviteBar notInvited={invitableIds(everyone.map((e) => ({ id: e.id, access: e.restricted ? null : e.access }))).length} setUpEmail={setsUpEmail(user)} />}
@@ -436,7 +457,6 @@ export default function EmployeesPage({ searchParams }: PageProps<'/employees'>)
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="page-title">Employees</h1>
-          <p className="mt-1 text-muted">Directory and employee profiles.</p>
         </div>
         <Suspense fallback={null}>
           <HeaderActions />

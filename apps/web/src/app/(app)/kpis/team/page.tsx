@@ -52,12 +52,9 @@ function Overview({ heatmap }: { heatmap: KpiHeatmap }) {
   return (
     <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
       <section aria-labelledby="team-heatmap" className="card">
-        <div className="flex flex-wrap items-baseline justify-between gap-3 px-5 pt-5">
-          <h2 id="team-heatmap" className="font-semibold">
-            Team Overview
-          </h2>
-          <span className="text-sm text-muted">Final % by month, coloured by level</span>
-        </div>
+        <h2 id="team-heatmap" className="px-5 pt-5 font-semibold">
+          Team Overview
+        </h2>
         <div className="mt-3">
           <Heatmap heatmap={heatmap} label="Your people’s final % by month" />
         </div>
@@ -92,7 +89,6 @@ async function Team({ searchParams }: { searchParams: PageProps<'/kpis/team'>['s
           <h2 id="team-waiting" className="px-5 pt-5 font-semibold">
             Waiting for You <span className="font-normal text-muted tabular-nums">· {mine.length}</span>
           </h2>
-          <p className="px-5 text-sm text-muted">Score the month, or sign that you have read it as the manager.</p>
           <div className="mt-3">
             <ScorecardsTable scorecards={mine} showMonth />
           </div>
@@ -110,7 +106,7 @@ async function Team({ searchParams }: { searchParams: PageProps<'/kpis/team'>['s
         {scorecards.kind !== 'ok' ? (
           <Empty>{kpiNotLoaded(scorecards, 'scorecards')}</Empty>
         ) : scorecards.value.length === 0 ? (
-          <Empty>No scorecards of your people for {kpiMonthName(month)}. They open on the 1st of the next month for everyone whose job title has a published template.</Empty>
+          <Empty>No scorecards of your people for {kpiMonthName(month)}.</Empty>
         ) : (
           <div className="card">
             <ScorecardsTable scorecards={scorecards.value} />
@@ -128,10 +124,6 @@ export default function TeamKpisPage({ searchParams }: PageProps<'/kpis/team'>) 
   return (
     <div className="max-w-7xl">
       <h1 className="page-title">Team KPIs</h1>
-      <p className="mt-1 text-muted">
-        The monthly KPI scorecards of the people you are in charge of. Each person rates themself first; you score the month, seeing their
-        self-rating; HR calibrates it; then you both sign that you have read it. A missed self-rating doesn&apos;t hold up your scoring.
-      </p>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>
           <Team searchParams={searchParams} />

@@ -69,9 +69,9 @@ export async function signedCopiesSent(): Promise<void> {
 /** What each of an asset's page actions does, and what it says once done. */
 const ACTIONS = {
   repair: { path: CUSTODY_API.repair, repair: true, done: 'Sent to repair.' },
-  back: { path: CUSTODY_API.repairBack, repair: true, done: 'Back from repair: available again.' },
+  back: { path: CUSTODY_API.repairBack, repair: true, done: 'Back from repair.' },
   lost: { path: CUSTODY_API.lost, repair: false, done: 'Marked lost.' },
-  found: { path: CUSTODY_API.found, repair: false, done: 'Marked found: available again.' },
+  found: { path: CUSTODY_API.found, repair: false, done: 'Marked found.' },
 } as const;
 
 export type AssetPageAction = keyof typeof ACTIONS;
@@ -111,7 +111,7 @@ export async function saveCustodyTerms(_prev: FormState, fd: FormData): Promise<
     return { errors: messages(err), values: typed };
   }
   refresh();
-  return { message: 'Saved. New custody forms print these terms; records already made keep theirs.' };
+  return { message: 'Saved.' };
 }
 
 /** Back to the standard wording. */
@@ -122,5 +122,5 @@ export async function restoreStandardTerms(): Promise<FormState> {
     return { errors: messages(err) };
   }
   refresh();
-  return { message: 'The standard wording is printed again, in English and Arabic.' };
+  return { message: 'Standard wording restored.' };
 }

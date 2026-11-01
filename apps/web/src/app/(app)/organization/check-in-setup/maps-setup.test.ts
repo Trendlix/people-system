@@ -1,6 +1,6 @@
 import { MAP_ID_PROBLEM, MAPS_KEY_PROBLEM, type MapsSettingsView } from '@trendlix/shared';
 import { describe, expect, it } from 'vitest';
-import { MAPS_STEPS, mapsIntentOf, mapsSavedText, mapsSettingsBody, mapsStatus, seesMapsSettings } from './maps-setup';
+import { MAPS_STEPS, mapsIntentOf, mapsSettingsBody, mapsStatus, seesMapsSettings } from './maps-setup';
 
 // Check-in Setup → Google Maps (owner, 24 October 2026: "Google Maps"): who sees it, what its form sends, what it says,
 // and the steps in Google Cloud. Every key below is made up.
@@ -34,11 +34,9 @@ describe('Check-in Setup → Google Maps', () => {
   });
 
   it('says which maps the system draws, the key by its last four characters only', () => {
-    expect(mapsStatus(view())).toEqual({ tone: 'neutral', text: expect.stringMatching(/^The maps are OpenStreetMap’s: no Google Maps key is set\./) });
+    expect(mapsStatus(view())).toEqual({ tone: 'neutral', text: 'The maps are OpenStreetMap’s: no Google Maps key is set.' });
     const on = mapsStatus(view({ keySet: true, keyEnding: 'Ab3x', mapId: 'abc123' }));
-    expect(on).toEqual({ tone: 'ok', text: 'Every map is Google Maps (key …Ab3x, Map ID abc123), with Map and Satellite, and Google’s place search.' });
-    expect(mapsSavedText(view({ keySet: true, keyEnding: 'Ab3x' }))).toMatch(/^Saved\. Every map is Google’s/);
-    expect(mapsSavedText(view())).toBe('Saved. The maps stay on OpenStreetMap until a key is set.');
+    expect(on).toEqual({ tone: 'ok', text: 'Every map is Google Maps (key …Ab3x, Map ID abc123).' });
   });
 
   it('shows the steps in the company’s Google Cloud project', () => {

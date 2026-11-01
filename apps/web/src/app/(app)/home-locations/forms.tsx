@@ -34,7 +34,7 @@ import { REQUESTED_PLACE_KEY, takeRequestedPlace, type RequestedPlace } from '@/
 import type { FormState } from '@/lib/types';
 import { choice } from '../employees/[id]/contracts/pay-fields';
 import { accuracyText } from '../my-attendance/check-in';
-import { HOME_TYPE_HINTS, HOME_TYPE_LINES, homeDecisionButton, homeShownAs, homeTypeOf, radiusText, startingValidity, validityChoices } from './home-locations';
+import { HOME_TYPE_LINES, homeDecisionButton, homeTypeOf, startingValidity, validityChoices } from './home-locations';
 import { HomeMap } from './ui';
 
 // The home locations' forms (owner, 20 October 2026: "allow other users to request to add their home locations when
@@ -97,7 +97,7 @@ export function HomeAskForm({ action, lockHint, prefill = false, open = [] }: { 
   const [recentre, setRecentre] = useState(0);
   const [reading, setReading] = useState(false);
   const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
-  const shownNote = note ?? (handed && !picked ? { ok: true, text: `Filled in with where your check-in was refused${accuracyText(handed.accuracy) ? `, read within ${accuracyText(handed.accuracy)}` : ''}. Drag the pin if it is off.` } : null);
+  const shownNote = note ?? (handed && !picked ? { ok: true, text: `Filled in with where your check-in was refused${accuracyText(handed.accuracy) ? `, read within ${accuracyText(handed.accuracy)}` : ''}.` } : null);
   const place = type === 'home' ? 'your home' : 'the place';
 
   /** A point from the map, the search or the device; `bring`: the map brought to it; `read`: the reading's accuracy (none: put on the map). */
@@ -121,7 +121,7 @@ export function HomeAskForm({ action, lockHint, prefill = false, open = [] }: { 
     const rough = typeof result.accuracy === 'number' && result.accuracy > ROUGH_METRES;
     setNote({
       ok: !rough,
-      text: `Your current location${within ? `, read within ${within}` : ''}. ${rough ? `That isn’t precise: drag the pin onto ${place}.` : 'Drag the pin if it is off.'}`,
+      text: `Your current location${within ? `, read within ${within}` : ''}.${rough ? ` Not precise: drag the pin onto ${place}.` : ''}`,
     });
   }
 
@@ -146,7 +146,7 @@ export function HomeAskForm({ action, lockHint, prefill = false, open = [] }: { 
                 <input type="radio" name="type" value={t} checked={type === t} disabled={busy} onChange={() => setType(t)} className="mt-0.5 size-4 accent-accent" />
                 <span>
                   <span className="block font-semibold">{HOME_TYPE_LINES[t]}</span>
-                  <span className="block text-muted">{busy ? 'One is being decided already: wait for it, or withdraw it.' : HOME_TYPE_HINTS[t]}</span>
+                  {busy && <span className="block text-muted">Being decided already</span>}
                 </span>
               </label>
             );
@@ -154,7 +154,6 @@ export function HomeAskForm({ action, lockHint, prefill = false, open = [] }: { 
         </div>
       </fieldset>
       {type === 'home' && lockHint && <p className="rounded-lg bg-warn-soft px-4 py-3 text-sm text-warn">{lockHint}</p>}
-      {type === 'client' && <p className="rounded-lg bg-accent-soft px-4 py-3 text-sm">Once approved, a client location is the company’s: every employee checking in within it counts as there, shown as Client · its name.</p>}
 
       <div className="flex flex-wrap items-center gap-3">
         <button type="button" onClick={useCurrentLocation} disabled={reading} className="btn btn-secondary">
@@ -164,7 +163,7 @@ export function HomeAskForm({ action, lockHint, prefill = false, open = [] }: { 
           {shownNote?.text}
         </p>
       </div>
-      <PlaceSearch onPoint={(p) => put(p, true, null)} keepText="Send the request to keep it." />
+      <PlaceSearch onPoint={(p) => put(p, true, null)} />
       <div>
         <PickPointMap
           point={point}
@@ -174,10 +173,6 @@ export function HomeAskForm({ action, lockHint, prefill = false, open = [] }: { 
           onPick={(p) => put(p, false, null)}
           label={`Map for ${place}: click to put its point there, then drag the pin to adjust it`}
         />
-        <p id={fid('point-hint')} className="hint max-w-3xl">
-          Click the map or drag the pin onto {place}; search for its street; or, while there, use your current location. Click the map before zooming it
-          with the mouse wheel.
-        </p>
         <p className="mt-1 text-sm tabular-nums" aria-live="polite">
           {point ? `The point: ${coordinateText(point.latitude)}, ${coordinateText(point.longitude)}` : `No point yet: put ${place} on the map.`}
         </p>
@@ -196,20 +191,12 @@ export function HomeAskForm({ action, lockHint, prefill = false, open = [] }: { 
             placeholder={type === 'home' ? 'Home, Nasr City' : type === 'client' ? 'Acme Cairo office' : 'Studio in Zamalek'}
             value={label}
             onChange={(e) => setLabel(e.target.value)}
-            aria-describedby={fid('label-hint')}
             className="input"
           />
-          <p id={fid('label-hint')} className="hint">
-            {type === 'home'
-              ? `A name or the address, if you want: up to ${HOME_LABEL_MAX} characters.`
-              : type === 'client'
-                ? 'The client’s name, as staff will see it: “Client · Acme”.'
-                : 'What you call it, as your check-ins there will show: “Remote site · Studio”.'}
-          </p>
         </div>
         <div>
           <label htmlFor={fid('radiusMetres')} className="label">
-            Radius (metres)
+            Radius (metres, {LOCATION_ASK_RADIUS_MIN}–{LOCATION_ASK_RADIUS_MAX})
           </label>
           <input
             id={fid('radiusMetres')}
@@ -217,22 +204,15 @@ export function HomeAskForm({ action, lockHint, prefill = false, open = [] }: { 
             inputMode="numeric"
             autoComplete="off"
             defaultValue={valueOf(state, 'radiusMetres', String(HOME_RADIUS_DEFAULT))}
-            aria-describedby={fid('radius-hint')}
             className="input tabular-nums"
           />
-          <p id={fid('radius-hint')} className="hint">
-            {LOCATION_ASK_RADIUS_MIN} to {LOCATION_ASK_RADIUS_MAX}; {radiusText(HOME_RADIUS_DEFAULT)} to start with. HR may change it when approving.
-          </p>
         </div>
         {type !== 'home' && (
           <div>
             <label htmlFor={fid('wishedEndDate')} className="label">
               Needed until {optional}
             </label>
-            <DateInput id={fid('wishedEndDate')} name="wishedEndDate" defaultValue={valueOf(state, 'wishedEndDate')} aria-describedby={fid('wished-hint')} />
-            <p id={fid('wished-hint')} className="hint">
-              DD/MM/YYYY. HR sets how long it lasts: until a date{type === 'client' ? ', or with no end' : ', or until your contract ends'}.
-            </p>
+            <DateInput id={fid('wishedEndDate')} name="wishedEndDate" defaultValue={valueOf(state, 'wishedEndDate')} />
           </div>
         )}
         <div className="sm:col-span-2">
@@ -246,19 +226,11 @@ export function HomeAskForm({ action, lockHint, prefill = false, open = [] }: { 
             required
             maxLength={LOCATION_REASON_MAX}
             defaultValue={valueOf(state, 'reason')}
-            aria-describedby={fid('reason-hint')}
             className="input"
           />
-          <p id={fid('reason-hint')} className="hint">
-            Why you need to check in from {place}: HR and the CEO read it. Up to {LOCATION_REASON_MAX.toLocaleString('en-US')} characters.
-          </p>
         </div>
       </div>
-      <p className="max-w-3xl text-sm text-muted">
-        {type === 'client'
-          ? 'A client location is the company’s once approved: HR keeps it on Check-in Setup. Each check-in keeps the spot where you pressed, read only then; HR can see it.'
-          : `${type === 'home' ? 'Your home is personal' : 'Your remote site is yours'}: only you, HR and the CEO see it, never your manager. Sending it is your consent. A check-in within it shows as ${type === 'home' ? 'Home' : 'Remote site · its name'}. Each check-in keeps the spot where you pressed, read only then; HR can see it. You can remove it at any time.`}
-      </p>
+      {type !== 'client' && <p className="max-w-3xl text-sm text-muted">Only you, HR and the CEO see it. Sending it is your consent.</p>}
       <SubmitButton busy={pending} disabled={!point || open.includes(type)} pendingText="Sending…">
         Send to HR
       </SubmitButton>
@@ -289,14 +261,20 @@ function ValidityFields({ request, state, start }: { request: HomeLocationView; 
           <label htmlFor={fid('validUntil')} className="label">
             Its last day
           </label>
-          <DateInput id={fid('validUntil')} name="validUntil" required defaultValue={valueOf(state, 'validUntil', start.validUntil)} aria-describedby={fid('until-hint')} />
-          <p id={fid('until-hint')} className="hint">
-            DD/MM/YYYY, today or later.{request.wishedEndDate ? ` The employee asked until ${formatDate(request.wishedEndDate)}.` : ''} {homeTypeOf(request) === 'client' ? 'HR is told 7 days before.' : 'The employee and HR are told 7 days before.'}
-          </p>
+          <DateInput
+            id={fid('validUntil')}
+            name="validUntil"
+            required
+            defaultValue={valueOf(state, 'validUntil', start.validUntil)}
+            aria-describedby={request.wishedEndDate ? fid('until-hint') : undefined}
+          />
+          {request.wishedEndDate && (
+            <p id={fid('until-hint')} className="hint">
+              Asked until {formatDate(request.wishedEndDate)}
+            </p>
+          )}
         </div>
       )}
-      {validity === 'contract' && <p className="hint">It follows their signed contract’s end, and moves when the contract is renewed; it ends with the employment.</p>}
-      {validity === 'no_end' && <p className="hint">Until HR ends it on Check-in Setup.</p>}
     </fieldset>
   );
 }
@@ -332,8 +310,8 @@ export function HomeDecisionForm({ action, request, map = false, from }: { actio
     <form
       action={formAction}
       onSubmit={(e) => {
-        if (decision === 'reject' && !window.confirm(`Reject ${name}’s ${what}? Your comment shows on it, and its point is deleted.`)) e.preventDefault();
-        else if (decision === 'approve' && type === 'client' && stage === 'ceo' && !window.confirm(`${CLIENT_FOR_EVERYONE_TEXT} Approve the client location ${request.label ?? ''}?`)) e.preventDefault();
+        if (decision === 'reject' && !window.confirm(`Reject ${name}’s ${what}?`)) e.preventDefault();
+        else if (decision === 'approve' && type === 'client' && stage === 'ceo' && !window.confirm(`Approve the client location ${request.label ?? ''} for every employee?`)) e.preventDefault();
       }}
       aria-label={`Decide on ${name}’s ${what}`}
       className="space-y-4"
@@ -358,7 +336,7 @@ export function HomeDecisionForm({ action, request, map = false, from }: { actio
         <div className="space-y-3">
           <div className="max-w-xs">
             <label htmlFor={fid('radiusMetres')} className="label">
-              Radius (metres)
+              Radius (metres, {HOME_RADIUS_MIN}–{HOME_RADIUS_MAX.toLocaleString('en-US')})
             </label>
             <input
               id={fid('radiusMetres')}
@@ -367,12 +345,8 @@ export function HomeDecisionForm({ action, request, map = false, from }: { actio
               autoComplete="off"
               value={radius}
               onChange={(e) => setRadius(e.target.value)}
-              aria-describedby={fid('radius-hint')}
               className="input tabular-nums"
             />
-            <p id={fid('radius-hint')} className="hint">
-              {HOME_RADIUS_MIN} to {HOME_RADIUS_MAX.toLocaleString('en-US')}; {radiusText(request.radiusMetres)} asked. A check-in within it shows as {homeShownAs(request)}.
-            </p>
             {radiusProblems.length > 0 && typed !== '' && (
               <p className="mt-1 text-sm text-danger" aria-live="polite">
                 {radiusProblems[0]}
@@ -395,12 +369,8 @@ export function HomeDecisionForm({ action, request, map = false, from }: { actio
           required={decision === 'reject'}
           value={comment}
           onChange={(e) => setComment(e.target.value)}
-          aria-describedby={fid('comment-hint')}
           className="input"
         />
-        <p id={fid('comment-hint')} className="hint">
-          {decision === 'reject' ? 'Why it is rejected. ' : ''}The employee sees your comment, and so do {request.confidential ? 'the CEO and the Super Admin' : 'HR and the CEO'}.
-        </p>
       </div>
       <button
         type="submit"
@@ -431,7 +401,6 @@ export function HomeValidityForm({ action, request }: { action: Action; request:
           Comment {optional}
         </label>
         <textarea id={fid('comment')} name="comment" rows={2} maxLength={HOME_COMMENT_MAX} defaultValue={valueOf(state, 'comment')} className="input" />
-        <p className="hint">Shown on the request’s steps, to the employee too.</p>
       </div>
       <button type="submit" disabled={pending} className="btn btn-primary">
         {pending ? 'Saving…' : 'Save'}
@@ -447,7 +416,7 @@ export function WithdrawHomeForm({ action }: { action: Action }) {
     <form
       action={formAction}
       onSubmit={(e) => {
-        if (!window.confirm('Withdraw your request? Its point is deleted; you can ask again at any time.')) e.preventDefault();
+        if (!window.confirm('Withdraw your request?')) e.preventDefault();
       }}
       className="space-y-3"
     >
@@ -466,17 +435,13 @@ export function WithdrawHomeForm({ action }: { action: Action }) {
  */
 export function RemoveHomeForm({ action, own, name, type = 'home' }: { action: Action; own: boolean; name: string; type?: HomeType }) {
   const what = HOME_TYPE_LINES[type].toLowerCase();
-  const shown = type === 'home' ? 'Home' : 'Remote site';
   const [state, formAction, pending] = useActionState(action, {});
   const fid = useFieldIds();
   return (
     <form
       action={formAction}
       onSubmit={(e) => {
-        const question = own
-          ? `Remove your ${what}? Its point is deleted, and your check-ins from there no longer show as ${shown}. You can ask again later.`
-          : `Remove ${name}’s ${what}? Its point is deleted, and their check-ins from there no longer show as ${shown}.`;
-        if (!window.confirm(question)) e.preventDefault();
+        if (!window.confirm(own ? `Remove your ${what}?` : `Remove ${name}’s ${what}?`)) e.preventDefault();
       }}
       className="space-y-3"
     >
@@ -488,7 +453,6 @@ export function RemoveHomeForm({ action, own, name, type = 'home' }: { action: A
             Why it is removed {optional}
           </label>
           <textarea id={fid('comment')} name="comment" rows={2} maxLength={HOME_COMMENT_MAX} defaultValue={valueOf(state, 'comment')} className="input" />
-          <p className="hint">{name} sees your comment on the request.</p>
         </div>
       )}
       <button type="submit" disabled={pending} className="btn btn-danger">

@@ -1,5 +1,4 @@
 import {
-  COMPENSATORY_CASH_HINT,
   COMPENSATORY_DAY_GROUP_LABELS,
   COMPENSATORY_OUTCOME_LABELS,
   COMPENSATORY_RULE_DEFAULTS,
@@ -199,7 +198,7 @@ export const compensatoryLabel = (n: number) => `${n} ${n === 1 ? 'request' : 'r
 
 const EMPTY: Record<CompensatoryFilter, string> = {
   waiting: 'No compensatory day requests are waiting for you.',
-  all: 'No compensatory day requests yet. Employees ask from My Requests; HR records one for someone with Record a compensatory day.',
+  all: 'No compensatory day requests yet.',
   with_manager: 'No compensatory day requests are with a manager.',
   with_hr: 'No compensatory day requests are with HR.',
   approved: 'No compensatory days approved.',
@@ -258,9 +257,6 @@ export function compensatoryCashAddedText(r: Pick<CompensatoryRequestView, 'cash
 /** The official duty a request goes with (27 October 2026), in words: "With the official duty on 06/11/2026". */
 export const compensatoryOdText = (od: { startDate: string }) => `With the official duty on ${formatDate(od.startDate)}`;
 
-/** What is said under it: the duty's decision and cancelling are this one's too (the API refuses them on their own). */
-export const COMPENSATORY_WITH_OD_NOTE = 'It is decided and cancelled with the official duty, never on its own.';
-
 /** The official duty's page: on the site, or in the phone pages' section the request is opened in. */
 export const compensatoryOdHref = (od: { id: string }, surface: Surface = 'site') => (surface === 'site' ? odHref(od.id) : appItemHref(surface, 'od', od.id));
 
@@ -269,8 +265,8 @@ export const compensatoryOdHref = (od: { id: string }, surface: Surface = 'site'
  * on the request's page: still to come, or asked before it came; null for one asked once worked (or an API from before).
  */
 export function compensatoryAheadText(r: Pick<CompensatoryRequestView, 'upcoming' | 'askedAhead'>): string | null {
-  if (r.upcoming) return 'Still to come: asked ahead for a day to be worked. No check-in to confirm until then; cash instead only once it is worked.';
-  if (r.askedAhead) return 'Asked ahead, before the day was worked.';
+  if (r.upcoming) return 'Still to come: asked ahead.';
+  if (r.askedAhead) return 'Asked ahead.';
   return null;
 }
 
@@ -281,8 +277,7 @@ export function compensatoryAheadMark(r: Pick<CompensatoryRequestView, 'upcoming
 }
 
 /** Under HR's choice for a day worked still to come: cash instead waits for the day (the API refuses it before). */
-export const compensatoryCashWaitsText = (dayWorked: string) =>
-  `Cash instead once the day is worked: ${compensatoryDateText(dayWorked)} is still to come. Approve it as a day off now, or decide it from that day on.`;
+export const compensatoryCashWaitsText = (dayWorked: string) => `Cash instead only once ${compensatoryDateText(dayWorked)} is worked.`;
 
 /** HR's decision once approved, in words; null while undecided. */
 export const compensatoryOutcomeText = (outcome: CompensatoryOutcome | null): string | null => (outcome ? COMPENSATORY_OUTCOME_LABELS[outcome] : null);
@@ -309,29 +304,23 @@ export function compensatorySentText(
   outcome: CompensatoryOutcome | null = null,
 ): string {
   if (status === 'approved') {
-    if (hoursOff === null) return 'Compensatory day recorded, approved at once.';
-    return `Compensatory hours recorded, approved at once: ${outcome === 'cash' ? `${hoursPay(hoursOff)} in cash instead` : `${hoursText(hoursOff)} off`}.`;
+    if (hoursOff === null) return 'Compensatory day recorded.';
+    return `Compensatory hours recorded: ${outcome === 'cash' ? `${hoursPay(hoursOff)} in cash instead` : `${hoursText(hoursOff)} off`}.`;
   }
-  const hr = hrStageName(confidential);
   const first = manager?.role === 'team_lead' ? 'your team lead' : manager?.role === 'department_head' ? 'your head of department' : 'your direct manager';
-  const sent = hoursOff === null ? 'Request sent.' : `Request sent for ${hoursText(hoursOff)} off.`;
-  return status === 'with_manager' ? `${sent} It goes to ${first}, then ${hr}; each step shows on the request.` : `${sent} It goes to ${hr}; each step shows on the request.`;
+  return `Sent to ${status === 'with_manager' ? first : hrStageName(confidential)}.`;
 }
 
 /** Once a decision went through; a C-level person's goes on to the CEO, not HR (`confidential`); hours off with their hours. */
 export function compensatoryDecidedText(decision: LeaveDecision, stage: LeaveStage, confidential?: boolean | null, cash = false, hoursOff: number | null = null): string {
-  if (decision === 'reject') return 'Request rejected. The employee sees your comment.';
-  if (leaveStatusAfterApproval(stage) === 'with_hr') return `Approved: the request goes to ${hrStageName(confidential)}.`;
-  if (hoursOff !== null) {
-    return cash
-      ? `Approved as cash instead: the addition for ${hoursPay(hoursOff)} is on the month’s draft payroll, and there are no hours off.`
-      : `Approved as ${hoursText(hoursOff)} off: they count as worked hours on the day off.`;
-  }
-  return cash ? 'Approved as cash instead: the addition is on the month’s draft payroll, and there is no day off.' : 'Approved as a day off: it counts as a full paid day.';
+  if (decision === 'reject') return 'Request rejected.';
+  if (leaveStatusAfterApproval(stage) === 'with_hr') return `Approved: sent to ${hrStageName(confidential)}.`;
+  if (cash) return 'Approved as cash instead.';
+  return hoursOff !== null ? `Approved as ${hoursText(hoursOff)} off.` : 'Approved as a day off.';
 }
 
 /** Said when a decision is refused as the request moved on since the page was opened (the API's 409). */
-export const COMPENSATORY_MOVED_ON = 'This request has moved on since you opened it: someone else decided it, or it was cancelled. It shows where it stands now.';
+export const COMPENSATORY_MOVED_ON = 'This request has moved on since you opened it.';
 
 /** What a request's page says after `?done=`, and in which tone; null for anything else. */
 export function compensatoryDoneText(
@@ -344,7 +333,7 @@ export function compensatoryDoneText(
 ): { text: string; tone: 'ok' | 'warn' } | null {
   const done = one(query.done);
   if (done === 'sent' || done === 'recorded') return { text: compensatorySentText(status, manager, confidential, hoursOff, outcome), tone: 'ok' };
-  if (done === 'cancelled') return { text: 'Compensatory day cancelled. It stays on the list, cancelled; the day off is a working day again.', tone: 'ok' };
+  if (done === 'cancelled') return { text: 'Compensatory day cancelled.', tone: 'ok' };
   if (done === 'moved') return { text: COMPENSATORY_MOVED_ON, tone: 'warn' };
   const [stage, decision] = done.split('_');
   if (!(LEAVE_STAGES as readonly string[]).includes(stage) || !(LEAVE_DECISIONS as readonly string[]).includes(decision)) return null;
@@ -375,19 +364,12 @@ export function compensatoryDecisionButton(decision: LeaveDecision | '', stage: 
 }
 
 /**
- * Under HR's choice when approving, what it gives: a day off, hours off on the day ("4 hours off on Tuesday
- * 10/11/2026"), or cash instead: a whole day at the rate in days' pay, hours as their pay at the rate ("Cash instead: 4
- * hours' pay at 1.5×"). `rate`: the request's `cashDays`, the Setup's rate.
+ * Under HR's choice of cash instead when approving, what it pays: a whole day at the rate in days' pay, hours as their pay
+ * at the rate ("4 hours' pay at 1.5× on the draft payroll."). `rate`: the request's `cashDays`, the Setup's rate.
  */
-export function compensatoryOutcomeHint(outcome: CompensatoryOutcome, r: { dayOff: string | null; hoursOff?: number | null }, rate: number): string {
+export function compensatoryCashPayText(r: { hoursOff?: number | null }, rate: number): string {
   const hours = r.hoursOff ?? null;
-  if (outcome === 'cash') {
-    return hours !== null
-      ? `Cash instead: ${hoursPay(hours)} at ${rate}×, an addition on the draft payroll of the month, and no hours off. ${COMPENSATORY_CASH_HINT}`
-      : `Cash instead (rarely): an addition of ${daysPay(rate)} on the draft payroll of the month, and no day off. ${COMPENSATORY_CASH_HINT}`;
-  }
-  if (hours !== null) return `${hoursText(hours)} off${r.dayOff ? ` on ${compensatoryDateText(r.dayOff)}` : ''}: counted as worked hours that day, and nothing is paid for the hours worked.`;
-  return 'A day off (the default): a full paid day, and nothing is paid for the day worked.';
+  return hours !== null ? `${hoursPay(hours)} at ${rate}× on the draft payroll.` : `${daysPay(rate)} on the draft payroll.`;
 }
 
 /** The decision a form sends: the decision, the comment, and for HR's approval the outcome and the check-in confirmation. */
@@ -508,33 +490,8 @@ export function compensatoryEarnsText(hoursWorked: number | null, rules: Pick<Co
   return `Earns ${compensationEarnedText(earned, rules)}`;
 }
 
-/**
- * The Setup's hours rules in a line, under the hours field: "Under 2 hours earn nothing; from 2 hours, the same hours off,
- * at most 4; 6 hours or more, a whole day (Compensatory Setup)." A range the rules leave empty is left out.
- */
-export function compensatoryRulesText(r: Pick<CompensatoryRules, 'minHours' | 'hoursCap' | 'fullDayHours'>): string {
-  const parts = [`Under ${hoursText(r.minHours)} earn nothing`];
-  if (r.minHours < r.fullDayHours) parts.push(`from ${hoursText(r.minHours)}, the same hours off${r.hoursCap < r.fullDayHours ? `, at most ${num(r.hoursCap)}` : ''}`);
-  parts.push(`${hoursText(r.fullDayHours)} or more, a whole day`);
-  return `${parts.join('; ')} (Compensatory Setup).`;
-}
-
-/** When the day off is taken, by the Setup: "in the same month as the day worked", "within 10 days after the day worked". */
-export function compensatoryWindowText(offWithinDays: number | null): string {
-  return offWithinDays === null ? 'in the same month as the day worked' : `within ${offWithinDays} ${offWithinDays === 1 ? 'day' : 'days'} after the day worked`;
-}
-
-/**
- * The day off's field, by what is earned: "Day off", or for hours off "Day for the hours off", explaining they are counted
- * as worked that day; its window the Setup's. `by`: the employee asking, or HR recording.
- */
-export function compensatoryDayOffField(earned: CompensationEarned | null, rules: Pick<CompensatoryRules, 'offWithinDays'>, by: 'employee' | 'hr'): { label: string; hint: string } {
-  const window = compensatoryWindowText(rules.offWithinDays);
-  const when = by === 'employee' ? `A working day ${window}, tomorrow or later: not leave, work from home or an official holiday.` : `A working day ${window}; a day gone by is recorded with a warning.`;
-  if (earned?.kind !== 'hours') return { label: 'Day off', hint: when };
-  const are = earned.hours === 1 ? 'is' : 'are';
-  return { label: 'Day for the hours off', hint: `${when} The ${hoursText(earned.hours)} off ${are} counted as worked that day, with no deduction; ${by === 'employee' ? 'you work' : 'they work'} the rest of it.` };
-}
+/** The day off's field label, by what is earned: "Day off", or for hours off "Day for the hours off". */
+export const compensatoryDayOffLabel = (earned: CompensationEarned | null): string => (earned?.kind === 'hours' ? 'Day for the hours off' : 'Day off');
 
 /**
  * Why the employee's request can't be sent yet, in the order to fix them (none: it can): the days and the hours typed,
@@ -583,9 +540,6 @@ export function compensatoryFormWarning(typed: TypedCompensatory, form: Pick<Com
 // "on choosing compensatory, let the employee pick from a drop menu the eligable day, or choose a future day in the same
 // month only, for upcomming days".
 
-/** Under the day worked's menu. */
-export const COMPENSATORY_DAY_WORKED_HINT = 'A rest day of your shift or an official holiday: one you worked, or one coming up this month that you will work.';
-
 /**
  * The days the day worked is picked from: the API's (GET /me/compensatory/form), or, from an API from before them, worked
  * out from what the form read by the same shared rule (without the employment's dates and the locked months only the API
@@ -619,25 +573,6 @@ export function compensatoryDayGroups(days: readonly CompensatoryEligibleDay[]):
     .filter((g) => g.options.length > 0);
 }
 
-/**
- * What the form says once it can be sent: the days (and the hours, for part of a day) and where it goes (`toCeo`: a
- * C-level person's goes to the CEO, not HR).
- */
-export function compensatoryReadyText(typed: TypedCompensatory, toCeo = false, rules: Pick<CompensatoryRules, 'minHours' | 'hoursCap' | 'fullDayHours'> = COMPENSATORY_RULE_DEFAULTS): string {
-  const worked = parseDate(typed.dayWorked);
-  const off = parseDate(typed.dayOff);
-  const { hoursWorked } = readHoursWorked(typed.part, typed.hours);
-  const earned = compensationEarned(hoursWorked, rules);
-  let days = '';
-  if (worked && off) {
-    days =
-      earned.kind === 'hours' && hoursWorked !== null
-        ? ` for ${hoursText(hoursWorked)} worked on ${compensatoryDateText(worked)}, with ${hoursText(earned.hours)} off on ${compensatoryDateText(off)}`
-        : ` for ${compensatoryDateText(worked)}, with a day off on ${compensatoryDateText(off)}`;
-  }
-  return `Ready to send: a compensatory day${days}, to your direct manager (without one, your lead), then ${hrStageName(toCeo)}.`;
-}
-
 /** The employee's request sent, or what can't be read: the API checks the rest and answers what is wrong. */
 export function compensatoryForm(fd: FormData): { body: CompensatoryBody | null; errors: string[] } {
   const t = typedCompensatory(fd);
@@ -663,15 +598,15 @@ export function compensatoryRecordForm(fd: FormData): { body: CompensatoryRecord
 }
 
 /**
- * HR's record, cash instead in words (27 October 2026): a whole day "an addition of 1.5 days' pay"; hours "0.75 days' pay
- * (4 hours at 1.5×)", `cashDays` the check's (by their shift's hours a day), or before it is read, the hours' pay at the
- * rate; nothing earned, nothing paid.
+ * HR's record, cash instead in words (27 October 2026): a whole day "1.5 days' pay"; hours "0.75 days' pay (4 hours at
+ * 1.5×)", `cashDays` the check's (by their shift's hours a day), or before it is read, the hours' pay at the rate; null
+ * when nothing is earned.
  */
-export function compensatoryRecordCashText(earned: CompensationEarned, rules: Pick<CompensatoryRules, 'cashRate' | 'minHours'>, cashDays: number | null): string {
-  if (earned.kind === 'none') return `Nothing to pay: fewer than ${hoursText(rules.minHours)} worked earn nothing.`;
-  if (earned.kind === 'day') return `Cash instead: an addition of ${daysPay(cashDays ?? rules.cashRate)} on the month's draft payroll, and no day off. ${COMPENSATORY_CASH_HINT}`;
-  const pay = cashDays !== null ? `${daysPay(cashDays)} (${hoursText(earned.hours)} at ${rules.cashRate}×)` : `${hoursPay(earned.hours)} at ${rules.cashRate}× (in days' pay by their shift's hours a day)`;
-  return `Cash instead: ${pay} on the month's draft payroll, and no hours off.`;
+export function compensatoryRecordCashText(earned: CompensationEarned, rules: Pick<CompensatoryRules, 'cashRate'>, cashDays: number | null): string | null {
+  if (earned.kind === 'none') return null;
+  if (earned.kind === 'day') return `${daysPay(cashDays ?? rules.cashRate)} on the draft payroll.`;
+  const pay = cashDays !== null ? `${daysPay(cashDays)} (${hoursText(earned.hours)} at ${rules.cashRate}×)` : `${hoursPay(earned.hours)} at ${rules.cashRate}×`;
+  return `${pay} on the draft payroll.`;
 }
 
 /** The fields as typed, from the form. */
