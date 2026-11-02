@@ -17,6 +17,9 @@ export const isFileKind = (value: string): value is PayrollFileKind => (FILE_KIN
 /** Where the browser downloads a run's file (a plain link, never prefetched). */
 export const fileHref = (runId: string, kind: PayrollFileKind) => `/payroll/${runId}/files/${kind}`;
 
+/** The run's Pay as a spreadsheet to review, a Super Admin's only (owner, 2 November 2026; [id]/review/route.ts). */
+export const reviewHref = (runId: string) => `/payroll/${runId}/review`;
+
 /** The bank files are made once the CEO approved the run (the bank details are those approved), and for a paid one. */
 export const bankFilesReady = (status: PayrollStatus) => status === 'approved' || status === 'paid';
 

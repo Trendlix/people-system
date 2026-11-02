@@ -15,7 +15,7 @@ import { BackLink, Empty, Loading } from '../../organization/ui';
 import { adjustmentsHref } from '../adjustments/adjustments';
 import { approveRun, deleteRun, markRunPaid, refreshFromAttendance, refreshRun, returnRun, saveRunLines, setAttendanceWaiver, setKpiWaiver, submitRun } from '../actions';
 import { loadRun } from '../data';
-import { bankFilesReady, bankLeftOut, etaCheckPath, fileHref, type EtaCheck } from '../files';
+import { bankFilesReady, bankLeftOut, etaCheckPath, fileHref, reviewHref, type EtaCheck } from '../files';
 import { loadJson, notLoadedText } from '../load';
 import { canSeePayroll, employeesLabel, hiddenTotalsText, preparesPayroll, rulesSummary, runActions, runTitle } from '../list';
 import { payslipsIssued, payslipsIssuedLabel, payslipsZipHref } from '../payslips';
@@ -465,6 +465,12 @@ async function PayrollRun({ params }: { params: Promise<{ id: string }> }) {
           <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
             <h2 className="text-lg font-semibold">Pay</h2>
             {paid && run.payslips !== undefined && <span className="text-sm text-muted">{payslipsIssuedLabel(run.payslips)}</span>}
+            {/* the Pay as a spreadsheet to review, a Super Admin's only (owner, 2 November 2026) */}
+            {hasRole(user, 'super_admin') && (
+              <a href={reviewHref(run.id)} className="btn btn-secondary ml-auto min-h-9 px-3">
+                Export for review
+              </a>
+            )}
           </div>
           <ResultsTable
             lines={run.lines}
