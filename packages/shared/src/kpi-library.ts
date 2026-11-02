@@ -969,4 +969,16 @@ export interface KpiDraftAllResult {
 export interface KpiPublishDraftsResult {
   published: { templateId: string; jobTitleId: string; title: string; version: number; opensFrom: string }[];
   problems: { templateId: string; jobTitleId: string | null; title: string | null; version: number | null; problems: string[] }[];
+  /** Published to use now (2 November 2026): last month's scorecards opened at once for them; none otherwise. */
+  opened?: { month: string; opened: number } | null;
+}
+
+/**
+ * "Use now" (owner, 2 November 2026: "how to publish these in the current month?"): published versions brought forward
+ * to be used from the 1st of this month instead of the next, then last month's missing scorecards opened at once.
+ */
+export interface KpiUseNowResult {
+  moved: { templateId: string; jobTitleId: string; title: string; version: number; opensFrom: string }[];
+  problems: { templateId: string; jobTitleId: string | null; title: string | null; version: number | null; problems: string[] }[];
+  opened: { month: string; opened: number } | null;
 }

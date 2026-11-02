@@ -8,7 +8,7 @@ import type { SessionUser } from '@/lib/types';
 import { todayInCairo } from '../../employees/ui';
 import { NotLoaded } from '../../organization/payroll/section';
 import { Empty, Loading } from '../../organization/ui';
-import { draftAllKpiTemplates, publishKpiDrafts } from './actions';
+import { draftAllKpiTemplates, publishKpiDrafts, applyKpiVersionsNow } from './actions';
 import { loadKpi } from './data';
 import { DraftAllForm } from './draft-all';
 import { oldPillarsBanner, ownPillarsCountText, pillarRowsOf, pillarsMonthOf } from './framework';
@@ -77,6 +77,7 @@ async function JobTitles({ user }: { user: SessionUser }) {
             <TemplatesTable
               groups={groupTemplateRows(rows)}
               publish={builds ? publishKpiDrafts : null}
+              applyNow={builds ? applyKpiVersionsNow : null}
               today={todayInCairo()}
               pillarsFrom={next?.appliesFrom ?? null}
               draftPillarsFrom={framework.kind === 'ok' ? draftPillarsMonths(rows, framework.value) : {}}

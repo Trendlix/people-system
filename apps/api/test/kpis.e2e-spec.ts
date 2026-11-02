@@ -1,6 +1,6 @@
 import type { INestApplication } from '@nestjs/common';
 import { KPI_REMINDER_NOTHING_WAITING, KPI_REMINDER_POSTPONE_MS, KPI_REMINDER_POSTPONED_ALREADY } from '@trendlix/shared';
-import type { KpiCounts, KpiHeatmap, KpiJobTitleTemplates, KpiOverview, KpiReminderView, KpiScorecardSummary, KpiScorecardView, KpiTemplateRow, KpiTemplateView, PayrollTerms } from '@trendlix/shared';
+import type { KpiCounts, KpiHeatmap, KpiJobTitleTemplates, KpiOverview, KpiReminderView, KpiUseNowResult, KpiScorecardSummary, KpiScorecardView, KpiTemplateRow, KpiTemplateView, PayrollTerms } from '@trendlix/shared';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { addDays, addMonths, todayInCairo, toDateOnly } from '../src/common/date-only.js';
@@ -707,6 +707,22 @@ describe('KPIs (e2e)', () => {
       expect(current.templateId).toBe(v2.id);
       expect((await prisma.kpiScorecard.findUniqueOrThrow({ where: { id: cards.ben } })).templateId).toBe(v1.id);
       expect((await card(cards.ben, sessions.ben)).templateVersion).toBe(1);
+    });
+
+    // owner, 2 November 2026: "how to publish these in the current month?"
+    it('Use now: a version still to come is used from this month, last month’s missing scorecards opened; one in force is refused', async () => {
+      await prisma.kpiTemplate.update({ where: { id: v2.id }, data: { opensFrom: toDateOnly(`${NEXT}-01`) } });
+      await post('/kpis/templates/use-now', sessions.ben, { templateIds: [v2.id] }).expect(403);
+      const r = (await post('/kpis/templates/use-now', sessions.hr, { templateIds: [v2.id, v1.id] }).expect(200)).body as KpiUseNowResult;
+      expect(r.moved).toEqual([expect.objectContaining({ templateId: v2.id, version: 2, opensFrom: `${CURRENT}-01` })]);
+      expect(r.problems).toEqual([expect.objectContaining({ templateId: v1.id, problems: ['Version 1 is in force already.'] })]);
+      expect(r.opened).toMatchObject({ month: monthsLater(CURRENT, -1), opened: expect.any(Number) });
+      const row = ((await get('/kpis/templates', sessions.hr).expect(200)).body as KpiTemplateRow[]).find((x) => x.inForce?.id === v2.id || x.upcoming?.id === v2.id)!;
+      expect(row.inForce).toMatchObject({ id: v2.id, version: 2 });
+      expect(row.upcoming).toBeNull();
+      expect(await prisma.auditLog.findFirst({ where: { action: 'use_now', entityId: v2.id }, orderBy: { id: 'desc' } })).toMatchObject({
+        diff: { version: 2, opensFrom: { from: `${NEXT}-01`, to: `${CURRENT}-01` } },
+      });
     });
   });
 });

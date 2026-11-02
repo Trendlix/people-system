@@ -1,8 +1,8 @@
 'use client';
 
-import type { KpiTemplateRow } from '@trendlix/shared';
+import type { KpiTemplateRow, KpiUseNowResult } from '@trendlix/shared';
 import Link from 'next/link';
-import { Fragment, useActionState, useState } from 'react';
+import { Fragment, useActionState, useState, useTransition } from 'react';
 import { FormErrors } from '@/components/form';
 import { titleCase } from '@/lib/format';
 import { KPI_PATHS } from '@/lib/kpi-paths';
@@ -15,6 +15,8 @@ import {
   publishDraftsSummary,
   refusedDraftName,
   templateRowText,
+  upcomingIdsOf,
+  appliedNowSummary,
   type PublishDraftsState,
   type TemplateGroup,
 } from './templates';
@@ -32,7 +34,7 @@ import {
 const none = <span className="text-muted">—</span>;
 
 /** `choice`: its draft's box (null: no draft to choose); undefined: no boxes on the list. */
-function TemplateRow({ row, choice }: { row: KpiTemplateRow; choice?: { checked: boolean; toggle: () => void } | null }) {
+function TemplateRow({ row, choice, applyNow }: { row: KpiTemplateRow; choice?: { checked: boolean; toggle: () => void } | null; applyNow?: ((id: string) => void) | null }) {
   const text = templateRowText(row);
   const nothing = !text.inForce && !text.upcoming && !text.draft;
   return (
@@ -72,6 +74,12 @@ function TemplateRow({ row, choice }: { row: KpiTemplateRow; choice?: { checked:
           <>
             <span className="badge">Upcoming</span>
             <span className="mt-1 block">{text.upcoming}</span>
+            {/* used from this month instead (owner, 2 November 2026: "how to publish these in the current month?") */}
+            {applyNow && row.upcoming && (
+              <button type="button" onClick={() => applyNow(row.upcoming!.id)} className="mt-1 text-sm font-semibold text-accent underline-offset-2 hover:underline">
+                Use now<span className="sr-only"> ({row.jobTitle.titleEn}, version {row.upcoming.version})</span>
+              </button>
+            )}
           </>
         ) : (
           none
@@ -96,6 +104,7 @@ function TemplateRow({ row, choice }: { row: KpiTemplateRow; choice?: { checked:
 export function TemplatesTable({
   groups,
   publish,
+  applyNow = null,
   today,
   pillarsFrom,
   draftPillarsFrom = {},
@@ -103,6 +112,8 @@ export function TemplatesTable({
   groups: TemplateGroup[];
   /** "Publish selected drafts" (HR, the Super Admin); null: the list only. */
   publish: ((prev: PublishDraftsState, fd: FormData) => Promise<PublishDraftsState>) | null;
+  /** "Use now" (HR, the Super Admin; 2 November 2026): versions still to come used from this month; null: not offered. */
+  applyNow?: ((templateIds: string[]) => Promise<{ errors?: string[]; result?: KpiUseNowResult }>) | null;
   /** Today in Cairo, YYYY-MM-DD: when what is published now applies. */
   today: string;
   /** The month the company's next KPI pillars apply from (YYYY-MM); null: none coming. */
@@ -112,6 +123,15 @@ export function TemplatesTable({
 }) {
   const [chosen, setChosen] = useState<ReadonlySet<string>>(new Set());
   const [state, formAction, pending] = useActionState(publish ?? (async (prev: PublishDraftsState) => prev), {});
+  // "Use now" (owner, 2 November 2026: "how to publish these in the current month?")
+  const [applying, startApplying] = useTransition();
+  const [appliedNow, setAppliedNow] = useState<{ errors?: string[]; result?: KpiUseNowResult } | null>(null);
+  const upcoming = groups.flatMap((g) => g.teams.flatMap((t) => upcomingIdsOf(t.rows)));
+  function runApplyNow(ids: string[], question: string) {
+    if (!applyNow || !ids.length || !window.confirm(`${question} Last month’s missing scorecards open at once.`)) return;
+    setAppliedNow(null);
+    startApplying(async () => setAppliedNow(await applyNow(ids)));
+  }
   const drafts = groups.flatMap((g) => g.teams.flatMap((t) => draftIdsOf(t.rows)));
   // those still drafts: one published meanwhile drops out
   const selected = drafts.filter((id) => chosen.has(id));
@@ -145,8 +165,31 @@ export function TemplatesTable({
             <button type="submit" disabled={pending || !selected.length} className="btn btn-secondary">
               {pending ? 'Publishing…' : selected.length ? `Publish selected drafts (${selected.length})` : 'Publish selected drafts'}
             </button>
+            {/* used from this month, not the next (owner, 2 November 2026) */}
+            <button type="submit" name="now" value="1" disabled={pending || !selected.length} className="btn btn-secondary">
+              Publish and use now
+            </button>
+            {applyNow && upcoming.length > 0 && (
+              <button type="button" onClick={() => runApplyNow(upcoming, `Use all ${upcoming.length} upcoming versions from this month?`)} disabled={applying} className="btn btn-secondary">
+                {applying ? 'Working…' : `Use all upcoming now (${upcoming.length})`}
+              </button>
+            )}
           </form>
-          <FormErrors errors={state.errors} />
+          <FormErrors errors={state.errors ?? appliedNow?.errors} />
+          {appliedNow?.result && (
+            <div role="status" className="space-y-2 rounded-lg border border-line-soft p-4 text-sm">
+              <p className={`font-semibold ${appliedNow.result.moved.length ? 'text-ok' : ''}`}>{appliedNowSummary(appliedNow.result)}</p>
+              {appliedNow.result.problems.length > 0 && (
+                <ul className="list-disc pl-5 text-muted">
+                  {appliedNow.result.problems.map((p) => (
+                    <li key={p.templateId}>
+                      {refusedDraftName(p)}: {p.problems.join(' ')}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
           {state.result && (
             <div role="status" className="space-y-3 rounded-lg border border-line-soft p-4 text-sm">
               <p className={`font-semibold ${state.result.published.length ? 'text-ok' : ''}`}>{publishDraftsSummary(state.result)}</p>
@@ -238,6 +281,7 @@ export function TemplatesTable({
                       key={r.jobTitle.id}
                       row={r}
                       choice={publish ? (r.draft ? { checked: chosen.has(r.draft.id), toggle: () => toggle(r.draft!.id) } : null) : undefined}
+                      applyNow={applyNow && !applying ? (id) => runApplyNow([id], `${r.jobTitle.titleEn}: use version ${r.upcoming?.version} from this month?`) : null}
                     />
                   ))}
                 </Fragment>

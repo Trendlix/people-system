@@ -2,6 +2,7 @@ import {
   KPI_LIBRARY_KIND_LABELS,
   KPI_SETTING_DEFAULTS,
   kpiMonthAdd,
+  kpiMonthName,
   kpiTemplateOpensFrom,
   type KpiDraftAllResult,
   type KpiDraftSource,
@@ -12,6 +13,7 @@ import {
   type KpiSettings,
   type KpiSettingsView,
   type KpiTemplateRow,
+  type KpiUseNowResult,
   type KpiUserRef,
   type Role,
 } from '@trendlix/shared';
@@ -244,8 +246,27 @@ export function publishDraftsSummary(result: KpiPublishDraftsResult): string {
   const refused = result.problems.length;
   const from = result.published[0]?.opensFrom;
   const head = published ? `${draftsLabel(published)} published${from ? `, applying from ${formatDate(from)}` : ''}` : 'Nothing published';
-  return `${head}${refused ? `; ${refused} not published` : ''}.`;
+  return `${head}${refused ? `; ${refused} not published` : ''}.${result.opened ? ` ${openedText(result.opened)}` : ''}`;
 }
+
+/** "5 scorecards opened for October 2026.", "No scorecards were missing for October 2026." */
+export function openedText(o: { month: string; opened: number }): string {
+  const month = kpiMonthName(o.month);
+  return o.opened ? `${o.opened === 1 ? '1 scorecard' : `${o.opened} scorecards`} opened for ${month}.` : `No scorecards were missing for ${month}.`;
+}
+
+/**
+ * "Use now" (owner, 2 November 2026: "how to publish these in the current month?"): "2 versions used from this month. 5
+ * scorecards opened for October 2026."; what was refused after it.
+ */
+export function appliedNowSummary(result: KpiUseNowResult): string {
+  const moved = result.moved.length;
+  const head = moved ? `${moved === 1 ? '1 version' : `${moved} versions`} used from this month.` : 'Nothing changed.';
+  return [head, result.opened ? openedText(result.opened) : '', result.problems.length ? `${result.problems.length} not changed.` : ''].filter(Boolean).join(' ');
+}
+
+/** The upcoming versions of the rows shown, for "Use all upcoming now". */
+export const upcomingIdsOf = (rows: readonly KpiTemplateRow[]): string[] => rows.flatMap((r) => (r.upcoming ? [r.upcoming.id] : []));
 
 /** A draft that wasn't published, as the result names it: "Copywriter, version 1", or "A draft" when it couldn't be found. */
 export const refusedDraftName = (p: Pick<KpiPublishDraftsResult['problems'][number], 'title' | 'version'>): string =>

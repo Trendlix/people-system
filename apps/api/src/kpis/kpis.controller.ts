@@ -1,6 +1,8 @@
+import type { KpiPublishDraftsResult, KpiUseNowResult } from '@trendlix/shared';
 import { Body, Controller, Delete, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, StreamableFile } from '@nestjs/common';
 import { CurrentUser, DeletesRecords, NotForDevelopers, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
+import { todayInCairo } from '../common/date-only.js';
 import { XLSX_TYPE } from '../payroll/bank-files.js';
 import { attachment } from '../templates/template-file.js';
 import { KpiFrameworkService } from './kpi-framework.service.js';
@@ -26,6 +28,7 @@ import {
   KpiSettingsDto,
   KpiSignDto,
   KpiTemplateContentDto,
+  KpiUseNowDto,
 } from './kpis.dto.js';
 
 // The KPIs' routes (owner, 21 October 2026: "lets start with the KPI's First"; packages/shared kpis.ts has every answer's
@@ -76,9 +79,15 @@ export class KpiFrameworkController {
   }
 }
 
+/** The 1st of this month in Cairo (YYYY-MM-DD). */
+const thisMonthFirst = () => `${todayInCairo().slice(0, 7)}-01`;
+
 @Controller('kpis/templates')
 export class KpiTemplatesController {
-  constructor(private readonly templates: KpiTemplatesService) {}
+  constructor(
+    private readonly templates: KpiTemplatesService,
+    private readonly scheduler: KpiSchedulerService,
+  ) {}
 
   @Roles('hr', 'ceo', 'admin')
   @Get()
@@ -111,8 +120,26 @@ export class KpiTemplatesController {
   @Roles('hr', 'super_admin')
   @Post('publish-drafts')
   @HttpCode(200)
-  publishDrafts(@Body() dto: KpiPublishDraftsDto, @CurrentUser() user: SessionUser) {
-    return this.templates.publishDrafts(dto, user);
+  async publishDrafts(@Body() dto: KpiPublishDraftsDto, @CurrentUser() user: SessionUser): Promise<KpiPublishDraftsResult> {
+    const result = await this.templates.publishDrafts(dto, user);
+    // used from this month, and last month's missing scorecards opened at once (owner, 2 November 2026)
+    if (!dto.now || !result.published.length) return result;
+    await this.templates.useNow(
+      result.published.map((p) => p.templateId),
+      user,
+    );
+    const opened = await this.scheduler.openNow(user);
+    return { ...result, published: result.published.map((p) => ({ ...p, opensFrom: thisMonthFirst() })), opened };
+  }
+
+  /** "Use now": published versions brought forward to this month, then last month's missing scorecards opened (2 November 2026). */
+  @Roles('hr', 'super_admin')
+  @Post('use-now')
+  @HttpCode(200)
+  async useNow(@Body() dto: KpiUseNowDto, @CurrentUser() user: SessionUser): Promise<KpiUseNowResult> {
+    const result = await this.templates.useNow(dto.templateIds, user);
+    const opened = result.moved.length ? await this.scheduler.openNow(user) : null;
+    return { ...result, opened };
   }
 
   @Get('job-titles/:jobTitleId')

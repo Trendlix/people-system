@@ -30,6 +30,8 @@ export const KPI_API = {
   draftAll: '/kpis/templates/draft-all',
   /** POST { templateIds } → KpiPublishDraftsResult: publishes the drafts chosen that pass (HR, Super Admin). */
   publishDrafts: '/kpis/templates/publish-drafts',
+  /** POST { templateIds } → KpiUseNowResult: versions still to come used from this month, last month's missing scorecards opened (HR, Super Admin). */
+  useNow: '/kpis/templates/use-now',
   /** GET: KpiJobTitleTemplates. */
   jobTitleTemplates: (jobTitleId: string) => `/kpis/templates/job-titles/${encodeURIComponent(jobTitleId)}`,
   /** POST KpiDraftSource → KpiTemplateView (the new draft). */

@@ -95,6 +95,20 @@ export class KpiPublishDraftsDto {
   @ArrayMaxSize(1000, { message: 'Publish at most 1,000 drafts at once.' })
   @IsUUID('all', { each: true, message: 'Choose the drafts to publish.' })
   templateIds!: string[];
+
+  /** Used from this month, not the next, and last month's missing scorecards opened at once (2 November 2026). */
+  @IsOptional()
+  @IsBoolean({ message: 'Say whether to use them now with true or false.' })
+  now?: boolean;
+}
+
+/** "Use now": published versions brought forward to this month (2 November 2026). */
+export class KpiUseNowDto {
+  @IsArray({ message: 'Send the versions to use now as a list.' })
+  @ArrayMinSize(1, { message: 'Choose the versions to use now.' })
+  @ArrayMaxSize(1000, { message: 'Use at most 1,000 versions now at once.' })
+  @IsUUID('all', { each: true, message: 'Choose the versions to use now.' })
+  templateIds!: string[];
 }
 
 /** A draft's content: the Attendance metric's points and the metrics (checked by kpiTemplateProblems). */

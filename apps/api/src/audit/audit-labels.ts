@@ -337,6 +337,8 @@ export const ACTION_LABELS: Readonly<Record<string, string>> = {
   practice_start: 'Started a practice scorecard',
   print: 'Marked printed',
   publish: 'Published',
+  // a KPI template version brought forward to this month (owner, 2 November 2026: "publish these in the current month")
+  use_now: 'Used from this month',
   // "Publish selected drafts" of KPI templates (21 October 2026), each draft published also audited as published
   publish_drafts: 'Published the selected drafts',
   record: 'Recorded by HR',

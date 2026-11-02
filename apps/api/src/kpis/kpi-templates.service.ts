@@ -35,6 +35,7 @@ import {
   type KpiTemplateRow,
   type KpiTemplateView,
   type KpiWeights,
+  type KpiUseNowResult,
 } from '@trendlix/shared';
 import { AuditService, changes } from '../audit/audit.service.js';
 import { actsAs, assertDeletes } from '../auth/roles.js';
@@ -475,6 +476,49 @@ export class KpiTemplatesService {
    * applies from the scorecards opened on the 1st of next month; the others are left as they are, each with what stops
    * it (not found, published already, the rules' problems). One audit entry for the run too.
    */
+  /**
+   * "Use now" (owner, 2 November 2026: "how to publish these in the current month?"): each published version still to
+   * come brought forward to the 1st of this month, so it is the one in force now (the version a job title used before
+   * stays with the scorecards opened on it); one in force already is refused with why. Audited for each.
+   */
+  async useNow(templateIds: readonly string[], user: SessionUser): Promise<Omit<KpiUseNowResult, 'opened'>> {
+    const ids = [...new Set(templateIds)];
+    const first = `${todayInCairo().slice(0, 7)}-01`;
+    const rows = await this.prisma.kpiTemplate.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, jobTitleId: true, version: true, status: true, opensFrom: true, jobTitle: { select: { titleEn: true } } },
+    });
+    const result: Omit<KpiUseNowResult, 'opened'> = { moved: [], problems: [] };
+    for (const id of ids) {
+      const row = rows.find((r) => r.id === id);
+      const refuse = (problem: string) =>
+        result.problems.push({ templateId: id, jobTitleId: row?.jobTitleId ?? null, title: row?.jobTitle.titleEn ?? null, version: row?.version ?? null, problems: [problem] });
+      if (!row) {
+        refuse('This KPI template could not be found.');
+        continue;
+      }
+      if (row.status !== 'published' || !row.opensFrom) {
+        refuse(`Version ${row.version} isn’t published yet.`);
+        continue;
+      }
+      const was = fromDateOnly(row.opensFrom);
+      if (was <= first) {
+        refuse(`Version ${row.version} is in force already.`);
+        continue;
+      }
+      await this.prisma.kpiTemplate.update({ where: { id }, data: { opensFrom: toDateOnly(first) } });
+      await this.audit.record({
+        userId: user.id,
+        action: 'use_now',
+        entityType: TEMPLATE_ENTITY,
+        entityId: id,
+        diff: { jobTitleId: row.jobTitleId, version: row.version, opensFrom: { from: was, to: first } },
+      });
+      result.moved.push({ templateId: id, jobTitleId: row.jobTitleId, title: row.jobTitle.titleEn, version: row.version, opensFrom: first });
+    }
+    return result;
+  }
+
   async publishDrafts(dto: KpiPublishDraftsDto, user: SessionUser): Promise<KpiPublishDraftsResult> {
     const ids = [...new Set(dto.templateIds)];
     const rows = await this.prisma.kpiTemplate.findMany({ where: { id: { in: ids } }, select: { id: true, jobTitleId: true, version: true, status: true, jobTitle: { select: { titleEn: true } } } });

@@ -21,6 +21,7 @@ import {
   type KpiDraftAllResult,
   type KpiFrameworkInput,
   type KpiPublishDraftsResult,
+  type KpiUseNowResult,
   type KpiSettingsInput,
 } from '@trendlix/shared';
 import { refresh } from 'next/cache';
@@ -191,14 +192,33 @@ export async function draftAllKpiTemplates(): Promise<DraftAllState> {
 export async function publishKpiDrafts(_prev: PublishDraftsState, fd: FormData): Promise<PublishDraftsState> {
   const templateIds = templateIdsOf(fd);
   if (!templateIds.length) return { errors: ['Choose the drafts to publish.'] };
+  // "Publish and use now" (owner, 2 November 2026): used from this month, last month's missing scorecards opened
+  const now = fd.get('now') === '1';
   let result: KpiPublishDraftsResult | undefined;
   try {
-    result = await apiSend<KpiPublishDraftsResult>('POST', KPI_API.publishDrafts, { templateIds });
+    result = await apiSend<KpiPublishDraftsResult>('POST', KPI_API.publishDrafts, { templateIds, ...(now && { now: true }) });
   } catch (err) {
     return refused(err);
   }
   refresh();
   return result ? { result } : { errors: ['The server sent an answer that could not be read. Reload the page to see what was published.'] };
+}
+
+/**
+ * "Use now" (POST /kpis/templates/use-now; owner, 2 November 2026: "how to publish these in the current month?"): the
+ * versions still to come used from this month, then last month's missing scorecards opened.
+ */
+export async function applyKpiVersionsNow(templateIds: string[]): Promise<{ errors?: string[]; result?: KpiUseNowResult }> {
+  const ids = templateIds.filter((id) => UUID.test(id));
+  if (!ids.length) return { errors: ['Choose the versions to use now.'] };
+  let result: KpiUseNowResult | undefined;
+  try {
+    result = await apiSend<KpiUseNowResult>('POST', KPI_API.useNow, { templateIds: ids });
+  } catch (err) {
+    return refused(err);
+  }
+  refresh();
+  return result ? { result } : { errors: ['The server sent an answer that could not be read. Reload the page.'] };
 }
 
 /** The draft discarded (DELETE /kpis/templates/:id): a Super Admin's only. */
