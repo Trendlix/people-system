@@ -34,7 +34,7 @@ async function Resign() {
 
 export default function ResignPage() {
   return (
-    <div className="max-w-3xl space-y-5">
+    <div className="space-y-5">
       <div className="space-y-2">
         <BackLink href={MY_RESIGNATION_HREF}>My Requests</BackLink>
         <h1 className="page-title">Resign</h1>

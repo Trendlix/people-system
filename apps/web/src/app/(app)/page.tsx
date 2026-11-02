@@ -216,7 +216,7 @@ async function StaffCheckIn() {
 
 function StaffHome() {
   return (
-    <div className="max-w-4xl">
+    <div>
       <h1 className="page-title">Welcome</h1>
 
       {/* last night's fetch from Zoho People failed, or its connection needs connecting again (25 October 2026): HR's and

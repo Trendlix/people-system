@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: 'Ask for a Correction · People Syste
 
 export default function AskCorrectionPage({ searchParams }: PageProps<'/my-attendance/correct'>) {
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="space-y-6">
       <AskCorrectionHeading back={{ href: '/my-attendance', label: 'My Attendance' }} />
       <Suspense fallback={<Loading />}>
         <AskCorrection searchParams={searchParams} />

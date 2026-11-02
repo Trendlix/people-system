@@ -115,7 +115,7 @@ async function List({ searchParams }: { searchParams: PageProps<'/attendance/off
 export default function OdListPage({ searchParams }: PageProps<'/attendance/official-duty'>) {
   return (
     <StaffOnly>
-      <div className="max-w-6xl space-y-6">
+      <div className="space-y-6">
         <h1 className="page-title">Official Duty</h1>
         <Suspense fallback={<Loading />}>
           <List searchParams={searchParams} />

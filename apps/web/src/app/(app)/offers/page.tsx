@@ -201,7 +201,7 @@ async function OfferList({ searchParams }: { searchParams: Promise<Query> }) {
 
 export default function OffersPage({ searchParams }: { searchParams: Promise<Query> }) {
   return (
-    <div className="max-w-6xl">
+    <div>
       <h1 className="page-title">Job Offers</h1>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>

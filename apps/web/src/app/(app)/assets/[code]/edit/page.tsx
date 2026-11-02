@@ -55,7 +55,7 @@ async function EditAsset({ params }: { params: PageProps<'/assets/[code]/edit'>[
 
 export default function EditAssetPage({ params }: PageProps<'/assets/[code]/edit'>) {
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="space-y-4">
       <Suspense fallback={null}>
         <Back params={params} />
       </Suspense>

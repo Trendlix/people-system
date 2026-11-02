@@ -279,7 +279,7 @@ async function LinkedInSection({ careersSite }: { careersSite: string }) {
 // checklists, Templates"), in the setup menu's Hiring & Leaving, which gives the heading.
 export default function RecruitmentSettingsPage() {
   return (
-    <div className="max-w-4xl">
+    <div>
       <Suspense fallback={<Loading />}>
         <Settings />
       </Suspense>

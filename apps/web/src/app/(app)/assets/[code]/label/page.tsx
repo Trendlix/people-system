@@ -51,7 +51,7 @@ async function Label({ params }: { params: PageProps<'/assets/[code]/label'>['pa
 
 export default function AssetLabelPage({ params }: PageProps<'/assets/[code]/label'>) {
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="space-y-4">
       <Suspense fallback={<Loading />}>
         <Label params={params} />
       </Suspense>

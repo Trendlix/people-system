@@ -173,7 +173,7 @@ async function Mine({ searchParams }: { searchParams: PageProps<'/account/interv
 
 export default function YourInterviewHoursPage({ searchParams }: PageProps<'/account/interview-hours'>) {
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="space-y-4">
       <h1 className="page-title">Your Interview Hours</h1>
       <Suspense fallback={<p className="text-sm text-muted">Loading…</p>}>
         <Mine searchParams={searchParams} />

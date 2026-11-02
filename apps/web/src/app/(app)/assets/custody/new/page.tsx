@@ -26,7 +26,7 @@ async function NewHandover({ searchParams }: { searchParams: PageProps<'/assets/
 
 export default function NewHandoverPage({ searchParams }: PageProps<'/assets/custody/new'>) {
   return (
-    <div className="max-w-4xl space-y-4">
+    <div className="space-y-4">
       <BackLink href={CUSTODY_PATHS.list}>Custody</BackLink>
       <h1 className="page-title">New Handover</h1>
       <Suspense fallback={<Loading />}>

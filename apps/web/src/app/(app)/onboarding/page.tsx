@@ -80,7 +80,7 @@ async function List({ searchParams }: { searchParams: PageProps<'/onboarding'>['
 
 export default function OnboardingPage({ searchParams }: PageProps<'/onboarding'>) {
   return (
-    <div className="max-w-5xl space-y-4">
+    <div className="space-y-4">
       <h1 className="page-title">Onboarding</h1>
       <Suspense fallback={<Loading />}>
         <List searchParams={searchParams} />

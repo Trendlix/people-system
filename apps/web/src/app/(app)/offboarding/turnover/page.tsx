@@ -187,7 +187,7 @@ async function Turnover({ searchParams }: { searchParams: PageProps<'/offboardin
 
 export default function TurnoverPage({ searchParams }: PageProps<'/offboarding/turnover'>) {
   return (
-    <div className="max-w-6xl space-y-6">
+    <div className="space-y-6">
       <BackLink href={OFFBOARDING_PATH}>Offboarding</BackLink>
       <h1 className="page-title">Turnover</h1>
       <Suspense fallback={<Loading />}>

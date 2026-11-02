@@ -87,7 +87,7 @@ async function Fields({ params, searchParams }: PageProps<'/organization/templat
 // 2026), as wide as the template library was.
 export default function FieldsPage(props: PageProps<'/organization/templates/[slot]/versions/[versionId]/fields'>) {
   return (
-    <div className="max-w-6xl">
+    <div>
       <Suspense fallback={<Loading />}>
         <Fields {...props} />
       </Suspense>

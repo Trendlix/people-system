@@ -73,7 +73,7 @@ async function Cards({ searchParams }: { searchParams: PageProps<'/assets/holder
 export default function HoldersPage({ searchParams }: PageProps<'/assets/holders'>) {
   return (
     <AssetsFrame tab={CUSTODY_PATHS.holders}>
-      <div className="max-w-6xl">
+      <div>
         <Suspense fallback={<Loading />}>
           <Cards searchParams={searchParams} />
         </Suspense>

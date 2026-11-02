@@ -11,7 +11,7 @@ export const metadata: Metadata = { title: 'Check-in Location · People System' 
 
 export default function HomeLocationPage({ params, searchParams }: PageProps<'/home-locations/[id]'>) {
   return (
-    <div className="max-w-5xl">
+    <div>
       <Suspense fallback={<Loading />}>
         <HomeLocationDetail params={params} searchParams={searchParams} />
       </Suspense>

@@ -69,7 +69,7 @@ async function Fingerprints() {
 
 export default function YourSessionsPage() {
   return (
-    <div className="max-w-2xl space-y-4">
+    <div className="space-y-4">
       <h1 className="page-title">Your Sessions</h1>
       <Suspense fallback={<p className="text-sm text-muted">Loading…</p>}>
         <Sessions />

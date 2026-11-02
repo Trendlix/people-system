@@ -66,7 +66,7 @@ async function Sheets({ searchParams }: { searchParams: PageProps<'/assets/label
 
 export default function PrintLabelSheetsPage({ searchParams }: PageProps<'/assets/labels/print'>) {
   return (
-    <div className="max-w-4xl space-y-4">
+    <div className="space-y-4">
       <BackLink href={ASSET_PATHS.labels}>Label sheets</BackLink>
       <Suspense fallback={<Loading />}>
         <Sheets searchParams={searchParams} />

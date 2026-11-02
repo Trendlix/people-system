@@ -101,7 +101,7 @@ async function NewAsset({ searchParams }: { searchParams: PageProps<'/assets/new
 
 export default function NewAssetPage({ searchParams }: PageProps<'/assets/new'>) {
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="space-y-4">
       <BackLink href={ASSET_PATHS.list}>Assets</BackLink>
       <h1 className="page-title">Add Asset</h1>
       <Suspense fallback={<Loading />}>

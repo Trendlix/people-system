@@ -121,7 +121,7 @@ async function Imports({ searchParams }: { searchParams: PageProps<'/leave/impor
 
 export default function LeaveImportPage({ searchParams }: PageProps<'/leave/import'>) {
   return (
-    <div className="max-w-6xl space-y-6">
+    <div className="space-y-6">
       <div className="space-y-2">
         <BackLink href={LEAVE_PATH}>Leave Requests</BackLink>
         <h1 className="page-title">Import Leave</h1>

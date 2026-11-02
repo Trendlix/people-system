@@ -105,7 +105,7 @@ async function NewRaise({ params, searchParams }: { params: Promise<{ id: string
       },
     };
     body = (
-      <div className="max-w-3xl space-y-4">
+      <div className="space-y-4">
         <p className="text-sm text-muted">
           A raise on {withCodeInBrackets(`version ${active.version}`, active.number)}, the contract in force
           {active.endDate ? ` from ${formatDate(active.startDate)} to ${formatDate(active.endDate)}` : ` since ${formatDate(active.startDate)}`}

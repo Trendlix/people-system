@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: 'Reimbursement Claim · People System
 
 export default function ReimbursementClaimPage({ params, searchParams }: PageProps<'/reimbursements/[id]'>) {
   return (
-    <div className="max-w-5xl">
+    <div>
       <Suspense fallback={<Loading />}>
         <ClaimDetail params={params} searchParams={searchParams} />
       </Suspense>

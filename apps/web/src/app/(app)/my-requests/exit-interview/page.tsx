@@ -66,7 +66,7 @@ async function Interview({ searchParams }: { searchParams: PageProps<'/my-reques
 
 export default function MyExitInterviewPage({ searchParams }: PageProps<'/my-requests/exit-interview'>) {
   return (
-    <div className="max-w-4xl space-y-6">
+    <div className="space-y-6">
       <BackLink href={MY_REQUESTS}>My Requests</BackLink>
       <h1 className="page-title">Exit Interview</h1>
       <Suspense fallback={<Loading />}>

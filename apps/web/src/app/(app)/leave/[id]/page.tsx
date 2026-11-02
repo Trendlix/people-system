@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: 'Leave Request · People System' };
 
 export default function LeaveRequestPage({ params, searchParams }: PageProps<'/leave/[id]'>) {
   return (
-    <div className="max-w-5xl">
+    <div>
       <Suspense fallback={<Loading />}>
         <LeaveRequestDetail params={params} searchParams={searchParams} />
       </Suspense>

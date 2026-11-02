@@ -113,7 +113,7 @@ async function NeedsValues({ searchParams }: { searchParams: PageProps<'/assets/
 export default function NeedsValuesPage({ searchParams }: PageProps<'/assets/needs-values'>) {
   return (
     <AssetsFrame tab={ASSET_PATHS.needsValues}>
-      <div className="max-w-5xl">
+      <div>
         <Suspense fallback={<Loading />}>
           <NeedsValues searchParams={searchParams} />
         </Suspense>

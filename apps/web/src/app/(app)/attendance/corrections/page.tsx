@@ -120,7 +120,7 @@ async function List({ searchParams }: { searchParams: PageProps<'/attendance/cor
 export default function CorrectionsPage({ searchParams }: PageProps<'/attendance/corrections'>) {
   return (
     <StaffOnly>
-      <div className="max-w-6xl space-y-6">
+      <div className="space-y-6">
         <h1 className="page-title">Corrections</h1>
         <Suspense fallback={<Loading />}>
           <List searchParams={searchParams} />

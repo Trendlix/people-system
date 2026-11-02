@@ -122,7 +122,7 @@ async function Team({ searchParams }: { searchParams: PageProps<'/kpis/team'>['s
 
 export default function TeamKpisPage({ searchParams }: PageProps<'/kpis/team'>) {
   return (
-    <div className="max-w-7xl">
+    <div>
       <h1 className="page-title">Team KPIs</h1>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>

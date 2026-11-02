@@ -9,7 +9,7 @@ export const metadata: Metadata = { title: 'Compensatory Days · People System' 
 
 export default function CompensatoryRequestPage({ params, searchParams }: PageProps<'/attendance/compensatory/[id]'>) {
   return (
-    <div className="max-w-5xl">
+    <div>
       <Suspense fallback={<Loading />}>
         <CompensatoryRequestDetail params={params} searchParams={searchParams} />
       </Suspense>

@@ -103,7 +103,7 @@ async function Onboarding({ params }: { params: PageProps<'/onboarding/[id]'>['p
 
 export default function OnboardingChecklistPage({ params }: PageProps<'/onboarding/[id]'>) {
   return (
-    <div className="max-w-4xl">
+    <div>
       <Suspense fallback={<Loading />}>
         <Onboarding params={params} />
       </Suspense>

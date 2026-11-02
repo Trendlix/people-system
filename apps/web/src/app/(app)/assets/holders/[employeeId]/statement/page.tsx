@@ -46,7 +46,7 @@ async function Statement({ params }: { params: PageProps<'/assets/holders/[emplo
 
 export default function CustodyStatementPage({ params }: PageProps<'/assets/holders/[employeeId]/statement'>) {
   return (
-    <div className="max-w-5xl space-y-4">
+    <div className="space-y-4">
       <Suspense fallback={<Loading />}>
         <Statement params={params} />
       </Suspense>

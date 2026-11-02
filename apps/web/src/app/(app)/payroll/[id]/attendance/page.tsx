@@ -63,7 +63,7 @@ async function ImportAttendance({ params }: { params: PageProps<'/payroll/[id]/a
 
 export default function ImportAttendancePage({ params }: PageProps<'/payroll/[id]/attendance'>) {
   return (
-    <div className="max-w-5xl">
+    <div>
       <Suspense fallback={<Loading />}>
         <ImportAttendance params={params} />
       </Suspense>

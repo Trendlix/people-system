@@ -581,7 +581,7 @@ async function Applicant({ params }: { params: PageProps<'/recruitment/applicant
 
 export default function ApplicantPage({ params }: PageProps<'/recruitment/applicants/[id]'>) {
   return (
-    <div className="max-w-5xl">
+    <div>
       <Suspense fallback={<Loading />}>
         <Applicant params={params} />
       </Suspense>

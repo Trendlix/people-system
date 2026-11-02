@@ -63,7 +63,7 @@ async function Detail({ params, searchParams }: { params: PageProps<'/assets/[co
 
 export default function AssetPage({ params, searchParams }: PageProps<'/assets/[code]'>) {
   return (
-    <div className="max-w-6xl space-y-4">
+    <div className="space-y-4">
       <BackLink href={ASSET_PATHS.list}>Assets</BackLink>
       <Suspense fallback={<Loading />}>
         <Detail params={params} searchParams={searchParams} />

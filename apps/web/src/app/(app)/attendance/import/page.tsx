@@ -53,7 +53,7 @@ async function Import({ searchParams }: { searchParams: PageProps<'/attendance/i
 export default function ImportAttendancePage({ searchParams }: PageProps<'/attendance/import'>) {
   return (
     <StaffOnly>
-      <div className="max-w-4xl space-y-6">
+      <div className="space-y-6">
         <h1 className="page-title">Import Attendance from Zoho People</h1>
         <Suspense fallback={<Loading />}>
           <Import searchParams={searchParams} />

@@ -110,7 +110,7 @@ async function Runs() {
 
 export default function PayrollPage() {
   return (
-    <div className="max-w-6xl">
+    <div>
       <h1 className="page-title">Payroll Overview</h1>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>

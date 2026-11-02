@@ -138,7 +138,7 @@ async function KpiTemplates() {
 
 export default function KpiTemplatesPage() {
   return (
-    <div className="max-w-6xl space-y-6">
+    <div className="space-y-6">
       <h1 className="page-title">KPI Templates</h1>
       <Suspense fallback={<Loading />}>
         <KpiTemplates />

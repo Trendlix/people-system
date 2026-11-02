@@ -98,7 +98,7 @@ async function Record({ searchParams }: { searchParams: PageProps<'/leave/permis
 
 export default function RecordPermissionPage({ searchParams }: PageProps<'/leave/permissions/record'>) {
   return (
-    <div className="max-w-3xl space-y-5">
+    <div className="space-y-5">
       <Heading />
       <Suspense fallback={<Loading />}>
         <Record searchParams={searchParams} />

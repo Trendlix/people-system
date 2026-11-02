@@ -88,7 +88,7 @@ async function Photo({ params, searchParams }: Address) {
         </div>
       </section>
 
-      <div className="max-w-3xl">
+      <div>
         {waiting ? <Waiting request={waiting} employeeId={p.id} /> : <PhotoForm action={sendPhotoRequest.bind(null, p.id)} />}
       </div>
 

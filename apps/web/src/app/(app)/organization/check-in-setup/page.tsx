@@ -324,7 +324,7 @@ async function Gate({ searchParams }: { searchParams: PageProps<'/organization/c
 // checklists, Templates"), in the setup menu's Time & Leave, which gives the heading and keeps it from an employee.
 export default function CheckInSetupPage({ searchParams }: PageProps<'/organization/check-in-setup'>) {
   return (
-    <div className="max-w-5xl space-y-6">
+    <div className="space-y-6">
       <Suspense fallback={<Loading />}>
         <Gate searchParams={searchParams} />
       </Suspense>

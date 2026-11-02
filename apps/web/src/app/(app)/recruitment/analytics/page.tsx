@@ -256,7 +256,7 @@ async function Analytics({ searchParams }: { searchParams: PageProps<'/recruitme
 
 export default function AnalyticsPage({ searchParams }: PageProps<'/recruitment/analytics'>) {
   return (
-    <div className="max-w-6xl space-y-4">
+    <div className="space-y-4">
       <h1 className="page-title">Recruitment Analytics</h1>
       <Suspense fallback={<Loading />}>
         <Analytics searchParams={searchParams} />

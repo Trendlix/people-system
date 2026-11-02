@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: 'Attendance Correction · People Syst
 
 export default function CorrectionPage({ params, searchParams }: PageProps<'/attendance/corrections/[id]'>) {
   return (
-    <div className="max-w-5xl">
+    <div>
       <Suspense fallback={<Loading />}>
         <CorrectionDetail params={params} searchParams={searchParams} />
       </Suspense>

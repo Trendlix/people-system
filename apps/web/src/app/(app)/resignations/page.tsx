@@ -49,7 +49,7 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/resignatio
 
 export default function ResignationsPage({ searchParams }: PageProps<'/resignations'>) {
   return (
-    <div className="max-w-5xl">
+    <div>
       <h1 className="page-title">Resignations</h1>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>

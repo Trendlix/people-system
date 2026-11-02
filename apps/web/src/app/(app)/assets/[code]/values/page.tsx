@@ -45,7 +45,7 @@ async function Values({ params, searchParams }: { params: Props['params']; searc
 
 export default function AssetValuesPage({ params, searchParams }: Props) {
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="space-y-4">
       <Suspense fallback={<Loading />}>
         <Values params={params} searchParams={searchParams} />
       </Suspense>

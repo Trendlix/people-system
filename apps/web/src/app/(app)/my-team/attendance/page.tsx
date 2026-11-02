@@ -47,7 +47,7 @@ async function Team({ searchParams }: { searchParams: PageProps<'/my-team/attend
 
 export default function TeamAttendancePage({ searchParams }: PageProps<'/my-team/attendance'>) {
   return (
-    <div className="max-w-7xl space-y-6">
+    <div className="space-y-6">
       <div className="space-y-2">
         <BackLink href={MY_TEAM}>My Team</BackLink>
         <h1 className="page-title">Team Attendance</h1>

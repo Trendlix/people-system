@@ -245,7 +245,7 @@ async function RecurringDeductions() {
 export default function RecurringDeductionsPage() {
   return (
     <StaffOnly>
-      <div className="max-w-6xl">
+      <div>
         <h1 className="page-title">Recurring Deductions</h1>
         <div className="mt-6">
           <Suspense fallback={<Loading />}>

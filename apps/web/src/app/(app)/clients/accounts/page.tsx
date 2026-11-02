@@ -348,7 +348,7 @@ async function AccountsView({ searchParams }: { searchParams: Promise<Query> }) 
 export default function ClientAccountsPage({ searchParams }: PageProps<'/clients/accounts'>) {
   return (
     <StaffOnly>
-      <div className="max-w-6xl">
+      <div>
         <h1 className="page-title">Client Accounts</h1>
         <div className="mt-6">
           <Suspense fallback={<Loading />}>

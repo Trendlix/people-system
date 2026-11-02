@@ -58,7 +58,7 @@ async function NewContract({ params, searchParams }: { params: Promise<{ id: str
     // the full-time contract the agreement converts to: probation once with the company, none after an earlier employment
     const employedBefore = employee.employments.some((x) => x.id !== e.id);
     body = (
-      <div className="max-w-3xl space-y-4">
+      <div className="space-y-4">
         <p className="text-sm text-muted">
           Version {previous.version + 1}: the full-time contract the {INTERNSHIP_AGREEMENT} (version {previous.version}
           {shownCode(previous.number) && `, ${previous.number}`}) converts
@@ -126,7 +126,7 @@ async function NewContract({ params, searchParams }: { params: Promise<{ id: str
         }
       : firstContractDefaults(settings, e.joinDate, hadProbation, e.employmentType); // as Add employment starts it
     body = (
-      <div className="max-w-3xl space-y-4">
+      <div className="space-y-4">
         <p className="text-sm text-muted">
           {previous
             ? `Version ${previous.version + 1}, renewing ${withCodeInBrackets(`version ${previous.version}`, previous.number)}${previous.endDate ? `, which ends on ${formatDate(previous.endDate)}` : ''}.`

@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: 'Permission · People System' };
 
 export default function PermissionRequestPage({ params, searchParams }: PageProps<'/leave/permissions/[id]'>) {
   return (
-    <div className="max-w-5xl">
+    <div>
       <Suspense fallback={<Loading />}>
         <PermissionRequestDetail params={params} searchParams={searchParams} />
       </Suspense>

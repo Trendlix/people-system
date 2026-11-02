@@ -42,7 +42,7 @@ async function Upcoming() {
 
 export default function InterviewsPage() {
   return (
-    <div className="max-w-5xl space-y-4">
+    <div className="space-y-4">
       <h1 className="page-title">Upcoming Interviews</h1>
       <Suspense fallback={<Loading />}>
         <Upcoming />

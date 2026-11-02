@@ -127,7 +127,7 @@ async function PersonMonth({ params, searchParams }: { params: PageProps<'/atten
 export default function AttendancePersonPage({ params, searchParams }: PageProps<'/attendance/[employeeId]'>) {
   return (
     <StaffOnly>
-      <div className="max-w-6xl">
+      <div>
         <Suspense fallback={<Loading />}>
           <PersonMonth params={params} searchParams={searchParams} />
         </Suspense>

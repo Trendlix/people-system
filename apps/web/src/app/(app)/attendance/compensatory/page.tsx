@@ -101,7 +101,7 @@ async function List({ searchParams }: { searchParams: PageProps<'/attendance/com
 export default function CompensatoryListPage({ searchParams }: PageProps<'/attendance/compensatory'>) {
   return (
     <StaffOnly>
-      <div className="max-w-6xl space-y-6">
+      <div className="space-y-6">
         <h1 className="page-title">Compensatory Days</h1>
         <Suspense fallback={<Loading />}>
           <List searchParams={searchParams} />

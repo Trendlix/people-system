@@ -65,7 +65,7 @@ async function Mine() {
 
 export default function MyHiringPage() {
   return (
-    <div className="max-w-5xl space-y-4">
+    <div className="space-y-4">
       <h1 className="page-title">My Hiring</h1>
       <Suspense fallback={<Loading />}>
         <Mine />

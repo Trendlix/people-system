@@ -125,7 +125,7 @@ async function Kits() {
 
 export default function KitsPage() {
   return (
-    <div className="max-w-4xl">
+    <div>
       <h1 className="page-title">Kits</h1>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>

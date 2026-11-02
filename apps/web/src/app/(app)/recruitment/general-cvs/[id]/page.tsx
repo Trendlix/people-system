@@ -203,7 +203,7 @@ async function GeneralCv({ params }: { params: PageProps<'/recruitment/general-c
 
 export default function GeneralCvPage({ params }: PageProps<'/recruitment/general-cvs/[id]'>) {
   return (
-    <div className="max-w-5xl">
+    <div>
       <Suspense fallback={<Loading />}>
         <GeneralCv params={params} />
       </Suspense>

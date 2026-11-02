@@ -364,7 +364,7 @@ async function MonthView({ searchParams }: { searchParams: Promise<Query> }) {
 export default function AdjustmentsPage({ searchParams }: PageProps<'/payroll/adjustments'>) {
   return (
     <StaffOnly>
-      <div className="max-w-6xl">
+      <div>
         <h1 className="page-title">Additions / Deductions</h1>
         <div className="mt-6">
           <Suspense fallback={<Loading />}>

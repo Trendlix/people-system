@@ -255,7 +255,7 @@ async function Builder({ params, searchParams }: { params: PageProps<'/kpis/temp
 
 export default function KpiTemplatePage({ params, searchParams }: PageProps<'/kpis/templates/[jobTitleId]'>) {
   return (
-    <div className="max-w-7xl">
+    <div>
       <Suspense fallback={<Loading />}>
         <Builder params={params} searchParams={searchParams} />
       </Suspense>

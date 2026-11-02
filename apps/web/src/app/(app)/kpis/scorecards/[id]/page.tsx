@@ -11,7 +11,7 @@ export const metadata: Metadata = { title: 'KPI Scorecard · People System' };
 
 export default function KpiScorecardPage({ params, searchParams }: PageProps<'/kpis/scorecards/[id]'>) {
   return (
-    <div className="max-w-6xl">
+    <div>
       <Suspense fallback={<Loading />}>
         <ScorecardDetail params={params} searchParams={searchParams} />
       </Suspense>

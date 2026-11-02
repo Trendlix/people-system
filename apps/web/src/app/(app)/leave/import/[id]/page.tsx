@@ -394,7 +394,7 @@ async function Review({ params }: { params: PageProps<'/leave/import/[id]'>['par
 
 export default function LeaveImportReviewPage({ params }: PageProps<'/leave/import/[id]'>) {
   return (
-    <div className="max-w-7xl">
+    <div>
       <Suspense fallback={<Loading />}>
         <Review params={params} />
       </Suspense>

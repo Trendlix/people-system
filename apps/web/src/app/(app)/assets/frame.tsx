@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Suspense } from 'react';
 import { actionFor, ASSETS_NAV, ASSETS_TABS, tabsFor, type NavAction, type NavSubItem, type NavTab } from '@/components/nav';
 import { ApiError } from '@/lib/api';
-import { ASSET_PATHS, CUSTODY_PATHS } from '@/lib/asset-paths';
+import { ASSET_PATHS } from '@/lib/asset-paths';
 import { getCurrentUser } from '@/lib/session';
 import type { SessionUser } from '@/lib/types';
 import { loadDrafts } from './data';
@@ -20,13 +20,6 @@ type AssetsTabHref = (typeof ASSETS_TABS)[keyof typeof ASSETS_TABS]['href'];
 
 type Tabbed = NavSubItem & { tabs: NavTab[] };
 
-/** Each section as wide as its widest page, so the heading's button and the tabs stay put from tab to tab. */
-const WIDTHS: Record<string, string> = {
-  [ASSET_PATHS.list]: 'max-w-7xl',
-  [CUSTODY_PATHS.list]: 'max-w-7xl',
-  [ASSET_PATHS.counts]: 'max-w-5xl',
-  [ASSET_PATHS.rooms]: 'max-w-4xl',
-};
 
 /** The section a tab is in, as the menu defines it (every tab, whoever sees it). */
 function sectionOf(tab: AssetsTabHref): Tabbed {
@@ -118,7 +111,7 @@ async function Framed({ section, tab, children }: { section: Tabbed; tab: Assets
 export function AssetsFrame({ tab, children }: { tab: AssetsTabHref; children: React.ReactNode }) {
   const section = sectionOf(tab);
   return (
-    <div className={WIDTHS[section.href]}>
+    <div>
       {/* who it is was read for the sidebar already, so this waits for little; meanwhile, the heading */}
       <Suspense
         fallback={

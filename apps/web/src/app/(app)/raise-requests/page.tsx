@@ -243,7 +243,7 @@ async function Asking({ searchParams }: { searchParams: PageProps<'/raise-reques
 
 export default function RaiseRequestsPage({ searchParams }: PageProps<'/raise-requests'>) {
   return (
-    <div className="max-w-7xl">
+    <div>
       <h1 className="page-title">Raise Requests</h1>
       <div className="mt-6">
         <Suspense fallback={null}>

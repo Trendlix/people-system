@@ -56,7 +56,7 @@ async function EditRaise({ params }: { params: Promise<{ id: string; contractId:
   } else {
     const returned = raise.raise?.returnedReason;
     body = (
-      <div className="max-w-3xl space-y-4">
+      <div className="space-y-4">
         <p className="text-sm text-muted">
           Draft of {withCodeInBrackets(`version ${raise.version}`, raise.number)}, a {pendingKindLabel(change).toLowerCase()} of {withCodeInBrackets(`version ${current.version}`, current.number)}.
         </p>

@@ -158,7 +158,7 @@ async function List({ searchParams }: { searchParams: PageProps<'/employees/form
 
 export default function FormerEmployeesPage({ searchParams }: PageProps<'/employees/former'>) {
   return (
-    <div className="max-w-6xl space-y-6">
+    <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <h1 className="page-title">Former Employees</h1>
         <Link href={OFFBOARDING_PATH} className="btn btn-secondary no-underline">

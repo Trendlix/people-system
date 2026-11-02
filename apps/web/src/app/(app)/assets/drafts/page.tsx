@@ -81,7 +81,7 @@ async function Drafts() {
 export default function DraftsPage() {
   return (
     <AssetsFrame tab={ASSET_PATHS.drafts}>
-      <div className="max-w-4xl space-y-4">
+      <div className="space-y-4">
         <Suspense fallback={<Loading />}>
           <Drafts />
         </Suspense>

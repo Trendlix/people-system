@@ -139,7 +139,7 @@ async function Dashboard() {
 
 export default function AssetsDashboardPage() {
   return (
-    <div className="max-w-5xl">
+    <div>
       <h1 className="page-title">Assets Dashboard</h1>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>

@@ -31,7 +31,7 @@ async function Editor({ searchParams }: { searchParams: PageProps<'/organization
 // checklists, Templates"), in the setup menu's Hiring & Leaving, which gives the heading.
 export default function ClearanceChecklistPage({ searchParams }: PageProps<'/organization/clearance-checklist'>) {
   return (
-    <div className="max-w-4xl space-y-6">
+    <div className="space-y-6">
       <Suspense fallback={<Loading />}>
         <Editor searchParams={searchParams} />
       </Suspense>

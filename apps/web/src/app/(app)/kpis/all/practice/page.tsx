@@ -137,7 +137,7 @@ async function Practice({ searchParams }: { searchParams: PageProps<'/kpis/all/p
 
 export default function PracticeScorecardsPage({ searchParams }: PageProps<'/kpis/all/practice'>) {
   return (
-    <div className="max-w-7xl">
+    <div>
       <h1 className="page-title">Practice Scorecards</h1>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>

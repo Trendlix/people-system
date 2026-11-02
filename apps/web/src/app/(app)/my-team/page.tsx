@@ -438,7 +438,7 @@ async function TeamResignations() {
 
 export default function MyTeamPage({ searchParams }: PageProps<'/my-team'>) {
   return (
-    <div className="max-w-5xl">
+    <div>
       <h1 className="page-title">My Team</h1>
       <div className="mt-6 space-y-8">
         <Suspense fallback={null}>

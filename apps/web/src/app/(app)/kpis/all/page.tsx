@@ -298,7 +298,7 @@ async function All({ searchParams }: { searchParams: PageProps<'/kpis/all'>['sea
 
 export default function AllKpisPage({ searchParams }: PageProps<'/kpis/all'>) {
   return (
-    <div className="max-w-7xl">
+    <div>
       <h1 className="page-title">All KPIs</h1>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>

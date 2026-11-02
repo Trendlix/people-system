@@ -87,7 +87,7 @@ async function List({ searchParams }: { searchParams: PageProps<'/attendance/wfh
 export default function WfhListPage({ searchParams }: PageProps<'/attendance/wfh'>) {
   return (
     <StaffOnly>
-      <div className="max-w-6xl space-y-6">
+      <div className="space-y-6">
         <h1 className="page-title">Work From Home</h1>
         <Suspense fallback={<Loading />}>
           <List searchParams={searchParams} />

@@ -318,7 +318,7 @@ async function Report({ searchParams }: { searchParams: Promise<Query> }) {
 export default function PayrollReportsPage({ searchParams }: PageProps<'/payroll/reports'>) {
   return (
     <StaffOnly>
-      <div className="max-w-6xl">
+      <div>
         <h1 className="page-title">Payroll Reports</h1>
         <nav aria-label="Other reports" className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
           <Link href={SALARY_RAISES_HREF}>Salary Raises</Link>

@@ -16,7 +16,7 @@ async function Page({ searchParams }: { searchParams: PageProps<'/notifications'
 
 export default function NotificationsPage({ searchParams }: PageProps<'/notifications'>) {
   return (
-    <div className="max-w-2xl space-y-4">
+    <div className="space-y-4">
       <h1 className="page-title">Notifications</h1>
       <Suspense fallback={<p className="text-sm text-muted">Loading…</p>}>
         <Page searchParams={searchParams} />

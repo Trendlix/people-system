@@ -77,7 +77,7 @@ async function Stock({ searchParams }: { searchParams: PageProps<'/assets/stock'
 
 export default function StockPage({ searchParams }: PageProps<'/assets/stock'>) {
   return (
-    <div className="max-w-4xl">
+    <div>
       <h1 className="page-title">Stock</h1>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>

@@ -39,7 +39,7 @@ async function Form({ params }: { params: PageProps<'/offboarding/[id]/print'>['
 
 export default function ClearanceFormPage({ params }: PageProps<'/offboarding/[id]/print'>) {
   return (
-    <div className="max-w-5xl space-y-4">
+    <div className="space-y-4">
       <Suspense fallback={<Loading />}>
         <Form params={params} />
       </Suspense>

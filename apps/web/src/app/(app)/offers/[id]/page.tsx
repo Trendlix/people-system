@@ -506,7 +506,7 @@ async function Offer({ params, searchParams }: { params: Promise<{ id: string }>
 
 export default function OfferPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Query> }) {
   return (
-    <div className="max-w-6xl">
+    <div>
       <Suspense fallback={<Loading />}>
         <Offer params={params} searchParams={searchParams} />
       </Suspense>

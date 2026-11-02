@@ -339,7 +339,7 @@ async function Candidate({ params }: { params: PageProps<'/recruitment/candidate
 
 export default function CandidatePage({ params }: PageProps<'/recruitment/candidates/[id]'>) {
   return (
-    <div className="max-w-5xl">
+    <div>
       <Suspense fallback={<Loading />}>
         <Candidate params={params} />
       </Suspense>

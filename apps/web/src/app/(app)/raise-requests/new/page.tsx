@@ -12,7 +12,7 @@ export const metadata: Metadata = { title: 'New Raise Request · People System' 
 
 export default function NewRaiseRequestPage({ searchParams }: PageProps<'/raise-requests/new'>) {
   return (
-    <div className="max-w-4xl space-y-5">
+    <div className="space-y-5">
       <Suspense fallback={<Loading />}>
         <RaiseRequestsOnly>
           <Suspense

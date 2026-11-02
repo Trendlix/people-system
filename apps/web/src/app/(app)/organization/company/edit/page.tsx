@@ -17,7 +17,7 @@ async function EditCompany() {
     <RequireEditor>
       <div className="space-y-6">
         {/* the logo and the thumbnail beside it (owner's request, 15 October 2026): side by side on a wide screen */}
-        <div className="grid max-w-5xl gap-6 lg:grid-cols-2">
+        <div className="grid gap-6 lg:grid-cols-2">
           <CompanyImageForm image="logo" name={company.nameEn} src={logoSrc} canRemove={canRemove} />
           <CompanyImageForm image="thumbnail" name={company.nameEn} src={thumbnailSrc} canRemove={canRemove} />
         </div>

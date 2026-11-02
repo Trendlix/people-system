@@ -51,7 +51,7 @@ async function Record({ params, searchParams }: { params: PageProps<'/assets/cus
 
 export default function CustodyRecordPage({ params, searchParams }: PageProps<'/assets/custody/[no]'>) {
   return (
-    <div className="max-w-6xl space-y-4">
+    <div className="space-y-4">
       <BackLink href={CUSTODY_PATHS.list}>Custody</BackLink>
       <Suspense fallback={<Loading />}>
         <Record params={params} searchParams={searchParams} />

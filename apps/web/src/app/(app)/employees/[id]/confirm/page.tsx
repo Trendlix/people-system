@@ -63,7 +63,7 @@ async function Confirm({ params }: { params: Promise<{ id: string }> }) {
         </p>
       ) : null}
 
-      <div className="max-w-5xl space-y-8">
+      <div className="space-y-8">
         {CONFIRM_SECTIONS.map((section) => (
           <ProfileSection key={section} title={CONFIRM_SECTION_LABELS[section]}>
             <FieldGrid
@@ -79,7 +79,7 @@ async function Confirm({ params }: { params: Promise<{ id: string }> }) {
         ))}
       </div>
 
-      <div className="max-w-3xl">
+      <div>
         {c.upToDate ? (
           <div className="card space-y-3 p-6">
             <h2 className="font-semibold">Something Wrong?</h2>

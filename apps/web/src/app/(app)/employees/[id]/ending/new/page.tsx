@@ -64,7 +64,7 @@ async function NewEnding({ params, searchParams }: { params: Promise<{ id: strin
     const from = request?.kind === 'ok' && request.value.status === 'sent' && request.value.employee.id === employee.id ? request.value : null;
 
     body = (
-      <div className="max-w-3xl space-y-4">
+      <div className="space-y-4">
         <p className="text-sm">
           <span className="font-semibold">{what}</span> <span className="text-muted">since {formatDate(e.joinDate)}</span>
         </p>

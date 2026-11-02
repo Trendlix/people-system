@@ -49,7 +49,7 @@ async function Form({ params }: { params: PageProps<'/assets/custody/[no]/form'>
 
 export default function CustodyFormPage({ params }: PageProps<'/assets/custody/[no]/form'>) {
   return (
-    <div className="max-w-5xl space-y-4">
+    <div className="space-y-4">
       <Suspense fallback={<Loading />}>
         <Form params={params} />
       </Suspense>

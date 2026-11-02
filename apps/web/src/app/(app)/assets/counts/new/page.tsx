@@ -17,7 +17,7 @@ async function Sheet({ searchParams }: { searchParams: PageProps<'/assets/counts
 
 export default function NewCountPage({ searchParams }: PageProps<'/assets/counts/new'>) {
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="space-y-4">
       <BackLink href={ASSET_PATHS.counts}>Counts</BackLink>
       <Suspense fallback={<Loading />}>
         <Sheet searchParams={searchParams} />

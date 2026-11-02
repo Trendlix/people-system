@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: 'Work From Home · People System' };
 
 export default function WfhRequestPage({ params, searchParams }: PageProps<'/attendance/wfh/[id]'>) {
   return (
-    <div className="max-w-5xl">
+    <div>
       <Suspense fallback={<Loading />}>
         <WfhRequestDetail params={params} searchParams={searchParams} />
       </Suspense>

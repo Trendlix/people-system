@@ -116,7 +116,7 @@ async function Connect() {
 export default function ConnectClaudePage() {
   return (
     <AssetsFrame tab={ASSET_PATHS.connectClaude}>
-      <div className="max-w-3xl space-y-4">
+      <div className="space-y-4">
         <Suspense fallback={<Loading />}>
           <Connect />
         </Suspense>

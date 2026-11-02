@@ -44,7 +44,7 @@ async function Bulk({ params }: { params: PageProps<'/recruitment/vacancies/[id]
 
 export default function VacancyBulkPage({ params }: PageProps<'/recruitment/vacancies/[id]/bulk'>) {
   return (
-    <div className="max-w-6xl">
+    <div>
       <Suspense fallback={<Loading />}>
         <Bulk params={params} />
       </Suspense>

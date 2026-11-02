@@ -67,7 +67,7 @@ async function Record({ searchParams }: { searchParams: PageProps<'/attendance/o
 
 export default function RecordOdPage({ searchParams }: PageProps<'/attendance/official-duty/record'>) {
   return (
-    <div className="max-w-3xl space-y-5">
+    <div className="space-y-5">
       <Heading />
       <Suspense fallback={<Loading />}>
         <Record searchParams={searchParams} />

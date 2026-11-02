@@ -141,7 +141,7 @@ async function History({ searchParams }: { searchParams: PageProps<'/attendance/
 export default function AttendanceImportsPage({ searchParams }: PageProps<'/attendance/imports'>) {
   return (
     <StaffOnly>
-      <div className="max-w-6xl space-y-6">
+      <div className="space-y-6">
         <h1 className="page-title">Import History</h1>
         <Suspense fallback={<Loading />}>
           <History searchParams={searchParams} />

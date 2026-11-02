@@ -131,7 +131,7 @@ async function Cases({ searchParams }: { searchParams: PageProps<'/offboarding'>
 
 export default function OffboardingPage({ searchParams }: PageProps<'/offboarding'>) {
   return (
-    <div className="max-w-6xl space-y-6">
+    <div className="space-y-6">
       <h1 className="page-title">Offboarding</h1>
       <Suspense fallback={<Loading />}>
         <Cases searchParams={searchParams} />

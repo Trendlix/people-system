@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: 'Work From Home · People System' };
 
 export default function NewWfhPage() {
   return (
-    <div className="max-w-3xl space-y-5">
+    <div className="space-y-5">
       <Suspense
         fallback={
           <>

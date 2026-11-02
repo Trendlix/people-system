@@ -138,7 +138,7 @@ async function Choices({ searchParams }: { searchParams: PageProps<'/assets/labe
 export default function LabelSheetsPage({ searchParams }: PageProps<'/assets/labels'>) {
   return (
     <AssetsFrame tab={ASSET_PATHS.labels}>
-      <div className="max-w-4xl">
+      <div>
         <Suspense fallback={<Loading />}>
           <Choices searchParams={searchParams} />
         </Suspense>

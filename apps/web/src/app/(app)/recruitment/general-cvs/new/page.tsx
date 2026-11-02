@@ -25,7 +25,7 @@ async function AddCv() {
 
 export default function AddCvPage() {
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="space-y-4">
       <div className="space-y-2">
         <BackLink href={tabHref('general')}>General CVs</BackLink>
         <h1 className="page-title">Add a CV</h1>

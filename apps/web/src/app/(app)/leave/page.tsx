@@ -382,7 +382,7 @@ async function LeaveRequests({ searchParams }: { searchParams: PageProps<'/leave
 
 export default function LeaveRequestsPage({ searchParams }: PageProps<'/leave'>) {
   return (
-    <div className="max-w-7xl">
+    <div>
       <h1 className="page-title">Leave Requests</h1>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>

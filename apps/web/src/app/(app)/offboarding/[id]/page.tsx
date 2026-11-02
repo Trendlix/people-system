@@ -294,7 +294,7 @@ async function Case({ params }: { params: PageProps<'/offboarding/[id]'>['params
 
 export default function OffboardingCasePage({ params }: PageProps<'/offboarding/[id]'>) {
   return (
-    <div className="max-w-5xl space-y-6">
+    <div className="space-y-6">
       <Suspense fallback={<Loading />}>
         <Case params={params} />
       </Suspense>

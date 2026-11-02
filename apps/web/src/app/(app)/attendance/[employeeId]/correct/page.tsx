@@ -50,7 +50,7 @@ async function Correct({ params, searchParams }: { params: PageProps<'/attendanc
 export default function CorrectDayPage({ params, searchParams }: PageProps<'/attendance/[employeeId]/correct'>) {
   return (
     <StaffOnly>
-      <div className="max-w-3xl space-y-6">
+      <div className="space-y-6">
         <div className="space-y-2">
           <BackLink href="/attendance">Daily Attendance</BackLink>
           <h1 className="page-title">Correct a Day</h1>

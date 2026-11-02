@@ -13,7 +13,7 @@ export const metadata: Metadata = { title: 'Request a Check-in Location · Peopl
 // adding this location"), the point it was refused at filled in
 export default function AskHomePage({ searchParams }: PageProps<'/home-locations/new'>) {
   return (
-    <div className="max-w-4xl space-y-6">
+    <div className="space-y-6">
       <AskHomeHeading back={{ href: MY_HOMES_HREF, label: 'My Requests' }} />
       <Suspense fallback={<Loading />}>
         <AskHome searchParams={searchParams} />

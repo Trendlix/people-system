@@ -174,7 +174,7 @@ async function Claims({ searchParams }: { searchParams: PageProps<'/reimbursemen
 
 export default function ReimbursementsPage({ searchParams }: PageProps<'/reimbursements'>) {
   return (
-    <div className="max-w-7xl">
+    <div>
       <h1 className="page-title">Reimbursements</h1>
       <div className="mt-6">
         <Suspense fallback={<Loading />}>

@@ -285,7 +285,7 @@ async function Log({ searchParams }: { searchParams: Promise<Query> }) {
 export default function WhatsAppMessagesPage({ searchParams }: PageProps<'/whatsapp-messages'>) {
   return (
     <StaffOnly>
-      <div className="max-w-7xl space-y-4">
+      <div className="space-y-4">
         <h1 className="page-title">WhatsApp Messages</h1>
         <Suspense fallback={<Loading />}>
           <Log searchParams={searchParams} />

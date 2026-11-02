@@ -400,7 +400,7 @@ async function Review({ params }: { params: PageProps<'/payroll/[id]/attendance/
 
 export default function AttendanceReviewPage({ params }: PageProps<'/payroll/[id]/attendance/[importId]'>) {
   return (
-    <div className="max-w-6xl">
+    <div>
       <Suspense fallback={<Loading />}>
         <Review params={params} />
       </Suspense>

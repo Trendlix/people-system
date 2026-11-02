@@ -21,7 +21,7 @@ async function Results({ params }: { params: PageProps<'/assets/counts/[id]'>['p
 
 export default function CountPage({ params }: PageProps<'/assets/counts/[id]'>) {
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="space-y-4">
       <BackLink href={ASSET_PATHS.counts}>Counts</BackLink>
       <Suspense fallback={<Loading />}>
         <Results params={params} />

@@ -75,7 +75,7 @@ async function UserMenus({ active }: { active: SetupKey }) {
 /** A setup page: the heading, its menu and the page beside it (below it on a phone). */
 export function SetupFrame({ active, children }: { active: SetupKey; children: React.ReactNode }) {
   return (
-    <div className="max-w-7xl">
+    <div>
       <h1 className="page-title">Organization</h1>
       <div className="mt-6 lg:grid lg:grid-cols-[13rem_minmax(0,1fr)] lg:items-start lg:gap-8">
         {/* who it is was read for the page already (StaffOnly), so this waits for nothing; meanwhile, the pages everyone has */}

@@ -670,7 +670,7 @@ async function Unsettled() {
 export default function UnsettledPage() {
   return (
     <StaffOnly>
-      <div className="max-w-6xl">
+      <div>
         <h1 className="page-title">Unsettled</h1>
         <div className="mt-6">
           <Suspense fallback={<Loading />}>

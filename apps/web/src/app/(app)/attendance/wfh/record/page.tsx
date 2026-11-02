@@ -61,7 +61,7 @@ async function Record({ searchParams }: { searchParams: PageProps<'/attendance/w
 
 export default function RecordWfhPage({ searchParams }: PageProps<'/attendance/wfh/record'>) {
   return (
-    <div className="max-w-3xl space-y-5">
+    <div className="space-y-5">
       <Heading />
       <Suspense fallback={<Loading />}>
         <Record searchParams={searchParams} />

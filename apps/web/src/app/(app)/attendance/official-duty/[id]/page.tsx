@@ -10,7 +10,7 @@ export const metadata: Metadata = { title: 'Official Duty · People System' };
 
 export default function OdRequestPage({ params, searchParams }: PageProps<'/attendance/official-duty/[id]'>) {
   return (
-    <div className="max-w-5xl">
+    <div>
       <Suspense fallback={<Loading />}>
         <OdRequestDetail params={params} searchParams={searchParams} />
       </Suspense>

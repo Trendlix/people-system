@@ -192,7 +192,7 @@ async function Requests({ searchParams }: { searchParams: PageProps<'/requests/d
 export default function DetailsChangesPage({ searchParams }: PageProps<'/requests/details-changes'>) {
   return (
     <StaffOnly>
-      <div className="max-w-5xl">
+      <div>
         <h1 className="page-title">Details Changes</h1>
         <div className="mt-6">
           <Suspense fallback={<Loading />}>

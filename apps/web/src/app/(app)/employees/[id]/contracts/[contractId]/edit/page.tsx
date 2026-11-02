@@ -56,7 +56,7 @@ async function EditContract({ params }: { params: Promise<{ id: string; contract
     const renewal = contract.version > 1 && !conversion;
     const raise = contract.raise;
     body = (
-      <div className="max-w-3xl space-y-4">
+      <div className="space-y-4">
         <p className="text-sm text-muted">
           Draft of {withCodeInBrackets(`version ${contract.version}`, contract.number)}
           {conversion

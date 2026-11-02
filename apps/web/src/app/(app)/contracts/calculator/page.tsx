@@ -28,7 +28,7 @@ async function Calculator({ searchParams }: { searchParams: PageProps<'/contract
 
 export default function SalaryCalculatorPage({ searchParams }: PageProps<'/contracts/calculator'>) {
   return (
-    <div className="max-w-6xl space-y-6">
+    <div className="space-y-6">
       <BackLink href="/contracts">Contracts</BackLink>
       <h1 className="page-title">Salary Calculator</h1>
       <Suspense fallback={<Loading />}>

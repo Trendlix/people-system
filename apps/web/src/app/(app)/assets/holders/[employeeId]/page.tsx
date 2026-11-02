@@ -136,7 +136,7 @@ async function Person({ params }: { params: PageProps<'/assets/holders/[employee
 
 export default function HoldingsPage({ params }: PageProps<'/assets/holders/[employeeId]'>) {
   return (
-    <div className="max-w-6xl space-y-4">
+    <div className="space-y-4">
       <BackLink href={CUSTODY_PATHS.holders}>Holdings</BackLink>
       <Suspense fallback={<Loading />}>
         <Person params={params} />
