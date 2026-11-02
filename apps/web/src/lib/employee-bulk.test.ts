@@ -7,17 +7,17 @@ import { BULK_ACTION_GROUPS, BULK_ACTIONS, bulkActionsFor, employeesExportHref, 
 const as = (...roles: Role[]) => ({ roles });
 
 describe('bulk actions', () => {
-  it('are for HR, an Admin, a Super Admin and the CEO, never a developer', () => {
-    expect([as('hr'), as('admin'), as('super_admin'), as('ceo')].map(runsBulkActions)).toEqual([true, true, true, true]);
-    expect([as('employee'), as('manager'), as('finance')].map(runsBulkActions)).toEqual([false, false, false]);
+  // owner, 2 November 2026: "emplyees bulk actions for super admin only"
+  it('are a Super Admin’s only, never a developer’s', () => {
+    expect(runsBulkActions(as('super_admin'))).toBe(true);
+    expect([as('hr'), as('admin'), as('ceo'), as('finance'), as('employee'), as('manager')].map(runsBulkActions)).toEqual([false, false, false, false, false, false]);
     expect(runsBulkActions({ roles: ['super_admin'], developer: true })).toBe(false);
   });
 
-  it('give HR every action, and the others all but the employment’s changes', () => {
-    expect(bulkActionsFor(as('hr'))).toEqual([...BULK_ACTIONS]);
-    expect(bulkActionsFor(as('admin'))).toEqual(['hold', 'release', 'invite', 'exempt', 'message', 'export']);
-    expect(bulkActionsFor(as('ceo'))).toEqual(bulkActionsFor(as('admin')));
-    expect(bulkActionsFor(as('finance'))).toEqual([]);
+  it('give a Super Admin every action, and nobody else any', () => {
+    expect(bulkActionsFor(as('super_admin'))).toEqual([...BULK_ACTIONS]);
+    expect(bulkActionsFor(as('hr'))).toEqual([]);
+    expect(bulkActionsFor(as('hr', 'super_admin'))).toEqual([...BULK_ACTIONS]);
   });
 
   it('lists every action once in the menu', () => {

@@ -1,23 +1,26 @@
-import { Body, Controller, Get, Header, HttpCode, Post, Query, StreamableFile } from '@nestjs/common';
-import { CurrentUser, NotForDevelopers, Roles } from '../auth/decorators.js';
+import { Body, Controller, Get, Header, HttpCode, Post, Query, SetMetadata, StreamableFile } from '@nestjs/common';
+import { CurrentUser, FORBIDDEN_MESSAGE, NotForDevelopers, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { XLSX_TYPE } from '../payroll/bank-files.js';
 import { attachment } from '../templates/template-file.js';
 import { EmployeeBulkDto } from './employee-bulk.dto.js';
 import { EmployeeBulkService } from './employee-bulk.service.js';
 
-// The Employees list's bulk actions (owner, 1 November 2026: "i want to select and create bulk actions"): HR, an Admin
-// and the CEO, as the access hold; the employment's changes HR's only (the service says so); each person's checked by
+// The Employees list's bulk actions (owner, 1 November 2026: "i want to select and create bulk actions"): a Super Admin's
+// only (owner, 2 November 2026: "emplyees bulk actions for super admin only"), every action; each person's checked by
 // its own service. The export of the chosen people: never a developer's (a file).
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+export const BULK_SUPER_ADMIN_ONLY = 'Bulk actions are for a Super Admin only.';
+
 @Controller('employees')
+@Roles('super_admin')
+@SetMetadata(FORBIDDEN_MESSAGE, BULK_SUPER_ADMIN_ONLY)
 export class EmployeeBulkController {
   constructor(private readonly bulk: EmployeeBulkService) {}
 
   /** { action, employeeIds, … }: the action for each; who it was done for, and who was skipped with why. */
-  @Roles('hr', 'admin', 'ceo')
   @Post('bulk')
   @HttpCode(200)
   run(@Body() dto: EmployeeBulkDto, @CurrentUser() user: SessionUser) {
@@ -25,7 +28,6 @@ export class EmployeeBulkController {
   }
 
   /** ?ids=a,b,c: the chosen people's rows in an Excel file. */
-  @Roles('hr', 'admin', 'ceo')
   @NotForDevelopers()
   @Get('bulk/export.xlsx')
   @Header('Cache-Control', 'private, no-store')

@@ -3,7 +3,7 @@ import type { EmployeeBulkResult, Role } from '@trendlix/shared';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
 import { addDays, addMonths, toDateOnly, todayInCairo } from '../src/common/date-only.js';
-import { ONLY_HR_EMPLOYMENT } from '../src/employee-bulk/employee-bulk.service.js';
+import { BULK_SUPER_ADMIN_ONLY } from '../src/employee-bulk/employee-bulk.controller.js';
 import { MailService } from '../src/mail/mail.service.js';
 import type { PrismaService } from '../src/prisma/prisma.service.js';
 import { createApp, createUser, signIn } from './helpers.js';
@@ -78,6 +78,7 @@ describe('Employee bulk actions (e2e)', () => {
     mail = app.get(MailService);
     shiftId = (await prisma.shift.findFirstOrThrow({ where: { code: 'A' }, select: { id: true } })).id;
     await account('hr', ['hr']);
+    await account('sa', ['super_admin']);
     await account('admin', ['admin']);
     await account('finance', ['finance']);
     await person('amal', 'Amal Bulk');
@@ -96,22 +97,25 @@ describe('Employee bulk actions (e2e)', () => {
     await app.close();
   });
 
-  it('is HR’s, an Admin’s and the CEO’s, and checks what each action needs first', async () => {
-    await bulk('finance', { action: 'hold', employeeIds: ids('amal'), reason: 'Invented' }).expect(403);
-    expect((await bulk('hr', { action: 'hold', employeeIds: ids('amal') }).expect(400)).body.message).toEqual(['Write why their access is on hold.']);
-    expect((await bulk('hr', { action: 'nope', employeeIds: ids('amal') }).expect(400)).body.message).toEqual(['Choose an action.']);
-    await bulk('hr', { action: 'hold', employeeIds: [], reason: 'Invented' }).expect(400);
-    expect((await bulk('hr', { action: 'message', employeeIds: ids('amal'), title: ' ', body: '' }).expect(400)).body.message).toEqual(['Write the message’s title.', 'Write the message.']);
+  // owner, 2 November 2026: "emplyees bulk actions for super admin only"
+  it('is a Super Admin’s only, and checks what each action needs first', async () => {
+    for (const who of ['hr', 'admin', 'finance']) {
+      expect((await bulk(who, { action: 'hold', employeeIds: ids('amal'), reason: 'Invented' }).expect(403)).body.message).toBe(BULK_SUPER_ADMIN_ONLY);
+    }
+    expect((await bulk('sa', { action: 'hold', employeeIds: ids('amal') }).expect(400)).body.message).toEqual(['Write why their access is on hold.']);
+    expect((await bulk('sa', { action: 'nope', employeeIds: ids('amal') }).expect(400)).body.message).toEqual(['Choose an action.']);
+    await bulk('sa', { action: 'hold', employeeIds: [], reason: 'Invented' }).expect(400);
+    expect((await bulk('sa', { action: 'message', employeeIds: ids('amal'), title: ' ', body: '' }).expect(400)).body.message).toEqual(['Write the message’s title.', 'Write the message.']);
   });
 
   it('holds access for each chosen person, skips the one already held and the unknown with why, and releases them', async () => {
-    let r = (await bulk('hr', { action: 'hold', employeeIds: ids('amal', 'badr'), reason: 'Invented audit' }).expect(200)).body as EmployeeBulkResult;
+    let r = (await bulk('sa', { action: 'hold', employeeIds: ids('amal', 'badr'), reason: 'Invented audit' }).expect(200)).body as EmployeeBulkResult;
     expect(r.done.map((p) => p.id)).toEqual(ids('amal', 'badr'));
     expect(r.skipped).toEqual([]);
     expect(await prisma.accessHold.count({ where: { employeeId: { in: ids('amal', 'badr') }, releasedAt: null } })).toBe(2);
 
     const unknown = '00000000-0000-4000-8000-00000000eb01';
-    r = (await bulk('hr', { action: 'hold', employeeIds: [...ids('amal', 'carm'), unknown], reason: 'Invented again' }).expect(200)).body as EmployeeBulkResult;
+    r = (await bulk('sa', { action: 'hold', employeeIds: [...ids('amal', 'carm'), unknown], reason: 'Invented again' }).expect(200)).body as EmployeeBulkResult;
     expect(r.done.map((p) => p.id)).toEqual(ids('carm'));
     expect(r.skipped.map((p) => [p.id, p.reason.length > 0])).toEqual([
       [people.amal.id, true],
@@ -119,46 +123,45 @@ describe('Employee bulk actions (e2e)', () => {
     ]);
     expect(r.skipped[1]).toMatchObject({ name: 'Unknown', reason: 'Not found.' });
 
-    r = (await bulk('admin', { action: 'release', employeeIds: ids('amal', 'badr', 'carm') }).expect(200)).body as EmployeeBulkResult;
+    r = (await bulk('sa', { action: 'release', employeeIds: ids('amal', 'badr', 'carm') }).expect(200)).body as EmployeeBulkResult;
     expect(r.done).toHaveLength(3);
     expect(await prisma.accessHold.count({ where: { employeeId: { in: ids('amal', 'badr', 'carm') }, releasedAt: null } })).toBe(0);
   });
 
-  it('changes the manager, the shift and check-in from anywhere: HR’s only', async () => {
-    expect((await bulk('admin', { action: 'manager', employeeIds: ids('badr'), managerId: people.amal.id }).expect(403)).body.message).toBe(ONLY_HR_EMPLOYMENT);
-    let r = (await bulk('hr', { action: 'manager', employeeIds: ids('badr', 'carm'), managerId: people.amal.id }).expect(200)).body as EmployeeBulkResult;
+  it('changes the manager, the shift and check-in from anywhere', async () => {
+    let r = (await bulk('sa', { action: 'manager', employeeIds: ids('badr', 'carm'), managerId: people.amal.id }).expect(200)).body as EmployeeBulkResult;
     expect(r.done).toHaveLength(2);
     const managers = await prisma.employment.findMany({ where: { id: { in: [people.badr.employmentId, people.carm.employmentId] } }, select: { managerId: true } });
     expect(managers.map((m) => m.managerId)).toEqual([people.amal.id, people.amal.id]);
 
-    r = (await bulk('hr', { action: 'check_in_anywhere', employeeIds: ids('amal', 'badr'), on: true }).expect(200)).body as EmployeeBulkResult;
+    r = (await bulk('sa', { action: 'check_in_anywhere', employeeIds: ids('amal', 'badr'), on: true }).expect(200)).body as EmployeeBulkResult;
     expect(r.done).toHaveLength(2);
     const anywhere = await prisma.employment.findMany({ where: { id: { in: [people.amal.employmentId, people.badr.employmentId] } }, select: { checkInAnywhere: true } });
     expect(anywhere.every((e) => e.checkInAnywhere)).toBe(true);
 
-    r = (await bulk('hr', { action: 'shift', employeeIds: ids('carm'), shiftId: null }).expect(200)).body as EmployeeBulkResult;
+    r = (await bulk('sa', { action: 'shift', employeeIds: ids('carm'), shiftId: null }).expect(200)).body as EmployeeBulkResult;
     expect(r.done).toHaveLength(1);
     expect((await prisma.employment.findUniqueOrThrow({ where: { id: people.carm.employmentId }, select: { shiftId: true } })).shiftId).toBeNull();
   });
 
   it('sends a message to the bell, and by email when asked; audited for each', async () => {
     const before = mail.outbox.length;
-    const r = (await bulk('hr', { action: 'message', employeeIds: ids('amal', 'badr'), title: 'Office closed Thursday', body: 'The office is closed on Thursday.', email: true }).expect(200))
+    const r = (await bulk('sa', { action: 'message', employeeIds: ids('amal', 'badr'), title: 'Office closed Thursday', body: 'The office is closed on Thursday.', email: true }).expect(200))
       .body as EmployeeBulkResult;
     expect(r.done).toHaveLength(2);
     const bell = await prisma.notification.findMany({ where: { userId: { in: [users.amal, users.badr] }, kind: 'hr_message' } });
     expect(bell.map((n) => n.title)).toEqual(['Office closed Thursday', 'Office closed Thursday']);
     const sent = mail.outbox.slice(before);
     expect(sent.map((m) => m.to).sort()).toEqual([emails.amal, emails.badr].sort());
-    expect(sent[0]).toMatchObject({ subject: 'Office closed Thursday', text: 'The office is closed on Thursday.', replyTo: emails.hr });
+    expect(sent[0]).toMatchObject({ subject: 'Office closed Thursday', text: 'The office is closed on Thursday.', replyTo: emails.sa });
     expect(await prisma.auditLog.count({ where: { action: 'send_message', entityId: { in: ids('amal', 'badr') } } })).toBe(2);
   });
 
   it('exports the chosen people as a spreadsheet', async () => {
-    const file = await api().get(`/api/employees/bulk/export.xlsx?ids=${ids('amal', 'carm').join(',')}`).set('Cookie', sessions.hr).expect(200);
+    const file = await api().get(`/api/employees/bulk/export.xlsx?ids=${ids('amal', 'carm').join(',')}`).set('Cookie', sessions.sa).expect(200);
     expect(file.headers['content-type']).toContain('spreadsheetml');
     expect(file.headers['content-disposition']).toContain('Employees');
-    await api().get(`/api/employees/bulk/export.xlsx?ids=${ids('amal').join(',')}`).set('Cookie', sessions.finance).expect(403);
-    expect(await prisma.auditLog.findFirst({ where: { action: 'export_employees', entityType: 'employee', userId: users.hr }, orderBy: { at: 'desc' } })).toMatchObject({ diff: { people: 2 } });
+    await api().get(`/api/employees/bulk/export.xlsx?ids=${ids('amal').join(',')}`).set('Cookie', sessions.hr).expect(403);
+    expect(await prisma.auditLog.findFirst({ where: { action: 'export_employees', entityType: 'employee', userId: users.sa }, orderBy: { at: 'desc' } })).toMatchObject({ diff: { people: 2 } });
   });
 });

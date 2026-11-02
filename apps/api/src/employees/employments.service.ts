@@ -109,7 +109,7 @@ export class EmploymentsService {
    * when it ended). An employment never overlaps another of the same person. HR moves a current one between Active and
    * On leave; Probation and Notice period are the system's (owner's decision, 16 October 2026).
    */
-  async update(employeeId: string, employmentId: string, dto: UpdateEmploymentDto, user: SessionUser) {
+  async update(employeeId: string, employmentId: string, dto: UpdateEmploymentDto, user: SessionUser, opts: { answer?: boolean } = {}) {
     const before = await this.row(employeeId, employmentId);
     // a C-level grade only from those who see C-level people (owner, 19 October 2026: else HR could hide or unhide
     // someone by their grade); a C-level person's employment is refused before this for anyone else (ConfidentialOf)
@@ -137,6 +137,8 @@ export class EmploymentsService {
       // their access follows (22 October 2026): an account made if they should have one now, the standing recorded
       await this.access.afterChange(employeeId, user.id);
     }
+    // the bulk actions (2 November 2026) need no answer: the profile isn't read back for them
+    if (opts.answer === false) return null;
     return this.employees.get(employeeId, user);
   }
 

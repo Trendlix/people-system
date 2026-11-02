@@ -1,9 +1,8 @@
 import type { Role } from '@trendlix/shared';
-import { hasRole } from './roles';
 
 // The Employees list's bulk actions (owner, 1 November 2026: "i want to select and create bulk actions such as hold
-// access, what else?"; chose Access, Work setup, Check-in rules, Export & message): the actions HR picks from once people
-// are ticked, and who sees which, as the API allows. Pure, tested.
+// access, what else?"; chose Access, Work setup, Check-in rules, Export & message): the actions picked from once people
+// are ticked; a Super Admin's only (owner, 2 November 2026: "emplyees bulk actions for super admin only"). Pure, tested.
 
 export const BULK_ACTIONS = ['hold', 'release', 'invite', 'manager', 'department', 'shift', 'check_in_anywhere', 'exempt', 'message', 'export'] as const;
 export type BulkAction = (typeof BULK_ACTIONS)[number];
@@ -29,16 +28,12 @@ export const BULK_ACTION_GROUPS: readonly { label: string; actions: readonly Bul
   { label: 'Other', actions: ['message', 'export'] },
 ];
 
-const EMPLOYMENT: readonly BulkAction[] = ['manager', 'department', 'shift', 'check_in_anywhere'];
+/** Whether the user ticks people at all: a Super Admin only (owner, 2 November 2026), never a developer. */
+export const runsBulkActions = (user: { roles: readonly Role[]; developer?: boolean }): boolean => !user.developer && user.roles.includes('super_admin');
 
-/** Whether the user ticks people at all: HR, an Admin (a Super Admin too) and the CEO. */
-export const runsBulkActions = (user: { roles: readonly Role[]; developer?: boolean }): boolean => !user.developer && hasRole(user, 'hr', 'admin', 'ceo');
-
-/** The actions the user may pick: all for HR; the employment's changes are HR's only. */
+/** The actions the user may pick: every one, for a Super Admin. */
 export function bulkActionsFor(user: { roles: readonly Role[]; developer?: boolean }): BulkAction[] {
-  if (!runsBulkActions(user)) return [];
-  const hr = hasRole(user, 'hr');
-  return BULK_ACTIONS.filter((a) => hr || !EMPLOYMENT.includes(a));
+  return runsBulkActions(user) ? [...BULK_ACTIONS] : [];
 }
 
 /** The chosen people's spreadsheet. */

@@ -1,13 +1,12 @@
 import { BadRequestException, ForbiddenException, HttpException, Injectable } from '@nestjs/common';
 import {
-  EMPLOYEE_BULK_EMPLOYMENT,
   employeeBulkProblems,
   type EmployeeBulkPerson,
   type EmployeeBulkResult,
 } from '@trendlix/shared';
 import ExcelJS from 'exceljs';
 import { AuditService } from '../audit/audit.service.js';
-import { actsAs } from '../auth/roles.js';
+import { isSuperAdmin } from '../auth/roles.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { EmployeeAccessService } from '../employee-access/employee-access.service.js';
 import { ConfidentialService } from '../employees/confidential.service.js';
@@ -22,13 +21,12 @@ import type { EmployeeBulkDto } from './employee-bulk.dto.js';
 // access, what else?"; chose Access, Work setup, Check-in rules, Export & message). Each person's is done with the same
 // service as their own page's (the access hold and release, the employment's update), so the same checks, refusals and
 // audit apply; one refused is skipped with why, the others still done. The C-level people hidden from the caller are
-// skipped as not found. The employment's changes are HR's, as on the Employment tab. A message goes to each one's bell
+// skipped as not found. A Super Admin's only (owner, 2 November 2026: "emplyees bulk actions for super admin only"). A message goes to each one's bell
 // and phone, and by email when asked (their work email, else the one they sign in with). The export is the chosen
 // people's rows as the list shows them: no pay, no IDs.
 
 const NOT_FOUND = 'Not found.';
 const NO_EMPLOYMENT = 'No current employment.';
-export const ONLY_HR_EMPLOYMENT = 'Only HR changes the manager, department, shift or check-in rules.';
 
 /** Why a person's action was refused, in its own words. */
 function reasonOf(err: unknown): string {
@@ -73,7 +71,8 @@ export class EmployeeBulkService {
   async run(dto: EmployeeBulkDto, user: SessionUser): Promise<EmployeeBulkResult> {
     const problems = employeeBulkProblems(dto);
     if (problems.length) throw new BadRequestException(problems);
-    if (EMPLOYEE_BULK_EMPLOYMENT.includes(dto.action) && !actsAs(user.roles, ['hr'])) throw new ForbiddenException(ONLY_HR_EMPLOYMENT);
+    // a Super Admin's only (owner, 2 November 2026), checked again here whatever route reaches it
+    if (!isSuperAdmin(user)) throw new ForbiddenException('Bulk actions are for a Super Admin only.');
     const ids = [...new Set(dto.employeeIds)];
     const done: EmployeeBulkPerson[] = [];
     const skipped: EmployeeBulkResult['skipped'] = [];
@@ -122,7 +121,7 @@ export class EmployeeBulkService {
               : dto.action === 'shift'
                 ? { shiftId: dto.shiftId ?? null }
                 : { checkInAnywhere: dto.on === true };
-        await this.employments.update(p.id, employment.id, change, user);
+        await this.employments.update(p.id, employment.id, change, user, { answer: false });
         return null;
       }
     }
@@ -149,6 +148,7 @@ export class EmployeeBulkService {
 
   /** GET /employees/export?ids=: the chosen people's rows, as the list shows them, in an Excel file. */
   async export(ids: readonly string[], user: SessionUser): Promise<{ data: Buffer; fileName: string }> {
+    if (!isSuperAdmin(user)) throw new ForbiddenException('Bulk actions are for a Super Admin only.');
     if (!ids.length) throw new BadRequestException(['Choose at least one person.']);
     const hidden = await this.confidential.hiddenFrom(user);
     const rows = await this.prisma.employee.findMany({
