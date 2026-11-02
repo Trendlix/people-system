@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   correctionApplyRefusal,
+  correctionCancelRefusal,
   correctionMoments,
   correctionProblems,
   firstLeaveStatus,
@@ -33,6 +34,7 @@ import {
   standInRefusal,
   waitingWhere,
   type Caller,
+  hrMayCancel,
 } from '../leave/access.js';
 import { standInViewOf } from '../leave/stand-ins.js';
 import type { DecideLeaveDto } from '../leave/leave.dto.js';
@@ -47,7 +49,7 @@ import { AttendanceFillService } from './attendance-fill.service.js';
 import { CorrectionDaysService } from './correction-days.service.js';
 import { correctionAskFromFor } from './correction-window.js';
 import { CORRECTION_ENTITY, CORRECTION_INCLUDE, correctionParties, correctionView, type AttendanceCorrectionView, type CorrectionRow, type DayBefore } from './correction-views.js';
-import type { CreateCorrectionDto, ListCorrectionsDto, RecordCorrectionDto } from './corrections.dto.js';
+import type { CreateCorrectionDto, HrCancelCorrectionDto, ListCorrectionsDto, RecordCorrectionDto } from './corrections.dto.js';
 
 type Db = PrismaService | Prisma.TransactionClient;
 type Where = Prisma.AttendanceCorrectionWhereInput;
@@ -137,6 +139,50 @@ export class AttendanceCorrectionsService {
       await this.step(tx, id, user.id, { kind: 'cancelled' });
     });
     await this.audit.record({ userId: user.id, action: 'cancel', entityType: CORRECTION_ENTITY, entityId: id, diff: { employeeId: before.employeeId, date: fromDateOnly(before.date), status: { from: before.status, to: 'cancelled' } } });
+    return this.one(id, user);
+  }
+
+  /**
+   * HR cancels an approved correction, saying why (owner, 2 November 2026: "i want to cancel this"): the day made again
+   * without it (back to what it was, or to the corrections still approved), the month's attendance filled again, the
+   * employee told. Never HR's own; a C-level person's only HR who sees them; refused once the month's payroll is with
+   * the CEO, approved or paid.
+   */
+  async hrCancel(id: string, dto: HrCancelCorrectionDto, user: SessionUser): Promise<AttendanceCorrectionView> {
+    const caller = await this.caller(user);
+    const before = await this.visible(id, caller);
+    const parties = correctionParties(before);
+    if (!isHr(user)) throw new ForbiddenException('Only HR cancels an approved correction.');
+    if (isRequester(parties, caller) || caller.employeeId === before.employeeId) throw new ForbiddenException('Someone else in HR has to cancel a correction of your own day.');
+    if (!hrMayCancel({ ...parties, status: before.status }, caller)) {
+      throw new ConflictException(`This correction is ${statusWords(before.status)}: HR cancels approved corrections only.${isOpenLeave(before.status) ? ' Reject it instead.' : ''}`);
+    }
+    const date = fromDateOnly(before.date);
+    const refusal = correctionCancelRefusal(date, await this.runStatus(date));
+    if (refusal) throw new ConflictException(refusal);
+    const change = await this.prisma.$transaction(async (tx) => {
+      // no longer applied to the day (the database keeps an applied time on approved ones only; the steps keep when)
+      const { count } = await tx.attendanceCorrection.updateMany({ where: { id, status: 'approved' }, data: { status: 'cancelled', appliedAt: null } });
+      if (!count) throw new ConflictException('This correction was cancelled meanwhile. Reload the page to see where it is.');
+      await this.step(tx, id, user.id, { kind: 'cancelled', comment: dto.comment });
+      return this.correctionDays.rebuild(before.employeeId, date, user, tx);
+    });
+    await this.audit.record({
+      userId: user.id,
+      action: 'cancel',
+      entityType: CORRECTION_ENTITY,
+      entityId: id,
+      diff: {
+        employeeId: before.employeeId,
+        date,
+        status: { from: 'approved', to: 'cancelled' },
+        comment: dto.comment,
+        // the day as it is now: still corrected by others approved, or back to the day it corrected
+        dayNow: change.after ? { checkIn: change.after.checkIn, checkOut: change.after.checkOut, hoursCounted: change.after.hoursCounted } : 'as before the correction',
+      },
+    });
+    await this.fill.fillMonth(before.employeeId, date.slice(0, 7), user);
+    await this.notices.correction(id, 'cancelled_by_hr');
     return this.one(id, user);
   }
 

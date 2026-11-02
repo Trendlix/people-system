@@ -1,5 +1,5 @@
 import { CORRECTION_KINDS, CORRECTION_KINDS_ASKED, LEAVE_STATUSES, type CorrectionKind, type LeaveStatus } from '@trendlix/shared';
-import { IsIn, IsOptional, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
+import { IsIn, IsOptional, IsString, IsUUID, Matches, MaxLength, MinLength } from 'class-validator';
 import { IsDateOnly } from '../common/date-only.js';
 import { TIME_OF_DAY } from '../common/time-of-day.js';
 import { LatinDigits, Trim, TrimOrNull } from '../common/transforms.js';
@@ -45,4 +45,10 @@ export class ListCorrectionsDto {
 
   @Trim() @IsOptional() @Matches(MONTH, { message: 'Choose the month as YYYY-MM, e.g. 2026-10.' })
   month?: string;
+}
+
+/** HR cancels an approved correction, saying why (owner, 2 November 2026: "i want to cancel this"). */
+export class HrCancelCorrectionDto {
+  @Trim() @IsString({ message: 'Write why the correction is cancelled.' }) @MinLength(1, { message: 'Write why the correction is cancelled.' }) @MaxLength(1000, { message: 'Keep the reason to 1000 characters or fewer.' })
+  comment: string = '';
 }

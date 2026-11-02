@@ -36,6 +36,8 @@ export interface AttendanceCorrectionView {
   standingInFor?: { id: string; fullNameEn: string } | null;
   /** The employee may cancel it now: theirs, while being decided. */
   canCancel: boolean;
+  /** HR may cancel it, approved (2 November 2026); missing from an older API. */
+  hrCanCancel?: boolean;
   /** The employee is C-level: HR's stage is the CEO's (or HR with Super Admin). */
   confidential: boolean;
   manager: RequestApprover | null;

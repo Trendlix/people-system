@@ -12,7 +12,8 @@ import { decidingAsTitle, hrStageName, placeOfEmployee } from '../../../leave/li
 import { LeaveProgress, LeaveStatusBadge, LeaveTimeline } from '../../../leave/ui';
 import { BackLink, Empty, UUID } from '../../../organization/ui';
 import { notLoadedText } from '../../../payroll/load';
-import { cancelMyCorrection, decideCorrection } from '../actions';
+import { cancelCorrectionByHr, cancelMyCorrection, decideCorrection } from '../actions';
+import { HrCancelCorrectionForm } from '../hr-cancel-form';
 import { correctionBack, correctionDayText, correctionDoneText, correctionStepText, dayBeforeText, rightTimesText, seesCorrections } from '../corrections';
 import { loadCorrection } from '../data';
 import { leaveStepsAhead } from '@/lib/steps-ahead';
@@ -149,6 +150,12 @@ export async function CorrectionDetail({
           {r.canCancel && (
             <Section title="Cancel the Correction">
               <CancelLeaveForm action={cancelMyCorrection.bind(null, r.id)} what={what} kind="correction" />
+            </Section>
+          )}
+          {/* HR cancels an approved one (owner, 2 November 2026: "i want to cancel this") */}
+          {!r.canCancel && r.hrCanCancel && (
+            <Section title="Cancel the Correction">
+              <HrCancelCorrectionForm action={cancelCorrectionByHr.bind(null, r.id)} what={what} />
             </Section>
           )}
         </div>

@@ -444,6 +444,16 @@ export function correctionTimesText(c: { checkIn: string | null; checkOut: strin
  * for days in months whose payroll run isn't approved yet"): the month's payroll approved or paid, or with the CEO (a run
  * with the CEO never changes, so it would miss the correction: returned to HR first). Null: it can.
  */
+/**
+ * Why an approved correction can't be cancelled (owner, 2 November 2026: "i want to cancel this"): its month's payroll
+ * approved or paid, or with the CEO; null when it can.
+ */
+export function correctionCancelRefusal(date: string, runStatus: string | null): string | null {
+  if (runStatus === 'approved' || runStatus === 'paid') return `The ${monthName(date)} payroll is ${runStatus === 'paid' ? 'paid' : 'approved'}, so this correction can't be cancelled any more.`;
+  if (runStatus === 'pending_ceo') return `The ${monthName(date)} payroll is with the CEO: ask the CEO to return it to HR, then cancel the correction.`;
+  return null;
+}
+
 export function correctionApplyRefusal(date: string, runStatus: string | null): string | null {
   if (runStatus === 'approved' || runStatus === 'paid') return `The ${monthName(date)} payroll is ${runStatus === 'paid' ? 'paid' : 'approved'}, so its days can't be corrected any more.`;
   if (runStatus === 'pending_ceo') return `The ${monthName(date)} payroll is with the CEO, so the correction would miss it: ask the CEO to return it to HR, then approve the correction.`;

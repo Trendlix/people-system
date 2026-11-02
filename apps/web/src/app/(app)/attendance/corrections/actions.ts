@@ -88,3 +88,20 @@ export async function decideCorrection(id: string, stage: LeaveStage, _prev: For
   refresh();
   redirect(afterAction(fd, correctionDoneHref(id, `${stage}_${body.decision}`)));
 }
+
+/**
+ * HR cancels an approved correction, saying why (POST /attendance/corrections/:id/hr-cancel; owner, 2 November 2026: "i
+ * want to cancel this"): the day goes back to the one it corrected.
+ */
+export async function cancelCorrectionByHr(id: string, _prev: FormState, fd: FormData): Promise<FormState> {
+  const comment = String(fd.get('comment') ?? '').trim();
+  if (!comment) return { errors: ['Write why the correction is cancelled.'], values: { comment } };
+  try {
+    await apiSend('POST', `/attendance/corrections/${encodeURIComponent(id)}/hr-cancel`, { comment });
+  } catch (err) {
+    if (err instanceof ApiError) return { errors: err.messages, values: { comment } };
+    throw err;
+  }
+  refresh();
+  return { message: 'Correction cancelled.' };
+}

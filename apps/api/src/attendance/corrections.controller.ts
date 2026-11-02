@@ -3,7 +3,7 @@ import { CurrentUser, Roles } from '../auth/decorators.js';
 import type { SessionUser } from '../auth/session-user.js';
 import { ConfidentialOf } from '../employees/confidential.guard.js';
 import { DecideLeaveDto } from '../leave/leave.dto.js';
-import { CreateCorrectionDto, ListCorrectionsDto, RecordCorrectionDto } from './corrections.dto.js';
+import { CreateCorrectionDto, HrCancelCorrectionDto, ListCorrectionsDto, RecordCorrectionDto } from './corrections.dto.js';
 import { AttendanceCorrectionsService } from './corrections.service.js';
 
 // Attendance corrections (owner, 19 October 2026: "Attendance corrections with approval ("I forgot to check out")"). The
@@ -65,6 +65,14 @@ export class AttendanceCorrectionsController {
   @Header('Cache-Control', 'private, no-store')
   one(@Param('id', ParseUUIDPipe) id: string, @CurrentUser() user: SessionUser) {
     return this.corrections.one(id, user);
+  }
+
+  /** HR cancels an approved correction: { comment } (owner, 2 November 2026: "i want to cancel this"). */
+  @Roles('hr')
+  @Post(':id/hr-cancel')
+  @HttpCode(200)
+  hrCancel(@Param('id', ParseUUIDPipe) id: string, @Body() dto: HrCancelCorrectionDto, @CurrentUser() user: SessionUser) {
+    return this.corrections.hrCancel(id, dto, user);
   }
 
   /** { decision: approve | reject, comment? (required to reject) }. */

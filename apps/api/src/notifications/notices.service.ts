@@ -202,7 +202,7 @@ export class NoticesService {
     });
   }
 
-  async correction(id: string, event: Exclude<RequestEvent, 'cancelled_by_hr'>): Promise<void> {
+  async correction(id: string, event: RequestEvent): Promise<void> {
     await this.safely('correction', async () => {
       const r = await this.prisma.attendanceCorrection.findUnique({ where: { id }, select: { employeeId: true, managerId: true, status: true, date: true, employee: { select: { fullNameEn: true, fullNameAr: true } } } });
       if (!r) return;
@@ -218,7 +218,8 @@ export class NoticesService {
       return;
     }
     if (event === 'cancelled_by_hr') {
-      if (kind !== 'correction' && r.status === 'cancelled') await this.toEmployee(r.employeeId, { ...cancelledByHrText(kind, r.when, r.link), ...(kind !== 'compensatory' && { whatsapp: updateOf(kind, r.span, 'cancelled') }) });
+      // an attendance correction too (2 November 2026), on the bell only
+      if (r.status === 'cancelled') await this.toEmployee(r.employeeId, { ...cancelledByHrText(kind, r.when, r.link), ...(kind !== 'compensatory' && kind !== 'correction' && { whatsapp: updateOf(kind, r.span, 'cancelled') }) });
       return;
     }
     const stage = stageOf(r.status);

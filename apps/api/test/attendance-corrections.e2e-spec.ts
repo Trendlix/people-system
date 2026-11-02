@@ -370,6 +370,30 @@ describe('Attendance corrections (e2e)', () => {
       expect((await personMonth('zed', PAST)).canCorrect).toBe(true);
     });
 
+    // owner, 2 November 2026: "i want to cancel this"
+    it('HR cancels an approved correction with a reason: the day goes back to the one it corrected, the employee told', async () => {
+      const { id } = await prisma.attendanceCorrection.findFirstOrThrow({ where: { employeeId: ids.zed, date: toDateOnly(work[PAST][0]), status: 'approved' }, select: { id: true } });
+      const cancel = (session: string, comment: string) => api().post(`/api/attendance/corrections/${id}/hr-cancel`).set('Cookie', session).send({ comment });
+      await cancel(finance, 'Entered by mistake').expect(403);
+      expect(said(await cancel(hr, '  ').expect(400))).toEqual(['Write why the correction is cancelled.']);
+      const res = (await cancel(hr, 'Entered by mistake').expect(200)).body as Correction;
+      expect(res.status).toBe('cancelled');
+      expect(res.steps.map((s) => s.kind)).toEqual(['recorded_by_hr', 'cancelled']);
+      // the day is Zoho's again (absent), with no correction over it
+      const day = (await personMonth('zed', PAST)).person.days.find((d) => d.date === work[PAST][0])!;
+      expect(day).toMatchObject({ source: 'zoho', status: 'absent' });
+      const zedUser = await prisma.user.findFirst({ where: { employeeId: ids.zed }, select: { id: true } });
+      if (zedUser) {
+        const told = await prisma.notification.findMany({ where: { userId: zedUser.id, title: 'Attendance correction cancelled by HR' } });
+        expect(told).toHaveLength(1);
+      }
+      expect(await prisma.auditLog.findFirst({ where: { action: 'cancel', entityId: id }, orderBy: { at: 'desc' } })).toMatchObject({
+        diff: { status: { from: 'approved', to: 'cancelled' }, comment: 'Entered by mistake', dayNow: 'as before the correction' },
+      });
+      // once only
+      expect(said(await cancel(hr, 'Again').expect(409))[0]).toContain('HR cancels approved corrections only');
+    });
+
     it('never HR’s own, a C-level person’s only HR with Super Admin', async () => {
       const body = { date: work[PAST][4], kind: 'forgot_check_in', checkIn: '09:00', checkOut: '17:00', reason: 'Fixing' };
       expect(said(await api().post('/api/attendance/corrections').set('Cookie', hr).send({ ...body, employeeId: hrEmployeeId }).expect(403))[0]).toContain('Someone else in HR');

@@ -42,7 +42,9 @@ export function decidedText(kind: LeaveLikeKind, decision: 'approved' | 'rejecte
   return { kind: `${kind}_decided`, title: `${NAMES[kind].noun} ${decision}`, body: when, link };
 }
 
-const CANCELLED_BY_HR: Record<'leave' | 'permission' | 'wfh' | 'od' | 'compensatory', string> = {
+const CANCELLED_BY_HR: Record<'leave' | 'permission' | 'wfh' | 'od' | 'compensatory' | 'correction', string> = {
+  // an approved attendance correction cancelled (owner, 2 November 2026: "i want to cancel this")
+  correction: 'Attendance correction cancelled by HR',
   leave: 'Leave cancelled by HR',
   permission: 'Permission cancelled by HR',
   wfh: 'Work from home day cancelled by HR',
@@ -51,7 +53,7 @@ const CANCELLED_BY_HR: Record<'leave' | 'permission' | 'wfh' | 'od' | 'compensat
 };
 
 /** HR cancelled the employee's approved leave, permission or work from home day. */
-export function cancelledByHrText(kind: 'leave' | 'permission' | 'wfh' | 'od' | 'compensatory', when: string, link: string): NotificationInput {
+export function cancelledByHrText(kind: 'leave' | 'permission' | 'wfh' | 'od' | 'compensatory' | 'correction', when: string, link: string): NotificationInput {
   return { kind: `${kind}_decided`, title: CANCELLED_BY_HR[kind], body: when, link };
 }
 
