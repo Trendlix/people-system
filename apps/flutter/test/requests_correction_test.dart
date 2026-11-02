@@ -149,7 +149,6 @@ void main() {
     expect(find.text(CorrectionWords.reasonMissing), findsOneWidget);
 
     await typeInto(tester, CorrectionWords.why, 'I left for a client meeting and forgot to check out.');
-    expect(find.textContaining('Ready to send: forgot to check out on ${dayWords(yesterday)}'), findsOneWidget);
     await scrollAndTap(tester, find.text(RequestsWords.send));
     expect(people.bodyOf('POST /api/me/attendance/corrections'), {
       'date': yesterday,

@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import '../api/people_client.dart';
 import '../auth/auth_controller.dart';
 import '../features/about/diagnostics.dart' show AboutWords, versionLineOf;
+import '../features/kpis/kpi_reminder.dart';
 import '../features/kpis/kpi_words.dart' show KpiWords;
 import '../features/review/review_gate.dart';
 import '../format.dart';
@@ -40,7 +41,11 @@ class _AppShellState extends ConsumerState<AppShell> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _offerFingerprint());
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await _offerFingerprint();
+      // KPI scorecards waiting: once a sign-in, unless postponed (1 November 2026)
+      if (mounted) await remindKpis(context, ref);
+    });
   }
 
   /// Right after a password sign-in on a phone that could use the fingerprint: asked once.
@@ -340,6 +345,8 @@ Future<void> showMoreMenu(BuildContext context, Me me) {
                     _MenuRow(icon: CupertinoIcons.device_phone_portrait, label: ShellWords.devices, onTap: () => go('/profile/sessions')),
                     if (me.employeeId != null) _MenuRow(icon: CupertinoIcons.clock, label: ShellWords.hiring, onTap: () => go('/profile/interview-hours')),
                     // their people's KPI scorecards to score and sign (owner, 31 October 2026), as the website offers Team KPIs
+                    // their own KPIs, easy to find (owner, 2 November 2026: "the employees cant find the KPIs in the app")
+                    if (me.employeeId != null) _MenuRow(icon: CupertinoIcons.graph_square, label: KpiWords.myTitle, onTap: () => go('/dashboard/performance')),
                     if (me.scoresTeam) _MenuRow(icon: CupertinoIcons.person_2, label: KpiWords.teamTitle, onTap: () => go('/dashboard/performance/team')),
                     // the app's version and what helps find a problem (owner, 31 October 2026)
                     _MenuRow(icon: CupertinoIcons.info, label: AboutWords.menu, onTap: () => go('/profile/about')),
